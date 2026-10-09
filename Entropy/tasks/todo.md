@@ -21,8 +21,10 @@ Claude Code: refine this plan, then **check in with the owner before writing cod
       `Desktop/Claude Projects/keepcrypt`; the old `Entropy-Keep Crypt` folder is no longer the working copy.
 - [x] **Git identity:** the `gh` CLI is signed in as `bitwilll` (admin). Commits use that account with its GitHub
       no-reply address (`211763171+bitwilll@users.noreply.github.com`), set in the clone's local git config.
-- [x] **Reviewers and disclosure:** CODEOWNERS owner and SECURITY.md contact are `admin@keepcrypt.com`. Branch
-      protection with two required approvals is not set yet; `main` is unprotected today.
+- [x] **Reviewers and disclosure:** the CODEOWNERS owner is `msaval02@nyit.edu`, the bitwilll account's verified
+      email. GitHub rejected `admin@keepcrypt.com` as an unknown owner, and now reports 0 CODEOWNERS errors. The
+      SECURITY.md disclosure address is `admin@keepcrypt.com`. Branch protection with two required approvals is not set
+      yet; `main` is unprotected today.
 - [x] **Approvals:** the owner answered "OK" to the "Changes during M0" list.
 - Monorepo adjustments, made when moving in:
   - The workflow lives at the repo root as `.github/workflows/entropy-ci.yml`. It runs every step in `Entropy/`, and
@@ -80,8 +82,8 @@ Claude Code: refine this plan, then **check in with the owner before writing cod
 
 ### Plan
 **Repository**
-- [ ] `git init` on `main`. The first commit holds the starter files exactly as delivered; M0 work happens on
-      `m0-bootstrap` and merges by PR. *(git init done; no commit yet: waiting for the git identity answer)*
+- [x] Git: the project lives in `Entropy/` of `bitwilll/keepcrypt`. The first commit on `m0-bootstrap` holds the
+      starter files exactly as delivered; M0 merges by PR bitwilll/keepcrypt#1.
 - [x] `.gitignore`: `target/`, `.DS_Store`, `*.age` (everywhere, vectors/ included), key and signing files (`*.key`,
       `*.sec`, `*.pem`, `*.p12`, `*.pfx`, `*.jks`, `*.keystore`, `*.p8`, `keystore.properties`, `id_ed25519*`,
       `id_rsa*`, `*.gpg`), `.env`, `.env.*`, `.envrc`, `.netrc`, Python bytecode
@@ -163,7 +165,7 @@ As built (2026-10-09), with deviations from the table above:
     fail with `disallowed_methods`
 - [x] `cargo vet init` → `supply-chain/`. Audits are imported from Mozilla, Google, Bytecode Alliance, ISRG and Zcash
       (owner to confirm this trusted set). Every remaining crate starts as an exemption listed in Review for approval.
-- [x] `.github/CODEOWNERS` (at the repo root, `/Entropy/` paths, owner `admin@keepcrypt.com`): `core/`, `ffi/`, `pi/os/`, plus the gate files themselves (`deny.toml`, `*/clippy.toml`,
+- [x] `.github/CODEOWNERS` (at the repo root, `/Entropy/` paths, owner `msaval02@nyit.edu`): `core/`, `ffi/`, `pi/os/`, plus the gate files themselves (`deny.toml`, `*/clippy.toml`,
       `scripts/`, `supply-chain/`, `rust-toolchain.toml`, `.github/`), so a gate cannot be weakened unseen.
       Owners follow the reviewers answer.
 - [x] `SECURITY.md` stub (disclosure address `admin@keepcrypt.com`) and `LICENSE-MIT` + `LICENSE-APACHE` (dual licence)
@@ -206,16 +208,16 @@ the Buildroot toolchain (M4).
 ### Verification
 - [x] Locally: fmt, clippy, test, `cargo deny check`, `cargo audit`, `cargo vet`, the banned-API check and
       `verify.py --selftest` all pass; output pasted
-- [ ] CI is green on a clean clone of the GitHub repo; run link pasted
-- [ ] Cross-compile job log shows all six targets built; excerpt pasted
+- [x] CI is green on a clean clone of the GitHub repo; run link pasted
+- [x] Cross-compile job log shows all six targets built; excerpt pasted
 - [x] Every canary and banned-API fixture fails for the intended reason on every run, and CI goes red if one passes
       *(proven locally under sh and dash; CI run pending)*
-- [ ] One-time end-to-end proof on the real crates: one draft PR adding `rand` to `core`, and one adding `Math.random`
+- [x] One-time end-to-end proof on the real crates: one draft PR adding `rand` to `core`, and one adding `Math.random`
       to a source file, are both red in CI, then closed unmerged; links pasted
 - [x] `verify.py --selftest` reproduces every value in `seal.json` and every hash in `SOURCES.md`
-- [ ] `git ls-files` shows no secrets, keys, or `.age` files outside `vectors/` *(nothing committed yet; locally, a
-      throwaway git copy of all 301 files shows none ignored by mistake, and a secrets scan found only public
-      test vectors)*
+- [x] `git ls-files` shows no secrets, keys, or `.age` files outside `vectors/`. On `m0-bootstrap`: 304 files, no
+      `target/`, `.DS_Store`, `.age`, `.key` or `.pem` paths; the only key-shaped string is the published CCTV test
+      identity in `vectors/age/scrypt/scrypt_and_x25519`
 
 ### Changes during M0 that need owner approval (2026-10-09)
 Each item came out of building M0 or the three adversarial review rounds. Approve or reject each at the gate.
@@ -449,10 +451,37 @@ Other checks:
   verification. Every finding was reproduced on a scratch copy before it was fixed. The raw reports stay in the
   session scratchpad; this file records the outcome.
 
-### M0 gate status: NOT YET MET
-- Not proven yet:
-  - CI green on the M0 pull request.
-  - The six-target cross job log.
-  - The two draft-PR negative tests.
-- Owner answers received 2026-10-09: repo, identity, owners and disclosure, and approval of the changes. What remains
-  is mine: open the PR, get CI green, run the negative-test PRs, then report the gate.
+### M0 on GitHub (2026-10-09)
+PR bitwilll/keepcrypt#1. Entropy CI was green on both pushes, 11/11 jobs each:
+- https://github.com/bitwilll/keepcrypt/actions/runs/37943086359 (6796cf5)
+- https://github.com/bitwilll/keepcrypt/actions/runs/37944150801 (f49d84e)
+
+```text
+cross (arm-unknown-linux-gnueabihf)  target/arm-unknown-linux-gnueabihf/release/libkeepcrypt_core.rlib: 3998 bytes
+cross (aarch64-linux-android)        target/aarch64-linux-android/release/libkeepcrypt_core.rlib: 4610 bytes
+cross (armv7-linux-androideabi)      target/armv7-linux-androideabi/release/libkeepcrypt_core.rlib: 3994 bytes
+cross (x86_64-linux-android)         target/x86_64-linux-android/release/libkeepcrypt_core.rlib: 4578 bytes
+cross (aarch64-apple-ios)            target/aarch64-apple-ios/release/libkeepcrypt_core.rlib: 3784 bytes  (Xcode 26.6)
+cross (aarch64-apple-ios-sim)        target/aarch64-apple-ios-sim/release/libkeepcrypt_core.rlib: 3784 bytes
+gates         banned-api-check: clean, 59 files; selftest: 209 passed, 0 failed (first run on GNU grep);
+              verify.py: selftest passed: 4 checks; canaries.sh: 37 PASS
+supply-chain  advisories ok, bans ok, licenses ok, sources ok; Vetting Succeeded (3 fully audited, 43 exempted);
+              check-path-deps: clean, no cargo config files in or above the workspace
+verifier      /usr/bin/python3 = Python 3.9.6; selftest passed: 4 checks
+```
+
+Negative tests, both closed unmerged:
+- bitwilll/keepcrypt#2 adds `rand` to `core`. In run https://github.com/bitwilll/keepcrypt/actions/runs/37944355102,
+  supply-chain failed with `error[banned]: crate 'rand = 0.8.5' is explicitly banned`, plus RUSTSEC-2026-0097.
+  Gates was red too, because the `real-deny-bans` canary cannot add rand to a core that already has it: it fails
+  closed.
+- bitwilll/keepcrypt#3 adds `Math.random()` in app code. In run
+  https://github.com/bitwilll/keepcrypt/actions/runs/37944361988, gates failed with
+  `RNG: mobile/android/app/src/main/kotlin/app/Dice.kt:4` from `banned-api-check.sh`.
+
+The repo also has a Vercel deploy integration (team bitwillls-projects), whose "Vercel" check fails on these PRs. It is
+not part of Entropy CI.
+
+### M0 gate status: MET, awaiting owner approval
+The gate in docs/build-plan.md asks for CI green and a core that cross-compiles for the Pi Zero, Android and iOS
+targets. Both are shown above. Per CLAUDE.md, M1 does not start until the owner approves and PR #1 is merged.
