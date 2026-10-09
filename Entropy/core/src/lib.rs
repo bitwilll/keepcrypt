@@ -18,6 +18,7 @@ mod session;
 mod source;
 #[cfg(test)]
 mod test_vectors;
+mod ur;
 
 pub use braille::{
     BrailleInserts, Dots, Face, FaceVerdict, Insert, ReadbackMismatch, ReadbackResult, render_text,

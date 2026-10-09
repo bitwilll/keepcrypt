@@ -441,6 +441,9 @@ pub enum InternalFault {
     /// A length did not fit its fixed-width field.
     #[error("length conversion")]
     Length,
+    /// A CBOR item could not be written deterministically (a repeated map key).
+    #[error("CBOR encoding")]
+    Cbor,
 }
 }
 
@@ -585,6 +588,7 @@ mod tests {
             InternalFault::Bip39 => "BIP39 encoding",
             InternalFault::KeyDerivation => "key derivation",
             InternalFault::Length => "length conversion",
+            InternalFault::Cbor => "CBOR encoding",
         }
     }
 
