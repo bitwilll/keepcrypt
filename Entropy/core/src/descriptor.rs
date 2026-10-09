@@ -13,9 +13,9 @@
 //!   `Descriptor::from_str` (which checks the checksum), equal the descriptor built from its parts,
 //!   and give at index 0 the address derived privately from the seed. Otherwise the export is
 //!   `ExportSelfCheck`, and nothing is shown.
-//! - Extended private keys are derived one level at a time and erased as they are replaced
-//!   (`seed::derive_erasing`); the residual copies inside rust-bitcoin are those recorded for the
-//!   wallet summary (tasks/todo.md, M1 group 4).
+//! - Extended private keys live only in `seed::SecretXpriv`s, which derive in place one level at
+//!   a time and erase the key when dropped, on every path; the residual copies inside rust-bitcoin
+//!   are those recorded for the wallet summary (tasks/todo.md, M1 group 4).
 //! - `WatchOnlyExport` is zeroized on drop and has no `Debug`, `Display`, `Clone` or `Serialize`:
 //!   an xpub reveals every address and balance of the wallet.
 //!
@@ -25,8 +25,7 @@
 use core::str::FromStr;
 
 use bitcoin::Network;
-use bitcoin::NetworkKind;
-use bitcoin::bip32::{ChildNumber, DerivationPath, Fingerprint, Xpriv, Xpub};
+use bitcoin::bip32::{ChildNumber, DerivationPath, Fingerprint, Xpub};
 use bitcoin::secp256k1::{Secp256k1, Signing, Verification};
 use miniscript::Descriptor;
 use miniscript::descriptor::checksum::Engine;
@@ -35,7 +34,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::error::CoreError;
 use crate::secret::SecretSeed64;
-use crate::seed::{derivation, derive_erasing, erase};
+use crate::seed::{SecretXpriv, derivation};
 use crate::ur::{Item, cbor_encode, ur_single};
 
 /// The UR type of the account QR (BCR-2020-015 v1; Q2).
@@ -110,13 +109,15 @@ pub(crate) fn watch_only_export(
     seed: &SecretSeed64,
     passphrase_used: bool,
 ) -> Result<WatchOnlyExport, CoreError> {
+    let path = account_path()?;
     let secp = Secp256k1::new();
-    let master = Xpriv::new_master(NetworkKind::Main, seed.expose_secret()).map_err(derivation)?;
-    let fingerprint = master.fingerprint(&secp);
-    let mut account = derive_erasing(&secp, master, &account_path()?)?;
-    let keys = account_keys(&secp, &account);
-    erase(&mut account);
-    let keys = keys?;
+    // The master becomes the account key in place, erased when this block ends, on every path.
+    let (fingerprint, keys) = {
+        let mut account = SecretXpriv::master(seed)?;
+        let fingerprint = account.fingerprint(&secp);
+        account.derive_in_place(&secp, &path)?;
+        (fingerprint, account_keys(&secp, &account)?)
+    };
     let xpub = keys.xpub.to_string();
     let receive = descriptor_text(fingerprint, &xpub, 0)?;
     let change = descriptor_text(fingerprint, &xpub, 1)?;
@@ -178,10 +179,10 @@ struct AccountKeys {
 
 fn account_keys<C: Signing>(
     secp: &Secp256k1<C>,
-    account: &Xpriv,
+    account: &SecretXpriv,
 ) -> Result<AccountKeys, CoreError> {
     Ok(AccountKeys {
-        xpub: Xpub::from_priv(secp, account),
+        xpub: account.xpub(secp),
         receive: first_address(secp, account, 0)?,
         change: first_address(secp, account, 1)?,
     })
@@ -190,16 +191,16 @@ fn account_keys<C: Signing>(
 /// The address of `account`/`chain`/0, derived from the private key.
 fn first_address<C: Signing>(
     secp: &Secp256k1<C>,
-    account: &Xpriv,
+    account: &SecretXpriv,
     chain: u32,
 ) -> Result<String, CoreError> {
     let path = [
         ChildNumber::from_normal_idx(chain).map_err(derivation)?,
         ChildNumber::from_normal_idx(0).map_err(derivation)?,
     ];
-    let mut leaf = derive_erasing(secp, *account, &path)?;
-    let public = Xpub::from_priv(secp, &leaf).to_pub();
-    erase(&mut leaf);
+    let mut leaf = account.duplicate();
+    leaf.derive_in_place(secp, &path)?;
+    let public = leaf.xpub(secp).to_pub();
     Ok(bitcoin::Address::p2wpkh(&public, Network::Bitcoin).to_string())
 }
 
@@ -450,11 +451,11 @@ mod tests {
         );
         let secp = Secp256k1::new();
         let seed = seed_of(text(&doc["bip84"]["mnemonic"]), None);
-        let master = Xpriv::new_master(NetworkKind::Main, seed.expose_secret()).expect("a master");
-        let mut account =
-            derive_erasing(&secp, master, &account_path().expect("a path")).expect("an account");
+        let mut account = SecretXpriv::master(&seed).expect("a master");
+        account
+            .derive_in_place(&secp, &account_path().expect("a path"))
+            .expect("an account");
         let keys = account_keys(&secp, &account).expect("keys");
-        erase(&mut account);
         assert_eq!(keys.change, text(&addresses[2]["address"]));
         assert_eq!(keys.change, "bc1q8c6fshw2dlwun7ekn9qwf37cu2rn755upcp6el");
         assert_eq!(keys.change, text(&abandon["first_change_address"]));

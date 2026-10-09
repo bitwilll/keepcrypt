@@ -938,6 +938,15 @@ starts. Every item names its proof.
         rust-bitcoin's local copy of the parent in `derive_priv`, the HMAC state and output in its private
         `ckd_priv`, secp256k1's tweak temporaries, and the moved-from temporary of S returned by value from bip39's
         `to_seed_normalized` (wrapped in `Zeroizing` at once). The Pi keeps everything in RAM.
+      - Review fix after commit 15: commit 15 moved the loop into `derive_erasing(secp, key: Xpriv, path)`, and
+        `Xpriv` is `Copy`, so `wallet_summary` and `watch_only_export` kept their own `master` binding unerased (5
+        stack copies of the master key and chain code after `wallet_summary` in a debug build, against 4 before).
+        Every extended private key core derives now lives in a `SecretXpriv`: no `Copy` or `Clone` (it implements
+        `Drop`, pinned by a `needs_drop` check), derived in place one level at a time, and erased on drop with
+        volatile writes (the chain code included), on every path. The residual above also covers rust-bitcoin's
+        `new_master`, whose HMAC output and returned-by-value key stay on its stack: a bare `new_master` followed by
+        an erase leaves 3 copies of the key and 2 of the chain code in a release build, and `SecretXpriv::master`
+        leaves the same.
       Proof:
       - keepcrypt.json C, E and words;
       - BIP39 vectors.json (TREZOR);

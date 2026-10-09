@@ -9,9 +9,9 @@
 //!   at once into a `SecretMnemonic`; S = the BIP39 seed with the empty passphrase, which is what
 //!   the seal and the fingerprint use.
 //! - The wallet summary is the master fingerprint and the m/84'/0'/0'/0/0 P2WPKH mainnet address.
-//!   The extended private keys stay inside `wallet_summary`, which derives one level at a time and
-//!   erases each key it holds; the secp256k1 context is not randomized (rust-bitcoin's `rand-std`
-//!   is off).
+//!   The extended private keys stay inside `wallet_summary`, held in a `SecretXpriv`, which derives
+//!   in place one level at a time and erases the key when dropped; the secp256k1 context is not
+//!   randomized (rust-bitcoin's `rand-std` is off).
 //!
 //! Every value core keeps is written in place into the session's zeroizing fields. Two library
 //! calls hand secrets back by value, and the temporaries they leave are beyond core's reach:
@@ -25,12 +25,12 @@
     expect(dead_code, reason = "Session::finish derives the words (M1 group 9)")
 )]
 
-use bitcoin::bip32::{ChainCode, ChildNumber, Xpriv, Xpub};
+use bitcoin::bip32::{ChildNumber, Fingerprint, Xpriv, Xpub};
 use bitcoin::secp256k1::{Secp256k1, Signing};
 use bitcoin::{Address, Network, NetworkKind};
 use sha2::{Digest, Sha256};
 use unicode_normalization::UnicodeNormalization;
-use zeroize::{ZeroizeOnDrop, Zeroizing};
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::error::{CoreError, InternalFault};
 use crate::secret::{Bip39Passphrase, SecretBytes32, SecretMnemonic, SecretSeed64};
@@ -137,50 +137,97 @@ pub(crate) struct WalletSummary {
     pub(crate) first_address: String,
 }
 
-/// The wallet summary from S. The extended private keys exist only in this function. It derives
-/// m/84'/0'/0'/0/0 one level at a time and overwrites the key and chain code of every extended
-/// private key it holds (the master, each intermediate key, among them the account key
-/// m/84'/0'/0', and the leaf) as soon as the next one exists, on every path, error paths included.
+/// The wallet summary from S. The extended private keys exist only in this function, in one
+/// `SecretXpriv`: the master, overwritten in place by each level down to m/84'/0'/0'/0/0 (the
+/// account key m/84'/0'/0' among them), and erased when it is dropped, on every path, error paths
+/// included.
 ///
 /// What it cannot reach: rust-bitcoin's `derive_priv` copies its parent into a local of its own,
 /// and its private `ckd_priv` keeps key material in its HMAC state and output; secp256k1's tweak
-/// has temporaries too. Those copies are left to the stack (tasks/todo.md, M1 group 4, residual).
+/// has temporaries too, and each library call that returns a key by value leaves the moved-from
+/// temporary. Those copies are left to the stack (tasks/todo.md, M1 group 4, residual).
 pub(crate) fn wallet_summary(seed: &SecretSeed64) -> Result<WalletSummary, CoreError> {
     let path = first_receive_path()?;
     let secp = Secp256k1::signing_only();
-    let master = Xpriv::new_master(NetworkKind::Main, seed.expose_secret()).map_err(derivation)?;
-    let fingerprint = master.fingerprint(&secp).to_bytes();
-    let mut key = derive_erasing(&secp, master, &path)?;
-    let public = Xpub::from_priv(&secp, &key).to_pub();
-    erase(&mut key);
+    let mut key = SecretXpriv::master(seed)?;
+    let fingerprint = key.fingerprint(&secp).to_bytes();
+    key.derive_in_place(&secp, &path)?;
+    let public = key.xpub(&secp).to_pub();
     Ok(WalletSummary {
         fingerprint,
         first_address: Address::p2wpkh(&public, Network::Bitcoin).to_string(),
     })
 }
 
-/// Derives `path` from `key` one level at a time. Every extended private key it holds, `key`
-/// itself and each intermediate one, is erased as soon as the next exists, on every path, error
-/// paths included; the caller erases the key it gets back.
-pub(crate) fn derive_erasing<C: Signing>(
-    secp: &Secp256k1<C>,
-    mut key: Xpriv,
-    path: &[ChildNumber],
-) -> Result<Xpriv, CoreError> {
-    for child in path {
-        match key.derive_priv(secp, &[*child]) {
-            Ok(mut next) => {
-                erase(&mut key);
-                key = next;
-                erase(&mut next);
-            }
-            Err(e) => {
-                erase(&mut key);
-                return Err(derivation(e));
-            }
+/// An extended private key core holds (CLAUDE.md rule 5). rust-bitcoin's `Xpriv` is `Copy`, so a
+/// bare one passed by value leaves the caller's copy behind unerased; this wrapper implements
+/// `Drop`, so it can be neither `Copy` nor `Clone` (E0184), derives in place, and overwrites the
+/// key and chain code when dropped, on every path, unwinding included. Every extended private key
+/// core derives lives in one (review fix after commit 15).
+pub(crate) struct SecretXpriv(Xpriv);
+
+/// `Drop` is what erases a `SecretXpriv`, and what rules out `Copy`; this pins it.
+const _: () = assert!(core::mem::needs_drop::<SecretXpriv>());
+
+impl SecretXpriv {
+    /// The BIP32 mainnet master key of `seed`. A `match`, not `map` and `map_err`: each closure
+    /// call moves the key once more, and an unoptimized build leaves a copy per move.
+    pub(crate) fn master(seed: &SecretSeed64) -> Result<Self, CoreError> {
+        match Xpriv::new_master(NetworkKind::Main, seed.expose_secret()) {
+            Ok(master) => Ok(Self(master)),
+            Err(e) => Err(derivation(e)),
         }
     }
-    Ok(key)
+
+    /// A second key equal to this one, erased on its own drop: to derive another branch while
+    /// this one is kept.
+    pub(crate) fn duplicate(&self) -> Self {
+        Self(self.0)
+    }
+
+    /// Replaces this key by its descendant at `path`, one level at a time: each parent is erased
+    /// as soon as its child exists, and on an error the key is erased.
+    pub(crate) fn derive_in_place<C: Signing>(
+        &mut self,
+        secp: &Secp256k1<C>,
+        path: &[ChildNumber],
+    ) -> Result<(), CoreError> {
+        for child in path {
+            match self.0.derive_priv(secp, &[*child]) {
+                Ok(mut next) => {
+                    self.erase();
+                    self.0 = next;
+                    erase(&mut next);
+                }
+                Err(e) => {
+                    self.erase();
+                    return Err(derivation(e));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// The key's BIP32 fingerprint (public).
+    pub(crate) fn fingerprint<C: Signing>(&self, secp: &Secp256k1<C>) -> Fingerprint {
+        self.0.fingerprint(secp)
+    }
+
+    /// The extended public key (public).
+    pub(crate) fn xpub<C: Signing>(&self, secp: &Secp256k1<C>) -> Xpub {
+        Xpub::from_priv(secp, &self.0)
+    }
+
+    /// Overwrites the key and chain code.
+    fn erase(&mut self) {
+        erase(&mut self.0);
+    }
+}
+
+impl Drop for SecretXpriv {
+    fn drop(&mut self) {
+        self.erase();
+    }
 }
 
 /// m/84'/0'/0'/0/0 (BIP84: purpose, coin, account hardened; receive chain, first index).
@@ -198,10 +245,13 @@ pub(crate) fn derivation<E>(_: E) -> CoreError {
     CoreError::Internal(InternalFault::KeyDerivation)
 }
 
-/// Overwrites an extended private key's secret parts.
-pub(crate) fn erase(key: &mut Xpriv) {
+/// Overwrites an extended private key's secret parts, with volatile writes that the compiler
+/// keeps even when the key is dead afterwards: the private key becomes secp256k1's dummy key
+/// (`[1; 32]`, as zero is not a valid key) and the chain code zero.
+fn erase(key: &mut Xpriv) {
     key.private_key.non_secure_erase();
-    key.chain_code = ChainCode::from([0u8; 32]);
+    let chain_code: &mut [u8; 32] = key.chain_code.as_mut();
+    chain_code.zeroize();
 }
 
 #[cfg(test)]
@@ -401,6 +451,41 @@ mod tests {
             summary.first_address,
             "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"
         );
+    }
+
+    // White box (review fix after commit 15): the master binding is overwritten in place by its
+    // descendant, which equals rust-bitcoin's one-shot derivation; erasing leaves the dummy key
+    // and a zero chain code; a duplicate is erased on its own; a failed step erases the key.
+    #[test]
+    fn secret_xpriv_derives_in_place_and_erases() {
+        let secp = Secp256k1::signing_only();
+        let mut seed = SecretSeed64::zeroed();
+        seed.expose_secret_mut().copy_from_slice(&[7u8; 64]);
+        let path = first_receive_path().expect("a path");
+        let mut key = SecretXpriv::master(&seed).expect("a master");
+        let master = key.0; // a bare copy, test only
+        assert_ne!(master.chain_code.to_bytes(), [0u8; 32]);
+        key.derive_in_place(&secp, &path).expect("a leaf");
+        assert_eq!(key.0, master.derive_priv(&secp, &path).expect("one shot"));
+        assert_ne!(key.0.private_key, master.private_key);
+        assert_ne!(key.0.chain_code, master.chain_code);
+        let duplicate = key.duplicate();
+        drop(duplicate);
+        assert_eq!(key.0, master.derive_priv(&secp, &path).expect("one shot"));
+        key.erase();
+        assert_eq!(key.0.private_key.secret_bytes(), [1u8; 32]);
+        assert_eq!(key.0.chain_code.to_bytes(), [0u8; 32]);
+        // A child of depth 256 cannot exist: the step fails, and the key is erased.
+        let mut deep = SecretXpriv(Xpriv {
+            depth: 255,
+            ..master
+        });
+        assert_eq!(
+            deep.derive_in_place(&secp, &path),
+            Err(CoreError::Internal(InternalFault::KeyDerivation))
+        );
+        assert_eq!(deep.0.private_key.secret_bytes(), [1u8; 32]);
+        assert_eq!(deep.0.chain_code.to_bytes(), [0u8; 32]);
     }
 
     fn hex_16(s: &str) -> [u8; 16] {
