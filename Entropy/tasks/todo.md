@@ -322,6 +322,57 @@ Docs are named by file: build-plan.md, design.md, seal-watchonly-braille.md, pi-
 
     Otherwise: keep `main` unprotected. Nothing then stops a merge with red CI, and Review says so at every gate.
 
+### Raised by the review of commits 2-5 (open, 2026-10-09)
+Not answered yet. Q13 proposes doc edits (CODEOWNERS covers docs/), so nothing in docs/ has changed. Q14 asks you to
+confirm two gate changes that landed as review fixes.
+
+13. **Doc wording that Q5-Q7 or the plan pin more exactly than the docs.** Each item names the commit that needs it.
+    Recommended: approve all five, as one docs-only commit before commit 8.
+    - (a) URLs (Q6d). seal-watchonly-braille.md "Online lookup privacy" says `check#t=<T in hex>&n=<nonce in hex>`,
+      and "Registering a new seal" says `register#c=<seal code>`. The code is shown with dashes everywhere else, and
+      Q6 rejected a dashed code in the URL. New text: `https://<registry>/check#t=<T as 64 lowercase hex>&n=<n as 16
+      lowercase hex>` and `https://<registry>/register#c=<the 26 seal-code characters, uppercase, no dashes>`.
+      Needed before commit 17.
+    - (b) Which Ready calls wipe (Q5). In build-plan.md "Public API", the comment "The exports below return
+      ReadbackIncomplete, and wipe" sits above `verify_backup(&self)`, which cannot wipe. The invariant "the session
+      wipes itself on any error" leaves out the calls that keep it alive. seal-watchonly-braille.md's read-back
+      paragraph lists four exports and does not say whether passphrase generation is gated. New text:
+      - move `verify_backup` up, next to `check_readback` and `readback_complete`. It stays ungated, because it can
+        only succeed on a file that the gated `encrypt_backup` wrote;
+      - both docs name the same five gated exports: `generate_backup_passphrase`, `encrypt_backup`, `watch_only`,
+        `registration` and `reveal_device_leg`;
+      - the invariant becomes "the session wipes itself on any error, except the user-input results that keep it
+        alive: `Rejected::Retry`, `check_readback` and `verify_backup`";
+      - build-plan.md lists the errors those two can return, and a group 9 test pins each list, so no internal
+        failure comes back from them without a wipe. Otherwise, each gets its own narrower error type.
+      Needed before commit 21.
+    - (c) Credited bits (Q7). design.md "Device quota in practice", build-plan.md "Credit policy" and pi-firmware.md
+      step 4 say the Pi's "512 credited bits arrive in one step". Plan group 9 has `credited_bits()` jump to 2,048:
+      one 512-sample window at 4 bits per byte. New text: "the first window credits 2,048 bits, more than the 512
+      required, all at once". Recommended: report 2,048, because a value capped at 512 would hide a wrong rate
+      (1 bit per byte would also show 512). Otherwise: cap `credited_bits()` at `required_bits()` and change group 9.
+      Needed before commit 8.
+    - (d) Startup test (Q7). design.md "Test continuously" says the startup test covers "the first 1,024 samples after
+      power-on", which reads as once per boot. pi-firmware.md step 4 and plan group 3 also discard the first 1,024
+      samples of every ceremony (`HW_BYTES_NEEDED` = 1,536). New text: "at boot, and again at the start of each
+      session's hwrng intake, run both over the first 1,024 samples and discard them". Needed before commit 8.
+    - (e) Phone OS read (Q6a). mobile-apps.md step 6 says "Reads the OS CSPRNG", while the other docs read it at the
+      commitment. New text: "Device entropy. Motion and touch extras are mixed in, with optional Snake or Tetris; the
+      OS CSPRNG is read at the commitment." Needed before M5; no M1 code depends on it.
+    Otherwise: each rejected edit leaves the docs and the plan disagreeing, and CLAUDE.md says that must be settled
+    before the module is built.
+14. **Two gate changes made in review (Q11).** Please confirm both.
+    - (a) Test features. Q11(c) refuses a test feature only "outside dev-dependencies". In a scratch copy, a
+      dev-dependency on core with `test-sources` in pi/app made `cargo build --release --workspace --all-targets`
+      link the stub marker into the release `keepcrypt-pi` binary, because cargo merges features across every
+      package in one build. canaries.sh now refuses a test feature in any manifest, dev-dependencies included, and
+      the features are switched on only from the command line with `-p`.
+    - (b) Profiles. canaries.sh now pins the root `[profile]` tables and core's `[features]` exactly. `panic =
+      "abort"` would skip the wipe on panic, and no test could notice, because `cargo test` always unwinds.
+    Both landed after commit 5 instead of commit 26, so the stubs (commit 6) never exist without them. Recommended:
+    confirm. Otherwise: go back to the Q11(c) wording, build and scan release artifacts only with `-p`, and leave the
+    profiles to CODEOWNERS review.
+
 ### Later
 - [ ] Release signing: minisign or GPG, and who holds the key offline? (M7)
 - [ ] Registry domain name (M9; until then M1 uses a placeholder constant in the check-QR URL)
@@ -630,8 +681,12 @@ starts. Every item names its proof.
   - `test-registry` (the test registry key, marker `KC_TEST_REGISTRY_DO_NOT_SHIP`).
   `test-sources` turns on `test-registry`, never the reverse, so a build that trusts the local test registry (M3
   simulator, M5/M6 gate builds) links no stub. Stub tests declare `required-features` and run in a second
-  `cargo test`. There is no self dev-dependency, so no `--all-targets` or release build ever links a stub, and plain
-  `cargo test` still tests the release configuration.
+  `cargo test`. No manifest turns either feature on, in any dependency table (dev-dependencies and a self
+  dev-dependency included) or feature: cargo merges features across every package in one build, so one such entry in
+  any member would link stubs into every binary a `--workspace` build links, release builds included. They are
+  switched on only from the command line, one package at a time (`-p`), and release artifacts are built and scanned
+  per package, never with `--workspace`. canaries.sh enforces this (review fix after commit 5, Q14), so plain
+  `cargo test --workspace` still tests the release configuration.
 - Backup passphrases are generated only (build-plan.md "Encrypted backup format": no user-chosen passphrases in v1).
   The session stores the generated passphrase, and `encrypt_backup` and `verify_backup` take none. Typed words reach
   only `decrypt_backup` ("Check a backup").
@@ -676,6 +731,9 @@ starts. Every item names its proof.
         opt-level 0 for coverage.
       - core: `[features] test-registry = []` and `test-sources = ["test-registry"]`, neither default.
       - `.gitignore`: `/core/wip/` (trybuild).
+      - canaries.sh pins the root `[profile]` tables and core's `[features]` exactly, so a switch to abort or a lost
+        overflow check fails CI (review fix after commit 5, Q14). Any profile change updates that pin in the same
+        commit.
       Proof: timings of the log2 N 18 round trip and the empty-snapshot root test. If the root test still takes over
       2 s, add `opt-level = 1` for core and record why.
 - [ ] Each new crate lands in the commit of the module that first uses it, with its cargo-vet entry, exactly as in the
@@ -754,6 +812,9 @@ starts. Every item names its proof.
 - [ ] `vectors/kat.json` and verify.py check 5:
       - contents: NIST FIPS 180-4 SHA examples, RFC 4231 case 2, RFC 8032 TEST 1 (Q3);
       - check 5 recomputes the SHA and HMAC entries with hashlib and hmac;
+      - check 5 also reads the committed file: each section's entry names and every entry's keys are pinned, the SHA
+        and HMAC values are recomputed from the file's own inputs, and the RFC 8032 entry must match a pinned
+        SHA-256 of its bytes, taken from the RFC, until check 10 verifies it (review fix after commit 5);
       - one SOURCES.md row per standard.
       Proof: selftest passes on 3.12 and on `/usr/bin/python3` 3.9.
 - [ ] `source/stub.rs` (`#![cfg(feature = "test-sources")]`; CLAUDE.md rule 10):
@@ -782,7 +843,8 @@ starts. Every item names its proof.
       - check 7: an exact-fraction APT cutoff reproduces SP 800-90B Table 2 (W = 512 gives 311, 177, 62, 13 for
         H = 1, 2, 4, 8), and the RCT cutoff for H = 4 is 6;
       - check 4 also runs Coldcard's rolls.py and rolls12.py on every dice-only case.
-- [ ] `source.rs` (build-plan.md "source", "Credit policy"; design.md "Mixing" step 1; CLAUDE.md "Pi device quota"):
+- [ ] `source.rs` (build-plan.md "source", "Credit policy"; design.md "Mixing and conditioning", the getrandom bullet;
+      CLAUDE.md "Pi device quota"):
       - `fill_os(&mut [u8])` is one expression, `getrandom::fill` (blocking; never `fill_uninit`; never the `std` or
         `sys_rng` features);
       - it returns exactly `len` bytes or `Err`. Real and stub reads share the length check, so a short read always
@@ -971,19 +1033,26 @@ starts. Every item names its proof.
       Cases:
       - valid snapshots: empty, small, containing seal vector 1, containing the 50-roll dice-only seed;
       - snapshot negatives, each signed so that exactly one check fails: magic; versions 0 and 2; truncated header and
-        body; trailing byte; flipped signature; header changed after signing; wrong key; S + L; count 2^32 + 1 and
-        u64::MAX; unsorted within a bucket with a matching root; duplicate; zero count; root mismatch; bad date;
+        body; trailing byte; flipped signature; header changed after signing; wrong key; S + L; count 2^22 + 1 (the
+        loader's limit), 2^32 + 1 and u64::MAX; unsorted within a bucket with a matching root; duplicate; zero count;
+        root mismatch; bad date;
       - proof cases: clear with an empty bucket and with a shared prefix; collision; wrong bucket; a forged sibling at
         each of the 20 levels; mixed header and path; bad signature; wrong key; truncated; trailing byte; k mismatch;
         entry outside its bucket; unsorted; bad magic; index >= 2^20; UR with a bad CRC; multi-part UR; UR in mixed
         case; UR of the wrong type; a non-shortest CBOR head; a trailing byte inside the UR; a UR over 4,296
         characters;
+      - the QR size boundary: a 75-entry clear proof whose UR has at most 4,296 characters (accepted) and a 76-entry
+        one whose UR has more (rejected before decoding);
       - proof freshness, against a `today` pinned in the file: a clear proof dated today - 30 (Current), today - 31
         (Stale) and today + 1 (Future);
       - T and G for the rolls.json 50- and 99-roll seeds, with n = `0001020304050607`;
       - each case names the Rust error, or the freshness, it expects.
-      Check 10: RFC 8032 TEST 1-3 (S + L rejected); byte equality; the pinned empty-snapshot root, test public key and
-      vector-1 proof root.
+      Check 10: RFC 8032 TEST 1-3 (S + L rejected); every kat.json Ed25519 entry verifies with the stdlib verifier
+      (cofactorless, S >= L rejected) and fails with one bit flipped in its public key, in R and in S; byte equality;
+      the pinned empty-snapshot root, test public key and vector-1 proof root; and the docs' computed figures
+      (lessons.md): 75 as the largest k whose single-part UR fits 4,296 characters ("About 75 bucket entries fit one
+      QR"), 2^22 x 18 + 122 = 75,497,594 bytes ("75.5 MB") and 10^6 x 18 bytes ("about 18 MB"), in
+      seal-watchonly-braille.md "Snapshot format" and "Go-ahead QR".
 - [ ] `seal/crockford.rs` and seal derivation (seal-watchonly-braille.md "Seal derivation spec", "The seal image";
       CLAUDE.md rule 7):
       - Crockford encoding reads 5-bit groups, most significant first;
@@ -1342,8 +1411,10 @@ moved from M0)
         - one built with `test-registry` alone must exit 1, naming the registry marker and the test key, and must not
           contain the stub marker;
       - static checks:
-        - neither `test-sources` nor `test-registry` is a default feature, no crate enables either outside
-          dev-dependencies, and `test-registry` does not enable `test-sources`;
+        - already in place (review fix after commit 5, Q14): core's `[features]` exactly as committed, so neither
+          test feature is a default and `test-registry` does not enable `test-sources`; no manifest turns either on,
+          in any dependency table (dev-dependencies included) or feature; the root `[profile]` tables exactly as
+          committed. Two canaries prove each route is named;
         - serde, serde_core and serde_derive are absent from core's normal and build graph;
         - getrandom's only dependent is keepcrypt-core;
         - ed25519-dalek resolves with no features and curve25519-dalek with only `digest`, so `legacy_compatibility`,
@@ -1377,8 +1448,8 @@ moved from M0)
   - a shell that drops `Wiped` and calls `Session::new` resets the 99-roll minimum, so ceremony tests must assert
     "99 after Stop";
   - a pi/app test asserts `Platform::Pi`;
-  - builds that talk to the local test registry use `--features test-registry`, never `test-sources`; their scan
-    shows the registry marker and no stub marker;
+  - builds that talk to the local test registry turn on `keepcrypt-core/test-registry` from the command line with
+    `-p`, never in a manifest and never `test-sources`; their scan shows the registry marker and no stub marker;
   - the Pi shows the snapshot's or proof's date and asks the user to confirm it before `reveal`; phones warn on Stale
     and Future. A ceremony test asserts each;
   - the Pi's step 4 bar uses `hw_bytes_tested` and `HW_BYTES_NEEDED` (M3).
@@ -1547,6 +1618,7 @@ moved from M0)
 3. build: the test-registry and test-sources features (both off by default; test-sources turns on test-registry); release panic = unwind; overflow-checks for core; dev dependencies at opt-level 3; /core/wip/ ignored
 4. ci: all-features clippy in the lint job and `cargo test -p keepcrypt-core --features test-sources` in the test job, so every later stub and test-registry test runs in CI from the start
 5. verify: vectors/kat.json generator and selftest check 5 (NIST SHA, RFC 4231 case 2, RFC 8032 TEST 1), with SOURCES.md rows
+   Review fixes after 5: check 5 pins kat.json's entries and the RFC 8032 TEST 1 bytes; canaries.sh refuses any manifest that turns on a test feature and pins core's [features] and the root [profile] (moved forward from 26, Q14); this plan's refinements and Q13-Q14
 6. core: lib layout, error.rs, secret.rs (stored, new and typed backup passphrase types), session skeleton, KAT harness (SHA, HMAC, BIP39 groups) with the fault-twin pattern for free functions, and the test-sources stub; dev-deps trybuild =1.0.121 and serde_json =1.0.151, the toml-family --precise pins and safe-to-run vet exemptions
 7. verify: embedded BIP39 list (16 space-separated words per line, hash-checked over the LF-joined bytes), vectors/keepcrypt.json generator, check 6 (byte equality plus pinned answers), check 7 (SP 800-90B cutoffs), and Coldcard re-runs on the dice-only cases
 8. core: source (fill_os, os_bytes, source ids, credit policy, HW_BYTES_NEEDED) and health (RCT, APT, startup discard, windowed credit, hwrng_boot_test and its fault twin), with unit tests and the Health KAT
@@ -1567,7 +1639,7 @@ moved from M0)
 23. tests: trybuild typestate suite with pinned .stderr files, including the typed-passphrase and CheckedBackup fixtures
 24. tests: source substitution, real OS path, error-injection matrix (with the free-function KAT fault twins and the 1,535-byte quota case), check flow (with proof freshness) and full ceremony
 25. tests: no-secret-text (control-seed rule plus the BIP39-token check on Rejected and Wiped), panic wipe, no-panic sweeps, and the full vector sets
-26. scripts: banned-api-check.sh --artifact (both markers and the test key) with selftest fixtures; core/examples/release_probe.rs; canaries (two positive controls, static checks for both features, serde, getrandom and the dalek features, vectors tamper)
+26. scripts: banned-api-check.sh --artifact (both markers and the test key) with selftest fixtures; core/examples/release_probe.rs; canaries (two positive controls, static checks for serde, getrandom and the dalek features, vectors tamper; the feature and profile checks landed after 5)
 27. ci: coverage job (cargo-llvm-cov 0.9.1, failing on any core/src path its default ignore rule would skip), cross-job artifact scan with the per-target getrandom cfg, age-interop job, and selftest moved after the toolchain install
 28. CLAUDE.md: Commands for M1
 29. tasks/todo.md: M1 Review with pasted proof, including the Q12 ruleset output or its deferral
