@@ -19,6 +19,14 @@ zeroize = { version = "1.9.0", features = ["derive"] }
 secrecy = "0.10.3"
 thiserror = "2.0.21"
 
+# Test-only crates (tasks/todo.md, M1 Q4), never in the device build: trybuild runs the
+# compile-fail typestate and secret-type fixtures (rule 6); serde_json lets tests read
+# vectors/*.json as serde_json::Value. Exact pins: trybuild 1.0.122 is inside the 14-day cool-off.
+# serde stays out of core's normal and build graph; a canary pins that in M1 group 12.
+[dev-dependencies]
+trybuild = "=1.0.121"
+serde_json = "=1.0.151"
+
 # Test-only features, both off by default (CLAUDE.md rule 10). No manifest turns either one on, in
 # any dependency table (normal, dev, build or target-specific) or feature: cargo merges features
 # across every package in one build, so one such entry anywhere would put stubs or the test key
