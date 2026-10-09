@@ -9,10 +9,15 @@
 //!   at once into a `SecretMnemonic`; S = the BIP39 seed with the empty passphrase, which is what
 //!   the seal and the fingerprint use.
 //! - The wallet summary is the master fingerprint and the m/84'/0'/0'/0/0 P2WPKH mainnet address.
-//!   The extended private keys stay inside `wallet_summary` and are erased there; the secp256k1
-//!   context is not randomized (rust-bitcoin's `rand-std` is off).
+//!   The extended private keys stay inside `wallet_summary`, which derives one level at a time and
+//!   erases each key it holds; the secp256k1 context is not randomized (rust-bitcoin's `rand-std`
+//!   is off).
 //!
-//! Every value is written in place into the session's zeroizing fields, so no secret is moved.
+//! Every value core keeps is written in place into the session's zeroizing fields. Two library
+//! calls hand secrets back by value, and the temporaries they leave are beyond core's reach:
+//! bip39's `to_seed_normalized` returns S, which is wrapped in `Zeroizing` at once, and
+//! rust-bitcoin's key derivation keeps copies in its own frames (see `wallet_summary`). That
+//! residual is recorded in tasks/todo.md (M1 group 4) for the owner.
 //! The words, S and the wallet summary are derived once, in `finish` (M1 group 9); until the
 //! session calls them, only the commitment and E have a caller outside the tests (the Seed KAT).
 #![cfg_attr(
@@ -24,7 +29,7 @@ use bitcoin::bip32::{ChainCode, ChildNumber, Xpriv, Xpub};
 use bitcoin::secp256k1::Secp256k1;
 use bitcoin::{Address, Network, NetworkKind};
 use sha2::{Digest, Sha256};
-use zeroize::Zeroizing;
+use zeroize::{ZeroizeOnDrop, Zeroizing};
 
 use crate::error::{CoreError, InternalFault};
 use crate::secret::{SecretBytes32, SecretMnemonic, SecretSeed64};
@@ -34,6 +39,11 @@ use crate::session::SeedLength;
 pub(crate) const COMMIT_TAG: &[u8] = b"KCE/v1/commit";
 /// The mixed seed's domain tag.
 pub(crate) const SEED_TAG: &[u8] = b"KCE/v1/seed";
+
+/// The SHA-256 states below hold D (C, mixed E) and end as E itself (mixed and dice-only E): they
+/// must wipe themselves when dropped. sha2's `zeroize` feature provides it; this pins it.
+const fn assert_zeroize_on_drop<T: ZeroizeOnDrop>() {}
+const _: () = assert_zeroize_on_drop::<Sha256>();
 
 /// C = SHA256("KCE/v1/commit" || D): public, safe to display.
 pub(crate) fn commitment(d: &SecretBytes32) -> [u8; 32] {
@@ -81,6 +91,8 @@ pub(crate) fn mnemonic_and_seed_into(
     let words = bip39::Mnemonic::from_entropy_in(bip39::Language::English, entropy)
         .map_err(|_| CoreError::Internal(InternalFault::Bip39))?;
     mnemonic.fill_from(words.word_indices())?;
+    // bip39 returns S by value; it is wrapped at once (the moved-from temporary is the residual
+    // in the module comment).
     let s = Zeroizing::new(words.to_seed_normalized(""));
     seed.expose_secret_mut().copy_from_slice(s.as_slice());
     Ok(())
@@ -95,19 +107,34 @@ pub(crate) struct WalletSummary {
     pub(crate) first_address: String,
 }
 
-/// The wallet summary from S. The extended private keys exist only in this function, and their
-/// keys and chain codes are overwritten before it returns, on every path.
+/// The wallet summary from S. The extended private keys exist only in this function. It derives
+/// m/84'/0'/0'/0/0 one level at a time and overwrites the key and chain code of every extended
+/// private key it holds (the master, each intermediate key, among them the account key
+/// m/84'/0'/0', and the leaf) as soon as the next one exists, on every path, error paths included.
+///
+/// What it cannot reach: rust-bitcoin's `derive_priv` copies its parent into a local of its own,
+/// and its private `ckd_priv` keeps key material in its HMAC state and output; secp256k1's tweak
+/// has temporaries too. Those copies are left to the stack (tasks/todo.md, M1 group 4, residual).
 pub(crate) fn wallet_summary(seed: &SecretSeed64) -> Result<WalletSummary, CoreError> {
+    let path = first_receive_path()?;
     let secp = Secp256k1::signing_only();
-    let mut master =
-        Xpriv::new_master(NetworkKind::Main, seed.expose_secret()).map_err(derivation)?;
-    let fingerprint = master.fingerprint(&secp).to_bytes();
-    let first =
-        first_receive_path().and_then(|path| master.derive_priv(&secp, &path).map_err(derivation));
-    erase(&mut master);
-    let mut first = first?;
-    let public = Xpub::from_priv(&secp, &first).to_pub();
-    erase(&mut first);
+    let mut key = Xpriv::new_master(NetworkKind::Main, seed.expose_secret()).map_err(derivation)?;
+    let fingerprint = key.fingerprint(&secp).to_bytes();
+    for child in path {
+        match key.derive_priv(&secp, &[child]) {
+            Ok(mut next) => {
+                erase(&mut key);
+                key = next;
+                erase(&mut next);
+            }
+            Err(e) => {
+                erase(&mut key);
+                return Err(derivation(e));
+            }
+        }
+    }
+    let public = Xpub::from_priv(&secp, &key).to_pub();
+    erase(&mut key);
     Ok(WalletSummary {
         fingerprint,
         first_address: Address::p2wpkh(&public, Network::Bitcoin).to_string(),

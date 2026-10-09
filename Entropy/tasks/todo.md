@@ -928,6 +928,13 @@ starts. Every item names its proof.
       - S = `to_seed_normalized("")`, wrapped in `Zeroizing`;
       - wallet summary: the master fingerprint and the m/84'/0'/0'/0/0 P2WPKH mainnet address. Xprivs stay inside
         one function and are erased; the secp256k1 context is not randomized.
+      - Review fix after commit 10: a single 5-step `derive_priv` left m/84', m/84'/0', the account key m/84'/0'/0'
+        and m/84'/0'/0'/0 in rust-bitcoin's frame, never erased. Core now derives one level at a time and erases
+        every Xpriv it holds (master, each intermediate, leaf) on every path. Residual risk, for the owner's review
+        (not yet accepted; compare Q1 (iii) for scrypt): copies core cannot reach stay on the stack, namely
+        rust-bitcoin's local copy of the parent in `derive_priv`, the HMAC state and output in its private
+        `ckd_priv`, secp256k1's tweak temporaries, and the moved-from temporary of S returned by value from bip39's
+        `to_seed_normalized` (wrapped in `Zeroizing` at once). The Pi keeps everything in RAM.
       Proof:
       - keepcrypt.json C, E and words;
       - BIP39 vectors.json (TREZOR);
