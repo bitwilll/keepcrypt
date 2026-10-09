@@ -9,6 +9,7 @@
 mod error;
 mod health;
 mod kat;
+mod pool;
 mod secret;
 mod session;
 mod source;

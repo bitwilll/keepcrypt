@@ -40,6 +40,11 @@ impl SecretBytes32 {
     pub fn expose_secret(&self) -> &[u8; 32] {
         &self.0
     }
+
+    /// The bytes, to fill in place (D from the pool, E from its hash), so no copy is left behind.
+    pub(crate) fn expose_secret_mut(&mut self) -> &mut [u8; 32] {
+        &mut self.0
+    }
 }
 
 /// The 64-byte BIP39 seed S (PBKDF2 output). Never leaves core.
@@ -97,10 +102,7 @@ impl Bip39Passphrase {
 
     #[cfg_attr(
         not(test),
-        expect(
-            dead_code,
-            reason = "read by Session::watch_only (tasks/todo.md, M1 group 6)"
-        )
+        expect(dead_code, reason = "used by watch_only (M1 group 6)")
     )]
     pub(crate) fn expose_secret(&self) -> &str {
         self.0.expose_secret()
@@ -191,10 +193,7 @@ impl TypedBackupPassphrase {
 
     #[cfg_attr(
         not(test),
-        expect(
-            dead_code,
-            reason = "read by decrypt_backup (tasks/todo.md, M1 group 8)"
-        )
+        expect(dead_code, reason = "used by decrypt_backup (M1 group 8)")
     )]
     pub(crate) fn indices(&self) -> &[u16; BACKUP_PASSPHRASE_WORDS] {
         &self.indices

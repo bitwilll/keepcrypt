@@ -97,10 +97,7 @@ impl HealthTester {
     /// Samples tested so far, startup samples included (the Pi's progress bar).
     #[cfg_attr(
         not(test),
-        expect(
-            dead_code,
-            reason = "read by Session::hw_bytes_tested (tasks/todo.md, M1 group 9)"
-        )
+        expect(dead_code, reason = "used by the session (M1 group 9)")
     )]
     pub(crate) const fn tested(&self) -> u64 {
         self.tested

@@ -99,18 +99,22 @@ pub enum KatId {
     /// Adaptive Proportion test, each at its pinned sample; a clean stream passes.
     #[error("health tests")]
     Health,
+    /// The pool: one OS record gives its pinned D.
+    #[error("pool")]
+    Pool,
 }
 
 impl KatId {
     /// Every group, in the order a full suite runs them. Keep it next to `KatId` and to the
     /// exhaustive match in `kat::passes`, which is where a new group must be added too.
-    pub const ALL: [KatId; 6] = [
+    pub const ALL: [KatId; 7] = [
         KatId::Sha256,
         KatId::Sha512,
         KatId::Hmac,
         KatId::Bip39Wordlist,
         KatId::Bip39,
         KatId::Health,
+        KatId::Pool,
     ];
 }
 
@@ -372,6 +376,7 @@ mod tests {
             KatId::Bip39Wordlist => "BIP39 word list",
             KatId::Bip39 => "BIP39",
             KatId::Health => "health tests",
+            KatId::Pool => "pool",
         }
     }
 

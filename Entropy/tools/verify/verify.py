@@ -892,8 +892,9 @@ def keepcrypt_vectors_json():
         ("empty-record-skipped", [(SOURCE_ID["input_timing"], b""), (SOURCE_ID["os"], os_record)]),
         ("split-ab-c", [(SOURCE_ID["input_timing"], b"ab"), (SOURCE_ID["input_timing"], b"c")]),
         ("split-a-bc", [(SOURCE_ID["input_timing"], b"a"), (SOURCE_ID["input_timing"], b"bc")]),
+        # Every id a session absorbs; 0x0003 stays reserved until the M8 TRNG.
         ("every-source", [(source_id, counter_stream(b"KCE/test/pool/" + name.encode("ascii"), 33))
-                          for name, source_id in SOURCE_IDS]),
+                          for name, source_id in SOURCE_IDS if name != "trng"]),
     )
     pool = [{"name": name, "records": records_json(records), "absorbed_hex": pool_input(records).hex(),
              "d_hex": device_leg(records).hex()} for name, records in pool_cases]

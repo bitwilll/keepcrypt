@@ -25,10 +25,7 @@ use crate::session::{Mode, Platform};
 /// OS bytes read at commit and absorbed last (CLAUDE.md "Pi device quota"; Q6a).
 #[cfg_attr(
     not(test),
-    expect(
-        dead_code,
-        reason = "read by Session::commit (tasks/todo.md, M1 group 9)"
-    )
+    expect(dead_code, reason = "used by the session (M1 group 9)")
 )]
 pub(crate) const OS_BYTES: usize = 64;
 /// hwrng credit until lab data: 4 bits per byte, half of what Linux assumes (docs/design.md).
@@ -59,31 +56,25 @@ pub enum ExtraSource {
 
 /// A pool record's source (Q6a). The credited ids exist only inside core.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "absorbed by the pool (tasks/todo.md, M1 group 3, commit 9)"
-    )
-)]
 pub(crate) enum SourceId {
     /// The OS random source: 0x0001.
     Os,
     /// Health-tested raw hwrng samples: 0x0002. (0x0003 is reserved for the M8 TRNG.)
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "used by the session (M1 group 9)")
+    )]
     Hwrng,
     /// An uncredited extra: 0x0101 to 0x0104.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "used by the session (M1 group 9)")
+    )]
     Extra(ExtraSource),
 }
 
 impl SourceId {
     /// The record's id field: a u16, big-endian.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "absorbed by the pool (tasks/todo.md, M1 group 3, commit 9)"
-        )
-    )]
     pub(crate) const fn to_be_bytes(self) -> [u8; 2] {
         let id: u16 = match self {
             SourceId::Os => 0x0001,
@@ -102,10 +93,7 @@ impl SourceId {
 /// mode.
 #[cfg_attr(
     not(test),
-    expect(
-        dead_code,
-        reason = "read by Session::required_bits (tasks/todo.md, M1 group 9)"
-    )
+    expect(dead_code, reason = "used by the session (M1 group 9)")
 )]
 pub(crate) const fn required_bits(platform: Platform, mode: Mode) -> u32 {
     match (mode, platform) {
@@ -119,10 +107,7 @@ pub(crate) const fn required_bits(platform: Platform, mode: Mode) -> u32 {
 /// quota is hwrng only.
 #[cfg_attr(
     not(test),
-    expect(
-        dead_code,
-        reason = "read by Session::commit (tasks/todo.md, M1 group 9)"
-    )
+    expect(dead_code, reason = "used by the session (M1 group 9)")
 )]
 pub(crate) const fn os_policy_bits(platform: Platform) -> u32 {
     match platform {
@@ -136,10 +121,7 @@ pub(crate) const fn os_policy_bits(platform: Platform) -> u32 {
 /// can only overstate a quota already met, never wrap below it.
 #[cfg_attr(
     not(test),
-    expect(
-        dead_code,
-        reason = "read by Session::credited_bits (tasks/todo.md, M1 group 9)"
-    )
+    expect(dead_code, reason = "used by the session (M1 group 9)")
 )]
 pub(crate) fn hwrng_credited_bits(samples: u64) -> u64 {
     samples.saturating_mul(u64::from(HWRNG_BITS_PER_BYTE))
@@ -148,10 +130,7 @@ pub(crate) fn hwrng_credited_bits(samples: u64) -> u64 {
 /// Whether the device leg meets its quota once the OS read at commit is counted.
 #[cfg_attr(
     not(test),
-    expect(
-        dead_code,
-        reason = "read by Session::commit (tasks/todo.md, M1 group 9)"
-    )
+    expect(dead_code, reason = "used by the session (M1 group 9)")
 )]
 pub(crate) fn quota_met(platform: Platform, mode: Mode, credited_hwrng_samples: u64) -> bool {
     let credited = hwrng_credited_bits(credited_hwrng_samples)
@@ -173,10 +152,7 @@ impl Source {
     /// this one length check, so a short read is always `ShortRead`.
     #[cfg_attr(
         not(test),
-        expect(
-            dead_code,
-            reason = "read by Session::commit (tasks/todo.md, M1 group 9)"
-        )
+        expect(dead_code, reason = "used by the session (M1 group 9)")
     )]
     pub(crate) fn fill(&mut self, buf: &mut [u8]) -> Result<(), CoreError> {
         let produced = match self {
@@ -199,10 +175,7 @@ impl Source {
     /// challenge. Zeroized when dropped.
     #[cfg_attr(
         not(test),
-        expect(
-            dead_code,
-            reason = "read by start_check and the backup (tasks/todo.md, M1 groups 7 and 8)"
-        )
+        expect(dead_code, reason = "used by the check and backup (M1 groups 7, 8)")
     )]
     pub(crate) fn os_bytes<const N: usize>(&mut self) -> Result<Zeroizing<[u8; N]>, CoreError> {
         let mut bytes = Zeroizing::new([0u8; N]);

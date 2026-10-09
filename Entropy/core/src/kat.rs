@@ -21,6 +21,9 @@ use sha2::{Digest, Sha256, Sha512};
 
 use crate::error::{CoreError, HealthStage, HealthTest, KatId};
 use crate::health::HealthTester;
+use crate::pool::Pool;
+use crate::secret::SecretBytes32;
+use crate::source::SourceId;
 
 /// Where a known-answer suite runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,6 +73,7 @@ fn passes(id: KatId, fault: bool) -> bool {
         KatId::Bip39Wordlist => bip39_wordlist_group(fault),
         KatId::Bip39 => bip39_group(fault),
         KatId::Health => health_group(fault),
+        KatId::Pool => pool_group(fault),
     }
 }
 
@@ -419,6 +423,27 @@ fn health_group(fault: bool) -> bool {
     ok
 }
 
+// --- Pool (vectors/keepcrypt.json "pool": one-os-record) ----------------------------------------
+
+/// The OS record: counter_stream(b"KCE/test/pool/os", 64).
+const POOL_OS_RECORD: [u8; 64] = unhex(
+    "26ff8bd3a763d74e18922597b155a2e9c0a901d942d2a86ccf64990cb9b359ac20b32a8286b48300fc58f95fbed3005fd0d0f6299271e7c47758d5a85b8ddd0e",
+);
+/// D for the tag and that one record.
+const POOL_D: [u8; 32] = unhex("2b74d8f916fca0ed465c6c7326a0fdfa1e34880f52199007b49c123a9154ed77");
+
+fn pool_group(fault: bool) -> bool {
+    let mut pool = Pool::new();
+    match pool.absorb(SourceId::Os, &POOL_OS_RECORD) {
+        Ok(()) => {
+            let mut d = SecretBytes32::zeroed();
+            pool.finish_into(&mut d);
+            same(d.expose_secret(), &POOL_D, fault)
+        }
+        Err(_) => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -511,6 +536,19 @@ mod tests {
             };
             assert_eq!(run(Suite::HwrngBoot, Some(id)), want, "{id:?}");
         }
+    }
+
+    #[test]
+    fn pool_constants_match_keepcrypt_json() {
+        let doc = crate::test_vectors::keepcrypt_json();
+        let case = crate::test_vectors::named(&doc["pool"], "one-os-record");
+        assert_eq!(case["records"].as_array().map(Vec::len), Some(1));
+        assert_eq!(case["records"][0]["id"], 1);
+        assert_eq!(
+            crate::test_vectors::hex(&case["records"][0]["data_hex"]),
+            POOL_OS_RECORD
+        );
+        assert_eq!(crate::test_vectors::hex(&case["d_hex"]), POOL_D);
     }
 
     #[test]
