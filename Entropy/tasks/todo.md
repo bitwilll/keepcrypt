@@ -967,6 +967,11 @@ starts. Every item names its proof.
       - the SeedBook PDF's SHA-256, pinned.
       seal.json gains `seal_id_braille` (Q6f). The one-time check of the PDF's printed numbers and cover glyphs goes
       in Review.
+      Recorded at commit 11: the plan never wrote down the canonical table text behind `41f0e259...`, and no
+      plausible layout reproduces it (about 300,000 candidate layouts of the cells, dots and signs were hashed). The
+      text is now defined in braille.json's spec (`name cell dots` per line, a-z then the number sign, grade 1
+      indicator, hyphen and blank cell, LF-terminated) and its digest is `fd75c236...`, computed by a separate script
+      from the glyphs printed in seal-watchonly-braille.md. A space renders as the blank cell U+2800.
 - [ ] `braille.rs` (seal-watchonly-braille.md "Braille backup"; CLAUDE.md "Braille"):
       - a const cell table (glyph and dots, reconciled by a test); mirror partners are computed from the dots;
       - `BrailleInserts<'s>` and `Insert<'s>` borrow the session's mnemonic and have no `Debug`, `Display`, `Clone`,

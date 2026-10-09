@@ -26,6 +26,20 @@ rules on its source-substitution records; check 7 recomputes the SP 800-90B cuto
 check 4 re-runs Coldcard's scripts on its dice-only cases. The embedded list was copied from the
 `bip39` 3.0.0 crate (fetched by cargo, the same list core uses) and matched the published hash.
 
+`vectors/braille.json` has no row either. `tools/verify/verify.py --write-braille-vectors`
+generates it from the UEB grade 1 cell table in `verify.py`, the embedded BIP39 English list, and
+the SeedBook rules in `docs/seal-watchonly-braille.md` "Braille backup" with the owner's answers
+Q6e, Q6f and Q9 in `tasks/todo.md`. Self-test check 8 compares the generated cells with the alphabet
+as printed in the docs, the six sample inserts of `CLAUDE.md` (ABANDON 0001, ACT 0020, ACTION 0021,
+METAL 1121, WIRE 2018, ZOO 2048), hand-worked text vectors and a pinned SHA-256 of the canonical
+cell table (`fd75c236d2ab92e0fe682d502a5b4bf2537f78d5ec5630b2bac20a963ece9c9d`, computed by a
+separate script that read the glyphs out of the docs); recounts the docs' numbers straight from the
+list (25 sections, 98 pages at 24 words per page, 279 mirror-flip words, 49 short prefix words, four
+mirror pairs); regenerates the file and requires byte equality; and re-hashes the owner's SeedBook,
+`docs/KeepCrypt-SeedBook_Braille.pdf` (13,921,573 bytes, committed in 91dc31a), against
+`af40ad894afa6cf64399e6c1771fc7b500458509f2350bd67577ce7eba5fc522`. The SeedBook is not under
+`vectors/`, so it has no row here. `seal.json`'s `seal_id_braille` uses the same text rule.
+
 ## Provenance
 
 | File | SHA-256 | Source | Upstream commit or date | Licence | Notes |
@@ -107,6 +121,12 @@ rejected it with one bit flipped.
   per window, C, mixed and dice-only E with their 12- and 24-word mnemonics, and the Pi and phone
   source-substitution sessions mapped to D and C. Core's source, health, pool, dice and seed tests
   read it.
+- `braille.json` (generated; see above): the SeedBook braille format: the cell table with its
+  digits, signs, mirror pairs and digest, the 25 sections and their pages, the insert positions of
+  12- and 24-word seeds (device and engraved sequence number), digit text and backup lines, and per
+  word its SeedBook number, faces 1-5 with blanks, the lighter face, mirror flags, every cell, the
+  read-back key, its mirror-flip neighbours and the longer words it begins. Core's braille tests and
+  its Braille known-answer group read it.
 - `coldcard/rolls.py` and `coldcard/rolls12.py`: Coldcard's own scripts that produced
   `rolls.json`. The verifier self-test re-runs them on every case, so the values come from a
   committed script that CI re-runs.
