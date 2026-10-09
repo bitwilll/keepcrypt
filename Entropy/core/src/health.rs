@@ -194,12 +194,13 @@ mod tests {
 
     // Every keepcrypt.json case gives its verdict, whole or in chunks of 1, 64 and 1,000 samples.
     // The cases cover a run of 5 passing and of 6 failing, and 61 passing and 62 failing, in both
-    // the startup and the continuous stage.
+    // the startup and the continuous stage, and a sample on which both tests fail (the Repetition
+    // Count is named, as it is checked first).
     #[test]
     fn every_keepcrypt_json_case_in_any_chunking() {
         let doc = keepcrypt_json();
         let cases = doc["health"].as_array().expect("health cases");
-        assert_eq!(cases.len(), 10);
+        assert_eq!(cases.len(), 11);
         for case in cases {
             let samples = hex(&case["samples_hex"]);
             for chunk in [1, 64, 1_000, samples.len()] {

@@ -26,7 +26,8 @@ Usage:
                                     dice-only case (rolls.json and keepcrypt.json), kat.json (SHA and
                                     HMAC recomputed, its bytes, then its pinned entries and Ed25519
                                     digest), keepcrypt.json (the BIP39 list and encoder, its bytes,
-                                    its pinned answers), the SP 800-90B cutoffs
+                                    its pinned answers and session record rules), the SP 800-90B
+                                    cutoffs
   verify.py --write-seal-vectors    regenerate vectors/seal.json
   verify.py --write-kat-vectors     regenerate vectors/kat.json
   verify.py --write-keepcrypt-vectors  regenerate vectors/keepcrypt.json
@@ -314,13 +315,25 @@ DICE_ONLY_ROLLS = COLDCARD_ROLLS + (
 )
 # Known answers that check 6 compares with the committed keepcrypt.json. Computed on 2026-10-10
 # with shasum over the exact bytes, apart from this script (the empty pool, C for D = 00..1f, the
-# mixed E), and from Coldcard's published example (dice-only 123456). The health indices follow
-# from each stream's construction (see keepcrypt_health_cases).
+# mixed E), and from Coldcard's published example (dice-only 123456). The pool and
+# source-substitution answers were computed on 2026-10-10 by a separate script that does not import
+# this one: it rebuilt each record list from CLAUDE.md and Q6a/Q7 (hwrng samples from index 1,024
+# on, extras when added, the 64 OS bytes last, no record for empty data), then D and C. They pin the
+# session record rules, which byte equality alone would let a changed generator re-baseline: an
+# empty record writes nothing (so it gives the one-OS-record D), the startup samples are never
+# absorbed, and the OS record goes last. The health indices follow from each stream's construction
+# (see keepcrypt_health_cases).
 KEEPCRYPT_PINNED = (
     ("pool", "empty", "d_hex", "872caa576626dadadc15fa497046f89cbce93dcb059b917cb2363753353d6b3b"),
+    ("pool", "one-os-record", "d_hex", "2b74d8f916fca0ed465c6c7326a0fdfa1e34880f52199007b49c123a9154ed77"),
+    ("pool", "empty-record-skipped", "d_hex", "2b74d8f916fca0ed465c6c7326a0fdfa1e34880f52199007b49c123a9154ed77"),
     ("commitment", "d-00-1f", "c_hex", "21778a7463cef10741413d0b80909a1045ba902d6244f519d2520e247cbe2e8c"),
     ("mixed", "d-00-1f-coldcard-50", "e_hex", "b2e18e2cdeb6f07e9dd5d3df8e315fa609fd2ebfe543387a483828553da6eee2"),
     ("dice_only", "coldcard-123456", "e_hex", "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92"),
+    ("source_substitution", "pi", "d_hex", "21e73ab4dc62241459f7273c13a3184ce8c956ea9de8b8010dc603c1ff785a07"),
+    ("source_substitution", "pi", "c_hex", "bc5c69a8d2e121dad1776f8b7d6ca6ce4f442ac90f6ac10a3fb1c7f32356bf84"),
+    ("source_substitution", "phone", "d_hex", "84c6fbb7c2c977a6fd800f3c1a2888ded9e5c2b279436d000ed4149d46651266"),
+    ("source_substitution", "phone", "c_hex", "c4000455431d3c852ffa311673eb034e706e4ee5588432f0957fbe531f9ac1c9"),
 )
 HEALTH_PINNED = (
     ("stuck", {"result": "fail", "test": "repetition_count", "stage": "startup", "sample": 5}),
@@ -333,6 +346,7 @@ HEALTH_PINNED = (
     ("apt-61-per-window", {"result": "pass", "tested": 2048, "credited_samples": 1024}),
     ("apt-62-startup", {"result": "fail", "test": "adaptive_proportion", "stage": "startup", "sample": 500}),
     ("apt-62-continuous", {"result": "fail", "test": "adaptive_proportion", "stage": "continuous", "sample": 2036}),
+    ("rct-and-apt-same-sample", {"result": "fail", "test": "repetition_count", "stage": "startup", "sample": 505}),
 )
 # Check 7: SP 800-90B Table 2 ("Example cutoff values of the Adaptive Proportion Test", page 27 of
 # the document pinned in vectors/SOURCES.md, "Spec values"), the entries with whole-number H, as
@@ -859,6 +873,12 @@ def keepcrypt_health_cases():
     apt62_startup[500] = 0xAA  # the 62nd 0xAA of window 0
     apt62_continuous = bytearray(apt61)
     apt62_continuous[1536 + 500] = 0xAA  # the 62nd 0xAA of the window at 1536
+    # Both tests fail on sample 505: 0xAA, the first value of window 0, at offsets 0, 8, ..., 440 (56
+    # times) and 500..505 (6 in a row), so the run and the window's 62nd 0xAA end on the same sample,
+    # and the verdict names the Repetition Count, which is checked first.
+    tie = bytearray(filler(i) for i in range(1024))
+    for i in list(range(0, 441, 8)) + list(range(500, 506)):
+        tie[i] = 0xAA
     return (
         ("stuck", "16 bytes of 0x00", bytes(16)),
         ("alternating", "512 bytes 0x00, 0x01, 0x00, 0x01, ...", bytes(i % 2 for i in range(512))),
@@ -871,6 +891,8 @@ def keepcrypt_health_cases():
          "with 0xAA replaced by 0x55", apt61),
         ("apt-62-startup", "apt-61-per-window with byte 500 set to 0xAA", bytes(apt62_startup)),
         ("apt-62-continuous", "apt-61-per-window with byte 2036 set to 0xAA", bytes(apt62_continuous)),
+        ("rct-and-apt-same-sample", "1024 bytes i mod 256 with 0xAA replaced by 0x55, then 0xAA at offsets 0, 8, "
+         "..., 440 and 500..505", bytes(tie)),
     )
 
 
@@ -962,7 +984,7 @@ def keepcrypt_vectors_json():
     doc = {
         "description": "KeepCrypt device-leg, health-test, dice and seed vectors. Generated by tools/verify/verify.py "
         "--write-keepcrypt-vectors; verify.py --selftest regenerates this file and requires byte equality (check 6), "
-        "compares its pinned answers, recomputes the health-test cutoffs (check 7) and re-runs Coldcard's scripts on "
+        "compares its pinned answers and session record rules, recomputes the health-test cutoffs (check 7) and re-runs Coldcard's scripts on "
         "every dice_only case (check 4). Test streams are SHA-256 counter mode or fixed patterns, never a PRNG; "
         "never use these seeds.",
         "spec": KEEPCRYPT_SPEC,
@@ -1168,14 +1190,38 @@ def named(doc, section, name):
     return entries[0]
 
 
+def check_session_record_rules(doc):
+    """The committed source_substitution records against the session record rules themselves (Q6a,
+    Q7), apart from the generator: no record is empty; the one OS record is the last record and
+    holds the case's 64 OS bytes; and the hwrng records hold exactly the hwrng samples from index
+    1,024 on, so no startup sample is ever absorbed and no later one is left out."""
+    problems = []
+    for case in doc.get("source_substitution", []):
+        where = "keepcrypt.json source_substitution %s" % case.get("name")
+        records = [(r.get("id"), bytes.fromhex(r.get("data_hex", ""))) for r in case.get("records", [])]
+        os_bytes = bytes.fromhex(case.get("os_hex", ""))
+        if any(not data for _, data in records):
+            problems.append("%s: a record holds no bytes" % where)
+        os_at = [i for i, (source_id, _) in enumerate(records) if source_id == SOURCE_ID["os"]]
+        if len(os_bytes) != OS_BYTES or os_at != [len(records) - 1] or records[-1][1] != os_bytes:
+            problems.append("%s: the only OS record must be the last one and hold the %d OS bytes" % (where, OS_BYTES))
+        hw_events = b"".join(bytes.fromhex(e.get("data_hex", "")) for e in case.get("events", [])
+                             if e.get("kind") == "hwrng")
+        hw_records = b"".join(data for source_id, data in records if source_id == SOURCE_ID["hwrng"])
+        if hw_records != hw_events[STARTUP_SAMPLES:]:
+            problems.append("%s: the hwrng records must hold exactly the samples from index %d on"
+                            % (where, STARTUP_SAMPLES))
+    return problems
+
+
 def check_keepcrypt_contents(vectors_dir):
-    """The committed keepcrypt.json against the pins: KEEPCRYPT_PINNED, HEALTH_PINNED, and its
-    Coldcard roll strings and seeds equal to vectors/coldcard/rolls.json."""
+    """The committed keepcrypt.json against the pins (KEEPCRYPT_PINNED, HEALTH_PINNED), the session
+    record rules, and its Coldcard roll strings and seeds equal to vectors/coldcard/rolls.json."""
     path = vectors_dir / "keepcrypt.json"
     if not path.is_file():
         return []  # check_generated_file reports it missing
     doc = json.loads(path.read_text(encoding="ascii"))
-    problems = []
+    problems = check_session_record_rules(doc)
     for section, name, key, want in KEEPCRYPT_PINNED:
         got = named(doc, section, name).get(key)
         if got != want:
@@ -1200,7 +1246,7 @@ def check_keepcrypt_contents(vectors_dir):
 
 def check_keepcrypt_json(vectors_dir):
     """Check 6: the embedded BIP39 list and encoder, keepcrypt.json equal to the regenerated text,
-    and its pinned answers."""
+    its pinned answers and its session record rules."""
     return (
         check_bip39_english()
         + check_bip39_vectors(vectors_dir)
@@ -1428,7 +1474,8 @@ def selftest(vectors_dir):
          lambda: check_coldcard_scripts(vectors_dir)),
         ("vectors/kat.json: SHA and HMAC values recomputed, file matches regenerated output, pinned entries "
          "and Ed25519 digest", lambda: check_kat_json(vectors_dir)),
-        ("vectors/keepcrypt.json: embedded BIP39 list and encoder, file matches regenerated output, pinned answers",
+        ("vectors/keepcrypt.json: embedded BIP39 list and encoder, file matches regenerated output, pinned answers, "
+         "session record rules",
          lambda: check_keepcrypt_json(vectors_dir)),
         ("SP 800-90B health-test cutoffs: Table 2 reproduced exactly, RCT 6 and APT 62 at H = 4",
          lambda: check_health_cutoffs(vectors_dir)),
@@ -1458,7 +1505,8 @@ def main(argv):
                       help="run the 7 checks: seal known answers (all 3 vectors), seal.json bytes, SOURCES.md "
                       "hashes and coverage, Coldcard's own scripts on every dice-only case, kat.json (SHA and HMAC "
                       "recomputed, its bytes, then its pinned entries and Ed25519 digest), keepcrypt.json (BIP39 "
-                      "list and encoder, its bytes, its pinned answers), the SP 800-90B cutoffs")
+                      "list and encoder, its bytes, its pinned answers and session record rules), the SP 800-90B "
+                      "cutoffs")
     mode.add_argument("--write-seal-vectors", action="store_true", help="regenerate vectors/seal.json")
     mode.add_argument("--write-kat-vectors", action="store_true", help="regenerate vectors/kat.json")
     mode.add_argument("--write-keepcrypt-vectors", action="store_true", help="regenerate vectors/keepcrypt.json")

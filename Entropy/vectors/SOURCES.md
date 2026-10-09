@@ -20,8 +20,9 @@ generates it from the domain constants in `CLAUDE.md`, the owner's answers Q6a a
 `tasks/todo.md`, and the BIP39 English list embedded in `verify.py`. Self-test check 6 checks that
 list (2,048 sorted words whose LF-joined bytes plus a final LF hash to the published
 `2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda`) and the BIP39 encoder against
-every English entry of `bip39/vectors.json`, regenerates the file and requires byte equality, and
-compares its pinned answers; check 7 recomputes the SP 800-90B cutoffs against Table 2 (below);
+every English entry of `bip39/vectors.json`, regenerates the file and requires byte equality,
+compares its pinned answers (some computed apart from `verify.py`), and checks the session record
+rules on its source-substitution records; check 7 recomputes the SP 800-90B cutoffs against Table 2 (below);
 check 4 re-runs Coldcard's scripts on its dice-only cases. The embedded list was copied from the
 `bip39` 3.0.0 crate (fetched by cargo, the same list core uses) and matched the published hash.
 

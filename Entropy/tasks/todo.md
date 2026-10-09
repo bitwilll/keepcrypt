@@ -844,7 +844,12 @@ starts. Every item names its proof.
       - test streams are SHA-256 counter mode, stored as hex.
       Checks:
       - check 6: byte equality plus pinned answers (empty-pool D, C for D = 00..1f, one mixed E, dice-only `123456` =
-        `8d969eef...`);
+        `8d969eef...`). Review fix after commit 10: also the Pi and phone source-substitution D and C and the
+        empty-record-skipped D (equal to the one-OS-record D), computed by a script that does not import verify.py;
+        and the session record rules checked on the committed records (no empty record, the 64-byte OS record last,
+        the hwrng records exactly the samples from index 1,024 on), so a changed generator cannot re-baseline them.
+        The health cases include one where both tests fail on the same sample, pinning that the Repetition Count
+        is checked first;
       - check 7: an exact-fraction APT cutoff reproduces SP 800-90B Table 2 (W = 512 gives 311, 177, 62, 13 for
         H = 1, 2, 4, 8), and the RCT cutoff for H = 4 is 6;
       - check 4 also runs Coldcard's rolls.py and rolls12.py on every dice-only case.
