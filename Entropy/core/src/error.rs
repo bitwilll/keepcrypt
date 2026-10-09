@@ -183,6 +183,9 @@ pub enum KatId {
     /// The seed: C for a pinned D, a mixed E and the dice-only E of "123456".
     #[error("seed")]
     Seed,
+    /// Braille: SHA-256 of the canonical cell table, and "2026" in cells.
+    #[error("braille")]
+    Braille,
 }
 }
 
@@ -484,6 +487,7 @@ mod tests {
             KatId::Health => "health tests",
             KatId::Pool => "pool",
             KatId::Seed => "seed",
+            KatId::Braille => "braille",
         }
     }
 

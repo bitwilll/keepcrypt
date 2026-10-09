@@ -48,3 +48,15 @@ pub(crate) fn named<'a>(section: &'a Value, name: &str) -> &'a Value {
     assert_eq!(found.len(), 1, "exactly one entry named {name}");
     found[0]
 }
+
+/// The entry in the list at `section` whose `key` is the string `value`.
+pub(crate) fn named_by<'a>(section: &'a Value, key: &str, value: &str) -> &'a Value {
+    let found: Vec<&Value> = section
+        .as_array()
+        .expect("a list")
+        .iter()
+        .filter(|e| e[key] == value)
+        .collect();
+    assert_eq!(found.len(), 1, "exactly one entry with {key} = {value}");
+    found[0]
+}

@@ -19,6 +19,7 @@ use bitcoin::hashes::hmac::{Hmac, HmacEngine};
 use bitcoin::hashes::{Hash, HashEngine, sha256, sha512};
 use sha2::{Digest, Sha256, Sha512};
 
+use crate::braille;
 use crate::error::{CoreError, HealthStage, HealthTest, KatId};
 use crate::health::HealthTester;
 use crate::pool::Pool;
@@ -76,6 +77,7 @@ fn passes(id: KatId, fault: bool) -> bool {
         KatId::Health => health_group(fault),
         KatId::Pool => pool_group(fault),
         KatId::Seed => seed_group(fault),
+        KatId::Braille => braille_group(fault),
     }
 }
 
@@ -480,6 +482,36 @@ fn seed_group(fault: bool) -> bool {
     }
 }
 
+// --- Braille (vectors/braille.json "cells"."table_sha256" and "text" "2026") ---------------------
+
+/// SHA-256 of the canonical cell table, the letters a-z and the signs with their glyphs and dots
+/// (braille::table_text).
+const BRAILLE_TABLE_SHA256: [u8; 32] =
+    unhex("fd75c236d2ab92e0fe682d502a5b4bf2537f78d5ec5630b2bac20a963ece9c9d");
+/// "2026" in cells, as printed in docs/seal-watchonly-braille.md "Cell alphabet": the number sign
+/// once, then b j b f.
+const BRAILLE_2026: &str = "⠼⠃⠚⠃⠋";
+
+fn braille_group(fault: bool) -> bool {
+    braille_table_passes(&braille::table_text(), fault) & braille_text_passes()
+}
+
+/// The table's digest against the pin; the unit tests feed it damaged tables.
+fn braille_table_passes(table_text: &str, fault: bool) -> bool {
+    same(
+        Sha256::digest(table_text.as_bytes()).as_slice(),
+        &BRAILLE_TABLE_SHA256,
+        fault,
+    )
+}
+
+fn braille_text_passes() -> bool {
+    match braille::render_text("2026") {
+        Ok(cells) => same(cells.as_bytes(), BRAILLE_2026.as_bytes(), false),
+        Err(_) => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -634,6 +666,36 @@ mod tests {
             };
             assert_eq!(from_json, expected, "{name}");
         }
+    }
+
+    #[test]
+    fn braille_constants_match_braille_json() {
+        let doc = vectors("braille.json");
+        assert_eq!(
+            bytes(doc["cells"]["table_sha256"].as_str().expect("digest")),
+            BRAILLE_TABLE_SHA256
+        );
+        let text = crate::test_vectors::named_by(&doc["text"], "text", "2026");
+        assert_eq!(text["cells"].as_str(), Some(BRAILLE_2026));
+    }
+
+    // One flipped dot, or two letters' cells swapped, changes the table's digest, so the group
+    // fails (tasks/todo.md, M1 group 5).
+    #[test]
+    fn a_damaged_braille_table_fails_the_group() {
+        assert!(braille_table_passes(&braille::table_text(), false));
+        let mut flipped = braille::LETTERS;
+        flipped[4].1 ^= 0x20;
+        assert!(!braille_table_passes(
+            &braille::table_text_from(&flipped),
+            false
+        ));
+        let mut swapped = braille::LETTERS;
+        swapped.swap(4, 8);
+        assert!(!braille_table_passes(
+            &braille::table_text_from(&swapped),
+            false
+        ));
     }
 
     #[test]

@@ -4,10 +4,11 @@
 //! - None has `Debug`, `Display`, `Clone`, `Copy`, `PartialEq` or `Serialize` (core has no serde),
 //!   so a secret cannot be printed, logged, duplicated or compared by accident. The trybuild
 //!   fixtures in `core/tests/compile_fail/` prove it.
-//! - Secrets leave only through methods named `expose_secret`, `words` or `questions` (and, from
-//!   M1 group 8, `CheckedBackup::reveal_*`), so review can grep every exit. What they reveal
-//!   borrows the wrapper, so no revealed word outlives the secret it came from (and is wiped
-//!   with); a trybuild fixture proves it.
+//! - Secrets leave only through methods named `expose_secret`, `words` or `questions`, the braille
+//!   views (`BrailleInserts`, which borrow the mnemonic) and, from M1 group 8,
+//!   `CheckedBackup::reveal_*`, so review can grep every exit. What they reveal borrows the
+//!   wrapper, so no revealed word outlives the secret it came from (and is wiped with); a trybuild
+//!   fixture proves it.
 
 use secrecy::{ExposeSecret, SecretString};
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -98,10 +99,12 @@ impl SecretMnemonic {
     /// The words, in order: the only way the mnemonic leaves core. Each word borrows `self`, so
     /// none can be kept after the mnemonic is dropped and zeroized.
     pub fn words(&self) -> impl Iterator<Item = &str> + '_ {
-        self.indices
-            .iter()
-            .take(self.word_count())
-            .map(|&i| word(i))
+        self.indices().iter().map(|&i| word(i))
+    }
+
+    /// The word indices, in order (each below 2,048), for the braille views inside core.
+    pub(crate) fn indices(&self) -> &[u16] {
+        &self.indices[..self.word_count()]
     }
 }
 
