@@ -15,6 +15,16 @@ committed. Self-test check 5 recomputes every SHA and HMAC value with Python's `
 `hmac`, regenerates the file and requires byte equality, then checks the file's entry names and
 fields against a pinned layout and its Ed25519 entry against a pinned SHA-256 (below).
 
+`vectors/keepcrypt.json` has no row either. `tools/verify/verify.py --write-keepcrypt-vectors`
+generates it from the domain constants in `CLAUDE.md`, the owner's answers Q6a and Q7 in
+`tasks/todo.md`, and the BIP39 English list embedded in `verify.py`. Self-test check 6 checks that
+list (2,048 sorted words whose LF-joined bytes plus a final LF hash to the published
+`2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda`) and the BIP39 encoder against
+every English entry of `bip39/vectors.json`, regenerates the file and requires byte equality, and
+compares its pinned answers; check 7 recomputes the SP 800-90B cutoffs against Table 2 (below);
+check 4 re-runs Coldcard's scripts on its dice-only cases. The embedded list was copied from the
+`bip39` 3.0.0 crate (fetched by cargo, the same list core uses) and matched the published hash.
+
 ## Provenance
 
 | File | SHA-256 | Source | Upstream commit or date | Licence | Notes |
@@ -58,6 +68,8 @@ read, by SHA-256. All were downloaded on 2026-10-09 with a generic User-Agent, e
 new empty directory, and downloaded a second time the same day with the same size and SHA-256.
 They were read as data only: the RFCs as text, the PDFs through a standard-library extraction of
 their compressed text streams, and the zip through Python's `zipfile` without extracting it.
+SP 800-90B was downloaded the same way on 2026-10-10, twice, with the same size and SHA-256; its
+Table 2 was parsed out of the extracted text and compared entry by entry with `SP800_90B_TABLE_2`.
 
 | Standard | Document | SHA-256 | Retrieved | Licence | Values copied |
 | --- | --- | --- | --- | --- | --- |
@@ -65,6 +77,7 @@ their compressed text streams, and the zip through Python's `zipfile` without ex
 | FIPS 180-4 (SHA-512) | https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/SHA512.pdf (same series), 159262 bytes | `84ce867c99bad5a7b05abc74bb1dfc9de8486f49a160653cc8b15272cc532115` | 2026-10-09 (Last-Modified 2024-09-29 23:15:40 GMT) | U.S. Government work, not subject to copyright in the U.S. (17 U.S.C. 105) | `kat.json` sha512 `abc` and `two-block`: the one-block (`"abc"`) and two-block (`"abcdefghbcdefghi…nopqrstu"`, 112 bytes) samples, message and final digest |
 | FIPS 180-4 (SHAVS byte-oriented vectors) | https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/shs/shabytetestvectors.zip (NIST CAVP), 4909729 bytes; members `shabytetestvectors/SHA256ShortMsg.rsp` (SHA-256 `75e1cb83994638481808e225b9eb0c1ebd0c232d952ac42b61abce6363be283c`) and `shabytetestvectors/SHA512ShortMsg.rsp` (SHA-256 `e53a36c03609e5a3e3cc4b6e117a499db7864c23ec825c6cec99503a45f40764`), "CAVS 11.0", generated 2011-03-15 | `929ef80b7b3418aca026643f6f248815913b60e01741a44bba9e118067f4c9b8` | 2026-10-09 (Last-Modified 2024-09-29 23:13:50 GMT) | U.S. Government work, not subject to copyright in the U.S. (17 U.S.C. 105) | `kat.json` sha256 and sha512 `empty`: the `Len = 0` entry of each file, whose `Msg = 00` is the placeholder for the empty message, and its `MD` |
 | RFC 4231 (HMAC-SHA-224/256/384/512 test vectors) | https://www.rfc-editor.org/rfc/rfc4231.txt, 17725 bytes | `72178527ce93500e730bc8eb182b857e583096d652b64ece0879c52ba1df973b` | 2026-10-09 | Copyright (C) The Internet Society (2005), subject to BCP 78; only the test values are copied | `kat.json` hmac `rfc4231-case-2`: section 4.3, Test Case 2: Key (`"Jefe"`), Data (`"what do ya want for nothing?"`), HMAC-SHA-256 and HMAC-SHA-512 |
+| NIST SP 800-90B (entropy sources) | https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-90B.pdf, 1043696 bytes | `9b0dd77131ade3617a91cd8457fa09e0dc354c273bb2220a6afeaca16e5defe7` | 2026-10-10 (Last-Modified 2018-01-10 14:24:12 GMT) | U.S. Government work, not subject to copyright in the U.S. (17 U.S.C. 105) | `verify.py` `SP800_90B_TABLE_2` (check 7): Table 2 "Example cutoff values of the Adaptive Proportion Test", page 27, the whole-number entries for alpha = 2^-20: non-binary data, W = 512, H = 1, 2, 4, 8 give C = 311, 177, 62, 13; binary data, W = 1024, H = 1 gives C = 589. The test steps of sections 4.4.1 and 4.4.2 and the window rule (1024 for binary samples, 512 otherwise) behind `health_test` and core's `health` module. |
 | RFC 8032 (EdDSA) | https://www.rfc-editor.org/rfc/rfc8032.txt, 103210 bytes | `ed63657ff389301282b169b0abde9b5dd2c7e4d524fdfa5da6ff3094fc93c4c3` | 2026-10-09 | Copyright (c) 2017 IETF Trust and the document authors, subject to BCP 78 and the IETF Trust's Legal Provisions; only the test values are copied | `kat.json` ed25519 `rfc8032-test-1`: section 7.1, TEST 1: PUBLIC KEY, the empty MESSAGE and SIGNATURE. Its SECRET KEY is not copied, because core only verifies signatures |
 
 Every copied value was compared mechanically with the value parsed back out of its document
@@ -88,6 +101,11 @@ rejected it with one bit flipped.
 - `kat.json` (generated; see "Spec values"): the published answers behind core's Sha256,
   Sha512, Hmac and Ed25519 known-answer groups, which run at every session start. Core's tests
   check each KAT constant against this file.
+- `keepcrypt.json` (generated; see above): the exact bytes of the device leg (pool records and D,
+  by source id), the SP 800-90B health-test cases (verdict, stage and sample index) and the credit
+  per window, C, mixed and dice-only E with their 12- and 24-word mnemonics, and the Pi and phone
+  source-substitution sessions mapped to D and C. Core's source, health, pool, dice and seed tests
+  read it.
 - `coldcard/rolls.py` and `coldcard/rolls12.py`: Coldcard's own scripts that produced
   `rolls.json`. The verifier self-test re-runs them on every case, so the values come from a
   committed script that CI re-runs.
