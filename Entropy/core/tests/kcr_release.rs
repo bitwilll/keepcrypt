@@ -12,8 +12,27 @@ use keepcrypt_core::{
     CoreError, registry_key_is_test, verify_bucket_proof, verify_bucket_proof_qr, verify_snapshot,
 };
 
+// No key is pinned until M9: a snapshot that verifies under the test key, and a proof cut from it,
+// are refused for want of a key.
 #[test]
 fn no_registry_key_is_pinned() {
+    let doc = read("kcr.json");
+    assert!(matches!(
+        verify_snapshot(&hex(&named(&doc["snapshots"], "small")["kcr_hex"])),
+        Err(CoreError::NoRegistryKey)
+    ));
+    assert!(matches!(
+        verify_bucket_proof(&hex(
+            &named(&doc["proofs"], "clear-shared-prefix")["kcp1_hex"]
+        )),
+        Err(CoreError::NoRegistryKey)
+    ));
+}
+
+// A separate fact, true whatever key a release build pins (none now, the production key from M9):
+// it is not a test-registry build, so no shell shows the test banner.
+#[test]
+fn a_release_build_is_not_a_test_registry_build() {
     assert!(!registry_key_is_test());
 }
 
@@ -43,11 +62,7 @@ fn every_kcr_json_case_gives_no_registry_key() {
             text(&case["name"])
         );
     }
-    // The valid ones too: a snapshot that would verify under the test key, and an empty input.
-    assert!(matches!(
-        verify_snapshot(&hex(&named(&doc["snapshots"], "small")["kcr_hex"])),
-        Err(CoreError::NoRegistryKey)
-    ));
+    // And empty input.
     assert!(matches!(
         verify_snapshot(&[]),
         Err(CoreError::NoRegistryKey)

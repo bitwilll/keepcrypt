@@ -11,6 +11,9 @@
 //!   that can select the key holds it, and the release scan fails that artifact.
 //! - The choice between no key and the test key is the pure function `choose`, unit-tested both
 //!   ways. One key per release; rotation statements wait for M9.
+//! - `registry_key_is_test` answers from the feature, not from whether a key is pinned: once M9
+//!   pins the production key in release builds, they must still say false (review fix after
+//!   commit 18).
 
 use ed25519_dalek::VerifyingKey;
 
@@ -60,9 +63,10 @@ pub(crate) fn pinned_key() -> Result<VerifyingKey, CoreError> {
 }
 
 /// True when this build trusts the local test registry (`test-registry`), so a shell can show a
-/// test banner. Release builds return false.
+/// test banner. Release builds return false, now and after M9 pins the production key: the answer
+/// is the feature, never the presence of a pinned key.
 pub fn registry_key_is_test() -> bool {
-    pinned_bytes().is_some()
+    cfg!(feature = "test-registry")
 }
 
 #[cfg(test)]
@@ -117,10 +121,12 @@ mod tests {
         }
     }
 
+    // Two separate facts: the pin is the test key, and the build reports itself as a test build.
     #[cfg(feature = "test-registry")]
     #[test]
     fn a_test_registry_build_pins_the_test_key() {
         assert_eq!(TEST_REGISTRY_KEY, key_bytes("test_registry"));
+        assert_eq!(pinned_bytes(), Some(TEST_REGISTRY_KEY));
         assert!(registry_key_is_test());
         match pinned_key() {
             Ok(key) => assert_eq!(key.as_bytes(), &TEST_REGISTRY_KEY),
@@ -129,10 +135,12 @@ mod tests {
         assert_eq!(&MARKER, b"KC_TEST_REGISTRY_DO_NOT_SHIP");
     }
 
+    // Two separate facts: no key is pinned (until M9), and the build is not a test build (always).
     #[cfg(not(feature = "test-registry"))]
     #[test]
     fn a_release_build_pins_no_key() {
-        assert!(!registry_key_is_test());
+        assert_eq!(pinned_bytes(), None);
         assert!(matches!(pinned_key(), Err(CoreError::NoRegistryKey)));
+        assert!(!registry_key_is_test());
     }
 }

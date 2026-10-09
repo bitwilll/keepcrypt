@@ -35,8 +35,12 @@ fn snapshot_error(name: &str, e: CoreError) -> String {
     }
 }
 
+// Two separate facts: the test key is pinned (the small snapshot verifies), and the build says it
+// trusts the test registry.
 #[test]
 fn the_test_registry_key_is_pinned() {
+    let doc = read("kcr.json");
+    assert!(verify_snapshot(&hex(&named(&doc["snapshots"], "small")["kcr_hex"])).is_ok());
     assert!(registry_key_is_test());
 }
 

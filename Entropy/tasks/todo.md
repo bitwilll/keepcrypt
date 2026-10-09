@@ -1311,6 +1311,13 @@ starts. Every item names its proof.
       marker; the default release rlib holds neither (checked by hand until the group 11 scan). deny.toml gains
       BSD-3-Clause in this commit; canaries.sh pins deny.toml's `[graph]`, `[bans] deny` and `[sources]`, not its
       `[licenses]`, so no canary pin changes with it.
+      Review fix after commit 18: `registry_key_is_test()` was `pinned_bytes().is_some()`, right only while the test
+      key is the only key that can be pinned; once M9 pins the production key in release builds, every release
+      would have reported a test registry and shown the test banner. It is now `cfg!(feature = "test-registry")`.
+      The tests state the two facts apart: no key is pinned (until M9: `pinned_bytes()` is None, and the valid
+      `small` snapshot and its clear proof give `NoRegistryKey`), and the build is not a test build (always). With
+      a scratch stand-in for the M9 pin, the second still passes and the first fails where it should. The release
+      sweep covers 107 cases since the vector fixes above.
 - [ ] KAT groups:
       - Seal: the vector-1 code, T and Seal ID;
       - GoAhead: `CF94-BCAJ`; a wrong n fails;
@@ -1824,6 +1831,7 @@ moved from M0)
    Review fixes after 18, each its own commit, vectors first:
    - verify: the strict Ed25519 cases isolate the small-order key rule and the small-order R rule (core's strict-case test reads the third case and the two flags in the same commit, or that commit would be red);
    - verify: the proof negatives fail only their own check, 20 order-* cases pin the check order, and check 10 reads every check each negative fails (core's release sweep moves from 87 to 107 cases in the same commit);
+   - core: registry_key_is_test() answers from the test-registry feature, not from whether a key is pinned, and the tests state "no key pinned" and "not a test build" apart;
 19. verify + scripts: backup.json generator (check 11) and scripts/age-interop.py, with the age_cli_written vectors and their SOURCES.md entry
 20. core: age v1 armor, reader and writer; CCTV conformance; the Age KAT; scrypt, chacha20poly1305, hkdf and base64ct (and their transitive crates), plus vet entries
 21. core: backup passphrase (stored in the session; typed words for decrypt only) and confirm challenge, plaintext v1, the backup API (generate, encrypt, verify, no passphrase arguments) and Check a backup (decrypt_backup returning CheckedBackup)
