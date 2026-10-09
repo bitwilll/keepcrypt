@@ -18,6 +18,8 @@ miniscript = { version = "13.1.0", default-features = false }
 zeroize = { version = "1.9.0", features = ["derive"] }
 secrecy = "0.10.3"
 thiserror = "2.0.21"
+# NEGATIVE TEST, never merge: cargo-deny must reject this (rule 1).
+rand = { version = "=0.8.5", default-features = false }
 
 [lints.rust]
 # scripts/canaries.sh pins this table and [lints.clippy] below exactly, per crate.
