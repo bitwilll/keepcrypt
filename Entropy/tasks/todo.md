@@ -776,6 +776,9 @@ starts. Every item names its proof.
       - no `#[non_exhaustive]`, so a new variant breaks the shells' matches and gets reviewed;
       - variants never depend on features.
       Proof: a table test pins every variant's Display text, built through exhaustive matches.
+      Review fix after commit 10: each enum is declared through `listed_enum!`, which generates its variant list
+      with it (`ALL` for unit-only enums, and a test-only list of every value for all of them), so no variant can
+      be left out of a list. `KatId::ALL`, the full suite, is one of them, so a new group always runs.
 - [ ] `secret.rs` (CLAUDE.md rule 5; build-plan.md "secret"):
       - types:
         - `SecretBytes32` (D, E) and crate-private `SecretSeed64` (S);
