@@ -12,7 +12,8 @@ and re-runs Coldcard's committed scripts on every case in `coldcard/rolls.json`;
 `vectors/kat.json` has no row either. `tools/verify/verify.py --write-kat-vectors` generates it
 from values copied as published from the documents in "Spec values" below, which are not
 committed. Self-test check 5 recomputes every SHA and HMAC value with Python's `hashlib` and
-`hmac`, then regenerates the file and requires byte equality.
+`hmac`, regenerates the file and requires byte equality, then checks the file's entry names and
+fields against a pinned layout and its Ed25519 entry against a pinned SHA-256 (below).
 
 ## Provenance
 
@@ -68,8 +69,13 @@ their compressed text streams, and the zip through Python's `zipfile` without ex
 
 Every copied value was compared mechanically with the value parsed back out of its document
 (one throwaway script, not committed), and that comparison failed when any value was altered.
-The SHA and HMAC values are recomputed by every self-test run; the Ed25519 entry is copied only,
-since verify.py has no Ed25519 yet.
+The SHA and HMAC values are recomputed by every self-test run. verify.py has no Ed25519 until
+check 10 (tasks/todo.md, M1 group 7), so the Ed25519 entry is pinned instead: check 5 requires
+SHA-256(public key (32 bytes) || signature (64 bytes) || message) to equal
+`0e1d4c11a5a51315bf2daccae025f9654fd7309bf941e57dece4caeea65c280c`. That digest was computed on
+2026-10-09 from TEST 1 as parsed out of a fresh download of RFC 8032 (same size and SHA-256 as the
+row above), not from verify.py's table; a separate RFC 8032 verify accepted the signature and
+rejected it with one bit flipped.
 
 ## What each set is for
 
