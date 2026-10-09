@@ -186,6 +186,10 @@ pub enum KatId {
     /// Braille: SHA-256 of the canonical cell table, and "2026" in cells.
     #[error("braille")]
     Braille,
+    /// BIP84: the abandon x 11 + about watch-only export's fingerprint, account xpub, first address,
+    /// receive checksum and UR.
+    #[error("BIP84")]
+    Bip84,
 }
 }
 
@@ -491,6 +495,7 @@ mod tests {
             KatId::Pool => "pool",
             KatId::Seed => "seed",
             KatId::Braille => "braille",
+            KatId::Bip84 => "BIP84",
         }
     }
 

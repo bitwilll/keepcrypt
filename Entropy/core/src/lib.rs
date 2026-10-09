@@ -7,6 +7,7 @@
 #![forbid(unsafe_code)]
 
 mod braille;
+mod descriptor;
 mod dice;
 mod error;
 mod health;
@@ -23,6 +24,7 @@ mod ur;
 pub use braille::{
     BrailleInserts, Dots, Face, FaceVerdict, Insert, ReadbackMismatch, ReadbackResult, render_text,
 };
+pub use descriptor::WatchOnlyExport;
 pub use error::{
     BackupError, BrailleError, CheckError, CoreError, HealthFailure, HealthStage, HealthTest,
     InternalFault, KatId, SnapshotError, SourceFault, UrError,

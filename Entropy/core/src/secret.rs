@@ -58,13 +58,7 @@ impl SecretSeed64 {
     pub(crate) const fn zeroed() -> Self {
         Self([0; 64])
     }
-}
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "used by the session's finish (M1 group 9)")
-)]
-impl SecretSeed64 {
     /// S, for key derivation inside core only.
     pub(crate) fn expose_secret(&self) -> &[u8; 64] {
         &self.0
@@ -167,7 +161,10 @@ impl Bip39Passphrase {
 
     #[cfg_attr(
         not(test),
-        expect(dead_code, reason = "used by watch_only (M1 group 6)")
+        expect(
+            dead_code,
+            reason = "Session<Ready>::watch_only hands it to seed::passphrase_seed_into (M1 group 9)"
+        )
     )]
     pub(crate) fn expose_secret(&self) -> &str {
         self.0.expose_secret()

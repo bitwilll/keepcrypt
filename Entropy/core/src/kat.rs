@@ -9,9 +9,9 @@
 //!   match from entry point to groups.
 //! - A faulted group flips one bit of a computed value before its comparison, so the comparison
 //!   itself is what fails; nothing short-circuits it.
-//! - Budget per full run: at most 3 PBKDF2-2048 (2 today), scrypt only at log2 N 10 and at most 2
-//!   Ed25519 verifies (later groups), and at most 1 s on a Pi Zero (an estimate; M4 measures). The
-//!   Health group tests 2,064 samples.
+//! - Budget per full run: at most 3 PBKDF2-2048 (3 today: 2 BIP39 seeds, 1 BIP84), scrypt only at
+//!   log2 N 10 and at most 2 Ed25519 verifies (later groups), and at most 1 s on a Pi Zero (an
+//!   estimate; M4 measures). The Health group tests 2,064 samples.
 //! - The known answers are copied from vectors/kat.json and vectors/bip39/vectors.json, and the
 //!   unit tests below check every one of them against those files.
 
@@ -20,10 +20,11 @@ use bitcoin::hashes::{Hash, HashEngine, sha256, sha512};
 use sha2::{Digest, Sha256, Sha512};
 
 use crate::braille;
+use crate::descriptor;
 use crate::error::{CoreError, HealthStage, HealthTest, KatId};
 use crate::health::HealthTester;
 use crate::pool::Pool;
-use crate::secret::SecretBytes32;
+use crate::secret::{SecretBytes32, SecretSeed64};
 use crate::seed::{commitment, dice_only_entropy_into, mixed_entropy_into};
 use crate::source::SourceId;
 
@@ -78,6 +79,7 @@ fn passes(id: KatId, fault: bool) -> bool {
         KatId::Pool => pool_group(fault),
         KatId::Seed => seed_group(fault),
         KatId::Braille => braille_group(fault),
+        KatId::Bip84 => bip84_group(fault),
     }
 }
 
@@ -512,6 +514,50 @@ fn braille_text_passes() -> bool {
     }
 }
 
+// --- BIP84 (vectors/watchonly.json "wallets" "abandon"; BIP-84 "Test vectors") -----------------
+// The whole watch-only export of the BIP-84 test mnemonic: PBKDF2, BIP32 down to the account and the
+// first address (this catches a miscompiled secp256k1-sys on a target), the BIP-380 checksum and the
+// crypto-account UR. Its PBKDF2 is the third and last of the budget.
+
+/// abandon x 11 + about: entropy of 16 zero bytes.
+const BIP84_ENTROPY: [u8; 16] = [0; 16];
+const BIP84_FINGERPRINT: [u8; 4] = unhex("73c5da0a");
+const BIP84_XPUB: &str = "xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XyuvPEbvqAQY3rAPshWcMLoP2fMFMKHPJ4ZeZXYVUhLv1VMrjPC7PW6V";
+const BIP84_FIRST_ADDRESS: &str = "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu";
+const BIP84_RECEIVE_CHECKSUM: &str = "afwvtk2s";
+const BIP84_UR: &str = concat!(
+    "ur:crypto-account/oeadcyjksktnbkaolytaadeetaadmwtaaddloxaxhdclaojoknidzcpssajtpt",
+    "rpfrcecfkkamykjtvtcsbtbdtkcfiyvyoetneeykwfnbnyndaahdcxgegunbpyclrhuomdlnnsglmooy",
+    "hscfglaxrtwsfhykadgeswmowkeosskoghmhztamtaaddyoeadlncsghykaeykaeykaocyjksktnbkay",
+    "cykbwfdnuywftiglsn",
+);
+
+fn bip84_group(fault: bool) -> bool {
+    let words = match bip39::Mnemonic::from_entropy_in(bip39::Language::English, &BIP84_ENTROPY) {
+        Ok(words) => words,
+        Err(_) => return false,
+    };
+    let mut seed = SecretSeed64::zeroed();
+    seed.expose_secret_mut()
+        .copy_from_slice(zeroize::Zeroizing::new(words.to_seed_normalized("")).as_slice());
+    match descriptor::watch_only_export(&seed, false) {
+        Ok(export) => {
+            same(&export.fingerprint(), &BIP84_FINGERPRINT, fault)
+                & same(export.xpub().as_bytes(), BIP84_XPUB.as_bytes(), false)
+                & same(
+                    export.first_address().as_bytes(),
+                    BIP84_FIRST_ADDRESS.as_bytes(),
+                    false,
+                )
+                & export
+                    .receive_descriptor()
+                    .ends_with(&["#", BIP84_RECEIVE_CHECKSUM].concat())
+                & same(export.ur().as_bytes(), BIP84_UR.as_bytes(), false)
+        }
+        Err(_) => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -696,6 +742,30 @@ mod tests {
             &braille::table_text_from(&swapped),
             false
         ));
+    }
+
+    #[test]
+    fn bip84_constants_match_watchonly_json() {
+        let doc = vectors("watchonly.json");
+        let abandon = crate::test_vectors::named(&doc["wallets"], "abandon");
+        assert_eq!(
+            abandon["mnemonic"],
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+        );
+        assert_eq!(
+            bytes(abandon["fingerprint"].as_str().expect("fp")),
+            BIP84_FINGERPRINT
+        );
+        assert_eq!(abandon["account_xpub"], BIP84_XPUB);
+        assert_eq!(abandon["first_receive_address"], BIP84_FIRST_ADDRESS);
+        let receive = abandon["receive_descriptor"].as_str().expect("descriptor");
+        assert!(receive.ends_with(&format!("#{BIP84_RECEIVE_CHECKSUM}")));
+        assert_eq!(abandon["crypto_account_ur"], BIP84_UR);
+        // BIP-84's own published address for m/84'/0'/0'/0/0.
+        assert_eq!(
+            BIP84_FIRST_ADDRESS,
+            "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"
+        );
     }
 
     #[test]

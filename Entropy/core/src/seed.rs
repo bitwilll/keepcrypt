@@ -26,13 +26,14 @@
 )]
 
 use bitcoin::bip32::{ChainCode, ChildNumber, Xpriv, Xpub};
-use bitcoin::secp256k1::Secp256k1;
+use bitcoin::secp256k1::{Secp256k1, Signing};
 use bitcoin::{Address, Network, NetworkKind};
 use sha2::{Digest, Sha256};
+use unicode_normalization::UnicodeNormalization;
 use zeroize::{ZeroizeOnDrop, Zeroizing};
 
 use crate::error::{CoreError, InternalFault};
-use crate::secret::{SecretBytes32, SecretMnemonic, SecretSeed64};
+use crate::secret::{Bip39Passphrase, SecretBytes32, SecretMnemonic, SecretSeed64};
 use crate::session::SeedLength;
 
 /// The commitment's domain tag.
@@ -76,6 +77,17 @@ pub(crate) fn dice_only_entropy_into(rolls: &[u8], e: &mut SecretBytes32) {
         .finalize_into(e.expose_secret_mut().into());
 }
 
+/// The bip39 mnemonic of E: 12 words from E[0..16], 24 from all 32 bytes. Wiped on drop (bip39's
+/// `zeroize` feature).
+fn bip39_mnemonic(e: &SecretBytes32, len: SeedLength) -> Result<bip39::Mnemonic, CoreError> {
+    let entropy = match len {
+        SeedLength::Words12 => &e.expose_secret()[..16],
+        SeedLength::Words24 => &e.expose_secret()[..],
+    };
+    bip39::Mnemonic::from_entropy_in(bip39::Language::English, entropy)
+        .map_err(|_| CoreError::Internal(InternalFault::Bip39))
+}
+
 /// From E: the words (12 from E[0..16], 24 from all 32 bytes) into `mnemonic`, and S, the BIP39
 /// seed with the empty passphrase, into `seed`.
 pub(crate) fn mnemonic_and_seed_into(
@@ -84,16 +96,34 @@ pub(crate) fn mnemonic_and_seed_into(
     mnemonic: &mut SecretMnemonic,
     seed: &mut SecretSeed64,
 ) -> Result<(), CoreError> {
-    let entropy = match len {
-        SeedLength::Words12 => &e.expose_secret()[..16],
-        SeedLength::Words24 => &e.expose_secret()[..],
-    };
-    let words = bip39::Mnemonic::from_entropy_in(bip39::Language::English, entropy)
-        .map_err(|_| CoreError::Internal(InternalFault::Bip39))?;
+    let words = bip39_mnemonic(e, len)?;
     mnemonic.fill_from(words.word_indices())?;
     // bip39 returns S by value; it is wrapped at once (the moved-from temporary is the residual
     // in the module comment).
     let s = Zeroizing::new(words.to_seed_normalized(""));
+    seed.expose_secret_mut().copy_from_slice(s.as_slice());
+    Ok(())
+}
+
+/// The BIP39 seed of E's words under a BIP39 passphrase, for the watch-only export of a passphrase
+/// wallet (docs/seal-watchonly-braille.md "Watch-only export" rules; tasks/todo.md, M1 Q5). The
+/// passphrase is NFKD-normalized, never trimmed, into a zeroizing buffer sized exactly by a first
+/// counting pass, so it never reallocates and leaves no copy; then bip39's `to_seed_normalized` takes
+/// it. The seal and the backup never see a passphrase: they use S with the empty one (CLAUDE.md
+/// rule 7). Beyond core's reach: unicode-normalization keeps decomposed characters in its own small
+/// buffer while it iterates, and bip39 returns the seed by value (wrapped in `Zeroizing` at once).
+pub(crate) fn passphrase_seed_into(
+    e: &SecretBytes32,
+    len: SeedLength,
+    passphrase: &Bip39Passphrase,
+    seed: &mut SecretSeed64,
+) -> Result<(), CoreError> {
+    let words = bip39_mnemonic(e, len)?;
+    let typed = passphrase.expose_secret();
+    let size: usize = typed.nfkd().map(char::len_utf8).sum();
+    let mut normalized = Zeroizing::new(String::with_capacity(size));
+    normalized.extend(typed.nfkd());
+    let s = Zeroizing::new(words.to_seed_normalized(&normalized));
     seed.expose_secret_mut().copy_from_slice(s.as_slice());
     Ok(())
 }
@@ -118,10 +148,27 @@ pub(crate) struct WalletSummary {
 pub(crate) fn wallet_summary(seed: &SecretSeed64) -> Result<WalletSummary, CoreError> {
     let path = first_receive_path()?;
     let secp = Secp256k1::signing_only();
-    let mut key = Xpriv::new_master(NetworkKind::Main, seed.expose_secret()).map_err(derivation)?;
-    let fingerprint = key.fingerprint(&secp).to_bytes();
+    let master = Xpriv::new_master(NetworkKind::Main, seed.expose_secret()).map_err(derivation)?;
+    let fingerprint = master.fingerprint(&secp).to_bytes();
+    let mut key = derive_erasing(&secp, master, &path)?;
+    let public = Xpub::from_priv(&secp, &key).to_pub();
+    erase(&mut key);
+    Ok(WalletSummary {
+        fingerprint,
+        first_address: Address::p2wpkh(&public, Network::Bitcoin).to_string(),
+    })
+}
+
+/// Derives `path` from `key` one level at a time. Every extended private key it holds, `key`
+/// itself and each intermediate one, is erased as soon as the next exists, on every path, error
+/// paths included; the caller erases the key it gets back.
+pub(crate) fn derive_erasing<C: Signing>(
+    secp: &Secp256k1<C>,
+    mut key: Xpriv,
+    path: &[ChildNumber],
+) -> Result<Xpriv, CoreError> {
     for child in path {
-        match key.derive_priv(&secp, &[child]) {
+        match key.derive_priv(secp, &[*child]) {
             Ok(mut next) => {
                 erase(&mut key);
                 key = next;
@@ -133,12 +180,7 @@ pub(crate) fn wallet_summary(seed: &SecretSeed64) -> Result<WalletSummary, CoreE
             }
         }
     }
-    let public = Xpub::from_priv(&secp, &key).to_pub();
-    erase(&mut key);
-    Ok(WalletSummary {
-        fingerprint,
-        first_address: Address::p2wpkh(&public, Network::Bitcoin).to_string(),
-    })
+    Ok(key)
 }
 
 /// m/84'/0'/0'/0/0 (BIP84: purpose, coin, account hardened; receive chain, first index).
@@ -152,12 +194,12 @@ fn first_receive_path() -> Result<[ChildNumber; 5], CoreError> {
     ])
 }
 
-fn derivation<E>(_: E) -> CoreError {
+pub(crate) fn derivation<E>(_: E) -> CoreError {
     CoreError::Internal(InternalFault::KeyDerivation)
 }
 
 /// Overwrites an extended private key's secret parts.
-fn erase(key: &mut Xpriv) {
+pub(crate) fn erase(key: &mut Xpriv) {
     key.private_key.non_secure_erase();
     key.chain_code = ChainCode::from([0u8; 32]);
 }

@@ -15,6 +15,9 @@ sha2 = { version = "0.11.0", features = ["zeroize"] }
 bip39 = { version = "3.0.0", default-features = false, features = ["alloc", "zeroize"] }
 bitcoin = { version = "0.32.102", default-features = false, features = ["std"] }
 miniscript = { version = "13.1.0", default-features = false }
+# NFKD of the BIP39 passphrase into a zeroizing buffer (tasks/todo.md, M1 Q5). Already in the
+# lockfile through bip39, with the same features; a new direct edge, named in docs/build-plan.md.
+unicode-normalization = { version = "0.1.25", default-features = false }
 zeroize = { version = "1.9.0", features = ["derive"] }
 secrecy = "0.10.3"
 thiserror = "2.0.21"
