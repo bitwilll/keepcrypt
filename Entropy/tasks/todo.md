@@ -861,7 +861,11 @@ starts. Every item names its proof.
       - `fill_os(&mut [u8])` is one expression, `getrandom::fill` (blocking; never `fill_uninit`; never the `std` or
         `sys_rng` features);
       - it returns exactly `len` bytes or `Err`. Real and stub reads share the length check, so a short read always
-        fails;
+        fails. Review fix after commit 10: `getrandom::fill` returns no count, so the length check covers the stub
+        arm only. The OS arm is proven apart: a real-OS test (16 reads of 64 bytes, through `fill` and `os_bytes`)
+        finds every byte position written, and a unit test in `source/os.rs` maps every getrandom error to
+        `Source(Os)`. The stub error-injection tests never reach the OS arm, and `fill_os` staying one expression
+        is a review check;
       - source ids per Q6a. Credited ids are crate-private; shells name only `ExtraSource::{InputTiming, Motion,
         Camera, Microphone}`;
       - constants: 64 OS bytes, 4 bits per hwrng byte, 512 bits on the Pi, 256 on phones by policy, and

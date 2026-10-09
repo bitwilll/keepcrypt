@@ -6,8 +6,11 @@
 //!   or `Source::os_bytes`.
 //! - Without the `test-sources` feature the only arm is the OS, and no public API accepts a
 //!   source, so a shipped build cannot be handed a fake one.
-//! - A read returns exactly the bytes asked for or fails: the OS and stub arms share one length
-//!   check, so a short read always fails.
+//! - A read returns exactly the bytes asked for or fails. A stub reports how many bytes it
+//!   produced, and the length check in `Source::fill` fails a short read. The OS arm has no count
+//!   to check: `getrandom::fill` fills the whole buffer or errs, the real-OS test below proves that
+//!   every byte position is written, and `source/os.rs` proves that every OS error fails closed.
+//!   The stub error-injection tests never reach the OS arm.
 //! - Credited source ids stay inside core; a shell names only an `ExtraSource`, which is never
 //!   credited.
 
@@ -148,8 +151,10 @@ pub(crate) enum Source {
 }
 
 impl Source {
-    /// Fills `buf` completely or fails. Both arms report how many bytes they produced and share
-    /// this one length check, so a short read is always `ShortRead`.
+    /// Fills `buf` completely or fails. A stub reports how many bytes it produced, and a short
+    /// read is `ShortRead`. The OS arm produces the whole buffer or an error (`getrandom::fill`
+    /// returns no count), so its count is `buf.len()` by that contract, which the real-OS test
+    /// checks byte by byte.
     #[cfg_attr(
         not(test),
         expect(dead_code, reason = "used by the session (M1 group 9)")
@@ -288,6 +293,36 @@ mod tests {
         match source.os_bytes::<8>() {
             Ok(bytes) => assert_eq!(bytes.len(), 8),
             Err(e) => panic!("{e}"),
+        }
+    }
+
+    // The real OS path writes every byte it is asked for: over 16 reads of 64 bytes into zeroed
+    // buffers, through `fill` and through `os_bytes`, each byte position is non-zero at least once.
+    // A read that left any position unwritten fails; a healthy source fails this with odds of
+    // about 64 x 2^-128. Nothing is printed.
+    #[test]
+    fn os_source_writes_every_byte_position() {
+        let mut source = Source::Os;
+        let mut through_fill = [0u8; 64];
+        let mut through_os_bytes = [0u8; 64];
+        for _ in 0..16 {
+            let mut read = [0u8; 64];
+            assert_eq!(source.fill(&mut read), Ok(()));
+            for (seen, byte) in through_fill.iter_mut().zip(read) {
+                *seen |= byte;
+            }
+            match source.os_bytes::<64>() {
+                Ok(bytes) => {
+                    for (seen, byte) in through_os_bytes.iter_mut().zip(bytes.iter()) {
+                        *seen |= byte;
+                    }
+                }
+                Err(e) => panic!("{e}"),
+            }
+        }
+        for (name, seen) in [("fill", through_fill), ("os_bytes", through_os_bytes)] {
+            let unwritten = seen.iter().filter(|&&b| b == 0).count();
+            assert_eq!(unwritten, 0, "{name}: byte positions never written");
         }
     }
 
