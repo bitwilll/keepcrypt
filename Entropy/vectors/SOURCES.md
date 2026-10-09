@@ -67,9 +67,12 @@ per rule and each isolating it (a small-order key with an R of full order, a ful
 small-order R, and both small order); requires the docs' figures (58-byte header, 18-byte entries,
 75.5 MB for 2^22 entries, about 18 MB per million, 771 + 18k bytes per proof, 75 entries per QR,
 30 days) to appear in `docs/seal-watchonly-braille.md` as computed; regenerates the file and
-requires byte equality; and reruns every case through `verify.py`'s own verifier against outcomes
-pinned apart from the generator. Three answers were computed apart from `verify.py`, by a
-standard-library script that does not import it: the test public key
+requires byte equality; reruns every case through `verify.py`'s own verifier against outcomes
+pinned apart from the generator; and reads every check each rejected case fails, not just the first:
+a negative must fail only its own check (a truncation, a wrong length or a snapshot count over 2^22
+may also spoil the checks that read past it), and each of the 20 `order-*` cases must fail two or
+more checks with the pinned one first, which fixes the check order. Three answers were computed
+apart from `verify.py`, by a standard-library script that does not import it: the test public key
 (`42e9fa0e206d4bdf410f987ac7ded54fb02fb49ef277cc425d5fdfdb72c3b94b`), the empty snapshot's root
 (`b73ca0379e73400458ebe358b6aeec7a39baa7ddd8e1f78abe7436de44e4ba93`, a streaming pass over all
 2^20 buckets) and the root behind the vector-1 proof
@@ -185,8 +188,8 @@ digit was altered.
   99-roll dice-only seeds, with S, the seal code, T, the bucket and G), the Merkle leaf, node, empty
   root and vector-1 path, and the signed snapshots and KCP1 proofs (bytes or go-ahead QR text), each
   with the result core must give: valid ones with their header fields, freshness and lookups,
-  tampered ones with their `SnapshotError`. Core's seal tests and its Ed25519 and Merkle known-answer
-  groups read it.
+  tampered ones with their `SnapshotError` (one broken check each, or for `order-*` the first of
+  several). Core's seal tests and its Ed25519 and Merkle known-answer groups read it.
 - `watchonly.json` (generated; see above): the RFC 8949 CBOR examples as items, CRC-32 and
   Bytewords cases (all 256 words), single-part URs (the BCR seed and account examples and byte
   strings at every CBOR head length up to the 4,295-character maximum), strict-decoder negatives with

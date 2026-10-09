@@ -221,7 +221,8 @@ mod tests {
 
     // Every kcr.json proof case gives its exact result: Current at day 30, Stale at day 31 and
     // Future a day ahead; clear, collision and wrong-bucket lookups; and every rejection, the UR
-    // decoder's included.
+    // decoder's included. Each negative breaks one check; each order-* case breaks two or more, so
+    // its exact error pins the check order of the module comment.
     #[test]
     fn every_proof_case() {
         let doc = read("kcr.json");

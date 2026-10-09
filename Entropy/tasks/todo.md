@@ -1187,6 +1187,20 @@ starts. Every item names its proof.
         three cases: a small-order key with R = B and S = 1, a full-order key with a small-order R, and both small
         order (the old bytes). Check 10 pins which point of each is of small order (`KCR_STRICT_RULES`), and core's
         test reads the same two flags against dalek's `is_weak`. Dropping either rule alone now fails check 10.
+      - The proof negatives fail one check each, like the snapshot negatives. At commit 16 the five entry-rule
+        proofs (k above the count, an entry outside the bucket, unsorted, duplicate, zero count) and the
+        out-of-range bucket also failed the root. Each is now signed under a header whose root is the one its
+        entries and path give (k above the count: a header counting 1 for 2 entries; the out-of-range bucket: no
+        entries), so a malformed bucket the registry itself signed is refused by the rule alone.
+      - 20 `order-*` cases (10 snapshot, 10 proof) each break two or more checks and pin the first, so the check
+        order of snapshot.rs and proof.rs (and kcr_read_header, kcr_verify, kcp1_verify) is proven, not only
+        stated: magic before version, version before signature, signature before date, count and the body,
+        date before count, count before bucket, bucket before length, length before k and the entries, k before
+        the entries, an entry's bucket before its order, order before a zero count, the entries before the root.
+        Check 10 also reads every check each rejected case fails, apart from the first-error verifier (KCR_SPEC
+        "negatives"): a negative must fail only its own check, except that a truncation, a wrong length or a
+        snapshot count over 2^22 spoils what reads past it, and an `order-*` case two or more, its pin first.
+        kcr.json goes from 87 to 107 cases.
 - [ ] `seal/crockford.rs` and seal derivation (seal-watchonly-braille.md "Seal derivation spec", "The seal image";
       CLAUDE.md rule 7):
       - Crockford encoding reads 5-bit groups, most significant first;
@@ -1809,6 +1823,7 @@ moved from M0)
 18. core: Merkle, snapshot and bucket-proof verification with date() and freshness() on both verified types, the registry key under test-registry with its marker, and the Ed25519 and Merkle KATs; ed25519-dalek 3.0.0 with default-features = false and no features, BSD-3-Clause in deny.toml, vet entries
    Review fixes after 18, each its own commit, vectors first:
    - verify: the strict Ed25519 cases isolate the small-order key rule and the small-order R rule (core's strict-case test reads the third case and the two flags in the same commit, or that commit would be red);
+   - verify: the proof negatives fail only their own check, 20 order-* cases pin the check order, and check 10 reads every check each negative fails (core's release sweep moves from 87 to 107 cases in the same commit);
 19. verify + scripts: backup.json generator (check 11) and scripts/age-interop.py, with the age_cli_written vectors and their SOURCES.md entry
 20. core: age v1 armor, reader and writer; CCTV conformance; the Age KAT; scrypt, chacha20poly1305, hkdf and base64ct (and their transitive crates), plus vet entries
 21. core: backup passphrase (stored in the session; typed words for decrypt only) and confirm challenge, plaintext v1, the backup API (generate, encrypt, verify, no passphrase arguments) and Check a backup (decrypt_backup returning CheckedBackup)

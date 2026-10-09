@@ -908,6 +908,10 @@ KCR_SPEC = {
     "equals the header's (RootMismatch)",
     "proof_qr": "a single-part 'ur:keepcrypt-proof/...' whose CBOR is one byte string holding the KCP1 bytes, "
     "read by the strict decoder of watchonly.json (spec ur_decoder); a decoder failure is Ur(UrError)",
+    "negatives": "each rejected case breaks exactly one check, signed (or re-signed with the root its entries "
+    "give) so that every other check passes; only a case too short, of the wrong length, or (for a snapshot) "
+    "counting over 2^22 entries also spoils the checks that read past it. Each order-* case breaks two or "
+    "more checks and must give the first of them, which pins the order of snapshot_checks and proof_checks",
     "freshness": "against today: Future when the date is after today, Current up to 30 days old, Stale from day "
     "31. Freshness is the shell's warning, never a refusal",
     "lookups": "a snapshot gives each seed's registration count, null when its T[0..16] is absent; a proof gives "
@@ -2934,6 +2938,24 @@ def kcr_vectors_json():
     snapshot_case("bad-date-month-13", kcr_signed(kcr_header(2, 20261310, len(small), small_root)) + small_body)
     snapshot_case("bad-date-feb-29-2026", kcr_signed(kcr_header(2, 20260229, len(small), small_root)) + small_body)
     snapshot_case("bad-date-day-0", kcr_signed(kcr_header(2, 20260300, len(small), small_root)) + small_body)
+    # The check order: each order-* case breaks two or more checks and must give the first.
+    other, unsorted_body = KCR_OTHER_KEY_LABEL, b"".join(unsorted)
+    snapshot_case("order-magic-before-version",
+                  kcr_signed(kcr_header(2, today, len(small), small_root, magic=b"KCRX", version=2)) + small_body)
+    snapshot_case("order-version-before-signature",
+                  kcr_signed(kcr_header(2, today, len(small), small_root, version=2), other) + small_body)
+    snapshot_case("order-signature-before-date",
+                  kcr_signed(kcr_header(2, 20261310, len(small), small_root), other) + small_body)
+    snapshot_case("order-signature-before-count", kcr_signed(kcr_header(8, today, KCR_MAX_ENTRIES + 1, empty_root), other))
+    snapshot_case("order-signature-before-entries", kcr_signed(unsigned, other) + unsorted_body)
+    snapshot_case("order-date-before-count", kcr_signed(kcr_header(8, 20261310, KCR_MAX_ENTRIES + 1, empty_root)))
+    snapshot_case("order-length-before-entries", kcr_signed(unsigned) + unsorted_body + b"\x00")
+    snapshot_case("order-duplicate-before-zero-count",
+                  kcr_snapshot(2, today, b"".join([small[0], small[0][:16] + b"\x00\x00"] + small[1:])))
+    unsorted_zero = list(unsorted)
+    unsorted_zero[pair[1]] = unsorted_zero[pair[1]][:16] + b"\x00\x00"
+    snapshot_case("order-unsorted-before-zero-count", kcr_snapshot(2, today, b"".join(unsorted_zero)))
+    snapshot_case("order-entries-before-root", kcr_signed(unsigned) + unsorted_body)
 
     # Proofs. Each comes from a snapshot tree: (signed header, tree).
     def proof_of(signed, body, bucket):
@@ -2979,17 +3001,40 @@ def kcr_vectors_json():
     proof_case("truncated-below-minimum", clear_empty[:-1])
     proof_case("trailing-byte", shared + b"\x00")
     proof_case("k-mismatch", shared[:at + 3] + (k_shared + 1).to_bytes(2, "big") + shared[at + 5:])
-    proof_case("bucket-out-of-range", shared[:at] + (1 << BUCKET_BITS).to_bytes(3, "big") + shared[at + 3:])
-    empty_signed = kcr_snapshot(1, today, b"")[:KCR_SIGNED_BYTES]
-    proof_case("more-entries-than-count", kcp1(empty_signed, v1_bucket, kcr_buckets(small_body)[v1_bucket],
-                                               merkle_path(merkle_tree({}), v1_bucket)))
+    small_path = merkle_path(merkle_tree(kcr_buckets(small_body)), v1_bucket)
+
+    def resigned(entries, bucket=v1_bucket, count=len(small), signer=KCR_TEST_KEY_LABEL):
+        """A proof of `entries` on vector 1's path, under a header whose root is the one they and the path
+        give, so the root check passes and only the rule a case breaks fails (as for the snapshots)."""
+        root = merkle_path_root(bucket, entries, b"".join(small_path))
+        return kcp1(kcr_signed(kcr_header(2, today, count, root), signer), bucket, entries, small_path)
+
     in_bucket = kcr_buckets(small_body)[v1_bucket]
     first, second = in_bucket[:KCR_ENTRY_BYTES], in_bucket[KCR_ENTRY_BYTES:]
+    out_of_range = resigned(b"", bucket=1 << BUCKET_BITS)
+    proof_case("bucket-out-of-range", out_of_range)
+    proof_case("more-entries-than-count", resigned(in_bucket, count=1))
     outside = kcr_entry(kcr_tag16(v1_bucket + 1, b"KCE/test/kcr/outside"), 1)
-    proof_case("entry-outside-bucket", shared[:at + 5] + first + outside + shared[siblings_at:])
-    proof_case("unsorted", shared[:at + 5] + second + first + shared[siblings_at:])
-    proof_case("duplicate", shared[:at + 5] + first + first + shared[siblings_at:])
-    proof_case("zero-count", shared[:at + 5] + first + second[:16] + b"\x00\x00" + shared[siblings_at:])
+    proof_case("entry-outside-bucket", resigned(first + outside))
+    proof_case("unsorted", resigned(second + first))
+    proof_case("duplicate", resigned(first + first))
+    proof_case("zero-count", resigned(first + second[:16] + b"\x00\x00"))
+    # The check order, as for the snapshots.
+    path_bytes = b"".join(small_path)
+    proof_case("order-magic-before-signature", b"KCPX" + kcr_signed(unsigned, other) + shared[at:])
+    proof_case("order-signature-before-bucket", KCP_MAGIC + kcr_signed(unsigned, other)
+               + (1 << BUCKET_BITS).to_bytes(3, "big") + b"\x00\x00" + path_bytes)
+    proof_case("order-signature-before-entries", KCP_MAGIC + kcr_signed(unsigned, other) + shared[at:at + 5]
+               + second + first + shared[siblings_at:])
+    proof_case("order-count-before-bucket", KCP_MAGIC + kcr_signed(kcr_header(2, today, KCR_MAX_ENTRIES + 1, small_root))
+               + (1 << BUCKET_BITS).to_bytes(3, "big") + b"\x00\x00" + path_bytes)
+    proof_case("order-bucket-before-length", out_of_range + b"\x00")
+    proof_case("order-length-before-count", resigned(in_bucket, count=1) + b"\x00")
+    proof_case("order-count-before-entries", resigned(second + first, count=1))
+    outside_below = kcr_entry(kcr_tag16(v1_bucket - 1, b"KCE/test/kcr/outside-below"), 1)
+    proof_case("order-outside-before-unsorted", resigned(first + outside_below))
+    proof_case("order-unsorted-before-zero-count", resigned(second + first[:16] + b"\x00\x00"))
+    proof_case("order-entries-before-root", shared[:at + 5] + second + first + shared[siblings_at:])
 
     # The go-ahead QR: the clear proof as UR text in both cases, the largest proof one QR holds, and the
     # strict decoder's failures on the proof's own UR.
@@ -3766,6 +3811,11 @@ KCR_SNAPSHOT_RESULTS = (
     ("duplicate", "Duplicate", None), ("zero-count", "ZeroCount", None), ("root-mismatch", "RootMismatch", None),
     ("bad-date-month-13", "BadDate", None), ("bad-date-feb-29-2026", "BadDate", None),
     ("bad-date-day-0", "BadDate", None),
+    ("order-magic-before-version", "BadMagic", None), ("order-version-before-signature", "BadVersion", None),
+    ("order-signature-before-date", "BadSignature", None), ("order-signature-before-count", "BadSignature", None),
+    ("order-signature-before-entries", "BadSignature", None), ("order-date-before-count", "BadDate", None),
+    ("order-length-before-entries", "BadLength", None), ("order-duplicate-before-zero-count", "Duplicate", None),
+    ("order-unsorted-before-zero-count", "Unsorted", None), ("order-entries-before-root", "Unsorted", None),
 )
 KCR_PROOF_RESULTS = (
     ("clear-empty-bucket", "Current", "dice-99-words12", "clear"),
@@ -3786,6 +3836,16 @@ KCR_PROOF_RESULTS = (
     ("more-entries-than-count", "ProofCount", None, None),
     ("entry-outside-bucket", "EntryOutsideBucket", None, None), ("unsorted", "Unsorted", None, None),
     ("duplicate", "Duplicate", None, None), ("zero-count", "ZeroCount", None, None),
+    ("order-magic-before-signature", "BadMagic", None, None),
+    ("order-signature-before-bucket", "BadSignature", None, None),
+    ("order-signature-before-entries", "BadSignature", None, None),
+    ("order-count-before-bucket", "TooManyEntries", None, None),
+    ("order-bucket-before-length", "BucketOutOfRange", None, None),
+    ("order-length-before-count", "BadLength", None, None),
+    ("order-count-before-entries", "ProofCount", None, None),
+    ("order-outside-before-unsorted", "EntryOutsideBucket", None, None),
+    ("order-unsorted-before-zero-count", "Unsorted", None, None),
+    ("order-entries-before-root", "Unsorted", None, None),
     ("ur-lowercase", "Current", "vector-1", "clear"), ("ur-uppercase", "Current", "vector-1", "clear"),
     ("ur-75-entries", "Current", "vector-1", "clear"), ("ur-76-entries", "Ur(TooLong)", None, None),
     ("ur-bad-crc", "Ur(BadChecksum)", None, None), ("ur-multi-part", "Ur(MultiPart)", None, None),
@@ -3799,10 +3859,106 @@ def kcr_result(expect):
     return expect["freshness"] if expect.get("ok") else expect.get("error")
 
 
+# Every check a case fails, not just the first (KCR_SPEC "negatives"), read apart from kcr_verify and
+# kcp1_verify, which stop at the first: a single negative must fail only its own check, and an order-*
+# case two or more, the first being its error (review fix after commit 18).
+
+def kcr_header_failures(signed, key):
+    """(every header check a header and its signature fail, in check order; its count; its root)."""
+    header, signature = signed[:KCR_HEADER_BYTES], signed[KCR_HEADER_BYTES:KCR_SIGNED_BYTES]
+    count = int.from_bytes(header[18:26], "big")
+    checks = (("BadMagic", header[:4] != KCR_MAGIC),
+              ("BadVersion", int.from_bytes(header[4:6], "big") != KCR_VERSION),
+              ("BadSignature", not ed25519_verify(key, header, signature)),
+              ("BadDate", kcr_date(int.from_bytes(header[14:18], "big")) is None),
+              ("TooManyEntries", count > KCR_MAX_ENTRIES))
+    return [error for error, failed in checks if failed], count, header[26:58]
+
+
+def kcr_entries_failures(entries, bucket=None):
+    """Every entry rule that some whole entry of `entries` breaks, in check order."""
+    broken, previous = set(), None
+    for start in range(0, len(entries) - len(entries) % KCR_ENTRY_BYTES, KCR_ENTRY_BYTES):
+        tag, count = entries[start:start + 16], int.from_bytes(entries[start + 16:start + 18], "big")
+        if bucket is not None and kcr_bucket_of(tag) != bucket:
+            broken.add("EntryOutsideBucket")
+        if previous is not None and tag == previous:
+            broken.add("Duplicate")
+        if previous is not None and tag < previous:
+            broken.add("Unsorted")
+        if count == 0:
+            broken.add("ZeroCount")
+        previous = tag
+    return [rule for rule in ("EntryOutsideBucket", "Duplicate", "Unsorted", "ZeroCount") if rule in broken]
+
+
+def kcr_all_failures(data, key):
+    """Every check a snapshot fails, in check order; one too short for its header fails only that."""
+    if len(data) < KCR_SIGNED_BYTES:
+        return ["TooShort"]
+    failures, count, root = kcr_header_failures(data[:KCR_SIGNED_BYTES], key)
+    if len(data) != KCR_SIGNED_BYTES + KCR_ENTRY_BYTES * count:
+        failures.append("BadLength")
+    body = data[KCR_SIGNED_BYTES:]
+    body = body[:len(body) - len(body) % KCR_ENTRY_BYTES]
+    failures += kcr_entries_failures(body)
+    if merkle_root(merkle_tree(kcr_buckets(body))) != root:
+        failures.append("RootMismatch")
+    return failures
+
+
+def kcp1_all_failures(data, key):
+    """Every check a KCP1 proof fails, in check order; one shorter than 771 bytes fails only that."""
+    if len(data) < KCP_BASE_BYTES:
+        return ["TooShort"]
+    header_failures, count, root = kcr_header_failures(data[4:4 + KCR_SIGNED_BYTES], key)
+    failures = ["BadMagic"] if data[:4] != KCP_MAGIC else []
+    failures += [error for error in header_failures if error not in failures]
+    at = 4 + KCR_SIGNED_BYTES
+    bucket, k = int.from_bytes(data[at:at + 3], "big"), int.from_bytes(data[at + 3:at + 5], "big")
+    if bucket >= 1 << BUCKET_BITS:
+        failures.append("BucketOutOfRange")
+    if len(data) != KCP_BASE_BYTES + KCR_ENTRY_BYTES * k:
+        failures.append("BadLength")
+    if k > count:
+        failures.append("ProofCount")
+    entries = data[at + 5:at + 5 + KCR_ENTRY_BYTES * k]
+    failures += kcr_entries_failures(entries, bucket)
+    siblings = data[at + 5 + KCR_ENTRY_BYTES * k:]
+    if len(siblings) != 32 * BUCKET_BITS or merkle_path_root(bucket, entries, siblings) != root:
+        failures.append("RootMismatch")
+    return failures
+
+
+def kcr_case_failures(section, case, key):
+    """Every check a kcr.json case fails; a go-ahead QR that fails the UR decoder fails only that."""
+    if section == "snapshots":
+        return kcr_all_failures(bytes.fromhex(case["kcr_hex"]), key)
+    if "ur" in case:
+        data, error = ur_decode_single(KCP_UR_TYPE, case["ur"])
+        return ["Ur(%s)" % error] if error else kcp1_all_failures(data, key)
+    return kcp1_all_failures(bytes.fromhex(case["kcp1_hex"]), key)
+
+
+def kcr_failures_problem(section, case, error, failures):
+    """None if a rejected case fails as KCR_SPEC "negatives" says, else what is wrong. A case too short,
+    of the wrong length or (a snapshot) over 2^22 entries may also fail the checks that read past it."""
+    name = case["name"]
+    if name.startswith("order-"):
+        if len(failures) >= 2 and failures[0] == error:
+            return None
+        return "kcr.json %s %s must fail two or more checks, %s first; it fails %r" % (section, name, error, failures)
+    spoils = ("TooShort", "BadLength") + (("TooManyEntries",) if section == "snapshots" else ())
+    if failures == [error] or (error in spoils and failures[:1] == [error]):
+        return None
+    return "kcr.json %s %s must fail only %s; it fails %r" % (section, name, error, failures)
+
+
 def check_kcr_contents(vectors_dir):
-    """The committed kcr.json: every case's outcome and seed equal to the pins above, and each case's
-    outcome reproduced by this file's verifier from its bytes; the pinned key and roots; the Merkle
-    section; and its seeds equal to seal.json's vector 1 and to rolls.json's dice words."""
+    """The committed kcr.json: every case's outcome and seed equal to the pins above, each case's
+    outcome reproduced by this file's verifier from its bytes, and each rejected case failing the
+    checks KCR_SPEC "negatives" allows; the pinned key and roots; the Merkle section; and its seeds
+    equal to seal.json's vector 1 and to rolls.json's dice words."""
     path = vectors_dir / "kcr.json"
     if not path.is_file():
         return []  # check_generated_file reports it missing
@@ -3838,6 +3994,10 @@ def check_kcr_contents(vectors_dir):
             if (error or kcr_freshness(fields["date"], doc["today"])) != pin[1]:
                 problems.append("kcr.json %s %s: the verifier gives %r, pinned %r" % (section, case["name"],
                                                                                     error, pin[1]))
+            if not expect.get("ok"):
+                problem = kcr_failures_problem(section, case, pin[1], kcr_case_failures(section, case, key))
+                if problem:
+                    problems.append(problem)
     merkle = doc["merkle"]
     if merkle["empty_root_hex"] != KCR_PINNED["empty_root_hex"]:
         problems.append("kcr.json empty root %s, pinned %s" % (merkle["empty_root_hex"], KCR_PINNED["empty_root_hex"]))
@@ -4132,7 +4292,8 @@ def selftest(vectors_dir):
          "library and the copied spec values, BIP-84 and BCR-2020-015 rebuilt, pinned answers, decoder cases, file "
          "matches regenerated output", lambda: check_watchonly_json(vectors_dir)),
         ("vectors/kcr.json: Ed25519 against RFC 8032 TEST 1-3 and kat.json, the docs' snapshot and proof figures, "
-         "file matches regenerated output, every case's pinned outcome reproduced, pinned key and roots",
+         "file matches regenerated output, every case's pinned outcome reproduced, each negative failing only its "
+         "check and each order case its first, pinned key and roots",
          lambda: check_kcr_json(vectors_dir)),
     )
     failed = 0

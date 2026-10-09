@@ -257,7 +257,8 @@ mod tests {
 
     // Every kcr.json snapshot case gives its exact result against the test key, read from the
     // file (the key bytes exist in core only under test-registry); together they produce every
-    // SnapshotError a snapshot can give.
+    // SnapshotError a snapshot can give. Each order-* case breaks two or more checks, so its exact
+    // error pins the check order of the module comment.
     #[test]
     fn every_snapshot_case() {
         let doc = read("kcr.json");

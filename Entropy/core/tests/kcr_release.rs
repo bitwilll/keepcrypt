@@ -56,5 +56,5 @@ fn every_kcr_json_case_gives_no_registry_key() {
         verify_bucket_proof_qr(""),
         Err(CoreError::NoRegistryKey)
     ));
-    assert_eq!(snapshots.len() + proofs.len(), 87);
+    assert_eq!(snapshots.len() + proofs.len(), 107);
 }
