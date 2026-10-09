@@ -881,11 +881,15 @@ starts. Every item names its proof.
         the credit arrives in one step;
       - a chunk is tested whole before any byte of it is absorbed;
       - `pub fn hwrng_boot_test` runs the Health KAT group, then takes exactly 1,024 samples (pi-firmware.md step 1);
-      - errors carry the test, the stage and the sample index only.
+      - errors carry the test, the stage and the sample index only;
+      - review fix after commit 10: the first failure latches, so the tester fails every later chunk with it and
+        credits nothing, fail-closed on its own and not only through the session's wipe.
       Proof:
       - every keepcrypt.json health case passes;
       - cutoff boundaries hold in both stages: a run of 5 passes and 6 fails; C - 1 passes and C fails;
-      - chunks of 1, 64, 1,000 and the whole stream give the same verdict and tail;
+      - chunks of 1, 64, 1,000 and the whole stream give the same verdict and tail (review fix after commit 10: the
+        tail, what a caller absorbs, is compared in every chunking, not only the verdict);
+      - a failed tester stays failed and credits nothing;
       - startup samples are discarded;
       - 1,535 bytes credit 0 and 1,536 credit 512 samples;
       - the tests still fire after startup.

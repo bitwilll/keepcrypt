@@ -12,6 +12,9 @@
 //!   its first credit, and that first window credits 512 samples (2,048 bits) at once.
 //! - A chunk is tested whole before the caller absorbs any of it.
 //! - A failure names the test, the stage and the sample index only, never a sample value.
+//! - A failure latches: the tester then fails every later chunk with that same error and credits
+//!   nothing, so it is fail-closed on its own, not only because the session wipes on any `Err`
+//!   (CLAUDE.md rule 3).
 
 use zeroize::Zeroize;
 
@@ -40,6 +43,10 @@ pub(crate) struct HealthTester {
     rct_count: u32,
     apt_value: u8,
     apt_count: u32,
+    /// The first failure, latched. It holds a test, a stage and an index, never a sample value, so
+    /// zeroizing skips it, and a wiped tester that once failed still fails.
+    #[zeroize(skip)]
+    failed: Option<CoreError>,
 }
 
 impl HealthTester {
@@ -51,19 +58,31 @@ impl HealthTester {
             rct_count: 0,
             apt_value: 0,
             apt_count: 0,
+            failed: None,
         }
     }
 
     /// Tests every sample of `chunk`, in order, carrying state across calls. On success returns
     /// the offset in `chunk` where its post-startup samples begin (`chunk.len()` if all of it is
-    /// startup), so the caller absorbs only `chunk[offset..]`.
+    /// startup), so the caller absorbs only `chunk[offset..]`. The first failure latches: this
+    /// call and every later one return it.
     pub(crate) fn test(&mut self, chunk: &[u8]) -> Result<usize, CoreError> {
-        let startup_left = STARTUP_SAMPLES.saturating_sub(self.tested);
+        if let Some(failure) = self.failed {
+            return Err(failure);
+        }
+        let verdict = self.test_chunk(chunk);
+        if let Err(failure) = verdict {
+            self.failed = Some(failure);
+        }
+        verdict
+    }
+
+    fn test_chunk(&mut self, chunk: &[u8]) -> Result<usize, CoreError> {
+        let startup_left = usize::try_from(STARTUP_SAMPLES.saturating_sub(self.tested))
+            .map_err(|_| CoreError::Internal(InternalFault::Length))?;
         for &sample in chunk {
             self.step(sample)?;
         }
-        let startup_left = usize::try_from(startup_left)
-            .map_err(|_| CoreError::Internal(InternalFault::Length))?;
         Ok(startup_left.min(chunk.len()))
     }
 
@@ -103,8 +122,12 @@ impl HealthTester {
         self.tested
     }
 
-    /// Post-startup samples in completed windows: floor((tested - 1,024) / 512) * 512.
+    /// Post-startup samples in completed windows: floor((tested - 1,024) / 512) * 512, or 0 once
+    /// the tester has failed.
     pub(crate) const fn credited_samples(&self) -> u64 {
+        if self.failed.is_some() {
+            return 0;
+        }
         match self.tested.checked_sub(STARTUP_SAMPLES) {
             Some(post_startup) => post_startup / APT_WINDOW * APT_WINDOW,
             None => 0,
@@ -153,14 +176,33 @@ mod tests {
     use crate::test_vectors::{hex, keepcrypt_json, named, text};
     use serde_json::{Value, json};
 
-    /// Runs `samples` through a fresh tester in chunks of `chunk`, as keepcrypt.json writes a
-    /// verdict, plus the post-startup offsets each chunk reported.
-    fn verdict(samples: &[u8], chunk: usize) -> (Value, Vec<usize>) {
+    /// One stream through a fresh tester in fixed-size chunks, as a caller would feed it.
+    struct Run {
+        /// The verdict, as keepcrypt.json writes it.
+        verdict: Value,
+        /// The post-startup offset each passing chunk reported.
+        offsets: Vec<usize>,
+        /// What a caller absorbs: each passing chunk from its reported offset on, in order.
+        absorbed: Vec<u8>,
+        /// Samples in the chunks that passed (a failing chunk is never absorbed).
+        passed: usize,
+    }
+
+    fn run(samples: &[u8], chunk: usize) -> Run {
         let mut tester = HealthTester::new();
-        let mut offsets = Vec::new();
+        let mut run = Run {
+            verdict: Value::Null,
+            offsets: Vec::new(),
+            absorbed: Vec::new(),
+            passed: 0,
+        };
         for part in samples.chunks(chunk) {
             match tester.test(part) {
-                Ok(offset) => offsets.push(offset),
+                Ok(offset) => {
+                    run.offsets.push(offset);
+                    run.absorbed.extend_from_slice(&part[offset..]);
+                    run.passed += part.len();
+                }
                 Err(CoreError::Health(f)) => {
                     let test = match f.test {
                         HealthTest::RepetitionCount => "repetition_count",
@@ -170,15 +212,15 @@ mod tests {
                         HealthStage::Startup => "startup",
                         HealthStage::Continuous => "continuous",
                     };
-                    let v =
+                    run.verdict =
                         json!({"result": "fail", "test": test, "stage": stage, "sample": f.sample});
-                    return (v, offsets);
+                    return run;
                 }
                 Err(e) => panic!("{e}"),
             }
         }
-        let v = json!({"result": "pass", "tested": tester.tested(), "credited_samples": tester.credited_samples()});
-        (v, offsets)
+        run.verdict = json!({"result": "pass", "tested": tester.tested(), "credited_samples": tester.credited_samples()});
+        run
     }
 
     #[test]
@@ -192,23 +234,31 @@ mod tests {
         assert_eq!(health["alpha_log2"], -20);
     }
 
-    // Every keepcrypt.json case gives its verdict, whole or in chunks of 1, 64 and 1,000 samples.
-    // The cases cover a run of 5 passing and of 6 failing, and 61 passing and 62 failing, in both
-    // the startup and the continuous stage, and a sample on which both tests fail (the Repetition
+    // Every keepcrypt.json case gives its verdict and its tail, whole or in chunks of 1, 64 and
+    // 1,000 samples. The tail is what a caller absorbs: exactly the samples from index 1,024 on of
+    // the chunks that passed, so no startup sample is ever absorbed, whatever the chunking. The
+    // cases cover a run of 5 passing and of 6 failing, and 61 passing and 62 failing, in both the
+    // startup and the continuous stage, and a sample on which both tests fail (the Repetition
     // Count is named, as it is checked first).
     #[test]
     fn every_keepcrypt_json_case_in_any_chunking() {
         let doc = keepcrypt_json();
         let cases = doc["health"].as_array().expect("health cases");
         assert_eq!(cases.len(), 11);
+        let startup = usize::try_from(STARTUP_SAMPLES).expect("small");
         for case in cases {
+            let name = text(&case["name"]);
             let samples = hex(&case["samples_hex"]);
             for chunk in [1, 64, 1_000, samples.len()] {
+                let run = run(&samples, chunk);
+                assert_eq!(run.verdict, case["expect"], "{name} in chunks of {chunk}");
+                if case["expect"]["result"] == "pass" {
+                    assert_eq!(run.passed, samples.len(), "{name} in chunks of {chunk}");
+                }
                 assert_eq!(
-                    verdict(&samples, chunk).0,
-                    case["expect"],
-                    "{} in chunks of {chunk}",
-                    text(&case["name"])
+                    run.absorbed,
+                    samples[startup.min(run.passed)..run.passed],
+                    "{name} in chunks of {chunk}: the absorbed tail"
                 );
             }
         }
@@ -220,7 +270,7 @@ mod tests {
         {
             let n = usize::try_from(pair[0].as_u64().expect("n")).expect("small");
             assert_eq!(
-                verdict(&samples[..n], 64).0["credited_samples"],
+                run(&samples[..n], 64).verdict["credited_samples"],
                 pair[1],
                 "prefix {n}"
             );
@@ -230,13 +280,13 @@ mod tests {
     #[test]
     fn startup_samples_are_reported_for_discarding() {
         let samples = hex(&named(&keepcrypt_json()["health"], "clean-4096")["samples_hex"]);
-        let (_, offsets) = verdict(&samples[..2_000], 1_000);
+        let offsets = run(&samples[..2_000], 1_000).offsets;
         assert_eq!(
             offsets,
             [1_000, 24],
             "the first 1,024 samples are startup samples"
         );
-        let (_, offsets) = verdict(&samples[..1_536], 64);
+        let offsets = run(&samples[..1_536], 64).offsets;
         assert_eq!(
             offsets[15], 64,
             "chunk 15 (samples 960..1023) is all startup"
@@ -256,6 +306,34 @@ mod tests {
             crate::source::hwrng_credited_bits(tester.credited_samples()),
             2_048
         );
+    }
+
+    // Once a test fires, the tester fails every later chunk with that same error, empty chunks
+    // included, and credits nothing, however healthy the later samples are.
+    #[test]
+    fn a_failed_tester_stays_failed_and_credits_nothing() {
+        let clean = hex(&named(&keepcrypt_json()["health"], "clean-4096")["samples_hex"]);
+        let mut tester = HealthTester::new();
+        assert_eq!(tester.test(&clean[..1_536]), Ok(1_024));
+        assert_eq!(tester.credited_samples(), 512);
+        let failure = tester.test(&[7u8; 8]);
+        assert!(
+            matches!(
+                failure,
+                Err(CoreError::Health(HealthFailure {
+                    test: HealthTest::RepetitionCount,
+                    stage: HealthStage::Continuous,
+                    ..
+                }))
+            ),
+            "{failure:?}"
+        );
+        assert_eq!(tester.credited_samples(), 0);
+        let tested = tester.tested();
+        for later in [&clean[2_000..3_100], &[], &clean[..1]] {
+            assert_eq!(tester.test(later), failure);
+        }
+        assert_eq!((tester.credited_samples(), tester.tested()), (0, tested));
     }
 
     #[test]
