@@ -1007,6 +1007,13 @@ starts. Every item names its proof.
       - ACTION read as `act` gives ACT with ShouldHaveLetter;
       - every mirror flip in faces 1-4 gives exactly one MirrorMisread, and names another word for exactly the 279;
       - prefix neighbours never match.
+      Review fixes after commit 15:
+      - every blank-face slip, with the exact verdict per face: each of the 103 three-letter words read with any
+        fourth letter gives ShouldBeBlank on face 4, and each of the 1,945 longer words read as its first three
+        letters gives ShouldHaveLetter (Verification, "every blank-face slip");
+      - the result borrows nothing, so it wipes itself: `ReadbackMismatch` and `Dots` are `ZeroizeOnDrop` (pinned
+        at compile time), and a verdict's zeroize clears its dots and resets the variant to `Ok`, because the
+        variant plus the letters as typed gives the seed's letters back.
 - [ ] KAT group Braille: SHA-256 of the canonical table text, plus `2026`. Proof: one flipped dot, or two swapped
       words, makes the group fail (unit test, injected).
 

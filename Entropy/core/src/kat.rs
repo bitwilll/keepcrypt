@@ -206,8 +206,14 @@ const BIP39_WORDLIST_SHA256: [u8; 32] =
     unhex("2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda");
 
 fn bip39_wordlist_group(fault: bool) -> bool {
+    wordlist_passes(bip39::Language::English.word_list(), fault)
+}
+
+/// The list's digest against the pin; the unit tests feed it a damaged list. Braille takes its
+/// words, and so its SeedBook numbers, from this list, so two swapped words fail this group.
+fn wordlist_passes(words: &[&str], fault: bool) -> bool {
     let mut hasher = Sha256::new();
-    for word in bip39::Language::English.word_list() {
+    for word in words {
         hasher.update(word.as_bytes());
         hasher.update(b"\n");
     }
@@ -622,6 +628,19 @@ mod tests {
         assert_eq!(bytes(published), BIP39_WORDLIST_SHA256);
     }
 
+    // Two swapped words, which would give braille's inserts the wrong SeedBook numbers, fail the
+    // Bip39Wordlist group (tasks/todo.md, M1 group 5, the Braille KAT's proof; review fix after
+    // commit 15). ACT and ACTION are SeedBook 0020 and 0021.
+    #[test]
+    fn two_swapped_words_fail_the_wordlist_group() {
+        let list = bip39::Language::English.word_list();
+        assert!(wordlist_passes(list, false));
+        let mut swapped = *list;
+        assert_eq!((swapped[19], swapped[20]), ("act", "action"));
+        swapped.swap(19, 20);
+        assert!(!wordlist_passes(&swapped, false));
+    }
+
     #[test]
     fn every_group_passes_and_fails_under_its_fault() {
         for id in KatId::ALL {
@@ -726,7 +745,8 @@ mod tests {
     }
 
     // One flipped dot, or two letters' cells swapped, changes the table's digest, so the group
-    // fails (tasks/todo.md, M1 group 5).
+    // fails (tasks/todo.md, M1 group 5). The table holds cells, not words: two swapped words fail
+    // the Bip39Wordlist group (two_swapped_words_fail_the_wordlist_group).
     #[test]
     fn a_damaged_braille_table_fails_the_group() {
         assert!(braille_table_passes(&braille::table_text(), false));

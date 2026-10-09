@@ -18,11 +18,16 @@
 //!
 //! The views (`BrailleInserts`, `Insert`, `Face`) borrow the session's mnemonic, so none outlives
 //! it; like the read-back result, none has `Debug`, `Display`, `Clone`, `Copy` or `Serialize`,
-//! since each reveals letters of the seed.
+//! since each reveals letters of the seed. The read-back result borrows nothing, because the shell
+//! keeps it while it shows the verdicts, so it wipes itself instead: with the letters as typed, a
+//! mismatch's verdicts give the word's letters back. `ReadbackMismatch` and `Dots` (a cell, also
+//! what `Face::dots` returns) are zeroized on drop; dropping a `ReadbackResult` drops its mismatch.
 
 use core::array;
 use core::cmp::Ordering;
 use core::marker::PhantomData;
+
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::error::{BrailleError, CoreError};
 use crate::secret::SecretMnemonic;
@@ -101,7 +106,9 @@ fn mirror_partner(letter: u8) -> Option<u8> {
     (b'a'..=b'z').find(|&other| other != letter && letter_cell(other).1 == mirrored(dots))
 }
 
-/// A cell's raised dots: dot d at bit d - 1.
+/// A cell's raised dots: dot d at bit d - 1. Zeroized on drop: a face's dots are a letter of the
+/// seed.
+#[derive(Zeroize, ZeroizeOnDrop)]
 pub struct Dots {
     bits: u8,
 }
@@ -418,7 +425,9 @@ pub enum ReadbackResult {
     Mismatch(ReadbackMismatch),
 }
 
-/// What a failed read-back found.
+/// What a failed read-back found. Zeroized on drop: every verdict becomes `Ok` with no dots, and
+/// the spelled word is forgotten.
+#[derive(Zeroize, ZeroizeOnDrop)]
 pub struct ReadbackMismatch {
     spelled: Option<u16>,
     faces: [FaceVerdict; READBACK_FACES],
@@ -463,6 +472,21 @@ pub enum FaceVerdict {
 impl FaceVerdict {
     fn is_ok(&self) -> bool {
         matches!(self, FaceVerdict::Ok)
+    }
+}
+
+/// zeroize's derive wipes an enum's fields but leaves the variant, which here is the secret, so
+/// this wipes the dots, then makes the verdict `Ok`. `black_box` keeps that store when the verdict
+/// is dead afterwards, as it is in a drop. No `Drop` of its own: the assignment would drop it
+/// again. It is wiped with its `ReadbackMismatch`.
+impl Zeroize for FaceVerdict {
+    fn zeroize(&mut self) {
+        if let FaceVerdict::WrongLetter { missing, extra } = self {
+            missing.zeroize();
+            extra.zeroize();
+        }
+        *self = FaceVerdict::Ok;
+        core::hint::black_box(&*self);
     }
 }
 
@@ -981,6 +1005,36 @@ mod tests {
         assert_eq!(doc["counts"]["mirror_flip_words"], 279);
     }
 
+    // Every blank-face slip in faces 1-4 is caught, with the exact verdict per face (tasks/todo.md,
+    // M1 Verification): each three-letter word read with any fourth letter a-z gives ok, ok, ok,
+    // should-be-blank, and each longer word read as its first three letters gives ok, ok, ok,
+    // should-have-letter (review fix after commit 15).
+    #[test]
+    fn every_blank_face_slip_is_caught() {
+        let ok = String::from("ok");
+        let (mut short, mut long) = (0, 0);
+        for w in list() {
+            if w.len() == 3 {
+                for fourth in b'a'..=b'z' {
+                    let typed = format!("{w}{}", char::from(fourth));
+                    let want = [ok.clone(), ok.clone(), ok.clone(), "should-be-blank".into()];
+                    assert_eq!(readback(w, &typed).2, want, "{w} read as {typed}");
+                    short += 1;
+                }
+            } else {
+                let want = [
+                    ok.clone(),
+                    ok.clone(),
+                    ok.clone(),
+                    "should-have-letter".into(),
+                ];
+                assert_eq!(readback(w, &w[..3]).2, want, "{w} read as {}", &w[..3]);
+                long += 1;
+            }
+        }
+        assert_eq!((short, long), (103 * 26, 1945));
+    }
+
     // The 49 short words that begin longer words (braille.json prefix_of): neither reading of a
     // prefix pair ever matches, because a blank face counts.
     #[test]
@@ -1084,6 +1138,39 @@ mod tests {
             inserts.readback(1, "ab"),
             Err(CoreError::Braille(BrailleError::MalformedReadback))
         ));
+    }
+
+    // The read-back result wipes itself (CLAUDE.md rule 5; review fix after commit 15).
+    const fn zeroize_on_drop<T: ZeroizeOnDrop>() {}
+    const _: () = {
+        zeroize_on_drop::<ReadbackMismatch>();
+        zeroize_on_drop::<Dots>();
+    };
+
+    // White box: zeroizing a mismatch forgets the spelled word and turns every verdict, the
+    // variant included, into Ok; zeroizing dots clears them.
+    #[test]
+    fn a_mismatch_zeroizes_every_field() {
+        let mut mismatch = ReadbackMismatch {
+            spelled: Some(index_of("accident")),
+            faces: [
+                FaceVerdict::MirrorMisread,
+                FaceVerdict::ShouldBeBlank,
+                FaceVerdict::ShouldHaveLetter,
+                FaceVerdict::WrongLetter {
+                    missing: Dots { bits: 0x3f },
+                    extra: Dots { bits: 0x01 },
+                },
+            ],
+        };
+        assert_eq!(mismatch.spelled_word(), Some("accident"));
+        mismatch.zeroize();
+        assert_eq!(mismatch.spelled_word(), None);
+        assert_eq!(mismatch.spelled_seedbook_number(), None);
+        assert!(mismatch.faces().iter().all(FaceVerdict::is_ok));
+        let mut dots = Dots { bits: 0x3f };
+        dots.zeroize();
+        assert_eq!(dots.bits(), 0);
     }
 
     #[test]
