@@ -1,0 +1,11 @@
+[package]
+name = "keepcrypt-pi-sim"
+description = "Desktop simulator of the KeepCrypt Pi screen and keys; development only, never in the image"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+keepcrypt-pi.workspace = true
