@@ -1245,6 +1245,10 @@ starts. Every item names its proof.
       `registration` call them from group 9 (commit 22), where "a typo followed by the right code reveals the
       words" is proven on a session. Commit 17 proves the function-level half: a malformed and a wrong code, then
       the right one.
+      Review fix after commit 18: check.rs's module comment (and commit 14444c1's message) said no file under
+      `core/src/seal` names "the OS source", but its own test the_nonce_comes_from_the_os_source builds
+      `Source::Os`. The plan's rule is about the OS RNG crate, and the banned-API gate holds it; the comment now
+      says that, and that the nonce's bytes come only through `Source::os_bytes`.
 - [ ] `seal/merkle.rs` (CLAUDE.md "Bucket proof"; seal-watchonly-braille.md "Snapshot format"; Q6b):
       - leaf and node exactly as in CLAUDE.md, with the prefix written as a 24-bit big-endian bucket index;
       - the root comes from one streaming pass with at most 21 stacked hashes;
@@ -1832,6 +1836,7 @@ moved from M0)
    - verify: the strict Ed25519 cases isolate the small-order key rule and the small-order R rule (core's strict-case test reads the third case and the two flags in the same commit, or that commit would be red);
    - verify: the proof negatives fail only their own check, 20 order-* cases pin the check order, and check 10 reads every check each negative fails (core's release sweep moves from 87 to 107 cases in the same commit);
    - core: registry_key_is_test() answers from the test-registry feature, not from whether a key is pinned, and the tests state "no key pinned" and "not a test build" apart;
+   - core: check.rs's comment names the plan's rule (no file under core/src/seal names the OS RNG crate), not "the OS source", which its own test uses;
 19. verify + scripts: backup.json generator (check 11) and scripts/age-interop.py, with the age_cli_written vectors and their SOURCES.md entry
 20. core: age v1 armor, reader and writer; CCTV conformance; the Age KAT; scrypt, chacha20poly1305, hkdf and base64ct (and their transitive crates), plus vet entries
 21. core: backup passphrase (stored in the session; typed words for decrypt only) and confirm challenge, plaintext v1, the backup API (generate, encrypt, verify, no passphrase arguments) and Check a backup (decrypt_backup returning CheckedBackup)

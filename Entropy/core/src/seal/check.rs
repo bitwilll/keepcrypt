@@ -3,7 +3,9 @@
 //! tasks/todo.md, M1 group 7, Q6d).
 //!
 //! - The check nonce n is 8 fresh bytes per check, drawn by `source::Source::os_bytes`, a read of
-//!   its own that never touches the pool. No file under `core/src/seal` names the OS source.
+//!   its own that never touches the pool. No file under `core/src/seal` names the OS RNG crate: the
+//!   nonce's bytes come only through `Source::os_bytes` (one test below hands it the real OS arm,
+//!   `Source::Os`, to show that two draws differ).
 //! - The check QR carries `<origin>/check#t=<T as 64 lowercase hex>&n=<n as 16 lowercase hex>`.
 //! - G = the first 40 bits of SHA-256("KCE/v1/go" || T || n), 8 Crockford characters. A typed code
 //!   is decoded leniently (case, dashes, spaces, O/I/L) and its 40 bits are compared with G's in
