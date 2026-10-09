@@ -52,6 +52,30 @@ UR; TREZOR `b4e3f5ed`, `#l3mwu4e8`; the bip32JP passphrase `5d00908e`, never the
 `68896147`; shield `37b5eed4`); runs every decoder case through a strict reader rebuilt in
 `verify.py`; and regenerates the file and requires byte equality.
 
+`vectors/kcr.json` has no row either. `tools/verify/verify.py --write-kcr-vectors` builds it with a
+standard-library RFC 8032 Ed25519, the 2^20-bucket Merkle tree (every empty subtree's hash
+precomputed once) and the `.kcr` snapshot and KCP1 bucket-proof formats of
+`docs/seal-watchonly-braille.md` and Q6b-Q6c in `tasks/todo.md`. It signs only with two keys whose
+secret seeds are SHA-256 of the public labels `KCE/test/registry-key/v1` (the test registry key core
+pins under its `test-registry` feature) and `KCE/test/other-key/v1` (the wrong-key cases), takes no
+key input, and uses public test mnemonics only. Every case names the result core must give: a
+snapshot's or proof's freshness against a pinned "today" and its lookups, or the exact
+`SnapshotError`. Self-test check 10 verifies RFC 8032 TEST 1-3 (and refuses each with L added to S)
+and `kat.json`'s Ed25519 entry (and refuses it with one bit flipped in the key, in R and in S);
+checks that two strict cases satisfy the cofactorless equation yet fail strict verification (a
+small-order key, a small-order R); requires the docs' figures (58-byte header, 18-byte entries,
+75.5 MB for 2^22 entries, about 18 MB per million, 771 + 18k bytes per proof, 75 entries per QR,
+30 days) to appear in `docs/seal-watchonly-braille.md` as computed; regenerates the file and
+requires byte equality; and reruns every case through `verify.py`'s own verifier against outcomes
+pinned apart from the generator. Three answers were computed apart from `verify.py`, by a
+standard-library script that does not import it: the test public key
+(`42e9fa0e206d4bdf410f987ac7ded54fb02fb49ef277cc425d5fdfdb72c3b94b`), the empty snapshot's root
+(`b73ca0379e73400458ebe358b6aeec7a39baa7ddd8e1f78abe7436de44e4ba93`, a streaming pass over all
+2^20 buckets) and the root behind the vector-1 proof
+(`d0d2028a28b277c2e105a1a3275c92bae1762aa43117762cf164700a7802e0ed`). OpenSSL 3.6.4 derived the same
+public key from the same seed, and its Ed25519 signature of the `small` snapshot's header equals the
+one `verify.py` writes.
+
 ## Provenance
 
 | File | SHA-256 | Source | Upstream commit or date | Licence | Notes |
@@ -111,7 +135,7 @@ parsed out by a throwaway script and compared with `verify.py`'s literals, as de
 | FIPS 180-4 (SHAVS byte-oriented vectors) | https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/shs/shabytetestvectors.zip (NIST CAVP), 4909729 bytes; members `shabytetestvectors/SHA256ShortMsg.rsp` (SHA-256 `75e1cb83994638481808e225b9eb0c1ebd0c232d952ac42b61abce6363be283c`) and `shabytetestvectors/SHA512ShortMsg.rsp` (SHA-256 `e53a36c03609e5a3e3cc4b6e117a499db7864c23ec825c6cec99503a45f40764`), "CAVS 11.0", generated 2011-03-15 | `929ef80b7b3418aca026643f6f248815913b60e01741a44bba9e118067f4c9b8` | 2026-10-09 (Last-Modified 2024-09-29 23:13:50 GMT) | U.S. Government work, not subject to copyright in the U.S. (17 U.S.C. 105) | `kat.json` sha256 and sha512 `empty`: the `Len = 0` entry of each file, whose `Msg = 00` is the placeholder for the empty message, and its `MD` |
 | RFC 4231 (HMAC-SHA-224/256/384/512 test vectors) | https://www.rfc-editor.org/rfc/rfc4231.txt, 17725 bytes | `72178527ce93500e730bc8eb182b857e583096d652b64ece0879c52ba1df973b` | 2026-10-09 | Copyright (C) The Internet Society (2005), subject to BCP 78; only the test values are copied | `kat.json` hmac `rfc4231-case-2`: section 4.3, Test Case 2: Key (`"Jefe"`), Data (`"what do ya want for nothing?"`), HMAC-SHA-256 and HMAC-SHA-512 |
 | NIST SP 800-90B (entropy sources) | https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-90B.pdf, 1043696 bytes | `9b0dd77131ade3617a91cd8457fa09e0dc354c273bb2220a6afeaca16e5defe7` | 2026-10-10 (Last-Modified 2018-01-10 14:24:12 GMT) | U.S. Government work, not subject to copyright in the U.S. (17 U.S.C. 105) | `verify.py` `SP800_90B_TABLE_2` (check 7): Table 2 "Example cutoff values of the Adaptive Proportion Test", page 27, the whole-number entries for alpha = 2^-20: non-binary data, W = 512, H = 1, 2, 4, 8 give C = 311, 177, 62, 13; binary data, W = 1024, H = 1 gives C = 589. The test steps of sections 4.4.1 and 4.4.2 and the window rule (1024 for binary samples, 512 otherwise) behind `health_test` and core's `health` module. |
-| RFC 8032 (EdDSA) | https://www.rfc-editor.org/rfc/rfc8032.txt, 103210 bytes | `ed63657ff389301282b169b0abde9b5dd2c7e4d524fdfa5da6ff3094fc93c4c3` | 2026-10-09 | Copyright (c) 2017 IETF Trust and the document authors, subject to BCP 78 and the IETF Trust's Legal Provisions; only the test values are copied | `kat.json` ed25519 `rfc8032-test-1`: section 7.1, TEST 1: PUBLIC KEY, the empty MESSAGE and SIGNATURE. Its SECRET KEY is not copied, because core only verifies signatures |
+| RFC 8032 (EdDSA) | https://www.rfc-editor.org/rfc/rfc8032.txt, 103210 bytes | `ed63657ff389301282b169b0abde9b5dd2c7e4d524fdfa5da6ff3094fc93c4c3` | 2026-10-09 | Copyright (c) 2017 IETF Trust and the document authors, subject to BCP 78 and the IETF Trust's Legal Provisions; only the test values are copied | `kat.json` ed25519 `rfc8032-test-1`: section 7.1, TEST 1: PUBLIC KEY, the empty MESSAGE and SIGNATURE; `verify.py` `RFC8032_TESTS` (check 10, and `kcr.json` `rfc8032`): TEST 1, TEST 2 and TEST 3, each PUBLIC KEY, MESSAGE and SIGNATURE. No SECRET KEY is copied, because core only verifies signatures. Downloaded again on 2026-10-10, twice, with the same size and SHA-256 |
 | BIP-84 (P2WPKH account derivation) | https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0084.mediawiki, 4648 bytes (git blob `f266a1455317e3cfb69e477f24fe9f23577a5433`) | `1900feec6cafca65b8c09906ca0658d2d742b4c9b44cb15678996985b6bfe627` | 2026-10-10 (bitcoin/bips 927b6de9915c9262615a6399de51b200f81e5aa4) | CC0-1.0 | `verify.py` `BIP84_*` (check 9): "Test vectors": the mnemonic, rootpub, the account 0 xpub (a zpub), and the public keys and addresses of m/84'/0'/0'/0/0, 0/1 and 1/0. The private keys are not copied |
 | BIP-380 (output script descriptors) | https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0380.mediawiki, 19681 bytes (git blob `88fd273a186a916a04ae3f3f48c2ba05396db494`) | `34e6510bb2eba9445a68eacf3d24d5a4e5f24481477488d5552f674ac81dd5fe` | 2026-10-10 (bitcoin/bips 927b6de9915c9262615a6399de51b200f81e5aa4) | BSD-2-Clause | `verify.py` `BIP380_CHECKSUM_VECTORS` and `DESCRIPTOR_*` (check 9): "Test Vectors", the eight checksum and character-set cases as listed (BIP-380 gives them no verdict and makes the checksum optional; the `valid` flag, true for one and false for seven, is KeepCrypt's rule that a string ends in a correct checksum: watchonly.json `spec.bip380`), and the reference code's INPUT_CHARSET, CHECKSUM_CHARSET and GENERATOR |
 | BCR-2020-005 (Uniform Resources) | https://raw.githubusercontent.com/BlockchainCommons/Research/e4a4fbb186e2e7625ccdf7149aec4f0a5adaf850/papers/bcr-2020-005-ur.md, 17161 bytes (git blob `84e2651ad248466a47ebdbf913be74726e15301f`), version 2.1.0 | `2087e74f503690cd9c25826dbc24deb2932932d8cbbe6038266e8e86856bd40d` | 2026-10-10 (BlockchainCommons/Research e4a4fbb186e2e7625ccdf7149aec4f0a5adaf850) | BSD-2-Clause-Patent (the repository's LICENSE) | `verify.py` `BCR005_SEED_*` (check 9): "UR CBOR Tags", the untagged seed CBOR `a10150c7…` and its UR `ur:seed/oyadgd…`; the single-part form `ur:<type>/<message>`, lowercase or uppercase, and the `bytes` test type |
@@ -123,13 +147,15 @@ parsed out by a throwaway script and compared with `verify.py`'s literals, as de
 
 Every copied value was compared mechanically with the value parsed back out of its document
 (one throwaway script, not committed), and that comparison failed when any value was altered.
-The SHA and HMAC values are recomputed by every self-test run. verify.py has no Ed25519 until
-check 10 (tasks/todo.md, M1 group 7), so the Ed25519 entry is pinned instead: check 5 requires
-SHA-256(public key (32 bytes) || signature (64 bytes) || message) to equal
+The SHA and HMAC values are recomputed by every self-test run. The Ed25519 entry is also pinned:
+check 5 requires SHA-256(public key (32 bytes) || signature (64 bytes) || message) to equal
 `0e1d4c11a5a51315bf2daccae025f9654fd7309bf941e57dece4caeea65c280c`. That digest was computed on
 2026-10-09 from TEST 1 as parsed out of a fresh download of RFC 8032 (same size and SHA-256 as the
 row above), not from verify.py's table; a separate RFC 8032 verify accepted the signature and
-rejected it with one bit flipped.
+rejected it with one bit flipped. Since M1 commit 16, check 10 verifies that entry and RFC 8032
+TEST 1-3 with `verify.py`'s own Ed25519. TEST 2 and TEST 3 were parsed out of the 2026-10-10
+download by a throwaway script that matched all three tests to `RFC8032_TESTS` and failed when a
+digit was altered.
 
 ## What each set is for
 
@@ -153,6 +179,13 @@ rejected it with one bit flipped.
   word its SeedBook number, faces 1-5 with blanks, the lighter face, mirror flags, every cell, the
   read-back key, its mirror-flip neighbours and the longer words it begins. Core's braille tests and
   its Braille known-answer group read it.
+- `kcr.json` (generated; see above): the two label keys, RFC 8032 TEST 1-3 with their S + L twins,
+  two strict-verification cases, the seals the cases are built around (seal vector 1 and the 50- and
+  99-roll dice-only seeds, with S, the seal code, T, the bucket and G), the Merkle leaf, node, empty
+  root and vector-1 path, and the signed snapshots and KCP1 proofs (bytes or go-ahead QR text), each
+  with the result core must give: valid ones with their header fields, freshness and lookups,
+  tampered ones with their `SnapshotError`. Core's seal tests and its Ed25519 and Merkle known-answer
+  groups read it.
 - `watchonly.json` (generated; see above): the RFC 8949 CBOR examples as items, CRC-32 and
   Bytewords cases (all 256 words), single-part URs (the BCR seed and account examples and byte
   strings at every CBOR head length up to the 4,295-character maximum), strict-decoder negatives with

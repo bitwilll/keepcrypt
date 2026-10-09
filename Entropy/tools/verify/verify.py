@@ -20,7 +20,10 @@ xpubs, descriptors with BIP-380 checksums, first addresses, the v1 crypto-accoun
 the deterministic CBOR, Bytewords, CRC-32 and strict single-part UR rules behind the go-ahead QR),
 computed with a standard-library secp256k1, RIPEMD-160 and BIP32 on public test mnemonics and
 checked against values copied from BIP-84, BIP-380, BCR-2020-005, -007, -012, -015, bip32JP and RFC
-8949.
+8949; and vectors/kcr.json (signed registry snapshots and the KCP1 bucket proofs behind the go-ahead
+QR, valid, tampered, stale and future-dated, each naming the result core must give), built with a
+standard-library RFC 8032 Ed25519 that signs only with two keys derived from public labels, the
+2^20-bucket Merkle tree and the .kcr and KCP1 formats, and checked by verify.py's own verifier.
 The verifier's own recomputation of a device's C, E and words, and braille, arrive in M2.
 
 The only outside code it runs is Coldcard's public-domain rolls.py and rolls12.py, committed
@@ -30,7 +33,7 @@ Every seal.json vector also has its values pinned here (vector 1 from CLAUDE.md 
 vectors 2 and 3 independently reproduced), so --write-seal-vectors cannot re-baseline a bug.
 
 Usage:
-  verify.py --selftest              9 checks: seal known answers (all 3 vectors), seal.json bytes,
+  verify.py --selftest              10 checks: seal known answers (all 3 vectors), seal.json bytes,
                                     SOURCES.md hashes and coverage, Coldcard's scripts on every
                                     dice-only case (rolls.json and keepcrypt.json), kat.json (SHA and
                                     HMAC recomputed, its bytes, then its pinned entries and Ed25519
@@ -40,12 +43,15 @@ Usage:
                                     counts recomputed from the list, the SeedBook PDF's SHA-256),
                                     watchonly.json (the primitives against the standard library and
                                     the copied spec values, BIP-84 and BCR-2020-015 rebuilt, its pins
-                                    and decoder cases, its bytes)
+                                    and decoder cases, its bytes), kcr.json (Ed25519 against RFC 8032
+                                    TEST 1-3 and kat.json, the docs' snapshot and proof figures, its
+                                    bytes, every case's pinned outcome, the pinned key and roots)
   verify.py --write-seal-vectors    regenerate vectors/seal.json
   verify.py --write-kat-vectors     regenerate vectors/kat.json
   verify.py --write-keepcrypt-vectors  regenerate vectors/keepcrypt.json
   verify.py --write-braille-vectors    regenerate vectors/braille.json
   verify.py --write-watchonly-vectors  regenerate vectors/watchonly.json
+  verify.py --write-kcr-vectors        regenerate vectors/kcr.json
   --vectors-dir DIR                 testing only: use DIR in place of the repo's vectors/ (made
                                     absolute); a SOURCES.md row `vectors/<p>` then means DIR/<p>
 
@@ -53,6 +59,7 @@ Exit codes: 0 all good, 1 a check failed, 2 usage error.
 """
 
 import argparse
+import datetime
 import hashlib
 import hmac
 import json
@@ -83,7 +90,7 @@ TAG_GO = b"KCE/v1/go"
 # Shared interface: one row per file in vectors/SOURCES.md.
 SOURCES_ROW = re.compile(r"^\| `(vectors/[^`]+)` \| `([0-9a-f]{64})` \|")
 # Files under vectors/ that SOURCES.md does not list: the files this script generates, and SOURCES.md.
-UNLISTED = ("seal.json", "kat.json", "keepcrypt.json", "braille.json", "watchonly.json", "SOURCES.md")
+UNLISTED = ("seal.json", "kat.json", "keepcrypt.json", "braille.json", "watchonly.json", "kcr.json", "SOURCES.md")
 # macOS Finder metadata, written into any folder opened in Finder. .gitignore excludes it, so it
 # is never committed and never present in CI. The coverage rule skips a regular file with this
 # exact name only if it starts with Finder's magic bytes; any other .DS_Store needs a row, so a
@@ -219,10 +226,10 @@ SEAL_SPEC = {
 # Check 5: the known answers behind core's Sha256, Sha512, Hmac and Ed25519 KAT groups
 # (tasks/todo.md, M1 group 2), copied as published from the documents pinned by SHA-256 in
 # vectors/SOURCES.md, "Spec values". Check 5 recomputes every SHA and HMAC value with hashlib and
-# hmac, so a mistyped copy fails the self-test instead of reaching kat.json. verify.py has no
-# Ed25519 until check 10 (tasks/todo.md, M1 group 7), so the RFC 8032 entry is pinned by SHA-256
-# (KAT_ED25519_SHA256 below). The RFC's secret key is not copied: core only verifies signatures
-# (tasks/todo.md, M1 Q3).
+# hmac, so a mistyped copy fails the self-test instead of reaching kat.json. The RFC 8032 entry is
+# pinned by SHA-256 (KAT_ED25519_SHA256 below), and check 10 also verifies it with verify.py's own
+# Ed25519 (tasks/todo.md, M1 group 7). The RFC's secret key is not copied: core only verifies
+# signatures (tasks/todo.md, M1 Q3).
 NIST_SHA256_EXAMPLE = "NIST CSRC FIPS 180-4 example SHA256.pdf"
 NIST_SHA512_EXAMPLE = "NIST CSRC FIPS 180-4 example SHA512.pdf"
 SHA256_TWO_BLOCK = b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"
@@ -276,8 +283,8 @@ KAT_LAYOUT = (
     ("ed25519", ("rfc8032-test-1",),
      ("name", "source", "public_key_hex", "message_ascii", "message_hex", "signature_hex")),
 )
-# Each Ed25519 entry, pinned until check 10 verifies it: SHA-256 over its exact bytes, public key
-# (32) || signature (64) || message. The digest was computed from RFC 8032 section 7.1 TEST 1 as
+# Each Ed25519 entry, pinned by SHA-256 over its exact bytes, public key (32) || signature (64) ||
+# message; check 10 verifies it too, and refuses it with one bit flipped in the key, in R and in S. The digest was computed from RFC 8032 section 7.1 TEST 1 as
 # parsed out of rfc8032.txt (pinned in vectors/SOURCES.md, "Spec values"), not from KAT_ED25519, so
 # a mistyped key or signature fails the self-test even after --write-kat-vectors.
 KAT_ED25519_SHA256 = {
@@ -804,6 +811,109 @@ WATCHONLY_SPEC = {
     "checksum'",
     "passphrase": "the BIP39 passphrase is NFKD-normalized before PBKDF2 and never trimmed; "
     "unnormalized_fingerprint is the master fingerprint without NFKD, which core must never give",
+}
+
+# Check 10 and vectors/kcr.json: the signed registry snapshot (.kcr), the signed bucket proof (KCP1)
+# behind the go-ahead QR, and the Ed25519 signature over both (docs/seal-watchonly-braille.md "Snapshot
+# format", "Go-ahead QR", "Go-ahead code"; CLAUDE.md "Bucket proof", "Check nonce", "Go-ahead code";
+# tasks/todo.md, M1 group 7, Q3, Q6b, Q6c). Core's seal module verifies the same bytes with
+# ed25519-dalek's verify_strict and checks its results against kcr.json; the M2 verifier re-checks a
+# seal against a snapshot with the same code.
+TAG_BUCKET = b"KCE/v1/bucket"
+BUCKET_BITS = 20  # the lookup prefix: 2^20 buckets
+KCR_MAGIC = b"KCR1"
+KCP_MAGIC = b"KCP1"
+KCR_VERSION = 1
+KCR_HEADER_BYTES = 58  # magic 4, version 2, number 8, date 4, count 8, root 32
+KCR_SIGNED_BYTES = KCR_HEADER_BYTES + 64  # the header and its signature: 122
+KCR_ENTRY_BYTES = 18  # T[0..16] and a u16 registration count
+KCR_MAX_ENTRIES = 1 << 22  # the loader's limit (Q6b)
+KCP_BASE_BYTES = len(KCP_MAGIC) + KCR_SIGNED_BYTES + 3 + 2 + 32 * BUCKET_BITS  # 771, before the k entries
+KCP_UR_TYPE = "keepcrypt-proof"
+FRESH_DAYS = 30  # a snapshot or proof is Stale from day 31 (docs "Freshness"; Q5)
+# The "today" the freshness cases are measured against: 2026 is not a leap year, so today - 30 and
+# today - 31 fall in January and pin February's 28 days.
+KCR_TODAY = 20260301
+# The two Ed25519 keys verify.py signs with, each derived from a public label: the 32-byte secret seed
+# is SHA-256(label). The first is the test registry key that core pins under its test-registry feature
+# (CLAUDE.md rule 10; Q3); the second signs the wrong-key cases. verify.py takes no key input and signs
+# with nothing else; neither is, or ever becomes, a real registry key.
+KCR_TEST_KEY_LABEL = b"KCE/test/registry-key/v1"
+KCR_OTHER_KEY_LABEL = b"KCE/test/other-key/v1"
+# RFC 8032 section 7.1, TEST 1-3 (Ed25519), copied as published from the document pinned in
+# vectors/SOURCES.md, "Spec values": (name, public key hex, message hex, signature hex). The secret keys
+# are not copied: verify.py signs only with the two label keys above. Check 10 verifies each and
+# rejects each with L added to S.
+RFC8032_TESTS = (
+    ("rfc8032-test-1", "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a", "",
+     "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46b"
+     "d25bf5f0595bbe24655141438e7a100b"),
+    ("rfc8032-test-2", "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c", "72",
+     "92a009a9f0d4cab8720e820b5f642540a2b27b5416503f8fb3762223ebdb69da085ac1e43e15996e458f3613d0f11d8c"
+     "387b2eaeb4302aeeb00d291612bb0c00"),
+    ("rfc8032-test-3", "fc51cd8e6218a1a38da47ed00230f0580816ed13ba3303ac5deb911548908025", "af82",
+     "6291d657deec24024827e69c3abe01a30ce548a284743a445e3680d7db5ac3ac18ff9b538d16f290ae67f760984dc659"
+     "4a7c15e9716ed28dc027beceea1ec40a"),
+)
+# The seals kcr.json's snapshots and proofs are built around, with the check nonce of seal vector 1:
+# (name, the rolls.json case or None for seal vector 1, words). The 50-roll seed is a 12-word dice-only
+# session's; after its collision the restart needs 99 rolls, at either length (CLAUDE.md "Dice quota").
+KCR_SEED_INPUTS = (
+    ("vector-1", None, 12),
+    ("dice-50-words12", "coldcard-50", 12),
+    ("dice-99-words12", "coldcard-99", 12),
+    ("dice-99-words24", "coldcard-99", 24),
+)
+# Known answers check 10 compares with what this file generates, so --write-kcr-vectors cannot
+# re-baseline them (tasks/lessons.md: "pin a vector"). Computed on 2026-10-10 by a separate
+# standard-library script that does not import this one (affine Edwards arithmetic, and a streaming
+# Merkle pass with a stack over all 2^20 buckets): the test registry public key, the empty
+# snapshot's root, and the root of the snapshot behind the vector-1 proof (kcr.json "small", read
+# from its committed bytes). OpenSSL 3.6.4 derived the same public key from the same seed, and its
+# Ed25519 signature of "small"'s header equals the one this file writes.
+KCR_PINNED = {
+    "test_public_key_hex": "42e9fa0e206d4bdf410f987ac7ded54fb02fb49ef277cc425d5fdfdb72c3b94b",
+    "empty_root_hex": "b73ca0379e73400458ebe358b6aeec7a39baa7ddd8e1f78abe7436de44e4ba93",
+    "vector_1_proof_root_hex": "d0d2028a28b277c2e105a1a3275c92bae1762aa43117762cf164700a7802e0ed",
+}
+KCR_SPEC = {
+    "encoding": "every *_hex value is the exact bytes in lowercase hex; all integers are big-endian; dates are "
+    "the decimal number YYYYMMDD as an integer",
+    "ed25519": "PureEdDSA Ed25519 (RFC 8032 section 5.1). Verification is ed25519-dalek's verify_strict: the "
+    "public key and R must decode (y below p), S must be below L, neither the key nor R may be of small order, "
+    "and [S]B - [k]A must encode to R's 32 bytes exactly, k = SHA-512(R || A || message) mod L (cofactorless)",
+    "keys": "each key's 32-byte secret seed is SHA-256 of its public label; test_registry is the key core pins "
+    "under its test-registry feature, other signs the wrong-key cases. Release builds pin no key, so every case "
+    "below gives CoreError::NoRegistryKey there, before any byte is read",
+    "header": "58 bytes: magic 'KCR1', version (u16, 1), snapshot number (u64), date (u32, YYYYMMDD), entry count "
+    "(u64), bucket root (32 bytes); then a pure Ed25519 signature (64 bytes) over exactly those 58 bytes",
+    "entry": "18 bytes: T[0..16], then the registration count (u16, at least 1); bucket = the first 20 bits of "
+    "T, written as 3 bytes for the leaf (the bucket index as a 24-bit big-endian integer: 2b810... is 02 b8 10)",
+    "merkle": "leaf(i) = SHA-256(0x00 || 'KCE/v1/bucket' || i as 3 bytes || bucket i's entries in body order); "
+    "node = SHA-256(0x01 || left || right); the root is over all 2^20 buckets in index order; a path holds the "
+    "20 siblings leaf level first, and at level j the node is on the right when (i >> j) & 1 = 1",
+    "snapshot": "header || signature || count entries, strictly ascending by T[0..16], at most 2^22 entries",
+    "snapshot_checks": "in this order, each giving CoreError::Snapshot(error): length at least 122 (TooShort); "
+    "magic (BadMagic); version 1 (BadVersion); the signature against the pinned key (BadSignature); a real "
+    "Gregorian date, years 1-9999 (BadDate); count at most 2^22 (TooManyEntries); length exactly 122 + 18 x "
+    "count (BadLength); then in entry order, each entry against the one before (equal: Duplicate, lower: "
+    "Unsorted), then its count (zero: ZeroCount); the recomputed root equals the header's (RootMismatch)",
+    "proof": "KCP1 = 'KCP1' || header || signature || bucket (3 bytes) || k (u16) || k entries || the 20 "
+    "siblings: 771 + 18k bytes",
+    "proof_checks": "in this order: length at least 771 (TooShort); magic 'KCP1' (BadMagic); then the header "
+    "checks of a snapshot from magic to count (BadMagic, BadVersion, BadSignature, BadDate, TooManyEntries); "
+    "bucket below 2^20 (BucketOutOfRange); length exactly 771 + 18k (BadLength); k at most the header's count "
+    "(ProofCount); then in entry order, each entry's bucket (EntryOutsideBucket), its order against the one "
+    "before (Duplicate, Unsorted) and its count (ZeroCount); the root recomputed from the leaf and the path "
+    "equals the header's (RootMismatch)",
+    "proof_qr": "a single-part 'ur:keepcrypt-proof/...' whose CBOR is one byte string holding the KCP1 bytes, "
+    "read by the strict decoder of watchonly.json (spec ur_decoder); a decoder failure is Ur(UrError)",
+    "freshness": "against today: Future when the date is after today, Current up to 30 days old, Stale from day "
+    "31. Freshness is the shell's warning, never a refusal",
+    "lookups": "a snapshot gives each seed's registration count, null when its T[0..16] is absent; a proof gives "
+    "wrong_bucket when the seed's bucket is not the proof's, else collision (with the count) or clear",
+    "seeds": "seal values as in seal.json (spec): S with the empty passphrase, the seal code, T, the Seal ID, "
+    "the bucket and the go-ahead code G for nonce_hex",
 }
 
 # The BIP39 English word list, embedded because the M2 verifier ships as one file (docs/build-plan.md
@@ -2286,6 +2396,696 @@ def write_watchonly_vectors(vectors_dir):
     return write_vectors(vectors_dir, "watchonly.json", watchonly_vectors_json())
 
 
+# --- Ed25519, the bucket tree, .kcr snapshots and KCP1 proofs (vectors/kcr.json) ---------------
+# Standard library only. Ed25519 follows RFC 8032 section 5.1 on the twisted Edwards curve
+# -x^2 + y^2 = 1 + d x^2 y^2 over GF(2^255 - 19), in extended coordinates (X, Y, Z, T) with x = X/Z,
+# y = Y/Z and xy = T/Z. Nothing here is constant time: it signs only with the two public-label test
+# keys and verifies public data.
+
+ED25519_P = 2 ** 255 - 19
+ED25519_L = 2 ** 252 + 27742317777372353535851937790883648493
+ED25519_D = -121665 * pow(121666, ED25519_P - 2, ED25519_P) % ED25519_P
+ED25519_SQRT_M1 = pow(2, (ED25519_P - 1) // 4, ED25519_P)
+ED25519_IDENTITY = (0, 1, 1, 0)
+
+
+def ed_add(a, b):
+    """The sum of two points (the complete addition law for a = -1; it also doubles)."""
+    p = ED25519_P
+    x1, y1, z1, t1 = a
+    x2, y2, z2, t2 = b
+    e1 = (y1 - x1) * (y2 - x2) % p
+    e2 = (y1 + x1) * (y2 + x2) % p
+    e3 = 2 * ED25519_D * t1 * t2 % p
+    e4 = 2 * z1 * z2 % p
+    e, f, g, h = e2 - e1, e4 - e3, e4 + e3, e2 + e1
+    return (e * f % p, g * h % p, f * g % p, e * h % p)
+
+
+def ed_negate(point):
+    """-P = (-x, y)."""
+    x, y, z, t = point
+    return (-x % ED25519_P, y, z, -t % ED25519_P)
+
+
+def ed_multiply(scalar, point):
+    """[scalar]P, double and add from the top bit."""
+    result = ED25519_IDENTITY
+    for bit in range(scalar.bit_length() - 1, -1, -1):
+        result = ed_add(result, result)
+        if scalar >> bit & 1:
+            result = ed_add(result, point)
+    return result
+
+
+def ed_encode(point):
+    """32 bytes: y little-endian, with the low bit of x in the top bit."""
+    x, y, z, _ = point
+    z_inverse = pow(z, ED25519_P - 2, ED25519_P)
+    x, y = x * z_inverse % ED25519_P, y * z_inverse % ED25519_P
+    return (y | (x & 1) << 255).to_bytes(32, "little")
+
+
+def ed_decode(data):
+    """The point 32 bytes encode (RFC 8032 section 5.1.3), or None: y must be below p, x^2 must have a
+    square root, and x = 0 must come with a clear sign bit."""
+    p = ED25519_P
+    if len(data) != 32:
+        return None
+    y = int.from_bytes(data, "little")
+    sign, y = y >> 255, y & ((1 << 255) - 1)
+    if y >= p:
+        return None
+    x2 = (y * y - 1) * pow(ED25519_D * y * y + 1, p - 2, p) % p
+    if x2 == 0:
+        return None if sign else (0, y, 1, 0)
+    x = pow(x2, (p + 3) // 8, p)
+    if (x * x - x2) % p:
+        x = x * ED25519_SQRT_M1 % p
+    if (x * x - x2) % p:
+        return None
+    if x & 1 != sign:
+        x = p - x
+    return (x, y, 1, x * y % p)
+
+
+# The base point: y = 4/5, x even.
+ED25519_BASE = ed_decode((4 * pow(5, ED25519_P - 2, ED25519_P) % ED25519_P).to_bytes(32, "little"))
+
+
+def ed_small_order(point):
+    """True if [8]P is the identity."""
+    return ed_encode(ed_multiply(8, point)) == ed_encode(ED25519_IDENTITY)
+
+
+def ed25519_secret(label):
+    """The secret scalar and the nonce prefix of one of the two label keys (RFC 8032 section 5.1.5):
+    seed = SHA-256(label), h = SHA-512(seed), the scalar is h[0..32] clamped, the prefix h[32..64]. Any
+    other label is refused: verify.py takes no key input."""
+    if label not in (KCR_TEST_KEY_LABEL, KCR_OTHER_KEY_LABEL):
+        raise ValueError("verify.py signs only with its two public-label test keys")
+    h = hashlib.sha512(hashlib.sha256(label).digest()).digest()
+    scalar = int.from_bytes(h[:32], "little") & ((1 << 254) - 8) | 1 << 254
+    return scalar, h[32:]
+
+
+def ed25519_public_key(label):
+    """The 32-byte public key of a label key."""
+    return ed_encode(ed_multiply(ed25519_secret(label)[0], ED25519_BASE))
+
+
+def ed25519_sign(label, message):
+    """A pure Ed25519 signature (RFC 8032 section 5.1.6) by a label key: R || S, 64 bytes."""
+    scalar, prefix = ed25519_secret(label)
+    public = ed_encode(ed_multiply(scalar, ED25519_BASE))
+    r = int.from_bytes(hashlib.sha512(prefix + message).digest(), "little") % ED25519_L
+    big_r = ed_encode(ed_multiply(r, ED25519_BASE))
+    k = int.from_bytes(hashlib.sha512(big_r + public + message).digest(), "little") % ED25519_L
+    return big_r + ((r + k * scalar) % ED25519_L).to_bytes(32, "little")
+
+
+def ed25519_verify(public_key, message, signature):
+    """verify_strict (KCR_SPEC "ed25519"): True only if the key and R decode, S is below L, neither the
+    key nor R is of small order, and [S]B - [k]A encodes to R's bytes."""
+    if len(public_key) != 32 or len(signature) != 64:
+        return False
+    a_point, r_point = ed_decode(public_key), ed_decode(signature[:32])
+    if a_point is None or r_point is None:
+        return False
+    s = int.from_bytes(signature[32:], "little")
+    if s >= ED25519_L or ed_small_order(a_point) or ed_small_order(r_point):
+        return False
+    k = int.from_bytes(hashlib.sha512(signature[:32] + public_key + message).digest(), "little") % ED25519_L
+    check = ed_add(ed_multiply(s, ED25519_BASE), ed_negate(ed_multiply(k, a_point)))
+    return ed_encode(check) == signature[:32]
+
+
+def ed25519_equation_holds(public_key, message, signature):
+    """Only the cofactorless equation: the key and R decode, S is below L, and [S]B - [k]A encodes to R.
+    verify_strict adds the small-order rules to this; the strict cases in kcr.json pass this and fail
+    ed25519_verify."""
+    a_point, r_point = ed_decode(public_key), ed_decode(signature[:32])
+    s = int.from_bytes(signature[32:], "little")
+    if a_point is None or r_point is None or s >= ED25519_L:
+        return False
+    k = int.from_bytes(hashlib.sha512(signature[:32] + public_key + message).digest(), "little") % ED25519_L
+    return ed_encode(ed_add(ed_multiply(s, ED25519_BASE), ed_negate(ed_multiply(k, a_point)))) == signature[:32]
+
+
+def ed25519_sign_small_order_r(label, message):
+    """A signature by a label key whose R is the identity point: S = k x a mod L makes [S]B - [k]A the
+    identity, so the cofactorless equation holds, and only verify_strict's small-order rule refuses it."""
+    scalar, _ = ed25519_secret(label)
+    big_r = ed_encode(ED25519_IDENTITY)
+    k = int.from_bytes(hashlib.sha512(big_r + ed25519_public_key(label) + message).digest(), "little") % ED25519_L
+    return big_r + (k * scalar % ED25519_L).to_bytes(32, "little")
+
+
+def ed25519_s_plus_l(signature):
+    """The same signature with L added to S: the malleable twin verify_strict must refuse."""
+    s = int.from_bytes(signature[32:], "little") + ED25519_L
+    return signature[:32] + s.to_bytes(32, "little")
+
+
+def merkle_leaf(index, entries):
+    """leaf(i) = SHA-256(0x00 || "KCE/v1/bucket" || i as 3 bytes, big-endian || the bucket's entries)."""
+    return hashlib.sha256(b"\x00" + TAG_BUCKET + index.to_bytes(3, "big") + entries).digest()
+
+
+def merkle_node(left, right):
+    """node = SHA-256(0x01 || left || right)."""
+    return hashlib.sha256(b"\x01" + left + right).digest()
+
+
+_EMPTY_TREE = []
+
+
+def merkle_empty_levels():
+    """The hash of every empty subtree, precomputed once per run: levels[j] holds the 2^(20 - j) nodes of
+    level j, 32 bytes each, joined (level 0 the empty leaves, level 20 the empty root). Every leaf
+    hashes its own index, so empty subtrees differ by position and all 2^21 - 1 hashes are kept."""
+    if _EMPTY_TREE:
+        return _EMPTY_TREE
+    sha256, head = hashlib.sha256, b"\x00" + TAG_BUCKET
+    level = bytearray()
+    for index in range(1 << BUCKET_BITS):
+        level += sha256(head + index.to_bytes(3, "big")).digest()
+    levels = [bytes(level)]
+    for _ in range(BUCKET_BITS):
+        below, level = levels[-1], bytearray()
+        for start in range(0, len(below), 64):
+            level += sha256(b"\x01" + below[start:start + 64]).digest()
+        levels.append(bytes(level))
+    _EMPTY_TREE.extend(levels)
+    return _EMPTY_TREE
+
+
+def merkle_tree(buckets):
+    """The bucket tree where `buckets` maps each non-empty bucket index to its entries' bytes: per level,
+    a dict of the nodes that differ from the empty tree. Only the paths above those buckets are hashed."""
+    level = {index: merkle_leaf(index, entries) for index, entries in buckets.items() if entries}
+    tree = [level]
+    for j in range(BUCKET_BITS):
+        level = {position: merkle_node(merkle_at(tree, j, 2 * position), merkle_at(tree, j, 2 * position + 1))
+                 for position in sorted(set(index >> 1 for index in level))}
+        tree.append(level)
+    return tree
+
+
+def merkle_at(tree, level, position):
+    """The node at (level, position): from the tree where a bucket below it is filled, else empty."""
+    node = tree[level].get(position)
+    if node is not None:
+        return node
+    return merkle_empty_levels()[level][32 * position:32 * position + 32]
+
+
+def merkle_root(tree):
+    return merkle_at(tree, BUCKET_BITS, 0)
+
+
+def merkle_path(tree, index):
+    """The 20 siblings of bucket `index`, leaf level first."""
+    return [merkle_at(tree, j, (index >> j) ^ 1) for j in range(BUCKET_BITS)]
+
+
+def merkle_path_root(index, entries, siblings):
+    """The root a leaf and its path give: at level j the node is on the right when (index >> j) & 1."""
+    node = merkle_leaf(index, entries)
+    for j in range(BUCKET_BITS):
+        sibling = siblings[32 * j:32 * j + 32]
+        node = merkle_node(sibling, node) if index >> j & 1 else merkle_node(node, sibling)
+    return node
+
+
+def kcr_bucket_of(tag):
+    """The bucket: the first 20 bits of T (or of T[0..16])."""
+    return int.from_bytes(tag[:3], "big") >> 4
+
+
+def kcr_entry(tag, count):
+    """One 18-byte entry: T[0..16] || count (u16)."""
+    return tag[:16] + count.to_bytes(2, "big")
+
+
+def kcr_buckets(body):
+    """The entries of a body grouped by bucket, in body order: {index: bytes}."""
+    buckets = {}
+    for start in range(0, len(body), KCR_ENTRY_BYTES):
+        entry = body[start:start + KCR_ENTRY_BYTES]
+        index = kcr_bucket_of(entry)
+        buckets[index] = buckets.get(index, b"") + entry
+    return buckets
+
+
+def kcr_tag16(bucket, label):
+    """A test T[0..16] in `bucket`: the bucket's 20 bits, then 108 bits of SHA-256(label)."""
+    rest = int.from_bytes(hashlib.sha256(label).digest()[:14], "big") >> 4
+    return (bucket << 108 | rest).to_bytes(16, "big")
+
+
+def kcr_header(number, date, count, root, magic=KCR_MAGIC, version=KCR_VERSION):
+    """The 58-byte header."""
+    return (magic + version.to_bytes(2, "big") + number.to_bytes(8, "big") + date.to_bytes(4, "big")
+            + count.to_bytes(8, "big") + root)
+
+
+def kcr_signed(header, label=KCR_TEST_KEY_LABEL):
+    """A header followed by its signature: 122 bytes."""
+    return header + ed25519_sign(label, header)
+
+
+def kcr_snapshot(number, date, body, label=KCR_TEST_KEY_LABEL):
+    """A signed snapshot of `body`, its count and root computed from the body as it is."""
+    root = merkle_root(merkle_tree(kcr_buckets(body)))
+    return kcr_signed(kcr_header(number, date, len(body) // KCR_ENTRY_BYTES, root), label) + body
+
+
+def kcp1(signed, bucket, entries, siblings, k=None, magic=KCP_MAGIC):
+    """A KCP1 proof: magic || header || signature || bucket (3 bytes) || k (u16) || entries || siblings."""
+    k = len(entries) // KCR_ENTRY_BYTES if k is None else k
+    return magic + signed + bucket.to_bytes(3, "big") + k.to_bytes(2, "big") + entries + b"".join(siblings)
+
+
+def kcp1_ur(proof):
+    """The go-ahead QR text of a proof: the single-part UR of one CBOR byte string."""
+    return ur_single(KCP_UR_TYPE, cbor_encode(cbor_byte_string(proof)))
+
+
+def kcr_date(value):
+    """A header date (YYYYMMDD) as a datetime.date, or None if it is not a real Gregorian date in years
+    1-9999."""
+    try:
+        return datetime.date(value // 10000, value // 100 % 100, value % 100)
+    except ValueError:
+        return None
+
+
+def kcr_freshness(date, today):
+    """Current up to 30 days old, Stale from day 31, Future when after today."""
+    age = kcr_date(today).toordinal() - kcr_date(date).toordinal()
+    if age < 0:
+        return "Future"
+    return "Current" if age <= FRESH_DAYS else "Stale"
+
+
+def kcr_read_header(signed, key):
+    """The header checks shared by snapshots and proofs, in order: (fields, None) or (None, error)."""
+    header, signature = signed[:KCR_HEADER_BYTES], signed[KCR_HEADER_BYTES:KCR_SIGNED_BYTES]
+    if header[:4] != KCR_MAGIC:
+        return None, "BadMagic"
+    if int.from_bytes(header[4:6], "big") != KCR_VERSION:
+        return None, "BadVersion"
+    if not ed25519_verify(key, header, signature):
+        return None, "BadSignature"
+    fields = {"number": int.from_bytes(header[6:14], "big"), "date": int.from_bytes(header[14:18], "big"),
+              "count": int.from_bytes(header[18:26], "big"), "root": header[26:58]}
+    if kcr_date(fields["date"]) is None:
+        return None, "BadDate"
+    if fields["count"] > KCR_MAX_ENTRIES:
+        return None, "TooManyEntries"
+    return fields, None
+
+
+def kcr_entries_error(entries, bucket=None):
+    """The first entry rule broken, in entry order (KCR_SPEC "snapshot_checks", "proof_checks"), or None."""
+    previous = None
+    for start in range(0, len(entries), KCR_ENTRY_BYTES):
+        tag, count = entries[start:start + 16], int.from_bytes(entries[start + 16:start + 18], "big")
+        if bucket is not None and kcr_bucket_of(tag) != bucket:
+            return "EntryOutsideBucket"
+        if previous is not None and tag == previous:
+            return "Duplicate"
+        if previous is not None and tag < previous:
+            return "Unsorted"
+        if count == 0:
+            return "ZeroCount"
+        previous = tag
+    return None
+
+
+def kcr_verify(data, key):
+    """A snapshot, checked in KCR_SPEC "snapshot_checks" order: (fields with the body, None) or (None,
+    error)."""
+    if len(data) < KCR_SIGNED_BYTES:
+        return None, "TooShort"
+    fields, error = kcr_read_header(data[:KCR_SIGNED_BYTES], key)
+    if error:
+        return None, error
+    if len(data) != KCR_SIGNED_BYTES + KCR_ENTRY_BYTES * fields["count"]:
+        return None, "BadLength"
+    body = data[KCR_SIGNED_BYTES:]
+    error = kcr_entries_error(body)
+    if error:
+        return None, error
+    if merkle_root(merkle_tree(kcr_buckets(body))) != fields["root"]:
+        return None, "RootMismatch"
+    fields["body"] = body
+    return fields, None
+
+
+def kcp1_verify(data, key):
+    """A KCP1 proof, checked in KCR_SPEC "proof_checks" order: (fields with the bucket and its entries,
+    None) or (None, error)."""
+    if len(data) < KCP_BASE_BYTES:
+        return None, "TooShort"
+    if data[:4] != KCP_MAGIC:
+        return None, "BadMagic"
+    fields, error = kcr_read_header(data[4:4 + KCR_SIGNED_BYTES], key)
+    if error:
+        return None, error
+    at = 4 + KCR_SIGNED_BYTES
+    bucket, k = int.from_bytes(data[at:at + 3], "big"), int.from_bytes(data[at + 3:at + 5], "big")
+    if bucket >= 1 << BUCKET_BITS:
+        return None, "BucketOutOfRange"
+    if len(data) != KCP_BASE_BYTES + KCR_ENTRY_BYTES * k:
+        return None, "BadLength"
+    if k > fields["count"]:
+        return None, "ProofCount"
+    entries = data[at + 5:at + 5 + KCR_ENTRY_BYTES * k]
+    error = kcr_entries_error(entries, bucket)
+    if error:
+        return None, error
+    if merkle_path_root(bucket, entries, data[at + 5 + KCR_ENTRY_BYTES * k:]) != fields["root"]:
+        return None, "RootMismatch"
+    fields.update(bucket=bucket, entries=entries)
+    return fields, None
+
+
+def kcp1_verify_ur(text, key):
+    """A go-ahead QR text: the strict UR decoder, then kcp1_verify."""
+    data, error = ur_decode_single(KCP_UR_TYPE, text)
+    if error:
+        return None, "Ur(%s)" % error
+    return kcp1_verify(data, key)
+
+
+def kcr_count_of(entries, tag):
+    """The registration count of T[0..16] among sorted entries, or None."""
+    for start in range(0, len(entries), KCR_ENTRY_BYTES):
+        if entries[start:start + 16] == tag[:16]:
+            return int.from_bytes(entries[start + 16:start + 18], "big")
+    return None
+
+
+def kcr_seed(name, rolls_name, words):
+    """One kcr.json seed: its mnemonic, S, seal code, T, Seal ID, bucket and the go-ahead code for seal
+    vector 1's nonce."""
+    rolls = dict(COLDCARD_ROLLS)[rolls_name] if rolls_name else None
+    if rolls is None:
+        mnemonic = KAT_MNEMONIC
+    else:
+        entropy = dice_only_entropy(rolls)
+        mnemonic = " ".join(bip39_words(entropy if words == 24 else entropy[:16]))
+    seed = bip39_seed(mnemonic)
+    code = seal_code(seed)
+    tag = seal_tag(code)
+    go = go_ahead_code(tag, bytes.fromhex(KAT_NONCE_HEX))
+    return {"name": name, "rolls": rolls, "words": words, "mnemonic": mnemonic, "seed_hex": seed.hex(),
+            "seal_code": grouped(code, (5, 5, 5, 5, 6)), "seal_code_hashed": code, "seal_tag_hex": tag.hex(),
+            "seal_id": seal_id(tag), "bucket": kcr_bucket_of(tag), "nonce_hex": KAT_NONCE_HEX,
+            "go_ahead": grouped(go, (4, 4)), "go_ahead_compact": go}
+
+
+def kcr_days(date, days):
+    """`date` (YYYYMMDD) moved by `days` days, as YYYYMMDD."""
+    moved = kcr_date(date) + datetime.timedelta(days=days)
+    return moved.year * 10000 + moved.month * 100 + moved.day
+
+
+def kcr_flip(data, offset, mask=1):
+    """`data` with the bits of `mask` flipped in the byte at `offset`."""
+    return data[:offset] + bytes([data[offset] ^ mask]) + data[offset + 1:]
+
+
+def kcr_strict_cases():
+    """Signatures the cofactorless equation accepts and verify_strict refuses: the identity as the key
+    and as R with S = 0 (it holds for every message), and a test-key signature whose R is the identity."""
+    message = b"KCE/test/ed25519/strict"
+    identity = ed_encode(ED25519_IDENTITY)
+    return [
+        {"name": "small-order-key", "public_key_hex": identity.hex(), "message_hex": message.hex(),
+         "signature_hex": (identity + bytes(32)).hex()},
+        {"name": "small-order-r", "public_key_hex": ed25519_public_key(KCR_TEST_KEY_LABEL).hex(),
+         "message_hex": message.hex(), "signature_hex": ed25519_sign_small_order_r(KCR_TEST_KEY_LABEL, message).hex()},
+    ]
+
+
+def kcr_strict_bytes(case):
+    """(public key, message, signature) of a strict case."""
+    return [bytes.fromhex(case[field]) for field in ("public_key_hex", "message_hex", "signature_hex")]
+
+
+def kcr_largest_qr_proof():
+    """The largest k whose KCP1 proof still fits one QR as a single-part UR (UR_MAX_CHARS), counted
+    from real URs: the UR's length depends on k only."""
+    k = 0
+    while len(kcp1_ur(bytes(KCP_BASE_BYTES + KCR_ENTRY_BYTES * (k + 1)))) <= UR_MAX_CHARS:
+        k += 1
+    return k
+
+
+_KCR_JSON = []
+
+
+def kcr_vectors_json():
+    """The exact text of vectors/kcr.json: indent 2, fixed key order, ASCII, trailing newline. Computed
+    once per run (the empty tree takes a few seconds)."""
+    if _KCR_JSON:
+        return _KCR_JSON[0]
+    test_key, other_key = ed25519_public_key(KCR_TEST_KEY_LABEL), ed25519_public_key(KCR_OTHER_KEY_LABEL)
+    seeds = [kcr_seed(*s) for s in KCR_SEED_INPUTS]
+    tag = {s["name"]: bytes.fromhex(s["seal_tag_hex"]) for s in seeds}
+    v1, dice50, dice99 = tag["vector-1"], tag["dice-50-words12"], tag["dice-99-words12"]
+    today = KCR_TODAY
+
+    # "small": one entry in bucket 0 and one in the last bucket; two in one bucket; and in seal vector 1's
+    # bucket another tag and one that shares vector 1's first 15 bytes, so a lookup must read all 16.
+    small = sorted([
+        kcr_entry(kcr_tag16(0, b"KCE/test/kcr/first"), 1),
+        kcr_entry(kcr_tag16(kcr_bucket_of(v1), b"KCE/test/kcr/neighbour"), 2),
+        kcr_entry(v1[:15] + bytes([v1[15] ^ 1]), 65535),
+        kcr_entry(kcr_tag16(0x80000, b"KCE/test/kcr/pair-a"), 1),
+        kcr_entry(kcr_tag16(0x80000, b"KCE/test/kcr/pair-b"), 3),
+        kcr_entry(kcr_tag16((1 << BUCKET_BITS) - 1, b"KCE/test/kcr/last"), 7),
+    ])
+    small_buckets = set(kcr_bucket_of(e) for e in small)
+    seed_buckets = [kcr_bucket_of(t) for t in (v1, dice50, dice99, tag["dice-99-words24"])]
+    if len(set(seed_buckets)) != 4 or (small_buckets & set(seed_buckets)) != {kcr_bucket_of(v1)}:
+        raise ValueError("the test seeds must sit in distinct buckets, and only vector 1's may hold entries")
+    small_body = b"".join(small)
+    with_v1 = b"".join(sorted(small + [kcr_entry(v1, 1)]))
+    with_dice50 = b"".join(sorted(small + [kcr_entry(dice50, 1)]))
+    empty_root = merkle_root(merkle_tree({}))
+
+    snapshots = []
+
+    def snapshot_case(name, data, freshness_today=today):
+        snapshots.append((name, data, freshness_today))
+
+    small_kcr = kcr_snapshot(2, today, small_body)
+    snapshot_case("empty", kcr_snapshot(1, today, b""))
+    snapshot_case("small", small_kcr)
+    snapshot_case("with-vector-1", kcr_snapshot(3, today, with_v1))
+    snapshot_case("with-dice-50", kcr_snapshot(4, today, with_dice50))
+    snapshot_case("current-day-30", kcr_snapshot(5, kcr_days(today, -30), small_body))
+    snapshot_case("stale-day-31", kcr_snapshot(6, kcr_days(today, -31), small_body))
+    snapshot_case("future-day-1", kcr_snapshot(7, kcr_days(today, 1), small_body))
+    small_root = small_kcr[26:58]
+    unsigned = kcr_header(2, today, len(small), small_root)
+    snapshot_case("bad-magic", kcr_signed(kcr_header(2, today, len(small), small_root, magic=b"KCRX")) + small_body)
+    snapshot_case("version-0", kcr_signed(kcr_header(2, today, len(small), small_root, version=0)) + small_body)
+    snapshot_case("version-2", kcr_signed(kcr_header(2, today, len(small), small_root, version=2)) + small_body)
+    snapshot_case("truncated-header", small_kcr[:KCR_HEADER_BYTES - 1])
+    snapshot_case("truncated-signature", small_kcr[:KCR_SIGNED_BYTES - 1])
+    snapshot_case("truncated-body", small_kcr[:-1])
+    snapshot_case("trailing-byte", small_kcr + b"\x00")
+    snapshot_case("flipped-signature-r", kcr_flip(small_kcr, KCR_HEADER_BYTES))
+    snapshot_case("flipped-signature-s", kcr_flip(small_kcr, KCR_HEADER_BYTES + 32))
+    snapshot_case("header-changed-after-signing", kcr_flip(small_kcr, 13))
+    snapshot_case("wrong-key", kcr_signed(unsigned, KCR_OTHER_KEY_LABEL) + small_body)
+    signature = small_kcr[KCR_HEADER_BYTES:KCR_SIGNED_BYTES]
+    snapshot_case("s-plus-l", unsigned + ed25519_s_plus_l(signature) + small_body)
+    snapshot_case("small-order-r", unsigned + ed25519_sign_small_order_r(KCR_TEST_KEY_LABEL, unsigned) + small_body)
+    for name, count in (("count-2^22-no-body", KCR_MAX_ENTRIES), ("count-2^22+1", KCR_MAX_ENTRIES + 1),
+                        ("count-2^32+1", (1 << 32) + 1), ("count-u64-max", (1 << 64) - 1)):
+        snapshot_case(name, kcr_signed(kcr_header(8, today, count, empty_root)))
+    unsorted = list(small)
+    pair = [i for i, e in enumerate(small) if kcr_bucket_of(e) == 0x80000]
+    unsorted[pair[0]], unsorted[pair[1]] = small[pair[1]], small[pair[0]]
+    snapshot_case("unsorted-within-bucket", kcr_snapshot(2, today, b"".join(unsorted)))
+    snapshot_case("duplicate", kcr_snapshot(2, today, b"".join([small[0]] + small)))
+    zero = list(small)
+    zero[1] = zero[1][:16] + b"\x00\x00"
+    snapshot_case("zero-count", kcr_snapshot(2, today, b"".join(zero)))
+    recount = list(small)
+    recount[0] = recount[0][:16] + b"\x00\x02"
+    snapshot_case("root-mismatch", kcr_signed(unsigned) + b"".join(recount))
+    snapshot_case("bad-date-month-13", kcr_signed(kcr_header(2, 20261310, len(small), small_root)) + small_body)
+    snapshot_case("bad-date-feb-29-2026", kcr_signed(kcr_header(2, 20260229, len(small), small_root)) + small_body)
+    snapshot_case("bad-date-day-0", kcr_signed(kcr_header(2, 20260300, len(small), small_root)) + small_body)
+
+    # Proofs. Each comes from a snapshot tree: (signed header, tree).
+    def proof_of(signed, body, bucket):
+        tree = merkle_tree(kcr_buckets(body))
+        entries = kcr_buckets(body).get(bucket, b"")
+        return kcp1(signed, bucket, entries, merkle_path(tree, bucket))
+
+    small_signed = small_kcr[:KCR_SIGNED_BYTES]
+    v1_bucket, dice50_bucket = kcr_bucket_of(v1), kcr_bucket_of(dice50)
+    shared = proof_of(small_signed, small_body, v1_bucket)
+    proofs = []
+
+    def proof_case(name, data, ur=False):
+        proofs.append((name, data, ur))
+
+    proof_case("clear-empty-bucket", proof_of(small_signed, small_body, kcr_bucket_of(dice99)))
+    proof_case("clear-shared-prefix", shared)
+    proof_case("collision", proof_of(kcr_snapshot(3, today, with_v1)[:KCR_SIGNED_BYTES], with_v1, v1_bucket))
+    proof_case("collision-dice-50",
+               proof_of(kcr_snapshot(4, today, with_dice50)[:KCR_SIGNED_BYTES], with_dice50, dice50_bucket))
+    for name, number, days in (("current-day-30", 5, -30), ("stale-day-31", 6, -31), ("future-day-1", 7, 1)):
+        signed = kcr_snapshot(number, kcr_days(today, days), small_body)[:KCR_SIGNED_BYTES]
+        proof_case(name, proof_of(signed, small_body, dice50_bucket))
+    at = 4 + KCR_SIGNED_BYTES
+    k_shared = len(kcr_buckets(small_body)[v1_bucket]) // KCR_ENTRY_BYTES
+    siblings_at = at + 5 + KCR_ENTRY_BYTES * k_shared
+    for level in range(BUCKET_BITS):
+        proof_case("forged-sibling-level-%d" % level, kcr_flip(shared, siblings_at + 32 * level))
+    proof_case("mixed-header-and-path", KCP_MAGIC + kcr_snapshot(3, today, with_v1)[:KCR_SIGNED_BYTES] + shared[at:])
+    proof_case("flipped-signature", kcr_flip(shared, 4 + KCR_HEADER_BYTES))
+    proof_case("wrong-key", KCP_MAGIC + kcr_signed(unsigned, KCR_OTHER_KEY_LABEL) + shared[at:])
+    proof_case("header-changed-after-signing", kcr_flip(shared, 4 + 13))
+    proof_case("bad-magic", b"KCPX" + shared[4:])
+    proof_case("header-bad-magic", KCP_MAGIC + kcr_signed(kcr_header(2, today, len(small), small_root,
+                                                                     magic=b"KCRX")) + shared[at:])
+    proof_case("header-version-2", KCP_MAGIC + kcr_signed(kcr_header(2, today, len(small), small_root,
+                                                                     version=2)) + shared[at:])
+    proof_case("bad-date", KCP_MAGIC + kcr_signed(kcr_header(2, 20261310, len(small), small_root)) + shared[at:])
+    proof_case("too-many-entries",
+               KCP_MAGIC + kcr_signed(kcr_header(2, today, KCR_MAX_ENTRIES + 1, small_root)) + shared[at:])
+    proof_case("truncated", shared[:-1])
+    clear_empty = proofs[0][1]
+    proof_case("truncated-below-minimum", clear_empty[:-1])
+    proof_case("trailing-byte", shared + b"\x00")
+    proof_case("k-mismatch", shared[:at + 3] + (k_shared + 1).to_bytes(2, "big") + shared[at + 5:])
+    proof_case("bucket-out-of-range", shared[:at] + (1 << BUCKET_BITS).to_bytes(3, "big") + shared[at + 3:])
+    empty_signed = kcr_snapshot(1, today, b"")[:KCR_SIGNED_BYTES]
+    proof_case("more-entries-than-count", kcp1(empty_signed, v1_bucket, kcr_buckets(small_body)[v1_bucket],
+                                               merkle_path(merkle_tree({}), v1_bucket)))
+    in_bucket = kcr_buckets(small_body)[v1_bucket]
+    first, second = in_bucket[:KCR_ENTRY_BYTES], in_bucket[KCR_ENTRY_BYTES:]
+    outside = kcr_entry(kcr_tag16(v1_bucket + 1, b"KCE/test/kcr/outside"), 1)
+    proof_case("entry-outside-bucket", shared[:at + 5] + first + outside + shared[siblings_at:])
+    proof_case("unsorted", shared[:at + 5] + second + first + shared[siblings_at:])
+    proof_case("duplicate", shared[:at + 5] + first + first + shared[siblings_at:])
+    proof_case("zero-count", shared[:at + 5] + first + second[:16] + b"\x00\x00" + shared[siblings_at:])
+
+    # The go-ahead QR: the clear proof as UR text in both cases, the largest proof one QR holds, and the
+    # strict decoder's failures on the proof's own UR.
+    shared_ur = kcp1_ur(shared)
+    proof_case("ur-lowercase", shared_ur, ur=True)
+    proof_case("ur-uppercase", shared_ur.upper(), ur=True)
+    largest = kcr_largest_qr_proof()
+    for k in (largest, largest + 1):
+        body = b"".join(sorted(kcr_entry(kcr_tag16(v1_bucket, b"KCE/test/kcr/qr/%d" % i), 1) for i in range(k)))
+        signed = kcr_snapshot(9 + k - largest, today, body)[:KCR_SIGNED_BYTES]
+        proof_case("ur-%d-entries" % k, kcp1_ur(proof_of(signed, body, v1_bucket)), ur=True)
+    cbor = cbor_encode(cbor_byte_string(shared))
+    message = shared_ur[len("ur:" + KCP_UR_TYPE + "/"):]
+
+    def with_crc(payload):
+        return "ur:%s/%s" % (KCP_UR_TYPE, bytewords_minimal(payload + crc32(payload).to_bytes(4, "big")))
+
+    proof_case("ur-bad-crc", "ur:%s/%s" % (KCP_UR_TYPE, bytewords_minimal(
+        cbor + (crc32(cbor) ^ 1).to_bytes(4, "big"))), ur=True)
+    proof_case("ur-multi-part", "ur:%s/1-3/%s" % (KCP_UR_TYPE, message), ur=True)
+    proof_case("ur-mixed-case", "UR:" + shared_ur[3:], ur=True)
+    proof_case("ur-wrong-type", "ur:crypto-account/" + message, ur=True)
+    proof_case("ur-non-shortest-head", with_crc(b"\x5a" + len(shared).to_bytes(4, "big") + shared), ur=True)
+    proof_case("ur-trailing-byte", with_crc(cbor + b"\x00"), ur=True)
+
+    def lookups_of(fields):
+        found = []
+        for s in seeds:
+            t = tag[s["name"]]
+            if "body" in fields:
+                found.append({"seed": s["name"], "count": kcr_count_of(fields["body"], t)})
+            elif kcr_bucket_of(t) != fields["bucket"]:
+                found.append({"seed": s["name"], "result": "wrong_bucket", "count": None})
+            else:
+                count = kcr_count_of(fields["entries"], t)
+                found.append({"seed": s["name"], "result": "clear" if count is None else "collision",
+                              "count": count})
+        return found
+
+    def expect_of(fields, error):
+        if error:
+            return {"ok": False, "error": error}
+        expect = {"ok": True, "number": fields["number"], "date": fields["date"], "count": fields["count"],
+                  "root_hex": fields["root"].hex(), "freshness": kcr_freshness(fields["date"], today)}
+        if "bucket" in fields:
+            expect.update(bucket=fields["bucket"], k=len(fields["entries"]) // KCR_ENTRY_BYTES)
+        expect["lookups"] = lookups_of(fields)
+        return expect
+
+    snapshot_json = [{"name": name, "kcr_hex": data.hex(), "expect": expect_of(*kcr_verify(data, test_key))}
+                     for name, data, _ in snapshots]
+    proof_json = []
+    for name, data, ur in proofs:
+        if ur:
+            proof_json.append({"name": name, "ur": data, "expect": expect_of(*kcp1_verify_ur(data, test_key))})
+        else:
+            proof_json.append({"name": name, "kcp1_hex": data.hex(), "expect": expect_of(*kcp1_verify(data, test_key))})
+    empty = merkle_empty_levels()
+    left_aligned = (v1_bucket << 4).to_bytes(3, "big")
+    node_left, node_right = empty[0][:32], empty[0][32:64]
+    doc = {
+        "description": "KeepCrypt registry snapshot (.kcr) and bucket proof (KCP1) vectors. Generated by "
+        "tools/verify/verify.py --write-kcr-vectors; verify.py --selftest regenerates this file and requires "
+        "byte equality, reruns every case through its own verifier, and checks RFC 8032 TEST 1-3 and pinned "
+        "answers computed apart from it (check 10). Signed only with two test keys derived from public labels; "
+        "public test mnemonics only, never a real seed or a real registry key.",
+        "spec": KCR_SPEC,
+        "keys": {"test_registry": {"label": KCR_TEST_KEY_LABEL.decode("ascii"), "public_key_hex": test_key.hex()},
+                 "other": {"label": KCR_OTHER_KEY_LABEL.decode("ascii"), "public_key_hex": other_key.hex()}},
+        "rfc8032": [{"name": name, "public_key_hex": public, "message_hex": message_hex, "signature_hex": sig,
+                     "signature_s_plus_l_hex": ed25519_s_plus_l(bytes.fromhex(sig)).hex()}
+                    for name, public, message_hex, sig in RFC8032_TESTS],
+        "ed25519_strict": [dict(case, equation_holds=ed25519_equation_holds(*kcr_strict_bytes(case)),
+                                verify_strict=ed25519_verify(*kcr_strict_bytes(case))) for case in kcr_strict_cases()],
+        "limits": {"header_bytes": KCR_HEADER_BYTES, "signed_bytes": KCR_SIGNED_BYTES,
+                   "entry_bytes": KCR_ENTRY_BYTES, "max_entries": KCR_MAX_ENTRIES,
+                   "max_snapshot_bytes": KCR_SIGNED_BYTES + KCR_ENTRY_BYTES * KCR_MAX_ENTRIES,
+                   "proof_base_bytes": KCP_BASE_BYTES, "qr_max_chars": UR_MAX_CHARS,
+                   "max_qr_proof_entries": largest, "fresh_days": FRESH_DAYS},
+        "today": today,
+        "seeds": seeds,
+        "merkle": {
+            "empty_leaves": [{"bucket": index, "leaf_hex": empty[0][32 * index:32 * index + 32].hex()}
+                             for index in (0, v1_bucket, (1 << BUCKET_BITS) - 1)],
+            "left_aligned_leaf": {"prefix_hex": left_aligned.hex(), "leaf_hex": hashlib.sha256(
+                b"\x00" + TAG_BUCKET + left_aligned).hexdigest(), "not_used": True},
+            "node": {"left_hex": node_left.hex(), "right_hex": node_right.hex(),
+                     "node_hex": merkle_node(node_left, node_right).hex()},
+            "empty_root_hex": empty_root.hex(),
+            "vector_1_path": {"bucket": v1_bucket, "entries_hex": kcr_buckets(small_body)[v1_bucket].hex(),
+                              "siblings_hex": [s.hex() for s in merkle_path(merkle_tree(kcr_buckets(small_body)),
+                                                                            v1_bucket)],
+                              "root_hex": small_root.hex()},
+        },
+        "snapshots": snapshot_json,
+        "proofs": proof_json,
+    }
+    _KCR_JSON.append(json.dumps(doc, indent=2, sort_keys=False, ensure_ascii=True) + "\n")
+    return _KCR_JSON[0]
+
+
+def write_kcr_vectors(vectors_dir):
+    """Write kcr.json into vectors_dir, which must already exist."""
+    return write_vectors(vectors_dir, "kcr.json", kcr_vectors_json())
+
+
 # --- Self-test -------------------------------------------------------------------------------
 
 
@@ -2876,6 +3676,224 @@ def check_watchonly_json(vectors_dir):
     )
 
 
+def check_ed25519(vectors_dir):
+    """RFC 8032 TEST 1-3 verify and refuse L added to S; every kat.json Ed25519 entry verifies and fails
+    with one bit flipped in its public key, in R and in S; each label key's signature verifies and fails
+    on a changed message; any other label is refused."""
+    problems = []
+    for name, public, message, signature in RFC8032_TESTS:
+        public, message, signature = bytes.fromhex(public), bytes.fromhex(message), bytes.fromhex(signature)
+        if not ed25519_verify(public, message, signature):
+            problems.append("RFC 8032 %s does not verify" % name)
+        if ed25519_verify(public, message, ed25519_s_plus_l(signature)):
+            problems.append("RFC 8032 %s verifies with L added to S" % name)
+    if [(n, k, m.hex(), s) for n, _, k, m, s in KAT_ED25519] != [RFC8032_TESTS[0]]:
+        problems.append("KAT_ED25519 is not RFC 8032 TEST 1 as RFC8032_TESTS has it")
+    path = vectors_dir / "kat.json"
+    entries = json.loads(path.read_text(encoding="ascii")).get("ed25519") if path.is_file() else None
+    if not isinstance(entries, list) or not entries:
+        problems.append("kat.json has no ed25519 entries")
+        entries = []
+    for e in entries:
+        public, signature, message = kat_field(e, "public_key", 32), kat_field(e, "signature", 64), kat_field(e, "message")
+        if not ed25519_verify(public, message, signature):
+            problems.append("kat.json ed25519 %s does not verify" % e.get("name"))
+        for what, key, sig in (("its public key", kcr_flip(public, 0), signature), ("R", public, kcr_flip(signature, 0)),
+                               ("S", public, kcr_flip(signature, 32))):
+            if ed25519_verify(key, message, sig):
+                problems.append("kat.json ed25519 %s verifies with a bit of %s flipped" % (e.get("name"), what))
+    message = b"KCE/test/ed25519"
+    for label in (KCR_TEST_KEY_LABEL, KCR_OTHER_KEY_LABEL):
+        public, signature = ed25519_public_key(label), ed25519_sign(label, message)
+        if not ed25519_verify(public, message, signature) or ed25519_verify(public, message + b".", signature):
+            problems.append("the %s key's signature does not verify, or verifies a changed message" % label.decode())
+    for case in kcr_strict_cases():
+        if not ed25519_equation_holds(*kcr_strict_bytes(case)) or ed25519_verify(*kcr_strict_bytes(case)):
+            problems.append("strict case %s: the equation must hold and verify_strict must refuse it" % case["name"])
+    try:
+        ed25519_sign(b"KCE/test/any-other-key", message)
+        problems.append("the signer took a key other than its two label keys")
+    except ValueError:
+        pass
+    return problems
+
+
+# What each kcr.json case must give, pinned apart from the generator and its verifier, so neither can
+# change an outcome and still pass after --write-kcr-vectors (tasks/lessons.md: "pin a vector"). A
+# verified case gives its freshness against KCR_TODAY; a rejected one its SnapshotError. A verified
+# snapshot also names the one seed it registers (or None); a verified proof the one seed in its
+# bucket and that seed's result.
+KCR_SNAPSHOT_RESULTS = (
+    ("empty", "Current", None), ("small", "Current", None), ("with-vector-1", "Current", "vector-1"),
+    ("with-dice-50", "Current", "dice-50-words12"), ("current-day-30", "Current", None),
+    ("stale-day-31", "Stale", None), ("future-day-1", "Future", None),
+    ("bad-magic", "BadMagic", None), ("version-0", "BadVersion", None), ("version-2", "BadVersion", None),
+    ("truncated-header", "TooShort", None), ("truncated-signature", "TooShort", None),
+    ("truncated-body", "BadLength", None), ("trailing-byte", "BadLength", None),
+    ("flipped-signature-r", "BadSignature", None), ("flipped-signature-s", "BadSignature", None),
+    ("header-changed-after-signing", "BadSignature", None), ("wrong-key", "BadSignature", None),
+    ("s-plus-l", "BadSignature", None), ("small-order-r", "BadSignature", None),
+    ("count-2^22-no-body", "BadLength", None),
+    ("count-2^22+1", "TooManyEntries", None), ("count-2^32+1", "TooManyEntries", None),
+    ("count-u64-max", "TooManyEntries", None), ("unsorted-within-bucket", "Unsorted", None),
+    ("duplicate", "Duplicate", None), ("zero-count", "ZeroCount", None), ("root-mismatch", "RootMismatch", None),
+    ("bad-date-month-13", "BadDate", None), ("bad-date-feb-29-2026", "BadDate", None),
+    ("bad-date-day-0", "BadDate", None),
+)
+KCR_PROOF_RESULTS = (
+    ("clear-empty-bucket", "Current", "dice-99-words12", "clear"),
+    ("clear-shared-prefix", "Current", "vector-1", "clear"),
+    ("collision", "Current", "vector-1", "collision"),
+    ("collision-dice-50", "Current", "dice-50-words12", "collision"),
+    ("current-day-30", "Current", "dice-50-words12", "clear"),
+    ("stale-day-31", "Stale", "dice-50-words12", "clear"),
+    ("future-day-1", "Future", "dice-50-words12", "clear"),
+) + tuple(("forged-sibling-level-%d" % level, "RootMismatch", None, None) for level in range(BUCKET_BITS)) + (
+    ("mixed-header-and-path", "RootMismatch", None, None), ("flipped-signature", "BadSignature", None, None),
+    ("wrong-key", "BadSignature", None, None), ("header-changed-after-signing", "BadSignature", None, None),
+    ("bad-magic", "BadMagic", None, None), ("header-bad-magic", "BadMagic", None, None),
+    ("header-version-2", "BadVersion", None, None), ("bad-date", "BadDate", None, None),
+    ("too-many-entries", "TooManyEntries", None, None), ("truncated", "BadLength", None, None),
+    ("truncated-below-minimum", "TooShort", None, None), ("trailing-byte", "BadLength", None, None),
+    ("k-mismatch", "BadLength", None, None), ("bucket-out-of-range", "BucketOutOfRange", None, None),
+    ("more-entries-than-count", "ProofCount", None, None),
+    ("entry-outside-bucket", "EntryOutsideBucket", None, None), ("unsorted", "Unsorted", None, None),
+    ("duplicate", "Duplicate", None, None), ("zero-count", "ZeroCount", None, None),
+    ("ur-lowercase", "Current", "vector-1", "clear"), ("ur-uppercase", "Current", "vector-1", "clear"),
+    ("ur-75-entries", "Current", "vector-1", "clear"), ("ur-76-entries", "Ur(TooLong)", None, None),
+    ("ur-bad-crc", "Ur(BadChecksum)", None, None), ("ur-multi-part", "Ur(MultiPart)", None, None),
+    ("ur-mixed-case", "Ur(MixedCase)", None, None), ("ur-wrong-type", "Ur(WrongType)", None, None),
+    ("ur-non-shortest-head", "Ur(NonShortestHead)", None, None), ("ur-trailing-byte", "Ur(TrailingBytes)", None, None),
+)
+
+
+def kcr_result(expect):
+    """A case's outcome as KCR_*_RESULTS pins it: its freshness if verified, else its error."""
+    return expect["freshness"] if expect.get("ok") else expect.get("error")
+
+
+def check_kcr_contents(vectors_dir):
+    """The committed kcr.json: every case's outcome and seed equal to the pins above, and each case's
+    outcome reproduced by this file's verifier from its bytes; the pinned key and roots; the Merkle
+    section; and its seeds equal to seal.json's vector 1 and to rolls.json's dice words."""
+    path = vectors_dir / "kcr.json"
+    if not path.is_file():
+        return []  # check_generated_file reports it missing
+    doc = json.loads(path.read_text(encoding="ascii"))
+    problems = []
+    key = bytes.fromhex(doc["keys"]["test_registry"]["public_key_hex"])
+    if key.hex() != KCR_PINNED["test_public_key_hex"]:
+        problems.append("kcr.json test registry key %s, pinned %s" % (key.hex(), KCR_PINNED["test_public_key_hex"]))
+    for section, pins in (("snapshots", KCR_SNAPSHOT_RESULTS), ("proofs", KCR_PROOF_RESULTS)):
+        cases = doc.get(section, [])
+        if [c.get("name") for c in cases] != [pin[0] for pin in pins]:
+            problems.append("kcr.json %s: cases %r, pinned %r" % (section, [c.get("name") for c in cases],
+                                                                 [pin[0] for pin in pins]))
+            continue
+        for case, pin in zip(cases, pins):
+            expect = case["expect"]
+            if kcr_result(expect) != pin[1]:
+                problems.append("kcr.json %s %s gives %r, pinned %r" % (section, case["name"], kcr_result(expect), pin[1]))
+            if section == "snapshots":
+                fields, error = kcr_verify(bytes.fromhex(case["kcr_hex"]), key)
+                registered = [l["seed"] for l in expect.get("lookups", []) if l["count"] is not None]
+                if registered != ([pin[2]] if pin[2] else []):
+                    problems.append("kcr.json snapshot %s registers %r, pinned %r" % (case["name"], registered, pin[2]))
+            else:
+                if "ur" in case:
+                    fields, error = kcp1_verify_ur(case["ur"], key)
+                else:
+                    fields, error = kcp1_verify(bytes.fromhex(case["kcp1_hex"]), key)
+                in_bucket = [(l["seed"], l["result"]) for l in expect.get("lookups", []) if l["result"] != "wrong_bucket"]
+                if in_bucket != ([(pin[2], pin[3])] if pin[2] else []):
+                    problems.append("kcr.json proof %s: seeds in its bucket %r, pinned %r" % (case["name"], in_bucket,
+                                                                                            pin[2:]))
+            if (error or kcr_freshness(fields["date"], doc["today"])) != pin[1]:
+                problems.append("kcr.json %s %s: the verifier gives %r, pinned %r" % (section, case["name"],
+                                                                                    error, pin[1]))
+    merkle = doc["merkle"]
+    if merkle["empty_root_hex"] != KCR_PINNED["empty_root_hex"]:
+        problems.append("kcr.json empty root %s, pinned %s" % (merkle["empty_root_hex"], KCR_PINNED["empty_root_hex"]))
+    path_case = merkle["vector_1_path"]
+    rebuilt = merkle_path_root(path_case["bucket"], bytes.fromhex(path_case["entries_hex"]),
+                               bytes.fromhex("".join(path_case["siblings_hex"])))
+    if not (rebuilt.hex() == path_case["root_hex"] == KCR_PINNED["vector_1_proof_root_hex"]):
+        problems.append("kcr.json vector-1 path gives root %s, pinned %s" % (rebuilt.hex(),
+                                                                            KCR_PINNED["vector_1_proof_root_hex"]))
+    node = merkle["node"]
+    if merkle_node(bytes.fromhex(node["left_hex"]), bytes.fromhex(node["right_hex"])).hex() != node["node_hex"]:
+        problems.append("kcr.json merkle node does not hash to node_hex")
+    for leaf in merkle["empty_leaves"]:
+        if merkle_leaf(leaf["bucket"], b"").hex() != leaf["leaf_hex"]:
+            problems.append("kcr.json empty leaf %d differs" % leaf["bucket"])
+    aligned = merkle["left_aligned_leaf"]
+    if aligned["leaf_hex"] in [leaf["leaf_hex"] for leaf in merkle["empty_leaves"]]:
+        problems.append("kcr.json: the left-aligned prefix gives the same leaf as the bucket index")
+    seeds = {s["name"]: s for s in doc["seeds"]}
+    vector_1 = seeds.get("vector-1", {})
+    for field in ("seal_code", "seal_code_hashed", "seal_tag_hex", "seal_id"):
+        if vector_1.get(field) != KAT_EXPECTED[field]:
+            problems.append("kcr.json seed vector-1 %s differs from seal vector 1" % field)
+    if (vector_1.get("nonce_hex"), vector_1.get("go_ahead")) != (KAT_NONCE_HEX, KAT_EXPECTED["go_ahead"]["code"]):
+        problems.append("kcr.json seed vector-1 go-ahead differs from seal vector 1")
+    if vector_1.get("seed_hex", "")[:32] != KAT_EXPECTED["seed_prefix_hex"]:
+        problems.append("kcr.json seed vector-1 S differs from seal vector 1")
+    rolls = {c["rolls"]: c for c in json.loads((vectors_dir / "coldcard" / "rolls.json").read_text(encoding="utf-8"))["cases"]}
+    for name, rolls_name, words in KCR_SEED_INPUTS[1:]:
+        case = rolls.get(dict(COLDCARD_ROLLS)[rolls_name], {})
+        if seeds.get(name, {}).get("mnemonic", "").split() != case.get("words_%d" % words):
+            problems.append("kcr.json seed %s differs from rolls.json words_%d" % (name, words))
+    return problems
+
+
+def kcr_docs_sentences():
+    """What docs/seal-watchonly-braille.md "Snapshot format", "Checking the seal" and "Go-ahead QR" must
+    say, word for word, computed here (tasks/lessons.md): (what, the exact text)."""
+    vector = seal_vector(*SEAL_VECTOR_INPUTS[0])
+    tag = bytes.fromhex(vector["seal_tag_hex"])
+    max_bytes = KCR_SIGNED_BYTES + KCR_ENTRY_BYTES * KCR_MAX_ENTRIES
+    return [
+        ("the header size", "Header, exactly %d bytes" % KCR_HEADER_BYTES),
+        ("the signature", "a pure Ed25519 signature (%d bytes) over exactly those %d header bytes"
+         % (KCR_SIGNED_BYTES - KCR_HEADER_BYTES, KCR_HEADER_BYTES)),
+        ("the entry size", "the entries, %d bytes each" % KCR_ENTRY_BYTES),
+        ("the entry count", "a 16-bit registration count of at least 1"),
+        ("the largest snapshot", "at most 2^%d entries (%.1f MB)" % (KCR_MAX_ENTRIES.bit_length() - 1, max_bytes / 1e6)),
+        ("the bucket index", "a tag starting `%s…` is in bucket `%s`"
+         % (lookup_prefix(tag), " ".join("%02x" % b for b in kcr_bucket_of(tag).to_bytes(3, "big")))),
+        ("a million registrations", "A million registrations is about %d MB." % round(10 ** 6 * KCR_ENTRY_BYTES / 1e6)),
+        ("the freshness", "phones warn when it is older than %d days" % FRESH_DAYS),
+        ("the go-ahead vector", "n = `%s` gives G = `%s`" % (KAT_NONCE_HEX, vector["go_ahead"]["code"])),
+        ("the proof's header", "the %d-byte snapshot header ‖ its %d-byte signature"
+         % (KCR_HEADER_BYTES, KCR_SIGNED_BYTES - KCR_HEADER_BYTES)),
+        ("the proof's bucket and count", "the bucket index (3 bytes) ‖ the entry count k (u16)"),
+        ("the proof size", "leaf level first: %d + %dk bytes" % (KCP_BASE_BYTES, KCR_ENTRY_BYTES)),
+        ("the QR limit", "at most {:,} characters (the largest QR alphanumeric capacity)".format(UR_MAX_CHARS)),
+        ("the entries per QR", "About %d bucket entries fit one QR" % kcr_largest_qr_proof()),
+    ]
+
+
+def check_kcr_docs():
+    """docs/seal-watchonly-braille.md against the figures computed here: editing a figure in the docs, or
+    a value it is computed from, fails the check."""
+    if not BRAILLE_DOCS.is_file():
+        return ["%s is missing" % BRAILLE_DOCS]
+    text = BRAILLE_DOCS.read_text(encoding="utf-8")
+    return ["%s: the docs do not say %r (%s)" % (BRAILLE_DOCS.name, sentence, what)
+            for what, sentence in kcr_docs_sentences() if sentence not in text]
+
+
+def check_kcr_json(vectors_dir):
+    """Check 10: Ed25519 against RFC 8032 and kat.json, the docs' figures, kcr.json equal to the regenerated
+    text, and its contents against the pins."""
+    return (
+        check_ed25519(vectors_dir)
+        + check_kcr_docs()
+        + check_generated_file(vectors_dir, "kcr.json", kcr_vectors_json(), "--write-kcr-vectors")
+        + check_kcr_contents(vectors_dir)
+    )
+
+
 def sha256_file(path):
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -3086,6 +4104,9 @@ def selftest(vectors_dir):
         ("vectors/watchonly.json: RIPEMD-160, CRC-32, dCBOR, Bytewords, UR, BIP-380 and NFKD against the standard "
          "library and the copied spec values, BIP-84 and BCR-2020-015 rebuilt, pinned answers, decoder cases, file "
          "matches regenerated output", lambda: check_watchonly_json(vectors_dir)),
+        ("vectors/kcr.json: Ed25519 against RFC 8032 TEST 1-3 and kat.json, the docs' snapshot and proof figures, "
+         "file matches regenerated output, every case's pinned outcome reproduced, pinned key and roots",
+         lambda: check_kcr_json(vectors_dir)),
     )
     failed = 0
     for name, check in checks:
@@ -3109,19 +4130,21 @@ def main(argv):
     parser = argparse.ArgumentParser(prog="verify.py", description="KeepCrypt offline verifier (M1 seed).")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--selftest", action="store_true",
-                      help="run the 9 checks: seal known answers (all 3 vectors), seal.json bytes, SOURCES.md "
+                      help="run the 10 checks: seal known answers (all 3 vectors), seal.json bytes, SOURCES.md "
                       "hashes and coverage, Coldcard's own scripts on every dice-only case, kat.json (SHA and HMAC "
                       "recomputed, its bytes, then its pinned entries and Ed25519 digest), keepcrypt.json (BIP39 "
                       "list and encoder, its bytes, its pinned answers and session record rules), the SP 800-90B "
                       "cutoffs, braille.json (its pinned answers, the docs' counts and their sentences in the docs, its "
                       "bytes, the SeedBook PDF), "
                       "watchonly.json (the primitives and spec values, BIP-84 and BCR-2020-015 rebuilt, its pins and "
-                      "decoder cases, its bytes)")
+                      "decoder cases, its bytes), kcr.json (Ed25519 against RFC 8032 and kat.json, the docs' figures, "
+                      "its bytes, its pinned outcomes, key and roots)")
     mode.add_argument("--write-seal-vectors", action="store_true", help="regenerate vectors/seal.json")
     mode.add_argument("--write-kat-vectors", action="store_true", help="regenerate vectors/kat.json")
     mode.add_argument("--write-keepcrypt-vectors", action="store_true", help="regenerate vectors/keepcrypt.json")
     mode.add_argument("--write-braille-vectors", action="store_true", help="regenerate vectors/braille.json")
     mode.add_argument("--write-watchonly-vectors", action="store_true", help="regenerate vectors/watchonly.json")
+    mode.add_argument("--write-kcr-vectors", action="store_true", help="regenerate vectors/kcr.json")
     parser.add_argument("--vectors-dir", type=Path, default=REPO_VECTORS_DIR, metavar="DIR",
                         help="testing only: use DIR in place of the repo's vectors/")
     args = parser.parse_args(argv)
@@ -3139,6 +4162,8 @@ def main(argv):
         return write_braille_vectors(vectors_dir)
     if args.write_watchonly_vectors:
         return write_watchonly_vectors(vectors_dir)
+    if args.write_kcr_vectors:
+        return write_kcr_vectors(vectors_dir)
     parser.print_help(sys.stderr)
     return 2
 
