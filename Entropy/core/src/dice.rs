@@ -18,9 +18,10 @@ use crate::session::SeedLength;
 pub(crate) const MAX_ROLLS: usize = 256;
 /// 2.585 bits per fair d6 roll (log2 6), in thousandths.
 pub(crate) const MILLIBITS_PER_ROLL: u32 = 2_585;
-/// The minimum for 12 words (129 bits).
+/// The minimum for 12 words: 50 x 2.585 = 129.2 bits (CLAUDE.md "Dice quota").
 pub(crate) const MIN_ROLLS_12_WORDS: u16 = 50;
-/// The minimum for 24 words (256 bits).
+/// The minimum for 24 words: 99 x 2.585 = 255.9 bits, just under 256 (CLAUDE.md "Dice quota", the
+/// same as Coldcard).
 pub(crate) const MIN_ROLLS_24_WORDS: u16 = 99;
 /// The minimum for either length after a collision (seal-watchonly-braille.md "Add fresh
 /// entropy").
@@ -177,7 +178,11 @@ mod tests {
         for _ in 0..99 {
             assert_eq!(full.push(6), Ok(()));
         }
-        assert_eq!(full.millibits(), 255_915, "99 rolls give 256 bits");
+        assert_eq!(
+            full.millibits(),
+            255_915,
+            "99 rolls give 255.9 bits (99 x 2.585), just under 256"
+        );
     }
 
     #[test]

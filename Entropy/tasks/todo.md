@@ -919,7 +919,10 @@ starts. Every item names its proof.
       - faces 1-6 map to `b'1'..=b'6'` by `match`; 0 and 7+ are `InvalidRoll`; roll 257 is `TooManyRolls`;
       - undo zeroes the removed byte and does nothing when no rolls are entered;
       - count and millibits (count x 2585; 37 rolls show "95.6 bits", pi-firmware.md step 6);
-      - minimum rolls: 50 for 12 words, 99 for 24, 99 after a collision.
+      - minimum rolls: 50 for 12 words, 99 for 24, 99 after a collision. Review fix after commit 10: 99 rolls give
+        255.9 bits (99 x 2.585), not 256, and the code now says so; design.md "Recommended architecture" still says
+        "256 with 99 rolls". Whether the 24-word minimum should become 100 rolls (258.5 bits) is a
+        question for the owner, a doc change (CLAUDE.md "Dice quota", design.md); until answered, 99 stands.
       Proof: unit tests, including that R only ever holds `b'1'..=b'6'`.
 - [ ] `seed.rs` (CLAUDE.md "Commitment", "Seed"; design.md "From entropy to a BIP39 seed phrase"; build-plan.md
       invariants):
