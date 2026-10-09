@@ -322,9 +322,11 @@ Docs are named by file: build-plan.md, design.md, seal-watchonly-braille.md, pi-
 
     Otherwise: keep `main` unprotected. Nothing then stops a merge with red CI, and Review says so at every gate.
 
-### Raised by the review of commits 2-5 (open, 2026-10-09)
-Not answered yet. Q13 proposes doc edits (CODEOWNERS covers docs/), so nothing in docs/ has changed. Q14 asks you to
-confirm two gate changes that landed as review fixes.
+### Raised by the review of commits 2-5 (answered 2026-10-10)
+Owner answer: the owner's standing approval ("I approve, do it", 2026-10-09) is applied to Q13 (all five doc edits,
+as recommended) and Q14 (both gate changes, as recommended). The owner may still veto any of them; a veto reverts
+that item in its own reviewed commit. Q13's edits land as one docs-only commit before commit 8 ("Q13 docs" in
+"Commit order on `m1-core`"); Q14's two gate changes stay as committed in f732c98.
 
 13. **Doc wording that Q5-Q7 or the plan pin more exactly than the docs.** Each item names the commit that needs it.
     Recommended: approve all five, as one docs-only commit before commit 8.
@@ -1619,6 +1621,7 @@ moved from M0)
 4. ci: all-features clippy in the lint job and `cargo test -p keepcrypt-core --features test-sources` in the test job, so every later stub and test-registry test runs in CI from the start
 5. verify: vectors/kat.json generator and selftest check 5 (NIST SHA, RFC 4231 case 2, RFC 8032 TEST 1), with SOURCES.md rows
    Review fixes after 5: check 5 pins kat.json's entries and the RFC 8032 TEST 1 bytes; canaries.sh refuses any manifest that turns on a test feature and pins core's [features] and the root [profile] (moved forward from 26, Q14); this plan's refinements and Q13-Q14
+   Q13 docs (before 6): the five owner-approved doc edits of Q13 (a)-(e), alone in one commit with no code
 6. core: lib layout, error.rs, secret.rs (stored, new and typed backup passphrase types), session skeleton, KAT harness (SHA, HMAC, BIP39 groups) with the fault-twin pattern for free functions, and the test-sources stub; dev-deps trybuild =1.0.121 and serde_json =1.0.151, the toml-family --precise pins and safe-to-run vet exemptions
 7. verify: embedded BIP39 list (16 space-separated words per line, hash-checked over the LF-joined bytes), vectors/keepcrypt.json generator, check 6 (byte equality plus pinned answers), check 7 (SP 800-90B cutoffs), and Coldcard re-runs on the dice-only cases
 8. core: source (fill_os, os_bytes, source ids, credit policy, HW_BYTES_NEEDED) and health (RCT, APT, startup discard, windowed credit, hwrng_boot_test and its fault twin), with unit tests and the Health KAT
