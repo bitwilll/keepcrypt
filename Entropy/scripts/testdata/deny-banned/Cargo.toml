@@ -1,0 +1,33 @@
+# Gate canary: one graph that exercises each deny.toml property, so `cargo deny check bans`
+# with the root deny.toml must fail and name every crate below (rand_core, via rand, too).
+# Never built and never a workspace member; scripts/canaries.sh runs it.
+# Exact pins, each released at least 14 days before it was locked (supply-chain cool-off).
+[package]
+name = "canary-deny-banned"
+version = "0.0.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace]
+
+[features]
+# all-features = true: a banned crate behind a feature (M1's test-sources shape) is still seen.
+test-sources = ["dep:nanorand"]
+
+[dependencies]
+# Rule 1: the rand family, as a normal dependency.
+rand = { version = "=0.8.5", default-features = false }
+# Network ban: tokio even with no features.
+tokio = { version = "=1.53.1", default-features = false }
+# Rule 5: no logging crate.
+log = { version = "=0.4.34", default-features = false }
+nanorand = { version = "=0.8.0", default-features = false, optional = true }
+
+[dev-dependencies]
+# Dev-dependencies are checked too (exclude-dev = false).
+fastrand = { version = "=2.5.0", default-features = false }
+
+# No [graph] targets filter: a target-only dependency is still seen.
+[target.'cfg(windows)'.dependencies]
+oorandom = "=11.1.5"

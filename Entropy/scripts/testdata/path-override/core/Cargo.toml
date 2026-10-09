@@ -1,0 +1,14 @@
+# The canary's core member; see ../Cargo.toml, whose [patch] swaps in vendor/getrandom.
+[package]
+name = "canary-path-override"
+version = "0.0.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[features]
+# M1's test-sources shape: a dependency only some builds turn on.
+test-sources = ["dep:getrandom"]
+
+[dependencies]
+getrandom = { version = "=0.4.3", optional = true }

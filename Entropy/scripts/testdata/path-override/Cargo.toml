@@ -1,0 +1,12 @@
+# Gate canary: swaps the crates.io getrandom for a local copy through [patch.crates-io], so
+# scripts/check-path-deps.sh on this manifest must fail and name getrandom. core/ takes the
+# dependency as optional, behind a feature, so the check must also look at every feature
+# (--all-features). The members are the four that check-path-deps.sh pins, so nothing else fails.
+# Never built and never a workspace member; scripts/canaries.sh runs it.
+[workspace]
+resolver = "3"
+members = ["core", "ffi", "pi/app", "pi/sim"]
+
+[patch.crates-io]
+# The shape of "a local fix" to the RNG crate: an edited copy that deny and vet would wave through.
+getrandom = { path = "vendor/getrandom" }

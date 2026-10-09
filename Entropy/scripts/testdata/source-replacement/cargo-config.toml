@@ -1,0 +1,9 @@
+# Installed as .cargo/config.toml in a temp copy by scripts/canaries.sh; see Cargo.toml.
+# Directory source replacement (the `cargo vendor` setup): cargo metadata, cargo-deny and
+# cargo vet still see every crate as coming from crates.io, with Cargo.lock unchanged, while
+# cargo builds whatever is in vendor/, edits included.
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "vendor"

@@ -1,0 +1,10 @@
+# The canary's core member; see ../Cargo.toml.
+[package]
+name = "canary-path-member-listed"
+version = "0.0.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+secrecy = { path = "../vendor/secrecy", version = "=0.10.3" }

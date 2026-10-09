@@ -1,0 +1,8 @@
+# Gate canary: a vendored secrecy listed openly in [workspace] members (a visible edit to the
+# root Cargo.toml) and used by core/ as a path dependency. As a member it is skipped by
+# cargo-deny, cargo vet and the crates.io-source check, so scripts/check-path-deps.sh, which
+# pins the four members whatever this list says, must fail on this manifest and name it.
+# Never built and never a workspace member; scripts/canaries.sh runs it.
+[workspace]
+resolver = "3"
+members = ["core", "ffi", "pi/app", "pi/sim", "vendor/secrecy"]
