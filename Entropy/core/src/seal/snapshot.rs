@@ -389,8 +389,10 @@ mod tests {
     }
 
     // ed25519-dalek's verify_strict agrees with verify.py's verifier: RFC 8032 TEST 1-3 verify and
-    // fail with L added to S, and both strict cases (a small-order key, a small-order R), which
-    // satisfy the cofactorless equation, are refused.
+    // fail with L added to S, and the three strict cases, which satisfy the cofactorless equation,
+    // are refused. Each isolates its rule (review fix after commit 18): a small-order key with an R
+    // of full order, a full-order key with a small-order R, and both small order, as dalek's own
+    // is_weak reads the two points.
     #[test]
     fn rfc8032_and_the_strict_cases_through_verify_strict() {
         let doc = read("kcr.json");
@@ -411,18 +413,33 @@ mod tests {
             );
         }
         let strict = doc["ed25519_strict"].as_array().expect("strict cases");
-        assert_eq!(strict.len(), 2);
+        let mut rules = Vec::new();
         for c in strict {
-            assert_eq!(c["equation_holds"], true);
-            assert_eq!(c["verify_strict"], false);
+            let name = text(&c["name"]);
+            assert_eq!(c["equation_holds"], true, "{name}");
+            assert_eq!(c["verify_strict"], false, "{name}");
             let key = key_of(&c["public_key_hex"]);
+            let r = VerifyingKey::from_bytes(
+                &hex(&c["signature_hex"])[..32].try_into().expect("32 bytes"),
+            )
+            .expect("R is a point");
+            assert_eq!(c["key_small_order"], key.is_weak(), "{name}");
+            assert_eq!(c["r_small_order"], r.is_weak(), "{name}");
+            rules.push((name, key.is_weak(), r.is_weak()));
             assert!(
                 key.verify_strict(&hex(&c["message_hex"]), &signature_of(&c["signature_hex"]))
                     .is_err(),
-                "{}",
-                text(&c["name"])
+                "{name}"
             );
         }
+        assert_eq!(
+            rules,
+            [
+                ("small-order-key", true, false),
+                ("small-order-r", false, true),
+                ("small-order-key-and-r", true, true),
+            ]
+        );
     }
 
     #[test]

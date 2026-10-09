@@ -62,8 +62,9 @@ key input, and uses public test mnemonics only. Every case names the result core
 snapshot's or proof's freshness against a pinned "today" and its lookups, or the exact
 `SnapshotError`. Self-test check 10 verifies RFC 8032 TEST 1-3 (and refuses each with L added to S)
 and `kat.json`'s Ed25519 entry (and refuses it with one bit flipped in the key, in R and in S);
-checks that two strict cases satisfy the cofactorless equation yet fail strict verification (a
-small-order key, a small-order R); requires the docs' figures (58-byte header, 18-byte entries,
+checks that three strict cases satisfy the cofactorless equation yet fail strict verification, one
+per rule and each isolating it (a small-order key with an R of full order, a full-order key with a
+small-order R, and both small order); requires the docs' figures (58-byte header, 18-byte entries,
 75.5 MB for 2^22 entries, about 18 MB per million, 771 + 18k bytes per proof, 75 entries per QR,
 30 days) to appear in `docs/seal-watchonly-braille.md` as computed; regenerates the file and
 requires byte equality; and reruns every case through `verify.py`'s own verifier against outcomes
@@ -180,7 +181,7 @@ digit was altered.
   read-back key, its mirror-flip neighbours and the longer words it begins. Core's braille tests and
   its Braille known-answer group read it.
 - `kcr.json` (generated; see above): the two label keys, RFC 8032 TEST 1-3 with their S + L twins,
-  two strict-verification cases, the seals the cases are built around (seal vector 1 and the 50- and
+  three strict-verification cases, the seals the cases are built around (seal vector 1 and the 50- and
   99-roll dice-only seeds, with S, the seal code, T, the bucket and G), the Merkle leaf, node, empty
   root and vector-1 path, and the signed snapshots and KCP1 proofs (bytes or go-ahead QR text), each
   with the result core must give: valid ones with their header fields, freshness and lookups,

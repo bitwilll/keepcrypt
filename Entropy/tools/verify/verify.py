@@ -2819,16 +2819,26 @@ def kcr_flip(data, offset, mask=1):
 
 
 def kcr_strict_cases():
-    """Signatures the cofactorless equation accepts and verify_strict refuses: the identity as the key
-    and as R with S = 0 (it holds for every message), and a test-key signature whose R is the identity."""
+    """Signatures the cofactorless equation accepts and verify_strict refuses, each isolating its rule
+    (KCR_STRICT_RULES): the identity as the key with R = B and S = 1 ([1]B - [k]A = B for every message),
+    so only the key is of small order; a test-key signature whose R is the identity, so only R is; and
+    the identity as both with S = 0."""
     message = b"KCE/test/ed25519/strict"
     identity = ed_encode(ED25519_IDENTITY)
     return [
         {"name": "small-order-key", "public_key_hex": identity.hex(), "message_hex": message.hex(),
-         "signature_hex": (identity + bytes(32)).hex()},
+         "signature_hex": (ed_encode(ED25519_BASE) + (1).to_bytes(32, "little")).hex()},
         {"name": "small-order-r", "public_key_hex": ed25519_public_key(KCR_TEST_KEY_LABEL).hex(),
          "message_hex": message.hex(), "signature_hex": ed25519_sign_small_order_r(KCR_TEST_KEY_LABEL, message).hex()},
+        {"name": "small-order-key-and-r", "public_key_hex": identity.hex(), "message_hex": message.hex(),
+         "signature_hex": (identity + bytes(32)).hex()},
     ]
+
+
+def kcr_strict_small_order(case):
+    """(the key is of small order, R is of small order) for a strict case."""
+    public, _, signature = kcr_strict_bytes(case)
+    return ed_small_order(ed_decode(public)), ed_small_order(ed_decode(signature[:32]))
 
 
 def kcr_strict_bytes(case):
@@ -3052,7 +3062,9 @@ def kcr_vectors_json():
         "rfc8032": [{"name": name, "public_key_hex": public, "message_hex": message_hex, "signature_hex": sig,
                      "signature_s_plus_l_hex": ed25519_s_plus_l(bytes.fromhex(sig)).hex()}
                     for name, public, message_hex, sig in RFC8032_TESTS],
-        "ed25519_strict": [dict(case, equation_holds=ed25519_equation_holds(*kcr_strict_bytes(case)),
+        "ed25519_strict": [dict(case, key_small_order=kcr_strict_small_order(case)[0],
+                                r_small_order=kcr_strict_small_order(case)[1],
+                                equation_holds=ed25519_equation_holds(*kcr_strict_bytes(case)),
                                 verify_strict=ed25519_verify(*kcr_strict_bytes(case))) for case in kcr_strict_cases()],
         "limits": {"header_bytes": KCR_HEADER_BYTES, "signed_bytes": KCR_SIGNED_BYTES,
                    "entry_bytes": KCR_ENTRY_BYTES, "max_entries": KCR_MAX_ENTRIES,
@@ -3676,10 +3688,21 @@ def check_watchonly_json(vectors_dir):
     )
 
 
+# The strict cases and which point of each is of small order: (name, key, R). One case per rule and one
+# with both, so dropping either rule from verify_strict lets its own case through (tasks/todo.md, M1
+# group 7; review fix after commit 18).
+KCR_STRICT_RULES = (
+    ("small-order-key", True, False),
+    ("small-order-r", False, True),
+    ("small-order-key-and-r", True, True),
+)
+
+
 def check_ed25519(vectors_dir):
     """RFC 8032 TEST 1-3 verify and refuse L added to S; every kat.json Ed25519 entry verifies and fails
     with one bit flipped in its public key, in R and in S; each label key's signature verifies and fails
-    on a changed message; any other label is refused."""
+    on a changed message; each strict case isolates its small-order rule (KCR_STRICT_RULES), satisfies
+    the cofactorless equation and is refused; any other label is refused."""
     problems = []
     for name, public, message, signature in RFC8032_TESTS:
         public, message, signature = bytes.fromhex(public), bytes.fromhex(message), bytes.fromhex(signature)
@@ -3707,7 +3730,11 @@ def check_ed25519(vectors_dir):
         public, signature = ed25519_public_key(label), ed25519_sign(label, message)
         if not ed25519_verify(public, message, signature) or ed25519_verify(public, message + b".", signature):
             problems.append("the %s key's signature does not verify, or verifies a changed message" % label.decode())
-    for case in kcr_strict_cases():
+    cases = kcr_strict_cases()
+    if [(case["name"],) + kcr_strict_small_order(case) for case in cases] != list(KCR_STRICT_RULES):
+        problems.append("strict cases %r, pinned %r: each must isolate its small-order rule"
+                        % ([(case["name"],) + kcr_strict_small_order(case) for case in cases], KCR_STRICT_RULES))
+    for case in cases:
         if not ed25519_equation_holds(*kcr_strict_bytes(case)) or ed25519_verify(*kcr_strict_bytes(case)):
             problems.append("strict case %s: the equation must hold and verify_strict must refuse it" % case["name"])
     try:

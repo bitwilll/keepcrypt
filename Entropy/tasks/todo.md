@@ -1181,6 +1181,12 @@ starts. Every item names its proof.
       (lessons.md): 75 as the largest k whose single-part UR fits 4,296 characters ("About 75 bucket entries fit one
       QR"), 2^22 x 18 + 122 = 75,497,594 bytes ("75.5 MB") and 10^6 x 18 bytes ("about 18 MB"), in
       seal-watchonly-braille.md "Snapshot format" and "Go-ahead QR".
+      Review fixes after commit 18:
+      - The strict cases isolate their rules. At commit 16 "small-order-key" was the identity as the key and as R,
+        so the R rule alone refused it, and dropping only the key rule from verify.py left check 10 passing. Now
+        three cases: a small-order key with R = B and S = 1, a full-order key with a small-order R, and both small
+        order (the old bytes). Check 10 pins which point of each is of small order (`KCR_STRICT_RULES`), and core's
+        test reads the same two flags against dalek's `is_weak`. Dropping either rule alone now fails check 10.
 - [ ] `seal/crockford.rs` and seal derivation (seal-watchonly-braille.md "Seal derivation spec", "The seal image";
       CLAUDE.md rule 7):
       - Crockford encoding reads 5-bit groups, most significant first;
@@ -1801,6 +1807,8 @@ moved from M0)
 16. verify: stdlib Ed25519 (RFC 8032), Merkle, .kcr and KCP1 builders, vectors/kcr.json (with proof freshness cases and UR negatives), check 10
 17. core: Crockford encoding, seal derivation, re-check URL, check request, go-ahead, registration, and the Seal and GoAhead KATs; hmac 0.13.0 with ctutils 0.4.2 and cmov, plus vet entries
 18. core: Merkle, snapshot and bucket-proof verification with date() and freshness() on both verified types, the registry key under test-registry with its marker, and the Ed25519 and Merkle KATs; ed25519-dalek 3.0.0 with default-features = false and no features, BSD-3-Clause in deny.toml, vet entries
+   Review fixes after 18, each its own commit, vectors first:
+   - verify: the strict Ed25519 cases isolate the small-order key rule and the small-order R rule (core's strict-case test reads the third case and the two flags in the same commit, or that commit would be red);
 19. verify + scripts: backup.json generator (check 11) and scripts/age-interop.py, with the age_cli_written vectors and their SOURCES.md entry
 20. core: age v1 armor, reader and writer; CCTV conformance; the Age KAT; scrypt, chacha20poly1305, hkdf and base64ct (and their transitive crates), plus vet entries
 21. core: backup passphrase (stored in the session; typed words for decrypt only) and confirm challenge, plaintext v1, the backup API (generate, encrypt, verify, no passphrase arguments) and Check a backup (decrypt_backup returning CheckedBackup)
