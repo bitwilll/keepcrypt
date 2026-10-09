@@ -95,17 +95,22 @@ pub enum KatId {
     /// BIP39: 24 English entropy and mnemonic pairs, and the PBKDF2 seed for 2 of them.
     #[error("BIP39")]
     Bip39,
+    /// The health tests: a stuck stream fails the Repetition Count and an alternating one the
+    /// Adaptive Proportion test, each at its pinned sample; a clean stream passes.
+    #[error("health tests")]
+    Health,
 }
 
 impl KatId {
     /// Every group, in the order a full suite runs them. Keep it next to `KatId` and to the
     /// exhaustive match in `kat::passes`, which is where a new group must be added too.
-    pub const ALL: [KatId; 5] = [
+    pub const ALL: [KatId; 6] = [
         KatId::Sha256,
         KatId::Sha512,
         KatId::Hmac,
         KatId::Bip39Wordlist,
         KatId::Bip39,
+        KatId::Health,
     ];
 }
 
@@ -366,6 +371,7 @@ mod tests {
             KatId::Hmac => "HMAC",
             KatId::Bip39Wordlist => "BIP39 word list",
             KatId::Bip39 => "BIP39",
+            KatId::Health => "health tests",
         }
     }
 

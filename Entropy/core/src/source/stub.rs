@@ -8,11 +8,17 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use sha2::{Digest, Sha256};
 use zeroize::Zeroize;
+
+use crate::error::{CoreError, InternalFault, SourceFault};
 
 /// The stub marker. `#[used]` keeps it in every object that links this module.
 #[used]
 static MARKER: [u8; 26] = *b"KC_TEST_SOURCE_DO_NOT_SHIP";
+
+/// The counter-mode label behind `FailAt` and `ShortAfter`.
+const STUB_LABEL: &[u8] = b"KCE/test/stub";
 
 /// What a stub source hands out. Every mode is deterministic; none is a PRNG.
 pub enum StubEntropy {
@@ -58,11 +64,15 @@ impl WipeProbe {
     }
 }
 
-/// A stub source for `Session::new_with_stub`: the entropy it hands out and the probe it reports
-/// wipes to.
+/// A stub source for `Session::new_with_stub`: the entropy it hands out, the probe it reports
+/// wipes to, and how far it has got.
 pub struct StubSource {
     entropy: StubEntropy,
     probe: WipeProbe,
+    /// Bytes handed out so far.
+    served: usize,
+    /// Reads so far, failed ones included.
+    reads: usize,
 }
 
 impl StubSource {
@@ -71,14 +81,75 @@ impl StubSource {
         Self {
             entropy,
             probe: probe.clone(),
+            served: 0,
+            reads: 0,
         }
+    }
+
+    /// One read: fills the front of `buf` and returns how many bytes it filled. The caller's
+    /// shared length check (`Source::fill`) fails anything short of `buf.len()`. A failing mode
+    /// fails like the OS source does. The marker passes through `black_box` here, on the source
+    /// dispatch, so a linked artifact that can reach a stub keeps it.
+    pub(crate) fn read(&mut self, buf: &mut [u8]) -> Result<usize, CoreError> {
+        core::hint::black_box(&MARKER);
+        let read = self.reads;
+        self.reads = self.reads.saturating_add(1);
+        let produced = match &self.entropy {
+            StubEntropy::Fixed(bytes) => {
+                let end = self
+                    .served
+                    .checked_add(buf.len())
+                    .filter(|&end| end <= bytes.len());
+                match end {
+                    Some(end) => {
+                        buf.copy_from_slice(&bytes[self.served..end]);
+                        buf.len()
+                    }
+                    None => return Err(CoreError::Source(SourceFault::Os)),
+                }
+            }
+            StubEntropy::Stream(label) => counter_fill(label, self.served, buf)?,
+            StubEntropy::Fail => return Err(CoreError::Source(SourceFault::Os)),
+            StubEntropy::FailAt(n) if read >= *n => return Err(CoreError::Source(SourceFault::Os)),
+            StubEntropy::FailAt(_) => counter_fill(STUB_LABEL, self.served, buf)?,
+            StubEntropy::ShortAfter(n) => {
+                let available = n.saturating_sub(self.served).min(buf.len());
+                counter_fill(STUB_LABEL, self.served, &mut buf[..available])?
+            }
+        };
+        self.served = self.served.saturating_add(produced);
+        Ok(produced)
     }
 
     /// The session holding this stub was wiped: clear the stub's own bytes, then count it.
     pub(crate) fn wiped(&mut self) {
         self.entropy.zeroize();
+        self.served.zeroize();
+        self.reads.zeroize();
         self.probe.0.fetch_add(1, Ordering::SeqCst);
     }
+}
+
+/// Fills all of `out` with SHA-256 counter-mode bytes over `label`, starting at stream offset
+/// `offset`: block i is SHA-256(label || i as u64, big-endian). Returns `out.len()`.
+fn counter_fill(label: &[u8], offset: usize, out: &mut [u8]) -> Result<usize, CoreError> {
+    let mut written = 0;
+    while written < out.len() {
+        let position = offset
+            .checked_add(written)
+            .ok_or(CoreError::Internal(InternalFault::Length))?;
+        let block =
+            u64::try_from(position / 32).map_err(|_| CoreError::Internal(InternalFault::Length))?;
+        let digest = Sha256::new()
+            .chain_update(label)
+            .chain_update(block.to_be_bytes())
+            .finalize();
+        let from = position % 32;
+        let take = (32 - from).min(out.len() - written);
+        out[written..written + take].copy_from_slice(&digest[from..from + take]);
+        written += take;
+    }
+    Ok(written)
 }
 
 #[cfg(test)]
@@ -88,6 +159,29 @@ mod tests {
     #[test]
     fn marker_is_the_documented_string() {
         assert_eq!(&MARKER, b"KC_TEST_SOURCE_DO_NOT_SHIP");
+    }
+
+    #[test]
+    fn counter_fill_is_sha256_counter_mode_at_any_offset() {
+        let mut first = [0u8; 70];
+        assert_eq!(counter_fill(b"x", 0, &mut first), Ok(70));
+        let block0 = Sha256::new()
+            .chain_update(b"x")
+            .chain_update(0u64.to_be_bytes())
+            .finalize();
+        let block2 = Sha256::new()
+            .chain_update(b"x")
+            .chain_update(2u64.to_be_bytes())
+            .finalize();
+        assert_eq!(&first[..32], block0.as_slice());
+        assert_eq!(&first[64..], &block2[..6]);
+        let mut middle = [0u8; 40];
+        assert_eq!(counter_fill(b"x", 13, &mut middle), Ok(40));
+        assert_eq!(&middle[..], &first[13..53]);
+        assert_eq!(
+            counter_fill(b"x", usize::MAX, &mut [0u8; 2]),
+            Err(CoreError::Internal(InternalFault::Length))
+        );
     }
 
     #[test]

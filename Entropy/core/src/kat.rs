@@ -10,7 +10,8 @@
 //! - A faulted group flips one bit of a computed value before its comparison, so the comparison
 //!   itself is what fails; nothing short-circuits it.
 //! - Budget per full run: at most 3 PBKDF2-2048 (2 today), scrypt only at log2 N 10 and at most 2
-//!   Ed25519 verifies (later groups), and at most 1 s on a Pi Zero (an estimate; M4 measures).
+//!   Ed25519 verifies (later groups), and at most 1 s on a Pi Zero (an estimate; M4 measures). The
+//!   Health group tests 2,064 samples.
 //! - The known answers are copied from vectors/kat.json and vectors/bip39/vectors.json, and the
 //!   unit tests below check every one of them against those files.
 
@@ -18,19 +19,23 @@ use bitcoin::hashes::hmac::{Hmac, HmacEngine};
 use bitcoin::hashes::{Hash, HashEngine, sha256, sha512};
 use sha2::{Digest, Sha256, Sha512};
 
-use crate::error::{CoreError, KatId};
+use crate::error::{CoreError, HealthStage, HealthTest, KatId};
+use crate::health::HealthTester;
 
 /// Where a known-answer suite runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Suite {
     /// Every group: `self_test`, `Session::new` and `Wiped::restart`.
     Full,
+    /// `hwrng_boot_test`: the health tests.
+    HwrngBoot,
 }
 
 /// The groups each entry point runs, in order: the one exhaustive match.
 const fn groups(suite: Suite) -> &'static [KatId] {
     match suite {
         Suite::Full => &KatId::ALL,
+        Suite::HwrngBoot => &[KatId::Health],
     }
 }
 
@@ -64,6 +69,7 @@ fn passes(id: KatId, fault: bool) -> bool {
         KatId::Hmac => hmac_group(fault),
         KatId::Bip39Wordlist => bip39_wordlist_group(fault),
         KatId::Bip39 => bip39_group(fault),
+        KatId::Health => health_group(fault),
     }
 }
 
@@ -350,29 +356,77 @@ fn bip39_group(fault: bool) -> bool {
     ok
 }
 
+// --- Health (vectors/keepcrypt.json "health": stuck, alternating, counting-1536) ---------------
+// Fixed patterns, built here rather than stored, with their verdicts pinned below.
+
+/// The three streams and their expected verdicts: stuck fails the Repetition Count at sample 5,
+/// alternating fails the Adaptive Proportion test at sample 122 (both in the startup stage), and
+/// counting passes and credits one window of 512 samples.
+fn health_kat_cases() -> [(Vec<u8>, [u8; 10]); 3] {
+    [
+        (
+            vec![0u8; 16],
+            health_failure(HealthTest::RepetitionCount, HealthStage::Startup, 5),
+        ),
+        (
+            [0u8, 1].into_iter().cycle().take(512).collect(),
+            health_failure(HealthTest::AdaptiveProportion, HealthStage::Startup, 122),
+        ),
+        (
+            (0..=u8::MAX).cycle().take(1_536).collect(),
+            health_pass(512),
+        ),
+    ]
+}
+
+/// A failure verdict as bytes: test (1, 2), stage (1, 2), sample index (u64, big-endian).
+fn health_failure(test: HealthTest, stage: HealthStage, sample: u64) -> [u8; 10] {
+    let mut out = [0u8; 10];
+    out[0] = match test {
+        HealthTest::RepetitionCount => 1,
+        HealthTest::AdaptiveProportion => 2,
+    };
+    out[1] = match stage {
+        HealthStage::Startup => 1,
+        HealthStage::Continuous => 2,
+    };
+    out[2..].copy_from_slice(&sample.to_be_bytes());
+    out
+}
+
+/// A pass verdict as bytes: 0, 0, credited samples (u64, big-endian).
+fn health_pass(credited_samples: u64) -> [u8; 10] {
+    let mut out = [0u8; 10];
+    out[2..].copy_from_slice(&credited_samples.to_be_bytes());
+    out
+}
+
+/// `samples` through a fresh tester, as verdict bytes. Any other error matches no verdict.
+fn health_verdict(samples: &[u8]) -> [u8; 10] {
+    let mut tester = HealthTester::new();
+    match tester.test(samples) {
+        Ok(_) => health_pass(tester.credited_samples()),
+        Err(CoreError::Health(f)) => health_failure(f.test, f.stage, f.sample),
+        Err(_) => [0xff; 10],
+    }
+}
+
+fn health_group(fault: bool) -> bool {
+    let mut ok = true;
+    for (i, (samples, expected)) in health_kat_cases().iter().enumerate() {
+        ok &= same(&health_verdict(samples), expected, fault && i == 0);
+    }
+    ok
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_vectors::{hex_str as bytes, read as vectors};
     use serde_json::Value;
-    use std::path::Path;
-
-    fn vectors(name: &str) -> Value {
-        let file = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../vectors")
-            .join(name);
-        let text = std::fs::read_to_string(&file).expect("read the vectors file");
-        serde_json::from_str(&text).expect("parse the vectors file")
-    }
 
     fn text<'a>(v: &'a Value, key: &str) -> &'a str {
         v[key].as_str().expect("a string field")
-    }
-
-    fn bytes(hex: &str) -> Vec<u8> {
-        assert!(hex.len().is_multiple_of(2), "odd hex length");
-        (0..hex.len() / 2)
-            .map(|i| u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).expect("hex"))
-            .collect()
     }
 
     #[test]
@@ -448,6 +502,46 @@ mod tests {
             assert_eq!(run(Suite::Full, Some(id)), Err(CoreError::Kat(id)));
         }
         assert_eq!(groups(Suite::Full), &KatId::ALL);
+        assert_eq!(run(Suite::HwrngBoot, None), Ok(()));
+        for id in KatId::ALL {
+            let want = if id == KatId::Health {
+                Err(CoreError::Kat(id))
+            } else {
+                Ok(())
+            };
+            assert_eq!(run(Suite::HwrngBoot, Some(id)), want, "{id:?}");
+        }
+    }
+
+    #[test]
+    fn health_cases_match_keepcrypt_json() {
+        let doc = crate::test_vectors::keepcrypt_json();
+        let names = ["stuck", "alternating", "counting-1536"];
+        for (name, (samples, expected)) in names.iter().zip(health_kat_cases()) {
+            let case = crate::test_vectors::named(&doc["health"], name);
+            assert_eq!(
+                crate::test_vectors::hex(&case["samples_hex"]),
+                samples,
+                "{name}"
+            );
+            let expect = &case["expect"];
+            let from_json = if expect["result"] == "pass" {
+                health_pass(expect["credited_samples"].as_u64().expect("credited"))
+            } else {
+                let test = if expect["test"] == "repetition_count" {
+                    HealthTest::RepetitionCount
+                } else {
+                    HealthTest::AdaptiveProportion
+                };
+                let stage = if expect["stage"] == "startup" {
+                    HealthStage::Startup
+                } else {
+                    HealthStage::Continuous
+                };
+                health_failure(test, stage, expect["sample"].as_u64().expect("sample"))
+            };
+            assert_eq!(from_json, expected, "{name}");
+        }
     }
 
     #[test]

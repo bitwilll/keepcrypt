@@ -7,15 +7,21 @@
 #![forbid(unsafe_code)]
 
 mod error;
+mod health;
 mod kat;
 mod secret;
 mod session;
 mod source;
+#[cfg(test)]
+mod test_vectors;
 
 pub use error::{
     BackupError, BrailleError, CheckError, CoreError, HealthFailure, HealthStage, HealthTest,
     InternalFault, KatId, SnapshotError, SourceFault, UrError,
 };
+pub use health::hwrng_boot_test;
+#[cfg(feature = "test-sources")]
+pub use health::hwrng_boot_test_with_kat_fault;
 pub use kat::self_test;
 #[cfg(feature = "test-sources")]
 pub use kat::self_test_with_kat_fault;
@@ -27,5 +33,6 @@ pub use session::{
     Checking, Collecting, Committed, Mode, Platform, Ready, Rolling, Sealed, SeedLength, Session,
     State,
 };
+pub use source::{ExtraSource, HW_BYTES_NEEDED};
 #[cfg(feature = "test-sources")]
 pub use source::{StubEntropy, StubSource, WipeProbe};

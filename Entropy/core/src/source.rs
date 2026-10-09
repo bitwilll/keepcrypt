@@ -1,13 +1,163 @@
-//! Where a session's randomness comes from (CLAUDE.md rules 1 and 10; docs/build-plan.md
-//! "source"; tasks/todo.md, M1 groups 2 and 3).
+//! Where a session's randomness comes from, the source ids and the credit policy (CLAUDE.md
+//! rules 1, 2 and 10, "Pi device quota"; docs/build-plan.md "source", "Credit policy";
+//! tasks/todo.md, M1 group 3 and Q6a, Q7).
 //!
-//! Without the `test-sources` feature the only arm is the OS, and no public API accepts a source,
-//! so a shipped build cannot be handed a fake one. The stub arm exists only under that feature.
+//! - The OS random source is read in `source/os.rs` only; everything else calls `Source::fill`
+//!   or `Source::os_bytes`.
+//! - Without the `test-sources` feature the only arm is the OS, and no public API accepts a
+//!   source, so a shipped build cannot be handed a fake one.
+//! - A read returns exactly the bytes asked for or fails: the OS and stub arms share one length
+//!   check, so a short read always fails.
+//! - Credited source ids stay inside core; a shell names only an `ExtraSource`, which is never
+//!   credited.
 
+mod os;
 mod stub;
 
 #[cfg(feature = "test-sources")]
 pub use stub::{StubEntropy, StubSource, WipeProbe};
+use zeroize::Zeroizing;
+
+use crate::error::{CoreError, SourceFault};
+use crate::health::{APT_WINDOW, STARTUP_SAMPLES};
+use crate::session::{Mode, Platform};
+
+/// OS bytes read at commit and absorbed last (CLAUDE.md "Pi device quota"; Q6a).
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "read by Session::commit (tasks/todo.md, M1 group 9)"
+    )
+)]
+pub(crate) const OS_BYTES: usize = 64;
+/// hwrng credit until lab data: 4 bits per byte, half of what Linux assumes (docs/design.md).
+pub(crate) const HWRNG_BITS_PER_BYTE: u32 = 4;
+/// Credited hwrng bits the Pi's device leg needs, for either seed length.
+pub(crate) const PI_REQUIRED_BITS: u32 = 512;
+/// The phone's device leg: the OS read, credited 256 bits by policy (docs/design.md "Device quota
+/// in practice").
+pub(crate) const PHONE_REQUIRED_BITS: u32 = 256;
+/// hwrng bytes before the first credit: the 1,024 startup samples, tested then discarded, plus one
+/// 512-sample window (Q7). The Pi's progress bar counts health-tested bytes toward this
+/// (pi-firmware.md step 4); the first window then credits 2,048 bits at once (Q13 c).
+pub const HW_BYTES_NEEDED: u64 = STARTUP_SAMPLES + APT_WINDOW;
+
+/// An uncredited extra input a shell may mix into the pool before the commitment. Never counted
+/// toward any quota (docs/design.md "Evaluating the proposed sources").
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExtraSource {
+    /// Button or touch timestamps in nanoseconds.
+    InputTiming,
+    /// Accelerometer and gyroscope samples.
+    Motion,
+    /// Raw camera frames, lens covered.
+    Camera,
+    /// Raw microphone PCM.
+    Microphone,
+}
+
+/// A pool record's source (Q6a). The credited ids exist only inside core.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "absorbed by the pool (tasks/todo.md, M1 group 3, commit 9)"
+    )
+)]
+pub(crate) enum SourceId {
+    /// The OS random source: 0x0001.
+    Os,
+    /// Health-tested raw hwrng samples: 0x0002. (0x0003 is reserved for the M8 TRNG.)
+    Hwrng,
+    /// An uncredited extra: 0x0101 to 0x0104.
+    Extra(ExtraSource),
+}
+
+impl SourceId {
+    /// The record's id field: a u16, big-endian.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "absorbed by the pool (tasks/todo.md, M1 group 3, commit 9)"
+        )
+    )]
+    pub(crate) const fn to_be_bytes(self) -> [u8; 2] {
+        let id: u16 = match self {
+            SourceId::Os => 0x0001,
+            SourceId::Hwrng => 0x0002,
+            SourceId::Extra(ExtraSource::InputTiming) => 0x0101,
+            SourceId::Extra(ExtraSource::Motion) => 0x0102,
+            SourceId::Extra(ExtraSource::Camera) => 0x0103,
+            SourceId::Extra(ExtraSource::Microphone) => 0x0104,
+        };
+        id.to_be_bytes()
+    }
+}
+
+/// The credited device-leg bits a session needs before `commit` (docs/build-plan.md "Credit
+/// policy"): health-tested hwrng on the Pi, the OS read by policy on a phone, none in dice-only
+/// mode.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "read by Session::required_bits (tasks/todo.md, M1 group 9)"
+    )
+)]
+pub(crate) const fn required_bits(platform: Platform, mode: Mode) -> u32 {
+    match (mode, platform) {
+        (Mode::DiceOnly, _) => 0,
+        (Mode::Mixed, Platform::Pi) => PI_REQUIRED_BITS,
+        (Mode::Mixed, Platform::Phone) => PHONE_REQUIRED_BITS,
+    }
+}
+
+/// Bits credited by policy to the OS read at commit: the whole phone quota, none on the Pi, whose
+/// quota is hwrng only.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "read by Session::commit (tasks/todo.md, M1 group 9)"
+    )
+)]
+pub(crate) const fn os_policy_bits(platform: Platform) -> u32 {
+    match platform {
+        Platform::Pi => 0,
+        Platform::Phone => PHONE_REQUIRED_BITS,
+    }
+}
+
+/// Bits credited to `samples` health-tested hwrng samples in completed post-startup windows:
+/// 512 samples credit 2,048 bits, more than the 512 required (Q13 c). Saturates, so a huge count
+/// can only overstate a quota already met, never wrap below it.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "read by Session::credited_bits (tasks/todo.md, M1 group 9)"
+    )
+)]
+pub(crate) fn hwrng_credited_bits(samples: u64) -> u64 {
+    samples.saturating_mul(u64::from(HWRNG_BITS_PER_BYTE))
+}
+
+/// Whether the device leg meets its quota once the OS read at commit is counted.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "read by Session::commit (tasks/todo.md, M1 group 9)"
+    )
+)]
+pub(crate) fn quota_met(platform: Platform, mode: Mode, credited_hwrng_samples: u64) -> bool {
+    let credited = hwrng_credited_bits(credited_hwrng_samples)
+        .saturating_add(u64::from(os_policy_bits(platform)));
+    credited >= u64::from(required_bits(platform, mode))
+}
 
 /// A session's entropy source.
 pub(crate) enum Source {
@@ -19,6 +169,47 @@ pub(crate) enum Source {
 }
 
 impl Source {
+    /// Fills `buf` completely or fails. Both arms report how many bytes they produced and share
+    /// this one length check, so a short read is always `ShortRead`.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "read by Session::commit (tasks/todo.md, M1 group 9)"
+        )
+    )]
+    pub(crate) fn fill(&mut self, buf: &mut [u8]) -> Result<(), CoreError> {
+        let produced = match self {
+            Source::Os => {
+                os::fill_os(buf)?;
+                buf.len()
+            }
+            #[cfg(feature = "test-sources")]
+            Source::Stub(stub) => stub.read(buf)?,
+        };
+        if produced == buf.len() {
+            Ok(())
+        } else {
+            Err(CoreError::Source(SourceFault::ShortRead))
+        }
+    }
+
+    /// `N` fresh bytes in a read of their own that never touches the pool: the check nonce, the
+    /// backup file key, salt, nonce and file name, and the backup passphrase and its confirm
+    /// challenge. Zeroized when dropped.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "read by start_check and the backup (tasks/todo.md, M1 groups 7 and 8)"
+        )
+    )]
+    pub(crate) fn os_bytes<const N: usize>(&mut self) -> Result<Zeroizing<[u8; N]>, CoreError> {
+        let mut bytes = Zeroizing::new([0u8; N]);
+        self.fill(bytes.as_mut_slice())?;
+        Ok(bytes)
+    }
+
     /// Called by the session's `Drop` after its secrets are zeroized: a stub wipes its own buffers
     /// and counts the wipe on its probe. The OS arm holds nothing.
     pub(crate) fn wiped(&mut self) {
@@ -26,6 +217,198 @@ impl Source {
             Source::Os => {}
             #[cfg(feature = "test-sources")]
             Source::Stub(stub) => stub.wiped(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_vectors::keepcrypt_json;
+
+    #[test]
+    fn constants_and_ids_match_keepcrypt_json() {
+        let constants = &keepcrypt_json()["constants"];
+        assert_eq!(constants["os_bytes"], OS_BYTES);
+        assert_eq!(constants["hwrng_bits_per_byte"], HWRNG_BITS_PER_BYTE);
+        assert_eq!(constants["required_bits"]["pi"], PI_REQUIRED_BITS);
+        assert_eq!(constants["required_bits"]["phone"], PHONE_REQUIRED_BITS);
+        assert_eq!(constants["hw_bytes_needed"], HW_BYTES_NEEDED);
+        let ids: Vec<(String, u64)> = constants["source_ids"]
+            .as_array()
+            .expect("source_ids")
+            .iter()
+            .map(|e| {
+                (
+                    e["name"].as_str().expect("name").to_owned(),
+                    e["id"].as_u64().expect("id"),
+                )
+            })
+            .collect();
+        let ours = [
+            ("os", SourceId::Os),
+            ("hwrng", SourceId::Hwrng),
+            ("input_timing", SourceId::Extra(ExtraSource::InputTiming)),
+            ("motion", SourceId::Extra(ExtraSource::Motion)),
+            ("camera", SourceId::Extra(ExtraSource::Camera)),
+            ("microphone", SourceId::Extra(ExtraSource::Microphone)),
+        ];
+        for (name, id) in ours {
+            let listed: Vec<u64> = ids
+                .iter()
+                .filter(|(n, _)| n == name)
+                .map(|(_, v)| *v)
+                .collect();
+            assert_eq!(
+                listed,
+                [u64::from(u16::from_be_bytes(id.to_be_bytes()))],
+                "{name}"
+            );
+        }
+        assert!(
+            ids.iter().any(|(n, v)| n == "trng" && *v == 3),
+            "0x0003 stays reserved for the M8 TRNG"
+        );
+    }
+
+    // build-plan.md "Credit policy", as a table: (platform, mode, credited hwrng samples) -> met.
+    #[test]
+    fn credit_policy_table() {
+        assert_eq!(required_bits(Platform::Pi, Mode::Mixed), 512);
+        assert_eq!(required_bits(Platform::Phone, Mode::Mixed), 256);
+        assert_eq!(required_bits(Platform::Pi, Mode::DiceOnly), 0);
+        assert_eq!(required_bits(Platform::Phone, Mode::DiceOnly), 0);
+        assert_eq!(
+            hwrng_credited_bits(512),
+            2_048,
+            "the first window credits 2,048 bits (Q13 c)"
+        );
+        assert_eq!(hwrng_credited_bits(u64::MAX), u64::MAX);
+        let table = [
+            (Platform::Pi, Mode::Mixed, 0, false),
+            (Platform::Pi, Mode::Mixed, 127, false),
+            (Platform::Pi, Mode::Mixed, 128, true),
+            (Platform::Pi, Mode::Mixed, 512, true),
+            (Platform::Phone, Mode::Mixed, 0, true),
+            (Platform::Pi, Mode::DiceOnly, 0, true),
+            (Platform::Phone, Mode::DiceOnly, 0, true),
+        ];
+        for (platform, mode, samples, met) in table {
+            assert_eq!(
+                quota_met(platform, mode, samples),
+                met,
+                "{platform:?} {mode:?} {samples}"
+            );
+        }
+        assert_eq!(HW_BYTES_NEEDED, 1_536);
+    }
+
+    // The real OS path: a full read succeeds and two reads differ. Nothing is printed.
+    #[test]
+    fn os_source_fills_and_two_reads_differ() {
+        let mut source = Source::Os;
+        let mut first = [0u8; 32];
+        let mut second = [0u8; 32];
+        assert_eq!(source.fill(&mut first), Ok(()));
+        assert_eq!(source.fill(&mut second), Ok(()));
+        assert_ne!(first, second);
+        match source.os_bytes::<8>() {
+            Ok(bytes) => assert_eq!(bytes.len(), 8),
+            Err(e) => panic!("{e}"),
+        }
+    }
+
+    #[cfg(feature = "test-sources")]
+    mod stub {
+        use super::*;
+        use crate::source::{StubEntropy, StubSource, WipeProbe};
+        use crate::test_vectors::hex;
+
+        fn stub(entropy: StubEntropy) -> Source {
+            Source::Stub(StubSource::new(entropy, &WipeProbe::new()))
+        }
+
+        #[test]
+        fn fixed_serves_exactly_its_bytes_then_fails() {
+            let mut source = stub(StubEntropy::Fixed((1..=10).collect()));
+            let mut four = [0u8; 4];
+            assert_eq!(source.fill(&mut four), Ok(()));
+            assert_eq!(four, [1, 2, 3, 4]);
+            let mut seven = [0u8; 7];
+            assert_eq!(
+                source.fill(&mut seven),
+                Err(CoreError::Source(SourceFault::Os)),
+                "used up"
+            );
+            let mut six = [0u8; 6];
+            assert_eq!(source.fill(&mut six), Ok(()));
+            assert_eq!(six, [5, 6, 7, 8, 9, 10]);
+            assert_eq!(
+                source.fill(&mut [0u8; 1]),
+                Err(CoreError::Source(SourceFault::Os))
+            );
+            assert_eq!(source.fill(&mut []), Ok(()), "an empty read is exact");
+        }
+
+        #[test]
+        fn stream_is_the_keepcrypt_json_counter_mode() {
+            let vector = &keepcrypt_json()["streams"][0];
+            let label = vector["label_ascii"]
+                .as_str()
+                .expect("label")
+                .as_bytes()
+                .to_vec();
+            let want = hex(&vector["hex"]);
+            assert_eq!(want.len(), 100);
+            let mut source = stub(StubEntropy::Stream(label));
+            let mut got = vec![0u8; 100];
+            let (a, b) = got.split_at_mut(7);
+            assert_eq!(source.fill(a), Ok(()));
+            assert_eq!(source.fill(b), Ok(()));
+            assert_eq!(got, want, "reads split anywhere continue the same stream");
+        }
+
+        #[test]
+        fn fail_fail_at_and_short_after() {
+            let mut fail = stub(StubEntropy::Fail);
+            assert_eq!(
+                fail.fill(&mut [0u8; 1]),
+                Err(CoreError::Source(SourceFault::Os))
+            );
+            let mut fail_at = stub(StubEntropy::FailAt(2));
+            assert_eq!(fail_at.fill(&mut [0u8; 64]), Ok(()));
+            assert_eq!(fail_at.fill(&mut [0u8; 8]), Ok(()));
+            assert_eq!(
+                fail_at.fill(&mut [0u8; 8]),
+                Err(CoreError::Source(SourceFault::Os))
+            );
+            assert_eq!(
+                fail_at.fill(&mut [0u8; 8]),
+                Err(CoreError::Source(SourceFault::Os))
+            );
+            let mut short = stub(StubEntropy::ShortAfter(10));
+            assert_eq!(short.fill(&mut [0u8; 8]), Ok(()));
+            assert_eq!(
+                short.fill(&mut [0u8; 8]),
+                Err(CoreError::Source(SourceFault::ShortRead))
+            );
+            assert_eq!(
+                short.fill(&mut [0u8; 1]),
+                Err(CoreError::Source(SourceFault::ShortRead))
+            );
+        }
+
+        #[test]
+        fn os_bytes_is_one_exact_read() {
+            let mut source = stub(StubEntropy::Fixed(vec![9, 8, 7, 6, 5, 4, 3, 2]));
+            match source.os_bytes::<8>() {
+                Ok(bytes) => assert_eq!(*bytes, [9, 8, 7, 6, 5, 4, 3, 2]),
+                Err(e) => panic!("{e}"),
+            }
+            assert!(matches!(
+                source.os_bytes::<1>(),
+                Err(CoreError::Source(SourceFault::Os))
+            ));
         }
     }
 }
