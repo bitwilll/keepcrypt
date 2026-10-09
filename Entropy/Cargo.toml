@@ -1,0 +1,16 @@
+[workspace]
+resolver = "3"
+members = ["core", "ffi", "pi/app", "pi/sim"]
+# Gate canaries are standalone crates that must fail CI checks; they are never members.
+exclude = ["scripts/testdata"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.98.1"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+keepcrypt-core = { path = "core" }
+keepcrypt-pi = { path = "pi/app" }

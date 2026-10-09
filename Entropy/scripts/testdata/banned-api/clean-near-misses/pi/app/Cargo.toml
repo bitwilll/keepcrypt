@@ -1,0 +1,3 @@
+# The games' getrandom dependency; rule 1 only checks .rs files.
+[dependencies]
+getrandom = "0.4.3"

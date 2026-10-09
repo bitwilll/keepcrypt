@@ -1,0 +1,4 @@
+# The manifest names getrandom; rule 1 only checks .rs files.
+[dependencies]
+getrandom = "0.4.3"
+# Rust-only checks skip this file: _ = f(); let _x = f(); include!("x.rs"); #[path = "x.rs"]

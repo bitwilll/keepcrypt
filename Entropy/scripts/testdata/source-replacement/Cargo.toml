@@ -1,0 +1,10 @@
+# Gate canary: scripts/canaries.sh copies this workspace to a temp dir and installs
+# cargo-config.toml there as .cargo/config.toml (and as core/src/.cargo/config, the legacy name
+# further down). scripts/check-path-deps.sh on the copy must fail and name both files. The
+# members are the four that check-path-deps.sh pins and have no dependencies, so the config files
+# are the only thing that can fail it.
+# Never built and never a workspace member; the config is never committed under its real name,
+# or check-path-deps.sh would fail on the repo itself.
+[workspace]
+resolver = "3"
+members = ["core", "ffi", "pi/app", "pi/sim"]

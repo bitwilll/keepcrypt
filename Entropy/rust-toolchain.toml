@@ -1,0 +1,13 @@
+[toolchain]
+# Pinned stable release. New pins must be at least 14 days old (supply-chain cool-off).
+channel = "1.98.1"
+profile = "minimal"
+components = ["rustfmt", "clippy", "llvm-tools-preview"]
+targets = [
+    "arm-unknown-linux-gnueabihf", # Pi Zero v1.3 (ARMv6)
+    "aarch64-linux-android",
+    "armv7-linux-androideabi",
+    "x86_64-linux-android",
+    "aarch64-apple-ios",
+    "aarch64-apple-ios-sim",
+]

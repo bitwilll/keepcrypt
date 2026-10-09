@@ -1,0 +1,7 @@
+# Stub with the crates.io crate's name and version, enough for the patch to apply. No code.
+[package]
+name = "getrandom"
+version = "0.4.3"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false

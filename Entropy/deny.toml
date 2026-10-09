@@ -1,0 +1,91 @@
+# cargo-deny 0.20 policy for the device workspace (core, ffi, pi/app, pi/sim).
+# Run: cargo deny --locked check. scripts/canaries.sh proves on every CI run that the bans fire
+# for a normal, dev-only, target-only and feature-gated dependency (rand family, network, logging),
+# and for rand added to the real keepcrypt-core; and that a git dependency fails [sources]. It
+# also pins [graph], the [bans] deny list and [sources] to exactly the values below, so any edit
+# to them (an exclude, a removed ban, an allowed git source) fails until canaries.sh changes too.
+# Weakening any entry below needs owner review (CODEOWNERS covers this file).
+
+[graph]
+# No `targets` filter: cargo-deny then checks every dependency whatever its cfg, so a banned crate
+# under [target.'cfg(windows)'.dependencies] (say, in pi/sim) is still seen.
+# all-features: a banned crate behind an optional feature (say, test-sources = ["dep:rand_core"])
+# is still seen; CI runs with default features only.
+all-features = true
+# Dev-dependencies stay in the graph (exclude-dev = false is the default).
+
+[advisories]
+# 0.20 mapping of the M0 plan:
+#   vulnerabilities  always an error (the 0.20 schema has no switch for them)
+#   unsound          "all": an error for any crate in the graph
+#   yanked           "deny"
+#   unmaintained     0.20 can only error ("all"/"workspace"/"transitive") or skip ("none");
+#                    it has no warn level. "none" here, and `cargo audit` (same CI job) prints
+#                    unmaintained advisories as warnings without failing, which is the plan's "warn".
+unsound = "all"
+yanked = "deny"
+unmaintained = "none"
+# No ignores. Any ignore needs owner approval and a reason.
+ignore = []
+
+[licenses]
+# Exactly the licences the current graph needs; an unused allowance fails the check.
+# Finalised against the owner's dual MIT OR Apache-2.0 choice for KeepCrypt itself.
+#   MIT, Apache-2.0  most crates, and KeepCrypt's own dual licence
+#   CC0-1.0          rust-bitcoin crates (bitcoin, bip39, miniscript, secp256k1, ...)
+#   MITNFA           hex_lit (bitcoin dependency)
+#   Unicode-3.0      unicode-ident (proc-macro dependency)
+# With no target filter the graph also holds r-efi (getrandom's UEFI backend), licensed
+# MIT OR Apache-2.0 OR LGPL-2.1-or-later; MIT covers it, so no allowance changed.
+allow = ["MIT", "Apache-2.0", "CC0-1.0", "MITNFA", "Unicode-3.0"]
+unused-allowed-license = "deny"
+exceptions = []
+# Dev-dependencies too. Our own unpublished crates are checked as well (licenses.private default).
+include-dev = true
+
+[bans]
+multiple-versions = "warn"
+# Path-only workspace deps are fine because every member has publish = false.
+wildcards = "deny"
+allow-wildcard-paths = true
+# No wrappers and no exceptions: a banned crate anywhere in the graph fails the check. Each entry
+# stays a bare crate name (an inline table could carry wrappers; name@version bans only some).
+deny = [
+    # Rule 1: only core/src/source calls getrandom; no other RNG.
+    "rand",
+    "rand_core",
+    "rand_chacha",
+    "rand_xoshiro",
+    "rand_xorshift",
+    "rand_pcg",
+    "rand_hc",
+    "rand_isaac",
+    "fastrand",
+    "oorandom",
+    "nanorand",
+    "tinyrand",
+    "turborand",
+    # Device code never touches the network (registry/server is a separate workspace).
+    "tokio",
+    "mio",
+    "hyper",
+    "h2",
+    "reqwest",
+    "ureq",
+    "curl",
+    "isahc",
+    "axum",
+    "async-std",
+    # Rule 5: no logging in device code.
+    "log",
+    "tracing",
+    "slog",
+    "env_logger",
+]
+
+[sources]
+# crates.io only. Coldcard's weak-entropy bug came in through a git submodule.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

@@ -1,0 +1,1 @@
+UIPasteboard.general.string = words

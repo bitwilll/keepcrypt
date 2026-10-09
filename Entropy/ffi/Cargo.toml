@@ -1,0 +1,32 @@
+[package]
+name = "keepcrypt-ffi"
+description = "UniFFI bindings over keepcrypt-core for the Android and iPhone apps"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+keepcrypt-core.workspace = true
+
+[lints.rust]
+# scripts/canaries.sh pins this table and [lints.clippy] below exactly, per crate.
+# A bare `fallible();` statement drops the error (rule 3). rustc only warns about it, and any
+# #[allow] or #[expect] would switch that off; forbid makes both fail with E0453.
+unused_must_use = "forbid"
+
+[lints.clippy]
+# Keep this block identical in core, ffi and pi/app (pi/sim is a desktop dev tool).
+# Fail closed (rule 3): the clippy.toml ban cannot be switched off in code; #[allow], #[expect]
+# and #![allow(clippy::all)] fail with E0453. An exception is a reviewed change to this line.
+disallowed_methods = "forbid"
+# `let _ = fallible()` drops the error (rule 3); forbid, so no #[expect] can excuse it.
+let_underscore_must_use = "forbid"
+# Any other lint exception is an #[expect(.., reason = "..")] that review sees.
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+# Secrets are never printed or logged (rule 5); forbid, so no #[expect] can excuse it.
+print_stdout = "forbid"
+print_stderr = "forbid"
+dbg_macro = "forbid"

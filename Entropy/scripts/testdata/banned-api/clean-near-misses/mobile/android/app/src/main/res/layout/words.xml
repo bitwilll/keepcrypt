@@ -1,0 +1,3 @@
+<!-- Words are never selectable (docs/mobile-apps.md, "No clipboard"). -->
+<TextView android:id="@+id/words" android:textIsSelectable="false" />
+<TextView android:id="@+id/seal" android:textIsSelectable = "false" />

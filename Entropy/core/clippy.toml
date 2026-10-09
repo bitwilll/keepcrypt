@@ -1,0 +1,30 @@
+# Fail closed (CLAUDE.md rule 3): no default value, fallback, catch-and-continue or discarded
+# error (a single statement such as `r.err();` or `mem::forget(r)` that drops it unseen).
+# Secrets stay secret (rule 5): core, the FFI and the Pi app never write to stdout or stderr.
+# Keep core/, ffi/ and pi/app/clippy.toml identical; scripts/canaries.sh checks with cmp and
+# proves every path below fires (a typo'd path only warns and bans nothing).
+# No exceptions in code: each crate's Cargo.toml sets disallowed_methods = "forbid", so
+# #[allow], #[expect] and #![allow(clippy::all)] fail with E0453. An exception needs a
+# reviewed Cargo.toml change.
+disallowed-methods = [
+    { path = "core::result::Result::unwrap_or", reason = "fail closed: handle the error, no default value" },
+    { path = "core::result::Result::unwrap_or_default", reason = "fail closed: handle the error, no default value" },
+    { path = "core::result::Result::unwrap_or_else", reason = "fail closed: handle the error, no fallback" },
+    { path = "core::result::Result::map_or", reason = "fail closed: handle the error, no default value" },
+    { path = "core::result::Result::map_or_else", reason = "fail closed: handle the error, no fallback" },
+    { path = "core::result::Result::ok", reason = "fail closed: .ok() drops the error" },
+    { path = "core::result::Result::err", reason = "fail closed: a bare .err(); drops the error (match on the Result)" },
+    { path = "core::result::Result::or", reason = "fail closed: no fallback source" },
+    { path = "core::result::Result::or_else", reason = "fail closed: no fallback source" },
+    { path = "core::option::Option::unwrap_or", reason = "fail closed: no default value (catches .ok().unwrap_or)" },
+    { path = "core::option::Option::unwrap_or_default", reason = "fail closed: no default value" },
+    { path = "core::option::Option::unwrap_or_else", reason = "fail closed: no fallback" },
+    { path = "core::option::Option::map_or", reason = "fail closed: no default value" },
+    { path = "core::option::Option::map_or_else", reason = "fail closed: no fallback" },
+    { path = "core::option::Option::or", reason = "fail closed: no fallback source" },
+    { path = "core::option::Option::or_else", reason = "fail closed: no fallback source" },
+    { path = "core::mem::forget", reason = "fail closed: forget(result) drops the error unseen (std::mem::forget too)" },
+    { path = "std::panic::catch_unwind", reason = "fail closed: a panic halts and wipes the session, never caught" },
+    { path = "std::io::stdout", reason = "secrets stay secret: never print (rule 5)" },
+    { path = "std::io::stderr", reason = "secrets stay secret: never print (rule 5)" },
+]

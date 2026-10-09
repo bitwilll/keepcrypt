@@ -1,0 +1,1 @@
+clipboard.setPrimaryClip(clip)

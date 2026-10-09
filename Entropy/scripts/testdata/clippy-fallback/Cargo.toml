@@ -1,0 +1,11 @@
+# Gate canary: calls each method core/clippy.toml bans once (fallbacks, catch_unwind, stdio), so
+# clippy with core/clippy.toml (via CLIPPY_CONF_DIR) and -D warnings must fail with
+# disallowed_methods for every entry. Never a workspace member; scripts/canaries.sh runs it.
+[package]
+name = "canary-clippy-fallback"
+version = "0.0.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace]

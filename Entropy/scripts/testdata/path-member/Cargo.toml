@@ -1,0 +1,9 @@
+# Gate canary: a vendored getrandom added to core/ as a plain path dependency, not a [patch]. A
+# path dependency under the workspace root silently becomes a workspace member, which
+# cargo-deny, cargo vet and the crates.io-source check all skip, so scripts/check-path-deps.sh
+# on this manifest must fail and name it as a member outside the four it pins.
+# Never built and never a workspace member; scripts/canaries.sh runs it.
+[workspace]
+resolver = "3"
+# Exactly the four members check-path-deps.sh pins; vendor/getrandom joins without being listed.
+members = ["core", "ffi", "pi/app", "pi/sim"]

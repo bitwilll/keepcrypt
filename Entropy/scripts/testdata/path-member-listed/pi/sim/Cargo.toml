@@ -1,0 +1,8 @@
+# Stand-in for the real workspace's pi/sim/ member: scripts/check-path-deps.sh pins the members to
+# core, ffi, pi/app and pi/sim. No code.
+[package]
+name = "canary-pi-sim"
+version = "0.0.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false

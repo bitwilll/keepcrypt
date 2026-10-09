@@ -1,0 +1,1 @@
+<TextView android:id="@+id/words" android:textIsSelectable="@bool/words_selectable" />

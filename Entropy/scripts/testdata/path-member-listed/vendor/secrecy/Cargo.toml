@@ -1,0 +1,8 @@
+# Stub with the crates.io crate's name and version, standing in for a vendored, edited copy.
+# No code.
+[package]
+name = "secrecy"
+version = "0.10.3"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
