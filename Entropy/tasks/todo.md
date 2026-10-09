@@ -792,7 +792,9 @@ starts. Every item names its proof.
       - none has `Debug`, `Display`, `Clone`, `Copy`, `PartialEq` or `Serialize`;
       - bytes leave only through `expose_secret`, `words` or `CheckedBackup::reveal_*`, so review can grep every exit.
       Proof: a white-box test fills every field of each wrapper and of session `Inner` (the stored backup passphrase
-      included), calls `zeroize()` and finds zeros. Trybuild fixtures in group 10.
+      included), calls `zeroize()` and finds zeros. Trybuild fixtures in group 10. Review fix after commit 10:
+      `Bip39Passphrase` lacked both traits (it wiped only through secrecy's own `Drop`); it now derives them, joins
+      the white-box test, and a compile-time check requires `ZeroizeOnDrop` of every wrapper.
 - [ ] Session skeleton:
       - `Session<S> { inner: Box<Inner>, state: PhantomData<S> }`;
       - a sealed `State` trait over uninhabited `Collecting`, `Committed`, `Rolling`, `Sealed`, `Checking`, `Ready`;
@@ -1326,7 +1328,9 @@ order", "Go-ahead before reveal")
       - `Wiped` holds no secret;
       - no struct literal for `Session<Ready>`, `VerifiedSnapshot`, `VerifiedProof`, `SealPublic`, `CheckedBackup`,
         `TypedBackupPassphrase` or a nonce;
-      - a braille view cannot outlive its session, and a `CheckedBackup` reveal cannot outlive its `CheckedBackup`.
+      - a braille view cannot outlive its session, and a `CheckedBackup` reveal cannot outlive its `CheckedBackup`;
+      - words revealed by `SecretMnemonic`, `NewBackupPassphrase` or `ConfirmChallenge` cannot outlive it (E0505;
+        landed with the review fixes after commit 10, when these reveals stopped returning `&'static str`).
       Rules: `.stderr` files are pinned to 1.98.1 and trybuild 1.0.121, and prefer E0599/E0277/E0061; fixtures are
       warning-free and gate-clean; regenerate only with `TRYBUILD=overwrite`, and review the diff.
 - [ ] `tests/source_substitution.rs` (design.md "Prove the path" 1; build-plan.md test matrix):

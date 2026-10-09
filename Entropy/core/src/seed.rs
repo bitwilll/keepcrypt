@@ -148,14 +148,15 @@ mod tests {
         d
     }
 
-    fn words(e: &SecretBytes32, len: SeedLength) -> Vec<&'static str> {
+    // Owned copies: a word borrows its mnemonic, which is dropped here. Test vectors only.
+    fn words(e: &SecretBytes32, len: SeedLength) -> Vec<String> {
         let mut mnemonic = SecretMnemonic::zeroed();
         let mut seed = SecretSeed64::zeroed();
         assert_eq!(
             mnemonic_and_seed_into(e, len, &mut mnemonic, &mut seed),
             Ok(())
         );
-        mnemonic.words().collect()
+        mnemonic.words().map(str::to_owned).collect()
     }
 
     fn listed(v: &Value) -> Vec<&str> {

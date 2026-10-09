@@ -5,7 +5,9 @@
 //!   so a secret cannot be printed, logged, duplicated or compared by accident. The trybuild
 //!   fixtures in `core/tests/compile_fail/` prove it.
 //! - Secrets leave only through methods named `expose_secret`, `words` or `questions` (and, from
-//!   M1 group 8, `CheckedBackup::reveal_*`), so review can grep every exit.
+//!   M1 group 8, `CheckedBackup::reveal_*`), so review can grep every exit. What they reveal
+//!   borrows the wrapper, so no revealed word outlives the secret it came from (and is wiped
+//!   with); a trybuild fixture proves it.
 
 use secrecy::{ExposeSecret, SecretString};
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -93,8 +95,9 @@ impl SecretMnemonic {
         usize::from(self.count)
     }
 
-    /// The words, in order: the only way the mnemonic leaves core.
-    pub fn words(&self) -> impl Iterator<Item = &'static str> + '_ {
+    /// The words, in order: the only way the mnemonic leaves core. Each word borrows `self`, so
+    /// none can be kept after the mnemonic is dropped and zeroized.
+    pub fn words(&self) -> impl Iterator<Item = &str> + '_ {
         self.indices
             .iter()
             .take(self.word_count())
@@ -145,7 +148,9 @@ impl SecretMnemonic {
 
 /// An optional BIP39 passphrase for the watch-only export. `new` rejects "" (leave the passphrase
 /// out instead) and never trims, so "TREZOR " and "TREZOR" are different wallets. It is NFKD-
-/// normalized into a zeroizing buffer only when used (tasks/todo.md, M1 group 6, Q5).
+/// normalized into a zeroizing buffer only when used (tasks/todo.md, M1 group 6, Q5). Like every
+/// other wrapper it is `Zeroize` + `ZeroizeOnDrop` (its `SecretString` wipes the text in place).
+#[derive(Zeroize, ZeroizeOnDrop)]
 pub struct Bip39Passphrase(SecretString);
 
 impl Bip39Passphrase {
@@ -194,8 +199,9 @@ pub struct ConfirmChallenge {
 }
 
 impl ConfirmChallenge {
-    /// The two questions, each as (1-based word position, the four candidate words).
-    pub fn questions(&self) -> [(u8, [&'static str; 4]); 2] {
+    /// The two questions, each as (1-based word position, the four candidate words). The words
+    /// borrow `self`.
+    pub fn questions(&self) -> [(u8, [&str; 4]); 2] {
         let question = |q: usize| (self.positions[q], self.choices[q].map(word));
         [question(0), question(1)]
     }
@@ -210,8 +216,8 @@ pub struct NewBackupPassphrase {
 }
 
 impl NewBackupPassphrase {
-    /// The 8 words, in order, for the user to write down.
-    pub fn words(&self) -> impl Iterator<Item = &'static str> + '_ {
+    /// The 8 words, in order, for the user to write down. Each word borrows `self`.
+    pub fn words(&self) -> impl Iterator<Item = &str> + '_ {
         self.indices.iter().map(|&i| word(i))
     }
 
@@ -327,6 +333,15 @@ mod test_fill {
         }
     }
 
+    impl TestFill for Bip39Passphrase {
+        fn fill(&mut self) {
+            self.0 = SecretString::from("TREZOR \u{e9}t\u{e9}");
+        }
+        fn is_zero(&self) -> bool {
+            self.0.expose_secret().bytes().all(|b| b == 0)
+        }
+    }
+
     impl TestFill for TypedBackupPassphrase {
         fn fill(&mut self) {
             self.indices = [2047; BACKUP_PASSPHRASE_WORDS];
@@ -368,7 +383,24 @@ mod tests {
         filled_then_zeroized(TypedBackupPassphrase {
             indices: [0; BACKUP_PASSPHRASE_WORDS],
         });
+        match Bip39Passphrase::new("x") {
+            Ok(passphrase) => filled_then_zeroized(passphrase),
+            Err(e) => panic!("{e}"),
+        }
     }
+
+    // Every secret type wipes itself when dropped (CLAUDE.md rule 5).
+    const fn zeroize_on_drop<T: ZeroizeOnDrop>() {}
+    const _: () = {
+        zeroize_on_drop::<SecretBytes32>();
+        zeroize_on_drop::<SecretSeed64>();
+        zeroize_on_drop::<SecretMnemonic>();
+        zeroize_on_drop::<Bip39Passphrase>();
+        zeroize_on_drop::<BackupPassphrase>();
+        zeroize_on_drop::<ConfirmChallenge>();
+        zeroize_on_drop::<NewBackupPassphrase>();
+        zeroize_on_drop::<TypedBackupPassphrase>();
+    };
 
     #[test]
     fn mnemonic_words_follow_the_indices_and_count() {
