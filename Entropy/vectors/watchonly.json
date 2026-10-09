@@ -6,11 +6,12 @@
     "crc32": "CRC-32/ISO-HDLC (reflected polynomial 0xedb88320, init and final XOR 0xffffffff), written big-endian",
     "bytewords": "minimal Bytewords (BCR-2020-012): each byte as the first and last letters of its word in bytewords.words",
     "ur": "single-part UR (BCR-2020-005): 'ur:' + type + '/' + minimal Bytewords of (CBOR || CRC-32 of the CBOR, big-endian); lowercase, and QR text is the same in uppercase",
-    "ur_decoder": "core's strict reader, in this order: at most 4,296 characters before any decoding (TooLong); all lowercase or all uppercase (MixedCase); the scheme 'ur:' and a '/' after the type (NotUr); the expected type (WrongType); exactly one path segment after the type (MultiPart); an even number of letters (OddLength); every pair one of the 256 minimal Bytewords (UnknownByteword); at least 4 bytes, the last 4 the CRC-32 of the rest (BadChecksum); one CBOR byte string (NotByteString, also for a reserved or cut-off head or fewer bytes than the head gives), with a definite (IndefiniteLength) shortest-form head (NonShortestHead), and nothing after it (TrailingBytes)",
+    "ur_decoder": "core's strict reader, over the UTF-8 bytes of the text, in this order: at most 4,296 bytes before any decoding, which is 4,296 characters of the ASCII a QR alphanumeric code holds (TooLong); all lowercase or all uppercase ASCII letters (MixedCase); the scheme 'ur:' and a '/' after the type (NotUr); the expected type (WrongType); exactly one path segment after the type (MultiPart); an even number of bytes (OddLength); every pair one of the 256 minimal Bytewords, so any byte of a non-ASCII character fails here (UnknownByteword); at least 4 bytes, the last 4 the CRC-32 of the rest (BadChecksum); one CBOR byte string (NotByteString, also for a reserved or cut-off head or fewer bytes than the head gives), with a definite (IndefiniteLength) shortest-form head (NonShortestHead), and nothing after it (TrailingBytes)",
     "bip32": "BIP32 from S = PBKDF2-HMAC-SHA512(UTF-8 of NFKD(mnemonic), 'mnemonic' + NFKD(passphrase), 2048, 64); account m/84h/0h/0h; fingerprints are the first 4 bytes of HASH160 of the compressed public key; xpub version bytes 0488b21e",
     "descriptors": "wpkh([fingerprint/84h/0h/0h]xpub/0/*) and wpkh(.../1/*), hardened steps written 'h', each with its BIP-380 checksum after '#'; receive_descriptor_apostrophe is the same receive descriptor written with \"'\", which core never emits (its checksum differs)",
     "addresses": "first_receive_address = m/84h/0h/0h/0/0, first_change_address = m/84h/0h/0h/1/0, P2WPKH mainnet bech32 (BIP-173)",
     "crypto_account": "BCR-2020-015 v1 crypto-account, untagged at the top level: {1: master fingerprint, 2: [308(404(303({3: key-data, 4: chain-code, 6: 304({1: [84, true, 0, true, 0, true], 2: master fingerprint}), 8: parent fingerprint})))]}; a zero source or parent fingerprint is omitted (BCR-2020-007: uint32 .ne 0)",
+    "bip380": "BIP-380's checksum and character-set test cases, named as it lists them. BIP-380 gives them no verdict and makes the checksum optional for parsing; valid = true means the string ends in '#' and its correct 8-character checksum, KeepCrypt's rule, which every export meets. A parser following BIP-380 may accept 'No checksum'",
     "passphrase": "the BIP39 passphrase is NFKD-normalized before PBKDF2 and never trimmed; unnormalized_fingerprint is the master fingerprint without NFKD, which core must never give"
   },
   "cbor": [
@@ -124,6 +125,16 @@
         }
       },
       "hex": "d74401020304"
+    },
+    {
+      "diagnostic": "24(h'6449455446')",
+      "item": {
+        "tag": 24,
+        "item": {
+          "bytes": "6449455446"
+        }
+      },
+      "hex": "d818456449455446"
     },
     {
       "diagnostic": "h''",
@@ -793,6 +804,30 @@
       "name": "trailing-byte",
       "text": "ur:bytes/hkaxaxpkbawtbaloiovlmhwnvtaxckammnsffrdniymofzjoptludrprmtnemuswwlbncfrllsltjppkadskeesfuyjkqdgtcpsrcmqzmyfpmolpoxmndelrosgmimuthgkewpcppldeghwpbwbdqzlbksrdwtnddecaaoryjopmrsjzlblrtedifyihladidtahdemosnfysptpjzptbzgudprleoeccfkkmukntpstoehgwpbgjtidaosghhfxdskbjpftdkgavybdfyhnlnbzmelagulbfwdyhhlnprfpldjtkbfygakkpffnwejngmlumduoatlgkprefnstluosvebbinmslkghtnkkatylweykjegwmnwllkoxbenlpmnndwaxqzhsfygaatgsenjnwyuedspdceiaatguwsjnnlksnsbghfcxrhbsfecemufheelaahonkssfvafptntsrelfsoeygyhkhlwfpfhnhszmsthnwesndijzcxlpnlftnevatndmpejscetshhjtvyrhfrptpsdalbsfcfytuyiywmtdwtueahmnmscwfeisinimdkayhnsejtimpdrnnepkjsgmfljehllfiyinuypmmnjttiwpketdytadbtfrfmdwkgdatsiynsinfmrktsuendlfyaytiyrfhfiymuvytplkfsfnfdgmwsemdiknclzevwdslymdcyftfrqzbkvyrovoyktkpyadsopleekkpryajowmnthkfzaddwcsfnswvdtohfkbisrdplspsptlctvagylylybwenhyvelodsmdhpprdskbutpdheqdbbjtnnbtbsrohgmujtjobbaxzefesgsekkrourwsoyjsrykorhurknsebkqdlklkrypynytsaslrtpyntennqzdkiavsgtqdtauobesojejldynyrfgwykkieyoehytsuoglcaadbgjooswkbssroevstytilyspasdtnywycxhsdkbstajzdrwfcniolnhesafhindidyetcfltstjsinoxmthlqzecaswmaskgpepeamftadgyhhhpluqzqdguianncxfmhszocnwfnsptonmtbwvswtioynbtrsrdjnrhylgtptfxdwtekgfnfnmyvocylrflaoglkpbwuowneyykldfrbwpanyzseyfmiazsdalpcfvdgdlofscmbywklrlfbytlfgbzntclmhpehdbtrnsertfyeswpamsretcnotfdheqdjkcyiazmfymycfahqdvtsfprjtgosrwyylidbsctlypdwdwdrdmhtyndoygsvafdpelymefzjkykbtfhtazoasgdcasrhkpsswskzsutuyhhdkroaddlcezcsblduyfmvamybnlrgmvsmdbzptgsrlimjkwfpdchutfwcppsimdnlocwbshldldadicfhnytckotutwkbsfybzntdaaygyehcmjssgoyfzimfxasvdtodtntgrvowddwzobabbeouojoeclgkgkiotwkhnihaenlvyfmyl",
       "error": "TrailingBytes",
+      "expected_type": "bytes"
+    },
+    {
+      "name": "non-ascii-too-long",
+      "text": "ur:bytes/aeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeae\u00e9",
+      "error": "TooLong",
+      "expected_type": "bytes"
+    },
+    {
+      "name": "non-ascii-odd-length",
+      "text": "ur:bytes/a\u00e9",
+      "error": "OddLength",
+      "expected_type": "bytes"
+    },
+    {
+      "name": "non-ascii-byteword",
+      "text": "ur:bytes/\u00e9",
+      "error": "UnknownByteword",
+      "expected_type": "bytes"
+    },
+    {
+      "name": "non-ascii-type",
+      "text": "ur:byt\u00e9s/hkaxaxpkbawtbaloiovlmhwnvtaxckammnsffrdniymofzjoptludrprmtnemuswwlbncfrllsltjppkadskeesfuyjkqdgtcpsrcmqzmyfpmolpoxmndelrosgmimuthgkewpcppldeghwpbwbdqzlbksrdwtnddecaaoryjopmrsjzlblrtedifyihladidtahdemosnfysptpjzptbzgudprleoeccfkkmukntpstoehgwpbgjtidaosghhfxdskbjpftdkgavybdfyhnlnbzmelagulbfwdyhhlnprfpldjtkbfygakkpffnwejngmlumduoatlgkprefnstluosvebbinmslkghtnkkatylweykjegwmnwllkoxbenlpmnndwaxqzhsfygaatgsenjnwyuedspdceiaatguwsjnnlksnsbghfcxrhbsfecemufheelaahonkssfvafptntsrelfsoeygyhkhlwfpfhnhszmsthnwesndijzcxlpnlftnevatndmpejscetshhjtvyrhfrptpsdalbsfcfytuyiywmtdwtueahmnmscwfeisinimdkayhnsejtimpdrnnepkjsgmfljehllfiyinuypmmnjttiwpketdytadbtfrfmdwkgdatsiynsinfmrktsuendlfyaytiyrfhfiymuvytplkfsfnfdgmwsemdiknclzevwdslymdcyftfrqzbkvyrovoyktkpyadsopleekkpryajowmnthkfzaddwcsfnswvdtohfkbisrdplspsptlctvagylylybwenhyvelodsmdhpprdskbutpdheqdbbjtnnbtbsrohgmujtjobbaxzefesgsekkrourwsoyjsrykorhurknsebkqdlklkrypynytsaslrtpyntennqzdkiavsgtqdtauobesojejldynyrfgwykkieyoehytsuoglcaadbgjooswkbssroevstytilyspasdtnywycxhsdkbstajzdrwfcniolnhesafhindidyetcfltstjsinoxmthlqzecaswmaskgpepeamftadgyhhhpluqzqdguianncxfmhszocnwfnsptonmtbwvswtioynbtrsrdjnrhylgtptfxdwtekgfnfnmyvocylrflaoglkpbwuowneyykldfrbwpanyzseyfmiazsdalpcfvdgdlofscmbywklrlfbytlfgbzntclmhpehdbtrnsertfyeswpamsretcnotfdheqdjkcyiazmfymycfahqdvtsfprjtgosrwyylidbsctlypdwdwdrdmhtyndoygsvafdpelymefzjkykbtfhtazoasgdcasrhkpsswskzsutuyhhdkroaddlcezcsblduyfmvamybnlrgmvsmdbzptgsrlimjkwfpdchutfwcppsimdnlocwbshldldadicfhnytckotutwkbsfybzntdaaygyehcmjssgoyfzimfxasvdtodtntgrvowddwzobabbeouojoeclgkgkiotwkhnihvdahfsda",
+      "error": "WrongType",
       "expected_type": "bytes"
     }
   ],

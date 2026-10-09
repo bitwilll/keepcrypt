@@ -407,7 +407,7 @@ mod tests {
     fn rfc8949_examples() {
         let doc = watchonly();
         let examples = array(&doc["cbor"]);
-        assert_eq!(examples.len(), 23);
+        assert_eq!(examples.len(), 24);
         for e in examples {
             assert_eq!(
                 encode_json_item(&e["item"]),

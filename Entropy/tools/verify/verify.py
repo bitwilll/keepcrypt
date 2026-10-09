@@ -563,6 +563,7 @@ RFC8949_EXAMPLES = (
     ("true", ("bool", True), "f5"),
     ("1(1363896240)", ("tag", 1, ("uint", 1363896240)), "c11a514b67b0"),
     ("23(h'01020304')", ("tag", 23, ("bytes", "01020304")), "d74401020304"),
+    ("24(h'6449455446')", ("tag", 24, ("bytes", "6449455446")), "d818456449455446"),
     ("h''", ("bytes", ""), "40"),
     ("h'01020304'", ("bytes", "01020304"), "4401020304"),
     ("[]", ("array", ()), "80"),
@@ -636,7 +637,10 @@ BIP84_ADDRESSES = (
     ("receive_1", (0, 1), "03e775fd51f0dfb8cd865d9ff1cca2a158cf651fe997fdc9fee9c1d3b5e995ea77", "bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g"),
     ("change_0", (1, 0), "03025324888e429ab8e3dbaf1f7802648b9cd01e9b418485c5fa4c1b9b5700e1a6", "bc1q8c6fshw2dlwun7ekn9qwf37cu2rn755upcp6el"),
 )
-# BIP-380 "Test Vectors", the checksum and character-set cases: (name, string, valid).
+# BIP-380 "Test Vectors", the checksum and character-set cases, named as BIP-380 lists them: (name, string,
+# valid). BIP-380 gives the cases no verdict, and its checksum is optional for parsing; "valid" is KeepCrypt's
+# rule, the one every export meets: the string ends in '#' and its correct 8-character checksum
+# (WATCHONLY_SPEC "bip380").
 BIP380_CHECKSUM_VECTORS = (
     ('Valid checksum', 'raw(deadbeef)#89f8spxm', True),
     ('No checksum', 'raw(deadbeef)', False),
@@ -775,13 +779,14 @@ WATCHONLY_SPEC = {
     "bytewords.words",
     "ur": "single-part UR (BCR-2020-005): 'ur:' + type + '/' + minimal Bytewords of (CBOR || CRC-32 of the CBOR, "
     "big-endian); lowercase, and QR text is the same in uppercase",
-    "ur_decoder": "core's strict reader, in this order: at most 4,296 characters before any decoding (TooLong); all "
-    "lowercase or all uppercase (MixedCase); the scheme 'ur:' and a '/' after the type (NotUr); the expected type "
-    "(WrongType); exactly one path segment after the type (MultiPart); an even number of letters (OddLength); every "
-    "pair one of the 256 minimal Bytewords (UnknownByteword); at least 4 bytes, the last 4 the CRC-32 of the rest "
-    "(BadChecksum); one CBOR byte string (NotByteString, also for a reserved or cut-off head or fewer bytes than the "
-    "head gives), with a definite (IndefiniteLength) shortest-form head (NonShortestHead), and nothing after it "
-    "(TrailingBytes)",
+    "ur_decoder": "core's strict reader, over the UTF-8 bytes of the text, in this order: at most 4,296 bytes before "
+    "any decoding, which is 4,296 characters of the ASCII a QR alphanumeric code holds (TooLong); all lowercase or all "
+    "uppercase ASCII letters (MixedCase); the scheme 'ur:' and a '/' after the type (NotUr); the expected type "
+    "(WrongType); exactly one path segment after the type (MultiPart); an even number of bytes (OddLength); every "
+    "pair one of the 256 minimal Bytewords, so any byte of a non-ASCII character fails here (UnknownByteword); at "
+    "least 4 bytes, the last 4 the CRC-32 of the rest (BadChecksum); one CBOR byte string (NotByteString, also for a "
+    "reserved or cut-off head or fewer bytes than the head gives), with a definite (IndefiniteLength) shortest-form "
+    "head (NonShortestHead), and nothing after it (TrailingBytes)",
     "bip32": "BIP32 from S = PBKDF2-HMAC-SHA512(UTF-8 of NFKD(mnemonic), 'mnemonic' + NFKD(passphrase), 2048, 64); "
     "account m/84h/0h/0h; fingerprints are the first 4 bytes of HASH160 of the compressed public key; xpub "
     "version bytes 0488b21e",
@@ -793,6 +798,10 @@ WATCHONLY_SPEC = {
     "crypto_account": "BCR-2020-015 v1 crypto-account, untagged at the top level: {1: master fingerprint, 2: "
     "[308(404(303({3: key-data, 4: chain-code, 6: 304({1: [84, true, 0, true, 0, true], 2: master fingerprint}), 8: "
     "parent fingerprint})))]}; a zero source or parent fingerprint is omitted (BCR-2020-007: uint32 .ne 0)",
+    "bip380": "BIP-380's checksum and character-set test cases, named as it lists them. BIP-380 gives them no "
+    "verdict and makes the checksum optional for parsing; valid = true means the string ends in '#' and its correct "
+    "8-character checksum, KeepCrypt's rule, which every export meets. A parser following BIP-380 may accept 'No "
+    "checksum'",
     "passphrase": "the BIP39 passphrase is NFKD-normalized before PBKDF2 and never trimmed; "
     "unnormalized_fingerprint is the master fingerprint without NFKD, which core must never give",
 }
@@ -1977,23 +1986,26 @@ def ur_single(ur_type, cbor):
 
 def ur_decode_single(expected_type, text):
     """The strict single-part reader, rebuilt apart from core (WATCHONLY_SPEC "ur_decoder"): (the CBOR
-    byte string's bytes, None), or (None, the name of the first rule the text breaks)."""
-    if len(text) > UR_MAX_CHARS:
+    byte string's bytes, None), or (None, the name of the first rule the text breaks). Like core, it reads
+    the UTF-8 bytes of the text: the limit and the even length count bytes, and a byte of a non-ASCII
+    character (0x80 or above) is no letter, so it matches no rule."""
+    raw = text.encode("utf-8")
+    if len(raw) > UR_MAX_CHARS:
         return None, "TooLong"
-    has_upper, has_lower = any("A" <= c <= "Z" for c in text), any("a" <= c <= "z" for c in text)
+    has_upper, has_lower = any(0x41 <= b <= 0x5A for b in raw), any(0x61 <= b <= 0x7A for b in raw)
     if has_upper and has_lower:
         return None, "MixedCase"
-    text = "".join(chr(ord(c) + 32) if "A" <= c <= "Z" else c for c in text)
-    if not text.startswith("ur:") or "/" not in text[3:]:
+    raw = bytes(b + 32 if 0x41 <= b <= 0x5A else b for b in raw)
+    if not raw.startswith(b"ur:") or b"/" not in raw[3:]:
         return None, "NotUr"
-    ur_type, message = text[3:].split("/", 1)
-    if ur_type != expected_type:
+    ur_type, message = raw[3:].split(b"/", 1)
+    if ur_type != expected_type.encode("ascii"):
         return None, "WrongType"
-    if "/" in message:
+    if b"/" in message:
         return None, "MultiPart"
     if len(message) % 2:
         return None, "OddLength"
-    byte_of = {word[0] + word[3]: n for n, word in enumerate(BYTEWORDS)}
+    byte_of = {(word[0] + word[3]).encode("ascii"): n for n, word in enumerate(BYTEWORDS)}
     pairs = [message[i:i + 2] for i in range(0, len(message), 2)]
     if any(pair not in byte_of for pair in pairs):
         return None, "UnknownByteword"
@@ -2158,6 +2170,12 @@ def ur_negative_vectors():
         {"name": "indefinite-head", "text": with_crc(b"\x5f" + payload + b"\xff"), "error": "IndefiniteLength"},
         {"name": "truncated-byte-string", "text": with_crc(payload[:-1]), "error": "NotByteString"},
         {"name": "trailing-byte", "text": with_crc(payload + b"\x00"), "error": "TrailingBytes"},
+        # Non-ASCII text, measured in UTF-8 bytes as core measures it: U+00E9 is two bytes, neither a letter.
+        # The first is 4,296 characters but 4,297 bytes.
+        {"name": "non-ascii-too-long", "text": "ur:bytes/" + "ae" * 2143 + "\u00e9", "error": "TooLong"},
+        {"name": "non-ascii-odd-length", "text": "ur:bytes/a\u00e9", "error": "OddLength"},
+        {"name": "non-ascii-byteword", "text": "ur:bytes/\u00e9", "error": "UnknownByteword"},
+        {"name": "non-ascii-type", "text": "ur:byt\u00e9s/" + message, "error": "WrongType"},
     ]
 
 
@@ -2819,7 +2837,8 @@ def check_watchonly_spec_values():
 def check_watchonly_ur_rules():
     """The decoder cases against the rules: the reader rebuilt here decodes every bytes UR in either case
     and refuses every negative with exactly the error it names; and, apart from that reader, the
-    longest UR fits 4,296 characters, the too-long ones do not, and only mixed-case text is MixedCase."""
+    longest UR fits 4,296 characters, the too-long ones do not (in UTF-8 bytes, as core counts), and
+    only text with both ASCII cases is MixedCase."""
     problems = []
     doc = json.loads(watchonly_vectors_json())
     for u in doc["ur"]:
@@ -2835,11 +2854,12 @@ def check_watchonly_ur_rules():
     if max(lengths) > UR_MAX_CHARS or max(lengths) < UR_MAX_CHARS - 1:
         problems.append("the longest bytes UR has %d characters, not 4,295 or 4,296" % max(lengths))
     for case in doc["ur_negatives"]:
-        text, error = case["text"], case["error"]
-        too_long = len(text) > UR_MAX_CHARS
+        raw, error = case["text"].encode("utf-8"), case["error"]
+        too_long = len(raw) > UR_MAX_CHARS
         if (error == "TooLong") != too_long:
-            problems.append("ur_negatives %s: %d characters, error %s" % (case["name"], len(text), error))
-        if not too_long and (error == "MixedCase") != (text != text.lower() and text != text.upper()):
+            problems.append("ur_negatives %s: %d bytes, error %s" % (case["name"], len(raw), error))
+        # bytes.lower() and bytes.upper() change ASCII letters only, as core's case rule does.
+        if not too_long and (error == "MixedCase") != (raw != raw.lower() and raw != raw.upper()):
             problems.append("ur_negatives %s: case and error %s disagree" % (case["name"], error))
     return problems
 

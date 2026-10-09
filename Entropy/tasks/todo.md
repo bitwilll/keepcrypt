@@ -1038,6 +1038,16 @@ starts. Every item names its proof.
       Check 9: byte equality, with spec values pinned in code. SOURCES.md gains a "Spec values" table (URL at a pinned
       commit, page SHA-256, values copied) for BIP-84, BIP-380, BCR-2020-005, -007, -012, -015, bip32JP
       `test_JP_BIP39.json` and RFC 8949 Appendix A. Re-fetch each page at M1 start and confirm its hash.
+      Review fixes after commit 15 (BIP-380 and RFC 8949 re-fetched with a generic User-Agent; both hashes match
+      SOURCES.md):
+      - RFC 8949 Table 6 has 24 rows in core's subset, not 23. `24(h'6449455446')` = `d818456449455446`, the only
+        tag with a one-byte argument head, was missing and is now included.
+      - BIP-380 lists its checksum cases without a verdict and makes the checksum optional for parsing.
+        watchonly.json's `valid` flag is KeepCrypt's rule (the string ends in a correct 8-character checksum, as
+        every export does). `spec.bip380` now says so, and SOURCES.md no longer credits the verdicts to BIP-380.
+      - The strict UR reader counts UTF-8 bytes, in core and in verify.py: the 4,296 limit (the ASCII characters
+        of a QR alphanumeric code) and the even length. Before, verify.py counted code points, so non-ASCII text
+        got another error. Four non-ASCII negatives now pin the agreement; one is 4,296 characters but 4,297 bytes.
 - [ ] `ur.rs` (Q2, Q6c; BCR-2020-005, -012):
       - a dCBOR subset writer: shortest heads, definite lengths, keys ascending;
       - CRC-32/ISO-HDLC from a const table;
