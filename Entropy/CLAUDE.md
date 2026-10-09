@@ -111,12 +111,16 @@ Go-ahead vector: that T with n = `0001020304050607` gives G = `CF94-BCAJ`.
 Create these in M0 and keep this list current as the repo grows.
 
 ```bash
+# Run from Entropy/, the project root inside the keepcrypt monorepo (CI: .github/workflows/entropy-ci.yml).
 cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-cargo deny check && cargo audit && cargo vet
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked
+cargo deny --locked check && cargo audit && cargo vet --locked   # plain `cargo vet` re-fetches imports
+scripts/check-path-deps.sh           # every non-workspace crate comes from crates.io (no path or git overrides)
 python3 tools/verify/verify.py --selftest
-scripts/banned-api-check.sh          # grep gate for banned RNG and network APIs
+scripts/banned-api-check.sh          # grep gate for banned RNG, network and clipboard APIs
+scripts/banned-api-check.sh --selftest
+scripts/canaries.sh                  # proves the deny and clippy gates still fire
 ```
 
 ## Definition of done (every task)
