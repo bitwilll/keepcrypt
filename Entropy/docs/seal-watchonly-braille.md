@@ -121,7 +121,7 @@ Right after the dice, and before any word is shown, the device offers the check.
 | Result entry | Automatic | Go ahead: the user types the 8-character go-ahead code, or a phone scans the go-ahead QR; the device verifies it before revealing. Stop: the user taps "Match found" |
 | Needs | A USB stick or local file | A second device: online for the website, or holding a cached snapshot for the offline checker app |
 
-**Snapshot format.** Header: magic `KCR1`, format version (u16), snapshot number (u64), UTC date as YYYYMMDD (u32), entry count (u64) and the bucket root (32 bytes), followed by an Ed25519 signature over the header, checked against the registry key pinned in every app. Body: entries sorted by tag, each the first 16 bytes of T plus a 16-bit registration count. The bucket root commits to the body: a SHA-256 Merkle tree over all 2^20 buckets in prefix order, with leaf = SHA-256(0x00 ‖ `KCE/v1/bucket` ‖ the 20-bit prefix as 3 bytes ‖ that bucket's entries) and node = SHA-256(0x01 ‖ left ‖ right). A loader recomputes the root from the body and rejects any mismatch. A million registrations is about 18 MB.
+**Snapshot format.** All integers are big-endian. Header, exactly 58 bytes: magic `KCR1`, format version (u16, = 1), snapshot number (u64), UTC date as the decimal number YYYYMMDD (u32), entry count (u64) and the bucket root (32 bytes). Then a pure Ed25519 signature (64 bytes) over exactly those 58 header bytes, checked against the registry key pinned in every app. Body: the entries, 18 bytes each, the first 16 bytes of T then a 16-bit registration count of at least 1, in strictly ascending tag order with no duplicates; at most 2^22 entries (75.5 MB). The bucket root commits to the body: a SHA-256 Merkle tree over all 2^20 buckets in prefix order, with leaf = SHA-256(0x00 ‖ `KCE/v1/bucket` ‖ the 20-bit prefix as 3 bytes ‖ that bucket's entries) and node = SHA-256(0x01 ‖ left ‖ right). The 20-bit prefix as 3 bytes is the bucket index as a 24-bit big-endian integer: a tag starting `2b810…` is in bucket `02 b8 10`. A loader recomputes the root from the body and rejects any mismatch. A million registrations is about 18 MB.
 
 **Online lookup privacy.** The check QR encodes `https://<registry>/check#t=<T in hex>&n=<nonce in hex>`. The part after `#` is never sent to the server; the page's open-source script reads it locally, requests `GET /v1/proof/<first 5 hex of T>`, verifies the returned bucket against the signed snapshot header, and compares the tag in the browser. The server learns only 20 of the tag's 256 bits, a bucket shared by about one in a million of all registered seals. This is the same k-anonymity approach used by password-breach lookups.
 
@@ -141,7 +141,7 @@ The check is optional, but once the user chooses "Check now" it binds: the words
 
 **Go-ahead code.** G = the first 40 bits of SHA-256(`KCE/v1/go` ‖ T ‖ n), written as 8 Crockford base32 characters in two groups of four. The checker computes it only after it has verified the signed data and found no entry for T. The device recomputes G and compares in constant time; a typo can be re-entered. The code proves the checker looked up this exact seal during this ceremony. It does not prove the checker is honest, which is why the page is open source, served with Subresource Integrity, and verifies the registry signature itself. Test vector: the seal-vector T above with n = `0001020304050607` gives G = `CF94-BCAJ`.
 
-**Go-ahead QR.** For devices with a camera, the checker also shows the signed evidence itself: the snapshot header and its signature, every entry in T's 20-bit bucket, and the Merkle path from that bucket to the signed bucket root. The device checks the signature against the pinned key, recomputes the root, confirms its T is not in the bucket, and applies the same snapshot-date rule as a loaded snapshot. This answer needs no trust in the checker, and the server still learns only the 20-bit prefix. It is about 0.8 KB plus 18 bytes per bucket entry, so one dense QR; larger buckets use animated BC-UR frames.
+**Go-ahead QR.** For devices with a camera, the checker also shows the signed evidence itself: the snapshot header and its signature, every entry in T's 20-bit bucket, and the Merkle path from that bucket to the signed bucket root. The device checks the signature against the pinned key, recomputes the root, confirms its T is not in the bucket, and applies the same snapshot-date rule as a loaded snapshot. This answer needs no trust in the checker, and the server still learns only the 20-bit prefix. The evidence, KCP1, is exactly `KCP1` ‖ the 58-byte snapshot header ‖ its 64-byte signature ‖ the bucket index (3 bytes) ‖ the entry count k (u16) ‖ the k entries ‖ the 20 sibling hashes of the Merkle path, leaf level first: 771 + 18k bytes. The QR is a single-part BC-UR `ur:keepcrypt-proof/…` whose CBOR is one byte string holding the KCP1 bytes. The device decodes it strictly, in this order: at most 4,296 characters (the largest QR alphanumeric capacity), checked before any decoding; all lowercase or all uppercase (QR alphanumeric mode gives `UR:KEEPCRYPT-PROOF/`), never mixed; the type `keepcrypt-proof` and exactly one part; minimal bytewords, then the CRC-32; a shortest-form, definite-length CBOR byte-string head, and nothing after the byte string. About 75 bucket entries fit one QR, and there are no animated frames.
 
 **Add fresh entropy.** After a Stop, nothing from the destroyed seed is reused: the next ceremony takes a fresh device leg and fresh dice, its dice minimum rises to 99 rolls for either length, and the device suggests a verification run with the offline verifier, because a genuine collision means this device's randomness or firmware is suspect. After "Cannot check", the next ceremony uses the normal minimum.
 
@@ -161,7 +161,7 @@ Registration is opt-in and happens once, after the words are safely written down
 
 **Reporting a collision.** After a match, the device offers a "Report collision" QR with the destroyed seed's code. Registering it raises the count so the earlier owner's next re-check shows the alarm. Sharing the code is harmless because that seed is never used.
 
-**Re-checking an existing wallet.** The verifier, the Pi's "Check a backup" tool and the phone apps compute the seal from the words or the encrypted backup, then look it up by snapshot or online. If the count is 2 or more and you registered once, move your funds to a new seed now. Re-check every 3 months and after any news of a weak-RNG wallet bug.
+**Re-checking an existing wallet.** The verifier, the Pi's "Check a backup" tool and the phone apps compute the seal from the words or the encrypted backup, then look it up by snapshot or online. The online re-check QR encodes `https://<registry>/check#t=<T as 64 lowercase hex>` with no nonce, so the checker can show the registration count but never a go-ahead code. If the count is 2 or more and you registered once, move your funds to a new seed now. Re-check every 3 months and after any news of a weak-RNG wallet bug.
 
 **Why a colliding user cannot reach the other wallet's funds.**
 
@@ -205,7 +205,7 @@ After the backups, the device shows the wallet's public account data as QR codes
 
 | QR | Contents | For |
 | --- | --- | --- |
-| Account QR | BC-UR `crypto-account` with master fingerprint and the BIP84 account key `m/84'/0'/0'`, animated if needed | Sparrow's airgapped-device Scan and other UR-capable coordinators |
+| Account QR | BC-UR `crypto-account` with master fingerprint and the BIP84 account key `m/84'/0'/0'` | Sparrow's airgapped-device Scan and other UR-capable coordinators |
 | Descriptor QR | Two plain-text output descriptors with checksums, receive and change | Bitcoin Core and any descriptor wallet |
 
 **Descriptor format** (native SegWit by default; checksums computed by the core):
@@ -229,7 +229,7 @@ bitcoin-cli -rpcwallet=keepcrypt-watch importdescriptors '[
 **Rules.**
 
 - Confirm the first receive address in Sparrow or Core matches the device's wallet summary before funding.
-- If the user adds a BIP39 passphrase, the device asks for it before export and exports that wallet, showing its own fingerprint.
+- If the user adds a BIP39 passphrase, the device asks for it before export and exports that wallet, showing its own fingerprint and first receive address; the first address in Sparrow or Core is then compared with that one, not with the wallet summary.
 - An xpub reveals every address and balance; the screen says to treat it as private.
 - Taproot (BIP86) export is a later option; v1 ships native SegWit only.
 - Milestone gates M4–M6 include a real import into the current Sparrow and Bitcoin Core releases; the UR type is confirmed against Sparrow at that point.
@@ -258,7 +258,12 @@ k ⠅  l ⠇  m ⠍  n ⠝  o ⠕  p ⠏  q ⠟  r ⠗  s ⠎  t ⠞
 u ⠥  v ⠧  w ⠺  x ⠭  y ⠽  z ⠵
 numbers: number sign ⠼ (dots 3-4-5-6), then a=1 b=2 c=3 d=4 e=5 f=6 g=7 h=8 i=9 j=0
          BIP39 words never need it; passphrases and dates do (2026 = ⠼⠃⠚⠃⠋)
+         a letter a-j right after a digit takes the grade 1 indicator ⠰ (dots 5-6), so it is not
+         read as a digit; a letter k-z, a space or a hyphen ⠤ ends the digits
+         (Seal ID 5E0G7J6X = ⠼⠑⠰⠑⠼⠚⠰⠛⠼⠛⠰⠚⠼⠋⠭)
 ```
+
+This is standard UEB grade 1 for digits next to letters. Letters are lowercase, and any character outside a–z, 0–9, space and hyphen is refused in v1. The SeedBook's shorter rule, that any letter ends the number, would make ⠼⠑⠑ read as 55 rather than 5E. A braille reader confirms this before release.
 
 **Insert view examples** (positions are illustrative):
 
@@ -270,11 +275,11 @@ numbers: number sign ⠼ (dots 3-4-5-6), then a=1 b=2 c=3 d=4 e=5 f=6 g=7 h=8 i=
 
 **On screen.** After the collision check, the device shows one word at a time in insert view: the sequence number, the word with its SeedBook number, and five large face cells with numbered dots. Letters past the fourth are drawn lighter, blank faces show empty rings labelled "leave blank", and mirror-pair letters are flagged. An overview of four words per page is available for the paper copy. All protected-screen rules apply.
 
-**Read-back from the metal (mandatory).** Before the session ends, the user reads every punched insert in order and enters the first four letters of each word. The device completes each word and compares it with the seed it still holds, so any misread is caught. This is the SeedBook's "whole phrase test-restored from the metal" step, done without a second device. It matters because 279 BIP39 words are one mirror-pair flip away from another word's first four letters (ACCESS and ACCIDENT differ only by e and i), and on a later restore the 12-word checksum would miss about 1 such error in 16.
+**Read-back from the metal (mandatory).** Before the session ends, the user reads every punched insert in order and enters the first four letters of each word. The device completes each word and compares it with the seed it still holds, so any misread is caught. This is the SeedBook's "whole phrase test-restored from the metal" step, done without a second device. It matters because 279 BIP39 words are one mirror-pair flip away from another word's first four letters (ACCESS and ACCIDENT differ only by e and i), and on a later restore the 12-word checksum would miss about 1 such error in 16. The core enforces this step: it refuses every export (the encrypted backup, the watch-only export, the registration and D) until every word has read back correctly.
 
 **Before you walk away** (the SeedBook checklist, shown as the final screen): every face read back; inserts reassembled in sequence order, 01 first; device fastened shut and back in place; whole phrase test-restored from the metal; every paper copy destroyed; no photograph of the inserts anywhere.
 
-**24-word seeds** need two 12-insert devices. Both sets are numbered 01–12, so how to label the second set is an open product question for KeepCrypt.
+**24-word seeds** need two 12-insert devices, and both insert sets are engraved 01–12. Words 1–12 go on device 1 of 2 and words 13–24 on device 2 of 2, inserts 01–12, and the core labels each insert with its device and sequence number. Every insert screen, the read-back prompt and the final checklist say which device holds words 1–12, and KeepCrypt marks the second device physically.
 
 **Inside the encrypted backup.** The plaintext includes a `braille:` line per word: the two-digit position, then the whole word in cells (every letter, not only five), so a blind user who decrypts it with `age` can read it on a refreshable braille display.
 

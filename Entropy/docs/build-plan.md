@@ -70,7 +70,7 @@ keepcrypt/
 | Android | Kotlin, Jetpack Compose, `cargo-ndk`, minSdk 31 | API 31 adds overlay hiding; FLAG\_SECURE is less reliable on 30 and below |
 | iOS | Swift, SwiftUI, XCFramework from `cargo` + UniFFI, iOS 17+ | iOS 17 adds `sceneCaptureState` for capture detection |
 | Bindings | Mozilla UniFFI | Generates Kotlin and Swift from one Rust interface |
-| Core crates | `getrandom`, `sha2`, `bip39`, `bitcoin` (fingerprint, address), `miniscript` (descriptors), a BC-UR encoder (watch-only QR), `age` (scrypt), `zeroize`, `secrecy`, `thiserror` | Small, widely reviewed; nothing else without review |
+| Core crates | `getrandom`, `sha2`, `bip39`, `bitcoin` (fingerprint, address), `miniscript` (descriptors), `unicode-normalization` (NFKD of the BIP39 passphrase), a single-frame BC-UR encoder and strict single-part decoder written in core with no crate (watch-only and go-ahead QRs), the age v1 scrypt format written in core from the RustCrypto `scrypt`, `chacha20poly1305`, `hkdf`, `hmac` and `base64ct` crates (not the `age` crate), `ed25519-dalek` (signature verification only), `zeroize`, `secrecy`, `thiserror` | Small, widely reviewed; nothing else without review |
 | Pi crates | `rppal` (GPIO, SPI), `mipidsi` (ST7789), `embedded-graphics`, `embedded-graphics-simulator` (sim only) | Userspace drivers, testable on a desktop |
 | Verifier | Python 3, standard library only | Anyone can read and run it offline |
 | Dependency hygiene | `Cargo.lock` committed, `cargo-deny`, `cargo-audit`, `cargo-vet` | Supply-chain control; Coldcard's bug came from a submodule |
@@ -90,7 +90,7 @@ keepcrypt/
 | `dice` | Roll validation (1 to 6 only), entropy count at 2.585 bits per roll, ASCII string |
 | `seed` | Commitment C, combine E, dice-only E, BIP39 encoding, fingerprint and first address via rust-bitcoin |
 | `backup` | age encryption with an scrypt passphrase; generated 8-word backup passphrases |
-| `kat` | Known-answer tests for SHA-256, SHA-512, BIP39, age, seal and braille, run on every session start |
+| `kat` | Known-answer tests for SHA-256, SHA-512, HMAC, BIP39, Pool, Health, Seed, age, seal, GoAhead, Merkle, Ed25519, braille and BIP84, run on every session start |
 | `secret` | Zeroizing wrappers with no `Debug`, `Display`, `Clone` or `Serialize` |
 | `seal` | Seal code, tag, ID and 8x8 image from the BIP39 seed; check nonce and go-ahead code; snapshot and bucket-proof verification and lookup |
 | `braille` | SeedBook format: grade 1 cells, faces 1–5 with blanks, SeedBook numbers (1-based), mirror-pair flags, metal read-back check, number sign for passphrases |
@@ -102,36 +102,45 @@ keepcrypt/
 pub enum SeedLength { Words12, Words24 }   // default Words12: one KeepCrypt Hinge or Screw
 pub enum Mode { Mixed, DiceOnly }
 pub enum Platform { Pi, Phone }
+pub enum ExtraSource { InputTiming, Motion, Camera, Microphone } // never credited; credited ids stay inside core
 
 // Typestate: Collecting -> Committed -> Rolling -> Sealed -> (Checking) -> Ready
+// Every method that can fail on randomness, a health test, a KAT or an integrity check takes
+// `self`, so an Err has already wiped the session. Only user input keeps it alive: a go-ahead
+// typo (Rejected::Retry), check_readback and verify_backup.
 impl Session<Collecting> {
     pub fn new(len: SeedLength, mode: Mode, platform: Platform) -> Result<Self, CoreError>; // runs KATs
-    pub fn add_hw_samples(&mut self, raw: &[u8]) -> Result<(), CoreError>; // health-tested, credited
-    pub fn add_extra(&mut self, source: SourceId, bytes: &[u8]);           // mixed, never credited
-    pub fn commit(self) -> Result<Session<Committed>, CoreError>;          // reads getrandom(64); fails if quota unmet
+    pub fn add_hw_samples(self, raw: &[u8]) -> Result<Self, CoreError>;  // Pi, Mixed mode only; health-tested, credited per window
+    pub fn add_extra(&mut self, source: ExtraSource, bytes: &[u8]);      // mixed, never credited; does nothing in dice-only mode
+    pub fn credited_bits(&self) -> u32;   // also required_bits(), and hw_bytes_tested() toward HW_BYTES_NEEDED = 1,536
+    pub fn commit(self) -> Result<Session<Committed>, CoreError>;        // fails if quota unmet; reads getrandom(64), absorbed last
 }
 impl Session<Committed> {
-    pub fn commitment(&self) -> [u8; 32];            // C, safe to display
+    pub fn commitment(&self) -> Option<[u8; 32]>;    // C, safe to display; None in dice-only mode
     pub fn start_dice(self) -> Session<Rolling>;
 }
 impl Session<Rolling> {
-    pub fn push_roll(&mut self, face: u8) -> Result<(), CoreError>;
+    pub fn push_roll(self, face: u8) -> Result<Self, CoreError>;  // 1 to 6, at most 256 rolls; anything else wipes
     pub fn undo_roll(&mut self);
-    pub fn finish(self) -> Result<Session<Sealed>, CoreError>;   // fails below the minimum: 50, 99, or 99 after a collision
+    pub fn rolls(&self) -> u16;           // also millibits() and minimum_rolls(), for the dice screen
+    pub fn finish(self) -> Result<Session<Sealed>, CoreError>;   // fails below the minimum: 50, 99, or 99 after a collision;
+                                                                  // derives the seal, fingerprint and first address once
 }
 // Sealed: the seed exists, but no mnemonic, D, backup or export can leave this state.
 impl Session<Sealed> {
-    pub fn seal(&self) -> SealPublic;                              // tag T, Seal ID, 8x8 image
+    pub fn seal(&self) -> &SealPublic;                             // tag T, Seal ID, 8x8 image, re-check URL
     pub fn skip_check(self) -> Session<Ready>;                     // "Skip": offered only before a check starts
     pub fn start_check(self) -> Result<Session<Checking>, CoreError>; // draws a fresh 8-byte nonce n
 }
 // Checking: the same secrecy as Sealed, and no way back to Skip.
 impl Session<Checking> {
+    pub fn seal(&self) -> &SealPublic;
     pub fn check_request(&self) -> CheckRequest;                   // seal card and check QR URL with T and n
-    pub fn reveal(self, go: GoAhead) -> Result<Session<Ready>, Rejected>; // only a verified go-ahead reaches the words
+    pub fn reveal(self, go: GoAhead<'_>) -> Result<Session<Ready>, Rejected>; // only a verified go-ahead reaches the words
     pub fn discard(self, why: Discard) -> Wiped;                   // Stop or Cannot check: wipes the seed
 }
-pub enum GoAhead { Snapshot(VerifiedSnapshot), BucketProof(Vec<u8>), Code(String) }
+// Borrows verified evidence, so a snapshot loaded before the ceremony survives a restart.
+pub enum GoAhead<'a> { Snapshot(&'a VerifiedSnapshot), BucketProof(&'a VerifiedProof), Code(&'a str) }
 pub enum Rejected { Retry(Session<Checking>, CheckError), Collision(Wiped) } // typo or bad scan, or a proven match
 pub enum Discard { Collision, CannotCheck }
 impl Wiped {
@@ -140,26 +149,38 @@ impl Wiped {
 }
 impl Session<Ready> {
     pub fn mnemonic(&self) -> &SecretMnemonic;
-    pub fn braille(&self) -> BrailleInserts;                      // faces 1-5, blanks, SeedBook numbers, mirror flags
-    pub fn check_readback(&self, position: u8, first_four: &str) -> ReadbackResult; // metal read-back, per insert
+    pub fn braille(&self) -> BrailleInserts<'_>;                  // faces 1-5, blanks, SeedBook numbers, mirror flags
     pub fn fingerprint(&self) -> [u8; 4];
-    pub fn first_address(&self) -> String;                        // BIP84 m/84'/0'/0'/0/0
-    pub fn watch_only(&self, bip39_passphrase: Option<&SecretStr>) -> WatchOnlyExport; // UR account + descriptors
-    pub fn registration(&self) -> SealRegistration;               // seal code and register URL, shown as QR
-    pub fn reveal_device_leg(&self) -> SecretBytes32;             // D, for offline audit
-    pub fn encrypt_backup(&self, pass: &BackupPassphrase) -> Result<Vec<u8>, CoreError>;
+    pub fn first_address(&self) -> &str;                          // BIP84 m/84'/0'/0'/0/0
+    pub fn check_readback(&mut self, position: u8, first_four: &str) -> Result<ReadbackResult, CoreError>; // per insert; never wipes
+    pub fn readback_complete(&self) -> bool;
+    // The exports below return ReadbackIncomplete, and wipe, until every word has read back.
+    pub fn generate_backup_passphrase(self) -> Result<(Self, NewBackupPassphrase), CoreError>; // 8 BIP39 words, 88 bits, stored in
+                                                                  // the session; returns a display copy and the 2-of-4 confirm challenge
+    pub fn encrypt_backup(self, by: &CreatedBy) -> Result<(Self, BackupFile), CoreError>; // uses the stored passphrase;
+                                                                  // file name and armored bytes; NoBackupPassphrase before generating
+    pub fn verify_backup(&self, file: &[u8]) -> Result<(), CoreError>; // read-back with the stored passphrase; retryable
+    pub fn watch_only(self, bip39_passphrase: Option<&Bip39Passphrase>) -> Result<(Self, WatchOnlyExport), CoreError>; // UR account + descriptors
+    pub fn registration(self) -> Result<(Self, SealRegistration), CoreError>; // seal code and register URL, shown as QR
+    pub fn reveal_device_leg(self) -> Result<(Self, Option<SecretBytes32>), CoreError>; // D, for offline audit; None in dice-only mode
 }
-pub fn generate_backup_passphrase() -> Result<BackupPassphrase, CoreError>; // 8 BIP39 words, 88 bits
-pub fn decrypt_backup(file: &[u8], pass: &BackupPassphrase) -> Result<SecretMnemonic, CoreError>;
+pub fn self_test() -> Result<(), CoreError>;                                 // boot screen KATs
+pub fn hwrng_boot_test(raw: &[u8]) -> Result<(), CoreError>;                 // Pi boot: Health KAT, then 1,024 startup samples
+pub fn decrypt_backup(file: &[u8], pass: &TypedBackupPassphrase) -> Result<CheckedBackup, CoreError>; // "Check a backup"
 pub fn verify_snapshot(file: &[u8]) -> Result<VerifiedSnapshot, CoreError>;  // pinned Ed25519 key; bucket root recomputed
-pub fn seal_from_mnemonic(m: &SecretMnemonic) -> SealPublic;                // for later re-checks
+pub fn verify_bucket_proof(proof: &[u8]) -> Result<VerifiedProof, CoreError>; // KCP1 bytes from a go-ahead QR
+pub fn verify_bucket_proof_qr(text: &str) -> Result<VerifiedProof, CoreError>; // single-part ur:keepcrypt-proof/ text
+pub fn seal_from_mnemonic(m: &SecretMnemonic) -> Result<SealPublic, CoreError>; // for later re-checks
+// VerifiedSnapshot and VerifiedProof: date() and freshness(today) -> Current | Stale (from day 31) | Future.
+// Typed backup words reach only decrypt_backup. CheckedBackup: fingerprint() and seal(); the words and
+// braille only through reveal_words() and reveal_braille(). The free functions run their own KAT groups.
 ```
 
 **Credit policy.**
 
 | Platform | Device leg is satisfied by | User leg (Mixed mode) |
 | --- | --- | --- |
-| Pi | `getrandom(64)` plus 512 credited bits of raw `/dev/hwrng` output that passed the startup and continuous health tests; hwrng is credited at 4 bits per byte until lab data sets a measured value | 99 rolls (24 words) or 50 (12 words) |
+| Pi | `getrandom(64)` plus 512 credited bits of raw `/dev/hwrng` output that passed the startup and continuous health tests; hwrng is credited at 4 bits per byte until lab data sets a measured value. Only samples after the 1,024 discarded startup samples count, per completed 512-sample window, so the 512 bits arrive in one step at 1,536 bytes | 99 rolls (24 words) or 50 (12 words) |
 | Phone | `getrandom(64)`; phones expose no raw noise source | Same |
 | Dice-only, any | Not used; screen states that no device randomness is mixed in | Same |
 
@@ -212,10 +233,10 @@ Every rule below is checked by a machine on every pull request, because the Cold
 | Rule | How CI enforces it |
 | --- | --- |
 | Only `getrandom` supplies OS randomness | `cargo-deny` bans `rand`, `fastrand`, `oorandom`, `nanorand` and similar crates in `core/`; Clippy `disallowed-methods` and a grep gate reject `Math.random`, `java.util.Random`, `arc4random_uniform` in app code |
-| One RNG path in shipped binaries | Symbol check on release binaries: libc `getrandom` is imported, and no other RNG symbol (`rand`, `random`, `drand48`, `arc4random`) appears |
-| Test stubs never ship | Stubs live behind a `test-sources` feature; CI builds release artifacts with `--no-default-features` and greps them for the marker, a positive check rather than a `#ifndef`-style guard |
+| One RNG path in shipped binaries | Symbol check on release binaries: the OS import for the target is present (`getrandom` on Linux and Android, `CCRandomGenerateBytes` on iOS), and no other RNG symbol (`rand`, `random`, `drand48`, `arc4random`) appears |
+| Test stubs never ship | Stubs live behind a `test-sources` feature (marker `KC_TEST_SOURCE_DO_NOT_SHIP`), and the test registry key behind a separate `test-registry` feature (marker `KC_TEST_REGISTRY_DO_NOT_SHIP`) that `test-sources` turns on, never the reverse; CI builds release artifacts with `--no-default-features` and greps them for both markers and the test key, a positive check rather than a `#ifndef`-style guard |
 | No unsafe code in the core | `#![forbid(unsafe_code)]` in `core/` |
-| Secrets never printed | Secret types implement no `Debug` or `Display`; a test formats every public type and asserts no BIP39 word appears; `core/` has no logging dependency |
+| Secrets never printed | Secret types implement no `Debug` or `Display`; a test formats every public type and every error from public-vector ceremonies and asserts that no word of the test seed appears unless it also appears for a control seed with no words in common (fixed text such as "test", "wrong" and "error" is itself made of BIP39 words), that no two consecutive seed words appear in order, and that the `Debug` output of types that hold or replace a session (`Rejected`, `Wiped`) contains no BIP39 word as a whole token (a maximal run of ASCII letters, case-folded); `core/` has no logging dependency |
 | Fail closed | Clippy `disallowed-methods` bans `Result::unwrap_or`, `unwrap_or_default` and `unwrap_or_else` inside `core/`; tests inject every error and assert the session halts |
 | Known answers | BIP39 `vectors.json`, Coldcard `rolls.py` outputs, age test kit and KeepCrypt vectors run on every build |
 | Supply chain | Locked dependencies, `cargo-audit` and `cargo-vet`; new crates need a reviewed `vet` entry |

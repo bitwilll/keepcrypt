@@ -67,8 +67,10 @@ pass. If one seems to block you, ask the owner.
    including dialogs and popups. iOS has no networking code and uses capture-state redaction,
    discard-on-screenshot and an app-switcher cover. No analytics, crash or ad SDKs.
 10. **Test stubs never ship:** fake sources live behind the `test-sources` cargo feature and embed
-    the marker string `KC_TEST_SOURCE_DO_NOT_SHIP`. CI fails any release artifact that contains
-    the marker or an unexpected RNG symbol.
+    the marker string `KC_TEST_SOURCE_DO_NOT_SHIP`. The test registry key lives behind the
+    separate `test-registry` feature, which `test-sources` turns on (never the reverse), and
+    embeds the marker `KC_TEST_REGISTRY_DO_NOT_SHIP`. CI fails any release artifact that contains
+    either marker, the test registry key or an unexpected RNG symbol.
 11. **No home-made crypto:** use only the crates named in `docs/build-plan.md`. Adding any
     dependency needs owner approval and a `cargo vet` entry.
 12. **No real seeds in tests:** use the vectors in `vectors/` only. Never commit secrets or keys.
