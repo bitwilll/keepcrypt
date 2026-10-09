@@ -7,6 +7,9 @@ recomputes public algorithms from the docs so anyone can check a device offline.
 M0 scope: the seal derivation (docs/seal-watchonly-braille.md, "Seal derivation spec",
 "The seal image", "Go-ahead code"), vectors/seal.json, the provenance hashes in
 vectors/SOURCES.md, and vectors/coldcard/rolls.json re-run through Coldcard's own scripts.
+M1 adds the vectors behind core's known-answer tests: vectors/kat.json (SHA-256, SHA-512 and
+HMAC from the NIST and RFC 4231 examples, Ed25519 from RFC 8032), whose values are copied from
+the standards listed in vectors/SOURCES.md, "Spec values".
 C/E recomputation, BIP39 encoding and braille arrive in M2.
 
 The only outside code it runs is Coldcard's public-domain rolls.py and rolls12.py, committed
@@ -16,10 +19,11 @@ Every seal.json vector also has its values pinned here (vector 1 from CLAUDE.md 
 vectors 2 and 3 independently reproduced), so --write-seal-vectors cannot re-baseline a bug.
 
 Usage:
-  verify.py --selftest              4 checks: seal known answers (all 3 vectors), seal.json bytes,
+  verify.py --selftest              5 checks: seal known answers (all 3 vectors), seal.json bytes,
                                     SOURCES.md hashes and coverage, rolls.json against Coldcard's
-                                    scripts
+                                    scripts, kat.json (SHA and HMAC recomputed, then its bytes)
   verify.py --write-seal-vectors    regenerate vectors/seal.json
+  verify.py --write-kat-vectors     regenerate vectors/kat.json
   --vectors-dir DIR                 testing only: use DIR in place of the repo's vectors/ (made
                                     absolute); a SOURCES.md row `vectors/<p>` then means DIR/<p>
 
@@ -50,8 +54,8 @@ TAG_GO = b"KCE/v1/go"
 
 # Shared interface: one row per file in vectors/SOURCES.md.
 SOURCES_ROW = re.compile(r"^\| `(vectors/[^`]+)` \| `([0-9a-f]{64})` \|")
-# Files under vectors/ that SOURCES.md does not list.
-UNLISTED = ("seal.json", "SOURCES.md")
+# Files under vectors/ that SOURCES.md does not list: the files this script generates, and SOURCES.md.
+UNLISTED = ("seal.json", "kat.json", "SOURCES.md")
 # macOS Finder metadata, written into any folder opened in Finder. .gitignore excludes it, so it
 # is never committed and never present in CI. The coverage rule skips a regular file with this
 # exact name only if it starts with Finder's magic bytes; any other .DS_Store needs a row, so a
@@ -173,6 +177,62 @@ SEAL_SPEC = {
     "colour": "index T[0] mod 8 into the Okabe-Ito palette " + ", ".join(OKABE_ITO),
     "go_ahead": 'G = first 40 bits of SHA256(b"KCE/v1/go" || T (32 raw bytes) || n (8 raw bytes)) as 8 Crockford '
     "base32 chars; displayed XXXX-XXXX",
+}
+
+# Check 5: the known answers behind core's Sha256, Sha512, Hmac and Ed25519 KAT groups
+# (tasks/todo.md, M1 group 2), copied as published from the documents pinned by SHA-256 in
+# vectors/SOURCES.md, "Spec values". Check 5 recomputes every SHA and HMAC value with hashlib and
+# hmac, so a mistyped copy fails the self-test instead of reaching kat.json. verify.py has no
+# Ed25519 yet, so the RFC 8032 entry is checked for shape only. The RFC's secret key is not copied:
+# core only verifies signatures (tasks/todo.md, M1 Q3).
+NIST_SHA256_EXAMPLE = "NIST CSRC FIPS 180-4 example SHA256.pdf"
+NIST_SHA512_EXAMPLE = "NIST CSRC FIPS 180-4 example SHA512.pdf"
+SHA256_TWO_BLOCK = b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"
+SHA512_TWO_BLOCK = (
+    b"abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmno"
+    b"ijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu"
+)
+# (name, source, message, digest hex as published)
+KAT_SHA256 = (
+    ("empty", "NIST CAVP SHAVS SHA256ShortMsg.rsp, Len = 0", b"",
+     "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
+    ("abc", NIST_SHA256_EXAMPLE + ", one-block message", b"abc",
+     "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+    ("two-block", NIST_SHA256_EXAMPLE + ", two-block message", SHA256_TWO_BLOCK,
+     "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"),
+)
+KAT_SHA512 = (
+    ("empty", "NIST CAVP SHAVS SHA512ShortMsg.rsp, Len = 0", b"",
+     "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce"
+     "47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e"),
+    ("abc", NIST_SHA512_EXAMPLE + ", one-block message", b"abc",
+     "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a"
+     "2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"),
+    ("two-block", NIST_SHA512_EXAMPLE + ", two-block message", SHA512_TWO_BLOCK,
+     "8e959b75dae313da8cf4f72814fc143f8f7779c6eb9f7fa17299aeadb6889018"
+     "501d289e4900f7e4331b99dec4b5433ac7d329eeb6dd26545e96e55b874be909"),
+)
+# (name, source, key, data, HMAC-SHA-256 hex, HMAC-SHA-512 hex as published)
+KAT_HMAC = (
+    ("rfc4231-case-2", "RFC 4231 section 4.3, Test Case 2", b"Jefe", b"what do ya want for nothing?",
+     "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843",
+     "164b7a7bfcf819e2e395fbe73b56e0a387bd64222e831fd610270cd7ea250554"
+     "9758bf75c05a994a6d034f65f8f0e6fdcaeab1a34d4a6b4b636e070a38bce737"),
+)
+# (name, source, public key hex, message, signature hex as published)
+KAT_ED25519 = (
+    ("rfc8032-test-1", "RFC 8032 section 7.1, TEST 1",
+     "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a", b"",
+     "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e06522490155"
+     "5fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b"),
+)
+KAT_SPEC = {
+    "encoding": "every *_hex value is the exact bytes in lowercase hex; *_ascii is the same bytes as ASCII text",
+    "sha256": "digest = SHA-256(message) (FIPS 180-4), 32 bytes",
+    "sha512": "digest = SHA-512(message) (FIPS 180-4), 64 bytes",
+    "hmac": "HMAC (RFC 2104) of data under key, with SHA-256 (32 bytes) and SHA-512 (64 bytes)",
+    "ed25519": "PureEdDSA Ed25519 (RFC 8032 section 5.1): a valid signature (64 bytes) over message under "
+    "public_key (32 bytes)",
 }
 
 
@@ -313,17 +373,73 @@ def seal_vectors_json():
     return json.dumps(doc, indent=2, sort_keys=False, ensure_ascii=True) + "\n"
 
 
-def write_seal_vectors(vectors_dir):
-    """Write seal.json into vectors_dir, which must already exist."""
-    path = vectors_dir / "seal.json"
+def write_vectors(vectors_dir, name, text):
+    """Write one generated vectors file (ASCII text) into vectors_dir, which must already exist."""
+    path = vectors_dir / name
     try:
         with open(path, "wb") as f:
-            f.write(seal_vectors_json().encode("ascii"))
+            f.write(text.encode("ascii"))
     except OSError as e:
         print("cannot write %s: %s" % (path, e.strerror), file=sys.stderr)
         return 1
     print("wrote " + str(path))
     return 0
+
+
+def write_seal_vectors(vectors_dir):
+    """Write seal.json into vectors_dir, which must already exist."""
+    return write_vectors(vectors_dir, "seal.json", seal_vectors_json())
+
+
+def ascii_and_hex(field, data):
+    """{field_ascii, field_hex} for `data`, which must be printable ASCII (every KAT input is)."""
+    if any(b < 0x20 or b > 0x7E for b in data):
+        raise ValueError("%s is not printable ASCII" % field)
+    return {field + "_ascii": data.decode("ascii"), field + "_hex": data.hex()}
+
+
+def kat_vectors_json():
+    """The exact text of vectors/kat.json: indent 2, fixed key order, ASCII, trailing newline.
+
+    Every value is the published one from the KAT_* tables; check 5 recomputes the SHA and HMAC
+    values instead of trusting them.
+    """
+    def sha_entries(table):
+        return [
+            dict({"name": name, "source": source}, **ascii_and_hex("message", message), digest_hex=digest)
+            for name, source, message, digest in table
+        ]
+
+    doc = {
+        "description": "KeepCrypt known-answer vectors for core's Sha256, Sha512, Hmac and Ed25519 KAT groups. "
+        "Generated by tools/verify/verify.py --write-kat-vectors; verify.py --selftest recomputes every SHA and "
+        "HMAC value with Python's hashlib and hmac, then regenerates this file and requires byte equality. Values "
+        "are copied as published from the documents pinned in vectors/SOURCES.md, \"Spec values\".",
+        "spec": KAT_SPEC,
+        "sha256": sha_entries(KAT_SHA256),
+        "sha512": sha_entries(KAT_SHA512),
+        "hmac": [
+            dict(
+                {"name": name, "source": source},
+                **ascii_and_hex("key", key),
+                **ascii_and_hex("data", data),
+                hmac_sha256_hex=mac256,
+                hmac_sha512_hex=mac512,
+            )
+            for name, source, key, data, mac256, mac512 in KAT_HMAC
+        ],
+        "ed25519": [
+            dict({"name": name, "source": source, "public_key_hex": public_key}, **ascii_and_hex("message", message),
+                 signature_hex=signature)
+            for name, source, public_key, message, signature in KAT_ED25519
+        ],
+    }
+    return json.dumps(doc, indent=2, sort_keys=False, ensure_ascii=True) + "\n"
+
+
+def write_kat_vectors(vectors_dir):
+    """Write kat.json into vectors_dir, which must already exist."""
+    return write_vectors(vectors_dir, "kat.json", kat_vectors_json())
 
 
 # --- Self-test -------------------------------------------------------------------------------
@@ -348,13 +464,13 @@ def check_known_answers():
     return problems
 
 
-def check_seal_json(vectors_dir):
-    """The committed seal.json must equal the regenerated text byte for byte."""
-    path = vectors_dir / "seal.json"
+def check_generated_file(vectors_dir, name, text, flag):
+    """The committed vectors/<name> must equal the regenerated `text` byte for byte."""
+    path = vectors_dir / name
     if not path.is_file():
-        return ["vectors/seal.json is missing (run --write-seal-vectors)"]
+        return ["vectors/%s is missing (run %s)" % (name, flag)]
     committed = path.read_bytes()
-    generated = seal_vectors_json().encode("ascii")
+    generated = text.encode("ascii")
     if committed == generated:
         return []
     old, new = committed.splitlines(), generated.splitlines()
@@ -362,8 +478,46 @@ def check_seal_json(vectors_dir):
         a = old[i].decode("utf-8", "replace") if i < len(old) else "<end of file>"
         b = new[i].decode("ascii") if i < len(new) else "<end of file>"
         if a != b:
-            return ["vectors/seal.json line %d is %r, regenerated is %r" % (i + 1, a, b)]
-    return ["vectors/seal.json differs from the regenerated text (line endings or final newline)"]
+            return ["vectors/%s line %d is %r, regenerated is %r" % (name, i + 1, a, b)]
+    return ["vectors/%s differs from the regenerated text (line endings or final newline)" % name]
+
+
+def check_seal_json(vectors_dir):
+    """The committed seal.json must equal the regenerated text byte for byte."""
+    return check_generated_file(vectors_dir, "seal.json", seal_vectors_json(), "--write-seal-vectors")
+
+
+def is_lower_hex(value, length):
+    """True if `value` is exactly `length` bytes as lowercase hex."""
+    return isinstance(value, str) and re.fullmatch("[0-9a-f]{%d}" % (2 * length), value) is not None
+
+
+def check_kat_known_answers():
+    """Recompute every published SHA and HMAC value with hashlib and hmac; Ed25519 by shape only."""
+    problems = []
+    for algorithm, size, table in (("sha256", 32, KAT_SHA256), ("sha512", 64, KAT_SHA512)):
+        for name, _, message, published in table:
+            got = getattr(hashlib, algorithm)(message).hexdigest()
+            if not is_lower_hex(published, size) or got != published:
+                problems.append("kat.json %s %s: published %r, hashlib gives %s" % (algorithm, name, published, got))
+    for name, _, key, data, mac256, mac512 in KAT_HMAC:
+        for algorithm, size, published in (("sha256", 32, mac256), ("sha512", 64, mac512)):
+            got = hmac.new(key, data, getattr(hashlib, algorithm)).hexdigest()
+            if not is_lower_hex(published, size) or got != published:
+                problems.append("kat.json hmac %s HMAC-%s: published %r, hmac gives %s"
+                                % (name, algorithm.upper(), published, got))
+    for name, _, public_key, _, signature in KAT_ED25519:
+        if not (is_lower_hex(public_key, 32) and is_lower_hex(signature, 64)):
+            problems.append("kat.json ed25519 %s: the public key must be 32 bytes and the signature 64, "
+                            "as lowercase hex" % name)
+    return problems
+
+
+def check_kat_json(vectors_dir):
+    """Check 5: the published values recompute, and the committed kat.json equals the regenerated text."""
+    return check_kat_known_answers() + check_generated_file(
+        vectors_dir, "kat.json", kat_vectors_json(), "--write-kat-vectors"
+    )
 
 
 def sha256_file(path):
@@ -551,6 +705,8 @@ def selftest(vectors_dir):
         ("vectors/seal.json matches regenerated output", lambda: check_seal_json(vectors_dir)),
         ("vectors/SOURCES.md hashes and coverage", lambda: check_sources(vectors_dir)),
         ("vectors/coldcard/rolls.json matches Coldcard's own scripts", lambda: check_coldcard_scripts(vectors_dir)),
+        ("vectors/kat.json: SHA and HMAC values recomputed, file matches regenerated output",
+         lambda: check_kat_json(vectors_dir)),
     )
     failed = 0
     for name, check in checks:
@@ -574,9 +730,11 @@ def main(argv):
     parser = argparse.ArgumentParser(prog="verify.py", description="KeepCrypt offline verifier (M0).")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--selftest", action="store_true",
-                      help="run the 4 checks: seal known answers (all 3 vectors), seal.json bytes, SOURCES.md "
-                      "hashes and coverage, rolls.json against Coldcard's own scripts")
+                      help="run the 5 checks: seal known answers (all 3 vectors), seal.json bytes, SOURCES.md "
+                      "hashes and coverage, rolls.json against Coldcard's own scripts, kat.json (SHA and HMAC "
+                      "recomputed, then its bytes)")
     mode.add_argument("--write-seal-vectors", action="store_true", help="regenerate vectors/seal.json")
+    mode.add_argument("--write-kat-vectors", action="store_true", help="regenerate vectors/kat.json")
     parser.add_argument("--vectors-dir", type=Path, default=REPO_VECTORS_DIR, metavar="DIR",
                         help="testing only: use DIR in place of the repo's vectors/")
     args = parser.parse_args(argv)
@@ -586,6 +744,8 @@ def main(argv):
         return selftest(vectors_dir)
     if args.write_seal_vectors:
         return write_seal_vectors(vectors_dir)
+    if args.write_kat_vectors:
+        return write_kat_vectors(vectors_dir)
     parser.print_help(sys.stderr)
     return 2
 

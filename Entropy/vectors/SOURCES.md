@@ -9,6 +9,11 @@ and re-runs Coldcard's committed scripts on every case in `coldcard/rolls.json`;
 `vectors/seal.json` has no row. `tools/verify/verify.py` generates it from the constants in
 `CLAUDE.md`, and the self-test regenerates and compares it.
 
+`vectors/kat.json` has no row either. `tools/verify/verify.py --write-kat-vectors` generates it
+from values copied as published from the documents in "Spec values" below, which are not
+committed. Self-test check 5 recomputes every SHA and HMAC value with Python's `hashlib` and
+`hmac`, then regenerates the file and requires byte equality.
+
 ## Provenance
 
 | File | SHA-256 | Source | Upstream commit or date | Licence | Notes |
@@ -44,6 +49,28 @@ and re-runs Coldcard's committed scripts on every case in `coldcard/rolls.json`;
 | `vectors/age/scrypt/scrypt_work_factor_wrong` | `565290c68accd2b94dbcf434927049d4fcfc8ab8fe169a6c33e546606e5cf65c` | https://raw.githubusercontent.com/C2SP/CCTV/50a8ecf2a220f4c8bdc4f085789b8e85c26829e7/age/testdata/scrypt_work_factor_wrong | 50a8ecf2a220f4c8bdc4f085789b8e85c26829e7 | 0BSD OR CC0-1.0 OR Unlicense | Unmodified. expect: no match. |
 | `vectors/age/scrypt/scrypt_work_factor_zero` | `bdac47d76667aa0f14270df58573b873c806ea838b2e026d62789287f0413239` | https://raw.githubusercontent.com/C2SP/CCTV/50a8ecf2a220f4c8bdc4f085789b8e85c26829e7/age/testdata/scrypt_work_factor_zero | 50a8ecf2a220f4c8bdc4f085789b8e85c26829e7 | 0BSD OR CC0-1.0 OR Unlicense | Unmodified. expect: header failure. |
 
+## Spec values
+
+Values copied into `tools/verify/verify.py` (and from there into `vectors/kat.json`) from
+published standards. The documents themselves are not committed; each row pins the exact bytes
+read, by SHA-256. All were downloaded on 2026-10-09 with a generic User-Agent, each into its own
+new empty directory, and downloaded a second time the same day with the same size and SHA-256.
+They were read as data only: the RFCs as text, the PDFs through a standard-library extraction of
+their compressed text streams, and the zip through Python's `zipfile` without extracting it.
+
+| Standard | Document | SHA-256 | Retrieved | Licence | Values copied |
+| --- | --- | --- | --- | --- | --- |
+| FIPS 180-4 (SHA-256) | https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/SHA256.pdf (NIST CSRC "Examples with Intermediate Values"), 99090 bytes | `7006b6549dad2fc8c6f29417a921f2e48208157ef496a7e1e1d7d17c5cc1e7db` | 2026-10-09 (Last-Modified 2024-09-29 23:15:40 GMT) | U.S. Government work, not subject to copyright in the U.S. (17 U.S.C. 105) | `kat.json` sha256 `abc` and `two-block`: "One Block Message Sample" (`"abc"`) and "Two Block Message Sample" (`"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"`), message and final "Message Digest is" value |
+| FIPS 180-4 (SHA-512) | https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/SHA512.pdf (same series), 159262 bytes | `84ce867c99bad5a7b05abc74bb1dfc9de8486f49a160653cc8b15272cc532115` | 2026-10-09 (Last-Modified 2024-09-29 23:15:40 GMT) | U.S. Government work, not subject to copyright in the U.S. (17 U.S.C. 105) | `kat.json` sha512 `abc` and `two-block`: the one-block (`"abc"`) and two-block (`"abcdefghbcdefghi…nopqrstu"`, 112 bytes) samples, message and final digest |
+| FIPS 180-4 (SHAVS byte-oriented vectors) | https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/shs/shabytetestvectors.zip (NIST CAVP), 4909729 bytes; members `shabytetestvectors/SHA256ShortMsg.rsp` (SHA-256 `75e1cb83994638481808e225b9eb0c1ebd0c232d952ac42b61abce6363be283c`) and `shabytetestvectors/SHA512ShortMsg.rsp` (SHA-256 `e53a36c03609e5a3e3cc4b6e117a499db7864c23ec825c6cec99503a45f40764`), "CAVS 11.0", generated 2011-03-15 | `929ef80b7b3418aca026643f6f248815913b60e01741a44bba9e118067f4c9b8` | 2026-10-09 (Last-Modified 2024-09-29 23:13:50 GMT) | U.S. Government work, not subject to copyright in the U.S. (17 U.S.C. 105) | `kat.json` sha256 and sha512 `empty`: the `Len = 0` entry of each file, whose `Msg = 00` is the placeholder for the empty message, and its `MD` |
+| RFC 4231 (HMAC-SHA-224/256/384/512 test vectors) | https://www.rfc-editor.org/rfc/rfc4231.txt, 17725 bytes | `72178527ce93500e730bc8eb182b857e583096d652b64ece0879c52ba1df973b` | 2026-10-09 | Copyright (C) The Internet Society (2005), subject to BCP 78; only the test values are copied | `kat.json` hmac `rfc4231-case-2`: section 4.3, Test Case 2: Key (`"Jefe"`), Data (`"what do ya want for nothing?"`), HMAC-SHA-256 and HMAC-SHA-512 |
+| RFC 8032 (EdDSA) | https://www.rfc-editor.org/rfc/rfc8032.txt, 103210 bytes | `ed63657ff389301282b169b0abde9b5dd2c7e4d524fdfa5da6ff3094fc93c4c3` | 2026-10-09 | Copyright (c) 2017 IETF Trust and the document authors, subject to BCP 78 and the IETF Trust's Legal Provisions; only the test values are copied | `kat.json` ed25519 `rfc8032-test-1`: section 7.1, TEST 1: PUBLIC KEY, the empty MESSAGE and SIGNATURE. Its SECRET KEY is not copied, because core only verifies signatures |
+
+Every copied value was compared mechanically with the value parsed back out of its document
+(one throwaway script, not committed), and that comparison failed when any value was altered.
+The SHA and HMAC values are recomputed by every self-test run; the Ed25519 entry is copied only,
+since verify.py has no Ed25519 yet.
+
 ## What each set is for
 
 - `bip39/vectors.json`: BIP39 known answers for core, run every build and at session start.
@@ -52,6 +79,9 @@ and re-runs Coldcard's committed scripts on every case in `coldcard/rolls.json`;
   each of 12, 18 and 24 words).
 - `coldcard/rolls.json`: dice-only mode, `E = SHA256(R)`, must match Coldcard, the de facto
   standard. Core and the verifier check it every build.
+- `kat.json` (generated; see "Spec values"): the published answers behind core's Sha256,
+  Sha512, Hmac and Ed25519 known-answer groups, which run at every session start. Core's tests
+  check each KAT constant against this file.
 - `coldcard/rolls.py` and `coldcard/rolls12.py`: Coldcard's own scripts that produced
   `rolls.json`. The verifier self-test re-runs them on every case, so the values come from a
   committed script that CI re-runs.
