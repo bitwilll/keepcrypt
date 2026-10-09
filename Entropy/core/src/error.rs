@@ -190,6 +190,13 @@ pub enum KatId {
     /// receive checksum and UR.
     #[error("BIP84")]
     Bip84,
+    /// The seal: seal vector 1's code, T and Seal ID, from its S.
+    #[error("seal")]
+    Seal,
+    /// The go-ahead code: CF94-BCAJ for seal vector 1's T and n = 0001020304050607, and a wrong n
+    /// fails.
+    #[error("go-ahead code")]
+    GoAhead,
 }
 }
 
@@ -496,6 +503,8 @@ mod tests {
             KatId::Seed => "seed",
             KatId::Braille => "braille",
             KatId::Bip84 => "BIP84",
+            KatId::Seal => "seal",
+            KatId::GoAhead => "go-ahead code",
         }
     }
 

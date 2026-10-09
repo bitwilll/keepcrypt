@@ -9,21 +9,25 @@
 //!   match from entry point to groups.
 //! - A faulted group flips one bit of a computed value before its comparison, so the comparison
 //!   itself is what fails; nothing short-circuits it.
-//! - Budget per full run: at most 3 PBKDF2-2048 (3 today: 2 BIP39 seeds, 1 BIP84), scrypt only at
+//! - Budget per full run: at most 3 PBKDF2-2048 (3 today: 2 BIP39 seeds, 1 BIP84; the Seal group
+//!   starts from the S that the BIP84 group derives and checks, so it adds none), scrypt only at
 //!   log2 N 10 and at most 2 Ed25519 verifies (later groups), and at most 1 s on a Pi Zero (an
 //!   estimate; M4 measures). The Health group tests 2,064 samples.
-//! - The known answers are copied from vectors/kat.json and vectors/bip39/vectors.json, and the
-//!   unit tests below check every one of them against those files.
+//! - The known answers are copied from vectors/kat.json, vectors/bip39/vectors.json and the other
+//!   vectors files each group names, and the unit tests below check every one of them against
+//!   those files.
 
 use bitcoin::hashes::hmac::{Hmac, HmacEngine};
 use bitcoin::hashes::{Hash, HashEngine, sha256, sha512};
+use hmac::{KeyInit, Mac};
 use sha2::{Digest, Sha256, Sha512};
 
 use crate::braille;
 use crate::descriptor;
-use crate::error::{CoreError, HealthStage, HealthTest, KatId};
+use crate::error::{CheckError, CoreError, HealthStage, HealthTest, KatId};
 use crate::health::HealthTester;
 use crate::pool::Pool;
+use crate::seal::{self, CheckNonce, SealCode, SealPublic, SealTag};
 use crate::secret::{SecretBytes32, SecretSeed64};
 use crate::seed::{commitment, dice_only_entropy_into, mixed_entropy_into};
 use crate::source::SourceId;
@@ -35,6 +39,8 @@ pub(crate) enum Suite {
     Full,
     /// `hwrng_boot_test`: the health tests.
     HwrngBoot,
+    /// `seal_from_mnemonic`: the seal.
+    Seal,
 }
 
 /// The groups each entry point runs, in order: the one exhaustive match.
@@ -42,6 +48,7 @@ const fn groups(suite: Suite) -> &'static [KatId] {
     match suite {
         Suite::Full => &KatId::ALL,
         Suite::HwrngBoot => &[KatId::Health],
+        Suite::Seal => &[KatId::Seal],
     }
 }
 
@@ -80,6 +87,8 @@ fn passes(id: KatId, fault: bool) -> bool {
         KatId::Seed => seed_group(fault),
         KatId::Braille => braille_group(fault),
         KatId::Bip84 => bip84_group(fault),
+        KatId::Seal => seal_group(fault),
+        KatId::GoAhead => go_ahead_group(fault),
     }
 }
 
@@ -177,8 +186,8 @@ fn sha512_group(fault: bool) -> bool {
 }
 
 // --- HMAC (vectors/kat.json "hmac": RFC 4231 test case 2) -------------------------------------
-// bitcoin_hashes' HMAC: the one inside BIP39's PBKDF2 and BIP32. The seal code's hmac crate joins
-// this group when it lands (tasks/todo.md, M1 group 7).
+// Both HMACs core runs: bitcoin_hashes' (inside BIP39's PBKDF2 and BIP32) and the hmac crate's
+// HMAC-SHA256 (the seal code; later the age header MAC and HKDF).
 
 const HMAC_KEY: &[u8] = b"Jefe";
 const HMAC_DATA: &[u8] = b"what do ya want for nothing?";
@@ -195,7 +204,13 @@ fn hmac_group(fault: bool) -> bool {
     let mut engine512 = HmacEngine::<sha512::Hash>::new(HMAC_KEY);
     engine512.input(HMAC_DATA);
     let mac512 = Hmac::<sha512::Hash>::from_engine(engine512).to_byte_array();
-    same(&mac256, &HMAC_SHA256, fault) & same(&mac512, &HMAC_SHA512, false)
+    let crate_mac = match hmac::Hmac::<Sha256>::new_from_slice(HMAC_KEY) {
+        Ok(mac) => mac.chain_update(HMAC_DATA).finalize(),
+        Err(_) => return false,
+    };
+    same(&mac256, &HMAC_SHA256, fault)
+        & same(&mac512, &HMAC_SHA512, false)
+        & same(crate_mac.as_bytes().as_slice(), &HMAC_SHA256, false)
 }
 
 // --- BIP39 word list ----------------------------------------------------------------------------
@@ -527,6 +542,12 @@ fn braille_text_passes() -> bool {
 
 /// abandon x 11 + about: entropy of 16 zero bytes.
 const BIP84_ENTROPY: [u8; 16] = [0; 16];
+/// Its S, the BIP39 seed with the empty passphrase (vectors/kcr.json "seeds" "vector-1"; its first 16
+/// bytes are seal.json's and BIP39's published prefix). The BIP84 group checks its PBKDF2 against
+/// it, and the Seal group starts from it.
+const ABANDON_SEED: [u8; 64] = unhex(
+    "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc19a5ac40b389cd370d086206dec8aa6c43daea6690f20ad3d8d48b2d2ce9e38e4",
+);
 const BIP84_FINGERPRINT: [u8; 4] = unhex("73c5da0a");
 const BIP84_XPUB: &str = "xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XyuvPEbvqAQY3rAPshWcMLoP2fMFMKHPJ4ZeZXYVUhLv1VMrjPC7PW6V";
 const BIP84_FIRST_ADDRESS: &str = "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu";
@@ -548,7 +569,8 @@ fn bip84_group(fault: bool) -> bool {
         .copy_from_slice(zeroize::Zeroizing::new(words.to_seed_normalized("")).as_slice());
     match descriptor::watch_only_export(&seed, false) {
         Ok(export) => {
-            same(&export.fingerprint(), &BIP84_FINGERPRINT, fault)
+            same(seed.expose_secret(), &ABANDON_SEED, false)
+                & same(&export.fingerprint(), &BIP84_FINGERPRINT, fault)
                 & same(export.xpub().as_bytes(), BIP84_XPUB.as_bytes(), false)
                 & same(
                     export.first_address().as_bytes(),
@@ -562,6 +584,48 @@ fn bip84_group(fault: bool) -> bool {
         }
         Err(_) => false,
     }
+}
+
+// --- Seal (vectors/seal.json vector 1; CLAUDE.md "Seal test vector") ---------------------------
+// From the abandon S (ABANDON_SEED, which the BIP84 group checks against PBKDF2): the hmac crate's
+// HMAC-SHA256, Crockford base32, the tag hash and the Seal ID.
+
+const SEAL_CODE: &[u8; 26] = b"JXP3RDXYACJZ1NAX3RGQDJCJJN";
+const SEAL_TAG: [u8; 32] =
+    unhex("2b8103c8dd64611df5c8c28b8fbf864a1005372f5da06a5777f92708ce79cb5c");
+const SEAL_ID: &str = "5E0G7J6X";
+
+fn seal_group(fault: bool) -> bool {
+    let mut seed = SecretSeed64::zeroed();
+    seed.expose_secret_mut().copy_from_slice(&ABANDON_SEED);
+    let mut code = SealCode::zeroed();
+    code.fill_from_seed(&seed);
+    match SealPublic::from_code(&code) {
+        Ok(public) => {
+            same(code.as_ascii(), SEAL_CODE, fault)
+                & same(public.tag().as_bytes(), &SEAL_TAG, false)
+                & same(public.seal_id().as_bytes(), SEAL_ID.as_bytes(), false)
+        }
+        Err(_) => false,
+    }
+}
+
+// --- GoAhead (vectors/seal.json vector 1 "go_ahead"; CLAUDE.md "Go-ahead vector") ---------------
+
+const GO_AHEAD_NONCE: [u8; 8] = unhex("0001020304050607");
+const GO_AHEAD_CODE: &[u8; 8] = b"CF94BCAJ";
+/// As typed, with the display dash.
+const GO_AHEAD_TYPED: &str = "CF94-BCAJ";
+
+fn go_ahead_group(fault: bool) -> bool {
+    let tag = SealTag::from_bytes(SEAL_TAG);
+    let nonce = CheckNonce::from_bytes(GO_AHEAD_NONCE);
+    let mut wrong = GO_AHEAD_NONCE;
+    wrong[7] ^= 1;
+    same(&seal::go_ahead_code(&tag, &nonce), GO_AHEAD_CODE, fault)
+        & (seal::verify_go_ahead(&tag, &nonce, GO_AHEAD_TYPED) == Ok(()))
+        & (seal::verify_go_ahead(&tag, &CheckNonce::from_bytes(wrong), GO_AHEAD_TYPED)
+            == Err(CheckError::WrongCode))
 }
 
 #[cfg(test)]
@@ -660,14 +724,20 @@ mod tests {
             assert_eq!(run(Suite::Full, Some(id)), Err(CoreError::Kat(id)));
         }
         assert_eq!(groups(Suite::Full), &KatId::ALL);
-        assert_eq!(run(Suite::HwrngBoot, None), Ok(()));
-        for id in KatId::ALL {
-            let want = if id == KatId::Health {
-                Err(CoreError::Kat(id))
-            } else {
-                Ok(())
-            };
-            assert_eq!(run(Suite::HwrngBoot, Some(id)), want, "{id:?}");
+        for (suite, only) in [
+            (Suite::HwrngBoot, KatId::Health),
+            (Suite::Seal, KatId::Seal),
+        ] {
+            assert_eq!(groups(suite), &[only]);
+            assert_eq!(run(suite, None), Ok(()));
+            for id in KatId::ALL {
+                let want = if id == only {
+                    Err(CoreError::Kat(id))
+                } else {
+                    Ok(())
+                };
+                assert_eq!(run(suite, Some(id)), want, "{suite:?} {id:?}");
+            }
         }
     }
 
@@ -786,6 +856,39 @@ mod tests {
             BIP84_FIRST_ADDRESS,
             "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"
         );
+    }
+
+    #[test]
+    fn seal_and_go_ahead_constants_match_seal_json_and_kcr_json() {
+        let seal = vectors("seal.json");
+        let v1 = &seal["vectors"][0];
+        assert_eq!(
+            v1["seal_code_hashed"].as_str().map(str::as_bytes),
+            Some(&SEAL_CODE[..])
+        );
+        assert_eq!(bytes(v1["seal_tag_hex"].as_str().expect("T")), SEAL_TAG);
+        assert_eq!(v1["seal_id"], SEAL_ID);
+        assert_eq!(
+            bytes(v1["go_ahead"]["nonce_hex"].as_str().expect("n")),
+            GO_AHEAD_NONCE
+        );
+        assert_eq!(
+            v1["go_ahead"]["code_compact"].as_str().map(str::as_bytes),
+            Some(&GO_AHEAD_CODE[..])
+        );
+        assert_eq!(v1["go_ahead"]["code"], GO_AHEAD_TYPED);
+        assert_eq!(
+            bytes(v1["seed_prefix_hex"].as_str().expect("S prefix")),
+            ABANDON_SEED[..16]
+        );
+        let kcr = vectors("kcr.json");
+        let seed = crate::test_vectors::named(&kcr["seeds"], "vector-1");
+        assert_eq!(bytes(seed["seed_hex"].as_str().expect("S")), ABANDON_SEED);
+        assert_eq!(seed["mnemonic"], v1["mnemonic"]);
+        // The BIP84 group's PBKDF2 of the same words gives this S.
+        let words = bip39::Mnemonic::from_entropy_in(bip39::Language::English, &BIP84_ENTROPY)
+            .expect("16 bytes");
+        assert_eq!(words.to_seed_normalized(""), ABANDON_SEED);
     }
 
     #[test]

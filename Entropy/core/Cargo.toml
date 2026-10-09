@@ -11,6 +11,10 @@ publish.workspace = true
 [dependencies]
 getrandom = "0.4.3"
 sha2 = { version = "0.11.0", features = ["zeroize"] }
+# HMAC-SHA256 for the seal code (tasks/todo.md, M1 group 7; Q1, table A), and later the age header
+# MAC and HKDF. zeroize wipes the keyed state on drop; ctutils is held at 0.4.2 by
+# `cargo update --precise` (0.4.3 is inside the 14-day cool-off).
+hmac = { version = "0.13.0", default-features = false, features = ["zeroize"] }
 # alloc, not std: bip39's std turns on serde and `impl Serialize for Mnemonic` (rule 5).
 bip39 = { version = "3.0.0", default-features = false, features = ["alloc", "zeroize"] }
 bitcoin = { version = "0.32.102", default-features = false, features = ["std"] }

@@ -1189,6 +1189,17 @@ starts. Every item names its proof.
         show the count but never a go-ahead code (seal-watchonly-braille.md "Re-checking an existing wallet").
       Proof: every field of the three seal.json vectors, including the S prefix (which pins the empty passphrase) and
       the braille caption; the dashed form gives a different T (lessons.md); the exact re-check URL for vector 1.
+      Recorded at commit 17:
+      - `seal_from_mnemonic` gets S through `seed::seed_from_mnemonic_into`: the words' entropy is unpacked into a
+        zeroizing buffer and re-encoded by bip39, whose words must match, so a bad checksum is `Internal(Bip39)`.
+      - The Seal KAT starts from the abandon S pinned in kat.rs (`ABANDON_SEED`, kcr.json "seeds"), which the Bip84
+        group now also compares with its own PBKDF2 output, so the full suite still runs 3 PBKDF2-2048. The hmac
+        crate's HMAC-SHA256 joins the Hmac group (RFC 4231 case 2).
+      - Residual risk, for the owner's review (not yet accepted; compare group 4): hmac 0.13's `new_from_slice`
+        builds its keyed state from a padded copy of the key, S xor 0x5c by the end, in a local block, and leaves it
+        on the stack unwiped. Its two SHA-256 states, its buffer and its output wipe themselves (sha2's and
+        digest's `zeroize`), but `Hmac` does not implement the `ZeroizeOnDrop` marker, so no compile-time check
+        can pin that. Closing it would mean core writing its own HMAC, which CLAUDE.md rule 11 rules out.
 - [ ] Check request and go-ahead (seal-watchonly-braille.md "The seal card", "Online lookup privacy", "Go-ahead code";
       CLAUDE.md constants; Q6d):
       - `start_check` draws n with `source::os_bytes::<8>()`;
@@ -1203,6 +1214,11 @@ starts. Every item names its proof.
       - a code for another T, any single flipped bit of n, and all 40 single-bit flips of G fail;
       - a typo followed by the right code reveals the words;
       - the exact URL for vector 1.
+      As built at commit 17: `CheckNonce::draw`, `CheckRequest::new`, `verify_go_ahead`, `SealRegistration::new`
+      and `CollisionReport::new` are crate-private and unit-tested; `start_check`, `check_request`, `reveal` and
+      `registration` call them from group 9 (commit 22), where "a typo followed by the right code reveals the
+      words" is proven on a session. Commit 17 proves the function-level half: a malformed and a wrong code, then
+      the right one.
 - [ ] `seal/merkle.rs` (CLAUDE.md "Bucket proof"; seal-watchonly-braille.md "Snapshot format"; Q6b):
       - leaf and node exactly as in CLAUDE.md, with the prefix written as a 24-bit big-endian bucket index;
       - the root comes from one streaming pass with at most 21 stacked hashes;

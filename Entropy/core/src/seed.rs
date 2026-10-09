@@ -105,6 +105,49 @@ pub(crate) fn mnemonic_and_seed_into(
     Ok(())
 }
 
+/// S, the BIP39 seed with the empty passphrase, of a mnemonic's words, into `seed`: what the seal
+/// of an existing wallet needs (a decrypted backup; `seal_from_mnemonic`). The words' entropy is
+/// unpacked from their indices into a zeroizing buffer, the bip39 crate re-encodes it, and its
+/// words must equal these, so a bad checksum is `Internal(Bip39)`; then S as in
+/// `mnemonic_and_seed_into`. The bit accumulator is wiped too; bip39's own frames keep the
+/// residual in the module comment.
+pub(crate) fn seed_from_mnemonic_into(
+    mnemonic: &SecretMnemonic,
+    seed: &mut SecretSeed64,
+) -> Result<(), CoreError> {
+    let indices = mnemonic.indices();
+    let entropy_len = match indices.len() {
+        12 => 16,
+        24 => 32,
+        _ => return Err(CoreError::Internal(InternalFault::Bip39)),
+    };
+    let mut entropy = Zeroizing::new([0u8; 32]);
+    let mut pending = Zeroizing::new(0u32);
+    let mut pending_bits = 0u32;
+    let mut filled = 0usize;
+    for &index in indices {
+        *pending = (*pending << 11) | u32::from(index);
+        pending_bits += 11;
+        while pending_bits >= 8 && filled < entropy_len {
+            pending_bits -= 8;
+            entropy[filled] = (*pending >> pending_bits).to_be_bytes()[3];
+            *pending &= (1 << pending_bits) - 1;
+            filled += 1;
+        }
+    }
+    let words = bip39::Mnemonic::from_entropy_in(bip39::Language::English, &entropy[..entropy_len])
+        .map_err(|_| CoreError::Internal(InternalFault::Bip39))?;
+    if !words
+        .word_indices()
+        .eq(indices.iter().map(|&i| usize::from(i)))
+    {
+        return Err(CoreError::Internal(InternalFault::Bip39));
+    }
+    let s = Zeroizing::new(words.to_seed_normalized(""));
+    seed.expose_secret_mut().copy_from_slice(s.as_slice());
+    Ok(())
+}
+
 /// The BIP39 seed of E's words under a BIP39 passphrase, for the watch-only export of a passphrase
 /// wallet (docs/seal-watchonly-braille.md "Watch-only export" rules; tasks/todo.md, M1 Q5). The
 /// passphrase is NFKD-normalized, never trimmed, into a zeroizing buffer sized exactly by a first
@@ -289,6 +332,44 @@ mod tests {
             .iter()
             .map(text)
             .collect()
+    }
+
+    // S from the words equals S from E, for every mixed case at both lengths; a word changed so the
+    // checksum breaks, or a word count other than 12 or 24, gives no S.
+    #[test]
+    fn s_from_the_words_equals_s_from_e() {
+        for case in keepcrypt_json()["mixed"].as_array().expect("cases") {
+            let e = d_from(&case["e_hex"]);
+            for len in [SeedLength::Words12, SeedLength::Words24] {
+                let mut mnemonic = SecretMnemonic::zeroed();
+                let mut from_e = SecretSeed64::zeroed();
+                assert_eq!(
+                    mnemonic_and_seed_into(&e, len, &mut mnemonic, &mut from_e),
+                    Ok(())
+                );
+                let mut from_words = SecretSeed64::zeroed();
+                assert_eq!(seed_from_mnemonic_into(&mnemonic, &mut from_words), Ok(()));
+                assert_eq!(from_words.expose_secret(), from_e.expose_secret());
+                let mut broken = SecretMnemonic::zeroed();
+                let mut indices: Vec<usize> =
+                    mnemonic.indices().iter().map(|&i| usize::from(i)).collect();
+                // The last word's low bit is a checksum bit (4 of them for 12 words, 8 for 24).
+                if let Some(last) = indices.last_mut() {
+                    *last ^= 1;
+                }
+                assert_eq!(broken.fill_from(indices.into_iter()), Ok(()));
+                let mut none = SecretSeed64::zeroed();
+                assert_eq!(
+                    seed_from_mnemonic_into(&broken, &mut none),
+                    Err(CoreError::Internal(InternalFault::Bip39))
+                );
+            }
+        }
+        let mut empty = SecretSeed64::zeroed();
+        assert_eq!(
+            seed_from_mnemonic_into(&SecretMnemonic::zeroed(), &mut empty),
+            Err(CoreError::Internal(InternalFault::Bip39))
+        );
     }
 
     #[test]

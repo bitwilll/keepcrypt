@@ -13,6 +13,7 @@ mod error;
 mod health;
 mod kat;
 mod pool;
+mod seal;
 mod secret;
 mod seed;
 mod session;
@@ -35,6 +36,12 @@ pub use health::hwrng_boot_test_with_kat_fault;
 pub use kat::self_test;
 #[cfg(feature = "test-sources")]
 pub use kat::self_test_with_kat_fault;
+#[cfg(feature = "test-sources")]
+pub use seal::seal_from_mnemonic_with_kat_fault;
+pub use seal::{
+    CheckNonce, CheckRequest, CollisionReport, SealCode, SealPublic, SealRegistration, SealTag,
+    seal_from_mnemonic,
+};
 pub use secret::{
     BACKUP_PASSPHRASE_WORDS, Bip39Passphrase, ConfirmChallenge, NewBackupPassphrase, SecretBytes32,
     SecretMnemonic, TypedBackupPassphrase,
