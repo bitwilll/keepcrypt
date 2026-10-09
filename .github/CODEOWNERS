@@ -1,7 +1,8 @@
 # Code owners for the keepcrypt repo. Today only the KeepCrypt-Entropy project (Entropy/) and
-# its CI are listed; its owner and security contact is admin@keepcrypt.com (Entropy/SECURITY.md).
-# GitHub honours an email owner only if it is a verified email of an account with write access
-# to this repo; `gh api repos/bitwilll/keepcrypt/codeowners/errors` lists any problem.
+# its CI are listed. The owner is msaval02@nyit.edu (the bitwilll account); vulnerability
+# reports go to admin@keepcrypt.com (Entropy/SECURITY.md). GitHub honours an email owner only if
+# it is a verified email of an account with write access to this repo;
+# `gh api repos/bitwilll/keepcrypt/codeowners/errors` lists any problem.
 #
 # This file says who must review, not how many. GitHub accepts an approval from any one owner
 # on a line. The two approvals for Entropy/core/, ffi/ and pi/os/ come from branch protection on
@@ -15,48 +16,48 @@
 # - GitHub reads .github/CODEOWNERS before a root or docs/ copy; /.github/ is owned below
 
 # Security-critical code (docs/build-plan.md, "Security rules enforced in CI": Review).
-/Entropy/core/          admin@keepcrypt.com
-/Entropy/ffi/           admin@keepcrypt.com
-/Entropy/pi/os/         admin@keepcrypt.com
+/Entropy/core/          msaval02@nyit.edu
+/Entropy/ffi/           msaval02@nyit.edu
+/Entropy/pi/os/         msaval02@nyit.edu
 # hal::HwRng (raw /dev/hwrng for the health tests) and the ceremony.
-/Entropy/pi/app/        admin@keepcrypt.com
+/Entropy/pi/app/        msaval02@nyit.edu
 # Rule 9: no INTERNET permission (the Android app arrives in M5).
-/Entropy/mobile/**/AndroidManifest.xml  admin@keepcrypt.com
+/Entropy/mobile/**/AndroidManifest.xml  msaval02@nyit.edu
 
 # Known-answer gate: test vectors and the offline verifier that checks them.
-/Entropy/vectors/       admin@keepcrypt.com
-/Entropy/tools/verify/  admin@keepcrypt.com
+/Entropy/vectors/       msaval02@nyit.edu
+/Entropy/tools/verify/  msaval02@nyit.edu
 
 # The rules every session follows, the domain constants (CLAUDE.md), the spec and the lessons.
-/Entropy/CLAUDE.md          admin@keepcrypt.com
-/Entropy/docs/              admin@keepcrypt.com
-/Entropy/tasks/lessons.md   admin@keepcrypt.com
+/Entropy/CLAUDE.md          msaval02@nyit.edu
+/Entropy/docs/              msaval02@nyit.edu
+/Entropy/tasks/lessons.md   msaval02@nyit.edu
 # Where vulnerability reports go.
-/Entropy/SECURITY.md        admin@keepcrypt.com
+/Entropy/SECURITY.md        msaval02@nyit.edu
 
 # Gate files, so a gate cannot be weakened unseen.
 # Toolchain pin and lockfile. rustup prefers a legacy rust-toolchain file over the .toml pin.
-/Entropy/rust-toolchain.toml        admin@keepcrypt.com
-/Entropy/rust-toolchain             admin@keepcrypt.com
-/Entropy/Cargo.lock                 admin@keepcrypt.com
+/Entropy/rust-toolchain.toml        msaval02@nyit.edu
+/Entropy/rust-toolchain             msaval02@nyit.edu
+/Entropy/Cargo.lock                 msaval02@nyit.edu
 # Manifests: features (test-sources, rule 10), [patch] and [lints] do not show in Cargo.lock.
-/Entropy/**/Cargo.toml               admin@keepcrypt.com
+/Entropy/**/Cargo.toml               msaval02@nyit.edu
 # Cargo config can replace crates.io, add rustflags or set CLIPPY_CONF_DIR. Cargo also reads it
 # from parent directories, so this matches .cargo/ anywhere in the repo, the root included.
-.cargo/                     admin@keepcrypt.com
+.cargo/                     msaval02@nyit.edu
 # cargo-deny reads any of these next to the manifest (Entropy/) or in a parent.
-/Entropy/deny.toml                  admin@keepcrypt.com
-/Entropy/.deny.toml                 admin@keepcrypt.com
-/Entropy/deny.exceptions.toml       admin@keepcrypt.com
-/Entropy/.deny.exceptions.toml      admin@keepcrypt.com
+/Entropy/deny.toml                  msaval02@nyit.edu
+/Entropy/.deny.toml                 msaval02@nyit.edu
+/Entropy/deny.exceptions.toml       msaval02@nyit.edu
+/Entropy/.deny.exceptions.toml      msaval02@nyit.edu
 # Clippy reads either name from a crate dir or any parent (core/clippy.toml, ffi/clippy.toml).
-/Entropy/**/clippy.toml              admin@keepcrypt.com
-/Entropy/**/.clippy.toml             admin@keepcrypt.com
+/Entropy/**/clippy.toml              msaval02@nyit.edu
+/Entropy/**/.clippy.toml             msaval02@nyit.edu
 # Banned-API gate, canaries and their fixtures.
-/Entropy/scripts/                   admin@keepcrypt.com
+/Entropy/scripts/                   msaval02@nyit.edu
 # cargo vet audits and exemptions.
-/Entropy/supply-chain/              admin@keepcrypt.com
+/Entropy/supply-chain/              msaval02@nyit.edu
 # Keeps keys, secrets and ceremony backups out of git (rule 12).
-/Entropy/.gitignore                 admin@keepcrypt.com
+/Entropy/.gitignore                 msaval02@nyit.edu
 # CI workflows and this file (the Entropy workflow is .github/workflows/entropy-ci.yml).
-/.github/                   admin@keepcrypt.com
+/.github/                   msaval02@nyit.edu
