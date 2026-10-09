@@ -17,7 +17,11 @@
 //!   a time and erase the key when dropped, on every path; the residual copies inside rust-bitcoin
 //!   are those recorded for the wallet summary (tasks/todo.md, M1 group 4).
 //! - `WatchOnlyExport` is zeroized on drop and has no `Debug`, `Display`, `Clone` or `Serialize`:
-//!   an xpub reveals every address and balance of the wallet.
+//!   an xpub reveals every address and balance of the wallet. The wipe covers the copy the shell
+//!   holds while the QR is shown. Building the export frees unwiped heap copies of the xpub text
+//!   and the account chain code: core's descriptor strings and CBOR, the UR's Bytewords,
+//!   rust-bitcoin's base58 and miniscript's parse in the self-check. This is public-key data,
+//!   recorded as a residual in tasks/todo.md (M1 group 6).
 //!
 //! vectors/watchonly.json pins every field for six wallets, among them BIP-84's vector and
 //! BCR-2020-015's shield seed.
@@ -47,7 +51,8 @@ const TAG_HDKEY: u64 = 303;
 const TAG_KEYPATH: u64 = 304;
 
 /// What the account QR and the descriptor QR show: public keys only, but an xpub reveals every
-/// address, so it is wiped on drop and cannot be printed or copied by accident.
+/// address, so it is wiped on drop and cannot be printed or copied by accident. The copies freed
+/// while it is built are the residual in the module comment.
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub struct WatchOnlyExport {
     fingerprint: [u8; 4],

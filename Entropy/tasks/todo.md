@@ -1081,6 +1081,21 @@ starts. Every item names its proof.
       - TREZOR passphrase (`b4e3f5ed`, `#l3mwu4e8`);
       - the bip32JP passphrase gives `5d00908e`, and the unnormalized `68896147` never appears;
       - `TREZOR ` and `TREZOR` give different wallets.
+      Residual risks found in review after commit 15, for the owner's review (not yet accepted; compare group 4):
+      - Passphrase: unicode-normalization 0.1.25 keeps the characters it is decomposing, as (class, char) pairs, in
+        a `TinyVec<[(u8, char); 4]>` (its `alloc` feature is always on). That buffer is inline on the stack, and
+        it moves to the heap once more than four characters are pending (a starter with more than three
+        combining marks, or a long compatibility decomposition). Both NFKD passes (the count and the fill) leave
+        those characters behind unwiped, and a heap block is freed without being wiped. A scratch scanning
+        allocator found 2 freed blocks holding U+1DC3 for `a` + U+1DC0..U+1DC7 (9 pending characters) and 0 for
+        `a` + 3 marks. No setting of the crate avoids it. Closing it would mean core writing its own NFKD
+        tables, which the plan does not include, so it stays as recorded unless the owner asks for that.
+      - Xpub: `WatchOnlyExport`'s wipe covers the copy the shell holds while the QR is shown. Building the export
+        frees about six unwiped heap copies of the xpub text, and copies of the account chain code: core's
+        descriptor strings and CBOR, the UR's Bytewords, rust-bitcoin's base58 and miniscript's parse in the
+        self-check. A scratch scan counted 6 freed blocks holding the abandon xpub during `watch_only_export`,
+        and 0 added by dropping the export. This is public-key data, not a spend secret. Wrapping core's own
+        buffers in `Zeroizing` would not close it, because miniscript's and rust-bitcoin's copies stay.
 - [ ] KAT group Bip84 (abandon: fingerprint, xpub, first address, receive checksum, UR). It catches a miscompiled
       secp256k1-sys on a target. The Seal group later reuses its PBKDF2.
 

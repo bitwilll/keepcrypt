@@ -108,10 +108,15 @@ pub(crate) fn mnemonic_and_seed_into(
 /// The BIP39 seed of E's words under a BIP39 passphrase, for the watch-only export of a passphrase
 /// wallet (docs/seal-watchonly-braille.md "Watch-only export" rules; tasks/todo.md, M1 Q5). The
 /// passphrase is NFKD-normalized, never trimmed, into a zeroizing buffer sized exactly by a first
-/// counting pass, so it never reallocates and leaves no copy; then bip39's `to_seed_normalized` takes
-/// it. The seal and the backup never see a passphrase: they use S with the empty one (CLAUDE.md
-/// rule 7). Beyond core's reach: unicode-normalization keeps decomposed characters in its own small
-/// buffer while it iterates, and bip39 returns the seed by value (wrapped in `Zeroizing` at once).
+/// counting pass, so that buffer never reallocates; then bip39's `to_seed_normalized` takes it. The
+/// seal and the backup never see a passphrase: they use S with the empty one (CLAUDE.md rule 7).
+///
+/// Beyond core's reach (tasks/todo.md, M1 group 6, residual): during each pass,
+/// unicode-normalization holds the characters it is decomposing in a `TinyVec<[(u8, char); 4]>`.
+/// That buffer is inline on the stack, and on the heap once more than four characters are pending
+/// (a starter with more than three combining marks, or a long compatibility decomposition). Both
+/// are left unwiped, and the heap block is freed as it is. bip39 returns the seed by value (wrapped
+/// in `Zeroizing` at once).
 pub(crate) fn passphrase_seed_into(
     e: &SecretBytes32,
     len: SeedLength,

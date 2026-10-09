@@ -23,7 +23,8 @@
 
 use crate::error::{CoreError, InternalFault, UrError};
 
-/// The most characters a UR may have: the largest QR alphanumeric capacity (version 40-L).
+/// The most bytes a UR may have: the largest QR alphanumeric capacity (version 40-L), in
+/// characters, which are ASCII bytes.
 pub(crate) const UR_MAX_CHARS: usize = 4296;
 
 /// A CBOR item in the subset core writes.
@@ -207,7 +208,9 @@ fn minimal_index() -> [Option<u8>; 26 * 26] {
 /// Reads one single-part UR of type `expected_type` (lowercase) holding one CBOR byte string, and
 /// returns that string's bytes. Strict, in this order (Q6c), stopping at the first rule broken:
 ///
-/// 1. at most 4,296 characters, before any decoding (`TooLong`);
+/// 1. at most 4,296 bytes, before any decoding (`TooLong`). The text is ASCII in a QR code's
+///    alphanumeric mode, one byte per character; each byte of a non-ASCII character counts, and
+///    such a byte matches no later rule;
 /// 2. all lowercase or all uppercase, never mixed (`MixedCase`); folded once;
 /// 3. the scheme `ur:` and a `/` after the type (`NotUr`), and the type equal to `expected_type`
 ///    (`WrongType`);
