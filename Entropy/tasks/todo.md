@@ -378,6 +378,30 @@ reverts that item in its own reviewed commit. Q13's edits landed as one docs-onl
     confirm. Otherwise: go back to the Q11(c) wording, build and scan release artifacts only with `-p`, and leave the
     profiles to CODEOWNERS review.
 
+### Raised by the review of commits 11-15 (owner confirmation pending)
+At commit 11 the agent replaced a value that the approved plan pins. Commits 12-15 built on the replacement, and no
+owner has approved it. It is not covered by the standing approval of Q1-Q12.
+- [ ] The owner answers Q15, recorded here with a date, before the M1 gate (review fix after commit 15).
+
+15. **The Braille table digest and the Braille KAT's proof (plan group 5: check 8 and "KAT group Braille").**
+    - The digest. The plan pins the table digest `41f0e259...`, but it never wrote down the text behind it.
+      Commit 11 hashed about 300,000 candidate layouts of the cells, dots and signs, and the review after commit 15
+      tried about 1,000 more layouts with words. None reproduces `41f0e259...`, and the full value appears nowhere
+      in the repo. Commit 11 therefore defined the canonical table text itself, in braille.json's spec: `name cell
+      dots` per line, a-z, then the number sign, grade 1 indicator, hyphen and blank cell, LF-terminated. It pinned
+      that text's digest,
+      `fd75c236d2ab92e0fe682d502a5b4bf2537f78d5ec5630b2bac20a963ece9c9d`, in verify.py, braille.json and core's
+      Braille KAT. The review rebuilt the same digest with its own script, from the glyphs printed in
+      seal-watchonly-braille.md.
+    - The proof. The plan says "one flipped dot, or two swapped words, makes the group fail". The table holds cells,
+      not words, so the Braille group's unit test swaps two letters' cells instead. Braille takes its words, and so
+      its SeedBook numbers, from the BIP39 list. Two swapped words (ACT and ACTION) fail the Bip39Wordlist group:
+      kat.rs `two_swapped_words_fail_the_wordlist_group`. Both groups run in every `self_test`.
+    Recommended: approve the table-text definition and `fd75c236...`, and reword the proof as follows. One flipped
+    dot, or two letters' cells swapped, fails the Braille group, and two swapped words fail the Bip39Wordlist group.
+    Otherwise: supply the text behind `41f0e259...`. Check 8, braille.json and the Braille KAT then pin it in their
+    own reviewed commit. Until the owner answers, `fd75c236...` is the agent's value, not an approved one.
+
 ### Later
 - [ ] Release signing: minisign or GPG, and who holds the key offline? (M7)
 - [ ] Registry domain name (M9; until then M1 uses a placeholder constant in the check-QR URL)
@@ -980,7 +1004,8 @@ starts. Every item names its proof.
       plausible layout reproduces it (about 300,000 candidate layouts of the cells, dots and signs were hashed). The
       text is now defined in braille.json's spec (`name cell dots` per line, a-z then the number sign, grade 1
       indicator, hyphen and blank cell, LF-terminated) and its digest is `fd75c236...`, computed by a separate script
-      from the glyphs printed in seal-watchonly-braille.md. A space renders as the blank cell U+2800.
+      from the glyphs printed in seal-watchonly-braille.md. A space renders as the blank cell U+2800. The owner has
+      not approved this change; it is Q15 (review fix after commit 15).
       Review fixes after commit 15:
       - Check 8 now also reads seal-watchonly-braille.md (lessons.md). Each computable figure must appear there
         word for word, as recomputed:
@@ -1029,6 +1054,8 @@ starts. Every item names its proof.
         variant plus the letters as typed gives the seed's letters back.
 - [ ] KAT group Braille: SHA-256 of the canonical table text, plus `2026`. Proof: one flipped dot, or two swapped
       words, makes the group fail (unit test, injected).
+      As built, pending Q15: one flipped dot, or two letters' cells swapped, fails the Braille group. Two swapped
+      words fail the Bip39Wordlist group, the source of braille's words.
 
 **6. ur, descriptor, watch-only** (the seal's proof QR reuses `ur.rs`, so this group comes before the seal)
 - [ ] Vectors first. `verify.py --write-watchonly-vectors` writes `vectors/watchonly.json`, using:
@@ -1729,6 +1756,13 @@ moved from M0)
 13. verify: watchonly.json generator (stdlib BIP32, RIPEMD-160 fallback, bech32, BIP-380, dCBOR, bytewords, CRC32), check 9, and the SOURCES.md spec-values table
 14. core: ur.rs single-frame encoder and strict single-part decoder (ur_decode_single) with its negatives
 15. core: descriptor and watch-only export, the unicode-normalization direct edge, and the Bip84 KAT
+   Review fixes after 15, each its own commit:
+   - core: every extended private key lives in a `SecretXpriv`, erased on drop (the master binding that commit 15 left unerased);
+   - core: the read-back result is zeroized on drop, with the every-blank-face-slip and two-swapped-words tests;
+   - core: the passphrase and xpub residuals and the UR limit's byte unit, stated as they are;
+   - verify: check 8 reads the docs' braille figures, and the one-time SeedBook PDF check is recorded in Review;
+   - verify: watchonly.json gets RFC 8949's `24(h'...')` row, BIP-380's `valid` defined, and a UR reader that counts bytes with four non-ASCII negatives (core's 23-row count test moves to 24 in the same commit, or that commit would be red);
+   - this file: Q15, the Braille digest and KAT proof, pending the owner.
 16. verify: stdlib Ed25519 (RFC 8032), Merkle, .kcr and KCP1 builders, vectors/kcr.json (with proof freshness cases and UR negatives), check 10
 17. core: Crockford encoding, seal derivation, re-check URL, check request, go-ahead, registration, and the Seal and GoAhead KATs; hmac 0.13.0 with ctutils 0.4.2 and cmov, plus vet entries
 18. core: Merkle, snapshot and bucket-proof verification with date() and freshness() on both verified types, the registry key under test-registry with its marker, and the Ed25519 and Merkle KATs; ed25519-dalek 3.0.0 with default-features = false and no features, BSD-3-Clause in deny.toml, vet entries
