@@ -80,9 +80,10 @@ jobs:
 
   test:
     # Known answers and typestate tests (rules 6, 7, 12) as they land; locked dependencies. The
-    # workspace run tests the release configuration (no test feature on); the second run turns on
-    # test-sources, and with it test-registry, for the stub-source and test-registry tests, which
-    # declare required-features (rule 10).
+    # workspace run tests the release configuration (no test feature on: scripts/canaries.sh
+    # refuses any manifest that turns one on, since cargo would merge it into every package); the
+    # second run turns on test-sources, and with it test-registry, for the stub-source and
+    # test-registry tests, which declare required-features (rule 10).
     name: test
     runs-on: ubuntu-24.04
     timeout-minutes: 30

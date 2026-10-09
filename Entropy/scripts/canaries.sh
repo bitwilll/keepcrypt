@@ -527,4 +527,163 @@ for line in bad:
 sys.exit(1 if bad else 0)
 ' deny.toml
 
+# The test features and the build profiles (CLAUDE.md rules 3 and 10; tasks/todo.md, M1 Q3 and
+# Q11). Cargo merges features across every package in one build, so one dependency entry on
+# keepcrypt-core with a test feature, in any workspace member and any table (a dev-dependency
+# included), compiles the stubs or the test registry key into every binary that a --workspace
+# build links, release builds included, and plain `cargo test --workspace` stops testing the
+# release configuration. So no manifest turns either feature on; they are switched on only from
+# the command line, one package at a time. Checked on the root manifest and every member's:
+# - core's [features] is exactly the table below: neither test feature is a default, and
+#   test-sources turns on test-registry, never the reverse;
+# - no `features` list anywhere else (normal, dev, build or target-specific dependencies,
+#   [workspace.dependencies], [patch]) and no other member's [features] entry names either one,
+#   plain or as `dep/feature` or `dep?/feature`;
+# - the root [profile] tables are exactly the ones below. Release must unwind, so a panic drops
+#   and wipes the session (abort skips that wipe, and cargo test always unwinds, so no test would
+#   notice a switch); core keeps overflow checks in release.
+# A real change to either pin is a reviewed change here too.
+manifest_pins='
+import sys, tomllib
+from pathlib import Path
+
+TEST_FEATURES = ("test-sources", "test-registry")
+CORE_FEATURES = {"default": [], "test-registry": [], "test-sources": ["test-registry"]}
+PROFILE = {
+    "release": {"panic": "unwind", "package": {"keepcrypt-core": {"overflow-checks": True}}},
+    "dev": {"package": {"*": {"opt-level": 3}}},
+}
+
+def turns_on(value):
+    return isinstance(value, str) and any(value == f or value.endswith("/" + f) for f in TEST_FEATURES)
+
+def compare(where, got, want):
+    if isinstance(want, dict):
+        if not isinstance(got, dict):
+            return ["%s is %r, needs a table" % (where, got)]
+        bad = []
+        for key in sorted(set(got) | set(want)):
+            if key not in want:
+                bad.append("%s: extra key %s = %r" % (where, key, got[key]))
+            elif key not in got:
+                bad.append("%s: missing key %s, needs %r" % (where, key, want[key]))
+            else:
+                bad += compare("%s.%s" % (where, key), got[key], want[key])
+        return bad
+    if type(got) is not type(want) or got != want:
+        return ["%s is %r, needs %r" % (where, got, want)]
+    return []
+
+def feature_lists(node, path):
+    """Every `features = [...]` list below node, as (dotted path, list). The top-level [features]
+    table is a table of lists, not a list, so it is checked on its own below."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key == "features" and isinstance(value, list):
+                yield ".".join(path + [key]), value
+            else:
+                yield from feature_lists(value, path + [key])
+    elif isinstance(node, list):
+        for i, item in enumerate(node):
+            yield from feature_lists(item, path + [str(i)])
+
+def load(root, rel):
+    with open(root / rel, "rb") as f:
+        return tomllib.load(f)
+
+root = Path(sys.argv[1])
+bad = []
+try:
+    top = load(root, "Cargo.toml")
+    members = top.get("workspace", {}).get("members", [])
+    manifests = [("Cargo.toml", top)] + [(m + "/Cargo.toml", load(root, m + "/Cargo.toml")) for m in members]
+except (OSError, tomllib.TOMLDecodeError) as err:
+    print("%s" % err)
+    sys.exit(1)
+bad += compare("Cargo.toml: profile", top.get("profile"), PROFILE)
+core_seen = False
+for rel, doc in manifests:
+    for where, values in feature_lists(doc, []):
+        bad += ["%s: %s turns on %s" % (rel, where, v) for v in values if turns_on(v)]
+    if rel == "Cargo.toml":
+        continue
+    features = doc.get("features")
+    if doc.get("package", {}).get("name") == "keepcrypt-core":
+        core_seen = True
+        bad += compare(rel + ": features", features, CORE_FEATURES)
+    elif isinstance(features, dict):
+        bad += ["%s: features.%s turns on %s" % (rel, name, v)
+                for name, values in features.items() if isinstance(values, list) for v in values if turns_on(v)]
+if not core_seen:
+    bad.append("no workspace member is keepcrypt-core")
+for line in bad:
+    print(line)
+sys.exit(1 if bad else 0)
+'
+static_check "core [features] and the root [profile] exactly as pinned; no manifest turns on a test feature" \
+    python3 -I -c "$manifest_pins" "$root"
+
+# ... and the check must fire, on a copy of the five manifests. One copy carries every route by
+# which a manifest could turn a test feature on, the other both profile changes; each must be
+# named.
+fresh_manifests() {
+    m="$work/manifests"
+    rm -rf "$m"
+    mkdir -p "$m/core" "$m/ffi" "$m/pi/app" "$m/pi/sim" || exit 1
+    for f in Cargo.toml core/Cargo.toml ffi/Cargo.toml pi/app/Cargo.toml pi/sim/Cargo.toml; do
+        cp "$root/$f" "$m/$f" || exit 1
+    done
+}
+# replace FILE OLD NEW: OLD must occur in FILE exactly once.
+replace() {
+    python3 -I -c '
+import sys
+path, old, new = sys.argv[1:4]
+text = open(path, encoding="utf-8").read()
+if text.count(old) != 1:
+    sys.exit("%s: %r occurs %d times" % (path, old, text.count(old)))
+open(path, "w", encoding="utf-8").write(text.replace(old, new))
+' "$@" || exit 1
+}
+fresh_manifests
+replace "$m/Cargo.toml" 'keepcrypt-core = { path = "core" }' \
+    'keepcrypt-core = { path = "core", features = ["test-sources"] }'
+replace "$m/core/Cargo.toml" 'default = []' 'default = ["test-registry"]'
+cat >> "$m/pi/app/Cargo.toml" <<'EOF'
+
+# Gate canary (scripts/canaries.sh, temp copy only): a test feature through a dev-dependency.
+[dev-dependencies]
+keepcrypt-core = { workspace = true, features = ["test-sources"] }
+EOF
+cat >> "$m/pi/sim/Cargo.toml" <<'EOF'
+
+# Gate canary (scripts/canaries.sh, temp copy only): the test key through a target-specific
+# normal dependency.
+[target.'cfg(unix)'.dependencies]
+keepcrypt-core = { workspace = true, features = ["test-registry"] }
+EOF
+cat >> "$m/ffi/Cargo.toml" <<'EOF'
+
+# Gate canary (scripts/canaries.sh, temp copy only): a feature that forwards to a test feature.
+[features]
+probe = ["keepcrypt-core?/test-sources"]
+EOF
+expect_failure "test-features-in-manifests" python3 -I -c "$manifest_pins" "$m"
+need "Cargo.toml: workspace.dependencies.keepcrypt-core.features turns on test-sources"
+need "core/Cargo.toml: features.default is ['test-registry'], needs []"
+need "pi/app/Cargo.toml: dev-dependencies.keepcrypt-core.features turns on test-sources"
+need "pi/sim/Cargo.toml: target.cfg(unix).dependencies.keepcrypt-core.features turns on test-registry"
+need "ffi/Cargo.toml: features.probe turns on keepcrypt-core?/test-sources"
+never "profile"
+verdict
+
+fresh_manifests
+replace "$m/Cargo.toml" 'panic = "unwind"' 'panic = "abort"'
+replace "$m/Cargo.toml" 'overflow-checks = true' 'overflow-checks = false'
+expect_failure "release-profile" python3 -I -c "$manifest_pins" "$m"
+need "Cargo.toml: profile.release.panic is 'abort', needs 'unwind'"
+need "Cargo.toml: profile.release.package.keepcrypt-core.overflow-checks is False, needs True"
+never "turns on"
+verdict
+
 exit "$status"

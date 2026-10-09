@@ -19,8 +19,13 @@ zeroize = { version = "1.9.0", features = ["derive"] }
 secrecy = "0.10.3"
 thiserror = "2.0.21"
 
-# Test-only features, both off by default (CLAUDE.md rule 10). Only dev-dependencies and the
-# feature test run (`cargo test -p keepcrypt-core --features test-sources`) may enable them.
+# Test-only features, both off by default (CLAUDE.md rule 10). No manifest turns either one on, in
+# any dependency table (normal, dev, build or target-specific) or feature: cargo merges features
+# across every package in one build, so one such entry anywhere would put stubs or the test key
+# into every binary a --workspace build links. They are switched on only from the command line,
+# one package at a time: `cargo test -p keepcrypt-core --features test-sources`, or
+# `-p <crate> --features keepcrypt-core/test-registry` for a crate that depends on core (the M3
+# simulator, the M5/M6 gate builds). scripts/canaries.sh pins this table and enforces the rule.
 # - test-registry: pins the test registry public key, with the marker KC_TEST_REGISTRY_DO_NOT_SHIP.
 # - test-sources: the stub entropy sources, with the marker KC_TEST_SOURCE_DO_NOT_SHIP. It turns
 #   on test-registry, never the reverse, so a build that trusts the local test registry (the M3
