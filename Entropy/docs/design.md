@@ -172,7 +172,7 @@ Run both [SP 800-90B](https://csrc.nist.gov/pubs/sp/800/90/b/final) health tests
 
 - **Repetition Count Test:** fail if one value repeats C times in a row, where C = 1 + ⌈20 / H⌉. Catches a stuck source.
 - **Adaptive Proportion Test:** in each window of 512 samples (1,024 for binary sources, per SP 800-90B 4.4.2), fail if the window's first value appears too often: 62 times or more, itself included, for H = 4. Catches a source that lost most of its entropy.
-- **Startup test:** run both over the first 1,024 samples after power-on and discard those samples.
+- **Startup test:** at boot, and again at the start of each session's hwrng intake, run both over the first 1,024 samples and discard them.
 - **Known-answer tests:** check SHA-256, SHA-512 and BIP39 against published vectors at every boot.
 
 Any failure halts seed generation with a clear error. There is no degraded mode.
@@ -187,7 +187,7 @@ Any failure halts seed generation with a clear error. There is no degraded mode.
 
 In the default mode both legs must meet quota. In dice-only mode the user leg must, and the screen says no device randomness is used.
 
-**Device quota in practice.** Phones meet the device quota with `getrandom()` alone, credited 256 bits by policy, because they expose no raw noise source. The Pi asks for more: 64 bytes of `getrandom()` plus 512 credited bits of raw `/dev/hwrng` output, for either seed length. Until lab data gives a measured min-entropy, `/dev/hwrng` is credited at 4 bits per byte, half of the 8 bits Linux assumes, and its health-test cutoffs use H = 4. Credit counts only samples after the 1,024 discarded startup samples, and only per completed 512-sample window, so the Pi reads at least 1,536 hwrng bytes and its 512 credited bits arrive in one step, when the first window completes.
+**Device quota in practice.** Phones meet the device quota with `getrandom()` alone, credited 256 bits by policy, because they expose no raw noise source. The Pi asks for more: 64 bytes of `getrandom()` plus 512 credited bits of raw `/dev/hwrng` output, for either seed length. Until lab data gives a measured min-entropy, `/dev/hwrng` is credited at 4 bits per byte, half of the 8 bits Linux assumes, and its health-test cutoffs use H = 4. Credit counts only samples after the 1,024 discarded startup samples, and only per completed 512-sample window, so the Pi reads at least 1,536 hwrng bytes, and the first window credits 2,048 bits, more than the 512 required, all at once.
 
 ### Prove the path (CI)
 

@@ -152,14 +152,18 @@ impl Session<Ready> {
     pub fn braille(&self) -> BrailleInserts<'_>;                  // faces 1-5, blanks, SeedBook numbers, mirror flags
     pub fn fingerprint(&self) -> [u8; 4];
     pub fn first_address(&self) -> &str;                          // BIP84 m/84'/0'/0'/0/0
-    pub fn check_readback(&mut self, position: u8, first_four: &str) -> Result<ReadbackResult, CoreError>; // per insert; never wipes
+    pub fn check_readback(&mut self, position: u8, first_four: &str) -> Result<ReadbackResult, CoreError>; // per insert; never wipes;
+                                                                  // errors: Braille(BadPosition), Braille(MalformedReadback)
     pub fn readback_complete(&self) -> bool;
-    // The exports below return ReadbackIncomplete, and wipe, until every word has read back.
+    pub fn verify_backup(&self, file: &[u8]) -> Result<(), CoreError>; // read-back with the stored passphrase; never wipes; ungated,
+                                                                  // since only a file the gated encrypt_backup wrote can pass;
+                                                                  // errors: NoBackupPassphrase, WrongPassphrase, ReadbackMismatch,
+                                                                  // Backup(_) for a malformed file
+    // The five exports below return ReadbackIncomplete, and wipe, until every word has read back.
     pub fn generate_backup_passphrase(self) -> Result<(Self, NewBackupPassphrase), CoreError>; // 8 BIP39 words, 88 bits, stored in
                                                                   // the session; returns a display copy and the 2-of-4 confirm challenge
     pub fn encrypt_backup(self, by: &CreatedBy) -> Result<(Self, BackupFile), CoreError>; // uses the stored passphrase;
                                                                   // file name and armored bytes; NoBackupPassphrase before generating
-    pub fn verify_backup(&self, file: &[u8]) -> Result<(), CoreError>; // read-back with the stored passphrase; retryable
     pub fn watch_only(self, bip39_passphrase: Option<&Bip39Passphrase>) -> Result<(Self, WatchOnlyExport), CoreError>; // UR account + descriptors
     pub fn registration(self) -> Result<(Self, SealRegistration), CoreError>; // seal code and register URL, shown as QR
     pub fn reveal_device_leg(self) -> Result<(Self, Option<SecretBytes32>), CoreError>; // D, for offline audit; None in dice-only mode
@@ -180,7 +184,7 @@ pub fn seal_from_mnemonic(m: &SecretMnemonic) -> Result<SealPublic, CoreError>; 
 
 | Platform | Device leg is satisfied by | User leg (Mixed mode) |
 | --- | --- | --- |
-| Pi | `getrandom(64)` plus 512 credited bits of raw `/dev/hwrng` output that passed the startup and continuous health tests; hwrng is credited at 4 bits per byte until lab data sets a measured value. Only samples after the 1,024 discarded startup samples count, per completed 512-sample window, so the 512 bits arrive in one step at 1,536 bytes | 99 rolls (24 words) or 50 (12 words) |
+| Pi | `getrandom(64)` plus 512 credited bits of raw `/dev/hwrng` output that passed the startup and continuous health tests; hwrng is credited at 4 bits per byte until lab data sets a measured value. Only samples after the 1,024 discarded startup samples count, per completed 512-sample window, so at 1,536 bytes the first window credits 2,048 bits, more than the 512 required, all at once | 99 rolls (24 words) or 50 (12 words) |
 | Phone | `getrandom(64)`; phones expose no raw noise source | Same |
 | Dice-only, any | Not used; screen states that no device randomness is mixed in | Same |
 
@@ -190,7 +194,7 @@ pub fn seal_from_mnemonic(m: &SecretMnemonic) -> Result<SealPublic, CoreError>; 
 - Domain tags are fixed: `KCE/v1/pool`, `KCE/v1/commit`, `KCE/v1/seed`.
 - E = SHA-256(`KCE/v1/seed` ‖ D ‖ len(R) as u64 big-endian ‖ R); dice-only E = SHA-256(R), matching Coldcard.
 - Every function that touches randomness returns `Result`; there is no default or fallback value anywhere.
-- Secrets are wiped on drop; the session wipes itself on any error.
+- Secrets are wiped on drop; the session wipes itself on any error, except the user-input results that keep it alive: `Rejected::Retry`, `check_readback` and `verify_backup`.
 - In the sealed state no function returns the mnemonic, D, a backup or an export; compile-fail tests prove it.
 - The seal is computed from the BIP39 seed only, never from public keys. Once a check starts, only a verified go-ahead reaches the words; Skip exists only before it.
 
