@@ -19,6 +19,17 @@ zeroize = { version = "1.9.0", features = ["derive"] }
 secrecy = "0.10.3"
 thiserror = "2.0.21"
 
+# Test-only features, both off by default (CLAUDE.md rule 10). Only dev-dependencies and the
+# feature test run (`cargo test -p keepcrypt-core --features test-sources`) may enable them.
+# - test-registry: pins the test registry public key, with the marker KC_TEST_REGISTRY_DO_NOT_SHIP.
+# - test-sources: the stub entropy sources, with the marker KC_TEST_SOURCE_DO_NOT_SHIP. It turns
+#   on test-registry, never the reverse, so a build that trusts the local test registry (the M3
+#   simulator, the M5/M6 gate builds) links no stub.
+[features]
+default = []
+test-registry = []
+test-sources = ["test-registry"]
+
 [lints.rust]
 # scripts/canaries.sh pins this table and [lints.clippy] below exactly, per crate.
 # Also covers core's tests and examples; the `#![forbid(unsafe_code)]` in lib.rs is what the docs require.
