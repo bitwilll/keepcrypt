@@ -16,6 +16,10 @@
 //!   report. `SealPublic` holds public values only.
 //! - `seal_from_mnemonic` serves later re-checks (a decrypted backup, the M2 verifier's twin): it
 //!   runs the Seal known-answer group first.
+//! - Signed registry evidence: `verify_snapshot` reads a `.kcr` snapshot and `verify_bucket_proof`
+//!   (or `verify_bucket_proof_qr`, from the go-ahead QR) a KCP1 bucket proof, each against the key
+//!   this build pins (`registry_key`; none in release builds until M9), after the Ed25519 and Merkle
+//!   known-answer groups. Both verified types give their date and its freshness.
 //!
 //! Beyond core's reach (tasks/todo.md, M1 group 7, residual): hmac 0.13 builds its keyed state from
 //! a padded copy of the key, S xor 0x5c by the end, in a local block of its own `new_from_slice`,
@@ -28,7 +32,12 @@
 
 mod check;
 mod crockford;
+mod date;
+mod merkle;
+mod proof;
 mod registration;
+mod registry_key;
+mod snapshot;
 
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::{Digest, Sha256};
@@ -36,7 +45,18 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 pub use check::{CheckNonce, CheckRequest};
 pub(crate) use check::{go_ahead_code, verify_go_ahead};
+pub use date::{Freshness, RegistryDate};
+pub(crate) use merkle::{
+    leaf as merkle_leaf, node as merkle_node, root_of_path as merkle_root_of_path,
+};
+pub use proof::{VerifiedProof, verify_bucket_proof, verify_bucket_proof_qr};
+#[cfg(feature = "test-sources")]
+pub use proof::{verify_bucket_proof_qr_with_kat_fault, verify_bucket_proof_with_kat_fault};
 pub use registration::{CollisionReport, SealRegistration};
+pub use registry_key::registry_key_is_test;
+#[cfg(feature = "test-sources")]
+pub use snapshot::verify_snapshot_with_kat_fault;
+pub use snapshot::{VerifiedSnapshot, verify_snapshot};
 
 use crate::braille;
 use crate::error::{CoreError, KatId};

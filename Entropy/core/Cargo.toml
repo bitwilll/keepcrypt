@@ -15,6 +15,11 @@ sha2 = { version = "0.11.0", features = ["zeroize"] }
 # MAC and HKDF. zeroize wipes the keyed state on drop; ctutils is held at 0.4.2 by
 # `cargo update --precise` (0.4.3 is inside the 14-day cool-off).
 hmac = { version = "0.13.0", default-features = false, features = ["zeroize"] }
+# Ed25519 signature verification only, verify_strict, for registry snapshots and bucket proofs
+# (tasks/todo.md, M1 Q3, table B). No features: `fast` (precomputed tables) and `zeroize` (signing
+# keys) are its defaults and stay off; rand_core, batch, legacy_compatibility and hazmat are never
+# enabled. curve25519-dalek then resolves with `digest` only.
+ed25519-dalek = { version = "3.0.0", default-features = false }
 # alloc, not std: bip39's std turns on serde and `impl Serialize for Mnemonic` (rule 5).
 bip39 = { version = "3.0.0", default-features = false, features = ["alloc", "zeroize"] }
 bitcoin = { version = "0.32.102", default-features = false, features = ["std"] }
@@ -33,6 +38,13 @@ thiserror = "2.0.21"
 [dev-dependencies]
 trybuild = "=1.0.121"
 serde_json = "=1.0.151"
+
+# kcr.json's signed cases verify only where the test registry key is pinned (tasks/todo.md, M1
+# group 7). The release-mode sweep, tests/kcr_release.rs, needs no feature: every case gives
+# NoRegistryKey there.
+[[test]]
+name = "kcr"
+required-features = ["test-registry"]
 
 # Test-only features, both off by default (CLAUDE.md rule 10). No manifest turns either one on, in
 # any dependency table (normal, dev, build or target-specific) or feature: cargo merges features

@@ -765,6 +765,12 @@ starts. Every item names its proof.
         commit.
       Proof: timings of the log2 N 18 round trip and the empty-snapshot root test. If the root test still takes over
       2 s, add `opt-level = 1` for core and record why.
+      Measured at commit 18 (Apple M4 Max, dev profile, sha2 at opt-level 3 and core at 0): the empty-snapshot root
+      test (`seal::merkle::tests::the_empty_root`, one streaming pass over 2^20 leaves) takes 1.45 s, three runs
+      1.45-1.46 s, under 2 s, so core stays at opt-level 0 and the profiles and their canary pin are unchanged.
+      Every valid snapshot costs one such pass, so the default unit run takes about 11 s, the test-sources unit run
+      about 17 s and tests/kcr.rs about 11 s more. CI runners are slower; the log2 N 18 round trip is timed at
+      commit 20.
 - [ ] Each new crate lands in the commit of the module that first uses it, with its cargo-vet entry, exactly as in the
       dependency table (Q1-Q4): 44 lock entries in all.
       - `cargo update --precise` holds back ctutils 0.4.2, toml 1.1.6, toml_parser 1.1.3, toml_datetime 1.1.1,
@@ -1253,6 +1259,12 @@ starts. Every item names its proof.
         snapshots, so a go-ahead QR gets the same date rule as a loaded snapshot. Phones warn on Stale and Future; the
         Pi shows the proof's date and asks the user to confirm it before `reveal` (lessons.md: the Pi has no clock).
       Proof: the kcr.json proof cases, including Current at day 30, Stale at day 31 and Future one day ahead.
+      As built at commit 18: the date type is `RegistryDate` (YYYYMMDD, a real Gregorian date in years 1-9999;
+      `from_yyyymmdd`, `new`, `yyyymmdd`), not `Date`, which UniFFI would hand Swift as a clash with Foundation's
+      `Date`; `Freshness` is Current, Stale or Future. `VerifiedProof::lookup(&SealTag)` is public and gives
+      `Err(CheckError::WrongBucket)` for a seal in another bucket, else the count or None, so the shells and
+      tests/kcr.rs read a proof the way `reveal` will. Both verified types also expose `number()` and
+      `entry_count()`. A found entry is never reported clear, even if a zero count could reach it.
 - [ ] `seal/registry_key.rs` and registration (seal-watchonly-braille.md "Registry service spec", "Registering a new
       seal", "Reporting a collision"; CLAUDE.md rule 10; Q3, Q6d):
       - release builds pin no key until M9, so snapshots and proofs fail closed with `NoRegistryKey` and only the
@@ -1272,6 +1284,13 @@ starts. Every item names its proof.
       Proof: plain `cargo test` (features off) gives `NoRegistryKey` on every kcr.json case; both keys decode and are
       not weak; the abandon registration URL matches; a `test-registry`-only build holds the registry marker and not
       the stub marker (group 12).
+      As built at commit 18: `choose` also refuses a pinned key that does not decode or is weak, with
+      `NoRegistryKey`, so a wrong pin fails closed. The key is checked right after the KAT groups and before any
+      byte is read, so release builds give `NoRegistryKey` for UR text too (tests/kcr_release.rs, 87 cases). A host
+      release rlib built with `--features test-registry` holds the registry marker and the test key and no stub
+      marker; the default release rlib holds neither (checked by hand until the group 11 scan). deny.toml gains
+      BSD-3-Clause in this commit; canaries.sh pins deny.toml's `[graph]`, `[bans] deny` and `[sources]`, not its
+      `[licenses]`, so no canary pin changes with it.
 - [ ] KAT groups:
       - Seal: the vector-1 code, T and Seal ID;
       - GoAhead: `CF94-BCAJ`; a wrong n fails;

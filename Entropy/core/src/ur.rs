@@ -11,15 +11,8 @@
 //!   the first rule broken. Its errors carry no payload and never echo the input.
 //!
 //! vectors/watchonly.json pins all of it (RFC 8949, BCR-2020-005, -012 and -015 values, and the
-//! decoder negatives); tools/verify/verify.py rebuilds the same writer and reader.
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the watch-only export writes with it (M1 group 6) and verify_bucket_proof_qr reads \
-                  the go-ahead QR with it (M1 group 7)"
-    )
-)]
+//! decoder negatives); tools/verify/verify.py rebuilds the same writer and reader. The watch-only
+//! export writes with it, and `verify_bucket_proof_qr` reads the go-ahead QR with it.
 
 use crate::error::{CoreError, InternalFault, UrError};
 

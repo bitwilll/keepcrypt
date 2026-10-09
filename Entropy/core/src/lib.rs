@@ -36,11 +36,15 @@ pub use health::hwrng_boot_test_with_kat_fault;
 pub use kat::self_test;
 #[cfg(feature = "test-sources")]
 pub use kat::self_test_with_kat_fault;
-#[cfg(feature = "test-sources")]
-pub use seal::seal_from_mnemonic_with_kat_fault;
 pub use seal::{
-    CheckNonce, CheckRequest, CollisionReport, SealCode, SealPublic, SealRegistration, SealTag,
-    seal_from_mnemonic,
+    CheckNonce, CheckRequest, CollisionReport, Freshness, RegistryDate, SealCode, SealPublic,
+    SealRegistration, SealTag, VerifiedProof, VerifiedSnapshot, registry_key_is_test,
+    seal_from_mnemonic, verify_bucket_proof, verify_bucket_proof_qr, verify_snapshot,
+};
+#[cfg(feature = "test-sources")]
+pub use seal::{
+    seal_from_mnemonic_with_kat_fault, verify_bucket_proof_qr_with_kat_fault,
+    verify_bucket_proof_with_kat_fault, verify_snapshot_with_kat_fault,
 };
 pub use secret::{
     BACKUP_PASSPHRASE_WORDS, Bip39Passphrase, ConfirmChallenge, NewBackupPassphrase, SecretBytes32,

@@ -197,6 +197,12 @@ pub enum KatId {
     /// fails.
     #[error("go-ahead code")]
     GoAhead,
+    /// Ed25519 (verify_strict): RFC 8032 TEST 1 is accepted, and one flipped bit is refused.
+    #[error("Ed25519")]
+    Ed25519,
+    /// The bucket tree: an empty leaf, a node and seal vector 1's path to its root. Never a full root.
+    #[error("Merkle")]
+    Merkle,
 }
 }
 
@@ -505,6 +511,8 @@ mod tests {
             KatId::Bip84 => "BIP84",
             KatId::Seal => "seal",
             KatId::GoAhead => "go-ahead code",
+            KatId::Ed25519 => "Ed25519",
+            KatId::Merkle => "Merkle",
         }
     }
 

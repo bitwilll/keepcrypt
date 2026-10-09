@@ -11,14 +11,16 @@
 //!   itself is what fails; nothing short-circuits it.
 //! - Budget per full run: at most 3 PBKDF2-2048 (3 today: 2 BIP39 seeds, 1 BIP84; the Seal group
 //!   starts from the S that the BIP84 group derives and checks, so it adds none), scrypt only at
-//!   log2 N 10 and at most 2 Ed25519 verifies (later groups), and at most 1 s on a Pi Zero (an
-//!   estimate; M4 measures). The Health group tests 2,064 samples.
+//!   log2 N 10 (a later group), at most 2 Ed25519 verifies (2 today, in the Ed25519 group), one
+//!   20-level Merkle path and never a full bucket root, and at most 1 s on a Pi Zero (an estimate;
+//!   M4 measures). The Health group tests 2,064 samples.
 //! - The known answers are copied from vectors/kat.json, vectors/bip39/vectors.json and the other
 //!   vectors files each group names, and the unit tests below check every one of them against
 //!   those files.
 
 use bitcoin::hashes::hmac::{Hmac, HmacEngine};
 use bitcoin::hashes::{Hash, HashEngine, sha256, sha512};
+use ed25519_dalek::{Signature, VerifyingKey};
 use hmac::{KeyInit, Mac};
 use sha2::{Digest, Sha256, Sha512};
 
@@ -41,6 +43,9 @@ pub(crate) enum Suite {
     HwrngBoot,
     /// `seal_from_mnemonic`: the seal.
     Seal,
+    /// `verify_snapshot`, `verify_bucket_proof` and `verify_bucket_proof_qr`: Ed25519, then the
+    /// bucket tree.
+    Registry,
 }
 
 /// The groups each entry point runs, in order: the one exhaustive match.
@@ -49,6 +54,7 @@ const fn groups(suite: Suite) -> &'static [KatId] {
         Suite::Full => &KatId::ALL,
         Suite::HwrngBoot => &[KatId::Health],
         Suite::Seal => &[KatId::Seal],
+        Suite::Registry => &[KatId::Ed25519, KatId::Merkle],
     }
 }
 
@@ -89,6 +95,8 @@ fn passes(id: KatId, fault: bool) -> bool {
         KatId::Bip84 => bip84_group(fault),
         KatId::Seal => seal_group(fault),
         KatId::GoAhead => go_ahead_group(fault),
+        KatId::Ed25519 => ed25519_group(fault),
+        KatId::Merkle => merkle_group(fault),
     }
 }
 
@@ -628,6 +636,91 @@ fn go_ahead_group(fault: bool) -> bool {
             == Err(CheckError::WrongCode))
 }
 
+// --- Ed25519 (vectors/kat.json "ed25519": RFC 8032 section 7.1, TEST 1) -------------------------
+// ed25519-dalek's verify_strict, the one check behind snapshots and proofs: two verifies, the
+// budget's limit.
+
+const ED25519_PUBLIC_KEY: [u8; 32] =
+    unhex("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a");
+const ED25519_MESSAGE: &[u8] = b"";
+const ED25519_SIGNATURE: [u8; 64] = unhex(
+    "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b",
+);
+
+fn ed25519_group(fault: bool) -> bool {
+    let Ok(key) = VerifyingKey::from_bytes(&ED25519_PUBLIC_KEY) else {
+        return false;
+    };
+    let mut signature = ED25519_SIGNATURE;
+    signature[0] ^= u8::from(fault);
+    let accepted = key
+        .verify_strict(ED25519_MESSAGE, &Signature::from_bytes(&signature))
+        .is_ok();
+    let mut flipped = ED25519_SIGNATURE;
+    flipped[0] ^= 1;
+    let refused = key
+        .verify_strict(ED25519_MESSAGE, &Signature::from_bytes(&flipped))
+        .is_err();
+    accepted & refused
+}
+
+// --- Merkle (vectors/kcr.json "merkle": an empty leaf, the node, the vector-1 path) --------------
+// A leaf, a node and one 20-level path, never a full root (2^20 leaves are the snapshot's job).
+
+/// Seal vector 1's bucket, 0x2b810, and its empty leaf.
+const MERKLE_BUCKET: u32 = 0x2b810;
+const MERKLE_EMPTY_LEAF: [u8; 32] =
+    unhex("9dbd45522ff2ad044ccaebaaf41ee955bc777df4e40b8d20cab11dea2898c393");
+/// The node over the empty leaves of buckets 0 and 1.
+const MERKLE_LEFT: [u8; 32] =
+    unhex("dcaa835d1afed220c8fc58159c18cb98a3d723934bc58db3da26178c9999a667");
+const MERKLE_RIGHT: [u8; 32] =
+    unhex("d39fed3a350234a3fa2890a85f2659551f0fa132aed381ee2bc175380ed14e4f");
+const MERKLE_NODE: [u8; 32] =
+    unhex("c61b7e553b1962865ef3b510df90b11186d5cdf2349fbc3b4952ac544ccdd81b");
+/// The vector-1 path: bucket 0x2b810 of kcr.json's "small" snapshot (its two entries), the 20
+/// siblings leaf level first, and that snapshot's root.
+const MERKLE_ENTRIES: [u8; 36] =
+    unhex("2b8103c8dd64611df5c8c28b8fbf864bffff2b81090b7fd157945acf1ff22896eb670002");
+const MERKLE_SIBLINGS: [u8; 640] = unhex(concat!(
+    "a2b46473906b654a4073077ad45148c6e1b6dd01b3a9014a2a510960e026ef08f6e5c6671c43f12259d0aac53b89332d",
+    "c32eba25a3a5471b7326abd9ed21687a5e84ec8b2bbb47f721a3ee363b760e789fe4cc6a03c946f76d547233f639f5e7",
+    "dac7c64936487225df3c7b8d954f8b68575b55c297739751264a0aa64bdc245fa52a24d19079b4b5307d1238c72adccc",
+    "0023bc03ac1d4fbff9b36ec8c7a2c39b08be87d16dbda790cb9ddf0c19e8021298b82347b0be14ed3a2db9f2348f87dc",
+    "3f1e8d58f7f70e448a4b39ab59b2f1e26bb6b73e2f96c62203923cd0843f301a9121473b562b5a4c8f9396b06a6d18d1",
+    "0a2f68c38747e5b22fef94370c970ed3940d280e774ec23bbedc394b4cead3ec335b794c0fb273f0d396cb0c87729c9e",
+    "802ea7cab84cc3d24dda9f2cba9698ab4ce0b137c521dee80f7fec2d4afa3cd8ac698bfefb5515200600761ab664d00e",
+    "87a0f90ee4c5492d37edf81e84a34b484d11c5b07ac9beda30a8b365d8f3b09f1de5e80bd250e1b5b473516f7fc98fd6",
+    "a7d1ee55c1b9ee291159653f939d0779f29e6d83b5feda06b9e15c04f02d9a4b860f1795bbf15cb9f06fea0c3f38ba75",
+    "8edd2d60da0c5dc34bd04e04e35cb677e9244d44f8c78a26fd89440647a30681c07f4a36125d888a76dd1bf6c170c05f",
+    "8405343dcba08ec8fc4dc794c8331da80734c0fab6cacdce1d638a151afe2abd250e03944ee738e7f740123aff3c80a4",
+    "dc258a2303d65c7e19cb32b9f02a7aabdba7cc2aba3bd8db656c173806a93f211068edb4e4b0438cf0688df40d3e3d61",
+    "cd2b6333b0c154207d96d721016ba69c5f4df5f6deabe6b9e39e4f69dbafbb0b1a64e42c4c80f82084acc9c42622e99c",
+    "1919f43168e926f549708a265806ffaf",
+));
+const MERKLE_ROOT: [u8; 32] =
+    unhex("d0d2028a28b277c2e105a1a3275c92bae1762aa43117762cf164700a7802e0ed");
+
+fn merkle_group(fault: bool) -> bool {
+    let (rows, _) = MERKLE_SIBLINGS.as_chunks::<32>();
+    let Ok(siblings) = <&[[u8; 32]; 20]>::try_from(rows) else {
+        return false;
+    };
+    same(
+        &seal::merkle_leaf(MERKLE_BUCKET, &[]),
+        &MERKLE_EMPTY_LEAF,
+        fault,
+    ) & same(
+        &seal::merkle_node(&MERKLE_LEFT, &MERKLE_RIGHT),
+        &MERKLE_NODE,
+        false,
+    ) & same(
+        &seal::merkle_root_of_path(MERKLE_BUCKET, &MERKLE_ENTRIES, siblings),
+        &MERKLE_ROOT,
+        false,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -725,13 +818,14 @@ mod tests {
         }
         assert_eq!(groups(Suite::Full), &KatId::ALL);
         for (suite, only) in [
-            (Suite::HwrngBoot, KatId::Health),
-            (Suite::Seal, KatId::Seal),
+            (Suite::HwrngBoot, &[KatId::Health][..]),
+            (Suite::Seal, &[KatId::Seal][..]),
+            (Suite::Registry, &[KatId::Ed25519, KatId::Merkle][..]),
         ] {
-            assert_eq!(groups(suite), &[only]);
+            assert_eq!(groups(suite), only);
             assert_eq!(run(suite, None), Ok(()));
             for id in KatId::ALL {
-                let want = if id == only {
+                let want = if only.contains(&id) {
                     Err(CoreError::Kat(id))
                 } else {
                     Ok(())
@@ -889,6 +983,47 @@ mod tests {
         let words = bip39::Mnemonic::from_entropy_in(bip39::Language::English, &BIP84_ENTROPY)
             .expect("16 bytes");
         assert_eq!(words.to_seed_normalized(""), ABANDON_SEED);
+    }
+
+    #[test]
+    fn ed25519_constants_match_kat_json() {
+        let kat = vectors("kat.json");
+        let ed = kat["ed25519"].as_array().expect("ed25519 list");
+        assert_eq!(ed.len(), 1);
+        assert_eq!(bytes(text(&ed[0], "public_key_hex")), ED25519_PUBLIC_KEY);
+        assert_eq!(bytes(text(&ed[0], "message_hex")), ED25519_MESSAGE);
+        assert_eq!(bytes(text(&ed[0], "signature_hex")), ED25519_SIGNATURE);
+        let kcr = vectors("kcr.json");
+        let rfc = crate::test_vectors::named(&kcr["rfc8032"], "rfc8032-test-1");
+        assert_eq!(bytes(text(rfc, "signature_hex")), ED25519_SIGNATURE);
+    }
+
+    #[test]
+    fn merkle_constants_match_kcr_json() {
+        let kcr = vectors("kcr.json");
+        let merkle = &kcr["merkle"];
+        let leaf = crate::test_vectors::named_by_u64(
+            &merkle["empty_leaves"],
+            "bucket",
+            u64::from(MERKLE_BUCKET),
+        );
+        assert_eq!(bytes(text(leaf, "leaf_hex")), MERKLE_EMPTY_LEAF);
+        assert_eq!(bytes(text(&merkle["node"], "left_hex")), MERKLE_LEFT);
+        assert_eq!(bytes(text(&merkle["node"], "right_hex")), MERKLE_RIGHT);
+        assert_eq!(bytes(text(&merkle["node"], "node_hex")), MERKLE_NODE);
+        let path = &merkle["vector_1_path"];
+        assert_eq!(path["bucket"], MERKLE_BUCKET);
+        assert_eq!(bytes(text(path, "entries_hex")), MERKLE_ENTRIES);
+        let siblings: String = path["siblings_hex"]
+            .as_array()
+            .expect("siblings")
+            .iter()
+            .map(|s| s.as_str().expect("hex"))
+            .collect();
+        assert_eq!(bytes(&siblings), MERKLE_SIBLINGS);
+        assert_eq!(bytes(text(path, "root_hex")), MERKLE_ROOT);
+        let seal = vectors("seal.json");
+        assert_eq!(seal["vectors"][0]["lookup_prefix"], "2b810");
     }
 
     #[test]
