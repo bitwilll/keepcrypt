@@ -185,16 +185,16 @@ As built (2026-10-09), with deviations from the table above:
       4 checks: seal known answers for all three vectors, seal.json byte equality, SOURCES.md hashes and coverage, and
       a re-run of Coldcard's committed scripts against rolls.json ("Changes during M0", item 4).
 
-**CI** (repo-root `.github/workflows/entropy-ci.yml`; written, YAML validated, first run is on the M0 PR)
-- [ ] Hardening: runs on PRs and pushes to `main`; `permissions: contents: read`; checkout uses
+**CI** (repo-root `.github/workflows/entropy-ci.yml`; green on PR bitwilll/keepcrypt#1, runs in "M0 on GitHub")
+- [x] Hardening: runs on PRs and pushes to `main`; `permissions: contents: read`; checkout uses
       `persist-credentials: false`; only first-party actions (`actions/checkout`, `actions/cache`), each pinned by
       commit SHA; tools come from `cargo install --locked --version ...`; the toolchain comes from `rust-toolchain.toml`
-- [ ] `lint`: `cargo fmt --all --check` and `cargo clippy --workspace --all-targets --locked -- -D warnings`
-- [ ] `test`: `cargo test --workspace --locked`
-- [ ] `supply-chain`: `cargo deny --locked check`, `cargo audit`, `cargo vet --locked` and `scripts/check-path-deps.sh`
-- [ ] `gates`: the banned-API check and its `--selftest`, `verify.py --selftest` and `scripts/canaries.sh`
-- [ ] `verifier (python 3.9)` on macos-26: `/usr/bin/python3` must be 3.9 and pass `verify.py --selftest`
-- [ ] `cross`, a matrix running per-target clippy (core plus `pi/app` or `ffi`) and
+- [x] `lint`: `cargo fmt --all --check` and `cargo clippy --workspace --all-targets --locked -- -D warnings`
+- [x] `test`: `cargo test --workspace --locked`
+- [x] `supply-chain`: `cargo deny --locked check`, `cargo audit`, `cargo vet --locked` and `scripts/check-path-deps.sh`
+- [x] `gates`: the banned-API check and its `--selftest`, `verify.py --selftest` and `scripts/canaries.sh`
+- [x] `verifier (python 3.9)` on macos-26: `/usr/bin/python3` must be 3.9 and pass `verify.py --selftest`
+- [x] `cross`, a matrix running per-target clippy (core plus `pi/app` or `ffi`) and
       `cargo build --release --locked -p keepcrypt-core --target <t>`, with no `target/` cache:
   - ubuntu, `arm-unknown-linux-gnueabihf`: Ubuntu's `gcc-arm-linux-gnueabihf` with
     `-march=armv6zk -mfpu=vfp -mfloat-abi=hard -marm` for the C parts; Buildroot's toolchain replaces it in M4
