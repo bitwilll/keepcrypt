@@ -322,11 +322,14 @@ Docs are named by file: build-plan.md, design.md, seal-watchonly-braille.md, pi-
 
     Otherwise: keep `main` unprotected. Nothing then stops a merge with red CI, and Review says so at every gate.
 
-### Raised by the review of commits 2-5 (answered 2026-10-10)
-Owner answer: the owner's standing approval ("I approve, do it", 2026-10-09) is applied to Q13 (all five doc edits,
-as recommended) and Q14 (both gate changes, as recommended). The owner may still veto any of them; a veto reverts
-that item in its own reviewed commit. Q13's edits land as one docs-only commit before commit 8 ("Q13 docs" in
-"Commit order on `m1-core`"); Q14's two gate changes stay as committed in f732c98.
+### Raised by the review of commits 2-5 (standing approval applied 2026-10-10; owner confirmation pending)
+Applied by the agent, not an answer from the owner: the owner's standing approval of the Q1-Q12 recommendations ("I
+approve, do it", 2026-10-09) was applied on 2026-10-10 to Q13 (all five doc edits, as recommended) and Q14 (both
+gate changes, as recommended). The owner has not answered Q13 or Q14 directly. The owner may veto any item; a veto
+reverts that item in its own reviewed commit. Q13's edits landed as one docs-only commit (c40a2e3) before commit 8
+("Q13 docs" in "Commit order on `m1-core`"); Q14's two gate changes stay as committed in f732c98.
+- [ ] The owner confirms Q13 (a)-(e) and Q14 (a)-(b) explicitly, recorded here with a date, before the M1 gate
+      (review fix after commit 10).
 
 13. **Doc wording that Q5-Q7 or the plan pin more exactly than the docs.** Each item names the commit that needs it.
     Recommended: approve all five, as one docs-only commit before commit 8.
@@ -1627,6 +1630,8 @@ moved from M0)
 8. core: source (fill_os, os_bytes, source ids, credit policy, HW_BYTES_NEEDED) and health (RCT, APT, startup discard, windowed credit, hwrng_boot_test and its fault twin), with unit tests and the Health KAT
 9. core: pool and the Pool KAT, with the OS-record pipe-width test
 10. core: dice and seed (C, mixed E, dice-only E, BIP39, wallet summary), the D and E pipe-width tests, and the Seed KAT
+   Exception recorded after 10: commit 9 (262a88b, core) also changed the generator, dropping the reserved TRNG id 0x0003 from keepcrypt.json's "every-source" pool case, and regenerated that case's records, absorbed bytes and D in the same commit as the code that reads them. The values still come from the generator; later generator changes land in their own verify: commit ahead of the code
+   Review fixes after 10, each its own commit, vectors first: verify (an RCT-and-APT tie health case; check 6 pins the source-substitution D and C and the empty-record rule apart from the generator, and checks the committed records' order, startup discard and no empty record); core (KatId and the nested error lists generated with their enums, so no variant can miss its list; the OS read path tested for completeness and its error mapping; the health tester latches its first failure and the chunking test compares absorbed tails; the credit policy takes only tester-built credited samples; Bip39Passphrase gets Zeroize + ZeroizeOnDrop and revealed words borrow their secret; one-step derivation that erases each intermediate Xpriv core holds, with a Sha256 ZeroizeOnDrop check; the dice bits wording); this file (Q13-Q14 confirmation pending; this exception)
 11. verify: braille.json generator, seal_id_braille in seal.json, check 8 (docs' counts, word-list and PDF hashes)
 12. core: braille (cells, inserts, read-back compare, render_text) and the Braille KAT
 13. verify: watchonly.json generator (stdlib BIP32, RIPEMD-160 fallback, bech32, BIP-380, dCBOR, bytewords, CRC32), check 9, and the SOURCES.md spec-values table
