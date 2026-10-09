@@ -40,6 +40,18 @@ mirror pairs); regenerates the file and requires byte equality; and re-hashes th
 `af40ad894afa6cf64399e6c1771fc7b500458509f2350bd67577ce7eba5fc522`. The SeedBook is not under
 `vectors/`, so it has no row here. `seal.json`'s `seal_id_braille` uses the same text rule.
 
+`vectors/watchonly.json` has no row either. `tools/verify/verify.py --write-watchonly-vectors`
+computes it with a standard-library secp256k1, RIPEMD-160 (cross-checked against `hashlib` where it
+has one), BIP32, bech32, the BIP-380 checksum, a deterministic CBOR writer, Bytewords and CRC-32
+(cross-checked against `zlib`), on public test mnemonics only. Self-test check 9 reproduces every
+value copied from the documents in "Spec values" below (BIP-84, BIP-380, BCR-2020-005, -007, -012,
+-015, bip32JP and RFC 8949): it rebuilds the BIP-84 account and addresses and the whole 773-byte
+BCR-2020-015 example (all seven keys derived from its mnemonic, the CBOR and the UR); compares the
+plan's pinned answers (abandon `73c5da0a`, `#afwvtk2s`, `#vatdkr6g`, 116 CBOR bytes, a 258-character
+UR; TREZOR `b4e3f5ed`, `#l3mwu4e8`; the bip32JP passphrase `5d00908e`, never the unnormalized
+`68896147`; shield `37b5eed4`); runs every decoder case through a strict reader rebuilt in
+`verify.py`; and regenerates the file and requires byte equality.
+
 ## Provenance
 
 | File | SHA-256 | Source | Upstream commit or date | Licence | Notes |
@@ -85,6 +97,12 @@ They were read as data only: the RFCs as text, the PDFs through a standard-libra
 their compressed text streams, and the zip through Python's `zipfile` without extracting it.
 SP 800-90B was downloaded the same way on 2026-10-10, twice, with the same size and SHA-256; its
 Table 2 was parsed out of the extracted text and compared entry by entry with `SP800_90B_TABLE_2`.
+The eight documents behind check 9 (BIP-84 to RFC 8949 below) were downloaded the same way on
+2026-10-10, twice each, with the same size and SHA-256. The GitHub files came from
+`raw.githubusercontent.com/<owner>/<repo>/<commit>/<path>` at the head of each default branch that
+day, and the git blob hash of every download (`git hash-object`) equals the blob SHA in that commit's
+tree (shown in each row). They were read as text (the JSON through Python's `json`); the values were
+parsed out by a throwaway script and compared with `verify.py`'s literals, as described below.
 
 | Standard | Document | SHA-256 | Retrieved | Licence | Values copied |
 | --- | --- | --- | --- | --- | --- |
@@ -94,6 +112,14 @@ Table 2 was parsed out of the extracted text and compared entry by entry with `S
 | RFC 4231 (HMAC-SHA-224/256/384/512 test vectors) | https://www.rfc-editor.org/rfc/rfc4231.txt, 17725 bytes | `72178527ce93500e730bc8eb182b857e583096d652b64ece0879c52ba1df973b` | 2026-10-09 | Copyright (C) The Internet Society (2005), subject to BCP 78; only the test values are copied | `kat.json` hmac `rfc4231-case-2`: section 4.3, Test Case 2: Key (`"Jefe"`), Data (`"what do ya want for nothing?"`), HMAC-SHA-256 and HMAC-SHA-512 |
 | NIST SP 800-90B (entropy sources) | https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-90B.pdf, 1043696 bytes | `9b0dd77131ade3617a91cd8457fa09e0dc354c273bb2220a6afeaca16e5defe7` | 2026-10-10 (Last-Modified 2018-01-10 14:24:12 GMT) | U.S. Government work, not subject to copyright in the U.S. (17 U.S.C. 105) | `verify.py` `SP800_90B_TABLE_2` (check 7): Table 2 "Example cutoff values of the Adaptive Proportion Test", page 27, the whole-number entries for alpha = 2^-20: non-binary data, W = 512, H = 1, 2, 4, 8 give C = 311, 177, 62, 13; binary data, W = 1024, H = 1 gives C = 589. The test steps of sections 4.4.1 and 4.4.2 and the window rule (1024 for binary samples, 512 otherwise) behind `health_test` and core's `health` module. |
 | RFC 8032 (EdDSA) | https://www.rfc-editor.org/rfc/rfc8032.txt, 103210 bytes | `ed63657ff389301282b169b0abde9b5dd2c7e4d524fdfa5da6ff3094fc93c4c3` | 2026-10-09 | Copyright (c) 2017 IETF Trust and the document authors, subject to BCP 78 and the IETF Trust's Legal Provisions; only the test values are copied | `kat.json` ed25519 `rfc8032-test-1`: section 7.1, TEST 1: PUBLIC KEY, the empty MESSAGE and SIGNATURE. Its SECRET KEY is not copied, because core only verifies signatures |
+| BIP-84 (P2WPKH account derivation) | https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0084.mediawiki, 4648 bytes (git blob `f266a1455317e3cfb69e477f24fe9f23577a5433`) | `1900feec6cafca65b8c09906ca0658d2d742b4c9b44cb15678996985b6bfe627` | 2026-10-10 (bitcoin/bips 927b6de9915c9262615a6399de51b200f81e5aa4) | CC0-1.0 | `verify.py` `BIP84_*` (check 9): "Test vectors": the mnemonic, rootpub, the account 0 xpub (a zpub), and the public keys and addresses of m/84'/0'/0'/0/0, 0/1 and 1/0. The private keys are not copied |
+| BIP-380 (output script descriptors) | https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0380.mediawiki, 19681 bytes (git blob `88fd273a186a916a04ae3f3f48c2ba05396db494`) | `34e6510bb2eba9445a68eacf3d24d5a4e5f24481477488d5552f674ac81dd5fe` | 2026-10-10 (bitcoin/bips 927b6de9915c9262615a6399de51b200f81e5aa4) | BSD-2-Clause | `verify.py` `BIP380_CHECKSUM_VECTORS` and `DESCRIPTOR_*` (check 9): "Test Vectors", the eight checksum and character-set cases (one valid, seven invalid), and the reference code's INPUT_CHARSET, CHECKSUM_CHARSET and GENERATOR |
+| BCR-2020-005 (Uniform Resources) | https://raw.githubusercontent.com/BlockchainCommons/Research/e4a4fbb186e2e7625ccdf7149aec4f0a5adaf850/papers/bcr-2020-005-ur.md, 17161 bytes (git blob `84e2651ad248466a47ebdbf913be74726e15301f`), version 2.1.0 | `2087e74f503690cd9c25826dbc24deb2932932d8cbbe6038266e8e86856bd40d` | 2026-10-10 (BlockchainCommons/Research e4a4fbb186e2e7625ccdf7149aec4f0a5adaf850) | BSD-2-Clause-Patent (the repository's LICENSE) | `verify.py` `BCR005_SEED_*` (check 9): "UR CBOR Tags", the untagged seed CBOR `a10150c7…` and its UR `ur:seed/oyadgd…`; the single-part form `ur:<type>/<message>`, lowercase or uppercase, and the `bytes` test type |
+| BCR-2020-007 (HD keys) | https://raw.githubusercontent.com/BlockchainCommons/Research/e4a4fbb186e2e7625ccdf7149aec4f0a5adaf850/papers/bcr-2020-007-hdkey.md, 18433 bytes (git blob `86ef536314dcc8b7919302f0e9f16634d2c1ea49`) | `5bd2132fb397366d6be380943df7b3a6c7445a6bfd55b9d89207f8e3c44e6d9a` | 2026-10-10 (BlockchainCommons/Research e4a4fbb186e2e7625ccdf7149aec4f0a5adaf850) | BSD-2-Clause-Patent | `verify.py` `hdkey_item` (check 9): the CDDL keys (key-data 3, chain-code 4, origin 6, parent-fingerprint 8; components 1, source-fingerprint 2), "uint32 .ne 0" for both fingerprints (a zero one is omitted), and that version 1 `crypto-hdkey` is tag 303 |
+| BCR-2020-012 (Bytewords) | https://raw.githubusercontent.com/BlockchainCommons/Research/e4a4fbb186e2e7625ccdf7149aec4f0a5adaf850/papers/bcr-2020-012-bytewords.md, 10373 bytes (git blob `613515a095a59d27941cfd50ed58d6a8d65bbc0a`) | `4c5dcb4c0d1a2201819867fb50274e53eb10a4e354b94cb245b4eeb825929f68` | 2026-10-10 (BlockchainCommons/Research e4a4fbb186e2e7625ccdf7149aec4f0a5adaf850) | BSD-2-Clause-Patent (© 2020 Blockchain Commons) | `verify.py` `BYTEWORDS` and `BCR012_*` (check 9): the 256-word list; "Example/Test Vector": the body, its CRC-32 `c904f40b` and minimal Bytewords; "Brutal Encoding": the payload, its CRC-32 `feac0dea` and minimal Bytewords |
+| BCR-2020-015 (crypto-account, v1) | https://raw.githubusercontent.com/BlockchainCommons/Research/e4a4fbb186e2e7625ccdf7149aec4f0a5adaf850/papers/bcr-2020-015-account.md, 27446 bytes (git blob `4dd4b2952532fd08761fcc88a325dfa1c49d0058`) | `6005893ba7d649cdb182a6784473eeceb740be85e155e6ebedf6570f165e860d` | 2026-10-10 (BlockchainCommons/Research e4a4fbb186e2e7625ccdf7149aec4f0a5adaf850) | BSD-2-Clause-Patent | `verify.py` `BCR015_*` (check 9): "Example/Test Vector": the `shield …` mnemonic, the seven output descriptors, the master fingerprint 934670036, each output's key-data, chain-code, origin, fingerprints and script tags (308, 400, 401, 403, 404, 409, 410), the CBOR hex (773 bytes; the text says 776) and the UR. The document is marked deprecated in favour of BCR-2023-019 (Q2 ships v1) |
+| bip32JP test vectors | https://raw.githubusercontent.com/bip32JP/bip32JP.github.io/5a43706289c55473c120e552244f6de348d0035b/test_JP_BIP39.json, 17066 bytes (git blob `6d8c40b19e5d4b899f9f3c2addbf994d150b245b`) | `780d6a5f21827e5b455fdad35703e2c60ed9dfd47c625daaf50c01600dc4c9e2` | 2026-10-10 (bip32JP/bip32JP.github.io 5a43706289c55473c120e552244f6de348d0035b) | Public domain (the repository's LICENSE: "This work is public domain.") | `verify.py` `BIP32JP_*` (check 9): entry 0's passphrase (shared by all 24 entries), its Japanese mnemonic and its seed, which pins NFKD of both inputs. Its xprv is not copied |
+| RFC 8949 (CBOR) | https://www.rfc-editor.org/rfc/rfc8949.txt, 185226 bytes | `f1164a5b31a39350ad46abe29b83575eb933ca6c45366989c118b6b1058a214a` | 2026-10-10 | Copyright (c) 2020 IETF Trust and the persons identified as the document authors, subject to BCP 78 and the IETF Trust's Legal Provisions; only the test values are copied | `verify.py` `RFC8949_EXAMPLES` (check 9): Appendix A, Table 6, the 23 rows within the subset core writes (unsigned integers, byte strings, arrays, maps, false, true, tags): diagnostic and encoding |
 
 Every copied value was compared mechanically with the value parsed back out of its document
 (one throwaway script, not committed), and that comparison failed when any value was altered.
@@ -127,6 +153,13 @@ rejected it with one bit flipped.
   word its SeedBook number, faces 1-5 with blanks, the lighter face, mirror flags, every cell, the
   read-back key, its mirror-flip neighbours and the longer words it begins. Core's braille tests and
   its Braille known-answer group read it.
+- `watchonly.json` (generated; see above): the RFC 8949 CBOR examples as items, CRC-32 and
+  Bytewords cases (all 256 words), single-part URs (the BCR seed and account examples and byte
+  strings at every CBOR head length up to the 4,295-character maximum), strict-decoder negatives with
+  the error each must give, the BIP84 watch-only export of six wallets (fingerprint, account xpub,
+  receive and change descriptors with checksums, first addresses, crypto-account CBOR, UR and QR
+  text), the zero-fingerprint case, the rebuilt BCR-2020-015 example, the BIP-84 addresses and the
+  BIP-380 checksum cases. Core's ur and descriptor tests and its Bip84 known-answer group read it.
 - `coldcard/rolls.py` and `coldcard/rolls12.py`: Coldcard's own scripts that produced
   `rolls.json`. The verifier self-test re-runs them on every case, so the values come from a
   committed script that CI re-runs.

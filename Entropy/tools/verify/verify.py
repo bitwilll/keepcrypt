@@ -15,7 +15,12 @@ source-substitution sessions), generated here from the embedded BIP39 English li
 vectors/braille.json (the SeedBook braille format of docs/seal-watchonly-braille.md "Braille
 backup": the UEB grade 1 cells, every word's insert faces, SeedBook number, mirror flags and
 read-back neighbours, insert positions, digit text and backup lines), with the docs' computed
-counts re-checked from the list.
+counts re-checked from the list; and vectors/watchonly.json (the BIP84 watch-only export: account
+xpubs, descriptors with BIP-380 checksums, first addresses, the v1 crypto-account CBOR and UR, and
+the deterministic CBOR, Bytewords, CRC-32 and strict single-part UR rules behind the go-ahead QR),
+computed with a standard-library secp256k1, RIPEMD-160 and BIP32 on public test mnemonics and
+checked against values copied from BIP-84, BIP-380, BCR-2020-005, -007, -012, -015, bip32JP and RFC
+8949.
 The verifier's own recomputation of a device's C, E and words, and braille, arrive in M2.
 
 The only outside code it runs is Coldcard's public-domain rolls.py and rolls12.py, committed
@@ -25,18 +30,22 @@ Every seal.json vector also has its values pinned here (vector 1 from CLAUDE.md 
 vectors 2 and 3 independently reproduced), so --write-seal-vectors cannot re-baseline a bug.
 
 Usage:
-  verify.py --selftest              8 checks: seal known answers (all 3 vectors), seal.json bytes,
+  verify.py --selftest              9 checks: seal known answers (all 3 vectors), seal.json bytes,
                                     SOURCES.md hashes and coverage, Coldcard's scripts on every
                                     dice-only case (rolls.json and keepcrypt.json), kat.json (SHA and
                                     HMAC recomputed, its bytes, then its pinned entries and Ed25519
                                     digest), keepcrypt.json (the BIP39 list and encoder, its bytes,
                                     its pinned answers and session record rules), the SP 800-90B
                                     cutoffs, braille.json (its bytes, its pinned answers, the docs'
-                                    counts recomputed from the list, the SeedBook PDF's SHA-256)
+                                    counts recomputed from the list, the SeedBook PDF's SHA-256),
+                                    watchonly.json (the primitives against the standard library and
+                                    the copied spec values, BIP-84 and BCR-2020-015 rebuilt, its pins
+                                    and decoder cases, its bytes)
   verify.py --write-seal-vectors    regenerate vectors/seal.json
   verify.py --write-kat-vectors     regenerate vectors/kat.json
   verify.py --write-keepcrypt-vectors  regenerate vectors/keepcrypt.json
   verify.py --write-braille-vectors    regenerate vectors/braille.json
+  verify.py --write-watchonly-vectors  regenerate vectors/watchonly.json
   --vectors-dir DIR                 testing only: use DIR in place of the repo's vectors/ (made
                                     absolute); a SOURCES.md row `vectors/<p>` then means DIR/<p>
 
@@ -55,6 +64,7 @@ import subprocess
 import sys
 import tempfile
 import unicodedata
+import zlib
 from pathlib import Path
 
 REPO_VECTORS_DIR = Path(__file__).resolve().parent.parent.parent / "vectors"
@@ -72,7 +82,7 @@ TAG_GO = b"KCE/v1/go"
 # Shared interface: one row per file in vectors/SOURCES.md.
 SOURCES_ROW = re.compile(r"^\| `(vectors/[^`]+)` \| `([0-9a-f]{64})` \|")
 # Files under vectors/ that SOURCES.md does not list: the files this script generates, and SOURCES.md.
-UNLISTED = ("seal.json", "kat.json", "keepcrypt.json", "braille.json", "SOURCES.md")
+UNLISTED = ("seal.json", "kat.json", "keepcrypt.json", "braille.json", "watchonly.json", "SOURCES.md")
 # macOS Finder metadata, written into any folder opened in Finder. .gitignore excludes it, so it
 # is never committed and never present in CI. The coverage rule skips a regular file with this
 # exact name only if it starts with Finder's magic bytes; any other .DS_Store needs a row, so a
@@ -519,6 +529,266 @@ BRAILLE_SPEC = {
     "sequence number 01-12: words 1-12 on device 1, words 13-24 on device 2 (Q9)",
     "backup_lines": "the plaintext backup's braille: lines: two spaces, the two-digit position, a space, then "
     "every letter's cell (tasks/todo.md, M1 Q6e)",
+}
+
+# Check 9 and vectors/watchonly.json: the watch-only export and the single-part UR code behind it
+# (docs/seal-watchonly-braille.md "Watch-only export", "Go-ahead QR"; tasks/todo.md, M1 group 6, Q2,
+# Q5 and Q6c). The values below are copied as published from the documents pinned in
+# vectors/SOURCES.md, "Spec values"; check 9 requires the generator to reproduce every one, and core's
+# ur and descriptor modules check their output against watchonly.json. Public test mnemonics only.
+#
+# RFC 8949 Appendix A (Table 6), the rows inside the subset core writes: unsigned integers, byte
+# strings, arrays, maps, false, true and tags. (diagnostic as printed, item, encoding as printed.)
+# An item is ("uint", n), ("bytes", hex), ("array", items), ("map", ((key, value), ...)), ("bool", b)
+# or ("tag", n, item).
+RFC8949_EXAMPLES = (
+    ("0", ("uint", 0), "00"),
+    ("1", ("uint", 1), "01"),
+    ("10", ("uint", 10), "0a"),
+    ("23", ("uint", 23), "17"),
+    ("24", ("uint", 24), "1818"),
+    ("25", ("uint", 25), "1819"),
+    ("100", ("uint", 100), "1864"),
+    ("1000", ("uint", 1000), "1903e8"),
+    ("1000000", ("uint", 1000000), "1a000f4240"),
+    ("1000000000000", ("uint", 1000000000000), "1b000000e8d4a51000"),
+    ("18446744073709551615", ("uint", 18446744073709551615), "1bffffffffffffffff"),
+    ("false", ("bool", False), "f4"),
+    ("true", ("bool", True), "f5"),
+    ("1(1363896240)", ("tag", 1, ("uint", 1363896240)), "c11a514b67b0"),
+    ("23(h'01020304')", ("tag", 23, ("bytes", "01020304")), "d74401020304"),
+    ("h''", ("bytes", ""), "40"),
+    ("h'01020304'", ("bytes", "01020304"), "4401020304"),
+    ("[]", ("array", ()), "80"),
+    ("[1, 2, 3]", ("array", (("uint", 1), ("uint", 2), ("uint", 3))), "83010203"),
+    ("[1, [2, 3], [4, 5]]", ("array", (("uint", 1), ("array", (("uint", 2), ("uint", 3))),
+                                       ("array", (("uint", 4), ("uint", 5))))), "8301820203820405"),
+    ("[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]",
+     ("array", tuple(("uint", n) for n in range(1, 26))),
+     "98190102030405060708090a0b0c0d0e0f101112131415161718181819"),
+    ("{}", ("map", ()), "a0"),
+    ("{1: 2, 3: 4}", ("map", ((("uint", 1), ("uint", 2)), (("uint", 3), ("uint", 4)))), "a201020304"),
+)
+# BCR-2020-012, "Word List": the 256 Bytewords, byte 0x00 first (copyright 2020 Blockchain Commons,
+# BSD-2-Clause-Patent; see vectors/SOURCES.md). The minimal encoding of a byte is its word's first and
+# last letters.
+BYTEWORDS = tuple(
+    """
+able acid also apex aqua arch atom aunt
+away axis back bald barn belt beta bias
+blue body brag brew bulb buzz calm cash
+cats chef city claw code cola cook cost
+crux curl cusp cyan dark data days deli
+dice diet door down draw drop drum dull
+duty each easy echo edge epic even exam
+exit eyes fact fair fern figs film fish
+fizz flap flew flux foxy free frog fuel
+fund gala game gear gems gift girl glow
+good gray grim guru gush gyro half hang
+hard hawk heat help high hill holy hope
+horn huts iced idea idle inch inky into
+iris iron item jade jazz join jolt jowl
+judo jugs jump junk jury keep keno kept
+keys kick kiln king kite kiwi knob lamb
+lava lazy leaf legs liar limp lion list
+logo loud love luau luck lung main many
+math maze memo menu meow mild mint miss
+monk nail navy need news next noon note
+numb obey oboe omit onyx open oval owls
+paid part peck play plus poem pool pose
+puff puma purr quad quiz race ramp real
+redo rich road rock roof ruby ruin runs
+rust safe saga scar sets silk skew slot
+soap solo song stub surf swan taco task
+taxi tent tied time tiny toil tomb toys
+trip tuna twin ugly undo unit urge user
+vast very veto vial vibe view visa void
+vows wall wand warm wasp wave waxy webs
+what when whiz wolf work yank yawn yell
+yoga yurt zaps zero zest zinc zone zoom
+"""
+    .split()
+)
+# BCR-2020-012 "Example/Test Vector": the seed body, its CRC-32 and its minimal Bytewords, and the
+# "Brutal Encoding" payload, its CRC-32 and minimal Bytewords.
+BCR012_BODY_HEX = "d99d6ca20150c7098580125e2ab0981253468b2dbc5202c11947da"
+BCR012_BODY_CRC32 = "c904f40b"
+BCR012_BODY_MINIMAL = "tantjzoeadgdstaslplabghydrpfmkbggufgludprfgmaosecffltnsoaawkbd"
+BCR012_BRUTAL_PAYLOAD_HEX = "c7098580125e2ab0981253468b2dbc52"
+BCR012_BRUTAL_CRC32 = "feac0dea"
+BCR012_BRUTAL_MINIMAL = "staslplabghydrpfmkbggufgludprfgmzepsbtwd"
+# BCR-2020-005 "UR CBOR Tags": the untagged seed and its single-part UR.
+BCR005_SEED_CBOR_HEX = "a10150c7098580125e2ab0981253468b2dbc52"
+BCR005_SEED_UR = "ur:seed/oyadgdstaslplabghydrpfmkbggufgludprfgmamdpwmox"
+# BIP-84 "Test vectors": the mnemonic, the master and account public keys (zpub, SLIP-132 version
+# bytes 04b24746), and three addresses with their public keys. Private keys are not copied.
+BIP84_MNEMONIC = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+BIP84_ROOT_ZPUB = "zpub6jftahH18ngZxLmXaKw3GSZzZsszmt9WqedkyZdezFtWRFBZqsQH5hyUmb4pCEeZGmVfQuP5bedXTB8is6fTv19U1GQRyQUKQGUTzyHACMF"
+BIP84_ACCOUNT_ZPUB = "zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs"
+BIP84_ADDRESSES = (
+    ("receive_0", (0, 0), "0330d54fd0dd420a6e5f8d3624f5f3482cae350f79d5f0753bf5beef9c2d91af3c", "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"),
+    ("receive_1", (0, 1), "03e775fd51f0dfb8cd865d9ff1cca2a158cf651fe997fdc9fee9c1d3b5e995ea77", "bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g"),
+    ("change_0", (1, 0), "03025324888e429ab8e3dbaf1f7802648b9cd01e9b418485c5fa4c1b9b5700e1a6", "bc1q8c6fshw2dlwun7ekn9qwf37cu2rn755upcp6el"),
+)
+# BIP-380 "Test Vectors", the checksum and character-set cases: (name, string, valid).
+BIP380_CHECKSUM_VECTORS = (
+    ('Valid checksum', 'raw(deadbeef)#89f8spxm', True),
+    ('No checksum', 'raw(deadbeef)', False),
+    ('Missing checksum', 'raw(deadbeef)#', False),
+    ('Too long checksum (9 chars)', 'raw(deadbeef)#89f8spxmx', False),
+    ('Too short checksum (7 chars)', 'raw(deadbeef)#89f8spx', False),
+    ('Error in payload', 'raw(deedbeef)#89f8spxm', False),
+    ('Error in checksum', 'raw(deedbeef)##9f8spxm', False),
+    ('Invalid characters in payload', 'raw(Ü)#00000000', False),
+)
+# BCR-2020-015 "Example/Test Vector": the seed, its seven output descriptors, the master fingerprint,
+# each crypto-hdkey (key-data, chain-code, origin components, source and parent fingerprints) with
+# the script tags around it, the 773-byte CBOR and its UR. Check 9 rebuilds all of it from the
+# mnemonic.
+BCR015_MNEMONIC = "shield group erode awake lock sausage cash glare wave crew flame glove"
+BCR015_MASTER_FINGERPRINT = 934670036
+BCR015_DESCRIPTORS = (
+    "pkh([37b5eed4/44'/0'/0']xpub6CnQkivUEH9bSbWVWfDLCtigKKgnSWGaVSRyCbN2QNBJzuvHT1vUQpgSpY1NiVvoeNEuVwk748Cn9G3NtbQB1aGGsEL7aYEnjVWgjj9tefu)",
+    "sh(wpkh([37b5eed4/49'/0'/0']xpub6CtR1iF4dZPkEyXDwVf3HE74tSwXNMcHtBzX4gwz2UnPhJ54Jz5unHx2syYCCDkvVUmsmoYTmcaHXe1wJppvct4GMMaN5XAbRk7yGScRSte))",
+    "wpkh([37b5eed4/84'/0'/0']xpub6BkU445MSEBXbPjD3g2c2ch6mn8yy1SXXQUM7EwjgYiq6Wt1NDwDZ45npqWcV8uQC5oi2gHuVukoCoZZyT4HKq8EpotPMqGqxdZRuapCQ23)",
+    "sh(cosigner([37b5eed4/45']xpub68JFLJTH96GUqC6SoVw5c2qyLSt776PGu5xde8ddVACuPYyarvSL827TbZGavuNbKQ8DG3VP9fCXPhQRBgPrS4MPG3zaZgwAGuPHYvVuY9X))",
+    "sh(wsh(cosigner([37b5eed4/48'/0'/0'/1']xpub6EC9f7mLFJQoPaqDJ72Zbv67JWzmpXvCYQSecER9GzkYy5eWLsVLbHnxoAZ8NnnsrjhMLduJo9dG6fNQkmMFL3Qedj2kf5bEy5tptHPApNf)))",
+    "wsh(cosigner([37b5eed4/48'/0'/0'/2']xpub6EC9f7mLFJQoRQ6qiTvWQeeYsgtki6fBzSUgWgUtAujEMtAfJSAn3AVS4KrLHRV2hNX77YwNkg4azUzuSwhNGtcq4r2J8bLGMDkrQYHvoed))",
+    "tr([37b5eed4/86'/0'/0']xpub6DAvL2L5bgGSpDygSQUDpjwE47saoMk2rSRtYhN7Dma7HvnFLTXNrcSC1AmEN8G2SCD958bUwgc6Bew4sAFa2kqYynF8Rmu6P5jMt2FDPtm)",
+)
+# (script tags, origin components, key-data hex, chain-code hex, source fingerprint, parent fingerprint)
+BCR015_OUTPUTS = (
+    ((308, 403), ((44, True), (0, True), (0, True)),
+     "03eb3e2863911826374de86c231a4b76f0b89dfa174afb78d7f478199884d9dd32",
+     "6456a5df2db0f6d9af72b2a1af4b25f45200ed6fcc29c3440b311d4796b70b5b", 934670036, 2583285239),
+    ((308, 400, 404), ((49, True), (0, True), (0, True)),
+     "02c7e4823730f6ee2cf864e2c352060a88e60b51a84e89e4c8c75ec22590ad6b69",
+     "9d2f86043276f9251a4a4f577166a5abeb16b6ec61e226b5b8fa11038bfda42d", 934670036, 2819587291),
+    ((308, 404), ((84, True), (0, True), (0, True)),
+     "03fd433450b6924b4f7efdd5d1ed017d364be95ab2b592dc8bddb3b00c1c24f63f",
+     "72ede7334d5acf91c6fda622c205199c595a31f9218ed30792d301d5ee9e3a88", 934670036, 224256471),
+    ((308, 400, 410), ((45, True),),
+     "035ccd58b63a2cdc23d0812710603592e7457573211880cb59b1ef012e168e059a",
+     "88d3299b448f87215d96b0c226235afc027f9e7dc700284f3e912a34daeb1a23", 934670036, 934670036),
+    ((308, 400, 401, 410), ((48, True), (0, True), (0, True), (1, True)),
+     "032c78ebfcabdac6d735a0820ef8732f2821b4fb84cd5d6b26526938f90c050711",
+     "7953efe16a73e5d3f9f2d4c6e49bd88e22093bbd85be5a7e862a4b98a16e0ab6", 934670036, 1505139498),
+    ((308, 401, 410), ((48, True), (0, True), (0, True), (2, True)),
+     "0260563ee80c26844621b06b74070baf0e23fb76ce439d0237e87502ebbd3ca346",
+     "2fa0e41c9dc43dc4518659bfcef935ba8101b57dbc0812805dd983bc1d34b813", 934670036, 1505139498),
+    ((308, 409), ((86, True), (0, True), (0, True)),
+     "02bbb97cf9efa176b738efd6ee1d4d0fa391a973394fbc16e4c5e78e536cd14d2d",
+     "4b4693e1f794206ed1355b838da24949a92b63d02e58910bf3bd3d9c242281e6", 934670036, 3469149964),
+)
+BCR015_CBOR_HEX = (
+    "a2011a37b5eed40287d90134d90193d9012fa403582103eb3e2863911826374de86c231a4b76f0b89dfa174afb78d7f4"
+    "78199884d9dd320458206456a5df2db0f6d9af72b2a1af4b25f45200ed6fcc29c3440b311d4796b70b5b06d90130a201"
+    "86182cf500f500f5021a37b5eed4081a99f9cdf7d90134d90190d90194d9012fa403582102c7e4823730f6ee2cf864e2"
+    "c352060a88e60b51a84e89e4c8c75ec22590ad6b690458209d2f86043276f9251a4a4f577166a5abeb16b6ec61e226b5"
+    "b8fa11038bfda42d06d90130a201861831f500f500f5021a37b5eed4081aa80f7cdbd90134d90194d9012fa403582103"
+    "fd433450b6924b4f7efdd5d1ed017d364be95ab2b592dc8bddb3b00c1c24f63f04582072ede7334d5acf91c6fda622c2"
+    "05199c595a31f9218ed30792d301d5ee9e3a8806d90130a201861854f500f500f5021a37b5eed4081a0d5de1d7d90134"
+    "d90190d9019ad9012fa4035821035ccd58b63a2cdc23d0812710603592e7457573211880cb59b1ef012e168e059a0458"
+    "2088d3299b448f87215d96b0c226235afc027f9e7dc700284f3e912a34daeb1a2306d90130a20182182df5021a37b5ee"
+    "d4081a37b5eed4d90134d90190d90191d9019ad9012fa4035821032c78ebfcabdac6d735a0820ef8732f2821b4fb84cd"
+    "5d6b26526938f90c0507110458207953efe16a73e5d3f9f2d4c6e49bd88e22093bbd85be5a7e862a4b98a16e0ab606d9"
+    "0130a201881830f500f500f501f5021a37b5eed4081a59b69b2ad90134d90191d9019ad9012fa40358210260563ee80c"
+    "26844621b06b74070baf0e23fb76ce439d0237e87502ebbd3ca3460458202fa0e41c9dc43dc4518659bfcef935ba8101"
+    "b57dbc0812805dd983bc1d34b81306d90130a201881830f500f500f502f5021a37b5eed4081a59b69b2ad90134d90199"
+    "d9012fa403582102bbb97cf9efa176b738efd6ee1d4d0fa391a973394fbc16e4c5e78e536cd14d2d0458204b4693e1f7"
+    "94206ed1355b838da24949a92b63d02e58910bf3bd3d9c242281e606d90130a201861856f500f500f5021a37b5eed408"
+    "1acec7070c"
+)
+BCR015_UR = (
+    "ur:crypto-account/oeadcyemrewytyaolttaadeetaadmutaaddloxaxhdclaxwmfmdeiamecsdsemgtvsjzcncygrkowt"
+    "rontzschgezokstswkkscfmklrtauteyaahdcxiehfonurdppfyntapejpproypegrdawkgmaewejlsfdtsrfybdehcaflmt"
+    "rlbdhpamtaaddyoeadlncsdwykaeykaeykaocyemrewytyaycynlytsnyltaadeetaadmhtaadmwtaaddloxaxhdclaostve"
+    "lfemdyynwydwyaievosrgmambklovabdgypdglldvespsthysadamhpmjeinaahdcxntdllnaaeykoytdacygegwhgjsiyon"
+    "pywmcmrpwphsvodsrerozsbyaxluzcoxdpamtaaddyoeadlncsehykaeykaeykaocyemrewytyaycypdbskeuytaadeetaad"
+    "mwtaaddloxaxhdclaxzcfxeegdrpmogrgwkbzctlttweadkiengrwlhtprremouoluutqdpfbncedkynfhaahdcxjpwevdeo"
+    "gthttkmeswzcolcpsaahcfnshkhtehytclmnteatmoteadtlwynnftloamtaaddyoeadlncsghykaeykaeykaocyemrewyty"
+    "aycybthlvytstaadeetaadmhtaadnytaaddloxaxhdclaxhhsnhdrpftdwuocntilydibehnecmovdfekpjkclcslasbhkpa"
+    "wsaddmcmmnahnyaahdcxlotedtndfymyltclhlmtpfsadscnhtztaolbnnkistaedegwfmmedreetnwmcycnamtaaddyoead"
+    "lfcsdpykaocyemrewytyaycyemrewytytaadeetaadmhtaadmetaadnytaaddloxaxhdclaxdwkswmztpytnswtsecnblfba"
+    "yajkdldeclqzzolrsnhljedsgminetytbnahatbyaahdcxkkguwsvyimjkvwteytwztyswvendtpmncpasfrrylprnhtkbln"
+    "drgrmkoyjtbkrpamtaaddyoeadlocsdyykaeykaeykadykaocyemrewytyaycyhkrpnddrtaadeetaadmetaadnytaaddlox"
+    "axhdclaohnhffmvsbndslrfgclpfjejyatbdpebacnzokotofxntaoemvskpaowmryfnotfgaahdcxdlnbvecentssfsssgy"
+    "lnhkrstoytecrdlyadrekirfaybglahltalsrfcaeerobwamtaaddyoeadlocsdyykaeykaeykaoykaocyemrewytyaycyhk"
+    "rpnddrtaadeetaadnltaaddloxaxhdclaorkrhkeytwsoykorletwstbwycagtbsotmeptjkesgwrfcmveskvdmngujzttgt"
+    "dpaahdcxgrfgmuvyylmwcxjtttechplslgoegagaptdniatidmhdmebdwfryfsnsdkcplyvaamtaaddyoeadlncshfykaeyk"
+    "aeykaocyemrewytyaycytostatbngmdavolk"
+)
+# bip32JP test_JP_BIP39.json, entry 0 (public domain): its passphrase, which NFKD changes, and the
+# seed of its Japanese mnemonic under that passphrase, which pins NFKD of both inputs.
+BIP32JP_PASSPHRASE = "㍍ガバヴァぱばぐゞちぢ十人十色"
+BIP32JP_MNEMONIC = "あいこくしん\u3000あいこくしん\u3000あいこくしん\u3000あいこくしん\u3000あいこくしん\u3000あいこくしん\u3000あいこくしん\u3000あいこくしん\u3000あいこくしん\u3000あいこくしん\u3000あいこくしん\u3000あおぞら"
+BIP32JP_SEED_HEX = (
+    "a262d6fb6122ecf45be09c50492b31f92e9beb7d9a845987a02cefda57a15f9c"
+    "467a17872029a9e92299b5cbdf306e3a0ee620245cbd508959b6cb7ca637bd55"
+)
+# Answers pinned by the plan (tasks/todo.md, M1 group 6), each first computed by the planner and now
+# reproduced here: (wallet, field, value). Byte equality alone would let a changed generator
+# re-baseline them (tasks/lessons.md).
+WATCHONLY_PINNED = (
+    ("abandon", "fingerprint", "73c5da0a"),
+    ("abandon", "receive_checksum", "afwvtk2s"),
+    ("abandon", "change_checksum", "vatdkr6g"),
+    ("abandon", "crypto_account_cbor_bytes", 116),
+    ("abandon", "crypto_account_ur_chars", 258),
+    ("abandon-trezor", "fingerprint", "b4e3f5ed"),
+    ("abandon-trezor", "receive_checksum", "l3mwu4e8"),
+    ("abandon-bip32jp", "fingerprint", "5d00908e"),
+    ("abandon-bip32jp", "unnormalized_fingerprint", "68896147"),
+    ("shield", "fingerprint", "37b5eed4"),
+)
+# The wallets watchonly.json exports: (name, mnemonic, BIP39 passphrase or None). Public test
+# mnemonics only (CLAUDE.md rule 12). "TREZOR " differs from "TREZOR": a passphrase is never trimmed.
+WATCHONLY_WALLETS = (
+    ("abandon", KAT_MNEMONIC, None),
+    ("abandon-trezor", KAT_MNEMONIC, "TREZOR"),
+    ("abandon-trezor-space", KAT_MNEMONIC, "TREZOR "),
+    ("abandon-bip32jp", KAT_MNEMONIC, BIP32JP_PASSPHRASE),
+    ("shield", BCR015_MNEMONIC, None),
+    ("zoo-24", " ".join(["zoo"] * 23 + ["vote"]), None),
+)
+# Byte strings whose single-part UR (type "bytes", BCR-2020-005's test type) pins every CBOR head
+# length form, and the longest such UR within 4,296 characters: 2,136 bytes give 4,295 characters.
+UR_BYTES_LENGTHS = (0, 1, 23, 24, 255, 256, 771, 2136)
+UR_MAX_CHARS = 4296  # the largest QR alphanumeric capacity (version 40-L); Q6c
+# The CRC-32/ISO-HDLC check value, the CRC of the nine ASCII bytes "123456789" (tasks/todo.md, M1
+# group 6); check 9 also compares every CRC with zlib's.
+CRC32_CHECK_VALUE = "cbf43926"
+WATCHONLY_SPEC = {
+    "encoding": "every *_hex value is the exact bytes in lowercase hex; fingerprints are 4 bytes",
+    "cbor": "deterministic CBOR (dCBOR) subset: unsigned integers, byte strings, arrays, maps, false, true and tags, "
+    "each head in its shortest form, definite lengths only, map keys unique and in ascending order of their "
+    "encoded bytes. An item is {\"uint\": n}, {\"bytes\": hex}, {\"array\": [items]}, {\"map\": [[key, value], ...]}, "
+    "{\"bool\": b} or {\"tag\": n, \"item\": item}",
+    "crc32": "CRC-32/ISO-HDLC (reflected polynomial 0xedb88320, init and final XOR 0xffffffff), written big-endian",
+    "bytewords": "minimal Bytewords (BCR-2020-012): each byte as the first and last letters of its word in "
+    "bytewords.words",
+    "ur": "single-part UR (BCR-2020-005): 'ur:' + type + '/' + minimal Bytewords of (CBOR || CRC-32 of the CBOR, "
+    "big-endian); lowercase, and QR text is the same in uppercase",
+    "ur_decoder": "core's strict reader, in this order: at most 4,296 characters before any decoding (TooLong); all "
+    "lowercase or all uppercase (MixedCase); the scheme 'ur:' and a '/' after the type (NotUr); the expected type "
+    "(WrongType); exactly one path segment after the type (MultiPart); an even number of letters (OddLength); every "
+    "pair one of the 256 minimal Bytewords (UnknownByteword); at least 4 bytes, the last 4 the CRC-32 of the rest "
+    "(BadChecksum); one CBOR byte string (NotByteString, also for a reserved or cut-off head or fewer bytes than the "
+    "head gives), with a definite (IndefiniteLength) shortest-form head (NonShortestHead), and nothing after it "
+    "(TrailingBytes)",
+    "bip32": "BIP32 from S = PBKDF2-HMAC-SHA512(UTF-8 of NFKD(mnemonic), 'mnemonic' + NFKD(passphrase), 2048, 64); "
+    "account m/84h/0h/0h; fingerprints are the first 4 bytes of HASH160 of the compressed public key; xpub "
+    "version bytes 0488b21e",
+    "descriptors": "wpkh([fingerprint/84h/0h/0h]xpub/0/*) and wpkh(.../1/*), hardened steps written 'h', each with "
+    "its BIP-380 checksum after '#'; receive_descriptor_apostrophe is the same receive descriptor written with \"'\", "
+    "which core never emits (its checksum differs)",
+    "addresses": "first_receive_address = m/84h/0h/0h/0/0, first_change_address = m/84h/0h/0h/1/0, P2WPKH mainnet "
+    "bech32 (BIP-173)",
+    "crypto_account": "BCR-2020-015 v1 crypto-account, untagged at the top level: {1: master fingerprint, 2: "
+    "[308(404(303({3: key-data, 4: chain-code, 6: 304({1: [84, true, 0, true, 0, true], 2: master fingerprint}), 8: "
+    "parent fingerprint})))]}; a zero source or parent fingerprint is omitted (BCR-2020-007: uint32 .ne 0)",
+    "passphrase": "the BIP39 passphrase is NFKD-normalized before PBKDF2 and never trimmed; "
+    "unnormalized_fingerprint is the master fingerprint without NFKD, which core must never give",
 }
 
 # The BIP39 English word list, embedded because the M2 verifier ships as one file (docs/build-plan.md
@@ -1358,6 +1628,640 @@ def write_braille_vectors(vectors_dir):
     return write_vectors(vectors_dir, "braille.json", braille_vectors_json())
 
 
+# --- Watch-only export and single-part UR (vectors/watchonly.json) -----------------------------
+# Standard library only: secp256k1 arithmetic, RIPEMD-160, BIP32, bech32, the BIP-380 checksum, a
+# dCBOR writer, Bytewords and CRC-32, run on public test mnemonics only. Nothing here is constant
+# time; it never sees a real secret.
+
+SECP256K1_P = 2 ** 256 - 2 ** 32 - 977
+SECP256K1_N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
+SECP256K1_G = (
+    0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798,
+    0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8,
+)
+BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+XPUB_VERSION = bytes.fromhex("0488b21e")
+ZPUB_VERSION = bytes.fromhex("04b24746")  # SLIP-132, used by the BIP-84 vectors
+HARDENED = 0x80000000
+BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
+# BIP-380 "Checksum", the reference code's character sets and generator.
+DESCRIPTOR_INPUT_CHARSET = "0123456789()[],'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#\"\\ "
+DESCRIPTOR_CHECKSUM_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
+DESCRIPTOR_GENERATOR = (0xF5DEE51989, 0xA9FDCA3312, 0x1BAB10E32D, 0x3706B1677A, 0x644D626FFD)
+
+
+def ec_add(a, b):
+    """Affine point addition on secp256k1; None is the point at infinity."""
+    if a is None:
+        return b
+    if b is None:
+        return a
+    if a[0] == b[0] and (a[1] + b[1]) % SECP256K1_P == 0:
+        return None
+    if a == b:
+        slope = 3 * a[0] * a[0] * pow(2 * a[1], SECP256K1_P - 2, SECP256K1_P)
+    else:
+        slope = (b[1] - a[1]) * pow(b[0] - a[0], SECP256K1_P - 2, SECP256K1_P)
+    slope %= SECP256K1_P
+    x = (slope * slope - a[0] - b[0]) % SECP256K1_P
+    return x, (slope * (a[0] - x) - a[1]) % SECP256K1_P
+
+
+def ec_public(k):
+    """k * G by double-and-add, as a 33-byte compressed public key."""
+    point, addend = None, SECP256K1_G
+    while k:
+        if k & 1:
+            point = ec_add(point, addend)
+        addend = ec_add(addend, addend)
+        k >>= 1
+    return bytes([2 + (point[1] & 1)]) + point[0].to_bytes(32, "big")
+
+
+def ripemd160_pure(data):
+    """RIPEMD-160 (Dobbertin, Bosselaers and Preneel), in pure Python for interpreters whose hashlib
+    lacks it; check 9 compares it with hashlib's where hashlib has one."""
+    def rol(x, n):
+        return ((x << n) | (x >> (32 - n))) & 0xFFFFFFFF
+
+    def f(j, x, y, z):
+        if j < 16:
+            return x ^ y ^ z
+        if j < 32:
+            return (x & y) | (~x & z)
+        if j < 48:
+            return (x | ~y) ^ z
+        if j < 64:
+            return (x & z) | (y & ~z)
+        return x ^ (y | ~z)
+
+    left_words = (
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 7, 4, 13, 1, 10, 6, 15, 3, 12, 0, 9, 5, 2, 14, 11, 8,
+        3, 10, 14, 4, 9, 15, 8, 1, 2, 7, 0, 6, 13, 11, 5, 12, 1, 9, 11, 10, 0, 8, 12, 4, 13, 3, 7, 15, 14, 5, 6, 2,
+        4, 0, 5, 9, 7, 12, 2, 10, 14, 1, 3, 8, 11, 6, 15, 13)
+    right_words = (
+        5, 14, 7, 0, 9, 2, 11, 4, 13, 6, 15, 8, 1, 10, 3, 12, 6, 11, 3, 7, 0, 13, 5, 10, 14, 15, 8, 12, 4, 9, 1, 2,
+        15, 5, 1, 3, 7, 14, 6, 9, 11, 8, 12, 2, 10, 0, 4, 13, 8, 6, 4, 1, 3, 11, 15, 0, 5, 12, 2, 13, 9, 7, 10, 14,
+        12, 15, 10, 4, 1, 5, 8, 7, 6, 2, 13, 14, 0, 3, 9, 11)
+    left_shifts = (
+        11, 14, 15, 12, 5, 8, 7, 9, 11, 13, 14, 15, 6, 7, 9, 8, 7, 6, 8, 13, 11, 9, 7, 15, 7, 12, 15, 9, 11, 7, 13, 12,
+        11, 13, 6, 7, 14, 9, 13, 15, 14, 8, 13, 6, 5, 12, 7, 5, 11, 12, 14, 15, 14, 15, 9, 8, 9, 14, 5, 6, 8, 6, 5, 12,
+        9, 15, 5, 11, 6, 8, 13, 12, 5, 12, 13, 14, 11, 8, 5, 6)
+    right_shifts = (
+        8, 9, 9, 11, 13, 15, 15, 5, 7, 7, 8, 11, 14, 14, 12, 6, 9, 13, 15, 7, 12, 8, 9, 11, 7, 7, 12, 7, 6, 15, 13, 11,
+        9, 7, 15, 11, 8, 6, 6, 14, 12, 13, 5, 14, 13, 13, 7, 5, 15, 5, 8, 11, 14, 14, 6, 14, 6, 9, 12, 9, 12, 5, 15, 8,
+        8, 5, 12, 9, 12, 5, 14, 6, 8, 13, 6, 5, 15, 13, 11, 11)
+    left_k = (0x00000000, 0x5A827999, 0x6ED9EBA1, 0x8F1BBCDC, 0xA953FD4E)
+    right_k = (0x50A28BE6, 0x5C4DD124, 0x6D703EF3, 0x7A6D76E9, 0x00000000)
+    h = [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0]
+    padded = data + b"\x80" + b"\x00" * ((55 - len(data)) % 64) + (8 * len(data)).to_bytes(8, "little")
+    for offset in range(0, len(padded), 64):
+        x = [int.from_bytes(padded[offset + 4 * i: offset + 4 * i + 4], "little") for i in range(16)]
+        al, bl, cl, dl, el = h
+        ar, br, cr, dr, er = h
+        for j in range(80):
+            t = rol((al + f(j, bl, cl, dl) + x[left_words[j]] + left_k[j // 16]) & 0xFFFFFFFF, left_shifts[j]) + el
+            al, el, dl, cl, bl = el, dl, rol(cl, 10), bl, t & 0xFFFFFFFF
+            t = rol((ar + f(79 - j, br, cr, dr) + x[right_words[j]] + right_k[j // 16]) & 0xFFFFFFFF,
+                    right_shifts[j]) + er
+            ar, er, dr, cr, br = er, dr, rol(cr, 10), br, t & 0xFFFFFFFF
+        h = [(h[1] + cl + dr) & 0xFFFFFFFF, (h[2] + dl + er) & 0xFFFFFFFF, (h[3] + el + ar) & 0xFFFFFFFF,
+             (h[4] + al + br) & 0xFFFFFFFF, (h[0] + bl + cr) & 0xFFFFFFFF]
+    return b"".join(v.to_bytes(4, "little") for v in h)
+
+
+def hashlib_ripemd160(data):
+    """hashlib's RIPEMD-160, or None where this build of hashlib has none (OpenSSL 3 dropped it)."""
+    try:
+        return hashlib.new("ripemd160", data).digest()
+    except ValueError:
+        return None
+
+
+def hash160(data):
+    """RIPEMD-160(SHA-256(data)), with the pure-Python RIPEMD-160 (cross-checked by check 9)."""
+    return ripemd160_pure(hashlib.sha256(data).digest())
+
+
+def base58check(payload):
+    """Base58 of payload || first 4 bytes of SHA-256(SHA-256(payload))."""
+    data = payload + hashlib.sha256(hashlib.sha256(payload).digest()).digest()[:4]
+    value, text = int.from_bytes(data, "big"), ""
+    while value:
+        value, digit = divmod(value, 58)
+        text = BASE58[digit] + text
+    return "1" * (len(data) - len(data.lstrip(b"\x00"))) + text
+
+
+def base58check_decode(text):
+    """The payload of a Base58Check string (ValueError on a bad checksum)."""
+    value = 0
+    for ch in text:
+        value = value * 58 + BASE58.index(ch)
+    data = value.to_bytes((value.bit_length() + 7) // 8, "big")
+    data = b"\x00" * (len(text) - len(text.lstrip("1"))) + data
+    payload, check = data[:-4], data[-4:]
+    if hashlib.sha256(hashlib.sha256(payload).digest()).digest()[:4] != check:
+        raise ValueError("bad Base58Check checksum")
+    return payload
+
+
+def bip39_seed_with_passphrase(mnemonic, passphrase, normalize=True):
+    """BIP39 S = PBKDF2-HMAC-SHA512(NFKD(mnemonic), "mnemonic" + NFKD(passphrase), 2048, 64). With
+    normalize=False the passphrase goes in as typed, the bug core must never have."""
+    salt = "mnemonic" + (unicodedata.normalize("NFKD", passphrase) if normalize else passphrase)
+    password = unicodedata.normalize("NFKD", mnemonic).encode("utf-8")
+    return hashlib.pbkdf2_hmac("sha512", password, salt.encode("utf-8"), 2048, 64)
+
+
+def bip32_master(seed):
+    """(private key, chain code) of the BIP32 master key."""
+    digest = hmac.new(b"Bitcoin seed", seed, hashlib.sha512).digest()
+    return int.from_bytes(digest[:32], "big"), digest[32:]
+
+
+def bip32_child(key, chain, index):
+    """CKDpriv: (private key, chain code) of child `index` (hardened at 2^31 and above)."""
+    if index >= HARDENED:
+        data = b"\x00" + key.to_bytes(32, "big") + index.to_bytes(4, "big")
+    else:
+        data = ec_public(key) + index.to_bytes(4, "big")
+    digest = hmac.new(chain, data, hashlib.sha512).digest()
+    tweak = int.from_bytes(digest[:32], "big")
+    child = (tweak + key) % SECP256K1_N
+    if tweak >= SECP256K1_N or child == 0:
+        raise ValueError("invalid BIP32 child (probability below 2^-127)")
+    return child, digest[32:]
+
+
+def bip32_fingerprint(key):
+    """The first 4 bytes of HASH160 of the compressed public key."""
+    return hash160(ec_public(key))[:4]
+
+
+def bip32_derive(seed, path):
+    """[(index, key, chain code)] for every step of `path` from the master, master first (index None)."""
+    key, chain = bip32_master(seed)
+    steps = [(None, key, chain)]
+    for index in path:
+        key, chain = bip32_child(key, chain, index)
+        steps.append((index, key, chain))
+    return steps
+
+
+def serialize_xpub(version, depth, parent_fingerprint, index, chain, public_key):
+    """A BIP32 extended public key: version || depth || parent fingerprint || child number || chain code
+    || compressed key, in Base58Check."""
+    return base58check(version + bytes([depth]) + parent_fingerprint + index.to_bytes(4, "big") + chain + public_key)
+
+
+def bech32_polymod(values):
+    """BIP-173's checksum function."""
+    generator = (0x3B6A57B2, 0x26508E6D, 0x1EA119FA, 0x3D4233DD, 0x2A1462B3)
+    chk = 1
+    for value in values:
+        top = chk >> 25
+        chk = (chk & 0x1FFFFFF) << 5 ^ value
+        for i in range(5):
+            if (top >> i) & 1:
+                chk ^= generator[i]
+    return chk
+
+
+def p2wpkh_address(public_key):
+    """The mainnet P2WPKH address (BIP-173, witness version 0) of a compressed public key."""
+    program, acc, bits, data = hash160(public_key), 0, 0, [0]
+    for byte in program:
+        acc, bits = (acc << 8) | byte, bits + 8
+        while bits >= 5:
+            bits -= 5
+            data.append((acc >> bits) & 31)
+    if bits:
+        data.append((acc << (5 - bits)) & 31)
+    expanded = [ord(c) >> 5 for c in "bc"] + [0] + [ord(c) & 31 for c in "bc"]
+    polymod = bech32_polymod(expanded + data + [0] * 6) ^ 1
+    checksum = [(polymod >> 5 * (5 - i)) & 31 for i in range(6)]
+    return "bc1" + "".join(BECH32_CHARSET[d] for d in data + checksum)
+
+
+def descriptor_polymod(symbols):
+    """BIP-380's checksum polynomial over GF(32)."""
+    chk = 1
+    for value in symbols:
+        top = chk >> 35
+        chk = (chk & 0x7FFFFFFFF) << 5 ^ value
+        for i in range(5):
+            if (top >> i) & 1:
+                chk ^= DESCRIPTOR_GENERATOR[i]
+    return chk
+
+
+def descriptor_symbols(text):
+    """BIP-380's expansion of a descriptor into checksum symbols, or None for a character outside
+    the input character set."""
+    groups, symbols = [], []
+    for ch in text:
+        position = DESCRIPTOR_INPUT_CHARSET.find(ch)
+        if position < 0:
+            return None
+        symbols.append(position & 31)
+        groups.append(position >> 5)
+        if len(groups) == 3:
+            symbols.append(groups[0] * 9 + groups[1] * 3 + groups[2])
+            groups = []
+    if len(groups) == 1:
+        symbols.append(groups[0])
+    elif len(groups) == 2:
+        symbols.append(groups[0] * 3 + groups[1])
+    return symbols
+
+
+def descriptor_checksum(text):
+    """The 8-character BIP-380 checksum of a descriptor."""
+    symbols = descriptor_symbols(text)
+    if symbols is None:
+        raise ValueError("a descriptor character outside the BIP-380 input set")
+    value = descriptor_polymod(symbols + [0] * 8) ^ 1
+    return "".join(DESCRIPTOR_CHECKSUM_CHARSET[(value >> (5 * (7 - i))) & 31] for i in range(8))
+
+
+def descriptor_checksum_valid(text):
+    """True for a descriptor that ends in '#' and its valid 8-character checksum."""
+    if len(text) < 9 or text[-9] != "#" or any(c not in DESCRIPTOR_CHECKSUM_CHARSET for c in text[-8:]):
+        return False
+    symbols = descriptor_symbols(text[:-9])
+    if symbols is None:
+        return False
+    return descriptor_polymod(symbols + [DESCRIPTOR_CHECKSUM_CHARSET.find(c) for c in text[-8:]]) == 1
+
+
+def cbor_head(major, value):
+    """A CBOR head in its shortest form: major type (0-7) and its argument."""
+    if value < 24:
+        return bytes([major << 5 | value])
+    for size, extra in ((1, 24), (2, 25), (4, 26), (8, 27)):
+        if value < 1 << (8 * size):
+            return bytes([major << 5 | extra]) + value.to_bytes(size, "big")
+    raise ValueError("a CBOR argument above 2^64 - 1")
+
+
+def cbor_encode(item):
+    """Deterministic CBOR of an item (WATCHONLY_SPEC "cbor"): shortest heads, definite lengths, map keys
+    unique and sorted by their encoded bytes."""
+    kind = item[0]
+    if kind == "uint":
+        return cbor_head(0, item[1])
+    if kind == "bytes":
+        data = bytes.fromhex(item[1])
+        return cbor_head(2, len(data)) + data
+    if kind == "array":
+        return cbor_head(4, len(item[1])) + b"".join(cbor_encode(i) for i in item[1])
+    if kind == "map":
+        pairs = sorted((cbor_encode(k), cbor_encode(v)) for k, v in item[1])
+        if len(set(k for k, _ in pairs)) != len(pairs):
+            raise ValueError("duplicate CBOR map key")
+        return cbor_head(5, len(pairs)) + b"".join(k + v for k, v in pairs)
+    if kind == "bool":
+        return b"\xf5" if item[1] else b"\xf4"
+    if kind == "tag":
+        return cbor_head(6, item[1]) + cbor_encode(item[2])
+    raise ValueError("unknown CBOR item kind %r" % kind)
+
+
+def cbor_json(item):
+    """An item as watchonly.json writes it (WATCHONLY_SPEC "cbor")."""
+    kind = item[0]
+    if kind in ("uint", "bytes", "bool"):
+        return {kind: item[1]}
+    if kind == "array":
+        return {"array": [cbor_json(i) for i in item[1]]}
+    if kind == "map":
+        return {"map": [[cbor_json(k), cbor_json(v)] for k, v in item[1]]}
+    return {"tag": item[1], "item": cbor_json(item[2])}
+
+
+def crc32_table():
+    """The 256-entry table of CRC-32/ISO-HDLC (reflected polynomial 0xedb88320)."""
+    table = []
+    for n in range(256):
+        c = n
+        for _ in range(8):
+            c = (c >> 1) ^ (0xEDB88320 if c & 1 else 0)
+        table.append(c)
+    return table
+
+
+def crc32(data):
+    """CRC-32/ISO-HDLC, table-driven (check 9 compares it with zlib's)."""
+    table, c = crc32_table(), 0xFFFFFFFF
+    for byte in data:
+        c = table[(c ^ byte) & 0xFF] ^ (c >> 8)
+    return c ^ 0xFFFFFFFF
+
+
+def bytewords_minimal(data):
+    """Minimal Bytewords: each byte as its word's first and last letters."""
+    return "".join(BYTEWORDS[b][0] + BYTEWORDS[b][3] for b in data)
+
+
+def ur_single(ur_type, cbor):
+    """A single-part UR: ur:<type>/<minimal Bytewords of CBOR || CRC-32 big-endian>."""
+    return "ur:%s/%s" % (ur_type, bytewords_minimal(cbor + crc32(cbor).to_bytes(4, "big")))
+
+
+def ur_decode_single(expected_type, text):
+    """The strict single-part reader, rebuilt apart from core (WATCHONLY_SPEC "ur_decoder"): (the CBOR
+    byte string's bytes, None), or (None, the name of the first rule the text breaks)."""
+    if len(text) > UR_MAX_CHARS:
+        return None, "TooLong"
+    has_upper, has_lower = any("A" <= c <= "Z" for c in text), any("a" <= c <= "z" for c in text)
+    if has_upper and has_lower:
+        return None, "MixedCase"
+    text = "".join(chr(ord(c) + 32) if "A" <= c <= "Z" else c for c in text)
+    if not text.startswith("ur:") or "/" not in text[3:]:
+        return None, "NotUr"
+    ur_type, message = text[3:].split("/", 1)
+    if ur_type != expected_type:
+        return None, "WrongType"
+    if "/" in message:
+        return None, "MultiPart"
+    if len(message) % 2:
+        return None, "OddLength"
+    byte_of = {word[0] + word[3]: n for n, word in enumerate(BYTEWORDS)}
+    pairs = [message[i:i + 2] for i in range(0, len(message), 2)]
+    if any(pair not in byte_of for pair in pairs):
+        return None, "UnknownByteword"
+    data = bytes(byte_of[pair] for pair in pairs)
+    if len(data) < 4 or crc32(data[:-4]).to_bytes(4, "big") != data[-4:]:
+        return None, "BadChecksum"
+    cbor = data[:-4]
+    if not cbor or cbor[0] >> 5 != 2:
+        return None, "NotByteString"
+    info = cbor[0] & 31
+    if info == 31:
+        return None, "IndefiniteLength"
+    size = {24: 1, 25: 2, 26: 4, 27: 8}.get(info, 0) if info < 28 else None
+    if size is None or len(cbor) < 1 + size:
+        return None, "NotByteString"
+    length = int.from_bytes(cbor[1:1 + size], "big") if size else info
+    if cbor_head(2, length) != cbor[:1 + size]:
+        return None, "NonShortestHead"
+    if len(cbor) < 1 + size + length:
+        return None, "NotByteString"
+    if len(cbor) > 1 + size + length:
+        return None, "TrailingBytes"
+    return cbor[1 + size:], None
+
+
+def cbor_byte_string(data):
+    """A CBOR byte string item for raw bytes."""
+    return ("bytes", data.hex())
+
+
+def hdkey_item(public_key, chain, components, source_fingerprint, parent_fingerprint):
+    """A v1 crypto-hdkey (tag 303) with its crypto-keypath origin (tag 304); a zero fingerprint is
+    omitted (BCR-2020-007: uint32 .ne 0)."""
+    path = ("array", tuple(c for index, hardened in components for c in (("uint", index), ("bool", hardened))))
+    keypath = [(("uint", 1), path)]
+    if source_fingerprint:
+        keypath.append((("uint", 2), ("uint", source_fingerprint)))
+    fields = [(("uint", 3), cbor_byte_string(public_key)), (("uint", 4), cbor_byte_string(chain)),
+              (("uint", 6), ("tag", 304, ("map", tuple(keypath))))]
+    if parent_fingerprint:
+        fields.append((("uint", 8), ("uint", parent_fingerprint)))
+    return ("tag", 303, ("map", tuple(fields)))
+
+
+def crypto_account_item(master_fingerprint, outputs):
+    """A v1 crypto-account, untagged: {1: master fingerprint, 2: [outputs]}; each output is (script tags,
+    hdkey item), the tags outermost first."""
+    wrapped = []
+    for tags, hdkey in outputs:
+        item = hdkey
+        for tag in reversed(tags):
+            item = ("tag", tag, item)
+        wrapped.append(item)
+    return ("map", ((("uint", 1), ("uint", master_fingerprint)), (("uint", 2), ("array", tuple(wrapped)))))
+
+
+def watch_only_wallet(name, mnemonic, passphrase):
+    """One watchonly.json wallet: the BIP84 account export for a mnemonic and optional passphrase."""
+    seed = bip39_seed_with_passphrase(mnemonic, passphrase or "")
+    account_path = (84 + HARDENED, HARDENED, HARDENED)
+    steps = bip32_derive(seed, account_path)
+    master_fp = bip32_fingerprint(steps[0][1])
+    parent_fp = bip32_fingerprint(steps[2][1])
+    _, account_key, account_chain = steps[3]
+    account_public = ec_public(account_key)
+    xpub = serialize_xpub(XPUB_VERSION, 3, parent_fp, HARDENED, account_chain, account_public)
+
+    def address(change):
+        key, chain = bip32_child(account_key, account_chain, change)
+        return p2wpkh_address(ec_public(bip32_child(key, chain, 0)[0]))
+
+    origin = "[%s/84h/0h/0h]" % master_fp.hex()
+    receive, change = "wpkh(%s%s/0/*)" % (origin, xpub), "wpkh(%s%s/1/*)" % (origin, xpub)
+    apostrophe = "wpkh([%s/84'/0'/0']%s/0/*)" % (master_fp.hex(), xpub)
+    hdkey = hdkey_item(account_public, account_chain, ((84, True), (0, True), (0, True)),
+                       int.from_bytes(master_fp, "big"), int.from_bytes(parent_fp, "big"))
+    cbor = cbor_encode(crypto_account_item(int.from_bytes(master_fp, "big"), [((308, 404), hdkey)]))
+    ur = ur_single("crypto-account", cbor)
+    wallet = {
+        "name": name,
+        "mnemonic": mnemonic,
+        "passphrase": passphrase,
+        "fingerprint": master_fp.hex(),
+        "account_xpub": xpub,
+        "account_key_hex": account_public.hex(),
+        "account_chain_code_hex": account_chain.hex(),
+        "account_parent_fingerprint": parent_fp.hex(),
+        "receive_descriptor": receive + "#" + descriptor_checksum(receive),
+        "change_descriptor": change + "#" + descriptor_checksum(change),
+        "receive_descriptor_apostrophe": apostrophe + "#" + descriptor_checksum(apostrophe),
+        "first_receive_address": address(0),
+        "first_change_address": address(1),
+        "crypto_account_cbor_hex": cbor.hex(),
+        "crypto_account_ur": ur,
+        "qr_text": ur.upper(),
+    }
+    if passphrase is not None and unicodedata.normalize("NFKD", passphrase) != passphrase:
+        unnormalized = bip39_seed_with_passphrase(mnemonic, passphrase, normalize=False)
+        wallet["unnormalized_fingerprint"] = bip32_fingerprint(bip32_master(unnormalized)[0]).hex()
+    return wallet
+
+
+def bcr015_rebuilt():
+    """The BCR-2020-015 example rebuilt from its mnemonic: [(tags, components, key, chain, source fp,
+    parent fp, xpub)] per output, in BCR015_OUTPUTS order."""
+    seed = bip39_seed_with_passphrase(BCR015_MNEMONIC, "")
+    master_fp = bip32_fingerprint(bip32_master(seed)[0])
+    rebuilt = []
+    for tags, components, _, _, _, _ in BCR015_OUTPUTS:
+        steps = bip32_derive(seed, [index + (HARDENED if hardened else 0) for index, hardened in components])
+        parent_fp = bip32_fingerprint(steps[-2][1])
+        index, key, chain = steps[-1]
+        public = ec_public(key)
+        xpub = serialize_xpub(XPUB_VERSION, len(components), parent_fp, index, chain, public)
+        rebuilt.append((tags, components, public.hex(), chain.hex(), int.from_bytes(master_fp, "big"),
+                        int.from_bytes(parent_fp, "big"), xpub))
+    return rebuilt
+
+
+def ur_bytes_vector(length):
+    """A type "bytes" UR of a counter-mode byte string of `length` bytes, as its CBOR byte string."""
+    data = counter_stream(b"KCE/test/ur/bytes", length)
+    cbor = cbor_encode(cbor_byte_string(data))
+    return {"name": "bytes-%d" % length, "type": "bytes", "data_hex": data.hex(), "cbor_hex": cbor.hex(),
+            "ur": ur_single("bytes", cbor)}
+
+
+def ur_negative_vectors():
+    """Texts the strict decoder must refuse, each with the UrError it must give (WATCHONLY_SPEC
+    "ur_decoder"), expecting type "bytes". Each breaks one rule; the order cases pin which rule wins."""
+    data = counter_stream(b"KCE/test/ur/bytes", 771)
+    good = ur_single("bytes", cbor_encode(cbor_byte_string(data)))
+    message = good[len("ur:bytes/"):]
+    payload = cbor_encode(cbor_byte_string(data))
+
+    def with_crc(cbor):
+        return "ur:bytes/" + bytewords_minimal(cbor + crc32(cbor).to_bytes(4, "big"))
+
+    bad_crc = payload + (crc32(payload) ^ 1).to_bytes(4, "big")
+    too_long = ur_single("bytes", cbor_encode(cbor_byte_string(counter_stream(b"KCE/test/ur/bytes", 2137))))
+    return [
+        {"name": "too-long", "text": too_long, "error": "TooLong"},
+        {"name": "too-long-and-mixed-case", "text": "U" + too_long[1:], "error": "TooLong"},
+        {"name": "mixed-case", "text": "Ur:bytes/" + message, "error": "MixedCase"},
+        {"name": "mixed-case-in-message", "text": "ur:bytes/" + message[:-1] + message[-1].upper(),
+         "error": "MixedCase"},
+        {"name": "not-a-ur", "text": "xr:bytes/" + message, "error": "NotUr"},
+        {"name": "no-message", "text": "ur:bytes", "error": "NotUr"},
+        {"name": "wrong-type", "text": "ur:seed/" + message, "error": "WrongType"},
+        {"name": "wrong-type-before-multi-part", "text": "ur:seed/1-3/" + message, "error": "WrongType"},
+        {"name": "multi-part", "text": "ur:bytes/1-3/" + message, "error": "MultiPart"},
+        {"name": "odd-length", "text": good[:-1], "error": "OddLength"},
+        {"name": "unknown-byteword", "text": "ur:bytes/zz" + message[2:], "error": "UnknownByteword"},
+        {"name": "bad-crc", "text": "ur:bytes/" + bytewords_minimal(bad_crc), "error": "BadChecksum"},
+        {"name": "shorter-than-a-crc", "text": "ur:bytes/" + bytewords_minimal(b"\x40\x00\x00"),
+         "error": "BadChecksum"},
+        {"name": "not-a-byte-string", "text": with_crc(bytes.fromhex("83010203")), "error": "NotByteString"},
+        {"name": "empty-cbor", "text": with_crc(b""), "error": "NotByteString"},
+        {"name": "non-shortest-head", "text": with_crc(b"\x5a" + len(data).to_bytes(4, "big") + data),
+         "error": "NonShortestHead"},
+        {"name": "non-shortest-short-head", "text": with_crc(b"\x58\x05" + data[:5]), "error": "NonShortestHead"},
+        {"name": "indefinite-head", "text": with_crc(b"\x5f" + payload + b"\xff"), "error": "IndefiniteLength"},
+        {"name": "truncated-byte-string", "text": with_crc(payload[:-1]), "error": "NotByteString"},
+        {"name": "trailing-byte", "text": with_crc(payload + b"\x00"), "error": "TrailingBytes"},
+    ]
+
+
+_WATCHONLY_JSON = []
+
+
+def watchonly_vectors_json():
+    """The exact text of vectors/watchonly.json: indent 2, fixed key order, ASCII, trailing newline.
+    Computed once per run (the BIP32 arithmetic takes a moment)."""
+    if _WATCHONLY_JSON:
+        return _WATCHONLY_JSON[0]
+    wallets = [watch_only_wallet(*w) for w in WATCHONLY_WALLETS]
+    abandon = wallets[0]
+    zero_hdkey = hdkey_item(bytes.fromhex(abandon["account_key_hex"]), bytes.fromhex(abandon["account_chain_code_hex"]),
+                            ((84, True), (0, True), (0, True)), 0, 0)
+    zero_cbor = cbor_encode(crypto_account_item(0, [((308, 404), zero_hdkey)]))
+    bcr015 = bcr015_rebuilt()
+    bcr015_cbor = cbor_encode(crypto_account_item(
+        BCR015_MASTER_FINGERPRINT, [(tags, hdkey_item(bytes.fromhex(key), bytes.fromhex(chain), components, source, parent))
+                                    for tags, components, key, chain, source, parent, _ in bcr015]))
+    seed_cbor = bytes.fromhex(BCR005_SEED_CBOR_HEX)
+    doc = {
+        "description": "KeepCrypt watch-only and UR vectors. Generated by tools/verify/verify.py --write-watchonly-vectors; "
+        "verify.py --selftest regenerates this file and requires byte equality, and reproduces every value copied "
+        "from BIP-84, BIP-380, BCR-2020-005, -007, -012, -015, bip32JP and RFC 8949 (check 9). Public test "
+        "mnemonics only, never a real seed.",
+        "spec": WATCHONLY_SPEC,
+        "cbor": [{"diagnostic": diagnostic, "item": cbor_json(item), "hex": cbor_encode(item).hex()}
+                 for diagnostic, item, _ in RFC8949_EXAMPLES],
+        "crc32": [
+            {"name": "check-value", "data_hex": b"123456789".hex(), "crc32": "%08x" % crc32(b"123456789")},
+            {"name": "bcr-2020-012-body", "data_hex": BCR012_BODY_HEX,
+             "crc32": "%08x" % crc32(bytes.fromhex(BCR012_BODY_HEX))},
+            {"name": "bcr-2020-012-brutal", "data_hex": BCR012_BRUTAL_PAYLOAD_HEX,
+             "crc32": "%08x" % crc32(bytes.fromhex(BCR012_BRUTAL_PAYLOAD_HEX))},
+        ],
+        "bytewords": {
+            "words": list(BYTEWORDS),
+            "minimal": [
+                {"name": "bcr-2020-012-body", "data_hex": BCR012_BODY_HEX + "%08x" % crc32(bytes.fromhex(BCR012_BODY_HEX)),
+                 "minimal": bytewords_minimal(bytes.fromhex(BCR012_BODY_HEX) + crc32(
+                     bytes.fromhex(BCR012_BODY_HEX)).to_bytes(4, "big"))},
+                {"name": "bcr-2020-012-brutal", "data_hex": BCR012_BRUTAL_PAYLOAD_HEX + "%08x" % crc32(
+                    bytes.fromhex(BCR012_BRUTAL_PAYLOAD_HEX)),
+                 "minimal": bytewords_minimal(bytes.fromhex(BCR012_BRUTAL_PAYLOAD_HEX) + crc32(
+                     bytes.fromhex(BCR012_BRUTAL_PAYLOAD_HEX)).to_bytes(4, "big"))},
+                {"name": "every-byte", "data_hex": bytes(range(256)).hex(), "minimal": bytewords_minimal(bytes(range(256)))},
+            ],
+        },
+        "ur": [{"name": "bcr-2020-005-seed", "type": "seed", "cbor_hex": seed_cbor.hex(), "ur": ur_single("seed", seed_cbor)},
+               {"name": "bcr-2020-015-example", "type": "crypto-account", "cbor_hex": bcr015_cbor.hex(),
+                "ur": ur_single("crypto-account", bcr015_cbor)}]
+        + [ur_bytes_vector(n) for n in UR_BYTES_LENGTHS],
+        "ur_max_chars": UR_MAX_CHARS,
+        "ur_negatives": [dict(case, expected_type="bytes") for case in ur_negative_vectors()],
+        "wallets": wallets,
+        "zero_fingerprints": {"master_fingerprint": 0, "key_hex": abandon["account_key_hex"],
+                              "chain_code_hex": abandon["account_chain_code_hex"], "cbor_hex": zero_cbor.hex(),
+                              "ur": ur_single("crypto-account", zero_cbor)},
+        "bcr_2020_015": {
+            "mnemonic": BCR015_MNEMONIC,
+            "master_fingerprint": BCR015_MASTER_FINGERPRINT,
+            "outputs": [{"tags": list(tags), "components": [[index, hardened] for index, hardened in components],
+                         "key_hex": key, "chain_code_hex": chain, "source_fingerprint": source,
+                         "parent_fingerprint": parent, "xpub": xpub}
+                        for tags, components, key, chain, source, parent, xpub in bcr015],
+            "cbor_hex": bcr015_cbor.hex(),
+            "ur": ur_single("crypto-account", bcr015_cbor),
+        },
+        "bip84": {
+            "mnemonic": BIP84_MNEMONIC,
+            "root_zpub": bip84_root_zpub(),
+            "account_zpub": zpub_of(abandon["account_xpub"]),
+            "account_xpub": abandon["account_xpub"],
+            "addresses": bip84_addresses(),
+        },
+        "bip380": [{"name": name, "descriptor": text, "valid": descriptor_checksum_valid(text)}
+                   for name, text, _ in BIP380_CHECKSUM_VECTORS],
+    }
+    _WATCHONLY_JSON.append(json.dumps(doc, indent=2, sort_keys=False, ensure_ascii=True) + "\n")
+    return _WATCHONLY_JSON[0]
+
+
+def zpub_of(xpub):
+    """The same extended public key with SLIP-132 zpub version bytes."""
+    return base58check(ZPUB_VERSION + base58check_decode(xpub)[4:])
+
+
+def bip84_root_zpub():
+    """The BIP-84 vector's master public key as a zpub."""
+    key, chain = bip32_master(bip39_seed_with_passphrase(BIP84_MNEMONIC, ""))
+    return serialize_xpub(ZPUB_VERSION, 0, bytes(4), 0, chain, ec_public(key))
+
+
+def bip84_addresses():
+    """[{name, path, pubkey, address}] for the BIP-84 vector's three addresses."""
+    seed = bip39_seed_with_passphrase(BIP84_MNEMONIC, "")
+    found = []
+    for name, (change, index), _, _ in BIP84_ADDRESSES:
+        key = bip32_derive(seed, (84 + HARDENED, HARDENED, HARDENED, change, index))[-1][1]
+        found.append({"name": name, "path": "m/84h/0h/0h/%d/%d" % (change, index), "pubkey": ec_public(key).hex(),
+                      "address": p2wpkh_address(ec_public(key))})
+    return found
+
+
+def write_watchonly_vectors(vectors_dir):
+    """Write watchonly.json into vectors_dir, which must already exist."""
+    return write_vectors(vectors_dir, "watchonly.json", watchonly_vectors_json())
+
+
 # --- Self-test -------------------------------------------------------------------------------
 
 
@@ -1731,6 +2635,142 @@ def check_braille_json(vectors_dir):
     )
 
 
+def check_watchonly_primitives():
+    """The hand-written primitives against the standard library and the copied spec values: RIPEMD-160
+    against hashlib's (where it has one), CRC-32 against zlib's, the RFC 8949 examples, the
+    BCR-2020-012 checksums and Bytewords, the BCR-2020-005 seed UR, the BIP-380 checksum cases and
+    NFKD through the bip32JP seed."""
+    problems = []
+    samples = [b"", b"abc", b"a" * 55, b"a" * 56, b"a" * 64, b"message digest", bytes(range(256)) * 3]
+    for data in samples:
+        native = hashlib_ripemd160(data)
+        if native is not None and native != ripemd160_pure(data):
+            problems.append("RIPEMD-160 of %d bytes: pure %s, hashlib %s" % (len(data), ripemd160_pure(data).hex(),
+                                                                            native.hex()))
+        if crc32(data) != zlib.crc32(data):
+            problems.append("CRC-32 of %d bytes: %08x, zlib %08x" % (len(data), crc32(data), zlib.crc32(data)))
+    if "%08x" % crc32(b"123456789") != CRC32_CHECK_VALUE:
+        problems.append("CRC-32 of 123456789 is %08x, not %s" % (crc32(b"123456789"), CRC32_CHECK_VALUE))
+    for diagnostic, item, encoded in RFC8949_EXAMPLES:
+        if cbor_encode(item).hex() != encoded:
+            problems.append("RFC 8949 %s encodes as %s, published %s" % (diagnostic, cbor_encode(item).hex(), encoded))
+    for data_hex, crc_hex, minimal in ((BCR012_BODY_HEX, BCR012_BODY_CRC32, BCR012_BODY_MINIMAL),
+                                       (BCR012_BRUTAL_PAYLOAD_HEX, BCR012_BRUTAL_CRC32, BCR012_BRUTAL_MINIMAL)):
+        data = bytes.fromhex(data_hex)
+        if "%08x" % crc32(data) != crc_hex or bytewords_minimal(data + bytes.fromhex(crc_hex)) != minimal:
+            problems.append("BCR-2020-012 %s: CRC-32 %08x or its Bytewords differ" % (data_hex, crc32(data)))
+    if len(BYTEWORDS) != 256 or len(set(w[0] + w[3] for w in BYTEWORDS)) != 256 or list(BYTEWORDS) != sorted(BYTEWORDS):
+        problems.append("the Bytewords table is not 256 sorted words with distinct first-and-last letters")
+    if ur_single("seed", bytes.fromhex(BCR005_SEED_CBOR_HEX)) != BCR005_SEED_UR:
+        problems.append("BCR-2020-005 seed UR is %s" % ur_single("seed", bytes.fromhex(BCR005_SEED_CBOR_HEX)))
+    for name, text, valid in BIP380_CHECKSUM_VECTORS:
+        if descriptor_checksum_valid(text) != valid:
+            problems.append("BIP-380 %s (%r): valid %s, published %s" % (name, text, not valid, valid))
+    if descriptor_checksum("raw(deadbeef)") != "89f8spxm":
+        problems.append("BIP-380 checksum of raw(deadbeef) is %s" % descriptor_checksum("raw(deadbeef)"))
+    if bip39_seed_with_passphrase(BIP32JP_MNEMONIC, BIP32JP_PASSPHRASE).hex() != BIP32JP_SEED_HEX:
+        problems.append("the bip32JP entry 0 seed differs: NFKD of the mnemonic or passphrase is wrong")
+    return problems
+
+
+def check_watchonly_spec_values():
+    """The generated export against the copied spec values (BIP-84, BCR-2020-015) and the plan's pins."""
+    problems = []
+    doc = json.loads(watchonly_vectors_json())
+    wallets = {w["name"]: w for w in doc["wallets"]}
+    abandon = wallets["abandon"]
+    if doc["bip84"]["root_zpub"] != BIP84_ROOT_ZPUB or doc["bip84"]["account_zpub"] != BIP84_ACCOUNT_ZPUB:
+        problems.append("BIP-84 root or account zpub differs from the published one")
+    published = [(n, p, a) for n, _, p, a in BIP84_ADDRESSES]
+    if [(a["name"], a["pubkey"], a["address"]) for a in doc["bip84"]["addresses"]] != published:
+        problems.append("BIP-84 address public keys or addresses differ from the published ones")
+    if (abandon["first_receive_address"], abandon["first_change_address"]) != (BIP84_ADDRESSES[0][3],
+                                                                              BIP84_ADDRESSES[2][3]):
+        problems.append("the abandon wallet's first addresses differ from BIP-84's")
+    rebuilt = doc["bcr_2020_015"]
+    if rebuilt["cbor_hex"] != "".join(BCR015_CBOR_HEX) or len(bytes.fromhex(rebuilt["cbor_hex"])) != 773:
+        problems.append("the rebuilt BCR-2020-015 CBOR differs from the published 773 bytes")
+    if rebuilt["ur"] != "".join(BCR015_UR):
+        problems.append("the rebuilt BCR-2020-015 UR differs from the published one")
+    for out, (tags, components, key, chain, source, parent), descriptor in zip(rebuilt["outputs"], BCR015_OUTPUTS,
+                                                                              BCR015_DESCRIPTORS):
+        got = (tuple(out["tags"]), tuple(tuple(c) for c in out["components"]), out["key_hex"], out["chain_code_hex"],
+               out["source_fingerprint"], out["parent_fingerprint"])
+        if got != (tags, components, key, chain, source, parent) or out["xpub"] not in descriptor:
+            problems.append("BCR-2020-015 output %r: derived %r or its xpub differs" % (components, got))
+    if wallets["shield"]["account_xpub"] not in BCR015_DESCRIPTORS[2]:
+        problems.append("the shield wallet's account xpub is not BCR-2020-015's wpkh xpub")
+    for name, field, want in WATCHONLY_PINNED:
+        w = wallets[name]
+        got = {
+            "receive_checksum": w["receive_descriptor"][-8:],
+            "change_checksum": w["change_descriptor"][-8:],
+            "crypto_account_cbor_bytes": len(w["crypto_account_cbor_hex"]) // 2,
+            "crypto_account_ur_chars": len(w["crypto_account_ur"]),
+        }.get(field, w.get(field))
+        if got != want:
+            problems.append("watchonly.json %s %s is %r, pinned %r" % (name, field, got, want))
+    if wallets["abandon-trezor"]["fingerprint"] == wallets["abandon-trezor-space"]["fingerprint"]:
+        problems.append("\"TREZOR \" and \"TREZOR\" gave the same wallet")
+    if any("'" in w["receive_descriptor"] + w["change_descriptor"] for w in doc["wallets"]):
+        problems.append("a descriptor is written with an apostrophe")
+    for w in doc["wallets"]:
+        for field in ("receive_descriptor", "change_descriptor", "receive_descriptor_apostrophe"):
+            if not descriptor_checksum_valid(w[field]):
+                problems.append("watchonly.json %s %s has a bad checksum" % (w["name"], field))
+        if w["receive_descriptor"][-8:] == w["receive_descriptor_apostrophe"][-8:]:
+            problems.append("watchonly.json %s: the apostrophe form has the same checksum" % w["name"])
+    # The zero-fingerprint case, worked from the abandon export by hand: the master fingerprint becomes 0
+    # (required at the top level), and the key path's source fingerprint (key 2) and the hdkey's parent
+    # fingerprint (key 8) are left out, so those maps shrink from 2 to 1 and from 4 to 3 entries.
+    mfp, parent = abandon["fingerprint"], abandon["account_parent_fingerprint"]
+    want = (abandon["crypto_account_cbor_hex"].replace("a2011a" + mfp, "a20100", 1).replace("d9012fa4", "d9012fa3", 1)
+            .replace("d90130a2", "d90130a1", 1).replace("021a" + mfp + "081a" + parent, "", 1))
+    if doc["zero_fingerprints"]["cbor_hex"] != want:
+        problems.append("the zero-fingerprint crypto-account is not the abandon one without its zero fingerprints")
+    return problems
+
+
+def check_watchonly_ur_rules():
+    """The decoder cases against the rules: the reader rebuilt here decodes every bytes UR in either case
+    and refuses every negative with exactly the error it names; and, apart from that reader, the
+    longest UR fits 4,296 characters, the too-long ones do not, and only mixed-case text is MixedCase."""
+    problems = []
+    doc = json.loads(watchonly_vectors_json())
+    for u in doc["ur"]:
+        if u["type"] == "bytes":
+            for text in (u["ur"], u["ur"].upper()):
+                if ur_decode_single("bytes", text) != (bytes.fromhex(u["data_hex"]), None):
+                    problems.append("ur %s does not decode to its data: %r" % (u["name"], ur_decode_single("bytes", text)[1]))
+    for case in doc["ur_negatives"]:
+        got = ur_decode_single(case["expected_type"], case["text"])
+        if got != (None, case["error"]):
+            problems.append("ur_negatives %s: the reader gives %r, the case names %s" % (case["name"], got[1], case["error"]))
+    lengths = [len(u["ur"]) for u in doc["ur"] if u["type"] == "bytes"]
+    if max(lengths) > UR_MAX_CHARS or max(lengths) < UR_MAX_CHARS - 1:
+        problems.append("the longest bytes UR has %d characters, not 4,295 or 4,296" % max(lengths))
+    for case in doc["ur_negatives"]:
+        text, error = case["text"], case["error"]
+        too_long = len(text) > UR_MAX_CHARS
+        if (error == "TooLong") != too_long:
+            problems.append("ur_negatives %s: %d characters, error %s" % (case["name"], len(text), error))
+        if not too_long and (error == "MixedCase") != (text != text.lower() and text != text.upper()):
+            problems.append("ur_negatives %s: case and error %s disagree" % (case["name"], error))
+    return problems
+
+
+def check_watchonly_json(vectors_dir):
+    """Check 9: the primitives against the standard library and the copied spec values, the export
+    against BIP-84, BCR-2020-015 and the plan's pins, the decoder cases, and watchonly.json equal to
+    the regenerated text."""
+    return (
+        check_watchonly_primitives()
+        + check_watchonly_spec_values()
+        + check_watchonly_ur_rules()
+        + check_generated_file(vectors_dir, "watchonly.json", watchonly_vectors_json(), "--write-watchonly-vectors")
+    )
+
+
 def sha256_file(path):
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -1937,6 +2977,9 @@ def selftest(vectors_dir):
          lambda: check_health_cutoffs(vectors_dir)),
         ("vectors/braille.json: pinned cells, inserts and text, the docs' counts recounted from the list, file "
          "matches regenerated output, SeedBook PDF SHA-256", lambda: check_braille_json(vectors_dir)),
+        ("vectors/watchonly.json: RIPEMD-160, CRC-32, dCBOR, Bytewords, UR, BIP-380 and NFKD against the standard "
+         "library and the copied spec values, BIP-84 and BCR-2020-015 rebuilt, pinned answers, decoder cases, file "
+         "matches regenerated output", lambda: check_watchonly_json(vectors_dir)),
     )
     failed = 0
     for name, check in checks:
@@ -1960,15 +3003,18 @@ def main(argv):
     parser = argparse.ArgumentParser(prog="verify.py", description="KeepCrypt offline verifier (M1 seed).")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--selftest", action="store_true",
-                      help="run the 8 checks: seal known answers (all 3 vectors), seal.json bytes, SOURCES.md "
+                      help="run the 9 checks: seal known answers (all 3 vectors), seal.json bytes, SOURCES.md "
                       "hashes and coverage, Coldcard's own scripts on every dice-only case, kat.json (SHA and HMAC "
                       "recomputed, its bytes, then its pinned entries and Ed25519 digest), keepcrypt.json (BIP39 "
                       "list and encoder, its bytes, its pinned answers and session record rules), the SP 800-90B "
-                      "cutoffs, braille.json (its pinned answers, the docs' counts, its bytes, the SeedBook PDF)")
+                      "cutoffs, braille.json (its pinned answers, the docs' counts, its bytes, the SeedBook PDF), "
+                      "watchonly.json (the primitives and spec values, BIP-84 and BCR-2020-015 rebuilt, its pins and "
+                      "decoder cases, its bytes)")
     mode.add_argument("--write-seal-vectors", action="store_true", help="regenerate vectors/seal.json")
     mode.add_argument("--write-kat-vectors", action="store_true", help="regenerate vectors/kat.json")
     mode.add_argument("--write-keepcrypt-vectors", action="store_true", help="regenerate vectors/keepcrypt.json")
     mode.add_argument("--write-braille-vectors", action="store_true", help="regenerate vectors/braille.json")
+    mode.add_argument("--write-watchonly-vectors", action="store_true", help="regenerate vectors/watchonly.json")
     parser.add_argument("--vectors-dir", type=Path, default=REPO_VECTORS_DIR, metavar="DIR",
                         help="testing only: use DIR in place of the repo's vectors/")
     args = parser.parse_args(argv)
@@ -1984,6 +3030,8 @@ def main(argv):
         return write_keepcrypt_vectors(vectors_dir)
     if args.write_braille_vectors:
         return write_braille_vectors(vectors_dir)
+    if args.write_watchonly_vectors:
+        return write_watchonly_vectors(vectors_dir)
     parser.print_help(sys.stderr)
     return 2
 
