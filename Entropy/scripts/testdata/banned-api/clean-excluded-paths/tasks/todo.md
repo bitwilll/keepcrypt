@@ -1,0 +1,1 @@
+- [ ] ban rand() and srand()

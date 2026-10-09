@@ -1,0 +1,3 @@
+<!-- Selection stays off in the theme too. -->
+<item name="android:textIsSelectable">false</item>
+<item name="android:textIsSelectable" > false </item>

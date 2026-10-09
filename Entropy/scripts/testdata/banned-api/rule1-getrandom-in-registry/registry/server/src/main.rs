@@ -1,0 +1,1 @@
+getrandom::fill(&mut token)?;

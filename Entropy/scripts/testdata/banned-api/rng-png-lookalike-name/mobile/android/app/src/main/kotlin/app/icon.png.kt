@@ -1,0 +1,1 @@
+val x = Math.random()
