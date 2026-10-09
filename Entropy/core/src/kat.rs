@@ -23,6 +23,7 @@ use crate::error::{CoreError, HealthStage, HealthTest, KatId};
 use crate::health::HealthTester;
 use crate::pool::Pool;
 use crate::secret::SecretBytes32;
+use crate::seed::{commitment, dice_only_entropy_into, mixed_entropy_into};
 use crate::source::SourceId;
 
 /// Where a known-answer suite runs.
@@ -74,6 +75,7 @@ fn passes(id: KatId, fault: bool) -> bool {
         KatId::Bip39 => bip39_group(fault),
         KatId::Health => health_group(fault),
         KatId::Pool => pool_group(fault),
+        KatId::Seed => seed_group(fault),
     }
 }
 
@@ -444,6 +446,40 @@ fn pool_group(fault: bool) -> bool {
     }
 }
 
+// --- Seed (vectors/keepcrypt.json: commitment "d-00-1f", mixed "d-00-1f-coldcard-50",
+// dice_only "coldcard-123456") --------------------------------------------------------------------
+
+/// D = 00 01 02 ... 1f.
+const SEED_D: [u8; 32] = unhex("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
+/// C for that D.
+const SEED_C: [u8; 32] = unhex("21778a7463cef10741413d0b80909a1045ba902d6244f519d2520e247cbe2e8c");
+/// R: the 50-roll string of vectors/coldcard/rolls.json.
+const SEED_ROLLS: &[u8] = b"12345612345612345612345612345612345612345612345612";
+/// Mixed E for that D and R.
+const SEED_MIXED_E: [u8; 32] =
+    unhex("b2e18e2cdeb6f07e9dd5d3df8e315fa609fd2ebfe543387a483828553da6eee2");
+/// Coldcard's published dice-only example.
+const SEED_DICE_ROLLS: &[u8] = b"123456";
+/// E = SHA256("123456").
+const SEED_DICE_E: [u8; 32] =
+    unhex("8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92");
+
+fn seed_group(fault: bool) -> bool {
+    let mut d = SecretBytes32::zeroed();
+    d.expose_secret_mut().copy_from_slice(&SEED_D);
+    let mut dice_only = SecretBytes32::zeroed();
+    dice_only_entropy_into(SEED_DICE_ROLLS, &mut dice_only);
+    let mut mixed = SecretBytes32::zeroed();
+    match mixed_entropy_into(&d, SEED_ROLLS, &mut mixed) {
+        Ok(()) => {
+            same(&commitment(&d), &SEED_C, fault)
+                & same(mixed.expose_secret(), &SEED_MIXED_E, false)
+                & same(dice_only.expose_secret(), &SEED_DICE_E, false)
+        }
+        Err(_) => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -549,6 +585,24 @@ mod tests {
             POOL_OS_RECORD
         );
         assert_eq!(crate::test_vectors::hex(&case["d_hex"]), POOL_D);
+    }
+
+    #[test]
+    fn seed_constants_match_keepcrypt_json() {
+        use crate::test_vectors::{hex, keepcrypt_json, named, text};
+        let doc = keepcrypt_json();
+        let c = named(&doc["commitment"], "d-00-1f");
+        assert_eq!(
+            (hex(&c["d_hex"]), hex(&c["c_hex"])),
+            (SEED_D.to_vec(), SEED_C.to_vec())
+        );
+        let mixed = named(&doc["mixed"], "d-00-1f-coldcard-50");
+        assert_eq!(hex(&mixed["d_hex"]), SEED_D);
+        assert_eq!(text(&mixed["rolls"]).as_bytes(), SEED_ROLLS);
+        assert_eq!(hex(&mixed["e_hex"]), SEED_MIXED_E);
+        let dice = named(&doc["dice_only"], "coldcard-123456");
+        assert_eq!(text(&dice["rolls"]).as_bytes(), SEED_DICE_ROLLS);
+        assert_eq!(hex(&dice["e_hex"]), SEED_DICE_E);
     }
 
     #[test]

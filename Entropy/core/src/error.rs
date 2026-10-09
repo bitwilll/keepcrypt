@@ -102,12 +102,15 @@ pub enum KatId {
     /// The pool: one OS record gives its pinned D.
     #[error("pool")]
     Pool,
+    /// The seed: C for a pinned D, a mixed E and the dice-only E of "123456".
+    #[error("seed")]
+    Seed,
 }
 
 impl KatId {
     /// Every group, in the order a full suite runs them. Keep it next to `KatId` and to the
     /// exhaustive match in `kat::passes`, which is where a new group must be added too.
-    pub const ALL: [KatId; 7] = [
+    pub const ALL: [KatId; 8] = [
         KatId::Sha256,
         KatId::Sha512,
         KatId::Hmac,
@@ -115,6 +118,7 @@ impl KatId {
         KatId::Bip39,
         KatId::Health,
         KatId::Pool,
+        KatId::Seed,
     ];
 }
 
@@ -377,6 +381,7 @@ mod tests {
             KatId::Bip39 => "BIP39",
             KatId::Health => "health tests",
             KatId::Pool => "pool",
+            KatId::Seed => "seed",
         }
     }
 

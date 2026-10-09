@@ -6,11 +6,13 @@
 
 #![forbid(unsafe_code)]
 
+mod dice;
 mod error;
 mod health;
 mod kat;
 mod pool;
 mod secret;
+mod seed;
 mod session;
 mod source;
 #[cfg(test)]

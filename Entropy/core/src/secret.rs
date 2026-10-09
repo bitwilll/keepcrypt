@@ -10,7 +10,7 @@
 use secrecy::{ExposeSecret, SecretString};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::error::{BackupError, CoreError};
+use crate::error::{BackupError, CoreError, InternalFault};
 
 /// The most words a seed has.
 pub(crate) const MAX_WORDS: usize = 24;
@@ -57,6 +57,22 @@ impl SecretSeed64 {
     }
 }
 
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "used by the session's finish (M1 group 9)")
+)]
+impl SecretSeed64 {
+    /// S, for key derivation inside core only.
+    pub(crate) fn expose_secret(&self) -> &[u8; 64] {
+        &self.0
+    }
+
+    /// S, to fill in place.
+    pub(crate) fn expose_secret_mut(&mut self) -> &mut [u8; 64] {
+        &mut self.0
+    }
+}
+
 /// A seed's words, held as BIP39 English word indices (each below 2,048) plus the word count.
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub struct SecretMnemonic {
@@ -83,6 +99,47 @@ impl SecretMnemonic {
             .iter()
             .take(self.word_count())
             .map(|&i| word(i))
+    }
+}
+
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "used by the session's finish (M1 group 9)")
+)]
+impl SecretMnemonic {
+    /// Fills in place from the bip39 crate's word indices: exactly 12 or 24, each below 2,048.
+    /// Anything else leaves it zeroed and is `Internal(Bip39)`.
+    pub(crate) fn fill_from(
+        &mut self,
+        indices: impl Iterator<Item = usize>,
+    ) -> Result<(), CoreError> {
+        self.zeroize();
+        let filled = self.fill_indices(indices);
+        if filled.is_err() {
+            self.zeroize();
+        }
+        filled
+    }
+
+    fn fill_indices(&mut self, indices: impl Iterator<Item = usize>) -> Result<(), CoreError> {
+        let mut count = 0usize;
+        for index in indices {
+            let slot = self
+                .indices
+                .get_mut(count)
+                .ok_or(CoreError::Internal(InternalFault::Bip39))?;
+            *slot = match u16::try_from(index) {
+                Ok(i) if i < 2048 => i,
+                _ => return Err(CoreError::Internal(InternalFault::Bip39)),
+            };
+            count += 1;
+        }
+        self.count = match count {
+            12 => 12,
+            24 => 24,
+            _ => return Err(CoreError::Internal(InternalFault::Bip39)),
+        };
+        Ok(())
     }
 }
 
@@ -325,6 +382,26 @@ mod tests {
             "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
         );
         assert_eq!(m.word_count(), 12);
+    }
+
+    #[test]
+    fn mnemonic_fills_from_12_or_24_valid_indices_only() {
+        let mut m = SecretMnemonic::zeroed();
+        assert_eq!(
+            m.fill_from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3].into_iter()),
+            Ok(())
+        );
+        assert_eq!(m.word_count(), 12);
+        assert_eq!(m.fill_from([2047usize; 24].into_iter()), Ok(()));
+        assert_eq!(m.words().filter(|w| *w == "zoo").count(), 24);
+        let bad: [&[usize]; 4] = [&[0; 11], &[0; 25], &[0; 18], &[2048; 12]];
+        for indices in bad {
+            assert_eq!(
+                m.fill_from(indices.iter().copied()),
+                Err(CoreError::Internal(InternalFault::Bip39))
+            );
+            assert!(m.is_zero(), "a refused fill leaves it zeroed");
+        }
     }
 
     #[test]

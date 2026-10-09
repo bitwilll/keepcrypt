@@ -1,7 +1,7 @@
 //! Every secret of one session, at fixed capacity, in one heap allocation (`Box<Inner>`), so
 //! nothing reallocates and leaves a copy behind, and there is no `Option` to unwrap. `Drop`
-//! zeroizes all of it, then tells the source (a stub counts the wipe). M1 groups 3 to 9 add the
-//! pool, the health tester, the dice buffer and the seal as they land.
+//! zeroizes all of it, then tells the source (a stub counts the wipe). The transitions (M1 group 9)
+//! add the pool, the health tester, the dice buffer and the seal.
 
 use zeroize::Zeroize;
 
