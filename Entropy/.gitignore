@@ -1,0 +1,39 @@
+# Build output at any depth (the workspace and the standalone canaries in scripts/testdata/).
+# Release artifacts come from CI only, so a local test-sources build never reaches git (rule 10).
+target/
+
+# macOS Finder metadata; it leaks folder names (Git: small, focused commits).
+.DS_Store
+
+# Backups. Real ceremony backups are never committed (rule 8, rule 12, Git section), not even
+# under vectors/: no committed vector uses the .age extension.
+*.age
+
+# Key and secret material: never commit secrets or keys (rule 12, Git section).
+# *.key also covers minisign secret keys (default name minisign.key), *.sec signify keys,
+# *.jks and *.keystore Android signing keys.
+*.key
+*.sec
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+# App signing (rule 12): App Store Connect API keys (AuthKey_<id>.p8) and Android signing
+# passwords.
+*.p8
+keystore.properties
+# SSH and GPG keys (rule 12), such as an Ed25519 signing key made with ssh-keygen; this also
+# ignores the .pub halves, so add a public key on purpose with git add -f.
+id_ed25519*
+id_rsa*
+*.gpg
+# Environment and credential files (rule 12): direnv's .envrc and .netrc hold tokens.
+.env
+.env.*
+.envrc
+.netrc
+
+# Python bytecode from local verify.py runs; generated, never reviewed source.
+__pycache__/
+*.py[cod]
