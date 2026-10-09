@@ -33,6 +33,20 @@ pub(crate) const APT_CUTOFF: u32 = 62;
 /// Samples tested, then discarded, at the start of every tester.
 pub(crate) const STARTUP_SAMPLES: u64 = 1_024;
 
+/// Post-startup hwrng samples in completed windows: the only count the credit policy accepts
+/// (`source::quota_met`, `source::hwrng_credited_bits`). Its field is private to this module, so
+/// only `HealthTester::credited_samples` builds one, and no raw count (a partial window, say, or
+/// startup samples) can ever be credited (Q7).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CreditedSamples(u64);
+
+impl CreditedSamples {
+    /// The number of samples.
+    pub(crate) const fn get(self) -> u64 {
+        self.0
+    }
+}
+
 /// A streaming Repetition Count and Adaptive Proportion tester. It remembers raw sample values,
 /// so it is zeroized with the session.
 #[derive(Zeroize)]
@@ -124,13 +138,13 @@ impl HealthTester {
 
     /// Post-startup samples in completed windows: floor((tested - 1,024) / 512) * 512, or 0 once
     /// the tester has failed.
-    pub(crate) const fn credited_samples(&self) -> u64 {
+    pub(crate) const fn credited_samples(&self) -> CreditedSamples {
         if self.failed.is_some() {
-            return 0;
+            return CreditedSamples(0);
         }
         match self.tested.checked_sub(STARTUP_SAMPLES) {
-            Some(post_startup) => post_startup / APT_WINDOW * APT_WINDOW,
-            None => 0,
+            Some(post_startup) => CreditedSamples(post_startup / APT_WINDOW * APT_WINDOW),
+            None => CreditedSamples(0),
         }
     }
 }
@@ -219,7 +233,7 @@ mod tests {
                 Err(e) => panic!("{e}"),
             }
         }
-        run.verdict = json!({"result": "pass", "tested": tester.tested(), "credited_samples": tester.credited_samples()});
+        run.verdict = json!({"result": "pass", "tested": tester.tested(), "credited_samples": tester.credited_samples().get()});
         run
     }
 
@@ -299,9 +313,15 @@ mod tests {
         let samples = hex(&named(&keepcrypt_json()["health"], "clean-4096")["samples_hex"]);
         let mut tester = HealthTester::new();
         assert_eq!(tester.test(&samples[..1_535]), Ok(1_024));
-        assert_eq!((tester.tested(), tester.credited_samples()), (1_535, 0));
+        assert_eq!(
+            (tester.tested(), tester.credited_samples().get()),
+            (1_535, 0)
+        );
         assert_eq!(tester.test(&samples[1_535..1_536]), Ok(0));
-        assert_eq!((tester.tested(), tester.credited_samples()), (1_536, 512));
+        assert_eq!(
+            (tester.tested(), tester.credited_samples().get()),
+            (1_536, 512)
+        );
         assert_eq!(
             crate::source::hwrng_credited_bits(tester.credited_samples()),
             2_048
@@ -315,7 +335,7 @@ mod tests {
         let clean = hex(&named(&keepcrypt_json()["health"], "clean-4096")["samples_hex"]);
         let mut tester = HealthTester::new();
         assert_eq!(tester.test(&clean[..1_536]), Ok(1_024));
-        assert_eq!(tester.credited_samples(), 512);
+        assert_eq!(tester.credited_samples().get(), 512);
         let failure = tester.test(&[7u8; 8]);
         assert!(
             matches!(
@@ -328,12 +348,15 @@ mod tests {
             ),
             "{failure:?}"
         );
-        assert_eq!(tester.credited_samples(), 0);
+        assert_eq!(tester.credited_samples().get(), 0);
         let tested = tester.tested();
         for later in [&clean[2_000..3_100], &[], &clean[..1]] {
             assert_eq!(tester.test(later), failure);
         }
-        assert_eq!((tester.credited_samples(), tester.tested()), (0, tested));
+        assert_eq!(
+            (tester.credited_samples().get(), tester.tested()),
+            (0, tested)
+        );
     }
 
     #[test]

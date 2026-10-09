@@ -22,7 +22,7 @@ pub use stub::{StubEntropy, StubSource, WipeProbe};
 use zeroize::Zeroizing;
 
 use crate::error::{CoreError, SourceFault};
-use crate::health::{APT_WINDOW, STARTUP_SAMPLES};
+use crate::health::{APT_WINDOW, CreditedSamples, STARTUP_SAMPLES};
 use crate::session::{Mode, Platform};
 
 /// OS bytes read at commit and absorbed last (CLAUDE.md "Pi device quota"; Q6a).
@@ -119,25 +119,27 @@ pub(crate) const fn os_policy_bits(platform: Platform) -> u32 {
     }
 }
 
-/// Bits credited to `samples` health-tested hwrng samples in completed post-startup windows:
-/// 512 samples credit 2,048 bits, more than the 512 required (Q13 c). Saturates, so a huge count
-/// can only overstate a quota already met, never wrap below it.
+/// Bits credited to health-tested hwrng samples in completed post-startup windows: 512 samples
+/// credit 2,048 bits, more than the 512 required (Q13 c). Only a `HealthTester` can count them
+/// (`CreditedSamples`), so a partial window is never credited (Q7). Saturates, so a huge count
+/// could only overstate a quota already met, never wrap below it.
 #[cfg_attr(
     not(test),
     expect(dead_code, reason = "used by the session (M1 group 9)")
 )]
-pub(crate) fn hwrng_credited_bits(samples: u64) -> u64 {
-    samples.saturating_mul(u64::from(HWRNG_BITS_PER_BYTE))
+pub(crate) fn hwrng_credited_bits(samples: CreditedSamples) -> u64 {
+    samples.get().saturating_mul(u64::from(HWRNG_BITS_PER_BYTE))
 }
 
-/// Whether the device leg meets its quota once the OS read at commit is counted.
+/// Whether the device leg meets its quota once the OS read at commit is counted. The hwrng credit
+/// comes only from the session's `HealthTester` (`CreditedSamples`), never from a raw count.
 #[cfg_attr(
     not(test),
     expect(dead_code, reason = "used by the session (M1 group 9)")
 )]
-pub(crate) fn quota_met(platform: Platform, mode: Mode, credited_hwrng_samples: u64) -> bool {
-    let credited = hwrng_credited_bits(credited_hwrng_samples)
-        .saturating_add(u64::from(os_policy_bits(platform)));
+pub(crate) fn quota_met(platform: Platform, mode: Mode, credited: CreditedSamples) -> bool {
+    let credited =
+        hwrng_credited_bits(credited).saturating_add(u64::from(os_policy_bits(platform)));
     credited >= u64::from(required_bits(platform, mode))
 }
 
@@ -202,6 +204,7 @@ impl Source {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::health::HealthTester;
     use crate::test_vectors::keepcrypt_json;
 
     #[test]
@@ -249,7 +252,19 @@ mod tests {
         );
     }
 
-    // build-plan.md "Credit policy", as a table: (platform, mode, credited hwrng samples) -> met.
+    /// The credit a tester reports after `n` bytes of keepcrypt.json's clean hwrng stream.
+    fn credited_after(n: usize) -> CreditedSamples {
+        let clean = crate::test_vectors::hex(
+            &crate::test_vectors::named(&keepcrypt_json()["health"], "clean-4096")["samples_hex"],
+        );
+        let mut tester = HealthTester::new();
+        assert!(tester.test(&clean[..n]).is_ok(), "the clean stream passes");
+        tester.credited_samples()
+    }
+
+    // build-plan.md "Credit policy", as a table: (platform, mode, hwrng bytes through the tester)
+    // -> met. The credit is built only by a tester, so the Pi meets its quota at the first
+    // completed window, 1,536 bytes, and never at a partial one (Q7).
     #[test]
     fn credit_policy_table() {
         assert_eq!(required_bits(Platform::Pi, Mode::Mixed), 512);
@@ -257,27 +272,28 @@ mod tests {
         assert_eq!(required_bits(Platform::Pi, Mode::DiceOnly), 0);
         assert_eq!(required_bits(Platform::Phone, Mode::DiceOnly), 0);
         assert_eq!(
-            hwrng_credited_bits(512),
+            hwrng_credited_bits(credited_after(1_536)),
             2_048,
             "the first window credits 2,048 bits (Q13 c)"
         );
-        assert_eq!(hwrng_credited_bits(u64::MAX), u64::MAX);
         let table = [
             (Platform::Pi, Mode::Mixed, 0, false),
-            (Platform::Pi, Mode::Mixed, 127, false),
-            (Platform::Pi, Mode::Mixed, 128, true),
-            (Platform::Pi, Mode::Mixed, 512, true),
+            (Platform::Pi, Mode::Mixed, 1_535, false),
+            (Platform::Pi, Mode::Mixed, 1_536, true),
+            (Platform::Pi, Mode::Mixed, 4_096, true),
             (Platform::Phone, Mode::Mixed, 0, true),
             (Platform::Pi, Mode::DiceOnly, 0, true),
             (Platform::Phone, Mode::DiceOnly, 0, true),
         ];
-        for (platform, mode, samples, met) in table {
+        for (platform, mode, bytes, met) in table {
             assert_eq!(
-                quota_met(platform, mode, samples),
+                quota_met(platform, mode, credited_after(bytes)),
                 met,
-                "{platform:?} {mode:?} {samples}"
+                "{platform:?} {mode:?} {bytes}"
             );
         }
+        assert_eq!(credited_after(1_535).get(), 0, "511 post-startup samples");
+        assert_eq!(credited_after(1_536).get(), 512);
         assert_eq!(HW_BYTES_NEEDED, 1_536);
     }
 

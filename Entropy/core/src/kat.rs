@@ -411,7 +411,7 @@ fn health_pass(credited_samples: u64) -> [u8; 10] {
 fn health_verdict(samples: &[u8]) -> [u8; 10] {
     let mut tester = HealthTester::new();
     match tester.test(samples) {
-        Ok(_) => health_pass(tester.credited_samples()),
+        Ok(_) => health_pass(tester.credited_samples().get()),
         Err(CoreError::Health(f)) => health_failure(f.test, f.stage, f.sample),
         Err(_) => [0xff; 10],
     }

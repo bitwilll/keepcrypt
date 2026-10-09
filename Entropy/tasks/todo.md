@@ -872,7 +872,10 @@ starts. Every item names its proof.
         `HW_BYTES_NEEDED` = 1,536 (1,024 startup samples plus one 512-sample window);
       - `os_bytes::<N>()` is a separate read that never touches the pool. It serves the check nonce, the backup file
         key, salt, nonce and file name, and the passphrase and its confirm challenge.
-      Proof: stub tests (exact, used up, short, failing); a credit-policy table test.
+      Proof: stub tests (exact, used up, short, failing); a credit-policy table test. Review fix after commit 10: the
+      credit policy takes `CreditedSamples`, which only `HealthTester::credited_samples` builds, so no raw count (a
+      partial window, startup samples) can be credited; the table feeds 1,535 bytes (unmet) and 1,536 (met) through
+      a tester.
 - [ ] `health.rs` (SP 800-90B 4.3, 4.4.1, 4.4.2; alpha 2^-20, H = 4; design.md "Test continuously"; Q7):
       - RCT cutoff 6; APT W = 512, C = 62;
       - the tester streams, and its state carries across calls;
