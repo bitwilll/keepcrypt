@@ -981,6 +981,19 @@ starts. Every item names its proof.
       text is now defined in braille.json's spec (`name cell dots` per line, a-z then the number sign, grade 1
       indicator, hyphen and blank cell, LF-terminated) and its digest is `fd75c236...`, computed by a separate script
       from the glyphs printed in seal-watchonly-braille.md. A space renders as the blank cell U+2800.
+      Review fixes after commit 15:
+      - Check 8 now also reads seal-watchonly-braille.md (lessons.md). Each computable figure must appear there
+        word for word, as recomputed:
+        - the 279 and 49 sentences;
+        - the 12-word checksum's "1 in 16" (2^CS with CS = 4);
+        - ACT (0020) and ACTION (0021), the 2,048 distinct keys and 0001–2048;
+        - the three alphabet lines, the number sign, the digits, the grade 1 indicator and the hyphen;
+        - the `2026` and Seal ID glyphs;
+        - the sentence with the sections, pages and sample numbers;
+        - the Sources word-list SHA-256.
+        The mirror pairs it names must be the pairs computed from the dots. Editing a figure in the docs, or the
+        code that recomputes it, fails the self-test.
+      - The one-time PDF check is now done: see Review, "M1: one-time SeedBook PDF check".
 - [ ] `braille.rs` (seal-watchonly-braille.md "Braille backup"; CLAUDE.md "Braille"):
       - a const cell table (glyph and dots, reconciled by a test); mirror partners are computed from the dots;
       - `BrailleInserts<'s>` and `Insert<'s>` borrow the session's mnemonic and have no `Debug`, `Display`, `Clone`,
@@ -1835,3 +1848,41 @@ not part of Entropy CI.
 ### M0 gate status: MET, approved by the owner and merged (PR #1, 2026-10-09)
 The gate in docs/build-plan.md asks for CI green and a core that cross-compiles for the Pi Zero, Android and iOS
 targets. Both are shown above. Per CLAUDE.md, M1 does not start until the owner approves and PR #1 is merged.
+
+### M1: one-time SeedBook PDF check (2026-10-10, review fix after commit 15)
+Plan group 5 puts this check here: "the one-time check of the PDF's printed numbers and cover glyphs goes in Review".
+Check 8 recounts the docs' SeedBook figures from the embedded list and pins the PDF's SHA-256; this ties the list to
+what the owner's PDF prints.
+
+Method: two standard-library Python scripts, run with `python3 -I` and kept out of the repo, since the check is
+one-time:
+- `pdf_text.py` (SHA-256 `729a3f41...`) walks the page tree of `docs/KeepCrypt-SeedBook_Braille.pdf` (SHA-256
+  `af40ad89...`, equal to `SEEDBOOK_PDF_SHA256`), inflates each content stream, and decodes every text-showing
+  operator through its font's ToUnicode CMap. Runs that share a baseline are joined into one line. It found 104 pages.
+- `seedbook_compare.py` (SHA-256 `e7bee6e6...`) compares that text with `vectors/braille.json`. Check 8 already pins
+  that file's words to the embedded list, which hashes to `2f5eed53...`.
+
+```text
+index page: PDF page 5, 25 sections printed
+index sections equal braille.json: True total words 2048
+list pages: 98 first 1 last 98 in order: True
+numbers printed: 2048 distinct: 2048 equal 1-2048: True
+word rows: 757 rows whose capitals differ from the list at their numbers: 0
+sample ABANDON 0001 printed and matching: True
+sample ACT 0020 printed and matching: True
+sample ACTION 0021 printed and matching: True
+sample METAL 1121 printed and matching: True
+sample WIRE 2018 printed and matching: True
+sample ZOO 2048 printed and matching: True
+cover: ⠅⠑⠑⠏⠉⠗⠽⠏⠞ reads 'keepcrypt' with braille.json's cells; printed letters 'keepcrypt'; equal: True
+problems: 0
+```
+
+What each line covers:
+- The index ("04 — INDEX") prints each section's letter, word count and page range, and all 25 equal braille.json
+  `sections`.
+- Every list page ("PAGE NNN / 098", pages 001-098) prints the word numbers the rule gives: each section starts a
+  page, 24 words per page.
+- Each printed row of capitals is the concatenation of the BIP39 words at the numbers printed above it.
+- The cover's braille run, read with braille.json's letter cells, spells the letters printed beside it.
+- The back cover's 726-cell monogram is decoration and was not compared.

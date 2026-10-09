@@ -71,6 +71,7 @@ REPO_VECTORS_DIR = Path(__file__).resolve().parent.parent.parent / "vectors"
 # The owner's SeedBook (docs/), whose SHA-256 check 8 pins. It is not under vectors/, so
 # --vectors-dir does not move it.
 SEEDBOOK_PDF = Path(__file__).resolve().parent.parent.parent / "docs" / "KeepCrypt-SeedBook_Braille.pdf"
+BRAILLE_DOCS = Path(__file__).resolve().parent.parent.parent / "docs" / "seal-watchonly-braille.md"
 
 CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 OKABE_ITO = ("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
@@ -495,12 +496,17 @@ BRAILLE_DOCS_COUNTS = {
     "distinct_readback_keys": 2048,
 }
 # The SeedBook's 25 sections (no word starts with x), as counted from the embedded list. The one-time
-# comparison with the counts printed in the PDF is recorded in tasks/todo.md, Review.
+# comparison with the PDF's printed index, page numbers, word numbers and cover glyphs is recorded in
+# tasks/todo.md, Review, "M1: one-time SeedBook PDF check".
 BRAILLE_SECTION_COUNTS = (
     ("a", 136), ("b", 117), ("c", 186), ("d", 112), ("e", 100), ("f", 106), ("g", 76), ("h", 64), ("i", 55),
     ("j", 20), ("k", 20), ("l", 76), ("m", 105), ("n", 41), ("o", 55), ("p", 132), ("q", 8), ("r", 108),
     ("s", 250), ("t", 121), ("u", 35), ("v", 46), ("w", 69), ("y", 6), ("z", 4),
 )
+# BIP39: MS words carry ENT = 32 * MS * 11 / 33 bits of entropy and CS = ENT / 32 checksum bits, so a
+# wrong word passes a 12-word phrase's checksum about once in 2^CS tries (docs "Read-back from the
+# metal": "about 1 such error in 16"); check 8 recomputes CS.
+BIP39_CHECKED_WORDS = 12
 # SHA-256 of docs/KeepCrypt-SeedBook_Braille.pdf (13,921,573 bytes), the owner's reference as committed
 # in 91dc31a; check 8 re-hashes it.
 SEEDBOOK_PDF_SHA256 = "af40ad894afa6cf64399e6c1771fc7b500458509f2350bd67577ce7eba5fc522"
@@ -2563,19 +2569,12 @@ def check_braille_known_answers():
     return problems
 
 
-def check_braille_counts():
-    """The docs' numbers recounted straight from the embedded list, apart from the generator: the list's
-    SHA-256, the 25 section counts and 98 pages, the 279 mirror-flip words, the 49 short prefix words,
-    the four mirror pairs and 2,048 distinct first-four keys."""
-    problems = []
-    got = hashlib.sha256(("\n".join(BIP39_ENGLISH) + "\n").encode("ascii")).hexdigest()
-    if got != BIP39_ENGLISH_SHA256:
-        problems.append("the embedded BIP39 list hashes to %s, not %s" % (got, BIP39_ENGLISH_SHA256))
+def braille_recount():
+    """The docs' numbers recounted straight from the embedded list, apart from the generator: the counts of
+    BRAILLE_DOCS_COUNTS, the sections and the list's SHA-256."""
     sections = {}
     for word in BIP39_ENGLISH:
         sections[word[0]] = sections.get(word[0], 0) + 1
-    if sorted(sections.items()) != list(BRAILLE_SECTION_COUNTS):
-        problems.append("SeedBook sections %r, pinned %r" % (sorted(sections.items()), list(BRAILLE_SECTION_COUNTS)))
     pages = sum(-(-count // SEEDBOOK_WORDS_PER_PAGE) for count in sections.values())
     keys = set(word[:4] for word in BIP39_ENGLISH)
     swap = {"e": "i", "i": "e", "d": "f", "f": "d", "h": "j", "j": "h", "r": "w", "w": "r"}
@@ -2583,7 +2582,7 @@ def check_braille_counts():
         word[:4][:i] + swap[c] + word[:4][i + 1:] in keys for i, c in enumerate(word[:4]) if c in swap))
     proper_prefixes = set(o[:k] for o in BIP39_ENGLISH for k in range(1, len(o)))
     prefix_words = sum(1 for word in BIP39_ENGLISH if word in proper_prefixes)
-    recounted = {
+    counts = {
         "words": len(BIP39_ENGLISH),
         "sections": len(sections),
         "pages": pages,
@@ -2593,6 +2592,20 @@ def check_braille_counts():
         "short_prefix_words": prefix_words,
         "distinct_readback_keys": len(keys),
     }
+    list_sha256 = hashlib.sha256(("\n".join(BIP39_ENGLISH) + "\n").encode("ascii")).hexdigest()
+    return counts, sorted(sections.items()), swap, list_sha256
+
+
+def check_braille_counts():
+    """The docs' numbers recounted straight from the embedded list, apart from the generator: the list's
+    SHA-256, the 25 section counts and 98 pages, the 279 mirror-flip words, the 49 short prefix words,
+    the four mirror pairs and 2,048 distinct first-four keys."""
+    problems = []
+    recounted, sections, swap, got = braille_recount()
+    if got != BIP39_ENGLISH_SHA256:
+        problems.append("the embedded BIP39 list hashes to %s, not %s" % (got, BIP39_ENGLISH_SHA256))
+    if sections != list(BRAILLE_SECTION_COUNTS):
+        problems.append("SeedBook sections %r, pinned %r" % (sections, list(BRAILLE_SECTION_COUNTS)))
     if recounted != BRAILLE_DOCS_COUNTS:
         problems.append("the docs' braille counts %r, recounted from the list %r" % (BRAILLE_DOCS_COUNTS, recounted))
     if sorted(swap.items()) != sorted(braille_mirror_partner().items()):
@@ -2600,6 +2613,77 @@ def check_braille_counts():
     generated = braille_counts(braille_word_entries())
     if generated != recounted:
         problems.append("the generator's counts %r differ from the recount %r" % (generated, recounted))
+    return problems
+
+
+def braille_docs_sentences():
+    """What docs/seal-watchonly-braille.md must say, word for word, built from the recount, the generated
+    tables and seal vector 1: (what, the exact text)."""
+    counts, sections, _, list_sha256 = braille_recount()
+    entries = {e["word"]: e for e in braille_word_entries()}
+    letters = [(letter, braille_cell(dots)) for letter, dots in BRAILLE_LETTER_DOTS]
+    sign = dict(BRAILLE_SIGN_DOTS)
+    vector = seal_vector(*SEAL_VECTOR_INPUTS[0])
+    entropy_bits = 32 * BIP39_CHECKED_WORDS * 11 // 33
+    checksum_bits = BIP39_CHECKED_WORDS * 11 - entropy_bits
+
+    def first_four(word):
+        return ", ".join(face or "blank" for face in entries[word]["faces"][:SEEDBOOK_READBACK_FACES])
+
+    def number(word):
+        return "%04d" % entries[word]["number"]
+
+    sentences = [("alphabet row %d" % (n + 1), "  ".join("%s %s" % pair for pair in letters[start:end]))
+                 for n, (start, end) in enumerate(((0, 10), (10, 20), (20, 26)))]
+    sentences += [
+        ("the mirror-flip count", "It matters because %d BIP39 words are one mirror-pair flip away from another "
+         "word's first four letters" % counts["mirror_flip_words"]),
+        ("the checksum odds", "the %d-word checksum would miss about 1 such error in %d"
+         % (BIP39_CHECKED_WORDS, 2 ** checksum_bits)),
+        ("ACT and ACTION", "ACT (%s) is %s; ACTION (%s) is %s"
+         % (number("act"), first_four("act"), number("action"), first_four("action"))),
+        ("the short prefix count", "%d short words are prefixes of longer ones" % counts["short_prefix_words"]),
+        ("the distinct first-four keys", "The first four letters identify every one of the {:,} words"
+         .format(counts["distinct_readback_keys"])),
+        ("the SeedBook numbers", "the official list, 0001\u2013%04d" % counts["words"]),
+        ("the number sign", "number sign %s (dots %s)" % (braille_cell(sign["number_sign"]),
+                                                          "-".join(sign["number_sign"]))),
+        ("the digits", "then " + " ".join("%s=%d" % (BRAILLE_DIGIT_LETTERS[d], d) for d in (1, 2, 3, 4, 5, 6, 7, 8,
+                                                                                         9, 0))),
+        ("2026", "(2026 = %s)" % braille_text("2026")),
+        ("the grade 1 indicator", "grade 1 indicator %s (dots %s)" % (braille_cell(sign["grade1_indicator"]),
+                                                                      "-".join(sign["grade1_indicator"]))),
+        ("the hyphen", "a hyphen %s ends the digits" % braille_cell(sign["hyphen"])),
+        ("the Seal ID", "(Seal ID %s = %s)" % (vector["seal_id"], vector["seal_id_braille"])),
+        ("the sections, pages and sample numbers", "the SeedBook's %d section counts (total {:,}), its page ranges "
+         "001\u2013%03d, and the sample numbers ABANDON %s, ACT %s, METAL %s, WIRE %s and ZOO %s all match the "
+         "official list".format(sum(count for _, count in sections))
+         % (counts["sections"], counts["pages"], number("abandon"), number("act"), number("metal"), number("wire"),
+            number("zoo"))),
+        ("the word-list SHA-256", "wordlist SHA-256 `%s`" % list_sha256),
+    ]
+    return sentences
+
+
+def check_braille_docs():
+    """docs/seal-watchonly-braille.md against the recount (tasks/lessons.md, "Spec verification before
+    hand-off"): each computable figure must appear there exactly as recomputed, and its mirror pairs must
+    be the pairs computed from the dots. Editing a figure in the docs, or a value it is computed from,
+    fails the check."""
+    if not BRAILLE_DOCS.is_file():
+        return ["%s is missing" % BRAILLE_DOCS]
+    text = BRAILLE_DOCS.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    problems = []
+    for what, sentence in braille_docs_sentences():
+        found = sentence in lines if what.startswith("alphabet row") else sentence in text
+        if not found:
+            problems.append("%s: the docs do not say %r" % (BRAILLE_DOCS.name, sentence))
+    match = re.search(r"\| Mirror pairs \| (.+?) are left-right mirror images, and the only such pairs", text)
+    printed = re.findall(r"([a-z])/([a-z])", match.group(1)) if match else []
+    if sorted(tuple(sorted(pair)) for pair in printed) != sorted(braille_mirror_pairs()):
+        problems.append("%s: the mirror pairs %r are not the pairs computed from the dots %r"
+                        % (BRAILLE_DOCS.name, printed, braille_mirror_pairs()))
     return problems
 
 
@@ -2625,11 +2709,12 @@ def check_braille_contents(vectors_dir):
 
 
 def check_braille_json(vectors_dir):
-    """Check 8: the pinned braille answers, the docs' counts recounted from the list, braille.json equal
-    to the regenerated text, its contents, and the SeedBook PDF's SHA-256."""
+    """Check 8: the pinned braille answers, the docs' counts recounted from the list, the docs saying them,
+    braille.json equal to the regenerated text, its contents, and the SeedBook PDF's SHA-256."""
     return (
         check_braille_known_answers()
         + check_braille_counts()
+        + check_braille_docs()
         + check_generated_file(vectors_dir, "braille.json", braille_vectors_json(), "--write-braille-vectors")
         + check_braille_contents(vectors_dir)
     )
@@ -2975,8 +3060,9 @@ def selftest(vectors_dir):
          lambda: check_keepcrypt_json(vectors_dir)),
         ("SP 800-90B health-test cutoffs: Table 2 reproduced exactly, RCT 6 and APT 62 at H = 4",
          lambda: check_health_cutoffs(vectors_dir)),
-        ("vectors/braille.json: pinned cells, inserts and text, the docs' counts recounted from the list, file "
-         "matches regenerated output, SeedBook PDF SHA-256", lambda: check_braille_json(vectors_dir)),
+        ("vectors/braille.json: pinned cells, inserts and text, the docs' counts recounted from the list and "
+         "found in docs/seal-watchonly-braille.md, file matches regenerated output, SeedBook PDF SHA-256",
+         lambda: check_braille_json(vectors_dir)),
         ("vectors/watchonly.json: RIPEMD-160, CRC-32, dCBOR, Bytewords, UR, BIP-380 and NFKD against the standard "
          "library and the copied spec values, BIP-84 and BCR-2020-015 rebuilt, pinned answers, decoder cases, file "
          "matches regenerated output", lambda: check_watchonly_json(vectors_dir)),
@@ -3007,7 +3093,8 @@ def main(argv):
                       "hashes and coverage, Coldcard's own scripts on every dice-only case, kat.json (SHA and HMAC "
                       "recomputed, its bytes, then its pinned entries and Ed25519 digest), keepcrypt.json (BIP39 "
                       "list and encoder, its bytes, its pinned answers and session record rules), the SP 800-90B "
-                      "cutoffs, braille.json (its pinned answers, the docs' counts, its bytes, the SeedBook PDF), "
+                      "cutoffs, braille.json (its pinned answers, the docs' counts and their sentences in the docs, its "
+                      "bytes, the SeedBook PDF), "
                       "watchonly.json (the primitives and spec values, BIP-84 and BCR-2020-015 rebuilt, its pins and "
                       "decoder cases, its bytes)")
     mode.add_argument("--write-seal-vectors", action="store_true", help="regenerate vectors/seal.json")
