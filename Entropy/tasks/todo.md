@@ -1710,6 +1710,18 @@ order", "Go-ahead before reveal")
         landed with the review fixes after commit 10, when these reveals stopped returning `&'static str`).
       Rules: `.stderr` files are pinned to 1.98.1 and trybuild 1.0.121, and prefer E0599/E0277/E0061; fixtures are
       warning-free and gate-clean; regenerate only with `TRYBUILD=overwrite`, and review the diff.
+      As built at commit 23: 23 fixtures (8 from group 2, 15 new), each with its pinned `.stderr`; the list by
+      purpose is in tests/typestate.rs. No value is built: a fixture types a state as `Option<Session<_>>` set to
+      None, so type checking alone decides. The errors are E0599 (a method absent from a state or from `Wiped`),
+      E0277 (no `Debug`, `Display` or `Clone`), E0061 and E0308 (a passphrase handed to `encrypt_backup` or
+      `verify_backup`, as an extra argument and in place of the real one), E0382 (`commit`, `reveal`), E0505
+      (borrows) and E0423 or "cannot construct ... due to private fields" (struct literals: a literal with every
+      field named is refused only by the privacy pass, which never runs after a type error, so each literal is
+      written empty). The braille and read-back fixtures also cover `ReadbackMismatch`, `FaceVerdict` and `Dots`,
+      and the seal fixture `CollisionReport`. trybuild builds the fixtures with the run's features, and every
+      `.stderr` holds under default features, `test-registry` and `test-sources`. Two compiler suggestions name
+      crate-private constructors (`SealPublic::empty`, `CheckNonce::from_bytes`); renaming either regenerates
+      `no_struct_literals.stderr`. A mutant giving `Session<Sealed>` a `mnemonic()` fails three fixtures.
 - [ ] `tests/source_substitution.rs` (design.md "Prove the path" 1; build-plan.md test matrix):
       - fixed OS bytes, a counter-mode hwrng stream in 64-byte chunks and two extras give the keepcrypt.json D and C,
         on Pi and on Phone;

@@ -1,0 +1,143 @@
+error[E0277]: `ReadbackResult` doesn't implement `Debug`
+  --> tests/compile_fail/readback_result_not_debug_display_clone.rs:11:19
+   |
+11 |     needs_debug::<ReadbackResult>();
+   |                   ^^^^^^^^^^^^^^ the trait `Debug` is not implemented for `ReadbackResult`
+   |
+note: required by a bound in `needs_debug`
+  --> tests/compile_fail/readback_result_not_debug_display_clone.rs:6:19
+   |
+ 6 | fn needs_debug<T: std::fmt::Debug>() {}
+   |                   ^^^^^^^^^^^^^^^ required by this bound in `needs_debug`
+
+error[E0277]: `ReadbackResult` doesn't implement `std::fmt::Display`
+  --> tests/compile_fail/readback_result_not_debug_display_clone.rs:12:21
+   |
+12 |     needs_display::<ReadbackResult>();
+   |                     ^^^^^^^^^^^^^^ the trait `std::fmt::Display` is not implemented for `ReadbackResult`
+   |
+note: required by a bound in `needs_display`
+  --> tests/compile_fail/readback_result_not_debug_display_clone.rs:7:21
+   |
+ 7 | fn needs_display<T: std::fmt::Display>() {}
+   |                     ^^^^^^^^^^^^^^^^^ required by this bound in `needs_display`
+
+error[E0277]: the trait bound `ReadbackResult: Clone` is not satisfied
+  --> tests/compile_fail/readback_result_not_debug_display_clone.rs:13:19
+   |
+13 |     needs_clone::<ReadbackResult>();
+   |                   ^^^^^^^^^^^^^^ the trait `Clone` is not implemented for `ReadbackResult`
+   |
+note: required by a bound in `needs_clone`
+  --> tests/compile_fail/readback_result_not_debug_display_clone.rs:8:19
+   |
+ 8 | fn needs_clone<T: Clone>() {}
+   |                   ^^^^^ required by this bound in `needs_clone`
+
+error[E0277]: `keepcrypt_core::ReadbackMismatch` doesn't implement `Debug`
+  --> tests/compile_fail/readback_result_not_debug_display_clone.rs:14:19
+   |
+14 |     needs_debug::<ReadbackMismatch>();
+   |                   ^^^^^^^^^^^^^^^^ the trait `Debug` is not implemented for `keepcrypt_core::ReadbackMismatch`
+   |
+note: required by a bound in `needs_debug`
+  --> tests/compile_fail/readback_result_not_debug_display_clone.rs:6:19
+   |
+ 6 | fn needs_debug<T: std::fmt::Debug>() {}
+   |                   ^^^^^^^^^^^^^^^ required by this bound in `needs_debug`
+
+error[E0277]: `keepcrypt_core::ReadbackMismatch` doesn't implement `std::fmt::Display`
+  --> tests/compile_fail/readback_result_not_debug_display_clone.rs:15:21
+   |
+15 |     needs_display::<ReadbackMismatch>();
+   |                     ^^^^^^^^^^^^^^^^ the trait `std::fmt::Display` is not implemented for `keepcrypt_core::ReadbackMismatch`
+   |
+note: required by a bound in `needs_display`
+  --> tests/compile_fail/readback_result_not_debug_display_clone.rs:7:21
+   |
+ 7 | fn needs_display<T: std::fmt::Display>() {}
+   |                     ^^^^^^^^^^^^^^^^^ required by this bound in `needs_display`
+
+error[E0277]: the trait bound `keepcrypt_core::ReadbackMismatch: Clone` is not satisfied
+  --> tests/compile_fail/readback_result_not_debug_display_clone.rs:16:19
+   |
+16 |     needs_clone::<ReadbackMismatch>();
+   |                   ^^^^^^^^^^^^^^^^ the trait `Clone` is not implemented for `keepcrypt_core::ReadbackMismatch`
+   |
+note: required by a bound in `needs_clone`
+  --> tests/compile_fail/readback_result_not_debug_display_clone.rs:8:19
+   |
+ 8 | fn needs_clone<T: Clone>() {}
+   |                   ^^^^^ required by this bound in `needs_clone`
+
+error[E0277]: `FaceVerdict` doesn't implement `Debug`
+  --> tests/compile_fail/readback_result_not_debug_display_clone.rs:17:19
+   |
+17 |     needs_debug::<FaceVerdict>();
+   |                   ^^^^^^^^^^^ the trait `Debug` is not implemented for `FaceVerdict`
+   |
+note: required by a bound in `needs_debug`
+  --> tests/compile_fail/readback_result_not_debug_display_clone.rs:6:19
+   |
+ 6 | fn needs_debug<T: std::fmt::Debug>() {}
+   |                   ^^^^^^^^^^^^^^^ required by this bound in `needs_debug`
+
+error[E0277]: `FaceVerdict` doesn't implement `std::fmt::Display`
+  --> tests/compile_fail/readback_result_not_debug_display_clone.rs:18:21
+   |
+18 |     needs_display::<FaceVerdict>();
+   |                     ^^^^^^^^^^^ the trait `std::fmt::Display` is not implemented for `FaceVerdict`
+   |
+note: required by a bound in `needs_display`
+  --> tests/compile_fail/readback_result_not_debug_display_clone.rs:7:21
+   |
+ 7 | fn needs_display<T: std::fmt::Display>() {}
+   |                     ^^^^^^^^^^^^^^^^^ required by this bound in `needs_display`
+
+error[E0277]: the trait bound `FaceVerdict: Clone` is not satisfied
+  --> tests/compile_fail/readback_result_not_debug_display_clone.rs:19:19
+   |
+19 |     needs_clone::<FaceVerdict>();
+   |                   ^^^^^^^^^^^ the trait `Clone` is not implemented for `FaceVerdict`
+   |
+note: required by a bound in `needs_clone`
+  --> tests/compile_fail/readback_result_not_debug_display_clone.rs:8:19
+   |
+ 8 | fn needs_clone<T: Clone>() {}
+   |                   ^^^^^ required by this bound in `needs_clone`
+
+error[E0277]: `Dots` doesn't implement `Debug`
+  --> tests/compile_fail/readback_result_not_debug_display_clone.rs:20:19
+   |
+20 |     needs_debug::<Dots>();
+   |                   ^^^^ the trait `Debug` is not implemented for `Dots`
+   |
+note: required by a bound in `needs_debug`
+  --> tests/compile_fail/readback_result_not_debug_display_clone.rs:6:19
+   |
+ 6 | fn needs_debug<T: std::fmt::Debug>() {}
+   |                   ^^^^^^^^^^^^^^^ required by this bound in `needs_debug`
+
+error[E0277]: `Dots` doesn't implement `std::fmt::Display`
+  --> tests/compile_fail/readback_result_not_debug_display_clone.rs:21:21
+   |
+21 |     needs_display::<Dots>();
+   |                     ^^^^ the trait `std::fmt::Display` is not implemented for `Dots`
+   |
+note: required by a bound in `needs_display`
+  --> tests/compile_fail/readback_result_not_debug_display_clone.rs:7:21
+   |
+ 7 | fn needs_display<T: std::fmt::Display>() {}
+   |                     ^^^^^^^^^^^^^^^^^ required by this bound in `needs_display`
+
+error[E0277]: the trait bound `Dots: Clone` is not satisfied
+  --> tests/compile_fail/readback_result_not_debug_display_clone.rs:22:19
+   |
+22 |     needs_clone::<Dots>();
+   |                   ^^^^ the trait `Clone` is not implemented for `Dots`
+   |
+note: required by a bound in `needs_clone`
+  --> tests/compile_fail/readback_result_not_debug_display_clone.rs:8:19
+   |
+ 8 | fn needs_clone<T: Clone>() {}
+   |                   ^^^^^ required by this bound in `needs_clone`
