@@ -48,7 +48,8 @@
 #              Random( (Kotlin has no "new"), SecureRandom, SplittableRandom, SecRandomCopyBytes,
 #              arc4random, GameplayKit GK*Random* and GK*Distribution, Python random (also as
 #              "import (random, ..." and, in a .py file, a wrapped import line that holds only
-#              names and random: "    random,"), C rand(), rand_r(), random(), drand48, C++
+#              names and random, such as "    random," or "    random \", and a line starting
+#              "    random import" after "from \"), C rand(), rand_r(), random(), drand48, C++
 #              mt19937, *_random_engine, random_device, minstd_rand, Rust rand:: and rand_core::,
 #              Kotlin/Swift .random( and .shuffled(. Rule 1 allows one source of OS randomness, so
 #              every file except core/src/source.rs and core/src/source/ is also barred from the OS
@@ -66,6 +67,14 @@
 #              TcpListener, UdpSocket. Not banned: "import Network" and NWPathMonitor (the offline
 #              check), and reading back a picked .age or .kcr file (rule 8):
 #              Data(contentsOf: URL(fileURLWithPath: path)), Data(contentsOf: pickedURL).
+#              In a .py file (tasks/todo.md M2 group 2, Q23; completed by the stage-A review,
+#              2026-10-10), an import of socket, ssl (or their C modules _socket and _ssl),
+#              socketserver, urllib, urllib3, http, ftplib, smtplib, smtpd, poplib, imaplib,
+#              nntplib, telnetlib, xmlrpc, asyncio, asyncore, asynchat, wsgiref, webbrowser,
+#              requests, httpx, aiohttp, multiprocessing.connection or logging.handlers (also by
+#              their own names, as "from logging import handlers" brings one in), in the shapes
+#              Python random has under RNG. Anchored on the import, so a URL string such as
+#              "https://registry.invalid" passes.
 #   Clipboard  rule 5 and docs/mobile-apps.md ("Never offered: share sheet, copy"): clipboard APIs,
 #              plus UI that copies or shares: .textSelection( unless it is exactly
 #              .textSelection(.disabled), which the docs require (spaces around .disabled are
@@ -74,7 +83,14 @@
 #              ShareLink, UIActivityViewController, SelectionContainer, Intent.ACTION_SEND (and
 #              _MULTIPLE, SENDTO), and any line that names textIsSelectable, setTextIsSelectable
 #              or isTextSelectable, unless each one's value is the literal false: ="false",
-#              ">false<", (false) or "= false".
+#              ">false<", (false) or "= false". In a .py file (Q23; completed by the stage-A review,
+#              2026-10-10): an import of the clipboard module, in the shapes of the Python network
+#              imports; anywhere a word starts with one, pyperclip, win32clipboard, tkinter's
+#              clipboard_append, clipboard_get and selection_get, pandas' to_clipboard and
+#              read_clipboard, and the tools pbcopy, pbpaste, xclip, xsel, wl-copy, wl-paste,
+#              PowerShell's Get-Clipboard and Set-Clipboard, clip.exe (never a bare clip) and
+#              osascript's "the clipboard" (these last three in any letter case); and any attribute
+#              or dotted module named clipboard (QApplication.clipboard(), app.clipboard()).
 #   Rule1      rule 1 path check: getrandom in any .rs file is a hit, except in the core module
 #              core/src/source, in either file layout: source.rs or anything under source/. A
 #              look-alike such as core/src/sourcex.rs is another module. The games are no
@@ -118,6 +134,11 @@
 # any .rs file (name it file = ...), and a ": _ =" type placeholder ("let n: _ = f()?;") or an _name
 # type alias ("type _Unused = u8;") is a FailOpen hit in core/, ffi/ and pi/app/ (write the type).
 # A field or variable named include passed bare ("Filter { include, exclude }") is an Include hit.
+# In a .py file, prose that says "the clipboard" (AppleScript's phrase) is a Clipboard hit (write
+# "a clipboard"); an import of any module or name called connection or handlers (the names
+# multiprocessing.connection and logging.handlers come in under) is a Network hit; and a wrapped
+# line that holds only names, one of them a banned module's name or clipboard ("    requests," or
+# "    clipboard," as a call's argument), is a hit like a wrapped import line (rename the variable).
 #
 # Portable on purpose: POSIX sh, POSIX ERE (no \b \s \< \>, no -P -w), POSIX sed (BRE, in
 # selectable() and textselection()) and LC_ALL=C, so BSD grep and sed (macOS) and GNU grep and sed
@@ -155,12 +176,13 @@ usage: scripts/banned-api-check.sh [--selftest | DIR | --artifact TARGET FILE...
   --artifact  scan release artifacts built for TARGET: test markers, the test registry key, RNG
               symbols other than TARGET's OS import, and that import (see the script header)
   --selftest  run the fixtures in scripts/testdata/banned-api/ and scripts/testdata/artifact/
-Hits: RNG APIs (and the OS RNG read outside core/src/source), network APIs and hard-coded http URLs
-(outside registry/), clipboard, copy and share APIs, getrandom in a .rs file outside
-core/src/source, a core/src/lib.rs without #![forbid(unsafe_code)], in Rust under core/, ffi/ or
-pi/app/ a discarded result (_ =, an _name binding, drop or forget of a call), clippy as a cfg
-predicate and /dev/stdout, /dev/stderr or /dev/tty, include! (by any path or alias) or a path
-attribute in any .rs file, and a C #include of a file with a binary extension.
+Hits: RNG APIs (and the OS RNG read outside core/src/source), network APIs, Python network imports
+and hard-coded http URLs (outside registry/), clipboard, copy and share APIs and Python clipboard
+modules, tools and calls, getrandom in a .rs file outside core/src/source, a core/src/lib.rs without
+#![forbid(unsafe_code)], in Rust under core/, ffi/ or pi/app/ a discarded result (_ =, an _name
+binding, drop or forget of a call), clippy as a cfg predicate and /dev/stdout, /dev/stderr or
+/dev/tty, include! (by any path or alias) or a path attribute in any .rs file, and a C #include of
+a file with a binary extension.
 A directory symlink is refused. Exit 0 clean, 1 hits, 2 usage or read error.
 EOF
 }
@@ -235,12 +257,14 @@ osrng() {
 
 # .py files only: a line that holds nothing but names and random, as an import wraps it inside
 # "from numpy import (" ... ")" or after a backslash: "    random,", "    random)", "    random as
-# r,", "    array, random" or a bare "    random". The other names must be comma-separated words,
-# so a word list such as "ranch random range" passes; a word list one word per line belongs in a
-# .txt file.
+# r,", "    array, random", "    random \" or a bare "    random". The other names must be
+# comma-separated words, so a word list such as "ranch random range" passes; a word list one word
+# per line belongs in a .txt file. After "from \" the next line starts with the module:
+# "    random import choice".
 pyrandom() {
   grep -n -a -E \
-    -e '^[[:space:]]*([A-Za-z0-9_]+([[:space:]]+as[[:space:]]+[A-Za-z0-9_]+)?[[:space:]]*,[[:space:]]*)*random([[:space:]]+as[[:space:]]+[A-Za-z0-9_]+)?[[:space:]]*([,)#]|$)' \
+    -e '^[[:space:]]*random[[:space:]]+import([^A-Za-z0-9_]|$)' \
+    -e '^[[:space:]]*([A-Za-z0-9_]+([[:space:]]+as[[:space:]]+[A-Za-z0-9_]+)?[[:space:]]*,[[:space:]]*)*random([[:space:]]+as[[:space:]]+[A-Za-z0-9_]+)?[[:space:]]*([,)#]|\\|$)' \
     -- "$1"
 }
 
@@ -282,6 +306,41 @@ network() {
     -- "$1"
 }
 
+# pyimport MODULES FILE, for .py files: an import of a module in MODULES (an ERE group), in the
+# shapes rng() and pyrandom() give random: "import socket", "import os, ssl", "import http.client",
+# "from urllib.request import urlopen", "from gevent import (socket, x)", "from gevent import(x,
+# socket)", a wrapped import line that holds only names and one of them ("    urllib.request"
+# after "import json, \", "    socket," inside "from gevent import (", or "    socket \"), and the
+# line after "from \" ("    socket import create_connection"). Anchored on the import, so the
+# names pass in a URL such as "https://registry.invalid", in other strings, as attributes and
+# inside longer names.
+pyimport() {
+  grep -n -a -E \
+    -e "${L}import[[:space:]]+$1$R" \
+    -e "${L}import[[:space:](][(A-Za-z0-9_.,[:space:]]*,[[:space:]]*$1$R" \
+    -e "${L}import[[:space:]]*[(][[:space:]]*$1$R" \
+    -e "${L}from[[:space:]]+$1$R" \
+    -e "^[[:space:]]*$1([.][A-Za-z0-9_]+)*[[:space:]]+import$R" \
+    -e "^[[:space:]]*([A-Za-z0-9_.]+([[:space:]]+as[[:space:]]+[A-Za-z0-9_]+)?[[:space:]]*,[[:space:]]*)*$1([.][A-Za-z0-9_]+)*([[:space:]]+as[[:space:]]+[A-Za-z0-9_]+)?[[:space:]]*([,)#]|\\\\|\$)" \
+    -- "$2"
+}
+
+# .py files only, outside registry/ like network() (tasks/todo.md M2 group 2, Q23; completed by the
+# stage-A review, 2026-10-10): an import of a network module, in pyimport()'s shapes. _socket and
+# _ssl are the C modules behind socket and ssl, with the same calls. multiprocessing and logging
+# run offline, but multiprocessing.connection (Listener and Client over TCP) and logging.handlers
+# (SocketHandler, SysLogHandler, SMTPHandler, HTTPHandler) do not. Each is listed by its full name
+# and by its own name, which "from multiprocessing import connection" and "from logging import
+# handlers" bring in, so any import of a module or name called connection or handlers is a hit.
+# Grep cannot see __import__("socket") or importlib.import_module("socket"), an attribute path
+# such as getpass.os.system, or a subprocess running a network tool. For verify.py, tasks/todo.md
+# M2 group 3's check 12 (vectorgen.py --selftest) closes all four; vectorgen and scripts/ keep this
+# gate only.
+pynet='(socket|ssl|_socket|_ssl|socketserver|urllib|urllib3|http|ftplib|smtplib|smtpd|poplib|imaplib|nntplib|telnetlib|xmlrpc|asyncio|asyncore|asynchat|wsgiref|webbrowser|requests|httpx|aiohttp|multiprocessing[.]connection|connection|logging[.]handlers|handlers)'
+pynetwork() {
+  pyimport "$pynet" "$1"
+}
+
 # Clipboard APIs, and UI that hands the words to copy or share (docs/mobile-apps.md, "Never offered:
 # share sheet, copy"). EnabledTextSelectability is the type a custom static such as .dragToCopy
 # needs. ACTION_SEND also matches _MULTIPLE and SENDTO. .textSelection( and textIsSelectable have
@@ -300,6 +359,38 @@ clipboard() {
     -e 'SelectionContainer' \
     -e 'ACTION_SEND' \
     -- "$1"
+}
+
+# .py files only (Q23; completed by the stage-A review, 2026-10-10): pyperclip, win32clipboard,
+# tkinter's clipboard_append, clipboard_get and selection_get, pandas' to_clipboard and
+# read_clipboard, and the clipboard tools pbcopy, pbpaste, xclip, xsel, wl-copy, wl-paste,
+# PowerShell's Get-Clipboard and Set-Clipboard, clip.exe and AppleScript's "the clipboard" (run by
+# osascript), anywhere on a line, since a subprocess names its tool in a string. Each must start a
+# word, so idxsel and maxclip pass, while a longer name such as pyperclip3 or xclipboard hits.
+# PowerShell, Windows file names and AppleScript ignore letter case, so the last three match in
+# any case. clip hits only as clip.exe, since clip is a common word; a bare clip passes.
+# selection_get hits whatever its selection: CLIPBOARD may sit on the next line or in a variable,
+# and the default, PRIMARY, is X11's other clipboard. The last pattern is any attribute or dotted
+# module named clipboard: QApplication.clipboard() or QGuiApplication.clipboard(), app.clipboard()
+# on a Qt application object, pandas.io.clipboard.
+pyclipboard() {
+  grep -n -a -E \
+    -e "${L}pyperclip" \
+    -e "${L}win32clipboard" \
+    -e "${L}clipboard_(append|get)" \
+    -e "${L}selection_get" \
+    -e "${L}(to|read)_clipboard" \
+    -e "${L}(pbcopy|pbpaste|xclip|xsel|wl-copy|wl-paste)" \
+    -e "${L}[GgSs][Ee][Tt]-[Cc][Ll][Ii][Pp][Bb][Oo][Aa][Rr][Dd]" \
+    -e "${L}[Cc][Ll][Ii][Pp][.][Ee][Xx][Ee]" \
+    -e "${L}[Tt][Hh][Ee][[:space:]]+[Cc][Ll][Ii][Pp][Bb][Oo][Aa][Rr][Dd]" \
+    -e "[.][[:space:]]*clipboard$R" \
+    -- "$1"
+}
+
+# .py files only: an import of the clipboard module (PyPI's clipboard), in pyimport()'s shapes.
+pyclipimport() {
+  pyimport clipboard "$1"
 }
 
 # Selection fails closed: a line that names textIsSelectable (XML), setTextIsSelectable or
@@ -456,7 +547,10 @@ EOF
     esac
     case $rel in *.py) report RNG pyrandom "$rel" ;; esac
     case $rel in registry/*) ;; *) report Network network "$rel" ;; esac
+    case $rel in registry/*) ;; *.py) report Network pynetwork "$rel" ;; esac
     report Clipboard clipboard "$rel"
+    case $rel in *.py) report Clipboard pyclipboard "$rel" ;; esac
+    case $rel in *.py) report Clipboard pyclipimport "$rel" ;; esac
     report Clipboard textselection "$rel"
     report Clipboard selectable "$rel"
     # Rule 1: only core/src/source may name getrandom ('*' in case also matches '/').

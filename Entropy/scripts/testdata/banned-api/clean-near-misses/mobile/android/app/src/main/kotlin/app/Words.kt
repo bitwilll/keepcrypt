@@ -10,3 +10,9 @@ enum class Order {
     sequential,
     random,
 }
+// Not Python: these entries look like wrapped Python import lines, which only .py files check.
+enum class Refused {
+    socket,
+    pbcopy,
+    clipboard,
+}

@@ -127,16 +127,16 @@ TRYBUILD=overwrite cargo test -p keepcrypt-core --test typestate   # only after 
                                      # regenerates the pinned .stderr files; review the diff
 cargo deny --locked check && cargo audit && cargo vet --locked   # plain `cargo vet` re-fetches imports
 scripts/check-path-deps.sh           # every non-workspace crate comes from crates.io (no path or git overrides)
-python3 tools/verify/verify.py --selftest   # 11 checks; also with /usr/bin/python3 (3.9, the floor)
+python3 -I tools/verify/vectorgen.py --selftest   # 11 checks; also with /usr/bin/python3 (3.9, the floor)
 # Generated vectors are regenerated, never hand-edited, then checked by --selftest:
-python3 tools/verify/verify.py --write-seal-vectors        # vectors/seal.json
-python3 tools/verify/verify.py --write-kat-vectors         # vectors/kat.json
-python3 tools/verify/verify.py --write-keepcrypt-vectors   # vectors/keepcrypt.json
-python3 tools/verify/verify.py --write-braille-vectors     # vectors/braille.json
-python3 tools/verify/verify.py --write-watchonly-vectors   # vectors/watchonly.json
-python3 tools/verify/verify.py --write-kcr-vectors         # vectors/kcr.json
-python3 tools/verify/verify.py --write-backup-vectors      # vectors/backup.json
-scripts/age-interop.py --core        # the age CLI against verify.py and core, both directions, work factor 18
+python3 -I tools/verify/vectorgen.py --write-seal-vectors        # vectors/seal.json
+python3 -I tools/verify/vectorgen.py --write-kat-vectors         # vectors/kat.json
+python3 -I tools/verify/vectorgen.py --write-keepcrypt-vectors   # vectors/keepcrypt.json
+python3 -I tools/verify/vectorgen.py --write-braille-vectors     # vectors/braille.json
+python3 -I tools/verify/vectorgen.py --write-watchonly-vectors   # vectors/watchonly.json
+python3 -I tools/verify/vectorgen.py --write-kcr-vectors         # vectors/kcr.json
+python3 -I tools/verify/vectorgen.py --write-backup-vectors      # vectors/backup.json
+scripts/age-interop.py --core        # the age CLI against tools/verify/ and core, both directions, work factor 18
                                      # (needs age; CI: Ubuntu's 1.1.1). --generate rewrites age_cli_written.json
 scripts/banned-api-check.sh          # grep gate for banned RNG, network and clipboard APIs
 scripts/banned-api-check.sh --selftest   # also builds the artifact fixtures (needs the pinned toolchain)

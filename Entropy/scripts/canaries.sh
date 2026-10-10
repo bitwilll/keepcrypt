@@ -835,10 +835,10 @@ else
 fi
 
 # Vectors tamper (lessons.md: computed values come from a committed script that CI re-runs): one
-# changed byte in each generated JSON file must fail verify.py --selftest, naming that file. The
+# changed byte in each generated JSON file must fail vectorgen.py --selftest, naming that file. The
 # byte is the first hex digit of the first all-hex string of 16 or more digits from the middle of
 # the file on, so the file stays valid JSON and only its content changes. Each file is changed in
-# its own fresh copy of vectors/ (verify.py --vectors-dir).
+# its own fresh copy of vectors/ (vectorgen.py --vectors-dir).
 flip_hex='
 import re, sys
 path = sys.argv[1]
@@ -863,7 +863,7 @@ for v in seal.json kat.json keepcrypt.json braille.json watchonly.json kcr.json 
         status=1
         continue
     fi
-    expect_failure "$name" python3 -I "$root/tools/verify/verify.py" --selftest --vectors-dir "$vt"
+    expect_failure "$name" python3 -I "$root/tools/verify/vectorgen.py" --selftest --vectors-dir "$vt"
     need "selftest FAILED"
     # A failing check must name the file: every check's title names its own file on its "ok" line
     # too, so only the FAIL lines count.
