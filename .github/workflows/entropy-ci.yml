@@ -270,8 +270,10 @@ jobs:
     # M1 gate (docs/build-plan.md): at least 95% line coverage in core/. The test-sources run, so
     # the stub and fault-injection tests count, with nothing excluded: no #[coverage(off)], no
     # cfg(coverage) (--no-cfg-coverage), and the first step fails if any core/src path matches the
-    # tool's default ignore rule (a tests/, examples/ or benches/ directory, or a tests.rs,
-    # *_tests.rs or *-tests.rs file), which would leave that code out of the figure unseen.
+    # path parts of the tool's default ignore rule (cargo-llvm-cov 0.9.1, src/report.rs: a tests/,
+    # examples/ or benches/ directory, a rustc/<hex or x.y.z>/ directory anywhere in the path, or a
+    # tests.rs, *_tests.rs or *-tests.rs file), which would leave that code out of the figure
+    # unseen. The rule's other parts name the target dir and the cargo and rustup homes.
     name: coverage (core, 95% of lines)
     needs: changes
     if: needs.changes.outputs.entropy == 'true'
@@ -285,13 +287,13 @@ jobs:
         run: |
           files=$(find core/src -type f)
           [ -n "$files" ] || { echo "FAIL: no file under core/src" >&2; exit 1; }
-          skipped=$(printf '%s\n' "$files" | grep -E '/(tests|examples|benches)/|/tests\.rs$|_tests\.rs$|-tests\.rs$' || true)
+          skipped=$(printf '%s\n' "$files" | grep -E '/(tests|examples|benches)/|/rustc/([0-9a-f]+|[0-9]+\.[0-9]+\.[0-9]+)/|/tests\.rs$|_tests\.rs$|-tests\.rs$' || true)
           if [ -n "$skipped" ]; then
             printf '%s\n' "$skipped"
             echo "FAIL: cargo-llvm-cov's default ignore rule would leave these core/src files out" >&2
             exit 1
           fi
-          echo "no core/src path matches /(tests|examples|benches)/, tests.rs, *_tests.rs or *-tests.rs"
+          echo "no core/src path matches /(tests|examples|benches)/, /rustc/<hex or x.y.z>/, tests.rs, *_tests.rs or *-tests.rs"
       - name: Install the pinned toolchain (rust-toolchain.toml)
         run: |
           rustup toolchain install
