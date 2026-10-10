@@ -2710,7 +2710,8 @@ Groups land in the order below. Vectors come before the core test that reads the
 - The verifier never issues a go-ahead code. G is computed only in its known answers and the vectors, because a
   verifier that printed G for typed T and n would make skipping the check trivial. M9's checker issues codes.
 - No new dependency (Python standard library; core's test uses `sha2` and the approved dev dependency `serde_json`),
-  no download, no change to SOURCES.md "Spec values", and no new computed number in `docs/` (lessons.md rule 1).
+  no download, no new SOURCES.md "Spec values" entry or copied value (its rows name files as the split leaves them,
+  Q16 (b)), and no new computed number in `docs/` (lessons.md rule 1).
 - Out of M2: see "Deferred, with their milestone" below.
 
 **0. Before code**
@@ -2768,13 +2769,25 @@ Groups land in the order below. Vectors come before the core test that reads the
       - age_cli_written.json is byte-identical;
       - every changed `.rs` line is a comment (`git diff -U0 -- core` adds and removes only `//` lines);
       - `cargo test` passes in both configurations, and checks 1-11 pass;
-      - `git grep -nE 'verify\.py (--write|--selftest|check [0-9])' -- core vectors` finds only the recorded
-        age_cli_written.json sentence.
+      - `git grep -nE 'verify\.py (--write|--selftest|check [0-9])' -- ':/' ':/!Entropy/tasks/todo.md'` (the whole
+        repo but this file) finds only the recorded age_cli_written.json sentence and SOURCES.md's record of it.
       Proof: commit 4. Each of the seven regenerated files equals its old bytes with `description` blanked, and
       `git diff -U0` changes line 2 only; age_cli_written.json keeps SHA-256 `29ba3cbc…`; `git diff -U0 -- core`
       changes only `//` lines; the grep finds the age_cli_written.json sentence and SOURCES.md's quotation of it;
       `cargo test` passes in both configurations (183 and 251 tests); vectorgen.py `--selftest` passes 11/11 on
       3.12 and 3.9; canaries pass 54/54.
+      Proof (review fixes): at 76dd1fb the whole-repo grep also finds `scripts/age-interop.py:272`, the `--generate`
+      template; bbbb599 fixes it, and from there the grep finds only age_cli_written.json:2 and SOURCES.md's record.
+      Verdicts for `git grep -n 'verify\.py' -- core vectors` at 76dd1fb (30 lines):
+      - kept, code still in verify.py: armor.rs:37 (`BACKUP_WHITESPACE`), seal.rs:33 (the seal family),
+        registry_key.rs:30 (the key computed apart from verify.py's Ed25519), snapshot.rs:392 (its Ed25519 verifier),
+        ur.rs:14 (the UR writer and reader); SOURCES.md:20 and :30 (the embedded BIP39 list and the cell table), :24,
+        :75 and :98 (answers computed apart from verify.py), :53 (the strict UR reader), :70 (the `.kcr` verifier),
+        :91, :234, :244 and :310 (the age reader), :143 (the Spec values intro), :172, :174, :175 and :178 (rows
+        naming `DESCRIPTOR_*`, `hdkey_item`, `BYTEWORDS` and `AGE_*`), :156 and :160 (its literals and reader beside
+        vectorgen.py's), :189 (its Ed25519); backup.json:2 (its reader) and kcr.json:2 (its verifier);
+      - changed: test_vectors.rs:3 and tests/common/mod.rs:3, "vectorgen.py, computing with verify.py";
+      - recorded: age_cli_written.json:2 (its sentence, kept by Q16 (b)) and SOURCES.md:315 (the record of it).
 
 **2. Python networking and clipboard in the banned-API gate (Q23; CLAUDE.md Commands "network and clipboard APIs")**
 - [x] `scripts/banned-api-check.sh`, for `.py` files, dispatched like `pyrandom()`:
@@ -2794,8 +2807,14 @@ Groups land in the order below. Vectors come before the core test that reads the
       `network-python-*` fixtures (each module, plus the parenthesised, no-space, backslash-continued and wrapped
       import lines; each also clean under `registry/`) and 8 `clipboard-python-*` fixtures each give exactly one hit,
       and `clean-near-misses/tools/verify/offline.py` holds a near miss for every pattern. The gate before this
-      commit finds none of the 27 hits, and a copy with the import anchor and word start removed hits 14 of its near
-      misses. The gate is clean on the tree (163 files).
+      commit finds none of the 27 hits, and a copy whose first network pattern is the bare list `$pynet` and whose
+      clipboard patterns drop `${L}` hits 11 lines of offline.py, every line that holds a banned name as text (not
+      14, as first recorded). The gate is clean on the tree: 160 files from a clean checkout (`git archive`); a local tree also
+      scans the ignored `__pycache__/*.pyc` files that Python runs leave.
+      Proof (review fixes): 64c4fc7 adds the line after `from \` and a backslash after the module (network and
+      random), 5cc295d adds `_socket` and `_ssl`, and 42d8552 pins the boundaries and the `.py`-only dispatch.
+      `--selftest` passes 309/309 under sh and dash; every new pattern, alternative, boundary and dispatch has a
+      mutant that turns the selftest red on its own fixture or near-miss line; the gate is clean on the tree.
 
 **3. Embedded known answers, startup guards and check 12 (rules 3, 5, 8, 10 and 12; build-plan.md "Release")**
 - [ ] verify.py `KNOWN_ANSWERS` and `known_answers()`. Every value is a literal in the file, and a comment names its
@@ -2822,7 +2841,9 @@ Groups land in the order below. Vectors come before the core test that reads the
           sys, unicodedata, warnings. No `from X import *` and no `importlib`;
         - no call to or use of the names `open`, `input`, `exec`, `eval`, `compile`, `__import__`, `breakpoint`,
           `globals`, `locals`, `vars`, `getattr`, `setattr`, `delattr` or `__builtins__`;
-        - no dunder attribute (`x.__class__`, `x.__dict__`, `x.__globals__`, ...);
+        - no dunder attribute (`x.__class__`, `x.__dict__`, `x.__globals__`, ...). verify.py has one after the split,
+          `Exception.__init__(self, error)` in `BackupRefused` (`super().__init__` would be one too), so commit 6
+          makes `error` a property over `self.args[0]`, and the rule holds with no exception;
         - every attribute taken from an imported module (`hashlib.sha256`, `getpass.getpass`, `sys.stdin`) must be in a
           recorded (module, attribute) list kept in check 12, so `getpass.os`, `getpass.io`, `argparse._os` and
           `sys.modules` fail;
@@ -3175,7 +3196,8 @@ Groups land in the order below. Vectors come before the core test that reads the
       - at the split commit, the seven vectorgen-written files are byte-identical, and checks 1-11 print their M1 lines;
       - after the provenance commit, only their `description` strings differ;
       - age_cli_written.json and the fetched files match their SOURCES.md hash rows;
-      - no committed file names a removed `verify.py` mode or check, except the recorded age_cli_written.json sentence;
+      - no committed file names a removed `verify.py` mode or check, except the recorded age_cli_written.json sentence
+        and SOURCES.md's record of it;
       - age-interop passes against Ubuntu's age 1.1.1.
 - [ ] Deliverables:
       - `tools/verify/verify.py` with `selftest`, `mixed` and `dice` working from a lone copy (check 12);
