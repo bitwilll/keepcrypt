@@ -3234,10 +3234,12 @@ Groups land in the order below. Vectors come before the core test that reads the
 - [ ] `scripts/canaries.sh`:
       - the tamper loop gains `agreement.json` (9 files: the seven generated ones, agreement.json and
         age_cli_written.json), and a failing check must name it. Its comment no longer calls every file generated;
-      - `agreement-core`: in the existing workspace copy (`$work/repo`), one hex value of agreement.json is flipped with
-        the tamper loop's helper. Then `cargo test --manifest-path "$tmp/Cargo.toml" -p keepcrypt-core --locked
-        --features test-sources --test agreement --target-dir "$root/target/canary-real"` must fail, naming the case
-        and field;
+      - `agreement-core`: in the existing workspace copy (`$work/repo`), one value inside a case's `expect` is changed:
+        the first hex digit of the first `"seal_tag_hex"` value from the middle of agreement.json on, found by its own
+        pattern. The tamper loop's helper would change a `rolls` string there, an input core refuses as `InvalidRoll`
+        before it compares any value. Then `cargo test --manifest-path "$tmp/Cargo.toml" -p keepcrypt-core --locked
+        --features test-sources --test agreement --target-dir "$root/target/canary-real"` must fail, naming that case
+        and `seal_tag_hex`;
       - each verifier canary runs `vectorgen.py --selftest --check 12 --verify-py <copy>` on a changed copy of
         verify.py, which check 12 must fail:
         - `verifier-import`: a copy with `import socket` fails rule (a);
