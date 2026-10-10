@@ -56,6 +56,21 @@ serde_json = "=1.0.151"
 name = "kcr"
 required-features = ["test-registry"]
 
+# Tests that drive sessions on stub entropy (tasks/todo.md, M1 group 10) run only in the second
+# test run, `cargo test -p keepcrypt-core --features test-sources`; the default run tests the
+# release configuration (tests/os_source.rs and tests/ceremony.rs use the real OS source).
+[[test]]
+name = "source_substitution"
+required-features = ["test-sources"]
+
+[[test]]
+name = "error_injection"
+required-features = ["test-sources"]
+
+[[test]]
+name = "check_flow"
+required-features = ["test-sources"]
+
 # Test-only features, both off by default (CLAUDE.md rule 10). No manifest turns either one on, in
 # any dependency table (normal, dev, build or target-specific) or feature: cargo merges features
 # across every package in one build, so one such entry anywhere would put stubs or the test key

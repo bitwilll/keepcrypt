@@ -1762,6 +1762,36 @@ order", "Go-ahead before reveal")
       - `decrypt_backup` of the session's file gives a `CheckedBackup` whose fingerprint (empty passphrase), words
         and braille lines match the session, and whose `seal()` equals the session's seal;
       - after `watch_only(Some(TREZOR))`, the backup and the registration are unchanged and hold no passphrase.
+- As built at commit 24 (core/Cargo.toml declares `required-features = ["test-sources"]` for source_substitution,
+  error_injection and check_flow; os_source and ceremony run with default features, on the real OS source):
+  - source_substitution: D is read through `reveal_device_leg` after a 50-roll ceremony reads every word back; C
+    stands in for D where only a difference matters (C = SHA-256(tag || D)). Each change is one byte at both ends of
+    every hwrng chunk, one byte of every extra and of the OS read; the 16 startup chunks leave C unchanged, the 9
+    credited ones and every other source change it. A source id is changed to each of the other three extras.
+    "Exactly 64" is proven both ways: 63 stub bytes fail `commit` with `Source(Os)`, and after 64 the stub is used
+    up, so `start_check` fails. Dice-only reaches `Ready` through Skip on an empty stub, a stream and a failing
+    stub alike, with keepcrypt.json's 12- and 24-word lists.
+  - os_source: two phone commitments differ, and two checks of one dice-only seed share T but not the nonce.
+  - error_injection: every case asserts the exact `Err` and one probe wipe: the OS failing at commit (Pi after 1,536
+    clean bytes, phone), at `start_check`, in `generate_backup_passphrase`, and in `encrypt_backup` with nothing or
+    only the file key left; short reads at each of those; every keepcrypt.json health case through
+    `add_hw_samples` in 64-byte chunks (each failure at its pinned test, stage and sample; each pass tested,
+    credited and committed as pinned); 1,535 bytes and 1 MiB of each extra give `QuotaUnmet`; hwrng input on a
+    phone or in dice-only mode; faces 0, 7, 255 and a 257th roll; `finish` at 49, at 98 and at 98 after a collision
+    for both lengths; the five exports before read-back and `encrypt_backup` before a passphrase; every `KatId` at
+    `new` and at `restart_with_stub`. The free-function twins are swept against one exhaustive match, `runs(id)`,
+    from group to entry points (kat.rs `groups` read the other way): `Kat(id)` where a function runs the group,
+    else its own known answer. Every valid snapshot costs a full root pass (1.45 s), so the snapshot twin reads
+    kcr.json's `truncated-body`, which passes the signature check and is refused for its length; tests/kcr.rs
+    verifies the valid snapshots. Mutant check: a commit that swallows an OS error fails two of these tests.
+  - check_flow: as planned, plus lenient code entry (`pbjn yzy5`), vector 1's code refused as another seal's, the
+    UR proof of another bucket, the current, stale and future snapshots as well as proofs, and one snapshot,
+    loaded once, that stops the 50-roll seed and then clears the 99-roll seed after the restart.
+  - ceremony: the matrix of Mixed and dice-only, Pi and phone, 12 and 24 words, each read back letter by letter
+    from its faces (up to the first blank face) with the gate shut until the last word; C recomputed from the
+    revealed D; the backup opened by `decrypt_backup` with the session's fingerprint, words, braille lines (device,
+    sequence, SeedBook number, cells) and seal; the registration and the plain export. The TREZOR checks run in
+    two of the eight (12-word Mixed Pi, 24-word dice-only Pi) to bound the scrypt runs.
 - [ ] `tests/no_secret_text.rs` (build-plan.md CI rule "Secrets never printed"; the refined rule goes to the owner as
       a build-plan.md edit, Q10):
       - run public-vector ceremonies: Coldcard 50, 99 and 100 rolls in dice-only mode, and the keepcrypt.json mixed
