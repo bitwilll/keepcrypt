@@ -2,13 +2,16 @@
 //! CLAUDE.md rule 5; tasks/todo.md, M1 group 10). Public-vector ceremonies (Coldcard's 50, 99 and
 //! 100 rolls in dice-only mode, and keepcrypt.json's two Mixed source-substitution sessions) are run
 //! end to end, and every public value they produce that implements `Debug` or `Display` is formatted
-//! with both, together with every error variant. Three checks, each with a planted leak it catches:
+//! with both, together with every error variant. A token is a maximal run of ASCII letters,
+//! case-folded. Three checks, each with a planted leak it catches:
 //!
-//! 1. No word of the seed appears in its transcript (as a substring, case-folded) unless it also
-//!    appears in the transcript of a control seed with no word in common. Fixed text such as "test",
-//!    "wrong" or "error" is made of BIP39 words; it appears for both seeds alike.
-//! 2. No two consecutive seed words appear in order, as adjacent tokens (a token is a maximal run
-//!    of ASCII letters, case-folded).
+//! 1. No word of the seed appears in its transcript as a token unless it also appears as a token in
+//!    the transcript of a control seed with no word in common. Fixed text such as "test", "wrong"
+//!    or "error" is made of BIP39 words; it appears for both seeds alike. Both sides compare whole
+//!    tokens: a substring match excused a seed word the control prints only inside a longer token
+//!    ("keep" inside "keepcrypt"), so a lone leak of it went unseen (review fix after commit 25).
+//!    Whole tokens also keep base58, bytewords and base32 text from matching by chance.
+//! 2. No two consecutive seed words appear in order, as adjacent tokens.
 //! 3. The `Debug` output of the types that hold or replace a session, `Rejected` and `Wiped`,
 //!    contains no BIP39 word as a whole token: not even "session", "report", "flag", "check" or
 //!    "code", which are BIP39 words.
@@ -19,11 +22,11 @@ mod common;
 
 use common::{hex, named, read, text};
 use keepcrypt_core::{
-    BackupApp, BackupError, BrailleError, CoreError, CreatedBy, Discard, ExtraSource, Freshness,
-    GoAhead, HW_BYTES_NEEDED, HealthFailure, HealthStage, HealthTest, InternalFault, KatId, Mode,
-    Platform, ReadbackResult, Rejected, SecretMnemonic, SeedLength, Session, SnapshotError,
-    SourceFault, StubEntropy, StubSource, TypedBackupPassphrase, UrError, VerifiedSnapshot,
-    WipeProbe, decrypt_backup, verify_bucket_proof, verify_snapshot,
+    BackupApp, BackupError, BrailleError, CheckError, CoreError, CreatedBy, Discard, ExtraSource,
+    Freshness, GoAhead, HW_BYTES_NEEDED, HealthFailure, HealthStage, HealthTest, InternalFault,
+    KatId, Mode, Platform, ReadbackResult, Rejected, Sealed, SecretMnemonic, SeedLength, Session,
+    SnapshotError, SourceFault, StubEntropy, StubSource, TypedBackupPassphrase, UrError,
+    VerifiedSnapshot, WipeProbe, decrypt_backup, verify_bucket_proof, verify_snapshot,
 };
 use std::fmt::{self, Debug, Write as _};
 
@@ -129,8 +132,9 @@ fn extra(name: &str) -> ExtraSource {
     }
 }
 
-/// Every error core can report, from exhaustive matches: a new variant does not compile in
-/// `every_error_is_listed` until it is listed here.
+/// Every `CoreError` core can report, from exhaustive matches: a new variant does not compile in
+/// `every_error_is_listed` until it is listed here. The other error core reports, `CheckError` (in
+/// `Rejected::Retry`), is listed by its generated `CheckError::ALL` in `fixed_text`.
 fn every_error() -> Vec<CoreError> {
     let mut all = vec![
         CoreError::QuotaUnmet,
@@ -235,6 +239,11 @@ fn every_error_is_listed() {
 /// The text every transcript shares: each variant of the public enums and every error, with `{:?}`
 /// and `{}`. It is the same for every seed, so a ceremony's own settings (say, `Phone`, a BIP39 word)
 /// never count as a leak against a control seed run on another platform.
+///
+/// Left out: the `Debug` of `VerifiedSnapshot` and `VerifiedProof`. Both are built from a registry
+/// file alone and are the same in every transcript, so they cannot print a seed word; their dates'
+/// field names ("year", "month", "day") are BIP39 words, and as fixed text they would excuse those
+/// seed words from check 1 ("day" in two of these seeds, "month" in one).
 fn fixed_text() -> String {
     let mut out = String::new();
     debug!(
@@ -262,6 +271,9 @@ fn fixed_text() -> String {
     for e in every_error() {
         both!(out, e);
     }
+    for e in CheckError::ALL {
+        both!(out, e);
+    }
     out
 }
 
@@ -275,55 +287,20 @@ struct Transcript {
 /// with `{:?}` and `{}`, and every error variant.
 fn transcript(ceremony: &Ceremony, clear: &VerifiedSnapshot) -> Transcript {
     let mut out = fixed_text();
-    let (os, events) = match ceremony.mode {
-        Mode::Mixed => mixed_case(ceremony.platform),
-        Mode::DiceOnly => (Vec::new(), Vec::new()),
-    };
-    // The Mixed sessions' OS bytes first, then a stream for the nonce and the backup.
-    let mut bytes = os;
-    bytes.extend_from_slice(&[0; 8]);
-    bytes.extend_from_slice(&hex(
+    // The same seed again, for the collision report of a check stopped by "Match found".
+    let wiped = sealed(ceremony, &[0; 8], &mut out)
+        .start_check()
+        .expect("checking")
+        .discard(Discard::Collision);
+    let report = wiped.collision_report().expect("a report");
+    both!(out, report.url(), report.grouped_code(), report.seal_id());
+    // The nonce, then a stream for the backup.
+    let mut after_commit = vec![0; 8];
+    after_commit.extend_from_slice(&hex(
         &named(&read("backup.json")["generate"], "stream")["os_hex"],
     ));
-    bytes.extend((0u8..52).map(|b| b.wrapping_mul(37)));
-    let stub = StubSource::new(StubEntropy::Fixed(bytes), &WipeProbe::new());
-    let mut session =
-        Session::new_with_stub(ceremony.len, ceremony.mode, ceremony.platform, stub, None)
-            .expect("a session");
-    debug!(
-        out,
-        session.seed_length(),
-        session.mode(),
-        session.platform()
-    );
-    for (kind, data) in events {
-        session = match kind.as_str() {
-            "hwrng" => session.add_hw_samples(&data).expect("healthy"),
-            name => {
-                session.add_extra(extra(name), &data);
-                session
-            }
-        };
-    }
-    debug!(
-        out,
-        session.credited_bits(),
-        session.required_bits(),
-        session.hw_bytes_tested()
-    );
-    let committed = session.commit().expect("committed");
-    debug!(out, committed.commitment());
-    let mut rolling = committed.start_dice();
-    for face in faces(ceremony.rolls) {
-        rolling = rolling.push_roll(face).expect("a face");
-    }
-    debug!(
-        out,
-        rolling.rolls(),
-        rolling.millibits(),
-        rolling.minimum_rolls()
-    );
-    let sealed = rolling.finish().expect("sealed");
+    after_commit.extend((0u8..52).map(|b| b.wrapping_mul(37)));
+    let sealed = sealed(ceremony, &after_commit, &mut out);
     let seal = sealed.seal();
     debug!(
         out,
@@ -396,18 +373,83 @@ fn transcript(ceremony: &Ceremony, clear: &VerifiedSnapshot) -> Transcript {
     .expect("8 words");
     let checked = decrypt_backup(file.bytes(), &typed).expect("checked");
     debug!(out, checked.fingerprint(), checked.seal());
+    let (ready, registration) = ready.registration().expect("a registration");
+    both!(
+        out,
+        registration.url(),
+        registration.grouped_code(),
+        registration.seal_id()
+    );
     let (ready, export) = ready.watch_only(None).expect("an export");
     debug!(out, export.fingerprint(), export.passphrase_used());
+    both!(
+        out,
+        export.xpub(),
+        export.receive_descriptor(),
+        export.change_descriptor(),
+        export.ur(),
+        export.qr_text(),
+        export.first_address()
+    );
     debug!(out, ready.fingerprint());
     Transcript { words, text: out }
 }
 
-/// The seed words found in `text` (as case-folded substrings) that are not in `control`.
+/// The ceremony's seed on a stub, through `finish`, formatting each public value on the way. The
+/// stub serves a Mixed ceremony's OS bytes at commit, then `after_commit`.
+fn sealed(ceremony: &Ceremony, after_commit: &[u8], out: &mut String) -> Session<Sealed> {
+    let (os, events) = match ceremony.mode {
+        Mode::Mixed => mixed_case(ceremony.platform),
+        Mode::DiceOnly => (Vec::new(), Vec::new()),
+    };
+    let mut bytes = os;
+    bytes.extend_from_slice(after_commit);
+    let stub = StubSource::new(StubEntropy::Fixed(bytes), &WipeProbe::new());
+    let mut session =
+        Session::new_with_stub(ceremony.len, ceremony.mode, ceremony.platform, stub, None)
+            .expect("a session");
+    debug!(
+        out,
+        session.seed_length(),
+        session.mode(),
+        session.platform()
+    );
+    for (kind, data) in events {
+        session = match kind.as_str() {
+            "hwrng" => session.add_hw_samples(&data).expect("healthy"),
+            name => {
+                session.add_extra(extra(name), &data);
+                session
+            }
+        };
+    }
+    debug!(
+        out,
+        session.credited_bits(),
+        session.required_bits(),
+        session.hw_bytes_tested()
+    );
+    let committed = session.commit().expect("committed");
+    debug!(out, committed.commitment());
+    let mut rolling = committed.start_dice();
+    for face in faces(ceremony.rolls) {
+        rolling = rolling.push_roll(face).expect("a face");
+    }
+    debug!(
+        out,
+        rolling.rolls(),
+        rolling.millibits(),
+        rolling.minimum_rolls()
+    );
+    rolling.finish().expect("sealed")
+}
+
+/// The seed words that `text` holds as whole tokens and `control` does not.
 fn leaked_words(words: &[String], text: &str, control: &str) -> Vec<String> {
-    let (text, control) = (text.to_ascii_lowercase(), control.to_ascii_lowercase());
+    let (text, control) = (tokens(text), tokens(control));
     words
         .iter()
-        .filter(|w| text.contains(w.as_str()) && !control.contains(w.as_str()))
+        .filter(|w| text.contains(w) && !control.contains(w))
         .cloned()
         .collect()
 }
@@ -599,4 +641,37 @@ fn a_planted_leak_is_caught_by_each_check() {
         "check 3"
     );
     assert_eq!(bip39_tokens("Wiped { report: .. }"), ["report"], "check 3");
+}
+
+/// Check 1 compares whole tokens on both sides. Matched as substrings, a seed word that the control
+/// prints only inside a longer token ("keep" inside "keepcrypt") was excused, so a lone leak of it
+/// passed all three checks. Each such word of each ceremony, planted as a token of its own, must be
+/// caught by check 1; a return to substring matching fails here (review fix after commit 25).
+#[test]
+fn a_seed_word_inside_a_longer_control_token_is_still_caught() {
+    let clear = clear_snapshot();
+    let transcripts: Vec<Transcript> = CEREMONIES.iter().map(|c| transcript(c, &clear)).collect();
+    let mut planted = 0;
+    for (i, control) in controls(&transcripts).into_iter().enumerate() {
+        let (seed, other) = (&transcripts[i], &transcripts[control]);
+        let (control_text, control_tokens) = (other.text.to_ascii_lowercase(), tokens(&other.text));
+        let inside_longer = seed
+            .words
+            .iter()
+            .filter(|w| control_text.contains(w.as_str()) && !control_tokens.contains(w));
+        for word in inside_longer {
+            let leaked = format!("{}\nleaked: {word}\n", seed.text);
+            assert_eq!(
+                leaked_words(&seed.words, &leaked, &other.text),
+                std::slice::from_ref(word),
+                "{}",
+                CEREMONIES[i].name
+            );
+            planted += 1;
+        }
+    }
+    assert!(
+        planted > 0,
+        "no seed word sits inside a longer control token"
+    );
 }
