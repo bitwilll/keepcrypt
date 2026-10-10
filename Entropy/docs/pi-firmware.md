@@ -65,7 +65,7 @@ The image is a minimal Buildroot Linux whose only job is to start `keepcrypt-pi`
 | `hal::Usb` | Backup export and snapshot import | Detects a stick under `/sys/block`, mounts, writes, syncs, unmounts |
 | `ceremony` | Drives the core session | Owns the typestate `Session`; nothing else can reach it |
 | `ui` | Screens and navigation | A screen state machine on `embedded-graphics`; large fonts; insert view shows one word per page with its five braille faces |
-| `games` | Optional waiting screen | Snake and Tetris; pieces drawn from their own `getrandom` calls, never from the pool |
+| `games` | Optional waiting screen | Snake and Tetris; pieces drawn from core's separate game-randomness call (its own `getrandom` call), never from the pool |
 | `extras` | Write-only entropy input | An `ExtraSink` that forwards button timestamps to `Session::add_extra`; games receive only this sink |
 | `qr` | Seal, registration, collision-report and watch-only QR codes | qrcodegen for static codes, including the account QR, a single-frame BC-UR string from the core |
 
@@ -100,7 +100,7 @@ A ceremony is fifteen screens in a fixed order; the core's typestate makes it im
 Snake and Tetris stay in the product as an optional waiting screen and a source of uncredited button timing; they can add bytes to the pool but can never read from it. Extras reach the pool only until the commitment, because C fixes D.
 
 - **Input timing:** every button press before the commitment, game or not, sends its nanosecond timestamp through the `ExtraSink`. The core mixes these bytes in and credits them zero.
-- **Game randomness:** falling pieces and food positions come from separate `getrandom` calls. Nothing derived from the pool is ever drawn on screen, including the braille-style block characters.
+- **Game randomness:** falling pieces and food positions come from core's separate game-randomness call, which makes its own `getrandom` call and never touches the pool; the games never call `getrandom` themselves. Nothing derived from the pool is ever drawn on screen, including the braille-style block characters.
 - **Game scope:** games run only during step 4; they close automatically before the commitment screen.
 - **Phase-2 sensors:** camera (lens covered, raw frames), I2S microphone and IMU feed the same sink when enabled in settings; all default off and are credited zero.
 - **Phase-2 TRNG:** an Infinite Noise TRNG read in raw mode is health-tested like `/dev/hwrng` and may count toward the device quota only after its credit is backed by `ea_non_iid` data (milestone M8).

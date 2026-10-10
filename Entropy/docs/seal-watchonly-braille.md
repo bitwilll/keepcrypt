@@ -289,7 +289,7 @@ This is standard UEB grade 1 for digits next to letters. Letters are lowercase, 
 
 **SeedBook safety rules, enforced in the copy on screen.** The SeedBook is a public reference: never write the real phrase in it or store a marked copy with the wallet. Work one word at a time, in order, alone and offline; rehearse on a spare insert first. Never use a computer-driven embosser or printer for a real seed.
 
-**Your Tetris idea, kept.** The waiting-screen Tetris can show braille letters on its blocks as a teaching aid. Those letters come from the game's own RNG, never from the entropy pool.
+**Your Tetris idea, kept.** The waiting-screen Tetris can show braille letters on its blocks as a teaching aid. Those letters come from core's separate game-randomness call, never from the entropy pool.
 
 ## Sources
 

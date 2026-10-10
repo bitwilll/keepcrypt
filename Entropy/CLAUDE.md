@@ -44,7 +44,8 @@ pass. If one seems to block you, ask the owner.
    everywhere in shipped code: the `rand` crate family in `core/`, `Math.random`,
    `java.util.Random`, `kotlin.random.Random`, `arc4random_uniform` in app code,
    Python `random`, `mt19937`, `rand()`/`srand()`, and any hand-written PRNG.
-   Games use their own separate `getrandom` calls and never touch the pool.
+   Games get their bytes from core's separate game-randomness call, which makes its own
+   `getrandom` call and never touches the pool.
 2. **Never narrow the pipe:** nothing between the pool and the seed is narrower than 256 bits.
    No truncation to `u32`/`u64`, no integer casts of secret material, no "reseed with 4 bytes".
 3. **Fail closed:** no fallback source, no default value, no `unwrap_or*` and no

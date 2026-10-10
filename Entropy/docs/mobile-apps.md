@@ -139,7 +139,7 @@ Phones do not expose a raw hardware noise source to apps, so the device leg is t
 | Touch and button timing | Event timestamps in nanoseconds | Same | Mixed in, zero credit |
 | Motion sensors | `SensorManager` accelerometer and gyroscope | Core Motion accelerometer and gyroscope | Mixed in, zero credit |
 | Camera raw frames | Optional, off by default; camera permission | Optional, off by default; camera permission | Mixed in, zero credit |
-| Snake and Tetris | Optional waiting screen; pieces from separate `getrandom` calls | Same | Only their touch timing is mixed in |
+| Snake and Tetris | Optional waiting screen; pieces from core's separate game-randomness call (its own `getrandom` call), never the pool | Same | Only their touch timing is mixed in |
 
 The app explains the default mode in one sentence: "Your seed is safe if either your phone or your dice are honest."
 

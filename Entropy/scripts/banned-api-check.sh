@@ -76,9 +76,10 @@
 #              or isTextSelectable, unless each one's value is the literal false: ="false",
 #              ">false<", (false) or "= false".
 #   Rule1      rule 1 path check: getrandom in any .rs file is a hit, except in the core module
-#              core/src/source and the Pi games module pi/app/src/games ("Games use their own
-#              separate getrandom calls"; docs/pi-firmware.md), each in either file layout: X.rs
-#              or anything under X/. A look-alike such as core/src/sourcex.rs is another module.
+#              core/src/source, in either file layout: source.rs or anything under source/. A
+#              look-alike such as core/src/sourcex.rs is another module. The games are no
+#              exception: they get their bytes from core's separate game-randomness call
+#              (docs/pi-firmware.md, "Game randomness").
 #              core/src/lib.rs must hold the exact line #![forbid(unsafe_code)] (a missing line is
 #              reported at line 1).
 #   FailOpen   rule 3, only in .rs files under core/, ffi/ and pi/app/ (the crates under the
@@ -155,9 +156,9 @@ usage: scripts/banned-api-check.sh [--selftest | DIR | --artifact TARGET FILE...
               symbols other than TARGET's OS import, and that import (see the script header)
   --selftest  run the fixtures in scripts/testdata/banned-api/ and scripts/testdata/artifact/
 Hits: RNG APIs (and the OS RNG read outside core/src/source), network APIs and hard-coded http URLs
-(outside registry/), clipboard, copy and share APIs, getrandom in a .rs file outside core/src/source
-and pi/app/src/games, a core/src/lib.rs without #![forbid(unsafe_code)], in Rust under core/, ffi/
-or pi/app/ a discarded result (_ =, an _name binding, drop or forget of a call), clippy as a cfg
+(outside registry/), clipboard, copy and share APIs, getrandom in a .rs file outside
+core/src/source, a core/src/lib.rs without #![forbid(unsafe_code)], in Rust under core/, ffi/ or
+pi/app/ a discarded result (_ =, an _name binding, drop or forget of a call), clippy as a cfg
 predicate and /dev/stdout, /dev/stderr or /dev/tty, include! (by any path or alias) or a path
 attribute in any .rs file, and a C #include of a file with a binary extension.
 A directory symlink is refused. Exit 0 clean, 1 hits, 2 usage or read error.
@@ -219,11 +220,10 @@ rng() {
     -- "$1"
 }
 
-# Rule 1, one source of OS randomness: only core/src/source reads the OS RNG, so every other file
-# (pi/app/src/games included: it may call getrandom, nothing lower) is barred from the device files
-# and the platform calls behind getrandom. /dev/hwrng is the raw hardware RNG that pi/app reads for
-# the health tests, not the kernel CSPRNG; Python os.urandom and secrets are the endorsed tooling
-# calls (docs/design.md), so neither is banned.
+# Rule 1, one source of OS randomness: only core/src/source reads the OS RNG, so every other file is
+# barred from the device files and the platform calls behind getrandom. /dev/hwrng is the raw
+# hardware RNG that pi/app reads for the health tests, not the kernel CSPRNG; Python os.urandom and
+# secrets are the endorsed tooling calls (docs/design.md), so neither is banned.
 osrng() {
   grep -n -a -E \
     -e '/dev/u?random' \
@@ -459,9 +459,9 @@ EOF
     report Clipboard clipboard "$rel"
     report Clipboard textselection "$rel"
     report Clipboard selectable "$rel"
-    # Rule 1: only these two Rust modules may name getrandom ('*' in case also matches '/').
+    # Rule 1: only core/src/source may name getrandom ('*' in case also matches '/').
     case $rel in
-      core/src/source.rs | core/src/source/* | pi/app/src/games.rs | pi/app/src/games/*) ;;
+      core/src/source.rs | core/src/source/*) ;;
       *.rs) report Rule1 getrandom_use "$rel" ;;
     esac
     case $rel in core/*.rs | ffi/*.rs | pi/app/*.rs) report FailOpen failopen "$rel" ;; esac
