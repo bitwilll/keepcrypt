@@ -542,38 +542,52 @@ mod tests {
         }
     }
 
-    // BIP39 vectors.json (TREZOR): the 12- and 24-word entries encode as published, and the master
-    // fingerprint from each published seed is that of the published xprv.
+    // BIP39 vectors.json (TREZOR): every 12- and 24-word entry encodes as published, its seed under
+    // the passphrase "TREZOR" derives as published through `passphrase_seed_into` (the
+    // `watch_only(Some(..))` path), and the master fingerprint of that seed is the published xprv's.
+    // The other 8 entries have 24 bytes of entropy (18 words), a length core never makes; the
+    // Bip39 KAT checks their words, through the bip39 crate (review fix after commit 25).
     #[test]
     fn bip39_vectors_json() {
         let english = read("bip39/vectors.json")["english"]
             .as_array()
             .expect("english")
             .clone();
-        let mut checked = 0;
-        for entry in &english {
+        let trezor = Bip39Passphrase::new("TREZOR").expect("a passphrase");
+        let (mut checked, mut eighteen_words) = (0, 0);
+        for (n, entry) in english.iter().enumerate() {
             let entropy = hex(&entry[0]);
             let len = match entropy.len() {
                 16 => SeedLength::Words12,
                 32 => SeedLength::Words24,
-                _ => continue,
+                24 => {
+                    eighteen_words += 1;
+                    continue;
+                }
+                other => panic!("entry {n}: {other} bytes of entropy"),
             };
             let mut e = SecretBytes32::zeroed();
             e.expose_secret_mut()[..entropy.len()].copy_from_slice(&entropy);
-            assert_eq!(words(&e, len).join(" "), text(&entry[1]));
+            assert_eq!(words(&e, len).join(" "), text(&entry[1]), "entry {n}");
             // A TREZOR-passphrase seed: a plain SecretSeed64, which wallet_summary does not take.
             let mut seed = SecretSeed64::zeroed();
-            seed.expose_secret_mut().copy_from_slice(&hex(&entry[2]));
+            assert_eq!(passphrase_seed_into(&e, len, &trezor, &mut seed), Ok(()));
+            assert_eq!(
+                seed.expose_secret().to_vec(),
+                hex(&entry[2]),
+                "entry {n}: the TREZOR seed"
+            );
             let secp = Secp256k1::signing_only();
             let master = SecretXpriv::master(&seed).expect("a master");
             let xprv = Xpriv::from_str(text(&entry[3])).expect("an xprv");
             assert_eq!(
                 master.fingerprint(&secp).to_bytes(),
-                xprv.fingerprint(&secp).to_bytes()
+                xprv.fingerprint(&secp).to_bytes(),
+                "entry {n}"
             );
             checked += 1;
         }
-        assert_eq!(checked, 16);
+        assert_eq!((checked, eighteen_words), (16, 8));
     }
 
     // BIP-84 test vector (abandon x 11 + about): fingerprint 73c5da0a, first receive address
