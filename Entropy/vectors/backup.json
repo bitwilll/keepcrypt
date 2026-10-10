@@ -603,6 +603,14 @@
       "file": "-----BEGIN AGE ENCRYPTED FILE-----\nYWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHNjcnlwdCB2eUpBeDJPb2hhcC9EZmJZU\n2sxNUZRIDEwClFidTZqa3Q2eVpoMnVSZ3czb2tYVDlDaFlLeFhLVnNSWW5KRWFyRE\n9nbGsKLS0tIHBMY21EQTBTaGlTVG1wb1VxZXc3VjhzWVVUNituNjR6VkNHV2ZLT3l\n6TEkKYmn0dwDPXDfhGqAPfd+m9ZPAECsPdkfN7UNzi0vqD6FzplXnecoQcpqW7OoE\n1JvkQjBquvuP+Z28ZoW3opJ7nChT/Y1wOO289PPms4iCADVLAaiuu+fMZHLhh6xsb\njX30fFLT7GZ9jLgXdTZlPSC8p4pF4PTzVL7A71Q8aO0EZexSs8LdxOqf78A6yK3ky\n2XD3dk9ezMjJ7vc2fzFAogXFO5AMvqrNZOU2M0rpuC1zfZt4XTB76PPSo574kyJC6\n/jqaDaklw0P+NwQiktkHe0zPul5TI4xuIO21EjqgEeAbUK8fySUxbqhPAPlHzUKwn\nvT8SzZv9DbD2dBQFzy6TipQPPDJwHADZQudL6MACwYzWhvVB23PqHk7YzCPsscbbN\nuhLupTNtXLULfJVZ00qqSeETA+X0wSMifmWVqjwKdM7Jzorr8qD2THppzHHf+IQSY\ngli6EImzWPttjmNdxXXzII4njQwd+mwRuCYy2SnpVoZdcUsQYk8rr/1IN76pjbyh2\npgeY3TDzgm9Xn3OviZl3nA84FqU0WkZyOSKEqWzT90tEJ4AfwmpAelE1rlD1f68Yh\nSK9lfkPVIsuGid++62+UK0gajAV8w/t0OxH7lowNhQEF/loWdV97VyZOEf0Xno1CM\nNU2WRJl6dSsDbkqVEktUe7t0TjGpKnd7yDoQiJWstVZ+onSnD5RQg+Wd571A4LyIw\nQ=\n-----END AGE ENCRYPTED FILE-----\n"
     },
     {
+      "name": "armor-last-line-long",
+      "change": "the last two base64 lines joined into one",
+      "passphrase": "fly fancy hollow control general vast million pipe",
+      "error": "Backup(Armor)",
+      "scrypt": false,
+      "file": "-----BEGIN AGE ENCRYPTED FILE-----\nYWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHNjcnlwdCB2eUpBeDJPb2hhcC9EZmJZ\nU2sxNUZRIDEwClFidTZqa3Q2eVpoMnVSZ3czb2tYVDlDaFlLeFhLVnNSWW5KRWFy\nRE9nbGsKLS0tIHBMY21EQTBTaGlTVG1wb1VxZXc3VjhzWVVUNituNjR6VkNHV2ZL\nT3l6TEkKYmn0dwDPXDfhGqAPfd+m9ZPAECsPdkfN7UNzi0vqD6FzplXnecoQcpqW\n7OoE1JvkQjBquvuP+Z28ZoW3opJ7nChT/Y1wOO289PPms4iCADVLAaiuu+fMZHLh\nh6xsbjX30fFLT7GZ9jLgXdTZlPSC8p4pF4PTzVL7A71Q8aO0EZexSs8LdxOqf78A\n6yK3ky2XD3dk9ezMjJ7vc2fzFAogXFO5AMvqrNZOU2M0rpuC1zfZt4XTB76PPSo5\n74kyJC6/jqaDaklw0P+NwQiktkHe0zPul5TI4xuIO21EjqgEeAbUK8fySUxbqhPA\nPlHzUKwnvT8SzZv9DbD2dBQFzy6TipQPPDJwHADZQudL6MACwYzWhvVB23PqHk7Y\nzCPsscbbNuhLupTNtXLULfJVZ00qqSeETA+X0wSMifmWVqjwKdM7Jzorr8qD2THp\npzHHf+IQSYgli6EImzWPttjmNdxXXzII4njQwd+mwRuCYy2SnpVoZdcUsQYk8rr/\n1IN76pjbyh2pgeY3TDzgm9Xn3OviZl3nA84FqU0WkZyOSKEqWzT90tEJ4AfwmpAe\nlE1rlD1f68YhSK9lfkPVIsuGid++62+UK0gajAV8w/t0OxH7lowNhQEF/loWdV97\nVyZOEf0Xno1CMNU2WRJl6dSsDbkqVEktUe7t0TjGpKnd7yDoQiJWstVZ+onSnD5RQg+Wd571A4LyIwQ=\n-----END AGE ENCRYPTED FILE-----\n"
+    },
+    {
       "name": "armor-empty-last-line",
       "change": "an empty line before END",
       "passphrase": "fly fancy hollow control general vast million pipe",

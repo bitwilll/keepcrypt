@@ -3899,6 +3899,12 @@ def rewrap_armor(armored, columns):
     return b"\n".join([lines[0]] + [text[i:i + columns] for i in range(0, len(text), columns)] + lines[-2:])
 
 
+def join_last_armor_lines(armored):
+    """The armor with its last two base64 lines joined into one longer than 64 columns."""
+    lines = armored.split(b"\n")
+    return b"\n".join(lines[:-4] + [lines[-4] + lines[-3]] + lines[-2:])
+
+
 def flip_padding_bits(armored):
     """The armor with the low bit of the base64 character before its '=' padding flipped: non-canonical."""
     at = armored.index(b"=") - 1
@@ -3987,6 +3993,8 @@ def backup_age_cases(plaintexts, passphrases):
         ("armor-lowercase-label", "the BEGIN label in lowercase", abandon_pass, begin_lower, a, False),
         ("armor-line-63", "the base64 wrapped at 63 columns", abandon_pass, rewrap_armor(abandon_armored, 63), a, False),
         ("armor-line-65", "the base64 wrapped at 65 columns", abandon_pass, rewrap_armor(abandon_armored, 65), a, False),
+        ("armor-last-line-long", "the last two base64 lines joined into one", abandon_pass,
+         join_last_armor_lines(abandon_armored), a, False),
         ("armor-empty-last-line", "an empty line before END", abandon_pass,
          abandon_armored.replace(b"\n" + AGE_ARMOR_END, b"\n\n" + AGE_ARMOR_END), a, False),
         ("armor-bad-padding", "one '=' more at the end of the base64", abandon_pass,
