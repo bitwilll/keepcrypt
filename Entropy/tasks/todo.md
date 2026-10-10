@@ -402,6 +402,22 @@ owner has approved it. It is not covered by the standing approval of Q1-Q12.
     Otherwise: supply the text behind `41f0e259...`. Check 8, braille.json and the Braille KAT then pin it in their
     own reviewed commit. Until the owner answers, `fd75c236...` is the agent's value, not an approved one.
 
+### Raised by the review of commits 19-21 (owner decision pending)
+Neither is covered by the standing approval of Q1-Q12; the agent does not act on either until the owner answers.
+- [ ] **The age CLI's files.** Plan group 8 says `scripts/age-interop.py --generate` writes
+      `vectors/age/age_cli_written.json` with Ubuntu's age 1.1.1-1ubuntu0.24.04.3; commit 19 wrote it with Homebrew
+      age 1.3.2 (`tool_version` `v1.3.2`), the only CLI installable on this Mac, and recorded that as a deviation
+      without the owner's approval. Please either approve the 1.3.2 substitution, or have the files regenerated with
+      Ubuntu's 1.1.1 (for example by the commit 27 CI job) and committed in a `verify:` commit. Until then the
+      group 8 proof "the age 1.1.1 files decrypt" and the Verification item "core reads age 1.1.1 files" stay
+      unticked. Either way, the commit 27 `age-interop` job runs `scripts/age-interop.py --core` against 1.1.1, so
+      in CI core decrypts files 1.1.1 has just written and 1.1.1 decrypts core's (the default mode reads 1.1.1's
+      output only with verify.py's reader). Recorded 2026-10-10, review fix after commit 21.
+- [ ] **Q1 (iii)'s upstream issue.** The owner approved "accept that scrypt 0.12 never zeroizes its 256 MiB working
+      buffer, and file an upstream issue". The acceptance is applied (`backup/age.rs`); the issue is not filed, and
+      filing it posts in public, so it waits for the owner to file it or to say go ahead. Record the link here once
+      it exists. Recorded 2026-10-10, review fix after commit 21.
+
 ### Later
 - [ ] Release signing: minisign or GPG, and who holds the key offline? (M7)
 - [ ] Registry domain name (M9; until then M1 uses a placeholder constant in the check-QR URL)
@@ -1383,7 +1399,13 @@ starts. Every item names its proof.
         section of backup.json: check 11 regenerates backup.json byte for byte, and age's output is random.
       - Deviation: they were written with Homebrew age 1.3.2, the CLI on this Mac, not Ubuntu's 1.1.1, which is
         not installable here. `scripts/age-interop.py` works with both (it waits for each passphrase prompt),
-        and the CI `age-interop` job (commit 27) runs it against Ubuntu 1.1.1 in both directions.
+        and the CI `age-interop` job (commit 27) runs it against Ubuntu 1.1.1 in both directions. Not approved
+        by the owner: it is an open item under "Raised by the review of commits 19-21", and the 1.1.1 proofs stay
+        unticked until it is answered.
+      - Q1 (i) says "a 24-word backup is 1,718 bytes armored"; that was a planning estimate. The computed
+        maximum is 1,726 armored bytes for 24 words (a 1,042-byte plaintext; backup.json `limits`, regenerated
+        by check 11); 1,718 is the armor of a 1,034- to 1,036-byte plaintext. Both are far inside the 8 KiB cap,
+        and the owner's Q1 text stays as written (review fix after commit 21).
       - verify.py's age is written from the C2SP age spec (`age.md`, downloaded twice on 2026-10-10 with a generic
         User-Agent, recorded in SOURCES.md "Spec values"); it rebuilds CCTV `scrypt` and `armor_scrypt` byte for
         byte and reaches all 26 CCTV outcomes.
@@ -1437,7 +1459,9 @@ starts. Every item names its proof.
       - Mutation testing showed no case with an armor last line over 64 characters (the 63- and 65-column cases
         are caught by the full-line rule alone); a verify commit before this one added `armor-last-line-long`.
       - The writer refuses work factors outside 1-18 and plaintexts over 4 KiB (`Internal(Length)`), so it writes
-        only what the reader reads; no single flipped bit of a binary backup is accepted.
+        only what the reader reads; no single flipped bit of a binary backup is accepted (review fix after commit
+        21: the test flipped one bit per byte, 683 of abandon-12-binary's 5,464 single-bit flips; it now tries all
+        5,464, about 6 s at work factor 10, and the reader refuses every one).
       - chacha20poly1305 and base64ct are built without `alloc` (table A lists it): core uses the in-out AEAD calls
         and slice encoding, which need no allocation. The lock entries are the same either way.
       - Residual risk, for the owner's review (not yet accepted; Q1 (iii) accepted only scrypt's buffers): HKDF's
@@ -1549,6 +1573,23 @@ starts. Every item names its proof.
         (`skip_check` and `reveal` are group 9), so these calls are tested on a test-only `ready_for_test`
         constructor, and the read-back gate in front of `generate_backup_passphrase` and `encrypt_backup`
         (`ReadbackIncomplete`) lands with the session transitions.
+      - Review fixes after commit 21 (tests that left part of a proof unchecked; each confirmed with a mutant in a
+        scratch copy, which passed every test before and fails after):
+        - The file key. The 52-byte stub proved where the salt, nonce and name came from, not the file key: a
+          writer wrapping a constant, the salt or the nonce as the file key passed all 172 test-sources tests and
+          `age-interop.py --core`, and its backups opened without the passphrase. The stub test now requires the
+          file to equal, byte for byte, the armored writer output from drawn[0..16] as the key, drawn[16..32] as
+          the salt and drawn[32..48] as the nonce at work factor 18; the real-OS two-backups test opens both file
+          keys (a test-only `age::file_key_of`) and requires them to differ and neither to equal its salt or
+          nonce. All three mutants now fail both tests.
+        - The read-back's word check. Both `ReadbackMismatch` cases also had a wrong fingerprint; a case with the
+          right fingerprint and other words now isolates the word comparison.
+        - "runs the Age KAT first". Files the reader refuses (not age, empty, a wrong passphrase) now give
+          `Kat(Age)` from the fault twin, so moving the group after `age::decrypt` fails.
+        - The seal. The age CLI's two abandon-12 files and the fresh work-factor-18 abandon-12 backup now give
+          seal.json's vector 1 (CLAUDE.md's T `2b8103c8...` and Seal ID `5E0G7J6X`) through
+          `CheckedBackup::seal()`; the round trip compared the seal with `seal_from_mnemonic` of the same words,
+          and the age CLI files checked none.
       - Interop: `scripts/age-interop.py --core` also runs core in both directions through the ignored unit test
         `backup::tests::age_interop_files`: core's `decrypt_backup` reads files age wrote under fresh passphrases,
         and age decrypts core's fresh work-factor-18 backups to backup.json's plaintexts; a wrong passphrase fails
@@ -1985,12 +2026,22 @@ moved from M0)
 19. verify + scripts: backup.json generator (check 11) and scripts/age-interop.py, with the age_cli_written vectors and their SOURCES.md entry
 20. core: age v1 armor, reader and writer; CCTV conformance; the Age KAT; scrypt, chacha20poly1305, hkdf and base64ct (and their transitive crates), plus vet entries
 21. core: backup passphrase (stored in the session; typed words for decrypt only) and confirm challenge, plaintext v1, the backup API (generate, encrypt, verify, no passphrase arguments) and Check a backup (decrypt_backup returning CheckedBackup)
+   Review fixes after 21, each its own commit, vectors first:
+   - core: the backup tests pin encrypt_backup's file key to the first 16 OS bytes (the file equals the writer's output from them) and show two backups' file keys differ, neither equal to its salt or nonce;
+   - core: the backup tests isolate verify_backup's word check, pin decrypt_backup's KAT-first order, and read seal.json's vector for the abandon files;
+   - core: every single-bit flip of a binary backup is tried and refused (5,464), not one bit per byte;
+   - verify: the armor reader accepts an END line ended by a lone CR at the end of the input, as core and age do (backup.json gains abandon-12-end-cr);
+   - verify, core: the armor readers refuse the whitespace the age CLI refuses (at most 1,024 bytes before BEGIN in whole lines, fewer than 1,024 after END; backup.json's vectors and core's reader in one commit, or that commit would be red);
+   - scripts: age-interop.py gives the age CLI every backup.json age file the readers accept;
+   - core: the plaintext reader refuses a bad BIP39 checksum as the file's fault and keeps core's derivation faults Internal (Q13 (b) handed to commit 22);
+   - core: the age residuals name Poly1305's one-time key and scrypt's PBKDF2 key block, for the owner;
+   - this file: the age 1.3.2 files and Q1 (iii)'s upstream issue as open owner items, commit 27 running `--core`, the 1,726-byte figure, and these records.
 22. core: session transitions, Wiped::restart, the read-back gate and the panic policy
 23. tests: trybuild typestate suite with pinned .stderr files, including the typed-passphrase and CheckedBackup fixtures
 24. tests: source substitution, real OS path, error-injection matrix (with the free-function KAT fault twins and the 1,535-byte quota case), check flow (with proof freshness) and full ceremony
 25. tests: no-secret-text (control-seed rule plus the BIP39-token check on Rejected and Wiped), panic wipe, no-panic sweeps, and the full vector sets
 26. scripts: banned-api-check.sh --artifact (both markers and the test key) with selftest fixtures; core/examples/release_probe.rs; canaries (two positive controls, static checks for serde, getrandom and the dalek features, vectors tamper; the feature and profile checks landed after 5)
-27. ci: coverage job (cargo-llvm-cov 0.9.1, failing on any core/src path its default ignore rule would skip), cross-job artifact scan with the per-target getrandom cfg, age-interop job, and selftest moved after the toolchain install
+27. ci: coverage job (cargo-llvm-cov 0.9.1, failing on any core/src path its default ignore rule would skip), cross-job artifact scan with the per-target getrandom cfg, age-interop job (`scripts/age-interop.py --core` against Ubuntu's age 1.1.1, so core reads 1.1.1's files and 1.1.1 reads core's), and selftest moved after the toolchain install
 28. CLAUDE.md: Commands for M1
 29. tasks/todo.md: M1 Review with pasted proof, including the Q12 ruleset output or its deferral
 
