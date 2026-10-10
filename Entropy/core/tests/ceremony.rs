@@ -9,6 +9,11 @@
 //! backup, which `decrypt_backup` opens to the session's fingerprint, words, braille and seal, the
 //! registration and the watch-only export. After `watch_only(Some(TREZOR))` the backup and the
 //! registration are unchanged and hold no passphrase. Before read-back, every export fails.
+//!
+//! In Mixed mode the words come from real OS randomness, not from vectors/, so a failing check must
+//! not print them (CLAUDE.md rules 5 and 12): the words, the braille lines, the fingerprints and
+//! the registration (which carries the private seal code) are compared with `assert!` and a
+//! message, never with `assert_eq!`, whose failure prints both sides (review fix after commit 25).
 
 mod common;
 
@@ -120,9 +125,9 @@ fn ceremony(len: SeedLength, mode: Mode, platform: Platform, with_passphrase: bo
     let (ready, file) = ready.encrypt_backup(&BY).expect("written");
     assert_eq!(ready.verify_backup(file.bytes()), Ok(()), "{what}");
     let checked = decrypt_backup(file.bytes(), &typed).expect("checked");
-    assert_eq!(checked.fingerprint(), ready.fingerprint(), "{what}");
+    assert!(checked.fingerprint() == ready.fingerprint(), "{what}");
     let revealed: Vec<&str> = checked.reveal_words().collect();
-    assert_eq!(revealed, words, "{what}");
+    assert!(revealed == words, "{what}: the backup's words");
     let session_braille: Vec<(u8, u8, u8, u16, String)> = ready
         .braille()
         .iter()
@@ -149,7 +154,10 @@ fn ceremony(len: SeedLength, mode: Mode, platform: Platform, with_passphrase: bo
             )
         })
         .collect();
-    assert_eq!(backup_braille, session_braille, "{what}");
+    assert!(
+        backup_braille == session_braille,
+        "{what}: the braille lines"
+    );
     assert_eq!(checked.seal().expect("a seal"), seal, "{what}");
 
     let (ready, registration) = ready.registration().expect("registration");
@@ -157,7 +165,7 @@ fn ceremony(len: SeedLength, mode: Mode, platform: Platform, with_passphrase: bo
     let registration_url = registration.url().to_owned();
     let (ready, plain) = ready.watch_only(None).expect("an export");
     assert!(!plain.passphrase_used(), "{what}");
-    assert_eq!(plain.fingerprint(), ready.fingerprint(), "{what}");
+    assert!(plain.fingerprint() == ready.fingerprint(), "{what}");
     assert_eq!(plain.first_address(), ready.first_address(), "{what}");
     if !with_passphrase {
         return;
@@ -166,24 +174,22 @@ fn ceremony(len: SeedLength, mode: Mode, platform: Platform, with_passphrase: bo
     let trezor = Bip39Passphrase::new("TREZOR").expect("a passphrase");
     let (ready, export) = ready.watch_only(Some(&trezor)).expect("an export");
     assert!(export.passphrase_used(), "{what}");
-    assert_ne!(export.fingerprint(), ready.fingerprint(), "{what}");
+    assert!(export.fingerprint() != ready.fingerprint(), "{what}");
     assert_ne!(export.first_address(), ready.first_address(), "{what}");
     let (ready, again) = ready.registration().expect("registration");
-    assert_eq!(
-        again.url(),
-        registration_url,
+    assert!(
+        again.url() == registration_url,
         "{what}: the seal ignores the passphrase"
     );
     let (ready, second) = ready.encrypt_backup(&BY).expect("written");
     assert_eq!(ready.verify_backup(second.bytes()), Ok(()), "{what}");
     let checked = decrypt_backup(second.bytes(), &typed).expect("checked");
-    assert_eq!(
-        checked.fingerprint(),
-        ready.fingerprint(),
+    assert!(
+        checked.fingerprint() == ready.fingerprint(),
         "{what}: no passphrase in the backup"
     );
     let revealed: Vec<&str> = checked.reveal_words().collect();
-    assert_eq!(revealed, words, "{what}");
+    assert!(revealed == words, "{what}: the second backup's words");
 }
 
 #[test]
