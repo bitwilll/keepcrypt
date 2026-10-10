@@ -1,0 +1,131 @@
+error[E0308]: mismatched types
+  --> tests/compile_fail/backup_takes_no_passphrase.rs:14:32
+   |
+14 |         session.encrypt_backup(&typed);
+   |                 -------------- ^^^^^^ expected `&CreatedBy`, found `&TypedBackupPassphrase`
+   |                 |
+   |                 arguments to this method are incorrect
+   |
+   = note: expected reference `&CreatedBy`
+              found reference `&TypedBackupPassphrase`
+note: method defined here
+  --> src/session.rs
+   |
+   |     pub fn encrypt_backup(mut self, by: &CreatedBy) -> Result<(Self, BackupFile), CoreError> {
+   |            ^^^^^^^^^^^^^^
+
+error[E0061]: this method takes 1 argument but 2 arguments were supplied
+  --> tests/compile_fail/backup_takes_no_passphrase.rs:15:17
+   |
+15 |         session.encrypt_backup(&by, &typed);
+   |                 ^^^^^^^^^^^^^^      ------ unexpected argument #2 of type `&TypedBackupPassphrase`
+   |
+note: method defined here
+  --> src/session.rs
+   |
+   |     pub fn encrypt_backup(mut self, by: &CreatedBy) -> Result<(Self, BackupFile), CoreError> {
+   |            ^^^^^^^^^^^^^^
+help: remove the extra argument
+   |
+15 -         session.encrypt_backup(&by, &typed);
+15 +         session.encrypt_backup(&by);
+   |
+
+error[E0308]: mismatched types
+  --> tests/compile_fail/backup_takes_no_passphrase.rs:16:32
+   |
+16 |         session.encrypt_backup(&new);
+   |                 -------------- ^^^^ expected `&CreatedBy`, found `&NewBackupPassphrase`
+   |                 |
+   |                 arguments to this method are incorrect
+   |
+   = note: expected reference `&CreatedBy`
+              found reference `&NewBackupPassphrase`
+note: method defined here
+  --> src/session.rs
+   |
+   |     pub fn encrypt_backup(mut self, by: &CreatedBy) -> Result<(Self, BackupFile), CoreError> {
+   |            ^^^^^^^^^^^^^^
+
+error[E0061]: this method takes 1 argument but 2 arguments were supplied
+  --> tests/compile_fail/backup_takes_no_passphrase.rs:17:17
+   |
+17 |         session.encrypt_backup(&by, &new);
+   |                 ^^^^^^^^^^^^^^      ---- unexpected argument #2 of type `&NewBackupPassphrase`
+   |
+note: method defined here
+  --> src/session.rs
+   |
+   |     pub fn encrypt_backup(mut self, by: &CreatedBy) -> Result<(Self, BackupFile), CoreError> {
+   |            ^^^^^^^^^^^^^^
+help: remove the extra argument
+   |
+17 -         session.encrypt_backup(&by, &new);
+17 +         session.encrypt_backup(&by);
+   |
+
+error[E0308]: mismatched types
+  --> tests/compile_fail/backup_takes_no_passphrase.rs:18:31
+   |
+18 |         session.verify_backup(&typed);
+   |                 ------------- ^^^^^^ expected `&[u8]`, found `&TypedBackupPassphrase`
+   |                 |
+   |                 arguments to this method are incorrect
+   |
+   = note: expected reference `&[u8]`
+              found reference `&TypedBackupPassphrase`
+note: method defined here
+  --> src/session.rs
+   |
+   |     pub fn verify_backup(&self, file: &[u8]) -> Result<(), CoreError> {
+   |            ^^^^^^^^^^^^^
+
+error[E0061]: this method takes 1 argument but 2 arguments were supplied
+  --> tests/compile_fail/backup_takes_no_passphrase.rs:19:17
+   |
+19 |         session.verify_backup(b"file", &typed);
+   |                 ^^^^^^^^^^^^^          ------ unexpected argument #2 of type `&TypedBackupPassphrase`
+   |
+note: method defined here
+  --> src/session.rs
+   |
+   |     pub fn verify_backup(&self, file: &[u8]) -> Result<(), CoreError> {
+   |            ^^^^^^^^^^^^^
+help: remove the extra argument
+   |
+19 -         session.verify_backup(b"file", &typed);
+19 +         session.verify_backup(b"file");
+   |
+
+error[E0308]: mismatched types
+  --> tests/compile_fail/backup_takes_no_passphrase.rs:20:31
+   |
+20 |         session.verify_backup(&new);
+   |                 ------------- ^^^^ expected `&[u8]`, found `&NewBackupPassphrase`
+   |                 |
+   |                 arguments to this method are incorrect
+   |
+   = note: expected reference `&[u8]`
+              found reference `&NewBackupPassphrase`
+note: method defined here
+  --> src/session.rs
+   |
+   |     pub fn verify_backup(&self, file: &[u8]) -> Result<(), CoreError> {
+   |            ^^^^^^^^^^^^^
+
+error[E0061]: this method takes 1 argument but 2 arguments were supplied
+  --> tests/compile_fail/backup_takes_no_passphrase.rs:21:17
+   |
+21 |         session.verify_backup(b"file", &new);
+   |                 ^^^^^^^^^^^^^          ---- unexpected argument #2 of type `&NewBackupPassphrase`
+   |
+note: method defined here
+  --> src/session.rs
+   |
+   |     pub fn verify_backup(&self, file: &[u8]) -> Result<(), CoreError> {
+   |            ^^^^^^^^^^^^^
+help: remove the extra argument
+   |
+21 -         session.verify_backup(b"file", &new);
+21 +         session.verify_backup(b"file");
+   |

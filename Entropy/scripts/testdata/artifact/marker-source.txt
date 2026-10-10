@@ -1,0 +1,1 @@
+A release artifact must never hold the stub marker: KC_TEST_SOURCE_DO_NOT_SHIP

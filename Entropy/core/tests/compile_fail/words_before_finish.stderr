@@ -1,0 +1,49 @@
+error[E0599]: no method named `mnemonic` found for struct `Session<Rolling>` in the current scope
+ --> tests/compile_fail/words_before_finish.rs:9:17
+  |
+9 |         session.mnemonic();
+  |                 ^^^^^^^^ method not found in `Session<Rolling>`
+  |
+  = note: the method was found for `Session<keepcrypt_core::Ready>`
+
+error[E0599]: no method named `braille` found for struct `Session<Rolling>` in the current scope
+  --> tests/compile_fail/words_before_finish.rs:10:17
+   |
+10 |         session.braille();
+   |                 ^^^^^^^ method not found in `Session<Rolling>`
+   |
+   = note: the method was found for `Session<keepcrypt_core::Ready>`
+
+error[E0599]: no method named `seal` found for struct `Session<Rolling>` in the current scope
+  --> tests/compile_fail/words_before_finish.rs:11:17
+   |
+11 |         session.seal();
+   |                 ^^^^ method not found in `Session<Rolling>`
+   |
+   = note: the method was found for
+           - `Session<Checking>`
+           - `Session<Sealed>`
+
+error[E0599]: no method named `skip_check` found for struct `Session<Rolling>` in the current scope
+  --> tests/compile_fail/words_before_finish.rs:12:17
+   |
+12 |         session.skip_check();
+   |                 ^^^^^^^^^^ method not found in `Session<Rolling>`
+   |
+   = note: the method was found for `Session<Sealed>`
+
+error[E0599]: no method named `start_check` found for struct `Session<Rolling>` in the current scope
+  --> tests/compile_fail/words_before_finish.rs:13:17
+   |
+13 |         session.start_check();
+   |                 ^^^^^^^^^^^ method not found in `Session<Rolling>`
+   |
+   = note: the method was found for `Session<Sealed>`
+
+error[E0599]: no method named `reveal` found for struct `Session<Rolling>` in the current scope
+  --> tests/compile_fail/words_before_finish.rs:14:17
+   |
+14 |         session.reveal(GoAhead::Code("CF94-BCAJ"));
+   |                 ^^^^^^ method not found in `Session<Rolling>`
+   |
+   = note: the method was found for `Session<Checking>`

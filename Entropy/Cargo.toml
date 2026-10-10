@@ -14,3 +14,17 @@ publish = false
 [workspace.dependencies]
 keepcrypt-core = { path = "core" }
 keepcrypt-pi = { path = "pi/app" }
+
+# Stated explicitly, not left to the default: a panic unwinds, which drops the session's
+# Box<Inner> and so zeroizes it (CLAUDE.md rule 3). panic = "abort" would skip that wipe.
+[profile.release]
+panic = "unwind"
+
+# Integer overflow in core panics (and so wipes) in release builds too, instead of wrapping.
+[profile.release.package.keepcrypt-core]
+overflow-checks = true
+
+# Dependencies at full speed in dev and test builds, so scrypt, PBKDF2 and SHA run fast in the
+# tests; the workspace crates, core included, stay at opt-level 0 for coverage.
+[profile.dev.package."*"]
+opt-level = 3

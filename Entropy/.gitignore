@@ -37,3 +37,8 @@ id_rsa*
 # Python bytecode from local verify.py runs; generated, never reviewed source.
 __pycache__/
 *.py[cod]
+
+# trybuild's scratch output: the .stderr of a new or changed compile-fail fixture lands here.
+# The pinned .stderr files next to the fixtures are regenerated only with TRYBUILD=overwrite and
+# reviewed; wip/ itself is never committed.
+/core/wip/

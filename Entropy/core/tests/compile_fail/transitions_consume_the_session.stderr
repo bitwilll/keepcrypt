@@ -1,0 +1,31 @@
+error[E0382]: borrow of moved value: `session`
+ --> tests/compile_fail/transitions_consume_the_session.rs:9:9
+  |
+7 |     if let Some(session) = collecting {
+  |                 ------- move occurs because `session` has type `Session<Collecting>`, which does not implement the `Copy` trait
+8 |         let committed = session.commit();
+  |                                 -------- `session` moved due to this method call
+9 |         session.credited_bits();
+  |         ^^^^^^^ value borrowed here after move
+  |
+note: `Session::<Collecting>::commit` takes ownership of the receiver `self`, which moves `session`
+ --> src/session.rs
+  |
+  |     pub fn commit(mut self) -> Result<Session<Committed>, CoreError> {
+  |                       ^^^^
+
+error[E0382]: borrow of moved value: `session`
+  --> tests/compile_fail/transitions_consume_the_session.rs:15:9
+   |
+13 |     if let Some(session) = checking {
+   |                 ------- move occurs because `session` has type `Session<Checking>`, which does not implement the `Copy` trait
+14 |         let ready = session.reveal(GoAhead::Code("CF94-BCAJ"));
+   |                             ---------------------------------- `session` moved due to this method call
+15 |         session.check_request();
+   |         ^^^^^^^ value borrowed here after move
+   |
+note: `Session::<Checking>::reveal` takes ownership of the receiver `self`, which moves `session`
+  --> src/session.rs
+   |
+   |     pub fn reveal(self, go: GoAhead<'_>) -> Result<Session<Ready>, Rejected> {
+   |                   ^^^^

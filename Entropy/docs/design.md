@@ -87,7 +87,7 @@ Keep the multi-source idea, but credit only two legs: the hardware RNG and physi
 
 | Source | Where real randomness comes from | How it fails or gets attacked | Credit toward the quota |
 | --- | --- | --- | --- |
-| Physical dice (d6, casino-grade) | Mechanical chaos of each throw | Biased dice, rolls seen by a camera, user skipping rolls | Full: 2.585 bits per fair roll; 50 rolls give 129 bits, 99 give 256 |
+| Physical dice (d6, casino-grade) | Mechanical chaos of each throw | Biased dice, rolls seen by a camera, user skipping rolls | Full: 2.585 bits per fair roll; 50 rolls give 129 bits, 99 give about 256 (255.9) |
 | SoC hardware RNG (`/dev/hwrng`) | On-chip noise circuit: the BCM2835 RNG on the Pi Zero, iProc RNG200 on the Pi 4 and 5 ([Zephyr driver](https://git.data.coop/pedersen/zephyr/src/branch/main/drivers/entropy/entropy_iproc_rng200.c)) | Closed, unauditable design; driver or binding silently swapped, as at Coldcard | Counts toward the device leg at 4 bits per byte (half of what Linux assumes), and only while raw-output health tests pass; Linux treats the Pi RNGs as full entropy ([kernel commit](https://android-kvm.googlesource.com/linux/+/16bdbae394280f1d97933d919023eccbf0b564bd)) |
 | Kernel CSPRNG (`getrandom()`) | Pools hwrng, interrupt timing and CPU jitter | Called before the pool initializes; replaced by a userspace PRNG | Use as the device leg's output, not as an extra credited source |
 | Camera, lens covered, raw frames | Shot noise, dark current and read noise in each pixel | JPEG and ISP denoising erase noise; a scene can be photographed by an attacker; not user-verifiable | Low, and only after measuring raw frames; never the scene content |
@@ -128,12 +128,12 @@ Start on a radio-less Raspberry Pi with mandatory dice, then add an open-hardwar
 
 Use two independent legs, each strong enough alone, and join them with one hash the user can recompute. The seed stays safe if either the device or the dice are honest.
 
-**Device leg D (32 bytes).** Absorb every device input into one SHA-512 pool, each record as source tag, 8-byte length, then data:
+**Device leg D (32 bytes).** Absorb every device input into one SHA-512 pool, each record as source tag, 8-byte length, then data. The four inputs below are kinds, not an order: the other records arrive as their inputs do, and the 64-byte `getrandom()` record is absorbed last, at commit.
 
-1. 64 bytes from `getrandom()` with flags 0, so it blocks until the kernel pool is ready. A short read or error aborts.
-2. Raw `/dev/hwrng` samples that passed health tests (next section).
-3. Phase 2: raw samples from the external TRNG.
-4. Uncredited extras: raw camera frames, mic PCM, IMU samples, keypress timestamps in nanoseconds.
+- 64 bytes from `getrandom()` with flags 0, so it blocks until the kernel pool is ready. A short read or error aborts.
+- Raw `/dev/hwrng` samples that passed health tests (next section).
+- Phase 2: raw samples from the external TRNG.
+- Uncredited extras: raw camera frames, mic PCM, IMU samples, keypress timestamps in nanoseconds.
 
 Take D as the first 32 bytes of the pool digest. The pool itself is 512 bits wide, and nothing in the path is ever narrower than 256 bits.
 
@@ -171,8 +171,8 @@ Test raw samples continuously, count credit per source, and prove in CI that the
 Run both [SP 800-90B](https://csrc.nist.gov/pubs/sp/800/90/b/final) health tests on raw samples, with false-alarm rate α = 2^-20:
 
 - **Repetition Count Test:** fail if one value repeats C times in a row, where C = 1 + ⌈20 / H⌉. Catches a stuck source.
-- **Adaptive Proportion Test:** in each window of 1,024 samples (512 for binary), fail if the first value recurs too often. Catches a source that lost most of its entropy.
-- **Startup test:** run both over the first 1,024 samples after power-on and discard those samples.
+- **Adaptive Proportion Test:** in each window of 512 samples (1,024 for binary sources, per SP 800-90B 4.4.2), fail if the window's first value appears too often: 62 times or more, itself included, for H = 4. Catches a source that lost most of its entropy.
+- **Startup test:** at boot, and again at the start of each session's hwrng intake, run both over the first 1,024 samples and discard them.
 - **Known-answer tests:** check SHA-256, SHA-512 and BIP39 against published vectors at every boot.
 
 Any failure halts seed generation with a clear error. There is no degraded mode.
@@ -182,12 +182,12 @@ Any failure halts seed generation with a clear error. There is no degraded mode.
 | Leg | Credited inputs | Quota for 24 words | Quota for 12 words |
 | --- | --- | --- | --- |
 | Device | `getrandom()` output plus health-tested hwrng (and phase-2 TRNG) | 256 bits | 128 bits |
-| User | Fair d6 rolls at 2.585 bits each | 99 rolls | 50 rolls |
+| User | Fair d6 rolls at 2.585 bits each | 99 rolls (about 256 bits: 255.9) | 50 rolls |
 | Extras | Camera, mic, IMU, keypress timing | 0 (mixed, never counted) | 0 |
 
-In the default mode both legs must meet quota. In dice-only mode the user leg must, and the screen says no device randomness is used.
+In the default mode both legs must meet quota. In dice-only mode the user leg must, and the screen says no device randomness is used. The 24-word count stays at 99, the same as Coldcard, although 99 rolls give 255.9 bits, just under 256; in the default mode the device leg adds its own 256.
 
-**Device quota in practice.** Phones meet the device quota with `getrandom()` alone, credited 256 bits by policy, because they expose no raw noise source. The Pi asks for more: 64 bytes of `getrandom()` plus 512 credited bits of raw `/dev/hwrng` output, for either seed length. Until lab data gives a measured min-entropy, `/dev/hwrng` is credited at 4 bits per byte, half of the 8 bits Linux assumes, and its health-test cutoffs use H = 4.
+**Device quota in practice.** Phones meet the device quota with `getrandom()` alone, credited 256 bits by policy, because they expose no raw noise source. The Pi asks for more: 64 bytes of `getrandom()` plus 512 credited bits of raw `/dev/hwrng` output, for either seed length. Until lab data gives a measured min-entropy, `/dev/hwrng` is credited at 4 bits per byte, half of the 8 bits Linux assumes, and its health-test cutoffs use H = 4. Credit counts only samples after the 1,024 discarded startup samples, and only per completed 512-sample window, so the Pi reads at least 1,536 hwrng bytes, and the first window credits 2,048 bits, more than the 512 required, all at once.
 
 ### Prove the path (CI)
 
@@ -233,7 +233,7 @@ No entropy source protects against code that ignores it, so let users check the 
 | Mode | Device shows | User can verify offline | Protects against |
 | --- | --- | --- | --- |
 | Mixed (default) | Commitment C before dice; D on request after | E from D and the dice, and that D matches C | Bad dice, a broken hardware RNG, and a device that ignores the dice |
-| Dice only | Running SHA-256 of the typed rolls | E = SHA-256 of the ASCII roll string, same as Coldcard | Any device RNG failure; the seed is only as good as the dice |
+| Dice only | The roll count and bits so far; never the rolls or a running hash of them, which after the last roll would be E itself | E = SHA-256 of the ASCII roll string, same as Coldcard | Any device RNG failure; the seed is only as good as the dice |
 | Device only | Nothing | No | Nothing beyond trusting the code; hide behind an "expert" warning or drop it |
 
 **How users verify without exposing a real seed** (Coldcard's own procedure):
@@ -259,7 +259,7 @@ Run seed generation as one small, isolated module: two independent legs, a singl
 
 ![KeepCrypt-Entropy seed pipeline · two legs, one combine step](img/seed-pipeline.png)
 
-The device leg carries a full 256 bits and the dice leg at least 128 (256 with 99 rolls); the commitment is shown before any roll, so neither side can steer the other. The dashed path is the user's own check on a separate offline computer.
+The device leg carries a full 256 bits and the dice leg at least 128 (about 256 with 99 rolls: 255.9, which the figure's "99 give 256" rounds up); the commitment is shown before any roll, so neither side can steer the other. The dashed path is the user's own check on a separate offline computer.
 
 **Kept out of the seed module:** the games, any network stack, file storage, and logging. They run in a separate process that can only add uncredited bytes to the pool, never read from it.
 

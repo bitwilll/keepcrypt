@@ -1,0 +1,7 @@
+error[E0599]: no method named `skip_check` found for struct `Session<Checking>` in the current scope
+ --> tests/compile_fail/no_skip_after_check_started.rs:9:17
+  |
+9 |         session.skip_check();
+  |                 ^^^^^^^^^^ method not found in `Session<Checking>`
+  |
+  = note: the method was found for `Session<Sealed>`

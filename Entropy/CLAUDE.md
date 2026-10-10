@@ -44,7 +44,8 @@ pass. If one seems to block you, ask the owner.
    everywhere in shipped code: the `rand` crate family in `core/`, `Math.random`,
    `java.util.Random`, `kotlin.random.Random`, `arc4random_uniform` in app code,
    Python `random`, `mt19937`, `rand()`/`srand()`, and any hand-written PRNG.
-   Games use their own separate `getrandom` calls and never touch the pool.
+   Games get their bytes from core's separate game-randomness call, which makes its own
+   `getrandom` call and never touches the pool.
 2. **Never narrow the pipe:** nothing between the pool and the seed is narrower than 256 bits.
    No truncation to `u32`/`u64`, no integer casts of secret material, no "reseed with 4 bytes".
 3. **Fail closed:** no fallback source, no default value, no `unwrap_or*` and no
@@ -67,8 +68,10 @@ pass. If one seems to block you, ask the owner.
    including dialogs and popups. iOS has no networking code and uses capture-state redaction,
    discard-on-screenshot and an app-switcher cover. No analytics, crash or ad SDKs.
 10. **Test stubs never ship:** fake sources live behind the `test-sources` cargo feature and embed
-    the marker string `KC_TEST_SOURCE_DO_NOT_SHIP`. CI fails any release artifact that contains
-    the marker or an unexpected RNG symbol.
+    the marker string `KC_TEST_SOURCE_DO_NOT_SHIP`. The test registry key lives behind the
+    separate `test-registry` feature, which `test-sources` turns on (never the reverse), and
+    embeds the marker `KC_TEST_REGISTRY_DO_NOT_SHIP`. CI fails any release artifact that contains
+    either marker, the test registry key or an unexpected RNG symbol.
 11. **No home-made crypto:** use only the crates named in `docs/build-plan.md`. Adding any
     dependency needs owner approval and a `cargo vet` entry.
 12. **No real seeds in tests:** use the vectors in `vectors/` only. Never commit secrets or keys.
@@ -114,13 +117,34 @@ Create these in M0 and keep this list current as the repo grows.
 # Run from Entropy/, the project root inside the keepcrypt monorepo (CI: .github/workflows/entropy-ci.yml).
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
-cargo test --workspace --locked
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings   # the stubs and test key too
+cargo test --workspace --locked      # the release configuration: no test feature
+cargo test -p keepcrypt-core --locked --features test-sources   # stub, fault-injection and test-registry tests
+# Test features are switched on only like this, with -p, never in a manifest (canaries.sh enforces it).
+cargo llvm-cov --locked -p keepcrypt-core --features test-sources --no-cfg-coverage --fail-under-lines 95 --summary-only
+                                     # cargo-llvm-cov 0.9.1; the M1 gate is 95% of core's lines
+TRYBUILD=overwrite cargo test -p keepcrypt-core --test typestate   # only after a toolchain or trybuild bump:
+                                     # regenerates the pinned .stderr files; review the diff
 cargo deny --locked check && cargo audit && cargo vet --locked   # plain `cargo vet` re-fetches imports
 scripts/check-path-deps.sh           # every non-workspace crate comes from crates.io (no path or git overrides)
-python3 tools/verify/verify.py --selftest
+python3 tools/verify/verify.py --selftest   # 11 checks; also with /usr/bin/python3 (3.9, the floor)
+# Generated vectors are regenerated, never hand-edited, then checked by --selftest:
+python3 tools/verify/verify.py --write-seal-vectors        # vectors/seal.json
+python3 tools/verify/verify.py --write-kat-vectors         # vectors/kat.json
+python3 tools/verify/verify.py --write-keepcrypt-vectors   # vectors/keepcrypt.json
+python3 tools/verify/verify.py --write-braille-vectors     # vectors/braille.json
+python3 tools/verify/verify.py --write-watchonly-vectors   # vectors/watchonly.json
+python3 tools/verify/verify.py --write-kcr-vectors         # vectors/kcr.json
+python3 tools/verify/verify.py --write-backup-vectors      # vectors/backup.json
+scripts/age-interop.py --core        # the age CLI against verify.py and core, both directions, work factor 18
+                                     # (needs age; CI: Ubuntu's 1.1.1). --generate rewrites age_cli_written.json
 scripts/banned-api-check.sh          # grep gate for banned RNG, network and clipboard APIs
-scripts/banned-api-check.sh --selftest
-scripts/canaries.sh                  # proves the deny and clippy gates still fire
+scripts/banned-api-check.sh --selftest   # also builds the artifact fixtures (needs the pinned toolchain)
+# Release-artifact scan (CI's cross job, per target T; on Linux and Android T builds with
+# CARGO_TARGET_<T>_RUSTFLAGS='--cfg getrandom_backend="linux_getrandom"'):
+cargo build --release --locked -p keepcrypt-core --lib --example release_probe --target T
+scripts/banned-api-check.sh --artifact T target/T/release/libkeepcrypt_core.rlib target/T/release/examples/release_probe
+scripts/canaries.sh                  # proves every gate still fires, the scan's positive controls included
 ```
 
 ## Definition of done (every task)

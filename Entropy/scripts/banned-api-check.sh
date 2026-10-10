@@ -1,13 +1,46 @@
 #!/bin/sh
-# Banned-API grep gate: CLAUDE.md security rules 1, 3, 5 and 9 (plan: tasks/todo.md, M0).
+# Banned-API grep gate: CLAUDE.md security rules 1, 3, 5 and 9 (plan: tasks/todo.md, M0), and the
+# release-artifact scan for rules 1 and 10 (tasks/todo.md, M1 group 11).
 #
 #   scripts/banned-api-check.sh             scan the repo this script lives in
 #   scripts/banned-api-check.sh DIR         scan DIR as if it were the repo root
+#   scripts/banned-api-check.sh --artifact TARGET FILE...
+#                                           scan built release artifacts for TARGET (see "Artifact
+#                                           mode" below)
 #   scripts/banned-api-check.sh --selftest  every fixture in scripts/testdata/banned-api/ must trip the
-#                                           gate for its category; every clean-* fixture must pass
+#                                           gate for its category; every clean-* fixture must pass; the
+#                                           artifact fixtures in scripts/testdata/artifact/ must give
+#                                           exactly their pinned hits (needs the pinned toolchain)
 #
 # Prints "<category>: <file>:<line>: <text>" per hit, then a summary. Exit 0 clean, 1 hits,
 # 2 usage or read error: a file that cannot be read fails the gate, it is never skipped.
+#
+# Artifact mode (docs/build-plan.md "Security rules enforced in CI", rows "One RNG path in shipped
+# binaries" and "Test stubs never ship"; tasks/todo.md, M1 Q3, Q8 and group 11). Prints
+# "<category>: <file>: <detail>" per hit, then a summary; exit 0 clean, 1 hits, 2 error (an
+# unreadable file, a file llvm-nm cannot read, no llvm-nm, a TARGET with no rule, bad usage).
+#   Marker     any file holding KC_TEST_SOURCE_DO_NOT_SHIP or KC_TEST_REGISTRY_DO_NOT_SHIP (rule 10)
+#   TestKey    any file holding the 32 bytes of the test registry public key (rule 10; pinned below
+#              and checked against vectors/kcr.json by the selftest)
+#   Format     a file that is not an ELF, Mach-O or ar file (an rlib is an ar file): its symbols
+#              cannot be checked, so it fails. So does a thin ar file (!<thin>), which holds only its
+#              members' paths: the marker and key searches would never see the members' bytes
+#   Symbol     read with the pinned toolchain's llvm-nm (llvm-tools-preview), in every object file,
+#              linked file and archive member: an undefined rand, random, srand, srandom, rand_r,
+#              random_r, srandom_r, *rand48, seed48, lcong48, initstate or setstate (these six also
+#              with glibc's reentrant _r), arc4random* or SecRandomCopyBytes, and getentropy on
+#              Linux and Android (each with a leading _ on Apple targets); any symbol, demangled, in
+#              the 13 RNG crates of deny.toml's rule-1 block (rng_crate_names below; the selftest
+#              checks the two lists agree); and any symbol in
+#              getrandom's fallback modules, backends::use_file and
+#              backends::linux_android_with_fallback (Q8: the Linux and Android artifacts are built
+#              with --cfg getrandom_backend="linux_getrandom", which has no fallback)
+#   OSImport   an object or linked file (not an archive: core's rlib calls the getrandom crate,
+#              whose own rlib imports the OS call) without the OS import for TARGET: getrandom on
+#              Linux and Android, _CCRandomGenerateBytes on iOS (Q8), and _getentropy on macOS,
+#              which getrandom uses there (a host rule, for scripts/canaries.sh on a Mac)
+# The byte searches run on an od dump, one "xx" per byte, so they match whole bytes of any value
+# with plain fixed-string greps.
 #
 # Categories (main patterns; the full lists are in the check functions below; comments count
 # everywhere):
@@ -43,9 +76,10 @@
 #              or isTextSelectable, unless each one's value is the literal false: ="false",
 #              ">false<", (false) or "= false".
 #   Rule1      rule 1 path check: getrandom in any .rs file is a hit, except in the core module
-#              core/src/source and the Pi games module pi/app/src/games ("Games use their own
-#              separate getrandom calls"; docs/pi-firmware.md), each in either file layout: X.rs
-#              or anything under X/. A look-alike such as core/src/sourcex.rs is another module.
+#              core/src/source, in either file layout: source.rs or anything under source/. A
+#              look-alike such as core/src/sourcex.rs is another module. The games are no
+#              exception: they get their bytes from core's separate game-randomness call
+#              (docs/pi-firmware.md, "Game randomness").
 #              core/src/lib.rs must hold the exact line #![forbid(unsafe_code)] (a missing line is
 #              reported at line 1).
 #   FailOpen   rule 3, only in .rs files under core/, ffi/ and pi/app/ (the crates under the
@@ -115,14 +149,16 @@ self=$here/$(basename "$0")
 
 usage() {
   cat <<'EOF'
-usage: scripts/banned-api-check.sh [--selftest | DIR]
+usage: scripts/banned-api-check.sh [--selftest | DIR | --artifact TARGET FILE...]
   (none)      scan the repo this script lives in
   DIR         scan DIR as if it were the repo root
-  --selftest  run the fixtures in scripts/testdata/banned-api/
+  --artifact  scan release artifacts built for TARGET: test markers, the test registry key, RNG
+              symbols other than TARGET's OS import, and that import (see the script header)
+  --selftest  run the fixtures in scripts/testdata/banned-api/ and scripts/testdata/artifact/
 Hits: RNG APIs (and the OS RNG read outside core/src/source), network APIs and hard-coded http URLs
-(outside registry/), clipboard, copy and share APIs, getrandom in a .rs file outside core/src/source
-and pi/app/src/games, a core/src/lib.rs without #![forbid(unsafe_code)], in Rust under core/, ffi/
-or pi/app/ a discarded result (_ =, an _name binding, drop or forget of a call), clippy as a cfg
+(outside registry/), clipboard, copy and share APIs, getrandom in a .rs file outside
+core/src/source, a core/src/lib.rs without #![forbid(unsafe_code)], in Rust under core/, ffi/ or
+pi/app/ a discarded result (_ =, an _name binding, drop or forget of a call), clippy as a cfg
 predicate and /dev/stdout, /dev/stderr or /dev/tty, include! (by any path or alias) or a path
 attribute in any .rs file, and a C #include of a file with a binary extension.
 A directory symlink is refused. Exit 0 clean, 1 hits, 2 usage or read error.
@@ -184,11 +220,10 @@ rng() {
     -- "$1"
 }
 
-# Rule 1, one source of OS randomness: only core/src/source reads the OS RNG, so every other file
-# (pi/app/src/games included: it may call getrandom, nothing lower) is barred from the device files
-# and the platform calls behind getrandom. /dev/hwrng is the raw hardware RNG that pi/app reads for
-# the health tests, not the kernel CSPRNG; Python os.urandom and secrets are the endorsed tooling
-# calls (docs/design.md), so neither is banned.
+# Rule 1, one source of OS randomness: only core/src/source reads the OS RNG, so every other file is
+# barred from the device files and the platform calls behind getrandom. /dev/hwrng is the raw
+# hardware RNG that pi/app reads for the health tests, not the kernel CSPRNG; Python os.urandom and
+# secrets are the endorsed tooling calls (docs/design.md), so neither is banned.
 osrng() {
   grep -n -a -E \
     -e '/dev/u?random' \
@@ -424,9 +459,9 @@ EOF
     report Clipboard clipboard "$rel"
     report Clipboard textselection "$rel"
     report Clipboard selectable "$rel"
-    # Rule 1: only these two Rust modules may name getrandom ('*' in case also matches '/').
+    # Rule 1: only core/src/source may name getrandom ('*' in case also matches '/').
     case $rel in
-      core/src/source.rs | core/src/source/* | pi/app/src/games.rs | pi/app/src/games/*) ;;
+      core/src/source.rs | core/src/source/*) ;;
       *.rs) report Rule1 getrandom_use "$rel" ;;
     esac
     case $rel in core/*.rs | ffi/*.rs | pi/app/*.rs) report FailOpen failopen "$rel" ;; esac
@@ -590,10 +625,308 @@ selftest() {
   for want in RNG Network Clipboard Rule1 FailOpen Include clean; do
     case "$seen " in *" $want "*) ;; *) fail=$((fail + 1)); echo "FAIL no $want fixture" ;; esac
   done
+  artifact_selftest
   echo "selftest: $pass passed, $fail failed"
   [ "$fail" -eq 0 ] || exit 1
   exit 0
 }
+
+# --- Artifact mode -----------------------------------------------------------------------------
+
+# The test registry public key: core/src/seal/registry_key.rs, vectors/kcr.json "keys"
+# "test_registry" (the selftest checks it against kcr.json; the positive controls in
+# scripts/canaries.sh check it against a real test-registry build).
+testkey=42e9fa0e206d4bdf410f987ac7ded54fb02fb49ef277cc425d5fdfdb72c3b94b
+markers='KC_TEST_SOURCE_DO_NOT_SHIP KC_TEST_REGISTRY_DO_NOT_SHIP'
+# The RNG crates of deny.toml's rule-1 block, in its order (the selftest checks the two lists
+# agree): any symbol of one of them in an artifact is a hit.
+rng_crate_names='rand rand_core rand_chacha rand_xoshiro rand_xorshift rand_pcg rand_hc rand_isaac
+fastrand oorandom nanorand tinyrand turborand'
+
+# dump FILE: FILE's bytes as " xx xx ..." on one line (od -v writes every byte; tr joins the lines
+# and squeezes the spaces BSD and GNU od lay out differently). Any byte value is two hex digits,
+# so a fixed-string search for " 4b 43 ..." can only match whole bytes, in order.
+dump() {
+  od -An -v -tx1 "$1" | tr -s ' \n' '  '
+}
+
+# toolchain_bin: the bin/ of the pinned toolchain's llvm-tools-preview (rust-toolchain.toml), found
+# through rustc run from the repo root, so rustup picks the pinned toolchain.
+toolchain_bin() {
+  repo=$(cd "$here/.." && pwd -P) || exit 2
+  sysroot=$(cd "$repo" && rustc --print sysroot) || {
+    echo 'banned-api-check: rustc --print sysroot failed (is the pinned toolchain installed?)' >&2
+    exit 2
+  }
+  host=$(cd "$repo" && rustc -vV | sed -n 's/^host: //p')
+  [ -n "$host" ] || { echo 'banned-api-check: rustc -vV names no host' >&2; exit 2; }
+  bin=$sysroot/lib/rustlib/$host/bin
+  [ -x "$bin/llvm-nm" ] || {
+    echo "banned-api-check: no llvm-nm in $bin (rust-toolchain.toml lists llvm-tools-preview)" >&2
+    exit 2
+  }
+}
+
+# ahit CATEGORY FILE DETAIL: print and count one artifact hit.
+ahit() {
+  printf '%s: %s: %s\n' "$1" "$2" "$3"
+  hits=$((hits + 1))
+}
+
+# symbols FILE OUT [LLVM-NM OPTION...]: the symbol names llvm-nm prints for FILE, one per line,
+# without an archive's member headers ("lib.rmeta:") and blank lines, and without ELF version
+# suffixes ("getrandom@GLIBC_2.25"). llvm-nm failing on FILE is an error.
+symbols() {
+  sf=$1
+  sout=$2
+  shift 2
+  if ! "$bin/llvm-nm" -j "$@" "$sf" >"$atmp/nm" 2>"$atmp/nm-err"; then
+    printf 'banned-api-check: llvm-nm cannot read %s:\n' "$sf" >&2
+    sed 's/^/    /' "$atmp/nm-err" >&2
+    exit 2
+  fi
+  sed -e '/^$/d' -e '/:$/d' -e 's/@.*$//' "$atmp/nm" | sort -u >"$sout" || exit 2
+}
+
+# from_list CATEGORY FILE PREFIX LIST: one hit per line of LIST.
+from_list() {
+  while IFS= read -r line; do
+    [ -n "$line" ] && ahit "$1" "$2" "$3$line"
+  done <"$4"
+}
+
+artifact() {
+  target=$1
+  shift
+  [ $# -ge 1 ] || { usage >&2; exit 2; }
+  # The OS import each target's getrandom backend calls (Q8), and the platform symbol prefix.
+  case $target in
+    *-linux-gnu | *-linux-gnueabihf | *-linux-android | *-linux-androideabi)
+      p= import=getrandom extra='|getentropy' ;;
+    *-apple-ios | *-apple-ios-sim) p=_ import=_CCRandomGenerateBytes extra= ;;
+    *-apple-darwin) p=_ import=_getentropy extra= ;;
+    *) printf 'banned-api-check: no OS-import rule for target %s\n' "$target" >&2; exit 2 ;;
+  esac
+  # libc's draws and seeders, with glibc's reentrant _r forms (the Pi links glibc).
+  undefined_rng="^$p(rand|random|srand|srandom|rand_r|random_r|srandom_r|([A-Za-z0-9_]*rand48|seed48|lcong48|initstate|setstate)(_r)?|arc4random[A-Za-z0-9_]*|SecRandomCopyBytes$extra)\$"
+  rng_crates="(^|[^A-Za-z0-9_])($(printf '%s\n' $rng_crate_names | tr '\n' '|' | sed 's/|$//'))::"
+  fallback='(^|[^A-Za-z0-9_])getrandom::backends::(use_file|linux_android_with_fallback)::'
+  toolchain_bin
+  atmp=$(mktemp -d "${TMPDIR:-/tmp}/banned-api-artifact.XXXXXX") || exit 2
+  trap 'rm -rf "$atmp"' EXIT
+  trap 'exit 2' HUP INT TERM
+  keybytes=$(printf '%s\n' "$testkey" | sed 's/../ &/g')
+  hits=0
+  n=0
+  linked=0
+  archives=0
+  for f in "$@"; do
+    n=$((n + 1))
+    if [ ! -f "$f" ] || [ ! -r "$f" ]; then
+      printf 'banned-api-check: cannot read %s\n' "$f" >&2
+      exit 2
+    fi
+    dump "$f" >"$atmp/dump" || { printf 'banned-api-check: cannot read %s\n' "$f" >&2; exit 2; }
+    for m in $markers; do
+      if grep -q -F -e "$(printf '%s' "$m" | od -An -v -tx1 | tr -s ' \n' '  ' | sed 's/ $//')" "$atmp/dump"; then
+        ahit Marker "$f" "$m"
+      fi
+    done
+    if grep -q -F -e "$keybytes" "$atmp/dump"; then
+      ahit TestKey "$f" "the test registry public key $testkey"
+    fi
+    magic=$(od -An -N8 -tx1 "$f" | tr -d ' \n')
+    case $magic in
+      213c617263683e0a) kind=archive ;;
+      213c7468696e3e0a)
+        ahit Format "$f" "a thin archive, which holds its members' paths, not their bytes"
+        continue
+        ;;
+      7f454c46* | feedface* | feedfacf* | cefaedfe* | cffaedfe* | cafebabe*) kind=object ;;
+      *)
+        ahit Format "$f" 'not an ELF, Mach-O or ar file, so its symbols cannot be checked'
+        continue
+        ;;
+    esac
+    symbols "$f" "$atmp/all" -C
+    symbols "$f" "$atmp/undefined" -u
+    grep -E -e "$undefined_rng" "$atmp/undefined" >"$atmp/hits"
+    [ $? -le 1 ] || exit 2
+    from_list Symbol "$f" 'undefined ' "$atmp/hits"
+    grep -E -e "$rng_crates" "$atmp/all" >"$atmp/hits"
+    [ $? -le 1 ] || exit 2
+    from_list Symbol "$f" 'rand-family symbol ' "$atmp/hits"
+    grep -E -e "$fallback" "$atmp/all" >"$atmp/hits"
+    [ $? -le 1 ] || exit 2
+    from_list Symbol "$f" "getrandom's fallback " "$atmp/hits"
+    if [ "$kind" = archive ]; then
+      archives=$((archives + 1))
+    else
+      linked=$((linked + 1))
+      grep -q -x -F -e "$import" "$atmp/undefined" ||
+        ahit OSImport "$f" "no undefined $import, the OS import on $target"
+    fi
+  done
+  if [ "$hits" -ne 0 ]; then
+    echo "banned-api-check --artifact $target: $hits hit(s) in $n file(s)"
+    exit 1
+  fi
+  echo "banned-api-check --artifact $target: clean, $n file(s): no marker, no test key, no other RNG symbol; $import imported by all $linked object or linked file(s) ($archives archive(s), which need no import)"
+  exit 0
+}
+
+# --- Artifact selftest -------------------------------------------------------------------------
+
+# aexpect NAME WANT-EXIT WANT-HITS TARGET FILE...: run the artifact scan in a new process. The exit
+# code must be WANT-EXIT, and the hit lines, sorted, exactly WANT-HITS (newline-separated, sorted;
+# empty for none). For WANT-EXIT 2, WANT-HITS is a text the output must contain instead.
+aexpect() {
+  aname=$1
+  want_rc=$2
+  want=$3
+  shift 3
+  out=$(sh "$self" --artifact "$@" 2>&1)
+  rc=$?
+  got=$(printf '%s\n' "$out" | grep -E '^(Marker|TestKey|Format|Symbol|OSImport): ' | sort)
+  ok=no
+  if [ "$rc" -eq "$want_rc" ]; then
+    if [ "$want_rc" -eq 2 ]; then
+      case $out in *"$want"*) ok=yes ;; esac
+    elif [ "$got" = "$(printf '%s\n' "$want" | sed '/^$/d' | sort)" ]; then
+      ok=yes
+    fi
+  fi
+  if [ "$ok" = yes ]; then
+    pass=$((pass + 1))
+    printf 'PASS %s -> exit %s%s\n' "$aname" "$rc" "$(printf '%s\n' "$got" | sed '/^$/d; s/^/; /' | tr -d '\n')"
+  else
+    fail=$((fail + 1))
+    printf 'FAIL %s: wanted exit %s with:\n%s\ngot exit %s:\n' "$aname" "$want_rc" "$want" "$rc"
+    printf '%s\n' "$out" | sed 's/^/    /'
+  fi
+}
+
+artifact_selftest() {
+  toolchain_bin
+  fixture=$here/testdata/artifact
+  a=$tmp/artifact
+  mkdir -p "$a" || exit 2
+  # The pinned key is kcr.json's test registry key.
+  if sed -n '/"test_registry": {/,/}/p' "$here/../vectors/kcr.json" | grep -q -F -e "\"public_key_hex\": \"$testkey\""; then
+    pass=$((pass + 1))
+    echo 'PASS artifact-test-key-is-kcr-json-test-registry-key'
+  else
+    fail=$((fail + 1))
+    echo "FAIL artifact-test-key-is-kcr-json-test-registry-key: $testkey is not vectors/kcr.json's test_registry public_key_hex"
+  fi
+  # The scan's RNG crates are deny.toml's rule-1 block, name for name (scripts/canaries.sh pins
+  # that block). A block this cannot read gives an empty list, which fails.
+  deny_rng=$(sed -n '/^ *# Rule 1:/,/^ *#/p' "$repo/deny.toml" | sed -n 's/^ *"\([A-Za-z0-9_-]*\)",$/\1/p' | sort | tr '\n' ' ')
+  scan_rng=$(printf '%s\n' $rng_crate_names | sort | tr '\n' ' ')
+  if [ -n "$deny_rng" ] && [ "$deny_rng" = "$scan_rng" ]; then
+    pass=$((pass + 1))
+    echo "PASS artifact-rng-crates-are-deny-toml-rule-1 ($(printf '%s\n' $rng_crate_names | wc -l | tr -d ' ') names)"
+  else
+    fail=$((fail + 1))
+    printf 'FAIL artifact-rng-crates-are-deny-toml-rule-1:\n    deny.toml: %s\n    scan:      %s\n' "$deny_rng" "$scan_rng"
+  fi
+  # One object per case and target, from the one fixture source (see its header).
+  for t in aarch64-linux-android aarch64-apple-ios; do
+    case $t in *-apple-*) p=_ import=_CCRandomGenerateBytes ;; *) p= import=getrandom ;; esac
+    for c in clean:kc_fixture: arc4random:kc_fixture:kc_arc4random no-os-import:kc_fixture:kc_no_os_import \
+      getentropy:kc_fixture:kc_getentropy libc-r:kc_fixture:kc_libc_r rand-crate:rand: \
+      getrandom-fallback:getrandom:; do
+      case_name=${c%%:*}
+      rest=${c#*:}
+      crate=${rest%%:*}
+      cfg=${rest#*:}
+      if ! (cd "$repo" && rustc --edition 2024 --crate-type lib --crate-name "$crate" --emit obj \
+        -C panic=abort -C opt-level=1 --target "$t" ${cfg:+--cfg "$cfg"} \
+        -o "$a/$t-$case_name.o" "$fixture/fixture.rs") >"$a/rustc.log" 2>&1; then
+        fail=$((fail + 1))
+        printf 'FAIL artifact %s %s: rustc could not build the fixture:\n' "$t" "$case_name"
+        sed 's/^/    /' "$a/rustc.log"
+      fi
+    done
+    o=$a/$t
+    aexpect "artifact-$t-clean-object" 0 '' "$t" "$o-clean.o"
+    aexpect "artifact-$t-arc4random-import" 1 "Symbol: $o-arc4random.o: undefined ${p}arc4random" "$t" "$o-arc4random.o"
+    aexpect "artifact-$t-missing-os-import" 1 \
+      "OSImport: $o-no-os-import.o: no undefined $import, the OS import on $t" "$t" "$o-no-os-import.o"
+    case $t in
+      *-apple-*) aexpect "artifact-$t-getentropy-allowed" 0 '' "$t" "$o-getentropy.o" ;;
+      *) aexpect "artifact-$t-getentropy-import" 1 "Symbol: $o-getentropy.o: undefined getentropy" "$t" "$o-getentropy.o" ;;
+    esac
+    # glibc's reentrant draws and a rand48 seeder (the old pattern let all three through).
+    aexpect "artifact-$t-libc-reentrant-draws" 1 "Symbol: $o-libc-r.o: undefined ${p}lrand48_r
+Symbol: $o-libc-r.o: undefined ${p}random_r
+Symbol: $o-libc-r.o: undefined ${p}seed48" "$t" "$o-libc-r.o"
+    # Every symbol of the rand crate is a hit; in the getrandom crate only the fallback is.
+    aexpect "artifact-$t-rand-crate-symbols" 1 \
+      "Symbol: $o-rand-crate.o: rand-family symbol rand::backends::use_file::fill_inner
+Symbol: $o-rand-crate.o: rand-family symbol rand::rngs::next_u32" "$t" "$o-rand-crate.o"
+    aexpect "artifact-$t-getrandom-fallback-symbol" 1 \
+      "Symbol: $o-getrandom-fallback.o: getrandom's fallback getrandom::backends::use_file::fill_inner" \
+      "$t" "$o-getrandom-fallback.o"
+    # An archive (as an rlib is) needs no OS import, but its members meet every other rule.
+    rm -f "$o-no-import.rlib" "$o-arc4random.rlib"
+    "$bin/llvm-ar" rcs "$o-no-import.rlib" "$o-no-os-import.o" || exit 2
+    "$bin/llvm-ar" rcs "$o-arc4random.rlib" "$o-no-os-import.o" "$o-arc4random.o" || exit 2
+    aexpect "artifact-$t-archive-needs-no-import" 0 '' "$t" "$o-no-import.rlib"
+    aexpect "artifact-$t-archive-member-arc4random" 1 \
+      "Symbol: $o-arc4random.rlib: undefined ${p}arc4random" "$t" "$o-arc4random.rlib"
+    # A thin archive holds its members' paths, not their bytes, so it fails whatever it lists.
+    rm -f "$o-thin.rlib"
+    "$bin/llvm-ar" rcsT "$o-thin.rlib" "$o-clean.o" || exit 2
+    aexpect "artifact-$t-thin-archive" 1 \
+      "Format: $o-thin.rlib: a thin archive, which holds its members' paths, not their bytes" "$t" "$o-thin.rlib"
+  done
+  # Each other crate of the list, on one target: every symbol in it is a hit, as in rand.
+  t=aarch64-linux-android
+  for crate in $rng_crate_names; do
+    [ "$crate" = rand ] && continue
+    o=$a/$t-crate-$crate
+    if ! (cd "$repo" && rustc --edition 2024 --crate-type lib --crate-name "$crate" --emit obj \
+      -C panic=abort -C opt-level=1 --target "$t" -o "$o.o" "$fixture/fixture.rs") >"$a/rustc.log" 2>&1; then
+      fail=$((fail + 1))
+      printf 'FAIL artifact %s crate %s: rustc could not build the fixture:\n' "$t" "$crate"
+      sed 's/^/    /' "$a/rustc.log"
+      continue
+    fi
+    aexpect "artifact-$t-$crate-crate-symbols" 1 \
+      "Symbol: $o.o: rand-family symbol $crate::backends::use_file::fill_inner
+Symbol: $o.o: rand-family symbol $crate::rngs::next_u32" "$t" "$o.o"
+  done
+  # Any file, whatever its format: each marker as text, and the key's 32 bytes inside other bytes.
+  t=aarch64-linux-android
+  for m in source:KC_TEST_SOURCE_DO_NOT_SHIP registry:KC_TEST_REGISTRY_DO_NOT_SHIP; do
+    mf=$fixture/marker-${m%%:*}.txt
+    aexpect "artifact-marker-${m%%:*}-text" 1 "Marker: $mf: ${m#*:}
+Format: $mf: not an ELF, Mach-O or ar file, so its symbols cannot be checked" "$t" "$mf"
+  done
+  octal=
+  rest=$testkey
+  while [ -n "$rest" ]; do
+    octal=$octal$(printf '\\%03o' "0x${rest%"${rest#??}"}")
+    rest=${rest#??}
+  done
+  printf "x$octal\n" >"$a/test-key.bin" || exit 2
+  aexpect 'artifact-test-key-bytes' 1 "TestKey: $a/test-key.bin: the test registry public key $testkey
+Format: $a/test-key.bin: not an ELF, Mach-O or ar file, so its symbols cannot be checked" "$t" "$a/test-key.bin"
+  # Each file is reported on its own: a clean object beside a marker file.
+  mf=$fixture/marker-source.txt
+  aexpect 'artifact-two-files' 1 "Marker: $mf: KC_TEST_SOURCE_DO_NOT_SHIP
+Format: $mf: not an ELF, Mach-O or ar file, so its symbols cannot be checked" "$t" "$a/$t-clean.o" "$mf"
+  # Errors: a TARGET with no rule, a missing file, no file at all.
+  aexpect 'artifact-error-unknown-target' 2 'no OS-import rule for target x86_64-pc-windows-msvc' \
+    x86_64-pc-windows-msvc "$a/$t-clean.o"
+  aexpect 'artifact-error-missing-file' 2 "cannot read $a/absent.o" "$t" "$a/absent.o"
+  aexpect 'artifact-error-no-file' 2 'usage:' "$t"
+}
+
+case ${1-} in
+  --artifact) shift; [ $# -ge 1 ] || { usage >&2; exit 2; }; artifact "$@" ;;
+esac
 
 case $# in
   0) root=$(cd "$here/.." && pwd -P) || exit 2; scan "$root" ;;

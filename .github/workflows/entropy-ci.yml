@@ -4,6 +4,14 @@
 # step starts there, and cache paths and hashFiles() name Entropy/ because they resolve from
 # the repo root.
 #
+# No paths: filter (tasks/todo.md, M1 Q12): the workflow starts on every PR and every push to main,
+# and its first job, changes, says whether Entropy/ or this file changed. Every other job needs it
+# and is skipped otherwise, which GitHub counts as passing, so checks made required by a ruleset
+# never stay pending on a PR that does not touch Entropy/. (GitHub leaves a path-filtered workflow
+# pending instead.) The cross matrix skips its steps rather than the job: a skipped matrix job
+# reports one check under its unexpanded name, not one per target. A ruleset must require the
+# changes job too: if it fails, the jobs that need it are skipped, and skipped counts as passing.
+#
 # Hardening: read-only token and no secrets; only actions/checkout and actions/cache, pinned by
 # commit SHA; no event data (github.event.*, head_ref) inside run scripts; tools built from
 # crates.io with their own lockfiles; the toolchain comes from rust-toolchain.toml through the
@@ -17,14 +25,8 @@ name: Entropy CI
 
 on:
   pull_request:
-    paths:
-      - "Entropy/**"
-      - ".github/workflows/entropy-ci.yml"
   push:
     branches: [main]
-    paths:
-      - "Entropy/**"
-      - ".github/workflows/entropy-ci.yml"
 
 permissions:
   contents: read
@@ -47,13 +49,62 @@ env:
   CARGO_DENY: cargo-deny@0.20.2
   CARGO_AUDIT: cargo-audit@0.22.2
   CARGO_VET: cargo-vet@0.10.2
+  CARGO_LLVM_COV: cargo-llvm-cov@0.9.1
 
 jobs:
+  changes:
+    # Q12: did this PR or push change Entropy/ or this workflow? A pull request's checkout is its
+    # merge commit, whose first parent is the base branch; a push to main compares with the commit
+    # main pointed to before. Event data reaches the script through env only. A range that cannot
+    # be read (a new branch, a force push) counts as a change, so every job runs.
+    # The answer is git diff's exit code over the two pathspecs (from the repo root, since run
+    # steps start in Entropy/), never a text match on a list of names: --no-renames reports a file
+    # moved out of Entropy/ as the deletion it is (a rename lists only its new path), a pathspec
+    # also matches the names git prints quoted (non-ASCII), and nothing pipes into an early-exiting
+    # reader, which under -eo pipefail turned a long list into "false" (SIGPIPE). The name list is
+    # read for the log only.
+    name: changes (Entropy/ or this workflow)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      entropy: ${{ steps.diff.outputs.entropy }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          # An assignment, so a failing rev-parse fails the step (cd "" would carry on in Entropy/).
+          top=$(git rev-parse --show-toplevel)
+          cd "$top"
+          if [ "$EVENT" = pull_request ]; then base=HEAD^1; else base=$BEFORE; fi
+          rc=0
+          git diff --quiet --no-renames "$base" HEAD -- Entropy/ .github/workflows/entropy-ci.yml 2>/dev/null || rc=$?
+          case $rc in
+            0) entropy=false ;;
+            1) entropy=true ;;
+            *) echo "cannot read the range $base..HEAD (git diff exit $rc); every job runs"; entropy=true ;;
+          esac
+          if [ "$rc" -le 1 ]; then
+            # The first 50 changed paths, both sides of a move, unquoted. sed reads to the end, so
+            # git never writes into a closed pipe.
+            git -c core.quotePath=false diff --name-only --no-renames "$base" HEAD | sed -n '1,50s/^/changed: /p'
+          fi
+          echo "entropy=$entropy" | tee -a "$GITHUB_OUTPUT"
+
   lint:
     # Definition of done: fmt and clippy clean. clippy.toml in core/, ffi/ and pi/app/ bans the
     # fallback and discard methods (rule 3); their shared [lints] forbid switching that off and
-    # deny print and dbg (rule 5).
+    # deny print and dbg (rule 5). Clippy runs twice: with default features, the release
+    # configuration, and with all features, so the test-sources stubs and the test-registry code
+    # (rule 10) meet the same lints.
     name: lint (fmt, clippy)
+    needs: changes
+    if: needs.changes.outputs.entropy == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -74,10 +125,17 @@ jobs:
           cargo --version
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
   test:
-    # Known answers and typestate tests (rules 6, 7, 12) as they land; locked dependencies.
+    # Known answers and typestate tests (rules 6, 7, 12) as they land; locked dependencies. The
+    # workspace run tests the release configuration (no test feature on: scripts/canaries.sh
+    # refuses any manifest that turns one on, since cargo would merge it into every package); the
+    # second run turns on test-sources, and with it test-registry, for the stub-source and
+    # test-registry tests, which declare required-features (rule 10).
     name: test
+    needs: changes
+    if: needs.changes.outputs.entropy == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -97,6 +155,7 @@ jobs:
           rustc --version
           cargo --version
       - run: cargo test --workspace --locked
+      - run: cargo test -p keepcrypt-core --locked --features test-sources
 
   supply-chain:
     # Rules 1, 5 and 11: deny.toml bans the rand family, network and logging crates, allows
@@ -105,6 +164,8 @@ jobs:
     # check-path-deps.sh fails any non-workspace crate not from crates.io, such as a [patch],
     # [replace] or .cargo path override, which deny's source check and vet let through.
     name: supply-chain (deny, audit, vet)
+    needs: changes
+    if: needs.changes.outputs.entropy == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -137,12 +198,17 @@ jobs:
       - run: cargo vet --locked
 
   gates:
-    # Rule 1 and the network and clipboard bans as a grep gate, plus its self-test; the
-    # verifier self-test (seal vectors, vector hashes, and a re-run of the hash-pinned
-    # Coldcard scripts behind rolls.json); and the canaries: crates that must fail cargo-deny
-    # and clippy, mutated copies of the real crates, and a path override, each of which must
-    # fail on every run, so a gate that stops firing turns CI red.
+    # Rule 1 and the network and clipboard bans as a grep gate, plus its self-test (with the
+    # release-artifact scan's fixtures, which rustc builds for an Android and an iOS target); the
+    # verifier self-test (11 checks: every vectors/ file regenerated or recomputed, and a re-run of
+    # the hash-pinned Coldcard scripts behind rolls.json); and the canaries: crates that must fail
+    # cargo-deny and clippy, mutated copies of the real crates, a path override, the dependency
+    # graph pins, a changed byte in each generated vectors file, and the artifact scan's positive
+    # controls on host release probes built with test-registry and test-sources (rule 10), each of
+    # which must fail on every run, so a gate that stops firing turns CI red.
     name: gates (banned APIs, verifier, canaries)
+    needs: changes
+    if: needs.changes.outputs.entropy == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -151,13 +217,15 @@ jobs:
           persist-credentials: false
       # The grep gate runs first, on the bare checkout, before anything writes target/.
       - run: scripts/banned-api-check.sh
-      - run: scripts/banned-api-check.sh --selftest
       - run: python3 tools/verify/verify.py --selftest
       - name: Install the pinned toolchain (rust-toolchain.toml)
         run: |
           rustup toolchain install
           rustc --version
           cargo --version
+      # After the toolchain: the artifact fixtures need rustc, the aarch64-linux-android and
+      # aarch64-apple-ios targets, and llvm-nm and llvm-ar from llvm-tools-preview.
+      - run: scripts/banned-api-check.sh --selftest
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: tools
         with:
@@ -180,6 +248,8 @@ jobs:
     # gates job runs Ubuntu's 3.12. Full path, because python3 on PATH is Homebrew's. If Apple
     # ships another version this fails, so the floor is re-decided, not silently untested.
     name: verifier (python 3.9)
+    needs: changes
+    if: needs.changes.outputs.entropy == 'true'
     runs-on: macos-26
     timeout-minutes: 10
     steps:
@@ -196,13 +266,113 @@ jobs:
           esac
       - run: /usr/bin/python3 tools/verify/verify.py --selftest
 
+  coverage:
+    # M1 gate (docs/build-plan.md): at least 95% line coverage in core/. The test-sources run, so
+    # the stub and fault-injection tests count, with nothing excluded: no #[coverage(off)], no
+    # cfg(coverage) (--no-cfg-coverage), and the first step fails if any core/src path matches the
+    # path parts of the tool's default ignore rule (cargo-llvm-cov 0.9.1, src/report.rs: a tests/,
+    # examples/ or benches/ directory, a rustc/<hex or x.y.z>/ directory anywhere in the path, or a
+    # tests.rs, *_tests.rs or *-tests.rs file), which would leave that code out of the figure
+    # unseen. The rule's other parts name the target dir and the cargo and rustup homes.
+    name: coverage (core, 95% of lines)
+    needs: changes
+    if: needs.changes.outputs.entropy == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: No core/src path the coverage tool would skip
+        run: |
+          files=$(find core/src -type f)
+          [ -n "$files" ] || { echo "FAIL: no file under core/src" >&2; exit 1; }
+          skipped=$(printf '%s\n' "$files" | grep -E '/(tests|examples|benches)/|/rustc/([0-9a-f]+|[0-9]+\.[0-9]+\.[0-9]+)/|/tests\.rs$|_tests\.rs$|-tests\.rs$' || true)
+          if [ -n "$skipped" ]; then
+            printf '%s\n' "$skipped"
+            echo "FAIL: cargo-llvm-cov's default ignore rule would leave these core/src files out" >&2
+            exit 1
+          fi
+          echo "no core/src path matches /(tests|examples|benches)/, /rustc/<hex or x.y.z>/, tests.rs, *_tests.rs or *-tests.rs"
+      - name: Install the pinned toolchain (rust-toolchain.toml)
+        run: |
+          rustup toolchain install
+          rustc --version
+          cargo --version
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: tools
+        with:
+          path: ~/.cargo-tools
+          key: ${{ runner.os }}-${{ runner.arch }}-tools-${{ env.CARGO_LLVM_COV }}
+      - name: Install cargo-llvm-cov
+        if: steps.tools.outputs.cache-hit != 'true'
+        run: cargo install --locked --root "$HOME/.cargo-tools" "$CARGO_LLVM_COV"
+      - run: echo "$HOME/.cargo-tools/bin" >> "$GITHUB_PATH"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            Entropy/target/
+          key: ${{ runner.os }}-${{ runner.arch }}-coverage-${{ hashFiles('Entropy/rust-toolchain.toml', 'Entropy/Cargo.lock') }}
+      - run: cargo llvm-cov --version
+      - run: cargo llvm-cov --locked -p keepcrypt-core --features test-sources --no-cfg-coverage --fail-under-lines 95 --summary-only
+
+  age-interop:
+    # Rule 8 and Q1 (ii): the backup is a real age v1 file. Ubuntu's age, at the version Q1
+    # approved, against core in both directions at work factor 18 (scripts/age-interop.py --core):
+    # age encrypts each backup.json plaintext, armored and binary, and verify.py's reader and core's
+    # decrypt_backup read it; verify.py's writer and core write fresh backups and age decrypts them;
+    # a wrong passphrase fails in age and in the reader, or the script fails. The script drives age
+    # through a pseudo-terminal, since age reads a passphrase only from a terminal.
+    name: age-interop (age 1.1.1)
+    needs: changes
+    if: needs.changes.outputs.entropy == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Ubuntu's age, version asserted
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends age
+          v=$(dpkg-query -W -f='${Version}' age)
+          echo "age package $v; age --version: $(age --version)"
+          if [ "$v" != "1.1.1-1ubuntu0.24.04.3" ]; then
+            echo "FAIL: expected age 1.1.1-1ubuntu0.24.04.3 (tasks/todo.md, M1 Q1); re-decide the pin" >&2
+            exit 1
+          fi
+      - name: Install the pinned toolchain (rust-toolchain.toml)
+        run: |
+          rustup toolchain install
+          rustc --version
+          cargo --version
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            Entropy/target/
+          key: ${{ runner.os }}-${{ runner.arch }}-age-interop-${{ hashFiles('Entropy/rust-toolchain.toml', 'Entropy/Cargo.lock') }}
+      - run: python3 scripts/age-interop.py --core
+
   cross:
-    # M0 gate: the core cross-compiles for the Pi Zero, Android and iOS. Only the
-    # keepcrypt-core rlib is built; linking a Pi binary moves to Buildroot in M4 and the app
-    # libraries to M5 and M6. Clippy also runs per target, so target-only code in core and in
-    # the shell for that target (pi/app on the Pi, ffi on the phones) meets the same lints as
-    # the host (rules 3 and 5).
+    # M0 gate: the core cross-compiles for the Pi Zero, Android and iOS. Clippy runs per target, so
+    # target-only code in core and in the shell for that target (pi/app on the Pi, ffi on the
+    # phones) meets the same lints as the host (rules 3 and 5). Then the release-artifact scan
+    # (rules 1 and 10; tasks/todo.md, M1 group 11): core's release rlib and the release probe
+    # (core/examples/release_probe.rs, every OS draw site and the registry-key path), both with
+    # default features, linked per target, must hold no test marker, no test registry key and no
+    # RNG symbol but the target's OS import, which must be there: getrandom on the Pi and Android,
+    # CCRandomGenerateBytes on iOS (Q8). The Pi and Android legs build with getrandom's
+    # linux_getrandom backend, which has no /dev/urandom fallback, through
+    # CARGO_TARGET_<TARGET>_RUSTFLAGS: never a workflow-wide RUSTFLAGS, which would also reach the
+    # host's build scripts. A real Pi binary moves to Buildroot in M4 and the app libraries to M5
+    # and M6. Every step checks the changes job (see the header).
     name: cross (${{ matrix.target }})
+    needs: changes
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -239,26 +409,30 @@ jobs:
       IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.changes.outputs.entropy == 'true'
         with:
           persist-credentials: false
       # No target/: cc reruns a build script only when an env var changes, so cached objects
       # would hide a compiler change. Every run compiles secp256k1-sys with the image's
       # current compiler (design.md principle 7, test the path, not the presence).
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: needs.changes.outputs.entropy == 'true'
         with:
           path: |
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
           key: ${{ runner.os }}-${{ runner.arch }}-cross-${{ matrix.target }}-${{ hashFiles('Entropy/rust-toolchain.toml', 'Entropy/Cargo.lock') }}
       - name: Install the pinned toolchain (rust-toolchain.toml)
+        if: needs.changes.outputs.entropy == 'true'
         run: |
           rustup toolchain install
           rustc --version
           cargo --version
-      # The C parts (secp256k1-sys) need a C compiler for each target.
-      - name: C compiler for the Pi Zero (Ubuntu's arm-linux-gnueabihf gcc)
-        if: matrix.target == 'arm-unknown-linux-gnueabihf'
-        # Stand-in until M4, where Buildroot's ARMv6 toolchain replaces it.
+      # The C parts (secp256k1-sys) need a C compiler for each target, and the probe a linker.
+      - name: C compiler and linker for the Pi Zero (Ubuntu's arm-linux-gnueabihf gcc)
+        if: needs.changes.outputs.entropy == 'true' && matrix.target == 'arm-unknown-linux-gnueabihf'
+        # Stand-in until M4, where Buildroot's ARMv6 toolchain replaces it. The probe links against
+        # Ubuntu's armhf glibc; it is scanned, never run.
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends gcc-arm-linux-gnueabihf libc6-dev-armhf-cross
@@ -267,9 +441,10 @@ jobs:
             echo "CC_arm_unknown_linux_gnueabihf=arm-linux-gnueabihf-gcc"
             echo "AR_arm_unknown_linux_gnueabihf=arm-linux-gnueabihf-ar"
             echo "CFLAGS_arm_unknown_linux_gnueabihf=-march=armv6zk -mfpu=vfp -mfloat-abi=hard -marm"
+            echo "CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER=arm-linux-gnueabihf-gcc"
           } >> "$GITHUB_ENV"
-      - name: C compiler for Android (NDK clang, API 31)
-        if: matrix.ndk_clang != ''
+      - name: C compiler and linker for Android (NDK clang, API 31)
+        if: needs.changes.outputs.entropy == 'true' && matrix.ndk_clang != ''
         env:
           NDK_CLANG: ${{ matrix.ndk_clang }}
         run: |
@@ -280,24 +455,41 @@ jobs:
           {
             echo "CC_$t=$bin/$NDK_CLANG"
             echo "AR_$t=$bin/llvm-ar"
+            echo "CARGO_TARGET_${t^^}_LINKER=$bin/$NDK_CLANG"
           } >> "$GITHUB_ENV"
+      # Q8: getrandom's default Linux and Android backend looks getrandom up with dlsym and falls
+      # back to /dev/urandom; linux_getrandom calls libc's getrandom and nothing else, so the scan
+      # can require that import. Every Linux runner leg builds a Pi or Android target.
+      - name: getrandom without its /dev/urandom fallback (Pi and Android)
+        if: needs.changes.outputs.entropy == 'true' && runner.os == 'Linux'
+        run: |
+          t=${TARGET//-/_}
+          echo "CARGO_TARGET_${t^^}_RUSTFLAGS=--cfg getrandom_backend=\"linux_getrandom\"" | tee -a "$GITHUB_ENV"
       - name: Xcode
-        if: runner.os == 'macOS'
+        if: needs.changes.outputs.entropy == 'true' && runner.os == 'macOS'
         run: |
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
           xcrun --sdk iphonesimulator --show-sdk-version
       # Each crate's clippy.toml and [lints] apply, as in the lint job.
       - name: Clippy for the target
+        if: needs.changes.outputs.entropy == 'true'
         env:
           CRATES: ${{ matrix.crates }}
         run: |
           pkgs=()
           for c in $CRATES; do pkgs+=(-p "$c"); done
           cargo clippy --locked "${pkgs[@]}" --all-targets --target "$TARGET" -- -D warnings
-      - run: cargo build --release --locked -p keepcrypt-core --target "$TARGET"
-      - name: Show the rlib
+      - name: Build the release rlib and the release probe (default features)
+        if: needs.changes.outputs.entropy == 'true'
+        run: cargo build --release --locked -p keepcrypt-core --lib --example release_probe --target "$TARGET"
+      - name: Scan the release artifacts (markers, test key, RNG symbols, the OS import)
+        if: needs.changes.outputs.entropy == 'true'
         run: |
           rlib="target/$TARGET/release/libkeepcrypt_core.rlib"
-          size=$(wc -c < "$rlib")
-          echo "$rlib: $((size)) bytes"
+          probe="target/$TARGET/release/examples/release_probe"
+          for f in "$rlib" "$probe"; do
+            size=$(wc -c < "$f")
+            echo "$f: $((size)) bytes"
+          done
+          scripts/banned-api-check.sh --artifact "$TARGET" "$rlib" "$probe"

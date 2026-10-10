@@ -11,13 +11,98 @@ publish.workspace = true
 [dependencies]
 getrandom = "0.4.3"
 sha2 = { version = "0.11.0", features = ["zeroize"] }
+# HMAC-SHA256 for the seal code (tasks/todo.md, M1 group 7; Q1, table A), and later the age header
+# MAC and HKDF. zeroize wipes the keyed state on drop; ctutils is held at 0.4.2 by
+# `cargo update --precise` (0.4.3 is inside the 14-day cool-off).
+hmac = { version = "0.13.0", default-features = false, features = ["zeroize"] }
+# The age v1 backup, scrypt stanza only, written in core (tasks/todo.md, M1 Q1, table A): scrypt for the
+# stanza's wrap key (r = 8, p = 1; no features, so password-hash, getrandom and rand_core stay out),
+# ChaCha20-Poly1305 for the key wrap and the payload (default-features = false turns off its getrandom
+# and alloc; zeroize wipes the cipher keys on drop), HKDF-SHA256 for the header and payload keys, and
+# base64ct for strict canonical base64 (unpadded in the header, padded in the armor). Core uses the
+# in-out AEAD calls and slice encoding, so neither needs alloc.
+scrypt = { version = "0.12.0", default-features = false }
+chacha20poly1305 = { version = "0.11.0", default-features = false, features = ["zeroize"] }
+# Poly1305 for the AEAD's tag, already in the lockfile through chacha20poly1305, whose zeroize turns
+# on only chacha20's: a new direct edge, named in docs/build-plan.md, whose only job is to switch on
+# poly1305's zeroize, so the dropped Poly1305 state wipes its one-time key r and s (tasks/todo.md,
+# "M1: open owner items", item 6, 2026-10-10). It has no default features.
+poly1305 = { version = "0.9.1", default-features = false, features = ["zeroize"] }
+hkdf = { version = "0.13.0", default-features = false }
+base64ct = { version = "1.8.3", default-features = false }
+# Ed25519 signature verification only, verify_strict, for registry snapshots and bucket proofs
+# (tasks/todo.md, M1 Q3, table B). No features: `fast` (precomputed tables) and `zeroize` (signing
+# keys) are its defaults and stay off; rand_core, batch, legacy_compatibility and hazmat are never
+# enabled. curve25519-dalek then resolves with `digest` only.
+ed25519-dalek = { version = "3.0.0", default-features = false }
 # alloc, not std: bip39's std turns on serde and `impl Serialize for Mnemonic` (rule 5).
 bip39 = { version = "3.0.0", default-features = false, features = ["alloc", "zeroize"] }
 bitcoin = { version = "0.32.102", default-features = false, features = ["std"] }
 miniscript = { version = "13.1.0", default-features = false }
+# NFKD of the BIP39 passphrase into a zeroizing buffer (tasks/todo.md, M1 Q5). Already in the
+# lockfile through bip39, with the same features; a new direct edge, named in docs/build-plan.md.
+unicode-normalization = { version = "0.1.25", default-features = false }
 zeroize = { version = "1.9.0", features = ["derive"] }
 secrecy = "0.10.3"
 thiserror = "2.0.21"
+
+# Test-only crates (tasks/todo.md, M1 Q4), never in the device build: trybuild runs the
+# compile-fail typestate and secret-type fixtures (rule 6); serde_json lets tests read
+# vectors/*.json as serde_json::Value. Exact pins: trybuild 1.0.122 is inside the 14-day cool-off.
+# serde stays out of core's normal and build graph; a canary pins that in M1 group 12.
+[dev-dependencies]
+trybuild = "=1.0.121"
+serde_json = "=1.0.151"
+
+# kcr.json's signed cases verify only where the test registry key is pinned (tasks/todo.md, M1
+# group 7). The release-mode sweep, tests/kcr_release.rs, needs no feature: every case gives
+# NoRegistryKey there.
+[[test]]
+name = "kcr"
+required-features = ["test-registry"]
+
+# Tests that drive sessions on stub entropy (tasks/todo.md, M1 group 10) run only in the second
+# test run, `cargo test -p keepcrypt-core --features test-sources`; the default run tests the
+# release configuration (tests/os_source.rs and tests/ceremony.rs use the real OS source).
+[[test]]
+name = "source_substitution"
+required-features = ["test-sources"]
+
+[[test]]
+name = "error_injection"
+required-features = ["test-sources"]
+
+[[test]]
+name = "check_flow"
+required-features = ["test-sources"]
+
+[[test]]
+name = "no_secret_text"
+required-features = ["test-sources"]
+
+[[test]]
+name = "panic_wipe"
+required-features = ["test-sources"]
+
+[[test]]
+name = "no_panic"
+required-features = ["test-sources"]
+
+# Test-only features, both off by default (CLAUDE.md rule 10). No manifest turns either one on, in
+# any dependency table (normal, dev, build or target-specific) or feature: cargo merges features
+# across every package in one build, so one such entry anywhere would put stubs or the test key
+# into every binary a --workspace build links. They are switched on only from the command line,
+# one package at a time: `cargo test -p keepcrypt-core --features test-sources`, or
+# `-p <crate> --features keepcrypt-core/test-registry` for a crate that depends on core (the M3
+# simulator, the M5/M6 gate builds). scripts/canaries.sh pins this table and enforces the rule.
+# - test-registry: pins the test registry public key, with the marker KC_TEST_REGISTRY_DO_NOT_SHIP.
+# - test-sources: the stub entropy sources, with the marker KC_TEST_SOURCE_DO_NOT_SHIP. It turns
+#   on test-registry, never the reverse, so a build that trusts the local test registry (the M3
+#   simulator, the M5/M6 gate builds) links no stub.
+[features]
+default = []
+test-registry = []
+test-sources = ["test-registry"]
 
 [lints.rust]
 # scripts/canaries.sh pins this table and [lints.clippy] below exactly, per crate.

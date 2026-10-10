@@ -65,9 +65,9 @@ The image is a minimal Buildroot Linux whose only job is to start `keepcrypt-pi`
 | `hal::Usb` | Backup export and snapshot import | Detects a stick under `/sys/block`, mounts, writes, syncs, unmounts |
 | `ceremony` | Drives the core session | Owns the typestate `Session`; nothing else can reach it |
 | `ui` | Screens and navigation | A screen state machine on `embedded-graphics`; large fonts; insert view shows one word per page with its five braille faces |
-| `games` | Optional waiting screen | Snake and Tetris; pieces drawn from their own `getrandom` calls, never from the pool |
-| `extras` | Write-only entropy input | An `ExtraSink` that forwards button timestamps to `Session::add_extra`; games receive only this sink |
-| `qr` | Seal, registration, collision-report and watch-only QR codes | qrcodegen for static codes; BC-UR fountain frames for the animated account QR |
+| `games` | Optional waiting screen | Snake and Tetris; pieces drawn from core's separate game-randomness call (its own `getrandom` call), never from the pool |
+| `extras` | Write-only entropy input | An `ExtraSink` that forwards button timestamps to `Session::add_extra`; games get this sink, never the session |
+| `qr` | Seal, registration, collision-report and watch-only QR codes | qrcodegen for static codes, including the account QR, a single-frame BC-UR string from the core |
 
 **Process rules.**
 
@@ -82,10 +82,10 @@ A ceremony is fifteen screens in a fixed order; the core's typestate makes it im
 1. **Boot and self-test.** Version, root filesystem hash prefix, known-answer tests and the hwrng startup test. Any failure shows a red stop screen; no seed can be made.
 2. **Home.** New seed, Dice-only seed, Check a backup, Load registry snapshot, About.
 3. **Length.** 12 words (default; fills one KeepCrypt Hinge or Screw) or 24.
-4. **Device entropy.** Progress bar of credited hwrng bits (512 required) while `getrandom` is read; "Play while you wait" opens Snake or Tetris.
+4. **Device entropy.** Progress bar of health-tested hwrng bytes toward 1,536 (the 1,024 discarded startup samples, then one 512-sample window); the first window credits 2,048 bits, more than the 512 required, all at once at the end, and `getrandom` is read at the commitment; "Play while you wait" opens Snake or Tetris.
 5. **Commitment.** C shown as 16 groups of 4 hex characters, with a note that only verification runs need to write it down.
 6. **Dice.** Joystick picks 1 to 6, press confirms, KEY1 undoes; the screen shows the count and bits so far ("37 / 50 rolls, 95.6 bits") but never the roll history, so a bystander cannot read it.
-7. **Check for collisions.** The cautionary prompt: "Check now" or "Skip". With a loaded snapshot the check runs on the device. Otherwise the device shows the seal card (8×8 seal image, Seal ID, check QR); the user scans it with the registry website or the offline checker app and types the 8-character go-ahead code with the joystick (a phase-2 camera can scan the go-ahead QR instead). Only a verified go-ahead reveals the words. On a Stop the user presses "Match found": the session is wiped unseen, a collision-report QR is shown, and "Add fresh entropy" starts a new ceremony that needs at least 99 rolls.
+7. **Check for collisions.** The cautionary prompt: "Check now" or "Skip". With a loaded snapshot the check runs on the device. Otherwise the device shows the seal card (8×8 seal image, Seal ID, check QR); the user scans it with the registry website or the offline checker app and types the 8-character go-ahead code with the joystick (a phase-2 camera can scan the go-ahead QR instead). Only a verified go-ahead reveals the words. On a Stop the user presses "Match found": the session is wiped unseen, a collision-report QR is shown, and "Add fresh entropy" starts a new ceremony that needs at least 99 rolls. On "Cannot check" the user presses "Start again": the session is wiped unseen and a new ceremony starts. Both buttons restart through `Wiped::restart`, never a fresh `Session::new`, so the core sets the next dice minimum, including the 99 rolls after a collision ("Add fresh entropy" in Seal, watch-only and braille).
 8. **Seed words.** One word per page in insert view: sequence number, word, SeedBook number and five face cells, with blank faces and mirror pairs flagged. KEY1 switches to a four-word overview; KEY2 and KEY3 page back and forward.
 9. **Read-back from the metal.** The user enters the first four letters of every punched insert, in order; the device compares each with the seed and names any mismatch. Users without metal re-enter their paper words the same way.
 10. **Wallet summary.** Fingerprint and first receive address, to compare after restoring.
@@ -97,10 +97,10 @@ A ceremony is fifteen screens in a fixed order; the core's typestate makes it im
 
 ## Games, sensors and the entropy pool
 
-Snake and Tetris stay in the product as an optional waiting screen and a source of uncredited button timing; they can add bytes to the pool but can never read from it.
+Snake and Tetris stay in the product as an optional waiting screen and a source of uncredited button timing; they can add bytes to the pool but can never read from it. Extras reach the pool only until the commitment, because C fixes D.
 
-- **Input timing:** every button press during the ceremony, game or not, sends its nanosecond timestamp through the `ExtraSink`. The core mixes these bytes in and credits them zero.
-- **Game randomness:** falling pieces and food positions come from separate `getrandom` calls. Nothing derived from the pool is ever drawn on screen, including the braille-style block characters.
+- **Input timing:** every button press before the commitment, game or not, sends its nanosecond timestamp through the `ExtraSink`. The core mixes these bytes in and credits them zero.
+- **Game randomness:** falling pieces and food positions come from core's separate game-randomness call, which makes its own `getrandom` call and never touches the pool; the games never call `getrandom` themselves. Nothing derived from the pool is ever drawn on screen, including the braille-style block characters.
 - **Game scope:** games run only during step 4; they close automatically before the commitment screen.
 - **Phase-2 sensors:** camera (lens covered, raw frames), I2S microphone and IMU feed the same sink when enabled in settings; all default off and are credited zero.
 - **Phase-2 TRNG:** an Infinite Noise TRNG read in raw mode is health-tested like `/dev/hwrng` and may count toward the device quota only after its credit is backed by `ea_non_iid` data (milestone M8).

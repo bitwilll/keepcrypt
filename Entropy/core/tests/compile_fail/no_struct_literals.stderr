@@ -1,0 +1,57 @@
+error: cannot construct `Session<_>` with struct literal syntax due to private fields
+  --> tests/compile_fail/no_struct_literals.rs:10:35
+   |
+10 |     let session: Session<Ready> = Session {};
+   |                                   ^^^^^^^
+
+error: cannot construct `VerifiedSnapshot` with struct literal syntax due to private fields
+  --> tests/compile_fail/no_struct_literals.rs:11:20
+   |
+11 |     let snapshot = VerifiedSnapshot {};
+   |                    ^^^^^^^^^^^^^^^^
+
+error: cannot construct `VerifiedProof` with struct literal syntax due to private fields
+  --> tests/compile_fail/no_struct_literals.rs:12:17
+   |
+12 |     let proof = VerifiedProof {};
+   |                 ^^^^^^^^^^^^^
+
+error: cannot construct `SealPublic` with struct literal syntax due to private fields
+  --> tests/compile_fail/no_struct_literals.rs:13:16
+   |
+13 |     let seal = SealPublic {};
+   |                ^^^^^^^^^^
+   |
+help: you might have meant to use the `empty` associated function
+   |
+13 -     let seal = SealPublic {};
+13 +     let seal = SealPublic::empty();
+   |
+
+error: cannot construct `CheckedBackup` with struct literal syntax due to private fields
+  --> tests/compile_fail/no_struct_literals.rs:14:19
+   |
+14 |     let checked = CheckedBackup {};
+   |                   ^^^^^^^^^^^^^
+
+error: cannot construct `TypedBackupPassphrase` with struct literal syntax due to private fields
+  --> tests/compile_fail/no_struct_literals.rs:15:17
+   |
+15 |     let typed = TypedBackupPassphrase {};
+   |                 ^^^^^^^^^^^^^^^^^^^^^
+
+error[E0423]: cannot initialize a tuple struct which contains private fields
+  --> tests/compile_fail/no_struct_literals.rs:16:17
+   |
+16 |     let nonce = CheckNonce([0; 8]);
+   |                 ^^^^^^^^^^
+   |
+note: constructor is not visible here due to private fields
+  --> src/seal/check.rs
+   |
+   | pub struct CheckNonce([u8; 8]);
+   |                       ^^^^^^^ private field
+help: you might have meant to use the `from_bytes` associated function
+   |
+16 |     let nonce = CheckNonce::from_bytes([0; 8]);
+   |                           ++++++++++++

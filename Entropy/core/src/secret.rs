@@ -1,0 +1,581 @@
+//! Secret wrappers (CLAUDE.md rule 5; docs/build-plan.md "secret"; tasks/todo.md, M1 group 2).
+//!
+//! - Each type is built zeroed and filled in place, and is `Zeroize` + `ZeroizeOnDrop`.
+//! - None has `Debug`, `Display`, `Clone`, `Copy`, `PartialEq` or `Serialize` (core has no serde),
+//!   so a secret cannot be printed, logged, duplicated or compared by accident. The trybuild
+//!   fixtures in `core/tests/compile_fail/` prove it.
+//! - Secrets leave only through methods named `expose_secret`, `words` or `questions`, the braille
+//!   views (`BrailleInserts`, which borrow the mnemonic) and `CheckedBackup::reveal_words` and
+//!   `reveal_braille` (backup.rs), so review can grep every exit. Inside core, a backup passphrase
+//!   becomes age passphrase text only through `text()`. What they reveal borrows the
+//!   wrapper, so no revealed word outlives the secret it came from (and is wiped with); a trybuild
+//!   fixture proves it.
+
+use secrecy::{ExposeSecret, SecretString};
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
+
+use crate::error::{BackupError, CoreError, InternalFault};
+
+/// The most words a seed has.
+pub(crate) const MAX_WORDS: usize = 24;
+/// Words in a generated backup passphrase (88 bits; docs/build-plan.md "Encrypted backup format").
+pub const BACKUP_PASSPHRASE_WORDS: usize = 8;
+/// OS bytes behind a backup passphrase: 8 indices of 11 bits (tasks/todo.md, M1 Q6e).
+pub(crate) const BACKUP_PASSPHRASE_BYTES: usize = 11;
+
+/// The BIP39 English word list, from the `bip39` crate (checked by the Bip39Wordlist KAT).
+fn word_list() -> &'static [&'static str; 2048] {
+    bip39::Language::English.word_list()
+}
+
+/// The word for an index that construction already bounded to 0..2048.
+fn word(index: u16) -> &'static str {
+    word_list()[usize::from(index)]
+}
+
+/// 32 secret bytes: the device leg D or the seed entropy E.
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub struct SecretBytes32([u8; 32]);
+
+impl SecretBytes32 {
+    pub(crate) const fn zeroed() -> Self {
+        Self([0; 32])
+    }
+
+    /// The 32 bytes. D leaves core only here, after `reveal_device_leg`, for offline audit.
+    pub fn expose_secret(&self) -> &[u8; 32] {
+        &self.0
+    }
+
+    /// The bytes, to fill in place (D from the pool, E from its hash), so no copy is left behind.
+    pub(crate) fn expose_secret_mut(&mut self) -> &mut [u8; 32] {
+        &mut self.0
+    }
+}
+
+/// The 64-byte BIP39 seed S (PBKDF2 output). Never leaves core.
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub(crate) struct SecretSeed64([u8; 64]);
+
+impl SecretSeed64 {
+    pub(crate) const fn zeroed() -> Self {
+        Self([0; 64])
+    }
+
+    /// S, for key derivation inside core only.
+    pub(crate) fn expose_secret(&self) -> &[u8; 64] {
+        &self.0
+    }
+
+    /// S, to fill in place.
+    pub(crate) fn expose_secret_mut(&mut self) -> &mut [u8; 64] {
+        &mut self.0
+    }
+}
+
+/// A seed's words, held as BIP39 English word indices (each below 2,048) plus the word count.
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub struct SecretMnemonic {
+    indices: [u16; MAX_WORDS],
+    count: u8,
+}
+
+impl SecretMnemonic {
+    pub(crate) const fn zeroed() -> Self {
+        Self {
+            indices: [0; MAX_WORDS],
+            count: 0,
+        }
+    }
+
+    /// The number of words: 12 or 24 once the seed exists.
+    pub fn word_count(&self) -> usize {
+        usize::from(self.count)
+    }
+
+    /// The words, in order: the only way the mnemonic leaves core. Each word borrows `self`, so
+    /// none can be kept after the mnemonic is dropped and zeroized.
+    pub fn words(&self) -> impl Iterator<Item = &str> + '_ {
+        self.indices().iter().map(|&i| word(i))
+    }
+
+    /// The word indices, in order (each below 2,048), for the braille views inside core.
+    pub(crate) fn indices(&self) -> &[u16] {
+        &self.indices[..self.word_count()]
+    }
+
+    /// Whether `other` holds the same words: what a backup's read-back compares. Not constant
+    /// time; both sides are this device's own seed.
+    pub(crate) fn matches(&self, other: &Self) -> bool {
+        self.count == other.count && self.indices == other.indices
+    }
+}
+
+impl SecretMnemonic {
+    /// Fills in place from the bip39 crate's word indices: exactly 12 or 24, each below 2,048.
+    /// `seed::mnemonic_and_seed_into` (the session's `finish`) and the Seal known-answer group
+    /// fill the words this way.
+    /// Anything else leaves it zeroed and is `Internal(Bip39)`.
+    pub(crate) fn fill_from(
+        &mut self,
+        indices: impl Iterator<Item = usize>,
+    ) -> Result<(), CoreError> {
+        self.zeroize();
+        let filled = self.fill_indices(indices);
+        if filled.is_err() {
+            self.zeroize();
+        }
+        filled
+    }
+
+    fn fill_indices(&mut self, indices: impl Iterator<Item = usize>) -> Result<(), CoreError> {
+        let mut count = 0usize;
+        for index in indices {
+            let slot = self
+                .indices
+                .get_mut(count)
+                .ok_or(CoreError::Internal(InternalFault::Bip39))?;
+            *slot = match u16::try_from(index) {
+                Ok(i) if i < 2048 => i,
+                _ => return Err(CoreError::Internal(InternalFault::Bip39)),
+            };
+            count += 1;
+        }
+        self.count = match count {
+            12 => 12,
+            24 => 24,
+            _ => return Err(CoreError::Internal(InternalFault::Bip39)),
+        };
+        Ok(())
+    }
+}
+
+/// An optional BIP39 passphrase for the watch-only export. `new` rejects "" (leave the passphrase
+/// out instead) and never trims, so "TREZOR " and "TREZOR" are different wallets. It is NFKD-
+/// normalized into a zeroizing buffer only when used (tasks/todo.md, M1 group 6, Q5). Like every
+/// other wrapper it is `Zeroize` + `ZeroizeOnDrop` (its `SecretString` wipes the text in place).
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub struct Bip39Passphrase(SecretString);
+
+impl Bip39Passphrase {
+    /// The passphrase exactly as typed; "" is `EmptyPassphrase`.
+    pub fn new(passphrase: &str) -> Result<Self, CoreError> {
+        if passphrase.is_empty() {
+            return Err(CoreError::EmptyPassphrase);
+        }
+        Ok(Self(SecretString::from(passphrase)))
+    }
+
+    /// The passphrase as typed, for `seed::passphrase_seed_into` (`Session<Ready>::watch_only`).
+    pub(crate) fn expose_secret(&self) -> &str {
+        self.0.expose_secret()
+    }
+}
+
+/// The generated backup passphrase, stored in the session (`Inner`) and never handed out: the
+/// shell gets a `NewBackupPassphrase` display copy, and `encrypt_backup` and `verify_backup` use
+/// this one (tasks/todo.md, M1 Q5). `present` is false until one is generated, so there is no
+/// `Option` to unwrap.
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub(crate) struct BackupPassphrase {
+    indices: [u16; BACKUP_PASSPHRASE_WORDS],
+    present: bool,
+}
+
+impl BackupPassphrase {
+    pub(crate) const fn zeroed() -> Self {
+        Self {
+            indices: [0; BACKUP_PASSPHRASE_WORDS],
+            present: false,
+        }
+    }
+
+    /// Fills in place from 11 OS bytes, replacing any earlier passphrase: word i is bits 11i to
+    /// 11i + 10 of the bytes read big-endian, most significant first (Q6e). Bit by bit, so no
+    /// integer cast or wide accumulator holds the passphrase.
+    pub(crate) fn fill_from_bytes(&mut self, bytes: &[u8; BACKUP_PASSPHRASE_BYTES]) {
+        for (word, slot) in self.indices.iter_mut().enumerate() {
+            *slot = 0;
+            for bit in 11 * word..11 * word + 11 {
+                *slot = (*slot << 1) | u16::from((bytes[bit / 8] >> (7 - bit % 8)) & 1);
+            }
+        }
+        self.present = true;
+    }
+
+    /// Whether a passphrase has been generated.
+    pub(crate) fn is_present(&self) -> bool {
+        self.present
+    }
+
+    /// The word indices, for the confirm challenge.
+    pub(crate) fn indices(&self) -> &[u16; BACKUP_PASSPHRASE_WORDS] {
+        &self.indices
+    }
+
+    /// The age passphrase text.
+    pub(crate) fn text(&self) -> Zeroizing<String> {
+        passphrase_text(&self.indices)
+    }
+
+    /// The display copy the shell gets, its confirm challenge still zeroed (filled in place by
+    /// `ConfirmChallenge::set`).
+    pub(crate) fn display_copy(&self) -> NewBackupPassphrase {
+        NewBackupPassphrase {
+            indices: self.indices,
+            challenge: ConfirmChallenge {
+                positions: [0; 2],
+                choices: [[0; 4]; 2],
+            },
+        }
+    }
+}
+
+/// The age passphrase of 8 word indices: the lowercase words joined by single spaces (Q6e), in a
+/// zeroizing buffer sized exactly first, so it never reallocates and leaves no copy behind.
+fn passphrase_text(indices: &[u16; BACKUP_PASSPHRASE_WORDS]) -> Zeroizing<String> {
+    let len = indices.iter().map(|&i| word(i).len()).sum::<usize>() + BACKUP_PASSPHRASE_WORDS - 1;
+    let mut text = Zeroizing::new(String::with_capacity(len));
+    for (n, &index) in indices.iter().enumerate() {
+        if n > 0 {
+            text.push(' ');
+        }
+        text.push_str(word(index));
+    }
+    text
+}
+
+/// The 2-of-4 confirm challenge shown after a new backup passphrase (pi-firmware.md USB step 2):
+/// for each of two word positions, four candidate words, one of them the word at that position.
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub struct ConfirmChallenge {
+    positions: [u8; 2],
+    choices: [[u16; 4]; 2],
+}
+
+impl ConfirmChallenge {
+    /// Fills the challenge in place: its two 1-based word positions and each question's four
+    /// choices, one of them the word at that position.
+    pub(crate) fn set(&mut self, positions: [u8; 2], choices: &[[u16; 4]; 2]) {
+        self.positions = positions;
+        self.choices = *choices;
+    }
+
+    /// The two questions, each as (1-based word position, the four candidate words). The words
+    /// borrow `self`; the right choice is the one equal to `NewBackupPassphrase::words` at that
+    /// position.
+    pub fn questions(&self) -> [(u8, [&str; 4]); 2] {
+        let question = |q: usize| (self.positions[q], self.choices[q].map(word));
+        [question(0), question(1)]
+    }
+}
+
+/// A display copy of a newly generated backup passphrase, with its confirm challenge. The
+/// session keeps the passphrase itself; dropping this copy wipes it.
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub struct NewBackupPassphrase {
+    indices: [u16; BACKUP_PASSPHRASE_WORDS],
+    challenge: ConfirmChallenge,
+}
+
+impl NewBackupPassphrase {
+    /// The 8 words, in order, for the user to write down. Each word borrows `self`.
+    pub fn words(&self) -> impl Iterator<Item = &str> + '_ {
+        self.indices.iter().map(|&i| word(i))
+    }
+
+    /// The confirm challenge for these words.
+    pub fn challenge(&self) -> &ConfirmChallenge {
+        &self.challenge
+    }
+
+    /// The challenge, to fill in place.
+    pub(crate) fn challenge_mut(&mut self) -> &mut ConfirmChallenge {
+        &mut self.challenge
+    }
+}
+
+/// A backup passphrase typed by the user to check a backup. Only `decrypt_backup` accepts one;
+/// `encrypt_backup` and `verify_backup` take no passphrase at all, so typed words can never
+/// encrypt (docs/build-plan.md: no user-chosen backup passphrases in v1).
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub struct TypedBackupPassphrase {
+    indices: [u16; BACKUP_PASSPHRASE_WORDS],
+}
+
+impl TypedBackupPassphrase {
+    /// Exactly 8 words, each exactly as in the BIP39 English list: lowercase, no surrounding
+    /// spaces, no case folding. Anything else is `Backup(PassphraseWords)`.
+    pub fn from_words(words: &[&str]) -> Result<Self, CoreError> {
+        let mut typed = Self {
+            indices: [0; BACKUP_PASSPHRASE_WORDS],
+        };
+        if words.len() != BACKUP_PASSPHRASE_WORDS {
+            return Err(CoreError::Backup(BackupError::PassphraseWords));
+        }
+        for (slot, typed_word) in typed.indices.iter_mut().zip(words) {
+            match bip39::Language::English.find_word(typed_word) {
+                Some(index) => *slot = index,
+                None => return Err(CoreError::Backup(BackupError::PassphraseWords)),
+            }
+        }
+        Ok(typed)
+    }
+
+    /// The age passphrase text, for `decrypt_backup`.
+    pub(crate) fn text(&self) -> Zeroizing<String> {
+        passphrase_text(&self.indices)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn indices(&self) -> &[u16; BACKUP_PASSPHRASE_WORDS] {
+        &self.indices
+    }
+}
+
+/// White-box test support: fill every field of a wrapper with non-zero bytes, then check that
+/// `zeroize()` cleared all of them.
+#[cfg(test)]
+pub(crate) trait TestFill: Zeroize {
+    fn fill(&mut self);
+    fn is_zero(&self) -> bool;
+}
+
+#[cfg(test)]
+mod test_fill {
+    use super::*;
+
+    impl TestFill for SecretBytes32 {
+        fn fill(&mut self) {
+            self.0 = [0xa5; 32];
+        }
+        fn is_zero(&self) -> bool {
+            self.0 == [0; 32]
+        }
+    }
+
+    impl TestFill for SecretSeed64 {
+        fn fill(&mut self) {
+            self.0 = [0x5a; 64];
+        }
+        fn is_zero(&self) -> bool {
+            self.0 == [0; 64]
+        }
+    }
+
+    impl TestFill for SecretMnemonic {
+        fn fill(&mut self) {
+            self.indices = [2047; MAX_WORDS];
+            self.count = 24;
+        }
+        fn is_zero(&self) -> bool {
+            self.indices == [0; MAX_WORDS] && self.count == 0
+        }
+    }
+
+    impl TestFill for BackupPassphrase {
+        fn fill(&mut self) {
+            self.indices = [2047; BACKUP_PASSPHRASE_WORDS];
+            self.present = true;
+        }
+        fn is_zero(&self) -> bool {
+            self.indices == [0; BACKUP_PASSPHRASE_WORDS] && !self.present
+        }
+    }
+
+    impl TestFill for ConfirmChallenge {
+        fn fill(&mut self) {
+            self.positions = [3, 8];
+            self.choices = [[2047; 4]; 2];
+        }
+        fn is_zero(&self) -> bool {
+            self.positions == [0; 2] && self.choices == [[0; 4]; 2]
+        }
+    }
+
+    impl TestFill for NewBackupPassphrase {
+        fn fill(&mut self) {
+            self.indices = [2047; BACKUP_PASSPHRASE_WORDS];
+            self.challenge.fill();
+        }
+        fn is_zero(&self) -> bool {
+            self.indices == [0; BACKUP_PASSPHRASE_WORDS] && self.challenge.is_zero()
+        }
+    }
+
+    impl TestFill for Bip39Passphrase {
+        fn fill(&mut self) {
+            self.0 = SecretString::from("TREZOR \u{e9}t\u{e9}");
+        }
+        fn is_zero(&self) -> bool {
+            self.0.expose_secret().bytes().all(|b| b == 0)
+        }
+    }
+
+    impl TestFill for TypedBackupPassphrase {
+        fn fill(&mut self) {
+            self.indices = [2047; BACKUP_PASSPHRASE_WORDS];
+        }
+        fn is_zero(&self) -> bool {
+            self.indices == [0; BACKUP_PASSPHRASE_WORDS]
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn filled_then_zeroized<T: TestFill>(mut secret: T) {
+        secret.fill();
+        assert!(!secret.is_zero());
+        secret.zeroize();
+        assert!(secret.is_zero());
+    }
+
+    #[test]
+    fn every_wrapper_zeroizes_every_field() {
+        filled_then_zeroized(SecretBytes32::zeroed());
+        filled_then_zeroized(SecretSeed64::zeroed());
+        filled_then_zeroized(SecretMnemonic::zeroed());
+        filled_then_zeroized(BackupPassphrase::zeroed());
+        filled_then_zeroized(ConfirmChallenge {
+            positions: [0; 2],
+            choices: [[0; 4]; 2],
+        });
+        filled_then_zeroized(NewBackupPassphrase {
+            indices: [0; BACKUP_PASSPHRASE_WORDS],
+            challenge: ConfirmChallenge {
+                positions: [0; 2],
+                choices: [[0; 4]; 2],
+            },
+        });
+        filled_then_zeroized(TypedBackupPassphrase {
+            indices: [0; BACKUP_PASSPHRASE_WORDS],
+        });
+        match Bip39Passphrase::new("x") {
+            Ok(passphrase) => filled_then_zeroized(passphrase),
+            Err(e) => panic!("{e}"),
+        }
+    }
+
+    // Every secret type wipes itself when dropped (CLAUDE.md rule 5).
+    const fn zeroize_on_drop<T: ZeroizeOnDrop>() {}
+    const _: () = {
+        zeroize_on_drop::<SecretBytes32>();
+        zeroize_on_drop::<SecretSeed64>();
+        zeroize_on_drop::<SecretMnemonic>();
+        zeroize_on_drop::<Bip39Passphrase>();
+        zeroize_on_drop::<BackupPassphrase>();
+        zeroize_on_drop::<ConfirmChallenge>();
+        zeroize_on_drop::<NewBackupPassphrase>();
+        zeroize_on_drop::<TypedBackupPassphrase>();
+    };
+
+    #[test]
+    fn mnemonic_words_follow_the_indices_and_count() {
+        let mut m = SecretMnemonic::zeroed();
+        assert_eq!(m.words().count(), 0);
+        m.indices[..12].copy_from_slice(&[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3]);
+        m.count = 12;
+        let words: Vec<&str> = m.words().collect();
+        assert_eq!(
+            words.join(" "),
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+        );
+        assert_eq!(m.word_count(), 12);
+    }
+
+    #[test]
+    fn mnemonic_fills_from_12_or_24_valid_indices_only() {
+        let mut m = SecretMnemonic::zeroed();
+        assert_eq!(
+            m.fill_from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3].into_iter()),
+            Ok(())
+        );
+        assert_eq!(m.word_count(), 12);
+        assert_eq!(m.fill_from([2047usize; 24].into_iter()), Ok(()));
+        assert_eq!(m.words().filter(|w| *w == "zoo").count(), 24);
+        let bad: [&[usize]; 4] = [&[0; 11], &[0; 25], &[0; 18], &[2048; 12]];
+        for indices in bad {
+            assert_eq!(
+                m.fill_from(indices.iter().copied()),
+                Err(CoreError::Internal(InternalFault::Bip39))
+            );
+            assert!(m.is_zero(), "a refused fill leaves it zeroed");
+        }
+    }
+
+    #[test]
+    fn bip39_passphrase_rejects_empty_and_never_trims() {
+        assert!(matches!(
+            Bip39Passphrase::new(""),
+            Err(CoreError::EmptyPassphrase)
+        ));
+        for typed in ["TREZOR", "TREZOR ", " ", "\u{e9}t\u{e9}"] {
+            match Bip39Passphrase::new(typed) {
+                Ok(p) => assert_eq!(p.expose_secret(), typed),
+                Err(e) => panic!("{typed:?} rejected: {e}"),
+            }
+        }
+    }
+
+    #[test]
+    fn display_copy_and_challenge_read_words_by_index() {
+        let new = NewBackupPassphrase {
+            indices: [0, 1, 2, 3, 2044, 2045, 2046, 2047],
+            challenge: ConfirmChallenge {
+                positions: [2, 7],
+                choices: [[1, 5, 9, 2047], [0, 2046, 3, 4]],
+            },
+        };
+        let words: Vec<&str> = new.words().collect();
+        assert_eq!(
+            words,
+            [
+                "abandon", "ability", "able", "about", "zebra", "zero", "zone", "zoo"
+            ]
+        );
+        assert_eq!(
+            new.challenge().questions(),
+            [
+                (2, ["ability", "absent", "abuse", "zoo"]),
+                (7, ["abandon", "zone", "about", "above"])
+            ]
+        );
+    }
+
+    #[test]
+    fn typed_backup_passphrase_takes_exactly_eight_list_words() {
+        let eight = [
+            "abandon", "ability", "able", "about", "above", "absent", "absorb", "zoo",
+        ];
+        match TypedBackupPassphrase::from_words(&eight) {
+            Ok(t) => assert_eq!(t.indices(), &[0, 1, 2, 3, 4, 5, 6, 2047]),
+            Err(e) => panic!("rejected: {e}"),
+        }
+        let bad: [&[&str]; 6] = [
+            &eight[..7],
+            &["abandon"; 9],
+            &[
+                "Abandon", "ability", "able", "about", "above", "absent", "absorb", "zoo",
+            ],
+            &[
+                "abandon ", "ability", "able", "about", "above", "absent", "absorb", "zoo",
+            ],
+            &[
+                "abandon", "ability", "able", "about", "above", "absent", "absorb", "zo",
+            ],
+            &[],
+        ];
+        for words in bad {
+            assert!(
+                matches!(
+                    TypedBackupPassphrase::from_words(words),
+                    Err(CoreError::Backup(BackupError::PassphraseWords))
+                ),
+                "{words:?}"
+            );
+        }
+    }
+}

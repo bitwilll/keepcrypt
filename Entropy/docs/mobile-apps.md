@@ -139,7 +139,7 @@ Phones do not expose a raw hardware noise source to apps, so the device leg is t
 | Touch and button timing | Event timestamps in nanoseconds | Same | Mixed in, zero credit |
 | Motion sensors | `SensorManager` accelerometer and gyroscope | Core Motion accelerometer and gyroscope | Mixed in, zero credit |
 | Camera raw frames | Optional, off by default; camera permission | Optional, off by default; camera permission | Mixed in, zero credit |
-| Snake and Tetris | Optional waiting screen; pieces from separate `getrandom` calls | Same | Only their touch timing is mixed in |
+| Snake and Tetris | Optional waiting screen; pieces from core's separate game-randomness call (its own `getrandom` call), never the pool | Same | Only their touch timing is mixed in |
 
 The app explains the default mode in one sentence: "Your seed is safe if either your phone or your dice are honest."
 
@@ -170,10 +170,10 @@ The phone ceremony mirrors the Pi screen for screen, so one user guide and one v
 3. **Go offline.** Shows airplane-mode status; the Start button stays disabled until the phone is offline.
 4. **Home.** New seed, Dice-only seed, Check a backup, Load registry snapshot, Verify another device's ceremony, About.
 5. **Length.** 12 words (default; fills one KeepCrypt Hinge or Screw) or 24.
-6. **Device entropy.** Reads the OS CSPRNG; optional Snake or Tetris while motion and touch extras are mixed in.
+6. **Device entropy.** Motion and touch extras are mixed in, with optional Snake or Tetris; the OS CSPRNG is read at the commitment.
 7. **Commitment.** C as 16 groups of 4 hex characters.
 8. **Dice.** 1 to 6 pad with undo; count and bits only, never the roll history.
-9. **Check for collisions.** The same prompt and seal card as the Pi: automatic with a loaded snapshot; otherwise the user scans the check QR with the website or the offline checker app on a second device, then scans the go-ahead QR back with the camera (works in airplane mode) or types the go-ahead code. Only a verified go-ahead reveals the words; a Stop wipes the session unseen and offers "Add fresh entropy".
+9. **Check for collisions.** The same prompt and seal card as the Pi: automatic with a loaded snapshot; otherwise the user scans the check QR with the website or the offline checker app on a second device, then scans the go-ahead QR back with the camera (works in airplane mode) or types the go-ahead code. Only a verified go-ahead reveals the words; a Stop wipes the session unseen and offers "Add fresh entropy", and "Cannot check" wipes it and offers "Start again". Both restart through `Wiped::restart`, never a fresh `Session::new`, as on the Pi.
 10. **Show words.** "I'm alone, show words," then one word per page in insert view on the protected screen: the word, its SeedBook number and five braille faces, with blank faces and mirror pairs flagged.
 11. **Read-back from the metal.** First four letters of every punched insert (or paper word), compared with the seed.
 12. **Wallet summary.** Fingerprint and first receive address.

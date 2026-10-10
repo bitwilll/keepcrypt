@@ -35,9 +35,11 @@ ignore = []
 #   CC0-1.0          rust-bitcoin crates (bitcoin, bip39, miniscript, secp256k1, ...)
 #   MITNFA           hex_lit (bitcoin dependency)
 #   Unicode-3.0      unicode-ident (proc-macro dependency)
+#   BSD-3-Clause     ed25519-dalek, curve25519-dalek and subtle (Ed25519 verification of registry
+#                    snapshots and proofs; owner-approved with tasks/todo.md, M1 Q3 (i))
 # With no target filter the graph also holds r-efi (getrandom's UEFI backend), licensed
 # MIT OR Apache-2.0 OR LGPL-2.1-or-later; MIT covers it, so no allowance changed.
-allow = ["MIT", "Apache-2.0", "CC0-1.0", "MITNFA", "Unicode-3.0"]
+allow = ["MIT", "Apache-2.0", "CC0-1.0", "MITNFA", "Unicode-3.0", "BSD-3-Clause"]
 unused-allowed-license = "deny"
 exceptions = []
 # Dev-dependencies too. Our own unpublished crates are checked as well (licenses.private default).

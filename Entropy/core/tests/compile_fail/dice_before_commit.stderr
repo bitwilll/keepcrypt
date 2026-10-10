@@ -1,0 +1,31 @@
+error[E0599]: no method named `start_dice` found for struct `Session<Collecting>` in the current scope
+  --> tests/compile_fail/dice_before_commit.rs:10:17
+   |
+10 |         session.start_dice();
+   |                 ^^^^^^^^^^ method not found in `Session<Collecting>`
+   |
+   = note: the method was found for `Session<Committed>`
+
+error[E0599]: no method named `push_roll` found for struct `Session<Collecting>` in the current scope
+  --> tests/compile_fail/dice_before_commit.rs:11:17
+   |
+11 |         session.push_roll(1);
+   |                 ^^^^^^^^^ method not found in `Session<Collecting>`
+   |
+   = note: the method was found for `Session<Rolling>`
+
+error[E0599]: no method named `push_roll` found for struct `Session<Committed>` in the current scope
+  --> tests/compile_fail/dice_before_commit.rs:15:17
+   |
+15 |         session.push_roll(1);
+   |                 ^^^^^^^^^ method not found in `Session<Committed>`
+   |
+   = note: the method was found for `Session<Rolling>`
+
+error[E0599]: no method named `finish` found for struct `Session<Committed>` in the current scope
+  --> tests/compile_fail/dice_before_commit.rs:16:17
+   |
+16 |         session.finish();
+   |                 ^^^^^^ method not found in `Session<Committed>`
+   |
+   = note: the method was found for `Session<Rolling>`
