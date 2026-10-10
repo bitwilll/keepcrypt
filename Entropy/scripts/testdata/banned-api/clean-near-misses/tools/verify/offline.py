@@ -11,6 +11,9 @@ report(
     requests_seen,
     http_status,
 )
+NOTE = "a socket import is refused"  # socket import: only in a string and this comment
+cert_note = with_ssl \
+    or None  # a continued line that ends in a longer name
 # Clipboard tools hit anywhere in a .py file where a word starts with one; these lines only look
 # like them (Python names use _ where the tool's name has -).
 ICON = "paperclip"

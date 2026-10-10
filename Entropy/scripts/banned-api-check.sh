@@ -48,7 +48,8 @@
 #              Random( (Kotlin has no "new"), SecureRandom, SplittableRandom, SecRandomCopyBytes,
 #              arc4random, GameplayKit GK*Random* and GK*Distribution, Python random (also as
 #              "import (random, ..." and, in a .py file, a wrapped import line that holds only
-#              names and random: "    random,"), C rand(), rand_r(), random(), drand48, C++
+#              names and random, such as "    random," or "    random \", and a line starting
+#              "    random import" after "from \"), C rand(), rand_r(), random(), drand48, C++
 #              mt19937, *_random_engine, random_device, minstd_rand, Rust rand:: and rand_core::,
 #              Kotlin/Swift .random( and .shuffled(. Rule 1 allows one source of OS randomness, so
 #              every file except core/src/source.rs and core/src/source/ is also barred from the OS
@@ -242,12 +243,14 @@ osrng() {
 
 # .py files only: a line that holds nothing but names and random, as an import wraps it inside
 # "from numpy import (" ... ")" or after a backslash: "    random,", "    random)", "    random as
-# r,", "    array, random" or a bare "    random". The other names must be comma-separated words,
-# so a word list such as "ranch random range" passes; a word list one word per line belongs in a
-# .txt file.
+# r,", "    array, random", "    random \" or a bare "    random". The other names must be
+# comma-separated words, so a word list such as "ranch random range" passes; a word list one word
+# per line belongs in a .txt file. After "from \" the next line starts with the module:
+# "    random import choice".
 pyrandom() {
   grep -n -a -E \
-    -e '^[[:space:]]*([A-Za-z0-9_]+([[:space:]]+as[[:space:]]+[A-Za-z0-9_]+)?[[:space:]]*,[[:space:]]*)*random([[:space:]]+as[[:space:]]+[A-Za-z0-9_]+)?[[:space:]]*([,)#]|$)' \
+    -e '^[[:space:]]*random[[:space:]]+import([^A-Za-z0-9_]|$)' \
+    -e '^[[:space:]]*([A-Za-z0-9_]+([[:space:]]+as[[:space:]]+[A-Za-z0-9_]+)?[[:space:]]*,[[:space:]]*)*random([[:space:]]+as[[:space:]]+[A-Za-z0-9_]+)?[[:space:]]*([,)#]|\\|$)' \
     -- "$1"
 }
 
@@ -292,10 +295,11 @@ network() {
 # .py files only, outside registry/ like network() (tasks/todo.md M2 group 2, Q23): an import of a
 # network module, in the shapes rng() and pyrandom() give random: "import socket", "import os,
 # ssl", "import http.client", "from urllib.request import urlopen", "from gevent import (socket,
-# x)", "from gevent import(x, socket)", and a wrapped import line that holds only names and one of
-# them ("    urllib.request" after "import json, \", or "    socket," inside "from gevent import
-# ("). Anchored on the import, so the names pass in a URL such as "https://registry.invalid", in
-# other strings, as attributes and inside longer names. Grep cannot see __import__("socket"), an
+# x)", "from gevent import(x, socket)", a wrapped import line that holds only names and one of
+# them ("    urllib.request" after "import json, \", "    socket," inside "from gevent import (",
+# or "    socket \"), and the line after "from \" ("    socket import create_connection").
+# Anchored on the import, so the names pass in a URL such as "https://registry.invalid", in other
+# strings, as attributes and inside longer names. Grep cannot see __import__("socket"), an
 # attribute path such as getpass.os.system, or a subprocess running a network tool. For verify.py,
 # tasks/todo.md M2 group 3's check 12 (vectorgen.py --selftest) closes all three; vectorgen and
 # scripts/ keep this gate only.
@@ -306,7 +310,8 @@ pynetwork() {
     -e "${L}import[[:space:](][(A-Za-z0-9_.,[:space:]]*,[[:space:]]*$pynet$R" \
     -e "${L}import[[:space:]]*[(][[:space:]]*$pynet$R" \
     -e "${L}from[[:space:]]+$pynet$R" \
-    -e "^[[:space:]]*([A-Za-z0-9_.]+([[:space:]]+as[[:space:]]+[A-Za-z0-9_]+)?[[:space:]]*,[[:space:]]*)*$pynet([.][A-Za-z0-9_]+)*([[:space:]]+as[[:space:]]+[A-Za-z0-9_]+)?[[:space:]]*([,)#]|\$)" \
+    -e "^[[:space:]]*$pynet([.][A-Za-z0-9_]+)*[[:space:]]+import$R" \
+    -e "^[[:space:]]*([A-Za-z0-9_.]+([[:space:]]+as[[:space:]]+[A-Za-z0-9_]+)?[[:space:]]*,[[:space:]]*)*$pynet([.][A-Za-z0-9_]+)*([[:space:]]+as[[:space:]]+[A-Za-z0-9_]+)?[[:space:]]*([,)#]|\\\\|\$)" \
     -- "$1"
 }
 
