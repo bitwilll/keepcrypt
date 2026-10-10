@@ -742,17 +742,17 @@ mod tests {
         );
     }
 
-    // No single flipped bit anywhere in a binary backup is accepted, and none panics: each gives an
-    // error from the reader's list.
+    // No single flipped bit anywhere in a binary backup is accepted, and none panics: each of the
+    // 8 bits of every byte, flipped alone, gives an error from the reader's list.
     #[test]
     fn no_flipped_bit_is_accepted() {
         let doc = read("backup.json");
         let case = named(&doc["age_files"], "abandon-12-binary");
         let file = case_file(case);
         let passphrase = text(&case["passphrase"]).as_bytes();
-        for at in 0..file.len() {
+        for bit in 0..8 * file.len() {
             let mut flipped = file.clone();
-            flipped[at] ^= 1 << (at % 8);
+            flipped[bit / 8] ^= 1 << (bit % 8);
             let result = decrypt(&flipped, passphrase);
             assert!(
                 matches!(
@@ -765,7 +765,9 @@ mod tests {
                                 | BackupError::Payload
                         ))
                 ),
-                "byte {at}: {}",
+                "byte {} bit {}: {}",
+                bit / 8,
+                bit % 8,
                 outcome(&result)
             );
         }
