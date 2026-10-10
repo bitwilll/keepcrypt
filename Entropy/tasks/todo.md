@@ -2832,6 +2832,12 @@ Groups land in the order below. Vectors come before the core test that reads the
       copies with the artifact selftest stubbed (301 passed), each of 38 mutants (every new alternative, word start,
       end, separator and letter-case class, and the dispatch) turns the selftest red on its own fixture or near-miss
       line. The gate is clean on the tree: 160 files from a clean checkout.
+      Proof (review fix): the "any letter case" patterns were pinned only in the fixtures' cases, so `CLIP[.]EXE`,
+      `The[[:space:]]+Clipboard`, `[GgSs]e[Tt]-` and `[GgSs]et-[Cc]lipboard` passed the selftest. Four new fixtures
+      hold `clip.exe`, `set the clipboard to`, `SET THE CLIPBOARD TO` and `GET-CLIPBOARD`, so every letter of the
+      three patterns has a fixture in each case. `--selftest` passes 346/346 under sh and dash; with the artifact
+      selftest stubbed (305 passed), each of the 62 mutants that keeps one letter class to one case turns it red.
+      The gate is clean on the tree.
 
 **3. Embedded known answers, startup guards and check 12 (rules 3, 5, 8, 10 and 12; build-plan.md "Release")**
 - [x] verify.py `KNOWN_ANSWERS` and `known_answers()`. Every value is a literal in the file, and a comment names its
