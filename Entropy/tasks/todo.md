@@ -460,7 +460,15 @@ Neither blocks the M1 gate. Both are items 13 and 14 under "M1: new open owner i
       and returns a `Wiped` keeping the flag, for the shells' timeout and capture wipes. Otherwise: keep the
       documented exception.
 
-### Needed before M2 code (Q16-Q24, asked 2026-10-10)
+### Needed before M2 code (Q16-Q24, answered 2026-10-10)
+**Owner's answer (2026-10-10): "approve all".** Every recommendation below is approved as written: Q16 (a) the split
+into the shipped verify.py and the repo-only vectorgen.py, and (b) provenance naming vectorgen.py with
+age_cli_written.json unchanged; Q17 (A) vectors/agreement.json committed and replayed by core; Q18 the plan's case mix;
+Q19 (a)-(c) the doc edits; Q20 the rule 5 handling; Q21 the roll-string rules; Q22 re-checks move to M9 (reversing
+M1 Q3 (ii)'s stated reason; the Ed25519, Merkle and .kcr/KCP1 verifiers stay in verify.py, unused until M9); Q23 the
+Python networking and clipboard patterns; Q24 the age interop files delivered in M1 and agreement.json as M2's
+KeepCrypt vectors. The questions as asked:
+
 Please answer these before any M2 code is written. Each gives a recommendation and says what changes otherwise. Every
 M2 commit touches CODEOWNERS paths (tools/verify, vectors, core and its Cargo.toml, scripts, .github, CLAUDE.md,
 docs), so the whole PR needs your review, as M1's did.
@@ -2708,6 +2716,7 @@ Groups land in the order below. Vectors come before the core test that reads the
 **0. Before code**
 - [ ] Record the owner's answers to Q16-Q24, quoted with the date. Apply the approved doc edits (Q19) alone in one
       commit with no code. Proof: the answers in this file; commit 2's diff touches only `docs/`.
+      Answers recorded 2026-10-10 under "Needed before M2 code" ("approve all").
 - [ ] Baseline at 90b6ab9, pasted under Review and used by group 8's budget:
       - `--selftest` 11/11 on Python 3.12 and `/usr/bin/python3` 3.9.6, with times;
       - canaries 54/54, with wall time;
