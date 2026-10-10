@@ -3401,7 +3401,7 @@ it: group 11 `release_probe.rs` (the six scans), group 12's CI jobs and coverage
 "Clean ... CI is green on `m1-core`". None of the 12 owner items waits on the owner any more; new items 13 and 14
 do, but they are low and do not block the gate.
 
-### M1 gate status: met, waiting for the owner's approval
+### M1 gate status: MET, approved by the owner and merged (PR #4, 2026-10-10)
 The gate in docs/build-plan.md asks for all vectors passing, the source-substitution and error-injection tests
 passing, and at least 95% line coverage in `core/`. All three hold locally and in CI on 34beea2 (coverage 97.39%;
 run 38041799043, all 14 Entropy check runs green, including age-interop against Ubuntu's age 1.1.1 and the six
@@ -3409,3 +3409,9 @@ release-artifact scans). Every one of the 12 owner items is answered and applied
 Verification item is ticked with its proof, and ruleset 24833307 requires the 14 Entropy check runs on `main`. The
 commits after 34beea2 change only this file and two comments; CI runs on them after the push. New owner items 13
 and 14 are low and do not block the gate. Per CLAUDE.md, M2 does not start until the owner approves.
+
+**Approved and merged (2026-10-10).** The owner approved the gate ("approve M1"). CI on 56337a9, the final head,
+passed all 14 required Entropy check runs (the Vercel check, not required, failed as it does on every PR). PR #4 was
+marked ready and merged with a merge commit, a87a6ee ("Merge Entropy M1: core crate (keepcrypt-core) (#4)"), and
+`m1-core` was deleted. The owner then asked for the M2 plan ("yes, start planning M2"); M2 work happens on
+`m2-verifier`.
