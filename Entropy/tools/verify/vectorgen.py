@@ -35,6 +35,10 @@ written and read with a standard-library age (scrypt through hashlib, or in pure
 hashlib has none; ChaCha20-Poly1305, HKDF and the strict armor here) that rebuilds the CCTV files
 byte for byte. scripts/age-interop.py checks the same code against the age CLI in both directions.
 
+M2 adds check 12, that a copy of verify.py runs alone (tasks/todo.md, M2 group 3): only allowlisted
+imports and recorded module attributes, no test material, its embedded known answers equal to the
+vectors they come from, and lone copies, fault twins and a planted module run under an audit hook.
+
 The only outside code it runs is Coldcard's public-domain rolls.py and rolls12.py, committed
 unmodified under vectors/coldcard/, and only after each file's SHA-256 equals its SOURCES.md
 row. Computed vector values come from a committed script that CI re-runs (tasks/lessons.md).
@@ -42,7 +46,7 @@ Every seal.json vector also has its values pinned here (vector 1 from CLAUDE.md 
 vectors 2 and 3 independently reproduced), so --write-seal-vectors cannot re-baseline a bug.
 
 Usage (CI runs python3 -I tools/verify/vectorgen.py --selftest):
-  vectorgen.py --selftest           11 checks: seal known answers (all 3 vectors), seal.json bytes,
+  vectorgen.py --selftest           12 checks: seal known answers (all 3 vectors), seal.json bytes,
                                     SOURCES.md hashes and coverage, Coldcard's scripts on every
                                     dice-only case (rolls.json and keepcrypt.json), kat.json (SHA and
                                     HMAC recomputed, its bytes, then its pinned entries and Ed25519
@@ -57,7 +61,11 @@ Usage (CI runs python3 -I tools/verify/vectorgen.py --selftest):
                                     bytes, every case's pinned outcome, the pinned key and roots),
                                     backup.json (scrypt against hashlib, the 26 CCTV scrypt files
                                     through the reader and two rebuilt, its bytes, every case's
-                                    pinned outcome, the docs' backup figures, the age CLI's files)
+                                    pinned outcome, the docs' backup figures, the age CLI's files),
+                                    verify.py alone (its imports and module attributes, no test
+                                    material, its known answers against their sources, a lone copy,
+                                    one fault twin per known-answer group and a planted module, run
+                                    under an audit hook)
   vectorgen.py --write-seal-vectors    regenerate vectors/seal.json
   vectorgen.py --write-kat-vectors     regenerate vectors/kat.json
   vectorgen.py --write-keepcrypt-vectors  regenerate vectors/keepcrypt.json
@@ -67,11 +75,15 @@ Usage (CI runs python3 -I tools/verify/vectorgen.py --selftest):
   vectorgen.py --write-backup-vectors     regenerate vectors/backup.json
   --vectors-dir DIR                 testing only: use DIR in place of the repo's vectors/ (made
                                     absolute); a SOURCES.md row `vectors/<p>` then means DIR/<p>
+  --verify-py PATH                  testing only, with --selftest: check 12 checks PATH in place of
+                                    tools/verify/verify.py (the other checks use tools/verify/verify.py)
+  --check N                         testing only, with --selftest: run check N alone
 
 Exit codes: 0 all good, 1 a check failed, 2 usage error.
 """
 
 import argparse
+import ast
 import base64
 import datetime
 import hashlib
@@ -427,10 +439,9 @@ KEEPCRYPT_SPEC = {
     "words": "words_24 = BIP39 English encoding of all 32 bytes of E; words_12 = BIP39 English encoding of E[0:16]",
 }
 
-# Check 8 and vectors/braille.json: the read-back faces, the lighter face and the SeedBook's pages
-# (verify.py holds the cells, the text rule and the insert positions).
+# Check 8 and vectors/braille.json: the read-back faces and the SeedBook's pages (verify.py holds the
+# cells, the text rule, the lighter face its known answers compare and the insert positions).
 SEEDBOOK_READBACK_FACES = 4  # the first four letters identify every word; read-back covers faces 1-4
-SEEDBOOK_LIGHTER_FACE = 5  # the fifth letter is a redundancy check, drawn lighter
 SEEDBOOK_WORDS_PER_PAGE = 24
 # Known answers check 8 compares with what this file generates, so --write-braille-vectors cannot
 # re-baseline a wrong table (tasks/lessons.md: "pin a vector"). The alphabet as printed in
@@ -3998,7 +4009,434 @@ def check_coldcard_scripts(vectors_dir):
     return problems
 
 
-def selftest(vectors_dir):
+# --- Check 12: tools/verify/verify.py ships alone (tasks/todo.md, M2 group 3) ---------------------
+# The release is verify.py by itself (docs/build-plan.md "Release"; CLAUDE.md rules 1, 5, 8 and 10), so
+# check 12 holds a copy of it to what it may reach, and runs copies with nothing around them. Every rule
+# runs, and each failing one is named.
+#
+# Rule (a), static, over verify.py's syntax tree. It imports only these standard-library modules, with
+# no star import and no relative import (importlib is not among them):
+VERIFY_IMPORTS = ("argparse", "base64", "binascii", "datetime", "getpass", "hashlib", "hmac", "re", "struct", "sys",
+                  "unicodedata", "warnings")
+# It neither calls nor names these, which reach files, code or attributes by name, nor any dunder name
+# but __name__ and __doc__ (__loader__ and __spec__ would reach the import system's file reader):
+VERIFY_BANNED_NAMES = ("open", "input", "exec", "eval", "compile", "__import__", "breakpoint", "globals", "locals",
+                       "vars", "getattr", "setattr", "delattr", "__builtins__")
+VERIFY_DUNDER_NAMES = ("__name__", "__doc__")
+# It takes no dunder attribute, and from an imported module only an attribute recorded here, with a
+# module name used no other way (passed, assigned or returned), except that hasattr(module, "name") may
+# test a recorded one. An import allowlist alone would leave getpass.os.open, getpass.io.open,
+# argparse._os.system and sys.modules in reach.
+VERIFY_MODULE_ATTRIBUTES = (
+    ("base64", "b64decode"), ("base64", "b64encode"),
+    ("binascii", "Error"),
+    ("datetime", "date"),
+    ("hashlib", "pbkdf2_hmac"), ("hashlib", "scrypt"), ("hashlib", "sha256"), ("hashlib", "sha512"),
+    ("hmac", "compare_digest"), ("hmac", "new"),
+    ("re", "fullmatch"),
+    ("struct", "pack"), ("struct", "unpack"),
+    ("sys", "argv"), ("sys", "exit"), ("sys", "flags"), ("sys", "stderr"), ("sys", "stdout"), ("sys", "version_info"),
+    ("unicodedata", "normalize"),
+)
+# Rule (b): verify.py's text holds neither test marker and no test label, nor the test registry public
+# key (KCR_PINNED) in hex, in either case.
+VERIFY_TEST_MATERIAL = ("KC_TEST_SOURCE_DO_NOT_SHIP", "KC_TEST_REGISTRY_DO_NOT_SHIP", "KCE/test/")
+# Rule (c): verify.py's KNOWN_ANSWERS, read with ast.literal_eval from its one assignment (so every value
+# is a literal in the file), equals the table known_answer_sources rebuilds from these entries.
+KNOWN_ANSWER_BIP39_ENTRIES = (12, 14)  # bip39/vectors.json "english": the first 12-word and 24-word entries
+KNOWN_ANSWER_COMMITMENT = "d-00-1f"  # keepcrypt.json "commitment": C of the mixed entry's D
+KNOWN_ANSWER_MIXED = "d-00-1f-coldcard-50"  # keepcrypt.json "mixed"
+KNOWN_ANSWER_DICE_ROLLS = "123456"  # coldcard/rolls.json: Coldcard's published example
+KNOWN_ANSWER_SEAL_FIELDS = ("mnemonic", "seed_prefix_hex", "seal_code", "seal_tag_hex", "seal_id", "seal_id_braille",
+                            "lookup_prefix", "colour_index", "colour_hex", "grid")  # seal.json vector 1, and go_ahead
+KNOWN_ANSWER_BRAILLE_FIELDS = ("number", "word", "faces", "lighter_face", "mirror_partners", "cells")
+KNOWN_ANSWER_FILES = {
+    "hash": "vectors/kat.json",
+    "bip39": "vectors/bip39/vectors.json and the list hash BIP39_ENGLISH_SHA256",
+    "seed": "vectors/keepcrypt.json and vectors/coldcard/rolls.json",
+    "seal": "vectors/seal.json",
+    "braille": "vectors/braille.json",
+}
+# Rules (d) and (e): every run of a copy has its own new directory, an empty environment and a timeout.
+# The lone copy and the fault twins (one per known-answer group: that group's last string value, never a
+# dict key, with its last character changed) are read-only, in read-only directories. The planted
+# directory stays writable, so a module it ran would leave its __pycache__ behind.
+LONE_TIMEOUT_SECONDS = 60
+PLANTED_MARKER = "KC_PLANTED_HASHLIB_RAN"
+# Rule (e): an audited run fails on any event below, and on any of these modules (group 2's network
+# list, subprocess and multiprocessing, each with its submodules) in sys.modules at the end.
+AUDIT_BANNED_MODULES = ("socket", "ssl", "_socket", "_ssl", "socketserver", "urllib", "urllib3", "http", "ftplib",
+                        "smtplib", "smtpd", "poplib", "imaplib", "nntplib", "telnetlib", "xmlrpc", "asyncio",
+                        "asyncore", "asynchat", "wsgiref", "webbrowser", "requests", "httpx", "aiohttp",
+                        "multiprocessing", "logging.handlers", "subprocess")
+AUDIT_BANNED_EVENTS = ("socket.", "subprocess.Popen", "os.system", "os.exec", "os.posix_spawn", "os.spawn", "os.fork")
+# The child of an audited run: sys.executable -I -c (the two lists above, then this) FD COPY ARGS... It
+# installs an audit hook and runs COPY as __main__ with ARGS, writing nothing itself but to FD. A banned
+# event is written to FD at once, so a copy that ends the process early cannot hide it, and is refused, so
+# its action never happens: any open for writing, or of a path outside the interpreter's standard library
+# (sysconfig's stdlib and platstdlib, without site-packages) other than the copy; any socket or process.
+# At the end it writes each banned module, and each module loaded since it started from outside the
+# standard library (the interpreter's own start-up, site and its .pth files, is not the copy's doing),
+# then "end". Bytecode caching is off, so importing the standard library writes nothing.
+AUDIT_HARNESS = r'''
+import os
+import sys
+
+startup = set(sys.modules)
+report, copy = int(sys.argv[1]), os.path.realpath(sys.argv[2])
+sys.argv = sys.argv[2:]
+sys.dont_write_bytecode = True
+import runpy
+import sysconfig
+
+roots = sorted(set(os.path.realpath(sysconfig.get_paths()[name]) for name in ("stdlib", "platstdlib")))
+writing = os.O_WRONLY | os.O_RDWR | os.O_APPEND | os.O_CREAT | os.O_TRUNC
+said, busy = [], []
+
+
+def say(line, last=False):
+    if len(said) < 64 or last:
+        said.append(line)
+        try:
+            os.write(report, (line + "\n").encode("utf-8", "backslashreplace"))
+        except OSError:
+            pass
+
+
+def allowed(path):
+    try:
+        real = os.path.realpath(os.fsdecode(path))
+    except TypeError:
+        return False
+    if real == copy:
+        return True
+    for root in roots:
+        if real.startswith(root + os.sep):
+            return real[len(root) + 1:].split(os.sep)[0] not in ("site-packages", "dist-packages")
+    return False
+
+
+def problem(event, args):
+    if event == "open":
+        path, mode, flags = args
+        if (isinstance(mode, str) and set(mode) & set("wax+")) or (isinstance(flags, int) and flags & writing):
+            return "open for writing: %r" % (path,)
+        if not allowed(path):
+            return "open outside the standard library and the copy: %r" % (path,)
+    elif event.startswith(BANNED_EVENTS):
+        return "event " + event
+    return None
+
+
+def hook(event, args):
+    if busy:
+        return
+    busy.append(event)
+    try:
+        found = problem(event, args)
+    finally:
+        busy.pop()
+    if found:
+        say("audit: " + found)
+        raise RuntimeError("refused by check 12's audit: " + event)
+
+
+sys.addaudithook(hook)
+try:
+    runpy.run_path(copy, run_name="__main__")
+finally:
+    for name in sorted(sys.modules):
+        path = getattr(sys.modules[name], "__file__", None)
+        if any(name == banned or name.startswith(banned + ".") for banned in BANNED_MODULES):
+            say("audit: module %s loaded" % name)
+        elif name not in startup and path is not None and not allowed(path):
+            say("audit: module %s loaded from %r" % (name, path))
+    say("end", last=True)
+'''
+ABSENT = object()  # a value missing on one side of value_differences
+
+
+def verify_static_problems(tree):
+    """Check 12 rule (a) over verify.py's syntax tree: [problem]."""
+    problems, modules, recorded = [], {}, set(VERIFY_MODULE_ATTRIBUTES)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in VERIFY_IMPORTS:
+                    modules[alias.asname or alias.name] = alias.name
+                else:
+                    problems.append("line %d imports %s, not on the allowlist" % (node.lineno, alias.name))
+        elif isinstance(node, ast.ImportFrom):
+            source = "." * node.level + (node.module or "")
+            if source not in VERIFY_IMPORTS:
+                problems.append("line %d imports from %s, not on the allowlist" % (node.lineno, source))
+            else:
+                problems += ["line %d takes %s from %s, not in the recorded list" % (node.lineno, alias.name, source)
+                             for alias in node.names if (source, alias.name) not in recorded]
+    taken = set()  # the module Name nodes that take a recorded attribute
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute):
+            if node.attr.startswith("__") and node.attr.endswith("__"):
+                problems.append("line %d takes the dunder attribute %s" % (node.lineno, node.attr))
+            if isinstance(node.value, ast.Name) and node.value.id in modules:
+                taken.add(id(node.value))
+                if (modules[node.value.id], node.attr) not in recorded:
+                    problems.append("line %d takes %s.%s, not in the recorded list"
+                                    % (node.lineno, modules[node.value.id], node.attr))
+        elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "hasattr"
+              and len(node.args) == 2 and isinstance(node.args[0], ast.Name) and node.args[0].id in modules
+              and isinstance(node.args[1], ast.Constant)
+              and (modules[node.args[0].id], node.args[1].value) in recorded):
+            taken.add(id(node.args[0]))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Name):
+            continue
+        if node.id in VERIFY_BANNED_NAMES:
+            problems.append("line %d uses the name %s" % (node.lineno, node.id))
+        elif node.id.startswith("__") and node.id.endswith("__") and node.id not in VERIFY_DUNDER_NAMES:
+            problems.append("line %d uses the dunder name %s" % (node.lineno, node.id))
+        elif node.id in modules and id(node) not in taken:
+            problems.append("line %d uses the module %s other than to take a recorded attribute"
+                            % (node.lineno, modules[node.id]))
+    return problems
+
+
+def verify_text_problems(text):
+    """Check 12 rule (b) over verify.py's text: [problem]."""
+    problems = ["it holds %s" % material for material in VERIFY_TEST_MATERIAL if material in text]
+    if KCR_PINNED["test_public_key_hex"] in text.lower():
+        problems.append("it holds the test registry public key in hex")
+    return problems
+
+
+def known_answers_node(tree):
+    """The value of verify.py's one top-level `KNOWN_ANSWERS = ...`, or None if there is not exactly one
+    assignment and no other binding of the name."""
+    assigns = [node for node in tree.body if isinstance(node, ast.Assign) and len(node.targets) == 1
+               and isinstance(node.targets[0], ast.Name) and node.targets[0].id == "KNOWN_ANSWERS"]
+    bindings = [node for node in ast.walk(tree)
+                if isinstance(node, ast.Name) and node.id == "KNOWN_ANSWERS" and not isinstance(node.ctx, ast.Load)]
+    return assigns[0].value if len(assigns) == 1 and len(bindings) == 1 else None
+
+
+def known_answer_sources(vectors_dir):
+    """KNOWN_ANSWERS as check 12 (c) rebuilds it from the vectors its comments name, lists for tuples."""
+    def load(rel):
+        return json.loads(vectors_dir.joinpath(*rel.split("/")).read_text(encoding="utf-8"))
+
+    kat, english, keepcrypt = load("kat.json"), load("bip39/vectors.json")["english"], load("keepcrypt.json")
+    seal, braille = load("seal.json")["vectors"][0], load("braille.json")
+    commit = named(keepcrypt, "commitment", KNOWN_ANSWER_COMMITMENT)
+    mixed = named(keepcrypt, "mixed", KNOWN_ANSWER_MIXED)
+    dice = [case for case in load("coldcard/rolls.json")["cases"] if case.get("rolls") == KNOWN_ANSWER_DICE_ROLLS]
+    if commit["d_hex"] != mixed["d_hex"] or len(dice) != 1:
+        raise ValueError("keepcrypt.json %s is not C of %s's D, or rolls.json has not one case %s"
+                         % (KNOWN_ANSWER_COMMITMENT, KNOWN_ANSWER_MIXED, KNOWN_ANSWER_DICE_ROLLS))
+    words = {entry.get("word"): entry for entry in braille["words"]}
+    return {
+        "hash": {
+            "sha256": [[e["message_ascii"], e["digest_hex"]] for e in kat["sha256"]],
+            "sha512": [[e["message_ascii"], e["digest_hex"]] for e in kat["sha512"]],
+            "hmac_sha256": [[e["key_ascii"], e["data_ascii"], e["hmac_sha256_hex"]] for e in kat["hmac"]],
+        },
+        "bip39": {
+            "list_sha256": BIP39_ENGLISH_SHA256,
+            "vectors": [english[n][:2] for n in KNOWN_ANSWER_BIP39_ENTRIES],
+        },
+        "seed": {
+            "mixed": {"d_hex": mixed["d_hex"], "c_hex": commit["c_hex"], "rolls": mixed["rolls"],
+                      "e_hex": mixed["e_hex"], "words_12": mixed["words_12"], "words_24": mixed["words_24"]},
+            "dice_only": {"rolls": dice[0]["rolls"], "e_hex": dice[0]["sha256_hex"], "words_12": dice[0]["words_12"],
+                          "words_24": dice[0]["words_24"]},
+        },
+        "seal": dict({field: seal[field] for field in KNOWN_ANSWER_SEAL_FIELDS},
+                     go_ahead={"nonce_hex": seal["go_ahead"]["nonce_hex"], "code": seal["go_ahead"]["code"]}),
+        "braille": {
+            "table_sha256": braille["cells"]["table_sha256"],
+            "words": [{field: words[word][field] for field in KNOWN_ANSWER_BRAILLE_FIELDS}
+                      for word, _, _, _, _ in BRAILLE_SAMPLE_INSERTS],
+        },
+    }
+
+
+def value_differences(got, want, path):
+    """The dotted paths at which `got` (its tuples read as lists) and `want` differ."""
+    if isinstance(got, tuple):
+        got = list(got)
+    if isinstance(got, dict) and isinstance(want, dict):
+        keys = list(want) + [key for key in got if key not in want]
+        return [found for key in keys
+                for found in value_differences(got.get(key, ABSENT), want.get(key, ABSENT), path + (str(key),))]
+    if isinstance(got, list) and isinstance(want, list) and len(got) == len(want):
+        return [found for n, (g, w) in enumerate(zip(got, want), 1)
+                for found in value_differences(g, w, path + (str(n),))]
+    return [] if type(got) is type(want) and got == want else [".".join(path)]
+
+
+def verify_known_answer_problems(node, vectors_dir):
+    """Check 12 rule (c): (KNOWN_ANSWERS read from the file or None, [problem])."""
+    if node is None:
+        return None, ["verify.py does not assign KNOWN_ANSWERS exactly once, at the top level"]
+    try:
+        known = ast.literal_eval(node)
+    except (ValueError, TypeError, SyntaxError) as e:
+        return None, ["KNOWN_ANSWERS is not made of literals only (%s)" % e]
+    if not isinstance(known, dict):
+        return None, ["KNOWN_ANSWERS is not a dict"]
+    try:
+        expected = known_answer_sources(vectors_dir)
+    except (OSError, ValueError, KeyError, IndexError, TypeError) as e:
+        return known, ["cannot rebuild the known answers from vectors/: %s: %s" % (type(e).__name__, e)]
+    problems = []
+    for group in list(expected) + [group for group in known if group not in expected]:
+        problems += ["%s differs from %s" % (path, KNOWN_ANSWER_FILES.get(group, "any source"))
+                     for path in value_differences(known.get(group, ABSENT), expected.get(group, ABSENT), (group,))]
+    return known, problems
+
+
+def fault_twin(data, node, group):
+    """verify.py's bytes with one value of KNOWN_ANSWERS[group] changed: its last non-empty string value in
+    the file, never a dict key, gets a different last character. None if the group has no such value."""
+    values = [value for key, value in zip(node.keys, node.values)
+              if isinstance(key, ast.Constant) and key.value == group]
+    if len(values) != 1:
+        return None
+    keys = set(id(key) for found in ast.walk(values[0]) if isinstance(found, ast.Dict) for key in found.keys)
+    strings = sorted((found for found in ast.walk(values[0]) if isinstance(found, ast.Constant)
+                      and isinstance(found.value, str) and found.value and id(found) not in keys),
+                     key=lambda found: (found.lineno, found.col_offset))
+    if not strings:
+        return None
+    last = strings[-1]
+    starts = [0]
+    for line in data.splitlines(keepends=True):
+        starts.append(starts[-1] + len(line))
+    start = starts[last.lineno - 1] + last.col_offset
+    end = starts[last.end_lineno - 1] + last.end_col_offset
+    changed = last.value[:-1] + ("1" if last.value[-1] == "0" else "0")
+    return data[:start] + repr(changed).encode("utf-8") + data[end:]
+
+
+def audited_run(directory, args):
+    """One audited run (check 12 (e)) of the copy directory/verify.py with `args`: sys.executable -I -c
+    AUDIT_HARNESS, from `directory`, in a new session (no controlling terminal), with an empty
+    environment and stdin at its end. Returns (exit status, stdout, stderr, the audit's problems)."""
+    harness = "BANNED_MODULES = %r\nBANNED_EVENTS = %r\n%s" % (AUDIT_BANNED_MODULES, AUDIT_BANNED_EVENTS, AUDIT_HARNESS)
+    read_end, write_end = os.pipe()
+    with os.fdopen(read_end, "rb") as report:
+        try:
+            run = subprocess.run([sys.executable, "-I", "-c", harness, str(write_end), str(directory / "verify.py")]
+                                 + list(args), stdin=subprocess.DEVNULL, capture_output=True, cwd=directory, env={},
+                                 pass_fds=(write_end,), start_new_session=True, timeout=LONE_TIMEOUT_SECONDS)
+        finally:
+            os.close(write_end)
+        lines = report.read().decode("utf-8", "replace").splitlines()
+    problems = [line for line in lines if line != "end"]
+    if "end" not in lines:
+        problems.append("the run ended before the audit's last check")
+    return (run.returncode, run.stdout.decode("utf-8", "replace"), run.stderr.decode("utf-8", "replace"),
+            problems)
+
+
+def selftest_run_problems(status, stdout, stderr, groups, failing):
+    """How one `verify.py selftest` run differs from what it must print: every group "ok", or, for a fault
+    twin, exactly the group `failing` named as failed and the rest "ok"."""
+    problems = []
+    want_status = 0 if failing is None else 1
+    if status != want_status:
+        problems.append("exit status %d, not %d" % (status, want_status))
+    if stderr:
+        problems.append("stderr is not empty: %r" % stderr[-300:])
+    if groups is None:
+        return problems
+    want = ["FAIL %s: " % group if group == failing else "ok   %s" % group for group in groups]
+    want.append("selftest FAILED: %s" % failing if failing else "selftest passed: %d known-answer groups" % len(groups))
+    got = stdout.splitlines()
+    if len(got) != len(want) or any(not line.startswith(w) if w.endswith(": ") else line != w
+                                    for line, w in zip(got, want)):
+        problems.append("stdout is %r, not lines %r" % (got, want))
+    return problems
+
+
+def verify_lone_problems(data, node, known):
+    """Check 12 rules (d) and (e): the lone copy and each fault twin run `selftest` audited; the planted
+    module runs neither isolated nor refused. [problem]."""
+    groups = list(known) if known is not None else None
+    runs = [("lone copy", "lone", data, None)]
+    if groups is None:
+        problems = ["rule (d): no fault twins, since KNOWN_ANSWERS cannot be read"]
+    else:
+        problems, twins = [], [(group, fault_twin(data, node, group)) for group in groups]
+        problems += ["rule (d): group %s has no string value for a fault twin" % group for group, twin in twins
+                     if twin is None]
+        runs += [("fault twin %s" % group, "twin-%d" % n, twin, group)
+                 for n, (group, twin) in enumerate(twins, 1) if twin is not None]
+    with tempfile.TemporaryDirectory() as scratch:
+        root, locked = Path(scratch), []
+        try:
+            for label, name, copy, failing in runs:
+                directory = root / name
+                directory.mkdir()
+                (directory / "verify.py").write_bytes(copy)
+                (directory / "verify.py").chmod(0o444)
+                directory.chmod(0o555)
+                locked.append(directory)
+                try:
+                    status, stdout, stderr, audit = audited_run(directory, ["selftest"])
+                except subprocess.TimeoutExpired:
+                    problems.append("rule (d): %s: no result within %d seconds" % (label, LONE_TIMEOUT_SECONDS))
+                    continue
+                problems += ["rule (d): %s: %s" % (label, problem)
+                             for problem in selftest_run_problems(status, stdout, stderr, groups, failing)]
+                problems += ["rule (e): %s: %s" % (label, problem) for problem in audit]
+            planted = root / "planted"
+            planted.mkdir()
+            (planted / "verify.py").write_bytes(data)
+            (planted / "hashlib.py").write_text('print("%s")\n' % PLANTED_MARKER, encoding="ascii")
+            for label, flags, want_status in (("planted hashlib.py, -I", ["-I"], 0),
+                                              ("planted hashlib.py, no -I", [], 2)):
+                try:
+                    run = subprocess.run([sys.executable] + flags + [str(planted / "verify.py"), "selftest"],
+                                         stdin=subprocess.DEVNULL, capture_output=True, cwd=planted, env={},
+                                         timeout=LONE_TIMEOUT_SECONDS)
+                except subprocess.TimeoutExpired:
+                    problems.append("rule (d): %s: no result within %d seconds" % (label, LONE_TIMEOUT_SECONDS))
+                    continue
+                if PLANTED_MARKER.encode("ascii") in run.stdout + run.stderr:
+                    problems.append("rule (d): %s: the planted module ran" % label)
+                if run.returncode != want_status:
+                    problems.append("rule (d): %s: exit status %d, not %d" % (label, run.returncode, want_status))
+                if not flags and b"python3 -I verify.py" not in run.stderr:
+                    problems.append("rule (d): %s: stderr does not say to run python3 -I verify.py" % label)
+            if sorted(os.listdir(planted)) != ["hashlib.py", "verify.py"]:
+                problems.append("rule (d): the planted directory holds %r afterwards" % sorted(os.listdir(planted)))
+        finally:
+            for directory in locked:
+                directory.chmod(0o755)
+    return problems
+
+
+def check_verify_alone(vectors_dir, verify_py):
+    """Check 12: rules (a) to (e) over verify_py (tools/verify/verify.py unless --verify-py)."""
+    if not verify_py.is_file():
+        return ["%s is missing" % verify_py]
+    data = verify_py.read_bytes()
+    text = data.decode("utf-8")
+    try:
+        tree = ast.parse(data, str(verify_py))
+    except SyntaxError as e:
+        tree = None
+        problems = ["rule (a): %s does not parse: %s" % (verify_py.name, e)]
+    else:
+        problems = ["rule (a): %s" % problem for problem in verify_static_problems(tree)]
+    problems += ["rule (b): %s" % problem for problem in verify_text_problems(text)]
+    node = known_answers_node(tree) if tree is not None else None
+    known, found = verify_known_answer_problems(node, vectors_dir)
+    problems += ["rule (c): %s" % problem for problem in found]
+    return problems + verify_lone_problems(data, node, known)
+
+
+def selftest(vectors_dir, verify_py=VERIFY_PY, only=None):
     checks = (
         ("seal known answers (CLAUDE.md vector 1, project vectors 2 and 3)", check_known_answers),
         ("vectors/seal.json matches regenerated output", lambda: check_seal_json(vectors_dir)),
@@ -4026,9 +4464,17 @@ def selftest(vectors_dir):
          "regenerated output, the CCTV files rebuilt byte for byte, every case's pinned outcome and scrypt reach, "
          "plaintexts against watchonly.json, the docs' backup figures, the age CLI's files read",
          lambda: check_backup_json(vectors_dir)),
+        ("tools/verify/verify.py ships alone: imports on the allowlist and module attributes on the recorded list, "
+         "no test material, known answers equal their sources, a lone copy passes selftest, each fault twin fails "
+         "its group, a planted module never runs, audited runs",
+         lambda: check_verify_alone(vectors_dir, verify_py)),
     )
+    if only is not None and not 1 <= only <= len(checks):
+        print("vectorgen.py: --check takes 1 to %d" % len(checks), file=sys.stderr)
+        return 2
+    selected = checks if only is None else checks[only - 1:only]
     failed = 0
-    for name, check in checks:
+    for name, check in selected:
         try:
             problems = check()
         except (OSError, ValueError) as e:  # unreadable or malformed input fails the check
@@ -4039,9 +4485,9 @@ def selftest(vectors_dir):
         else:
             print("ok   %s" % name)
     if failed:
-        print("selftest FAILED: %d of %d checks" % (failed, len(checks)))
+        print("selftest FAILED: %d of %d checks" % (failed, len(selected)))
         return 1
-    print("selftest passed: %d checks" % len(checks))
+    print("selftest passed: %d checks" % len(selected))
     return 0
 
 
@@ -4050,7 +4496,7 @@ def main(argv):
                                      description="KeepCrypt vector generator and self-test (repo only).")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--selftest", action="store_true",
-                      help="run the 11 checks: seal known answers (all 3 vectors), seal.json bytes, SOURCES.md "
+                      help="run the 12 checks: seal known answers (all 3 vectors), seal.json bytes, SOURCES.md "
                       "hashes and coverage, Coldcard's own scripts on every dice-only case, kat.json (SHA and HMAC "
                       "recomputed, its bytes, then its pinned entries and Ed25519 digest), keepcrypt.json (BIP39 "
                       "list and encoder, its bytes, its pinned answers and session record rules), the SP 800-90B "
@@ -4059,7 +4505,9 @@ def main(argv):
                       "watchonly.json (the primitives and spec values, BIP-84 and BCR-2020-015 rebuilt, its pins and "
                       "decoder cases, its bytes), kcr.json (Ed25519 against RFC 8032 and kat.json, the docs' figures, "
                       "its bytes, its pinned outcomes, key and roots), backup.json (scrypt, the CCTV files through "
-                      "the reader and rebuilt, its bytes, its pinned outcomes, the docs' figures, the age CLI's files)")
+                      "the reader and rebuilt, its bytes, its pinned outcomes, the docs' figures, the age CLI's "
+                      "files), verify.py alone (its imports and module attributes, no test material, its known answers "
+                      "against their sources, a lone copy, its fault twins and a planted module, audited)")
     mode.add_argument("--write-seal-vectors", action="store_true", help="regenerate vectors/seal.json")
     mode.add_argument("--write-kat-vectors", action="store_true", help="regenerate vectors/kat.json")
     mode.add_argument("--write-keepcrypt-vectors", action="store_true", help="regenerate vectors/keepcrypt.json")
@@ -4069,11 +4517,16 @@ def main(argv):
     mode.add_argument("--write-backup-vectors", action="store_true", help="regenerate vectors/backup.json")
     parser.add_argument("--vectors-dir", type=Path, default=REPO_VECTORS_DIR, metavar="DIR",
                         help="testing only: use DIR in place of the repo's vectors/")
+    parser.add_argument("--verify-py", type=Path, metavar="PATH",
+                        help="testing only, with --selftest: check 12 checks PATH in place of tools/verify/verify.py")
+    parser.add_argument("--check", type=int, metavar="N", help="testing only, with --selftest: run check N alone")
     args = parser.parse_args(argv)
+    if (args.verify_py is not None or args.check is not None) and not args.selftest:
+        parser.error("--verify-py and --check go with --selftest")
     # Absolute, because check 4 runs the Coldcard scripts by path from a temporary cwd.
     vectors_dir = args.vectors_dir.resolve()
     if args.selftest:
-        return selftest(vectors_dir)
+        return selftest(vectors_dir, (args.verify_py or VERIFY_PY).resolve(), args.check)
     if args.write_seal_vectors:
         return write_seal_vectors(vectors_dir)
     if args.write_kat_vectors:

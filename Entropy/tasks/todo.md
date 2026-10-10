@@ -2834,7 +2834,7 @@ Groups land in the order below. Vectors come before the core test that reads the
       line. The gate is clean on the tree: 160 files from a clean checkout.
 
 **3. Embedded known answers, startup guards and check 12 (rules 3, 5, 8, 10 and 12; build-plan.md "Release")**
-- [ ] verify.py `KNOWN_ANSWERS` and `known_answers()`. Every value is a literal in the file, and a comment names its
+- [x] verify.py `KNOWN_ANSWERS` and `known_answers()`. Every value is a literal in the file, and a comment names its
       source by file and entry (never a `KCE/test/` label; check 12 (b)). This commit's groups:
       - hash: kat.json's SHA-256, SHA-512 and HMAC-SHA256 entries;
       - bip39: the embedded list's SHA-256 `2f5eed53…`, and one 12-word and one 24-word entry of bip39/vectors.json;
@@ -2846,11 +2846,23 @@ Groups land in the order below. Vectors come before the core test that reads the
         WIRE 2018 and ZOO 2048 as their braille.json fields (number, faces, lighter face, mirror partners, cells).
       Group 4 adds `urls` and `insert`, and group 7 adds `run`. `verify.py selftest` prints one line per group and
       exits 0, or names the failing group and exits 1.
-- [ ] Startup guards, right after `import sys` and before any other import, when run as a script:
+      Proof: commit 6. `python3 -I verify.py selftest` prints `ok` for hash, bip39, seed, seal and braille and exits 0
+      on 3.12.5 and 3.9.6, from the tree and as check 12's read-only lone copy. Check 12 (c) rebuilds the table from
+      kat.json, bip39/vectors.json english 12 and 14, keepcrypt.json `d-00-1f` and `d-00-1f-coldcard-50`, rolls.json
+      `123456`, seal.json vector 1 and braille.json and finds it equal. Each group's fault twin exits 1 naming that
+      group only (the changed value: hash, the HMAC-SHA256; bip39, the 24-word mnemonic; seed, dice-only word 24;
+      seal, G; braille, ZOO's cells).
+- [x] Startup guards, right after `import sys` and before any other import, when run as a script:
       - Python older than 3.9 exits 2 with one line;
       - without `-I` (`sys.flags.isolated`) it exits 2 and says to run `python3 -I verify.py ...`, so a planted module
         beside the download (for example `hashlib.py`) is never imported;
       - stdout is reconfigured to UTF-8, so braille prints the same in every locale.
+      Proof: commit 6. Check 12 (d): without `-I` a copy exits 2 with `verify.py runs only in isolated mode: python3
+      -I verify.py ...`, and a planted `hashlib.py` prints its marker in neither that run nor the `-I` one, which
+      exits 0; the directory holds only the two files afterwards. One-off probes on both Pythons: with
+      `sys.version_info` set to 3.8.18 before `runpy.run_path`, the run prints `verify.py needs Python 3.9 or later`
+      and exits 2; under `LC_ALL=en_US.ISO8859-1`, stdout's encoding goes from iso8859-1 to utf-8 (group 7 (g) pins
+      the braille bytes).
 - [ ] vectorgen check 12, "tools/verify/verify.py ships alone", with two testing-only options: `--verify-py PATH`
       (like `--vectors-dir`) and `--check N` (run one check). Every rule runs, and each failing rule is named:
       - (a) static, by `ast` over verify.py:

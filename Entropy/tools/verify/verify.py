@@ -8,17 +8,36 @@ It holds the published computations and readers, and nothing else (tasks/todo.md
 embedded BIP39 English list, BIP39 and PBKDF2, C and E, the seal derivation
 (docs/seal-watchonly-braille.md, "Seal derivation spec", "The seal image", "Go-ahead code"), the
 SeedBook braille and insert positions, the watch-only export (secp256k1, BIP32, descriptors and the
-single-part UR code), Ed25519 verification, the bucket tree and the .kcr and KCP1 verifiers, and the
-encrypted backup's age reader and plaintext v1 parser. It opens no file and runs no other program.
+single-part UR code), Ed25519 verification, the bucket tree and the .kcr and KCP1 verifiers, the
+encrypted backup's age reader and plaintext v1 parser, and the embedded known answers that every
+command runs first (M2 group 3). It opens no file and runs no other program.
 The verifier's own recomputation of a device's C, E and words, and braille, arrive in M2.
 
 tools/verify/vectorgen.py, which never ships, loads this file by path. It holds the vector
 generators, the backup writer, the label-key signer and the self-test, which checks this file
-against vectors/.
+against vectors/ and, in check 12, checks that a copy of it runs alone.
 
-Usage: no command yet (M2 adds them); it prints its usage and exits 2. The self-test is
+Usage (Python 3.9+, isolated mode only):
+  python3 -I verify.py selftest     run the embedded known answers: one line per group, then exit 0,
+                                    or exit 1 naming each failing group
+Anything else prints the usage and exits 2 (M2 group 7 adds the mixed and dice commands). The
+repo's self-test is
   python3 -I tools/verify/vectorgen.py --selftest
 """
+
+import sys
+
+# Startup guards (tasks/todo.md, M2 group 3), before any other import, when this file runs as a
+# script: Python 3.9 or later; isolated mode (-I), so a module planted beside the file (a hashlib.py,
+# say) is never imported; and stdout in UTF-8, so braille prints the same in every locale.
+if __name__ == "__main__":
+    if sys.version_info < (3, 9):
+        sys.stderr.write("verify.py needs Python 3.9 or later\n")
+        sys.exit(2)
+    if not sys.flags.isolated:
+        sys.stderr.write("verify.py runs only in isolated mode: python3 -I verify.py ...\n")
+        sys.exit(2)
+    sys.stdout.reconfigure(encoding="utf-8")
 
 import base64
 import binascii
@@ -27,7 +46,6 @@ import hashlib
 import hmac
 import re
 import struct
-import sys
 import unicodedata
 
 CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
@@ -67,6 +85,7 @@ BRAILLE_SIGN_DOTS = (("number_sign", "3456"), ("grade1_indicator", "56"), ("hyph
 # Inside a run of digits, digit d is written with the cell of BRAILLE_DIGIT_LETTERS[d]: 1-9 = a-i, 0 = j.
 BRAILLE_DIGIT_LETTERS = "jabcdefghi"
 SEEDBOOK_FACES = 5  # faces 1-5 carry the first five letters (face 6 is the engraved sequence number)
+SEEDBOOK_LIGHTER_FACE = 5  # the fifth letter is a redundancy check, drawn lighter
 SEEDBOOK_INSERTS = 12  # inserts per device: one KeepCrypt Hinge or Screw
 
 # BCR-2020-012, "Word List": the 256 Bytewords, byte 0x00 first (copyright 2020 Blockchain Commons,
@@ -1245,11 +1264,12 @@ class BackupRefused(Exception):
     """A refused backup file or plaintext, or a failed draw. `error` names core's error as backup.json
     writes it: Backup(TooLarge), Backup(Armor), Backup(Header), Backup(WorkFactor), Backup(HeaderMac),
     Backup(Payload), Backup(Plaintext), Backup(UnsupportedVersion), WrongPassphrase or
-    Source(NoUsableDraw)."""
+    Source(NoUsableDraw). It is raised as BackupRefused(error), so `error` is the exception's one
+    argument (no __init__, since check 12 allows no dunder attribute)."""
 
-    def __init__(self, error):
-        Exception.__init__(self, error)
-        self.error = error
+    @property
+    def error(self):
+        return self.args[0]
 
 
 MASK32 = 0xFFFFFFFF
@@ -1619,11 +1639,242 @@ def backup_plaintext_parse(data):
     return words, fingerprint, created.group(1), version
 
 
+# --- Embedded known answers (tasks/todo.md, M2 group 3) ---------------------------------------
+# Every command recomputes these before anything else and stops with exit 1 if one differs (CLAUDE.md
+# rule 3, as core's session-start suite does), so a copy whose hashing, word list, seed, seal or braille
+# code is broken refuses to run. Each value is a literal copied from the file and entry its comment
+# names; vectorgen.py check 12 compares every value with that source, and runs a copy with one value of
+# each group changed, which must fail that group.
+KNOWN_ANSWERS = {
+    "hash": {
+        # vectors/kat.json "sha256", entries "empty", "abc" and "two-block": (message_ascii, digest_hex).
+        "sha256": (
+            ("", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
+            ("abc", "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+            ("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq",
+             "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"),
+        ),
+        # vectors/kat.json "sha512", entries "empty", "abc" and "two-block": (message_ascii, digest_hex).
+        "sha512": (
+            ("", "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce"
+                 "47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e"),
+            ("abc", "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a"
+                    "2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"),
+            ("abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrs"
+             "mnopqrstnopqrstu",
+             "8e959b75dae313da8cf4f72814fc143f8f7779c6eb9f7fa17299aeadb6889018"
+             "501d289e4900f7e4331b99dec4b5433ac7d329eeb6dd26545e96e55b874be909"),
+        ),
+        # vectors/kat.json "hmac", entry "rfc4231-case-2": (key_ascii, data_ascii, hmac_sha256_hex).
+        "hmac_sha256": (
+            ("Jefe", "what do ya want for nothing?",
+             "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"),
+        ),
+    },
+    "bip39": {
+        # docs/seal-watchonly-braille.md "Sources": the official list's SHA-256, over the 2,048 words
+        # joined by LF plus a final LF.
+        "list_sha256": "2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda",
+        # vectors/bip39/vectors.json "english", entries 12 (12 words) and 14 (24 words): (entropy, mnemonic).
+        "vectors": (
+            ("9e885d952ad362caeb4efe34a8e91bd2",
+             "ozone drill grab fiber curtain grace pudding thank cruise elder eight picnic"),
+            ("68a79eaca2324873eacc50cb9c6eca8cc68ea5d936f98787c60c7ebc74e6ce7c",
+             "hamster diagram private dutch cause delay private meat slide toddler razor book happy fancy gospel "
+             "tennis maple dilemma loan word shrug inflict delay length"),
+        ),
+    },
+    "seed": {
+        # vectors/keepcrypt.json "commitment" entry "d-00-1f" (c_hex) and "mixed" entry
+        # "d-00-1f-coldcard-50" (the rest): D to C, then D and R to E and the words.
+        "mixed": {
+            "d_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+            "c_hex": "21778a7463cef10741413d0b80909a1045ba902d6244f519d2520e247cbe2e8c",
+            "rolls": "12345612345612345612345612345612345612345612345612",
+            "e_hex": "b2e18e2cdeb6f07e9dd5d3df8e315fa609fd2ebfe543387a483828553da6eee2",
+            "words_12": ("real", "arrest", "menu", "runway", "humor", "dismiss", "jar", "risk", "test", "immense",
+                         "fitness", "erupt"),
+            "words_24": ("real", "arrest", "menu", "runway", "humor", "dismiss", "jar", "risk", "test", "immense",
+                         "fitness", "equal", "panther", "nuclear", "zebra", "position", "debris", "spoil", "asthma",
+                         "expose", "fatigue", "square", "romance", "elite"),
+        },
+        # vectors/coldcard/rolls.json, the case "123456" (Coldcard's published example): R to E
+        # (sha256_hex) and the words.
+        "dice_only": {
+            "rolls": "123456",
+            "e_hex": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+            "words_12": ("mirror", "reject", "rookie", "talk", "pudding", "throw", "happy", "era", "myth", "already",
+                         "payment", "owner"),
+            "words_24": ("mirror", "reject", "rookie", "talk", "pudding", "throw", "happy", "era", "myth", "already",
+                         "payment", "own", "sentence", "push", "head", "sting", "video", "explain", "letter", "bomb",
+                         "casual", "hotel", "rather", "garment"),
+        },
+    },
+    # vectors/seal.json, vector 1: CLAUDE.md's seal test vector and go-ahead vector, field by field.
+    "seal": {
+        "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+        "seed_prefix_hex": "5eb00bbddcf069084889a8ab91555681",
+        "seal_code": "JXP3R-DXYAC-JZ1NA-X3RGQ-DJCJJN",
+        "seal_tag_hex": "2b8103c8dd64611df5c8c28b8fbf864a1005372f5da06a5777f92708ce79cb5c",
+        "seal_id": "5E0G7J6X",
+        "seal_id_braille": "⠼⠑⠰⠑⠼⠚⠰⠛⠼⠛⠰⠚⠼⠋⠭",
+        "lookup_prefix": "2b810",
+        "colour_index": 3,
+        "colour_hex": "#009E73",
+        "grid": ("#......#", "...##...", "........", "..####..", "##....##", "#......#", "##.##.##", "##.##.##"),
+        "go_ahead": {"nonce_hex": "0001020304050607", "code": "CF94-BCAJ"},
+    },
+    "braille": {
+        # vectors/braille.json "cells" "table_sha256": SHA-256 of the canonical cell table text.
+        "table_sha256": "fd75c236d2ab92e0fe682d502a5b4bf2537f78d5ec5630b2bac20a963ece9c9d",
+        # vectors/braille.json "words", the entries for CLAUDE.md's braille cross-check vectors, field by field.
+        "words": (
+            {"number": 1, "word": "abandon", "faces": ("a", "b", "a", "n", "d"), "lighter_face": 5,
+             "mirror_partners": (None, None, None, None, "f"), "cells": "⠁⠃⠁⠝⠙⠕⠝"},
+            {"number": 20, "word": "act", "faces": ("a", "c", "t", None, None), "lighter_face": None,
+             "mirror_partners": (None, None, None, None, None), "cells": "⠁⠉⠞"},
+            {"number": 21, "word": "action", "faces": ("a", "c", "t", "i", "o"), "lighter_face": 5,
+             "mirror_partners": (None, None, None, "e", None), "cells": "⠁⠉⠞⠊⠕⠝"},
+            {"number": 1121, "word": "metal", "faces": ("m", "e", "t", "a", "l"), "lighter_face": 5,
+             "mirror_partners": (None, "i", None, None, None), "cells": "⠍⠑⠞⠁⠇"},
+            {"number": 2018, "word": "wire", "faces": ("w", "i", "r", "e", None), "lighter_face": None,
+             "mirror_partners": ("r", "e", "w", "i", None), "cells": "⠺⠊⠗⠑"},
+            {"number": 2048, "word": "zoo", "faces": ("z", "o", "o", None, None), "lighter_face": None,
+             "mirror_partners": (None, None, None, None, None), "cells": "⠵⠕⠕"},
+        ),
+    },
+}
+
+
+def known_answers_hash(values):
+    """The hash group: the names of the values that differ."""
+    failed = []
+    for name, algorithm in (("sha256", hashlib.sha256), ("sha512", hashlib.sha512)):
+        failed += ["%s %d" % (name, n) for n, (message, digest) in enumerate(values[name], 1)
+                   if algorithm(message.encode("ascii")).hexdigest() != digest]
+    failed += ["hmac_sha256 %d" % n for n, (key, data, mac) in enumerate(values["hmac_sha256"], 1)
+               if hmac.new(key.encode("ascii"), data.encode("ascii"), hashlib.sha256).hexdigest() != mac]
+    return failed
+
+
+def known_answers_bip39(values):
+    """The bip39 group: the embedded list against its published hash, and the encoder."""
+    failed = []
+    if hashlib.sha256(("\n".join(BIP39_ENGLISH) + "\n").encode("ascii")).hexdigest() != values["list_sha256"]:
+        failed.append("list_sha256")
+    failed += ["vectors %d" % n for n, (entropy, mnemonic) in enumerate(values["vectors"], 1)
+               if bip39_words(bytes.fromhex(entropy)) != mnemonic.split(" ")]
+    return failed
+
+
+def known_answers_seed(values):
+    """The seed group: C from D, E and the words in mixed mode, and dice-only E and words. For 12 words the
+    seed bits are E[0:16]."""
+    d = bytes.fromhex(values["mixed"]["d_hex"])
+    entropy = {"mixed": mixed_entropy(d, values["mixed"]["rolls"]),
+               "dice_only": dice_only_entropy(values["dice_only"]["rolls"])}
+    failed = [] if commitment(d).hex() == values["mixed"]["c_hex"] else ["mixed c_hex"]
+    for mode, e in entropy.items():
+        got = {"e_hex": e.hex(), "words_12": tuple(bip39_words(e[:16])), "words_24": tuple(bip39_words(e))}
+        failed += ["%s %s" % (mode, key) for key, value in got.items() if values[mode][key] != value]
+    return failed
+
+
+def known_answers_seal(values):
+    """The seal group: S from the mnemonic, the seal code, T, the Seal ID and its braille, the lookup
+    prefix, the colour, the grid, and the go-ahead code for T and the nonce."""
+    seed = bip39_seed(values["mnemonic"])
+    code = seal_code(seed)
+    tag = seal_tag(code)
+    index, colour = seal_colour(tag)
+    got = {
+        "seed_prefix_hex": seed[:16].hex(),
+        "seal_code": grouped(code, (5, 5, 5, 5, 6)),
+        "seal_tag_hex": tag.hex(),
+        "seal_id": seal_id(tag),
+        "seal_id_braille": braille_text(seal_id(tag).lower()),
+        "lookup_prefix": lookup_prefix(tag),
+        "colour_index": index,
+        "colour_hex": colour,
+        "grid": tuple(seal_grid(tag)),
+    }
+    failed = [key for key, value in got.items() if values[key] != value]
+    go = values["go_ahead"]
+    if grouped(go_ahead_code(tag, bytes.fromhex(go["nonce_hex"])), (4, 4)) != go["code"]:
+        failed.append("go_ahead")
+    return failed
+
+
+def known_answers_braille(values):
+    """The braille group: the cell table's digest, and each word's SeedBook number, faces, lighter face,
+    mirror partners and cells."""
+    failed = []
+    if hashlib.sha256(braille_table_text().encode("utf-8")).hexdigest() != values["table_sha256"]:
+        failed.append("table_sha256")
+    partner = braille_mirror_partner()
+    for entry in values["words"]:
+        word = entry["word"]
+        faces = seedbook_faces(word)
+        got = {
+            "number": bip39_index(word) + 1,
+            "word": word,
+            "faces": tuple(faces),
+            "lighter_face": SEEDBOOK_LIGHTER_FACE if faces[SEEDBOOK_LIGHTER_FACE - 1] else None,
+            "mirror_partners": tuple(partner.get(face) if face else None for face in faces),
+            "cells": braille_text(word),
+        }
+        failed += ["%s %s" % (word, key) for key, value in got.items() if entry.get(key) != value]
+        failed += ["%s %s" % (word, key) for key in entry if key not in got]
+    return failed
+
+
+# The groups in the order selftest prints them; group 4 adds urls and insert, and group 7 adds run.
+KNOWN_ANSWER_GROUPS = (
+    ("hash", known_answers_hash),
+    ("bip39", known_answers_bip39),
+    ("seed", known_answers_seed),
+    ("seal", known_answers_seal),
+    ("braille", known_answers_braille),
+)
+
+
+def known_answers():
+    """Every known-answer group recomputed: [(group, the names of the values that differ)], in
+    KNOWN_ANSWER_GROUPS order. A group whose values cannot be read, or that has no values or no check,
+    fails like a wrong value; the caller stops either way, so nothing here continues past a failure."""
+    results = []
+    for group, check in KNOWN_ANSWER_GROUPS:
+        try:
+            failed = check(KNOWN_ANSWERS[group])
+        except Exception:  # a malformed or missing value fails its group, with no traceback
+            failed = ["unreadable"]
+        results.append((group, failed))
+    checked = [group for group, _ in KNOWN_ANSWER_GROUPS]
+    results += [(group, ["no check"]) for group in KNOWN_ANSWERS if group not in checked]
+    return results
+
+
+def command_selftest():
+    """verify.py selftest: one line per known-answer group; 0 if all pass, else 1, naming each failing
+    group."""
+    results = known_answers()
+    for group, failed in results:
+        print("FAIL %s: %s" % (group, ", ".join(failed)) if failed else "ok   %s" % group)
+    failing = [group for group, failed in results if failed]
+    if failing:
+        print("selftest FAILED: %s" % ", ".join(failing))
+        return 1
+    print("selftest passed: %d known-answer groups" % len(results))
+    return 0
+
+
 def main(argv):
-    """No command yet (tasks/todo.md, M2 group 7 adds them): the usage, and exit code 2."""
-    print("usage: python3 -I verify.py (no command yet; the self-test is tools/verify/vectorgen.py --selftest)",
-          file=sys.stderr)
-    return 2
+    """The commands: selftest (tasks/todo.md, M2 group 7 adds mixed and dice). Anything else prints the
+    usage, never the arguments, and returns 2."""
+    if argv != ["selftest"]:
+        print("usage: python3 -I verify.py selftest", file=sys.stderr)
+        return 2
+    return command_selftest()
 
 
 if __name__ == "__main__":
