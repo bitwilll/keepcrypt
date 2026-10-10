@@ -4,7 +4,9 @@
 //! below asserts the exact `Err` and exactly one wipe on the stub's probe, which zeroizing `Inner`
 //! bumps last, once every field is clear (`Inner`'s `Drop` runs that zeroize). No lint sees an OS
 //! read whose error is matched and dropped (`if let Err(_) = read(..) {}`), so these tests are what
-//! proves that no source failure is swallowed.
+//! proves that no source failure is swallowed: `every_os_read_of_a_ceremony_halts_and_wipes` fails
+//! each OS read of a whole ceremony in turn, from a pinned list that a new draw site cannot stay
+//! out of.
 //!
 //! The free functions that run known-answer groups hold no session, so they have no probe: each
 //! `*_with_kat_fault` twin gives exactly `Kat(id)` for every group its function runs and the
@@ -14,12 +16,12 @@ mod common;
 
 use common::{hex, named, read, text};
 use keepcrypt_core::{
-    BackupApp, Collecting, CoreError, CreatedBy, Discard, ExtraSource, HealthFailure, HealthStage,
-    HealthTest, KatId, Mode, Platform, ReadbackResult, Ready, Rolling, Sealed, SeedLength, Session,
-    SnapshotError, SourceFault, StubEntropy, StubSource, TypedBackupPassphrase, WipeProbe, Wiped,
-    decrypt_backup_with_kat_fault, hwrng_boot_test_with_kat_fault,
-    seal_from_mnemonic_with_kat_fault, self_test_with_kat_fault,
-    verify_bucket_proof_qr_with_kat_fault, verify_bucket_proof_with_kat_fault,
+    BackupApp, Collecting, CoreError, CreatedBy, Discard, ExtraSource, GoAhead, HealthFailure,
+    HealthStage, HealthTest, KatId, Mode, Platform, ReadbackResult, Ready, Rolling, Sealed,
+    SeedLength, Session, SnapshotError, SourceFault, StubEntropy, StubSource,
+    TypedBackupPassphrase, VerifiedSnapshot, WipeProbe, Wiped, decrypt_backup_with_kat_fault,
+    hwrng_boot_test_with_kat_fault, seal_from_mnemonic_with_kat_fault, self_test_with_kat_fault,
+    verify_bucket_proof_qr_with_kat_fault, verify_bucket_proof_with_kat_fault, verify_snapshot,
     verify_snapshot_with_kat_fault,
 };
 
@@ -226,6 +228,99 @@ fn short_reads_halt_and_wipe() {
         &probe,
         "encrypt",
     );
+}
+
+/// The steps of a whole ceremony that read the OS source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Step {
+    Commit,
+    StartCheck,
+    Generate,
+    Encrypt,
+}
+
+/// Every OS read of a 12-word Mixed phone ceremony, in order: the step that makes it and its size.
+const CEREMONY_READS: [(Step, usize); 8] = [
+    (Step::Commit, 64),    // the OS record, absorbed last
+    (Step::StartCheck, 8), // the check nonce n
+    (Step::Generate, 11),  // the backup passphrase
+    (Step::Generate, 16),  // one confirm-challenge attempt (the stub's first is usable)
+    (Step::Encrypt, 16),   // the age file key
+    (Step::Encrypt, 16),   // the scrypt salt
+    (Step::Encrypt, 16),   // the payload nonce
+    (Step::Encrypt, 4),    // the file name
+];
+
+/// A whole 12-word Mixed phone ceremony on `entropy`, from `new` through a cleared check to
+/// `encrypt_backup`: `Ok` if every step passed, else the step that failed and its error. Either
+/// way the session has been dropped by the time it returns.
+fn ceremony_on(
+    entropy: StubEntropy,
+    clear: &VerifiedSnapshot,
+    probe: &WipeProbe,
+) -> Result<(), (Step, CoreError)> {
+    let session = new(
+        SeedLength::Words12,
+        Mode::Mixed,
+        Platform::Phone,
+        entropy,
+        probe,
+    );
+    let committed = session.commit().map_err(|e| (Step::Commit, e))?;
+    let sealed = roll_all(committed.start_dice(), &faces("coldcard-50"))
+        .finish()
+        .expect("sealed");
+    let checking = sealed.start_check().map_err(|e| (Step::StartCheck, e))?;
+    let mut ready = match checking.reveal(GoAhead::Snapshot(clear)) {
+        Ok(ready) => ready,
+        Err(rejected) => panic!("the snapshot does not clear this seal: {rejected:?}"),
+    };
+    read_back_every_word(&mut ready);
+    let (ready, _) = ready
+        .generate_backup_passphrase()
+        .map_err(|e| (Step::Generate, e))?;
+    ready.encrypt_backup(&BY).map_err(|e| (Step::Encrypt, e))?;
+    Ok(())
+}
+
+/// Each OS read of a whole ceremony fails in turn (`FailAt`), then comes up one byte short in turn
+/// (`ShortAfter`): every time, the step that makes that read halts with exactly `Source(Os)` or
+/// `Source(ShortRead)` and the session is wiped once. With every listed read served, the ceremony
+/// completes, so there is no read the list leaves out: a new draw site fails this test until it is
+/// listed, and then its failure is injected too (review fix after commit 25: no test failed the
+/// backup's nonce or file-name read).
+#[test]
+fn every_os_read_of_a_ceremony_halts_and_wipes() {
+    let clear = verify_snapshot(&hex(
+        &named(&read("kcr.json")["snapshots"], "small")["kcr_hex"],
+    ))
+    .expect("valid");
+    let mut offset = 0;
+    for (n, &(step, size)) in CEREMONY_READS.iter().enumerate() {
+        let probe = WipeProbe::new();
+        assert_eq!(
+            ceremony_on(StubEntropy::FailAt(n), &clear, &probe),
+            Err((step, CoreError::Source(SourceFault::Os))),
+            "read {n} fails"
+        );
+        assert_eq!(probe.wipes(), 1, "read {n} fails: wipes");
+        let probe = WipeProbe::new();
+        assert_eq!(
+            ceremony_on(StubEntropy::ShortAfter(offset + size - 1), &clear, &probe),
+            Err((step, CoreError::Source(SourceFault::ShortRead))),
+            "read {n} short"
+        );
+        assert_eq!(probe.wipes(), 1, "read {n} short: wipes");
+        offset += size;
+    }
+    for entropy in [
+        StubEntropy::FailAt(CEREMONY_READS.len()),
+        StubEntropy::ShortAfter(offset),
+    ] {
+        let probe = WipeProbe::new();
+        assert_eq!(ceremony_on(entropy, &clear, &probe), Ok(()));
+        assert_eq!(probe.wipes(), 1, "dropped at the end");
+    }
 }
 
 fn health_test(name: &str) -> HealthTest {
