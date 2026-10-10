@@ -5150,13 +5150,13 @@ def check_verify_alone(vectors_dir, verify_py):
 
 # --- Check 13: vectors/agreement.json (tasks/todo.md, M2 group 5) ---------------------------------------------
 # Byte equality with the regenerated file, then rules the regenerated cases must meet, so --write-agreement-vectors
-# cannot re-baseline them away: the coverage counts; each refusal's core error and verify.py verdict against those its
-# rolls, mode and restart call for (which, with the quota held here in AGREEMENT_QUOTA, pins verify.py's mixed-mode
-# range, its 256-roll bound and its face rule);
-# each ceremony's C, seed bits, words and seal against their definitions; D with one digit changed, refused before
-# the rolls are read (the C/D mismatch no case reaches); every insert line against braille.json's positions and words
-# (the slots past position 01 too); and Coldcard's scripts on the dice-only subset. Each rule names its first few
-# failing cases, then how many more.
+# cannot re-baseline them away: the coverage counts; each refusal at its planned boundary (the minimum - 1 rolls, 257
+# rolls, one face of 0 or 7, or a 98-roll restart), and its core error and verify.py verdict against those its rolls,
+# mode and restart call for (which, with the quota held here in AGREEMENT_QUOTA, pins verify.py's mixed-mode range,
+# its 256-roll bound and its face rule); each ceremony's C, seed bits, words and seal against their definitions; D
+# with one digit changed, refused before the rolls are read (the C/D mismatch no case reaches); every insert line
+# against braille.json's positions and words (the slots past position 01 too); and Coldcard's scripts on the
+# dice-only subset. Each rule names its first few failing cases, then how many more.
 AGREEMENT_SHOWN_PROBLEMS = 5
 
 
@@ -5230,19 +5230,48 @@ def agreement_coverage_problems(doc):
     return problems
 
 
-def agreement_refusal_problems(doc):
-    """Check 13 over the regenerated refusals: each case's core error and step, and verify.py's verdict, must be those
-    its rolls, mode and restart call for, worked out here apart from the generator and from verify.py (the quota is
-    AGREEMENT_QUOTA); each stub must be exactly the bytes core reads; and the verdict counts must be
-    AGREEMENT_VERDICTS. [problem]."""
+def agreement_refusal_plan():
+    """The 28 refusals AGREEMENT_SPEC plans, each at its boundary of AGREEMENT_QUOTA, worked out here apart from the
+    generator: {name: (length, mode, platform, a restart, the faces outside 1-6, the roll counts it may hold)}. For
+    each combination the minimum - 1 rolls, 257 rolls, and an in-range count with one face of 0 (even combinations)
+    or 7 (odd ones); then a restart after a collision with one roll fewer than core's minimum after a collision (98)
+    for 12 words, in each mode on each platform."""
     quota = dict(AGREEMENT_QUOTA)
     maximum = quota["max_rolls"]
-    problems = []
+    plan = {}
+    for number, (length, mode, platform) in enumerate(AGREEMENT_COMBINATIONS):
+        minimum, combination = quota["min_rolls_%d_words" % length], "%d-%s-%s" % (length, mode, platform)
+        face = "07"[number % 2]
+        plan[combination + "-short"] = (length, mode, platform, False, [], range(minimum - 1, minimum))
+        plan[combination + "-257"] = (length, mode, platform, False, [], range(maximum + 1, maximum + 2))
+        plan[combination + "-face-" + face] = (length, mode, platform, False, [face], range(minimum, maximum + 1))
+    restart = range(quota["min_rolls_after_collision"] - 1, quota["min_rolls_after_collision"])
+    for mode in ("mixed", "dice_only"):
+        for platform in ("pi", "phone"):
+            plan["12-%s-%s-restart-98" % (mode, platform)] = (12, mode, platform, True, [], restart)
+    return plan
+
+
+def agreement_refusal_problems(doc):
+    """Check 13 over the regenerated refusals: they must be agreement_refusal_plan's 28, each once and at its
+    boundary; each case's core error and step, and verify.py's verdict, must be those its rolls, mode and restart call
+    for, worked out here apart from the generator and from verify.py (the quota is AGREEMENT_QUOTA); each stub must be
+    exactly the bytes core reads; and the verdict counts must be AGREEMENT_VERDICTS. [problem]."""
+    quota = dict(AGREEMENT_QUOTA)
+    maximum = quota["max_rolls"]
+    planned = agreement_refusal_plan()
+    problems = ([] if sorted(case["name"] for case in doc["refusals"]) == sorted(planned)
+                else ["not the %d planned refusals, each once" % len(planned)])
     for case in doc["refusals"]:
         rolls, restart, mixed = case["rolls"], case["first"] is not None, case["mode"] == "mixed"
         shown = quota["min_rolls_%d_words" % case["length"]]  # the verifier's minimum: it cannot see a restart
         minimum = quota["min_rolls_after_collision"] if restart else shown
         bad = [at for at, face in enumerate(rolls, 1) if face not in "123456"]
+        faces, plan = [rolls[at - 1] for at in bad], planned.get(case["name"])
+        if (plan is None or (case["length"], case["mode"], case["platform"], restart, faces) != plan[:5]
+                or len(rolls) not in plan[5]):
+            problems.append("%s: %d rolls with %s outside 1-6, not at its planned boundary"
+                            % (case["name"], len(rolls), faces or "no face"))
         if bad:
             core = {"error": "InvalidRoll", "step": "push_roll", "roll": bad[0]}
             verdict = {"verdict": "input-refused", "field": "rolls", "position": bad[0]}
