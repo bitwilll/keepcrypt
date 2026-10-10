@@ -66,6 +66,10 @@
 #              TcpListener, UdpSocket. Not banned: "import Network" and NWPathMonitor (the offline
 #              check), and reading back a picked .age or .kcr file (rule 8):
 #              Data(contentsOf: URL(fileURLWithPath: path)), Data(contentsOf: pickedURL).
+#              In a .py file (tasks/todo.md M2 group 2, Q23), an import of socket, ssl, urllib,
+#              http, ftplib, smtplib, poplib, imaplib, telnetlib, xmlrpc, asyncio, webbrowser,
+#              requests, httpx or aiohttp, in the shapes Python random has under RNG. Anchored on
+#              the import, so a URL string such as "https://registry.invalid" passes.
 #   Clipboard  rule 5 and docs/mobile-apps.md ("Never offered: share sheet, copy"): clipboard APIs,
 #              plus UI that copies or shares: .textSelection( unless it is exactly
 #              .textSelection(.disabled), which the docs require (spaces around .disabled are
@@ -74,7 +78,9 @@
 #              ShareLink, UIActivityViewController, SelectionContainer, Intent.ACTION_SEND (and
 #              _MULTIPLE, SENDTO), and any line that names textIsSelectable, setTextIsSelectable
 #              or isTextSelectable, unless each one's value is the literal false: ="false",
-#              ">false<", (false) or "= false".
+#              ">false<", (false) or "= false". In a .py file (Q23): pyperclip, tkinter's
+#              clipboard_append and clipboard_get, and the tools pbcopy, pbpaste, xclip, xsel and
+#              wl-copy, anywhere a word starts with one.
 #   Rule1      rule 1 path check: getrandom in any .rs file is a hit, except in the core module
 #              core/src/source, in either file layout: source.rs or anything under source/. A
 #              look-alike such as core/src/sourcex.rs is another module. The games are no
@@ -155,12 +161,13 @@ usage: scripts/banned-api-check.sh [--selftest | DIR | --artifact TARGET FILE...
   --artifact  scan release artifacts built for TARGET: test markers, the test registry key, RNG
               symbols other than TARGET's OS import, and that import (see the script header)
   --selftest  run the fixtures in scripts/testdata/banned-api/ and scripts/testdata/artifact/
-Hits: RNG APIs (and the OS RNG read outside core/src/source), network APIs and hard-coded http URLs
-(outside registry/), clipboard, copy and share APIs, getrandom in a .rs file outside
-core/src/source, a core/src/lib.rs without #![forbid(unsafe_code)], in Rust under core/, ffi/ or
-pi/app/ a discarded result (_ =, an _name binding, drop or forget of a call), clippy as a cfg
-predicate and /dev/stdout, /dev/stderr or /dev/tty, include! (by any path or alias) or a path
-attribute in any .rs file, and a C #include of a file with a binary extension.
+Hits: RNG APIs (and the OS RNG read outside core/src/source), network APIs, Python network imports
+and hard-coded http URLs (outside registry/), clipboard, copy and share APIs and Python clipboard
+tools, getrandom in a .rs file outside core/src/source, a core/src/lib.rs without
+#![forbid(unsafe_code)], in Rust under core/, ffi/ or pi/app/ a discarded result (_ =, an _name
+binding, drop or forget of a call), clippy as a cfg predicate and /dev/stdout, /dev/stderr or
+/dev/tty, include! (by any path or alias) or a path attribute in any .rs file, and a C #include of
+a file with a binary extension.
 A directory symlink is refused. Exit 0 clean, 1 hits, 2 usage or read error.
 EOF
 }
@@ -282,6 +289,27 @@ network() {
     -- "$1"
 }
 
+# .py files only, outside registry/ like network() (tasks/todo.md M2 group 2, Q23): an import of a
+# network module, in the shapes rng() and pyrandom() give random: "import socket", "import os,
+# ssl", "import http.client", "from urllib.request import urlopen", "from gevent import (socket,
+# x)", "from gevent import(x, socket)", and a wrapped import line that holds only names and one of
+# them ("    urllib.request" after "import json, \", or "    socket," inside "from gevent import
+# ("). Anchored on the import, so the names pass in a URL such as "https://registry.invalid", in
+# other strings, as attributes and inside longer names. Grep cannot see __import__("socket"), an
+# attribute path such as getpass.os.system, or a subprocess running a network tool. For verify.py,
+# tasks/todo.md M2 group 3's check 12 (vectorgen.py --selftest) closes all three; vectorgen and
+# scripts/ keep this gate only.
+pynet='(socket|ssl|urllib|http|ftplib|smtplib|poplib|imaplib|telnetlib|xmlrpc|asyncio|webbrowser|requests|httpx|aiohttp)'
+pynetwork() {
+  grep -n -a -E \
+    -e "${L}import[[:space:]]+$pynet$R" \
+    -e "${L}import[[:space:](][(A-Za-z0-9_.,[:space:]]*,[[:space:]]*$pynet$R" \
+    -e "${L}import[[:space:]]*[(][[:space:]]*$pynet$R" \
+    -e "${L}from[[:space:]]+$pynet$R" \
+    -e "^[[:space:]]*([A-Za-z0-9_.]+([[:space:]]+as[[:space:]]+[A-Za-z0-9_]+)?[[:space:]]*,[[:space:]]*)*$pynet([.][A-Za-z0-9_]+)*([[:space:]]+as[[:space:]]+[A-Za-z0-9_]+)?[[:space:]]*([,)#]|\$)" \
+    -- "$1"
+}
+
 # Clipboard APIs, and UI that hands the words to copy or share (docs/mobile-apps.md, "Never offered:
 # share sheet, copy"). EnabledTextSelectability is the type a custom static such as .dragToCopy
 # needs. ACTION_SEND also matches _MULTIPLE and SENDTO. .textSelection( and textIsSelectable have
@@ -299,6 +327,18 @@ clipboard() {
     -e 'UIActivityViewController' \
     -e 'SelectionContainer' \
     -e 'ACTION_SEND' \
+    -- "$1"
+}
+
+# .py files only (Q23): pyperclip, tkinter's clipboard_append and clipboard_get, and the clipboard
+# tools pbcopy, pbpaste, xclip, xsel and wl-copy, anywhere on a line, since a subprocess names its
+# tool in a string. Each must start a word, so idxsel and maxclip pass, while a longer name such as
+# pyperclip3 or xclipboard hits.
+pyclipboard() {
+  grep -n -a -E \
+    -e "${L}pyperclip" \
+    -e "${L}clipboard_(append|get)" \
+    -e "${L}(pbcopy|pbpaste|xclip|xsel|wl-copy)" \
     -- "$1"
 }
 
@@ -456,7 +496,9 @@ EOF
     esac
     case $rel in *.py) report RNG pyrandom "$rel" ;; esac
     case $rel in registry/*) ;; *) report Network network "$rel" ;; esac
+    case $rel in registry/*) ;; *.py) report Network pynetwork "$rel" ;; esac
     report Clipboard clipboard "$rel"
+    case $rel in *.py) report Clipboard pyclipboard "$rel" ;; esac
     report Clipboard textselection "$rel"
     report Clipboard selectable "$rel"
     # Rule 1: only core/src/source may name getrandom ('*' in case also matches '/').

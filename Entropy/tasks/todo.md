@@ -2777,7 +2777,7 @@ Groups land in the order below. Vectors come before the core test that reads the
       3.12 and 3.9; canaries pass 54/54.
 
 **2. Python networking and clipboard in the banned-API gate (Q23; CLAUDE.md Commands "network and clipboard APIs")**
-- [ ] `scripts/banned-api-check.sh`, for `.py` files, dispatched like `pyrandom()`:
+- [x] `scripts/banned-api-check.sh`, for `.py` files, dispatched like `pyrandom()`:
       - network: `import` or `from` of `socket`, `ssl`, `urllib`, `http`, `ftplib`, `smtplib`, `poplib`, `imaplib`,
         `telnetlib`, `xmlrpc`, `asyncio`, `webbrowser`, `requests`, `httpx`, `aiohttp`. The pattern is anchored on
         the import, so a URL string such as `https://registry.invalid` stays quiet;
@@ -2788,6 +2788,12 @@ Groups land in the order below. Vectors come before the core test that reads the
         every module attribute outside its recorded list, and rule (e) fails any socket or process event in an
         audited run. vectorgen and `scripts/` keep the grep gate only.
       Proof: `--selftest` gains one hit and one near miss per pattern; the gate is clean on the tree.
+      Proof: commit 5. `banned-api-check.sh --selftest` passes 297/297 (251 before) under sh and dash: 19
+      `network-python-*` fixtures (each module, plus the parenthesised, no-space, backslash-continued and wrapped
+      import lines; each also clean under `registry/`) and 8 `clipboard-python-*` fixtures each give exactly one hit,
+      and `clean-near-misses/tools/verify/offline.py` holds a near miss for every pattern. The gate before this
+      commit finds none of the 27 hits, and a copy with the import anchor and word start removed hits 14 of its near
+      misses. The gate is clean on the tree (163 files).
 
 **3. Embedded known answers, startup guards and check 12 (rules 3, 5, 8, 10 and 12; build-plan.md "Release")**
 - [ ] verify.py `KNOWN_ANSWERS` and `known_answers()`. Every value is a literal in the file, and a comment names its
