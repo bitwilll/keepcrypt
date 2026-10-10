@@ -11,7 +11,11 @@ bytes core reads and writes; check 11 holds the two together):
       - KeepCrypt -> age: verify.py's writer encrypts each plaintext (armored, work factor 18, fresh file
         key, salt and nonce), and age decrypts it to the same bytes;
       - a wrong passphrase fails in age (non-zero exit, no output) and in the reader (WrongPassphrase);
-      - every file in vectors/age/age_cli_written.json decrypts in the reader and in age.
+      - every file in vectors/age/age_cli_written.json decrypts in the reader and in age;
+      - every age file in vectors/backup.json that the readers accept (the written files and the reader-only
+        armor variants) decrypts in age to its plaintext, so core and verify.py accept no file age refuses.
+        Each armor case the readers refuse (Backup(Armor)) is also given to age; one that age accepts is
+        printed as a note, not a failure, since a stricter reader is safe.
   scripts/age-interop.py --core [--age PATH]      all of the above, and core in both directions: age
       encrypts each plaintext (armored and binary) under a fresh passphrase and core's decrypt_backup
       reads it; core writes a fresh backup of each (work factor 18, its own OS randomness) and age
@@ -127,6 +131,11 @@ def plaintext_texts(doc):
     return {case["name"]: case["text"].encode("utf-8") for case in doc["plaintexts"]}
 
 
+def case_bytes(case):
+    """The bytes of a vectors entry: armored text in "file", anything else in "file_hex"."""
+    return case["file"].encode("utf-8") if "file" in case else bytes.fromhex(case["file_hex"])
+
+
 def reader_gives(verify, data, passphrase):
     """The reader's plaintext, or the name of its error."""
     try:
@@ -163,7 +172,7 @@ def check_live(verify, age, workdir):
             problems.append("KeepCrypt -> age %s: age accepted a wrong passphrase (exit %d)" % (name, code))
     committed = json.loads(CLI_VECTORS.read_text(encoding="ascii"))
     for case in committed["files"]:
-        data = case["file"].encode("utf-8") if "file" in case else bytes.fromhex(case["file_hex"])
+        data = case_bytes(case)
         passphrase = case["passphrase"].encode("ascii")
         if reader_gives(verify, data, passphrase) != texts[case["plaintext"]]:
             problems.append("%s %s: the reader does not decrypt it" % (CLI_VECTORS.name, case["name"]))
@@ -171,6 +180,33 @@ def check_live(verify, age, workdir):
         if code != 0 or out != texts[case["plaintext"]]:
             problems.append("%s %s: age does not decrypt it (exit %d)" % (CLI_VECTORS.name, case["name"], code))
     return problems
+
+
+def check_backup_json_files(age, workdir):
+    """backup.json's age files through age: every file the readers accept must decrypt to its plaintext.
+    Returns (problems, notes, how many age_files, how many armor refusals age also refuses, how many armor
+    refusals)."""
+    doc = backup_doc()
+    texts = plaintext_texts(doc)
+    problems, notes = [], []
+    for case in doc["age_files"]:
+        plaintext = texts[case["plaintext"]] if "plaintext" in case else bytes.fromhex(case["plaintext_hex"])
+        code, out = age_decrypt_file(age, case["passphrase"].encode("ascii"), case_bytes(case), workdir,
+                                     "vector-" + case["name"])
+        if code != 0 or out != plaintext:
+            problems.append("backup.json age_files %s: the readers accept it, age exits %d, plaintext %s"
+                            % (case["name"], code, "equal" if out == plaintext else "differs"))
+    armor = [case for case in doc["age_refused"] if case["error"] == "Backup(Armor)"]
+    refused_too = 0
+    for case in armor:
+        code, out = age_decrypt_file(age, case["passphrase"].encode("ascii"), case_bytes(case), workdir,
+                                     "refused-" + case["name"])
+        if code == 0 or out is not None:
+            notes.append("age accepts backup.json age_refused %s, which the readers refuse as Backup(Armor)"
+                         % case["name"])
+        else:
+            refused_too += 1
+    return problems, notes, len(doc["age_files"]), refused_too, len(armor)
 
 
 def check_core(verify, age, workdir):
@@ -263,17 +299,23 @@ def main(argv):
                 generate(verify, age, workdir)
                 return 0
             problems = check_live(verify, age, workdir)
+            vector_problems, notes, accepted, refused_too, armor = check_backup_json_files(age, workdir)
+            problems += vector_problems
             if args.core:
                 problems += check_core(verify, age, workdir)
         except (RuntimeError, OSError, subprocess.SubprocessError, verify.BackupRefused) as e:
             print("age-interop: FAIL: %s" % e)
             return 1
+    for note in notes:
+        print("note: %s" % note)
     for problem in problems:
         print("FAIL %s" % problem)
     if problems:
         return 1
     print("age-interop: ok: age -> KeepCrypt and KeepCrypt -> age at work factor 18, armored and binary; wrong "
           "passphrases refused by both; %s decrypted by both" % CLI_VECTORS.name)
+    print("age-interop: ok: age decrypted all %d backup.json age files the readers accept, and also refused %d of "
+          "the %d armor cases they refuse" % (accepted, refused_too, armor))
     if args.core:
         print("age-interop: ok: core read age's files (decrypt_backup), age read core's fresh work-factor-18 "
               "backups, and age refused a wrong passphrase")

@@ -236,7 +236,7 @@ digit was altered.
   24-word backups, a 4,096-byte chunk and reader-only armor variants, each with its inputs) and the
   refused files with the error each must give and whether the reader may run scrypt first, and the
   largest plaintext and armored file a backup can be. Core's backup tests and its Age known-answer
-  group read it.
+  group read it, and `scripts/age-interop.py` gives the age CLI every age file the readers accept.
 - `age/age_cli_written.json`: files written by the age CLI. Core's tests decrypt them, and
   `scripts/age-interop.py` decrypts them with `verify.py`'s reader and with the age CLI.
 

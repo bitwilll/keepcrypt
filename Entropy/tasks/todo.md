@@ -1529,6 +1529,13 @@ starts. Every item names its proof.
         `backup::tests::age_interop_files`: core's `decrypt_backup` reads files age wrote under fresh passphrases,
         and age decrypts core's fresh work-factor-18 backups to backup.json's plaintexts; a wrong passphrase fails
         in age. Run locally with age 1.3.2; the CI job (commit 27) runs it with Ubuntu's 1.1.1.
+        Review fix after commit 21: in every mode the script also gives the age CLI every backup.json age file the
+        readers accept (the written files and the reader-only armor variants) and fails unless each decrypts to
+        its plaintext, so a reader that accepts a file age refuses no longer goes unnoticed; against commit 21's
+        backup.json it fails on `abandon-12-8192-bytes` ("the readers accept it, age exits 1"). The armor cases
+        the readers refuse go to age too; one that age accepts is printed as a note, not a failure (stricter is
+        safe). With age 1.3.2: "age decrypted all 12 backup.json age files the readers accept, and also refused
+        15 of the 15 armor cases they refuse".
 
 **9. session** (build-plan.md "Public API" as refined by Q5; CLAUDE.md rule 6; seal-watchonly-braille.md "Ceremony
 order", "Go-ahead before reveal")
