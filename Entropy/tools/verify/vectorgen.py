@@ -46,7 +46,7 @@ expected values come from verify.py's verification_run and render, plus its chec
 register_url, with n taken from the stub; a refusal's core error and step are worked out here from its
 rolls, and its verdict comes from the run. Check 13 regenerates it and checks its coverage, each
 refusal's verdict, its seeds and seals against their definitions, and Coldcard's scripts on its
-dice-only subset.
+dice-only subset, and holds those rules to controls that must fire.
 
 The only outside code it runs is Coldcard's public-domain rolls.py and rolls12.py, committed
 unmodified under vectors/coldcard/, and only after each file's SHA-256 equals its SOURCES.md
@@ -79,7 +79,8 @@ Usage (CI runs python3 -I tools/verify/vectorgen.py --selftest):
                                     agreement.json (its bytes, coverage counts, each refusal's core
                                     error and verify.py verdict, seed and seal against their
                                     definitions, a changed D refused before the rolls, inserts
-                                    against braille.json, Coldcard's scripts on its dice-only subset)
+                                    against braille.json, Coldcard's scripts on its dice-only subset,
+                                    and controls on its own rules)
   vectorgen.py --write-seal-vectors    regenerate vectors/seal.json
   vectorgen.py --write-kat-vectors     regenerate vectors/kat.json
   vectorgen.py --write-keepcrypt-vectors  regenerate vectors/keepcrypt.json
@@ -5156,8 +5157,36 @@ def check_verify_alone(vectors_dir, verify_py):
 # its 256-roll bound and its face rule); each ceremony's C, seed bits, words and seal against their definitions; D
 # with one digit changed, refused before the rolls are read (the C/D mismatch no case reaches); every insert line
 # against braille.json's positions and words (the slots past position 01 too); and Coldcard's scripts on the
-# dice-only subset. Each rule names its first few failing cases, then how many more.
+# dice-only subset. Each rule names its first few failing cases, then how many more, and each is held to a control
+# that must fire (AGREEMENT_CONTROLS).
 AGREEMENT_SHOWN_PROBLEMS = 5
+# Check 13's controls on its own rules, as check 12 has on its own, each of which must fire: (rule, the planted
+# change, (section, case name, key path, a function of the old value) for the case changed in a copy of the doc, the
+# start of the problem the rule must give). The D-changed rule's control changes no case (no path): it runs with a
+# verification_run that recomputes C from the D given, as verify.py would without its C/D refusal.
+AGREEMENT_CONTROLS = (
+    ("coverage", "a stub one byte longer", ("ceremonies", "12-mixed-pi-000", ("stub", "length"), lambda n: n + 1),
+     "12 words, mixed, pi: each stub exactly the bytes core reads"),
+    ("refusals", "a verdict changed", ("refusals", "12-mixed-pi-short", ("verifier", "verdict"), lambda _: "warned"),
+     "12-mixed-pi-short: verify.py's verdict"),
+    ("refusals", "a roll past 257", ("refusals", "12-dice_only-pi-257", ("rolls",), lambda rolls: rolls + "1"),
+     "12-dice_only-pi-257: 258 rolls"),
+    ("refusals", "a restart's first stub one byte short",
+     ("refusals", "12-mixed-pi-restart-98", ("first", "stub", "length"), lambda n: n - 1),
+     "12-mixed-pi-restart-98: a stub is not exactly the bytes core reads"),
+    ("seed and seal", "a seal tag digit changed",
+     ("ceremonies", "12-mixed-pi-001", ("expect", "seal_tag_hex"),
+      lambda tag: "%x" % ((int(tag[0], 16) + 1) % 16) + tag[1:]),
+     "12-mixed-pi-001: seal_tag_hex"),
+    ("D changed", "a run without the C/D refusal", ("ceremonies", "12-mixed-pi-000", (), None),
+     "12-mixed-pi-000: not refused before its rolls"),
+    ("inserts against braille.json", "an insert line repeated in the next slot",
+     ("ceremonies", "12-mixed-pi-000", ("expect", "inserts"), lambda lines: lines[:1] * 2 + lines[2:]),
+     "12-mixed-pi-000 insert 02: "),
+    ("Coldcard's scripts", "the last of 257 rolls changed",
+     ("refusals", "12-dice_only-pi-257", ("rolls",), lambda rolls: rolls[:-1] + "%d" % (int(rolls[-1]) % 6 + 1)),
+     "12-dice_only-pi-257 (257 rolls) via vectors/coldcard/rolls12.py: printed"),
+)
 
 
 def first_problems(problems):
@@ -5335,16 +5364,16 @@ def agreement_seal_problems(doc):
     return problems
 
 
-def agreement_mismatch_problems(doc):
+def agreement_mismatch_problems(doc, run=verification_run):
     """Check 13: the n-th mixed ceremony, fed its C and its D with hex digit n mod 64 changed, must be refused "D does
-    not match C" before its rolls are read, with nothing computed, and render must end at that refusal. [problem]."""
+    not match C" by verification_run (or the run given) before its rolls are read, with nothing computed, and render
+    must end at that refusal. [problem]."""
     mixed = [case for case in doc["ceremonies"] if case["mode"] == "mixed"]
     problems = [] if mixed else ["no mixed ceremony"]
     for n, case in enumerate(mixed):
         d, at = case["expect"]["d_hex"], n % 64
         changed = d[:at] + "%x" % ((int(d[at], 16) + 1) % 16) + d[at + 1:]
-        report = verification_run(case["length"], [case["rolls"]], display_hex32(case["expect"]["c_hex"]),
-                                  display_hex32(changed))
+        report = run(case["length"], [case["rolls"]], display_hex32(case["expect"]["c_hex"]), display_hex32(changed))
         if ((report["refused"], report["rolls"], "words" in report) != ("D does not match C", None, False)
                 or render(report) != RUN_BANNER + "\nrefused: D does not match C\n"):
             problems.append("%s: not refused before its rolls" % case["name"])
@@ -5407,23 +5436,64 @@ def agreement_coldcard_problems(vectors_dir, doc):
     return problems
 
 
+def agreement_rules(vectors_dir, doc, run=verification_run):
+    """Check 13's rules over `doc`, as (rule, a function giving its problems); the D-changed rule runs `run`."""
+    return (
+        ("coverage", lambda: agreement_coverage_problems(doc)),
+        ("refusals", lambda: agreement_refusal_problems(doc)),
+        ("seed and seal", lambda: agreement_seal_problems(doc)),
+        ("D changed", lambda: agreement_mismatch_problems(doc, run)),
+        ("inserts against braille.json", lambda: agreement_insert_problems(vectors_dir, doc)),
+        ("Coldcard's scripts", lambda: agreement_coldcard_problems(vectors_dir, doc)),
+    )
+
+
+def agreement_control_problems(vectors_dir, doc):
+    """Check 13's controls on its own rules (AGREEMENT_CONTROLS), each of which must fire, taken from
+    agreement_rules as check 13 runs them. The coverage and refusal rules, which count over the whole doc, run on the
+    doc with the one case changed; the rules that compute run on the changed case alone. [problem]."""
+    def ignoring_c(length, roll_lines, c_text, d_text):
+        """verification_run with C recomputed from the D given: verify.py without its C/D refusal."""
+        return verification_run(length, roll_lines, display_hex32(commitment(parse_hex32("D", d_text)).hex()), d_text)
+
+    problems = []
+    for rule, planted, (section, name, path, change), want in AGREEMENT_CONTROLS:
+        case = json.loads(json.dumps([case for case in doc[section] if case["name"] == name][0]))
+        if path:
+            holder = case
+            for key in path[:-1]:
+                holder = holder[key]
+            holder[path[-1]] = change(holder[path[-1]])
+        if rule in ("coverage", "refusals"):
+            changed = dict(doc, **{section: [case if other["name"] == name else other for other in doc[section]]})
+        else:
+            changed = dict(doc, ceremonies=[], refusals=[])
+            changed[section] = [case]
+        run_rule = dict(agreement_rules(vectors_dir, changed, ignoring_c)).get(rule)
+        if run_rule is None:
+            problems.append("no rule %s" % rule)
+            continue
+        try:
+            found = run_rule()
+        except Exception as e:  # a rule that cannot read its control fails the control, named
+            problems.append("%s on %s: %s" % (rule, planted, type(e).__name__))
+            continue
+        if not any(problem.startswith(want) for problem in found):
+            problems.append("%s misses %s" % (rule, planted))
+    return problems
+
+
 def check_agreement_json(vectors_dir):
     """Check 13: the committed agreement.json must equal the regenerated text byte for byte, and the regenerated cases
-    must meet the rules above."""
+    must meet the rules above, each held to its controls."""
     try:
         text = agreement_vectors_json()
     except Exception as e:  # a run verify.py refuses or cannot compute fails the check, named
         return ["cannot regenerate vectors/agreement.json: %s: %s" % (type(e).__name__, e)]
     problems = check_generated_file(vectors_dir, "agreement.json", text, "--write-agreement-vectors")
     doc = json.loads(text)
-    rules = (
-        ("coverage", lambda: agreement_coverage_problems(doc)),
-        ("refusals", lambda: agreement_refusal_problems(doc)),
-        ("seed and seal", lambda: agreement_seal_problems(doc)),
-        ("D changed", lambda: agreement_mismatch_problems(doc)),
-        ("inserts against braille.json", lambda: agreement_insert_problems(vectors_dir, doc)),
-        ("Coldcard's scripts", lambda: agreement_coldcard_problems(vectors_dir, doc)),
-    )
+    rules = agreement_rules(vectors_dir, doc) + (
+        ("its own rules' controls", lambda: agreement_control_problems(vectors_dir, doc)),)
     for rule, found in rules:
         try:
             problems += ["%s: %s" % (rule, problem) for problem in first_problems(found())]
@@ -5467,7 +5537,7 @@ def selftest(vectors_dir, verify_py=VERIFY_PY, only=None):
          lambda: check_verify_alone(vectors_dir, verify_py)),
         ("vectors/agreement.json: file matches regenerated output, coverage counts, each refusal's core error and "
          "verify.py verdict, seed and seal against their definitions, a changed D refused before the rolls, inserts "
-         "against braille.json, Coldcard's own scripts on its dice-only subset",
+         "against braille.json, Coldcard's own scripts on its dice-only subset, its own rules' controls fire",
          lambda: check_agreement_json(vectors_dir)),
     )
     if only is not None and not 1 <= only <= len(checks):
@@ -5511,7 +5581,8 @@ def main(argv):
                       "against their sources and each changed in turn, its input cases and keepcrypt.json tie, a lone "
                       "copy, its fault twins and a planted module, audited, controls on its rules), agreement.json "
                       "(its bytes, coverage counts, each refusal's verdict, seed and seal against their definitions, a "
-                      "changed D refused, inserts against braille.json, Coldcard's scripts on its dice-only subset)")
+                      "changed D refused, inserts against braille.json, Coldcard's scripts on its dice-only subset, "
+                      "controls on its rules)")
     mode.add_argument("--write-seal-vectors", action="store_true", help="regenerate vectors/seal.json")
     mode.add_argument("--write-kat-vectors", action="store_true", help="regenerate vectors/kat.json")
     mode.add_argument("--write-keepcrypt-vectors", action="store_true", help="regenerate vectors/keepcrypt.json")
