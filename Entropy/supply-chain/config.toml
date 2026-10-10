@@ -19,12 +19,20 @@ url = "https://raw.githubusercontent.com/mozilla/supply-chain/main/audits.toml"
 [imports.zcash]
 url = "https://raw.githubusercontent.com/zcash/rust-ecosystem/main/supply-chain/audits.toml"
 
+[[exemptions.aead]]
+version = "0.6.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.arrayvec]]
 version = "0.7.8"
 criteria = "safe-to-deploy"
 
 [[exemptions.base58ck]]
 version = "0.1.101"
+criteria = "safe-to-deploy"
+
+[[exemptions.base64ct]]
+version = "1.8.3"
 criteria = "safe-to-deploy"
 
 [[exemptions.bech32]]
@@ -69,6 +77,18 @@ criteria = "safe-to-deploy"
 
 [[exemptions.cfg-if]]
 version = "1.0.5"
+criteria = "safe-to-deploy"
+
+[[exemptions.chacha20]]
+version = "0.10.2"
+criteria = "safe-to-deploy"
+
+[[exemptions.chacha20poly1305]]
+version = "0.11.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.cipher]]
+version = "0.5.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.cmov]]
@@ -139,6 +159,10 @@ criteria = "safe-to-deploy"
 version = "0.1.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.hkdf]]
+version = "0.13.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.hmac]]
 version = "0.13.0"
 criteria = "safe-to-deploy"
@@ -167,12 +191,28 @@ criteria = "safe-to-run"
 version = "13.1.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.pbkdf2]]
+version = "0.13.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.poly1305]]
+version = "0.9.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.proc-macro2]]
 version = "1.0.107"
 criteria = "safe-to-deploy"
 
 [[exemptions.r-efi]]
 version = "6.0.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.salsa20]]
+version = "0.11.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.scrypt]]
+version = "0.12.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.secp256k1]]
@@ -257,6 +297,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.unicode-ident]]
 version = "1.0.26"
+criteria = "safe-to-deploy"
+
+[[exemptions.universal-hash]]
+version = "0.6.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.windows-sys]]

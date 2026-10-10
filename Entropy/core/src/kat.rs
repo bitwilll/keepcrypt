@@ -11,9 +11,9 @@
 //!   itself is what fails; nothing short-circuits it.
 //! - Budget per full run: at most 3 PBKDF2-2048 (3 today: 2 BIP39 seeds, 1 Seal; the BIP84 group
 //!   starts from the S that the Seal group derives and checks, so it adds none), scrypt only at
-//!   log2 N 10 (a later group), at most 2 Ed25519 verifies (2 today, in the Ed25519 group), one
-//!   20-level Merkle path and never a full bucket root, and at most 1 s on a Pi Zero (an estimate;
-//!   M4 measures). The Health group tests 2,064 samples.
+//!   log2 N 10 (3 today, 1 MiB each, in the Age group), at most 2 Ed25519 verifies (2 today, in the
+//!   Ed25519 group), one 20-level Merkle path and never a full bucket root, and at most 1 s on a Pi
+//!   Zero (an estimate; M4 measures). The Health group tests 2,064 samples.
 //! - The known answers are copied from vectors/kat.json, vectors/bip39/vectors.json and the other
 //!   vectors files each group names, and the unit tests below check every one of them against
 //!   those files.
@@ -24,9 +24,10 @@ use ed25519_dalek::{Signature, VerifyingKey};
 use hmac::{KeyInit, Mac};
 use sha2::{Digest, Sha256, Sha512};
 
+use crate::backup::{age, armor};
 use crate::braille;
 use crate::descriptor;
-use crate::error::{CheckError, CoreError, HealthStage, HealthTest, KatId};
+use crate::error::{BackupError, CheckError, CoreError, HealthStage, HealthTest, KatId};
 use crate::health::HealthTester;
 use crate::pool::Pool;
 use crate::seal::{self, CheckNonce, SealCode, SealTag};
@@ -100,6 +101,7 @@ fn passes(id: KatId, fault: bool) -> bool {
         KatId::GoAhead => go_ahead_group(fault),
         KatId::Ed25519 => ed25519_group(fault),
         KatId::Merkle => merkle_group(fault),
+        KatId::Age => age_group(fault),
     }
 }
 
@@ -742,6 +744,71 @@ fn merkle_group(fault: bool) -> bool {
     )
 }
 
+// --- Age (vectors/age/scrypt: CCTV scrypt, armor_scrypt and scrypt_work_factor_23, whose SHA-256s
+// vectors/SOURCES.md pins; vectors/backup.json "cctv-scrypt") ------------------------------------
+// Three scrypt runs at work factor 10 (1 MiB each): armor_scrypt decrypts, the writer rebuilds the
+// file, and a wrong passphrase is refused. Work factor 23 must be refused before any scrypt work.
+
+/// The CCTV test files: a `key: value` header, an empty line, then the age file.
+const AGE_CCTV_SCRYPT: &[u8] = include_bytes!("../../vectors/age/scrypt/scrypt");
+const AGE_CCTV_ARMOR_SCRYPT: &[u8] = include_bytes!("../../vectors/age/scrypt/armor_scrypt");
+const AGE_CCTV_WORK_FACTOR_23: &[u8] =
+    include_bytes!("../../vectors/age/scrypt/scrypt_work_factor_23");
+const AGE_PASSPHRASE: &[u8] = b"password";
+const AGE_WRONG_PASSPHRASE: &[u8] = b"wrong";
+/// The CCTV scrypt case's file key ("file key"), salt (in its stanza), payload nonce, work factor
+/// and plaintext, from which the writer rebuilds the file, and the plaintext's SHA-256 ("payload").
+const AGE_FILE_KEY: [u8; 16] = unhex("59454c4c4f57205355424d4152494e45");
+const AGE_SALT: [u8; 16] = unhex("ac5d3f3706e55071d3a604204697b909");
+const AGE_NONCE: [u8; 16] = unhex("1b35c6e687dd00da3ac379ac9f742c21");
+const AGE_WORK_FACTOR: u8 = 10;
+const AGE_PLAINTEXT: &[u8] = b"age";
+const AGE_PAYLOAD_SHA256: [u8; 32] =
+    unhex("013f54400c82da08037759ada907a8b864e97de81c088a182062c4b5622fd2ab");
+
+/// The age file inside a CCTV test file: everything after the first empty line, or nothing.
+fn cctv_file(test_file: &[u8]) -> &[u8] {
+    match test_file.windows(2).position(|pair| pair == b"\n\n") {
+        Some(at) => &test_file[at + 2..],
+        None => &[],
+    }
+}
+
+fn age_group(fault: bool) -> bool {
+    let binary = cctv_file(AGE_CCTV_SCRYPT);
+    let armored = cctv_file(AGE_CCTV_ARMOR_SCRYPT);
+    let decrypted = match age::decrypt(armored, AGE_PASSPHRASE) {
+        Ok(plaintext) => {
+            same(
+                Sha256::digest(&*plaintext).as_slice(),
+                &AGE_PAYLOAD_SHA256,
+                fault,
+            ) & same(&plaintext, AGE_PLAINTEXT, false)
+        }
+        Err(_) => false,
+    };
+    let secrets = age::FileSecrets::new(&AGE_FILE_KEY, &AGE_SALT, &AGE_NONCE);
+    let written = match age::encrypt(AGE_PASSPHRASE, &secrets, AGE_WORK_FACTOR, AGE_PLAINTEXT) {
+        Ok(file) => {
+            same(&file, binary, false)
+                & match armor::encode(&file) {
+                    Ok(text) => same(&text, armored, false),
+                    Err(_) => false,
+                }
+        }
+        Err(_) => false,
+    };
+    let wrong = matches!(
+        age::decrypt(binary, AGE_WRONG_PASSPHRASE),
+        Err(CoreError::WrongPassphrase)
+    );
+    let too_slow = matches!(
+        age::decrypt(cctv_file(AGE_CCTV_WORK_FACTOR_23), AGE_PASSPHRASE),
+        Err(CoreError::Backup(BackupError::WorkFactor))
+    );
+    decrypted & written & wrong & too_slow
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1070,6 +1137,47 @@ mod tests {
         assert_eq!(bytes(text(path, "root_hex")), MERKLE_ROOT);
         let seal = vectors("seal.json");
         assert_eq!(seal["vectors"][0]["lookup_prefix"], "2b810");
+    }
+
+    // The Age group's constants are backup.json's "cctv-scrypt" inputs, and its payload hash and file
+    // key are what the CCTV file states; the three included files are the committed CCTV files.
+    #[test]
+    fn age_constants_match_backup_json_and_cctv() {
+        let doc = vectors("backup.json");
+        let case = crate::test_vectors::named(&doc["age_files"], "cctv-scrypt");
+        assert_eq!(bytes(text(case, "file_key_hex")), AGE_FILE_KEY);
+        assert_eq!(bytes(text(case, "salt_hex")), AGE_SALT);
+        assert_eq!(bytes(text(case, "nonce_hex")), AGE_NONCE);
+        assert_eq!(bytes(text(case, "plaintext_hex")), AGE_PLAINTEXT);
+        assert_eq!(text(case, "passphrase").as_bytes(), AGE_PASSPHRASE);
+        assert_eq!(case["work_factor"], u64::from(AGE_WORK_FACTOR));
+        assert_eq!(bytes(text(case, "file_hex")), cctv_file(AGE_CCTV_SCRYPT));
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../vectors/age/scrypt");
+        for (name, included) in [
+            ("scrypt", AGE_CCTV_SCRYPT),
+            ("armor_scrypt", AGE_CCTV_ARMOR_SCRYPT),
+            ("scrypt_work_factor_23", AGE_CCTV_WORK_FACTOR_23),
+        ] {
+            assert_eq!(
+                std::fs::read(dir.join(name)).expect("read"),
+                included,
+                "{name}"
+            );
+        }
+        let header = std::str::from_utf8(
+            &AGE_CCTV_SCRYPT[..AGE_CCTV_SCRYPT.len() - cctv_file(AGE_CCTV_SCRYPT).len()],
+        )
+        .expect("ASCII header");
+        assert!(header.contains(&format!("payload: {}\n", text_hex(&AGE_PAYLOAD_SHA256))));
+        assert!(header.contains(&format!("file key: {}\n", text_hex(&AGE_FILE_KEY))));
+        assert!(header.contains("passphrase: password\n"));
+        assert!(cctv_file(b"no empty line").is_empty());
+    }
+
+    fn text_hex(bytes: &[u8]) -> String {
+        let mut out = String::new();
+        crate::seal::push_hex(&mut out, bytes);
+        out
     }
 
     #[test]

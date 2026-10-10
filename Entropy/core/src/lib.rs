@@ -6,6 +6,7 @@
 
 #![forbid(unsafe_code)]
 
+mod backup;
 mod braille;
 mod descriptor;
 mod dice;

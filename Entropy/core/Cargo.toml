@@ -15,6 +15,16 @@ sha2 = { version = "0.11.0", features = ["zeroize"] }
 # MAC and HKDF. zeroize wipes the keyed state on drop; ctutils is held at 0.4.2 by
 # `cargo update --precise` (0.4.3 is inside the 14-day cool-off).
 hmac = { version = "0.13.0", default-features = false, features = ["zeroize"] }
+# The age v1 backup, scrypt stanza only, written in core (tasks/todo.md, M1 Q1, table A): scrypt for the
+# stanza's wrap key (r = 8, p = 1; no features, so password-hash, getrandom and rand_core stay out),
+# ChaCha20-Poly1305 for the key wrap and the payload (default-features = false turns off its getrandom
+# and alloc; zeroize wipes the cipher keys on drop), HKDF-SHA256 for the header and payload keys, and
+# base64ct for strict canonical base64 (unpadded in the header, padded in the armor). Core uses the
+# in-out AEAD calls and slice encoding, so neither needs alloc.
+scrypt = { version = "0.12.0", default-features = false }
+chacha20poly1305 = { version = "0.11.0", default-features = false, features = ["zeroize"] }
+hkdf = { version = "0.13.0", default-features = false }
+base64ct = { version = "1.8.3", default-features = false }
 # Ed25519 signature verification only, verify_strict, for registry snapshots and bucket proofs
 # (tasks/todo.md, M1 Q3, table B). No features: `fast` (precomputed tables) and `zeroize` (signing
 # keys) are its defaults and stay off; rand_core, batch, legacy_compatibility and hazmat are never

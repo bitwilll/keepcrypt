@@ -203,6 +203,11 @@ pub enum KatId {
     /// The bucket tree: an empty leaf, a node and seal vector 1's path to its root. Never a full root.
     #[error("Merkle")]
     Merkle,
+    /// age v1 with one scrypt stanza, at work factor 10: CCTV's armor_scrypt decrypts to its stated
+    /// payload, the writer rebuilds CCTV's scrypt and armor_scrypt from their inputs, a wrong
+    /// passphrase is refused, and work factor 23 is refused before any scrypt work.
+    #[error("age")]
+    Age,
 }
 }
 
@@ -513,6 +518,7 @@ mod tests {
             KatId::GoAhead => "go-ahead code",
             KatId::Ed25519 => "Ed25519",
             KatId::Merkle => "Merkle",
+            KatId::Age => "age",
         }
     }
 

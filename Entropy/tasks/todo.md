@@ -771,6 +771,10 @@ starts. Every item names its proof.
       Every valid snapshot costs one such pass, so the default unit run takes about 11 s, the test-sources unit run
       about 17 s and tests/kcr.rs about 11 s more. CI runners are slower; the log2 N 18 round trip is timed at
       commit 20.
+      Measured at commit 20 (same machine and profiles): `backup::age::tests::a_round_trip_at_work_factor_18`, one
+      12-word backup written and read back at log2 N 18 (two scrypt runs, 256 MiB each, scrypt at opt-level 3),
+      takes 0.61-0.62 s in three runs. The Age known-answer group adds three scrypt runs at log2 N 10 to every
+      session start. No profile change.
 - [ ] Each new crate lands in the commit of the module that first uses it, with its cargo-vet entry, exactly as in the
       dependency table (Q1-Q4): 44 lock entries in all.
       - `cargo update --precise` holds back ctutils 0.4.2, toml 1.1.6, toml_parser 1.1.3, toml_datetime 1.1.1,
@@ -1406,6 +1410,21 @@ starts. Every item names its proof.
       - the writer reproduces CCTV `scrypt` and `armor_scrypt` byte for byte from fixed inputs;
       - our negatives, including trailing garbage on the work factor (`10aaaa`) and after the payload (this file,
         "Inputs from M0").
+      As built at commit 20:
+      - Every refused file in backup.json gives its exact error, and a thread-local count of scrypt runs proves
+        that each case backup.json marks `scrypt: false` (everything the header, the stanza and the payload's
+        length refuse) is refused before any scrypt work. A header with no scrypt stanza is no match
+        (`WrongPassphrase`), as CCTV `scrypt_uppercase` expects. The armor is detected by `-----BEGIN` after
+        leading space, tab, CR or LF, so a BOM before it is read as a binary file (`Header`).
+      - Mutation testing showed no case with an armor last line over 64 characters (the 63- and 65-column cases
+        are caught by the full-line rule alone); a verify commit before this one added `armor-last-line-long`.
+      - The writer refuses work factors outside 1-18 and plaintexts over 4 KiB (`Internal(Length)`), so it writes
+        only what the reader reads; no single flipped bit of a binary backup is accepted.
+      - chacha20poly1305 and base64ct are built without `alloc` (table A lists it): core uses the in-out AEAD calls
+        and slice encoding, which need no allocation. The lock entries are the same either way.
+      - Residual risk, for the owner's review (not yet accepted; Q1 (iii) accepted only scrypt's buffers): HKDF's
+        extract step keeps copies of the pseudorandom key, derived from the file key, in its own frames (the copy
+        it returns is wiped), and the header MAC's hmac leaves its padded key block, as recorded in group 7.
 - [ ] `backup/passphrase.rs` (build-plan.md "Passphrase"; pi-firmware.md USB steps 1-2; mobile-apps.md "Encrypted
       backup only"; Q6e):
       - 11 fresh OS bytes, cut into 8 indices of 11 bits;
