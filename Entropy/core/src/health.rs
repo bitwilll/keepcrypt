@@ -3,7 +3,7 @@
 //!
 //! - alpha = 2^-20 and H = 4 until lab data (CLAUDE.md "Pi device quota"). Repetition Count cutoff
 //!   1 + ceil(20 / H) = 6. Adaptive Proportion window 512 (samples are bytes, not bits) and cutoff
-//!   1 + CRITBINOM(512, 2^-4, 1 - 2^-20) = 62. verify.py check 7 recomputes both exactly.
+//!   1 + CRITBINOM(512, 2^-4, 1 - 2^-20) = 62. vectorgen.py check 7 recomputes both exactly.
 //! - The tester streams: its state carries across calls, so any chunking gives the same verdict.
 //! - The first 1,024 samples of every tester (at boot, and at the start of each session's hwrng
 //!   intake) run both tests and are then discarded: `test` reports where the post-startup samples

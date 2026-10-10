@@ -508,7 +508,7 @@ mod tests {
     }
 
     // keepcrypt.json's dice-only cases (Coldcard's rolls.py and rolls12.py re-run on each by
-    // verify.py check 4), and vectors/coldcard/rolls.json itself.
+    // vectorgen.py check 4), and vectors/coldcard/rolls.json itself.
     #[test]
     fn dice_only_matches_coldcard() {
         let doc = keepcrypt_json();

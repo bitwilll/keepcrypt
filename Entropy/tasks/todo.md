@@ -2748,7 +2748,7 @@ Groups land in the order below. Vectors come before the core test that reads the
       - age-interop passes in its default mode and with `--core`; canaries pass 54/54; CI is green on the commit;
       - verify.py imports none of `json`, `os`, `pathlib`, `subprocess`, `tempfile`, `math`, `stat` or `zlib`, and
         both files' line counts are recorded.
-- [ ] Provenance, in the next commit (Q16 (b); lessons.md rule 1, so every committed value still names the script
+- [x] Provenance, in the next commit (Q16 (b); lessons.md rule 1, so every committed value still names the script
       that makes it):
       - vectorgen's seven `description` strings name `tools/verify/vectorgen.py --write-X-vectors` and
         `vectorgen.py --selftest`. The seven files are regenerated.
@@ -2770,6 +2770,11 @@ Groups land in the order below. Vectors come before the core test that reads the
       - `cargo test` passes in both configurations, and checks 1-11 pass;
       - `git grep -nE 'verify\.py (--write|--selftest|check [0-9])' -- core vectors` finds only the recorded
         age_cli_written.json sentence.
+      Proof: commit 4. Each of the seven regenerated files equals its old bytes with `description` blanked, and
+      `git diff -U0` changes line 2 only; age_cli_written.json keeps SHA-256 `29ba3cbc…`; `git diff -U0 -- core`
+      changes only `//` lines; the grep finds the age_cli_written.json sentence and SOURCES.md's quotation of it;
+      `cargo test` passes in both configurations (183 and 251 tests); vectorgen.py `--selftest` passes 11/11 on
+      3.12 and 3.9; canaries pass 54/54.
 
 **2. Python networking and clipboard in the banned-API gate (Q23; CLAUDE.md Commands "network and clipboard APIs")**
 - [ ] `scripts/banned-api-check.sh`, for `.py` files, dispatched like `pyrandom()`:

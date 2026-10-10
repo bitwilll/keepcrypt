@@ -1,5 +1,6 @@
 //! Test support: read the committed vectors (vectors/*.json) as `serde_json::Value`. Unit tests
-//! only; every computed value they compare against comes from tools/verify/verify.py.
+//! only; every computed value they compare against comes from tools/verify/ (vectorgen.py,
+//! computing with verify.py).
 #![cfg(test)]
 
 use serde_json::Value;

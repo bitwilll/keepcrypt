@@ -5,7 +5,7 @@
 //!   `NoRegistryKey` and only the typed go-ahead code works.
 //! - Under the `test-registry` feature (which `test-sources` turns on, never the reverse), the key
 //!   is the public half of the Ed25519 key whose 32-byte seed is SHA-256("KCE/test/registry-key/v1"),
-//!   the key tools/verify/verify.py signs vectors/kcr.json with. The key bytes and the marker
+//!   the key tools/verify/vectorgen.py signs vectors/kcr.json with. The key bytes and the marker
 //!   `KC_TEST_REGISTRY_DO_NOT_SHIP` exist only under that feature. Both are `#[used]` statics that
 //!   pass through `core::hint::black_box` on the key-selection path, and the key is read back
 //!   through it, so any linked artifact that can select the key holds the marker and the key's 32
@@ -113,7 +113,7 @@ mod tests {
         ));
     }
 
-    // The label keys are the public halves of their seeds, as verify.py says.
+    // The label keys are the public halves of their seeds, as vectorgen.py says.
     #[test]
     fn the_keys_are_the_labels_public_halves() {
         use sha2::{Digest, Sha256};
