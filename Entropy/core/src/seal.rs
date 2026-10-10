@@ -174,6 +174,20 @@ pub struct SealPublic {
 }
 
 impl SealPublic {
+    /// No seal yet: a zero tag and empty text. The session holds one until `finish` derives the
+    /// real seal, so it has no `Option` to unwrap; no state before `Sealed` can read it.
+    pub(crate) const fn empty() -> Self {
+        Self {
+            tag: SealTag([0; 32]),
+            seal_id: String::new(),
+            seal_id_braille: String::new(),
+            lookup_prefix: String::new(),
+            grid: [[false; 8]; 8],
+            colour_index: 0,
+            recheck_url: String::new(),
+        }
+    }
+
     /// T, computed over the code's 26 characters without dashes, then everything drawn from it.
     pub(crate) fn from_code(code: &SealCode) -> Result<Self, CoreError> {
         let tag = SealTag(
@@ -281,8 +295,7 @@ pub(crate) fn push_hex(out: &mut String, bytes: &[u8]) {
 }
 
 /// The seal of a BIP39 seed S (empty passphrase): the code, filled in place, and its public half.
-/// `seal_from_mnemonic`, the Seal known-answer group and, from M1 group 9, `Session::finish` derive
-/// it this way.
+/// `seal_from_mnemonic`, the Seal known-answer group and `Session::finish` derive it this way.
 pub(crate) fn derive_seal(
     seed: &EmptyPassphraseSeed,
     code: &mut SealCode,

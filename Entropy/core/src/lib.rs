@@ -55,8 +55,8 @@ pub use secret::{
     SecretMnemonic, TypedBackupPassphrase,
 };
 pub use session::{
-    Checking, Collecting, Committed, Mode, Platform, Ready, Rolling, Sealed, SeedLength, Session,
-    State,
+    Checking, Collecting, Committed, Discard, GoAhead, Mode, Platform, Ready, Rejected, Rolling,
+    Sealed, SeedLength, Session, State, Wiped,
 };
 pub use source::{ExtraSource, HW_BYTES_NEEDED};
 #[cfg(feature = "test-sources")]

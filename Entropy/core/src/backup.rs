@@ -375,8 +375,12 @@ mod tests {
         new.words().collect::<Vec<_>>().join(" ")
     }
 
+    /// A Ready session holding these words on the OS source, every word read back.
     fn ready(mnemonic: &str) -> Session<Ready> {
-        Session::<Ready>::ready_for_test(&indices(mnemonic), Source::Os).expect("a Ready session")
+        let mut session = Session::<Ready>::ready_for_test(&indices(mnemonic), Source::Os)
+            .expect("a Ready session");
+        session.read_back_every_word_for_test();
+        session
     }
 
     fn plaintext_case<'a>(doc: &'a Value, name: &str) -> &'a Value {
@@ -920,7 +924,10 @@ mod tests {
 
         fn stub_ready(mnemonic: &str, bytes: Vec<u8>, probe: &WipeProbe) -> Session<Ready> {
             let source = Source::Stub(StubSource::new(StubEntropy::Fixed(bytes), probe));
-            Session::<Ready>::ready_for_test(&indices(mnemonic), source).expect("Ready")
+            let mut session =
+                Session::<Ready>::ready_for_test(&indices(mnemonic), source).expect("Ready");
+            session.read_back_every_word_for_test();
+            session
         }
 
         // generate_backup_passphrase reads exactly backup.json's bytes and gives its passphrase
@@ -1060,11 +1067,12 @@ mod tests {
             ] {
                 let probe = WipeProbe::new();
                 let source = Source::Stub(StubSource::new(entropy, &probe));
-                let session = Session::<Ready>::ready_for_test(
+                let mut session = Session::<Ready>::ready_for_test(
                     &indices("zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong"),
                     source,
                 )
                 .expect("Ready");
+                session.read_back_every_word_for_test();
                 let result = session.generate_backup_passphrase();
                 assert!(matches!(result, Err(CoreError::Source(_))));
                 assert_eq!(probe.wipes(), 1);

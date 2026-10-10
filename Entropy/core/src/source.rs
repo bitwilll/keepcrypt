@@ -26,10 +26,6 @@ use crate::health::{APT_WINDOW, CreditedSamples, STARTUP_SAMPLES};
 use crate::session::{Mode, Platform};
 
 /// OS bytes read at commit and absorbed last (CLAUDE.md "Pi device quota"; Q6a).
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "used by the session (M1 group 9)")
-)]
 pub(crate) const OS_BYTES: usize = 64;
 /// hwrng credit until lab data: 4 bits per byte, half of what Linux assumes (docs/design.md).
 pub(crate) const HWRNG_BITS_PER_BYTE: u32 = 4;
@@ -63,16 +59,8 @@ pub(crate) enum SourceId {
     /// The OS random source: 0x0001.
     Os,
     /// Health-tested raw hwrng samples: 0x0002. (0x0003 is reserved for the M8 TRNG.)
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "used by the session (M1 group 9)")
-    )]
     Hwrng,
     /// An uncredited extra: 0x0101 to 0x0104.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "used by the session (M1 group 9)")
-    )]
     Extra(ExtraSource),
 }
 
@@ -94,10 +82,6 @@ impl SourceId {
 /// The credited device-leg bits a session needs before `commit` (docs/build-plan.md "Credit
 /// policy"): health-tested hwrng on the Pi, the OS read by policy on a phone, none in dice-only
 /// mode.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "used by the session (M1 group 9)")
-)]
 pub(crate) const fn required_bits(platform: Platform, mode: Mode) -> u32 {
     match (mode, platform) {
         (Mode::DiceOnly, _) => 0,
@@ -108,10 +92,6 @@ pub(crate) const fn required_bits(platform: Platform, mode: Mode) -> u32 {
 
 /// Bits credited by policy to the OS read at commit: the whole phone quota, none on the Pi, whose
 /// quota is hwrng only.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "used by the session (M1 group 9)")
-)]
 pub(crate) const fn os_policy_bits(platform: Platform) -> u32 {
     match platform {
         Platform::Pi => 0,
@@ -123,20 +103,12 @@ pub(crate) const fn os_policy_bits(platform: Platform) -> u32 {
 /// credit 2,048 bits, more than the 512 required (Q13 c). Only a `HealthTester` can count them
 /// (`CreditedSamples`), so a partial window is never credited (Q7). Saturates, so a huge count
 /// could only overstate a quota already met, never wrap below it.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "used by the session (M1 group 9)")
-)]
 pub(crate) fn hwrng_credited_bits(samples: CreditedSamples) -> u64 {
     samples.get().saturating_mul(u64::from(HWRNG_BITS_PER_BYTE))
 }
 
 /// Whether the device leg meets its quota once the OS read at commit is counted. The hwrng credit
 /// comes only from the session's `HealthTester` (`CreditedSamples`), never from a raw count.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "used by the session (M1 group 9)")
-)]
 pub(crate) fn quota_met(platform: Platform, mode: Mode, credited: CreditedSamples) -> bool {
     let credited =
         hwrng_credited_bits(credited).saturating_add(u64::from(os_policy_bits(platform)));

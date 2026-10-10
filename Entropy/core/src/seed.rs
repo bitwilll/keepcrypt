@@ -20,12 +20,7 @@
 //! bip39's `to_seed_normalized` returns S, which is wrapped in `Zeroizing` at once, and
 //! rust-bitcoin's key derivation keeps copies in its own frames (see `wallet_summary`). That
 //! residual is recorded in tasks/todo.md (M1 group 4) for the owner.
-//! The words, S and the wallet summary are derived once, in `finish` (M1 group 9); until the
-//! session calls them, only the commitment and E have a caller outside the tests (the Seed KAT).
-#![cfg_attr(
-    not(test),
-    expect(dead_code, reason = "Session::finish derives the words (M1 group 9)")
-)]
+//! The session derives C at `commit` and E, the words, S and the wallet summary once, in `finish`.
 
 use bitcoin::bip32::{ChildNumber, Fingerprint, Xpriv, Xpub};
 use bitcoin::secp256k1::{Secp256k1, Signing};

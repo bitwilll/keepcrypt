@@ -2,7 +2,7 @@
 //! continuously"; tasks/todo.md, M1 group 2).
 //!
 //! - `self_test` serves the Pi and phone boot screens (pi-firmware.md step 1, mobile-apps.md
-//!   step 2); `Session::new` (and, from M1 group 9, `Wiped::restart`) runs the same suite.
+//!   step 2); `Session::new` and `Wiped::restart` run the same suite.
 //! - Each module adds its `KatId` group when it lands. The free functions that run KAT groups are
 //!   thin wrappers over one crate-private body taking `Option<KatId>`; under `test-sources` each
 //!   has a `*_with_kat_fault` twin that calls the same body, and `groups` is the one exhaustive

@@ -32,14 +32,7 @@ pub struct CheckNonce([u8; 8]);
 
 impl CheckNonce {
     /// A fresh nonce from the session's source, in a read of its own (never the pool). A source
-    /// failure is an `Err`, which wipes the session that asked.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "Session::start_check draws the nonce (M1 group 9)"
-        )
-    )]
+    /// failure is an `Err`, which wipes the session that asked (`Session::start_check`).
     pub(crate) fn draw(source: &mut Source) -> Result<Self, CoreError> {
         let bytes = source.os_bytes::<8>()?;
         Ok(Self(*bytes))
@@ -64,11 +57,7 @@ pub struct CheckRequest {
 }
 
 impl CheckRequest {
-    /// The request for this seal and nonce.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "Session::check_request builds it (M1 group 9)")
-    )]
+    /// The request for this seal and nonce (`Session::check_request`).
     pub(crate) fn new(tag: &SealTag, nonce: &CheckNonce) -> Self {
         let mut url = String::with_capacity(
             REGISTRY_ORIGIN.len() + CHECK_PATH.len() + 64 + NONCE_KEY.len() + 16,
@@ -198,7 +187,7 @@ mod tests {
     }
 
     // A typo keeps the check alive: the same function then accepts the right code (the session's
-    // Retry is M1 group 9).
+    // `Rejected::Retry` keeps the same nonce).
     #[test]
     fn a_malformed_code_then_the_right_one() {
         let doc = read("seal.json");

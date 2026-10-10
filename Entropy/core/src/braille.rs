@@ -221,13 +221,6 @@ pub struct BrailleInserts<'s> {
     mnemonic: &'s SecretMnemonic,
 }
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "Session<Ready>::check_readback uses readback (M1 group 9)"
-    )
-)]
 impl<'s> BrailleInserts<'s> {
     pub(crate) fn new(mnemonic: &'s SecretMnemonic) -> Self {
         Self { mnemonic }

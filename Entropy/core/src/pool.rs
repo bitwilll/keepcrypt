@@ -129,7 +129,7 @@ mod tests {
     }
 
     // The same pool over the source-substitution sessions' records (the session maps events to
-    // these records in M1 group 9).
+    // these records; tests/source_substitution.rs drives it).
     #[test]
     fn source_substitution_records_give_their_d() {
         let doc = keepcrypt_json();

@@ -113,7 +113,8 @@ impl SecretMnemonic {
 
 impl SecretMnemonic {
     /// Fills in place from the bip39 crate's word indices: exactly 12 or 24, each below 2,048.
-    /// The session's finish (M1 group 9) and the Seal known-answer group fill the words this way.
+    /// `seed::mnemonic_and_seed_into` (the session's `finish`) and the Seal known-answer group
+    /// fill the words this way.
     /// Anything else leaves it zeroed and is `Internal(Bip39)`.
     pub(crate) fn fill_from(
         &mut self,
@@ -165,13 +166,7 @@ impl Bip39Passphrase {
         Ok(Self(SecretString::from(passphrase)))
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "Session<Ready>::watch_only hands it to seed::passphrase_seed_into (M1 group 9)"
-        )
-    )]
+    /// The passphrase as typed, for `seed::passphrase_seed_into` (`Session<Ready>::watch_only`).
     pub(crate) fn expose_secret(&self) -> &str {
         self.0.expose_secret()
     }

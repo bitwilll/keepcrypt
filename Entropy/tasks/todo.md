@@ -1655,6 +1655,37 @@ order", "Go-ahead before reveal")
       - the exports return `ReadbackIncomplete` until every position has matched;
       - core never panics on public input. A panic unwinds and drops `Box<Inner>`; `catch_unwind` stays banned;
       - note for M5: the FFI takes the session out of its slot before each call, so a panic leaves no session behind.
+- As built at commit 22 (session.rs, session/inner.rs, session/wiped.rs):
+  - The transitions are as in the table above. `Inner` holds every field at fixed capacity with no `Option` to
+    unwrap: the tester, the pool, D and C, the dice, E, S, the words, the seal code and its public half (empty
+    until `finish`), the fingerprint and first address, the nonce, the read-back flags and the stored backup
+    passphrase; its `Zeroize` clears all of them and the white-box test fills and checks each.
+  - `credited_bits()` and `required_bits()` return u64, not the sketch's u32: the screen gets the same sum
+    `source::quota_met` compares, in its width, with nothing narrowed or defaulted (a u32 needs a saturating
+    fallback, which the fail-closed ban refuses). On a phone in Mixed mode `credited_bits()` counts the OS
+    read's 256-bit policy credit before `commit`, so `credited_bits() >= required_bits()` is exactly when
+    `commit` can pass; dice-only mode reports 0 of 0.
+  - `add_extra(&mut self)` cannot fail the session, so the pool's only failure (a length that does not fit a
+    u64) is kept and `commit` returns it, wiping there. A unit test plants it.
+  - `Wiped::collision_report(&self)` returns `Option<&CollisionReport>`, not the sketch's owned value:
+    `CollisionReport` has no `Clone`, and the `Wiped` keeps the one report. `Wiped` keeps the platform, so
+    `restart(len, mode)` needs none. Under `test-sources`, `Wiped::restart_with_stub(len, mode, stub,
+    kat_fault)` is the restart twin of `Session::new_with_stub`, so every `KatId` is injected at restart too.
+  - `discard(CannotCheck)` keeps neither the report nor the flag, also in a session that itself started after a
+    collision: that next restart uses the normal minimum, as seal-watchonly-braille.md "Add fresh entropy" says.
+  - Q13 (b), settled as its first option: `verify_backup(&self)` keeps `CoreError`, and a unit test
+    (`the_two_calls_that_never_wipe_return_only_their_listed_errors`) pins that it returns only `Ok`,
+    `NoBackupPassphrase`, `WrongPassphrase`, `ReadbackMismatch` and `Backup(_)` over every backup.json age file
+    and refused file, every refused plaintext and another seed's plaintext under the session's own passphrase,
+    and every truncation and a bit flip per byte of a backup under it; `check_readback` gives only
+    `Braille(BadPosition)` and `Braille(MalformedReadback)` over every position and a range of typed input. The
+    `Internal(_)` paths no input reaches are named in session.rs's module comment and `verify_backup`'s doc:
+    core's derivation from checksum-checked words and age's fixed-size library calls.
+  - `Rejected` and `Wiped` print `Rejected::Retry`, `Rejected::Collision` and `Wiped`, never their contents.
+  - The panic policy is stated in session.rs; tests/panic_wipe.rs proves it (commit 25).
+  - `ready_for_test` now leaves a session as `finish` does (seal and first address included, nothing read
+    back), and the backup tests read every word back through `check_readback` before the gated calls, so the
+    gate opens the honest way. Every dead-code expectation group 9 fulfils is gone.
 
 **10. Cross-cutting tests**
 - [ ] `tests/typestate.rs` (trybuild; CLAUDE.md rule 6; build-plan.md "Sealed-state compile-fail tests"). Fixtures

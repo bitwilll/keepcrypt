@@ -45,14 +45,7 @@ impl RegisterQr {
 pub struct SealRegistration(RegisterQr);
 
 impl SealRegistration {
-    /// The QR for this seal.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "Session<Ready>::registration builds it (M1 group 9)"
-        )
-    )]
+    /// The QR for this seal (`Session<Ready>::registration`).
     pub(crate) fn new(code: &SealCode, public: &SealPublic) -> Self {
         Self(RegisterQr::build(code, public))
     }
@@ -80,14 +73,7 @@ impl SealRegistration {
 pub struct CollisionReport(RegisterQr);
 
 impl CollisionReport {
-    /// The report for this seal.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "Session<Checking>::reveal and discard keep it (M1 group 9)"
-        )
-    )]
+    /// The report for this seal (`Session<Checking>::reveal` and `discard` keep it in `Wiped`).
     pub(crate) fn new(code: &SealCode, public: &SealPublic) -> Self {
         Self(RegisterQr::build(code, public))
     }

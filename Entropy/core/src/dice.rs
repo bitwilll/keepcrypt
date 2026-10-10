@@ -4,10 +4,6 @@
 //! and anything else is refused, never folded or skipped. The rolls live in a fixed 256-byte
 //! buffer with a count, never a `Vec`, so growth never leaves a copy behind; undo zeroes the byte
 //! it removes. The screen gets only the count and the bits so far (pi-firmware.md step 6).
-#![cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the session's Rolling state uses it (M1 group 9)")
-)]
 
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
