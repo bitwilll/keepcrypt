@@ -116,13 +116,34 @@ Create these in M0 and keep this list current as the repo grows.
 # Run from Entropy/, the project root inside the keepcrypt monorepo (CI: .github/workflows/entropy-ci.yml).
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
-cargo test --workspace --locked
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings   # the stubs and test key too
+cargo test --workspace --locked      # the release configuration: no test feature
+cargo test -p keepcrypt-core --locked --features test-sources   # stub, fault-injection and test-registry tests
+# Test features are switched on only like this, with -p, never in a manifest (canaries.sh enforces it).
+cargo llvm-cov --locked -p keepcrypt-core --features test-sources --no-cfg-coverage --fail-under-lines 95 --summary-only
+                                     # cargo-llvm-cov 0.9.1; the M1 gate is 95% of core's lines
+TRYBUILD=overwrite cargo test -p keepcrypt-core --test typestate   # only after a toolchain or trybuild bump:
+                                     # regenerates the pinned .stderr files; review the diff
 cargo deny --locked check && cargo audit && cargo vet --locked   # plain `cargo vet` re-fetches imports
 scripts/check-path-deps.sh           # every non-workspace crate comes from crates.io (no path or git overrides)
-python3 tools/verify/verify.py --selftest
+python3 tools/verify/verify.py --selftest   # 11 checks; also with /usr/bin/python3 (3.9, the floor)
+# Generated vectors are regenerated, never hand-edited, then checked by --selftest:
+python3 tools/verify/verify.py --write-seal-vectors        # vectors/seal.json
+python3 tools/verify/verify.py --write-kat-vectors         # vectors/kat.json
+python3 tools/verify/verify.py --write-keepcrypt-vectors   # vectors/keepcrypt.json
+python3 tools/verify/verify.py --write-braille-vectors     # vectors/braille.json
+python3 tools/verify/verify.py --write-watchonly-vectors   # vectors/watchonly.json
+python3 tools/verify/verify.py --write-kcr-vectors         # vectors/kcr.json
+python3 tools/verify/verify.py --write-backup-vectors      # vectors/backup.json
+scripts/age-interop.py --core        # the age CLI against verify.py and core, both directions, work factor 18
+                                     # (needs age; CI: Ubuntu's 1.1.1). --generate rewrites age_cli_written.json
 scripts/banned-api-check.sh          # grep gate for banned RNG, network and clipboard APIs
-scripts/banned-api-check.sh --selftest
-scripts/canaries.sh                  # proves the deny and clippy gates still fire
+scripts/banned-api-check.sh --selftest   # also builds the artifact fixtures (needs the pinned toolchain)
+# Release-artifact scan (CI's cross job, per target T; on Linux and Android T builds with
+# CARGO_TARGET_<T>_RUSTFLAGS='--cfg getrandom_backend="linux_getrandom"'):
+cargo build --release --locked -p keepcrypt-core --lib --example release_probe --target T
+scripts/banned-api-check.sh --artifact T target/T/release/libkeepcrypt_core.rlib target/T/release/examples/release_probe
+scripts/canaries.sh                  # proves every gate still fires, the scan's positive controls included
 ```
 
 ## Definition of done (every task)
