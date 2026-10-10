@@ -297,17 +297,21 @@ fn age_backups() {
         opened, 0,
         "no truncation or changed byte of a binary backup opens"
     );
-    // The armored file: every fourth truncation, then the 256 changed bytes.
+    // The armored file: every truncation, then the 256 changed bytes. Exactly one opens: the file
+    // without its final LF, whose END line ends the input. That is a whole armored file,
+    // backup.json's `abandon-12-no-final-newline`, which the age CLI opens too (review fix after
+    // commit 25: only every fourth truncation was tried, which skipped it).
     let file = text(&armored["file"]).as_bytes().to_vec();
-    let mut opened = 0;
-    for (n, input) in mutations("age/armored", &file, 256).into_iter().enumerate() {
-        if n % 4 == 0 || n >= file.len() {
-            opened += usize::from(decrypt_backup(&input, &typed).is_ok());
-        }
-    }
+    let no_final_newline = text(&named(&doc["age_files"], "abandon-12-no-final-newline")["file"]);
+    assert_eq!(&file[..file.len() - 1], no_final_newline.as_bytes());
+    let opened: Vec<Vec<u8>> = mutations("age/armored", &file, 256)
+        .into_iter()
+        .filter(|input| decrypt_backup(input, &typed).is_ok())
+        .collect();
     assert_eq!(
-        opened, 0,
-        "no truncation or changed byte of an armored backup opens"
+        opened,
+        [no_final_newline.as_bytes().to_vec()],
+        "no other truncation or changed byte of an armored backup opens"
     );
     assert!(decrypt_backup(&stream("age/garbage", 9_000), &typed).is_err());
 }

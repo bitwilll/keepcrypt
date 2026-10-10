@@ -265,7 +265,13 @@ fn one_changed_byte_of_any_source_changes_d() {
             }
         }
         if case.platform == Platform::Pi {
-            assert_eq!(hwrng_bytes, 1_600, "16 startup chunks, 9 credited");
+            // 16 startup chunks, then 9 more: 8 credited (one whole 512-sample window) and a tested
+            // tail chunk that no completed window credits, absorbed all the same (review fix after
+            // commit 25: the message said 9 credited).
+            assert_eq!(
+                hwrng_bytes, 1_600,
+                "16 startup chunks, 8 credited, 1 tested and absorbed"
+            );
         }
     }
 }
