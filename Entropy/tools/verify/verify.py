@@ -1847,8 +1847,9 @@ def render(report):
 # Every command recomputes these before anything else and stops with exit 1 if one differs (CLAUDE.md
 # rule 3, as core's session-start suite does), so a copy whose hashing, word list, seed, seal or braille
 # code is broken refuses to run. Each value is a literal copied from the file and entry its comment
-# names; vectorgen.py check 12 compares every value with that source, and runs a copy with one value of
-# each group changed, which must fail that group.
+# names; vectorgen.py check 12 compares every value with that source, shows that changing any one value
+# fails its group and no other, and runs a copy with one value of each group changed, which must fail
+# that group. Only known_answers(KNOWN_ANSWERS) reads the table (check 12 rule (c)).
 KNOWN_ANSWERS = {
     "hash": {
         # vectors/kat.json "sha256", entries "empty", "abc" and "two-block": (message_ascii, digest_hex).
@@ -2088,26 +2089,26 @@ KNOWN_ANSWER_GROUPS = (
 )
 
 
-def known_answers():
-    """Every known-answer group recomputed: [(group, the names of the values that differ)], in
-    KNOWN_ANSWER_GROUPS order. A group whose values cannot be read, or that has no values or no check,
-    fails like a wrong value; the caller stops either way, so nothing here continues past a failure."""
+def known_answers(table):
+    """Every known-answer group of `table` (KNOWN_ANSWERS) recomputed: [(group, the names of the values that
+    differ)], in KNOWN_ANSWER_GROUPS order. A group whose values cannot be read, or that has no values or no
+    check, fails like a wrong value; the caller stops either way, so nothing here continues past a failure."""
     results = []
     for group, check in KNOWN_ANSWER_GROUPS:
         try:
-            failed = check(KNOWN_ANSWERS[group])
+            failed = check(table[group])
         except Exception:  # a malformed or missing value fails its group, with no traceback
             failed = ["unreadable"]
         results.append((group, failed))
     checked = [group for group, _ in KNOWN_ANSWER_GROUPS]
-    results += [(group, ["no check"]) for group in KNOWN_ANSWERS if group not in checked]
+    results += [(group, ["no check"]) for group in table if group not in checked]
     return results
 
 
 def command_selftest():
     """verify.py selftest: one line per known-answer group; 0 if all pass, else 1, naming each failing
     group."""
-    results = known_answers()
+    results = known_answers(KNOWN_ANSWERS)
     for group, failed in results:
         print("FAIL %s: %s" % (group, ", ".join(failed)) if failed else "ok   %s" % group)
     failing = [group for group, failed in results if failed]

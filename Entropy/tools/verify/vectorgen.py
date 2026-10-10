@@ -37,9 +37,9 @@ byte for byte. scripts/age-interop.py checks the same code against the age CLI i
 
 M2 adds check 12, that a copy of verify.py runs alone (tasks/todo.md, M2 group 3): only allowlisted
 imports and recorded module attributes, no test material, its embedded known answers equal to the
-vectors they come from, and lone copies, fault twins and a planted module run under an audit hook. It
-also runs verify.py's input parsers on fixed cases and ties its verification run to keepcrypt.json
-(group 4).
+vectors they come from and each, changed in turn, failing its group, and lone copies, fault twins and a
+planted module run under an audit hook. It also runs verify.py's input parsers on fixed cases and ties
+its verification run to keepcrypt.json (group 4).
 
 The only outside code it runs is Coldcard's public-domain rolls.py and rolls12.py, committed
 unmodified under vectors/coldcard/, and only after each file's SHA-256 equals its SOURCES.md
@@ -65,9 +65,10 @@ Usage (CI runs python3 -I tools/verify/vectorgen.py --selftest):
                                     through the reader and two rebuilt, its bytes, every case's
                                     pinned outcome, the docs' backup figures, the age CLI's files),
                                     verify.py alone (its imports and module attributes, no test
-                                    material, its known answers against their sources, its input
-                                    cases and keepcrypt.json tie, a lone copy, one fault twin per
-                                    known-answer group and a planted module, run under an audit hook)
+                                    material, its known answers against their sources and each
+                                    changed in turn, its input cases and keepcrypt.json tie, a lone
+                                    copy, one fault twin per known-answer group and a planted
+                                    module, run under an audit hook)
   vectorgen.py --write-seal-vectors    regenerate vectors/seal.json
   vectorgen.py --write-kat-vectors     regenerate vectors/kat.json
   vectorgen.py --write-keepcrypt-vectors  regenerate vectors/keepcrypt.json
@@ -78,8 +79,9 @@ Usage (CI runs python3 -I tools/verify/vectorgen.py --selftest):
   --vectors-dir DIR                 testing only: use DIR in place of the repo's vectors/ (made
                                     absolute); a SOURCES.md row `vectors/<p>` then means DIR/<p>
   --verify-py PATH                  testing only, with --selftest: check 12's rules (a) to (e) check PATH
-                                    in place of tools/verify/verify.py; check 12's input cases and
-                                    keepcrypt.json tie, and the other checks, use tools/verify/verify.py
+                                    in place of tools/verify/verify.py; check 12's known-answer sweep,
+                                    input cases and keepcrypt.json tie, and the other checks, use
+                                    tools/verify/verify.py
   --check N                         testing only, with --selftest: run check N alone
 
 Exit codes: 0 all good, 1 a check failed, 2 usage error.
@@ -4045,7 +4047,8 @@ VERIFY_MODULE_ATTRIBUTES = (
 # key (KCR_PINNED) in hex, in either case.
 VERIFY_TEST_MATERIAL = ("KC_TEST_SOURCE_DO_NOT_SHIP", "KC_TEST_REGISTRY_DO_NOT_SHIP", "KCE/test/")
 # Rule (c): verify.py's KNOWN_ANSWERS, read with ast.literal_eval from its one assignment (so every value
-# is a literal in the file), equals the table known_answer_sources rebuilds from these entries.
+# is a literal in the file), equals the table known_answer_sources rebuilds from these entries. Its only
+# read is known_answers(KNOWN_ANSWERS), so nothing changes the table at run time.
 # bip39/vectors.json "english": entries 12 (12 words) and 14 (24 words), the first of each length after the
 # all-same-byte patterns 0-11.
 KNOWN_ANSWER_BIP39_ENTRIES = (12, 14)
@@ -4265,6 +4268,17 @@ def known_answers_node(tree):
     return assigns[0].value if len(assigns) == 1 and len(bindings) == 1 else None
 
 
+def known_answers_use_problems(tree):
+    """Check 12 rule (c): every read of KNOWN_ANSWERS is the whole argument of a call known_answers(KNOWN_ANSWERS),
+    so nothing changes the table at run time (no subscript or attribute store, del or method call). [problem]."""
+    passed = set(id(node.args[0]) for node in ast.walk(tree)
+                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "known_answers"
+                 and len(node.args) == 1 and not node.keywords)
+    return ["line %d uses KNOWN_ANSWERS other than as known_answers(KNOWN_ANSWERS)" % node.lineno
+            for node in ast.walk(tree) if isinstance(node, ast.Name) and node.id == "KNOWN_ANSWERS"
+            and isinstance(node.ctx, ast.Load) and id(node) not in passed]
+
+
 def known_answer_sources(vectors_dir):
     """KNOWN_ANSWERS as check 12 (c) rebuilds it from the vectors its comments name, lists for tuples."""
     def load(rel):
@@ -4378,6 +4392,64 @@ def verify_known_answer_problems(node, vectors_dir):
         problems += ["%s differs from %s" % (path, KNOWN_ANSWER_FILES.get(group, "any source"))
                      for path in value_differences(view.get(group, ABSENT), expected.get(group, ABSENT), (group,))]
     return known, problems
+
+
+def known_answer_paths(value, path=()):
+    """The path (dict keys and tuple indexes from 0) of every leaf of a KNOWN_ANSWERS value: a string, an int
+    or None."""
+    if isinstance(value, dict):
+        return [leaf for key, item in value.items() for leaf in known_answer_paths(item, path + (key,))]
+    if isinstance(value, (tuple, list)):
+        return [leaf for n, item in enumerate(value) for leaf in known_answer_paths(item, path + (n,))]
+    return [path]
+
+
+def with_known_answer_changed(value, path):
+    """`value` with its leaf at `path` changed and the rest shared: a string gets a different last character,
+    as a fault twin's does ("0" if it is empty), an int one more, and None becomes "0"."""
+    if not path:
+        if isinstance(value, str):
+            return value[:-1] + ("1" if value[-1:] == "0" else "0")
+        return "0" if value is None else value + 1
+    if isinstance(value, dict):
+        changed = dict(value)
+        changed[path[0]] = with_known_answer_changed(value[path[0]], path[1:])
+        return changed
+    return tuple(with_known_answer_changed(item, path[1:]) if n == path[0] else item for n, item in enumerate(value))
+
+
+def known_answer_name(path):
+    """A KNOWN_ANSWERS path as rule (c) names one: dotted, tuple indexes from 1."""
+    return ".".join(str(key + 1) if isinstance(key, int) else key for key in path)
+
+
+def known_answer_sweep_problems():
+    """Check 12's sweep over verify.py's known answers (tasks/todo.md, M2 group 3): with each value of
+    KNOWN_ANSWERS changed in turn, known_answers() fails that value's group and no other; with a group's
+    values unreadable (None), it fails that group alone, as "unreadable"; and a group with no check fails
+    as "no check". The lone copy's fault twins change one value per group; this changes every one. [problem]."""
+    groups = [group for group, _ in KNOWN_ANSWER_GROUPS]
+    problems = []
+    try:
+        if known_answers(KNOWN_ANSWERS) != [(group, []) for group in KNOWN_ANSWERS]:
+            return ["the known answers do not all pass, each with a check"]
+        for path in known_answer_paths(KNOWN_ANSWERS):
+            failing = [group for group, failed in known_answers(with_known_answer_changed(KNOWN_ANSWERS, path))
+                       if failed]
+            if failing != [path[0]]:
+                problems.append("%s changed fails %s, not %s alone"
+                                % (known_answer_name(path), " and ".join(failing) or "no group", path[0]))
+        for group in groups:
+            unreadable = dict(KNOWN_ANSWERS)
+            unreadable[group] = None
+            if known_answers(unreadable) != [(other, ["unreadable"] if other == group else []) for other in groups]:
+                problems.append("%s set to None does not fail that group alone as unreadable" % group)
+        unchecked = dict(KNOWN_ANSWERS, unchecked={})
+        if known_answers(unchecked) != [(group, []) for group in groups] + [("unchecked", ["no check"])]:
+            problems.append("a group with no check does not fail as no check")
+    except Exception as e:  # any failure of the sweep fails it, named
+        problems.append("known_answers raised %s" % type(e).__name__)
+    return problems
 
 
 def input_case_problems():
@@ -4577,8 +4649,11 @@ def check_verify_alone(vectors_dir, verify_py):
     node = known_answers_node(tree) if tree is not None else None
     known, found = verify_known_answer_problems(node, vectors_dir)
     problems += ["rule (c): %s" % problem for problem in found]
-    # The input cases and the keepcrypt.json tie call verify.py as this file loads it, tools/verify/verify.py
-    # even under --verify-py, since check 12 runs its subject only as audited copies.
+    if tree is not None:
+        problems += ["rule (c): %s" % problem for problem in known_answers_use_problems(tree)]
+    # The known-answer sweep, the input cases and the keepcrypt.json tie call verify.py as this file loads it,
+    # tools/verify/verify.py even under --verify-py, since check 12 runs its subject only as audited copies.
+    problems += ["known-answer sweep: %s" % problem for problem in known_answer_sweep_problems()]
     problems += ["input cases: %s" % problem for problem in input_case_problems()]
     problems += ["keepcrypt.json tie: %s" % problem for problem in run_tie_problems(vectors_dir)]
     return problems + verify_lone_problems(data, node, known)
@@ -4613,8 +4688,9 @@ def selftest(vectors_dir, verify_py=VERIFY_PY, only=None):
          "plaintexts against watchonly.json, the docs' backup figures, the age CLI's files read",
          lambda: check_backup_json(vectors_dir)),
         ("tools/verify/verify.py ships alone: imports on the allowlist and module attributes on the recorded list, "
-         "no test material, known answers equal their sources, input cases, keepcrypt.json tie, a lone copy passes "
-         "selftest, each fault twin fails its group, a planted module never runs, audited runs",
+         "no test material, known answers equal their sources, each known answer changed fails its group, input "
+         "cases, keepcrypt.json tie, a lone copy passes selftest, each fault twin fails its group, a planted module "
+         "never runs, audited runs",
          lambda: check_verify_alone(vectors_dir, verify_py)),
     )
     if only is not None and not 1 <= only <= len(checks):
@@ -4655,8 +4731,8 @@ def main(argv):
                       "its bytes, its pinned outcomes, key and roots), backup.json (scrypt, the CCTV files through "
                       "the reader and rebuilt, its bytes, its pinned outcomes, the docs' figures, the age CLI's "
                       "files), verify.py alone (its imports and module attributes, no test material, its known answers "
-                      "against their sources, its input cases and keepcrypt.json tie, a lone copy, its fault twins and "
-                      "a planted module, audited)")
+                      "against their sources and each changed in turn, its input cases and keepcrypt.json tie, a lone "
+                      "copy, its fault twins and a planted module, audited)")
     mode.add_argument("--write-seal-vectors", action="store_true", help="regenerate vectors/seal.json")
     mode.add_argument("--write-kat-vectors", action="store_true", help="regenerate vectors/kat.json")
     mode.add_argument("--write-keepcrypt-vectors", action="store_true", help="regenerate vectors/keepcrypt.json")
@@ -4668,8 +4744,8 @@ def main(argv):
                         help="testing only: use DIR in place of the repo's vectors/")
     parser.add_argument("--verify-py", type=Path, metavar="PATH",
                         help="testing only, with --selftest: check 12's rules (a) to (e) check PATH in place of "
-                        "tools/verify/verify.py (its input cases and keepcrypt.json tie, and the other checks, use "
-                        "tools/verify/verify.py)")
+                        "tools/verify/verify.py (its known-answer sweep, input cases and keepcrypt.json tie, and the "
+                        "other checks, use tools/verify/verify.py)")
     parser.add_argument("--check", type=int, metavar="N", help="testing only, with --selftest: run check N alone")
     args = parser.parse_args(argv)
     if (args.verify_py is not None or args.check is not None) and not args.selftest:

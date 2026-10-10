@@ -2852,6 +2852,15 @@ Groups land in the order below. Vectors come before the core test that reads the
       `123456`, seal.json vector 1 and braille.json and finds it equal. Each group's fault twin exits 1 naming that
       group only (the changed value: hash, the HMAC-SHA256; bip39, the 24-word mnemonic; seed, dice-only word 24;
       seal, G; braille, ZOO's cells).
+      Proof (review fix): one fault twin per group left the other values and the "unreadable" branch untested, and a
+      copy could change the table at run time. `known_answers(table)` now takes the table. Check 12's known-answer
+      sweep changes each of its 214 values in turn, which must fail that group and no other; sets each group to None,
+      which must fail it alone as `unreadable`; and adds a group with no check (`no check`). Rule (c) refuses any read
+      of `KNOWN_ANSWERS` but `known_answers(KNOWN_ANSWERS)`. Check 12 passes on 3.12.5 and 3.9.6. Scratch mutants of
+      verify.py each fail it on both: the 11 the review lists (`unreadable` made `[]`, SHA-512 or SHA-256 only, no list
+      hash, no C, no `words_12`, no Seal ID braille, no grid, no re-check URL, the last insert line only, no `no
+      check`), plus G ignored, the wrong group's values and `except KeyError`. Copies that store into, `.update`,
+      `del` from or alias `KNOWN_ANSWERS` fail rule (c) under `--verify-py`.
 - [x] Startup guards, right after `import sys` and before any other import, when run as a script:
       - Python older than 3.9 exits 2 with one line;
       - without `-I` (`sys.flags.isolated`) it exits 2 and says to run `python3 -I verify.py ...`, so a planted module
@@ -2903,10 +2912,10 @@ Groups land in the order below. Vectors come before the core test that reads the
           module in group 2's network list, `subprocess` or `multiprocessing`.
       Proof: check 12 passes on 3.12 and 3.9; group 8's canaries show that rules (a) and (e) fire.
       Review fix (2026-10-10): `--verify-py PATH` replaces the subject of rules (a)-(e) only. Check 12's in-process
-      parts (group 4's `INPUT_CASES` and keepcrypt.json tie) call `tools/verify/verify.py` as vectorgen loads it,
-      also under `--verify-py`, since check 12 runs its subject only as audited copies. A changed copy's parsers
-      meet `INPUT_CASES` in group 7's piped lone-copy runs (every refused text: exit 2, the field and position on
-      stderr, no traceback, every stream under the leak rule).
+      parts (group 3's known-answer sweep, group 4's `INPUT_CASES` and keepcrypt.json tie) call
+      `tools/verify/verify.py` as vectorgen loads it, also under `--verify-py`, since check 12 runs its subject only
+      as audited copies. A changed copy's parsers meet `INPUT_CASES` in group 7's piped lone-copy runs (every refused
+      text: exit 2, the field and position on stderr, no traceback, every stream under the leak rule).
 
 **4. Inputs, the shared run function, inserts and registry URLs (lessons.md rule 2: exact bytes of every hash input)**
 - [x] Parsers. An error is `InputRefused(field, position)`, whose text never holds the input:
