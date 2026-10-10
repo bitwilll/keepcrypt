@@ -41,10 +41,12 @@ vectors they come from and each, changed in turn, failing its group, and lone co
 planted module run under an audit hook. It also runs verify.py's input parsers on fixed cases and ties
 its verification run to keepcrypt.json (group 4), and holds its own rules to controls that must fire.
 M2 also adds vectors/agreement.json (group 5): 1,000 ceremonies and 28 refusals, their inputs drawn from
-SHA-256 counter streams over public labels and every expected value computed by verify.py's
-verification_run and render, for core's session API to replay (group 6); check 13 regenerates it and
-checks its coverage, each refusal's verdict, its seeds and seals against their definitions, and
-Coldcard's scripts on its dice-only subset.
+SHA-256 counter streams over public labels, for core's session API to replay (group 6). A ceremony's
+expected values come from verify.py's verification_run and render, plus its check_url, go_ahead_code and
+register_url, with n taken from the stub; a refusal's core error and step are worked out here from its
+rolls, and its verdict comes from the run. Check 13 regenerates it and checks its coverage, each
+refusal's verdict, its seeds and seals against their definitions, and Coldcard's scripts on its
+dice-only subset.
 
 The only outside code it runs is Coldcard's public-domain rolls.py and rolls12.py, committed
 unmodified under vectors/coldcard/, and only after each file's SHA-256 equals its SOURCES.md
@@ -998,9 +1000,10 @@ BACKUP_SPEC = {
 
 # Check 13 and vectors/agreement.json: the verifier's side of the cases core's session API replays (tasks/todo.md,
 # M2 group 5; Q17, Q18 and Q21). Every input byte and drawn number comes from SHA-256 counter mode over a public
-# label AGREEMENT_LABEL + "<case>/<part>", never a PRNG, and every expected value from verify.py's
+# label AGREEMENT_LABEL + "<case>/<part>", never a PRNG. A ceremony's expected values come from verify.py's
 # verification_run and render, fed C and D as the device shows them (16 groups of 4 lowercase hex), so the cases
-# test what a user runs.
+# test what a user runs, plus verify.py's check_url, go_ahead_code and register_url, with n taken from the stub. A
+# refusal's core error and step are worked out here from its rolls, and its verdict comes from the run.
 AGREEMENT_LABEL = "KCE/test/agreement/v1/"
 AGREEMENT_COMBINATIONS = tuple((length, mode, platform) for length in (12, 24) for mode in ("mixed", "dice_only")
                                for platform in ("pi", "phone"))
@@ -1051,12 +1054,14 @@ AGREEMENT_SPEC = {
     "first": "a restart after a collision, else null: the first ceremony's own stub, hwrng, events and rolls run "
     "through start_check and discard(Discard::Collision); its collision report gives expect.collision; then "
     "restart_with_stub on the case's stub, and the case's own inputs run with the 99-roll minimum",
-    "expect": "tools/verify/verify.py's verification_run and render, fed C and D as 16 groups of 4 lowercase hex and "
-    "the rolls as one line: c_hex and d_hex (null in dice-only mode), entropy_hex (the seed bits: E[0:16] for 12 "
-    "words, E for 24), words, the seal (seal_code grouped, seal_tag_hex, seal_id, seal_id_braille, lookup_prefix, "
-    "bucket, grid rows of '#' and '.', colour_index, colour_hex, recheck_url), inserts (one line per word) and "
-    "register_url; on the check path nonce_hex, check_url and go_ahead (grouped); for a restart, collision (the "
-    "first ceremony's grouped seal code and register URL); null where a value does not apply",
+    "expect": "c_hex and d_hex (null in dice-only mode), entropy_hex (the seed bits: E[0:16] for 12 words, E for 24), "
+    "words, the seal (seal_code grouped, seal_tag_hex, seal_id, seal_id_braille, lookup_prefix, bucket, grid rows of "
+    "'#' and '.', colour_index, colour_hex, recheck_url) and inserts (one line per word), from "
+    "tools/verify/verify.py's verification_run and render, fed C and D as 16 groups of 4 lowercase hex and the rolls "
+    "as one line; register_url, verify.py's register_url of the seal code; on the check path nonce_hex (the stub's "
+    "last 8 bytes), and check_url and go_ahead (grouped), verify.py's check_url and go_ahead_code of T and n; for a "
+    "restart, collision (the first ceremony's grouped seal code and register URL, from its own run); null where a "
+    "value does not apply",
     "inserts": "position, device and device count, sequence 01-12, SeedBook number and word | faces 1-5, each its "
     "cell then its letter, '/' and the partner for a mirror-pair letter, '~' on a non-blank fifth face, '--' for a "
     "blank face | the word's cells",

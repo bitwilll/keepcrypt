@@ -109,14 +109,16 @@ generate `stream` case.
 generates it (tasks/todo.md, M2 group 5; Q17, Q18 and Q21): 1,000 ceremonies, 125 for each of 12 or 24
 words, mixed or dice-only, Pi or phone, and 28 refusals. Every input (the stub bytes, the hwrng stream,
 the extras, the die faces and every drawn number) comes from SHA-256 counter mode over the public labels
-`KCE/test/agreement/v1/<case>/<part>`, never a PRNG, and every expected value from `verify.py`'s
-`verification_run` and `render`, fed C and D as the device shows them. Self-test check 13 regenerates the
-file and requires byte equality; checks its coverage counts, and each refusal's core error and verifier
-verdict against those its rolls, mode and restart call for; ties each ceremony's C, seed bits, words and
-seal to their definitions and every insert line to `braille.json`; requires a D with one digit changed
-to be refused before the rolls are read; and runs Coldcard's committed scripts (rows below), as check 4
-does, on 74 dice-only cases: ceremonies 0, 8, 16, ... of each dice-only combination and the 10
-dice-only refusals with valid faces.
+`KCE/test/agreement/v1/<case>/<part>`, never a PRNG. A ceremony's expected values come from `verify.py`'s
+`verification_run` and `render`, fed C and D as the device shows them, plus `verify.py`'s `check_url`,
+`go_ahead_code` and `register_url`, with n taken from the stub. Each refusal's core error and step are
+worked out by `vectorgen.py` from its rolls, and its verdict comes from the run. Self-test check 13
+regenerates the file and requires byte equality; checks its coverage counts, and each refusal's core
+error and verifier verdict against those its rolls, mode and restart call for; ties each ceremony's C,
+seed bits, words and seal to their definitions and every insert line to `braille.json`; requires a D
+with one digit changed to be refused before the rolls are read; and runs Coldcard's committed scripts
+(rows below), as check 4 does, on 74 dice-only cases: ceremonies 0, 8, 16, ... of each dice-only
+combination and the 10 dice-only refusals with valid faces.
 
 ## Provenance
 

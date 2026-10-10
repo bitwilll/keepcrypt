@@ -3081,6 +3081,11 @@ Groups land in the order below. Vectors come before the core test that reads the
       gains it. Proof: check 3 passes.
       Proof: commit 8. SOURCES.md gains a paragraph on agreement.json (how it is generated and what check 13 checks)
       and its "What each set is for" entry; `UNLISTED` gains `agreement.json`. Check 3 passes on 3.12.5 and 3.9.6.
+      Proof (review fix): the paragraph, vectorgen's docstring and AGREEMENT_* comment and the spec's `expect` entry
+      said every expected value came from `verification_run` and `render`. They now name verify.py's `check_url`,
+      `go_ahead_code` and `register_url`, n from the stub, and the refusals' core error and step worked out by
+      vectorgen. `--write-agreement-vectors` changes only the spec's `expect` line; `--selftest` passes 13/13 on
+      3.12.5 and 3.9.6, and core's agreement test passes (9 tests).
 
 **6. Agreement: core's side (gate; rules 5, 6, 10 and 12)**
 - [x] `core/tests/agreement.rs`:
