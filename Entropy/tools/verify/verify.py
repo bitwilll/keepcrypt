@@ -23,7 +23,13 @@ checked against values copied from BIP-84, BIP-380, BCR-2020-005, -007, -012, -0
 8949; and vectors/kcr.json (signed registry snapshots and the KCP1 bucket proofs behind the go-ahead
 QR, valid, tampered, stale and future-dated, each naming the result core must give), built with a
 standard-library RFC 8032 Ed25519 that signs only with two keys derived from public labels, the
-2^20-bucket Merkle tree and the .kcr and KCP1 formats, and checked by verify.py's own verifier.
+2^20-bucket Merkle tree and the .kcr and KCP1 formats, and checked by verify.py's own verifier;
+and vectors/backup.json (the encrypted backup of docs/build-plan.md "Encrypted backup format": the
+age v1 file with one scrypt stanza, the plaintext v1 inside it, the generated passphrase with its
+confirm challenge and the file name, valid and refused, each naming the result core must give),
+written and read with a standard-library age (scrypt through hashlib, or in pure Python where
+hashlib has none; ChaCha20-Poly1305, HKDF and the strict armor here) that rebuilds the CCTV files
+byte for byte. scripts/age-interop.py checks the same code against the age CLI in both directions.
 The verifier's own recomputation of a device's C, E and words, and braille, arrive in M2.
 
 The only outside code it runs is Coldcard's public-domain rolls.py and rolls12.py, committed
@@ -33,7 +39,7 @@ Every seal.json vector also has its values pinned here (vector 1 from CLAUDE.md 
 vectors 2 and 3 independently reproduced), so --write-seal-vectors cannot re-baseline a bug.
 
 Usage:
-  verify.py --selftest              10 checks: seal known answers (all 3 vectors), seal.json bytes,
+  verify.py --selftest              11 checks: seal known answers (all 3 vectors), seal.json bytes,
                                     SOURCES.md hashes and coverage, Coldcard's scripts on every
                                     dice-only case (rolls.json and keepcrypt.json), kat.json (SHA and
                                     HMAC recomputed, its bytes, then its pinned entries and Ed25519
@@ -45,13 +51,17 @@ Usage:
                                     the copied spec values, BIP-84 and BCR-2020-015 rebuilt, its pins
                                     and decoder cases, its bytes), kcr.json (Ed25519 against RFC 8032
                                     TEST 1-3 and kat.json, the docs' snapshot and proof figures, its
-                                    bytes, every case's pinned outcome, the pinned key and roots)
+                                    bytes, every case's pinned outcome, the pinned key and roots),
+                                    backup.json (scrypt against hashlib, the 26 CCTV scrypt files
+                                    through the reader and two rebuilt, its bytes, every case's
+                                    pinned outcome, the docs' backup figures, the age CLI's files)
   verify.py --write-seal-vectors    regenerate vectors/seal.json
   verify.py --write-kat-vectors     regenerate vectors/kat.json
   verify.py --write-keepcrypt-vectors  regenerate vectors/keepcrypt.json
   verify.py --write-braille-vectors    regenerate vectors/braille.json
   verify.py --write-watchonly-vectors  regenerate vectors/watchonly.json
   verify.py --write-kcr-vectors        regenerate vectors/kcr.json
+  verify.py --write-backup-vectors     regenerate vectors/backup.json
   --vectors-dir DIR                 testing only: use DIR in place of the repo's vectors/ (made
                                     absolute); a SOURCES.md row `vectors/<p>` then means DIR/<p>
 
@@ -59,6 +69,8 @@ Exit codes: 0 all good, 1 a check failed, 2 usage error.
 """
 
 import argparse
+import base64
+import binascii
 import datetime
 import hashlib
 import hmac
@@ -67,6 +79,7 @@ import math
 import os
 import re
 import stat
+import struct
 import subprocess
 import sys
 import tempfile
@@ -90,7 +103,8 @@ TAG_GO = b"KCE/v1/go"
 # Shared interface: one row per file in vectors/SOURCES.md.
 SOURCES_ROW = re.compile(r"^\| `(vectors/[^`]+)` \| `([0-9a-f]{64})` \|")
 # Files under vectors/ that SOURCES.md does not list: the files this script generates, and SOURCES.md.
-UNLISTED = ("seal.json", "kat.json", "keepcrypt.json", "braille.json", "watchonly.json", "kcr.json", "SOURCES.md")
+UNLISTED = ("seal.json", "kat.json", "keepcrypt.json", "braille.json", "watchonly.json", "kcr.json", "backup.json",
+            "SOURCES.md")
 # macOS Finder metadata, written into any folder opened in Finder. .gitignore excludes it, so it
 # is never committed and never present in CI. The coverage rule skips a regular file with this
 # exact name only if it starts with Finder's magic bytes; any other .DS_Store needs a row, so a
@@ -918,6 +932,135 @@ KCR_SPEC = {
     "wrong_bucket when the seed's bucket is not the proof's, else collision (with the count) or clear",
     "seeds": "seal values as in seal.json (spec): S with the empty passphrase, the seal code, T, the Seal ID, "
     "the bucket and the go-ahead code G for nonce_hex",
+}
+
+# Check 11 and vectors/backup.json: the encrypted backup (docs/build-plan.md "Encrypted backup format";
+# docs/seal-watchonly-braille.md "Inside the encrypted backup"; the C2SP age v1 spec, vectors/SOURCES.md
+# "Spec values"; tasks/todo.md, M1 group 8, Q1, Q5, Q6e). An age v1 file with one scrypt stanza, armored,
+# holding the plaintext v1 below, under a generated 8-word passphrase. Core's backup module reads and
+# writes the same bytes with the RustCrypto scrypt, chacha20poly1305, hkdf, hmac and base64ct crates;
+# this file does it with the standard library (hashlib.scrypt where Python has it, cross-checked against
+# the pure-Python scrypt here), and reproduces the CCTV files byte for byte.
+AGE_VERSION_LINE = b"age-encryption.org/v1\n"
+AGE_SCRYPT_LABEL = b"age-encryption.org/v1/scrypt"
+AGE_HEADER_INFO = b"header"
+AGE_PAYLOAD_INFO = b"payload"
+AGE_ARMOR_BEGIN = b"-----BEGIN AGE ENCRYPTED FILE-----"
+AGE_ARMOR_END = b"-----END AGE ENCRYPTED FILE-----"
+AGE_COLUMNS = 64  # armor lines and stanza body lines
+AGE_SCRYPT_R = 8
+AGE_SCRYPT_P = 1
+AGE_FILE_KEY_BYTES = 16
+AGE_SALT_BYTES = 16
+AGE_NONCE_BYTES = 16
+BACKUP_WORK_FACTOR = 18  # log2 N core writes (docs/build-plan.md "Work factor")
+BACKUP_MAX_WORK_FACTOR = 18  # the reader accepts 1-18, checked before any scrypt work (Q1 i)
+BACKUP_MAX_FILE_BYTES = 8 * 1024  # the reader's file cap, armored or binary, checked first (Q1 i)
+BACKUP_MAX_CHUNK_BYTES = 4 * 1024  # one final payload chunk of at most 4 KiB of plaintext (Q1 i)
+# backup.json's own files use work factor 10, as CCTV's accepting files do, so the pure-Python scrypt
+# regenerates them where hashlib has no scrypt (Python 3.9 on macOS). The writer is the same at 18; core
+# round-trips at 18, and scripts/age-interop.py exchanges files at 18 with the age CLI.
+BACKUP_VECTOR_WORK_FACTOR = 10
+BACKUP_PASSPHRASE_WORDS = 8
+BACKUP_PASSPHRASE_BYTES = 11  # 88 bits, cut into 8 indices of 11 bits, most significant first (Q6e)
+BACKUP_FILE_NAME_BYTES = 4  # keepcrypt-backup-<8 lowercase hex>.age
+CHALLENGE_ATTEMPT_BYTES = 16
+CHALLENGE_MAX_ATTEMPTS = 64
+BACKUP_WHITESPACE = b" \t\r\n"  # the ASCII whitespace the armor may have around it
+BACKUP_VERSION_LINE = "keepcrypt-backup/v1"
+BACKUP_APPS = ("pi", "android", "ios")
+# The CCTV "scrypt" case (vectors/age/scrypt/scrypt; in age/README.md "file key" is a debugging aid): its
+# file key, salt (from its stanza), payload nonce (the payload's first 16 bytes), work factor, passphrase
+# and plaintext, from which the writer must rebuild that file byte for byte, and the SHA-256 of the
+# plaintext as the file states it ("payload").
+CCTV_FILE_KEY_HEX = "59454c4c4f57205355424d4152494e45"
+CCTV_SALT_HEX = "ac5d3f3706e55071d3a604204697b909"  # "rF0/NwblUHHTpgQgRpe5CQ" in its stanza
+CCTV_NONCE_HEX = "1b35c6e687dd00da3ac379ac9f742c21"
+CCTV_WORK_FACTOR = 10
+CCTV_PASSPHRASE = b"password"
+CCTV_PLAINTEXT = b"age"
+CCTV_PAYLOAD_SHA256 = "013f54400c82da08037759ada907a8b864e97de81c088a182062c4b5622fd2ab"
+# CCTV's scrypt cases (vectors/SOURCES.md "CCTV age test file format"): 25 names start with "scrypt",
+# and armor_scrypt is the 26th. Check 11 runs this file's reader over each.
+CCTV_SCRYPT_CLASSES = {"success": 2, "no match": 4, "header failure": 20}
+# The test passphrases, file keys, salts and nonces behind backup.json's own files and generate cases
+# come from counter_stream(label), never a PRNG.
+BACKUP_LABEL = b"KCE/test/backup/"
+# backup.json's plaintexts: (name, watchonly.json wallet whose mnemonic and fingerprint it takes, app,
+# version). Public test mnemonics only (CLAUDE.md rule 12).
+BACKUP_PLAINTEXTS = (
+    ("abandon-12", "abandon", "pi", (1, 0, 0)),
+    ("zoo-24", "zoo-24", "android", (1, 0, 0)),
+    ("shield-12", "shield", "ios", (65535, 0, 12)),
+)
+# Known answers check 11 compares with what this file generates, so --write-backup-vectors cannot
+# re-baseline a wrong value (tasks/lessons.md: "pin a vector"): the passphrase layout (Q6e; the first-bit
+# and last-bit words looked up apart from this file), the fingerprints (watchonly.json's; BIP-84's for
+# abandon), the file name rule, and the SHA-256 of the abandon-12 plaintext, whose text a separate
+# standard-library script wrote from Q6e, build-plan.md and the alphabet printed in the docs, without
+# importing this file. The CCTV files themselves pin the age reader and writer.
+BACKUP_PINNED = {
+    "passphrase zeros": "abandon abandon abandon abandon abandon abandon abandon abandon",
+    "passphrase ones": "zoo zoo zoo zoo zoo zoo zoo zoo",
+    "passphrase first-bit": "length abandon abandon abandon abandon abandon abandon abandon",
+    "passphrase last-bit": "abandon abandon abandon abandon abandon abandon abandon ability",
+    "fingerprint abandon-12": "73c5da0a",
+    "fingerprint zoo-24": "244c267a",
+    "fingerprint shield-12": "37b5eed4",
+    "file name 00010203": "keepcrypt-backup-00010203.age",
+    "abandon-12 plaintext sha256": "42080a6c718ac10cd179b69b327bb55a67cf70a45893fae06ff7443c61b31aa8",
+    "generate stream": "praise bone derive dinner acid winter choose control | 7 nasty,slot,man,choose 3; "
+    "2 dutch,weasel,bone,credit 2 | 1",
+}
+# The generate pin is written as "<passphrase> | <position> <four choices> <answer slot>; ... | <attempts>"
+# by that same separate script, from the spec text alone.
+BACKUP_SPEC = {
+    "encoding": "every *_hex value is the exact bytes in lowercase hex; text values are the exact UTF-8 text",
+    "file": "an age v1 file (C2SP age, 'age-encryption.org/v1') with exactly one scrypt stanza, ASCII-armored; "
+    "core writes work factor 18 and a fresh 16-byte file key, salt and nonce per file, all from its OS source",
+    "header": "'age-encryption.org/v1' LF, then stanzas ('-> ' and arguments separated by single spaces, each 1 "
+    "or more of 0x21-0x7e, LF, then the body in unpadded canonical base64 in lines of 64 characters ending with a "
+    "line shorter than 64, which may be empty), then '--- ' and the 43-character unpadded canonical base64 of the "
+    "MAC, LF; the payload follows. A binary file starts with the version line at its first byte",
+    "scrypt_stanza": "'scrypt', the salt (canonical unpadded base64 of 16 bytes) and the work factor log2 N "
+    "('[1-9][0-9]?', else Header; above 18, WorkFactor), all checked before any scrypt work, and a 32-byte body. "
+    "An scrypt stanza must be the only stanza (Header); a header with no scrypt stanza is no match "
+    "(WrongPassphrase)",
+    "keys": "wrap key = scrypt(N = 2^log2 N, r = 8, p = 1, dkLen = 32, S = 'age-encryption.org/v1/scrypt' || salt, "
+    "P = passphrase); body = ChaCha20-Poly1305(wrap key, 12 zero bytes, file key); MAC = HMAC-SHA256(HKDF-SHA256("
+    "file key, salt empty, info 'header'), the header up to and including '---'); payload = nonce (16 bytes) || "
+    "ChaCha20-Poly1305(HKDF-SHA256(file key, salt nonce, info 'payload'), 11 zero bytes || 0x01, plaintext)",
+    "reader": "in this order: at most 8,192 bytes (TooLarge); armor if the input, after leading ASCII whitespace "
+    "(space, tab, CR, LF), starts with '-----BEGIN', else binary; the header grammar and the scrypt stanza (Header, "
+    "WorkFactor); a payload of the nonce and one final chunk of 16 to 4,112 bytes, so at most 4,096 bytes of "
+    "plaintext (Payload); then scrypt, and a body that does not open is WrongPassphrase; the header MAC "
+    "(HeaderMac); the chunk, opened with the final-chunk nonce (Payload). A refused case's scrypt is false when "
+    "the reader must refuse it before any scrypt work",
+    "armor": "strict PEM: '-----BEGIN AGE ENCRYPTED FILE-----', the padded canonical base64 of the binary file in "
+    "lines of exactly 64 characters with a last line of 1 to 64, then '-----END AGE ENCRYPTED FILE-----'; lines end "
+    "in LF or CRLF, the END line may end the input, and only ASCII whitespace may come before BEGIN or after END. "
+    "The writer uses LF and ends with LF. Anything else is Armor",
+    "passphrase": "11 bytes from the OS source cut into 8 indices of 11 bits, most significant first; the age "
+    "passphrase is the 8 lowercase BIP39 English words joined by single spaces (Q6e)",
+    "generate": "generate_backup_passphrase reads the 11 passphrase bytes, then 16 bytes per challenge attempt: "
+    "question 1 asks for word b[0] & 7 and question 2 for word b[1] & 7 (0-based; shown 1-based); the right "
+    "word sits at choice b[2] & 3 and b[3] & 3; the six other choices are the 11-bit values (b[4 + 2k] << 8 | "
+    "b[5 + 2k]) & 0x7ff, k = 0..5, three per question in order. An attempt asking for the same word twice, or with "
+    "a question whose four choices are not distinct, is dropped and 16 fresh bytes are read; after 64 attempts the "
+    "call fails (Source(NoUsableDraw)). Every value is a whole number of bits of uniform bytes, so nothing has "
+    "modulo bias. os_hex is every byte read, exactly",
+    "plaintext": "keepcrypt-backup/v1 LF, 'words: ' and the 12 or 24 words joined by single spaces LF, 'braille:' "
+    "LF, per word two spaces, the two-digit position, a space and every letter's cell (braille.json backup_lines) "
+    "LF, 'fingerprint: ' and the master fingerprint of S with the empty passphrase as 8 lowercase hex LF, "
+    "'created-by: keepcrypt-<pi|android|ios> X.Y.Z' (each a decimal 0-65535 without leading zeros) LF. UTF-8, no "
+    "BOM, LF only. The BIP39 passphrase is never written",
+    "plaintext_reader": "a first line 'keepcrypt-backup/v' and a version [1-9][0-9]* other than 1 is "
+    "UnsupportedVersion; otherwise the reader takes the words (12 or 24 list words with a valid BIP39 checksum) and "
+    "the created-by line, computes the fingerprint, writes the plaintext again and requires byte equality. "
+    "Anything else is Plaintext",
+    "file_name": "keepcrypt-backup-<4 bytes from the OS source as 8 lowercase hex>.age; no fingerprint or date",
+    "limits": "the largest plaintext and armored file a 12- or 24-word backup can be (the longest words, the "
+    "longest created-by line), each within the reader's caps",
 }
 
 # The BIP39 English word list, embedded because the M2 verifier ships as one file (docs/build-plan.md
@@ -3143,6 +3286,838 @@ def write_kcr_vectors(vectors_dir):
     return write_vectors(vectors_dir, "kcr.json", kcr_vectors_json())
 
 
+# --- The encrypted backup: age v1 with one scrypt stanza, plaintext v1, passphrases (vectors/backup.json)
+
+
+class BackupRefused(Exception):
+    """A refused backup file or plaintext, or a failed draw. `error` names core's error as backup.json
+    writes it: Backup(TooLarge), Backup(Armor), Backup(Header), Backup(WorkFactor), Backup(HeaderMac),
+    Backup(Payload), Backup(Plaintext), Backup(UnsupportedVersion), WrongPassphrase or
+    Source(NoUsableDraw)."""
+
+    def __init__(self, error):
+        Exception.__init__(self, error)
+        self.error = error
+
+
+MASK32 = 0xFFFFFFFF
+B64_ALPHABET = frozenset(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/")
+
+
+def rotl32(value, bits):
+    value &= MASK32
+    return ((value << bits) & MASK32) | (value >> (32 - bits))
+
+
+def chacha20_block(key, counter, nonce):
+    """RFC 8439 2.3: one 64-byte ChaCha20 block for a 32-byte key, a 32-bit counter and a 12-byte nonce."""
+    state = [0x61707865, 0x3320646E, 0x79622D32, 0x6B206574]
+    state += list(struct.unpack("<8I", key)) + [counter] + list(struct.unpack("<3I", nonce))
+    x = list(state)
+    for _ in range(10):
+        for a, b, c, d in ((0, 4, 8, 12), (1, 5, 9, 13), (2, 6, 10, 14), (3, 7, 11, 15),
+                           (0, 5, 10, 15), (1, 6, 11, 12), (2, 7, 8, 13), (3, 4, 9, 14)):
+            x[a] = (x[a] + x[b]) & MASK32
+            x[d] = rotl32(x[d] ^ x[a], 16)
+            x[c] = (x[c] + x[d]) & MASK32
+            x[b] = rotl32(x[b] ^ x[c], 12)
+            x[a] = (x[a] + x[b]) & MASK32
+            x[d] = rotl32(x[d] ^ x[a], 8)
+            x[c] = (x[c] + x[d]) & MASK32
+            x[b] = rotl32(x[b] ^ x[c], 7)
+    return struct.pack("<16I", *((x[i] + state[i]) & MASK32 for i in range(16)))
+
+
+def chacha20_xor(key, counter, nonce, data):
+    """RFC 8439 2.4: data XOR the ChaCha20 keystream from block `counter` on."""
+    out = bytearray()
+    for i in range(0, len(data), 64):
+        block = chacha20_block(key, counter + i // 64, nonce)
+        out += bytes(p ^ k for p, k in zip(data[i:i + 64], block))
+    return bytes(out)
+
+
+def poly1305(key, message):
+    """RFC 8439 2.5: the 16-byte Poly1305 tag of `message` under a 32-byte one-time key."""
+    r = int.from_bytes(key[:16], "little") & 0x0FFFFFFC0FFFFFFC0FFFFFFC0FFFFFFF
+    s = int.from_bytes(key[16:32], "little")
+    p = (1 << 130) - 5
+    acc = 0
+    for i in range(0, len(message), 16):
+        acc = (acc + int.from_bytes(message[i:i + 16] + b"\x01", "little")) * r % p
+    return ((acc + s) & ((1 << 128) - 1)).to_bytes(16, "little")
+
+
+def chacha20poly1305_tag(key, nonce, ciphertext, aad):
+    """RFC 8439 2.8: the tag over the AAD and the ciphertext, each zero-padded to 16 bytes, then both lengths."""
+    one_time_key = chacha20_block(key, 0, nonce)[:32]
+    padded = aad + bytes(-len(aad) % 16) + ciphertext + bytes(-len(ciphertext) % 16)
+    return poly1305(one_time_key, padded + struct.pack("<QQ", len(aad), len(ciphertext)))
+
+
+def chacha20poly1305_seal(key, nonce, plaintext, aad=b""):
+    """RFC 8439 2.8 AEAD encryption: ciphertext || 16-byte tag."""
+    ciphertext = chacha20_xor(key, 1, nonce, plaintext)
+    return ciphertext + chacha20poly1305_tag(key, nonce, ciphertext, aad)
+
+
+def chacha20poly1305_open(key, nonce, sealed, aad=b""):
+    """The plaintext of `sealed` (ciphertext || tag), or None if it is shorter than a tag or the tag is wrong."""
+    if len(sealed) < 16:
+        return None
+    ciphertext, tag = sealed[:-16], sealed[-16:]
+    if not hmac.compare_digest(chacha20poly1305_tag(key, nonce, ciphertext, aad), tag):
+        return None
+    return chacha20_xor(key, 1, nonce, ciphertext)
+
+
+def hkdf_sha256(ikm, salt, info):
+    """RFC 5869 HKDF-SHA256 with 32 bytes of output: extract, then the first expand block."""
+    prk = hmac.new(salt, ikm, hashlib.sha256).digest()
+    return hmac.new(prk, info + b"\x01", hashlib.sha256).digest()
+
+
+def salsa20_8(words):
+    """The Salsa20/8 core (RFC 7914 3) on 16 32-bit words: 4 double rounds, then the input added."""
+    x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15 = words
+    for _ in range(4):
+        x4 ^= rotl32(x0 + x12, 7)
+        x8 ^= rotl32(x4 + x0, 9)
+        x12 ^= rotl32(x8 + x4, 13)
+        x0 ^= rotl32(x12 + x8, 18)
+        x9 ^= rotl32(x5 + x1, 7)
+        x13 ^= rotl32(x9 + x5, 9)
+        x1 ^= rotl32(x13 + x9, 13)
+        x5 ^= rotl32(x1 + x13, 18)
+        x14 ^= rotl32(x10 + x6, 7)
+        x2 ^= rotl32(x14 + x10, 9)
+        x6 ^= rotl32(x2 + x14, 13)
+        x10 ^= rotl32(x6 + x2, 18)
+        x3 ^= rotl32(x15 + x11, 7)
+        x7 ^= rotl32(x3 + x15, 9)
+        x11 ^= rotl32(x7 + x3, 13)
+        x15 ^= rotl32(x11 + x7, 18)
+        x1 ^= rotl32(x0 + x3, 7)
+        x2 ^= rotl32(x1 + x0, 9)
+        x3 ^= rotl32(x2 + x1, 13)
+        x0 ^= rotl32(x3 + x2, 18)
+        x6 ^= rotl32(x5 + x4, 7)
+        x7 ^= rotl32(x6 + x5, 9)
+        x4 ^= rotl32(x7 + x6, 13)
+        x5 ^= rotl32(x4 + x7, 18)
+        x11 ^= rotl32(x10 + x9, 7)
+        x8 ^= rotl32(x11 + x10, 9)
+        x9 ^= rotl32(x8 + x11, 13)
+        x10 ^= rotl32(x9 + x8, 18)
+        x12 ^= rotl32(x15 + x14, 7)
+        x13 ^= rotl32(x12 + x15, 9)
+        x14 ^= rotl32(x13 + x12, 13)
+        x15 ^= rotl32(x14 + x13, 18)
+    out = (x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15)
+    return [(o + w) & MASK32 for o, w in zip(out, words)]
+
+
+def scrypt_block_mix(block, r):
+    """RFC 7914 4: BlockMix over 2r 64-byte blocks held as 32r words."""
+    x = block[-16:]
+    mixed = []
+    for i in range(2 * r):
+        x = salsa20_8([a ^ b for a, b in zip(x, block[16 * i:16 * i + 16])])
+        mixed.append(x)
+    return [w for i in range(0, 2 * r, 2) for w in mixed[i]] + [w for i in range(1, 2 * r, 2) for w in mixed[i]]
+
+
+def scrypt_pure(password, salt, log_n, r, p, length):
+    """RFC 7914 scrypt in pure Python, for Pythons whose hashlib has no scrypt (and cross-checked against
+    hashlib.scrypt where it has one). Fast enough for work factor 10, never for 18."""
+    n = 1 << log_n
+    data = hashlib.pbkdf2_hmac("sha256", password, salt, 1, 128 * r * p)
+    out = b""
+    for i in range(p):
+        x = list(struct.unpack("<%dI" % (32 * r), data[128 * r * i:128 * r * (i + 1)]))
+        table = []
+        for _ in range(n):
+            table.append(x)
+            x = scrypt_block_mix(x, r)
+        for _ in range(n):
+            j = x[16 * (2 * r - 1)] & (n - 1)
+            x = scrypt_block_mix([a ^ b for a, b in zip(x, table[j])], r)
+        out += struct.pack("<%dI" % (32 * r), *x)
+    return hashlib.pbkdf2_hmac("sha256", password, out, 1, length)
+
+
+_AGE_SCRYPT_CACHE = {}
+# How many age wrap keys were asked for: check 11 uses it to prove a refused case never reached scrypt.
+AGE_SCRYPT_CALLS = [0]
+
+
+def age_wrap_key(passphrase, salt, log_n):
+    """The scrypt stanza's wrap key: scrypt(N = 2^log_n, r = 8, p = 1, dkLen = 32, S = label || salt,
+    P = passphrase), by hashlib where it has scrypt, else in pure Python. Cached per run."""
+    AGE_SCRYPT_CALLS[0] += 1
+    key = (passphrase, salt, log_n)
+    if key not in _AGE_SCRYPT_CACHE:
+        label_salt = AGE_SCRYPT_LABEL + salt
+        if hasattr(hashlib, "scrypt"):
+            _AGE_SCRYPT_CACHE[key] = hashlib.scrypt(passphrase, salt=label_salt, n=1 << log_n, r=AGE_SCRYPT_R,
+                                                    p=AGE_SCRYPT_P, maxmem=1 << 29, dklen=32)
+        else:
+            _AGE_SCRYPT_CACHE[key] = scrypt_pure(passphrase, label_salt, log_n, AGE_SCRYPT_R, AGE_SCRYPT_P, 32)
+    return _AGE_SCRYPT_CACHE[key]
+
+
+def b64_unpadded(data):
+    """Standard base64 without '=' padding (the age header's encoding)."""
+    return base64.b64encode(data).rstrip(b"=")
+
+
+def b64_decode_unpadded(text, error):
+    """Decode canonical unpadded base64, or refuse with `error`: only the 64 alphabet characters, and the
+    bytes must encode back to exactly `text` (so no padding and no stray low bits)."""
+    if any(c not in B64_ALPHABET for c in text) or len(text) % 4 == 1:
+        raise BackupRefused(error)
+    data = base64.b64decode(text + b"=" * (-len(text) % 4))
+    if b64_unpadded(data) != text:
+        raise BackupRefused(error)
+    return data
+
+
+def b64_decode_padded(text, error):
+    """Decode canonical padded base64 (the armor's), or refuse with `error`."""
+    try:
+        data = base64.b64decode(text, validate=True)
+    except (binascii.Error, ValueError):
+        raise BackupRefused(error)
+    if base64.b64encode(data) != text:
+        raise BackupRefused(error)
+    return data
+
+
+def age_armor(binary):
+    """Strict PEM armor: BEGIN, padded base64 in 64-column lines, END, each ending in LF."""
+    text = base64.b64encode(binary)
+    lines = b"".join(text[i:i + AGE_COLUMNS] + b"\n" for i in range(0, len(text), AGE_COLUMNS))
+    return AGE_ARMOR_BEGIN + b"\n" + lines + AGE_ARMOR_END + b"\n"
+
+
+def age_is_armored(data):
+    """Armor if, after leading ASCII whitespace, the input starts with '-----BEGIN'; anything else is read as
+    a binary file."""
+    return data.lstrip(BACKUP_WHITESPACE).startswith(b"-----BEGIN")
+
+
+def armor_line(data, at):
+    """(the line at `at` without its LF or CRLF, where the next line starts, whether it ended in LF)."""
+    end = data.find(b"\n", at)
+    if end < 0:
+        return data[at:], len(data), False
+    line = data[at:end]
+    return (line[:-1] if line.endswith(b"\r") else line), end + 1, True
+
+
+def age_dearmor(data):
+    """The binary file inside strict armor (spec "armor"), or Backup(Armor)."""
+    refused = "Backup(Armor)"
+    at = len(data) - len(data.lstrip(BACKUP_WHITESPACE))
+    line, at, ended = armor_line(data, at)
+    if line != AGE_ARMOR_BEGIN or not ended:
+        raise BackupRefused(refused)
+    body = []
+    while True:
+        if at >= len(data):
+            raise BackupRefused(refused)
+        line, at, ended = armor_line(data, at)
+        if line == AGE_ARMOR_END:
+            break
+        if not ended:
+            raise BackupRefused(refused)
+        body.append(line)
+    if data[at:].lstrip(BACKUP_WHITESPACE) or not body:
+        raise BackupRefused(refused)
+    if any(len(line) != AGE_COLUMNS for line in body[:-1]) or not 1 <= len(body[-1]) <= AGE_COLUMNS:
+        raise BackupRefused(refused)
+    return b64_decode_padded(b"".join(body), refused)
+
+
+def age_parse_header(binary):
+    """(stanzas as (arguments, body), the header up to and including '---', the MAC, the payload), or
+    Backup(Header) (spec "header")."""
+    refused = "Backup(Header)"
+    if not binary.startswith(AGE_VERSION_LINE):
+        raise BackupRefused(refused)
+    at = len(AGE_VERSION_LINE)
+    stanzas = []
+    while not binary.startswith(b"--- ", at):
+        end = binary.find(b"\n", at)
+        if not binary.startswith(b"-> ", at) or end < 0:
+            raise BackupRefused(refused)
+        arguments = binary[at + 3:end].split(b" ")
+        if any(not a or any(c < 0x21 or c > 0x7E for c in a) for a in arguments):
+            raise BackupRefused(refused)
+        at = end + 1
+        body = b""
+        while True:
+            end = binary.find(b"\n", at)
+            if end < 0:
+                raise BackupRefused(refused)
+            line = binary[at:end]
+            if len(line) > AGE_COLUMNS or any(c not in B64_ALPHABET for c in line):
+                raise BackupRefused(refused)
+            body += line
+            at = end + 1
+            if len(line) < AGE_COLUMNS:
+                break
+        stanzas.append((arguments, b64_decode_unpadded(body, refused)))
+    mac_end = at + 4 + 43
+    if not stanzas or binary[mac_end:mac_end + 1] != b"\n":
+        raise BackupRefused(refused)
+    mac = b64_decode_unpadded(binary[at + 4:mac_end], refused)
+    return stanzas, binary[:at + 3], mac, binary[mac_end + 1:]
+
+
+def age_scrypt_stanza(stanzas):
+    """(salt, log2 N, body) of the one scrypt stanza (spec "scrypt_stanza"), all before any scrypt work."""
+    if not any(arguments[0] == b"scrypt" for arguments, _ in stanzas):
+        raise BackupRefused("WrongPassphrase")  # no match: no stanza for a passphrase
+    if len(stanzas) != 1 or len(stanzas[0][0]) != 3:
+        raise BackupRefused("Backup(Header)")
+    (_, salt_text, work_factor), body = stanzas[0]
+    salt = b64_decode_unpadded(salt_text, "Backup(Header)")
+    if len(salt) != AGE_SALT_BYTES or not re.fullmatch(rb"[1-9][0-9]?", work_factor) or len(body) != 32:
+        raise BackupRefused("Backup(Header)")
+    if int(work_factor) > BACKUP_MAX_WORK_FACTOR:
+        raise BackupRefused("Backup(WorkFactor)")
+    return salt, int(work_factor), body
+
+
+def age_payload_nonce(chunk_index, final):
+    """The STREAM nonce: an 11-byte big-endian chunk counter, then 0x01 for the final chunk."""
+    return chunk_index.to_bytes(11, "big") + (b"\x01" if final else b"\x00")
+
+
+def age_decrypt(data, passphrase):
+    """The plaintext of an armored or binary age file under `passphrase` (spec "reader"), or BackupRefused."""
+    if len(data) > BACKUP_MAX_FILE_BYTES:
+        raise BackupRefused("Backup(TooLarge)")
+    binary = age_dearmor(data) if age_is_armored(data) else data
+    stanzas, header, mac, payload = age_parse_header(binary)
+    salt, log_n, body = age_scrypt_stanza(stanzas)
+    if not AGE_NONCE_BYTES + 16 <= len(payload) <= AGE_NONCE_BYTES + BACKUP_MAX_CHUNK_BYTES + 16:
+        raise BackupRefused("Backup(Payload)")
+    file_key = chacha20poly1305_open(age_wrap_key(passphrase, salt, log_n), bytes(12), body)
+    if file_key is None:
+        raise BackupRefused("WrongPassphrase")
+    header_mac = hmac.new(hkdf_sha256(file_key, b"", AGE_HEADER_INFO), header, hashlib.sha256).digest()
+    if not hmac.compare_digest(header_mac, mac):
+        raise BackupRefused("Backup(HeaderMac)")
+    nonce = payload[:AGE_NONCE_BYTES]
+    plaintext = chacha20poly1305_open(hkdf_sha256(file_key, nonce, AGE_PAYLOAD_INFO), age_payload_nonce(0, True),
+                                      payload[AGE_NONCE_BYTES:])
+    if plaintext is None:
+        raise BackupRefused("Backup(Payload)")
+    return plaintext
+
+
+def age_encrypt(passphrase, file_key, salt, nonce, log_n, plaintext, final=True):
+    """A binary age file with one scrypt stanza and the plaintext in one chunk. No policy limit, so it also
+    writes the refused cases (final=False writes a chunk that is not marked final)."""
+    body = chacha20poly1305_seal(age_wrap_key(passphrase, salt, log_n), bytes(12), file_key)
+    body_text = b64_unpadded(body)
+    body_lines = b"".join(body_text[i:i + AGE_COLUMNS] + b"\n" for i in range(0, len(body_text) + 1, AGE_COLUMNS))
+    header = (AGE_VERSION_LINE + b"-> scrypt " + b64_unpadded(salt) + b" " + str(log_n).encode("ascii") + b"\n"
+              + body_lines + b"---")
+    mac = hmac.new(hkdf_sha256(file_key, b"", AGE_HEADER_INFO), header, hashlib.sha256).digest()
+    chunk = chacha20poly1305_seal(hkdf_sha256(file_key, nonce, AGE_PAYLOAD_INFO), age_payload_nonce(0, final),
+                                  plaintext)
+    return header + b" " + b64_unpadded(mac) + b"\n" + nonce + chunk
+
+
+def backup_fingerprint(words):
+    """The master key fingerprint of S with the empty passphrase: what the plaintext names."""
+    return bip32_fingerprint(bip32_master(bip39_seed(" ".join(words)))[0])
+
+
+def backup_plaintext(words, fingerprint, app, version):
+    """The plaintext v1 text (spec "plaintext")."""
+    lines = [BACKUP_VERSION_LINE, "words: " + " ".join(words), "braille:"] + backup_braille_lines(words)
+    lines += ["fingerprint: " + fingerprint.hex(), "created-by: keepcrypt-%s %d.%d.%d" % ((app,) + tuple(version))]
+    return "".join(line + "\n" for line in lines)
+
+
+_BIP39_INDEX = {}
+
+
+def bip39_index(word):
+    """The 0-based list index of a BIP39 English word, or None."""
+    if not _BIP39_INDEX:
+        _BIP39_INDEX.update((w, i) for i, w in enumerate(BIP39_ENGLISH))
+    return _BIP39_INDEX.get(word)
+
+
+def bip39_checksum_valid(words):
+    """True if 12 or 24 list words carry a valid BIP39 checksum."""
+    indices = [bip39_index(w) for w in words]
+    if len(words) not in (12, 24) or None in indices:
+        return False
+    value = 0
+    for index in indices:
+        value = (value << 11) | index
+    checksum_bits = len(words) * 11 // 33
+    entropy = (value >> checksum_bits).to_bytes((len(words) * 11 - checksum_bits) // 8, "big")
+    return bip39_words(entropy) == list(words)
+
+
+def backup_plaintext_parse(data):
+    """(words, fingerprint, app, version) of a plaintext v1, or BackupRefused (spec "plaintext_reader")."""
+    refused = "Backup(Plaintext)"
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        raise BackupRefused(refused)
+    lines = text.split("\n")
+    if lines[0] != BACKUP_VERSION_LINE:
+        if re.fullmatch(r"keepcrypt-backup/v[1-9][0-9]*", lines[0]):
+            raise BackupRefused("Backup(UnsupportedVersion)")
+        raise BackupRefused(refused)
+    if len(lines) < 3 or not lines[1].startswith("words: "):
+        raise BackupRefused(refused)
+    words = lines[1][len("words: "):].split(" ")
+    created = re.fullmatch(r"created-by: keepcrypt-(pi|android|ios) (0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})"
+                           r"\.(0|[1-9][0-9]{0,4})", lines[-2])
+    if not bip39_checksum_valid(words) or created is None:
+        raise BackupRefused(refused)
+    version = tuple(int(created.group(i)) for i in (2, 3, 4))
+    if max(version) > 0xFFFF:
+        raise BackupRefused(refused)
+    fingerprint = backup_fingerprint(words)
+    if backup_plaintext(words, fingerprint, created.group(1), version).encode("utf-8") != data:
+        raise BackupRefused(refused)
+    return words, fingerprint, created.group(1), version
+
+
+def backup_passphrase_indices(data):
+    """The 8 word indices of 11 passphrase bytes: 11 bits each, most significant first."""
+    value = int.from_bytes(data, "big")
+    return [(value >> (11 * (BACKUP_PASSPHRASE_WORDS - 1 - i))) & 0x7FF for i in range(BACKUP_PASSPHRASE_WORDS)]
+
+
+def backup_passphrase_text(indices):
+    """The age passphrase: the words joined by single spaces."""
+    return " ".join(BIP39_ENGLISH[i] for i in indices)
+
+
+def backup_generate(stream):
+    """generate_backup_passphrase on these OS bytes (spec "generate"): (passphrase indices, two questions as
+    (0-based word position, four choice indices, answer slot), bytes read), or Source(NoUsableDraw)."""
+    indices = backup_passphrase_indices(stream[:BACKUP_PASSPHRASE_BYTES])
+    at = BACKUP_PASSPHRASE_BYTES
+    for _ in range(CHALLENGE_MAX_ATTEMPTS):
+        b = stream[at:at + CHALLENGE_ATTEMPT_BYTES]
+        if len(b) != CHALLENGE_ATTEMPT_BYTES:
+            raise ValueError("the stream ran out after %d bytes" % at)
+        at += CHALLENGE_ATTEMPT_BYTES
+        positions, slots = (b[0] & 7, b[1] & 7), (b[2] & 3, b[3] & 3)
+        others = [((b[4 + 2 * k] << 8) | b[5 + 2 * k]) & 0x7FF for k in range(6)]
+        questions = []
+        for q in range(2):
+            three = others[3 * q:3 * q + 3]
+            choices = three[:slots[q]] + [indices[positions[q]]] + three[slots[q]:]
+            questions.append((positions[q], choices, slots[q]))
+        if positions[0] != positions[1] and all(len(set(choices)) == 4 for _, choices, _ in questions):
+            return indices, questions, at
+    raise BackupRefused("Source(NoUsableDraw)")
+
+
+def backup_file_name(data):
+    """keepcrypt-backup-<8 lowercase hex>.age from 4 OS bytes."""
+    return "keepcrypt-backup-%s.age" % data.hex()
+
+
+def backup_stream(name, length):
+    """counter_stream over BACKUP_LABEL + name."""
+    return counter_stream(BACKUP_LABEL + name.encode("ascii"), length)
+
+
+def age_file_bytes(plaintext_bytes, log_n):
+    """The size of a binary age file with one scrypt stanza and one chunk: the version line, the stanza (16-byte
+    salt as 22 base64 characters, the work factor, a 32-byte body as 43), the MAC line, nonce, chunk, tag."""
+    header = len(AGE_VERSION_LINE) + len(b"-> scrypt ") + 22 + 1 + len(str(log_n)) + 1 + 43 + 1 + len(b"--- ") + 43 + 1
+    return header + AGE_NONCE_BYTES + plaintext_bytes + 16
+
+
+def armored_bytes(binary_bytes):
+    """The size of the armor around a binary file of that size, as age_armor writes it."""
+    text = 4 * ((binary_bytes + 2) // 3)
+    return len(AGE_ARMOR_BEGIN) + 1 + text + (text + AGE_COLUMNS - 1) // AGE_COLUMNS + len(AGE_ARMOR_END) + 1
+
+
+def backup_limits():
+    """The largest plaintext and armored file of a 12- and a 24-word backup: the longest list words, the longest
+    created-by line and work factor 18."""
+    longest = max(BIP39_ENGLISH, key=len)
+    limits = {"longest_word_letters": len(longest)}
+    for count in (12, 24):
+        text = backup_plaintext([longest] * count, bytes(4), "android", (0xFFFF,) * 3)
+        size = len(text.encode("utf-8"))
+        limits["max_plaintext_bytes_%d" % count] = size
+        limits["max_armored_bytes_%d" % count] = armored_bytes(age_file_bytes(size, BACKUP_WORK_FACTOR))
+    return limits
+
+
+def backup_plaintext_cases():
+    """[(name, words, fingerprint, app, version, text)] for BACKUP_PLAINTEXTS."""
+    mnemonics = {name: mnemonic for name, mnemonic, _ in WATCHONLY_WALLETS}
+    cases = []
+    for name, wallet, app, version in BACKUP_PLAINTEXTS:
+        words = mnemonics[wallet].split()
+        fingerprint = backup_fingerprint(words)
+        cases.append((name, words, fingerprint, app, version, backup_plaintext(words, fingerprint, app, version)))
+    return cases
+
+
+def backup_plaintext_refused(text):
+    """[(name, change, bytes, error)]: the abandon-12 plaintext `text` with one rule broken each."""
+    lines = text.split("\n")
+    words = lines[1][len("words: "):].split()
+
+    def rebuilt(new_words):
+        return backup_plaintext(new_words, backup_fingerprint(new_words), "pi", (1, 0, 0))
+
+    def replaced(index, line):
+        return "\n".join(lines[:index] + [line] + lines[index + 1:])
+
+    fingerprint_line = next(i for i, line in enumerate(lines) if line.startswith("fingerprint: "))
+    created_line = fingerprint_line + 1
+    plaintext, unsupported = "Backup(Plaintext)", "Backup(UnsupportedVersion)"
+    cases = [
+        ("crlf", "CRLF line endings", text.replace("\n", "\r\n"), plaintext),
+        ("bom", "a UTF-8 byte order mark first", "\ufeff" + text, plaintext),
+        ("no-final-lf", "no LF after the last line", text[:-1], plaintext),
+        ("uppercase-words", "the words in uppercase", replaced(1, "words: " + " ".join(words).upper()), plaintext),
+        ("uppercase-fingerprint", "the fingerprint in uppercase",
+         replaced(fingerprint_line, lines[fingerprint_line].upper().replace("FINGERPRINT", "fingerprint")),
+         plaintext),
+        ("words-18", "a valid 18-word mnemonic, with its braille lines and fingerprint",
+         rebuilt(["abandon"] * 17 + ["agent"]), plaintext),
+        ("bad-checksum", "abandon x 12, whose checksum is wrong, with its braille lines and fingerprint",
+         rebuilt(["abandon"] * 12), plaintext),
+        ("braille-mismatch", "the first braille cell of word 1 changed",
+         replaced(3, lines[3].replace(braille_text("a"), braille_text("b"), 1)), plaintext),
+        ("wrong-fingerprint", "the fingerprint's last digit changed",
+         replaced(fingerprint_line, lines[fingerprint_line][:-1] + ("b" if lines[fingerprint_line][-1] != "b" else "c")),
+         plaintext),
+        ("double-space", "two spaces between the first two words",
+         replaced(1, lines[1].replace("abandon ", "abandon  ", 1)), plaintext),
+        ("trailing-line", "one more line at the end", text + "x\n", plaintext),
+        ("passphrase-line", "a BIP39 passphrase line before the fingerprint",
+         "\n".join(lines[:fingerprint_line] + ["passphrase: TREZOR"] + lines[fingerprint_line:]), plaintext),
+        ("missing-braille", "no braille lines under braille:",
+         "\n".join(lines[:3] + lines[fingerprint_line:]), plaintext),
+        ("created-by-unknown-app", "created-by keepcrypt-mac",
+         replaced(created_line, "created-by: keepcrypt-mac 1.0.0"), plaintext),
+        ("created-by-leading-zero", "a version number with a leading zero",
+         replaced(created_line, "created-by: keepcrypt-pi 1.00.0"), plaintext),
+        ("created-by-too-big", "a version number above 65535",
+         replaced(created_line, "created-by: keepcrypt-pi 65536.0.0"), plaintext),
+        ("version-v0", "keepcrypt-backup/v0", replaced(0, "keepcrypt-backup/v0"), plaintext),
+        ("version-v1-space", "a space after keepcrypt-backup/v1", replaced(0, "keepcrypt-backup/v1 "), plaintext),
+        ("version-v2", "keepcrypt-backup/v2", replaced(0, "keepcrypt-backup/v2"), unsupported),
+        ("version-v10", "keepcrypt-backup/v10", replaced(0, "keepcrypt-backup/v10"), unsupported),
+        ("empty", "no bytes at all", "", plaintext),
+    ]
+    out = [(name, change, data.encode("utf-8"), error) for name, change, data, error in cases]
+    raw = text.encode("utf-8")
+    cell = braille_text("a").encode("utf-8")
+    out.append(("not-utf8", "the first braille cell's last byte replaced by 0xff, which is not UTF-8",
+                raw.replace(cell, cell[:-1] + b"\xff", 1), plaintext))
+    return out
+
+
+def backup_generate_case(name, stream):
+    """One generate case: the bytes read, then either the passphrase and questions or the error."""
+    try:
+        indices, questions, read = backup_generate(stream)
+    except BackupRefused as refused:
+        return {"name": name, "os_hex": stream.hex(), "error": refused.error}
+    return {
+        "name": name,
+        "os_hex": stream[:read].hex(),
+        "attempts": (read - BACKUP_PASSPHRASE_BYTES) // CHALLENGE_ATTEMPT_BYTES,
+        "passphrase": backup_passphrase_text(indices),
+        "questions": [{"position": position + 1, "choices": [BIP39_ENGLISH[i] for i in choices], "answer": slot}
+                      for position, choices, slot in questions],
+    }
+
+
+def backup_generate_cases():
+    """The generate cases: a counter stream; a first attempt that asks for one word twice; a first attempt with
+    a choice equal to the right word; and all-zero bytes, which exhaust the 64 attempts."""
+    stream = backup_stream("generate/stream", BACKUP_PASSPHRASE_BYTES + CHALLENGE_ATTEMPT_BYTES * CHALLENGE_MAX_ATTEMPTS)
+    same = bytearray(backup_stream("generate/same-word", BACKUP_PASSPHRASE_BYTES + 2 * CHALLENGE_ATTEMPT_BYTES))
+    first = BACKUP_PASSPHRASE_BYTES
+    same[first + 1] = (same[first + 1] & 0xF8) | (same[first] & 7)
+    repeated = bytearray(backup_stream("generate/repeated-choice", BACKUP_PASSPHRASE_BYTES + 2 * CHALLENGE_ATTEMPT_BYTES))
+    if repeated[first] & 7 == repeated[first + 1] & 7:
+        repeated[first + 1] ^= 1
+    right = backup_passphrase_indices(bytes(repeated[:BACKUP_PASSPHRASE_BYTES]))[repeated[first] & 7]
+    repeated[first + 4], repeated[first + 5] = right >> 8, right & 0xFF
+    cases = [
+        backup_generate_case("stream", stream),
+        backup_generate_case("same-word-rejected", bytes(same)),
+        backup_generate_case("repeated-choice-rejected", bytes(repeated)),
+        backup_generate_case("exhausted", bytes(BACKUP_PASSPHRASE_BYTES + CHALLENGE_ATTEMPT_BYTES * CHALLENGE_MAX_ATTEMPTS)),
+    ]
+    attempts = [case.get("attempts") for case in cases]
+    if attempts[1:3] != [2, 2] or "error" not in cases[3]:
+        raise ValueError("the generate cases do not reject as named: attempts %r" % attempts)
+    return cases
+
+
+def backup_file_case(name, written, passphrase, log_n, file_key, salt, nonce, plaintext, data, armored):
+    """One age_files entry: the inputs, the plaintext (a plaintexts name, or hex) and the file."""
+    case = {"name": name, "written": written, "armored": armored, "passphrase": passphrase.decode("ascii"),
+            "work_factor": log_n, "file_key_hex": file_key.hex(), "salt_hex": salt.hex(), "nonce_hex": nonce.hex()}
+    case.update({"plaintext": plaintext} if isinstance(plaintext, str) else {"plaintext_hex": plaintext.hex()})
+    case.update({"file": data.decode("utf-8")} if armored else {"file_hex": data.hex()})
+    return case
+
+
+def backup_refused_case(name, change, passphrase, data, error, scrypt):
+    """One age_refused entry: armored text as "file", anything else as "file_hex"."""
+    case = {"name": name, "change": change, "passphrase": passphrase.decode("ascii"), "error": error, "scrypt": scrypt}
+    if age_is_armored(data.replace("\ufeff".encode("utf-8"), b"", 1)):
+        case["file"] = data.decode("utf-8")
+    else:
+        case["file_hex"] = data.hex()
+    return case
+
+
+def rewrap_armor(armored, columns):
+    """The same armor with its base64 rewrapped at `columns` per line."""
+    lines = armored.split(b"\n")
+    text = b"".join(lines[1:-2])
+    return b"\n".join([lines[0]] + [text[i:i + columns] for i in range(0, len(text), columns)] + lines[-2:])
+
+
+def flip_padding_bits(armored):
+    """The armor with the low bit of the base64 character before its '=' padding flipped: non-canonical."""
+    at = armored.index(b"=") - 1
+    alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    return armored[:at] + bytes([alphabet[alphabet.index(armored[at]) ^ 1]]) + armored[at + 1:]
+
+
+def flip_b64_low_bit(text):
+    """Unpadded base64 with the low bit of its last character flipped."""
+    alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    return text[:-1] + bytes([alphabet[alphabet.index(text[-1]) ^ 1]])
+
+
+def backup_age_cases(plaintexts, passphrases):
+    """(age_files, age_refused): the CCTV scrypt files rebuilt; backup.json's own abandon-12 and zoo-24 files,
+    a 4,096-byte chunk, reader-only variants; and the refused cases, each from abandon-12 with one thing wrong."""
+    log_n = BACKUP_VECTOR_WORK_FACTOR
+    cctv = (bytes.fromhex(CCTV_FILE_KEY_HEX), bytes.fromhex(CCTV_SALT_HEX), bytes.fromhex(CCTV_NONCE_HEX))
+    cctv_binary = age_encrypt(CCTV_PASSPHRASE, *cctv, CCTV_WORK_FACTOR, CCTV_PLAINTEXT)
+    texts = {name: text.encode("utf-8") for name, _, _, _, _, text in plaintexts}
+
+    def inputs(name):
+        return tuple(backup_stream(name + "/" + part, 16) for part in ("file-key", "salt", "nonce"))
+
+    abandon_pass, zoo_pass = passphrases
+    abandon = inputs("abandon-12")
+    abandon_binary = age_encrypt(abandon_pass, *abandon, log_n, texts["abandon-12"])
+    abandon_armored = age_armor(abandon_binary)
+    zoo = inputs("zoo-24")
+    zoo_binary = age_encrypt(zoo_pass, *zoo, log_n, texts["zoo-24"])
+    chunk = backup_stream("chunk-4096/plaintext", BACKUP_MAX_CHUNK_BYTES)
+    chunk_inputs = (inputs("chunk-4096")[0], abandon[1], inputs("chunk-4096")[2])
+    whitespace = b"\n \t\r\n" + abandon_armored.replace(b"\n", b"\r\n") + b" \r\n\t\n"
+    padded_8192 = abandon_armored + b" " * (BACKUP_MAX_FILE_BYTES - len(abandon_armored))
+    files = [
+        backup_file_case("cctv-scrypt", True, CCTV_PASSPHRASE, CCTV_WORK_FACTOR, *cctv, CCTV_PLAINTEXT,
+                         cctv_binary, False),
+        backup_file_case("cctv-armor-scrypt", True, CCTV_PASSPHRASE, CCTV_WORK_FACTOR, *cctv, CCTV_PLAINTEXT,
+                         age_armor(cctv_binary), True),
+        backup_file_case("abandon-12", True, abandon_pass, log_n, *abandon, "abandon-12", abandon_armored, True),
+        backup_file_case("abandon-12-binary", True, abandon_pass, log_n, *abandon, "abandon-12", abandon_binary, False),
+        backup_file_case("zoo-24", True, zoo_pass, log_n, *zoo, "zoo-24", age_armor(zoo_binary), True),
+        backup_file_case("chunk-4096", True, abandon_pass, log_n, *chunk_inputs, chunk,
+                         age_encrypt(abandon_pass, *chunk_inputs, log_n, chunk), False),
+        backup_file_case("abandon-12-crlf", False, abandon_pass, log_n, *abandon, "abandon-12",
+                         abandon_armored.replace(b"\n", b"\r\n"), True),
+        backup_file_case("abandon-12-whitespace", False, abandon_pass, log_n, *abandon, "abandon-12", whitespace, True),
+        backup_file_case("abandon-12-no-final-newline", False, abandon_pass, log_n, *abandon, "abandon-12",
+                         abandon_armored[:-1], True),
+        backup_file_case("abandon-12-8192-bytes", False, abandon_pass, log_n, *abandon, "abandon-12", padded_8192, True),
+    ]
+
+    header_end = abandon_binary.index(b"\n--- ") + 1
+    stanza_line_end = abandon_binary.index(b"\n", len(AGE_VERSION_LINE))
+    stanza_line = abandon_binary[len(AGE_VERSION_LINE):stanza_line_end]
+    body_line_end = abandon_binary.index(b"\n", stanza_line_end + 1)
+    body_text = abandon_binary[stanza_line_end + 1:body_line_end]
+    salt_text = stanza_line.split(b" ")[2]
+    mac_text = abandon_binary[header_end + 4:header_end + 4 + 43]
+    payload_at = header_end + 4 + 43 + 1
+
+    def with_stanza(line):
+        return abandon_binary[:len(AGE_VERSION_LINE)] + line + abandon_binary[stanza_line_end:]
+
+    def with_body(text):
+        return abandon_binary[:stanza_line_end + 1] + text + abandon_binary[body_line_end:]
+
+    def with_mac(text):
+        return abandon_binary[:header_end + 4] + text + abandon_binary[header_end + 4 + 43:]
+
+    other_stanza = b"-> X25519 " + b64_unpadded(backup_stream("x25519-share", 32)) + b"\n" + body_text + b"\n"
+    mac_bytes = bytearray(base64.b64decode(mac_text + b"="))
+    mac_bytes[0] ^= 1
+    payload_flip = bytearray(abandon_binary)
+    payload_flip[-1] ^= 1
+    nonce_flip = bytearray(abandon_binary)
+    nonce_flip[payload_at] ^= 1
+    begin_lower = abandon_armored.replace(AGE_ARMOR_BEGIN, AGE_ARMOR_BEGIN.decode("ascii").replace(
+        "AGE ENCRYPTED FILE", "age encrypted file").encode("ascii"), 1)
+    first_line = len(AGE_ARMOR_BEGIN) + 1
+    padded = next(a for a in (abandon_armored, age_armor(zoo_binary)) if b"=" in a)
+    padded_pass = abandon_pass if padded == abandon_armored else zoo_pass
+    wrong_pass = backup_passphrase_text(backup_passphrase_indices(backup_stream("wrong-passphrase", 11))).encode("ascii")
+    a, h, wf, mac, payload = "Backup(Armor)", "Backup(Header)", "Backup(WorkFactor)", "Backup(HeaderMac)", "Backup(Payload)"
+    refused = [
+        ("armor-lowercase-label", "the BEGIN label in lowercase", abandon_pass, begin_lower, a, False),
+        ("armor-line-63", "the base64 wrapped at 63 columns", abandon_pass, rewrap_armor(abandon_armored, 63), a, False),
+        ("armor-line-65", "the base64 wrapped at 65 columns", abandon_pass, rewrap_armor(abandon_armored, 65), a, False),
+        ("armor-empty-last-line", "an empty line before END", abandon_pass,
+         abandon_armored.replace(b"\n" + AGE_ARMOR_END, b"\n\n" + AGE_ARMOR_END), a, False),
+        ("armor-bad-padding", "one '=' more at the end of the base64", abandon_pass,
+         abandon_armored.replace(b"\n" + AGE_ARMOR_END, b"=\n" + AGE_ARMOR_END), a, False),
+        ("armor-non-canonical-padding", "a 1 bit in the bits before the '=' padding", padded_pass,
+         flip_padding_bits(padded), a, False),
+        ("armor-inner-space", "a space in place of a base64 character", abandon_pass,
+         abandon_armored[:first_line + 10] + b" " + abandon_armored[first_line + 11:], a, False),
+        ("armor-text-after-end", "a letter after the END line", abandon_pass, abandon_armored + b"x", a, False),
+        ("armor-no-end", "no END line", abandon_pass, abandon_armored[:abandon_armored.index(AGE_ARMOR_END)], a, False),
+        ("armor-bom", "a UTF-8 byte order mark before BEGIN, so it is read as a binary file", abandon_pass,
+         "\ufeff".encode("utf-8") + abandon_armored, h, False),
+        ("too-large", "the armored file padded with trailing spaces to 8,193 bytes", abandon_pass,
+         abandon_armored + b" " * (BACKUP_MAX_FILE_BYTES + 1 - len(abandon_armored)), "Backup(TooLarge)", False),
+        ("work-factor-trailing-garbage", "work factor 10aaaa", abandon_pass,
+         with_stanza(stanza_line + b"aaaa"), h, False),
+        ("work-factor-19", "work factor 19", abandon_pass, with_stanza(b"-> scrypt " + salt_text + b" 19"), wf, False),
+        ("work-factor-99", "work factor 99", abandon_pass, with_stanza(b"-> scrypt " + salt_text + b" 99"), wf, False),
+        ("work-factor-100", "work factor 100, three digits", abandon_pass,
+         with_stanza(b"-> scrypt " + salt_text + b" 100"), h, False),
+        ("version-v2", "age-encryption.org/v2", abandon_pass, b"age-encryption.org/v2" + abandon_binary[21:], h, False),
+        ("no-stanza", "no stanza before the MAC line", abandon_pass,
+         AGE_VERSION_LINE + abandon_binary[header_end:], h, False),
+        ("double-space-argument", "two spaces between scrypt and the salt", abandon_pass,
+         with_stanza(stanza_line.replace(b"scrypt ", b"scrypt  ", 1)), h, False),
+        ("body-31-bytes", "a 31-byte stanza body", abandon_pass, with_body(b64_unpadded(bytes(31))), h, False),
+        ("body-33-bytes", "a 33-byte stanza body", abandon_pass, with_body(b64_unpadded(bytes(33))), h, False),
+        ("salt-15-bytes", "a 15-byte salt", abandon_pass,
+         with_stanza(b"-> scrypt " + b64_unpadded(abandon[1][:15]) + b" 10"), h, False),
+        ("salt-padded", "the salt with '==' padding", abandon_pass,
+         with_stanza(b"-> scrypt " + salt_text + b"== 10"), h, False),
+        ("mac-non-canonical", "a 1 bit in the unused low bits of the MAC's base64", abandon_pass,
+         with_mac(flip_b64_low_bit(mac_text)), h, False),
+        ("binary-leading-space", "a space before the version line", abandon_pass, b" " + abandon_binary, h, False),
+        ("crlf-header", "the header lines end in CRLF", abandon_pass,
+         abandon_binary[:payload_at].replace(b"\n", b"\r\n") + abandon_binary[payload_at:], h, False),
+        ("other-stanza-only", "an X25519 stanza in place of the scrypt stanza", abandon_pass,
+         AGE_VERSION_LINE + other_stanza + abandon_binary[header_end:], "WrongPassphrase", False),
+        ("scrypt-and-other-stanza", "an X25519 stanza before the scrypt stanza", abandon_pass,
+         AGE_VERSION_LINE + other_stanza + abandon_binary[len(AGE_VERSION_LINE):], h, False),
+        ("payload-nonce-only", "the payload cut to its nonce", abandon_pass,
+         abandon_binary[:payload_at + AGE_NONCE_BYTES], payload, False),
+        ("payload-chunk-4097", "one chunk of 4,097 bytes of plaintext", abandon_pass,
+         age_encrypt(abandon_pass, *abandon, log_n, backup_stream("chunk-4097/plaintext", BACKUP_MAX_CHUNK_BYTES + 1)),
+         payload, False),
+        ("wrong-passphrase", "another 8-word passphrase", wrong_pass, abandon_binary, "WrongPassphrase", True),
+        ("header-mac-flipped", "one bit of the header MAC flipped", abandon_pass,
+         with_mac(b64_unpadded(bytes(mac_bytes))), mac, True),
+        ("payload-flipped", "the last byte of the chunk flipped", abandon_pass, bytes(payload_flip), payload, True),
+        ("payload-nonce-flipped", "the first byte of the payload nonce flipped", abandon_pass, bytes(nonce_flip),
+         payload, True),
+        ("payload-trailing-byte", "one byte after the chunk", abandon_pass, abandon_binary + b"\x00", payload, True),
+        ("payload-truncated", "the chunk one byte short", abandon_pass, abandon_binary[:-1], payload, True),
+        ("payload-not-final", "the one chunk encrypted with the non-final nonce", abandon_pass,
+         age_encrypt(abandon_pass, *abandon, log_n, texts["abandon-12"], final=False), payload, True),
+    ]
+    return files, [backup_refused_case(*case) for case in refused]
+
+
+_BACKUP_JSON = []
+
+
+def backup_vectors_json():
+    """The exact text of vectors/backup.json: indent 2, fixed key order, ASCII, trailing newline. Computed once
+    per run (scrypt at work factor 10)."""
+    if _BACKUP_JSON:
+        return _BACKUP_JSON[0]
+    passphrase_inputs = [("zeros", bytes(11)), ("ones", b"\xff" * 11), ("first-bit", b"\x80" + bytes(10)),
+                         ("last-bit", bytes(10) + b"\x01"), ("stream", backup_stream("passphrase/stream", 11))]
+    passphrases = []
+    for name, data in passphrase_inputs:
+        indices = backup_passphrase_indices(data)
+        passphrases.append({"name": name, "os_hex": data.hex(), "indices": indices,
+                            "words": [BIP39_ENGLISH[i] for i in indices], "passphrase": backup_passphrase_text(indices)})
+    generate = backup_generate_cases()
+    plaintexts = backup_plaintext_cases()
+    files, refused = backup_age_cases(plaintexts, (passphrases[-1]["passphrase"].encode("ascii"),
+                                                   generate[0]["passphrase"].encode("ascii")))
+    doc = {
+        "description": "KeepCrypt encrypted-backup vectors: the age v1 scrypt file, the plaintext v1 inside it and "
+        "the generated passphrase with its confirm challenge (docs/build-plan.md \"Encrypted backup format\"). "
+        "Generated by tools/verify/verify.py --write-backup-vectors; verify.py --selftest regenerates this file and "
+        "requires byte equality, rebuilds the CCTV scrypt file byte for byte, runs every case through its own "
+        "reader and compares its pinned answers (check 11). Public test mnemonics and labelled test streams only.",
+        "spec": BACKUP_SPEC,
+        "constants": {
+            "version_line": AGE_VERSION_LINE[:-1].decode("ascii"),
+            "scrypt_label": AGE_SCRYPT_LABEL.decode("ascii"),
+            "header_info": AGE_HEADER_INFO.decode("ascii"),
+            "payload_info": AGE_PAYLOAD_INFO.decode("ascii"),
+            "armor_begin": AGE_ARMOR_BEGIN.decode("ascii"),
+            "armor_end": AGE_ARMOR_END.decode("ascii"),
+            "columns": AGE_COLUMNS,
+            "scrypt_r": AGE_SCRYPT_R,
+            "scrypt_p": AGE_SCRYPT_P,
+            "work_factor": BACKUP_WORK_FACTOR,
+            "max_work_factor": BACKUP_MAX_WORK_FACTOR,
+            "vector_work_factor": BACKUP_VECTOR_WORK_FACTOR,
+            "max_file_bytes": BACKUP_MAX_FILE_BYTES,
+            "max_chunk_bytes": BACKUP_MAX_CHUNK_BYTES,
+            "passphrase_words": BACKUP_PASSPHRASE_WORDS,
+            "passphrase_bytes": BACKUP_PASSPHRASE_BYTES,
+            "file_name_bytes": BACKUP_FILE_NAME_BYTES,
+            "challenge_attempt_bytes": CHALLENGE_ATTEMPT_BYTES,
+            "challenge_max_attempts": CHALLENGE_MAX_ATTEMPTS,
+            "plaintext_version_line": BACKUP_VERSION_LINE,
+            "apps": list(BACKUP_APPS),
+        },
+        "passphrases": passphrases,
+        "generate": generate,
+        "plaintexts": [{"name": name, "mnemonic": " ".join(words), "fingerprint": fingerprint.hex(),
+                        "created_by": {"app": app, "version": list(version)}, "text": text,
+                        "bytes": len(text.encode("utf-8"))}
+                       for name, words, fingerprint, app, version, text in plaintexts],
+        "plaintext_refused": [{"name": name, "change": change, "text_hex": data.hex(), "error": error}
+                              for name, change, data, error in backup_plaintext_refused(plaintexts[0][5])],
+        "file_names": [{"os_hex": data.hex(), "name": backup_file_name(data)}
+                       for data in (bytes([0, 1, 2, 3]), b"\xff" * 4, backup_stream("file-name", 4))],
+        "age_files": files,
+        "age_refused": refused,
+        "limits": backup_limits(),
+    }
+    _BACKUP_JSON.append(json.dumps(doc, indent=2, sort_keys=False, ensure_ascii=True) + "\n")
+    return _BACKUP_JSON[0]
+
+
+def write_backup_vectors(vectors_dir):
+    """Write backup.json into vectors_dir, which must already exist."""
+    return write_vectors(vectors_dir, "backup.json", backup_vectors_json())
+
+
 # --- Self-test -------------------------------------------------------------------------------
 
 
@@ -4081,6 +5056,265 @@ def check_kcr_json(vectors_dir):
     )
 
 
+DOCS_DIR = Path(__file__).resolve().parent.parent.parent / "docs"
+# The age CLI's own files (scripts/age-interop.py --generate), a SOURCES.md row of their own.
+AGE_CLI_VECTORS = ("age", "age_cli_written.json")
+# The CCTV header keys (age/README.md, vectors/SOURCES.md "CCTV age test file format"), except "compressed",
+# which no scrypt case uses and this reader does not read.
+CCTV_KEYS = ("expect", "payload", "file key", "passphrase", "identity", "armored", "comment")
+CCTV_OUTCOMES = {"WrongPassphrase": "no match", "Backup(Header)": "header failure",
+                 "Backup(WorkFactor)": "header failure", "Backup(HeaderMac)": "HMAC failure",
+                 "Backup(Payload)": "payload failure", "Backup(Armor)": "armor failure"}
+
+
+def check_backup_primitives():
+    """The pure-Python scrypt against hashlib.scrypt where Python has one (any N runs the same code), and the
+    base64 helpers against age's canonical rule."""
+    problems = []
+    if hasattr(hashlib, "scrypt"):
+        for password, salt, log_n, r, p in ((CCTV_PASSPHRASE, AGE_SCRYPT_LABEL + bytes.fromhex(CCTV_SALT_HEX), 4, 8, 1),
+                                            (b"", b"", 4, 1, 2), (b"pleaseletmein", b"SodiumChloride", 5, 2, 1)):
+            want = hashlib.scrypt(password, salt=salt, n=1 << log_n, r=r, p=p, dklen=64)
+            if scrypt_pure(password, salt, log_n, r, p, 64) != want:
+                problems.append("scrypt_pure(%r, N = 2^%d, r = %d, p = %d) differs from hashlib.scrypt" % (password, log_n, r, p))
+    for text, padded, ok in ((b"AA", False, True), (b"AB", False, False), (b"AA==", False, False), (b"A", False, False),
+                             (b"AA==", True, True), (b"AB==", True, False), (b"AA", True, False), (b"A A=", True, False)):
+        try:
+            (b64_decode_padded if padded else b64_decode_unpadded)(text, "refused")
+            accepted = True
+        except BackupRefused:
+            accepted = False
+        if accepted != ok:
+            problems.append("base64 %r (padded %s): accepted %s, the canonical rule says %s" % (text, padded, accepted, ok))
+    return problems
+
+
+def cctv_case(path):
+    """(header fields as {key: [values]}, the age file) of one CCTV test file."""
+    head, _, body = path.read_bytes().partition(b"\n\n")
+    fields = {}
+    for line in head.decode("utf-8").split("\n"):
+        key, _, value = line.partition(": ")
+        fields.setdefault(key, []).append(value)
+    return fields, body
+
+
+def check_backup_cctv(vectors_dir):
+    """Every CCTV scrypt file (exactly 26, no unknown header key) reaches its expected outcome with this file's
+    reader, and each success gives the stated payload SHA-256."""
+    folder = vectors_dir / "age" / "scrypt"
+    paths = sorted(p for p in folder.iterdir() if p.is_file() and not is_finder_metadata(p))
+    problems = [] if len(paths) == sum(CCTV_SCRYPT_CLASSES.values()) else ["vectors/age/scrypt holds %d files" % len(paths)]
+    counts = {}
+    for path in paths:
+        fields, body = cctv_case(path)
+        unknown = [key for key in fields if key not in CCTV_KEYS]
+        if unknown or len(fields.get("expect", [])) != 1:
+            problems.append("%s: unknown header keys %r or no single expect" % (path.name, unknown))
+            continue
+        expect = fields["expect"][0]
+        if (fields.get("armored") == ["yes"]) != age_is_armored(body):
+            problems.append("%s: armored says %r" % (path.name, fields.get("armored")))
+        outcomes = set()
+        for passphrase in fields.get("passphrase", [""]):
+            try:
+                plaintext = age_decrypt(body, passphrase.encode("utf-8"))
+                outcomes.add("success")
+                if hashlib.sha256(plaintext).hexdigest() != fields.get("payload", [""])[0]:
+                    problems.append("%s: the plaintext's SHA-256 is not the stated payload" % path.name)
+            except BackupRefused as refused:
+                outcomes.add(CCTV_OUTCOMES.get(refused.error, refused.error))
+        got = "success" if "success" in outcomes else sorted(outcomes)[0]
+        if got != expect or len(outcomes) != 1:
+            problems.append("%s: expected %s, this reader gives %s" % (path.name, expect, sorted(outcomes)))
+        counts[expect] = counts.get(expect, 0) + 1
+    if counts != CCTV_SCRYPT_CLASSES:
+        problems.append("CCTV outcomes %r, expected %r" % (counts, CCTV_SCRYPT_CLASSES))
+    return problems
+
+
+def backup_case_file(case):
+    """The bytes of an age_files or age_refused entry: "file" text or "file_hex"."""
+    return case["file"].encode("utf-8") if "file" in case else bytes.fromhex(case["file_hex"])
+
+
+def check_backup_contents(vectors_dir):
+    """The committed backup.json against the pins, this file's reader and writer, CCTV and watchonly.json."""
+    if not (vectors_dir / "backup.json").is_file():
+        return []  # check_generated_file reports it missing
+    doc = json.loads((vectors_dir / "backup.json").read_text(encoding="ascii"))
+    problems = []
+    passphrases = {case["name"]: case for case in doc["passphrases"]}
+    for name in ("zeros", "ones", "first-bit", "last-bit"):
+        pin = "passphrase " + name
+        if passphrases[name]["passphrase"] != BACKUP_PINNED[pin]:
+            problems.append("backup.json passphrase %s is %r, pinned %r" % (name, passphrases[name]["passphrase"], BACKUP_PINNED[pin]))
+    for case in doc["passphrases"]:
+        indices = backup_passphrase_indices(bytes.fromhex(case["os_hex"]))
+        if (indices, backup_passphrase_text(indices)) != (case["indices"], case["passphrase"]):
+            problems.append("backup.json passphrase %s does not follow the 11-bit layout" % case["name"])
+    wallets = {w["name"]: w for w in json.loads((vectors_dir / "watchonly.json").read_text(encoding="ascii"))["wallets"]}
+    plaintexts = {case["name"]: case for case in doc["plaintexts"]}
+    for name, wallet, app, version in BACKUP_PLAINTEXTS:
+        case = plaintexts[name]
+        if not (case["fingerprint"] == BACKUP_PINNED["fingerprint " + name] == wallets[wallet]["fingerprint"]
+                and case["mnemonic"] == wallets[wallet]["mnemonic"]):
+            problems.append("backup.json plaintext %s: fingerprint or words differ from the pin or watchonly.json" % name)
+        try:
+            parsed = backup_plaintext_parse(case["text"].encode("utf-8"))
+        except BackupRefused as refused:
+            problems.append("backup.json plaintext %s is refused: %s" % (name, refused.error))
+            continue
+        if parsed != (case["mnemonic"].split(), bytes.fromhex(case["fingerprint"]), app, version):
+            problems.append("backup.json plaintext %s parses to other values" % name)
+    if hashlib.sha256(plaintexts["abandon-12"]["text"].encode("utf-8")).hexdigest() != BACKUP_PINNED["abandon-12 plaintext sha256"]:
+        problems.append("backup.json abandon-12 plaintext differs from the separately written text")
+    for case in doc["plaintext_refused"]:
+        try:
+            backup_plaintext_parse(bytes.fromhex(case["text_hex"]))
+            got = "accepted"
+        except BackupRefused as refused:
+            got = refused.error
+        if got != case["error"]:
+            problems.append("backup.json plaintext_refused %s: %s, expected %s" % (case["name"], got, case["error"]))
+    for case in doc["generate"]:
+        stream = bytes.fromhex(case["os_hex"])
+        try:
+            indices, questions, read = backup_generate(stream)
+            got = "%s | %s | %d" % (backup_passphrase_text(indices), "; ".join(
+                "%d %s %d" % (p + 1, ",".join(BIP39_ENGLISH[i] for i in c), a) for p, c, a in questions),
+                (read - BACKUP_PASSPHRASE_BYTES) // CHALLENGE_ATTEMPT_BYTES)
+            want = "%s | %s | %d" % (case.get("passphrase"), "; ".join("%d %s %d" % (q["position"], ",".join(q["choices"]), q["answer"])
+                                                                      for q in case.get("questions", [])), case.get("attempts", -1))
+            if got != want or read != len(stream):
+                problems.append("backup.json generate %s: %s, the file says %s (%d of %d bytes read)" % (case["name"], got, want, read, len(stream)))
+            if case["name"] == "stream" and got != BACKUP_PINNED["generate stream"]:
+                problems.append("backup.json generate stream: %s, pinned %s" % (got, BACKUP_PINNED["generate stream"]))
+        except BackupRefused as refused:
+            if refused.error != case.get("error"):
+                problems.append("backup.json generate %s: %s, expected %s" % (case["name"], refused.error, case.get("error")))
+        except ValueError as e:
+            problems.append("backup.json generate %s: %s" % (case["name"], e))
+    names = {case["os_hex"]: case["name"] for case in doc["file_names"]}
+    if names.get("00010203") != BACKUP_PINNED["file name 00010203"] or any(
+            backup_file_name(bytes.fromhex(h)) != n for h, n in names.items()):
+        problems.append("backup.json file_names differ from the rule")
+    for case in doc["age_files"]:
+        data = backup_case_file(case)
+        plaintext = (plaintexts[case["plaintext"]]["text"].encode("utf-8") if "plaintext" in case
+                     else bytes.fromhex(case["plaintext_hex"]))
+        passphrase = case["passphrase"].encode("ascii")
+        if case["written"]:
+            binary = age_encrypt(passphrase, bytes.fromhex(case["file_key_hex"]), bytes.fromhex(case["salt_hex"]),
+                                 bytes.fromhex(case["nonce_hex"]), case["work_factor"], plaintext)
+            if (age_armor(binary) if case["armored"] else binary) != data:
+                problems.append("backup.json age_files %s: the writer does not rebuild it" % case["name"])
+            if len(binary) != age_file_bytes(len(plaintext), case["work_factor"]) or (
+                    case["armored"] and len(data) != armored_bytes(len(binary))):
+                problems.append("backup.json age_files %s: the size formula is off" % case["name"])
+        try:
+            if age_decrypt(data, passphrase) != plaintext:
+                problems.append("backup.json age_files %s decrypts to other bytes" % case["name"])
+        except BackupRefused as refused:
+            problems.append("backup.json age_files %s is refused: %s" % (case["name"], refused.error))
+    files = {case["name"]: backup_case_file(case) for case in doc["age_files"]}
+    for name, cctv in (("cctv-scrypt", "scrypt"), ("cctv-armor-scrypt", "armor_scrypt")):
+        if files.get(name) != cctv_case(vectors_dir / "age" / "scrypt" / cctv)[1]:
+            problems.append("backup.json age_files %s is not CCTV's %s byte for byte" % (name, cctv))
+    for case in doc["age_refused"]:
+        calls = AGE_SCRYPT_CALLS[0]
+        try:
+            age_decrypt(backup_case_file(case), case["passphrase"].encode("ascii"))
+            got = "accepted"
+        except BackupRefused as refused:
+            got = refused.error
+        reached = AGE_SCRYPT_CALLS[0] != calls
+        if (got, reached) != (case["error"], case["scrypt"]):
+            problems.append("backup.json age_refused %s: %s (scrypt %s), expected %s (scrypt %s)"
+                            % (case["name"], got, reached, case["error"], case["scrypt"]))
+    limits = doc["limits"]
+    if max(limits["max_plaintext_bytes_12"], limits["max_plaintext_bytes_24"]) > BACKUP_MAX_CHUNK_BYTES or max(
+            limits["max_armored_bytes_12"], limits["max_armored_bytes_24"]) > BACKUP_MAX_FILE_BYTES:
+        problems.append("backup.json limits exceed the reader's caps: %r" % limits)
+    return problems
+
+
+def backup_docs_sentences():
+    """(file, what, the exact text) the docs must hold for the backup, computed here (tasks/lessons.md)."""
+    memory_mib = 128 * AGE_SCRYPT_R * (1 << BACKUP_WORK_FACTOR) // (1 << 20)
+    return [
+        ("build-plan.md", "the passphrase", "Generated by the core: %d words from the BIP39 English list, %d bits"
+         % (BACKUP_PASSPHRASE_WORDS, 8 * BACKUP_PASSPHRASE_BYTES)),
+        ("build-plan.md", "the work factor", "log2 N = %d (about %d MiB of memory)" % (BACKUP_WORK_FACTOR, memory_mib)),
+        ("build-plan.md", "the file key and nonce", "a fresh %d-byte file key and nonce per file"
+         % AGE_FILE_KEY_BYTES),
+        ("build-plan.md", "the file name", "`keepcrypt-backup-<%d random hex>.age`" % (2 * BACKUP_FILE_NAME_BYTES)),
+        ("pi-firmware.md", "the passphrase", "The core generates an %d-word backup passphrase" % BACKUP_PASSPHRASE_WORDS),
+        ("pi-firmware.md", "the confirm challenge", "The user picks 2 random passphrase words from four choices each"),
+        ("pi-firmware.md", "the work factor", "scrypt at log2 N = %d" % BACKUP_WORK_FACTOR),
+        ("pi-firmware.md", "the file name", "The file `keepcrypt-backup-<%d hex>.age` is written" % (2 * BACKUP_FILE_NAME_BYTES)),
+        ("mobile-apps.md", "the passphrase", "The core generates an %d-word backup passphrase" % BACKUP_PASSPHRASE_WORDS),
+    ]
+
+
+def check_backup_docs():
+    """docs/build-plan.md, pi-firmware.md and mobile-apps.md against the figures computed here."""
+    problems = []
+    for name, what, sentence in backup_docs_sentences():
+        path = DOCS_DIR / name
+        if not path.is_file() or sentence not in path.read_text(encoding="utf-8"):
+            problems.append("docs/%s does not say %r (%s)" % (name, sentence, what))
+    return problems
+
+
+def check_age_cli_vectors(vectors_dir):
+    """vectors/age/age_cli_written.json (made by the age CLI): each file's armor and header read with this file's
+    reader up to the work factor (scrypt at 18 needs hashlib's scrypt; scripts/age-interop.py and core decrypt
+    them), a one-chunk payload of exactly its plaintext's size, an 8-word list passphrase, and a known plaintext."""
+    path = vectors_dir.joinpath(*AGE_CLI_VECTORS)
+    if not path.is_file():
+        return ["vectors/%s is missing (run scripts/age-interop.py --generate)" % "/".join(AGE_CLI_VECTORS)]
+    doc = json.loads(path.read_text(encoding="ascii"))
+    plaintexts = {case["name"]: case["text"].encode("utf-8")
+                  for case in json.loads((vectors_dir / "backup.json").read_text(encoding="ascii"))["plaintexts"]}
+    problems = []
+    seen = set()
+    for case in doc.get("files", []):
+        name = case.get("name")
+        try:
+            data = backup_case_file(case)
+            if case["armored"] != age_is_armored(data):
+                raise ValueError("armored is wrong")
+            binary = age_dearmor(data) if case["armored"] else data
+            stanzas, _, _, payload = age_parse_header(binary)
+            _, log_n, _ = age_scrypt_stanza(stanzas)
+            plaintext = plaintexts[case["plaintext"]]
+            words = case["passphrase"].split(" ")
+            if len(words) != BACKUP_PASSPHRASE_WORDS or None in [bip39_index(w) for w in words]:
+                raise ValueError("the passphrase is not 8 list words")
+            if log_n != BACKUP_WORK_FACTOR or len(payload) != AGE_NONCE_BYTES + len(plaintext) + 16:
+                raise ValueError("work factor %d, payload %d bytes" % (log_n, len(payload)))
+            seen.add((case["plaintext"], case["armored"]))
+        except (BackupRefused, KeyError, ValueError) as e:
+            problems.append("vectors/%s %s: %s" % ("/".join(AGE_CLI_VECTORS), name, e))
+    if seen != {(p, a) for p in ("abandon-12", "zoo-24") for a in (True, False)}:
+        problems.append("vectors/%s does not hold abandon-12 and zoo-24, armored and binary" % "/".join(AGE_CLI_VECTORS))
+    return problems
+
+
+def check_backup_json(vectors_dir):
+    """Check 11: the primitives, CCTV through this reader, backup.json equal to the regenerated text, its contents
+    against the pins and CCTV, the docs' figures, and the age CLI's files."""
+    return (
+        check_backup_primitives()
+        + check_backup_cctv(vectors_dir)
+        + check_generated_file(vectors_dir, "backup.json", backup_vectors_json(), "--write-backup-vectors")
+        + check_backup_contents(vectors_dir)
+        + check_backup_docs()
+        + check_age_cli_vectors(vectors_dir)
+    )
+
+
 def sha256_file(path):
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -4295,6 +5529,10 @@ def selftest(vectors_dir):
          "file matches regenerated output, every case's pinned outcome reproduced, each negative failing only its "
          "check and each order case its first, pinned key and roots",
          lambda: check_kcr_json(vectors_dir)),
+        ("vectors/backup.json: scrypt against hashlib, all 26 CCTV scrypt files through this reader, file matches "
+         "regenerated output, the CCTV files rebuilt byte for byte, every case's pinned outcome and scrypt reach, "
+         "plaintexts against watchonly.json, the docs' backup figures, the age CLI's files read",
+         lambda: check_backup_json(vectors_dir)),
     )
     failed = 0
     for name, check in checks:
@@ -4318,7 +5556,7 @@ def main(argv):
     parser = argparse.ArgumentParser(prog="verify.py", description="KeepCrypt offline verifier (M1 seed).")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--selftest", action="store_true",
-                      help="run the 10 checks: seal known answers (all 3 vectors), seal.json bytes, SOURCES.md "
+                      help="run the 11 checks: seal known answers (all 3 vectors), seal.json bytes, SOURCES.md "
                       "hashes and coverage, Coldcard's own scripts on every dice-only case, kat.json (SHA and HMAC "
                       "recomputed, its bytes, then its pinned entries and Ed25519 digest), keepcrypt.json (BIP39 "
                       "list and encoder, its bytes, its pinned answers and session record rules), the SP 800-90B "
@@ -4326,13 +5564,15 @@ def main(argv):
                       "bytes, the SeedBook PDF), "
                       "watchonly.json (the primitives and spec values, BIP-84 and BCR-2020-015 rebuilt, its pins and "
                       "decoder cases, its bytes), kcr.json (Ed25519 against RFC 8032 and kat.json, the docs' figures, "
-                      "its bytes, its pinned outcomes, key and roots)")
+                      "its bytes, its pinned outcomes, key and roots), backup.json (scrypt, the CCTV files through "
+                      "the reader and rebuilt, its bytes, its pinned outcomes, the docs' figures, the age CLI's files)")
     mode.add_argument("--write-seal-vectors", action="store_true", help="regenerate vectors/seal.json")
     mode.add_argument("--write-kat-vectors", action="store_true", help="regenerate vectors/kat.json")
     mode.add_argument("--write-keepcrypt-vectors", action="store_true", help="regenerate vectors/keepcrypt.json")
     mode.add_argument("--write-braille-vectors", action="store_true", help="regenerate vectors/braille.json")
     mode.add_argument("--write-watchonly-vectors", action="store_true", help="regenerate vectors/watchonly.json")
     mode.add_argument("--write-kcr-vectors", action="store_true", help="regenerate vectors/kcr.json")
+    mode.add_argument("--write-backup-vectors", action="store_true", help="regenerate vectors/backup.json")
     parser.add_argument("--vectors-dir", type=Path, default=REPO_VECTORS_DIR, metavar="DIR",
                         help="testing only: use DIR in place of the repo's vectors/")
     args = parser.parse_args(argv)
@@ -4352,6 +5592,8 @@ def main(argv):
         return write_watchonly_vectors(vectors_dir)
     if args.write_kcr_vectors:
         return write_kcr_vectors(vectors_dir)
+    if args.write_backup_vectors:
+        return write_backup_vectors(vectors_dir)
     parser.print_help(sys.stderr)
     return 2
 

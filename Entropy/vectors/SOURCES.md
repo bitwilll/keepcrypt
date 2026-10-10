@@ -80,6 +80,27 @@ apart from `verify.py`, by a standard-library script that does not import it: th
 public key from the same seed, and its Ed25519 signature of the `small` snapshot's header equals the
 one `verify.py` writes.
 
+`vectors/backup.json` has no row either. `tools/verify/verify.py --write-backup-vectors` builds it with a
+standard-library age v1 (the scrypt stanza, ChaCha20-Poly1305, HKDF-SHA256, the header MAC and the
+strict armor, written from the C2SP age spec in "Spec values" below; scrypt through `hashlib.scrypt`, or
+a pure-Python scrypt where `hashlib` has none), the plaintext v1 and passphrase rules of
+`docs/build-plan.md` "Encrypted backup format" and Q5 and Q6e in `tasks/todo.md`, braille.json's cells
+and watchonly.json's mnemonics, on labelled SHA-256 counter-mode streams (never a PRNG) and public test
+mnemonics only. Its own files use work factor 10, as CCTV's accepting files do, so the pure-Python scrypt
+can rebuild them. Self-test check 11 compares the pure-Python scrypt with `hashlib.scrypt` where Python has
+one; runs all 26 CCTV scrypt files (below) through `verify.py`'s reader to their expected outcomes;
+regenerates the file and requires byte equality; rebuilds CCTV's `scrypt` and `armor_scrypt` byte for byte
+from their file key, salt, nonce and plaintext (`age`); runs every case through the reader and writer,
+including every refused file with its error and whether the reader got as far as scrypt; checks the
+plaintexts' words and fingerprints against `watchonly.json`; and requires the docs' backup figures (8
+words, 88 bits, log2 N = 18 and about 256 MiB, 16-byte file key and nonce, 8 hex digits in the file name)
+to appear in `docs/build-plan.md`, `docs/pi-firmware.md` and `docs/mobile-apps.md` as computed. Two
+answers were computed apart from `verify.py`, by standard-library scripts that do not import it: the
+SHA-256 of the abandon-12 plaintext
+(`42080a6c718ac10cd179b69b327bb55a67cf70a45893fae06ff7443c61b31aa8`, its cells read from the alphabet
+printed in `docs/seal-watchonly-braille.md`) and the passphrase, questions and attempt count of the
+generate `stream` case.
+
 ## Provenance
 
 | File | SHA-256 | Source | Upstream commit or date | Licence | Notes |
@@ -88,6 +109,7 @@ one `verify.py` writes.
 | `vectors/coldcard/rolls.json` | `4f9d6d4308d3b2b0be51512c10e7d4ebb2ae8e972d3139946a8868aef5b0b2ac` | https://coldcard.com/docs/rolls.py and https://coldcard.com/docs/rolls12.py | retrieved 2026-10-09 | Generated here (scripts say public domain) | Outputs of the two scripts, run offline; see notes below. Both scripts are committed unmodified (next two rows), and `verify.py --selftest` re-runs them on every case. |
 | `vectors/coldcard/rolls.py` | `4348a520e57df665e0ab57baa369a95ace0f9b5fba355b3f22b0b9b2c2e6cd30` | https://coldcard.com/docs/rolls.py | retrieved 2026-10-09 (Last-Modified 2026-10-01 18:48:08 GMT) | Public domain, as stated in the file header | Unmodified. The header names https://coldcardwallet.com/docs/rolls.py as its home. Produced `sha256_hex` and `words_24` in rolls.json. |
 | `vectors/coldcard/rolls12.py` | `533daff58437cdc9a482d16cd181ba9b0fe6f86a6839b792343d39b496034c85` | https://coldcard.com/docs/rolls12.py | retrieved 2026-10-09 (Last-Modified 2026-10-01 18:48:08 GMT) | Public domain, as stated in the file header | Unmodified. The header names https://coldcardwallet.com/docs/rolls12.py as its home. Produced `words_12` in rolls.json. |
+| `vectors/age/age_cli_written.json` | `29ba3cbc05bd58ee6f325a6d7b4aaa0f1bbf2a8c5d35c343f9ad3e6693fe199c` | Written by `scripts/age-interop.py --generate`, running the age CLI v1.3.2 (Homebrew `age` 1.3.2, macOS, arm64) | 2026-10-10 | Generated here (age itself is BSD-3-Clause; only its output is committed) | age's own armored and binary files of `backup.json`'s abandon-12 and zoo-24 plaintexts at age's work factor 18; see "How age_cli_written.json was produced". |
 | `vectors/age/scrypt/armor_scrypt` | `b747417cda8ce1ff0b980d7b60e8171d41236df941cbbb0d39d1aecc7f941083` | https://raw.githubusercontent.com/C2SP/CCTV/50a8ecf2a220f4c8bdc4f085789b8e85c26829e7/age/testdata/armor_scrypt | 50a8ecf2a220f4c8bdc4f085789b8e85c26829e7 | 0BSD OR CC0-1.0 OR Unlicense | Unmodified. expect: success; armored. |
 | `vectors/age/scrypt/scrypt` | `4eedf64d8e648634bfe3345bc45ee71b1cee5dab32b90211fb1c3a61a1eda15e` | https://raw.githubusercontent.com/C2SP/CCTV/50a8ecf2a220f4c8bdc4f085789b8e85c26829e7/age/testdata/scrypt | 50a8ecf2a220f4c8bdc4f085789b8e85c26829e7 | 0BSD OR CC0-1.0 OR Unlicense | Unmodified. expect: success. |
 | `vectors/age/scrypt/scrypt_and_x25519` | `b7d9a55b3d9a990fdbc6589ff56be66c83274235e6ffc4bc9b16a5d722ec896c` | https://raw.githubusercontent.com/C2SP/CCTV/50a8ecf2a220f4c8bdc4f085789b8e85c26829e7/age/testdata/scrypt_and_x25519 | 50a8ecf2a220f4c8bdc4f085789b8e85c26829e7 | 0BSD OR CC0-1.0 OR Unlicense | Unmodified. expect: header failure. |
@@ -131,6 +153,9 @@ The eight documents behind check 9 (BIP-84 to RFC 8949 below) were downloaded th
 day, and the git blob hash of every download (`git hash-object`) equals the blob SHA in that commit's
 tree (shown in each row). They were read as text (the JSON through Python's `json`); the values were
 parsed out by a throwaway script and compared with `verify.py`'s literals, as described below.
+The C2SP age spec was downloaded the same way on 2026-10-10, twice, with the same size and SHA-256, and
+its git blob hash equals the blob SHA GitHub reports for `age.md` at that commit. It was read as text;
+`verify.py`'s age, written from it, rebuilds CCTV's `scrypt` and `armor_scrypt` byte for byte.
 
 | Standard | Document | SHA-256 | Retrieved | Licence | Values copied |
 | --- | --- | --- | --- | --- | --- |
@@ -147,6 +172,7 @@ parsed out by a throwaway script and compared with `verify.py`'s literals, as de
 | BCR-2020-012 (Bytewords) | https://raw.githubusercontent.com/BlockchainCommons/Research/e4a4fbb186e2e7625ccdf7149aec4f0a5adaf850/papers/bcr-2020-012-bytewords.md, 10373 bytes (git blob `613515a095a59d27941cfd50ed58d6a8d65bbc0a`) | `4c5dcb4c0d1a2201819867fb50274e53eb10a4e354b94cb245b4eeb825929f68` | 2026-10-10 (BlockchainCommons/Research e4a4fbb186e2e7625ccdf7149aec4f0a5adaf850) | BSD-2-Clause-Patent (© 2020 Blockchain Commons) | `verify.py` `BYTEWORDS` and `BCR012_*` (check 9): the 256-word list; "Example/Test Vector": the body, its CRC-32 `c904f40b` and minimal Bytewords; "Brutal Encoding": the payload, its CRC-32 `feac0dea` and minimal Bytewords |
 | BCR-2020-015 (crypto-account, v1) | https://raw.githubusercontent.com/BlockchainCommons/Research/e4a4fbb186e2e7625ccdf7149aec4f0a5adaf850/papers/bcr-2020-015-account.md, 27446 bytes (git blob `4dd4b2952532fd08761fcc88a325dfa1c49d0058`) | `6005893ba7d649cdb182a6784473eeceb740be85e155e6ebedf6570f165e860d` | 2026-10-10 (BlockchainCommons/Research e4a4fbb186e2e7625ccdf7149aec4f0a5adaf850) | BSD-2-Clause-Patent | `verify.py` `BCR015_*` (check 9): "Example/Test Vector": the `shield …` mnemonic, the seven output descriptors, the master fingerprint 934670036, each output's key-data, chain-code, origin, fingerprints and script tags (308, 400, 401, 403, 404, 409, 410), the CBOR hex (773 bytes; the text says 776) and the UR. The document is marked deprecated in favour of BCR-2023-019 (Q2 ships v1) |
 | bip32JP test vectors | https://raw.githubusercontent.com/bip32JP/bip32JP.github.io/5a43706289c55473c120e552244f6de348d0035b/test_JP_BIP39.json, 17066 bytes (git blob `6d8c40b19e5d4b899f9f3c2addbf994d150b245b`) | `780d6a5f21827e5b455fdad35703e2c60ed9dfd47c625daaf50c01600dc4c9e2` | 2026-10-10 (bip32JP/bip32JP.github.io 5a43706289c55473c120e552244f6de348d0035b) | Public domain (the repository's LICENSE: "This work is public domain.") | `verify.py` `BIP32JP_*` (check 9): entry 0's passphrase (shared by all 24 entries), its Japanese mnemonic and its seed, which pins NFKD of both inputs. Its xprv is not copied |
+| C2SP age v1 (age-encryption.org/v1) | https://raw.githubusercontent.com/C2SP/C2SP/0b976abec7bbb740a128271481cbb013db8fdf13/age.md, 27736 bytes (git blob `15171140256c6b51d545006e62df89dc98c8471c`); the last commit touching `age.md` is `fc7f312aff098ed080f3dd5a3da4fd820be17a2e` (2026-07-29) | `b0a767b91a184c536e8a04002f7bba7521388fee3989f5891e23cc1aaa00232f` | 2026-10-10 (C2SP/C2SP 0b976abec7bbb740a128271481cbb013db8fdf13, the head of `main`) | No licence file or statement in the repository at that commit; only format constants and rules are used, no text is copied | `verify.py` `AGE_*` and `BACKUP_SPEC` (check 11): the version line `age-encryption.org/v1`, the stanza and MAC-line grammar (arguments of VCHAR, bodies in canonical unpadded base64 wrapped at 64 columns ending in a shorter line), the scrypt stanza (three arguments, a 16-byte salt, `^[1-9][0-9]*$`, a 32-byte body checked before decrypting, alone in the header), `age-encryption.org/v1/scrypt`, r = 8 and p = 1, the 12 zero-byte key-wrap nonce, HKDF-SHA-256 with `header` and `payload`, the MAC over the header up to and including `---`, the STREAM nonce (11-byte counter, 0x01 for the final chunk), and the strict PEM armor with the label `AGE ENCRYPTED FILE`, padded base64, whitespace allowed around it and LF or CRLF line ends |
 | RFC 8949 (CBOR) | https://www.rfc-editor.org/rfc/rfc8949.txt, 185226 bytes | `f1164a5b31a39350ad46abe29b83575eb933ca6c45366989c118b6b1058a214a` | 2026-10-10 | Copyright (c) 2020 IETF Trust and the persons identified as the document authors, subject to BCP 78 and the IETF Trust's Legal Provisions; only the test values are copied | `verify.py` `RFC8949_EXAMPLES` (check 9): Appendix A, Table 6, the 24 rows within the subset core writes (unsigned integers, byte strings, arrays, maps, false, true, tags): diagnostic and encoding |
 
 Every copied value was compared mechanically with the value parsed back out of its document
@@ -202,7 +228,17 @@ digit was altered.
   committed script that CI re-runs.
 - `age/scrypt/`: the backup reader (M1) must reach exactly the result in each file's `expect`
   header: 2 `success`, 4 `no match`, 20 `header failure`. The accepting files use scrypt work
-  factor 10; KeepCrypt writes 18.
+  factor 10; KeepCrypt writes 18. Check 11 runs `verify.py`'s reader over all 26, and core's tests do
+  the same with core's reader.
+- `backup.json` (generated; see above): the backup's constants, the passphrase layout, the
+  generate cases (the bytes read, the passphrase and its 2-of-4 confirm challenge, or the error), the
+  plaintexts and refused plaintexts, the file name rule, the age files (CCTV's two rebuilt, the 12- and
+  24-word backups, a 4,096-byte chunk and reader-only armor variants, each with its inputs) and the
+  refused files with the error each must give and whether the reader may run scrypt first, and the
+  largest plaintext and armored file a backup can be. Core's backup tests and its Age known-answer
+  group read it.
+- `age/age_cli_written.json`: files written by the age CLI. Core's tests decrypt them, and
+  `scripts/age-interop.py` decrypts them with `verify.py`'s reader and with the age CLI.
 
 ## How the downloads were checked
 
@@ -259,6 +295,20 @@ digit was altered.
   `PYTHON*` environment variables, under a 30-second timeout. The printed hex must equal
   `sha256_hex` (`rolls12.py`: its first 32 hex chars) and the printed words `words_24`
   (`rolls.py`) or `words_12` (`rolls12.py`).
+
+## How age_cli_written.json was produced
+
+- `python3 -I scripts/age-interop.py --generate` on 2026-10-10, with the age CLI v1.3.2 installed
+  by Homebrew (`age --version` prints `v1.3.2`). The plan named Ubuntu's `age`
+  1.1.1-1ubuntu0.24.04.3, which is not installable on this Mac; CI's `age-interop` job installs that
+  package and runs `scripts/age-interop.py` against it in both directions (tasks/todo.md, M1).
+- The script types each passphrase at age's prompt through a pseudo-terminal, runs `age -e -p -a`
+  and `age -e -p` on `backup.json`'s abandon-12 and zoo-24 plaintexts under `backup.json`'s
+  passphrases (`passphrases` `stream` and `generate` `stream`), and checks that `verify.py`'s reader
+  decrypts each file to the same bytes before writing the JSON.
+- `python3 -I scripts/age-interop.py` (no flag) then decrypted all four with the reader and with age,
+  and ran both directions live with fresh passphrases (age's files read by the reader;
+  `verify.py`'s work-factor-18 files read by age), and a wrong passphrase failed in both.
 
 ## CCTV age test file format
 

@@ -1359,6 +1359,30 @@ starts. Every item names its proof.
       - `scripts/age-interop.py --generate` (stdlib; drives `age` through a pty) writes the `age_cli_written` section
         once, with Ubuntu age 1.1.1-1ubuntu0.24.04.3. SOURCES.md records the tool, version and date;
       - vectors are JSON, not `.age` files, since `.gitignore` bans `*.age`.
+      Recorded at commit 19:
+      - backup.json holds the constants, the passphrase layout (`passphrases`), the `generate` cases (every OS
+        byte the call reads, then the passphrase and challenge, or the error), the plaintexts and refused
+        plaintexts, the file name rule, the age files and the refused files (each with the error core must give
+        and whether the reader may reach scrypt first), and the largest plaintext and armored file a backup can
+        be (1,042 and 1,726 bytes for 24 words, within the 4 KiB and 8 KiB caps). The plaintexts' mnemonics and
+        fingerprints come from watchonly.json (abandon, zoo-24, shield); keepcrypt.json holds no fingerprints.
+      - The confirm challenge, which the plan left open beyond "2-of-4, without modulo bias", is defined in
+        backup.json's spec: 16 OS bytes per attempt; the two asked words are `b[0] & 7` and `b[1] & 7` (any two
+        of the eight), the right word's place among the four choices `b[2] & 3` and `b[3] & 3`, and the six
+        other choices 11-bit values from `b[4..16]`. An attempt that asks one word twice or repeats a choice is
+        dropped; after 64 attempts the call fails closed with a new `SourceFault::NoUsableDraw` (core, commit 21).
+        A separate script reproduced the `stream` case from the spec text alone.
+      - backup.json's own age files use work factor 10, like CCTV's, so the pure-Python scrypt rebuilds them on
+        `/usr/bin/python3` 3.9 (no `hashlib.scrypt` there). The writer is the same at 18: core round-trips at 18,
+        and `scripts/age-interop.py` exchanges work-factor-18 files with the age CLI.
+      - The age CLI's files are their own file, `vectors/age/age_cli_written.json`, with a SOURCES.md row, not a
+        section of backup.json: check 11 regenerates backup.json byte for byte, and age's output is random.
+      - Deviation: they were written with Homebrew age 1.3.2, the CLI on this Mac, not Ubuntu's 1.1.1, which is
+        not installable here. `scripts/age-interop.py` works with both (it waits for each passphrase prompt),
+        and the CI `age-interop` job (commit 27) runs it against Ubuntu 1.1.1 in both directions.
+      - verify.py's age is written from the C2SP age spec (`age.md`, downloaded twice on 2026-10-10 with a generic
+        User-Agent, recorded in SOURCES.md "Spec values"); it rebuilds CCTV `scrypt` and `armor_scrypt` byte for
+        byte and reaches all 26 CCTV outcomes.
 - [ ] `backup/armor.rs` (build-plan.md "Container"; C2SP age "ASCII armor"):
       - encode: 64-column padded base64, exact labels, LF line endings;
       - decode accepts only surrounding ASCII whitespace, LF or CRLF, full 64-character lines (except a last line of
