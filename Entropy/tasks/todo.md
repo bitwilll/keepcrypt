@@ -2793,10 +2793,19 @@ Groups land in the order below. Vectors come before the core test that reads the
 - [x] `scripts/banned-api-check.sh`, for `.py` files, dispatched like `pyrandom()`:
       - network: `import` or `from` of `socket`, `ssl`, `urllib`, `http`, `ftplib`, `smtplib`, `poplib`, `imaplib`,
         `telnetlib`, `xmlrpc`, `asyncio`, `webbrowser`, `requests`, `httpx`, `aiohttp`, and of `_socket` and `_ssl`,
-        the C modules behind socket and ssl (review fix). The pattern is anchored on the import, so a URL string such
-        as `https://registry.invalid` stays quiet;
+        the C modules behind socket and ssl (review fix). Completed by the stage-A review (2026-10-10, F10; commit
+        5b): `socketserver`, `urllib3`, `nntplib`, `smtpd`, `asyncore`, `asynchat`, `wsgiref`,
+        `multiprocessing.connection` and `logging.handlers`, the last two also by their own names, which `from logging
+        import handlers` brings in, so any import of a module or name called `connection` or `handlers` hits. The
+        pattern is anchored on the import, so a URL string such as `https://registry.invalid` stays quiet;
       - clipboard: `pyperclip`, tkinter's `clipboard_append`/`clipboard_get`, and `pbcopy`, `pbpaste`, `xclip`,
-        `xsel`, `wl-copy` anywhere in a `.py` file;
+        `xsel`, `wl-copy` anywhere in a `.py` file. Completed by the stage-A review (2026-10-10, F10; commit 5b): an
+        import of the `clipboard` module (in the network shapes); `win32clipboard` and `wl-paste`; in any letter
+        case, PowerShell's `Get-Clipboard` and `Set-Clipboard`, `clip.exe` (only with `.exe`, since `clip` is a
+        common word) and osascript's `the clipboard`; any `.clipboard` attribute or dotted module
+        (QApplication/QGuiApplication `.clipboard()`, also on an application object); pandas
+        `to_clipboard`/`read_clipboard`; and tkinter `selection_get`, whatever its selection (`CLIPBOARD` may sit on
+        the next line or in a variable, and the default, `PRIMARY`, is X11's other clipboard);
       - recorded residuals: grep cannot see `__import__("socket")`, `importlib.import_module("socket")`, an attribute
         path such as `getpass.os.system`, or a subprocess running a network tool. For verify.py, check 12 closes all
         four: rule (a) bans `__import__`, any `importlib` import and every module attribute outside its recorded list,
@@ -2815,6 +2824,14 @@ Groups land in the order below. Vectors come before the core test that reads the
       random), 5cc295d adds `_socket` and `_ssl`, and 42d8552 pins the boundaries and the `.py`-only dispatch.
       `--selftest` passes 309/309 under sh and dash; every new pattern, alternative, boundary and dispatch has a
       mutant that turns the selftest red on its own fixture or near-miss line; the gate is clean on the tree.
+      Proof (stage-A completion, commit 5b): `--selftest` passes 342/342 (309 before) under sh and dash: 11 new
+      `network-python-*` fixtures (each module, plus `from multiprocessing import connection` and a wrapped
+      `handlers,` line; each also clean under `registry/`) and 11 new `clipboard-python-*` fixtures each give exactly
+      one hit, and the gate before this commit finds none of the 22. offline.py gains a near miss for each new name
+      and pattern, and Words.kt a `clipboard,` entry that pins the new import check's `.py`-only dispatch. In scratch
+      copies with the artifact selftest stubbed (301 passed), each of 38 mutants (every new alternative, word start,
+      end, separator and letter-case class, and the dispatch) turns the selftest red on its own fixture or near-miss
+      line. The gate is clean on the tree: 160 files from a clean checkout.
 
 **3. Embedded known answers, startup guards and check 12 (rules 3, 5, 8, 10 and 12; build-plan.md "Release")**
 - [ ] verify.py `KNOWN_ANSWERS` and `known_answers()`. Every value is a literal in the file, and a comment names its
@@ -3231,6 +3248,7 @@ None. verify.py and vectorgen.py stay standard library only. verify.py adds `get
 4. verify, vectors, core: provenance names vectorgen.py: the seven `description` strings (files regenerated),
    SOURCES.md, the age_cli_written.json note (Q16 (b)), and six core comment lines (comments only).
 5. scripts: Python networking and clipboard patterns in the banned-API gate, with selftest fixtures (Q23).
+   5b. scripts: the stage-A review (F10) completes the gate's Python clipboard and network lists, within Q23.
 6. verify: startup guards, the known answers (hash, bip39, seed, seal, braille) and `verify.py selftest`. vectorgen
    gets check 12 (static allowlist, no test material, known answers equal their sources, lone copy and fault twins,
    audited runs) plus `--verify-py` and `--check`.

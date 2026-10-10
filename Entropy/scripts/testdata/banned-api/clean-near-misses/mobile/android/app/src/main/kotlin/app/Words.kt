@@ -14,4 +14,5 @@ enum class Order {
 enum class Refused {
     socket,
     pbcopy,
+    clipboard,
 }
