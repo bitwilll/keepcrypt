@@ -108,11 +108,14 @@ pub enum ExtraSource { InputTiming, Motion, Camera, Microphone } // never credit
 // Every method that can fail on randomness, a health test, a KAT or an integrity check takes
 // `self`, so an Err has already wiped the session. Only user input keeps it alive: a go-ahead
 // typo (Rejected::Retry), check_readback and verify_backup.
+impl<S: State> Session<S> {                                       // State is sealed: only the six states above
+    pub fn seed_length(&self) -> SeedLength;                       // also mode() -> Mode and platform() -> Platform
+}
 impl Session<Collecting> {
     pub fn new(len: SeedLength, mode: Mode, platform: Platform) -> Result<Self, CoreError>; // runs KATs
     pub fn add_hw_samples(self, raw: &[u8]) -> Result<Self, CoreError>;  // Pi, Mixed mode only; health-tested, credited per window
     pub fn add_extra(&mut self, source: ExtraSource, bytes: &[u8]);      // mixed, never credited; does nothing in dice-only mode
-    pub fn credited_bits(&self) -> u32;   // also required_bits(), and hw_bytes_tested() toward HW_BYTES_NEEDED = 1,536
+    pub fn credited_bits(&self) -> u64;   // also required_bits(), and hw_bytes_tested() toward HW_BYTES_NEEDED = 1,536
     pub fn commit(self) -> Result<Session<Committed>, CoreError>;        // fails if quota unmet; reads getrandom(64), absorbed last
 }
 impl Session<Committed> {
@@ -122,7 +125,7 @@ impl Session<Committed> {
 impl Session<Rolling> {
     pub fn push_roll(self, face: u8) -> Result<Self, CoreError>;  // 1 to 6, at most 256 rolls; anything else wipes
     pub fn undo_roll(&mut self);
-    pub fn rolls(&self) -> u16;           // also millibits() and minimum_rolls(), for the dice screen
+    pub fn rolls(&self) -> u16;           // also minimum_rolls(), and millibits() -> u32, for the dice screen
     pub fn finish(self) -> Result<Session<Sealed>, CoreError>;   // fails below the minimum: 50, 99, or 99 after a collision;
                                                                   // derives the seal, fingerprint and first address once
 }
@@ -144,7 +147,7 @@ pub enum GoAhead<'a> { Snapshot(&'a VerifiedSnapshot), BucketProof(&'a VerifiedP
 pub enum Rejected { Retry(Session<Checking>, CheckError), Collision(Wiped) } // typo or bad scan, or a proven match
 pub enum Discard { Collision, CannotCheck }
 impl Wiped {
-    pub fn collision_report(&self) -> Option<CollisionReport>;    // the seal code to report, only after a collision
+    pub fn collision_report(&self) -> Option<&CollisionReport>;   // the seal code to report, only after a collision
     pub fn restart(self, len: SeedLength, mode: Mode) -> Result<Session<Collecting>, CoreError>; // fresh legs; 99-roll minimum after a collision, kept through Cannot check
 }
 impl Session<Ready> {
@@ -170,14 +173,30 @@ impl Session<Ready> {
 }
 pub fn self_test() -> Result<(), CoreError>;                                 // boot screen KATs
 pub fn hwrng_boot_test(raw: &[u8]) -> Result<(), CoreError>;                 // Pi boot: Health KAT, then 1,024 startup samples
-pub fn decrypt_backup(file: &[u8], pass: &TypedBackupPassphrase) -> Result<CheckedBackup, CoreError>; // "Check a backup"
+pub fn decrypt_backup(file: &[u8], passphrase: &TypedBackupPassphrase) -> Result<CheckedBackup, CoreError>; // "Check a backup"
 pub fn verify_snapshot(file: &[u8]) -> Result<VerifiedSnapshot, CoreError>;  // pinned Ed25519 key; bucket root recomputed
 pub fn verify_bucket_proof(proof: &[u8]) -> Result<VerifiedProof, CoreError>; // KCP1 bytes from a go-ahead QR
 pub fn verify_bucket_proof_qr(text: &str) -> Result<VerifiedProof, CoreError>; // single-part ur:keepcrypt-proof/ text
-pub fn seal_from_mnemonic(m: &SecretMnemonic) -> Result<SealPublic, CoreError>; // for later re-checks
-// VerifiedSnapshot and VerifiedProof: date() and freshness(today) -> Current | Stale (from day 31) | Future.
+pub fn seal_from_mnemonic(mnemonic: &SecretMnemonic) -> Result<SealPublic, CoreError>; // for later re-checks
+pub fn render_text(text: &str) -> Result<String, CoreError>;      // UEB grade 1 cells for a-z, 0-9, space and hyphen
+pub fn registry_key_is_test() -> bool;                            // true only in a test-registry build: the test banner
+impl VerifiedSnapshot {
+    pub fn number(&self) -> u64;                                   // also entry_count() -> usize: registered seals
+    pub fn date(&self) -> RegistryDate;                            // "as of"
+    pub fn freshness(&self, today: RegistryDate) -> Freshness;     // Current | Stale (from day 31) | Future
+    pub fn lookup(&self, tag: &SealTag) -> Option<NonZeroU16>;     // the tag's registration count; None when clear
+}
+impl VerifiedProof {                                              // the same number(), date(), freshness(today) and
+    pub fn bucket(&self) -> u32;                                   // entry_count() (k), plus the 20-bit bucket it covers
+    pub fn lookup(&self, tag: &SealTag) -> Result<Option<NonZeroU16>, CheckError>; // WrongBucket for another bucket
+}
+// RegistryDate: new(year: u16, month: u8, day: u8) or from_yyyymmdd(value: u32) -> Result<Self, CoreError>, a real
+// date or Snapshot(BadDate); the shell's clock gives today.
 // Typed backup words reach only decrypt_backup. CheckedBackup: fingerprint() and seal(); the words and
-// braille only through reveal_words() and reveal_braille(). The free functions run their own KAT groups.
+// braille only through reveal_words() and reveal_braille(). The free functions run their own KAT groups,
+// except render_text and registry_key_is_test.
+// test-sources builds add the stubs (StubSource, StubEntropy, WipeProbe) and twins that take one or make a KAT
+// group fail (new_with_stub, restart_with_stub, *_with_kat_fault); release builds have none.
 ```
 
 **Credit policy.**
