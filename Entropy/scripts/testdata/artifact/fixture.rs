@@ -6,7 +6,10 @@
 //!   on iOS), unless `--cfg kc_no_os_import`;
 //! - `--cfg kc_arc4random`: an arc4random import, banned on every target;
 //! - `--cfg kc_getentropy`: a getentropy import, banned on Linux and Android only;
-//! - `--crate-name rand`: `rngs::next_u32` becomes a defined `rand::` symbol;
+//! - `--cfg kc_libc_r`: random_r, lrand48_r and seed48 imports (glibc's reentrant draws and a
+//!   rand48 seeder), banned on every target;
+//! - `--crate-name rand` (and, for Android only, each other crate of deny.toml's RNG list):
+//!   `rngs::next_u32` becomes a defined `rand::` symbol;
 //! - `--crate-name getrandom`: `backends::use_file::fill_inner` becomes one of getrandom's fallback
 //!   symbols (tasks/todo.md, M1 Q8).
 //! Under any other crate name those two functions are harmless, so every case holds them.
@@ -55,6 +58,19 @@ unsafe extern "C" {
 #[unsafe(no_mangle)]
 pub extern "C" fn kc_fixture_getentropy(buf: *mut u8, len: usize) -> i32 {
     unsafe { getentropy(buf, len) }
+}
+
+#[cfg(kc_libc_r)]
+unsafe extern "C" {
+    fn random_r(state: *mut u8, result: *mut i32) -> i32;
+    fn lrand48_r(state: *mut u8, result: *mut i64) -> i32;
+    fn seed48(seed: *mut u16) -> *mut u16;
+}
+
+#[cfg(kc_libc_r)]
+#[unsafe(no_mangle)]
+pub extern "C" fn kc_fixture_libc_r(state: *mut u8, a: *mut i32, b: *mut i64, seed: *mut u16) -> i32 {
+    unsafe { random_r(state, a) + lrand48_r(state, b) + i32::from(seed48(seed).is_null()) }
 }
 
 // #[inline(never)]: rustc would otherwise leave a function this small to its callers' crates

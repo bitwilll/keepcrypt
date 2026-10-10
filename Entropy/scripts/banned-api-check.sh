@@ -23,12 +23,15 @@
 #   TestKey    any file holding the 32 bytes of the test registry public key (rule 10; pinned below
 #              and checked against vectors/kcr.json by the selftest)
 #   Format     a file that is not an ELF, Mach-O or ar file (an rlib is an ar file): its symbols
-#              cannot be checked, so it fails
+#              cannot be checked, so it fails. So does a thin ar file (!<thin>), which holds only its
+#              members' paths: the marker and key searches would never see the members' bytes
 #   Symbol     read with the pinned toolchain's llvm-nm (llvm-tools-preview), in every object file,
 #              linked file and archive member: an undefined rand, random, srand, srandom, rand_r,
-#              *rand48, initstate, setstate, arc4random* or SecRandomCopyBytes, and getentropy on
+#              random_r, srandom_r, *rand48, seed48, lcong48, initstate or setstate (these six also
+#              with glibc's reentrant _r), arc4random* or SecRandomCopyBytes, and getentropy on
 #              Linux and Android (each with a leading _ on Apple targets); any symbol, demangled, in
-#              the rand, rand_core, rand_chacha, rand_xoshiro or fastrand crates; and any symbol in
+#              the 13 RNG crates of deny.toml's rule-1 block (rng_crate_names below; the selftest
+#              checks the two lists agree); and any symbol in
 #              getrandom's fallback modules, backends::use_file and
 #              backends::linux_android_with_fallback (Q8: the Linux and Android artifacts are built
 #              with --cfg getrandom_backend="linux_getrandom", which has no fallback)
@@ -635,6 +638,10 @@ selftest() {
 # scripts/canaries.sh check it against a real test-registry build).
 testkey=42e9fa0e206d4bdf410f987ac7ded54fb02fb49ef277cc425d5fdfdb72c3b94b
 markers='KC_TEST_SOURCE_DO_NOT_SHIP KC_TEST_REGISTRY_DO_NOT_SHIP'
+# The RNG crates of deny.toml's rule-1 block, in its order (the selftest checks the two lists
+# agree): any symbol of one of them in an artifact is a hit.
+rng_crate_names='rand rand_core rand_chacha rand_xoshiro rand_xorshift rand_pcg rand_hc rand_isaac
+fastrand oorandom nanorand tinyrand turborand'
 
 # dump FILE: FILE's bytes as " xx xx ..." on one line (od -v writes every byte; tr joins the lines
 # and squeezes the spaces BSD and GNU od lay out differently). Any byte value is two hex digits,
@@ -700,8 +707,9 @@ artifact() {
     *-apple-darwin) p=_ import=_getentropy extra= ;;
     *) printf 'banned-api-check: no OS-import rule for target %s\n' "$target" >&2; exit 2 ;;
   esac
-  undefined_rng="^$p(rand|random|srand|srandom|rand_r|[A-Za-z0-9_]*rand48|initstate|setstate|arc4random[A-Za-z0-9_]*|SecRandomCopyBytes$extra)\$"
-  rng_crates='(^|[^A-Za-z0-9_])(rand|rand_core|rand_chacha|rand_xoshiro|fastrand)::'
+  # libc's draws and seeders, with glibc's reentrant _r forms (the Pi links glibc).
+  undefined_rng="^$p(rand|random|srand|srandom|rand_r|random_r|srandom_r|([A-Za-z0-9_]*rand48|seed48|lcong48|initstate|setstate)(_r)?|arc4random[A-Za-z0-9_]*|SecRandomCopyBytes$extra)\$"
+  rng_crates="(^|[^A-Za-z0-9_])($(printf '%s\n' $rng_crate_names | tr '\n' '|' | sed 's/|$//'))::"
   fallback='(^|[^A-Za-z0-9_])getrandom::backends::(use_file|linux_android_with_fallback)::'
   toolchain_bin
   atmp=$(mktemp -d "${TMPDIR:-/tmp}/banned-api-artifact.XXXXXX") || exit 2
@@ -729,7 +737,11 @@ artifact() {
     fi
     magic=$(od -An -N8 -tx1 "$f" | tr -d ' \n')
     case $magic in
-      213c617263683e0a | 213c7468696e3e0a) kind=archive ;;
+      213c617263683e0a) kind=archive ;;
+      213c7468696e3e0a)
+        ahit Format "$f" "a thin archive, which holds its members' paths, not their bytes"
+        continue
+        ;;
       7f454c46* | feedface* | feedfacf* | cefaedfe* | cffaedfe* | cafebabe*) kind=object ;;
       *)
         ahit Format "$f" 'not an ELF, Mach-O or ar file, so its symbols cannot be checked'
@@ -807,11 +819,23 @@ artifact_selftest() {
     fail=$((fail + 1))
     echo "FAIL artifact-test-key-is-kcr-json-test-registry-key: $testkey is not vectors/kcr.json's test_registry public_key_hex"
   fi
+  # The scan's RNG crates are deny.toml's rule-1 block, name for name (scripts/canaries.sh pins
+  # that block). A block this cannot read gives an empty list, which fails.
+  deny_rng=$(sed -n '/^ *# Rule 1:/,/^ *#/p' "$repo/deny.toml" | sed -n 's/^ *"\([A-Za-z0-9_-]*\)",$/\1/p' | sort | tr '\n' ' ')
+  scan_rng=$(printf '%s\n' $rng_crate_names | sort | tr '\n' ' ')
+  if [ -n "$deny_rng" ] && [ "$deny_rng" = "$scan_rng" ]; then
+    pass=$((pass + 1))
+    echo "PASS artifact-rng-crates-are-deny-toml-rule-1 ($(printf '%s\n' $rng_crate_names | wc -l | tr -d ' ') names)"
+  else
+    fail=$((fail + 1))
+    printf 'FAIL artifact-rng-crates-are-deny-toml-rule-1:\n    deny.toml: %s\n    scan:      %s\n' "$deny_rng" "$scan_rng"
+  fi
   # One object per case and target, from the one fixture source (see its header).
   for t in aarch64-linux-android aarch64-apple-ios; do
     case $t in *-apple-*) p=_ import=_CCRandomGenerateBytes ;; *) p= import=getrandom ;; esac
     for c in clean:kc_fixture: arc4random:kc_fixture:kc_arc4random no-os-import:kc_fixture:kc_no_os_import \
-      getentropy:kc_fixture:kc_getentropy rand-crate:rand: getrandom-fallback:getrandom:; do
+      getentropy:kc_fixture:kc_getentropy libc-r:kc_fixture:kc_libc_r rand-crate:rand: \
+      getrandom-fallback:getrandom:; do
       case_name=${c%%:*}
       rest=${c#*:}
       crate=${rest%%:*}
@@ -833,6 +857,10 @@ artifact_selftest() {
       *-apple-*) aexpect "artifact-$t-getentropy-allowed" 0 '' "$t" "$o-getentropy.o" ;;
       *) aexpect "artifact-$t-getentropy-import" 1 "Symbol: $o-getentropy.o: undefined getentropy" "$t" "$o-getentropy.o" ;;
     esac
+    # glibc's reentrant draws and a rand48 seeder (the old pattern let all three through).
+    aexpect "artifact-$t-libc-reentrant-draws" 1 "Symbol: $o-libc-r.o: undefined ${p}lrand48_r
+Symbol: $o-libc-r.o: undefined ${p}random_r
+Symbol: $o-libc-r.o: undefined ${p}seed48" "$t" "$o-libc-r.o"
     # Every symbol of the rand crate is a hit; in the getrandom crate only the fallback is.
     aexpect "artifact-$t-rand-crate-symbols" 1 \
       "Symbol: $o-rand-crate.o: rand-family symbol rand::backends::use_file::fill_inner
@@ -847,6 +875,27 @@ Symbol: $o-rand-crate.o: rand-family symbol rand::rngs::next_u32" "$t" "$o-rand-
     aexpect "artifact-$t-archive-needs-no-import" 0 '' "$t" "$o-no-import.rlib"
     aexpect "artifact-$t-archive-member-arc4random" 1 \
       "Symbol: $o-arc4random.rlib: undefined ${p}arc4random" "$t" "$o-arc4random.rlib"
+    # A thin archive holds its members' paths, not their bytes, so it fails whatever it lists.
+    rm -f "$o-thin.rlib"
+    "$bin/llvm-ar" rcsT "$o-thin.rlib" "$o-clean.o" || exit 2
+    aexpect "artifact-$t-thin-archive" 1 \
+      "Format: $o-thin.rlib: a thin archive, which holds its members' paths, not their bytes" "$t" "$o-thin.rlib"
+  done
+  # Each other crate of the list, on one target: every symbol in it is a hit, as in rand.
+  t=aarch64-linux-android
+  for crate in $rng_crate_names; do
+    [ "$crate" = rand ] && continue
+    o=$a/$t-crate-$crate
+    if ! (cd "$repo" && rustc --edition 2024 --crate-type lib --crate-name "$crate" --emit obj \
+      -C panic=abort -C opt-level=1 --target "$t" -o "$o.o" "$fixture/fixture.rs") >"$a/rustc.log" 2>&1; then
+      fail=$((fail + 1))
+      printf 'FAIL artifact %s crate %s: rustc could not build the fixture:\n' "$t" "$crate"
+      sed 's/^/    /' "$a/rustc.log"
+      continue
+    fi
+    aexpect "artifact-$t-$crate-crate-symbols" 1 \
+      "Symbol: $o.o: rand-family symbol $crate::backends::use_file::fill_inner
+Symbol: $o.o: rand-family symbol $crate::rngs::next_u32" "$t" "$o.o"
   done
   # Any file, whatever its format: each marker as text, and the key's 32 bytes inside other bytes.
   t=aarch64-linux-android
