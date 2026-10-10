@@ -1038,8 +1038,8 @@ BACKUP_SPEC = {
     "the reader must refuse it before any scrypt work",
     "armor": "strict PEM: '-----BEGIN AGE ENCRYPTED FILE-----', the padded canonical base64 of the binary file in "
     "lines of exactly 64 characters with a last line of 1 to 64, then '-----END AGE ENCRYPTED FILE-----'; lines end "
-    "in LF or CRLF, the END line may end the input, and only ASCII whitespace may come before BEGIN or after END. "
-    "The writer uses LF and ends with LF. Anything else is Armor",
+    "in LF or CRLF, the END line may end the input (alone or with a CR), and only ASCII whitespace may come before "
+    "BEGIN or after END. The writer uses LF and ends with LF. Anything else is Armor",
     "passphrase": "11 bytes from the OS source cut into 8 indices of 11 bits, most significant first; the age "
     "passphrase is the 8 lowercase BIP39 English words joined by single spaces (Q6e)",
     "generate": "generate_backup_passphrase reads the 11 passphrase bytes, then 16 bytes per challenge attempt: "
@@ -3507,12 +3507,11 @@ def age_is_armored(data):
 
 
 def armor_line(data, at):
-    """(the line at `at` without its LF or CRLF, where the next line starts, whether it ended in LF)."""
+    """(the line at `at` without its LF, CRLF or, at the end of the input, final CR; where the next line
+    starts; whether it ended in LF)."""
     end = data.find(b"\n", at)
-    if end < 0:
-        return data[at:], len(data), False
-    line = data[at:end]
-    return (line[:-1] if line.endswith(b"\r") else line), end + 1, True
+    line, following, ended = (data[at:], len(data), False) if end < 0 else (data[at:end], end + 1, True)
+    return (line[:-1] if line.endswith(b"\r") else line), following, ended
 
 
 def age_dearmor(data):
@@ -3954,6 +3953,8 @@ def backup_age_cases(plaintexts, passphrases):
         backup_file_case("abandon-12-whitespace", False, abandon_pass, log_n, *abandon, "abandon-12", whitespace, True),
         backup_file_case("abandon-12-no-final-newline", False, abandon_pass, log_n, *abandon, "abandon-12",
                          abandon_armored[:-1], True),
+        backup_file_case("abandon-12-end-cr", False, abandon_pass, log_n, *abandon, "abandon-12",
+                         abandon_armored[:-1] + b"\r", True),
         backup_file_case("abandon-12-8192-bytes", False, abandon_pass, log_n, *abandon, "abandon-12", padded_8192, True),
     ]
 
