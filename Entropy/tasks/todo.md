@@ -2002,6 +2002,15 @@ moved from M0)
     not require per target. 9 jobs and 14 check runs (cross has 6 legs): the plan's 13 plus the changes job, which
     a ruleset must also require, since skipped counts as passing.
   - CLAUDE.md Commands also gained the all-features clippy line, which CI has run since commit 4.
+- Review fixes after 29 (findings on 26 and 27; proof under Review, "M1: review fixes after 29"):
+  - the scan matches all 13 RNG crates of deny.toml's rule-1 block, not the 5 the plan lists, and its selftest
+    checks the two lists agree; it also hits glibc's reentrant draws and the rand48 seeders (`random_r`, `srandom_r`,
+    `*rand48`, `seed48`, `lcong48`, `initstate` and `setstate`, each also with `_r`), and fails a thin archive as
+    `Format`, since one holds its members' paths and not their bytes (d283a36);
+  - the changes job decides by `git diff --quiet --no-renames` over `Entropy/` and the workflow file, from the repo
+    root, so a move out of Entropy/, a name git prints quoted and a list longer than a pipe buffer all count as
+    changes (216b0a1);
+  - the coverage job's path check also has the tool's `/rustc/<hex or x.y.z>/` rule (de93cbc).
 
 **13. Review**
 - [ ] Paste under Review:
@@ -2026,6 +2035,11 @@ moved from M0)
   - the Pi shows the snapshot's or proof's date and asks the user to confirm it before `reveal`; phones warn on Stale
     and Future. A ceremony test asserts each;
   - the Pi's step 4 bar uses `hw_bytes_tested` and `HW_BYTES_NEEDED` (M3).
+- M3 (the waiting-screen games), before any game code: the owner's answer to open owner item 12. pi-firmware.md
+  and CLAUDE.md rule 1 have the Pi games call getrandom themselves, but canaries.sh's graph pin allows no getrandom
+  dependent except keepcrypt-core, so a pi/app that depends on getrandom turns CI red. Either the pin and its
+  mutation canary change in a reviewed commit, or the games take bytes from a core API, and then rule 1,
+  pi-firmware.md and banned-api-check.sh's pi/app/src/games exemption change to match.
 - M4 (measure on a Pi Zero v1.3):
   - KAT time;
   - full snapshot verification, estimated at 8-20 s. Run it at "Load registry snapshot", before the ceremony, on a
@@ -2173,7 +2187,7 @@ moved from M0)
 | Item | Version | Published (UTC) | Features | Licence | Why | rand/log check |
 | --- | --- | --- | --- | --- | --- | --- |
 | unicode-normalization (new direct edge, Q5) | 0.1.25 | 2025-10-30 | `default-features = false` (same as bip39 uses) | MIT OR Apache-2.0 | NFKD of the BIP39 passphrase into a zeroizing buffer. Already locked through bip39 and already passing vet on imported audits. Named in the build-plan.md "Core crates" row (Q10) | none (depends only on tinyvec) |
-| cargo-llvm-cov (CI tool, not a dependency) | 0.9.1 | 2026-09-06 | `cargo install --locked` into ~/.cargo-tools | Apache-2.0 OR MIT | the 95% line-coverage gate; never in the device graph. Its default ignore rule skips `tests/`, `examples/` and `benches/` directories and `tests.rs`, `*_tests.rs` and `*-tests.rs` files, so CI fails if core/src has any such path | its own lockfile has no rand, log or network crate (designer check) |
+| cargo-llvm-cov (CI tool, not a dependency) | 0.9.1 | 2026-09-06 | `cargo install --locked` into ~/.cargo-tools | Apache-2.0 OR MIT | the 95% line-coverage gate; never in the device graph. Its default ignore rule skips `tests/`, `examples/` and `benches/` directories, `rustc/<hex or x.y.z>/` directories anywhere in the path (found in review after 29) and `tests.rs`, `*_tests.rs` and `*-tests.rs` files, so CI fails if core/src has any such path | its own lockfile has no rand, log or network crate (designer check) |
 | age (Ubuntu package, CI only) | 1.1.1-1ubuntu0.24.04.3 | 2025-06-26 (noble-updates and noble-security, confirmed on Launchpad) | `apt-get install`, version asserted | BSD-3-Clause (Go binary, never linked) | reference CLI for interop in both directions | n/a |
 
 **Evaluated and rejected:**
@@ -2254,6 +2268,12 @@ moved from M0)
    As built: 4cea8ba, which also drops the paths filter and adds the changes job (Q12)
 28. CLAUDE.md: Commands for M1 (cfdb24a)
 29. tasks/todo.md: M1 Review with pasted proof, including the Q12 ruleset output or its deferral
+   As built: 98e3fe5 (the ruleset deferred to the owner, open owner item 1)
+   Review fixes after 29, each its own commit:
+   - scripts: the artifact scan names all 13 RNG crates of deny.toml (the selftest checks the lists agree), glibc's reentrant draws and the rand48 seeders, and fails a thin archive (d283a36);
+   - ci: the changes job decides by git diff's exit code over the two pathspecs, so moves out of Entropy/, quoted names and long lists all count as changes (216b0a1);
+   - ci: the coverage job's path check adds the tool's rustc/<hex or x.y.z>/ rule (de93cbc);
+   - this file: these records and their proof, and the Pi games' getrandom as open owner item 12 and an M3 carry.
 
 ## Review
 _Added after completion, with pasted proof for every ticked item._
@@ -2718,7 +2738,8 @@ match, problems: 0.
 **The CI workflow** (commit 27) is checked locally only: `ruby -ryaml` loads it (9 jobs: changes, lint, test,
 supply-chain, gates, verifier-py39, coverage, age-interop, and cross with 6 legs, so 14 check runs). The changes
 script gives `entropy=true` for HEAD~1..HEAD and for an unreadable range, and `entropy=false` for the README-only
-commit b4e8e47 against its parent (a scratch worktree). The first real run comes after the push.
+commit b4e8e47 against its parent (a scratch worktree). The first real run comes after the push. Those three ranges
+missed three ways the changes job failed open, fixed after 29; see "M1: review fixes after 29".
 
 **Q12 ruleset: not created.** It changes the GitHub repo's settings, and the owner asked to be asked once more
 right before it is created ("Needed before M1"); that go-ahead has not been given, so it is an owner item below.
@@ -2738,6 +2759,140 @@ is unmet while one account (`bitwilll`) opens and merges every PR.
 - Group 11 `release_probe.rs`, group 12 CI jobs and coverage, group 13 Review, and Verification "The release
   artifact scan is clean on all six targets" and "Clean ... CI is green": the first CI run after the push (the Pi
   and Android scans, the coverage and age-interop jobs, the changes job), and the Q12 ruleset or its deferral.
+
+### M1: review fixes after 29 (2026-10-10)
+The review of commits 26-29 reported ten findings: six defects (three of them reported more than once) and one
+missing record. Each was reproduced before its fix and re-run after, in scratch directories outside the repo.
+
+**The changes job (Q12), 216b0a1.** It matched `^(Entropy/|...)` against `git diff --name-only` and so set
+`entropy=false`, which skips every other job (GitHub counts that as passing), in three cases. Rename detection lists
+only a moved file's new path. `core.quotePath` prints a non-ASCII name in quotes. And `printf | grep -q` under
+`-eo pipefail` fails on a long list: grep exits at its first match, printf dies of SIGPIPE, and pipefail makes the
+`if` false. The step now runs `git diff --quiet --no-renames "$base" HEAD -- Entropy/ .github/workflows/entropy-ci.yml`
+from the repo root. Exit 0 means false, 1 means true, and anything else runs every job. Run steps start in Entropy/,
+where those pathspecs would match nothing. The root comes from a plain assignment, so a failing `rev-parse` fails the
+step and does not carry on in Entropy/; outside a repo the step exits 128. The name list (`--no-renames`, quotePath
+off) only feeds the log. The step was extracted with `ruby -ryaml` from 98e3fe5 (before) and de93cbc (after) and run
+as GitHub runs `shell: bash` (`bash --noprofile --norc -eo pipefail`, starting in Entropy/), on a scratch repo. The
+PR cases are `--no-ff` merges standing in for the merge ref (EVENT=pull_request, base HEAD^1); the push cases set
+BEFORE:
+
+```text
+case                                            before  after
+pr:entropy-edit                                 true    true
+pr:readme-only                                  false   false
+pr:workflow-edit                                true    true
+pr:other-workflow                               false   false
+pr:lookalike-paths (Entropyx.txt, ...yml.bak)   false   false
+pr:delete-gate-file                             true    true
+pr:rename-out-deny (-> deny.toml at the root)  false   true
+pr:rename-out-canaries (-> attic/)              false   true
+pr:rename-out-workflow                          false   true
+pr:rename-into-entropy                          true    true
+pr:rename-nonascii (canaries.sh -> canariés.sh) false   true
+pr:add-nonascii (Entropy/café.md)               false   true
+pr:mode-only (chmod +x)                         true    true
+pr:large-with-entropy (+3,000 files, zz-bulk/)  false   true
+pr:large-without-entropy (3,000 files)          false   false
+push:entropy-edit                               true    true
+push:readme-only                                false   false
+push:rename-out                                 false   true
+push:large-with-entropy (+1,500 files)          false   true
+push:new branch (zero before)                   true    true
+push:unknown before (force push)                true    true
+push:empty before                               true    true
+22 cases: 14 right and 8 wrong before, 22 right after
+```
+
+On the real repo (a shared scratch clone), README-only b4e8e47 against its parent still gives `entropy=false`, and
+HEAD~1..HEAD at 98e3fe5 gives `true`. The log for a move plus a non-ASCII file now reads `changed: Entropy/café.md`,
+`changed: Entropy/deny.toml`, `changed: deny.toml`.
+
+**The coverage path check, de93cbc.** cargo-llvm-cov 0.9.1's default ignore rule (src/report.rs,
+`ignore_filename_regex`) also skips any path holding `/rustc/<hex>/` or `/rustc/<x.y.z>/`, anywhere in it. In a
+scratch export of 98e3fe5, a module core/src/rustc/cafe/mod.rs held an uncalled function.
+`cargo llvm-cov --offline --locked -p keepcrypt-core --lib --no-cfg-coverage --summary-only` gave no row for it
+(TOTAL lines 7285, missed 357), while the old check passed (rc=0). Renamed to rustc/plant, it gave
+`rustc/plant/mod.rs 6 lines, 6 missed` (TOTAL 7291, 363). The step, extracted the same way, on planted trees:
+
+```text
+before: rustc/cafe rc=0   rustc/1.2.3 rc=0   rustc/plant rc=0   tests/ rc=1   foo_tests.rs rc=1   clean rc=0
+after:  FAIL on rustc/cafe, rustc/1.2.3, rustc/0abc/x, tests/, examples/a/, foo_tests.rs, foo-tests.rs, a/tests.rs
+        pass on clean, rustc/plant, rustc/1.2 and xrustc/cafe (the tool keeps those too), and on the real core/src
+```
+
+A report-against-tree comparison, which the review offered instead, was not added. A file with no function never
+gets a row: that run had 30 rows for 32 files, missing lib.rs (no function) and source/stub.rs (test-sources only).
+So the comparison would need its own list of exempt files.
+
+**The artifact scan, d283a36.** Fixtures were built with the pinned rustc for aarch64-linux-android (`--emit obj`):
+
+```text
+libc_r.o (llvm-nm -u: drand48_r getrandom lrand48_r rand random_r seed48)
+  before: Symbol: undefined rand                                                1 hit
+  after:  undefined drand48_r, lrand48_r, rand, random_r, seed48                5 hits
+fixture.rs built as each of deny.toml's 13 crate names
+  before: rand 2 hits; rand_pcg, rand_xorshift, rand_hc, rand_isaac, oorandom, nanorand, tinyrand, turborand clean
+  after:  2 hits under every name
+llvm-ar rcsT thin.rlib m.o (m.o: a #[used] static holding KC_TEST_SOURCE_DO_NOT_SHIP)
+  before: clean, exit 0 ("1 archive(s), which need no import"); the same as a normal archive: Marker hit, exit 1
+  after:  Format: thin.rlib: a thin archive, which holds its members' paths, not their bytes   exit 1
+```
+
+The selftest grows from 233 to 250 cases (233 is a run of 98e3fe5's tree). The new cases: the 13 names checked
+against deny.toml's rule-1 block (`PASS artifact-rng-crates-are-deny-toml-rule-1 (13 names)`), the libc case and a
+thin archive on both targets, and the other 12 crate names on Android. Each rule was then reverted in a scratch
+copy, and each revert fails its own cases:
+
+```text
+scan list drops turborand           FAIL artifact-rng-crates-are-deny-toml-rule-1          248 passed, 1 failed
+deny.toml's block gains a name      FAIL artifact-rng-crates-are-deny-toml-rule-1          249 passed, 1 failed
+the old undefined-symbol pattern    FAIL ...-libc-reentrant-draws on both targets          248 passed, 2 failed
+the old 5-crate list                FAIL the 8 crate cases outside the old list            242 passed, 8 failed
+thin archive back as an archive     FAIL ...-thin-archive on both targets                  248 passed, 2 failed
+```
+
+The real artifacts are still clean under the new rules. The iOS release rlib and probe (`aarch64-apple-ios`,
+`aarch64-apple-ios-sim`) scan clean, with `_CCRandomGenerateBytes` imported. In canaries.sh the host default probe
+scans clean, and both positive controls still fail as intended (54 checks). The Pi and Android scans run first in
+CI.
+
+**The Pi games' getrandom (record only; open owner item 12).** The pin "getrandom's only dependent is keepcrypt-core"
+(Q11 (c), commit 26) was run on a copy of the tree whose pi/app/Cargo.toml adds `getrandom = "0.4.3"`, as
+pi-firmware.md has the games do. The pin's script, taken from canaries.sh, was run after
+`cargo update --offline --workspace`:
+
+```text
+unchanged copy:            rc=0
+pi/app depends on getrandom: getrandom dependents in Cargo.lock: keepcrypt-core, keepcrypt-pi; needs keepcrypt-core only
+                           rc=1
+```
+
+The pin is unchanged. The conflict is recorded under "Carried to later milestones" (M3) and as open owner item 12.
+
+**Suite**, before each of the three fix commits (runs on the trees of 98e3fe5 plus the scan change, d283a36 plus
+the changes job, and 216b0a1 plus the coverage check), with the same results each time; this file's commit changes
+nothing else:
+
+```text
+cargo fmt --all --check                                          exit 0
+cargo clippy --workspace --all-targets --locked -- -D warnings   exit 0
+cargo clippy ... --all-features --locked -- -D warnings          exit 0
+cargo test --workspace --locked                                  exit 0  (17 s)
+cargo test -p keepcrypt-core --locked --features test-sources    exit 0  (59 s)
+cargo deny --locked check                                        exit 0  advisories ok, bans ok, licenses ok, sources ok
+cargo audit                                                      exit 0  94 crate dependencies
+cargo vet --locked                                               exit 0  Vetting Succeeded (14 fully audited, 76 exempted)
+sh scripts/check-path-deps.sh                                    exit 0  clean, 90 packages outside the workspace
+sh scripts/banned-api-check.sh                                   exit 0  clean, 161 files scanned
+sh scripts/banned-api-check.sh --selftest                        exit 0  selftest: 250 passed, 0 failed
+python3 tools/verify/verify.py --selftest                        exit 0  selftest passed: 11 checks
+/usr/bin/python3 tools/verify/verify.py --selftest               exit 0  selftest passed: 11 checks
+sh scripts/canaries.sh                                           exit 0  PASS: all 54 checks ran
+```
+
+The workflow loads with `ruby -ryaml` at every step (9 jobs, 6 cross legs; every job but changes needs it). As
+before, the CI run itself comes after the push.
 
 ### M1: open owner items (2026-10-10)
 Nothing below has been acted on beyond recording it. Each needs the owner's answer before the M1 gate.
@@ -2794,6 +2949,18 @@ Nothing below has been acted on beyond recording it. Each needs the owner's answ
       serde_json 1.0.151, target-tuple 1.0.2, toml 1.1.6+spec-1.1.0, toml_parser 1.1.3+spec-1.1.0,
       toml_writer 1.1.2+spec-1.1.0, trybuild 1.0.121, windows-sys 0.61.2, winnow 1.0.4, zmij 1.0.23.
     The other 11 new crates pass on imported audits (listed under group 1's proof above).
+12. **The Pi games' getrandom (before M3; raised by the review after 29).** CLAUDE.md rule 1 ("Games use their own
+    separate `getrandom` calls"), pi-firmware.md (the `games` row and "Game randomness") and banned-api-check.sh's
+    Rule1 exemption for pi/app/src/games all expect pi/app to call getrandom. The graph pin approved in Q11 (c) and
+    added in commit 26 allows no getrandom dependent except keepcrypt-core. With `getrandom = "0.4.3"` in
+    pi/app/Cargo.toml it fails: "getrandom dependents in Cargo.lock: keepcrypt-core, keepcrypt-pi; needs
+    keepcrypt-core only". Choose one:
+    - (a) allow keepcrypt-pi as a second dependent, which is a reviewed change to the pin and its mutation canary;
+    - (b) give the games bytes through a core API that makes its own getrandom call and never touches the pool, as
+      "Inputs from M0" proposes for the phone games. Rule 1, pi-firmware.md and the Rule1 exemption then change to
+      match.
+
+    Nothing changes until then.
 
 ### M1 gate status: NOT MET yet
 The gate in docs/build-plan.md asks for all vectors passing, the source-substitution and error-injection tests
