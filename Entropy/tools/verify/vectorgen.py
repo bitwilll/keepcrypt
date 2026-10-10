@@ -37,7 +37,9 @@ byte for byte. scripts/age-interop.py checks the same code against the age CLI i
 
 M2 adds check 12, that a copy of verify.py runs alone (tasks/todo.md, M2 group 3): only allowlisted
 imports and recorded module attributes, no test material, its embedded known answers equal to the
-vectors they come from, and lone copies, fault twins and a planted module run under an audit hook.
+vectors they come from, and lone copies, fault twins and a planted module run under an audit hook. It
+also runs verify.py's input parsers on fixed cases and ties its verification run to keepcrypt.json
+(group 4).
 
 The only outside code it runs is Coldcard's public-domain rolls.py and rolls12.py, committed
 unmodified under vectors/coldcard/, and only after each file's SHA-256 equals its SOURCES.md
@@ -63,9 +65,9 @@ Usage (CI runs python3 -I tools/verify/vectorgen.py --selftest):
                                     through the reader and two rebuilt, its bytes, every case's
                                     pinned outcome, the docs' backup figures, the age CLI's files),
                                     verify.py alone (its imports and module attributes, no test
-                                    material, its known answers against their sources, a lone copy,
-                                    one fault twin per known-answer group and a planted module, run
-                                    under an audit hook)
+                                    material, its known answers against their sources, its input
+                                    cases and keepcrypt.json tie, a lone copy, one fault twin per
+                                    known-answer group and a planted module, run under an audit hook)
   vectorgen.py --write-seal-vectors    regenerate vectors/seal.json
   vectorgen.py --write-kat-vectors     regenerate vectors/kat.json
   vectorgen.py --write-keepcrypt-vectors  regenerate vectors/keepcrypt.json
@@ -4056,7 +4058,45 @@ KNOWN_ANSWER_FILES = {
     "seed": "vectors/keepcrypt.json and vectors/coldcard/rolls.json",
     "seal": "vectors/seal.json",
     "braille": "vectors/braille.json",
+    "urls": "the URL grammar over vectors/seal.json vector 1",
+    "insert": "vectors/braille.json",
 }
+# The urls group is tied to the URL grammar (Q6d) applied to seal.json's vector 1: core's REGISTRY_ORIGIN
+# (core/src/seal.rs) until M9, then /check#t=<T>, &n=<n> and /register#c=<the code without dashes>.
+KNOWN_ANSWER_ORIGIN = "https://registry.invalid"
+# Each line of the insert group is split back into the fields of its braille.json entry, plus its slot
+# (position 01 of one device, sequence 01) and each face's cell (tasks/todo.md, M2 group 4).
+INSERT_LINE = re.compile(r"([0-9]{2}) device ([0-9]+)/([0-9]+) seq ([0-9]{2}) seedbook ([0-9]{4}) ([a-z]+) "
+                         r"[|] (.*) [|] (.*)")
+INSERT_FACE = re.compile(r"--|(.)([a-z])(?:/([a-z]))?(~?)")
+# Check 12's input cases (tasks/todo.md, M2 group 4), run through verify.py's parsers: (case, field, input,
+# expected). For C and D the input is a text for parse_hex32 and the expected value 32 bytes; for rolls it
+# is a list of lines for parse_rolls and the expected value R. A refusal is expected as (field, position),
+# with position None for a field refused as a whole; a position counts the text as typed for C and D, and
+# the joined rolls for rolls. A refusal's text must be ASCII and hold no 4 consecutive characters of the
+# input.
+INPUT_HEX = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+INPUT_HEX_GROUPS = [INPUT_HEX[at:at + 4] for at in range(0, 64, 4)]
+INPUT_HEX_SHOWN = " ".join(INPUT_HEX_GROUPS)  # as the device shows C and D: 16 groups of 4
+INPUT_CASES = (
+    ("hex grouped", "C", INPUT_HEX_SHOWN, bytes.fromhex(INPUT_HEX)),
+    ("hex ungrouped", "D", INPUT_HEX, bytes.fromhex(INPUT_HEX)),
+    ("hex uppercase, grouped by tabs", "C", "\t".join(INPUT_HEX_GROUPS).upper(), bytes.fromhex(INPUT_HEX)),
+    ("hex hyphenated", "D", "-".join(INPUT_HEX_GROUPS), bytes.fromhex(INPUT_HEX)),
+    ("hex 63 digits", "C", INPUT_HEX[:63], ("C", None)),
+    ("hex 65 digits", "D", INPUT_HEX + "f", ("D", None)),
+    ("hex g", "C", INPUT_HEX_SHOWN[:7] + "g" + INPUT_HEX_SHOWN[8:], ("C", 8)),
+    ("hex Arabic-Indic digit", "D", INPUT_HEX_SHOWN[:11] + "\u0663" + INPUT_HEX_SHOWN[12:], ("D", 12)),
+    ("hex empty", "C", "", ("C", None)),
+    ("rolls outer spaces", "rolls", ["  123456\t "], "123456"),
+    ("rolls space inside", "rolls", ["123 456"], ("rolls", 4)),
+    ("rolls tab inside", "rolls", ["123\t456"], ("rolls", 4)),
+    ("rolls 0", "rolls", ["12", " 3045 "], ("rolls", 4)),
+    ("rolls 7", "rolls", ["1234567"], ("rolls", 7)),
+    ("rolls U+FF16", "rolls", ["12345\uff16"], ("rolls", 6)),
+    ("rolls two lines joined", "rolls", [" 123 ", "456"], "123456"),
+    ("rolls empty line", "rolls", [""], ("rolls", None)),
+)
 # Rules (d) and (e): every run of a copy has its own new directory, an empty environment and a timeout.
 # The lone copy and the fault twins (one per known-answer group: that group's last string value, never a
 # dict key, with its last character changed) are read-only, in read-only directories. The planted
@@ -4233,6 +4273,8 @@ def known_answer_sources(vectors_dir):
         raise ValueError("keepcrypt.json %s is not C of %s's D, or rolls.json has not one case %s"
                          % (KNOWN_ANSWER_COMMITMENT, KNOWN_ANSWER_MIXED, KNOWN_ANSWER_DICE_ROLLS))
     words = {entry.get("word"): entry for entry in braille["words"]}
+    cell = {entry["letter"]: entry["cell"] for entry in braille["cells"]["letters"]}
+    tag, nonce, code = seal["seal_tag_hex"], seal["go_ahead"]["nonce_hex"], seal["seal_code_hashed"]
     return {
         "hash": {
             "sha256": [[e["message_ascii"], e["digest_hex"]] for e in kat["sha256"]],
@@ -4256,7 +4298,45 @@ def known_answer_sources(vectors_dir):
             "words": [{field: words[word][field] for field in KNOWN_ANSWER_BRAILLE_FIELDS}
                       for word, _, _, _, _ in BRAILLE_SAMPLE_INSERTS],
         },
+        "urls": {
+            "seal_tag_hex": tag,
+            "nonce_hex": nonce,
+            "seal_code": code,
+            "recheck_url": KNOWN_ANSWER_ORIGIN + "/check#t=" + tag,
+            "check_url": KNOWN_ANSWER_ORIGIN + "/check#t=" + tag + "&n=" + nonce,
+            "register_url": KNOWN_ANSWER_ORIGIN + "/register#c=" + code,
+        },
+        "insert": {
+            "lines": [dict({field: words[word][field] for field in KNOWN_ANSWER_BRAILLE_FIELDS},
+                           position=1, device=1, devices=1, sequence=1,
+                           face_cells=[cell[letter] if letter else None for letter in words[word]["faces"]])
+                      for word, _, _, _, _ in BRAILLE_SAMPLE_INSERTS],
+        },
     }
+
+
+def insert_line_fields(line):
+    """An insert line split into its braille.json fields, its slot and each face's cell, or None if it does
+    not follow the grammar (tasks/todo.md, M2 group 4)."""
+    match = INSERT_LINE.fullmatch(line) if isinstance(line, str) else None
+    faces = [INSERT_FACE.fullmatch(face) for face in match.group(7).split(" ")] if match else []
+    if len(faces) != SEEDBOOK_FACES or None in faces:
+        return None
+    position, device, devices, sequence, number = (int(match.group(n)) for n in range(1, 6))
+    lighter = [n for n, face in enumerate(faces, 1) if face.group(4)]
+    return {"number": number, "word": match.group(6), "faces": [face.group(2) for face in faces],
+            "lighter_face": lighter[0] if len(lighter) == 1 else lighter or None,
+            "mirror_partners": [face.group(3) for face in faces], "cells": match.group(8), "position": position,
+            "device": device, "devices": devices, "sequence": sequence,
+            "face_cells": [face.group(1) for face in faces]}
+
+
+def known_answers_view(known):
+    """KNOWN_ANSWERS as rule (c) compares it: each line of the insert group split into its fields."""
+    insert = known.get("insert")
+    if not isinstance(insert, dict) or not isinstance(insert.get("lines"), (list, tuple)):
+        return known
+    return dict(known, insert=dict(insert, lines=[insert_line_fields(line) for line in insert["lines"]]))
 
 
 def value_differences(got, want, path):
@@ -4287,11 +4367,69 @@ def verify_known_answer_problems(node, vectors_dir):
         expected = known_answer_sources(vectors_dir)
     except (OSError, ValueError, KeyError, IndexError, TypeError) as e:
         return known, ["cannot rebuild the known answers from vectors/: %s: %s" % (type(e).__name__, e)]
-    problems = []
-    for group in list(expected) + [group for group in known if group not in expected]:
+    problems, view = [], known_answers_view(known)
+    for group in list(expected) + [group for group in view if group not in expected]:
         problems += ["%s differs from %s" % (path, KNOWN_ANSWER_FILES.get(group, "any source"))
-                     for path in value_differences(known.get(group, ABSENT), expected.get(group, ABSENT), (group,))]
+                     for path in value_differences(view.get(group, ABSENT), expected.get(group, ABSENT), (group,))]
     return known, problems
+
+
+def input_case_problems():
+    """Check 12's INPUT_CASES through parse_hex32 and parse_rolls: [problem]."""
+    problems = []
+    for case, field, given, want in INPUT_CASES:
+        try:
+            got = parse_rolls(given) if field == "rolls" else parse_hex32(field, given)
+        except InputRefused as refused:
+            got = (refused.field, refused.position)
+            typed, shown = "\n".join(given) if field == "rolls" else given, refused.message + "\n" + str(refused)
+            if not shown.isascii() or any(typed[at:at + 4] in shown for at in range(len(typed) - 3)):
+                problems.append("%s: the refusal's text holds the input" % case)
+        except Exception as e:  # any other failure fails the case, named
+            problems.append("%s: %s" % (case, type(e).__name__))
+            continue
+        if type(got) is not type(want) or got != want:
+            problems.append("%s: gives %r, not %r" % (case, got, want))
+    return problems
+
+
+def display_hex32(hex_text):
+    """64 hex digits as the device shows C and D: 16 groups of 4 (pi-firmware.md steps 5 and 14)."""
+    return " ".join(hex_text[at:at + 4] for at in range(0, 64, 4))
+
+
+def run_tie_problems(vectors_dir):
+    """Check 12's tie to values core already checks (tasks/todo.md, M2 group 4): every keepcrypt.json mixed
+    case whose D has a C in "commitment", and every dice_only case, fed to verification_run as display text
+    at both lengths, gives the committed seed bits (e_hex, its first 32 hex digits for 12 words) and
+    words_12/words_24. A mixed case outside [50 or 99, 256] must be refused instead, and a dice-only case
+    there computed with a warning (Q21). [problem]."""
+    doc = json.loads(vectors_dir.joinpath("keepcrypt.json").read_text(encoding="utf-8"))
+    commitments = {case["d_hex"]: case["c_hex"] for case in doc["commitment"]}
+    runs = [(case, display_hex32(commitments[case["d_hex"]]), display_hex32(case["d_hex"]))
+            for case in doc["mixed"] if case["d_hex"] in commitments]
+    runs += [(case, None, None) for case in doc["dice_only"]]
+    problems = [] if len(runs) > len(doc["dice_only"]) > 0 else ["no mixed or no dice-only case to tie"]
+    dice = dict(DICE)
+    for case, c_text, d_text in runs:
+        for length in (12, 24):
+            label = "%s at %d words" % (case["name"], length)
+            outside = not dice["min_rolls_%d_words" % length] <= len(case["rolls"]) <= dice["max_rolls"]
+            try:
+                report = verification_run(length, [case["rolls"]], c_text, d_text)
+            except Exception as e:  # any failure fails the case, named
+                problems.append("%s: %s" % (label, type(e).__name__))
+                continue
+            if c_text is not None and outside:
+                if report["refused"] is None or "words" in report:
+                    problems.append("%s: computed, not refused" % label)
+                continue
+            got = {"entropy": report.get("entropy", b"").hex(), "words": report.get("words"),
+                   "refused": report["refused"], "warned": report["warning"] is not None}
+            want = {"entropy": case["e_hex"][:32] if length == 12 else case["e_hex"],
+                    "words": case["words_%d" % length], "refused": None, "warned": c_text is None and outside}
+            problems += ["%s: %s differs" % (label, key) for key in want if got[key] != want[key]]
+    return problems
 
 
 def fault_twin(data, node, group):
@@ -4433,6 +4571,10 @@ def check_verify_alone(vectors_dir, verify_py):
     node = known_answers_node(tree) if tree is not None else None
     known, found = verify_known_answer_problems(node, vectors_dir)
     problems += ["rule (c): %s" % problem for problem in found]
+    # The input cases and the keepcrypt.json tie call verify.py as this file loads it, tools/verify/verify.py
+    # even under --verify-py, since check 12 runs its subject only as audited copies.
+    problems += ["input cases: %s" % problem for problem in input_case_problems()]
+    problems += ["keepcrypt.json tie: %s" % problem for problem in run_tie_problems(vectors_dir)]
     return problems + verify_lone_problems(data, node, known)
 
 
@@ -4465,8 +4607,8 @@ def selftest(vectors_dir, verify_py=VERIFY_PY, only=None):
          "plaintexts against watchonly.json, the docs' backup figures, the age CLI's files read",
          lambda: check_backup_json(vectors_dir)),
         ("tools/verify/verify.py ships alone: imports on the allowlist and module attributes on the recorded list, "
-         "no test material, known answers equal their sources, a lone copy passes selftest, each fault twin fails "
-         "its group, a planted module never runs, audited runs",
+         "no test material, known answers equal their sources, input cases, keepcrypt.json tie, a lone copy passes "
+         "selftest, each fault twin fails its group, a planted module never runs, audited runs",
          lambda: check_verify_alone(vectors_dir, verify_py)),
     )
     if only is not None and not 1 <= only <= len(checks):
@@ -4507,7 +4649,8 @@ def main(argv):
                       "its bytes, its pinned outcomes, key and roots), backup.json (scrypt, the CCTV files through "
                       "the reader and rebuilt, its bytes, its pinned outcomes, the docs' figures, the age CLI's "
                       "files), verify.py alone (its imports and module attributes, no test material, its known answers "
-                      "against their sources, a lone copy, its fault twins and a planted module, audited)")
+                      "against their sources, its input cases and keepcrypt.json tie, a lone copy, its fault twins and "
+                      "a planted module, audited)")
     mode.add_argument("--write-seal-vectors", action="store_true", help="regenerate vectors/seal.json")
     mode.add_argument("--write-kat-vectors", action="store_true", help="regenerate vectors/kat.json")
     mode.add_argument("--write-keepcrypt-vectors", action="store_true", help="regenerate vectors/keepcrypt.json")

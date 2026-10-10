@@ -11,7 +11,9 @@ SeedBook braille and insert positions, the watch-only export (secp256k1, BIP32, 
 single-part UR code), Ed25519 verification, the bucket tree and the .kcr and KCP1 verifiers, the
 encrypted backup's age reader and plaintext v1 parser, and the embedded known answers that every
 command runs first (M2 group 3). It opens no file and runs no other program.
-The verifier's own recomputation of a device's C, E and words, and braille, arrive in M2.
+The verification run (M2 group 4) recomputes a device's words, seal and inserts from C, D and the
+rolls as the user typed them: the input parsers, verification_run and render, the insert lines and
+the registry URLs. The mixed and dice commands that run it arrive in M2 group 7.
 
 tools/verify/vectorgen.py, which never ships, loads this file by path. It holds the vector
 generators, the backup writer, the label-key signer and the self-test, which checks this file
@@ -54,6 +56,9 @@ OKABE_ITO = ("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "
 TAG_SEAL = b"KCE/v1/seal"
 TAG_SEAL_TAG = b"KCE/v1/seal-tag"
 TAG_GO = b"KCE/v1/go"
+# The registry origin in every URL a QR carries, as core's REGISTRY_ORIGIN (core/src/seal.rs): a
+# placeholder until M9 (tasks/todo.md, "Later"; the paths are Q6d's).
+REGISTRY_ORIGIN = "https://registry.invalid"
 
 # Check 6 and vectors/keepcrypt.json: C, E and the dice quota (tasks/todo.md, M1 group 3; CLAUDE.md
 # "Domain constants"). vectorgen.py holds the pool and health-test model.
@@ -419,6 +424,27 @@ def go_ahead_code(tag, nonce):
     return crockford_base32(leading_bits(hashlib.sha256(TAG_GO + tag + nonce).digest(), 40), 8)
 
 
+def recheck_url(tag):
+    """The online re-check URL: <origin>/check#t=<T as 64 lowercase hex>, with no nonce."""
+    if len(tag) != 32:
+        raise ValueError("T must be 32 bytes")
+    return REGISTRY_ORIGIN + "/check#t=" + tag.hex()
+
+
+def check_url(tag, nonce):
+    """The seal card's check URL: the re-check URL, then &n=<n as 16 lowercase hex>."""
+    if len(nonce) != 8:
+        raise ValueError("n must be 8 bytes")
+    return recheck_url(tag) + "&n=" + nonce.hex()
+
+
+def register_url(code):
+    """The registration URL: <origin>/register#c=<the 26 seal-code chars, uppercase, no dashes>."""
+    if len(code) != 26 or any(c not in CROCKFORD for c in code):
+        raise ValueError("seal code must be 26 uppercase Crockford chars without dashes")
+    return REGISTRY_ORIGIN + "/register#c=" + code
+
+
 # --- Seed and words (vectors/keepcrypt.json) -------------------------------------------------
 
 
@@ -525,6 +551,25 @@ def insert_positions(word_count):
     devices = word_count // SEEDBOOK_INSERTS
     return [{"position": p, "device": (p - 1) // SEEDBOOK_INSERTS + 1, "devices": devices,
              "sequence": (p - 1) % SEEDBOOK_INSERTS + 1} for p in range(1, word_count + 1)]
+
+
+def insert_line(slot, word):
+    """One word's insert as a line (tasks/todo.md, M2 group 4): the position, device and device count, the
+    engraved sequence number, the SeedBook number and the word, then faces 1-5, then the word's cells, as in
+    '01 device 1/1 seq 01 seedbook 0001 abandon | ⠁a ⠃b ⠁a ⠝n ⠙d/f~ | ⠁⠃⠁⠝⠙⠕⠝'. A face is its cell, then its
+    letter; a mirror-pair letter adds '/' and its partner, a non-blank fifth face (drawn lighter) adds '~',
+    and a blank face is '--'. `slot` is the word's entry of insert_positions."""
+    partner = braille_mirror_partner()
+    faces = []
+    for face, letter in enumerate(seedbook_faces(word), 1):
+        if letter is None:
+            faces.append("--")
+            continue
+        faces.append(braille_text(letter) + letter + ("/" + partner[letter] if letter in partner else "")
+                     + ("~" if face == SEEDBOOK_LIGHTER_FACE else ""))
+    return "%02d device %d/%d seq %02d seedbook %04d %s | %s | %s" % (
+        slot["position"], slot["device"], slot["devices"], slot["sequence"], bip39_index(word) + 1, word,
+        " ".join(faces), braille_text(word))
 
 
 def backup_braille_lines(words):
@@ -1639,6 +1684,165 @@ def backup_plaintext_parse(data):
     return words, fingerprint, created.group(1), version
 
 
+# --- The verification run (tasks/todo.md, M2 group 4; docs/design.md "How users verify") ----------
+# A disposable ceremony recomputed on an offline computer from what the user wrote down: C before the
+# first roll, then D and the rolls (mixed mode), or only the rolls (dice-only). The commands, the CLI's
+# prompts, the agreement vectors and check 12 all call verification_run and render.
+
+
+class InputRefused(Exception):
+    """A refused input, raised as InputRefused(field, position, rule): `field` is C, D or rolls; `position`
+    is the 1-based character where the input breaks `rule`, or None when the field is wrong as a whole. A
+    position counts the text as typed for C and D, and the rolls as parse_rolls joins them for rolls. The
+    text holds only these, never the input (CLAUDE.md rule 5; no __init__, as for BackupRefused)."""
+
+    @property
+    def field(self):
+        return self.args[0]
+
+    @property
+    def position(self):
+        return self.args[1]
+
+    @property
+    def message(self):
+        field, position, rule = self.args
+        return "%s refused%s: %s" % (field, "" if position is None else " at character %d" % position, rule)
+
+
+def parse_hex32(field, text):
+    """C or D as typed (`field` names it), as 32 bytes. Any non-ASCII character is refused first; then
+    spaces, tabs and hyphens are removed, and exactly 64 hex digits in either case must remain (the device
+    shows both as 16 groups of 4: pi-firmware.md steps 5 and 14)."""
+    for at, ch in enumerate(text, 1):
+        if ord(ch) > 0x7F:
+            raise InputRefused(field, at, "not ASCII")
+    digits = []
+    for at, ch in enumerate(text, 1):
+        if ch in " \t-":
+            continue
+        if ch not in "0123456789abcdefABCDEF":
+            raise InputRefused(field, at, "not a hex digit")
+        digits.append(ch)
+    if len(digits) != 64:
+        raise InputRefused(field, None, "%d hex digits, not 64" % len(digits))
+    return bytes.fromhex("".join(digits))
+
+
+def parse_rolls(lines):
+    """R from the roll lines as typed: each line is str.strip()ped, as Coldcard's rolls.py strips its one
+    line, and then holds only the ASCII digits 1-6, so an inner space or tab, a 0, a 7 or a full-width digit
+    is refused (removing it would change the hash compared with rolls.py; Q21). The lines are joined with
+    nothing between them; R is that ASCII text, never empty."""
+    rolls = []
+    for line in lines:
+        for ch in line.strip():
+            if ch not in "123456":
+                raise InputRefused("rolls", len(rolls) + 1, "not a roll 1-6")
+            rolls.append(ch)
+    if not rolls:
+        raise InputRefused("rolls", None, "no rolls")
+    return "".join(rolls)
+
+
+def verification_run(length, roll_lines, c_text=None, d_text=None):
+    """The report of one run at 12 or 24 words: mixed mode with C and D as typed, dice-only with neither.
+    InputRefused for an input the parsers refuse, in the order C, D, rolls.
+
+    - Mixed: C and D are parsed, then C must equal SHA256("KCE/v1/commit" || D); a mismatch stops there,
+      before the rolls are read. The roll count must then lie in [50 or 99 by length, 256], or the report
+      is refused, since no honest device finishes a first ceremony with that count. E is mixed_entropy.
+    - Dice-only: E = SHA256(R); a count outside that range is computed with a warning (Q21), as Coldcard's
+      scripts compute any count.
+    - The seed bits are E[0:16] for 12 words and E for 24 (the rest of E is never kept); the words encode
+      them; the seal comes from the words with an empty passphrase (CLAUDE.md rule 7); and each word has
+      its insert line.
+    The report always holds mode, length, c, d (parsed, or None), matches (None in dice-only), rolls (the
+    count, None if not read), minimum, refused and warning (None or one line each); when computed, also
+    entropy (the seed bits), words, seal_code (26 chars), seal_tag, seal_id, seal_id_braille,
+    lookup_prefix, bucket, grid, colour_index, colour_hex, recheck_url and inserts."""
+    dice = dict(DICE)
+    if length not in (12, 24) or (c_text is None) != (d_text is None):
+        raise ValueError("a run takes 12 or 24 words, and C and D together or neither")
+    minimum, maximum = dice["min_rolls_%d_words" % length], dice["max_rolls"]
+    report = {"mode": "dice" if c_text is None else "mixed", "length": length, "c": None, "d": None,
+              "matches": None, "rolls": None, "minimum": minimum, "refused": None, "warning": None}
+    if c_text is not None:
+        report["c"], report["d"] = parse_hex32("C", c_text), parse_hex32("D", d_text)
+        report["matches"] = hmac.compare_digest(commitment(report["d"]), report["c"])
+        if not report["matches"]:
+            report["refused"] = "D does not match C"
+            return report
+    rolls = parse_rolls(roll_lines)
+    report["rolls"] = len(rolls)
+    outside = not minimum <= len(rolls) <= maximum
+    if c_text is not None and outside:
+        report["refused"] = ("no honest KeepCrypt device finishes a first ceremony with %d rolls for %d words; "
+                             "it takes %d to %d" % (len(rolls), length, minimum, maximum))
+        return report
+    if outside:
+        report["warning"] = ("a KeepCrypt device takes %d to %d rolls for %d words; %d rolls computed anyway, "
+                             "as Coldcard's scripts do" % (minimum, maximum, length, len(rolls)))
+    entropy = dice_only_entropy(rolls) if c_text is None else mixed_entropy(report["d"], rolls)
+    seed_bits = entropy[:16] if length == 12 else entropy
+    words = bip39_words(seed_bits)
+    code = seal_code(bip39_seed(" ".join(words)))
+    tag = seal_tag(code)
+    index, colour = seal_colour(tag)
+    report.update({
+        "entropy": seed_bits,
+        "words": words,
+        "seal_code": code,
+        "seal_tag": tag,
+        "seal_id": seal_id(tag),
+        "seal_id_braille": braille_text(seal_id(tag).lower()),
+        "lookup_prefix": lookup_prefix(tag),
+        "bucket": kcr_bucket_of(tag),
+        "grid": seal_grid(tag),
+        "colour_index": index,
+        "colour_hex": colour,
+        "recheck_url": recheck_url(tag),
+        "inserts": [insert_line(slot, word) for slot, word in zip(insert_positions(length), words)],
+    })
+    return report
+
+
+RUN_BANNER = ("VERIFICATION RUN: a disposable test seed. Never fund it; erase this run and clear the terminal "
+              "afterwards.")
+RUN_NOTES = (
+    "every line above must equal what the device showed; a difference is a typing error or a faulty device",
+    "for 12 words, 50-98 rolls is valid only for a first ceremony, never after \"Match found\", which takes 99",
+    "the device's check QR adds its fresh nonce to the re-check URL, so no run can show it or a go-ahead code",
+)
+
+
+def render(report):
+    """A run's stdout: the banner, then one 'label: value' line each in the device's screen order. A refused
+    run ends at its refusal, with no words. D and the rolls never appear, only the roll count and its bits
+    (truncated to tenths, as the dice screen shows them); a warning is not stdout's (the command writes it to
+    stderr)."""
+    lines = [RUN_BANNER]
+    if report["matches"]:
+        lines.append("commitment: C matches D")
+    if report["rolls"] is not None:
+        millibits = report["rolls"] * dict(DICE)["millibits_per_roll"]
+        lines.append("rolls: %d (%d.%d bits)" % (report["rolls"], millibits // 1000, millibits % 1000 // 100))
+    if report["refused"] is not None:
+        lines.append("refused: " + report["refused"])
+    else:
+        lines.append("entropy: " + report["entropy"].hex())
+        lines.append("seal-id: %s %s" % (report["seal_id"], report["seal_id_braille"]))
+        lines.append("seal-tag: " + report["seal_tag"].hex())
+        lines.append("lookup-prefix: " + report["lookup_prefix"])
+        lines.append("seal-colour: %d %s" % (report["colour_index"], report["colour_hex"]))
+        lines += ["seal-grid: " + row for row in report["grid"]]
+        lines.append("recheck-url: " + report["recheck_url"])
+        lines += ["insert: " + line for line in report["inserts"]]
+        lines.append("seal-code: " + grouped(report["seal_code"], (5, 5, 5, 5, 6)))
+        lines += ["note: " + note for note in RUN_NOTES]
+    return "".join(line + "\n" for line in lines)
+
+
 # --- Embedded known answers (tasks/todo.md, M2 group 3) ---------------------------------------
 # Every command recomputes these before anything else and stops with exit 1 if one differs (CLAUDE.md
 # rule 3, as core's session-start suite does), so a copy whose hashing, word list, seed, seal or braille
@@ -1743,6 +1947,31 @@ KNOWN_ANSWERS = {
              "mirror_partners": (None, None, None, None, None), "cells": "⠵⠕⠕"},
         ),
     },
+    # vectors/seal.json, vector 1: T (seal_tag_hex), n (go_ahead nonce_hex) and the code (seal_code_hashed),
+    # then their re-check, check and register URLs, the literals core's seal tests pin (core/src/seal.rs
+    # the_recheck_url_of_vector_1, seal/check.rs and seal/registration.rs).
+    "urls": {
+        "seal_tag_hex": "2b8103c8dd64611df5c8c28b8fbf864a1005372f5da06a5777f92708ce79cb5c",
+        "nonce_hex": "0001020304050607",
+        "seal_code": "JXP3RDXYACJZ1NAX3RGQDJCJJN",
+        "recheck_url": "https://registry.invalid/check#t="
+                       "2b8103c8dd64611df5c8c28b8fbf864a1005372f5da06a5777f92708ce79cb5c",
+        "check_url": "https://registry.invalid/check#t=2b8103c8dd64611df5c8c28b8fbf864a1005372f5da06a5777f92708ce79cb5c"
+                     "&n=0001020304050607",
+        "register_url": "https://registry.invalid/register#c=JXP3RDXYACJZ1NAX3RGQDJCJJN",
+    },
+    # vectors/braille.json "words", the six entries of the braille group, as insert lines at position 01 of one
+    # device, sequence 01 (tasks/todo.md, M2 group 4).
+    "insert": {
+        "lines": (
+            "01 device 1/1 seq 01 seedbook 0001 abandon | ⠁a ⠃b ⠁a ⠝n ⠙d/f~ | ⠁⠃⠁⠝⠙⠕⠝",
+            "01 device 1/1 seq 01 seedbook 0020 act | ⠁a ⠉c ⠞t -- -- | ⠁⠉⠞",
+            "01 device 1/1 seq 01 seedbook 0021 action | ⠁a ⠉c ⠞t ⠊i/e ⠕o~ | ⠁⠉⠞⠊⠕⠝",
+            "01 device 1/1 seq 01 seedbook 1121 metal | ⠍m ⠑e/i ⠞t ⠁a ⠇l~ | ⠍⠑⠞⠁⠇",
+            "01 device 1/1 seq 01 seedbook 2018 wire | ⠺w/r ⠊i/e ⠗r/w ⠑e/i -- | ⠺⠊⠗⠑",
+            "01 device 1/1 seq 01 seedbook 2048 zoo | ⠵z ⠕o ⠕o -- -- | ⠵⠕⠕",
+        ),
+    },
 }
 
 
@@ -1828,13 +2057,34 @@ def known_answers_braille(values):
     return failed
 
 
-# The groups in the order selftest prints them; group 4 adds urls and insert, and group 7 adds run.
+def known_answers_urls(values):
+    """The urls group: the re-check URL for T, the check URL for T and n, and the register URL for the code."""
+    tag = bytes.fromhex(values["seal_tag_hex"])
+    got = {
+        "recheck_url": recheck_url(tag),
+        "check_url": check_url(tag, bytes.fromhex(values["nonce_hex"])),
+        "register_url": register_url(values["seal_code"]),
+    }
+    return [key for key, value in got.items() if values[key] != value]
+
+
+def known_answers_insert(values):
+    """The insert group: each line rebuilt from its word (the field after the SeedBook number) at position
+    01 of one device, sequence 01."""
+    slot = insert_positions(SEEDBOOK_INSERTS)[0]
+    return ["lines %d" % n for n, line in enumerate(values["lines"], 1)
+            if insert_line(slot, line.split(" ")[7]) != line]
+
+
+# The groups in the order selftest prints them; group 7 adds run.
 KNOWN_ANSWER_GROUPS = (
     ("hash", known_answers_hash),
     ("bip39", known_answers_bip39),
     ("seed", known_answers_seed),
     ("seal", known_answers_seal),
     ("braille", known_answers_braille),
+    ("urls", known_answers_urls),
+    ("insert", known_answers_insert),
 )
 
 

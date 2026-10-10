@@ -2904,7 +2904,7 @@ Groups land in the order below. Vectors come before the core test that reads the
       Proof: check 12 passes on 3.12 and 3.9; group 8's canaries show that rules (a) and (e) fire.
 
 **4. Inputs, the shared run function, inserts and registry URLs (lessons.md rule 2: exact bytes of every hash input)**
-- [ ] Parsers. An error is `InputRefused(field, position)`, whose text never holds the input:
+- [x] Parsers. An error is `InputRefused(field, position)`, whose text never holds the input:
       - `parse_hex32(field, text)` for C and D: refuse any non-ASCII character first; remove spaces, tabs and hyphens;
         then exactly 64 hex digits in either case, giving 32 bytes (pi-firmware.md step 5: 16 groups of 4);
       - `parse_rolls(lines)`: each line is `str.strip()`ped as rolls.py:202 does. Then every character must be one of
@@ -2913,6 +2913,10 @@ Groups land in the order below. Vectors come before the core test that reads the
       Proof: `INPUT_CASES` in check 12, each with its expected bytes or (field, position):
       - hex: grouped, ungrouped, uppercase and hyphenated; 63 and 65 digits; `g`; an Arabic-Indic digit; empty;
       - rolls: outer spaces; a space inside; a tab inside; `0`; `7`; U+FF16; two lines joined; an empty line.
+      Proof: commit 7. The 17 `INPUT_CASES` pass in check 12 on 3.12.5 and 3.9.6; each refusal's text is ASCII and
+      holds no 4 consecutive characters of its input. Scratch mutants each fail their cases: inner spaces removed
+      (space inside), no strip (outer spaces, `0` on a second line, two lines), `int(ch, 16)` (`g`, Arabic-Indic),
+      positions counted after separators (`g`, Arabic-Indic) and a message echoing the input (4 hex refusals).
 - [ ] `verification_run(length, roll_lines, c_text=None, d_text=None)` returns one report for both modes:
       - mixed: C and D parsed, then `hmac.compare_digest(commitment(D), C)`; a mismatch stops here. The roll count must
         then lie in [50 or 99, 256] by length (verify.py `DICE`); otherwise the report says no honest device finishes
@@ -2926,22 +2930,33 @@ Groups land in the order below. Vectors come before the core test that reads the
         - A face is its cell, then its letter. A mirror-pair letter adds `/<partner>`, a non-blank fifth face adds
           `~`, and a blank face is `--`.
         - Example: `01 device 1/1 seq 01 seedbook 0001 abandon | ⠁a ⠃b ⠁a ⠝n ⠙d/f~ | ⠁⠃⠁⠝⠙⠕⠝`.
-- [ ] URL builders (Q6d; the origin stays `https://registry.invalid` until M9):
+- [x] URL builders (Q6d; the origin stays `https://registry.invalid` until M9):
       - `recheck_url(T)` = `/check#t=<64 lowercase hex>`;
       - `check_url(T, n)` adds `&n=<16 lowercase hex>`;
       - `register_url(code)` = `/register#c=<26 uppercase, no dashes>`.
-- [ ] Known answers, added in this commit because their functions arrive here:
+      Proof: commit 7. For seal vector 1 the three URLs equal core's pinned literals (seal.rs:456, seal/check.rs:213,
+      seal/registration.rs:129) and check 12 (c)'s grammar over seal.json; a copy with the origin and its known
+      answers changed together fails rule (c) on all three URLs.
+- [x] Known answers, added in this commit because their functions arrive here:
       - `urls`: the re-check URL for CLAUDE.md's T, the check URL with n = `0001020304050607`, and the register URL for
         that vector's code. Check 12 (c) ties them to the grammar applied to seal.json's tag and code for the
         vector; core pins the same re-check literal at seal.rs:456;
       - `insert`: the six SeedBook words above as insert lines at position 01, device 1/1, sequence 01. Check 12 (c)
         splits each line into fields and compares them with the word's braille.json entry.
-- [ ] Check 12 gains a tie to values core already checks. It takes every keepcrypt.json `mixed` case whose D has a C
+      Proof: commit 7. `verify.py selftest` prints `ok` for 7 groups on 3.12.5 and 3.9.6, from the tree and as check
+      12's lone copy; the urls and insert fault twins each fail only their group. Scratch copies fail rule (c) by
+      field: the register URL literal changed (`urls.register_url`), and the `~` moved to face 4 in code and answers
+      alike (`insert.lines.1.lighter_face`, `.3`, `.4`). The ABANDON line equals the example above.
+- [x] Check 12 gains a tie to values core already checks. It takes every keepcrypt.json `mixed` case whose D has a C
       in its `commitment` list (three of four at 90b6ab9), and every `dice_only` case. Fed as display text through
       `verification_run`, each gives the committed seed bits (`e_hex`, its first 32 hex digits for 12 words) and
       `words_12`/`words_24`. Core's seed.rs tests check those values.
       Proof: `INPUT_CASES` and this tie pass on 3.12 and 3.9. The 1,000 agreement cases (groups 5 and 6) compare every
       field with core, and check 12 pins the rendered text (group 7).
+      Proof: commit 7. The tie passes on 3.12.5 and 3.9.6: 3 mixed and 6 dice-only cases at both lengths. 50 rolls
+      at 24 words (`d-00-1f-coldcard-50`) is refused with no words, and `coldcard-123456` (both lengths) and
+      `coldcard-50` (24 words) compute with a warning. Scratch mutants fail it: wrong 12-word seed bits, no mixed
+      refusal, no dice-only warning. The agreement and the rendered text are groups 5-7's proof.
 
 **5. Agreement vectors: the verifier's side (gate; build-plan.md M2 and "Verifier agreement, 1,000 cases")**
 - [ ] `vectorgen.py --write-agreement-vectors` writes `vectors/agreement.json`, one case per line, marked "public test
