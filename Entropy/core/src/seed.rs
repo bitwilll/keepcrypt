@@ -7,7 +7,9 @@
 //! - Dice only: E = SHA256(R), the same as Coldcard's rolls.py.
 //! - 12 words from E[0..16], 24 from all of E, through the bip39 crate's English list, converted
 //!   at once into a `SecretMnemonic`; S = the BIP39 seed with the empty passphrase, which is what
-//!   the seal and the fingerprint use.
+//!   the seal and the fingerprint use. S has its own type, `EmptyPassphraseSeed`, which only this
+//!   module fills and only from the words; a seed under a BIP39 passphrase is a plain
+//!   `SecretSeed64`, so it cannot reach the seal or the fingerprint (CLAUDE.md rule 7).
 //! - The wallet summary is the master fingerprint and the m/84'/0'/0'/0/0 P2WPKH mainnet address.
 //!   The extended private keys stay inside `wallet_summary`, held in a `SecretXpriv`, which derives
 //!   in place one level at a time and erases the key when dropped; the secp256k1 context is not
@@ -45,6 +47,27 @@ pub(crate) const SEED_TAG: &[u8] = b"KCE/v1/seed";
 /// must wipe themselves when dropped. sha2's `zeroize` feature provides it; this pins it.
 const fn assert_zeroize_on_drop<T: ZeroizeOnDrop>() {}
 const _: () = assert_zeroize_on_drop::<Sha256>();
+
+/// S, the BIP39 seed with the empty passphrase: the only seed the seal and the wallet summary (the
+/// fingerprint the backup names) take (CLAUDE.md rule 7). Only this module fills one, from the words
+/// alone (`mnemonic_and_seed_into`, `seed_from_mnemonic_into`); the seed of a BIP39 passphrase is a
+/// plain `SecretSeed64` (`passphrase_seed_into`), so passing it to the seal fails to compile (review
+/// fix after commit 18). `as_seed` lends S out as a `SecretSeed64` for what any seed may feed, such
+/// as the watch-only export; nothing turns a `SecretSeed64` into one. No `Debug`, `Display` or
+/// `Clone`; wiped on drop.
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub(crate) struct EmptyPassphraseSeed(SecretSeed64);
+
+impl EmptyPassphraseSeed {
+    pub(crate) const fn zeroed() -> Self {
+        Self(SecretSeed64::zeroed())
+    }
+
+    /// S, as a seed of either kind, for key derivation inside core only.
+    pub(crate) fn as_seed(&self) -> &SecretSeed64 {
+        &self.0
+    }
+}
 
 /// C = SHA256("KCE/v1/commit" || D): public, safe to display.
 pub(crate) fn commitment(d: &SecretBytes32) -> [u8; 32] {
@@ -94,14 +117,14 @@ pub(crate) fn mnemonic_and_seed_into(
     e: &SecretBytes32,
     len: SeedLength,
     mnemonic: &mut SecretMnemonic,
-    seed: &mut SecretSeed64,
+    seed: &mut EmptyPassphraseSeed,
 ) -> Result<(), CoreError> {
     let words = bip39_mnemonic(e, len)?;
     mnemonic.fill_from(words.word_indices())?;
     // bip39 returns S by value; it is wrapped at once (the moved-from temporary is the residual
     // in the module comment).
     let s = Zeroizing::new(words.to_seed_normalized(""));
-    seed.expose_secret_mut().copy_from_slice(s.as_slice());
+    seed.0.expose_secret_mut().copy_from_slice(s.as_slice());
     Ok(())
 }
 
@@ -113,7 +136,7 @@ pub(crate) fn mnemonic_and_seed_into(
 /// residual in the module comment.
 pub(crate) fn seed_from_mnemonic_into(
     mnemonic: &SecretMnemonic,
-    seed: &mut SecretSeed64,
+    seed: &mut EmptyPassphraseSeed,
 ) -> Result<(), CoreError> {
     let indices = mnemonic.indices();
     let entropy_len = match indices.len() {
@@ -144,7 +167,7 @@ pub(crate) fn seed_from_mnemonic_into(
         return Err(CoreError::Internal(InternalFault::Bip39));
     }
     let s = Zeroizing::new(words.to_seed_normalized(""));
-    seed.expose_secret_mut().copy_from_slice(s.as_slice());
+    seed.0.expose_secret_mut().copy_from_slice(s.as_slice());
     Ok(())
 }
 
@@ -152,7 +175,8 @@ pub(crate) fn seed_from_mnemonic_into(
 /// wallet (docs/seal-watchonly-braille.md "Watch-only export" rules; tasks/todo.md, M1 Q5). The
 /// passphrase is NFKD-normalized, never trimmed, into a zeroizing buffer sized exactly by a first
 /// counting pass, so that buffer never reallocates; then bip39's `to_seed_normalized` takes it. The
-/// seal and the backup never see a passphrase: they use S with the empty one (CLAUDE.md rule 7).
+/// seal and the backup never see a passphrase: they use S with the empty one (CLAUDE.md rule 7),
+/// an `EmptyPassphraseSeed`, which this plain `SecretSeed64` is not.
 ///
 /// Beyond core's reach (tasks/todo.md, M1 group 6, residual): during each pass,
 /// unicode-normalization holds the characters it is decomposing in a `TinyVec<[(u8, char); 4]>`.
@@ -194,10 +218,10 @@ pub(crate) struct WalletSummary {
 /// and its private `ckd_priv` keeps key material in its HMAC state and output; secp256k1's tweak
 /// has temporaries too, and each library call that returns a key by value leaves the moved-from
 /// temporary. Those copies are left to the stack (tasks/todo.md, M1 group 4, residual).
-pub(crate) fn wallet_summary(seed: &SecretSeed64) -> Result<WalletSummary, CoreError> {
+pub(crate) fn wallet_summary(seed: &EmptyPassphraseSeed) -> Result<WalletSummary, CoreError> {
     let path = first_receive_path()?;
     let secp = Secp256k1::signing_only();
-    let mut key = SecretXpriv::master(seed)?;
+    let mut key = SecretXpriv::master(seed.as_seed())?;
     let fingerprint = key.fingerprint(&secp).to_bytes();
     key.derive_in_place(&secp, &path)?;
     let public = key.xpub(&secp).to_pub();
@@ -305,9 +329,31 @@ fn erase(key: &mut Xpriv) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::secret::TestFill;
     use crate::test_vectors::{hex, keepcrypt_json, named, read, text};
     use serde_json::Value;
     use std::str::FromStr;
+
+    // White box: S fills and wipes like the seed it wraps.
+    impl TestFill for EmptyPassphraseSeed {
+        fn fill(&mut self) {
+            self.0.fill();
+        }
+        fn is_zero(&self) -> bool {
+            self.0.is_zero()
+        }
+    }
+
+    #[test]
+    fn empty_passphrase_seed_zeroizes() {
+        let mut seed = EmptyPassphraseSeed::zeroed();
+        seed.fill();
+        assert!(!seed.is_zero());
+        seed.zeroize();
+        assert!(seed.is_zero());
+    }
+
+    const _: () = assert_zeroize_on_drop::<EmptyPassphraseSeed>();
 
     fn d_from(v: &Value) -> SecretBytes32 {
         let mut d = SecretBytes32::zeroed();
@@ -318,7 +364,7 @@ mod tests {
     // Owned copies: a word borrows its mnemonic, which is dropped here. Test vectors only.
     fn words(e: &SecretBytes32, len: SeedLength) -> Vec<String> {
         let mut mnemonic = SecretMnemonic::zeroed();
-        let mut seed = SecretSeed64::zeroed();
+        let mut seed = EmptyPassphraseSeed::zeroed();
         assert_eq!(
             mnemonic_and_seed_into(e, len, &mut mnemonic, &mut seed),
             Ok(())
@@ -342,14 +388,17 @@ mod tests {
             let e = d_from(&case["e_hex"]);
             for len in [SeedLength::Words12, SeedLength::Words24] {
                 let mut mnemonic = SecretMnemonic::zeroed();
-                let mut from_e = SecretSeed64::zeroed();
+                let mut from_e = EmptyPassphraseSeed::zeroed();
                 assert_eq!(
                     mnemonic_and_seed_into(&e, len, &mut mnemonic, &mut from_e),
                     Ok(())
                 );
-                let mut from_words = SecretSeed64::zeroed();
+                let mut from_words = EmptyPassphraseSeed::zeroed();
                 assert_eq!(seed_from_mnemonic_into(&mnemonic, &mut from_words), Ok(()));
-                assert_eq!(from_words.expose_secret(), from_e.expose_secret());
+                assert_eq!(
+                    from_words.as_seed().expose_secret(),
+                    from_e.as_seed().expose_secret()
+                );
                 let mut broken = SecretMnemonic::zeroed();
                 let mut indices: Vec<usize> =
                     mnemonic.indices().iter().map(|&i| usize::from(i)).collect();
@@ -358,14 +407,14 @@ mod tests {
                     *last ^= 1;
                 }
                 assert_eq!(broken.fill_from(indices.into_iter()), Ok(()));
-                let mut none = SecretSeed64::zeroed();
+                let mut none = EmptyPassphraseSeed::zeroed();
                 assert_eq!(
                     seed_from_mnemonic_into(&broken, &mut none),
                     Err(CoreError::Internal(InternalFault::Bip39))
                 );
             }
         }
-        let mut empty = SecretSeed64::zeroed();
+        let mut empty = EmptyPassphraseSeed::zeroed();
         assert_eq!(
             seed_from_mnemonic_into(&SecretMnemonic::zeroed(), &mut empty),
             Err(CoreError::Internal(InternalFault::Bip39))
@@ -498,13 +547,15 @@ mod tests {
             let mut e = SecretBytes32::zeroed();
             e.expose_secret_mut()[..entropy.len()].copy_from_slice(&entropy);
             assert_eq!(words(&e, len).join(" "), text(&entry[1]));
+            // A TREZOR-passphrase seed: a plain SecretSeed64, which wallet_summary does not take.
             let mut seed = SecretSeed64::zeroed();
             seed.expose_secret_mut().copy_from_slice(&hex(&entry[2]));
-            let summary = wallet_summary(&seed).expect("a summary");
+            let secp = Secp256k1::signing_only();
+            let master = SecretXpriv::master(&seed).expect("a master");
             let xprv = Xpriv::from_str(text(&entry[3])).expect("an xprv");
             assert_eq!(
-                summary.fingerprint,
-                xprv.fingerprint(&Secp256k1::signing_only()).to_bytes()
+                master.fingerprint(&secp).to_bytes(),
+                xprv.fingerprint(&secp).to_bytes()
             );
             checked += 1;
         }
@@ -517,7 +568,7 @@ mod tests {
     fn bip84_fingerprint_and_first_address() {
         let e = SecretBytes32::zeroed();
         let mut mnemonic = SecretMnemonic::zeroed();
-        let mut seed = SecretSeed64::zeroed();
+        let mut seed = EmptyPassphraseSeed::zeroed();
         assert_eq!(
             mnemonic_and_seed_into(&e, SeedLength::Words12, &mut mnemonic, &mut seed),
             Ok(())
@@ -527,7 +578,7 @@ mod tests {
             "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
         );
         assert_eq!(
-            seed.expose_secret()[..16],
+            seed.as_seed().expose_secret()[..16],
             hex_16("5eb00bbddcf069084889a8ab91555681"),
             "S uses the empty passphrase"
         );

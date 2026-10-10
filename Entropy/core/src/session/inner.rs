@@ -6,7 +6,8 @@
 use zeroize::Zeroize;
 
 use super::Config;
-use crate::secret::{BackupPassphrase, SecretBytes32, SecretMnemonic, SecretSeed64};
+use crate::secret::{BackupPassphrase, SecretBytes32, SecretMnemonic};
+use crate::seed::EmptyPassphraseSeed;
 use crate::source::Source;
 
 pub(super) struct Inner {
@@ -16,8 +17,8 @@ pub(super) struct Inner {
     device_leg: SecretBytes32,
     /// E, the seed entropy.
     seed_entropy: SecretBytes32,
-    /// S, the BIP39 seed with the empty passphrase.
-    bip39_seed: SecretSeed64,
+    /// S, the BIP39 seed with the empty passphrase: the seal's and the fingerprint's only input.
+    bip39_seed: EmptyPassphraseSeed,
     mnemonic: SecretMnemonic,
     /// The generated backup passphrase, kept for `encrypt_backup` and `verify_backup`.
     backup_passphrase: BackupPassphrase,
@@ -31,7 +32,7 @@ impl Inner {
             source,
             device_leg: SecretBytes32::zeroed(),
             seed_entropy: SecretBytes32::zeroed(),
-            bip39_seed: SecretSeed64::zeroed(),
+            bip39_seed: EmptyPassphraseSeed::zeroed(),
             mnemonic: SecretMnemonic::zeroed(),
             backup_passphrase: BackupPassphrase::zeroed(),
         })

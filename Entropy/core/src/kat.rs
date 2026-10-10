@@ -32,7 +32,8 @@ use crate::pool::Pool;
 use crate::seal::{self, CheckNonce, SealCode, SealTag};
 use crate::secret::{SecretBytes32, SecretMnemonic, SecretSeed64};
 use crate::seed::{
-    commitment, dice_only_entropy_into, mixed_entropy_into, seed_from_mnemonic_into,
+    EmptyPassphraseSeed, commitment, dice_only_entropy_into, mixed_entropy_into,
+    seed_from_mnemonic_into,
 };
 use crate::source::SourceId;
 
@@ -607,7 +608,7 @@ const SEAL_ID_BRAILLE: &str = "⠼⠑⠰⠑⠼⠚⠰⠛⠼⠛⠰⠚⠼⠋⠭";
 
 /// How the Seal group gets S from the words: `seed_from_mnemonic_into`, the step
 /// `seal_from_mnemonic` runs; the unit tests pass a faulty one.
-type SeedStep = fn(&SecretMnemonic, &mut SecretSeed64) -> Result<(), CoreError>;
+type SeedStep = fn(&SecretMnemonic, &mut EmptyPassphraseSeed) -> Result<(), CoreError>;
 
 fn seal_group(fault: bool) -> bool {
     seal_passes(seed_from_mnemonic_into, fault)
@@ -615,7 +616,7 @@ fn seal_group(fault: bool) -> bool {
 
 fn seal_passes(seed_step: SeedStep, fault: bool) -> bool {
     let mut words = SecretMnemonic::zeroed();
-    let mut seed = SecretSeed64::zeroed();
+    let mut seed = EmptyPassphraseSeed::zeroed();
     if words.fill_from(ABANDON_INDICES.into_iter()).is_err()
         || seed_step(&words, &mut seed).is_err()
     {
@@ -624,7 +625,7 @@ fn seal_passes(seed_step: SeedStep, fault: bool) -> bool {
     let mut code = SealCode::zeroed();
     match seal::derive_seal(&seed, &mut code) {
         Ok(public) => {
-            same(seed.expose_secret(), &ABANDON_SEED, false)
+            same(seed.as_seed().expose_secret(), &ABANDON_SEED, false)
                 & same(code.as_ascii(), SEAL_CODE, fault)
                 & same(public.tag().as_bytes(), &SEAL_TAG, false)
                 & same(public.seal_id().as_bytes(), SEAL_ID.as_bytes(), false)
@@ -1012,20 +1013,21 @@ mod tests {
     }
 
     // The Seal group runs the S step that seal_from_mnemonic runs (review fix after commit 18):
-    // with an S step that flips one bit of S, standing in for a fault in the unpacking, bip39 or
-    // PBKDF2, the group fails, and so it does when the step fails.
+    // with an S step whose S is wrong, standing in for a fault in the unpacking, bip39 or PBKDF2,
+    // the group fails, and so it does when the step fails.
     #[test]
     fn a_fault_in_the_s_step_fails_the_seal_group() {
-        fn flipped(words: &SecretMnemonic, seed: &mut SecretSeed64) -> Result<(), CoreError> {
+        use crate::secret::TestFill;
+        fn wrong(words: &SecretMnemonic, seed: &mut EmptyPassphraseSeed) -> Result<(), CoreError> {
             seed_from_mnemonic_into(words, seed)?;
-            seed.expose_secret_mut()[0] ^= 1;
+            seed.fill();
             Ok(())
         }
-        fn failing(_: &SecretMnemonic, _: &mut SecretSeed64) -> Result<(), CoreError> {
+        fn failing(_: &SecretMnemonic, _: &mut EmptyPassphraseSeed) -> Result<(), CoreError> {
             Err(CoreError::Internal(crate::error::InternalFault::Bip39))
         }
         assert!(seal_passes(seed_from_mnemonic_into, false));
-        assert!(!seal_passes(flipped, false));
+        assert!(!seal_passes(wrong, false));
         assert!(!seal_passes(failing, false));
     }
 

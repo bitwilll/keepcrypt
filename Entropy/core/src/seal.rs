@@ -4,7 +4,9 @@
 //!
 //! - The seal code is the top 130 bits of HMAC-SHA256(S, "KCE/v1/seal") as 26 Crockford base32
 //!   characters, where S is the BIP39 seed with the empty passphrase. No passphrase parameter
-//!   exists anywhere on this path, and no public key is used.
+//!   exists anywhere on this path, and no public key is used. S arrives as an
+//!   `EmptyPassphraseSeed`, which only `seed.rs` fills and only from the words, so the seed of a
+//!   BIP39 passphrase (a plain `SecretSeed64`) cannot reach the seal: that fails to compile.
 //! - T = SHA-256("KCE/v1/seal-tag" || the code's 26 ASCII characters, uppercase, no dashes). The
 //!   dashes are display only (tasks/lessons.md: state the exact bytes).
 //! - From T, computed once: the Seal ID (first 40 bits, 8 characters) and its braille caption, the
@@ -61,8 +63,8 @@ pub use snapshot::{VerifiedSnapshot, verify_snapshot};
 use crate::braille;
 use crate::error::{CoreError, KatId};
 use crate::kat::{self, Suite};
-use crate::secret::{SecretMnemonic, SecretSeed64};
-use crate::seed::seed_from_mnemonic_into;
+use crate::secret::SecretMnemonic;
+use crate::seed::{EmptyPassphraseSeed, seed_from_mnemonic_into};
 
 /// The seal code's HMAC message.
 pub(crate) const SEAL_DOMAIN: &[u8] = b"KCE/v1/seal";
@@ -125,10 +127,11 @@ impl SealCode {
         Self([0; SEAL_CODE_CHARS])
     }
 
-    /// Fills the code in place from S: the top 130 bits of HMAC-SHA256(S, "KCE/v1/seal"). The MAC
-    /// output is read through a borrow of its zeroizing wrapper, never copied out.
-    pub(crate) fn fill_from_seed(&mut self, seed: &SecretSeed64) {
-        let mut mac = SealMac::new(seed.expose_secret().into());
+    /// Fills the code in place from S, the seed with the empty passphrase: the top 130 bits of
+    /// HMAC-SHA256(S, "KCE/v1/seal"). The MAC output is read through a borrow of its zeroizing
+    /// wrapper, never copied out.
+    pub(crate) fn fill_from_seed(&mut self, seed: &EmptyPassphraseSeed) {
+        let mut mac = SealMac::new(seed.as_seed().expose_secret().into());
         mac.update(SEAL_DOMAIN);
         let output = mac.finalize();
         let digest: &[u8; 32] = output.as_bytes().as_ref();
@@ -281,7 +284,7 @@ pub(crate) fn push_hex(out: &mut String, bytes: &[u8]) {
 /// `seal_from_mnemonic`, the Seal known-answer group and, from M1 group 9, `Session::finish` derive
 /// it this way.
 pub(crate) fn derive_seal(
-    seed: &SecretSeed64,
+    seed: &EmptyPassphraseSeed,
     code: &mut SealCode,
 ) -> Result<SealPublic, CoreError> {
     code.fill_from_seed(seed);
@@ -308,7 +311,7 @@ fn seal_from_mnemonic_body(
     fault: Option<KatId>,
 ) -> Result<SealPublic, CoreError> {
     kat::run(Suite::Seal, fault)?;
-    let mut seed = SecretSeed64::zeroed();
+    let mut seed = EmptyPassphraseSeed::zeroed();
     seed_from_mnemonic_into(mnemonic, &mut seed)?;
     let mut code = SealCode::zeroed();
     derive_seal(&seed, &mut code)
@@ -347,8 +350,8 @@ mod tests {
         m
     }
 
-    fn seed_of(words: &str) -> SecretSeed64 {
-        let mut seed = SecretSeed64::zeroed();
+    fn seed_of(words: &str) -> EmptyPassphraseSeed {
+        let mut seed = EmptyPassphraseSeed::zeroed();
         seed_from_mnemonic_into(&mnemonic(words), &mut seed).expect("a valid mnemonic");
         seed
     }
@@ -377,7 +380,7 @@ mod tests {
         for v in vectors {
             let seed = seed_of(text(&v["mnemonic"]));
             assert_eq!(
-                &seed.expose_secret()[..16],
+                &seed.as_seed().expose_secret()[..16],
                 hex(&v["seed_prefix_hex"]).as_slice()
             );
             let mut code = SealCode::zeroed();
@@ -452,7 +455,10 @@ mod tests {
         assert_eq!(seeds.len(), 4);
         for s in seeds {
             let seed = seed_of(text(&s["mnemonic"]));
-            assert_eq!(seed.expose_secret().as_slice(), hex(&s["seed_hex"]));
+            assert_eq!(
+                seed.as_seed().expose_secret().as_slice(),
+                hex(&s["seed_hex"])
+            );
             let mut code = SealCode::zeroed();
             let public = derive_seal(&seed, &mut code).expect("a seal");
             assert_eq!(grouped(&code), text(&s["seal_code"]));

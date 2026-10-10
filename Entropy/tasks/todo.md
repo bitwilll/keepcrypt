@@ -811,7 +811,8 @@ starts. Every item names its proof.
       be left out of a list. `KatId::ALL`, the full suite, is one of them, so a new group always runs.
 - [ ] `secret.rs` (CLAUDE.md rule 5; build-plan.md "secret"):
       - types:
-        - `SecretBytes32` (D, E) and crate-private `SecretSeed64` (S);
+        - `SecretBytes32` (D, E) and crate-private `SecretSeed64` (S; review fix after commit 18: S with the empty
+          passphrase is `seed::EmptyPassphraseSeed`, a crate-private wrapper only seed.rs fills, from the words);
         - `SecretMnemonic` (word indices `[u16; 24]` plus a count);
         - `Bip39Passphrase` (`SecretString`; `new` rejects "" and never trims);
         - crate-private `BackupPassphrase` (8 indices), held only in session `Inner`;
@@ -1238,6 +1239,16 @@ starts. Every item names its proof.
       PBKDF2 between the two groups (group 6: "The Seal group later reuses its PBKDF2"), with the Seal group now
       the one that runs it. A unit test passes the group an S step that flips one bit of S, and one that fails;
       both fail the group. `SecretMnemonic::fill_from` loses its dead-code expectation (the Seal group calls it).
+      Review fix after commit 18 (CLAUDE.md rule 7 in the types): `derive_seal` and `SealCode::fill_from_seed`
+      took any `&SecretSeed64`, the same type `passphrase_seed_into` fills with the seed of a BIP39 passphrase, so
+      a passphrase seed reaching the seal compiled (a scratch test gave that wallet's seal, `NMMVA7FR`). S now has
+      its own crate-private type, `seed::EmptyPassphraseSeed`, which only seed.rs fills and only from the words
+      (`mnemonic_and_seed_into`, `seed_from_mnemonic_into`); `as_seed` lends it out as a `SecretSeed64` for the
+      watch-only export, and nothing converts the other way. `derive_seal`, `fill_from_seed`, `wallet_summary`
+      (the fingerprint the backup names) and the session's `bip39_seed` take it; `passphrase_seed_into` still
+      fills a plain `SecretSeed64`. The same scratch test now fails with E0308 ("expected
+      `&EmptyPassphraseSeed`, found `&SecretSeed64`"). A trybuild fixture cannot pin this: trybuild and doctests
+      build an outside crate, which cannot name a crate-private type, so the signatures are the proof.
 - [ ] Check request and go-ahead (seal-watchonly-braille.md "The seal card", "Online lookup privacy", "Go-ahead code";
       CLAUDE.md constants; Q6d):
       - `start_check` draws n with `source::os_bytes::<8>()`;
@@ -1851,6 +1862,7 @@ moved from M0)
    - core: registry_key_is_test() answers from the test-registry feature, not from whether a key is pinned, and the tests state "no key pinned" and "not a test build" apart;
    - core: check.rs's comment names the plan's rule (no file under core/src/seal names the OS RNG crate), not "the OS source", which its own test uses;
    - core: the Seal KAT derives S from the abandon words through seed_from_mnemonic_into (PBKDF2 included) and checks the braille caption; the Bip84 group starts from the S it checks, so the full suite still runs 3 PBKDF2;
+   - core: S with the empty passphrase gets its own crate-private type, EmptyPassphraseSeed, filled only from the words, and the seal, the wallet summary and the session take it, so a passphrase seed reaching the seal fails to compile;
 19. verify + scripts: backup.json generator (check 11) and scripts/age-interop.py, with the age_cli_written vectors and their SOURCES.md entry
 20. core: age v1 armor, reader and writer; CCTV conformance; the Age KAT; scrypt, chacha20poly1305, hkdf and base64ct (and their transitive crates), plus vet entries
 21. core: backup passphrase (stored in the session; typed words for decrypt only) and confirm challenge, plaintext v1, the backup API (generate, encrypt, verify, no passphrase arguments) and Check a backup (decrypt_backup returning CheckedBackup)

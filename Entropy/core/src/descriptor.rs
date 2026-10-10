@@ -322,7 +322,7 @@ pub(crate) fn account_item(master_fingerprint: u32, outputs: Vec<Item<'_>>) -> I
 mod tests {
     use super::*;
     use crate::secret::{Bip39Passphrase, SecretBytes32, SecretMnemonic};
-    use crate::seed::{mnemonic_and_seed_into, passphrase_seed_into};
+    use crate::seed::{EmptyPassphraseSeed, mnemonic_and_seed_into, passphrase_seed_into};
     use crate::session::SeedLength;
     use crate::test_vectors::{hex, hex_str, named, read, text};
     use serde_json::Value;
@@ -353,17 +353,18 @@ mod tests {
         (e, len)
     }
 
-    /// The seed the session uses for an export: S, or the passphrase wallet's seed.
+    /// The seed the session uses for an export: S (lent out as a plain seed, `as_seed`), or the
+    /// passphrase wallet's seed.
     fn seed_of(mnemonic: &str, passphrase: Option<&str>) -> SecretSeed64 {
         let (e, len) = entropy_of(mnemonic);
         let mut seed = SecretSeed64::zeroed();
         match passphrase {
             None => {
                 let mut words = SecretMnemonic::zeroed();
-                assert_eq!(
-                    mnemonic_and_seed_into(&e, len, &mut words, &mut seed),
-                    Ok(())
-                );
+                let mut s = EmptyPassphraseSeed::zeroed();
+                assert_eq!(mnemonic_and_seed_into(&e, len, &mut words, &mut s), Ok(()));
+                seed.expose_secret_mut()
+                    .copy_from_slice(s.as_seed().expose_secret());
             }
             Some(p) => {
                 let p = Bip39Passphrase::new(p).expect("a non-empty passphrase");

@@ -112,14 +112,23 @@ impl CollisionReport {
 mod tests {
     use super::super::derive_seal;
     use super::*;
-    use crate::secret::SecretSeed64;
+    use crate::secret::SecretMnemonic;
+    use crate::seed::{EmptyPassphraseSeed, seed_from_mnemonic_into};
     use crate::test_vectors::{hex, read};
 
+    /// The abandon seal, from its words (S with the empty passphrase), checked against kcr.json's S.
     fn abandon() -> (SealCode, SealPublic) {
         let doc = read("kcr.json");
-        let mut seed = SecretSeed64::zeroed();
-        seed.expose_secret_mut()
-            .copy_from_slice(&hex(&doc["seeds"][0]["seed_hex"]));
+        let mut words = SecretMnemonic::zeroed();
+        words
+            .fill_from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3].into_iter())
+            .expect("12 words");
+        let mut seed = EmptyPassphraseSeed::zeroed();
+        seed_from_mnemonic_into(&words, &mut seed).expect("a valid mnemonic");
+        assert_eq!(
+            seed.as_seed().expose_secret().as_slice(),
+            hex(&doc["seeds"][0]["seed_hex"])
+        );
         let mut code = SealCode::zeroed();
         let public = derive_seal(&seed, &mut code).expect("a seal");
         (code, public)
