@@ -1169,6 +1169,47 @@ mod tests {
             assert_eq!(fresh.wipes(), 1);
         }
 
+        // "Cannot check" keeps no flag even in a session that itself started after a collision: its
+        // restart uses the normal minimum (docs/seal-watchonly-braille.md "Add fresh entropy"). 12
+        // words tell the two apart: 50 normally, 99 after a collision.
+        #[test]
+        fn cannot_check_after_a_collision_restarts_at_the_normal_minimum() {
+            let after_collision = sealed_on(StubEntropy::Fixed(vec![0; 8]), &WipeProbe::new())
+                .start_check()
+                .expect("checking")
+                .discard(Discard::Collision);
+            let probe = WipeProbe::new();
+            let rolling = after_collision
+                .restart_with_stub(
+                    SeedLength::Words12,
+                    Mode::DiceOnly,
+                    stub(StubEntropy::Fixed(vec![0; 8]), &probe),
+                    None,
+                )
+                .and_then(Session::commit)
+                .expect("restarted")
+                .start_dice();
+            assert_eq!(rolling.minimum_rolls(), 99, "after the collision");
+            let wiped = roll_all(rolling, &faces("coldcard-99"))
+                .finish()
+                .and_then(|sealed| sealed.start_check())
+                .expect("checking")
+                .discard(Discard::CannotCheck);
+            assert_eq!(probe.wipes(), 1);
+            assert!(wiped.collision_report().is_none());
+            let rolling = wiped
+                .restart_with_stub(
+                    SeedLength::Words12,
+                    Mode::DiceOnly,
+                    stub(StubEntropy::Fail, &WipeProbe::new()),
+                    None,
+                )
+                .and_then(Session::commit)
+                .expect("restarted")
+                .start_dice();
+            assert_eq!(rolling.minimum_rolls(), 50, "the normal minimum");
+        }
+
         // Mixed mode on a phone: D leaves only through reveal_device_leg after read-back, equal to
         // the D behind C; the passphrase wallet differs from the plain one.
         #[test]
