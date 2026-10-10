@@ -145,7 +145,7 @@ pub enum Rejected { Retry(Session<Checking>, CheckError), Collision(Wiped) } // 
 pub enum Discard { Collision, CannotCheck }
 impl Wiped {
     pub fn collision_report(&self) -> Option<CollisionReport>;    // the seal code to report, only after a collision
-    pub fn restart(self, len: SeedLength, mode: Mode) -> Result<Session<Collecting>, CoreError>; // fresh legs; 99-roll minimum after a collision
+    pub fn restart(self, len: SeedLength, mode: Mode) -> Result<Session<Collecting>, CoreError>; // fresh legs; 99-roll minimum after a collision, kept through Cannot check
 }
 impl Session<Ready> {
     pub fn mnemonic(&self) -> &SecretMnemonic;
