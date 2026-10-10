@@ -9,8 +9,8 @@
 //!   match from entry point to groups.
 //! - A faulted group flips one bit of a computed value before its comparison, so the comparison
 //!   itself is what fails; nothing short-circuits it.
-//! - Budget per full run: at most 3 PBKDF2-2048 (3 today: 2 BIP39 seeds, 1 BIP84; the Seal group
-//!   starts from the S that the BIP84 group derives and checks, so it adds none), scrypt only at
+//! - Budget per full run: at most 3 PBKDF2-2048 (3 today: 2 BIP39 seeds, 1 Seal; the BIP84 group
+//!   starts from the S that the Seal group derives and checks, so it adds none), scrypt only at
 //!   log2 N 10 (a later group), at most 2 Ed25519 verifies (2 today, in the Ed25519 group), one
 //!   20-level Merkle path and never a full bucket root, and at most 1 s on a Pi Zero (an estimate;
 //!   M4 measures). The Health group tests 2,064 samples.
@@ -29,9 +29,11 @@ use crate::descriptor;
 use crate::error::{CheckError, CoreError, HealthStage, HealthTest, KatId};
 use crate::health::HealthTester;
 use crate::pool::Pool;
-use crate::seal::{self, CheckNonce, SealCode, SealPublic, SealTag};
-use crate::secret::{SecretBytes32, SecretSeed64};
-use crate::seed::{commitment, dice_only_entropy_into, mixed_entropy_into};
+use crate::seal::{self, CheckNonce, SealCode, SealTag};
+use crate::secret::{SecretBytes32, SecretMnemonic, SecretSeed64};
+use crate::seed::{
+    commitment, dice_only_entropy_into, mixed_entropy_into, seed_from_mnemonic_into,
+};
 use crate::source::SourceId;
 
 /// Where a known-answer suite runs.
@@ -544,15 +546,14 @@ fn braille_text_passes() -> bool {
 }
 
 // --- BIP84 (vectors/watchonly.json "wallets" "abandon"; BIP-84 "Test vectors") -----------------
-// The whole watch-only export of the BIP-84 test mnemonic: PBKDF2, BIP32 down to the account and the
-// first address (this catches a miscompiled secp256k1-sys on a target), the BIP-380 checksum and the
-// crypto-account UR. Its PBKDF2 is the third and last of the budget.
+// The whole watch-only export of the BIP-84 test mnemonic from its S: BIP32 down to the account and
+// the first address (this catches a miscompiled secp256k1-sys on a target), the BIP-380 checksum and
+// the crypto-account UR. It starts from ABANDON_SEED, the S the Seal group derives through PBKDF2
+// and checks, so the full suite runs that PBKDF2 once.
 
-/// abandon x 11 + about: entropy of 16 zero bytes.
-const BIP84_ENTROPY: [u8; 16] = [0; 16];
-/// Its S, the BIP39 seed with the empty passphrase (vectors/kcr.json "seeds" "vector-1"; its first 16
-/// bytes are seal.json's and BIP39's published prefix). The BIP84 group checks its PBKDF2 against
-/// it, and the Seal group starts from it.
+/// The abandon S, the BIP39 seed of abandon x 11 + about with the empty passphrase (vectors/kcr.json
+/// "seeds" "vector-1"; its first 16 bytes are seal.json's and BIP39's published prefix). The Seal
+/// group checks its PBKDF2 against it, and the BIP84 group starts from it.
 const ABANDON_SEED: [u8; 64] = unhex(
     "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc19a5ac40b389cd370d086206dec8aa6c43daea6690f20ad3d8d48b2d2ce9e38e4",
 );
@@ -568,17 +569,11 @@ const BIP84_UR: &str = concat!(
 );
 
 fn bip84_group(fault: bool) -> bool {
-    let words = match bip39::Mnemonic::from_entropy_in(bip39::Language::English, &BIP84_ENTROPY) {
-        Ok(words) => words,
-        Err(_) => return false,
-    };
     let mut seed = SecretSeed64::zeroed();
-    seed.expose_secret_mut()
-        .copy_from_slice(zeroize::Zeroizing::new(words.to_seed_normalized("")).as_slice());
+    seed.expose_secret_mut().copy_from_slice(&ABANDON_SEED);
     match descriptor::watch_only_export(&seed, false) {
         Ok(export) => {
-            same(seed.expose_secret(), &ABANDON_SEED, false)
-                & same(&export.fingerprint(), &BIP84_FINGERPRINT, fault)
+            same(&export.fingerprint(), &BIP84_FINGERPRINT, fault)
                 & same(export.xpub().as_bytes(), BIP84_XPUB.as_bytes(), false)
                 & same(
                     export.first_address().as_bytes(),
@@ -595,24 +590,49 @@ fn bip84_group(fault: bool) -> bool {
 }
 
 // --- Seal (vectors/seal.json vector 1; CLAUDE.md "Seal test vector") ---------------------------
-// From the abandon S (ABANDON_SEED, which the BIP84 group checks against PBKDF2): the hmac crate's
-// HMAC-SHA256, Crockford base32, the tag hash and the Seal ID.
+// The whole path `seal_from_mnemonic` takes, from the abandon words (review fix after commit 18): S
+// through `seed::seed_from_mnemonic_into` (the indices unpacked into entropy, re-encoded by bip39,
+// then PBKDF2-HMAC-SHA512 with the empty passphrase), compared with ABANDON_SEED; then the hmac
+// crate's HMAC-SHA256, Crockford base32, the tag hash, the Seal ID and its braille caption. Its
+// PBKDF2 is the third and last of the budget, and `Suite::Seal` runs just this one.
 
+/// abandon x 11 + about, as BIP39 word indices.
+const ABANDON_INDICES: [usize; 12] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3];
 const SEAL_CODE: &[u8; 26] = b"JXP3RDXYACJZ1NAX3RGQDJCJJN";
 const SEAL_TAG: [u8; 32] =
     unhex("2b8103c8dd64611df5c8c28b8fbf864a1005372f5da06a5777f92708ce79cb5c");
 const SEAL_ID: &str = "5E0G7J6X";
+/// The Seal ID in braille, UEB grade 1 (tasks/todo.md, Q6f).
+const SEAL_ID_BRAILLE: &str = "⠼⠑⠰⠑⠼⠚⠰⠛⠼⠛⠰⠚⠼⠋⠭";
+
+/// How the Seal group gets S from the words: `seed_from_mnemonic_into`, the step
+/// `seal_from_mnemonic` runs; the unit tests pass a faulty one.
+type SeedStep = fn(&SecretMnemonic, &mut SecretSeed64) -> Result<(), CoreError>;
 
 fn seal_group(fault: bool) -> bool {
+    seal_passes(seed_from_mnemonic_into, fault)
+}
+
+fn seal_passes(seed_step: SeedStep, fault: bool) -> bool {
+    let mut words = SecretMnemonic::zeroed();
     let mut seed = SecretSeed64::zeroed();
-    seed.expose_secret_mut().copy_from_slice(&ABANDON_SEED);
+    if words.fill_from(ABANDON_INDICES.into_iter()).is_err()
+        || seed_step(&words, &mut seed).is_err()
+    {
+        return false;
+    }
     let mut code = SealCode::zeroed();
-    code.fill_from_seed(&seed);
-    match SealPublic::from_code(&code) {
+    match seal::derive_seal(&seed, &mut code) {
         Ok(public) => {
-            same(code.as_ascii(), SEAL_CODE, fault)
+            same(seed.expose_secret(), &ABANDON_SEED, false)
+                & same(code.as_ascii(), SEAL_CODE, fault)
                 & same(public.tag().as_bytes(), &SEAL_TAG, false)
                 & same(public.seal_id().as_bytes(), SEAL_ID.as_bytes(), false)
+                & same(
+                    public.seal_id_braille().as_bytes(),
+                    SEAL_ID_BRAILLE.as_bytes(),
+                    false,
+                )
         }
         Err(_) => false,
     }
@@ -962,6 +982,12 @@ mod tests {
         );
         assert_eq!(bytes(v1["seal_tag_hex"].as_str().expect("T")), SEAL_TAG);
         assert_eq!(v1["seal_id"], SEAL_ID);
+        assert_eq!(v1["seal_id_braille"], SEAL_ID_BRAILLE);
+        let words: Vec<&str> = ABANDON_INDICES
+            .iter()
+            .map(|&i| bip39::Language::English.word_list()[i])
+            .collect();
+        assert_eq!(v1["mnemonic"], words.join(" "));
         assert_eq!(
             bytes(v1["go_ahead"]["nonce_hex"].as_str().expect("n")),
             GO_AHEAD_NONCE
@@ -979,10 +1005,28 @@ mod tests {
         let seed = crate::test_vectors::named(&kcr["seeds"], "vector-1");
         assert_eq!(bytes(seed["seed_hex"].as_str().expect("S")), ABANDON_SEED);
         assert_eq!(seed["mnemonic"], v1["mnemonic"]);
-        // The BIP84 group's PBKDF2 of the same words gives this S.
-        let words = bip39::Mnemonic::from_entropy_in(bip39::Language::English, &BIP84_ENTROPY)
+        // bip39's own PBKDF2 of the same words gives this S too.
+        let words = bip39::Mnemonic::from_entropy_in(bip39::Language::English, &[0u8; 16])
             .expect("16 bytes");
         assert_eq!(words.to_seed_normalized(""), ABANDON_SEED);
+    }
+
+    // The Seal group runs the S step that seal_from_mnemonic runs (review fix after commit 18):
+    // with an S step that flips one bit of S, standing in for a fault in the unpacking, bip39 or
+    // PBKDF2, the group fails, and so it does when the step fails.
+    #[test]
+    fn a_fault_in_the_s_step_fails_the_seal_group() {
+        fn flipped(words: &SecretMnemonic, seed: &mut SecretSeed64) -> Result<(), CoreError> {
+            seed_from_mnemonic_into(words, seed)?;
+            seed.expose_secret_mut()[0] ^= 1;
+            Ok(())
+        }
+        fn failing(_: &SecretMnemonic, _: &mut SecretSeed64) -> Result<(), CoreError> {
+            Err(CoreError::Internal(crate::error::InternalFault::Bip39))
+        }
+        assert!(seal_passes(seed_from_mnemonic_into, false));
+        assert!(!seal_passes(flipped, false));
+        assert!(!seal_passes(failing, false));
     }
 
     #[test]

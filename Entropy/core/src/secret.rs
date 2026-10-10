@@ -102,12 +102,9 @@ impl SecretMnemonic {
     }
 }
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "used by the session's finish (M1 group 9)")
-)]
 impl SecretMnemonic {
     /// Fills in place from the bip39 crate's word indices: exactly 12 or 24, each below 2,048.
+    /// The session's finish (M1 group 9) and the Seal known-answer group fill the words this way.
     /// Anything else leaves it zeroed and is `Internal(Bip39)`.
     pub(crate) fn fill_from(
         &mut self,

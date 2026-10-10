@@ -1226,6 +1226,18 @@ starts. Every item names its proof.
         on the stack unwiped. Its two SHA-256 states, its buffer and its output wipe themselves (sha2's and
         digest's `zeroize`), but `Hmac` does not implement the `ZeroizeOnDrop` marker, so no compile-time check
         can pin that. Closing it would mean core writing its own HMAC, which CLAUDE.md rule 11 rules out.
+      Review fix after commit 18 (replaces the second bullet above): the Seal KAT skipped the S step that
+      `seal_from_mnemonic` runs. `Suite::Seal` was the Seal group alone, which started from the pinned
+      `ABANDON_SEED`, so a fault in `seed_from_mnemonic_into` (the unpacking, bip39's re-encode or PBKDF2) gave a
+      wrong but well-formed seal, a re-check that reports "not registered" for a registered seal, and no KAT
+      failure; only the full suite's Bip84 group compared PBKDF2 with `ABANDON_SEED`, and nothing ran the
+      unpacking. The Seal group now derives S from the abandon words through `seed_from_mnemonic_into` and
+      compares it with `ABANDON_SEED`, then checks the code, T, the Seal ID and its braille caption (now pinned
+      too). The Bip84 group starts from `ABANDON_SEED` instead of running its own PBKDF2, so the full suite still
+      runs 3 PBKDF2-2048 (2 Bip39, 1 Seal), and `Suite::Seal` runs 1. This keeps the plan's sharing of one abandon
+      PBKDF2 between the two groups (group 6: "The Seal group later reuses its PBKDF2"), with the Seal group now
+      the one that runs it. A unit test passes the group an S step that flips one bit of S, and one that fails;
+      both fail the group. `SecretMnemonic::fill_from` loses its dead-code expectation (the Seal group calls it).
 - [ ] Check request and go-ahead (seal-watchonly-braille.md "The seal card", "Online lookup privacy", "Go-ahead code";
       CLAUDE.md constants; Q6d):
       - `start_check` draws n with `source::os_bytes::<8>()`;
@@ -1323,7 +1335,8 @@ starts. Every item names its proof.
       a scratch stand-in for the M9 pin, the second still passes and the first fails where it should. The release
       sweep covers 107 cases since the vector fixes above.
 - [ ] KAT groups:
-      - Seal: the vector-1 code, T and Seal ID;
+      - Seal: the vector-1 code, T and Seal ID (review fix after commit 18: from the abandon words through
+        `seed_from_mnemonic_into`, with S compared to `ABANDON_SEED`, and the Seal ID's braille caption);
       - GoAhead: `CF94-BCAJ`; a wrong n fails;
       - Ed25519: RFC 8032 TEST 1 is accepted; one flipped bit is rejected;
       - Merkle: a leaf, a node and the vector-1 path. Never a full root.
@@ -1837,6 +1850,7 @@ moved from M0)
    - verify: the proof negatives fail only their own check, 20 order-* cases pin the check order, and check 10 reads every check each negative fails (core's release sweep moves from 87 to 107 cases in the same commit);
    - core: registry_key_is_test() answers from the test-registry feature, not from whether a key is pinned, and the tests state "no key pinned" and "not a test build" apart;
    - core: check.rs's comment names the plan's rule (no file under core/src/seal names the OS RNG crate), not "the OS source", which its own test uses;
+   - core: the Seal KAT derives S from the abandon words through seed_from_mnemonic_into (PBKDF2 included) and checks the braille caption; the Bip84 group starts from the S it checks, so the full suite still runs 3 PBKDF2;
 19. verify + scripts: backup.json generator (check 11) and scripts/age-interop.py, with the age_cli_written vectors and their SOURCES.md entry
 20. core: age v1 armor, reader and writer; CCTV conformance; the Age KAT; scrypt, chacha20poly1305, hkdf and base64ct (and their transitive crates), plus vet entries
 21. core: backup passphrase (stored in the session; typed words for decrypt only) and confirm challenge, plaintext v1, the backup API (generate, encrypt, verify, no passphrase arguments) and Check a backup (decrypt_backup returning CheckedBackup)

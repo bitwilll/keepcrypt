@@ -278,7 +278,8 @@ pub(crate) fn push_hex(out: &mut String, bytes: &[u8]) {
 }
 
 /// The seal of a BIP39 seed S (empty passphrase): the code, filled in place, and its public half.
-/// `seal_from_mnemonic` and, from M1 group 9, `Session::finish` derive it this way.
+/// `seal_from_mnemonic`, the Seal known-answer group and, from M1 group 9, `Session::finish` derive
+/// it this way.
 pub(crate) fn derive_seal(
     seed: &SecretSeed64,
     code: &mut SealCode,
@@ -516,6 +517,8 @@ mod tests {
         );
     }
 
+    // seal_from_mnemonic runs the Seal group only; that group itself runs the S step (the unpacking,
+    // bip39 and PBKDF2) from the abandon words, so no other group is needed (kat.rs).
     #[cfg(feature = "test-sources")]
     #[test]
     fn every_kat_fault_reaches_seal_from_mnemonic_only_for_its_groups() {
