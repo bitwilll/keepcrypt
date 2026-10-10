@@ -259,7 +259,7 @@ Run seed generation as one small, isolated module: two independent legs, a singl
 
 ![KeepCrypt-Entropy seed pipeline · two legs, one combine step](img/seed-pipeline.png)
 
-The device leg carries a full 256 bits and the dice leg at least 128 (about 256 with 99 rolls: 255.9); the commitment is shown before any roll, so neither side can steer the other. The dashed path is the user's own check on a separate offline computer.
+The device leg carries a full 256 bits and the dice leg at least 128 (about 256 with 99 rolls: 255.9, which the figure's "99 give 256" rounds up); the commitment is shown before any roll, so neither side can steer the other. The dashed path is the user's own check on a separate offline computer.
 
 **Kept out of the seed module:** the games, any network stack, file storage, and logging. They run in a separate process that can only add uncredited bytes to the pool, never read from it.
 
