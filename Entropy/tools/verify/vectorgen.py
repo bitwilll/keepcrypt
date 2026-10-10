@@ -39,7 +39,7 @@ M2 adds check 12, that a copy of verify.py runs alone (tasks/todo.md, M2 group 3
 imports and recorded module attributes, no test material, its embedded known answers equal to the
 vectors they come from and each, changed in turn, failing its group, and lone copies, fault twins and a
 planted module run under an audit hook. It also runs verify.py's input parsers on fixed cases and ties
-its verification run to keepcrypt.json (group 4).
+its verification run to keepcrypt.json (group 4), and holds its own rules to controls that must fire.
 
 The only outside code it runs is Coldcard's public-domain rolls.py and rolls12.py, committed
 unmodified under vectors/coldcard/, and only after each file's SHA-256 equals its SOURCES.md
@@ -68,7 +68,7 @@ Usage (CI runs python3 -I tools/verify/vectorgen.py --selftest):
                                     material, its known answers against their sources and each
                                     changed in turn, its input cases and keepcrypt.json tie, a lone
                                     copy, one fault twin per known-answer group and a planted
-                                    module, run under an audit hook)
+                                    module, run under an audit hook, and controls on its own rules)
   vectorgen.py --write-seal-vectors    regenerate vectors/seal.json
   vectorgen.py --write-kat-vectors     regenerate vectors/kat.json
   vectorgen.py --write-keepcrypt-vectors  regenerate vectors/keepcrypt.json
@@ -4202,6 +4202,40 @@ finally:
             say("audit: module %s loaded from %r" % (name, path))
     say("end", last=True)
 '''
+# Check 12's controls on its own audit (rule (e)), each run as an audited copy in a new writable directory
+# that also holds a file named target: each must print its stdout and give every audit line listed. The
+# first tries each action the audit refuses, catching each refusal, so it reaches its end only if the fork
+# and the exec were refused; the second ends the process before the audit's last check. Neither imports
+# socket, which the banned-API gate refuses in this file: a socket needs the socket or _socket module,
+# which the audit reports at exit as it reports subprocess here. (os.spawn* forks on POSIX, so the
+# os.spawn event fires on Windows alone.)
+AUDIT_CONTROL_ACTIONS = r'''
+import os
+import subprocess
+import sys
+
+target = os.path.join(os.path.dirname(__file__), "target")
+python = [sys.executable, "-c", "pass"]
+for action in (lambda: open(os.devnull, "w"), lambda: open(target), lambda: subprocess.Popen(python),
+               lambda: os.system("true"), lambda: os.posix_spawn(sys.executable, python, {}), os.fork,
+               lambda: os.execv(sys.executable, python)):
+    try:
+        action()
+    except RuntimeError:  # the audit's refusal
+        pass
+print("all refused")
+'''
+AUDIT_CONTROLS = (
+    ("refused actions", AUDIT_CONTROL_ACTIONS, "all refused\n",
+     ("audit: open for writing: ", "audit: open outside the standard library and the copy: ",
+      "audit: event subprocess.Popen", "audit: event os.system", "audit: event os.posix_spawn", "audit: event os.fork",
+      "audit: event os.exec", "audit: module subprocess loaded")),
+    ("early exit", "import os\nos._exit(0)\n", "", ("the run ended before the audit's last check",)),
+)
+# Check 12's control on its fault twins (rule (d)): a copy whose selftest passes whatever its one known
+# answer, so that its fault twin must be reported for exiting 0.
+FAULT_TWIN_CONTROL = ('KNOWN_ANSWERS = {"control": {"value": "1"}}\nprint("ok   control")\n'
+                      'print("selftest passed: 1 known-answer groups")\n')
 ABSENT = object()  # a value missing on one side of value_differences
 
 
@@ -4387,11 +4421,16 @@ def verify_known_answer_problems(node, vectors_dir):
         expected = known_answer_sources(vectors_dir)
     except (OSError, ValueError, KeyError, IndexError, TypeError) as e:
         return known, ["cannot rebuild the known answers from vectors/: %s: %s" % (type(e).__name__, e)]
-    problems, view = [], known_answers_view(known)
-    for group in list(expected) + [group for group in view if group not in expected]:
-        problems += ["%s differs from %s" % (path, KNOWN_ANSWER_FILES.get(group, "any source"))
-                     for path in value_differences(view.get(group, ABSENT), expected.get(group, ABSENT), (group,))]
-    return known, problems
+    return known, ["%s differs from %s" % (path, KNOWN_ANSWER_FILES.get(path.split(".")[0], "any source"))
+                   for path in known_answer_differences(known, expected)]
+
+
+def known_answer_differences(known, expected):
+    """Rule (c)'s comparison: the dotted paths at which `known` (KNOWN_ANSWERS, its tuples read as lists)
+    differs from `expected` (the table rebuilt from its sources), group by group."""
+    view = known_answers_view(known)
+    return [path for group in list(expected) + [group for group in view if group not in expected]
+            for path in value_differences(view.get(group, ABSENT), expected.get(group, ABSENT), (group,))]
 
 
 def known_answer_paths(value, path=()):
@@ -4425,20 +4464,26 @@ def known_answer_name(path):
 
 def known_answer_sweep_problems():
     """Check 12's sweep over verify.py's known answers (tasks/todo.md, M2 group 3): with each value of
-    KNOWN_ANSWERS changed in turn, known_answers() fails that value's group and no other; with a group's
-    values unreadable (None), it fails that group alone, as "unreadable"; and a group with no check fails
-    as "no check". The lone copy's fault twins change one value per group; this changes every one. [problem]."""
+    KNOWN_ANSWERS changed in turn, known_answers() fails that value's group and no other, and rule (c)'s
+    comparison with the unchanged table names that value (as it would for a copy whose literal and code
+    changed together); with a group's values unreadable (None), known_answers() fails that group alone, as
+    "unreadable"; and a group with no check fails as "no check". The lone copy's fault twins change one
+    value per group; this changes every one. [problem]."""
     groups = [group for group, _ in KNOWN_ANSWER_GROUPS]
     problems = []
     try:
         if known_answers(KNOWN_ANSWERS) != [(group, []) for group in KNOWN_ANSWERS]:
             return ["the known answers do not all pass, each with a check"]
+        unchanged = json.loads(json.dumps(known_answers_view(KNOWN_ANSWERS)))
         for path in known_answer_paths(KNOWN_ANSWERS):
-            failing = [group for group, failed in known_answers(with_known_answer_changed(KNOWN_ANSWERS, path))
-                       if failed]
+            changed, name = with_known_answer_changed(KNOWN_ANSWERS, path), known_answer_name(path)
+            failing = [group for group, failed in known_answers(changed) if failed]
             if failing != [path[0]]:
-                problems.append("%s changed fails %s, not %s alone"
-                                % (known_answer_name(path), " and ".join(failing) or "no group", path[0]))
+                problems.append("%s changed fails %s, not %s alone" % (name, " and ".join(failing) or "no group",
+                                                                       path[0]))
+            named = known_answer_differences(changed, unchanged)
+            if not named or any(found != name and not found.startswith(name + ".") for found in named):
+                problems.append("%s changed: rule (c) names %s" % (name, ", ".join(named) or "nothing"))
         for group in groups:
             unreadable = dict(KNOWN_ANSWERS)
             unreadable[group] = None
@@ -4452,12 +4497,12 @@ def known_answer_sweep_problems():
     return problems
 
 
-def input_case_problems():
-    """Check 12's INPUT_CASES through parse_hex32 and parse_rolls: [problem]."""
+def input_case_problems(parse_hex=parse_hex32, parse_lines=parse_rolls):
+    """Check 12's INPUT_CASES through parse_hex32 and parse_rolls (or the parsers given): [problem]."""
     problems = []
     for case, field, given, want in INPUT_CASES:
         try:
-            got = parse_rolls(given) if field == "rolls" else parse_hex32(field, given)
+            got = parse_lines(given) if field == "rolls" else parse_hex(field, given)
         except InputRefused as refused:
             got = (refused.field, refused.position)
             typed, shown = "\n".join(given) if field == "rolls" else given, refused.message + "\n" + str(refused)
@@ -4468,6 +4513,52 @@ def input_case_problems():
             continue
         if type(got) is not type(want) or got != want:
             problems.append("%s: gives %r, not %r" % (case, got, want))
+    return problems
+
+
+def echoing(parse):
+    """`parse` with each refusal's rule followed by the input it refused, its lines joined by newlines: the
+    control on INPUT_CASES' leak test."""
+    def run(*args):
+        try:
+            return parse(*args)
+        except InputRefused as refused:
+            typed = args[-1] if isinstance(args[-1], str) else "\n".join(args[-1])
+            raise InputRefused(refused.field, refused.position, refused.args[2] + ": " + typed)
+    return run
+
+
+def control_problems():
+    """Check 12's controls on its own rules, each of which must fire: rule (b) on each test material alone
+    (the test key in upper case), INPUT_CASES' leak test on parsers whose refusals echo the input (every
+    refused case but an empty input), rule (d) on FAULT_TWIN_CONTROL's fault twin and rule (e)'s audit on each
+    AUDIT_CONTROLS script. [problem]."""
+    materials = [(material, material) for material in VERIFY_TEST_MATERIAL]
+    materials.append(("the test registry public key in upper case", KCR_PINNED["test_public_key_hex"].upper()))
+    problems = ["rule (b) misses %s" % label for label, text in materials if not verify_text_problems(text)]
+    leaks = ["%s: the refusal's text holds the input" % case for case, _, given, want in INPUT_CASES
+             if isinstance(want, tuple) and "".join(given)]
+    if input_case_problems(echoing(parse_hex32), echoing(parse_rolls)) != leaks:
+        problems.append("the input cases' leak test misses a refusal that echoes its input")
+    node = known_answers_node(ast.parse(FAULT_TWIN_CONTROL))
+    if ("rule (d): fault twin control: exit status 0, not 1"
+            not in verify_lone_problems(FAULT_TWIN_CONTROL.encode("ascii"), node, ast.literal_eval(node))):
+        problems.append("rule (d) misses a fault twin that exits 0")
+    with tempfile.TemporaryDirectory() as scratch:
+        for n, (label, source, want_stdout, lines) in enumerate(AUDIT_CONTROLS, 1):
+            directory = Path(scratch) / str(n)
+            directory.mkdir()
+            (directory / "verify.py").write_text(source, encoding="ascii")
+            (directory / "target").write_text("target\n", encoding="ascii")
+            try:
+                _, stdout, _, audit = audited_run(directory, [])
+            except subprocess.TimeoutExpired:
+                problems.append("rule (e) on %s: no result within %d seconds" % (label, LONE_TIMEOUT_SECONDS))
+                continue
+            if stdout != want_stdout:
+                problems.append("rule (e) on %s: stdout is %r, not %r" % (label, stdout[-200:], want_stdout))
+            problems += ["rule (e) on %s: no line %r" % (label, line) for line in lines
+                         if not any(found.startswith(line) for found in audit)]
     return problems
 
 
@@ -4655,6 +4746,7 @@ def check_verify_alone(vectors_dir, verify_py):
     # tools/verify/verify.py even under --verify-py, since check 12 runs its subject only as audited copies.
     problems += ["known-answer sweep: %s" % problem for problem in known_answer_sweep_problems()]
     problems += ["input cases: %s" % problem for problem in input_case_problems()]
+    problems += ["controls: %s" % problem for problem in control_problems()]
     problems += ["keepcrypt.json tie: %s" % problem for problem in run_tie_problems(vectors_dir)]
     return problems + verify_lone_problems(data, node, known)
 
@@ -4690,7 +4782,7 @@ def selftest(vectors_dir, verify_py=VERIFY_PY, only=None):
         ("tools/verify/verify.py ships alone: imports on the allowlist and module attributes on the recorded list, "
          "no test material, known answers equal their sources, each known answer changed fails its group, input "
          "cases, keepcrypt.json tie, a lone copy passes selftest, each fault twin fails its group, a planted module "
-         "never runs, audited runs",
+         "never runs, audited runs, its own rules' controls fire",
          lambda: check_verify_alone(vectors_dir, verify_py)),
     )
     if only is not None and not 1 <= only <= len(checks):
@@ -4732,7 +4824,7 @@ def main(argv):
                       "the reader and rebuilt, its bytes, its pinned outcomes, the docs' figures, the age CLI's "
                       "files), verify.py alone (its imports and module attributes, no test material, its known answers "
                       "against their sources and each changed in turn, its input cases and keepcrypt.json tie, a lone "
-                      "copy, its fault twins and a planted module, audited)")
+                      "copy, its fault twins and a planted module, audited, controls on its rules)")
     mode.add_argument("--write-seal-vectors", action="store_true", help="regenerate vectors/seal.json")
     mode.add_argument("--write-kat-vectors", action="store_true", help="regenerate vectors/kat.json")
     mode.add_argument("--write-keepcrypt-vectors", action="store_true", help="regenerate vectors/keepcrypt.json")

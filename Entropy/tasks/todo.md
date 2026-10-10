@@ -2916,6 +2916,20 @@ Groups land in the order below. Vectors come before the core test that reads the
       `tools/verify/verify.py` as vectorgen loads it, also under `--verify-py`, since check 12 runs its subject only
       as audited copies. A changed copy's parsers meet `INPUT_CASES` in group 7's piped lone-copy runs (every refused
       text: exit 2, the field and position on stderr, no traceback, every stream under the leak rule).
+      Review fix (2026-10-10, controls): disabling rule (b), rule (c)'s comparison, the fault twins, the leak test,
+      the audit's `problem()` or its "end" test left `--selftest` green. Check 12 now holds its own rules to controls
+      that must fire: rule (b) on each test material alone and on the test key in upper case; rule (c)'s comparison
+      naming each value the known-answer sweep changes; the leak test on parsers whose refusals echo the input (the
+      10 refused cases with a non-empty input); rule (d) on the fault twin of a copy that passes whatever its known
+      answer; and rule (e) on two audited controls in writable directories. One opens for writing and outside the
+      standard library, then tries `subprocess.Popen`, `os.system`, `os.posix_spawn`, `os.fork` and `os.exec`; each
+      must be reported and refused, so it reaches its end, and `subprocess` is reported at exit. The other calls
+      `os._exit` and must be reported as ending early. Neither imports socket (a banned-API gate hit in vectorgen):
+      a socket needs the socket or `_socket` module, which the audit reports at exit. Proof: check 12 passes on
+      3.12.5 and 3.9.6; the gate is clean. Scratch mutants of vectorgen each fail it on both: `value_differences`
+      returning `[]`, rule (b) returning `[]` or matching the key's case, rule (c) skipping the insert group, the
+      leak test off or ASCII-only, `problem()` returning None, the hook never raising, no "end" test, no open-outside
+      branch, no `os.fork` event, banned modules unreported, no fault twins run and the twins' exit status unchecked.
 
 **4. Inputs, the shared run function, inserts and registry URLs (lessons.md rule 2: exact bytes of every hash input)**
 - [x] Parsers. An error is `InputRefused(field, position)`, whose text never holds the input:
