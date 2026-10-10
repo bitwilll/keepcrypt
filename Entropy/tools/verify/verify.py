@@ -115,8 +115,8 @@ UR_MAX_CHARS = 4296  # the largest QR alphanumeric capacity (version 40-L); Q6c
 # behind the go-ahead QR, and the Ed25519 signature over both (docs/seal-watchonly-braille.md "Snapshot
 # format", "Go-ahead QR", "Go-ahead code"; CLAUDE.md "Bucket proof", "Check nonce", "Go-ahead code";
 # tasks/todo.md, M1 group 7, Q3, Q6b, Q6c). Core's seal module verifies the same bytes with
-# ed25519-dalek's verify_strict and checks its results against kcr.json; the M2 verifier re-checks a
-# seal against a snapshot with the same code.
+# ed25519-dalek's verify_strict and checks its results against kcr.json. M9's re-check of a seal
+# against a snapshot will use this code (tasks/todo.md, M2 Q22); no M2 command calls it.
 TAG_BUCKET = b"KCE/v1/bucket"
 BUCKET_BITS = 20  # the lookup prefix: 2^20 buckets
 KCR_MAGIC = b"KCR1"
