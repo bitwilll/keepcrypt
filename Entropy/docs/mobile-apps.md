@@ -173,7 +173,7 @@ The phone ceremony mirrors the Pi screen for screen, so one user guide and one v
 6. **Device entropy.** Motion and touch extras are mixed in, with optional Snake or Tetris; the OS CSPRNG is read at the commitment.
 7. **Commitment.** C as 16 groups of 4 hex characters.
 8. **Dice.** 1 to 6 pad with undo; count and bits only, never the roll history.
-9. **Check for collisions.** The same prompt and seal card as the Pi: automatic with a loaded snapshot; otherwise the user scans the check QR with the website or the offline checker app on a second device, then scans the go-ahead QR back with the camera (works in airplane mode) or types the go-ahead code. Only a verified go-ahead reveals the words; a Stop wipes the session unseen and offers "Add fresh entropy".
+9. **Check for collisions.** The same prompt and seal card as the Pi: automatic with a loaded snapshot; otherwise the user scans the check QR with the website or the offline checker app on a second device, then scans the go-ahead QR back with the camera (works in airplane mode) or types the go-ahead code. Only a verified go-ahead reveals the words; a Stop wipes the session unseen and offers "Add fresh entropy", and "Cannot check" wipes it and offers "Start again". Both restart through `Wiped::restart`, never a fresh `Session::new`, as on the Pi.
 10. **Show words.** "I'm alone, show words," then one word per page in insert view on the protected screen: the word, its SeedBook number and five braille faces, with blank faces and mirror pairs flagged.
 11. **Read-back from the metal.** First four letters of every punched insert (or paper word), compared with the seed.
 12. **Wallet summary.** Fingerprint and first receive address.
