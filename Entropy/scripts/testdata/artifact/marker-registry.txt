@@ -1,0 +1,1 @@
+A release artifact must never hold the test registry marker: KC_TEST_REGISTRY_DO_NOT_SHIP

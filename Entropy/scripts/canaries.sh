@@ -1,8 +1,11 @@
 #!/bin/sh
 # Gate canaries: inputs that must FAIL their gate, for the intended reason, on every run.
 # A canary that passes means the gate stopped firing (principle 7: test the path, not the presence).
-# Run from the repo root. Exit 0 only if every canary failed as intended.
-# Needs cargo-deny, git, and python3 3.11 or later (tomllib, for the static checks; CI runs 3.12).
+# Run from the repo root. Exit 0 only if every canary failed as intended, every static check and
+# control passed, and the number of checks run equals the pin at the end.
+# Needs cargo-deny, git, and python3 3.11 or later (tomllib, for the static checks; CI runs 3.12),
+# a C compiler for the host (the release probe builds secp256k1-sys), and the pinned toolchain's
+# llvm-tools-preview (the artifact scan's llvm-nm).
 # Needs the network only to fetch locked crates (deny-banned, clippy, cargo fetch); the steps
 # that add a crate or a git source resolve and check offline.
 set -u
@@ -17,6 +20,8 @@ if ! python3 -I -c 'import sys; sys.exit(sys.version_info < (3, 11))' 2>/dev/nul
 fi
 root=$(pwd)
 status=0
+# Checks run: every verdict, static check and identity check below counts one, pass or fail.
+checks=0
 # Only the canaries below choose a clippy.toml.
 unset CLIPPY_CONF_DIR
 # The git-source canary makes its own repo; an outer one named by the environment (as in a git
@@ -54,6 +59,7 @@ never() {
     fi
 }
 verdict() {
+    checks=$((checks + 1))
     if [ "$ok" = 1 ]; then
         echo "PASS: $name failed as intended"
     else
@@ -66,6 +72,7 @@ verdict() {
 static_check() {
     name=$1
     shift
+    checks=$((checks + 1))
     if out=$("$@" 2>&1); then
         echo "PASS: $name"
     else
@@ -397,6 +404,7 @@ fi
 
 # core, the FFI and the Pi app get the same clippy rules.
 for f in ffi/clippy.toml pi/app/clippy.toml; do
+    checks=$((checks + 1))
     if cmp core/clippy.toml "$f"; then
         echo "PASS: core/clippy.toml and $f are identical"
     else
@@ -685,5 +693,229 @@ need "Cargo.toml: profile.release.panic is 'abort', needs 'unwind'"
 need "Cargo.toml: profile.release.package.keepcrypt-core.overflow-checks is False, needs True"
 never "turns on"
 verdict
+
+# The dependency graph (CLAUDE.md rules 1, 5 and 11; tasks/todo.md, M1 Q1-Q4 and group 12):
+# - serde, serde_core and serde_derive stay out of keepcrypt-core's normal and build graph, all
+#   features and all targets: serde arrives with the test-only dev-dependencies (trybuild,
+#   serde_json), never in the device build;
+# - Cargo.lock holds one getrandom, and its only dependent is keepcrypt-core (rule 1: one source of
+#   OS randomness). The lockfile records every edge of every feature and target, so this holds
+#   for every build;
+# - ed25519-dalek resolves with no features and curve25519-dalek with exactly digest, across the
+#   workspace with all features, all targets and dev-dependencies, so legacy_compatibility
+#   (malleable signatures), hazmat, batch and rand_core stay off (Q3).
+# graph_pins ROOT runs cargo tree (--locked) on the workspace at ROOT and reads its Cargo.lock.
+graph_pins='
+import subprocess, sys, tomllib
+from pathlib import Path
+
+SERDE = ("serde", "serde_core", "serde_derive")
+DALEK = {"ed25519-dalek": "", "curve25519-dalek": "digest"}
+
+def tree(root, *args):
+    run = subprocess.run(["cargo", "tree", "--manifest-path", str(root / "Cargo.toml"), "--locked",
+                          "--target", "all", "--all-features", "--prefix", "none"] + list(args),
+                         capture_output=True, text=True)
+    if run.returncode != 0:
+        print("cargo tree %s failed:\n%s" % (" ".join(args), run.stderr))
+        sys.exit(1)
+    return sorted({line.replace(" (*)", "") for line in run.stdout.splitlines() if line})
+
+root = Path(sys.argv[1])
+bad = []
+for line in tree(root, "-p", "keepcrypt-core", "-e", "normal,build", "--format", "{p}"):
+    if line.split(" ")[0] in SERDE:
+        bad.append("keepcrypt-core normal or build graph holds %s" % line)
+with open(root / "Cargo.lock", "rb") as f:
+    packages = tomllib.load(f).get("package", [])
+versions = [p["version"] for p in packages if p["name"] == "getrandom"]
+if len(versions) != 1:
+    bad.append("Cargo.lock holds getrandom %s; needs exactly one version" % (", ".join(versions) or "none"))
+dependents = sorted(p["name"] for p in packages
+                    if any(d.split(" ")[0] == "getrandom" for d in p.get("dependencies", [])))
+if dependents != ["keepcrypt-core"]:
+    bad.append("getrandom dependents in Cargo.lock: %s; needs keepcrypt-core only" % (", ".join(dependents) or "none"))
+seen = set()
+for line in tree(root, "--workspace", "-e", "normal,build,dev", "--format", "{p}|{f}"):
+    package, features = line.split("|", 1)
+    name = package.split(" ")[0]
+    if name in DALEK:
+        seen.add(name)
+        if features != DALEK[name]:
+            bad.append("%s resolves with features [%s]; needs [%s]" % (package, features, DALEK[name]))
+bad += ["%s is not in the graph" % name for name in sorted(set(DALEK) - seen)]
+for line in bad:
+    print(line)
+sys.exit(1 if bad else 0)
+'
+static_check "graph: no serde in core's normal or build graph; getrandom's only dependent is core; dalek features pinned" \
+    python3 -I -c "$graph_pins" "$root"
+
+# ... and each rule must fire, on a copy of the workspace with all three mistakes: serde as a
+# normal dependency of core, getrandom as a dependency of the FFI, and legacy_compatibility on
+# ed25519-dalek. Each is already in Cargo.lock, so the copy's lockfile updates offline.
+graph="$work/graph"
+mkdir "$graph" || exit 1
+for f in "$root"/* "$root"/.[!.]* "$root"/..?*; do
+    [ -e "$f" ] || continue
+    case ${f##*/} in
+        target | .git) continue ;;
+    esac
+    cp -RP "$f" "$graph/" || exit 1
+done
+replace "$graph/core/Cargo.toml" 'ed25519-dalek = { version = "3.0.0", default-features = false }' \
+    'ed25519-dalek = { version = "3.0.0", default-features = false, features = ["legacy_compatibility"] }'
+cat >> "$graph/core/Cargo.toml" <<'EOT'
+
+# Gate canary (scripts/canaries.sh, temp copy only): serde in the device build.
+[dependencies.serde]
+version = "1.0.229"
+default-features = false
+EOT
+cat >> "$graph/ffi/Cargo.toml" <<'EOT'
+
+# Gate canary (scripts/canaries.sh, temp copy only): a second OS randomness path.
+[dependencies.getrandom]
+version = "0.4.3"
+EOT
+name=graph-pins
+if ! out=$(cargo update --offline --workspace --manifest-path "$graph/Cargo.toml" 2>&1); then
+    printf '%s\n' "$out" | tail -n 30
+    echo "FAIL: $name: could not update the copy's Cargo.lock offline"
+    status=1
+else
+    expect_failure "$name" python3 -I -c "$graph_pins" "$graph"
+    need "keepcrypt-core normal or build graph holds serde v1.0.229"
+    need "getrandom dependents in Cargo.lock: keepcrypt-core, keepcrypt-ffi; needs keepcrypt-core only"
+    need "ed25519-dalek v3.0.0 resolves with features [legacy_compatibility]; needs []"
+    need "curve25519-dalek v5.0.0 resolves with features [digest,legacy_compatibility]; needs [digest]"
+    never "cargo tree"
+    verdict
+fi
+
+# Vectors tamper (lessons.md: computed values come from a committed script that CI re-runs): one
+# changed byte in each generated JSON file must fail verify.py --selftest, naming that file. The
+# byte is the first hex digit of the first all-hex string of 16 or more digits from the middle of
+# the file on, so the file stays valid JSON and only its content changes. Each file is changed in
+# its own fresh copy of vectors/ (verify.py --vectors-dir).
+flip_hex='
+import re, sys
+path = sys.argv[1]
+data = open(path, "rb").read()
+hexstr = re.compile(rb"\"[0-9a-f]{16,}\"")
+found = hexstr.search(data, len(data) // 2) or hexstr.search(data)
+if found is None:
+    sys.exit("%s: no hex string to change" % path)
+at = found.start() + 1
+data = data[:at] + (b"1" if data[at:at + 1] == b"0" else b"0") + data[at + 1:]
+open(path, "wb").write(data)
+'
+for v in seal.json kat.json keepcrypt.json braille.json watchonly.json kcr.json backup.json \
+    age/age_cli_written.json; do
+    vt="$work/vectors-tamper"
+    rm -rf "$vt"
+    cp -R "$root/vectors" "$vt" || exit 1
+    name="vectors-tamper-$v"
+    if ! out=$(python3 -I -c "$flip_hex" "$vt/$v" 2>&1); then
+        printf '%s\n' "$out"
+        echo "FAIL: $name: could not change a byte"
+        status=1
+        continue
+    fi
+    expect_failure "$name" python3 -I "$root/tools/verify/verify.py" --selftest --vectors-dir "$vt"
+    need "selftest FAILED"
+    # A failing check must name the file: every check's title names its own file on its "ok" line
+    # too, so only the FAIL lines count.
+    case $(printf '%s\n' "$out" | grep '^FAIL ') in
+        *"vectors/$v"*) ;;
+        *) echo "FAIL: $name: no failing check names vectors/$v"; ok=0 ;;
+    esac
+    verdict
+done
+
+# The release-artifact scan (CLAUDE.md rule 10; tasks/todo.md, M1 group 11 and Q3, Q8): the
+# release probe (core/examples/release_probe.rs) and core's rlib, built in release mode for the
+# host three ways, one package at a time (-p), in their own target directory. On a Linux host the
+# build sets Q8's getrandom cfg for the host target only, as the cross job does for the Pi and
+# Android, so the scan finds the getrandom import; a macOS host needs no cfg (getrandom has no
+# fallback there).
+# - Control: with default features the scan is clean and the probe runs to its end (exit 0), so
+#   the hits below come from the features alone.
+# - Positive control 1: with test-sources the scan exits 1 and names both markers and the test
+#   key, in the rlib and in the probe, and nothing else.
+# - Positive control 2: with test-registry alone it names the registry marker and the test key,
+#   and finds no stub marker; and the probe runs to its end, so its snapshot verifies under the
+#   test key.
+host=$(rustc -vV | sed -n 's/^host: //p')
+probe_dir="$root/target/canary-probe"
+rlib="$probe_dir/$host/release/libkeepcrypt_core.rlib"
+probe="$probe_dir/$host/release/examples/release_probe"
+case $host in
+    *-linux-*) cfg_var=CARGO_TARGET_$(printf '%s' "$host" | tr 'a-z-' 'A-Z_')_RUSTFLAGS ;;
+    *) cfg_var= ;;
+esac
+# build_probe [FEATURES]: builds core's rlib and the probe for the host; prints the output on failure.
+build_probe() {
+    set -- cargo build --release --locked -p keepcrypt-core --lib --example release_probe \
+        --target "$host" --target-dir "$probe_dir" ${1:+--features "$1"}
+    if [ -n "$cfg_var" ]; then
+        set -- env "$cfg_var=--cfg getrandom_backend=\"linux_getrandom\"" "$@"
+    fi
+    if ! out=$("$@" 2>&1); then
+        printf '%s\n' "$out" | tail -n 30
+        return 1
+    fi
+}
+# probe_clean: the scan passes and the probe exits 0.
+probe_clean() {
+    sh "$root/scripts/banned-api-check.sh" --artifact "$host" "$rlib" "$probe" || return 1
+    "$probe" || { echo "the release probe exited $?"; return 1; }
+}
+name=release-probe-default
+if build_probe ""; then
+    static_check "$name: the scan is clean and the probe runs (control)" probe_clean
+else
+    echo "FAIL: $name: the build failed"
+    status=1
+fi
+name=release-probe-test-registry
+if build_probe test-registry; then
+    expect_failure "$name" sh "$root/scripts/banned-api-check.sh" --artifact "$host" "$rlib" "$probe"
+    for f in "$rlib" "$probe"; do
+        need "Marker: $f: KC_TEST_REGISTRY_DO_NOT_SHIP"
+        need "TestKey: $f: the test registry public key "
+    done
+    need "4 hit(s) in 2 file(s)"
+    never "KC_TEST_SOURCE_DO_NOT_SHIP"
+    verdict
+    static_check "$name: the probe verifies its snapshot under the test key" "$probe"
+else
+    echo "FAIL: $name: the build failed"
+    status=1
+fi
+name=release-probe-test-sources
+if build_probe test-sources; then
+    expect_failure "$name" sh "$root/scripts/banned-api-check.sh" --artifact "$host" "$rlib" "$probe"
+    for f in "$rlib" "$probe"; do
+        need "Marker: $f: KC_TEST_SOURCE_DO_NOT_SHIP"
+        need "Marker: $f: KC_TEST_REGISTRY_DO_NOT_SHIP"
+        need "TestKey: $f: the test registry public key "
+    done
+    need "6 hit(s) in 2 file(s)"
+    verdict
+else
+    echo "FAIL: $name: the build failed"
+    status=1
+fi
+
+# The number of checks above, pinned, so a canary that is deleted, or skipped by a broken branch,
+# turns CI red too. A real change to the canaries updates this pin in the same reviewed change.
+want_checks=54
+if [ "$checks" -ne "$want_checks" ]; then
+    echo "FAIL: $checks checks ran; scripts/canaries.sh pins $want_checks"
+    status=1
+else
+    echo "PASS: all $checks checks ran"
+fi
 
 exit "$status"
