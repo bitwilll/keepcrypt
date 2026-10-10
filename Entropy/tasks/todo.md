@@ -326,9 +326,10 @@ Docs are named by file: build-plan.md, design.md, seal-watchonly-braille.md, pi-
 ### Raised by the review of commits 2-5 (standing approval applied 2026-10-10; confirmed by the owner 2026-10-10)
 Applied by the agent, not an answer from the owner: the owner's standing approval of the Q1-Q12 recommendations ("I
 approve, do it", 2026-10-09) was applied on 2026-10-10 to Q13 (all five doc edits, as recommended) and Q14 (both
-gate changes, as recommended). The owner has not answered Q13 or Q14 directly. The owner may veto any item; a veto
-reverts that item in its own reviewed commit. Q13's edits landed as one docs-only commit (c40a2e3) before commit 8
-("Q13 docs" in "Commit order on `m1-core`"); Q14's two gate changes stay as committed in f732c98.
+gate changes, as recommended). The owner had not answered Q13 or Q14 directly until 2026-10-10, when the owner
+confirmed both (owner item 2). The owner may veto any item; a veto reverts that item in its own reviewed commit.
+Q13's edits landed as one docs-only commit (c40a2e3) before commit 8 ("Q13 docs" in "Commit order on `m1-core`");
+Q14's two gate changes stay as committed in f732c98.
 - [x] The owner confirms Q13 (a)-(e) and Q14 (a)-(b) explicitly, recorded here with a date, before the M1 gate
       (review fix after commit 10). Answered 2026-10-10: "approve all" (owner item 2, "M1: the owner's answers")
       confirms all five doc edits and both gate changes as applied; nothing is reverted.
@@ -382,7 +383,7 @@ reverts that item in its own reviewed commit. Q13's edits landed as one docs-onl
 
 ### Raised by the review of commits 11-15 (answered 2026-10-10)
 At commit 11 the agent replaced a value that the approved plan pins. Commits 12-15 built on the replacement, and no
-owner has approved it. It is not covered by the standing approval of Q1-Q12.
+owner had approved it until 2026-10-10 (owner item 3). It is not covered by the standing approval of Q1-Q12.
 - [x] The owner answers Q15, recorded here with a date, before the M1 gate (review fix after commit 15). Answered
       2026-10-10 (owner item 3): the table-text definition, the digest `fd75c236...` and the reworded proof are
       approved.
@@ -429,7 +430,7 @@ Neither is covered by the standing approval of Q1-Q12; the agent does not act on
 
 ### Raised by the review of commits 22-25 (answered 2026-10-10)
 Commit 25 recorded a change to an approved plan item as a done deviation, not as a question. The standing approval
-of Q1-Q12 does not cover it, so it waits for the owner.
+of Q1-Q12 does not cover it, so it waited for the owner (answered 2026-10-10, owner item 9).
 - [x] **tests/vectors.rs and the full vector sets (plan group 10).** The plan says tests/vectors.rs runs the full
       sets: 24 BIP39 seeds, 26 CCTV files, 3 seal vectors, 2,048 braille entries, watchonly.json, kcr.json,
       backup.json and rolls.json. As built, tests/vectors.rs runs only what the public API reaches, because secrets
@@ -470,21 +471,23 @@ Neither blocks the M1 gate. Both are items 13 and 14 under "M1: new open owner i
   any core panic wipe the session.
 - Games (owner item 12 (b), 2026-10-10): M3 builds core's game-randomness call in `core/src/source`, a free function
   that fills a buffer from its own `getrandom` call and never touches the pool. The Pi games are its first user; M5
-  and M6 reach it through the FFI. Its name then goes into build-plan.md's sketch, pi-firmware.md and mobile-apps.md,
-  which today call it "core's separate game-randomness call".
+  and M6 reach it through the FFI. Its name then goes into build-plan.md's sketch (which today says "the games'
+  call"), and into CLAUDE.md rule 1, pi-firmware.md, mobile-apps.md and seal-watchonly-braille.md, which call it
+  "core's separate game-randomness call".
 - 99 rolls after a collision (owner item 5, 2026-10-10): after a Stop or a Cannot check, the M3, M5 and M6 shells
   offer only `Wiped::restart`, never `Session::new`, so a restart after a collision keeps 99 rolls.
 - M7 audit note (owner item 6, 2026-10-10): the accepted library residuals, which core cannot wipe:
   - rust-bitcoin's, secp256k1's and bip39's stack copies (the parent key in `derive_priv`, the HMAC state and output
     in `ckd_priv` and `new_master`, the tweak temporaries, the moved-from S of `to_seed_normalized`);
-  - unicode-normalization 0.1.25's pending-character buffer, freed unwiped from the heap for long decompositions;
+  - unicode-normalization 0.1.25's pending-character buffer, left unwiped on the stack by both NFKD passes and, for
+    long decompositions, freed unwiped from the heap;
   - about six freed heap copies of the xpub while the export is built (public-key data);
   - hmac 0.13's padded key block (the seal's key S, the header MAC's key, scrypt's PBKDF2 steps);
   - HKDF's copies of the pseudorandom key derived from the file key;
   - scrypt 0.12's working buffers (Q1 (iii)), upstream issue
     https://github.com/RustCrypto/password-hashes/issues/938;
-  - Poly1305's r and s are now wiped on drop (b4871b9), except the soft backend's stack temporaries in `State::new`
-    and `finalize`.
+  - Poly1305's r and s are now wiped on drop (b4871b9), except the backends' stack temporaries: the soft backend's in
+    `State::new` and `finalize`, and, on x86_64-linux-android, the AVX2 backend's.
 
 ## M0: Repo bootstrap
 
@@ -673,7 +676,7 @@ Each item came out of building M0 or the three adversarial review rounds. Approv
    - Symlinked directories are refused.
    - Rule 1 now covers every `*.rs` file except `core/src/source.rs`, `core/src/source/` and the Pi games
      (`pi/app/src/games.rs`, `pi/app/src/games/`). (Changed 2026-10-10 in 73abaea, owner item 12 (b): the Pi games
-     exemption is gone, so only `core/src/source*` may name getrandom.)
+     exemption is gone, so only `core/src/source.rs` and `core/src/source/` may name getrandom.)
    - Left out on purpose: `import Network` (NWPathMonitor), `java.nio.channels` (FileChannel),
      `.textSelection(.disabled)` (required by the docs).
 6. **deny.toml.**
@@ -1505,23 +1508,24 @@ starts. Every item names its proof.
         `abandon-12-trailing-1023` are accepted at the edges; `armor-space-before-begin`,
         `armor-tab-after-blank-line`, `armor-leading-1025`, `armor-trailing-1024` and `armor-8192-bytes` give
         `Backup(Armor)` before any scrypt work (42 refused files). No accepted armor can now reach 8,192 bytes
-        (a 4 KiB chunk armors to 5,862 bytes, plus at most 2,047 of whitespace), so `armor-8192-bytes` shows the
-        size cap lets 8,192 bytes through to the armor rules, and `too-large` (8,193) still gives `TooLarge`.
-        age 1.3.2 decrypts every accepted variant and refuses all five new cases; Ubuntu's 1.1.1 is not checked
-        here.
+        (a 4 KiB chunk armors to 5,862 bytes with LF line ends and 5,954 with CRLF, plus at most 2,047 of
+        whitespace), so `armor-8192-bytes` shows the size cap lets 8,192 bytes through to the armor rules, and
+        `too-large` (8,193) still gives `TooLarge`. age 1.3.2 decrypts every accepted variant and refuses all five
+        new cases; Ubuntu's 1.1.1 is not checked here.
       - Changed 2026-10-10 (d8b5d25), after CI's age-interop job failed on 4733e4a: age 1.1.1's CLI, the one the CI
         job runs, reads armor only when BEGIN is at byte 0 (v1.1.1 cmd/age/age.go: `rr.Peek(len(armor.Header))`).
-        age 1.2 and later skip up to 1,024 bytes of leading whitespace (v1.3.1 age.go lines 495-497), and the
-        readers had copied that, so 1.1.1 refused `abandon-12-whitespace` and `abandon-12-leading-1024`. Both
-        readers now refuse any whitespace before BEGIN, which C2SP age allows; after END the rule above stands
-        (fewer than 1,024 bytes). backup.json: `abandon-12-leading-1024` is gone; `abandon-12-whitespace` became
-        `abandon-12-crlf-trailing-whitespace` (CRLF armor, then " \r\n\t\n"); `armor-newline-before-begin` (one LF),
-        `armor-whitespace-lines-around` (the old whitespace file) and `armor-leading-1024` (in place of
-        `armor-leading-1025`) are refused with `Backup(Armor)`. That makes 11 accepted and 44 refused files. An
-        accepted armor now reaches at most 5,862 + 1,023 bytes. Check 11 also requires every accepted file to start
-        with the BEGIN line or `age-encryption.org/v1` and LF. age 1.3.2 decrypts all 11 and accepts three of the
-        refused armor cases (printed as notes; stricter is safe). In CI on 34beea2, age 1.1.1 decrypts all 11 and
-        refuses all 17 armor cases (run 38041799043).
+        age 1.3.0 and later skip up to 1,024 bytes of leading whitespace (v1.3.1 cmd/age/age.go lines 495-497);
+        1.2.0 and 1.2.1 still read armor only at byte 0. The readers had copied the 1.3 rule, so 1.1.1 refused
+        `abandon-12-whitespace` and `abandon-12-leading-1024`. Both readers now refuse any whitespace before BEGIN,
+        which C2SP age allows; after END the rule above stands (fewer than 1,024 bytes). backup.json:
+        `abandon-12-leading-1024` is gone; `abandon-12-whitespace` became `abandon-12-crlf-trailing-whitespace`
+        (CRLF armor, then " \r\n\t\n"); `armor-newline-before-begin` (one LF), `armor-whitespace-lines-around` (the
+        old whitespace file) and `armor-leading-1024` (in place of `armor-leading-1025`) are refused with
+        `Backup(Armor)`. That makes 11 accepted and 44 refused files. An accepted armor now reaches at most
+        5,954 + 1,023 bytes (a 4 KiB chunk armors to 5,862 bytes with LF line ends and 5,954 with CRLF), still under
+        8,192. Check 11 also requires every accepted file to start with the BEGIN line or `age-encryption.org/v1`
+        and LF. age 1.3.2 decrypts all 11 and accepts three of the refused armor cases (printed as notes; stricter
+        is safe). In CI on 34beea2, age 1.1.1 decrypts all 11 and refuses all 17 armor cases (run 38041799043).
 - [x] `backup/age.rs` (C2SP age v1; build-plan.md "Recipient: scrypt only"; Q1 reader policy):
       - a strict header grammar;
       - the scrypt stanza must be alone, with 3 arguments, a canonical 16-byte salt, and log2 N matching `[1-9][0-9]?`
@@ -1567,9 +1571,11 @@ starts. Every item names its proof.
           nothing is changed until the owner decides. Table A's resolved features are as written, so this is no
           dependency deviation. Changed 2026-10-10 (owner item 6): b4871b9 adds poly1305 0.9.1 as a direct edge
           with `default-features = false, features = ["zeroize"]`, named in build-plan.md by 0ac7394. Cargo.lock
-          gains two lines and no package. `Drop for Poly1305` now wipes r and s; the soft backend's stack
-          temporaries in `State::new` and `finalize` stay, in the M7 audit note. canaries.sh pins the feature on
-          each target (7c46d93).
+          gains two lines and no package. `Drop for Poly1305` now wipes r and s, except the backends' stack
+          temporaries: the soft backend's in `State::new` and `finalize`, and, on x86_64-linux-android, the AVX2
+          backend's. Those stay, in the M7 audit note. poly1305 compiles its AVX2 backend for x86 and x86_64 and
+          picks it at run time when the CPU has AVX2 (src/backend.rs, backend/autodetect.rs); backend/avx2.rs has
+          no zeroize. canaries.sh pins the feature on each target (7c46d93).
         - scrypt's PBKDF2 steps key hmac with the backup passphrase (`pbkdf2_hmac` calls `new_from_slice`), so
           the group 7 hmac residual applies there too, to a passphrase-derived block.
 - [x] `backup/passphrase.rs` (build-plan.md "Passphrase"; pi-firmware.md USB steps 1-2; mobile-apps.md "Encrypted
@@ -3046,15 +3052,16 @@ applied on 2026-10-10: see the next subsection, "M1: the owner's answers".)
    - BIP32 and BIP39 (group 4): rust-bitcoin's copies of the parent key in `derive_priv`, the HMAC state and output
      in its `ckd_priv` and `new_master`, secp256k1's tweak temporaries, and the moved-from S of bip39's
      `to_seed_normalized` stay on the stack unwiped;
-   - BIP39 passphrase NFKD (group 6): unicode-normalization 0.1.25's pending-character buffer, moved to the heap and
-     freed unwiped for long decompositions;
+   - BIP39 passphrase NFKD (group 6): unicode-normalization 0.1.25's pending-character buffer, left unwiped on the
+     stack by both NFKD passes and, for long decompositions, moved to the heap and freed unwiped;
    - the xpub (group 6): about six freed heap copies while the export is built (public-key data);
    - hmac 0.13 (group 7): the padded key block of the seal's HMAC-SHA256 key S, also in scrypt's PBKDF2 steps keyed
      by the backup passphrase (group 8);
    - HKDF (group 8): copies of the pseudorandom key derived from the file key;
    - Poly1305 (group 8): the one-time key r and s stay in the dropped cipher state, because poly1305 resolves without
      its `zeroize` feature; wiping them needs a new direct dependency edge. (Changed 2026-10-10: b4871b9 adds that
-     edge, so r and s are wiped on drop, except the soft backend's stack temporaries.)
+     edge, so r and s are wiped on drop, except the backends' stack temporaries: the soft backend's in `State::new`
+     and `finalize`, and, on x86_64-linux-android, the AVX2 backend's.)
 7. **The age 1.3.2 vectors:** approve `vectors/age/age_cli_written.json` as written with Homebrew age 1.3.2, or have
    it regenerated with Ubuntu's 1.1.1 (for example in the CI job) and committed in a `verify:` commit ("Raised by
    the review of commits 19-21").
@@ -3068,7 +3075,8 @@ applied on 2026-10-10: see the next subsection, "M1: the owner's answers".)
     `hw_bytes_tested()` return u64 (the sketch: u32); `Wiped::collision_report(&self)` returns
     `Option<&CollisionReport>` (the sketch: an owned `Option<CollisionReport>`); the dates are `RegistryDate` with
     `Freshness`; `VerifiedProof::lookup`, and `number()` and `entry_count()` on both verified types, are public
-    additions. Approve a docs-only commit that aligns the sketch, or keep it as a sketch.
+    additions. Approve a docs-only commit that aligns the sketch, or keep it as a sketch. (Done 2026-10-10 in
+    62e2e5e: the sketch now gives u64, `Option<&CollisionReport>`, `RegistryDate` and the public additions.)
 11. **cargo-vet exemptions to approve (33 new in M1):**
     - safe-to-deploy (19): aead 0.6.1, base64ct 1.8.3, chacha20 0.10.2, chacha20poly1305 0.11.0, cipher 0.5.2,
       cmov 0.5.4, ctutils 0.4.2, curve25519-dalek 5.0.0, curve25519-dalek-derive 0.1.1, ed25519 3.0.0,
@@ -3175,11 +3183,11 @@ coverage                             TOTAL regions 96.87%, functions 96.25%, lin
 ```
 
 Root cause: age 1.1.1's CLI reads armor only when BEGIN is at byte 0 (v1.1.1 cmd/age/age.go:
-`rr.Peek(len(armor.Header))`). age 1.2 and later skip up to 1,024 bytes of leading whitespace (v1.3.1 age.go lines
-495-497), and the readers had copied that. Fixed in d8b5d25: both readers refuse any whitespace before BEGIN, which
-C2SP age allows (recorded under plan group 8, `backup/armor.rs`). Without 1.1.1 on this Mac, a scratch check that
-every accepted file starts at byte 0 with BEGIN or the version line passes on the new backup.json and fails on
-4733e4a's with exactly the two files CI named:
+`rr.Peek(len(armor.Header))`). age 1.3.0 and later skip up to 1,024 bytes of leading whitespace (v1.3.1
+cmd/age/age.go lines 495-497); 1.2.0 and 1.2.1 still read armor only at byte 0. The readers had copied the 1.3 rule.
+Fixed in d8b5d25: both readers refuse any whitespace before BEGIN, which C2SP age allows (recorded under plan group
+8, `backup/armor.rs`). Without 1.1.1 on this Mac, a scratch check that every accepted file starts at byte 0 with
+BEGIN or the version line passes on the new backup.json and fails on 4733e4a's with exactly the two files CI named:
 
 ```text
 new backup.json:  all 11 age_files start with BEGIN or the version line at byte 0
@@ -3197,8 +3205,11 @@ rules        deletion
              non_fast_forward
              pull_request: required_approving_review_count 0, require_code_owner_review false,
                dismiss_stale_reviews_on_push false, require_last_push_approval false,
-               required_review_thread_resolution false
-             required_status_checks: strict false, 14 contexts, each integration_id 15368 (GitHub Actions):
+               required_review_thread_resolution false, require_extra_approval_for_unattributed_changes true,
+               allowed_merge_methods [merge, squash, rebase], required_reviewers [] (the last three are server
+               defaults; the request set none of them)
+             required_status_checks: strict false, do_not_enforce_on_create false, 14 contexts, each
+               integration_id 15368 (GitHub Actions):
                changes (Entropy/ or this workflow) | lint (fmt, clippy) | test | supply-chain (deny, audit, vet) |
                gates (banned APIs, verifier, canaries) | verifier (python 3.9) | coverage (core, 95% of lines) |
                age-interop (age 1.1.1) | cross (aarch64-apple-ios) | cross (aarch64-apple-ios-sim) |
@@ -3209,8 +3220,10 @@ rules        deletion
 With no bypass actors, even the owner's direct pushes and web edits to `main` need a PR. The deletion and
 force-push rules are the standard pair added with the ruleset; Q12 did not name them. A ruleset cannot limit its
 checks to `Entropy/**`, so the changes job skips the other jobs on a PR that does not touch `Entropy/` (Q12).
-build-plan.md's two-approval rule stays unmet while one account (`bitwilll`) opens and merges every PR. The request
-body and the API's response stay in the session scratchpad.
+build-plan.md's two-approval rule stays unmet while one account (`bitwilll`) opens and merges every PR. GitHub's
+"Available rules for rulesets" page (read 2026-10-10) says `require_extra_approval_for_unattributed_changes` asks for
+one approval more on a Copilot pull request that is not attributed to a person, is on by default, and has no effect
+while the ruleset requires 0 approvals. The request body and the API's response stay in the session scratchpad.
 
 **The upstream issue (owner item 8).** https://github.com/RustCrypto/password-hashes/issues/938, "scrypt: zeroize
 the B, V and T buffers before freeing them", opened 2026-10-10 07:49 UTC by bitwilll, open. It asks scrypt 0.12.0
@@ -3248,7 +3261,9 @@ b4871b9 core: switch on poly1305's zeroize so its one-time key is wiped on drop
 6ba465c docs/design.md: the paragraph under the seed-pipeline figure says the figure's "99 give 256" rounds up
 2441d39 docs: build-plan.md places core's game-randomness call in source from M3; the Pi games get the sink, never the session
 34beea2 docs: the Pi and phone flows add the Cannot check branch, whose "Start again" restarts through Wiped::restart
-        the last three change docs only, and not seal-watchonly-braille.md, the one doc a check reads
+        the last three change docs only; check 11 reads build-plan.md, pi-firmware.md and mobile-apps.md
+        (checks 8 and 10 read seal-watchonly-braille.md), and verify.py --selftest passes 11 checks at 34beea2
+        on both Pythons (suite below)
 ```
 
 **The three reviews** (spec, security, recompute) of those commits gave 9 findings:
@@ -3379,8 +3394,8 @@ changes only this file and is not pushed yet; its push runs CI again.
 **Still unticked:** group 11 `release_probe.rs` (the six scans), group 12's CI jobs and coverage, group 13 Review,
 and Verification "Backup" (age-interop against Ubuntu's 1.1.1), "The release artifact scan is clean on all six
 targets" and "Clean ... CI is green on `m1-core`". Each depended on CI on 34beea2, and the run above proves each;
-they are ticked once that run is reviewed. No item waits on the owner any more. New items 13 and 14 are low and do
-not block the gate.
+they are ticked once that run is reviewed. None of the 12 owner items waits on the owner any more; new items 13 and
+14 do, but they are low and do not block the gate.
 
 ### M1 gate status: NOT MET yet (the CI items to tick, then the owner's approval)
 The gate in docs/build-plan.md asks for all vectors passing, the source-substitution and error-injection tests
