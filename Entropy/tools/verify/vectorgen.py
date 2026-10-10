@@ -4112,6 +4112,10 @@ INPUT_CASES = (
 # directory stays writable, so a module it ran would leave its __pycache__ behind.
 LONE_TIMEOUT_SECONDS = 60
 PLANTED_MARKER = "KC_PLANTED_HASHLIB_RAN"
+# The lone copy also runs as if by Python 3.8 (the audit sets sys.version_info before it runs), and must
+# stop at its startup guard: exit 2, this line alone on stderr, nothing on stdout.
+OLD_PYTHON = (3, 8, 18, "final", 0)
+OLD_PYTHON_REFUSAL = "verify.py needs Python 3.9 or later\n"
 # Rule (e): an audited run fails on any event below (sockets, processes, and the changes to a file by path
 # that need no open: truncation, removal, renaming, directories, mode, owner, flags, links, times,
 # extended attributes and shutil's copies, moves and trees), and on any of these modules (group 2's network
@@ -4124,13 +4128,13 @@ AUDIT_BANNED_MODULES = ("socket", "ssl", "_socket", "_ssl", "socketserver", "url
 AUDIT_BANNED_EVENTS = ("socket.", "subprocess.Popen", "os.system", "os.exec", "os.posix_spawn", "os.spawn", "os.fork",
                        "os.truncate", "os.remove", "os.rename", "os.rmdir", "os.mkdir", "os.chmod", "os.chown",
                        "os.chflags", "os.link", "os.symlink", "os.utime", "os.setxattr", "os.removexattr", "shutil.")
-# The child of an audited run: sys.executable -I -c (the two lists above, then this) FD COPY ARGS... It
-# installs an audit hook and runs COPY as __main__ with ARGS, writing nothing itself but to FD. A banned
-# event is written to FD at once, so a copy that ends the process early cannot hide it, and is refused, so
-# its action never happens: any open for writing, or of a path outside the interpreter's standard library
-# (sysconfig's stdlib and platstdlib, without site-packages) other than the copy; any socket or process;
-# any change to a file by path.
-# At the end it writes each banned module, and each module loaded since it started from outside the
+# The child of an audited run: sys.executable -I -c (the two lists above and VERSION_INFO, None or the
+# sys.version_info the copy is to see, then this) FD COPY ARGS... It installs an audit hook and runs COPY
+# as __main__ with ARGS, writing nothing itself but to FD. A banned event is written to FD at once, so a
+# copy that ends the process early cannot hide it, and is refused, so its action never happens: any open
+# for writing, or of a path outside the interpreter's standard library (sysconfig's stdlib and
+# platstdlib, without site-packages) other than the copy; any socket or process; any change to a file by
+# path. At the end it writes each banned module, and each module loaded since it started from outside the
 # standard library (the interpreter's own start-up, site and its .pth files, is not the copy's doing),
 # then "end". Bytecode caching is off, so importing the standard library writes nothing.
 AUDIT_HARNESS = r'''
@@ -4196,6 +4200,8 @@ def hook(event, args):
         raise RuntimeError("refused by check 12's audit: " + event)
 
 
+if VERSION_INFO is not None:
+    sys.version_info = VERSION_INFO
 sys.addaudithook(hook)
 try:
     runpy.run_path(copy, run_name="__main__")
@@ -4644,11 +4650,13 @@ def fault_twin(data, node, group):
     return data[:start] + repr(changed).encode("utf-8") + data[end:]
 
 
-def audited_run(directory, args):
+def audited_run(directory, args, version=None):
     """One audited run (check 12 (e)) of the copy directory/verify.py with `args`: sys.executable -I -c
     AUDIT_HARNESS, from `directory`, in a new session (no controlling terminal), with an empty
-    environment and stdin at its end. Returns (exit status, stdout, stderr, the audit's problems)."""
-    harness = "BANNED_MODULES = %r\nBANNED_EVENTS = %r\n%s" % (AUDIT_BANNED_MODULES, AUDIT_BANNED_EVENTS, AUDIT_HARNESS)
+    environment and stdin at its end, the copy seeing `version` as sys.version_info if given. Returns
+    (exit status, stdout, stderr, the audit's problems)."""
+    harness = "BANNED_MODULES = %r\nBANNED_EVENTS = %r\nVERSION_INFO = %r\n%s" % (
+        AUDIT_BANNED_MODULES, AUDIT_BANNED_EVENTS, version, AUDIT_HARNESS)
     read_end, write_end = os.pipe()
     with os.fdopen(read_end, "rb") as report:
         try:
@@ -4686,10 +4694,11 @@ def selftest_run_problems(status, stdout, stderr, groups, failing):
 
 
 def verify_lone_problems(data, node, known):
-    """Check 12 rules (d) and (e): the lone copy and each fault twin run `selftest` audited; the planted
-    module runs neither isolated nor refused. [problem]."""
+    """Check 12 rules (d) and (e): the lone copy and each fault twin run `selftest` audited, and the lone
+    copy as Python 3.8 stops at its startup guard; the planted module runs neither isolated nor refused.
+    [problem]."""
     groups = list(known) if known is not None else None
-    runs = [("lone copy", "lone", data, None)]
+    runs = [("lone copy", "lone", data, None), ("lone copy as Python 3.8", "old-python", data, None)]
     if groups is None:
         problems = ["rule (d): no fault twins, since KNOWN_ANSWERS cannot be read"]
     else:
@@ -4708,13 +4717,18 @@ def verify_lone_problems(data, node, known):
                 (directory / "verify.py").chmod(0o444)
                 directory.chmod(0o555)
                 locked.append(directory)
+                old = name == "old-python"
                 try:
-                    status, stdout, stderr, audit = audited_run(directory, ["selftest"])
+                    status, stdout, stderr, audit = audited_run(directory, ["selftest"], OLD_PYTHON if old else None)
                 except subprocess.TimeoutExpired:
                     problems.append("rule (d): %s: no result within %d seconds" % (label, LONE_TIMEOUT_SECONDS))
                     continue
-                problems += ["rule (d): %s: %s" % (label, problem)
-                             for problem in selftest_run_problems(status, stdout, stderr, groups, failing)]
+                if old and (status, stdout, stderr) != (2, "", OLD_PYTHON_REFUSAL):
+                    problems.append("rule (d): %s: exit status %d, stdout %r, stderr %r, not 2 and %r alone"
+                                    % (label, status, stdout[-200:], stderr[-200:], OLD_PYTHON_REFUSAL))
+                elif not old:
+                    problems += ["rule (d): %s: %s" % (label, problem)
+                                 for problem in selftest_run_problems(status, stdout, stderr, groups, failing)]
                 problems += ["rule (e): %s: %s" % (label, problem) for problem in audit]
             planted = root / "planted"
             planted.mkdir()

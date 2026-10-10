@@ -2867,7 +2867,7 @@ Groups land in the order below. Vectors come before the core test that reads the
       hash, no C, no `words_12`, no Seal ID braille, no grid, no re-check URL, the last insert line only, no `no
       check`), plus G ignored, the wrong group's values and `except KeyError`. Copies that store into, `.update`,
       `del` from or alias `KNOWN_ANSWERS` fail rule (c) under `--verify-py`.
-- [x] Startup guards, right after `import sys` and before any other import, when run as a script:
+- [ ] Startup guards, right after `import sys` and before any other import, when run as a script:
       - Python older than 3.9 exits 2 with one line;
       - without `-I` (`sys.flags.isolated`) it exits 2 and says to run `python3 -I verify.py ...`, so a planted module
         beside the download (for example `hashlib.py`) is never imported;
@@ -2878,6 +2878,11 @@ Groups land in the order below. Vectors come before the core test that reads the
       `sys.version_info` set to 3.8.18 before `runpy.run_path`, the run prints `verify.py needs Python 3.9 or later`
       and exits 2; under `LC_ALL=en_US.ISO8859-1`, stdout's encoding goes from iso8859-1 to utf-8 (group 7 (g) pins
       the braille bytes).
+      Review (2026-10-10): unticked, since one-off probes are not standing proof. Check 12 (d) now runs the lone copy
+      audited as Python 3.8.18 (the audit sets `sys.version_info` before the copy runs): exit 2, stderr exactly
+      `verify.py needs Python 3.9 or later`, nothing on stdout. It passes on 3.12.5 and 3.9.6, and scratch copies
+      whose guard is gone, checks 3.0, exits 1 or writes to stdout each fail it on both. The UTF-8 reconfigure has
+      no standing test until group 7 (g)'s locale run, which ticks this item.
 - [ ] vectorgen check 12, "tools/verify/verify.py ships alone", with two testing-only options: `--verify-py PATH`
       (like `--vectors-dir`) and `--check N` (run one check). Every rule runs, and each failing rule is named:
       - (a) static, by `ast` over verify.py:
@@ -2992,7 +2997,7 @@ Groups land in the order below. Vectors come before the core test that reads the
       12's lone copy; the urls and insert fault twins each fail only their group. Scratch copies fail rule (c) by
       field: the register URL literal changed (`urls.register_url`), and the `~` moved to face 4 in code and answers
       alike (`insert.lines.1.lighter_face`, `.3`, `.4`). The ABANDON line equals the example above.
-- [x] Check 12 gains a tie to values core already checks. It takes every keepcrypt.json `mixed` case whose D has a C
+- [ ] Check 12 gains a tie to values core already checks. It takes every keepcrypt.json `mixed` case whose D has a C
       in its `commitment` list (three of four at 90b6ab9), and every `dice_only` case. Fed as display text through
       `verification_run`, each gives the committed seed bits (`e_hex`, its first 32 hex digits for 12 words) and
       `words_12`/`words_24`. Core's seed.rs tests check those values.
@@ -3002,6 +3007,8 @@ Groups land in the order below. Vectors come before the core test that reads the
       at 24 words (`d-00-1f-coldcard-50`) is refused with no words, and `coldcard-123456` (both lengths) and
       `coldcard-50` (24 words) compute with a warning. Scratch mutants fail it: wrong 12-word seed bits, no mixed
       refusal, no dice-only warning. The agreement and the rendered text are groups 5-7's proof.
+      Review (2026-10-10): unticked until that proof lands, since the item's planned proof names the 1,000 agreement
+      cases (groups 5 and 6) and the rendered text (group 7).
 
 **5. Agreement vectors: the verifier's side (gate; build-plan.md M2 and "Verifier agreement, 1,000 cases")**
 - [ ] `vectorgen.py --write-agreement-vectors` writes `vectors/agreement.json`, one case per line, marked "public test
