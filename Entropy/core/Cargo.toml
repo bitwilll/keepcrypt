@@ -88,6 +88,12 @@ required-features = ["test-sources"]
 name = "no_panic"
 required-features = ["test-sources"]
 
+# Verifier agreement (tasks/todo.md, M2 group 6): every case of vectors/agreement.json replayed on
+# stub entropy, so it runs in the second test run and in coverage, never in the release one.
+[[test]]
+name = "agreement"
+required-features = ["test-sources"]
+
 # Test-only features, both off by default (CLAUDE.md rule 10). No manifest turns either one on, in
 # any dependency table (normal, dev, build or target-specific) or feature: cargo merges features
 # across every package in one build, so one such entry anywhere would put stubs or the test key

@@ -3083,7 +3083,7 @@ Groups land in the order below. Vectors come before the core test that reads the
       and its "What each set is for" entry; `UNLISTED` gains `agreement.json`. Check 3 passes on 3.12.5 and 3.9.6.
 
 **6. Agreement: core's side (gate; rules 5, 6, 10 and 12)**
-- [ ] `core/tests/agreement.rs`:
+- [x] `core/tests/agreement.rs`:
       - It reads agreement.json with `common::read`. It rebuilds stub, hwrng and extra bytes with a local copy of
         no_panic.rs:23's `stream` helper (`sha2`, a core dependency).
       - One `#[test]` per combination plus one for the 28 refusals. Each asserts its case count, so libtest runs them
@@ -3118,6 +3118,18 @@ Groups land in the order below. Vectors come before the core test that reads the
       - A refusal case stops with the recorded error at the recorded step.
       - Failure messages name the case and field only, never a value (`assert!(got == want, ...)`, as ceremony.rs
         does). The file has no `print*`, `dbg!`, `.ok()`, `unwrap_or*` or `let _ =`.
+      Proof: commit 9. `cargo test -p keepcrypt-core --locked --features test-sources --test agreement`: 9 passed (8
+      combinations of 125 ceremonies, and the 28 refusals) in 1.17 s on 16 threads, 8.47 s with `--test-threads=1`
+      (debug). The seed bits are the words' SeedBook numbers as 11-bit indices. Each refusal's verifier verdict must be
+      the one core's error, mode and restart call for (`input-refused` at core's roll), and each 98-roll restart's
+      inputs, run as a first ceremony, give the verifier's words and seed bits. A scratch mutation script changed one
+      recorded value at a time and ran that case's test: all 92 mutations fail naming exactly the case and field (C,
+      D, n, the check URL, G, the wrong G equal to G or malformed, T, the Seal ID and its braille, prefix, bucket,
+      grid, colour index and hex, the re-check, check and register URLs and their origin, the grouped code, the
+      collision report, each of 12 words and word 24, 16 insert-line tokens, the seed bits, an extra and a missing
+      key, each refusal's error, step and roll, the verdicts, the divergence's words and seed bits). A stub one byte
+      short fails closed at `start_check` (and at `commit` on the skip path); a deleted ceremony or refusal fails its
+      count. A scratch core whose `REGISTRY_ORIGIN` is changed fails every combination at `recheck_url`.
 - [ ] `core/Cargo.toml`: `[[test]] name = "agreement"`, `required-features = ["test-sources"]`, so it runs in CI
       `test` step 2 and in coverage, never in the release configuration.
       Proof:
@@ -3129,6 +3141,11 @@ Groups land in the order below. Vectors come before the core test that reads the
         code, collision report, each word, each insert-line token, and each refusal's error and step;
       - in the same script, a stub one byte short fails closed at `start_check`, and a deleted case fails its count;
       - group 8 adds a standing canary.
+      Proof (commit 9; unticked until a CI run records its time): the default run skips it (`cargo test -p
+      keepcrypt-core --locked --test agreement` stops: "requires the features: `test-sources`"; `cargo test --workspace
+      --locked` passes without it). The test-sources run passes in 60.6 s, agreement 1.17 s of it, and `cargo llvm-cov
+      --locked -p keepcrypt-core --features test-sources --no-cfg-coverage --fail-under-lines 95` runs it (1.22 s;
+      core at 97.39% of lines). The mutation script's results are under the item above.
 
 **7. The user commands: `mixed` and `dice` (design.md:239-244; mobile-apps.md:186)**
 - [ ] `verify.py mixed --words {12,24}` and `verify.py dice --words {12,24}`. `--words` has no default, since a 12/24
