@@ -694,7 +694,7 @@ mod tests {
     fn every_refused_file_gives_its_error() {
         let doc = read("backup.json");
         let cases = doc["age_refused"].as_array().expect("age_refused");
-        assert_eq!(cases.len(), 37);
+        assert_eq!(cases.len(), 42);
         for case in cases {
             let before = scrypt_runs();
             let result = decrypt(&case_file(case), text(&case["passphrase"]).as_bytes());

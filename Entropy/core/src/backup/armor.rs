@@ -4,10 +4,14 @@
 //! - Encode: `-----BEGIN AGE ENCRYPTED FILE-----`, the padded base64 of the binary file in lines of
 //!   exactly 64 columns (the last 1 to 64), `-----END AGE ENCRYPTED FILE-----`, each line ended by
 //!   LF.
-//! - Decode accepts exactly that, with LF or CRLF line ends, an END line that may end the input,
-//!   and ASCII whitespace (space, tab, CR, LF) before BEGIN and after END only. The base64 must be
-//!   canonical (base64ct checks the padding and the unused low bits). Anything else is
-//!   `Backup(Armor)`.
+//! - Decode accepts exactly that, with LF or CRLF line ends and an END line that may end the input
+//!   (alone or with a CR), and ASCII whitespace (space, tab, CR, LF) before BEGIN and after END
+//!   only: before BEGIN at most 1,024 bytes, in whole lines (empty, or ending in LF, so BEGIN
+//!   starts a line), and after the END line fewer than 1,024 bytes. Those are the age CLI's own
+//!   limits (age 1.3.2 refuses a space before BEGIN on its line, 1,025 bytes before BEGIN and
+//!   1,024 after END), so no armor this reader accepts is one age refuses for its whitespace. The
+//!   base64 must be canonical (base64ct checks the padding and the unused low bits). Anything else
+//!   is `Backup(Armor)`.
 //!
 //! The armored text is ciphertext, so these buffers need no wiping.
 
@@ -24,6 +28,9 @@ pub(crate) const END: &[u8] = b"-----END AGE ENCRYPTED FILE-----";
 const BEGIN_PREFIX: &[u8] = b"-----BEGIN";
 /// Base64 characters per full line.
 const COLUMNS: usize = 64;
+/// The most whitespace allowed before BEGIN, and one more than allowed after END (the age CLI's
+/// limits; vectors/backup.json spec "armor").
+const MAX_WHITESPACE: usize = 1024;
 
 /// The ASCII whitespace allowed around the armor: space, tab, CR and LF (the same four as
 /// verify.py's `BACKUP_WHITESPACE`; not form feed, which `u8::is_ascii_whitespace` also takes).
@@ -31,16 +38,15 @@ const fn is_space(byte: u8) -> bool {
     matches!(byte, b' ' | b'\t' | b'\r' | b'\n')
 }
 
-/// `data` without its leading whitespace.
-fn trim_start(data: &[u8]) -> &[u8] {
-    let skip = data.iter().take_while(|&&b| is_space(b)).count();
-    &data[skip..]
+/// How many whitespace bytes `data` starts with.
+fn leading_space(data: &[u8]) -> usize {
+    data.iter().take_while(|&&b| is_space(b)).count()
 }
 
 /// Whether to read `data` as armor: after leading whitespace it starts with `-----BEGIN`. Anything
 /// else is read as a binary age file.
 pub(crate) fn is_armored(data: &[u8]) -> bool {
-    trim_start(data).starts_with(BEGIN_PREFIX)
+    data[leading_space(data)..].starts_with(BEGIN_PREFIX)
 }
 
 /// The armor of a binary age file, as age writes it: LF line ends and a final LF.
@@ -101,8 +107,12 @@ impl<'a> Lines<'a> {
 /// The binary age file inside strict armor, or `Backup(Armor)`.
 pub(crate) fn decode(data: &[u8]) -> Result<Vec<u8>, CoreError> {
     let refused = CoreError::Backup(BackupError::Armor);
+    let skip = leading_space(data);
+    if skip > MAX_WHITESPACE || (skip > 0 && data[skip - 1] != b'\n') {
+        return Err(refused);
+    }
     let mut lines = Lines {
-        data: trim_start(data),
+        data: &data[skip..],
         at: 0,
     };
     match lines.next_line() {
@@ -129,7 +139,8 @@ pub(crate) fn decode(data: &[u8]) -> Result<Vec<u8>, CoreError> {
         body.extend_from_slice(line);
         previous = Some(line.len());
     }
-    if previous.is_none() || !lines.rest().iter().all(|&b| is_space(b)) {
+    let rest = lines.rest();
+    if previous.is_none() || rest.len() >= MAX_WHITESPACE || !rest.iter().all(|&b| is_space(b)) {
         return Err(refused);
     }
     let mut binary = vec![0u8; body.len() / 4 * 3];
@@ -194,7 +205,20 @@ mod tests {
         let mut padded = b" \t\r\n".to_vec();
         padded.extend_from_slice(&text);
         padded.extend_from_slice(b"\t \r\n\n");
-        for accepted in [crlf.as_slice(), &padded, &text[..text.len() - 1]] {
+        let end_cr = [&text[..text.len() - 1], b"\r"].concat();
+        // The whitespace limits at their edges: 1,024 bytes of blank lines before BEGIN, and
+        // 1,023 bytes after END.
+        let blank_lines = b" \t\r\n".repeat(MAX_WHITESPACE / 4);
+        let leading = [blank_lines.as_slice(), &text].concat();
+        let trailing = [&text, &blank_lines[1..]].concat();
+        for accepted in [
+            crlf.as_slice(),
+            &padded,
+            &text[..text.len() - 1],
+            &end_cr,
+            &leading,
+            &trailing,
+        ] {
             assert_eq!(decode(accepted).expect("decoded"), stream(100));
         }
         let refused = CoreError::Backup(BackupError::Armor);
@@ -203,12 +227,26 @@ mod tests {
         form_feed.push(0x0c);
         let mut inner_cr = text.clone();
         inner_cr[BEGIN.len() + 5] = b'\r';
-        for bad in [BEGIN, &begin_only, &form_feed, &inner_cr] {
+        let space_before = [b" ".as_slice(), &text].concat();
+        let tab_after_line = [b"\n\t".as_slice(), &text].concat();
+        let leading_1025 = [b"\n".as_slice(), &leading].concat();
+        let trailing_1024 = [&text, blank_lines.as_slice()].concat();
+        for bad in [
+            BEGIN,
+            &begin_only,
+            &form_feed,
+            &inner_cr,
+            &space_before,
+            &tab_after_line,
+            &leading_1025,
+            &trailing_1024,
+        ] {
+            assert!(is_armored(bad));
             assert_eq!(decode(bad), Err(refused));
         }
         // Form feed is not whitespace here: before BEGIN it makes the input a binary file.
-        let mut leading = vec![0x0c];
-        leading.extend_from_slice(&text);
-        assert!(!is_armored(&leading));
+        let mut form_feed_first = vec![0x0c];
+        form_feed_first.extend_from_slice(&text);
+        assert!(!is_armored(&form_feed_first));
     }
 }

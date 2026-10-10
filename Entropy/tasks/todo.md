@@ -1394,6 +1394,24 @@ starts. Every item names its proof.
       Proof: armoring CCTV `scrypt` gives `armor_scrypt` exactly; CRLF is accepted; these negatives all fail:
       lowercase label, a 63- or 65-character line, an empty last line, bad or non-canonical padding, an inner space,
       text after END, no END, a BOM.
+      Review fixes after commit 21 (the readers now refuse whitespace the age CLI refuses):
+      - verify.py read an END line ended by a lone CR at the end of the input as `END\r` and refused it; core and
+        age 1.3.2 accept it. verify.py now strips that CR too, and backup.json gains `abandon-12-end-cr`.
+      - Core and verify.py accepted any amount of space, tab, CR and LF before BEGIN, on BEGIN's own line too, and
+        after END up to the 8 KiB cap, so `verify_backup` and `decrypt_backup` could pass a file the age CLI cannot
+        open (build-plan.md: the file opens "with the open-source age tool, without KeepCrypt"). age 1.3.2 refuses
+        a space or tab before BEGIN on its line ("invalid first line"), more than 1,024 bytes before BEGIN and
+        1,024 or more after END ("too much trailing whitespace"); it accepts form feed and vertical tab there,
+        which core keeps refusing (stricter is safe). Both readers now allow at most 1,024 bytes of whitespace
+        before BEGIN, in whole lines (empty or ending in LF), and fewer than 1,024 after the END line. backup.json:
+        `abandon-12-8192-bytes` (7,198 trailing spaces, which age refuses) is gone; `abandon-12-leading-1024` and
+        `abandon-12-trailing-1023` are accepted at the edges; `armor-space-before-begin`,
+        `armor-tab-after-blank-line`, `armor-leading-1025`, `armor-trailing-1024` and `armor-8192-bytes` give
+        `Backup(Armor)` before any scrypt work (42 refused files). No accepted armor can now reach 8,192 bytes
+        (a 4 KiB chunk armors to 5,862 bytes, plus at most 2,047 of whitespace), so `armor-8192-bytes` shows the
+        size cap lets 8,192 bytes through to the armor rules, and `too-large` (8,193) still gives `TooLarge`.
+        age 1.3.2 decrypts every accepted variant and refuses all five new cases; Ubuntu's 1.1.1 is not checked
+        here.
 - [ ] `backup/age.rs` (C2SP age v1; build-plan.md "Recipient: scrypt only"; Q1 reader policy):
       - a strict header grammar;
       - the scrypt stanza must be alone, with 3 arguments, a canonical 16-byte salt, and log2 N matching `[1-9][0-9]?`

@@ -967,6 +967,10 @@ BACKUP_FILE_NAME_BYTES = 4  # keepcrypt-backup-<8 lowercase hex>.age
 CHALLENGE_ATTEMPT_BYTES = 16
 CHALLENGE_MAX_ATTEMPTS = 64
 BACKUP_WHITESPACE = b" \t\r\n"  # the ASCII whitespace the armor may have around it
+# At most this many bytes of that whitespace before BEGIN, and fewer than this many after END: the age CLI's
+# own limits (age 1.3.2 refuses 1,025 bytes before BEGIN and 1,024 after END), so no armor this reader accepts
+# is one age refuses for its whitespace.
+BACKUP_ARMOR_WHITESPACE_BYTES = 1024
 BACKUP_VERSION_LINE = "keepcrypt-backup/v1"
 BACKUP_APPS = ("pi", "android", "ios")
 # The CCTV "scrypt" case (vectors/age/scrypt/scrypt; in age/README.md "file key" is a debugging aid): its
@@ -1038,8 +1042,10 @@ BACKUP_SPEC = {
     "the reader must refuse it before any scrypt work",
     "armor": "strict PEM: '-----BEGIN AGE ENCRYPTED FILE-----', the padded canonical base64 of the binary file in "
     "lines of exactly 64 characters with a last line of 1 to 64, then '-----END AGE ENCRYPTED FILE-----'; lines end "
-    "in LF or CRLF, the END line may end the input (alone or with a CR), and only ASCII whitespace may come before "
-    "BEGIN or after END. The writer uses LF and ends with LF. Anything else is Armor",
+    "in LF or CRLF, and the END line may end the input (alone or with a CR). Only ASCII whitespace (space, tab, CR, "
+    "LF) may come before BEGIN or after END: before BEGIN at most 1,024 bytes, in whole lines (empty, or ending in "
+    "LF, so BEGIN starts a line), and after the END line fewer than 1,024 bytes, as the age CLI allows. The writer "
+    "uses LF and ends with LF. Anything else is Armor",
     "passphrase": "11 bytes from the OS source cut into 8 indices of 11 bits, most significant first; the age "
     "passphrase is the 8 lowercase BIP39 English words joined by single spaces (Q6e)",
     "generate": "generate_backup_passphrase reads the 11 passphrase bytes, then 16 bytes per challenge attempt: "
@@ -3518,6 +3524,8 @@ def age_dearmor(data):
     """The binary file inside strict armor (spec "armor"), or Backup(Armor)."""
     refused = "Backup(Armor)"
     at = len(data) - len(data.lstrip(BACKUP_WHITESPACE))
+    if at > BACKUP_ARMOR_WHITESPACE_BYTES or data[:at][-1:] not in (b"", b"\n"):
+        raise BackupRefused(refused)
     line, at, ended = armor_line(data, at)
     if line != AGE_ARMOR_BEGIN or not ended:
         raise BackupRefused(refused)
@@ -3531,7 +3539,7 @@ def age_dearmor(data):
         if not ended:
             raise BackupRefused(refused)
         body.append(line)
-    if data[at:].lstrip(BACKUP_WHITESPACE) or not body:
+    if data[at:].lstrip(BACKUP_WHITESPACE) or len(data) - at >= BACKUP_ARMOR_WHITESPACE_BYTES or not body:
         raise BackupRefused(refused)
     if any(len(line) != AGE_COLUMNS for line in body[:-1]) or not 1 <= len(body[-1]) <= AGE_COLUMNS:
         raise BackupRefused(refused)
@@ -3937,6 +3945,7 @@ def backup_age_cases(plaintexts, passphrases):
     chunk = backup_stream("chunk-4096/plaintext", BACKUP_MAX_CHUNK_BYTES)
     chunk_inputs = (inputs("chunk-4096")[0], abandon[1], inputs("chunk-4096")[2])
     whitespace = b"\n \t\r\n" + abandon_armored.replace(b"\n", b"\r\n") + b" \r\n\t\n"
+    blank_lines = b" \t\r\n" * (BACKUP_ARMOR_WHITESPACE_BYTES // 4)  # 1,024 bytes of whitespace-only lines
     padded_8192 = abandon_armored + b" " * (BACKUP_MAX_FILE_BYTES - len(abandon_armored))
     files = [
         backup_file_case("cctv-scrypt", True, CCTV_PASSPHRASE, CCTV_WORK_FACTOR, *cctv, CCTV_PLAINTEXT,
@@ -3955,7 +3964,10 @@ def backup_age_cases(plaintexts, passphrases):
                          abandon_armored[:-1], True),
         backup_file_case("abandon-12-end-cr", False, abandon_pass, log_n, *abandon, "abandon-12",
                          abandon_armored[:-1] + b"\r", True),
-        backup_file_case("abandon-12-8192-bytes", False, abandon_pass, log_n, *abandon, "abandon-12", padded_8192, True),
+        backup_file_case("abandon-12-leading-1024", False, abandon_pass, log_n, *abandon, "abandon-12",
+                         blank_lines + abandon_armored, True),
+        backup_file_case("abandon-12-trailing-1023", False, abandon_pass, log_n, *abandon, "abandon-12",
+                         abandon_armored + blank_lines[:-1], True),
     ]
 
     header_end = abandon_binary.index(b"\n--- ") + 1
@@ -4006,6 +4018,15 @@ def backup_age_cases(plaintexts, passphrases):
          abandon_armored[:first_line + 10] + b" " + abandon_armored[first_line + 11:], a, False),
         ("armor-text-after-end", "a letter after the END line", abandon_pass, abandon_armored + b"x", a, False),
         ("armor-no-end", "no END line", abandon_pass, abandon_armored[:abandon_armored.index(AGE_ARMOR_END)], a, False),
+        ("armor-space-before-begin", "a space before BEGIN on its line", abandon_pass, b" " + abandon_armored, a, False),
+        ("armor-tab-after-blank-line", "a blank line, then a tab before BEGIN on its line", abandon_pass,
+         b"\r\n\t" + abandon_armored, a, False),
+        ("armor-leading-1025", "1,025 bytes of whitespace-only lines before BEGIN", abandon_pass,
+         b"\n" + blank_lines + abandon_armored, a, False),
+        ("armor-trailing-1024", "1,024 bytes of whitespace after the END line", abandon_pass,
+         abandon_armored + blank_lines, a, False),
+        ("armor-8192-bytes", "the armored file padded with trailing spaces to exactly 8,192 bytes: within the size "
+         "cap, refused for its trailing whitespace", abandon_pass, padded_8192, a, False),
         ("armor-bom", "a UTF-8 byte order mark before BEGIN, so it is read as a binary file", abandon_pass,
          "\ufeff".encode("utf-8") + abandon_armored, h, False),
         ("too-large", "the armored file padded with trailing spaces to 8,193 bytes", abandon_pass,
