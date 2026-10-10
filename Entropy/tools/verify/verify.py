@@ -966,10 +966,11 @@ BACKUP_PASSPHRASE_BYTES = 11  # 88 bits, cut into 8 indices of 11 bits, most sig
 BACKUP_FILE_NAME_BYTES = 4  # keepcrypt-backup-<8 lowercase hex>.age
 CHALLENGE_ATTEMPT_BYTES = 16
 CHALLENGE_MAX_ATTEMPTS = 64
-BACKUP_WHITESPACE = b" \t\r\n"  # the ASCII whitespace the armor may have around it
-# At most this many bytes of that whitespace before BEGIN, and fewer than this many after END: the age CLI's
-# own limits (age 1.3.2 refuses 1,025 bytes before BEGIN and 1,024 after END), so no armor this reader accepts
-# is one age refuses for its whitespace.
+BACKUP_WHITESPACE = b" \t\r\n"  # the ASCII whitespace the armor may have after END
+# Fewer than this many bytes of that whitespace after END: the age CLI's own limit (age 1.1.1 and 1.3.2
+# refuse 1,024). None before BEGIN: age 1.1.1 reads a file as armor only when BEGIN is its first byte (1.2
+# and later skip up to 1,024 bytes of whitespace), so no armor this reader accepts is one age refuses for
+# its whitespace.
 BACKUP_ARMOR_WHITESPACE_BYTES = 1024
 BACKUP_VERSION_LINE = "keepcrypt-backup/v1"
 BACKUP_APPS = ("pi", "android", "ios")
@@ -1042,10 +1043,11 @@ BACKUP_SPEC = {
     "the reader must refuse it before any scrypt work",
     "armor": "strict PEM: '-----BEGIN AGE ENCRYPTED FILE-----', the padded canonical base64 of the binary file in "
     "lines of exactly 64 characters with a last line of 1 to 64, then '-----END AGE ENCRYPTED FILE-----'; lines end "
-    "in LF or CRLF, and the END line may end the input (alone or with a CR). Only ASCII whitespace (space, tab, CR, "
-    "LF) may come before BEGIN or after END: before BEGIN at most 1,024 bytes, in whole lines (empty, or ending in "
-    "LF, so BEGIN starts a line), and after the END line fewer than 1,024 bytes, as the age CLI allows. The writer "
-    "uses LF and ends with LF. Anything else is Armor",
+    "in LF or CRLF, and the END line may end the input (alone or with a CR). The BEGIN line starts at the first "
+    "byte: nothing comes before it, not even whitespace, since age 1.1.1 reads a file as armor only then. Only ASCII "
+    "whitespace (space, tab, CR, LF) may come after the END line, fewer than 1,024 bytes, as the age CLI allows. The "
+    "writer uses LF and ends with LF. Anything else is Armor, an input that starts with '-----BEGIN' only after "
+    "whitespace included",
     "passphrase": "11 bytes from the OS source cut into 8 indices of 11 bits, most significant first; the age "
     "passphrase is the 8 lowercase BIP39 English words joined by single spaces (Q6e)",
     "generate": "generate_backup_passphrase reads the 11 passphrase bytes, then 16 bytes per challenge attempt: "
@@ -3521,12 +3523,10 @@ def armor_line(data, at):
 
 
 def age_dearmor(data):
-    """The binary file inside strict armor (spec "armor"), or Backup(Armor)."""
+    """The binary file inside strict armor (spec "armor"), or Backup(Armor). The BEGIN line is the first line,
+    with no whitespace before it."""
     refused = "Backup(Armor)"
-    at = len(data) - len(data.lstrip(BACKUP_WHITESPACE))
-    if at > BACKUP_ARMOR_WHITESPACE_BYTES or data[:at][-1:] not in (b"", b"\n"):
-        raise BackupRefused(refused)
-    line, at, ended = armor_line(data, at)
+    line, at, ended = armor_line(data, 0)
     if line != AGE_ARMOR_BEGIN or not ended:
         raise BackupRefused(refused)
     body = []
@@ -3944,7 +3944,7 @@ def backup_age_cases(plaintexts, passphrases):
     zoo_binary = age_encrypt(zoo_pass, *zoo, log_n, texts["zoo-24"])
     chunk = backup_stream("chunk-4096/plaintext", BACKUP_MAX_CHUNK_BYTES)
     chunk_inputs = (inputs("chunk-4096")[0], abandon[1], inputs("chunk-4096")[2])
-    whitespace = b"\n \t\r\n" + abandon_armored.replace(b"\n", b"\r\n") + b" \r\n\t\n"
+    crlf = abandon_armored.replace(b"\n", b"\r\n")
     blank_lines = b" \t\r\n" * (BACKUP_ARMOR_WHITESPACE_BYTES // 4)  # 1,024 bytes of whitespace-only lines
     padded_8192 = abandon_armored + b" " * (BACKUP_MAX_FILE_BYTES - len(abandon_armored))
     files = [
@@ -3957,15 +3957,13 @@ def backup_age_cases(plaintexts, passphrases):
         backup_file_case("zoo-24", True, zoo_pass, log_n, *zoo, "zoo-24", age_armor(zoo_binary), True),
         backup_file_case("chunk-4096", True, abandon_pass, log_n, *chunk_inputs, chunk,
                          age_encrypt(abandon_pass, *chunk_inputs, log_n, chunk), False),
-        backup_file_case("abandon-12-crlf", False, abandon_pass, log_n, *abandon, "abandon-12",
-                         abandon_armored.replace(b"\n", b"\r\n"), True),
-        backup_file_case("abandon-12-whitespace", False, abandon_pass, log_n, *abandon, "abandon-12", whitespace, True),
+        backup_file_case("abandon-12-crlf", False, abandon_pass, log_n, *abandon, "abandon-12", crlf, True),
+        backup_file_case("abandon-12-crlf-trailing-whitespace", False, abandon_pass, log_n, *abandon, "abandon-12",
+                         crlf + b" \r\n\t\n", True),
         backup_file_case("abandon-12-no-final-newline", False, abandon_pass, log_n, *abandon, "abandon-12",
                          abandon_armored[:-1], True),
         backup_file_case("abandon-12-end-cr", False, abandon_pass, log_n, *abandon, "abandon-12",
                          abandon_armored[:-1] + b"\r", True),
-        backup_file_case("abandon-12-leading-1024", False, abandon_pass, log_n, *abandon, "abandon-12",
-                         blank_lines + abandon_armored, True),
         backup_file_case("abandon-12-trailing-1023", False, abandon_pass, log_n, *abandon, "abandon-12",
                          abandon_armored + blank_lines[:-1], True),
     ]
@@ -4019,10 +4017,13 @@ def backup_age_cases(plaintexts, passphrases):
         ("armor-text-after-end", "a letter after the END line", abandon_pass, abandon_armored + b"x", a, False),
         ("armor-no-end", "no END line", abandon_pass, abandon_armored[:abandon_armored.index(AGE_ARMOR_END)], a, False),
         ("armor-space-before-begin", "a space before BEGIN on its line", abandon_pass, b" " + abandon_armored, a, False),
+        ("armor-newline-before-begin", "an empty line before BEGIN", abandon_pass, b"\n" + abandon_armored, a, False),
         ("armor-tab-after-blank-line", "a blank line, then a tab before BEGIN on its line", abandon_pass,
          b"\r\n\t" + abandon_armored, a, False),
-        ("armor-leading-1025", "1,025 bytes of whitespace-only lines before BEGIN", abandon_pass,
-         b"\n" + blank_lines + abandon_armored, a, False),
+        ("armor-whitespace-lines-around", "whitespace-only lines before BEGIN and after END, CRLF line ends",
+         abandon_pass, b"\n \t\r\n" + crlf + b" \r\n\t\n", a, False),
+        ("armor-leading-1024", "1,024 bytes of whitespace-only lines before BEGIN", abandon_pass,
+         blank_lines + abandon_armored, a, False),
         ("armor-trailing-1024", "1,024 bytes of whitespace after the END line", abandon_pass,
          abandon_armored + blank_lines, a, False),
         ("armor-8192-bytes", "the armored file padded with trailing spaces to exactly 8,192 bytes: within the size "
@@ -5242,6 +5243,9 @@ def check_backup_contents(vectors_dir):
             if len(binary) != age_file_bytes(len(plaintext), case["work_factor"]) or (
                     case["armored"] and len(data) != armored_bytes(len(binary))):
                 problems.append("backup.json age_files %s: the size formula is off" % case["name"])
+        # Every accepted file starts where age 1.1.1 looks: its BEGIN line or its version line at the first byte.
+        if not data.startswith((AGE_ARMOR_BEGIN, AGE_VERSION_LINE)):
+            problems.append("backup.json age_files %s does not start with BEGIN or the version line" % case["name"])
         try:
             if age_decrypt(data, passphrase) != plaintext:
                 problems.append("backup.json age_files %s decrypts to other bytes" % case["name"])

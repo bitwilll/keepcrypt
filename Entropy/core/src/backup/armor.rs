@@ -5,13 +5,13 @@
 //!   exactly 64 columns (the last 1 to 64), `-----END AGE ENCRYPTED FILE-----`, each line ended by
 //!   LF.
 //! - Decode accepts exactly that, with LF or CRLF line ends and an END line that may end the input
-//!   (alone or with a CR), and ASCII whitespace (space, tab, CR, LF) before BEGIN and after END
-//!   only: before BEGIN at most 1,024 bytes, in whole lines (empty, or ending in LF, so BEGIN
-//!   starts a line), and after the END line fewer than 1,024 bytes. Those are the age CLI's own
-//!   limits (age 1.3.2 refuses a space before BEGIN on its line, 1,025 bytes before BEGIN and
-//!   1,024 after END), so no armor this reader accepts is one age refuses for its whitespace. The
-//!   base64 must be canonical (base64ct checks the padding and the unused low bits). Anything else
-//!   is `Backup(Armor)`.
+//!   (alone or with a CR), BEGIN at the first byte, and ASCII whitespace (space, tab, CR, LF)
+//!   after the END line only, fewer than 1,024 bytes of it. Those are the age CLI's own limits:
+//!   age 1.1.1 reads a file as armor only when BEGIN is its first byte (1.2 and later skip up to
+//!   1,024 bytes of whitespace before it), and every version refuses 1,024 bytes after END, so no
+//!   armor this reader accepts is one age refuses for its whitespace. The base64 must be
+//!   canonical (base64ct checks the padding and the unused low bits). Anything else is
+//!   `Backup(Armor)`, an input that starts with `-----BEGIN` only after whitespace included.
 //!
 //! The armored text is ciphertext, so these buffers need no wiping.
 
@@ -28,11 +28,11 @@ pub(crate) const END: &[u8] = b"-----END AGE ENCRYPTED FILE-----";
 const BEGIN_PREFIX: &[u8] = b"-----BEGIN";
 /// Base64 characters per full line.
 const COLUMNS: usize = 64;
-/// The most whitespace allowed before BEGIN, and one more than allowed after END (the age CLI's
-/// limits; vectors/backup.json spec "armor").
+/// One more than the whitespace allowed after END (the age CLI's limit; vectors/backup.json spec
+/// "armor").
 const MAX_WHITESPACE: usize = 1024;
 
-/// The ASCII whitespace allowed around the armor: space, tab, CR and LF (the same four as
+/// The ASCII whitespace allowed after the armor: space, tab, CR and LF (the same four as
 /// verify.py's `BACKUP_WHITESPACE`; not form feed, which `u8::is_ascii_whitespace` also takes).
 const fn is_space(byte: u8) -> bool {
     matches!(byte, b' ' | b'\t' | b'\r' | b'\n')
@@ -104,17 +104,11 @@ impl<'a> Lines<'a> {
     }
 }
 
-/// The binary age file inside strict armor, or `Backup(Armor)`.
+/// The binary age file inside strict armor, or `Backup(Armor)`. The BEGIN line is the first line,
+/// with no whitespace before it.
 pub(crate) fn decode(data: &[u8]) -> Result<Vec<u8>, CoreError> {
     let refused = CoreError::Backup(BackupError::Armor);
-    let skip = leading_space(data);
-    if skip > MAX_WHITESPACE || (skip > 0 && data[skip - 1] != b'\n') {
-        return Err(refused);
-    }
-    let mut lines = Lines {
-        data: &data[skip..],
-        at: 0,
-    };
+    let mut lines = Lines { data, at: 0 };
     match lines.next_line() {
         Some((line, true)) if line == BEGIN => {}
         _ => return Err(refused),
@@ -202,21 +196,17 @@ mod tests {
                 }
             })
             .collect();
-        let mut padded = b" \t\r\n".to_vec();
-        padded.extend_from_slice(&text);
-        padded.extend_from_slice(b"\t \r\n\n");
+        let crlf_trailing = [crlf.as_slice(), b"\t \r\n\n"].concat();
         let end_cr = [&text[..text.len() - 1], b"\r"].concat();
-        // The whitespace limits at their edges: 1,024 bytes of blank lines before BEGIN, and
-        // 1,023 bytes after END.
+        // Whitespace after END up to its limit, 1,023 bytes; none before BEGIN, even a lone LF or
+        // 1,024 bytes of blank lines, which age 1.2 and later skip but age 1.1.1 does not.
         let blank_lines = b" \t\r\n".repeat(MAX_WHITESPACE / 4);
-        let leading = [blank_lines.as_slice(), &text].concat();
         let trailing = [&text, &blank_lines[1..]].concat();
         for accepted in [
             crlf.as_slice(),
-            &padded,
+            &crlf_trailing,
             &text[..text.len() - 1],
             &end_cr,
-            &leading,
             &trailing,
         ] {
             assert_eq!(decode(accepted).expect("decoded"), stream(100));
@@ -228,8 +218,10 @@ mod tests {
         let mut inner_cr = text.clone();
         inner_cr[BEGIN.len() + 5] = b'\r';
         let space_before = [b" ".as_slice(), &text].concat();
+        let newline_before = [b"\n".as_slice(), &text].concat();
         let tab_after_line = [b"\n\t".as_slice(), &text].concat();
-        let leading_1025 = [b"\n".as_slice(), &leading].concat();
+        let around = [b" \t\r\n".as_slice(), &text, b"\t \r\n\n"].concat();
+        let leading_1024 = [blank_lines.as_slice(), &text].concat();
         let trailing_1024 = [&text, blank_lines.as_slice()].concat();
         for bad in [
             BEGIN,
@@ -237,8 +229,10 @@ mod tests {
             &form_feed,
             &inner_cr,
             &space_before,
+            &newline_before,
             &tab_after_line,
-            &leading_1025,
+            &around,
+            &leading_1024,
             &trailing_1024,
         ] {
             assert!(is_armored(bad));

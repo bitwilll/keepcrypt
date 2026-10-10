@@ -179,7 +179,7 @@ fn backup_json_and_the_age_cli_files_through_decrypt_backup() {
             ),
         }
     }
-    assert_eq!(opened, 13, "9 backup.json backups and the age CLI's 4");
+    assert_eq!(opened, 12, "8 backup.json backups and the age CLI's 4");
     for case in doc["age_refused"].as_array().expect("refused") {
         let name = text(&case["name"]);
         let Ok(passphrase) = typed(text(&case["passphrase"])) else {
