@@ -4,6 +4,7 @@ RECHECK_URL = "https://registry.invalid/check#t="  # http: a URL string
 from .socket_names import FAMILY  # socket: a local module with a longer name
 from hashlib import sha256  # ssl and urllib: only in this comment
 NEVER_IMPORTED = ("ftplib", "smtplib", "poplib", "imaplib", "telnetlib", "httpx", "aiohttp")
+C_MODULES = ("_socket", "_ssl")  # the C modules behind socket and ssl, as strings
 import xml.etree.ElementTree  # xml parses offline; xmlrpc is the networked one
 """Synchronous on purpose: no asyncio loop and no webbrowser tab."""
 pending = self.requests  # requests: an attribute

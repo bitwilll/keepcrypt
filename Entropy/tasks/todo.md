@@ -2779,14 +2779,16 @@ Groups land in the order below. Vectors come before the core test that reads the
 **2. Python networking and clipboard in the banned-API gate (Q23; CLAUDE.md Commands "network and clipboard APIs")**
 - [x] `scripts/banned-api-check.sh`, for `.py` files, dispatched like `pyrandom()`:
       - network: `import` or `from` of `socket`, `ssl`, `urllib`, `http`, `ftplib`, `smtplib`, `poplib`, `imaplib`,
-        `telnetlib`, `xmlrpc`, `asyncio`, `webbrowser`, `requests`, `httpx`, `aiohttp`. The pattern is anchored on
-        the import, so a URL string such as `https://registry.invalid` stays quiet;
+        `telnetlib`, `xmlrpc`, `asyncio`, `webbrowser`, `requests`, `httpx`, `aiohttp`, and of `_socket` and `_ssl`,
+        the C modules behind socket and ssl (review fix). The pattern is anchored on the import, so a URL string such
+        as `https://registry.invalid` stays quiet;
       - clipboard: `pyperclip`, tkinter's `clipboard_append`/`clipboard_get`, and `pbcopy`, `pbpaste`, `xclip`,
         `xsel`, `wl-copy` anywhere in a `.py` file;
-      - recorded residuals: grep cannot see `__import__("socket")`, an attribute path such as `getpass.os.system`, or
-        a subprocess running a network tool. For verify.py, check 12 closes all three: rule (a) bans `__import__` and
-        every module attribute outside its recorded list, and rule (e) fails any socket or process event in an
-        audited run. vectorgen and `scripts/` keep the grep gate only.
+      - recorded residuals: grep cannot see `__import__("socket")`, `importlib.import_module("socket")`, an attribute
+        path such as `getpass.os.system`, or a subprocess running a network tool. For verify.py, check 12 closes all
+        four: rule (a) bans `__import__`, any `importlib` import and every module attribute outside its recorded list,
+        and rule (e) fails any socket or process event in an audited run. vectorgen and `scripts/` keep the grep gate
+        only.
       Proof: `--selftest` gains one hit and one near miss per pattern; the gate is clean on the tree.
       Proof: commit 5. `banned-api-check.sh --selftest` passes 297/297 (251 before) under sh and dash: 19
       `network-python-*` fixtures (each module, plus the parenthesised, no-space, backslash-continued and wrapped

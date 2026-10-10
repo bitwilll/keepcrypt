@@ -67,10 +67,11 @@
 #              TcpListener, UdpSocket. Not banned: "import Network" and NWPathMonitor (the offline
 #              check), and reading back a picked .age or .kcr file (rule 8):
 #              Data(contentsOf: URL(fileURLWithPath: path)), Data(contentsOf: pickedURL).
-#              In a .py file (tasks/todo.md M2 group 2, Q23), an import of socket, ssl, urllib,
-#              http, ftplib, smtplib, poplib, imaplib, telnetlib, xmlrpc, asyncio, webbrowser,
-#              requests, httpx or aiohttp, in the shapes Python random has under RNG. Anchored on
-#              the import, so a URL string such as "https://registry.invalid" passes.
+#              In a .py file (tasks/todo.md M2 group 2, Q23), an import of socket, ssl (or their C
+#              modules _socket and _ssl), urllib, http, ftplib, smtplib, poplib, imaplib,
+#              telnetlib, xmlrpc, asyncio, webbrowser, requests, httpx or aiohttp, in the shapes
+#              Python random has under RNG. Anchored on the import, so a URL string such as
+#              "https://registry.invalid" passes.
 #   Clipboard  rule 5 and docs/mobile-apps.md ("Never offered: share sheet, copy"): clipboard APIs,
 #              plus UI that copies or shares: .textSelection( unless it is exactly
 #              .textSelection(.disabled), which the docs require (spaces around .disabled are
@@ -299,11 +300,12 @@ network() {
 # them ("    urllib.request" after "import json, \", "    socket," inside "from gevent import (",
 # or "    socket \"), and the line after "from \" ("    socket import create_connection").
 # Anchored on the import, so the names pass in a URL such as "https://registry.invalid", in other
-# strings, as attributes and inside longer names. Grep cannot see __import__("socket"), an
-# attribute path such as getpass.os.system, or a subprocess running a network tool. For verify.py,
-# tasks/todo.md M2 group 3's check 12 (vectorgen.py --selftest) closes all three; vectorgen and
-# scripts/ keep this gate only.
-pynet='(socket|ssl|urllib|http|ftplib|smtplib|poplib|imaplib|telnetlib|xmlrpc|asyncio|webbrowser|requests|httpx|aiohttp)'
+# strings, as attributes and inside longer names. _socket and _ssl are the C modules behind socket
+# and ssl, with the same calls. Grep cannot see __import__("socket") or
+# importlib.import_module("socket"), an attribute path such as getpass.os.system, or a subprocess
+# running a network tool. For verify.py, tasks/todo.md M2 group 3's check 12 (vectorgen.py
+# --selftest) closes all four; vectorgen and scripts/ keep this gate only.
+pynet='(socket|ssl|_socket|_ssl|urllib|http|ftplib|smtplib|poplib|imaplib|telnetlib|xmlrpc|asyncio|webbrowser|requests|httpx|aiohttp)'
 pynetwork() {
   grep -n -a -E \
     -e "${L}import[[:space:]]+$pynet$R" \
