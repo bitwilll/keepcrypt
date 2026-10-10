@@ -269,7 +269,8 @@ def generate(verify, age, workdir):
         "description": "Files written by the age CLI (scripts/age-interop.py --generate), armored and binary, of "
         "backup.json's abandon-12 and zoo-24 plaintexts under backup.json's passphrases (passphrases 'stream' and "
         "generate 'stream'), at age's own work factor 18. Core's tests and scripts/age-interop.py decrypt them; "
-        "verify.py --selftest reads their armor and headers (check 11). vectors/SOURCES.md records the tool.",
+        "tools/verify/vectorgen.py --selftest reads their armor and headers (check 11). vectors/SOURCES.md records "
+        "the tool.",
         "tool_version": age_version(age),
         "files": files,
     }
