@@ -154,8 +154,9 @@ impl Source {
         Ok(bytes)
     }
 
-    /// Called by the session's `Drop` after its secrets are zeroized: a stub wipes its own buffers
-    /// and counts the wipe on its probe. The OS arm holds nothing.
+    /// The last step of zeroizing a session, after every other field is clear (`Inner`'s
+    /// `Zeroize`, which its `Drop` runs): a stub wipes its own buffers and counts the wipe on its
+    /// probe. The OS arm holds nothing.
     pub(crate) fn wiped(&mut self) {
         match self {
             Source::Os => {}

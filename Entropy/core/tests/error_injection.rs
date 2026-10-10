@@ -1,10 +1,10 @@
 //! Error injection (docs/build-plan.md CI rule "Fail closed", test matrix "Error injection on every
 //! source" and "Repetition Count and Adaptive Proportion"; CLAUDE.md rule 3; tasks/todo.md, M1
 //! group 10 and "Inputs from M0"). Every failure halts the session and wipes it: each session case
-//! below asserts the exact `Err` and exactly one wipe on the stub's probe, which `Inner`'s `Drop`
-//! bumps after zeroizing. No lint sees an OS read whose error is matched and dropped
-//! (`if let Err(_) = read(..) {}`), so these tests are what proves that no source failure is
-//! swallowed.
+//! below asserts the exact `Err` and exactly one wipe on the stub's probe, which zeroizing `Inner`
+//! bumps last, once every field is clear (`Inner`'s `Drop` runs that zeroize). No lint sees an OS
+//! read whose error is matched and dropped (`if let Err(_) = read(..) {}`), so these tests are what
+//! proves that no source failure is swallowed.
 //!
 //! The free functions that run known-answer groups hold no session, so they have no probe: each
 //! `*_with_kat_fault` twin gives exactly `Kat(id)` for every group its function runs and the

@@ -16,7 +16,7 @@
 //!   nothing, so it is fail-closed on its own, not only because the session wipes on any `Err`
 //!   (CLAUDE.md rule 3).
 
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::error::{
     CoreError, HealthFailure, HealthStage, HealthTest, InternalFault, KatId, SourceFault,
@@ -48,8 +48,9 @@ impl CreditedSamples {
 }
 
 /// A streaming Repetition Count and Adaptive Proportion tester. It remembers raw sample values,
-/// so it is zeroized with the session.
-#[derive(Zeroize)]
+/// so it is zeroized with the session, and wipes itself when dropped (the boot test's tester, and
+/// any other, needs no outer call; review fix after commit 25).
+#[derive(Zeroize, ZeroizeOnDrop)]
 pub(crate) struct HealthTester {
     /// Samples tested so far: the index of the next sample.
     tested: u64,
@@ -62,6 +63,12 @@ pub(crate) struct HealthTester {
     #[zeroize(skip)]
     failed: Option<CoreError>,
 }
+
+/// The tester holds raw sample values, so it must wipe itself when dropped; this pins it.
+const _: () = {
+    const fn zeroize_on_drop<T: ZeroizeOnDrop>() {}
+    zeroize_on_drop::<HealthTester>()
+};
 
 impl HealthTester {
     /// A tester that has seen no sample: its next 1,024 samples are the startup samples.

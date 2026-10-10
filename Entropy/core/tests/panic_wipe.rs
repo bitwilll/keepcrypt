@@ -1,8 +1,8 @@
 //! A panic wipes the session (CLAUDE.md rule 3; tasks/todo.md, M1 group 9 "Ready and panics" and
 //! group 10). A panic unwinds (the release profile states `panic = "unwind"`, and `cargo test`
-//! always unwinds), and the unwind drops the session's `Box<Inner>`, whose `Drop` zeroizes it and
-//! then bumps the stub's wipe probe. Nothing catches the panic: `catch_unwind` is banned in core,
-//! so the thread dies with it, and the session with the thread.
+//! always unwinds), and the unwind drops the session's `Box<Inner>`, whose `Drop` zeroizes it; the
+//! zeroize bumps the stub's wipe probe last, once every field is clear. Nothing catches the panic:
+//! `catch_unwind` is banned in core, so the thread dies with it, and the session with the thread.
 
 use keepcrypt_core::{
     Mode, Platform, ReadbackResult, Rolling, SeedLength, Session, StubEntropy, StubSource,

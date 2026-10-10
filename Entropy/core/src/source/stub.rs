@@ -48,7 +48,8 @@ impl Zeroize for StubEntropy {
     }
 }
 
-/// Counts session wipes: a session's `Drop` bumps it after zeroizing. Clones share the count.
+/// Counts session wipes: zeroizing a session bumps it last, after every other field is clear, and
+/// the session's `Drop` zeroizes. Clones share the count.
 #[derive(Clone, Default)]
 pub struct WipeProbe(Arc<AtomicUsize>);
 

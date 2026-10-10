@@ -1,7 +1,8 @@
 //! Every secret of one session, at fixed capacity, in one heap allocation (`Box<Inner>`), so
 //! nothing reallocates and leaves a copy behind, and there is no `Option` to unwrap: each field
 //! starts zeroed (or empty) and the transition that owns it fills it in place. `Drop` zeroizes all
-//! of it, then tells the source (a stub counts the wipe).
+//! of it, and zeroizing ends with the source's own buffers (a stub clears its bytes and counts the
+//! wipe), so a stub's count is a count of completed zeroizes.
 //!
 //! The typestate in `session.rs` decides which of these methods a state may call; this file does
 //! the work. Every method here that can fail returns `Result`, and the session method above it
@@ -420,6 +421,11 @@ impl Inner {
 }
 
 impl Zeroize for Inner {
+    /// Clears every field (the white-box test fills and checks each), then the source's own
+    /// buffers last: a stub clears its bytes and only then counts the wipe on its probe. `Drop`
+    /// runs this, so every test that finds one wipe on a probe proves the drop zeroized the session
+    /// (review fix after commit 25: the probe used to be bumped by `Drop` itself, and a `Drop`
+    /// without the zeroize passed every test).
     fn zeroize(&mut self) {
         self.tester.zeroize();
         // A fresh pool; the old SHA-512 state wipes itself when dropped (ZeroizeOnDrop).
@@ -437,13 +443,13 @@ impl Zeroize for Inner {
         self.nonce = CheckNonce::from_bytes([0; 8]);
         self.read_back.zeroize();
         self.backup_passphrase.zeroize();
+        self.source.wiped();
     }
 }
 
 impl Drop for Inner {
     fn drop(&mut self) {
         self.zeroize();
-        self.source.wiped();
     }
 }
 
@@ -479,10 +485,8 @@ mod tests {
         ]
     }
 
-    // White box: fill every field, zeroize, and find zeros (tasks/todo.md, M1 group 2).
-    #[test]
-    fn zeroize_clears_every_field() {
-        let mut inner = Inner::new(CONFIG, Source::Os, false);
+    /// Puts a non-zero value in every field `cleared` checks.
+    fn fill_every_field(inner: &mut Inner) {
         assert_eq!(inner.tester.test(&[1, 2, 3]), Ok(3));
         inner.device_leg.fill();
         inner.commitment = [0xc0; 32];
@@ -499,26 +503,37 @@ mod tests {
         inner.nonce = CheckNonce::from_bytes([7; 8]);
         inner.read_back = [true; MAX_WORDS];
         inner.backup_passphrase.fill();
-        assert_eq!(cleared(&inner), [false; 14]);
+        assert_eq!(cleared(inner), [false; 14]);
+    }
+
+    // White box: fill every field, zeroize, and find zeros (tasks/todo.md, M1 group 2).
+    #[test]
+    fn zeroize_clears_every_field() {
+        let mut inner = Inner::new(CONFIG, Source::Os, false);
+        fill_every_field(&mut inner);
         inner.zeroize();
         assert_eq!(cleared(&inner), [true; 14]);
         assert_eq!(inner.config, CONFIG);
     }
 
+    // The probe counts a zeroize once every field is clear, and nothing else counts: a drop that
+    // counts one wipe ran the zeroize (review fix after commit 25).
     #[cfg(feature = "test-sources")]
     #[test]
-    fn drop_counts_one_wipe_after_zeroizing() {
+    fn the_probe_counts_completed_zeroizes_and_drop_runs_one() {
         use crate::source::{StubEntropy, StubSource, WipeProbe};
         let probe = WipeProbe::new();
-        {
-            let mut inner = Inner::new(
-                CONFIG,
-                Source::Stub(StubSource::new(StubEntropy::Fail, &probe)),
-                false,
-            );
-            inner.device_leg.fill();
-            assert_eq!(probe.wipes(), 0);
-        }
-        assert_eq!(probe.wipes(), 1);
+        let mut inner = Inner::new(
+            CONFIG,
+            Source::Stub(StubSource::new(StubEntropy::Fail, &probe)),
+            false,
+        );
+        fill_every_field(&mut inner);
+        assert_eq!(probe.wipes(), 0);
+        inner.zeroize();
+        assert_eq!((cleared(&inner), probe.wipes()), ([true; 14], 1));
+        fill_every_field(&mut inner);
+        drop(inner);
+        assert_eq!(probe.wipes(), 2, "the drop zeroized");
     }
 }
