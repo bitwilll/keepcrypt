@@ -414,6 +414,24 @@ mod tests {
         (salt, binary[payload..payload + 16].to_vec())
     }
 
+    /// seal.json's vector for these words, if it has one (abandon x 11 + about is vector 1, the
+    /// CLAUDE.md seal vector).
+    fn seal_vector(mnemonic: &str) -> Option<Value> {
+        read("seal.json")["vectors"]
+            .as_array()
+            .expect("vectors")
+            .iter()
+            .find(|v| text(&v["mnemonic"]) == mnemonic)
+            .cloned()
+    }
+
+    /// A checked backup's seal is the vector's: its tag T and its Seal ID.
+    fn assert_seal_is(checked: &CheckedBackup, vector: &Value, what: &str) {
+        let seal = checked.seal().expect("a seal");
+        assert_eq!(seal.tag().to_hex(), text(&vector["seal_tag_hex"]), "{what}");
+        assert_eq!(seal.seal_id(), text(&vector["seal_id"]), "{what}");
+    }
+
     /// The file key a backup was written with, opened with its passphrase words.
     fn file_key(file: &BackupFile, new: &NewBackupPassphrase) -> [u8; 16] {
         *age::file_key_of(file.bytes(), words_of(new).as_bytes()).expect("opens")
@@ -566,7 +584,8 @@ mod tests {
     // A backup round-trips at work factor 18 for 12 and 24 words: the file is armored, its stanza
     // says 18, its name follows the rule, its plaintext is backup.json's, verify_backup accepts it,
     // and decrypt_backup with the written-down words gives the words, the fingerprint, the braille
-    // and the seal of the session.
+    // and the seal of the session: for abandon-12, seal.json's vector 1 (CLAUDE.md's T and Seal
+    // ID).
     #[test]
     fn round_trips_at_work_factor_18() {
         let doc = read("backup.json");
@@ -608,11 +627,16 @@ mod tests {
             let mut lines = String::new();
             checked.reveal_braille().backup_lines_into(&mut lines);
             assert!(text(&case["text"]).contains(&lines), "{name}");
-            let seal = checked.seal().expect("a seal");
-            assert_eq!(
-                Ok(seal),
-                crate::seal::seal_from_mnemonic(&mnemonic_of(text(&case["mnemonic"])))
-            );
+            match seal_vector(text(&case["mnemonic"])) {
+                Some(vector) => assert_seal_is(&checked, &vector, name),
+                None => {
+                    assert_ne!(name, "abandon-12", "seal.json has the abandon words");
+                    assert_eq!(
+                        checked.seal(),
+                        crate::seal::seal_from_mnemonic(&mnemonic_of(text(&case["mnemonic"])))
+                    );
+                }
+            }
         }
     }
 
@@ -674,7 +698,8 @@ mod tests {
     }
 
     // A file under this session's passphrase that holds another seed's plaintext is
-    // ReadbackMismatch, and so is one whose plaintext names another fingerprint.
+    // ReadbackMismatch: when the fingerprints differ, and when only the words do (the session's
+    // fingerprint equal to the file's), so each of the two comparisons refuses on its own.
     #[test]
     fn another_seed_under_this_passphrase_is_a_mismatch() {
         let doc = read("backup.json");
@@ -707,6 +732,10 @@ mod tests {
             Err(CoreError::ReadbackMismatch)
         );
         assert_eq!(
+            verify(&stored, file.bytes(), &abandon_words, fingerprint_of(zoo)),
+            Err(CoreError::ReadbackMismatch)
+        );
+        assert_eq!(
             verify(&stored, file.bytes(), &zoo_words, fingerprint_of(zoo)),
             Ok(())
         );
@@ -729,14 +758,15 @@ mod tests {
         ));
     }
 
-    // The age CLI's files decrypt to backup.json's plaintexts, and a wrong typed passphrase gives
-    // WrongPassphrase.
+    // The age CLI's files decrypt to backup.json's plaintexts; the two abandon-12 files give
+    // seal.json's vector 1; a wrong typed passphrase gives WrongPassphrase.
     #[test]
     fn the_age_cli_files_decrypt() {
         let doc = read("backup.json");
         let cli = read("age/age_cli_written.json");
         let files = cli["files"].as_array().expect("files");
         assert_eq!(files.len(), 4);
+        let mut sealed = 0;
         for file in files {
             let case = plaintext_case(&doc, text(&file["plaintext"]));
             let bytes = case_file(file);
@@ -752,7 +782,12 @@ mod tests {
                 checked.reveal_words().collect::<Vec<_>>().join(" "),
                 text(&case["mnemonic"])
             );
+            if let Some(vector) = seal_vector(text(&case["mnemonic"])) {
+                assert_seal_is(&checked, &vector, text(&file["name"]));
+                sealed += 1;
+            }
         }
+        assert_eq!(sealed, 2, "abandon-12, armored and binary");
         let wrong = text(&named(&doc["passphrases"], "zeros")["passphrase"]);
         assert!(matches!(
             decrypt_backup(&case_file(&files[0]), &typed(wrong)),
@@ -1043,7 +1078,8 @@ mod tests {
         }
 
         // decrypt_backup runs the Age group: its fault twin fails with Kat(Age) for that group and
-        // reads the file for every other.
+        // reads the file for every other. The group runs first, before the file is touched:
+        // files the reader refuses (not age, empty, a wrong passphrase) still give Kat(Age).
         #[test]
         fn decrypt_backup_runs_the_age_group() {
             let doc = read("backup.json");
@@ -1056,6 +1092,30 @@ mod tests {
                 } else {
                     assert!(result.is_ok(), "{id:?}");
                 }
+            }
+            let wrong = typed(text(&named(&doc["passphrases"], "zeros")["passphrase"]));
+            for (bytes, words, refused) in [
+                (
+                    b"not a backup".to_vec(),
+                    &passphrase,
+                    CoreError::Backup(BackupError::Header),
+                ),
+                (
+                    Vec::new(),
+                    &passphrase,
+                    CoreError::Backup(BackupError::Header),
+                ),
+                (case_file(file), &wrong, CoreError::WrongPassphrase),
+            ] {
+                assert_eq!(
+                    decrypt_backup(&bytes, words).map(|c| c.fingerprint()),
+                    Err(refused)
+                );
+                assert_eq!(
+                    decrypt_backup_with_kat_fault(&bytes, words, KatId::Age)
+                        .map(|c| c.fingerprint()),
+                    Err(CoreError::Kat(KatId::Age))
+                );
             }
         }
     }
