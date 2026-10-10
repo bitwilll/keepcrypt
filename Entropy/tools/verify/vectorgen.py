@@ -1030,6 +1030,12 @@ AGREEMENT_COLDCARD_EVERY = 8
 # Check 13's verdict counts over the 28 refusals: 3 per combination (the minimum - 1 rolls, 257 rolls, a face of 0
 # or 7) and the 4 restarts with 98 rolls for 12 words.
 AGREEMENT_VERDICTS = (("refused", 8), ("input-refused", 8), ("warned", 8), ("diverges", 4))
+# Check 13's dice quota, held here apart from verify.py's DICE (which the generator, the run and keepcrypt.json
+# take), so a changed DICE regenerated into the vectors still fails check 13: CLAUDE.md "Dice quota" (50 rolls for
+# 12 words, 99 for 24 and after a collision) and docs/build-plan.md's push_roll ("at most 256 rolls"), as core's
+# dice.rs has them.
+AGREEMENT_QUOTA = (("min_rolls_12_words", 50), ("min_rolls_24_words", 99), ("min_rolls_after_collision", 99),
+                   ("max_rolls", 256))
 AGREEMENT_SPEC = {
     "encoding": "every *_hex value is the exact bytes in lowercase hex; rolls are the ASCII faces in push order; one "
     "case per line",
@@ -5145,7 +5151,8 @@ def check_verify_alone(vectors_dir, verify_py):
 # --- Check 13: vectors/agreement.json (tasks/todo.md, M2 group 5) ---------------------------------------------
 # Byte equality with the regenerated file, then rules the regenerated cases must meet, so --write-agreement-vectors
 # cannot re-baseline them away: the coverage counts; each refusal's core error and verify.py verdict against those its
-# rolls, mode and restart call for (which pins verify.py's mixed-mode range, its 256-roll bound and its face rule);
+# rolls, mode and restart call for (which, with the quota held here in AGREEMENT_QUOTA, pins verify.py's mixed-mode
+# range, its 256-roll bound and its face rule);
 # each ceremony's C, seed bits, words and seal against their definitions; D with one digit changed, refused before
 # the rolls are read (the C/D mismatch no case reaches); every insert line against braille.json's positions and words
 # (the slots past position 01 too); and Coldcard's scripts on the dice-only subset. Each rule names its first few
@@ -5171,18 +5178,18 @@ def agreement_chunk_plan(session):
 
 def agreement_coverage_problems(doc):
     """Check 13's coverage counts over the regenerated ceremonies (tasks/todo.md, M2 group 5), per combination: 125
-    ceremonies on both paths; every roll-count edge, all counts in range; a wrong first code, the next value of the
-    go-ahead code's last symbol; the undo cases; one restart, on the check path, with its collision report; every
-    extra source and an empty extra; hwrng in Pi mixed sessions only, its chunks covering the stream in every chunk
-    plan; and each stub exactly the bytes core reads. [problem]."""
-    dice = dict(DICE)
-    maximum = dice["max_rolls"]
+    ceremonies on both paths; every roll-count edge, all counts in range (both from AGREEMENT_QUOTA); a wrong first
+    code, the next value of the go-ahead code's last symbol; the undo cases; one restart, on the check path, with its
+    collision report; every extra source and an empty extra; hwrng in Pi mixed sessions only, its chunks covering the
+    stream in every chunk plan; and each stub exactly the bytes core reads. [problem]."""
+    quota = dict(AGREEMENT_QUOTA)
+    maximum = quota["max_rolls"]
     problems = []
     if len(doc["ceremonies"]) != len(AGREEMENT_COMBINATIONS) * AGREEMENT_CEREMONIES:
         problems.append("%d ceremonies, not %d" % (len(doc["ceremonies"]),
                                                    len(AGREEMENT_COMBINATIONS) * AGREEMENT_CEREMONIES))
     for length, mode, platform in AGREEMENT_COMBINATIONS:
-        minimum = dice["min_rolls_%d_words" % length]
+        minimum = quota["min_rolls_%d_words" % length]
         cases = [case for case in doc["ceremonies"]
                  if (case["length"], case["mode"], case["platform"]) == (length, mode, platform)]
         restarts = [case for case in cases if case["first"] is not None]
@@ -5197,7 +5204,7 @@ def agreement_coverage_problems(doc):
             "every roll-count edge": set(len(case["rolls"]) for case in cases if case["first"] is None)
             >= {minimum, minimum + 1, 128, 255, maximum},
             "roll counts in range": all(minimum <= len(case["rolls"]) <= maximum for case in cases)
-            and all(len(case["rolls"]) >= dice["min_rolls_after_collision"] for case in restarts)
+            and all(len(case["rolls"]) >= quota["min_rolls_after_collision"] for case in restarts)
             and all(minimum <= len(case["first"]["rolls"]) <= maximum for case in restarts),
             "a wrong first code, the next value": bool(wrong) and all(
                 case["path"] == "check" and case["wrong_go_ahead"] == case["expect"]["go_ahead"][:-1]
@@ -5225,15 +5232,16 @@ def agreement_coverage_problems(doc):
 
 def agreement_refusal_problems(doc):
     """Check 13 over the regenerated refusals: each case's core error and step, and verify.py's verdict, must be those
-    its rolls, mode and restart call for, worked out here apart from the generator and from verify.py; each stub must
-    be exactly the bytes core reads; and the verdict counts must be AGREEMENT_VERDICTS. [problem]."""
-    dice = dict(DICE)
-    maximum = dice["max_rolls"]
+    its rolls, mode and restart call for, worked out here apart from the generator and from verify.py (the quota is
+    AGREEMENT_QUOTA); each stub must be exactly the bytes core reads; and the verdict counts must be
+    AGREEMENT_VERDICTS. [problem]."""
+    quota = dict(AGREEMENT_QUOTA)
+    maximum = quota["max_rolls"]
     problems = []
     for case in doc["refusals"]:
         rolls, restart, mixed = case["rolls"], case["first"] is not None, case["mode"] == "mixed"
-        shown = dice["min_rolls_%d_words" % case["length"]]  # the verifier's minimum: it cannot see a restart
-        minimum = dice["min_rolls_after_collision"] if restart else shown
+        shown = quota["min_rolls_%d_words" % case["length"]]  # the verifier's minimum: it cannot see a restart
+        minimum = quota["min_rolls_after_collision"] if restart else shown
         bad = [at for at, face in enumerate(rolls, 1) if face not in "123456"]
         if bad:
             core = {"error": "InvalidRoll", "step": "push_roll", "roll": bad[0]}
