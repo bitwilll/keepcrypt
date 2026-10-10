@@ -779,7 +779,7 @@ starts. Every item names its proof.
   - registry key rotation (M9).
 
 **0. Before code**
-- [ ] Record the owner's answers to Q1-Q12 under "Needed before M1". Apply the approved doc edits (Q10) in their own
+- [x] Record the owner's answers to Q1-Q12 under "Needed before M1". Apply the approved doc edits (Q10) in their own
       reviewed commit (CLAUDE.md: docs and code must agree). Proof: the diff.
 - [ ] Branch protection (Q12), an owner action before the first M1 merge: a ruleset on `main` for `Entropy/**` that
       requires a PR and the Entropy CI jobs; approvals 0 while one account opens and merges every PR. Proof:
@@ -787,7 +787,7 @@ starts. Every item names its proof.
       "CI jobs", not "required checks".
 
 **1. Workspace and supply chain**
-- [ ] Profiles and features (Q11):
+- [x] Profiles and features (Q11):
       - Root `Cargo.toml`: `[profile.release] panic = "unwind"`, stated explicitly. Unwinding drops `Inner` and wipes
         it; abort would not.
       - `[profile.release.package.keepcrypt-core] overflow-checks = true`.
@@ -810,7 +810,7 @@ starts. Every item names its proof.
       12-word backup written and read back at log2 N 18 (two scrypt runs, 256 MiB each, scrypt at opt-level 3),
       takes 0.61-0.62 s in three runs. The Age known-answer group adds three scrypt runs at log2 N 10 to every
       session start. No profile change.
-- [ ] Each new crate lands in the commit of the module that first uses it, with its cargo-vet entry, exactly as in the
+- [x] Each new crate lands in the commit of the module that first uses it, with its cargo-vet entry, exactly as in the
       dependency table (Q1-Q4): 44 lock entries in all.
       - `cargo update --precise` holds back ctutils 0.4.2, toml 1.1.6, toml_parser 1.1.3, toml_datetime 1.1.1,
         toml_writer 1.1.2 and serde_spanned 1.1.1, because their newer releases are inside the cool-off.
@@ -828,14 +828,14 @@ starts. Every item names its proof.
         listed as exemptions for approval (24 safe-to-deploy, 20 safe-to-run).
 
 **2. Scaffolding: layout, errors, secrets, session skeleton, KAT harness, stubs**
-- [ ] Layout (build-plan.md "Modules"; CLAUDE.md rule 1; this file, "Inputs from M0"):
+- [x] Layout (build-plan.md "Modules"; CLAUDE.md rule 1; this file, "Inputs from M0"):
       - `lib.rs` holds `#![forbid(unsafe_code)]`, the modules and re-exports only;
       - modules: `error.rs`, `secret.rs`, `kat.rs`, `source.rs` + `source/{os,stub}.rs`, `health.rs`, `pool.rs`,
         `dice.rs`, `seed.rs`, `braille.rs`, `ur.rs`, `descriptor.rs`, `seal/`, `backup/`, `session/`;
       - integration tests in `core/tests/`, helpers in `core/tests/common/mod.rs` (plain `mod common;`);
       - only `source/os.rs` names the OS RNG crate; everything else calls `source::fill_os`.
       Proof: banned-API gate clean.
-- [ ] `error.rs` (thiserror 2; build-plan.md invariants; CLAUDE.md rules 3, 5):
+- [x] `error.rs` (thiserror 2; build-plan.md invariants; CLAUDE.md rules 3, 5):
       - `CoreError`, with nested `KatId`, `SourceFault`, `HealthFailure`, `CheckError`, `SnapshotError`, `BackupError`,
         `BrailleError` and `UrError` (the strict UR decoder's failures; every kcr.json UR negative names the variant
         it expects, reached through `SnapshotError::Ur(UrError)` for proofs);
@@ -848,7 +848,7 @@ starts. Every item names its proof.
       Review fix after commit 10: each enum is declared through `listed_enum!`, which generates its variant list
       with it (`ALL` for unit-only enums, and a test-only list of every value for all of them), so no variant can
       be left out of a list. `KatId::ALL`, the full suite, is one of them, so a new group always runs.
-- [ ] `secret.rs` (CLAUDE.md rule 5; build-plan.md "secret"):
+- [x] `secret.rs` (CLAUDE.md rule 5; build-plan.md "secret"):
       - types:
         - `SecretBytes32` (D, E) and crate-private `SecretSeed64` (S; review fix after commit 18: S with the empty
           passphrase is `seed::EmptyPassphraseSeed`, a crate-private wrapper only seed.rs fills, from the words);
@@ -865,14 +865,14 @@ starts. Every item names its proof.
       included), calls `zeroize()` and finds zeros. Trybuild fixtures in group 10. Review fix after commit 10:
       `Bip39Passphrase` lacked both traits (it wiped only through secrecy's own `Drop`); it now derives them, joins
       the white-box test, and a compile-time check requires `ZeroizeOnDrop` of every wrapper.
-- [ ] Session skeleton:
+- [x] Session skeleton:
       - `Session<S> { inner: Box<Inner>, state: PhantomData<S> }`;
       - a sealed `State` trait over uninhabited `Collecting`, `Committed`, `Rolling`, `Sealed`, `Checking`, `Ready`;
       - one `Inner` holds every secret at fixed capacity, so nothing reallocates and there is no `Option` to unwrap;
       - `Inner`'s `Drop` zeroizes;
       - `Session::new` runs the KATs.
       Group 9 adds the transitions.
-- [ ] `kat.rs` (build-plan.md "kat" and test matrix row 1; design.md "Known-answer tests"):
+- [x] `kat.rs` (build-plan.md "kat" and test matrix row 1; design.md "Known-answer tests"):
       - `pub fn self_test()` serves the Pi and phone boot screens (pi-firmware.md step 1, mobile-apps.md step 2);
       - `Session::new` and `Wiped::restart` run the same suite;
       - each module adds its `KatId` group when it lands. The first groups:
@@ -889,7 +889,7 @@ starts. Every item names its proof.
         - one exhaustive `match` maps each entry point to the groups it runs.
       Proof: `tests/kat.rs` checks every kat.rs constant against its vectors file; the fault twins are proven in
       `tests/error_injection.rs`.
-- [ ] `vectors/kat.json` and verify.py check 5:
+- [x] `vectors/kat.json` and verify.py check 5:
       - contents: NIST FIPS 180-4 SHA examples, RFC 4231 case 2, RFC 8032 TEST 1 (Q3);
       - check 5 recomputes the SHA and HMAC entries with hashlib and hmac;
       - check 5 also reads the committed file: each section's entry names and every entry's keys are pinned, the SHA
@@ -897,7 +897,7 @@ starts. Every item names its proof.
         SHA-256 of its bytes, taken from the RFC, until check 10 verifies it (review fix after commit 5);
       - one SOURCES.md row per standard.
       Proof: selftest passes on 3.12 and on `/usr/bin/python3` 3.9.
-- [ ] `source/stub.rs` (`#![cfg(feature = "test-sources")]`; CLAUDE.md rule 10):
+- [x] `source/stub.rs` (`#![cfg(feature = "test-sources")]`; CLAUDE.md rule 10):
       - the marker `KC_TEST_SOURCE_DO_NOT_SHIP` is a `#[used]` static, and the source dispatch also passes it through
         `core::hint::black_box`, so linked artifacts keep it;
       - `StubEntropy::{Fixed, Stream, Fail, FailAt, ShortAfter}`. Stream is SHA-256 counter mode, never a PRNG. Fixed
@@ -909,7 +909,7 @@ starts. Every item names its proof.
       Proof: stub unit tests; the marker scan (group 11).
 
 **3. source, health, pool**
-- [ ] Vectors first (lessons.md; Q6a, Q7). `verify.py --write-keepcrypt-vectors` writes `vectors/keepcrypt.json`:
+- [x] Vectors first (lessons.md; Q6a, Q7). `verify.py --write-keepcrypt-vectors` writes `vectors/keepcrypt.json`:
       - exact byte layouts and source ids;
       - health constants and test cases;
       - pool records mapped to D;
@@ -928,7 +928,7 @@ starts. Every item names its proof.
       - check 7: an exact-fraction APT cutoff reproduces SP 800-90B Table 2 (W = 512 gives 311, 177, 62, 13 for
         H = 1, 2, 4, 8), and the RCT cutoff for H = 4 is 6;
       - check 4 also runs Coldcard's rolls.py and rolls12.py on every dice-only case.
-- [ ] `source.rs` (build-plan.md "source", "Credit policy"; design.md "Mixing and conditioning", the getrandom bullet;
+- [x] `source.rs` (build-plan.md "source", "Credit policy"; design.md "Mixing and conditioning", the getrandom bullet;
       CLAUDE.md "Pi device quota"):
       - `fill_os(&mut [u8])` is one expression, `getrandom::fill` (blocking; never `fill_uninit`; never the `std` or
         `sys_rng` features);
@@ -948,7 +948,7 @@ starts. Every item names its proof.
       credit policy takes `CreditedSamples`, which only `HealthTester::credited_samples` builds, so no raw count (a
       partial window, startup samples) can be credited; the table feeds 1,535 bytes (unmet) and 1,536 (met) through
       a tester.
-- [ ] `health.rs` (SP 800-90B 4.3, 4.4.1, 4.4.2; alpha 2^-20, H = 4; design.md "Test continuously"; Q7):
+- [x] `health.rs` (SP 800-90B 4.3, 4.4.1, 4.4.2; alpha 2^-20, H = 4; design.md "Test continuously"; Q7):
       - RCT cutoff 6; APT W = 512, C = 62;
       - the tester streams, and its state carries across calls;
       - the first 1,024 samples run both tests and are then discarded, never absorbed;
@@ -968,7 +968,7 @@ starts. Every item names its proof.
       - startup samples are discarded;
       - 1,535 bytes credit 0 and 1,536 credit 512 samples;
       - the tests still fire after startup.
-- [ ] `pool.rs` (CLAUDE.md rule 4; build-plan.md "pool"; Q6a):
+- [x] `pool.rs` (CLAUDE.md rule 4; build-plan.md "pool"; Q6a):
       - `new()` absorbs the 11 bytes `KCE/v1/pool` once;
       - each record is id u16 BE, `u64::try_from(len)` BE, then the data; empty data writes no record;
       - `finish` returns D = SHA-512(...)[0..32] and zeroizes the digest;
@@ -977,14 +977,14 @@ starts. Every item names its proof.
       - empty-pool and record vectors; records ("ab", "c") and ("a", "bc") give different D;
       - pipe width (CLAUDE.md rule 2): each of the 512 single-bit flips of the 64-byte OS record (base bytes from
         SHA-256 counter mode) changes D.
-- [ ] KAT groups:
+- [x] KAT groups:
       - Pool: one record vector;
       - Health: a stuck stream fails RCT and an alternating stream fails APT, each at its pinned index; a clean stream
         passes.
       Proof: the constants match keepcrypt.json.
 
 **4. dice, seed**
-- [ ] `dice.rs` (build-plan.md "dice"; CLAUDE.md "Dice quota"; this file, "Inputs from M0": R is exactly ASCII 1-6):
+- [x] `dice.rs` (build-plan.md "dice"; CLAUDE.md "Dice quota"; this file, "Inputs from M0": R is exactly ASCII 1-6):
       - a fixed `[u8; 256]` buffer plus a length, with no Vec, so growth never leaves copies;
       - faces 1-6 map to `b'1'..=b'6'` by `match`; 0 and 7+ are `InvalidRoll`; roll 257 is `TooManyRolls`;
       - undo zeroes the removed byte and does nothing when no rolls are entered;
@@ -1028,7 +1028,7 @@ starts. Every item names its proof.
         - for 24 words, each of the 256 single-bit flips of E changes the mnemonic indices;
         - for 12 words, each flip in E[..16] changes them and flips in E[16..] do not (12 words are the first 128
           bits by design).
-- [ ] KAT group Seed: C, mixed E, dice-only `123456`.
+- [x] KAT group Seed: C, mixed E, dice-only `123456`.
 
 **5. braille**
 - [ ] Vectors first (this file, "Inputs from M0"; lessons.md; seal-watchonly-braille.md "Tests and cross-checks").
@@ -1065,7 +1065,7 @@ starts. Every item names its proof.
         The mirror pairs it names must be the pairs computed from the dots. Editing a figure in the docs, or the
         code that recomputes it, fails the self-test.
       - The one-time PDF check is now done: see Review, "M1: one-time SeedBook PDF check".
-- [ ] `braille.rs` (seal-watchonly-braille.md "Braille backup"; CLAUDE.md "Braille"):
+- [x] `braille.rs` (seal-watchonly-braille.md "Braille backup"; CLAUDE.md "Braille"):
       - a const cell table (glyph and dots, reconciled by a test); mirror partners are computed from the dots;
       - `BrailleInserts<'s>` and `Insert<'s>` borrow the session's mnemonic and have no `Debug`, `Display`, `Clone`,
         `Copy` or `Serialize`;
@@ -1079,7 +1079,7 @@ starts. Every item names its proof.
       - 2,048 distinct first-four keys (a blank counts);
       - 279 and 49 recomputed in Rust;
       - text vectors: `5e0g7j6x`, `2026-10-09`, `cf94-bcaj`, `1k`, `a1`.
-- [ ] Read-back compare (seal-watchonly-braille.md "Read-back from the metal"; pi-firmware.md step 9):
+- [x] Read-back compare (seal-watchonly-braille.md "Read-back from the metal"; pi-firmware.md step 9):
       - input: 3 or 4 ASCII letters, case-folded, read up to the first blank face (`act` means face 4 is blank);
         anything else is `MalformedReadback`;
       - result: Match, or Mismatch with the word the metal spells (if any, with its SeedBook number) and a verdict per
@@ -1104,7 +1104,7 @@ starts. Every item names its proof.
       words fail the Bip39Wordlist group, the source of braille's words.
 
 **6. ur, descriptor, watch-only** (the seal's proof QR reuses `ur.rs`, so this group comes before the seal)
-- [ ] Vectors first. `verify.py --write-watchonly-vectors` writes `vectors/watchonly.json`, using:
+- [x] Vectors first. `verify.py --write-watchonly-vectors` writes `vectors/watchonly.json`, using:
       - a stdlib BIP32 on pure-Python secp256k1, run on public test mnemonics only;
       - RIPEMD-160, with a pure-Python fallback cross-checked against hashlib when hashlib has it;
       - bech32, the BIP-380 checksum, a dCBOR writer, bytewords and CRC32.
@@ -1121,7 +1121,7 @@ starts. Every item names its proof.
       - The strict UR reader counts UTF-8 bytes, in core and in verify.py: the 4,296 limit (the ASCII characters
         of a QR alphanumeric code) and the even length. Before, verify.py counted code points, so non-ASCII text
         got another error. Four non-ASCII negatives now pin the agreement; one is 4,296 characters but 4,297 bytes.
-- [ ] `ur.rs` (Q2, Q6c; BCR-2020-005, -012):
+- [x] `ur.rs` (Q2, Q6c; BCR-2020-005, -012):
       - a dCBOR subset writer: shortest heads, definite lengths, keys ascending;
       - CRC-32/ISO-HDLC from a const table;
       - a literal 256-word bytewords table;
@@ -1147,7 +1147,7 @@ starts. Every item names its proof.
       - decoder negatives: mixed case, a wrong type, a multi-part sequence, an odd length, an unknown byteword, a bad
         CRC, a non-shortest head (`0x5a` length form for a 771-byte string), an indefinite head, a non-byte-string
         item, a trailing byte after the byte string, and 4,297 characters (rejected before decoding).
-- [ ] `descriptor.rs` (build-plan.md "descriptor"; seal-watchonly-braille.md "Watch-only export"):
+- [x] `descriptor.rs` (build-plan.md "descriptor"; seal-watchonly-braille.md "Watch-only export"):
       - from S: the master fingerprint, the m/84'/0'/0' xpub, and the first receive and change addresses by private
         derivation;
       - descriptors `wpkh([fp/84h/0h/0h]xpub/0/*)#cs` and `/1/*`, written with `h` and checksummed with miniscript's
@@ -1192,11 +1192,11 @@ starts. Every item names its proof.
         self-check. A scratch scan counted 6 freed blocks holding the abandon xpub during `watch_only_export`,
         and 0 added by dropping the export. This is public-key data, not a spend secret. Wrapping core's own
         buffers in `Zeroizing` would not close it, because miniscript's and rust-bitcoin's copies stay.
-- [ ] KAT group Bip84 (abandon: fingerprint, xpub, first address, receive checksum, UR). It catches a miscompiled
+- [x] KAT group Bip84 (abandon: fingerprint, xpub, first address, receive checksum, UR). It catches a miscompiled
       secp256k1-sys on a target. The Seal group later reuses its PBKDF2.
 
 **7. seal**
-- [ ] Vectors first. `verify.py --write-kcr-vectors` writes `vectors/kcr.json` (hex text), using a stdlib RFC 8032
+- [x] Vectors first. `verify.py --write-kcr-vectors` writes `vectors/kcr.json` (hex text), using a stdlib RFC 8032
       Ed25519 that signs only with two keys derived from public labels (Q3), plus Merkle, `.kcr` and KCP1 builders.
       Cases:
       - valid snapshots: empty, small, containing seal vector 1, containing the 50-roll dice-only seed;
@@ -1288,7 +1288,7 @@ starts. Every item names its proof.
       fills a plain `SecretSeed64`. The same scratch test now fails with E0308 ("expected
       `&EmptyPassphraseSeed`, found `&SecretSeed64`"). A trybuild fixture cannot pin this: trybuild and doctests
       build an outside crate, which cannot name a crate-private type, so the signatures are the proof.
-- [ ] Check request and go-ahead (seal-watchonly-braille.md "The seal card", "Online lookup privacy", "Go-ahead code";
+- [x] Check request and go-ahead (seal-watchonly-braille.md "The seal card", "Online lookup privacy", "Go-ahead code";
       CLAUDE.md constants; Q6d):
       - `start_check` draws n with `source::os_bytes::<8>()`;
       - the check URL is `REGISTRY_ORIGIN/check#t=<64 hex>&n=<16 hex>`, in lowercase. `REGISTRY_ORIGIN` is
@@ -1311,13 +1311,13 @@ starts. Every item names its proof.
       `core/src/seal` names "the OS source", but its own test the_nonce_comes_from_the_os_source builds
       `Source::Os`. The plan's rule is about the OS RNG crate, and the banned-API gate holds it; the comment now
       says that, and that the nonce's bytes come only through `Source::os_bytes`.
-- [ ] `seal/merkle.rs` (CLAUDE.md "Bucket proof"; seal-watchonly-braille.md "Snapshot format"; Q6b):
+- [x] `seal/merkle.rs` (CLAUDE.md "Bucket proof"; seal-watchonly-braille.md "Snapshot format"; Q6b):
       - leaf and node exactly as in CLAUDE.md, with the prefix written as a 24-bit big-endian bucket index;
       - the root comes from one streaming pass with at most 21 stacked hashes;
       - paths run leaf level first, and direction bit j = (i >> j) & 1.
       Proof: empty leaves 0, 0x2b810 and 0xFFFFF; a node vector; the empty-snapshot root; the left-aligned reading
       (`2b 81 00`) is shown to give a different leaf and is not used.
-- [ ] `seal/snapshot.rs` (build-plan.md `verify_snapshot` and CI rule "Only authentic snapshots are used"; Q6b):
+- [x] `seal/snapshot.rs` (build-plan.md `verify_snapshot` and CI rule "Only authentic snapshots are used"; Q6b):
       - checks, in this order:
         1. length >= 122;
         2. magic;
@@ -1337,7 +1337,7 @@ starts. Every item names its proof.
       - every kcr.json case gives its exact result, and every `SnapshotError` variant is produced;
       - all 976 single-bit flips of the first 122 bytes, and every truncation, fail;
       - date edge cases.
-- [ ] `seal/proof.rs` (seal-watchonly-braille.md "Go-ahead QR"; Q2, Q6c):
+- [x] `seal/proof.rs` (seal-watchonly-braille.md "Go-ahead QR"; Q2, Q6c):
       - KCP1 must be exactly 771 + 18k bytes, and reuses the snapshot's header and signature code;
       - k <= count; the entries are sorted and all fall in this bucket; the recomputed root equals the header's;
       - `verify_bucket_proof_qr` reads a single-part `ur:keepcrypt-proof/` through `ur_decode_single`;
@@ -1351,7 +1351,7 @@ starts. Every item names its proof.
       `Err(CheckError::WrongBucket)` for a seal in another bucket, else the count or None, so the shells and
       tests/kcr.rs read a proof the way `reveal` will. Both verified types also expose `number()` and
       `entry_count()`. A found entry is never reported clear, even if a zero count could reach it.
-- [ ] `seal/registry_key.rs` and registration (seal-watchonly-braille.md "Registry service spec", "Registering a new
+- [x] `seal/registry_key.rs` and registration (seal-watchonly-braille.md "Registry service spec", "Registering a new
       seal", "Reporting a collision"; CLAUDE.md rule 10; Q3, Q6d):
       - release builds pin no key until M9, so snapshots and proofs fail closed with `NoRegistryKey` and only the
         typed code works;
@@ -1384,7 +1384,7 @@ starts. Every item names its proof.
       `small` snapshot and its clear proof give `NoRegistryKey`), and the build is not a test build (always). With
       a scratch stand-in for the M9 pin, the second still passes and the first fails where it should. The release
       sweep covers 107 cases since the vector fixes above.
-- [ ] KAT groups:
+- [x] KAT groups:
       - Seal: the vector-1 code, T and Seal ID (review fix after commit 18: from the abandon words through
         `seed_from_mnemonic_into`, with S compared to `ABANDON_SEED`, and the Seal ID's braille caption);
       - GoAhead: `CF94-BCAJ`; a wrong n fails;
@@ -1428,7 +1428,7 @@ starts. Every item names its proof.
       - verify.py's age is written from the C2SP age spec (`age.md`, downloaded twice on 2026-10-10 with a generic
         User-Agent, recorded in SOURCES.md "Spec values"); it rebuilds CCTV `scrypt` and `armor_scrypt` byte for
         byte and reaches all 26 CCTV outcomes.
-- [ ] `backup/armor.rs` (build-plan.md "Container"; C2SP age "ASCII armor"):
+- [x] `backup/armor.rs` (build-plan.md "Container"; C2SP age "ASCII armor"):
       - encode: 64-column padded base64, exact labels, LF line endings;
       - decode accepts only surrounding ASCII whitespace, LF or CRLF, full 64-character lines (except a last line of
         1-64), and canonical padding (base64ct).
@@ -1498,7 +1498,7 @@ starts. Every item names its proof.
           dependency deviation.
         - scrypt's PBKDF2 steps key hmac with the backup passphrase (`pbkdf2_hmac` calls `new_from_slice`), so
           the group 7 hmac residual applies there too, to a passphrase-derived block.
-- [ ] `backup/passphrase.rs` (build-plan.md "Passphrase"; pi-firmware.md USB steps 1-2; mobile-apps.md "Encrypted
+- [x] `backup/passphrase.rs` (build-plan.md "Passphrase"; pi-firmware.md USB steps 1-2; mobile-apps.md "Encrypted
       backup only"; Q6e):
       - 11 fresh OS bytes, cut into 8 indices of 11 bits;
       - the age passphrase is the 8 lowercase words joined by single spaces;
@@ -1508,7 +1508,7 @@ starts. Every item names its proof.
       Proof: layout vectors (zeros give abandon x 8; ff x 11 gives zoo x 8); each of the 88 single-bit flips changes
       exactly one word; the challenge equals its stub-stream value; a trybuild fixture shows typed words cannot reach
       `encrypt_backup` or `verify_backup` (group 10).
-- [ ] `backup/plaintext.rs` (build-plan.md "Plaintext inside the file"; seal-watchonly-braille.md "Inside the
+- [x] `backup/plaintext.rs` (build-plan.md "Plaintext inside the file"; seal-watchonly-braille.md "Inside the
       encrypted backup"; Q6e):
       - writes the exact v1 bytes;
       - the parser checks the BIP39 checksum and the fingerprint, then requires byte equality on re-serialization;
@@ -1551,7 +1551,7 @@ starts. Every item names its proof.
       Proof: the age 1.1.1 files and a fresh core file give the vector fingerprint and seal; `reveal_words()` equals
       the vector words; a wrong typed passphrase gives `WrongPassphrase`; trybuild and no-secret-text coverage
       (group 10).
-- [ ] KAT group Age, using CCTV `scrypt`, `armor_scrypt` and `scrypt_work_factor_23` through `include_bytes!` (pinned
+- [x] KAT group Age, using CCTV `scrypt`, `armor_scrypt` and `scrypt_work_factor_23` through `include_bytes!` (pinned
       by the SOURCES.md hashes):
       - decryption;
       - the writer known answer, binary and armored;
@@ -1623,7 +1623,7 @@ starts. Every item names its proof.
 
 **9. session** (build-plan.md "Public API" as refined by Q5; CLAUDE.md rule 6; seal-watchonly-braille.md "Ceremony
 order", "Go-ahead before reveal")
-- [ ] Transitions:
+- [x] Transitions:
       ```text
       Collecting  new(len, mode, platform) | add_hw_samples(self, &[u8]) | add_extra(&mut self, ExtraSource, &[u8])
                   credited_bits, required_bits, hw_bytes_tested (&self) | commit(self) -> Committed
@@ -1644,7 +1644,7 @@ order", "Go-ahead before reveal")
                   verify_snapshot | verify_bucket_proof | verify_bucket_proof_qr | seal_from_mnemonic
       ```
       Proof: happy paths for Mixed and DiceOnly, on Pi and Phone, at 12 and 24 words.
-- [ ] Collecting and commit (build-plan.md "Credit policy"; pi-firmware.md "Dice-only mode skips steps 4, 5 and 14"):
+- [x] Collecting and commit (build-plan.md "Credit policy"; pi-firmware.md "Dice-only mode skips steps 4, 5 and 14"):
       - `add_hw_samples` works on the Pi in Mixed mode only (else `NotInThisMode`): health test first, then one hwrng
         record of the post-startup bytes;
       - `credited_bits` stays 0 until the first post-startup window completes, then jumps to 2,048 (512 required);
@@ -1653,7 +1653,7 @@ order", "Go-ahead before reveal")
       - `commit` checks the quota, reads 64 OS bytes and absorbs them last, then derives D and C;
       - dice-only mode: no pool and no OS read; `commitment()` and `reveal_device_leg()` give None; `add_extra` does
         nothing.
-- [ ] Rolling, Sealed and Checking:
+- [x] Rolling, Sealed and Checking:
       - `finish` below the minimum gives `TooFewRolls`. Otherwise it derives E, the mnemonic, S, the seal, the
         fingerprint and the first address once, then zeroizes R;
       - `skip_check` exists only on Sealed;
@@ -1663,13 +1663,13 @@ order", "Go-ahead before reveal")
         - a proof for another bucket gives `Retry`;
         - freshness is the shell's warning, not a refusal: the core has no clock;
       - `discard(Collision)` keeps the report and the flag; `discard(CannotCheck)` keeps neither.
-- [ ] `Wiped::restart` (seal-watchonly-braille.md "Add fresh entropy"; CLAUDE.md "Dice quota"):
+- [x] `Wiped::restart` (seal-watchonly-braille.md "Add fresh entropy"; CLAUDE.md "Dice quota"):
       - `Wiped` holds no secret;
       - restart re-runs the KATs, starts a fresh pool, and does a fresh OS read at commit;
       - the minimum is 99 rolls for both lengths after a collision, and the normal minimum after CannotCheck;
       - `Rejected` and `Wiped` get hand-written `Debug` that never touches their contents and prints no BIP39 word
         (group 10).
-- [ ] Ready and panics (Q5; CLAUDE.md rule 3):
+- [x] Ready and panics (Q5; CLAUDE.md rule 3):
       - `check_readback` records each matched position, and a later mismatch clears it. Read-back errors never wipe;
       - the exports return `ReadbackIncomplete` until every position has matched;
       - core never panics on public input. A panic unwinds and drops `Box<Inner>`; `catch_unwind` stays banned;
@@ -1715,7 +1715,7 @@ order", "Go-ahead before reveal")
     12 command, cargo-llvm-cov 0.9.1 gives 97.37% (8,199 lines, 216 missed); review fix after commit 25.
 
 **10. Cross-cutting tests**
-- [ ] `tests/typestate.rs` (trybuild; CLAUDE.md rule 6; build-plan.md "Sealed-state compile-fail tests"). Fixtures
+- [x] `tests/typestate.rs` (trybuild; CLAUDE.md rule 6; build-plan.md "Sealed-state compile-fail tests"). Fixtures
       that must fail:
       - dice before commit, and before start;
       - mnemonic, braille or skip before finish;
@@ -1749,16 +1749,16 @@ order", "Go-ahead before reveal")
       `.stderr` holds under default features, `test-registry` and `test-sources`. Two compiler suggestions name
       crate-private constructors (`SealPublic::empty`, `CheckNonce::from_bytes`); renaming either regenerates
       `no_struct_literals.stderr`. A mutant giving `Session<Sealed>` a `mnemonic()` fails three fixtures.
-- [ ] `tests/source_substitution.rs` (design.md "Prove the path" 1; build-plan.md test matrix):
+- [x] `tests/source_substitution.rs` (design.md "Prove the path" 1; build-plan.md test matrix):
       - fixed OS bytes, a counter-mode hwrng stream in 64-byte chunks and two extras give the keepcrypt.json D and C,
         on Pi and on Phone;
       - changing one byte of any source, changing a source id, or dropping an extras call changes D;
       - a changed but still healthy startup byte does not change D;
       - exactly 64 OS bytes are read;
       - dice-only E = SHA256(R) whatever the stubs, and a zero-byte stub still reaches Ready through Skip.
-- [ ] `tests/os_source.rs` (default features): two real Phone sessions give different commitments. It asserts
+- [x] `tests/os_source.rs` (default features): two real Phone sessions give different commitments. It asserts
       inequality only and prints nothing.
-- [ ] `tests/error_injection.rs` (build-plan.md CI rule "Fail closed", test matrix "Error injection", "Repetition Count
+- [x] `tests/error_injection.rs` (build-plan.md CI rule "Fail closed", test matrix "Error injection", "Repetition Count
       and Adaptive Proportion"; this file, "Inputs from M0"). Each session case asserts the exact `Err` and exactly
       one probe wipe:
       - the OS source failing at commit (Pi and Phone), at `start_check`, and inside `generate_backup_passphrase` and
@@ -1775,7 +1775,7 @@ order", "Go-ahead before reveal")
       - every `KatId` through each free function's `*_with_kat_fault` twin (no session, so no probe): the exact
         `CoreError::Kat(id)` for each group that function runs, and the unfaulted result for every other group, from
         the same exhaustive match.
-- [ ] `tests/check_flow.rs` (seal-watchonly-braille.md "Results"; public vectors only):
+- [x] `tests/check_flow.rs` (seal-watchonly-braille.md "Results"; public vectors only):
       - a 12-word dice-only session from the 50-roll string reaches Sealed with the kcr.json T;
       - the code reveals the expected words, and a typo keeps the session;
       - the collision snapshot and the collision proof both give `Collision`, whose report holds that seed's code;
@@ -1783,7 +1783,7 @@ order", "Go-ahead before reveal")
       - a wrong-bucket proof gives `Retry`, and the right code still reveals;
       - the kcr.json stale proof gives `Stale` for its pinned today, as a phone shell sees it, and still reveals; the
         future-dated proof gives `Future`.
-- [ ] `tests/ceremony.rs`:
+- [x] `tests/ceremony.rs`:
       - 12- and 24-word ceremonies reach Ready, and every insert reads back from its own faces;
       - exports fail before read-back;
       - `decrypt_backup` of the session's file gives a `CheckedBackup` whose fingerprint (empty passphrase), words
@@ -1830,7 +1830,7 @@ order", "Go-ahead before reveal")
     two of the eight (12-word Mixed Pi, 24-word dice-only Pi) to bound the scrypt runs. Review fix after commit
     25: Mixed mode's words come from real OS randomness, so the words, braille lines, fingerprints and
     registration are compared with `assert!` and a message; `assert_eq!` printed both word lists on a failure.
-- [ ] `tests/no_secret_text.rs` (build-plan.md CI rule "Secrets never printed"; the refined rule goes to the owner as
+- [x] `tests/no_secret_text.rs` (build-plan.md CI rule "Secrets never printed"; the refined rule goes to the owner as
       a build-plan.md edit, Q10):
       - run public-vector ceremonies: Coldcard 50, 99 and 100 rolls in dice-only mode, and the keepcrypt.json mixed
         cases;
@@ -1842,7 +1842,7 @@ order", "Go-ahead before reveal")
         as a whole token (a maximal run of ASCII letters, case-folded). "session", "report", "flag", "check" and
         "code" are BIP39 words, so hand-written Debug output prints none of these names;
       - a planted leaking formatter must be caught by each check.
-- [ ] `tests/panic_wipe.rs` and `tests/no_panic.rs`:
+- [x] `tests/panic_wipe.rs` and `tests/no_panic.rs`:
       - a thread panics while holding a stub session: `join()` is `Err`, and the probe shows one wipe;
       - deterministic truncations and byte flips (SHA-256 counter mode) of hwrng input, faces, go-ahead codes, proofs
         (bytes and UR text), snapshots, `.age` files, typed backup words and read-back strings give errors, never a
@@ -1914,7 +1914,7 @@ order", "Go-ahead before reveal")
 
 **11. Release artifact scan** (build-plan.md CI rules "One RNG path in shipped binaries", "Test stubs never ship";
 moved from M0)
-- [ ] `scripts/banned-api-check.sh --artifact TARGET FILE...`. The script already owns the banned names and is
+- [x] `scripts/banned-api-check.sh --artifact TARGET FILE...`. The script already owns the banned names and is
       excluded from its own scan. Rules:
       - any file holding `KC_TEST_SOURCE_DO_NOT_SHIP`, `KC_TEST_REGISTRY_DO_NOT_SHIP` or the 32 test-key bytes is a
         hit;
@@ -1951,7 +1951,7 @@ moved from M0)
       - Q12: the workflow drops its `paths:` filter; a first job tests whether `Entropy/` or the workflow changed, and
         every other job depends on it and reports "skipped" otherwise, so required checks never hang on PRs that do
         not touch `Entropy/`.
-- [ ] `scripts/canaries.sh`, with its pinned counts updated:
+- [x] `scripts/canaries.sh`, with its pinned counts updated:
       - positive controls:
         - a host release probe built with `test-sources` must make the scan exit 1, naming both markers and the test
           key;
@@ -1971,11 +1971,37 @@ moved from M0)
       --fail-under-lines 95`, with cargo-llvm-cov 0.9.1. No `#[coverage(off)]` and no `cfg(coverage)`. CI fails if any
       path under core/src matches `/(tests|examples|benches)/`, or any core/src file is named `tests.rs`,
       `*_tests.rs` or `*-tests.rs`, because the tool's default ignore rule skips all of those.
-- [ ] CLAUDE.md "Commands" gains:
+- [x] CLAUDE.md "Commands" gains:
       - the feature test run and the coverage command;
       - each `--write-*-vectors` flag (regenerate, never hand-edit);
       - `banned-api-check.sh --artifact` and `scripts/age-interop.py`;
       - the `TRYBUILD=overwrite` line.
+- As built at commits 26-28 (68ec043, a421d12, 4cea8ba, cfdb24a):
+  - The probe passes the check as a user would: it reads n from the check URL, works out G itself (SHA-256 through
+    sha2, a core dependency) and reads every word back. It exits with a code per step and prints nothing. Under
+    `test-registry` its `verify_snapshot` of kcr.json's "empty" snapshot verifies, so the canaries run that probe too.
+  - Not in the plan's words: `TEST_REGISTRY_KEY` became a `#[used]` static read back through `black_box`, like the
+    marker (68ec043). As a const, the compiler may split its 32 bytes into immediates or constant-pool chunks on
+    some targets, and the scan looks for them in one piece. Under default features neither item exists.
+  - The scan also fails a file that is not ELF, Mach-O or ar (`Format`), so a text file holding a marker gives two
+    hits; checks archives (core's rlib) for every rule but the OS import, which the getrandom crate's own rlib
+    makes; checks rand-family paths in every symbol, defined or not; and has a host rule for macOS (`_getentropy`,
+    which getrandom calls there), so the positive controls run on a Mac. Q8's fallback symbols are any symbol in
+    getrandom's `backends::use_file` and `backends::linux_android_with_fallback`.
+  - The selftest goes beyond the three object cases and the two marker files: a getentropy import (a hit on
+    Android, allowed on iOS), a crate named rand, a getrandom fallback symbol, two archives, the key's bytes, two
+    files at once and three errors, each with its exact hit lines, and the pinned key checked against kcr.json.
+  - canaries.sh also has a mutation canary for the graph pins (serde in core, getrandom in the FFI and
+    `legacy_compatibility` on ed25519-dalek, each named), a default-features control (scan clean, probe exits 0)
+    and a run of the test-registry probe; the vectors-tamper canary covers `age/age_cli_written.json` too (8
+    files). canaries.sh had no count to update, so "with its pinned counts updated" became a pin of the number of
+    checks run (54): a deleted or skipped check now fails too.
+  - The workflow's changes job (Q12) diffs a PR's merge commit against its first parent, or a push against
+    `github.event.before` (passed through env), and counts an unreadable range as a change. The cross matrix skips
+    its steps, not the job: a skipped matrix job reports one check under its unexpanded name, which a ruleset could
+    not require per target. 9 jobs and 14 check runs (cross has 6 legs): the plan's 13 plus the changes job, which
+    a ruleset must also require, since skipped counts as passing.
+  - CLAUDE.md Commands also gained the all-features clippy line, which CI has run since commit 4.
 
 **13. Review**
 - [ ] Paste under Review:
@@ -2024,40 +2050,40 @@ moved from M0)
       backup JSON; BIP39 vectors.json; all 26 CCTV age files; rolls.json. `verify.py --selftest` passes all 11 checks
       on 3.12 and on `/usr/bin/python3` 3.9, and its embedded word list hashes to `2f5eed53...` with the banned-API
       gate clean.
-- [ ] Source-substitution test: a fixed stub gives a known D, and changing one stub byte changes D (every source, Pi
+- [x] Source-substitution test: a fixed stub gives a known D, and changing one stub byte changes D (every source, Pi
       and Phone). A real-OS test shows two sessions differ.
-- [ ] Pipe width: every single-bit flip of D changes C and E, every bit of the 64-byte OS record changes D, and every
+- [x] Pipe width: every single-bit flip of D changes C and E, every bit of the 64-byte OS record changes D, and every
       bit of E changes the 24-word indices.
-- [ ] Error-injection test for every source and health test: the session halts and wipes, with the exact error and
+- [x] Error-injection test for every source and health test: the session halts and wipes, with the exact error and
       one wipe each. This includes every KAT at session start and at restart, and every KAT group of each free
       function through its fault twin.
-- [ ] `trybuild` compile-fail tests: dice before commit, reveal before finish, mnemonic/D/backup/export in the sealed
+- [x] `trybuild` compile-fail tests: dice before commit, reveal before finish, mnemonic/D/backup/export in the sealed
       or checking state, skip after a check started, a typed passphrase passed to `encrypt_backup`, plus every other
       fixture in group 10.
-- [ ] Go-ahead tests:
+- [x] Go-ahead tests:
       - the vector in `CLAUDE.md` passes;
       - a code for another T or nonce is rejected;
       - forged, truncated and wrong-bucket proofs are rejected, and so is every UR decoder negative;
       - a proof containing T wipes the session;
       - a typo can be re-entered;
       - stale and future-dated proofs report their freshness.
-- [ ] Snapshot tampering: every kcr.json negative, and the header bit-flip sweep, are rejected. Release builds give
+- [x] Snapshot tampering: every kcr.json negative, and the header bit-flip sweep, are rejected. Release builds give
       `NoRegistryKey`.
-- [ ] Dice-only output equals Coldcard `rolls.py`/`rolls12.py` for the fixed roll strings, in core and in verify.py.
+- [x] Dice-only output equals Coldcard `rolls.py`/`rolls12.py` for the fixed roll strings, in core and in verify.py.
 - [ ] Backup:
       - the CCTV classes match;
       - the writer equals CCTV byte for byte;
       - core reads age 1.1.1 files, and age 1.1.1 decrypts fresh core files at log2 N 18 (age-interop job);
       - only a generated passphrase can encrypt, and `decrypt_backup` returns a `CheckedBackup` whose fingerprint and
         seal match.
-- [ ] Braille: the six `CLAUDE.md` inserts match; 279 and 49 are recomputed; read-back catches every mirror flip and
+- [x] Braille: the six `CLAUDE.md` inserts match; 279 and 49 are recomputed; read-back catches every mirror flip and
       every blank-face slip.
-- [ ] Watch-only: the BIP-84 and BCR-2020-015 vectors, the BIP-380 checksums and the runtime self-check pass.
-- [ ] Secrets never printed: the no-secret-text test passes and catches a planted leak with each check. A panic wipes
+- [x] Watch-only: the BIP-84 and BCR-2020-015 vectors, the BIP-380 checksums and the runtime self-check pass.
+- [x] Secrets never printed: the no-secret-text test passes and catches a planted leak with each check. A panic wipes
       the session, and hostile input never panics.
 - [ ] The release artifact scan is clean on all six targets; both positive controls fail for their markers, and the
       `test-registry` build holds no stub marker.
-- [ ] Line coverage in `core/` is at least 95% (`cargo llvm-cov`), with nothing excluded: no core/src path matches the
+- [x] Line coverage in `core/` is at least 95% (`cargo llvm-cov`), with nothing excluded: no core/src path matches the
       tool's default ignore rule.
 - [ ] Clean: clippy (default and all features), fmt, deny, audit, vet, check-path-deps, the banned-API gate and its
       selftest, and the canaries. CI is green on `m1-core`. The Q12 ruleset is in place, or its deferral is recorded.
@@ -2223,8 +2249,10 @@ moved from M0)
    - tests: no_panic tries every truncation of the armored backup and pins the one that opens; source_substitution's message says 8 credited chunks, not 9;
    - this file: these records, commit 22's coverage figure (97.37%, not 97.29%), and the tests/vectors.rs deviation as an owner item.
 26. scripts: banned-api-check.sh --artifact (both markers and the test key) with selftest fixtures; core/examples/release_probe.rs; canaries (two positive controls, static checks for serde, getrandom and the dalek features, vectors tamper; the feature and profile checks landed after 5)
+   As built: two commits, 68ec043 (core: the probe, and the test key as a used static) and a421d12 (scripts: the scan, its fixtures and the canaries)
 27. ci: coverage job (cargo-llvm-cov 0.9.1, failing on any core/src path its default ignore rule would skip), cross-job artifact scan with the per-target getrandom cfg, age-interop job (`scripts/age-interop.py --core` against Ubuntu's age 1.1.1, so core reads 1.1.1's files and 1.1.1 reads core's), and selftest moved after the toolchain install
-28. CLAUDE.md: Commands for M1
+   As built: 4cea8ba, which also drops the paths filter and adds the changes job (Q12)
+28. CLAUDE.md: Commands for M1 (cfdb24a)
 29. tasks/todo.md: M1 Review with pasted proof, including the Q12 ruleset output or its deferral
 
 ## Review
@@ -2379,3 +2407,397 @@ What each line covers:
 - Each printed row of capitals is the concatenation of the BIP39 words at the numbers printed above it.
 - The cover's braille run, read with braille.json's letter cells, spells the letters printed beside it.
 - The back cover's 726-cell monogram is decoration and was not compared.
+
+### M1: local proof (2026-10-10, at cfdb24a, commit 28)
+Apple M4 Max, macOS, toolchain 1.98.1 (rust-toolchain.toml), python3 3.12.5 and `/usr/bin/python3` 3.9.6, run from
+`Entropy/`; the shell scripts also under `dash`. Plan items are ticked above only where the proof below covers them;
+each unticked item says what it waits for (the end of this section).
+
+**Suite.** Every command of the stage's suite, on commit 28's tree (commit 29 changes only this file):
+
+```text
+cargo fmt --all --check                                                     rc=0
+cargo clippy --workspace --all-targets --locked -- -D warnings              rc=0
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings  rc=0
+cargo test --workspace --locked                                             rc=0  (18 s)
+cargo test -p keepcrypt-core --locked --features test-sources               rc=0  (59 s)
+cargo deny --locked check                                                   rc=0  advisories ok, bans ok, licenses ok, sources ok
+cargo audit                                                                 rc=0  94 crate dependencies, no findings
+cargo vet --locked                                                          rc=0  Vetting Succeeded (14 fully audited, 76 exempted)
+sh scripts/check-path-deps.sh             (sh, dash)                        rc=0  clean, 90 packages outside the workspace, all
+                                                                                  from crates.io; members exactly core, ffi,
+                                                                                  pi/app, pi/sim; no cargo config files
+sh scripts/banned-api-check.sh            (sh, dash)                        rc=0  clean, 161 files scanned
+sh scripts/banned-api-check.sh --selftest (sh, dash)                        rc=0  selftest: 233 passed, 0 failed
+python3 tools/verify/verify.py --selftest          (3.12.5)                 rc=0  selftest passed: 11 checks
+/usr/bin/python3 tools/verify/verify.py --selftest (3.9.6)                  rc=0  selftest passed: 11 checks
+sh scripts/canaries.sh                    (sh, dash)                        rc=0  PASS: all 54 checks ran
+```
+
+**Tests, per binary.** Default features (the release configuration), then `--features test-sources`:
+
+```text
+default:       unittests 161 passed, 1 ignored (11.5 s) | ceremony 5 | kat 7 | kcr_release 3 | os_source 2 |
+               typestate 1 (23 fixtures) | vectors 4
+test-sources:  unittests 188 passed, 1 ignored (19.4 s) | ceremony 5 | check_flow 6 | error_injection 11 | kat 7 |
+               kcr 3 (11.5 s) | kcr_release 0 (compiled out under test-registry) | no_panic 9 (8.9 s) |
+               no_secret_text 5 | os_source 2 | panic_wipe 4 | source_substitution 5 | typestate 1 | vectors 4
+```
+
+The ignored unit test is `backup::tests::age_interop_files`, which `scripts/age-interop.py --core` runs.
+
+```text
+typestate (trybuild 1.0.121, toolchain 1.98.1; the same 23 under both feature sets):
+  backup_takes_no_passphrase  bip39_passphrase_not_debug_display_clone  braille_views_not_debug_display_clone
+  checked_backup_not_debug_display_clone  checking_state_holds_no_secret  confirm_challenge_not_debug_display_clone
+  dice_before_commit  new_backup_passphrase_not_debug_display_clone  no_skip_after_check_started  no_struct_literals
+  readback_result_not_debug_display_clone  revealed_words_cannot_outlive_their_secret
+  seal_code_and_qrs_not_debug_display_clone  sealed_state_holds_no_secret  secret_bytes32_not_debug_display_clone
+  secret_mnemonic_not_debug_display_clone  session_not_debug_clone  transitions_consume_the_session
+  typed_backup_passphrase_not_debug_display_clone  views_cannot_outlive_their_secret
+  watch_only_export_not_debug_display_clone  wiped_holds_no_secret  words_before_finish            all ok
+error_injection: the_os_source_failing_halts_and_wipes  short_reads_halt_and_wipe  every_os_read_of_a_ceremony_halts_and_wipes
+  every_health_case_through_the_session  the_pi_quota_needs_a_whole_window_of_hwrng
+  hwrng_input_on_a_phone_or_in_dice_only_mode  bad_faces_and_a_257th_roll  finish_below_the_minimum
+  shell_order_bugs_halt_and_wipe  every_kat_at_new_and_at_restart  every_kat_through_each_free_function   all ok
+source_substitution: a_fixed_stub_gives_the_vectors_d_and_c  one_changed_byte_of_any_source_changes_d
+  a_changed_source_id_or_a_dropped_extra_changes_d  exactly_64_os_bytes_are_read
+  dice_only_e_is_sha256_of_r_whatever_the_stubs                                                     all ok
+check_flow: the_code_reveals_the_words_and_a_typo_keeps_the_session
+  a_proof_for_another_bucket_retries_and_the_code_still_reveals
+  collision_evidence_wipes_the_seed_and_the_report_holds_its_code
+  the_restart_refuses_50_rolls_and_accepts_the_99_roll_string  freshness_is_the_shells_warning_not_a_refusal
+  a_snapshot_loaded_before_the_ceremony_serves_every_check                                          all ok
+ceremony: mixed_mode_on_the_pi  mixed_mode_on_a_phone  dice_only_on_the_pi  dice_only_on_a_phone
+  every_export_fails_before_read_back                                                               all ok
+no_secret_text: no_seed_word_is_printed  rejected_and_wiped_print_no_bip39_token  every_error_is_listed
+  a_planted_leak_is_caught_by_each_check  a_seed_word_inside_a_longer_control_token_is_still_caught  all ok
+panic_wipe: a_panic_while_collecting_wipes_the_session  a_panic_while_rolling_or_checking_wipes_the_seed
+  a_panic_with_the_words_shown_wipes_them  a_thread_that_ends_normally_wipes_once_without_a_panic   all ok
+no_panic: hwrng_samples  dice_faces  go_ahead_codes  bucket_proofs_as_bytes_and_as_ur_text  registry_snapshots
+  age_backups  typed_backup_words  read_back_strings  bip39_passphrases_and_registry_dates           all ok
+kcr (test-registry): every_snapshot_case  every_proof_case  the_test_registry_key_is_pinned        all ok
+kcr_release (default): no_registry_key_is_pinned  a_release_build_is_not_a_test_registry_build
+  every_kcr_json_case_gives_no_registry_key (107 cases)                                             all ok
+os_source: two_real_sessions_give_different_commitments  two_real_checks_draw_different_nonces    all ok
+kat: the_boot_screens_pass and six cross-file agreements (seed, seal and go-ahead, ed25519 and hash, bip84 and
+  backup, braille, age)                                                                             all ok
+vectors: rolls_json_through_dice_only_sessions  keepcrypt_json_dice_only_cases
+  backup_json_and_the_age_cli_files_through_decrypt_backup  seal_json_vector_1_through_a_checked_backup  all ok
+```
+
+**Proof per ticked plan item** (unit tests are `module::tests::name`; all pass in the runs above):
+- Group 0, answers and doc edits: the answers to Q1-Q12 are recorded under "Needed before M1" (7ac6c8a), the Q10
+  doc edits are d7d0393 and the Q13 edits c40a2e3.
+- Group 1, profiles and features: the canary static check "core [features] and the root [profile] exactly as
+  pinned" passes and the `release-profile` and `test-features-in-manifests` canaries fail as intended; the timings
+  are recorded in the item (1.45 s root pass, 0.61 s log2 N 18 round trip).
+- Group 1, new crates: Cargo.lock holds 90 third-party packages (46 at M0, so 44 new); one getrandom (0.4.3), one
+  digest (0.11.3), one sha2 (0.11.0), one hmac (0.13.0); `cargo tree -p keepcrypt-core --all-features --target all
+  -e normal,build,dev -i rand_core` and `-i log` both end with "package ID specification ... did not match any
+  packages"; the held versions are locked as planned (ctutils 0.4.2, toml 1.1.6, toml_parser 1.1.3, toml_datetime
+  1.1.1, toml_writer 1.1.2, serde_spanned 1.1.1, trybuild 1.0.121, serde_json 1.0.151); the canary graph pins pass
+  (ed25519-dalek with no features, curve25519-dalek with `digest` only, getrandom's only dependent keepcrypt-core,
+  no serde in core's normal or build graph); deny and vet pass. After refreshing the imports, 11 of the 44 pass on
+  imported audits (equivalent, fiat-crypto, inout, rustc_version, semver, serde_spanned, subtle, termcolor,
+  toml_datetime, winapi-util, windows-link) and 33 are exemptions, listed for approval under the owner items.
+- Group 2: layout (the banned-API gate is clean; the one call to the OS RNG crate is in `core/src/source/os.rs`,
+  and its name appears otherwise only in `core/src/source.rs`'s comments, inside the module the gate allows);
+  `error::tests::every_variant_displays_its_pinned_text` and `health_failure_names_test_stage_and_index_only`;
+  `secret::tests::*` (6) and `session::inner::tests::zeroize_clears_every_field`; the session skeleton in
+  `session::tests::new_runs_the_suite_and_keeps_the_settings` and
+  `session::inner::tests::the_probe_counts_completed_zeroizes_and_drop_runs_one`; `kat::tests::*` (19) and
+  tests/kat.rs; kat.json by verify.py check 5 on both Pythons; the stub by `source::tests::stub::*` (4),
+  `source::stub::tests::*` (3) and the canary positive control for its marker (below).
+- Group 3: check 6, check 7 and check 4 on both Pythons; `source::tests::*` (credit_policy_table,
+  os_source_writes_every_byte_position, constants_and_ids_match_keepcrypt_json, the four stub tests) and
+  `source::os::tests::every_os_error_is_a_source_fault`; `health::tests::*` (7, among them
+  every_keepcrypt_json_case_in_any_chunking, credit_arrives_per_completed_window and
+  a_failed_tester_stays_failed_and_credits_nothing); `pool::tests::*` (4, every_bit_of_the_os_record_reaches_d among
+  them); the Pool and Health KATs in `kat::tests::pool_constants_match_keepcrypt_json`,
+  `health_cases_match_keepcrypt_json` and `every_group_passes_and_fails_under_its_fault`.
+- Group 4: `dice::tests::*` (6); the Seed KAT in `kat::tests::seed_constants_match_keepcrypt_json`.
+- Group 5: `braille::tests::*` (16) for braille.rs and the read-back compare (six_sample_inserts,
+  readback_keys_are_distinct_and_find_their_word, every_word_reads_back_from_its_own_faces, the_named_misreads,
+  every_mirror_flip_is_one_mirror_misread_and_names_the_279, every_blank_face_slip_is_caught,
+  prefix_neighbours_never_match_and_49_short_words, text_vectors_and_refusals, a_mismatch_zeroizes_every_field, ...).
+- Group 6: check 9 on both Pythons, with every "Spec values" page fetched during M1 (2026-10-09 and 10-10) and its
+  SHA-256 recorded in SOURCES.md; `ur::tests::*` (8); `descriptor::tests::*` (bip84_vector,
+  bcr_2020_015_shield_and_the_full_example, bip380_checksum_cases, tampered_descriptors_fail_the_self_check, ...);
+  the Bip84 KAT in `kat::tests::bip84_constants_match_watchonly_json`.
+- Group 7: check 10 on both Pythons; `seal::check::tests::*` (6) and the session's typo test
+  (`session::tests::stub::a_typo_then_the_right_code_reveals`, check_flow); `seal::merkle::tests::*` (3);
+  `seal::snapshot::tests::*` (7, every_snapshot_case and every_header_bit_flip_and_truncation_fails among them) and
+  `seal::date::tests::*`; `seal::proof::tests::*` (3) and tests/kcr.rs; `seal::registry_key::tests::*`,
+  `seal::registration::tests::*`, tests/kcr_release.rs (107 cases, NoRegistryKey) and the test-registry positive
+  control below (registry marker and key, no stub marker); the four KATs in
+  `kat::tests::seal_and_go_ahead_constants_match_seal_json_and_kcr_json`, `ed25519_constants_match_kat_json`,
+  `merkle_constants_match_kcr_json` and `a_fault_in_the_s_step_fails_the_seal_group`.
+- Group 8: `backup::armor::tests::*` (2) and the refused armor cases of backup.json through
+  `backup::age::tests::every_refused_file_gives_its_error`; `backup::tests::passphrase_layouts_match_backup_json`,
+  `each_of_the_88_bit_flips_changes_exactly_one_word`, `stub::generate_matches_backup_json` and the
+  `backup_takes_no_passphrase` fixture; `backup::tests::plaintexts_match_backup_json` and
+  `every_refused_plaintext_gives_its_error`; the Age KAT in `kat::tests::age_constants_match_backup_json_and_cctv`
+  and `backup::tests::stub::decrypt_backup_runs_the_age_group`.
+- Group 9: tests/ceremony.rs (Mixed and dice-only, Pi and phone, 12 and 24 words); `session::tests::*` (7) and
+  `session::tests::stub::*` (11); tests/error_injection.rs; tests/check_flow.rs;
+  `session::tests::stub::cannot_check_after_a_collision_restarts_at_the_normal_minimum` and
+  `collision_evidence_wipes_and_restart_asks_for_99`; `session::tests::the_read_back_gate`,
+  `ceremony::every_export_fails_before_read_back`, tests/panic_wipe.rs and tests/no_panic.rs.
+- Group 10: the binaries listed above; tests/vectors.rs stays unticked (owner item).
+- Group 11, the scan: `--selftest` 233 passed under sh and dash (the 24 artifact cases are pasted below).
+- Group 12, canaries: 54 checks, all as intended (below); CLAUDE.md Commands: cfdb24a.
+- Verification: source substitution (tests/source_substitution.rs, the Pi and phone sessions); pipe width
+  (`pool::tests::every_bit_of_the_os_record_reaches_d`, `seed::tests::every_bit_of_d_reaches_c_and_e`,
+  `every_bit_of_e_reaches_the_words`); error injection (tests/error_injection.rs, every KatId at new and restart and
+  through each free function's twin); trybuild (23 fixtures); go-ahead (`seal::check::tests::*`, tests/check_flow.rs,
+  tests/kcr.rs, `ur::tests::decoder_negatives`); snapshot tampering (`seal::snapshot::tests::every_snapshot_case`,
+  `every_header_bit_flip_and_truncation_fails`, tests/kcr_release.rs); dice-only against Coldcard
+  (`seed::tests::dice_only_matches_coldcard`, `vectors::rolls_json_through_dice_only_sessions`, verify.py check 4);
+  braille (`braille::tests::six_sample_inserts`, the 279 and 49 tests, `every_blank_face_slip_is_caught`, check 8);
+  watch-only (`descriptor::tests::*`, `seed::tests::bip84_fingerprint_and_first_address`, check 9); secrets never
+  printed (tests/no_secret_text.rs, tests/panic_wipe.rs, tests/no_panic.rs); line coverage (below).
+
+**verify.py --selftest** (both Pythons print the same 11 lines, then "selftest passed: 11 checks"):
+
+```text
+ok   seal known answers (CLAUDE.md vector 1, project vectors 2 and 3)
+ok   vectors/seal.json matches regenerated output
+ok   vectors/SOURCES.md hashes and coverage
+ok   Coldcard's own scripts on every dice-only case (rolls.json, keepcrypt.json)
+ok   vectors/kat.json: SHA and HMAC values recomputed, file matches regenerated output, pinned entries and Ed25519 digest
+ok   vectors/keepcrypt.json: embedded BIP39 list and encoder, file matches regenerated output, pinned answers, ...
+ok   SP 800-90B health-test cutoffs: Table 2 reproduced exactly, RCT 6 and APT 62 at H = 4
+ok   vectors/braille.json: pinned cells, inserts and text, the docs' counts recounted from the list and found in ...
+ok   vectors/watchonly.json: RIPEMD-160, CRC-32, dCBOR, Bytewords, UR, BIP-380 and NFKD against the standard ...
+ok   vectors/kcr.json: Ed25519 against RFC 8032 TEST 1-3 and kat.json, the docs' snapshot and proof figures, ...
+ok   vectors/backup.json: scrypt against hashlib, all 26 CCTV scrypt files through this reader, file matches ...
+```
+
+**Coverage.** `cargo llvm-cov --locked -p keepcrypt-core --features test-sources --no-cfg-coverage
+--fail-under-lines 95 --summary-only`, cargo-llvm-cov 0.9.1, exit 0 in 63 s:
+
+```text
+TOTAL   regions 15763, missed 493, 96.87%   functions 960, missed 36, 96.25%   lines 8248, missed 215, 97.39%
+lowest by lines: seal/crockford.rs 73.58% (106, 28 missed)   backup.rs 93.59%   ur.rs 94.72%   pool.rs 94.95%
+```
+
+Nothing is excluded: `grep -rn 'coverage(off)\|cfg(coverage' core/` finds nothing, and the CI job's path check
+(commit 27) passes on core/src and fails on a planted `core/src/x/tests/a.rs` and `core/src/foo_tests.rs`.
+
+**The KAT list** (`KatId::ALL`, the order a full suite runs; `self_test`, `Session::new` and `Wiped::restart` run all
+15; `hwrng_boot_test` runs Health, `seal_from_mnemonic` Seal, the three registry functions Ed25519 then Merkle, and
+`decrypt_backup` Age):
+
+```text
+Sha256         NIST empty, "abc", two-block              Braille   SHA-256 of the canonical table text; "2026" in cells
+Sha512         NIST empty, "abc", two-block              Bip84     abandon: fingerprint, xpub, first address, receive
+Hmac           RFC 4231 case 2, both HMAC crates                   checksum and UR, from the S the Seal group checks
+Bip39Wordlist  the list's SHA-256 is 2f5eed53...         Seal      S from the abandon words (PBKDF2), then code, T,
+Bip39          24 entropy/mnemonic pairs, 2 PBKDF2 seeds           Seal ID and its braille caption
+Health         stuck stream fails RCT, alternating APT,  GoAhead   CF94-BCAJ; a wrong n fails
+               each at its pinned sample; clean passes   Ed25519   RFC 8032 TEST 1 accepted; one flipped bit refused
+Pool           one OS record gives its pinned D          Merkle    a leaf, a node, vector 1's 20-level path
+Seed           C, a mixed E, dice-only "123456"          Age       CCTV armor_scrypt decrypts; the writer rebuilds scrypt
+                                                                   and armor_scrypt; wrong passphrase refused; work
+                                                                   factor 23 refused before scrypt
+```
+
+Static cost bound of a full run (kat.rs header, pinned by `kat::tests`): 3 PBKDF2-2048 (2 Bip39, 1 Seal), 3 scrypt
+at log2 N 10 (1 MiB each, Age), 2 Ed25519 verifies, one 20-level Merkle path and never a full bucket root, 2,064
+Health samples; at most 1 s on a Pi Zero is the plan's estimate, for M4 to measure. Host timing, 100 calls of
+`self_test()` in a scratch copy of the workspace (an uncommitted example, timed with `/usr/bin/time -p`, three runs
+each): 0.62-0.64 s in the dev profile (core at opt-level 0, dependencies at 3), so 6.3 ms per suite; 0.54 s in
+release, 5.4 ms per suite.
+
+**Release-artifact scan, local** (commit 26; the cross job runs it for all six targets in CI). Default features,
+release rlib and probe, Xcode 27.0 for iOS:
+
+```text
+target/aarch64-apple-ios/release/libkeepcrypt_core.rlib: 4047016 bytes
+target/aarch64-apple-ios/release/examples/release_probe: 3558944 bytes
+banned-api-check --artifact aarch64-apple-ios: clean, 2 file(s): no marker, no test key, no other RNG symbol;
+  _CCRandomGenerateBytes imported by all 1 object or linked file(s) (1 archive(s), which need no import)
+target/aarch64-apple-ios-sim/release/libkeepcrypt_core.rlib: 4039176 bytes
+target/aarch64-apple-ios-sim/release/examples/release_probe: 3553728 bytes
+banned-api-check --artifact aarch64-apple-ios-sim: clean, 2 file(s): ... _CCRandomGenerateBytes imported by all 1 ...
+```
+
+The Pi (`arm-unknown-linux-gnueabihf`) and Android legs need the ARM gcc and the NDK, which this Mac does not have;
+their first scan is the CI run after the push.
+
+**Both positive controls** (canaries.sh builds these for the host; the same builds by hand, paths shortened to
+`target/canary-probe/aarch64-apple-darwin/release/`):
+
+```text
+== features: default (control)
+banned-api-check --artifact aarch64-apple-darwin: clean, 2 file(s): no marker, no test key, no other RNG symbol;
+  _getentropy imported by all 1 object or linked file(s) (1 archive(s), which need no import)    scan exit 0, probe exit 0
+== features: test-registry
+Marker: libkeepcrypt_core.rlib: KC_TEST_REGISTRY_DO_NOT_SHIP
+TestKey: libkeepcrypt_core.rlib: the test registry public key 42e9fa0e206d4bdf410f987ac7ded54fb02fb49ef277cc425d5fdfdb72c3b94b
+Marker: examples/release_probe: KC_TEST_REGISTRY_DO_NOT_SHIP
+TestKey: examples/release_probe: the test registry public key 42e9fa0e206d4bdf410f987ac7ded54fb02fb49ef277cc425d5fdfdb72c3b94b
+banned-api-check --artifact aarch64-apple-darwin: 4 hit(s) in 2 file(s)                          scan exit 1, probe exit 0
+== features: test-sources
+Marker: libkeepcrypt_core.rlib: KC_TEST_SOURCE_DO_NOT_SHIP
+Marker: libkeepcrypt_core.rlib: KC_TEST_REGISTRY_DO_NOT_SHIP
+TestKey: libkeepcrypt_core.rlib: the test registry public key 42e9fa0e206d4bdf410f987ac7ded54fb02fb49ef277cc425d5fdfdb72c3b94b
+Marker: examples/release_probe: KC_TEST_SOURCE_DO_NOT_SHIP
+Marker: examples/release_probe: KC_TEST_REGISTRY_DO_NOT_SHIP
+TestKey: examples/release_probe: the test registry public key 42e9fa0e206d4bdf410f987ac7ded54fb02fb49ef277cc425d5fdfdb72c3b94b
+banned-api-check --artifact aarch64-apple-darwin: 6 hit(s) in 2 file(s)                          scan exit 1, probe exit 0
+```
+
+The test-registry build holds no stub marker; its probe exits 0, so the probe's embedded snapshot verifies under the
+test key, and the default probe exits 0 with `NoRegistryKey`.
+
+**The scan's selftest** (24 artifact cases of the 233; temp paths shortened to `<tmp>/`):
+
+```text
+PASS artifact-test-key-is-kcr-json-test-registry-key
+PASS artifact-aarch64-linux-android-clean-object -> exit 0
+PASS artifact-aarch64-linux-android-arc4random-import -> exit 1; Symbol: <tmp>/...-arc4random.o: undefined arc4random
+PASS artifact-aarch64-linux-android-missing-os-import -> exit 1; OSImport: <tmp>/...-no-os-import.o: no undefined getrandom, ...
+PASS artifact-aarch64-linux-android-getentropy-import -> exit 1; Symbol: <tmp>/...-getentropy.o: undefined getentropy
+PASS artifact-aarch64-linux-android-rand-crate-symbols -> exit 1; Symbol: ... rand::backends::use_file::fill_inner;
+     Symbol: ... rand::rngs::next_u32
+PASS artifact-aarch64-linux-android-getrandom-fallback-symbol -> exit 1; Symbol: ...: getrandom's fallback
+     getrandom::backends::use_file::fill_inner
+PASS artifact-aarch64-linux-android-archive-needs-no-import -> exit 0
+PASS artifact-aarch64-linux-android-archive-member-arc4random -> exit 1; Symbol: <tmp>/...-arc4random.rlib: undefined arc4random
+PASS artifact-aarch64-apple-ios-clean-object -> exit 0
+PASS artifact-aarch64-apple-ios-arc4random-import -> exit 1; Symbol: ...: undefined _arc4random
+PASS artifact-aarch64-apple-ios-missing-os-import -> exit 1; OSImport: ...: no undefined _CCRandomGenerateBytes, ...
+PASS artifact-aarch64-apple-ios-getentropy-allowed -> exit 0
+PASS artifact-aarch64-apple-ios-rand-crate-symbols -> exit 1; (the same two rand:: symbols)
+PASS artifact-aarch64-apple-ios-getrandom-fallback-symbol -> exit 1; Symbol: ...: getrandom's fallback ...
+PASS artifact-aarch64-apple-ios-archive-needs-no-import -> exit 0
+PASS artifact-aarch64-apple-ios-archive-member-arc4random -> exit 1; Symbol: ...: undefined _arc4random
+PASS artifact-marker-source-text -> exit 1; Format: testdata/artifact/marker-source.txt: ...; Marker: ...: KC_TEST_SOURCE_DO_NOT_SHIP
+PASS artifact-marker-registry-text -> exit 1; Format: ...; Marker: ...: KC_TEST_REGISTRY_DO_NOT_SHIP
+PASS artifact-test-key-bytes -> exit 1; Format: <tmp>/test-key.bin: ...; TestKey: <tmp>/test-key.bin: the test registry public key ...
+PASS artifact-two-files -> exit 1; (only the marker file's two hits)
+PASS artifact-error-unknown-target -> exit 2
+PASS artifact-error-missing-file -> exit 2
+PASS artifact-error-no-file -> exit 2
+selftest: 233 passed, 0 failed
+```
+
+**Canaries** (54 checks; the 14 new at commit 26, after the 40 before it):
+
+```text
+PASS: graph: no serde in core's normal or build graph; getrandom's only dependent is core; dalek features pinned
+PASS: graph-pins failed as intended
+PASS: vectors-tamper-seal.json failed as intended        (and kat, keepcrypt, braille, watchonly, kcr, backup.json,
+                                                          age/age_cli_written.json: 8 in all)
+PASS: release-probe-default: the scan is clean and the probe runs (control)
+PASS: release-probe-test-registry failed as intended
+PASS: release-probe-test-registry: the probe verifies its snapshot under the test key
+PASS: release-probe-test-sources failed as intended
+PASS: all 54 checks ran
+```
+
+**age-interop, local** (Homebrew age 1.3.2, the only CLI on this Mac; the CI job runs Ubuntu's 1.1.1 after the
+push), `python3 scripts/age-interop.py --core`, exit 0 in 13.5 s:
+
+```text
+age-interop: v1.3.2
+age-interop: ok: age -> KeepCrypt and KeepCrypt -> age at work factor 18, armored and binary; wrong passphrases
+  refused by both; age_cli_written.json decrypted by both
+age-interop: ok: age decrypted all 12 backup.json age files the readers accept, and also refused 15 of the 15
+  armor cases they refuse
+age-interop: ok: core read age's files (decrypt_backup), age read core's fresh work-factor-18 backups, and age
+  refused a wrong passphrase
+```
+
+**The one-time SeedBook PDF check** is recorded above ("M1: one-time SeedBook PDF check", review fix after commit
+15): 2,048 printed numbers equal 1-2048, 0 rows whose capitals differ from the list, the six samples and the cover
+match, problems: 0.
+
+**The CI workflow** (commit 27) is checked locally only: `ruby -ryaml` loads it (9 jobs: changes, lint, test,
+supply-chain, gates, verifier-py39, coverage, age-interop, and cross with 6 legs, so 14 check runs). The changes
+script gives `entropy=true` for HEAD~1..HEAD and for an unreadable range, and `entropy=false` for the README-only
+commit b4e8e47 against its parent (a scratch worktree). The first real run comes after the push.
+
+**Q12 ruleset: not created.** It changes the GitHub repo's settings, and the owner asked to be asked once more
+right before it is created ("Needed before M1"); that go-ahead has not been given, so it is an owner item below.
+`main` stays unprotected until then. build-plan.md's two-approval rule ("Review": CODEOWNERS requires two approvals)
+is unmet while one account (`bitwilll`) opens and merges every PR.
+
+**Unticked, and what each waits for:**
+- Group 0, branch protection: the owner's go-ahead for the Q12 ruleset.
+- Group 4 `seed.rs`, group 6 `crypto-account` and the export, group 7 `seal/crockford.rs` and derivation, group 8
+  `backup/age.rs`: built and tested as above, but each records library residuals "for the owner's review (not yet
+  accepted)".
+- Group 4 `seed.rs` also, and group 10 `tests/vectors.rs`, and Verification "All vectors pass": the owner item on
+  tests/vectors.rs and the 16 of 24 BIP39 seeds.
+- Group 5 braille vectors and KAT group Braille: Q15.
+- Group 8 vectors, the Backup API and "Check a backup", and Verification "Backup": the age 1.1.1 files (the age
+  1.3.2 substitution) and the CI age-interop run against Ubuntu's 1.1.1.
+- Group 11 `release_probe.rs`, group 12 CI jobs and coverage, group 13 Review, and Verification "The release
+  artifact scan is clean on all six targets" and "Clean ... CI is green": the first CI run after the push (the Pi
+  and Android scans, the coverage and age-interop jobs, the changes job), and the Q12 ruleset or its deferral.
+
+### M1: open owner items (2026-10-10)
+Nothing below has been acted on beyond recording it. Each needs the owner's answer before the M1 gate.
+1. **Q12 ruleset (needs an explicit go-ahead).** A ruleset on `main` scoped to `Entropy/**`: require a pull request
+   and these checks: `changes (Entropy/ or this workflow)`, `lint (fmt, clippy)`, `test`, `supply-chain (deny, audit,
+   vet)`, `gates (banned APIs, verifier, canaries)`, `verifier (python 3.9)`, `coverage (core, 95% of lines)`,
+   `age-interop (age 1.1.1)` and the six `cross (<target>)` legs; 0 approvals while one account opens and merges
+   every PR. The changes job must be required too: if it fails, the jobs that need it are skipped, and GitHub counts
+   skipped as passing. Created with `gh api repos/bitwilll/keepcrypt/rulesets` only after the go-ahead, and its
+   output then goes under Review.
+2. **Q13 (a)-(e) and Q14 (a)-(b):** the agent applied the standing approval to both; please confirm explicitly
+   ("Raised by the review of commits 2-5").
+3. **Q15:** the Braille table text and its digest `fd75c236...` in place of `41f0e259...`, and the Braille KAT's
+   reworded proof ("Raised by the review of commits 11-15").
+4. **The 99-roll question:** 99 rolls give 255.9 bits, not 256 (group 4, `dice.rs`). Keep 99 for 24 words (and after
+   a collision), or move to 100 rolls (258.5 bits), a CLAUDE.md "Dice quota" and design.md change. Until answered,
+   99 stands.
+5. **Cannot check after a collision:** the restart after a collision needs 99 rolls; if that new session's check
+   then ends in "Cannot check", the next restart uses the normal minimum (50 for 12 words), as
+   seal-watchonly-braille.md "Add fresh entropy" reads ("After 'Cannot check', the next ceremony uses the normal
+   minimum"), pinned by `cannot_check_after_a_collision_restarts_at_the_normal_minimum`. Confirm, or keep 99 until a
+   check passes after a collision.
+6. **Library residuals (not yet accepted; Q1 (iii) accepted only scrypt's working buffer):**
+   - BIP32 and BIP39 (group 4): rust-bitcoin's copies of the parent key in `derive_priv`, the HMAC state and output
+     in its `ckd_priv` and `new_master`, secp256k1's tweak temporaries, and the moved-from S of bip39's
+     `to_seed_normalized` stay on the stack unwiped;
+   - BIP39 passphrase NFKD (group 6): unicode-normalization 0.1.25's pending-character buffer, moved to the heap and
+     freed unwiped for long decompositions;
+   - the xpub (group 6): about six freed heap copies while the export is built (public-key data);
+   - hmac 0.13 (group 7): the padded key block of the seal's HMAC-SHA256 key S, also in scrypt's PBKDF2 steps keyed
+     by the backup passphrase (group 8);
+   - HKDF (group 8): copies of the pseudorandom key derived from the file key;
+   - Poly1305 (group 8): the one-time key r and s stay in the dropped cipher state, because poly1305 resolves without
+     its `zeroize` feature; wiping them needs a new direct dependency edge.
+7. **The age 1.3.2 vectors:** approve `vectors/age/age_cli_written.json` as written with Homebrew age 1.3.2, or have
+   it regenerated with Ubuntu's 1.1.1 (for example in the CI job) and committed in a `verify:` commit ("Raised by
+   the review of commits 19-21").
+8. **The scrypt upstream issue (Q1 (iii)):** not filed. Filing posts in public, so it waits for the owner to file it
+   or to say go ahead; then its link goes here.
+9. **tests/vectors.rs and the 16 of 24 BIP39 seeds:** approve as built (the secret-holding sets run as unit tests;
+   core derives the 16 12- and 24-word TREZOR seeds, not the 8 18-word ones), or ask for a test-only constructor
+   and a stdlib PBKDF2 check in verify.py ("Raised by the review of commits 22-25").
+10. **The Public API sketch (build-plan.md) against the built API:** `credited_bits()`, `required_bits()` and
+    `hw_bytes_tested()` return u64 (the sketch: u32); `Wiped::collision_report(&self)` returns
+    `Option<&CollisionReport>` (the sketch: an owned `Option<CollisionReport>`); the dates are `RegistryDate` with
+    `Freshness`; `VerifiedProof::lookup`, and `number()` and `entry_count()` on both verified types, are public
+    additions. Approve a docs-only commit that aligns the sketch, or keep it as a sketch.
+11. **cargo-vet exemptions to approve (33 new in M1):**
+    - safe-to-deploy (19): aead 0.6.1, base64ct 1.8.3, chacha20 0.10.2, chacha20poly1305 0.11.0, cipher 0.5.2,
+      cmov 0.5.4, ctutils 0.4.2, curve25519-dalek 5.0.0, curve25519-dalek-derive 0.1.1, ed25519 3.0.0,
+      ed25519-dalek 3.0.0, hkdf 0.13.0, hmac 0.13.0, pbkdf2 0.13.0, poly1305 0.9.1, salsa20 0.11.0, scrypt 0.12.0,
+      signature 3.0.0, universal-hash 0.6.1;
+    - safe-to-run, dev only (14): glob 0.3.4, hashbrown 0.17.1, indexmap 2.14.2, itoa 1.0.18, memchr 2.8.3,
+      serde_json 1.0.151, target-tuple 1.0.2, toml 1.1.6+spec-1.1.0, toml_parser 1.1.3+spec-1.1.0,
+      toml_writer 1.1.2+spec-1.1.0, trybuild 1.0.121, windows-sys 0.61.2, winnow 1.0.4, zmij 1.0.23.
+    The other 11 new crates pass on imported audits (listed under group 1's proof above).
+
+### M1 gate status: NOT MET yet
+The gate in docs/build-plan.md asks for all vectors passing, the source-substitution and error-injection tests
+passing, and at least 95% line coverage in `core/`. Locally the tests pass and coverage is 97.39%. Still open: the
+first CI run on `m1-core` after the push (the Pi and Android artifact scans, the coverage and age-interop jobs), the
+owner items above (among them "All vectors pass", which waits on item 9, and the Q12 ruleset), and the owner's
+approval at the gate. Per CLAUDE.md, M2 does not start until the owner approves.
