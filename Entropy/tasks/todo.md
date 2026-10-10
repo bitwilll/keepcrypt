@@ -24,7 +24,8 @@ Claude Code: refine this plan, then **check in with the owner before writing cod
 - [x] **Reviewers and disclosure:** the CODEOWNERS owner is `msaval02@nyit.edu`, the bitwilll account's verified
       email. GitHub rejected `admin@keepcrypt.com` as an unknown owner, and now reports 0 CODEOWNERS errors. The
       SECURITY.md disclosure address is `admin@keepcrypt.com`. Branch protection with two required approvals is not set
-      yet; `main` is unprotected today.
+      yet; `main` is unprotected today. (Changed 2026-10-10: ruleset 24833307 protects `main`, with 0 approvals; M1
+      Review, "M1: the owner's answers applied".)
 - [x] **Approvals:** the owner answered "OK" to the "Changes during M0" list.
 - Monorepo adjustments, made when moving in:
   - The workflow lives at the repo root as `.github/workflows/entropy-ci.yml`. It runs every step in `Entropy/`, and
@@ -322,14 +323,15 @@ Docs are named by file: build-plan.md, design.md, seal-watchonly-braille.md, pi-
 
     Otherwise: keep `main` unprotected. Nothing then stops a merge with red CI, and Review says so at every gate.
 
-### Raised by the review of commits 2-5 (standing approval applied 2026-10-10; owner confirmation pending)
+### Raised by the review of commits 2-5 (standing approval applied 2026-10-10; confirmed by the owner 2026-10-10)
 Applied by the agent, not an answer from the owner: the owner's standing approval of the Q1-Q12 recommendations ("I
 approve, do it", 2026-10-09) was applied on 2026-10-10 to Q13 (all five doc edits, as recommended) and Q14 (both
 gate changes, as recommended). The owner has not answered Q13 or Q14 directly. The owner may veto any item; a veto
 reverts that item in its own reviewed commit. Q13's edits landed as one docs-only commit (c40a2e3) before commit 8
 ("Q13 docs" in "Commit order on `m1-core`"); Q14's two gate changes stay as committed in f732c98.
-- [ ] The owner confirms Q13 (a)-(e) and Q14 (a)-(b) explicitly, recorded here with a date, before the M1 gate
-      (review fix after commit 10).
+- [x] The owner confirms Q13 (a)-(e) and Q14 (a)-(b) explicitly, recorded here with a date, before the M1 gate
+      (review fix after commit 10). Answered 2026-10-10: "approve all" (owner item 2, "M1: the owner's answers")
+      confirms all five doc edits and both gate changes as applied; nothing is reverted.
 
 13. **Doc wording that Q5-Q7 or the plan pin more exactly than the docs.** Each item names the commit that needs it.
     Recommended: approve all five, as one docs-only commit before commit 8.
@@ -378,10 +380,12 @@ reverts that item in its own reviewed commit. Q13's edits landed as one docs-onl
     confirm. Otherwise: go back to the Q11(c) wording, build and scan release artifacts only with `-p`, and leave the
     profiles to CODEOWNERS review.
 
-### Raised by the review of commits 11-15 (owner confirmation pending)
+### Raised by the review of commits 11-15 (answered 2026-10-10)
 At commit 11 the agent replaced a value that the approved plan pins. Commits 12-15 built on the replacement, and no
 owner has approved it. It is not covered by the standing approval of Q1-Q12.
-- [ ] The owner answers Q15, recorded here with a date, before the M1 gate (review fix after commit 15).
+- [x] The owner answers Q15, recorded here with a date, before the M1 gate (review fix after commit 15). Answered
+      2026-10-10 (owner item 3): the table-text definition, the digest `fd75c236...` and the reworded proof are
+      approved.
 
 15. **The Braille table digest and the Braille KAT's proof (plan group 5: check 8 and "KAT group Braille").**
     - The digest. The plan pins the table digest `41f0e259...`, but it never wrote down the text behind it.
@@ -400,11 +404,12 @@ owner has approved it. It is not covered by the standing approval of Q1-Q12.
     Recommended: approve the table-text definition and `fd75c236...`, and reword the proof as follows. One flipped
     dot, or two letters' cells swapped, fails the Braille group, and two swapped words fail the Bip39Wordlist group.
     Otherwise: supply the text behind `41f0e259...`. Check 8, braille.json and the Braille KAT then pin it in their
-    own reviewed commit. Until the owner answers, `fd75c236...` is the agent's value, not an approved one.
+    own reviewed commit. Until the owner answers, `fd75c236...` is the agent's value, not an approved one. (Approved
+    2026-10-10.)
 
-### Raised by the review of commits 19-21 (owner decision pending)
+### Raised by the review of commits 19-21 (answered 2026-10-10)
 Neither is covered by the standing approval of Q1-Q12; the agent does not act on either until the owner answers.
-- [ ] **The age CLI's files.** Plan group 8 says `scripts/age-interop.py --generate` writes
+- [x] **The age CLI's files.** Plan group 8 says `scripts/age-interop.py --generate` writes
       `vectors/age/age_cli_written.json` with Ubuntu's age 1.1.1-1ubuntu0.24.04.3; commit 19 wrote it with Homebrew
       age 1.3.2 (`tool_version` `v1.3.2`), the only CLI installable on this Mac, and recorded that as a deviation
       without the owner's approval. Please either approve the 1.3.2 substitution, or have the files regenerated with
@@ -412,16 +417,20 @@ Neither is covered by the standing approval of Q1-Q12; the agent does not act on
       group 8 proof "the age 1.1.1 files decrypt" and the Verification item "core reads age 1.1.1 files" stay
       unticked. Either way, the commit 27 `age-interop` job runs `scripts/age-interop.py --core` against 1.1.1, so
       in CI core decrypts files 1.1.1 has just written and 1.1.1 decrypts core's (the default mode reads 1.1.1's
-      output only with verify.py's reader). Recorded 2026-10-10, review fix after commit 21.
-- [ ] **Q1 (iii)'s upstream issue.** The owner approved "accept that scrypt 0.12 never zeroizes its 256 MiB working
+      output only with verify.py's reader). Recorded 2026-10-10, review fix after commit 21. Answered 2026-10-10
+      (owner item 7): the 1.3.2 substitution is approved, so the committed files stay as written. The CI job still
+      runs `--core` against Ubuntu's 1.1.1 (Verification "Backup").
+- [x] **Q1 (iii)'s upstream issue.** The owner approved "accept that scrypt 0.12 never zeroizes its 256 MiB working
       buffer, and file an upstream issue". The acceptance is applied (`backup/age.rs`); the issue is not filed, and
       filing it posts in public, so it waits for the owner to file it or to say go ahead. Record the link here once
-      it exists. Recorded 2026-10-10, review fix after commit 21.
+      it exists. Recorded 2026-10-10, review fix after commit 21. Answered 2026-10-10 (owner item 8, an explicit
+      yes): filed under the owner's account as https://github.com/RustCrypto/password-hashes/issues/938 ("scrypt:
+      zeroize the B, V and T buffers before freeing them"), open.
 
-### Raised by the review of commits 22-25 (owner confirmation pending)
+### Raised by the review of commits 22-25 (answered 2026-10-10)
 Commit 25 recorded a change to an approved plan item as a done deviation, not as a question. The standing approval
 of Q1-Q12 does not cover it, so it waits for the owner.
-- [ ] **tests/vectors.rs and the full vector sets (plan group 10).** The plan says tests/vectors.rs runs the full
+- [x] **tests/vectors.rs and the full vector sets (plan group 10).** The plan says tests/vectors.rs runs the full
       sets: 24 BIP39 seeds, 26 CCTV files, 3 seal vectors, 2,048 braille entries, watchonly.json, kcr.json,
       backup.json and rolls.json. As built, tests/vectors.rs runs only what the public API reaches, because secrets
       have no public constructor (CLAUDE.md rule 5); the rest runs in the unit tests of each module, from the same
@@ -435,7 +444,20 @@ of Q1-Q12 does not cover it, so it waits for the owner.
       Recommended: approve both as built. Otherwise: (a) a public test-only constructor behind `test-sources`
       would let tests/vectors.rs reach the secret-holding sets; (b) a stdlib PBKDF2 check in verify.py can
       recompute all 24 seeds, in a `verify:` commit. Until this is answered, the Verification item "All vectors
-      pass" stays unticked. Recorded 2026-10-10, review fix after commit 25.
+      pass" stays unticked. Recorded 2026-10-10, review fix after commit 25. Answered 2026-10-10 (owner item 9):
+      (a) and (b) are approved as built.
+
+### Raised by the review of the owner-item commits (2026-10-10; owner answer pending, low)
+Neither blocks the M1 gate. Both are items 13 and 14 under "M1: new open owner items" in Review.
+- [ ] **The seed-pipeline figure.** `docs/img/seed-pipeline.png` still reads "50 rolls give 129 bits; 99 give 256".
+      The repo holds no source for it. 6ba465c notes the rounding in the sentence under the figure. A redraw needs
+      the owner's source file, or approval to redraw it.
+- [ ] **The 99-roll minimum after a wipe.** Only a `Wiped` carries the 99-roll minimum after a collision, and only a
+      check leaves one. So an error, the Pi's idle wipe, the phones' background or screenshot wipe, or an app kill in
+      the restarted session leads to `Session::new` at the normal minimum. seal-watchonly-braille.md "Add fresh
+      entropy" now states that exception (dc53b8f). Recommended: in M3, a core exit on the pre-Ready states that wipes
+      and returns a `Wiped` keeping the flag, for the shells' timeout and capture wipes. Otherwise: keep the
+      documented exception.
 
 ### Later
 - [ ] Release signing: minisign or GPG, and who holds the key offline? (M7)
@@ -446,6 +468,23 @@ of Q1-Q12 does not cover it, so it waits for the owner.
   `getrandom` crate calls `CCRandomGenerateBytes`, so M6 or M7 needs its own list of expected symbols.
 - UniFFI converts Rust panics into Kotlin and Swift errors that app code could catch and then carry on. M5 must make
   any core panic wipe the session.
+- Games (owner item 12 (b), 2026-10-10): M3 builds core's game-randomness call in `core/src/source`, a free function
+  that fills a buffer from its own `getrandom` call and never touches the pool. The Pi games are its first user; M5
+  and M6 reach it through the FFI. Its name then goes into build-plan.md's sketch, pi-firmware.md and mobile-apps.md,
+  which today call it "core's separate game-randomness call".
+- 99 rolls after a collision (owner item 5, 2026-10-10): after a Stop or a Cannot check, the M3, M5 and M6 shells
+  offer only `Wiped::restart`, never `Session::new`, so a restart after a collision keeps 99 rolls.
+- M7 audit note (owner item 6, 2026-10-10): the accepted library residuals, which core cannot wipe:
+  - rust-bitcoin's, secp256k1's and bip39's stack copies (the parent key in `derive_priv`, the HMAC state and output
+    in `ckd_priv` and `new_master`, the tweak temporaries, the moved-from S of `to_seed_normalized`);
+  - unicode-normalization 0.1.25's pending-character buffer, freed unwiped from the heap for long decompositions;
+  - about six freed heap copies of the xpub while the export is built (public-key data);
+  - hmac 0.13's padded key block (the seal's key S, the header MAC's key, scrypt's PBKDF2 steps);
+  - HKDF's copies of the pseudorandom key derived from the file key;
+  - scrypt 0.12's working buffers (Q1 (iii)), upstream issue
+    https://github.com/RustCrypto/password-hashes/issues/938;
+  - Poly1305's r and s are now wiped on drop (b4871b9), except the soft backend's stack temporaries in `State::new`
+    and `finalize`.
 
 ## M0: Repo bootstrap
 
@@ -633,7 +672,8 @@ Each item came out of building M0 or the three adversarial review rounds. Approv
    - Files are scanned as text unless their extension is on a binary skip list.
    - Symlinked directories are refused.
    - Rule 1 now covers every `*.rs` file except `core/src/source.rs`, `core/src/source/` and the Pi games
-     (`pi/app/src/games.rs`, `pi/app/src/games/`).
+     (`pi/app/src/games.rs`, `pi/app/src/games/`). (Changed 2026-10-10 in 73abaea, owner item 12 (b): the Pi games
+     exemption is gone, so only `core/src/source*` may name getrandom.)
    - Left out on purpose: `import Network` (NWPathMonitor), `java.nio.channels` (FileChannel),
      `.textSelection(.disabled)` (required by the docs).
 6. **deny.toml.**
@@ -723,7 +763,9 @@ Each item came out of building M0 or the three adversarial review rounds. Approv
   source failure halts and wipes.
 - Phone games (M5, M6): getrandom is banned outside `core/src/source` and the Pi games, and `SecureRandom` and
   `SecRandomCopyBytes` are banned in app code. The phone games need an owner-approved source, for example a core API
-  that returns game bytes from a separate getrandom call and never touches the pool.
+  that returns game bytes from a separate getrandom call and never touches the pool. (Answered 2026-10-10, owner
+  item 12 (b): the Pi and phone games all take their bytes from core's game-randomness call in `core/src/source`,
+  built in M3; 73abaea removed the Pi games' Rule1 exemption.)
 
 ### Plan
 Refs: docs are named by file: build-plan.md, design.md, seal-watchonly-braille.md, pi-firmware.md and mobile-apps.md
@@ -771,7 +813,9 @@ starts. Every item names its proof.
 - Constant-time compares use `bitcoin::hashes::cmp::fixed_time_eq`, which is already in the graph, on fixed-size
   arrays only.
 - Out of M1:
-  - the phone games' byte source (M5/M6; this file, "Inputs from M0");
+  - the phone games' byte source (M5/M6; this file, "Inputs from M0"). Changed 2026-10-10 (owner item 12 (b)):
+    core's game-randomness call serves the Pi and phone games, is built in M3, and is reached through the FFI in
+    M5/M6;
   - the "Verify another device" API (M5/M6);
   - UniFFI;
   - the birthday-collision job (M7);
@@ -781,10 +825,15 @@ starts. Every item names its proof.
 **0. Before code**
 - [x] Record the owner's answers to Q1-Q12 under "Needed before M1". Apply the approved doc edits (Q10) in their own
       reviewed commit (CLAUDE.md: docs and code must agree). Proof: the diff.
-- [ ] Branch protection (Q12), an owner action before the first M1 merge: a ruleset on `main` for `Entropy/**` that
+- [x] Branch protection (Q12), an owner action before the first M1 merge: a ruleset on `main` for `Entropy/**` that
       requires a PR and the Entropy CI jobs; approvals 0 while one account opens and merges every PR. Proof:
       `gh api repos/bitwilll/keepcrypt/rulesets` output under Review. Until the ruleset exists, this plan says
       "CI jobs", not "required checks".
+      Done 2026-10-10 after the owner's explicit yes (owner item 1): ruleset 24833307 on `refs/heads/main`, active,
+      no bypass actors, a PR with 0 approvals and the 14 Entropy check runs required. A ruleset cannot limit its
+      checks to `Entropy/**` (Q12), so it covers every PR to `main`, and the changes job skips the other jobs on a
+      PR that does not touch `Entropy/`. Proof: `gh api repos/bitwilll/keepcrypt/rulesets/24833307` under Review,
+      "M1: the owner's answers applied". From here the 14 check runs are required checks.
 
 **1. Workspace and supply chain**
 - [x] Profiles and features (Q11):
@@ -993,8 +1042,10 @@ starts. Every item names its proof.
         255.9 bits (99 x 2.585), not 256, and the code now says so; design.md "Recommended architecture" still says
         "256 with 99 rolls". Whether the 24-word minimum should become 100 rolls (258.5 bits) is a
         question for the owner, a doc change (CLAUDE.md "Dice quota", design.md); until answered, 99 stands.
+        Answered 2026-10-10 (owner item 4): 99 stays, and design.md now says "about 256 (255.9)" (012c8db); the
+        sentence under the seed-pipeline figure says its "99 give 256" rounds up (6ba465c).
       Proof: unit tests, including that R only ever holds `b'1'..=b'6'`.
-- [ ] `seed.rs` (CLAUDE.md "Commitment", "Seed"; design.md "From entropy to a BIP39 seed phrase"; build-plan.md
+- [x] `seed.rs` (CLAUDE.md "Commitment", "Seed"; design.md "From entropy to a BIP39 seed phrase"; build-plan.md
       invariants):
       - C, mixed E and dice-only E exactly as in CLAUDE.md;
       - 12 words from E[..16], 24 from E[..32], via bip39 English, converted at once to `SecretMnemonic`;
@@ -1004,7 +1055,8 @@ starts. Every item names its proof.
       - Review fix after commit 10: a single 5-step `derive_priv` left m/84', m/84'/0', the account key m/84'/0'/0'
         and m/84'/0'/0'/0 in rust-bitcoin's frame, never erased. Core now derives one level at a time and erases
         every Xpriv it holds (master, each intermediate, leaf) on every path. Residual risk, for the owner's review
-        (not yet accepted; compare Q1 (iii) for scrypt): copies core cannot reach stay on the stack, namely
+        (accepted 2026-10-10 as an M7 audit note, owner item 6; compare Q1 (iii) for scrypt): copies core cannot
+        reach stay on the stack, namely
         rust-bitcoin's local copy of the parent in `derive_priv`, the HMAC state and output in its private
         `ckd_priv`, secp256k1's tweak temporaries, and the moved-from temporary of S returned by value from bip39's
         `to_seed_normalized` (wrapped in `Zeroizing` at once). The Pi keeps everything in RAM.
@@ -1031,7 +1083,7 @@ starts. Every item names its proof.
 - [x] KAT group Seed: C, mixed E, dice-only `123456`.
 
 **5. braille**
-- [ ] Vectors first (this file, "Inputs from M0"; lessons.md; seal-watchonly-braille.md "Tests and cross-checks").
+- [x] Vectors first (this file, "Inputs from M0"; lessons.md; seal-watchonly-braille.md "Tests and cross-checks").
       `verify.py --write-braille-vectors` writes `vectors/braille.json`:
       - the alphabet with dot numbers, digits, specials, mirror pairs, counts and sections;
       - positions 1-24 with device and sequence (Q9), text vectors and backup lines;
@@ -1051,7 +1103,7 @@ starts. Every item names its proof.
       text is now defined in braille.json's spec (`name cell dots` per line, a-z then the number sign, grade 1
       indicator, hyphen and blank cell, LF-terminated) and its digest is `fd75c236...`, computed by a separate script
       from the glyphs printed in seal-watchonly-braille.md. A space renders as the blank cell U+2800. The owner has
-      not approved this change; it is Q15 (review fix after commit 15).
+      not approved this change; it is Q15 (review fix after commit 15). Approved 2026-10-10 (owner item 3).
       Review fixes after commit 15:
       - Check 8 now also reads seal-watchonly-braille.md (lessons.md). Each computable figure must appear there
         word for word, as recomputed:
@@ -1098,10 +1150,10 @@ starts. Every item names its proof.
       - the result borrows nothing, so it wipes itself: `ReadbackMismatch` and `Dots` are `ZeroizeOnDrop` (pinned
         at compile time), and a verdict's zeroize clears its dots and resets the variant to `Ok`, because the
         variant plus the letters as typed gives the seed's letters back.
-- [ ] KAT group Braille: SHA-256 of the canonical table text, plus `2026`. Proof: one flipped dot, or two swapped
+- [x] KAT group Braille: SHA-256 of the canonical table text, plus `2026`. Proof: one flipped dot, or two swapped
       words, makes the group fail (unit test, injected).
-      As built, pending Q15: one flipped dot, or two letters' cells swapped, fails the Braille group. Two swapped
-      words fail the Bip39Wordlist group, the source of braille's words.
+      As built, approved with Q15 on 2026-10-10: one flipped dot, or two letters' cells swapped, fails the Braille
+      group. Two swapped words fail the Bip39Wordlist group, the source of braille's words.
 
 **6. ur, descriptor, watch-only** (the seal's proof QR reuses `ur.rs`, so this group comes before the seal)
 - [x] Vectors first. `verify.py --write-watchonly-vectors` writes `vectors/watchonly.json`, using:
@@ -1161,7 +1213,7 @@ starts. Every item names its proof.
       - receive `#afwvtk2s` and change `#vatdkr6g`; the apostrophe forms are never emitted;
       - BIP-380 valid and invalid strings;
       - three tampered strings return `ExportSelfCheck`.
-- [ ] `crypto-account` and the export (BCR-2020-015, -007; Q2; seal-watchonly-braille.md "Watch-only export" rules):
+- [x] `crypto-account` and the export (BCR-2020-015, -007; Q2; seal-watchonly-braille.md "Watch-only export" rules):
       - CBOR `{1: mfp, 2: [308(404(303({3: key, 4: chain, 6: 304({1: [84, true, 0, true, 0, true], 2: mfp}),
         8: parent fp})))]}`, untagged at the top level, with zero fingerprints omitted as the CDDL requires;
       - 116 bytes, a 258-character UR, and uppercase QR text;
@@ -1177,7 +1229,8 @@ starts. Every item names its proof.
       - TREZOR passphrase (`b4e3f5ed`, `#l3mwu4e8`);
       - the bip32JP passphrase gives `5d00908e`, and the unnormalized `68896147` never appears;
       - `TREZOR ` and `TREZOR` give different wallets.
-      Residual risks found in review after commit 15, for the owner's review (not yet accepted; compare group 4):
+      Residual risks found in review after commit 15, for the owner's review (accepted 2026-10-10 as an M7 audit
+      note, owner item 6; compare group 4):
       - Passphrase: unicode-normalization 0.1.25 keeps the characters it is decomposing, as (class, char) pairs, in
         a `TinyVec<[(u8, char); 4]>` (its `alloc` feature is always on). That buffer is inline on the stack, and
         it moves to the heap once more than four characters are pending (a starter with more than three
@@ -1241,7 +1294,7 @@ starts. Every item names its proof.
         "negatives"): a negative must fail only its own check, except that a truncation, a wrong length or a
         snapshot count over 2^22 spoils what reads past it, and an `order-*` case two or more, its pin first.
         kcr.json goes from 87 to 107 cases.
-- [ ] `seal/crockford.rs` and seal derivation (seal-watchonly-braille.md "Seal derivation spec", "The seal image";
+- [x] `seal/crockford.rs` and seal derivation (seal-watchonly-braille.md "Seal derivation spec", "The seal image";
       CLAUDE.md rule 7):
       - Crockford encoding reads 5-bit groups, most significant first;
       - code = top 130 bits of HMAC-SHA256(S, `KCE/v1/seal`), using hmac 0.13. S uses the empty passphrase only; no
@@ -1261,7 +1314,8 @@ starts. Every item names its proof.
       - The Seal KAT starts from the abandon S pinned in kat.rs (`ABANDON_SEED`, kcr.json "seeds"), which the Bip84
         group now also compares with its own PBKDF2 output, so the full suite still runs 3 PBKDF2-2048. The hmac
         crate's HMAC-SHA256 joins the Hmac group (RFC 4231 case 2).
-      - Residual risk, for the owner's review (not yet accepted; compare group 4): hmac 0.13's `new_from_slice`
+      - Residual risk, for the owner's review (accepted 2026-10-10 as an M7 audit note, owner item 6; compare group
+        4): hmac 0.13's `new_from_slice`
         builds its keyed state from a padded copy of the key, S xor 0x5c by the end, in a local block, and leaves it
         on the stack unwiped. Its two SHA-256 states, its buffer and its output wipe themselves (sha2's and
         digest's `zeroize`), but `Hmac` does not implement the `ZeroizeOnDrop` marker, so no compile-time check
@@ -1392,7 +1446,7 @@ starts. Every item names its proof.
       - Merkle: a leaf, a node and the vector-1 path. Never a full root.
 
 **8. backup (age v1, scrypt only)**
-- [ ] Vectors first:
+- [x] Vectors first:
       - `verify.py --write-backup-vectors` writes the passphrase-layout and plaintext-v1 sections of
         `vectors/backup.json`, taking fingerprints from keepcrypt.json and watchonly.json; check 11 regenerates them;
       - `scripts/age-interop.py --generate` (stdlib; drives `age` through a pty) writes the `age_cli_written` section
@@ -1420,7 +1474,7 @@ starts. Every item names its proof.
         not installable here. `scripts/age-interop.py` works with both (it waits for each passphrase prompt),
         and the CI `age-interop` job (commit 27) runs it against Ubuntu 1.1.1 in both directions. Not approved
         by the owner: it is an open item under "Raised by the review of commits 19-21", and the 1.1.1 proofs stay
-        unticked until it is answered.
+        unticked until it is answered. Approved 2026-10-10 (owner item 7).
       - Q1 (i) says "a 24-word backup is 1,718 bytes armored"; that was a planning estimate. The computed
         maximum is 1,726 armored bytes for 24 words (a 1,042-byte plaintext; backup.json `limits`, regenerated
         by check 11); 1,718 is the armor of a 1,034- to 1,036-byte plaintext. Both are far inside the 8 KiB cap,
@@ -1431,14 +1485,16 @@ starts. Every item names its proof.
 - [x] `backup/armor.rs` (build-plan.md "Container"; C2SP age "ASCII armor"):
       - encode: 64-column padded base64, exact labels, LF line endings;
       - decode accepts only surrounding ASCII whitespace, LF or CRLF, full 64-character lines (except a last line of
-        1-64), and canonical padding (base64ct).
+        1-64), and canonical padding (base64ct). (Changed 2026-10-10 in d8b5d25: whitespace only after END; the
+        last bullet of this item.)
       Proof: armoring CCTV `scrypt` gives `armor_scrypt` exactly; CRLF is accepted; these negatives all fail:
       lowercase label, a 63- or 65-character line, an empty last line, bad or non-canonical padding, an inner space,
       text after END, no END, a BOM.
       Review fixes after commit 21 (the readers now refuse whitespace the age CLI refuses):
       - verify.py read an END line ended by a lone CR at the end of the input as `END\r` and refused it; core and
         age 1.3.2 accept it. verify.py now strips that CR too, and backup.json gains `abandon-12-end-cr`.
-      - Core and verify.py accepted any amount of space, tab, CR and LF before BEGIN, on BEGIN's own line too, and
+      - (The rule before BEGIN changed on 2026-10-10; see the next bullet.) Core and verify.py accepted any amount of
+        space, tab, CR and LF before BEGIN, on BEGIN's own line too, and
         after END up to the 8 KiB cap, so `verify_backup` and `decrypt_backup` could pass a file the age CLI cannot
         open (build-plan.md: the file opens "with the open-source age tool, without KeepCrypt"). age 1.3.2 refuses
         a space or tab before BEGIN on its line ("invalid first line"), more than 1,024 bytes before BEGIN and
@@ -1453,7 +1509,20 @@ starts. Every item names its proof.
         size cap lets 8,192 bytes through to the armor rules, and `too-large` (8,193) still gives `TooLarge`.
         age 1.3.2 decrypts every accepted variant and refuses all five new cases; Ubuntu's 1.1.1 is not checked
         here.
-- [ ] `backup/age.rs` (C2SP age v1; build-plan.md "Recipient: scrypt only"; Q1 reader policy):
+      - Changed 2026-10-10 (d8b5d25), after CI's age-interop job failed on 4733e4a: age 1.1.1's CLI, the one the CI
+        job runs, reads armor only when BEGIN is at byte 0 (v1.1.1 cmd/age/age.go: `rr.Peek(len(armor.Header))`).
+        age 1.2 and later skip up to 1,024 bytes of leading whitespace (v1.3.1 age.go lines 495-497), and the
+        readers had copied that, so 1.1.1 refused `abandon-12-whitespace` and `abandon-12-leading-1024`. Both
+        readers now refuse any whitespace before BEGIN, which C2SP age allows; after END the rule above stands
+        (fewer than 1,024 bytes). backup.json: `abandon-12-leading-1024` is gone; `abandon-12-whitespace` became
+        `abandon-12-crlf-trailing-whitespace` (CRLF armor, then " \r\n\t\n"); `armor-newline-before-begin` (one LF),
+        `armor-whitespace-lines-around` (the old whitespace file) and `armor-leading-1024` (in place of
+        `armor-leading-1025`) are refused with `Backup(Armor)`. That makes 11 accepted and 44 refused files. An
+        accepted armor now reaches at most 5,862 + 1,023 bytes. Check 11 also requires every accepted file to start
+        with the BEGIN line or `age-encryption.org/v1` and LF. age 1.3.2 decrypts all 11 and accepts three of the
+        refused armor cases (printed as notes; stricter is safe). In CI on 34beea2, age 1.1.1 decrypts all 11 and
+        refuses all 17 armor cases (run 38041799043).
+- [x] `backup/age.rs` (C2SP age v1; build-plan.md "Recipient: scrypt only"; Q1 reader policy):
       - a strict header grammar;
       - the scrypt stanza must be alone, with 3 arguments, a canonical 16-byte salt, and log2 N matching `[1-9][0-9]?`
         in 1-18, all checked before any scrypt work;
@@ -1483,7 +1552,8 @@ starts. Every item names its proof.
         5,464, about 6 s at work factor 10, and the reader refuses every one).
       - chacha20poly1305 and base64ct are built without `alloc` (table A lists it): core uses the in-out AEAD calls
         and slice encoding, which need no allocation. The lock entries are the same either way.
-      - Residual risk, for the owner's review (not yet accepted; Q1 (iii) accepted only scrypt's buffers): HKDF's
+      - Residual risk, for the owner's review (accepted 2026-10-10 as an M7 audit note, owner item 6; Q1 (iii)
+        accepted scrypt's buffers): HKDF's
         extract step keeps copies of the pseudorandom key, derived from the file key, in its own frames (the copy
         it returns is wiped), and the header MAC's hmac leaves its padded key block, as recorded in group 7.
         Review fix after commit 21, two more for the same decision:
@@ -1495,7 +1565,11 @@ starts. Every item names its proof.
           block, so they reveal neither the ChaCha20 key, nor the file key, nor the plaintext. Wiping them needs
           poly1305 as a direct dependency with `zeroize`, a new edge (owner approval and a vet entry), so
           nothing is changed until the owner decides. Table A's resolved features are as written, so this is no
-          dependency deviation.
+          dependency deviation. Changed 2026-10-10 (owner item 6): b4871b9 adds poly1305 0.9.1 as a direct edge
+          with `default-features = false, features = ["zeroize"]`, named in build-plan.md by 0ac7394. Cargo.lock
+          gains two lines and no package. `Drop for Poly1305` now wipes r and s; the soft backend's stack
+          temporaries in `State::new` and `finalize` stay, in the M7 audit note. canaries.sh pins the feature on
+          each target (7c46d93).
         - scrypt's PBKDF2 steps key hmac with the backup passphrase (`pbkdf2_hmac` calls `new_from_slice`), so
           the group 7 hmac residual applies there too, to a passphrase-derived block.
 - [x] `backup/passphrase.rs` (build-plan.md "Passphrase"; pi-firmware.md USB steps 1-2; mobile-apps.md "Encrypted
@@ -1516,7 +1590,7 @@ starts. Every item names its proof.
       - the BIP39 passphrase has no way in.
       Proof: the abandon x 11 + about and zoo x 23 + vote vectors; CRLF, a BOM, a missing final LF, uppercase,
       18 words, a bad checksum, mismatched braille and a wrong fingerprint all fail.
-- [ ] Backup API (Q5; build-plan.md "Encrypted backup format" rules):
+- [x] Backup API (Q5; build-plan.md "Encrypted backup format" rules):
       - `generate_backup_passphrase(self)` on `Session<Ready>` draws 11 OS bytes and the confirm challenge in one
         call, stores the passphrase in `Inner` (replacing any earlier one), and returns `NewBackupPassphrase`: a
         display copy of the 8 words plus the 2-of-4 challenge, zeroized on drop, with no Debug, Display or Clone;
@@ -1536,8 +1610,9 @@ starts. Every item names its proof.
         plaintext (crate-private writer) gives `ReadbackMismatch`;
       - after a second `generate_backup_passphrase`, a file written under the first one fails `verify_backup`;
       - `encrypt_backup` before `generate_backup_passphrase` gives `NoBackupPassphrase` and one wipe;
-      - the age 1.1.1 files decrypt.
-- [ ] "Check a backup" (pi-firmware.md "Encrypted backup to a USB stick"; mobile-apps.md "Checking a backup";
+      - the age 1.1.1 files decrypt (as approved 2026-10-10, owner item 7: the age CLI files written with 1.3.2,
+        `backup::tests::the_age_cli_files_decrypt`).
+- [x] "Check a backup" (pi-firmware.md "Encrypted backup to a USB stick"; mobile-apps.md "Checking a backup";
       seal-watchonly-braille.md "Re-checking an existing wallet"):
       - `decrypt_backup(file, &TypedBackupPassphrase) -> Result<CheckedBackup, CoreError>` runs the Age KAT first;
       - `CheckedBackup` holds the mnemonic, the verified fingerprint and the verified braille lines. It is zeroized on
@@ -1548,7 +1623,8 @@ starts. Every item names its proof.
           by loaded snapshot (`VerifiedSnapshot::lookup`) or online (`SealPublic::recheck_url`);
         - the words and braille only through `reveal_words()` and `reveal_braille()`, named so review can grep them.
           Shells call them only when the user asks (fingerprint only, otherwise).
-      Proof: the age 1.1.1 files and a fresh core file give the vector fingerprint and seal; `reveal_words()` equals
+      Proof: the age 1.1.1 files (as approved 2026-10-10, owner item 7: the age CLI files written with 1.3.2) and a
+      fresh core file give the vector fingerprint and seal; `reveal_words()` equals
       the vector words; a wrong typed passphrase gives `WrongPassphrase`; trybuild and no-secret-text coverage
       (group 10).
 - [x] KAT group Age, using CCTV `scrypt`, `armor_scrypt` and `scrypt_work_factor_23` through `include_bytes!` (pinned
@@ -1619,7 +1695,8 @@ starts. Every item names its proof.
         backup.json it fails on `abandon-12-8192-bytes` ("the readers accept it, age exits 1"). The armor cases
         the readers refuse go to age too; one that age accepts is printed as a note, not a failure (stricter is
         safe). With age 1.3.2: "age decrypted all 12 backup.json age files the readers accept, and also refused
-        15 of the 15 armor cases they refuse".
+        15 of the 15 armor cases they refuse". (Changed 2026-10-10 with d8b5d25: "all 11 ... and also refused 14 of
+        the 17", with the three 1.3.2 accepts printed as notes.)
 
 **9. session** (build-plan.md "Public API" as refined by Q5; CLAUDE.md rule 6; seal-watchonly-braille.md "Ceremony
 order", "Go-ahead before reveal")
@@ -1662,11 +1739,15 @@ order", "Go-ahead before reveal")
         - a snapshot or proof holding T[0..16] gives `Collision`, with a report and the 99-roll flag;
         - a proof for another bucket gives `Retry`;
         - freshness is the shell's warning, not a refusal: the core has no clock;
-      - `discard(Collision)` keeps the report and the flag; `discard(CannotCheck)` keeps neither.
+      - `discard(Collision)` keeps the report and the flag; `discard(CannotCheck)` keeps neither. (Changed
+        2026-10-10, owner item 5, e87b296: `discard(CannotCheck)` keeps no report, but keeps the checking session's
+        own 99-roll flag.)
 - [x] `Wiped::restart` (seal-watchonly-braille.md "Add fresh entropy"; CLAUDE.md "Dice quota"):
       - `Wiped` holds no secret;
       - restart re-runs the KATs, starts a fresh pool, and does a fresh OS read at commit;
-      - the minimum is 99 rolls for both lengths after a collision, and the normal minimum after CannotCheck;
+      - the minimum is 99 rolls for both lengths after a collision, and the normal minimum after CannotCheck
+        (changed 2026-10-10, owner item 5: after CannotCheck, the checking session's own minimum, so 99 rolls stay
+        after a collision until a check passes);
       - `Rejected` and `Wiped` get hand-written `Debug` that never touches their contents and prints no BIP39 word
         (group 10).
 - [x] Ready and panics (Q5; CLAUDE.md rule 3):
@@ -1683,14 +1764,16 @@ order", "Go-ahead before reveal")
     wipe on its probe, and `Drop` runs it; `Drop` used to bump the probe itself, so a `Drop` without the
     zeroize passed every test. One wipe on a probe now proves the drop zeroized every field. `HealthTester`
     also derives `ZeroizeOnDrop`.
-  - `credited_bits()` and `required_bits()` return u64, not the sketch's u32: the screen gets the same sum
+  - `credited_bits()` and `required_bits()` return u64, not the sketch's u32 (the sketch says u64 since 62e2e5e,
+    owner item 10): the screen gets the same sum
     `source::quota_met` compares, in its width, with nothing narrowed or defaulted (a u32 needs a saturating
     fallback, which the fail-closed ban refuses). On a phone in Mixed mode `credited_bits()` counts the OS
     read's 256-bit policy credit before `commit`, so `credited_bits() >= required_bits()` is exactly when
     `commit` can pass; dice-only mode reports 0 of 0.
   - `add_extra(&mut self)` cannot fail the session, so the pool's only failure (a length that does not fit a
     u64) is kept and `commit` returns it, wiping there. A unit test plants it.
-  - `Wiped::collision_report(&self)` returns `Option<&CollisionReport>`, not the sketch's owned value:
+  - `Wiped::collision_report(&self)` returns `Option<&CollisionReport>`, not the sketch's owned value (the sketch
+    matches since 62e2e5e):
     `CollisionReport` has no `Clone`, and the `Wiped` keeps the one report. `Wiped` keeps the platform, so
     `restart(len, mode)` needs none. Under `test-sources`, `Wiped::restart_with_stub(len, mode, stub,
     kat_fault)` is the restart twin of `Session::new_with_stub`, so every `KatId` is injected at restart too.
@@ -1698,6 +1781,12 @@ order", "Go-ahead before reveal")
     collision: that next restart uses the normal minimum, as seal-watchonly-braille.md "Add fresh entropy" says.
     Review fix after commit 25: no test pinned the second half (a mutant carrying the flag passed every test);
     `cannot_check_after_a_collision_restarts_at_the_normal_minimum` now does, at 12 words (99, then 50).
+    Changed 2026-10-10 (owner item 5, e87b296): `discard(CannotCheck)` now keeps the checking session's own flag,
+    so the restart after a collision keeps 99 rolls through every Cannot check until a check passes. The test is
+    now `cannot_check_after_a_collision_keeps_99_rolls` (12 and 24 words, three Cannot checks in a row), and
+    `the_99_roll_minimum_ends_at_a_passed_check` shows that a passed check ends it; `discard_and_restart` still
+    pins a plain Cannot check at 50. seal-watchonly-braille.md "Add fresh entropy" says so (dc53b8f), including
+    that any other wipe ends the minimum (open owner item 14).
   - Q13 (b), settled as its first option: `verify_backup(&self)` keeps `CoreError`, and a unit test
     (`the_two_calls_that_never_wipe_return_only_their_listed_errors`) pins that it returns only `Ok`,
     `NoBackupPassphrase`, `WrongPassphrase`, `ReadbackMismatch` and `Backup(_)` over every backup.json age file
@@ -1847,8 +1936,9 @@ order", "Go-ahead before reveal")
       - deterministic truncations and byte flips (SHA-256 counter mode) of hwrng input, faces, go-ahead codes, proofs
         (bytes and UR text), snapshots, `.age` files, typed backup words and read-back strings give errors, never a
         panic.
-- [ ] `tests/vectors.rs` runs the full sets: 24 BIP39 seeds, 26 CCTV files, 3 seal vectors, 2,048 braille entries,
+- [x] `tests/vectors.rs` runs the full sets: 24 BIP39 seeds, 26 CCTV files, 3 seal vectors, 2,048 braille entries,
       watchonly.json, kcr.json, backup.json and rolls.json. `tests/kat.rs` cross-checks the KAT subsets.
+      Approved as built 2026-10-10 (owner item 9): the placement (a) and the 16 of 24 BIP39 seeds (b), below.
 - As built at commit 25 (no_secret_text, panic_wipe and no_panic declare `required-features = ["test-sources"]`;
   vectors and kat run with default features):
   - no_secret_text: five ceremonies run end to end on stubs: dice-only from Coldcard's 50 (12 words), 99 (24) and
@@ -1889,10 +1979,12 @@ order", "Go-ahead before reveal")
     after commit 25: the armored file was tried at every fourth truncation only, which skipped that one.
   - vectors.rs runs every set the public API reaches: rolls.json and the six keepcrypt.json dice-only cases
     through dice-only sessions at both lengths (`TooFewRolls` below the minimum), every backup.json and age CLI
-    file whose passphrase is eight list words through `decrypt_backup` (13 open to their plaintexts, the 4,096-byte
+    file whose passphrase is eight list words through `decrypt_backup` (13 open to their plaintexts; 12 since
+    d8b5d25, the 8 backup.json backups and the age CLI's 4; the 4,096-byte
     payload is `Backup(Plaintext)`, every refused file gives its exact error), seal.json's vector 1 through a
     checked backup's `seal()` (every public field), and braille.json's entry for every word those seeds and backups
-    hold. Deviation, raised as an owner item after commit 25 ("Raised by the review of commits 22-25"): secrets
+    hold. Deviation, raised as an owner item after commit 25 ("Raised by the review of commits 22-25") and
+    approved as built on 2026-10-10 (owner item 9): secrets
     have no public constructor (CLAUDE.md rule 5), so no integration test can reach the rest; each stays in the
     unit tests of its module, which read the same files: BIP39 vectors.json's 16 12- and 24-word entries
     (seed.rs: the words, the TREZOR seed derived through `passphrase_seed_into`, and the master fingerprint; until
@@ -1931,6 +2023,8 @@ moved from M0)
       linked. It also calls `registry_key_is_test()` and `verify_snapshot` on public test bytes (expecting
       `NoRegistryKey` in release), so a `test-registry` build links the registry-key path and its marker. It prints
       nothing. Proof: the cross job scans the release rlib and the probe for all six targets.
+      CI on 34beea2 (run 38041799043) scanned the rlib and the probe clean on all six targets (Review, "M1: the
+      owner's answers applied"); to be ticked after that run is reviewed.
 
 **12. CI, canaries, coverage, commands** (Q11)
 - [ ] CI jobs, 11 today and 13 after M1 (they become required checks only through the Q12 ruleset):
@@ -1951,6 +2045,8 @@ moved from M0)
       - Q12: the workflow drops its `paths:` filter; a first job tests whether `Entropy/` or the workflow changed, and
         every other job depends on it and reports "skipped" otherwise, so required checks never hang on PRs that do
         not touch `Entropy/`.
+      On 4733e4a every job passed except age-interop against 1.1.1 (fixed in d8b5d25); on 34beea2 (run 38041799043)
+      all 14 check runs passed (Review). To be ticked after that run is reviewed.
 - [x] `scripts/canaries.sh`, with its pinned counts updated:
       - positive controls:
         - a host release probe built with `test-sources` must make the scan exit 1, naming both markers and the test
@@ -1971,6 +2067,8 @@ moved from M0)
       --fail-under-lines 95`, with cargo-llvm-cov 0.9.1. No `#[coverage(off)]` and no `cfg(coverage)`. CI fails if any
       path under core/src matches `/(tests|examples|benches)/`, or any core/src file is named `tests.rs`,
       `*_tests.rs` or `*-tests.rs`, because the tool's default ignore rule skips all of those.
+      97.39% locally and in CI's coverage job on 34beea2 (run 38041799043, Review); to be ticked after that run is
+      reviewed.
 - [x] CLAUDE.md "Commands" gains:
       - the feature test run and the coverage command;
       - each `--write-*-vectors` flag (regenerate, never hand-edit);
@@ -2024,11 +2122,15 @@ moved from M0)
       - the one-time SeedBook PDF check;
       - the Q12 ruleset (`gh api` output) or the owner's deferral, and a note that build-plan.md's two-approval rule is
         unmet while one account opens and merges PRs.
+      The six scans and the age-interop run against 1.1.1 come from CI on 34beea2 (run 38041799043), pasted under
+      "M1: the owner's answers applied" with the ruleset; everything else is under Review. To be ticked after that
+      run is reviewed.
 
 **Carried to later milestones** (record in their plans)
 - M3, M5, M6:
   - a shell that drops `Wiped` and calls `Session::new` resets the 99-roll minimum, so ceremony tests must assert
-    "99 after Stop";
+    "99 after Stop", and "99 after a Cannot check" in the restart after a collision (owner item 5); after a Stop or
+    a Cannot check the shells offer only `Wiped::restart`;
   - a pi/app test asserts `Platform::Pi`;
   - builds that talk to the local test registry turn on `keepcrypt-core/test-registry` from the command line with
     `-p`, never in a manifest and never `test-sources`; their scan shows the registry marker and no stub marker;
@@ -2040,6 +2142,9 @@ moved from M0)
   dependent except keepcrypt-core, so a pi/app that depends on getrandom turns CI red. Either the pin and its
   mutation canary change in a reviewed commit, or the games take bytes from a core API, and then rule 1,
   pi-firmware.md and banned-api-check.sh's pi/app/src/games exemption change to match.
+  Answered 2026-10-10: (b). 73abaea changed rule 1, pi-firmware.md, mobile-apps.md and seal-watchonly-braille.md and
+  removed the games exemption; 2441d39 puts the call in build-plan.md's `source` row and sketch. The graph pin stays.
+  M3 builds the call before any game code ("Notes for later milestones").
 - M4 (measure on a Pi Zero v1.3):
   - KAT time;
   - full snapshot verification, estimated at 8-20 s. Run it at "Load registry snapshot", before the ceremony, on a
@@ -2052,6 +2157,7 @@ moved from M0)
   - owned UniFFI wrappers for `GoAhead`, the braille views and `CheckedBackup`'s reveals;
   - the take-and-put-back session slot;
   - the getrandom cfg in cargo-ndk.
+- M7: the library residuals the owner accepted as an M7 audit note (owner item 6; "Notes for later milestones").
 - M9:
   - the real registry key and origin;
   - the release scan fails on `registry.invalid`;
@@ -2060,10 +2166,11 @@ moved from M0)
   - the checking page's re-check mode for `#t=` without n.
 
 ### Verification
-- [ ] All vectors pass, including the seal vector in `CLAUDE.md`: kat, keepcrypt, braille, seal, watchonly, kcr and
+- [x] All vectors pass, including the seal vector in `CLAUDE.md`: kat, keepcrypt, braille, seal, watchonly, kcr and
       backup JSON; BIP39 vectors.json; all 26 CCTV age files; rolls.json. `verify.py --selftest` passes all 11 checks
       on 3.12 and on `/usr/bin/python3` 3.9, and its embedded word list hashes to `2f5eed53...` with the banned-API
-      gate clean.
+      gate clean. BIP39 vectors.json and tests/vectors.rs as approved on 2026-10-10 (owner item 9): core derives the
+      16 12- and 24-word seeds, and every entry's words are checked.
 - [x] Source-substitution test: a fixed stub gives a known D, and changing one stub byte changes D (every source, Pi
       and Phone). A real-OS test shows two sessions differ.
 - [x] Pipe width: every single-bit flip of D changes C and E, every bit of the 64-byte OS record changes D, and every
@@ -2090,17 +2197,22 @@ moved from M0)
       - core reads age 1.1.1 files, and age 1.1.1 decrypts fresh core files at log2 N 18 (age-interop job);
       - only a generated passphrase can encrypt, and `decrypt_backup` returns a `CheckedBackup` whose fingerprint and
         seal match.
+      The other three bullets are proven locally. The age-interop job against Ubuntu's 1.1.1 failed on 4733e4a
+      (fixed in d8b5d25) and passed on 34beea2 (run 38041799043, Review); to be ticked after that run is reviewed.
 - [x] Braille: the six `CLAUDE.md` inserts match; 279 and 49 are recomputed; read-back catches every mirror flip and
       every blank-face slip.
 - [x] Watch-only: the BIP-84 and BCR-2020-015 vectors, the BIP-380 checksums and the runtime self-check pass.
 - [x] Secrets never printed: the no-secret-text test passes and catches a planted leak with each check. A panic wipes
       the session, and hostile input never panics.
 - [ ] The release artifact scan is clean on all six targets; both positive controls fail for their markers, and the
-      `test-registry` build holds no stub marker.
+      `test-registry` build holds no stub marker. CI on 34beea2 (run 38041799043, Review) scanned all six clean, and
+      its canaries (54) include both positive controls; to be ticked after that run is reviewed.
 - [x] Line coverage in `core/` is at least 95% (`cargo llvm-cov`), with nothing excluded: no core/src path matches the
       tool's default ignore rule.
 - [ ] Clean: clippy (default and all features), fmt, deny, audit, vet, check-path-deps, the banned-API gate and its
       selftest, and the canaries. CI is green on `m1-core`. The Q12 ruleset is in place, or its deferral is recorded.
+      All clean locally at 34beea2, CI green on 34beea2 (run 38041799043, Review), and ruleset 24833307 is in place.
+      To be ticked after that run is reviewed.
 
 ### New dependencies (approved with Q1-Q4)
 **How this was checked (2026-10-09).** I copied the merged M0 workspace to a scratch directory, added every M1 crate at the versions below, and used `cargo update --precise` to hold back six crates. Results:
@@ -2122,7 +2234,7 @@ moved from M0)
 | salsa20 | 0.11.0 | 2026-03-30 | via scrypt | MIT OR Apache-2.0 | Salsa20/8 core of scrypt | no optional RNG |
 | chacha20poly1305 | 0.11.0 | 2026-06-28 | `default-features = false`, `alloc`, `zeroize` | Apache-2.0 OR MIT | file-key wrap and payload AEAD | its default `getrandom` must stay off; `rand_core` off |
 | chacha20 | 0.10.2 | 2026-08-27 | via (`cipher`, `xchacha`, `zeroize`) | MIT OR Apache-2.0 | ChaCha20 | `rng` (rand_core) off |
-| poly1305 | 0.9.1 | 2026-07-08 | via | Apache-2.0 OR MIT | Poly1305 | none |
+| poly1305 | 0.9.1 | 2026-07-08 | via; also a direct edge since b4871b9 (2026-10-10, owner item 6), `default-features = false`, `zeroize` | Apache-2.0 OR MIT | Poly1305; the direct edge only switches on `zeroize` | none |
 | aead | 0.6.1 | 2026-06-17 | via (`alloc`) | MIT OR Apache-2.0 | AEAD traits | its default `rand_core` and `getrandom` off |
 | cipher | 0.5.2 | 2026-05-19 | via (`stream-wrapper`) | MIT OR Apache-2.0 | stream-cipher traits | `rand_core` and `getrandom` off |
 | universal-hash | 0.6.1 | 2026-02-27 | via poly1305 | MIT OR Apache-2.0 | Poly1305 traits | none |
@@ -2244,7 +2356,7 @@ moved from M0)
    - core: the backup tests isolate verify_backup's word check, pin decrypt_backup's KAT-first order, and read seal.json's vector for the abandon files;
    - core: every single-bit flip of a binary backup is tried and refused (5,464), not one bit per byte;
    - verify: the armor reader accepts an END line ended by a lone CR at the end of the input, as core and age do (backup.json gains abandon-12-end-cr);
-   - verify, core: the armor readers refuse the whitespace the age CLI refuses (at most 1,024 bytes before BEGIN in whole lines, fewer than 1,024 after END; backup.json's vectors and core's reader in one commit, or that commit would be red);
+   - verify, core: the armor readers refuse the whitespace the age CLI refuses (at most 1,024 bytes before BEGIN in whole lines, fewer than 1,024 after END; backup.json's vectors and core's reader in one commit, or that commit would be red; changed 2026-10-10 in d8b5d25: none before BEGIN, since age 1.1.1 reads armor only at byte 0);
    - scripts: age-interop.py gives the age CLI every backup.json age file the readers accept;
    - core: the plaintext reader refuses a bad BIP39 checksum as the file's fault and keeps core's derivation faults Internal (Q13 (b) handed to commit 22);
    - core: the age residuals name Poly1305's one-time key and scrypt's PBKDF2 key block, for the owner;
@@ -2255,7 +2367,7 @@ moved from M0)
 25. tests: no-secret-text (control-seed rule plus the BIP39-token check on Rejected and Wiped), panic wipe, no-panic sweeps, and the full vector sets
    Review fixes after 25, each its own commit:
    - core: bip39_vectors_json derives the 16 published TREZOR seeds through passphrase_seed_into;
-   - core: a test pins that Cannot check after a collision restarts at the normal minimum;
+   - core: a test pins that Cannot check after a collision restarts at the normal minimum (reversed 2026-10-10 by e87b296, owner item 5: now `cannot_check_after_a_collision_keeps_99_rolls`);
    - core: the wipe probe counts a completed zeroize (Inner's Zeroize bumps it last and Drop runs it), and HealthTester derives ZeroizeOnDrop;
    - tests: error_injection fails every OS read of a whole ceremony in turn, from a pinned list, the backup's nonce and file name included;
    - tests: no_secret_text's check 1 compares whole tokens on both sides, with a planted leak for each word a substring match hid, and formats CheckError and the seed-derived registration, collision-report and export strings;
@@ -2273,7 +2385,15 @@ moved from M0)
    - scripts: the artifact scan names all 13 RNG crates of deny.toml (the selftest checks the lists agree), glibc's reentrant draws and the rand48 seeders, and fails a thin archive (d283a36);
    - ci: the changes job decides by git diff's exit code over the two pathspecs, so moves out of Entropy/, quoted names and long lists all count as changes (216b0a1);
    - ci: the coverage job's path check adds the tool's rustc/<hex or x.y.z>/ rule (de93cbc);
-   - this file: these records and their proof, and the Pi games' getrandom as open owner item 12 and an M3 carry.
+   - this file: these records and their proof, and the Pi games' getrandom as open owner item 12 and an M3 carry (4733e4a).
+   The owner's answers to the 12 items and CI's age 1.1.1 failure on 4733e4a, each its own commit (proof under Review, "M1: the owner's answers applied"):
+   - verify, core: the armor readers refuse whitespace before BEGIN, since age 1.1.1 reads armor only at byte 0 (d8b5d25);
+   - docs, then core: after a collision, Cannot check keeps the 99-roll minimum until a check passes (dc53b8f, e87b296; item 5);
+   - docs, then core: poly1305 named in build-plan.md, then a direct edge with `zeroize` (0ac7394, b4871b9; item 6);
+   - docs: 99 rolls give about 256 bits (012c8db; item 4); the Public API sketch matches the built API (62e2e5e; item 10);
+   - rule 1: games get their bytes through core (73abaea; item 12 (b));
+   - review fixes: the poly1305 pin per target (7c46d93), the note under the seed-pipeline figure (6ba465c), the game call placed in build-plan.md (2441d39), the Cannot check branch in the Pi and phone flows (34beea2);
+   - this file: the owner's answers, the armor fix, these commits and their proof.
 
 ## Review
 _Added after completion, with pasted proof for every ticked item._
@@ -2561,10 +2681,13 @@ vectors: rolls_json_through_dice_only_sessions  keepcrypt_json_dice_only_cases
   and `backup::tests::stub::decrypt_backup_runs_the_age_group`.
 - Group 9: tests/ceremony.rs (Mixed and dice-only, Pi and phone, 12 and 24 words); `session::tests::*` (7) and
   `session::tests::stub::*` (11); tests/error_injection.rs; tests/check_flow.rs;
-  `session::tests::stub::cannot_check_after_a_collision_restarts_at_the_normal_minimum` and
+  `session::tests::stub::cannot_check_after_a_collision_restarts_at_the_normal_minimum` (changed 2026-10-10 by
+  e87b296: now `cannot_check_after_a_collision_keeps_99_rolls`, plus `the_99_roll_minimum_ends_at_a_passed_check`,
+  so 12 stub tests) and
   `collision_evidence_wipes_and_restart_asks_for_99`; `session::tests::the_read_back_gate`,
   `ceremony::every_export_fails_before_read_back`, tests/panic_wipe.rs and tests/no_panic.rs.
-- Group 10: the binaries listed above; tests/vectors.rs stays unticked (owner item).
+- Group 10: the binaries listed above; tests/vectors.rs stays unticked (owner item; ticked 2026-10-10 after owner
+  item 9).
 - Group 11, the scan: `--selftest` 233 passed under sh and dash (the 24 artifact cases are pasted below).
 - Group 12, canaries: 54 checks, all as intended (below); CLAUDE.md Commands: cfdb24a.
 - Verification: source substitution (tests/source_substitution.rs, the Pi and phone sessions); pipe width
@@ -2744,9 +2867,11 @@ missed three ways the changes job failed open, fixed after 29; see "M1: review f
 **Q12 ruleset: not created.** It changes the GitHub repo's settings, and the owner asked to be asked once more
 right before it is created ("Needed before M1"); that go-ahead has not been given, so it is an owner item below.
 `main` stays unprotected until then. build-plan.md's two-approval rule ("Review": CODEOWNERS requires two approvals)
-is unmet while one account (`bitwilll`) opens and merges every PR.
+is unmet while one account (`bitwilll`) opens and merges every PR. (Created 2026-10-10 after the owner's yes: ruleset
+24833307, under "M1: the owner's answers applied".)
 
-**Unticked, and what each waits for:**
+**Unticked, and what each waits for** (at cfdb24a; on 2026-10-10 the owner's answers closed every owner wait below,
+and what still waits is listed under "M1: the owner's answers applied"):
 - Group 0, branch protection: the owner's go-ahead for the Q12 ruleset.
 - Group 4 `seed.rs`, group 6 `crypto-account` and the export, group 7 `seal/crockford.rs` and derivation, group 8
   `backup/age.rs`: built and tested as above, but each records library residuals "for the owner's review (not yet
@@ -2857,9 +2982,9 @@ The real artifacts are still clean under the new rules. The iOS release rlib and
 scans clean, and both positive controls still fail as intended (54 checks). The Pi and Android scans run first in
 CI.
 
-**The Pi games' getrandom (record only; open owner item 12).** The pin "getrandom's only dependent is keepcrypt-core"
-(Q11 (c), commit 26) was run on a copy of the tree whose pi/app/Cargo.toml adds `getrandom = "0.4.3"`, as
-pi-firmware.md has the games do. The pin's script, taken from canaries.sh, was run after
+**The Pi games' getrandom (record only; open owner item 12, answered (b) on 2026-10-10).** The pin "getrandom's
+only dependent is keepcrypt-core" (Q11 (c), commit 26) was run on a copy of the tree whose pi/app/Cargo.toml adds
+`getrandom = "0.4.3"`, as pi-firmware.md has the games do. The pin's script, taken from canaries.sh, was run after
 `cargo update --offline --workspace`:
 
 ```text
@@ -2894,15 +3019,16 @@ sh scripts/canaries.sh                                           exit 0  PASS: a
 The workflow loads with `ruby -ryaml` at every step (9 jobs, 6 cross legs; every job but changes needs it). As
 before, the CI run itself comes after the push.
 
-### M1: open owner items (2026-10-10)
-Nothing below has been acted on beyond recording it. Each needs the owner's answer before the M1 gate.
+### M1: open owner items (2026-10-10; all 12 answered 2026-10-10)
+Nothing below has been acted on beyond recording it. Each needs the owner's answer before the M1 gate. (Answered and
+applied on 2026-10-10: see the next subsection, "M1: the owner's answers".)
 1. **Q12 ruleset (needs an explicit go-ahead).** A ruleset on `main` scoped to `Entropy/**`: require a pull request
    and these checks: `changes (Entropy/ or this workflow)`, `lint (fmt, clippy)`, `test`, `supply-chain (deny, audit,
    vet)`, `gates (banned APIs, verifier, canaries)`, `verifier (python 3.9)`, `coverage (core, 95% of lines)`,
    `age-interop (age 1.1.1)` and the six `cross (<target>)` legs; 0 approvals while one account opens and merges
    every PR. The changes job must be required too: if it fails, the jobs that need it are skipped, and GitHub counts
    skipped as passing. Created with `gh api repos/bitwilll/keepcrypt/rulesets` only after the go-ahead, and its
-   output then goes under Review.
+   output then goes under Review. (Created 2026-10-10: ruleset 24833307.)
 2. **Q13 (a)-(e) and Q14 (a)-(b):** the agent applied the standing approval to both; please confirm explicitly
    ("Raised by the review of commits 2-5").
 3. **Q15:** the Braille table text and its digest `fd75c236...` in place of `41f0e259...`, and the Braille KAT's
@@ -2914,8 +3040,9 @@ Nothing below has been acted on beyond recording it. Each needs the owner's answ
    then ends in "Cannot check", the next restart uses the normal minimum (50 for 12 words), as
    seal-watchonly-braille.md "Add fresh entropy" reads ("After 'Cannot check', the next ceremony uses the normal
    minimum"), pinned by `cannot_check_after_a_collision_restarts_at_the_normal_minimum`. Confirm, or keep 99 until a
-   check passes after a collision.
-6. **Library residuals (not yet accepted; Q1 (iii) accepted only scrypt's working buffer):**
+   check passes after a collision. (Changed 2026-10-10, answered "keep 99 until a check passes": dc53b8f changed "Add
+   fresh entropy", and e87b296 replaced that test with `cannot_check_after_a_collision_keeps_99_rolls`.)
+6. **Library residuals (accepted 2026-10-10 as an M7 audit note; Q1 (iii) had accepted scrypt's working buffer):**
    - BIP32 and BIP39 (group 4): rust-bitcoin's copies of the parent key in `derive_priv`, the HMAC state and output
      in its `ckd_priv` and `new_master`, secp256k1's tweak temporaries, and the moved-from S of bip39's
      `to_seed_normalized` stay on the stack unwiped;
@@ -2926,12 +3053,14 @@ Nothing below has been acted on beyond recording it. Each needs the owner's answ
      by the backup passphrase (group 8);
    - HKDF (group 8): copies of the pseudorandom key derived from the file key;
    - Poly1305 (group 8): the one-time key r and s stay in the dropped cipher state, because poly1305 resolves without
-     its `zeroize` feature; wiping them needs a new direct dependency edge.
+     its `zeroize` feature; wiping them needs a new direct dependency edge. (Changed 2026-10-10: b4871b9 adds that
+     edge, so r and s are wiped on drop, except the soft backend's stack temporaries.)
 7. **The age 1.3.2 vectors:** approve `vectors/age/age_cli_written.json` as written with Homebrew age 1.3.2, or have
    it regenerated with Ubuntu's 1.1.1 (for example in the CI job) and committed in a `verify:` commit ("Raised by
    the review of commits 19-21").
 8. **The scrypt upstream issue (Q1 (iii)):** not filed. Filing posts in public, so it waits for the owner to file it
-   or to say go ahead; then its link goes here.
+   or to say go ahead; then its link goes here. (Filed 2026-10-10 after the owner's yes:
+   https://github.com/RustCrypto/password-hashes/issues/938.)
 9. **tests/vectors.rs and the 16 of 24 BIP39 seeds:** approve as built (the secret-holding sets run as unit tests;
    core derives the 16 12- and 24-word TREZOR seeds, not the 8 18-word ones), or ask for a test-only constructor
    and a stdlib PBKDF2 check in verify.py ("Raised by the review of commits 22-25").
@@ -2960,11 +3089,305 @@ Nothing below has been acted on beyond recording it. Each needs the owner's answ
       "Inputs from M0" proposes for the phone games. Rule 1, pi-firmware.md and the Rule1 exemption then change to
       match.
 
-    Nothing changes until then.
+    Nothing changes until then. (Answered 2026-10-10: (b), applied in 73abaea and 2441d39.)
 
-### M1 gate status: NOT MET yet
+### M1: the owner's answers (2026-10-10)
+The lead put the 12 items above to the owner in one message, with a recommendation for each, and wrote: "You can
+reply "approve all", but items 1 and 8 act on GitHub, so I'll only do those with your explicit yes." The owner
+answered, verbatim: "approve all, yes to 1 and 8". So each recommendation below, as put to the owner, is the owner's
+decision, and items 1 and 8 have the explicit yes they needed. The proof for each commit is under "M1: the owner's
+answers applied".
+1. **Branch protection.** Put: create the ruleset on `main` that requires a PR and the Entropy checks, with 0
+   approvals for now; it changes repo settings, so it needs a yes. Yes given. Done: ruleset 24833307, active on
+   `refs/heads/main`. Plan group 0's branch-protection item is ticked.
+2. **Q13 and Q14.** Put: confirm the five doc fixes and the two gate tightenings already applied. Confirmed: Q13
+   (a)-(e) (c40a2e3) and Q14 (a)-(b) (f732c98) stand; nothing is reverted.
+3. **Q15.** Put: approve the braille-table hash `fd75c236...`. Approved, with the table-text definition and the
+   reworded proof. Group 5's vectors and its Braille KAT are ticked.
+4. **99 dice rolls give 255.9 bits.** Put: keep 99 (Coldcard-compatible, and the device adds its own 256 bits), and
+   change the docs to "about 256". Done: 012c8db (design.md). 6ba465c says under the seed-pipeline figure that its
+   "99 give 256" rounds up; redrawing the figure is new item 13.
+5. **"Cannot check" after a collision.** Put: keep 99 until a check passes, since a device that just collided is
+   suspect; a small code and doc change. Done: dc53b8f (seal-watchonly-braille.md "Add fresh entropy",
+   build-plan.md's `Wiped::restart` comment) and e87b296 (core and its tests); 34beea2 gives the Pi and phone flows
+   the Cannot check branch, whose "Start again" restarts through `Wiped::restart`. Any other wipe of the restarted
+   session still ends the minimum, which the docs now say; that is new item 14.
+6. **Library residuals.** Put: accept the key copies inside rust-bitcoin, bip39, hmac, HKDF and Poly1305 that core
+   cannot wipe as an M7 audit note, plus switch on Poly1305's wipe feature. Accepted; the note is under "Notes for
+   later milestones". 0ac7394 names poly1305 in build-plan.md, b4871b9 adds the direct edge with `zeroize`, and
+   7c46d93 pins the feature on each target. The residual records in groups 4, 6, 7 and 8 now say accepted, so
+   core/src/backup/age.rs's citation of this item holds.
+7. **The age interop files.** Put: approve the files made with age 1.3.2; CI checks Ubuntu's 1.1.1 in both
+   directions. Approved.
+8. **The scrypt upstream issue.** Put: file it yourself, or give a yes to post it under the owner's account. Yes
+   given. Filed as https://github.com/RustCrypto/password-hashes/issues/938 ("scrypt: zeroize the B, V and T buffers
+   before freeing them").
+9. **BIP39 vectors.** Put: approve; core runs 16 of the 24 published vectors, and the other 8 are 18-word seeds,
+   which KeepCrypt does not support. Approved as built, both (a) the placement and (b) the 16 of 24. Group 10's
+   tests/vectors.rs and Verification "All vectors pass" are ticked.
+10. **The API sketch in build-plan.md.** Put: a docs-only commit to match the built API, such as u64 counters and
+    borrowed reports. Done: 62e2e5e.
+11. **33 cargo-vet exemptions.** Put: approve the 19 for device crates and the 14 for dev-only crates. Approved;
+    `cargo vet --locked` still gives "14 fully audited, 76 exempted".
+12. **The Pi games' randomness.** Put: (b), the games get bytes from a small core API that never touches the entropy
+    pool and also serves the phone games; the alternative (a) lets pi/app call getrandom itself. (b) chosen. Done:
+    73abaea (CLAUDE.md rule 1, pi-firmware.md, mobile-apps.md, seal-watchonly-braille.md, and the banned-API gate
+    loses its pi/app/src/games exemption) and 2441d39 (build-plan.md's `source` row and sketch). M3 builds the call
+    ("Notes for later milestones"); the graph pin stays.
+
+### M1: new open owner items (2026-10-10; low, not blocking the M1 gate)
+Raised by the reviews of the owner-item commits; also listed under "Open questions for the owner".
+13. **The seed-pipeline figure.** `docs/img/seed-pipeline.png` still reads "50 rolls give 129 bits; 99 give 256".
+    The repo holds no source for it (only the starter commit 91dc31a touched it). 6ba465c notes the rounding in the
+    sentence under the figure. A redraw, so the box reads "99 give about 256 (255.9)", needs the owner's source file
+    or approval to redraw it.
+14. **The 99-roll minimum after a wipe (raised by the security review).** Only a `Wiped` carries the 99-roll minimum
+    after a collision, and only a check leaves one (`Wiped::from_check`). So an error, the Pi's idle wipe, the
+    phones' background or screenshot wipe, or an app kill in the restarted session leads to `Session::new` at the
+    normal minimum: 50 rolls for 12 words (24 words need 99 anyway). seal-watchonly-braille.md "Add fresh entropy"
+    now states that exception (dc53b8f). Recommended: in M3, add a core exit on the pre-Ready states that wipes and
+    returns a `Wiped` keeping the flag, for the shells' timeout and capture wipes. That changes the typestate API
+    (rule 6 fixtures), so it needs the owner's approval. Power-off can never keep the flag, because nothing is
+    persisted (rule 8). Otherwise: keep the documented exception.
+
+### M1: the owner's answers applied (2026-10-10)
+**CI on 4733e4a** (run https://github.com/bitwilll/keepcrypt/actions/runs/38033374724, PR #4; the first run with
+commit 27's coverage, scan and age-interop jobs): 13 of the 14 check runs passed, and `age-interop (age 1.1.1)`
+failed:
+
+```text
+age-interop: 1.1.1
+FAIL backup.json age_files abandon-12-whitespace: the readers accept it, age exits 1, plaintext differs
+FAIL backup.json age_files abandon-12-leading-1024: the readers accept it, age exits 1, plaintext differs
+```
+
+The same run's first Pi and Android scans, and its coverage job (core has changed since, so CI on 34beea2 proves
+them again):
+
+```text
+cross (arm-unknown-linux-gnueabihf)  clean, 2 file(s): no marker, no test key, no other RNG symbol; getrandom imported
+cross (aarch64-linux-android)        clean, 2 file(s): ... getrandom imported
+cross (armv7-linux-androideabi)      clean, 2 file(s): ... getrandom imported
+cross (x86_64-linux-android)         clean, 2 file(s): ... getrandom imported
+cross (aarch64-apple-ios)            clean, 2 file(s): ... _CCRandomGenerateBytes imported
+cross (aarch64-apple-ios-sim)        clean, 2 file(s): ... _CCRandomGenerateBytes imported
+coverage                             TOTAL regions 96.87%, functions 96.25%, lines 8248, missed 215, 97.39%
+```
+
+Root cause: age 1.1.1's CLI reads armor only when BEGIN is at byte 0 (v1.1.1 cmd/age/age.go:
+`rr.Peek(len(armor.Header))`). age 1.2 and later skip up to 1,024 bytes of leading whitespace (v1.3.1 age.go lines
+495-497), and the readers had copied that. Fixed in d8b5d25: both readers refuse any whitespace before BEGIN, which
+C2SP age allows (recorded under plan group 8, `backup/armor.rs`). Without 1.1.1 on this Mac, a scratch check that
+every accepted file starts at byte 0 with BEGIN or the version line passes on the new backup.json and fails on
+4733e4a's with exactly the two files CI named:
+
+```text
+new backup.json:  all 11 age_files start with BEGIN or the version line at byte 0
+4733e4a's:        AssertionError: ['abandon-12-whitespace', 'abandon-12-leading-1024']
+```
+
+**The ruleset (owner item 1).** Created on 2026-10-10 at 13:18:44 +05:30 with `gh api` (POST
+repos/bitwilll/keepcrypt/rulesets). Re-read with `gh api repos/bitwilll/keepcrypt/rulesets/24833307`:
+
+```text
+id 24833307  name "main: pull requests and Entropy CI"  target branch  enforcement active  source bitwilll/keepcrypt
+conditions   ref_name include ["refs/heads/main"], exclude []
+bypass       bypass_actors [], current_user_can_bypass "never"
+rules        deletion
+             non_fast_forward
+             pull_request: required_approving_review_count 0, require_code_owner_review false,
+               dismiss_stale_reviews_on_push false, require_last_push_approval false,
+               required_review_thread_resolution false
+             required_status_checks: strict false, 14 contexts, each integration_id 15368 (GitHub Actions):
+               changes (Entropy/ or this workflow) | lint (fmt, clippy) | test | supply-chain (deny, audit, vet) |
+               gates (banned APIs, verifier, canaries) | verifier (python 3.9) | coverage (core, 95% of lines) |
+               age-interop (age 1.1.1) | cross (aarch64-apple-ios) | cross (aarch64-apple-ios-sim) |
+               cross (aarch64-linux-android) | cross (arm-unknown-linux-gnueabihf) |
+               cross (armv7-linux-androideabi) | cross (x86_64-linux-android)
+```
+
+With no bypass actors, even the owner's direct pushes and web edits to `main` need a PR. The deletion and
+force-push rules are the standard pair added with the ruleset; Q12 did not name them. A ruleset cannot limit its
+checks to `Entropy/**`, so the changes job skips the other jobs on a PR that does not touch `Entropy/` (Q12).
+build-plan.md's two-approval rule stays unmet while one account (`bitwilll`) opens and merges every PR. The request
+body and the API's response stay in the session scratchpad.
+
+**The upstream issue (owner item 8).** https://github.com/RustCrypto/password-hashes/issues/938, "scrypt: zeroize
+the B, V and T buffers before freeing them", opened 2026-10-10 07:49 UTC by bitwilll, open. It asks scrypt 0.12.0
+(master is the same) to zeroize its `b`, `v` and `t` buffers before they drop, always or behind a `zeroize` feature:
+the first block of the freed `v` lets anyone who reads that memory test passphrase guesses for one PBKDF2 iteration
+each.
+
+**The 12 commits** (4733e4a..34beea2, oldest first). Each line gives the proof its implementer ran; the whole suite
+at 34beea2 is below.
+
+```text
+d8b5d25 verify, core: the armor readers refuse whitespace before BEGIN, since age 1.1.1 reads armor only at byte 0
+        backup.json regenerated (11 accepted, 44 refused); cargo test --lib backup: 29 passed, 1 ignored; check 11's
+        byte-0 assertion fires on a copy with one LF before abandon-12-crlf; age-interop --core (1.3.2) exit 0
+dc53b8f docs: after a collision, the 99-roll minimum stays through Cannot check until a check passes
+        seal-watchonly-braille.md "Add fresh entropy", build-plan.md's Wiped::restart comment; selftest 11 checks
+e87b296 core: Cannot check keeps the checking session's 99-roll flag, so after a collision 99 rolls stay until a check passes
+        cannot_check_after_a_collision_keeps_99_rolls and the_99_roll_minimum_ends_at_a_passed_check pass; the
+        mutant (false, None) fails both, the mutant (true, None) fails discard_and_restart
+0ac7394 docs: build-plan.md names poly1305 among core's crates, only to switch on its zeroize
+b4871b9 core: switch on poly1305's zeroize so its one-time key is wiped on drop
+        cargo tree -e normal --target T: "poly1305 v0.9.1|zeroize" on all six cross targets; Cargo.lock +2 lines,
+        no new package; deny ok, audit ok, vet "14 fully audited, 76 exempted"; canaries 54
+012c8db docs: 99 rolls give about 256 bits (255.9), not 256
+        design.md only, four places; selftest 11 checks
+62e2e5e docs/build-plan.md: align the Public API sketch with the built API
+        the sketch checked against every pub item lib.rs re-exports; selftest 11 checks on both Pythons
+73abaea rule 1: games get their bytes through core, not their own getrandom (owner item 12 (b))
+        banned-api-check --selftest 251 passed; the two new Rule1 fixtures (pi/app/src/games.rs and games/snake.rs)
+        pass the old script and are hits under the new one; scan clean, 161 files; canaries 54
+7c46d93 scripts/canaries.sh: the poly1305 zeroize pin checks each target on its own, not --target all
+        on a copy with zeroize only under cfg(target_os = "linux"): the old pin exits 0, the new one exits 1 for
+        the three Android targets, both iOS targets and the host; canaries 54; tree() forced back to --target all
+        fails graph-pins
+6ba465c docs/design.md: the paragraph under the seed-pipeline figure says the figure's "99 give 256" rounds up
+2441d39 docs: build-plan.md places core's game-randomness call in source from M3; the Pi games get the sink, never the session
+34beea2 docs: the Pi and phone flows add the Cannot check branch, whose "Start again" restarts through Wiped::restart
+        the last three change docs only, and not seal-watchonly-braille.md, the one doc a check reads
+```
+
+**The three reviews** (spec, security, recompute) of those commits gave 9 findings:
+1. Spec, medium: items 5, 6 and 12 (b) looked chosen by reading "approve all", and age.rs cited an "M7 audit note"
+   that no record held. The reviewers could not see the lead's message. Each recommendation was put to the owner
+   and approved as put ("M1: the owner's answers"), and this record makes age.rs's citation true. Nothing reverted.
+2. Spec, low: `docs/img/seed-pipeline.png` still says "99 give 256". Partly fixed in 6ba465c (the sentence under the
+   figure); the redraw is new item 13.
+3. Spec, low: build-plan.md did not define the game-randomness call, and pi-firmware.md's "games receive only this
+   sink" was incomplete. Fixed in 2441d39; the M3 carry is under "Notes for later milestones".
+4. Spec, low: neither shell spec had the Cannot check branch, so a shell that called `Session::new` for "Start
+   again" would drop the minimum to 50. Fixed in 34beea2.
+5. Spec, low: stale statements in this file. Fixed in this commit.
+6. Security, low: the 99-roll minimum is lost when an error or a shell wipe (idle, background, screenshot) ends the
+   restarted session. Real; not fixed, because closing it needs a new pre-Ready exit (rule 6 API) and the owner's
+   approval. New item 14.
+7. Security, low: the poly1305 pin ran with `--target all`, so a zeroize edge scoped to one target passed for all.
+   Reproduced, and fixed in 7c46d93.
+8. Security, low: the owner's intent for items 5, 6 and 12. The same outcome as finding 1.
+9. Recompute, low: the same figure as finding 2, checked on its own (99 x log2 6 = 255.91). The same outcome as
+   finding 2.
+
+**Suite at 34beea2** (toolchain 1.98.1, cargo-llvm-cov 0.9.1; git status clean before and after; the logs stay in the
+session scratchpad):
+
+```text
+cargo fmt --all --check                                         exit 0
+cargo clippy --workspace --all-targets --locked -- -D warnings  exit 0
+cargo clippy ... --all-features --locked -- -D warnings         exit 0
+cargo test --workspace --locked                                 exit 0  core lib 161 passed, 1 ignored; ceremony 5,
+                                                                        kat 7, kcr_release 3, os_source 2,
+                                                                        typestate 1, vectors 4
+cargo test -p keepcrypt-core --locked --features test-sources   exit 0  lib 189 passed, 1 ignored; ceremony 5,
+                                                                        check_flow 6, error_injection 11, kat 7,
+                                                                        kcr 3, no_panic 9, no_secret_text 5,
+                                                                        os_source 2, panic_wipe 4,
+                                                                        source_substitution 5, typestate 1, vectors 4
+cargo llvm-cov ... --fail-under-lines 95 --summary-only         exit 0  lines 8272, missed 216, 97.39%;
+                                                                        regions 96.87%; functions 96.27%
+cargo deny --locked check                                       exit 0  advisories, bans, licenses, sources ok
+cargo audit                                                     exit 0  94 crate dependencies, no vulnerabilities
+cargo vet --locked                                              exit 0  Vetting Succeeded (14 fully audited,
+                                                                        76 exempted)
+sh scripts/check-path-deps.sh                                   exit 0  clean, 90 packages outside the workspace
+python3 tools/verify/verify.py --selftest          (3.12.5)     exit 0  selftest passed: 11 checks
+/usr/bin/python3 tools/verify/verify.py --selftest (3.9.6)      exit 0  selftest passed: 11 checks
+sh scripts/banned-api-check.sh            (sh, dash)            exit 0  clean, 161 files scanned
+sh scripts/banned-api-check.sh --selftest                       exit 0  selftest: 251 passed, 0 failed
+sh scripts/canaries.sh                    (sh, dash)            exit 0  PASS: all 54 checks ran
+python3 scripts/age-interop.py --core     (Homebrew age 1.3.2)  exit 0  all 11 accepted files decrypt; 14 of the
+                                                                        17 armor cases refused (3 notes); both
+                                                                        directions ok
+--artifact aarch64-apple-darwin, aarch64-apple-ios, -ios-sim    exit 0  clean; _getentropy, _CCRandomGenerateBytes
+                                                                        imported
+```
+
+The Pi and Android release builds cannot run on this Mac: secp256k1-sys's build script finds no
+`arm-linux-gnueabihf-gcc` and no NDK clang (exit 101), so those four scans are CI's. Re-run for this record at
+34beea2: the unit tests behind the items ticked here (`seed::`, `descriptor::`, `ur::`, `seal::tests`,
+`seal::crockford`, `backup::`, `kat::tests`, `session::tests::stub`) give 101 passed, 1 ignored, and tests/vectors.rs
+4 passed.
+
+**Proof for the items ticked here** (every test named passes in the runs above):
+- Group 0, branch protection: the ruleset above.
+- Group 4, `seed.rs`: `seed::tests::*` (12: bip39_vectors_json, commitment_cases, mixed_cases_and_their_words,
+  dice_only_matches_coldcard, bip84_fingerprint_and_first_address, the_length_of_r_is_hashed,
+  every_bit_of_d_reaches_c_and_e, every_bit_of_e_reaches_the_words, s_from_the_words_equals_s_from_e,
+  secret_xpriv_derives_in_place_and_erases, empty_passphrase_seed_zeroizes, tags_match_keepcrypt_json); the residuals
+  accepted (item 6); the 16 of 24 approved (item 9).
+- Group 5, braille vectors: check 8 on both Pythons and the one-time SeedBook PDF check; `fd75c236...` approved
+  (item 3).
+- Group 5, KAT group Braille: `kat::tests::a_damaged_braille_table_fails_the_group`,
+  `braille_constants_match_braille_json`, `two_swapped_words_fail_the_wordlist_group` and
+  `every_group_passes_and_fails_under_its_fault`.
+- Group 6, `crypto-account` and the export: `descriptor::tests::*` (8, among them
+  bcr_2020_015_shield_and_the_full_example, zero_fingerprints_are_omitted, bip39_passphrases,
+  every_wallet_matches_watchonly_json and the_export_zeroizes_every_field) and
+  `ur::tests::ur_vectors_write_and_read_back`; the residuals accepted.
+- Group 7, `seal/crockford.rs` and derivation: `seal::crockford::tests::*` (3) and `seal::tests::*` (9, among them
+  every_seal_json_field, the_dashed_code_gives_a_different_tag, the_recheck_url_of_vector_1 and seal_code_zeroizes);
+  the hmac residual accepted.
+- Group 8, vectors: check 11 on both Pythons (11 accepted and 44 refused files); age_cli_written.json approved as
+  written with 1.3.2 (item 7).
+- Group 8, `backup/age.rs`: `backup::age::tests::*` (9, among them every_cctv_scrypt_file_reaches_its_outcome,
+  the_writer_rebuilds_every_written_file, every_refused_file_gives_its_error, no_flipped_bit_is_accepted and
+  a_round_trip_at_work_factor_18); the residuals accepted, and Poly1305's r and s wiped (b4871b9).
+- Group 8, Backup API: `backup::tests::round_trips_at_work_factor_18`,
+  `two_backups_of_one_session_differ_and_both_verify`, `other_passphrases_do_not_verify`,
+  `another_seed_under_this_passphrase_is_a_mismatch`, `nothing_before_a_passphrase`,
+  `stub::encrypt_reads_key_salt_nonce_and_name_in_order` and `the_age_cli_files_decrypt` (the 1.3.2 files, item 7).
+- Group 8, "Check a backup": `backup::tests::decrypt_backup_reads_backup_json`, `checked_backup_zeroizes`,
+  `stub::decrypt_backup_runs_the_age_group`, tests/vectors.rs
+  (`backup_json_and_the_age_cli_files_through_decrypt_backup`, `seal_json_vector_1_through_a_checked_backup`) and
+  tests/ceremony.rs.
+- Group 10, tests/vectors.rs: its 4 tests and the unit tests its "As built" note names; approved as built (item 9).
+- Verification, "All vectors pass": verify.py's 11 checks on both Pythons, the CCTV files through
+  `backup::age::tests::every_cctv_scrypt_file_reaches_its_outcome`, BIP39 through `seed::tests::bip39_vectors_json`
+  and the Bip39 KAT, and the tests above.
+
+**The push.** The 12 commits were pushed to origin/m1-core at 34beea2 (PR #4). CI on 34beea2, the first run with
+the armor fix: https://github.com/bitwilll/keepcrypt/actions/runs/38041799043 (pull_request, 09:33-09:38 UTC),
+conclusion success, all 14 check runs passed. From its logs:
+
+```text
+age-interop (age 1.1.1)  age package 1.1.1-1ubuntu0.24.04.3; age --version: 1.1.1
+                         ok: age -> KeepCrypt and KeepCrypt -> age at work factor 18, armored and binary; wrong
+                           passphrases refused by both; age_cli_written.json decrypted by both
+                         ok: age decrypted all 11 backup.json age files the readers accept, and also refused 17 of
+                           the 17 armor cases they refuse
+                         ok: core read age's files (decrypt_backup), age read core's fresh work-factor-18 backups,
+                           and age refused a wrong passphrase
+cross (arm-unknown-linux-gnueabihf)  clean, 2 file(s): no marker, no test key, no other RNG symbol; getrandom imported
+cross (aarch64-linux-android)        clean, 2 file(s): ... getrandom imported
+cross (armv7-linux-androideabi)      clean, 2 file(s): ... getrandom imported
+cross (x86_64-linux-android)         clean, 2 file(s): ... getrandom imported
+cross (aarch64-apple-ios)            clean, 2 file(s): ... _CCRandomGenerateBytes imported
+cross (aarch64-apple-ios-sim)        clean, 2 file(s): ... _CCRandomGenerateBytes imported
+coverage      189 passed, 1 ignored; TOTAL regions 96.87%, functions 96.27%, lines 8272, missed 216, 97.39%
+test          lib 161 passed, 1 ignored (default); 189 passed, 1 ignored (test-sources)
+gates         verify.py: selftest passed: 11 checks; banned-api selftest: 251 passed, 0 failed; PASS: all 54 checks ran
+verifier      /usr/bin/python3 3.9: selftest passed: 11 checks
+supply-chain  Vetting Succeeded (14 fully audited, 76 exempted)
+```
+
+In CI, age 1.1.1 refuses all 17 armor cases the readers refuse, where 1.3.2 accepts three of them. This commit
+changes only this file and is not pushed yet; its push runs CI again.
+
+**Still unticked:** group 11 `release_probe.rs` (the six scans), group 12's CI jobs and coverage, group 13 Review,
+and Verification "Backup" (age-interop against Ubuntu's 1.1.1), "The release artifact scan is clean on all six
+targets" and "Clean ... CI is green on `m1-core`". Each depended on CI on 34beea2, and the run above proves each;
+they are ticked once that run is reviewed. No item waits on the owner any more. New items 13 and 14 are low and do
+not block the gate.
+
+### M1 gate status: NOT MET yet (the CI items to tick, then the owner's approval)
 The gate in docs/build-plan.md asks for all vectors passing, the source-substitution and error-injection tests
-passing, and at least 95% line coverage in `core/`. Locally the tests pass and coverage is 97.39%. Still open: the
-first CI run on `m1-core` after the push (the Pi and Android artifact scans, the coverage and age-interop jobs), the
-owner items above (among them "All vectors pass", which waits on item 9, and the Q12 ruleset), and the owner's
-approval at the gate. Per CLAUDE.md, M2 does not start until the owner approves.
+passing, and at least 95% line coverage in `core/`. Locally all three hold at 34beea2 (coverage 97.39%), and "All
+vectors pass" is ticked since owner item 9 was answered. Every one of the 12 owner items is answered and applied
+(2026-10-10), and ruleset 24833307 now requires the 14 Entropy check runs on `main`. CI on the pushed head 34beea2,
+the first run with the armor fix, passed all 14 check runs (run 38041799043), including age-interop against
+Ubuntu's age 1.1.1 and the Pi and Android artifact scans. What remains: ticking the CI-dependent items against that
+run once it is reviewed, and CI on the head that carries this file; then the owner's approval at the gate. New owner
+items 13 and 14 are low and do not block it. Per CLAUDE.md, M2 does not start until the owner approves.
