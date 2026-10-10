@@ -2902,6 +2902,11 @@ Groups land in the order below. Vectors come before the core test that reads the
         - Modules at exit: the run fails if `sys.modules` holds a module loaded from outside those directories, any
           module in group 2's network list, `subprocess` or `multiprocessing`.
       Proof: check 12 passes on 3.12 and 3.9; group 8's canaries show that rules (a) and (e) fire.
+      Review fix (2026-10-10): `--verify-py PATH` replaces the subject of rules (a)-(e) only. Check 12's in-process
+      parts (group 4's `INPUT_CASES` and keepcrypt.json tie) call `tools/verify/verify.py` as vectorgen loads it,
+      also under `--verify-py`, since check 12 runs its subject only as audited copies. A changed copy's parsers
+      meet `INPUT_CASES` in group 7's piped lone-copy runs (every refused text: exit 2, the field and position on
+      stderr, no traceback, every stream under the leak rule).
 
 **4. Inputs, the shared run function, inserts and registry URLs (lessons.md rule 2: exact bytes of every hash input)**
 - [x] Parsers. An error is `InputRefused(field, position)`, whose text never holds the input:

@@ -77,8 +77,9 @@ Usage (CI runs python3 -I tools/verify/vectorgen.py --selftest):
   vectorgen.py --write-backup-vectors     regenerate vectors/backup.json
   --vectors-dir DIR                 testing only: use DIR in place of the repo's vectors/ (made
                                     absolute); a SOURCES.md row `vectors/<p>` then means DIR/<p>
-  --verify-py PATH                  testing only, with --selftest: check 12 checks PATH in place of
-                                    tools/verify/verify.py (the other checks use tools/verify/verify.py)
+  --verify-py PATH                  testing only, with --selftest: check 12's rules (a) to (e) check PATH
+                                    in place of tools/verify/verify.py; check 12's input cases and
+                                    keepcrypt.json tie, and the other checks, use tools/verify/verify.py
   --check N                         testing only, with --selftest: run check N alone
 
 Exit codes: 0 all good, 1 a check failed, 2 usage error.
@@ -4663,7 +4664,9 @@ def main(argv):
     parser.add_argument("--vectors-dir", type=Path, default=REPO_VECTORS_DIR, metavar="DIR",
                         help="testing only: use DIR in place of the repo's vectors/")
     parser.add_argument("--verify-py", type=Path, metavar="PATH",
-                        help="testing only, with --selftest: check 12 checks PATH in place of tools/verify/verify.py")
+                        help="testing only, with --selftest: check 12's rules (a) to (e) check PATH in place of "
+                        "tools/verify/verify.py (its input cases and keepcrypt.json tie, and the other checks, use "
+                        "tools/verify/verify.py)")
     parser.add_argument("--check", type=int, metavar="N", help="testing only, with --selftest: run check N alone")
     args = parser.parse_args(argv)
     if (args.verify_py is not None or args.check is not None) and not args.selftest:
