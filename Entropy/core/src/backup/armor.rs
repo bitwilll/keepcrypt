@@ -7,11 +7,12 @@
 //! - Decode accepts exactly that, with LF or CRLF line ends and an END line that may end the input
 //!   (alone or with a CR), BEGIN at the first byte, and ASCII whitespace (space, tab, CR, LF)
 //!   after the END line only, fewer than 1,024 bytes of it. Those are the age CLI's own limits:
-//!   age 1.1.1 reads a file as armor only when BEGIN is its first byte (1.2 and later skip up to
-//!   1,024 bytes of whitespace before it), and every version refuses 1,024 bytes after END, so no
-//!   armor this reader accepts is one age refuses for its whitespace. The base64 must be
-//!   canonical (base64ct checks the padding and the unused low bits). Anything else is
-//!   `Backup(Armor)`, an input that starts with `-----BEGIN` only after whitespace included.
+//!   age before 1.3.0 (Ubuntu's 1.1.1 among them) reads a file as armor only when BEGIN is its
+//!   first byte (1.3.0 and later skip up to 1,024 bytes of whitespace before it), and every
+//!   version refuses 1,024 bytes after END, so no armor this reader accepts is one age refuses for
+//!   its whitespace. The base64 must be canonical (base64ct checks the padding and the unused low
+//!   bits). Anything else is `Backup(Armor)`, an input that starts with `-----BEGIN` only after
+//!   whitespace included.
 //!
 //! The armored text is ciphertext, so these buffers need no wiping.
 
@@ -199,7 +200,7 @@ mod tests {
         let crlf_trailing = [crlf.as_slice(), b"\t \r\n\n"].concat();
         let end_cr = [&text[..text.len() - 1], b"\r"].concat();
         // Whitespace after END up to its limit, 1,023 bytes; none before BEGIN, even a lone LF or
-        // 1,024 bytes of blank lines, which age 1.2 and later skip but age 1.1.1 does not.
+        // 1,024 bytes of blank lines, which age 1.3.0 and later skip but age 1.1.1 does not.
         let blank_lines = b" \t\r\n".repeat(MAX_WHITESPACE / 4);
         let trailing = [&text, &blank_lines[1..]].concat();
         for accepted in [
