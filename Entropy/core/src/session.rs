@@ -37,9 +37,10 @@
 //!   unwind drops the session's `Box<Inner>`, which zeroizes it. `catch_unwind` is banned in core
 //!   (clippy.toml), so nothing catches a panic and carries on with the session. Note for M5: the
 //!   FFI takes the session out of its slot before each call, so a panic leaves no session behind.
-//! - **`Wiped` holds no secret.** It keeps the platform, the 99-roll flag and, after a collision
-//!   only, the destroyed seed's collision report, whose code is harmless to share because that seed
-//!   is never used (docs/seal-watchonly-braille.md "Reporting a collision").
+//! - **`Wiped` holds no secret.** It keeps the platform, the 99-roll flag (set by a collision, kept
+//!   through "Cannot check") and, after a collision only, the destroyed seed's collision report,
+//!   whose code is harmless to share because that seed is never used
+//!   (docs/seal-watchonly-braille.md "Reporting a collision").
 
 mod inner;
 mod wiped;
@@ -341,7 +342,8 @@ impl Session<Checking> {
     /// verified proof that does not hold T. A code that does not verify, or a proof for another
     /// bucket, is `Rejected::Retry` with the session and the same nonce. A snapshot or proof that
     /// holds T is `Rejected::Collision`: the seed is wiped unseen, and the `Wiped` keeps the
-    /// collision report and the 99-roll minimum for the restart.
+    /// collision report and the 99-roll minimum for the restart. A passed check ends that minimum:
+    /// no `Wiped`, and so no restart, follows `Ready`.
     pub fn reveal(self, go: GoAhead<'_>) -> Result<Session<Ready>, Rejected> {
         match self.inner.judge(go) {
             Verdict::Clear => Ok(self.into_state()),
@@ -354,7 +356,8 @@ impl Session<Checking> {
     }
 
     /// Stop: "Match found" (`Discard::Collision`: keeps the report and the 99-roll minimum) or
-    /// "Cannot check" (`Discard::CannotCheck`: keeps neither). The seed is wiped unseen.
+    /// "Cannot check" (`Discard::CannotCheck`: keeps no report, and this session's own 99-roll
+    /// minimum, so a restart after a collision keeps 99 rolls). The seed is wiped unseen.
     pub fn discard(self, why: Discard) -> Wiped {
         Wiped::from_check(self, why)
     }
@@ -1112,7 +1115,8 @@ mod tests {
             }
         }
 
-        // discard: Collision keeps the report and the flag, CannotCheck keeps neither; the seed is
+        // discard: Collision keeps the report and sets the flag; CannotCheck keeps no report and
+        // this session's own flag, here none, so its restart uses the normal minimum. The seed is
         // wiped either way. restart re-runs the suite on a fresh source.
         #[test]
         fn discard_and_restart() {
@@ -1169,45 +1173,92 @@ mod tests {
             assert_eq!(fresh.wipes(), 1);
         }
 
-        // "Cannot check" keeps no flag even in a session that itself started after a collision: its
-        // restart uses the normal minimum (docs/seal-watchonly-braille.md "Add fresh entropy"). 12
-        // words tell the two apart: 50 normally, 99 after a collision.
-        #[test]
-        fn cannot_check_after_a_collision_restarts_at_the_normal_minimum() {
-            let after_collision = sealed_on(StubEntropy::Fixed(vec![0; 8]), &WipeProbe::new())
+        /// A `Wiped` from "Match found" on a stub check: its restart needs 99 rolls.
+        fn wiped_by_collision() -> Wiped {
+            sealed_on(StubEntropy::Fixed(vec![0; 8]), &WipeProbe::new())
                 .start_check()
                 .expect("checking")
-                .discard(Discard::Collision);
-            let probe = WipeProbe::new();
-            let rolling = after_collision
-                .restart_with_stub(
-                    SeedLength::Words12,
-                    Mode::DiceOnly,
-                    stub(StubEntropy::Fixed(vec![0; 8]), &probe),
-                    None,
-                )
+                .discard(Discard::Collision)
+        }
+
+        /// `wiped` restarted at `len` in dice-only mode on a stub, up to the dice.
+        fn restarted(
+            wiped: Wiped,
+            len: SeedLength,
+            entropy: StubEntropy,
+            probe: &WipeProbe,
+        ) -> Session<Rolling> {
+            wiped
+                .restart_with_stub(len, Mode::DiceOnly, stub(entropy, probe), None)
                 .and_then(Session::commit)
                 .expect("restarted")
-                .start_dice();
-            assert_eq!(rolling.minimum_rolls(), 99, "after the collision");
-            let wiped = roll_all(rolling, &faces("coldcard-99"))
+                .start_dice()
+        }
+
+        /// The seed of the 99-roll string, then "Cannot check".
+        fn cannot_check(rolling: Session<Rolling>) -> Wiped {
+            roll_all(rolling, &faces("coldcard-99"))
                 .finish()
-                .and_then(|sealed| sealed.start_check())
+                .and_then(Session::start_check)
                 .expect("checking")
-                .discard(Discard::CannotCheck);
-            assert_eq!(probe.wipes(), 1);
-            assert!(wiped.collision_report().is_none());
-            let rolling = wiped
-                .restart_with_stub(
-                    SeedLength::Words12,
-                    Mode::DiceOnly,
-                    stub(StubEntropy::Fail, &WipeProbe::new()),
-                    None,
-                )
-                .and_then(Session::commit)
-                .expect("restarted")
-                .start_dice();
-            assert_eq!(rolling.minimum_rolls(), 50, "the normal minimum");
+                .discard(Discard::CannotCheck)
+        }
+
+        // "Cannot check" keeps the checking session's own flag (tasks/todo.md, "M1: open owner
+        // items", item 5): the restart after a collision needs 99 rolls, and so does every restart
+        // after a "Cannot check" in it, until a check passes. 12 words tell this apart from the
+        // normal minimum (50); 24 words need 99 either way.
+        #[test]
+        fn cannot_check_after_a_collision_keeps_99_rolls() {
+            for len in [SeedLength::Words12, SeedLength::Words24] {
+                let mut wiped = wiped_by_collision();
+                for cannot_checks in 0..3 {
+                    let probe = WipeProbe::new();
+                    let rolling = restarted(wiped, len, StubEntropy::Fixed(vec![0; 8]), &probe);
+                    let what = format!("{len:?} after {cannot_checks} Cannot check");
+                    assert_eq!(rolling.minimum_rolls(), 99, "{what}");
+                    wiped = cannot_check(rolling);
+                    assert_eq!(probe.wipes(), 1, "{what}");
+                    assert!(wiped.collision_report().is_none(), "{what}");
+                }
+            }
+        }
+
+        // A passed check ends the 99-roll minimum: after a collision and a "Cannot check", the
+        // 99-roll session's go-ahead code reveals kcr.json's words. No restart can follow:
+        // `Ready` has no `discard`, and only a check leaves a `Wiped`, so the next ceremony is a
+        // `Session::new`, at the normal minimum.
+        #[test]
+        fn the_99_roll_minimum_ends_at_a_passed_check() {
+            for (len, name) in [
+                (SeedLength::Words12, "dice-99-words12"),
+                (SeedLength::Words24, "dice-99-words24"),
+            ] {
+                let seed = kcr_seed(name);
+                let wiped = cannot_check(restarted(
+                    wiped_by_collision(),
+                    len,
+                    StubEntropy::Fixed(vec![0; 8]),
+                    &WipeProbe::new(),
+                ));
+                let nonce = StubEntropy::Fixed(hex(&seed["nonce_hex"]));
+                let rolling = restarted(wiped, len, nonce, &WipeProbe::new());
+                assert_eq!(rolling.minimum_rolls(), 99, "{name}");
+                let checking = roll_all(rolling, &faces("coldcard-99"))
+                    .finish()
+                    .and_then(Session::start_check)
+                    .expect("checking");
+                assert_eq!(checking.seal().tag().to_hex(), text(&seed["seal_tag_hex"]));
+                let ready = match checking.reveal(GoAhead::Code(text(&seed["go_ahead"]))) {
+                    Ok(ready) => ready,
+                    Err(e) => panic!("{name}: {e:?}"),
+                };
+                assert_eq!(
+                    ready.mnemonic().words().collect::<Vec<_>>().join(" "),
+                    text(&seed["mnemonic"]),
+                    "{name}"
+                );
+            }
         }
 
         // Mixed mode on a phone: D leaves only through reveal_device_leg after read-back, equal to

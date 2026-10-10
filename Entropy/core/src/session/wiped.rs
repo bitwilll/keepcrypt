@@ -10,6 +10,12 @@
 //!   after a collision only, the destroyed seed's collision report. `restart` re-runs the
 //!   known-answer suite and starts a fresh ceremony (fresh pool, fresh OS read at commit, fresh
 //!   dice), at 99 rolls for either length after a collision.
+//! - The 99-roll flag (tasks/todo.md, "M1: open owner items", item 5): a collision sets it, and
+//!   "Cannot check" keeps the checking session's own flag, so the restart after a collision keeps
+//!   99 rolls through every "Cannot check" until a check passes. Only a `Wiped` carries it, and
+//!   only a check leaves one: `Ready` (a passed check, or Skip) has no way back to a `Wiped`, and
+//!   an `Err` or a dropped session leaves none, so the next ceremony is a `Session::new`, at the
+//!   normal minimum.
 //! - `Rejected` and `Wiped` have hand-written `Debug` that prints their variant names and never
 //!   touches their contents. Those names are no BIP39 word as a whole token (case-folded runs of
 //!   letters: "rejected", "retry", "collision", "wiped"); "session", "report", "flag", "check" and
@@ -44,8 +50,9 @@ pub enum Discard {
     /// "Match found": the checker reported this seal. Keeps the collision report and the
     /// 99-roll minimum for the restart.
     Collision,
-    /// "Cannot check": a network or snapshot error. Keeps neither; the restart uses the normal
-    /// minimum.
+    /// "Cannot check": a network or snapshot error. Keeps no report, and keeps this session's own
+    /// 99-roll flag: the restart uses the normal minimum, unless this session was itself a restart
+    /// after a collision, whose 99 rolls then stay until a check passes.
     CannotCheck,
 }
 
@@ -71,7 +78,8 @@ impl fmt::Debug for Rejected {
 /// What is left of a session whose seed was destroyed unseen. Holds no secret.
 pub struct Wiped {
     platform: Platform,
-    /// After a collision: the next ceremony needs 99 rolls for either length.
+    /// After a collision, and after "Cannot check" in a restart after one: the next ceremony needs
+    /// 99 rolls for either length.
     after_collision: bool,
     /// After a collision: the destroyed seed's "Report collision" QR.
     report: Option<CollisionReport>,
@@ -89,7 +97,7 @@ impl Wiped {
     pub(super) fn from_check(session: Session<Checking>, why: Discard) -> Self {
         let (after_collision, report) = match why {
             Discard::Collision => (true, Some(session.inner.collision_report())),
-            Discard::CannotCheck => (false, None),
+            Discard::CannotCheck => (session.inner.after_collision(), None),
         };
         let wiped = Self {
             platform: session.platform(),
@@ -108,8 +116,8 @@ impl Wiped {
 
     /// "Add fresh entropy": a new ceremony on the same platform, after the full known-answer suite,
     /// with a fresh pool, a fresh OS read at commit and fresh dice. Nothing of the destroyed seed is
-    /// reused. After a collision the minimum is 99 rolls for either length. An `Err` means no seed
-    /// can be made.
+    /// reused. After a collision, and after "Cannot check" in a restart after one, the minimum is
+    /// 99 rolls for either length. An `Err` means no seed can be made.
     pub fn restart(self, len: SeedLength, mode: Mode) -> Result<Session<Collecting>, CoreError> {
         Session::start(
             self.config(len, mode),

@@ -43,7 +43,8 @@ pub(super) enum Verdict {
 pub(super) struct Inner {
     pub(super) config: Config,
     source: Source,
-    /// Set by `Wiped::restart` after a collision: the 99-roll minimum for either length.
+    /// Set by `Wiped::restart` after a collision, and after "Cannot check" in such a restart: the
+    /// 99-roll minimum for either length.
     after_collision: bool,
     /// Collecting: the hwrng health tester. It remembers raw sample values.
     tester: HealthTester,
@@ -284,6 +285,11 @@ impl Inner {
     /// The "Report collision" QR for this seal.
     pub(super) fn collision_report(&self) -> CollisionReport {
         CollisionReport::new(&self.seal_code, &self.seal)
+    }
+
+    /// Whether this session has the 99-roll minimum, for "Cannot check" to keep.
+    pub(super) fn after_collision(&self) -> bool {
+        self.after_collision
     }
 
     // --- Ready -----------------------------------------------------------------------------
