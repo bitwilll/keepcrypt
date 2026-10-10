@@ -1443,6 +1443,18 @@ starts. Every item names its proof.
       - Residual risk, for the owner's review (not yet accepted; Q1 (iii) accepted only scrypt's buffers): HKDF's
         extract step keeps copies of the pseudorandom key, derived from the file key, in its own frames (the copy
         it returns is wiped), and the header MAC's hmac leaves its padded key block, as recorded in group 7.
+        Review fix after commit 21, two more for the same decision:
+        - Poly1305's one-time key. chacha20poly1305 0.11.0's `zeroize` feature turns on only `chacha20/zeroize`
+          and wipes the 32-byte MAC key it derives, but poly1305 0.9.1 resolves with no features (`cargo
+          metadata`: `poly1305 0.9.1 []`, declared `zeroize`), so `impl Drop for Poly1305` skips
+          `zeroize_flat_type` and r and s stay in the dropped cipher's state, once for the stanza body (under
+          the wrap key) and once for the payload (under the payload key). They are the first ChaCha20 keystream
+          block, so they reveal neither the ChaCha20 key, nor the file key, nor the plaintext. Wiping them needs
+          poly1305 as a direct dependency with `zeroize`, a new edge (owner approval and a vet entry), so
+          nothing is changed until the owner decides. Table A's resolved features are as written, so this is no
+          dependency deviation.
+        - scrypt's PBKDF2 steps key hmac with the backup passphrase (`pbkdf2_hmac` calls `new_from_slice`), so
+          the group 7 hmac residual applies there too, to a passphrase-derived block.
 - [ ] `backup/passphrase.rs` (build-plan.md "Passphrase"; pi-firmware.md USB steps 1-2; mobile-apps.md "Encrypted
       backup only"; Q6e):
       - 11 fresh OS bytes, cut into 8 indices of 11 bits;
