@@ -307,6 +307,37 @@ fn seal(
     Ok(())
 }
 
+/// The file key the stanza's body wraps under `passphrase`: scrypt, then the body opened with the
+/// wrap key; a body that does not open is `WrongPassphrase`.
+fn unwrap_file_key(
+    passphrase: &[u8],
+    stanza: &ScryptStanza,
+) -> Result<Zeroizing<[u8; FILE_KEY_BYTES]>, CoreError> {
+    let mut wrap_key = Zeroizing::new([0u8; 32]);
+    wrap_key_into(passphrase, &stanza.salt, stanza.work_factor, &mut wrap_key)?;
+    let mut file_key = Zeroizing::new([0u8; FILE_KEY_BYTES]);
+    open(&wrap_key, &[0; 12], &stanza.body, file_key.as_mut_slice())
+        .map_err(|()| CoreError::WrongPassphrase)?;
+    Ok(file_key)
+}
+
+/// The file key inside an armored or binary age file under `passphrase` (tests only), so the
+/// backup tests can show which bytes the writer used as the key.
+#[cfg(test)]
+pub(crate) fn file_key_of(
+    file: &[u8],
+    passphrase: &[u8],
+) -> Result<Zeroizing<[u8; FILE_KEY_BYTES]>, CoreError> {
+    let dearmored;
+    let binary = if armor::is_armored(file) {
+        dearmored = armor::decode(file)?;
+        dearmored.as_slice()
+    } else {
+        file
+    };
+    unwrap_file_key(passphrase, &scrypt_stanza(&parse(binary)?)?)
+}
+
 /// The plaintext of an armored or binary age file under `passphrase` (the reader order in the
 /// module comment).
 pub(crate) fn decrypt(file: &[u8], passphrase: &[u8]) -> Result<Zeroizing<Vec<u8>>, CoreError> {
@@ -328,11 +359,7 @@ pub(crate) fn decrypt(file: &[u8], passphrase: &[u8]) -> Result<Zeroizing<Vec<u8
     {
         return Err(refused(BackupError::Payload));
     }
-    let mut wrap_key = Zeroizing::new([0u8; 32]);
-    wrap_key_into(passphrase, &stanza.salt, stanza.work_factor, &mut wrap_key)?;
-    let mut file_key = Zeroizing::new([0u8; FILE_KEY_BYTES]);
-    open(&wrap_key, &[0; 12], &stanza.body, file_key.as_mut_slice())
-        .map_err(|()| CoreError::WrongPassphrase)?;
+    let file_key = unwrap_file_key(passphrase, &stanza)?;
     let mut mac_key = Zeroizing::new([0u8; 32]);
     hkdf_into(file_key.as_slice(), &[], HEADER_INFO, &mut mac_key)?;
     let mut mac = Hmac::<Sha256>::new_from_slice(mac_key.as_slice())
@@ -619,6 +646,35 @@ mod tests {
                 "{name}"
             );
         }
+    }
+
+    // The tests' file-key reader gives back the file key every written backup.json file was made
+    // with, binary or armored, and nothing under another passphrase.
+    #[test]
+    fn file_key_of_gives_the_key_each_file_was_written_with() {
+        let doc = read("backup.json");
+        let mut written = 0;
+        for case in doc["age_files"].as_array().expect("age_files") {
+            if case["written"] != true {
+                continue;
+            }
+            let file = case_file(case);
+            let key = file_key_of(&file, text(&case["passphrase"]).as_bytes()).expect("opens");
+            assert_eq!(
+                key.as_slice(),
+                hex(&case["file_key_hex"]),
+                "{}",
+                case["name"]
+            );
+            assert_eq!(
+                file_key_of(&file, b"another passphrase").map(|k| *k),
+                Err(CoreError::WrongPassphrase),
+                "{}",
+                case["name"]
+            );
+            written += 1;
+        }
+        assert_eq!(written, 6);
     }
 
     // Every backup.json file, written or a reader-only armor variant, decrypts to its plaintext.

@@ -326,6 +326,7 @@ mod tests {
     use crate::secret::TestFill;
     use crate::session::{Ready, Session};
     use crate::test_vectors::{hex, hex_str, named, read, text};
+    use base64ct::Encoding;
     use serde_json::Value;
 
     /// BIP39 word indices of a mnemonic.
@@ -388,8 +389,9 @@ mod tests {
         }
     }
 
-    /// The salt in a backup's stanza and the nonce at the start of its payload, as base64 and bytes.
-    fn salt_and_nonce(file: &[u8]) -> (Vec<u8>, Vec<u8>) {
+    /// The salt in a backup's stanza (decoded from its base64) and the nonce at the start of its
+    /// payload.
+    fn salt_and_nonce(file: &[u8]) -> ([u8; 16], Vec<u8>) {
         let binary = armor::decode(file).expect("armored");
         let version = b"age-encryption.org/v1\n".len();
         let stanza_end = version
@@ -397,17 +399,24 @@ mod tests {
                 .iter()
                 .position(|&b| b == b'\n')
                 .expect("a stanza line");
-        let salt = binary[version..stanza_end]
+        let salt_text = binary[version..stanza_end]
             .split(|&b| b == b' ')
             .nth(2)
-            .expect("the salt")
-            .to_vec();
+            .expect("the salt");
+        let mut salt = [0u8; 16];
+        let decoded = base64ct::Base64Unpadded::decode(salt_text, &mut salt).expect("base64");
+        assert_eq!(decoded.len(), 16);
         let mac_line = binary
             .windows(4)
             .position(|w| w == b"--- ")
             .expect("the MAC line");
         let payload = mac_line + 4 + 43 + 1;
         (salt, binary[payload..payload + 16].to_vec())
+    }
+
+    /// The file key a backup was written with, opened with its passphrase words.
+    fn file_key(file: &BackupFile, new: &NewBackupPassphrase) -> [u8; 16] {
+        *age::file_key_of(file.bytes(), words_of(new).as_bytes()).expect("opens")
     }
 
     // The writer gives every backup.json plaintext byte for byte, sized exactly (no reallocation),
@@ -607,21 +616,28 @@ mod tests {
         }
     }
 
-    // Two backups of one session differ in salt, nonce, name and ciphertext, and both verify; the
-    // paper passphrase stays valid for a retry.
+    // Two backups of one session differ in salt, nonce, file key, name and ciphertext, and both
+    // verify; the paper passphrase stays valid for a retry. Neither file key is the salt or the
+    // nonce written beside it in the file.
     #[test]
     fn two_backups_of_one_session_differ_and_both_verify() {
         let doc = read("backup.json");
         let case = plaintext_case(&doc, "abandon-12");
-        let (session, _new) = ready(text(&case["mnemonic"]))
+        let (session, new) = ready(text(&case["mnemonic"]))
             .generate_backup_passphrase()
             .expect("generated");
         let (session, first) = session.encrypt_backup(&created_by(case)).expect("first");
         let (session, second) = session.encrypt_backup(&created_by(case)).expect("second");
         let (salt_1, nonce_1) = salt_and_nonce(first.bytes());
         let (salt_2, nonce_2) = salt_and_nonce(second.bytes());
+        let (key_1, key_2) = (file_key(&first, &new), file_key(&second, &new));
         assert_ne!(salt_1, salt_2);
         assert_ne!(nonce_1, nonce_2);
+        assert_ne!(key_1, key_2);
+        for (key, salt, nonce) in [(key_1, salt_1, &nonce_1), (key_2, salt_2, &nonce_2)] {
+            assert_ne!(key, salt);
+            assert_ne!(key.as_slice(), nonce.as_slice());
+        }
         assert_ne!(first.name(), second.name());
         assert_ne!(first.bytes(), second.bytes());
         assert_eq!(session.verify_backup(first.bytes()), Ok(()));
@@ -864,7 +880,6 @@ mod tests {
         use super::*;
         use crate::error::SourceFault;
         use crate::source::{StubEntropy, StubSource, WipeProbe};
-        use base64ct::Encoding;
 
         fn stub_ready(mnemonic: &str, bytes: Vec<u8>, probe: &WipeProbe) -> Session<Ready> {
             let source = Source::Stub(StubSource::new(StubEntropy::Fixed(bytes), probe));
@@ -923,9 +938,17 @@ mod tests {
             }
         }
 
-        // encrypt_backup reads 52 bytes, in this order: file key, salt, nonce, file name; the
-        // file opens under the stored passphrase and verifies; a source failure inside it, and
-        // calling it before generate_backup_passphrase, wipe the session once.
+        /// 16 of the stub's bytes.
+        fn bytes16(bytes: &[u8]) -> [u8; 16] {
+            <[u8; 16]>::try_from(bytes).expect("16 bytes")
+        }
+
+        // encrypt_backup reads 52 bytes, in this order: file key, salt, nonce, file name. The
+        // file is byte for byte the writer's output from drawn[0..16] as the file key,
+        // drawn[16..32] as the salt and drawn[32..48] as the nonce, under the stored passphrase
+        // at work factor 18, so no other file key can hide behind a file that opens; it verifies.
+        // A source failure inside it, and calling it before generate_backup_passphrase, wipe the
+        // session once.
         #[test]
         fn encrypt_reads_key_salt_nonce_and_name_in_order() {
             let doc = read("backup.json");
@@ -941,11 +964,26 @@ mod tests {
             let (session, new) = session.generate_backup_passphrase().expect("generated");
             let (session, file) = session.encrypt_backup(&created_by(case)).expect("written");
             assert_eq!(file.name(), "keepcrypt-backup-30313233.age");
+            let secrets = age::FileSecrets::new(
+                &bytes16(&drawn[0..16]),
+                &bytes16(&drawn[16..32]),
+                &bytes16(&drawn[32..48]),
+            );
+            let want = age::encrypt(
+                words_of(&new).as_bytes(),
+                &secrets,
+                age::WRITE_WORK_FACTOR,
+                text(&case["text"]).as_bytes(),
+            )
+            .expect("written");
+            assert_eq!(
+                file.bytes(),
+                armor::encode(&want).expect("armored").as_slice(),
+                "the file is the writer's output from the drawn key, salt and nonce"
+            );
+            assert_eq!(file_key(&file, &new), drawn[0..16]);
             let (salt, nonce) = salt_and_nonce(file.bytes());
-            let mut salt_text = [0u8; 22];
-            let salt_b64 =
-                base64ct::Base64Unpadded::encode(&drawn[16..32], &mut salt_text).expect("encoded");
-            assert_eq!(salt, salt_b64.as_bytes());
+            assert_eq!(salt, drawn[16..32]);
             assert_eq!(nonce, &drawn[32..48]);
             assert_eq!(session.verify_backup(file.bytes()), Ok(()));
             let opened = age::decrypt(file.bytes(), words_of(&new).as_bytes()).expect("opens");
