@@ -6,6 +6,10 @@ were retrieved on 2026-10-09. `python3 tools/verify/vectorgen.py --selftest` re-
 and re-runs Coldcard's committed scripts on every case in `coldcard/rolls.json`;
 `shasum -a 256 <path>` checks one by hand.
 
+Until the verifier was split on 2026-10-10 (tasks/todo.md, M2 Q16), `tools/verify/verify.py` held
+everything now in `tools/verify/vectorgen.py`. Records of earlier work below name each command,
+table, literal and writer by the file that holds it now.
+
 `vectors/seal.json` has no row. `tools/verify/vectorgen.py` generates it from the constants in
 `CLAUDE.md`, and the self-test regenerates and compares it.
 
