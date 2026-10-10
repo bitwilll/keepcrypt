@@ -2024,16 +2024,16 @@ moved from M0)
       - exit codes: 0 clean, 1 hits, 2 error;
       - `--selftest` compiles `#![no_std]` fixtures with `rustc --emit=obj` for an Android and an iOS target (an
         arc4random import, a missing OS import, a clean object), plus a text file for each marker.
-- [ ] `core/examples/release_probe.rs` (default features): self-test, a Phone ceremony with fixed public dice,
+- [x] `core/examples/release_probe.rs` (default features): self-test, a Phone ceremony with fixed public dice,
       `start_check`, read-back, then `generate_backup_passphrase` and `encrypt_backup`, so every OS draw site is
       linked. It also calls `registry_key_is_test()` and `verify_snapshot` on public test bytes (expecting
       `NoRegistryKey` in release), so a `test-registry` build links the registry-key path and its marker. It prints
       nothing. Proof: the cross job scans the release rlib and the probe for all six targets.
       CI on 34beea2 (run 38041799043) scanned the rlib and the probe clean on all six targets (Review, "M1: the
-      owner's answers applied"); to be ticked after that run is reviewed.
+      owner's answers applied"); reviewed and ticked 2026-10-10.
 
 **12. CI, canaries, coverage, commands** (Q11)
-- [ ] CI jobs, 11 today and 13 after M1 (they become required checks only through the Q12 ruleset):
+- [x] CI jobs, 11 today and 13 after M1 (they become required checks only through the Q12 ruleset):
       - lint: add `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`, which lints the stub
         and test-registry code; keep the default-features run;
       - test: add `cargo test -p keepcrypt-core --locked --features test-sources` (which turns on test-registry); the
@@ -2052,7 +2052,7 @@ moved from M0)
         every other job depends on it and reports "skipped" otherwise, so required checks never hang on PRs that do
         not touch `Entropy/`.
       On 4733e4a every job passed except age-interop against 1.1.1 (fixed in d8b5d25); on 34beea2 (run 38041799043)
-      all 14 check runs passed (Review). To be ticked after that run is reviewed.
+      all 14 check runs passed (Review; reviewed and ticked 2026-10-10).
 - [x] `scripts/canaries.sh`, with its pinned counts updated:
       - positive controls:
         - a host release probe built with `test-sources` must make the scan exit 1, naming both markers and the test
@@ -2069,12 +2069,12 @@ moved from M0)
         - ed25519-dalek resolves with no features and curve25519-dalek with only `digest`, so `legacy_compatibility`,
           `rand_core` and `batch` stay off;
       - a vectors-tamper canary: one flipped byte in each generated JSON file must fail verify.py, naming that file.
-- [ ] Coverage: `cargo llvm-cov --locked -p keepcrypt-core --features test-sources --no-cfg-coverage
+- [x] Coverage: `cargo llvm-cov --locked -p keepcrypt-core --features test-sources --no-cfg-coverage
       --fail-under-lines 95`, with cargo-llvm-cov 0.9.1. No `#[coverage(off)]` and no `cfg(coverage)`. CI fails if any
       path under core/src matches `/(tests|examples|benches)/`, or any core/src file is named `tests.rs`,
       `*_tests.rs` or `*-tests.rs`, because the tool's default ignore rule skips all of those.
-      97.39% locally and in CI's coverage job on 34beea2 (run 38041799043, Review); to be ticked after that run is
-      reviewed.
+      97.39% locally and in CI's coverage job on 34beea2 (run 38041799043, Review; reviewed and ticked
+      2026-10-10).
 - [x] CLAUDE.md "Commands" gains:
       - the feature test run and the coverage command;
       - each `--write-*-vectors` flag (regenerate, never hand-edit);
@@ -2117,7 +2117,7 @@ moved from M0)
   - the coverage job's path check also has the tool's `/rustc/<hex or x.y.z>/` rule (de93cbc).
 
 **13. Review**
-- [ ] Paste under Review:
+- [x] Paste under Review:
       - test, trybuild, error-injection and source-substitution output;
       - `verify.py --selftest` (11 checks) on 3.12 and on 3.9;
       - the coverage summary;
@@ -2129,8 +2129,8 @@ moved from M0)
       - the Q12 ruleset (`gh api` output) or the owner's deferral, and a note that build-plan.md's two-approval rule is
         unmet while one account opens and merges PRs.
       The six scans and the age-interop run against 1.1.1 come from CI on 34beea2 (run 38041799043), pasted under
-      "M1: the owner's answers applied" with the ruleset; everything else is under Review. To be ticked after that
-      run is reviewed.
+      "M1: the owner's answers applied" with the ruleset; everything else is under Review. Reviewed and ticked
+      2026-10-10.
 
 **Carried to later milestones** (record in their plans)
 - M3, M5, M6:
@@ -2197,28 +2197,28 @@ moved from M0)
 - [x] Snapshot tampering: every kcr.json negative, and the header bit-flip sweep, are rejected. Release builds give
       `NoRegistryKey`.
 - [x] Dice-only output equals Coldcard `rolls.py`/`rolls12.py` for the fixed roll strings, in core and in verify.py.
-- [ ] Backup:
+- [x] Backup:
       - the CCTV classes match;
       - the writer equals CCTV byte for byte;
       - core reads age 1.1.1 files, and age 1.1.1 decrypts fresh core files at log2 N 18 (age-interop job);
       - only a generated passphrase can encrypt, and `decrypt_backup` returns a `CheckedBackup` whose fingerprint and
         seal match.
       The other three bullets are proven locally. The age-interop job against Ubuntu's 1.1.1 failed on 4733e4a
-      (fixed in d8b5d25) and passed on 34beea2 (run 38041799043, Review); to be ticked after that run is reviewed.
+      (fixed in d8b5d25) and passed on 34beea2 (run 38041799043, Review; reviewed and ticked 2026-10-10).
 - [x] Braille: the six `CLAUDE.md` inserts match; 279 and 49 are recomputed; read-back catches every mirror flip and
       every blank-face slip.
 - [x] Watch-only: the BIP-84 and BCR-2020-015 vectors, the BIP-380 checksums and the runtime self-check pass.
 - [x] Secrets never printed: the no-secret-text test passes and catches a planted leak with each check. A panic wipes
       the session, and hostile input never panics.
-- [ ] The release artifact scan is clean on all six targets; both positive controls fail for their markers, and the
+- [x] The release artifact scan is clean on all six targets; both positive controls fail for their markers, and the
       `test-registry` build holds no stub marker. CI on 34beea2 (run 38041799043, Review) scanned all six clean, and
-      its canaries (54) include both positive controls; to be ticked after that run is reviewed.
+      its canaries (54) include both positive controls; reviewed and ticked 2026-10-10.
 - [x] Line coverage in `core/` is at least 95% (`cargo llvm-cov`), with nothing excluded: no core/src path matches the
       tool's default ignore rule.
-- [ ] Clean: clippy (default and all features), fmt, deny, audit, vet, check-path-deps, the banned-API gate and its
+- [x] Clean: clippy (default and all features), fmt, deny, audit, vet, check-path-deps, the banned-API gate and its
       selftest, and the canaries. CI is green on `m1-core`. The Q12 ruleset is in place, or its deferral is recorded.
       All clean locally at 34beea2, CI green on 34beea2 (run 38041799043, Review), and ruleset 24833307 is in place.
-      To be ticked after that run is reviewed.
+      Reviewed and ticked 2026-10-10.
 
 ### New dependencies (approved with Q1-Q4)
 **How this was checked (2026-10-09).** I copied the merged M0 workspace to a scratch directory, added every M1 crate at the versions below, and used `cargo update --precise` to hold back six crates. Results:
@@ -3124,7 +3124,9 @@ answers applied".
    cannot wipe as an M7 audit note, plus switch on Poly1305's wipe feature. Accepted; the note is under "Notes for
    later milestones". 0ac7394 names poly1305 in build-plan.md, b4871b9 adds the direct edge with `zeroize`, and
    7c46d93 pins the feature on each target. The residual records in groups 4, 6, 7 and 8 now say accepted, so
-   core/src/backup/age.rs's citation of this item holds.
+   core/src/backup/age.rs's citation of this item holds. The message put to the owner did not name two entries of
+   the full list: unicode-normalization's pending-character buffer, which holds the BIP39 passphrase's NFKD
+   (secret), and the xpub's freed heap copies (public). The M1 gate report names both, for the owner to confirm.
 7. **The age interop files.** Put: approve the files made with age 1.3.2; CI checks Ubuntu's 1.1.1 in both
    directions. Approved.
 8. **The scrypt upstream issue.** Put: file it yourself, or give a yes to post it under the owner's account. Yes
@@ -3388,21 +3390,22 @@ verifier      /usr/bin/python3 3.9: selftest passed: 11 checks
 supply-chain  Vetting Succeeded (14 fully audited, 76 exempted)
 ```
 
-In CI, age 1.1.1 refuses all 17 armor cases the readers refuse, where 1.3.2 accepts three of them. This commit
-changes only this file and is not pushed yet; its push runs CI again.
+In CI, age 1.1.1 refuses all 17 armor cases the readers refuse, where 1.3.2 accepts three of them. db5b884 and
+its follow-ups change only this file and two comments in core/src/backup/armor.rs (9f0e66c: age began skipping
+leading whitespace in 1.3.0, not 1.2, as d8b5d25's message says); their push runs CI again.
 
-**Still unticked:** group 11 `release_probe.rs` (the six scans), group 12's CI jobs and coverage, group 13 Review,
-and Verification "Backup" (age-interop against Ubuntu's 1.1.1), "The release artifact scan is clean on all six
-targets" and "Clean ... CI is green on `m1-core`". Each depended on CI on 34beea2, and the run above proves each;
-they are ticked once that run is reviewed. None of the 12 owner items waits on the owner any more; new items 13 and
-14 do, but they are low and do not block the gate.
+**Ticked after review (2026-10-10).** The lead re-read run 38041799043 (all 14 Entropy check runs pass; the
+age-interop, six scan and coverage lines above checked against the job logs) and ticked the items that waited on
+it: group 11 `release_probe.rs` (the six scans), group 12's CI jobs and coverage, group 13 Review, and Verification
+"Backup" (age-interop against Ubuntu's 1.1.1), "The release artifact scan is clean on all six targets" and
+"Clean ... CI is green on `m1-core`". None of the 12 owner items waits on the owner any more; new items 13 and 14
+do, but they are low and do not block the gate.
 
-### M1 gate status: NOT MET yet (the CI items to tick, then the owner's approval)
+### M1 gate status: met, waiting for the owner's approval
 The gate in docs/build-plan.md asks for all vectors passing, the source-substitution and error-injection tests
-passing, and at least 95% line coverage in `core/`. Locally all three hold at 34beea2 (coverage 97.39%), and "All
-vectors pass" is ticked since owner item 9 was answered. Every one of the 12 owner items is answered and applied
-(2026-10-10), and ruleset 24833307 now requires the 14 Entropy check runs on `main`. CI on the pushed head 34beea2,
-the first run with the armor fix, passed all 14 check runs (run 38041799043), including age-interop against
-Ubuntu's age 1.1.1 and the Pi and Android artifact scans. What remains: ticking the CI-dependent items against that
-run once it is reviewed, and CI on the head that carries this file; then the owner's approval at the gate. New owner
-items 13 and 14 are low and do not block it. Per CLAUDE.md, M2 does not start until the owner approves.
+passing, and at least 95% line coverage in `core/`. All three hold locally and in CI on 34beea2 (coverage 97.39%;
+run 38041799043, all 14 Entropy check runs green, including age-interop against Ubuntu's age 1.1.1 and the six
+release-artifact scans). Every one of the 12 owner items is answered and applied (2026-10-10), every M1 plan and
+Verification item is ticked with its proof, and ruleset 24833307 requires the 14 Entropy check runs on `main`. The
+commits after 34beea2 change only this file and two comments; CI runs on them after the push. New owner items 13
+and 14 are low and do not block the gate. Per CLAUDE.md, M2 does not start until the owner approves.
