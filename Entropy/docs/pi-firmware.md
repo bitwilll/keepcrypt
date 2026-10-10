@@ -66,7 +66,7 @@ The image is a minimal Buildroot Linux whose only job is to start `keepcrypt-pi`
 | `ceremony` | Drives the core session | Owns the typestate `Session`; nothing else can reach it |
 | `ui` | Screens and navigation | A screen state machine on `embedded-graphics`; large fonts; insert view shows one word per page with its five braille faces |
 | `games` | Optional waiting screen | Snake and Tetris; pieces drawn from core's separate game-randomness call (its own `getrandom` call), never from the pool |
-| `extras` | Write-only entropy input | An `ExtraSink` that forwards button timestamps to `Session::add_extra`; games receive only this sink |
+| `extras` | Write-only entropy input | An `ExtraSink` that forwards button timestamps to `Session::add_extra`; games get this sink, never the session |
 | `qr` | Seal, registration, collision-report and watch-only QR codes | qrcodegen for static codes, including the account QR, a single-frame BC-UR string from the core |
 
 **Process rules.**

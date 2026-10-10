@@ -86,7 +86,7 @@ keepcrypt/
 | --- | --- |
 | `pool` | SHA-512 pool; absorbs records as source id (u16), length (u64, big-endian), data |
 | `health` | Repetition Count, Adaptive Proportion and startup tests on raw samples |
-| `source` | Source ids and credit policy; reads `getrandom()` itself so no shell can skip it |
+| `source` | Source ids and credit policy; reads `getrandom()` itself so no shell can skip it; from M3, also the games' randomness, from a separate `getrandom()` call that never touches the pool |
 | `dice` | Roll validation (1 to 6 only), entropy count at 2.585 bits per roll, ASCII string |
 | `seed` | Commitment C, combine E, dice-only E, BIP39 encoding, fingerprint and first address via rust-bitcoin |
 | `backup` | age encryption with an scrypt passphrase; generated 8-word backup passphrases |
@@ -197,6 +197,9 @@ impl VerifiedProof {                                              // the same nu
 // except render_text and registry_key_is_test.
 // test-sources builds add the stubs (StubSource, StubEntropy, WipeProbe) and twins that take one or make a KAT
 // group fail (new_with_stub, restart_with_stub, *_with_kat_fault); release builds have none.
+// M3 adds the games' call to source, with the Pi games as its first consumer: a free function that fills a
+// buffer from its own getrandom call and never touches the pool or a session; the phones reach it through the
+// FFI in M5 and M6.
 ```
 
 **Credit policy.**
