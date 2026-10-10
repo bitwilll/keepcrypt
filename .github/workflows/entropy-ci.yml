@@ -217,7 +217,7 @@ jobs:
           persist-credentials: false
       # The grep gate runs first, on the bare checkout, before anything writes target/.
       - run: scripts/banned-api-check.sh
-      - run: python3 tools/verify/verify.py --selftest
+      - run: python3 -I tools/verify/vectorgen.py --selftest
       - name: Install the pinned toolchain (rust-toolchain.toml)
         run: |
           rustup toolchain install
@@ -264,7 +264,7 @@ jobs:
             "Python 3.9."*) ;;
             *) echo "FAIL: expected Python 3.9.x; re-decide the verifier's floor" >&2; exit 1 ;;
           esac
-      - run: /usr/bin/python3 tools/verify/verify.py --selftest
+      - run: /usr/bin/python3 -I tools/verify/vectorgen.py --selftest
 
   coverage:
     # M1 gate (docs/build-plan.md): at least 95% line coverage in core/. The test-sources run, so
@@ -322,7 +322,7 @@ jobs:
     # Rule 8 and Q1 (ii): the backup is a real age v1 file. Ubuntu's age, at the version Q1
     # approved, against core in both directions at work factor 18 (scripts/age-interop.py --core):
     # age encrypts each backup.json plaintext, armored and binary, and verify.py's reader and core's
-    # decrypt_backup read it; verify.py's writer and core write fresh backups and age decrypts them;
+    # decrypt_backup read it; vectorgen.py's writer and core write fresh backups and age decrypts them;
     # a wrong passphrase fails in age and in the reader, or the script fails. The script drives age
     # through a pseudo-terminal, since age reads a passphrase only from a terminal.
     name: age-interop (age 1.1.1)

@@ -2,14 +2,14 @@
 """age CLI interop for the KeepCrypt backup (tasks/todo.md, M1 group 8 and Q1 ii).
 
 Python 3.9+, standard library only. It drives the age CLI through a pseudo-terminal, since age reads a
-passphrase only from the terminal, and checks the age CLI against tools/verify/verify.py's age (the same
-bytes core reads and writes; check 11 holds the two together):
+passphrase only from the terminal, and checks the age CLI against the age code in tools/verify/, verify.py's
+reader and vectorgen.py's writer (the same bytes core reads and writes; check 11 holds the two together):
 
   scripts/age-interop.py [--age PATH]             both directions, live, at work factor 18:
       - age -> KeepCrypt: age encrypts each backup.json plaintext (armored and binary) under a fresh
         8-word passphrase, and verify.py's reader decrypts it to the same bytes;
-      - KeepCrypt -> age: verify.py's writer encrypts each plaintext (armored, work factor 18, fresh file
-        key, salt and nonce), and age decrypts it to the same bytes;
+      - KeepCrypt -> age: vectorgen.py's writer encrypts each plaintext (armored, work factor 18, fresh
+        file key, salt and nonce), and age decrypts it to the same bytes;
       - a wrong passphrase fails in age (non-zero exit, no output) and in the reader (WrongPassphrase);
       - every file in vectors/age/age_cli_written.json decrypts in the reader and in age;
       - every age file in vectors/backup.json that the readers accept (the written files and the reader-only
@@ -47,7 +47,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-VERIFY_PY = ROOT / "tools" / "verify" / "verify.py"
+VECTORGEN_PY = ROOT / "tools" / "verify" / "vectorgen.py"
 VECTORS = ROOT / "vectors"
 CLI_VECTORS = VECTORS / "age" / "age_cli_written.json"
 AGE_TIMEOUT_SECONDS = 120
@@ -56,8 +56,9 @@ PLAINTEXTS = ("abandon-12", "zoo-24")
 
 
 def load_verify():
-    """tools/verify/verify.py as a module, loaded by path."""
-    spec = importlib.util.spec_from_file_location("keepcrypt_verify", VERIFY_PY)
+    """tools/verify/vectorgen.py as a module, loaded by path: verify.py's names, the age reader among them,
+    and the writer and passphrase helpers that build vectors (age_encrypt, age_armor)."""
+    spec = importlib.util.spec_from_file_location("keepcrypt_vectorgen", VECTORGEN_PY)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
