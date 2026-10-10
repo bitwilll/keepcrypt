@@ -40,6 +40,11 @@ imports and recorded module attributes, no test material, its embedded known ans
 vectors they come from and each, changed in turn, failing its group, and lone copies, fault twins and a
 planted module run under an audit hook. It also runs verify.py's input parsers on fixed cases and ties
 its verification run to keepcrypt.json (group 4), and holds its own rules to controls that must fire.
+M2 also adds vectors/agreement.json (group 5): 1,000 ceremonies and 28 refusals, their inputs drawn from
+SHA-256 counter streams over public labels and every expected value computed by verify.py's
+verification_run and render, for core's session API to replay (group 6); check 13 regenerates it and
+checks its coverage, each refusal's verdict, its seeds and seals against their definitions, and
+Coldcard's scripts on its dice-only subset.
 
 The only outside code it runs is Coldcard's public-domain rolls.py and rolls12.py, committed
 unmodified under vectors/coldcard/, and only after each file's SHA-256 equals its SOURCES.md
@@ -48,7 +53,7 @@ Every seal.json vector also has its values pinned here (vector 1 from CLAUDE.md 
 vectors 2 and 3 independently reproduced), so --write-seal-vectors cannot re-baseline a bug.
 
 Usage (CI runs python3 -I tools/verify/vectorgen.py --selftest):
-  vectorgen.py --selftest           12 checks: seal known answers (all 3 vectors), seal.json bytes,
+  vectorgen.py --selftest           13 checks: seal known answers (all 3 vectors), seal.json bytes,
                                     SOURCES.md hashes and coverage, Coldcard's scripts on every
                                     dice-only case (rolls.json and keepcrypt.json), kat.json (SHA and
                                     HMAC recomputed, its bytes, then its pinned entries and Ed25519
@@ -68,7 +73,11 @@ Usage (CI runs python3 -I tools/verify/vectorgen.py --selftest):
                                     material, its known answers against their sources and each
                                     changed in turn, its input cases and keepcrypt.json tie, a lone
                                     copy, one fault twin per known-answer group and a planted
-                                    module, run under an audit hook, and controls on its own rules)
+                                    module, run under an audit hook, and controls on its own rules),
+                                    agreement.json (its bytes, coverage counts, each refusal's core
+                                    error and verify.py verdict, seed and seal against their
+                                    definitions, a changed D refused before the rolls, inserts
+                                    against braille.json, Coldcard's scripts on its dice-only subset)
   vectorgen.py --write-seal-vectors    regenerate vectors/seal.json
   vectorgen.py --write-kat-vectors     regenerate vectors/kat.json
   vectorgen.py --write-keepcrypt-vectors  regenerate vectors/keepcrypt.json
@@ -76,6 +85,7 @@ Usage (CI runs python3 -I tools/verify/vectorgen.py --selftest):
   vectorgen.py --write-watchonly-vectors  regenerate vectors/watchonly.json
   vectorgen.py --write-kcr-vectors        regenerate vectors/kcr.json
   vectorgen.py --write-backup-vectors     regenerate vectors/backup.json
+  vectorgen.py --write-agreement-vectors  regenerate vectors/agreement.json
   --vectors-dir DIR                 testing only: use DIR in place of the repo's vectors/ (made
                                     absolute); a SOURCES.md row `vectors/<p>` then means DIR/<p>
   --verify-py PATH                  testing only, with --selftest: check 12's rules (a) to (e) check PATH
@@ -131,7 +141,7 @@ BRAILLE_DOCS = Path(__file__).resolve().parent.parent.parent / "docs" / "seal-wa
 SOURCES_ROW = re.compile(r"^\| `(vectors/[^`]+)` \| `([0-9a-f]{64})` \|")
 # Files under vectors/ that SOURCES.md does not list: the files this script generates, and SOURCES.md.
 UNLISTED = ("seal.json", "kat.json", "keepcrypt.json", "braille.json", "watchonly.json", "kcr.json", "backup.json",
-            "SOURCES.md")
+            "agreement.json", "SOURCES.md")
 # macOS Finder metadata, written into any folder opened in Finder. .gitignore excludes it, so it
 # is never committed and never present in CI. The coverage rule skips a regular file with this
 # exact name only if it starts with Finder's magic bytes; any other .DS_Store needs a row, so a
@@ -984,6 +994,78 @@ BACKUP_SPEC = {
     "file_name": "keepcrypt-backup-<4 bytes from the OS source as 8 lowercase hex>.age; no fingerprint or date",
     "limits": "the largest plaintext and armored file a 12- or 24-word backup can be (the longest words, the "
     "longest created-by line), each within the reader's caps",
+}
+
+# Check 13 and vectors/agreement.json: the verifier's side of the cases core's session API replays (tasks/todo.md,
+# M2 group 5; Q17, Q18 and Q21). Every input byte and drawn number comes from SHA-256 counter mode over a public
+# label AGREEMENT_LABEL + "<case>/<part>", never a PRNG, and every expected value from verify.py's
+# verification_run and render, fed C and D as the device shows them (16 groups of 4 lowercase hex), so the cases
+# test what a user runs.
+AGREEMENT_LABEL = "KCE/test/agreement/v1/"
+AGREEMENT_COMBINATIONS = tuple((length, mode, platform) for length in (12, 24) for mode in ("mixed", "dice_only")
+                               for platform in ("pi", "phone"))
+AGREEMENT_CEREMONIES = 125  # per combination, each reaching Ready; even cases Skip, odd cases Check
+AGREEMENT_EDGE_CASES = 5  # cases 0-4 take the minimum, the minimum + 1, 128, 255 and 256 rolls
+AGREEMENT_RESTART_CASE = 5  # restarts after a collision, on the 99-roll minimum
+AGREEMENT_EXTRAS_CASE = 6  # one extra of each source, the first empty
+AGREEMENT_UNDO_EVERY = 8  # cases 0, 8, 16, ... push one more face after a drawn roll and undo it
+AGREEMENT_WRONG_EVERY = 10  # check cases 9, 19, 29, ... (every 5th) first send the next-value go-ahead code
+AGREEMENT_EXTRA_SOURCES = ("input_timing", "motion", "camera", "microphone")
+AGREEMENT_MAX_EXTRAS = 4
+AGREEMENT_MAX_EXTRA_BYTES = 64
+AGREEMENT_MAX_HWRNG_BYTES = 4096  # Pi mixed: an hwrng stream of HW_BYTES_NEEDED (1,536) to 4,096 bytes
+AGREEMENT_MAX_CUTS = 6  # the drawn-cuts plan draws 2 to 6 cut points (one drawn twice cuts once)
+# The hwrng chunk plans, one per Pi mixed case in turn: (name, the chunks before the rest), the last drawn.
+AGREEMENT_CHUNK_PLANS = (("one chunk", ()), ("1,024 + rest", (STARTUP_SAMPLES,)),
+                         ("1,023 + 1 + rest", (STARTUP_SAMPLES - 1, 1)), ("eight 1-byte chunks + rest", (1,) * 8),
+                         ("drawn cuts", None))
+AGREEMENT_NONCE_BYTES = 8
+AGREEMENT_RESTART_REFUSED_ROLLS = 98  # the 4 restarts refused below core's 99-roll minimum (Q21)
+# Check 13 runs Coldcard's scripts on dice-only ceremonies 0, 8, 16, ... of each combination and on every dice-only
+# refusal with valid faces: 74 cases.
+AGREEMENT_COLDCARD_EVERY = 8
+# Check 13's verdict counts over the 28 refusals: 3 per combination (the minimum - 1 rolls, 257 rolls, a face of 0
+# or 7) and the 4 restarts with 98 rolls for 12 words.
+AGREEMENT_VERDICTS = (("refused", 8), ("input-refused", 8), ("warned", 8), ("diverges", 4))
+AGREEMENT_SPEC = {
+    "encoding": "every *_hex value is the exact bytes in lowercase hex; rolls are the ASCII faces in push order; one "
+    "case per line",
+    "streams": "every input byte comes from SHA-256 counter mode, never a PRNG: the first `length` bytes of "
+    "SHA256(label || i as 8 bytes big-endian) for i = 0, 1, 2, ..., concatenated (keepcrypt.json counter_stream), "
+    "over the ASCII label given; labels are KCE/test/agreement/v1/<case>/<part>",
+    "stub": "Session::new_with_stub on StubEntropy::Fixed(the label's first `length` bytes), exactly the bytes core "
+    "reads: 64 OS bytes at commit (mixed only), then the 8-byte nonce n at start_check (the check path, and the "
+    "first ceremony of a restart). A dice-only ceremony on the skip path reads nothing (length 0)",
+    "hwrng": "Pi mixed only, else null: the label's first `length` bytes (1,536 to 4,096), which pass the SP 800-90B "
+    "health tests of keepcrypt.json; the hwrng events hand them to add_hw_samples in order",
+    "events": "before commit, in order: {kind hwrng, length}: add_hw_samples with the next `length` bytes of the "
+    "hwrng stream; {kind extra, source, label, length}: add_extra(source, the label's first `length` bytes, 0 to 64), "
+    "which dice-only mode ignores. Chunk plans, one per Pi mixed case in turn: one chunk; 1,024 + rest; 1,023 + 1 + "
+    "rest; eight 1-byte chunks + rest; 2 to 6 drawn cuts",
+    "rolls": "start_dice, then push_roll for each face, then finish. A face is a byte b < 252 of the <case>/rolls "
+    "stream as b mod 6 + 1; bytes of 252 or more are skipped. undo {after, face}: after the first `after` faces, "
+    "push_roll(face) and undo_roll; the undone face is not in rolls",
+    "path": "skip: skip_check. check: start_check, and check_request().url() is expect.check_url; a wrong_go_ahead "
+    "(go_ahead with its last symbol replaced by the next Crockford value, canonical uppercase with the dash) gives "
+    "Rejected::Retry with CheckError::WrongCode and the same URL; then reveal(GoAhead::Code(go_ahead)) reaches Ready",
+    "first": "a restart after a collision, else null: the first ceremony's own stub, hwrng, events and rolls run "
+    "through start_check and discard(Discard::Collision); its collision report gives expect.collision; then "
+    "restart_with_stub on the case's stub, and the case's own inputs run with the 99-roll minimum",
+    "expect": "tools/verify/verify.py's verification_run and render, fed C and D as 16 groups of 4 lowercase hex and "
+    "the rolls as one line: c_hex and d_hex (null in dice-only mode), entropy_hex (the seed bits: E[0:16] for 12 "
+    "words, E for 24), words, the seal (seal_code grouped, seal_tag_hex, seal_id, seal_id_braille, lookup_prefix, "
+    "bucket, grid rows of '#' and '.', colour_index, colour_hex, recheck_url), inserts (one line per word) and "
+    "register_url; on the check path nonce_hex, check_url and go_ahead (grouped); for a restart, collision (the "
+    "first ceremony's grouped seal code and register URL); null where a value does not apply",
+    "inserts": "position, device and device count, sequence 01-12, SeedBook number and word | faces 1-5, each its "
+    "cell then its letter, '/' and the partner for a mirror-pair letter, '~' on a non-blank fifth face, '--' for a "
+    "blank face | the word's cells",
+    "refusals": "expect is core's error and step: TooFewRolls at finish, TooManyRolls at push_roll of roll 257, "
+    "InvalidRoll at push_roll of the bad face (roll: its 1-based position). verifier is verify.py's verdict: refused "
+    "(mixed mode outside [50 or 99, 256]: exit 1, no words), input-refused (a face of 0 or 7 in either mode: exit 2, "
+    "with the field and position), warned (dice-only outside that range: computed with a warning, as Coldcard's "
+    "scripts compute any count) or diverges (a restart after a collision with 98 rolls for 12 words: core refuses "
+    "below its 99-roll minimum, which no run can see from C, D and the rolls, and the verifier computes; Q21)",
 }
 
 # The published SHA-256 of verify.py's embedded BIP39 English list (docs/seal-watchonly-braille.md
@@ -2624,6 +2706,258 @@ def write_backup_vectors(vectors_dir):
     return write_vectors(vectors_dir, "backup.json", backup_vectors_json())
 
 
+# --- Verifier agreement (vectors/agreement.json) -------------------------------------------------
+
+
+def agreement_label(case, part):
+    """The public label of one stream of a case: KCE/test/agreement/v1/<case>/<part>."""
+    return AGREEMENT_LABEL + case + "/" + part
+
+
+def stream_bytes(label):
+    """counter_stream over the ASCII `label`, with no end: the bytes of SHA256(label || i as 8 bytes big-endian)
+    for i = 0, 1, 2, ..., in order."""
+    block = 0
+    while True:
+        yield from hashlib.sha256(label.encode("ascii") + block.to_bytes(8, "big")).digest()
+        block += 1
+
+
+def stream_draws(label):
+    """between(low, high): integers from stream_bytes(label) in turn, never a PRNG. Each takes two bytes,
+    big-endian, and skips a value at or above the largest multiple of the span, so every integer in [low, high]
+    is equally likely."""
+    stream = stream_bytes(label)
+
+    def between(low, high):
+        span = high - low + 1
+        while True:
+            value = next(stream) << 8 | next(stream)
+            if value < 65536 - 65536 % span:
+                return low + value % span
+    return between
+
+
+def stream_faces(label):
+    """Die faces from stream_bytes(label): a byte b below 252 is the face b mod 6 + 1 (252 = 6 x 42, so every face
+    is equally likely); a byte of 252 or more is skipped."""
+    return (str(b % 6 + 1) for b in stream_bytes(label) if b < 252)
+
+
+def agreement_session(case, length, mode, platform, rolls, nonce=False, plan=0, every_source=False, undo=False):
+    """One session's inputs, from the streams of `case`: the stub (the 64 OS bytes of mixed mode, then the nonce
+    if `nonce`); in Pi mixed mode an hwrng stream of 1,536 to 4,096 bytes, cut by AGREEMENT_CHUNK_PLANS[plan];
+    0 to 4 extras of drawn sources and sizes (with `every_source`, one of each source, the first empty), each at a
+    drawn place among the events; a roll count drawn from the range `rolls` and that many faces; and with `undo`
+    one more face, pushed after a drawn roll and undone. D comes from session_records and device_leg, as
+    keepcrypt.json's source-substitution sessions do. Returns (the inputs as agreement.json stores them, C and D
+    as the device shows them or None in dice-only mode, the nonce or None)."""
+    draw = stream_draws(agreement_label(case, "draws"))
+    stub_label = agreement_label(case, "stub")
+    stub_length = (OS_BYTES if mode == "mixed" else 0) + (AGREEMENT_NONCE_BYTES if nonce else 0)
+    stub = counter_stream(stub_label.encode("ascii"), stub_length)
+    hwrng, chunks = None, []
+    if (platform, mode) == ("pi", "mixed"):
+        total = draw(HW_BYTES_NEEDED, AGREEMENT_MAX_HWRNG_BYTES)
+        head = AGREEMENT_CHUNK_PLANS[plan][1]
+        if head is not None:
+            chunks = list(head) + [total - sum(head)]
+        else:
+            cut_count = draw(2, AGREEMENT_MAX_CUTS)
+            cuts = sorted(set(draw(1, total - 1) for _ in range(cut_count)))
+            chunks = [end - start for start, end in zip([0] + cuts, cuts + [total])]
+        hwrng = {"label": agreement_label(case, "hwrng"), "length": total}
+    if every_source:
+        extras = [(source, draw(0, AGREEMENT_MAX_EXTRA_BYTES) if n else 0)
+                  for n, source in enumerate(AGREEMENT_EXTRA_SOURCES)]
+    else:
+        extra_count = draw(0, AGREEMENT_MAX_EXTRAS)
+        extras = [(AGREEMENT_EXTRA_SOURCES[draw(0, len(AGREEMENT_EXTRA_SOURCES) - 1)],
+                   draw(0, AGREEMENT_MAX_EXTRA_BYTES)) for _ in range(extra_count)]
+    events = [{"kind": "hwrng", "length": size} for size in chunks]
+    for n, (source, size) in enumerate(extras, 1):
+        events.insert(draw(0, len(events)), {"kind": "extra", "source": source,
+                                             "label": agreement_label(case, "extra-%d" % n), "length": size})
+    faces = stream_faces(agreement_label(case, "rolls"))
+    count = draw(*rolls)
+    roll_text = "".join(next(faces) for _ in range(count))
+    undo_step = {"after": draw(1, count - 1), "face": int(next(faces))} if undo else None
+    hw = counter_stream(hwrng["label"].encode("ascii"), hwrng["length"]) if hwrng else b""
+    if hw and health_test(hw)["result"] != "pass":
+        raise ValueError("agreement case %s: its hwrng stream fails the health tests" % case)
+    session, at = [], 0
+    for event in events:
+        if event["kind"] == "hwrng":
+            session.append(("hwrng", None, hw[at:at + event["length"]]))
+            at += event["length"]
+        else:
+            session.append(("extra", event["source"],
+                            counter_stream(event["label"].encode("ascii"), event["length"])))
+    c_text = d_text = None
+    if mode == "mixed":
+        d = device_leg(session_records(session, stub[:OS_BYTES])[0])
+        c_text, d_text = display_hex32(commitment(d).hex()), display_hex32(d.hex())
+    inputs = {"stub": {"label": stub_label, "length": stub_length}, "hwrng": hwrng, "events": events,
+              "rolls": roll_text, "undo": undo_step}
+    return inputs, c_text, d_text, stub[stub_length - AGREEMENT_NONCE_BYTES:] if nonce else None
+
+
+def agreement_run(length, inputs, c_text, d_text):
+    """verify.py's verification_run on one session, fed C and D as display text and the rolls as one line, and the
+    lines render prints for it: (report, {label: [value, ...]} for each line after the banner). InputRefused for an
+    input the verifier refuses."""
+    report = verification_run(length, [inputs["rolls"]], c_text, d_text)
+    shown = {}
+    for line in render(report).splitlines()[1:]:
+        label, _, value = line.partition(": ")
+        shown.setdefault(label, []).append(value)
+    return report, shown
+
+
+def agreement_outputs(case, report, shown):
+    """A ceremony's expected values from its run: each value render shows, read from its line; C, D, the words and
+    the bucket, which render does not show, from the report; and the register URL of the seal code. A run that is
+    refused or warned, or that in mixed mode does not show "C matches D", stops the generator."""
+    if (report["refused"] is not None or report["warning"] is not None
+            or (report["mode"] == "mixed") != (shown.get("commitment") == ["C matches D"])):
+        raise ValueError("agreement case %s: verification_run does not compute it with C matching D" % case)
+    seal_id, seal_id_braille = shown["seal-id"][0].split(" ")
+    colour_index, colour_hex = shown["seal-colour"][0].split(" ")
+    return {
+        "c_hex": None if report["c"] is None else report["c"].hex(),
+        "d_hex": None if report["d"] is None else report["d"].hex(),
+        "entropy_hex": shown["entropy"][0],
+        "words": report["words"],
+        "seal_code": shown["seal-code"][0],
+        "seal_tag_hex": shown["seal-tag"][0],
+        "seal_id": seal_id,
+        "seal_id_braille": seal_id_braille,
+        "lookup_prefix": shown["lookup-prefix"][0],
+        "bucket": report["bucket"],
+        "grid": shown["seal-grid"],
+        "colour_index": int(colour_index),
+        "colour_hex": colour_hex,
+        "recheck_url": shown["recheck-url"][0],
+        "inserts": shown["insert"],
+        "register_url": register_url(report["seal_code"]),
+    }
+
+
+def agreement_ceremony(length, mode, platform, index):
+    """Case `index` of one combination, reaching Ready (AGREEMENT_SPEC): Skip on even cases, Check on odd ones."""
+    name = "%d-%s-%s-%03d" % (length, mode, platform, index)
+    dice = dict(DICE)
+    minimum, maximum = dice["min_rolls_%d_words" % length], dice["max_rolls"]
+    plan = index % len(AGREEMENT_CHUNK_PLANS)
+    first = collision = None
+    if index == AGREEMENT_RESTART_CASE:
+        first, c_text, d_text, _ = agreement_session(name + "/first", length, mode, platform, (minimum, maximum),
+                                                     nonce=True, plan=plan)
+        outputs = agreement_outputs(name + "/first", *agreement_run(length, first, c_text, d_text))
+        collision = {"seal_code": outputs["seal_code"], "register_url": outputs["register_url"]}
+        rolls = (dice["min_rolls_after_collision"], maximum)
+    elif index < AGREEMENT_EDGE_CASES:
+        rolls = ((minimum, minimum + 1, 128, 255, maximum)[index],) * 2
+    else:
+        rolls = (minimum, maximum)
+    check = index % 2 == 1
+    inputs, c_text, d_text, nonce = agreement_session(
+        name, length, mode, platform, rolls, nonce=check, plan=plan, every_source=index == AGREEMENT_EXTRAS_CASE,
+        undo=index % AGREEMENT_UNDO_EVERY == 0)
+    expect = agreement_outputs(name, *agreement_run(length, inputs, c_text, d_text))
+    wrong = None
+    if check:
+        tag = bytes.fromhex(expect["seal_tag_hex"])
+        go = grouped(go_ahead_code(tag, nonce), (4, 4))
+        expect.update(nonce_hex=nonce.hex(), check_url=check_url(tag, nonce), go_ahead=go)
+        if index % AGREEMENT_WRONG_EVERY == AGREEMENT_WRONG_EVERY - 1:
+            wrong = go[:-1] + CROCKFORD[(CROCKFORD.index(go[-1]) + 1) % len(CROCKFORD)]
+    else:
+        expect.update(nonce_hex=None, check_url=None, go_ahead=None)
+    expect["collision"] = collision
+    return {"name": name, "length": length, "mode": mode, "platform": platform, "path": "check" if check else "skip",
+            "first": first, **inputs, "wrong_go_ahead": wrong, "expect": expect}
+
+
+def agreement_verdict(length, inputs, c_text, d_text):
+    """verify.py's verdict on a refusal case's run (AGREEMENT_SPEC "refusals"): input-refused with the field and
+    position, refused with render's text, or warned with the warning or diverges, these two with the seed bits and
+    words the run computes."""
+    try:
+        report, shown = agreement_run(length, inputs, c_text, d_text)
+    except InputRefused as refused:
+        return {"verdict": "input-refused", "field": refused.field, "position": refused.position}
+    if report["refused"] is not None:
+        return {"verdict": "refused", "refused": shown["refused"][0]}
+    computed = {"entropy_hex": shown["entropy"][0], "words": report["words"]}
+    if report["warning"] is not None:
+        return {"verdict": "warned", "warning": report["warning"], **computed}
+    return {"verdict": "diverges", **computed}
+
+
+def agreement_refusals():
+    """The 28 refusal cases (AGREEMENT_SPEC "refusals"): for each combination the minimum - 1 rolls, 257 rolls and a
+    face of 0 (even combinations) or 7 (odd ones) at a drawn position; then, in each mode on each platform, a restart
+    after a collision with 98 rolls for 12 words."""
+    dice = dict(DICE)
+    maximum = dice["max_rolls"]
+    plans = []
+    for number, (length, mode, platform) in enumerate(AGREEMENT_COMBINATIONS):
+        minimum = dice["min_rolls_%d_words" % length]
+        combination = "%d-%s-%s" % (length, mode, platform)
+        bad = "07"[number % 2]
+        plans += [(combination + "-short", length, mode, platform, (minimum - 1,) * 2, None, False),
+                  (combination + "-257", length, mode, platform, (maximum + 1,) * 2, None, False),
+                  (combination + "-face-" + bad, length, mode, platform, (minimum, maximum), bad, False)]
+    plans += [("12-%s-%s-restart-98" % (mode, platform), 12, mode, platform, (AGREEMENT_RESTART_REFUSED_ROLLS,) * 2,
+               None, True) for mode in ("mixed", "dice_only") for platform in ("pi", "phone")]
+    refusals = []
+    for name, length, mode, platform, rolls, bad, restart in plans:
+        first = None
+        if restart:
+            first = agreement_session(name + "/first", length, mode, platform,
+                                      (dice["min_rolls_%d_words" % length], maximum), nonce=True)[0]
+        inputs, c_text, d_text, _ = agreement_session(name, length, mode, platform, rolls)
+        if bad is not None:
+            at = stream_draws(agreement_label(name, "bad-face"))(1, len(inputs["rolls"]))
+            inputs["rolls"] = inputs["rolls"][:at - 1] + bad + inputs["rolls"][at:]
+            expect = {"error": "InvalidRoll", "step": "push_roll", "roll": at}
+        elif len(inputs["rolls"]) > maximum:
+            expect = {"error": "TooManyRolls", "step": "push_roll", "roll": maximum + 1}
+        else:
+            expect = {"error": "TooFewRolls", "step": "finish", "roll": None}
+        refusals.append({"name": name, "length": length, "mode": mode, "platform": platform, "first": first,
+                         **inputs, "expect": expect, "verifier": agreement_verdict(length, inputs, c_text, d_text)})
+    return refusals
+
+
+def agreement_vectors_json():
+    """The exact text of vectors/agreement.json: indent 2, fixed key order, ASCII, trailing newline, with one line per
+    case."""
+    ceremonies = [agreement_ceremony(length, mode, platform, index)
+                  for length, mode, platform in AGREEMENT_COMBINATIONS for index in range(AGREEMENT_CEREMONIES)]
+    doc = {
+        "description": "KeepCrypt verifier agreement vectors, public test data: never fund these seeds. Generated by "
+        "tools/verify/vectorgen.py --write-agreement-vectors from verify.py's verification_run and render; "
+        "vectorgen.py --selftest regenerates this file and requires byte equality, checks its coverage, each "
+        "refusal's verdict and each ceremony's seed, seal and insert lines, and re-runs Coldcard's scripts on its "
+        "dice-only subset (check 13). Each case holds the inputs core's session API takes and the outputs it must "
+        "give. Inputs are SHA-256 counter mode over public labels, never a PRNG.",
+        "spec": AGREEMENT_SPEC,
+    }
+    head = json.dumps(doc, indent=2, sort_keys=False, ensure_ascii=True)
+
+    def rows(cases):
+        return ",\n".join("    " + json.dumps(case, sort_keys=False, ensure_ascii=True) for case in cases)
+    return (head[: -len("\n}")] + ',\n  "ceremonies": [\n' + rows(ceremonies) + '\n  ],\n  "refusals": [\n'
+            + rows(agreement_refusals()) + "\n  ]\n}\n")
+
+
+def write_agreement_vectors(vectors_dir):
+    """Write agreement.json into vectors_dir, which must already exist."""
+    return write_vectors(vectors_dir, "agreement.json", agreement_vectors_json())
+
+
 # --- Self-test -------------------------------------------------------------------------------
 
 
@@ -3943,20 +4277,15 @@ def first_difference(got, want):
     return "%d words printed, the case has %d" % (len(got), len(want))
 
 
-def check_coldcard_scripts(vectors_dir):
-    """Re-run Coldcard's committed rolls.py and rolls12.py on every case in rolls.json and every
-    dice_only case in keepcrypt.json.
-
-    A script runs only if its SHA-256 equals its one SOURCES.md row, so this executes exactly
-    the bytes recorded there. Its output is the hex of E (rolls12.py: E[0:16]), then one
-    '%4d: word' line per word, with blank and WARNING lines between. The hex must equal
-    sha256_hex (keepcrypt.json: e_hex), or its first 32 chars, and the words words_24 or words_12.
-    """
+def coldcard_scripts(vectors_dir):
+    """Coldcard's committed scripts that may run, for checks 4 and 13: ([(rel, E bytes printed, words field,
+    path)], [problem]), or (None, [problem]) when none can. A script runs only if its SHA-256 equals its one
+    SOURCES.md row, so only the bytes recorded there ever run."""
     if not sys.executable:
-        return ["cannot find the running Python interpreter to run the scripts"]
+        return None, ["cannot find the running Python interpreter to run the scripts"]
     sources = vectors_dir / "SOURCES.md"
     if not sources.is_file():
-        return ["vectors/SOURCES.md is missing"]
+        return None, ["vectors/SOURCES.md is missing"]
     rows = parse_sources(sources.read_text(encoding="utf-8"))
     problems, scripts = [], []
     for rel, e_bytes, field in COLDCARD_SCRIPTS:
@@ -3973,6 +4302,21 @@ def check_coldcard_scripts(vectors_dir):
             problems.append("vectors/%s sha256 is %s, SOURCES.md says %s; refusing to run it" % (rel, got, want[0]))
             continue
         scripts.append((rel, e_bytes, field, script))
+    return scripts, problems
+
+
+def check_coldcard_scripts(vectors_dir):
+    """Re-run Coldcard's committed rolls.py and rolls12.py on every case in rolls.json and every
+    dice_only case in keepcrypt.json.
+
+    A script runs only if its SHA-256 equals its one SOURCES.md row, so this executes exactly
+    the bytes recorded there. Its output is the hex of E (rolls12.py: E[0:16]), then one
+    '%4d: word' line per word, with blank and WARNING lines between. The hex must equal
+    sha256_hex (keepcrypt.json: e_hex), or its first 32 chars, and the words words_24 or words_12.
+    """
+    scripts, problems = coldcard_scripts(vectors_dir)
+    if scripts is None:
+        return problems
     doc = json.loads((vectors_dir / "coldcard" / "rolls.json").read_text(encoding="utf-8"))
     cases = doc.get("cases") if isinstance(doc, dict) else None
     if not isinstance(cases, list) or not cases:
@@ -3998,19 +4342,27 @@ def check_coldcard_scripts(vectors_dir):
             continue
         for rel, e_bytes, field, script in scripts:
             where = "%s (%d rolls) via vectors/%s" % (label, len(rolls), rel)
-            lines, error = run_coldcard_script(script, rolls)
-            if error:
-                problems.append("%s: %s" % (where, error))
-                continue
-            printed = lines[0] if lines else "<no output>"
-            if printed != e_hex[: 2 * e_bytes]:
-                problems.append("%s: printed %s, %s gives %s" % (where, printed, e_field, e_hex[: 2 * e_bytes]))
-            numbered = [m for m in map(WORD_LINE.fullmatch, lines) if m]
-            if [int(m.group(1)) for m in numbered] != list(range(1, len(numbered) + 1)):
-                problems.append("%s: word lines are not numbered 1, 2, 3, ..." % where)
-            words = [m.group(2) for m in numbered]
-            if words != case.get(field):
-                problems.append("%s: %s" % (where, first_difference(words, case.get(field))))
+            problems += coldcard_run_problems(where, script, rolls, e_field, e_hex[: 2 * e_bytes], case.get(field))
+    return problems
+
+
+def coldcard_run_problems(where, script, rolls, hex_field, want_hex, want_words):
+    """One run of a Coldcard script on `rolls` (run_coldcard_script), for checks 4 and 13: its first line must be
+    `want_hex` (the case's `hex_field`, cut to what the script prints) and its '%4d: word' lines, numbered 1, 2,
+    3, ..., the words `want_words`. [problem], each starting with `where`."""
+    lines, error = run_coldcard_script(script, rolls)
+    if error:
+        return ["%s: %s" % (where, error)]
+    problems = []
+    printed = lines[0] if lines else "<no output>"
+    if printed != want_hex:
+        problems.append("%s: printed %s, %s gives %s" % (where, printed, hex_field, want_hex))
+    numbered = [m for m in map(WORD_LINE.fullmatch, lines) if m]
+    if [int(m.group(1)) for m in numbered] != list(range(1, len(numbered) + 1)):
+        problems.append("%s: word lines are not numbered 1, 2, 3, ..." % where)
+    words = [m.group(2) for m in numbered]
+    if words != want_words:
+        problems.append("%s: %s" % (where, first_difference(words, want_words)))
     return problems
 
 
@@ -4785,6 +5137,259 @@ def check_verify_alone(vectors_dir, verify_py):
     return problems + verify_lone_problems(data, node, known)
 
 
+# --- Check 13: vectors/agreement.json (tasks/todo.md, M2 group 5) ---------------------------------------------
+# Byte equality with the regenerated file, then rules the regenerated cases must meet, so --write-agreement-vectors
+# cannot re-baseline them away: the coverage counts; each refusal's core error and verify.py verdict against those its
+# rolls, mode and restart call for (which pins verify.py's mixed-mode range, its 256-roll bound and its face rule);
+# each ceremony's C, seed bits, words and seal against their definitions; D with one digit changed, refused before
+# the rolls are read (the C/D mismatch no case reaches); every insert line against braille.json's positions and words
+# (the slots past position 01 too); and Coldcard's scripts on the dice-only subset. Each rule names its first few
+# failing cases, then how many more.
+AGREEMENT_SHOWN_PROBLEMS = 5
+
+
+def first_problems(problems):
+    """`problems` cut to the first AGREEMENT_SHOWN_PROBLEMS, then how many more there are."""
+    if len(problems) <= AGREEMENT_SHOWN_PROBLEMS:
+        return problems
+    return problems[:AGREEMENT_SHOWN_PROBLEMS] + ["and %d more" % (len(problems) - AGREEMENT_SHOWN_PROBLEMS)]
+
+
+def agreement_chunk_plan(session):
+    """The name of the AGREEMENT_CHUNK_PLANS entry a Pi mixed session's hwrng chunks follow."""
+    chunks = [event["length"] for event in session["events"] if event["kind"] == "hwrng"]
+    for name, head in AGREEMENT_CHUNK_PLANS:
+        if head is not None and len(chunks) == len(head) + 1 and chunks[:-1] == list(head):
+            return name
+    return AGREEMENT_CHUNK_PLANS[-1][0]
+
+
+def agreement_coverage_problems(doc):
+    """Check 13's coverage counts over the regenerated ceremonies (tasks/todo.md, M2 group 5), per combination: 125
+    ceremonies on both paths; every roll-count edge, all counts in range; a wrong first code, the next value of the
+    go-ahead code's last symbol; the undo cases; one restart, on the check path, with its collision report; every
+    extra source and an empty extra; hwrng in Pi mixed sessions only, its chunks covering the stream in every chunk
+    plan; and each stub exactly the bytes core reads. [problem]."""
+    dice = dict(DICE)
+    maximum = dice["max_rolls"]
+    problems = []
+    if len(doc["ceremonies"]) != len(AGREEMENT_COMBINATIONS) * AGREEMENT_CEREMONIES:
+        problems.append("%d ceremonies, not %d" % (len(doc["ceremonies"]),
+                                                   len(AGREEMENT_COMBINATIONS) * AGREEMENT_CEREMONIES))
+    for length, mode, platform in AGREEMENT_COMBINATIONS:
+        minimum = dice["min_rolls_%d_words" % length]
+        cases = [case for case in doc["ceremonies"]
+                 if (case["length"], case["mode"], case["platform"]) == (length, mode, platform)]
+        restarts = [case for case in cases if case["first"] is not None]
+        sessions = [(case, case["path"] == "check") for case in cases] + [(case["first"], True) for case in restarts]
+        extras = [event for session, _ in sessions for event in session["events"] if event["kind"] == "extra"]
+        pi_mixed = (platform, mode) == ("pi", "mixed")
+        wrong = [case for case in cases if case["wrong_go_ahead"] is not None]
+        undone = [case for case in cases if case["undo"] is not None]
+        found = {
+            "125 ceremonies": len(cases) == AGREEMENT_CEREMONIES,
+            "both paths": set(case["path"] for case in cases) == {"skip", "check"},
+            "every roll-count edge": set(len(case["rolls"]) for case in cases if case["first"] is None)
+            >= {minimum, minimum + 1, 128, 255, maximum},
+            "roll counts in range": all(minimum <= len(case["rolls"]) <= maximum for case in cases)
+            and all(len(case["rolls"]) >= dice["min_rolls_after_collision"] for case in restarts)
+            and all(minimum <= len(case["first"]["rolls"]) <= maximum for case in restarts),
+            "a wrong first code, the next value": bool(wrong) and all(
+                case["path"] == "check" and case["wrong_go_ahead"] == case["expect"]["go_ahead"][:-1]
+                + CROCKFORD[(CROCKFORD.index(case["expect"]["go_ahead"][-1]) + 1) % len(CROCKFORD)]
+                for case in wrong),
+            "the undo cases": bool(undone) and all(1 <= case["undo"]["after"] < len(case["rolls"])
+                                                   and 1 <= case["undo"]["face"] <= 6 for case in undone),
+            "one restart, on the check path, with its collision report": len(restarts) == 1
+            and all(case["path"] == "check" and case["expect"]["collision"] is not None for case in restarts),
+            "every extra source": set(event["source"] for event in extras) == set(AGREEMENT_EXTRA_SOURCES),
+            "an empty extra": any(event["length"] == 0 for event in extras),
+            "hwrng in Pi mixed sessions only, its chunks covering the stream": all(
+                (session["hwrng"] is not None) == pi_mixed
+                and sum(event["length"] for event in session["events"] if event["kind"] == "hwrng")
+                == (session["hwrng"]["length"] if pi_mixed else 0) for session, _ in sessions),
+            "every chunk plan": not pi_mixed or set(agreement_chunk_plan(session) for session, _ in sessions)
+            == set(name for name, _ in AGREEMENT_CHUNK_PLANS),
+            "each stub exactly the bytes core reads": all(
+                session["stub"]["length"] == (OS_BYTES if mode == "mixed" else 0)
+                + (AGREEMENT_NONCE_BYTES if checks else 0) for session, checks in sessions),
+        }
+        problems += ["%d words, %s, %s: %s" % (length, mode, platform, name) for name, ok in found.items() if not ok]
+    return problems
+
+
+def agreement_refusal_problems(doc):
+    """Check 13 over the regenerated refusals: each case's core error and step, and verify.py's verdict, must be those
+    its rolls, mode and restart call for, worked out here apart from the generator and from verify.py; each stub must
+    be exactly the bytes core reads; and the verdict counts must be AGREEMENT_VERDICTS. [problem]."""
+    dice = dict(DICE)
+    maximum = dice["max_rolls"]
+    problems = []
+    for case in doc["refusals"]:
+        rolls, restart, mixed = case["rolls"], case["first"] is not None, case["mode"] == "mixed"
+        shown = dice["min_rolls_%d_words" % case["length"]]  # the verifier's minimum: it cannot see a restart
+        minimum = dice["min_rolls_after_collision"] if restart else shown
+        bad = [at for at, face in enumerate(rolls, 1) if face not in "123456"]
+        if bad:
+            core = {"error": "InvalidRoll", "step": "push_roll", "roll": bad[0]}
+            verdict = {"verdict": "input-refused", "field": "rolls", "position": bad[0]}
+        elif len(rolls) > maximum or len(rolls) < minimum:
+            core = ({"error": "TooManyRolls", "step": "push_roll", "roll": maximum + 1} if len(rolls) > maximum
+                    else {"error": "TooFewRolls", "step": "finish", "roll": None})
+            outside = not shown <= len(rolls) <= maximum
+            verdict = {"verdict": ("refused" if mixed else "warned") if outside else "diverges"}
+        else:
+            problems.append("%s: core takes its %d rolls" % (case["name"], len(rolls)))
+            continue
+        if case["expect"] != core:
+            problems.append("%s: expect is %s, core gives %s" % (case["name"], case["expect"], core))
+        got = {key: case["verifier"].get(key) for key in verdict}
+        if got != verdict:
+            problems.append("%s: verify.py's verdict is %s, not %s" % (case["name"], got, verdict))
+        stubs = [(case, False)] + ([(case["first"], True)] if restart else [])
+        if any(session["stub"]["length"] != (OS_BYTES if mixed else 0) + (AGREEMENT_NONCE_BYTES if checks else 0)
+               for session, checks in stubs):
+            problems.append("%s: a stub is not exactly the bytes core reads" % case["name"])
+    counts = [(verdict, sum(1 for case in doc["refusals"] if case["verifier"]["verdict"] == verdict))
+              for verdict, _ in AGREEMENT_VERDICTS]
+    if counts != list(AGREEMENT_VERDICTS) or len(doc["refusals"]) != sum(n for _, n in AGREEMENT_VERDICTS):
+        problems.append("verdicts %s in %d refusals, not %s" % (counts, len(doc["refusals"]), list(AGREEMENT_VERDICTS)))
+    return problems
+
+
+def agreement_seal_problems(doc):
+    """Check 13: each ceremony's C, seed bits, words and seal against their definitions, worked out here apart from
+    verification_run and render: C = SHA256("KCE/v1/commit" || D); E from D and the rolls as CLAUDE.md defines it,
+    cut to the seed bits; the words encode them; the seal fields are seal_vector's for the words (seal.json's
+    generator, whose answers check 1 pins), the bucket the first 20 bits of T, and the URLs the grammar of check 12's
+    urls tie; on the check path G is seal_vector's for T and n; a collision's register URL is its code's. [problem]."""
+    problems = []
+    for case in doc["ceremonies"]:
+        expect, rolls = case["expect"], case["rolls"].encode("ascii")
+        if case["mode"] == "mixed":
+            d = bytes.fromhex(expect["d_hex"])
+            e = hashlib.sha256(TAG_SEED + d + len(rolls).to_bytes(8, "big") + rolls).digest()
+            c = hashlib.sha256(TAG_COMMIT + d).hexdigest()
+        else:
+            e, c = hashlib.sha256(rolls).digest(), None
+        seed_bits = e[:16] if case["length"] == 12 else e
+        # Skip cases have no nonce; seal_vector's go-ahead code is then unused.
+        seal = seal_vector(" ".join(expect["words"]), expect["nonce_hex"] or KAT_NONCE_HEX)
+        tag = seal["seal_tag_hex"]
+        want = dict({key: seal[key] for key in ("seal_code", "seal_tag_hex", "seal_id", "seal_id_braille",
+                                                 "lookup_prefix", "grid", "colour_index", "colour_hex")},
+                    c_hex=c, entropy_hex=seed_bits.hex(), words=bip39_words(seed_bits), bucket=int(tag[:5], 16),
+                    recheck_url=KNOWN_ANSWER_ORIGIN + "/check#t=" + tag,
+                    register_url=KNOWN_ANSWER_ORIGIN + "/register#c=" + seal["seal_code_hashed"])
+        if case["path"] == "check":
+            want.update(check_url=want["recheck_url"] + "&n=" + expect["nonce_hex"], go_ahead=seal["go_ahead"]["code"])
+        differ = [key for key in want if expect.get(key) != want[key]]
+        collision = expect["collision"]
+        if collision is not None and collision["register_url"] != (
+                KNOWN_ANSWER_ORIGIN + "/register#c=" + collision["seal_code"].replace("-", "")):
+            differ.append("collision")
+        if differ:
+            problems.append("%s: %s" % (case["name"], ", ".join(differ)))
+    return problems
+
+
+def agreement_mismatch_problems(doc):
+    """Check 13: the n-th mixed ceremony, fed its C and its D with hex digit n mod 64 changed, must be refused "D does
+    not match C" before its rolls are read, with nothing computed, and render must end at that refusal. [problem]."""
+    mixed = [case for case in doc["ceremonies"] if case["mode"] == "mixed"]
+    problems = [] if mixed else ["no mixed ceremony"]
+    for n, case in enumerate(mixed):
+        d, at = case["expect"]["d_hex"], n % 64
+        changed = d[:at] + "%x" % ((int(d[at], 16) + 1) % 16) + d[at + 1:]
+        report = verification_run(case["length"], [case["rolls"]], display_hex32(case["expect"]["c_hex"]),
+                                  display_hex32(changed))
+        if ((report["refused"], report["rolls"], "words" in report) != ("D does not match C", None, False)
+                or render(report) != RUN_BANNER + "\nrefused: D does not match C\n"):
+            problems.append("%s: not refused before its rolls" % case["name"])
+    return problems
+
+
+def agreement_insert_problems(vectors_dir, doc):
+    """Check 13: every insert line of every ceremony, split by check 12's grammar, must equal braille.json's slot for
+    its position at that length (device, device count and sequence, past position 01 too) and braille.json's entry
+    for the word in that position (SeedBook number, faces, lighter face, mirror partners, cells and each face's
+    cell). [problem]."""
+    braille = json.loads(vectors_dir.joinpath("braille.json").read_text(encoding="utf-8"))
+    entries = {entry["word"]: entry for entry in braille["words"]}
+    cell = {entry["letter"]: entry["cell"] for entry in braille["cells"]["letters"]}
+    problems = []
+    for case in doc["ceremonies"]:
+        slots = braille["positions"]["words_%d" % case["length"]]
+        words, lines = case["expect"]["words"], case["expect"]["inserts"]
+        if not len(slots) == len(words) == len(lines):
+            problems.append("%s: %d insert lines for %d words" % (case["name"], len(lines), len(words)))
+            continue
+        for slot, word, line in zip(slots, words, lines):
+            entry = entries.get(word)
+            if entry is None:
+                problems.append("%s insert %02d: no braille.json entry" % (case["name"], slot["position"]))
+                continue
+            want = dict({field: entry[field] for field in KNOWN_ANSWER_BRAILLE_FIELDS}, position=slot["position"],
+                        device=slot["device"], devices=slot["devices"], sequence=slot["sequence"],
+                        face_cells=[cell[letter] if letter else None for letter in entry["faces"]])
+            got = insert_line_fields(line)
+            differ = ["the insert-line grammar"] if got is None else value_differences(got, want, ())
+            if differ:
+                problems.append("%s insert %02d: %s" % (case["name"], slot["position"], ", ".join(differ)))
+    return problems
+
+
+def agreement_coldcard_problems(vectors_dir, doc):
+    """Check 13: Coldcard's hash-pinned rolls.py (24 words) or rolls12.py (12 words), run as check 4 runs them, on
+    dice-only ceremonies 0, 8, 16, ... of each combination and on every dice-only refusal with valid faces. Each must
+    print exactly the case's seed bits (entropy_hex) and words. [problem]."""
+    scripts, problems = coldcard_scripts(vectors_dir)
+    if scripts is None:
+        return problems
+    by_field = {field: (rel, script) for rel, _, field, script in scripts}
+    subset = []
+    for length, mode, platform in AGREEMENT_COMBINATIONS:
+        if mode == "dice_only":
+            cases = [case for case in doc["ceremonies"]
+                     if (case["length"], case["mode"], case["platform"]) == (length, mode, platform)]
+            subset += [(case, case["expect"]) for case in cases[::AGREEMENT_COLDCARD_EVERY]]
+    subset += [(case, case["verifier"]) for case in doc["refusals"]
+               if case["mode"] == "dice_only" and DICE_ROLLS.fullmatch(case["rolls"])]
+    for case, want in subset:
+        found = by_field.get("words_%d" % case["length"])
+        if found is not None:  # a script refused by its hash is reported above
+            rel, script = found
+            where = "%s (%d rolls) via vectors/%s" % (case["name"], len(case["rolls"]), rel)
+            problems += coldcard_run_problems(where, script, case["rolls"], "entropy_hex", want["entropy_hex"],
+                                              want["words"])
+    return problems
+
+
+def check_agreement_json(vectors_dir):
+    """Check 13: the committed agreement.json must equal the regenerated text byte for byte, and the regenerated cases
+    must meet the rules above."""
+    try:
+        text = agreement_vectors_json()
+    except Exception as e:  # a run verify.py refuses or cannot compute fails the check, named
+        return ["cannot regenerate vectors/agreement.json: %s: %s" % (type(e).__name__, e)]
+    problems = check_generated_file(vectors_dir, "agreement.json", text, "--write-agreement-vectors")
+    doc = json.loads(text)
+    rules = (
+        ("coverage", lambda: agreement_coverage_problems(doc)),
+        ("refusals", lambda: agreement_refusal_problems(doc)),
+        ("seed and seal", lambda: agreement_seal_problems(doc)),
+        ("D changed", lambda: agreement_mismatch_problems(doc)),
+        ("inserts against braille.json", lambda: agreement_insert_problems(vectors_dir, doc)),
+        ("Coldcard's scripts", lambda: agreement_coldcard_problems(vectors_dir, doc)),
+    )
+    for rule, found in rules:
+        try:
+            problems += ["%s: %s" % (rule, problem) for problem in first_problems(found())]
+        except Exception as e:  # a case the rule cannot read fails the rule, named
+            problems.append("%s: %s: %s" % (rule, type(e).__name__, e))
+    return problems
+
+
 def selftest(vectors_dir, verify_py=VERIFY_PY, only=None):
     checks = (
         ("seal known answers (CLAUDE.md vector 1, project vectors 2 and 3)", check_known_answers),
@@ -4818,6 +5423,10 @@ def selftest(vectors_dir, verify_py=VERIFY_PY, only=None):
          "cases, keepcrypt.json tie, a lone copy passes selftest, each fault twin fails its group, a planted module "
          "never runs, audited runs, its own rules' controls fire",
          lambda: check_verify_alone(vectors_dir, verify_py)),
+        ("vectors/agreement.json: file matches regenerated output, coverage counts, each refusal's core error and "
+         "verify.py verdict, seed and seal against their definitions, a changed D refused before the rolls, inserts "
+         "against braille.json, Coldcard's own scripts on its dice-only subset",
+         lambda: check_agreement_json(vectors_dir)),
     )
     if only is not None and not 1 <= only <= len(checks):
         print("vectorgen.py: --check takes 1 to %d" % len(checks), file=sys.stderr)
@@ -4846,7 +5455,7 @@ def main(argv):
                                      description="KeepCrypt vector generator and self-test (repo only).")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--selftest", action="store_true",
-                      help="run the 12 checks: seal known answers (all 3 vectors), seal.json bytes, SOURCES.md "
+                      help="run the 13 checks: seal known answers (all 3 vectors), seal.json bytes, SOURCES.md "
                       "hashes and coverage, Coldcard's own scripts on every dice-only case, kat.json (SHA and HMAC "
                       "recomputed, its bytes, then its pinned entries and Ed25519 digest), keepcrypt.json (BIP39 "
                       "list and encoder, its bytes, its pinned answers and session record rules), the SP 800-90B "
@@ -4858,7 +5467,9 @@ def main(argv):
                       "the reader and rebuilt, its bytes, its pinned outcomes, the docs' figures, the age CLI's "
                       "files), verify.py alone (its imports and module attributes, no test material, its known answers "
                       "against their sources and each changed in turn, its input cases and keepcrypt.json tie, a lone "
-                      "copy, its fault twins and a planted module, audited, controls on its rules)")
+                      "copy, its fault twins and a planted module, audited, controls on its rules), agreement.json "
+                      "(its bytes, coverage counts, each refusal's verdict, seed and seal against their definitions, a "
+                      "changed D refused, inserts against braille.json, Coldcard's scripts on its dice-only subset)")
     mode.add_argument("--write-seal-vectors", action="store_true", help="regenerate vectors/seal.json")
     mode.add_argument("--write-kat-vectors", action="store_true", help="regenerate vectors/kat.json")
     mode.add_argument("--write-keepcrypt-vectors", action="store_true", help="regenerate vectors/keepcrypt.json")
@@ -4866,6 +5477,7 @@ def main(argv):
     mode.add_argument("--write-watchonly-vectors", action="store_true", help="regenerate vectors/watchonly.json")
     mode.add_argument("--write-kcr-vectors", action="store_true", help="regenerate vectors/kcr.json")
     mode.add_argument("--write-backup-vectors", action="store_true", help="regenerate vectors/backup.json")
+    mode.add_argument("--write-agreement-vectors", action="store_true", help="regenerate vectors/agreement.json")
     parser.add_argument("--vectors-dir", type=Path, default=REPO_VECTORS_DIR, metavar="DIR",
                         help="testing only: use DIR in place of the repo's vectors/")
     parser.add_argument("--verify-py", type=Path, metavar="PATH",
@@ -4894,6 +5506,8 @@ def main(argv):
         return write_kcr_vectors(vectors_dir)
     if args.write_backup_vectors:
         return write_backup_vectors(vectors_dir)
+    if args.write_agreement_vectors:
+        return write_agreement_vectors(vectors_dir)
     parser.print_help(sys.stderr)
     return 2
 

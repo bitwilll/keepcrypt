@@ -105,6 +105,19 @@ SHA-256 of the abandon-12 plaintext
 printed in `docs/seal-watchonly-braille.md`) and the passphrase, questions and attempt count of the
 generate `stream` case.
 
+`vectors/agreement.json` has no row either. `tools/verify/vectorgen.py --write-agreement-vectors`
+generates it (tasks/todo.md, M2 group 5; Q17, Q18 and Q21): 1,000 ceremonies, 125 for each of 12 or 24
+words, mixed or dice-only, Pi or phone, and 28 refusals. Every input (the stub bytes, the hwrng stream,
+the extras, the die faces and every drawn number) comes from SHA-256 counter mode over the public labels
+`KCE/test/agreement/v1/<case>/<part>`, never a PRNG, and every expected value from `verify.py`'s
+`verification_run` and `render`, fed C and D as the device shows them. Self-test check 13 regenerates the
+file and requires byte equality; checks its coverage counts, and each refusal's core error and verifier
+verdict against those its rolls, mode and restart call for; ties each ceremony's C, seed bits, words and
+seal to their definitions and every insert line to `braille.json`; requires a D with one digit changed
+to be refused before the rolls are read; and runs Coldcard's committed scripts (rows below), as check 4
+does, on 74 dice-only cases: ceremonies 0, 8, 16, ... of each dice-only combination and the 10
+dice-only refusals with valid faces.
+
 ## Provenance
 
 | File | SHA-256 | Source | Upstream commit or date | Licence | Notes |
@@ -232,7 +245,7 @@ digit was altered.
   BIP-380 checksum cases. Core's ur and descriptor tests and its Bip84 known-answer group read it.
 - `coldcard/rolls.py` and `coldcard/rolls12.py`: Coldcard's own scripts that produced
   `rolls.json`. The verifier self-test re-runs them on every case, so the values come from a
-  committed script that CI re-runs.
+  committed script that CI re-runs, and check 13 runs them on `agreement.json`'s dice-only subset.
 - `age/scrypt/`: the backup reader (M1) must reach exactly the result in each file's `expect`
   header: 2 `success`, 4 `no match`, 20 `header failure`. The accepting files use scrypt work
   factor 10; KeepCrypt writes 18. Check 11 runs `verify.py`'s reader over all 26, and core's tests do
@@ -244,6 +257,13 @@ digit was altered.
   refused files with the error each must give and whether the reader may run scrypt first, and the
   largest plaintext and armored file a backup can be. Core's backup tests and its Age known-answer
   group read it, and `scripts/age-interop.py` gives the age CLI every age file the readers accept.
+- `agreement.json` (generated; see above): public test data, never to be funded. Each ceremony
+  holds the inputs core's session API takes (the stub, the hwrng chunks and extras, the rolls and an
+  undo, Skip or Check, a wrong first go-ahead code, and a restart's first ceremony) and the outputs
+  core must give: from `verify.py`'s run, C, D, the seed bits, the words, the seal, the insert lines
+  and the register URL; on the check path, n (the stub's last 8 bytes) with the check URL and G; for a
+  restart, the collision report. Each refusal holds core's error and step and the verifier's verdict.
+  Core must reproduce every case (tasks/todo.md, M2 group 6).
 - `age/age_cli_written.json`: files written by the age CLI. Core's tests decrypt them, and
   `scripts/age-interop.py` decrypts them with `verify.py`'s reader and with the age CLI.
 
