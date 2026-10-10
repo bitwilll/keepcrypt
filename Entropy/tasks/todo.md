@@ -418,6 +418,25 @@ Neither is covered by the standing approval of Q1-Q12; the agent does not act on
       filing it posts in public, so it waits for the owner to file it or to say go ahead. Record the link here once
       it exists. Recorded 2026-10-10, review fix after commit 21.
 
+### Raised by the review of commits 22-25 (owner confirmation pending)
+Commit 25 recorded a change to an approved plan item as a done deviation, not as a question. The standing approval
+of Q1-Q12 does not cover it, so it waits for the owner.
+- [ ] **tests/vectors.rs and the full vector sets (plan group 10).** The plan says tests/vectors.rs runs the full
+      sets: 24 BIP39 seeds, 26 CCTV files, 3 seal vectors, 2,048 braille entries, watchonly.json, kcr.json,
+      backup.json and rolls.json. As built, tests/vectors.rs runs only what the public API reaches, because secrets
+      have no public constructor (CLAUDE.md rule 5); the rest runs in the unit tests of each module, from the same
+      files (group 10, "As built at commit 25"). Two parts differ from the plan:
+      - (a) Placement: the CCTV files, seal.json's vectors 2 and 3, the 2,048 braille entries and watchonly.json
+        run as unit tests, not in tests/vectors.rs.
+      - (b) BIP39: core runs 16 of the 24 entries, the 12- and 24-word ones (the words, the TREZOR seed derived
+        through `passphrase_seed_into`, and the master fingerprint). The 8 entries with 18 words are a length core
+        never makes, so only their words are checked (the Bip39 KAT, through the bip39 crate, and verify.py), and
+        nothing recomputes their seeds.
+      Recommended: approve both as built. Otherwise: (a) a public test-only constructor behind `test-sources`
+      would let tests/vectors.rs reach the secret-holding sets; (b) a stdlib PBKDF2 check in verify.py can
+      recompute all 24 seeds, in a `verify:` commit. Until this is answered, the Verification item "All vectors
+      pass" stays unticked. Recorded 2026-10-10, review fix after commit 25.
+
 ### Later
 - [ ] Release signing: minisign or GPG, and who holds the key offline? (M7)
 - [ ] Registry domain name (M9; until then M1 uses a placeholder constant in the check-QR URL)
@@ -1660,6 +1679,10 @@ order", "Go-ahead before reveal")
     unwrap: the tester, the pool, D and C, the dice, E, S, the words, the seal code and its public half (empty
     until `finish`), the fingerprint and first address, the nonce, the read-back flags and the stored backup
     passphrase; its `Zeroize` clears all of them and the white-box test fills and checks each.
+    Review fix after commit 25: that `Zeroize` ends with the source's own buffers, where a stub counts the
+    wipe on its probe, and `Drop` runs it; `Drop` used to bump the probe itself, so a `Drop` without the
+    zeroize passed every test. One wipe on a probe now proves the drop zeroized every field. `HealthTester`
+    also derives `ZeroizeOnDrop`.
   - `credited_bits()` and `required_bits()` return u64, not the sketch's u32: the screen gets the same sum
     `source::quota_met` compares, in its width, with nothing narrowed or defaulted (a u32 needs a saturating
     fallback, which the fail-closed ban refuses). On a phone in Mixed mode `credited_bits()` counts the OS
@@ -1673,6 +1696,8 @@ order", "Go-ahead before reveal")
     kat_fault)` is the restart twin of `Session::new_with_stub`, so every `KatId` is injected at restart too.
   - `discard(CannotCheck)` keeps neither the report nor the flag, also in a session that itself started after a
     collision: that next restart uses the normal minimum, as seal-watchonly-braille.md "Add fresh entropy" says.
+    Review fix after commit 25: no test pinned the second half (a mutant carrying the flag passed every test);
+    `cannot_check_after_a_collision_restarts_at_the_normal_minimum` now does, at 12 words (99, then 50).
   - Q13 (b), settled as its first option: `verify_backup(&self)` keeps `CoreError`, and a unit test
     (`the_two_calls_that_never_wipe_return_only_their_listed_errors`) pins that it returns only `Ok`,
     `NoBackupPassphrase`, `WrongPassphrase`, `ReadbackMismatch` and `Backup(_)` over every backup.json age file
@@ -1686,6 +1711,8 @@ order", "Go-ahead before reveal")
   - `ready_for_test` now leaves a session as `finish` does (seal and first address included, nothing read
     back), and the backup tests read every word back through `check_readback` before the gated calls, so the
     gate opens the honest way. Every dead-code expectation group 9 fulfils is gone.
+  - Commit 22's message (cf1f797) gives core's line coverage as 97.29%. Re-run at that commit with the group
+    12 command, cargo-llvm-cov 0.9.1 gives 97.37% (8,199 lines, 216 missed); review fix after commit 25.
 
 **10. Cross-cutting tests**
 - [ ] `tests/typestate.rs` (trybuild; CLAUDE.md rule 6; build-plan.md "Sealed-state compile-fail tests"). Fixtures
@@ -1766,8 +1793,10 @@ order", "Go-ahead before reveal")
   error_injection and check_flow; os_source and ceremony run with default features, on the real OS source):
   - source_substitution: D is read through `reveal_device_leg` after a 50-roll ceremony reads every word back; C
     stands in for D where only a difference matters (C = SHA-256(tag || D)). Each change is one byte at both ends of
-    every hwrng chunk, one byte of every extra and of the OS read; the 16 startup chunks leave C unchanged, the 9
-    credited ones and every other source change it. A source id is changed to each of the other three extras.
+    every hwrng chunk, one byte of every extra and of the OS read; the 16 startup chunks leave C unchanged, and
+    the 9 after them and every other source change it. Of those 9, one completed 512-sample window credits 8;
+    the last is tested and absorbed but never credited (review fix after commit 25: this note and the test's
+    message said 9 credited). A source id is changed to each of the other three extras.
     "Exactly 64" is proven both ways: 63 stub bytes fail `commit` with `Source(Os)`, and after 64 the stub is used
     up, so `start_check` fails. Dice-only reaches `Ready` through Skip on an empty stub, a stream and a failing
     stub alike, with keepcrypt.json's 12- and 24-word lists.
@@ -1784,6 +1813,13 @@ order", "Go-ahead before reveal")
     else its own known answer. Every valid snapshot costs a full root pass (1.45 s), so the snapshot twin reads
     kcr.json's `truncated-body`, which passes the signature check and is refused for its length; tests/kcr.rs
     verifies the valid snapshots. Mutant check: a commit that swallows an OS error fails two of these tests.
+    Review fix after commit 25: the matrix failed only the backup's file key and salt reads, and a silent zero
+    fallback on its nonce and file-name reads passed every gate and test. `every_os_read_of_a_ceremony_halts_and_wipes`
+    now runs one whole Mixed phone ceremony from a pinned list of its 8 OS reads (OS record 64, nonce 8,
+    passphrase 11, one challenge attempt 16, file key, salt, nonce 16 each, file name 4): each read fails in
+    turn (`FailAt`) and comes up one byte short in turn (`ShortAfter`), halting its own step with the exact
+    error and one wipe, and with every listed read served the ceremony completes, so a new draw site cannot
+    stay off the list. The zero fallback fails it at read 6.
   - check_flow: as planned, plus lenient code entry (`pbjn yzy5`), vector 1's code refused as another seal's, the
     UR proof of another bucket, the current, stale and future snapshots as well as proofs, and one snapshot,
     loaded once, that stops the 50-roll seed and then clears the 99-roll seed after the restart.
@@ -1791,7 +1827,9 @@ order", "Go-ahead before reveal")
     from its faces (up to the first blank face) with the gate shut until the last word; C recomputed from the
     revealed D; the backup opened by `decrypt_backup` with the session's fingerprint, words, braille lines (device,
     sequence, SeedBook number, cells) and seal; the registration and the plain export. The TREZOR checks run in
-    two of the eight (12-word Mixed Pi, 24-word dice-only Pi) to bound the scrypt runs.
+    two of the eight (12-word Mixed Pi, 24-word dice-only Pi) to bound the scrypt runs. Review fix after commit
+    25: Mixed mode's words come from real OS randomness, so the words, braille lines, fingerprints and
+    registration are compared with `assert!` and a message; `assert_eq!` printed both word lists on a failure.
 - [ ] `tests/no_secret_text.rs` (build-plan.md CI rule "Secrets never printed"; the refined rule goes to the owner as
       a build-plan.md edit, Q10):
       - run public-vector ceremonies: Coldcard 50, 99 and 100 rolls in dice-only mode, and the keepcrypt.json mixed
@@ -1819,11 +1857,19 @@ order", "Go-ahead before reveal")
     words; phone, 24 words), whose D is known. Each transcript formats with `{:?}` (and `{}` where implemented)
     every public value the ceremony gives (settings, credit, C, the dice counts, the seal and its strings, the
     check request, a typed code and its `Rejected`, the fingerprint and first address, read-back errors, the
-    backup file name and `verify_backup`'s result, the checked backup's fingerprint and seal, the export's
-    fingerprint) plus a fixed text shared by every transcript: each variant of the public enums and every error,
-    listed through exhaustive matches. Check 1 matches a seed word as a case-folded substring (stronger than a
-    whole token, since fixed text such as "Rejected" is excluded by the control seed anyway); the control is the
-    first other ceremony with no word in common. Check 2 looks for adjacent tokens, check 3 for whole tokens over
+    backup file name and `verify_backup`'s result, the checked backup's fingerprint and seal, the registration's
+    and the collision report's URL, grouped code and Seal ID, the export's fingerprint, xpub, descriptors, UR,
+    QR text and first address) plus a fixed text shared by every transcript: each variant of the public enums,
+    every `CoreError` listed through exhaustive matches, and every `CheckError`. Check 1 matches a seed word as a
+    whole token on both sides; the control is the first other ceremony with no word in common. Review fixes
+    after commit 25: check 1 used case-folded substrings, which this note called "stronger than a whole token";
+    on the excusing side it was weaker, since a seed word the control prints only inside a longer token ("keep"
+    in "keepcrypt") was excused, so lone leaks of "you", "keep" (the Pi session) and "any" (the phone session)
+    passed all three checks. Each is now planted and caught, and only "tag" and "draw" stay excused, as whole
+    tokens of the fixed text. `CheckError`, the registration, the collision report and the export's strings were
+    not formatted. The `Debug` of `VerifiedSnapshot` and `VerifiedProof` is left out on purpose: both come from a
+    registry file alone and are the same in every transcript, and their dates' field names would excuse "day"
+    and "month" from check 1. Check 2 looks for adjacent tokens, check 3 for whole tokens over
     the full BIP39 list, on `Rejected::Retry` (malformed, wrong, another bucket), `Rejected::Collision` and both
     discards' `Wiped`, with `{:?}` and `{:#?}`. Each check catches its planted leak: a leaking `Debug` printing one
     word (check 1), two consecutive words whose single words the control also shows (check 2, which check 1
@@ -1837,18 +1883,25 @@ order", "Go-ahead before reveal")
     one a `Retry`), every truncation and 1,024 changed bytes of a KCP1 proof, every truncation and 512 changed
     characters of its UR text (every one refused), every truncation of a snapshot and 64 changed bytes of its
     signed part, plus two changed entries (each costs a full root pass), the binary and armored abandon backups
-    (every truncation and 256 changed bytes; none opens), typed backup words, read-back strings at all 256
-    positions, odd BIP39 passphrases through `watch_only`, and registry dates.
+    (every truncation and 256 changed bytes of each; none opens except the armored file without its final LF,
+    which is backup.json's `abandon-12-no-final-newline` and opens by design), typed backup words, read-back
+    strings at all 256 positions, odd BIP39 passphrases through `watch_only`, and registry dates. Review fix
+    after commit 25: the armored file was tried at every fourth truncation only, which skipped that one.
   - vectors.rs runs every set the public API reaches: rolls.json and the six keepcrypt.json dice-only cases
     through dice-only sessions at both lengths (`TooFewRolls` below the minimum), every backup.json and age CLI
     file whose passphrase is eight list words through `decrypt_backup` (13 open to their plaintexts, the 4,096-byte
     payload is `Backup(Plaintext)`, every refused file gives its exact error), seal.json's vector 1 through a
     checked backup's `seal()` (every public field), and braille.json's entry for every word those seeds and backups
-    hold. Deviation: secrets have no public constructor (CLAUDE.md rule 5), so no integration test can reach the
-    rest; each stays in the unit tests of its module, which read the same files: the 24 BIP39 seeds (seed.rs), the
+    hold. Deviation, raised as an owner item after commit 25 ("Raised by the review of commits 22-25"): secrets
+    have no public constructor (CLAUDE.md rule 5), so no integration test can reach the rest; each stays in the
+    unit tests of its module, which read the same files: BIP39 vectors.json's 16 12- and 24-word entries
+    (seed.rs: the words, the TREZOR seed derived through `passphrase_seed_into`, and the master fingerprint; until
+    the review fix after commit 25 it copied the published seed in, and core derived only entries 0 and 23), the
     26 CCTV files, whose passphrase "password" is not eight words (backup/age.rs), seal.json's vectors 2 and 3
     (seal.rs), the 2,048 braille entries (braille.rs) and watchonly.json (descriptor.rs, ur.rs). kcr.json is
-    tests/kcr.rs and tests/kcr_release.rs.
+    tests/kcr.rs and tests/kcr_release.rs. BIP39 vectors.json's other 8 entries have 18 words, a length core
+    never makes: the Bip39 KAT checks their words through the bip39 crate and verify.py checks every entry's
+    words, but nothing recomputes their seeds.
   - kat.rs: kat.rs's unit tests already compare every constant with its file, so this test checks from outside
     that the files agree on the answers the groups share (seal.json vector 1 and kcr.json's vector-1 seed with
     CLAUDE.md's seal and go-ahead vectors, the abandon fingerprint in watchonly.json and backup.json, the dice-only
@@ -1857,6 +1910,7 @@ order", "Go-ahead before reveal")
     `decrypt_backup` give them.
   - Line coverage of core, `cargo llvm-cov --locked -p keepcrypt-core --features test-sources --no-cfg-coverage
     --fail-under-lines 95` with cargo-llvm-cov 0.9.1: 97.40% (8,199 lines, 213 missed); the CI job is commit 27.
+    After the review fixes after commit 25 (at 96dca19): 97.39% (8,248 lines, 215 missed), exit 0.
 
 **11. Release artifact scan** (build-plan.md CI rules "One RNG path in shipped binaries", "Test stubs never ship";
 moved from M0)
@@ -2159,6 +2213,15 @@ moved from M0)
 23. tests: trybuild typestate suite with pinned .stderr files, including the typed-passphrase and CheckedBackup fixtures
 24. tests: source substitution, real OS path, error-injection matrix (with the free-function KAT fault twins and the 1,535-byte quota case), check flow (with proof freshness) and full ceremony
 25. tests: no-secret-text (control-seed rule plus the BIP39-token check on Rejected and Wiped), panic wipe, no-panic sweeps, and the full vector sets
+   Review fixes after 25, each its own commit:
+   - core: bip39_vectors_json derives the 16 published TREZOR seeds through passphrase_seed_into;
+   - core: a test pins that Cannot check after a collision restarts at the normal minimum;
+   - core: the wipe probe counts a completed zeroize (Inner's Zeroize bumps it last and Drop runs it), and HealthTester derives ZeroizeOnDrop;
+   - tests: error_injection fails every OS read of a whole ceremony in turn, from a pinned list, the backup's nonce and file name included;
+   - tests: no_secret_text's check 1 compares whole tokens on both sides, with a planted leak for each word a substring match hid, and formats CheckError and the seed-derived registration, collision-report and export strings;
+   - tests: ceremony.rs compares the real-OS seeds' words, braille, fingerprints and registration without printing them;
+   - tests: no_panic tries every truncation of the armored backup and pins the one that opens; source_substitution's message says 8 credited chunks, not 9;
+   - this file: these records, commit 22's coverage figure (97.37%, not 97.29%), and the tests/vectors.rs deviation as an owner item.
 26. scripts: banned-api-check.sh --artifact (both markers and the test key) with selftest fixtures; core/examples/release_probe.rs; canaries (two positive controls, static checks for serde, getrandom and the dalek features, vectors tamper; the feature and profile checks landed after 5)
 27. ci: coverage job (cargo-llvm-cov 0.9.1, failing on any core/src path its default ignore rule would skip), cross-job artifact scan with the per-target getrandom cfg, age-interop job (`scripts/age-interop.py --core` against Ubuntu's age 1.1.1, so core reads 1.1.1's files and 1.1.1 reads core's), and selftest moved after the toolchain install
 28. CLAUDE.md: Commands for M1
