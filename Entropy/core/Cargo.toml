@@ -71,6 +71,18 @@ required-features = ["test-sources"]
 name = "check_flow"
 required-features = ["test-sources"]
 
+[[test]]
+name = "no_secret_text"
+required-features = ["test-sources"]
+
+[[test]]
+name = "panic_wipe"
+required-features = ["test-sources"]
+
+[[test]]
+name = "no_panic"
+required-features = ["test-sources"]
+
 # Test-only features, both off by default (CLAUDE.md rule 10). No manifest turns either one on, in
 # any dependency table (normal, dev, build or target-specific) or feature: cargo merges features
 # across every package in one build, so one such entry anywhere would put stubs or the test key

@@ -1811,6 +1811,52 @@ order", "Go-ahead before reveal")
         panic.
 - [ ] `tests/vectors.rs` runs the full sets: 24 BIP39 seeds, 26 CCTV files, 3 seal vectors, 2,048 braille entries,
       watchonly.json, kcr.json, backup.json and rolls.json. `tests/kat.rs` cross-checks the KAT subsets.
+- As built at commit 25 (no_secret_text, panic_wipe and no_panic declare `required-features = ["test-sources"]`;
+  vectors and kat run with default features):
+  - no_secret_text: five ceremonies run end to end on stubs: dice-only from Coldcard's 50 (12 words), 99 (24) and
+    100 rolls (12), and two Mixed ones. keepcrypt.json's "mixed" cases fix D directly, which no session can take
+    (D comes only from the pool), so the Mixed ceremonies are keepcrypt.json's source-substitution sessions (Pi, 12
+    words; phone, 24 words), whose D is known. Each transcript formats with `{:?}` (and `{}` where implemented)
+    every public value the ceremony gives (settings, credit, C, the dice counts, the seal and its strings, the
+    check request, a typed code and its `Rejected`, the fingerprint and first address, read-back errors, the
+    backup file name and `verify_backup`'s result, the checked backup's fingerprint and seal, the export's
+    fingerprint) plus a fixed text shared by every transcript: each variant of the public enums and every error,
+    listed through exhaustive matches. Check 1 matches a seed word as a case-folded substring (stronger than a
+    whole token, since fixed text such as "Rejected" is excluded by the control seed anyway); the control is the
+    first other ceremony with no word in common. Check 2 looks for adjacent tokens, check 3 for whole tokens over
+    the full BIP39 list, on `Rejected::Retry` (malformed, wrong, another bucket), `Rejected::Collision` and both
+    discards' `Wiped`, with `{:?}` and `{:#?}`. Each check catches its planted leak: a leaking `Debug` printing one
+    word (check 1), two consecutive words whose single words the control also shows (check 2, which check 1
+    passes), and `Session` and `report` in a hand-written `Debug` (check 3). Mutant check: `Rejected`'s `Debug`
+    printing `Session<Checking>` fails check 3.
+  - panic_wipe: a thread panics while holding a stub session in Collecting, Rolling, Checking and Ready (words
+    shown, one read back): `join()` is `Err` and the probe shows one wipe; a thread that ends normally wipes once
+    without a panic.
+  - no_panic: truncations and replaced bytes chosen by SHA-256 counter mode: hwrng chunks (truncated, changed,
+    stuck, 1 MiB), dice faces (0, 7-255 samples, a 257th roll), 116 go-ahead codes on one checking session (every
+    one a `Retry`), every truncation and 1,024 changed bytes of a KCP1 proof, every truncation and 512 changed
+    characters of its UR text (every one refused), every truncation of a snapshot and 64 changed bytes of its
+    signed part, plus two changed entries (each costs a full root pass), the binary and armored abandon backups
+    (every truncation and 256 changed bytes; none opens), typed backup words, read-back strings at all 256
+    positions, odd BIP39 passphrases through `watch_only`, and registry dates.
+  - vectors.rs runs every set the public API reaches: rolls.json and the six keepcrypt.json dice-only cases
+    through dice-only sessions at both lengths (`TooFewRolls` below the minimum), every backup.json and age CLI
+    file whose passphrase is eight list words through `decrypt_backup` (13 open to their plaintexts, the 4,096-byte
+    payload is `Backup(Plaintext)`, every refused file gives its exact error), seal.json's vector 1 through a
+    checked backup's `seal()` (every public field), and braille.json's entry for every word those seeds and backups
+    hold. Deviation: secrets have no public constructor (CLAUDE.md rule 5), so no integration test can reach the
+    rest; each stays in the unit tests of its module, which read the same files: the 24 BIP39 seeds (seed.rs), the
+    26 CCTV files, whose passphrase "password" is not eight words (backup/age.rs), seal.json's vectors 2 and 3
+    (seal.rs), the 2,048 braille entries (braille.rs) and watchonly.json (descriptor.rs, ur.rs). kcr.json is
+    tests/kcr.rs and tests/kcr_release.rs.
+  - kat.rs: kat.rs's unit tests already compare every constant with its file, so this test checks from outside
+    that the files agree on the answers the groups share (seal.json vector 1 and kcr.json's vector-1 seed with
+    CLAUDE.md's seal and go-ahead vectors, the abandon fingerprint in watchonly.json and backup.json, the dice-only
+    E of `123456` in keepcrypt.json and rolls.json, RFC 8032 TEST 1 in kat.json and kcr.json, CCTV's two files in
+    backup.json, braille.json's caption and seal.json's) and that `self_test`, `hwrng_boot_test` and
+    `decrypt_backup` give them.
+  - Line coverage of core, `cargo llvm-cov --locked -p keepcrypt-core --features test-sources --no-cfg-coverage
+    --fail-under-lines 95` with cargo-llvm-cov 0.9.1: 97.40% (8,199 lines, 213 missed); the CI job is commit 27.
 
 **11. Release artifact scan** (build-plan.md CI rules "One RNG path in shipped binaries", "Test stubs never ship";
 moved from M0)
