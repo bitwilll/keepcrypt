@@ -6,9 +6,11 @@
 //! - Under the `test-registry` feature (which `test-sources` turns on, never the reverse), the key
 //!   is the public half of the Ed25519 key whose 32-byte seed is SHA-256("KCE/test/registry-key/v1"),
 //!   the key tools/verify/verify.py signs vectors/kcr.json with. The key bytes and the marker
-//!   `KC_TEST_REGISTRY_DO_NOT_SHIP` exist only under that feature; the marker is a `#[used]` static
-//!   and passes through `core::hint::black_box` on the key-selection path, so any linked artifact
-//!   that can select the key holds it, and the release scan fails that artifact.
+//!   `KC_TEST_REGISTRY_DO_NOT_SHIP` exist only under that feature. Both are `#[used]` statics that
+//!   pass through `core::hint::black_box` on the key-selection path, and the key is read back
+//!   through it, so any linked artifact that can select the key holds the marker and the key's 32
+//!   bytes in one piece (a constant could be split into immediates or constant-pool chunks), and
+//!   the release scan (`scripts/banned-api-check.sh --artifact`) fails that artifact.
 //! - The choice between no key and the test key is the pure function `choose`, unit-tested both
 //!   ways. One key per release; rotation statements wait for M9.
 //! - `registry_key_is_test` answers from the feature, not from whether a key is pinned: once M9
@@ -25,18 +27,22 @@ use crate::error::CoreError;
 static MARKER: [u8; 28] = *b"KC_TEST_REGISTRY_DO_NOT_SHIP";
 
 /// The test registry public key: the public half of seed SHA-256("KCE/test/registry-key/v1")
-/// (vectors/kcr.json "keys" "test_registry"; computed apart from verify.py and by OpenSSL too).
+/// (vectors/kcr.json "keys" "test_registry"; computed apart from verify.py and by OpenSSL too). A
+/// `#[used]` static, so a linked artifact holds its 32 bytes in one piece for the release scan.
 #[cfg(feature = "test-registry")]
-const TEST_REGISTRY_KEY: [u8; 32] = [
+#[used]
+static TEST_REGISTRY_KEY: [u8; 32] = [
     0x42, 0xe9, 0xfa, 0x0e, 0x20, 0x6d, 0x4b, 0xdf, 0x41, 0x0f, 0x98, 0x7a, 0xc7, 0xde, 0xd5, 0x4f,
     0xb0, 0x2f, 0xb4, 0x9e, 0xf2, 0x77, 0xcc, 0x42, 0x5d, 0x5f, 0xdf, 0xdb, 0x72, 0xc3, 0xb9, 0x4b,
 ];
 
-/// The key bytes this build pins: the test key under `test-registry`, none otherwise.
+/// The key bytes this build pins: the test key under `test-registry`, none otherwise. The bytes
+/// are read from the static through `black_box`, so the compiler cannot fold them into code and
+/// drop the static.
 #[cfg(feature = "test-registry")]
 fn pinned_bytes() -> Option<[u8; 32]> {
     core::hint::black_box(&MARKER);
-    Some(TEST_REGISTRY_KEY)
+    Some(*core::hint::black_box(&TEST_REGISTRY_KEY))
 }
 
 /// The key bytes this build pins: none until M9.
