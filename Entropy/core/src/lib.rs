@@ -23,6 +23,9 @@ mod source;
 mod test_vectors;
 mod ur;
 
+#[cfg(feature = "test-sources")]
+pub use backup::decrypt_backup_with_kat_fault;
+pub use backup::{BackupApp, BackupFile, CheckedBackup, CreatedBy, decrypt_backup};
 pub use braille::{
     BrailleInserts, Dots, Face, FaceVerdict, Insert, ReadbackMismatch, ReadbackResult, render_text,
 };

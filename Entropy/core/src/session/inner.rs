@@ -1,12 +1,15 @@
 //! Every secret of one session, at fixed capacity, in one heap allocation (`Box<Inner>`), so
 //! nothing reallocates and leaves a copy behind, and there is no `Option` to unwrap. `Drop`
 //! zeroizes all of it, then tells the source (a stub counts the wipe). The transitions (M1 group 9)
-//! add the pool, the health tester, the dice buffer and the seal.
+//! add the pool, the health tester, the dice buffer and the seal, and fill the words, S and the
+//! fingerprint in `finish`; the backup calls (M1 commit 21) use them.
 
 use zeroize::Zeroize;
 
 use super::Config;
-use crate::secret::{BackupPassphrase, SecretBytes32, SecretMnemonic};
+use crate::backup::{self, BackupFile, CreatedBy};
+use crate::error::CoreError;
+use crate::secret::{BackupPassphrase, NewBackupPassphrase, SecretBytes32, SecretMnemonic};
 use crate::seed::EmptyPassphraseSeed;
 use crate::source::Source;
 
@@ -20,6 +23,8 @@ pub(super) struct Inner {
     /// S, the BIP39 seed with the empty passphrase: the seal's and the fingerprint's only input.
     bip39_seed: EmptyPassphraseSeed,
     mnemonic: SecretMnemonic,
+    /// The master key fingerprint of S (public), which the backup plaintext names.
+    fingerprint: [u8; 4],
     /// The generated backup passphrase, kept for `encrypt_backup` and `verify_backup`.
     backup_passphrase: BackupPassphrase,
 }
@@ -34,8 +39,44 @@ impl Inner {
             seed_entropy: SecretBytes32::zeroed(),
             bip39_seed: EmptyPassphraseSeed::zeroed(),
             mnemonic: SecretMnemonic::zeroed(),
+            fingerprint: [0; 4],
             backup_passphrase: BackupPassphrase::zeroed(),
         })
+    }
+
+    /// A new backup passphrase, stored here in place of any earlier one, and its display copy.
+    pub(super) fn generate_backup_passphrase(&mut self) -> Result<NewBackupPassphrase, CoreError> {
+        backup::new_passphrase(&mut self.source, &mut self.backup_passphrase)
+    }
+
+    /// The backup of these words under the stored passphrase.
+    pub(super) fn encrypt_backup(&mut self, by: &CreatedBy) -> Result<BackupFile, CoreError> {
+        backup::encrypt(
+            &mut self.source,
+            &self.backup_passphrase,
+            &self.mnemonic,
+            self.fingerprint,
+            by,
+        )
+    }
+
+    /// Reads a written backup back with the stored passphrase.
+    pub(super) fn verify_backup(&self, file: &[u8]) -> Result<(), CoreError> {
+        backup::verify(
+            &self.backup_passphrase,
+            file,
+            &self.mnemonic,
+            self.fingerprint,
+        )
+    }
+
+    /// Fills the words, S and the fingerprint as `finish` will (M1 group 9): tests only, until then.
+    #[cfg(test)]
+    pub(super) fn fill_words_for_test(&mut self, indices: &[usize]) -> Result<(), CoreError> {
+        self.mnemonic.fill_from(indices.iter().copied())?;
+        crate::seed::seed_from_mnemonic_into(&self.mnemonic, &mut self.bip39_seed)?;
+        self.fingerprint = crate::seed::wallet_summary(&self.bip39_seed)?.fingerprint;
+        Ok(())
     }
 }
 
@@ -45,6 +86,7 @@ impl Zeroize for Inner {
         self.seed_entropy.zeroize();
         self.bip39_seed.zeroize();
         self.mnemonic.zeroize();
+        self.fingerprint.zeroize();
         self.backup_passphrase.zeroize();
     }
 }
@@ -76,24 +118,27 @@ mod tests {
         inner.seed_entropy.fill();
         inner.bip39_seed.fill();
         inner.mnemonic.fill();
+        inner.fingerprint = [0x73; 4];
         inner.backup_passphrase.fill();
         let filled = [
             inner.device_leg.is_zero(),
             inner.seed_entropy.is_zero(),
             inner.bip39_seed.is_zero(),
             inner.mnemonic.is_zero(),
+            inner.fingerprint == [0; 4],
             inner.backup_passphrase.is_zero(),
         ];
-        assert_eq!(filled, [false; 5]);
+        assert_eq!(filled, [false; 6]);
         inner.zeroize();
         let cleared = [
             inner.device_leg.is_zero(),
             inner.seed_entropy.is_zero(),
             inner.bip39_seed.is_zero(),
             inner.mnemonic.is_zero(),
+            inner.fingerprint == [0; 4],
             inner.backup_passphrase.is_zero(),
         ];
-        assert_eq!(cleared, [true; 5]);
+        assert_eq!(cleared, [true; 6]);
         assert_eq!(inner.config, CONFIG);
     }
 

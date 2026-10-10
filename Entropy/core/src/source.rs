@@ -157,10 +157,6 @@ impl Source {
     /// read is `ShortRead`. The OS arm produces the whole buffer or an error (`getrandom::fill`
     /// returns no count), so its count is `buf.len()` by that contract, which the real-OS test
     /// checks byte by byte.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "used by the session (M1 group 9)")
-    )]
     pub(crate) fn fill(&mut self, buf: &mut [u8]) -> Result<(), CoreError> {
         let produced = match self {
             Source::Os => {
@@ -180,10 +176,6 @@ impl Source {
     /// `N` fresh bytes in a read of their own that never touches the pool: the check nonce, the
     /// backup file key, salt, nonce and file name, and the backup passphrase and its confirm
     /// challenge. Zeroized when dropped.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "used by the check and backup (M1 groups 7, 8)")
-    )]
     pub(crate) fn os_bytes<const N: usize>(&mut self) -> Result<Zeroizing<[u8; N]>, CoreError> {
         let mut bytes = Zeroizing::new([0u8; N]);
         self.fill(bytes.as_mut_slice())?;

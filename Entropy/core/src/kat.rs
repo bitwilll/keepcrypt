@@ -50,6 +50,8 @@ pub(crate) enum Suite {
     /// `verify_snapshot`, `verify_bucket_proof` and `verify_bucket_proof_qr`: Ed25519, then the
     /// bucket tree.
     Registry,
+    /// `decrypt_backup`: age.
+    Backup,
 }
 
 /// The groups each entry point runs, in order: the one exhaustive match.
@@ -59,6 +61,7 @@ const fn groups(suite: Suite) -> &'static [KatId] {
         Suite::HwrngBoot => &[KatId::Health],
         Suite::Seal => &[KatId::Seal],
         Suite::Registry => &[KatId::Ed25519, KatId::Merkle],
+        Suite::Backup => &[KatId::Age],
     }
 }
 
@@ -909,6 +912,7 @@ mod tests {
             (Suite::HwrngBoot, &[KatId::Health][..]),
             (Suite::Seal, &[KatId::Seal][..]),
             (Suite::Registry, &[KatId::Ed25519, KatId::Merkle][..]),
+            (Suite::Backup, &[KatId::Age][..]),
         ] {
             assert_eq!(groups(suite), only);
             assert_eq!(run(suite, None), Ok(()));

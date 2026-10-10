@@ -8,15 +8,18 @@
 //! randomness, a health test, a known-answer test or an integrity check takes `self`, so an
 //! `Err` has already wiped the session.
 //!
-//! This is the skeleton (M1 group 2): construction runs the known-answer tests. The transitions
+//! This is the skeleton (M1 group 2): construction runs the known-answer tests. The backup calls on
+//! `Ready` arrived with M1 group 8; the transitions, and the read-back gate in front of the exports,
 //! arrive in M1 group 9.
 
 mod inner;
 
 use core::marker::PhantomData;
 
+use crate::backup::{BackupFile, CreatedBy};
 use crate::error::{CoreError, KatId};
 use crate::kat::{self, Suite};
+use crate::secret::NewBackupPassphrase;
 use crate::source::Source;
 #[cfg(feature = "test-sources")]
 use crate::source::StubSource;
@@ -158,6 +161,62 @@ impl Session<Collecting> {
     fn start(config: Config, source: Source, kat_fault: Option<KatId>) -> Result<Self, CoreError> {
         let inner = Inner::new(config, source);
         kat::run(Suite::Full, kat_fault)?;
+        Ok(Session {
+            inner,
+            state: PhantomData,
+        })
+    }
+}
+
+// The backup calls (tasks/todo.md, M1 group 8, Q5). They take `self` where they can fail on
+// randomness, so an `Err` has already wiped the session; `verify_backup` reads only what the user
+// brings back and never wipes. The transitions that reach `Ready` (`skip_check`, `reveal`) and the
+// read-back gate in front of these exports (`ReadbackIncomplete`) land in M1 group 9.
+impl Session<Ready> {
+    /// Generates the 8-word backup passphrase (11 fresh OS bytes) and its 2-of-4 confirm challenge
+    /// in one call, and keeps the passphrase for `encrypt_backup` and `verify_backup`, replacing
+    /// any earlier one. Returns the session and a display copy for the user to write down. Any
+    /// `Err` (a source failure, or `Source(NoUsableDraw)`) has wiped the session.
+    pub fn generate_backup_passphrase(mut self) -> Result<(Self, NewBackupPassphrase), CoreError> {
+        let new = self.inner.generate_backup_passphrase()?;
+        Ok((self, new))
+    }
+
+    /// Writes the encrypted backup under the stored passphrase, with a fresh file key, salt, nonce
+    /// and file name. Returns the session and the file for the shell to save; after a failed save
+    /// the shell may call this again, and the paper passphrase stays valid. `NoBackupPassphrase`
+    /// before `generate_backup_passphrase` is a shell-order bug and, like every `Err`, has wiped
+    /// the session.
+    pub fn encrypt_backup(mut self, by: &CreatedBy) -> Result<(Self, BackupFile), CoreError> {
+        let file = self.inner.encrypt_backup(by)?;
+        Ok((self, file))
+    }
+
+    /// Reads a saved backup back with the stored passphrase and checks that it holds this seed
+    /// (the words and the fingerprint). Never wipes: a failure is retryable. Errors:
+    /// `NoBackupPassphrase`, `WrongPassphrase`, `ReadbackMismatch`, and `Backup(_)` for a
+    /// malformed file.
+    pub fn verify_backup(&self, file: &[u8]) -> Result<(), CoreError> {
+        self.inner.verify_backup(file)
+    }
+}
+
+#[cfg(test)]
+impl Session<Ready> {
+    /// A `Ready` session holding these words on `source`, as `finish` will leave one (M1 group 9):
+    /// tests only, until then.
+    pub(crate) fn ready_for_test(indices: &[usize], source: Source) -> Result<Self, CoreError> {
+        let len = match indices.len() {
+            24 => SeedLength::Words24,
+            _ => SeedLength::Words12,
+        };
+        let config = Config {
+            len,
+            mode: Mode::DiceOnly,
+            platform: Platform::Phone,
+        };
+        let mut inner = Inner::new(config, source);
+        inner.fill_words_for_test(indices)?;
         Ok(Session {
             inner,
             state: PhantomData,

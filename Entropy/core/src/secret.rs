@@ -5,13 +5,14 @@
 //!   so a secret cannot be printed, logged, duplicated or compared by accident. The trybuild
 //!   fixtures in `core/tests/compile_fail/` prove it.
 //! - Secrets leave only through methods named `expose_secret`, `words` or `questions`, the braille
-//!   views (`BrailleInserts`, which borrow the mnemonic) and, from M1 group 8,
-//!   `CheckedBackup::reveal_*`, so review can grep every exit. What they reveal borrows the
+//!   views (`BrailleInserts`, which borrow the mnemonic) and `CheckedBackup::reveal_words` and
+//!   `reveal_braille` (backup.rs), so review can grep every exit. Inside core, a backup passphrase
+//!   becomes age passphrase text only through `text()`. What they reveal borrows the
 //!   wrapper, so no revealed word outlives the secret it came from (and is wiped with); a trybuild
 //!   fixture proves it.
 
 use secrecy::{ExposeSecret, SecretString};
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::error::{BackupError, CoreError, InternalFault};
 
@@ -19,6 +20,8 @@ use crate::error::{BackupError, CoreError, InternalFault};
 pub(crate) const MAX_WORDS: usize = 24;
 /// Words in a generated backup passphrase (88 bits; docs/build-plan.md "Encrypted backup format").
 pub const BACKUP_PASSPHRASE_WORDS: usize = 8;
+/// OS bytes behind a backup passphrase: 8 indices of 11 bits (tasks/todo.md, M1 Q6e).
+pub(crate) const BACKUP_PASSPHRASE_BYTES: usize = 11;
 
 /// The BIP39 English word list, from the `bip39` crate (checked by the Bip39Wordlist KAT).
 fn word_list() -> &'static [&'static str; 2048] {
@@ -99,6 +102,12 @@ impl SecretMnemonic {
     /// The word indices, in order (each below 2,048), for the braille views inside core.
     pub(crate) fn indices(&self) -> &[u16] {
         &self.indices[..self.word_count()]
+    }
+
+    /// Whether `other` holds the same words: what a backup's read-back compares. Not constant
+    /// time; both sides are this device's own seed.
+    pub(crate) fn matches(&self, other: &Self) -> bool {
+        self.count == other.count && self.indices == other.indices
     }
 }
 
@@ -185,6 +194,60 @@ impl BackupPassphrase {
             present: false,
         }
     }
+
+    /// Fills in place from 11 OS bytes, replacing any earlier passphrase: word i is bits 11i to
+    /// 11i + 10 of the bytes read big-endian, most significant first (Q6e). Bit by bit, so no
+    /// integer cast or wide accumulator holds the passphrase.
+    pub(crate) fn fill_from_bytes(&mut self, bytes: &[u8; BACKUP_PASSPHRASE_BYTES]) {
+        for (word, slot) in self.indices.iter_mut().enumerate() {
+            *slot = 0;
+            for bit in 11 * word..11 * word + 11 {
+                *slot = (*slot << 1) | u16::from((bytes[bit / 8] >> (7 - bit % 8)) & 1);
+            }
+        }
+        self.present = true;
+    }
+
+    /// Whether a passphrase has been generated.
+    pub(crate) fn is_present(&self) -> bool {
+        self.present
+    }
+
+    /// The word indices, for the confirm challenge.
+    pub(crate) fn indices(&self) -> &[u16; BACKUP_PASSPHRASE_WORDS] {
+        &self.indices
+    }
+
+    /// The age passphrase text.
+    pub(crate) fn text(&self) -> Zeroizing<String> {
+        passphrase_text(&self.indices)
+    }
+
+    /// The display copy the shell gets, its confirm challenge still zeroed (filled in place by
+    /// `ConfirmChallenge::set`).
+    pub(crate) fn display_copy(&self) -> NewBackupPassphrase {
+        NewBackupPassphrase {
+            indices: self.indices,
+            challenge: ConfirmChallenge {
+                positions: [0; 2],
+                choices: [[0; 4]; 2],
+            },
+        }
+    }
+}
+
+/// The age passphrase of 8 word indices: the lowercase words joined by single spaces (Q6e), in a
+/// zeroizing buffer sized exactly first, so it never reallocates and leaves no copy behind.
+fn passphrase_text(indices: &[u16; BACKUP_PASSPHRASE_WORDS]) -> Zeroizing<String> {
+    let len = indices.iter().map(|&i| word(i).len()).sum::<usize>() + BACKUP_PASSPHRASE_WORDS - 1;
+    let mut text = Zeroizing::new(String::with_capacity(len));
+    for (n, &index) in indices.iter().enumerate() {
+        if n > 0 {
+            text.push(' ');
+        }
+        text.push_str(word(index));
+    }
+    text
 }
 
 /// The 2-of-4 confirm challenge shown after a new backup passphrase (pi-firmware.md USB step 2):
@@ -196,8 +259,16 @@ pub struct ConfirmChallenge {
 }
 
 impl ConfirmChallenge {
+    /// Fills the challenge in place: its two 1-based word positions and each question's four
+    /// choices, one of them the word at that position.
+    pub(crate) fn set(&mut self, positions: [u8; 2], choices: &[[u16; 4]; 2]) {
+        self.positions = positions;
+        self.choices = *choices;
+    }
+
     /// The two questions, each as (1-based word position, the four candidate words). The words
-    /// borrow `self`.
+    /// borrow `self`; the right choice is the one equal to `NewBackupPassphrase::words` at that
+    /// position.
     pub fn questions(&self) -> [(u8, [&str; 4]); 2] {
         let question = |q: usize| (self.positions[q], self.choices[q].map(word));
         [question(0), question(1)]
@@ -221,6 +292,11 @@ impl NewBackupPassphrase {
     /// The confirm challenge for these words.
     pub fn challenge(&self) -> &ConfirmChallenge {
         &self.challenge
+    }
+
+    /// The challenge, to fill in place.
+    pub(crate) fn challenge_mut(&mut self) -> &mut ConfirmChallenge {
+        &mut self.challenge
     }
 }
 
@@ -251,10 +327,12 @@ impl TypedBackupPassphrase {
         Ok(typed)
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "used by decrypt_backup (M1 group 8)")
-    )]
+    /// The age passphrase text, for `decrypt_backup`.
+    pub(crate) fn text(&self) -> Zeroizing<String> {
+        passphrase_text(&self.indices)
+    }
+
+    #[cfg(test)]
     pub(crate) fn indices(&self) -> &[u16; BACKUP_PASSPHRASE_WORDS] {
         &self.indices
     }

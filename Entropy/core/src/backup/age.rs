@@ -19,7 +19,7 @@
 //!   HKDF-SHA256(file key, empty salt, `header`), the payload key HKDF-SHA256(file key, nonce,
 //!   `payload`).
 //! - The writer uses work factor 18 in the backup (`WRITE_WORK_FACTOR`); the file key, salt and
-//!   nonce come from the session's OS source (M1 commit 21). The Age known-answer group writes CCTV's
+//!   nonce come from the session's OS source (backup.rs). The Age known-answer group writes CCTV's
 //!   file at work factor 10 from its fixed inputs.
 //! - Every key and the plaintext stay in zeroizing buffers. Beyond core's reach: scrypt 0.12 never
 //!   wipes its working buffers (2^N x 1 KiB, derived from the backup passphrase, not from the seed;
@@ -54,13 +54,6 @@ const SCRYPT_R: u32 = 8;
 const SCRYPT_P: u32 = 1;
 /// The work factor (log2 N) the backup is written with: about 256 MiB (docs/build-plan.md "Work
 /// factor").
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "Session<Ready>::encrypt_backup writes with it (M1 commit 21)"
-    )
-)]
 pub(crate) const WRITE_WORK_FACTOR: u8 = 18;
 /// The largest work factor the reader accepts (Q1 (i)): 2^19 would need 512 MiB, more than a Pi Zero
 /// has.
@@ -90,7 +83,7 @@ pub(crate) struct FileSecrets {
 }
 
 impl FileSecrets {
-    /// The three values, each from its own read of the OS source in the backup (M1 commit 21), or
+    /// The three values, each from its own read of the OS source in the backup (`backup::encrypt`), or
     /// fixed in the Age known-answer group and the tests.
     pub(crate) fn new(
         file_key: &[u8; FILE_KEY_BYTES],

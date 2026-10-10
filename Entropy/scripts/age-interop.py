@@ -12,6 +12,12 @@ bytes core reads and writes; check 11 holds the two together):
         key, salt and nonce), and age decrypts it to the same bytes;
       - a wrong passphrase fails in age (non-zero exit, no output) and in the reader (WrongPassphrase);
       - every file in vectors/age/age_cli_written.json decrypts in the reader and in age.
+  scripts/age-interop.py --core [--age PATH]      all of the above, and core in both directions: age
+      encrypts each plaintext (armored and binary) under a fresh passphrase and core's decrypt_backup
+      reads it; core writes a fresh backup of each (work factor 18, its own OS randomness) and age
+      decrypts it to backup.json's plaintext; a wrong passphrase fails in age. Core's side is the
+      ignored unit test backup::tests::age_interop_files, run through `cargo test` with
+      KC_AGE_INTEROP_DIR naming a temporary directory, so this needs the Rust toolchain.
   scripts/age-interop.py --generate [--age PATH]  write vectors/age/age_cli_written.json: age's own armored
       and binary files of the abandon-12 and zoo-24 plaintexts, under backup.json's passphrases, after
       checking that the reader decrypts each. Run once; vectors/SOURCES.md records the tool and its hash.
@@ -167,6 +173,44 @@ def check_live(verify, age, workdir):
     return problems
 
 
+def check_core(verify, age, workdir):
+    """Core in both directions, through its ignored age_interop_files test. Returns problems."""
+    doc = backup_doc()
+    texts = plaintext_texts(doc)
+    mnemonics = {case["name"]: case["mnemonic"] for case in doc["plaintexts"]}
+    exchange = workdir / "exchange"
+    exchange.mkdir()
+    for name in PLAINTEXTS:
+        passphrase = fresh_passphrase(verify)
+        for armored in (True, False):
+            label = "%s-%s" % (name, "armored" if armored else "binary")
+            data = age_encrypt_file(age, passphrase, texts[name], armored, workdir, "plain-" + label)
+            (exchange / ("cli-%s.age" % label)).write_bytes(data)
+            (exchange / ("cli-%s.words" % label)).write_bytes(passphrase)
+            (exchange / ("cli-%s.mnemonic" % label)).write_text(mnemonics[name], encoding="ascii")
+    run = subprocess.run(
+        ["cargo", "test", "-p", "keepcrypt-core", "--locked", "--lib", "--", "--ignored", "--exact",
+         "backup::tests::age_interop_files"],
+        cwd=str(ROOT), env=dict(os.environ, KC_AGE_INTEROP_DIR=str(exchange)), capture_output=True,
+        encoding="utf-8", errors="replace", timeout=1800)
+    if run.returncode != 0 or "1 passed" not in run.stdout:
+        return ["core: age_interop_files failed (exit %d): %s" % (run.returncode, (run.stdout + run.stderr).strip()[-600:])]
+    problems = []
+    for name in PLAINTEXTS:
+        data = (exchange / ("core-%s.age" % name)).read_bytes()
+        words = (exchange / ("core-%s.words" % name)).read_bytes()
+        stanzas, _, _, _ = verify.age_parse_header(verify.age_dearmor(data))
+        if verify.age_scrypt_stanza(stanzas)[1] != verify.BACKUP_WORK_FACTOR:
+            problems.append("core -> age %s: not work factor %d" % (name, verify.BACKUP_WORK_FACTOR))
+        code, out = age_decrypt_file(age, words, data, workdir, "core-read-" + name)
+        if code != 0 or out != texts[name]:
+            problems.append("core -> age %s: age exits %d, plaintext %s" % (name, code, "equal" if out == texts[name] else "differs"))
+        code, out = age_decrypt_file(age, fresh_passphrase(verify), data, workdir, "core-wrong-" + name)
+        if code == 0 or out is not None:
+            problems.append("core -> age %s: age accepted a wrong passphrase (exit %d)" % (name, code))
+    return problems
+
+
 def generate(verify, age, workdir):
     """Write vectors/age/age_cli_written.json from age's own files."""
     doc = backup_doc()
@@ -199,7 +243,9 @@ def generate(verify, age, workdir):
 def main(argv):
     parser = argparse.ArgumentParser(prog="age-interop.py", description="age CLI interop for the KeepCrypt backup.")
     parser.add_argument("--age", default="age", help="the age binary (default: age on PATH)")
-    parser.add_argument("--generate", action="store_true", help="write vectors/age/age_cli_written.json")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--generate", action="store_true", help="write vectors/age/age_cli_written.json")
+    mode.add_argument("--core", action="store_true", help="also run core in both directions (needs cargo)")
     args = parser.parse_args(argv)
     age = shutil.which(args.age)
     if age is None:
@@ -217,7 +263,9 @@ def main(argv):
                 generate(verify, age, workdir)
                 return 0
             problems = check_live(verify, age, workdir)
-        except (RuntimeError, OSError, subprocess.SubprocessError) as e:
+            if args.core:
+                problems += check_core(verify, age, workdir)
+        except (RuntimeError, OSError, subprocess.SubprocessError, verify.BackupRefused) as e:
             print("age-interop: FAIL: %s" % e)
             return 1
     for problem in problems:
@@ -226,6 +274,9 @@ def main(argv):
         return 1
     print("age-interop: ok: age -> KeepCrypt and KeepCrypt -> age at work factor 18, armored and binary; wrong "
           "passphrases refused by both; %s decrypted by both" % CLI_VECTORS.name)
+    if args.core:
+        print("age-interop: ok: core read age's files (decrypt_backup), age read core's fresh work-factor-18 "
+              "backups, and age refused a wrong passphrase")
     return 0
 
 

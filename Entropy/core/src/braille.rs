@@ -225,7 +225,7 @@ pub struct BrailleInserts<'s> {
     not(test),
     expect(
         dead_code,
-        reason = "Session<Ready>::braille and check_readback use it (M1 group 9)"
+        reason = "Session<Ready>::check_readback uses readback (M1 group 9)"
     )
 )]
 impl<'s> BrailleInserts<'s> {

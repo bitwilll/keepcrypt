@@ -1484,6 +1484,33 @@ starts. Every item names its proof.
       - the writer known answer, binary and armored;
       - `wrong` gives `WrongPassphrase`;
       - work factor 23 fails before any scrypt work.
+      As built at commits 20-21 (passphrase, plaintext, backup API, "Check a backup", the Age group):
+      - The Age group runs in the full suite and alone in `Suite::Backup` (`decrypt_backup`), whose test-sources
+        twin `decrypt_backup_with_kat_fault` fails with `Kat(Age)` for that group only.
+      - Passphrase: `BackupPassphrase::fill_from_bytes` cuts the 11 OS bytes bit by bit (no wide integer or cast
+        holds the passphrase), and `text()` gives the age passphrase in an exactly sized zeroizing buffer. The
+        challenge is drawn as backup.json's spec says; `ConfirmChallenge` keeps no answer field, since the right
+        choice is the one equal to `NewBackupPassphrase::words()` at that position. A failed draw wipes the stored
+        passphrase. 64 rejected attempts give the new `SourceFault::NoUsableDraw` (display "the source gave no
+        usable draw"), which wipes the session like any source failure.
+      - Plaintext: the reader checks the version line, the words and their checksum, computes the fingerprint
+        (S with the empty passphrase, `wallet_summary`), parses the created-by line, writes the plaintext again and
+        requires byte equality; every failure but `UnsupportedVersion` is `Backup(Plaintext)`, so `verify_backup`
+        returns only the four errors build-plan.md lists. `CreatedBy::new(BackupApp, major, minor, patch)` is
+        public metadata.
+      - API: `Session<Ready>::generate_backup_passphrase(self)`, `encrypt_backup(self, &CreatedBy)` and
+        `verify_backup(&self, file)`, with the passphrase stored in `Inner` and the fingerprint in a new `Inner`
+        field that `finish` fills (group 9). `encrypt_backup` reads the file key, salt, nonce and file name from
+        the OS source in that order (52 bytes, proven with an exact stub). `BackupFile` has `name()` and
+        `bytes()`; `CheckedBackup` has `fingerprint()`, `seal()`, `reveal_words()` and `reveal_braille()` (the
+        insert views of the verified words). Hand-off to commit 22: nothing reaches `Session<Ready>` yet
+        (`skip_check` and `reveal` are group 9), so these calls are tested on a test-only `ready_for_test`
+        constructor, and the read-back gate in front of `generate_backup_passphrase` and `encrypt_backup`
+        (`ReadbackIncomplete`) lands with the session transitions.
+      - Interop: `scripts/age-interop.py --core` also runs core in both directions through the ignored unit test
+        `backup::tests::age_interop_files`: core's `decrypt_backup` reads files age wrote under fresh passphrases,
+        and age decrypts core's fresh work-factor-18 backups to backup.json's plaintexts; a wrong passphrase fails
+        in age. Run locally with age 1.3.2; the CI job (commit 27) runs it with Ubuntu's 1.1.1.
 
 **9. session** (build-plan.md "Public API" as refined by Q5; CLAUDE.md rule 6; seal-watchonly-braille.md "Ceremony
 order", "Go-ahead before reveal")

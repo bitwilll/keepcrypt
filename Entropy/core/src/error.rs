@@ -224,6 +224,10 @@ pub enum SourceFault {
     /// `hwrng_boot_test` was not given exactly 1,024 samples.
     #[error("the boot test needs exactly 1,024 hwrng samples")]
     HwrngSampleCount,
+    /// A draw that rejects unusable bytes to stay free of bias (the backup passphrase's confirm
+    /// challenge) found none usable in all its tries: a source that repeats itself.
+    #[error("the source gave no usable draw")]
+    NoUsableDraw,
 }
 }
 
@@ -527,6 +531,7 @@ mod tests {
             SourceFault::Os => "the OS source returned an error",
             SourceFault::ShortRead => "a read came up short",
             SourceFault::HwrngSampleCount => "the boot test needs exactly 1,024 hwrng samples",
+            SourceFault::NoUsableDraw => "the source gave no usable draw",
         }
     }
 
