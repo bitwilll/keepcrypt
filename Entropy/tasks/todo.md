@@ -2922,6 +2922,9 @@ Groups land in the order below. Vectors come before the core test that reads the
       holds no 4 consecutive characters of its input. Scratch mutants each fail their cases: inner spaces removed
       (space inside), no strip (outer spaces, `0` on a second line, two lines), `int(ch, 16)` (`g`, Arabic-Indic),
       positions counted after separators (`g`, Arabic-Indic) and a message echoing the input (4 hex refusals).
+      Proof (review fix): no case pinned "non-ASCII first", since the Arabic-Indic digit alone is refused at the same
+      position by the hex-digit test. An 18th case, `g` at character 3 and an Arabic-Indic digit at 11, must be
+      refused at 11; a scratch copy without the non-ASCII pass gives (`D`, 3) and fails it on 3.12.5 and 3.9.6.
 - [ ] `verification_run(length, roll_lines, c_text=None, d_text=None)` returns one report for both modes:
       - mixed: C and D parsed, then `hmac.compare_digest(commitment(D), C)`; a mismatch stops here. The roll count must
         then lie in [50 or 99, 256] by length (verify.py `DICE`); otherwise the report says no honest device finishes

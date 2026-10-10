@@ -4090,6 +4090,9 @@ INPUT_CASES = (
     ("hex 65 digits", "D", INPUT_HEX + "f", ("D", None)),
     ("hex g", "C", INPUT_HEX_SHOWN[:7] + "g" + INPUT_HEX_SHOWN[8:], ("C", 8)),
     ("hex Arabic-Indic digit", "D", INPUT_HEX_SHOWN[:11] + "\u0663" + INPUT_HEX_SHOWN[12:], ("D", 12)),
+    # Non-ASCII is refused first, so the later Arabic-Indic digit is named, not the earlier g.
+    ("hex g, then an Arabic-Indic digit", "D", INPUT_HEX_SHOWN[:2] + "g" + INPUT_HEX_SHOWN[3:10] + "\u0663"
+     + INPUT_HEX_SHOWN[11:], ("D", 11)),
     ("hex empty", "C", "", ("C", None)),
     ("rolls outer spaces", "rolls", ["  123456\t "], "123456"),
     ("rolls space inside", "rolls", ["123 456"], ("rolls", 4)),
