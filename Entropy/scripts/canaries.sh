@@ -703,7 +703,11 @@ verdict
 #   for every build;
 # - ed25519-dalek resolves with no features and curve25519-dalek with exactly digest, across the
 #   workspace with all features, all targets and dev-dependencies, so legacy_compatibility
-#   (malleable signatures), hazmat, batch and rand_core stay off (Q3).
+#   (malleable signatures), hazmat, batch and rand_core stay off (Q3);
+# - poly1305 resolves with zeroize in the device build: keepcrypt-core's normal graph with default
+#   features (so no test feature can be what turns it on), all targets. chacha20poly1305's zeroize
+#   turns on only chacha20's, so core's direct edge is what makes the dropped Poly1305 state wipe
+#   its one-time key r and s (tasks/todo.md, "M1: open owner items", item 6).
 # graph_pins ROOT runs cargo tree (--locked) on the workspace at ROOT and reads its Cargo.lock.
 graph_pins='
 import subprocess, sys, tomllib
@@ -711,10 +715,12 @@ from pathlib import Path
 
 SERDE = ("serde", "serde_core", "serde_derive")
 DALEK = {"ed25519-dalek": "", "curve25519-dalek": "digest"}
+ZEROIZE = ("poly1305",)
 
-def tree(root, *args):
+def tree(root, *args, all_features=True):
     run = subprocess.run(["cargo", "tree", "--manifest-path", str(root / "Cargo.toml"), "--locked",
-                          "--target", "all", "--all-features", "--prefix", "none"] + list(args),
+                          "--target", "all", "--prefix", "none"]
+                         + (["--all-features"] if all_features else []) + list(args),
                          capture_output=True, text=True)
     if run.returncode != 0:
         print("cargo tree %s failed:\n%s" % (" ".join(args), run.stderr))
@@ -744,16 +750,26 @@ for line in tree(root, "--workspace", "-e", "normal,build,dev", "--format", "{p}
         if features != DALEK[name]:
             bad.append("%s resolves with features [%s]; needs [%s]" % (package, features, DALEK[name]))
 bad += ["%s is not in the graph" % name for name in sorted(set(DALEK) - seen)]
+wiping = set()
+for line in tree(root, "-p", "keepcrypt-core", "-e", "normal", "--format", "{p}|{f}", all_features=False):
+    package, features = line.split("|", 1)
+    name = package.split(" ")[0]
+    if name in ZEROIZE:
+        wiping.add(name)
+        if "zeroize" not in features.split(","):
+            bad.append("%s resolves with features [%s] in the device build; needs zeroize" % (package, features))
+bad += ["%s is not in the device build" % name for name in sorted(set(ZEROIZE) - wiping)]
 for line in bad:
     print(line)
 sys.exit(1 if bad else 0)
 '
-static_check "graph: no serde in core's normal or build graph; getrandom's only dependent is core; dalek features pinned" \
+static_check "graph: no serde in core's normal or build graph; getrandom's only dependent is core; dalek features pinned; poly1305 with zeroize" \
     python3 -I -c "$graph_pins" "$root"
 
-# ... and each rule must fire, on a copy of the workspace with all three mistakes: serde as a
-# normal dependency of core, getrandom as a dependency of the FFI, and legacy_compatibility on
-# ed25519-dalek. Each is already in Cargo.lock, so the copy's lockfile updates offline.
+# ... and each rule must fire, on a copy of the workspace with all four mistakes: serde as a
+# normal dependency of core, getrandom as a dependency of the FFI, legacy_compatibility on
+# ed25519-dalek, and poly1305 without zeroize. Each is already in Cargo.lock, so the copy's
+# lockfile updates offline.
 graph="$work/graph"
 mkdir "$graph" || exit 1
 for f in "$root"/* "$root"/.[!.]* "$root"/..?*; do
@@ -765,6 +781,8 @@ for f in "$root"/* "$root"/.[!.]* "$root"/..?*; do
 done
 replace "$graph/core/Cargo.toml" 'ed25519-dalek = { version = "3.0.0", default-features = false }' \
     'ed25519-dalek = { version = "3.0.0", default-features = false, features = ["legacy_compatibility"] }'
+replace "$graph/core/Cargo.toml" 'poly1305 = { version = "0.9.1", default-features = false, features = ["zeroize"] }' \
+    'poly1305 = { version = "0.9.1", default-features = false }'
 cat >> "$graph/core/Cargo.toml" <<'EOT'
 
 # Gate canary (scripts/canaries.sh, temp copy only): serde in the device build.
@@ -789,6 +807,7 @@ else
     need "getrandom dependents in Cargo.lock: keepcrypt-core, keepcrypt-ffi; needs keepcrypt-core only"
     need "ed25519-dalek v3.0.0 resolves with features [legacy_compatibility]; needs []"
     need "curve25519-dalek v5.0.0 resolves with features [digest,legacy_compatibility]; needs [digest]"
+    need "poly1305 v0.9.1 resolves with features [] in the device build; needs zeroize"
     never "cargo tree"
     verdict
 fi

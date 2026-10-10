@@ -23,6 +23,11 @@ hmac = { version = "0.13.0", default-features = false, features = ["zeroize"] }
 # in-out AEAD calls and slice encoding, so neither needs alloc.
 scrypt = { version = "0.12.0", default-features = false }
 chacha20poly1305 = { version = "0.11.0", default-features = false, features = ["zeroize"] }
+# Poly1305 for the AEAD's tag, already in the lockfile through chacha20poly1305, whose zeroize turns
+# on only chacha20's: a new direct edge, named in docs/build-plan.md, whose only job is to switch on
+# poly1305's zeroize, so the dropped Poly1305 state wipes its one-time key r and s (tasks/todo.md,
+# "M1: open owner items", item 6, 2026-10-10). It has no default features.
+poly1305 = { version = "0.9.1", default-features = false, features = ["zeroize"] }
 hkdf = { version = "0.13.0", default-features = false }
 base64ct = { version = "1.8.3", default-features = false }
 # Ed25519 signature verification only, verify_strict, for registry snapshots and bucket proofs

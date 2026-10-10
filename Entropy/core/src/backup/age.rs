@@ -23,14 +23,14 @@
 //!   file at work factor 10 from its fixed inputs.
 //! - Every key and the plaintext stay in zeroizing buffers. Beyond core's reach: scrypt 0.12 never
 //!   wipes its working buffers (2^N x 1 KiB, derived from the backup passphrase, not from the seed;
-//!   tasks/todo.md, M1 Q1 (iii), accepted). Recorded in tasks/todo.md for the owner, not accepted:
-//!   HKDF's extract step leaves its own copies of the pseudorandom key in its frames (the copy it
-//!   returns is wiped here); hmac leaves its padded key block, in the header MAC (keyed from the
-//!   file key; M1 group 7) and in the PBKDF2 steps inside scrypt (keyed with the passphrase); and
-//!   poly1305 0.9.1 resolves without its `zeroize` feature (chacha20poly1305's `zeroize` turns on
-//!   only chacha20's), so each one-time Poly1305 key (r and s, the first keystream block under the
-//!   wrap key and under the payload key) stays in the dropped cipher's state. That key is
-//!   keystream: it gives neither the ChaCha20 key, nor the file key, nor the plaintext.
+//!   tasks/todo.md, M1 Q1 (iii), accepted); HKDF's extract step leaves its own copies of the
+//!   pseudorandom key in its frames (the copy it returns is wiped here); and hmac leaves its padded
+//!   key block, in the header MAC (keyed from the file key; M1 group 7) and in the PBKDF2 steps
+//!   inside scrypt (keyed with the passphrase). The owner accepted those two as an M7 audit note
+//!   (tasks/todo.md, "M1: open owner items", item 6). Each one-time Poly1305 key (r and s, the
+//!   first keystream block under the wrap key and under the payload key) is wiped when the cipher's
+//!   Poly1305 state drops: chacha20poly1305's `zeroize` turns on only chacha20's, so core's direct
+//!   poly1305 edge turns on poly1305's own (core/Cargo.toml; scripts/canaries.sh pins it).
 
 use base64ct::{Base64Unpadded, Encoding};
 use chacha20poly1305::aead::inout::InOutBuf;
