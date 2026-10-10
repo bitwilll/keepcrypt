@@ -128,16 +128,12 @@ pub(crate) fn mnemonic_and_seed_into(
     Ok(())
 }
 
-/// S, the BIP39 seed with the empty passphrase, of a mnemonic's words, into `seed`: what the seal
-/// of an existing wallet needs (a decrypted backup; `seal_from_mnemonic`). The words' entropy is
-/// unpacked from their indices into a zeroizing buffer, the bip39 crate re-encodes it, and its
-/// words must equal these, so a bad checksum is `Internal(Bip39)`; then S as in
-/// `mnemonic_and_seed_into`. The bit accumulator is wiped too; bip39's own frames keep the
-/// residual in the module comment.
-pub(crate) fn seed_from_mnemonic_into(
-    mnemonic: &SecretMnemonic,
-    seed: &mut EmptyPassphraseSeed,
-) -> Result<(), CoreError> {
+/// The bip39 mnemonic of these words, or `None` if their BIP39 checksum is wrong. The words'
+/// entropy is unpacked from their indices into a zeroizing buffer (the bit accumulator is wiped
+/// too), the bip39 crate re-encodes it, and its words must equal these. `Internal(Bip39)` for a
+/// word count other than 12 or 24, or entropy bip39 refuses; bip39's own frames keep the residual
+/// in the module comment.
+fn checked_bip39(mnemonic: &SecretMnemonic) -> Result<Option<bip39::Mnemonic>, CoreError> {
     let indices = mnemonic.indices();
     let entropy_len = match indices.len() {
         12 => 16,
@@ -160,12 +156,28 @@ pub(crate) fn seed_from_mnemonic_into(
     }
     let words = bip39::Mnemonic::from_entropy_in(bip39::Language::English, &entropy[..entropy_len])
         .map_err(|_| CoreError::Internal(InternalFault::Bip39))?;
-    if !words
+    let same = words
         .word_indices()
-        .eq(indices.iter().map(|&i| usize::from(i)))
-    {
-        return Err(CoreError::Internal(InternalFault::Bip39));
-    }
+        .eq(indices.iter().map(|&i| usize::from(i)));
+    Ok(same.then_some(words))
+}
+
+/// Whether the words' BIP39 checksum is right. A backup's plaintext reader checks it as input (a
+/// wrong one is the file's fault), apart from the faults `seed_from_mnemonic_into` reports.
+pub(crate) fn checksum_is_valid(mnemonic: &SecretMnemonic) -> Result<bool, CoreError> {
+    Ok(checked_bip39(mnemonic)?.is_some())
+}
+
+/// S, the BIP39 seed with the empty passphrase, of a mnemonic's words, into `seed`: what the seal
+/// of an existing wallet needs (a decrypted backup; `seal_from_mnemonic`). The words must carry
+/// their BIP39 checksum (`checked_bip39`), else `Internal(Bip39)`: core's own words always do, and
+/// the backup reader checks a file's first (`checksum_is_valid`). Then S as in
+/// `mnemonic_and_seed_into`.
+pub(crate) fn seed_from_mnemonic_into(
+    mnemonic: &SecretMnemonic,
+    seed: &mut EmptyPassphraseSeed,
+) -> Result<(), CoreError> {
+    let words = checked_bip39(mnemonic)?.ok_or(CoreError::Internal(InternalFault::Bip39))?;
     let s = Zeroizing::new(words.to_seed_normalized(""));
     seed.0.expose_secret_mut().copy_from_slice(s.as_slice());
     Ok(())
@@ -381,7 +393,8 @@ mod tests {
     }
 
     // S from the words equals S from E, for every mixed case at both lengths; a word changed so the
-    // checksum breaks, or a word count other than 12 or 24, gives no S.
+    // checksum breaks, or a word count other than 12 or 24, gives no S. checksum_is_valid tells the
+    // two apart: false for the broken checksum, Internal(Bip39) for the count.
     #[test]
     fn s_from_the_words_equals_s_from_e() {
         for case in keepcrypt_json()["mixed"].as_array().expect("cases") {
@@ -412,11 +425,17 @@ mod tests {
                     seed_from_mnemonic_into(&broken, &mut none),
                     Err(CoreError::Internal(InternalFault::Bip39))
                 );
+                assert_eq!(checksum_is_valid(&mnemonic), Ok(true));
+                assert_eq!(checksum_is_valid(&broken), Ok(false));
             }
         }
         let mut empty = EmptyPassphraseSeed::zeroed();
         assert_eq!(
             seed_from_mnemonic_into(&SecretMnemonic::zeroed(), &mut empty),
+            Err(CoreError::Internal(InternalFault::Bip39))
+        );
+        assert_eq!(
+            checksum_is_valid(&SecretMnemonic::zeroed()),
             Err(CoreError::Internal(InternalFault::Bip39))
         );
     }

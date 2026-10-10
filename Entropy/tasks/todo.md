@@ -1513,9 +1513,21 @@ starts. Every item names its proof.
         usable draw"), which wipes the session like any source failure.
       - Plaintext: the reader checks the version line, the words and their checksum, computes the fingerprint
         (S with the empty passphrase, `wallet_summary`), parses the created-by line, writes the plaintext again and
-        requires byte equality; every failure but `UnsupportedVersion` is `Backup(Plaintext)`, so `verify_backup`
-        returns only the four errors build-plan.md lists. `CreatedBy::new(BackupApp, major, minor, patch)` is
-        public metadata.
+        requires byte equality. `CreatedBy::new(BackupApp, major, minor, patch)` is public metadata.
+        Review fix after commit 21: "every failure but `UnsupportedVersion` is `Backup(Plaintext)`" held by
+        relabelling. The reader mapped every error of `seed_from_mnemonic_into` and `wallet_summary` to
+        `Backup(Plaintext)`, so a fault in core's own derivation (BIP32 at odds of 2^-128, a constant path)
+        came back from `verify_backup(&self)` as a retryable malformed file, and age's `Internal(Length)` paths
+        passed through anyway. Now the BIP39 checksum, the one rule there a file can break, is checked on its
+        own (`seed::checksum_is_valid`, split out of `seed_from_mnemonic_into`) and gives `Backup(Plaintext)`;
+        the derivation's errors stay `Internal`. A scratch probe that made `wallet_summary` fail gave
+        `Backup(Plaintext)` from `decrypt_backup` and `verify` before, and `Internal(KeyDerivation)` after. So
+        for every input the file decides, `verify_backup` returns only the four errors build-plan.md lists;
+        `Internal` comes only from that derivation or from age's fixed-size library calls (scrypt's 32-byte
+        output, HKDF's 32-byte expand, an HMAC key), which no input reaches. Hand-off to commit 22 (Q13 (b)):
+        `verify_backup(&self)` cannot wipe, so group 9's error-list test settles what such an `Internal` does:
+        either the test pins the four errors for every input and names these unreachable paths, or
+        `verify_backup` gets its own narrower error type, as Q13 (b) allows.
       - API: `Session<Ready>::generate_backup_passphrase(self)`, `encrypt_backup(self, &CreatedBy)` and
         `verify_backup(&self, file)`, with the passphrase stored in `Inner` and the fingerprint in a new `Inner`
         field that `finish` fills (group 9). `encrypt_backup` reads the file key, salt, nonce and file name from

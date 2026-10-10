@@ -16,7 +16,9 @@
 //! `UnsupportedVersion`; otherwise it takes the words (with their BIP39 checksum) and the
 //! created-by line, computes the fingerprint, writes the plaintext again and requires byte
 //! equality, so every other rule (braille lines, fingerprint, spacing, line ends) is checked by
-//! that one comparison. Anything else is `Plaintext`.
+//! that one comparison. Anything else in the file is `Plaintext`. A fault in core's own
+//! derivation of the fingerprint (S and BIP32, which no file can cause) stays the `Internal`
+//! error it is, never a malformed file.
 
 use zeroize::{Zeroize, Zeroizing};
 
@@ -24,7 +26,9 @@ use super::CreatedBy;
 use crate::braille::BrailleInserts;
 use crate::error::{BackupError, CoreError};
 use crate::secret::SecretMnemonic;
-use crate::seed::{EmptyPassphraseSeed, seed_from_mnemonic_into, wallet_summary};
+use crate::seed::{
+    EmptyPassphraseSeed, checksum_is_valid, seed_from_mnemonic_into, wallet_summary,
+};
 
 const VERSION_LINE: &str = "keepcrypt-backup/v1";
 const VERSION_PREFIX: &str = "keepcrypt-backup/v";
@@ -115,9 +119,12 @@ fn parse(bytes: &[u8], mnemonic: &mut SecretMnemonic) -> Result<[u8; 4], CoreErr
     if mnemonic.word_count() != typed {
         return Err(bad);
     }
+    if !checksum_is_valid(mnemonic)? {
+        return Err(bad);
+    }
     let mut seed = EmptyPassphraseSeed::zeroed();
-    seed_from_mnemonic_into(mnemonic, &mut seed).map_err(|_| bad)?;
-    let fingerprint = wallet_summary(&seed).map_err(|_| bad)?.fingerprint;
+    seed_from_mnemonic_into(mnemonic, &mut seed)?;
+    let fingerprint = wallet_summary(&seed)?.fingerprint;
     let created = text
         .strip_suffix('\n')
         .and_then(|rest| rest.rsplit('\n').next())

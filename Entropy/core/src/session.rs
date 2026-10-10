@@ -195,7 +195,8 @@ impl Session<Ready> {
     /// Reads a saved backup back with the stored passphrase and checks that it holds this seed
     /// (the words and the fingerprint). Never wipes: a failure is retryable. Errors:
     /// `NoBackupPassphrase`, `WrongPassphrase`, `ReadbackMismatch`, and `Backup(_)` for a
-    /// malformed file.
+    /// malformed file; `Internal(_)` only for a fault no file can cause (tasks/todo.md, M1 group 8,
+    /// hand-off to commit 22).
     pub fn verify_backup(&self, file: &[u8]) -> Result<(), CoreError> {
         self.inner.verify_backup(file)
     }

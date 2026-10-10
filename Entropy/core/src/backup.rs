@@ -212,7 +212,8 @@ impl CheckedBackup {
 
 /// "Check a backup": opens an armored or binary age file with typed passphrase words and reads
 /// its plaintext. Runs the Age known-answer group first. Errors: `Kat(Age)`, `WrongPassphrase`,
-/// and `Backup(_)` for a file or plaintext that is not a KeepCrypt backup.
+/// and `Backup(_)` for a file or plaintext that is not a KeepCrypt backup; `Internal(_)` only for
+/// a fault in core's own derivation or a fixed-size library call, which no file can cause.
 pub fn decrypt_backup(
     file: &[u8],
     passphrase: &TypedBackupPassphrase,
@@ -299,7 +300,8 @@ fn file_name(bytes: &[u8; FILE_NAME_BYTES]) -> String {
 
 /// Reads a written backup back with the stored passphrase and compares its words and fingerprint
 /// with the session's (`Session<Ready>::verify_backup`). Errors: `NoBackupPassphrase`,
-/// `WrongPassphrase`, `ReadbackMismatch`, and `Backup(_)` for a malformed file.
+/// `WrongPassphrase`, `ReadbackMismatch`, and `Backup(_)` for a malformed file; `Internal(_)` only
+/// for a fault no file can cause, as in `decrypt_backup`.
 pub(crate) fn verify(
     stored: &BackupPassphrase,
     file: &[u8],
