@@ -4045,7 +4045,9 @@ VERIFY_MODULE_ATTRIBUTES = (
 VERIFY_TEST_MATERIAL = ("KC_TEST_SOURCE_DO_NOT_SHIP", "KC_TEST_REGISTRY_DO_NOT_SHIP", "KCE/test/")
 # Rule (c): verify.py's KNOWN_ANSWERS, read with ast.literal_eval from its one assignment (so every value
 # is a literal in the file), equals the table known_answer_sources rebuilds from these entries.
-KNOWN_ANSWER_BIP39_ENTRIES = (12, 14)  # bip39/vectors.json "english": the first 12-word and 24-word entries
+# bip39/vectors.json "english": entries 12 (12 words) and 14 (24 words), the first of each length after the
+# all-same-byte patterns 0-11.
+KNOWN_ANSWER_BIP39_ENTRIES = (12, 14)
 KNOWN_ANSWER_COMMITMENT = "d-00-1f"  # keepcrypt.json "commitment": C of the mixed entry's D
 KNOWN_ANSWER_MIXED = "d-00-1f-coldcard-50"  # keepcrypt.json "mixed"
 KNOWN_ANSWER_DICE_ROLLS = "123456"  # coldcard/rolls.json: Coldcard's published example
