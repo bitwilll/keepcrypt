@@ -4112,18 +4112,24 @@ INPUT_CASES = (
 # directory stays writable, so a module it ran would leave its __pycache__ behind.
 LONE_TIMEOUT_SECONDS = 60
 PLANTED_MARKER = "KC_PLANTED_HASHLIB_RAN"
-# Rule (e): an audited run fails on any event below, and on any of these modules (group 2's network
-# list, subprocess and multiprocessing, each with its submodules) in sys.modules at the end.
+# Rule (e): an audited run fails on any event below (sockets, processes, and the changes to a file by path
+# that need no open: truncation, removal, renaming, directories, mode, owner, flags, links, times,
+# extended attributes and shutil's copies, moves and trees), and on any of these modules (group 2's network
+# list, subprocess and multiprocessing, each with its submodules) in sys.modules at the end. os.mkfifo and
+# os.mknod raise no audit event, so only rule (a) keeps them out of reach.
 AUDIT_BANNED_MODULES = ("socket", "ssl", "_socket", "_ssl", "socketserver", "urllib", "urllib3", "http", "ftplib",
                         "smtplib", "smtpd", "poplib", "imaplib", "nntplib", "telnetlib", "xmlrpc", "asyncio",
                         "asyncore", "asynchat", "wsgiref", "webbrowser", "requests", "httpx", "aiohttp",
                         "multiprocessing", "logging.handlers", "subprocess")
-AUDIT_BANNED_EVENTS = ("socket.", "subprocess.Popen", "os.system", "os.exec", "os.posix_spawn", "os.spawn", "os.fork")
+AUDIT_BANNED_EVENTS = ("socket.", "subprocess.Popen", "os.system", "os.exec", "os.posix_spawn", "os.spawn", "os.fork",
+                       "os.truncate", "os.remove", "os.rename", "os.rmdir", "os.mkdir", "os.chmod", "os.chown",
+                       "os.chflags", "os.link", "os.symlink", "os.utime", "os.setxattr", "os.removexattr", "shutil.")
 # The child of an audited run: sys.executable -I -c (the two lists above, then this) FD COPY ARGS... It
 # installs an audit hook and runs COPY as __main__ with ARGS, writing nothing itself but to FD. A banned
 # event is written to FD at once, so a copy that ends the process early cannot hide it, and is refused, so
 # its action never happens: any open for writing, or of a path outside the interpreter's standard library
-# (sysconfig's stdlib and platstdlib, without site-packages) other than the copy; any socket or process.
+# (sysconfig's stdlib and platstdlib, without site-packages) other than the copy; any socket or process;
+# any change to a file by path.
 # At the end it writes each banned module, and each module loaded since it started from outside the
 # standard library (the interpreter's own start-up, site and its .pth files, is not the copy's doing),
 # then "end". Bytecode caching is off, so importing the standard library writes nothing.
@@ -4203,22 +4209,29 @@ finally:
     say("end", last=True)
 '''
 # Check 12's controls on its own audit (rule (e)), each run as an audited copy in a new writable directory
-# that also holds a file named target: each must print its stdout and give every audit line listed. The
-# first tries each action the audit refuses, catching each refusal, so it reaches its end only if the fork
-# and the exec were refused; the second ends the process before the audit's last check. Neither imports
-# socket, which the banned-API gate refuses in this file: a socket needs the socket or _socket module,
-# which the audit reports at exit as it reports subprocess here. (os.spawn* forks on POSIX, so the
-# os.spawn event fires on Windows alone.)
+# that also holds a file named target and an empty directory named sub: each must print its stdout, give
+# every audit line listed and leave the directory as it was. The first tries each action the audit refuses,
+# catching each refusal, so it reaches its end only if the fork and the exec were refused; os.chflags
+# (BSD and macOS) and the extended-attribute calls (Linux) are not on every platform, so it leaves them
+# out. The second ends the process before the audit's last check. Neither imports socket, which the
+# banned-API gate refuses in this file: a socket needs the socket or _socket module, which the audit
+# reports at exit as it reports subprocess here. (os.spawn* forks on POSIX, so the os.spawn event fires
+# on Windows alone.)
 AUDIT_CONTROL_ACTIONS = r'''
 import os
+import shutil
 import subprocess
 import sys
 
-target = os.path.join(os.path.dirname(__file__), "target")
+here = os.path.dirname(__file__)
+target, sub, new = os.path.join(here, "target"), os.path.join(here, "sub"), os.path.join(here, "new")
 python = [sys.executable, "-c", "pass"]
-for action in (lambda: open(os.devnull, "w"), lambda: open(target), lambda: subprocess.Popen(python),
-               lambda: os.system("true"), lambda: os.posix_spawn(sys.executable, python, {}), os.fork,
-               lambda: os.execv(sys.executable, python)):
+for action in (lambda: open(os.devnull, "w"), lambda: open(target), lambda: os.truncate(target, 0),
+               lambda: os.remove(target), lambda: os.rename(target, new), lambda: os.rmdir(sub),
+               lambda: os.mkdir(new), lambda: os.chmod(target, 0o600), lambda: os.chown(target, -1, -1),
+               lambda: os.link(target, new), lambda: os.symlink(target, new), lambda: os.utime(target, (0, 0)),
+               lambda: shutil.rmtree(sub), lambda: subprocess.Popen(python), lambda: os.system("true"),
+               lambda: os.posix_spawn(sys.executable, python, {}), os.fork, lambda: os.execv(sys.executable, python)):
     try:
         action()
     except RuntimeError:  # the audit's refusal
@@ -4228,8 +4241,11 @@ print("all refused")
 AUDIT_CONTROLS = (
     ("refused actions", AUDIT_CONTROL_ACTIONS, "all refused\n",
      ("audit: open for writing: ", "audit: open outside the standard library and the copy: ",
-      "audit: event subprocess.Popen", "audit: event os.system", "audit: event os.posix_spawn", "audit: event os.fork",
-      "audit: event os.exec", "audit: module subprocess loaded")),
+      "audit: event os.truncate", "audit: event os.remove", "audit: event os.rename", "audit: event os.rmdir",
+      "audit: event os.mkdir", "audit: event os.chmod", "audit: event os.chown", "audit: event os.link",
+      "audit: event os.symlink", "audit: event os.utime", "audit: event shutil.rmtree", "audit: event subprocess.Popen",
+      "audit: event os.system", "audit: event os.posix_spawn", "audit: event os.fork", "audit: event os.exec",
+      "audit: module subprocess loaded")),
     ("early exit", "import os\nos._exit(0)\n", "", ("the run ended before the audit's last check",)),
 )
 # Check 12's control on its fault twins (rule (d)): a copy whose selftest passes whatever its one known
@@ -4550,6 +4566,7 @@ def control_problems():
             directory.mkdir()
             (directory / "verify.py").write_text(source, encoding="ascii")
             (directory / "target").write_text("target\n", encoding="ascii")
+            (directory / "sub").mkdir()
             try:
                 _, stdout, _, audit = audited_run(directory, [])
             except subprocess.TimeoutExpired:
@@ -4559,6 +4576,9 @@ def control_problems():
                 problems.append("rule (e) on %s: stdout is %r, not %r" % (label, stdout[-200:], want_stdout))
             problems += ["rule (e) on %s: no line %r" % (label, line) for line in lines
                          if not any(found.startswith(line) for found in audit)]
+            if (sorted(os.listdir(directory)) != ["sub", "target", "verify.py"] or os.listdir(directory / "sub")
+                    or (directory / "target").read_bytes() != b"target\n"):
+                problems.append("rule (e) on %s: its directory changed" % label)
     return problems
 
 

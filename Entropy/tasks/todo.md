@@ -2930,6 +2930,14 @@ Groups land in the order below. Vectors come before the core test that reads the
       returning `[]`, rule (b) returning `[]` or matching the key's case, rule (c) skipping the insert group, the
       leak test off or ASCII-only, `problem()` returning None, the hook never raising, no "end" test, no open-outside
       branch, no `os.fork` event, banned modules unreported, no fault twins run and the twins' exit status unchecked.
+      Review fix (2026-10-10, file changes): rule (e) also fails a run on any `os.truncate`, `os.remove`, `os.rename`,
+      `os.rmdir`, `os.mkdir`, `os.chmod`, `os.chown`, `os.chflags`, `os.link`, `os.symlink`, `os.utime`,
+      `os.setxattr`, `os.removexattr` or `shutil.*` event. Each changes a file by path with no `open` event, so a
+      copy that reached `os` past rule (a) could truncate a file outside it and pass (at bb989cb: exit 0, no audit
+      line, the file at 0 bytes). The refused-actions control tries the eleven found on every platform, and its
+      directory must be unchanged afterwards. `os.mkfifo` and `os.mknod` raise no audit event on 3.9 or 3.12, so only
+      rule (a) keeps them out of reach. Proof: check 12 passes on 3.12.5 and 3.9.6; the gate is clean. Scratch
+      mutants that each drop one tried event from the list (15) fail the control on both.
 
 **4. Inputs, the shared run function, inserts and registry URLs (lessons.md rule 2: exact bytes of every hash input)**
 - [x] Parsers. An error is `InputRefused(field, position)`, whose text never holds the input:
