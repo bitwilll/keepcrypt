@@ -200,8 +200,8 @@ impl VerifiedProof {                                              // the same nu
 // 8 words exactly as listed; from_first_four(words: &[&str]), for the Pi's joystick, takes 8 entries, each the
 // first four lowercase letters of a list word or a whole three-letter word; anything else is refused before any
 // scrypt run, and no word list leaves core. CheckedBackup: fingerprint() and seal(); the words and braille only
-// through reveal_words() and reveal_braille(). The free functions run their own KAT groups, except render_text
-// and registry_key_is_test.
+// through reveal_words() and reveal_braille(). The free functions run their own KAT groups, except render_text,
+// registry_key_is_test and game_random (below).
 // test-sources builds add the stubs (StubSource, StubEntropy, WipeProbe) and twins that take one or make a KAT
 // group fail (new_with_stub, restart_with_stub, *_with_kat_fault); release builds have none.
 // M3 adds game_random(buf: &mut [u8]) -> Result<(), CoreError> to source, with the Pi games as its first

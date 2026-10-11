@@ -4974,6 +4974,9 @@ carries it, and every commit names a proof that runs at that commit.
 Each commit's proof runs at that commit; scenarios grow with the screens they cover.
 1. tasks/todo.md: the M3 plan and the owner's answers to Q25-Q34. The title becomes "milestones M0 to M3".
 2. docs: the approved edits (Q34), alone, with no code.
+   2b. docs: review fixes to commit 2: swb's "Add fresh entropy" halts the Pi on any failure but not on a refusal of
+   what the user or a stick supplied, as Q25 says; the sketch's list of free functions that run no KAT group names
+   `game_random`.
 3. core: `game_random`, its tests and the release_probe call (group 1).
 4. core: the borrowing restart, its tests, the regenerated `.stderr` and module docs (group 2).
 5. core: `from_first_four` and its tests (group 3).
