@@ -6,8 +6,8 @@
 # Needs cargo-deny, git, and python3 3.11 or later (tomllib, for the static checks; CI runs 3.12),
 # a C compiler for the host (the release probe builds secp256k1-sys), and the pinned toolchain's
 # llvm-tools-preview (the artifact scan's llvm-nm).
-# Needs the network only to fetch locked crates (deny-banned, clippy, cargo fetch); the steps
-# that add a crate or a git source resolve and check offline.
+# Needs the network only to fetch locked crates (deny-banned, clippy, agreement-core, cargo
+# fetch); the steps that add a crate or a git source resolve and check offline.
 set -u
 
 if [ ! -f deny.toml ] || [ ! -f core/clippy.toml ] || [ ! -d scripts/testdata ]; then
@@ -244,6 +244,47 @@ real_lint expect-without-reason \
 #[expect(dead_code)]
 fn kc_gate_canary() {}
 EOF
+
+# Verifier agreement, core's side (tasks/todo.md, M2 groups 6 and 8): one value core must compare,
+# changed in the copy's vectors/agreement.json, must fail core's agreement test, naming that case
+# and that field, while the other 8 tests pass. The value is the first hex digit of the first
+# "seal_tag_hex" from the middle of the file on: a case's expected seal tag, which core computes
+# itself. (The tamper loop's helper below would change a rolls string there, which core refuses as
+# InvalidRoll before it compares any value.) The test finds the file through
+# env!("CARGO_MANIFEST_DIR"), fixed when it is compiled, and cargo takes a binary built for
+# another tree as fresh when the copy's files are older than it (a copy that keeps mtimes, such as
+# rsync -a or git archive), so a shared binary would read the other tree's agreement.json. So the
+# test builds in its own target directory, and the copy's test file is touched first, so its
+# binary is rebuilt for this copy on every run. The copy's file is restored afterwards.
+change_tag='
+import re, sys
+path = sys.argv[1]
+data = open(path, "rb").read()
+found = re.compile(rb"\"seal_tag_hex\": \"[0-9a-f]").search(data, len(data) // 2)
+if found is None:
+    sys.exit("%s: no seal_tag_hex from the middle on" % path)
+name = re.compile(rb"\"name\": \"([^\"]+)\"").search(data, data.rfind(b"\n", 0, found.start()) + 1, found.start())
+if name is None:
+    sys.exit("%s: no case name before that seal_tag_hex" % path)
+at = found.end() - 1
+data = data[:at] + (b"1" if data[at:at + 1] == b"0" else b"0") + data[at + 1:]
+open(path, "wb").write(data)
+print(name.group(1).decode("ascii"))
+'
+name=agreement-core
+if ! tag_case=$(python3 -I -c "$change_tag" "$tmp/vectors/agreement.json"); then
+    echo "FAIL: $name: could not change a seal_tag_hex"
+    status=1
+else
+    touch "$tmp/core/tests/agreement.rs" || exit 1
+    expect_failure "$name" cargo test --color never --manifest-path "$tmp/Cargo.toml" \
+        -p keepcrypt-core --locked --features test-sources --test agreement \
+        --target-dir "$root/target/canary-agreement"
+    need "$tag_case: seal_tag_hex"
+    need "test result: FAILED. 8 passed; 1 failed;"
+    verdict
+    cp "$root/vectors/agreement.json" "$tmp/vectors/agreement.json" || exit 1
+fi
 
 # deny.toml on the real workspace: rand added to the real core must fail `cargo deny check bans`.
 # This catches an exemption scoped to keepcrypt-core, such as wrappers = ["keepcrypt-core"] or
@@ -835,10 +876,12 @@ else
 fi
 
 # Vectors tamper (lessons.md: computed values come from a committed script that CI re-runs): one
-# changed byte in each generated JSON file must fail vectorgen.py --selftest, naming that file. The
-# byte is the first hex digit of the first all-hex string of 16 or more digits from the middle of
-# the file on, so the file stays valid JSON and only its content changes. Each file is changed in
-# its own fresh copy of vectors/ (vectorgen.py --vectors-dir).
+# changed byte in each JSON file vectorgen.py writes (the seven M1 sets and agreement.json) or reads
+# back (the age CLI's age_cli_written.json) must fail vectorgen.py --selftest, naming that file.
+# The byte is the first hex digit of the first all-hex string of 16 or more digits from the middle
+# of the file on (in agreement.json, a rolls string), so the file stays valid JSON and only its
+# content changes. Each file is changed in its own fresh copy of vectors/ (vectorgen.py
+# --vectors-dir).
 flip_hex='
 import re, sys
 path = sys.argv[1]
@@ -852,7 +895,7 @@ data = data[:at] + (b"1" if data[at:at + 1] == b"0" else b"0") + data[at + 1:]
 open(path, "wb").write(data)
 '
 for v in seal.json kat.json keepcrypt.json braille.json watchonly.json kcr.json backup.json \
-    age/age_cli_written.json; do
+    agreement.json age/age_cli_written.json; do
     vt="$work/vectors-tamper"
     rm -rf "$vt"
     cp -R "$root/vectors" "$vt" || exit 1
@@ -873,6 +916,50 @@ for v in seal.json kat.json keepcrypt.json braille.json watchonly.json kcr.json 
     esac
     verdict
 done
+
+# The shipped verifier's own rules (tasks/todo.md, M2 groups 3, 7 and 8): a copy of verify.py with
+# one change must fail check 12 (vectorgen.py --check 12 --verify-py), for the rule it breaks:
+# - verifier-import: import socket, outside rule (a)'s import allowlist;
+# - verifier-echo and verifier-echo-upper: the C/D mismatch refusal shows D, as lowercase hex or in
+#   upper case, which the leak rule finds on the piped run with D changed;
+# - verifier-tty: roll lines read with sys.stdin.readline() (read_piped) on a terminal, where they
+#   echo, which rule (f)'s leak test finds in the pty transcript;
+# - verifier-reach: selftest opens /dev/null for writing through getpass.io, which rule (a) finds
+#   (getpass.io is not on the recorded list) and rule (e)'s audit refuses.
+# verifier_canary NAME OLD NEW TEXT...: OLD must occur in verify.py exactly once; the copy with it
+# replaced by NEW must fail check 12 alone, with every TEXT in the output.
+verifier_canary() {
+    name=$1
+    old=$2
+    new=$3
+    shift 3
+    cp "$root/tools/verify/verify.py" "$work/verify.py" || exit 1
+    replace "$work/verify.py" "$old" "$new"
+    expect_failure "$name" python3 -I "$root/tools/verify/vectorgen.py" --selftest --check 12 \
+        --verify-py "$work/verify.py"
+    need "FAIL tools/verify/verify.py ships alone"
+    need "selftest FAILED: 1 of 1 checks"
+    for text in "$@"; do
+        need "$text"
+    done
+    verdict
+}
+verifier_canary verifier-import "import getpass" "import getpass, socket" \
+    "imports socket, not on the allowlist"
+verifier_canary verifier-echo 'report["refused"] = "D does not match C"' \
+    'report["refused"] = "D does not match C: " + report["d"].hex()' \
+    "piped mixed --words 12, D with one digit changed: stdout holds 8 consecutive hex digits of the typed D"
+verifier_canary verifier-echo-upper 'report["refused"] = "D does not match C"' \
+    'report["refused"] = "D does not match C: " + report["d"].hex().upper()' \
+    "piped mixed --words 12, D with one digit changed: stdout holds 8 consecutive hex digits of the typed D"
+verifier_canary verifier-tty "report = verification_run(length, roll_lines(read), c_text, d_text)" \
+    "report = verification_run(length, roll_lines(read_piped), c_text, d_text)" \
+    "rule (f): mixed --words 12: the terminal holds 12 consecutive rolls"
+verifier_canary verifier-reach "    results = known_answers(KNOWN_ANSWERS)" \
+    "    getpass.io.open(\"/dev/null\", \"w\").close()
+    results = known_answers(KNOWN_ANSWERS)" \
+    "takes getpass.io, not in the recorded list" \
+    "rule (e): lone copy: audit: open for writing: '/dev/null'"
 
 # The release-artifact scan (CLAUDE.md rule 10; tasks/todo.md, M1 group 11 and Q3, Q8): the
 # release probe (core/examples/release_probe.rs) and core's rlib, built in release mode for the
@@ -951,7 +1038,7 @@ fi
 
 # The number of checks above, pinned, so a canary that is deleted, or skipped by a broken branch,
 # turns CI red too. A real change to the canaries updates this pin in the same reviewed change.
-want_checks=54
+want_checks=61
 if [ "$checks" -ne "$want_checks" ]; then
     echo "FAIL: $checks checks ran; scripts/canaries.sh pins $want_checks"
     status=1
