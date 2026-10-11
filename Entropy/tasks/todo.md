@@ -3598,10 +3598,12 @@ Groups land in the order below. Vectors come before the core test that reads the
       - Rule 10: no marker, test key or `KCE/test/` label.
       Proof (M2 Review, 2026-10-11): check 12 passes on 3.12.5 and 3.9.6 at 5100b6f, and canaries pass 61/61 under sh
       and dash, with verifier-import (rule (a)), verifier-echo and verifier-echo-upper (the leak rule), verifier-tty
-      (rule (f)) and verifier-reach (rules (a) and (e)) failing as intended. Since a5543a6 and ae5c3c5 every typed
-      roll line is long enough for the leak rule and each pty transcript is pinned whole, so rule (f) sees every
-      roll line, not only the first (stage D's high finding). The gates job of CI on 5100b6f is the first Linux run
-      of the pty transcripts.
+      (rule (f)) and verifier-reach (rules (a) and (e)) failing as intended. Since a5543a6 every roll line typed for
+      an agreement.json case holds more than the leak rule's 12 rolls. Since ae5c3c5 each piped run's stderr and each
+      pty transcript is pinned whole, so rule (f) sees every roll line, not only the first (stage D's high finding).
+      The 123456 runs type shorter lines (`123456` piped; `123` and `456` in the dice pty run), which no 12-roll
+      window sees; their stderr and transcript are pinned whole and their stdout must be render's, so an echo of
+      them fails. The gates job of CI on 5100b6f (run 38115700518) is the first Linux run of the pty transcripts.
 - [x] The banned-API gate is clean, with Q23's Python patterns firing on their fixtures.
       Proof (M2 Review, 2026-10-11): at 5100b6f `banned-api-check.sh` is clean (165 files) and `--selftest` passes
       346/346, under sh and dash; every Python pattern has a hit fixture and a near miss (commits 5, 5b and the
@@ -4749,7 +4751,9 @@ run: its fixer found 5cc4d24, e37f8a5 and bb989cb already made, and checked each
 Stage C: planned commits 8 and 9, then the stage-C review fixes (pushed head 0d2ff75).
 - fcb3481 verify, vectors: --write-agreement-vectors, vectors/agreement.json and check 13 (coverage counts, Coldcard
   subset); SOURCES.md and UNLISTED. Proof: 1,000 ceremonies and 28 refusals, 4,155,350 bytes, the same bytes on both
-  Pythons (1.10 s and 1.79 s); check 13 3.0 s and 5.1 s; 13/13; 20 scratch mutants fail; canaries 54/54.
+  Pythons (1.10 s and 1.79 s); check 13 3.0 s and 5.1 s; 13/13; of 20 scratch mutants, 18 fail before and after a
+  re-baseline, and 2 (no drawn extras, no case 6) fail only before one, since either alone still gives every source
+  and an empty extra; canaries 54/54.
 - 1f86f2c tests: core/tests/agreement.rs replays agreement.json under test-sources, with its [[test]] entry.
   Proof: 9 passed in 1.17 s (8.47 s on one thread); 92 planted changes each fail their case and field; a core with
   another `REGISTRY_ORIGIN` fails every combination at `recheck_url`; the default run skips it.
@@ -4800,20 +4804,26 @@ Stage D: planned commits 10-13, then the stage-D review fixes (pushed head 5100b
 - 5100b6f tasks/todo.md: the plan text matches the code; check 12's item ticked on commit 11's canaries.
   Proof: plan text only (F2-F5).
 
-**Review findings.** 46 in all: 1 high, 9 medium, 36 low. 43 were fixed in the stages' fix commits (one of them
-in part), 3 were closed by later planned commits, and one part of one low finding is open.
+**Review findings.** 46 in all: 1 high, 9 medium, 36 low. 43 were fixed in the stages' fix commits, two of them in
+part: stage C's boundary finding, whose case-mix part a45c2d0 made, and F15. 3 were closed by later planned commits,
+one of them (stage B's run, render and range finding) but for `check_url`'s nonce-length guard. Two parts stay open,
+both low: F15 part 5 and that guard (open items, below).
 - Stage A, 16 (0 high, 1 medium, 15 low):
   - medium (plan): `scripts/age-interop.py:272`, the `--generate` template, still wrote "verify.py --selftest ...
     (check 11)", so a regeneration would put false provenance back. Fixed in bbbb599; 86c4c0d widened the plan's
     grep to the whole repo;
   - low: 14 fixed in bbbb599, 2425cdb, 0610f3e, 64c4fc7, 5cc295d, 42d8552 and 86c4c0d. F10 (clipboard routes
-    outside the planned list) was left for a decision; commit 5b (df1c053) completed the lists within Q23.
+    outside the planned list) was left for a decision. Commit 5b (df1c053) added the routes it named, beyond the
+    lists the owner approved in Q23 (an open item for the owner, below), but for a bare `clip`, which the gate lets
+    pass by design (banned-api-check.sh:371).
 - Stage B, 10 (0 high, 1 medium, 9 low):
   - medium (recompute): check 12 ran one value per known-answer group, never the "unreadable" branch, and a copy
     could change the table at run time. Fixed in 2db1b6f (a sweep of all 214 values; `known_answers(table)`);
   - low: 7 fixed in 5cc4d24, e37f8a5, bb989cb, e850278, 5ed7ab9, 7679ee2 and 9301be3. 2 were left to planned commits
     and closed there: the URL origin, shared by vectorgen and verify.py (core's agreement test compares the URLs
-    whole, 1f86f2c), and the run, render and range gaps (check 13, fcb3481; the command runs, 11d1163).
+    whole, 1f86f2c), and the run, render and range gaps (check 13, fcb3481; the command runs, 11d1163), closed but
+    for one part: no test pins `check_url`'s nonce-length guard, so the finding's "nonce length check removed"
+    mutant is still not caught (checks 12 and 13 give it only 8-byte nonces; open item, below).
 - Stage C, 5 (0 high, 2 medium, 3 low):
   - medium (plan): the planned agreement-core canary changed a roll, which core refuses before it compares any
     value. Fixed in 7b3d199 (plan) and built that way in 6dcce94;
@@ -5164,6 +5174,9 @@ ok   a deleted refusal: exit 101, 'assertion `left == right` failed: the refusal
 - The split was a pure move but for one code string: ed25519_secret's ValueError text names vectorgen.py. Check 10
   raises and catches it, and no passing run prints it (99edb77). kcr.json's and backup.json's descriptions say
   "verify.py's verifier" and "reader" rather than "its own", since those stayed in verify.py (76dd1fb).
+- Group 1's split item names CI green on 99edb77 in its proof. CI runs only on pushed heads, so the item is ticked
+  on 86c4c0d (run 38061106528), the first pushed head that holds 99edb77, with 99edb77's local proof. The owner may
+  read the item strictly and untick it.
 - SOURCES.md's records of pre-split work name code by the file that holds it now, under one note (0610f3e), rather
   than per-line "then in verify.py" wording.
 - Check 12's rule (a) is stricter than planned. Every dunder name but `__name__` and `__doc__` is banned
@@ -5266,17 +5279,22 @@ split changed no M1 output", "Runtime ... every CI job green" and "Definition of
 The gate in docs/build-plan.md: "Verifier and core agree on 1,000 generated cases, including seal codes and braille;
 dice-only output matches Coldcard `rolls.py`".
 - Agreement. core/tests/agreement.rs replays all 1,000 ceremonies and the 28 refusals of vectors/agreement.json through
-  core's public session API under `test-sources`, and compares every field verify.py wrote: C, D, the seed bits and
-  every word; the seal (grouped code, tag, Seal ID and its braille, lookup prefix, bucket, grid, colour, re-check
-  URL), both on Sealed and from `seal_from_mnemonic`; n, the check URL, G accepted and the next-value wrong G refused
-  as exactly `WrongCode`; the register URL and Seal ID; the collision report on the 8 restarts; and every braille
-  insert field (position, device and count, sequence, SeedBook number, word, each face's cell, letter, mirror partner,
-  lighter mark and dots, and the word's cells), read from core's accessors. Every `expect` key is compared exactly
-  once. Core stops each of the 28 refusals with the recorded error at the recorded step, and their verifier
-  verdicts match (8 refused, 8 input-refused, 8 warned, 4 diverges, Q21). At 5100b6f it passes 9/9; each of 92
-  planted changes fails naming its case and field; the agreement-core canary fails naming
-  `24-mixed-pi-083: seal_tag_hex`. On the verifier's side, check 13 regenerates agreement.json byte for byte on
-  3.12.5 and 3.9.6 and holds it to rules a re-baseline cannot remove, each with a control.
+  core's public session API under `test-sources`, and compares every key of each case's `expect`, each exactly once:
+  C, D, the seed bits and every word; the seal (grouped code, tag, Seal ID and its braille, lookup prefix, bucket,
+  grid, colour, re-check URL), both on Sealed and from `seal_from_mnemonic`; n, the check URL, G accepted and the
+  next-value wrong G refused as exactly `WrongCode`; the register URL and Seal ID; the collision report on the 8
+  restarts; and every braille insert field (position, device and count, sequence, SeedBook number, word, each face's
+  cell, letter, mirror partner, lighter mark and dots, and the word's cells), read from core's accessors. These are
+  verify.py's values but n, which is the stub's, and each refusal's error, step and roll, which vectorgen works out.
+  Core stops each of the 28 refusals with the recorded error at the recorded step. Of each refusal's `verifier`
+  object it compares the verdict (8 refused, 8 input-refused, 8 warned, 4 diverges, Q21), each input-refused
+  position with core's roll, and for the four 98-roll restarts the words and seed bits. It does not compare the
+  refusal and warning texts or the warned cases' words and seed bits, which core has nothing to compare with; check
+  13 holds the warned cases' words and seed bits to Coldcard's scripts. At 5100b6f it passes 9/9, and the
+  agreement-core canary fails naming `24-mixed-pi-083: seal_tag_hex`. At 1f86f2c each of 92 planted changes failed
+  naming its case and field (core is unchanged since, and agreement.json changed only in its spec line). On the
+  verifier's side, check 13 regenerates agreement.json byte for byte on 3.12.5 and 3.9.6 and holds it to rules a
+  re-baseline cannot remove, each with a control.
 - Coldcard. Check 13 runs Coldcard's hash-pinned `rolls.py` and `rolls12.py` on 74 dice-only cases (64 ceremonies and
   the 10 dice-only refusals with valid faces, 49 to 257 rolls), and each prints exactly the case's `entropy` line and
   words. Check 4 runs them on rolls.json and keepcrypt.json's dice-only cases, and check 12's lone `dice` prints
@@ -5291,8 +5309,8 @@ dice-only output matches Coldcard `rolls.py`".
 - Open items, all low; none is part of the gate:
   - low: F15 part 5, getpass's prompt stream (deviations above).
   - low: `gates` takes 8m07s of group 8's 10-minute budget, so the next canaries need the budget re-planned.
-  - low: no test pins the length and alphabet guards of verify.py's `check_url` and `register_url` (stage-B fix
-    report). No M2 input reaches them, so no output can change.
+  - low: no test pins the length and alphabet guards of verify.py's `check_url` and `register_url` (stage-B finding
+    7's nonce-length mutant, and its fix report). No M2 input reaches them, so no output can change.
   - low, for the owner: gate routes outside the completed Q23 lists (stage-B commit 5b report): `import
     logging.config` and `multiprocessing.managers`, which reach sockets; a dotted import ending in a banned name,
     such as `gevent.socket`; tkinter's `selection_own` and `tk.call('clipboard', ...)`; PowerShell's `gcb`/`scb`;
