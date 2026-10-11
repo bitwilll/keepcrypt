@@ -4241,7 +4241,10 @@ carries it, and every commit names a proof that runs at that commit.
 - [ ] `core/examples/release_probe.rs` calls `game_random` and exits with its own code on failure, so every cross leg's
   scan covers the new draw site.
 
-  Proof: the six cross scans are clean on the PR, and each still finds only its target's OS import.
+  Proof: the six cross scans are clean on the PR, and each still finds only its target's OS import. The call itself
+  is proved by review alone (recompute review of commits 3-6): no gate fails without it, since the probe links the
+  OS import through the session's draws anyway, and each leg's scanned rlib holds `game_random`'s code either way
+  (`game_random` is a defined symbol of the host's release rlib). Exit code 20 is reached by no test.
 
 **2. Core: the borrowing restart (owner item 14; Q26 (C); rule 6). Replaced by (A) if the owner picks it.**
 - [x] `Wiped::restart(&self, len, mode)` and `restart_with_stub(&self, ..)`.
@@ -4918,7 +4921,8 @@ carries it, and every commit names a proof that runs at that commit.
   Proof: `drill_12` (registry config).
 - [ ] **Matrix "Watch-only import"** (M3 half): the drawn QR payloads equal core's `qr_text`, and the two descriptors
   on two lines (`dice_24_code`). The import itself is M4.
-- [ ] **Matrix "Symbol and stub-marker scan":** release_probe covers `game_random` on all six cross legs; pi/app's ARM
+- [ ] **Matrix "Symbol and stub-marker scan":** release_probe calls `game_random` on all six cross legs (by review: the
+  scans would not change without the call, and each leg's scanned rlib holds its code); pi/app's ARM
   release rlib scans clean; the test-registry simulator scans with exactly the registry marker, the simulator marker
   and the test key.
 - [ ] **Matrix "Typestate misuse" and "Sealed-state compile-fail tests":** every fixture passes, with the one `.stderr`
@@ -4985,6 +4989,9 @@ carries it, and every commit names a proof that runs at that commit.
 ### Commit order on `m3-pi-sim`
 Each commit's proof runs at that commit; scenarios grow with the screens they cover.
 1. tasks/todo.md: the M3 plan and the owner's answers to Q25-Q34. The title becomes "milestones M0 to M3".
+   1b. tasks/todo.md: the plan review: owner item 14 answered by Q26 (C), the games note done, and the plan's doc
+   line citations after commit 2 (888c174).
+   1c. tasks/todo.md: the recompute review: release_probe's `game_random` call is review evidence, not scan evidence.
 2. docs: the approved edits (Q34), alone, with no code.
    2b. docs: review fixes to commit 2: swb's "Add fresh entropy" halts the Pi on any failure but not on a refusal of
    what the user or a stick supplied, as Q25 says; the sketch's list of free functions that run no KAT group names
