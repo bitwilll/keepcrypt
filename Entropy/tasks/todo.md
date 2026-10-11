@@ -2953,6 +2953,10 @@ Groups land in the order below. Vectors come before the core test that reads the
       directory must be unchanged afterwards. `os.mkfifo` and `os.mknod` raise no audit event on 3.9 or 3.12, so only
       rule (a) keeps them out of reach. Proof: check 12 passes on 3.12.5 and 3.9.6; the gate is clean. Scratch
       mutants that each drop one tried event from the list (15) fail the control on both.
+      Review fix (2026-10-11, `type`): rule (a) also bans the name `type`, which reaches the class behind any object:
+      `type(sys.stderr.buffer.raw)` is `io.FileIO`, which opens a file by path with no banned name, module attribute
+      or dunder. verify.py never uses it. Proof: check 12 passes on 3.12.5 and 3.9.6; a copy whose exit-70 handler
+      writes `verify-crash.log` that way fails rule (a) on both (`uses the name type`), as well as the audit.
 
 **4. Inputs, the shared run function, inserts and registry URLs (lessons.md rule 2: exact bytes of every hash input)**
 - [x] Parsers. An error is `InputRefused(field, position)`, whose text never holds the input:

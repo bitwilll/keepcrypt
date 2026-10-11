@@ -4409,10 +4409,11 @@ def coldcard_run_problems(where, script, rolls, hex_field, want_hex, want_words)
 # no star import and no relative import (importlib is not among them):
 VERIFY_IMPORTS = ("argparse", "base64", "binascii", "datetime", "getpass", "hashlib", "hmac", "re", "struct", "sys",
                   "unicodedata", "warnings")
-# It neither calls nor names these, which reach files, code or attributes by name, nor any dunder name
-# but __name__ and __doc__ (__loader__ and __spec__ would reach the import system's file reader):
+# It neither calls nor names these, which reach files, code or attributes by name, or (type) the class behind an
+# object, such as io.FileIO behind sys.stderr.buffer.raw, which opens a file by path; nor any dunder name but
+# __name__ and __doc__ (__loader__ and __spec__ would reach the import system's file reader):
 VERIFY_BANNED_NAMES = ("open", "input", "exec", "eval", "compile", "__import__", "breakpoint", "globals", "locals",
-                       "vars", "getattr", "setattr", "delattr", "__builtins__")
+                       "vars", "getattr", "setattr", "delattr", "__builtins__", "type")
 VERIFY_DUNDER_NAMES = ("__name__", "__doc__")
 # It takes no dunder attribute, and from an imported module only an attribute recorded here, with a
 # module name used no other way (passed, assigned or returned), except that hasattr(module, "name") may
