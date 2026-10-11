@@ -2887,7 +2887,7 @@ Groups land in the order below. Vectors come before the core test that reads the
       `LC_ALL=en_US.ISO8859-1` (a probe shows Python's stdout there is iso8859-1 before verify.py sets UTF-8) and its
       stdout equals the UTF-8 runs' bytes, braille included; it passes on 3.12.5 and 3.9.6 on macOS, where it is
       required. A scratch copy without `sys.stdout.reconfigure(encoding="utf-8")` fails it on both (exit 70).
-- [ ] vectorgen check 12, "tools/verify/verify.py ships alone", with two testing-only options: `--verify-py PATH`
+- [x] vectorgen check 12, "tools/verify/verify.py ships alone", with two testing-only options: `--verify-py PATH`
       (like `--vectors-dir`) and `--check N` (run one check). Every rule runs, and each failing rule is named:
       - (a) static, by `ast` over verify.py:
         - imports only from the allowlist: argparse, base64, binascii, datetime, getpass, hashlib, hmac, re, struct,
@@ -2920,7 +2920,8 @@ Groups land in the order below. Vectors come before the core test that reads the
           local runs behave as CI's.
         - Opens: the run fails on any `open` event in a write mode. It also fails on an open of any path outside the
           interpreter's standard library directories (`sysconfig` `stdlib` and `platstdlib`) and the copy itself.
-          `/dev/tty` is allowed only in group 7's terminal runs, so a getpass call on the pipe branch fails.
+          `/dev/tty` is allowed only in group 7's terminal runs, so a getpass call on the pipe branch fails. Those
+          runs also allow wrapping a descriptor already open (getpass's `io.FileIO(fd, "w+")` over /dev/tty).
         - Processes and sockets: any `socket.*`, `subprocess.Popen`, `os.system`, `os.exec`, `os.posix_spawn` or
           `os.fork` event fails the run.
         - Modules at exit: the run fails if `sys.modules` holds a module loaded from outside those directories, any
@@ -2930,7 +2931,9 @@ Groups land in the order below. Vectors come before the core test that reads the
       parts (group 3's known-answer sweep, group 4's `INPUT_CASES` and keepcrypt.json tie) call
       `tools/verify/verify.py` as vectorgen loads it, also under `--verify-py`, since check 12 runs its subject only
       as audited copies. A changed copy's parsers meet `INPUT_CASES` in group 7's piped lone-copy runs (every refused
-      text: exit 2, the field and position on stderr, no traceback, every stream under the leak rule).
+      text: exit 2, the field and position on stderr, no traceback, every stream under the leak rule). Since commit
+      10, `--verify-py` replaces the subject of rules (a)-(g) and the command runs; the in-process parts, now with
+      group 7's in-process run, still call `tools/verify/verify.py`.
       Review fix (2026-10-10, controls): disabling rule (b), rule (c)'s comparison, the fault twins, the leak test,
       the audit's `problem()` or its "end" test left `--selftest` green. Check 12 now holds its own rules to controls
       that must fire: rule (b) on each test material alone and on the test key in upper case; rule (c)'s comparison
@@ -2957,6 +2960,9 @@ Groups land in the order below. Vectors come before the core test that reads the
       `type(sys.stderr.buffer.raw)` is `io.FileIO`, which opens a file by path with no banned name, module attribute
       or dunder. verify.py never uses it. Proof: check 12 passes on 3.12.5 and 3.9.6; a copy whose exit-70 handler
       writes `verify-crash.log` that way fails rule (a) on both (`uses the name type`), as well as the audit.
+      Proof: commit 11, ticked as check 13's item was, since both planned proofs are local. At 8a1b0c6 check 12
+      passes on 3.12.5 and 3.9.6, and `scripts/canaries.sh` passes 61/61 under sh and dash, with verifier-import
+      failing rule (a) and verifier-reach failing rules (a) and (e) as intended.
 
 **4. Inputs, the shared run function, inserts and registry URLs (lessons.md rule 2: exact bytes of every hash input)**
 - [x] Parsers. An error is `InputRefused(field, position)`, whose text never holds the input:
@@ -3370,9 +3376,11 @@ Groups land in the order below. Vectors come before the core test that reads the
       - `agreement-core`: in the existing workspace copy (`$work/repo`), one value inside a case's `expect` is changed:
         the first hex digit of the first `"seal_tag_hex"` value from the middle of agreement.json on, found by its own
         pattern. The tamper loop's helper would change a `rolls` string there, an input core refuses as `InvalidRoll`
-        before it compares any value. Then `cargo test --manifest-path "$tmp/Cargo.toml" -p keepcrypt-core --locked
-        --features test-sources --test agreement --target-dir "$root/target/canary-real"` must fail, naming that case
-        and `seal_tag_hex`;
+        before it compares any value. Then, after a `touch` of the copy's `core/tests/agreement.rs`, `cargo test
+        --manifest-path "$tmp/Cargo.toml" -p keepcrypt-core --locked --features test-sources --test agreement
+        --target-dir "$root/target/canary-agreement"` must fail, naming that case and `seal_tag_hex`. It has its own
+        target directory, and the touch, because cargo took a copy's test binary as `Fresh` across copies that keep
+        mtimes (commit 11's proof below);
       - each verifier canary runs `vectorgen.py --selftest --check 12 --verify-py <copy>` on a changed copy of
         verify.py, which check 12 must fail:
         - `verifier-import`: a copy with `import socket` fails rule (a);
@@ -3514,8 +3522,10 @@ Groups land in the order below. Vectors come before the core test that reads the
 - [ ] Definition of done (CLAUDE.md), with proof pasted under Review.
 
 ### New dependencies
-None. verify.py and vectorgen.py stay standard library only. verify.py adds `getpass` and `warnings`; vectorgen adds
-`ast`, `pty`, `runpy` and `sysconfig`. Core's test uses `sha2` and `serde_json`, both already approved.
+None. verify.py and vectorgen.py stay standard library only. verify.py adds `getpass` and `warnings`. vectorgen adds
+`ast`, `getpass`, `importlib.util` (group 1's load by path), `io`, `pty`, `select`, `signal` and `time`; check 12's
+audit harness, which runs as a child, imports `runpy` and `sysconfig`, and its refused-actions control `shutil`.
+Core's test uses `sha2` and `serde_json`, both already approved.
 
 ### Commit order on `m2-verifier`
 1. tasks/todo.md: the M2 plan, plus the owner's answers to Q16-Q24 (the title becomes "milestones M0, M1 and M2").
