@@ -5275,7 +5275,7 @@ split changed no M1 output", "Runtime ... every CI job green" and "Definition of
 - None in M2. Every plan and Verification item of the M2 section is ticked with its proof. What remains is the
   owner's approval of the gate below.
 
-### M2 gate status: MET (2026-10-11), waiting for the owner's approval
+### M2 gate status: MET, approved by the owner and merged (PR #5, 2026-10-11)
 The gate in docs/build-plan.md: "Verifier and core agree on 1,000 generated cases, including seal codes and braille;
 dice-only output matches Coldcard `rolls.py`".
 - Agreement. core/tests/agreement.rs replays all 1,000 ceremonies and the 28 refusals of vectors/agreement.json through
@@ -5327,3 +5327,8 @@ dice-only output matches Coldcard `rolls.py`".
     correct them (11 lines; 160 files from a clean checkout).
   - M1 owner items 13 and 14 (low) are still open and do not touch M2.
 - Per CLAUDE.md, M3 does not start until the owner approves.
+
+**Approved and merged (2026-10-11).** The owner approved the gate ("approve m2"). CI on 60d6ebb, the final head,
+passed all 14 required Entropy check runs (the Vercel check, not required, failed as on every PR). PR #5 was marked
+ready and merged with a merge commit, 156c8ef ("Merge Entropy M2: offline verifier (tools/verify) (#5)"), and
+`m2-verifier` was deleted. The owner then asked for the M3 plan ("yes"); M3 work happens on `m3-pi-sim`.
