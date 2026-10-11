@@ -143,11 +143,11 @@ The check is optional, but once the user chooses "Check now" it binds: the words
 
 **Go-ahead QR.** For devices with a camera, the checker also shows the signed evidence itself: the snapshot header and its signature, every entry in T's 20-bit bucket, and the Merkle path from that bucket to the signed bucket root. The device checks the signature against the pinned key, recomputes the root, confirms its T is not in the bucket, and applies the same snapshot-date rule as a loaded snapshot. This answer needs no trust in the checker, and the server still learns only the 20-bit prefix. The evidence, KCP1, is exactly `KCP1` ‖ the 58-byte snapshot header ‖ its 64-byte signature ‖ the bucket index (3 bytes) ‖ the entry count k (u16) ‖ the k entries ‖ the 20 sibling hashes of the Merkle path, leaf level first: 771 + 18k bytes. The QR is a single-part BC-UR `ur:keepcrypt-proof/…` whose CBOR is one byte string holding the KCP1 bytes. The device decodes it strictly, in this order: at most 4,296 characters (the largest QR alphanumeric capacity), checked before any decoding; all lowercase or all uppercase (QR alphanumeric mode gives `UR:KEEPCRYPT-PROOF/`), never mixed; the type `keepcrypt-proof` and exactly one part; minimal bytewords, then the CRC-32; a shortest-form, definite-length CBOR byte-string head, and nothing after the byte string. About 75 bucket entries fit one QR, and there are no animated frames.
 
-**Add fresh entropy.** After a Stop, nothing from the destroyed seed is reused: the next ceremony takes a fresh device leg and fresh dice, its dice minimum rises to 99 rolls for either length, and the device suggests a verification run with the offline verifier, because a genuine collision means this device's randomness or firmware is suspect. After "Cannot check", the next ceremony uses the normal minimum, unless the session that could not be checked was itself the restart after a collision: the 99-roll minimum then stays until a check passes. Only "Add fresh entropy" and "Start again" carry it over; after Skip or any other wipe (an error, a timeout, power-off), a new ceremony uses the normal minimum.
+**Add fresh entropy.** After a Stop, nothing from the destroyed seed is reused: the next ceremony takes a fresh device leg and fresh dice, its dice minimum rises to 99 rolls for either length, and the device suggests a verification run with the offline verifier, because a genuine collision means this device's randomness or firmware is suspect. After "Cannot check", the next ceremony uses the normal minimum, unless the session that could not be checked was itself the restart after a collision: the 99-roll minimum then stays until a check passes. The device keeps the core's record of the destroyed session (`Wiped`) until a check passes or the user skips, and every new ceremony restarts from it, whether from "Add fresh entropy", "Start again" or a new seed after an inactivity wipe, so a timeout does not lower the minimum. After Skip, a passed check or power-off, a new ceremony uses the normal minimum; on the Pi any error halts the device until a power cycle, which forgets the minimum too.
 
 **Results.**
 
-- **Go ahead (verified):** "No collision for seal \<Seal ID> as of \<snapshot date>." The device verifies the code, the go-ahead QR or its loaded snapshot, then reveals the words.
+- **Go ahead (verified):** "No collision for seal \<Seal ID> as of \<snapshot date>." The device verifies the code, the go-ahead QR or its loaded snapshot, then reveals the words. On the code path the device cannot know the checker's snapshot date, so it says "No collision for seal \<Seal ID>, as of the date your checker showed."
 - **Stop (match):** "Collision found. This seed is not unique and has been destroyed." The session is wiped unseen. The device offers a collision report (next section) and "Add fresh entropy", and suggests reporting the device and firmware version to the KeepCrypt security address.
 - **Skip (only before a check starts):** the words are revealed with a note that the seal can be checked later from the words.
 
@@ -197,7 +197,7 @@ The registry is a small open-source web service plus a static checking page. It 
 | Checking page | Reads `#t=`, `#n=` or `#c=` from the URL fragment only; verifies the signed header and bucket proof in the browser; draws the seal image from T; shows the go-ahead code and go-ahead QR only for a verified no-match; never shows an input box for seed words, and says so |
 | Offline checker app | The checking page installed as an offline web app (service worker) on a second phone or computer. It caches the page and the latest signed snapshot, verifies the signature, then answers checks in airplane mode with the same go-ahead code and go-ahead QR |
 
-**Milestone.** The service, the proof files and the offline checker app are milestone M9. The apps build and test their snapshot loader, go-ahead entry and QR screens against a local test registry from M3 onward.
+**Milestone.** The service, the proof files, the offline checker app and a local test registry are milestone M9. From M3 onward the apps build and test their snapshot loader, go-ahead entry and QR screens against snapshots signed with the test registry key, and their tests compute each go-ahead code from the check QR the screen drew.
 
 ## Watch-only export
 
@@ -289,7 +289,7 @@ This is standard UEB grade 1 for digits next to letters. Letters are lowercase, 
 
 **SeedBook safety rules, enforced in the copy on screen.** The SeedBook is a public reference: never write the real phrase in it or store a marked copy with the wallet. Work one word at a time, in order, alone and offline; rehearse on a spare insert first. Never use a computer-driven embosser or printer for a real seed.
 
-**Your Tetris idea, kept.** The waiting-screen Tetris can show braille letters on its blocks as a teaching aid. Those letters come from core's separate game-randomness call, never from the entropy pool.
+**Your Tetris idea, kept.** The waiting-screen Tetris, planned after Snake (the Pi app ships Snake first), can show braille letters on its blocks as a teaching aid. Those letters come from core's `game_random`, never from the entropy pool.
 
 ## Sources
 

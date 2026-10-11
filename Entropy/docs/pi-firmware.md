@@ -59,50 +59,84 @@ The image is a minimal Buildroot Linux whose only job is to start `keepcrypt-pi`
 
 | Component | Responsibility | Implementation |
 | --- | --- | --- |
-| `hal::Display` | Draw 240x240 frames | `rppal` SPI plus `mipidsi` ST7789 driver; simulator uses `embedded-graphics-simulator` |
+| `hal::Display` | Draw 240x240 frames | `rppal` SPI plus `mipidsi` ST7789 driver; the simulator receives the same frames, exactly the pixels the panel gets, and writes them as PNG files itself, headless, with no display or image crate |
 | `hal::Buttons` | Joystick and 3 keys | `rppal` GPIO inputs with pull-ups, edge interrupts, 20 ms debounce; each event carries a `CLOCK_MONOTONIC` nanosecond timestamp |
 | `hal::HwRng` | Raw hardware samples | Reads `/dev/hwrng` in 64-byte blocks for the core's health tests |
 | `hal::Usb` | Backup export and snapshot import | Detects a stick under `/sys/block`, mounts, writes, syncs, unmounts |
 | `ceremony` | Drives the core session | Owns the typestate `Session`; nothing else can reach it |
 | `ui` | Screens and navigation | A screen state machine on `embedded-graphics`; large fonts; insert view shows one word per page with its five braille faces |
-| `games` | Optional waiting screen | Snake and Tetris; pieces drawn from core's separate game-randomness call (its own `getrandom` call), never from the pool |
-| `extras` | Write-only entropy input | An `ExtraSink` that forwards button timestamps to `Session::add_extra`; games get this sink, never the session |
-| `qr` | Seal, registration, collision-report and watch-only QR codes | qrcodegen for static codes, including the account QR, a single-frame BC-UR string from the core |
+| `games` | Optional waiting screen | Snake (Tetris later); food drawn from core's `game_random` (its own `getrandom` call), never from the pool; the games run in the firmware's one process but hold no session and no sink |
+| `extras` | Write-only entropy input | Picks the button timestamps that go to `Session::add_extra`: every press before the commitment in Mixed mode, game or not; the ceremony loop forwards them, and the games get no sink and never the session |
+| `qr` | Seal, registration, collision-report and watch-only QR codes | `qrcodegen-no-heap` for static codes, including the account QR, a single-frame BC-UR string from the core; it encodes into buffers the app owns and wipes after drawing |
 
 **Process rules.**
 
 - Lock memory with `mlockall` at start; secrets never leave RAM.
-- Wipe the session after 10 minutes without input, on any error, and before power-off.
+- Wipe the session after 10 minutes without input, on any failure, and before power-off. Any failure, at boot or later, then halts the device until a power cycle; only refusals of what the user or a stick supplied return to their screen (see Finish and halts).
 - The simulator is for development only and is never part of the image; CI checks the image contains no simulator symbols.
 
 ## User flow
 
-A ceremony is fifteen screens in a fixed order; the core's typestate makes it impossible to skip ahead. Dice-only mode skips steps 4, 5 and 14.
+A ceremony is fifteen screens in a fixed order: the typestate orders steps 1-8, core's read-back gate holds back the five exports until step 9 completes, and the firmware runs steps 10-15 in order, each optional one with a Skip. Dice-only mode skips steps 4, 5 and 14.
 
-1. **Boot and self-test.** Version, root filesystem hash prefix, known-answer tests and the hwrng startup test. Any failure shows a red stop screen; no seed can be made.
+1. **Boot and self-test.** Version, root filesystem hash prefix, known-answer tests and the hwrng startup test. Any failure shows a red stop screen that no key leaves; no seed can be made until a power cycle reruns these tests. The same screen ends any later failure (see Finish and halts).
 2. **Home.** New seed, Dice-only seed, Check a backup, Load registry snapshot, About.
 3. **Length.** 12 words (default; fills one KeepCrypt Hinge or Screw) or 24.
-4. **Device entropy.** Progress bar of health-tested hwrng bytes toward 1,536 (the 1,024 discarded startup samples, then one 512-sample window); the first window credits 2,048 bits, more than the 512 required, all at once at the end, and `getrandom` is read at the commitment; "Play while you wait" opens Snake or Tetris.
+4. **Device entropy.** Progress bar of health-tested hwrng bytes toward 1,536 (the 1,024 discarded startup samples, then one 512-sample window); the first window credits 2,048 bits, more than the 512 required, all at once at the end, and `getrandom` is read at the commitment; "Play while you wait" opens Snake.
 5. **Commitment.** C shown as 16 groups of 4 hex characters, with a note that only verification runs need to write it down.
 6. **Dice.** Joystick picks 1 to 6, press confirms, KEY1 undoes; the screen shows the count and bits so far ("37 / 50 rolls, 95.6 bits") but never the roll history, so a bystander cannot read it.
-7. **Check for collisions.** The cautionary prompt: "Check now" or "Skip". With a loaded snapshot the check runs on the device. Otherwise the device shows the seal card (8×8 seal image, Seal ID, check QR); the user scans it with the registry website or the offline checker app and types the 8-character go-ahead code with the joystick (a phase-2 camera can scan the go-ahead QR instead). Only a verified go-ahead reveals the words. On a Stop the user presses "Match found": the session is wiped unseen, a collision-report QR is shown, and "Add fresh entropy" starts a new ceremony that needs at least 99 rolls. On "Cannot check" the user presses "Start again": the session is wiped unseen and a new ceremony starts. Both buttons restart through `Wiped::restart`, never a fresh `Session::new`, so the core sets the next dice minimum, including the 99 rolls after a collision ("Add fresh entropy" in Seal, watch-only and braille).
-8. **Seed words.** One word per page in insert view: sequence number, word, SeedBook number and five face cells, with blank faces and mirror pairs flagged. KEY1 switches to a four-word overview; KEY2 and KEY3 page back and forward.
+7. **Check for collisions.** The cautionary prompt: "Check now" or "Skip". With a loaded snapshot, Check now first asks the user to confirm the snapshot's date, every time, since the Pi has no clock: "Snapshot No. \<number>, dated \<date>, \<count> entries. Use it for this check?" Yes runs the check on the device; No keeps the check open and shows the seal card, with the same nonce. Otherwise the device shows the seal card: three pages (the 8×8 seal image with the Seal ID; the Seal ID large, with its braille; the check QR), then an actions page with "Enter go-ahead code", "Match found" and "Cannot check". The user scans the check QR with the registry website or the offline checker app and types the 8-character go-ahead code with the joystick (a phase-2 camera can scan the go-ahead QR instead). Only a verified go-ahead reveals the words. On a Stop the user presses "Match found": the session is wiped unseen, a collision-report QR is shown, and "Add fresh entropy" starts a new ceremony that needs at least 99 rolls. On "Cannot check" the user presses "Start again": the session is wiped unseen and a new ceremony starts. Both buttons restart through `Wiped::restart`, never a fresh `Session::new`, so the core sets the next dice minimum, including the 99 rolls after a collision ("Add fresh entropy" in Seal, watch-only and braille).
+8. **Seed words.** One word per page in insert view: sequence number, word, SeedBook number and five face cells, with blank faces and mirror pairs flagged. KEY1 switches to a four-word overview; KEY2 and KEY3 page back and forward. Press on the last insert starts the read-back.
 9. **Read-back from the metal.** The user enters the first four letters of every punched insert, in order; the device compares each with the seed and names any mismatch. Users without metal re-enter their paper words the same way.
 10. **Wallet summary.** Fingerprint and first receive address, to compare after restoring.
 11. **Encrypted backup (optional).** See the USB section below.
-12. **Watch-only export (optional).** Account QR for Sparrow and descriptor QR for Bitcoin Core; asks for the BIP39 passphrase first if the user uses one.
+12. **Watch-only export (optional).** Account QR for Sparrow and descriptor QR for Bitcoin Core; asks for the BIP39 passphrase first if the user uses one. The Pi takes BIP39 passphrases of printable ASCII (0x20 to 0x7E), up to 100 characters; a wallet whose passphrase uses other characters gets no watch-only export from the Pi, and its user builds the watch-only wallet in their coordinator after restoring.
 13. **Register seal (optional, once).** Registration QR for a second device.
-14. **Reveal D (optional).** For verification runs only, with a warning that D plus the rolls recreates the seed. D is shown as 16 groups of 4 hex characters, like C.
+14. **Reveal D (optional).** For verification runs only, with a warning that D plus the rolls recreates the seed. D is shown as 16 groups of 4 hex characters, like C. On the offline computer, type each value into verify.py only after its prompt appears: anything typed earlier is dropped, though the terminal may already have shown it.
 15. **Finish.** The SeedBook "before you walk away" checklist, then the session is wiped and "Safe to power off" is shown.
+
+### Buttons
+
+One press is one event: presses are debounced and nothing more, with no auto-repeat and no type-ahead filter. A footer on every screen names each key's action there.
+
+| Screen kind | Up / Down | Left / Right | Press | KEY1 | KEY2 | KEY3 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Menus, offers | move | - | select | back, only where nothing is lost | - | - |
+| Dice | pick 1 to 6 (blank after each confirm) | - | confirm | undo | - | Done, once the minimum is met |
+| Words | - | - | read-back, on the last insert (back to entry when reviewing a mismatch) | overview on/off | previous | next |
+| Entry grids | cursor | cursor | type | delete | - | done |
+| Read-back mismatch | - | - | re-enter | show the insert | - | - |
+| Snake | steer | steer | play again, after a round ends | leave | - | - |
+| QR and info pages | - | - | continue | back | previous page | next page |
+
+- **Entry grids:** the go-ahead code uses the 32 Crockford symbols in 8×4; read-back and backup-passphrase words use a-z plus "blank" in 7×4; the BIP39 passphrase uses printable ASCII in three 8×4 pages.
+- **Confirmations:** confirm is disabled at 256 rolls, and the one-way choices (Skip, Match found, Cannot check) each take a confirm screen.
+
+### Protected screens and idle
+
+Every screen is Protected or Public. Protected screens show a secret: the words in insert view and overview (in the ceremony and in "Check a backup"), the read-back entry and mismatch screens, the backup passphrase with its confirm and wrong-pick screens, BIP39-passphrase entry and backup-passphrase entry, D, the registration QR, the collision-report QR (it carries the destroyed seed's seal code), and the account and descriptor QRs. Every other screen is Public, including the wallet summary, the watch-only summary, the dice screen and the check QR (T and a nonce), as on the phones.
+
+- **Privacy gate:** entering a Protected screen from a Public one passes one gate, "No person or camera can see this screen", like the phones' "I'm alone, show words".
+- **Cover:** after 30 seconds without input a Protected screen is covered. The first press only uncovers it and the session stays, so slow punching or scanning is never cut short.
+- **Warning:** at 9 minutes without input, a warning appears on any screen while a session or a checked backup is held; any key keeps everything.
+- **Wipe:** at 10 minutes the session or checked backup is wiped, and the device says so and returns Home. A loaded snapshot survives, and so does a pending 99-roll minimum after a collision ("Add fresh entropy" in Seal, watch-only and braille).
+
+### Finish and halts
+
+- **Finish:** step 15 is terminal. After the checklist the session is wiped, the screen goes black and "Safe to power off" stays; no key leaves it, so the next ceremony starts only after a power cycle. A loaded snapshot stays in RAM until power-off.
+- **Halts:** any failure, at boot or later, ends on the red stop screen of step 1. Everything secret the firmware holds is wiped first, the screen names the failure in fixed text, and no key leaves it; only a power cycle does, and it reruns the boot self-test and the hwrng startup test before any new seed. There is no retry and no other source, so an intermittent hwrng fault cannot pass on a second try, and a dice-only seed cannot follow straight after an hwrng failure.
+- **What halts:** every error that ended a session; every known-answer-test, entropy-source, health-test, internal or export-self-check error from any core call, `game_random` included; and every display, button or hwrng fault.
+- **What does not:** only refusals of what the user or a stick supplied return to their own screen, naming the refusal in fixed text: a wrong go-ahead code, a read-back mismatch, a wrong backup passphrase or unrecognised entry, an empty BIP39 passphrase, a refused snapshot, and USB faults.
+- **The 99-roll minimum:** a power cycle forgets a pending 99-roll minimum after a collision, as power-off always has.
 
 ## Games, sensors and the entropy pool
 
-Snake and Tetris stay in the product as an optional waiting screen and a source of uncredited button timing; they can add bytes to the pool but can never read from it. Extras reach the pool only until the commitment, because C fixes D.
+Snake (Tetris later) stays in the product as an optional waiting screen and a source of uncredited button timing. The game holds no path to the pool: the ceremony loop forwards its key timing, and the game can neither add to the pool nor read from it. Extras reach the pool only until the commitment, because C fixes D.
 
-- **Input timing:** every button press before the commitment, game or not, sends its nanosecond timestamp through the `ExtraSink`. The core mixes these bytes in and credits them zero.
-- **Game randomness:** falling pieces and food positions come from core's separate game-randomness call, which makes its own `getrandom` call and never touches the pool; the games never call `getrandom` themselves. Nothing derived from the pool is ever drawn on screen, including the braille-style block characters.
+- **Input timing:** for every button press before the commitment in Mixed mode, game or not, the ceremony loop passes its nanosecond timestamp to `Session::add_extra`. The core mixes these bytes in and credits them zero.
+- **Game randomness:** food positions, and later Tetris's falling pieces, come from core's `game_random`, which makes its own `getrandom` call and never touches the pool; the games never call `getrandom` themselves. Nothing derived from the pool is drawn by a game or the extras, including the braille-style block characters.
 - **Game scope:** games run only during step 4; they close automatically before the commitment screen.
-- **Phase-2 sensors:** camera (lens covered, raw frames), I2S microphone and IMU feed the same sink when enabled in settings; all default off and are credited zero.
+- **Phase-2 sensors:** camera (lens covered, raw frames), I2S microphone and IMU feed `Session::add_extra` the same way when enabled in settings; all default off and are credited zero.
 - **Phase-2 TRNG:** an Infinite Noise TRNG read in raw mode is health-tested like `/dev/hwrng` and may count toward the device quota only after its credit is backed by `ea_non_iid` data (milestone M8).
 
 ## Encrypted backup to a USB stick
@@ -114,11 +148,11 @@ The device writes exactly one kind of file, an age-encrypted backup (format in t
 1. **Passphrase.** The core generates an 8-word backup passphrase. The screen shows it four words at a time with the label "Backup passphrase: store apart from the USB stick."
 2. **Confirm.** The user picks 2 random passphrase words from four choices each.
 3. **Insert stick.** FAT32 stick in the OTG port; the device waits until it appears.
-4. **Encrypt and write.** scrypt at log2 N = 18 takes noticeable time on a Pi Zero, so a progress screen stays up. The file `keepcrypt-backup-<8 hex>.age` is written, synced, and the stick unmounted.
+4. **Encrypt and write.** scrypt at log2 N = 18 takes noticeable time on a Pi Zero, so a progress screen stays up. The file `keepcrypt-backup-<8 hex>.age` is written as a new file, never over an existing one, then synced, and the stick unmounted.
 5. **Read back.** Remount read-only, decrypt in RAM, compare the fingerprint, unmount. Only then: "Backup verified. Remove the stick."
 6. **On failure.** Delete the partial file if possible, show the error, and keep the ceremony open so the user can retry or skip.
 
-**Restoring later, without KeepCrypt:** on an offline computer, run `age -d keepcrypt-backup-xxxxxxxx.age` and type the 8-word passphrase. The KeepCrypt apps and the Pi's "Check a backup" tool do the same check and show only the fingerprint unless the user asks for the words.
+**Restoring later, without KeepCrypt:** on an offline computer, run `age -d keepcrypt-backup-xxxxxxxx.age` and type the 8-word passphrase. The KeepCrypt apps and the Pi's "Check a backup" tool do the same check and show only the fingerprint unless the user asks for the words. On the Pi the passphrase is typed as the first four letters of each word, or the whole word for a three-letter word, as in the read-back.
 
 ## Build, flash and verify
 
