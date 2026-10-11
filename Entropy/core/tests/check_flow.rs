@@ -11,7 +11,8 @@
 //! - `restart` borrows the `Wiped` (M3 Q26 C), so a kept `Wiped` restarts at 99 every time until a
 //!   check passes: twice from one collision `Wiped`, for either length, with a failed restart
 //!   between them, and twice from the `Wiped` of a "Cannot check" in that restart. A "Cannot
-//!   check" in a first session restarts at 50, twice.
+//!   check" in a first session restarts at 50, twice. The shipped `restart`, on the OS source as
+//!   the Pi calls it, also restarts one collision `Wiped` twice at 99, and the report stays.
 //! - A proof for another bucket gives `Retry`, and the right code still reveals.
 //! - Freshness is the shell's warning, not a refusal: the stale proof is `Stale` for kcr.json's
 //!   pinned today (a phone warns) and still reveals; the future-dated proof is `Future`.
@@ -293,6 +294,31 @@ fn a_kept_wiped_restarts_at_99_until_a_check_passes() {
             .expect("checking");
         let ready = revealed(checking.reveal(GoAhead::Code(text(&v["go_ahead"]))));
         assert_eq!(words(&ready), text(&v["mnemonic"]), "{name}");
+    }
+}
+
+/// The same through the shipped `restart`, the one the Pi calls, on the OS source rather than the
+/// stub twin's: each of two restarts from one kept collision `Wiped` needs 99 rolls, for either
+/// length, and the destroyed seed's report stays with it.
+#[test]
+fn the_shipped_restart_keeps_a_kept_wiped_at_99() {
+    let destroyed = seed("dice-50-words12");
+    for (len, name) in NINETY_NINE {
+        let kept = wiped_by_collision();
+        for restart in 1..=2 {
+            let rolling = kept
+                .restart(len, Mode::DiceOnly)
+                .and_then(Session::commit)
+                .expect("restarted")
+                .start_dice();
+            assert_eq!(rolling.minimum_rolls(), 99, "{name}: restart {restart}");
+            let report = kept.collision_report().expect("the report stays");
+            assert_eq!(
+                report.grouped_code(),
+                text(&destroyed["seal_code"]),
+                "{name}: restart {restart}"
+            );
+        }
     }
 }
 

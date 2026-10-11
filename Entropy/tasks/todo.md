@@ -4258,6 +4258,11 @@ carries it, and every commit names a proof that runs at that commit.
   lists only `wiped_holds_no_secret.stderr`, 2 insertions and 2 deletions: the quoted line
   `pub fn restart(self, len: SeedLength, mode: Mode) -> ...` became `pub fn restart(&self, ...`, and its underline
   grew by one `^`. `cargo llvm-cov` 97.40% of core's lines (session/wiped.rs 100%), over the 95% floor.
+  Proof (review fix, commit 4b): `the_shipped_restart_keeps_a_kept_wiped_at_99` calls the shipped `restart` (the OS
+  source, as the Pi does) twice on one collision `Wiped`, for 12 and 24 words: 99 rolls both times, and the report
+  stays. `cargo test -p keepcrypt-core --locked --features test-sources`: check_flow 10 passed. Two scratch mutants
+  that change only the shipped body (the 99-roll flag used once; the report gone after a restart) passed check_flow
+  before this test and fail it now.
 
 **3. Core: `TypedBackupPassphrase::from_first_four` (Q32 (b))**
 - [x] `from_first_four(words: &[&str]) -> Result<Self, CoreError>`.
@@ -4979,6 +4984,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
    `game_random`.
 3. core: `game_random`, its tests and the release_probe call (group 1).
 4. core: the borrowing restart, its tests, the regenerated `.stderr` and module docs (group 2).
+   4b. tests: the recompute review: check_flow restarts one kept collision `Wiped` twice through the shipped
+   `restart`, not only through `restart_with_stub`.
 5. core: `from_first_four` and its tests (group 3).
 6. CLAUDE.md: rule 1 names `game_random`.
 7. pi, sim, supply-chain: manifests, Cargo.lock (autocfg held), vet exemptions and imports (group 4).
