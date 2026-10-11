@@ -56,6 +56,12 @@ impl Frame {
             .iter()
             .map(|&raw| Rgb565::from(RawU16::new(raw)))
     }
+
+    /// The same pixels as raw RGB565 values (`Rgb565::into_storage`: red in the top 5 bits, blue
+    /// in the low 5), for a reader without embedded-graphics: the simulator's PNG writer.
+    pub fn raw(&self) -> &[u16] {
+        &self.pixels
+    }
 }
 
 /// The buffer index of `point`, or `None` outside the panel.
@@ -109,8 +115,11 @@ mod tests {
         let colour = Rgb565::new(0x1f, 0x00, 0x0a);
         let Ok(()) = Pixel(Point::new(3, 4), colour).draw(&mut frame);
         assert_eq!(frame.pixel(Point::new(3, 4)), Some(colour));
-        // Row by row: (3, 4) is the 4 * 240 + 3rd value.
+        // Row by row: (3, 4) is the 4 * 240 + 3rd value, in both views.
         assert_eq!(frame.pixels().nth(4 * 240 + 3), Some(colour));
+        assert_eq!(frame.raw().len(), 240 * 240);
+        assert_eq!(frame.raw()[4 * 240 + 3], 0xf80a);
+        assert_eq!(colour.into_storage(), 0xf80a);
         assert_eq!(frame.pixel(Point::new(4, 3)), Some(Rgb565::BLACK));
         assert_eq!(count(&frame, Rgb565::BLACK), 240 * 240 - 1);
         assert_eq!(

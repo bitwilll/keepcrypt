@@ -15,7 +15,9 @@
 use core::fmt;
 
 use keepcrypt_core::BackupFile;
-use zeroize::Zeroizing;
+/// The wiping buffer `Usb` returns, re-exported so that a `Hal` implementation (the simulator) can
+/// name it without a zeroize edge of its own.
+pub use zeroize::Zeroizing;
 
 use crate::input::Event;
 use crate::screen::Screen;

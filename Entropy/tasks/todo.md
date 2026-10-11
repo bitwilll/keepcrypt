@@ -4481,7 +4481,7 @@ carries it, and every commit names a proof that runs at that commit.
   upper case with hyphens; a missing or extra digit, or a line feed left in, is refused.
 
 **7. pi/sim harness (Q28 (c), Q30)**
-- [ ] pi/sim becomes a lib, a bin and tests, with `#![forbid(unsafe_code)]`. `SimHal` (in the lib) implements every
+- [x] pi/sim becomes a lib, a bin and tests, with `#![forbid(unsafe_code)]`. `SimHal` (in the lib) implements every
   trait:
   - Display keeps a log of every present since the last event: screen id, the model's text (in `Zeroizing`) and a
     copy of the frame. It checks two invariants on every present: `Protected` elements appear only on Protected ids,
@@ -4501,7 +4501,20 @@ carries it, and every commit names a proof that runs at that commit.
 
   Proof (pi/sim tests): each failure stream's bytes equal the vector's `samples_hex` and get core's recorded verdict;
   a write fault leaves no file; the three Usb refusals; the marker test.
-- [ ] `png.rs`: Rgb565 to 8-bit RGB; an IHDR chunk, one IDAT chunk of stored deflate blocks with Adler-32, an IEND
+  Proof (commit 10): `cargo test --workspace --locked` and `cargo test -p keepcrypt-pi-sim --locked --features
+  keepcrypt-core/test-registry`: pi/sim's 31 unit tests and tests/hal.rs's 5 pass in both. Read through `SimHal`,
+  `run-of-6-startup` and `apt-62-startup` equal their 2,048-byte `samples_hex`, then fault, and `hwrng_boot_test` on
+  the first 1,024 gives core's RepetitionCount 505 and AdaptiveProportion 500 startup verdicts; after a counting boot,
+  `run-of-6-continuous` in a Mixed Pi session gives RepetitionCount, continuous, 1505 in its 24th block, every byte the
+  vector's; the counting stream's first 1,536 bytes equal `counting-1536` and pass boot and a session. With a real core
+  `BackupFile` (dice-only `coldcard-50`): write and sync faults and a read-only stick leave no file, a write over an
+  existing name is `Exists`, reading back or removing another file is `NotWritten` and leaves it, a corrupt read-back
+  fails `verify_backup`, a pulled stick stays out, and the stick's log shows every read read-only.
+  `marker_is_the_documented_string` passes, and the marker is in the rlib and in tests/hal.rs's binary. `next_event`
+  on a transient screen or before any present, a Protected element on a Public id and a model that does not fit each
+  fail the test. An `unsafe` block appended to lib.rs and to main.rs in turn fails `cargo check` at that file's
+  `#![forbid(unsafe_code)]`. The log holds the presents since the last `SimHal::take_presents`.
+- [x] `png.rs`: Rgb565 to 8-bit RGB; an IHDR chunk, one IDAT chunk of stored deflate blocks with Adler-32, an IEND
   chunk, and a CRC-32 per chunk. The encoder is deterministic: the same frame always gives the same bytes. The
   placeholder for a Protected frame is a grey frame naming the screen id.
 
@@ -4511,10 +4524,20 @@ carries it, and every commit names a proof that runs at that commit.
   - a hand-checked 2×2 file matches byte for byte;
   - `python3 -I` with the standard zlib decodes a PNG back to the frame's pixels;
   - a placeholder equals its reference bytes.
-- [ ] Measure render time per frame and per present at opt-level 0, with a 100-frame loop, before any scenario is
+  Proof (commit 10): `png`'s tests pass in both configurations: the two check values; the 2×2 file equals its bytes,
+  whose CRCs and Adler-32 come from Python's zlib; `python3 -I` (zlib, stdin to stdout, no file) decodes all 65,536
+  RGB565 values in a 256×256 image and a drawn seal frame back to their pixels, checking every CRC, the chunk order,
+  IHDR and filter 0; the words-insert placeholder's PNG has its pinned SHA-256 (f4a6b045...). The placeholder is in
+  `panel.rs`, drawn by pi/app's `Painter`, grey and white only, from the screen id alone.
+- [x] Measure render time per frame and per present at opt-level 0, with a 100-frame loop, before any scenario is
   written. If a full scenario would exceed the `test` budget (group 14), stop and ask for Q31 (g)'s fallback.
 
   Proof: the timings pasted under Review.
+  Proof (commit 10): `cargo test -p keepcrypt-pi-sim --locked --test timing -- --ignored --nocapture` on this Mac, per
+  present (render alone) in µs: words-insert 2105 (1189), watch-descriptor-qr 4055 (3135), seal-image 2865 (1944),
+  readback-entry 2066 (1164), dice 1850 (929), game-snake 1693 (817); a PNG encode about 14 ms (captures only). A full
+  scenario of about 1,500 presents takes about 6 s even at the slowest rate, and 20,000 presents 81 s, inside the
+  6-minute `test` budget with room for a slower runner: the fallback is not applied.
 
 **8. pi/app ceremony steps 1-7, halts, restarts, idle; the scenario driver (pi-firmware.md:75-88; swb:108-164; rules 3, 6)**
 - [ ] `App<H: Hal>` with `start()` (boot), `step()` (one `next_event`, then its handling) and `run()` (`step` in a loop,
