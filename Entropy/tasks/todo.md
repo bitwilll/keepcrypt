@@ -448,17 +448,21 @@ of Q1-Q12 does not cover it, so it waited for the owner (answered 2026-10-10, ow
       pass" stays unticked. Recorded 2026-10-10, review fix after commit 25. Answered 2026-10-10 (owner item 9):
       (a) and (b) are approved as built.
 
-### Raised by the review of the owner-item commits (2026-10-10; owner answer pending, low)
+### Raised by the review of the owner-item commits (2026-10-10; item 14 answered 2026-10-11, item 13 pending, low)
 Neither blocks the M1 gate. Both are items 13 and 14 under "M1: new open owner items" in Review.
 - [ ] **The seed-pipeline figure.** `docs/img/seed-pipeline.png` still reads "50 rolls give 129 bits; 99 give 256".
       The repo holds no source for it. 6ba465c notes the rounding in the sentence under the figure. A redraw needs
       the owner's source file, or approval to redraw it.
-- [ ] **The 99-roll minimum after a wipe.** Only a `Wiped` carries the 99-roll minimum after a collision, and only a
+- [x] **The 99-roll minimum after a wipe.** Only a `Wiped` carries the 99-roll minimum after a collision, and only a
       check leaves one. So an error, the Pi's idle wipe, the phones' background or screenshot wipe, or an app kill in
       the restarted session leads to `Session::new` at the normal minimum. seal-watchonly-braille.md "Add fresh
       entropy" now states that exception (dc53b8f). Recommended: in M3, a core exit on the pre-Ready states that wipes
       and returns a `Wiped` keeping the flag, for the shells' timeout and capture wipes. Otherwise: keep the
-      documented exception.
+      documented exception. Answered 2026-10-11 (M3 Q26 (C), "approve all"): instead of a new exit,
+      `Wiped::restart(&self, ..)` borrows, so the Pi keeps the last `Wiped` until a check passes or the user skips, and
+      restarts from it after the idle wipe (7299e27); errors halt the Pi (Q25). seal-watchonly-braille.md "Add fresh
+      entropy" now says a timeout does not lower the minimum, replacing dc53b8f's exception (c306bc2). The phones keep
+      their `Wiped` the same way in M5 and M6.
 
 ### Needed before M2 code (Q16-Q24, answered 2026-10-10)
 **Owner's answer (2026-10-10): "approve all".** Every recommendation below is approved as written: Q16 (a) the split
@@ -937,7 +941,8 @@ supply-chain, scripts, .github, docs, CLAUDE.md), so the whole PR needs your rev
   that fills a buffer from its own `getrandom` call and never touches the pool. The Pi games are its first user; M5
   and M6 reach it through the FFI. Its name then goes into build-plan.md's sketch (which today says "the games'
   call"), and into CLAUDE.md rule 1, pi-firmware.md, mobile-apps.md and seal-watchonly-braille.md, which call it
-  "core's separate game-randomness call".
+  "core's separate game-randomness call". Done in M3: core has `game_random` (17e4814), and all of them name it
+  (c306bc2, and 28a0c5d for CLAUDE.md rule 1).
 - 99 rolls after a collision (owner item 5, 2026-10-10): after a Stop or a Cannot check, the M3, M5 and M6 shells
   offer only `Wiped::restart`, never `Session::new`, so a restart after a collision keeps 99 rolls.
 - M7 audit note (owner item 6, 2026-10-10): the accepted library residuals, which core cannot wipe:
@@ -3965,10 +3970,10 @@ Core's test uses `sha2` and `serde_json`, both already approved.
 **Starting point**
 - `m3-pi-sim` is at 8e6917b: main's merge 156c8ef plus the M2 approval note in this file.
 - Rules are cited from the clone's `Entropy/CLAUDE.md`.
-- The gate (build-plan.md:286): "Every screen including seal check with go-ahead code entry and braille pages, button
+- The gate (build-plan.md:293): "Every screen including seal check with go-ahead code entry and braille pages, button
   handling, waiting-screen game, USB export and snapshot import mocked". Its proof: "Scripted run drives a full
   ceremony in the simulator; you review the screen captures".
-- M4 (:287) adds the drivers, the hwrng reader, Buildroot and real USB export.
+- M4 (:294) adds the drivers, the hwrng reader, Buildroot and real USB export.
 
 **Scaffolds**
 - `pi/app` (`keepcrypt-pi`, lib and bin) is `src/lib.rs` (one doc line) and `src/main.rs` (`fn main() {}`). It depends
@@ -4049,7 +4054,7 @@ Core's test uses `sha2` and `serde_json`, both already approved.
   `pub fn restart(self, len: SeedLength, mode: Mode) -> ...` and its underline.
 
 **What core lacks**
-- The game-randomness call (build-plan.md:91, :202-204).
+- The game-randomness call (build-plan.md:91, :207-211).
 - A restart that survives the idle wipe, for item 14: today it is `Wiped::restart(self, ..)` (wiped.rs:121).
 - Backup-passphrase entry that suits a joystick: `from_words` takes exact list words (secret.rs:309).
 - A QR encoder: core returns payload strings only.
@@ -4114,6 +4119,8 @@ It does not cover pi/sim.
 **References and terms**
 - Docs are named by file (build-plan.md, design.md, pi-firmware.md, mobile-apps.md, and seal-watchonly-braille.md as
   swb, all in `docs/`), plus CLAUDE.md, lessons.md and this file.
+  - Line numbers into `docs/` in this M3 section, its inputs included, are the docs' after commit 2 (c306bc2),
+    which added lines to build-plan.md and pi-firmware.md; Q25-Q34 keep the numbers they were asked with.
 - Q25-Q34 are this milestone's questions, under "Needed before M3 code".
 - Symbols are as in CLAUDE.md: D, C, R, E, S, T, n, G.
 - "Step N" is pi-firmware.md "User flow" step N (1-15).
@@ -4213,7 +4220,7 @@ carries it, and every commit names a proof that runs at that commit.
 
   Proof: pasted under "M3: local proof".
 
-**1. Core: `game_random` (Q27; rules 1, 3; build-plan.md:91, :202-204)**
+**1. Core: `game_random` (Q27; rules 1, 3; build-plan.md:91, :207-211)**
 - [x] `pub fn game_random(buf: &mut [u8]) -> Result<(), CoreError>` in `core/src/source.rs`.
   - The body is one `Source::Os.fill(buf)` (source.rs:132).
   - Re-exported next to `ExtraSource` (lib.rs:61).
@@ -4487,7 +4494,7 @@ carries it, and every commit names a proof that runs at that commit.
     - the bar shows `hw_bytes_tested / HW_BYTES_NEEDED` and the credited bits;
     - "Play while you wait" opens Snake (group 10);
     - Continue appears only when `credited_bits() >= required_bits()`.
-    - Dice-only shows `dice-only-notice` instead (build-plan.md:213).
+    - Dice-only shows `dice-only-notice` instead (build-plan.md:220).
   - Step 5: `commit`, then `commitment` (C through `ui/hex`, with "only verification runs need to write it down"),
     then `start_dice`.
   - Step 6: `dice`:
@@ -4552,7 +4559,7 @@ carries it, and every commit names a proof that runs at that commit.
 
   Proof: vector-1's T with n = 0001020304050607 gives `CF94-BCAJ`; kcr.json's three other G values match.
 
-**9. pi/app steps 8-15 and the Home side flows (pi-firmware.md:89-96, :108-121; swb:200-292)**
+**9. pi/app steps 8-15 and the Home side flows (pi-firmware.md:89-96, :142-155; swb:200-292)**
 - [ ] Step 8: `words-insert`, one insert per page:
   - the header "Insert NN · device k of m";
   - the word at ×2, with letters past the fourth drawn lighter;
@@ -4616,7 +4623,7 @@ carries it, and every commit names a proof that runs at that commit.
   Proof for this group: scenarios `drill_12`, `dice_24_code`, `skip_and_idle` and `check_backup` (group 11), each at
   this commit.
 
-**10. pi/app Snake (Q27; pi-firmware.md:98-104; rule 1)**
+**10. pi/app Snake (Q27; pi-firmware.md:132-138; rule 1)**
 - [ ] `games/snake.rs` and `games/mod.rs`:
   - an 18×18 grid of 12 px cells (216 px); one cell per Tick; the joystick steers and KEY1 leaves;
   - a wall or self hit ends the round, and the screen stays `game-snake` ("Round over · Press to play again") until
@@ -4807,7 +4814,7 @@ carries it, and every commit names a proof that runs at that commit.
   - The owner scans every QR capture with a phone (check, register, collision report, re-check, account UR,
     descriptors). Each decoded text must equal core's string, and the Review records it.
   - The owner's verdict, quoted with the date.
-  - Gate report against build-plan.md:286, then stop and wait for approval.
+  - Gate report against build-plan.md:293, then stop and wait for approval.
 
 **Deferred, with their milestone**
 - **M4:**
@@ -5764,7 +5771,8 @@ Raised by the reviews of the owner-item commits; also listed under "Open questio
     now states that exception (dc53b8f). Recommended: in M3, add a core exit on the pre-Ready states that wipes and
     returns a `Wiped` keeping the flag, for the shells' timeout and capture wipes. That changes the typestate API
     (rule 6 fixtures), so it needs the owner's approval. Power-off can never keep the flag, because nothing is
-    persisted (rule 8). Otherwise: keep the documented exception.
+    persisted (rule 8). Otherwise: keep the documented exception. Answered 2026-10-11 (M3 Q26 (C)): the borrowing
+    `Wiped::restart` (7299e27; seal-watchonly-braille.md in c306bc2); see "Open questions for the owner".
 
 ### M1: the owner's answers applied (2026-10-10)
 **CI on 4733e4a** (run https://github.com/bitwilll/keepcrypt/actions/runs/38033374724, PR #4; the first run with
