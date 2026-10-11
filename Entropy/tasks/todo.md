@@ -2715,16 +2715,21 @@ Groups land in the order below. Vectors come before the core test that reads the
 - Out of M2: see "Deferred, with their milestone" below.
 
 **0. Before code**
-- [ ] Record the owner's answers to Q16-Q24, quoted with the date. Apply the approved doc edits (Q19) alone in one
+- [x] Record the owner's answers to Q16-Q24, quoted with the date. Apply the approved doc edits (Q19) alone in one
       commit with no code. Proof: the answers in this file; commit 2's diff touches only `docs/`.
       Answers recorded 2026-10-10 under "Needed before M2 code" ("approve all").
-- [ ] Baseline at 90b6ab9, pasted under Review and used by group 8's budget:
+      Proof (M2 Review, 2026-10-11): a7c941e records the answers. Commit 2 is 5d222f5, and `git diff --name-only
+      5d222f5~1 5d222f5` lists only Entropy/docs/build-plan.md, design.md, mobile-apps.md and pi-firmware.md.
+- [x] Baseline at 90b6ab9, pasted under Review and used by group 8's budget:
       - `--selftest` 11/11 on Python 3.12 and `/usr/bin/python3` 3.9.6, with times;
       - canaries 54/54, with wall time;
       - `cargo test` in both configurations.
+      Proof (M2 Review, 2026-10-11): pasted under "M2: local proof". It was taken at a7c941e, which differs from
+      90b6ab9 only in this file: 11/11 on 3.12.5 (5.6 s) and 3.9.6 (9.2 s), canaries 54/54 in 1:09, `cargo test`
+      183 and 251 passed.
 
 **1. Split the shipped verifier from the repo-only generator (Q16 (a); rules 8 and 10; build-plan.md "Release")**
-- [ ] `tools/verify/vectorgen.py` (new) and `tools/verify/verify.py`, split by one rule: a function stays in verify.py
+- [x] `tools/verify/vectorgen.py` (new) and `tools/verify/verify.py`, split by one rule: a function stays in verify.py
       if a published computation or reader needs it, and moves if it exists only to build vectors, sign, write, run
       another program or read the repo.
       - vectorgen loads verify.py by path with `importlib` (as age-interop.py:58 does) and uses its names.
@@ -2749,6 +2754,12 @@ Groups land in the order below. Vectors come before the core test that reads the
       - age-interop passes in its default mode and with `--core`; canaries pass 54/54; CI is green on the commit;
       - verify.py imports none of `json`, `os`, `pathlib`, `subprocess`, `tempfile`, `math`, `stat` or `zlib`, and
         both files' line counts are recorded.
+      Proof (M2 Review, 2026-10-11): commit 3 is 99edb77. On 3.12.5 and 3.9.6 the seven `--write-*-vectors` modes
+      leave `vectors/` byte-identical, and `vectorgen.py --selftest` passes 11/11 with the baseline's lines (check 3
+      included). age-interop passes in its default mode and with `--core` (Homebrew age 1.3.2), and canaries pass
+      54/54. verify.py has 1,630 lines and imports only base64, binascii, datetime, hashlib, hmac, re, struct, sys and
+      unicodedata; vectorgen.py has 4,096. CI runs only on pushed heads: 86c4c0d, the first pushed head that holds
+      99edb77, passed all 14 Entropy check runs (run 38061106528).
 - [x] Provenance, in the next commit (Q16 (b); lessons.md rule 1, so every committed value still names the script
       that makes it):
       - vectorgen's seven `description` strings name `tools/verify/vectorgen.py --write-X-vectors` and
@@ -2981,7 +2992,7 @@ Groups land in the order below. Vectors come before the core test that reads the
       Proof (review fix): no case pinned "non-ASCII first", since the Arabic-Indic digit alone is refused at the same
       position by the hex-digit test. An 18th case, `g` at character 3 and an Arabic-Indic digit at 11, must be
       refused at 11; a scratch copy without the non-ASCII pass gives (`D`, 3) and fails it on 3.12.5 and 3.9.6.
-- [ ] `verification_run(length, roll_lines, c_text=None, d_text=None)` returns one report for both modes:
+- [x] `verification_run(length, roll_lines, c_text=None, d_text=None)` returns one report for both modes:
       - mixed: C and D parsed, then `hmac.compare_digest(commitment(D), C)`; a mismatch stops here. The roll count must
         then lie in [50 or 99, 256] by length (verify.py `DICE`); otherwise the report says no honest device finishes
         a first ceremony with that count. Then E = `mixed_entropy(D, R)`;
@@ -2994,6 +3005,14 @@ Groups land in the order below. Vectors come before the core test that reads the
         - A face is its cell, then its letter. A mirror-pair letter adds `/<partner>`, a non-blank fifth face adds
           `~`, and a blank face is `--`.
         - Example: `01 device 1/1 seq 01 seedbook 0001 abandon | ⠁a ⠃b ⠁a ⠝n ⠙d/f~ | ⠁⠃⠁⠝⠙⠕⠝`.
+      Proof (M2 Review, 2026-10-11): commit 7 (3727711); its ABANDON line equals the example. Check 13 (fcb3481,
+      a3a4d4e, 9fc299f, 0d2ff75) works out every part of the report again on the 1,028 cases: the C/D refusal before
+      the rolls (D with one digit changed), the mixed range and the dice-only warning against vectorgen's own quota,
+      the seed bits, the words, the seal and every insert line. Core's agreement test (1f86f2c) compares every field,
+      and check 12's command runs pin `render`'s text (11d1163). Scratch copies of verify.py fail check 13 on both
+      Pythons, before and after a re-baseline: no C/D refusal, a 257-roll maximum, no dice-only warning, insert
+      device 1, sequence = position, bucket + 1, the Seal ID braille reversed, colour index + 1, 12-word seed bits
+      E[16:32], and face 0 accepted.
 - [x] URL builders (Q6d; the origin stays `https://registry.invalid` until M9):
       - `recheck_url(T)` = `/check#t=<64 lowercase hex>`;
       - `check_url(T, n)` adds `&n=<16 lowercase hex>`;
@@ -3073,6 +3092,10 @@ Groups land in the order below. Vectors come before the core test that reads the
       lines `render` prints (C, D, the words and the bucket, which render does not show, from the report); a ceremony
       that is refused, warned or not "C matches D" stops the generator. Each refusal's verdict is derived from the run
       (InputRefused, `refused`, `warning`, or computed: `diverges`).
+      (changed 2026-10-11: 9a3902a reworded the spec's `expect` line to name each value's source, so the committed
+      file is 4,155,498 bytes, SHA-256 `acc0770a…`, still 1,048 lines. n is the stub's last 8 bytes, and the check
+      URL, G and the register URL come from verify.py's `check_url`, `go_ahead_code` and `register_url`, not from
+      `verification_run`; see the SOURCES.md item's review fix.)
 - [x] Check 13, "vectors/agreement.json matches regenerated output":
       - byte equality with the regenerated file;
       - coverage counts: 125 ceremonies per combination with both paths in each; every roll-count edge; at least one
@@ -3189,7 +3212,7 @@ Groups land in the order below. Vectors come before the core test that reads the
       key, each refusal's error, step and roll, the verdicts, the divergence's words and seed bits). A stub one byte
       short fails closed at `start_check` (and at `commit` on the skip path); a deleted ceremony or refusal fails its
       count. A scratch core whose `REGISTRY_ORIGIN` is changed fails every combination at `recheck_url`.
-- [ ] `core/Cargo.toml`: `[[test]] name = "agreement"`, `required-features = ["test-sources"]`, so it runs in CI
+- [x] `core/Cargo.toml`: `[[test]] name = "agreement"`, `required-features = ["test-sources"]`, so it runs in CI
       `test` step 2 and in coverage, never in the release configuration.
       Proof:
       - `cargo test -p keepcrypt-core --locked --features test-sources --test agreement` passes all 1,028 cases, and the
@@ -3205,11 +3228,16 @@ Groups land in the order below. Vectors come before the core test that reads the
       --locked` passes without it). The test-sources run passes in 60.6 s, agreement 1.17 s of it, and `cargo llvm-cov
       --locked -p keepcrypt-core --features test-sources --no-cfg-coverage --fail-under-lines 95` runs it (1.22 s;
       core at 97.39% of lines). The mutation script's results are under the item above.
+      Proof (M2 Review, 2026-10-11): in CI on 5100b6f (run 38115700518) the `test` job's test-sources run passes
+      agreement 9/9 in 5.22 s and its default run skips it, and coverage runs it in 7.18 s (lines 97.39%); locally
+      1.15 s at 5100b6f. The mutation script's output (92 changes, 0 unexpected) is pasted under Review, and the
+      agreement-core canary passes in CI.
 
 **7. The user commands: `mixed` and `dice` (design.md:239-244; mobile-apps.md:186)**
 - [x] `verify.py mixed --words {12,24}` and `verify.py dice --words {12,24}`. `--words` has no default, since a 12/24
       mix-up gives 11 matching words and a wrong last one.
-      - Startup: `known_answers()` runs first (groups 3 and 4), including a new `run` group.
+      - Startup: `known_answers()` runs first (groups 3 and 4), including a new `run` group. (changed 2026-10-11:
+        the call is `known_answers(KNOWN_ANSWERS)` since 2db1b6f.)
         - `run` holds two cases core checks: the first 12-word Mixed Pi case and the first 24-word DiceOnly Phone case
           of agreement.json.
         - Literals: their C, D and rolls as display text, and their full rendered stdout.
@@ -3270,7 +3298,7 @@ Groups land in the order below. Vectors come before the core test that reads the
       with `default=12` or `choices=(12, 18, 24)` passed all 13 checks. Check 12's piped runs `dice` with no
       `--words` and `mixed --words 18` now must exit 2 with nothing read, giving argparse's usage line and the fixed
       refusal; both copies fail check 12 on 3.12.5 and 3.9.6.
-- [ ] Check 12 grows over the user commands. These are audited lone-copy runs, and every stream is held to the leak
+- [x] Check 12 grows over the user commands. These are audited lone-copy runs, and every stream is held to the leak
       rule:
       - piped runs, with stdin a pipe:
         - the first case of each combination, piped as its C, D and roll lines. stdout must equal `render` of the
@@ -3319,6 +3347,10 @@ Groups land in the order below. Vectors come before the core test that reads the
       tools/verify/verify.py, no `GetPassWarning` error filter, no exit-70 handler and the warning exiting 1; in
       vectorgen, the leak rule without lowercasing, with hyphens or line breaks kept, one window short, 13 rolls
       or 7 hex digits.
+      (changed 2026-10-11: after the review fixes below, check 12 makes 53 audited piped runs plus one control run,
+      5 terminal runs, and 1 in-process run plus 2 controls. The five argument runs join the piped runs, the
+      stdin-closed run becomes an audited piped run, and the locale run gains a control. The roll lines are cut into
+      the fewest lines of at most 40, as evenly as possible. Check 12 alone takes 4.1 s and 9.4 s.)
       Review fix (2026-10-11, every piped run): the fault twins' 16 runs and the locale run (g) were not held to the
       leak rule. `piped` now applies it to both streams of every piped run, so no run can leave it out, and the
       verifier-echo canaries exercise that one place. Proof: check 12 passes on 3.12.5 and 3.9.6; scratch copies
@@ -3368,9 +3400,13 @@ Groups land in the order below. Vectors come before the core test that reads the
       on 3.12.5 and 3.9.6. Scratch copies of vectorgen fail it on both: the locale or in-process part removed, the
       locale run returning nothing after its probe, the in-process comparison switched off, and it comparing the
       exit status alone.
+      Proof (M2 Review, 2026-10-11): check 12 passes on 3.12.5 and 3.9.6 at 5100b6f. A scratch script that wraps its
+      run helpers counts, on both Pythons, 54 audited runs in its command part (53 piped runs and the locale
+      control), 5 terminal runs and 3 in-process calls (the run and its 2 controls), with no problem. The transcript
+      of `mixed --words 12` on 12-mixed-pi-000 is under Review, beside core's agreement test for the same case.
 
 **8. Canaries, CI and the commands of record**
-- [ ] `scripts/canaries.sh`:
+- [x] `scripts/canaries.sh`:
       - the tamper loop gains `agreement.json` (9 files: the seven generated ones, agreement.json and
         age_cli_written.json), and a failing check must name it. Its comment no longer calls every file generated;
       - `agreement-core`: in the existing workspace copy (`$work/repo`), one value inside a case's `expect` is changed:
@@ -3405,13 +3441,19 @@ Groups land in the order below. Vectors come before the core test that reads the
       verifier-tty fails rule (f)'s leak test in the `mixed --words 12` and paste-ahead pty runs; verifier-reach
       fails rule (a) (`takes getpass.io, not in the recorded list`) and rule (e) (`audit: open for writing:
       '/dev/null'`).
-- [ ] `.github/workflows/entropy-ci.yml`: the selftest commands changed in group 1; the comments now name 13 checks.
+      Proof (M2 Review, 2026-10-11): at 5100b6f canaries pass 61/61 locally (155.2 s under sh, 154.9 s under dash).
+      In CI on 5100b6f the `gates` job prints PASS for agreement-core, the 9 tamper runs and the five verifier
+      canaries, then `PASS: all 61 checks ran`. The job took 8m07s, its canaries step 414 s, against 3m36s for the
+      whole job at the M1 baseline (run 38041799043).
+- [x] `.github/workflows/entropy-ci.yml`: the selftest commands changed in group 1; the comments now name 13 checks.
       No job, step, trigger, timeout or required context changes. Proof: the diff; every job green on the M2 PR.
       Proof (commit 12, local; unticked until every job is green on the M2 PR): the selftest steps changed in commit
       3; commit 12 changes only the `gates` and `verifier (python 3.9)` comments (13 checks; the new canaries; check
       12's locale run required on macOS). The workflow parses to the same YAML before and after (`ruby -ryaml`), so
       the nine job names and every step are unchanged; `vectorgen.py --selftest` passes 13/13 on 3.12.5 and 3.9.6.
-- [ ] CLAUDE.md Commands, each run as written with the output under Review:
+      Proof (M2 Review, 2026-10-11): `git diff a7c941e 5100b6f -- .github` changes only the two selftest steps
+      (commit 3) and comments. All 14 Entropy check runs pass on 5100b6f (run 38115700518), with M1's job names.
+- [x] CLAUDE.md Commands, each run as written with the output under Review:
       - `python3 -I tools/verify/vectorgen.py --selftest` (13 checks; also on `/usr/bin/python3`);
       - its eight `--write-*-vectors` (agreement added);
       - `python3 -I tools/verify/verify.py selftest | mixed --words N | dice --words N`;
@@ -3423,18 +3465,27 @@ Groups land in the order below. Vectors come before the core test that reads the
       the first agreement.json ceremony of each kind on a pipe, exit 0 printing its recorded entropy and seal code,
       and `dice` on `123456` prints `entropy: 8d969eef...` (16 bytes for 12 words); the test-sources run passes,
       `tests/agreement.rs` 9/9; canaries pass 61/61 in 149 s.
-- [ ] Runtime budget, measured and pasted. If a budget is missed, stop and re-plan here.
+      Proof (M2 Review, 2026-10-11): the output is under "M2: local proof": the suite at 5100b6f (every line but
+      `TRYBUILD=overwrite`, which is only for a toolchain or trybuild bump, and the Pi and Android scans, which are
+      CI's); the eight writers at 1b719ff (after it only check 12, the verify.py guide and this file change, and
+      check 13 regenerates agreement.json byte for byte at 5100b6f); and `verify.py selftest`, `mixed --words 12`
+      and `dice --words 24` as run for this record on 3.12.5 and 3.9.6.
+- [x] Runtime budget, measured and pasted. If a budget is missed, stop and re-plan here.
       - `vectorgen.py --selftest` under 45 s on `/usr/bin/python3` 3.9 locally;
       - `gates` under 10 minutes: the selftest once, 9 tamper runs, 5 verifier canaries of check 12, and the
         agreement-core build and run;
       - `verifier (python 3.9)` well inside its 10 minutes;
       - `agreement.rs` under 30 s in `test`.
+      Proof (M2 Review, 2026-10-11): every budget is met. `vectorgen.py --selftest` on `/usr/bin/python3` 3.9.6
+      takes 23.0-23.5 s locally at 5100b6f. In CI on 5100b6f, `gates` takes 8m07s, `verifier (python 3.9)` 1m04s
+      (its selftest 56 s), and agreement.rs 5.22 s in `test`.
 
 **9. Review**
-- [ ] M2 Review in this file, then stop and wait for the owner's approval:
+- [x] M2 Review in this file, then stop and wait for the owner's approval:
       - local proof on 3.12 and 3.9 (shell scripts also under `dash`);
       - `cargo test` in both configurations; the CI run; timings; the canary count;
       - proof per ticked item, and the gate report against build-plan.md M2.
+      Proof (2026-10-11): "M2: local proof" and "M2 gate status" under Review. M3 waits for the owner's approval.
 
 **Deferred, with their milestone** (record in their plans)
 - M3, M5, M6: show D as Q19 decides, and C as 16 groups of 4 hex, the format `parse_hex32` reads. A ceremony test types
@@ -3467,7 +3518,7 @@ Groups land in the order below. Vectors come before the core test that reads the
   - a release-configuration agreement test; the 18-word seed recompute.
 
 ### Verification
-- [ ] Gate, part 1 (build-plan.md M2): verifier and core agree on 1,000 generated cases, including seal codes and
+- [x] Gate, part 1 (build-plan.md M2): verifier and core agree on 1,000 generated cases, including seal codes and
       braille. `core/tests/agreement.rs` passes on the committed `vectors/agreement.json` in CI (`test` step 2 and
       coverage).
       - Compared: C, D, every word (so the seed bits), and the seal both from before the words and from
@@ -3482,33 +3533,62 @@ Groups land in the order below. Vectors come before the core test that reads the
         12 words, a recorded known divergence (Q21).
       - Check 13 regenerates the file byte for byte on 3.12 (`gates`) and `/usr/bin/python3` 3.9
         (`verifier (python 3.9)`).
-- [ ] Gate, part 2: dice-only output matches Coldcard `rolls.py`.
+      Proof (M2 Review, 2026-10-11): in CI on 5100b6f (run 38115700518) agreement.rs passes 9/9 in the `test` job's
+      test-sources run (5.22 s) and in coverage (7.18 s); `gates` and `verifier (python 3.9)` each print "ok
+      vectors/agreement.json: file matches regenerated output, ..." and pass 13 checks. Locally the same at 5100b6f
+      on 3.12.5 and 3.9.6. What core compares is listed under "M2 gate status".
+- [x] Gate, part 2: dice-only output matches Coldcard `rolls.py`.
       - Check 13 runs `rolls.py`/`rolls12.py` on about 70 dice-only cases, including strings outside KeepCrypt's range,
         and compares each printed hash line with `entropy` exactly (16 bytes for 12 words).
       - Check 4 (rolls.json, keepcrypt.json) still passes.
       - The lone `dice` prints Coldcard's words and hash line for `123456` at both lengths, and the seed known answers
         include `123456`.
-- [ ] Matrix "Verifier agreement, 1,000 cases | Verifier | Every build": both sides run in every CI run that touches
+      Proof (M2 Review, 2026-10-11): at 5100b6f `vectorgen.py --selftest` passes 13/13 on 3.12.5 and 3.9.6. Check 13
+      runs Coldcard's hash-pinned scripts on 74 dice-only cases (the 64 every-8th dice-only ceremonies, and the 10
+      dice-only refusals with valid faces: 49, 98 and 257 rolls), and each prints exactly the case's `entropy` line
+      and words; its control changes the last of 257 rolls and must fail. Check 4 passes. Check 12's piped
+      `dice --words 24` and `--words 12` on `123456` print rolls.json's words, the 12-word `entropy:` line being the
+      first 32 hex digits of its `sha256_hex`, and the `seed` known answers hold rolls.json `123456`.
+- [x] Matrix "Verifier agreement, 1,000 cases | Verifier | Every build": both sides run in every CI run that touches
       `Entropy/` (`test`, coverage, `gates`, `verifier (python 3.9)`), and the agreement-core canary proves core's side
       fails on a changed value.
-- [ ] Matrix "Coldcard `rolls.py` cross-check | Core, verifier | Every build": core replays rolls.json (M1) and the
+      Proof (M2 Review, 2026-10-11): on 5100b6f both sides ran in `test`, coverage, `gates` and `verifier (python
+      3.9)`, and `gates` printed `PASS: agreement-core failed as intended`.
+- [x] Matrix "Coldcard `rolls.py` cross-check | Core, verifier | Every build": core replays rolls.json (M1) and the
       agreement's 500 dice-only ceremonies, and check 13 ties a subset to Coldcard's own scripts.
-- [ ] Matrix "Seal, braille and descriptor vectors | Core, verifier | Every build": seal and braille are compared case
+      Proof (M2 Review, 2026-10-11): on 5100b6f tests/vectors.rs (4, rolls_json_through_dice_only_sessions among
+      them) and agreement.rs's four dice-only tests pass in `test` and coverage, and check 13 runs Coldcard's
+      scripts on 74 cases in `gates` and `verifier (python 3.9)`.
+- [x] Matrix "Seal, braille and descriptor vectors | Core, verifier | Every build": seal and braille are compared case
       by case. Descriptors are unchanged (watchonly.json, check 9, `tests/vectors.rs`) and green after the split.
-- [ ] The split changed no M1 output and left provenance true:
+      Proof (M2 Review, 2026-10-11): on 5100b6f agreement.rs compares the seal and every insert field of the 1,000
+      cases in `test` and coverage. Check 9 (watchonly.json) passes in `gates` and `verifier (python 3.9)`, and
+      tests/vectors.rs passes 4/4. watchonly.json changed only in its `description` (76dd1fb).
+- [x] The split changed no M1 output and left provenance true:
       - at the split commit, the seven vectorgen-written files are byte-identical, and checks 1-11 print their M1 lines;
       - after the provenance commit, only their `description` strings differ;
       - age_cli_written.json and the fetched files match their SOURCES.md hash rows;
       - no committed file names a removed `verify.py` mode or check, except the recorded age_cli_written.json sentence
         and SOURCES.md's record of it;
       - age-interop passes against Ubuntu's age 1.1.1.
-- [ ] Deliverables:
+      Proof (M2 Review, 2026-10-11): group 1's two items (99edb77 and 76dd1fb). At 5100b6f, `git grep -nE
+      'verify\.py (--write|--selftest|check [0-9])' -- ':/' ':/!Entropy/tasks/todo.md'` finds only
+      age_cli_written.json:2 and SOURCES.md:341, its record, and check 3 passes. `age-interop (age 1.1.1)` on
+      5100b6f prints its three ok lines and refuses 17 of the 17 armor cases.
+- [x] Deliverables:
       - `tools/verify/verify.py` with `selftest`, `mixed` and `dice` working from a lone copy (check 12);
       - "KeepCrypt vectors" = `vectors/agreement.json`;
       - "age interop files" as Q24 decides.
-- [ ] Release form (build-plan.md "Offline verifier | A single Python file"): a lone copy passes `python3 -I verify.py
+      Proof (M2 Review, 2026-10-11): check 12 passes at 5100b6f on both Pythons, its command runs driving `selftest`,
+      `mixed` and `dice` from lone copies; agreement.json is committed (fcb3481, 9a3902a) and check 13 passes; Q24
+      counts the age interop files delivered in M1 (`vectors/age/age_cli_written.json` and the `age-interop (age
+      1.1.1)` job).
+- [x] Release form (build-plan.md "Offline verifier | A single Python file"): a lone copy passes `python3 -I verify.py
       selftest` on 3.12 and 3.9, and a fault twin in any known-answer group refuses every command before any prompt.
-- [ ] Rules for the shipped file. Check 12 passes, and its canaries fail as they should.
+      Proof (M2 Review, 2026-10-11): check 12 (d) on 3.12.5 and 3.9.6 at 5100b6f: a read-only lone copy passes
+      `selftest` with an empty environment. Each of the 8 groups' fault twins exits 1 from `selftest` naming that
+      group, and from `mixed` and `dice` with stderr exactly one line naming it, so no prompt appears.
+- [x] Rules for the shipped file. Check 12 passes, and its canaries fail as they should.
       - Rule 1: imports only the allowlist, with module attributes from the recorded list; no Python `random`.
       - Rule 5:
         - nothing comes from arguments;
@@ -3516,10 +3596,26 @@ Groups land in the order below. Vectors come before the core test that reads the
         - in piped runs, no input is echoed in errors, no traceback is printed, and the pipe notice is shown.
       - Rule 8: no `open` in the source, and no file opened outside the standard library in any audited run.
       - Rule 10: no marker, test key or `KCE/test/` label.
-- [ ] The banned-API gate is clean, with Q23's Python patterns firing on their fixtures.
-- [ ] Runtime within group 8's budget; canaries pass at 61; every CI job green on the M2 PR; no new dependency, CI job
+      Proof (M2 Review, 2026-10-11): check 12 passes on 3.12.5 and 3.9.6 at 5100b6f, and canaries pass 61/61 under sh
+      and dash, with verifier-import (rule (a)), verifier-echo and verifier-echo-upper (the leak rule), verifier-tty
+      (rule (f)) and verifier-reach (rules (a) and (e)) failing as intended. Since a5543a6 and ae5c3c5 every typed
+      roll line is long enough for the leak rule and each pty transcript is pinned whole, so rule (f) sees every
+      roll line, not only the first (stage D's high finding). The gates job of CI on 5100b6f is the first Linux run
+      of the pty transcripts.
+- [x] The banned-API gate is clean, with Q23's Python patterns firing on their fixtures.
+      Proof (M2 Review, 2026-10-11): at 5100b6f `banned-api-check.sh` is clean (165 files) and `--selftest` passes
+      346/346, under sh and dash; every Python pattern has a hit fixture and a near miss (commits 5, 5b and the
+      stage-A and stage-B fixes).
+- [x] Runtime within group 8's budget; canaries pass at 61; every CI job green on the M2 PR; no new dependency, CI job
       or required context.
-- [ ] Definition of done (CLAUDE.md), with proof pasted under Review.
+      Proof (M2 Review, 2026-10-11): group 8's budget item; canaries 61/61 locally and in CI; all 14 Entropy check
+      runs green on 5100b6f. Since a7c941e, Cargo.lock is unchanged, core/Cargo.toml gains only the `[[test]]`
+      entry, and the workflow keeps its jobs (commit 3's two selftest steps, and comments).
+- [x] Definition of done (CLAUDE.md), with proof pasted under Review.
+      Proof (M2 Review, 2026-10-11): tests landed with each change (the gate fixtures, checks 12 and 13,
+      agreement.rs) and pass locally and in CI on 5100b6f; agreement.json is the vectors file the gate names; fmt,
+      clippy, deny and the banned-API gate are clean; the proof is under Review. Each stage had plan, security and
+      recompute reviews, and every high and medium finding is fixed (46 findings, listed under Review).
 
 ### New dependencies
 None. verify.py and vectorgen.py stay standard library only. verify.py adds `getpass` and `warnings`. vectorgen adds
@@ -4567,3 +4663,649 @@ passed all 14 required Entropy check runs (the Vercel check, not required, faile
 marked ready and merged with a merge commit, a87a6ee ("Merge Entropy M1: core crate (keepcrypt-core) (#4)"), and
 `m1-core` was deleted. The owner then asked for the M2 plan ("yes, start planning M2"); M2 work happens on
 `m2-verifier`.
+
+### M2: local proof (2026-10-11, at 5100b6f)
+Apple M4 Max, macOS 27.0.1, toolchain 1.98.1 (rust-toolchain.toml), python3 3.12.5 and `/usr/bin/python3` 3.9.6, run
+from `Entropy/`; the shell scripts also under `dash`. M2 ran 2026-10-10 to 2026-10-11 on `m2-verifier` (draft PR #5)
+in four stages. Each stage made its planned commits, had them reviewed three ways (plan, security, recompute), fixed
+what the reviews found, ran the full suite, and was pushed so that CI ran on its head. Plan items are ticked above
+only where the proof covers them. Every M2 item is now ticked (the end of this section).
+
+**Group 0 baseline** (2026-10-10, before commit 2; for group 8's budget). It was taken at a7c941e, which differs from
+90b6ab9 only in this file (`git diff --stat 90b6ab9 a7c941e`: 812 insertions, 1 deletion), so code, scripts,
+vectors and docs are 90b6ab9's. Commands ran one at a time, timed with zsh `time`:
+
+```text
+python3 tools/verify/verify.py --selftest           (3.12.5)  11/11 "selftest passed: 11 checks"  5.565 s (5.40 user)
+python3 -I tools/verify/verify.py --selftest        (3.12.5)  11/11                               5.392 s (5.22 user)
+/usr/bin/python3 tools/verify/verify.py --selftest  (3.9.6)   11/11                               9.174 s (9.01 user)
+                                                              the 11 "ok" lines identical on 3.12 and 3.9
+sh scripts/canaries.sh                                        exit 0, "PASS: all 54 checks ran"   1:09.36 (80.33 user)
+cargo test --workspace --locked (warm target/)                183 passed, 0 failed, 1 ignored     20.365 s
+    core lib 161 (+1 ignored), ceremony 5, kat 7, kcr_release 3, os_source 2, typestate 1, vectors 4; ffi, pi,
+    pi-sim 0; doc-tests 0
+cargo test -p keepcrypt-core --locked --features test-sources 251 passed, 0 failed, 1 ignored     1:03.11
+    core lib 189 (+1 ignored), ceremony 5, check_flow 6, error_injection 11, kat 7, kcr 3, kcr_release 0,
+    no_panic 9, no_secret_text 5, os_source 2, panic_wipe 4, source_substitution 5, typestate 1, vectors 4
+```
+
+**Commits a7c941e..5100b6f.** 44 commits, oldest first, by stage. Each gives its hash, its subject, and one line of
+proof from the stage's reports.
+
+Stage A: planned commits 2-5, then the stage-A review fixes (pushed head 86c4c0d).
+- 5d222f5 docs: the owner-approved M2 edits (Q19): D is shown like C, a run records C first, verify/ holds two files.
+  Proof: only Entropy/docs/ (4 files); `verify.py --selftest` 11/11 with `-I` on both Pythons; canaries 54/54.
+- 99edb77 verify, scripts, ci, CLAUDE.md: split into the shipped verify.py and tools/verify/vectorgen.py as a pure
+  move. Proof: the seven writers leave `vectors/` byte-identical on both Pythons; `--selftest` 11/11 with the
+  baseline's lines; age-interop in both modes; canaries 54/54.
+- 76dd1fb verify, vectors, core: provenance names vectorgen.py: the seven descriptions, SOURCES.md, the
+  age_cli_written.json note and six core comments. Proof: each file equals its old bytes with `description`
+  blanked; the core diff is `//` lines only; `cargo test` 183 and 251; 11/11 on both Pythons.
+- 22883dc scripts: Python networking and clipboard patterns in the banned-API gate, with selftest fixtures (Q23).
+  Proof: gate `--selftest` 297/297 (251 before) under sh and dash; the gate before it finds none of the 27 new hits.
+- bbbb599 scripts/age-interop.py: --generate names vectorgen.py check 11 in age_cli_written.json's description.
+  Proof: the whole-repo grep then finds only age_cli_written.json:2 and SOURCES.md's record of it; age-interop passes.
+- 2425cdb verify: the snapshot section's comment names M9's re-check (Q22), not an M2 one. Proof: a comment only.
+- 0610f3e vectors/SOURCES.md: say that records of pre-split work name code by the file that holds it now.
+  Proof: one paragraph; `--selftest` 11/11 (check 3) on both Pythons.
+- 64c4fc7 scripts: the banned-API gate catches a Python import continued after "from \". Proof: 4 new fixtures,
+  one hit each, none hit by the gate before it; dropping a new pattern or its anchor turns the selftest red.
+- 5cc295d scripts: the gate's Python network list takes _socket and _ssl, and its residuals name importlib.
+  Proof: 2 new fixtures, one hit each; removing either name fails exactly its fixture.
+- 42d8552 scripts: gate fixtures pin the Python patterns' boundaries and the .py-only dispatch. Proof: gate code
+  unchanged; `--selftest` 309/309 under sh and dash; every listed boundary mutant fails on its own line.
+- 86c4c0d tasks/todo.md: review corrections to the M2 plan text and the proof of groups 1 and 2. Proof: the 30
+  provenance verdicts pasted; the clean-checkout count is 160 files; the mutant count is 11 lines, not 14.
+
+Stage B: planned commits 5b, 6 and 7, then the stage-B review fixes (pushed head 9301be3). The stage was a resumed
+run: its fixer found 5cc4d24, e37f8a5 and bb989cb already made, and checked each against its finding.
+- df1c053 scripts: complete the banned-API gate's Python clipboard and network lists (stage-A review, Q23).
+  Proof: `--selftest` 342/342 (309 before) under sh and dash; the gate before it finds none of the 22 new hits; 38
+  mutants each fail on their own line.
+- 0978754 verify: startup guards, the known answers and verify.py selftest; vectorgen check 12 (verify.py ships
+  alone). Proof: `verify.py selftest` 5 groups on both Pythons; `--selftest` 12/12 (5.8 s and 10.2 s); a mutant copy
+  for each rule fails check 12; canaries 54/54.
+- 3727711 verify: input parsers, verification_run, render, insert_line and the registry URL builders; urls and insert
+  known answers, INPUT_CASES and the keepcrypt.json tie in check 12. Proof: 7 groups on both; 12/12 (5.9 s and
+  10.3 s); 17 input cases and the tie (3 mixed, 6 dice-only cases) pass; the URLs equal core's pinned literals.
+- 5cc4d24 tools/verify/vectorgen.py: KNOWN_ANSWER_BIP39_ENTRIES' comment says which english entries 12 and 14 are.
+  Proof: a comment only (finding 2).
+- e37f8a5 tools/verify/vectorgen.py: --verify-py's usage and --help say it replaces the subject of check 12's rules
+  (a)-(e) only. Proof: text only (finding 1).
+- bb989cb tools/verify/vectorgen.py: an input case pins parse_hex32's "non-ASCII first" rule. Proof: the 18th case;
+  a copy without the non-ASCII pass gives (D, 3) and fails on both Pythons (finding 8).
+- 2db1b6f verify: check 12 changes every known answer in turn, and refuses any read of KNOWN_ANSWERS but
+  known_answers(KNOWN_ANSWERS). Proof: the sweep changes all 214 values; 14 verify.py mutants that passed at bb989cb
+  fail on both (finding 4).
+- e850278 tools/verify/vectorgen.py: check 12 holds its own rules to controls that must fire. Proof: 14 vectorgen
+  mutants fail on both (finding 6).
+- 5ed7ab9 tools/verify/vectorgen.py: check 12's audit refuses changes to a file by path. Proof: a copy that
+  truncated a file passed at bb989cb and fails now; 15 drop-one mutants fail (finding 10).
+- 7679ee2 scripts: gate fixtures pin each "any letter case" clipboard pattern in both cases. Proof: `--selftest`
+  346/346 under sh and dash; 62 letter-case mutants fail (finding 5).
+- 9301be3 tools/verify/vectorgen.py: check 12 runs the lone copy as Python 3.8; tasks/todo.md unticks two items short
+  of their proof. Proof: the 3.8.18 run exits 2 with the version line alone; 4 guard mutants fail (finding 9).
+
+Stage C: planned commits 8 and 9, then the stage-C review fixes (pushed head 0d2ff75).
+- fcb3481 verify, vectors: --write-agreement-vectors, vectors/agreement.json and check 13 (coverage counts, Coldcard
+  subset); SOURCES.md and UNLISTED. Proof: 1,000 ceremonies and 28 refusals, 4,155,350 bytes, the same bytes on both
+  Pythons (1.10 s and 1.79 s); check 13 3.0 s and 5.1 s; 13/13; 20 scratch mutants fail; canaries 54/54.
+- 1f86f2c tests: core/tests/agreement.rs replays agreement.json under test-sources, with its [[test]] entry.
+  Proof: 9 passed in 1.17 s (8.47 s on one thread); 92 planted changes each fail their case and field; a core with
+  another `REGISTRY_ORIGIN` fails every combination at `recheck_url`; the default run skips it.
+- 7b3d199 tasks/todo.md: group 8's agreement-core canary changes a value in expect, not a roll. Proof: on a scratch
+  copy the seal-tag change fails `24-mixed-pi-083: seal_tag_hex`; the roll change failed at `push_roll: InvalidRoll`
+  (finding 1).
+- 9a3902a verify, vectors: agreement.json's provenance names each expected value's source. Proof:
+  `--write-agreement-vectors` changes only the spec's `expect` line (now 4,155,498 bytes); 13/13; agreement 9/9
+  (finding 2).
+- a3a4d4e tools/verify/vectorgen.py: check 13 holds the dice quota apart from verify.py's DICE. Proof: copies with
+  `max_rolls` 257, `min_rolls_12_words` 49 or `min_rolls_24_words` 98, re-baselined, passed before and fail now on
+  both Pythons (finding 3).
+- 9fc299f tools/verify/vectorgen.py: check 13 pins each refusal to its planned boundary. Proof: the boundary mutants
+  (two passed all 13 checks and core's test before) and a 97-roll restart fail on both (finding 4).
+- 0d2ff75 tools/verify/vectorgen.py: check 13 holds its own rules to controls that must fire. Proof: each rule
+  returning `[]`, or removed with its verify.py fault, fails on both; `cargo test` 260 and 183 (finding 5).
+
+Stage D: planned commits 10-13, then the stage-D review fixes (pushed head 5100b6f).
+- 11d1163 verify: the mixed and dice commands, the run known answers, the pipe notice, the quiet argument parser and
+  the docstring guide; check 12 runs the commands piped, in a pty and under a Latin-1 locale. Proof: 8 groups on
+  both; 13/13 (12.2 s and 22.9 s); check 12 passes nine repeat runs; 32 scratch mutants fail on both; canaries 54/54.
+- a45c2d0 tools/verify/vectorgen.py: check 13 pins the planned case mix, case by case. Proof: three thinner mixes
+  passed before and fail now on both; agreement.json regenerates unchanged; canaries 54/54 in 117 s.
+- 6dcce94 scripts: the agreement.json tamper canary, agreement-core, verifier-import, verifier-echo,
+  verifier-echo-upper, verifier-tty and verifier-reach; the pinned count goes from 54 to 61. Proof: canaries 61/61
+  (160 s under sh, 150 s under dash); a disarmed agreement-core reports FAIL.
+- c9b5a5d ci: the gates and verifier (python 3.9) job comments name 13 checks and the M2 canaries. Proof: comments
+  only; the workflow parses to the same YAML (`ruby -ryaml`).
+- 1b719ff CLAUDE.md: Commands for M2. Proof: each changed command run as written (group 8's item).
+- 12ce409 tools/verify/vectorgen.py: check 12 holds every piped run to the leak rule. Proof: two copies that leaked
+  in a fault-twin run and in the locale run passed at 1b719ff and fail now on both (F1).
+- a5543a6 tools/verify/vectorgen.py: check 12 cuts each run's rolls so every typed line meets the leak rule.
+  Proof: a copy that echoes every roll line after the first fails on both (F6).
+- ae5c3c5 tools/verify/vectorgen.py: check 12 pins each command run's stderr and transcript whole. Proof: a copy
+  writing `repr(report)` to stderr, and an echo of the dice run's `456`, fail on both (F7, F6, F15 part 2).
+- 22908f7 tools/verify/vectorgen.py: check 12 types C and the rolls as a user may type them. Proof: the three
+  typed-form copies fail on both (F15 parts 1, 3 and 4).
+- 6b1d8b5 tools/verify/vectorgen.py: check 12 refuses arguments at each parser, --words missing or 18, and an @file.
+  Proof: copies with plain subparsers, `fromfile_prefix_chars`, `default=12` or an 18 fail on both (F8, F10, F11).
+- 7134a09 tools/verify/vectorgen.py: check 12 takes the exit-70 path in an audited run, its line pinned.
+  Proof: a handler printing the exception's text, or writing a crash log, fails on both (F8, F13).
+- 8ced14f tools/verify/vectorgen.py: check 12's rule (a) bans the name type. Proof: a copy that writes a file through
+  `type(sys.stderr.buffer.raw)` fails rule (a) on both (F8).
+- b41cdc6 tools/verify/vectorgen.py: check 12's locale and in-process runs are held to controls that must fire.
+  Proof: vectorgen copies without either part, or with either check off, fail on both (F12).
+- 8a1b0c6 verify: the guide no longer says that type-ahead is never shown. Proof: wording only; canaries 61/61
+  under sh (2:33) and dash (2:34) (F9, F14).
+- 5100b6f tasks/todo.md: the plan text matches the code; check 12's item ticked on commit 11's canaries.
+  Proof: plan text only (F2-F5).
+
+**Review findings.** 46 in all: 1 high, 9 medium, 36 low. 43 were fixed in the stages' fix commits (one of them
+in part), 3 were closed by later planned commits, and one part of one low finding is open.
+- Stage A, 16 (0 high, 1 medium, 15 low):
+  - medium (plan): `scripts/age-interop.py:272`, the `--generate` template, still wrote "verify.py --selftest ...
+    (check 11)", so a regeneration would put false provenance back. Fixed in bbbb599; 86c4c0d widened the plan's
+    grep to the whole repo;
+  - low: 14 fixed in bbbb599, 2425cdb, 0610f3e, 64c4fc7, 5cc295d, 42d8552 and 86c4c0d. F10 (clipboard routes
+    outside the planned list) was left for a decision; commit 5b (df1c053) completed the lists within Q23.
+- Stage B, 10 (0 high, 1 medium, 9 low):
+  - medium (recompute): check 12 ran one value per known-answer group, never the "unreadable" branch, and a copy
+    could change the table at run time. Fixed in 2db1b6f (a sweep of all 214 values; `known_answers(table)`);
+  - low: 7 fixed in 5cc4d24, e37f8a5, bb989cb, e850278, 5ed7ab9, 7679ee2 and 9301be3. 2 were left to planned commits
+    and closed there: the URL origin, shared by vectorgen and verify.py (core's agreement test compares the URLs
+    whole, 1f86f2c), and the run, render and range gaps (check 13, fcb3481; the command runs, 11d1163).
+- Stage C, 5 (0 high, 2 medium, 3 low):
+  - medium (plan): the planned agreement-core canary changed a roll, which core refuses before it compares any
+    value. Fixed in 7b3d199 (plan) and built that way in 6dcce94;
+  - medium (recompute): check 13 never pinned the 24 boundary refusals to their boundary, so an off-by-one in
+    verify.py's range passed after a re-baseline. Fixed in 9fc299f; its case-mix part in a45c2d0;
+  - low: fixed in 9a3902a (provenance wording), a3a4d4e (the quota apart from DICE) and 0d2ff75 (controls).
+- Stage D, 15 (1 high, 5 medium, 9 low):
+  - high (security, F6): rule (f) missed a terminal echo of every roll line after the first, since the last line of
+    a 50-roll run was shorter than the leak rule's 12. Fixed in a5543a6 and ae5c3c5;
+  - medium (plan, F1): the leak rule skipped the 16 fault-twin runs and the locale run's stderr. Fixed in 12ce409;
+  - medium (security, F7): the leak rule saw D only as hex, and stderr and the transcript were checked only for what
+    they must hold. Fixed in ae5c3c5;
+  - medium (security, F8): `ArgumentParser`'s keywords were not limited (an `@file` would be read), the exit-70 path
+    ran only in process, and the name `type` was open. Fixed in 6b1d8b5, 7134a09 and 8ced14f;
+  - medium (recompute, F10): a refused `--words` value at the subcommand's parser was never tested. Fixed in 6b1d8b5;
+  - medium (recompute, F11): nothing pinned that `--words` has no default and takes only 12 and 24. Fixed in 6b1d8b5;
+  - low: F2-F5 fixed in 5100b6f, F9 and F14 in 8a1b0c6, F12 in b41cdc6, F13 in 7134a09, and F15 parts 1-4 in 22908f7
+    and ae5c3c5. F15 part 5 is open (deviations, below).
+
+**Suite at 5100b6f** (stage D's run, 2026-10-11; git status clean before and after; logs in the session scratchpad):
+
+```text
+cargo fmt --all --check                                         exit 0
+cargo clippy --workspace --all-targets --locked -- -D warnings  exit 0
+cargo clippy ... --all-features --locked -- -D warnings         exit 0
+cargo test --workspace --locked                                 exit 0  core lib 161 passed, 1 ignored; ceremony 5,
+                                                                        kat 7, kcr_release 3, os_source 2,
+                                                                        typestate 1, vectors 4 (17.9 s)
+cargo test -p keepcrypt-core --locked --features test-sources   exit 0  lib 189 passed, 1 ignored; agreement 9
+                                                                        (1.15 s); ceremony 5, check_flow 6,
+                                                                        error_injection 11, kat 7, kcr 3, no_panic 9,
+                                                                        no_secret_text 5, os_source 2, panic_wipe 4,
+                                                                        source_substitution 5, typestate 1,
+                                                                        vectors 4 (60.0 s)
+cargo llvm-cov ... --fail-under-lines 95 --summary-only         exit 0  lines 8272, missed 216, 97.39%;
+                                                                        regions 96.87%; functions 96.27%
+cargo deny --locked check                                       exit 0  advisories, bans, licenses, sources ok
+cargo audit                                                     exit 0  94 crate dependencies, no vulnerabilities
+cargo vet --locked                                              exit 0  Vetting Succeeded (14 fully audited,
+                                                                        76 exempted)
+sh scripts/check-path-deps.sh                                   exit 0  clean, 90 packages outside the workspace
+python3 -I tools/verify/vectorgen.py --selftest   (3.12.5)      exit 0  selftest passed: 13 checks (12.5 s)
+/usr/bin/python3 -I ... vectorgen.py --selftest   (3.9.6)       exit 0  selftest passed: 13 checks (23.5 s)
+python3 -I tools/verify/verify.py selftest        (3.12.5)      exit 0  8 known-answer groups (0.03 s)
+/usr/bin/python3 -I ... verify.py selftest        (3.9.6)       exit 0  8 known-answer groups (0.09 s)
+sh scripts/banned-api-check.sh            (sh, dash)            exit 0  clean, 165 files scanned
+sh scripts/banned-api-check.sh --selftest (sh, dash)            exit 0  selftest: 346 passed, 0 failed
+sh scripts/canaries.sh                    (sh, dash)            exit 0  PASS: all 61 checks ran (155.2 s, 154.9 s)
+python3 scripts/age-interop.py --core     (Homebrew age 1.3.2)  exit 0  three ok lines; 3 notes (armor cases that
+                                                                        age 1.3.2 accepts and the readers refuse)
+--artifact aarch64-apple-darwin, aarch64-apple-ios, -ios-sim    exit 0  clean; _getentropy, _CCRandomGenerateBytes
+                                                                        imported (also from fresh target dirs)
+```
+
+Not run there: the eight writers, which write files (commit 13 ran them at 1b719ff and `vectors/` stayed
+byte-identical; after 1b719ff only check 12, the verify.py guide and this file change, and check 13 regenerates
+agreement.json byte for byte at 5100b6f); `TRYBUILD=overwrite`, which is only for a toolchain or trybuild bump; and
+the Pi and Android scans, which need a cross toolchain this Mac lacks (CI's `cross` job).
+
+Re-run for this record at 5100b6f (2026-10-11):
+
+```text
+python3 -I tools/verify/verify.py selftest; /usr/bin/python3 -I ... selftest   exit 0 on both; stdout byte-identical
+cargo test -p keepcrypt-core --locked --features test-sources --test agreement
+                                                   9 passed; 0 failed (1.15 s; 9.19 s user on 16 threads)
+check 12's runs, counted by a scratch script that wraps audited_run, terminal_run and inprocess_command_problems
+(both Pythons)                                     no problem; 54 audited runs in the command part (53 piped and the
+                                                   locale control), 5 terminal runs, 3 in-process calls (the run and
+                                                   its 2 controls); 69 audited runs in all
+python3 -I tools/verify/vectorgen.py --selftest (3.12.5)             exit 0  selftest passed: 13 checks (12.2 s)
+/usr/bin/python3 -I tools/verify/vectorgen.py --selftest (3.9.6)     exit 0  selftest passed: 13 checks (23.0 s)
+  (the tree at 5100b6f with this file's edit, which no check reads)
+```
+
+**`verify.py selftest`** (3.12.5 and 3.9.6; stdout byte-identical, stderr empty, exit 0):
+
+```text
+ok   hash
+ok   bip39
+ok   seed
+ok   seal
+ok   braille
+ok   urls
+ok   insert
+ok   run
+selftest passed: 8 known-answer groups
+```
+
+**Run transcripts** (2026-10-11, at 5100b6f, 3.12.5; on 3.9.6 both streams are byte-identical, exit 0). These are
+public test vectors from vectors/agreement.json, marked "never fund" (rule 12). The inputs come from the file
+through a short Python line, not typed literals. A user types them at the prompts instead, since a pipe leaves
+them in shell history (the guide). `$S` is a scratch directory outside the repo.
+
+```text
+$ INPUTS='import json,sys;c=[x for x in json.load(open("vectors/agreement.json"))["ceremonies"] if x["name"]==sys.argv[1]][0];g=lambda h:" ".join(h[i:i+4] for i in range(0,64,4));e=c["expect"];c["mode"]=="mixed" and print(g(e["c_hex"]),g(e["d_hex"]),sep="\n");print(c["rolls"]+"\n")'
+$ python3 -I -c "$INPUTS" 12-mixed-pi-000          # what the pipe carries: C, D, the rolls, an empty line
+21d4 24c3 d4ab 0130 3fe0 1593 ea19 00d4 cb4d d1f1 3d92 6cdc 7baf 0c1b c73e 9203
+4a38 fcf5 fc3a 6cb5 cadb c26c a1d6 2efa 9bc9 7c20 6f6c 9211 e5b4 0939 92bb 918e
+56143225411155643344655336451655425545354524411345
+
+$ python3 -I -c "$INPUTS" 12-mixed-pi-000 | python3 -I tools/verify/verify.py mixed --words 12 >"$S/out" 2>"$S/err"; echo "exit $?"
+exit 0
+--- stderr (each prompt line ends in one space, dropped here)
+input read from a pipe or file: clear it from your shell history and delete any file
+C, as written down before the first roll:
+C read: 21d4 24c3 d4ab 0130 3fe0 1593 ea19 00d4 cb4d d1f1 3d92 6cdc 7baf 0c1b c73e 9203
+D, from the device's "Reveal D" screen:
+D read: 64 hex digits
+rolls (an empty line ends them):
+50 rolls, 50 in all
+rolls (an empty line ends them):
+--- stdout
+VERIFICATION RUN: a disposable test seed. Never fund it; erase this run and clear the terminal afterwards.
+commitment: C matches D
+rolls: 50 (129.2 bits)
+entropy: afb7b84a188ca710c97309314c7d3464
+seal-id: X406RHQ0 ⠭⠼⠙⠚⠋⠗⠓⠟⠼⠚
+seal-tag: e9006c46e0a02487611658d1e7d76c41bfe943861d4b0dfb7f3bcedfdb426539
+lookup-prefix: e9006
+seal-colour: 1 #E69F00
+seal-grid: ........
+seal-grid: ........
+seal-grid: .##..##.
+seal-grid: ##....##
+seal-grid: .#....#.
+seal-grid: .##..##.
+seal-grid: ###..###
+seal-grid: ........
+recheck-url: https://registry.invalid/check#t=e9006c46e0a02487611658d1e7d76c41bfe943861d4b0dfb7f3bcedfdb426539
+insert: 01 device 1/1 seq 01 seedbook 1406 quick | ⠟q ⠥u ⠊i/e ⠉c ⠅k~ | ⠟⠥⠊⠉⠅
+insert: 02 device 1/1 seq 02 seedbook 1519 saddle | ⠎s ⠁a ⠙d/f ⠙d/f ⠇l~ | ⠎⠁⠙⠙⠇⠑
+insert: 03 device 1/1 seq 03 seedbook 0149 barely | ⠃b ⠁a ⠗r/w ⠑e/i ⠇l~ | ⠃⠁⠗⠑⠇⠽
+insert: 04 device 1/1 seq 04 seedbook 0393 country | ⠉c ⠕o ⠥u ⠝n ⠞t~ | ⠉⠕⠥⠝⠞⠗⠽
+insert: 05 device 1/1 seq 05 seedbook 1620 skill | ⠎s ⠅k ⠊i/e ⠇l ⠇l~ | ⠎⠅⠊⠇⠇
+insert: 06 device 1/1 seq 06 seedbook 1092 mask | ⠍m ⠁a ⠎s ⠅k -- | ⠍⠁⠎⠅
+insert: 07 device 1/1 seq 07 seedbook 0303 chair | ⠉c ⠓h/j ⠁a ⠊i/e ⠗r/w~ | ⠉⠓⠁⠊⠗
+insert: 08 device 1/1 seq 08 seedbook 0778 gentle | ⠛g ⠑e/i ⠝n ⠞t ⠇l~ | ⠛⠑⠝⠞⠇⠑
+insert: 09 device 1/1 seq 09 seedbook 0395 course | ⠉c ⠕o ⠥u ⠗r/w ⠎s~ | ⠉⠕⠥⠗⠎⠑
+insert: 10 device 1/1 seq 10 seedbook 0800 glue | ⠛g ⠇l ⠥u ⠑e/i -- | ⠛⠇⠥⠑
+insert: 11 device 1/1 seq 11 seedbook 0617 escape | ⠑e/i ⠎s ⠉c ⠁a ⠏p~ | ⠑⠎⠉⠁⠏⠑
+insert: 12 device 1/1 seq 12 seedbook 1611 sing | ⠎s ⠊i/e ⠝n ⠛g -- | ⠎⠊⠝⠛
+seal-code: A7EN7-R3NFS-H9E9T-9T3CH-TFVVZT
+note: every line above must equal what the device showed; a difference is a typing error or a faulty device
+note: for 12 words, 50-98 rolls is valid only for a first ceremony, never after "Match found", which takes 99
+note: the device's check QR adds its fresh nonce to the re-check URL, so no run can show it or a go-ahead code
+```
+
+```text
+$ python3 -I -c "$INPUTS" 24-dice_only-phone-000   # what the pipe carries: the rolls, an empty line
+111314222414261154463151153234512655513634452115416112356111515224545426316633241615643416536323145
+
+$ python3 -I -c "$INPUTS" 24-dice_only-phone-000 | python3 -I tools/verify/verify.py dice --words 24 >"$S/out" 2>"$S/err"; echo "exit $?"
+exit 0
+--- stderr (each prompt line ends in one space, dropped here)
+input read from a pipe or file: clear it from your shell history and delete any file
+rolls (an empty line ends them):
+99 rolls, 99 in all
+rolls (an empty line ends them):
+--- stdout
+VERIFICATION RUN: a disposable test seed. Never fund it; erase this run and clear the terminal afterwards.
+rolls: 99 (255.9 bits)
+entropy: 6d0991e66f04ebd5d666b016f47b33a45bd22d3649e8778bc64e9fd67bcd6409
+seal-id: SBNSJKF2 ⠎⠃⠝⠎⠚⠅⠋⠼⠃
+seal-tag: caeb994de2afc72922707e3cc20320ad70fc5ba92cdb83b8b13168172a3cca0c
+lookup-prefix: caeb9
+seal-colour: 2 #56B4E9
+seal-grid: ###..###
+seal-grid: #.####.#
+seal-grid: #..##..#
+seal-grid: #..##..#
+seal-grid: .#....#.
+seal-grid: ##.##.##
+seal-grid: ###..###
+seal-grid: ..#..#..
+recheck-url: https://registry.invalid/check#t=caeb994de2afc72922707e3cc20320ad70fc5ba92cdb83b8b13168172a3cca0c
+insert: 01 device 1/2 seq 01 seedbook 0873 home | ⠓h/j ⠕o ⠍m ⠑e/i -- | ⠓⠕⠍⠑
+insert: 02 device 1/2 seq 02 seedbook 0613 erode | ⠑e/i ⠗r/w ⠕o ⠙d/f ⠑e/i~ | ⠑⠗⠕⠙⠑
+insert: 03 device 1/2 seq 03 seedbook 0973 kangaroo | ⠅k ⠁a ⠝n ⠛g ⠁a~ | ⠅⠁⠝⠛⠁⠗⠕⠕
+insert: 04 device 1/2 seq 04 seedbook 1777 task | ⠞t ⠁a ⠎s ⠅k -- | ⠞⠁⠎⠅
+insert: 05 device 1/2 seq 05 seedbook 0630 exchange | ⠑e/i ⠭x ⠉c ⠓h/j ⠁a~ | ⠑⠭⠉⠓⠁⠝⠛⠑
+insert: 06 device 1/2 seq 06 seedbook 1880 turtle | ⠞t ⠥u ⠗r/w ⠞t ⠇l~ | ⠞⠥⠗⠞⠇⠑
+insert: 07 device 1/2 seq 07 seedbook 0717 flower | ⠋f/d ⠇l ⠕o ⠺w/r ⠑e/i~ | ⠋⠇⠕⠺⠑⠗
+insert: 08 device 1/2 seq 08 seedbook 1713 stock | ⠎s ⠞t ⠕o ⠉c ⠅k~ | ⠎⠞⠕⠉⠅
+insert: 09 device 1/2 seq 09 seedbook 0184 black | ⠃b ⠇l ⠁a ⠉c ⠅k~ | ⠃⠇⠁⠉⠅
+insert: 10 device 1/2 seq 10 seedbook 1311 phrase | ⠏p ⠓h/j ⠗r/w ⠁a ⠎s~ | ⠏⠓⠗⠁⠎⠑
+insert: 11 device 1/2 seq 11 seedbook 1640 smooth | ⠎s ⠍m ⠕o ⠕o ⠞t~ | ⠎⠍⠕⠕⠞⠓
+insert: 12 device 1/2 seq 12 seedbook 0582 emerge | ⠑e/i ⠍m ⠑e/i ⠗r/w ⠛g~ | ⠑⠍⠑⠗⠛⠑
+insert: 13 device 2/2 seq 01 seedbook 1514 rule | ⠗r/w ⠥u ⠇l ⠑e/i -- | ⠗⠥⠇⠑
+insert: 14 device 2/2 seq 02 seedbook 0181 bird | ⠃b ⠊i/e ⠗r/w ⠙d/f -- | ⠃⠊⠗⠙
+insert: 15 device 2/2 seq 03 seedbook 1738 summer | ⠎s ⠥u ⠍m ⠍m ⠑e/i~ | ⠎⠥⠍⠍⠑⠗
+insert: 16 device 2/2 seq 04 seedbook 0489 dial | ⠙d/f ⠊i/e ⠁a ⠇l -- | ⠙⠊⠁⠇
+insert: 17 device 2/2 seq 05 seedbook 0957 jealous | ⠚j/h ⠑e/i ⠁a ⠇l ⠕o~ | ⠚⠑⠁⠇⠕⠥⠎
+insert: 18 device 2/2 seq 06 seedbook 0754 funny | ⠋f/d ⠥u ⠝n ⠝n ⠽y~ | ⠋⠥⠝⠝⠽
+insert: 19 device 2/2 seq 07 seedbook 1182 neck | ⠝n ⠑e/i ⠉c ⠅k -- | ⠝⠑⠉⠅
+insert: 20 device 2/2 seq 08 seedbook 0510 distance | ⠙d/f ⠊i/e ⠎s ⠞t ⠁a~ | ⠙⠊⠎⠞⠁⠝⠉⠑
+insert: 21 device 2/2 seq 09 seedbook 0830 guilt | ⠛g ⠥u ⠊i/e ⠇l ⠞t~ | ⠛⠥⠊⠇⠞
+insert: 22 device 2/2 seq 10 seedbook 1846 trade | ⠞t ⠗r/w ⠁a ⠙d/f ⠑e/i~ | ⠞⠗⠁⠙⠑
+insert: 23 device 2/2 seq 11 seedbook 1154 mother | ⠍m ⠕o ⠞t ⠓h/j ⠑e/i~ | ⠍⠕⠞⠓⠑⠗
+insert: 24 device 2/2 seq 12 seedbook 0324 chronic | ⠉c ⠓h/j ⠗r/w ⠕o ⠝n~ | ⠉⠓⠗⠕⠝⠊⠉
+seal-code: MEN4C-WWCGY-4KS2Q-CFQJR-3X9QEJ
+note: every line above must equal what the device showed; a difference is a typing error or a faulty device
+note: for 12 words, 50-98 rolls is valid only for a first ceremony, never after "Match found", which takes 99
+note: the device's check QR adds its fresh nonce to the re-check URL, so no run can show it or a go-ahead code
+```
+
+Core's values for the same cases. Core's agreement test checks that core's session, fed these cases' stubs,
+events and rolls, gives exactly agreement.json's `expect`: C from `commitment()`, D from `reveal_device_leg()`,
+the words from `mnemonic()`, the seed bits from the inserts' SeedBook numbers, the seal from `seal()` and
+`seal_from_mnemonic`, and each insert line from core's braille accessors (`words12_mixed_pi` and
+`words24_dice_only_phone` cover these two cases, and pass above). A scratch script compares the transcripts' stdout
+with those `expect` values:
+
+```text
+12-mixed-pi-000 expect, which core's test compares with core's own values:
+  c_hex        21d424c3d4ab01303fe01593ea1900d4cb4dd1f13d926cdc7baf0c1bc73e9203
+  d_hex        4a38fcf5fc3a6cb5cadbc26ca1d62efa9bc97c206f6c9211e5b4093992bb918e
+  entropy_hex  afb7b84a188ca710c97309314c7d3464
+  words        quick saddle barely country skill mask chair gentle course glue escape sing
+  seal_tag_hex e9006c46e0a02487611658d1e7d76c41bfe943861d4b0dfb7f3bcedfdb426539
+  seal_code    A7EN7-R3NFS-H9E9T-9T3CH-TFVVZT
+24-dice_only-phone-000 expect, which core's test compares with core's own values:
+  c_hex        null (dice-only)
+  d_hex        null (dice-only)
+  entropy_hex  6d0991e66f04ebd5d666b016f47b33a45bd22d3649e8778bc64e9fd67bcd6409
+  words        home erode kangaroo task exchange turtle flower stock black phrase smooth emerge
+               rule bird summer dial jealous funny neck distance guilt trade mother chronic
+  seal_tag_hex caeb994de2afc72922707e3cc20320ad70fc5ba92cdb83b8b13168172a3cca0c
+  seal_code    MEN4C-WWCGY-4KS2Q-CFQJR-3X9QEJ
+12-mixed-pi-000 fields equal to expect: True [] | words equal: True | commitment line: ['C matches D'] | c_hex/d_hex null: False
+24-dice_only-phone-000 fields equal to expect: True [] | words equal: True | commitment line: None | c_hex/d_hex null: True
+```
+
+**Group 6's mutation script output** (stage C, 2026-10-11; `mutate.py`, SHA-256 `6dc82adf…`, a one-off scratch
+script kept out of the repo). Each run changes one recorded value of a scratch copy of agreement.json and runs that
+case's test of core/tests/agreement.rs:
+
+```text
+baseline words12_mixed_pi: exit 0, message None
+ok   C: exit 101, '12-mixed-pi-000: c_hex'
+ok   D: exit 101, '12-mixed-pi-000: d_hex'
+ok   D, dice-only, made non-null: exit 101, '12-dice_only-pi-000: d_hex'
+ok   C, dice-only, made non-null: exit 101, '12-dice_only-pi-000: c_hex'
+ok   n: exit 101, '12-mixed-pi-001: nonce_hex'
+ok   n through the check URL: exit 101, '12-mixed-pi-001: check_url'
+ok   check URL origin: exit 101, '12-mixed-pi-001: check_url'
+ok   G, the next valid value: exit 101, '12-mixed-pi-001: go_ahead'
+ok   G on the skip path: exit 101, '12-mixed-pi-000: go_ahead'
+ok   wrong G made equal to G: exit 101, '12-mixed-pi-009: wrong_go_ahead'
+ok   wrong G malformed: exit 101, '12-mixed-pi-009: wrong_go_ahead'
+ok   T: exit 101, '12-mixed-pi-000: seal_tag_hex'
+ok   Seal ID: exit 101, '12-mixed-pi-000: seal_id'
+ok   Seal ID braille: exit 101, '12-mixed-pi-000: seal_id_braille'
+ok   lookup prefix: exit 101, '12-mixed-pi-000: lookup_prefix'
+ok   bucket: exit 101, '12-mixed-pi-000: bucket'
+ok   grid: exit 101, '12-mixed-pi-000: grid'
+ok   colour index: exit 101, '12-mixed-pi-000: colour_index'
+ok   colour hex: exit 101, '12-mixed-pi-000: colour_hex'
+ok   re-check URL: exit 101, '12-mixed-pi-000: recheck_url'
+ok   re-check URL origin: exit 101, '12-mixed-pi-000: recheck_url'
+ok   register URL: exit 101, '12-mixed-pi-000: register_url'
+ok   register URL origin: exit 101, '12-mixed-pi-000: register_url'
+ok   grouped code: exit 101, '12-mixed-pi-000: seal_code'
+ok   grouped code without dashes: exit 101, '12-mixed-pi-000: seal_code'
+ok   collision report code: exit 101, '12-mixed-pi-005: collision'
+ok   collision report URL: exit 101, '12-mixed-pi-005: collision'
+ok   collision report origin: exit 101, '12-mixed-pi-005: collision'
+ok   collision report on a first ceremony: exit 101, '12-mixed-pi-000: collision'
+ok   no first ceremony on a restart: exit 101, '12-mixed-pi-005: collision'
+ok   word 1: exit 101, '12-mixed-pi-000: words'
+ok   word 2: exit 101, '12-mixed-pi-000: words'
+ok   word 3: exit 101, '12-mixed-pi-000: words'
+ok   word 4: exit 101, '12-mixed-pi-000: words'
+ok   word 5: exit 101, '12-mixed-pi-000: words'
+ok   word 6: exit 101, '12-mixed-pi-000: words'
+ok   word 7: exit 101, '12-mixed-pi-000: words'
+ok   word 8: exit 101, '12-mixed-pi-000: words'
+ok   word 9: exit 101, '12-mixed-pi-000: words'
+ok   word 10: exit 101, '12-mixed-pi-000: words'
+ok   word 11: exit 101, '12-mixed-pi-000: words'
+ok   word 12: exit 101, '12-mixed-pi-000: words'
+ok   word 24: exit 101, '24-mixed-pi-000: words'
+ok   a word dropped: exit 101, '12-mixed-pi-000: words'
+ok   insert position: exit 101, '12-mixed-pi-000: inserts line 2'
+ok   insert device: exit 101, '12-mixed-pi-000: inserts line 2'
+ok   insert device count: exit 101, '12-mixed-pi-000: inserts line 2'
+ok   insert sequence: exit 101, '12-mixed-pi-000: inserts line 2'
+ok   insert SeedBook number: exit 101, '12-mixed-pi-000: inserts line 2'
+ok   insert word: exit 101, '12-mixed-pi-000: inserts line 2'
+ok   insert face cell: exit 101, '12-mixed-pi-000: inserts line 2'
+ok   insert face letter: exit 101, '12-mixed-pi-000: inserts line 2'
+ok   insert mirror partner dropped: exit 101, '12-mixed-pi-000: inserts line 2'
+ok   insert mirror partner changed: exit 101, '12-mixed-pi-000: inserts line 2'
+ok   insert lighter mark dropped: exit 101, '12-mixed-pi-000: inserts line 2'
+ok   insert lighter mark on face 4: exit 101, '12-mixed-pi-000: inserts line 2'
+ok   insert word cells: exit 101, '12-mixed-pi-000: inserts line 2'
+ok   insert faces reordered: exit 101, '12-mixed-pi-000: inserts line 2'
+ok   insert blank face: exit 101, '12-mixed-pi-000: inserts line 6'
+ok   insert blank face marked lighter: exit 101, '12-mixed-pi-000: inserts line 6'
+ok   insert line dropped: exit 101, '12-mixed-pi-000: inserts'
+ok   insert device, 24 words: exit 101, '24-mixed-pi-000: inserts line 13'
+ok   insert sequence, 24 words: exit 101, '24-mixed-pi-000: inserts line 13'
+ok   seed bits: exit 101, '12-mixed-pi-000: entropy_hex'
+ok   seed bits, 24 words: exit 101, '24-dice_only-phone-000: entropy_hex'
+ok   unknown expect key: exit 101, '12-mixed-pi-000: not compared: ["zz_extra"]'
+ok   expect key removed: exit 101, '12-mixed-pi-000: bucket is not recorded, or was compared twice'
+ok   stub one byte short, check path: exit 101, '12-mixed-pi-001: start_check: Source(Os)'
+ok   stub one byte short, dice-only check path: exit 101, '24-dice_only-phone-009: start_check: Source(Os)'
+ok   stub one byte short, mixed skip path: exit 101, '12-mixed-pi-000: commit: Source(Os)'
+ok   first ceremony's stub one byte short: exit 101, '12-mixed-pi-005: first start_check: Source(Os)'
+ok   stub label changed: exit 101, '12-mixed-pi-001: c_hex'
+ok   refusal error: exit 101, '12-mixed-pi-short: error'
+ok   refusal step: exit 101, '12-mixed-pi-short: step'
+ok   refusal roll on finish: exit 101, '12-mixed-pi-short: roll'
+ok   refusal error, 257: exit 101, '12-mixed-pi-257: error'
+ok   refusal step, 257: exit 101, '12-mixed-pi-257: step'
+ok   refusal roll, 257: exit 101, '12-mixed-pi-257: roll'
+ok   refusal error, bad face: exit 101, '12-mixed-pi-face-0: error'
+ok   refusal roll, bad face: exit 101, '12-mixed-pi-face-0: roll'
+ok   refusal error, 98-roll restart: exit 101, '12-mixed-pi-restart-98: error'
+ok   refusal key removed: exit 101, '12-mixed-pi-short: roll is not recorded, or was compared twice'
+ok   refusal rolls core accepts: exit 101, '12-mixed-pi-short: core accepted the rolls'
+ok   98-roll restart without its first ceremony: exit 101, '12-mixed-pi-restart-98: core accepted the rolls'
+ok   verdict refused -> warned: exit 101, '12-mixed-pi-short: verdict'
+ok   verdict warned -> refused: exit 101, '12-dice_only-pi-short: verdict'
+ok   verdict input-refused position: exit 101, '12-mixed-pi-face-0: verdict'
+ok   verdict diverges -> refused: exit 101, '12-mixed-pi-restart-98: verdict'
+ok   diverges: the verifier's words: exit 101, "12-mixed-pi-restart-98: the verifier's words"
+ok   diverges: the verifier's seed bits: exit 101, "12-mixed-pi-restart-98: the verifier's seed bits"
+ok   a deleted ceremony: exit 101, 'assertion `left == right` failed: 12-mixed-pi-: the case count'
+ok   a deleted refusal: exit 101, 'assertion `left == right` failed: the refusal count'
+92 mutations, 0 unexpected
+```
+
+**Deviations from the plan**, each with why:
+- agreement.json is 4,155,350 bytes at fcb3481 (4,155,498 after 9a3902a; 851 KB gzipped), not the planned 2-2.5 MB.
+  JSON escapes each braille cell as `\u28xx` (6 bytes), which keeps generated files ASCII as braille.json is; the
+  insert lines are 2.2 MB of it. UTF-8 would give about 3 MB and break the ASCII rule for this one file.
+- Commit 5b (df1c053) is not in the plan's first commit order. The stage-A review (F10) found clipboard and network
+  routes the planned lists missed, and 5b completed Q23's lists: `socketserver`, `urllib3`, `nntplib`, `smtpd`,
+  `asyncore`, `asynchat`, `wsgiref`, `multiprocessing.connection` and `logging.handlers`; the `clipboard` module,
+  `win32clipboard`, `wl-paste`, `Get-`/`Set-Clipboard`, `clip.exe`, "the clipboard", any `.clipboard`,
+  `to_`/`read_clipboard` and `selection_get`. The cost: an import of any name `connection` or `handlers`, and the
+  words "the clipboard" in a `.py` file, are gate hits.
+- `_socket` and `_ssl` joined the network list (5cc295d), beyond the list Q23 approved: they are the C modules behind
+  socket and ssl, and `import _socket` gives the whole socket API.
+- Q19 (c)'s layout entry in build-plan.md wraps over three rows of the tree, not one line, since one line would be
+  about 170 characters against 105 elsewhere in the block (5d222f5).
+- The split was a pure move but for one code string: ed25519_secret's ValueError text names vectorgen.py. Check 10
+  raises and catches it, and no passing run prints it (99edb77). kcr.json's and backup.json's descriptions say
+  "verify.py's verifier" and "reader" rather than "its own", since those stayed in verify.py (76dd1fb).
+- SOURCES.md's records of pre-split work name code by the file that holds it now, under one note (0610f3e), rather
+  than per-line "then in verify.py" wording.
+- Check 12's rule (a) is stricter than planned. Every dunder name but `__name__` and `__doc__` is banned
+  (`__loader__.get_data` reads files), and a module name used other than to take a recorded attribute fails (no
+  aliasing). `os.spawn` and the file-by-path events are audit failures, and the name `type` is banned (8ced14f).
+- `known_answers` takes the table (`known_answers(KNOWN_ANSWERS)`, 2db1b6f), so that the sweep can change each value,
+  and `InputRefused` carries a third field, the fixed rule text (3727711). The plan writes `known_answers()` and
+  `InputRefused(field, position)`.
+- vectorgen's `load_verify` takes no path: check 12's in-process parts (the sweep, the input cases, the tie and the
+  in-process run) call tools/verify/verify.py even under `--verify-py`, and the audited command runs hold the copy
+  instead (stage-A note 2, not applied as written).
+- verify.py is no longer pure ASCII: the braille cells in `KNOWN_ANSWERS` are UTF-8 characters, as in vectorgen, so
+  the shipped file's SHA-256 covers them.
+- Check 13 does more than the plan lists, because the stage-B and stage-C reviews showed that a re-baseline could
+  remove the proof of byte equality alone. It works out each refusal's verdict apart from the generator, holds the
+  quota apart from verify.py's `DICE`, pins each refusal to its boundary and every case to the planned mix, ties
+  values to their definitions and inserts to braille.json, refuses a changed D, and holds each rule to a control. It
+  runs Coldcard's scripts on 74 cases (plan: about 70).
+- agreement.json's refusals keep core's part in `expect` and verify.py's in a separate `verifier` object, and a
+  ceremony's `expect` holds null where a value does not apply, so core's completeness rule covers only what core can
+  compare. Core has no accessor for E, n or G, so agreement.rs takes the seed bits from the SeedBook numbers and n
+  from core's own check URL, and checks G by its being accepted (the plan's "G accepted by core").
+- agreement.rs adds two comparisons the plan does not list: each refusal's verifier verdict against core's error,
+  mode and restart, and each 98-roll restart's inputs run as a first ceremony, which must give the verifier's words.
+- Commit 11 is two commits: a45c2d0 (the case-mix pin, a vectorgen change inside group 5) and 6dcce94 (the canaries).
+- agreement-core builds in `target/canary-agreement`, not the planned `target/canary-real`, and touches the copy's
+  tests/agreement.rs first. Cargo took a copy's test binary as `Fresh` across trees copied with their mtimes kept,
+  reproduced in 6dcce94's proof.
+- vectorgen imports more of the standard library than the plan's list (ast, pty, runpy, sysconfig): getpass, io,
+  select, signal and time at top level, importlib.util for the load by path, and shutil in the refused-actions
+  control; runpy and sysconfig only in the audit harness's child. The New dependencies line lists them (5100b6f).
+- Check 12 makes runs beyond the plan's list: Ctrl-C in a pty (exit 130), the audited stdin-closed run (exit 70),
+  the five argument runs and the typed forms (the stage-D review), and controls on the leak rule, the locale run
+  and the in-process run.
+- The banner, the notes, 2.585 bits per roll and the stderr lines are also held in vectorgen (`KNOWN_ANSWER_RUN_*`,
+  `STDERR_*`), apart from `render`, so changing a note or prompt means editing verify.py, its `run` literal and
+  vectorgen.
+- F15 part 5 is not covered. A getpass call without `stream=sys.stderr` would put the prompt on /dev/tty. In a pty
+  run stderr and /dev/tty are the same terminal, so telling them apart needs a pty run with stderr redirected and
+  read as a second stream. Where the prompt appears leaks nothing.
+- The dice pty run still types the plan's `123` and `456`, which no 12-roll leak window can see; the transcript pin
+  catches an echo of them instead.
+- Under `--verify-py` the pty runs wait for tools/verify/verify.py's prompt texts, so a copy with other prompts
+  fails only after the 60 s per-run timeout. No canary changes the prompts.
+- CLAUDE.md Commands also names the canary count (61), which the plan's Commands item did not list. vectorgen's
+  testing-only `--verify-py` and `--check` are not listed, like `--vectors-dir`.
+- Text typed before the first prompt is echoed by the terminal and then dropped (8a1b0c6), so the guide says to wait
+  for each prompt. Q20's recorded answer is unchanged; it holds for a paste at C's prompt.
+
+**CI.** Each stage was pushed and Entropy CI ran on the PR head (`pull_request`, PR #5). The Vercel check is not
+required and fails on every PR; the owner said to ignore it.
+- Stage A, 86c4c0d: run 38061106528 (2026-10-10, 14:48-14:52 UTC), success, all 14 Entropy check runs passed. It
+  was the first GNU grep run of the gate's Python patterns.
+- Stage B, 9301be3: run 38075212741 (2026-10-10, 18:17-18:22 UTC), success, all 14 passed. It was the first Linux
+  run of check 12's audit harness.
+- Stage C, 0d2ff75: run 38106150762 (2026-10-11, 02:45-02:48 UTC), success, all 14 passed. It was the first CI run
+  of check 13 and core/tests/agreement.rs.
+- Stage D, 5100b6f: run 38115700518 (2026-10-11, 05:43-05:51 UTC), success, all 14 passed. It was the first Linux
+  run of check 12's pty transcripts and of its audited exit-70 run. Seen at 06:00 UTC with `gh pr checks 5` and
+  `gh run list`, then read from the run's jobs and log:
+
+```text
+gates (banned APIs, verifier, canaries)  8m07s  banned-api-check: clean, 162 files scanned; vectorgen.py --selftest
+                                                (ubuntu-24.04's python3): 13 ok lines, selftest passed: 13 checks
+                                                (22 s); gate selftest: 346 passed, 0 failed; canaries (414 s): PASS
+                                                for agreement-core, the 9 tamper runs (vectors-tamper-agreement.json
+                                                among them) and verifier-import, -echo, -echo-upper, -tty and -reach;
+                                                PASS: all 61 checks ran
+verifier (python 3.9)                    1m04s  Python 3.9.6 (macOS); 13 ok lines, selftest passed: 13 checks (56 s)
+test                                     2m58s  default: lib 161 passed, 1 ignored; ceremony 5, kat 7, kcr_release 3,
+                                                os_source 2, typestate 1, vectors 4. test-sources: lib 189 passed,
+                                                1 ignored; agreement 9 passed in 5.22 s; ceremony 5, check_flow 6,
+                                                error_injection 11, kat 7, kcr 3, no_panic 9, no_secret_text 5,
+                                                os_source 2, panic_wipe 4, source_substitution 5, typestate 1,
+                                                vectors 4
+coverage (core, 95% of lines)            2m51s  agreement 9 passed in 7.18 s; TOTAL regions 96.87%, functions
+                                                96.27%, lines 8272, missed 216, 97.39%
+age-interop (age 1.1.1)                  1m10s  age 1.1.1-1ubuntu0.24.04.3; three ok lines; 17 of the 17 armor cases
+                                                refused
+cross (6 targets)                  1m39s-2m41s  each: clean, 2 file(s): no marker, no test key, no other RNG symbol;
+                                                getrandom (Pi, Android) or _CCRandomGenerateBytes (iOS) imported
+lint (fmt, clippy) 31s; supply-chain (deny, audit, vet) 39s; changes (Entropy/ or this workflow) 6s: pass
+```
+
+Against the M1 baseline run 38041799043 (gates 3m36s, verifier (python 3.9) 26 s, test 4m55s), gates grew by
+4m31s, nearly all of it the canaries step, and stays inside group 8's 10 minutes (the job's timeout is 30).
+
+**Ticked in this commit** (each with its Proof line above): group 0's answers and doc edits, and its baseline;
+group 1's split; group 4's `verification_run`; group 7's check 12 command runs; group 8's CLAUDE.md Commands;
+Verification "Gate, part 2", "Deliverables", "Release form", "Rules for the shipped file" and "The banned-API gate".
+After the CI look above (run 38115700518 complete and green), also: group 6's `core/Cargo.toml`; group 8's
+canaries, CI and runtime budget; group 9's Review; and Verification "Gate, part 1", the three matrix rows, "The
+split changed no M1 output", "Runtime ... every CI job green" and "Definition of done".
+
+**Still unticked**, with what each waits for:
+- None in M2. Every plan and Verification item of the M2 section is ticked with its proof. What remains is the
+  owner's approval of the gate below.
+
+### M2 gate status: MET (2026-10-11), waiting for the owner's approval
+The gate in docs/build-plan.md: "Verifier and core agree on 1,000 generated cases, including seal codes and braille;
+dice-only output matches Coldcard `rolls.py`".
+- Agreement. core/tests/agreement.rs replays all 1,000 ceremonies and the 28 refusals of vectors/agreement.json through
+  core's public session API under `test-sources`, and compares every field verify.py wrote: C, D, the seed bits and
+  every word; the seal (grouped code, tag, Seal ID and its braille, lookup prefix, bucket, grid, colour, re-check
+  URL), both on Sealed and from `seal_from_mnemonic`; n, the check URL, G accepted and the next-value wrong G refused
+  as exactly `WrongCode`; the register URL and Seal ID; the collision report on the 8 restarts; and every braille
+  insert field (position, device and count, sequence, SeedBook number, word, each face's cell, letter, mirror partner,
+  lighter mark and dots, and the word's cells), read from core's accessors. Every `expect` key is compared exactly
+  once. Core stops each of the 28 refusals with the recorded error at the recorded step, and their verifier
+  verdicts match (8 refused, 8 input-refused, 8 warned, 4 diverges, Q21). At 5100b6f it passes 9/9; each of 92
+  planted changes fails naming its case and field; the agreement-core canary fails naming
+  `24-mixed-pi-083: seal_tag_hex`. On the verifier's side, check 13 regenerates agreement.json byte for byte on
+  3.12.5 and 3.9.6 and holds it to rules a re-baseline cannot remove, each with a control.
+- Coldcard. Check 13 runs Coldcard's hash-pinned `rolls.py` and `rolls12.py` on 74 dice-only cases (64 ceremonies and
+  the 10 dice-only refusals with valid faces, 49 to 257 rolls), and each prints exactly the case's `entropy` line and
+  words. Check 4 runs them on rolls.json and keepcrypt.json's dice-only cases, and check 12's lone `dice` prints
+  Coldcard's words for `123456` at both lengths.
+- CI. Run 38115700518 on 5100b6f, the PR head, is complete and green: all 14 Entropy check runs pass (the Vercel
+  check, not required, fails as on every PR). Its test and coverage jobs run agreement.rs (9/9), its gates and
+  verifier (python 3.9) jobs run check 13 on ubuntu-24.04's python3 and macOS's 3.9.6, and gates runs the
+  agreement-core and agreement.json tamper canaries. The commit that adds this Review changes only this file; CI
+  runs on it after the next push.
+- Every M2 plan and Verification item is ticked with its proof, every high and medium review finding is fixed,
+  and no new dependency, CI job or required context was added.
+- Open items, all low; none is part of the gate:
+  - low: F15 part 5, getpass's prompt stream (deviations above).
+  - low: `gates` takes 8m07s of group 8's 10-minute budget, so the next canaries need the budget re-planned.
+  - low: no test pins the length and alphabet guards of verify.py's `check_url` and `register_url` (stage-B fix
+    report). No M2 input reaches them, so no output can change.
+  - low, for the owner: gate routes outside the completed Q23 lists (stage-B commit 5b report): `import
+    logging.config` and `multiprocessing.managers`, which reach sockets; a dotted import ending in a banned name,
+    such as `gevent.socket`; tkinter's `selection_own` and `tk.call('clipboard', ...)`; PowerShell's `gcb`/`scb`;
+    JXA's `theClipboard`; and pandas' `clipboard_set`. Check 12's audit catches any socket or process in verify.py.
+  - low, for the owner: plan text the fixers changed after "approve all": the Spec values guard, group 2's lists
+    (`_socket`, `_ssl` and 5b's names) and residuals, group 1's grep, and group 3's rule (a) with commit 6's change to
+    `BackupRefused`.
+  - low: the guidance for M3, M5 and M6 should carry the same caveat as 8a1b0c6: wait for each prompt.
+  - low: agreement.json's `description` and core/tests/agreement.rs's header still say the file comes from
+    verify.py's `verification_run` and `render`; the spec's `expect` entry names each source (9a3902a).
+  - low: check 12's keepcrypt.json tie still reads verify.py's `DICE`. Check 13's `AGREEMENT_QUOTA` and core's
+    dice.rs pin the quota.
+  - low: 22883dc's commit body says "14 lines" and "163 files". History is not rewritten; 86c4c0d and this file
+    correct them (11 lines; 160 files from a clean checkout).
+  - M1 owner items 13 and 14 (low) are still open and do not touch M2.
+- Per CLAUDE.md, M3 does not start until the owner approves.
