@@ -5651,21 +5651,25 @@ def terminal_command_problems(terminal, first, coldcard):
     return ["rule (f): %s" % problem for problem in problems]
 
 
-def locale_problems(piped, first):
-    """Check 12 (g): the first 12-word Mixed Pi ceremony piped under LC_ALL=LATIN1_LOCALE prints stdout byte for byte
-    as the UTF-8 runs do (render's text in UTF-8; stdout is decoded with surrogateescape, so equal text is equal
-    bytes) and stderr exactly as the piped run writes it, both streams under the leak rule as in every piped run.
-    Required on macOS; elsewhere run only where the locale is installed, which a probe of Python's stdout encoding
-    under it shows. [problem]."""
-    env = {"LC_ALL": LATIN1_LOCALE}
+def latin1_stdout():
+    """The codec name of Python's stdout under LC_ALL=LATIN1_LOCALE: "utf-8" where the locale is not installed, and ""
+    if the probe fails. subprocess.TimeoutExpired after LONE_TIMEOUT_SECONDS."""
+    probe = subprocess.run([sys.executable, "-I", "-c", "import codecs, sys; print(codecs.lookup(sys.stdout.encoding)"
+                            ".name)"], stdin=subprocess.DEVNULL, capture_output=True, env={"LC_ALL": LATIN1_LOCALE},
+                           timeout=LONE_TIMEOUT_SECONDS)
+    return probe.stdout.decode("ascii", "replace").strip() if probe.returncode == 0 else ""
+
+
+def locale_problems(piped, first, copy):
+    """Check 12 (g): the first 12-word Mixed Pi ceremony piped into `copy` under LC_ALL=LATIN1_LOCALE prints stdout
+    byte for byte as the UTF-8 runs do (render's text in UTF-8; stdout is decoded with surrogateescape, so equal text
+    is equal bytes) and stderr exactly as the piped run writes it, both streams under the leak rule as in every piped
+    run. Required on macOS; elsewhere run only where the locale is installed, which latin1_stdout shows. [problem]."""
     try:
-        probe = subprocess.run([sys.executable, "-I", "-c", "import codecs, sys; print(codecs.lookup("
-                                "sys.stdout.encoding).name)"], stdin=subprocess.DEVNULL, capture_output=True,
-                               env=env, timeout=LONE_TIMEOUT_SECONDS)
+        encoding = latin1_stdout()
     except subprocess.TimeoutExpired:
         return ["rule (g): the locale probe gave no result within %d seconds" % LONE_TIMEOUT_SECONDS]
-    encoding = probe.stdout.decode("ascii", "replace").strip()
-    if probe.returncode != 0 or encoding == "utf-8":
+    if encoding in ("", "utf-8"):
         if sys.platform == "darwin":
             return ["rule (g): Python's stdout under LC_ALL=%s is %r, not Latin-1, on macOS, where this run is "
                     "required" % (LATIN1_LOCALE, encoding)]
@@ -5676,7 +5680,7 @@ def locale_problems(piped, first):
     label = "piped %s under LC_ALL=%s (stdout %s before verify.py sets UTF-8)" % (case["name"], LATIN1_LOCALE,
                                                                                   encoding)
     status, stdout, stderr, problems = piped(label, command_args("mixed", 12), [c_text, d_text] + lines + [""],
-                                             [("D", d_text)], lines, env=env)
+                                             [("D", d_text)], lines, copy, {"LC_ALL": LATIN1_LOCALE})
     if status is not None and (status, stdout) != (0, render(verification_run(12, lines, c_text, d_text))):
         problems.append("%s: exit status %d, or stdout not the UTF-8 run's bytes" % (label, status))
     if status is not None:
@@ -5685,12 +5689,12 @@ def locale_problems(piped, first):
     return ["rule (g): %s" % problem for problem in problems]
 
 
-def inprocess_command_problems():
-    """Check 12's in-process run of verify.py's commands (tools/verify/verify.py, as this file loads it): with stdin
-    a terminal and getpass made to warn, as it does on a terminal that cannot hide input (getpass.fallback_getpass,
-    which would then read with echo), the hidden read refuses and the command exits 2, with nothing read or computed
-    and stderr exactly the fixed line. (An audited run takes the exit-70 path; this one cannot be audited, since only
-    a getpass changed in process warns.) [problem]."""
+def inprocess_command_problems(call):
+    """Check 12's in-process run of verify.py's commands, through `call` (tools/verify/verify.py's entry, as this file
+    loads it): with stdin a terminal and getpass made to warn, as it does on a terminal that cannot hide input
+    (getpass.fallback_getpass, which would then read with echo), the hidden read refuses and the command exits 2,
+    with nothing read or computed and stderr exactly the fixed line. (An audited run takes the exit-70 path; this one
+    cannot be audited, since only a getpass changed in process warns.) [problem]."""
     class Terminal(io.StringIO):
         def isatty(self):
             return True
@@ -5701,7 +5705,7 @@ def inprocess_command_problems():
     try:
         sys.stdin, sys.stdout, sys.stderr, getpass.getpass = (Terminal("123456\n\n"), stdout, stderr,
                                                               getpass.fallback_getpass)
-        status = entry(["dice", "--words", "12"])
+        status = call(["dice", "--words", "12"])
     except (Exception, SystemExit) as e:  # an exception out of entry fails the run, named
         status = "%s raised" % type(e).__name__
     finally:
@@ -5712,10 +5716,57 @@ def inprocess_command_problems():
     return []
 
 
+def command_parts(piped, terminal, data, node, known, first, coldcard):
+    """Check 12's command runs, as (part, a function giving its problems), in the order they run. The locale part
+    takes the copy to run and the in-process part the entry to call, so that command_control_problems can run them,
+    as check 12 does, on stand-ins."""
+    return (
+        ("piped", lambda: piped_command_problems(piped, first, coldcard, data, node, known)),
+        ("terminal", lambda: terminal_command_problems(terminal, first, coldcard)),
+        ("locale", lambda copy=data: locale_problems(piped, first, copy)),
+        ("in-process", lambda call=entry: inprocess_command_problems(call)),
+    )
+
+
+def command_control_problems(parts, data):
+    """Check 12's controls on the two command runs no canary covers, each taken from `parts` (command_parts, as check
+    12 runs them) and each of which must fire: rule (g) on the copy with its sys.stdout.reconfigure taken out (where
+    rule (g) runs), and the in-process run on an entry that returns 0 having written nothing, and on one that refuses
+    as verify.py does but writes a second line. A part missing from `parts` fails its control. [problem]."""
+    def returns_0(argv):
+        return 0
+
+    def second_line(argv):
+        sys.stderr.write(STDERR_NO_HIDING + "a second line\n")
+        return 2
+
+    reconfigure = b'sys.stdout.reconfigure(encoding="utf-8")'
+    try:
+        latin1 = latin1_stdout() not in ("", "utf-8")
+    except subprocess.TimeoutExpired:  # the locale run reports it
+        latin1 = False
+    refused = "a terminal that cannot hide input: exit status %d,"
+    controls = [("in-process", "an entry that returns 0", returns_0, refused % 0),
+                ("in-process", "a second stderr line", second_line, refused % 2)]
+    problems = []
+    if latin1 and data.count(reconfigure) != 1:
+        problems.append("rule (g)'s control: the copy has not one %s to take out" % reconfigure.decode("ascii"))
+    elif latin1:
+        controls.append(("locale", "a copy that leaves stdout in the locale's encoding",
+                         data.replace(reconfigure, b"pass"), "or stdout not the UTF-8 run's bytes"))
+    parts = dict(parts)
+    problems += ["no %s run" % name for name in ("locale", "in-process") if name not in parts]
+    for name, planted, stand_in, want in controls:
+        if name in parts and not any(want in problem for problem in parts[name](stand_in)):
+            problems.append("the %s run misses %s" % (name, planted))
+    return problems
+
+
 def command_problems(data, node, known, first, coldcard):
-    """Check 12's runs of the user commands (tasks/todo.md, M2 group 7): piped, in a pseudo-terminal (rule (f)) and
-    under a Latin-1 locale (rule (g)), each an audited run of the lone copy (or a fault twin) in its own read-only
-    directory; then the in-process runs. [problem]."""
+    """Check 12's runs of the user commands (tasks/todo.md, M2 group 7), taken from command_parts: piped, in a
+    pseudo-terminal (rule (f)) and under a Latin-1 locale (rule (g)), each an audited run of the lone copy (or a
+    fault twin) in its own read-only directory; then the in-process run; then the controls on the last two.
+    [problem]."""
     with tempfile.TemporaryDirectory() as scratch:
         root, locked = Path(scratch), []
 
@@ -5743,14 +5794,14 @@ def command_problems(data, node, known, first, coldcard):
                 return None, "", ["%s: no result within %d seconds" % (label, LONE_TIMEOUT_SECONDS)], steps
             return status, transcript, ["%s: rule (e): %s" % (label, problem) for problem in audit], left
 
+        parts = command_parts(piped, terminal, data, node, known, first, coldcard)
         try:
-            problems = piped_command_problems(piped, first, coldcard, data, node, known)
-            problems += terminal_command_problems(terminal, first, coldcard)
-            problems += locale_problems(piped, first)
+            problems = [problem for _, part in parts for problem in part()]
+            problems += ["controls: %s" % problem for problem in command_control_problems(parts, data)]
         finally:
             for directory in locked:
                 directory.chmod(0o755)
-    return problems + inprocess_command_problems()
+    return problems
 
 
 def check_verify_alone(vectors_dir, verify_py):

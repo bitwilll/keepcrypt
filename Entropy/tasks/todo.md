@@ -3350,6 +3350,14 @@ Groups land in the order below. Vectors come before the core test that reads the
       exactly its fixed line. Proof: check 12 passes on 3.12.5 and 3.9.6. Scratch copies fail it on both: the
       handler with the exception's text, or writing `verify-crash.log` (refused by the audit, which no longer runs
       unaudited), and, in a scratch tools/verify, the `GetPassWarning` refusal with a second line.
+      Review fix (2026-10-11, controls): the locale run (g) and the in-process run had no control and no canary, so
+      removing either from check 12 left all 13 checks and 61 canaries green. Check 12's command runs now come from
+      one table (`command_parts`), and controls taken from it must fire, as check 13's do: rule (g) on the copy with
+      its `sys.stdout.reconfigure` taken out (where rule (g) runs), and the in-process run on an entry that returns 0
+      and on one that writes a second line. A part missing from the table fails its control. Proof: check 12 passes
+      on 3.12.5 and 3.9.6. Scratch copies of vectorgen fail it on both: the locale or in-process part removed, the
+      locale run returning nothing after its probe, the in-process comparison switched off, and it comparing the
+      exit status alone.
 
 **8. Canaries, CI and the commands of record**
 - [ ] `scripts/canaries.sh`:
