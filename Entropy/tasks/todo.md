@@ -4332,8 +4332,11 @@ carries it, and every commit names a proof that runs at that commit.
   fails ("does not contain this feature: keepcrypt-core/test-registry").
 
 **5. pi/app foundations (pi-firmware.md:58-76; rules 3, 5)**
-- [ ] `#![forbid(unsafe_code)]` in `pi/app/src/lib.rs` and `main.rs`.
-- [ ] `screen.rs`, the screen model:
+- [x] `#![forbid(unsafe_code)]` in `pi/app/src/lib.rs` and `main.rs`.
+
+  Proof (commit 8): both files hold the line; in a scratch copy, an `unsafe` block appended to each in turn fails
+  `cargo check -p keepcrypt-pi` with "usage of an `unsafe` block", pointing at that file's `#![forbid(unsafe_code)]`.
+- [x] `screen.rs`, the screen model:
   - `ScreenId` with `ALL`, `class()` (Public or Protected) and `kind()` (input-waiting or transient), both static
     tables;
   - `KeyMap` per id: each key's action label, or none;
@@ -4342,7 +4345,13 @@ carries it, and every commit names a proof that runs at that commit.
 
   Proof: unit tests: `ALL` has no duplicate name; every id has a class, a kind and a key map; transient ids have an
   empty key map; a model with an element past the 240×216 content area does not fit.
-- [ ] `hal.rs`: the four traits the docs name, plus a clock, bundled as `Hal`.
+  Proof (commit 8): `cargo test --workspace --locked`: keepcrypt-pi's 26 unit tests pass, 10 of them in `screen`:
+  `ALL` holds group 8's 62 ids with unique kebab-case names equal to their variants'; the Protected set is exactly
+  Q29's 14; the transient ids are boot, wait and blank, each with an empty key map, and halt and power-off are the
+  only input-waiting ids with none; element boxes from the 10×20 and 6×10 metrics (wrapping included); a model fits
+  only with every box inside 240×216 (one pixel past the bottom, the right or the top edge does not) and a title of
+  at most 40 strip characters.
+- [x] `hal.rs`: the four traits the docs name, plus a clock, bundled as `Hal`.
   - `Display::present(&mut self, frame: &Frame, screen: &Screen<'_>) -> Result<(), HalError>`. The device ignores
     `screen`.
   - `Buttons::next_event(&mut self, deadline_ns: u64) -> Result<Event, HalError>`, where `Event` is
@@ -4362,14 +4371,23 @@ carries it, and every commit names a proof that runs at that commit.
 
   Proof: unit tests refusing `../x.age`, `x.AGE.txt`, a 65-character name and `x.txt`; every `HalError` displays fixed
   text.
-- [ ] `frame.rs`: `Frame` is a boxed 240×240 `Rgb565` buffer.
+  Proof (commit 8): `hal`'s 4 unit tests pass: those four names and nine more are refused, a 64-character name and
+  any-case extensions are accepted; each of the 15 `HalError` variants displays its pinned text; exactly Display,
+  Buttons and HwRng halt (Q25).
+- [x] `frame.rs`: `Frame` is a boxed 240×240 `Rgb565` buffer.
   - It implements embedded-graphics `DrawTarget` with `Error = Infallible`. Draws are matched exhaustively: no `.ok()`,
     no `let _`, no `_name` binding.
   - `clear()`, and zeroize after each present and on drop. `Frame::new` is `pub(in crate::ui)`.
 
   Proof: unit tests (a pixel reads back, off-screen pixels are clipped, `clear()` zeroes all of them); clippy and the
   FailOpen grep are clean.
-- [ ] `input.rs`:
+  Proof (commit 8): the module is `pi/app/src/ui/frame.rs`, since `pub(in crate::ui)` needs `ui` to be an ancestor;
+  `Frame::new` carries a `cfg_attr(not(test), expect(dead_code))` until group 6's `Painter` calls it. Its 3 unit
+  tests pass (a pixel reads back row by row, six off-panel points and a square half off two edges are clipped,
+  `clear` leaves every raw value 0); both clippy commands are clean, and `scripts/banned-api-check.sh` is clean
+  (170 files). The wipe after each present is the `Painter`'s call (groups 6 and 8); drop wipes through
+  `ZeroizeOnDrop`.
+- [x] `input.rs`:
   - `Key`: Up, Down, Left, Right, Press, Key1-3.
   - A pure `Debouncer`: raw edges with nanosecond timestamps in, one event per press after 20 ms stable, keeping the
     first edge's timestamp. M4's GPIO driver reuses it, and SimHal runs every scripted press through it.
@@ -4377,6 +4395,11 @@ carries it, and every commit names a proof that runs at that commit.
 
   Proof: unit tests at 19.999 ms and 20 ms, bounce trains, independent keys and kept timestamps; idle thresholds on
   injected times.
+  Proof (commit 8): `input`'s 9 unit tests pass: no event at 19.999 ms, one at 20 ms with the first edge's time and
+  no repeat while held; a bounce train is one event; a release shorter than 20 ms and a glitch give none; two keys
+  keep their own timestamps and come out in the order they settled, also when a release arrives before any poll;
+  every key debounces; `Idle` steps at 30 s (Protected only), 540 s and 600 s (only while secrets are held), and a
+  key resets it.
 
 **6. pi/app drawing (pi-firmware.md:67, :70; swb:84-90, :274-292)**
 - [ ] `ui/render.rs`: `Painter` and `render(&Screen)`: clear, the strips, each element through its painter, the footer.
