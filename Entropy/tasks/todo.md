@@ -3347,6 +3347,13 @@ Groups land in the order below. Vectors come before the core test that reads the
       - its eight `--write-*-vectors` (agreement added);
       - `python3 -I tools/verify/verify.py selftest | mixed --words N | dice --words N`;
       - a note that core's agreement test runs in the test-sources run.
+      Proof (commit 13, local; unticked until the output is under Review): Commands gain these four, and the
+      canaries line names its 61 checks. Run as written: `vectorgen.py --selftest` passes 13/13 on 3.12.5 (11.6 s)
+      and 3.9.6 (22.1 s); the eight `--write-*-vectors` leave `vectors/` byte-identical (`git diff --exit-code`);
+      `verify.py selftest` passes its 8 groups on both; on both, `mixed` and `dice` at `--words 12` and `24`, fed
+      the first agreement.json ceremony of each kind on a pipe, exit 0 printing its recorded entropy and seal code,
+      and `dice` on `123456` prints `entropy: 8d969eef...` (16 bytes for 12 words); the test-sources run passes,
+      `tests/agreement.rs` 9/9; canaries pass 61/61 in 149 s.
 - [ ] Runtime budget, measured and pasted. If a budget is missed, stop and re-plan here.
       - `vectorgen.py --selftest` under 45 s on `/usr/bin/python3` 3.9 locally;
       - `gates` under 10 minutes: the selftest once, 9 tamper runs, 5 verifier canaries of check 12, and the

@@ -119,7 +119,8 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings   # the stubs and test key too
 cargo test --workspace --locked      # the release configuration: no test feature
-cargo test -p keepcrypt-core --locked --features test-sources   # stub, fault-injection and test-registry tests
+cargo test -p keepcrypt-core --locked --features test-sources   # stub, fault-injection and test-registry tests,
+                                     # and the agreement test, which replays vectors/agreement.json on stub entropy
 # Test features are switched on only like this, with -p, never in a manifest (canaries.sh enforces it).
 cargo llvm-cov --locked -p keepcrypt-core --features test-sources --no-cfg-coverage --fail-under-lines 95 --summary-only
                                      # cargo-llvm-cov 0.9.1; the M1 gate is 95% of core's lines
@@ -127,7 +128,7 @@ TRYBUILD=overwrite cargo test -p keepcrypt-core --test typestate   # only after 
                                      # regenerates the pinned .stderr files; review the diff
 cargo deny --locked check && cargo audit && cargo vet --locked   # plain `cargo vet` re-fetches imports
 scripts/check-path-deps.sh           # every non-workspace crate comes from crates.io (no path or git overrides)
-python3 -I tools/verify/vectorgen.py --selftest   # 11 checks; also with /usr/bin/python3 (3.9, the floor)
+python3 -I tools/verify/vectorgen.py --selftest   # 13 checks; also with /usr/bin/python3 -I (3.9, the floor)
 # Generated vectors are regenerated, never hand-edited, then checked by --selftest:
 python3 -I tools/verify/vectorgen.py --write-seal-vectors        # vectors/seal.json
 python3 -I tools/verify/vectorgen.py --write-kat-vectors         # vectors/kat.json
@@ -136,6 +137,11 @@ python3 -I tools/verify/vectorgen.py --write-braille-vectors     # vectors/brail
 python3 -I tools/verify/vectorgen.py --write-watchonly-vectors   # vectors/watchonly.json
 python3 -I tools/verify/vectorgen.py --write-kcr-vectors         # vectors/kcr.json
 python3 -I tools/verify/vectorgen.py --write-backup-vectors      # vectors/backup.json
+python3 -I tools/verify/vectorgen.py --write-agreement-vectors   # vectors/agreement.json
+# The shipped verifier, as a user runs it (also with /usr/bin/python3 -I); type only test values from vectors/:
+python3 -I tools/verify/verify.py selftest           # its embedded known answers alone, one line per group
+python3 -I tools/verify/verify.py mixed --words N    # N is 12 or 24: prompts for C, D and the rolls
+python3 -I tools/verify/verify.py dice --words N     # prompts for the rolls of a dice-only run (Coldcard's too)
 scripts/age-interop.py --core        # the age CLI against tools/verify/ and core, both directions, work factor 18
                                      # (needs age; CI: Ubuntu's 1.1.1). --generate rewrites age_cli_written.json
 scripts/banned-api-check.sh          # grep gate for banned RNG, network and clipboard APIs
@@ -144,7 +150,7 @@ scripts/banned-api-check.sh --selftest   # also builds the artifact fixtures (ne
 # CARGO_TARGET_<T>_RUSTFLAGS='--cfg getrandom_backend="linux_getrandom"'):
 cargo build --release --locked -p keepcrypt-core --lib --example release_probe --target T
 scripts/banned-api-check.sh --artifact T target/T/release/libkeepcrypt_core.rlib target/T/release/examples/release_probe
-scripts/canaries.sh                  # proves every gate still fires, the scan's positive controls included
+scripts/canaries.sh                  # 61 checks: proves every gate still fires, the scan's positive controls included
 ```
 
 ## Definition of done (every task)
