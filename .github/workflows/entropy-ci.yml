@@ -200,12 +200,15 @@ jobs:
   gates:
     # Rule 1 and the network and clipboard bans as a grep gate, plus its self-test (with the
     # release-artifact scan's fixtures, which rustc builds for an Android and an iOS target); the
-    # verifier self-test (11 checks: every vectors/ file regenerated or recomputed, and a re-run of
-    # the hash-pinned Coldcard scripts behind rolls.json); and the canaries: crates that must fail
-    # cargo-deny and clippy, mutated copies of the real crates, a path override, the dependency
-    # graph pins, a changed byte in each generated vectors file, and the artifact scan's positive
-    # controls on host release probes built with test-registry and test-sources (rule 10), each of
-    # which must fail on every run, so a gate that stops firing turns CI red.
+    # verifier self-test (13 checks: every vectors/ file regenerated or recomputed, Coldcard's
+    # hash-pinned scripts re-run behind rolls.json and on agreement.json's dice-only subset, and
+    # lone copies of the shipped verify.py under an audit hook, piped and in a pseudo-terminal); and
+    # the canaries: crates that must fail cargo-deny and clippy, mutated copies of the real crates,
+    # a path override, the dependency graph pins, a changed byte in each vectors file vectorgen.py
+    # writes or reads back, a changed agreement.json value core's agreement test must refuse,
+    # copies of verify.py that check 12 must fail, and the artifact scan's positive controls on
+    # host release probes built with test-registry and test-sources (rule 10), each of which must
+    # fail on every run, so a gate that stops firing turns CI red.
     name: gates (banned APIs, verifier, canaries)
     needs: changes
     if: needs.changes.outputs.entropy == 'true'
@@ -245,8 +248,11 @@ jobs:
 
   verifier-py39:
     # verify.py promises Python 3.9+, the stock /usr/bin/python3 an offline Mac user has; the
-    # gates job runs Ubuntu's 3.12. Full path, because python3 on PATH is Homebrew's. If Apple
-    # ships another version this fails, so the floor is re-decided, not silently untested.
+    # gates job runs Ubuntu's 3.12. Both run the same 13 checks, so check 12's lone copies and
+    # check 13's byte-for-byte regeneration of agreement.json run on 3.9 too, and check 12's
+    # Latin-1 locale run, which Linux runs only where that locale is installed, is required here.
+    # Full path, because python3 on PATH is Homebrew's. If Apple ships another version this fails,
+    # so the floor is re-decided, not silently untested.
     name: verifier (python 3.9)
     needs: changes
     if: needs.changes.outputs.entropy == 'true'

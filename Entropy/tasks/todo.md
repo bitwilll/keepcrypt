@@ -3338,6 +3338,10 @@ Groups land in the order below. Vectors come before the core test that reads the
       '/dev/null'`).
 - [ ] `.github/workflows/entropy-ci.yml`: the selftest commands changed in group 1; the comments now name 13 checks.
       No job, step, trigger, timeout or required context changes. Proof: the diff; every job green on the M2 PR.
+      Proof (commit 12, local; unticked until every job is green on the M2 PR): the selftest steps changed in commit
+      3; commit 12 changes only the `gates` and `verifier (python 3.9)` comments (13 checks; the new canaries; check
+      12's locale run required on macOS). The workflow parses to the same YAML before and after (`ruby -ryaml`), so
+      the nine job names and every step are unchanged; `vectorgen.py --selftest` passes 13/13 on 3.12.5 and 3.9.6.
 - [ ] CLAUDE.md Commands, each run as written with the output under Review:
       - `python3 -I tools/verify/vectorgen.py --selftest` (13 checks; also on `/usr/bin/python3`);
       - its eight `--write-*-vectors` (agreement added);
