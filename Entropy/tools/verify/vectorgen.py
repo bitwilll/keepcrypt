@@ -4700,6 +4700,8 @@ STDERR_END_OF_INPUT = "end of input at the %s prompt"
 STDERR_KNOWN_ANSWERS_FAILED = ("verify.py: known answers failed: %s; this copy is broken or changed, so it computes "
                                "nothing\n")
 STDERR_INTERRUPTED = "\nverify.py: interrupted; nothing computed\n"
+STDERR_UNEXPECTED = "verify.py: unexpected error; stopped, with no details shown\n"  # exit 70, never the error's text
+STDERR_NO_HIDING = "verify.py: this terminal cannot hide what is typed; nothing read\n"
 # A refused argument: argparse's one usage line, then this fixed line, never the argument.
 STDERR_ARGUMENTS_REFUSED = "verify.py: arguments refused (arguments not shown); see python3 -I verify.py --help\n"
 STDERR_USAGE_REFUSED = re.compile(r"usage: python3 -I verify\.py [^\n]*\n" + re.escape(STDERR_ARGUMENTS_REFUSED))
@@ -5151,15 +5153,16 @@ def audit_problems(report):
 def audited_run(directory, args, version=None, stdin=b"", env=None):
     """One audited run (check 12 (e)) of the copy directory/verify.py with `args`: sys.executable -I -c
     AUDIT_HARNESS, from `directory`, in a new session (no controlling terminal), with `stdin` piped in (by
-    default stdin is at its end) and an empty environment or `env`, the copy seeing `version` as
-    sys.version_info if given. Returns (exit status, stdout, stderr, the audit's problems), stdout and stderr
-    decoded as UTF-8 with surrogateescape, so that equal text is equal bytes."""
+    default stdin is at its end; None closes it, as a shell's <&- does) and an empty environment or `env`, the
+    copy seeing `version` as sys.version_info if given. Returns (exit status, stdout, stderr, the audit's
+    problems), stdout and stderr decoded as UTF-8 with surrogateescape, so that equal text is equal bytes."""
     read_end, write_end = os.pipe()
     with os.fdopen(read_end, "rb") as report:
         try:
             run = subprocess.run([sys.executable, "-I", "-c", harness_source(version, False), str(write_end),
                                   str(directory / "verify.py")] + list(args), input=stdin, capture_output=True,
                                  cwd=directory, env=env or {}, pass_fds=(write_end,), start_new_session=True,
+                                 preexec_fn=None if stdin is not None else lambda: os.close(0),
                                  timeout=LONE_TIMEOUT_SECONDS)
         finally:
             os.close(write_end)
@@ -5368,12 +5371,13 @@ def piped_command_problems(piped, first, coldcard, data, node, known):
     warning); D with one digit changed (exit 1 before the rolls prompt); a mixed run one roll short (exit 1, no
     words); every refused text of INPUT_CASES (exit 2, its field and position named); refused arguments at each
     parser, --words missing or 18, and an @file argument (exit 2, nothing read, the argument not shown); end of
-    input before each prompt's first line (exit 2), and after two roll lines (computed); and each fault twin, under
-    mixed and dice (exit 1, one line naming its group, no prompt). Each run's stderr must be exactly what it writes:
-    the pipe notice, each prompt, C printed back and the counts, then any warning or the line that stops it. Some
-    fields are typed as a user may type them: C in upper case without groups (the mixed first ceremonies), blanks
-    ending the rolls (123456) and a roll line with outer blanks (the two lines), so the printed-back C, the counts
-    and the end of the list are tested. `piped` holds every run's streams to the leak rule. [problem]."""
+    input before each prompt's first line (exit 2), and after two roll lines (computed); stdin closed (exit 70, the
+    fixed line); and each fault twin, under mixed and dice (exit 1, one line naming its group, no prompt). Each
+    run's stderr must be exactly what it writes: the pipe notice, each prompt, C printed back and the counts, then
+    any warning or the line that stops it. Some fields are typed as a user may type them: C in upper case without
+    groups (the mixed first ceremonies), blanks ending the rolls (123456) and a roll line with outer blanks (the two
+    lines), so the printed-back C, the counts and the end of the list are tested. `piped` holds every run's streams
+    to the leak rule. [problem]."""
     problems = []
 
     def run(label, args, lines, want_status, want_stderr, hex_texts, roll_lines, copy=data):
@@ -5519,6 +5523,11 @@ def piped_command_problems(piped, first, coldcard, data, node, known):
                  lines)
     if result is not None and result[0] != render(report):
         problems.append("%s: stdout is not render's for the same run" % label)
+    # An unexpected error, here sys.stdin missing because stdin is closed, takes the exit-70 path, audited.
+    label = "dice --words 12 with stdin closed"
+    result = run(label, command_args("dice_only", 12), None, 70, STDERR_UNEXPECTED, [], [])
+    if result is not None and result[0]:
+        problems.append("%s: stdout is not empty" % label)
     for group in known or ():
         twin = fault_twin(data, node, group)
         if twin is None:  # rule (d) reports it
@@ -5676,32 +5685,30 @@ def locale_problems(piped, first):
 
 
 def inprocess_command_problems():
-    """Check 12's in-process runs of verify.py's commands (tools/verify/verify.py, as this file loads it): with stdin
+    """Check 12's in-process run of verify.py's commands (tools/verify/verify.py, as this file loads it): with stdin
     a terminal and getpass made to warn, as it does on a terminal that cannot hide input (getpass.fallback_getpass,
-    which would then read with echo), the hidden read refuses and the command exits 2, with nothing read or
-    computed; and with stdin closed, an unexpected error exits 70 with one fixed line. [problem]."""
+    which would then read with echo), the hidden read refuses and the command exits 2, with nothing read or computed
+    and stderr exactly the fixed line. (An audited run takes the exit-70 path; this one cannot be audited, since only
+    a getpass changed in process warns.) [problem]."""
     class Terminal(io.StringIO):
         def isatty(self):
             return True
 
-    closed = io.StringIO()
-    closed.close()
-    problems = []
-    for label, stdin, want_status in (("a terminal that cannot hide input", Terminal("123456\n\n"), 2),
-                                      ("stdin closed", closed, 70)):
-        stdout, stderr = io.StringIO(), io.StringIO()
-        saved = sys.stdin, sys.stdout, sys.stderr, getpass.getpass
-        try:
-            sys.stdin, sys.stdout, sys.stderr, getpass.getpass = stdin, stdout, stderr, getpass.fallback_getpass
-            status = entry(["dice", "--words", "12"])
-        except (Exception, SystemExit) as e:  # an exception out of entry fails the run, named
-            status = "%s raised" % type(e).__name__
-        finally:
-            sys.stdin, sys.stdout, sys.stderr, getpass.getpass = saved
-        if (status, stdout.getvalue(), stderr.getvalue().count("\n")) != (want_status, "", 1):
-            problems.append("%s: exit status %s, stdout %r, stderr %r, not %d, nothing and one line"
-                            % (label, status, stdout.getvalue()[-200:], stderr.getvalue()[-300:], want_status))
-    return ["commands: %s" % problem for problem in problems]
+    label = "a terminal that cannot hide input"
+    stdout, stderr = io.StringIO(), io.StringIO()
+    saved = sys.stdin, sys.stdout, sys.stderr, getpass.getpass
+    try:
+        sys.stdin, sys.stdout, sys.stderr, getpass.getpass = (Terminal("123456\n\n"), stdout, stderr,
+                                                              getpass.fallback_getpass)
+        status = entry(["dice", "--words", "12"])
+    except (Exception, SystemExit) as e:  # an exception out of entry fails the run, named
+        status = "%s raised" % type(e).__name__
+    finally:
+        sys.stdin, sys.stdout, sys.stderr, getpass.getpass = saved
+    if (status, stdout.getvalue(), stderr.getvalue()) != (2, "", STDERR_NO_HIDING):
+        return ["commands: %s: exit status %s, stdout %r, stderr %r, not 2, nothing and %r"
+                % (label, status, stdout.getvalue()[-200:], stderr.getvalue()[-300:], STDERR_NO_HIDING)]
+    return []
 
 
 def command_problems(data, node, known, first, coldcard):
@@ -5712,12 +5719,13 @@ def command_problems(data, node, known, first, coldcard):
         root, locked = Path(scratch), []
 
         def piped(label, args, lines, hex_texts, roll_lines, copy=data, env=None):
-            """An audited run of `copy` with `args` and `lines` piped in: (exit status, or None if it timed out,
-            stdout, stderr, [problem]), its audit's problems and the leak rule over both streams (the typed
-            `hex_texts` and `roll_lines`) named with `label`."""
+            """An audited run of `copy` with `args` and `lines` piped in (stdin closed if `lines` is None): (exit
+            status, or None if it timed out, stdout, stderr, [problem]), its audit's problems and the leak rule over
+            both streams (the typed `hex_texts` and `roll_lines`) named with `label`."""
             directory = lone_directory(root, "run-%d" % len(locked), copy, locked)
+            stdin = None if lines is None else piped_input(lines)
             try:
-                status, stdout, stderr, audit = audited_run(directory, args, stdin=piped_input(lines), env=env)
+                status, stdout, stderr, audit = audited_run(directory, args, stdin=stdin, env=env)
             except subprocess.TimeoutExpired:
                 return None, "", "", ["%s: no result within %d seconds" % (label, LONE_TIMEOUT_SECONDS)]
             leaks = leak_problems((("stdout", stdout), ("stderr", stderr)), hex_texts, roll_lines)

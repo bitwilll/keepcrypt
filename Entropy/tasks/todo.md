@@ -3338,6 +3338,14 @@ Groups land in the order below. Vectors come before the core test that reads the
       argparse's usage line and the fixed refusal, the argument not shown and no audit line. Proof: check 12 passes
       on 3.12.5 and 3.9.6; scratch copies whose subcommand parsers are plain `argparse.ArgumentParser`, or with
       `fromfile_prefix_chars="@"`, `default=12` or `choices=(12, 18, 24)`, each fail it on both.
+      Review fix (2026-10-11, exit 70): the exit-70 path ran only in process, unaudited (without `--verify-py` its
+      handler ran in vectorgen itself), and only its line count was checked, so a handler that printed the
+      exception's text, or wrote a file through `type(sys.stderr.buffer.raw)`, passed. An audited lone-copy run
+      with stdin closed (as a shell's `<&-` leaves it) now takes that path: exit 70, stderr exactly the fixed line.
+      The in-process run keeps only the `GetPassWarning` case (only a getpass changed in process warns), its stderr
+      exactly its fixed line. Proof: check 12 passes on 3.12.5 and 3.9.6. Scratch copies fail it on both: the
+      handler with the exception's text, or writing `verify-crash.log` (refused by the audit, which no longer runs
+      unaudited), and, in a scratch tools/verify, the `GetPassWarning` refusal with a second line.
 
 **8. Canaries, CI and the commands of record**
 - [ ] `scripts/canaries.sh`:
