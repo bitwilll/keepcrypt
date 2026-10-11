@@ -3214,8 +3214,12 @@ Groups land in the order below. Vectors come before the core test that reads the
         - rolls come in one or more lines, ended by an empty line. `dice` asks for the rolls only;
         - after each hidden entry, stderr gets only the count read ("64 hex digits", "37 rolls, 37 in all").
       - Type-ahead: each prompt drops whatever was typed or pasted before it appeared (getpass's flush), so it is never
-        shown. The guide says to enter one field at a time after its prompt. The running count makes a dropped line
-        visible.
+        read. The terminal may already have shown it, since echo is on until getpass turns it off (before the first
+        prompt, and between two; a paste at C's prompt arrives with echo off, so its later fields are dropped
+        unseen). The guide says to wait for each prompt before typing its field. The running count makes a dropped
+        line visible.
+        Review fix (2026-10-11): this said a dropped type-ahead is never shown, as did the guide; a pty probe that
+        wrote D before the C prompt appeared found it echoed in full on 3.12.5 and 3.9.6, then dropped.
       - End of input: before the first line at any prompt, it exits 2 with nothing computed. At the rolls prompt, after
         at least one line, it ends the list like an empty line. Pipes end this way, and Ctrl-D on a terminal does the
         same.

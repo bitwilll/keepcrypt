@@ -22,8 +22,8 @@ How to verify a device (docs/design.md, "How users verify without exposing a rea
   4. Make your real wallet with fresh rolls that never leave the device.
 
 At the prompts:
-  - Type each field after its prompt appears, one at a time. Whatever is typed or pasted before a
-    prompt is dropped, never shown.
+  - Wait for each prompt before typing its field: anything typed or pasted earlier is dropped, but the
+    terminal may already have shown it.
   - On a terminal nothing you type is shown. C is printed back in 16 groups of 4, to proofread; D and
     the rolls only as counts, so a mistyped D shows as "D does not match C" and a mistyped roll as
     different words.
@@ -2306,9 +2306,10 @@ class EndOfInput(Exception):
 def read_hidden(prompt):
     """One line typed on the terminal at `prompt`, without its line end, or None at end of input (Ctrl-D).
     getpass writes the prompt to stderr and reads /dev/tty with echo off; it turns echo off with TCSAFLUSH,
-    which drops whatever was typed or pasted before the prompt, so that is never shown. A terminal that cannot
-    hide what is typed makes getpass warn (GetPassWarning) and read with echo: the warning is raised as an
-    error, so nothing is read."""
+    which drops whatever was typed or pasted before the prompt, so that is never read; the terminal may already
+    have shown it, since echo is on until getpass turns it off (before the first prompt, and between two). A
+    terminal that cannot hide what is typed makes getpass warn (GetPassWarning) and read with echo: the warning
+    is raised as an error, so nothing is read."""
     with warnings.catch_warnings():
         warnings.simplefilter("error", getpass.GetPassWarning)
         try:
