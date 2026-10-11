@@ -3311,6 +3311,15 @@ Groups land in the order below. Vectors come before the core test that reads the
       passed rule (f). They are now cut into the fewest lines of at most 40, as evenly as possible (25 and 25; 99 as
       33, 33 and 33), so every typed line holds more than 12. Proof: check 12 passes on 3.12.5 and 3.9.6; that copy
       fails rule (f) on both, in the `mixed --words 12` and paste-ahead runs.
+      Review fix (2026-10-11, whole streams): the leak rule sees only D as hex and 12 rolls in a row, and stderr and
+      the pty transcript were checked only for what they must hold, so a copy that wrote `repr(report)` to stderr
+      (D as raw bytes) passed check 12, as did one echoing the dice run's `456`. Each piped run's stderr, and each
+      terminal run's transcript, must now be exactly what the run writes: the pipe notice, each prompt and its line
+      end, C printed back, D's count, each roll count, then any warning or the line that stops the run (check 12's
+      own copies of verify.py's lines), and the result lines; a refused argument gives argparse's one usage line and
+      the fixed refusal. Proof: check 12 passes on 3.12.5 and 3.9.6. Scratch copies fail it on both: the
+      `repr(report)` line, the roll lines after the first read with echo (now also in the dice pty run), and
+      "D read" written before D is parsed (the three refused-D runs).
 
 **8. Canaries, CI and the commands of record**
 - [ ] `scripts/canaries.sh`:
