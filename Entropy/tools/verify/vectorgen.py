@@ -5366,14 +5366,14 @@ def piped_command_problems(piped, first, coldcard, data, node, known):
     ceremony of each combination (exit 0, stdout render's for the same run in process, and its lines that the
     case's expect fixes equal to them); dice on 123456 at both lengths (Coldcard's seed bits and words, the range
     warning); D with one digit changed (exit 1 before the rolls prompt); a mixed run one roll short (exit 1, no
-    words); every refused text of INPUT_CASES (exit 2, its field and position named); an argument (exit 2, not
-    shown); end of input before each prompt's first line (exit 2), and after two roll lines (computed); and each
-    fault twin, under mixed and dice (exit 1, one line naming its group, no prompt). Each run's stderr must be
-    exactly what it writes: the pipe notice, each prompt, C printed back and the counts, then any warning or the
-    line that stops it. Some fields are typed as a user may type them: C in upper case without groups (the mixed
-    first ceremonies), blanks ending the rolls (123456) and a roll line with outer blanks (the two lines), so the
-    printed-back C, the counts and the end of the list are tested. `piped` holds every run's streams to the leak
-    rule. [problem]."""
+    words); every refused text of INPUT_CASES (exit 2, its field and position named); refused arguments at each
+    parser, --words missing or 18, and an @file argument (exit 2, nothing read, the argument not shown); end of
+    input before each prompt's first line (exit 2), and after two roll lines (computed); and each fault twin, under
+    mixed and dice (exit 1, one line naming its group, no prompt). Each run's stderr must be exactly what it writes:
+    the pipe notice, each prompt, C printed back and the counts, then any warning or the line that stops it. Some
+    fields are typed as a user may type them: C in upper case without groups (the mixed first ceremonies), blanks
+    ending the rolls (123456) and a roll line with outer blanks (the two lines), so the printed-back C, the counts
+    and the end of the list are tested. `piped` holds every run's streams to the leak rule. [problem]."""
     problems = []
 
     def run(label, args, lines, want_status, want_stderr, hex_texts, roll_lines, copy=data):
@@ -5484,10 +5484,20 @@ def piped_command_problems(piped, first, coldcard, data, node, known):
             named = "%s refused%s:" % (field, "" if want[1] is None else " at character %d" % want[1])
             if stdout or named not in stderr:
                 problems.append("%s: stdout is not empty, or stderr does not name %r" % (label, named))
-    label = "piped mixed --words 12 abandon"
-    result = run(label, ["mixed", "--words", "12", "abandon"], [], 2, STDERR_USAGE_REFUSED, [], [])
-    if result is not None and (result[0] or "abandon" in result[1]):
-        problems.append("%s: stdout is not empty, or the argument is shown" % label)
+    # Refused arguments, each before anything is read: a word as an extra argument (the command's parser), a word,
+    # 16 rolls and 18 as --words (the subcommand's own parser), --words missing (it has no default), and an @file
+    # argument, which no parser may read as arguments (the audit refuses the open; CLAUDE.md rule 8).
+    pasted = first[(12, "dice_only", "pi")]["rolls"][:16]
+    for label, args, shown in (("abandon", ["mixed", "--words", "12", "abandon"], "abandon"),
+                               ("--words abandon", ["mixed", "--words", "abandon"], "abandon"),
+                               ("--words with 16 rolls", ["dice", "--words", pasted], pasted),
+                               ("--words 18", ["mixed", "--words", "18"], None),
+                               ("with no --words", ["dice"], None),
+                               ("@arguments.txt", ["mixed", "--words", "12", "@arguments.txt"], "arguments.txt")):
+        label = "piped %s" % label
+        result = run(label, args, [], 2, STDERR_USAGE_REFUSED, [], [pasted] if shown == pasted else [])
+        if result is not None and (result[0] or (shown is not None and shown in result[1])):
+            problems.append("%s: stdout is not empty, or the argument is shown" % label)
     end = STDERR_STOPPED % (STDERR_END_OF_INPUT % "rolls")
     for label, args, lines, want_stderr in (
             ("at the C prompt", command_args("mixed", 12), [],

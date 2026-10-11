@@ -3252,6 +3252,10 @@ Groups land in the order below. Vectors come before the core test that reads the
       runs (item below) drive every prompt, exit code and input source from lone copies; `--help` prints the module
       docstring, the guide. The rolls are a generator that `verification_run` reads only after C matches D, so the
       prompt layer adds no second computation path.
+      Proof (review fix, 2026-10-11): no run pinned that `--words` has no default and takes only 12 and 24; copies
+      with `default=12` or `choices=(12, 18, 24)` passed all 13 checks. Check 12's piped runs `dice` with no
+      `--words` and `mixed --words 18` now must exit 2 with nothing read, giving argparse's usage line and the fixed
+      refusal; both copies fail check 12 on 3.12.5 and 3.9.6.
 - [ ] Check 12 grows over the user commands. These are audited lone-copy runs, and every stream is held to the leak
       rule:
       - piped runs, with stdin a pipe:
@@ -3326,6 +3330,14 @@ Groups land in the order below. Vectors come before the core test that reads the
       without groups, the pty run's first roll line and the piped two-line run's first line carry outer blanks, and
       the piped `123456` runs end the rolls with a line of blanks. Proof: check 12 passes on 3.12.5 and 3.9.6;
       scratch copies with each of the three changes fail it on both.
+      Review fix (2026-10-11, arguments): only `mixed --words 12 abandon` was refused, by the command's parser, so a
+      subcommand parser that repeats its refused `--words` value (pasted rolls, say), an `@file` argument read as
+      arguments (`fromfile_prefix_chars`, a file read from an argument) and `--words` with a default or an 18 all
+      passed. The piped runs add `mixed --words abandon`, `dice --words` with 16 rolls, `mixed --words 18`, `dice`
+      with no `--words` and `mixed --words 12 @arguments.txt`: each must exit 2 before anything is read, with
+      argparse's usage line and the fixed refusal, the argument not shown and no audit line. Proof: check 12 passes
+      on 3.12.5 and 3.9.6; scratch copies whose subcommand parsers are plain `argparse.ArgumentParser`, or with
+      `fromfile_prefix_chars="@"`, `default=12` or `choices=(12, 18, 24)`, each fail it on both.
 
 **8. Canaries, CI and the commands of record**
 - [ ] `scripts/canaries.sh`:
