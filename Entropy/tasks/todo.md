@@ -1,4 +1,4 @@
-# Task: KeepCrypt milestones M0, M1 and M2
+# Task: KeepCrypt milestones M0 to M3
 
 Spec: `docs/build-plan.md` (milestones, core API, CI rules) and `docs/seal-watchonly-braille.md`.
 Claude Code: refine this plan, then **check in with the owner before writing code**.
@@ -616,6 +616,301 @@ docs), so the whole PR needs your review, as M1's did.
     Otherwise: also commit core-written backups as `vectors/age/core_written.json`, written under a stub, rebuilt by
     vectorgen where `hashlib.scrypt` exists, and decrypted by age in `age-interop`. On Python 3.9, vectorgen could check
     everything but the stanza body.
+
+### Needed before M3 code (Q25-Q34, asked 2026-10-11)
+Please answer these before any M3 code is written. Each gives a recommendation first and says what changes otherwise.
+Every M3 commit except the pi/sim-only ones touches CODEOWNERS paths (core, pi/app, every Cargo.toml, Cargo.lock,
+supply-chain, scripts, .github, docs, CLAUDE.md), so the whole PR needs your review, as M1's and M2's did.
+
+25. **Runtime failures halt the device (rule 3; design.md:178; pi-firmware.md:75, :82).**
+    Recommended: the red stop screen of boot (step 1) also ends any later failure, until a power cycle.
+    - These halt: every error that ended a session; every known-answer-test, entropy-source, health-test, internal or
+      export-self-check error from any call (core's game call included); every display, button or hwrng fault.
+    - Only refusals of what the user or a stick supplied return to their screen: a wrong go-ahead code, a read-back
+      mismatch, a wrong backup passphrase or unrecognised entry, an empty BIP39 passphrase, snapshot refusals, and USB
+      faults.
+    - A power cycle reruns the boot self-test and the hwrng boot test before any new seed.
+    - Why: design.md:178 says any failure halts seed generation with no degraded mode, and core's own contract says such
+      an error means no seed can be made. Returning to Home would let an intermittently failing hwrng pass on a second
+      try, or let a dice-only seed follow straight after the hwrng failed.
+    - Cost: a power cycle forgets the 99-roll flag (as power-off does today), and the scenario `runtime_stop` shows it.
+    - Doc edits: pi-firmware.md:75 and :82; seal-watchonly-braille.md:146 (with Q26).
+
+    Otherwise:
+    - Back to Home after any error, keeping the flag (the earlier draft).
+    - Halt only on known-answer-test and health-test errors; Home for the rest.
+
+26. **Owner item 14: keep the 99-roll minimum through the idle wipe (rule 6; todo.md:456-461).**
+    Recommended: (C) `Wiped::restart(&self, len, mode)` borrows the `Wiped` instead of consuming it (wiped.rs:121 takes
+    `self` today, and so does `restart_with_stub`).
+    - How it works: the Pi keeps the last `Wiped` until a check passes or the user skips, and replaces it with each
+      newer one. If the 10-minute idle wipe ends the restarted ceremony, the next restart is still at 99.
+    - After Q25, the idle wipe is the only in-RAM end of a session that would lose the flag (errors halt, and Stop and
+      Cannot check already keep it).
+    - Why (C): one signature change, no new trait; a shell bug can only keep 99 longer; it suits UniFFI's shared
+      objects in M5 and M6.
+    - What it costs: after a collision, the kept `Wiped` holds the destroyed seed's seal code (wiped on drop) until a
+      check passes, the user skips, or a halt or power cycle. It is never shown again after the collision-report QR.
+    - One compile-fail fixture changes: `wiped_holds_no_secret.stderr` quotes the `restart` signature in a rustc hint,
+      so it is regenerated and its diff touches only that line and its underline.
+    - Doc edits: seal-watchonly-braille.md:146 and build-plan.md:153. The module docs at session.rs:10-15 and
+      wiped.rs:9-18 change in the same core commit.
+
+    Otherwise:
+    - (A) A sealed `PreReady` trait with `fn wipe(self) -> Wiped`, which the idle wipe calls, plus a fixture showing
+      `Ready` has none. After Q25 it covers the same cases as (C), at the cost of a new trait and fixture.
+    - Keep the documented exception (dc53b8f): the idle wipe drops back to the normal minimum.
+
+27. **Core's game-randomness call, and the game (rule 1; todo.md:629-633; design.md:264).**
+    (a) Recommended:
+    - `pub fn game_random(buf: &mut [u8]) -> Result<(), CoreError>` in `core/src/source.rs`, re-exported from lib.rs.
+      - Its body is one `Source::Os.fill(buf)` (source.rs:132): the exact-length OS path.
+      - It takes no session, touches no pool, has no stub twin, and reads the real OS in every build.
+      - The bytes are plain, not zeroizing, because games draw them.
+      - Its doc comment and CLAUDE.md rule 1 say it is never used for dice, D, nonces, passphrases or any pool input.
+    - Its one error halts the device (Q25), because the commitment reads the same OS source.
+    - In pi/app only `games/mod.rs` names it, and a grep holds that.
+    - The name goes into build-plan.md:91 and :202-204, pi-firmware.md:68 and :103, mobile-apps.md:142,
+      seal-watchonly-braille.md:292, and CLAUDE.md:47 (rule 1): approve my CLAUDE.md edit, or make it yourself.
+
+    Otherwise: another name; an error closes only the game.
+
+    (b) Recommended: the games run in the firmware's one process. design.md:264 says they run "in a separate process
+    that can only add uncredited bytes to the pool", while pi-firmware.md:43, :50 and :58 describe one binary with one
+    respawn entry.
+    - In one process the games still hold no session and no pool handle: they take bytes only from the game call, and
+      only the ceremony loop forwards key timing to the pool. That is stricter than pi-firmware.md:69, which hands the
+      games an `ExtraSink`.
+    - A grep keeps the session, `add_extra` and clocks out of the games' code.
+    - design.md:264 changes to match.
+
+    Otherwise: a separate game process. It needs a second binary, a pipe for key timing, a second respawn entry (or a
+    spawn from keepcrypt-pi) and its own scan, and it is not planned here.
+
+    (c) Recommended: M3 ships Snake only, which meets the gate's "waiting-screen game". Tetris (with the optional braille
+    letters of seal-watchonly-braille.md:292) is not in M3 and gets a milestone when you choose; the docs keep it as
+    planned, and pi-firmware.md says "Snake (Tetris later)".
+
+    Otherwise: both games in M3; or Tetris with the phones (M5, M6), which plan both games (mobile-apps.md:142).
+
+28. **New crates, the QR encoder and the simulator's display (rule 11; build-plan.md:76; pi-firmware.md:62, :70).**
+    Recommended:
+    - (a) `embedded-graphics 0.8.2` in pi/app (named in build-plan.md:76). It brings 7 more crates (table under "New
+      dependencies"); autocfg is held at 1.5.0, the version the vet imports cover.
+    - (b) `qrcodegen-no-heap 1.8.1` (MIT, no dependencies, same author and API as the docs' `qrcodegen`). It encodes
+      into buffers that pi/app owns and wipes after drawing, which matters because the registration and collision QRs
+      carry seal codes. 1.8.0 was yanked the day 1.8.1 came out; the vet note records it. Added to build-plan.md:76;
+      pi-firmware.md:70 renamed.
+    - (c) No `embedded-graphics-simulator`. pi/app draws into its own `Frame`, exactly the pixels M4 sends to the
+      ST7789, and pi/sim writes PNGs with about 80 lines of its own (stored deflate, CRC-32, Adler-32). Headless: no
+      native library on this Mac or in CI. The encoder is deterministic; screens that show fresh OS bytes (the check
+      nonce, C, D, the backup passphrase, Snake's food) differ from run to run. build-plan.md:76 and pi-firmware.md:62
+      change to match.
+    - (d) New edges to crates already in Cargo.lock and vetted: pi/app → `zeroize`; pi/sim → `keepcrypt-core` (no
+      features; without it `-p keepcrypt-pi-sim --features keepcrypt-core/test-registry` fails to resolve); pi/sim
+      dev-dependencies → `sha2` (safe-to-deploy) and `serde_json` (safe-to-run only, so a dev-dependency and nothing
+      more).
+    - (e) cargo vet: 6 exemptions and 3 imported audits. No deny.toml change.
+
+    Otherwise:
+    - `qrcodegen 1.8.0`, whose freed `Vec<bool>` keeps the QR's modules in memory (recorded with M7's residuals).
+    - `embedded-graphics-simulator 0.8.0` without SDL: 18 more crates, flate2 held at 1.1.5 to keep zlib-rs out of the
+      lock, and at least 4 more exemptions. An SDL window also needs SDL2 on this Mac and in CI, Zlib on the licence
+      list, and lazy_static 1.5.1, which is inside the cool-off.
+
+29. **Protected screens and idle on the Pi (rule 5; pi-firmware.md:75; mobile-apps.md:111-113, :166).**
+    Recommended: two screen classes, Protected and Public.
+    - Protected: the phones' list (mobile-apps.md:111: backup passphrase, reveal-D, seal code, registration and
+      watch-only QR screens) plus the words and every entry grid that holds a secret. On the Pi that is: words in
+      insert view and overview (ceremony and "Check a backup"); read-back entry and mismatch; the backup passphrase,
+      its confirm and its wrong-pick screen; BIP39 passphrase entry and backup-passphrase entry; D; the registration
+      QR; the collision-report QR (the destroyed seed's seal code); the account and descriptor QRs.
+    - Entering a Protected screen from a Public one passes one privacy gate ("No person or camera can see this
+      screen"), like the phones' "I'm alone, show words".
+    - After 30 s without input, a Protected screen is covered. The first press only uncovers it, and the session stays
+      (mobile-apps.md:112), so slow punching or scanning is never cut short.
+    - At 9 minutes without input, a warning appears on any screen while a session or a checked backup is held.
+    - At 10 minutes, the wipe (pi-firmware.md:75). The kept `Wiped` (Q26) and a loaded snapshot survive it.
+    - The wallet summary (step 10), the watch-only summary, the dice screen and the check QR (T and a nonce) stay
+      Public, as on the phones.
+
+    Otherwise: only the documented 10-minute wipe, with no cover and no gate; or Protected for the words alone.
+
+30. **The simulator's inputs, captures and live mode (rules 5, 8, 10, 12).**
+    Recommended:
+    - (a) The simulated hwrng is the counting stream (i mod 256, without end) for normal runs. The stop runs use
+      keepcrypt.json's 2,048-byte `run-of-6-startup` and `apt-62-startup` at boot and `run-of-6-continuous` in step 4,
+      read from the vectors by the tests and pinned to core's recorded verdicts. They are counters, not PRNGs. The
+      commitment's 64 OS bytes, the nonce and the backup secrets stay real.
+    - (b) No pi build ever uses `test-sources`. `test-registry` is switched on only from the command line, with `-p`.
+    - (c) Repeatable words come only from dice-only runs on keepcrypt.json's public roll strings: `coldcard-50`
+      (kcr.json `dice-50-words12`, in snapshot `with-dice-50`) and `coldcard-99` (`dice-99-words12` and
+      `dice-99-words24`).
+    - (d) pi/sim's tests compute G from the check QR's `t` and `n`, using sha2 and Crockford, after checking that the
+      drawn QR encodes that payload. release_probe.rs:112 already does this; it is pinned to CLAUDE.md's `CF94-BCAJ`.
+      Core's `go_ahead_code` stays crate-private, and verify.py still issues no code.
+    - (e) The carried verify.py tie (todo.md:3491-3492) is a Mixed run in the release configuration: C and D read from
+      the drawn screens' models, the rolls from the script, piped into `verify.py mixed`, which must exit 0. The words
+      and Seal ID are compared in memory, never printed.
+    - (f) `Display::present` also receives the screen model, and the frame is always drawn from that model by one
+      renderer. The device ignores the model; the tests read it in memory and print only screen ids.
+    - (g) Captures come only from one ignored test, `capture_set`, run on request: every scenario in order, into
+      per-configuration folders under cargo's `target/tmp/` (gitignored), cleared first. Protected frames of Mixed
+      runs become a grey placeholder; `reveal-d` is shown once as a specimen drawn from the public D `d-00-1f`. The
+      index lists each PNG's SHA-256. Never committed, never uploaded by CI. I send you the set, zipped, with the
+      commit, a clean-tree check and the zip's SHA-256 under Review, and ask you to scan every QR with a phone.
+    - (h) `live` mode writes every Protected frame as the placeholder, in every run; shows "SIMULATOR · NOT FOR REAL
+      FUNDS" on every screen; and reads no file (its RAM stick starts empty).
+
+    Otherwise:
+    - (e) A pi/app ceremony test under `--features keepcrypt-core/test-sources`: a repeatable Mixed seed, but against
+      todo.md:2298-2299 and a new CI step.
+    - (d) A core `test-registry` function that issues codes.
+    - (g) Capture everything; or a CI artifact upload, which needs a new pinned action and lets anyone with read access
+      download throwaway words.
+    - (h) Live mode with `--stick FILE` and unredacted frames, only for vector runs.
+
+31. **CI and gates (required checks unchanged).**
+    Recommended:
+    - (a) No new job. Ruleset 24833307's 14 required check runs are unchanged.
+    - (b) `test` gains: the simulator tests in the registry configuration; a release build of the test-registry
+      simulator for the host (with the cross job's getrandom cfg), scanned by `banned-api-check.sh --artifact`. It must
+      report exactly the registry marker, the simulator marker and the test key, and no stub marker
+      (todo.md:2298-2299). The scan shows no foreign RNG crate symbol; it cannot see std's OS-seeded hashing, which
+      (e) covers.
+    - (c) `cross`: on the ARM leg, also build pi/app's release rlib and scan it, which must be clean (todo.md:982).
+      release_probe gains `game_random`. No `keepcrypt-pi` binary is linked or scanned until M4.
+    - (d) A simulator marker, `KC_SIMULATOR_DO_NOT_SHIP`, embedded in the simulator's fake hwrng and stick the way core
+      embeds its test markers, and added to the artifact scan's marker list with a selftest case. M4's image scan then
+      fails on any simulator code (pi-firmware.md:76).
+    - (e) `gates`: new banned-API rules, each with hit and clean fixtures:
+      - a Shell category: the games' code names no session, `add_extra`, `add_hw_samples`, ceremony or clock;
+        `game_random` is named only in core and under `pi/app/src/games/`; `Session::new` appears once in pi/app;
+      - std's OS-seeded hashing (`HashMap`, `HashSet`, `RandomState`, `DefaultHasher`, `hash_one`,
+        `BuildHasherDefault`) banned in core/src, ffi/src and pi/app/src, with core/src/pool.rs's one test switched to
+        `BTreeSet`;
+      - the `#![forbid(unsafe_code)]` line check extended to pi/app's lib.rs and main.rs, with the selftest's `fresh()`
+        and fixtures updated.
+      No new canary, so the count stays at 61.
+    - (f) Budgets: `gates` took 8m07s of its 10 minutes and pi/app grows from 1 line to the whole UI, which the
+      real-crate canaries lint 8 times. If the job exceeds 10 minutes, the budget becomes 12; the job timeout stays 30.
+      `test` grows by at most 6 minutes.
+    - (g) Fallback, approved now so I can use it if group 7's measurement says so: `opt-level = 1` for keepcrypt-pi and
+      keepcrypt-pi-sim in dev and test builds, with the canaries' pinned `[profile]` updated in the same commit.
+      Coverage is core only, so it is unaffected.
+    - (h) The carried banned-API routes (todo.md:5314-5317) land in the scripts commit: `import logging.config` and
+      `multiprocessing.managers`; a dotted import ending in a banned name (`gevent.socket`); tkinter's `selection_own`
+      and `tk.call('clipboard', ...)`; PowerShell `gcb`/`scb`, as whole words, only in `.ps1`/`.psm1` files and shell
+      lines; JXA's `theClipboard`; pandas' `clipboard_set`.
+    - (i) `#![forbid(unsafe_code)]` in pi/app and pi/sim; M4 asks before adding any `unsafe` for mlockall or mount.
+      pi/sim denies `print_stdout`, `print_stderr` and `dbg_macro`, with one allowed print site in the bin and one in
+      the tests. CODEOWNERS adds `/Entropy/pi/sim/`, because its tests are the gate's evidence.
+
+    Otherwise: a separate simulator job (a ruleset change); no simulator marker until M4; no hash ban (std's hashing
+    then rests on review); (h) moves to M7 with verify.py's release scan; no profile fallback (a slow `test` job stops
+    the milestone for re-planning).
+
+32. **Buttons and typing on the Pi (pi-firmware.md defines only the dice keys, :87, and the word keys, :89).**
+    (a) Recommended: one press is one event (no auto-repeat, no type-ahead filter), and a footer names every key's
+    action on every screen.
+
+    | Screen kind | Up / Down | Left / Right | Press | KEY1 | KEY2 | KEY3 |
+    | --- | --- | --- | --- | --- | --- | --- |
+    | Menus, offers | move | - | select | back, only where nothing is lost | - | - |
+    | Dice | pick 1-6 (blank after each confirm) | - | confirm | undo | - | Done, only at the minimum |
+    | Words | - | - | read-back, on the last insert (back to entry when reviewing a mismatch) | overview on/off | previous | next |
+    | Entry grids | cursor | cursor | type | delete | - | done |
+    | Read-back mismatch | - | - | re-enter | show the insert | - | - |
+    | Snake | steer | steer | play again, after a round ends | leave | - | - |
+    | QR and info pages | - | - | continue | back | previous page | next page |
+
+    - The entry grids: go-ahead code, the 32 Crockford symbols in 8×4; read-back and backup words, a-z plus "blank" in
+      7×4; BIP39 passphrase, printable ASCII in three 8×4 pages.
+    - Confirm is disabled at 256 rolls. One-way choices (Skip, Match found, Cannot check) each take a confirm screen.
+
+    Otherwise: a letter wheel (Up/Down cycles a character), or KEY1 always means Back.
+
+    (b) Recommended: the backup passphrase is typed on the Pi ("Check a backup", pi-firmware.md:121) as the first four
+    letters of each word, or a whole three-letter word, through a new core call
+    `TypedBackupPassphrase::from_first_four(words: &[&str])`. That is the read-back rule and BIP39's four-letter
+    uniqueness: at most 32 letters instead of about 44. No word list leaves core; anything else is refused before any
+    scrypt run.
+
+    Otherwise: whole words through the existing `from_words` (no core change); a public prefix helper with completion;
+    or a direct `bip39` edge in pi/app.
+
+    (c) Recommended: the Pi takes BIP39 passphrases of printable ASCII (0x20-0x7E), up to 100 characters. A wallet whose
+    passphrase uses other characters gets no watch-only export from the Pi; its user builds the watch-only wallet in
+    their coordinator after restoring. pi-firmware.md:93 says so.
+
+    Otherwise: a larger character set on extra grid pages (accented Latin, chosen now), or a longer limit.
+
+33. **Flow details the docs leave open (pi-firmware.md:80-96; seal-watchonly-braille.md:108-164, :209, :278;
+    lessons.md:31-36).**
+    Recommended:
+    - (a) With a snapshot loaded, Check now shows "Snapshot No. 4, dated 2026-03-01, 7 entries. Use it for this check?"
+      before every snapshot reveal. Yes reveals; No stays in the check and opens the seal card with the same nonce.
+    - (b) The seal card is three pages, then an actions page: the 8×8 image with the Seal ID; the Seal ID large, with
+      its braille; the check QR; then Enter go-ahead code, Match found, Cannot check.
+    - (c) "Add fresh entropy" and "Start again" restart with the destroyed session's length and mode. While a `Wiped` is
+      kept (Q26), every new session comes from it, whether started from those buttons or from Home.
+    - (d) Steps 10-15 run in order. Steps 11-14 each open with Do it / Skip. The backup passphrase is generated at most
+      once.
+    - (e) The watch-only export is the account QR, then one descriptor QR holding both descriptors on two lines, as
+      seal-watchonly-braille.md:209 says (301 bytes: version 11 at 3 px per module).
+    - (f) Finish is terminal: checklist, session wiped, black frame, "Safe to power off" (pi-firmware.md:5 "runs one
+      ceremony"). A loaded snapshot stays until power-off.
+    - (g) When a stick holds several `.kcr` or `.age` files, a picker lists them. Only names of up to 64 characters
+      from `[A-Za-z0-9._-]` ending in `.age` or `.kcr` (any case) are listed.
+    - (h) A wrong backup-confirm pick shows the 8 words again and asks the same questions. The passphrase is never
+      regenerated, since that would void the paper copy.
+    - (i) About shows: version, root filesystem hash prefix, registry key state, licence, and admin@keepcrypt.com.
+    - (j) A "TEST REGISTRY" strip on every screen when the build carries the test key, and "SIMULATOR" in the
+      simulator.
+    - (k) Blocking calls run behind a wait screen: the known-answer tests in a new session, the three scrypt runs and
+      snapshot verification. No threads in M3; todo.md:2313's worker thread is decided in M4, after measuring.
+    - (l) On the code path the device cannot know the checker's snapshot date, so the result reads "No collision for
+      seal <Seal ID>, as of the date your checker showed." (seal-watchonly-braille.md:150 gains this line). "Check a
+      backup" shows its lookup count with "as of <snapshot date>".
+    - (m) Read-back: no suggestions while typing; after 3 or 4 letters the device completes the word from the seed and
+      compares; a match shows the whole word. That is seal-watchonly-braille.md:278's "completes each word", so no doc
+      edit.
+
+    Otherwise: choose any item differently. (a) stays before every snapshot reveal in every option.
+
+34. **Doc edits, applied alone in commit 2 (CLAUDE.md in its own commits), and owner item 13.**
+    Recommended:
+    - build-plan.md: :76 the Pi crates (Q28); :91 and :202-204 name `game_random` (Q27); :153 `restart(&self, ..)`
+      (Q26); the sketch adds `TypedBackupPassphrase::from_first_four` (Q32).
+    - pi-firmware.md:
+      - :62 the simulator (Q28); :68 "Snake (Tetris later)", :69 the ceremony loop forwards presses and games get no
+        sink, :70 the QR crate (Q27, Q28);
+      - :75 and :82 any failure, at boot or later, halts until a power cycle (Q25);
+      - :80 "fifteen screens in a fixed order: the typestate orders steps 1-8, core's read-back gate holds back the
+        five exports until step 9 completes, and the firmware runs steps 10-15 in order, each optional one with a
+        Skip";
+      - :85 Snake only; :88 the seal-card pages and the date confirmation (Q33); :89 Press on the last insert starts
+        the read-back (Q32); :93 printable ASCII BIP39 passphrases (Q32 (c));
+      - :95 "type each value into verify.py only after its prompt appears" (todo.md:5321);
+      - :100 the ceremony loop forwards key timing; :103 "Nothing derived from the pool is drawn by a game or the
+        extras", since C and D are drawn by design (Q27);
+      - :117 the backup write never replaces an existing file; :121 first four letters (Q32 (b));
+      - new subsections for the buttons (Q32), protected screens and idle (Q29), and Finish and halts (Q25, Q33 (f)).
+    - seal-watchonly-braille.md: :146 (Q25, Q26); :150 the code-path result (Q33 (l)); :200 M3 computes go-ahead codes
+      in its tests, and the local test registry is M9's (Q30 (d)); :292 names `game_random`, Tetris later (Q27).
+    - mobile-apps.md:142 names `game_random`.
+    - design.md: :264 one process, with the games holding no path to the session (Q27 (b)); :285 the waiting-screen
+      game lands with the Pi app (M3).
+    - CLAUDE.md: rule 1 (CLAUDE.md:47) names `game_random` and its limits; Commands gain the simulator commands.
+    - No edit needed: design.md:224 (the summary's fingerprint and address are what a restore is compared with);
+      mobile-apps.md:166 (holds once the Pi has the privacy gate); seal-watchonly-braille.md:209 and :278 (Q33 (e),
+      (m)).
+    - No computed number is added (lessons.md rule 1).
+    - Owner item 13 (the seed-pipeline figure, todo.md:453-455) stays open, outside M3: send the source file and I
+      redraw it in commit 2; otherwise M7's docs pass draws it from a committed script.
+
+    Otherwise: name the edits to leave out; the code then follows the doc text as it stands, except where a
+    question above was answered the other way. For item 13, a hand-written SVG now.
 
 ### Later
 - [ ] Release signing: minisign or GPG, and who holds the key offline? (M7)
@@ -3650,6 +3945,1023 @@ Core's test uses `sha2` and `serde_json`, both already approved.
 12. ci: job comments name 13 checks.
 13. CLAUDE.md: Commands for M2.
 14. tasks/todo.md: M2 Review with pasted proof and the gate report.
+
+## M3: Pi app on simulator (`pi/app`, `pi/sim`)
+
+### Inputs from M2 (folded into the plan below)
+
+**Starting point**
+- `m3-pi-sim` is at 8e6917b: main's merge 156c8ef plus the M2 approval note in this file.
+- Rules are cited from the clone's `Entropy/CLAUDE.md`.
+- The gate (build-plan.md:286): "Every screen including seal check with go-ahead code entry and braille pages, button
+  handling, waiting-screen game, USB export and snapshot import mocked". Its proof: "Scripted run drives a full
+  ceremony in the simulator; you review the screen captures".
+- M4 (:287) adds the drivers, the hwrng reader, Buildroot and real USB export.
+
+**Scaffolds**
+- `pi/app` (`keepcrypt-pi`, lib and bin) is `src/lib.rs` (one doc line) and `src/main.rs` (`fn main() {}`). It depends
+  only on keepcrypt-core.
+- `pi/sim` (`keepcrypt-pi-sim`, bin) is `fn main() {}`. It depends only on keepcrypt-pi and has no `[lints]` table.
+- Cargo.lock holds no display, QR or GPIO crate.
+
+**Gates that bind pi/app**
+- `pi/app/Cargo.toml:13-32` forbids `unused_must_use`, `disallowed_methods`, `let_underscore_must_use`, `print_stdout`,
+  `print_stderr` and `dbg_macro`. canaries.sh pins that table.
+- `pi/app/clippy.toml` equals core's. It bans:
+  - `unwrap_or*`, `map_or*`, `.ok()`, `.err()` and `or`/`or_else`, on Result and Option;
+  - `mem::forget` and `catch_unwind`;
+  - stdout and stderr.
+- The real-crate canaries append to `pi/app/src/lib.rs` and run clippy on its lib 8 times (canaries.sh:127-246).
+- FailOpen covers pi/app but not pi/sim (banned-api-check.sh:101, :561). Rule1 and the RNG category scan pi/sim too.
+- Rule1's `#![forbid(unsafe_code)]` check reads only `core/src/lib.rs` (banned-api-check.sh:567).
+- The selftest builds each fixture tree with `fresh()`, which writes only `core/src/lib.rs` (:580). Each fixture
+  holds exactly one file and must give exactly one hit or none. Fixtures are dispatched by name prefix (`rng-`,
+  `network-`, `clipboard-`, `rule1-`, `failopen-`, `include-`, `clean-`), and every category needs a fixture (:718-721).
+  `rule1-lib-rs-absent` expects exactly one Rule1 hit on an empty directory.
+- No gate sees std's OS-seeded hashing (`HashMap`/`HashSet` with `RandomState`). Core uses `HashSet` once, in a test
+  (core/src/pool.rs:67).
+
+**Manifest constraints found while planning**
+- canaries.sh:700-705 appends a `[dev-dependencies]` table to a copy of `pi/app/Cargo.toml`. A real table there would
+  make that copy invalid TOML, and the canary would fail. So pi/app takes no dev-dependency in M3, and tests that need
+  vectors live in pi/sim.
+- canaries.sh:707-712 appends a `[target.'cfg(unix)'.dependencies]` table naming keepcrypt-core to a copy of
+  `pi/sim/Cargo.toml`. A normal keepcrypt-core edge in pi/sim's `[dependencies]` is a different table, so that copy stays
+  valid and the pin still fires.
+- The manifest pin reads only `features` lists (canaries.sh:626-637), so `required-features` never trips it. It also
+  pins the root `[profile]` exactly (:600-604): the workspace crates stay at opt-level 0 in test builds.
+- `cargo run -p keepcrypt-pi-sim --features keepcrypt-core/test-registry` fails today ("does not contain this
+  feature"). A direct edge to core with no features fixes it (probe in `scratchpad/m3-plan/featprobe/`).
+- serde_json 1.0.151 is exempted safe-to-run only (supply-chain/config.toml:242-244), so it can only be a
+  dev-dependency. sha2 0.11.0 (:246) and zeroize 1.9.0 (:314) are safe-to-deploy.
+
+**Core drives every screen, with no new API on the main path**
+- Boot: `self_test`, `hwrng_boot_test` (exactly 1,024 samples), `registry_key_is_test`.
+- `Session::new(len, mode, Platform::Pi)` (session.rs:169), which reruns the full KAT suite. Its doc (and
+  `Wiped::restart`'s, wiped.rs:120) says "An `Err` means no seed can be made."
+- Step 4:
+  - `add_hw_samples`;
+  - `add_extra`, which returns nothing, cannot fail and does nothing in dice-only mode (session.rs:232);
+  - `hw_bytes_tested` and `HW_BYTES_NEEDED` (1,536, source.rs:40);
+  - `credited_bits` (0, then 2,048 at the first window) and `required_bits` (512 on the Pi).
+- Commitment and dice: `commit`, `commitment() -> Option<[u8; 32]>`, `start_dice`, `push_roll`, `undo_roll`, `rolls`,
+  `millibits`, `minimum_rolls`, `finish`.
+- Check: `seal()`, `skip_check`, `start_check`, `check_request().url()`, `reveal(GoAhead::{Snapshot, Code})`,
+  `Rejected::{Retry, Collision}`, `discard(Discard::{Collision, CannotCheck})`, `Wiped::{collision_report, restart}`.
+- `Ready`:
+  - `mnemonic` and `braille`;
+  - `check_readback` (3 or 4 letters, never wipes) and `readback_complete`;
+  - `fingerprint` and `first_address`;
+  - `generate_backup_passphrase(self) -> (Self, NewBackupPassphrase)` (session.rs:419), `encrypt_backup` and
+    `verify_backup` (never wipes);
+  - `watch_only` (its `qr_text()` is already uppercase for alphanumeric mode), `registration` and `reveal_device_leg`.
+- Outside a session:
+  - `verify_snapshot`, read with `number`, `date`, `entry_count` and `lookup`;
+  - `decrypt_backup`, read with `fingerprint`, `seal`, `recheck_url`, `reveal_words` and `reveal_braille`.
+- Which calls wipe:
+  - An `Err` from any method that takes `self` has already wiped the session.
+  - Only `Rejected::Retry`, `check_readback` and `verify_backup` keep it alive (session.rs:10-34).
+  - A snapshot `reveal` never gives Retry (inner.rs:266-282).
+- Five shell-order mistakes wipe by design:
+  - `commit` below the quota;
+  - `add_hw_samples` in dice-only mode;
+  - a 257th roll, or a face outside 1-6;
+  - `finish` below the minimum;
+  - an export before the read-back, or `encrypt_backup` before `generate_backup_passphrase`.
+- `CoreError` display text is fixed and holds no secret, for example `NoRegistryKey` is "no registry key is pinned in
+  this build" (error.rs:137) and `Health` is "{test} in the {stage} stage at sample {sample}". The error enums are not
+  `#[non_exhaustive]`.
+- What a `Wiped` holds: the platform, the 99-roll flag and, after a collision, a `CollisionReport`. The report carries
+  the destroyed seed's seal code and is wiped on drop (core/src/seal/registration.rs:69-72). A `Wiped` holds no seed or key.
+- The compile-fail fixture `wiped_holds_no_secret.stderr:49-53` quotes rustc's hint with the line
+  `pub fn restart(self, len: SeedLength, mode: Mode) -> ...` and its underline.
+
+**What core lacks**
+- The game-randomness call (build-plan.md:91, :202-204).
+- A restart that survives the idle wipe, for item 14: today it is `Wiped::restart(self, ..)` (wiped.rs:121).
+- Backup-passphrase entry that suits a joystick: `from_words` takes exact list words (secret.rs:309).
+- A QR encoder: core returns payload strings only.
+- `go_ahead_code` and the Crockford alphabet are crate-private (seal.rs:49, crockford.rs:14). release_probe.rs:112
+  already recomputes G with sha2.
+
+**Public vectors usable without a new file**
+- keepcrypt.json `health` (byte counts measured):
+  - `counting-1536` (1,536 bytes, i mod 256; passes, 512 credited);
+  - `run-of-6-startup` (2,048 bytes; RCT, startup, sample 505);
+  - `apt-62-startup` (2,048 bytes; APT, startup, sample 500);
+  - `run-of-6-continuous` (2,048 bytes; RCT, continuous, sample 1505);
+  - `stuck` (16 bytes) and `alternating` (512 bytes) are shorter than the boot test's 1,024 samples, so the simulator
+    does not use them.
+- keepcrypt.json `dice_only`:
+  - `coldcard-50`, byte-equal to kcr.json `dice-50-words12` (Seal ID YVM9CPP3);
+  - `coldcard-99`, byte-equal to `dice-99-words12` (9FHYMCQA; "various tape mercy east hair tragic arrest together
+    day tag afford occur");
+  - also `dice-99-words24` (RXDANDFR).
+- keepcrypt.json `commitment` `d-00-1f`: a public D (bytes 00..1f) with its C.
+- kcr.json snapshots:
+  - `with-dice-50`: No. 4, dated 20260301, 7 entries; holds dice-50 only;
+  - `with-vector-1` and `small`;
+  - the refusals (`flipped-signature-r`, `bad-magic`, ...).
+- backup.json `age_files` `abandon-12` and `zoo-24` (work factor 10), with their passphrases.
+
+**CI**
+- Nine jobs, 14 required check runs.
+- `test` runs `cargo test --workspace --locked` and `-p keepcrypt-core --features test-sources`. It took 2m58s
+  (todo.md:5249).
+- `cross` runs clippy on `keepcrypt-core keepcrypt-pi` for `arm-unknown-linux-gnueabihf`, and builds and scans only
+  core's release rlib and `release_probe` (entropy-ci.yml:481-501). todo.md:982 expects M3-M6 to add their own
+  artifacts to the scan.
+- `gates` took 8m07s of its 10 minutes, of which the canaries step was 414 s (todo.md:3446, :5311).
+- `coverage` is core only.
+
+**Carried into M3**
+- The game call (todo.md:629-633).
+- Restarts only through `Wiped::restart`, with tests for "99 after Stop" and "99 after a Cannot check in the restart
+  after a collision" (:634-635, :2293-2296).
+- `Platform::Pi` asserted in a pi/app test (:2297).
+- Test-registry builds only via `-p`, and their scan shows "registry marker, no stub marker" (:2298-2299).
+- The date confirmed before `reveal` (:2300-2301).
+- The step 4 bar on `hw_bytes_tested` (:2302).
+- C and D as 16 groups of 4 hex, and the verify.py tie (:3490-3492).
+- Owner items 13 and 14 (:451-461).
+- The banned-API routes (:5314-5317).
+- The wait-for-prompt caveat for verify.py (:5321, explained at :5226): guidance text only.
+- The `gates` budget (:5311).
+- verify.py prints in the device's screen order (:3260-3268).
+
+**lessons.md**
+1. Computed numbers come from committed scripts.
+2. State the exact bytes of every hash input.
+3. The Pi has no clock, so it shows a date and asks the user to confirm it.
+
+**CODEOWNERS** covers pi/app, core, every Cargo.toml, Cargo.lock, scripts, .github, docs, supply-chain and CLAUDE.md.
+It does not cover pi/sim.
+
+### Plan
+
+**References and terms**
+- Docs are named by file (build-plan.md, design.md, pi-firmware.md, mobile-apps.md, and seal-watchonly-braille.md as
+  swb, all in `docs/`), plus CLAUDE.md, lessons.md and this file.
+- Q25-Q34 are this milestone's questions, under "Needed before M3 code".
+- Symbols are as in CLAUDE.md: D, C, R, E, S, T, n, G.
+- "Step N" is pi-firmware.md "User flow" step N (1-15).
+- A "screen" is one `ScreenId`, with a stable kebab-case name, a class (Public or Protected, Q29), a key map, and a
+  kind: input-waiting, or transient (shown while the app works, never while it waits for a key).
+- The "screen model" (`Screen`) is what a frame shows, as data: screen id, strips, body elements (text, word, braille
+  cells, seal grid, QR payload, hex groups, Snake board) and soft-key labels. Secret values are separate `Protected`
+  elements.
+- A "vector run" is a dice-only run on a keepcrypt.json roll string, so its words and seal equal kcr.json's.
+- A "throwaway run" is a Mixed run: D comes from the real OS, and the seed is never used anywhere but the screen.
+- The "kept Wiped" is the `Wiped` the app holds until a check passes or the user skips (Q26).
+- A "halt" is the terminal red `halt` screen (Q25): no key leaves it; only a power cycle does.
+- The "release config" is `cargo test --workspace` (no registry key). The "registry config" is
+  `cargo test -p keepcrypt-pi-sim --features keepcrypt-core/test-registry`.
+
+Groups land in the order below. Core comes before the shell that calls it, the screen model before the HAL that
+carries it, and every commit names a proof that runs at that commit.
+
+**Built into this plan (override any of them)**
+- **Scope is the gate:**
+  - every screen of steps 1-15 and of Home's side flows;
+  - button handling and Snake;
+  - mocked USB export and snapshot import;
+  - all driven by scripted runs in the simulator, with captures for the owner.
+  - Hardware, the image and the measurements are M4.
+- **One app, two hardware layers.**
+  - pi/app holds everything that ships: the HAL traits, the screen model, `Frame`, input, ceremony, screens, the
+    renderer, QR, Snake and the USB flows.
+  - pi/sim implements the HAL, drives the scenarios and writes PNGs. pi/app never depends on it.
+  - `pi/app/src/main.rs` stays a stub until M4 wires the device HAL.
+- **One owner of the session and of every secret** (pi-firmware.md:66).
+  - A private `Stage` enum holds the only `Session<S>` and every secret value the shell holds, inside the variant
+    that needs it: the `NewBackupPassphrase` and its `ConfirmChallenge`, the entry-grid buffer, the
+    `Bip39Passphrase`, the `CheckedBackup`, and the `.age` bytes read for a check.
+  - Each transition moves the session out (`mem::replace`), so only the typestate's own methods can be called.
+  - `Idle` and `Halted` are unit variants. One `wipe()` replaces the whole `Stage`, zeroizes the frame and presents a
+    black frame; the idle wipe, a halt and Finish all call it.
+  - The current-screen state (id, page, cursor) holds no secret. `App::holds_secrets()` says whether any `Stage`
+    data is held (the idle warning uses it).
+- **One drawing path.** Screens only build `Screen` models. `ui::render(&Screen)` is the only code that draws.
+  `Frame::new` is visible only inside `ui`, and `ui::Painter` holds the only `Frame`, so no other module can draw
+  (compiler-enforced). Each present hands the HAL the frame and the model it was drawn from.
+- **The app redraws only after an event changed its state** (a dead key draws nothing). The frame is cleared before
+  each render and zeroized after each present.
+- **Layout.** A 12 px top strip (step title, or the TEST REGISTRY and SIMULATOR banners, which take precedence) and a
+  12 px soft-key footer leave a 240×216 content area. `Screen::fits()` computes every element's box from font metrics.
+- **The shell never makes a wiping call by mistake.**
+  - Each action core would refuse is offered only when a pure gate function says yes: Continue below the quota, Done
+    below the minimum, a 257th roll, steps 10-15 before the read-back, and encrypt before generate.
+  - Each gate function has a unit test. Core's wipe stays the backstop, and reaching it halts (Q25).
+- **Where new sessions come from.**
+  - From the kept `Wiped` while there is one (`restart`), otherwise `Session::new(.., Platform::Pi)`.
+  - `Session::new` appears once in pi/app (a Shell grep, group 13).
+  - Each newer `Wiped` (from a `discard`) replaces the kept one. The kept `Wiped` is dropped at `Ready` (Skip or a
+    passed check) and by a halt. The idle wipe keeps it.
+- **Fail closed** (rule 3; Q25).
+  - These halt: every `Err` that ended a session; every `Kat`, `Source`, `Health`, `Internal` or `ExportSelfCheck`
+    error from any call (`game_random` included); every Display, Buttons or HwRng fault.
+  - These return to their own screen, and nothing else does: a wrong go-ahead code (`Retry`), a read-back mismatch, a
+    wrong backup passphrase or unrecognised entry, an empty BIP39 passphrase, snapshot refusals (including
+    `NoRegistryKey`), and USB faults.
+  - No retry of a halted call, no other source.
+  - Refusal screens show core's fixed text for the error, verbatim.
+- **Secrets** (rule 5).
+  - Typed letters, backup words and the BIP39 passphrase sit in `Zeroizing` buffers inside the `Stage`. D's hex is
+    formatted into a `Zeroizing<String>` only while its model is built.
+  - `Screen<'a>` borrows session text; it owns no secret copy except those `Zeroizing` buffers.
+  - The frame and the QR buffers are wiped after use and on every wipe.
+  - Types that hold secret text have no `Debug` or `Clone`.
+  - pi/app prints nothing. pi/sim prints only screen ids, scenario names and counts.
+  - pi/sim's assertions compare secret text with `assert!` and fixed messages, never `assert_eq!` (as in
+    core/tests/ceremony.rs:13-16).
+- **Files** (rule 8).
+  - pi/app touches files only through `hal::Usb`. It lists and reads only `.age` (up to 8 KiB) and `.kcr` names,
+    under a read-only mount.
+  - It writes only a core `BackupFile`, and never over an existing name. Only the file just written can be removed.
+  - The simulated stick lives in RAM. pi/sim reads no file from disk, and writes only PNGs and an index (Q30).
+- **Test data is public and repeatable**: vectors read by pi/sim's tests through `include_str!` and serde_json, roll
+  strings, and the counting stream. Never a PRNG.
+- **Key presses** are debounced and nothing more. pi-firmware.md defines no type-ahead filter, and the plan adds none.
+  The wait-for-prompt caveat is guidance text for verify.py (step 14 and pi-firmware.md step 14).
+- **No threads in M3** (Q33 (k)). No new CI job and no required-check change.
+- **Out of M3:** see "Deferred, with their milestone".
+
+**0. Before code**
+- [ ] Record the owner's answers to Q25-Q34, quoted with the date.
+  - Apply the approved doc edits (Q34) alone in commit 2, with no code.
+  - CLAUDE.md edits go in their own commits.
+
+  Proof: the answers in this file; `git diff --name-only` of commit 2 lists only `docs/`.
+- [ ] Baseline at 8e6917b, pasted under Review and used by group 14's budgets:
+  - `cargo test` in both configurations, with counts and times;
+  - canaries 61/61, with wall time;
+  - `vectorgen.py --selftest` 13/13;
+  - the `test` and `gates` job times from the last main run.
+
+  Proof: pasted under "M3: local proof".
+
+**1. Core: `game_random` (Q27; rules 1, 3; build-plan.md:91, :202-204)**
+- [ ] `pub fn game_random(buf: &mut [u8]) -> Result<(), CoreError>` in `core/src/source.rs`.
+  - The body is one `Source::Os.fill(buf)` (source.rs:132).
+  - Re-exported next to `ExtraSource` (lib.rs:61).
+  - Its doc comment says: for games only; never for dice, D, nonces, passphrases or any pool input; takes no session
+    and touches no pool; plain bytes; the real OS in every build; an error halts the device.
+  - Tests, next to `os_source_fills_and_two_reads_differ` and `os_source_writes_every_byte_position` (source.rs:267,
+    :285):
+    - two 32-byte reads differ;
+    - every position of a 64-byte buffer is written over 16 reads;
+    - an empty buffer is `Ok`.
+
+  Proof: `cargo test -p keepcrypt-core` in both configurations; `git diff core/src/lib.rs` adds one name; coverage
+  stays at 95% or more.
+- [ ] `core/examples/release_probe.rs` calls `game_random` and exits with its own code on failure, so every cross leg's
+  scan covers the new draw site.
+
+  Proof: the six cross scans are clean on the PR, and each still finds only its target's OS import.
+
+**2. Core: the borrowing restart (owner item 14; Q26 (C); rule 6). Replaced by (A) if the owner picks it.**
+- [ ] `Wiped::restart(&self, len, mode)` and `restart_with_stub(&self, ..)`.
+  - `Wiped` still holds only the platform, the flag and the report, and stays non-`Clone`.
+  - The module docs at session.rs:10-15 and wiped.rs:9-18 say that a restart borrows, that an `Err` from it leaves the
+    `Wiped`, and that the report's seal code lives as long as the `Wiped`.
+  - New tests in `core/tests/check_flow.rs` (test-sources):
+    - two restarts from one collision `Wiped` both need 99 rolls, for 12 and for 24 words;
+    - a Cannot check inside the restart after a collision gives a `Wiped` whose restarts are at 99;
+    - a Cannot check in a first session gives 50, twice.
+  - `core/tests/compile_fail/wiped_holds_no_secret.stderr` is regenerated (`TRYBUILD=overwrite`). Its diff touches
+    only the quoted `restart` signature line and its underline. Every other fixture is unchanged.
+
+  Proof: check_flow and typestate output; the `.stderr` diff pasted; coverage.
+
+**3. Core: `TypedBackupPassphrase::from_first_four` (Q32 (b))**
+- [ ] `from_first_four(words: &[&str]) -> Result<Self, CoreError>`.
+  - Exactly 8 entries, each the first four lowercase letters of a list word, or a whole three-letter word.
+  - Anything else is `Backup(PassphraseWords)`, before any scrypt run.
+  - Same zeroizing type as `from_words`. No word list leaves core (`word_list` stays private, secret.rs:27).
+  - Tests:
+    - all 2,048 words round-trip from their first four letters, or the whole word for three-letter words;
+    - each backup.json passphrase resolves from its first fours;
+    - refused: a 4-letter entry that is no word's prefix, a 3-letter non-word, uppercase, and 7 or 9 entries;
+    - `decrypt_backup` opens backup.json's `abandon-12` through it.
+
+  Proof: test output; coverage.
+
+**4. Dependencies and manifests (Q28; rule 11)**
+- [ ] Manifests:
+  - pi/app `[dependencies]`: `embedded-graphics = "0.8.2"`, `qrcodegen-no-heap = "1.8.1"` (a caret spec, as in the
+    rest of the workspace: it excludes the yanked 1.8.0, and Cargo.lock and cargo vet pin 1.8.1), and `zeroize` with
+    core's spec. No dev-dependency table (canaries.sh:700-705).
+  - pi/sim: `keepcrypt-core.workspace = true` (no features) in `[dependencies]`; `sha2` and `serde_json`, at the locked
+    versions, in `[dev-dependencies]`; a `[lints]` table denying `print_stdout`, `print_stderr` and `dbg_macro`.
+  - `cargo update -p autocfg --precise 1.5.0`.
+- [ ] Cargo.lock and supply chain:
+  - Cargo.lock gains exactly the 9 crates under "New dependencies".
+  - getrandom's only dependent stays keepcrypt-core.
+  - supply-chain gains 6 safe-to-deploy exemptions: embedded-graphics, embedded-graphics-core, az, float-cmp,
+    micromath, qrcodegen-no-heap. The qrcodegen-no-heap note records that 1.8.0 was yanked the day 1.8.1 came out.
+  - imports.lock gains the byteorder, num-traits and autocfg audits: one plain `cargo vet`, then `--locked`.
+
+  Proof:
+  - the lockfile diff's package names, equal to the probe's (`lockprobe/m3pin-noheap/Cargo.lock`);
+  - `cargo tree -e normal,build -p keepcrypt-pi`;
+  - `cargo deny --locked check`, `cargo audit`, `cargo vet --locked` and `scripts/check-path-deps.sh` clean;
+  - canaries 61/61;
+  - `cargo build -p keepcrypt-pi-sim --features keepcrypt-core/test-registry` resolves.
+
+**5. pi/app foundations (pi-firmware.md:58-76; rules 3, 5)**
+- [ ] `#![forbid(unsafe_code)]` in `pi/app/src/lib.rs` and `main.rs`.
+- [ ] `screen.rs`, the screen model:
+  - `ScreenId` with `ALL`, `class()` (Public or Protected) and `kind()` (input-waiting or transient), both static
+    tables;
+  - `KeyMap` per id: each key's action label, or none;
+  - `Screen<'a>` (id, strips, elements, footer) and `Element`, with the `Protected` element kinds;
+  - `Screen::fits()`.
+
+  Proof: unit tests: `ALL` has no duplicate name; every id has a class, a kind and a key map; transient ids have an
+  empty key map; a model with an element past the 240×216 content area does not fit.
+- [ ] `hal.rs`: the four traits the docs name, plus a clock, bundled as `Hal`.
+  - `Display::present(&mut self, frame: &Frame, screen: &Screen<'_>) -> Result<(), HalError>`. The device ignores
+    `screen`.
+  - `Buttons::next_event(&mut self, deadline_ns: u64) -> Result<Event, HalError>`, where `Event` is
+    `Key { key, at_ns }` or `Tick { now_ns }`.
+  - `Clock::now_ns()`, on the same monotonic base as the key timestamps.
+  - `HwRng::read_block(&mut self, &mut [u8; 64]) -> Result<(), HalError>`: exactly 64 bytes or an error.
+  - `Usb`:
+    - `stick()`;
+    - `list(FileKind::{Age, Kcr})` and `read(&FileName, max) -> Zeroizing<Vec<u8>>`, each under a read-only mount;
+    - `write_backup(&BackupFile) -> Result<Written, HalError>`: create-new (an existing name is an error), sync,
+      unmount;
+    - `read_written(&Written, max)` (read-only remount) and `remove_written(Written)`: only the file just written can
+      be read back or removed.
+  - `build_info()`: version, rootfs hash prefix, simulator flag.
+  - `HalError` has fixed variants and fixed text.
+  - `FileName` accepts only Q33 (g)'s names.
+
+  Proof: unit tests refusing `../x.age`, `x.AGE.txt`, a 65-character name and `x.txt`; every `HalError` displays fixed
+  text.
+- [ ] `frame.rs`: `Frame` is a boxed 240×240 `Rgb565` buffer.
+  - It implements embedded-graphics `DrawTarget` with `Error = Infallible`. Draws are matched exhaustively: no `.ok()`,
+    no `let _`, no `_name` binding.
+  - `clear()`, and zeroize after each present and on drop. `Frame::new` is `pub(in crate::ui)`.
+
+  Proof: unit tests (a pixel reads back, off-screen pixels are clipped, `clear()` zeroes all of them); clippy and the
+  FailOpen grep are clean.
+- [ ] `input.rs`:
+  - `Key`: Up, Down, Left, Right, Press, Key1-3.
+  - A pure `Debouncer`: raw edges with nanosecond timestamps in, one event per press after 20 ms stable, keeping the
+    first edge's timestamp. M4's GPIO driver reuses it, and SimHal runs every scripted press through it.
+  - `Idle`, on `now_ns`: cover at 30 s on Protected screens, warning at 540 s, wipe at 600 s. Any key resets it.
+
+  Proof: unit tests at 19.999 ms and 20 ms, bounce trains, independent keys and kept timestamps; idle thresholds on
+  injected times.
+
+**6. pi/app drawing (pi-firmware.md:67, :70; swb:84-90, :274-292)**
+- [ ] `ui/render.rs`: `Painter` and `render(&Screen)`: clear, the strips, each element through its painter, the footer.
+  - `ui/text.rs`: embedded-graphics mono fonts (10×20 for body text, 6×10 for strips and footer); a `Scaled` target
+    that draws each pixel as an n×n block, so words and codes use 10×20 at ×2 (an 8-letter word is 160 px wide); word
+    wrap at 240 px.
+
+  Proof: unit tests: wrapping at 240 px; an 8-letter word at ×2 fits; the footer shows each mapped key's label; both
+  banners fit the top strip together.
+- [ ] `ui/braille.rs`: a face cell drawn from a 6-bit mask (`Dots::bits()`).
+  - Raised dots are filled; flat dots are rings; each dot position carries its number 1-6.
+  - Blank faces are rings labelled "leave blank".
+  - Face 5 is drawn lighter (`is_lighter`).
+  - Mirror partners are flagged.
+  - The Seal ID's braille comes from the code points of `seal_id_braille()` minus U+2800.
+
+  Proof: all 64 masks, drawn and sampled back at the dot centres, equal the mask; each dot's number is drawn at its
+  sampled label position.
+- [ ] `ui/seal.rs`: the 8×8 grid at 192×192 on a light tile the size of the grid, filled cells in `colour_hex()`
+  converted to Rgb565, every cell with a dark outline (swb:87-88), the Seal ID in 10×20 beneath.
+
+  Proof: the 64 cell centres, sampled back, equal the grid; every cell's edge pixels are the outline colour; an empty
+  cell's centre is the tile colour; the page fits.
+- [ ] `ui/qr.rs`: qrcodegen-no-heap.
+  - It encodes into two pi/app buffers of `Version::new(11).buffer_len()`, zeroized after drawing.
+  - Versions 1-11 (the largest that fits 216 px at 3 px with a 4-module quiet zone), with boosted error correction.
+  - The largest whole module size that fits 216 px with the quiet zone, and at least 3 px.
+  - A payload that does not fit is a halt, never smaller modules (core's payloads have fixed lengths, so this is a
+    bug).
+  - The account QR uses core's `qr_text()` (already uppercase) in alphanumeric mode.
+
+  Proof:
+  - unit tests with each kind's payload at its fixed length fit at 3 px or more: check URL 116 bytes, register and
+    report URLs 62, re-check URL 97, account UR 258 alphanumeric, the descriptor QR (both descriptors, 150 bytes each,
+    a line feed between: 301 bytes, version 11 at L);
+  - the drawn module centres equal the encoder's modules;
+  - both buffers are zero afterwards;
+  - an over-long payload errs;
+  - the measured versions and module sizes are pasted.
+- [ ] `ui/hex.rs`: 32 bytes as 16 groups of 4 lowercase hex, four groups per row, read by nibble with no `as` casts.
+
+  Proof: round-trip through verify.py's `parse_hex32` rule (strip whitespace, 64 hex).
+
+**7. pi/sim harness (Q28 (c), Q30)**
+- [ ] pi/sim becomes a lib, a bin and tests, with `#![forbid(unsafe_code)]`. `SimHal` (in the lib) implements every
+  trait:
+  - Display keeps a log of every present since the last event: screen id, the model's text (in `Zeroizing`) and a
+    copy of the frame. It checks two invariants on every present: `Protected` elements appear only on Protected ids,
+    and `fits()` holds. In capture mode it also writes a PNG per present.
+  - Buttons is the scenario queue. Each scripted press becomes a raw edge train with bounce, run through
+    `pi_app::input::Debouncer`. A `next_event` call while the current screen is transient fails the test.
+  - Clock is virtual.
+  - HwRng serves one byte stream: the counting stream (i mod 256, without end), or bytes handed in by a test from the
+    vectors, concatenated per read phase (boot 1,024, each Mixed session 1,536). Running out is a read fault.
+  - Usb is a RAM stick with insert, remove, files and a mount mode, and these faults: write fails, sync fails,
+    read-back corrupt, removed. A write while mounted read-only, a write over an existing name, and removing any file
+    but the one just written are all refused.
+  - Faults for Buttons and HwRng at a chosen step.
+  - `build_info()` gives the crate version, rootfs prefix `sim` and the simulator flag.
+  - The lib embeds `KC_SIMULATOR_DO_NOT_SHIP` as core embeds its markers (`#[used]` static, asserted in a test), in
+    the HwRng and Usb code (Q31 (d)).
+
+  Proof (pi/sim tests): each failure stream's bytes equal the vector's `samples_hex` and get core's recorded verdict;
+  a write fault leaves no file; the three Usb refusals; the marker test.
+- [ ] `png.rs`: Rgb565 to 8-bit RGB; an IHDR chunk, one IDAT chunk of stored deflate blocks with Adler-32, an IEND
+  chunk, and a CRC-32 per chunk. The encoder is deterministic: the same frame always gives the same bytes. The
+  placeholder for a Protected frame is a grey frame naming the screen id.
+
+  Proof:
+  - CRC-32("123456789") = 0xCBF43926;
+  - Adler-32("Wikipedia") = 0x11E60398;
+  - a hand-checked 2×2 file matches byte for byte;
+  - `python3 -I` with the standard zlib decodes a PNG back to the frame's pixels;
+  - a placeholder equals its reference bytes.
+- [ ] Measure render time per frame and per present at opt-level 0, with a 100-frame loop, before any scenario is
+  written. If a full scenario would exceed the `test` budget (group 14), stop and ask for Q31 (g)'s fallback.
+
+  Proof: the timings pasted under Review.
+
+**8. pi/app ceremony steps 1-7, halts, restarts, idle; the scenario driver (pi-firmware.md:75-88; swb:108-164; rules 3, 6)**
+- [ ] `App<H: Hal>` with `start()` (boot), `step()` (one `next_event`, then its handling) and `run()` (`step` in a loop,
+  for M4's main).
+  - State:
+    - the private `Stage`: `Idle`, `Collecting`, `Committed`, `Rolling`, `Sealed`, `Checking`, `Ready`, `Checked`,
+      `BackupCheck`, `Halted`;
+    - the kept `Wiped`;
+    - the plan (length, mode);
+    - `Option<VerifiedSnapshot>`, outside the stage and borrowed by `GoAhead::Snapshot`;
+    - the idle timer and the current screen (id, page, cursor).
+  - `extras::extra_for(stage_kind, mode, event) -> Option<(ExtraSource, [u8; 8])>`, a pure function: `Some((InputTiming,
+    at_ns.to_be_bytes()))` for every key in Mixed `Collecting`, whether Snake is open or not, and `None` otherwise. The
+    app's one call site passes it to `add_extra`.
+  - A byte source for games, `games::GAME_BYTES = keepcrypt_core::game_random`, held by the app; a `#[cfg(test)]`
+    setter replaces it in pi/app's unit tests.
+
+  Proof: pi/app unit tests on the real OS, with no vectors and a minimal fake HAL:
+  - the session `new_session` builds has `platform() == Pi` and `required_bits() == 512`;
+  - from a collision `Wiped` (a dice-only session on "123456"-repeated rolls, Check now, `discard(Collision)`), its
+    `minimum_rolls()` is 99;
+  - after that restart reaches `Ready` through Skip, the kept `Wiped` is gone and the next `new_session` gives 50;
+  - `extra_for` over every stage kind, mode and key, with Snake open and closed;
+  - a `game_random` error injected through the setter while Snake is open ends on `halt` with
+    `holds_secrets() == false`.
+- [ ] Screen inventory (`ScreenId::ALL`, the coverage target; * marks transient ids):
+
+  | Steps | Public | Protected |
+  | --- | --- | --- |
+  | 1-3 | boot*, halt, home, about, length, wait* | |
+  | 4-6 | hwrng, game-snake, dice-only-notice, commitment, dice | |
+  | 7 | check-prompt, skip-confirm, snapshot-date, seal-image, seal-id, seal-qr, check-actions, code-entry, code-wrong, check-clear, stop-confirm, collision, cannot-check-confirm | collision-qr |
+  | 8-9 | privacy-gate, device-swap, readback-done | words-insert, words-overview, readback-entry, readback-mismatch |
+  | 10-11 | wallet, backup-offer, usb-insert, backup-verified, backup-failed | backup-passphrase, backup-confirm, backup-confirm-wrong |
+  | 12-13 | watch-offer, bip39-ask, watch-summary, register-offer | bip39-entry, watch-account-qr, watch-descriptor-qr, register-qr |
+  | 14-15 | reveal-d-offer, checklist, power-off | reveal-d |
+  | Home flows | usb-pick, snapshot-loaded, snapshot-failed, backup-check-result, backup-check-recheck-qr | backup-check-entry |
+  | Any | blank*, idle-warning, idle-wiped, cover | |
+
+  The Protected set is the phones' (mobile-apps.md:111: backup passphrase, reveal-D, seal code, registration and
+  watch-only QRs; the words) plus every entry grid that holds a secret. collision-qr carries the destroyed seed's seal
+  code.
+- [ ] Steps 1-3:
+  - Step 1: `boot` (version, rootfs prefix, banners), then `self_test()`, then 16 blocks into `hwrng_boot_test`. Any
+    failure is `halt`.
+  - Step 2: `home` with pi-firmware.md:83's five items, and the snapshot as a status line.
+  - Step 3: `length` (12 by default, "fills one KeepCrypt Hinge or Screw"), then `wait` and the new session.
+
+  Proof: scenario `boot_stops` (below) and the first steps of every scenario at this commit.
+- [ ] Steps 4-6:
+  - Step 4 (Mixed):
+    - one block per Tick into `add_hw_samples`, until `hw_bytes_tested() >= HW_BYTES_NEEDED` (the sim's Tick is
+      100 ms; M4 sets the device's from the measured hwrng rate);
+    - the bar shows `hw_bytes_tested / HW_BYTES_NEEDED` and the credited bits;
+    - "Play while you wait" opens Snake (group 10);
+    - Continue appears only when `credited_bits() >= required_bits()`.
+    - Dice-only shows `dice-only-notice` instead (build-plan.md:213).
+  - Step 5: `commit`, then `commitment` (C through `ui/hex`, with "only verification runs need to write it down"),
+    then `start_dice`.
+  - Step 6: `dice`:
+    - "37 / 50 rolls, 95.6 bits", from `rolls`, `minimum_rolls` and `millibits` with integer arithmetic, truncated;
+    - never a roll history, and the picker goes blank after each confirm;
+    - KEY1 calls `undo_roll`;
+    - confirm is disabled at 256;
+    - Done appears only at the minimum, then `finish`.
+
+  Proof:
+  - gate-function unit tests: Continue below the quota, Done at the minimum minus one, a 257th confirm;
+  - the dice text for 1, 37, 50, 99 and 256 rolls;
+  - no face value in the dice model after a confirm, and the dice frame after a confirm equals the blank-picker frame
+    for that count.
+- [ ] Step 7:
+  - `check-prompt`, in swb:114's words.
+  - Skip: `skip-confirm` → `skip_check`. The privacy gate then carries swb:152's note.
+  - Check now → `start_check`. With a snapshot, `snapshot-date` (Q33 (a)):
+    - Yes → `reveal(Snapshot)` → `check-clear` ("No collision for seal <ID> as of <date>.", swb:150) or the collision
+      path;
+    - No → the seal card.
+  - Seal card: `seal-image`, `seal-id`, `seal-qr` (`check_request().url()`), `check-actions`.
+  - `code-entry` → `reveal(Code)`. On `Retry`: `code-wrong`, then entry again, with the same nonce. On a verified code:
+    `check-clear` with the code-path text (Q33 (l)).
+  - Match found: `stop-confirm` → `discard(Collision)` → `collision` (swb:151's words, the security address, a
+    verification run suggested) → privacy gate → `collision-qr` (`collision_report().url()`) → "Add fresh entropy".
+  - Cannot check: `cannot-check-confirm` → `discard(CannotCheck)` → restart.
+  - Both restarts use the kept `Wiped`, with the remembered length and mode.
+
+  Proof: unit tests:
+  - Skip appears only in `Sealed`;
+  - `reveal(Snapshot)` cannot be reached before `snapshot-date`'s Yes;
+  - the check URL is identical before and after a Retry, and after No.
+- [ ] Halts, idle, cover and the privacy gate:
+  - Any halt condition (above) → `wipe()` → `halt` with core's fixed text, or the HAL error's.
+  - 30 s on a Protected screen → `cover`; the first press only uncovers the same screen and is not passed on.
+  - 9 minutes on any screen while `holds_secrets()` → `idle-warning`; a key keeps everything.
+  - 10 minutes → `wipe()` (the kept `Wiped` and the snapshot stay) → `idle-wiped` → Home.
+  - Entering a Protected screen from a Public one passes `privacy-gate`.
+
+  Proof: unit tests for the gate rule; scenarios `runtime_stop`, `mixed_12_restarts` (its steps 1-7 part at this
+  commit) and `wipes_clear_the_stage`.
+- [ ] Scenario driver (pi/sim tests). A scenario is a list of steps, built per configuration:
+  - `Expect(ScreenId)`: matched in order against the Display log since the previous step, so transient screens are
+    matched too;
+  - `Key`, `Dice(roll string)` (Up presses, then Press, per face), `Type(text)` (grid navigation);
+  - `Wait(seconds)`, `Stick(..)`, `Fault(..)`;
+  - `Code(FromCheck | Wrong)`, `Readback(FromScreen | letters)`;
+  - `Assert(..)` on the screen model or the frame;
+  - `PowerCycle`: a new App on a new SimHal.
+
+  Rules:
+  - A key is refused unless its `Expect` screen is showing and input-waiting.
+  - On the first input-waiting showing of each screen id in a scenario, each key outside its key map is pressed once
+    first, and nothing may be presented.
+  - On every QR screen, the drawn modules equal the encoding of the model's payload.
+
+  Proof: unit tests: a key before its screen fails; an unmet `Expect` fails and names the step; a dead key that
+  presents a frame fails; a QR frame with one flipped module fails.
+- [ ] Mock checker (pi/sim tests, sha2): G from the `t` and `n` of the check QR's payload, after the frame check above
+  shows the drawn QR encodes that payload.
+
+  Proof: vector-1's T with n = 0001020304050607 gives `CF94-BCAJ`; kcr.json's three other G values match.
+
+**9. pi/app steps 8-15 and the Home side flows (pi-firmware.md:89-96, :108-121; swb:200-292)**
+- [ ] Step 8: `words-insert`, one insert per page:
+  - the header "Insert NN · device k of m";
+  - the word at ×2, with letters past the fourth drawn lighter;
+  - the SeedBook number as `%04d`;
+  - the five face cells with numbered dots, and face 6's sequence number.
+  - KEY1 toggles `words-overview` (four words). KEY2 and KEY3 page.
+  - Press on the last insert starts the read-back.
+  - For 24 words, `device-swap` comes before word 13, and every insert, read-back and checklist page names its device
+    (swb:282).
+- [ ] Step 9:
+  - `readback-entry`: 3 or 4 letters per insert, in order. No suggestions while typing. After the entry the device
+    completes it from the seed and compares (`check_readback`); a match shows the whole word, then the next insert.
+  - `readback-mismatch` names each `FaceVerdict`: mirror misread, should be blank, should have a letter, or wrong
+    letter with the missing and extra dots. Press re-enters that insert; KEY1 shows that insert, where Press returns
+    to entry.
+  - `readback-done` at `readback_complete()`.
+  - The SeedBook safety rules (swb:290) are in the screen copy.
+
+  Proof: steps 10-15 are absent from every key map before `readback_complete()` (unit test).
+- [ ] Steps 10 and 11:
+  - Step 10: `wallet` (`fingerprint` as 8 hex, `first_address`).
+  - Step 11, the backup:
+    1. `backup-offer` → privacy gate → `generate_backup_passphrase` (once; the passphrase and its challenge go into
+       the `Ready` stage).
+    2. `backup-passphrase`: two pages of 4 words, with "Backup passphrase: store apart from the USB stick."
+    3. `backup-confirm`: two questions of four choices, graded against `words()`. A wrong pick → `backup-confirm-wrong`
+       → the pages again, with the same questions.
+    4. `usb-insert` → `wait` → `encrypt_backup(&CreatedBy::new(BackupApp::Pi, ..))` → `write_backup` →
+       `read_written` → `verify_backup` → `backup-verified`.
+    5. On a USB fault: `remove_written` when a file was written → `backup-failed`, with Retry (re-encrypts under the
+       stored passphrase, with a new file name) or Skip.
+- [ ] Steps 12-15:
+  - Step 12:
+    - `watch-offer` → `bip39-ask`.
+    - No → `watch_only(None)`.
+    - Yes → privacy gate → `bip39-entry` (printable ASCII, Q32 (c); `Bip39Passphrase::new`; an empty entry stays on
+      the screen) → `watch_only(Some)`.
+    - Then `watch-summary` (that wallet's fingerprint and first address, and "treat it as private", swb:233), then the
+      privacy gate, `watch-account-qr` (`qr_text`) and `watch-descriptor-qr` (receive and change descriptors on two
+      lines, swb:209).
+  - Step 13: `register-offer` → privacy gate → `register-qr`, with "register once, never from a restored seed"
+    (swb:158).
+  - Step 14 (Mixed only): `reveal-d-offer` ("D plus the rolls recreates the seed"; "type each value into verify.py
+    only after its prompt appears") → privacy gate → `reveal-d` (16 groups of 4).
+  - Step 15: `checklist` (swb:280, :282) → `wipe()` → `power-off`, which accepts no key.
+- [ ] Load registry snapshot:
+  - `usb-insert` → `usb-pick` (when there is more than one `.kcr`) → `wait` → `verify_snapshot`;
+  - then `snapshot-loaded` (number, date, entries) or `snapshot-failed` with core's text. In release builds that is
+    `NoRegistryKey`'s "no registry key is pinned in this build".
+- [ ] Check a backup:
+  1. `usb-insert` → `usb-pick` → privacy gate.
+  2. `backup-check-entry`: 8 entries, first four letters each (Q32 (b)).
+  3. `wait` → `decrypt_backup`.
+  4. `backup-check-result`: fingerprint and Seal ID, plus, when a snapshot is loaded, the lookup count "as of
+     <date>".
+  5. On request: `backup-check-recheck-qr` (`recheck_url()`, T only), or, after the privacy gate, the words in insert
+     view.
+  6. Done drops the `CheckedBackup` and returns Home.
+  - A wrong passphrase or an unrecognised entry returns to entry with core's refusal text.
+
+  Proof for this group: scenarios `drill_12`, `dice_24_code`, `skip_and_idle` and `check_backup` (group 11), each at
+  this commit.
+
+**10. pi/app Snake (Q27; pi-firmware.md:98-104; rule 1)**
+- [ ] `games/snake.rs` and `games/mod.rs`:
+  - an 18×18 grid of 12 px cells (216 px); one cell per Tick; the joystick steers and KEY1 leaves;
+  - a wall or self hit ends the round, and the screen stays `game-snake` ("Round over · Press to play again") until
+    the quota closes the game;
+  - food is placed by rejection sampling over free cells, from the app's game byte source; `games/mod.rs` is the only
+    place in pi/app that names `game_random`;
+  - reachable only from `hwrng` (Mixed, Collecting); it closes itself at the quota;
+  - the game returns a board model and holds no session and no sink; the app's loop forwards its presses (group 8).
+
+  Proof:
+  - unit tests with fixed bytes: 10,000 placements stay on free cells; the snake grows on food; a wall ends the round
+    and the id stays `game-snake`; rejection skips out-of-range bytes;
+  - group 8's injected-error test;
+  - group 13's Shell grep;
+  - scenario `mixed_12_restarts`.
+
+**11. pi/sim gate scenarios (`pi/sim/tests/gate.rs`; the gate's evidence)**
+- [ ] `boot_stops` (both configs): `run-of-6-startup` → `halt` naming RepetitionCount, startup stage, sample 505;
+  `apt-62-startup` → `halt` naming AdaptiveProportion, startup stage, sample 500. Neither names a HAL error.
+- [ ] `runtime_stop` (both configs), a throwaway run:
+  1. Mixed, 12 words; `coldcard-50` as the rolls; Check now → seal card → Match found → `collision` → privacy gate →
+     `collision-qr` → Add fresh entropy.
+  2. Step 4 reads `run-of-6-continuous` → `halt` naming RepetitionCount, continuous stage, sample 1505.
+     `holds_secrets()` is false, a black frame came first, and every key is dead.
+  3. `PowerCycle` → boot → Dice-only seed → `dice` shows "0 / 50": a power cycle drops the 99-roll flag, as documented.
+- [ ] `drill_12`, a vector run (the duplicate-seed drill).
+  - Release config: the stick's `with-dice-50` gives `snapshot-failed` with `NoRegistryKey`'s text. The scenario says
+    so and ends.
+  - Registry config:
+    1. `flipped-signature-r` and `with-dice-50` on the stick: `usb-pick`, `snapshot-failed`, then `snapshot-loaded`.
+    2. Dice-only, 12 words, `coldcard-50` with one undo.
+    3. Check now, date Yes → `collision`, with no words screen before it. `collision-qr` carries kcr.json's dice-50
+       seal code.
+    4. Add fresh entropy → `dice` shows "0 / 99".
+    5. `coldcard-99`, Check now, date No, seal card, Cannot check → "0 / 99".
+    6. `coldcard-99`, Check now, Yes → `check-clear`: "No collision for seal 9FHYMCQA as of 2026-03-01."
+    7. The words equal `dice-99-words12`; read-back from the screen model.
+    8. Steps 11-13 skipped; checklist; `power-off`.
+- [ ] `dice_24_code` (both configs), a vector run covering the code path, the read-back drill and the exports:
+  1. Dice-only, 24 words, `coldcard-99`, with Done refused at 98 rolls.
+  2. Check now with no snapshot; the seal pages.
+  3. A wrong code (G with its last symbol changed) → `code-wrong`, URL unchanged. Then G from the mock checker →
+     `check-clear` with the code-path text.
+  4. 24 inserts, with `device-swap` and device labels, equal `dice-99-words24`.
+  5. 31 s on an insert → `cover` → one press → the same page.
+  6. Read-back, each mistake then corrected (the first 11 words equal `dice-99-words12`'s):
+     - "vari" for "various" passes and shows "various";
+     - "tap" for "tape": should have a letter;
+     - "mirc" for "mercy": mirror misread;
+     - "taga" for "tag": should be blank;
+     - one wrong letter.
+  7. `wallet`.
+  8. Backup: one wrong confirm pick, a write fault, Retry, verified. The stick then holds exactly one `.age`, and
+     `decrypt_backup` of it with the shown passphrase gives the session's fingerprint.
+  9. Watch-only with a typed BIP39 passphrase (a different fingerprint); both QR payloads equal core's `qr_text`, and
+     `receive_descriptor` + line feed + `change_descriptor`.
+  10. `register-qr`; checklist; `power-off`.
+- [ ] `skip_and_idle` (both configs), a vector run:
+  1. Dice-only, 12 words, `coldcard-50`; Check now → seal card → Match found → `collision-qr` → Add fresh entropy →
+     "0 / 99".
+  2. `coldcard-99`; Skip → `skip-confirm` → privacy gate with the note → words.
+  3. Wait 600 s: `cover` at 30 s, `idle-warning` at 540 s, `idle-wiped` at 600 s; `holds_secrets()` is false.
+  4. Dice-only seed → "0 / 50": Skip dropped the kept `Wiped`.
+- [ ] `mixed_12_restarts` (both configs), a throwaway run on the counting stream:
+  1. Continue is refused before the bar is full.
+  2. Snake is open when the quota fills, and the quota closes it.
+  3. `commitment`; `coldcard-50` as the rolls.
+  4. Check now → seal card → Match found → `collision` → `collision-qr` → step 4 again → "0 / 99".
+  5. Check now → Cannot check → "0 / 99".
+  6. 9 minutes on `hwrng` → `idle-warning`; a key keeps the session.
+  7. 10 minutes in `Rolling` → `idle-wiped` → New seed → "0 / 99".
+  8. Check now → seal card → G from the mock checker → `check-clear` → privacy gate → words → read-back from the
+     screen model.
+  9. Exports skipped except Reveal D → the verify.py tie (next item) → `power-off`.
+- [ ] verify.py tie (todo.md:3491; carried), from `mixed_12_restarts`' last session:
+  - C from the `commitment` model, D from `reveal-d`'s, and the rolls from the script;
+  - piped into `python3 -I tools/verify/verify.py mixed --words 12` (stdin is a pipe, so verify.py reads lines from it),
+    which must exit 0;
+  - its insert lines must name the session's words in order, and its Seal ID must equal that session's `seal-id`
+    page;
+  - compared in memory, never printed.
+- [ ] `wipes_clear_the_stage` (both configs): for one Protected screen of each `Stage` variant that holds a secret
+  (`readback-entry`, `backup-passphrase`, `bip39-entry`, the words of a checked backup, `backup-check-entry`), a
+  Buttons fault and, separately, a 600 s wait. After each: `holds_secrets()` is false, a black frame was presented, and
+  the next model holds no `Protected` element. On `collision-qr`, the idle wipe keeps the kept `Wiped` and the fault
+  drops it.
+- [ ] `check_backup` (both configs):
+  1. `about`.
+  2. `abandon-12`: one wrong entry (refused with core's text), then the first fours of its passphrase → backup.json's
+     fingerprint.
+  3. With `with-vector-1` loaded (registry config), the lookup count is 1, with its date. The re-check QR on request.
+  4. Words on request show ABANDON 0001.
+  5. `zoo-24` shows ZOO 2048.
+- [ ] `every_screen_is_expected`:
+  - The union of `Expect` ids over every scenario built for the active configuration equals `ScreenId::ALL` (registry
+    config), or `ALL` minus `snapshot-loaded` and `snapshot-date`, listed by name (release config).
+  - Each scenario test fails on any unmet `Expect`, so the union is really reached.
+- [ ] `drill_12_repeats`: `drill_12` run twice in one test; every presented frame is identical except `seal-qr`'s (the
+  nonce). This is the reproducible subset.
+- [ ] `capture_set` (`#[ignore]`, run on request, Q30 (g)): every scenario of the active configuration, in order, into
+  `$CARGO_TARGET_TMPDIR/pi-sim-captures/<config>/`, cleared first.
+  - One PNG per present: `<scenario>/NNN-<screen-id>.png`.
+  - Protected frames of throwaway runs are placeholders. `reveal-d` is added once as a specimen drawn from
+    keepcrypt.json's public `d-00-1f`, labelled so.
+  - A static `index.html`: configuration, crate version, and per PNG its number, scenario, step, screen id, class,
+    placeholder or specimen flag, and SHA-256; the first capture of every screen id first. It holds no screen text.
+
+  Proof for this group: both configurations' test output, with per-scenario step, screen and dead-key counts; the
+  capture set and index under Review.
+
+**12. pi/sim interactive mode (the bin)**
+- [ ] `keepcrypt-pi-sim live --out DIR`:
+  - keys from stdin lines: `w a s d`, Enter, `1 2 3`, and `t600` to advance 600 s;
+  - rewrites `DIR/live.png` per present and prints only the screen id;
+  - every Protected frame is written as the placeholder, in every run, vector or not;
+  - a "SIMULATOR · NOT FOR REAL FUNDS" strip on every screen;
+  - the counting hwrng;
+  - reads no file: its RAM stick starts empty, so snapshot import and Check a backup can only see a backup written in
+    the same live session;
+  - it computes no go-ahead code;
+  - the bin's screen-id line and the tests' count line are pi/sim's only print sites (`#[expect]` on each);
+  - this binary is the one group 14 scans.
+
+  Proof: a unit test that live mode writes the placeholder for a Protected frame; a short session pasted under Review
+  (screen ids only).
+
+**13. Gates: banned-API rules (Q31 (e); rules 1, 3, 6)**
+- [ ] `scripts/banned-api-check.sh`, each rule with hit and clean fixtures in `scripts/testdata/banned-api/`:
+  - A new `Shell` category (prefix `shell-`, added to the selftest's case statement, the `cats` regex and the
+    every-category list):
+    - in `pi/app/src/games/`, any of the tokens `Session`, `Wiped`, `add_extra`, `add_hw_samples`, `ceremony`,
+      `SystemTime` or `Instant`;
+    - `game_random` named anywhere outside `core/src/source.rs`, `core/src/lib.rs`, `core/tests/`,
+      `core/examples/release_probe.rs` and `pi/app/src/games/`;
+    - `Session::new` in pi/app/src outside `pi/app/src/app.rs`, or a second time in it.
+  - Rule1 gains the hash ban: `HashMap`, `HashSet`, `RandomState`, `DefaultHasher`, `hash_one` and `BuildHasherDefault`
+    in any .rs file under `core/src`, `ffi/src` and `pi/app/src`. core/src/pool.rs's test switches to `BTreeSet` in the
+    same commit.
+  - The `#![forbid(unsafe_code)]` line check (:567) extends to `pi/app/src/lib.rs` and `main.rs` whenever `pi/app/`
+    exists. `fresh()` also writes both files with the line, so `rule1-lib-rs-absent` (an empty directory) still gives
+    exactly one hit. New fixtures `rule1-pi-app-lib-without-forbid` and `rule1-pi-app-main-without-forbid`, each one
+    file overriding `fresh()`'s copy.
+  - The artifact marker list (:734) gains `KC_SIMULATOR_DO_NOT_SHIP`, with an artifact selftest case.
+  - Q31 (h)'s routes, if approved.
+  - The Rule1 comment (:97) names `game_random`.
+
+  Proof: `--selftest` with every new fixture firing and the category list complete; the gate clean on the tree; Rule1
+  still hits its `pi/app/src/games.rs` and `games/snake.rs` getrandom fixtures; canaries 61/61.
+
+**14. CI, CODEOWNERS and the commands of record (Q31)**
+- [ ] `test` job, after its two existing steps:
+  - `cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry`;
+  - a release build of the sim for `x86_64-unknown-linux-gnu`, in its own target dir, with
+    `CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS='--cfg getrandom_backend="linux_getrandom"'`, as canaries.sh's
+    build_probe does;
+  - then `scripts/banned-api-check.sh --artifact x86_64-unknown-linux-gnu <sim>`. It must exit 1 with exactly three
+    hits: `Marker: ... KC_TEST_REGISTRY_DO_NOT_SHIP`, `Marker: ... KC_SIMULATOR_DO_NOT_SHIP` and the `TestKey` hit,
+    and no `KC_TEST_SOURCE_DO_NOT_SHIP`.
+  - This scan shows the expected markers and no foreign RNG crate symbol. It cannot see std's OS-seeded hashing; the
+    hash ban (group 13) covers that.
+- [ ] `cross` job: on the leg whose crates include `keepcrypt-pi`, also
+  `cargo build --release --locked -p keepcrypt-pi --lib --target "$TARGET"`, and scan
+  `libkeepcrypt_pi.rlib` with the core artifacts. It must be clean (an archive needs no OS import).
+  - The comments in `test` and `cross` name M3. No other job command changes.
+- [ ] `.github/CODEOWNERS` adds `/Entropy/pi/sim/`.
+- [ ] CLAUDE.md Commands add:
+  ```bash
+  cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry   # the gate run, full drill
+  cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry --test gate -- --ignored --exact capture_set   # captures in target/tmp/pi-sim-captures/
+  cargo run -p keepcrypt-pi-sim --locked -- live --out target/pi-sim-live   # Protected screens are placeholders
+  ```
+  CLAUDE.md rule 1 names `game_random` and says it is never used for dice, D, nonces, passphrases or any pool input
+  (Q27).
+- [ ] Runtime budgets, measured against group 0's baseline:
+  - `test` grows by at most 6 minutes;
+  - `gates` stays within 10 minutes (12 if Q31 (f)'s fallback is approved);
+  - coverage stays at 95% of core's lines.
+  - If a budget is missed, stop and re-plan here.
+
+  Proof: all 14 required check runs green on the PR head, with unchanged names; job times pasted; each command run as
+  written and pasted.
+
+**15. Review**
+- [ ] Plan, security and recompute reviews per stage (core; dependencies and foundation; screens; sim and CI), as in
+  M2. Every high and medium finding is fixed, with "Proof (review fixes)" lines.
+- [ ] The registry-config capture set, zipped and sent to the owner with its index.
+  - Under Review: `git rev-parse HEAD`, an empty `git status --porcelain`, the configuration and the zip's SHA-256.
+  - The owner scans every QR capture with a phone (check, register, collision report, re-check, account UR,
+    descriptors). Each decoded text must equal core's string, and the Review records it.
+  - The owner's verdict, quoted with the date.
+  - Gate report against build-plan.md:286, then stop and wait for approval.
+
+**Deferred, with their milestone**
+- **M4:**
+  - rppal GPIO and mipidsi ST7789 drivers, with the RST and backlight pins checked against the Waveshare schematic;
+  - the `/dev/hwrng` reader, and the step 4 Tick from its measured rate;
+  - real mount, write, sync and unmount at `/mnt/usb`, with create-new writes and read-only mounts;
+  - `mlockall`, and where any `unsafe` code lives (ask first);
+  - clearing the ST7789's memory on every wipe;
+  - the crash path: `main` blanks the panel before the KATs; whether a panic hook may blank it; the docs say a crash,
+    like power-off, drops the 99-roll flag;
+  - Buildroot, the reproducible image hash, linking and scanning a release `keepcrypt-pi`, and the image's
+    no-simulator-symbols check (pi-firmware.md:76), which the `KC_SIMULATOR_DO_NOT_SHIP` marker makes positive;
+  - KAT, snapshot and scrypt timing and peak memory, and the worker-thread decision, with a `Session: Send` assertion;
+  - scanning the QRs off the real panel at 3 px modules (the descriptor QR is version 11), the Sparrow and Bitcoin
+    Core import, and the getrandom cfg in Buildroot;
+  - a real-Pi ceremony checked with `verify.py mixed`;
+  - rule 8's wording on device reads (`/dev/hwrng`, `/sys/block`).
+- **M5, M6:** `game_random`, `from_first_four` and the borrowing restart through the FFI; the phones keep their `Wiped`
+  the same way and decide their own runtime-error rule after Q25.
+- **M7:** the birthday-collision job; qrcodegen-no-heap's stack temporaries on the residual list; owner item 13 if no
+  source file arrives.
+- **M8:** the camera go-ahead QR (`verify_bucket_proof_qr`, `GoAhead::BucketProof`); phase-2 sensors as extras.
+- **M9:** the pinned registry key and origin, so release builds can load snapshots.
+- **Tetris:** when the owner chooses (Q27 (c)).
+- **Later, on request:**
+  - an SDL window for the simulator (needs SDL2 and the Zlib licence);
+  - a nicer Latin font, generated by a committed script.
+
+### Verification
+- [ ] **Gate: a scripted run drives a full ceremony in the simulator.** `drill_12` (registry config), `dice_24_code` and
+  `mixed_12_restarts` (both configs) pass steps 1-15 between them.
+
+  Proof: CI test output in both configurations.
+- [ ] **Gate: every screen.** `every_screen_is_expected`, against the inventory in group 8.
+
+  Proof: test output.
+- [ ] **Gate: seal check with go-ahead code entry.**
+  - The code is typed on the grid.
+  - A wrong code gives `code-wrong` with the same nonce, and no words screen.
+  - The mock checker's G, from a QR whose drawn modules match its payload, reveals the words.
+  - The snapshot path confirms the date before every `reveal`.
+
+  Proof: `dice_24_code`, `drill_12`, `mixed_12_restarts`; matrix row "Go-ahead vectors and tampering" (Pi part).
+- [ ] **Gate: braille pages.**
+  - Insert view and overview for 12 and 24 vector words, with numbered dots, blank faces, lighter letters, mirror flags
+    and device labels.
+  - The read-back names a mirror misread, a should-be-blank, a should-have-letter and a wrong letter.
+
+  Proof: group 6's mask and label tests, `drill_12`, `dice_24_code`; matrix row "Metal read-back drill" (Pi part).
+- [ ] **Gate: button handling.**
+  - Debouncer unit tests, and every scripted press runs through the Debouncer as a bounce train.
+  - Every screen shows its soft keys.
+  - The dead-key probes change nothing.
+  - The documented mappings hold: dice KEY1 undoes; words KEY1 toggles the overview and KEY2/KEY3 page.
+
+  Proof: group 5's tests and the probe counts.
+- [ ] **Gate: waiting-screen game.**
+  - Snake runs only in Mixed step 4 and is closed at the quota.
+  - Its bytes come only from `game_random` (the Shell grep allows the name only under `pi/app/src/games/`).
+  - Every key in Mixed `Collecting`, Snake open or not, is forwarded to `add_extra`: `extra_for`'s unit test plus review
+    of its one call site. None after the commitment: the typestate has no `add_extra` there.
+  - A `game_random` error halts with no secret held.
+
+  Proof: groups 8 and 10, group 13's grep, `mixed_12_restarts`.
+- [ ] **Gate: USB export mocked.**
+  - The backup is written (never over an existing name), read back under a read-only mount and verified.
+  - A write fault removes only the file just written, and Retry runs under the same passphrase.
+  - The stick ends with exactly one `.age` and nothing else.
+
+  Proof: `dice_24_code`; group 7's Usb refusals.
+- [ ] **Gate: snapshot import mocked.**
+  - Registry config: `with-dice-50` loads and drives both the collision and the clear result; a tampered snapshot is
+    refused.
+  - Release config: `NoRegistryKey`'s text.
+
+  Proof: `drill_12` in both configurations.
+- [ ] **Gate: the owner reviews the captures,** with every QR scanned.
+
+  Proof: the owner's verdict and the scan record, quoted under Review.
+- [ ] **Runtime failures halt** (Q25; design.md:178): boot and continuous health failures, an injected game error and
+  HAL faults all end on `halt` with no secret held.
+
+  Proof: `boot_stops`, `runtime_stop`, `wipes_clear_the_stage`, group 8's unit test.
+- [ ] **The 99-roll minimum** (todo.md:2293-2296; Q26):
+  - 99 after a Stop;
+  - 99 after a Cannot check in the restart after a collision;
+  - 99 after the idle wipe in that restart;
+  - 50 after Skip in that restart;
+  - 50 after a power cycle (documented).
+
+  Proof: `drill_12`, `mixed_12_restarts`, `skip_and_idle`, `runtime_stop`, group 2's tests, group 8's unit tests.
+- [ ] **Secrets held by the shell** (rule 5): after the idle wipe and after a fault, the `Stage` holds nothing;
+  `Protected` elements appear only on Protected ids in every scenario; live mode never writes a Protected frame.
+
+  Proof: `wipes_clear_the_stage`, the SimHal invariant, group 12's unit test.
+- [ ] **Matrix "Full ceremony with offline verification"** (simulator half; the Pi in M4): the verify.py tie exits 0
+  with the same words and Seal ID (`mixed_12_restarts`).
+- [ ] **Matrix "Duplicate-seed drill"** (Pi part): `with-dice-50` catches `coldcard-50` before any word is shown, and
+  the restart needs 99 rolls.
+
+  Proof: `drill_12` (registry config).
+- [ ] **Matrix "Watch-only import"** (M3 half): the drawn QR payloads equal core's `qr_text`, and the two descriptors
+  on two lines (`dice_24_code`). The import itself is M4.
+- [ ] **Matrix "Symbol and stub-marker scan":** release_probe covers `game_random` on all six cross legs; pi/app's ARM
+  release rlib scans clean; the test-registry simulator scans with exactly the registry marker, the simulator marker
+  and the test key.
+- [ ] **Matrix "Typestate misuse" and "Sealed-state compile-fail tests":** every fixture passes, with the one `.stderr`
+  change being the quoted signature; pi/app's gate functions are unit-tested; no scenario reaches a wipe through a
+  shell-order mistake.
+- [ ] **Carried items:**
+  - `Platform::Pi` asserted;
+  - test-registry only via `-p` (the manifest pin holds);
+  - the date confirmed before `reveal`;
+  - the step 4 bar on `hw_bytes_tested`;
+  - C and D as 16 groups of 4;
+  - the wait-for-prompt text on `reveal-d-offer` and in pi-firmware.md step 14;
+  - owner items 13 and 14, and the banned-API routes, decided.
+- [ ] **Rules:**
+  - 1: only `core/src/source` names getrandom; no std OS-seeded hashing in core, ffi or pi/app; the graph pin is
+    unchanged;
+  - 3: every halt condition ends on `halt` with no secret held;
+  - 5: pi/app prints nothing, buffers are wiped, Protected screens are captured unredacted only from vector runs;
+  - 6: only the app's `Stage` holds the typestate;
+  - 8: the stick's log shows only read-only `.age`/`.kcr` reads and create-new `.age` writes; pi/sim reads no file;
+  - 10: no manifest turns on a test feature; the simulator marker is in every simulator build;
+  - 11: every new crate is approved, vetted and past the cool-off.
+- [ ] **CI:** all 14 required check runs green; budgets met; canaries 61/61.
+- [ ] **Definition of done** (CLAUDE.md), with proof pasted under Review.
+
+### New dependencies
+
+**How this was checked (2026-10-11)**
+- crates.io API reads for versions, dates, licences and features.
+- Throwaway lockfiles with resolver 3 and rust-version 1.98.1. The pinned probe for the recommended set
+  (`scratchpad/m3-plan/lockprobe/m3pin-noheap/`, autocfg held at 1.5.0) holds exactly these 9 crates plus the two
+  members. qrcodegen-no-heap 1.8.1's checksum is `d0e2c0bf8be8a1c4a4f48973dabf26943f05da2bfc2d3180aae62409dbba6f0c`.
+- The local RustSec copy (2026-10-09): no advisory for any of them.
+
+**Results**
+- Every version was published before 2026-09-27, the cutoff for the 14-day cool-off.
+- None has rand, getrandom, log, tracing or a network crate in its normal or build dependencies. rand appears only as a
+  byteorder dev-dependency.
+- Every licence is on deny.toml's allow-list.
+- embedded-graphics has no default features. deny's `all-features` does not reach its optional `defmt`,
+  `fixed_point` or `nalgebra_support`.
+
+| Crate | Version | Published | Licence | Why | Vet |
+| --- | --- | --- | --- | --- | --- |
+| embedded-graphics | 0.8.2 | 2026-02-15 | MIT OR Apache-2.0 | Fonts, shapes, `DrawTarget` (M4's mipidsi uses it); build-plan.md:76 | exemption |
+| embedded-graphics-core | 0.4.1 | 2026-02-15 | MIT OR Apache-2.0 | Through embedded-graphics; mipidsi 0.10.0 needs `^0.4.1` | exemption |
+| az | 1.2.1 | 2022-07-25 | MIT/Apache-2.0 | Through embedded-graphics (`~1.2.0`) | exemption (isrg has only 1.2.1 to 1.3.0) |
+| byteorder | 1.5.0 | 2023-10-06 | Unlicense OR MIT | Through embedded-graphics | import (google, safe-to-deploy) |
+| float-cmp | 0.9.0 | 2021-07-21 | MIT | Through embedded-graphics (`^0.9.0`, default `ratio`) | exemption (google: safe-to-run only) |
+| micromath | 2.1.0 | 2023-10-31 | Apache-2.0 OR MIT | Through embedded-graphics | exemption |
+| num-traits | 0.2.19 | 2024-05-03 | MIT OR Apache-2.0 | Through float-cmp's `ratio` | import (bytecode-alliance, google) |
+| autocfg | 1.5.0 | 2025-06-17 | Apache-2.0 OR MIT | num-traits' build dependency; `--precise 1.5.0` (1.5.1 is not covered) | import (google 1.4.0 + zcash delta) |
+| qrcodegen-no-heap | 1.8.1 | 2023-08-20 | MIT | QR encoding into buffers pi/app wipes (Q28 (b)); 1.8.0 yanked the same day | exemption (one file; an owner audit can replace it) |
+
+- **New edges to crates already in Cargo.lock** (no new lockfile entry):
+  - pi/app → zeroize 1.9.0;
+  - pi/sim → keepcrypt-core (no features);
+  - pi/sim dev-dependencies → sha2 0.11.0 and serde_json 1.0.151.
+- **Not added:** embedded-graphics-simulator, sdl2, image, png, flate2, u8g2-fonts (licence "non-standard"),
+  qrcodegen, qrcode, fast_qr.
+- **M4 adds**, each with its own approval: mipidsi 0.10.0, rppal 0.22.1 (as a Linux-only target dependency),
+  embedded-hal 1.0.0 and spin_sleep 1.3.3.
+
+### Commit order on `m3-pi-sim`
+Each commit's proof runs at that commit; scenarios grow with the screens they cover.
+1. tasks/todo.md: the M3 plan and the owner's answers to Q25-Q34. The title becomes "milestones M0 to M3".
+2. docs: the approved edits (Q34), alone, with no code.
+3. core: `game_random`, its tests and the release_probe call (group 1).
+4. core: the borrowing restart, its tests, the regenerated `.stderr` and module docs (group 2).
+5. core: `from_first_four` and its tests (group 3).
+6. CLAUDE.md: rule 1 names `game_random`.
+7. pi, sim, supply-chain: manifests, Cargo.lock (autocfg held), vet exemptions and imports (group 4).
+8. pi/app: the screen model, `hal`, `frame`, `input`, `#![forbid(unsafe_code)]` (group 5).
+9. pi/app: the renderer and its painters (group 6).
+10. pi/sim: `SimHal`, the PNG writer and placeholder, the marker, the render timing (group 7).
+11. pi/app, pi/sim: the app, steps 1-7, halts, restarts, idle, the driver, the mock checker, and `boot_stops`,
+    `runtime_stop` and the steps 1-7 parts of the other scenarios (group 8).
+12. pi/app, pi/sim: steps 8-15, the Home side flows, and `drill_12`, `dice_24_code`, `skip_and_idle`, `check_backup`,
+    `wipes_clear_the_stage` (group 9).
+13. pi/app, pi/sim: Snake; `mixed_12_restarts` in full, the verify.py tie, `every_screen_is_expected`,
+    `drill_12_repeats` and `capture_set` (groups 10, 11).
+14. pi/sim: the interactive bin (group 12).
+15. scripts, core: the Shell category, the hash ban with pool.rs's `BTreeSet`, the pi/app forbid lines, the simulator
+    marker, Q31 (h)'s routes, and fixtures (group 13).
+16. ci, .github: the `test` and `cross` steps and comments; CODEOWNERS adds `pi/sim/` (group 14).
+17. CLAUDE.md: Commands for M3.
+18. tasks/todo.md: the M3 Review, with pasted proof, the owner's verdict on the captures and the gate report.
+
+Review fixes are listed as N.b entries under the commit they amend.
 
 ## Review
 _Added after completion, with pasted proof for every ticked item._
