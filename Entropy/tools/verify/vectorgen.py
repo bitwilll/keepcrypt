@@ -39,7 +39,9 @@ M2 adds check 12, that a copy of verify.py runs alone (tasks/todo.md, M2 group 3
 imports and recorded module attributes, no test material, its embedded known answers equal to the
 vectors they come from and each, changed in turn, failing its group, and lone copies, fault twins and a
 planted module run under an audit hook. It also runs verify.py's input parsers on fixed cases and ties
-its verification run to keepcrypt.json (group 4), and holds its own rules to controls that must fire.
+its verification run to keepcrypt.json (group 4), runs its mixed and dice commands from lone copies, piped,
+in a pseudo-terminal and under a Latin-1 locale (group 7), and holds its own rules to controls that must
+fire.
 M2 also adds vectors/agreement.json (group 5): 1,000 ceremonies and 28 refusals, their inputs drawn from
 SHA-256 counter streams over public labels, for core's session API to replay (group 6). A ceremony's
 expected values come from verify.py's verification_run and render, plus its check_url, go_ahead_code and
@@ -75,7 +77,9 @@ Usage (CI runs python3 -I tools/verify/vectorgen.py --selftest):
                                     material, its known answers against their sources and each
                                     changed in turn, its input cases and keepcrypt.json tie, a lone
                                     copy, one fault twin per known-answer group and a planted
-                                    module, run under an audit hook, and controls on its own rules),
+                                    module, its commands piped, in a pseudo-terminal and under a
+                                    Latin-1 locale, run under an audit hook, and controls on its own
+                                    rules),
                                     agreement.json (its bytes, coverage counts, each refusal's core
                                     error and verify.py verdict, seed and seal against their
                                     definitions, a changed D refused before the rolls, inserts
@@ -91,9 +95,10 @@ Usage (CI runs python3 -I tools/verify/vectorgen.py --selftest):
   vectorgen.py --write-agreement-vectors  regenerate vectors/agreement.json
   --vectors-dir DIR                 testing only: use DIR in place of the repo's vectors/ (made
                                     absolute); a SOURCES.md row `vectors/<p>` then means DIR/<p>
-  --verify-py PATH                  testing only, with --selftest: check 12's rules (a) to (e) check PATH
-                                    in place of tools/verify/verify.py; check 12's known-answer sweep,
-                                    input cases and keepcrypt.json tie, and the other checks, use
+  --verify-py PATH                  testing only, with --selftest: check 12's rules (a) to (g) and
+                                    command runs check PATH in place of tools/verify/verify.py; check
+                                    12's known-answer sweep, input cases, keepcrypt.json tie and
+                                    in-process command runs, and the other checks, use
                                     tools/verify/verify.py
   --check N                         testing only, with --selftest: run check N alone
 
@@ -104,17 +109,23 @@ import argparse
 import ast
 import base64
 import datetime
+import getpass
 import hashlib
 import hmac
 import importlib.util
+import io
 import json
 import math
 import os
+import pty
 import re
+import select
+import signal
 import stat
 import subprocess
 import sys
 import tempfile
+import time
 import zlib
 from pathlib import Path
 
@@ -4397,15 +4408,19 @@ VERIFY_DUNDER_NAMES = ("__name__", "__doc__")
 # test a recorded one. An import allowlist alone would leave getpass.os.open, getpass.io.open,
 # argparse._os.system and sys.modules in reach.
 VERIFY_MODULE_ATTRIBUTES = (
+    ("argparse", "ArgumentParser"), ("argparse", "RawDescriptionHelpFormatter"),
     ("base64", "b64decode"), ("base64", "b64encode"),
     ("binascii", "Error"),
     ("datetime", "date"),
+    ("getpass", "GetPassWarning"), ("getpass", "getpass"),
     ("hashlib", "pbkdf2_hmac"), ("hashlib", "scrypt"), ("hashlib", "sha256"), ("hashlib", "sha512"),
     ("hmac", "compare_digest"), ("hmac", "new"),
     ("re", "fullmatch"),
     ("struct", "pack"), ("struct", "unpack"),
-    ("sys", "argv"), ("sys", "exit"), ("sys", "flags"), ("sys", "stderr"), ("sys", "stdout"), ("sys", "version_info"),
+    ("sys", "argv"), ("sys", "exit"), ("sys", "flags"), ("sys", "stderr"), ("sys", "stdin"), ("sys", "stdout"),
+    ("sys", "version_info"),
     ("unicodedata", "normalize"),
+    ("warnings", "catch_warnings"), ("warnings", "simplefilter"),
 )
 # Rule (b): verify.py's text holds neither test marker and no test label, nor the test registry public
 # key (KCR_PINNED) in hex, in either case.
@@ -4430,10 +4445,26 @@ KNOWN_ANSWER_FILES = {
     "braille": "vectors/braille.json",
     "urls": "the URL grammar over vectors/seal.json vector 1",
     "insert": "vectors/braille.json",
+    "run": "vectors/agreement.json and check 12's banner, roll-count and note lines",
 }
 # The urls group is tied to the URL grammar (Q6d) applied to seal.json's vector 1: core's REGISTRY_ORIGIN
 # (core/src/seal.rs) until M9, then /check#t=<T>, &n=<n> and /register#c=<the code without dashes>.
 KNOWN_ANSWER_ORIGIN = "https://registry.invalid"
+# The run group (tasks/todo.md, M2 group 7) holds these agreement.json ceremonies: the first 12-word Mixed Pi and
+# the first 24-word DiceOnly Phone case. Each stdout line that the case's expect fixes is tied to it (core compares
+# expect, group 6); the other lines are tied to the copies here, held apart from verify.py's render: the banner
+# (M2 group 7's text), "C matches D" in mixed mode, the roll count with its bits at 2.585 bits per roll (CLAUDE.md
+# "Dice quota"), shown in tenths and cut, as the dice screen shows them (pi-firmware.md step 6), and the three
+# notes chosen with render (M2 group 4; the second is Q21's).
+KNOWN_ANSWER_RUN_CASES = ("12-mixed-pi-000", "24-dice_only-phone-000")
+KNOWN_ANSWER_RUN_BANNER = ("VERIFICATION RUN: a disposable test seed. Never fund it; erase this run and clear the "
+                           "terminal afterwards.")
+KNOWN_ANSWER_MILLIBITS_PER_ROLL = 2585
+KNOWN_ANSWER_RUN_NOTES = (
+    "every line above must equal what the device showed; a difference is a typing error or a faulty device",
+    "for 12 words, 50-98 rolls is valid only for a first ceremony, never after \"Match found\", which takes 99",
+    "the device's check QR adds its fresh nonce to the re-check URL, so no run can show it or a go-ahead code",
+)
 # Each line of the insert group is split back into the fields of its braille.json entry, plus its slot
 # (position 01 of one device, sequence 01) and each face's cell (tasks/todo.md, M2 group 4).
 INSERT_LINE = re.compile(r"([0-9]{2}) device ([0-9]+)/([0-9]+) seq ([0-9]{2}) seedbook ([0-9]{4}) ([a-z]+) "
@@ -4492,15 +4523,17 @@ AUDIT_BANNED_MODULES = ("socket", "ssl", "_socket", "_ssl", "socketserver", "url
 AUDIT_BANNED_EVENTS = ("socket.", "subprocess.Popen", "os.system", "os.exec", "os.posix_spawn", "os.spawn", "os.fork",
                        "os.truncate", "os.remove", "os.rename", "os.rmdir", "os.mkdir", "os.chmod", "os.chown",
                        "os.chflags", "os.link", "os.symlink", "os.utime", "os.setxattr", "os.removexattr", "shutil.")
-# The child of an audited run: sys.executable -I -c (the two lists above and VERSION_INFO, None or the
-# sys.version_info the copy is to see, then this) FD COPY ARGS... It installs an audit hook and runs COPY
-# as __main__ with ARGS, writing nothing itself but to FD. A banned event is written to FD at once, so a
-# copy that ends the process early cannot hide it, and is refused, so its action never happens: any open
+# The child of an audited run: sys.executable -I -c (the two lists above, VERSION_INFO, None or the
+# sys.version_info the copy is to see, and TERMINAL, then this) FD COPY ARGS... It installs an audit hook and
+# runs COPY as __main__ with ARGS, writing nothing itself but to FD. A banned event is written to FD at once,
+# so a copy that ends the process early cannot hide it, and is refused, so its action never happens: any open
 # for writing, or of a path outside the interpreter's standard library (sysconfig's stdlib and
 # platstdlib, without site-packages) other than the copy; any socket or process; any change to a file by
-# path. At the end it writes each banned module, and each module loaded since it started from outside the
-# standard library (the interpreter's own start-up, site and its .pth files, is not the copy's doing),
-# then "end". Bytecode caching is off, so importing the standard library writes nothing.
+# path. Only in a terminal run (TERMINAL, check 12 (f)) may it open /dev/tty and wrap a descriptor already
+# open, as getpass does, so a getpass call in a piped run fails. At the end it writes each banned module, and
+# each module loaded since it started from outside the standard library (the interpreter's own start-up,
+# site and its .pth files, is not the copy's doing), then "end". Bytecode caching is off, so importing the
+# standard library writes nothing.
 AUDIT_HARNESS = r'''
 import os
 import sys
@@ -4542,6 +4575,8 @@ def allowed(path):
 def problem(event, args):
     if event == "open":
         path, mode, flags = args
+        if TERMINAL and (path == "/dev/tty" or isinstance(path, int)):
+            return None
         if (isinstance(mode, str) and set(mode) & set("wax+")) or (isinstance(flags, int) and flags & writing):
             return "open for writing: %r" % (path,)
         if not allowed(path):
@@ -4623,6 +4658,23 @@ AUDIT_CONTROLS = (
 FAULT_TWIN_CONTROL = ('KNOWN_ANSWERS = {"control": {"value": "1"}}\nprint("ok   control")\n'
                       'print("selftest passed: 1 known-answer groups")\n')
 ABSENT = object()  # a value missing on one side of value_differences
+# Check 12's runs of the user commands (tasks/todo.md, M2 group 7): audited runs of the lone copy, each in its own
+# read-only directory, every stream held to the leak rule. Their cases are agreement.json's first ceremony of each
+# combination, with C and D as the device shows them and the rolls cut into lines of COMMAND_ROLLS_PER_LINE, and
+# Coldcard's published 123456 (coldcard/rolls.json). The leak rule (tasks/todo.md, M2 plan): with a stream and the
+# typed D normalised (whitespace and hyphens removed, lowercased), the stream holds no LEAK_HEX_DIGITS consecutive
+# characters of D; with whitespace removed and the roll lines joined, no LEAK_ROLLS consecutive rolls. A refused C
+# is held to it as D is.
+COMMAND_ROLLS_PER_LINE = 40
+LEAK_HEX_DIGITS = 8
+LEAK_ROLLS = 12
+# Rule (f): runs in a new pseudo-terminal, which type each field only once its prompt has appeared, and Ctrl-D
+# and Ctrl-C as the terminal sends them.
+TERMINAL_EOF = "\x04"
+TERMINAL_INTERRUPT = "\x03"
+# Rule (g): a piped run under this Latin-1 locale must print braille byte for byte as the UTF-8 run does. It must
+# run on macOS; elsewhere it runs where the locale is installed (where it is not, Python's stdout is UTF-8 there).
+LATIN1_LOCALE = "en_US.ISO8859-1"
 
 
 def verify_static_problems(tree):
@@ -4706,6 +4758,7 @@ def known_answer_sources(vectors_dir):
 
     kat, english, keepcrypt = load("kat.json"), load("bip39/vectors.json")["english"], load("keepcrypt.json")
     seal, braille = load("seal.json")["vectors"][0], load("braille.json")
+    ceremonies = {case["name"]: case for case in load("agreement.json")["ceremonies"]}
     commit = named(keepcrypt, "commitment", KNOWN_ANSWER_COMMITMENT)
     mixed = named(keepcrypt, "mixed", KNOWN_ANSWER_MIXED)
     dice = [case for case in load("coldcard/rolls.json")["cases"] if case.get("rolls") == KNOWN_ANSWER_DICE_ROLLS]
@@ -4752,7 +4805,37 @@ def known_answer_sources(vectors_dir):
                            face_cells=[cell[letter] if letter else None for letter in words[word]["faces"]])
                       for word, _, _, _, _ in BRAILLE_SAMPLE_INSERTS],
         },
+        "run": {name: known_answer_run_source(ceremonies[name]) for name in KNOWN_ANSWER_RUN_CASES},
     }
+
+
+def agreement_shown(expect):
+    """The stdout lines of a ceremony's run that its expect fixes, in render's order (tasks/todo.md, M2 group 7): the
+    seed bits, the seal, the re-check URL, the insert lines and the seal code."""
+    return (["entropy: " + expect["entropy_hex"], "seal-id: %s %s" % (expect["seal_id"], expect["seal_id_braille"]),
+             "seal-tag: " + expect["seal_tag_hex"], "lookup-prefix: " + expect["lookup_prefix"],
+             "seal-colour: %d %s" % (expect["colour_index"], expect["colour_hex"])]
+            + ["seal-grid: " + row for row in expect["grid"]] + ["recheck-url: " + expect["recheck_url"]]
+            + ["insert: " + line for line in expect["inserts"]] + ["seal-code: " + expect["seal_code"]])
+
+
+def agreement_shown_in(stdout, expect):
+    """The lines of `stdout` whose labels agreement_shown gives, in order."""
+    labels = set(line.partition(": ")[0] for line in agreement_shown(expect))
+    return [line for line in stdout.splitlines() if line.partition(": ")[0] in labels]
+
+
+def known_answer_run_source(case):
+    """A run known answer as rule (c) rebuilds it from its agreement.json ceremony: the length, C and D in 16 groups
+    of 4 (None in dice-only mode), the rolls as one line, and the stdout lines: KNOWN_ANSWER_RUN_BANNER, "C matches
+    D" in mixed mode, the roll count with its bits, the lines the case's expect fixes, and KNOWN_ANSWER_RUN_NOTES."""
+    expect, mixed, count = case["expect"], case["mode"] == "mixed", len(case["rolls"])
+    millibits = count * KNOWN_ANSWER_MILLIBITS_PER_ROLL
+    stdout = ([KNOWN_ANSWER_RUN_BANNER] + (["commitment: C matches D"] if mixed else [])
+              + ["rolls: %d (%d.%d bits)" % (count, millibits // 1000, millibits % 1000 // 100)]
+              + agreement_shown(expect) + ["note: " + note for note in KNOWN_ANSWER_RUN_NOTES])
+    return {"length": case["length"], "c": display_hex32(expect["c_hex"]) if mixed else None,
+            "d": display_hex32(expect["d_hex"]) if mixed else None, "rolls": [case["rolls"]], "stdout": stdout}
 
 
 def insert_line_fields(line):
@@ -4917,8 +5000,9 @@ def echoing(parse):
 def control_problems():
     """Check 12's controls on its own rules, each of which must fire: rule (b) on each test material alone
     (the test key in upper case), INPUT_CASES' leak test on parsers whose refusals echo the input (every
-    refused case but an empty input), rule (d) on FAULT_TWIN_CONTROL's fault twin and rule (e)'s audit on each
-    AUDIT_CONTROLS script. [problem]."""
+    refused case but an empty input), the command runs' leak rule on streams that show D and the rolls (and not
+    on near misses), rule (d) on FAULT_TWIN_CONTROL's fault twin and rule (e)'s audit on each AUDIT_CONTROLS
+    script. [problem]."""
     materials = [(material, material) for material in VERIFY_TEST_MATERIAL]
     materials.append(("the test registry public key in upper case", KCR_PINNED["test_public_key_hex"].upper()))
     problems = ["rule (b) misses %s" % label for label, text in materials if not verify_text_problems(text)]
@@ -4926,6 +5010,12 @@ def control_problems():
              if isinstance(want, tuple) and "".join(given)]
     if input_case_problems(echoing(parse_hex32), echoing(parse_rolls)) != leaks:
         problems.append("the input cases' leak test misses a refusal that echoes its input")
+    # The command runs' leak rule, through its normalisation: 8 digits of D in upper case around a hyphen, and 12
+    # rolls across a line break, must each fire; 7 digits of D and 11 rolls must not.
+    for stream, want in (("x%s-%sx" % (INPUT_HEX[18:22].upper(), INPUT_HEX[22:26].upper()), 1),
+                         ("1234\n56123456", 1), ("x%sx 12345612345" % INPUT_HEX[18:25], 0)):
+        if len(leak_problems((("control", stream),), [("D", INPUT_HEX_SHOWN)], ["1234561234", "56"])) != want:
+            problems.append("the leak rule %s %r" % ("misses" if want else "fires on", stream))
     node = known_answers_node(ast.parse(FAULT_TWIN_CONTROL))
     if ("rule (d): fault twin control: exit status 0, not 1"
             not in verify_lone_problems(FAULT_TWIN_CONTROL.encode("ascii"), node, ast.literal_eval(node))):
@@ -5014,27 +5104,40 @@ def fault_twin(data, node, group):
     return data[:start] + repr(changed).encode("utf-8") + data[end:]
 
 
-def audited_run(directory, args, version=None):
-    """One audited run (check 12 (e)) of the copy directory/verify.py with `args`: sys.executable -I -c
-    AUDIT_HARNESS, from `directory`, in a new session (no controlling terminal), with an empty
-    environment and stdin at its end, the copy seeing `version` as sys.version_info if given. Returns
-    (exit status, stdout, stderr, the audit's problems)."""
-    harness = "BANNED_MODULES = %r\nBANNED_EVENTS = %r\nVERSION_INFO = %r\n%s" % (
-        AUDIT_BANNED_MODULES, AUDIT_BANNED_EVENTS, version, AUDIT_HARNESS)
-    read_end, write_end = os.pipe()
-    with os.fdopen(read_end, "rb") as report:
-        try:
-            run = subprocess.run([sys.executable, "-I", "-c", harness, str(write_end), str(directory / "verify.py")]
-                                 + list(args), stdin=subprocess.DEVNULL, capture_output=True, cwd=directory, env={},
-                                 pass_fds=(write_end,), start_new_session=True, timeout=LONE_TIMEOUT_SECONDS)
-        finally:
-            os.close(write_end)
-        lines = report.read().decode("utf-8", "replace").splitlines()
+def harness_source(version, terminal):
+    """AUDIT_HARNESS with its settings: the copy sees `version` as sys.version_info if it is not None, and
+    `terminal` lets it open /dev/tty (check 12 (f))."""
+    return "BANNED_MODULES = %r\nBANNED_EVENTS = %r\nVERSION_INFO = %r\nTERMINAL = %r\n%s" % (
+        AUDIT_BANNED_MODULES, AUDIT_BANNED_EVENTS, version, terminal, AUDIT_HARNESS)
+
+
+def audit_problems(report):
+    """The audit's problems from the bytes its harness wrote to FD."""
+    lines = report.decode("utf-8", "replace").splitlines()
     problems = [line for line in lines if line != "end"]
     if "end" not in lines:
         problems.append("the run ended before the audit's last check")
-    return (run.returncode, run.stdout.decode("utf-8", "replace"), run.stderr.decode("utf-8", "replace"),
-            problems)
+    return problems
+
+
+def audited_run(directory, args, version=None, stdin=b"", env=None):
+    """One audited run (check 12 (e)) of the copy directory/verify.py with `args`: sys.executable -I -c
+    AUDIT_HARNESS, from `directory`, in a new session (no controlling terminal), with `stdin` piped in (by
+    default stdin is at its end) and an empty environment or `env`, the copy seeing `version` as
+    sys.version_info if given. Returns (exit status, stdout, stderr, the audit's problems), stdout and stderr
+    decoded as UTF-8 with surrogateescape, so that equal text is equal bytes."""
+    read_end, write_end = os.pipe()
+    with os.fdopen(read_end, "rb") as report:
+        try:
+            run = subprocess.run([sys.executable, "-I", "-c", harness_source(version, False), str(write_end),
+                                  str(directory / "verify.py")] + list(args), input=stdin, capture_output=True,
+                                 cwd=directory, env=env or {}, pass_fds=(write_end,), start_new_session=True,
+                                 timeout=LONE_TIMEOUT_SECONDS)
+        finally:
+            os.close(write_end)
+        problems = audit_problems(report.read())
+    return (run.returncode, run.stdout.decode("utf-8", "surrogateescape"),
+            run.stderr.decode("utf-8", "surrogateescape"), problems)
 
 
 def selftest_run_problems(status, stdout, stderr, groups, failing):
@@ -5057,6 +5160,18 @@ def selftest_run_problems(status, stdout, stderr, groups, failing):
     return problems
 
 
+def lone_directory(root, name, data, locked):
+    """A new read-only directory root/name holding only `data` as a read-only verify.py (rule (d)), added to
+    `locked` so that the caller can unlock it to clean up."""
+    directory = root / name
+    directory.mkdir()
+    (directory / "verify.py").write_bytes(data)
+    (directory / "verify.py").chmod(0o444)
+    directory.chmod(0o555)
+    locked.append(directory)
+    return directory
+
+
 def verify_lone_problems(data, node, known):
     """Check 12 rules (d) and (e): the lone copy and each fault twin run `selftest` audited, and the lone
     copy as Python 3.8 stops at its startup guard; the planted module runs neither isolated nor refused.
@@ -5075,12 +5190,7 @@ def verify_lone_problems(data, node, known):
         root, locked = Path(scratch), []
         try:
             for label, name, copy, failing in runs:
-                directory = root / name
-                directory.mkdir()
-                (directory / "verify.py").write_bytes(copy)
-                (directory / "verify.py").chmod(0o444)
-                directory.chmod(0o555)
-                locked.append(directory)
+                directory = lone_directory(root, name, copy, locked)
                 old = name == "old-python"
                 try:
                     status, stdout, stderr, audit = audited_run(directory, ["selftest"], OLD_PYTHON if old else None)
@@ -5121,8 +5231,433 @@ def verify_lone_problems(data, node, known):
     return problems
 
 
+def leak_problems(streams, hex_texts=(), roll_lines=()):
+    """The leak rule over each (name, text) of `streams`: with the stream and each typed input normalised alike
+    (whitespace and hyphens removed, lowercased), the stream holds no LEAK_HEX_DIGITS consecutive characters of
+    any (field, text) of `hex_texts`, and no LEAK_ROLLS consecutive rolls of `roll_lines` joined. [problem]."""
+    def normal(text):
+        return re.sub(r"[\s-]+", "", text).lower()
+
+    typed = [(normal(text), LEAK_HEX_DIGITS, "hex digits of the typed " + field) for field, text in hex_texts]
+    typed.append((normal("".join(roll_lines)), LEAK_ROLLS, "rolls"))
+    problems = []
+    for name, stream in streams:
+        shown = normal(stream)
+        problems += ["%s holds %d consecutive %s" % (name, width, what) for text, width, what in typed
+                     if any(text[at:at + width] in shown for at in range(len(text) - width + 1))]
+    return problems
+
+
+def command_args(mode, length):
+    """The arguments of verify.py's command for a run in `mode` (mixed or dice_only) at `length` words."""
+    return ["mixed" if mode == "mixed" else "dice", "--words", "%d" % length]
+
+
+def shown_c_d(case):
+    """An agreement.json ceremony's C and D as the device shows them, or (None, None) in dice-only mode."""
+    if case["mode"] != "mixed":
+        return None, None
+    return display_hex32(case["expect"]["c_hex"]), display_hex32(case["expect"]["d_hex"])
+
+
+def roll_lines_of(rolls):
+    """`rolls` cut into lines of COMMAND_ROLLS_PER_LINE, as typed."""
+    return [rolls[at:at + COMMAND_ROLLS_PER_LINE] for at in range(0, len(rolls), COMMAND_ROLLS_PER_LINE)]
+
+
+def piped_input(lines):
+    """`lines` as piped into stdin: each ended by a line feed, in UTF-8."""
+    return "".join(line + "\n" for line in lines).encode("utf-8")
+
+
+def inserted_words(stdout):
+    """The word of each insert line of a run's stdout, None for a line out of the grammar."""
+    return [(insert_line_fields(line[len("insert: "):]) or {}).get("word") for line in stdout.splitlines()
+            if line.startswith("insert: ")]
+
+
+def prompt_layer_problems(stderr, c_text, roll_lines):
+    """What a run that read every field must have written to stderr (tasks/todo.md, M2 group 7): in mixed mode C
+    printed back in 16 groups of 4 and D's count, "64 hex digits"; then each roll line's count and the total, in
+    order. [problem]."""
+    problems = []
+    if c_text is not None and display_hex32(parse_hex32("C", c_text).hex()) not in stderr:
+        problems.append("C is not printed back in 16 groups of 4")
+    if c_text is not None and "64 hex digits" not in stderr:
+        problems.append("D's count is not shown")
+    at, total = 0, 0
+    for line in roll_lines:
+        total += len(line.strip())
+        count = "%d rolls, %d in all" % (len(line.strip()), total)
+        at = stderr.find(count, at)
+        if at < 0:
+            return problems + ["the count %r is not shown in its place" % count]
+        at += len(count)
+    return problems
+
+
+def command_cases(vectors_dir):
+    """The cases of check 12's command runs: ({(length, mode, platform): the first agreement.json ceremony of that
+    combination}, coldcard/rolls.json's case 123456)."""
+    doc = json.loads(vectors_dir.joinpath("agreement.json").read_text(encoding="utf-8"))
+    first = {}
+    for case in doc["ceremonies"]:
+        first.setdefault((case["length"], case["mode"], case["platform"]), case)
+    rolls = json.loads(vectors_dir.joinpath("coldcard", "rolls.json").read_text(encoding="utf-8"))
+    coldcard = [case for case in rolls["cases"] if case.get("rolls") == KNOWN_ANSWER_DICE_ROLLS]
+    if sorted(first) != sorted(AGREEMENT_COMBINATIONS) or len(coldcard) != 1:
+        raise ValueError("agreement.json lacks a combination, or rolls.json has not one case %s"
+                         % KNOWN_ANSWER_DICE_ROLLS)
+    return first, coldcard[0]
+
+
+def piped_command_problems(piped, first, coldcard, data, node, known):
+    """Check 12's piped runs of the user commands (tasks/todo.md, M2 group 7), each through `piped`: the first
+    ceremony of each combination (exit 0, stdout render's for the same run in process, and its lines that the
+    case's expect fixes equal to them); dice on 123456 at both lengths (Coldcard's seed bits and words, the range
+    warning); D with one digit changed (exit 1 before the rolls prompt); a mixed run one roll short (exit 1, no
+    words); every refused text of INPUT_CASES (exit 2, its field and position named); an argument (exit 2, not
+    shown); end of input before each prompt's first line (exit 2), and after two roll lines (computed); and each
+    fault twin, under mixed and dice (exit 1, one line naming its group, no prompt). [problem]."""
+    problems = []
+
+    def run(label, args, lines, want_status, copy=data):
+        """`piped`, with the exit status and a traceback checked: (stdout, stderr), or None if it timed out."""
+        status, stdout, stderr, found = piped(label, args, lines, copy)
+        problems.extend(found)
+        if status is None:
+            return None
+        if status != want_status:
+            problems.append("%s: exit status %d, not %d" % (label, status, want_status))
+        if "Traceback" in stdout + stderr:
+            problems.append("%s: a traceback" % label)
+        return stdout, stderr
+
+    def leaks(label, stdout, stderr, hex_texts, roll_lines):
+        problems.extend("%s: %s" % (label, found) for found in
+                        leak_problems((("stdout", stdout), ("stderr", stderr)), hex_texts, roll_lines))
+
+    for combination in AGREEMENT_COMBINATIONS:
+        case = first[combination]
+        c_text, d_text = shown_c_d(case)
+        lines, label = roll_lines_of(case["rolls"]), "piped " + case["name"]
+        result = run(label, command_args(case["mode"], case["length"]),
+                     [text for text in (c_text, d_text) if text is not None] + lines + [""], 0)
+        if result is None:
+            continue
+        stdout, stderr = result
+        if stdout != render(verification_run(case["length"], lines, c_text, d_text)):
+            problems.append("%s: stdout is not render's for the same run" % label)
+        if agreement_shown_in(stdout, case["expect"]) != agreement_shown(case["expect"]):
+            problems.append("%s: its entropy, seal, re-check URL, insert and seal-code lines differ from "
+                            "agreement.json's expect" % label)
+        if PIPE_NOTICE not in stderr:
+            problems.append("%s: no pipe notice" % label)
+        problems.extend("%s: %s" % (label, found) for found in prompt_layer_problems(stderr, c_text, lines))
+        leaks(label, stdout, stderr, [("D", d_text)] if d_text else [], lines)
+    for length in (24, 12):
+        lines, label = [KNOWN_ANSWER_DICE_ROLLS], "piped dice --words %d on %s" % (length, KNOWN_ANSWER_DICE_ROLLS)
+        report = verification_run(length, lines)
+        result = run(label, command_args("dice_only", length), lines + [""], 0)
+        if result is None:
+            continue
+        stdout, stderr = result
+        if stdout != render(report):
+            problems.append("%s: stdout is not render's for the same run" % label)
+        seed_bits = coldcard["sha256_hex"] if length == 24 else coldcard["sha256_hex"][:32]  # rolls12.py's line
+        if "entropy: " + seed_bits not in stdout.splitlines():
+            problems.append("%s: its entropy line is not rolls.json's seed bits" % label)
+        if inserted_words(stdout) != coldcard["words_%d" % length]:
+            problems.append("%s: its words are not rolls.json's" % label)
+        if "warning: %s\n" % report["warning"] not in stderr or PIPE_NOTICE not in stderr:
+            problems.append("%s: the range warning or the pipe notice is not on stderr" % label)
+        leaks(label, stdout, stderr, [], lines)
+    case = first[(12, "mixed", "pi")]
+    c_text, d_text = shown_c_d(case)
+    lines, d = roll_lines_of(case["rolls"]), case["expect"]["d_hex"]
+    changed = display_hex32("%x" % ((int(d[0], 16) + 1) % 16) + d[1:])
+    label = "piped mixed --words 12, D with one digit changed"
+    result = run(label, command_args("mixed", 12), [c_text, changed] + lines + [""], 1)
+    if result is not None:
+        stdout, stderr = result
+        report = verification_run(12, lines, c_text, changed)
+        if stdout != render(report) or report["refused"] != "D does not match C":
+            problems.append("%s: stdout is not render's refusal \"D does not match C\"" % label)
+        if any(line.startswith(("insert:", "seal-")) for line in stdout.splitlines()) or PROMPT_ROLLS in stderr:
+            problems.append("%s: an insert or seal line, or the rolls prompt" % label)
+        leaks(label, stdout, stderr, [("D", changed)], lines)
+    short = [case["rolls"][:dict(AGREEMENT_QUOTA)["min_rolls_12_words"] - 1]]
+    label = "piped mixed --words 12 with %d rolls" % len(short[0])
+    result = run(label, command_args("mixed", 12), [c_text, d_text] + short + [""], 1)
+    if result is not None:
+        stdout, stderr = result
+        if stdout != render(verification_run(12, short, c_text, d_text)) or "\nentropy: " in stdout:
+            problems.append("%s: stdout is not render's refusal, with no words" % label)
+        leaks(label, stdout, stderr, [("D", d_text)], short)
+    valid_c = display_hex32(commitment(bytes.fromhex(INPUT_HEX)).hex())
+    for name, field, given, want in INPUT_CASES:
+        if not isinstance(want, tuple):
+            continue
+        label = "piped %s" % name
+        if field == "rolls":
+            args, lines, hex_texts, typed = command_args("dice_only", 12), list(given) + [""], [], given
+        elif field == "C":
+            args, typed = command_args("mixed", 12), roll_lines_of(case["rolls"])
+            lines, hex_texts = [given, INPUT_HEX_SHOWN] + typed + [""], [("C", given), ("D", INPUT_HEX_SHOWN)]
+        else:
+            args, typed = command_args("mixed", 12), roll_lines_of(case["rolls"])
+            lines, hex_texts = [valid_c, given] + typed + [""], [("D", given)]
+        result = run(label, args, lines, 2)
+        if result is not None:
+            stdout, stderr = result
+            named = "%s refused%s:" % (field, "" if want[1] is None else " at character %d" % want[1])
+            if stdout or named not in stderr:
+                problems.append("%s: stdout is not empty, or stderr does not name %r" % (label, named))
+            leaks(label, stdout, stderr, hex_texts, typed)
+    label = "piped mixed --words 12 abandon"
+    result = run(label, ["mixed", "--words", "12", "abandon"], [], 2)
+    if result is not None and (result[0] or "abandon" in result[1]):
+        problems.append("%s: stdout is not empty, or the argument is shown" % label)
+    for label, args, lines in (("at the C prompt", command_args("mixed", 12), []),
+                               ("at the D prompt", command_args("mixed", 12), [c_text]),
+                               ("at the rolls prompt", command_args("mixed", 12), [c_text, d_text]),
+                               ("at the dice rolls prompt", command_args("dice_only", 12), [])):
+        label = "piped end of input " + label
+        result = run(label, args, lines, 2)
+        if result is not None:
+            if result[0]:
+                problems.append("%s: stdout is not empty" % label)
+            leaks(label, result[0], result[1], [("D", d_text)], [])
+    rolls = first[(12, "dice_only", "pi")]["rolls"]
+    lines, label = [rolls[:len(rolls) // 2], rolls[len(rolls) // 2:]], "piped dice --words 12, two lines, end of input"
+    result = run(label, command_args("dice_only", 12), lines, 0)
+    if result is not None:
+        stdout, stderr = result
+        if stdout != render(verification_run(12, lines)):
+            problems.append("%s: stdout is not render's for the same run" % label)
+        problems.extend("%s: %s" % (label, found) for found in prompt_layer_problems(stderr, None, lines))
+        leaks(label, stdout, stderr, [], lines)
+    for group in known or ():
+        twin = fault_twin(data, node, group)
+        if twin is None:  # rule (d) reports it
+            continue
+        for args, lines in ((command_args("mixed", 12), [c_text, d_text] + roll_lines_of(case["rolls"]) + [""]),
+                            (command_args("dice_only", 12), roll_lines_of(case["rolls"]) + [""])):
+            label = "fault twin %s, %s" % (group, args[0])
+            result = run(label, args, lines, 1, twin)
+            if result is not None and (result[0] or result[1].count("\n") != 1
+                                       or "known answers failed: %s;" % group not in result[1]):
+                problems.append("%s: not one stderr line naming the group, before any prompt" % label)
+    return ["commands: %s" % problem for problem in problems]
+
+
+def terminal_run(directory, args, steps):
+    """One audited run (check 12 (e)) of directory/verify.py with `args` in a new pseudo-terminal (rule (f)): the
+    child, a session leader whose controlling terminal is the pty, runs AUDIT_HARNESS with /dev/tty allowed, from
+    `directory`, with an empty environment. For each (prompt, text) of `steps` in turn, this waits until `prompt`
+    appears in the transcript after the last prompt it waited for, then types `text` in one write. Returns (exit
+    status, the transcript with CR LF read as LF, the audit's problems, the steps left when the run's output
+    ended); subprocess.TimeoutExpired after LONE_TIMEOUT_SECONDS, with the child killed."""
+    read_end, write_end = os.pipe()
+    with os.fdopen(read_end, "rb") as report:
+        try:
+            os.set_inheritable(write_end, True)
+            argv = ([sys.executable, "-I", "-c", harness_source(None, True), str(write_end),
+                     str(directory / "verify.py")] + list(args))
+            pid, master = pty.fork()
+            if pid == 0:  # the child: the harness, or an exit at once
+                try:
+                    os.chdir(directory)
+                    os.execve(sys.executable, argv, {})
+                finally:
+                    os._exit(127)
+        finally:
+            os.close(write_end)
+        transcript, seen, left = b"", 0, list(steps)
+        deadline = time.monotonic() + LONE_TIMEOUT_SECONDS
+        try:
+            while True:
+                at = transcript.find(left[0][0].encode("ascii"), seen) if left else -1
+                if at >= 0:
+                    seen = at + len(left[0][0])
+                    os.write(master, left.pop(0)[1].encode("ascii"))
+                    continue
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(argv[5:], LONE_TIMEOUT_SECONDS)
+                if not select.select([master], [], [], remaining)[0]:
+                    continue
+                try:
+                    chunk = os.read(master, 4096)
+                except OSError:  # EIO, on Linux, once the child has closed the terminal
+                    chunk = b""
+                if not chunk:
+                    break
+                transcript += chunk
+        except BaseException:
+            os.kill(pid, signal.SIGKILL)
+            raise
+        finally:
+            os.close(master)
+            status = os.waitpid(pid, 0)[1]
+        problems = audit_problems(report.read())
+    return (os.waitstatus_to_exitcode(status), transcript.decode("utf-8", "surrogateescape").replace("\r\n", "\n"),
+            problems, left)
+
+
+def terminal_command_problems(terminal, first, coldcard):
+    """Check 12 (f): runs in a new pseudo-terminal, each through `terminal`, which types each field only once its
+    prompt has appeared: mixed --words 12 on the first 12-word Mixed Pi ceremony (C printed back, the counts, the
+    result lines render's, exit 0); the same with C, D and the rolls reversed pasted in one burst at C's prompt
+    (dropped unseen: the run waits at D's prompt, then D and the rolls typed give exit 0, where a run that read the
+    burst would print other words); Ctrl-D at D's prompt (exit 2, no result line); dice --words 24 with 123 and 456
+    on two lines, then Ctrl-D (Coldcard's words for 123456); and Ctrl-C at the rolls prompt (exit 130). The
+    transcript holds no traceback and no pipe notice, and is held to the leak rule. [problem]."""
+    case = first[(12, "mixed", "pi")]
+    c_text, d_text = shown_c_d(case)
+    lines, pasted = roll_lines_of(case["rolls"]), roll_lines_of(case["rolls"][::-1])
+    typed = ([(PROMPT_C, c_text + "\n"), (PROMPT_D, d_text + "\n")] + [(PROMPT_ROLLS, line + "\n") for line in lines]
+             + [(PROMPT_ROLLS, "\n")])
+    burst = "".join(text + "\n" for text in [c_text, d_text] + pasted + [""])
+    split = [KNOWN_ANSWER_DICE_ROLLS[:3], KNOWN_ANSWER_DICE_ROLLS[3:]]
+    mixed = render(verification_run(12, lines, c_text, d_text))
+    # (label, arguments, steps, exit status, the result lines or None for none, C as typed, the roll lines typed and
+    # their counts, the words Coldcard's scripts give or None)
+    runs = (
+        ("mixed --words 12", command_args("mixed", 12), typed, 0, mixed, c_text, lines, lines, None),
+        ("paste-ahead at the C prompt", command_args("mixed", 12), [(PROMPT_C, burst)] + typed[1:], 0, mixed, c_text,
+         lines + pasted, lines, None),
+        ("Ctrl-D at the D prompt", command_args("mixed", 12), [(PROMPT_C, c_text + "\n"), (PROMPT_D, TERMINAL_EOF)],
+         2, None, c_text, [], [], None),
+        ("dice --words 24 on 123 and 456, then Ctrl-D", command_args("dice_only", 24),
+         [(PROMPT_ROLLS, line + "\n") for line in split] + [(PROMPT_ROLLS, TERMINAL_EOF)], 0,
+         render(verification_run(24, split)), None, split, split, coldcard["words_24"]),
+        ("Ctrl-C at the rolls prompt", command_args("dice_only", 12), [(PROMPT_ROLLS, TERMINAL_INTERRUPT)], 130, None,
+         None, [], [], None),
+    )
+    problems = []
+    for label, args, steps, want_status, want, typed_c, rolls, counted, words in runs:
+        status, transcript, found, left = terminal(label, args, steps)
+        problems += found
+        if status is None:
+            continue
+        if left:
+            problems.append("%s: the run's output ended with %r untyped" % (label, left[0][0]))
+        if status != want_status:
+            problems.append("%s: exit status %d, not %d" % (label, status, want_status))
+        if want is None and RUN_BANNER in transcript:
+            problems.append("%s: a result line" % label)
+        if want is not None and want not in transcript:
+            problems.append("%s: the result lines are not render's for the same run" % label)
+        if want is not None:
+            problems.extend("%s: %s" % (label, found) for found in prompt_layer_problems(transcript, typed_c, counted))
+        if words is not None and inserted_words(transcript) != words:
+            problems.append("%s: its words are not rolls.json's for %s" % (label, KNOWN_ANSWER_DICE_ROLLS))
+        if "Traceback" in transcript or PIPE_NOTICE in transcript:
+            problems.append("%s: a traceback or the pipe notice" % label)
+        problems.extend("%s: %s" % (label, found) for found in leak_problems(
+            (("the terminal", transcript),), [("D", d_text)] if typed_c else [], rolls))
+    return ["rule (f): %s" % problem for problem in problems]
+
+
+def locale_problems(piped, first):
+    """Check 12 (g): the first 12-word Mixed Pi ceremony piped under LC_ALL=LATIN1_LOCALE prints stdout byte for byte
+    as the UTF-8 runs do (render's text in UTF-8; stdout is decoded with surrogateescape, so equal text is equal
+    bytes). Required on macOS; elsewhere run only where the locale is installed, which a probe of Python's stdout
+    encoding under it shows. [problem]."""
+    env = {"LC_ALL": LATIN1_LOCALE}
+    try:
+        probe = subprocess.run([sys.executable, "-I", "-c", "import codecs, sys; print(codecs.lookup("
+                                "sys.stdout.encoding).name)"], stdin=subprocess.DEVNULL, capture_output=True,
+                               env=env, timeout=LONE_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        return ["rule (g): the locale probe gave no result within %d seconds" % LONE_TIMEOUT_SECONDS]
+    encoding = probe.stdout.decode("ascii", "replace").strip()
+    if probe.returncode != 0 or encoding == "utf-8":
+        if sys.platform == "darwin":
+            return ["rule (g): Python's stdout under LC_ALL=%s is %r, not Latin-1, on macOS, where this run is "
+                    "required" % (LATIN1_LOCALE, encoding)]
+        return []  # the locale is not installed here
+    case = first[(12, "mixed", "pi")]
+    c_text, d_text = shown_c_d(case)
+    lines = roll_lines_of(case["rolls"])
+    label = "piped %s under LC_ALL=%s (stdout %s before verify.py sets UTF-8)" % (case["name"], LATIN1_LOCALE,
+                                                                                  encoding)
+    status, stdout, stderr, problems = piped(label, command_args("mixed", 12), [c_text, d_text] + lines + [""],
+                                             env=env)
+    if status is not None and (status, stdout) != (0, render(verification_run(12, lines, c_text, d_text))):
+        problems.append("%s: exit status %d, or stdout not the UTF-8 run's bytes" % (label, status))
+    return ["rule (g): %s" % problem for problem in problems]
+
+
+def inprocess_command_problems():
+    """Check 12's in-process runs of verify.py's commands (tools/verify/verify.py, as this file loads it): with stdin
+    a terminal and getpass made to warn, as it does on a terminal that cannot hide input (getpass.fallback_getpass,
+    which would then read with echo), the hidden read refuses and the command exits 2, with nothing read or
+    computed; and with stdin closed, an unexpected error exits 70 with one fixed line. [problem]."""
+    class Terminal(io.StringIO):
+        def isatty(self):
+            return True
+
+    closed = io.StringIO()
+    closed.close()
+    problems = []
+    for label, stdin, want_status in (("a terminal that cannot hide input", Terminal("123456\n\n"), 2),
+                                      ("stdin closed", closed, 70)):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        saved = sys.stdin, sys.stdout, sys.stderr, getpass.getpass
+        try:
+            sys.stdin, sys.stdout, sys.stderr, getpass.getpass = stdin, stdout, stderr, getpass.fallback_getpass
+            status = entry(["dice", "--words", "12"])
+        except (Exception, SystemExit) as e:  # an exception out of entry fails the run, named
+            status = "%s raised" % type(e).__name__
+        finally:
+            sys.stdin, sys.stdout, sys.stderr, getpass.getpass = saved
+        if (status, stdout.getvalue(), stderr.getvalue().count("\n")) != (want_status, "", 1):
+            problems.append("%s: exit status %s, stdout %r, stderr %r, not %d, nothing and one line"
+                            % (label, status, stdout.getvalue()[-200:], stderr.getvalue()[-300:], want_status))
+    return ["commands: %s" % problem for problem in problems]
+
+
+def command_problems(data, node, known, first, coldcard):
+    """Check 12's runs of the user commands (tasks/todo.md, M2 group 7): piped, in a pseudo-terminal (rule (f)) and
+    under a Latin-1 locale (rule (g)), each an audited run of the lone copy (or a fault twin) in its own read-only
+    directory; then the in-process runs. [problem]."""
+    with tempfile.TemporaryDirectory() as scratch:
+        root, locked = Path(scratch), []
+
+        def piped(label, args, lines, copy=data, env=None):
+            """An audited run of `copy` with `args` and `lines` piped in: (exit status, or None if it timed out,
+            stdout, stderr, [problem]), its audit's problems named with `label`."""
+            directory = lone_directory(root, "run-%d" % len(locked), copy, locked)
+            try:
+                status, stdout, stderr, audit = audited_run(directory, args, stdin=piped_input(lines), env=env)
+            except subprocess.TimeoutExpired:
+                return None, "", "", ["%s: no result within %d seconds" % (label, LONE_TIMEOUT_SECONDS)]
+            return status, stdout, stderr, ["%s: rule (e): %s" % (label, problem) for problem in audit]
+
+        def terminal(label, args, steps):
+            """terminal_run on a new lone copy: (exit status, or None if it timed out, the transcript, [problem]
+            named with `label`, the steps left)."""
+            directory = lone_directory(root, "run-%d" % len(locked), data, locked)
+            try:
+                status, transcript, audit, left = terminal_run(directory, args, steps)
+            except subprocess.TimeoutExpired:
+                return None, "", ["%s: no result within %d seconds" % (label, LONE_TIMEOUT_SECONDS)], steps
+            return status, transcript, ["%s: rule (e): %s" % (label, problem) for problem in audit], left
+
+        try:
+            problems = piped_command_problems(piped, first, coldcard, data, node, known)
+            problems += terminal_command_problems(terminal, first, coldcard)
+            problems += locale_problems(piped, first)
+        finally:
+            for directory in locked:
+                directory.chmod(0o755)
+    return problems + inprocess_command_problems()
+
+
 def check_verify_alone(vectors_dir, verify_py):
-    """Check 12: rules (a) to (e) over verify_py (tools/verify/verify.py unless --verify-py)."""
+    """Check 12: rules (a) to (g) over verify_py (tools/verify/verify.py unless --verify-py)."""
     if not verify_py.is_file():
         return ["%s is missing" % verify_py]
     data = verify_py.read_bytes()
@@ -5140,13 +5675,19 @@ def check_verify_alone(vectors_dir, verify_py):
     problems += ["rule (c): %s" % problem for problem in found]
     if tree is not None:
         problems += ["rule (c): %s" % problem for problem in known_answers_use_problems(tree)]
-    # The known-answer sweep, the input cases and the keepcrypt.json tie call verify.py as this file loads it,
-    # tools/verify/verify.py even under --verify-py, since check 12 runs its subject only as audited copies.
+    # The known-answer sweep, the input cases, the keepcrypt.json tie and the in-process command runs call
+    # verify.py as this file loads it, tools/verify/verify.py even under --verify-py, since check 12 runs its
+    # subject only as audited copies (the command runs compare those copies with it).
     problems += ["known-answer sweep: %s" % problem for problem in known_answer_sweep_problems()]
     problems += ["input cases: %s" % problem for problem in input_case_problems()]
     problems += ["controls: %s" % problem for problem in control_problems()]
     problems += ["keepcrypt.json tie: %s" % problem for problem in run_tie_problems(vectors_dir)]
-    return problems + verify_lone_problems(data, node, known)
+    problems += verify_lone_problems(data, node, known)
+    try:
+        first, coldcard = command_cases(vectors_dir)
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        return problems + ["commands: cannot read their cases from vectors/: %s: %s" % (type(e).__name__, e)]
+    return problems + command_problems(data, node, known, first, coldcard)
 
 
 # --- Check 13: vectors/agreement.json (tasks/todo.md, M2 group 5) ---------------------------------------------
@@ -5533,7 +6074,8 @@ def selftest(vectors_dir, verify_py=VERIFY_PY, only=None):
         ("tools/verify/verify.py ships alone: imports on the allowlist and module attributes on the recorded list, "
          "no test material, known answers equal their sources, each known answer changed fails its group, input "
          "cases, keepcrypt.json tie, a lone copy passes selftest, each fault twin fails its group, a planted module "
-         "never runs, audited runs, its own rules' controls fire",
+         "never runs, its commands piped, in a terminal and under a Latin-1 locale, audited runs, its own rules' "
+         "controls fire",
          lambda: check_verify_alone(vectors_dir, verify_py)),
         ("vectors/agreement.json: file matches regenerated output, coverage counts, each refusal's core error and "
          "verify.py verdict, seed and seal against their definitions, a changed D refused before the rolls, inserts "
@@ -5579,7 +6121,8 @@ def main(argv):
                       "the reader and rebuilt, its bytes, its pinned outcomes, the docs' figures, the age CLI's "
                       "files), verify.py alone (its imports and module attributes, no test material, its known answers "
                       "against their sources and each changed in turn, its input cases and keepcrypt.json tie, a lone "
-                      "copy, its fault twins and a planted module, audited, controls on its rules), agreement.json "
+                      "copy, its fault twins and a planted module, its commands piped, in a terminal and under a "
+                      "Latin-1 locale, audited, controls on its rules), agreement.json "
                       "(its bytes, coverage counts, each refusal's verdict, seed and seal against their definitions, a "
                       "changed D refused, inserts against braille.json, Coldcard's scripts on its dice-only subset, "
                       "controls on its rules)")
@@ -5594,9 +6137,9 @@ def main(argv):
     parser.add_argument("--vectors-dir", type=Path, default=REPO_VECTORS_DIR, metavar="DIR",
                         help="testing only: use DIR in place of the repo's vectors/")
     parser.add_argument("--verify-py", type=Path, metavar="PATH",
-                        help="testing only, with --selftest: check 12's rules (a) to (e) check PATH in place of "
-                        "tools/verify/verify.py (its known-answer sweep, input cases and keepcrypt.json tie, and the "
-                        "other checks, use tools/verify/verify.py)")
+                        help="testing only, with --selftest: check 12's rules (a) to (g) and command runs check PATH "
+                        "in place of tools/verify/verify.py (its known-answer sweep, input cases, keepcrypt.json tie "
+                        "and in-process command runs, and the other checks, use tools/verify/verify.py)")
     parser.add_argument("--check", type=int, metavar="N", help="testing only, with --selftest: run check N alone")
     args = parser.parse_args(argv)
     if (args.verify_py is not None or args.check is not None) and not args.selftest:

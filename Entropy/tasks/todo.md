@@ -2867,7 +2867,7 @@ Groups land in the order below. Vectors come before the core test that reads the
       hash, no C, no `words_12`, no Seal ID braille, no grid, no re-check URL, the last insert line only, no `no
       check`), plus G ignored, the wrong group's values and `except KeyError`. Copies that store into, `.update`,
       `del` from or alias `KNOWN_ANSWERS` fail rule (c) under `--verify-py`.
-- [ ] Startup guards, right after `import sys` and before any other import, when run as a script:
+- [x] Startup guards, right after `import sys` and before any other import, when run as a script:
       - Python older than 3.9 exits 2 with one line;
       - without `-I` (`sys.flags.isolated`) it exits 2 and says to run `python3 -I verify.py ...`, so a planted module
         beside the download (for example `hashlib.py`) is never imported;
@@ -2883,6 +2883,10 @@ Groups land in the order below. Vectors come before the core test that reads the
       `verify.py needs Python 3.9 or later`, nothing on stdout. It passes on 3.12.5 and 3.9.6, and scratch copies
       whose guard is gone, checks 3.0, exits 1 or writes to stdout each fail it on both. The UTF-8 reconfigure has
       no standing test until group 7 (g)'s locale run, which ticks this item.
+      Proof: commit 10. Check 12 (g) pipes the first 12-word Mixed Pi ceremony into an audited lone copy under
+      `LC_ALL=en_US.ISO8859-1` (a probe shows Python's stdout there is iso8859-1 before verify.py sets UTF-8) and its
+      stdout equals the UTF-8 runs' bytes, braille included; it passes on 3.12.5 and 3.9.6 on macOS, where it is
+      required. A scratch copy without `sys.stdout.reconfigure(encoding="utf-8")` fails it on both (exit 70).
 - [ ] vectorgen check 12, "tools/verify/verify.py ships alone", with two testing-only options: `--verify-py PATH`
       (like `--vectors-dir`) and `--check N` (run one check). Every rule runs, and each failing rule is named:
       - (a) static, by `ast` over verify.py:
@@ -2997,7 +3001,7 @@ Groups land in the order below. Vectors come before the core test that reads the
       12's lone copy; the urls and insert fault twins each fail only their group. Scratch copies fail rule (c) by
       field: the register URL literal changed (`urls.register_url`), and the `~` moved to face 4 in code and answers
       alike (`insert.lines.1.lighter_face`, `.3`, `.4`). The ABANDON line equals the example above.
-- [ ] Check 12 gains a tie to values core already checks. It takes every keepcrypt.json `mixed` case whose D has a C
+- [x] Check 12 gains a tie to values core already checks. It takes every keepcrypt.json `mixed` case whose D has a C
       in its `commitment` list (three of four at 90b6ab9), and every `dice_only` case. Fed as display text through
       `verification_run`, each gives the committed seed bits (`e_hex`, its first 32 hex digits for 12 words) and
       `words_12`/`words_24`. Core's seed.rs tests check those values.
@@ -3009,6 +3013,10 @@ Groups land in the order below. Vectors come before the core test that reads the
       refusal, no dice-only warning. The agreement and the rendered text are groups 5-7's proof.
       Review (2026-10-10): unticked until that proof lands, since the item's planned proof names the 1,000 agreement
       cases (groups 5 and 6) and the rendered text (group 7).
+      Proof: commit 10 lands the last part. Core compares every field of the 1,000 cases (commit 9), and check 12 pins
+      the rendered text: the `run` known answers tie every stdout line of two agreement.json ceremonies to their
+      expect (and to check 12's copies of the banner, commitment, roll-count and note lines), and the piped runs of
+      the first ceremony of each combination print render's stdout, its expect lines equal to agreement.json's.
 
 **5. Agreement vectors: the verifier's side (gate; build-plan.md M2 and "Verifier agreement, 1,000 cases")**
 - [x] `vectorgen.py --write-agreement-vectors` writes `vectors/agreement.json`, one case per line, marked "public test
@@ -3177,7 +3185,7 @@ Groups land in the order below. Vectors come before the core test that reads the
       core at 97.39% of lines). The mutation script's results are under the item above.
 
 **7. The user commands: `mixed` and `dice` (design.md:239-244; mobile-apps.md:186)**
-- [ ] `verify.py mixed --words {12,24}` and `verify.py dice --words {12,24}`. `--words` has no default, since a 12/24
+- [x] `verify.py mixed --words {12,24}` and `verify.py dice --words {12,24}`. `--words` has no default, since a 12/24
       mix-up gives 11 matching words and a wrong last one.
       - Startup: `known_answers()` runs first (groups 3 and 4), including a new `run` group.
         - `run` holds two cases core checks: the first 12-word Mixed Pi case and the first 24-word DiceOnly Phone case
@@ -3227,6 +3235,11 @@ Groups land in the order below. Vectors come before the core test that reads the
         - the residual risks: Python cannot wipe memory, nothing is constant time, and terminal scrollback and swap
           remain, so use Tails and close the terminal.
         The header changes from "M1 seed" to the offline verifier. The development modes are documented in vectorgen.
+      Proof: commit 10. `python3 -I verify.py selftest` prints `ok` for 8 groups (`run` added) on 3.12.5 and 3.9.6,
+      and check 12's sweep, rule (c) and the `run` fault twin hold the new group like the others. Check 12's command
+      runs (item below) drive every prompt, exit code and input source from lone copies; `--help` prints the module
+      docstring, the guide. The rolls are a generator that `verification_run` reads only after C matches D, so the
+      prompt layer adds no second computation path.
 - [ ] Check 12 grows over the user commands. These are audited lone-copy runs, and every stream is held to the leak
       rule:
       - piped runs, with stdin a pipe:
@@ -3258,6 +3271,24 @@ Groups land in the order below. Vectors come before the core test that reads the
         because Python coerces the C locale to UTF-8 there.
       Proof: check 12 passes on 3.12 and 3.9. A transcript of one `mixed --words 12` run sits under Review next to
       core's values for the same case.
+      Proof (commit 10; unticked until the transcript under Review): check 12 passes on 3.12.5 and 3.9.6 with 47
+      audited piped runs (the 8 first ceremonies, their roll lines cut at 40; `123456` at both lengths; D changed;
+      49 rolls; the 12 refused `INPUT_CASES`; `abandon`; end of input at the C, D and rolls prompts and at dice's;
+      two roll lines, then end of input; 8 fault twins under `mixed` and `dice`; the locale run (g)), 5 terminal runs
+      (f) (the four planned and Ctrl-C at the rolls prompt, exit 130) and 2 in-process runs (`GetPassWarning`, exit
+      2; stdin closed, exit 70 with one fixed line). The paste-ahead burst carries the rolls reversed, so a run that
+      read it would print other words. Check 12 alone takes 3.9 s and 8.8 s (0.8 s and 1.8 s before), the whole
+      `--selftest` 12.2 s and 22.5 s (9.4 s and 16.0 s before). A new control holds the leak rule to streams that
+      show D and the rolls through its normalisation, and not to near misses. Scratch mutants each fail it on both:
+      in a `--verify-py` copy, the "D does not match C" text with D's hex (lower or upper case), roll lines or C read
+      with echo on a terminal, argparse's own error messages, no pipe notice, the rolls read before C is checked,
+      no Ctrl-C handler, no UTF-8 reconfigure, no roll counts, no C printed back, no D count, end of input after a
+      roll line refused, the known answers skipped, a refusal echoing the typed C, getpass on a pipe (the audit
+      refuses `/dev/tty`), the range warning on stdout, a refused run exiting 0 and refused input exiting 1; a note,
+      the banner or rounded bits changed in render and the `run` literal together (rule (c) names the line); in
+      tools/verify/verify.py, no `GetPassWarning` error filter, no exit-70 handler and the warning exiting 1; in
+      vectorgen, the leak rule without lowercasing, with hyphens or line breaks kept, one window short, 13 rolls
+      or 7 hex digits.
 
 **8. Canaries, CI and the commands of record**
 - [ ] `scripts/canaries.sh`:

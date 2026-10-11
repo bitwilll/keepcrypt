@@ -1,31 +1,77 @@
 #!/usr/bin/env python3
-"""KeepCrypt offline verifier (M1 seed).
+"""KeepCrypt offline verifier: recompute a disposable verification run on an offline computer.
 
-Python 3.9+, standard library only, one file. It never generates secrets; it only
-recomputes public algorithms from the docs so anyone can check a device offline.
+Python 3.9 or later, standard library only, one file. It recomputes the published algorithms from what
+you wrote down during a disposable run of a KeepCrypt device, or from the rolls of a Coldcard dice-only
+run, so you can check the device without trusting it. It never generates a secret.
 
-It holds the published computations and readers, and nothing else (tasks/todo.md, M2 group 1): the
-embedded BIP39 English list, BIP39 and PBKDF2, C and E, the seal derivation
-(docs/seal-watchonly-braille.md, "Seal derivation spec", "The seal image", "Go-ahead code"), the
-SeedBook braille and insert positions, the watch-only export (secp256k1, BIP32, descriptors and the
-single-part UR code), Ed25519 verification, the bucket tree and the .kcr and KCP1 verifiers, the
-encrypted backup's age reader and plaintext v1 parser, and the embedded known answers that every
-command runs first (M2 group 3). It opens no file and runs no other program.
-The verification run (M2 group 4) recomputes a device's words, seal and inserts from C, D and the
-rolls as the user typed them: the input parsers, verification_run and render, the insert lines and
-the registry URLs. The mixed and dice commands that run it arrive in M2 group 7.
+How to verify a device (docs/design.md, "How users verify without exposing a real seed"):
+  1. While online, download verify.py and compare its SHA-256 with the one in the release notes:
+         shasum -a 256 verify.py      (macOS)
+         sha256sum verify.py          (Linux, Tails)
+     verify.py never prints its own hash, since a changed copy could lie about it. Then move to an
+     offline computer, ideally a Tails boot with no network and no disk.
+  2. Make a full disposable run on the device. In mixed mode write down C before the first roll, then
+     D (the "Reveal D" screen) and the rolls; in dice-only mode write down only the rolls. Then run
+         python3 -I verify.py mixed --words 12
+         python3 -I verify.py dice --words 12
+     with --words 24 for a 24-word run (there is no default: the wrong length gives eleven matching
+     words and a wrong last one), and compare every line it prints with what the device showed.
+  3. Never fund the test wallet, and erase everything from the run: close the terminal and shut the
+     computer down.
+  4. Make your real wallet with fresh rolls that never leave the device.
 
-tools/verify/vectorgen.py, which never ships, loads this file by path. It holds the vector
-generators, the backup writer, the label-key signer and the self-test, which checks this file
-against vectors/ and, in check 12, checks that a copy of it runs alone.
+At the prompts:
+  - Type each field after its prompt appears, one at a time. Whatever is typed or pasted before a
+    prompt is dropped, never shown.
+  - On a terminal nothing you type is shown. C is printed back in 16 groups of 4, to proofread; D and
+    the rolls only as counts, so a mistyped D shows as "D does not match C" and a mistyped roll as
+    different words.
+  - The rolls may take several lines; an empty line, or Ctrl-D, ends them.
+  - Nothing is read from the command line, the environment or a file. Never pipe the input in
+    (echo ... | python3 verify.py, as Coldcard's rolls.py shows): that leaves the rolls in your shell
+    history. Piped input still works, for tests, with a notice to clear it.
 
-Usage (Python 3.9+, isolated mode only):
-  python3 -I verify.py selftest     run the embedded known answers: one line per group, then exit 0,
-                                    or exit 1 naming each failing group
-Anything else prints the usage and exits 2 (M2 group 7 adds the mixed and dice commands). The
-repo's self-test is
-  python3 -I tools/verify/vectorgen.py --selftest
+What it prints, under a "never fund it" banner and in the device's screen order: that C matches D, the
+roll count and its bits, the seed bits (entropy), the seal (Seal ID and its braille, seal tag, lookup
+prefix, colour, grid and re-check URL), one braille insert line per word, the seal code, and notes.
+Results go to stdout; prompts, counts, the notice and warnings go to stderr.
+
+Exit codes:
+  0    computed: compare every line with the device
+  1    a known answer failed (this copy is broken or changed: get a fresh one), D does not match C, or
+       a mixed run has a roll count no KeepCrypt device finishes with (no words are printed)
+  2    a usage error, refused input, end of input before a field, or a terminal that cannot hide what
+       is typed (nothing is computed)
+  70   an unexpected error (one fixed line, so nothing typed is shown)
+  130  interrupted (Ctrl-C)
+
+Residual risks: Python cannot wipe memory, nothing here runs in constant time, and the terminal's
+scrollback and the computer's swap may keep what was typed or shown. Use Tails, close the terminal
+afterwards, and never type a real wallet's values.
+
+Commands (isolated mode only; every command runs the embedded known answers first):
+  python3 -I verify.py selftest           the known answers alone: one line per group
+  python3 -I verify.py mixed --words N    C, D and the rolls of a mixed-mode run (N is 12 or 24)
+  python3 -I verify.py dice --words N     the rolls of a dice-only run, KeepCrypt's or Coldcard's
 """
+
+# For developers: this file holds the published computations and readers, and nothing else
+# (tasks/todo.md, M2 group 1): the embedded BIP39 English list, BIP39 and PBKDF2, C and E, the seal
+# derivation (docs/seal-watchonly-braille.md, "Seal derivation spec", "The seal image", "Go-ahead
+# code"), the SeedBook braille and insert positions, the watch-only export (secp256k1, BIP32,
+# descriptors and the single-part UR code), Ed25519 verification, the bucket tree and the .kcr and KCP1
+# verifiers, the encrypted backup's age reader and plaintext v1 parser, the embedded known answers that
+# every command runs first (M2 group 3), the verification run (M2 group 4: the input parsers,
+# verification_run and render, the insert lines and the registry URLs) and the commands that prompt for
+# it (M2 group 7). It opens no file and runs no other program. The docstring above is the user guide
+# and the --help text.
+#
+# tools/verify/vectorgen.py, which never ships, loads this file by path. It holds the vector
+# generators, the backup writer, the label-key signer and the self-test, which checks this file
+# against vectors/ and, in check 12, checks that a copy of it runs alone, its commands included. The
+# repo's self-test is
+#   python3 -I tools/verify/vectorgen.py --selftest
 
 import sys
 
@@ -41,14 +87,17 @@ if __name__ == "__main__":
         sys.exit(2)
     sys.stdout.reconfigure(encoding="utf-8")
 
+import argparse
 import base64
 import binascii
 import datetime
+import getpass
 import hashlib
 import hmac
 import re
 import struct
 import unicodedata
+import warnings
 
 CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 OKABE_ITO = ("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
@@ -1973,6 +2022,117 @@ KNOWN_ANSWERS = {
             "01 device 1/1 seq 01 seedbook 2048 zoo | ⠵z ⠕o ⠕o -- -- | ⠵⠕⠕",
         ),
     },
+    # vectors/agreement.json, ceremonies "12-mixed-pi-000" and "24-dice_only-phone-000" (tasks/todo.md, M2 group
+    # 7): the length, C and D as the device shows them (c_hex and d_hex in 16 groups of 4; None in dice-only mode),
+    # the rolls as one line, and the run's whole stdout, line by line. Check 12 ties each line that the case's expect
+    # fixes to it (core compares expect), and the banner, commitment, roll-count and note lines to its own copies.
+    "run": {
+        "12-mixed-pi-000": {
+            "length": 12,
+            "c": "21d4 24c3 d4ab 0130 3fe0 1593 ea19 00d4 cb4d d1f1 3d92 6cdc 7baf 0c1b c73e 9203",
+            "d": "4a38 fcf5 fc3a 6cb5 cadb c26c a1d6 2efa 9bc9 7c20 6f6c 9211 e5b4 0939 92bb 918e",
+            "rolls": ("56143225411155643344655336451655425545354524411345",),
+            "stdout": (
+                "VERIFICATION RUN: a disposable test seed. Never fund it; erase this run and clear the terminal "
+                "afterwards.",
+                "commitment: C matches D",
+                "rolls: 50 (129.2 bits)",
+                "entropy: afb7b84a188ca710c97309314c7d3464",
+                "seal-id: X406RHQ0 ⠭⠼⠙⠚⠋⠗⠓⠟⠼⠚",
+                "seal-tag: e9006c46e0a02487611658d1e7d76c41bfe943861d4b0dfb7f3bcedfdb426539",
+                "lookup-prefix: e9006",
+                "seal-colour: 1 #E69F00",
+                "seal-grid: ........",
+                "seal-grid: ........",
+                "seal-grid: .##..##.",
+                "seal-grid: ##....##",
+                "seal-grid: .#....#.",
+                "seal-grid: .##..##.",
+                "seal-grid: ###..###",
+                "seal-grid: ........",
+                "recheck-url: https://registry.invalid/check#t="
+                "e9006c46e0a02487611658d1e7d76c41bfe943861d4b0dfb7f3bcedfdb426539",
+                "insert: 01 device 1/1 seq 01 seedbook 1406 quick | ⠟q ⠥u ⠊i/e ⠉c ⠅k~ | ⠟⠥⠊⠉⠅",
+                "insert: 02 device 1/1 seq 02 seedbook 1519 saddle | ⠎s ⠁a ⠙d/f ⠙d/f ⠇l~ | ⠎⠁⠙⠙⠇⠑",
+                "insert: 03 device 1/1 seq 03 seedbook 0149 barely | ⠃b ⠁a ⠗r/w ⠑e/i ⠇l~ | ⠃⠁⠗⠑⠇⠽",
+                "insert: 04 device 1/1 seq 04 seedbook 0393 country | ⠉c ⠕o ⠥u ⠝n ⠞t~ | ⠉⠕⠥⠝⠞⠗⠽",
+                "insert: 05 device 1/1 seq 05 seedbook 1620 skill | ⠎s ⠅k ⠊i/e ⠇l ⠇l~ | ⠎⠅⠊⠇⠇",
+                "insert: 06 device 1/1 seq 06 seedbook 1092 mask | ⠍m ⠁a ⠎s ⠅k -- | ⠍⠁⠎⠅",
+                "insert: 07 device 1/1 seq 07 seedbook 0303 chair | ⠉c ⠓h/j ⠁a ⠊i/e ⠗r/w~ | ⠉⠓⠁⠊⠗",
+                "insert: 08 device 1/1 seq 08 seedbook 0778 gentle | ⠛g ⠑e/i ⠝n ⠞t ⠇l~ | ⠛⠑⠝⠞⠇⠑",
+                "insert: 09 device 1/1 seq 09 seedbook 0395 course | ⠉c ⠕o ⠥u ⠗r/w ⠎s~ | ⠉⠕⠥⠗⠎⠑",
+                "insert: 10 device 1/1 seq 10 seedbook 0800 glue | ⠛g ⠇l ⠥u ⠑e/i -- | ⠛⠇⠥⠑",
+                "insert: 11 device 1/1 seq 11 seedbook 0617 escape | ⠑e/i ⠎s ⠉c ⠁a ⠏p~ | ⠑⠎⠉⠁⠏⠑",
+                "insert: 12 device 1/1 seq 12 seedbook 1611 sing | ⠎s ⠊i/e ⠝n ⠛g -- | ⠎⠊⠝⠛",
+                "seal-code: A7EN7-R3NFS-H9E9T-9T3CH-TFVVZT",
+                "note: every line above must equal what the device showed; a difference is a typing error or a "
+                "faulty device",
+                "note: for 12 words, 50-98 rolls is valid only for a first ceremony, never after \"Match found\", "
+                "which takes 99",
+                "note: the device's check QR adds its fresh nonce to the re-check URL, so no run can show it or a "
+                "go-ahead code",
+            ),
+        },
+        "24-dice_only-phone-000": {
+            "length": 24,
+            "c": None,
+            "d": None,
+            "rolls": (
+                "111314222414261154463151153234512655513634452115416112356111515224545426316633241615643416536323145",
+            ),
+            "stdout": (
+                "VERIFICATION RUN: a disposable test seed. Never fund it; erase this run and clear the terminal "
+                "afterwards.",
+                "rolls: 99 (255.9 bits)",
+                "entropy: 6d0991e66f04ebd5d666b016f47b33a45bd22d3649e8778bc64e9fd67bcd6409",
+                "seal-id: SBNSJKF2 ⠎⠃⠝⠎⠚⠅⠋⠼⠃",
+                "seal-tag: caeb994de2afc72922707e3cc20320ad70fc5ba92cdb83b8b13168172a3cca0c",
+                "lookup-prefix: caeb9",
+                "seal-colour: 2 #56B4E9",
+                "seal-grid: ###..###",
+                "seal-grid: #.####.#",
+                "seal-grid: #..##..#",
+                "seal-grid: #..##..#",
+                "seal-grid: .#....#.",
+                "seal-grid: ##.##.##",
+                "seal-grid: ###..###",
+                "seal-grid: ..#..#..",
+                "recheck-url: https://registry.invalid/check#t="
+                "caeb994de2afc72922707e3cc20320ad70fc5ba92cdb83b8b13168172a3cca0c",
+                "insert: 01 device 1/2 seq 01 seedbook 0873 home | ⠓h/j ⠕o ⠍m ⠑e/i -- | ⠓⠕⠍⠑",
+                "insert: 02 device 1/2 seq 02 seedbook 0613 erode | ⠑e/i ⠗r/w ⠕o ⠙d/f ⠑e/i~ | ⠑⠗⠕⠙⠑",
+                "insert: 03 device 1/2 seq 03 seedbook 0973 kangaroo | ⠅k ⠁a ⠝n ⠛g ⠁a~ | ⠅⠁⠝⠛⠁⠗⠕⠕",
+                "insert: 04 device 1/2 seq 04 seedbook 1777 task | ⠞t ⠁a ⠎s ⠅k -- | ⠞⠁⠎⠅",
+                "insert: 05 device 1/2 seq 05 seedbook 0630 exchange | ⠑e/i ⠭x ⠉c ⠓h/j ⠁a~ | ⠑⠭⠉⠓⠁⠝⠛⠑",
+                "insert: 06 device 1/2 seq 06 seedbook 1880 turtle | ⠞t ⠥u ⠗r/w ⠞t ⠇l~ | ⠞⠥⠗⠞⠇⠑",
+                "insert: 07 device 1/2 seq 07 seedbook 0717 flower | ⠋f/d ⠇l ⠕o ⠺w/r ⠑e/i~ | ⠋⠇⠕⠺⠑⠗",
+                "insert: 08 device 1/2 seq 08 seedbook 1713 stock | ⠎s ⠞t ⠕o ⠉c ⠅k~ | ⠎⠞⠕⠉⠅",
+                "insert: 09 device 1/2 seq 09 seedbook 0184 black | ⠃b ⠇l ⠁a ⠉c ⠅k~ | ⠃⠇⠁⠉⠅",
+                "insert: 10 device 1/2 seq 10 seedbook 1311 phrase | ⠏p ⠓h/j ⠗r/w ⠁a ⠎s~ | ⠏⠓⠗⠁⠎⠑",
+                "insert: 11 device 1/2 seq 11 seedbook 1640 smooth | ⠎s ⠍m ⠕o ⠕o ⠞t~ | ⠎⠍⠕⠕⠞⠓",
+                "insert: 12 device 1/2 seq 12 seedbook 0582 emerge | ⠑e/i ⠍m ⠑e/i ⠗r/w ⠛g~ | ⠑⠍⠑⠗⠛⠑",
+                "insert: 13 device 2/2 seq 01 seedbook 1514 rule | ⠗r/w ⠥u ⠇l ⠑e/i -- | ⠗⠥⠇⠑",
+                "insert: 14 device 2/2 seq 02 seedbook 0181 bird | ⠃b ⠊i/e ⠗r/w ⠙d/f -- | ⠃⠊⠗⠙",
+                "insert: 15 device 2/2 seq 03 seedbook 1738 summer | ⠎s ⠥u ⠍m ⠍m ⠑e/i~ | ⠎⠥⠍⠍⠑⠗",
+                "insert: 16 device 2/2 seq 04 seedbook 0489 dial | ⠙d/f ⠊i/e ⠁a ⠇l -- | ⠙⠊⠁⠇",
+                "insert: 17 device 2/2 seq 05 seedbook 0957 jealous | ⠚j/h ⠑e/i ⠁a ⠇l ⠕o~ | ⠚⠑⠁⠇⠕⠥⠎",
+                "insert: 18 device 2/2 seq 06 seedbook 0754 funny | ⠋f/d ⠥u ⠝n ⠝n ⠽y~ | ⠋⠥⠝⠝⠽",
+                "insert: 19 device 2/2 seq 07 seedbook 1182 neck | ⠝n ⠑e/i ⠉c ⠅k -- | ⠝⠑⠉⠅",
+                "insert: 20 device 2/2 seq 08 seedbook 0510 distance | ⠙d/f ⠊i/e ⠎s ⠞t ⠁a~ | ⠙⠊⠎⠞⠁⠝⠉⠑",
+                "insert: 21 device 2/2 seq 09 seedbook 0830 guilt | ⠛g ⠥u ⠊i/e ⠇l ⠞t~ | ⠛⠥⠊⠇⠞",
+                "insert: 22 device 2/2 seq 10 seedbook 1846 trade | ⠞t ⠗r/w ⠁a ⠙d/f ⠑e/i~ | ⠞⠗⠁⠙⠑",
+                "insert: 23 device 2/2 seq 11 seedbook 1154 mother | ⠍m ⠕o ⠞t ⠓h/j ⠑e/i~ | ⠍⠕⠞⠓⠑⠗",
+                "insert: 24 device 2/2 seq 12 seedbook 0324 chronic | ⠉c ⠓h/j ⠗r/w ⠕o ⠝n~ | ⠉⠓⠗⠕⠝⠊⠉",
+                "seal-code: MEN4C-WWCGY-4KS2Q-CFQJR-3X9QEJ",
+                "note: every line above must equal what the device showed; a difference is a typing error or a "
+                "faulty device",
+                "note: for 12 words, 50-98 rolls is valid only for a first ceremony, never after \"Match found\", "
+                "which takes 99",
+                "note: the device's check QR adds its fresh nonce to the re-check URL, so no run can show it or a "
+                "go-ahead code",
+            ),
+        },
+    },
 }
 
 
@@ -2077,7 +2237,15 @@ def known_answers_insert(values):
             if insert_line(slot, line.split(" ")[7]) != line]
 
 
-# The groups in the order selftest prints them; group 7 adds run.
+def known_answers_run(values):
+    """The run group: each case's C, D and rolls through verification_run, and render's lines against its
+    stdout, line by line."""
+    return ["%s stdout" % name for name, case in values.items()
+            if render(verification_run(case["length"], case["rolls"], case["c"], case["d"])).splitlines()
+            != list(case["stdout"])]
+
+
+# The groups in the order selftest prints them.
 KNOWN_ANSWER_GROUPS = (
     ("hash", known_answers_hash),
     ("bip39", known_answers_bip39),
@@ -2086,6 +2254,7 @@ KNOWN_ANSWER_GROUPS = (
     ("braille", known_answers_braille),
     ("urls", known_answers_urls),
     ("insert", known_answers_insert),
+    ("run", known_answers_run),
 )
 
 
@@ -2119,14 +2288,154 @@ def command_selftest():
     return 0
 
 
-def main(argv):
-    """The commands: selftest (tasks/todo.md, M2 group 7 adds mixed and dice). Anything else prints the
-    usage, never the arguments, and returns 2."""
-    if argv != ["selftest"]:
-        print("usage: python3 -I verify.py selftest", file=sys.stderr)
+# --- The mixed and dice commands (tasks/todo.md, M2 group 7; Q20 and Q21) ------------------------------
+# Input comes only from prompts on stdin, never from arguments, the environment or a file (CLAUDE.md rule 5).
+# Prompts, counts, the pipe notice and warnings go to stderr, results to stdout. On a terminal every field is
+# read by getpass, without echo; from a pipe or file the same lines are read from stdin, after one notice.
+# Refusals name the field and position, never the text typed.
+PIPE_NOTICE = "input read from a pipe or file: clear it from your shell history and delete any file\n"
+PROMPT_C = "C, as written down before the first roll: "
+PROMPT_D = "D, from the device's \"Reveal D\" screen: "
+PROMPT_ROLLS = "rolls (an empty line ends them): "
+
+
+class EndOfInput(Exception):
+    """End of input at a prompt before its first line, raised as EndOfInput(field): nothing is computed."""
+
+
+def read_hidden(prompt):
+    """One line typed on the terminal at `prompt`, without its line end, or None at end of input (Ctrl-D).
+    getpass writes the prompt to stderr and reads /dev/tty with echo off; it turns echo off with TCSAFLUSH,
+    which drops whatever was typed or pasted before the prompt, so that is never shown. A terminal that cannot
+    hide what is typed makes getpass warn (GetPassWarning) and read with echo: the warning is raised as an
+    error, so nothing is read."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", getpass.GetPassWarning)
+        try:
+            return getpass.getpass(prompt, stream=sys.stderr)
+        except EOFError:
+            sys.stderr.write("\n")
+            return None
+
+
+def read_piped(prompt):
+    """One line of stdin at `prompt`, when stdin is a pipe or file: the prompt and a line end go to stderr, as
+    getpass writes them; the line comes back without its line end, or None at end of input."""
+    sys.stderr.write(prompt)
+    sys.stderr.flush()
+    line = sys.stdin.readline()
+    sys.stderr.write("\n")
+    if not line:
+        return None
+    return line[:-1] if line.endswith("\n") else line
+
+
+def first_line(read, prompt, field):
+    """The line `read` gets at `prompt`; EndOfInput(field) at end of input."""
+    line = read(prompt)
+    if line is None:
+        raise EndOfInput(field)
+    return line
+
+
+def roll_lines(read):
+    """The roll lines, each read at the rolls prompt only when verification_run takes it, so only after C
+    matches D. After each line stderr gets its count and the total, never the rolls. An empty line ends them,
+    and so does end of input after a first line; end of input before one is EndOfInput("rolls")."""
+    total = 0
+    line = first_line(read, PROMPT_ROLLS, "rolls")
+    while line is not None and line.strip():
+        total += len(line.strip())
+        sys.stderr.write("%d rolls, %d in all\n" % (len(line.strip()), total))
+        yield line
+        line = read(PROMPT_ROLLS)
+
+
+def hex_groups(data):
+    """Bytes as the device shows C and D: groups of 4 lowercase hex digits, joined by spaces."""
+    text = data.hex()
+    return " ".join(text[at:at + 4] for at in range(0, len(text), 4))
+
+
+def command_run(mode, length):
+    """verify.py mixed or dice --words N (the module docstring): the known answers, then the prompts, then
+    verification_run and render. Returns the exit status: 0 computed; 1 a known answer failed, D does not
+    match C, or a mixed run's roll count is out of range; 2 refused input, end of input before a field's
+    first line, or a terminal that cannot hide what is typed."""
+    failing = [group for group, failed in known_answers(KNOWN_ANSWERS) if failed]
+    if failing:
+        sys.stderr.write("verify.py: known answers failed: %s; this copy is broken or changed, so it computes "
+                         "nothing\n" % ", ".join(failing))
+        return 1
+    if sys.stdin.isatty():
+        read = read_hidden
+    else:
+        sys.stderr.write(PIPE_NOTICE)
+        read = read_piped
+    c_text = d_text = None
+    try:
+        if mode == "mixed":
+            c_text = first_line(read, PROMPT_C, "C")
+            sys.stderr.write("C read: %s\n" % hex_groups(parse_hex32("C", c_text)))
+            d_text = first_line(read, PROMPT_D, "D")
+            parse_hex32("D", d_text)
+            sys.stderr.write("D read: 64 hex digits\n")
+        report = verification_run(length, roll_lines(read), c_text, d_text)
+    except InputRefused as refused:
+        sys.stderr.write("verify.py: %s; nothing computed\n" % refused.message)
         return 2
-    return command_selftest()
+    except EndOfInput as end:
+        sys.stderr.write("verify.py: end of input at the %s prompt; nothing computed\n" % end.args[0])
+        return 2
+    except getpass.GetPassWarning:
+        sys.stderr.write("verify.py: this terminal cannot hide what is typed; nothing read\n")
+        return 2
+    if report["warning"] is not None:
+        sys.stderr.write("warning: %s\n" % report["warning"])
+    sys.stdout.write(render(report))
+    return 0 if report["refused"] is None else 1
+
+
+class QuietParser(argparse.ArgumentParser):
+    """argparse, except that a refusal never repeats an argument (argparse's own messages do, so words pasted
+    as arguments would reach the screen a second time): the usage and "arguments not shown", then exit 2."""
+
+    def error(self, message):
+        self.print_usage(sys.stderr)
+        sys.stderr.write("verify.py: arguments refused (arguments not shown); see python3 -I verify.py --help\n")
+        sys.exit(2)
+
+
+def main(argv):
+    """The commands selftest, mixed and dice (the module docstring, which --help prints). The only arguments
+    are the command and --words, which has no default. Returns the exit status; a usage error exits 2."""
+    parser = QuietParser(prog="python3 -I verify.py", description=__doc__,
+                         formatter_class=argparse.RawDescriptionHelpFormatter)
+    commands = parser.add_subparsers(dest="command", metavar="command", required=True)
+    commands.add_parser("selftest", help="run the embedded known answers: one line per group")
+    for name, text in (("mixed", "C, D and the rolls of a mixed-mode run"),
+                       ("dice", "the rolls of a dice-only run, KeepCrypt's or Coldcard's")):
+        command = commands.add_parser(name, help=text)
+        command.add_argument("--words", type=int, choices=(12, 24), required=True,
+                             help="the run's seed length: 12 or 24 words")
+    args = parser.parse_args(argv)
+    if args.command == "selftest":
+        return command_selftest()
+    return command_run(args.command, args.words)
+
+
+def entry(argv):
+    """main(argv) as the script runs it: Ctrl-C exits 130 and an unexpected error 70, each with one fixed line
+    and no traceback, since an exception's text could hold what was typed."""
+    try:
+        return main(argv)
+    except KeyboardInterrupt:
+        sys.stderr.write("\nverify.py: interrupted; nothing computed\n")
+        return 130
+    except Exception:  # anything unexpected: one fixed line, never the exception's text
+        sys.stderr.write("verify.py: unexpected error; stopped, with no details shown\n")
+        return 70
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(entry(sys.argv[1:]))
