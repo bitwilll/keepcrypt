@@ -1042,6 +1042,17 @@ AGREEMENT_COLDCARD_EVERY = 8
 # Check 13's verdict counts over the 28 refusals: 3 per combination (the minimum - 1 rolls, 257 rolls, a face of 0
 # or 7) and the 4 restarts with 98 rolls for 12 words.
 AGREEMENT_VERDICTS = (("refused", 8), ("input-refused", 8), ("warned", 8), ("diverges", 4))
+# Check 13's case mix (tasks/todo.md, M2 group 5), held here apart from the generator's parity test,
+# AGREEMENT_UNDO_EVERY and AGREEMENT_WRONG_EVERY, so a thinner mix regenerated into the vectors still fails check 13:
+# case n of each combination takes the check path when n is odd and the skip path when it is even, undoes one face
+# when n is a multiple of 8, and first sends a wrong go-ahead code when n is 9, 19, 29, ... (every 5th check case).
+# Each entry is (name, whether case n has it, whether a case has it).
+AGREEMENT_CASE_MIX = (
+    ("even cases Skip, odd cases Check", lambda n: n % 2 == 1, lambda case: case["path"] == "check"),
+    ("an undo every 8th case", lambda n: n % 8 == 0, lambda case: case["undo"] is not None),
+    ("a wrong first code every 5th Check case", lambda n: n % 10 == 9,
+     lambda case: case["wrong_go_ahead"] is not None),
+)
 # Check 13's dice quota, held here apart from verify.py's DICE (which the generator, the run and keepcrypt.json
 # take), so a changed DICE regenerated into the vectors still fails check 13: CLAUDE.md "Dice quota" (50 rolls for
 # 12 words, 99 for 24 and after a collision) and docs/build-plan.md's push_roll ("at most 256 rolls"), as core's
@@ -5708,6 +5719,12 @@ AGREEMENT_SHOWN_PROBLEMS = 5
 AGREEMENT_CONTROLS = (
     ("coverage", "a stub one byte longer", ("ceremonies", "12-mixed-pi-000", ("stub", "length"), lambda n: n + 1),
      "12 words, mixed, pi: each stub exactly the bytes core reads"),
+    ("coverage", "an even case on the check path", ("ceremonies", "12-mixed-pi-002", ("path",), lambda _: "check"),
+     "12 words, mixed, pi: even cases Skip, odd cases Check"),
+    ("coverage", "an undo dropped", ("ceremonies", "12-mixed-pi-008", ("undo",), lambda _: None),
+     "12 words, mixed, pi: an undo every 8th case"),
+    ("coverage", "a wrong first code dropped", ("ceremonies", "12-mixed-pi-019", ("wrong_go_ahead",), lambda _: None),
+     "12 words, mixed, pi: a wrong first code every 5th Check case"),
     ("refusals", "a verdict changed", ("refusals", "12-mixed-pi-short", ("verifier", "verdict"), lambda _: "warned"),
      "12-mixed-pi-short: verify.py's verdict"),
     ("refusals", "a roll past 257", ("refusals", "12-dice_only-pi-257", ("rolls",), lambda rolls: rolls + "1"),
@@ -5748,8 +5765,9 @@ def agreement_chunk_plan(session):
 
 def agreement_coverage_problems(doc):
     """Check 13's coverage counts over the regenerated ceremonies (tasks/todo.md, M2 group 5), per combination: 125
-    ceremonies on both paths; every roll-count edge, all counts in range (both from AGREEMENT_QUOTA); a wrong first
-    code, the next value of the go-ahead code's last symbol; the undo cases; one restart, on the check path, with its
+    ceremonies in the planned case mix (AGREEMENT_CASE_MIX: the paths, the undo cases and the wrong first codes, case
+    by case); every roll-count edge, all counts in range (both from AGREEMENT_QUOTA); each wrong first code the next
+    value of the go-ahead code's last symbol; each undo after a drawn roll; one restart, on the check path, with its
     collision report; every extra source and an empty extra; hwrng in Pi mixed sessions only, its chunks covering the
     stream in every chunk plan; and each stub exactly the bytes core reads. [problem]."""
     quota = dict(AGREEMENT_QUOTA)
@@ -5770,7 +5788,8 @@ def agreement_coverage_problems(doc):
         undone = [case for case in cases if case["undo"] is not None]
         found = {
             "125 ceremonies": len(cases) == AGREEMENT_CEREMONIES,
-            "both paths": set(case["path"] for case in cases) == {"skip", "check"},
+            **{name: all(has(case) == planned(n) for n, case in enumerate(cases))
+               for name, planned, has in AGREEMENT_CASE_MIX},
             "every roll-count edge": set(len(case["rolls"]) for case in cases if case["first"] is None)
             >= {minimum, minimum + 1, 128, 255, maximum},
             "roll counts in range": all(minimum <= len(case["rolls"]) <= maximum for case in cases)
