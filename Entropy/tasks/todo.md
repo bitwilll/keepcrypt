@@ -3320,6 +3320,12 @@ Groups land in the order below. Vectors come before the core test that reads the
       the fixed refusal. Proof: check 12 passes on 3.12.5 and 3.9.6. Scratch copies fail it on both: the
       `repr(report)` line, the roll lines after the first read with echo (now also in the dice pty run), and
       "D read" written before D is parsed (the three refused-D runs).
+      Review fix (2026-10-11, typed forms): every run typed C as it is printed back and the rolls without blanks, so
+      C printed back as typed, counts that include outer blanks and a line of blanks that does not end the rolls
+      all passed. The mixed first ceremonies (piped) and the pty `mixed --words 12` run now type C in upper case
+      without groups, the pty run's first roll line and the piped two-line run's first line carry outer blanks, and
+      the piped `123456` runs end the rolls with a line of blanks. Proof: check 12 passes on 3.12.5 and 3.9.6;
+      scratch copies with each of the three changes fail it on both.
 
 **8. Canaries, CI and the commands of record**
 - [ ] `scripts/canaries.sh`:

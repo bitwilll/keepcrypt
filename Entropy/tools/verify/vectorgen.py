@@ -5370,7 +5370,10 @@ def piped_command_problems(piped, first, coldcard, data, node, known):
     shown); end of input before each prompt's first line (exit 2), and after two roll lines (computed); and each
     fault twin, under mixed and dice (exit 1, one line naming its group, no prompt). Each run's stderr must be
     exactly what it writes: the pipe notice, each prompt, C printed back and the counts, then any warning or the
-    line that stops it. `piped` holds every run's streams to the leak rule. [problem]."""
+    line that stops it. Some fields are typed as a user may type them: C in upper case without groups (the mixed
+    first ceremonies), blanks ending the rolls (123456) and a roll line with outer blanks (the two lines), so the
+    printed-back C, the counts and the end of the list are tested. `piped` holds every run's streams to the leak
+    rule. [problem]."""
     problems = []
 
     def run(label, args, lines, want_status, want_stderr, hex_texts, roll_lines, copy=data):
@@ -5404,6 +5407,8 @@ def piped_command_problems(piped, first, coldcard, data, node, known):
     for combination in AGREEMENT_COMBINATIONS:
         case = first[combination]
         c_text, d_text = shown_c_d(case)
+        if c_text is not None:  # typed as C is read, not as it is printed back
+            c_text = case["expect"]["c_hex"].upper()
         lines, label = roll_lines_of(case["rolls"]), "piped " + case["name"]
         report = verification_run(case["length"], lines, c_text, d_text)
         result = run(label, command_args(case["mode"], case["length"]),
@@ -5421,7 +5426,7 @@ def piped_command_problems(piped, first, coldcard, data, node, known):
     for length in (24, 12):
         lines, label = [KNOWN_ANSWER_DICE_ROLLS], "piped dice --words %d on %s" % (length, KNOWN_ANSWER_DICE_ROLLS)
         report = verification_run(length, lines)
-        result = run(label, command_args("dice_only", length), lines + [""], 0,
+        result = run(label, command_args("dice_only", length), lines + [" \t "], 0,
                      PIPE_NOTICE + rolls_read(lines) + warned(report), [], lines)
         if result is None:
             continue
@@ -5497,7 +5502,8 @@ def piped_command_problems(piped, first, coldcard, data, node, known):
         if result is not None and result[0]:
             problems.append("%s: stdout is not empty" % label)
     rolls = first[(12, "dice_only", "pi")]["rolls"]
-    lines, label = [rolls[:len(rolls) // 2], rolls[len(rolls) // 2:]], "piped dice --words 12, two lines, end of input"
+    lines = ["  %s\t " % rolls[:len(rolls) // 2], rolls[len(rolls) // 2:]]  # the first with outer blanks
+    label = "piped dice --words 12, two lines, end of input"
     report = verification_run(12, lines)
     result = run(label, command_args("dice_only", 12), lines, 0, PIPE_NOTICE + rolls_read(lines) + warned(report), [],
                  lines)
@@ -5573,8 +5579,9 @@ def terminal_run(directory, args, steps):
 
 def terminal_command_problems(terminal, first, coldcard):
     """Check 12 (f): runs in a new pseudo-terminal, each through `terminal`, which types each field only once its
-    prompt has appeared: mixed --words 12 on the first 12-word Mixed Pi ceremony (C printed back, the counts, the
-    result lines render's, exit 0); the same with C, D and the rolls reversed pasted in one burst at C's prompt
+    prompt has appeared: mixed --words 12 on the first 12-word Mixed Pi ceremony, its C typed in upper case without
+    groups and its first roll line with outer blanks (C printed back in 16 groups of 4, the counts without the blanks,
+    the result lines render's, exit 0); the same with C, D and the rolls reversed pasted in one burst at C's prompt
     (dropped unseen: the run waits at D's prompt, then D and the rolls typed give exit 0, where a run that read the
     burst would print other words); Ctrl-D at D's prompt (exit 2, no result line); dice --words 24 with 123 and 456
     on two lines, then Ctrl-D (Coldcard's words for 123456); and Ctrl-C at the rolls prompt (exit 130). Each
@@ -5583,11 +5590,13 @@ def terminal_command_problems(terminal, first, coldcard):
     case = first[(12, "mixed", "pi")]
     c_text, d_text = shown_c_d(case)
     lines, pasted = roll_lines_of(case["rolls"]), roll_lines_of(case["rolls"][::-1])
-    typed = ([(PROMPT_C, c_text + "\n"), (PROMPT_D, d_text + "\n")] + [(PROMPT_ROLLS, line + "\n") for line in lines]
-             + [(PROMPT_ROLLS, "\n")])
+    # C typed in upper case without groups, and the first roll line with outer blanks, as a user may type them.
+    typed_lines = ["  %s " % lines[0]] + lines[1:]
+    typed = ([(PROMPT_C, case["expect"]["c_hex"].upper() + "\n"), (PROMPT_D, d_text + "\n")]
+             + [(PROMPT_ROLLS, line + "\n") for line in typed_lines] + [(PROMPT_ROLLS, "\n")])
     burst = "".join(text + "\n" for text in [c_text, d_text] + pasted + [""])
     split = [KNOWN_ANSWER_DICE_ROLLS[:3], KNOWN_ANSWER_DICE_ROLLS[3:]]
-    mixed = c_and_d_read(c_text) + rolls_read(lines) + render(verification_run(12, lines, c_text, d_text))
+    mixed = c_and_d_read(c_text) + rolls_read(typed_lines) + render(verification_run(12, lines, c_text, d_text))
     dice = verification_run(24, split)
     # (label, arguments, steps, exit status, the transcript, the typed D for the leak rule, the roll lines typed, the
     # words Coldcard's scripts give or None)
