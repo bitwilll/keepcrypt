@@ -4260,7 +4260,7 @@ carries it, and every commit names a proof that runs at that commit.
   grew by one `^`. `cargo llvm-cov` 97.40% of core's lines (session/wiped.rs 100%), over the 95% floor.
 
 **3. Core: `TypedBackupPassphrase::from_first_four` (Q32 (b))**
-- [ ] `from_first_four(words: &[&str]) -> Result<Self, CoreError>`.
+- [x] `from_first_four(words: &[&str]) -> Result<Self, CoreError>`.
   - Exactly 8 entries, each the first four lowercase letters of a list word, or a whole three-letter word.
   - Anything else is `Backup(PassphraseWords)`, before any scrypt run.
   - Same zeroizing type as `from_words`. No word list leaves core (`word_list` stays private, secret.rs:27).
@@ -4271,6 +4271,14 @@ carries it, and every commit names a proof that runs at that commit.
     - `decrypt_backup` opens backup.json's `abandon-12` through it.
 
   Proof: test output; coverage.
+  Proof (commit 5): `typed_backup_passphrase_takes_every_word_from_its_first_four` (256 groups of 8, 103 of them
+  three-letter words), `typed_backup_passphrase_refuses_anything_but_eight_first_fours` (also a whole longer word,
+  spaces, a digit and non-ASCII) and `first_fours_give_every_backup_json_passphrase` (the passphrases of all 60
+  entries in `passphrases`, `age_files` and `age_refused` agree with `from_words`, except CCTV's "password" in 2
+  files, refused by both; `decrypt_backup` opens `abandon-12`) pass in `cargo test --workspace --locked` (core's unit
+  tests: 166 passed) and with `--features test-sources` (194 passed; no_panic's `typed_backup_words` now sweeps
+  `from_first_four` too); `word_with_key` becomes `pub(crate)`, and `word_list` stays private; `cargo llvm-cov`
+  97.38% of core's lines (secret.rs 97.97%, every line of `from_first_four` covered), over the 95% floor.
 
 **4. Dependencies and manifests (Q28; rule 11)**
 - [ ] Manifests:

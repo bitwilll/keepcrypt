@@ -530,8 +530,9 @@ fn verdict(want: Option<u8>, read: Option<u8>) -> FaceVerdict {
 
 /// The index of the word whose faces 1-4 are `key` (a blank counts), if any: a binary search. The
 /// list is sorted and a blank sorts before every letter, so the keys are sorted too, and unique
-/// (BIP39: the first four letters identify every word).
-fn word_with_key(key: &[Option<u8>; READBACK_FACES]) -> Option<u16> {
+/// (BIP39: the first four letters identify every word). A misread's spelled word comes from here,
+/// and so does each word `TypedBackupPassphrase::from_first_four` is typed as.
+pub(crate) fn word_with_key(key: &[Option<u8>; READBACK_FACES]) -> Option<u16> {
     let (mut low, mut high) = (0u16, 2048u16);
     while low < high {
         let middle = low + (high - low) / 2;
