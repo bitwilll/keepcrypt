@@ -239,7 +239,7 @@ No entropy source protects against code that ignores it, so let users check the 
 **How users verify without exposing a real seed** (Coldcard's own procedure):
 
 1. Download the open-source verifier while online, then take an offline computer, ideally a Tails boot with no network or disk.
-2. Do a full disposable run: generate, record D or the rolls, recompute on the offline computer, compare words.
+2. Do a full disposable run: generate, record C before the first roll, then D and the rolls (mixed mode), or only the rolls (dice-only), recompute on the offline computer, compare words.
 3. Never fund the test wallet, and erase everything from the test.
 4. Generate the real wallet with fresh rolls that never leave the device.
 

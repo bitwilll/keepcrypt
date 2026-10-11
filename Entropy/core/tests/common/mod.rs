@@ -1,6 +1,6 @@
 //! Test support shared by the integration tests: read the committed vectors (vectors/*.json) as
 //! `serde_json::Value`. Every computed value they compare against comes from
-//! tools/verify/verify.py.
+//! tools/verify/ (vectorgen.py, computing with verify.py).
 
 use serde_json::Value;
 use std::path::Path;

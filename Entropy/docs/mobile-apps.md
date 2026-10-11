@@ -180,7 +180,7 @@ The phone ceremony mirrors the Pi screen for screen, so one user guide and one v
 13. **Encrypted backup (optional).** Passphrase, save, read-back verification.
 14. **Watch-only export (optional).** Account QR for Sparrow and descriptor QR for Bitcoin Core.
 15. **Register seal (optional, once).** Registration QR for a second device.
-16. **Reveal D (optional).** Verification runs only.
+16. **Reveal D (optional).** Verification runs only. D is shown as 16 groups of 4 hex characters, like C.
 17. **Finish.** The SeedBook "before you walk away" checklist; the session is wiped and the app returns to Home.
 
 **Verify another device** runs the offline verifier inside the app: enter C, D and the rolls from a disposable KeepCrypt Pi run, or just the rolls from a Coldcard dice-only run, and compare the words.

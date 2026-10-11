@@ -92,7 +92,7 @@ A ceremony is fifteen screens in a fixed order; the core's typestate makes it im
 11. **Encrypted backup (optional).** See the USB section below.
 12. **Watch-only export (optional).** Account QR for Sparrow and descriptor QR for Bitcoin Core; asks for the BIP39 passphrase first if the user uses one.
 13. **Register seal (optional, once).** Registration QR for a second device.
-14. **Reveal D (optional).** For verification runs only, with a warning that D plus the rolls recreates the seed.
+14. **Reveal D (optional).** For verification runs only, with a warning that D plus the rolls recreates the seed. D is shown as 16 groups of 4 hex characters, like C.
 15. **Finish.** The SeedBook "before you walk away" checklist, then the session is wiped and "Safe to power off" is shown.
 
 ## Games, sensors and the entropy pool

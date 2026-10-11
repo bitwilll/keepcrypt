@@ -57,7 +57,9 @@ keepcrypt/
 │  └─ web/                    static checking and registration page
 ├─ templates/                 printable insert worksheet in SeedBook format (SVG, PDF)
 ├─ tools/
-│  ├─ verify/                 offline verifier, Python 3 standard library only
+│  ├─ verify/                 verify.py (the offline verifier; ships as one file) and
+│  │                          vectorgen.py (vectors and the repo self-test; never ships),
+│  │                          Python 3 standard library only
 │  └─ entropy-lab/            raw-sample capture for NIST ea_non_iid
 ├─ vectors/                   BIP39, age, seal, braille and KeepCrypt test vectors (JSON)
 └─ .github/workflows/         CI: tests, audits, reproducibility
