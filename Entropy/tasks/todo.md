@@ -617,7 +617,19 @@ docs), so the whole PR needs your review, as M1's did.
     vectorgen where `hashlib.scrypt` exists, and decrypted by age in `age-interop`. On Python 3.9, vectorgen could check
     everything but the stanza body.
 
-### Needed before M3 code (Q25-Q34, asked 2026-10-11)
+### Needed before M3 code (Q25-Q34, answered 2026-10-11)
+**Owner's answer (2026-10-11): "approve all".** Every recommendation below is approved as written: Q25 any runtime
+failure halts until a power cycle; Q26 (C) the borrowing `Wiped::restart(&self, ..)`; Q27 (a) `game_random` with its
+limits, (b) the games in the firmware's one process with no path to the session, (c) Snake in M3 and Tetris later;
+Q28 (a)-(e) embedded-graphics 0.8.2 with its 7 crates, qrcodegen-no-heap 1.8.1, no simulator crate (pi/sim's own PNG
+writer), the new edges to vetted crates, and 6 vet exemptions plus 3 imports; Q29 the Protected and Public screen
+classes with the privacy gate, the 30 s cover, the 9-minute warning and the 10-minute wipe; Q30 (a)-(h) the
+simulator's inputs, captures and live mode; Q31 (a)-(i) CI and gates, including the pre-approved opt-level fallback;
+Q32 (a)-(c) the key map, `from_first_four` and printable-ASCII BIP39 passphrases; Q33 (a)-(m) the flow details; Q34
+the doc edits (CLAUDE.md rule 1 names `game_random`), with owner item 13 left open. The owner was also told that a
+planning agent's `cargo tree` had downloaded the 8 candidate crate archives into cargo's cache (nothing built). The
+questions as asked:
+
 Please answer these before any M3 code is written. Each gives a recommendation first and says what changes otherwise.
 Every M3 commit except the pi/sim-only ones touches CODEOWNERS paths (core, pi/app, every Cargo.toml, Cargo.lock,
 supply-chain, scripts, .github, docs, CLAUDE.md), so the whole PR needs your review, as M1's and M2's did.
@@ -4188,6 +4200,7 @@ carries it, and every commit names a proof that runs at that commit.
 
 **0. Before code**
 - [ ] Record the owner's answers to Q25-Q34, quoted with the date.
+      Answers recorded 2026-10-11 under "Needed before M3 code" ("approve all").
   - Apply the approved doc edits (Q34) alone in commit 2, with no code.
   - CLAUDE.md edits go in their own commits.
 
