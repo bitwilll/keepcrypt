@@ -7,12 +7,14 @@
 //! `Box<Inner>` holds every secret at fixed capacity; dropping the session, on any path (an `Err`,
 //! a panic that unwinds, or plain scope exit), zeroizes it.
 //!
-//! - **Errors (Q5).** Every method that can fail on randomness, a health test, a known-answer test
-//!   or an integrity check takes `self`: `add_hw_samples`, `commit`, `push_roll`, `finish`,
-//!   `start_check`, `reveal`, `Wiped::restart`, and on `Ready` the five exports. An `Err` has
+//! - **Errors (Q5).** Every session method that can fail on randomness, a health test, a
+//!   known-answer test or an integrity check takes `self`: `add_hw_samples`, `commit`,
+//!   `push_roll`, `finish`, `start_check`, `reveal`, and on `Ready` the five exports. An `Err` has
 //!   already dropped the session's `Box<Inner>` and zeroized it. Only user input keeps the session
 //!   alive: a go-ahead that does not verify (`Rejected::Retry`, same nonce), `check_readback` and
-//!   `verify_backup`.
+//!   `verify_backup`. `Session::new` and `Wiped::restart` drop the new `Box<Inner>` on an `Err`
+//!   the same way. `restart` borrows the `Wiped`, which holds no seed (M3 Q26 C), so an `Err`
+//!   from it leaves the `Wiped` as it was.
 //! - **Order.** `Sealed` and `Checking` expose no mnemonic, D, backup or export. Skip
 //!   (`skip_check`) exists only on `Sealed`. Once a check starts, `reveal` with a verified go-ahead
 //!   is the only way to `Ready`; a collision (`Rejected::Collision`) and `discard` wipe the seed
@@ -40,7 +42,9 @@
 //! - **`Wiped` holds no secret.** It keeps the platform, the 99-roll flag (set by a collision, kept
 //!   through "Cannot check") and, after a collision only, the destroyed seed's collision report,
 //!   whose code is harmless to share because that seed is never used
-//!   (docs/seal-watchonly-braille.md "Reporting a collision").
+//!   (docs/seal-watchonly-braille.md "Reporting a collision"). The shell keeps the `Wiped`, and so
+//!   the report, until a check passes or the user skips; the report is wiped when the `Wiped` is
+//!   dropped.
 
 mod inner;
 mod wiped;
@@ -343,7 +347,7 @@ impl Session<Checking> {
     /// bucket, is `Rejected::Retry` with the session and the same nonce. A snapshot or proof that
     /// holds T is `Rejected::Collision`: the seed is wiped unseen, and the `Wiped` keeps the
     /// collision report and the 99-roll minimum for the restart. A passed check ends that minimum:
-    /// no `Wiped`, and so no restart, follows `Ready`.
+    /// no `Wiped` follows `Ready`, and the shell drops the one it kept.
     pub fn reveal(self, go: GoAhead<'_>) -> Result<Session<Ready>, Rejected> {
         match self.inner.judge(go) {
             Verdict::Clear => Ok(self.into_state()),
@@ -1225,9 +1229,9 @@ mod tests {
         }
 
         // A passed check ends the 99-roll minimum: after a collision and a "Cannot check", the
-        // 99-roll session's go-ahead code reveals kcr.json's words. No restart can follow:
-        // `Ready` has no `discard`, and only a check leaves a `Wiped`, so the next ceremony is a
-        // `Session::new`, at the normal minimum.
+        // 99-roll session's go-ahead code reveals kcr.json's words. No `Wiped` follows: `Ready`
+        // has no `discard`, and only a check leaves a `Wiped`, so once the shell drops the one it
+        // kept, the next ceremony is a `Session::new`, at the normal minimum.
         #[test]
         fn the_99_roll_minimum_ends_at_a_passed_check() {
             for (len, name) in [

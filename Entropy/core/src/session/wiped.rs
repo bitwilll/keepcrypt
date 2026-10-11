@@ -10,12 +10,17 @@
 //!   after a collision only, the destroyed seed's collision report. `restart` re-runs the
 //!   known-answer suite and starts a fresh ceremony (fresh pool, fresh OS read at commit, fresh
 //!   dice), at 99 rolls for either length after a collision.
+//! - `restart` borrows the `Wiped` (tasks/todo.md, M3 group 2 and Q26 C; owner item 14). The shell
+//!   keeps it until a check passes or the user skips, replaces it with each newer one, and restarts
+//!   from it again after a timeout wipes the restarted ceremony, so a timeout never lowers the
+//!   99-roll minimum. An `Err` from `restart` has wiped only the new session and leaves the `Wiped`
+//!   as it was. The report's seal code lives as long as the `Wiped` and is wiped when it is dropped.
 //! - The 99-roll flag (tasks/todo.md, "M1: open owner items", item 5): a collision sets it, and
 //!   "Cannot check" keeps the checking session's own flag, so the restart after a collision keeps
 //!   99 rolls through every "Cannot check" until a check passes. Only a `Wiped` carries it, and
 //!   only a check leaves one: `Ready` (a passed check, or Skip) has no way back to a `Wiped`, and
-//!   an `Err` or a dropped session leaves none, so the next ceremony is a `Session::new`, at the
-//!   normal minimum.
+//!   an `Err` from a session or a dropped session leaves none. Once the shell drops the `Wiped` it
+//!   kept, the next ceremony is a `Session::new`, at the normal minimum.
 //! - `Rejected` and `Wiped` have hand-written `Debug` that prints their variant names and never
 //!   touches their contents. Those names are no BIP39 word as a whole token (case-folded runs of
 //!   letters: "rejected", "retry", "collision", "wiped"); "session", "report", "flag", "check" and
@@ -109,7 +114,8 @@ impl Wiped {
     }
 
     /// The "Report collision" QR with the destroyed seed's code, only after a collision. Sharing
-    /// that code is harmless: the seed is never used.
+    /// that code is harmless: the seed is never used. It stays through every restart and is wiped
+    /// when this `Wiped` is dropped.
     pub fn collision_report(&self) -> Option<&CollisionReport> {
         self.report.as_ref()
     }
@@ -117,8 +123,10 @@ impl Wiped {
     /// "Add fresh entropy": a new ceremony on the same platform, after the full known-answer suite,
     /// with a fresh pool, a fresh OS read at commit and fresh dice. Nothing of the destroyed seed is
     /// reused. After a collision, and after "Cannot check" in a restart after one, the minimum is
-    /// 99 rolls for either length. An `Err` means no seed can be made.
-    pub fn restart(self, len: SeedLength, mode: Mode) -> Result<Session<Collecting>, CoreError> {
+    /// 99 rolls for either length. It borrows, so the shell can restart from this `Wiped` again,
+    /// as after the Pi's idle wipe. An `Err` means no seed can be made; it has wiped only the new
+    /// session, and this `Wiped` is as it was.
+    pub fn restart(&self, len: SeedLength, mode: Mode) -> Result<Session<Collecting>, CoreError> {
         Session::start(
             self.config(len, mode),
             Source::Os,
@@ -131,7 +139,7 @@ impl Wiped {
     /// (tests only, `test-sources`).
     #[cfg(feature = "test-sources")]
     pub fn restart_with_stub(
-        self,
+        &self,
         len: SeedLength,
         mode: Mode,
         stub: StubSource,

@@ -4237,7 +4237,7 @@ carries it, and every commit names a proof that runs at that commit.
   Proof: the six cross scans are clean on the PR, and each still finds only its target's OS import.
 
 **2. Core: the borrowing restart (owner item 14; Q26 (C); rule 6). Replaced by (A) if the owner picks it.**
-- [ ] `Wiped::restart(&self, len, mode)` and `restart_with_stub(&self, ..)`.
+- [x] `Wiped::restart(&self, len, mode)` and `restart_with_stub(&self, ..)`.
   - `Wiped` still holds only the platform, the flag and the report, and stays non-`Clone`.
   - The module docs at session.rs:10-15 and wiped.rs:9-18 say that a restart borrows, that an `Err` from it leaves the
     `Wiped`, and that the report's seal code lives as long as the `Wiped`.
@@ -4249,6 +4249,15 @@ carries it, and every commit names a proof that runs at that commit.
     only the quoted `restart` signature line and its underline. Every other fixture is unchanged.
 
   Proof: check_flow and typestate output; the `.stderr` diff pasted; coverage.
+  Proof (commit 4): `cargo test -p keepcrypt-core --locked --features test-sources`: check_flow 9 passed (the three new
+  tests: `a_kept_wiped_restarts_at_99_until_a_check_passes`, which also shows a failed restart leaving the `Wiped` and
+  its report, `a_cannot_check_in_the_restart_after_a_collision_restarts_at_99` and
+  `a_cannot_check_in_a_first_session_restarts_at_50`), typestate 1 passed (all 23 fixtures), core unit tests 191
+  passed; `cargo test --workspace --locked`: typestate 1 passed, core unit tests 163 passed. After
+  `TRYBUILD=overwrite cargo test -p keepcrypt-core --locked --test typestate`, `git diff --stat core/tests/compile_fail/`
+  lists only `wiped_holds_no_secret.stderr`, 2 insertions and 2 deletions: the quoted line
+  `pub fn restart(self, len: SeedLength, mode: Mode) -> ...` became `pub fn restart(&self, ...`, and its underline
+  grew by one `^`. `cargo llvm-cov` 97.40% of core's lines (session/wiped.rs 100%), over the 95% floor.
 
 **3. Core: `TypedBackupPassphrase::from_first_four` (Q32 (b))**
 - [ ] `from_first_four(words: &[&str]) -> Result<Self, CoreError>`.

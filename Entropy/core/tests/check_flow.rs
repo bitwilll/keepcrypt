@@ -1,12 +1,17 @@
 //! The collision check end to end (docs/seal-watchonly-braille.md "Go-ahead before reveal", "Add
 //! fresh entropy", "Results"; docs/build-plan.md test matrix "Go-ahead vectors and tampering";
-//! tasks/todo.md, M1 group 10 and Verification "Go-ahead tests"). Public vectors only: kcr.json's
-//! dice-only seeds, snapshots and proofs, signed by the test registry key this build pins.
+//! tasks/todo.md, M1 group 10 and Verification "Go-ahead tests", M3 group 2). Public vectors only:
+//! kcr.json's dice-only seeds, snapshots and proofs, signed by the test registry key this build
+//! pins.
 //!
 //! - A 12-word dice-only session from the 50-roll string reaches `Sealed` with kcr.json's T; its
 //!   go-ahead code reveals the expected words, and a typo keeps the session and the nonce.
 //! - The collision snapshot and the collision proof both give `Collision`; the report holds that
 //!   seed's code, and the restart refuses 50 rolls and accepts the 99-roll string.
+//! - `restart` borrows the `Wiped` (M3 Q26 C), so a kept `Wiped` restarts at 99 every time until a
+//!   check passes: twice from one collision `Wiped`, for either length, with a failed restart
+//!   between them, and twice from the `Wiped` of a "Cannot check" in that restart. A "Cannot
+//!   check" in a first session restarts at 50, twice.
 //! - A proof for another bucket gives `Retry`, and the right code still reveals.
 //! - Freshness is the shell's warning, not a refusal: the stale proof is `Stale` for kcr.json's
 //!   pinned today (a phone warns) and still reveals; the future-dated proof is `Future`.
@@ -16,9 +21,9 @@ mod common;
 
 use common::{hex, named, read, text};
 use keepcrypt_core::{
-    CheckError, Checking, CoreError, Freshness, GoAhead, Mode, Platform, Ready, RegistryDate,
-    Rejected, Rolling, Sealed, SeedLength, Session, StubEntropy, StubSource, VerifiedProof,
-    VerifiedSnapshot, WipeProbe, Wiped, verify_bucket_proof, verify_bucket_proof_qr,
+    CheckError, Checking, CoreError, Discard, Freshness, GoAhead, KatId, Mode, Platform, Ready,
+    RegistryDate, Rejected, Rolling, Sealed, SeedLength, Session, StubEntropy, StubSource,
+    VerifiedProof, VerifiedSnapshot, WipeProbe, Wiped, verify_bucket_proof, verify_bucket_proof_qr,
     verify_snapshot,
 };
 use serde_json::Value;
@@ -212,6 +217,113 @@ fn the_restart_refuses_50_rolls_and_accepts_the_99_roll_string() {
     let checking = sealed.start_check().expect("checking");
     let ready = revealed(checking.reveal(GoAhead::Code(text(&v["go_ahead"]))));
     assert_eq!(words(&ready), text(&v["mnemonic"]));
+}
+
+/// The 99-roll seeds, by length. Their roll string is the same.
+const NINETY_NINE: [(SeedLength, &str); 2] = [
+    (SeedLength::Words12, "dice-99-words12"),
+    (SeedLength::Words24, "dice-99-words24"),
+];
+
+/// `wiped` restarted at `len` in dice-only mode, up to the dice, on a stub that serves the check
+/// nonce 0001020304050607. It borrows, so the caller keeps the `Wiped`.
+fn restarted(wiped: &Wiped, len: SeedLength, probe: &WipeProbe) -> Session<Rolling> {
+    wiped
+        .restart_with_stub(
+            len,
+            Mode::DiceOnly,
+            StubSource::new(StubEntropy::Fixed(NONCE.to_vec()), probe),
+            None,
+        )
+        .and_then(Session::commit)
+        .expect("restarted")
+        .start_dice()
+}
+
+/// The seed of `v`'s roll string, then "Cannot check".
+fn cannot_check(rolling: Session<Rolling>, v: &Value) -> Wiped {
+    roll_all(rolling, &faces(v))
+        .finish()
+        .and_then(Session::start_check)
+        .expect("checking")
+        .discard(Discard::CannotCheck)
+}
+
+/// The shell keeps the collision `Wiped` and restarts from it again when the idle wipe ends the
+/// restarted ceremony (owner item 14): every restart needs 99 rolls, for either length. A restart
+/// whose known-answer suite fails wipes only its new session, and the report stays with the
+/// `Wiped`. The second restart's check passes; the shell then drops the `Wiped`, which ends the
+/// 99-roll minimum.
+#[test]
+fn a_kept_wiped_restarts_at_99_until_a_check_passes() {
+    let destroyed = seed("dice-50-words12");
+    for (len, name) in NINETY_NINE {
+        let v = seed(name);
+        let kept = wiped_by_collision();
+        let probe = WipeProbe::new();
+        let rolling = restarted(&kept, len, &probe);
+        assert_eq!(rolling.minimum_rolls(), 99, "{name}: the first restart");
+        drop(rolling);
+        assert_eq!(probe.wipes(), 1, "{name}: the idle wipe");
+
+        let probe = WipeProbe::new();
+        let failed = kept.restart_with_stub(
+            len,
+            Mode::DiceOnly,
+            StubSource::new(StubEntropy::Fail, &probe),
+            Some(KatId::Sha256),
+        );
+        assert!(
+            matches!(failed, Err(CoreError::Kat(KatId::Sha256))),
+            "{name}"
+        );
+        assert_eq!(probe.wipes(), 1, "{name}: the failed restart");
+        let report = kept.collision_report().expect("the report stays");
+        assert_eq!(
+            report.grouped_code(),
+            text(&destroyed["seal_code"]),
+            "{name}"
+        );
+
+        let rolling = restarted(&kept, len, &WipeProbe::new());
+        assert_eq!(rolling.minimum_rolls(), 99, "{name}: the second restart");
+        let checking = roll_all(rolling, &faces(&v))
+            .finish()
+            .and_then(Session::start_check)
+            .expect("checking");
+        let ready = revealed(checking.reveal(GoAhead::Code(text(&v["go_ahead"]))));
+        assert_eq!(words(&ready), text(&v["mnemonic"]), "{name}");
+    }
+}
+
+/// "Cannot check" in the restart after a collision keeps that session's 99-roll flag: the newer
+/// `Wiped`, which replaces the kept one, holds no report and restarts at 99 every time.
+#[test]
+fn a_cannot_check_in_the_restart_after_a_collision_restarts_at_99() {
+    for (len, name) in NINETY_NINE {
+        let kept = wiped_by_collision();
+        let kept = cannot_check(restarted(&kept, len, &WipeProbe::new()), &seed(name));
+        assert!(kept.collision_report().is_none(), "{name}");
+        for restart in 1..=2 {
+            let rolling = restarted(&kept, len, &WipeProbe::new());
+            assert_eq!(rolling.minimum_rolls(), 99, "{name}: restart {restart}");
+        }
+    }
+}
+
+/// "Cannot check" in a first session keeps its own flag, here none: every restart from that
+/// `Wiped` uses the normal minimum, 50 rolls for 12 words.
+#[test]
+fn a_cannot_check_in_a_first_session_restarts_at_50() {
+    let kept = sealed_dice_50(&WipeProbe::new())
+        .start_check()
+        .expect("checking")
+        .discard(Discard::CannotCheck);
+    assert!(kept.collision_report().is_none());
+    for restart in 1..=2 {
+        let rolling = restarted(&kept, SeedLength::Words12, &WipeProbe::new());
+        assert_eq!(rolling.minimum_rolls(), 50, "restart {restart}");
+    }
 }
 
 #[test]
