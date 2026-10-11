@@ -5329,12 +5329,14 @@ def piped_command_problems(piped, first, coldcard, data, node, known):
     warning); D with one digit changed (exit 1 before the rolls prompt); a mixed run one roll short (exit 1, no
     words); every refused text of INPUT_CASES (exit 2, its field and position named); an argument (exit 2, not
     shown); end of input before each prompt's first line (exit 2), and after two roll lines (computed); and each
-    fault twin, under mixed and dice (exit 1, one line naming its group, no prompt). [problem]."""
+    fault twin, under mixed and dice (exit 1, one line naming its group, no prompt). `piped` holds every run's
+    streams to the leak rule. [problem]."""
     problems = []
 
-    def run(label, args, lines, want_status, copy=data):
-        """`piped`, with the exit status and a traceback checked: (stdout, stderr), or None if it timed out."""
-        status, stdout, stderr, found = piped(label, args, lines, copy)
+    def run(label, args, lines, want_status, hex_texts, roll_lines, copy=data):
+        """`piped` (the typed `hex_texts` and `roll_lines` for its leak rule), with the exit status and a traceback
+        checked: (stdout, stderr), or None if it timed out."""
+        status, stdout, stderr, found = piped(label, args, lines, hex_texts, roll_lines, copy)
         problems.extend(found)
         if status is None:
             return None
@@ -5344,16 +5346,13 @@ def piped_command_problems(piped, first, coldcard, data, node, known):
             problems.append("%s: a traceback" % label)
         return stdout, stderr
 
-    def leaks(label, stdout, stderr, hex_texts, roll_lines):
-        problems.extend("%s: %s" % (label, found) for found in
-                        leak_problems((("stdout", stdout), ("stderr", stderr)), hex_texts, roll_lines))
-
     for combination in AGREEMENT_COMBINATIONS:
         case = first[combination]
         c_text, d_text = shown_c_d(case)
         lines, label = roll_lines_of(case["rolls"]), "piped " + case["name"]
         result = run(label, command_args(case["mode"], case["length"]),
-                     [text for text in (c_text, d_text) if text is not None] + lines + [""], 0)
+                     [text for text in (c_text, d_text) if text is not None] + lines + [""], 0,
+                     [("D", d_text)] if d_text else [], lines)
         if result is None:
             continue
         stdout, stderr = result
@@ -5365,11 +5364,10 @@ def piped_command_problems(piped, first, coldcard, data, node, known):
         if PIPE_NOTICE not in stderr:
             problems.append("%s: no pipe notice" % label)
         problems.extend("%s: %s" % (label, found) for found in prompt_layer_problems(stderr, c_text, lines))
-        leaks(label, stdout, stderr, [("D", d_text)] if d_text else [], lines)
     for length in (24, 12):
         lines, label = [KNOWN_ANSWER_DICE_ROLLS], "piped dice --words %d on %s" % (length, KNOWN_ANSWER_DICE_ROLLS)
         report = verification_run(length, lines)
-        result = run(label, command_args("dice_only", length), lines + [""], 0)
+        result = run(label, command_args("dice_only", length), lines + [""], 0, [], lines)
         if result is None:
             continue
         stdout, stderr = result
@@ -5382,13 +5380,12 @@ def piped_command_problems(piped, first, coldcard, data, node, known):
             problems.append("%s: its words are not rolls.json's" % label)
         if "warning: %s\n" % report["warning"] not in stderr or PIPE_NOTICE not in stderr:
             problems.append("%s: the range warning or the pipe notice is not on stderr" % label)
-        leaks(label, stdout, stderr, [], lines)
     case = first[(12, "mixed", "pi")]
     c_text, d_text = shown_c_d(case)
     lines, d = roll_lines_of(case["rolls"]), case["expect"]["d_hex"]
     changed = display_hex32("%x" % ((int(d[0], 16) + 1) % 16) + d[1:])
     label = "piped mixed --words 12, D with one digit changed"
-    result = run(label, command_args("mixed", 12), [c_text, changed] + lines + [""], 1)
+    result = run(label, command_args("mixed", 12), [c_text, changed] + lines + [""], 1, [("D", changed)], lines)
     if result is not None:
         stdout, stderr = result
         report = verification_run(12, lines, c_text, changed)
@@ -5396,15 +5393,13 @@ def piped_command_problems(piped, first, coldcard, data, node, known):
             problems.append("%s: stdout is not render's refusal \"D does not match C\"" % label)
         if any(line.startswith(("insert:", "seal-")) for line in stdout.splitlines()) or PROMPT_ROLLS in stderr:
             problems.append("%s: an insert or seal line, or the rolls prompt" % label)
-        leaks(label, stdout, stderr, [("D", changed)], lines)
     short = [case["rolls"][:dict(AGREEMENT_QUOTA)["min_rolls_12_words"] - 1]]
     label = "piped mixed --words 12 with %d rolls" % len(short[0])
-    result = run(label, command_args("mixed", 12), [c_text, d_text] + short + [""], 1)
+    result = run(label, command_args("mixed", 12), [c_text, d_text] + short + [""], 1, [("D", d_text)], short)
     if result is not None:
         stdout, stderr = result
         if stdout != render(verification_run(12, short, c_text, d_text)) or "\nentropy: " in stdout:
             problems.append("%s: stdout is not render's refusal, with no words" % label)
-        leaks(label, stdout, stderr, [("D", d_text)], short)
     valid_c = display_hex32(commitment(bytes.fromhex(INPUT_HEX)).hex())
     for name, field, given, want in INPUT_CASES:
         if not isinstance(want, tuple):
@@ -5418,15 +5413,14 @@ def piped_command_problems(piped, first, coldcard, data, node, known):
         else:
             args, typed = command_args("mixed", 12), roll_lines_of(case["rolls"])
             lines, hex_texts = [valid_c, given] + typed + [""], [("D", given)]
-        result = run(label, args, lines, 2)
+        result = run(label, args, lines, 2, hex_texts, typed)
         if result is not None:
             stdout, stderr = result
             named = "%s refused%s:" % (field, "" if want[1] is None else " at character %d" % want[1])
             if stdout or named not in stderr:
                 problems.append("%s: stdout is not empty, or stderr does not name %r" % (label, named))
-            leaks(label, stdout, stderr, hex_texts, typed)
     label = "piped mixed --words 12 abandon"
-    result = run(label, ["mixed", "--words", "12", "abandon"], [], 2)
+    result = run(label, ["mixed", "--words", "12", "abandon"], [], 2, [], [])
     if result is not None and (result[0] or "abandon" in result[1]):
         problems.append("%s: stdout is not empty, or the argument is shown" % label)
     for label, args, lines in (("at the C prompt", command_args("mixed", 12), []),
@@ -5434,28 +5428,26 @@ def piped_command_problems(piped, first, coldcard, data, node, known):
                                ("at the rolls prompt", command_args("mixed", 12), [c_text, d_text]),
                                ("at the dice rolls prompt", command_args("dice_only", 12), [])):
         label = "piped end of input " + label
-        result = run(label, args, lines, 2)
-        if result is not None:
-            if result[0]:
-                problems.append("%s: stdout is not empty" % label)
-            leaks(label, result[0], result[1], [("D", d_text)], [])
+        result = run(label, args, lines, 2, [("D", d_text)], [])
+        if result is not None and result[0]:
+            problems.append("%s: stdout is not empty" % label)
     rolls = first[(12, "dice_only", "pi")]["rolls"]
     lines, label = [rolls[:len(rolls) // 2], rolls[len(rolls) // 2:]], "piped dice --words 12, two lines, end of input"
-    result = run(label, command_args("dice_only", 12), lines, 0)
+    result = run(label, command_args("dice_only", 12), lines, 0, [], lines)
     if result is not None:
         stdout, stderr = result
         if stdout != render(verification_run(12, lines)):
             problems.append("%s: stdout is not render's for the same run" % label)
         problems.extend("%s: %s" % (label, found) for found in prompt_layer_problems(stderr, None, lines))
-        leaks(label, stdout, stderr, [], lines)
     for group in known or ():
         twin = fault_twin(data, node, group)
         if twin is None:  # rule (d) reports it
             continue
-        for args, lines in ((command_args("mixed", 12), [c_text, d_text] + roll_lines_of(case["rolls"]) + [""]),
-                            (command_args("dice_only", 12), roll_lines_of(case["rolls"]) + [""])):
+        typed = roll_lines_of(case["rolls"])
+        for args, lines, hex_texts in ((command_args("mixed", 12), [c_text, d_text] + typed + [""], [("D", d_text)]),
+                                       (command_args("dice_only", 12), typed + [""], [])):
             label = "fault twin %s, %s" % (group, args[0])
-            result = run(label, args, lines, 1, twin)
+            result = run(label, args, lines, 1, hex_texts, typed, twin)
             if result is not None and (result[0] or result[1].count("\n") != 1
                                        or "known answers failed: %s;" % group not in result[1]):
                 problems.append("%s: not one stderr line naming the group, before any prompt" % label)
@@ -5574,8 +5566,8 @@ def terminal_command_problems(terminal, first, coldcard):
 def locale_problems(piped, first):
     """Check 12 (g): the first 12-word Mixed Pi ceremony piped under LC_ALL=LATIN1_LOCALE prints stdout byte for byte
     as the UTF-8 runs do (render's text in UTF-8; stdout is decoded with surrogateescape, so equal text is equal
-    bytes). Required on macOS; elsewhere run only where the locale is installed, which a probe of Python's stdout
-    encoding under it shows. [problem]."""
+    bytes), both streams under the leak rule as in every piped run. Required on macOS; elsewhere run only where the
+    locale is installed, which a probe of Python's stdout encoding under it shows. [problem]."""
     env = {"LC_ALL": LATIN1_LOCALE}
     try:
         probe = subprocess.run([sys.executable, "-I", "-c", "import codecs, sys; print(codecs.lookup("
@@ -5595,7 +5587,7 @@ def locale_problems(piped, first):
     label = "piped %s under LC_ALL=%s (stdout %s before verify.py sets UTF-8)" % (case["name"], LATIN1_LOCALE,
                                                                                   encoding)
     status, stdout, stderr, problems = piped(label, command_args("mixed", 12), [c_text, d_text] + lines + [""],
-                                             env=env)
+                                             [("D", d_text)], lines, env=env)
     if status is not None and (status, stdout) != (0, render(verification_run(12, lines, c_text, d_text))):
         problems.append("%s: exit status %d, or stdout not the UTF-8 run's bytes" % (label, status))
     return ["rule (g): %s" % problem for problem in problems]
@@ -5637,15 +5629,18 @@ def command_problems(data, node, known, first, coldcard):
     with tempfile.TemporaryDirectory() as scratch:
         root, locked = Path(scratch), []
 
-        def piped(label, args, lines, copy=data, env=None):
+        def piped(label, args, lines, hex_texts, roll_lines, copy=data, env=None):
             """An audited run of `copy` with `args` and `lines` piped in: (exit status, or None if it timed out,
-            stdout, stderr, [problem]), its audit's problems named with `label`."""
+            stdout, stderr, [problem]), its audit's problems and the leak rule over both streams (the typed
+            `hex_texts` and `roll_lines`) named with `label`."""
             directory = lone_directory(root, "run-%d" % len(locked), copy, locked)
             try:
                 status, stdout, stderr, audit = audited_run(directory, args, stdin=piped_input(lines), env=env)
             except subprocess.TimeoutExpired:
                 return None, "", "", ["%s: no result within %d seconds" % (label, LONE_TIMEOUT_SECONDS)]
-            return status, stdout, stderr, ["%s: rule (e): %s" % (label, problem) for problem in audit]
+            leaks = leak_problems((("stdout", stdout), ("stderr", stderr)), hex_texts, roll_lines)
+            return status, stdout, stderr, (["%s: rule (e): %s" % (label, problem) for problem in audit]
+                                            + ["%s: %s" % (label, problem) for problem in leaks])
 
         def terminal(label, args, steps):
             """terminal_run on a new lone copy: (exit status, or None if it timed out, the transcript, [problem]

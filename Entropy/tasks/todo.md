@@ -3301,6 +3301,11 @@ Groups land in the order below. Vectors come before the core test that reads the
       tools/verify/verify.py, no `GetPassWarning` error filter, no exit-70 handler and the warning exiting 1; in
       vectorgen, the leak rule without lowercasing, with hyphens or line breaks kept, one window short, 13 rolls
       or 7 hex digits.
+      Review fix (2026-10-11, every piped run): the fault twins' 16 runs and the locale run (g) were not held to the
+      leak rule. `piped` now applies it to both streams of every piped run, so no run can leave it out, and the
+      verifier-echo canaries exercise that one place. Proof: check 12 passes on 3.12.5 and 3.9.6; scratch copies
+      whose known-answer refusal appends what stdin still holds, or that write D to stderr when stdin is not UTF-8,
+      passed it before and fail it on both now.
 
 **8. Canaries, CI and the commands of record**
 - [ ] `scripts/canaries.sh`:
