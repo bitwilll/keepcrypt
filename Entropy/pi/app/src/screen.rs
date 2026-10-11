@@ -35,6 +35,11 @@ pub const SMALL_FONT: MonoFont<'static> = FONT_6X10;
 pub const LARGE_SCALE: u32 = 2;
 /// The 8×8 seal grid is drawn 192 px square (seal-watchonly-braille.md, "The seal image").
 pub const SEAL_SIDE: u32 = 192;
+/// The gap between the seal grid and the Seal ID beneath it.
+pub const SEAL_CAPTION_GAP: u32 = 2;
+/// A braille cell box at least this size also shows each dot's number and a "leave blank" or
+/// "mirror" label (an insert's faces); a smaller one shows the dots alone (the Seal ID's braille).
+pub const NUMBERED_PITCH: Size = Size::new(36, 56);
 /// A QR code scales to fill the content area's height, quiet zone included (group 6).
 pub const QR_SIDE: u32 = 216;
 /// Snake's board: 18×18 cells of 12 px, 216 px square.
@@ -414,15 +419,18 @@ pub enum Item<'a> {
         text: Str<'a>,
         lighter_from: Option<usize>,
     },
-    /// Braille cells in a row, each in a box of `pitch`.
+    /// Braille cells in a row, each in a box of `pitch`; a box of at least `NUMBERED_PITCH` also
+    /// shows the dot numbers and labels.
     Cells {
         cells: Zeroizing<Vec<Cell>>,
         pitch: Size,
     },
-    /// The 8×8 seal grid, `SEAL_SIDE` square, in core's `SealPublic::grid` and `colour_hex`.
+    /// The 8×8 seal grid, `SEAL_SIDE` square, in core's `SealPublic::grid` and `colour_hex`, with
+    /// `seal_id` in `BODY_FONT` beneath it.
     Seal {
         grid: &'a [[bool; 8]; 8],
         colour_hex: &'a str,
+        seal_id: &'a str,
     },
     /// A QR code of this payload, `QR_SIDE` square.
     Qr(Str<'a>),
@@ -486,7 +494,10 @@ impl<'a> Element<'a> {
                 BODY_FONT.character_size.height * LARGE_SCALE,
             ),
             Item::Cells { cells, pitch } => Size::new(px(cells.len(), pitch.width), pitch.height),
-            Item::Seal { .. } => Size::new(SEAL_SIDE, SEAL_SIDE),
+            Item::Seal { .. } => Size::new(
+                SEAL_SIDE,
+                SEAL_SIDE + SEAL_CAPTION_GAP + BODY_FONT.character_size.height,
+            ),
             Item::Qr(_) => Size::new(QR_SIDE, QR_SIDE),
             Item::Hex(text) => lines_size(text.as_str().split('\n'), &BODY_FONT),
             Item::Board(_) => {
@@ -581,9 +592,20 @@ impl<'a> Screen<'a> {
     }
 }
 
+/// The lines `text` is drawn in, in `font`, from `x` in the content area: `wrap` at the characters
+/// that fit between `x` and the right edge (none from outside the area, so any text there is too
+/// wide). `Element::bounds` measures exactly these lines and the renderer draws them.
+pub fn lines<'t>(text: &'t str, font: &MonoFont<'_>, x: i32) -> Vec<&'t str> {
+    let room = match u32::try_from(x) {
+        Ok(x) if x < CONTENT.width => (CONTENT.width - x) / advance(font),
+        _ => 0,
+    };
+    wrap(text, room)
+}
+
 /// `text` broken into lines of at most `max` characters: at each '\n', at the last space that
 /// leaves the line short enough (that space is dropped), and inside a word longer than a line.
-/// The renderer draws exactly these lines. A `max` of 0 is taken as 1.
+/// A `max` of 0 is taken as 1.
 pub fn wrap(text: &str, max: u32) -> Vec<&str> {
     let max = max.max(1);
     let mut lines = Vec::new();
@@ -627,12 +649,12 @@ fn char_offset(text: &str, n: u32) -> Option<usize> {
 }
 
 /// One character's horizontal advance in `font`.
-fn advance(font: &MonoFont<'_>) -> u32 {
+pub(crate) fn advance(font: &MonoFont<'_>) -> u32 {
     font.character_size.width + font.character_spacing
 }
 
 /// `count` units of `unit` pixels, saturating: a count too large for `u32` never fits.
-fn px(count: usize, unit: u32) -> u32 {
+pub(crate) fn px(count: usize, unit: u32) -> u32 {
     match u32::try_from(count) {
         Ok(count) => count.saturating_mul(unit),
         Err(_) => u32::MAX,
@@ -641,13 +663,7 @@ fn px(count: usize, unit: u32) -> u32 {
 
 /// The box of `text` in `font`, wrapped at the content area's right edge from `x`.
 fn wrapped_size(text: &str, font: &MonoFont<'_>, x: i32) -> Size {
-    // The characters from `x` to the right edge; none from outside the area, so any text there
-    // is too wide.
-    let room = match u32::try_from(x) {
-        Ok(x) if x < CONTENT.width => (CONTENT.width - x) / advance(font),
-        _ => 0,
-    };
-    lines_size(wrap(text, room).into_iter(), font)
+    lines_size(lines(text, font, x).into_iter(), font)
 }
 
 /// The box of these lines in `font`: the longest line's width, one line height per line.
@@ -819,6 +835,24 @@ mod tests {
     }
 
     #[test]
+    fn lines_wrap_at_the_right_edge_from_the_elements_x() {
+        let thirty = "abcde fghij klmno pqrst uvwxy z";
+        // 24 body characters from x = 0, 20 from x = 40, 40 small ones from x = 0.
+        assert_eq!(
+            lines(thirty, &BODY_FONT, 0),
+            ["abcde fghij klmno pqrst", "uvwxy z"]
+        );
+        assert_eq!(
+            lines(thirty, &BODY_FONT, 40),
+            ["abcde fghij klmno", "pqrst uvwxy z"]
+        );
+        assert_eq!(lines(thirty, &SMALL_FONT, 0), [thirty]);
+        // From outside the area, one character per line, so the box is too wide.
+        assert_eq!(lines("ab", &BODY_FONT, 240), ["a", "b"]);
+        assert_eq!(lines("ab", &BODY_FONT, -1), ["a", "b"]);
+    }
+
+    #[test]
     fn element_boxes_come_from_the_font_metrics() {
         let size = |element: Element<'_>| element.bounds().size;
         assert_eq!(size(text((0, 0), "Dice")), Size::new(40, 20));
@@ -865,14 +899,16 @@ mod tests {
             size(Element::protected(Point::zero(), face_cells)),
             Size::new(220, 70)
         );
+        // The grid, then the Seal ID beneath it: 192 + 2 + 20.
         let grid = [[true; 8]; 8];
         let seal = Item::Seal {
             grid: &grid,
             colour_hex: "#009E73",
+            seal_id: "5E0G7J6X",
         };
         assert_eq!(
             size(Element::public(Point::zero(), seal)),
-            Size::new(192, 192)
+            Size::new(192, 214)
         );
         let qr = Item::Qr("https://registry.invalid/c".into());
         assert_eq!(

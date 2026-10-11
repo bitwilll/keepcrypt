@@ -9,8 +9,9 @@
 //! - It is an embedded-graphics `DrawTarget` with `Error = Infallible`: a pixel outside the panel
 //!   is clipped, as the trait asks, and no draw can fail. Draws match their `Result` exhaustively
 //!   (`let Ok(..) = ..`), never with `.ok()`, `let _` or an `_name` binding (rule 3).
-//! - Black is all bits zero, so `clear` is also the wipe: before each render, after each present,
-//!   and on drop (rule 5). No `Debug` and no `Clone`: a frame can hold the words.
+//! - Black is all bits zero, so `clear` is also the wipe: before each render and after each
+//!   present (`Painter::present`), and on drop (rule 5). No `Debug` and no `Clone`: a frame can
+//!   hold the words.
 
 use core::convert::Infallible;
 
@@ -32,14 +33,7 @@ pub struct Frame {
 }
 
 impl Frame {
-    /// A black frame. Only `ui` makes one.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the renderer's Painter, the one owner of a Frame, lands in group 6"
-        )
-    )]
+    /// A black frame. Only `ui` makes one: the `Painter`, and the painters' tests.
     pub(in crate::ui) fn new() -> Self {
         Frame {
             pixels: vec![0; SIDE_PX * SIDE_PX].into_boxed_slice(),

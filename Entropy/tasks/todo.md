@@ -4402,14 +4402,27 @@ carries it, and every commit names a proof that runs at that commit.
   key resets it.
 
 **6. pi/app drawing (pi-firmware.md:67, :70; swb:84-90, :274-292)**
-- [ ] `ui/render.rs`: `Painter` and `render(&Screen)`: clear, the strips, each element through its painter, the footer.
+- [x] `ui/render.rs`: `Painter` and `render(&Screen)`: clear, the strips, each element through its painter, the footer.
   - `ui/text.rs`: embedded-graphics mono fonts (10×20 for body text, 6×10 for strips and footer); a `Scaled` target
     that draws each pixel as an n×n block, so words and codes use 10×20 at ×2 (an 8-letter word is 160 px wide); word
     wrap at 240 px.
 
   Proof: unit tests: wrapping at 240 px; an 8-letter word at ×2 fits; the footer shows each mapped key's label; both
   banners fit the top strip together.
-- [ ] `ui/braille.rs`: a face cell drawn from a 6-bit mask (`Dots::bits()`).
+  Proof (commit 9): `cargo test --workspace --locked`: keepcrypt-pi's 56 unit tests pass, 30 of them new (29 in `ui`,
+  and `screen`'s test of `lines`). Wrapping: a 30-character text from x = 0 and x = 40, and a 30-letter word, draw
+  exactly the lines `screen::lines` gives (the same lines `Element::bounds` measures; `fits()` and the renderer share
+  them) and nothing below the measured box; small text breaks at 40 characters. ×2: "abstract" is 160×40 and fits, every
+  1× pixel is a 2×2 block, and only the letters past the fourth are lighter; `Scaled` clips blocks off the panel. The
+  footer: on all 62 ids, each offered key's glyph sits in exactly its label's entry, a dead key's in none, each label
+  once, and the line fits 240 px (the longest, words', is exactly 240); the Dice footer is drawn centred with key names
+  in the accent colour, `without(Key3)` shortens it and `halt` has none. Both banners: TEST REGISTRY and SIMULATOR each
+  fill half the strip with their label centred (78 and 54 px in 120), match a reference drawing, hide the title, and one
+  banner takes the whole strip. Every item kind is drawn by its painter 12 px down; `Painter::present` hands the frame
+  and its model to the display and wipes the frame after a present, after a display fault and after a render error (the
+  display is then not called); an empty `blank` model is an all-black frame. `Frame::new`'s `expect(dead_code)` is gone,
+  since `Painter::new` calls it.
+- [x] `ui/braille.rs`: a face cell drawn from a 6-bit mask (`Dots::bits()`).
   - Raised dots are filled; flat dots are rings; each dot position carries its number 1-6.
   - Blank faces are rings labelled "leave blank".
   - Face 5 is drawn lighter (`is_lighter`).
@@ -4418,12 +4431,24 @@ carries it, and every commit names a proof that runs at that commit.
 
   Proof: all 64 masks, drawn and sampled back at the dot centres, equal the mask; each dot's number is drawn at its
   sampled label position.
-- [ ] `ui/seal.rs`: the 8×8 grid at 192×192 on a light tile the size of the grid, filled cells in `colour_hex()`
+  Proof (commit 9): `ui::braille`'s 7 tests: all 64 masks, plain and lighter, in a 44×70 face box, the smallest
+  numbered box (`NUMBERED_PITCH`, 36×56) and a 15×24 caption box: each centre is filled exactly when its bit is set,
+  and both side edges of every dot are drawn (rings); the face layout is pinned (dots 1-3 down the left column, 4-6
+  down the right, diameter 11); each number 1-6 equals that digit drawn alone at its position, on its dot's row, left
+  of dots 1-3 and right of dots 4-6, and caption boxes draw none; a blank face is six rings with "leave" and "blank";
+  a mirror letter on face 5 is lighter and flagged "mirror". `caption_cells(render_text("5e0g7j6x"))` gives core's 15
+  cells (number signs 0x3c, grade 1 indicators 0x30) and eight-dot cells or letters are `BrailleCaption`.
+- [x] `ui/seal.rs`: the 8×8 grid at 192×192 on a light tile the size of the grid, filled cells in `colour_hex()`
   converted to Rgb565, every cell with a dark outline (swb:87-88), the Seal ID in 10×20 beneath.
 
   Proof: the 64 cell centres, sampled back, equal the grid; every cell's edge pixels are the outline colour; an empty
   cell's centre is the tile colour; the page fits.
-- [ ] `ui/qr.rs`: qrcodegen-no-heap.
+  Proof (commit 9): `ui::seal`'s 4 tests, on swb's test-vector grid: the 64 centres are #009E73 or the tile colour as
+  the grid says; every cell's 1 px edge, and nothing inside it, is the outline colour (with #F0E442, the lightest
+  fill); the Seal ID is centred 2 px beneath and nothing else is drawn there; the seal-image page with the element at
+  (24, 0), both banners on, fits, its box 192×214. `Item::Seal` gains `seal_id`, so the painter draws the caption,
+  and its box includes it. `#RRGGBB` parses in either case; anything else is `SealColour`.
+- [x] `ui/qr.rs`: qrcodegen-no-heap.
   - It encodes into two pi/app buffers of `Version::new(11).buffer_len()`, zeroized after drawing.
   - Versions 1-11 (the largest that fits 216 px at 3 px with a 4-module quiet zone), with boosted error correction.
   - The largest whole module size that fits 216 px with the quiet zone, and at least 3 px.
@@ -4439,9 +4464,21 @@ carries it, and every commit names a proof that runs at that commit.
   - both buffers are zero afterwards;
   - an over-long payload errs;
   - the measured versions and module sizes are pasted.
-- [ ] `ui/hex.rs`: 32 bytes as 16 groups of 4 lowercase hex, four groups per row, read by nibble with no `as` casts.
+  Proof (commit 9): `ui::qr`'s 4 tests. Measured (version, level, module px): check URL 116 bytes (6, L, 4); register
+  and report URLs 62 bytes (4, M, 5); re-check URL 97 bytes (5, L, 4); account UR 258 alphanumeric characters (8, L,
+  3; lowercase would need byte mode and version 10); descriptor QR 301 bytes (11, L, 3). The levels are decoded from
+  the format modules, because qrcodegen-no-heap 1.8.1's `error_correction_level()` skips the 0x5412 format mask
+  (it reports Quartile for that version-11 L code; pi/app never calls it). For every payload, the module centres
+  equal the encoder's modules, the quiet zone is at least 4 modules and light, and nothing is drawn outside the
+  216 px square. Both buffers are whole and zero after each drawing and after an error; 321 bytes fit version 11
+  and 322 give `QrTooLong` with nothing drawn. Version 11 is 3 px; version 12 would need 2.
+- [x] `ui/hex.rs`: 32 bytes as 16 groups of 4 lowercase hex, four groups per row, read by nibble with no `as` casts.
 
   Proof: round-trip through verify.py's `parse_hex32` rule (strip whitespace, 64 hex).
+  Proof (commit 9): `ui::hex`'s 2 tests: `d-00-1f` formats as "0001 0203 0405 0607" and three more rows, in a buffer
+  that never grew (capacity 79); all 256 byte values round-trip through `parse_hex32`'s exact rule (non-ASCII
+  refused, spaces, tabs and hyphens dropped, 64 hex digits in either case) with the rows typed on one line, also in
+  upper case with hyphens; a missing or extra digit, or a line feed left in, is refused.
 
 **7. pi/sim harness (Q28 (c), Q30)**
 - [ ] pi/sim becomes a lib, a bin and tests, with `#![forbid(unsafe_code)]`. `SimHal` (in the lib) implements every
