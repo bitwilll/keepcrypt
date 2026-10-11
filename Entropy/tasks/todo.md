@@ -4296,14 +4296,14 @@ carries it, and every commit names a proof that runs at that commit.
   97.38% of core's lines (secret.rs 97.97%, every line of `from_first_four` covered), over the 95% floor.
 
 **4. Dependencies and manifests (Q28; rule 11)**
-- [ ] Manifests:
+- [x] Manifests:
   - pi/app `[dependencies]`: `embedded-graphics = "0.8.2"`, `qrcodegen-no-heap = "1.8.1"` (a caret spec, as in the
     rest of the workspace: it excludes the yanked 1.8.0, and Cargo.lock and cargo vet pin 1.8.1), and `zeroize` with
     core's spec. No dev-dependency table (canaries.sh:700-705).
   - pi/sim: `keepcrypt-core.workspace = true` (no features) in `[dependencies]`; `sha2` and `serde_json`, at the locked
     versions, in `[dev-dependencies]`; a `[lints]` table denying `print_stdout`, `print_stderr` and `dbg_macro`.
   - `cargo update -p autocfg --precise 1.5.0`.
-- [ ] Cargo.lock and supply chain:
+- [x] Cargo.lock and supply chain:
   - Cargo.lock gains exactly the 9 crates under "New dependencies".
   - getrandom's only dependent stays keepcrypt-core.
   - supply-chain gains 6 safe-to-deploy exemptions: embedded-graphics, embedded-graphics-core, az, float-cmp,
@@ -4316,6 +4316,20 @@ carries it, and every commit names a proof that runs at that commit.
   - `cargo deny --locked check`, `cargo audit`, `cargo vet --locked` and `scripts/check-path-deps.sh` clean;
   - canaries 61/61;
   - `cargo build -p keepcrypt-pi-sim --features keepcrypt-core/test-registry` resolves.
+  Proof (commit 7): `cargo update --offline --workspace` locked the 9 crates with autocfg at 1.5.1, and
+  `cargo update --offline -p autocfg --precise 1.5.0` held it. The lockfile diff adds exactly autocfg 1.5.0, az
+  1.2.1, byteorder 1.5.0, embedded-graphics 0.8.2, embedded-graphics-core 0.4.1, float-cmp 0.9.0, micromath 2.1.0,
+  num-traits 0.2.19 and qrcodegen-no-heap 1.8.1 (names, versions, checksums and edges equal to the probe's) and the
+  members' new edges, nothing else. `cargo tree -e normal,build -p keepcrypt-pi` lists embedded-graphics,
+  keepcrypt-core, qrcodegen-no-heap and zeroize, and below embedded-graphics only the other 7 crates;
+  `cargo tree --workspace --all-features --target all -e all -i getrandom` reaches keepcrypt-core alone. One unlocked
+  `cargo vet --no-minimize-exemptions` (so the refresh could not prune an existing exemption) added only the
+  bytecode-alliance num-traits 0.2.19, google autocfg 1.4.0 and byteorder 1.5.0, and zcash autocfg 1.4.0 -> 1.5.0
+  audits; then `cargo vet --locked`: "17 fully audited, 82 exempted" (was 14 and 76). `cargo deny --locked check`
+  ok (only the old hex-conservative and syn duplicate warnings), `cargo audit` clean (103 crates),
+  `scripts/check-path-deps.sh` clean (99 packages, was 90), canaries 61/61. `cargo build --locked -p
+  keepcrypt-pi-sim --features keepcrypt-core/test-registry` builds with core's test-registry alone; at a9e13bf it
+  fails ("does not contain this feature: keepcrypt-core/test-registry").
 
 **5. pi/app foundations (pi-firmware.md:58-76; rules 3, 5)**
 - [ ] `#![forbid(unsafe_code)]` in `pi/app/src/lib.rs` and `main.rs`.

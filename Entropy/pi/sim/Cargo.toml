@@ -9,3 +9,21 @@ publish.workspace = true
 
 [dependencies]
 keepcrypt-pi.workspace = true
+# No features (rule 10). With this direct edge,
+# `cargo test -p keepcrypt-pi-sim --features keepcrypt-core/test-registry` resolves, which is the
+# only way the simulator gets the test registry key (tasks/todo.md, M3 Q28 (d)).
+keepcrypt-core.workspace = true
+
+# Test-only: sha2 recomputes the go-ahead code from the drawn check QR (Q30 (d)); serde_json reads
+# vectors/*.json. serde_json is exempted safe-to-run only (supply-chain/config.toml), so it is a
+# dev-dependency and nothing more.
+[dev-dependencies]
+sha2 = "0.11.0"
+serde_json = "=1.0.151"
+
+[lints.clippy]
+# A desktop dev tool, so not the pinned block of core, ffi and pi/app. It prints only screen ids,
+# scenario names and counts (rule 5), from one allowed site in the bin and one in the tests.
+print_stdout = "deny"
+print_stderr = "deny"
+dbg_macro = "deny"
