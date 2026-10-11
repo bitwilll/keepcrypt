@@ -4671,11 +4671,12 @@ FAULT_TWIN_CONTROL = ('KNOWN_ANSWERS = {"control": {"value": "1"}}\nprint("ok   
 ABSENT = object()  # a value missing on one side of value_differences
 # Check 12's runs of the user commands (tasks/todo.md, M2 group 7): audited runs of the lone copy, each in its own
 # read-only directory, every stream held to the leak rule. Their cases are agreement.json's first ceremony of each
-# combination, with C and D as the device shows them and the rolls cut into lines of COMMAND_ROLLS_PER_LINE, and
-# Coldcard's published 123456 (coldcard/rolls.json). The leak rule (tasks/todo.md, M2 plan): with a stream and the
-# typed D normalised (whitespace and hyphens removed, lowercased), the stream holds no LEAK_HEX_DIGITS consecutive
-# characters of D; with whitespace removed and the roll lines joined, no LEAK_ROLLS consecutive rolls. A refused C
-# is held to it as D is.
+# combination, with C and D as the device shows them and the rolls cut into the fewest lines of at most
+# COMMAND_ROLLS_PER_LINE, as evenly as possible (50 rolls as 25 and 25), and Coldcard's published 123456
+# (coldcard/rolls.json). The leak rule (tasks/todo.md, M2 plan): with a stream and the typed D normalised (whitespace
+# and hyphens removed, lowercased), the stream holds no LEAK_HEX_DIGITS consecutive characters of D; with whitespace
+# removed and the roll lines joined, no LEAK_ROLLS consecutive rolls. A refused C is held to it as D is. Every typed
+# line of those rolls holds more than LEAK_ROLLS, so the rule finds any one line shown.
 COMMAND_ROLLS_PER_LINE = 40
 LEAK_HEX_DIGITS = 8
 LEAK_ROLLS = 12
@@ -5272,8 +5273,9 @@ def shown_c_d(case):
 
 
 def roll_lines_of(rolls):
-    """`rolls` cut into lines of COMMAND_ROLLS_PER_LINE, as typed."""
-    return [rolls[at:at + COMMAND_ROLLS_PER_LINE] for at in range(0, len(rolls), COMMAND_ROLLS_PER_LINE)]
+    """`rolls` as typed: the fewest lines of at most COMMAND_ROLLS_PER_LINE, cut as evenly as possible."""
+    count = -(-len(rolls) // COMMAND_ROLLS_PER_LINE)
+    return [rolls[len(rolls) * n // count:len(rolls) * (n + 1) // count] for n in range(count)]
 
 
 def piped_input(lines):

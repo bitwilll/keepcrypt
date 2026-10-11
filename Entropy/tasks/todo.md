@@ -3306,6 +3306,11 @@ Groups land in the order below. Vectors come before the core test that reads the
       verifier-echo canaries exercise that one place. Proof: check 12 passes on 3.12.5 and 3.9.6; scratch copies
       whose known-answer refusal appends what stdin still holds, or that write D to stderr when stdin is not UTF-8,
       passed it before and fail it on both now.
+      Review fix (2026-10-11, roll lines): the rolls were cut at 40 per line, so the 50 rolls of a 12-word run gave a
+      last line of 10, under the leak rule's 12, and a copy that read every roll line after the first with echo
+      passed rule (f). They are now cut into the fewest lines of at most 40, as evenly as possible (25 and 25; 99 as
+      33, 33 and 33), so every typed line holds more than 12. Proof: check 12 passes on 3.12.5 and 3.9.6; that copy
+      fails rule (f) on both, in the `mixed --words 12` and paste-ahead runs.
 
 **8. Canaries, CI and the commands of record**
 - [ ] `scripts/canaries.sh`:
