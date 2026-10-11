@@ -4214,7 +4214,7 @@ carries it, and every commit names a proof that runs at that commit.
   Proof: pasted under "M3: local proof".
 
 **1. Core: `game_random` (Q27; rules 1, 3; build-plan.md:91, :202-204)**
-- [ ] `pub fn game_random(buf: &mut [u8]) -> Result<(), CoreError>` in `core/src/source.rs`.
+- [x] `pub fn game_random(buf: &mut [u8]) -> Result<(), CoreError>` in `core/src/source.rs`.
   - The body is one `Source::Os.fill(buf)` (source.rs:132).
   - Re-exported next to `ExtraSource` (lib.rs:61).
   - Its doc comment says: for games only; never for dice, D, nonces, passphrases or any pool input; takes no session
@@ -4227,6 +4227,10 @@ carries it, and every commit names a proof that runs at that commit.
 
   Proof: `cargo test -p keepcrypt-core` in both configurations; `git diff core/src/lib.rs` adds one name; coverage
   stays at 95% or more.
+  Proof (commit 3): `game_random_fills_and_two_reads_differ` and `game_random_writes_every_byte_position` pass in
+  `cargo test --workspace --locked` (core's unit tests: 163 passed) and with `--features test-sources` (191 passed);
+  `git diff core/src/lib.rs` adds only `game_random` to the `source` re-export; `cargo llvm-cov` 97.40% of core's
+  lines (source.rs 98.71%), over the 95% floor.
 - [ ] `core/examples/release_probe.rs` calls `game_random` and exits with its own code on failure, so every cross leg's
   scan covers the new draw site.
 

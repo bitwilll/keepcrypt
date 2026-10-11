@@ -4,6 +4,7 @@
 //!
 //! - The OS random source is read in `source/os.rs` only; everything else calls `Source::fill`
 //!   or `Source::os_bytes`.
+//! - The games draw from `game_random`, an OS read of its own outside every session and pool.
 //! - Without the `test-sources` feature the only arm is the OS, and no public API accepts a
 //!   source, so a shipped build cannot be handed a fake one.
 //! - A read returns exactly the bytes asked for or fails. A stub reports how many bytes it
@@ -166,6 +167,22 @@ impl Source {
     }
 }
 
+/// Random bytes for the waiting-screen games only (CLAUDE.md rule 1; docs/build-plan.md "source";
+/// tasks/todo.md, M3 group 1 and Q27 a): Snake's food on the Pi, later Tetris's pieces and the
+/// phones' games. Never for dice, D, nonces, passphrases or any pool input.
+///
+/// - One exact OS read of `buf.len()` bytes (`Source::fill`). It takes no session and touches no
+///   pool, so nothing a game draws reaches a seed, and nothing derived from the pool reaches a
+///   game.
+/// - The bytes are plain, not zeroizing, because games draw them on the screen.
+/// - It runs no known-answer group and has no stub twin: it reads the real OS in every build,
+///   `test-sources` included.
+/// - Its one error is `Source(Os)`, and it halts the device (Q25), since the commitment reads the
+///   same OS source.
+pub fn game_random(buf: &mut [u8]) -> Result<(), CoreError> {
+    Source::Os.fill(buf)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -305,6 +322,35 @@ mod tests {
             let unwritten = seen.iter().filter(|&&b| b == 0).count();
             assert_eq!(unwritten, 0, "{name}: byte positions never written");
         }
+    }
+
+    // The games' call reads the real OS in every build: a full read succeeds, two reads differ and
+    // an empty buffer is an exact read. Nothing is printed.
+    #[test]
+    fn game_random_fills_and_two_reads_differ() {
+        let mut first = [0u8; 32];
+        let mut second = [0u8; 32];
+        assert_eq!(game_random(&mut first), Ok(()));
+        assert_eq!(game_random(&mut second), Ok(()));
+        assert_ne!(first, second);
+        assert_eq!(game_random(&mut []), Ok(()), "an empty read is exact");
+    }
+
+    // `game_random` writes every byte it is asked for: over 16 reads of 64 bytes into a zeroed
+    // buffer, each byte position is non-zero at least once (the odds of
+    // `os_source_writes_every_byte_position`). Nothing is printed.
+    #[test]
+    fn game_random_writes_every_byte_position() {
+        let mut seen = [0u8; 64];
+        for _ in 0..16 {
+            let mut read = [0u8; 64];
+            assert_eq!(game_random(&mut read), Ok(()));
+            for (seen, byte) in seen.iter_mut().zip(read) {
+                *seen |= byte;
+            }
+        }
+        let unwritten = seen.iter().filter(|&&b| b == 0).count();
+        assert_eq!(unwritten, 0, "byte positions never written");
     }
 
     #[cfg(feature = "test-sources")]

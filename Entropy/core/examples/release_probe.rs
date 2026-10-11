@@ -8,10 +8,10 @@
 //! be. It walks every path that draws from the OS: the known-answer tests, a phone ceremony in
 //! Mixed mode (the OS read at the commitment) with fixed public dice, `start_check` (the nonce),
 //! the go-ahead code, the read-back of every word, `generate_backup_passphrase` (the passphrase and
-//! its challenge) and `encrypt_backup` (file key, salt, nonce and file name). It also links the
-//! registry-key path through `registry_key_is_test` and `verify_snapshot`, so a build with
-//! `test-registry` holds that feature's marker and key and the scan's positive controls can catch
-//! them (scripts/canaries.sh).
+//! its challenge), `encrypt_backup` (file key, salt, nonce and file name) and, outside the session,
+//! `game_random` (the games' own read). It also links the registry-key path through
+//! `registry_key_is_test` and `verify_snapshot`, so a build with `test-registry` holds that
+//! feature's marker and key and the scan's positive controls can catch them (scripts/canaries.sh).
 //!
 //! It prints nothing (core's lints forbid it): every step that fails exits with its own code, and
 //! 0 means every step gave what a build with these features must give. The seed comes from the
@@ -21,7 +21,7 @@ use std::process::ExitCode;
 
 use keepcrypt_core::{
     BackupApp, CoreError, CreatedBy, GoAhead, Mode, Platform, ReadbackResult, SeedLength, Session,
-    registry_key_is_test, self_test, verify_snapshot,
+    game_random, registry_key_is_test, self_test, verify_snapshot,
 };
 use sha2::{Digest, Sha256};
 
@@ -96,10 +96,14 @@ fn run() -> Result<(), u8> {
     // The registry-key path: no key in a release build, the test key under test-registry.
     let snapshot = hex(EMPTY_SNAPSHOT_HEX).ok_or(19)?;
     match (registry_key_is_test(), verify_snapshot(&snapshot)) {
-        (false, Err(CoreError::NoRegistryKey)) => Ok(()),
-        (true, Ok(verified)) if verified.entry_count() == 0 => Ok(()),
-        _ => Err(19),
+        (false, Err(CoreError::NoRegistryKey)) => {}
+        (true, Ok(verified)) if verified.entry_count() == 0 => {}
+        _ => return Err(19),
     }
+
+    // A game's draw: its own OS read, with no session and no pool.
+    let mut game_bytes = [0u8; 32];
+    game_random(&mut game_bytes).map_err(|_| 20)
 }
 
 /// The 8 bytes of n from `.../check#t=<64 hex>&n=<16 hex>`.
