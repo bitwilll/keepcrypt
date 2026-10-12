@@ -219,8 +219,6 @@ fn the_stick_takes_a_new_backup_and_refuses_what_hal_usb_refuses() {
     assert_eq!(hal.stick_files(), [name.as_str()]);
     let back = hal.read_written(&written, 8 * 1024).expect("read back");
     assert_eq!(ready.verify_backup(&back), Ok(()));
-    // Never over an existing name.
-    assert_eq!(hal.write_backup(&backup), Err(HalError::Exists));
     // A corrupt read-back fails core's verification; the file itself is unchanged.
     hal.fault(Fault::ReadBackCorrupt);
     let corrupt = hal.read_written(&written, 8 * 1024).expect("read back");
@@ -234,6 +232,17 @@ fn the_stick_takes_a_new_backup_and_refuses_what_hal_usb_refuses() {
     assert_eq!(hal.remove_written(other()), Err(HalError::NotWritten));
     assert_eq!(hal.remove_written(written), Ok(()));
     assert_eq!(hal.stick_files(), ["other.age"]);
+
+    // Never over an existing name, and after that refused attempt the earlier file is no longer
+    // the file just written (hal::Usb).
+    let again = hal.write_backup(&backup).expect("written again");
+    assert_eq!(hal.write_backup(&backup), Err(HalError::Exists));
+    assert_eq!(
+        hal.read_written(&again, 8 * 1024),
+        Err(HalError::NotWritten)
+    );
+    assert_eq!(hal.remove_written(again), Err(HalError::NotWritten));
+    assert_eq!(hal.stick_file(&name), Some(backup.bytes()));
 
     // The log (rule 8): reads under read-only mounts, writes and the removal under read-write
     // ones, and the refused write on the read-only stick.
@@ -264,7 +273,7 @@ fn the_stick_takes_a_new_backup_and_refuses_what_hal_usb_refuses() {
     hal.fault(Fault::Removed);
     assert_eq!(hal.write_backup(&backup), Err(HalError::Removed));
     assert_eq!(hal.stick(), Ok(false));
-    assert_eq!(hal.stick_files(), ["other.age"]);
+    assert_eq!(hal.stick_files(), [name.as_str(), "other.age"]);
 }
 
 #[test]

@@ -4380,6 +4380,15 @@ carries it, and every commit names a proof that runs at that commit.
   Proof (commit 8): `hal`'s 4 unit tests pass: those four names and nine more are refused, a 64-character name and
   any-case extensions are accepted; each of the 15 `HalError` variants displays its pinned text; exactly Display,
   Buttons and HwRng halt (Q25).
+  Proof (review fix, commit 10b): `Written::new` is public (pi/sim must make one), so the type cannot hold the rule:
+  the `Usb` docs now make it each implementation's duty, M4's driver included, to keep its own record of its last
+  successful write, clear it at the start of every `write_backup` and on removal, and refuse any other `Written`
+  (`NotWritten`). The stick clears its record first in every write attempt; `stick`'s
+  `a_later_write_attempt_leaves_no_earlier_file_readable_or_removable` (a write, sync or `Exists` failure after an
+  earlier write, then a `Written` minted for the earlier file: read-back and removal are `NotWritten`, the file stays)
+  passes, and fails with the clearing line removed (the review's probe: the earlier file was read back and removable).
+  tests/hal.rs's stick test checks `Exists` after the removal, with a second write, since the refused attempt now
+  leaves that file `NotWritten`.
 - [x] `frame.rs`: `Frame` is a boxed 240×240 `Rgb565` buffer.
   - It implements embedded-graphics `DrawTarget` with `Error = Infallible`. Draws are matched exhaustively: no `.ok()`,
     no `let _`, no `_name` binding.
@@ -5122,6 +5131,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
    9b. pi/app: the plan review: the docs say every `Frame` belongs to a `Painter`, not that the `Painter` holds the
    only one (`Painter::new` is public, and pi/sim makes its own).
 10. pi/sim: `SimHal`, the PNG writer and placeholder, the marker, the render timing (group 7).
+    10b. pi/app, pi/sim: the plan and security reviews: the `Usb` docs make the record of the file just written each
+    implementation's duty (a `Written` grants nothing by itself), and the stick clears it at every write attempt.
 11. pi/app, pi/sim: the app, steps 1-7, halts, restarts, idle, the driver, the mock checker, and `boot_stops`,
     `runtime_stop` and the steps 1-7 parts of the other scenarios (group 8).
 12. pi/app, pi/sim: steps 8-15, the Home side flows, and `drill_12`, `dice_24_code`, `skip_and_idle`, `check_backup`,

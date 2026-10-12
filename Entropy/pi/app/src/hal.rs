@@ -10,7 +10,9 @@
 //! - Files (rule 8): the app reaches a stick only through `Usb`. It lists and reads only `.age`
 //!   and `.kcr` files with `FileName`'s names, under a read-only mount, and writes only a core
 //!   `BackupFile`, as a new file that never replaces another. Only the file just written can be
-//!   read back or removed, through the `Written` its write returned.
+//!   read back or removed: each `Usb` implementation keeps its own record of that file and
+//!   refuses any other (`NotWritten`). The `Written` a write returns names the file and grants
+//!   nothing by itself.
 
 use core::fmt;
 
@@ -161,15 +163,17 @@ impl FileName {
     }
 }
 
-/// The file a `Usb::write_backup` just wrote: the only file the app can read back or remove. Not
-/// `Clone`, so a removal uses it up.
+/// The name of the file a `Usb::write_backup` just wrote, which the app hands back to read that
+/// file back or remove it. Not `Clone`, so a removal uses it up. It grants nothing by itself:
+/// `Written::new` is public, for implementations in other crates, so a `Usb` implementation
+/// checks every `Written` against its own record of the file it last wrote.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Written {
     name: FileName,
 }
 
 impl Written {
-    /// For a `Usb` implementation, after its write succeeded.
+    /// Only for a `Usb` implementation, after its write succeeded.
     pub fn new(name: FileName) -> Self {
         Written { name }
     }
@@ -217,6 +221,12 @@ pub trait HwRng {
 
 /// The USB stick: backup export, backup checks and snapshot import. Each call mounts and unmounts
 /// the stick itself; nothing stays mounted between calls.
+///
+/// Every implementation (M4's driver as well as the simulator) keeps its own record of the file
+/// its last successful `write_backup` created. It clears the record at the start of every
+/// `write_backup` call and when that file is removed, and `read_written` and `remove_written`
+/// refuse any `Written` that does not name the recorded file (`NotWritten`), so a failed later
+/// write never leaves an earlier file removable.
 pub trait Usb {
     /// True while a stick is inserted.
     fn stick(&mut self) -> Result<bool, HalError>;
@@ -233,14 +243,16 @@ pub trait Usb {
     /// created, where it can (pi-firmware.md, "On failure").
     fn write_backup(&mut self, file: &BackupFile) -> Result<Written, HalError>;
 
-    /// The bytes of the file just written, under a read-only remount; `TooLarge` past `max`.
+    /// The bytes of the file just written, under a read-only remount; `TooLarge` past `max`, and
+    /// `NotWritten` unless `written` names the recorded file.
     fn read_written(
         &mut self,
         written: &Written,
         max: usize,
     ) -> Result<Zeroizing<Vec<u8>>, HalError>;
 
-    /// Removes the file just written, when a later step of the backup failed, and nothing else.
+    /// Removes the file just written, when a later step of the backup failed, and nothing else:
+    /// `NotWritten` unless `written` names the recorded file.
     fn remove_written(&mut self, written: Written) -> Result<(), HalError>;
 }
 

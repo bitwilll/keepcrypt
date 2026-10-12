@@ -3,7 +3,8 @@
 //!
 //! - It behaves as pi/app's `hal::Usb` asks of the device: listings and reads under a read-only
 //!   mount; a backup written as a new file (an existing name is `Exists`, never replaced); a
-//!   read-back or a removal only of the file just written (`NotWritten` for any other).
+//!   read-back or a removal only of the file just written, by its own record (`NotWritten` for
+//!   any other, whatever `Written` names it), which every write attempt clears first.
 //! - `Mount::ReadOnly` is a stick that mounts only read-only (a write-protected one): a write is
 //!   then `ReadOnly`.
 //! - Armed faults (`Fault`): a write that fails (no file is left), a sync that fails (the file is
@@ -141,7 +142,8 @@ impl Stick {
     }
 
     /// Writes `bytes` as a new file `name`, or refuses: `ReadOnly` on a read-only stick, `Exists`
-    /// over any file, `Write` or `Sync` when armed. No refusal or fault leaves a file behind.
+    /// over any file, `Write` or `Sync` when armed. No refusal or fault leaves a file behind, and
+    /// after any of them no file is the file just written.
     pub(crate) fn write(
         &mut self,
         armed: &mut Armed,
@@ -149,6 +151,8 @@ impl Stick {
         bytes: &[u8],
     ) -> Result<Written, HalError> {
         mark();
+        // From here on no earlier file is the file just written, whatever this attempt gives.
+        self.written = None;
         self.reach(armed, self.mount, Op::Write(name.to_owned()))?;
         if self.mount == Mount::ReadOnly {
             return Err(HalError::ReadOnly);
@@ -344,6 +348,40 @@ mod tests {
         let mounts: Vec<Mount> = stick.log().iter().map(|a| a.mount).collect();
         assert_eq!(mounts[0], Mount::ReadWrite);
         assert_eq!(mounts[1..3], [Mount::ReadOnly, Mount::ReadOnly]);
+    }
+
+    #[test]
+    fn a_later_write_attempt_leaves_no_earlier_file_readable_or_removable() {
+        // The review's probe: after a later write attempt fails, a `Written` minted for the
+        // earlier file is refused, and that file stays.
+        let later = "keepcrypt-backup-00000000.age";
+        for (fault, tried, error) in [
+            (Some(Fault::Write), later, HalError::Write),
+            (Some(Fault::Sync), later, HalError::Sync),
+            (None, BACKUP, HalError::Exists),
+        ] {
+            let (mut stick, mut armed) = inserted();
+            let earlier = stick
+                .write(&mut armed, BACKUP, b"earlier")
+                .expect("written");
+            drop(earlier);
+            if let Some(fault) = fault {
+                armed.arm(fault);
+            }
+            assert_eq!(stick.write(&mut armed, tried, b"later"), Err(error));
+            let minted = || Written::new(name(BACKUP));
+            assert_eq!(
+                stick.read_written(&mut armed, &minted(), 64),
+                Err(HalError::NotWritten),
+                "{error:?}"
+            );
+            assert_eq!(
+                stick.remove_written(&mut armed, minted()),
+                Err(HalError::NotWritten),
+                "{error:?}"
+            );
+            assert_eq!(stick.names(), [BACKUP], "{error:?}");
+        }
     }
 
     #[test]
