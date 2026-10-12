@@ -244,8 +244,9 @@ fn the_stick_takes_a_new_backup_and_refuses_what_hal_usb_refuses() {
     assert_eq!(hal.remove_written(again), Err(HalError::NotWritten));
     assert_eq!(hal.stick_file(&name), Some(backup.bytes()));
 
-    // The log (rule 8): reads under read-only mounts, writes and the removal under read-write
-    // ones, and the refused write on the read-only stick.
+    // The log (rule 8): the writes and the removal under read-write mounts, and the refused write
+    // on the read-only stick. Reads are logged read-only by the simulator's construction (the app
+    // cannot choose a mount), so that part pins the simulator, not the device's mounts (M4).
     let log = hal.stick_log();
     assert!(log.iter().all(|access| match &access.op {
         Op::List(_) | Op::Read(_) | Op::ReadWritten(_) => access.mount == Mount::ReadOnly,

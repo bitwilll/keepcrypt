@@ -4531,6 +4531,10 @@ carries it, and every commit names a proof that runs at that commit.
   `BackupFile` (dice-only `coldcard-50`): write and sync faults and a read-only stick leave no file, a write over an
   existing name is `Exists`, reading back or removing another file is `NotWritten` and leaves it, a corrupt read-back
   fails `verify_backup`, a pulled stick stays out, and the stick's log shows every read read-only.
+  Proof (review fix, commit 10c): that last point is the simulator's construction, not evidence: `hal::Usb` gives
+  the app no mount to choose, and the stick logs `Mount::ReadOnly` for every list and read whatever its mount. The
+  read-only half of rule 8 holds by the HAL's shape here; the device's read-only mounts stay with M4 ("Deferred":
+  real mount ... read-only mounts). The stick's docs, a test name and tests/hal.rs's comment say so.
   `marker_is_the_documented_string` passes, and the marker is in the rlib and in tests/hal.rs's binary. `next_event`
   on a transient screen or before any present, a Protected element on a Public id and a model that does not fit each
   fail the test. An `unsafe` block appended to lib.rs and to main.rs in turn fails `cargo check` at that file's
@@ -5061,7 +5065,8 @@ carries it, and every commit names a proof that runs at that commit.
   - 3: every halt condition ends on `halt` with no secret held;
   - 5: pi/app prints nothing, buffers are wiped, Protected screens are captured unredacted only from vector runs;
   - 6: only the app's `Stage` holds the typestate;
-  - 8: the stick's log shows only read-only `.age`/`.kcr` reads and create-new `.age` writes; pi/sim reads no file;
+  - 8: the stick's log shows only `.age`/`.kcr` reads (read-only by the HAL's shape and the simulator's construction;
+    the device's mounts are M4's) and create-new `.age` writes; pi/sim reads no file;
   - 10: no manifest turns on a test feature; the simulator marker is in every simulator build;
   - 11: every new crate is approved, vetted and past the cool-off.
 - [ ] **CI:** all 14 required check runs green; budgets met; canaries 61/61.
@@ -5133,6 +5138,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
 10. pi/sim: `SimHal`, the PNG writer and placeholder, the marker, the render timing (group 7).
     10b. pi/app, pi/sim: the plan and security reviews: the `Usb` docs make the record of the file just written each
     implementation's duty (a `Written` grants nothing by itself), and the stick clears it at every write attempt.
+    10c. pi/sim: the security review: the stick logs reads read-only by construction, so its log is no evidence of
+    read-only mounts.
 11. pi/app, pi/sim: the app, steps 1-7, halts, restarts, idle, the driver, the mock checker, and `boot_stops`,
     `runtime_stop` and the steps 1-7 parts of the other scenarios (group 8).
 12. pi/app, pi/sim: steps 8-15, the Home side flows, and `drill_12`, `dice_24_code`, `skip_and_idle`, `check_backup`,

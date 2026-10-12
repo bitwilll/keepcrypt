@@ -10,8 +10,10 @@
 //! - Armed faults (`Fault`): a write that fails (no file is left), a sync that fails (the file is
 //!   removed again), a corrupt read-back (one byte flipped) and the stick pulled out mid-call.
 //! - Every call that reaches an inserted stick is logged with the mount it ran under, so a
-//!   scenario can show that the app only read `.age` and `.kcr` files read-only and only created
-//!   new `.age` files (rule 8).
+//!   scenario can show which `.age` and `.kcr` files the app read and that it only created new
+//!   `.age` files (rule 8). Reads are logged read-only by this simulator's construction:
+//!   `hal::Usb` gives the app no mount to choose, so the log is no evidence that a read ran
+//!   read-only. The device's read-only mounts are M4's to prove.
 //! - The stick starts out of the slot and empty. The simulator reads no file from disk: tests put
 //!   files on the stick in RAM.
 
@@ -261,7 +263,7 @@ mod tests {
     }
 
     #[test]
-    fn listings_hold_only_accepted_names_of_the_kind_and_reads_are_read_only() {
+    fn listings_hold_only_accepted_names_of_the_kind_and_reads_are_logged_read_only() {
         let (mut stick, mut armed) = inserted();
         for file in [
             "b.age",
