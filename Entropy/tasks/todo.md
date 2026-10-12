@@ -5115,10 +5115,12 @@ carries it, and every commit names a proof that runs at that commit.
 | byteorder | 1.5.0 | 2023-10-06 | Unlicense OR MIT | Through embedded-graphics | import (google, safe-to-deploy) |
 | float-cmp | 0.9.0 | 2021-07-21 | MIT | Through embedded-graphics (`^0.9.0`, default `ratio`) | exemption (google: safe-to-run only) |
 | micromath | 2.1.0 | 2023-10-31 | Apache-2.0 OR MIT | Through embedded-graphics | exemption |
-| num-traits | 0.2.19 | 2024-05-03 | MIT OR Apache-2.0 | Through float-cmp's `ratio` | import (bytecode-alliance, google) |
+| num-traits | 0.2.19 | 2024-05-03 | MIT OR Apache-2.0 | Through float-cmp's `ratio` | import (bytecode-alliance) |
 | autocfg | 1.5.0 | 2025-06-17 | Apache-2.0 OR MIT | num-traits' build dependency; `--precise 1.5.0` (1.5.1 is not covered) | import (google 1.4.0 + zcash delta) |
 | qrcodegen-no-heap | 1.8.1 | 2023-08-20 | MIT | QR encoding into buffers pi/app wipes (Q28 (b)); 1.8.0 yanked the same day | exemption (one file; an owner audit can replace it) |
 
+- Q28 (e)'s "3 imported audits" counts crates (byteorder, num-traits, autocfg). imports.lock gained 4 entries, since
+  autocfg's is google's 1.4.0 audit plus zcash's 1.4.0 -> 1.5.0 delta (Proof (commit 7)).
 - **New edges to crates already in Cargo.lock** (no new lockfile entry):
   - pi/app → zeroize 1.9.0;
   - pi/sim → keepcrypt-core (no features);
@@ -5145,6 +5147,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
 5. core: `from_first_four` and its tests (group 3).
 6. CLAUDE.md: rule 1 names `game_random`.
 7. pi, sim, supply-chain: manifests, Cargo.lock (autocfg held), vet exemptions and imports (group 4).
+   7b. tasks/todo.md: the plan review: the dependency table names num-traits' one import, and the imported audits
+   are counted per crate.
 8. pi/app: the screen model, `hal`, `frame`, `input`, `#![forbid(unsafe_code)]` (group 5).
    8b. pi/app: the plan review: the idle wipe also clears a Protected screen with nothing held (collision-qr), as
    group 11's `wipes_clear_the_stage` expects.
