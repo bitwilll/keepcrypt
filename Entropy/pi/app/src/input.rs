@@ -181,7 +181,7 @@ pub enum IdleStep {
     Cover,
     /// Warn that the wipe is a minute away; any key keeps everything.
     Warn,
-    /// Wipe the session or the checked backup, say so and return Home.
+    /// Wipe the session or the checked backup and clear the screen, say so and return Home.
     Wipe,
 }
 
@@ -204,14 +204,19 @@ impl Idle {
         self.last_key_ns = at_ns;
     }
 
-    /// The step due at `now_ns` on a screen of class `class`, while the app `holds_secrets`
-    /// (a session or a checked backup, `App::holds_secrets`), or `None`:
-    /// - the wipe at `WIPE_NS` and the warning at `WARN_NS`, on any screen, only while secrets
-    ///   are held (with nothing held there is nothing to wipe);
+    /// The step due at `now_ns` on a screen of class `class` (a covered screen keeps its own),
+    /// while the app `holds_secrets` (a session or a checked backup, `App::holds_secrets`), or
+    /// `None`:
+    /// - the wipe at `WIPE_NS`, on any screen while secrets are held, and on a Protected screen
+    ///   with nothing held: collision-qr shows the destroyed seed's seal code from the kept
+    ///   `Wiped`, which the stage does not hold, and the wipe takes it off the screen (the kept
+    ///   `Wiped` stays). With neither, there is nothing to wipe;
+    /// - the warning at `WARN_NS`, on any screen, only while secrets are held (pi-firmware.md,
+    ///   "Protected screens and idle");
     /// - otherwise the cover at `COVER_NS`, on Protected screens only.
     pub fn step(&self, now_ns: u64, class: Class, holds_secrets: bool) -> Option<IdleStep> {
         let idle = now_ns.saturating_sub(self.last_key_ns);
-        if holds_secrets && idle >= WIPE_NS {
+        if (holds_secrets || class == Class::Protected) && idle >= WIPE_NS {
             Some(IdleStep::Wipe)
         } else if holds_secrets && idle >= WARN_NS {
             Some(IdleStep::Warn)
@@ -452,10 +457,15 @@ mod tests {
             Some(IdleStep::Wipe)
         );
         assert_eq!(idle.step(at(6_000), Class::Public, false), None);
-        assert_eq!(
-            idle.step(at(6_000), Class::Protected, false),
-            Some(IdleStep::Cover)
-        );
+        // A Protected screen with nothing held (collision-qr: its seal code is the kept
+        // `Wiped`'s) is covered and, with no warning, wiped at 600 s.
+        let shown_only = |idle: &Idle, now| idle.step(now, Class::Protected, false);
+        assert_eq!(shown_only(&idle, at(30) - 1), None);
+        assert_eq!(shown_only(&idle, at(30)), Some(IdleStep::Cover));
+        assert_eq!(shown_only(&idle, at(540)), Some(IdleStep::Cover));
+        assert_eq!(shown_only(&idle, at(600) - 1), Some(IdleStep::Cover));
+        assert_eq!(shown_only(&idle, at(600)), Some(IdleStep::Wipe));
+        assert_eq!(shown_only(&idle, at(6_000)), Some(IdleStep::Wipe));
         // Any key resets it.
         idle.key(at(599));
         assert_eq!(protected(&idle, at(600)), None);

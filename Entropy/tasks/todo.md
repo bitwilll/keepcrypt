@@ -4159,7 +4159,7 @@ carries it, and every commit names a proof that runs at that commit.
   - `Idle` and `Halted` are unit variants. One `wipe()` replaces the whole `Stage`, zeroizes the frame and presents a
     black frame; the idle wipe, a halt and Finish all call it.
   - The current-screen state (id, page, cursor) holds no secret. `App::holds_secrets()` says whether any `Stage`
-    data is held (the idle warning uses it).
+    data is held (the idle warning and the idle wipe use it).
 - **One drawing path.** Screens only build `Screen` models. `ui::render(&Screen)` is the only code that draws.
   `Frame::new` is visible only inside `ui`, and `ui::Painter` holds the only `Frame`, so no other module can draw
   (compiler-enforced). Each present hands the HAL the frame and the model it was drawn from.
@@ -4391,7 +4391,8 @@ carries it, and every commit names a proof that runs at that commit.
   - `Key`: Up, Down, Left, Right, Press, Key1-3.
   - A pure `Debouncer`: raw edges with nanosecond timestamps in, one event per press after 20 ms stable, keeping the
     first edge's timestamp. M4's GPIO driver reuses it, and SimHal runs every scripted press through it.
-  - `Idle`, on `now_ns`: cover at 30 s on Protected screens, warning at 540 s, wipe at 600 s. Any key resets it.
+  - `Idle`, on `now_ns`: cover at 30 s on Protected screens, warning at 540 s while secrets are held, wipe at 600 s
+    while they are held or on a Protected screen (collision-qr holds nothing in the `Stage`). Any key resets it.
 
   Proof: unit tests at 19.999 ms and 20 ms, bounce trains, independent keys and kept timestamps; idle thresholds on
   injected times.
@@ -4400,6 +4401,11 @@ carries it, and every commit names a proof that runs at that commit.
   keep their own timestamps and come out in the order they settled, also when a release arrives before any poll;
   every key debounces; `Idle` steps at 30 s (Protected only), 540 s and 600 s (only while secrets are held), and a
   key resets it.
+  Proof (review fix, commit 8b): the 600 s wipe also comes on a Protected screen with nothing held, so collision-qr
+  (the kept `Wiped`'s seal code, outside the `Stage`) leaves the screen at 10 minutes, as `wipes_clear_the_stage`
+  expects; the warning still needs held secrets (pi-firmware.md). `idle_thresholds` pins Protected with nothing held:
+  none before 30 s, the cover from 30 s to 600 s minus 1 ns, the wipe from 600 s; `cargo test --workspace --locked`:
+  keepcrypt-pi's 56 unit tests pass. With the old `holds_secrets &&` condition restored, the test fails at 600 s.
 
 **6. pi/app drawing (pi-firmware.md:67, :70; swb:84-90, :274-292)**
 - [x] `ui/render.rs`: `Painter` and `render(&Screen)`: clear, the strips, each element through its painter, the footer.
@@ -4632,7 +4638,8 @@ carries it, and every commit names a proof that runs at that commit.
   - Any halt condition (above) → `wipe()` → `halt` with core's fixed text, or the HAL error's.
   - 30 s on a Protected screen → `cover`; the first press only uncovers the same screen and is not passed on.
   - 9 minutes on any screen while `holds_secrets()` → `idle-warning`; a key keeps everything.
-  - 10 minutes → `wipe()` (the kept `Wiped` and the snapshot stay) → `idle-wiped` → Home.
+  - 10 minutes, while `holds_secrets()` or on a Protected screen (collision-qr, whose seal code is the kept
+    `Wiped`'s) → `wipe()` (the kept `Wiped` and the snapshot stay) → `idle-wiped` → Home.
   - Entering a Protected screen from a Public one passes `privacy-gate`.
 
   Proof: unit tests for the gate rule; scenarios `runtime_stop`, `mixed_12_restarts` (its steps 1-7 part at this
@@ -5101,6 +5108,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
 6. CLAUDE.md: rule 1 names `game_random`.
 7. pi, sim, supply-chain: manifests, Cargo.lock (autocfg held), vet exemptions and imports (group 4).
 8. pi/app: the screen model, `hal`, `frame`, `input`, `#![forbid(unsafe_code)]` (group 5).
+   8b. pi/app: the plan review: the idle wipe also clears a Protected screen with nothing held (collision-qr), as
+   group 11's `wipes_clear_the_stage` expects.
 9. pi/app: the renderer and its painters (group 6).
 10. pi/sim: `SimHal`, the PNG writer and placeholder, the marker, the render timing (group 7).
 11. pi/app, pi/sim: the app, steps 1-7, halts, restarts, idle, the driver, the mock checker, and `boot_stops`,
