@@ -10,7 +10,8 @@
 //! and frame copy, taken after each present as a scenario does), and one PNG is encoded (capture
 //! mode only). Every model uses public test text.
 
-use std::fmt;
+mod report;
+
 use std::time::{Duration, Instant};
 
 use keepcrypt_pi::hal::{Display, HalError};
@@ -19,18 +20,10 @@ use keepcrypt_pi::screen::{
 };
 use keepcrypt_pi::ui::{Frame, Painter, caption_cells};
 use keepcrypt_pi_sim::{HwRngStream, SimHal};
+use report::report;
 
 /// Frames per measurement.
 const FRAMES: u32 = 100;
-
-/// The tests' one print site (Q31 (i)): screen names and times, never screen text.
-#[expect(
-    clippy::print_stdout,
-    reason = "pi/sim's one allowed print site in the tests (tasks/todo.md, M3 Q31 (i))"
-)]
-fn report(line: fmt::Arguments<'_>) {
-    println!("{line}");
-}
 
 /// A display that takes every frame and does nothing with it.
 struct Nothing;

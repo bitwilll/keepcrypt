@@ -23,7 +23,8 @@ serde_json = "=1.0.151"
 
 [lints.clippy]
 # A desktop dev tool, so not the pinned block of core, ffi and pi/app. It prints only screen ids,
-# scenario names and counts (rule 5), from one allowed site in the bin and one in the tests.
+# scenario names, counts and render times (rule 5), from one allowed site in the bin and one in the
+# tests (tests/report/mod.rs).
 print_stdout = "deny"
 print_stderr = "deny"
 dbg_macro = "deny"

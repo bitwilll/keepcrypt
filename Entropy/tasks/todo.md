@@ -4191,7 +4191,7 @@ carries it, and every commit names a proof that runs at that commit.
   - `Screen<'a>` borrows session text; it owns no secret copy except those `Zeroizing` buffers.
   - The frame and the QR buffers are wiped after use and on every wipe.
   - Types that hold secret text have no `Debug` or `Clone`.
-  - pi/app prints nothing. pi/sim prints only screen ids, scenario names and counts.
+  - pi/app prints nothing. pi/sim prints only screen ids, scenario names, counts and render times.
   - pi/sim's assertions compare secret text with `assert!` and fixed messages, never `assert_eq!` (as in
     core/tests/ceremony.rs:13-16).
 - **Files** (rule 8).
@@ -4576,6 +4576,10 @@ carries it, and every commit names a proof that runs at that commit.
   readback-entry 2066 (1164), dice 1850 (929), game-snake 1693 (817); a PNG encode about 14 ms (captures only). A full
   scenario of about 1,500 presents takes about 6 s even at the slowest rate, and 20,000 presents 81 s, inside the
   6-minute `test` budget with room for a slower runner: the fallback is not applied.
+  Proof (review fix, commit 10f): timing.rs held the tests' one print site (Q31 (i)), so group 11's count line would
+  have been a second. `report` moves to tests/report/mod.rs, which every printing test includes; timing.rs prints
+  through it, the same lines as before (rerun: slowest present 4190 µs, 83 s for 20,000 presents), and the plan's
+  print-site lines and pi/sim's `[lints]` comment name render times too.
 
 **8. pi/app ceremony steps 1-7, halts, restarts, idle; the scenario driver (pi-firmware.md:75-88; swb:108-164; rules 3, 6)**
 - [ ] `App<H: Hal>` with `start()` (boot), `step()` (one `next_event`, then its handling) and `run()` (`step` in a loop,
@@ -4883,7 +4887,8 @@ carries it, and every commit names a proof that runs at that commit.
   - reads no file: its RAM stick starts empty, so snapshot import and Check a backup can only see a backup written in
     the same live session;
   - it computes no go-ahead code;
-  - the bin's screen-id line and the tests' count line are pi/sim's only print sites (`#[expect]` on each);
+  - the bin's screen-id line and the tests' `report` (tests/report/mod.rs: the count line and the render timings) are
+    pi/sim's only print sites (`#[expect]` on each);
   - this binary is the one group 14 scans.
 
   Proof: a unit test that live mode writes the placeholder for a Protected frame; a short session pasted under Review
@@ -5156,6 +5161,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     10d. pi/sim: the security and recompute reviews: capture mode's placeholder flag comes with the bytes it chose,
     and the capture test compares the bytes written.
     10e. pi/sim: the recompute review: the panel log test covers every field of the owned model copy.
+    10f. pi/sim: the plan review: the tests' one print site moves to tests/report/mod.rs, for the timing lines and
+    group 11's count line alike.
 11. pi/app, pi/sim: the app, steps 1-7, halts, restarts, idle, the driver, the mock checker, and `boot_stops`,
     `runtime_stop` and the steps 1-7 parts of the other scenarios (group 8).
 12. pi/app, pi/sim: steps 8-15, the Home side flows, and `drill_12`, `dice_24_code`, `skip_and_idle`, `check_backup`,
