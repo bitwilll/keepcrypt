@@ -4351,6 +4351,11 @@ carries it, and every commit names a proof that runs at that commit.
   only input-waiting ids with none; element boxes from the 10×20 and 6×10 metrics (wrapping included); a model fits
   only with every box inside 240×216 (one pixel past the bottom, the right or the top edge does not) and a title of
   at most 40 strip characters.
+  Proof (review fix, commit 8c): `every_key_map_is_pinned` pins all 62 ids' labels key by key, so a key map changes
+  only with this table; the test that checks the dice, words and every-key maps is renamed
+  `the_dice_and_words_key_maps_follow_the_buttons_table`, and `KeyMap`'s doc names the one difference from
+  pi-firmware.md's "Buttons" table (no KEY1 "back" on the QR and info pages, for the owner to decide). The
+  recompute review's two surviving mutants (home with `MENU_BACK`, seal-qr with `PAGE`) now fail it.
 - [x] `hal.rs`: the four traits the docs name, plus a clock, bundled as `Hal`.
   - `Display::present(&mut self, frame: &Frame, screen: &Screen<'_>) -> Result<(), HalError>`. The device ignores
     `screen`.
@@ -5110,6 +5115,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
 8. pi/app: the screen model, `hal`, `frame`, `input`, `#![forbid(unsafe_code)]` (group 5).
    8b. pi/app: the plan review: the idle wipe also clears a Protected screen with nothing held (collision-qr), as
    group 11's `wipes_clear_the_stage` expects.
+   8c. pi/app: the recompute review: every key map is pinned, and the docs and a test name no longer say the QR and
+   info pages follow the "Buttons" table.
 9. pi/app: the renderer and its painters (group 6).
 10. pi/sim: `SimHal`, the PNG writer and placeholder, the marker, the render timing (group 7).
 11. pi/app, pi/sim: the app, steps 1-7, halts, restarts, idle, the driver, the mock checker, and `boot_stops`,

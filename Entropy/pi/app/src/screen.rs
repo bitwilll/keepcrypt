@@ -64,8 +64,10 @@ pub enum Kind {
 }
 
 /// Each key's action label on a screen, or none for a dead key (Q32 (a)). The footer names every
-/// labelled key's action; a key without a label does nothing there. The constants are the rows of
-/// pi-firmware.md's "Buttons" table, split where a screen of that kind offers fewer keys.
+/// labelled key's action; a key without a label does nothing there. The constants follow the rows
+/// of pi-firmware.md's "Buttons" table, split where a screen of that kind offers fewer keys, with
+/// one difference: the table's "QR and info pages" row gives KEY1 "back", and `PAGES` and
+/// `CONTINUE` leave it out, which awaits the owner's decision.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KeyMap {
     labels: [Option<&'static str>; Key::ALL.len()],
@@ -791,7 +793,7 @@ mod tests {
     }
 
     #[test]
-    fn the_key_maps_follow_the_buttons_table() {
+    fn the_dice_and_words_key_maps_follow_the_buttons_table() {
         let dice = ScreenId::Dice.key_map();
         assert_eq!(dice.label(Key::Key1), Some("undo"));
         assert_eq!(dice.label(Key::Key3), Some("done"));
@@ -813,6 +815,96 @@ mod tests {
         assert_eq!(below_minimum.keys().label(Key::Key3), None);
         assert_eq!(below_minimum.keys(), dice.without(Key::Key3));
         assert_eq!(below_minimum.keys().label(Key::Key1), Some("undo"));
+    }
+
+    #[test]
+    fn every_key_map_is_pinned() {
+        // Each id's labels in `Key::ALL` order (up, down, left, right, press, KEY1, KEY2, KEY3),
+        // "-" for a dead key, so a change to any key map is a reviewed change of this table. The
+        // QR and info pages offer no KEY1 "back" (see `KeyMap`).
+        let actual: Vec<String> = ScreenId::ALL
+            .into_iter()
+            .map(|id| {
+                let mut row = format!("{}:", id.name());
+                for key in Key::ALL {
+                    row.push(' ');
+                    if let Some(label) = id.key_map().label(key) {
+                        row.push_str(label);
+                    } else {
+                        row.push('-');
+                    }
+                }
+                row
+            })
+            .collect();
+        let pinned = [
+            "boot: - - - - - - - -",
+            "halt: - - - - - - - -",
+            "home: move move - - select - - -",
+            "about: - - - - continue back - -",
+            "length: move move - - select back - -",
+            "wait: - - - - - - - -",
+            "hwrng: move move - - select - - -",
+            "game-snake: steer steer steer steer again leave - -",
+            "dice-only-notice: - - - - continue - - -",
+            "commitment: - - - - continue - - -",
+            "dice: pick pick - - confirm undo - done",
+            "check-prompt: move move - - select - - -",
+            "skip-confirm: move move - - select back - -",
+            "snapshot-date: move move - - select - - -",
+            "seal-image: - - - - continue - prev next",
+            "seal-id: - - - - continue - prev next",
+            "seal-qr: - - - - continue - prev next",
+            "check-actions: move move - - select back - -",
+            "code-entry: cursor cursor cursor cursor type delete - done",
+            "code-wrong: - - - - continue - - -",
+            "check-clear: - - - - continue - - -",
+            "stop-confirm: move move - - select back - -",
+            "collision: - - - - continue - - -",
+            "cannot-check-confirm: move move - - select back - -",
+            "collision-qr: - - - - continue - - -",
+            "privacy-gate: - - - - continue - - -",
+            "device-swap: - - - - continue - - -",
+            "readback-done: - - - - continue - - -",
+            "words-insert: - - - - read-back overview prev next",
+            "words-overview: - - - - read-back overview prev next",
+            "readback-entry: cursor cursor cursor cursor type delete - done",
+            "readback-mismatch: - - - - re-enter insert - -",
+            "wallet: - - - - continue - - -",
+            "backup-offer: move move - - select - - -",
+            "usb-insert: - - - - - back - -",
+            "backup-verified: - - - - continue - - -",
+            "backup-failed: move move - - select - - -",
+            "backup-passphrase: - - - - continue - prev next",
+            "backup-confirm: move move - - select - - -",
+            "backup-confirm-wrong: - - - - continue - - -",
+            "watch-offer: move move - - select - - -",
+            "bip39-ask: move move - - select - - -",
+            "watch-summary: - - - - continue - - -",
+            "register-offer: move move - - select - - -",
+            "bip39-entry: cursor cursor cursor cursor type delete - done",
+            "watch-account-qr: - - - - continue - prev next",
+            "watch-descriptor-qr: - - - - continue - prev next",
+            "register-qr: - - - - continue - - -",
+            "reveal-d-offer: move move - - select - - -",
+            "checklist: - - - - continue - prev next",
+            "power-off: - - - - - - - -",
+            "reveal-d: - - - - continue - - -",
+            "usb-pick: move move - - select back - -",
+            "snapshot-loaded: - - - - continue - - -",
+            "snapshot-failed: - - - - continue - - -",
+            "backup-check-result: move move - - select - - -",
+            "backup-check-recheck-qr: - - - - continue back - -",
+            "backup-check-entry: cursor cursor cursor cursor type delete - done",
+            "blank: - - - - - - - -",
+            "idle-warning: keep keep keep keep keep keep keep keep",
+            "idle-wiped: - - - - continue - - -",
+            "cover: show show show show show show show show",
+        ];
+        assert_eq!(actual.len(), pinned.len());
+        for (row, pinned) in actual.iter().zip(pinned) {
+            assert_eq!(row, pinned);
+        }
     }
 
     #[test]
