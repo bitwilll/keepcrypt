@@ -4161,8 +4161,9 @@ carries it, and every commit names a proof that runs at that commit.
   - The current-screen state (id, page, cursor) holds no secret. `App::holds_secrets()` says whether any `Stage`
     data is held (the idle warning and the idle wipe use it).
 - **One drawing path.** Screens only build `Screen` models. `ui::render(&Screen)` is the only code that draws.
-  `Frame::new` is visible only inside `ui`, and `ui::Painter` holds the only `Frame`, so no other module can draw
-  (compiler-enforced). Each present hands the HAL the frame and the model it was drawn from.
+  `Frame::new` is visible only inside `ui`, so every `Frame` belongs to a `ui::Painter` (outside `ui`'s own tests) and
+  no other module can draw (compiler-enforced). pi/sim makes Painters of its own (the placeholder, its tests), outside
+  the device path. Each present hands the HAL the frame and the model it was drawn from.
 - **The app redraws only after an event changed its state** (a dead key draws nothing). The frame is cleared before
   each render and zeroized after each present.
 - **Layout.** A 12 px top strip (step title, or the TEST REGISTRY and SIMULATOR banners, which take precedence) and a
@@ -5118,6 +5119,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
    8c. pi/app: the recompute review: every key map is pinned, and the docs and a test name no longer say the QR and
    info pages follow the "Buttons" table.
 9. pi/app: the renderer and its painters (group 6).
+   9b. pi/app: the plan review: the docs say every `Frame` belongs to a `Painter`, not that the `Painter` holds the
+   only one (`Painter::new` is public, and pi/sim makes its own).
 10. pi/sim: `SimHal`, the PNG writer and placeholder, the marker, the render timing (group 7).
 11. pi/app, pi/sim: the app, steps 1-7, halts, restarts, idle, the driver, the mock checker, and `boot_stops`,
     `runtime_stop` and the steps 1-7 parts of the other scenarios (group 8).

@@ -3,9 +3,9 @@
 //!
 //! - 240×240 RGB565 values, row by row from the top left, in one boxed buffer. The device sends
 //!   them to the panel; the simulator writes them as PNG files.
-//! - Only `ui` can make a `Frame` (`Frame::new` is `pub(in crate::ui)`), and the renderer's
-//!   `Painter` holds the only one, so no other module can draw: the HAL's `Display` gets a
-//!   `&Frame`, which cannot draw.
+//! - Only `ui` can make a `Frame` (`Frame::new` is `pub(in crate::ui)`), so every frame outside
+//!   `ui`'s own tests belongs to a renderer's `Painter`, and no other module can draw: the HAL's
+//!   `Display` gets a `&Frame`, which cannot draw.
 //! - It is an embedded-graphics `DrawTarget` with `Error = Infallible`: a pixel outside the panel
 //!   is clipped, as the trait asks, and no draw can fail. Draws match their `Result` exhaustively
 //!   (`let Ok(..) = ..`), never with `.ok()`, `let _` or an `_name` binding (rule 3).

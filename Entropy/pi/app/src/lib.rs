@@ -2,7 +2,7 @@
 //!
 //! Everything that ships is here (tasks/todo.md, M3 "One app, two hardware layers"): the screen
 //! model (`screen`), the hardware traits that the device drivers (M4) and the simulator implement
-//! (`hal`), button input and the idle timer (`input`), and the one frame (`ui`). The simulator
+//! (`hal`), button input and the idle timer (`input`), and the frame and its renderer (`ui`). The simulator
 //! (pi/sim) implements `hal`; this crate never depends on it. This file holds the module list and
 //! one macro only.
 

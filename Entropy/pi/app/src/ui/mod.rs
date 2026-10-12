@@ -1,8 +1,9 @@
 //! Drawing (tasks/todo.md, M3 "One drawing path", group 6): the only code that draws.
 //!
-//! - Screens build `screen::Screen` models. `Painter::present` draws one into the one `Frame`,
-//!   hands both to the HAL's `Display` and wipes the frame. Only this module can make a `Frame`,
-//!   and the `Painter` holds the only one, so no other module can draw.
+//! - Screens build `screen::Screen` models. `Painter::present` draws one into its `Frame`, hands
+//!   both to the HAL's `Display` and wipes the frame. Only this module can make a `Frame`, so
+//!   every frame belongs to a `Painter` (outside the painters' own tests) and no other module can
+//!   draw.
 //! - `render` lays a model out: the top strip, each element through its painter, the footer. The
 //!   painters are `text` (body, small and ×2 text), `braille` (cells), `seal` (the 8×8 image),
 //!   `qr` (QR codes, encoded into buffers wiped after each drawing) and the Snake board in

@@ -1,7 +1,7 @@
 //! The renderer (tasks/todo.md, M3 "One drawing path", "Layout", group 6; docs/pi-firmware.md
 //! "Buttons"): one model in, one frame out.
 //!
-//! - `Painter` holds the one `Frame` and the QR buffers. `Painter::present` clears the frame,
+//! - A `Painter` holds a `Frame` and the QR buffers. `Painter::present` clears the frame,
 //!   draws the model, hands the frame and that model to the HAL's `Display`, and wipes the frame,
 //!   whatever the outcome (rule 5).
 //! - The layout: a 12 px top strip, the 240×216 content area, a 12 px footer. The top strip shows
@@ -90,7 +90,7 @@ impl PresentError {
     }
 }
 
-/// The one owner of the frame and the QR buffers: the only code that draws. No `Debug` and no
+/// The owner of a frame and its QR buffers: the only code that draws. No `Debug` and no
 /// `Clone`; both are wiped on drop.
 pub struct Painter {
     frame: Frame,
