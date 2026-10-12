@@ -4546,6 +4546,12 @@ carries it, and every commit names a proof that runs at that commit.
   the throwaway insert is `placeholder(WordsInsert)`'s PNG and the vector insert its frame's, and those two differ.
   The reviews' mutants (the frame written in a throwaway run, the `blank` placeholder) and a flag set false each
   fail it; before, the test compared only the flag and the file length, equal for every 240×240 PNG.
+  Proof (review fix, commit 10e): `each_present_logs_an_owned_copy_of_its_model_and_frame` now gives every copied
+  field more than one value and asserts it: both banners, four faces with mixed dots, blank, lighter and mirror
+  flags, a seal grid with filled and empty cells and its colour, and a QR, a hex and a board element, each matched
+  by kind (`Shown::Qr`, not just `text()`). The recompute review's six surviving mutants of the log copy (mirror,
+  dots, grid, the QR logged as text, colour, banners) and four more (blank, lighter, the hex logged as text, an
+  emptied board) each fail it.
 - [x] `png.rs`: Rgb565 to 8-bit RGB; an IHDR chunk, one IDAT chunk of stored deflate blocks with Adler-32, an IEND
   chunk, and a CRC-32 per chunk. The encoder is deterministic: the same frame always gives the same bytes. The
   placeholder for a Protected frame is a grey frame naming the screen id.
@@ -5149,6 +5155,7 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     read-only mounts.
     10d. pi/sim: the security and recompute reviews: capture mode's placeholder flag comes with the bytes it chose,
     and the capture test compares the bytes written.
+    10e. pi/sim: the recompute review: the panel log test covers every field of the owned model copy.
 11. pi/app, pi/sim: the app, steps 1-7, halts, restarts, idle, the driver, the mock checker, and `boot_stops`,
     `runtime_stop` and the steps 1-7 parts of the other scenarios (group 8).
 12. pi/app, pi/sim: steps 8-15, the Home side flows, and `drill_12`, `dice_24_code`, `skip_and_idle`, `check_backup`,

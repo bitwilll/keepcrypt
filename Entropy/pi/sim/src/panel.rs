@@ -335,6 +335,7 @@ pub fn placeholder(id: ScreenId) -> Pixels {
 
 #[cfg(test)]
 mod tests {
+    use keepcrypt_pi::screen::NUMBERED_PITCH;
     use sha2::{Digest, Sha256};
 
     use super::*;
@@ -361,9 +362,48 @@ mod tests {
     fn each_present_logs_an_owned_copy_of_its_model_and_frame() {
         let mut panel = Panel::new();
         assert_eq!(panel.showing(), None);
-        let grid = [[false; 8]; 8];
+        // Every copied field takes more than one value: both banners, each cell flag, a grid with
+        // filled and empty cells, and every element kind.
+        let registry_banner = Banners {
+            test_registry: true,
+            simulator: false,
+        };
+        let simulator_banner = Banners {
+            test_registry: false,
+            simulator: true,
+        };
+        let mut grid = [[false; 8]; 8];
+        for (r, row) in grid.iter_mut().enumerate() {
+            for (c, cell) in row.iter_mut().enumerate() {
+                *cell = (r + 2 * c) % 3 == 1;
+            }
+        }
+        let mut board = [[Tile::Empty; BOARD_CELLS]; BOARD_CELLS];
+        board[3][4] = Tile::Snake;
+        board[3][5] = Tile::Snake;
+        board[10][11] = Tile::Food;
+        // (dots, blank, lighter, mirror) of four faces: a plain letter, a mirror letter, a blank
+        // face and a lighter face 5.
+        let faces = [
+            (0b00_0001, false, false, false),
+            (0b01_0001, false, false, true),
+            (0b00_0000, true, false, false),
+            (0b01_1101, false, true, false),
+        ];
+        let cells = faces
+            .iter()
+            .map(|&(dots, blank, lighter, mirror)| Cell {
+                dots,
+                blank,
+                lighter,
+                mirror,
+            })
+            .collect();
         let word = Zeroizing::new(String::from("abstract"));
-        let screen = Screen::new(ScreenId::WordsInsert, "Insert 01", NO_BANNERS)
+        let hex =
+            "0001 0203 0405 0607\n0809 0a0b 0c0d 0e0f\n1011 1213 1415 1617\n1819 1a1b 1c1d 1e1f";
+        let payload = "KEEPCRYPT TEST QR";
+        let screen = Screen::new(ScreenId::WordsInsert, "Insert 01", registry_banner)
             .with(Element::protected(
                 (40, 0).into(),
                 Item::Large {
@@ -372,52 +412,100 @@ mod tests {
                 },
             ))
             .with(Element::public((0, 50).into(), Item::Small("0004".into())))
+            .with(Element::protected(
+                (0, 70).into(),
+                Item::Cells {
+                    cells: Zeroizing::new(cells),
+                    pitch: NUMBERED_PITCH,
+                },
+            ))
             .without(Key::Press);
         present(&mut panel, &screen);
-        let seal = Screen::new(ScreenId::SealImage, "Seal", NO_BANNERS).with(Element::public(
-            (24, 0).into(),
-            Item::Seal {
-                grid: &grid,
-                colour_hex: "#0072B2",
-                seal_id: "5E0G7J6X",
-            },
-        ));
+        let seal =
+            Screen::new(ScreenId::SealImage, "Seal", simulator_banner).with(Element::public(
+                (24, 0).into(),
+                Item::Seal {
+                    grid: &grid,
+                    colour_hex: "#0072B2",
+                    seal_id: "5E0G7J6X",
+                },
+            ));
         present(&mut panel, &seal);
-        assert_eq!(panel.showing(), Some(ScreenId::SealImage));
+        let qr = Screen::new(ScreenId::SealQr, "Check", NO_BANNERS)
+            .with(Element::public((12, 0).into(), Item::Qr(payload.into())));
+        present(&mut panel, &qr);
+        let commitment = Screen::new(ScreenId::Commitment, "Commitment", NO_BANNERS)
+            .with(Element::public((0, 0).into(), Item::Hex(hex.into())));
+        present(&mut panel, &commitment);
+        let snake = Screen::new(ScreenId::GameSnake, "Snake", NO_BANNERS)
+            .with(Element::public((12, 0).into(), Item::Board(&board)));
+        present(&mut panel, &snake);
+        assert_eq!(panel.showing(), Some(ScreenId::GameSnake));
         // The log owns its copy: the app's buffers can go.
         drop(screen);
         drop(word);
 
         let log = panel.take();
         assert!(panel.take().is_empty(), "taking the log empties it");
-        assert_eq!(log.len(), 2);
+        assert_eq!(log.len(), 5);
         let insert = &log[0];
         assert_eq!(insert.id, ScreenId::WordsInsert);
         assert_eq!(&insert.title[..], "Insert 01");
+        assert_eq!(insert.banners, registry_banner);
         assert_eq!(
             insert.keys,
             ScreenId::WordsInsert.key_map().without(Key::Press)
         );
-        assert_eq!(insert.elements.len(), 2);
+        assert_eq!(insert.elements.len(), 3);
         assert_eq!(insert.elements[0].class, Class::Protected);
         assert_eq!(insert.elements[0].at, (40, 0));
         assert!(matches!(
             &insert.elements[0].item,
             Shown::Large { text, lighter_from: Some(4) } if &text[..] == "abstract"
         ));
-        assert_eq!(insert.elements[1].item.text(), Some("0004"));
+        assert_eq!(insert.elements[1].class, Class::Public);
+        assert!(matches!(&insert.elements[1].item, Shown::Small(text) if &text[..] == "0004"));
+        assert_eq!(insert.elements[2].class, Class::Protected);
+        assert_eq!(insert.elements[2].at, (0, 70));
+        let Shown::Cells(logged_cells) = &insert.elements[2].item else {
+            panic!("a cells element");
+        };
+        let copied: Vec<(u8, bool, bool, bool)> = logged_cells
+            .iter()
+            .map(|cell| (cell.dots, cell.blank, cell.lighter, cell.mirror))
+            .collect();
+        assert!(copied == faces, "every cell's dots and flags are copied");
         assert!(insert.frame.raw().iter().any(|&p| p != 0));
         assert!(insert.capture.is_none());
-        let Shown::Seal { seal_id, .. } = &log[1].elements[0].item else {
+
+        assert_eq!(log[1].banners, simulator_banner);
+        let Shown::Seal {
+            grid: logged_grid,
+            colour_hex,
+            seal_id,
+        } = &log[1].elements[0].item
+        else {
             panic!("a seal element");
         };
+        assert_eq!(*logged_grid, grid);
+        assert_eq!(&colour_hex[..], "#0072B2");
         assert_eq!(&seal_id[..], "5E0G7J6X");
         assert_eq!(log[1].elements[0].item.text(), None);
         // The frame copy holds the drawn pixels: the grid's corner is in the cells' #333333
-        // outline (RGB565 (6, 13, 6)), and inside the first cell is the #F7F7F7 tile.
+        // outline (RGB565 (6, 13, 6)), and inside the first cell, which is empty, is the #F7F7F7
+        // tile.
         assert_eq!(log[1].frame.at(24, 12), Some(0x31a6));
         assert_eq!(log[1].frame.at(30, 18), Some(0xf7be));
         assert_eq!(log[1].frame.at(240, 0), None);
+
+        assert_eq!(log[2].banners, NO_BANNERS);
+        assert_eq!(log[2].elements[0].at, (12, 0));
+        assert!(matches!(&log[2].elements[0].item, Shown::Qr(text) if &text[..] == payload));
+        assert!(matches!(&log[3].elements[0].item, Shown::Hex(text) if &text[..] == hex));
+        let Shown::Board(tiles) = &log[4].elements[0].item else {
+            panic!("a board element");
+        };
+        assert_eq!(**tiles, board);
     }
 
     #[test]
