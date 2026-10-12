@@ -4531,14 +4531,21 @@ carries it, and every commit names a proof that runs at that commit.
   `BackupFile` (dice-only `coldcard-50`): write and sync faults and a read-only stick leave no file, a write over an
   existing name is `Exists`, reading back or removing another file is `NotWritten` and leaves it, a corrupt read-back
   fails `verify_backup`, a pulled stick stays out, and the stick's log shows every read read-only.
-  Proof (review fix, commit 10c): that last point is the simulator's construction, not evidence: `hal::Usb` gives
-  the app no mount to choose, and the stick logs `Mount::ReadOnly` for every list and read whatever its mount. The
-  read-only half of rule 8 holds by the HAL's shape here; the device's read-only mounts stay with M4 ("Deferred":
-  real mount ... read-only mounts). The stick's docs, a test name and tests/hal.rs's comment say so.
   `marker_is_the_documented_string` passes, and the marker is in the rlib and in tests/hal.rs's binary. `next_event`
   on a transient screen or before any present, a Protected element on a Public id and a model that does not fit each
   fail the test. An `unsafe` block appended to lib.rs and to main.rs in turn fails `cargo check` at that file's
   `#![forbid(unsafe_code)]`. The log holds the presents since the last `SimHal::take_presents`.
+  Proof (review fix, commit 10c): the stick's log showing every read read-only is the simulator's construction, not
+  evidence: `hal::Usb` gives the app no mount to choose, and the stick logs `Mount::ReadOnly` for every list and read
+  whatever its mount. The read-only half of rule 8 holds by the HAL's shape here; the device's read-only mounts stay
+  with M4 ("Deferred": real mount ... read-only mounts). The stick's docs, a test name and tests/hal.rs's comment say
+  so.
+  Proof (review fix, commit 10d): capture mode's placeholder flag comes from the same match arm as the bytes it
+  chose, `Captured` keeps those bytes (so it has no `Debug` or `Clone`), and the file is written from them. The
+  capture test in tests/hal.rs compares them, since pi/sim reads no file back: about is its frame's PNG in both runs,
+  the throwaway insert is `placeholder(WordsInsert)`'s PNG and the vector insert its frame's, and those two differ.
+  The reviews' mutants (the frame written in a throwaway run, the `blank` placeholder) and a flag set false each
+  fail it; before, the test compared only the flag and the file length, equal for every 240×240 PNG.
 - [x] `png.rs`: Rgb565 to 8-bit RGB; an IHDR chunk, one IDAT chunk of stored deflate blocks with Adler-32, an IEND
   chunk, and a CRC-32 per chunk. The encoder is deterministic: the same frame always gives the same bytes. The
   placeholder for a Protected frame is a grey frame naming the screen id.
@@ -5140,6 +5147,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     implementation's duty (a `Written` grants nothing by itself), and the stick clears it at every write attempt.
     10c. pi/sim: the security review: the stick logs reads read-only by construction, so its log is no evidence of
     read-only mounts.
+    10d. pi/sim: the security and recompute reviews: capture mode's placeholder flag comes with the bytes it chose,
+    and the capture test compares the bytes written.
 11. pi/app, pi/sim: the app, steps 1-7, halts, restarts, idle, the driver, the mock checker, and `boot_stops`,
     `runtime_stop` and the steps 1-7 parts of the other scenarios (group 8).
 12. pi/app, pi/sim: steps 8-15, the Home side flows, and `drill_12`, `dice_24_code`, `skip_and_idle`, `check_backup`,

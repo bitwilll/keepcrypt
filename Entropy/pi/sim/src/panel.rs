@@ -100,13 +100,14 @@ pub struct Logged {
     pub item: Shown,
 }
 
-/// The PNG file a present was captured to.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// The PNG file a present was captured to. No `Debug` or `Clone`: its bytes can show the words.
 pub struct Captured {
     /// The file name in the capture directory: `NNN-<screen-id>.png`.
     pub file: String,
     /// True when the file holds `placeholder` instead of the frame.
     pub placeholder: bool,
+    /// The bytes written to `file`, chosen with `placeholder`.
+    pub png: Zeroizing<Vec<u8>>,
 }
 
 /// One present as the log keeps it: the model's id, title, banners, offered keys and elements, the
@@ -142,21 +143,23 @@ impl Capture {
     fn write(&mut self, id: ScreenId, frame: &Pixels) -> Captured {
         self.written += 1;
         let file = format!("{:03}-{}.png", self.written, id.name());
-        let redact =
-            id.class() == Class::Protected && self.protected == ProtectedFrames::Placeholder;
-        let png = if redact {
-            placeholder(id).png()
-        } else {
-            frame.png()
+        // The flag comes from the same arm as the bytes, so it always says what the file holds.
+        let (png, redacted) = match (id.class(), self.protected) {
+            (Class::Protected, ProtectedFrames::Placeholder) => (placeholder(id).png(), true),
+            (Class::Protected, ProtectedFrames::AsDrawn) | (Class::Public, _) => {
+                (frame.png(), false)
+            }
         };
-        let target = self.dir.join(&file);
-        if let Err(error) = fs::write(&target, &png[..]) {
+        let captured = Captured {
+            file,
+            placeholder: redacted,
+            png,
+        };
+        let target = self.dir.join(&captured.file);
+        if let Err(error) = fs::write(&target, &captured.png[..]) {
             panic!("cannot write {}: {error}", target.display());
         }
-        Captured {
-            file,
-            placeholder: redact,
-        }
+        captured
     }
 }
 
@@ -404,7 +407,7 @@ mod tests {
         ));
         assert_eq!(insert.elements[1].item.text(), Some("0004"));
         assert!(insert.frame.raw().iter().any(|&p| p != 0));
-        assert_eq!(insert.capture, None);
+        assert!(insert.capture.is_none());
         let Shown::Seal { seal_id, .. } = &log[1].elements[0].item else {
             panic!("a seal element");
         };

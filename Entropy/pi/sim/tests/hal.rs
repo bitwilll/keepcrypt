@@ -16,7 +16,9 @@ use keepcrypt_core::{
 use keepcrypt_pi::hal::{FileName, HalError, HwRng, Usb, Written};
 use keepcrypt_pi::screen::{Banners, Element, Item, Screen, ScreenId};
 use keepcrypt_pi::ui::Painter;
-use keepcrypt_pi_sim::{Access, Captured, Fault, HwRngStream, Mount, Op, ProtectedFrames, SimHal};
+use keepcrypt_pi_sim::{
+    Access, Fault, HwRngStream, Mount, Op, ProtectedFrames, SimHal, placeholder,
+};
 use serde_json::Value;
 
 /// The boot test's samples: 16 blocks.
@@ -311,26 +313,54 @@ fn capture_mode_writes_one_png_per_present_and_protected_frames_as_placeholders(
         let mut painter = Painter::new();
         painter.present(&mut hal, &about).expect("draws");
         painter.present(&mut hal, &insert).expect("draws");
-        let captured: Vec<Option<Captured>> =
-            hal.take_presents().into_iter().map(|p| p.capture).collect();
-        let placeholder = protected == ProtectedFrames::Placeholder;
-        assert_eq!(
-            captured,
-            [
-                Some(Captured {
-                    file: "001-about.png".into(),
-                    placeholder: false
-                }),
-                Some(Captured {
-                    file: "002-words-insert.png".into(),
-                    placeholder
-                }),
-            ]
+        let presents = hal.take_presents();
+        let [about_shown, insert_shown] = &presents[..] else {
+            panic!("{folder}: two presents");
+        };
+        let (Some(about_file), Some(insert_file)) = (&about_shown.capture, &insert_shown.capture)
+        else {
+            panic!("{folder}: both presents captured");
+        };
+        assert_eq!(about_file.file, "001-about.png");
+        assert_eq!(insert_file.file, "002-words-insert.png");
+        // The bytes each file got (the simulator reads no file back, so `Captured` keeps what it
+        // handed to the write). A Public frame is written as drawn; the Protected one is the
+        // placeholder in a throwaway run and as drawn in a vector run, never the other.
+        assert!(!about_file.placeholder);
+        assert!(
+            about_file.png[..] == about_shown.frame.png()[..],
+            "{folder}: about as drawn"
         );
-        // Every frame and placeholder is a 240 × 240 stored PNG of the same length.
-        for file in ["001-about.png", "002-words-insert.png"] {
-            let len = fs::metadata(dir.join(file)).expect("written").len();
-            assert_eq!(len, 173_118, "{folder}/{file}");
+        let drawn = insert_shown.frame.png();
+        let grey = placeholder(ScreenId::WordsInsert).png();
+        assert!(
+            drawn[..] != grey[..],
+            "the drawn insert is not the placeholder"
+        );
+        match protected {
+            ProtectedFrames::Placeholder => {
+                assert!(insert_file.placeholder);
+                assert!(
+                    insert_file.png[..] == grey[..],
+                    "throwaway: the placeholder"
+                );
+            }
+            ProtectedFrames::AsDrawn => {
+                assert!(!insert_file.placeholder);
+                assert!(
+                    insert_file.png[..] == drawn[..],
+                    "vector: the insert as drawn"
+                );
+            }
+        }
+        // Every frame and placeholder is a 240 × 240 stored PNG of the same length, and each file
+        // holds that many bytes.
+        for captured in [about_file, insert_file] {
+            assert_eq!(captured.png.len(), 173_118, "{folder}/{}", captured.file);
+            let len = fs::metadata(dir.join(&captured.file))
+                .expect("written")
+                .len();
+            assert_eq!(len, 173_118, "{folder}/{}", captured.file);
         }
     }
 }
