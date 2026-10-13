@@ -4859,6 +4859,13 @@ carries it, and every commit names a proof that runs at that commit.
   - Step 14 (Mixed only): `reveal-d-offer` ("D plus the rolls recreates the seed"; "type each value into verify.py
     only after its prompt appears") → privacy gate → `reveal-d` (16 groups of 4).
   - Step 15: `checklist` (swb:280, :282) → `wipe()` → `power-off`, which accepts no key.
+
+  Proof (review fix, commit 12h): the 100-character cap (Q32 (c)) is a model gate alone (core refuses only an empty
+  passphrase), and it also keeps `Steps::typed` (sized for 100) from reallocating and leaving a copy behind, yet no
+  test pinned it: a mutant raising it to 150 passed both configurations.
+  `the_bip39_passphrase_stops_at_100_characters_in_its_own_buffer`: with 99 characters typed, type is offered; the
+  100th is taken with the buffer's capacity unchanged; then type is offered no more and a 101st press draws nothing.
+  It passes, and fails with that mutant in a scratch copy.
 - [x] Load registry snapshot:
   - `usb-insert` → `usb-pick` (when there is more than one `.kcr`) → `wait` → `verify_snapshot`;
   - then `snapshot-loaded` (number, date, entries) or `snapshot-failed` with core's text. In release builds that is
@@ -5388,6 +5395,7 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     12f. pi/app, pi/sim: the plan review: a checked backup's last insert labels Press "done", not "read-back".
     12g. pi/app: the plan review: a refused backup passphrase puts the grid cursor back on the first symbol, and the
     docs say where an entry grid's cursor may rest.
+    12h. pi/app: the security review: a unit test pins the BIP39 passphrase's 100-character cap in its own buffer.
 13. pi/app, pi/sim: Snake; `mixed_12_restarts` in full, the verify.py tie, `every_screen_is_expected`,
     `drill_12_repeats` and `capture_set` (groups 10, 11).
 14. pi/sim: the interactive bin (group 12).

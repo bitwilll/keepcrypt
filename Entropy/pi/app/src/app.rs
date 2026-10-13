@@ -1478,6 +1478,52 @@ mod tests {
         );
     }
 
+    #[test]
+    fn the_bip39_passphrase_stops_at_100_characters_in_its_own_buffer() {
+        let mut app = booted();
+        // A dice-only ceremony, every insert read back from its own faces, so step 12 draws.
+        let mut ready = sealed(None).skip_check();
+        let typed: Vec<(u8, String)> = ready
+            .braille()
+            .iter()
+            .map(|insert| (insert.position(), insert.word().chars().take(4).collect()))
+            .collect();
+        for (position, letters) in typed {
+            assert!(matches!(
+                ready.check_readback(position, &letters),
+                Ok(keepcrypt_core::ReadbackResult::Match)
+            ));
+        }
+        let mut steps = Steps::new();
+        let capacity = steps.typed.capacity();
+        steps.typed.push_str(&"a".repeat(MAX_PASSPHRASE - 1));
+        app.held.stage = Stage::Ready {
+            session: ready,
+            steps,
+        };
+        // The cursor on '~', the ASCII grid's last symbol.
+        let mut view = View::new(ScreenId::Bip39Entry, Note::None);
+        view.cursor = 94;
+        drawn(&mut app, view);
+        assert_eq!(app.hal.last().keys.label(Key::Press), Some("type"));
+        // The 100th character is taken, in the buffer sized for it; then type is offered no more.
+        play(&mut app, &[Key::Press]);
+        let full = |app: &App<Fake>| match &app.held.stage {
+            Stage::Ready { steps, .. } => {
+                steps.typed.len() == MAX_PASSPHRASE && steps.typed.capacity() == capacity
+            }
+            _ => false,
+        };
+        assert!(full(&app));
+        assert_eq!(app.hal.last().keys.label(Key::Press), None);
+        assert_eq!(app.hal.last().keys.label(Key::Key3), Some("done"));
+        // A 101st press is a dead key: nothing changes and nothing is drawn.
+        let presents = app.hal.shown.len();
+        play(&mut app, &[Key::Press]);
+        assert_eq!(app.hal.shown.len(), presents);
+        assert!(full(&app));
+    }
+
     /// Draws the current screen on the fake display, which checks that the model fits and keeps
     /// every Protected element on a Protected screen.
     fn drawn(app: &mut App<Fake>, view: View) {
