@@ -5203,6 +5203,11 @@ carries it, and every commit names a proof that runs at that commit.
   capture), to target/tmp/pi-sim-captures/registry/: 1.9 GB in 221 s on this Mac. The panel's capture mode writes
   them, numbered on across power cycles; `Scenario::protected` makes `runtime_stop`'s and `mixed_12_restarts`'
   Protected frames placeholders; `mixed_12_restarts` holds the specimen's layout to the app's reveal-d.
+  Proof (review fix, commit 13g): nothing checked the numbering across power cycles: with a power cycle numbering from
+  0 again, earlier PNG files were overwritten and `capture_set` still passed, its index naming files that show other
+  screens. It now checks, per scenario, that every present's file name is its own and that the folder holds those
+  files and nothing else. In a scratch copy (release configuration) that mutant fails it at `boot_stops` (3 file names
+  for 6 presents), and unmutated it passes in 183 s with 9,625 PNG files.
 
   Proof for this group: both configurations' test output, with per-scenario step, screen and dead-key counts; the
   capture set and index under Review.
@@ -5607,6 +5612,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     13e. pi/app: the recompute review: Snake meets each of the four walls, and a second steer before a step cannot
     turn into the neck.
     13f. pi/sim: the security review: verify.py output that is not UTF-8 fails the tie's fixed message, never printed.
+    13g. pi/sim: the recompute review: `capture_set` checks that each present has a file of its own, and the folder
+    nothing else.
 14. pi/sim: the interactive bin (group 12).
 15. scripts, core: the Shell category, the hash ban with pool.rs's `BTreeSet`, the pi/app forbid lines, the simulator
     marker, Q31 (h)'s routes, and fixtures (group 13).

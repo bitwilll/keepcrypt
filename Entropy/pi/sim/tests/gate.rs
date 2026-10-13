@@ -2340,6 +2340,30 @@ fn capture_set() {
             counts.presents,
             "{name}: one file a present"
         );
+        // Numbered on across power cycles: every present has a file of its own, and the folder
+        // holds those files and nothing else, so no index row names a file another present
+        // overwrote.
+        let files: BTreeSet<String> = counts
+            .shots
+            .iter()
+            .filter_map(|shot| shot.file.as_ref().map(|(file, _)| file.clone()))
+            .collect();
+        assert_eq!(
+            files.len(),
+            counts.presents,
+            "{name}: a file name a present"
+        );
+        let on_disk: BTreeSet<String> = fs::read_dir(root.join(name))
+            .expect("the scenario's folder")
+            .map(|entry| {
+                let entry = entry.expect("an entry");
+                entry.file_name().into_string().expect("a UTF-8 name")
+            })
+            .collect();
+        assert_eq!(
+            on_disk, files,
+            "{name}: the folder holds the presents' files alone"
+        );
         captures
             .rows
             .extend(counts.shots.into_iter().map(|shot| (name, shot)));
