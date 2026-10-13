@@ -1417,6 +1417,37 @@ mod tests {
     }
 
     #[test]
+    fn back_is_offered_on_the_backup_passphrase_grid_empty_at_word_8_and_after_a_refusal() {
+        // KEY2 "back" is always offered there: on an empty entry, on the 8th word, and after a
+        // wrong passphrase, whose note stays while the next one is typed.
+        let mut app = booted();
+        let refused = || Note::Refused(Refusal::Core(CoreError::WrongPassphrase));
+        for (entries, note) in [
+            ("", Note::None),
+            ("aban aban aban aban aban aban aban ab", Note::None),
+            ("", refused()),
+            ("ab", refused()),
+        ] {
+            let mut typed = Zeroizing::new(String::with_capacity(crate::grid::ENTRIES_LEN));
+            typed.push_str(entries);
+            app.held.stage = Stage::BackupCheck {
+                file: Zeroizing::new(vec![b'-'; 64]),
+                typed,
+            };
+            drawn(&mut app, View::new(ScreenId::BackupCheckEntry, note));
+            assert_eq!(
+                app.hal.last().keys.label(Key::Key2),
+                Some("back"),
+                "{entries:?}"
+            );
+        }
+        // KEY2 after the refusal: home, the backup dropped.
+        play(&mut app, &[Key::Key2]);
+        assert_eq!(app.hal.last().id, ScreenId::Home);
+        assert!(!app.holds_secrets());
+    }
+
+    #[test]
     fn back_on_either_grid_keeps_the_kept_wiped_and_its_99_roll_restart() {
         // A collision's `Wiped` is kept until a check passes or the user skips (Q26), so that a
         // timeout does not lower the minimum. The restart's check, on the code grid: KEY2.

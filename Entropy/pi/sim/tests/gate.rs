@@ -214,6 +214,14 @@ fn latest_shows(what: &'static str, text: String) -> Step {
     Assert(what, Box::new(move |seen| shows(seen.latest, &text)))
 }
 
+/// An assertion that the latest present offers KEY2 "back" (the owner's decision of 2026-10-13).
+fn offers_back(what: &'static str) -> Step {
+    Assert(
+        what,
+        Box::new(|seen| seen.latest.keys.label(Key::Key2) == Some("back")),
+    )
+}
+
 /// The halt after a black frame, naming `stop` exactly, with nothing held. (No element of the halt
 /// is Protected: the panel fails a Protected element on any Public screen.)
 fn halted(stop: String) -> Vec<Step> {
@@ -1796,10 +1804,11 @@ fn wipes_clear_the_stage() -> Scenario {
 /// Home's About (Q33 (i)) and "Check a backup" (Q32 (b), Q33 (l)): KEY2 on the entry returns Home,
 /// the backup read dropped and the stick as it was; an unrecognised entry is refused with core's
 /// text and the screen's own instruction under it, and a wrong passphrase with core's text, the
-/// entry emptied and the backup kept; abandon-12's passphrase, typed by first fours, opens it to
-/// backup.json's fingerprint; with a snapshot loaded (registry configuration), its seal's
-/// registration count as of the snapshot's date; the re-check QR and the words on request; a USB
-/// fault, and a backup over 8 KiB, named on usb-pick; zoo-24's words, its seal never registered.
+/// entry emptied, the backup kept and KEY2 still offered; abandon-12's passphrase, typed by first
+/// fours, opens it to backup.json's fingerprint; with a snapshot loaded (registry configuration),
+/// its seal's registration count as of the snapshot's date; the re-check QR and the words on
+/// request; a USB fault, and a backup over 8 KiB, named on usb-pick; zoo-24's words, its seal never
+/// registered.
 fn check_backup(config: Config) -> Scenario {
     let key_state = match config {
         Config::Release => "Registry key: none pinned in this build",
@@ -1880,6 +1889,7 @@ fn check_backup(config: Config) -> Scenario {
                 Expect(ScreenId::PrivacyGate),
                 key(Key::Press),
                 Expect(ScreenId::BackupCheckEntry),
+                offers_back("KEY2 back on an empty entry"),
                 Type(String::from("a")),
                 key(Key::Key2),
                 Expect(ScreenId::Home),
@@ -1938,6 +1948,7 @@ fn check_backup(config: Config) -> Scenario {
                             && seen.app.holds_secrets()
                     }),
                 ),
+                offers_back("KEY2 back after a wrong passphrase"),
             ],
             entries(&first_fours(&abandon_passphrase)),
             vec![

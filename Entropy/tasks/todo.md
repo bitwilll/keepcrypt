@@ -5532,6 +5532,15 @@ amended; rules 5, 6)**
   wipe (two ticks) give idle-wiped, nothing held, and the next session needs 99 rolls; KEY2 on backup-check-entry
   then gives home with the `Wiped` still kept. Each of the two mutants fails it (`cargo test -p keepcrypt-pi
   --locked`: 112 passed on the fix).
+  Proof (review fix, commit 19d): KEY2 was checked on backup-check-entry only with letters typed and no refusal. In
+  a scratch copy, hiding it after a refusal (the note stays while the next entry is typed, so the entry's only exits
+  would again be 8 entries or the idle wipe), on an empty entry, or on the 8th word passed every test.
+  `back_is_offered_on_the_backup_passphrase_grid_empty_at_word_8_and_after_a_refusal` draws the entry empty, at word
+  8, and after a wrong passphrase both empty and with letters typed, finds KEY2 "back" on each, and KEY2 after the
+  refusal gives home with nothing held. `check_backup` (both configurations) asserts KEY2 "back" on the empty entry
+  before "a" is typed and on the emptied entry after the wrong passphrase. Each mutant fails the unit test; the
+  first fails `check_backup` at "KEY2 back after a wrong passphrase" (release step 75), the second at "KEY2 back on
+  an empty entry" (step 23).
 
 **16. The simulator's strip (a lead decision between Q30 (h) and Q33 (j); the strip's part of group 12's open item)**
 - [x] `ui/render.rs`: in a simulator build the top strip reads "SIMULATOR · NOT FOR REAL FUNDS" when the simulator
@@ -5639,7 +5648,8 @@ amended; rules 5, 6)**
 - [ ] **KEY2 "back"** (the owner's decision of 2026-10-13; Q32 (a) as amended):
   - from code-entry to check-actions with the same check and nonce and the typed code cleared, after which Match
     found still reports the collision and the restart needs 99 rolls;
-  - from backup-check-entry to home with nothing held, and the file left on the stick;
+  - from backup-check-entry to home with nothing held, and the file left on the stick, KEY2 offered there on an
+    empty entry, on the 8th word and after a refusal;
   - on either grid, a kept `Wiped` stays kept (Q26), so an idle wipe after KEY2 still leaves a 99-roll restart;
   - no KEY2 on readback-entry or bip39-entry, and every footer within 240 px.
 
@@ -5872,6 +5882,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     19b. tasks/todo.md: the plan review: group 15 records code-wrong's new text, which names KEY2's way back.
     19c. pi/app: the security review: KEY2 on either back grid keeps a kept `Wiped`, so an idle wipe after it still
     restarts at 99 rolls.
+    19d. pi/app, pi/sim: the recompute review: KEY2 "back" is offered on backup-check-entry when empty, on the 8th
+    word and after a refused passphrase.
 20. pi/app, pi/sim: the simulator's strip reads "SIMULATOR · NOT FOR REAL FUNDS" alone and "SIMULATOR" beside "TEST
     REGISTRY" (group 16; a lead decision).
     20b. tasks/todo.md: the plan review: group 12's commit-14 proof points at commit 20 for the strip's wording, not
