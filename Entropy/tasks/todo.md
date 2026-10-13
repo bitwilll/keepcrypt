@@ -4691,6 +4691,14 @@ carries it, and every commit names a proof that runs at that commit.
   - Skip appears only in `Sealed`;
   - `reveal(Snapshot)` cannot be reached before `snapshot-date`'s Yes;
   - the check URL is identical before and after a Retry, and after No.
+  Also before this box is ticked (the recompute review of commits 11-12, 11f): nothing yet checks how the restarts
+  are wired. Each of these mutants passes both configurations, so commit 13's scenarios add the step that fails it:
+  - Cannot check in a first session discards as a collision: a Cannot check in a first 12-word session must show
+    "0 / 50";
+  - either restart forces 12 words: a 24-word Cannot check in a first session must show "0 / 99", and a 24-word
+    restart after a collision must reach a 24-word seed (on `coldcard-99`, Seal ID RXDANDFR, not 9FHYMCQA);
+  - a later collision keeps the older kept `Wiped`: a second collision's `collision-qr` must carry the newer seal's
+    report.
 - [ ] Halts, idle, cover and the privacy gate:
   - Any halt condition (above) → `wipe()` → `halt` with core's fixed text, or the HAL error's.
   - 30 s on a Protected screen → `cover`; the first press only uncovers the same screen and is not passed on.
@@ -5316,6 +5324,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     unticked until Snake and C's check land.
     11e. pi/sim: the security and recompute reviews: the scenarios fail on a secret's text in any Public element, and
     on a secret item marked Public on a Protected screen.
+    11f. tasks/todo.md: the recompute review: the step 7 item names the restart checks commit 13's scenarios add
+    before it is ticked.
 12. pi/app, pi/sim: steps 8-15, the Home side flows, and `drill_12`, `dice_24_code`, `skip_and_idle`, `check_backup`,
     `wipes_clear_the_stage` (group 9).
 13. pi/app, pi/sim: Snake; `mixed_12_restarts` in full, the verify.py tie, `every_screen_is_expected`,
