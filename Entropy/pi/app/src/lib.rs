@@ -4,9 +4,9 @@
 //! model (`screen`), the hardware traits that the device drivers (M4) and the simulator implement
 //! (`hal`), button input and the idle timer (`input`), the frame and its renderer (`ui`), and the
 //! app (`App`): the ceremony over core's typestate (`app`), the screens' models (`screens`), the
-//! entry grids (`grid`) and the extras it forwards to the pool (`extras`). The simulator (pi/sim)
-//! implements `hal`; this crate never depends on it. This file holds the module list and one
-//! macro only.
+//! entry grids (`grid`), the extras it forwards to the pool (`extras`) and the waiting-screen game
+//! (`games`). The simulator (pi/sim) implements `hal`; this crate never depends on it. This file
+//! holds the module list and one macro only.
 
 #![forbid(unsafe_code)]
 
@@ -35,6 +35,7 @@ macro_rules! listed_enum {
 
 mod app;
 pub mod extras;
+mod games;
 mod grid;
 pub mod hal;
 pub mod input;

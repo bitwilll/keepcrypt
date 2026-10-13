@@ -27,8 +27,8 @@ use crate::extras::StageKind;
 use crate::grid::{CODE_LEN, Grid, PAGE_ROWS};
 use crate::input::Key;
 use crate::screen::{
-    BODY_FONT, Banners, Class, Element, Item, LARGE_SCALE, QR_SIDE, SEAL_SIDE, Screen, ScreenId,
-    Str, advance, px,
+    BOARD_CELL_PX, BOARD_CELLS, BODY_FONT, Banners, Class, Element, Item, LARGE_SCALE, QR_SIDE,
+    SEAL_SIDE, Screen, ScreenId, Str, advance, px,
 };
 use crate::ui::{SIDE, caption_cells, hex_groups};
 
@@ -90,6 +90,8 @@ pub enum Choice {
     About,
     Words12,
     Words24,
+    /// Step 4 before the quota: Snake.
+    Play,
     /// Step 4's Continue: the commitment.
     Continue,
     CheckNow,
@@ -150,6 +152,7 @@ impl Choice {
             Choice::About => "About",
             Choice::Words12 => "12 words",
             Choice::Words24 => "24 words",
+            Choice::Play => "Play while you wait",
             Choice::Continue => "Continue",
             Choice::CheckNow => "Check now (recommended)",
             Choice::Skip => "Skip",
@@ -192,10 +195,13 @@ pub fn choices(id: ScreenId, held: &Held) -> &'static [Choice] {
             Choice::About,
         ],
         (ScreenId::Length, _) => &[Choice::Words12, Choice::Words24],
-        (ScreenId::Hwrng, Stage::Collecting(session))
-            if continue_offered(session.credited_bits(), session.required_bits()) =>
-        {
-            &[Choice::Continue]
+        // Snake until the quota is met, then Continue, which closes it.
+        (ScreenId::Hwrng, Stage::Collecting(session)) => {
+            if continue_offered(session.credited_bits(), session.required_bits()) {
+                &[Choice::Continue]
+            } else {
+                &[Choice::Play]
+            }
         }
         (ScreenId::CheckPrompt, _) if skip_offered(kind) => &[Choice::CheckNow, Choice::Skip],
         (ScreenId::SkipConfirm, _) if skip_offered(kind) => &[Choice::SkipCheck],
@@ -602,6 +608,30 @@ pub fn model<'a>(held: &'a Held, view: &'a View) -> Result<Screen<'a>, Stop> {
                 .menu(choices(ScreenId::Hwrng, held), view.cursor)
                 .done()
         }
+        (ScreenId::GameSnake, Stage::Collecting(_)) => {
+            let Note::Game(snake) = &view.note else {
+                return Err(OUT_OF_ORDER);
+            };
+            // The board fills the content area: the round's state is the title.
+            let over = snake.over();
+            let title = if over {
+                "Round over · Press to play again"
+            } else {
+                "Snake"
+            };
+            page(title)
+                .centred(
+                    px(BOARD_CELLS, BOARD_CELL_PX),
+                    Class::Public,
+                    Item::Board(snake.board()),
+                )
+                .offer(Key::Up, !over)
+                .offer(Key::Down, !over)
+                .offer(Key::Left, !over)
+                .offer(Key::Right, !over)
+                .offer(Key::Press, over)
+                .done()
+        }
         (ScreenId::DiceOnlyNotice, Stage::Collecting(_)) => {
             page("Dice only").text("Dice only").small(DICE_ONLY).done()
         }
@@ -997,6 +1027,7 @@ mod tests {
             Choice::About,
             Choice::Words12,
             Choice::Words24,
+            Choice::Play,
             Choice::Continue,
             Choice::CheckNow,
             Choice::Skip,

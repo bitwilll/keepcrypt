@@ -8,7 +8,8 @@
 //! - `Mount::ReadOnly` is a stick that mounts only read-only (a write-protected one): a write is
 //!   then `ReadOnly`.
 //! - Armed faults (`Fault`): a write that fails (no file is left), a sync that fails (the file is
-//!   removed again), a corrupt read-back (one byte flipped) and the stick pulled out mid-call.
+//!   removed again), a corrupt read-back (one byte flipped), a removal that fails (the file stays)
+//!   and the stick pulled out mid-call.
 //! - Every call that reaches an inserted stick is logged with the mount it ran under, so a
 //!   scenario can show which `.age` and `.kcr` files the app read and that it only created new
 //!   `.age` files (rule 8). Reads are logged read-only by this simulator's construction:
@@ -201,7 +202,7 @@ impl Stick {
         Ok(bytes)
     }
 
-    /// Removes the file just written, and nothing else.
+    /// Removes the file just written, and nothing else; when a `Remove` fault is armed, it stays.
     pub(crate) fn remove_written(
         &mut self,
         armed: &mut Armed,
@@ -211,6 +212,9 @@ impl Stick {
         self.reach(armed, Mount::ReadWrite, Op::RemoveWritten(name.to_owned()))?;
         if self.written.as_deref() != Some(name) {
             return Err(HalError::NotWritten);
+        }
+        if armed.take(Fault::Remove) {
+            return Err(HalError::Remove);
         }
         self.written = None;
         match self.files.remove(name) {
@@ -431,6 +435,23 @@ mod tests {
         assert_eq!(stick.file(BACKUP), Some(&b"abc"[..]));
         let clean = stick.read_written(&mut armed, &written, 64).expect("read");
         assert_eq!(&clean[..], b"abc");
+    }
+
+    #[test]
+    fn a_failed_removal_leaves_the_file_just_written_once() {
+        let (mut stick, mut armed) = inserted();
+        let written = stick.write(&mut armed, BACKUP, b"abc").expect("written");
+        armed.arm(Fault::Remove);
+        assert_eq!(
+            stick.remove_written(&mut armed, written),
+            Err(HalError::Remove)
+        );
+        assert_eq!(stick.names(), [BACKUP]);
+        assert_eq!(
+            stick.remove_written(&mut armed, Written::new(name(BACKUP))),
+            Ok(())
+        );
+        assert!(stick.names().is_empty());
     }
 
     #[test]

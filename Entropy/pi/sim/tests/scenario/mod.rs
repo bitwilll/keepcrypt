@@ -26,9 +26,13 @@
 //!   payload or of hex. A Public text may not equal one, nor contain one longer than any list
 //!   word; a shorter one is matched only whole, since the screen copy is made of list words too,
 //!   and a random seed's words would turn up inside it by chance.
+//! - On request a run keeps each present's frame digest (`Keep::Digests`, for `drill_12_repeats`)
+//!   or writes it as a PNG file (`Keep::Captures`, for `capture_set`), numbered on across power
+//!   cycles, Protected frames as the scenario says (`Scenario::protected`).
 //! - Nothing here prints screen text: `report` gets the scenario's name and counts.
 
 use std::collections::{BTreeMap, VecDeque};
+use std::path::PathBuf;
 
 use keepcrypt_core::registry_key_is_test;
 use keepcrypt_pi::App;
@@ -38,7 +42,7 @@ use keepcrypt_pi::screen::{
     Banners, Class, Element, Item, KeyMap, Kind, QR_SIDE, STRIP_HEIGHT, Screen, ScreenId,
 };
 use keepcrypt_pi::ui::{Frame, Painter, SIDE};
-use keepcrypt_pi_sim::{Fault, HwRngStream, Present, Shown, SimHal};
+use keepcrypt_pi_sim::{Fault, HwRngStream, Pixels, Present, ProtectedFrames, Shown, SimHal};
 use sha2::{Digest, Sha256};
 
 use crate::report::report;
@@ -135,6 +139,14 @@ impl Config {
             Config::Registry
         } else {
             Config::Release
+        }
+    }
+
+    /// The configuration's name, as the capture folder takes it.
+    pub fn name(self) -> &'static str {
+        match self {
+            Config::Release => "release",
+            Config::Registry => "registry",
         }
     }
 }
@@ -381,21 +393,51 @@ pub enum Step {
 pub struct Scenario {
     pub name: &'static str,
     pub hwrng: HwRngStream,
+    /// How a capture writes the run's Protected frames (Q30 (g)): as drawn for a vector run,
+    /// whose words come from public roll strings or files, and as the placeholder otherwise.
+    pub protected: ProtectedFrames,
     pub steps: Vec<Step>,
 }
 
-/// What a scenario did, for the count line.
+/// What a run keeps of each present beyond its checks.
+pub enum Keep {
+    Nothing,
+    /// The SHA-256 of each frame.
+    Digests,
+    /// Each present as a PNG file in this folder, and the SHA-256 of the file.
+    Captures(PathBuf),
+}
+
+/// One present as a run keeps it (`Keep`): the step it came in (0 for the first boot, before any
+/// step), its screen, and the SHA-256 of its frame, or of its PNG file with the file's name and
+/// whether it holds the placeholder. No screen text.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Shot {
+    pub step: usize,
+    pub id: ScreenId,
+    pub sha256: [u8; 32],
+    pub file: Option<(String, bool)>,
+}
+
+/// What a scenario did, for the count line, and the presents kept.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Counts {
     pub steps: usize,
     pub presents: usize,
     pub screens: Vec<ScreenId>,
     pub dead_keys: usize,
+    pub shots: Vec<Shot>,
 }
 
 /// Runs `scenario` to its end and prints its count line.
 pub fn run(scenario: Scenario) -> Counts {
-    let mut run = Run::new(scenario.hwrng);
+    run_keeping(scenario, Keep::Nothing)
+}
+
+/// Runs `scenario` to its end, keeping what `keep` says of each present, and prints its count
+/// line.
+pub fn run_keeping(scenario: Scenario, keep: Keep) -> Counts {
+    let mut run = Run::new(scenario.hwrng, keep, scenario.protected);
     for step in scenario.steps {
         run.counts.steps += 1;
         run.step(step);
@@ -420,6 +462,8 @@ pub fn run(scenario: Scenario) -> Counts {
 /// A run in progress.
 struct Run {
     app: App<SimHal>,
+    keep: Keep,
+    protected: ProtectedFrames,
     /// Presents not yet matched by an `Expect`, oldest first.
     unmatched: VecDeque<Present>,
     /// The present the last `Expect` matched.
@@ -437,9 +481,12 @@ struct Run {
 }
 
 impl Run {
-    fn new(hwrng: HwRngStream) -> Self {
+    fn new(hwrng: HwRngStream, keep: Keep, protected: ProtectedFrames) -> Self {
+        let hal = hardware(hwrng, &keep, protected, 0);
         let mut run = Run {
-            app: App::new(SimHal::new(hwrng)),
+            app: App::new(hal),
+            keep,
+            protected,
             unmatched: VecDeque::new(),
             matched: None,
             expected: None,
@@ -501,7 +548,8 @@ impl Run {
             }
             Step::PowerCycle(hwrng) => {
                 self.collect();
-                self.app = App::new(SimHal::new(hwrng));
+                let hal = hardware(hwrng, &self.keep, self.protected, self.counts.shots.len());
+                self.app = App::new(hal);
                 self.expected = None;
                 self.app.start();
                 self.collect();
@@ -564,10 +612,34 @@ impl Run {
                     protected.name()
                 );
             }
+            self.keep_present(&present);
             self.record.note(&present);
             self.latest_keys = present.keys;
             self.unmatched.push_back(present);
         }
+    }
+
+    /// Keeps what `self.keep` says of `present`.
+    fn keep_present(&mut self, present: &Present) {
+        let (sha256, file) = match (&self.keep, &present.capture) {
+            (Keep::Nothing, _) => return,
+            (Keep::Digests, _) => (frame_sha256(&present.frame), None),
+            (Keep::Captures(_), Some(captured)) => (
+                Sha256::digest(&captured.png[..]).into(),
+                Some((captured.file.clone(), captured.placeholder)),
+            ),
+            (Keep::Captures(_), None) => panic!(
+                "step {}: a present of {} was not captured",
+                self.counts.steps,
+                present.id.name()
+            ),
+        };
+        self.counts.shots.push(Shot {
+            step: self.counts.steps,
+            id: present.id,
+            sha256,
+            file,
+        });
     }
 
     /// Steps the app until the script is played to its end.
@@ -809,6 +881,31 @@ impl Run {
     }
 }
 
+/// New hardware with `hwrng`, capturing into the folder `keep` names, if any, numbered on from the
+/// `written` files the run's earlier hardware wrote there.
+fn hardware(hwrng: HwRngStream, keep: &Keep, protected: ProtectedFrames, written: usize) -> SimHal {
+    let mut hal = SimHal::new(hwrng);
+    if let Keep::Captures(dir) = keep {
+        let written = u32::try_from(written).expect("fewer than 2^32 captures");
+        hal.capture(dir.clone(), protected, written);
+    }
+    hal
+}
+
+/// The SHA-256 of a frame's RGB565 values, each little-endian, row by row.
+fn frame_sha256(frame: &Pixels) -> [u8; 32] {
+    let side = usize::try_from(SIDE).expect("the panel side");
+    let mut hasher = Sha256::new();
+    let mut row = vec![0u8; 2 * side];
+    for pixels in frame.raw().chunks(side) {
+        for (bytes, pixel) in row.chunks_mut(2).zip(pixels) {
+            bytes.copy_from_slice(&pixel.to_le_bytes());
+        }
+        hasher.update(&row);
+    }
+    hasher.finalize().into()
+}
+
 /// Fails unless the step that took a dead key presented nothing.
 pub fn assert_dead(step: usize, key: Key, presents: &[Present]) {
     let shown: Vec<&str> = presents.iter().map(|p| p.id.name()).collect();
@@ -915,6 +1012,7 @@ mod tests {
         run(Scenario {
             name: "key-before-its-screen",
             hwrng: HwRngStream::Counting,
+            protected: ProtectedFrames::Placeholder,
             steps: vec![Step::Key(Key::Press)],
         });
     }
@@ -925,6 +1023,7 @@ mod tests {
         run(Scenario {
             name: "unmet-expect",
             hwrng: HwRngStream::Counting,
+            protected: ProtectedFrames::Placeholder,
             steps: vec![Step::Expect(ScreenId::Home), Step::Expect(ScreenId::Dice)],
         });
     }

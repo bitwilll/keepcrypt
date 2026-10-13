@@ -4584,7 +4584,7 @@ carries it, and every commit names a proof that runs at that commit.
   print-site lines and pi/sim's `[lints]` comment name render times too.
 
 **8. pi/app ceremony steps 1-7, halts, restarts, idle; the scenario driver (pi-firmware.md:75-88; swb:108-164; rules 3, 6)**
-- [ ] `App<H: Hal>` with `start()` (boot), `step()` (one `next_event`, then its handling) and `run()` (`step` in a loop,
+- [x] `App<H: Hal>` with `start()` (boot), `step()` (one `next_event`, then its handling) and `run()` (`step` in a loop,
   for M4's main).
   - State:
     - the private `Stage`: `Idle`, `Collecting`, `Committed`, `Rolling`, `Sealed`, `Checking`, `Ready`, `Checked`,
@@ -4607,7 +4607,17 @@ carries it, and every commit names a proof that runs at that commit.
   - `extra_for` over every stage kind, mode and key, with Snake open and closed;
   - a `game_random` error injected through the setter while Snake is open ends on `halt` with
     `holds_secrets() == false`.
-- [ ] Screen inventory (`ScreenId::ALL`, the coverage target; * marks transient ids):
+  Proof (commit 13): `cargo test --workspace --locked`: keepcrypt-pi's 103 unit tests pass. The first three items are
+  commit 11's tests (`new_sessions_are_the_pis`, `a_kept_collision_wiped_restarts_at_99_until_skip_drops_it`).
+  `extra_for` takes no screen, so its sweep of every stage kind, mode and key stays
+  `only_key_presses_in_mixed_collecting_are_forwarded`, and Snake open and closed is checked at the app's one call
+  site: `every_key_in_step_4_reaches_the_pool_with_snake_open_or_closed` (closed, open, played with two steers and a
+  block, then left: the stage's kind and the plan's mode it hands `extra_for` forward every key). `games::GAME_BYTES`
+  is `keepcrypt_core::game_random`, held by the app; the `#[cfg(test)]` `App::set_game_bytes` replaces it.
+  `a_game_byte_error_while_snake_is_open_halts_holding_nothing` plays a round to the wall, injects `Source(Os)` and
+  presses play again: a black frame, then `halt` with core's text, `holds_secrets()` and `keeps_wiped()` false. In a
+  scratch copy, a mutant swallowing that error fails it.
+- [x] Screen inventory (`ScreenId::ALL`, the coverage target; * marks transient ids):
 
   | Steps | Public | Protected |
   | --- | --- | --- |
@@ -4624,6 +4634,11 @@ carries it, and every commit names a proof that runs at that commit.
   The Protected set is the phones' (mobile-apps.md:111: backup passphrase, reveal-D, seal code, registration and
   watch-only QRs; the words) plus every entry grid that holds a secret. collision-qr carries the destroyed seed's seal
   code.
+
+  Proof (commit 13): `every_screen_is_expected` passes in both configurations: the union of the `Expect` ids of the
+  nine scenarios in `scenarios(config)` (each one a test of its own, which fails on an unmet `Expect`) is all 62 ids
+  with the test key, and all but snapshot-loaded and snapshot-date, named in the test, without it. game-snake,
+  reveal-d-offer and reveal-d were the three that no scenario expected before this commit.
 - [x] Steps 1-3:
   - Step 1: `boot` (version, rootfs prefix, banners), then `self_test()`, then 16 blocks into `hwrng_boot_test`. Any
     failure is `halt`.
@@ -4635,7 +4650,7 @@ carries it, and every commit names a proof that runs at that commit.
   gate scenario passes in both configurations from boot through Home and Length (or Home's side flows), `boot_stops`
   included, and `drill_12` (registry config) shows Home's status line "Snapshot No. 4, dated 2026-03-01" after the
   load.
-- [ ] Steps 4-6:
+- [x] Steps 4-6:
   - Step 4 (Mixed):
     - one block per Tick into `add_hw_samples`, until `hw_bytes_tested() >= HW_BYTES_NEEDED` (the sim's Tick is
       100 ms; M4 sets the device's from the measured hwrng rate);
@@ -4674,7 +4689,13 @@ carries it, and every commit names a proof that runs at that commit.
   health-tested" and "0 / 512 bits credited", and at the quota the full bar, "1536 / 1536 bytes health-tested" and
   "2048 / 512 bits credited"; it passes in both configurations, and the recompute review's mutant (the bar on
   `credited_bits()`), in a scratch copy, fails it at the quota.
-- [ ] Step 7:
+  Proof (commit 13): hwrng offers "Play while you wait" until the quota and Continue from then on (`choices`).
+  `mixed_12_restarts` opens Snake from it, and the first hwrng after the game shows the full bar and Continue; the
+  unit test `snake_opens_in_step_4_a_wall_ends_its_round_and_the_quota_closes_it` keeps Snake open up to the block
+  that meets the quota, which closes it. C is checked by the verify.py tie, which reads it off the last `commitment`
+  model (verify.py stops on a C that does not match D): in a scratch copy, the mutant drawing the hex of 32 zero
+  bytes for C now fails `mixed_12_restarts` at the tie (step 209).
+- [x] Step 7:
   - `check-prompt`, in swb:114's words.
   - Skip: `skip-confirm` → `skip_check`. The privacy gate then carries swb:152's note.
   - Check now → `start_check`. With a snapshot, `snapshot-date` (Q33 (a)):
@@ -4701,7 +4722,19 @@ carries it, and every commit names a proof that runs at that commit.
     restart after a collision must reach a 24-word seed (on `coldcard-99`, Seal ID RXDANDFR, not 9FHYMCQA);
   - a later collision keeps the older kept `Wiped`: a second collision's `collision-qr` must carry the newer seal's
     report.
-- [ ] Halts, idle, cover and the privacy gate:
+  Proof (commit 13): the unit tests `skip_is_offered_only_in_sealed`,
+  `check_now_with_a_snapshot_asks_for_its_date_first` (the only `reveal(Snapshot)` is snapshot-date's Yes) and
+  `a_code_that_does_not_verify_keeps_the_check_and_its_url` pass. After No the check URL is first drawn on the seal
+  card, so No's proof is that it keeps the check started at Check now: in the registry configuration `check_restarts`
+  loads `with-dice-50`, rolls `coldcard-99`, answers No on snapshot-date, and the mock checker's code for the check QR
+  drawn after No verifies to check-clear ("No collision for seal 9FHYMCQA, as of the date your checker showed."). The
+  four restart checks are `check_restarts`', in both configurations: a Cannot check in a first 12-word session shows
+  "0 / 50"; a second collision's collision-qr carries `dice-99-words12`'s report, after `dice-50-words12`'s; a 24-word
+  Cannot check in a first session shows "0 / 99"; and the 24-word restart after a collision shows Seal ID RXDANDFR. In
+  a scratch copy each mutant fails it: Cannot check discarding as a collision (step 32), Start again forcing 12 words
+  (step 114), Add fresh entropy forcing 12 words (step 148), and a later collision keeping an older collision's kept
+  `Wiped` (step 80; `drill_12` and `skip_and_idle` let it pass).
+- [x] Halts, idle, cover and the privacy gate:
   - Any halt condition (above) → `wipe()` → `halt` with core's fixed text, or the HAL error's.
   - 30 s on a Protected screen → `cover`; the first press only uncovers the same screen and is not passed on.
   - 9 minutes on any screen while `holds_secrets()` → `idle-warning`; a key keeps everything.
@@ -4722,6 +4755,8 @@ carries it, and every commit names a proof that runs at that commit.
   condition" includes a `game_random` error, whose halt lands with Snake (group 10, commit 13).
   Proof (review fix, commit 12d): a USB stick put in is input, as a key is: it restarts the idle timer, so a backup
   opened after ten idle minutes on usb-insert is not wiped in the same tick (`wipes_clear_the_stage`).
+  Proof (commit 13): the `game_random` error halts with nothing held
+  (`a_game_byte_error_while_snake_is_open_halts_holding_nothing`, group 8's App item).
 - [x] Scenario driver (pi/sim tests). A scenario is a list of steps, built per configuration:
   - `Expect(ScreenId)`: matched in order against the Display log since the previous step, so transient screens are
     matched too;
@@ -4845,7 +4880,7 @@ carries it, and every commit names a proof that runs at that commit.
   ("backup rejected: bad armor"), the stick's last three calls write, read back and remove the same `.age` name, and
   the stick is empty; then Retry writes the verified backup. It passes in both configurations (315 steps, about 1,130
   presents, 215 dead keys), and the four mutants, in a scratch copy, each fail it.
-- [ ] Steps 12-15:
+- [x] Steps 12-15:
   - Step 12:
     - `watch-offer` → `bip39-ask`.
     - No → `watch_only(None)`.
@@ -4874,6 +4909,10 @@ carries it, and every commit names a proof that runs at that commit.
   the passphrase until both answers are right, the export (and no typed text) until the descriptor QR is left, the
   registration until register-qr is left. It passes, and each of the four mutants, in a scratch copy, fails it. (The
   review's marking mutants are commit 11e's.)
+  Proof (commit 13): every screen of the item is now reached. `mixed_12_restarts`, a Mixed run, skips steps 11-13 to
+  reveal-d-offer (its "type each value into verify.py only after its prompt appears" asserted), shows D behind the
+  privacy gate on reveal-d (16 groups of 4, read by the verify.py tie), then the checklist and power-off;
+  `dice_24_code` covers steps 12 and 13, and `drill_12` their Skips.
 - [x] Load registry snapshot:
   - `usb-insert` → `usb-pick` (when there is more than one `.kcr`) → `wait` → `verify_snapshot`;
   - then `snapshot-loaded` (number, date, entries) or `snapshot-failed` with core's text. In release builds that is
@@ -4944,6 +4983,17 @@ carries it, and every commit names a proof that runs at that commit.
   - group 8's injected-error test;
   - group 13's Shell grep;
   - scenario `mixed_12_restarts`.
+  Proof (commit 13; the box stays open for group 13's Shell grep, commit 15): `games::snake`'s 8 unit tests pass:
+  10,000 placements on boards of 1 to 320 snake cells, each offered every cell from a cell of its own, as accepted
+  byte values between skipped bytes, land on the first free cell offered (a counting stream would not do: its pairs
+  of consecutive bytes reach only a few cells); 252 and 255 are skipped and 251 is 17; a taken cell is drawn again;
+  a full board gets no food and ends the round; the snake grows on food and new food is placed; a wall ends the
+  round with the board unchanged, and nothing moves after; the body ends it, but the cell the tail leaves does not;
+  a steer into the neck is ignored; a source error is passed on. In the app, the round over stays on game-snake,
+  titled "Round over · Press to play again" with only play-again and leave offered
+  (`snake_opens_in_step_4_a_wall_ends_its_round_and_the_quota_closes_it`); group 8's injected-error test passes, and
+  so does `mixed_12_restarts`. By hand until the gate lands: only `games/mod.rs` names `game_random` in pi/app, and
+  `pi/app/src/games/` names none of the Shell tokens.
 
 **11. pi/sim gate scenarios (`pi/sim/tests/gate.rs`; the gate's evidence)**
 - [x] `boot_stops` (both configs): `run-of-6-startup` → `halt` naming RepetitionCount, startup stage, sample 505;
@@ -5017,6 +5067,14 @@ carries it, and every commit names a proof that runs at that commit.
   wallet's; the account QR equals core's `qr_text` and the descriptor QR `receive_descriptor`, a line feed and
   `change_descriptor`, both from a separate core session on the same rolls and passphrase; `register-qr` is
   `.../register#c=C3ER95M4JV2N4TCPBRRG41J74W`; the checklist names both devices.
+  Proof (commit 13, a lead decision): `Fault::Remove` fails only the removal of the file just written, which stays
+  (`stick`'s `a_failed_removal_leaves_the_file_just_written_once`). After the corrupt read-back, `dice_24_code` now
+  retries into another corrupt read-back whose removal fails: backup-failed shows "The file stays on the stick: the
+  file could not be removed from the USB stick", and the stick's last three calls write, read back and remove one
+  `.age` name, still the stick's one file. Retry then writes the verified backup, so the stick ends with that file
+  and the verified one, which the shown passphrase opens to the wallet's fingerprint. It passes in both
+  configurations (339 steps, about 1,140 presents, 215 dead keys); in a scratch copy, a backup-failed without that
+  line fails it (step 296).
 - [x] `skip_and_idle` (both configs), a vector run:
   1. Dice-only, 12 words, `coldcard-50`; Check now → seal card → Match found → `collision-qr` → Add fresh entropy →
      "0 / 99".
@@ -5026,7 +5084,7 @@ carries it, and every commit names a proof that runs at that commit.
 
   Proof (commit 12): `skip_and_idle_skip_drops_the_kept_wiped_and_the_idle_wipe_the_words` passes in both
   configurations (66 steps, 706 presents, 94 dead keys).
-- [ ] `mixed_12_restarts` (both configs), a throwaway run on the counting stream:
+- [x] `mixed_12_restarts` (both configs), a throwaway run on the counting stream:
   1. Continue is refused before the bar is full.
   2. Snake is open when the quota fills, and the quota closes it.
   3. `commitment`; `coldcard-50` as the rolls.
@@ -5037,13 +5095,25 @@ carries it, and every commit names a proof that runs at that commit.
   8. Check now → seal card → G from the mock checker → `check-clear` → privacy gate → words → read-back from the
      screen model.
   9. Exports skipped except Reveal D → the verify.py tie (next item) → `power-off`.
-- [ ] verify.py tie (todo.md:3491; carried), from `mixed_12_restarts`' last session:
+
+  Proof (commit 13): `mixed_12_restarts_keep_99_rolls_through_cannot_check_and_the_idle_wipe` passes in both
+  configurations (218 steps, 34 screens, about 1,530 presents (the code typed varies with the nonce), 172 dead keys):
+  before the quota hwrng offers "Play while you wait" and no Continue; Snake opens, is steered, and the first hwrng
+  after it has the full bar and Continue; steps 3-7 as before; then the code, the words read back from the screen, the
+  exports skipped but D, reveal-d's layout held to the capture set's specimen, the tie, and power-off.
+- [x] verify.py tie (todo.md:3491; carried), from `mixed_12_restarts`' last session:
   - C from the `commitment` model, D from `reveal-d`'s, and the rolls from the script;
   - piped into `python3 -I tools/verify/verify.py mixed --words 12` (stdin is a pipe, so verify.py reads lines from it),
     which must exit 0;
   - its insert lines must name the session's words in order, and its Seal ID must equal that session's `seal-id`
     page;
   - compared in memory, never printed.
+
+  Proof (commit 13): `verify_py_tie` (gate.rs) types C (the last commitment model's 16 groups on one line), D
+  (reveal-d's) and `coldcard-99`'s rolls into `python3 -I tools/verify/verify.py mixed --words 12` through a pipe and
+  keeps its output in memory: exit 0, the 12 insert lines' words equal the inserts shown, and the seal-id line's
+  Seal ID equals the seal-id page's. The assertion's message is fixed, so nothing is printed. It passes in both
+  configurations, and the C-zeros mutant (Steps 4-6) fails it.
 - [x] `wipes_clear_the_stage` (both configs): for one Protected screen of each `Stage` variant that holds a secret
   (`readback-entry`, `backup-passphrase`, `bip39-entry`, the words of a checked backup, `backup-check-entry`), a
   Buttons fault and, separately, a 600 s wait. After each: `holds_secrets()` is false, a black frame was presented, and
@@ -5072,19 +5142,32 @@ carries it, and every commit names a proof that runs at that commit.
 
   Proof (commit 12): `check_backup_opens_by_first_fours_and_shows_its_words_on_request` passes in both
   configurations (release: 139 steps, 390 presents; registry: 149 steps, 397 presents); see Check a backup above.
-- [ ] `every_screen_is_expected`:
+- [x] `every_screen_is_expected`:
   - The union of `Expect` ids over every scenario built for the active configuration equals `ScreenId::ALL` (registry
     config), or `ALL` minus `snapshot-loaded` and `snapshot-date`, listed by name (release config).
   - Each scenario test fails on any unmet `Expect`, so the union is really reached.
-- [ ] `drill_12_repeats`: `drill_12` run twice in one test; every presented frame is identical except `seal-qr`'s (the
+
+  Proof (commit 13): it passes in both configurations (see the Screen inventory item).
+- [x] `drill_12_repeats`: `drill_12` run twice in one test; every presented frame is identical except `seal-qr`'s (the
   nonce). This is the reproducible subset.
-- [ ] `capture_set` (`#[ignore]`, run on request, Q30 (g)): every scenario of the active configuration, in order, into
+
+  Proof (commit 13): it passes in both configurations: the two runs present the same screens at the same steps
+  (release: 9 presents; registry: 1,393), and every frame's SHA-256 is the same but the one seal-qr frame's
+  (registry configuration), which differs: a fresh nonce.
+- [x] `capture_set` (`#[ignore]`, run on request, Q30 (g)): every scenario of the active configuration, in order, into
   `$CARGO_TARGET_TMPDIR/pi-sim-captures/<config>/`, cleared first.
   - One PNG per present: `<scenario>/NNN-<screen-id>.png`.
   - Protected frames of throwaway runs are placeholders. `reveal-d` is added once as a specimen drawn from
     keepcrypt.json's public `d-00-1f`, labelled so.
   - A static `index.html`: configuration, crate version, and per PNG its number, scenario, step, screen id, class,
     placeholder or specimen flag, and SHA-256; the first capture of every screen id first. It holds no screen text.
+
+  Proof (commit 13): `cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry --test gate --
+  --ignored --exact capture_set` wrote 11,530 PNG files (the nine scenarios' 11,529 presents and the reveal-d
+  specimen) of all 62 screens, and index.html (11,593 rows: each screen's first capture and the specimen, then every
+  capture), to target/tmp/pi-sim-captures/registry/: 1.9 GB in 221 s on this Mac. The panel's capture mode writes
+  them, numbered on across power cycles; `Scenario::protected` makes `runtime_stop`'s and `mixed_12_restarts`'
+  Protected frames placeholders; `mixed_12_restarts` holds the specimen's layout to the app's reveal-d.
 
   Proof for this group: both configurations' test output, with per-scenario step, screen and dead-key counts; the
   capture set and index under Review.
@@ -5402,11 +5485,13 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     `device-swap`.
     12f. pi/app, pi/sim: the plan review: a checked backup's last insert labels Press "done", not "read-back".
     12g. pi/app: the plan review: a refused backup passphrase puts the grid cursor back on the first symbol, and the
-    docs say where an entry grid's cursor may rest.
+    docs say where an entry grid's cursor may rest. 5f46a48 rustfmts c171599's assertion.
     12h. pi/app: the security review: a unit test pins the BIP39 passphrase's 100-character cap in its own buffer.
     12i. pi/app: the recompute review: a unit test shows each step's secret dropped when its screens are left.
 13. pi/app, pi/sim: Snake; `mixed_12_restarts` in full, the verify.py tie, `every_screen_is_expected`,
-    `drill_12_repeats` and `capture_set` (groups 10, 11).
+    `drill_12_repeats` and `capture_set` (groups 10, 11); `check_restarts` for step 7's restart checks and, with the
+    test key, the code after No; and a SimHal fault that fails the removal of the file just written
+    (`dice_24_code`).
 14. pi/sim: the interactive bin (group 12).
 15. scripts, core: the Shell category, the hash ban with pool.rs's `BTreeSet`, the pi/app forbid lines, the simulator
     marker, Q31 (h)'s routes, and fixtures (group 13).

@@ -5,9 +5,10 @@
 //!   a Protected screen, and the model fits the screen (`Screen::fits`).
 //! - The log keeps, per present, an owned copy of the model (every string `Zeroizing`) and a copy
 //!   of the frame, until the scenario takes it (`SimHal::take_presents`). Nothing here prints.
-//! - Capture mode writes each present as `NNN-<screen-id>.png`, NNN counting from 001. A
-//!   Protected frame is written as drawn only for a run whose words are public (a vector run);
-//!   otherwise it is `placeholder`, which depends on the screen id alone.
+//! - Capture mode writes each present as `NNN-<screen-id>.png`, NNN counting from 001, or on from
+//!   the files the hardware before a power cycle wrote. A Protected frame is written as drawn only
+//!   for a run whose words are public (a vector run); otherwise it is `placeholder`, which depends
+//!   on the screen id alone.
 
 use std::fs;
 use std::path::PathBuf;
@@ -179,15 +180,16 @@ impl Panel {
         }
     }
 
-    /// From now on, writes every present into `dir` (created if missing).
-    pub(crate) fn capture(&mut self, dir: PathBuf, protected: ProtectedFrames) {
+    /// From now on, writes every present into `dir` (created if missing), numbered on from
+    /// `written`.
+    pub(crate) fn capture(&mut self, dir: PathBuf, protected: ProtectedFrames, written: u32) {
         if let Err(error) = fs::create_dir_all(&dir) {
             panic!("cannot create {}: {error}", dir.display());
         }
         self.capture = Some(Capture {
             dir,
             protected,
-            written: 0,
+            written,
         });
     }
 

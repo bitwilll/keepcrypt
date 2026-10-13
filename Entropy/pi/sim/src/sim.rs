@@ -37,6 +37,8 @@ pub enum Fault {
     Sync,
     /// The next read-back of the file just written gives it with its last byte flipped.
     ReadBackCorrupt,
+    /// The next removal of the file just written is `HalError::Remove`, and the file stays.
+    Remove,
     /// The stick is pulled out during the next call that reaches it: `HalError::Removed`, and it
     /// stays out until `insert_stick`.
     Removed,
@@ -116,9 +118,10 @@ impl SimHal {
     }
 
     /// From now on, writes every present as a PNG file into `dir`, with Protected screens as
-    /// `protected` says.
-    pub fn capture(&mut self, dir: PathBuf, protected: ProtectedFrames) {
-        self.panel.capture(dir, protected);
+    /// `protected` says, numbered on from `written`: the files the hardware before a power cycle
+    /// wrote there in the same run.
+    pub fn capture(&mut self, dir: PathBuf, protected: ProtectedFrames, written: u32) {
+        self.panel.capture(dir, protected, written);
     }
 
     pub fn insert_stick(&mut self) {

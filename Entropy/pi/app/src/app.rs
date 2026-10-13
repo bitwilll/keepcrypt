@@ -27,7 +27,11 @@
 //! - Entering a Protected screen from a Public one passes the privacy gate (`enter_page`).
 //! - New sessions come from the kept `Wiped` while there is one, else from `Session::new`, whose
 //!   one call in this crate is in `new_session` (Q26, Q33 (c)).
-//! - Key presses in Mixed `Collecting` reach the pool as uncredited extras (`extras`).
+//! - Key presses in Mixed `Collecting` reach the pool as uncredited extras (`extras`), Snake open
+//!   or not.
+//! - Snake (`games`) opens from step 4's "Play while you wait", moves one cell per hwrng block and
+//!   closes once the quota is met. It lives in the current screen's note, so leaving game-snake
+//!   ends it; its bytes come from `games::GAME_BYTES`, which the app holds.
 //! - Steps 8-15 are in `ready`, Home's side flows and the backup's USB write in `usb`.
 
 mod ready;
@@ -45,6 +49,7 @@ use keepcrypt_core::{
 use zeroize::Zeroizing;
 
 use crate::extras::{StageKind, extra_for};
+use crate::games::{GAME_BYTES, GameBytes, Snake};
 use crate::grid::{CODE_LEN, Grid, MAX_PASSPHRASE};
 use crate::hal::{BuildInfo, FileKind, FileName, Hal, HalError};
 use crate::input::{Event, Idle, IdleStep, Key};
@@ -292,6 +297,8 @@ pub enum Note {
     },
     /// halt: why.
     Halt(Stop),
+    /// game-snake: the round being played. It ends with the screen.
+    Game(Box<Snake>),
 }
 
 /// The current screen: its id, the menu, picker or grid cursor, its page (or insert), its note
@@ -393,6 +400,8 @@ pub struct App<H: Hal> {
     idle: Idle,
     /// When step 4 reads its next hwrng block.
     next_block_ns: u64,
+    /// Where Snake's bytes come from: core's game call (`games::GAME_BYTES`).
+    game_bytes: GameBytes,
 }
 
 impl<H: Hal> App<H> {
@@ -422,7 +431,14 @@ impl<H: Hal> App<H> {
             keys: KeyMap::NONE,
             idle,
             next_block_ns: 0,
+            game_bytes: GAME_BYTES,
         }
+    }
+
+    /// Replaces Snake's byte source, so that a unit test can make it fail.
+    #[cfg(test)]
+    fn set_game_bytes(&mut self, bytes: GameBytes) {
+        self.game_bytes = bytes;
     }
 
     /// Step 1: the boot screen, the known-answer tests and the hwrng startup test, then Home. Any
@@ -540,6 +556,7 @@ impl<H: Hal> App<H> {
         if self.block_wanted() && now_ns >= self.next_block_ns {
             self.next_block_ns = now_ns.saturating_add(BLOCK_TICK_NS);
             self.read_block()?;
+            self.play()?;
             self.redraw()?;
         }
         if self.view.id == ScreenId::UsbInsert {
@@ -574,6 +591,26 @@ impl<H: Hal> App<H> {
         let session = session.add_hw_samples(&block[..]).map_err(Stop::Core)?;
         self.held.stage = Stage::Collecting(session);
         Ok(())
+    }
+
+    /// Snake, while it is open: one cell for the block just read, unless that block met the quota,
+    /// which closes the game, so step 4 offers Continue (docs/pi-firmware.md: the games close
+    /// before the commitment screen).
+    fn play(&mut self) -> Result<(), Stop> {
+        let Note::Game(snake) = &mut self.view.note else {
+            return Ok(());
+        };
+        let met = match &self.held.stage {
+            Stage::Collecting(session) => {
+                screens::continue_offered(session.credited_bits(), session.required_bits())
+            }
+            _ => return Err(OUT_OF_ORDER),
+        };
+        if met {
+            self.enter(ScreenId::Hwrng, Note::None);
+            return Ok(());
+        }
+        snake.step(self.game_bytes).map_err(Stop::Core)
     }
 
     /// The stage, moved out; `Idle` is left behind until the caller puts the next one back.
@@ -682,6 +719,7 @@ impl<H: Hal> App<H> {
         let choices = screens::choices(id, &self.held);
         match (id, key) {
             (ScreenId::Dice, _) => return self.dice(key),
+            (ScreenId::GameSnake, _) => return self.game(key),
             (ScreenId::WordsInsert | ScreenId::WordsOverview, _) => return self.words(key),
             (ScreenId::BackupConfirm, _) => return self.confirm(key),
             (ScreenId::UsbPick, _) => return self.pick(key),
@@ -787,6 +825,10 @@ impl<H: Hal> App<H> {
                     _ => SeedLength::Words24,
                 };
                 return self.begin();
+            }
+            Choice::Play => {
+                let snake = Snake::new(self.game_bytes).map_err(Stop::Core)?;
+                self.enter(ScreenId::GameSnake, Note::Game(Box::new(snake)));
             }
             Choice::Continue => {
                 let Stage::Collecting(session) = self.take() else {
@@ -949,6 +991,21 @@ impl<H: Hal> App<H> {
         self.redraw()
     }
 
+    /// Snake: the joystick steers; after a round ends, Press plays again; KEY1 leaves for step 4.
+    /// The model offers Press only after a round ends, and the joystick only before.
+    fn game(&mut self, key: Key) -> Result<(), Stop> {
+        let Note::Game(snake) = &mut self.view.note else {
+            return Err(OUT_OF_ORDER);
+        };
+        match key {
+            Key::Up | Key::Down | Key::Left | Key::Right => snake.steer(key),
+            Key::Press => **snake = Snake::new(self.game_bytes).map_err(Stop::Core)?,
+            Key::Key1 => self.enter(ScreenId::Hwrng, Note::None),
+            Key::Key2 | Key::Key3 => return Err(OUT_OF_ORDER),
+        }
+        self.redraw()
+    }
+
     /// An entry grid (Q32 (a)): move, type, delete, done. The model offers a symbol only when its
     /// grid accepts it next, and done only for a complete entry.
     fn typing(&mut self, grid: Grid, key: Key) -> Result<(), Stop> {
@@ -1023,7 +1080,7 @@ impl<H: Hal> App<H> {
 mod tests {
     use std::collections::VecDeque;
 
-    use keepcrypt_core::BackupFile;
+    use keepcrypt_core::{BackupFile, ExtraSource, SourceFault};
 
     use super::*;
     use crate::hal::{Buttons, Clock, Display, FileKind, FileName, HwRng, Usb, Written};
@@ -1033,6 +1090,7 @@ mod tests {
     /// One present as the fake display keeps it.
     struct Shown {
         id: ScreenId,
+        title: String,
         keys: KeyMap,
         texts: Vec<String>,
         frame: Vec<u16>,
@@ -1073,6 +1131,7 @@ mod tests {
             assert!(screen.fits(), "{}", id.name());
             self.shown.push(Shown {
                 id,
+                title: screen.title().to_owned(),
                 keys: screen.keys(),
                 texts: screen
                     .elements()
@@ -1606,6 +1665,132 @@ mod tests {
         app.view = view;
         app.redraw().expect("drawn");
         assert_eq!(app.hal.last().id, app.view.id);
+    }
+
+    /// A Mixed 12-word session's step 4 on the fake hardware, hwrng drawn and no block read yet.
+    fn step_4() -> App<Fake> {
+        let mut app = booted();
+        app.held.plan = Plan {
+            len: SeedLength::Words12,
+            mode: Mode::Mixed,
+        };
+        let session = new_session(None, SeedLength::Words12, Mode::Mixed).expect("a session");
+        app.held.stage = Stage::Collecting(session);
+        drawn(&mut app, View::new(ScreenId::Hwrng, Note::None));
+        app
+    }
+
+    /// Step 4's next tick: the clock moves on to the next block, which is read.
+    fn block(app: &mut App<Fake>) {
+        let now_ns = app.next_block_ns.max(app.hal.now_ns);
+        app.hal.now_ns = now_ns;
+        app.tick(now_ns).expect("a tick");
+    }
+
+    /// The hwrng bytes step 4 has health-tested.
+    fn tested(app: &App<Fake>) -> u64 {
+        match &app.held.stage {
+            Stage::Collecting(session) => session.hw_bytes_tested(),
+            _ => panic!("step 4"),
+        }
+    }
+
+    /// A game byte source that fails, as the OS read behind core's game call can.
+    fn no_game_bytes(_: &mut [u8]) -> Result<(), CoreError> {
+        Err(CoreError::Source(SourceFault::Os))
+    }
+
+    #[test]
+    fn every_key_in_step_4_reaches_the_pool_with_snake_open_or_closed() {
+        // The app's one call site hands `extra_for` the stage's kind and the plan's mode: with
+        // Snake closed, open, played and left, every key is forwarded.
+        let forwarded = |app: &App<Fake>| {
+            Key::ALL.into_iter().all(|key| {
+                let event = Event::Key { key, at_ns: 7 };
+                extra_for(app.held.stage.kind(), app.held.plan.mode, event)
+                    == Some((ExtraSource::InputTiming, 7u64.to_be_bytes()))
+            })
+        };
+        let mut app = step_4();
+        assert!(forwarded(&app), "Snake closed");
+        play(&mut app, &[Key::Press]);
+        assert_eq!(app.view.id, ScreenId::GameSnake);
+        assert!(forwarded(&app), "Snake open");
+        play(&mut app, &[Key::Down, Key::Left]);
+        block(&mut app);
+        assert!(forwarded(&app), "Snake played");
+        play(&mut app, &[Key::Key1]);
+        assert_eq!(app.view.id, ScreenId::Hwrng);
+        assert!(forwarded(&app), "Snake left");
+    }
+
+    #[test]
+    fn snake_opens_in_step_4_a_wall_ends_its_round_and_the_quota_closes_it() {
+        let mut app = step_4();
+        assert!(
+            app.hal
+                .last()
+                .texts
+                .contains(&String::from(">Play while you wait"))
+        );
+        play(&mut app, &[Key::Press]);
+        let open = app.hal.last();
+        assert_eq!(
+            (open.id, open.title.as_str()),
+            (ScreenId::GameSnake, "Snake")
+        );
+        assert_eq!(open.keys, KeyMap::SNAKE.without(Key::Press));
+        // Up from row 9: nine cells to row 0, one for each block, then the wall.
+        play(&mut app, &[Key::Up]);
+        for _ in 0..9 {
+            block(&mut app);
+        }
+        assert!(matches!(&app.view.note, Note::Game(snake) if !snake.over()));
+        block(&mut app);
+        let over = app.hal.last();
+        assert_eq!(over.id, ScreenId::GameSnake, "the round ends on game-snake");
+        assert_eq!(over.title, "Round over · Press to play again");
+        let steer = [Key::Up, Key::Down, Key::Left, Key::Right];
+        let after = steer.into_iter().fold(KeyMap::SNAKE, KeyMap::without);
+        assert_eq!(over.keys, after);
+        // Press plays again.
+        play(&mut app, &[Key::Press]);
+        assert!(matches!(&app.view.note, Note::Game(snake) if !snake.over()));
+        // Snake stays open up to the block that meets the quota, which closes it: Continue.
+        while tested(&app) + 64 < HW_BYTES_NEEDED {
+            block(&mut app);
+        }
+        assert_eq!(app.view.id, ScreenId::GameSnake);
+        block(&mut app);
+        assert_eq!(tested(&app), HW_BYTES_NEEDED);
+        let closed = app.hal.last();
+        assert_eq!(closed.id, ScreenId::Hwrng);
+        assert!(closed.texts.contains(&String::from(">Continue")));
+    }
+
+    #[test]
+    fn a_game_byte_error_while_snake_is_open_halts_holding_nothing() {
+        let mut app = step_4();
+        // A round played to the wall, then Press for another, whose food the failing source
+        // cannot place.
+        play(&mut app, &[Key::Press, Key::Up]);
+        for _ in 0..10 {
+            block(&mut app);
+        }
+        assert_eq!(app.hal.last().keys.label(Key::Press), Some("again"));
+        app.set_game_bytes(no_game_bytes);
+        play(&mut app, &[Key::Press]);
+        assert_eq!(app.view.id, ScreenId::Halt);
+        assert!(matches!(
+            app.view.note,
+            Note::Halt(Stop::Core(CoreError::Source(SourceFault::Os)))
+        ));
+        assert!(!app.holds_secrets());
+        assert!(!app.keeps_wiped());
+        let shown: Vec<ScreenId> = app.hal.shown.iter().rev().take(2).map(|s| s.id).collect();
+        assert_eq!(shown, [ScreenId::Halt, ScreenId::Blank]);
+        let text = CoreError::Source(SourceFault::Os).to_string();
+        assert!(app.hal.last().texts.contains(&text));
     }
 
     #[test]

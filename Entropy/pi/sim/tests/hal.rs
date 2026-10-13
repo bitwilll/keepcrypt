@@ -297,7 +297,7 @@ fn capture_mode_writes_one_png_per_present_and_protected_frames_as_placeholders(
     ] {
         let dir = root.join(folder);
         let mut hal = SimHal::new(HwRngStream::Counting);
-        hal.capture(dir.clone(), protected);
+        hal.capture(dir.clone(), protected, 0);
         let about = Screen::new(ScreenId::About, "About", banners).with(Element::public(
             (0, 0).into(),
             Item::Text("KeepCrypt".into()),

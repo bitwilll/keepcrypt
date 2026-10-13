@@ -3,30 +3,46 @@
 //! configuration (`cargo test -p keepcrypt-pi-sim --features keepcrypt-core/test-registry`).
 //!
 //! Steps 1-15 and Home's side flows: boot and its stops, Home and About, length and mode, step 4's
-//! hwrng intake and its stop, the commitment, the dice, the collision check (snapshot, seal card,
-//! go-ahead code, Match found, Cannot check, Skip), the words in insert view and overview, the
-//! read-back drill, the wallet summary, the backup to a stick, the watch-only export, the
-//! registration, the checklist and power-off; "Load registry snapshot" and "Check a backup";
-//! and the halts, restarts and idle steps on the way. Snake, and `mixed_12_restarts` past the
-//! words' privacy gate, come with group 10.
+//! hwrng intake, Snake and the stop, the commitment, the dice, the collision check (snapshot, seal
+//! card, go-ahead code, Match found, Cannot check, Skip), the words in insert view and overview,
+//! the read-back drill, the wallet summary, the backup to a stick, the watch-only export, the
+//! registration, D and the verify.py tie, the checklist and power-off; "Load registry snapshot"
+//! and "Check a backup"; and the halts, restarts and idle steps on the way.
+//!
+//! Beside the scenarios: `every_screen_is_expected` (the scenarios expect every screen),
+//! `drill_12_repeats` (a vector run draws the same frames twice, but for the nonce) and the
+//! ignored `capture_set` (every scenario's presents as PNG files, with an index, Q30 (g)).
 //!
 //! Test data is public and repeatable (Q30 (a), (c)): the counting hwrng stream, keepcrypt.json's
 //! health streams for the stops, and its public dice strings for the vector runs. The vectors come
-//! in through `include_str!`; the simulator reads no file.
+//! in through `include_str!`; the simulator reads no file. The verify.py tie runs the shipped
+//! verifier on a throwaway run's values, in memory.
 
 mod report;
 mod scenario;
 
+use std::collections::BTreeSet;
+use std::fs;
+use std::io::{ErrorKind, Write};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+
 use keepcrypt_core::{
     BackupError, Bip39Passphrase, CoreError, HealthFailure, HealthStage, HealthTest, Mode,
     Platform, ReadbackResult, SeedLength, Session, TypedBackupPassphrase, decrypt_backup,
+    registry_key_is_test,
 };
 use keepcrypt_pi::hal::{HalError, Zeroizing};
 use keepcrypt_pi::input::Key;
-use keepcrypt_pi::screen::{Class, ScreenId};
-use keepcrypt_pi_sim::{Fault, HwRngStream, Op, Present};
-use scenario::{Answer, Code, Config, Readback, Scenario, Step, Stick, run};
+use keepcrypt_pi::screen::{Banners, Class, Element, Item, Screen, ScreenId};
+use keepcrypt_pi::ui::{Painter, hex_groups};
+use keepcrypt_pi_sim::{Fault, HwRngStream, Op, Present, ProtectedFrames, Shown, SimHal};
+use report::report;
+use scenario::{
+    Answer, Code, Config, Keep, Readback, Scenario, Shot, Step, Stick, run, run_keeping,
+};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 use Step::{Assert, Dice, Expect, PowerCycle, Type, Wait};
 
@@ -381,9 +397,9 @@ fn read_back_one() -> Vec<Step> {
     ]
 }
 
-/// From readback-done: the wallet summary, steps 11-13 skipped, then (dice only, no step 14)
-/// the checklist's two pages and power-off.
-fn skip_exports() -> Vec<Step> {
+/// From readback-done: the wallet summary, then steps 11-13 skipped, to step 14's offer (Mixed)
+/// or the checklist (dice only).
+fn skip_steps_11_to_13() -> Vec<Step> {
     vec![
         key(Key::Press),
         Expect(ScreenId::Wallet),
@@ -397,6 +413,12 @@ fn skip_exports() -> Vec<Step> {
         Expect(ScreenId::RegisterOffer),
         key(Key::Down),
         key(Key::Press),
+    ]
+}
+
+/// The checklist's two pages, then Finish: a black frame, power-off and the session wiped.
+fn finish() -> Vec<Step> {
+    vec![
         Expect(ScreenId::Checklist),
         key(Key::Key3),
         Expect(ScreenId::Checklist),
@@ -409,6 +431,12 @@ fn skip_exports() -> Vec<Step> {
             Box::new(|seen| !seen.app.holds_secrets()),
         ),
     ]
+}
+
+/// From readback-done: the wallet summary, steps 11-13 skipped, then (dice only, no step 14)
+/// the checklist's two pages and power-off.
+fn skip_exports() -> Vec<Step> {
+    chain(vec![skip_steps_11_to_13(), finish()])
 }
 
 /// On backup-check-entry: each entry typed, then done.
@@ -506,6 +534,7 @@ fn boot_stops() -> Scenario {
     Scenario {
         name: "boot_stops",
         hwrng: HwRngStream::Bytes(run_of_6),
+        protected: ProtectedFrames::Placeholder,
         steps: chain(vec![
             vec![Expect(ScreenId::Boot)],
             halted_by_health(rct),
@@ -533,6 +562,7 @@ fn runtime_stop() -> Scenario {
     Scenario {
         name: "runtime_stop",
         hwrng: HwRngStream::Bytes(stream),
+        protected: ProtectedFrames::Placeholder,
         steps: chain(vec![
             boot(),
             new_seed(Mode::Mixed, SeedLength::Words12),
@@ -560,21 +590,146 @@ fn runtime_stop() -> Scenario {
     }
 }
 
-/// A throwaway run on the counting stream: the restarts and idle steps of steps 1-7 (Q26, Q29).
+/// The shipped verifier (tasks/todo.md, M2).
+const VERIFY_PY: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tools/verify/verify.py");
+
+/// The 16 groups of 4 hex digits among a screen's texts (C or D), on one line, as they are typed
+/// into verify.py.
+fn hex_line(texts: &[Zeroizing<String>]) -> Zeroizing<String> {
+    let hex = texts
+        .iter()
+        .find(|text| {
+            text.contains('\n') && text.chars().filter(|c| c.is_ascii_hexdigit()).count() == 64
+        })
+        .expect("16 groups of 4 hex digits");
+    Zeroizing::new(hex.replace('\n', " "))
+}
+
+/// The Seal ID among the seal-id page's texts: its one text of 8 Crockford symbols.
+fn seal_id_shown(texts: &[Zeroizing<String>]) -> &str {
+    texts
+        .iter()
+        .map(|text| text.as_str())
+        .find(|text| {
+            text.len() == 8
+                && text
+                    .bytes()
+                    .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+        })
+        .expect("a Seal ID")
+}
+
+/// The verify.py tie (Q30 (e); tasks/todo.md, M3 group 11): C from the last commitment screen and
+/// D from reveal-d, each typed on one line, and `rolls`, piped into
+/// `python3 -I verify.py mixed --words 12`. It must exit 0, its insert lines must name the words
+/// the inserts showed, in order, and its Seal ID must be the seal-id page's. All of it stays in
+/// memory, and the assertion's message is fixed: nothing is printed.
+fn verify_py_tie(rolls: String) -> Step {
+    Assert(
+        "verify.py mixed recomputes the words and the Seal ID shown from C, D and the rolls",
+        Box::new(move |seen| {
+            let record = seen.record;
+            let c = hex_line(record.texts_of(ScreenId::Commitment));
+            let d = hex_line(record.texts_of(ScreenId::RevealD));
+            let input = Zeroizing::new(format!("{}\n{}\n{rolls}\n\n", c.as_str(), d.as_str()));
+            let mut verify = Command::new("python3")
+                .args(["-I", VERIFY_PY, "mixed", "--words", "12"])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .expect("python3 starts");
+            verify
+                .stdin
+                .take()
+                .expect("its stdin")
+                .write_all(input.as_bytes())
+                .expect("the input is written");
+            let output = verify.wait_with_output().expect("verify.py ends");
+            let stdout = Zeroizing::new(String::from_utf8(output.stdout).expect("UTF-8"));
+            let inserts: Vec<&str> = stdout
+                .lines()
+                .filter_map(|line| line.strip_prefix("insert: ")?.split_whitespace().nth(7))
+                .collect();
+            let seal = stdout
+                .lines()
+                .find_map(|line| line.strip_prefix("seal-id: ")?.split_whitespace().next());
+            output.status.success()
+                && inserts == record.words()
+                && seal == Some(seal_id_shown(record.texts_of(ScreenId::SealId)))
+        }),
+    )
+}
+
+/// reveal-d as the app lays it out, showing `d`: the capture set draws it with keepcrypt.json's
+/// public D, the specimen of a screen whose captures are placeholders (Q30 (g)).
+/// `mixed_12_restarts` holds this layout to the app's own reveal-d.
+fn reveal_d_specimen(d: &str, banners: Banners) -> Screen<'_> {
+    Screen::new(ScreenId::RevealD, "Device leg D", banners)
+        .with(Element::public(
+            (0, 0).into(),
+            Item::Text("Device leg D".into()),
+        ))
+        .with(Element::protected((25, 24).into(), Item::Hex(d.into())))
+        .with(Element::public(
+            (0, 108).into(),
+            Item::Small("Only for verify.py on an offline computer.".into()),
+        ))
+}
+
+/// True when `present` has `model`'s title, banners, keys and elements: each at its place, of its
+/// class and kind, and a Public one with its text (a Protected element's text is not compared).
+fn same_layout(present: &Present, model: &Screen<'_>) -> bool {
+    present.title.as_str() == model.title()
+        && present.banners == model.banners()
+        && present.keys == model.keys()
+        && present.elements.len() == model.elements().len()
+        && present
+            .elements
+            .iter()
+            .zip(model.elements())
+            .all(|(shown, element)| {
+                let text = match element.item() {
+                    Item::Text(text) | Item::Small(text) | Item::Hex(text) => Some(text.as_str()),
+                    _ => None,
+                };
+                let kind = matches!(
+                    (&shown.item, element.item()),
+                    (Shown::Text(_), Item::Text(_))
+                        | (Shown::Small(_), Item::Small(_))
+                        | (Shown::Hex(_), Item::Hex(_))
+                );
+                shown.at == (element.at().x, element.at().y)
+                    && shown.class == element.class()
+                    && kind
+                    && (shown.class == Class::Protected || shown.item.text() == text)
+            })
+}
+
+/// A throwaway run on the counting stream (Q26, Q27, Q29; matrix "Full ceremony with offline
+/// verification", simulator half): Snake while step 4 fills, closed by the quota; the restarts and
+/// idle steps of steps 1-7; then a check passed on the mock checker's code, the words read back,
+/// the exports skipped but D, the verify.py tie on the last session's C, D and rolls, and Finish.
 fn mixed_12_restarts() -> Scenario {
+    let last_rolls = rolls("coldcard-99");
     Scenario {
         name: "mixed_12_restarts",
         hwrng: HwRngStream::Counting,
+        protected: ProtectedFrames::Placeholder,
         steps: chain(vec![
             boot(),
             new_seed(Mode::Mixed, SeedLength::Words12),
-            // 1. Continue is refused before the bar is full (and the probe presses every key). The
-            // bar counts health-tested bytes, not credited bits.
+            // 1. Continue is refused before the bar is full: step 4 offers Snake instead (and the
+            // probe presses every other key). The bar counts health-tested bytes, not credited
+            // bits.
             vec![
                 Expect(ScreenId::Hwrng),
                 Assert(
-                    "no Continue before the bar is full",
-                    Box::new(|seen| seen.matched.keys.label(Key::Press).is_none()),
+                    "before the bar is full, step 4 offers Snake and no Continue",
+                    Box::new(|seen| {
+                        shows(seen.matched, ">Play while you wait")
+                            && texts(seen.matched).iter().all(|t| !t.contains("Continue"))
+                    }),
                 ),
                 Assert(
                     "the bar starts empty, with no byte tested and no bit credited",
@@ -585,17 +740,37 @@ fn mixed_12_restarts() -> Scenario {
                     }),
                 ),
             ],
-            // 3. The commitment; coldcard-50 as the rolls.
+            // 2. Snake is open when the quota fills, and the quota closes it: the first step 4
+            // screen after it shows the full bar, and Continue.
             vec![
-                Wait(QUOTA_SECONDS),
+                key(Key::Press),
+                Expect(ScreenId::GameSnake),
                 Assert(
-                    "at the quota the bar is full, and the first window credited 2,048 bits",
+                    "Snake shows its board, steered with the joystick",
                     Box::new(|seen| {
-                        shows(seen.latest, "[####################]")
-                            && shows(seen.latest, "1536 / 1536 bytes health-tested")
-                            && shows(seen.latest, "2048 / 512 bits credited")
+                        seen.matched
+                            .elements
+                            .iter()
+                            .any(|e| matches!(e.item, Shown::Board(_)))
+                            && seen.matched.keys.label(Key::Up) == Some("steer")
                     }),
                 ),
+                key(Key::Up),
+                Wait(QUOTA_SECONDS),
+                Expect(ScreenId::Hwrng),
+                Assert(
+                    "at the quota the bar is full, the first window credited 2,048 bits, and \
+                     Continue is offered",
+                    Box::new(|seen| {
+                        shows(seen.matched, "[####################]")
+                            && shows(seen.matched, "1536 / 1536 bytes health-tested")
+                            && shows(seen.matched, "2048 / 512 bits credited")
+                            && shows(seen.matched, ">Continue")
+                    }),
+                ),
+            ],
+            // 3. The commitment; coldcard-50 as the rolls.
+            vec![
                 key(Key::Press),
                 Expect(ScreenId::Commitment),
                 key(Key::Press),
@@ -646,9 +821,9 @@ fn mixed_12_restarts() -> Scenario {
             ],
             new_seed(Mode::Mixed, SeedLength::Words12),
             to_dice(Mode::Mixed, 99),
-            // 8. A check that passes on the mock checker's code, then the privacy gate before
-            // the words.
-            roll(rolls("coldcard-99")),
+            // 8. A check that passes on the mock checker's code, the privacy gate, then the words,
+            // read back from the screen.
+            roll(last_rolls.clone()),
             seal_card(),
             vec![key(Key::Press)],
             type_go_ahead(None),
@@ -660,6 +835,33 @@ fn mixed_12_restarts() -> Scenario {
                     Box::new(|seen| seen.app.holds_secrets() && !seen.app.keeps_wiped()),
                 ),
             ],
+            page_through(12),
+            read_back(12),
+            // 9. The exports skipped but Reveal D, then the verify.py tie and Finish.
+            skip_steps_11_to_13(),
+            vec![
+                Expect(ScreenId::RevealDOffer),
+                latest_shows(
+                    "reveal-d-offer says to type each value only after its prompt",
+                    String::from(
+                        "On the offline computer, type each value into verify.py only after its \
+                         prompt appears.",
+                    ),
+                ),
+                key(Key::Press),
+                Expect(ScreenId::PrivacyGate),
+                key(Key::Press),
+                Expect(ScreenId::RevealD),
+                Assert(
+                    "reveal-d is laid out as the capture set's specimen, D aside",
+                    Box::new(|seen| {
+                        same_layout(seen.matched, &reveal_d_specimen("", seen.matched.banners))
+                    }),
+                ),
+                verify_py_tie(last_rolls),
+                key(Key::Press),
+            ],
+            finish(),
         ]),
     }
 }
@@ -677,6 +879,7 @@ fn drill_12(config: Config) -> Scenario {
         return Scenario {
             name: "drill_12",
             hwrng: HwRngStream::Counting,
+            protected: ProtectedFrames::AsDrawn,
             steps: chain(vec![
                 boot(),
                 home(LOAD_SNAPSHOT),
@@ -719,6 +922,7 @@ fn drill_12(config: Config) -> Scenario {
     Scenario {
         name: "drill_12",
         hwrng: HwRngStream::Counting,
+        protected: ProtectedFrames::AsDrawn,
         steps: chain(vec![
             boot(),
             // 1. A tampered snapshot is refused; with-dice-50 loads.
@@ -859,6 +1063,7 @@ fn skip_and_idle() -> Scenario {
     Scenario {
         name: "skip_and_idle",
         hwrng: HwRngStream::Counting,
+        protected: ProtectedFrames::AsDrawn,
         steps: chain(vec![
             boot(),
             new_seed(Mode::DiceOnly, SeedLength::Words12),
@@ -943,9 +1148,11 @@ fn core_export(
 /// "Metal read-back drill" and "Watch-only import", Pi parts): Done refused at 98 of 99 rolls; a
 /// wrong code refused with core's text and the same nonce, then the mock checker's code; 24
 /// inserts with the device swap, equal to kcr.json's; the cover and one press; each kind of
-/// read-back mistake, then corrected; a wrong confirm pick, a write fault and Retry, then a
-/// verified backup the shown passphrase opens; the watch-only QRs of a typed BIP39 passphrase's
-/// wallet, equal to core's; the registration QR; the checklist and power-off.
+/// read-back mistake, then corrected; a wrong confirm pick, a write fault and Retry, a read-back
+/// that does not verify (the file removed), another whose removal fails (the file stays, and
+/// backup-failed says so), then a verified backup the shown passphrase opens; the watch-only QRs
+/// of a typed BIP39 passphrase's wallet, equal to core's; the registration QR; the checklist and
+/// power-off.
 fn dice_24_code() -> Scenario {
     let all_99 = rolls("coldcard-99");
     let mut first_98 = all_99.clone();
@@ -985,6 +1192,7 @@ fn dice_24_code() -> Scenario {
     Scenario {
         name: "dice_24_code",
         hwrng: HwRngStream::Counting,
+        protected: ProtectedFrames::AsDrawn,
         steps: chain(vec![
             // 1-3. The dice, the seal card, a wrong code and the checker's.
             boot(),
@@ -1222,18 +1430,63 @@ fn dice_24_code() -> Scenario {
                     }),
                 ),
                 key(Key::Press),
+                // A read-back that does not verify again, and a removal that fails: the file just
+                // written stays on the stick, and backup-failed says so.
+                Expect(ScreenId::UsbInsert),
+                Step::Fault(Fault::ReadBackCorrupt),
+                Step::Fault(Fault::Remove),
+                Wait(STICK_SECONDS),
+                Expect(ScreenId::Wait),
+                Expect(ScreenId::BackupFailed),
+                latest_shows(
+                    "a removal that fails leaves the file, and the HAL's text says so",
+                    format!("The file stays on the stick: {}", HalError::Remove.text()),
+                ),
+                Assert(
+                    "the file just written was read back, its removal failed, and it stays",
+                    Box::new(|seen| {
+                        let hal = seen.app.hal();
+                        let [.., written, read, removed] = hal.stick_log() else {
+                            return false;
+                        };
+                        let (Op::Write(name), Op::ReadWritten(back), Op::RemoveWritten(gone)) =
+                            (&written.op, &read.op, &removed.op)
+                        else {
+                            return false;
+                        };
+                        back == name && gone == name && hal.stick_files() == [name.as_str()]
+                    }),
+                ),
+                key(Key::Press),
             ],
             stick_still_in(),
             vec![
                 Expect(ScreenId::Wait),
                 Expect(ScreenId::BackupVerified),
                 Assert(
-                    "the stick holds one .age, which the shown passphrase opens to this wallet",
+                    "the stick holds the file left behind and the verified backup, which the \
+                     shown passphrase opens to this wallet",
                     Box::new(|seen| {
                         let hal = seen.app.hal();
-                        let [name] = hal.stick_files()[..] else {
+                        // The last write is the verified backup; the last removal, the one that
+                        // failed.
+                        let log = hal.stick_log();
+                        let written = log.iter().rev().find_map(|access| match &access.op {
+                            Op::Write(name) => Some(name),
+                            _ => None,
+                        });
+                        let left = log.iter().rev().find_map(|access| match &access.op {
+                            Op::RemoveWritten(name) => Some(name),
+                            _ => None,
+                        });
+                        let (Some(name), Some(left)) = (written, left) else {
                             return false;
                         };
+                        let mut both = [name.as_str(), left.as_str()];
+                        both.sort_unstable();
+                        if hal.stick_files() != both {
+                            return false;
+                        }
                         let Some(file) = hal.stick_file(name) else {
                             return false;
                         };
@@ -1448,6 +1701,7 @@ fn wipes_clear_the_stage() -> Scenario {
     Scenario {
         name: "wipes_clear_the_stage",
         hwrng: HwRngStream::Counting,
+        protected: ProtectedFrames::AsDrawn,
         steps: chain(vec![
             boot(),
             // collision-qr: the idle wipe keeps the kept Wiped, the fault drops it.
@@ -1575,6 +1829,7 @@ fn check_backup(config: Config) -> Scenario {
     Scenario {
         name: "check_backup",
         hwrng: HwRngStream::Counting,
+        protected: ProtectedFrames::AsDrawn,
         steps: chain(vec![
             boot(),
             // 1. About.
@@ -1745,6 +2000,221 @@ fn check_backup(config: Config) -> Scenario {
     }
 }
 
+/// Step 7's restarts (tasks/todo.md, M3 group 8, Step 7; entry 11f), on vector runs. A Cannot check
+/// in a first session restarts at the normal minimum, 50 rolls for 12 words; a later collision's
+/// report is the newer seal's, since its `Wiped` replaces the kept one; and both restarts keep the
+/// seed length: a 24-word Cannot check in a first session restarts at 99 rolls, not 12 words' 50,
+/// and the 24-word restart after a collision makes dice-99-words24's seal, not dice-99-words12's.
+/// With the test key, No on a snapshot's date keeps the check started at Check now: the mock
+/// checker's code for the check QR drawn after No verifies.
+fn check_restarts(config: Config) -> Scenario {
+    let report = |name: &str| format!("{ORIGIN}/register#c={}", seed(name, "seal_code_hashed"));
+    let mut steps = chain(vec![
+        boot(),
+        // A Cannot check in a first 12-word session: 50 rolls again.
+        new_seed(Mode::DiceOnly, SeedLength::Words12),
+        to_dice(Mode::DiceOnly, 50),
+        roll(rolls("coldcard-50")),
+        seal_card(),
+        cannot_check(),
+        to_dice(Mode::DiceOnly, 50),
+        // Two collisions in a row: the second report is the newer seal's.
+        roll(rolls("coldcard-50")),
+        seal_card(),
+        match_found(),
+        vec![latest_shows(
+            "the first collision reports dice-50's seal",
+            report("dice-50-words12"),
+        )],
+        add_fresh_entropy(),
+        to_dice(Mode::DiceOnly, 99),
+        roll(rolls("coldcard-99")),
+        seal_card(),
+        match_found(),
+        vec![latest_shows(
+            "a later collision reports the newer seal, not the kept one",
+            report("dice-99-words12"),
+        )],
+        // 24 words: a Cannot check in a first session, then a collision; each restart keeps the
+        // length.
+        vec![PowerCycle(HwRngStream::Counting)],
+        boot(),
+        new_seed(Mode::DiceOnly, SeedLength::Words24),
+        to_dice(Mode::DiceOnly, 99),
+        roll(rolls("coldcard-99")),
+        seal_card(),
+        cannot_check(),
+        to_dice(Mode::DiceOnly, 99),
+        roll(rolls("coldcard-99")),
+        seal_card(),
+        match_found(),
+        add_fresh_entropy(),
+        to_dice(Mode::DiceOnly, 99),
+        roll(rolls("coldcard-99")),
+        vec![
+            key(Key::Press),
+            Expect(ScreenId::SealImage),
+            key(Key::Key3),
+            Expect(ScreenId::SealId),
+            latest_shows(
+                "the restart after a collision keeps 24 words",
+                seal_id("dice-99-words24"),
+            ),
+        ],
+    ]);
+    if config == Config::Registry {
+        // No on the date, then the seal card: the code for the check QR drawn after No verifies.
+        steps.extend(chain(vec![
+            vec![PowerCycle(HwRngStream::Counting)],
+            boot(),
+            home(LOAD_SNAPSHOT),
+            insert_stick(vec![(
+                "keepcrypt-registry-2026-03-01.kcr",
+                snapshot("with-dice-50"),
+            )]),
+            vec![
+                Expect(ScreenId::Wait),
+                Expect(ScreenId::SnapshotLoaded),
+                key(Key::Press),
+                Expect(ScreenId::Home),
+            ],
+            new_seed(Mode::DiceOnly, SeedLength::Words12),
+            to_dice(Mode::DiceOnly, 50),
+            roll(rolls("coldcard-99")),
+            vec![
+                key(Key::Press),
+                Expect(ScreenId::SnapshotDate),
+                key(Key::Down),
+                key(Key::Press),
+                Expect(ScreenId::SealImage),
+                key(Key::Key3),
+                Expect(ScreenId::SealId),
+                key(Key::Key3),
+                Expect(ScreenId::SealQr),
+                key(Key::Press),
+                Expect(ScreenId::CheckActions),
+                key(Key::Press),
+            ],
+            type_go_ahead(Some(seal_id("dice-99-words12"))),
+        ]));
+    }
+    Scenario {
+        name: "check_restarts",
+        hwrng: HwRngStream::Counting,
+        protected: ProtectedFrames::AsDrawn,
+        steps,
+    }
+}
+
+/// Every scenario of `config`, in the order `capture_set` writes them; each one also runs as a
+/// test of its own.
+fn scenarios(config: Config) -> Vec<Scenario> {
+    vec![
+        boot_stops(),
+        runtime_stop(),
+        mixed_12_restarts(),
+        drill_12(config),
+        skip_and_idle(),
+        dice_24_code(),
+        wipes_clear_the_stage(),
+        check_backup(config),
+        check_restarts(config),
+    ]
+}
+
+/// The capture set's folder of the specimen, in place of a scenario's.
+const SPECIMEN: &str = "specimen";
+
+/// The PNG files `capture_set` wrote, each with its scenario.
+struct Captures {
+    rows: Vec<(&'static str, Shot)>,
+}
+
+impl Captures {
+    /// One row of the index: the number, scenario, step, screen, class, what the file holds, its
+    /// SHA-256, and a link to it (with the image too, when `image`). No screen text.
+    fn row(number: usize, scenario: &str, shot: &Shot, image: bool) -> String {
+        let (file, placeholder) = shot.file.as_ref().expect("a captured present");
+        let holds = match (scenario, placeholder) {
+            (SPECIMEN, _) => "specimen: D is keepcrypt.json's public d-00-1f",
+            (_, true) => "placeholder",
+            (_, false) => "as drawn",
+        };
+        let class = match shot.id.class() {
+            Class::Public => "Public",
+            Class::Protected => "Protected",
+        };
+        let step = match scenario {
+            SPECIMEN => String::from("-"),
+            _ => shot.step.to_string(),
+        };
+        let path = format!("{scenario}/{file}");
+        let link = if image {
+            format!(
+                "<a href=\"{path}\"><img src=\"{path}\" alt=\"{}\"></a>",
+                shot.id.name()
+            )
+        } else {
+            format!("<a href=\"{path}\">{file}</a>")
+        };
+        let sha256: String = shot.sha256.iter().map(|b| format!("{b:02x}")).collect();
+        format!(
+            "<tr><td>{number}</td><td>{scenario}</td><td>{step}</td><td>{}</td><td>{class}</td>\
+             <td>{holds}</td><td><code>{sha256}</code></td><td>{link}</td></tr>\n",
+            shot.id.name()
+        )
+    }
+
+    /// The static index (Q30 (g)): the configuration and crate version, then the first capture of
+    /// every screen (and the specimen), then every capture in order.
+    fn index(&self, config: Config) -> String {
+        let header = "<tr><th>No.</th><th>Scenario</th><th>Step</th><th>Screen</th>\
+                      <th>Class</th><th>File holds</th><th>SHA-256</th><th>File</th></tr>\n";
+        let mut first = String::new();
+        for id in ScreenId::ALL {
+            let mut of_id = self
+                .rows
+                .iter()
+                .enumerate()
+                .filter(|(_, (_, shot))| shot.id == id);
+            if let Some((at, (scenario, shot))) = of_id.next() {
+                first.push_str(&Captures::row(at + 1, scenario, shot, true));
+            }
+            for (at, (scenario, shot)) in of_id.filter(|(_, (scenario, _))| *scenario == SPECIMEN) {
+                first.push_str(&Captures::row(at + 1, scenario, shot, true));
+            }
+        }
+        let every: String = self
+            .rows
+            .iter()
+            .enumerate()
+            .map(|(at, (scenario, shot))| Captures::row(at + 1, scenario, shot, false))
+            .collect();
+        format!(
+            "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">\
+             <title>KeepCrypt Pi simulator captures</title>\n<style>body{{font-family:sans-serif}}\
+             td,th{{padding:2px 8px;text-align:left}}img{{width:240px;height:240px}}</style>\
+             </head><body>\n<h1>KeepCrypt Pi simulator captures</h1>\n<p>Configuration: {}. \
+             keepcrypt-pi-sim {}. {} PNG files, each 240 × 240.</p>\n\
+             <h2>The first capture of every screen, and the specimen</h2>\n<table>\n{header}{first}\
+             </table>\n<h2>Every capture, in order</h2>\n<table>\n{header}{every}</table>\n\
+             </body></html>\n",
+            config.name(),
+            env!("CARGO_PKG_VERSION"),
+            self.rows.len()
+        )
+    }
+}
+
+/// Clears `dir`, if it is there.
+fn cleared(dir: &Path) {
+    match fs::remove_dir_all(dir) {
+        Ok(()) => {}
+        Err(error) if error.kind() == ErrorKind::NotFound => {}
+        Err(error) => panic!("cannot clear {}: {error}", dir.display()),
+    }
+}
+
 #[test]
 fn boot_stops_halt_with_cores_startup_verdicts() {
     run(boot_stops());
@@ -1783,4 +2253,130 @@ fn wipes_clear_the_stage_of_every_secret() {
 #[test]
 fn check_backup_opens_by_first_fours_and_shows_its_words_on_request() {
     run(check_backup(Config::of_this_build()));
+}
+
+#[test]
+fn check_restarts_keep_the_length_and_report_the_newest_collision() {
+    run(check_restarts(Config::of_this_build()));
+}
+
+#[test]
+fn every_screen_is_expected() {
+    // The union of every scenario's `Expect` steps against the inventory (group 8): all of it with
+    // the test key; without it, all but the two screens of a loaded snapshot. Each scenario's test
+    // fails on an unmet `Expect`, so every screen counted here is reached.
+    let config = Config::of_this_build();
+    let mut expected = BTreeSet::new();
+    for scenario in scenarios(config) {
+        for step in &scenario.steps {
+            if let Expect(id) = step {
+                expected.insert(id.name());
+            }
+        }
+    }
+    let mut inventory: BTreeSet<&str> = ScreenId::ALL.into_iter().map(ScreenId::name).collect();
+    if config == Config::Release {
+        for unloaded in ["snapshot-loaded", "snapshot-date"] {
+            assert!(inventory.remove(unloaded), "{unloaded} is in the inventory");
+        }
+    }
+    assert_eq!(expected, inventory);
+}
+
+#[test]
+fn drill_12_repeats() {
+    // A vector run is reproducible: run twice, it presents the same screens at the same steps, in
+    // the same frames, but for the check QR, whose nonce is fresh (with the test key; without it
+    // the drill ends before any check).
+    let config = Config::of_this_build();
+    let first = run_keeping(drill_12(config), Keep::Digests).shots;
+    let second = run_keeping(drill_12(config), Keep::Digests).shots;
+    assert_eq!(first.len(), second.len());
+    let mut check_qrs = 0;
+    for (one, two) in first.iter().zip(&second) {
+        assert_eq!((one.step, one.id), (two.step, two.id));
+        if one.id == ScreenId::SealQr {
+            check_qrs += 1;
+            assert_ne!(one.sha256, two.sha256, "step {}: a fresh nonce", one.step);
+        } else {
+            assert_eq!(
+                one.sha256,
+                two.sha256,
+                "step {}: {} drawn alike",
+                one.step,
+                one.id.name()
+            );
+        }
+    }
+    let expected = match config {
+        Config::Release => 0,
+        Config::Registry => 1,
+    };
+    assert_eq!(check_qrs, expected);
+}
+
+#[test]
+#[ignore = "writes the capture set, on request (tasks/todo.md, M3 Q30 (g))"]
+fn capture_set() {
+    // Every scenario of this configuration, in order, one PNG file per present, under
+    // target/tmp/pi-sim-captures/<configuration>/<scenario>/, cleared first; then reveal-d's
+    // specimen and the index.
+    let config = Config::of_this_build();
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
+        .join("pi-sim-captures")
+        .join(config.name());
+    cleared(&root);
+    let mut captures = Captures { rows: Vec::new() };
+    for scenario in scenarios(config) {
+        let name = scenario.name;
+        let counts = run_keeping(scenario, Keep::Captures(root.join(name)));
+        assert_eq!(
+            counts.shots.len(),
+            counts.presents,
+            "{name}: one file a present"
+        );
+        captures
+            .rows
+            .extend(counts.shots.into_iter().map(|shot| (name, shot)));
+    }
+    // reveal-d, drawn with keepcrypt.json's public D.
+    let doc = keepcrypt_json();
+    let d = <[u8; 32]>::try_from(hex(&named(&doc["commitment"], "d-00-1f")["d_hex"]))
+        .expect("32 bytes");
+    let d = hex_groups(&d);
+    let banners = Banners {
+        test_registry: registry_key_is_test(),
+        simulator: true,
+    };
+    let mut hal = SimHal::new(HwRngStream::Counting);
+    hal.capture(root.join(SPECIMEN), ProtectedFrames::AsDrawn, 0);
+    Painter::new()
+        .present(&mut hal, &reveal_d_specimen(&d, banners))
+        .expect("the specimen draws");
+    let presents = hal.take_presents();
+    let [present] = &presents[..] else {
+        panic!("one present of the specimen");
+    };
+    let captured = present.capture.as_ref().expect("the specimen is captured");
+    captures.rows.push((
+        SPECIMEN,
+        Shot {
+            step: 0,
+            id: ScreenId::RevealD,
+            sha256: Sha256::digest(&captured.png[..]).into(),
+            file: Some((captured.file.clone(), captured.placeholder)),
+        },
+    ));
+    fs::write(root.join("index.html"), captures.index(config)).expect("the index is written");
+    let screens: BTreeSet<&str> = captures
+        .rows
+        .iter()
+        .map(|(_, shot)| shot.id.name())
+        .collect();
+    report(format_args!(
+        "capture_set: {} configuration, {} PNG files of {} screens, and index.html",
+        config.name(),
+        captures.rows.len(),
+        screens.len()
+    ));
 }
