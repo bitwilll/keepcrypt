@@ -349,6 +349,26 @@ mod tests {
     }
 
     #[test]
+    fn every_wall_ends_the_round() {
+        // Two cells heading for each wall, the head one cell from it.
+        let last = BOARD_CELLS - 1;
+        for (body, heading) in [
+            ([(2, 5), (1, 5)], Heading::Up),
+            ([(last - 2, 5), (last - 1, 5)], Heading::Down),
+            ([(9, 2), (9, 1)], Heading::Left),
+            ([(9, last - 2), (9, last - 1)], Heading::Right),
+        ] {
+            let mut snake = laid(&body, heading);
+            snake.step_with(fixed(&[])).expect("a step");
+            assert!(!snake.over(), "{heading:?}: up to the wall");
+            let board = *snake.board();
+            snake.step_with(fixed(&[])).expect("a step");
+            assert!(snake.over(), "{heading:?}: the wall");
+            assert_eq!(*snake.board(), board, "{heading:?}: the board stays");
+        }
+    }
+
+    #[test]
     fn the_body_ends_the_round_but_the_tail_moves_away() {
         // Five cells along row 9, then up, left and down into the body.
         let mut snake = laid(&[(9, 3), (9, 4), (9, 5), (9, 6), (9, 7)], Heading::Right);
@@ -379,6 +399,18 @@ mod tests {
         snake.steer(Key::Down);
         snake.step_with(fixed(&[])).expect("a step");
         assert_eq!(snake.head, (10, 6));
+    }
+
+    #[test]
+    fn a_second_steer_before_a_step_cannot_turn_into_the_neck() {
+        // Heading right, Up then Left before one step: Left points back into the neck the snake
+        // last moved from, so it is ignored, and the step goes up.
+        let mut snake = Snake::new_with(fixed(&[0, 0])).expect("a round");
+        snake.steer(Key::Up);
+        snake.steer(Key::Left);
+        snake.step_with(fixed(&[])).expect("a step");
+        assert_eq!(snake.head, (8, 5));
+        assert!(!snake.over());
     }
 
     #[test]

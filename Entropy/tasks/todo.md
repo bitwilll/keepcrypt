@@ -5017,6 +5017,12 @@ carries it, and every commit names a proof that runs at that commit.
   Proof (commit 15): group 13's Shell grep is clean on the tree and fails on the `shell-games-*` fixtures (each Shell
   word, also in `games.rs`) and on `game_random` in `pi/app/src/app.rs`. The grep allows the name anywhere under
   `pi/app/src/games/`; that `games/mod.rs` alone names it today rests on review (only `mod.rs:7` and `mod.rs:24`).
+  Proof (review fix, commit 13e): walls were tested only to the right and upward, and the neck rule with one steer;
+  mutants running Down off the board (a panic), wrapping Left, and checking a steer against the pending turn instead
+  of the heading moved (so Up then Left within one tick turned into the neck) passed every test.
+  `every_wall_ends_the_round` steps a snake into each of the four walls, and
+  `a_second_steer_before_a_step_cannot_turn_into_the_neck` steers Up then Left before one step: the head moves up and
+  the round goes on. In a scratch copy each of the three mutants, and Up wrapping, fails them.
 
 **11. pi/sim gate scenarios (`pi/sim/tests/gate.rs`; the gate's evidence)**
 - [x] `boot_stops` (both configs): `run-of-6-startup` → `halt` naming RepetitionCount, startup stage, sample 505;
@@ -5592,6 +5598,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     only at play again.
     13d. pi/app: the security and recompute reviews: the keys step 4 hands to `add_extra` are counted at the app's
     one call site, Snake open or closed.
+    13e. pi/app: the recompute review: Snake meets each of the four walls, and a second steer before a step cannot
+    turn into the neck.
 14. pi/sim: the interactive bin (group 12).
 15. scripts, core: the Shell category, the hash ban with pool.rs's `BTreeSet`, the pi/app forbid lines, the simulator
     marker, Q31 (h)'s routes, and fixtures (group 13).
