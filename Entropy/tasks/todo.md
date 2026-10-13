@@ -4622,6 +4622,12 @@ carries it, and every commit names a proof that runs at that commit.
   tests only). The security review's mutants, a dice face drawn from `(self.game_bytes)(..)` in app.rs and a
   `games::GAME_BYTES(..)` call in `app/ready.rs`, compiled and passed the Shell grep; in a scratch copy each now fails
   to compile, as do the same calls through the field and through `GameBytes::test` outside the tests.
+  Proof (review fix, commit 13c): that test injected the error only at play again, one of the three places the app
+  draws game bytes; mutants swallowing it where "Play while you wait" opens Snake, or where a step places food after a
+  bite, passed every test. `a_game_byte_error_opening_snake_halts_holding_nothing` and
+  `a_game_byte_error_placing_food_after_a_bite_halts_holding_nothing` (food at (9, 6), then the failing source for the
+  next block) now end on the same halt, and in a scratch copy each of the three mutants fails its test. The fake HAL
+  serves a tick at the app's deadline, so the unit tests' step 4 blocks go through `step`, as the device's do.
 - [x] Screen inventory (`ScreenId::ALL`, the coverage target; * marks transient ids):
 
   | Steps | Public | Protected |
@@ -4762,6 +4768,7 @@ carries it, and every commit names a proof that runs at that commit.
   opened after ten idle minutes on usb-insert is not wiped in the same tick (`wipes_clear_the_stage`).
   Proof (commit 13): the `game_random` error halts with nothing held
   (`a_game_byte_error_while_snake_is_open_halts_holding_nothing`, group 8's App item).
+  Proof (review fix, commit 13c): it halts at each of the three places Snake draws bytes (group 8's App item).
 - [x] Scenario driver (pi/sim tests). A scenario is a list of steps, built per configuration:
   - `Expect(ScreenId)`: matched in order against the Display log since the previous step, so transient screens are
     matched too;
@@ -5573,6 +5580,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     (`dice_24_code`).
     13b. pi/app: the security review: the app holds the games' byte source but cannot draw from it (`GameBytes`'s
     field is private to `games`).
+    13c. pi/app: the recompute review: a game byte error halts where Snake opens and where a step places food, not
+    only at play again.
 14. pi/sim: the interactive bin (group 12).
 15. scripts, core: the Shell category, the hash ban with pool.rs's `BTreeSet`, the pi/app forbid lines, the simulator
     marker, Q31 (h)'s routes, and fixtures (group 13).

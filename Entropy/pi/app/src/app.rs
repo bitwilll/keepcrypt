@@ -1099,12 +1099,15 @@ mod tests {
         frame: Vec<u16>,
     }
 
-    /// The least hardware the app runs on: scripted keys, a clock that moves 1 ms per key, the
-    /// counting hwrng stream and no stick. The display checks the two invariants the simulator
-    /// checks (a Protected element only on a Protected id, and the model fits) and keeps each
-    /// present. Only public test text is ever drawn here.
+    /// The least hardware the app runs on: scripted keys and ticks, a clock that moves 1 ms per
+    /// key and to the app's deadline on a tick, the counting hwrng stream and no stick. The
+    /// display checks the two invariants the simulator checks (a Protected element only on a
+    /// Protected id, and the model fits) and keeps each present. Only public test text is ever
+    /// drawn here.
     struct Fake {
         keys: VecDeque<Key>,
+        /// The next event is a tick at the app's deadline, not a key.
+        tick: bool,
         now_ns: u64,
         served: usize,
         hwrng_fault: bool,
@@ -1115,6 +1118,7 @@ mod tests {
         fn new() -> Self {
             Fake {
                 keys: VecDeque::new(),
+                tick: false,
                 now_ns: 0,
                 served: 0,
                 hwrng_fault: false,
@@ -1154,7 +1158,13 @@ mod tests {
     }
 
     impl Buttons for Fake {
-        fn next_event(&mut self, _deadline_ns: u64) -> Result<Event, HalError> {
+        fn next_event(&mut self, deadline_ns: u64) -> Result<Event, HalError> {
+            if mem::take(&mut self.tick) {
+                self.now_ns = self.now_ns.max(deadline_ns);
+                return Ok(Event::Tick {
+                    now_ns: self.now_ns,
+                });
+            }
             let key = self.keys.pop_front().expect("a scripted key");
             self.now_ns += 1_000_000;
             Ok(Event::Key {
@@ -1683,11 +1693,12 @@ mod tests {
         app
     }
 
-    /// Step 4's next tick: the clock moves on to the next block, which is read.
+    /// Step 4's next tick, taken by `step` as the device takes it: the clock moves on to the next
+    /// block, which is read.
     fn block(app: &mut App<Fake>) {
-        let now_ns = app.next_block_ns.max(app.hal.now_ns);
-        app.hal.now_ns = now_ns;
-        app.tick(now_ns).expect("a tick");
+        assert!(app.block_wanted(), "step 4 wants a block");
+        app.hal.tick = true;
+        app.step();
     }
 
     /// The hwrng bytes step 4 has health-tested.
@@ -1701,6 +1712,29 @@ mod tests {
     /// A game byte source that fails, as the OS read behind core's game call can.
     fn no_game_bytes(_: &mut [u8]) -> Result<(), CoreError> {
         Err(CoreError::Source(SourceFault::Os))
+    }
+
+    /// A game byte source that places food at (9, 6), right in front of a new round's head.
+    fn food_ahead(buf: &mut [u8]) -> Result<(), CoreError> {
+        buf.fill(255);
+        buf[..2].copy_from_slice(&[9, 6]);
+        Ok(())
+    }
+
+    /// The app halted on the game byte source's error: a black frame, then `halt` with core's
+    /// text, and nothing held.
+    fn assert_game_byte_halt(app: &App<Fake>) {
+        assert_eq!(app.view.id, ScreenId::Halt);
+        assert!(matches!(
+            app.view.note,
+            Note::Halt(Stop::Core(CoreError::Source(SourceFault::Os)))
+        ));
+        assert!(!app.holds_secrets());
+        assert!(!app.keeps_wiped());
+        let shown: Vec<ScreenId> = app.hal.shown.iter().rev().take(2).map(|s| s.id).collect();
+        assert_eq!(shown, [ScreenId::Halt, ScreenId::Blank]);
+        let text = CoreError::Source(SourceFault::Os).to_string();
+        assert!(app.hal.last().texts.contains(&text));
     }
 
     #[test]
@@ -1783,17 +1817,29 @@ mod tests {
         assert_eq!(app.hal.last().keys.label(Key::Press), Some("again"));
         app.set_game_bytes(GameBytes::test(no_game_bytes));
         play(&mut app, &[Key::Press]);
-        assert_eq!(app.view.id, ScreenId::Halt);
-        assert!(matches!(
-            app.view.note,
-            Note::Halt(Stop::Core(CoreError::Source(SourceFault::Os)))
-        ));
-        assert!(!app.holds_secrets());
-        assert!(!app.keeps_wiped());
-        let shown: Vec<ScreenId> = app.hal.shown.iter().rev().take(2).map(|s| s.id).collect();
-        assert_eq!(shown, [ScreenId::Halt, ScreenId::Blank]);
-        let text = CoreError::Source(SourceFault::Os).to_string();
-        assert!(app.hal.last().texts.contains(&text));
+        assert_game_byte_halt(&app);
+    }
+
+    #[test]
+    fn a_game_byte_error_opening_snake_halts_holding_nothing() {
+        // "Play while you wait", whose first food the failing source cannot place.
+        let mut app = step_4();
+        app.set_game_bytes(GameBytes::test(no_game_bytes));
+        play(&mut app, &[Key::Press]);
+        assert_game_byte_halt(&app);
+    }
+
+    #[test]
+    fn a_game_byte_error_placing_food_after_a_bite_halts_holding_nothing() {
+        // The first food right in front of the head: the next block's step eats it, and the next
+        // food is drawn from the failing source.
+        let mut app = step_4();
+        app.set_game_bytes(GameBytes::test(food_ahead));
+        play(&mut app, &[Key::Press]);
+        assert!(matches!(&app.view.note, Note::Game(snake) if !snake.over()));
+        app.set_game_bytes(GameBytes::test(no_game_bytes));
+        block(&mut app);
+        assert_game_byte_halt(&app);
     }
 
     #[test]
