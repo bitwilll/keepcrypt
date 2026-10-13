@@ -1388,8 +1388,10 @@ mod tests {
         play(&mut app, &[Key::Press]);
         assert_eq!(app.view.id, ScreenId::CodeEntry);
         assert!(app.hal.last().texts.contains(&String::from("____-____")));
-        // A wrong code, code-wrong, Press, one symbol typed: KEY2 does the same.
+        // A wrong code, code-wrong, Press, one symbol typed: KEY2 does the same. With all 8
+        // symbols typed, back is offered too.
         play(&mut app, &[Key::Press; 8]);
+        assert_eq!(app.hal.last().keys.label(Key::Key2), Some("back"));
         play(&mut app, &[Key::Key3]);
         assert_eq!(app.view.id, ScreenId::CodeWrong);
         play(&mut app, &[Key::Press, Key::Press, Key::Key2]);

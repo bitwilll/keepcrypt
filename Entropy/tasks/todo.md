@@ -5541,6 +5541,11 @@ amended; rules 5, 6)**
   before "a" is typed and on the emptied entry after the wrong passphrase. Each mutant fails the unit test; the
   first fails `check_backup` at "KEY2 back after a wrong passphrase" (release step 75), the second at "KEY2 back on
   an empty entry" (step 23).
+  Proof (review fix, commit 19e): KEY2 on code-entry was pressed after 0, 1 and 3 symbols, never with all 8 typed;
+  in a scratch copy, hiding it at 8 symbols passed every test (KEY1 and KEY3 still lead out, so no trap).
+  `back_on_the_code_grid_keeps_the_check_and_its_url_and_wipes_the_code` now finds KEY2 "back" with the 8 symbols
+  typed, before its KEY3, and that mutant fails it. The opposite mutant (no back on an empty entry) fails 19c's test
+  and `check_restarts` in both configurations (`cargo test -p keepcrypt-pi --locked`: 113 passed on the fix).
 
 **16. The simulator's strip (a lead decision between Q30 (h) and Q33 (j); the strip's part of group 12's open item)**
 - [x] `ui/render.rs`: in a simulator build the top strip reads "SIMULATOR · NOT FOR REAL FUNDS" when the simulator
@@ -5647,7 +5652,7 @@ amended; rules 5, 6)**
   Proof: group 5's tests and the probe counts.
 - [ ] **KEY2 "back"** (the owner's decision of 2026-10-13; Q32 (a) as amended):
   - from code-entry to check-actions with the same check and nonce and the typed code cleared, after which Match
-    found still reports the collision and the restart needs 99 rolls;
+    found still reports the collision and the restart needs 99 rolls, KEY2 offered there empty and with 8 symbols;
   - from backup-check-entry to home with nothing held, and the file left on the stick, KEY2 offered there on an
     empty entry, on the 8th word and after a refusal;
   - on either grid, a kept `Wiped` stays kept (Q26), so an idle wipe after KEY2 still leaves a 99-roll restart;
@@ -5884,6 +5889,7 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     restarts at 99 rolls.
     19d. pi/app, pi/sim: the recompute review: KEY2 "back" is offered on backup-check-entry when empty, on the 8th
     word and after a refused passphrase.
+    19e. pi/app: the recompute review: KEY2 "back" is offered on code-entry with all 8 symbols typed.
 20. pi/app, pi/sim: the simulator's strip reads "SIMULATOR · NOT FOR REAL FUNDS" alone and "SIMULATOR" beside "TEST
     REGISTRY" (group 16; a lead decision).
     20b. tasks/todo.md: the plan review: group 12's commit-14 proof points at commit 20 for the strip's wording, not
