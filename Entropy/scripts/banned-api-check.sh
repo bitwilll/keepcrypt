@@ -118,8 +118,9 @@
 #   Shell      the shells' paths to core (tasks/todo.md, M3 group 13; rule 1 and Q27, Q26). In the
 #              games' code (pi/app/src/games/, and pi/app/src/games.rs, the module's other
 #              layout), any of the words Session, Wiped, add_extra, add_hw_samples, ceremony,
-#              SystemTime or Instant: a game holds no session and no pool input, and keeps no
-#              clock. game_random in any file outside core/src/source.rs, core/src/lib.rs,
+#              SystemTime or Instant, or of the app's holders of the session and the HAL's clock,
+#              Stage, Held, App, Clock or now_ns: a game holds no session and no pool input, and
+#              keeps no clock. game_random in any file outside core/src/source.rs, core/src/lib.rs,
 #              core/tests/, core/examples/release_probe.rs and pi/app/src/games/. Session::new
 #              (spaces around :: allowed, and with the state named, Session::<Collecting>::new or
 #              <Session<Collecting>>::new) in any file under pi/app/src but pi/app/src/app.rs, and
@@ -524,11 +525,12 @@ hashing() {
 }
 
 # Shell (tasks/todo.md, M3 group 13), for the games' code: a game holds no session (Session,
-# Wiped), feeds no pool (add_extra, add_hw_samples), reaches into no ceremony and keeps no clock
-# (SystemTime, Instant). As words: Sessions or instantly pass.
+# Wiped, and the app's Stage, Held and App, which hold it), feeds no pool (add_extra,
+# add_hw_samples), reaches into no ceremony and keeps no clock (SystemTime, Instant, and the HAL's
+# Clock and now_ns). As words: Sessions or instantly pass.
 games_names() {
   grep -n -a -E \
-    -e "${L}(Session|Wiped|add_extra|add_hw_samples|ceremony|SystemTime|Instant)$R" \
+    -e "${L}(Session|Wiped|Stage|Held|App|add_extra|add_hw_samples|ceremony|SystemTime|Instant|Clock|now_ns)$R" \
     -- "$1"
 }
 

@@ -5318,6 +5318,13 @@ carries it, and every commit names a proof that runs at that commit.
   `clean-shell-allowed`. `--selftest` passes 418/418 under sh and dash; the gate is clean on the tree and names both
   mutants; in a scratch copy with the artifact selftest stubbed, the pattern without the `::` before the brackets,
   without the brackets, or letting them hold `=`, or `(` and `)`, each turns the selftest red.
+  Proof (review fix, commit 15c): the games' words named core's types and std's clocks, not the app's own holders:
+  `Held` and `Stage` are `pub` in the crate-private `app`, so a game function taking `&mut crate::app::Held` reached
+  the live session (the security review's mutant called `undo_roll` on it), and `hal::Clock`'s `now_ns` is a clock,
+  with the gate clean. The games' words gain `Stage`, `Held`, `App` (its `hal()` reaches the clock), `Clock` and
+  `now_ns`, with a `shell-games-*` fixture each and near misses in `clean-shell-allowed`. `--selftest` passes 423/423
+  under sh and dash; the gate is clean on the tree and names the mutant; in a scratch copy with the artifact selftest
+  stubbed, dropping any one of the five words turns its fixture red.
 
 **14. CI, CODEOWNERS and the commands of record (Q31)**
 - [ ] `test` job, after its two existing steps:
@@ -5649,6 +5656,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     marker, Q31 (h)'s routes, and fixtures (group 13).
     15b. scripts: the security review: the Shell category's `Session::new` also matches the turbofish and the
     qualified path.
+    15c. scripts: the security review: the games' code may not name the app's holders of the session or the HAL's
+    clock either (`Stage`, `Held`, `App`, `Clock`, `now_ns`).
 16. ci, .github: the `test` and `cross` steps and comments; CODEOWNERS adds `pi/sim/` (group 14).
 17. CLAUDE.md: Commands for M3.
 18. tasks/todo.md: the M3 Review, with pasted proof, the owner's verdict on the captures and the gate report.
