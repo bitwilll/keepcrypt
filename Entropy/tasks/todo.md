@@ -4968,7 +4968,7 @@ carries it, and every commit names a proof that runs at that commit.
   cursor on the last letter typed and asserts it on 'a' after the refusal; it passes, and fails without the reset.
 
 **10. pi/app Snake (Q27; pi-firmware.md:132-138; rule 1)**
-- [ ] `games/snake.rs` and `games/mod.rs`:
+- [x] `games/snake.rs` and `games/mod.rs`:
   - an 18×18 grid of 12 px cells (216 px); one cell per Tick; the joystick steers and KEY1 leaves;
   - a wall or self hit ends the round, and the screen stays `game-snake` ("Round over · Press to play again") until
     the quota closes the game;
@@ -4994,6 +4994,9 @@ carries it, and every commit names a proof that runs at that commit.
   (`snake_opens_in_step_4_a_wall_ends_its_round_and_the_quota_closes_it`); group 8's injected-error test passes, and
   so does `mixed_12_restarts`. By hand until the gate lands: only `games/mod.rs` names `game_random` in pi/app, and
   `pi/app/src/games/` names none of the Shell tokens.
+  Proof (commit 15): group 13's Shell grep is clean on the tree and fails on the `shell-games-*` fixtures (each Shell
+  word, also in `games.rs`) and on `game_random` in `pi/app/src/app.rs`. The grep allows the name anywhere under
+  `pi/app/src/games/`; that `games/mod.rs` alone names it today rests on review (only `mod.rs:7` and `mod.rs:24`).
 
 **11. pi/sim gate scenarios (`pi/sim/tests/gate.rs`; the gate's evidence)**
 - [x] `boot_stops` (both configs): `run-of-6-startup` → `halt` naming RepetitionCount, startup stage, sample 505;
@@ -5204,7 +5207,7 @@ carries it, and every commit names a proof that runs at that commit.
   which cannot share the strip with "TEST REGISTRY"; the placeholder carries no strip.
 
 **13. Gates: banned-API rules (Q31 (e); rules 1, 3, 6)**
-- [ ] `scripts/banned-api-check.sh`, each rule with hit and clean fixtures in `scripts/testdata/banned-api/`:
+- [x] `scripts/banned-api-check.sh`, each rule with hit and clean fixtures in `scripts/testdata/banned-api/`:
   - A new `Shell` category (prefix `shell-`, added to the selftest's case statement, the `cats` regex and the
     every-category list):
     - in `pi/app/src/games/`, any of the tokens `Session`, `Wiped`, `add_extra`, `add_hw_samples`, `ceremony`,
@@ -5225,6 +5228,35 @@ carries it, and every commit names a proof that runs at that commit.
 
   Proof: `--selftest` with every new fixture firing and the category list complete; the gate clean on the tree; Rule1
   still hits its `pi/app/src/games.rs` and `games/snake.rs` getrandom fixtures; canaries 61/61.
+  Proof (commit 15): `banned-api-check.sh --selftest` passes 415/415 (346 before) under sh and dash, 69 new cases,
+  each exactly one hit or clean:
+  - Shell, 25 hits: the 7 games words in `games/`, and `Session` in `games.rs`, the module's other layout; `game_random`
+    in pi/app outside `games/`, pi/sim, `core/src/session.rs`, `core/src/source/mod.rs`, another core example, ffi,
+    Kotlin and a test name; `Session::new` in another pi/app file, in `app/ready.rs`, spaced, in a comment, and twice in
+    `app.rs` (the second hits); the release probe with no call, a `//` and a `/*` commented-out call, and no probe at
+    all (lead decision, stage-A finding 9: the probe must call `game_random` on a line that is not a comment, so
+    dropping the call fails the gate). `clean-shell-allowed` holds every allowed place and a near miss per boundary.
+  - Rule1, 10 hits: one per hash word, spread over `core/src`, `ffi/src` and `pi/app/src`;
+    `rule1-pi-app-lib-without-forbid`, `rule1-pi-app-main-without-forbid` and either file absent;
+    `rule1-lib-rs-absent` still gives exactly one hit; `clean-hash-outside-shipped-src` and `clean-no-pi-app` pass.
+  - Q31 (h), 9 network fixtures (18 cases) and 12 clipboard fixtures: `logging.config` and
+    `multiprocessing.managers` (full and own names) and 5 dotted-name shapes, each also clean under `registry/`;
+    `selection_own`, Tcl's clipboard string (call and eval), `clipboard_set`, JXA's `theClipboard` and
+    `setTheClipboardTo`, and `gcb`/`scb` in `.ps1`, `.psm1`, `.PS1`, a powershell line in either case and a pwsh shell
+    line; clean-near-misses gains a near miss per new pattern.
+  - Artifact: `artifact-marker-simulator-text`.
+  In scratch copies with the artifact selftest stubbed, each of 89 mutants (every new word, alternative, boundary,
+  path, letter class, dispatch and the `fresh()` and `expect()` changes) turns the selftest red, and so does dropping
+  `KC_SIMULATOR_DO_NOT_SHIP` from the marker list in a full run. The gate is clean on the tree; on a copy it names
+  pool.rs's two `HashSet` lines, app.rs's call once the old doc line (`Session::new` in prose) is back, the probe
+  without its call, main.rs without the ban, a Shell word in `games/snake.rs` and `game_random` in pi/sim.
+  Rule1 still hits `rule1-getrandom-in-pi-app-games-rs` and `-games-dir`. core/src/pool.rs's test uses `BTreeSet`
+  (`every_bit_of_the_os_record_reaches_d` passes in `cargo test --workspace --locked` and with `--features
+  test-sources`). Commit 14's host stand-in scan, re-run with the new marker list: the `aarch64-apple-darwin`
+  release simulator with `--features keepcrypt-core/test-registry` gives exactly `Marker: ...
+  KC_TEST_REGISTRY_DO_NOT_SHIP`, `Marker: ... KC_SIMULATOR_DO_NOT_SHIP` and the `TestKey` hit (exit 1), no stub
+  marker, `_getentropy` imported; without the test key, only the simulator marker. Canaries 61/61; `cargo llvm-cov`
+  97.38% of core's lines, over the 95% floor.
 
 **14. CI, CODEOWNERS and the commands of record (Q31)**
 - [ ] `test` job, after its two existing steps:

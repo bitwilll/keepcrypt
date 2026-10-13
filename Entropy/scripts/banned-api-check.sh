@@ -1,6 +1,7 @@
 #!/bin/sh
-# Banned-API grep gate: CLAUDE.md security rules 1, 3, 5 and 9 (plan: tasks/todo.md, M0), and the
-# release-artifact scan for rules 1 and 10 (tasks/todo.md, M1 group 11).
+# Banned-API grep gate: CLAUDE.md security rules 1, 3, 5 and 9 (plan: tasks/todo.md, M0; the Shell
+# category and the hash ban: M3 group 13), and the release-artifact scan for rules 1 and 10
+# (tasks/todo.md, M1 group 11).
 #
 #   scripts/banned-api-check.sh             scan the repo this script lives in
 #   scripts/banned-api-check.sh DIR         scan DIR as if it were the repo root
@@ -19,7 +20,9 @@
 # binaries" and "Test stubs never ship"; tasks/todo.md, M1 Q3, Q8 and group 11). Prints
 # "<category>: <file>: <detail>" per hit, then a summary; exit 0 clean, 1 hits, 2 error (an
 # unreadable file, a file llvm-nm cannot read, no llvm-nm, a TARGET with no rule, bad usage).
-#   Marker     any file holding KC_TEST_SOURCE_DO_NOT_SHIP or KC_TEST_REGISTRY_DO_NOT_SHIP (rule 10)
+#   Marker     any file holding KC_TEST_SOURCE_DO_NOT_SHIP or KC_TEST_REGISTRY_DO_NOT_SHIP (rule 10),
+#              or KC_SIMULATOR_DO_NOT_SHIP, which pi/sim embeds so no simulator code ships
+#              (tasks/todo.md, M3 Q31 (d))
 #   TestKey    any file holding the 32 bytes of the test registry public key (rule 10; pinned below
 #              and checked against vectors/kcr.json by the selftest)
 #   Format     a file that is not an ELF, Mach-O or ar file (an rlib is an ar file): its symbols
@@ -68,13 +71,15 @@
 #              check), and reading back a picked .age or .kcr file (rule 8):
 #              Data(contentsOf: URL(fileURLWithPath: path)), Data(contentsOf: pickedURL).
 #              In a .py file (tasks/todo.md M2 group 2, Q23; completed by the stage-A review,
-#              2026-10-10), an import of socket, ssl (or their C modules _socket and _ssl),
-#              socketserver, urllib, urllib3, http, ftplib, smtplib, smtpd, poplib, imaplib,
-#              nntplib, telnetlib, xmlrpc, asyncio, asyncore, asynchat, wsgiref, webbrowser,
-#              requests, httpx, aiohttp, multiprocessing.connection or logging.handlers (also by
-#              their own names, as "from logging import handlers" brings one in), in the shapes
-#              Python random has under RNG. Anchored on the import, so a URL string such as
-#              "https://registry.invalid" passes.
+#              2026-10-10, and by M3's Q31 (h)), an import of socket, ssl (or their C modules
+#              _socket and _ssl), socketserver, urllib, urllib3, http, ftplib, smtplib, smtpd,
+#              poplib, imaplib, nntplib, telnetlib, xmlrpc, asyncio, asyncore, asynchat, wsgiref,
+#              webbrowser, requests, httpx, aiohttp, multiprocessing.connection,
+#              multiprocessing.managers, logging.handlers or logging.config (these four by their
+#              own names, as "from logging import handlers" brings one in), in the shapes Python
+#              random has under RNG, and also as the last part of a dotted name ("import
+#              gevent.socket", "from gevent.socket import x", "import logging.config"). Anchored on
+#              the import, so a URL string such as "https://registry.invalid" passes.
 #   Clipboard  rule 5 and docs/mobile-apps.md ("Never offered: share sheet, copy"): clipboard APIs,
 #              plus UI that copies or shares: .textSelection( unless it is exactly
 #              .textSelection(.disabled), which the docs require (spaces around .disabled are
@@ -84,20 +89,45 @@
 #              _MULTIPLE, SENDTO), and any line that names textIsSelectable, setTextIsSelectable
 #              or isTextSelectable, unless each one's value is the literal false: ="false",
 #              ">false<", (false) or "= false". In a .py file (Q23; completed by the stage-A review,
-#              2026-10-10): an import of the clipboard module, in the shapes of the Python network
-#              imports; anywhere a word starts with one, pyperclip, win32clipboard, tkinter's
-#              clipboard_append, clipboard_get and selection_get, pandas' to_clipboard and
-#              read_clipboard, and the tools pbcopy, pbpaste, xclip, xsel, wl-copy, wl-paste,
-#              PowerShell's Get-Clipboard and Set-Clipboard, clip.exe (never a bare clip) and
-#              osascript's "the clipboard" (these last three in any letter case); and any attribute
-#              or dotted module named clipboard (QApplication.clipboard(), app.clipboard()).
+#              2026-10-10, and by M3's Q31 (h)): an import of the clipboard module, in the shapes of
+#              the Python network imports; anywhere a word starts with one, pyperclip,
+#              win32clipboard, tkinter's clipboard_append, clipboard_get, selection_get and
+#              selection_own, pandas' to_clipboard, read_clipboard and clipboard_set, and the tools
+#              pbcopy, pbpaste, xclip, xsel, wl-copy, wl-paste, PowerShell's Get-Clipboard and
+#              Set-Clipboard, clip.exe (never a bare clip) and osascript's "the clipboard" (these
+#              last three in any letter case); a string that starts with the word clipboard, as
+#              Tcl's clipboard command does (root.tk.call('clipboard', 'append', x)); and any
+#              attribute or dotted module named clipboard (QApplication.clipboard(),
+#              app.clipboard()). In any file (Q31 (h)): JXA's theClipboard (and
+#              setTheClipboardTo), and PowerShell's aliases gcb and scb as whole words in any
+#              letter case, in a .ps1 or .psm1 file and on any line that names powershell or pwsh
+#              (a subprocess or shell line that starts PowerShell); elsewhere gcb and scb are
+#              ordinary names.
 #   Rule1      rule 1 path check: getrandom in any .rs file is a hit, except in the core module
 #              core/src/source, in either file layout: source.rs or anything under source/. A
 #              look-alike such as core/src/sourcex.rs is another module. The games are no
-#              exception: they get their bytes from core's separate game-randomness call
+#              exception: they get their bytes from core's separate game_random call
 #              (docs/pi-firmware.md, "Game randomness").
-#              core/src/lib.rs must hold the exact line #![forbid(unsafe_code)] (a missing line is
+#              std's OS-seeded hashing (tasks/todo.md, M3 group 13): HashMap, HashSet, RandomState,
+#              DefaultHasher, hash_one or BuildHasherDefault, as words, in any .rs file under
+#              core/src, ffi/src or pi/app/src (the shipped crates; their tests use BTreeSet and
+#              BTreeMap). The artifact scan cannot see it: std reads the OS for the hash keys.
+#              core/src/lib.rs must hold the exact line #![forbid(unsafe_code)], and so must
+#              pi/app/src/lib.rs and pi/app/src/main.rs whenever pi/app exists (a missing line is
 #              reported at line 1).
+#   Shell      the shells' paths to core (tasks/todo.md, M3 group 13; rule 1 and Q27, Q26). In the
+#              games' code (pi/app/src/games/, and pi/app/src/games.rs, the module's other
+#              layout), any of the words Session, Wiped, add_extra, add_hw_samples, ceremony,
+#              SystemTime or Instant: a game holds no session and no pool input, and keeps no
+#              clock. game_random in any file outside core/src/source.rs, core/src/lib.rs,
+#              core/tests/, core/examples/release_probe.rs and pi/app/src/games/. Session::new
+#              (spaces around :: allowed) in any file under pi/app/src but pi/app/src/app.rs, and
+#              each match after its first in app.rs: pi/app starts sessions in one place, so a kept
+#              Wiped's 99-roll minimum cannot be skipped. And whenever core exists,
+#              core/examples/release_probe.rs must call game_random on a line that is not a // or
+#              /* comment (the stage-A review's finding 9), so dropping the call fails the gate,
+#              although the scan of the probe would not change (tasks/todo.md, M3 group 1); a
+#              missing call is reported at line 1.
 #   FailOpen   rule 3, only in .rs files under core/, ffi/ and pi/app/ (the crates under the
 #              fail-closed lints): a discarded result. That is an assignment to _ or to an _name
 #              ("_ = f()", "_x = f()") and an underscore binding ("let _ = f()", "let _x = f()",
@@ -135,10 +165,16 @@
 # type alias ("type _Unused = u8;") is a FailOpen hit in core/, ffi/ and pi/app/ (write the type).
 # A field or variable named include passed bare ("Filter { include, exclude }") is an Include hit.
 # In a .py file, prose that says "the clipboard" (AppleScript's phrase) is a Clipboard hit (write
-# "a clipboard"); an import of any module or name called connection or handlers (the names
-# multiprocessing.connection and logging.handlers come in under) is a Network hit; and a wrapped
-# line that holds only names, one of them a banned module's name or clipboard ("    requests," or
-# "    clipboard," as a call's argument), is a hit like a wrapped import line (rename the variable).
+# "a clipboard"), and so is a string that starts with the word clipboard ("clipboard.txt"); an
+# import of any module or name called connection, managers, handlers or config (the names
+# multiprocessing.connection, multiprocessing.managers, logging.handlers and logging.config come in
+# under), also as the last part of a dotted name ("from app import config", "import app.config"),
+# is a Network hit; and a wrapped line that holds only names, one of them a banned module's name
+# or clipboard, also as the last part of a dotted name ("    requests,", "    clipboard," or
+# "    args.config," as a call's argument), is a hit like a wrapped import line (rename the
+# variable). Comments count for the Shell category too: a test or comment that
+# names game_random outside core and the games is a hit (call it the game call), and so is a
+# comment under pi/app/src that names Session::new (write "core's constructor").
 #
 # Portable on purpose: POSIX sh, POSIX ERE (no \b \s \< \>, no -P -w), POSIX sed (BRE, in
 # selectable() and textselection()) and LC_ALL=C, so BSD grep and sed (macOS) and GNU grep and sed
@@ -178,11 +214,14 @@ usage: scripts/banned-api-check.sh [--selftest | DIR | --artifact TARGET FILE...
   --selftest  run the fixtures in scripts/testdata/banned-api/ and scripts/testdata/artifact/
 Hits: RNG APIs (and the OS RNG read outside core/src/source), network APIs, Python network imports
 and hard-coded http URLs (outside registry/), clipboard, copy and share APIs and Python clipboard
-modules, tools and calls, getrandom in a .rs file outside core/src/source, a core/src/lib.rs without
+modules, tools and calls, getrandom in a .rs file outside core/src/source, std's OS-seeded hashing
+in core/src, ffi/src or pi/app/src, a core/src/lib.rs (and pi/app's lib.rs and main.rs) without
 #![forbid(unsafe_code)], in Rust under core/, ffi/ or pi/app/ a discarded result (_ =, an _name
 binding, drop or forget of a call), clippy as a cfg predicate and /dev/stdout, /dev/stderr or
-/dev/tty, include! (by any path or alias) or a path attribute in any .rs file, and a C #include of
-a file with a binary extension.
+/dev/tty, include! (by any path or alias) or a path attribute in any .rs file, a C #include of a
+file with a binary extension, and the shells' paths to core: a session, pool input or clock named
+in the games, game_random named outside core and the games, a second Session::new in pi/app, and
+a release probe that does not call game_random.
 A directory symlink is refused. Exit 0 clean, 1 hits, 2 usage or read error.
 EOF
 }
@@ -311,40 +350,50 @@ network() {
 # "from urllib.request import urlopen", "from gevent import (socket, x)", "from gevent import(x,
 # socket)", a wrapped import line that holds only names and one of them ("    urllib.request"
 # after "import json, \", "    socket," inside "from gevent import (", or "    socket \"), and the
-# line after "from \" ("    socket import create_connection"). Anchored on the import, so the
-# names pass in a URL such as "https://registry.invalid", in other strings, as attributes and
-# inside longer names.
+# line after "from \" ("    socket import create_connection"). Each shape but the parenthesised
+# list, whose names cannot be dotted, also takes the module as the last part of a dotted name
+# (tasks/todo.md, M3 Q31 (h)): "import gevent.socket", "from gevent.socket import x", "import os,
+# gevent.socket", "    gevent.socket import x" after "from \" and "    eventlet.green.socket" on a
+# wrapped line. Anchored on the import, so the names pass in a URL such as
+# "https://registry.invalid", in other strings, as attributes and inside longer names.
+dotted='([A-Za-z0-9_]+[.])*'
 pyimport() {
   grep -n -a -E \
-    -e "${L}import[[:space:]]+$1$R" \
-    -e "${L}import[[:space:](][(A-Za-z0-9_.,[:space:]]*,[[:space:]]*$1$R" \
+    -e "${L}import[[:space:]]+$dotted$1$R" \
+    -e "${L}import[[:space:](][(A-Za-z0-9_.,[:space:]]*,[[:space:]]*$dotted$1$R" \
     -e "${L}import[[:space:]]*[(][[:space:]]*$1$R" \
-    -e "${L}from[[:space:]]+$1$R" \
-    -e "^[[:space:]]*$1([.][A-Za-z0-9_]+)*[[:space:]]+import$R" \
-    -e "^[[:space:]]*([A-Za-z0-9_.]+([[:space:]]+as[[:space:]]+[A-Za-z0-9_]+)?[[:space:]]*,[[:space:]]*)*$1([.][A-Za-z0-9_]+)*([[:space:]]+as[[:space:]]+[A-Za-z0-9_]+)?[[:space:]]*([,)#]|\\\\|\$)" \
+    -e "${L}from[[:space:]]+$dotted$1$R" \
+    -e "^[[:space:]]*$dotted$1([.][A-Za-z0-9_]+)*[[:space:]]+import$R" \
+    -e "^[[:space:]]*([A-Za-z0-9_.]+([[:space:]]+as[[:space:]]+[A-Za-z0-9_]+)?[[:space:]]*,[[:space:]]*)*$dotted$1([.][A-Za-z0-9_]+)*([[:space:]]+as[[:space:]]+[A-Za-z0-9_]+)?[[:space:]]*([,)#]|\\\\|\$)" \
     -- "$2"
 }
 
 # .py files only, outside registry/ like network() (tasks/todo.md M2 group 2, Q23; completed by the
 # stage-A review, 2026-10-10): an import of a network module, in pyimport()'s shapes. _socket and
 # _ssl are the C modules behind socket and ssl, with the same calls. multiprocessing and logging
-# run offline, but multiprocessing.connection (Listener and Client over TCP) and logging.handlers
-# (SocketHandler, SysLogHandler, SMTPHandler, HTTPHandler) do not. Each is listed by its full name
-# and by its own name, which "from multiprocessing import connection" and "from logging import
-# handlers" bring in, so any import of a module or name called connection or handlers is a hit.
+# run offline, but multiprocessing.connection (Listener and Client over TCP),
+# multiprocessing.managers (BaseManager serves over TCP), logging.handlers (SocketHandler,
+# SysLogHandler, SMTPHandler, HTTPHandler) and logging.config (listen() opens a socket server) do
+# not. Each is listed by its own name, which "from multiprocessing import connection" and "from
+# logging import config" bring in, and the dotted shapes take the full name ("import
+# logging.config"), so any import of a module or name called connection, managers, handlers or
+# config is a hit (managers and config since M3's Q31 (h)).
 # Grep cannot see __import__("socket") or importlib.import_module("socket"), an attribute path
 # such as getpass.os.system, or a subprocess running a network tool. For verify.py, tasks/todo.md
 # M2 group 3's check 12 (vectorgen.py --selftest) closes all four; vectorgen and scripts/ keep this
 # gate only.
-pynet='(socket|ssl|_socket|_ssl|socketserver|urllib|urllib3|http|ftplib|smtplib|smtpd|poplib|imaplib|nntplib|telnetlib|xmlrpc|asyncio|asyncore|asynchat|wsgiref|webbrowser|requests|httpx|aiohttp|multiprocessing[.]connection|connection|logging[.]handlers|handlers)'
+pynet='(socket|ssl|_socket|_ssl|socketserver|urllib|urllib3|http|ftplib|smtplib|smtpd|poplib|imaplib|nntplib|telnetlib|xmlrpc|asyncio|asyncore|asynchat|wsgiref|webbrowser|requests|httpx|aiohttp|connection|managers|handlers|config)'
 pynetwork() {
   pyimport "$pynet" "$1"
 }
 
 # Clipboard APIs, and UI that hands the words to copy or share (docs/mobile-apps.md, "Never offered:
 # share sheet, copy"). EnabledTextSelectability is the type a custom static such as .dragToCopy
-# needs. ACTION_SEND also matches _MULTIPLE and SENDTO. .textSelection( and textIsSelectable have
-# their own checks, textselection() and selectable() below.
+# needs. ACTION_SEND also matches _MULTIPLE and SENDTO. JXA's theClipboard and setTheClipboardTo
+# (tasks/todo.md, M3 Q31 (h)) run through "osascript -l JavaScript" from a .js file or a subprocess
+# string, so they hit in any file; JavaScript keeps letter case, so theclipboard passes.
+# .textSelection( and textIsSelectable have their own checks, textselection() and selectable()
+# below.
 clipboard() {
   grep -n -a -E \
     -e 'setPrimaryClip' \
@@ -358,34 +407,58 @@ clipboard() {
     -e 'UIActivityViewController' \
     -e 'SelectionContainer' \
     -e 'ACTION_SEND' \
+    -e '[Tt]heClipboard' \
     -- "$1"
 }
 
-# .py files only (Q23; completed by the stage-A review, 2026-10-10): pyperclip, win32clipboard,
-# tkinter's clipboard_append, clipboard_get and selection_get, pandas' to_clipboard and
-# read_clipboard, and the clipboard tools pbcopy, pbpaste, xclip, xsel, wl-copy, wl-paste,
-# PowerShell's Get-Clipboard and Set-Clipboard, clip.exe and AppleScript's "the clipboard" (run by
-# osascript), anywhere on a line, since a subprocess names its tool in a string. Each must start a
-# word, so idxsel and maxclip pass, while a longer name such as pyperclip3 or xclipboard hits.
+# .py files only (Q23; completed by the stage-A review, 2026-10-10, and by M3's Q31 (h)): pyperclip,
+# win32clipboard, tkinter's clipboard_append, clipboard_get, selection_get and selection_own,
+# pandas' to_clipboard, read_clipboard and clipboard_set (pandas.io.clipboard's copy call), and the
+# clipboard tools pbcopy, pbpaste, xclip, xsel, wl-copy, wl-paste, PowerShell's Get-Clipboard and
+# Set-Clipboard, clip.exe and AppleScript's "the clipboard" (run by osascript), anywhere on a line,
+# since a subprocess names its tool in a string. Each must start a word, so idxsel and maxclip
+# pass, while a longer name such as pyperclip3 or xclipboard hits.
 # PowerShell, Windows file names and AppleScript ignore letter case, so the last three match in
 # any case. clip hits only as clip.exe, since clip is a common word; a bare clip passes.
-# selection_get hits whatever its selection: CLIPBOARD may sit on the next line or in a variable,
-# and the default, PRIMARY, is X11's other clipboard. The last pattern is any attribute or dotted
-# module named clipboard: QApplication.clipboard() or QGuiApplication.clipboard(), app.clipboard()
-# on a Qt application object, pandas.io.clipboard.
+# selection_get and selection_own hit whatever their selection: CLIPBOARD may sit on the next line
+# or in a variable, and the default, PRIMARY, is X11's other clipboard. Tcl's clipboard command
+# hits as any string that starts with the word clipboard, whatever passes it and wherever a
+# formatter wraps the call: root.tk.call('clipboard', 'append', x), tk.eval("clipboard append
+# x"). The last pattern is any attribute or dotted module named clipboard:
+# QApplication.clipboard() or QGuiApplication.clipboard(), app.clipboard() on a Qt application
+# object, pandas.io.clipboard.
 pyclipboard() {
   grep -n -a -E \
     -e "${L}pyperclip" \
     -e "${L}win32clipboard" \
-    -e "${L}clipboard_(append|get)" \
-    -e "${L}selection_get" \
+    -e "${L}clipboard_(append|get|set)" \
+    -e "${L}selection_(get|own)" \
     -e "${L}(to|read)_clipboard" \
     -e "${L}(pbcopy|pbpaste|xclip|xsel|wl-copy|wl-paste)" \
     -e "${L}[GgSs][Ee][Tt]-[Cc][Ll][Ii][Pp][Bb][Oo][Aa][Rr][Dd]" \
     -e "${L}[Cc][Ll][Ii][Pp][.][Ee][Xx][Ee]" \
     -e "${L}[Tt][Hh][Ee][[:space:]]+[Cc][Ll][Ii][Pp][Bb][Oo][Aa][Rr][Dd]" \
+    -e "['\"]clipboard$R" \
     -e "[.][[:space:]]*clipboard$R" \
     -- "$1"
+}
+
+# PowerShell's aliases for Get-Clipboard and Set-Clipboard (tasks/todo.md, M3 Q31 (h)), as whole
+# words in any letter case, as PowerShell reads them: anywhere in a PowerShell script (psclip, for
+# .ps1 and .psm1 files) and, in any other file, on a line that names powershell or pwsh in any
+# case (psline: a subprocess call or a shell line that starts PowerShell). Elsewhere gcb and scb
+# are ordinary names.
+psalias="${L}[GgSs][Cc][Bb]$R"
+psclip() {
+  grep -n -a -E -e "$psalias" -- "$1"
+}
+
+psline() {
+  t=$(grep -n -a -E -e "$psalias" -- "$1")
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  t=$(printf '%s\n' "$t" | grep -i -E -e 'powershell|pwsh')
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  printf '%s\n' "$t"
 }
 
 # .py files only: an import of the clipboard module (PyPI's clipboard), in pyimport()'s shapes.
@@ -437,6 +510,53 @@ textselection() {
 
 getrandom_use() {
   grep -n -a -E -e 'getrandom' -- "$1"
+}
+
+# Rule 1, for .rs files under core/src, ffi/src and pi/app/src (tasks/todo.md, M3 group 13): std's
+# HashMap and HashSet default to RandomState, whose keys std reads from the OS, a second OS read
+# outside core/src/source; DefaultHasher, hash_one and BuildHasherDefault reach the same hashing
+# without the collections. As words, so a name such as hash_one_record passes.
+hashing() {
+  grep -n -a -E \
+    -e "${L}(HashMap|HashSet|RandomState|DefaultHasher|hash_one|BuildHasherDefault)$R" \
+    -- "$1"
+}
+
+# Shell (tasks/todo.md, M3 group 13), for the games' code: a game holds no session (Session,
+# Wiped), feeds no pool (add_extra, add_hw_samples), reaches into no ceremony and keeps no clock
+# (SystemTime, Instant). As words: Sessions or instantly pass.
+games_names() {
+  grep -n -a -E \
+    -e "${L}(Session|Wiped|add_extra|add_hw_samples|ceremony|SystemTime|Instant)$R" \
+    -- "$1"
+}
+
+# Shell, outside core and the games: game_random anywhere in a name, like getrandom under Rule1.
+game_random_use() {
+  grep -n -a -E -e 'game_random' -- "$1"
+}
+
+# Shell, under pi/app/src: Session::new, the one constructor that ignores a kept Wiped.
+session_new() {
+  grep -n -a -E -e "${L}Session[[:space:]]*::[[:space:]]*new$R" -- "$1"
+}
+
+# Shell, in pi/app/src/app.rs: every Session::new after the first, which new_session holds.
+session_new_again() {
+  t=$(session_new "$1")
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  t=$(printf '%s\n' "$t" | sed 1d) || return 2
+  [ -n "$t" ] || return 1
+  printf '%s\n' "$t"
+}
+
+# probe_calls_game_random: core/examples/release_probe.rs calls game_random on a line that is not
+# a // or /* comment (a doc line or a commented-out call does not count). A file that cannot be
+# read counts as no call, so it fails closed.
+probe_calls_game_random() {
+  [ -f core/examples/release_probe.rs ] || return 1
+  t=$(grep -a -E -e "${L}game_random[[:space:]]*[(]" -- core/examples/release_probe.rs) || return 1
+  printf '%s\n' "$t" | grep -q -v -E -e '^[[:space:]]*/[/*]'
 }
 
 # Rule 3, for Rust under core/, ffi/ and pi/app/: the first pattern is an assignment to _ or to an
@@ -553,10 +673,26 @@ EOF
     case $rel in *.py) report Clipboard pyclipimport "$rel" ;; esac
     report Clipboard textselection "$rel"
     report Clipboard selectable "$rel"
+    case $rel in
+      *.[Pp][Ss]1 | *.[Pp][Ss][Mm]1) report Clipboard psclip "$rel" ;;
+      *) report Clipboard psline "$rel" ;;
+    esac
     # Rule 1: only core/src/source may name getrandom ('*' in case also matches '/').
     case $rel in
       core/src/source.rs | core/src/source/*) ;;
       *.rs) report Rule1 getrandom_use "$rel" ;;
+    esac
+    case $rel in core/src/*.rs | ffi/src/*.rs | pi/app/src/*.rs) report Rule1 hashing "$rel" ;; esac
+    # Shell: the games' code, in either module layout; game_random outside core's allowed files and
+    # the games; Session::new under pi/app/src, where only its first in app.rs passes.
+    case $rel in pi/app/src/games.rs | pi/app/src/games/*) report Shell games_names "$rel" ;; esac
+    case $rel in
+      core/src/source.rs | core/src/lib.rs | core/tests/* | core/examples/release_probe.rs | pi/app/src/games/*) ;;
+      *) report Shell game_random_use "$rel" ;;
+    esac
+    case $rel in
+      pi/app/src/app.rs) report Shell session_new_again "$rel" ;;
+      pi/app/src/*) report Shell session_new "$rel" ;;
     esac
     case $rel in core/*.rs | ffi/*.rs | pi/app/*.rs) report FailOpen failopen "$rel" ;; esac
     case $rel in *.rs) report Include include_code "$rel" ;; esac
@@ -564,8 +700,17 @@ EOF
   done <<EOF
 $files
 EOF
-  if ! { [ -f core/src/lib.rs ] && grep -q -a -x -F -e '#![forbid(unsafe_code)]' core/src/lib.rs; }; then
-    echo 'Rule1: core/src/lib.rs:1: missing the line #![forbid(unsafe_code)]'
+  # The unsafe-code ban in core's lib.rs, and in pi/app's lib.rs and main.rs once pi/app exists.
+  forbid=core/src/lib.rs
+  [ -e pi/app ] && forbid="$forbid pi/app/src/lib.rs pi/app/src/main.rs"
+  for f in $forbid; do
+    if ! { [ -f "$f" ] && grep -q -a -x -F -e '#![forbid(unsafe_code)]' "$f"; }; then
+      echo "Rule1: $f:1: missing the line #![forbid(unsafe_code)]"
+      hits=$((hits + 1))
+    fi
+  done
+  if [ -e core ] && ! probe_calls_game_random; then
+    echo 'Shell: core/examples/release_probe.rs:1: missing a call to game_random outside a comment'
     hits=$((hits + 1))
   fi
   if [ "$hits" -ne 0 ]; then
@@ -576,22 +721,29 @@ EOF
   exit 0
 }
 
-# fresh: new repo-like dir $d holding only a valid core/src/lib.rs.
+# fresh: new repo-like dir $d holding only what the tree-wide checks need: core/src/lib.rs,
+# pi/app/src/lib.rs and pi/app/src/main.rs with the unsafe-code ban, and a release probe that
+# calls game_random. A fixture's file at one of these paths replaces it.
 fresh() {
   i=$((i + 1))
   d=$tmp/$i
-  mkdir -p "$d/core/src" || exit 2
-  echo '#![forbid(unsafe_code)]' >"$d/core/src/lib.rs" || exit 2
+  mkdir -p "$d/core/src" "$d/core/examples" "$d/pi/app/src" || exit 2
+  for f in core/src/lib.rs pi/app/src/lib.rs pi/app/src/main.rs; do
+    echo '#![forbid(unsafe_code)]' >"$d/$f" || exit 2
+  done
+  echo 'fn main() -> Result<(), u8> { game_random(&mut [0; 32]).map_err(|_| 20) }' \
+    >"$d/core/examples/release_probe.rs" || exit 2
 }
 
 # expect NAME DIR WANT [FILE]: scan DIR in a new process. WANT=clean needs exit 0 and no hit,
 # WANT=error needs exit 2 and output containing FILE (if given, the expected message), any other
 # WANT needs exit 1 and exactly one hit "<WANT>: <FILE>:<line>: <text>", where <text> is line
-# <line> of FILE as it stands (Rule1's missing-line message is the one exception).
+# <line> of FILE as it stands (the messages for a missing line or call, "missing ...", are the
+# exception).
 expect() {
   out=$(sh "$self" "$2" 2>&1)
   rc=$?
-  cats='^(RNG|Network|Clipboard|Rule1|FailOpen|Include): '
+  cats='^(RNG|Network|Clipboard|Rule1|FailOpen|Include|Shell): '
   hit=$(printf '%s\n' "$out" | grep -E "$cats")
   count=$(printf '%s\n' "$out" | grep -c -E "$cats")
   ok=no
@@ -606,7 +758,7 @@ expect() {
       "$3: $4:"[0-9]*)
         at=${hit#"$3: $4:"}
         case ${at#*: } in
-          'missing the line '*) ok=yes ;;
+          'missing '*) ok=yes ;;
           *) [ "${at#*: }" = "$(sed -n "${at%%:*}p" "$2/$4")" ] && ok=yes ;;
         esac
         ;;
@@ -641,6 +793,7 @@ selftest() {
       rule1-*) want=Rule1 ;;
       failopen-*) want=FailOpen ;;
       include-*) want=Include ;;
+      shell-*) want=Shell ;;
       clean-*) want=clean ;;
       *) fail=$((fail + 1)); printf 'FAIL %s: unknown prefix\n' "$name"; continue ;;
     esac
@@ -716,7 +869,20 @@ selftest() {
   d=$tmp/$i
   mkdir "$d" || exit 2
   expect 'rule1-lib-rs-absent' "$d" Rule1 core/src/lib.rs
-  for want in RNG Network Clipboard Rule1 FailOpen Include clean; do
+  # pi/app's lib.rs and main.rs are checked whenever pi/app exists, so a missing one is a hit and
+  # a tree without pi/app is clean; whenever core exists, so is a missing release probe.
+  for m in lib main; do
+    fresh
+    rm "$d/pi/app/src/$m.rs" || exit 2
+    expect "rule1-pi-app-$m-rs-absent" "$d" Rule1 "pi/app/src/$m.rs"
+  done
+  fresh
+  rm -r "$d/pi" || exit 2
+  expect 'clean-no-pi-app' "$d" clean
+  fresh
+  rm "$d/core/examples/release_probe.rs" || exit 2
+  expect 'shell-release-probe-absent' "$d" Shell core/examples/release_probe.rs
+  for want in RNG Network Clipboard Rule1 FailOpen Include Shell clean; do
     case "$seen " in *" $want "*) ;; *) fail=$((fail + 1)); echo "FAIL no $want fixture" ;; esac
   done
   artifact_selftest
@@ -731,7 +897,8 @@ selftest() {
 # "test_registry" (the selftest checks it against kcr.json; the positive controls in
 # scripts/canaries.sh check it against a real test-registry build).
 testkey=42e9fa0e206d4bdf410f987ac7ded54fb02fb49ef277cc425d5fdfdb72c3b94b
-markers='KC_TEST_SOURCE_DO_NOT_SHIP KC_TEST_REGISTRY_DO_NOT_SHIP'
+# core's two test markers, and the simulator's (pi/sim/src/lib.rs; tasks/todo.md, M3 Q31 (d)).
+markers='KC_TEST_SOURCE_DO_NOT_SHIP KC_TEST_REGISTRY_DO_NOT_SHIP KC_SIMULATOR_DO_NOT_SHIP'
 # The RNG crates of deny.toml's rule-1 block, in its order (the selftest checks the two lists
 # agree): any symbol of one of them in an artifact is a hit.
 rng_crate_names='rand rand_core rand_chacha rand_xoshiro rand_xorshift rand_pcg rand_hc rand_isaac
@@ -993,7 +1160,8 @@ Symbol: $o.o: rand-family symbol $crate::rngs::next_u32" "$t" "$o.o"
   done
   # Any file, whatever its format: each marker as text, and the key's 32 bytes inside other bytes.
   t=aarch64-linux-android
-  for m in source:KC_TEST_SOURCE_DO_NOT_SHIP registry:KC_TEST_REGISTRY_DO_NOT_SHIP; do
+  for m in source:KC_TEST_SOURCE_DO_NOT_SHIP registry:KC_TEST_REGISTRY_DO_NOT_SHIP \
+    simulator:KC_SIMULATOR_DO_NOT_SHIP; do
     mf=$fixture/marker-${m%%:*}.txt
     aexpect "artifact-marker-${m%%:*}-text" 1 "Marker: $mf: ${m#*:}
 Format: $mf: not an ELF, Mach-O or ar file, so its symbols cannot be checked" "$t" "$mf"

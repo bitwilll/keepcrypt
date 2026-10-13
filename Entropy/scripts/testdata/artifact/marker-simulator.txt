@@ -1,0 +1,1 @@
+A release artifact must never hold the simulator marker: KC_SIMULATOR_DO_NOT_SHIP

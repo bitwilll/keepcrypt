@@ -25,8 +25,9 @@
 //!   are held; at 10 minutes the stage is wiped (the kept `Wiped` and the snapshot stay) and the
 //!   device says so.
 //! - Entering a Protected screen from a Public one passes the privacy gate (`enter_page`).
-//! - New sessions come from the kept `Wiped` while there is one, else from `Session::new`, whose
-//!   one call in this crate is in `new_session` (Q26, Q33 (c)).
+//! - New sessions come from the kept `Wiped` while there is one, else from core's constructor,
+//!   whose one call in this crate is in `new_session` (Q26, Q33 (c); the banned-API gate's Shell
+//!   category holds it there).
 //! - Key presses in Mixed `Collecting` reach the pool as uncredited extras (`extras`), Snake open
 //!   or not.
 //! - Snake (`games`) opens from step 4's "Play while you wait", moves one cell per hwrng block and
