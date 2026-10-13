@@ -5735,6 +5735,12 @@ amended; rules 5, 6)**
   and registry run each pass gate.rs, 16 passed and 1 ignored (capture_set); locally at b74b0eb, 17 passed and 1
   ignored in both. `drill_12` (registry), `dice_24_code` and `mixed_12_restarts` reach steps 1-15 between them: steps
   1-13 and 15 in `dice_24_code`, step 14 in `mixed_12_restarts` (counts under "M3: local proof").
+  Proof (review fix, commit 22c): the plan review: `dice_24_code` is a dice-only run, so it shows step 4's dice-only
+  notice but never step 4's Mixed intake or step 5. Between them: steps 1-3, 6-13 and 15, and step 4's dice-only
+  notice, in `dice_24_code`; step 4's Mixed intake (hwrng and Snake), step 5 (the commitment) and step 14 (D) in
+  `mixed_12_restarts`. Since 0cdfc8a none of the three scenarios changed (b74b0eb and its review fixes add tests,
+  `Captures` code, and the driver check of 21b, which they pass), so CI's 0cdfc8a run still shows them passing; at
+  922f272 gate.rs passes 20 and ignores 1 in both configurations locally. The lead re-cites CI on the pushed head.
 - [x] **Gate: every screen.** `every_screen_is_expected`, against the inventory in group 8.
 
   Proof: test output.
@@ -6103,6 +6109,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     later.
     22b. tasks/todo.md: the plan, security and recompute reviews: group 14's runtime budgets and Verification "CI"
     wait for CI on the pushed head, unticked.
+    22c. tasks/todo.md: the plan review: the scripted-run gate's proof splits steps 1-15 between `dice_24_code` and
+    `mixed_12_restarts` as they run, and says why CI's 0cdfc8a run still covers the three scenarios.
 
 Review fixes are listed as N.b entries under the commit they amend.
 
