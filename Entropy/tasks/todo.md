@@ -5394,6 +5394,13 @@ carries it, and every commit names a proof that runs at that commit.
   `target/tmp/pi-sim-captures/registry/`; the live run, fed live.rs's 111-line session on stdin, exits 0 and prints
   only screen ids, 140 of them (`boot` to `idle-wiped`), leaving `target/pi-sim-live/` holding only `live.png`; the
   `TRYBUILD=overwrite` run passes all 23 fixtures and leaves `core/tests/compile_fail/` unchanged.
+  Proof (review fix, commit 17b): the Commands still described the gate as RNG, network and clipboard APIs and the
+  release-artifact scan as core's two files, after commits 15 and 16. The gate's line now names std's OS-seeded
+  hashing and the Shell category; the scan block adds the Pi target's pi/app rlib, scanned with core's two files, and
+  the test job's test-registry simulator build and scan; the live line says a refused line ends it with exit status 2
+  (commit 14b). Run as written on the host stand-in, `aarch64-apple-darwin`: the three release files scan clean
+  (`_getentropy` imported by the probe, 2 archives), and the simulator gives exactly the registry marker, the
+  simulator marker and the `TestKey` hit (exit 1).
 - [ ] Runtime budgets, measured against group 0's baseline:
   - `test` grows by at most 6 minutes;
   - `gates` stays within 10 minutes (12 if Q31 (f)'s fallback is approved);
@@ -5680,6 +5687,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     16b. ci: the plan review: the `test` job's comment says the hash ban covers the shipped crates' sources, not
     pi/sim's.
 17. CLAUDE.md: Commands for M3.
+    17b. CLAUDE.md: the plan review: the gate's line and the release-artifact scans describe commits 15 and 16, and
+    live mode's refusal.
 18. tasks/todo.md: the M3 Review, with pasted proof, the owner's verdict on the captures and the gate report.
 
 Review fixes are listed as N.b entries under the commit they amend.
