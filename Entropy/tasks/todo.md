@@ -843,6 +843,9 @@ supply-chain, scripts, .github, docs, CLAUDE.md), so the whole PR needs your rev
     - The entry grids: go-ahead code, the 32 Crockford symbols in 8×4; read-back and backup words, a-z plus "blank" in
       7×4; BIP39 passphrase, printable ASCII in three 8×4 pages.
     - Confirm is disabled at 256 rolls. One-way choices (Skip, Match found, Cannot check) each take a confirm screen.
+    - Amended by the owner on 2026-10-13, during M3 ("Raised by stage C's review during M3", below): the Entry grids
+      row's KEY2 is "back" on the go-ahead code and on the backup-passphrase entry of "Check a backup", and stays "-"
+      on the read-back and BIP39-passphrase entries.
 
     Otherwise: a letter wheel (Up/Down cycles a character), or KEY1 always means Back.
 
@@ -927,6 +930,30 @@ supply-chain, scripts, .github, docs, CLAUDE.md), so the whole PR needs your rev
 
     Otherwise: name the edits to leave out; the code then follows the doc text as it stands, except where a
     question above was answered the other way. For item 13, a hand-written SVG now.
+
+### Raised by stage C's review during M3 (KEY2 "back", answered 2026-10-13)
+An owner decision taken during M3, after the Q25-Q34 answers. It amends Q32 (a)'s key map (the Entry grids row), and
+stage C's reviewers (commits 11-12) found the problem it fixes.
+- [x] **No way back from the go-ahead code or the backup-passphrase entry.** Once a check is on `code-entry` (or on
+      `code-wrong`, which returns to `code-entry`), no key reaches `check-actions` or the seal card. If the checker
+      says Stop, or the user picks "Enter go-ahead code" before scanning, the only ways out are the 10-minute idle
+      wipe or a power cycle. The idle wipe drops the `Checking` session without a `Wiped`, so no collision report is
+      shown and, unless a kept `Wiped` already asks for 99 rolls (Q26), the next session needs 50, not 99.
+      `backup-check-entry` has the same shape: its only exits are 8 entries or the idle wipe. Answered 2026-10-13, in
+      the owner's words: "yes to KEY2 back". Decided:
+      - on `code-entry`, KEY2 is "back": it returns to `check-actions` with the same `Checking` session and the same
+        nonce, and the typed code is cleared;
+      - on `backup-check-entry`, KEY2 is "back": it returns Home and drops the backup that was read (the file stays on
+        the stick);
+      - `readback-entry` and `bip39-entry` keep KEY2 "-".
+      Applied in commit 18, with no code, as commit 2 did for Q34: pi-firmware.md's Buttons table and its Entry grids
+      note, step 7's seal card and "Check a backup" (under "Restoring later"); Q32 (a)'s amendment, the screen
+      inventory, and group 15 with its Verification line in this plan. seal-watchonly-braille.md and mobile-apps.md
+      name no key of these screens, so neither changes. The code is commit 19 (group 15).
+
+      Proof (commit 18): `git diff --name-only` lists only `docs/pi-firmware.md` and `tasks/todo.md`, and
+      pi-firmware.md keeps its 188 lines; `vectorgen.py --selftest` (13 checks) and `verify.py selftest` (8 groups)
+      pass on Python 3.12 and 3.9; `banned-api-check.sh` is clean (199 files) and `--selftest` passes 427/427; canaries 61/61.
 
 ### Later
 - [ ] Release signing: minisign or GPG, and who holds the key offline? (M7)
@@ -4654,6 +4681,11 @@ carries it, and every commit names a proof that runs at that commit.
   watch-only QRs; the words) plus every entry grid that holds a secret. collision-qr carries the destroyed seed's seal
   code.
 
+  KEY2 "back" (the owner's decision of 2026-10-13, group 15) adds no id: code-entry returns to check-actions with the
+  same check and nonce, its typed code cleared, and backup-check-entry returns to home, dropping the backup read from
+  the stick. readback-entry and bip39-entry offer no KEY2. Neither move crosses the privacy gate, which stands only
+  where a Protected screen is entered from a Public one.
+
   Proof (commit 13): `every_screen_is_expected` passes in both configurations: the union of the `Expect` ids of the
   nine scenarios in `scenarios(config)` (each one a test of its own, which fails on an unmet `Expect`) is all 62 ids
   with the test key, and all but snapshot-loaded and snapshot-date, named in the test, without it. game-snake,
@@ -5410,7 +5442,66 @@ carries it, and every commit names a proof that runs at that commit.
   Proof: all 14 required check runs green on the PR head, with unchanged names; job times pasted; each command run as
   written and pasted.
 
-**15. Review**
+**15. KEY2 "back" on the go-ahead code and backup-passphrase entry (the owner's decision of 2026-10-13; Q32 (a) as
+amended; rules 5, 6)**
+- [ ] `screen.rs`: `KeyMap::GRID_BACK`, the grid map with KEY2 "back", for code-entry and backup-check-entry;
+  readback-entry and bip39-entry keep `GRID`, with KEY2 dead.
+  - The footer must still fit the 240 px panel. With today's labels the grid map and KEY2 make 46 characters
+    ("^v<> cursor  OK type  1 delete  2 back  3 done", 276 px), and backup-check-entry offers all five at once (type and
+    done both, at an entry's third letter). So the four grids share shorter labels that fit in full, for example
+    "^v<> move  OK add  1 del  2 back  3 done" (40 characters, 240 px, as long as the words' footer); "move", "type",
+    "del", "back" and "done" would still be 41 (246 px).
+  - pi-firmware.md's Buttons table keeps the action names. `KeyMap`'s doc names the footer's shorter labels and the
+    two back grids, `every_key_map_is_pinned` pins them, and the footer test still checks every id's legend within
+    240 px.
+- [ ] `app.rs`: KEY2 in `typing` (where it is `OUT_OF_ORDER` today).
+  - On code-entry: the typed code is zeroized in place (`Zeroize::zeroize`, as the other grids' refusals do), then
+    check-actions shows. The stage stays `Checking`, with the same session and so the same nonce, and no core call is
+    made.
+  - On backup-check-entry: the `BackupCheck` stage (the `.age` bytes read and the entries typed, both `Zeroizing`) is
+    dropped, then home shows. No USB call is made, so the file stays on the stick.
+  - On readback-entry and bip39-entry the model never offers KEY2, and reaching it there stays `OUT_OF_ORDER`.
+  - Neither move ends a check or a session (rule 6: only a verified go-ahead reaches `Ready`, and only Match found and
+    Cannot check discard), and neither is a refusal or a halt (Q25).
+
+  Proof:
+  - pi/app unit tests: with three symbols typed on code-entry, KEY2 shows check-actions, the stage is still
+    `Checking` with an empty code, and `check_request().url()` equals the URL before; Enter go-ahead code then shows
+    an empty entry, and the same holds after a wrong code's code-wrong and Press. With letters typed on
+    backup-check-entry, KEY2 shows home with `holds_secrets()` false. `every_key_map_is_pinned` and the footer test
+    pass.
+  - `check_restarts` (both configurations), in the session before its first collision (`coldcard-50`, no snapshot):
+    Enter go-ahead code before scanning, three symbols typed, KEY2: check-actions; KEY1: seal-qr with the same check
+    URL; Press, Enter go-ahead code: nothing typed; a wrong code, code-wrong, Press, KEY2: check-actions again. Match
+    found then gives collision-qr with dice-50's report, and Add fresh entropy "0 / 99", as before. Without KEY2 the
+    idle wipe was the only way out, and it gave neither.
+  - `check_backup` (both configurations): letters typed on backup-check-entry, then KEY2: home, nothing held, the
+    stick's files unchanged; Check a backup then opens abandon-12 by its first fours as before.
+  - The dead-key probes press KEY2 on the first showing of readback-entry and bip39-entry, with nothing presented,
+    and no longer on the two back grids.
+  - In a scratch copy, each of these mutants fails a test: KEY2 on code-entry keeping the typed code, showing another
+    screen than check-actions, or dropping the session; KEY2 on backup-check-entry keeping the stage; KEY2 offered on
+    readback-entry or bip39-entry.
+
+**16. The simulator's strip (a lead decision between Q30 (h) and Q33 (j); the strip's part of group 12's open item)**
+- [ ] `ui/render.rs`: in a simulator build the top strip reads "SIMULATOR · NOT FOR REAL FUNDS" when the simulator
+  banner is its only banner (30 characters, 180 px, centred in the whole strip), and "SIMULATOR" beside "TEST
+  REGISTRY", each in half the strip as now: the long label and "TEST REGISTRY" (258 px together) cannot share it.
+  - Why: Q30 (h) gives live mode "SIMULATOR · NOT FOR REAL FUNDS" on every screen, and Q33 (j) gives "SIMULATOR"
+    beside "TEST REGISTRY". The documented live run is the release configuration, so it shows Q30 (h)'s words; the
+    registry configuration keeps Q33 (j)'s pair.
+  - "TEST REGISTRY" alone, the device (no simulator flag), the placeholder (no strip) and a wipe's black frame are
+    unchanged. `hal::BuildInfo::simulator`'s doc and render.rs's module doc follow.
+
+  Proof:
+  - render unit tests: the simulator banner alone equals a reference drawing of the long label centred in the strip,
+    on the simulator colour, and hides the title; with the test key both banners are drawn as before; each strip
+    fits 240 px.
+  - pi/sim, both configurations: a drawn present's top strip carries the long label in the release configuration
+    (live mode's `live.png` included) and the pair in the registry configuration. Group 12's item then has its
+    strip proof; it stays open for group 14's scan and the Review session.
+
+**17. Review**
 - [ ] Plan, security and recompute reviews per stage (core; dependencies and foundation; screens; sim and CI), as in
   M2. Every high and medium finding is fixed, with "Proof (review fixes)" lines.
 - [ ] The registry-config capture set, zipped and sent to the owner with its index.
@@ -5475,6 +5566,18 @@ carries it, and every commit names a proof that runs at that commit.
   - The documented mappings hold: dice KEY1 undoes; words KEY1 toggles the overview and KEY2/KEY3 page.
 
   Proof: group 5's tests and the probe counts.
+- [ ] **KEY2 "back"** (the owner's decision of 2026-10-13; Q32 (a) as amended):
+  - from code-entry to check-actions with the same check and nonce and the typed code cleared, after which Match
+    found still reports the collision and the restart needs 99 rolls;
+  - from backup-check-entry to home with nothing held, and the file left on the stick;
+  - no KEY2 on readback-entry or bip39-entry, and every footer within 240 px.
+
+  Proof: group 15's unit tests, `check_restarts`, `check_backup`, the dead-key probes.
+- [ ] **The simulator's strip** (a lead decision; Q30 (h), Q33 (j)): "SIMULATOR · NOT FOR REAL FUNDS" when it is the
+  only banner, as in live mode's release configuration, and "SIMULATOR" beside "TEST REGISTRY" in the registry
+  configuration.
+
+  Proof: group 16's tests.
 - [ ] **Gate: waiting-screen game.**
   - Snake runs only in Mixed step 4 and is closed at the quota.
   - Its bytes come only from `game_random` (the Shell grep allows the name only under `pi/app/src/games/`).
@@ -5689,7 +5792,15 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
 17. CLAUDE.md: Commands for M3.
     17b. CLAUDE.md: the plan review: the gate's line and the release-artifact scans describe commits 15 and 16, and
     live mode's refusal.
-18. tasks/todo.md: the M3 Review, with pasted proof, the owner's verdict on the captures and the gate report.
+18. docs, tasks/todo.md: the owner's KEY2 "back" decision (2026-10-13) for the go-ahead code entry and the
+    backup-check entry, with no code: pi-firmware.md's Buttons table, step 7 and "Check a backup"; the decision
+    recorded under "Raised by stage C's review during M3", Q32 (a) amended, the screen inventory, groups 15 and 16
+    and their Verification lines.
+19. pi/app, pi/sim: KEY2 "back" on code-entry and backup-check-entry, the grids' footer labels that fit with it, unit
+    tests, `check_restarts` and `check_backup` (group 15).
+20. pi/app, pi/sim: the simulator's strip reads "SIMULATOR · NOT FOR REAL FUNDS" alone and "SIMULATOR" beside "TEST
+    REGISTRY" (group 16; a lead decision).
+21. tasks/todo.md: the M3 Review, with pasted proof, the owner's verdict on the captures and the gate report.
 
 Review fixes are listed as N.b entries under the commit they amend.
 
