@@ -1,24 +1,30 @@
-//! The screens of steps 1-7 and of any step (tasks/todo.md, M3 group 8; docs/pi-firmware.md
-//! "User flow", "Buttons", "Protected screens and idle"; docs/seal-watchonly-braille.md "Checking
-//! the seal"): each one's model, built from what the app holds and the current screen, and the
-//! pure gate functions that decide which actions a model offers.
+//! The screens (tasks/todo.md, M3 groups 8 and 9; docs/pi-firmware.md "User flow", "Buttons",
+//! "Protected screens and idle"; docs/seal-watchonly-braille.md "Checking the seal"): each one's
+//! model, built from what the app holds and the current screen, and the pure gate functions that
+//! decide which actions a model offers. Steps 1-7 and the screens of any step are here, steps 8-15
+//! in `ready`, and the USB screens of step 11 and of Home's side flows in `usb`.
 //!
-//! - A model borrows the session's public text (the seal, C) and owns only `Zeroizing` text; a
-//!   secret is a Protected element, on a Protected screen only.
+//! - A model borrows the session's text and owns only `Zeroizing` text; a secret is a Protected
+//!   element, on a Protected screen only, and owned secret text is built in a buffer of its final
+//!   size (`built`), so no reallocation leaves a copy behind.
 //! - An action core would refuse by wiping the session is offered only when its gate function
 //!   says yes: Continue below the quota, a confirm at 256 rolls or with no face picked, Done below
-//!   the minimum, Skip outside `Sealed` (tasks/todo.md, M3 "The shell never makes a wiping call by
-//!   mistake"). A model leaves out every key that would do nothing, and the app ignores a key the
-//!   shown model leaves out.
+//!   the minimum, Skip outside `Sealed`, steps 10-15 before the read-back (tasks/todo.md, M3 "The
+//!   shell never makes a wiping call by mistake"). A model leaves out every key that would do
+//!   nothing, and the app ignores a key the shown model leaves out.
 //! - Elements are stacked from the top of the content area, `GAP` apart, so each box comes from
 //!   the font metrics (`Element::bounds`) and every model fits.
 
+mod ready;
+mod usb;
+
 use embedded_graphics::prelude::{Point, Size};
-use keepcrypt_core::{HW_BYTES_NEEDED, RegistryDate, SealPublic};
+use keepcrypt_core::{HW_BYTES_NEEDED, Mode, RegistryDate, SealPublic};
 use zeroize::Zeroizing;
 
 use crate::app::{Held, Note, OUT_OF_ORDER, Stage, Stop, View};
 use crate::extras::StageKind;
+use crate::grid::{CODE_LEN, Grid, PAGE_ROWS};
 use crate::input::Key;
 use crate::screen::{
     BODY_FONT, Banners, Class, Element, Item, LARGE_SCALE, QR_SIDE, SEAL_SIDE, Screen, ScreenId,
@@ -26,13 +32,6 @@ use crate::screen::{
 };
 use crate::ui::{SIDE, caption_cells, hex_groups};
 
-/// The go-ahead code's symbols (Crockford base32), on the entry grid row by row: 8 columns, 4
-/// rows (Q32 (a)).
-pub const CROCKFORD: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-/// The go-ahead code's length, without its dash.
-pub const CODE_LEN: usize = 8;
-/// The code grid's columns.
-const GRID_COLUMNS: usize = 8;
 /// Core refuses a 257th roll (`TooManyRolls`), so confirm is disabled at 256 (Q32 (a)).
 pub const MAX_ROLLS: u16 = 256;
 /// The step 4 progress bar's cells.
@@ -43,6 +42,14 @@ const GAP: u32 = 4;
 const CAPTION_PITCH: Size = Size::new(15, 24);
 /// The security address (SECURITY.md), for About and `COLLISION`.
 const SECURITY: &str = "admin@keepcrypt.com";
+/// The wait screen's line while a new session runs the known-answer tests.
+pub const WAIT_SESSION: &str = "The known-answer tests run before every new seed.";
+/// ... while the backup is encrypted, written and read back (two scrypt runs).
+pub const WAIT_BACKUP: &str = "Encrypting the backup, writing it to the stick and reading it back.";
+/// ... while a backup is opened with a typed passphrase (one scrypt run).
+pub const WAIT_OPEN: &str = "Opening the backup with its passphrase.";
+/// ... while a snapshot is verified.
+pub const WAIT_SNAPSHOT: &str = "Checking the snapshot's signature and entries.";
 
 // The longer screen copy.
 /// check-prompt: swb's prompt, the same words as the phones.
@@ -67,12 +74,19 @@ const IDLE_WARNING: &str =
     "Without a key, everything secret is wiped in one minute. Press any key to keep it.";
 const HALTED: &str = "No seed can be made. Power the device off: a power cycle reruns the \
     self-tests before any new seed.";
+/// The privacy gate in front of the words: the SeedBook safety rules (swb "Braille backup").
+const SEEDBOOK_RULES: &str = "The SeedBook is a public reference: never write the real phrase \
+    in it or store a marked copy with the wallet. Work one word at a time, in order, alone and \
+    offline; rehearse on a spare insert first. Never use a computer-driven embosser or printer \
+    for a real seed.";
 
 /// A menu entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Choice {
     NewSeed,
     DiceOnlySeed,
+    CheckBackup,
+    LoadSnapshot,
     About,
     Words12,
     Words24,
@@ -93,6 +107,36 @@ pub enum Choice {
     Destroy,
     /// The Cannot check confirmation.
     StartAgain,
+    /// Step 11's offer: Do it.
+    BackUp,
+    /// Step 11's offer: Skip.
+    SkipBackup,
+    /// After a failed backup: a new file under the same passphrase.
+    Retry,
+    /// After a failed backup: Skip.
+    SkipFailedBackup,
+    /// Step 12's offer: Do it.
+    ShowWatchOnly,
+    /// Step 12's offer: Skip.
+    SkipWatchOnly,
+    /// The export of the seed itself.
+    NoPassphrase,
+    /// The export of a BIP39 passphrase's wallet.
+    WithPassphrase,
+    /// Step 13's offer: Do it.
+    ShowRegistration,
+    /// Step 13's offer: Skip.
+    SkipRegistration,
+    /// Step 14's offer: Do it.
+    ShowD,
+    /// Step 14's offer: Skip.
+    SkipD,
+    /// "Check a backup": the re-check QR.
+    Recheck,
+    /// "Check a backup": the words, behind the privacy gate.
+    ShowWords,
+    /// "Check a backup": done, which drops the backup.
+    CloseBackup,
 }
 
 impl Choice {
@@ -101,6 +145,8 @@ impl Choice {
         match self {
             Choice::NewSeed => "New seed",
             Choice::DiceOnlySeed => "Dice-only seed",
+            Choice::CheckBackup => "Check a backup",
+            Choice::LoadSnapshot => "Load registry snapshot",
             Choice::About => "About",
             Choice::Words12 => "12 words",
             Choice::Words24 => "24 words",
@@ -115,6 +161,21 @@ impl Choice {
             Choice::CannotCheck => "Cannot check",
             Choice::Destroy => "Destroy this seed",
             Choice::StartAgain => "Start again",
+            Choice::BackUp => "Back up to USB",
+            Choice::Retry => "Retry",
+            Choice::ShowWatchOnly => "Show watch-only QRs",
+            Choice::NoPassphrase => "No BIP39 passphrase",
+            Choice::WithPassphrase => "I use a passphrase",
+            Choice::ShowRegistration => "Show registration QR",
+            Choice::ShowD => "Show D",
+            Choice::SkipBackup
+            | Choice::SkipFailedBackup
+            | Choice::SkipWatchOnly
+            | Choice::SkipRegistration
+            | Choice::SkipD => "Skip",
+            Choice::Recheck => "Re-check QR",
+            Choice::ShowWords => "Show the words",
+            Choice::CloseBackup => "Done",
         }
     }
 }
@@ -123,7 +184,13 @@ impl Choice {
 pub fn choices(id: ScreenId, held: &Held) -> &'static [Choice] {
     let kind = held.stage.kind();
     match (id, &held.stage) {
-        (ScreenId::Home, _) => &[Choice::NewSeed, Choice::DiceOnlySeed, Choice::About],
+        (ScreenId::Home, _) => &[
+            Choice::NewSeed,
+            Choice::DiceOnlySeed,
+            Choice::CheckBackup,
+            Choice::LoadSnapshot,
+            Choice::About,
+        ],
         (ScreenId::Length, _) => &[Choice::Words12, Choice::Words24],
         (ScreenId::Hwrng, Stage::Collecting(session))
             if continue_offered(session.credited_bits(), session.required_bits()) =>
@@ -140,6 +207,15 @@ pub fn choices(id: ScreenId, held: &Held) -> &'static [Choice] {
         }
         (ScreenId::StopConfirm, _) => &[Choice::Destroy],
         (ScreenId::CannotCheckConfirm, _) => &[Choice::StartAgain],
+        (ScreenId::BackupOffer, _) => &[Choice::BackUp, Choice::SkipBackup],
+        (ScreenId::BackupFailed, _) => &[Choice::Retry, Choice::SkipFailedBackup],
+        (ScreenId::WatchOffer, _) => &[Choice::ShowWatchOnly, Choice::SkipWatchOnly],
+        (ScreenId::Bip39Ask, _) => &[Choice::NoPassphrase, Choice::WithPassphrase],
+        (ScreenId::RegisterOffer, _) => &[Choice::ShowRegistration, Choice::SkipRegistration],
+        (ScreenId::RevealDOffer, _) => &[Choice::ShowD, Choice::SkipD],
+        (ScreenId::BackupCheckResult, _) => {
+            &[Choice::Recheck, Choice::ShowWords, Choice::CloseBackup]
+        }
         _ => &[],
     }
 }
@@ -182,6 +258,43 @@ pub fn after_check_now(snapshot_loaded: bool) -> ScreenId {
     }
 }
 
+/// Where step 13 leads: Reveal D in Mixed mode; dice-only mode has no D and skips step 14.
+pub fn after_register(mode: Mode) -> ScreenId {
+    match mode {
+        Mode::Mixed => ScreenId::RevealDOffer,
+        Mode::DiceOnly => ScreenId::Checklist,
+    }
+}
+
+/// True for the screens of steps 10-15 and readback-done: core's read-back gate holds back the
+/// five exports until step 9 completes (pi-firmware.md "User flow"), and no model of these
+/// screens is built for a session whose read-back is incomplete.
+pub fn after_readback(id: ScreenId) -> bool {
+    matches!(
+        id,
+        ScreenId::ReadbackDone
+            | ScreenId::Wallet
+            | ScreenId::BackupOffer
+            | ScreenId::UsbInsert
+            | ScreenId::BackupVerified
+            | ScreenId::BackupFailed
+            | ScreenId::BackupPassphrase
+            | ScreenId::BackupConfirm
+            | ScreenId::BackupConfirmWrong
+            | ScreenId::WatchOffer
+            | ScreenId::Bip39Ask
+            | ScreenId::WatchSummary
+            | ScreenId::RegisterOffer
+            | ScreenId::Bip39Entry
+            | ScreenId::WatchAccountQr
+            | ScreenId::WatchDescriptorQr
+            | ScreenId::RegisterQr
+            | ScreenId::RevealDOffer
+            | ScreenId::Checklist
+            | ScreenId::RevealD
+    )
+}
+
 /// True when entering `to` from `from` passes the privacy gate first: a Protected screen entered
 /// from a Public one, other than the gate itself (Q29).
 pub fn needs_gate(from: ScreenId, to: ScreenId) -> bool {
@@ -199,19 +312,58 @@ pub fn dice_text(rolls: u16, minimum: u16, millibits: u32) -> String {
     )
 }
 
-/// The code grid's cursor after `key`, or `None` for a key that does not move it. Moves wrap
-/// within the row or the column.
-pub fn grid_move(cursor: usize, key: Key) -> Option<usize> {
-    let rows = CROCKFORD.len() / GRID_COLUMNS;
-    let (row, column) = (cursor / GRID_COLUMNS, cursor % GRID_COLUMNS);
-    let (row, column) = match key {
-        Key::Up => ((row + rows - 1) % rows, column),
-        Key::Down => ((row + 1) % rows, column),
-        Key::Left => (row, (column + GRID_COLUMNS - 1) % GRID_COLUMNS),
-        Key::Right => (row, (column + 1) % GRID_COLUMNS),
-        Key::Press | Key::Key1 | Key::Key2 | Key::Key3 => return None,
-    };
-    Some(row * GRID_COLUMNS + column)
+/// The page of `grid` that holds `cursor`, 4 rows of cells, the cursor's in brackets. A blank
+/// face is `_`; on the ASCII grid a space is `·`, so it can be seen; an empty cell is blank.
+/// Built in place: after a press the cursor sits on the symbol just typed.
+pub fn grid_text(grid: Grid, cursor: usize) -> Zeroizing<String> {
+    let columns = grid.columns();
+    let first = cursor / columns / PAGE_ROWS * PAGE_ROWS;
+    // Three characters a cell, a row's '·' one byte more, and the line feeds.
+    let capacity = PAGE_ROWS * (3 * columns + 1) + PAGE_ROWS - 1;
+    built(capacity, |out| {
+        for row in first..first + PAGE_ROWS {
+            if row > first {
+                out.push('\n');
+            }
+            for column in 0..columns {
+                let cell = row * columns + column;
+                let symbol = match (grid, grid.symbol(cell)) {
+                    (_, None) => ' ',
+                    (Grid::Ascii, Some(b' ')) => '·',
+                    (_, Some(symbol)) => char::from(symbol),
+                };
+                let (open, close) = if cell == cursor {
+                    ('[', ']')
+                } else {
+                    (' ', ' ')
+                };
+                out.push(open);
+                out.push(symbol);
+                out.push(close);
+            }
+        }
+    })
+}
+
+/// Secret text built in a buffer of `capacity`: `fill` never needs more, so the text never
+/// reallocates and leaves a copy behind (rule 5).
+fn built(capacity: usize, fill: impl FnOnce(&mut String)) -> Zeroizing<String> {
+    let mut text = Zeroizing::new(String::with_capacity(capacity));
+    fill(&mut text);
+    text
+}
+
+/// Appends `number` in decimal with exactly `width` digits, leading zeros included, with no
+/// formatting machinery: it may number a word of the seed.
+fn push_number(out: &mut String, number: u16, width: usize) {
+    let mut digits = [b'0'; 5];
+    let mut rest = number;
+    for digit in digits.iter_mut().rev() {
+        *digit = b'0' + (rest % 10).to_be_bytes()[1];
+        rest /= 10;
+    }
+    let start = digits.len().saturating_sub(width);
+    out.extend(digits[start..].iter().map(|&digit| char::from(digit)));
 }
 
 /// A model built from the top of the content area down.
@@ -249,6 +401,16 @@ impl<'a> Page<'a> {
         self.at(0, Class::Public, Item::Small(text.into()))
     }
 
+    /// Body text of `class`.
+    fn text_in(self, class: Class, text: impl Into<Str<'a>>) -> Self {
+        self.at(0, class, Item::Text(text.into()))
+    }
+
+    /// Small text of `class`.
+    fn small_in(self, class: Class, text: impl Into<Str<'a>>) -> Self {
+        self.at(0, class, Item::Small(text.into()))
+    }
+
     /// `item`, `width` px wide, centred.
     fn centred(self, width: u32, class: Class, item: Item<'a>) -> Self {
         self.at(SIDE.saturating_sub(width) / 2, class, item)
@@ -256,21 +418,23 @@ impl<'a> Page<'a> {
 
     /// A word or a code at ×2, centred.
     fn large(self, text: impl Into<Str<'a>>) -> Self {
+        self.large_in(Class::Public, text, None)
+    }
+
+    /// A word or a code of `class` at ×2, centred, its characters from `lighter_from` on drawn
+    /// lighter.
+    fn large_in(self, class: Class, text: impl Into<Str<'a>>, lighter_from: Option<usize>) -> Self {
         let text = text.into();
         let width = px(
             text.as_str().chars().count(),
             advance(&BODY_FONT) * LARGE_SCALE,
         );
-        let item = Item::Large {
-            text,
-            lighter_from: None,
-        };
-        self.centred(width, Class::Public, item)
+        let item = Item::Large { text, lighter_from };
+        self.centred(width, class, item)
     }
 
-    /// The menu: one line per entry, the cursor's marked. Up and Down are offered only with two
-    /// entries or more, and Press only with one or more.
-    fn menu(mut self, choices: &[Choice], cursor: usize) -> Self {
+    /// The menu: one line per entry, the cursor's marked.
+    fn menu(self, choices: &[Choice], cursor: usize) -> Self {
         let lines: Vec<String> = choices
             .iter()
             .enumerate()
@@ -279,14 +443,30 @@ impl<'a> Page<'a> {
                 format!("{mark}{}", choice.label())
             })
             .collect();
-        if !lines.is_empty() {
-            self = self.text(lines.join("\n"));
+        self.listed(Class::Public, lines.join("\n"), choices.len())
+    }
+
+    /// A menu of `entries` lines, already marked, as body text of `class`. Up and Down are offered
+    /// only with two entries or more, and Press only with one or more.
+    fn listed(mut self, class: Class, lines: impl Into<Str<'a>>, entries: usize) -> Self {
+        if entries > 0 {
+            self = self.text_in(class, lines);
         }
-        if choices.len() < 2 {
+        if entries < 2 {
             self.screen = self.screen.without(Key::Up).without(Key::Down);
         }
-        if choices.is_empty() {
+        if entries == 0 {
             self.screen = self.screen.without(Key::Press);
+        }
+        self
+    }
+
+    /// The model offering only `keys` of its key map.
+    fn only(mut self, keys: &[Key]) -> Self {
+        for key in Key::ALL {
+            if !keys.contains(&key) {
+                self.screen = self.screen.without(key);
+            }
         }
         self
     }
@@ -304,6 +484,15 @@ impl<'a> Page<'a> {
     }
 }
 
+/// A fingerprint as the screens write it: 8 lowercase hex digits. Public: the wallet summary
+/// shows it to compare after a restore.
+fn fingerprint_hex(fingerprint: [u8; 4]) -> String {
+    fingerprint
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
 /// A date as the screens write it: YYYY-MM-DD.
 fn date_text(date: RegistryDate) -> String {
     format!("{:04}-{:02}-{:02}", date.year(), date.month(), date.day())
@@ -319,11 +508,11 @@ pub fn boot(held: &Held) -> Screen<'_> {
         .done()
 }
 
-/// The wait screen, while a new session runs the known-answer tests (Q33 (k)).
-pub fn wait(held: &Held) -> Screen<'_> {
+/// The wait screen, while a blocking call runs (Q33 (k)): `why` says which.
+pub fn wait(held: &Held, why: &'static str) -> Screen<'static> {
     Page::new(ScreenId::Wait, "Please wait", held.banners)
         .text("Please wait")
-        .small("The known-answer tests run before every new seed.")
+        .small(why)
         .done()
 }
 
@@ -338,6 +527,18 @@ pub fn blank() -> Screen<'static> {
 
 /// The model of the current screen.
 pub fn model<'a>(held: &'a Held, view: &'a View) -> Result<Screen<'a>, Stop> {
+    if let Stage::Ready { session, .. } = &held.stage
+        && after_readback(view.id)
+        && !session.readback_complete()
+    {
+        return Err(OUT_OF_ORDER);
+    }
+    if ready::shows(view.shown()) {
+        return ready::model(held, view);
+    }
+    if usb::shows(view.shown()) {
+        return usb::model(held, view);
+    }
     let banners = held.banners;
     let page = |title| Page::new(view.shown(), title, banners);
     let screen = match (view.shown(), &held.stage) {
@@ -499,7 +700,7 @@ pub fn model<'a>(held: &'a Held, view: &'a View) -> Result<Screen<'a>, Stop> {
                 .small(CODE_WRONG)
                 .done()
         }
-        (ScreenId::CheckClear, Stage::Ready(_)) => {
+        (ScreenId::CheckClear, Stage::Ready { .. }) => {
             let Note::Clear { seal_id, as_of } = &view.note else {
                 return Err(OUT_OF_ORDER);
             };
@@ -534,7 +735,7 @@ pub fn model<'a>(held: &'a Held, view: &'a View) -> Result<Screen<'a>, Stop> {
             .small("Next: the collision report QR, then fresh entropy with at least 99 rolls.")
             .done(),
         (ScreenId::PrivacyGate, _) => {
-            let Note::Gate { to, skipped } = view.note else {
+            let Note::Gate { to, skipped, .. } = view.note else {
                 return Err(OUT_OF_ORDER);
             };
             let mut gate = page("Privacy")
@@ -543,8 +744,10 @@ pub fn model<'a>(held: &'a Held, view: &'a View) -> Result<Screen<'a>, Stop> {
             if skipped {
                 gate = gate.small(SKIPPED);
             }
-            // The words (steps 8 and 9) come with group 9; until then this gate leads nowhere.
-            gate.offer(Key::Press, to != ScreenId::WordsInsert).done()
+            if to == ScreenId::WordsInsert {
+                gate = gate.small(SEEDBOOK_RULES);
+            }
+            gate.done()
         }
         (ScreenId::CollisionQr, _) => {
             let Some(report) = held
@@ -608,27 +811,9 @@ fn code_entry<'a>(page: Page<'a>, code: &Zeroizing<String>, cursor: usize) -> Sc
         }
         shown.push(symbol);
     }
-    let grid: Vec<String> = CROCKFORD
-        .chunks(GRID_COLUMNS)
-        .enumerate()
-        .map(|(row, symbols)| {
-            symbols
-                .iter()
-                .enumerate()
-                .map(|(column, &symbol)| {
-                    let symbol = char::from(symbol);
-                    if row * GRID_COLUMNS + column == cursor {
-                        format!("[{symbol}]")
-                    } else {
-                        format!(" {symbol} ")
-                    }
-                })
-                .collect()
-        })
-        .collect();
     page.small("Type the 8-character code your checker shows.")
         .large(shown)
-        .text(grid.join("\n"))
+        .text(grid_text(Grid::Code, cursor))
         .offer(Key::Press, typed < CODE_LEN)
         .offer(Key::Key1, typed > 0)
         .offer(Key::Key3, typed == CODE_LEN)
@@ -719,20 +904,81 @@ mod tests {
     }
 
     #[test]
-    fn the_code_grid_moves_wrap_and_other_keys_do_not_move() {
-        assert_eq!(grid_move(0, Key::Right), Some(1));
-        assert_eq!(grid_move(7, Key::Right), Some(0));
-        assert_eq!(grid_move(0, Key::Left), Some(7));
-        assert_eq!(grid_move(0, Key::Down), Some(8));
-        assert_eq!(grid_move(0, Key::Up), Some(24));
-        assert_eq!(grid_move(31, Key::Down), Some(7));
-        for key in [Key::Press, Key::Key1, Key::Key2, Key::Key3] {
-            assert_eq!(grid_move(5, key), None);
+    fn a_grid_page_brackets_the_cursor_and_shows_blanks_and_spaces() {
+        let code = grid_text(Grid::Code, 9);
+        let rows: Vec<&str> = code.split('\n').collect();
+        assert_eq!(rows.len(), 4);
+        assert_eq!(rows[1], " 8 [9] A  B  C  D  E  F ");
+        assert!(rows.iter().all(|row| row.chars().count() == 24));
+        let letters = grid_text(Grid::Letters, 26);
+        assert_eq!(letters.split('\n').nth(3), Some(" v  w  x  y  z [_]   "));
+        // The ASCII grid shows the cursor's page: a space as '·', the empty last cell blank.
+        assert!(grid_text(Grid::Ascii, 0).starts_with("[·] !  \"  #"));
+        let third = grid_text(Grid::Ascii, 95);
+        assert!(third.starts_with(" `  a  b "));
+        assert!(third.ends_with(" ~ [ ]"));
+        // Built in place, '·' and all: after a press the cursor sits on the symbol just typed.
+        for (grid, cursor, capacity) in [(Grid::Ascii, 0, 103), (Grid::Letters, 26, 91)] {
+            let text = grid_text(grid, cursor);
+            assert_eq!(text.capacity(), String::with_capacity(capacity).capacity());
         }
+    }
+
+    #[test]
+    fn numbers_have_their_width_and_leading_zeros() {
+        for (number, width, shown) in [
+            (1, 4, "0001"),
+            (2048, 4, "2048"),
+            (7, 2, "07"),
+            (24, 2, "24"),
+        ] {
+            let text = built(width, |out| push_number(out, number, width));
+            assert_eq!(text.as_str(), shown);
+            assert_eq!(
+                text.capacity(),
+                String::with_capacity(width).capacity(),
+                "built in place"
+            );
+        }
+    }
+
+    #[test]
+    fn dice_only_mode_skips_reveal_d() {
+        assert_eq!(after_register(Mode::Mixed), ScreenId::RevealDOffer);
+        assert_eq!(after_register(Mode::DiceOnly), ScreenId::Checklist);
+    }
+
+    #[test]
+    fn the_screens_after_the_read_back_are_steps_10_to_15_and_readback_done() {
+        let names: Vec<&str> = ScreenId::ALL
+            .into_iter()
+            .filter(|&id| after_readback(id))
+            .map(ScreenId::name)
+            .collect();
         assert_eq!(
-            CROCKFORD
-                [grid_move(grid_move(0, Key::Down).expect("a move"), Key::Right).expect("a move")],
-            b'9'
+            names,
+            [
+                "readback-done",
+                "wallet",
+                "backup-offer",
+                "usb-insert",
+                "backup-verified",
+                "backup-failed",
+                "backup-passphrase",
+                "backup-confirm",
+                "backup-confirm-wrong",
+                "watch-offer",
+                "bip39-ask",
+                "watch-summary",
+                "register-offer",
+                "bip39-entry",
+                "watch-account-qr",
+                "watch-descriptor-qr",
+                "register-qr",
+                "reveal-d-offer",
+                "checklist",
+                "reveal-d",
+            ]
         );
     }
 
@@ -746,6 +992,8 @@ mod tests {
         for choice in [
             Choice::NewSeed,
             Choice::DiceOnlySeed,
+            Choice::CheckBackup,
+            Choice::LoadSnapshot,
             Choice::About,
             Choice::Words12,
             Choice::Words24,
@@ -760,6 +1008,21 @@ mod tests {
             Choice::CannotCheck,
             Choice::Destroy,
             Choice::StartAgain,
+            Choice::BackUp,
+            Choice::SkipBackup,
+            Choice::Retry,
+            Choice::SkipFailedBackup,
+            Choice::ShowWatchOnly,
+            Choice::SkipWatchOnly,
+            Choice::NoPassphrase,
+            Choice::WithPassphrase,
+            Choice::ShowRegistration,
+            Choice::SkipRegistration,
+            Choice::ShowD,
+            Choice::SkipD,
+            Choice::Recheck,
+            Choice::ShowWords,
+            Choice::CloseBackup,
         ] {
             assert!(choice.label().chars().count() < 24, "{choice:?}");
         }

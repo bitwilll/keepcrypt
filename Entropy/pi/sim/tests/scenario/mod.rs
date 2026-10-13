@@ -12,16 +12,23 @@
 //! - On every present with a QR code, the drawn modules equal a fresh drawing of the model's
 //!   payload (`qr_drawn`). The mock checker takes T and n from the last check QR so checked and
 //!   computes the go-ahead code G from them, as the registry page would (Q30 (d)).
+//! - The entry grids are typed as a user would: the cursor read off the drawn grid, then the
+//!   shortest wrapping path to each symbol (`Layout`, Q32 (a)'s layouts, stated here again). The
+//!   presents a typing step makes are its own; only the result of its last key is left for the
+//!   next `Expect`.
+//! - The driver records what the screens showed (`Record`): each insert's word, the backup
+//!   passphrase's words and every screen's last texts, for the read-back, the confirm and the
+//!   assertions. All of it is public test data or a vector run's; none of it is printed.
 //! - Nothing here prints screen text: `report` gets the scenario's name and counts.
 
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 
 use keepcrypt_core::registry_key_is_test;
 use keepcrypt_pi::App;
 use keepcrypt_pi::hal::{Display, HalError, Zeroizing};
 use keepcrypt_pi::input::Key;
 use keepcrypt_pi::screen::{
-    Banners, Element, Item, KeyMap, Kind, QR_SIDE, STRIP_HEIGHT, Screen, ScreenId,
+    Banners, Class, Element, Item, KeyMap, Kind, QR_SIDE, STRIP_HEIGHT, Screen, ScreenId,
 };
 use keepcrypt_pi::ui::{Frame, Painter, SIDE};
 use keepcrypt_pi_sim::{Fault, HwRngStream, Present, Shown, SimHal};
@@ -34,7 +41,76 @@ const S: u64 = 1_000_000_000;
 const GO_DOMAIN: &[u8] = b"KCE/v1/go";
 /// Crockford base32, the go-ahead code's alphabet and the entry grid's order: 8 columns, 4 rows.
 const CROCKFORD: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-const GRID_COLUMNS: usize = 8;
+
+/// An entry grid as Q32 (a) lays it out: its symbols row by row and its columns. The cursor wraps
+/// within its row and its column; a cell past the last symbol is empty.
+#[derive(Clone, Copy)]
+struct Layout {
+    symbols: &'static [u8],
+    columns: usize,
+}
+
+impl Layout {
+    /// The grid of an entry screen.
+    fn of(id: ScreenId) -> Layout {
+        match id {
+            ScreenId::CodeEntry => Layout {
+                symbols: CROCKFORD,
+                columns: 8,
+            },
+            ScreenId::ReadbackEntry | ScreenId::BackupCheckEntry => Layout {
+                symbols: b"abcdefghijklmnopqrstuvwxyz_",
+                columns: 7,
+            },
+            ScreenId::Bip39Entry => Layout {
+                symbols: b" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~",
+                columns: 8,
+            },
+            other => panic!("{} has no entry grid", other.name()),
+        }
+    }
+
+    fn rows(self) -> usize {
+        self.symbols.len().div_ceil(self.columns)
+    }
+
+    /// The cell of the symbol drawn in brackets: `·` is the ASCII grid's space, a blank the empty
+    /// cell after the last symbol.
+    fn cell(self, drawn: char) -> usize {
+        let symbol = match drawn {
+            '·' => b' ',
+            ' ' => return self.symbols.len(),
+            other => u8::try_from(other).expect("an ASCII symbol"),
+        };
+        self.symbols
+            .iter()
+            .position(|&s| s == symbol)
+            .expect("a symbol of this grid")
+    }
+
+    /// The presses from `from` to `to`: the shorter way round in each direction.
+    fn path(self, from: usize, to: usize) -> Vec<Key> {
+        let mut keys = Vec::new();
+        let mut leg = |from: usize, to: usize, n: usize, forward: Key, back: Key| {
+            let ahead = (to + n - from) % n;
+            if ahead <= n / 2 {
+                keys.extend(std::iter::repeat_n(forward, ahead));
+            } else {
+                keys.extend(std::iter::repeat_n(back, n - ahead));
+            }
+        };
+        let columns = self.columns;
+        leg(from % columns, to % columns, columns, Key::Right, Key::Left);
+        leg(
+            from / columns,
+            to / columns,
+            self.rows(),
+            Key::Down,
+            Key::Up,
+        );
+        keys
+    }
+}
 
 /// The build under test: the release configuration, or the test registry key
 /// (`cargo test -p keepcrypt-pi-sim --features keepcrypt-core/test-registry`).
@@ -54,12 +130,120 @@ impl Config {
     }
 }
 
-/// What an assertion sees: the present the last `Expect` matched, the latest present, and the
-/// app.
+/// What an assertion sees: the present the last `Expect` matched, the latest present, the app,
+/// and what the run's screens showed.
 pub struct Seen<'r> {
     pub matched: &'r Present,
     pub latest: &'r Present,
     pub app: &'r App<SimHal>,
+    pub record: &'r Record,
+}
+
+/// What the screens of a run showed, as the driver read it from their models.
+#[derive(Default)]
+pub struct Record {
+    /// Each insert's word, by position, from the insert view's header and word.
+    pub words: BTreeMap<u8, Zeroizing<String>>,
+    /// The backup passphrase's words, by number, from its pages.
+    pub passphrase: BTreeMap<u8, Zeroizing<String>>,
+    /// Every screen id presented in the run, power cycles included, in first-seen order.
+    pub screens: Vec<ScreenId>,
+    /// The texts of each screen's last present, by id.
+    texts: Vec<(ScreenId, Vec<Zeroizing<String>>)>,
+}
+
+impl Record {
+    /// The texts of the last present of `id`.
+    pub fn texts_of(&self, id: ScreenId) -> &[Zeroizing<String>] {
+        match self.texts.iter().find(|(seen, _)| *seen == id) {
+            Some((_, texts)) => texts,
+            None => panic!("{} was not presented", id.name()),
+        }
+    }
+
+    /// The words of the inserts shown, in order.
+    pub fn words(&self) -> Vec<&str> {
+        self.words.values().map(|word| word.as_str()).collect()
+    }
+
+    /// The backup passphrase's words shown, in order.
+    pub fn passphrase(&self) -> Vec<&str> {
+        self.passphrase.values().map(|word| word.as_str()).collect()
+    }
+
+    fn note(&mut self, present: &Present) {
+        if !self.screens.contains(&present.id) {
+            self.screens.push(present.id);
+        }
+        let texts: Vec<Zeroizing<String>> = present
+            .elements
+            .iter()
+            .filter_map(|element| element.item.text())
+            .map(|text| Zeroizing::new(text.to_owned()))
+            .collect();
+        match present.id {
+            ScreenId::WordsInsert => {
+                let position = texts
+                    .first()
+                    .and_then(|header| number_after(header, "Insert "))
+                    .expect("an insert's header");
+                let word = present
+                    .elements
+                    .iter()
+                    .find_map(|element| match &element.item {
+                        Shown::Large { text, .. } => Some(text.clone()),
+                        _ => None,
+                    });
+                self.words.insert(position, word.expect("an insert's word"));
+            }
+            ScreenId::BackupPassphrase => {
+                for element in &present.elements {
+                    if let (Class::Protected, Shown::Text(lines)) = (element.class, &element.item) {
+                        for line in lines.split('\n') {
+                            let (number, word) = line.split_once(' ').expect("N word");
+                            self.passphrase.insert(
+                                number.parse().expect("a word number"),
+                                Zeroizing::new(word.to_owned()),
+                            );
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        match self.texts.iter_mut().find(|(seen, _)| *seen == present.id) {
+            Some((_, last)) => *last = texts,
+            None => self.texts.push((present.id, texts)),
+        }
+    }
+}
+
+/// The two-digit number after `prefix` at the start of `text`.
+fn number_after(text: &str, prefix: &str) -> Option<u8> {
+    text.strip_prefix(prefix)?.get(..2)?.parse().ok()
+}
+
+/// What the stick does.
+pub enum Stick {
+    /// These files are put on it (names as given), and it is inserted.
+    Insert(Vec<(String, Vec<u8>)>),
+}
+
+/// Which faces to read back on readback-entry.
+pub enum Readback {
+    /// The first four letters (or the whole three-letter word) of the insert being read back,
+    /// as its insert view showed it.
+    FromScreen,
+    /// These faces, `_` a blank fourth face.
+    Faces(&'static str),
+}
+
+/// Which choice to pick on backup-confirm.
+pub enum Answer {
+    /// The word the passphrase's pages showed at the asked position.
+    Right,
+    /// The first other choice.
+    Wrong,
 }
 
 /// An assertion over what was seen. Its message is fixed: it never quotes screen text.
@@ -90,6 +274,14 @@ pub enum Step {
     Fault(Fault),
     /// A go-ahead code typed on the grid, then Done.
     Code(Code),
+    /// Text typed on the entry grid shown, without Done.
+    Type(String),
+    /// Faces read back on readback-entry, then Done.
+    Readback(Readback),
+    /// A pick on backup-confirm.
+    Pick(Answer),
+    /// Something done to the stick.
+    Stick(Stick),
     /// An assertion, with its fixed message.
     Assert(&'static str, Check),
     /// A power cycle: a new app on new hardware with this hwrng stream, booted.
@@ -150,6 +342,7 @@ struct Run {
     check_url: Option<Zeroizing<String>>,
     /// The keys the latest present offered.
     latest_keys: KeyMap,
+    record: Record,
     counts: Counts,
 }
 
@@ -163,6 +356,7 @@ impl Run {
             probed: Vec::new(),
             check_url: None,
             latest_keys: KeyMap::NONE,
+            record: Record::default(),
             counts: Counts::default(),
         };
         run.app.start();
@@ -192,6 +386,16 @@ impl Run {
             }
             Step::Fault(fault) => self.app.hal_mut().fault(fault),
             Step::Code(code) => self.code(code),
+            Step::Type(text) => self.type_text(&text),
+            Step::Readback(readback) => self.read_back(readback),
+            Step::Pick(answer) => self.pick(answer),
+            Step::Stick(Stick::Insert(files)) => {
+                let hal = self.app.hal_mut();
+                for (name, bytes) in files {
+                    hal.put_file(&name, bytes);
+                }
+                hal.insert_stick();
+            }
             Step::Assert(what, check) => {
                 let (Some(matched), Some(latest)) = (self.matched.as_ref(), self.latest()) else {
                     panic!("step {}: nothing to assert on", self.counts.steps);
@@ -200,6 +404,7 @@ impl Run {
                     matched,
                     latest,
                     app: &self.app,
+                    record: &self.record,
                 };
                 assert!(check(&seen), "step {}: {what}", self.counts.steps);
             }
@@ -246,6 +451,7 @@ impl Run {
                     }
                 }
             }
+            self.record.note(&present);
             self.latest_keys = present.keys;
             self.unmatched.push_back(present);
         }
@@ -336,7 +542,7 @@ impl Run {
         self.play();
     }
 
-    /// Types a go-ahead code on the grid from its first symbol, then Done.
+    /// Types a go-ahead code on the grid, then Done.
     fn code(&mut self, code: Code) {
         let Some(url) = self.check_url.as_ref() else {
             panic!("step {}: no check QR was shown", self.counts.steps);
@@ -346,30 +552,147 @@ impl Run {
             let last = typed[7];
             typed[7] = if last == b'0' { b'1' } else { b'0' };
         }
-        let mut cursor = 0;
-        for symbol in typed {
-            let target = CROCKFORD
+        let typed = String::from_utf8(typed.to_vec()).expect("Crockford symbols");
+        self.type_text(&typed);
+        self.press(Key::Key3);
+    }
+
+    /// Types `text` on the entry grid showing: from the cursor drawn in brackets, the shortest
+    /// path to each symbol, then Press. The presents this makes are consumed here, each of the
+    /// grid's screen.
+    fn type_text(&mut self, text: &str) {
+        let Some(id) = self.expected else {
+            panic!("step {}: typing on no expected screen", self.counts.steps);
+        };
+        let layout = Layout::of(id);
+        let mut cursor = layout.cell(self.drawn_cursor());
+        for symbol in text.bytes() {
+            let target = layout
+                .symbols
                 .iter()
                 .position(|&s| s == symbol)
-                .expect("a Crockford symbol");
-            let (row, column) = (cursor / GRID_COLUMNS, cursor % GRID_COLUMNS);
-            let (to_row, to_column) = (target / GRID_COLUMNS, target % GRID_COLUMNS);
-            let horizontal = if to_column > column {
-                Key::Right
-            } else {
-                Key::Left
-            };
-            for _ in 0..to_column.abs_diff(column) {
-                self.press(horizontal);
-            }
-            let vertical = if to_row > row { Key::Down } else { Key::Up };
-            for _ in 0..to_row.abs_diff(row) {
-                self.press(vertical);
+                .expect("a symbol of this grid");
+            for key in layout.path(cursor, target) {
+                self.press(key);
             }
             self.press(Key::Press);
             cursor = target;
         }
+        self.consume(id);
+    }
+
+    /// The symbol the latest present draws in brackets: the grid's cursor.
+    fn drawn_cursor(&self) -> char {
+        let latest = self.latest().expect("a present");
+        // The grid is the model's last text: a typed passphrase above it may hold brackets too.
+        latest
+            .elements
+            .iter()
+            .rev()
+            .filter_map(|element| element.item.text())
+            .find_map(|text| {
+                let chars: Vec<char> = text.chars().collect();
+                chars
+                    .windows(3)
+                    .find(|w| w[0] == '[' && w[2] == ']')
+                    .map(|w| w[1])
+            })
+            .expect("a grid with its cursor")
+    }
+
+    /// Takes the presents not yet matched as this step's own: each must be of `id`.
+    fn consume(&mut self, id: ScreenId) {
+        if let Some(last) = self.unmatched.back().map(|p| p.id) {
+            let shown: Vec<&str> = self.unmatched.iter().map(|p| p.id.name()).collect();
+            assert!(
+                self.unmatched.iter().all(|p| p.id == id),
+                "step {}: typing on {} presented {shown:?}",
+                self.counts.steps,
+                id.name()
+            );
+            debug_assert_eq!(last, id);
+            self.matched = self.unmatched.drain(..).next_back();
+        }
+    }
+
+    /// Reads faces back on readback-entry, then Done.
+    fn read_back(&mut self, readback: Readback) {
+        let faces: Zeroizing<String> = match readback {
+            Readback::Faces(faces) => Zeroizing::new(faces.to_owned()),
+            Readback::FromScreen => {
+                let latest = self.latest().expect("a present");
+                let position = latest
+                    .elements
+                    .iter()
+                    .filter_map(|element| element.item.text())
+                    .find_map(|text| number_after(text, "Read back insert "))
+                    .expect("the insert being read back");
+                let word = self
+                    .record
+                    .words
+                    .get(&position)
+                    .expect("its insert was shown");
+                Zeroizing::new(word.chars().take(4).collect())
+            }
+        };
+        self.type_text(&faces);
         self.press(Key::Key3);
+    }
+
+    /// Picks on backup-confirm: the question's position and the marked choices are read off the
+    /// model, the right word off the passphrase's pages.
+    fn pick(&mut self, answer: Answer) {
+        let latest = self.latest().expect("a present");
+        assert_eq!(
+            latest.id,
+            ScreenId::BackupConfirm,
+            "step {}",
+            self.counts.steps
+        );
+        let position: u8 = latest
+            .elements
+            .iter()
+            .filter_map(|element| element.item.text())
+            .find_map(|text| {
+                text.strip_prefix("Which is word ")?
+                    .strip_suffix('?')?
+                    .parse()
+                    .ok()
+            })
+            .expect("the question");
+        let lines: Vec<Zeroizing<String>> = latest
+            .elements
+            .iter()
+            .find_map(|element| match (&element.class, &element.item) {
+                (Class::Protected, Shown::Text(text)) => Some(
+                    text.split('\n')
+                        .map(|line| Zeroizing::new(line.to_owned()))
+                        .collect(),
+                ),
+                _ => None,
+            })
+            .expect("the choices");
+        let cursor = lines
+            .iter()
+            .position(|line| line.starts_with('>'))
+            .expect("the cursor");
+        let right = self
+            .record
+            .passphrase
+            .get(&position)
+            .expect("the word shown");
+        let target = lines
+            .iter()
+            .position(|line| match answer {
+                Answer::Right => line[1..] == ***right,
+                Answer::Wrong => line[1..] != ***right,
+            })
+            .expect("a choice");
+        for _ in 0..(target + lines.len() - cursor) % lines.len() {
+            self.press(Key::Down);
+        }
+        self.consume(ScreenId::BackupConfirm);
+        self.press(Key::Press);
     }
 }
 

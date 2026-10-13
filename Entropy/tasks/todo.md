@@ -4622,13 +4622,17 @@ carries it, and every commit names a proof that runs at that commit.
   The Protected set is the phones' (mobile-apps.md:111: backup passphrase, reveal-D, seal code, registration and
   watch-only QRs; the words) plus every entry grid that holds a secret. collision-qr carries the destroyed seed's seal
   code.
-- [ ] Steps 1-3:
+- [x] Steps 1-3:
   - Step 1: `boot` (version, rootfs prefix, banners), then `self_test()`, then 16 blocks into `hwrng_boot_test`. Any
     failure is `halt`.
   - Step 2: `home` with pi-firmware.md:83's five items, and the snapshot as a status line.
   - Step 3: `length` (12 by default, "fills one KeepCrypt Hinge or Screw"), then `wait` and the new session.
 
   Proof: scenario `boot_stops` (below) and the first steps of every scenario at this commit.
+  Proof (commit 12): Home lists New seed, Dice-only seed, Check a backup, Load registry snapshot and About; every
+  gate scenario passes in both configurations from boot through Home and Length (or Home's side flows), `boot_stops`
+  included, and `drill_12` (registry config) shows Home's status line "Snapshot No. 4, dated 2026-03-01" after the
+  load.
 - [x] Steps 4-6:
   - Step 4 (Mixed):
     - one block per Tick into `add_hw_samples`, until `hw_bytes_tested() >= HW_BYTES_NEEDED` (the sim's Tick is
@@ -4690,6 +4694,12 @@ carries it, and every commit names a proof that runs at that commit.
 
   Proof: unit tests for the gate rule; scenarios `runtime_stop`, `mixed_12_restarts` (its steps 1-7 part at this
   commit) and `wipes_clear_the_stage`.
+  Proof (commit 12): `only_a_protected_screen_entered_from_a_public_one_is_gated` and
+  `a_protected_screen_is_entered_through_the_privacy_gate`; `runtime_stop`, `mixed_12_restarts` (steps 1-7) and the
+  full `wipes_clear_the_stage` pass in both configurations; the gate also stands in front of the words, the backup
+  passphrase, the BIP39 entry, the watch-only and registration QRs, insert 13 after `device-swap` and a checked
+  backup's words, which the scenarios pass through; the cover's first press only uncovers insert 24 in
+  `dice_24_code`.
 - [x] Scenario driver (pi/sim tests). A scenario is a list of steps, built per configuration:
   - `Expect(ScreenId)`: matched in order against the Display log since the previous step, so transient screens are
     matched too;
@@ -4725,7 +4735,7 @@ carries it, and every commit names a proof that runs at that commit.
   `mixed_12_restarts` reveal with its code.
 
 **9. pi/app steps 8-15 and the Home side flows (pi-firmware.md:89-96, :142-155; swb:200-292)**
-- [ ] Step 8: `words-insert`, one insert per page:
+- [x] Step 8: `words-insert`, one insert per page:
   - the header "Insert NN · device k of m";
   - the word at ×2, with letters past the fourth drawn lighter;
   - the SeedBook number as `%04d`;
@@ -4734,7 +4744,14 @@ carries it, and every commit names a proof that runs at that commit.
   - Press on the last insert starts the read-back.
   - For 24 words, `device-swap` comes before word 13, and every insert, read-back and checklist page names its device
     (swb:282).
-- [ ] Step 9:
+
+  Proof (commit 12): `dice_24_code` pages all 24 inserts (KEY1 overview on and off, KEY3 and KEY2 in the overview,
+  `device-swap` and its gate before insert 13); the inserts' words equal kcr.json's `dice-99-words24`, insert 24 reads
+  "Insert 24 · device 2 of 2", the overview "Words 01-04 · device 1 of 2", and Press on insert 24 starts the
+  read-back; `drill_12` (registry config) and `check_backup` show `dice-99-words12`, ABANDON with "SeedBook 0001" and
+  ZOO with "SeedBook 2048". The faces are core's `Insert::faces` drawn as numbered cells (group 6), the word at ×2
+  lighter from its fifth letter.
+- [x] Step 9:
   - `readback-entry`: 3 or 4 letters per insert, in order. No suggestions while typing. After the entry the device
     completes it from the seed and compares (`check_readback`); a match shows the whole word, then the next insert.
   - `readback-mismatch` names each `FaceVerdict`: mirror misread, should be blank, should have a letter, or wrong
@@ -4744,7 +4761,15 @@ carries it, and every commit names a proof that runs at that commit.
   - The SeedBook safety rules (swb:290) are in the screen copy.
 
   Proof: steps 10-15 are absent from every key map before `readback_complete()` (unit test).
-- [ ] Steps 10 and 11:
+  Proof (commit 12): `steps_10_to_15_are_not_drawn_before_every_word_reads_back`: before the read-back, the model of
+  every screen of steps 10-15 and readback-done is an `OUT_OF_ORDER` halt (`screens::after_readback`, pinned by
+  `the_screens_after_the_read_back_are_steps_10_to_15_and_readback_done`), and they draw once every insert reads back.
+  `dice_24_code` reads back "vari" (completed to "various"), then "tap" (should have a letter), "mirc" (mirror
+  misread; KEY1 shows insert 03, where Press returns to its entry), "eask" (wrong letter: missing 2 4 5, extra 1) and
+  "taga" (should be blank), each corrected; every match shows the whole word and offers only done. The SeedBook
+  safety rules are on the privacy gate in front of the words. The letters grid's gates are unit-tested
+  (`a_letters_entry_takes_four_faces_and_a_blank_only_fourth`).
+- [x] Steps 10 and 11:
   - Step 10: `wallet` (`fingerprint` as 8 hex, `first_address`).
   - Step 11, the backup:
     1. `backup-offer` → privacy gate → `generate_backup_passphrase` (once; the passphrase and its challenge go into
@@ -4756,6 +4781,11 @@ carries it, and every commit names a proof that runs at that commit.
        `read_written` → `verify_backup` → `backup-verified`.
     5. On a USB fault: `remove_written` when a file was written → `backup-failed`, with Retry (re-encrypts under the
        stored passphrase, with a new file name) or Skip.
+
+  Proof (commit 12): `dice_24_code`: the wallet summary, Back up to USB behind the gate, the passphrase's two pages,
+  a wrong pick on `backup-confirm` (the pages again, the same questions), two right picks, a write fault (the HAL's
+  text, nothing on the stick), Retry, then `backup-verified`: the stick holds exactly one `.age`, and `decrypt_backup`
+  with the words the pages showed gives the wallet summary's fingerprint. `drill_12` and the wipes skip step 11.
 - [ ] Steps 12-15:
   - Step 12:
     - `watch-offer` → `bip39-ask`.
@@ -4770,11 +4800,17 @@ carries it, and every commit names a proof that runs at that commit.
   - Step 14 (Mixed only): `reveal-d-offer` ("D plus the rolls recreates the seed"; "type each value into verify.py
     only after its prompt appears") → privacy gate → `reveal-d` (16 groups of 4).
   - Step 15: `checklist` (swb:280, :282) → `wipe()` → `power-off`, which accepts no key.
-- [ ] Load registry snapshot:
+- [x] Load registry snapshot:
   - `usb-insert` → `usb-pick` (when there is more than one `.kcr`) → `wait` → `verify_snapshot`;
   - then `snapshot-loaded` (number, date, entries) or `snapshot-failed` with core's text. In release builds that is
     `NoRegistryKey`'s "no registry key is pinned in this build".
-- [ ] Check a backup:
+
+  Proof (commit 12): `drill_12`: release config, one `.kcr`, no picker, `snapshot-failed` with "no registry key is
+  pinned in this build"; registry config, `usb-pick` lists `flipped-signature-r.kcr` and
+  `keepcrypt-registry-2026-03-01.kcr` (`with-dice-50`): "registry snapshot or proof rejected: bad signature", then
+  "Snapshot No. 4, dated 2026-03-01, 7 entries.";
+  `check_backup` (registry config) loads `with-vector-1` with no picker.
+- [x] Check a backup:
   1. `usb-insert` → `usb-pick` → privacy gate.
   2. `backup-check-entry`: 8 entries, first four letters each (Q32 (b)).
   3. `wait` → `decrypt_backup`.
@@ -4787,6 +4823,13 @@ carries it, and every commit names a proof that runs at that commit.
 
   Proof for this group: scenarios `drill_12`, `dice_24_code`, `skip_and_idle` and `check_backup` (group 11), each at
   this commit.
+  Proof (commit 12, Check a backup): `check_backup` in both configurations: `usb-pick` lists `abandon-12.age` and
+  `zoo-24.age`; an entry "zzzz" is refused with core's text verbatim and the screen's own line "Type the first four
+  letters of each word, or a whole three-letter word." right under it (also pinned by
+  `an_unrecognised_entry_shows_cores_text_with_the_first_fours_instruction_under_it`); the first fours open it to
+  fingerprint 73c5da0a and Seal ID 5E0G7J6X; "Registrations: 1, as of 2026-03-01" with `with-vector-1` loaded, no
+  count without; the re-check QR is `.../check#t=<vector-1's T>`; the words behind the gate; Done drops the backup;
+  `zoo-24` opens to 244c267a with ZOO 2048.
 
 **10. pi/app Snake (Q27; pi-firmware.md:132-138; rule 1)**
 - [ ] `games/snake.rs` and `games/mod.rs`:
@@ -4825,7 +4868,7 @@ carries it, and every commit names a proof that runs at that commit.
   "hwrng health test failed: Repetition Count Test in the continuous stage at sample 1505", with `holds_secrets()` and
   `keeps_wiped()` false and all 8 keys dead; after `PowerCycle` a dice-only seed's dice screen shows "0 / 50 rolls,
   0.0 bits".
-- [ ] `drill_12`, a vector run (the duplicate-seed drill).
+- [x] `drill_12`, a vector run (the duplicate-seed drill).
   - Release config: the stick's `with-dice-50` gives `snapshot-failed` with `NoRegistryKey`'s text. The scenario says
     so and ends.
   - Registry config:
@@ -4838,7 +4881,14 @@ carries it, and every commit names a proof that runs at that commit.
     6. `coldcard-99`, Check now, Yes → `check-clear`: "No collision for seal 9FHYMCQA as of 2026-03-01."
     7. The words equal `dice-99-words12`; read-back from the screen model.
     8. Steps 11-13 skipped; checklist; `power-off`.
-- [ ] `dice_24_code` (both configs), a vector run covering the code path, the read-back drill and the exports:
+
+  Proof (commit 12): `drill_12_catches_dice_50_before_any_word_and_restarts_at_99` passes in both configurations
+  (release: 14 steps, 9 presents; registry: 196 steps, 1,393 presents, 164 dead keys). The undo shows "10 / 50 rolls,
+  25.8 bits"; the date line precedes each snapshot reveal; `collision` comes with no words screen presented in the run,
+  and `collision-qr` is `.../register#c=B98KT954NNYSS6APNPZWCYY0VA`; after No, the seal card's check QR carries
+  `dice-99-words12`'s T and a 16-hex nonce; Cannot check keeps "0 / 99"; then "No collision for seal 9FHYMCQA as of
+  2026-03-01.", the words, their read-back and `power-off`.
+- [x] `dice_24_code` (both configs), a vector run covering the code path, the read-back drill and the exports:
   1. Dice-only, 24 words, `coldcard-99`, with Done refused at 98 rolls.
   2. Check now with no snapshot; the seal pages.
   3. A wrong code (G with its last symbol changed) → `code-wrong`, URL unchanged. Then G from the mock checker →
@@ -4857,12 +4907,22 @@ carries it, and every commit names a proof that runs at that commit.
   9. Watch-only with a typed BIP39 passphrase (a different fingerprint); both QR payloads equal core's `qr_text`, and
      `receive_descriptor` + line feed + `change_descriptor`.
   10. `register-qr`; checklist; `power-off`.
-- [ ] `skip_and_idle` (both configs), a vector run:
+
+  Proof (commit 12): `dice_24_code_reads_back_every_mistake_and_exports` passes in both configurations (303 steps, 41
+  screens, about 1,130 presents (the code typed varies with the nonce), 215 dead keys). Beyond the items above: the
+  BIP39 passphrase "Tr3zor!" is typed over all three ASCII grid pages; the summary's fingerprint differs from the
+  wallet's; the account QR equals core's `qr_text` and the descriptor QR `receive_descriptor`, a line feed and
+  `change_descriptor`, both from a separate core session on the same rolls and passphrase; `register-qr` is
+  `.../register#c=C3ER95M4JV2N4TCPBRRG41J74W`; the checklist names both devices.
+- [x] `skip_and_idle` (both configs), a vector run:
   1. Dice-only, 12 words, `coldcard-50`; Check now → seal card → Match found → `collision-qr` → Add fresh entropy →
      "0 / 99".
   2. `coldcard-99`; Skip → `skip-confirm` → privacy gate with the note → words.
   3. Wait 600 s: `cover` at 30 s, `idle-warning` at 540 s, `idle-wiped` at 600 s; `holds_secrets()` is false.
   4. Dice-only seed → "0 / 50": Skip dropped the kept `Wiped`.
+
+  Proof (commit 12): `skip_and_idle_skip_drops_the_kept_wiped_and_the_idle_wipe_the_words` passes in both
+  configurations (66 steps, 706 presents, 94 dead keys).
 - [ ] `mixed_12_restarts` (both configs), a throwaway run on the counting stream:
   1. Continue is refused before the bar is full.
   2. Snake is open when the quota fills, and the quota closes it.
@@ -4881,18 +4941,27 @@ carries it, and every commit names a proof that runs at that commit.
   - its insert lines must name the session's words in order, and its Seal ID must equal that session's `seal-id`
     page;
   - compared in memory, never printed.
-- [ ] `wipes_clear_the_stage` (both configs): for one Protected screen of each `Stage` variant that holds a secret
+- [x] `wipes_clear_the_stage` (both configs): for one Protected screen of each `Stage` variant that holds a secret
   (`readback-entry`, `backup-passphrase`, `bip39-entry`, the words of a checked backup, `backup-check-entry`), a
   Buttons fault and, separately, a 600 s wait. After each: `holds_secrets()` is false, a black frame was presented, and
   the next model holds no `Protected` element. On `collision-qr`, the idle wipe keeps the kept `Wiped` and the fault
   drops it.
-- [ ] `check_backup` (both configs):
+
+  Proof (commit 12): `wipes_clear_the_stage_of_every_secret` passes in both configurations (761 steps, 3,108
+  presents, 158 dead keys): on `readback-entry` with a face typed, `backup-passphrase`, `bip39-entry` with a
+  character typed, a checked backup's words and `backup-check-entry` with a face typed, ten idle minutes give the
+  cover, the warning, a black frame and `idle-wiped`, and a Buttons fault gives a black frame and `halt`; after each,
+  nothing is held and the next model is all Public; `collision-qr` as before.
+- [x] `check_backup` (both configs):
   1. `about`.
   2. `abandon-12`: one wrong entry (refused with core's text), then the first fours of its passphrase → backup.json's
      fingerprint.
   3. With `with-vector-1` loaded (registry config), the lookup count is 1, with its date. The re-check QR on request.
   4. Words on request show ABANDON 0001.
   5. `zoo-24` shows ZOO 2048.
+
+  Proof (commit 12): `check_backup_opens_by_first_fours_and_shows_its_words_on_request` passes in both
+  configurations (release: 139 steps, 390 presents; registry: 149 steps, 397 presents); see Check a backup above.
 - [ ] `every_screen_is_expected`:
   - The union of `Expect` ids over every scenario built for the active configuration equals `ScreenId::ALL` (registry
     config), or `ALL` minus `snapshot-loaded` and `snapshot-date`, listed by name (release config).

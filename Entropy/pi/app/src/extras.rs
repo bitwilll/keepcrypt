@@ -24,6 +24,8 @@ pub enum StageKind {
     Sealed,
     Checking,
     Ready,
+    BackupCheck,
+    Checked,
     Halted,
 }
 }
