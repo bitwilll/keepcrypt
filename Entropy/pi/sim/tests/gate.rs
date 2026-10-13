@@ -18,13 +18,13 @@ mod report;
 mod scenario;
 
 use keepcrypt_core::{
-    Bip39Passphrase, CoreError, HealthFailure, HealthStage, HealthTest, Mode, Platform,
-    ReadbackResult, SeedLength, Session, TypedBackupPassphrase, decrypt_backup,
+    BackupError, Bip39Passphrase, CoreError, HealthFailure, HealthStage, HealthTest, Mode,
+    Platform, ReadbackResult, SeedLength, Session, TypedBackupPassphrase, decrypt_backup,
 };
 use keepcrypt_pi::hal::{HalError, Zeroizing};
 use keepcrypt_pi::input::Key;
 use keepcrypt_pi::screen::{Class, ScreenId};
-use keepcrypt_pi_sim::{Fault, HwRngStream, Present};
+use keepcrypt_pi_sim::{Fault, HwRngStream, Op, Present};
 use scenario::{Answer, Code, Config, Readback, Scenario, Step, Stick, run};
 use serde_json::Value;
 
@@ -1144,6 +1144,12 @@ fn dice_24_code() -> Scenario {
                 Step::Pick(Answer::Right),
                 Expect(ScreenId::BackupConfirm),
                 Step::Pick(Answer::Right),
+                // The passphrase is generated once: back on the offer, Back up goes straight to the
+                // stick, under the same passphrase.
+                Expect(ScreenId::UsbInsert),
+                key(Key::Key1),
+                Expect(ScreenId::BackupOffer),
+                key(Key::Press),
                 // A write fault: nothing is left on the stick, and Retry writes a new file.
                 Step::Fault(Fault::Write),
             ],
@@ -1158,6 +1164,36 @@ fn dice_24_code() -> Scenario {
                 Assert(
                     "a failed write leaves nothing on the stick",
                     Box::new(|seen| seen.app.hal().stick_files().is_empty()),
+                ),
+                key(Key::Press),
+                // A read-back that does not verify: core's text, and the file just written is read
+                // back and removed, and nothing else.
+                Expect(ScreenId::UsbInsert),
+                Step::Fault(Fault::ReadBackCorrupt),
+                Wait(STICK_SECONDS),
+                Expect(ScreenId::Wait),
+                Expect(ScreenId::BackupFailed),
+                latest_shows(
+                    "a read-back that does not verify is core's text",
+                    CoreError::Backup(BackupError::Armor).to_string(),
+                ),
+                Assert(
+                    "the file just written was read back and removed, and nothing else",
+                    Box::new(|seen| {
+                        let hal = seen.app.hal();
+                        let [.., written, read, removed] = hal.stick_log() else {
+                            return false;
+                        };
+                        let (Op::Write(name), Op::ReadWritten(back), Op::RemoveWritten(gone)) =
+                            (&written.op, &read.op, &removed.op)
+                        else {
+                            return false;
+                        };
+                        name.ends_with(".age")
+                            && back == name
+                            && gone == name
+                            && hal.stick_files().is_empty()
+                    }),
                 ),
                 key(Key::Press),
             ],

@@ -4825,6 +4825,14 @@ carries it, and every commit names a proof that runs at that commit.
   a wrong pick on `backup-confirm` (the pages again, the same questions), two right picks, a write fault (the HAL's
   text, nothing on the stick), Retry, then `backup-verified`: the stick holds exactly one `.age`, and `decrypt_backup`
   with the words the pages showed gives the wallet summary's fingerprint. `drill_12` and the wipes skip step 11.
+  Proof (review fix, commit 12b): the only USB fault in a scenario was the write fault, which leaves no file, so no
+  test reached sub-step 5's removal, the read-back or `verify_backup`, nor the passphrase generated once: mutants
+  that skipped the removal, `verify_backup`, the whole read-back, or the flag each passed both configurations.
+  `dice_24_code` now returns from `usb-insert` to `backup-offer` after the confirm, where Back up goes straight to
+  `usb-insert`; and after the write fault and Retry, a corrupt read-back gives `backup-failed` with core's text
+  ("backup rejected: bad armor"), the stick's last three calls write, read back and remove the same `.age` name, and
+  the stick is empty; then Retry writes the verified backup. It passes in both configurations (315 steps, about 1,130
+  presents, 215 dead keys), and the four mutants, in a scratch copy, each fail it.
 - [ ] Steps 12-15:
   - Step 12:
     - `watch-offer` → `bip39-ask`.
@@ -5328,6 +5336,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     before it is ticked.
 12. pi/app, pi/sim: steps 8-15, the Home side flows, and `drill_12`, `dice_24_code`, `skip_and_idle`, `check_backup`,
     `wipes_clear_the_stage` (group 9).
+    12b. pi/sim: the plan and recompute reviews: `dice_24_code` proves step 11's read-back, verify and removal of the
+    file just written, and the passphrase generated once.
 13. pi/app, pi/sim: Snake; `mixed_12_restarts` in full, the verify.py tie, `every_screen_is_expected`,
     `drill_12_repeats` and `capture_set` (groups 10, 11).
 14. pi/sim: the interactive bin (group 12).
