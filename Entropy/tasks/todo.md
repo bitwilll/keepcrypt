@@ -5516,6 +5516,13 @@ amended; rules 5, 6)**
     code kept (`check_restarts` step 56, "KEY2 cleared the code typed"), seal-qr shown (step 48, "expected
     check-actions"), the session dropped (step 48, blank and halt), the stage kept (`check_backup` step 26), KEY2
     offered on readback-entry (`dice_24_code` step 125) or bip39-entry (step 314).
+  Proof (review fix, commit 19b): commit 19 also changed code-wrong's text, which this group did not plan.
+  `screens::CODE_WRONG` was "Check the code on your checker and type it again. The check stays open, with the same
+  seal card." and now ends "with the same seal card: KEY2 on the code screen goes back to its actions." It is true:
+  code-wrong's Press returns to code-entry, whose KEY2 shows check-actions with the same check
+  (`back_on_the_code_grid_keeps_the_check_and_its_url_and_wipes_the_code` and `check_restarts` both walk it). It is
+  new text on a Public screen, so the M3 Review lists it among the copy changes the owner sees in the captures
+  (`code-wrong`).
 
 **16. The simulator's strip (a lead decision between Q30 (h) and Q33 (j); the strip's part of group 12's open item)**
 - [x] `ui/render.rs`: in a simulator build the top strip reads "SIMULATOR · NOT FOR REAL FUNDS" when the simulator
@@ -5852,6 +5859,7 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     and their Verification lines.
 19. pi/app, pi/sim: KEY2 "back" on code-entry and backup-check-entry, the grids' footer labels that fit with it, unit
     tests, `check_restarts` and `check_backup` (group 15).
+    19b. tasks/todo.md: the plan review: group 15 records code-wrong's new text, which names KEY2's way back.
 20. pi/app, pi/sim: the simulator's strip reads "SIMULATOR · NOT FOR REAL FUNDS" alone and "SIMULATOR" beside "TEST
     REGISTRY" (group 16; a lead decision).
     20b. tasks/todo.md: the plan review: group 12's commit-14 proof points at commit 20 for the strip's wording, not
