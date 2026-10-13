@@ -5524,7 +5524,7 @@ carries it, and every commit names a proof that runs at that commit.
   selftest (427), canaries 61/61, the release-artifact scans for aarch64-apple-darwin (core's two files and pi/app's
   rlib, clean) and both iOS targets, and the test-registry simulator's scan (exactly the three hits). The Pi and
   Android lines need cross toolchains this Mac lacks; CI's cross and test jobs run them.
-- [x] Runtime budgets, measured against group 0's baseline:
+- [ ] Runtime budgets, measured against group 0's baseline:
   - `test` grows by at most 6 minutes;
   - `gates` stays within 10 minutes (12 if Q31 (f)'s fallback is approved);
   - coverage stays at 95% of core's lines.
@@ -5536,6 +5536,9 @@ carries it, and every commit names a proof that runs at that commit.
   (+1m18s) and 5m27s on 0cdfc8a (+1m58s), within the 6 minutes; gates 8m06s, then 8m26s and 8m39s, within 10 minutes
   (Q31 (f)'s 12 not needed); coverage 97.39%, then 97.38% of core's lines on both. All 14 required check runs pass on
   both heads, with unchanged names; the job and step times are under "M3: local proof".
+  Open (review fix, commit 22b): the proof asks for the 14 check runs green on the PR head, and the head to be pushed
+  is not 0cdfc8a: b74b0eb and its review fixes add tests to each configuration's gate run and have not run in CI.
+  Ticked again by the lead after the push, with that run's ID and job times.
 
 **15. KEY2 "back" on the go-ahead code and backup-passphrase entry (the owner's decision of 2026-10-13; Q32 (a) as
 amended; rules 5, 6)**
@@ -5924,12 +5927,14 @@ amended; rules 5, 6)**
   on a test feature (canaries), `marker_is_the_documented_string` passes, and the scans find the simulator marker in
   the test-registry simulator (x86_64 Linux in CI, aarch64-apple-darwin here); 11: cargo deny, audit and vet clean in
   CI on both heads and locally (17 fully audited, 82 exempted), the nine crates as approved in Q28.
-- [x] **CI:** all 14 required check runs green; budgets met; canaries 61/61.
+- [ ] **CI:** all 14 required check runs green; budgets met; canaries 61/61.
   Proof (M3 Review, 2026-10-14): run 38467985842 on 0cdfc8a, the PR head: all 14 required check runs pass, with
   unchanged names; budgets as group 14's last item; canaries 61/61 in its gates job. b74b0eb and this commit run after
   the next push.
+  Open (review fix, commit 22b): b74b0eb, the commits after it and this one have not run in CI, so the proof covers
+  an older head. Ticked again by the lead once CI on the pushed head is green, citing that run's ID.
 - [ ] **Definition of done** (CLAUDE.md), with proof pasted under Review.
-  Open (M3 Review, 2026-10-14): waits for group 17's two items.
+  Open (M3 Review, 2026-10-14): waits for group 17's two items, and (22b) for CI on the pushed head.
 
 ### New dependencies
 
@@ -6096,6 +6101,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     string is kept and listed, and the escaping is checked against literals.
 22. tasks/todo.md: the M3 Review, with pasted proof and the gate report; the owner's verdict on the captures comes
     later.
+    22b. tasks/todo.md: the plan, security and recompute reviews: group 14's runtime budgets and Verification "CI"
+    wait for CI on the pushed head, unticked.
 
 Review fixes are listed as N.b entries under the commit they amend.
 
@@ -8204,7 +8211,8 @@ out. b74b0eb and this commit run in CI after the next push; b74b0eb adds one tes
 **Ticked in this commit** (each with its "Proof (M3 Review, 2026-10-14)" line above): group 0's answers and
 baseline; group 1's release_probe call (the cross scans); group 12's live bin; group 14's `test` and `cross` steps,
 CLAUDE.md Commands and runtime budgets; and every Verification item but "the owner reviews the captures" and
-"Definition of done".
+"Definition of done". 22b unticks group 14's runtime budgets and Verification "CI" again: their proof is run
+38467985842 on 0cdfc8a, not the head to be pushed.
 
 **Still unticked**, with what each waits for:
 - Group 17, the capture set and its review page, and Verification "Gate: the owner reviews the captures": the
@@ -8213,7 +8221,9 @@ CLAUDE.md Commands and runtime budgets; and every Verification item but "the own
   adds both, quoted with the date, in a later commit.
 - Group 17, the stage reviews: every N.b fix is listed above, but the high and medium tally ("every high and medium
   finding is fixed") is in the stage reviews' reports, which this file does not hold; for the lead to record.
-- Verification "Definition of done": waits for the two group 17 items.
+- Verification "Definition of done": waits for the two group 17 items and CI on the pushed head.
+- Group 14's runtime budgets and Verification "CI" (unticked by 22b): CI on the pushed head, with all 14 required
+  check runs green and its job times inside the budgets. The lead ticks them again after the push, citing the run.
 
 ### M3 gate status: awaiting the owner's review of the captures (2026-10-14)
 The gate in docs/build-plan.md:293. Deliverables: "Every screen including seal check with go-ahead code entry and
@@ -8252,11 +8262,12 @@ drives a full ceremony in the simulator; you review the screen captures".
   ARM rlib among them, and the test-registry simulator carries exactly its two markers and the test key.
 - CI: run 38467985842 on 0cdfc8a, the PR head, is green: all 14 Entropy check runs pass (the Vercel check, not
   required, is ignored); test 5m27s, gates 8m39s, coverage 97.38% of core's lines, inside group 14's budgets.
-  b74b0eb (pi/sim's tests only) and this commit (this file only) run after the next push.
-- Every plan and Verification item of M3 is ticked with its proof but four: group 17's two items (the owner's capture
-  review, and the stage reviews' severity tally), Verification's "the owner reviews the captures", and "Definition of
-  done", which waits for group 17. No CI job, required check or ruleset changed; the nine new crates are the approved
-  ones.
+  b74b0eb and its review fixes (pi/sim's tests and this file) and this commit run after the next push; until that run
+  is green, group 14's runtime budgets and Verification "CI" stay open (22b).
+- Every plan and Verification item of M3 is ticked with its proof but six: group 17's two items (the owner's capture
+  review, and the stage reviews' severity tally), Verification's "the owner reviews the captures", "Definition of
+  done", which waits for group 17 and CI, and group 14's runtime budgets and Verification "CI", which wait for CI on
+  the pushed head. No CI job, required check or ruleset changed; the nine new crates are the approved ones.
 - Open items; none is part of the gate:
   - for the owner: the QR and info pages offer no KEY1 "back", which pi-firmware.md's Buttons table gives them
     (`KeyMap`'s doc, commit 8c): give those pages KEY1 "back" as the table says, or amend the table to match.
