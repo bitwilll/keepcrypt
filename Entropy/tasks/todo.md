@@ -5288,6 +5288,12 @@ carries it, and every commit names a proof that runs at that commit.
   test` checks the six vector scenarios' marks; `a_mixed_session_in_a_run_marked_as_drawn_fails` pins it. In place
   and restored: `runtime_stop` and `mixed_12_restarts` marked `AsDrawn` each fail at step 5 on hwrng, and with the
   check disabled the new test fails.
+  Proof (review fix, commit 21c): the review page's test is not ignored, so every `cargo test`, CI's two test runs
+  among them, wrote its throwaway run's 262 PNG files under target/tmp/ and left them there, beside Q30 (g)'s
+  "Captures come only from one ignored test, `capture_set`", and gate.rs's module doc did not name it. It now captures
+  into a folder of its own (`Captures::of_run`), cleared before the run and again right after it, since the page is
+  built from the kept rows and reads no file; the module doc names it. Recorded as a deviation from Q30 (g) under
+  lead decision 7. The test passes in both configurations and leaves target/tmp/pi-sim-review-rule/ empty.
 
   Proof for this group: both configurations' test output, with per-scenario step, screen and dead-key counts; the
   capture set and index under Review.
@@ -6070,6 +6076,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     `check_backup`'s KEY2 assertion drops `!keeps_wiped()`, trivially true in a run that holds no `Wiped`.
     21b. pi/sim: the security and recompute reviews: a run marked to capture its Protected frames as drawn fails on
     any of a Mixed session's screens, so only a dice-only vector run can be.
+    21c. pi/sim: the plan review: the review page's test captures into a folder cleared again when its run ends, and
+    gate.rs's module doc names it.
 22. tasks/todo.md: the M3 Review, with pasted proof and the gate report; the owner's verdict on the captures comes
     later.
 
@@ -8158,6 +8166,9 @@ out. b74b0eb and this commit run in CI after the next push; b74b0eb adds one tes
    words-insert, readback-entry and reveal-d, which throwaway runs reach first. The record under Review is the zip's
    SHA-256 and index.html's (above). CLAUDE.md's Commands comment for capture_set and group 14's commands-of-record
    line still name only "captures in target/tmp/pi-sim-captures/", which stays true; neither names review.html.
+   Also beside Q30 (g), which has captures come only from `capture_set`: the review page's test, run by every `cargo
+   test`, captures a throwaway run (262 presents, its Protected frames placeholders) as `capture_set` does, into
+   target/tmp/pi-sim-review-rule/, cleared again when the run ends (21c).
 8. Group 0's baseline was taken at the end (2026-10-14), from an archive of 8e6917b, not before commit 2; the tree is
    the same, so its figures stand (above).
 9. Commit 1 is two commits (b8e6143, the plan and the questions; 63e400f, the answers), and 12g is two (c171599 and

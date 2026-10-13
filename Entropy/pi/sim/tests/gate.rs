@@ -10,9 +10,11 @@
 //! and "Check a backup"; and the halts, restarts and idle steps on the way.
 //!
 //! Beside the scenarios: `every_screen_is_expected` (the scenarios expect every screen),
-//! `drill_12_repeats` (a vector run draws the same frames twice, but for the nonce) and the
-//! ignored `capture_set` (every scenario's presents as PNG files, with an index, Q30 (g), and the
-//! owner's review page of some of them, each QR code beside core's string).
+//! `drill_12_repeats` (a vector run draws the same frames twice, but for the nonce), the ignored
+//! `capture_set` (every scenario's presents as PNG files, with an index, Q30 (g), and the owner's
+//! review page of some of them, each QR code beside core's string), and the review page's test,
+//! which captures a short throwaway run as `capture_set` does, into a folder under target/tmp
+//! that it clears again when the run ends.
 //!
 //! Test data is public and repeatable (Q30 (a), (c)): the counting hwrng stream, keepcrypt.json's
 //! health streams for the stops, and its public dice strings for the vector runs. The vectors come
@@ -2363,6 +2365,23 @@ impl Captures {
         rows.into_iter().collect()
     }
 
+    /// `scenario` captured as `capture_set` captures it, for the review page's tests: into a
+    /// folder of its own under target/tmp, cleared before the run and again after it, so no
+    /// capture outlasts the run (Q30 (g): the capture set comes only from `capture_set`). The rows
+    /// hold all the page needs; no file is read.
+    fn of_run(scenario: Scenario) -> Captures {
+        let name = scenario.name;
+        let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
+            .join("pi-sim-review-rule")
+            .join(name);
+        cleared(&dir);
+        let counts = run_keeping(scenario, Keep::Captures(dir.clone()));
+        cleared(&dir);
+        Captures {
+            rows: counts.shots.into_iter().map(|shot| (name, shot)).collect(),
+        }
+    }
+
     /// The name of a reviewed capture's copy in review/.
     fn review_file(scenario: &str, shot: &Shot) -> String {
         let (file, _) = shot.file.as_ref().expect("a captured present");
@@ -2685,20 +2704,12 @@ fn the_review_page_lists_a_public_qr_string_but_no_throwaway_protected_payload()
             true
         }),
     ));
-    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("pi-sim-review-rule");
-    cleared(&root);
-    let counts = run_keeping(
-        Scenario {
-            name,
-            hwrng: HwRngStream::Counting,
-            protected: ProtectedFrames::Placeholder,
-            steps,
-        },
-        Keep::Captures(root.join(name)),
-    );
-    let captures = Captures {
-        rows: counts.shots.into_iter().map(|shot| (name, shot)).collect(),
-    };
+    let captures = Captures::of_run(Scenario {
+        name,
+        hwrng: HwRngStream::Counting,
+        protected: ProtectedFrames::Placeholder,
+        steps,
+    });
     let drawn = drawn.borrow();
     let [check, report] = &drawn[..] else {
         panic!("one check QR and one collision report QR noted");
