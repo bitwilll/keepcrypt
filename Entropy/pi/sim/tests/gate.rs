@@ -577,17 +577,34 @@ fn mixed_12_restarts() -> Scenario {
         steps: chain(vec![
             boot(),
             new_seed(Mode::Mixed, SeedLength::Words12),
-            // 1. Continue is refused before the bar is full (and the probe presses every key).
+            // 1. Continue is refused before the bar is full (and the probe presses every key). The
+            // bar counts health-tested bytes, not credited bits.
             vec![
                 Expect(ScreenId::Hwrng),
                 Assert(
                     "no Continue before the bar is full",
                     Box::new(|seen| seen.matched.keys.label(Key::Press).is_none()),
                 ),
+                Assert(
+                    "the bar starts empty, with no byte tested and no bit credited",
+                    Box::new(|seen| {
+                        shows(seen.matched, "[--------------------]")
+                            && shows(seen.matched, "0 / 1536 bytes health-tested")
+                            && shows(seen.matched, "0 / 512 bits credited")
+                    }),
+                ),
             ],
             // 3. The commitment; coldcard-50 as the rolls.
             vec![
                 Wait(QUOTA_SECONDS),
+                Assert(
+                    "at the quota the bar is full, and the first window credited 2,048 bits",
+                    Box::new(|seen| {
+                        shows(seen.latest, "[####################]")
+                            && shows(seen.latest, "1536 / 1536 bytes health-tested")
+                            && shows(seen.latest, "2048 / 512 bits credited")
+                    }),
+                ),
                 key(Key::Press),
                 Expect(ScreenId::Commitment),
                 key(Key::Press),

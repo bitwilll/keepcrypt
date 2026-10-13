@@ -4633,7 +4633,7 @@ carries it, and every commit names a proof that runs at that commit.
   gate scenario passes in both configurations from boot through Home and Length (or Home's side flows), `boot_stops`
   included, and `drill_12` (registry config) shows Home's status line "Snapshot No. 4, dated 2026-03-01" after the
   load.
-- [x] Steps 4-6:
+- [ ] Steps 4-6:
   - Step 4 (Mixed):
     - one block per Tick into `add_hw_samples`, until `hw_bytes_tested() >= HW_BYTES_NEEDED` (the sim's Tick is
       100 ms; M4 sets the device's from the measured hwrng rate);
@@ -4665,6 +4665,13 @@ carries it, and every commit names a proof that runs at that commit.
   equals a fresh drawing of the blank picker for one roll. The app ignores a key the shown model leaves out
   (`a_dead_key_changes_nothing_and_draws_nothing`), and in the Mixed gate scenarios the first step 4 model offers no
   key (the dead-key probe presses all 8, Continue among them). "Play while you wait" lands with Snake (group 10).
+  Proof (review fix, commit 11d): unticked, since commit 11 did not prove the whole item: "Play while you wait" opens
+  Snake, which lands with group 10 (commit 13), and nothing checks that `commitment` shows C (a mutant drawing the
+  hex of 32 zero bytes passed every test) until commit 13's verify.py tie. The bar on `hw_bytes_tested` (a carried
+  item) had no check either: `mixed_12_restarts` now asserts the first `hwrng` model's empty bar, "0 / 1536 bytes
+  health-tested" and "0 / 512 bits credited", and at the quota the full bar, "1536 / 1536 bytes health-tested" and
+  "2048 / 512 bits credited"; it passes in both configurations, and the recompute review's mutant (the bar on
+  `credited_bits()`), in a scratch copy, fails it at the quota.
 - [ ] Step 7:
   - `check-prompt`, in swb:114's words.
   - Skip: `skip-confirm` → `skip_check`. The privacy gate then carries swb:152's note.
@@ -5291,6 +5298,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     the virtual clock.
     11c. pi/sim: the recompute and plan reviews: `runtime_stop` also halts on an hwrng read fault in step 4; the
     halts item stays open for the game error.
+    11d. pi/sim: the recompute and plan reviews: `mixed_12_restarts` checks the step 4 bar; the steps 4-6 item is
+    unticked until Snake and C's check land.
 12. pi/app, pi/sim: steps 8-15, the Home side flows, and `drill_12`, `dice_24_code`, `skip_and_idle`, `check_backup`,
     `wipes_clear_the_stage` (group 9).
 13. pi/app, pi/sim: Snake; `mixed_12_restarts` in full, the verify.py tie, `every_screen_is_expected`,
