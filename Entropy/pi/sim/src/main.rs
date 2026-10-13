@@ -12,7 +12,8 @@
 //!   placeholder, in every run, vector or not. Each present prints its screen id, and nothing
 //!   else is printed.
 //! - Every screen carries the SIMULATOR banner (`SimHal`'s build info) but two: the black frame of
-//!   a wipe, and the placeholder that stands in for each Protected screen. The hwrng is the
+//!   a wipe, and the placeholder that stands in for each Protected screen. Without the test
+//!   registry key the banner reads "SIMULATOR · NOT FOR REAL FUNDS" (Q30 (h)). The hwrng is the
 //!   counting stream. The RAM stick is in the slot from the start, empty: this binary reads no
 //!   file, so "Load registry snapshot" and "Check a backup" see only a backup written in the same
 //!   session. It computes no go-ahead code.

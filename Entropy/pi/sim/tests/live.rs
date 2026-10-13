@@ -1,7 +1,7 @@
 //! The live bin (tasks/todo.md, M3 group 12), run as a user runs it: pi/app's `App` over core on
 //! `SimHal`, the keys typed on stdin, and nothing printed but screen ids.
 //!
-//! Which bytes `live.png` gets is tests/hal.rs's live-mode test: the simulator reads no file back.
+//! Which bytes `live.png` gets is tests/hal.rs's live-mode tests: the simulator reads no file back.
 
 use std::ffi::OsStr;
 use std::fs;

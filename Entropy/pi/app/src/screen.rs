@@ -526,7 +526,8 @@ impl<'a> Element<'a> {
 pub struct Banners {
     /// The build pins the test registry key (`registry_key_is_test`): "TEST REGISTRY".
     pub test_registry: bool,
-    /// The simulator (`hal::BuildInfo::simulator`): "SIMULATOR".
+    /// The simulator (`hal::BuildInfo::simulator`): "SIMULATOR · NOT FOR REAL FUNDS" alone,
+    /// "SIMULATOR" beside "TEST REGISTRY".
     pub simulator: bool,
 }
 

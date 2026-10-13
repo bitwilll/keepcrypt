@@ -1,7 +1,7 @@
 //! `SimHal` against core (tasks/todo.md, M3 group 7): the hwrng streams the scenarios use get
 //! core's recorded verdicts, the stick takes a real core backup and refuses what pi/app's `hal`
 //! says it must, capture mode writes one PNG file per present, and live mode (group 12) rewrites
-//! one.
+//! one, with the build's strip on the bin's screens (group 16).
 //!
 //! The vectors come in through `include_str!` (the simulator reads no file). The backup is made
 //! from a vector run (keepcrypt.json's `coldcard-50` rolls, dice only), so its words are public.
@@ -12,13 +12,15 @@ use std::path::PathBuf;
 
 use keepcrypt_core::{
     BackupApp, BackupFile, CoreError, CreatedBy, HW_BYTES_NEEDED, HealthFailure, HealthStage,
-    HealthTest, Mode, Platform, Ready, SeedLength, Session, hwrng_boot_test,
+    HealthTest, Mode, Platform, Ready, SeedLength, Session, hwrng_boot_test, registry_key_is_test,
 };
+use keepcrypt_pi::App;
 use keepcrypt_pi::hal::{FileName, HalError, HwRng, Usb, Written};
+use keepcrypt_pi::input::Key;
 use keepcrypt_pi::screen::{Banners, Element, Item, Screen, ScreenId};
 use keepcrypt_pi::ui::Painter;
 use keepcrypt_pi_sim::{
-    Access, Fault, HwRngStream, Mount, Op, ProtectedFrames, SimHal, placeholder,
+    Access, Fault, HwRngStream, Mount, Op, Pixels, ProtectedFrames, SimHal, placeholder,
 };
 use serde_json::Value;
 
@@ -440,4 +442,83 @@ fn live_mode_rewrites_one_png_per_present_and_every_protected_frame_as_the_place
     assert_eq!(names, ["live.png"]);
     let len = fs::metadata(dir.join("live.png")).expect("written").len();
     assert_eq!(len, 173_118);
+}
+
+/// The strip's labels with the test key ("SIMULATOR" beside "TEST REGISTRY", Q33 (j)), without it
+/// ("SIMULATOR · NOT FOR REAL FUNDS" alone, Q30 (h)), and the short label alone, which no build
+/// shows.
+const PAIR: &[&str] = &["TEST REGISTRY", "SIMULATOR"];
+const ALONE: &[&str] = &["SIMULATOR · NOT FOR REAL FUNDS"];
+const SHORT: &[&str] = &["SIMULATOR"];
+
+/// `label` drawn as a screen's only content: the step title, in pi/app's accent colour on black,
+/// from the strip's left edge.
+fn title(label: &str) -> Pixels {
+    let none = Banners {
+        test_registry: false,
+        simulator: false,
+    };
+    let model = Key::ALL
+        .into_iter()
+        .fold(Screen::new(ScreenId::About, label, none), Screen::without);
+    let mut hal = SimHal::new(HwRngStream::Counting);
+    Painter::new().present(&mut hal, &model).expect("draws");
+    hal.take_presents().remove(0).frame
+}
+
+/// True when the top strip of `frame` shows `labels` and nothing else: each centred in an equal
+/// share of the 240 × 12 strip, in black on a bar of one other colour, glyph for glyph as pi/app
+/// draws the label as a title (another path through its renderer, so this reads the strip
+/// without the banner code). The font is 6 px a character; row 0 is above the text.
+fn strip_shows(frame: &Pixels, labels: &[&str]) -> bool {
+    let share = 240 / labels.len();
+    labels.iter().enumerate().all(|(i, label)| {
+        let glyphs = title(label);
+        let width = 6 * label.chars().count();
+        let left = i * share;
+        let start = left + share.checked_sub(width).expect("the label fits its share") / 2;
+        let bar = frame.at(left, 0).expect("on the panel");
+        bar != 0
+            && (0..12).all(|y| {
+                (left..left + share).all(|x| {
+                    let ink =
+                        (start..start + width).contains(&x) && glyphs.at(x - start, y) != Some(0);
+                    frame.at(x, y) == Some(if ink { 0 } else { bar })
+                })
+            })
+    })
+}
+
+#[test]
+fn live_mode_shows_the_builds_strip_and_writes_it_to_live_png() {
+    // The bin's hardware (src/main.rs, `hardware`) under the bin's `App`: the counting hwrng,
+    // live mode, an empty stick in the slot. Its start presents boot and Home, both Public, both
+    // written to `live.png` as drawn.
+    let dir = cleared("pi-sim-hal-live-strip");
+    let mut hal = SimHal::new(HwRngStream::Counting);
+    hal.live(dir);
+    hal.insert_stick();
+    let mut app = App::new(hal);
+    app.start();
+    let presents = app.hal_mut().take_presents();
+    let shown: Vec<&str> = presents.iter().map(|p| p.id.name()).collect();
+    assert_eq!(shown, ["boot", "home"]);
+    // The release configuration, which live mode runs as CLAUDE.md's Commands give it, shows the
+    // long label; the test registry key, the pair.
+    let (labels, others) = if registry_key_is_test() {
+        (PAIR, [ALONE, SHORT])
+    } else {
+        (ALONE, [PAIR, SHORT])
+    };
+    for present in &presents {
+        let id = present.id.name();
+        assert!(strip_shows(&present.frame, labels), "{id}: {labels:?}");
+        for other in others {
+            assert!(!strip_shows(&present.frame, other), "{id}: not {other:?}");
+        }
+        let captured = present.capture.as_ref().expect("written");
+        assert_eq!(captured.file, "live.png");
+        assert!(!captured.placeholder);
+        assert!(captured.png[..] == present.frame.png()[..], "{id} as drawn");
+    }
 }

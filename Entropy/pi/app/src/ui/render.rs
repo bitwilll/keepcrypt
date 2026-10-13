@@ -6,6 +6,8 @@
 //!   whatever the outcome (rule 5).
 //! - The layout: a 12 px top strip, the 240×216 content area, a 12 px footer. The top strip shows
 //!   the step title, or the TEST REGISTRY and SIMULATOR banners, which take precedence (Q33 (j)).
+//!   The SIMULATOR banner reads "SIMULATOR · NOT FOR REAL FUNDS" when it is the only banner
+//!   (Q30 (h)), and "SIMULATOR" beside TEST REGISTRY, which leaves it half the strip.
 //!   Each element is drawn at its position in the content area by its painter. The footer names
 //!   every key the model offers with its action (Q32 (a)).
 //! - A model with no title, banner, element or key draws a black frame.
@@ -34,8 +36,11 @@ use crate::screen::{
 
 /// The TEST REGISTRY banner: the build pins the test registry key.
 const TEST_REGISTRY_BANNER: &str = "TEST REGISTRY";
-/// The SIMULATOR banner.
+/// The SIMULATOR banner beside TEST REGISTRY, in half the strip (Q33 (j)).
 const SIMULATOR_BANNER: &str = "SIMULATOR";
+/// The SIMULATOR banner when it is the only banner, as in live mode's release configuration
+/// (Q30 (h)): 180 px, which cannot share the strip with TEST REGISTRY's 78.
+const SIMULATOR_ALONE_BANNER: &str = "SIMULATOR · NOT FOR REAL FUNDS";
 /// Strip text sits 1 px below the strip's top: 10 px of font in 12.
 const STRIP_TEXT_TOP: u32 = 1;
 /// Two spaces between the footer's entries.
@@ -178,7 +183,7 @@ impl Painter {
 }
 
 /// The top strip: the banners when the build carries any, each on its own colour in an equal
-/// share of the width; otherwise the step title.
+/// share of the width, the SIMULATOR banner in full when it is alone; otherwise the step title.
 fn top_strip(frame: &mut Frame, screen: &Screen<'_>) {
     let banners = screen.banners();
     let count = u32::from(banners.test_registry) + u32::from(banners.simulator);
@@ -188,10 +193,15 @@ fn top_strip(frame: &mut Frame, screen: &Screen<'_>) {
         return;
     }
     let share = SIDE / count;
+    let simulator = if banners.test_registry {
+        SIMULATOR_BANNER
+    } else {
+        SIMULATOR_ALONE_BANNER
+    };
     let mut left = 0;
     for (on, label, colour) in [
         (banners.test_registry, TEST_REGISTRY_BANNER, WARNING),
-        (banners.simulator, SIMULATOR_BANNER, SIMULATOR),
+        (banners.simulator, simulator, SIMULATOR),
     ] {
         if !on {
             continue;
@@ -633,18 +643,18 @@ mod tests {
         let other = rendered(&Screen::new(ScreenId::About, "Another title", both));
         assert_eq!(area(&other.frame, TOP_ROWS), area(frame, TOP_ROWS));
         assert!(black(frame, CONTENT_ROWS));
-        // One banner takes the whole strip.
-        let simulator = Banners {
-            test_registry: false,
-            simulator: true,
+        // One banner takes the whole strip: TEST REGISTRY alone, its label centred.
+        let registry = Banners {
+            test_registry: true,
+            simulator: false,
         };
-        let one = rendered(&Screen::new(ScreenId::About, "About", simulator));
+        let one = rendered(&Screen::new(ScreenId::About, "About", registry));
         let mut expected = Frame::new();
-        let Ok(()) = expected.fill_solid(&TOP_ROWS, SIMULATOR);
+        let Ok(()) = expected.fill_solid(&TOP_ROWS, WARNING);
         text::line(
             &mut expected,
-            Point::new(93, 1),
-            SIMULATOR_BANNER,
+            Point::new(81, 1),
+            TEST_REGISTRY_BANNER,
             &SMALL_FONT,
             BACKGROUND,
         );
@@ -660,6 +670,47 @@ mod tests {
             ACCENT,
         );
         assert_eq!(area(&titled.frame, TOP_ROWS), area(&expected, TOP_ROWS));
+    }
+
+    #[test]
+    fn the_simulator_banner_alone_reads_not_for_real_funds_across_the_strip() {
+        let simulator = Banners {
+            test_registry: false,
+            simulator: true,
+        };
+        // 30 characters, 180 px: the whole strip holds it, but neither half of it nor the strip
+        // beside TEST REGISTRY (258 px together) could.
+        let alone = text::width(SIMULATOR_ALONE_BANNER, &SMALL_FONT);
+        assert_eq!(alone, 180);
+        assert!(alone <= SIDE && alone > SIDE / 2);
+        assert!(alone + text::width(TEST_REGISTRY_BANNER, &SMALL_FONT) > SIDE);
+        let painter = rendered(&Screen::new(ScreenId::About, "About", simulator));
+        let frame = &painter.frame;
+        let mut expected = Frame::new();
+        let Ok(()) = expected.fill_solid(&TOP_ROWS, SIMULATOR);
+        text::line(
+            &mut expected,
+            Point::new(30, 1),
+            SIMULATOR_ALONE_BANNER,
+            &SMALL_FONT,
+            BACKGROUND,
+        );
+        assert_eq!(area(frame, TOP_ROWS), area(&expected, TOP_ROWS));
+        // The middle dot has a glyph of its own, not the font's '?' for a missing one.
+        let mut missing = Frame::new();
+        let Ok(()) = missing.fill_solid(&TOP_ROWS, SIMULATOR);
+        text::line(
+            &mut missing,
+            Point::new(30, 1),
+            "SIMULATOR ? NOT FOR REAL FUNDS",
+            &SMALL_FONT,
+            BACKGROUND,
+        );
+        assert_ne!(area(frame, TOP_ROWS), area(&missing, TOP_ROWS));
+        // The title is not drawn: another title gives the same strip.
+        let other = rendered(&Screen::new(ScreenId::About, "Another title", simulator));
+        assert_eq!(area(&other.frame, TOP_ROWS), area(frame, TOP_ROWS));
+        assert!(black(frame, CONTENT_ROWS));
     }
 
     /// A display that records each present: the screen id and the frame's lit pixel count.

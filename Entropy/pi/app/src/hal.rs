@@ -190,7 +190,9 @@ pub struct BuildInfo {
     pub version: &'static str,
     /// The root filesystem hash prefix (pi-firmware.md step 1); `sim` in the simulator.
     pub rootfs: String,
-    /// True in the simulator: every screen then carries the SIMULATOR banner (Q33 (j)).
+    /// True in the simulator: every screen then carries the SIMULATOR banner, which reads
+    /// "SIMULATOR · NOT FOR REAL FUNDS" alone (Q30 (h)) and "SIMULATOR" beside TEST REGISTRY
+    /// (Q33 (j)).
     pub simulator: bool,
 }
 

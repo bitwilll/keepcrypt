@@ -5254,7 +5254,8 @@ carries it, and every commit names a proof that runs at that commit.
   - keys from stdin lines: `w a s d`, Enter, `1 2 3`, and `t600` to advance 600 s;
   - rewrites `DIR/live.png` per present and prints only the screen id;
   - every Protected frame is written as the placeholder, in every run, vector or not;
-  - a "SIMULATOR · NOT FOR REAL FUNDS" strip on every screen;
+  - a "SIMULATOR · NOT FOR REAL FUNDS" strip on every screen, and "SIMULATOR" beside "TEST REGISTRY" when the build
+    carries the test key (group 16);
   - the counting hwrng;
   - reads no file: its RAM stick starts empty, so snapshot import and Check a backup can only see a backup written in
     the same live session;
@@ -5278,7 +5279,7 @@ carries it, and every commit names a proof that runs at that commit.
   registry marker and `TestKey` (exit 1), no stub marker, `_getentropy` imported; `KC_SIMULATOR_DO_NOT_SHIP` is in the
   binary, and with group 13's marker list the same scan gives exactly the three expected hits. Without the test key
   it scans clean. The strip reads "SIMULATOR" (Q33 (j); pi/app's renderer), not "SIMULATOR · NOT FOR REAL FUNDS",
-  which cannot share the strip with "TEST REGISTRY"; the placeholder carries no strip.
+  which cannot share the strip with "TEST REGISTRY" (until commit 20, below); the placeholder carries no strip.
   Proof (review fix, commit 13h): "scans clean" was commit 14's scan, before group 13 put `KC_SIMULATOR_DO_NOT_SHIP`
   on the marker list; since commit 15 that build gives exactly the simulator marker (group 13's proof).
   Proof (review fix, commit 14b): a refused command line or input line made `main` return an error, which std printed
@@ -5290,6 +5291,11 @@ carries it, and every commit names a proof that runs at that commit.
   `insert_stick` from the bin passed every test. `live_mode_starts_with_an_empty_stick_in_the_slot` opens Home's
   "Check a backup" and finds usb-pick (no backup on the stick) after usb-insert, then Home; in a scratch copy, the bin
   without its stick fails it (usb-insert, then Home).
+  Proof (commit 20; the box stays open for group 14's scan and the Review session): the strip's wording is group 16's.
+  Live mode as Commands run it, the release configuration, shows "SIMULATOR · NOT FOR REAL FUNDS" alone: the bin's
+  hardware under its `App` presents boot and home with that strip and writes each to `live.png` as drawn
+  (tests/hal.rs, `live_mode_shows_the_builds_strip_and_writes_it_to_live_png`); with the test key the same test
+  finds "TEST REGISTRY" beside "SIMULATOR". The bin's docs name the long label.
 
 **13. Gates: banned-API rules (Q31 (e); rules 1, 3, 6)**
 - [x] `scripts/banned-api-check.sh`, each rule with hit and clean fixtures in `scripts/testdata/banned-api/`:
@@ -5511,7 +5517,7 @@ amended; rules 5, 6)**
     offered on readback-entry (`dice_24_code` step 125) or bip39-entry (step 314).
 
 **16. The simulator's strip (a lead decision between Q30 (h) and Q33 (j); the strip's part of group 12's open item)**
-- [ ] `ui/render.rs`: in a simulator build the top strip reads "SIMULATOR · NOT FOR REAL FUNDS" when the simulator
+- [x] `ui/render.rs`: in a simulator build the top strip reads "SIMULATOR · NOT FOR REAL FUNDS" when the simulator
   banner is its only banner (30 characters, 180 px, centred in the whole strip), and "SIMULATOR" beside "TEST
   REGISTRY", each in half the strip as now: the long label and "TEST REGISTRY" (258 px together) cannot share it.
   - Why: Q30 (h) gives live mode "SIMULATOR · NOT FOR REAL FUNDS" on every screen, and Q33 (j) gives "SIMULATOR"
@@ -5527,6 +5533,26 @@ amended; rules 5, 6)**
   - pi/sim, both configurations: a drawn present's top strip carries the long label in the release configuration
     (live mode's `live.png` included) and the pair in the registry configuration. Group 12's item then has its
     strip proof; it stays open for group 14's scan and the Review session.
+
+  Proof (commit 20):
+  - pi/app (`cargo test -p keepcrypt-pi --locked`: 111 passed): `top_strip` draws the long label when the simulator
+    banner is alone and "SIMULATOR" beside "TEST REGISTRY".
+    `the_simulator_banner_alone_reads_not_for_real_funds_across_the_strip` pins the long label at 180 px (more than
+    half the strip, and 258 px with "TEST REGISTRY"), equal to a reference drawing of it from x = 30 in black on the
+    simulator colour across the whole strip; its middle dot is a glyph of its own, not the font's '?'; another title
+    gives the same strip, and the content area stays black. `both_banners_fit_the_top_strip_together_and_hide_the_title`
+    draws the pair as before (78 and 54 px in 120); its one-banner case is now "TEST REGISTRY" alone, centred at
+    x = 81 on the warning colour, and the title without banners is unchanged.
+  - pi/sim, both configurations (tests/hal.rs: 7 passed in each):
+    `live_mode_shows_the_builds_strip_and_writes_it_to_live_png` runs the bin's hardware (the counting hwrng, live
+    mode, the empty stick in the slot) under `App` through boot and home. Each drawn strip is read glyph for glyph
+    against the label drawn by pi/app as a title, another path through its renderer: the long label alone in the
+    release configuration, "TEST REGISTRY" beside "SIMULATOR" in the registry configuration, and in neither the
+    other configuration's strip or "SIMULATOR" alone. Each present was written to `live.png` as drawn.
+  - In a scratch copy, "SIMULATOR" alone fails the new pi/app test and the release configuration's hal test; the
+    long label beside "TEST REGISTRY" fails `both_banners_fit_the_top_strip_together_and_hide_the_title` and the
+    registry configuration's hal test.
+  - `hal::BuildInfo::simulator`, `Banners::simulator`, render.rs's module doc and the bin's docs follow.
 
 **17. Review**
 - [ ] Plan, security and recompute reviews per stage (core; dependencies and foundation; screens; sim and CI), as in
