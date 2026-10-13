@@ -6125,6 +6125,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     `mixed_12_restarts` as they run, and says why CI's 0cdfc8a run still covers the three scenarios.
     22d. pi/sim, tasks/todo.md: the plan and security reviews: the plan's Files line, Verification "Rules" and
     gate.rs's module doc say that `capture_set` reads back the PNG files it wrote and writes review.html.
+    22e. tasks/todo.md: the plan review: the gate status has button handling met but for the QR and info pages' KEY1
+    "back", an open item of the gate for the owner.
 
 Review fixes are listed as N.b entries under the commit they amend.
 
@@ -8258,8 +8260,9 @@ drives a full ceremony in the simulator; you review the screen captures".
   --workspace`) and the registry configuration (`--features keepcrypt-core/test-registry`). Between them
   `drill_12`, `dice_24_code` and `mixed_12_restarts` run steps 1-15. Locally at b74b0eb both configurations pass
   (gate 17 passed, 1 ignored, each); in CI the test job runs both on every pushed head, green on d00186e and 0cdfc8a.
-- Every screen: met. `every_screen_is_expected`: the scenarios' `Expect` ids cover all 62 `ScreenId`s with the test
-  key, and all but snapshot-loaded and snapshot-date without it, as planned.
+- Every screen: met, and so are the deliverables below but for one button mapping. `every_screen_is_expected`: the
+  scenarios' `Expect` ids cover all 62 `ScreenId`s with the test key, and all but snapshot-loaded and snapshot-date
+  without it, as planned.
   - Seal check with go-ahead code entry: the code is typed on the 8×4 grid; a wrong code keeps the check and its URL
     and shows no words; the mock checker's G, from a check QR whose drawn modules match its payload, reveals the
     words; a loaded snapshot asks for its date before every reveal; KEY2 leads back from the code grid (the owner's
@@ -8267,9 +8270,10 @@ drives a full ceremony in the simulator; you review the screen captures".
   - Braille pages: insert view and overview for 12 and 24 vector words with numbered dots, blank faces, lighter
     letters, mirror flags and device labels; the read-back names a mirror misread, a should-be-blank, a
     should-have-letter and a wrong letter.
-  - Button handling: every scripted press goes through the Debouncer as a bounce train; every screen's footer names
-    its keys within 240 px; the dead-key probes press every unoffered key on each screen's first showing, and none
-    draws anything.
+  - Button handling: met but for one documented mapping: pi-firmware.md's Buttons table gives the QR and info pages
+    KEY1 "back", which the app does not offer (`KeyMap`'s doc, commit 8c); it awaits the owner's decision (below).
+    Every scripted press goes through the Debouncer as a bounce train; every screen's footer names its keys within
+    240 px; the dead-key probes press every unoffered key on each screen's first showing, and none draws anything.
   - Waiting-screen game: Snake, in Mixed step 4 only, closed at the quota, its bytes from `game_random` alone (the
     Shell grep), every key still forwarded to the pool, and a game byte error halts holding nothing.
   - USB export mocked: written create-new, read back, verified; faults remove only the file just written (or say it
@@ -8292,9 +8296,10 @@ drives a full ceremony in the simulator; you review the screen captures".
   review, and the stage reviews' severity tally), Verification's "the owner reviews the captures", "Definition of
   done", which waits for group 17 and CI, and group 14's runtime budgets and Verification "CI", which wait for CI on
   the pushed head. No CI job, required check or ruleset changed; the nine new crates are the approved ones.
+- Open, part of the gate's button handling, for the owner: the QR and info pages offer no KEY1 "back", which
+  pi-firmware.md's Buttons table gives them (`KeyMap`'s doc, commit 8c): give those pages KEY1 "back" as the table
+  says, or amend the table to match.
 - Open items; none is part of the gate:
-  - for the owner: the QR and info pages offer no KEY1 "back", which pi-firmware.md's Buttons table gives them
-    (`KeyMap`'s doc, commit 8c): give those pages KEY1 "back" as the table says, or amend the table to match.
   - for the owner: when braille Tetris comes to the Pi (Q27 (c)): M4, right after M3, or with the phones (M5, M6).
   - low: Python `random` reached through a dotted import (for example `import jax.random`) is not caught by the
     banned-API gate's RNG rule; a follow-up for M4.
