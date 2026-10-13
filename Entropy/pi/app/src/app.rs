@@ -32,7 +32,8 @@
 //!   or not.
 //! - Snake (`games`) opens from step 4's "Play while you wait", moves one cell per hwrng block and
 //!   closes once the quota is met. It lives in the current screen's note, so leaving game-snake
-//!   ends it; its bytes come from `games::GAME_BYTES`, which the app holds.
+//!   ends it; its bytes come from `games::GAME_BYTES`, which the app holds and hands to the game
+//!   but cannot draw from.
 //! - Steps 8-15 are in `ready`, Home's side flows and the backup's USB write in `usb`.
 
 mod ready;
@@ -401,7 +402,8 @@ pub struct App<H: Hal> {
     idle: Idle,
     /// When step 4 reads its next hwrng block.
     next_block_ns: u64,
-    /// Where Snake's bytes come from: core's game call (`games::GAME_BYTES`).
+    /// Where Snake's bytes come from: core's game call (`games::GAME_BYTES`), handed to the game
+    /// and never called here.
     game_bytes: GameBytes,
 }
 
@@ -1779,7 +1781,7 @@ mod tests {
             block(&mut app);
         }
         assert_eq!(app.hal.last().keys.label(Key::Press), Some("again"));
-        app.set_game_bytes(no_game_bytes);
+        app.set_game_bytes(GameBytes::test(no_game_bytes));
         play(&mut app, &[Key::Press]);
         assert_eq!(app.view.id, ScreenId::Halt);
         assert!(matches!(

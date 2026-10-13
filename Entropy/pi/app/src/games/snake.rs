@@ -9,14 +9,15 @@
 //! - Food is placed by rejection sampling over the free cells (`place_food`): a byte below 252
 //!   (14 × 18) gives a coordinate, its value mod 18, row first, then column; a byte of 252 or more
 //!   is skipped, and a cell the snake holds is drawn again. So every free cell is equally likely.
-//!   The bytes come from the source the caller hands in, `GAME_BYTES` in the app. A board with no
-//!   free cell gets no food, and the round ends.
+//!   The bytes come from the source the caller hands in, `GAME_BYTES` in the app, which only the
+//!   games draw from. A board with no free cell gets no food, and the round ends.
 //! - The board is kept as the screen model draws it (`board`), row by row.
 
 use std::collections::VecDeque;
 
 use keepcrypt_core::CoreError;
 
+use super::GameBytes;
 use crate::input::Key;
 use crate::screen::{BOARD_CELLS, Tile};
 
@@ -63,8 +64,13 @@ pub struct Snake {
 }
 
 impl Snake {
-    /// A new round, its first food placed with `bytes`.
-    pub fn new(
+    /// A new round, its first food placed with bytes from `source`.
+    pub fn new(source: GameBytes) -> Result<Snake, CoreError> {
+        Snake::new_with(source.0)
+    }
+
+    /// `new`, with its bytes from `bytes`.
+    fn new_with(
         mut bytes: impl FnMut(&mut [u8]) -> Result<(), CoreError>,
     ) -> Result<Snake, CoreError> {
         let mut snake = Snake {
@@ -109,9 +115,14 @@ impl Snake {
     }
 
     /// One cell on: the head moves, the tail follows unless the food was eaten, and new food is
-    /// placed with `bytes`. A wall or the body ends the round instead. Nothing moves once the round
-    /// has ended.
-    pub fn step(
+    /// placed with bytes from `source`. A wall or the body ends the round instead. Nothing moves
+    /// once the round has ended.
+    pub fn step(&mut self, source: GameBytes) -> Result<(), CoreError> {
+        self.step_with(source.0)
+    }
+
+    /// `step`, with its bytes from `bytes`.
+    fn step_with(
         &mut self,
         mut bytes: impl FnMut(&mut [u8]) -> Result<(), CoreError>,
     ) -> Result<(), CoreError> {
@@ -236,7 +247,7 @@ mod tests {
 
     #[test]
     fn a_round_starts_three_cells_long_in_the_middle_row_with_one_food() {
-        let snake = Snake::new(fixed(&[0, 0])).expect("a round");
+        let snake = Snake::new_with(fixed(&[0, 0])).expect("a round");
         assert_eq!(cells(&snake, Tile::Snake), [(9, 3), (9, 4), (9, 5)]);
         assert_eq!(cells(&snake, Tile::Food), [(0, 0)]);
         assert_eq!(snake.head, (9, 5));
@@ -292,10 +303,10 @@ mod tests {
     #[test]
     fn rejection_skips_out_of_range_bytes_and_taken_cells() {
         // 252 and 255 are skipped; 251 is 17 (251 mod 18).
-        let snake = Snake::new(fixed(&[252, 3, 255, 251])).expect("a round");
+        let snake = Snake::new_with(fixed(&[252, 3, 255, 251])).expect("a round");
         assert_eq!(cells(&snake, Tile::Food), [(3, 17)]);
         // (9, 4) is the snake's: drawn again.
-        let snake = Snake::new(fixed(&[9, 4, 2, 2])).expect("a round");
+        let snake = Snake::new_with(fixed(&[9, 4, 2, 2])).expect("a round");
         assert_eq!(cells(&snake, Tile::Food), [(2, 2)]);
         // A board with no free cell gets no food, and the round ends.
         let all: Vec<(usize, usize)> = (0..BOARD_CELLS)
@@ -310,30 +321,30 @@ mod tests {
     #[test]
     fn the_snake_grows_on_food_and_new_food_is_placed() {
         // The first food right in front of the head; the next one at (0, 0).
-        let mut snake = Snake::new(fixed(&[9, 6])).expect("a round");
-        snake.step(fixed(&[0, 0])).expect("a step");
+        let mut snake = Snake::new_with(fixed(&[9, 6])).expect("a round");
+        snake.step_with(fixed(&[0, 0])).expect("a step");
         assert_eq!(cells(&snake, Tile::Snake), [(9, 3), (9, 4), (9, 5), (9, 6)]);
         assert_eq!(cells(&snake, Tile::Food), [(0, 0)]);
         // Without food it keeps its length.
-        snake.step(fixed(&[])).expect("a step");
+        snake.step_with(fixed(&[])).expect("a step");
         assert_eq!(cells(&snake, Tile::Snake), [(9, 4), (9, 5), (9, 6), (9, 7)]);
     }
 
     #[test]
     fn a_wall_ends_the_round_and_the_board_stays() {
-        let mut snake = Snake::new(fixed(&[0, 0])).expect("a round");
+        let mut snake = Snake::new_with(fixed(&[0, 0])).expect("a round");
         // From column 5 to column 17, the last before the wall.
         for _ in 0..12 {
-            snake.step(fixed(&[])).expect("a step");
+            snake.step_with(fixed(&[])).expect("a step");
         }
         assert!(!snake.over());
         let board = *snake.board();
-        snake.step(fixed(&[])).expect("a step");
+        snake.step_with(fixed(&[])).expect("a step");
         assert!(snake.over());
         assert_eq!(*snake.board(), board);
         // Once over, nothing moves.
         snake.steer(Key::Up);
-        snake.step(fixed(&[])).expect("no step");
+        snake.step_with(fixed(&[])).expect("no step");
         assert_eq!(*snake.board(), board);
     }
 
@@ -344,14 +355,14 @@ mod tests {
         for key in [Key::Up, Key::Left, Key::Down] {
             assert!(!snake.over());
             snake.steer(key);
-            snake.step(fixed(&[])).expect("a step");
+            snake.step_with(fixed(&[])).expect("a step");
         }
         assert!(snake.over());
         assert_eq!(snake.head, (8, 6));
         // Four cells in a square: the head moves into the cell the tail leaves.
         let mut square = laid(&[(9, 5), (9, 6), (8, 6), (8, 5)], Heading::Left);
         square.steer(Key::Down);
-        square.step(fixed(&[])).expect("a step");
+        square.step_with(fixed(&[])).expect("a step");
         assert!(!square.over());
         assert_eq!(square.head, (9, 5));
         assert_eq!(cells(&square, Tile::Snake).len(), 4);
@@ -359,25 +370,28 @@ mod tests {
 
     #[test]
     fn a_steer_into_the_neck_and_the_other_keys_are_ignored() {
-        let mut snake = Snake::new(fixed(&[0, 0])).expect("a round");
+        let mut snake = Snake::new_with(fixed(&[0, 0])).expect("a round");
         for key in [Key::Left, Key::Press, Key::Key1, Key::Key2, Key::Key3] {
             snake.steer(key);
         }
-        snake.step(fixed(&[])).expect("a step");
+        snake.step_with(fixed(&[])).expect("a step");
         assert_eq!(snake.head, (9, 6));
         snake.steer(Key::Down);
-        snake.step(fixed(&[])).expect("a step");
+        snake.step_with(fixed(&[])).expect("a step");
         assert_eq!(snake.head, (10, 6));
     }
 
     #[test]
     fn a_source_error_is_passed_on() {
-        let failing = |_: &mut [u8]| Err(CoreError::Source(SourceFault::Os));
+        fn no_bytes(_: &mut [u8]) -> Result<(), CoreError> {
+            Err(CoreError::Source(SourceFault::Os))
+        }
+        let failing = GameBytes(no_bytes);
         assert!(matches!(
             Snake::new(failing),
             Err(CoreError::Source(SourceFault::Os))
         ));
-        let mut snake = Snake::new(fixed(&[9, 6])).expect("a round");
+        let mut snake = Snake::new_with(fixed(&[9, 6])).expect("a round");
         assert!(matches!(
             snake.step(failing),
             Err(CoreError::Source(SourceFault::Os))

@@ -4617,6 +4617,11 @@ carries it, and every commit names a proof that runs at that commit.
   `a_game_byte_error_while_snake_is_open_halts_holding_nothing` plays a round to the wall, injects `Source(Os)` and
   presses play again: a black frame, then `halt` with core's text, `holds_secrets()` and `keeps_wiped()` false. In a
   scratch copy, a mutant swallowing that error fails it.
+  Proof (review fix, commit 13b): `games::GameBytes` is a newtype whose field only `games` reads, so the app holds
+  core's game call and hands it to Snake but cannot call it (`GameBytes::test` makes another source, in pi/app's unit
+  tests only). The security review's mutants, a dice face drawn from `(self.game_bytes)(..)` in app.rs and a
+  `games::GAME_BYTES(..)` call in `app/ready.rs`, compiled and passed the Shell grep; in a scratch copy each now fails
+  to compile, as do the same calls through the field and through `GameBytes::test` outside the tests.
 - [x] Screen inventory (`ScreenId::ALL`, the coverage target; * marks transient ids):
 
   | Steps | Public | Protected |
@@ -5566,6 +5571,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     `drill_12_repeats` and `capture_set` (groups 10, 11); `check_restarts` for step 7's restart checks and, with the
     test key, the code after No; and a SimHal fault that fails the removal of the file just written
     (`dice_24_code`).
+    13b. pi/app: the security review: the app holds the games' byte source but cannot draw from it (`GameBytes`'s
+    field is private to `games`).
 14. pi/sim: the interactive bin (group 12).
 15. scripts, core: the Shell category, the hash ban with pool.rs's `BTreeSet`, the pi/app forbid lines, the simulator
     marker, Q31 (h)'s routes, and fixtures (group 13).
