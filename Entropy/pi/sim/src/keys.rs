@@ -6,7 +6,9 @@
 //!   Its event comes 24 ms after the press starts, carrying the first edge's time; the next press
 //!   starts 150 ms after it, once its release has stayed up for the debounce time.
 //! - A wait is time with no key. The app's timers fire at their deadlines within it, and the next
-//!   input starts when it ends.
+//!   input starts when it ends. A wait that ends the script ends with a `Tick` at its end, even
+//!   before the deadline: the scenario has no more input for now, and the app, finding nothing
+//!   due, asks again once the scenario adds some (`hal::Buttons` allows an early tick).
 //! - The clock moves only here: to a press's event, to the deadline of a `Tick`, or to the end of a
 //!   wait. It never goes back.
 //! - A `next_event` call with nothing left in the script fails the test: a scenario feeds the app
@@ -123,9 +125,15 @@ impl Keys {
                         }
                         return tick;
                     }
-                    // The wait ends before the deadline: the next input starts at its end.
+                    // The wait ends before the deadline: the next input starts at its end, or,
+                    // when the script ends with it, the call ends there.
                     self.now_ns = self.now_ns.max(until_ns);
                     self.end_wait();
+                    if self.script.is_empty() {
+                        return Event::Tick {
+                            now_ns: self.now_ns,
+                        };
+                    }
                 }
             }
         }
@@ -243,6 +251,25 @@ mod tests {
         let end = keys.now_ns() + 10 * S;
         assert_eq!(keys.next_event(end), Event::Tick { now_ns: end });
         assert_eq!(keys.queued(), 0);
+    }
+
+    #[test]
+    fn a_wait_that_ends_the_script_ends_with_a_tick_at_its_end() {
+        let mut keys = Keys::new();
+        keys.wait_ns(31 * S);
+        // The next deadline (the warning's, 540 s) is past the wait: the call ends at 31 s.
+        assert_eq!(keys.next_event(540 * S), Event::Tick { now_ns: 31 * S });
+        assert_eq!(keys.queued(), 0);
+        // With input after it, the wait is passed through to that input instead.
+        keys.wait_ns(S);
+        keys.press(Key::Press);
+        assert_eq!(
+            keys.next_event(540 * S),
+            Event::Key {
+                key: Key::Press,
+                at_ns: 32 * S
+            }
+        );
     }
 
     #[test]

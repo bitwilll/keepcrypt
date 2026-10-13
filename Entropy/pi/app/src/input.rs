@@ -5,8 +5,8 @@
 //!   type-ahead filter.
 //! - `Debouncer` is pure: raw edges and the time in, presses out. M4's GPIO driver reuses it, and
 //!   the simulator runs every scripted press through it as a bounce train.
-//! - `Idle` is pure too: the time of the last key in, and the step due on the current screen out.
-//!   The app applies the step.
+//! - `Idle` is pure too: the time of the last key in, and the step due on the current screen, and
+//!   when the next one falls due, out. The app applies the step.
 //! - Times are nanoseconds on one monotonic base (`CLOCK_MONOTONIC` on the device), the same as
 //!   `hal::Clock::now_ns`. Subtractions saturate, so a timestamp from before the last one can
 //!   never wrap into a huge idle time.
@@ -225,6 +225,22 @@ impl Idle {
         } else {
             None
         }
+    }
+
+    /// The first threshold after `now_ns` at which `step` can give a later step than it gives at
+    /// `now_ns`, on the same screen and with the same secrets held, or `None`: the deadline the app
+    /// hands `hal::Buttons::next_event`.
+    pub fn next_ns(&self, now_ns: u64, class: Class, holds_secrets: bool) -> Option<u64> {
+        let protected = class == Class::Protected;
+        [
+            (COVER_NS, protected),
+            (WARN_NS, holds_secrets),
+            (WIPE_NS, holds_secrets || protected),
+        ]
+        .into_iter()
+        .filter(|&(_, applies)| applies)
+        .map(|(after, _)| self.last_key_ns.saturating_add(after))
+        .find(|&at| at > now_ns)
     }
 }
 
@@ -475,5 +491,41 @@ mod tests {
         assert_eq!(protected(&idle, at(599 + 600)), Some(IdleStep::Wipe));
         // A time before the last key is no idle time at all.
         assert_eq!(protected(&idle, at(1)), None);
+    }
+
+    #[test]
+    fn the_next_deadline_is_the_next_threshold_that_applies() {
+        let start = 7 * S;
+        let idle = Idle::new(start);
+        let at = |seconds: u64| start + seconds * S;
+        // A Protected screen with a session held: the cover, the warning, the wipe, then none.
+        let protected = |now| idle.next_ns(now, Class::Protected, true);
+        assert_eq!(protected(start), Some(at(30)));
+        assert_eq!(protected(at(30) - 1), Some(at(30)));
+        assert_eq!(protected(at(30)), Some(at(540)));
+        assert_eq!(protected(at(540)), Some(at(600)));
+        assert_eq!(protected(at(600)), None);
+        // A Public screen: the warning and the wipe only while secrets are held.
+        assert_eq!(idle.next_ns(start, Class::Public, true), Some(at(540)));
+        assert_eq!(idle.next_ns(at(540), Class::Public, true), Some(at(600)));
+        assert_eq!(idle.next_ns(start, Class::Public, false), None);
+        // A Protected screen with nothing held: the cover, then the wipe, with no warning.
+        assert_eq!(idle.next_ns(at(30), Class::Protected, false), Some(at(600)));
+        // Each deadline is where `step` changes.
+        for (class, holds) in [
+            (Class::Protected, true),
+            (Class::Protected, false),
+            (Class::Public, true),
+        ] {
+            let mut now = start;
+            while let Some(next) = idle.next_ns(now, class, holds) {
+                assert_ne!(
+                    idle.step(next - 1, class, holds),
+                    idle.step(next, class, holds)
+                );
+                now = next;
+            }
+            assert_eq!(idle.step(now, class, holds), Some(IdleStep::Wipe));
+        }
     }
 }

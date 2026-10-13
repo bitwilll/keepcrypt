@@ -22,14 +22,14 @@ use embedded_graphics::primitives::{
 
 use super::qr::QrBuffers;
 use super::{
-    ACCENT, BACKGROUND, Frame, LIGHTER, SIDE, SIMULATOR, SNAKE, TEXT, WARNING, braille, qr, seal,
-    text,
+    ACCENT, BACKGROUND, Frame, LIGHTER, SIDE, SIMULATOR, SNAKE, STOP, TEXT, WARNING, braille, qr,
+    seal, text,
 };
 use crate::hal::{Display, HalError};
 use crate::input::Key;
 use crate::screen::{
-    BOARD_CELL_PX, BOARD_CELLS, BODY_FONT, Element, Item, KeyMap, SMALL_FONT, STRIP_HEIGHT, Screen,
-    Tile, lines,
+    BOARD_CELL_PX, BOARD_CELLS, BODY_FONT, CONTENT, Element, Item, KeyMap, SMALL_FONT,
+    STRIP_HEIGHT, Screen, ScreenId, Tile, lines,
 };
 
 /// The TEST REGISTRY banner: the build pins the test registry key.
@@ -130,9 +130,14 @@ impl Painter {
         shown
     }
 
-    /// Clears the frame and draws `screen`: the top strip, each element, the footer.
+    /// Clears the frame and draws `screen`: the top strip, each element, the footer. The stop
+    /// screen's content area is red.
     fn render(&mut self, screen: &Screen<'_>) -> Result<(), RenderError> {
         self.frame.clear();
+        if screen.id() == ScreenId::Halt {
+            let content = Rectangle::new(Point::zero() + Size::new(0, STRIP_HEIGHT), CONTENT);
+            let Ok(()) = self.frame.fill_solid(&content, STOP);
+        }
         top_strip(&mut self.frame, screen);
         for element in screen.elements() {
             self.element(element)?;
@@ -322,6 +327,27 @@ mod tests {
 
     fn black(frame: &Frame, rows: Rectangle) -> bool {
         rows.points().all(|p| frame.pixel(p) == Some(Rgb565::BLACK))
+    }
+
+    #[test]
+    fn the_stop_screen_is_drawn_on_red() {
+        let halt = Screen::new(ScreenId::Halt, "", NO_BANNERS).with(Element::public(
+            Point::new(0, 100),
+            Item::Text("STOPPED".into()),
+        ));
+        let painter = rendered(&halt);
+        let red = Rgb565::new(20, 0, 0);
+        assert!(black(&painter.frame, TOP_ROWS));
+        assert!(black(&painter.frame, FOOTER_ROWS));
+        // The content area is red but for the text drawn on it, in white.
+        for colour in area(&painter.frame, CONTENT_ROWS) {
+            assert!(colour == Some(red) || colour == Some(Rgb565::WHITE));
+        }
+        assert_eq!(painter.frame.pixel(Point::new(0, 12)), Some(red));
+        assert_eq!(painter.frame.pixel(Point::new(239, 227)), Some(red));
+        // Any other screen keeps the black background.
+        let about = rendered(&Screen::new(ScreenId::About, "", NO_BANNERS));
+        assert!(black(&about.frame, CONTENT_ROWS));
     }
 
     #[test]

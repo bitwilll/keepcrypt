@@ -204,7 +204,9 @@ pub trait Display {
 /// The joystick and the three keys.
 pub trait Buttons {
     /// The next debounced press (`input::Debouncer`), or `Event::Tick` once `deadline_ns` passes
-    /// with none. Times are on `Clock::now_ns`'s base.
+    /// with none. Times are on `Clock::now_ns`'s base. A `Tick` may also come early (the
+    /// simulator gives one where its script ends with a wait): the app checks its timers against
+    /// the tick's `now_ns`, so an early one changes nothing.
     fn next_event(&mut self, deadline_ns: u64) -> Result<Event, HalError>;
 }
 

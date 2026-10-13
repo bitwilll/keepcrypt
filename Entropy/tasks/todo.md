@@ -4629,7 +4629,7 @@ carries it, and every commit names a proof that runs at that commit.
   - Step 3: `length` (12 by default, "fills one KeepCrypt Hinge or Screw"), then `wait` and the new session.
 
   Proof: scenario `boot_stops` (below) and the first steps of every scenario at this commit.
-- [ ] Steps 4-6:
+- [x] Steps 4-6:
   - Step 4 (Mixed):
     - one block per Tick into `add_hw_samples`, until `hw_bytes_tested() >= HW_BYTES_NEEDED` (the sim's Tick is
       100 ms; M4 sets the device's from the measured hwrng rate);
@@ -4651,6 +4651,16 @@ carries it, and every commit names a proof that runs at that commit.
   - the dice text for 1, 37, 50, 99 and 256 rolls;
   - no face value in the dice model after a confirm, and the dice frame after a confirm equals the blank-picker frame
     for that count.
+  Proof (commit 11): `cargo test --workspace --locked`: keepcrypt-pi's 79 unit tests pass. `screens`' gate tests:
+  Continue only at the quota (511 of 512 refused), Done at the minimum and not one below (49 of 50, 98 of 99), a
+  confirm only with a face picked and never at 256 rolls (no 257th confirm), undo only with a roll to undo;
+  `dice_text` gives "1 / 50 rolls, 2.5 bits", "37 / 50 rolls, 95.6 bits", "50 / 50 rolls, 129.2 bits", "99 / 99 rolls,
+  255.9 bits" and "256 / 99 rolls, 661.7 bits" from core's 2,585 millibits a roll;
+  `the_dice_picker_is_blank_after_each_confirm`: Up from the blank picker picks 1 and Down picks 6, both wrapping, and
+  after Up three times and a confirm no element shows the 3, the line reads "1 / 50 rolls, 2.5 bits", and the frame
+  equals a fresh drawing of the blank picker for one roll. The app ignores a key the shown model leaves out
+  (`a_dead_key_changes_nothing_and_draws_nothing`), and in the Mixed gate scenarios the first step 4 model offers no
+  key (the dead-key probe presses all 8, Continue among them). "Play while you wait" lands with Snake (group 10).
 - [ ] Step 7:
   - `check-prompt`, in swb:114's words.
   - Skip: `skip-confirm` → `skip_check`. The privacy gate then carries swb:152's note.
@@ -4680,7 +4690,7 @@ carries it, and every commit names a proof that runs at that commit.
 
   Proof: unit tests for the gate rule; scenarios `runtime_stop`, `mixed_12_restarts` (its steps 1-7 part at this
   commit) and `wipes_clear_the_stage`.
-- [ ] Scenario driver (pi/sim tests). A scenario is a list of steps, built per configuration:
+- [x] Scenario driver (pi/sim tests). A scenario is a list of steps, built per configuration:
   - `Expect(ScreenId)`: matched in order against the Display log since the previous step, so transient screens are
     matched too;
   - `Key`, `Dice(roll string)` (Up presses, then Press, per face), `Type(text)` (grid navigation);
@@ -4697,10 +4707,22 @@ carries it, and every commit names a proof that runs at that commit.
 
   Proof: unit tests: a key before its screen fails; an unmet `Expect` fails and names the step; a dead key that
   presents a frame fails; a QR frame with one flipped module fails.
-- [ ] Mock checker (pi/sim tests, sha2): G from the `t` and `n` of the check QR's payload, after the frame check above
+  Proof (commit 11): `pi/sim/tests/scenario/mod.rs`, in tests/gate.rs, in both configurations:
+  `a_key_before_its_screen_fails` ("step 1: Press pressed on home, not on its expected screen (none)"),
+  `an_unmet_expect_fails_and_names_its_step` ("step 2: expected dice, presented since the last match: []"),
+  `a_dead_key_that_presents_fails` (no present passes, one fails) and `a_qr_frame_with_one_flipped_module_fails` (the
+  drawn check QR matches its payload and not another; with the 4×4 pixels of module (0, 0) flipped it fails) pass. The
+  steps so far are `Expect`, `Key`, `Dead`, `Dice`, `Wait`, `Fault`, `Code` (grid navigation from the first symbol,
+  then Done), `Assert` and `PowerCycle`; `Stick`, `Readback` and typing other grids come with group 9's flows.
+  SimHal's script now ends a trailing wait with a tick at its end (`keys`, with a test), which `hal::Buttons` allows.
+- [x] Mock checker (pi/sim tests, sha2): G from the `t` and `n` of the check QR's payload, after the frame check above
   shows the drawn QR encodes that payload.
 
   Proof: vector-1's T with n = 0001020304050607 gives `CF94-BCAJ`; kcr.json's three other G values match.
+  Proof (commit 11): `the_mock_checker_gives_every_kcr_go_ahead_code`: vector-1's T with n = 0001020304050607 gives
+  CF94BCAJ, and all four kcr.json seeds' `go_ahead_compact` match. The checker reads T and n only from the last
+  seal-qr present, whose drawn modules the driver has already matched to its payload; `dice_24_code` and
+  `mixed_12_restarts` reveal with its code.
 
 **9. pi/app steps 8-15 and the Home side flows (pi-firmware.md:89-96, :142-155; swb:200-292)**
 - [ ] Step 8: `words-insert`, one insert per page:
@@ -4784,14 +4806,25 @@ carries it, and every commit names a proof that runs at that commit.
   - scenario `mixed_12_restarts`.
 
 **11. pi/sim gate scenarios (`pi/sim/tests/gate.rs`; the gate's evidence)**
-- [ ] `boot_stops` (both configs): `run-of-6-startup` → `halt` naming RepetitionCount, startup stage, sample 505;
+- [x] `boot_stops` (both configs): `run-of-6-startup` → `halt` naming RepetitionCount, startup stage, sample 505;
   `apt-62-startup` → `halt` naming AdaptiveProportion, startup stage, sample 500. Neither names a HAL error.
-- [ ] `runtime_stop` (both configs), a throwaway run:
+  Proof (commit 11): `boot_stops_halt_with_cores_startup_verdicts` passes in both configurations (17 steps, 6
+  presents, 8 dead keys): boot, a black frame, then `halt` showing exactly "hwrng health test failed: Repetition Count
+  Test in the startup stage at sample 505", and after a power cycle "... Adaptive Proportion Test in the startup stage
+  at sample 500"; neither shows any `HalError` text, nothing is held, no element is Protected, and all 8 keys are dead
+  on `halt`.
+- [x] `runtime_stop` (both configs), a throwaway run:
   1. Mixed, 12 words; `coldcard-50` as the rolls; Check now → seal card → Match found → `collision` → privacy gate →
      `collision-qr` → Add fresh entropy.
   2. Step 4 reads `run-of-6-continuous` → `halt` naming RepetitionCount, continuous stage, sample 1505.
      `holds_secrets()` is false, a black frame came first, and every key is dead.
   3. `PowerCycle` → boot → Dice-only seed → `dice` shows "0 / 50": a power cycle drops the 99-roll flag, as documented.
+  Proof (commit 11): `runtime_stop_halts_and_a_power_cycle_forgets_the_99_roll_minimum` passes in both configurations
+  (56 steps, 296 presents, 98 dead keys): after the collision and Add fresh entropy, the restart's step 4 reads
+  `run-of-6-continuous` (behind a counting boot and first session) and, after a black frame, halts showing exactly
+  "hwrng health test failed: Repetition Count Test in the continuous stage at sample 1505", with `holds_secrets()` and
+  `keeps_wiped()` false and all 8 keys dead; after `PowerCycle` a dice-only seed's dice screen shows "0 / 50 rolls,
+  0.0 bits".
 - [ ] `drill_12`, a vector run (the duplicate-seed drill).
   - Release config: the stick's `with-dice-50` gives `snapshot-failed` with `NoRegistryKey`'s text. The scenario says
     so and ends.

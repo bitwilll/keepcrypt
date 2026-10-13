@@ -1,0 +1,767 @@
+//! The screens of steps 1-7 and of any step (tasks/todo.md, M3 group 8; docs/pi-firmware.md
+//! "User flow", "Buttons", "Protected screens and idle"; docs/seal-watchonly-braille.md "Checking
+//! the seal"): each one's model, built from what the app holds and the current screen, and the
+//! pure gate functions that decide which actions a model offers.
+//!
+//! - A model borrows the session's public text (the seal, C) and owns only `Zeroizing` text; a
+//!   secret is a Protected element, on a Protected screen only.
+//! - An action core would refuse by wiping the session is offered only when its gate function
+//!   says yes: Continue below the quota, a confirm at 256 rolls or with no face picked, Done below
+//!   the minimum, Skip outside `Sealed` (tasks/todo.md, M3 "The shell never makes a wiping call by
+//!   mistake"). A model leaves out every key that would do nothing, and the app ignores a key the
+//!   shown model leaves out.
+//! - Elements are stacked from the top of the content area, `GAP` apart, so each box comes from
+//!   the font metrics (`Element::bounds`) and every model fits.
+
+use embedded_graphics::prelude::{Point, Size};
+use keepcrypt_core::{HW_BYTES_NEEDED, RegistryDate, SealPublic};
+use zeroize::Zeroizing;
+
+use crate::app::{Held, Note, OUT_OF_ORDER, Stage, Stop, View};
+use crate::extras::StageKind;
+use crate::input::Key;
+use crate::screen::{
+    BODY_FONT, Banners, Class, Element, Item, LARGE_SCALE, QR_SIDE, SEAL_SIDE, Screen, ScreenId,
+    Str, advance, px,
+};
+use crate::ui::{SIDE, caption_cells, hex_groups};
+
+/// The go-ahead code's symbols (Crockford base32), on the entry grid row by row: 8 columns, 4
+/// rows (Q32 (a)).
+pub const CROCKFORD: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+/// The go-ahead code's length, without its dash.
+pub const CODE_LEN: usize = 8;
+/// The code grid's columns.
+const GRID_COLUMNS: usize = 8;
+/// Core refuses a 257th roll (`TooManyRolls`), so confirm is disabled at 256 (Q32 (a)).
+pub const MAX_ROLLS: u16 = 256;
+/// The step 4 progress bar's cells.
+const BAR_CELLS: u64 = 20;
+/// The space between stacked elements.
+const GAP: u32 = 4;
+/// The braille caption's cell box: the dots alone (`ui::braille`).
+const CAPTION_PITCH: Size = Size::new(15, 24);
+/// The security address (SECURITY.md), for About and `COLLISION`.
+const SECURITY: &str = "admin@keepcrypt.com";
+
+// The longer screen copy.
+/// check-prompt: swb's prompt, the same words as the phones.
+const CHECK_PROMPT: &str = "KeepCrypt can compare this new wallet's seal with the public \
+    KeepCrypt registry. If anyone has ever registered the same seal, your seed is not unique: it \
+    will be destroyed without being shown, and you will make a new one.";
+const SKIP_CONFIRM: &str = "The words will be shown without a collision check. Skip is offered \
+    only now: once a check starts, only a verified go-ahead shows the words.";
+/// The privacy gate after Skip: swb's note.
+const SKIPPED: &str = "You skipped the check: the seal can be checked later from the words.";
+const CHECK_ACTIONS: &str =
+    "Go ahead: type its code. Stop: Match found. A network or snapshot error: Cannot check.";
+const CODE_WRONG: &str = "Check the code on your checker and type it again. The check stays \
+    open, with the same seal card.";
+/// collision: swb's suggestion of a report (to SECURITY) and a verification run.
+const COLLISION: &str = "A genuine collision means this device's randomness or firmware is \
+    suspect: report the device and firmware version to admin@keepcrypt.com, and make a \
+    verification run with the offline verifier.";
+const DICE_ONLY: &str =
+    "No device randomness is mixed in: the seed is SHA-256 of your rolls, as on a Coldcard.";
+const IDLE_WARNING: &str =
+    "Without a key, everything secret is wiped in one minute. Press any key to keep it.";
+const HALTED: &str = "No seed can be made. Power the device off: a power cycle reruns the \
+    self-tests before any new seed.";
+
+/// A menu entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Choice {
+    NewSeed,
+    DiceOnlySeed,
+    About,
+    Words12,
+    Words24,
+    /// Step 4's Continue: the commitment.
+    Continue,
+    CheckNow,
+    Skip,
+    /// The Skip confirmation.
+    SkipCheck,
+    /// Yes on snapshot-date.
+    UseSnapshot,
+    /// No on snapshot-date: the seal card instead.
+    NotSnapshot,
+    EnterCode,
+    MatchFound,
+    CannotCheck,
+    /// The Match found confirmation.
+    Destroy,
+    /// The Cannot check confirmation.
+    StartAgain,
+}
+
+impl Choice {
+    /// The menu line, at most 23 characters, so it fits a line after the cursor mark.
+    pub const fn label(self) -> &'static str {
+        match self {
+            Choice::NewSeed => "New seed",
+            Choice::DiceOnlySeed => "Dice-only seed",
+            Choice::About => "About",
+            Choice::Words12 => "12 words",
+            Choice::Words24 => "24 words",
+            Choice::Continue => "Continue",
+            Choice::CheckNow => "Check now (recommended)",
+            Choice::Skip => "Skip",
+            Choice::SkipCheck => "Skip the check",
+            Choice::UseSnapshot => "Yes, use it",
+            Choice::NotSnapshot => "No, show the seal card",
+            Choice::EnterCode => "Enter go-ahead code",
+            Choice::MatchFound => "Match found",
+            Choice::CannotCheck => "Cannot check",
+            Choice::Destroy => "Destroy this seed",
+            Choice::StartAgain => "Start again",
+        }
+    }
+}
+
+/// The entries of the menu on `id`, empty on a screen that is no menu or offers nothing now.
+pub fn choices(id: ScreenId, held: &Held) -> &'static [Choice] {
+    let kind = held.stage.kind();
+    match (id, &held.stage) {
+        (ScreenId::Home, _) => &[Choice::NewSeed, Choice::DiceOnlySeed, Choice::About],
+        (ScreenId::Length, _) => &[Choice::Words12, Choice::Words24],
+        (ScreenId::Hwrng, Stage::Collecting(session))
+            if continue_offered(session.credited_bits(), session.required_bits()) =>
+        {
+            &[Choice::Continue]
+        }
+        (ScreenId::CheckPrompt, _) if skip_offered(kind) => &[Choice::CheckNow, Choice::Skip],
+        (ScreenId::SkipConfirm, _) if skip_offered(kind) => &[Choice::SkipCheck],
+        (ScreenId::SnapshotDate, _) if held.snapshot.is_some() => {
+            &[Choice::UseSnapshot, Choice::NotSnapshot]
+        }
+        (ScreenId::CheckActions, _) => {
+            &[Choice::EnterCode, Choice::MatchFound, Choice::CannotCheck]
+        }
+        (ScreenId::StopConfirm, _) => &[Choice::Destroy],
+        (ScreenId::CannotCheckConfirm, _) => &[Choice::StartAgain],
+        _ => &[],
+    }
+}
+
+/// Step 4's Continue (the commitment) only once the device quota is met: core refuses `commit`
+/// below it by wiping.
+pub fn continue_offered(credited_bits: u64, required_bits: u64) -> bool {
+    credited_bits >= required_bits
+}
+
+/// A confirm only with a face picked and below 256 rolls: core refuses a face outside 1-6 and a
+/// 257th roll by wiping.
+pub fn confirm_offered(rolls: u16, picked: usize) -> bool {
+    rolls < MAX_ROLLS && (1..=6).contains(&picked)
+}
+
+/// Undo only with a roll to undo.
+pub fn undo_offered(rolls: u16) -> bool {
+    rolls > 0
+}
+
+/// Done only at the minimum: core refuses `finish` below it by wiping.
+pub fn done_offered(rolls: u16, minimum: u16) -> bool {
+    rolls >= minimum
+}
+
+/// Skip only in `Sealed`, before a check starts (rule 6): the typestate has no `skip_check`
+/// anywhere else.
+pub fn skip_offered(stage: StageKind) -> bool {
+    stage == StageKind::Sealed
+}
+
+/// Where Check now leads (Q33 (a)): with a snapshot loaded, its date first, every time, since
+/// the Pi has no clock; otherwise the seal card.
+pub fn after_check_now(snapshot_loaded: bool) -> ScreenId {
+    if snapshot_loaded {
+        ScreenId::SnapshotDate
+    } else {
+        ScreenId::SealImage
+    }
+}
+
+/// True when entering `to` from `from` passes the privacy gate first: a Protected screen entered
+/// from a Public one, other than the gate itself (Q29).
+pub fn needs_gate(from: ScreenId, to: ScreenId) -> bool {
+    from != ScreenId::PrivacyGate && from.class() == Class::Public && to.class() == Class::Protected
+}
+
+/// The dice line: "37 / 50 rolls, 95.6 bits", from core's counts with integer arithmetic, the
+/// bits truncated to a tenth.
+pub fn dice_text(rolls: u16, minimum: u16, millibits: u32) -> String {
+    let tenths = millibits / 100;
+    format!(
+        "{rolls} / {minimum} rolls, {}.{} bits",
+        tenths / 10,
+        tenths % 10
+    )
+}
+
+/// The code grid's cursor after `key`, or `None` for a key that does not move it. Moves wrap
+/// within the row or the column.
+pub fn grid_move(cursor: usize, key: Key) -> Option<usize> {
+    let rows = CROCKFORD.len() / GRID_COLUMNS;
+    let (row, column) = (cursor / GRID_COLUMNS, cursor % GRID_COLUMNS);
+    let (row, column) = match key {
+        Key::Up => ((row + rows - 1) % rows, column),
+        Key::Down => ((row + 1) % rows, column),
+        Key::Left => (row, (column + GRID_COLUMNS - 1) % GRID_COLUMNS),
+        Key::Right => (row, (column + 1) % GRID_COLUMNS),
+        Key::Press | Key::Key1 | Key::Key2 | Key::Key3 => return None,
+    };
+    Some(row * GRID_COLUMNS + column)
+}
+
+/// A model built from the top of the content area down.
+struct Page<'a> {
+    screen: Screen<'a>,
+    y: u32,
+}
+
+impl<'a> Page<'a> {
+    fn new(id: ScreenId, title: &'static str, banners: Banners) -> Self {
+        Page {
+            screen: Screen::new(id, title, banners),
+            y: 0,
+        }
+    }
+
+    /// `item` at column `x`, below the last element.
+    fn at(mut self, x: u32, class: Class, item: Item<'a>) -> Self {
+        let at = Point::zero() + Size::new(x, self.y);
+        let element = match class {
+            Class::Public => Element::public(at, item),
+            Class::Protected => Element::protected(at, item),
+        };
+        let height = element.bounds().size.height;
+        self.y = self.y.saturating_add(height).saturating_add(GAP);
+        self.screen = self.screen.with(element);
+        self
+    }
+
+    fn text(self, text: impl Into<Str<'a>>) -> Self {
+        self.at(0, Class::Public, Item::Text(text.into()))
+    }
+
+    fn small(self, text: impl Into<Str<'a>>) -> Self {
+        self.at(0, Class::Public, Item::Small(text.into()))
+    }
+
+    /// `item`, `width` px wide, centred.
+    fn centred(self, width: u32, class: Class, item: Item<'a>) -> Self {
+        self.at(SIDE.saturating_sub(width) / 2, class, item)
+    }
+
+    /// A word or a code at ×2, centred.
+    fn large(self, text: impl Into<Str<'a>>) -> Self {
+        let text = text.into();
+        let width = px(
+            text.as_str().chars().count(),
+            advance(&BODY_FONT) * LARGE_SCALE,
+        );
+        let item = Item::Large {
+            text,
+            lighter_from: None,
+        };
+        self.centred(width, Class::Public, item)
+    }
+
+    /// The menu: one line per entry, the cursor's marked. Up and Down are offered only with two
+    /// entries or more, and Press only with one or more.
+    fn menu(mut self, choices: &[Choice], cursor: usize) -> Self {
+        let lines: Vec<String> = choices
+            .iter()
+            .enumerate()
+            .map(|(i, choice)| {
+                let mark = if i == cursor { '>' } else { ' ' };
+                format!("{mark}{}", choice.label())
+            })
+            .collect();
+        if !lines.is_empty() {
+            self = self.text(lines.join("\n"));
+        }
+        if choices.len() < 2 {
+            self.screen = self.screen.without(Key::Up).without(Key::Down);
+        }
+        if choices.is_empty() {
+            self.screen = self.screen.without(Key::Press);
+        }
+        self
+    }
+
+    /// The model with `key` left out when `offered` is false.
+    fn offer(mut self, key: Key, offered: bool) -> Self {
+        if !offered {
+            self.screen = self.screen.without(key);
+        }
+        self
+    }
+
+    fn done(self) -> Screen<'a> {
+        self.screen
+    }
+}
+
+/// A date as the screens write it: YYYY-MM-DD.
+fn date_text(date: RegistryDate) -> String {
+    format!("{:04}-{:02}-{:02}", date.year(), date.month(), date.day())
+}
+
+/// The boot screen (step 1), shown while the self-tests run.
+pub fn boot(held: &Held) -> Screen<'_> {
+    Page::new(ScreenId::Boot, "Boot", held.banners)
+        .text("KeepCrypt")
+        .small(format!("Version {}", held.build.version))
+        .small(format!("Root filesystem {}", held.build.rootfs))
+        .small("Known-answer tests and the hwrng startup test are running.")
+        .done()
+}
+
+/// The wait screen, while a new session runs the known-answer tests (Q33 (k)).
+pub fn wait(held: &Held) -> Screen<'_> {
+    Page::new(ScreenId::Wait, "Please wait", held.banners)
+        .text("Please wait")
+        .small("The known-answer tests run before every new seed.")
+        .done()
+}
+
+/// The black frame of a wipe: no strip, no element, no key.
+pub fn blank() -> Screen<'static> {
+    let none = Banners {
+        test_registry: false,
+        simulator: false,
+    };
+    Screen::new(ScreenId::Blank, "", none)
+}
+
+/// The model of the current screen.
+pub fn model<'a>(held: &'a Held, view: &'a View) -> Result<Screen<'a>, Stop> {
+    let banners = held.banners;
+    let page = |title| Page::new(view.shown(), title, banners);
+    let screen = match (view.shown(), &held.stage) {
+        (ScreenId::Cover, _) => page("Covered")
+            .text("Screen covered")
+            .small("Press any key to show it again.")
+            .done(),
+        (ScreenId::IdleWarning, _) => page("Idle").text("Still there?").small(IDLE_WARNING).done(),
+        (ScreenId::Halt, _) => halt(page("Stopped"), &view.note),
+        (ScreenId::Home, _) => {
+            let status = match &held.snapshot {
+                Some(snapshot) => format!(
+                    "Snapshot No. {}, dated {}",
+                    snapshot.number(),
+                    date_text(snapshot.date())
+                ),
+                None => String::from("No registry snapshot loaded"),
+            };
+            page("Home")
+                .text("KeepCrypt")
+                .menu(choices(ScreenId::Home, held), view.cursor)
+                .small(status)
+                .done()
+        }
+        (ScreenId::About, _) => {
+            let key = if held.banners.test_registry {
+                "Registry key: the TEST key"
+            } else {
+                "Registry key: none pinned in this build"
+            };
+            page("About")
+                .text("KeepCrypt-Entropy")
+                .small(format!("Version {}", held.build.version))
+                .small(format!("Root filesystem {}", held.build.rootfs))
+                .small(key)
+                .small("Licence: MIT OR Apache-2.0")
+                .small(format!("Security reports: {SECURITY}"))
+                .done()
+        }
+        (ScreenId::Length, _) => page("Length")
+            .text("How many words?")
+            .menu(choices(ScreenId::Length, held), view.cursor)
+            .small("12 words fill one KeepCrypt Hinge or Screw; 24 words need two.")
+            .done(),
+        (ScreenId::Hwrng, Stage::Collecting(session)) => {
+            let tested = session.hw_bytes_tested();
+            let needed = HW_BYTES_NEEDED;
+            let filled = tested.min(needed) * BAR_CELLS / needed;
+            let cells: String = (0..BAR_CELLS)
+                .map(|cell| if cell < filled { '#' } else { '-' })
+                .collect();
+            page("Device entropy")
+                .text("Device entropy")
+                .text(format!("[{cells}]"))
+                .small(format!("{tested} / {needed} bytes health-tested"))
+                .small(format!(
+                    "{} / {} bits credited",
+                    session.credited_bits(),
+                    session.required_bits()
+                ))
+                .menu(choices(ScreenId::Hwrng, held), view.cursor)
+                .done()
+        }
+        (ScreenId::DiceOnlyNotice, Stage::Collecting(_)) => {
+            page("Dice only").text("Dice only").small(DICE_ONLY).done()
+        }
+        (ScreenId::Commitment, Stage::Committed(session)) => {
+            let Some(commitment) = session.commitment() else {
+                return Err(OUT_OF_ORDER);
+            };
+            let hex = hex_groups(&commitment);
+            let width = 19 * advance(&BODY_FONT);
+            page("Commitment")
+                .text("Commitment C")
+                .centred(width, Class::Public, Item::Hex(hex.into()))
+                .small("Only verification runs need to write it down.")
+                .done()
+        }
+        (ScreenId::Dice, Stage::Rolling(session)) => {
+            let (rolls, minimum) = (session.rolls(), session.minimum_rolls());
+            let picked = match view.cursor {
+                0 => String::from("-"),
+                face => face.to_string(),
+            };
+            page("Dice")
+                .large(picked)
+                .text(dice_text(rolls, minimum, session.millibits()))
+                .small("Roll a die, pick its face, confirm. Earlier rolls are never shown.")
+                .offer(Key::Press, confirm_offered(rolls, view.cursor))
+                .offer(Key::Key1, undo_offered(rolls))
+                .offer(Key::Key3, done_offered(rolls, minimum))
+                .done()
+        }
+        (ScreenId::CheckPrompt, _) => page("Check for collisions")
+            .text("Check for collisions before you see your words?")
+            .small(CHECK_PROMPT)
+            .menu(choices(ScreenId::CheckPrompt, held), view.cursor)
+            .done(),
+        (ScreenId::SkipConfirm, _) => page("Skip the check")
+            .text("Skip the check?")
+            .small(SKIP_CONFIRM)
+            .menu(choices(ScreenId::SkipConfirm, held), view.cursor)
+            .done(),
+        (ScreenId::SnapshotDate, _) => {
+            let Some(snapshot) = &held.snapshot else {
+                return Err(OUT_OF_ORDER);
+            };
+            page("Snapshot date")
+                .text(format!(
+                    "Snapshot No. {}, dated {}, {} entries. Use it for this check?",
+                    snapshot.number(),
+                    date_text(snapshot.date()),
+                    snapshot.entry_count()
+                ))
+                .small("The Pi has no clock: check the date yourself.")
+                .menu(choices(ScreenId::SnapshotDate, held), view.cursor)
+                .done()
+        }
+        (ScreenId::SealImage, Stage::Checking { session, .. }) => {
+            let seal = session.seal();
+            page("Seal card 1 of 3")
+                .centred(
+                    SEAL_SIDE,
+                    Class::Public,
+                    Item::Seal {
+                        grid: seal.grid(),
+                        colour_hex: seal.colour_hex(),
+                        seal_id: seal.seal_id(),
+                    },
+                )
+                .offer(Key::Key2, false)
+                .done()
+        }
+        (ScreenId::SealId, Stage::Checking { session, .. }) => {
+            seal_id(page("Seal card 2 of 3"), session.seal())?
+        }
+        (ScreenId::SealQr, Stage::Checking { session, .. }) => page("Seal card 3 of 3")
+            .centred(
+                QR_SIDE,
+                Class::Public,
+                Item::Qr(String::from(session.check_request().url()).into()),
+            )
+            .offer(Key::Key3, false)
+            .done(),
+        (ScreenId::CheckActions, Stage::Checking { .. }) => page("Your checker's answer")
+            .small(CHECK_ACTIONS)
+            .menu(choices(ScreenId::CheckActions, held), view.cursor)
+            .done(),
+        (ScreenId::CodeEntry, Stage::Checking { code, .. }) => {
+            code_entry(page("Go-ahead code"), code, view.cursor)
+        }
+        (ScreenId::CodeWrong, Stage::Checking { .. }) => {
+            let Note::Refused(error) = &view.note else {
+                return Err(OUT_OF_ORDER);
+            };
+            page("Go-ahead code")
+                .text("Code not accepted")
+                .small(error.to_string())
+                .small(CODE_WRONG)
+                .done()
+        }
+        (ScreenId::CheckClear, Stage::Ready(_)) => {
+            let Note::Clear { seal_id, as_of } = &view.note else {
+                return Err(OUT_OF_ORDER);
+            };
+            let result = match as_of {
+                Some(date) => format!(
+                    "No collision for seal {seal_id} as of {}.",
+                    date_text(*date)
+                ),
+                None => {
+                    format!("No collision for seal {seal_id}, as of the date your checker showed.")
+                }
+            };
+            page("Check passed")
+                .text(result)
+                .small("Next: the words, on a private screen.")
+                .done()
+        }
+        (ScreenId::StopConfirm, Stage::Checking { .. }) => page("Match found")
+            .text("Match found?")
+            .small("Only when your checker said Stop: the seed is destroyed without being shown.")
+            .menu(choices(ScreenId::StopConfirm, held), view.cursor)
+            .done(),
+        (ScreenId::CannotCheckConfirm, Stage::Checking { .. }) => page("Cannot check")
+            .text("Cannot check?")
+            .small("The seed is destroyed without being shown, and a new ceremony starts.")
+            .menu(choices(ScreenId::CannotCheckConfirm, held), view.cursor)
+            .done(),
+        (ScreenId::Collision, _) => page("Collision")
+            .text("Collision found.")
+            .small("This seed is not unique and has been destroyed without being shown.")
+            .small(COLLISION)
+            .small("Next: the collision report QR, then fresh entropy with at least 99 rolls.")
+            .done(),
+        (ScreenId::PrivacyGate, _) => {
+            let Note::Gate { to, skipped } = view.note else {
+                return Err(OUT_OF_ORDER);
+            };
+            let mut gate = page("Privacy")
+                .text("No person or camera can see this screen")
+                .small("Continue only when you are alone.");
+            if skipped {
+                gate = gate.small(SKIPPED);
+            }
+            // The words (steps 8 and 9) come with group 9; until then this gate leads nowhere.
+            gate.offer(Key::Press, to != ScreenId::WordsInsert).done()
+        }
+        (ScreenId::CollisionQr, _) => {
+            let Some(report) = held
+                .kept
+                .as_ref()
+                .and_then(|wiped| wiped.collision_report())
+            else {
+                return Err(OUT_OF_ORDER);
+            };
+            page("Report collision")
+                .centred(QR_SIDE, Class::Protected, Item::Qr(report.url().into()))
+                .done()
+        }
+        (ScreenId::IdleWiped, _) => page("Wiped")
+            .text("Wiped after 10 minutes without input.")
+            .small("Continue returns Home.")
+            .done(),
+        _ => return Err(OUT_OF_ORDER),
+    };
+    Ok(screen)
+}
+
+/// The stop screen (Q25): the failure's fixed text on red (`ui`), and no key.
+fn halt<'a>(page: Page<'a>, note: &Note) -> Screen<'a> {
+    let reason = match note {
+        Note::Halt(stop) => stop.to_string(),
+        _ => String::from("internal failure: a halt without its reason"),
+    };
+    page.large("STOPPED").text(reason).small(HALTED).done()
+}
+
+/// The seal card's second page: the Seal ID large, with its braille.
+fn seal_id<'a>(page: Page<'a>, seal: &'a SealPublic) -> Result<Screen<'a>, Stop> {
+    let cells = caption_cells(seal.seal_id_braille()).map_err(Stop::Render)?;
+    let width = px(cells.len(), CAPTION_PITCH.width);
+    let item = Item::Cells {
+        cells,
+        pitch: CAPTION_PITCH,
+    };
+    Ok(page
+        .small("Seal ID")
+        .large(seal.seal_id())
+        .centred(width, Class::Public, item)
+        .small("Compare it with the seal your checker draws.")
+        .done())
+}
+
+/// The go-ahead code grid (Q32 (a)): the code as typed, then the 32 symbols in 8 columns and 4
+/// rows, the cursor's in brackets. Type is offered below 8 symbols, delete above none, done at 8.
+fn code_entry<'a>(page: Page<'a>, code: &Zeroizing<String>, cursor: usize) -> Screen<'a> {
+    let typed = code.chars().count();
+    let mut shown = String::with_capacity(CODE_LEN + 1);
+    for (i, symbol) in code
+        .chars()
+        .chain(core::iter::repeat('_'))
+        .take(CODE_LEN)
+        .enumerate()
+    {
+        if i == CODE_LEN / 2 {
+            shown.push('-');
+        }
+        shown.push(symbol);
+    }
+    let grid: Vec<String> = CROCKFORD
+        .chunks(GRID_COLUMNS)
+        .enumerate()
+        .map(|(row, symbols)| {
+            symbols
+                .iter()
+                .enumerate()
+                .map(|(column, &symbol)| {
+                    let symbol = char::from(symbol);
+                    if row * GRID_COLUMNS + column == cursor {
+                        format!("[{symbol}]")
+                    } else {
+                        format!(" {symbol} ")
+                    }
+                })
+                .collect()
+        })
+        .collect();
+    page.small("Type the 8-character code your checker shows.")
+        .large(shown)
+        .text(grid.join("\n"))
+        .offer(Key::Press, typed < CODE_LEN)
+        .offer(Key::Key1, typed > 0)
+        .offer(Key::Key3, typed == CODE_LEN)
+        .done()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn continue_is_offered_only_at_the_quota() {
+        assert!(!continue_offered(0, 512));
+        assert!(!continue_offered(511, 512));
+        assert!(continue_offered(512, 512));
+        assert!(continue_offered(2_048, 512));
+    }
+
+    #[test]
+    fn done_is_offered_only_at_the_minimum() {
+        assert!(!done_offered(49, 50));
+        assert!(done_offered(50, 50));
+        assert!(!done_offered(98, 99));
+        assert!(done_offered(99, 99));
+        assert!(done_offered(256, 99));
+    }
+
+    #[test]
+    fn confirm_needs_a_face_and_is_disabled_at_256_rolls() {
+        for face in 1..=6 {
+            assert!(confirm_offered(0, face));
+            assert!(confirm_offered(255, face));
+            // A 257th confirm is never offered.
+            assert!(!confirm_offered(256, face));
+        }
+        assert!(!confirm_offered(0, 0));
+        assert!(!confirm_offered(0, 7));
+        assert!(!undo_offered(0));
+        assert!(undo_offered(1));
+    }
+
+    #[test]
+    fn skip_is_offered_only_in_sealed() {
+        for stage in StageKind::ALL {
+            assert_eq!(skip_offered(stage), stage == StageKind::Sealed, "{stage:?}");
+        }
+    }
+
+    #[test]
+    fn check_now_with_a_snapshot_asks_for_its_date_first() {
+        assert_eq!(after_check_now(true), ScreenId::SnapshotDate);
+        assert_eq!(after_check_now(false), ScreenId::SealImage);
+    }
+
+    #[test]
+    fn the_dice_line_counts_rolls_and_tenths_of_bits() {
+        // Core's millibits: 2,585 a roll.
+        for (rolls, minimum, shown) in [
+            (1, 50, "1 / 50 rolls, 2.5 bits"),
+            (37, 50, "37 / 50 rolls, 95.6 bits"),
+            (50, 50, "50 / 50 rolls, 129.2 bits"),
+            (99, 99, "99 / 99 rolls, 255.9 bits"),
+            (256, 99, "256 / 99 rolls, 661.7 bits"),
+        ] {
+            assert_eq!(dice_text(rolls, minimum, u32::from(rolls) * 2_585), shown);
+        }
+    }
+
+    #[test]
+    fn only_a_protected_screen_entered_from_a_public_one_is_gated() {
+        for from in ScreenId::ALL {
+            for to in ScreenId::ALL {
+                let gated = from != ScreenId::PrivacyGate
+                    && from.class() == Class::Public
+                    && to.class() == Class::Protected;
+                assert_eq!(
+                    needs_gate(from, to),
+                    gated,
+                    "{} -> {}",
+                    from.name(),
+                    to.name()
+                );
+            }
+        }
+        assert!(needs_gate(ScreenId::Collision, ScreenId::CollisionQr));
+        assert!(!needs_gate(ScreenId::PrivacyGate, ScreenId::CollisionQr));
+        assert!(!needs_gate(ScreenId::CollisionQr, ScreenId::Hwrng));
+    }
+
+    #[test]
+    fn the_code_grid_moves_wrap_and_other_keys_do_not_move() {
+        assert_eq!(grid_move(0, Key::Right), Some(1));
+        assert_eq!(grid_move(7, Key::Right), Some(0));
+        assert_eq!(grid_move(0, Key::Left), Some(7));
+        assert_eq!(grid_move(0, Key::Down), Some(8));
+        assert_eq!(grid_move(0, Key::Up), Some(24));
+        assert_eq!(grid_move(31, Key::Down), Some(7));
+        for key in [Key::Press, Key::Key1, Key::Key2, Key::Key3] {
+            assert_eq!(grid_move(5, key), None);
+        }
+        assert_eq!(
+            CROCKFORD
+                [grid_move(grid_move(0, Key::Down).expect("a move"), Key::Right).expect("a move")],
+            b'9'
+        );
+    }
+
+    #[test]
+    fn the_collision_screen_names_the_security_address() {
+        assert!(COLLISION.contains(SECURITY));
+    }
+
+    #[test]
+    fn every_menu_label_fits_a_line_after_the_mark() {
+        for choice in [
+            Choice::NewSeed,
+            Choice::DiceOnlySeed,
+            Choice::About,
+            Choice::Words12,
+            Choice::Words24,
+            Choice::Continue,
+            Choice::CheckNow,
+            Choice::Skip,
+            Choice::SkipCheck,
+            Choice::UseSnapshot,
+            Choice::NotSnapshot,
+            Choice::EnterCode,
+            Choice::MatchFound,
+            Choice::CannotCheck,
+            Choice::Destroy,
+            Choice::StartAgain,
+        ] {
+            assert!(choice.label().chars().count() < 24, "{choice:?}");
+        }
+    }
+}

@@ -2,9 +2,10 @@
 //!
 //! Everything that ships is here (tasks/todo.md, M3 "One app, two hardware layers"): the screen
 //! model (`screen`), the hardware traits that the device drivers (M4) and the simulator implement
-//! (`hal`), button input and the idle timer (`input`), and the frame and its renderer (`ui`). The simulator
-//! (pi/sim) implements `hal`; this crate never depends on it. This file holds the module list and
-//! one macro only.
+//! (`hal`), button input and the idle timer (`input`), the frame and its renderer (`ui`), and the
+//! app (`App`): the ceremony over core's typestate (`app`), the screens' models (`screens`) and
+//! the extras it forwards to the pool (`extras`). The simulator (pi/sim) implements `hal`; this
+//! crate never depends on it. This file holds the module list and one macro only.
 
 #![forbid(unsafe_code)]
 
@@ -31,7 +32,12 @@ macro_rules! listed_enum {
     };
 }
 
+mod app;
+pub mod extras;
 pub mod hal;
 pub mod input;
 pub mod screen;
+mod screens;
 pub mod ui;
+
+pub use app::App;

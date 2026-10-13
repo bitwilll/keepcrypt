@@ -10,7 +10,7 @@
 //!   `render`. `hex` formats C and D for their models; `braille::caption_cells` makes the Seal
 //!   ID's cells.
 //! - One palette, below. Black is all bits zero, so a model with nothing in it draws a black
-//!   frame.
+//!   frame. The stop screen (`halt`) is drawn on red.
 
 use embedded_graphics::pixelcolor::Rgb565;
 use embedded_graphics::prelude::RgbColor;
@@ -42,3 +42,6 @@ const WARNING: Rgb565 = Rgb565::new(28, 39, 0);
 const SIMULATOR: Rgb565 = Rgb565::new(25, 30, 20);
 /// Snake: Okabe-Ito bluish green, #009E73.
 const SNAKE: Rgb565 = Rgb565::new(0, 39, 14);
+/// The stop screen's content area (docs/pi-firmware.md step 1, "a red stop screen"): #A50000, on
+/// which white text has a contrast ratio above 7.
+const STOP: Rgb565 = Rgb565::new(20, 0, 0);

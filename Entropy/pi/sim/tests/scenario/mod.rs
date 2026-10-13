@@ -1,0 +1,545 @@
+//! The scenario driver and the mock checker (tasks/todo.md, M3 group 8, "Scenario driver", "Mock
+//! checker"; Q30): scripted runs of the real app on `SimHal`, every present checked on the way.
+//!
+//! - A scenario is a name, the hwrng stream and its steps, built per configuration (`Config`).
+//! - `Expect(id)` is matched in order against the presents since the last match, so transient
+//!   screens are matched too. An unmet `Expect` fails the scenario and names its step.
+//! - A key is pressed only while its `Expect` screen is showing and waits for input. Each press
+//!   reaches the app through `SimHal`'s script, as a bounce train through pi/app's debouncer.
+//! - On the first input-waiting showing of each screen in a scenario, every key its model does
+//!   not offer is pressed once first, and none may present anything (the dead-key probe). Ticks
+//!   between those presses may redraw.
+//! - On every present with a QR code, the drawn modules equal a fresh drawing of the model's
+//!   payload (`qr_drawn`). The mock checker takes T and n from the last check QR so checked and
+//!   computes the go-ahead code G from them, as the registry page would (Q30 (d)).
+//! - Nothing here prints screen text: `report` gets the scenario's name and counts.
+
+use std::collections::VecDeque;
+
+use keepcrypt_core::registry_key_is_test;
+use keepcrypt_pi::App;
+use keepcrypt_pi::hal::{Display, HalError, Zeroizing};
+use keepcrypt_pi::input::Key;
+use keepcrypt_pi::screen::{
+    Banners, Element, Item, KeyMap, Kind, QR_SIDE, STRIP_HEIGHT, Screen, ScreenId,
+};
+use keepcrypt_pi::ui::{Frame, Painter, SIDE};
+use keepcrypt_pi_sim::{Fault, HwRngStream, Present, Shown, SimHal};
+use sha2::{Digest, Sha256};
+
+use crate::report::report;
+
+const S: u64 = 1_000_000_000;
+/// The go-ahead code's domain tag (CLAUDE.md "Go-ahead code").
+const GO_DOMAIN: &[u8] = b"KCE/v1/go";
+/// Crockford base32, the go-ahead code's alphabet and the entry grid's order: 8 columns, 4 rows.
+const CROCKFORD: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+const GRID_COLUMNS: usize = 8;
+
+/// The build under test: the release configuration, or the test registry key
+/// (`cargo test -p keepcrypt-pi-sim --features keepcrypt-core/test-registry`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Config {
+    Release,
+    Registry,
+}
+
+impl Config {
+    pub fn of_this_build() -> Self {
+        if registry_key_is_test() {
+            Config::Registry
+        } else {
+            Config::Release
+        }
+    }
+}
+
+/// What an assertion sees: the present the last `Expect` matched, the latest present, and the
+/// app.
+pub struct Seen<'r> {
+    pub matched: &'r Present,
+    pub latest: &'r Present,
+    pub app: &'r App<SimHal>,
+}
+
+/// An assertion over what was seen. Its message is fixed: it never quotes screen text.
+pub type Check = Box<dyn Fn(&Seen<'_>) -> bool>;
+
+/// Which go-ahead code to type.
+pub enum Code {
+    /// The mock checker's G for the last check QR.
+    FromCheck,
+    /// That G with its last symbol changed: a well-formed code that does not match.
+    Wrong,
+}
+
+/// One step of a scenario.
+pub enum Step {
+    /// The next present of this screen, in order.
+    Expect(ScreenId),
+    /// A press of a key the screen offers.
+    Key(Key),
+    /// A press of a key the screen does not offer: nothing may be presented.
+    Dead(Key),
+    /// A roll string on the dice screen: per face, Up that many times from the blank picker,
+    /// then Press.
+    Dice(String),
+    /// Seconds with no key.
+    Wait(u64),
+    /// A fault armed for the next call it applies to.
+    Fault(Fault),
+    /// A go-ahead code typed on the grid, then Done.
+    Code(Code),
+    /// An assertion, with its fixed message.
+    Assert(&'static str, Check),
+    /// A power cycle: a new app on new hardware with this hwrng stream, booted.
+    PowerCycle(HwRngStream),
+}
+
+/// A scripted run.
+pub struct Scenario {
+    pub name: &'static str,
+    pub hwrng: HwRngStream,
+    pub steps: Vec<Step>,
+}
+
+/// What a scenario did, for the count line.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Counts {
+    pub steps: usize,
+    pub presents: usize,
+    pub screens: Vec<ScreenId>,
+    pub dead_keys: usize,
+}
+
+/// Runs `scenario` to its end and prints its count line.
+pub fn run(scenario: Scenario) -> Counts {
+    let mut run = Run::new(scenario.hwrng);
+    for step in scenario.steps {
+        run.counts.steps += 1;
+        run.step(step);
+    }
+    assert_eq!(
+        run.app.hal().queued(),
+        0,
+        "the script was played to its end"
+    );
+    let counts = run.counts;
+    report(format_args!(
+        "{}: {} steps, {} screens, {} presents, {} dead keys",
+        scenario.name,
+        counts.steps,
+        counts.screens.len(),
+        counts.presents,
+        counts.dead_keys
+    ));
+    counts
+}
+
+/// A run in progress.
+struct Run {
+    app: App<SimHal>,
+    /// Presents not yet matched by an `Expect`, oldest first.
+    unmatched: VecDeque<Present>,
+    /// The present the last `Expect` matched.
+    matched: Option<Present>,
+    expected: Option<ScreenId>,
+    /// The screens whose dead keys were probed.
+    probed: Vec<ScreenId>,
+    /// The payload of the last check QR presented.
+    check_url: Option<Zeroizing<String>>,
+    /// The keys the latest present offered.
+    latest_keys: KeyMap,
+    counts: Counts,
+}
+
+impl Run {
+    fn new(hwrng: HwRngStream) -> Self {
+        let mut run = Run {
+            app: App::new(SimHal::new(hwrng)),
+            unmatched: VecDeque::new(),
+            matched: None,
+            expected: None,
+            probed: Vec::new(),
+            check_url: None,
+            latest_keys: KeyMap::NONE,
+            counts: Counts::default(),
+        };
+        run.app.start();
+        run.collect();
+        run
+    }
+
+    fn step(&mut self, step: Step) {
+        match step {
+            Step::Expect(id) => self.expect(id),
+            Step::Key(key) => self.press(key),
+            Step::Dead(key) => {
+                self.refuse_unless_showing(key);
+                self.dead(key);
+            }
+            Step::Dice(rolls) => {
+                for face in rolls.bytes() {
+                    for _ in b'0'..face {
+                        self.press(Key::Up);
+                    }
+                    self.press(Key::Press);
+                }
+            }
+            Step::Wait(seconds) => {
+                self.app.hal_mut().wait_ns(seconds * S);
+                self.play();
+            }
+            Step::Fault(fault) => self.app.hal_mut().fault(fault),
+            Step::Code(code) => self.code(code),
+            Step::Assert(what, check) => {
+                let (Some(matched), Some(latest)) = (self.matched.as_ref(), self.latest()) else {
+                    panic!("step {}: nothing to assert on", self.counts.steps);
+                };
+                let seen = Seen {
+                    matched,
+                    latest,
+                    app: &self.app,
+                };
+                assert!(check(&seen), "step {}: {what}", self.counts.steps);
+            }
+            Step::PowerCycle(hwrng) => {
+                self.collect();
+                self.app = App::new(SimHal::new(hwrng));
+                self.expected = None;
+                self.app.start();
+                self.collect();
+            }
+        }
+    }
+
+    /// The latest present: the newest unmatched one, else the one the last `Expect` matched.
+    fn latest(&self) -> Option<&Present> {
+        match self.unmatched.back() {
+            Some(present) => Some(present),
+            None => self.matched.as_ref(),
+        }
+    }
+
+    /// Takes the presents since the last call and checks each.
+    fn collect(&mut self) {
+        let presents = self.app.hal_mut().take_presents();
+        self.absorb(presents);
+    }
+
+    fn absorb(&mut self, presents: Vec<Present>) {
+        for present in presents {
+            self.counts.presents += 1;
+            if !self.counts.screens.contains(&present.id) {
+                self.counts.screens.push(present.id);
+            }
+            for element in &present.elements {
+                if let Shown::Qr(payload) = &element.item {
+                    assert!(
+                        qr_drawn(present.frame.raw(), element.at, payload),
+                        "step {}: the QR on {} is not its payload's",
+                        self.counts.steps,
+                        present.id.name()
+                    );
+                    if present.id == ScreenId::SealQr {
+                        self.check_url = Some(payload.clone());
+                    }
+                }
+            }
+            self.latest_keys = present.keys;
+            self.unmatched.push_back(present);
+        }
+    }
+
+    /// Steps the app until the script is played to its end.
+    fn play(&mut self) {
+        while self.app.hal().queued() > 0 {
+            self.app.step();
+            self.collect();
+        }
+    }
+
+    fn expect(&mut self, id: ScreenId) {
+        let Some(index) = self.unmatched.iter().position(|present| present.id == id) else {
+            let shown: Vec<&str> = self.unmatched.iter().map(|p| p.id.name()).collect();
+            panic!(
+                "step {}: expected {}, presented since the last match: {shown:?}",
+                self.counts.steps,
+                id.name()
+            );
+        };
+        self.matched = self.unmatched.drain(..=index).next_back();
+        self.expected = Some(id);
+        self.probe(id);
+    }
+
+    /// The dead-key probe on the first input-waiting showing of `id`.
+    fn probe(&mut self, id: ScreenId) {
+        if id.kind() != Kind::InputWaiting || self.probed.contains(&id) {
+            return;
+        }
+        let offered = |keys: KeyMap| Key::ALL.into_iter().all(|key| keys.label(key).is_some());
+        if self.matched.as_ref().is_some_and(|p| offered(p.keys)) {
+            // Every key is live here (the cover, the warning): nothing to probe.
+            self.probed.push(id);
+            return;
+        }
+        if self.app.hal().showing() != Some(id) {
+            // A timer moved on from it: a later showing is probed.
+            return;
+        }
+        self.probed.push(id);
+        for key in Key::ALL {
+            if self.latest_keys.label(key).is_none() {
+                self.dead(key);
+            }
+        }
+    }
+
+    /// Presses `key`, which the shown model does not offer, and checks that the step that took it
+    /// presented nothing. Ticks before it may present.
+    fn dead(&mut self, key: Key) {
+        assert!(
+            self.latest_keys.label(key).is_none(),
+            "step {}: {key:?} is offered here",
+            self.counts.steps
+        );
+        self.app.hal_mut().press(key);
+        loop {
+            let before = self.app.hal().queued();
+            self.app.step();
+            let presents = self.app.hal_mut().take_presents();
+            if self.app.hal().queued() < before {
+                assert_dead(self.counts.steps, key, &presents);
+                break;
+            }
+            self.absorb(presents);
+        }
+        self.counts.dead_keys += 1;
+    }
+
+    fn refuse_unless_showing(&self, key: Key) {
+        let showing = self.app.hal().showing();
+        let waiting = showing.is_some_and(|id| id.kind() == Kind::InputWaiting);
+        assert!(
+            waiting && showing == self.expected,
+            "step {}: {key:?} pressed on {}, not on its expected screen {}",
+            self.counts.steps,
+            showing.map_or("nothing", ScreenId::name),
+            self.expected.map_or("(none)", ScreenId::name)
+        );
+    }
+
+    fn press(&mut self, key: Key) {
+        self.refuse_unless_showing(key);
+        self.app.hal_mut().press(key);
+        self.play();
+    }
+
+    /// Types a go-ahead code on the grid from its first symbol, then Done.
+    fn code(&mut self, code: Code) {
+        let Some(url) = self.check_url.as_ref() else {
+            panic!("step {}: no check QR was shown", self.counts.steps);
+        };
+        let mut typed = go_ahead(url);
+        if let Code::Wrong = code {
+            let last = typed[7];
+            typed[7] = if last == b'0' { b'1' } else { b'0' };
+        }
+        let mut cursor = 0;
+        for symbol in typed {
+            let target = CROCKFORD
+                .iter()
+                .position(|&s| s == symbol)
+                .expect("a Crockford symbol");
+            let (row, column) = (cursor / GRID_COLUMNS, cursor % GRID_COLUMNS);
+            let (to_row, to_column) = (target / GRID_COLUMNS, target % GRID_COLUMNS);
+            let horizontal = if to_column > column {
+                Key::Right
+            } else {
+                Key::Left
+            };
+            for _ in 0..to_column.abs_diff(column) {
+                self.press(horizontal);
+            }
+            let vertical = if to_row > row { Key::Down } else { Key::Up };
+            for _ in 0..to_row.abs_diff(row) {
+                self.press(vertical);
+            }
+            self.press(Key::Press);
+            cursor = target;
+        }
+        self.press(Key::Key3);
+    }
+}
+
+/// Fails unless the step that took a dead key presented nothing.
+pub fn assert_dead(step: usize, key: Key, presents: &[Present]) {
+    let shown: Vec<&str> = presents.iter().map(|p| p.id.name()).collect();
+    assert!(
+        presents.is_empty(),
+        "step {step}: the dead key {key:?} presented {shown:?}"
+    );
+}
+
+/// A display that keeps a copy of the frame it is given.
+struct Grab(Option<Zeroizing<Vec<u16>>>);
+
+impl Display for Grab {
+    fn present(&mut self, frame: &Frame, _screen: &Screen<'_>) -> Result<(), HalError> {
+        self.0 = Some(Zeroizing::new(frame.raw().to_vec()));
+        Ok(())
+    }
+}
+
+/// True when the QR square at `at` (in the content area) of the frame `raw` equals a fresh
+/// drawing of `payload` by pi/app's painter: every module drawn as its encoding says.
+pub fn qr_drawn(raw: &[u16], at: (i32, i32), payload: &str) -> bool {
+    let none = Banners {
+        test_registry: false,
+        simulator: false,
+    };
+    let model = Key::ALL
+        .into_iter()
+        .fold(Screen::new(ScreenId::SealQr, "", none), Screen::without)
+        .with(Element::public(at.into(), Item::Qr(payload.into())));
+    let mut grab = Grab(None);
+    if let Err(error) = Painter::new().present(&mut grab, &model) {
+        panic!("the reference QR does not draw: {}", error.text());
+    }
+    let reference = grab.0.expect("the reference was presented");
+    let side = usize::try_from(SIDE).expect("the panel side");
+    let qr = usize::try_from(QR_SIDE).expect("the QR side");
+    let left = usize::try_from(at.0).expect("a QR inside the panel");
+    let top = usize::try_from(at.1).expect("a QR inside the panel")
+        + usize::try_from(STRIP_HEIGHT).expect("the strip height");
+    (top..top + qr).all(|y| (left..left + qr).all(|x| raw[y * side + x] == reference[y * side + x]))
+}
+
+/// The mock checker (Q30 (d)): G for the check URL `.../check#t=<64 hex>&n=<16 hex>`, as 8
+/// Crockford symbols without the dash.
+pub fn go_ahead(check_url: &str) -> [u8; 8] {
+    let (_, fragment) = check_url.split_once("#t=").expect("a check URL");
+    let (t, n) = fragment
+        .split_once("&n=")
+        .expect("a check URL with a nonce");
+    assert!(t.len() == 64 && n.len() == 16, "T and n in hex");
+    let digest = Sha256::new()
+        .chain_update(GO_DOMAIN)
+        .chain_update(hex(t))
+        .chain_update(hex(n))
+        .finalize();
+    let bits = digest[..5]
+        .iter()
+        .fold(0u64, |bits, &byte| (bits << 8) | u64::from(byte));
+    let mut code = [0u8; 8];
+    for (i, symbol) in code.iter_mut().enumerate() {
+        let index = usize::try_from((bits >> (35 - 5 * i)) & 31).expect("5 bits");
+        *symbol = CROCKFORD[index];
+    }
+    code
+}
+
+/// Lowercase hex to bytes.
+fn hex(text: &str) -> Vec<u8> {
+    (0..text.len() / 2)
+        .map(|i| u8::from_str_radix(&text[2 * i..2 * i + 2], 16).expect("hex"))
+        .collect()
+}
+
+mod tests {
+    use serde_json::Value;
+
+    use super::*;
+
+    /// The check URL of the seal test vector (CLAUDE.md, "Go-ahead vector").
+    const VECTOR_1_URL: &str = "https://registry.invalid/check#t=2b8103c8dd64611df5c8c28b8fbf864a1005372f5da06a5777f92708ce79cb5c&n=0001020304050607";
+
+    #[test]
+    fn the_mock_checker_gives_every_kcr_go_ahead_code() {
+        assert_eq!(&go_ahead(VECTOR_1_URL), b"CF94BCAJ");
+        let kcr: Value =
+            serde_json::from_str(include_str!("../../../../vectors/kcr.json")).expect("kcr.json");
+        let seeds = kcr["seeds"].as_array().expect("seeds");
+        assert_eq!(seeds.len(), 4);
+        for seed in seeds {
+            let url = format!(
+                "https://registry.invalid/check#t={}&n={}",
+                seed["seal_tag_hex"].as_str().expect("T"),
+                seed["nonce_hex"].as_str().expect("n")
+            );
+            let compact = seed["go_ahead_compact"].as_str().expect("G");
+            assert_eq!(go_ahead(&url), compact.as_bytes(), "{}", seed["name"]);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "step 1: Press pressed on home, not on its expected screen (none)")]
+    fn a_key_before_its_screen_fails() {
+        run(Scenario {
+            name: "key-before-its-screen",
+            hwrng: HwRngStream::Counting,
+            steps: vec![Step::Key(Key::Press)],
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "step 2: expected dice, presented since the last match: []")]
+    fn an_unmet_expect_fails_and_names_its_step() {
+        run(Scenario {
+            name: "unmet-expect",
+            hwrng: HwRngStream::Counting,
+            steps: vec![Step::Expect(ScreenId::Home), Step::Expect(ScreenId::Dice)],
+        });
+    }
+
+    /// One present of `screen`, through `SimHal`.
+    fn presented(screen: &Screen<'_>) -> Present {
+        let mut hal = SimHal::new(HwRngStream::Counting);
+        Painter::new().present(&mut hal, screen).expect("drawn");
+        let mut presents = hal.take_presents();
+        assert_eq!(presents.len(), 1);
+        presents.remove(0)
+    }
+
+    #[test]
+    #[should_panic(expected = "step 3: the dead key Key2 presented [\"home\"]")]
+    fn a_dead_key_that_presents_fails() {
+        let none = Banners {
+            test_registry: false,
+            simulator: false,
+        };
+        assert_dead(3, Key::Key2, &[]);
+        let home = presented(&Screen::new(ScreenId::Home, "Home", none));
+        assert_dead(3, Key::Key2, &[home]);
+    }
+
+    #[test]
+    fn a_qr_frame_with_one_flipped_module_fails() {
+        let none = Banners {
+            test_registry: false,
+            simulator: false,
+        };
+        let at = (12, 0);
+        let screen = Screen::new(ScreenId::SealQr, "", none)
+            .with(Element::public(at.into(), Item::Qr(VECTOR_1_URL.into())));
+        let present = presented(&screen);
+        let Shown::Qr(payload) = &present.elements[0].item else {
+            panic!("a QR element");
+        };
+        let mut raw = present.frame.raw().to_vec();
+        assert!(qr_drawn(&raw, at, payload));
+        assert!(!qr_drawn(&raw, at, "https://registry.invalid/check#t=00"));
+        // The check URL is a version 6 code (41 modules) at 4 px a module, centred in the
+        // 216 px square (ui::qr's measured values): module (0, 0), dark in the finder
+        // pattern, starts 26 px in. Flip its 4×4 pixels.
+        let left = 12 + 26;
+        let top = 12 + 26;
+        for y in top..top + 4 {
+            for x in left..left + 4 {
+                raw[y * 240 + x] = !raw[y * 240 + x];
+            }
+        }
+        assert!(!qr_drawn(&raw, at, payload));
+    }
+}
