@@ -192,6 +192,17 @@ impl<H: Hal> App<H> {
         self.redraw()
     }
 
+    /// KEY2 on backup-check-entry (the owner's decision of 2026-10-13): Home, the stage dropped,
+    /// which wipes the file read and the entries typed. No USB call is made, so the file stays on
+    /// the stick. Not a refusal or a halt (Q25).
+    pub(super) fn entry_back(&mut self) -> Result<(), Stop> {
+        let Stage::BackupCheck { .. } = self.take() else {
+            return Err(OUT_OF_ORDER);
+        };
+        self.enter(ScreenId::Home, Note::None);
+        self.redraw()
+    }
+
     /// Step 11's write, once a stick is there: encrypt under the stored passphrase, write a new
     /// file, read it back and verify it (pi-firmware.md USB steps 4 and 5).
     fn write_backup(&mut self) -> Result<(), Stop> {

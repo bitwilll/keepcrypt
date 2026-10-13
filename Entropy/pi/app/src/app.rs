@@ -48,7 +48,7 @@ use keepcrypt_core::{
     Rejected, Rolling, SealPublic, SealRegistration, Sealed, SecretBytes32, SeedLength, Session,
     VerifiedSnapshot, WatchOnlyExport, Wiped, hwrng_boot_test, registry_key_is_test, self_test,
 };
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::extras::{StageKind, extra_for};
 use crate::games::{GAME_BYTES, GameBytes, Snake};
@@ -1019,8 +1019,9 @@ impl<H: Hal> App<H> {
         self.redraw()
     }
 
-    /// An entry grid (Q32 (a)): move, type, delete, done. The model offers a symbol only when its
-    /// grid accepts it next, and done only for a complete entry.
+    /// An entry grid (Q32 (a)): move, type, delete, done, and back on the code and
+    /// backup-passphrase grids. The model offers a symbol only when its grid accepts it next, and
+    /// done only for a complete entry.
     fn typing(&mut self, grid: Grid, key: Key) -> Result<(), Stop> {
         if let Some(cursor) = grid.moved(self.view.cursor, key) {
             self.view.cursor = cursor;
@@ -1036,6 +1037,13 @@ impl<H: Hal> App<H> {
             Key::Key1 => {
                 self.typed()?.pop();
             }
+            Key::Key2 => {
+                return match self.view.id {
+                    ScreenId::CodeEntry => self.code_back(),
+                    ScreenId::BackupCheckEntry => self.entry_back(),
+                    _ => Err(OUT_OF_ORDER),
+                };
+            }
             Key::Key3 => {
                 return match self.view.id {
                     ScreenId::CodeEntry => self.reveal_by_code(),
@@ -1045,7 +1053,7 @@ impl<H: Hal> App<H> {
                     _ => Err(OUT_OF_ORDER),
                 };
             }
-            Key::Up | Key::Down | Key::Left | Key::Right | Key::Key2 => {
+            Key::Up | Key::Down | Key::Left | Key::Right => {
                 return Err(OUT_OF_ORDER);
             }
         }
@@ -1062,6 +1070,16 @@ impl<H: Hal> App<H> {
             (ScreenId::BackupCheckEntry, Stage::BackupCheck { typed, .. }) => Ok(typed),
             _ => Err(OUT_OF_ORDER),
         }
+    }
+
+    /// KEY2 on the code grid (the owner's decision of 2026-10-13): back to the seal card's actions,
+    /// the typed code wiped in place. The stage stays `Checking` with the same session, so the same
+    /// nonce, and no core call is made: Match found and Cannot check are offered again, and the
+    /// check stays open (rule 6). Not a refusal or a halt (Q25).
+    fn code_back(&mut self) -> Result<(), Stop> {
+        self.typed()?.zeroize();
+        self.enter(ScreenId::CheckActions, Note::None);
+        self.redraw()
     }
 
     /// Done on the code grid: a code that does not verify returns to its screen with the same
@@ -1340,6 +1358,64 @@ mod tests {
         assert!(app.holds_secrets());
     }
 
+    /// The code typed so far on the open check.
+    fn typed_code(app: &App<Fake>) -> String {
+        match &app.held.stage {
+            Stage::Checking { code, .. } => code.as_str().to_owned(),
+            _ => panic!("a check is open"),
+        }
+    }
+
+    #[test]
+    fn back_on_the_code_grid_keeps_the_check_and_its_url_and_wipes_the_code() {
+        let mut app = booted();
+        app.held.stage = Stage::Sealed(sealed(None));
+        app.enter(ScreenId::CheckPrompt, Note::None);
+        app.redraw().expect("drawn");
+        // Check now, then the actions page, then the grid, before any scan: three symbols typed.
+        play(&mut app, &[Key::Press, Key::Press, Key::Press]);
+        assert_eq!(app.view.id, ScreenId::CodeEntry);
+        let before = check_url(&app);
+        play(&mut app, &[Key::Press; 3]);
+        assert_eq!(typed_code(&app), "000");
+        assert_eq!(app.hal.last().keys.label(Key::Key2), Some("back"));
+        // KEY2: the actions page, the same check, nothing typed.
+        play(&mut app, &[Key::Key2]);
+        assert_eq!(app.hal.last().id, ScreenId::CheckActions);
+        assert_eq!(typed_code(&app), "");
+        assert_eq!(check_url(&app), before);
+        // Enter go-ahead code: an empty entry.
+        play(&mut app, &[Key::Press]);
+        assert_eq!(app.view.id, ScreenId::CodeEntry);
+        assert!(app.hal.last().texts.contains(&String::from("____-____")));
+        // A wrong code, code-wrong, Press, one symbol typed: KEY2 does the same.
+        play(&mut app, &[Key::Press; 8]);
+        play(&mut app, &[Key::Key3]);
+        assert_eq!(app.view.id, ScreenId::CodeWrong);
+        play(&mut app, &[Key::Press, Key::Press, Key::Key2]);
+        assert_eq!(app.hal.last().id, ScreenId::CheckActions);
+        assert_eq!(typed_code(&app), "");
+        assert_eq!(check_url(&app), before);
+        assert!(app.holds_secrets());
+    }
+
+    #[test]
+    fn back_on_the_backup_passphrase_grid_drops_the_backup_and_shows_home() {
+        let mut app = booted();
+        let mut typed = Zeroizing::new(String::with_capacity(crate::grid::ENTRIES_LEN));
+        typed.push_str("aban ab");
+        app.held.stage = Stage::BackupCheck {
+            file: Zeroizing::new(vec![b'-'; 64]),
+            typed,
+        };
+        drawn(&mut app, View::new(ScreenId::BackupCheckEntry, Note::None));
+        assert_eq!(app.hal.last().keys.label(Key::Key2), Some("back"));
+        play(&mut app, &[Key::Key2]);
+        assert_eq!(app.hal.last().id, ScreenId::Home);
+        assert!(matches!(app.held.stage, Stage::Idle));
+        assert!(!app.holds_secrets());
+    }
+
     #[test]
     fn the_dice_picker_is_blank_after_each_confirm() {
         let mut app = booted();
@@ -1587,7 +1663,7 @@ mod tests {
         let mut view = View::new(ScreenId::Bip39Entry, Note::None);
         view.cursor = 94;
         drawn(&mut app, view);
-        assert_eq!(app.hal.last().keys.label(Key::Press), Some("type"));
+        assert_eq!(app.hal.last().keys.label(Key::Press), Some("add"));
         // The 100th character is taken, in the buffer sized for it; then type is offered no more.
         play(&mut app, &[Key::Press]);
         let full = |app: &App<Fake>| match &app.held.stage {

@@ -10,15 +10,17 @@
 //!   not offer is pressed once first, and none may present anything (the dead-key probe). Ticks
 //!   between those presses may redraw.
 //! - On every present with a QR code, the drawn modules equal a fresh drawing of the model's
-//!   payload (`qr_drawn`). The mock checker takes T and n from the last check QR so checked and
-//!   computes the go-ahead code G from them, as the registry page would (Q30 (d)).
+//!   payload (`qr_drawn`). Each check QR so checked is kept in the `Record`; the mock checker takes
+//!   T and n from the last one and computes the go-ahead code G from them, as the registry page
+//!   would (Q30 (d)).
 //! - The entry grids are typed as a user would: the cursor read off the drawn grid, then the
 //!   shortest wrapping path to each symbol (`Layout`, Q32 (a)'s layouts, stated here again). The
 //!   presents a typing step makes are its own; only the result of its last key is left for the
 //!   next `Expect`.
 //! - The driver records what the screens showed (`Record`): each insert's word, the backup
-//!   passphrase's words and every screen's last texts, for the read-back, the confirm and the
-//!   assertions. All of it is public test data or a vector run's; none of it is printed.
+//!   passphrase's words, every check QR's payload and every screen's last texts, for the
+//!   read-back, the confirm, the mock checker and the assertions. All of it is public test data or
+//!   a vector run's; none of it is printed.
 //! - Secrets stay on Protected elements (rule 5). On a Protected screen, every word, braille, QR
 //!   and hex element is the secret it shows, so it must be Protected. And no Public element of any
 //!   present in a run may show a secret a Protected element showed in that run, before or after it
@@ -169,6 +171,8 @@ pub struct Record {
     pub passphrase: BTreeMap<u8, Zeroizing<String>>,
     /// Every screen id presented in the run, power cycles included, in first-seen order.
     pub screens: Vec<ScreenId>,
+    /// Every check QR's payload, in the order presented: T and the check's nonce.
+    pub check_urls: Vec<Zeroizing<String>>,
     /// The texts of each screen's last present, by id.
     texts: Vec<(ScreenId, Vec<Zeroizing<String>>)>,
 }
@@ -471,8 +475,6 @@ struct Run {
     expected: Option<ScreenId>,
     /// The screens whose dead keys were probed.
     probed: Vec<ScreenId>,
-    /// The payload of the last check QR presented.
-    check_url: Option<Zeroizing<String>>,
     /// The keys the latest present offered.
     latest_keys: KeyMap,
     record: Record,
@@ -491,7 +493,6 @@ impl Run {
             matched: None,
             expected: None,
             probed: Vec::new(),
-            check_url: None,
             latest_keys: KeyMap::NONE,
             record: Record::default(),
             texts: Texts::default(),
@@ -586,7 +587,7 @@ impl Run {
                         present.id.name()
                     );
                     if present.id == ScreenId::SealQr {
-                        self.check_url = Some(payload.clone());
+                        self.record.check_urls.push(payload.clone());
                     }
                 }
             }
@@ -729,7 +730,7 @@ impl Run {
 
     /// Types a go-ahead code on the grid, then Done.
     fn code(&mut self, code: Code) {
-        let Some(url) = self.check_url.as_ref() else {
+        let Some(url) = self.record.check_urls.last() else {
             panic!("step {}: no check QR was shown", self.counts.steps);
         };
         let mut typed = go_ahead(url);

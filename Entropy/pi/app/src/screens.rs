@@ -63,7 +63,7 @@ const SKIPPED: &str = "You skipped the check: the seal can be checked later from
 const CHECK_ACTIONS: &str =
     "Go ahead: type its code. Stop: Match found. A network or snapshot error: Cannot check.";
 const CODE_WRONG: &str = "Check the code on your checker and type it again. The check stays \
-    open, with the same seal card.";
+    open, with the same seal card: KEY2 on the code screen goes back to its actions.";
 /// collision: swb's suggestion of a report (to SECURITY) and a verification run.
 const COLLISION: &str = "A genuine collision means this device's randomness or firmware is \
     suspect: report the device and firmware version to admin@keepcrypt.com, and make a \
@@ -826,7 +826,8 @@ fn seal_id<'a>(page: Page<'a>, seal: &'a SealPublic) -> Result<Screen<'a>, Stop>
 }
 
 /// The go-ahead code grid (Q32 (a)): the code as typed, then the 32 symbols in 8 columns and 4
-/// rows, the cursor's in brackets. Type is offered below 8 symbols, delete above none, done at 8.
+/// rows, the cursor's in brackets. Type is offered below 8 symbols, delete above none, done at 8,
+/// and back to the seal card's actions always.
 fn code_entry<'a>(page: Page<'a>, code: &Zeroizing<String>, cursor: usize) -> Screen<'a> {
     let typed = code.chars().count();
     let mut shown = String::with_capacity(CODE_LEN + 1);

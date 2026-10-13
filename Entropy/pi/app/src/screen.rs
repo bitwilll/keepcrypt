@@ -66,8 +66,12 @@ pub enum Kind {
 /// Each key's action label on a screen, or none for a dead key (Q32 (a)). The footer names every
 /// labelled key's action; a key without a label does nothing there. The constants follow the rows
 /// of pi-firmware.md's "Buttons" table, split where a screen of that kind offers fewer keys, with
-/// one difference: the table's "QR and info pages" row gives KEY1 "back", and `PAGES` and
-/// `CONTINUE` leave it out, which awaits the owner's decision.
+/// two differences: the table's "QR and info pages" row gives KEY1 "back", and `PAGES` and
+/// `CONTINUE` leave it out, which awaits the owner's decision; and the entry grids' labels are
+/// shorter than the table's action names ("move", "add", "del"), so that `GRID_BACK`'s five
+/// entries fit the 240 px footer in full. KEY2 "back" is on the go-ahead code and the
+/// backup-passphrase grid of "Check a backup" only (`GRID_BACK`, the owner's decision of
+/// 2026-10-13).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KeyMap {
     labels: [Option<&'static str>; Key::ALL.len()],
@@ -99,15 +103,18 @@ impl KeyMap {
         .with(Key::Key1, "overview")
         .with(Key::Key2, "prev")
         .with(Key::Key3, "next");
-    /// Entry grids: the cursor, type, delete and done.
+    /// Entry grids: the cursor, type, delete and done (the read-back and the BIP39 passphrase).
     pub const GRID: KeyMap = KeyMap::NONE
-        .with(Key::Up, "cursor")
-        .with(Key::Down, "cursor")
-        .with(Key::Left, "cursor")
-        .with(Key::Right, "cursor")
-        .with(Key::Press, "type")
-        .with(Key::Key1, "delete")
+        .with(Key::Up, "move")
+        .with(Key::Down, "move")
+        .with(Key::Left, "move")
+        .with(Key::Right, "move")
+        .with(Key::Press, "add")
+        .with(Key::Key1, "del")
         .with(Key::Key3, "done");
+    /// Entry grids with a way back: the go-ahead code, back to the seal card's actions, and the
+    /// backup passphrase of "Check a backup", back Home.
+    pub const GRID_BACK: KeyMap = KeyMap::GRID.with(Key::Key2, "back");
     /// A read-back mismatch: re-enter that insert, or show it.
     pub const MISMATCH: KeyMap = KeyMap::NONE
         .with(Key::Press, "re-enter")
@@ -270,7 +277,7 @@ impl ScreenId {
             ScreenId::SealId => ("seal-id", Public, Waiting, KeyMap::PAGES),
             ScreenId::SealQr => ("seal-qr", Public, Waiting, KeyMap::PAGES),
             ScreenId::CheckActions => ("check-actions", Public, Waiting, KeyMap::MENU_BACK),
-            ScreenId::CodeEntry => ("code-entry", Public, Waiting, KeyMap::GRID),
+            ScreenId::CodeEntry => ("code-entry", Public, Waiting, KeyMap::GRID_BACK),
             ScreenId::CodeWrong => ("code-wrong", Public, Waiting, KeyMap::CONTINUE),
             ScreenId::CheckClear => ("check-clear", Public, Waiting, KeyMap::CONTINUE),
             ScreenId::StopConfirm => ("stop-confirm", Public, Waiting, KeyMap::MENU_BACK),
@@ -319,7 +326,9 @@ impl ScreenId {
             ScreenId::BackupCheckRecheckQr => {
                 ("backup-check-recheck-qr", Public, Waiting, KeyMap::PAGE)
             }
-            ScreenId::BackupCheckEntry => ("backup-check-entry", Protected, Waiting, KeyMap::GRID),
+            ScreenId::BackupCheckEntry => {
+                ("backup-check-entry", Protected, Waiting, KeyMap::GRID_BACK)
+            }
             ScreenId::Blank => ("blank", Public, Transient, KeyMap::NONE),
             ScreenId::IdleWarning => ("idle-warning", Public, Waiting, KeyMap::every("keep")),
             ScreenId::IdleWiped => ("idle-wiped", Public, Waiting, KeyMap::CONTINUE),
@@ -838,8 +847,10 @@ mod tests {
     fn every_key_map_is_pinned() {
         // Each id's labels in `Key::ALL` order (up, down, left, right, press, KEY1, KEY2, KEY3),
         // "-" for a dead key, so a change to any key map is a reviewed change of this table. The
-        // QR and info pages offer no KEY1 "back" (see `KeyMap`). One model relabels a key: Press
-        // on a checked backup's last insert is "done" (`screens::ready`, `check_backup`).
+        // QR and info pages offer no KEY1 "back" (see `KeyMap`). Of the entry grids, code-entry and
+        // backup-check-entry offer KEY2 "back", and readback-entry and bip39-entry no KEY2 (the
+        // owner's decision of 2026-10-13). One model relabels a key: Press on a checked backup's
+        // last insert is "done" (`screens::ready`, `check_backup`).
         let actual: Vec<String> = ScreenId::ALL
             .into_iter()
             .map(|id| {
@@ -874,7 +885,7 @@ mod tests {
             "seal-id: - - - - continue - prev next",
             "seal-qr: - - - - continue - prev next",
             "check-actions: move move - - select back - -",
-            "code-entry: cursor cursor cursor cursor type delete - done",
+            "code-entry: move move move move add del back done",
             "code-wrong: - - - - continue - - -",
             "check-clear: - - - - continue - - -",
             "stop-confirm: move move - - select back - -",
@@ -886,7 +897,7 @@ mod tests {
             "readback-done: - - - - continue - - -",
             "words-insert: - - - - read-back overview prev next",
             "words-overview: - - - - read-back overview prev next",
-            "readback-entry: cursor cursor cursor cursor type delete - done",
+            "readback-entry: move move move move add del - done",
             "readback-mismatch: - - - - re-enter insert - -",
             "wallet: - - - - continue - - -",
             "backup-offer: move move - - select - - -",
@@ -900,7 +911,7 @@ mod tests {
             "bip39-ask: move move - - select - - -",
             "watch-summary: - - - - continue - - -",
             "register-offer: move move - - select - - -",
-            "bip39-entry: cursor cursor cursor cursor type delete - done",
+            "bip39-entry: move move move move add del - done",
             "watch-account-qr: - - - - continue - prev next",
             "watch-descriptor-qr: - - - - continue - prev next",
             "register-qr: - - - - continue - - -",
@@ -913,7 +924,7 @@ mod tests {
             "snapshot-failed: - - - - continue - - -",
             "backup-check-result: move move - - select - - -",
             "backup-check-recheck-qr: - - - - continue back - -",
-            "backup-check-entry: cursor cursor cursor cursor type delete - done",
+            "backup-check-entry: move move move move add del back done",
             "blank: - - - - - - - -",
             "idle-warning: keep keep keep keep keep keep keep keep",
             "idle-wiped: - - - - continue - - -",

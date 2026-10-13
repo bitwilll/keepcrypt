@@ -5444,7 +5444,7 @@ carries it, and every commit names a proof that runs at that commit.
 
 **15. KEY2 "back" on the go-ahead code and backup-passphrase entry (the owner's decision of 2026-10-13; Q32 (a) as
 amended; rules 5, 6)**
-- [ ] `screen.rs`: `KeyMap::GRID_BACK`, the grid map with KEY2 "back", for code-entry and backup-check-entry;
+- [x] `screen.rs`: `KeyMap::GRID_BACK`, the grid map with KEY2 "back", for code-entry and backup-check-entry;
   readback-entry and bip39-entry keep `GRID`, with KEY2 dead.
   - The footer must still fit the 240 px panel. With today's labels the grid map and KEY2 make 46 characters
     ("^v<> cursor  OK type  1 delete  2 back  3 done", 276 px), and backup-check-entry offers all five at once (type and
@@ -5454,7 +5454,15 @@ amended; rules 5, 6)**
   - pi-firmware.md's Buttons table keeps the action names. `KeyMap`'s doc names the footer's shorter labels and the
     two back grids, `every_key_map_is_pinned` pins them, and the footer test still checks every id's legend within
     240 px.
-- [ ] `app.rs`: KEY2 in `typing` (where it is `OUT_OF_ORDER` today).
+
+  Proof (commit 19): the four grids share "move", "add", "del" and "done"; `every_key_map_is_pinned` pins
+  code-entry and backup-check-entry as "move move move move add del back done" and readback-entry and bip39-entry
+  as "move move move move add del - done", and the footer test shows "^v<> move  OK add  1 del  2 back  3 done"
+  (40 characters, 240 px) and every id's legend within 240 px (`cargo test -p keepcrypt-pi --locked`: 110 passed).
+  In a scratch copy, `GRID_BACK` on readback-entry or bip39-entry fails the pin and `dice_24_code`'s dead KEY2 on
+  that grid ("Key2 is offered here"); `GRID` on code-entry or backup-check-entry fails the pin, a unit test and
+  `check_restarts` or `check_backup`; "type" and "delete" with KEY2 fail the pin and the footer test.
+- [x] `app.rs`: KEY2 in `typing` (where it is `OUT_OF_ORDER` today).
   - On code-entry: the typed code is zeroized in place (`Zeroize::zeroize`, as the other grids' refusals do), then
     check-actions shows. The stage stays `Checking`, with the same session and so the same nonce, and no core call is
     made.
@@ -5482,6 +5490,25 @@ amended; rules 5, 6)**
   - In a scratch copy, each of these mutants fails a test: KEY2 on code-entry keeping the typed code, showing another
     screen than check-actions, or dropping the session; KEY2 on backup-check-entry keeping the stage; KEY2 offered on
     readback-entry or bip39-entry.
+
+  Proof (commit 19):
+  - pi/app: `back_on_the_code_grid_keeps_the_check_and_its_url_and_wipes_the_code` and
+    `back_on_the_backup_passphrase_grid_drops_the_backup_and_shows_home` pass as planned (110 unit tests pass).
+  - `check_restarts` passes in both configurations (release: 189 steps, about 2,420 presents, 97 dead keys;
+    registry: 231 steps, about 2,917 presents, 116 dead keys), with the planned round before the first collision
+    ("7QX" typed; the check QR after KEY1 is the one Check now showed; "____-____" on re-entry). Also, in the
+    24-word restart after a collision: Enter go-ahead code, KEY2, KEY1 and the seal card paged give one check QR
+    three times, and the mock checker's code for it verifies (check-clear for dice-99-words24). The driver keeps
+    every check QR's payload (`Record::check_urls`) for these comparisons.
+  - `check_backup` passes in both configurations (release: 198 steps, 529 presents; registry: 208 steps, 536
+    presents): "a" typed, KEY2, home with `holds_secrets()` and `keeps_wiped()` false, abandon-12.age still on the
+    stick, and only list and read calls in its log; abandon-12 then opens as before.
+  - The probes no longer press KEY2 on the two back grids; `dice_24_code` presses it as a dead key on
+    readback-entry and bip39-entry (`Step::Dead`).
+  - In a scratch copy, each planned mutant fails a unit test and a scenario (release configuration's steps): the
+    code kept (`check_restarts` step 56, "KEY2 cleared the code typed"), seal-qr shown (step 48, "expected
+    check-actions"), the session dropped (step 48, blank and halt), the stage kept (`check_backup` step 26), KEY2
+    offered on readback-entry (`dice_24_code` step 125) or bip39-entry (step 314).
 
 **16. The simulator's strip (a lead decision between Q30 (h) and Q33 (j); the strip's part of group 12's open item)**
 - [ ] `ui/render.rs`: in a simulator build the top strip reads "SIMULATOR · NOT FOR REAL FUNDS" when the simulator

@@ -5,7 +5,7 @@
 //! - The backup-passphrase entry is typed as the first four letters of each word, or a whole
 //!   three-letter word (Q32 (b)). A refusal shows core's text verbatim, and the screen's own
 //!   instruction stays under it: core's `PassphraseWords` text asks for 8 list words, which the
-//!   grid types by their first fours.
+//!   grid types by their first fours. KEY2, always offered, goes back Home.
 //! - The result shows the backup's fingerprint and Seal ID, and with a snapshot loaded the seal's
 //!   registration count "as of" its date (Q33 (l)). Its words show only on request, behind the
 //!   privacy gate.

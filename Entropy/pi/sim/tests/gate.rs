@@ -521,6 +521,21 @@ fn type_go_ahead(seal: Option<String>) -> Vec<Step> {
     ]
 }
 
+/// An assertion that the last `count` check QRs presented carry one payload: the same check, so
+/// the same nonce.
+fn same_check_qr(what: &'static str, count: usize) -> Step {
+    Assert(
+        what,
+        Box::new(move |seen| {
+            let urls = &seen.record.check_urls;
+            urls.len() >= count
+                && urls[urls.len() - count..]
+                    .windows(2)
+                    .all(|pair| pair[0] == pair[1])
+        }),
+    )
+}
+
 fn chain(parts: Vec<Vec<Step>>) -> Vec<Step> {
     parts.into_iter().flatten().collect()
 }
@@ -1303,6 +1318,8 @@ fn dice_24_code() -> Scenario {
                 ),
                 key(Key::Press),
                 Expect(ScreenId::ReadbackEntry),
+                // KEY2 "back" is the go-ahead code's and the backup check's alone.
+                Step::Dead(Key::Key2),
             ],
             // 6. The read-back: each kind of mistake, then corrected.
             vec![
@@ -1513,6 +1530,7 @@ fn dice_24_code() -> Scenario {
                 Expect(ScreenId::PrivacyGate),
                 key(Key::Press),
                 Expect(ScreenId::Bip39Entry),
+                Step::Dead(Key::Key2),
                 Type(BIP39_PASSPHRASE.to_owned()),
                 key(Key::Key3),
                 Expect(ScreenId::WatchSummary),
@@ -1775,13 +1793,13 @@ fn wipes_clear_the_stage() -> Scenario {
     }
 }
 
-/// Home's About (Q33 (i)) and "Check a backup" (Q32 (b), Q33 (l)): an unrecognised entry is
-/// refused with core's text and the screen's own instruction under it, and a wrong passphrase with
-/// core's text, the entry emptied and the backup kept; abandon-12's passphrase, typed by first
-/// fours, opens it to backup.json's fingerprint; with a snapshot loaded (registry configuration),
-/// its seal's registration count as of the snapshot's date; the re-check QR and the words on
-/// request; a USB fault, and a backup over 8 KiB, named on usb-pick; zoo-24's words, its seal
-/// never registered.
+/// Home's About (Q33 (i)) and "Check a backup" (Q32 (b), Q33 (l)): KEY2 on the entry returns Home,
+/// the backup read dropped and the stick as it was; an unrecognised entry is refused with core's
+/// text and the screen's own instruction under it, and a wrong passphrase with core's text, the
+/// entry emptied and the backup kept; abandon-12's passphrase, typed by first fours, opens it to
+/// backup.json's fingerprint; with a snapshot loaded (registry configuration), its seal's
+/// registration count as of the snapshot's date; the re-check QR and the words on request; a USB
+/// fault, and a backup over 8 KiB, named on usb-pick; zoo-24's words, its seal never registered.
 fn check_backup(config: Config) -> Scenario {
     let key_state = match config {
         Config::Release => "Registry key: none pinned in this build",
@@ -1853,8 +1871,34 @@ fn check_backup(config: Config) -> Scenario {
                 key(Key::Key1),
                 Expect(ScreenId::Home),
             ],
-            // 2. abandon-12: an unrecognised entry, then its passphrase by first fours.
+            // 2. abandon-12: KEY2 back Home with a face typed, then an unrecognised entry, then its
+            // passphrase by first fours.
             first_entry,
+            vec![
+                Expect(ScreenId::UsbPick),
+                key(Key::Press),
+                Expect(ScreenId::PrivacyGate),
+                key(Key::Press),
+                Expect(ScreenId::BackupCheckEntry),
+                Type(String::from("a")),
+                key(Key::Key2),
+                Expect(ScreenId::Home),
+                Assert(
+                    "KEY2 drops the backup read, and no write or removal reached the stick",
+                    Box::new(|seen| {
+                        let hal = seen.app.hal();
+                        !seen.app.holds_secrets()
+                            && !seen.app.keeps_wiped()
+                            && hal.stick_files().contains(&"abandon-12.age")
+                            && hal
+                                .stick_log()
+                                .iter()
+                                .all(|access| matches!(access.op, Op::List(_) | Op::Read(_)))
+                    }),
+                ),
+            ],
+            home(CHECK_A_BACKUP),
+            stick_still_in(),
             vec![
                 Expect(ScreenId::UsbPick),
                 key(Key::Press),
@@ -2010,6 +2054,11 @@ fn check_backup(config: Config) -> Scenario {
 /// report is the newer seal's, since its `Wiped` replaces the kept one; and both restarts keep the
 /// seed length: a 24-word Cannot check in a first session restarts at 99 rolls, not 12 words' 50,
 /// and the 24-word restart after a collision makes dice-99-words24's seal, not dice-99-words12's.
+/// KEY2 on the code grid (the owner's decision of 2026-10-13) closes a trap: with the entry opened
+/// before any scan, or after a checker's Stop, nothing else left it but the idle wipe, which gives
+/// no collision report and no 99-roll restart. Back on the actions, with the same check, Match
+/// found still reports the seal and the restart needs 99 rolls; and after KEY2 and the seal card
+/// paged, the mock checker's code for the check QR verifies.
 /// With the test key, No on a snapshot's date keeps the check started at Check now: the mock
 /// checker's code for the check QR drawn after No verifies.
 fn check_restarts(config: Config) -> Scenario {
@@ -2023,9 +2072,35 @@ fn check_restarts(config: Config) -> Scenario {
         seal_card(),
         cannot_check(),
         to_dice(Mode::DiceOnly, 50),
-        // Two collisions in a row: the second report is the newer seal's.
+        // Two collisions in a row: the second report is the newer seal's. Before the first, the
+        // trap: Enter go-ahead code before any scan, three symbols typed, KEY2; then a wrong code,
+        // code-wrong and KEY2 again, as when the checker said Stop and gave no code.
         roll(rolls("coldcard-50")),
         seal_card(),
+        vec![
+            key(Key::Press),
+            Expect(ScreenId::CodeEntry),
+            Type(String::from("7QX")),
+            key(Key::Key2),
+            Expect(ScreenId::CheckActions),
+            key(Key::Key1),
+            Expect(ScreenId::SealQr),
+            same_check_qr(
+                "KEY2 keeps the check: its QR is the one Check now showed",
+                2,
+            ),
+            key(Key::Press),
+            Expect(ScreenId::CheckActions),
+            key(Key::Press),
+            Expect(ScreenId::CodeEntry),
+            latest_shows("KEY2 cleared the code typed", String::from("____-____")),
+            Step::Code(Code::Wrong),
+            Expect(ScreenId::CodeWrong),
+            key(Key::Press),
+            Expect(ScreenId::CodeEntry),
+            key(Key::Key2),
+            Expect(ScreenId::CheckActions),
+        ],
         match_found(),
         vec![latest_shows(
             "the first collision reports dice-50's seal",
@@ -2065,7 +2140,31 @@ fn check_restarts(config: Config) -> Scenario {
                 "the restart after a collision keeps 24 words",
                 seal_id("dice-99-words24"),
             ),
+            // Enter go-ahead code, KEY2, then the seal card paged: the check QR is the one shown
+            // before, and the mock checker's code for it verifies.
+            key(Key::Key3),
+            Expect(ScreenId::SealQr),
+            key(Key::Press),
+            Expect(ScreenId::CheckActions),
+            key(Key::Press),
+            Expect(ScreenId::CodeEntry),
+            key(Key::Key2),
+            Expect(ScreenId::CheckActions),
+            key(Key::Key1),
+            Expect(ScreenId::SealQr),
+            key(Key::Key2),
+            Expect(ScreenId::SealId),
+            key(Key::Key3),
+            Expect(ScreenId::SealQr),
+            same_check_qr(
+                "after KEY2 and the seal card paged, the check QR is the one shown before",
+                3,
+            ),
+            key(Key::Press),
+            Expect(ScreenId::CheckActions),
+            key(Key::Press),
         ],
+        type_go_ahead(Some(seal_id("dice-99-words24"))),
     ]);
     if config == Config::Registry {
         // No on the date, then the seal card: the code for the check QR drawn after No verifies.

@@ -505,9 +505,15 @@ mod tests {
             shown(ScreenId::WordsInsert.key_map()),
             "OK read-back  1 overview  2 prev  3 next"
         );
+        // A grid with KEY2 "back" offers five entries at once (backup-check-entry at an entry's
+        // third letter): 40 characters, the panel's 240 px.
         assert_eq!(
             shown(ScreenId::CodeEntry.key_map()),
-            "^v<> cursor  OK type  1 delete  3 done"
+            "^v<> move  OK add  1 del  2 back  3 done"
+        );
+        assert_eq!(
+            shown(ScreenId::ReadbackEntry.key_map()),
+            "^v<> move  OK add  1 del  3 done"
         );
         assert_eq!(shown(ScreenId::Cover.key_map()), "^v<>OK123 show");
         assert_eq!(shown(KeyMap::NONE), "");
