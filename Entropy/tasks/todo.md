@@ -5269,11 +5269,28 @@ carries it, and every commit names a proof that runs at that commit.
     and no `KC_TEST_SOURCE_DO_NOT_SHIP`.
   - This scan shows the expected markers and no foreign RNG crate symbol. It cannot see std's OS-seeded hashing; the
     hash ban (group 13) covers that.
+
+  Proof (commit 16; the box stays open for CI, the first x86_64 Linux build): the three steps follow the two existing
+  ones; the scan step needs exit 1, the three hit lines, `3 hit(s) in 1 file(s)` and no stub marker. Ruby's YAML
+  parser reads the workflow, and every job name, `needs`, `if` and matrix leg is unchanged. Host stand-in,
+  `aarch64-apple-darwin` (no cfg, as build_probe on macOS): the registry-config run passes (63 tests, 2 ignored, 15 s);
+  the release build in `target/pi-sim-scan` takes 10 s; the step's own script, with only the triple swapped, prints
+  exactly the registry marker, the simulator marker and the `TestKey` hit and passes. It fails on a build without the
+  test key (1 hit), a copy with the stub marker appended (4 hits), a clean file (exit 0) and a missing file.
 - [ ] `cross` job: on the leg whose crates include `keepcrypt-pi`, also
   `cargo build --release --locked -p keepcrypt-pi --lib --target "$TARGET"`, and scan
   `libkeepcrypt_pi.rlib` with the core artifacts. It must be clean (an archive needs no OS import).
   - The comments in `test` and `cross` name M3. No other job command changes.
-- [ ] `.github/CODEOWNERS` adds `/Entropy/pi/sim/`.
+
+  Proof (commit 16; the box stays open for CI's first ARM run): the build step runs where `matrix.crates` holds the
+  word `keepcrypt-pi` (the ARM leg only), and the scan step adds the rlib on the same word match, so the other legs
+  scan the same two files as before. Host stand-in, `aarch64-apple-darwin`, with the scan step's own script: core's
+  rlib, the probe and `libkeepcrypt_pi.rlib` scan clean (2 archives, `_getentropy` imported by the probe); with the
+  ffi legs' crates it scans the two core files; with the pi rlib missing it fails.
+- [x] `.github/CODEOWNERS` adds `/Entropy/pi/sim/`.
+
+  Proof (commit 16): the line follows `/Entropy/pi/app/`, same owner and form; GitHub's
+  `codeowners/errors` for the PR head is for the lead after the push.
 - [ ] CLAUDE.md Commands add:
   ```bash
   cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry   # the gate run, full drill

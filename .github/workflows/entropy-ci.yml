@@ -133,6 +133,14 @@ jobs:
     # refuses any manifest that turns one on, since cargo would merge it into every package); the
     # second run turns on test-sources, and with it test-registry, for the stub-source and
     # test-registry tests, which declare required-features (rule 10).
+    # M3 (tasks/todo.md, Q31 (b)): the simulator's tests run again in the registry configuration,
+    # test-registry switched on from the command line through -p (Q30 (b)), so the gate scenarios
+    # pass in both. Then the test-registry simulator's release build for this runner's x86_64 Linux,
+    # in its own target dir and with the cross job's getrandom cfg set for that target only (as
+    # scripts/canaries.sh's build_probe does), goes through the artifact scan, which must exit 1
+    # with exactly three hits: the registry marker, the simulator marker and the test key, so no
+    # stub marker (rule 10). The scan also shows no foreign RNG crate symbol. It cannot see std's
+    # OS-seeded hashing, which the grep gate's hash ban covers.
     name: test
     needs: changes
     if: needs.changes.outputs.entropy == 'true'
@@ -156,6 +164,32 @@ jobs:
           cargo --version
       - run: cargo test --workspace --locked
       - run: cargo test -p keepcrypt-core --locked --features test-sources
+      - run: cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry
+      # --target keeps the cfg off build scripts: cargo applies a target's rustflags to host
+      # artifacts only when no --target is given.
+      - name: Build the test-registry simulator for release (x86_64 Linux, its own target dir)
+        env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: '--cfg getrandom_backend="linux_getrandom"'
+        run: cargo build --release --locked -p keepcrypt-pi-sim --bin keepcrypt-pi-sim --features keepcrypt-core/test-registry --target x86_64-unknown-linux-gnu --target-dir target/pi-sim-scan
+      # The scan's llvm-nm is llvm-tools-preview's, which the toolchain step installs.
+      - name: Scan the test-registry simulator (exactly its two markers and the test key)
+        run: |
+          sim=target/pi-sim-scan/x86_64-unknown-linux-gnu/release/keepcrypt-pi-sim
+          size=$(wc -c < "$sim")
+          echo "$sim: $((size)) bytes"
+          rc=0
+          out=$(scripts/banned-api-check.sh --artifact x86_64-unknown-linux-gnu "$sim" 2>&1) || rc=$?
+          printf '%s\n' "$out"
+          fail() { echo "FAIL: the test-registry simulator's scan: $1" >&2; exit 1; }
+          [ "$rc" -eq 1 ] || fail "exit $rc, not 1"
+          # Each hit is one line, so three distinct hit lines and the count of 3 are all of them.
+          for want in "Marker: $sim: KC_TEST_REGISTRY_DO_NOT_SHIP" \
+            "Marker: $sim: KC_SIMULATOR_DO_NOT_SHIP" \
+            "TestKey: $sim: the test registry public key " \
+            "banned-api-check --artifact x86_64-unknown-linux-gnu: 3 hit(s) in 1 file(s)"; do
+            case $out in *"$want"*) ;; *) fail "no line holds \"$want\"" ;; esac
+          done
+          case $out in *KC_TEST_SOURCE_DO_NOT_SHIP*) fail "the stub marker" ;; esac
 
   supply-chain:
     # Rules 1, 5 and 11: deny.toml bans the rand family, network and logging crates, allows
@@ -375,8 +409,11 @@ jobs:
     # CCRandomGenerateBytes on iOS (Q8). The Pi and Android legs build with getrandom's
     # linux_getrandom backend, which has no /dev/urandom fallback, through
     # CARGO_TARGET_<TARGET>_RUSTFLAGS: never a workflow-wide RUSTFLAGS, which would also reach the
-    # host's build scripts. A real Pi binary moves to Buildroot in M4 and the app libraries to M5
-    # and M6. Every step checks the changes job (see the header).
+    # host's build scripts. M3 (tasks/todo.md, Q31 (c)): the leg whose crates include keepcrypt-pi
+    # also builds pi/app's release rlib, scanned with core's artifacts; it must be clean, and as an
+    # archive it needs no OS import. No keepcrypt-pi binary is linked or scanned before M4: a real
+    # Pi binary moves to Buildroot in M4 and the app libraries to M5 and M6. Every step checks the
+    # changes job (see the header).
     name: cross (${{ matrix.target }})
     needs: changes
     runs-on: ${{ matrix.os }}
@@ -489,13 +526,23 @@ jobs:
       - name: Build the release rlib and the release probe (default features)
         if: needs.changes.outputs.entropy == 'true'
         run: cargo build --release --locked -p keepcrypt-core --lib --example release_probe --target "$TARGET"
+      # M3: the step below scans this rlib on the same condition (keepcrypt-pi among the crates).
+      - name: Build pi/app's release rlib (default features)
+        if: needs.changes.outputs.entropy == 'true' && contains(format(' {0} ', matrix.crates), ' keepcrypt-pi ')
+        run: cargo build --release --locked -p keepcrypt-pi --lib --target "$TARGET"
       - name: Scan the release artifacts (markers, test key, RNG symbols, the OS import)
         if: needs.changes.outputs.entropy == 'true'
+        env:
+          CRATES: ${{ matrix.crates }}
         run: |
           rlib="target/$TARGET/release/libkeepcrypt_core.rlib"
           probe="target/$TARGET/release/examples/release_probe"
-          for f in "$rlib" "$probe"; do
+          files=("$rlib" "$probe")
+          case " $CRATES " in
+            *" keepcrypt-pi "*) files+=("target/$TARGET/release/libkeepcrypt_pi.rlib") ;;
+          esac
+          for f in "${files[@]}"; do
             size=$(wc -c < "$f")
             echo "$f: $((size)) bytes"
           done
-          scripts/banned-api-check.sh --artifact "$TARGET" "$rlib" "$probe"
+          scripts/banned-api-check.sh --artifact "$TARGET" "${files[@]}"
