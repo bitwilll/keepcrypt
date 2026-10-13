@@ -18,7 +18,8 @@
 //!
 //! Test data is public and repeatable (Q30 (a), (c)): the counting hwrng stream, keepcrypt.json's
 //! health streams for the stops, and its public dice strings for the vector runs. The vectors come
-//! in through `include_str!`; the simulator reads no file. The verify.py tie runs the shipped
+//! in through `include_str!`; the simulator reads no file, and the tests read back only the PNG
+//! files `capture_set` wrote, to copy them into review/. The verify.py tie runs the shipped
 //! verifier on a throwaway run's values, in memory.
 
 mod report;

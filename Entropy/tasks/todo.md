@@ -4228,6 +4228,9 @@ carries it, and every commit names a proof that runs at that commit.
     under a read-only mount.
   - It writes only a core `BackupFile`, and never over an existing name. Only the file just written can be removed.
   - The simulated stick lives in RAM. pi/sim reads no file from disk, and writes only PNGs and an index (Q30).
+    Since commit 21 (lead decision 7), `capture_set` also writes review.html and copies the PNG files it wrote into
+    review/, the one read of a file's contents in pi/sim, and the review page's tests write their short runs' PNGs
+    and clear them again (21c).
 - **Test data is public and repeatable**: vectors read by pi/sim's tests through `include_str!` and serde_json, roll
   strings, and the counting stream. Never a PRNG.
 - **Key presses** are debounced and nothing more. pi-firmware.md defines no type-ahead filter, and the plan adds none.
@@ -5922,7 +5925,8 @@ amended; rules 5, 6)**
   - 5: pi/app prints nothing, buffers are wiped, Protected screens are captured unredacted only from vector runs;
   - 6: only the app's `Stage` holds the typestate;
   - 8: the stick's log shows only `.age`/`.kcr` reads (read-only by the HAL's shape and the simulator's construction;
-    the device's mounts are M4's) and create-new `.age` writes; pi/sim reads no file;
+    the device's mounts are M4's) and create-new `.age` writes; pi/sim reads no file but the PNG files
+    `capture_set` wrote, which it copies into review/ (lead decision 7; 22d);
   - 10: no manifest turns on a test feature; the simulator marker is in every simulator build;
   - 11: every new crate is approved, vetted and past the cool-off.
   Proof (M3 Review, 2026-10-14): 1: the gate is clean (196 files in CI, 199 here), its getrandom, RNG and hash-ban
@@ -5933,6 +5937,14 @@ amended; rules 5, 6)**
   on a test feature (canaries), `marker_is_the_documented_string` passes, and the scans find the simulator marker in
   the test-registry simulator (x86_64 Linux in CI, aarch64-apple-darwin here); 11: cargo deny, audit and vet clean in
   CI on both heads and locally (17 fully audited, 82 exempted), the nine crates as approved in Q28.
+  Proof (review fix, commit 22d): the plan and security reviews: since commit 21 `capture_set` reads its PNG files
+  back and writes review.html, so rule 8's "pi/sim reads no file" and the plan's Files line were no longer true, and
+  the proof had narrowed to live mode. Both lines now say what pi/sim does. 8: pi/sim's sources and tests hold no
+  `fs::read`, `File::open`, `read_to_string` or `OpenOptions` (only `read_dir` listings and `metadata`); their one
+  read of a file's contents is gate.rs's `fs::copy` in `capture_set`, of a PNG file it wrote in the same run; the
+  vectors come in through `include_str!`.
+  5: since 21b the driver also fails any run marked to capture Protected frames as drawn on a Mixed session's
+  screen.
 - [ ] **CI:** all 14 required check runs green; budgets met; canaries 61/61.
   Proof (M3 Review, 2026-10-14): run 38467985842 on 0cdfc8a, the PR head: all 14 required check runs pass, with
   unchanged names; budgets as group 14's last item; canaries 61/61 in its gates job. b74b0eb and this commit run after
@@ -6111,6 +6123,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     wait for CI on the pushed head, unticked.
     22c. tasks/todo.md: the plan review: the scripted-run gate's proof splits steps 1-15 between `dice_24_code` and
     `mixed_12_restarts` as they run, and says why CI's 0cdfc8a run still covers the three scenarios.
+    22d. pi/sim, tasks/todo.md: the plan and security reviews: the plan's Files line, Verification "Rules" and
+    gate.rs's module doc say that `capture_set` reads back the PNG files it wrote and writes review.html.
 
 Review fixes are listed as N.b entries under the commit they amend.
 
@@ -8200,7 +8214,9 @@ out. b74b0eb and this commit run in CI after the next push; b74b0eb adds one tes
    Also beside Q30 (g), which has captures come only from `capture_set`: the review page's tests, run by every `cargo
    test`, capture two short runs as `capture_set` does, a throwaway one (262 presents, its Protected frames
    placeholders) and a dice-only vector one (238 presents, as drawn, 21d), each into target/tmp/pi-sim-review-rule/,
-   cleared again when its run ends (21c).
+   cleared again when its run ends (21c). And `capture_set` copies the PNG files it wrote into review/, reading them
+   back, and writes a second HTML page, where the plan's Files line said pi/sim reads no file and writes only PNGs and
+   an index; that line and Verification "Rules" say so (22d).
 8. Group 0's baseline was taken at the end (2026-10-14), from an archive of 8e6917b, not before commit 2; the tree is
    the same, so its figures stand (above).
 9. Commit 1 is two commits (b8e6143, the plan and the questions; 63e400f, the answers), and 12g is two (c171599 and
