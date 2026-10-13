@@ -13,6 +13,9 @@
 //!   wait. It never goes back.
 //! - A `next_event` call with nothing left in the script fails the test: a scenario feeds the app
 //!   only while it has input for it.
+//! - So does an app whose deadline never moves: a deadline already past is a `Tick` now, which
+//!   leaves the clock where it is, and an app that asks for one more than `STALLED_TICKS` times in
+//!   a row would spin forever on the virtual clock.
 
 use std::collections::VecDeque;
 
@@ -34,6 +37,9 @@ const PRESS_EDGES_MS: [(u64, bool); 8] = [
 /// From one scripted press's start to the earliest start of the next: after the release's last
 /// edge (102 ms) has been stable for the 20 ms debounce time.
 const PRESS_SPAN_NS: u64 = 150 * MS;
+/// Ticks in a row that leave the clock where it is. The app takes one after a key that came past
+/// its next deadline, then sets deadlines ahead; more is a deadline that never moves.
+const STALLED_TICKS: u32 = 8;
 
 /// One step of the script.
 enum Input {
@@ -53,6 +59,8 @@ pub(crate) struct Keys {
     started_ns: Option<u64>,
     /// The end of the wait at the front of the script, once it has begun.
     wait_until_ns: Option<u64>,
+    /// The `Tick`s in a row that left the clock where it was.
+    stalled: u32,
 }
 
 impl Keys {
@@ -64,6 +72,7 @@ impl Keys {
             free_ns: 0,
             started_ns: None,
             wait_until_ns: None,
+            stalled: 0,
         }
     }
 
@@ -85,8 +94,27 @@ impl Keys {
     }
 
     /// `hal::Buttons::next_event`: the front press's event if it settles by `deadline_ns`, else a
-    /// `Tick` at the deadline (or now, if the deadline has passed).
+    /// `Tick` at the deadline (or now, if the deadline has passed). Fails the test on the tick
+    /// after `STALLED_TICKS` in a row that left the clock where it was.
     pub(crate) fn next_event(&mut self, deadline_ns: u64) -> Event {
+        let before_ns = self.now_ns;
+        let event = self.event(deadline_ns);
+        match event {
+            Event::Tick { now_ns } if now_ns == before_ns => {
+                self.stalled += 1;
+                assert!(
+                    self.stalled <= STALLED_TICKS,
+                    "the app asked for a tick at {deadline_ns} ns, already past, {} times in a \
+                     row at {before_ns} ns: its deadline never moves",
+                    self.stalled
+                );
+            }
+            Event::Tick { .. } | Event::Key { .. } => self.stalled = 0,
+        }
+        event
+    }
+
+    fn event(&mut self, deadline_ns: u64) -> Event {
         loop {
             match self.script.front() {
                 None => panic!("next_event with nothing left in the script"),
@@ -276,5 +304,42 @@ mod tests {
     #[should_panic(expected = "nothing left in the script")]
     fn next_event_with_an_empty_script_fails() {
         Keys::new().next_event(S);
+    }
+
+    #[test]
+    fn a_few_ticks_in_a_row_may_leave_the_clock_where_it_is() {
+        let mut keys = Keys::new();
+        keys.press(Key::Up);
+        assert_eq!(keys.next_event(10 * MS), Event::Tick { now_ns: 10 * MS });
+        for _ in 0..STALLED_TICKS {
+            assert_eq!(keys.next_event(5 * MS), Event::Tick { now_ns: 10 * MS });
+        }
+        // A tick that moves the clock starts the count again, and so does a key.
+        assert_eq!(keys.next_event(11 * MS), Event::Tick { now_ns: 11 * MS });
+        for _ in 0..STALLED_TICKS {
+            assert_eq!(keys.next_event(11 * MS), Event::Tick { now_ns: 11 * MS });
+        }
+        assert_eq!(
+            keys.next_event(S),
+            Event::Key {
+                key: Key::Up,
+                at_ns: 0
+            }
+        );
+        keys.press(Key::Down);
+        for _ in 0..STALLED_TICKS {
+            assert_eq!(keys.next_event(0), Event::Tick { now_ns: 24 * MS });
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "already past, 9 times in a row at 10000000 ns: its deadline never")]
+    fn a_deadline_that_never_moves_fails_the_test() {
+        let mut keys = Keys::new();
+        keys.press(Key::Up);
+        assert_eq!(keys.next_event(10 * MS), Event::Tick { now_ns: 10 * MS });
+        for _ in 0..=STALLED_TICKS {
+            keys.next_event(10 * MS);
+        }
     }
 }

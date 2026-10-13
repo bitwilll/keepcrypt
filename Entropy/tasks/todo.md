@@ -4725,6 +4725,13 @@ carries it, and every commit names a proof that runs at that commit.
   steps so far are `Expect`, `Key`, `Dead`, `Dice`, `Wait`, `Fault`, `Code` (grid navigation from the first symbol,
   then Done), `Assert` and `PowerCycle`; `Stick`, `Readback` and typing other grids come with group 9's flows.
   SimHal's script now ends a trailing wait with a tick at its end (`keys`, with a test), which `hal::Buttons` allows.
+  Proof (review fix, commit 11b): a deadline bug made the gate spin instead of fail. The recompute review's mutant
+  (`Idle::next_ns` taking a threshold at `now`, not after it) asked for a tick at the same time again and again, and
+  the clock never moved, for 37 CPU-minutes. `keys` now fails the test on the ninth tick in a row that leaves the
+  clock where it is (`STALLED_TICKS`; the app takes one such tick after a key that came past its next deadline):
+  `a_deadline_that_never_moves_fails_the_test` and `a_few_ticks_in_a_row_may_leave_the_clock_where_it_is` pass, and
+  every gate scenario passes in both configurations. With that mutant in a scratch copy, the gate fails in 1.6 s, four
+  scenarios naming "its deadline never moves".
 - [x] Mock checker (pi/sim tests, sha2): G from the `t` and `n` of the check QR's payload, after the frame check above
   shows the drawn QR encodes that payload.
 
@@ -5271,6 +5278,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     group 11's count line alike.
 11. pi/app, pi/sim: the app, steps 1-7, halts, restarts, idle, the driver, the mock checker, and `boot_stops`,
     `runtime_stop` and the steps 1-7 parts of the other scenarios (group 8).
+    11b. pi/sim: the recompute review: SimHal fails a run whose app's deadline never moves, instead of spinning on
+    the virtual clock.
 12. pi/app, pi/sim: steps 8-15, the Home side flows, and `drill_12`, `dice_24_code`, `skip_and_idle`, `check_backup`,
     `wipes_clear_the_stage` (group 9).
 13. pi/app, pi/sim: Snake; `mixed_12_restarts` in full, the verify.py tie, `every_screen_is_expected`,
