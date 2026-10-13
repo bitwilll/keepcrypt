@@ -11,30 +11,31 @@
 //! - Every present rewrites `DIR/live.png`, and every Protected screen is written as the grey
 //!   placeholder, in every run, vector or not. Each present prints its screen id, and nothing
 //!   else is printed.
-//! - Every screen but the placeholder carries the SIMULATOR banner (`SimHal`'s build info). The
-//!   hwrng is the counting stream. The RAM stick is in the slot from the start, empty: this binary
-//!   reads no file, so "Load registry snapshot" and "Check a backup" see only a backup written in
-//!   the same session. It computes no go-ahead code.
-//! - End of input ends the session. A line that is no input, or any other command line, ends it
-//!   with an error that names the inputs.
+//! - Every screen carries the SIMULATOR banner (`SimHal`'s build info) but two: the black frame of
+//!   a wipe, and the placeholder that stands in for each Protected screen. The hwrng is the
+//!   counting stream. The RAM stick is in the slot from the start, empty: this binary reads no
+//!   file, so "Load registry snapshot" and "Check a backup" see only a backup written in the same
+//!   session. It computes no go-ahead code.
+//! - End of input ends the session, with exit status 0. A line that is no input, stdin that cannot
+//!   be read as lines of text, or any other command line ends it with exit status 2 and prints
+//!   nothing more (the inputs are named above).
 
 #![forbid(unsafe_code)]
 
 use std::env;
 use std::ffi::OsString;
-use std::fmt;
 use std::io::{self, BufRead};
 use std::path::PathBuf;
+use std::process::ExitCode;
 
 use keepcrypt_pi::App;
 use keepcrypt_pi::input::Key;
 use keepcrypt_pi_sim::{HwRngStream, SimHal};
 
 const S: u64 = 1_000_000_000;
-const USAGE: &str = "usage: keepcrypt-pi-sim live --out DIR, then one input per line on stdin: \
-                     w, a, s or d (the joystick), an empty line (its press), 1, 2 or 3 (KEY1 to \
-                     KEY3), or tN (N seconds with no key)";
-const STDIN: &str = "stdin cannot be read as lines of text";
+/// The exit status of a refused command line or input line. Nothing is printed with it: the bin's
+/// one print site is the screen-id line (tasks/todo.md, M3 group 12, Q31 (i)).
+const REFUSED: u8 = 2;
 
 /// One line of stdin.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,29 +72,22 @@ impl Input {
     }
 }
 
-/// Why live mode did not start, or stopped before the end of input: fixed text, which std prints
-/// as `main`'s error.
-struct Stopped(&'static str);
-
-impl fmt::Debug for Stopped {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.0)
-    }
-}
-
-fn main() -> Result<(), Stopped> {
+fn main() -> ExitCode {
     let args: Vec<OsString> = env::args_os().skip(1).collect();
-    let out = out_dir(&args).ok_or(Stopped(USAGE))?;
+    let Some(out) = out_dir(&args) else {
+        return ExitCode::from(REFUSED);
+    };
     let mut app = App::new(hardware(out));
     app.start();
     shown(&mut app);
     for line in io::stdin().lock().lines() {
-        let line = line.map_err(|_| Stopped(STDIN))?;
-        let input = Input::parse(&line).ok_or(Stopped(USAGE))?;
+        let Some(input) = line.ok().as_deref().and_then(Input::parse) else {
+            return ExitCode::from(REFUSED);
+        };
         play(&mut app, input);
         shown(&mut app);
     }
-    Ok(())
+    ExitCode::SUCCESS
 }
 
 /// `DIR` of the one command line, `live --out DIR`.

@@ -5249,6 +5249,11 @@ carries it, and every commit names a proof that runs at that commit.
   which cannot share the strip with "TEST REGISTRY"; the placeholder carries no strip.
   Proof (review fix, commit 13h): "scans clean" was commit 14's scan, before group 13 put `KC_SIMULATOR_DO_NOT_SHIP`
   on the marker list; since commit 15 that build gives exactly the simulator marker (group 13's proof).
+  Proof (review fix, commit 14b): a refused command line or input line made `main` return an error, which std printed
+  on stderr ("Error: usage: ..."), an output path beside the bin's one print site (Q31 (i)). The bin now exits with
+  status 2 and prints nothing more: tests/live.rs checks status 2 and an empty stderr for each refused command line,
+  and for a line that is no input also the screen ids before it. The bin's docs no longer say every screen but the
+  placeholder carries the SIMULATOR banner: the black frame of a wipe, which live mode writes too, carries none.
 
 **13. Gates: banned-API rules (Q31 (e); rules 1, 3, 6)**
 - [x] `scripts/banned-api-check.sh`, each rule with hit and clean fixtures in `scripts/testdata/banned-api/`:
@@ -5625,6 +5630,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     13h. tasks/todo.md: the plan review: `dice_24_code`'s step 8 and the USB gate name the file left by the failed
     removal; the step 4 probe count and group 12's scan line are brought up to date.
 14. pi/sim: the interactive bin (group 12).
+    14b. pi/sim: the plan review: a refused command line or input line ends the bin with exit status 2 and nothing
+    printed; its docs name the two frames without the SIMULATOR banner.
 15. scripts, core: the Shell category, the hash ban with pool.rs's `BTreeSet`, the pi/app forbid lines, the simulator
     marker, Q31 (h)'s routes, and fixtures (group 13).
 16. ci, .github: the `test` and `cross` steps and comments; CODEOWNERS adds `pi/sim/` (group 14).

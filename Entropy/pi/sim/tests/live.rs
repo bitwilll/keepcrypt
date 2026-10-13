@@ -58,8 +58,6 @@ fn names(dir: &Path) -> Vec<String> {
         .collect()
 }
 
-const USAGE: &str = "Error: usage: keepcrypt-pi-sim live --out DIR, then one input per line";
-
 #[test]
 fn live_mode_runs_the_app_over_core_and_prints_only_screen_ids() {
     let out = cleared("pi-sim-live");
@@ -102,7 +100,7 @@ fn live_mode_runs_the_app_over_core_and_prints_only_screen_ids() {
 }
 
 #[test]
-fn any_other_command_line_or_input_line_ends_the_bin_with_the_usage() {
+fn any_other_command_line_or_input_line_ends_the_bin_with_status_2_and_nothing_printed() {
     let out = cleared("pi-sim-live-refused");
     let dir = out.to_str().expect("a UTF-8 path");
     for args in [
@@ -114,20 +112,18 @@ fn any_other_command_line_or_input_line_ends_the_bin_with_the_usage() {
         &["capture", "--out", dir],
     ] {
         let output = run(args, "");
-        assert!(!output.status.success(), "{args:?}");
+        assert_eq!(output.status.code(), Some(2), "{args:?}");
         assert!(output.stdout.is_empty(), "{args:?}: nothing printed");
-        let stderr = String::from_utf8(output.stderr).expect("text");
-        assert!(stderr.starts_with(USAGE), "{args:?}: the usage");
+        assert!(output.stderr.is_empty(), "{args:?}: nothing on stderr");
         assert!(!out.exists(), "{args:?}: nothing written");
     }
     // A line that is no input ends a session after the screens so far.
     let output = live(&out, "s\nx\ns\n");
-    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(2));
     assert_eq!(
         String::from_utf8(output.stdout).expect("text"),
         "boot\nhome\nhome\n"
     );
-    let stderr = String::from_utf8(output.stderr).expect("text");
-    assert!(stderr.starts_with(USAGE), "the usage");
+    assert!(output.stderr.is_empty(), "nothing on stderr");
     assert_eq!(names(&out), ["live.png"]);
 }
