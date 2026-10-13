@@ -5325,6 +5325,16 @@ carries it, and every commit names a proof that runs at that commit.
   `now_ns`, with a `shell-games-*` fixture each and near misses in `clean-shell-allowed`. `--selftest` passes 423/423
   under sh and dash; the gate is clean on the tree and names the mutant; in a scratch copy with the artifact selftest
   stubbed, dropping any one of the five words turns its fixture red.
+  Proof (review fix, commit 15d): the release probe's check passed a call that sat only in a trailing `//` comment
+  (`Ok(()) // game_random(..)`) or on its own line inside a `/*` ... `*/` block: it skipped only lines starting with
+  `//` or `/*`. An awk pass now drops every `//` comment to the end of its line and every `/* */` comment, nested and
+  over lines as Rust's are, before the call is looked for; a `//` or `/*` in a string literal can only drop a call.
+  New fixtures: `shell-release-probe-call-after-line-comment`, `-in-multiline-block-comment` and
+  `-in-nested-block-comment`, and `clean-release-probe-call-after-closed-comments` (a `/*` inside a doc line, then a
+  call after a nested block that closes and before a `//`). `--selftest` passes 427/427 under sh and dash (macOS awk;
+  CI's mawk runs the same POSIX awk); the gate is clean on the tree and names both of the review's probe edits; in a
+  scratch copy with the artifact selftest stubbed, the pass without nesting, without `//` comments, with block
+  comments ending at the line's end, or with a `/*` dropping the rest of its line, each turns the selftest red.
 
 **14. CI, CODEOWNERS and the commands of record (Q31)**
 - [ ] `test` job, after its two existing steps:
@@ -5658,6 +5668,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     qualified path.
     15c. scripts: the security review: the games' code may not name the app's holders of the session or the HAL's
     clock either (`Stage`, `Held`, `App`, `Clock`, `now_ns`).
+    15d. scripts: the recompute review: the release probe's `game_random` call counts only outside every `//` and
+    `/* */` comment.
 16. ci, .github: the `test` and `cross` steps and comments; CODEOWNERS adds `pi/sim/` (group 14).
 17. CLAUDE.md: Commands for M3.
 18. tasks/todo.md: the M3 Review, with pasted proof, the owner's verdict on the captures and the gate report.

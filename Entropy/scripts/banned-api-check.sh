@@ -126,8 +126,8 @@
 #              <Session<Collecting>>::new) in any file under pi/app/src but pi/app/src/app.rs, and
 #              each match after its first in app.rs: pi/app starts sessions in one place, so a kept
 #              Wiped's 99-roll minimum cannot be skipped. And whenever core exists,
-#              core/examples/release_probe.rs must call game_random on a line that is not a // or
-#              /* comment (the stage-A review's finding 9), so dropping the call fails the gate,
+#              core/examples/release_probe.rs must call game_random outside every // and /* */
+#              comment (the stage-A review's finding 9), so dropping the call fails the gate,
 #              although the scan of the probe would not change (tasks/todo.md, M3 group 1); a
 #              missing call is reported at line 1.
 #   FailOpen   rule 3, only in .rs files under core/, ffi/ and pi/app/ (the crates under the
@@ -557,13 +557,48 @@ session_new_again() {
   printf '%s\n' "$t"
 }
 
-# probe_calls_game_random: core/examples/release_probe.rs calls game_random on a line that is not
-# a // or /* comment (a doc line or a commented-out call does not count). A file that cannot be
-# read counts as no call, so it fails closed.
+# probe_calls_game_random: core/examples/release_probe.rs calls game_random outside every comment.
+# The awk pass drops each // comment to the end of its line and each /* */ comment, nested and over
+# lines as Rust's are, so a doc line, a commented-out call and a call after // or inside a block
+# comment do not count. A // or /* inside a string literal is read as a comment too, which can only
+# drop a call (fail closed). A file that cannot be read counts as no call, so it fails closed.
 probe_calls_game_random() {
   [ -f core/examples/release_probe.rs ] || return 1
-  t=$(grep -a -E -e "${L}game_random[[:space:]]*[(]" -- core/examples/release_probe.rs) || return 1
-  printf '%s\n' "$t" | grep -q -v -E -e '^[[:space:]]*/[/*]'
+  t=$(awk '
+    {
+      code = ""
+      rest = $0
+      while (rest != "") {
+        opens = index(rest, "/*")
+        if (depth > 0) {
+          closes = index(rest, "*/")
+          if (opens > 0 && (closes == 0 || opens < closes)) {
+            depth++
+            rest = substr(rest, opens + 2)
+          } else if (closes > 0) {
+            depth--
+            rest = substr(rest, closes + 2)
+          } else {
+            rest = ""
+          }
+        } else {
+          slashes = index(rest, "//")
+          if (slashes > 0 && (opens == 0 || slashes < opens)) {
+            code = code substr(rest, 1, slashes - 1)
+            rest = ""
+          } else if (opens > 0) {
+            code = code substr(rest, 1, opens - 1) " "
+            depth = 1
+            rest = substr(rest, opens + 2)
+          } else {
+            code = code rest
+            rest = ""
+          }
+        }
+      }
+      print code
+    }' core/examples/release_probe.rs) || return 1
+  printf '%s\n' "$t" | grep -q -a -E -e "${L}game_random[[:space:]]*[(]"
 }
 
 # Rule 3, for Rust under core/, ffi/ and pi/app/: the first pattern is an assignment to _ or to an
