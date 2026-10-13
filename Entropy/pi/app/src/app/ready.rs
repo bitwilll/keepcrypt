@@ -10,7 +10,9 @@
 //! - The secret a step shows besides the session (`Holding`) is replaced, and so wiped, when its
 //!   screens are left; the grid's text is zeroized after each entry is used.
 //! - The words view serves the ceremony (`Stage::Ready`) and "Check a backup" (`Stage::Checked`)
-//!   alike; for a 24-word seed, device-swap comes before word 13.
+//!   alike. For a 24-word seed, device-swap comes before word 13: paging on past word 12, in insert
+//!   view or in the overview, passes it. Paging back needs none, since every page names its
+//!   device.
 
 use keepcrypt_core::{Bip39Passphrase, CoreError, Mode, ReadbackResult, Ready, Session};
 use zeroize::Zeroize;
@@ -34,7 +36,10 @@ impl<H: Hal> App<H> {
         let page = self.view.page;
         match (id, key) {
             (ScreenId::DeviceSwap, Key::Press) => {
-                self.enter_page(ScreenId::WordsInsert, INSERTS_PER_DEVICE, Note::None);
+                let Note::Swap { to, page } = self.view.note else {
+                    return Err(OUT_OF_ORDER);
+                };
+                self.enter_page(to, page, Note::None);
             }
             (ScreenId::ReadbackMismatch, Key::Press) => {
                 self.set_holding(Holding::Nothing)?;
@@ -151,12 +156,24 @@ impl<H: Hal> App<H> {
             Stage::Checked { backup, .. } => backup.reveal_braille().count(),
             _ => return Err(OUT_OF_ORDER),
         };
-        let page = self.view.page;
-        match (self.view.id, key) {
-            (ScreenId::WordsInsert, Key::Key3)
-                if count > INSERTS_PER_DEVICE && page + 1 == INSERTS_PER_DEVICE =>
+        let (id, page) = (self.view.id, self.view.page);
+        // The words on one page: an insert, or four in the overview.
+        let per_page = match id {
+            ScreenId::WordsOverview => OVERVIEW_WORDS,
+            _ => 1,
+        };
+        match (id, key) {
+            // On past word 12 of a 24-word seed: device-swap first, then that view's next page.
+            (ScreenId::WordsInsert | ScreenId::WordsOverview, Key::Key3)
+                if count > INSERTS_PER_DEVICE && (page + 1) * per_page == INSERTS_PER_DEVICE =>
             {
-                self.enter(ScreenId::DeviceSwap, Note::None);
+                self.enter(
+                    ScreenId::DeviceSwap,
+                    Note::Swap {
+                        to: id,
+                        page: page + 1,
+                    },
+                );
             }
             (ScreenId::WordsInsert | ScreenId::WordsOverview, Key::Key3) => {
                 self.enter_page(self.view.id, page + 1, Note::None);

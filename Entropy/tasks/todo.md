@@ -4784,7 +4784,8 @@ carries it, and every commit names a proof that runs at that commit.
   - KEY1 toggles `words-overview` (four words). KEY2 and KEY3 page.
   - Press on the last insert starts the read-back.
   - For 24 words, `device-swap` comes before word 13, and every insert, read-back and checklist page names its device
-    (swb:282).
+    (swb:282). Paging on past word 12 passes it in insert view and in the overview alike; paging back needs none,
+    since every page names its device (review fix, 12e).
 
   Proof (commit 12): `dice_24_code` pages all 24 inserts (KEY1 overview on and off, KEY3 and KEY2 in the overview,
   `device-swap` and its gate before insert 13); the inserts' words equal kcr.json's `dice-99-words24`, insert 24 reads
@@ -4792,6 +4793,13 @@ carries it, and every commit names a proof that runs at that commit.
   read-back; `drill_12` (registry config) and `check_backup` show `dice-99-words12`, ABANDON with "SeedBook 0001" and
   ZOO with "SeedBook 2048". The faces are core's `Insert::faces` drawn as numbered cells (group 6), the word at ×2
   lighter from its fifth letter.
+  Proof (review fix, commit 12e): only insert view's KEY3 from insert 12 went through `device-swap`: the overview
+  paged from words 09-12 to 13-16 without it, and KEY1 then showed insert 13, the swap never presented. KEY3 from
+  the page holding word 12 now passes `device-swap` in either view, and its Press leads on, behind the privacy gate,
+  to that view's next page (`Note::Swap`). `dice_24_code` pages the overview to words 09-12, then KEY3 shows
+  `device-swap`, the gate and "Words 13-16 · device 2 of 2", and KEY2 back shows "Words 09-12 · device 1 of 2" with no
+  swap, before insert view and its own swap as before. It passes in both configurations (329 steps, about 1,130
+  presents, 215 dead keys); with the overview's swap taken out, in a scratch copy, it fails ("expected device-swap").
 - [x] Step 9:
   - `readback-entry`: 3 or 4 letters per insert, in order. No suggestions while typing. After the entry the device
     completes it from the seed and compares (`check_readback`); a match shows the whole word, then the next insert.
@@ -5361,6 +5369,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     12c. pi/sim: the plan and recompute reviews: `check_backup` refuses a wrong passphrase, names a USB fault and a
     backup over 8 KiB, and counts zero registrations.
     12d. pi/app, pi/sim: the security review: a USB stick put in restarts the idle timer.
+    12e. pi/app, pi/sim: the plan and security reviews: the overview pages on past word 12 only through
+    `device-swap`.
 13. pi/app, pi/sim: Snake; `mixed_12_restarts` in full, the verify.py tie, `every_screen_is_expected`,
     `drill_12_repeats` and `capture_set` (groups 10, 11).
 14. pi/sim: the interactive bin (group 12).

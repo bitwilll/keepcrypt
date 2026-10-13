@@ -271,6 +271,11 @@ pub enum Note {
     Matched,
     /// words-insert: the insert of a read-back mismatch, shown from it; Press returns to entry.
     Reviewing,
+    /// device-swap: the page of words 13-24 it leads to, in insert view or in the overview.
+    Swap {
+        to: ScreenId,
+        page: usize,
+    },
     /// usb-insert: what the stick is for.
     Usb(Flow),
     /// usb-pick: the files of `kind` on the stick, or the fault that kept them from being read.

@@ -1025,7 +1025,8 @@ fn dice_24_code() -> Scenario {
             // The code for the check QR shown before the wrong one: the nonce is unchanged.
             type_go_ahead(Some(seal)),
             vec![key(Key::Press), Expect(ScreenId::PrivacyGate)],
-            // 4. 24 inserts: the overview on and off, the device swap, the device labels.
+            // 4. 24 inserts: the overview on and off, the device swap in both views, the device
+            // labels.
             vec![
                 key(Key::Press),
                 Expect(ScreenId::WordsInsert),
@@ -1036,6 +1037,27 @@ fn dice_24_code() -> Scenario {
                     Box::new(|seen| shows(seen.matched, "Words 01-04 · device 1 of 2")),
                 ),
                 key(Key::Key3),
+                Expect(ScreenId::WordsOverview),
+                key(Key::Key3),
+                Expect(ScreenId::WordsOverview),
+                // The overview pages on past word 12 only through device-swap.
+                key(Key::Key3),
+                Expect(ScreenId::DeviceSwap),
+                key(Key::Press),
+                Expect(ScreenId::PrivacyGate),
+                key(Key::Press),
+                Expect(ScreenId::WordsOverview),
+                latest_shows(
+                    "device-swap leads on to the overview of words 13-16",
+                    String::from("Words 13-16 · device 2 of 2"),
+                ),
+                key(Key::Key2),
+                Expect(ScreenId::WordsOverview),
+                latest_shows(
+                    "paging back names device 1 again",
+                    String::from("Words 09-12 · device 1 of 2"),
+                ),
+                key(Key::Key2),
                 Expect(ScreenId::WordsOverview),
                 key(Key::Key2),
                 Expect(ScreenId::WordsOverview),
