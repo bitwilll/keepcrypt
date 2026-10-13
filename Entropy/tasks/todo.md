@@ -5294,6 +5294,20 @@ carries it, and every commit names a proof that runs at that commit.
   into a folder of its own (`Captures::of_run`), cleared before the run and again right after it, since the page is
   built from the kept rows and reads no file; the module doc names it. Recorded as a deviation from Q30 (g) under
   lead decision 7. The test passes in both configurations and leaves target/tmp/pi-sim-review-rule/ empty.
+  Proof (review fix, commit 21d): the recompute review: only the throwaway test checked the page, so most changes to
+  its rule, and the driver keeping a vector run's Protected payloads, failed nothing, and `escaped` was checked
+  against itself. Now `the_review_page_shows_each_screens_first_drawn_capture_the_specimen_and_each_qr_kind` runs the
+  rule on made-up rows (no run, no file): the reviewed rows exactly; each row's No. (its place in the index), cells,
+  string and copy name; three strings, each `&` escaped; `escaped` against a literal; and no string beside a
+  placeholder even if one carried a payload. `the_review_page_lists_a_vector_runs_protected_qr_string` captures a
+  dice-only vector run (coldcard-50, 238 presents, `AsDrawn`) to its collision report: the report QR is drawn as is
+  with its payload kept, equal to kcr.json's dice-50-words12 report, and the page lists it and the check URL with
+  `&amp;n=`. The throwaway test now checks the check URL's `&` escaped as a literal. Each of 13 mutants, applied in
+  place and restored, fails at least one of the three tests: the first capture for the first drawn one, the drawn
+  one only, no specimen, no per-scenario QR rows, QR rows keyed by screen alone, QR rows for every first screen, the
+  specimen counted as a screen's capture, the driver keeping only Public payloads, the driver keeping a
+  placeholder's payload, No. counted from 0, copies named without their scenario, the page's placeholder check
+  dropped, and `escaped` returning its input.
 
   Proof for this group: both configurations' test output, with per-scenario step, screen and dead-key counts; the
   capture set and index under Review.
@@ -6078,6 +6092,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     any of a Mixed session's screens, so only a dice-only vector run can be.
     21c. pi/sim: the plan review: the review page's test captures into a folder cleared again when its run ends, and
     gate.rs's module doc names it.
+    21d. pi/sim: the recompute review: the review page's rule is tested on made-up rows, a vector run's Protected QR
+    string is kept and listed, and the escaping is checked against literals.
 22. tasks/todo.md: the M3 Review, with pasted proof and the gate report; the owner's verdict on the captures comes
     later.
 
@@ -8166,9 +8182,10 @@ out. b74b0eb and this commit run in CI after the next push; b74b0eb adds one tes
    words-insert, readback-entry and reveal-d, which throwaway runs reach first. The record under Review is the zip's
    SHA-256 and index.html's (above). CLAUDE.md's Commands comment for capture_set and group 14's commands-of-record
    line still name only "captures in target/tmp/pi-sim-captures/", which stays true; neither names review.html.
-   Also beside Q30 (g), which has captures come only from `capture_set`: the review page's test, run by every `cargo
-   test`, captures a throwaway run (262 presents, its Protected frames placeholders) as `capture_set` does, into
-   target/tmp/pi-sim-review-rule/, cleared again when the run ends (21c).
+   Also beside Q30 (g), which has captures come only from `capture_set`: the review page's tests, run by every `cargo
+   test`, capture two short runs as `capture_set` does, a throwaway one (262 presents, its Protected frames
+   placeholders) and a dice-only vector one (238 presents, as drawn, 21d), each into target/tmp/pi-sim-review-rule/,
+   cleared again when its run ends (21c).
 8. Group 0's baseline was taken at the end (2026-10-14), from an archive of 8e6917b, not before commit 2; the tree is
    the same, so its figures stand (above).
 9. Commit 1 is two commits (b8e6143, the plan and the questions; 63e400f, the answers), and 12g is two (c171599 and

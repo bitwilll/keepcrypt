@@ -12,9 +12,9 @@
 //! Beside the scenarios: `every_screen_is_expected` (the scenarios expect every screen),
 //! `drill_12_repeats` (a vector run draws the same frames twice, but for the nonce), the ignored
 //! `capture_set` (every scenario's presents as PNG files, with an index, Q30 (g), and the owner's
-//! review page of some of them, each QR code beside core's string), and the review page's test,
-//! which captures a short throwaway run as `capture_set` does, into a folder under target/tmp
-//! that it clears again when the run ends.
+//! review page of some of them, each QR code beside core's string), and the review page's tests:
+//! its rule on made-up rows, and two short runs, a throwaway one and a vector one, each captured
+//! as `capture_set` does into a folder under target/tmp that it clears again when the run ends.
 //!
 //! Test data is public and repeatable (Q30 (a), (c)): the counting hwrng stream, keepcrypt.json's
 //! health streams for the stops, and its public dice strings for the vector runs. The vectors come
@@ -2382,6 +2382,15 @@ impl Captures {
         }
     }
 
+    /// The one capture of `id`, or fails the test.
+    fn only(&self, id: ScreenId) -> &Shot {
+        let mut of_id = self.rows.iter().filter(|(_, shot)| shot.id == id);
+        match (of_id.next(), of_id.next()) {
+            (Some((_, shot)), None) => shot,
+            _ => panic!("one capture of {}", id.name()),
+        }
+    }
+
     /// The name of a reviewed capture's copy in review/.
     fn review_file(scenario: &str, shot: &Shot) -> String {
         let (file, _) = shot.file.as_ref().expect("a captured present");
@@ -2715,14 +2724,7 @@ fn the_review_page_lists_a_public_qr_string_but_no_throwaway_protected_payload()
         panic!("one check QR and one collision report QR noted");
     };
     let (_, seal_code) = report.split_once("#c=").expect("a collision report URL");
-    let shot = |id: ScreenId| {
-        let mut of_id = captures.rows.iter().filter(|(_, shot)| shot.id == id);
-        match (of_id.next(), of_id.next()) {
-            (Some((_, shot)), None) => shot,
-            _ => panic!("one capture of {}", id.name()),
-        }
-    };
-    let seal_qr = shot(ScreenId::SealQr);
+    let seal_qr = captures.only(ScreenId::SealQr);
     assert!(
         seal_qr
             .file
@@ -2731,7 +2733,7 @@ fn the_review_page_lists_a_public_qr_string_but_no_throwaway_protected_payload()
             && seal_qr.qr.as_ref() == Some(check),
         "the Public check QR is captured as drawn, with its payload kept"
     );
-    let collision_qr = shot(ScreenId::CollisionQr);
+    let collision_qr = captures.only(ScreenId::CollisionQr);
     assert!(
         collision_qr
             .file
@@ -2747,14 +2749,174 @@ fn the_review_page_lists_a_public_qr_string_but_no_throwaway_protected_payload()
         "the review page shows both QR screens"
     );
     let page = captures.review(Config::of_this_build(), &reviewed);
+    // The check URL's `&` before n, escaped as HTML wants it.
     assert!(
-        page.contains(&format!("<pre>{}</pre>", escaped(check))),
-        "the review page lists the check QR's string"
+        check.contains("&n=")
+            && page.contains(&format!("<pre>{}</pre>", check.replace('&', "&amp;")))
+            && !page.contains("&n="),
+        "the review page lists the check QR's string, its & escaped"
     );
     assert!(
         !page.contains(report.as_str())
             && !page.contains(&escaped(report))
             && !page.contains(seal_code),
         "the review page holds no part of the throwaway collision report's payload"
+    );
+}
+
+#[test]
+fn the_review_page_lists_a_vector_runs_protected_qr_string() {
+    // A dice-only vector run to its collision report, captured as capture_set does: its Protected
+    // frames are drawn as is, so the collision report QR's payload, kcr.json's dice-50-words12
+    // report, is kept and listed beside its capture, as is the check QR's string, its & escaped.
+    let captures = Captures::of_run(Scenario {
+        name: "vector_collision_qr",
+        hwrng: HwRngStream::Counting,
+        protected: ProtectedFrames::AsDrawn,
+        steps: chain(vec![
+            boot(),
+            new_seed(Mode::DiceOnly, SeedLength::Words12),
+            to_dice(Mode::DiceOnly, 50),
+            roll(rolls("coldcard-50")),
+            seal_card(),
+            match_found(),
+        ]),
+    });
+    let report = format!(
+        "{ORIGIN}/register#c={}",
+        seed("dice-50-words12", "seal_code_hashed")
+    );
+    let collision_qr = captures.only(ScreenId::CollisionQr);
+    assert!(
+        matches!(collision_qr.file, Some((_, false)))
+            && collision_qr
+                .qr
+                .as_ref()
+                .is_some_and(|qr| qr.as_str() == report),
+        "the vector run's collision report QR is captured as drawn, with its payload kept"
+    );
+    let reviewed = captures.reviewed();
+    let page = captures.review(Config::of_this_build(), &reviewed);
+    let check = format!(
+        "<pre>{ORIGIN}/check#t={}&amp;n=",
+        seed("dice-50-words12", "seal_tag_hex")
+    );
+    assert!(
+        page.contains(&format!("<pre>{report}</pre>"))
+            && page.contains(&check)
+            && page.matches("<pre>").count() == 2,
+        "the review page lists the vector run's collision report and its check QR's string"
+    );
+}
+
+#[test]
+fn the_review_page_shows_each_screens_first_drawn_capture_the_specimen_and_each_qr_kind() {
+    // The review page's rule (a lead decision, M3 commit 21) on rows made up here, with no run and
+    // no file: each screen's first capture drawn as is, or its first when all are placeholders
+    // (reveal-d); the specimen; each scenario's first capture of every QR code it keeps a string
+    // for; each row numbered as in the index, its copy named after its scenario; and a string
+    // beside each QR code drawn as is, escaped, never beside a placeholder.
+    let check_one = "https://registry.invalid/check#t=0a&n=0b";
+    let check_two = "https://registry.invalid/check#t=1a&n=1b";
+    let report = "https://registry.invalid/register#c=MADEUPSEALCODE";
+    let row = |scenario: &'static str, number: usize, id: ScreenId, placeholder: bool, qr| {
+        let qr: Option<&str> = qr;
+        (
+            scenario,
+            Shot {
+                step: number,
+                id,
+                sha256: [0; 32],
+                file: Some((format!("{number:03}-{}.png", id.name()), placeholder)),
+                qr: qr.map(|qr| Zeroizing::new(qr.to_owned())),
+            },
+        )
+    };
+    let captures = Captures {
+        rows: vec![
+            row("one", 1, ScreenId::Boot, false, None),
+            row("one", 2, ScreenId::Boot, false, None),
+            row("one", 3, ScreenId::WordsInsert, true, None),
+            row("one", 4, ScreenId::SealQr, false, Some(check_one)),
+            row("one", 5, ScreenId::SealQr, false, Some(check_one)),
+            row("one", 6, ScreenId::CollisionQr, true, None),
+            row("two", 1, ScreenId::WordsInsert, false, None),
+            row("two", 4, ScreenId::SealQr, false, Some(check_two)),
+            row("two", 5, ScreenId::RevealD, true, None),
+            row("two", 6, ScreenId::CollisionQr, false, Some(report)),
+            row("two", 7, ScreenId::RevealD, true, None),
+            row(SPECIMEN, 1, ScreenId::RevealD, false, None),
+        ],
+    };
+    let reviewed = captures.reviewed();
+    assert_eq!(reviewed, [0, 3, 6, 7, 8, 9, 11]);
+    // Each row: its cells (No. is its place in the index, counting from 1), its string, and its
+    // copy, named after its scenario, so one-004 and two-004 stay apart.
+    let expected = [
+        (
+            "<tr><td>1</td><td>one</td><td>1</td><td>boot</td>",
+            None,
+            "one-001-boot.png",
+        ),
+        (
+            "<tr><td>4</td><td>one</td><td>4</td><td>seal-qr</td>",
+            Some("https://registry.invalid/check#t=0a&amp;n=0b"),
+            "one-004-seal-qr.png",
+        ),
+        (
+            "<tr><td>7</td><td>two</td><td>1</td><td>words-insert</td>",
+            None,
+            "two-001-words-insert.png",
+        ),
+        (
+            "<tr><td>8</td><td>two</td><td>4</td><td>seal-qr</td>",
+            Some("https://registry.invalid/check#t=1a&amp;n=1b"),
+            "two-004-seal-qr.png",
+        ),
+        (
+            "<tr><td>9</td><td>two</td><td>5</td><td>reveal-d</td>",
+            None,
+            "two-005-reveal-d.png",
+        ),
+        (
+            "<tr><td>10</td><td>two</td><td>6</td><td>collision-qr</td>",
+            Some(report),
+            "two-006-collision-qr.png",
+        ),
+        (
+            "<tr><td>12</td><td>specimen</td><td>-</td><td>reveal-d</td>",
+            None,
+            "specimen-001-reveal-d.png",
+        ),
+    ];
+    let page = captures.review(Config::of_this_build(), &reviewed);
+    let rows: Vec<&str> = page
+        .lines()
+        .filter(|line| line.starts_with("<tr><td>"))
+        .collect();
+    assert_eq!(rows.len(), expected.len(), "one row a reviewed capture");
+    for (at, (line, (cells, string, copy))) in rows.iter().zip(expected).enumerate() {
+        let string = match string {
+            Some(text) => format!("<pre>{text}</pre>"),
+            None => String::new(),
+        };
+        assert!(
+            line.starts_with(cells)
+                && line.contains(&format!("<td>{string}</td><td><img src=\"review/{copy}\"")),
+            "row {at} of the review page"
+        );
+    }
+    assert_eq!(page.matches("<pre>").count(), 3);
+    assert!(!page.contains("&n="), "every & on the page is escaped");
+    assert_eq!(escaped("<a&\"b>"), "&lt;a&amp;&quot;b&gt;");
+    // The page checks the flag again: a placeholder's payload, which the driver never keeps,
+    // would still not be listed.
+    let hidden = Captures {
+        rows: vec![row("three", 1, ScreenId::CollisionQr, true, Some(report))],
+    };
+    let page = hidden.review(Config::of_this_build(), &[0]);
+    assert!(
+        !page.contains("<pre>") && !page.contains("MADEUPSEALCODE"),
+        "no string beside a placeholder"
     );
 }
