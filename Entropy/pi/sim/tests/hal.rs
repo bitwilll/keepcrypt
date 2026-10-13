@@ -1,6 +1,7 @@
 //! `SimHal` against core (tasks/todo.md, M3 group 7): the hwrng streams the scenarios use get
 //! core's recorded verdicts, the stick takes a real core backup and refuses what pi/app's `hal`
-//! says it must, and capture mode writes one PNG file per present.
+//! says it must, capture mode writes one PNG file per present, and live mode (group 12) rewrites
+//! one.
 //!
 //! The vectors come in through `include_str!` (the simulator reads no file). The backup is made
 //! from a vector run (keepcrypt.json's `coldcard-50` rolls, dice only), so its words are public.
@@ -279,14 +280,20 @@ fn the_stick_takes_a_new_backup_and_refuses_what_hal_usb_refuses() {
     assert_eq!(hal.stick_files(), [name.as_str(), "other.age"]);
 }
 
-#[test]
-fn capture_mode_writes_one_png_per_present_and_protected_frames_as_placeholders() {
-    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("pi-sim-hal-capture");
-    match fs::remove_dir_all(&root) {
+/// The folder `name` under cargo's test tmpdir, removed with what it held.
+fn cleared(name: &str) -> PathBuf {
+    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(name);
+    match fs::remove_dir_all(&dir) {
         Ok(()) => {}
         Err(error) if error.kind() == ErrorKind::NotFound => {}
-        Err(error) => panic!("cannot clear {}: {error}", root.display()),
+        Err(error) => panic!("cannot clear {}: {error}", dir.display()),
     }
+    dir
+}
+
+#[test]
+fn capture_mode_writes_one_png_per_present_and_protected_frames_as_placeholders() {
+    let root = cleared("pi-sim-hal-capture");
     let banners = Banners {
         test_registry: false,
         simulator: true,
@@ -363,4 +370,74 @@ fn capture_mode_writes_one_png_per_present_and_protected_frames_as_placeholders(
             assert_eq!(len, 173_118, "{folder}/{}", captured.file);
         }
     }
+}
+
+#[test]
+fn live_mode_rewrites_one_png_per_present_and_every_protected_frame_as_the_placeholder() {
+    let dir = cleared("pi-sim-hal-live");
+    let banners = Banners {
+        test_registry: false,
+        simulator: true,
+    };
+    // Live mode takes no `ProtectedFrames`: its Protected frames are placeholders in every run,
+    // so an insert showing a public vector word is one too.
+    let mut hal = SimHal::new(HwRngStream::Counting);
+    hal.live(dir.clone());
+    let about = Screen::new(ScreenId::About, "About", banners).with(Element::public(
+        (0, 0).into(),
+        Item::Text("KeepCrypt".into()),
+    ));
+    let insert = Screen::new(ScreenId::WordsInsert, "Insert 01", banners).with(Element::protected(
+        (40, 0).into(),
+        Item::Large {
+            text: "abandon".into(),
+            lighter_from: Some(4),
+        },
+    ));
+    let mut painter = Painter::new();
+    for screen in [&about, &insert, &about] {
+        painter.present(&mut hal, screen).expect("draws");
+    }
+    let presents = hal.take_presents();
+    let [about_shown, insert_shown, again_shown] = &presents[..] else {
+        panic!("three presents");
+    };
+    let (Some(about_file), Some(insert_file), Some(again_file)) = (
+        &about_shown.capture,
+        &insert_shown.capture,
+        &again_shown.capture,
+    ) else {
+        panic!("every present captured");
+    };
+    for captured in [about_file, insert_file, again_file] {
+        assert_eq!(captured.file, "live.png");
+        assert_eq!(captured.png.len(), 173_118);
+    }
+    // The bytes each write got (the simulator reads no file back): Public frames as drawn, the
+    // Protected one the placeholder and not the frame.
+    for (file, shown) in [(about_file, about_shown), (again_file, again_shown)] {
+        assert!(!file.placeholder);
+        assert!(file.png[..] == shown.frame.png()[..], "about as drawn");
+    }
+    let grey = placeholder(ScreenId::WordsInsert).png();
+    assert!(insert_file.placeholder);
+    assert!(
+        insert_file.png[..] == grey[..],
+        "the insert is the placeholder"
+    );
+    assert!(
+        insert_shown.frame.png()[..] != grey[..],
+        "the drawn insert is not the placeholder"
+    );
+    // One file, rewritten: the folder holds `live.png` alone.
+    let names: Vec<String> = fs::read_dir(&dir)
+        .expect("the live folder")
+        .map(|entry| {
+            let entry = entry.expect("an entry");
+            entry.file_name().into_string().expect("a UTF-8 name")
+        })
+        .collect();
+    assert_eq!(names, ["live.png"]);
+    let len = fs::metadata(dir.join("live.png")).expect("written").len();
+    assert_eq!(len, 173_118);
 }

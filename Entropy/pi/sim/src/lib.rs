@@ -13,6 +13,8 @@
 //! - Test data is public and repeatable: the counting stream, vector bytes handed in by tests,
 //!   scripted presses. Never a PRNG. The simulator reads no file; it writes only the PNG files it
 //!   is asked to capture.
+//! - The bin is live mode (`keepcrypt-pi-sim live --out DIR`, group 12): the app on `SimHal`, with
+//!   the keys typed on stdin.
 
 #![forbid(unsafe_code)]
 

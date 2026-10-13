@@ -5188,6 +5188,20 @@ carries it, and every commit names a proof that runs at that commit.
 
   Proof: a unit test that live mode writes the placeholder for a Protected frame; a short session pasted under Review
   (screen ids only).
+  Proof (commit 14; the box stays open for the strip's wording, group 14's scan and the Review session): the bin runs
+  pi/app's `App` over core on `SimHal` (counting hwrng, an empty stick in the slot from the start, `SimHal::live`).
+  tests/hal.rs's live-mode test presents about, an insert showing a public vector word, and about: each is written to
+  `live.png`, the insert as `placeholder(words-insert)`'s bytes and never its frame's, the others as drawn, and the
+  folder holds `live.png` alone; `SimHal::live` takes no `ProtectedFrames`, and the mutant that writes it as drawn
+  fails the test. tests/live.rs runs the built bin: a Mixed run to the first insert, then `t600`, prints only screen
+  ids (`boot`, `home`, `length`, `wait`, `hwrng`, ..., 101 `dice`, ..., `privacy-gate`, `words-insert`, `cover`,
+  `idle-warning`, `blank`, `idle-wiped`) and leaves `live.png` alone; any other command line, or a line that is no
+  input, ends it with the usage. main.rs's 3 unit tests pin the inputs and the command line. Release build for the
+  host stand-in, `aarch64-apple-darwin`, with `--features keepcrypt-core/test-registry`: `--artifact` gives the
+  registry marker and `TestKey` (exit 1), no stub marker, `_getentropy` imported; `KC_SIMULATOR_DO_NOT_SHIP` is in the
+  binary, and with group 13's marker list the same scan gives exactly the three expected hits. Without the test key
+  it scans clean. The strip reads "SIMULATOR" (Q33 (j); pi/app's renderer), not "SIMULATOR · NOT FOR REAL FUNDS",
+  which cannot share the strip with "TEST REGISTRY"; the placeholder carries no strip.
 
 **13. Gates: banned-API rules (Q31 (e); rules 1, 3, 6)**
 - [ ] `scripts/banned-api-check.sh`, each rule with hit and clean fixtures in `scripts/testdata/banned-api/`:

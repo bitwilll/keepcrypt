@@ -124,6 +124,13 @@ impl SimHal {
         self.panel.capture(dir, protected, written);
     }
 
+    /// Live mode (tasks/todo.md, M3 group 12; Q30 (h)): from now on, rewrites `dir/live.png` with
+    /// every present. Every Protected screen is written as `placeholder`, whatever the run: live
+    /// mode takes no `ProtectedFrames`.
+    pub fn live(&mut self, dir: PathBuf) {
+        self.panel.live(dir);
+    }
+
     pub fn insert_stick(&mut self) {
         self.stick.insert();
     }

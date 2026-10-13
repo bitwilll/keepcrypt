@@ -9,6 +9,8 @@
 //!   the files the hardware before a power cycle wrote. A Protected frame is written as drawn only
 //!   for a run whose words are public (a vector run); otherwise it is `placeholder`, which depends
 //!   on the screen id alone.
+//! - Live mode (the bin, group 12) rewrites one file, `live.png`, with every present, and every
+//!   Protected frame as `placeholder`, in every run: it takes no `ProtectedFrames`.
 
 use std::fs;
 use std::path::PathBuf;
@@ -27,6 +29,8 @@ const SIDE: usize = 240;
 /// The placeholder's background: RGB565 (12, 24, 12), #636163 at 8 bits. White text on it has a
 /// contrast ratio above 6.
 const GREY: u16 = 0x630c;
+/// The one file live mode writes.
+const LIVE_FILE: &str = "live.png";
 
 /// A copy of one frame: 240 × 240 raw RGB565 values, row by row from the top left. Wiped on drop;
 /// no `Debug` or `Clone`, since a frame can show the words.
@@ -103,7 +107,7 @@ pub struct Logged {
 
 /// The PNG file a present was captured to. No `Debug` or `Clone`: its bytes can show the words.
 pub struct Captured {
-    /// The file name in the capture directory: `NNN-<screen-id>.png`.
+    /// The file name in the capture directory: `NNN-<screen-id>.png`, or `live.png` in live mode.
     pub file: String,
     /// True when the file holds `placeholder` instead of the frame.
     pub placeholder: bool,
@@ -132,18 +136,31 @@ pub enum ProtectedFrames {
     Placeholder,
 }
 
+/// The file each present is written to.
+enum Files {
+    /// Capture mode: `NNN-<screen-id>.png`, numbered on from the files already written.
+    Numbered { written: u32 },
+    /// Live mode: `live.png`, rewritten by every present.
+    Live,
+}
+
 /// Where and how presents are captured.
 struct Capture {
     dir: PathBuf,
     protected: ProtectedFrames,
-    written: u32,
+    files: Files,
 }
 
 impl Capture {
     /// Writes one present's PNG file, or fails the test.
     fn write(&mut self, id: ScreenId, frame: &Pixels) -> Captured {
-        self.written += 1;
-        let file = format!("{:03}-{}.png", self.written, id.name());
+        let file = match &mut self.files {
+            Files::Numbered { written } => {
+                *written += 1;
+                format!("{:03}-{}.png", *written, id.name())
+            }
+            Files::Live => String::from(LIVE_FILE),
+        };
         // The flag comes from the same arm as the bytes, so it always says what the file holds.
         let (png, redacted) = match (id.class(), self.protected) {
             (Class::Protected, ProtectedFrames::Placeholder) => (placeholder(id).png(), true),
@@ -183,14 +200,28 @@ impl Panel {
     /// From now on, writes every present into `dir` (created if missing), numbered on from
     /// `written`.
     pub(crate) fn capture(&mut self, dir: PathBuf, protected: ProtectedFrames, written: u32) {
-        if let Err(error) = fs::create_dir_all(&dir) {
-            panic!("cannot create {}: {error}", dir.display());
-        }
-        self.capture = Some(Capture {
+        self.start(Capture {
             dir,
             protected,
-            written,
+            files: Files::Numbered { written },
         });
+    }
+
+    /// Live mode: from now on, rewrites `dir/live.png` (`dir` created if missing) with every
+    /// present, every Protected one as `placeholder`.
+    pub(crate) fn live(&mut self, dir: PathBuf) {
+        self.start(Capture {
+            dir,
+            protected: ProtectedFrames::Placeholder,
+            files: Files::Live,
+        });
+    }
+
+    fn start(&mut self, capture: Capture) {
+        if let Err(error) = fs::create_dir_all(&capture.dir) {
+            panic!("cannot create {}: {error}", capture.dir.display());
+        }
+        self.capture = Some(capture);
     }
 
     /// The id of the last model presented.
