@@ -4714,6 +4714,8 @@ carries it, and every commit names a proof that runs at that commit.
   that meets the quota, which closes it. C is checked by the verify.py tie, which reads it off the last `commitment`
   model (verify.py stops on a C that does not match D): in a scratch copy, the mutant drawing the hex of 32 zero
   bytes for C now fails `mixed_12_restarts` at the tie (step 209).
+  Proof (review fix, commit 13h): so the first step 4 model now offers Press alone, and the dead-key probe presses
+  the other 7 keys; commit 11's "presses all 8, Continue among them" predates Snake.
 - [x] Step 7:
   - `check-prompt`, in swb:114's words.
   - Skip: `skip-confirm` → `skip_check`. The privacy gate then carries swb:152's note.
@@ -5016,7 +5018,8 @@ carries it, and every commit names a proof that runs at that commit.
   `pi/app/src/games/` names none of the Shell tokens.
   Proof (commit 15): group 13's Shell grep is clean on the tree and fails on the `shell-games-*` fixtures (each Shell
   word, also in `games.rs`) and on `game_random` in `pi/app/src/app.rs`. The grep allows the name anywhere under
-  `pi/app/src/games/`; that `games/mod.rs` alone names it today rests on review (only `mod.rs:7` and `mod.rs:24`).
+  `pi/app/src/games/`; that `games/mod.rs` alone names it today rests on review (only `mod.rs:7` and `mod.rs:24`;
+  `mod.rs:37` since commit 13b).
   Proof (review fix, commit 13e): walls were tested only to the right and upward, and the neck rule with one steer;
   mutants running Down off the board (a panic), wrapping Left, and checking a steer against the pending turn instead
   of the heading moved (so Up then Left within one tick turned into the neck) passed every test.
@@ -5084,8 +5087,10 @@ carries it, and every commit names a proof that runs at that commit.
      - "taga" for "tag": should be blank;
      - one wrong letter.
   7. `wallet`.
-  8. Backup: one wrong confirm pick, a write fault, Retry, verified. The stick then holds exactly one `.age`, and
-     `decrypt_backup` of it with the shown passphrase gives the session's fingerprint.
+  8. Backup: one wrong confirm pick, a write fault, Retry, verified. The stick then holds the verified `.age` and,
+     since commit 13's removal fault (a lead decision), the one file whose removal failed, which backup-failed says
+     stays, and nothing else; `decrypt_backup` of the verified one with the shown passphrase gives the session's
+     fingerprint.
   9. Watch-only with a typed BIP39 passphrase (a different fingerprint); both QR payloads equal core's `qr_text`, and
      `receive_descriptor` + line feed + `change_descriptor`.
   10. `register-qr`; checklist; `power-off`.
@@ -5242,6 +5247,8 @@ carries it, and every commit names a proof that runs at that commit.
   binary, and with group 13's marker list the same scan gives exactly the three expected hits. Without the test key
   it scans clean. The strip reads "SIMULATOR" (Q33 (j); pi/app's renderer), not "SIMULATOR · NOT FOR REAL FUNDS",
   which cannot share the strip with "TEST REGISTRY"; the placeholder carries no strip.
+  Proof (review fix, commit 13h): "scans clean" was commit 14's scan, before group 13 put `KC_SIMULATOR_DO_NOT_SHIP`
+  on the marker list; since commit 15 that build gives exactly the simulator marker (group 13's proof).
 
 **13. Gates: banned-API rules (Q31 (e); rules 1, 3, 6)**
 - [x] `scripts/banned-api-check.sh`, each rule with hit and clean fixtures in `scripts/testdata/banned-api/`:
@@ -5432,7 +5439,8 @@ carries it, and every commit names a proof that runs at that commit.
 - [ ] **Gate: USB export mocked.**
   - The backup is written (never over an existing name), read back under a read-only mount and verified.
   - A write fault removes only the file just written, and Retry runs under the same passphrase.
-  - The stick ends with exactly one `.age` and nothing else.
+  - The stick ends with the verified `.age` and nothing else, but for a file whose removal failed (`dice_24_code`'s
+    `Fault::Remove` round, commit 13), which stays, as backup-failed says.
 
   Proof: `dice_24_code`; group 7's Usb refusals.
 - [ ] **Gate: snapshot import mocked.**
@@ -5614,6 +5622,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     13f. pi/sim: the security review: verify.py output that is not UTF-8 fails the tie's fixed message, never printed.
     13g. pi/sim: the recompute review: `capture_set` checks that each present has a file of its own, and the folder
     nothing else.
+    13h. tasks/todo.md: the plan review: `dice_24_code`'s step 8 and the USB gate name the file left by the failed
+    removal; the step 4 probe count and group 12's scan line are brought up to date.
 14. pi/sim: the interactive bin (group 12).
 15. scripts, core: the Shell category, the hash ban with pool.rs's `BTreeSet`, the pi/app forbid lines, the simulator
     marker, Q31 (h)'s routes, and fixtures (group 13).
