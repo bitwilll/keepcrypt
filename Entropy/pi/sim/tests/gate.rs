@@ -1389,6 +1389,7 @@ fn wipes_clear_the_stage() -> Scenario {
         ])
     };
     let (abandon, passphrase) = age_file("abandon-12");
+    let late_stick = vec![(String::from("abandon-12.age"), abandon.clone())];
     let to_backup_check_entry = move |stick_in: bool| {
         let stick = if stick_in {
             stick_still_in()
@@ -1460,9 +1461,26 @@ fn wipes_clear_the_stage() -> Scenario {
             idle_wipe(),
             to_checked_words(to_backup_check_entry(true)),
             fault_halt(),
-            // backup-check-entry, with a face typed (BackupCheck, holding the file).
-            to_backup_check_entry(false),
-            vec![Type(String::from("f"))],
+            // backup-check-entry, with a face typed (BackupCheck, holding the file). The stick goes
+            // in after ten idle minutes on usb-insert: the device noticing it is input, so the
+            // backup it opens is not wiped in the same tick.
+            home(CHECK_A_BACKUP),
+            vec![
+                Expect(ScreenId::UsbInsert),
+                Wait(601),
+                Step::Stick(Stick::Insert(late_stick)),
+                Wait(STICK_SECONDS),
+                Expect(ScreenId::PrivacyGate),
+                Assert(
+                    "a stick put in restarts the idle timer: the backup it opens stays",
+                    Box::new(|seen| {
+                        seen.app.holds_secrets() && seen.latest.id == ScreenId::PrivacyGate
+                    }),
+                ),
+                key(Key::Press),
+                Expect(ScreenId::BackupCheckEntry),
+                Type(String::from("f")),
+            ],
             idle_wipe(),
             to_backup_check_entry(true),
             vec![Type(String::from("f"))],

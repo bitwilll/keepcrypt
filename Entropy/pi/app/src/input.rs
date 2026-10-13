@@ -199,7 +199,7 @@ impl Idle {
         }
     }
 
-    /// Any key resets the timer.
+    /// Any key resets the timer, and so does a USB stick the device notices (usb-insert).
     pub fn key(&mut self, at_ns: u64) {
         self.last_key_ns = at_ns;
     }

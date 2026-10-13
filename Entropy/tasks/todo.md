@@ -4718,6 +4718,8 @@ carries it, and every commit names a proof that runs at that commit.
   Proof (review fix, commit 11c): `runtime_stop` also halts on an hwrng read fault in step 4, the HAL fault that
   only the boot read had a test for. The box stays open, though commit 12's report counted it ticked: "any halt
   condition" includes a `game_random` error, whose halt lands with Snake (group 10, commit 13).
+  Proof (review fix, commit 12d): a USB stick put in is input, as a key is: it restarts the idle timer, so a backup
+  opened after ten idle minutes on usb-insert is not wiped in the same tick (`wipes_clear_the_stage`).
 - [x] Scenario driver (pi/sim tests). A scenario is a list of steps, built per configuration:
   - `Expect(ScreenId)`: matched in order against the Display log since the previous step, so transient screens are
     matched too;
@@ -5016,6 +5018,13 @@ carries it, and every commit names a proof that runs at that commit.
   character typed, a checked backup's words and `backup-check-entry` with a face typed, ten idle minutes give the
   cover, the warning, a black frame and `idle-wiped`, and a Buttons fault gives a black frame and `halt`; after each,
   nothing is held and the next model is all Public; `collision-qr` as before.
+  Proof (review fix, commit 12d): the idle timer counted from the last key while nothing was held, so after ten idle
+  minutes on usb-insert, the stick a user then put in for Check a backup opened the file, showed the privacy gate and
+  wiped it in the same tick ("Wiped after 10 minutes without input"; at 9-10 minutes, the warning at once). The device
+  noticing a stick is now input, as a key is (`look_for_stick`). The scenario's `backup-check-entry` round puts the
+  stick in after 601 idle seconds on usb-insert: the gate stays up with the backup held, then the round goes on as
+  before. It passes in both configurations (757 steps, 3,108 presents, 158 dead keys); without the reset, in a
+  scratch copy, it fails at that assertion.
 - [x] `check_backup` (both configs):
   1. `about`.
   2. `abandon-12`: one wrong entry (refused with core's text), then the first fours of its passphrase → backup.json's
@@ -5351,6 +5360,7 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     file just written, and the passphrase generated once.
     12c. pi/sim: the plan and recompute reviews: `check_backup` refuses a wrong passphrase, names a USB fault and a
     backup over 8 KiB, and counts zero registrations.
+    12d. pi/app, pi/sim: the security review: a USB stick put in restarts the idle timer.
 13. pi/app, pi/sim: Snake; `mixed_12_restarts` in full, the verify.py tie, `every_screen_is_expected`,
     `drill_12_repeats` and `capture_set` (groups 10, 11).
 14. pi/sim: the interactive bin (group 12).

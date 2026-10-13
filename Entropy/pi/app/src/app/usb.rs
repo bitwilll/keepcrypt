@@ -2,7 +2,8 @@
 //! stick"; CLAUDE.md rule 8): step 11's backup write, and Home's side flows, "Load registry
 //! snapshot" and "Check a backup".
 //!
-//! - usb-insert looks for a stick once per tick and goes on by itself when one is there.
+//! - usb-insert looks for a stick once per tick and goes on by itself when one is there; the stick
+//!   put in is input, and restarts the idle timer as a key does.
 //! - Home's flows list one kind of file (`.kcr` or `.age`); with more than one, usb-pick lists
 //!   them (Q33 (g)). Snapshots are read up to the format's largest size, backups up to 8 KiB.
 //! - The backup is written as a new file, read back under a read-only remount and verified; on a
@@ -52,10 +53,15 @@ impl<H: Hal> App<H> {
         };
         match self.hal.stick() {
             Ok(false) => Ok(()),
-            Ok(true) => match flow {
-                Flow::Write => self.write_backup(),
-                Flow::Open(kind) => self.list(kind),
-            },
+            Ok(true) => {
+                // The user just put the stick in: input, as a key is. The idle timer starts again,
+                // so a backup opened after ten idle minutes here is not wiped in the same tick.
+                self.idle.key(self.hal.now_ns());
+                match flow {
+                    Flow::Write => self.write_backup(),
+                    Flow::Open(kind) => self.list(kind),
+                }
+            }
             Err(fault) => self.usb_refused(flow, fault),
         }
     }

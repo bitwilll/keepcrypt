@@ -20,9 +20,10 @@
 //!   fixed text (`Refusal`): a go-ahead code that does not verify, a read-back mismatch, a wrong
 //!   backup passphrase or unrecognised entry, an empty BIP39 passphrase, a refused snapshot and
 //!   USB faults.
-//! - Idle (Q29): after 30 s without input a Protected screen is covered, and the next press only
-//!   uncovers it; at 9 minutes a warning appears while secrets are held; at 10 minutes the stage
-//!   is wiped (the kept `Wiped` and the snapshot stay) and the device says so.
+//! - Idle (Q29): after 30 s without input (a key, or a USB stick put in) a Protected screen is
+//!   covered, and the next press only uncovers it; at 9 minutes a warning appears while secrets
+//!   are held; at 10 minutes the stage is wiped (the kept `Wiped` and the snapshot stay) and the
+//!   device says so.
 //! - Entering a Protected screen from a Public one passes the privacy gate (`enter_page`).
 //! - New sessions come from the kept `Wiped` while there is one, else from `Session::new`, whose
 //!   one call in this crate is in `new_session` (Q26, Q33 (c)).
