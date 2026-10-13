@@ -5254,6 +5254,10 @@ carries it, and every commit names a proof that runs at that commit.
   status 2 and prints nothing more: tests/live.rs checks status 2 and an empty stderr for each refused command line,
   and for a line that is no input also the screen ids before it. The bin's docs no longer say every screen but the
   placeholder carries the SIMULATOR banner: the black frame of a wipe, which live mode writes too, carries none.
+  Proof (review fix, commit 14c): nothing checked that live mode's stick is in the slot from power-on; deleting
+  `insert_stick` from the bin passed every test. `live_mode_starts_with_an_empty_stick_in_the_slot` opens Home's
+  "Check a backup" and finds usb-pick (no backup on the stick) after usb-insert, then Home; in a scratch copy, the bin
+  without its stick fails it (usb-insert, then Home).
 
 **13. Gates: banned-API rules (Q31 (e); rules 1, 3, 6)**
 - [x] `scripts/banned-api-check.sh`, each rule with hit and clean fixtures in `scripts/testdata/banned-api/`:
@@ -5632,6 +5636,7 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
 14. pi/sim: the interactive bin (group 12).
     14b. pi/sim: the plan review: a refused command line or input line ends the bin with exit status 2 and nothing
     printed; its docs name the two frames without the SIMULATOR banner.
+    14c. pi/sim: the recompute review: a live session finds the empty stick in the slot from power-on.
 15. scripts, core: the Shell category, the hash ban with pool.rs's `BTreeSet`, the pi/app forbid lines, the simulator
     marker, Q31 (h)'s routes, and fixtures (group 13).
 16. ci, .github: the `test` and `cross` steps and comments; CODEOWNERS adds `pi/sim/` (group 14).

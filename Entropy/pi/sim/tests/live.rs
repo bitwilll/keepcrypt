@@ -100,6 +100,20 @@ fn live_mode_runs_the_app_over_core_and_prints_only_screen_ids() {
 }
 
 #[test]
+fn live_mode_starts_with_an_empty_stick_in_the_slot() {
+    // Home's "Check a backup": usb-insert finds the stick at its first look, with no backup on it,
+    // and usb-pick says so; KEY1 returns Home. With no stick, usb-insert would wait through t1.
+    let out = cleared("pi-sim-live-stick");
+    let output = live(&out, "s\ns\n\nt1\n1\n");
+    assert!(output.status.success(), "the session ends with its input");
+    assert!(output.stderr.is_empty(), "nothing on stderr");
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("text"),
+        "boot\nhome\nhome\nhome\nusb-insert\nusb-pick\nhome\n"
+    );
+}
+
+#[test]
 fn any_other_command_line_or_input_line_ends_the_bin_with_status_2_and_nothing_printed() {
     let out = cleared("pi-sim-live-refused");
     let dir = out.to_str().expect("a UTF-8 path");
