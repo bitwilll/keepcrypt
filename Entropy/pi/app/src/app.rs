@@ -1417,6 +1417,52 @@ mod tests {
     }
 
     #[test]
+    fn back_on_either_grid_keeps_the_kept_wiped_and_its_99_roll_restart() {
+        // A collision's `Wiped` is kept until a check passes or the user skips (Q26), so that a
+        // timeout does not lower the minimum. The restart's check, on the code grid: KEY2.
+        let mut app = booted();
+        let wiped = sealed(None)
+            .start_check()
+            .expect("checking")
+            .discard(Discard::Collision);
+        app.held.stage = Stage::Sealed(sealed(Some(&wiped)));
+        app.held.kept = Some(wiped);
+        app.enter(ScreenId::CheckPrompt, Note::None);
+        app.redraw().expect("drawn");
+        play(&mut app, &[Key::Press, Key::Press, Key::Press]);
+        assert_eq!(app.view.id, ScreenId::CodeEntry);
+        play(&mut app, &[Key::Key2]);
+        assert_eq!(app.hal.last().id, ScreenId::CheckActions);
+        assert!(app.keeps_wiped());
+        // Walking away: the warning, then the idle wipe drops the check, and the next session
+        // still needs 99 rolls.
+        for _ in 0..2 {
+            app.hal.tick = true;
+            app.step();
+        }
+        assert_eq!(app.view.id, ScreenId::IdleWiped);
+        assert!(!app.holds_secrets());
+        let next = new_session(app.held.kept.as_ref(), SeedLength::Words12, Mode::DiceOnly)
+            .expect("a restart")
+            .commit()
+            .expect("committed")
+            .start_dice();
+        assert_eq!(next.minimum_rolls(), 99);
+        drop(next);
+        // KEY2 on the backup-passphrase grid keeps it too.
+        let mut typed = Zeroizing::new(String::with_capacity(crate::grid::ENTRIES_LEN));
+        typed.push_str("aban");
+        app.held.stage = Stage::BackupCheck {
+            file: Zeroizing::new(vec![b'-'; 64]),
+            typed,
+        };
+        drawn(&mut app, View::new(ScreenId::BackupCheckEntry, Note::None));
+        play(&mut app, &[Key::Key2]);
+        assert_eq!(app.hal.last().id, ScreenId::Home);
+        assert!(app.keeps_wiped());
+    }
+
+    #[test]
     fn the_dice_picker_is_blank_after_each_confirm() {
         let mut app = booted();
         let session = new_session(None, SeedLength::Words12, Mode::DiceOnly)

@@ -5523,6 +5523,15 @@ amended; rules 5, 6)**
   (`back_on_the_code_grid_keeps_the_check_and_its_url_and_wipes_the_code` and `check_restarts` both walk it). It is
   new text on a Public screen, so the M3 Review lists it among the copy changes the owner sees in the captures
   (`code-wrong`).
+  Proof (review fix, commit 19c): nothing checked that KEY2 keeps a kept `Wiped` (Q26; swb:146, "so a timeout does
+  not lower the minimum"). `check_restarts` walks KEY2 before its first collision, and the Match found after it
+  keeps a `Wiped` of its own; the unit tests above keep none. In a scratch copy, `self.held.kept = None` added to
+  `code_back` or to `entry_back` passed `cargo test -p keepcrypt-pi` and both configurations of pi-sim.
+  `back_on_either_grid_keeps_the_kept_wiped_and_its_99_roll_restart` keeps a collision's `Wiped` with its restart
+  sealed: Check now, the actions, code-entry, KEY2 gives check-actions with the `Wiped` kept; the idle warning and
+  wipe (two ticks) give idle-wiped, nothing held, and the next session needs 99 rolls; KEY2 on backup-check-entry
+  then gives home with the `Wiped` still kept. Each of the two mutants fails it (`cargo test -p keepcrypt-pi
+  --locked`: 112 passed on the fix).
 
 **16. The simulator's strip (a lead decision between Q30 (h) and Q33 (j); the strip's part of group 12's open item)**
 - [x] `ui/render.rs`: in a simulator build the top strip reads "SIMULATOR · NOT FOR REAL FUNDS" when the simulator
@@ -5631,6 +5640,7 @@ amended; rules 5, 6)**
   - from code-entry to check-actions with the same check and nonce and the typed code cleared, after which Match
     found still reports the collision and the restart needs 99 rolls;
   - from backup-check-entry to home with nothing held, and the file left on the stick;
+  - on either grid, a kept `Wiped` stays kept (Q26), so an idle wipe after KEY2 still leaves a 99-roll restart;
   - no KEY2 on readback-entry or bip39-entry, and every footer within 240 px.
 
   Proof: group 15's unit tests, `check_restarts`, `check_backup`, the dead-key probes.
@@ -5860,6 +5870,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
 19. pi/app, pi/sim: KEY2 "back" on code-entry and backup-check-entry, the grids' footer labels that fit with it, unit
     tests, `check_restarts` and `check_backup` (group 15).
     19b. tasks/todo.md: the plan review: group 15 records code-wrong's new text, which names KEY2's way back.
+    19c. pi/app: the security review: KEY2 on either back grid keeps a kept `Wiped`, so an idle wipe after it still
+    restarts at 99 rolls.
 20. pi/app, pi/sim: the simulator's strip reads "SIMULATOR · NOT FOR REAL FUNDS" alone and "SIMULATOR" beside "TEST
     REGISTRY" (group 16; a lead decision).
     20b. tasks/todo.md: the plan review: group 12's commit-14 proof points at commit 20 for the strip's wording, not
