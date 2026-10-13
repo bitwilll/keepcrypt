@@ -5278,8 +5278,9 @@ carries it, and every commit names a proof that runs at that commit.
   host stand-in, `aarch64-apple-darwin`, with `--features keepcrypt-core/test-registry`: `--artifact` gives the
   registry marker and `TestKey` (exit 1), no stub marker, `_getentropy` imported; `KC_SIMULATOR_DO_NOT_SHIP` is in the
   binary, and with group 13's marker list the same scan gives exactly the three expected hits. Without the test key
-  it scans clean. The strip reads "SIMULATOR" (Q33 (j); pi/app's renderer), not "SIMULATOR · NOT FOR REAL FUNDS",
-  which cannot share the strip with "TEST REGISTRY" (until commit 20, below); the placeholder carries no strip.
+  it scans clean. Until commit 20 (below) the strip read "SIMULATOR" in both configurations (Q33 (j); pi/app's
+  renderer). "SIMULATOR · NOT FOR REAL FUNDS" cannot share the strip with "TEST REGISTRY"; the placeholder carries no
+  strip.
   Proof (review fix, commit 13h): "scans clean" was commit 14's scan, before group 13 put `KC_SIMULATOR_DO_NOT_SHIP`
   on the marker list; since commit 15 that build gives exactly the simulator marker (group 13's proof).
   Proof (review fix, commit 14b): a refused command line or input line made `main` return an error, which std printed
@@ -5853,6 +5854,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     tests, `check_restarts` and `check_backup` (group 15).
 20. pi/app, pi/sim: the simulator's strip reads "SIMULATOR · NOT FOR REAL FUNDS" alone and "SIMULATOR" beside "TEST
     REGISTRY" (group 16; a lead decision).
+    20b. tasks/todo.md: the plan review: group 12's commit-14 proof points at commit 20 for the strip's wording, not
+    for its width.
 21. tasks/todo.md: the M3 Review, with pasted proof, the owner's verdict on the captures and the gate report.
 
 Review fixes are listed as N.b entries under the commit they amend.
