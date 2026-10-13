@@ -4877,6 +4877,17 @@ carries it, and every commit names a proof that runs at that commit.
   fingerprint 73c5da0a and Seal ID 5E0G7J6X; "Registrations: 1, as of 2026-03-01" with `with-vector-1` loaded, no
   count without; the re-check QR is `.../check#t=<vector-1's T>`; the words behind the gate; Done drops the backup;
   `zoo-24` opens to 244c267a with ZOO 2048.
+  Proof (review fix, commit 12c): the only refusal typed was "zzzz", which `from_first_four` refuses before
+  `decrypt_backup` runs, so a wrong passphrase (a Q25 refusal) had no test: a mutant halting on it passed both
+  configurations, as did mutants dropping a USB fault from usb-pick, reading a `.age` up to the snapshot limit and
+  counting a missing seal as one registration. `check_backup` now also types zoo-24's first fours against abandon-12:
+  the wait screen, then `backup-check-entry` with "the passphrase does not open this backup", the entry emptied
+  ("word 1 of 8") and the backup still held; then a pulled stick (`Fault::Removed`) on Check a backup shows "the USB
+  stick was removed" on usb-pick, and an 8,193-byte `.age` picked there shows "the file on the USB stick is too
+  large"; and zoo-24's result shows "Registrations: 0, as of 2026-03-01" with `with-vector-1` loaded (registry
+  configuration; release: no count). It passes in both configurations (release: 183 steps, 523 presents; registry:
+  193 steps, 530 presents), and each of the four mutants, in a scratch copy, fails it (the count's in the registry
+  configuration).
 
 **10. pi/app Snake (Q27; pi-firmware.md:132-138; rule 1)**
 - [ ] `games/snake.rs` and `games/mod.rs`:
@@ -5338,6 +5349,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     `wipes_clear_the_stage` (group 9).
     12b. pi/sim: the plan and recompute reviews: `dice_24_code` proves step 11's read-back, verify and removal of the
     file just written, and the passphrase generated once.
+    12c. pi/sim: the plan and recompute reviews: `check_backup` refuses a wrong passphrase, names a USB fault and a
+    backup over 8 KiB, and counts zero registrations.
 13. pi/app, pi/sim: Snake; `mixed_12_restarts` in full, the verify.py tie, `every_screen_is_expected`,
     `drill_12_repeats` and `capture_set` (groups 10, 11).
 14. pi/sim: the interactive bin (group 12).

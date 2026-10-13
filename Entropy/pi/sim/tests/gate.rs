@@ -1473,10 +1473,12 @@ fn wipes_clear_the_stage() -> Scenario {
 }
 
 /// Home's About (Q33 (i)) and "Check a backup" (Q32 (b), Q33 (l)): an unrecognised entry is
-/// refused with core's text and the screen's own instruction under it; abandon-12's passphrase,
-/// typed by first fours, opens it to backup.json's fingerprint; with a snapshot loaded (registry
-/// configuration), its seal's registration count as of the snapshot's date; the re-check QR and
-/// the words on request; zoo-24's words.
+/// refused with core's text and the screen's own instruction under it, and a wrong passphrase with
+/// core's text, the entry emptied and the backup kept; abandon-12's passphrase, typed by first
+/// fours, opens it to backup.json's fingerprint; with a snapshot loaded (registry configuration),
+/// its seal's registration count as of the snapshot's date; the re-check QR and the words on
+/// request; a USB fault, and a backup over 8 KiB, named on usb-pick; zoo-24's words, its seal
+/// never registered.
 fn check_backup(config: Config) -> Scenario {
     let key_state = match config {
         Config::Release => "Registry key: none pinned in this build",
@@ -1486,6 +1488,7 @@ fn check_backup(config: Config) -> Scenario {
     let (zoo, zoo_passphrase) = age_file("zoo-24");
     let mut wrong = first_fours(&abandon_passphrase);
     wrong[0] = String::from("zzzz");
+    let zoo_typed = first_fours(&zoo_passphrase);
     let abandon_fingerprint = plaintext_fingerprint("abandon-12");
     let zoo_fingerprint = plaintext_fingerprint("zoo-24");
     let recheck = format!("{ORIGIN}/check#t={}", seed("vector-1", "seal_tag_hex"));
@@ -1510,19 +1513,21 @@ fn check_backup(config: Config) -> Scenario {
         }
         Config::Release => chain(vec![home(CHECK_A_BACKUP), insert_stick(stick)]),
     };
-    let registrations = Assert(
-        "with a snapshot loaded, the count as of its date; with none, no count",
-        Box::new(move |seen| {
-            let count = shows(seen.matched, "Registrations: 1, as of 2026-03-01");
-            let any = texts(seen.matched)
-                .iter()
-                .any(|t| t.starts_with("Registrations"));
-            match config {
-                Config::Registry => count,
-                Config::Release => !any,
-            }
-        }),
-    );
+    let registrations = move |count: u32| {
+        Assert(
+            "with a snapshot loaded, the count as of its date; with none, no count",
+            Box::new(move |seen| {
+                let shown = format!("Registrations: {count}, as of 2026-03-01");
+                let any = texts(seen.matched)
+                    .iter()
+                    .any(|t| t.starts_with("Registrations"));
+                match config {
+                    Config::Registry => shows(seen.matched, &shown),
+                    Config::Release => !any,
+                }
+            }),
+        )
+    };
     Scenario {
         name: "check_backup",
         hwrng: HwRngStream::Counting,
@@ -1572,6 +1577,20 @@ fn check_backup(config: Config) -> Scenario {
                     }),
                 ),
             ],
+            // A passphrase of valid first fours that does not open it: another file's.
+            entries(&zoo_typed),
+            vec![
+                Expect(ScreenId::Wait),
+                Expect(ScreenId::BackupCheckEntry),
+                Assert(
+                    "a wrong passphrase returns to entry, emptied, with core's text; the backup stays",
+                    Box::new(|seen| {
+                        shows(seen.matched, &CoreError::WrongPassphrase.to_string())
+                            && shows(seen.matched, "Backup passphrase, word 1 of 8")
+                            && seen.app.holds_secrets()
+                    }),
+                ),
+            ],
             entries(&first_fours(&abandon_passphrase)),
             vec![
                 Expect(ScreenId::Wait),
@@ -1584,7 +1603,7 @@ fn check_backup(config: Config) -> Scenario {
                     "the Seal ID is vector-1's",
                     format!("Seal ID {}", seal_id("vector-1")),
                 ),
-                registrations,
+                registrations(1),
                 // 3. The re-check QR on request: T only.
                 key(Key::Press),
                 Expect(ScreenId::BackupCheckRecheckQr),
@@ -1616,7 +1635,37 @@ fn check_backup(config: Config) -> Scenario {
                     Box::new(|seen| !seen.app.holds_secrets()),
                 ),
             ],
-            // 5. zoo-24: ZOO 2048.
+            // A USB fault is named on usb-pick, and so is a backup over 8 KiB, which its read
+            // refuses (rule 8); Back returns Home from both.
+            home(CHECK_A_BACKUP),
+            vec![
+                Expect(ScreenId::UsbInsert),
+                Step::Fault(Fault::Removed),
+                Wait(STICK_SECONDS),
+                Expect(ScreenId::UsbPick),
+                latest_shows(
+                    "a USB fault is the HAL's text",
+                    HalError::Removed.text().to_owned(),
+                ),
+                key(Key::Key1),
+                Expect(ScreenId::Home),
+            ],
+            home(CHECK_A_BACKUP),
+            insert_stick(vec![("zz-oversized.age", vec![b'-'; 8 * 1024 + 1])]),
+            vec![
+                Expect(ScreenId::UsbPick),
+                key(Key::Down),
+                key(Key::Down),
+                key(Key::Press),
+                Expect(ScreenId::UsbPick),
+                latest_shows(
+                    "a backup over 8 KiB is refused by its read",
+                    HalError::TooLarge.text().to_owned(),
+                ),
+                key(Key::Key1),
+                Expect(ScreenId::Home),
+            ],
+            // 5. zoo-24: ZOO 2048, a seal with no registration.
             home(CHECK_A_BACKUP),
             stick_still_in(),
             vec![
@@ -1627,7 +1676,7 @@ fn check_backup(config: Config) -> Scenario {
                 key(Key::Press),
                 Expect(ScreenId::BackupCheckEntry),
             ],
-            entries(&first_fours(&zoo_passphrase)),
+            entries(&zoo_typed),
             vec![
                 Expect(ScreenId::Wait),
                 Expect(ScreenId::BackupCheckResult),
@@ -1635,6 +1684,7 @@ fn check_backup(config: Config) -> Scenario {
                     "the fingerprint is backup.json's",
                     format!("Fingerprint {zoo_fingerprint}"),
                 ),
+                registrations(0),
                 key(Key::Down),
                 key(Key::Press),
                 Expect(ScreenId::PrivacyGate),
