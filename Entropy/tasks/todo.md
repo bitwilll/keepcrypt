@@ -5143,6 +5143,12 @@ carries it, and every commit names a proof that runs at that commit.
   keeps its output in memory: exit 0, the 12 insert lines' words equal the inserts shown, and the seal-id line's
   Seal ID equals the seal-id page's. The assertion's message is fixed, so nothing is printed. It passes in both
   configurations, and the C-zeros mutant (Steps 4-6) fails it.
+  Proof (review fix, commit 13f): output that was not UTF-8 panicked through `expect`, whose message is the error's
+  `Debug`: every byte of the output, the words and the Seal ID among them. It now fails the assertion's fixed message
+  instead, the bytes kept in a `Zeroizing` buffer and read in place. In a scratch copy with verify.py swapped for a
+  script printing an insert line, a seal-id line and a 0xff byte, the test printed those bytes before and now prints
+  only the fixed message (release configuration: "step 209: verify.py mixed recomputes the words and the Seal ID shown
+  from C, D and the rolls").
 - [x] `wipes_clear_the_stage` (both configs): for one Protected screen of each `Stage` variant that holds a secret
   (`readback-entry`, `backup-passphrase`, `bip39-entry`, the words of a checked backup, `backup-check-entry`), a
   Buttons fault and, separately, a 600 s wait. After each: `holds_secrets()` is false, a black frame was presented, and
@@ -5600,6 +5606,7 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     one call site, Snake open or closed.
     13e. pi/app: the recompute review: Snake meets each of the four walls, and a second steer before a step cannot
     turn into the neck.
+    13f. pi/sim: the security review: verify.py output that is not UTF-8 fails the tie's fixed message, never printed.
 14. pi/sim: the interactive bin (group 12).
 15. scripts, core: the Shell category, the hash ban with pool.rs's `BTreeSet`, the pi/app forbid lines, the simulator
     marker, Q31 (h)'s routes, and fixtures (group 13).

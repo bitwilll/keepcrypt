@@ -646,7 +646,12 @@ fn verify_py_tie(rolls: String) -> Step {
                 .write_all(input.as_bytes())
                 .expect("the input is written");
             let output = verify.wait_with_output().expect("verify.py ends");
-            let stdout = Zeroizing::new(String::from_utf8(output.stdout).expect("UTF-8"));
+            // Output that is not UTF-8 fails the fixed message: a panic with the error would print
+            // the words.
+            let stdout = Zeroizing::new(output.stdout);
+            let Ok(stdout) = std::str::from_utf8(&stdout) else {
+                return false;
+            };
             let inserts: Vec<&str> = stdout
                 .lines()
                 .filter_map(|line| line.strip_prefix("insert: ")?.split_whitespace().nth(7))
