@@ -5701,6 +5701,10 @@ amended; rules 5, 6)**
   strings) zipped as target/tmp/pi-sim-captures/registry-review.zip, 145,436 bytes, SHA-256
   `2d9a083f4fa4ad7dc1cba9d80dc60ef84e2245f7da26ae2818a479ad2bd0227d`. Awaiting the owner: the zip is sent, the owner's
   QR scan record and verdict come in a later commit, and then the gate report's last line.
+  Recorded (review fix, commit 22f): review.html's own SHA-256,
+  `2cb7c72f522a7b8e8290fafc2842f68c48b1883963a606fa8d5907c4e5701e1b`, so the record does not rest on the zip's bytes
+  alone; the zip's full recipe is under "M3: local proof", where the recompute review found the description too
+  loose to reproduce 2d9a083f... (deflate's level and the entries' attributes were not given).
 
 **Deferred, with their milestone**
 - **M4:**
@@ -6127,6 +6131,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     gate.rs's module doc say that `capture_set` reads back the PNG files it wrote and writes review.html.
     22e. tasks/todo.md: the plan review: the gate status has button handling met but for the QR and info pages' KEY1
     "back", an open item of the gate for the owner.
+    22f. tasks/todo.md: the recompute review: the review zip's full recipe, and review.html's SHA-256 in group 17's
+    record.
 
 Review fixes are listed as N.b entries under the commit they amend.
 
@@ -8054,8 +8060,11 @@ review.html   17,409 bytes, 72 rows, 72 copies in review/ (12 MB): each of the 6
               dice_24_code, wipes_clear_the_stage, check_restarts), the re-check URL (check_backup), 4 collision
               reports (dice-50's, in drill_12, skip_and_idle, wipes_clear_the_stage and check_restarts), the
               account UR, the descriptors (one QR code, two lines) and the registration (dice_24_code)
-registry-review.zip, next to the folder: review.html and review/, 73 files, 145,436 bytes, names sorted, times
-              fixed at 1980-01-01, deflate (a scratch script, so the same files give the same bytes)
+registry-review.zip, next to the folder: review.html and review/, 73 files, 145,436 bytes, made with Python's
+              zipfile so that the same files give the same bytes: review.html first, then review/'s 72 names
+              sorted; each a ZipInfo with date_time (1980, 1, 1, 0, 0, 0), compress_type ZIP_DEFLATED and
+              external_attr 0o644 << 16, written by writestr with compresslevel 9 (22f; python3 3.12.5 and
+              /usr/bin/python3 3.9.6 give the same bytes from the files on disk)
               SHA-256 2d9a083f4fa4ad7dc1cba9d80dc60ef84e2245f7da26ae2818a479ad2bd0227d
 ```
 
