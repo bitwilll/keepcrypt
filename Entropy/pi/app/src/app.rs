@@ -1455,7 +1455,10 @@ mod tests {
         app.redraw().expect("drawn");
         app.entry_typed().expect("a refusal, not a halt");
         assert_eq!(app.view.id, ScreenId::BackupCheckEntry);
-        assert_eq!(app.view.cursor, 0, "the emptied entry's cursor is back on 'a'");
+        assert_eq!(
+            app.view.cursor, 0,
+            "the emptied entry's cursor is back on 'a'"
+        );
         assert!(matches!(
             app.view.note,
             Note::Refused(Refusal::Core(CoreError::Backup(
