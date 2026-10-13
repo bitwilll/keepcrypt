@@ -5686,9 +5686,17 @@ amended; rules 5, 6)**
   Open (M3 Review, 2026-10-14): the 45 N.b review fixes of stages A to D2 are listed under "M3: local proof". The
   findings' severities, and so "every high and medium finding is fixed", are in the stage reviews' reports, which this
   file does not hold; the lead records them.
-- [ ] The registry-config capture set and its review page (a lead decision, commit 21: the full set is about 11,600
-  PNG files, 1.9 GB, too many for the owner to page through or to receive). review.html with review/, zipped, is
-  sent to the owner and is the owner's working view; the full set and index.html are the record.
+  Recorded (lead, 2026-10-14, from the stage workflows' journals): no high finding in any M3 stage. Medium findings:
+  A (commits 2-6) 0; B (7-10) 5; C (11-12) 8; D (13-17) 4; D2 (18-20) 2; E (21-22) 5. All are fixed but two of B's,
+  which wait for the owner (gate status): the QR and info pages' KEY1 "back", and the entry grids with no way out,
+  which the owner's KEY2 decision closed for code-entry and backup-check-entry (C's three mediums on the same trap)
+  and which bip39-entry still has. E's two mediums on Q30 (g) are closed by sending the full set as approved (below).
+  The box stays open until the owner decides those two.
+- [ ] The registry-config capture set and its review page, zipped and sent to the owner with its index (Q30 (g)).
+  The review page (commit 21) is the owner's working view inside the zip; the full set and index.html are the record.
+  Corrected (lead, 2026-10-14): commit 21 planned to send only review.html and review/, as the full set is 1.9 GB
+  on disk, but its PNG files are stored uncompressed and the whole set zips to 22.8 MB, so the owner gets the full
+  set as Q30 (g) approved, review page included, plus the small review zip for convenience.
   - Under Review: `git rev-parse HEAD`, an empty `git status --porcelain`, the configuration, the zip's SHA-256 and
     index.html's (which lists every PNG file's).
   - The owner scans every QR capture on the review page with a phone (check, register, collision report, re-check,
@@ -5701,6 +5709,11 @@ amended; rules 5, 6)**
   strings) zipped as target/tmp/pi-sim-captures/registry-review.zip, 145,436 bytes, SHA-256
   `2d9a083f4fa4ad7dc1cba9d80dc60ef84e2245f7da26ae2818a479ad2bd0227d`. Awaiting the owner: the zip is sent, the owner's
   QR scan record and verdict come in a later commit, and then the gate report's last line.
+  Recorded (lead, 2026-10-14): the full set, zipped from the same files on disk (index.html SHA-256 430a6d79...,
+  review.html 2cb7c72f..., unchanged since the b74b0eb run): target/tmp/pi-sim-captures/registry-full.zip, 11,692
+  entries under `registry/` (index.html and review.html first, then every other file's path sorted, review/ among
+  them), with the review zip's recipe otherwise, 22,758,419 bytes, SHA-256
+  `662455b82cd301186e99801883ab7f3600f88f1df7657ce16a5e80c93a37a42c`. Both zips go to the owner.
   Recorded (review fix, commit 22f): review.html's own SHA-256,
   `2cb7c72f522a7b8e8290fafc2842f68c48b1883963a606fa8d5907c4e5701e1b`, so the record does not rest on the zip's bytes
   alone; the zip's full recipe is under "M3: local proof", where the recompute review found the description too
@@ -6133,6 +6146,9 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     "back", an open item of the gate for the owner.
     22f. tasks/todo.md: the recompute review: the review zip's full recipe, and review.html's SHA-256 in group 17's
     record.
+    22g. tasks/todo.md: the lead: the full capture set zipped for the owner as Q30 (g) approved, the stage reviews'
+    severity tally, and three open items for the owner (bip39-entry's way out, KEY1 on the QR and info pages, and
+    CLAUDE.md rule 10's simulator marker).
 
 Review fixes are listed as N.b entries under the commit they amend.
 
@@ -8212,9 +8228,10 @@ out. b74b0eb and this commit run in CI after the next push; b74b0eb adds one tes
    KEY2 dead. Commits: d2877f3 (18: docs and this plan, no code), 91135c9 (19), a91fb6d (19b), e20e206 (19c: a kept
    `Wiped` stays kept), 1d5842d (19d: offered empty, at word 8 and after a refusal) and 0cdfc8a (19e: offered with all
    8 symbols typed).
-7. The review page (commit 21, b74b0eb; groups 11 and 17). The full set is about 11,600 PNG files (1.9 GB), too many
-   for the owner to page through or to receive, so capture_set also writes review/ and review.html, the owner's
-   working view; the full set and index.html stay the record. Readings taken: "the first capture of every screen" is
+7. The review page (commit 21, b74b0eb; groups 11 and 17). The full set is about 11,600 PNG files, too many for the
+   owner to page through, so capture_set also writes review/ and review.html, the owner's working view; the full set
+   and index.html stay the record. The owner still receives the full set zipped, as Q30 (g) approved: it zips to
+   22.8 MB (the PNG files are stored uncompressed), so this is an aid, not a replacement (lead, 2026-10-14). Readings taken: "the first capture of every screen" is
    the first one drawn as is, and the first capture only when every capture of that screen is a placeholder (only
    reveal-d's are, beside its specimen); a string is listed only for a Public QR code or a vector run's Protected one,
    so the two throwaway collision reports (`runtime_stop`, `mixed_12_restarts`), which are placeholders, are not on
@@ -8290,8 +8307,9 @@ drives a full ceremony in the simulator; you review the screen captures".
   - Snapshot import mocked: `with-dice-50` drives both the collision and the clear result in the registry
     configuration, a tampered snapshot is refused, and release builds show `NoRegistryKey`'s text.
 - You review the screen captures: open. The registry configuration's capture set at b74b0eb (11,618 PNG files,
-  index.html SHA-256 430a6d79...) and its review page (review.html and review/, zipped: 145,436 bytes, SHA-256
-  2d9a083f...) are ready to send. Awaiting the owner's QR scan record and verdict.
+  index.html SHA-256 430a6d79...), zipped whole with its review page (22,758,419 bytes, SHA-256 662455b8...), and the
+  review page alone (145,436 bytes, SHA-256 2d9a083f...) are sent to the owner. Awaiting the owner's QR scan record
+  and verdict.
 - Also met: runtime failures halt with nothing held (Q25); the 99-roll minimum holds through Stop, Cannot check, the
   idle wipe and KEY2, and only Ready (Skip or a passed check), a halt or a power cycle drops it (Q26); Protected
   screens are gated, covered after 30 s and wiped at 10 minutes (Q29); the verify.py tie recomputes the words and
@@ -8307,7 +8325,16 @@ drives a full ceremony in the simulator; you review the screen captures".
   the pushed head. No CI job, required check or ruleset changed; the nine new crates are the approved ones.
 - Open, part of the gate's button handling, for the owner: the QR and info pages offer no KEY1 "back", which
   pi-firmware.md's Buttons table gives them (`KeyMap`'s doc, commit 8c): give those pages KEY1 "back" as the table
-  says, or amend the table to match.
+  says, or amend the table to match. The lead recommends amending the table: most of these pages follow a one-way
+  step (a started check, a wipe, a written backup), and waiting on the privacy gate loses nothing.
+- Open, part of the gate's button handling, for the owner: bip39-entry (step 12, after "Do you use a BIP39
+  passphrase?") has the trap the KEY2 decision closed elsewhere: once there, only a typed passphrase or the idle wipe
+  leaves it, so a mistaken Yes pushes the user to type a passphrase they do not use. Stage B's review named it; the
+  lead left it out of the 2026-10-13 question. The lead recommends KEY2 "back" to bip39-ask, the typed text wiped.
+- Open, for the owner: CLAUDE.md rule 10 names the test-sources and test-registry markers but not the simulator's
+  (stage B's review). The lead proposes adding: "The Pi simulator (`pi/sim`), with its fake hwrng and stick, never
+  ships: every simulator build embeds `KC_SIMULATOR_DO_NOT_SHIP`, and CI fails any release artifact that contains
+  it." Commit 15 already enforces this; only the rule's text is missing.
 - Open items; none is part of the gate:
   - for the owner: when braille Tetris comes to the Pi (Q27 (c)): M4, right after M3, or with the phones (M5, M6).
   - low: Python `random` reached through a dotted import (for example `import jax.random`) is not caught by the
