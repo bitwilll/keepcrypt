@@ -123,10 +123,16 @@ cargo test --workspace --locked      # the release configuration: no test featur
 cargo test -p keepcrypt-core --locked --features test-sources   # stub, fault-injection and test-registry tests,
                                      # and the agreement test, which replays vectors/agreement.json on stub entropy
 # Test features are switched on only like this, with -p, never in a manifest (canaries.sh enforces it).
+# The Pi simulator (pi/sim; `cargo test --workspace` above is its release configuration):
+cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry   # the gate run, full drill
+cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry --test gate -- --ignored --exact capture_set   # captures in target/tmp/pi-sim-captures/
+cargo run -p keepcrypt-pi-sim --locked -- live --out target/pi-sim-live   # Protected screens are placeholders;
+                                     # one input a line on stdin: w a s d, an empty line (press), 1 2 3, tN (N s, no key)
 cargo llvm-cov --locked -p keepcrypt-core --features test-sources --no-cfg-coverage --fail-under-lines 95 --summary-only
                                      # cargo-llvm-cov 0.9.1; the M1 gate is 95% of core's lines
-TRYBUILD=overwrite cargo test -p keepcrypt-core --test typestate   # only after a toolchain or trybuild bump:
-                                     # regenerates the pinned .stderr files; review the diff
+TRYBUILD=overwrite cargo test -p keepcrypt-core --locked --test typestate   # only after a toolchain or trybuild bump,
+                                     # or an owner-approved API change (M3's borrowing restart): regenerates the
+                                     # pinned .stderr files; review the diff
 cargo deny --locked check && cargo audit && cargo vet --locked   # plain `cargo vet` re-fetches imports
 scripts/check-path-deps.sh           # every non-workspace crate comes from crates.io (no path or git overrides)
 python3 -I tools/verify/vectorgen.py --selftest   # 13 checks; also with /usr/bin/python3 -I (3.9, the floor)

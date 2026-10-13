@@ -5299,6 +5299,17 @@ carries it, and every commit names a proof that runs at that commit.
   ```
   CLAUDE.md rule 1 names `game_random` and says it is never used for dice, D, nonces, passphrases or any pool input
   (Q27).
+
+  Proof (commit 17; the box stays open until the runs are under Review, as M2's Commands item did): the three lines
+  as planned, under a header naming `cargo test --workspace` as the simulator's release configuration, with live
+  mode's stdin inputs on a continuation line. The `TRYBUILD=overwrite` line gains `--locked` (commit 4's command) and
+  also allows an owner-approved API change (M3's borrowing restart; lead decision). Rule 1 is unchanged: since commit
+  6 (28a0c5d) it names `game_random`, its own `getrandom` call, no pool, and never dice, D, nonces, passphrases or any
+  pool input (Q27 (a)). Run as written: the registry-config run passes (gate 16 passed and 1 ignored, hal 6, live 2,
+  units 36 and 3; 15 s); `capture_set` passes in 216 s, writing 11,528 PNG files and `index.html` under
+  `target/tmp/pi-sim-captures/registry/`; the live run, fed live.rs's 111-line session on stdin, exits 0 and prints
+  only screen ids, 140 of them (`boot` to `idle-wiped`), leaving `target/pi-sim-live/` holding only `live.png`; the
+  `TRYBUILD=overwrite` run passes all 23 fixtures and leaves `core/tests/compile_fail/` unchanged.
 - [ ] Runtime budgets, measured against group 0's baseline:
   - `test` grows by at most 6 minutes;
   - `gates` stays within 10 minutes (12 if Q31 (f)'s fallback is approved);
