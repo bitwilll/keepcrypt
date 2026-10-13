@@ -405,6 +405,10 @@ pub struct App<H: Hal> {
     /// Where Snake's bytes come from: core's game call (`games::GAME_BYTES`), handed to the game
     /// and never called here.
     game_bytes: GameBytes,
+    /// Keys handed to the pool, counted where `key` hands them over: the unit tests' view of the
+    /// app's one `add_extra` call.
+    #[cfg(test)]
+    extras: usize,
 }
 
 impl<H: Hal> App<H> {
@@ -435,6 +439,8 @@ impl<H: Hal> App<H> {
             idle,
             next_block_ns: 0,
             game_bytes: GAME_BYTES,
+            #[cfg(test)]
+            extras: 0,
         }
     }
 
@@ -544,6 +550,10 @@ impl<H: Hal> App<H> {
             &mut self.held.stage,
         ) {
             session.add_extra(source, &bytes);
+            #[cfg(test)]
+            {
+                self.extras += 1;
+            }
         }
         if self.keys.label(key).is_none() {
             return Ok(());
@@ -1083,7 +1093,7 @@ impl<H: Hal> App<H> {
 mod tests {
     use std::collections::VecDeque;
 
-    use keepcrypt_core::{BackupFile, ExtraSource, SourceFault};
+    use keepcrypt_core::{BackupFile, SourceFault};
 
     use super::*;
     use crate::hal::{Buttons, Clock, Display, FileKind, FileName, HwRng, Usb, Written};
@@ -1739,26 +1749,73 @@ mod tests {
 
     #[test]
     fn every_key_in_step_4_reaches_the_pool_with_snake_open_or_closed() {
-        // The app's one call site hands `extra_for` the stage's kind and the plan's mode: with
-        // Snake closed, open, played and left, every key is forwarded.
-        let forwarded = |app: &App<Fake>| {
-            Key::ALL.into_iter().all(|key| {
-                let event = Event::Key { key, at_ns: 7 };
-                extra_for(app.held.stage.kind(), app.held.plan.mode, event)
-                    == Some((ExtraSource::InputTiming, 7u64.to_be_bytes()))
-            })
-        };
+        // Every key, offered or not, through the app's one call site: Snake closed, open, its
+        // round over, and left; then Continue. The keys pressed in the session's next stage reach
+        // nothing.
         let mut app = step_4();
-        assert!(forwarded(&app), "Snake closed");
-        play(&mut app, &[Key::Press]);
+        let mut pressed = 0;
+        let mut forward = |app: &mut App<Fake>, keys: &[Key], when: &str| {
+            play(app, keys);
+            pressed += keys.len();
+            assert_eq!(app.extras, pressed, "{when}");
+        };
+        let dead = [
+            Key::Up,
+            Key::Down,
+            Key::Left,
+            Key::Right,
+            Key::Key1,
+            Key::Key2,
+            Key::Key3,
+        ];
+        forward(&mut app, &dead, "Snake closed");
+        forward(&mut app, &[Key::Press], "Snake opened");
         assert_eq!(app.view.id, ScreenId::GameSnake);
-        assert!(forwarded(&app), "Snake open");
-        play(&mut app, &[Key::Down, Key::Left]);
-        block(&mut app);
-        assert!(forwarded(&app), "Snake played");
-        play(&mut app, &[Key::Key1]);
+        let steer = [Key::Down, Key::Left, Key::Right, Key::Up];
+        forward(&mut app, &steer, "Snake steered");
+        forward(&mut app, &[Key::Press, Key::Key2, Key::Key3], "Snake open");
+        for _ in 0..10 {
+            block(&mut app);
+        }
+        assert!(matches!(&app.view.note, Note::Game(snake) if snake.over()));
+        forward(&mut app, &steer, "Snake's round over");
+        forward(&mut app, &[Key::Key2, Key::Key3, Key::Key1], "Snake left");
         assert_eq!(app.view.id, ScreenId::Hwrng);
-        assert!(forwarded(&app), "Snake left");
+        forward(&mut app, &dead, "Snake closed again");
+        while app.block_wanted() {
+            block(&mut app);
+        }
+        forward(&mut app, &[Key::Press], "Continue");
+        assert_eq!(app.view.id, ScreenId::Commitment);
+        play(&mut app, &[Key::Up, Key::Key3]);
+        assert_eq!(app.extras, pressed, "committed");
+    }
+
+    #[test]
+    fn no_dice_only_key_reaches_the_pool() {
+        // Dice-only step 4 is the notice, in Collecting: no key reaches the pool, Continue
+        // included.
+        let mut app = booted();
+        app.held.plan = Plan {
+            len: SeedLength::Words12,
+            mode: Mode::DiceOnly,
+        };
+        let session = new_session(None, SeedLength::Words12, Mode::DiceOnly).expect("a session");
+        app.held.stage = Stage::Collecting(session);
+        drawn(&mut app, View::new(ScreenId::DiceOnlyNotice, Note::None));
+        let keys = [
+            Key::Up,
+            Key::Down,
+            Key::Left,
+            Key::Right,
+            Key::Key1,
+            Key::Key2,
+            Key::Key3,
+            Key::Press,
+        ];
+        play(&mut app, &keys);
+        assert_eq!(app.view.id, ScreenId::Dice);
+        assert_eq!(app.extras, 0);
     }
 
     #[test]

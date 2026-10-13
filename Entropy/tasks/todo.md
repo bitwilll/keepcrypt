@@ -4628,6 +4628,14 @@ carries it, and every commit names a proof that runs at that commit.
   `a_game_byte_error_placing_food_after_a_bite_halts_holding_nothing` (food at (9, 6), then the failing source for the
   next block) now end on the same halt, and in a scratch copy each of the three mutants fails its test. The fake HAL
   serves a tick at the app's deadline, so the unit tests' step 4 blocks go through `step`, as the device's do.
+  Proof (review fix, commit 13d): `every_key_in_step_4_reaches_the_pool_with_snake_open_or_closed` recomputed
+  `extra_for` from the stage's kind and the plan's mode, so deleting the app's `add_extra` call, or skipping it while
+  game-snake shows, passed every test. The app now counts, in unit-test builds only, the keys its one call site hands
+  to `add_extra`, and the test presses every key, offered or not, with Snake closed, open, its round over and left,
+  then Continue: each is counted once, and none on the commitment; `no_dice_only_key_reaches_the_pool` counts none on
+  dice-only's notice. In a scratch copy, the call skipped on game-snake, the call removed with its count and the call
+  site handing `extra_for` `Mode::Mixed` each fail; the call deleted alone leaves `source`, `bytes` and `session`
+  unused, which both clippy runs refuse.
 - [x] Screen inventory (`ScreenId::ALL`, the coverage target; * marks transient ids):
 
   | Steps | Public | Protected |
@@ -5582,6 +5590,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     field is private to `games`).
     13c. pi/app: the recompute review: a game byte error halts where Snake opens and where a step places food, not
     only at play again.
+    13d. pi/app: the security and recompute reviews: the keys step 4 hands to `add_extra` are counted at the app's
+    one call site, Snake open or closed.
 14. pi/sim: the interactive bin (group 12).
 15. scripts, core: the Shell category, the hash ban with pool.rs's `BTreeSet`, the pi/app forbid lines, the simulator
     marker, Q31 (h)'s routes, and fixtures (group 13).
