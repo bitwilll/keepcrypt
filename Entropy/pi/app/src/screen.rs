@@ -343,7 +343,8 @@ impl ScreenId {
     }
 
     /// Every key this screen can ever offer, with its label. A model may offer fewer
-    /// (`Screen::without`), never more.
+    /// (`Screen::without`), never more, and may name an offered key's action differently where it
+    /// differs (`Screen::relabel`).
     pub const fn key_map(self) -> KeyMap {
         self.row().3
     }
@@ -550,6 +551,15 @@ impl<'a> Screen<'a> {
     /// This model with `key` dead, for a key `id` offers only sometimes.
     pub fn without(mut self, key: Key) -> Self {
         self.keys = self.keys.without(key);
+        self
+    }
+
+    /// This model with `key` labelled `label`, for an offered key whose action differs on this
+    /// model (Press on a checked backup's last insert). A dead key stays dead.
+    pub fn relabel(mut self, key: Key, label: &'static str) -> Self {
+        if self.keys.label(key).is_some() {
+            self.keys = self.keys.with(key, label);
+        }
         self
     }
 
@@ -815,13 +825,21 @@ mod tests {
         assert_eq!(below_minimum.keys().label(Key::Key3), None);
         assert_eq!(below_minimum.keys(), dice.without(Key::Key3));
         assert_eq!(below_minimum.keys().label(Key::Key1), Some("undo"));
+        // A model may name an offered key's action differently, and never makes a dead key live.
+        let checked = Screen::new(ScreenId::WordsInsert, "Seed words", NO_BANNERS)
+            .relabel(Key::Press, "done")
+            .relabel(Key::Up, "move");
+        assert_eq!(checked.keys().label(Key::Press), Some("done"));
+        assert_eq!(checked.keys().label(Key::Up), None);
+        assert_eq!(checked.keys(), words.with(Key::Press, "done"));
     }
 
     #[test]
     fn every_key_map_is_pinned() {
         // Each id's labels in `Key::ALL` order (up, down, left, right, press, KEY1, KEY2, KEY3),
         // "-" for a dead key, so a change to any key map is a reviewed change of this table. The
-        // QR and info pages offer no KEY1 "back" (see `KeyMap`).
+        // QR and info pages offer no KEY1 "back" (see `KeyMap`). One model relabels a key: Press
+        // on a checked backup's last insert is "done" (`screens::ready`, `check_backup`).
         let actual: Vec<String> = ScreenId::ALL
             .into_iter()
             .map(|id| {

@@ -307,7 +307,8 @@ fn header(insert: &Insert<'_>) -> String {
 }
 
 /// The insert view (step 8): one insert of the page `view.page`. Press is offered on the last
-/// insert, and in the ceremony on the insert of a read-back mismatch, which offers nothing else.
+/// insert, and in the ceremony on the insert of a read-back mismatch, which offers nothing else. A
+/// checked backup's words have no read-back: there Press is "done", back to the backup's result.
 fn insert<'a>(page: Page<'a>, stage: &'a Stage, view: &View) -> Result<Screen<'a>, Stop> {
     let inserts = inserts(stage)?;
     let count = inserts.count();
@@ -323,7 +324,7 @@ fn insert<'a>(page: Page<'a>, stage: &'a Stage, view: &View) -> Result<Screen<'a
         cells: faces(&insert),
         pitch: FACE_PITCH,
     };
-    Ok(page
+    let screen = page
         .small(header(&insert))
         .large_in(Class::Protected, insert.word(), Some(LIGHTER_FROM))
         .small_in(Class::Protected, seedbook)
@@ -336,7 +337,11 @@ fn insert<'a>(page: Page<'a>, stage: &'a Stage, view: &View) -> Result<Screen<'a
         .offer(Key::Key1, !reviewing)
         .offer(Key::Key2, !reviewing && view.page > 0)
         .offer(Key::Key3, !reviewing && !last)
-        .done())
+        .done();
+    Ok(match stage {
+        Stage::Checked { .. } => screen.relabel(Key::Press, "done"),
+        _ => screen,
+    })
 }
 
 /// Faces 1-5 of an insert as cells: raised dots, blank faces, face 5 lighter, mirror letters.

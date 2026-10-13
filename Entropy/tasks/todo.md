@@ -4898,6 +4898,13 @@ carries it, and every commit names a proof that runs at that commit.
   configuration; release: no count). It passes in both configurations (release: 183 steps, 523 presents; registry:
   193 steps, 530 presents), and each of the four mutants, in a scratch copy, fails it (the count's in the registry
   configuration).
+  Proof (review fix, commit 12f): the words footer labelled Press "read-back" on a checked backup's last insert,
+  where Press goes back to `backup-check-result`; a model could only drop keys, not rename them, so the footer did not
+  name the action (Q32 (a)). `Screen::relabel` names an offered key's action where a model's differs (a dead key stays
+  dead), and the checked backup's last insert labels Press "done". The test
+  `the_dice_and_words_key_maps_follow_the_buttons_table` pins `relabel`, `every_key_map_is_pinned`'s comment names
+  this one model, `check_backup` asserts "done" there and `dice_24_code` "read-back" on the ceremony's insert 24.
+  Both pass in both configurations; without the relabel, in a scratch copy, `check_backup` fails.
 
 **10. pi/app Snake (Q27; pi-firmware.md:132-138; rule 1)**
 - [ ] `games/snake.rs` and `games/mod.rs`:
@@ -5371,6 +5378,7 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     12d. pi/app, pi/sim: the security review: a USB stick put in restarts the idle timer.
     12e. pi/app, pi/sim: the plan and security reviews: the overview pages on past word 12 only through
     `device-swap`.
+    12f. pi/app, pi/sim: the plan review: a checked backup's last insert labels Press "done", not "read-back".
 13. pi/app, pi/sim: Snake; `mixed_12_restarts` in full, the verify.py tie, `every_screen_is_expected`,
     `drill_12_repeats` and `capture_set` (groups 10, 11).
 14. pi/sim: the interactive bin (group 12).

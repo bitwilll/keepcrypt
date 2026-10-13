@@ -1084,6 +1084,10 @@ fn dice_24_code() -> Scenario {
                     "the press only uncovers the same insert",
                     String::from("Insert 24 · device 2 of 2"),
                 ),
+                Assert(
+                    "on the ceremony's last insert, Press starts the read-back",
+                    Box::new(|seen| seen.latest.keys.label(Key::Press) == Some("read-back")),
+                ),
                 key(Key::Press),
                 Expect(ScreenId::ReadbackEntry),
             ],
@@ -1664,6 +1668,10 @@ fn check_backup(config: Config) -> Scenario {
                 .flat_map(|_| [key(Key::Key3), Expect(ScreenId::WordsInsert)])
                 .collect(),
             vec![
+                Assert(
+                    "a checked backup has no read-back: Press on its last insert is done",
+                    Box::new(|seen| seen.latest.keys.label(Key::Press) == Some("done")),
+                ),
                 key(Key::Press),
                 Expect(ScreenId::BackupCheckResult),
                 key(Key::Down),
