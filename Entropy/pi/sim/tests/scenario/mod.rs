@@ -30,7 +30,9 @@
 //!   and a random seed's words would turn up inside it by chance.
 //! - On request a run keeps each present's frame digest (`Keep::Digests`, for `drill_12_repeats`)
 //!   or writes it as a PNG file (`Keep::Captures`, for `capture_set`), numbered on across power
-//!   cycles, Protected frames as the scenario says (`Scenario::protected`).
+//!   cycles, Protected frames as the scenario says (`Scenario::protected`). A capture also keeps
+//!   the payload of the QR code its file shows as drawn, for the review page; a placeholder's is
+//!   never kept, so no throwaway run's Protected payload is.
 //! - Nothing here prints screen text: `report` gets the scenario's name and counts.
 
 use std::collections::{BTreeMap, VecDeque};
@@ -408,23 +410,28 @@ pub enum Keep {
     Nothing,
     /// The SHA-256 of each frame.
     Digests,
-    /// Each present as a PNG file in this folder, and the SHA-256 of the file.
+    /// Each present as a PNG file in this folder, the SHA-256 of the file, and the payload of the
+    /// QR code it shows as drawn.
     Captures(PathBuf),
 }
 
 /// One present as a run keeps it (`Keep`): the step it came in (0 for the first boot, before any
 /// step), its screen, and the SHA-256 of its frame, or of its PNG file with the file's name and
-/// whether it holds the placeholder. No screen text.
-#[derive(Debug, PartialEq, Eq)]
+/// whether it holds the placeholder. No screen text but `qr`; no `Debug`.
+#[derive(PartialEq, Eq)]
 pub struct Shot {
     pub step: usize,
     pub id: ScreenId,
     pub sha256: [u8; 32],
     pub file: Option<(String, bool)>,
+    /// The payload of the QR code the file shows, core's string as the app drew it: kept only when
+    /// the file holds the frame as drawn (a Public screen, or a vector run's Protected one), never
+    /// for a placeholder.
+    pub qr: Option<Zeroizing<String>>,
 }
 
 /// What a scenario did, for the count line, and the presents kept.
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Default, PartialEq, Eq)]
 pub struct Counts {
     pub steps: usize,
     pub presents: usize,
@@ -622,12 +629,17 @@ impl Run {
 
     /// Keeps what `self.keep` says of `present`.
     fn keep_present(&mut self, present: &Present) {
-        let (sha256, file) = match (&self.keep, &present.capture) {
+        let (sha256, file, qr) = match (&self.keep, &present.capture) {
             (Keep::Nothing, _) => return,
-            (Keep::Digests, _) => (frame_sha256(&present.frame), None),
+            (Keep::Digests, _) => (frame_sha256(&present.frame), None, None),
             (Keep::Captures(_), Some(captured)) => (
                 Sha256::digest(&captured.png[..]).into(),
                 Some((captured.file.clone(), captured.placeholder)),
+                // The flag that chose the file's bytes: a placeholder hides the QR, so its payload
+                // is not kept.
+                qr_payload(present)
+                    .filter(|_| !captured.placeholder)
+                    .map(|payload| Zeroizing::new(payload.to_owned())),
             ),
             (Keep::Captures(_), None) => panic!(
                 "step {}: a present of {} was not captured",
@@ -640,6 +652,7 @@ impl Run {
             id: present.id,
             sha256,
             file,
+            qr,
         });
     }
 
@@ -905,6 +918,17 @@ fn frame_sha256(frame: &Pixels) -> [u8; 32] {
         hasher.update(&row);
     }
     hasher.finalize().into()
+}
+
+/// The payload of the QR code on `present`, if it shows one.
+pub fn qr_payload(present: &Present) -> Option<&str> {
+    present
+        .elements
+        .iter()
+        .find_map(|element| match &element.item {
+            Shown::Qr(payload) => Some(payload.as_str()),
+            _ => None,
+        })
 }
 
 /// Fails unless the step that took a dead key presented nothing.

@@ -5233,6 +5233,16 @@ carries it, and every commit names a proof that runs at that commit.
     keepcrypt.json's public `d-00-1f`, labelled so.
   - A static `index.html`: configuration, crate version, and per PNG its number, scenario, step, screen id, class,
     placeholder or specimen flag, and SHA-256; the first capture of every screen id first. It holds no screen text.
+  - Also `review/` and a static `review.html` (a lead decision, commit 21; the full set is too many PNG files for the
+    owner to page through or to receive). review/ holds a copy of each screen's first capture drawn as is (its first
+    capture when every one is a placeholder, as reveal-d's are), the reveal-d specimen, and each scenario's first
+    capture of every QR code it draws as is. The page shows each one inline with its number in the index, scenario,
+    step, screen id, class and placeholder or specimen flag, and beside each QR code core's string, the payload the
+    app drew, so the owner can scan the QR on the screen with a phone and compare. A string is listed only for a
+    Public QR code (check, re-check) or a vector run's Protected one (register, collision report, account,
+    descriptors), never for a placeholder, so no throwaway run's Protected payload appears. The page holds no other
+    screen text. The review page is the owner's working view; the full set and `index.html` (unchanged) are the
+    record.
 
   Proof (commit 13): `cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry --test gate --
   --ignored --exact capture_set` wrote 11,530 PNG files (the nine scenarios' 11,529 presents and the reveal-d
@@ -5245,6 +5255,18 @@ carries it, and every commit names a proof that runs at that commit.
   screens. It now checks, per scenario, that every present's file name is its own and that the folder holds those
   files and nothing else. In a scratch copy (release configuration) that mutant fails it at `boot_stops` (3 file names
   for 6 presents), and unmutated it passes in 183 s with 9,625 PNG files.
+  Proof (commit 21, a lead decision): `capture_set` (registry configuration) wrote 11,655 PNG files (the nine
+  scenarios' 11,654 presents and the specimen) of all 62 screens and index.html (3.1 MB), as before, and review.html
+  (17,409 bytes) with its 72 copies in review/ (12 MB), in 221 s on this Mac. The 72: each of the 62 screens once (61
+  drawn as is, reveal-d's placeholder), the specimen, and 9 more QR captures. 15 strings: 7 check URLs (each scenario
+  that draws one), the re-check URL, 4 collision reports (dice-50's, in `drill_12`, `skip_and_idle`,
+  `wipes_clear_the_stage` and `check_restarts`), the account UR, the descriptors (one QR code, two lines) and the
+  registration. `runtime_stop`'s and `mixed_12_restarts`' collision report QRs are placeholders and are not on the
+  page. `the_review_page_lists_a_public_qr_string_but_no_throwaway_protected_payload` (both configurations) captures a
+  throwaway run to its collision report as `capture_set` does and builds its review page: the check QR's string is on
+  it; the collision report's capture is the placeholder, its payload not kept, and the page holds neither the payload
+  nor its seal code. Mutated in place and restored, keeping a placeholder's payload in the driver fails it, and also
+  listing it on the page (with the driver's check disabled) fails the page's check.
 
   Proof for this group: both configurations' test output, with per-scenario step, screen and dead-key counts; the
   capture set and index under Review.
@@ -5508,8 +5530,9 @@ amended; rules 5, 6)**
     three times, and the mock checker's code for it verifies (check-clear for dice-99-words24). The driver keeps
     every check QR's payload (`Record::check_urls`) for these comparisons.
   - `check_backup` passes in both configurations (release: 198 steps, 529 presents; registry: 208 steps, 536
-    presents): "a" typed, KEY2, home with `holds_secrets()` and `keeps_wiped()` false, abandon-12.age still on the
-    stick, and only list and read calls in its log; abandon-12 then opens as before.
+    presents): "a" typed, KEY2, home with `holds_secrets()` false, abandon-12.age still on the stick, and only list
+    and read calls in its log; abandon-12 then opens as before. (Commit 21 dropped the assertion's `!keeps_wiped()`:
+    this run never holds a `Wiped`, so it was trivially true; 19c's unit test pins that KEY2 keeps one.)
   - The probes no longer press KEY2 on the two back grids; `dice_24_code` presses it as a dead key on
     readback-entry and bip39-entry (`Step::Dead`).
   - In a scratch copy, each planned mutant fails a unit test and a scenario (release configuration's steps): the
@@ -5588,10 +5611,13 @@ amended; rules 5, 6)**
 **17. Review**
 - [ ] Plan, security and recompute reviews per stage (core; dependencies and foundation; screens; sim and CI), as in
   M2. Every high and medium finding is fixed, with "Proof (review fixes)" lines.
-- [ ] The registry-config capture set, zipped and sent to the owner with its index.
-  - Under Review: `git rev-parse HEAD`, an empty `git status --porcelain`, the configuration and the zip's SHA-256.
-  - The owner scans every QR capture with a phone (check, register, collision report, re-check, account UR,
-    descriptors). Each decoded text must equal core's string, and the Review records it.
+- [ ] The registry-config capture set and its review page (a lead decision, commit 21: the full set is about 11,600
+  PNG files, 1.9 GB, too many for the owner to page through or to receive). review.html with review/, zipped, is
+  sent to the owner and is the owner's working view; the full set and index.html are the record.
+  - Under Review: `git rev-parse HEAD`, an empty `git status --porcelain`, the configuration, the zip's SHA-256 and
+    index.html's (which lists every PNG file's).
+  - The owner scans every QR capture on the review page with a phone (check, register, collision report, re-check,
+    account UR, descriptors). Each decoded text must equal core's string beside it, and the Review records it.
   - The owner's verdict, quoted with the date.
   - Gate report against build-plan.md:293, then stop and wait for approval.
 
@@ -5894,7 +5920,10 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     REGISTRY" (group 16; a lead decision).
     20b. tasks/todo.md: the plan review: group 12's commit-14 proof points at commit 20 for the strip's wording, not
     for its width.
-21. tasks/todo.md: the M3 Review, with pasted proof, the owner's verdict on the captures and the gate report.
+21. pi/sim: `capture_set` also writes the owner's review page: the first capture of every screen, the reveal-d
+    specimen, and each QR capture with core's string beside it (groups 11 and 17; a lead decision). Also
+    `check_backup`'s KEY2 assertion drops `!keeps_wiped()`, trivially true in a run that holds no `Wiped`.
+22. tasks/todo.md: the M3 Review, with pasted proof, the owner's verdict on the captures and the gate report.
 
 Review fixes are listed as N.b entries under the commit they amend.
 

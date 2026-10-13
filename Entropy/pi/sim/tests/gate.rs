@@ -11,7 +11,8 @@
 //!
 //! Beside the scenarios: `every_screen_is_expected` (the scenarios expect every screen),
 //! `drill_12_repeats` (a vector run draws the same frames twice, but for the nonce) and the
-//! ignored `capture_set` (every scenario's presents as PNG files, with an index, Q30 (g)).
+//! ignored `capture_set` (every scenario's presents as PNG files, with an index, Q30 (g), and the
+//! owner's review page of some of them, each QR code beside core's string).
 //!
 //! Test data is public and repeatable (Q30 (a), (c)): the counting hwrng stream, keepcrypt.json's
 //! health streams for the stops, and its public dice strings for the vector runs. The vectors come
@@ -21,11 +22,13 @@
 mod report;
 mod scenario;
 
+use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::fs;
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::rc::Rc;
 
 use keepcrypt_core::{
     BackupError, Bip39Passphrase, CoreError, HealthFailure, HealthStage, HealthTest, Mode,
@@ -39,7 +42,7 @@ use keepcrypt_pi::ui::{Painter, hex_groups};
 use keepcrypt_pi_sim::{Fault, HwRngStream, Op, Present, ProtectedFrames, Shown, SimHal};
 use report::report;
 use scenario::{
-    Answer, Code, Config, Keep, Readback, Scenario, Shot, Step, Stick, run, run_keeping,
+    Answer, Code, Config, Keep, Readback, Scenario, Shot, Step, Stick, qr_payload, run, run_keeping,
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -1898,7 +1901,6 @@ fn check_backup(config: Config) -> Scenario {
                     Box::new(|seen| {
                         let hal = seen.app.hal();
                         !seen.app.holds_secrets()
-                            && !seen.app.keeps_wiped()
                             && hal.stick_files().contains(&"abandon-12.age")
                             && hal
                                 .stick_log()
@@ -2246,10 +2248,10 @@ struct Captures {
 }
 
 impl Captures {
-    /// One row of the index: the number, scenario, step, screen, class, what the file holds, its
-    /// SHA-256, and a link to it (with the image too, when `image`). No screen text.
-    fn row(number: usize, scenario: &str, shot: &Shot, image: bool) -> String {
-        let (file, placeholder) = shot.file.as_ref().expect("a captured present");
+    /// The cells that say which capture a row is: its number, scenario, step, screen, class and
+    /// what its file holds. No screen text.
+    fn cells(number: usize, scenario: &str, shot: &Shot) -> String {
+        let (_, placeholder) = shot.file.as_ref().expect("a captured present");
         let holds = match (scenario, placeholder) {
             (SPECIMEN, _) => "specimen: D is keepcrypt.json's public d-00-1f",
             (_, true) => "placeholder",
@@ -2263,6 +2265,17 @@ impl Captures {
             SPECIMEN => String::from("-"),
             _ => shot.step.to_string(),
         };
+        format!(
+            "<td>{number}</td><td>{scenario}</td><td>{step}</td><td>{}</td><td>{class}</td>\
+             <td>{holds}</td>",
+            shot.id.name()
+        )
+    }
+
+    /// One row of the index: the capture's cells, its SHA-256, and a link to its file (with the
+    /// image too, when `image`). No screen text.
+    fn row(number: usize, scenario: &str, shot: &Shot, image: bool) -> String {
+        let (file, _) = shot.file.as_ref().expect("a captured present");
         let path = format!("{scenario}/{file}");
         let link = if image {
             format!(
@@ -2274,9 +2287,8 @@ impl Captures {
         };
         let sha256: String = shot.sha256.iter().map(|b| format!("{b:02x}")).collect();
         format!(
-            "<tr><td>{number}</td><td>{scenario}</td><td>{step}</td><td>{}</td><td>{class}</td>\
-             <td>{holds}</td><td><code>{sha256}</code></td><td>{link}</td></tr>\n",
-            shot.id.name()
+            "<tr>{}<td><code>{sha256}</code></td><td>{link}</td></tr>\n",
+            Captures::cells(number, scenario, shot)
         )
     }
 
@@ -2319,6 +2331,104 @@ impl Captures {
             self.rows.len()
         )
     }
+
+    /// The rows of the review page, in capture order (a lead decision, M3 commit 21): each
+    /// screen's first capture drawn as is (its first capture when all are placeholders, as
+    /// reveal-d's are), the specimen, and each scenario's first capture of every QR code it
+    /// shows with its string.
+    fn reviewed(&self) -> Vec<usize> {
+        let placeholder = |shot: &Shot| matches!(shot.file, Some((_, true)));
+        let mut rows = BTreeSet::new();
+        for id in ScreenId::ALL {
+            let mut of_id = self
+                .rows
+                .iter()
+                .enumerate()
+                .filter(|(_, (scenario, shot))| *scenario != SPECIMEN && shot.id == id);
+            let first = of_id.clone().next();
+            let drawn = of_id.find(|(_, (_, shot))| !placeholder(shot));
+            rows.extend(drawn.or(first).map(|(at, _)| at));
+        }
+        rows.extend(
+            self.rows
+                .iter()
+                .position(|(scenario, _)| *scenario == SPECIMEN),
+        );
+        let mut kinds = BTreeSet::new();
+        for (at, (scenario, shot)) in self.rows.iter().enumerate() {
+            if shot.qr.is_some() && kinds.insert((*scenario, shot.id.name())) {
+                rows.insert(at);
+            }
+        }
+        rows.into_iter().collect()
+    }
+
+    /// The name of a reviewed capture's copy in review/.
+    fn review_file(scenario: &str, shot: &Shot) -> String {
+        let (file, _) = shot.file.as_ref().expect("a captured present");
+        format!("{scenario}-{file}")
+    }
+
+    /// The review page (a lead decision, M3 commit 21), the owner's working view of `rows`: each
+    /// capture's cells and its copy in review/, and beside each QR code core's string, the payload
+    /// the app drew, to compare with a phone's scan of the image. A string is listed only for a
+    /// file that shows its QR code as drawn: a Public one, or a vector run's Protected one, never
+    /// a placeholder's. No other screen text.
+    fn review(&self, config: Config, rows: &[usize]) -> String {
+        let body: String = rows
+            .iter()
+            .map(|&at| {
+                let (scenario, shot) = &self.rows[at];
+                let string = match (&shot.file, &shot.qr) {
+                    (Some((_, false)), Some(qr)) => format!("<pre>{}</pre>", escaped(qr)),
+                    _ => String::new(),
+                };
+                format!(
+                    "<tr>{}<td>{string}</td><td><img src=\"review/{}\" alt=\"{}\"></td></tr>\n",
+                    Captures::cells(at + 1, scenario, shot),
+                    Captures::review_file(scenario, shot),
+                    shot.id.name()
+                )
+            })
+            .collect();
+        format!(
+            "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">\
+             <title>KeepCrypt Pi simulator review</title>\n<style>body{{font-family:sans-serif}}\
+             td,th{{padding:2px 8px;text-align:left;vertical-align:top}}\
+             img{{width:240px;height:240px}}\
+             pre{{margin:0;max-width:480px;white-space:pre-wrap;word-break:break-all}}</style>\
+             </head><body>\n<h1>KeepCrypt Pi simulator review</h1>\n<p>Configuration: {}. \
+             keepcrypt-pi-sim {}. {} PNG files in review/, each 240 × 240: each screen's first \
+             capture drawn as is (reveal-d's are all placeholders), reveal-d's specimen, and each \
+             scenario's first capture of every QR code it draws as is. This page is the owner's \
+             working view; the full capture set and index.html are the record. No. is a \
+             capture's number there.</p>\n<p>Scan each QR code on the screen with a phone: the \
+             decoded text must equal core's string beside it, the payload the app drew. A string \
+             is listed only for a Public QR code (check, re-check) or a vector run's Protected one \
+             (register, collision report, account, descriptors); a placeholder has none.</p>\n\
+             <table>\n<tr><th>No.</th><th>Scenario</th><th>Step</th><th>Screen</th>\
+             <th>Class</th><th>File holds</th><th>Core's string</th><th>Capture</th></tr>\n\
+             {body}</table>\n</body></html>\n",
+            config.name(),
+            env!("CARGO_PKG_VERSION"),
+            rows.len()
+        )
+    }
+}
+
+/// `text` with HTML's special characters escaped.
+fn escaped(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 /// Clears `dir`, if it is there.
@@ -2435,7 +2545,7 @@ fn drill_12_repeats() {
 fn capture_set() {
     // Every scenario of this configuration, in order, one PNG file per present, under
     // target/tmp/pi-sim-captures/<configuration>/<scenario>/, cleared first; then reveal-d's
-    // specimen and the index.
+    // specimen, the index, and the review page with its copies in review/.
     let config = Config::of_this_build();
     let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
         .join("pi-sim-captures")
@@ -2504,18 +2614,136 @@ fn capture_set() {
             id: ScreenId::RevealD,
             sha256: Sha256::digest(&captured.png[..]).into(),
             file: Some((captured.file.clone(), captured.placeholder)),
+            qr: None,
         },
     ));
     fs::write(root.join("index.html"), captures.index(config)).expect("the index is written");
+    // The owner's working view (a lead decision, M3 commit 21): a copy of each reviewed capture
+    // in review/, and review.html.
+    let reviewed = captures.reviewed();
+    let review = root.join("review");
+    fs::create_dir(&review).expect("the review folder is made");
+    for &at in &reviewed {
+        let (scenario, shot) = &captures.rows[at];
+        let (file, _) = shot.file.as_ref().expect("a captured present");
+        fs::copy(
+            root.join(scenario).join(file),
+            review.join(Captures::review_file(scenario, shot)),
+        )
+        .expect("a reviewed capture is copied");
+    }
+    assert_eq!(
+        fs::read_dir(&review).expect("the review folder").count(),
+        reviewed.len(),
+        "a copy in review/ a reviewed capture"
+    );
+    fs::write(root.join("review.html"), captures.review(config, &reviewed))
+        .expect("the review page is written");
     let screens: BTreeSet<&str> = captures
         .rows
         .iter()
         .map(|(_, shot)| shot.id.name())
         .collect();
     report(format_args!(
-        "capture_set: {} configuration, {} PNG files of {} screens, and index.html",
+        "capture_set: {} configuration, {} PNG files of {} screens, and index.html; review.html \
+         shows {} of them, copied into review/",
         config.name(),
         captures.rows.len(),
-        screens.len()
+        screens.len(),
+        reviewed.len()
     ));
+}
+
+#[test]
+fn the_review_page_lists_a_public_qr_string_but_no_throwaway_protected_payload() {
+    // A throwaway run to its collision report, captured as capture_set does: the check QR is
+    // Public, so the review page lists its string; the collision report QR is Protected and its
+    // file the placeholder, so its payload (the destroyed seed's seal code) is neither kept nor
+    // on the page, though the placeholder is.
+    let name = "throwaway_collision_qr";
+    let drawn: Rc<RefCell<Vec<Zeroizing<String>>>> = Rc::default();
+    let note = Rc::clone(&drawn);
+    let mut steps = chain(vec![
+        boot(),
+        new_seed(Mode::Mixed, SeedLength::Words12),
+        to_dice(Mode::Mixed, 50),
+        roll(rolls("coldcard-50")),
+        seal_card(),
+        match_found(),
+    ]);
+    steps.push(Assert(
+        "the check QR and the collision report QR were drawn",
+        Box::new(move |seen| {
+            let (Some(check), Some(report)) =
+                (seen.record.check_urls.last(), qr_payload(seen.matched))
+            else {
+                return false;
+            };
+            let mut note = note.borrow_mut();
+            note.push(check.clone());
+            note.push(Zeroizing::new(report.to_owned()));
+            true
+        }),
+    ));
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("pi-sim-review-rule");
+    cleared(&root);
+    let counts = run_keeping(
+        Scenario {
+            name,
+            hwrng: HwRngStream::Counting,
+            protected: ProtectedFrames::Placeholder,
+            steps,
+        },
+        Keep::Captures(root.join(name)),
+    );
+    let captures = Captures {
+        rows: counts.shots.into_iter().map(|shot| (name, shot)).collect(),
+    };
+    let drawn = drawn.borrow();
+    let [check, report] = &drawn[..] else {
+        panic!("one check QR and one collision report QR noted");
+    };
+    let (_, seal_code) = report.split_once("#c=").expect("a collision report URL");
+    let shot = |id: ScreenId| {
+        let mut of_id = captures.rows.iter().filter(|(_, shot)| shot.id == id);
+        match (of_id.next(), of_id.next()) {
+            (Some((_, shot)), None) => shot,
+            _ => panic!("one capture of {}", id.name()),
+        }
+    };
+    let seal_qr = shot(ScreenId::SealQr);
+    assert!(
+        seal_qr
+            .file
+            .as_ref()
+            .is_some_and(|(_, placeholder)| !placeholder)
+            && seal_qr.qr.as_ref() == Some(check),
+        "the Public check QR is captured as drawn, with its payload kept"
+    );
+    let collision_qr = shot(ScreenId::CollisionQr);
+    assert!(
+        collision_qr
+            .file
+            .as_ref()
+            .is_some_and(|(_, placeholder)| *placeholder)
+            && collision_qr.qr.is_none(),
+        "the throwaway collision report QR is captured as the placeholder, its payload not kept"
+    );
+    let reviewed = captures.reviewed();
+    let on_page: Vec<ScreenId> = reviewed.iter().map(|&at| captures.rows[at].1.id).collect();
+    assert!(
+        on_page.contains(&ScreenId::SealQr) && on_page.contains(&ScreenId::CollisionQr),
+        "the review page shows both QR screens"
+    );
+    let page = captures.review(Config::of_this_build(), &reviewed);
+    assert!(
+        page.contains(&format!("<pre>{}</pre>", escaped(check))),
+        "the review page lists the check QR's string"
+    );
+    assert!(
+        !page.contains(report.as_str())
+            && !page.contains(&escaped(report))
+            && !page.contains(seal_code),
+        "the review page holds no part of the throwaway collision report's payload"
+    );
 }
