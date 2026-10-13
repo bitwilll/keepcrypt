@@ -4742,6 +4742,20 @@ carries it, and every commit names a proof that runs at that commit.
   `a_deadline_that_never_moves_fails_the_test` and `a_few_ticks_in_a_row_may_leave_the_clock_where_it_is` pass, and
   every gate scenario passes in both configurations. With that mutant in a scratch copy, the gate fails in 1.6 s, four
   scenarios naming "its deadline never moves".
+  Proof (review fix, commit 11e): the scenarios' rule 5 checks on Public screens could not fail. The "no Protected
+  element" asserts after a halt and a wipe ran on Public ids, where the panel already fails any Protected element, and
+  nothing looked for secret text in Public elements: the security review's mutant (word 1 as a Public line on
+  check-clear) passed both configurations, and capture mode would have written it unredacted. The driver now keeps
+  every secret a Protected element shows in a run (its text, its words of three letters or more, and each line of a
+  QR payload or of hex) and every Public text (`Texts`), and fails the run, naming both screens, once a Public text
+  equals a secret or contains one longer than any list word, whichever is shown first; a shorter one matches only
+  whole, since the copy is made of list words (no Public element of any scenario is one lowercase word, so a random
+  seed's word cannot match one). On a Protected screen every word, braille, QR and hex element must be Protected. The
+  two tautological asserts now check only what they can (nothing held). Every scenario passes in both
+  configurations in the same 7 s, and `dice_24_code`, whose backup passphrase is random, 25 times in a row. In a
+  scratch copy, the security review's mutant fails `dice_24_code` and (registry configuration) `drill_12` ("a Public
+  element on check-clear shows a secret a Protected element showed on words-insert"), and the recompute review's two
+  marking mutants (collision-qr's QR and the insert's word made Public) fail every scenario that shows those screens.
 - [x] Mock checker (pi/sim tests, sha2): G from the `t` and `n` of the check QR's payload, after the frame check above
   shows the drawn QR encodes that payload.
 
@@ -5300,6 +5314,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     halts item stays open for the game error.
     11d. pi/sim: the recompute and plan reviews: `mixed_12_restarts` checks the step 4 bar; the steps 4-6 item is
     unticked until Snake and C's check land.
+    11e. pi/sim: the security and recompute reviews: the scenarios fail on a secret's text in any Public element, and
+    on a secret item marked Public on a Protected screen.
 12. pi/app, pi/sim: steps 8-15, the Home side flows, and `drill_12`, `dice_24_code`, `skip_and_idle`, `check_backup`,
     `wipes_clear_the_stage` (group 9).
 13. pi/app, pi/sim: Snake; `mixed_12_restarts` in full, the verify.py tie, `every_screen_is_expected`,

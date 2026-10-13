@@ -19,6 +19,13 @@
 //! - The driver records what the screens showed (`Record`): each insert's word, the backup
 //!   passphrase's words and every screen's last texts, for the read-back, the confirm and the
 //!   assertions. All of it is public test data or a vector run's; none of it is printed.
+//! - Secrets stay on Protected elements (rule 5). On a Protected screen, every word, braille, QR
+//!   and hex element is the secret it shows, so it must be Protected. And no Public element of any
+//!   present in a run may show a secret a Protected element showed in that run, before or after it
+//!   (`Texts`): the Protected text, one of its words of three letters or more, or a line of a QR
+//!   payload or of hex. A Public text may not equal one, nor contain one longer than any list
+//!   word; a shorter one is matched only whole, since the screen copy is made of list words too,
+//!   and a random seed's words would turn up inside it by chance.
 //! - Nothing here prints screen text: `report` gets the scenario's name and counts.
 
 use std::collections::{BTreeMap, VecDeque};
@@ -41,6 +48,8 @@ const S: u64 = 1_000_000_000;
 const GO_DOMAIN: &[u8] = b"KCE/v1/go";
 /// Crockford base32, the go-ahead code's alphabet and the entry grid's order: 8 columns, 4 rows.
 const CROCKFORD: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+/// The longest BIP39 word: a secret longer than this is looked for inside every Public text.
+const LONGEST_WORD: usize = 8;
 
 /// An entry grid as Q32 (a) lays it out: its symbols row by row and its columns. The cursor wraps
 /// within its row and its column; a cell past the last symbol is empty.
@@ -223,6 +232,86 @@ fn number_after(text: &str, prefix: &str) -> Option<u8> {
     text.strip_prefix(prefix)?.get(..2)?.parse().ok()
 }
 
+/// One text and the screen that first showed it.
+type FirstShown = (Zeroizing<String>, ScreenId);
+
+/// The texts the elements of a run showed, for the secrets check: every Public text, and every
+/// secret a Protected text holds (`secrets_in`), each once, sorted.
+#[derive(Default)]
+struct Texts {
+    public: Vec<FirstShown>,
+    secret: Vec<FirstShown>,
+}
+
+impl Texts {
+    /// Takes in the texts of `present`, and returns the first secret shown in public, as the ids of
+    /// the screen with the Public element and of the screen with the Protected one.
+    fn add(&mut self, present: &Present) -> Option<(ScreenId, ScreenId)> {
+        let mut leak = None;
+        for element in &present.elements {
+            let Some(text) = element.item.text() else {
+                continue;
+            };
+            match element.class {
+                Class::Public => {
+                    if first_time(&mut self.public, text, present.id) && leak.is_none() {
+                        leak = self
+                            .secret
+                            .iter()
+                            .find(|(secret, _)| shows_secret(text, secret))
+                            .map(|(_, on)| (present.id, *on));
+                    }
+                }
+                Class::Protected => {
+                    for secret in secrets_in(&element.item, text) {
+                        if first_time(&mut self.secret, secret, present.id) && leak.is_none() {
+                            leak = self
+                                .public
+                                .iter()
+                                .find(|(public, _)| shows_secret(public, secret))
+                                .map(|(_, on)| (*on, present.id));
+                        }
+                    }
+                }
+            }
+        }
+        leak
+    }
+}
+
+/// Adds `text`, first shown on `id`, to the sorted `texts`; false when it is there already.
+fn first_time(texts: &mut Vec<FirstShown>, text: &str, id: ScreenId) -> bool {
+    match texts.binary_search_by(|(seen, _)| seen.as_str().cmp(text)) {
+        Ok(_) => false,
+        Err(at) => {
+            texts.insert(at, (Zeroizing::new(text.to_owned()), id));
+            true
+        }
+    }
+}
+
+/// The secrets a Protected element's `text` holds: the text, each of its runs of three ASCII
+/// letters or more (an insert's word, a backup passphrase word, typed faces), and each line of a
+/// QR payload or of hex (a descriptor, a row of D). The lines of an entry grid are no secret.
+fn secrets_in<'t>(item: &Shown, text: &'t str) -> Vec<&'t str> {
+    let mut secrets = vec![text];
+    if let Shown::Qr(_) | Shown::Hex(_) = item {
+        secrets.extend(text.split('\n'));
+    }
+    secrets.extend(
+        text.split(|c: char| !c.is_ascii_alphabetic())
+            .filter(|word| word.len() >= 3),
+    );
+    secrets.retain(|secret| !secret.trim().is_empty());
+    secrets
+}
+
+/// True when the Public text `public` shows `secret`: it is the secret, or it contains a secret
+/// longer than any list word.
+fn shows_secret(public: &str, secret: &str) -> bool {
+    public == secret || (secret.chars().count() > LONGEST_WORD && public.contains(secret))
+}
+
 /// What the stick does.
 pub enum Stick {
     /// These files are put on it (names as given), and it is inserted.
@@ -343,6 +432,7 @@ struct Run {
     /// The keys the latest present offered.
     latest_keys: KeyMap,
     record: Record,
+    texts: Texts,
     counts: Counts,
 }
 
@@ -357,6 +447,7 @@ impl Run {
             check_url: None,
             latest_keys: KeyMap::NONE,
             record: Record::default(),
+            texts: Texts::default(),
             counts: Counts::default(),
         };
         run.app.start();
@@ -450,6 +541,28 @@ impl Run {
                         self.check_url = Some(payload.clone());
                     }
                 }
+            }
+            if present.id.class() == Class::Protected {
+                for element in &present.elements {
+                    let secret = matches!(
+                        element.item,
+                        Shown::Large { .. } | Shown::Cells(_) | Shown::Qr(_) | Shown::Hex(_)
+                    );
+                    assert!(
+                        !secret || element.class == Class::Protected,
+                        "step {}: a word, braille, QR or hex element on {} is not Protected",
+                        self.counts.steps,
+                        present.id.name()
+                    );
+                }
+            }
+            if let Some((public, protected)) = self.texts.add(&present) {
+                panic!(
+                    "step {}: a Public element on {} shows a secret a Protected element showed on {}",
+                    self.counts.steps,
+                    public.name(),
+                    protected.name()
+                );
             }
             self.record.note(&present);
             self.latest_keys = present.keys;

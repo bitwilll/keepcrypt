@@ -198,8 +198,8 @@ fn latest_shows(what: &'static str, text: String) -> Step {
     Assert(what, Box::new(move |seen| shows(seen.latest, &text)))
 }
 
-/// The halt after a black frame, naming `stop` exactly, with nothing held and no Protected
-/// element.
+/// The halt after a black frame, naming `stop` exactly, with nothing held. (No element of the halt
+/// is Protected: the panel fails a Protected element on any Public screen.)
 fn halted(stop: String) -> Vec<Step> {
     vec![
         Expect(ScreenId::Blank),
@@ -212,15 +212,6 @@ fn halted(stop: String) -> Vec<Step> {
         Assert(
             "nothing held after a halt",
             Box::new(|seen| !seen.app.holds_secrets() && !seen.app.keeps_wiped()),
-        ),
-        Assert(
-            "no Protected element after a halt",
-            Box::new(|seen| {
-                seen.matched
-                    .elements
-                    .iter()
-                    .all(|e| e.class == Class::Public)
-            }),
         ),
     ]
 }
@@ -1252,22 +1243,16 @@ fn dice_24_code() -> Scenario {
     }
 }
 
-/// After a wipe: a black frame, then `next` with no Protected element, and nothing held.
+/// After a wipe: a black frame, then `next` (a Public screen, so the panel fails any Protected
+/// element on it), and nothing held.
 fn wiped_to(next: ScreenId) -> Vec<Step> {
     vec![
         Expect(ScreenId::Blank),
         Assert("a black frame first", Box::new(|seen| black(seen.matched))),
         Expect(next),
         Assert(
-            "nothing held, and no Protected element, after the wipe",
-            Box::new(|seen| {
-                !seen.app.holds_secrets()
-                    && seen
-                        .matched
-                        .elements
-                        .iter()
-                        .all(|e| e.class == Class::Public)
-            }),
+            "nothing held after the wipe",
+            Box::new(|seen| !seen.app.holds_secrets()),
         ),
     ]
 }
@@ -1295,7 +1280,7 @@ fn fault_halt() -> Vec<Step> {
 }
 
 /// The idle wipe and a fault (Q25, Q29) on one Protected screen of each stage that holds a
-/// secret: both clear the stage, present a black frame and leave no Protected element. On
+/// secret: both clear the stage and present a black frame, then a Public screen. On
 /// collision-qr, whose seal code is the kept `Wiped`'s, the idle wipe keeps the kept `Wiped`
 /// and the fault's halt drops it.
 fn wipes_clear_the_stage() -> Scenario {
@@ -1411,16 +1396,8 @@ fn wipes_clear_the_stage() -> Scenario {
                 Assert("a black frame first", Box::new(|seen| black(seen.matched))),
                 Expect(ScreenId::IdleWiped),
                 Assert(
-                    "the idle wipe keeps the kept Wiped and clears the screen",
-                    Box::new(|seen| {
-                        !seen.app.holds_secrets()
-                            && seen.app.keeps_wiped()
-                            && seen
-                                .matched
-                                .elements
-                                .iter()
-                                .all(|e| e.class == Class::Public)
-                    }),
+                    "the idle wipe keeps the kept Wiped and nothing else",
+                    Box::new(|seen| !seen.app.holds_secrets() && seen.app.keeps_wiped()),
                 ),
                 PowerCycle(HwRngStream::Counting),
             ],
