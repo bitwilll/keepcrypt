@@ -529,6 +529,7 @@ fn boot_stops() -> Scenario {
 
 /// A throwaway run (Q25, Q26): a collision, then a continuous health failure in the restart's
 /// step 4 halts with nothing held, and a power cycle forgets the 99-roll minimum, as documented.
+/// After another power cycle, an hwrng read fault in step 4 halts too, with the HAL's text.
 fn runtime_stop() -> Scenario {
     let (continuous, rct) = health("run-of-6-continuous");
     assert_eq!((rct.stage, rct.sample), (HealthStage::Continuous, 1505));
@@ -555,6 +556,15 @@ fn runtime_stop() -> Scenario {
             boot(),
             new_seed(Mode::DiceOnly, SeedLength::Words12),
             to_dice(Mode::DiceOnly, 50),
+            vec![PowerCycle(HwRngStream::Counting)],
+            boot(),
+            new_seed(Mode::Mixed, SeedLength::Words12),
+            vec![
+                Expect(ScreenId::Hwrng),
+                Step::Fault(Fault::HwRng),
+                Wait(QUOTA_SECONDS),
+            ],
+            halted(HalError::HwRng.text().to_owned()),
         ]),
     }
 }

@@ -4700,6 +4700,9 @@ carries it, and every commit names a proof that runs at that commit.
   passphrase, the BIP39 entry, the watch-only and registration QRs, insert 13 after `device-swap` and a checked
   backup's words, which the scenarios pass through; the cover's first press only uncovers insert 24 in
   `dice_24_code`.
+  Proof (review fix, commit 11c): `runtime_stop` also halts on an hwrng read fault in step 4, the HAL fault that
+  only the boot read had a test for. The box stays open, though commit 12's report counted it ticked: "any halt
+  condition" includes a `game_random` error, whose halt lands with Snake (group 10, commit 13).
 - [x] Scenario driver (pi/sim tests). A scenario is a list of steps, built per configuration:
   - `Expect(ScreenId)`: matched in order against the Display log since the previous step, so transient screens are
     matched too;
@@ -4869,12 +4872,18 @@ carries it, and every commit names a proof that runs at that commit.
   2. Step 4 reads `run-of-6-continuous` → `halt` naming RepetitionCount, continuous stage, sample 1505.
      `holds_secrets()` is false, a black frame came first, and every key is dead.
   3. `PowerCycle` → boot → Dice-only seed → `dice` shows "0 / 50": a power cycle drops the 99-roll flag, as documented.
+  4. `PowerCycle` → boot → New seed → an hwrng read fault in step 4 → `halt` with the HAL's text (review fix, 11c).
   Proof (commit 11): `runtime_stop_halts_and_a_power_cycle_forgets_the_99_roll_minimum` passes in both configurations
   (56 steps, 296 presents, 98 dead keys): after the collision and Add fresh entropy, the restart's step 4 reads
   `run-of-6-continuous` (behind a counting boot and first session) and, after a black frame, halts showing exactly
   "hwrng health test failed: Repetition Count Test in the continuous stage at sample 1505", with `holds_secrets()` and
   `keeps_wiped()` false and all 8 keys dead; after `PowerCycle` a dice-only seed's dice screen shows "0 / 50 rolls,
   0.0 bits".
+  Proof (review fix, commit 11c): no test read an hwrng fault after boot, so a mutant that skipped a failed step 4
+  read and kept collecting (rule 3) passed both configurations. Step 4 above now arms `Fault::HwRng` on `hwrng` after
+  another power cycle: a black frame, then `halt` showing exactly "hwrng read fault", with `holds_secrets()` and
+  `keeps_wiped()` false; the scenario passes in both configurations (72 steps, 303 presents, 98 dead keys). That
+  mutant, in a scratch copy, now fails it: 25 `hwrng` presents and no black frame.
 - [x] `drill_12`, a vector run (the duplicate-seed drill).
   - Release config: the stick's `with-dice-50` gives `snapshot-failed` with `NoRegistryKey`'s text. The scenario says
     so and ends.
@@ -5280,6 +5289,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     `runtime_stop` and the steps 1-7 parts of the other scenarios (group 8).
     11b. pi/sim: the recompute review: SimHal fails a run whose app's deadline never moves, instead of spinning on
     the virtual clock.
+    11c. pi/sim: the recompute and plan reviews: `runtime_stop` also halts on an hwrng read fault in step 4; the
+    halts item stays open for the game error.
 12. pi/app, pi/sim: steps 8-15, the Home side flows, and `drill_12`, `dice_24_code`, `skip_and_idle`, `check_backup`,
     `wipes_clear_the_stage` (group 9).
 13. pi/app, pi/sim: Snake; `mixed_12_restarts` in full, the verify.py tie, `every_screen_is_expected`,
