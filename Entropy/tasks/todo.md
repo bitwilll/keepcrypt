@@ -4158,8 +4158,10 @@ carries it, and every commit names a proof that runs at that commit.
   - Each transition moves the session out (`mem::replace`), so only the typestate's own methods can be called.
   - `Idle` and `Halted` are unit variants. One `wipe()` replaces the whole `Stage`, zeroizes the frame and presents a
     black frame; the idle wipe, a halt and Finish all call it.
-  - The current-screen state (id, page, cursor) holds no secret. `App::holds_secrets()` says whether any `Stage`
-    data is held (the idle warning and the idle wipe use it).
+  - The current-screen state (id, page, cursor) holds no secret, but where an entry grid's cursor rests, which the
+    Protected grid shows (after a press, on the symbol just typed); a refused entry emptied on its own screen puts it
+    back on the first symbol (review fix, 12g). `App::holds_secrets()` says whether any `Stage` data is held (the
+    idle warning and the idle wipe use it).
 - **One drawing path.** Screens only build `Screen` models. `ui::render(&Screen)` is the only code that draws.
   `Frame::new` is visible only inside `ui`, so every `Frame` belongs to a `ui::Painter` (outside `ui`'s own tests) and
   no other module can draw (compiler-enforced). pi/sim makes Painters of its own (the placeholder, its tests), outside
@@ -4905,6 +4907,11 @@ carries it, and every commit names a proof that runs at that commit.
   `the_dice_and_words_key_maps_follow_the_buttons_table` pins `relabel`, `every_key_map_is_pinned`'s comment names
   this one model, `check_backup` asserts "done" there and `dice_24_code` "read-back" on the ceremony's insert 24.
   Both pass in both configurations; without the relabel, in a scratch copy, `check_backup` fails.
+  Proof (review fix, commit 12g): the `View` doc and this plan said the current-screen state holds no secret, but an
+  entry grid's cursor rests on the symbol just typed, and a refused backup passphrase, emptied on
+  `backup-check-entry`, left it on its last letter. The refusal now puts the cursor back on the first symbol, and the
+  doc and the plan's line say where the cursor may rest. The unit test of an unrecognised entry starts with the
+  cursor on the last letter typed and asserts it on 'a' after the refusal; it passes, and fails without the reset.
 
 **10. pi/app Snake (Q27; pi-firmware.md:132-138; rule 1)**
 - [ ] `games/snake.rs` and `games/mod.rs`:
@@ -5379,6 +5386,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     12e. pi/app, pi/sim: the plan and security reviews: the overview pages on past word 12 only through
     `device-swap`.
     12f. pi/app, pi/sim: the plan review: a checked backup's last insert labels Press "done", not "read-back".
+    12g. pi/app: the plan review: a refused backup passphrase puts the grid cursor back on the first symbol, and the
+    docs say where an entry grid's cursor may rest.
 13. pi/app, pi/sim: Snake; `mixed_12_restarts` in full, the verify.py tie, `every_screen_is_expected`,
     `drill_12_repeats` and `capture_set` (groups 10, 11).
 14. pi/sim: the interactive bin (group 12).

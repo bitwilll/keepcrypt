@@ -186,6 +186,8 @@ impl<H: Hal> App<H> {
             }
         };
         self.held.stage = Stage::BackupCheck { file, typed };
+        // The entry is emptied, so the cursor no longer rests on a letter of it.
+        self.view.cursor = 0;
         self.view.note = Note::Refused(refusal);
         self.redraw()
     }

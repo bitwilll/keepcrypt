@@ -295,7 +295,9 @@ pub enum Note {
 }
 
 /// The current screen: its id, the menu, picker or grid cursor, its page (or insert), its note
-/// and any overlay. Holds no secret.
+/// and any overlay. It holds no secret but where an entry grid's cursor rests, which the Protected
+/// grid shows: after a press, on the symbol just typed. A refused entry emptied on its own screen
+/// puts the cursor back on the first symbol (backup-check-entry).
 pub struct View {
     pub id: ScreenId,
     pub cursor: usize,
@@ -1448,9 +1450,12 @@ mod tests {
             typed,
         };
         app.view = View::new(ScreenId::BackupCheckEntry, Note::None);
+        // The cursor rests on the last letter typed, 'n', as after a press.
+        app.view.cursor = 13;
         app.redraw().expect("drawn");
         app.entry_typed().expect("a refusal, not a halt");
         assert_eq!(app.view.id, ScreenId::BackupCheckEntry);
+        assert_eq!(app.view.cursor, 0, "the emptied entry's cursor is back on 'a'");
         assert!(matches!(
             app.view.note,
             Note::Refused(Refusal::Core(CoreError::Backup(
