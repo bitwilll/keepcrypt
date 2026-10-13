@@ -4236,19 +4236,27 @@ carries it, and every commit names a proof that runs at that commit.
 - **Out of M3:** see "Deferred, with their milestone".
 
 **0. Before code**
-- [ ] Record the owner's answers to Q25-Q34, quoted with the date.
+- [x] Record the owner's answers to Q25-Q34, quoted with the date.
       Answers recorded 2026-10-11 under "Needed before M3 code" ("approve all").
   - Apply the approved doc edits (Q34) alone in commit 2, with no code.
   - CLAUDE.md edits go in their own commits.
 
   Proof: the answers in this file; `git diff --name-only` of commit 2 lists only `docs/`.
-- [ ] Baseline at 8e6917b, pasted under Review and used by group 14's budgets:
+  Proof (M3 Review, 2026-10-14): 63e400f records the answers ("approve all", 2026-10-11) under "Needed before M3
+  code". Commit 2 is c306bc2, and `git diff --name-only c306bc2~1 c306bc2` lists only Entropy/docs/build-plan.md,
+  design.md, mobile-apps.md, pi-firmware.md and seal-watchonly-braille.md. CLAUDE.md's edits are commits of their own
+  (28a0c5d, aa91a8f, d00186e).
+- [x] Baseline at 8e6917b, pasted under Review and used by group 14's budgets:
   - `cargo test` in both configurations, with counts and times;
   - canaries 61/61, with wall time;
   - `vectorgen.py --selftest` 13/13;
   - the `test` and `gates` job times from the last main run.
 
   Proof: pasted under "M3: local proof".
+  Proof (M3 Review, 2026-10-14): pasted under "M3: local proof". It was taken at the end, from `git archive 8e6917b`
+  (the same tree): `cargo test` 183 passed (24.2 s) and 260 (61.5 s), canaries 61/61 in 193.4 s, vectorgen 13/13 on
+  3.12.5 (12.8 s) and 3.9.6 (24.0 s); the last main run, 38122123944 on 156c8ef: test 3m29s, gates 8m06s, coverage
+  97.39% of core's lines.
 
 **1. Core: `game_random` (Q27; rules 1, 3; build-plan.md:91, :207-211)**
 - [x] `pub fn game_random(buf: &mut [u8]) -> Result<(), CoreError>` in `core/src/source.rs`.
@@ -4268,13 +4276,18 @@ carries it, and every commit names a proof that runs at that commit.
   `cargo test --workspace --locked` (core's unit tests: 163 passed) and with `--features test-sources` (191 passed);
   `git diff core/src/lib.rs` adds only `game_random` to the `source` re-export; `cargo llvm-cov` 97.40% of core's
   lines (source.rs 98.71%), over the 95% floor.
-- [ ] `core/examples/release_probe.rs` calls `game_random` and exits with its own code on failure, so every cross leg's
+- [x] `core/examples/release_probe.rs` calls `game_random` and exits with its own code on failure, so every cross leg's
   scan covers the new draw site.
 
   Proof: the six cross scans are clean on the PR, and each still finds only its target's OS import. The call itself
   is proved by review alone (recompute review of commits 3-6): no gate fails without it, since the probe links the
   OS import through the session's draws anyway, and each leg's scanned rlib holds `game_random`'s code either way
   (`game_random` is a defined symbol of the host's release rlib). Exit code 20 is reached by no test.
+  Proof (M3 Review, 2026-10-14): on the PR, runs 38449716309 (d00186e) and 38467985842 (0cdfc8a): the five other cross
+  legs scan their 2 files clean and the Pi leg its 3, each finding only its target's OS import (getrandom on the Pi
+  and Android, _CCRandomGenerateBytes on iOS). Locally, aarch64-apple-darwin finds only _getentropy and both iOS
+  targets only _CCRandomGenerateBytes. The call itself rests on review, as above, and the Shell grep fails a probe
+  whose call is missing or commented out (commits 15 and 15d).
 
 **2. Core: the borrowing restart (owner item 14; Q26 (C); rule 6). Replaced by (A) if the owner picks it.**
 - [x] `Wiped::restart(&self, len, mode)` and `restart_with_stub(&self, ..)`.
@@ -5272,7 +5285,7 @@ carries it, and every commit names a proof that runs at that commit.
   capture set and index under Review.
 
 **12. pi/sim interactive mode (the bin)**
-- [ ] `keepcrypt-pi-sim live --out DIR`:
+- [x] `keepcrypt-pi-sim live --out DIR`:
   - keys from stdin lines: `w a s d`, Enter, `1 2 3`, and `t600` to advance 600 s;
   - rewrites `DIR/live.png` per present and prints only the screen id;
   - every Protected frame is written as the placeholder, in every run, vector or not;
@@ -5319,6 +5332,11 @@ carries it, and every commit names a proof that runs at that commit.
   hardware under its `App` presents boot and home with that strip and writes each to `live.png` as drawn
   (tests/hal.rs, `live_mode_shows_the_builds_strip_and_writes_it_to_live_png`); with the test key the same test
   finds "TEST REGISTRY" beside "SIMULATOR". The bin's docs name the long label.
+  Proof (M3 Review, 2026-10-14): group 14's scan of this binary, built for x86_64 Linux with the test key, ran in CI
+  on d00186e and 0cdfc8a: exactly the registry marker, the simulator marker and the TestKey hit (3 hit(s) in 1
+  file(s)), no stub marker. The short session under "M3: local proof" (Check a backup, About, step 4 to the dice, then
+  the idle wipe) exits 0, prints 45 screen ids and nothing else, and leaves `live.png` alone in its folder;
+  tests/hal.rs's live-mode tests pass in both configurations.
 
 **13. Gates: banned-API rules (Q31 (e); rules 1, 3, 6)**
 - [x] `scripts/banned-api-check.sh`, each rule with hit and clean fixtures in `scripts/testdata/banned-api/`:
@@ -5398,7 +5416,7 @@ carries it, and every commit names a proof that runs at that commit.
   comments ending at the line's end, or with a `/*` dropping the rest of its line, each turns the selftest red.
 
 **14. CI, CODEOWNERS and the commands of record (Q31)**
-- [ ] `test` job, after its two existing steps:
+- [x] `test` job, after its two existing steps:
   - `cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry`;
   - a release build of the sim for `x86_64-unknown-linux-gnu`, in its own target dir, with
     `CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS='--cfg getrandom_backend="linux_getrandom"'`, as canaries.sh's
@@ -5422,7 +5440,12 @@ carries it, and every commit names a proof that runs at that commit.
   in pi/sim/src/main.rs, the scanned binary's own code, left the gate clean. The comment now says the ban covers the
   shipped crates' sources and pi/sim's own code never ships; no command changed, and Ruby's YAML parser still reads
   the workflow.
-- [ ] `cross` job: on the leg whose crates include `keepcrypt-pi`, also
+  Proof (M3 Review, 2026-10-14): CI's first x86_64 Linux build and scan, run 38449716309 on d00186e: the
+  registry-config run passes (gate 16 passed and 1 ignored, hal 6, live 3, units 36 and 3) in 36 s; the release build
+  in target/pi-sim-scan takes 34.59 s (5,490,056 bytes); the scan prints exactly the two Marker lines, the TestKey
+  line and `3 hit(s) in 1 file(s)`, exit 1, no stub marker, and the step passes. Run 38467985842 on 0cdfc8a passes the
+  same way (hal 7).
+- [x] `cross` job: on the leg whose crates include `keepcrypt-pi`, also
   `cargo build --release --locked -p keepcrypt-pi --lib --target "$TARGET"`, and scan
   `libkeepcrypt_pi.rlib` with the core artifacts. It must be clean (an archive needs no OS import).
   - The comments in `test` and `cross` name M3. No other job command changes.
@@ -5432,11 +5455,16 @@ carries it, and every commit names a proof that runs at that commit.
   scan the same two files as before. Host stand-in, `aarch64-apple-darwin`, with the scan step's own script: core's
   rlib, the probe and `libkeepcrypt_pi.rlib` scan clean (2 archives, `_getentropy` imported by the probe); with the
   ffi legs' crates it scans the two core files; with the pi rlib missing it fails.
+  Proof (M3 Review, 2026-10-14): CI's first ARM run, 38449716309 on d00186e: `cargo build --release --locked -p
+  keepcrypt-pi --lib` for arm-unknown-linux-gnueabihf in 2.56 s, then `clean, 3 file(s): no marker, no test key, no
+  other RNG symbol; getrandom imported by all 1 object or linked file(s) (2 archive(s), which need no import)`,
+  libkeepcrypt_pi.rlib 2,176,124 bytes; the five other legs scan their 2 files as before. Run 38467985842 on 0cdfc8a
+  passes the same way.
 - [x] `.github/CODEOWNERS` adds `/Entropy/pi/sim/`.
 
   Proof (commit 16): the line follows `/Entropy/pi/app/`, same owner and form; GitHub's
   `codeowners/errors` for the PR head is for the lead after the push.
-- [ ] CLAUDE.md Commands add:
+- [x] CLAUDE.md Commands add:
   ```bash
   cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry   # the gate run, full drill
   cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry --test gate -- --ignored --exact capture_set   # captures in target/tmp/pi-sim-captures/
@@ -5462,7 +5490,13 @@ carries it, and every commit names a proof that runs at that commit.
   (commit 14b). Run as written on the host stand-in, `aarch64-apple-darwin`: the three release files scan clean
   (`_getentropy` imported by the probe, 2 archives), and the simulator gives exactly the registry marker, the
   simulator marker and the `TestKey` hit (exit 1).
-- [ ] Runtime budgets, measured against group 0's baseline:
+  Proof (M3 Review, 2026-10-14): each M3 command run as written at b74b0eb, pasted under "M3: local proof": the
+  registry-config run (66 passed, 2 ignored, 15.5 s), `capture_set` (11,618 PNG files, index.html and the review page,
+  223.3 s), a live session (45 screen ids, exit 0), `cargo llvm-cov` (97.38%), the gate (clean, 199 files) and its
+  selftest (427), canaries 61/61, the release-artifact scans for aarch64-apple-darwin (core's two files and pi/app's
+  rlib, clean) and both iOS targets, and the test-registry simulator's scan (exactly the three hits). The Pi and
+  Android lines need cross toolchains this Mac lacks; CI's cross and test jobs run them.
+- [x] Runtime budgets, measured against group 0's baseline:
   - `test` grows by at most 6 minutes;
   - `gates` stays within 10 minutes (12 if Q31 (f)'s fallback is approved);
   - coverage stays at 95% of core's lines.
@@ -5470,6 +5504,10 @@ carries it, and every commit names a proof that runs at that commit.
 
   Proof: all 14 required check runs green on the PR head, with unchanged names; job times pasted; each command run as
   written and pasted.
+  Proof (M3 Review, 2026-10-14): against the last main run (38122123944, 156c8ef): test 3m29s, then 4m47s on d00186e
+  (+1m18s) and 5m27s on 0cdfc8a (+1m58s), within the 6 minutes; gates 8m06s, then 8m26s and 8m39s, within 10 minutes
+  (Q31 (f)'s 12 not needed); coverage 97.39%, then 97.38% of core's lines on both. All 14 required check runs pass on
+  both heads, with unchanged names; the job and step times are under "M3: local proof".
 
 **15. KEY2 "back" on the go-ahead code and backup-passphrase entry (the owner's decision of 2026-10-13; Q32 (a) as
 amended; rules 5, 6)**
@@ -5611,6 +5649,9 @@ amended; rules 5, 6)**
 **17. Review**
 - [ ] Plan, security and recompute reviews per stage (core; dependencies and foundation; screens; sim and CI), as in
   M2. Every high and medium finding is fixed, with "Proof (review fixes)" lines.
+  Open (M3 Review, 2026-10-14): the 45 N.b review fixes of stages A to D2 are listed under "M3: local proof". The
+  findings' severities, and so "every high and medium finding is fixed", are in the stage reviews' reports, which this
+  file does not hold; the lead records them.
 - [ ] The registry-config capture set and its review page (a lead decision, commit 21: the full set is about 11,600
   PNG files, 1.9 GB, too many for the owner to page through or to receive). review.html with review/, zipped, is
   sent to the owner and is the owner's working view; the full set and index.html are the record.
@@ -5620,6 +5661,12 @@ amended; rules 5, 6)**
     account UR, descriptors). Each decoded text must equal core's string beside it, and the Review records it.
   - The owner's verdict, quoted with the date.
   - Gate report against build-plan.md:293, then stop and wait for approval.
+  Recorded (M3 Review, 2026-10-14): `capture_set` at b74b0eb, 2026-10-14, registry configuration, `git status
+  --porcelain` empty: 11,618 PNG files of 62 screens; index.html SHA-256
+  `430a6d797c2b78a62027c45dabad3941486f1a05adc021a82292064a750c496a`; review.html and review/ (72 copies, 15 QR
+  strings) zipped as target/tmp/pi-sim-captures/registry-review.zip, 145,436 bytes, SHA-256
+  `2d9a083f4fa4ad7dc1cba9d80dc60ef84e2245f7da26ae2818a479ad2bd0227d`. Awaiting the owner: the zip is sent, the owner's
+  QR scan record and verdict come in a later commit, and then the gate report's last line.
 
 **Deferred, with their milestone**
 - **M4:**
@@ -5649,34 +5696,56 @@ amended; rules 5, 6)**
   - a nicer Latin font, generated by a committed script.
 
 ### Verification
-- [ ] **Gate: a scripted run drives a full ceremony in the simulator.** `drill_12` (registry config), `dice_24_code` and
+- [x] **Gate: a scripted run drives a full ceremony in the simulator.** `drill_12` (registry config), `dice_24_code` and
   `mixed_12_restarts` (both configs) pass steps 1-15 between them.
 
   Proof: CI test output in both configurations.
-- [ ] **Gate: every screen.** `every_screen_is_expected`, against the inventory in group 8.
+  Proof (M3 Review, 2026-10-14): CI runs 38449716309 (d00186e) and 38467985842 (0cdfc8a): the test job's release run
+  and registry run each pass gate.rs, 16 passed and 1 ignored (capture_set); locally at b74b0eb, 17 passed and 1
+  ignored in both. `drill_12` (registry), `dice_24_code` and `mixed_12_restarts` reach steps 1-15 between them: steps
+  1-13 and 15 in `dice_24_code`, step 14 in `mixed_12_restarts` (counts under "M3: local proof").
+- [x] **Gate: every screen.** `every_screen_is_expected`, against the inventory in group 8.
 
   Proof: test output.
-- [ ] **Gate: seal check with go-ahead code entry.**
+  Proof (M3 Review, 2026-10-14): `every_screen_is_expected` passes in CI on both heads and locally, in both
+  configurations: all 62 ids with the test key, and all but snapshot-loaded and snapshot-date without it.
+- [x] **Gate: seal check with go-ahead code entry.**
   - The code is typed on the grid.
   - A wrong code gives `code-wrong` with the same nonce, and no words screen.
   - The mock checker's G, from a QR whose drawn modules match its payload, reveals the words.
   - The snapshot path confirms the date before every `reveal`.
 
   Proof: `dice_24_code`, `drill_12`, `mixed_12_restarts`; matrix row "Go-ahead vectors and tampering" (Pi part).
-- [ ] **Gate: braille pages.**
+  Proof (M3 Review, 2026-10-14): `dice_24_code` types G on the code grid; its wrong code (G's last symbol changed)
+  shows code-wrong with the URL unchanged and no words screen, then the mock checker's G, from a seal-qr whose drawn
+  modules match its payload, reveals the words; `drill_12` answers snapshot-date before each snapshot reveal;
+  `mixed_12_restarts` and `check_restarts` reveal by the mock checker's code;
+  `the_mock_checker_gives_every_kcr_go_ahead_code` gives CF94BCAJ for vector 1 and kcr.json's three others. All pass
+  in CI on both heads and locally, in both configurations.
+- [x] **Gate: braille pages.**
   - Insert view and overview for 12 and 24 vector words, with numbered dots, blank faces, lighter letters, mirror flags
     and device labels.
   - The read-back names a mirror misread, a should-be-blank, a should-have-letter and a wrong letter.
 
   Proof: group 6's mask and label tests, `drill_12`, `dice_24_code`; matrix row "Metal read-back drill" (Pi part).
-- [ ] **Gate: button handling.**
+  Proof (M3 Review, 2026-10-14): `ui::braille`'s tests (all 64 masks, the dot numbers, blank faces, lighter face 5,
+  mirror flags), `dice_24_code` (dice-99-words24's 24 inserts in insert view and overview, device-swap and device
+  labels; the read-back's mirror misread, should be blank, should have a letter and wrong letter) and `drill_12`
+  (dice-99-words12) pass in CI on both heads and locally.
+- [x] **Gate: button handling.**
   - Debouncer unit tests, and every scripted press runs through the Debouncer as a bounce train.
   - Every screen shows its soft keys.
   - The dead-key probes change nothing.
   - The documented mappings hold: dice KEY1 undoes; words KEY1 toggles the overview and KEY2/KEY3 page.
 
   Proof: group 5's tests and the probe counts.
-- [ ] **KEY2 "back"** (the owner's decision of 2026-10-13; Q32 (a) as amended):
+  Proof (M3 Review, 2026-10-14): `input`'s debouncer tests pass, and SimHal runs every scripted press through
+  `pi_app::input::Debouncer` as a bounce train; the footer test finds each offered key's label on all 62 ids within
+  240 px; the dead-key probes press every key outside the shown map on each screen's first showing with nothing
+  presented (dead keys per scenario under "M3: local proof"); `every_key_map_is_pinned` and
+  `the_dice_and_words_key_maps_follow_the_buttons_table` pin dice KEY1 undo, words KEY1 overview and KEY2/KEY3 paging.
+  CI on both heads and locally.
+- [x] **KEY2 "back"** (the owner's decision of 2026-10-13; Q32 (a) as amended):
   - from code-entry to check-actions with the same check and nonce and the typed code cleared, after which Match
     found still reports the collision and the restart needs 99 rolls, KEY2 offered there empty and with 8 symbols;
   - from backup-check-entry to home with nothing held, and the file left on the stick, KEY2 offered there on an
@@ -5685,12 +5754,19 @@ amended; rules 5, 6)**
   - no KEY2 on readback-entry or bip39-entry, and every footer within 240 px.
 
   Proof: group 15's unit tests, `check_restarts`, `check_backup`, the dead-key probes.
-- [ ] **The simulator's strip** (a lead decision; Q30 (h), Q33 (j)): "SIMULATOR · NOT FOR REAL FUNDS" when it is the
+  Proof (M3 Review, 2026-10-14): group 15's unit tests (pi/app: 113 passed), `check_restarts` and `check_backup` in
+  both configurations, and `dice_24_code`'s dead KEY2 on readback-entry and bip39-entry pass in CI on 0cdfc8a (run
+  38467985842, the first run holding all of group 15) and locally at b74b0eb.
+- [x] **The simulator's strip** (a lead decision; Q30 (h), Q33 (j)): "SIMULATOR · NOT FOR REAL FUNDS" when it is the
   only banner, as in live mode's release configuration, and "SIMULATOR" beside "TEST REGISTRY" in the registry
   configuration.
 
   Proof: group 16's tests.
-- [ ] **Gate: waiting-screen game.**
+  Proof (M3 Review, 2026-10-14): `the_simulator_banner_alone_reads_not_for_real_funds_across_the_strip` and
+  `both_banners_fit_the_top_strip_together_and_hide_the_title` (pi/app), and
+  `live_mode_shows_the_builds_strip_and_writes_it_to_live_png` (tests/hal.rs, both configurations) pass in CI on
+  0cdfc8a and locally.
+- [x] **Gate: waiting-screen game.**
   - Snake runs only in Mixed step 4 and is closed at the quota.
   - Its bytes come only from `game_random` (the Shell grep allows the name only under `pi/app/src/games/`).
   - Every key in Mixed `Collecting`, Snake open or not, is forwarded to `add_extra`: `extra_for`'s unit test plus review
@@ -5698,27 +5774,47 @@ amended; rules 5, 6)**
   - A `game_random` error halts with no secret held.
 
   Proof: groups 8 and 10, group 13's grep, `mixed_12_restarts`.
-- [ ] **Gate: USB export mocked.**
+  Proof (M3 Review, 2026-10-14): `snake_opens_in_step_4_a_wall_ends_its_round_and_the_quota_closes_it` and
+  `mixed_12_restarts` (Snake opens from hwrng in Mixed step 4, the quota closes it); the gate's Shell rules are clean
+  on the tree and fire on every `shell-` fixture (selftest 427/427);
+  `every_key_in_step_4_reaches_the_pool_with_snake_open_or_closed` counts every key once at the app's one `add_extra`
+  call site and none on the commitment; the three game-byte-error tests halt holding nothing. CI on both heads and
+  locally.
+- [x] **Gate: USB export mocked.**
   - The backup is written (never over an existing name), read back under a read-only mount and verified.
   - A write fault removes only the file just written, and Retry runs under the same passphrase.
   - The stick ends with the verified `.age` and nothing else, but for a file whose removal failed (`dice_24_code`'s
     `Fault::Remove` round, commit 13), which stays, as backup-failed says.
 
   Proof: `dice_24_code`; group 7's Usb refusals.
-- [ ] **Gate: snapshot import mocked.**
+  Proof (M3 Review, 2026-10-14): `dice_24_code`: a write fault leaves no file, a corrupt read-back removes the file
+  just written, a failed removal leaves that file and backup-failed says so, Retry keeps the passphrase, and the stick
+  ends with the verified `.age` and that one file, which the shown passphrase opens to the wallet's fingerprint;
+  tests/hal.rs's stick test refuses a write over a name (`Exists`), a write to a read-only stick and the removal of
+  any other file (`NotWritten`). CI on both heads and locally.
+- [x] **Gate: snapshot import mocked.**
   - Registry config: `with-dice-50` loads and drives both the collision and the clear result; a tampered snapshot is
     refused.
   - Release config: `NoRegistryKey`'s text.
 
   Proof: `drill_12` in both configurations.
+  Proof (M3 Review, 2026-10-14): `drill_12` passes in both configurations in CI and locally: release, snapshot-failed
+  with "no registry key is pinned in this build"; registry, flipped-signature-r refused ("bad signature"),
+  with-dice-50 loaded ("Snapshot No. 4, dated 2026-03-01, 7 entries."), the collision before any word, and "No
+  collision for seal 9FHYMCQA as of 2026-03-01."
 - [ ] **Gate: the owner reviews the captures,** with every QR scanned.
 
   Proof: the owner's verdict and the scan record, quoted under Review.
-- [ ] **Runtime failures halt** (Q25; design.md:178): boot and continuous health failures, an injected game error and
+  Awaiting the owner (M3 Review, 2026-10-14): the capture run under "M3: local proof" (b74b0eb, registry
+  configuration) and its zipped review page are ready to send; the scan record and the verdict are not in yet.
+- [x] **Runtime failures halt** (Q25; design.md:178): boot and continuous health failures, an injected game error and
   HAL faults all end on `halt` with no secret held.
 
   Proof: `boot_stops`, `runtime_stop`, `wipes_clear_the_stage`, group 8's unit test.
-- [ ] **The 99-roll minimum** (todo.md:2293-2296; Q26):
+  Proof (M3 Review, 2026-10-14): `boot_stops` (RCT at 505 and APT at 500, startup), `runtime_stop` (RCT at 1505,
+  continuous; an hwrng read fault in step 4), `wipes_clear_the_stage` (a Buttons fault on each secret-holding screen)
+  and the three game-byte-error unit tests each end on halt with nothing held, in CI on both heads and locally.
+- [x] **The 99-roll minimum** (todo.md:2293-2296; Q26):
   - 99 after a Stop;
   - 99 after a Cannot check in the restart after a collision;
   - 99 after the idle wipe in that restart;
@@ -5726,26 +5822,49 @@ amended; rules 5, 6)**
   - 50 after a power cycle (documented).
 
   Proof: `drill_12`, `mixed_12_restarts`, `skip_and_idle`, `runtime_stop`, group 2's tests, group 8's unit tests.
-- [ ] **Secrets held by the shell** (rule 5): after the idle wipe and after a fault, the `Stage` holds nothing;
+  Proof (M3 Review, 2026-10-14): `drill_12` (99 after a Stop, and after a Cannot check in the restart),
+  `mixed_12_restarts` (99 after a Cannot check and after the idle wipe in the restart), `skip_and_idle` (50 after Skip
+  in the restart), `runtime_stop` (50 after a power cycle), check_flow's restart tests (check_flow: 10 passed) and
+  `a_kept_collision_wiped_restarts_at_99_until_skip_drops_it` pass in CI on both heads and locally.
+- [x] **Secrets held by the shell** (rule 5): after the idle wipe and after a fault, the `Stage` holds nothing;
   `Protected` elements appear only on Protected ids in every scenario; live mode never writes a Protected frame.
 
   Proof: `wipes_clear_the_stage`, the SimHal invariant, group 12's unit test.
-- [ ] **Matrix "Full ceremony with offline verification"** (simulator half; the Pi in M4): the verify.py tie exits 0
+  Proof (M3 Review, 2026-10-14): `wipes_clear_the_stage` (after ten idle minutes and after a Buttons fault on each
+  secret-holding Protected screen: nothing held, a black frame, the next model all Public); SimHal fails any present
+  with a Protected element on a Public id, and the driver any Public text that shows a secret, in every scenario; the
+  live-mode test writes `placeholder(words-insert)` for an insert, never its frame. CI on both heads and locally.
+- [x] **Matrix "Full ceremony with offline verification"** (simulator half; the Pi in M4): the verify.py tie exits 0
   with the same words and Seal ID (`mixed_12_restarts`).
-- [ ] **Matrix "Duplicate-seed drill"** (Pi part): `with-dice-50` catches `coldcard-50` before any word is shown, and
+  Proof (M3 Review, 2026-10-14): `verify_py_tie` in `mixed_12_restarts` exits 0, with the inserts' words and the Seal
+  ID equal to those shown, in both configurations, in CI (ubuntu-24.04's python3) and locally (3.12.5).
+- [x] **Matrix "Duplicate-seed drill"** (Pi part): `with-dice-50` catches `coldcard-50` before any word is shown, and
   the restart needs 99 rolls.
 
   Proof: `drill_12` (registry config).
-- [ ] **Matrix "Watch-only import"** (M3 half): the drawn QR payloads equal core's `qr_text`, and the two descriptors
+  Proof (M3 Review, 2026-10-14): `drill_12` in the registry configuration, in CI on both heads and locally: the
+  collision comes with no words screen presented, and the restart shows "0 / 99".
+- [x] **Matrix "Watch-only import"** (M3 half): the drawn QR payloads equal core's `qr_text`, and the two descriptors
   on two lines (`dice_24_code`). The import itself is M4.
-- [ ] **Matrix "Symbol and stub-marker scan":** release_probe calls `game_random` on all six cross legs (by review: the
+  Proof (M3 Review, 2026-10-14): `dice_24_code`: the account QR's payload equals core's `qr_text`, and the descriptor
+  QR's `receive_descriptor`, a line feed and `change_descriptor`, from a separate core session on the same rolls and
+  passphrase, each QR's drawn modules matching its payload. CI on both heads and locally.
+- [x] **Matrix "Symbol and stub-marker scan":** release_probe calls `game_random` on all six cross legs (by review: the
   scans would not change without the call, and each leg's scanned rlib holds its code); pi/app's ARM
   release rlib scans clean; the test-registry simulator scans with exactly the registry marker, the simulator marker
   and the test key.
-- [ ] **Matrix "Typestate misuse" and "Sealed-state compile-fail tests":** every fixture passes, with the one `.stderr`
+  Proof (M3 Review, 2026-10-14): CI runs 38449716309 and 38467985842: the six cross legs scan clean, each with only
+  its OS import (the Pi leg 3 files, pi/app's release rlib among them; the others 2); the test job's x86_64
+  test-registry simulator gives exactly the registry marker, the simulator marker and the TestKey hit, no stub marker.
+  Locally, the same scans on the host stand-in and both iOS targets ("M3: local proof").
+- [x] **Matrix "Typestate misuse" and "Sealed-state compile-fail tests":** every fixture passes, with the one `.stderr`
   change being the quoted signature; pi/app's gate functions are unit-tested; no scenario reaches a wipe through a
   shell-order mistake.
-- [ ] **Carried items:**
+  Proof (M3 Review, 2026-10-14): typestate passes all 23 fixtures in both configurations, in CI and locally; the one
+  `.stderr` change is commit 4's quoted `restart` signature; `screens`' gate-function tests pass; no scenario halts
+  but where its script expects a halt (`boot_stops`, `runtime_stop`, `wipes_clear_the_stage`'s faults), and a
+  shell-order mistake would halt (Q25) and fail the scenario's next `Expect`.
+- [x] **Carried items:**
   - `Platform::Pi` asserted;
   - test-registry only via `-p` (the manifest pin holds);
   - the date confirmed before `reveal`;
@@ -5753,7 +5872,13 @@ amended; rules 5, 6)**
   - C and D as 16 groups of 4;
   - the wait-for-prompt text on `reveal-d-offer` and in pi-firmware.md step 14;
   - owner items 13 and 14, and the banned-API routes, decided.
-- [ ] **Rules:**
+  Proof (M3 Review, 2026-10-14): `new_sessions_are_the_pis`; the canaries' manifest pin (61/61: no manifest turns on a
+  test feature, so test-registry comes only from `-p`); `check_now_with_a_snapshot_asks_for_its_date_first`;
+  `mixed_12_restarts`' bar assertions on `hw_bytes_tested`; `ui::hex`'s tests and the verify.py tie, which types C and
+  D as shown; `mixed_12_restarts` asserts reveal-d-offer's wait-for-prompt line, and pi-firmware.md:95 says it; owner
+  item 14 by Q26 (C) (7299e27), owner item 13 left open outside M3 by Q34 (open items under "M3 gate status"), and Q31
+  (h)'s routes in dff720f.
+- [x] **Rules:**
   - 1: only `core/src/source` names getrandom; no std OS-seeded hashing in core, ffi or pi/app; the graph pin is
     unchanged;
   - 3: every halt condition ends on `halt` with no secret held;
@@ -5763,8 +5888,20 @@ amended; rules 5, 6)**
     the device's mounts are M4's) and create-new `.age` writes; pi/sim reads no file;
   - 10: no manifest turns on a test feature; the simulator marker is in every simulator build;
   - 11: every new crate is approved, vetted and past the cool-off.
-- [ ] **CI:** all 14 required check runs green; budgets met; canaries 61/61.
+  Proof (M3 Review, 2026-10-14): 1: the gate is clean (196 files in CI, 199 here), its getrandom, RNG and hash-ban
+  rules included, and the canaries' graph pin passes; 3: as "Runtime failures halt"; 5: pi/app's print and dbg lints
+  (clippy clean), the frame and QR buffer wipe tests, and throwaway runs' Protected frames written as placeholders
+  (capture_set, live mode); 6: the Shell grep holds one `Session::new`, in app.rs, and the typestate lives in the
+  private `Stage`; 8: the stick's tests and `FileName`'s refusals, and live mode reads no file; 10: no manifest turns
+  on a test feature (canaries), `marker_is_the_documented_string` passes, and the scans find the simulator marker in
+  the test-registry simulator (x86_64 Linux in CI, aarch64-apple-darwin here); 11: cargo deny, audit and vet clean in
+  CI on both heads and locally (17 fully audited, 82 exempted), the nine crates as approved in Q28.
+- [x] **CI:** all 14 required check runs green; budgets met; canaries 61/61.
+  Proof (M3 Review, 2026-10-14): run 38467985842 on 0cdfc8a, the PR head: all 14 required check runs pass, with
+  unchanged names; budgets as group 14's last item; canaries 61/61 in its gates job. b74b0eb and this commit run after
+  the next push.
 - [ ] **Definition of done** (CLAUDE.md), with proof pasted under Review.
+  Open (M3 Review, 2026-10-14): waits for group 17's two items.
 
 ### New dependencies
 
@@ -5923,7 +6060,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
 21. pi/sim: `capture_set` also writes the owner's review page: the first capture of every screen, the reveal-d
     specimen, and each QR capture with core's string beside it (groups 11 and 17; a lead decision). Also
     `check_backup`'s KEY2 assertion drops `!keeps_wiped()`, trivially true in a run that holds no `Wiped`.
-22. tasks/todo.md: the M3 Review, with pasted proof, the owner's verdict on the captures and the gate report.
+22. tasks/todo.md: the M3 Review, with pasted proof and the gate report; the owner's verdict on the captures comes
+    later.
 
 Review fixes are listed as N.b entries under the commit they amend.
 
@@ -7609,3 +7747,492 @@ dice-only output matches Coldcard `rolls.py`".
 passed all 14 required Entropy check runs (the Vercel check, not required, failed as on every PR). PR #5 was marked
 ready and merged with a merge commit, 156c8ef ("Merge Entropy M2: offline verifier (tools/verify) (#5)"), and
 `m2-verifier` was deleted. The owner then asked for the M3 plan ("yes"); M3 work happens on `m3-pi-sim`.
+
+### M3: local proof (2026-10-14, at b74b0eb)
+Apple M4 Max, macOS 27.0.1, toolchain 1.98.1 (rust-toolchain.toml), cargo-llvm-cov 0.9.1, python3 3.12.5 and
+`/usr/bin/python3` 3.9.6, run from `Entropy/`; the shell scripts also under `dash`. M3 ran 2026-10-11 to 2026-10-14
+on `m3-pi-sim` (draft PR #6) in stages. Each stage made its planned commits, had them reviewed three ways (plan,
+security, recompute), fixed what the reviews found, ran the full suite, and was pushed so that CI ran on its head;
+the last stage (commit 21 and this Review) is not pushed yet. Plan items are ticked above only where the proof
+covers them; the end of this section lists what is still open and what each waits for.
+
+**Group 0 baseline** (for group 14's budgets). Taken on 2026-10-14 from `git archive 8e6917b`, unpacked in the
+session scratchpad with its own target directory: the tree before commit 1, so the same code, scripts, vectors and
+docs as when M3 began (the plan asked for it before commit 2; none was recorded then). Commands ran one at a time,
+each test command after a `--no-run` build:
+
+```text
+cargo test --workspace --locked                                183 passed, 0 failed, 1 ignored    24.2 s
+    core lib 161 (+1 ignored), ceremony 5, kat 7, kcr_release 3, os_source 2, typestate 1, vectors 4; ffi, pi,
+    pi-sim 0
+cargo test -p keepcrypt-core --locked --features test-sources  260 passed, 0 failed, 1 ignored    61.5 s
+    core lib 189 (+1 ignored), agreement 9, ceremony 5, check_flow 6, error_injection 11, kat 7, kcr 3,
+    kcr_release 0, no_panic 9, no_secret_text 5, os_source 2, panic_wipe 4, source_substitution 5, typestate 1,
+    vectors 4
+python3 -I tools/verify/vectorgen.py --selftest        (3.12.5)  selftest passed: 13 checks      12.8 s
+/usr/bin/python3 -I tools/verify/vectorgen.py --selftest (3.9.6) selftest passed: 13 checks      24.0 s
+sh scripts/canaries.sh                                           PASS: all 61 checks ran          193.4 s
+                                                                 (fresh canary target directories)
+CI, the last main run: 38122123944 on 156c8ef (2026-10-11; 8e6917b is 156c8ef plus this file's M2 approval note)
+    test 3m29s; gates 8m06s (canaries step 417 s, gate selftest 346 passed); coverage 2m46s, lines 8272, missed
+    216, 97.39%
+```
+
+**Commits 8e6917b..b74b0eb.** 68 commits, oldest first, by stage. Each line gives the commit's number in "Commit
+order on `m3-pi-sim`" (an N.b entry is a review fix to commit N), its hash and its subject. Each commit's proof is the
+"Proof (commit N)" or "Proof (review fix, commit N.b)" line under its plan item above, and is not repeated here.
+
+Stage A: planned commits 1-6, then the stage-A review fixes (pushed head a9e13bf). Commit 1 is two commits: the plan
+with the questions, then the owner's answers.
+- 1: b8e6143 tasks/todo.md: the M3 plan (Pi app on simulator) and owner questions Q25-Q34
+- 1: 63e400f tasks/todo.md: the owner's answers to Q25-Q34 ("approve all")
+- 2: c306bc2 docs: the owner-approved M3 edits (Q34): game_random, the borrowing restart, halts, buttons, protected
+  screens and idle
+- 3: 17e4814 core: game_random, the games' own OS read, its tests and the release probe's call
+- 4: 7299e27 core: the borrowing restart, its tests, the regenerated .stderr and module docs
+- 5: 4031c1a core: from_first_four, the Pi's typed backup passphrase, and its tests
+- 6: 28a0c5d CLAUDE.md: rule 1 names game_random and its limits
+- 2b: 07fdc67 docs: review fixes to c306bc2: swb's halt sentence spares refusals; the sketch's KAT exceptions name
+  game_random
+- 4b: 9a6b729 tests: check_flow restarts one kept collision Wiped twice through the shipped restart
+- 1b: 888c174 tasks/todo.md: owner item 14 answered by Q26 (C), the games note done, and the M3 plan's doc lines after
+  c306bc2
+- 1c: a9e13bf tasks/todo.md: release_probe's game_random call is proved by review, not by the scans
+
+Stage B: planned commits 7-10 (pushed head 0b16469), then the stage-B review fixes (pushed head 1c4b4cf).
+- 7: b8f5371 pi, sim, supply-chain: the M3 crates, Cargo.lock with autocfg held at 1.5.0, vet exemptions and imports
+- 8: 394f83a pi/app: the screen model, hal, frame and input, and #![forbid(unsafe_code)]
+- 9: dc39a53 pi/app: the renderer and its painters
+- 10: 0b16469 pi/sim, pi/app: SimHal, the PNG writer and placeholder, the marker, the render timing
+- 8b: 7f6880d pi/app: the idle wipe also clears a Protected screen with nothing held (collision-qr)
+- 8c: 3d73e12 pi/app: every key map pinned; the docs no longer say the QR and info pages follow the Buttons table
+- 9b: 8f01a75 pi/app: the docs say every Frame belongs to a Painter, not that one Painter holds the only Frame
+- 10b: 739ac30 pi/app, pi/sim: the Usb docs make the record of the file just written each implementation's duty
+- 10c: ca6e777 pi/sim: the stick logs reads read-only by construction, so its log is no evidence of read-only mounts
+- 10d: 9953f89 pi/sim: capture mode's placeholder flag comes with the bytes it chose, and the capture test compares
+  them
+- 10e: d31e836 pi/sim: the panel log test covers every field of the owned model copy
+- 10f: c0705ad pi/sim: the tests' one print site moves to tests/report/mod.rs, for timing and the count line alike
+- 7b: 1c4b4cf tasks/todo.md: the dependency table names num-traits' one import, and the imported audits are counted
+  per crate
+
+Stage C: planned commits 11 and 12, then the stage-C review fixes (pushed head eb0563e).
+- 11: e8dfa64 pi/app, pi/sim: the app for steps 1-7, halts, restarts and idle; the scenario driver and mock checker
+- 12: 49fb4f4 pi/app, pi/sim: steps 8-15 and Home's side flows, and the scenarios that drive them
+- 11b: 17356ee pi/sim: SimHal fails a run whose app's deadline never moves, instead of spinning
+- 11c: c492c53 pi/sim: runtime_stop also halts on an hwrng read fault in step 4
+- 11d: 9176188 pi/sim: mixed_12_restarts checks the step 4 bar; the steps 4-6 item is unticked
+- 11e: 144565d pi/sim: the scenarios fail on a secret's text in any Public element
+- 11f: 84cdc37 tasks/todo.md: the step 7 item names the restart checks commit 13 adds before it is ticked
+- 12b: 7a5f8af pi/sim: dice_24_code proves step 11's read-back, verify and removal, and one passphrase
+- 12c: 4525261 pi/sim: check_backup refuses a wrong passphrase, names USB faults, and counts zero registrations
+- 12d: 13aa39d pi/app: a USB stick put in restarts the idle timer, as a key does
+- 12e: b5d03c3 pi/app: the overview pages on past word 12 only through device-swap
+- 12f: 044d60e pi/app: a checked backup's last insert labels Press "done", not "read-back"
+- 12g: c171599 pi/app: a refused backup passphrase puts the grid cursor back on the first symbol
+- 12g: 5f46a48 pi/app: rustfmt the cursor assertion c171599 added
+- 12h: 8c0b2eb pi/app: a unit test pins the BIP39 passphrase's 100-character cap in its own buffer
+- 12i: eb0563e pi/app: a unit test shows each step's secret dropped when its screens are left
+
+Stage D: planned commits 13-17, then the stage-D review fixes (pushed head d00186e).
+- 13: fd264e8 pi/app, pi/sim: Snake, mixed_12_restarts in full with the verify.py tie, and the screen and capture
+  checks
+- 14: e459149 pi/sim: the live bin runs the app over core on SimHal, keys from stdin
+- 15: dff720f scripts, core, pi/app: the Shell category, the hash ban, pi/app's forbid lines, the simulator marker and
+  Q31 (h)'s routes
+- 16: 147a749 ci, .github: test runs and scans the simulator, cross scans pi/app's release rlib, CODEOWNERS adds
+  pi/sim/
+- 17: aa91a8f CLAUDE.md: Commands for M3
+- 13b: b9b27b8 pi/app: the app holds the games' byte source but cannot draw from it
+- 13c: 219e7e9 pi/app: a game byte error halts where Snake opens and where a step places food
+- 13d: 6c0147c pi/app: the keys step 4 hands to add_extra are counted at the app's one call site
+- 13e: d6219c3 pi/app: Snake meets each of the four walls, and a second steer cannot turn into the neck
+- 13f: 74e81ab pi/sim: verify.py output that is not UTF-8 fails the tie's fixed message, never printed
+- 13g: cba6201 pi/sim: capture_set checks that each present has a file of its own, and the folder nothing else
+- 13h: 6ccd71e tasks/todo.md: dice_24_code's stick and the USB gate name the file left by the failed removal
+- 14b: a5fd222 pi/sim: a refused command line or input line ends the live bin with exit status 2, printing nothing
+- 14c: aaf5af0 pi/sim: a live session finds the empty stick in the slot from power-on
+- 15b: 2e38e7f scripts: the Shell category's Session::new also matches the turbofish and the qualified path
+- 15c: 10ec80a scripts: the games' code may not name the app's holders of the session or the HAL's clock
+- 15d: e997131 scripts: the release probe's game_random call counts only outside every // and /* */ comment
+- 16b: 9994eba ci: the test job's comment says the hash ban covers the shipped crates' sources, not pi/sim's
+- 17b: d00186e CLAUDE.md: the gate's line and the release-artifact scans describe commits 15 and 16
+
+Stage D2: the owner's KEY2 decision of 2026-10-13 and the simulator's strip, commits 18-20, then their review fixes
+(pushed head 0cdfc8a).
+- 18: d2877f3 docs, tasks/todo.md: KEY2 goes back from the go-ahead code and the backup-check entry
+- 19: 91135c9 pi/app, pi/sim: KEY2 goes back from the go-ahead code and the backup-check entry
+- 20: 8c1a8c7 pi/app, pi/sim: the simulator's strip reads NOT FOR REAL FUNDS alone, and SIMULATOR beside TEST REGISTRY
+- 20b: 8c34340 tasks/todo.md: group 12's commit-14 proof points at commit 20 for the strip's wording, not its width
+- 19b: a91fb6d tasks/todo.md: group 15 records code-wrong's new text, which names KEY2's way back
+- 19c: e20e206 pi/app: KEY2 on either back grid keeps a kept Wiped, so an idle wipe after it still restarts at 99
+  rolls
+- 19d: 1d5842d pi/app, pi/sim: KEY2 back is offered on backup-check-entry when empty, on the 8th word and after a
+  refusal
+- 19e: 0cdfc8a pi/app: KEY2 back is offered on code-entry with all 8 symbols typed
+
+Stage E: commit 21 and this Review (not pushed yet).
+- 21: b74b0eb pi/sim: capture_set also writes the owner's review page: the first capture of every screen, the reveal-d
+  specimen, and each QR capture with core's string beside it
+
+**Review fixes.** 45 N.b entries (46 commits: 12g is two), each under the commit it amends in the commit order, which
+names the review that found it: stage A 4 (1b, 1c, 2b, 4b), stage B 9 (7b, 8b, 8c, 9b, 10b-10f), stage C 13 (11b-11f,
+12b-12i), stage D 14 (13b-13h, 14b, 14c, 15b-15d, 16b, 17b) and stage D2 5 (19b-19e, 20b). 38 have a "Proof (review
+fix, commit N.b)" line under their plan item, most naming the mutant that passed before the fix and fails after it;
+the other 7 (1b, 1c, 2b, 7b, 9b, 11f, 20b) change only text in this file, docs/ or a doc comment, and the text is
+their proof. The findings' severities are in the stage reviews' reports, which this file does not copy (group 17's
+first item, below).
+
+**Suite at b74b0eb** (2026-10-14; `git status --porcelain` empty before and after; logs in the session scratchpad).
+Each test command ran after a `--no-run` build of its configuration:
+
+```text
+cargo fmt --all --check                                         exit 0
+cargo clippy --workspace --all-targets --locked -- -D warnings  exit 0  (also from an empty target directory: 9.3 s)
+cargo clippy ... --all-features --locked -- -D warnings         exit 0  (also from that directory: 1.1 s)
+cargo test --workspace --locked                                 exit 0  367 passed, 3 ignored (30.0 s): core lib 166
+                                                                        (+1 ignored), ceremony 5, kat 7,
+                                                                        kcr_release 3, os_source 2, typestate 1,
+                                                                        vectors 4; pi lib 113; pi-sim lib 36, bin 3,
+                                                                        gate 17 (+1 ignored: capture_set), hal 7,
+                                                                        live 3, timing 0 (+1 ignored)
+cargo test -p keepcrypt-core --locked --features test-sources   exit 0  269 passed, 1 ignored (61.5 s): lib 194
+                                                                        (+1), agreement 9, ceremony 5, check_flow 10,
+                                                                        error_injection 11, kat 7, kcr 3,
+                                                                        kcr_release 0, no_panic 9, no_secret_text 5,
+                                                                        os_source 2, panic_wipe 4,
+                                                                        source_substitution 5, typestate 1, vectors 4
+cargo test -p keepcrypt-pi-sim --locked                         exit 0  66 passed, 2 ignored (15.5 s): lib 36, bin 3,
+    --features keepcrypt-core/test-registry                             gate 17 (+1), hal 7, live 3, timing 0 (+1)
+cargo llvm-cov ... --fail-under-lines 95 --summary-only         exit 0  lines 8408, missed 220, 97.38%; regions
+                                                                        96.88%; functions 96.32% (67.1 s)
+cargo deny --locked --offline check                             exit 0  advisories ok, bans ok, licenses ok,
+                                                                        sources ok
+cargo audit --no-fetch                                          exit 0  1310 advisories (local copy), 103 crate
+                                                                        dependencies, no vulnerabilities
+cargo vet --locked                                              exit 0  Vetting Succeeded (17 fully audited,
+                                                                        82 exempted)
+sh scripts/check-path-deps.sh                                   exit 0  clean, 99 packages outside the workspace
+python3 -I tools/verify/vectorgen.py --selftest   (3.12.5)      exit 0  selftest passed: 13 checks (12.9 s)
+/usr/bin/python3 -I ... vectorgen.py --selftest   (3.9.6)       exit 0  selftest passed: 13 checks (24.3 s)
+python3 -I tools/verify/verify.py selftest        (3.12.5)      exit 0  8 known-answer groups
+/usr/bin/python3 -I ... verify.py selftest        (3.9.6)       exit 0  8 known-answer groups (stdout identical)
+sh scripts/banned-api-check.sh            (sh, dash)            exit 0  clean, 199 files scanned (CI: 196; here also
+                                                                        3 gitignored __pycache__ .pyc files)
+sh scripts/banned-api-check.sh --selftest (sh, dash)            exit 0  selftest: 427 passed, 0 failed (74.5 s,
+                                                                        74.2 s)
+sh scripts/canaries.sh                    (sh, dash)            exit 0  PASS: all 61 checks ran (164.1 s, 161.8 s;
+                                                                        warm canary target directories)
+python3 scripts/age-interop.py --core     (Homebrew age 1.3.2)  exit 0  three ok lines; 3 notes (armor cases that
+                                                                        age 1.3.2 accepts and the readers refuse)
+```
+
+The deny and audit runs are offline here (`--offline`, `--no-fetch`), since this session downloads nothing; CI's
+supply-chain job runs both as Commands write them, on the same Cargo.lock (unchanged since b8f5371), and passed on
+d00186e and 0cdfc8a. `TRYBUILD=overwrite` was not run (only for a toolchain or trybuild bump, or an owner-approved
+API change; commit 4 ran it); typestate passes its 23 fixtures unchanged in both test runs above.
+
+**Gate scenarios, per configuration** (`cargo test -p keepcrypt-pi-sim --locked [--features
+keepcrypt-core/test-registry] --test gate -- --nocapture --test-threads 1`; the count lines `report` prints: steps,
+distinct screens, presents and dead keys pressed by the probes). Release, 17 passed and 1 ignored in 29.0 s;
+registry, 17 passed and 1 ignored in 48.8 s:
+
+```text
+                        release                            registry
+                        steps  screens  presents  dead    steps  screens  presents  dead
+boot_stops                 15        3         6     8       15        3         6     8
+runtime_stop               70       19       303    97       70       19       303    97
+drill_12                   14        5         9    19      196       31      1393   164
+dice_24_code              341       41      1119   216      341       41      1125   216
+skip_and_idle              66       21       706    94       66       21       706    94
+mixed_12_restarts         218       34      1516   171      218       34      1533   171
+wipes_clear_the_stage     757       33      3108   157      757       33      3108   157
+check_backup              200       11       529    48      210       12       536    55
+check_restarts            189       19      2417    97      231       22      2919   116
+throwaway_collision_qr     34       16       262    82       34       16       262    82
+  (throwaway_collision_qr is the review page's test, commit 21; drill_12_repeats runs drill_12 twice, with the
+  same counts)
+```
+
+The presents of `dice_24_code`, `mixed_12_restarts` and `check_restarts` vary from run to run by a few, since what
+they type follows fresh OS bytes (the go-ahead code on the grid, among others).
+
+**Render timing** (`cargo test -p keepcrypt-pi-sim --locked --test timing -- --ignored --nocapture`, opt-level 0):
+
+```text
+words-insert         render   1229 us   present   2138 us   png  14552 us
+watch-descriptor-qr  render   3256 us   present   4143 us   png  14570 us
+seal-image           render   2002 us   present   2920 us   png  14467 us
+readback-entry       render   1162 us   present   2073 us   png  14409 us
+dice                 render    960 us   present   1874 us   png  14386 us
+game-snake           render    827 us   present   1742 us   png  14454 us
+slowest present 4143 us; 20,000 presents at that rate take 82 s
+```
+
+**The capture set** (the one run every capture figure in this Review comes from): b74b0eb, 2026-10-14 at 03:12-03:16
++05:30, the registry configuration, `git status --porcelain` empty before and after, run as Commands write it:
+`cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry --test gate -- --ignored --exact
+capture_set`, 1 passed in 223.3 s. Into `target/tmp/pi-sim-captures/registry/` (1.9 GB):
+
+```text
+11,618 PNG files of all 62 screens: the nine scenarios' 11,617 presents (boot_stops 6, runtime_stop 303, drill_12
+    1,393, dice_24_code 1,132, skip_and_idle 706, mixed_12_restarts 1,526, wipes_clear_the_stage 3,108,
+    check_backup 536, check_restarts 2,907) and the reveal-d specimen
+index.html    3,086,394 bytes, 11,681 rows (the first capture of every screen and the specimen, 63, then all
+              11,618), each with its PNG file's SHA-256
+              SHA-256 430a6d797c2b78a62027c45dabad3941486f1a05adc021a82292064a750c496a
+review.html   17,409 bytes, 72 rows, 72 copies in review/ (12 MB): each of the 62 screens once (61 drawn as is,
+              reveal-d's placeholder), the specimen, and 9 more QR captures; 16 Protected captures drawn as is,
+              all from vector runs
+              SHA-256 2cb7c72f522a7b8e8290fafc2842f68c48b1883963a606fa8d5907c4e5701e1b
+              15 strings beside QR codes: 7 check URLs (runtime_stop, mixed_12_restarts, drill_12, skip_and_idle,
+              dice_24_code, wipes_clear_the_stage, check_restarts), the re-check URL (check_backup), 4 collision
+              reports (dice-50's, in drill_12, skip_and_idle, wipes_clear_the_stage and check_restarts), the
+              account UR, the descriptors (one QR code, two lines) and the registration (dice_24_code)
+registry-review.zip, next to the folder: review.html and review/, 73 files, 145,436 bytes, names sorted, times
+              fixed at 1980-01-01, deflate (a scratch script, so the same files give the same bytes)
+              SHA-256 2d9a083f4fa4ad7dc1cba9d80dc60ef84e2245f7da26ae2818a479ad2bd0227d
+```
+
+These figures differ from the older ones in groups 11 and 14 (11,530, 11,528 and 11,655 PNG files), which are other
+runs: the presents vary with the codes typed. The set cannot be reproduced byte for byte (fresh nonces, C, D and
+backup passphrases), so index.html's SHA-256, whose rows hold every PNG file's, pins this set. The zip is what the
+owner is sent (group 17); nothing was sent or uploaded yet.
+
+**Live mode** (`cargo run -p keepcrypt-pi-sim --locked -- live --out target/pi-sim-live`, the release configuration,
+as Commands write it), a short session: Check a backup finds the empty stick in the slot (usb-pick) and KEY1 returns
+Home; About and back; New seed, 12 words, step 4's quota in 3 s, Continue, the commitment and the dice; then ten
+minutes with no key: the warning at 9 minutes, a black frame and idle-wiped. Its stdin, one input a line, `^` for an
+empty line (a press): `s s ^ t1 1 s s s s ^ ^ ^ ^ t3 ^ ^ t600`. Exit 0; stderr holds only cargo's two lines;
+`target/pi-sim-live/` holds only `live.png`; stdout is 45 screen ids and nothing else:
+
+```text
+boot home home home usb-insert usb-pick home home home home home about home length wait hwrng hwrng hwrng hwrng
+hwrng hwrng hwrng hwrng hwrng hwrng hwrng hwrng hwrng hwrng hwrng hwrng hwrng hwrng hwrng hwrng hwrng hwrng hwrng
+hwrng hwrng commitment dice idle-warning blank idle-wiped
+```
+
+**Release-artifact scans, local.** The host stand-in for the Linux targets is `aarch64-apple-darwin` (no cross
+toolchain here; CI's cross job runs the six targets), with Commands' lines and the scan step's own script:
+
+```text
+cargo build --release --locked -p keepcrypt-core --lib --example release_probe --target aarch64-apple-darwin
+cargo build --release --locked -p keepcrypt-pi --lib --target aarch64-apple-darwin
+scripts/banned-api-check.sh --artifact aarch64-apple-darwin target/aarch64-apple-darwin/release/libkeepcrypt_core.rlib
+    target/aarch64-apple-darwin/release/examples/release_probe
+    target/aarch64-apple-darwin/release/libkeepcrypt_pi.rlib
+  banned-api-check --artifact aarch64-apple-darwin: clean, 3 file(s): no marker, no test key, no other RNG symbol;
+    _getentropy imported by all 1 object or linked file(s) (2 archive(s), which need no import)
+the same core build and scan for aarch64-apple-ios and aarch64-apple-ios-sim (DEVELOPER_DIR set to Xcode's):
+  each: clean, 2 file(s): no marker, no test key, no other RNG symbol; _CCRandomGenerateBytes imported by all 1
+    object or linked file(s) (1 archive(s), which need no import)
+cargo build --release --locked -p keepcrypt-pi-sim --bin keepcrypt-pi-sim --features keepcrypt-core/test-registry
+    --target aarch64-apple-darwin --target-dir target/pi-sim-scan
+the test job's scan step, the triple swapped:
+  target/pi-sim-scan/aarch64-apple-darwin/release/keepcrypt-pi-sim: 4353296 bytes
+  Marker: target/pi-sim-scan/aarch64-apple-darwin/release/keepcrypt-pi-sim: KC_TEST_REGISTRY_DO_NOT_SHIP
+  Marker: target/pi-sim-scan/aarch64-apple-darwin/release/keepcrypt-pi-sim: KC_SIMULATOR_DO_NOT_SHIP
+  TestKey: target/pi-sim-scan/aarch64-apple-darwin/release/keepcrypt-pi-sim: the test registry public key
+    42e9fa0e206d4bdf410f987ac7ded54fb02fb49ef277cc425d5fdfdb72c3b94b
+  banned-api-check --artifact aarch64-apple-darwin: 3 hit(s) in 1 file(s)
+  scan step: PASS (exit 1 as required, the three lines, no stub marker)
+```
+
+**CI.** Each stage was pushed and Entropy CI ran on the PR head (`pull_request`, PR #6). The Vercel check is not
+required and is ignored, as the owner said. Every run below completed with all 14 Entropy check runs passed:
+- Stage A, a9e13bf: run 38162269315 (2026-10-11, 18:04-18:12 UTC).
+- Stage B, 0b16469: run 38204750600 (2026-10-12, 04:40-04:48 UTC); its review fixes, 1c4b4cf: run 38380810108
+  (2026-10-13, 10:04-10:09 UTC).
+- Stage C, eb0563e: run 38405436278 (2026-10-13, 13:29-13:38 UTC).
+- Stage D, d00186e: run 38449716309 (2026-10-13, 18:48-18:56 UTC). It was the first run of the test job's
+  simulator steps and of the Pi leg's pi/app rlib scan.
+- Stage D2, 0cdfc8a: run 38467985842 (2026-10-13, 21:05-21:14 UTC), the PR head now. Seen on 2026-10-14 with
+  `gh run list --branch m3-pi-sim` and read from the runs' jobs and logs:
+
+```text
+run 38449716309 (d00186e); run 38467985842 (0cdfc8a) gave the same lines but where its figure is shown
+test                            4m47s     (0cdfc8a: 5m27s; its log ends 4m48s after the job's start)
+  cargo test --workspace --locked   64 s: core lib 166 passed, 1 ignored; ceremony 5, kat 7, kcr_release 3,
+                                    os_source 2, typestate 1, vectors 4; pi lib 108 (0cdfc8a: 113); pi-sim lib 36,
+                                    bin 3, gate 16 passed, 1 ignored (17.13 s), hal 6 (0cdfc8a: 7), live 3
+  -p keepcrypt-core --features test-sources   109 s: lib 194 passed, 1 ignored; agreement 9, ceremony 5,
+                                    check_flow 10, error_injection 11, kat 7, kcr 3, no_panic 9, no_secret_text 5,
+                                    os_source 2, panic_wipe 4, source_substitution 5, typestate 1, vectors 4
+  -p keepcrypt-pi-sim --features keepcrypt-core/test-registry   36 s: lib 36, bin 3, gate 16 passed, 1 ignored
+                                    (26.06 s), hal 6 (0cdfc8a: 7), live 3
+  release build for x86_64-unknown-linux-gnu, target/pi-sim-scan   34.59 s (0cdfc8a: 36.82 s)
+  scan step                         target/pi-sim-scan/x86_64-unknown-linux-gnu/release/keepcrypt-pi-sim:
+                                    5490056 bytes
+                                    Marker: ...: KC_TEST_REGISTRY_DO_NOT_SHIP
+                                    Marker: ...: KC_SIMULATOR_DO_NOT_SHIP
+                                    TestKey: ...: the test registry public key 42e9fa0e206d4bdf410f987ac7ded54f
+                                      b02fb49ef277cc425d5fdfdb72c3b94b
+                                    banned-api-check --artifact x86_64-unknown-linux-gnu: 3 hit(s) in 1 file(s)
+                                    (exit 1 required and found; no stub marker)
+cross (arm-unknown-linux-gnueabihf)   1m46s (0cdfc8a: 2m17s)
+  cargo build --release --locked -p keepcrypt-pi --lib --target "$TARGET"   2.56 s (0cdfc8a: 3.91 s)
+  scan                              libkeepcrypt_core.rlib 4730242 bytes, examples/release_probe 4021440 bytes,
+                                    libkeepcrypt_pi.rlib 2176124 bytes
+                                    banned-api-check --artifact arm-unknown-linux-gnueabihf: clean, 3 file(s): no
+                                    marker, no test key, no other RNG symbol; getrandom imported by all 1 object or
+                                    linked file(s) (2 archive(s), which need no import)
+cross, the five other legs     1m51s-4m7s (0cdfc8a: 2m3s-4m24s)   each: clean, 2 file(s): no marker, no test key, no
+                                    other RNG symbol; getrandom (Android) or _CCRandomGenerateBytes (iOS) imported
+gates (banned APIs, verifier, canaries)   8m26s (0cdfc8a: 8m39s)   banned-api-check: clean, 196 files scanned;
+                                    vectorgen.py --selftest (ubuntu-24.04's python3): selftest passed: 13 checks
+                                    (20 s); gate selftest: 427 passed, 0 failed (39 s; 0cdfc8a 41 s); canaries
+                                    (416 s; 0cdfc8a 422 s): PASS: all 61 checks ran
+coverage (core, 95% of lines)   2m50s (0cdfc8a: 2m24s)   TOTAL regions 96.88%, functions 96.32%, lines 8408,
+                                    missed 220, 97.38%
+verifier (python 3.9)          1m7s (1m6s)   Python 3.9.6; selftest passed: 13 checks
+age-interop (age 1.1.1)        58s (1m12s)   three ok lines; 17 of the 17 armor cases refused
+supply-chain (deny, audit, vet)   39s (52s)   advisories ok, bans ok, licenses ok, sources ok; 103 crate
+                                    dependencies; Vetting Succeeded (17 fully audited, 82 exempted)
+lint (fmt, clippy) 34s (34s); changes 5s (21s): pass
+```
+
+**Runtime budgets** (group 14), against group 0's CI baseline, the last main run 38122123944 on 156c8ef:
+
+```text
+                   main 156c8ef   d00186e            0cdfc8a            budget
+test               3m29s          4m47s (+1m18s)     5m27s (+1m58s)     at most +6 minutes: met
+  of which the simulator's three steps   72 s       75 s
+gates              8m06s          8m26s              8m39s              within 10 minutes: met (1m21s to spare)
+  canaries step    417 s          416 s              422 s
+  gate selftest    17 s (346)     39 s (427)         41 s (427)
+coverage           2m46s, 97.39%  2m50s, 97.38%      2m24s, 97.38%      at least 95% of core's lines: met
+```
+
+Q31 (f)'s 12-minute fallback for `gates` was not needed, and group 7's measurement kept Q31 (g)'s opt-level fallback
+out. b74b0eb and this commit run in CI after the next push; b74b0eb adds one test (a throwaway run of 34 steps and
+262 presents) to each configuration's gate run.
+
+**Lead decisions and deviations from the plan**, each with why:
+1. The simulator's strip (commit 20, 8c1a8c7; group 16). Q30 (h) gives live mode "SIMULATOR · NOT FOR REAL FUNDS" on
+   every screen, and Q33 (j) gives "SIMULATOR" beside "TEST REGISTRY". The long label (180 px) and "TEST REGISTRY"
+   (78 px) need 258 px of the 240 px strip. So the strip reads "SIMULATOR · NOT FOR REAL FUNDS" when the simulator's
+   banner is the only one (the release configuration, in which Commands run live mode), and "SIMULATOR" beside "TEST
+   REGISTRY" with the test key (the registry configuration, which the capture set uses, so the captures show the
+   pair). The device (no simulator banner), "TEST REGISTRY" alone, the placeholder and a wipe's black frame are
+   unchanged.
+2. The entry grids' footer labels (commit 19, 91135c9; group 15). With KEY2 "back" the grid footer would be 46
+   characters (276 px) on the 240 px panel, and backup-check-entry offers all five keys at once. The four grids now
+   share "move", "add", "del", "back" and "done" (40 characters, 240 px). pi-firmware.md's Buttons table keeps the
+   action names (cursor, type, delete, back, done); `KeyMap`'s doc names the difference.
+3. `Fault::Remove` (commit 13, fd264e8). SimHal gained a fault that fails only the removal of the file just written.
+   `dice_24_code` retries into a corrupt read-back whose removal fails, and backup-failed says "The file stays on the
+   stick: the file could not be removed from the USB stick". So its stick ends with the verified backup plus that one
+   file, not the verified `.age` alone; the USB gate and `dice_24_code`'s step 8 say so (13h, 6ccd71e).
+4. Q31 (h)'s routes (commit 15, dff720f). The Python Network list takes `config` and `managers` by their own names, as
+   "from logging import config" brings logging.config in. So an import of any module or name called config or
+   managers, also as the last part of a dotted name ("from app import config", "import app.config"), and a wrapped
+   line that holds only such names ("    args.config," as a call's argument) are gate hits. That is stricter than
+   Q31 (h)'s list. It is accepted as fail-closed noise, as M2 accepted connection and handlers; no file in the tree
+   hits it.
+5. code-wrong's copy (commit 19, recorded by 19b, a91fb6d). It was "Check the code on your checker and type it again.
+   The check stays open, with the same seal card." It now ends "with the same seal card: KEY2 on the code screen goes
+   back to its actions." It is new text on a Public screen, visible in the captures (`code-wrong`).
+6. The owner's KEY2 decision (2026-10-13, "yes to KEY2 back"; under "Raised by stage C's review during M3"). KEY2 is
+   "back" on code-entry (to check-actions with the same check and nonce, the typed code wiped) and on
+   backup-check-entry (Home, the backup read dropped, the file left on the stick); readback-entry and bip39-entry keep
+   KEY2 dead. Commits: d2877f3 (18: docs and this plan, no code), 91135c9 (19), a91fb6d (19b), e20e206 (19c: a kept
+   `Wiped` stays kept), 1d5842d (19d: offered empty, at word 8 and after a refusal) and 0cdfc8a (19e: offered with all
+   8 symbols typed).
+7. The review page (commit 21, b74b0eb; groups 11 and 17). The full set is about 11,600 PNG files (1.9 GB), too many
+   for the owner to page through or to receive, so capture_set also writes review/ and review.html, the owner's
+   working view; the full set and index.html stay the record. Readings taken: "the first capture of every screen" is
+   the first one drawn as is, and the first capture only when every capture of that screen is a placeholder (only
+   reveal-d's are, beside its specimen); a string is listed only for a Public QR code or a vector run's Protected one,
+   so the two throwaway collision reports (`runtime_stop`, `mixed_12_restarts`), which are placeholders, are not on
+   the page. index.html is unchanged, so its "first capture" section still shows the placeholders of collision-qr,
+   words-insert, readback-entry and reveal-d, which throwaway runs reach first. The record under Review is the zip's
+   SHA-256 and index.html's (above). CLAUDE.md's Commands comment for capture_set and group 14's commands-of-record
+   line still name only "captures in target/tmp/pi-sim-captures/", which stays true; neither names review.html.
+8. Group 0's baseline was taken at the end (2026-10-14), from an archive of 8e6917b, not before commit 2; the tree is
+   the same, so its figures stand (above).
+9. Commit 1 is two commits (b8e6143, the plan and the questions; 63e400f, the answers), and 12g is two (c171599 and
+   5f46a48, a rustfmt of its assertion).
+10. The QR and info pages offer no KEY1 "back" (commit 8c, 3d73e12), which pi-firmware.md's Buttons table gives them.
+    `KeyMap`'s doc says this awaits the owner's decision (open items, below).
+11. The release probe's `game_random` call must stand on a line that is not a comment (stage-A finding 9, a lead
+    decision; commits 15 and 15d), so dropping the call fails the gate. Commands' `TRYBUILD=overwrite` line gains
+    `--locked` and also allows an owner-approved API change (commit 17).
+12. Smaller shapes the commits record with their proof: `Frame` lives in pi/app/src/ui/frame.rs, since
+    `pub(in crate::ui)` needs `ui` as an ancestor (8); `Item::Seal` carries the Seal ID (9); the placeholder is drawn
+    in pi/sim's panel.rs by pi/app's `Painter` (10); Q28 (e)'s "3 imported audits" are 4 imports.lock entries (7b);
+    the tests' one print site is tests/report/mod.rs (10f); and qrcodegen-no-heap 1.8.1's
+    `error_correction_level()` misreads a version-11 L code, which pi/app never calls (9).
+
+**Ticked in this commit** (each with its "Proof (M3 Review, 2026-10-14)" line above): group 0's answers and
+baseline; group 1's release_probe call (the cross scans); group 12's live bin; group 14's `test` and `cross` steps,
+CLAUDE.md Commands and runtime budgets; and every Verification item but "the owner reviews the captures" and
+"Definition of done".
+
+**Still unticked**, with what each waits for:
+- Group 17, the capture set and its review page, and Verification "Gate: the owner reviews the captures": the
+  capture run above is recorded and its zip is ready to send; awaiting the owner, who scans every QR capture on the
+  review page with a phone, compares each decoded text with core's string beside it, and gives a verdict. The lead
+  adds both, quoted with the date, in a later commit.
+- Group 17, the stage reviews: every N.b fix is listed above, but the high and medium tally ("every high and medium
+  finding is fixed") is in the stage reviews' reports, which this file does not hold; for the lead to record.
+- Verification "Definition of done": waits for the two group 17 items.
+
+### M3 gate status: awaiting the owner's review of the captures (2026-10-14)
+The gate in docs/build-plan.md:293. Deliverables: "Every screen including seal check with go-ahead code entry and
+braille pages, button handling, waiting-screen game, USB export and snapshot import mocked". Proof: "Scripted run
+drives a full ceremony in the simulator; you review the screen captures".
+- Scripted run drives a full ceremony: met. pi/sim's gate.rs drives pi/app's `App` over the real core on `SimHal` in
+  nine scenarios, each a test that fails on any unmet `Expect`, in the release configuration (`cargo test
+  --workspace`) and the registry configuration (`--features keepcrypt-core/test-registry`). Between them
+  `drill_12`, `dice_24_code` and `mixed_12_restarts` run steps 1-15. Locally at b74b0eb both configurations pass
+  (gate 17 passed, 1 ignored, each); in CI the test job runs both on every pushed head, green on d00186e and 0cdfc8a.
+- Every screen: met. `every_screen_is_expected`: the scenarios' `Expect` ids cover all 62 `ScreenId`s with the test
+  key, and all but snapshot-loaded and snapshot-date without it, as planned.
+  - Seal check with go-ahead code entry: the code is typed on the 8×4 grid; a wrong code keeps the check and its URL
+    and shows no words; the mock checker's G, from a check QR whose drawn modules match its payload, reveals the
+    words; a loaded snapshot asks for its date before every reveal; KEY2 leads back from the code grid (the owner's
+    decision of 2026-10-13).
+  - Braille pages: insert view and overview for 12 and 24 vector words with numbered dots, blank faces, lighter
+    letters, mirror flags and device labels; the read-back names a mirror misread, a should-be-blank, a
+    should-have-letter and a wrong letter.
+  - Button handling: every scripted press goes through the Debouncer as a bounce train; every screen's footer names
+    its keys within 240 px; the dead-key probes press every unoffered key on each screen's first showing, and none
+    draws anything.
+  - Waiting-screen game: Snake, in Mixed step 4 only, closed at the quota, its bytes from `game_random` alone (the
+    Shell grep), every key still forwarded to the pool, and a game byte error halts holding nothing.
+  - USB export mocked: written create-new, read back, verified; faults remove only the file just written (or say it
+    stays), and Retry keeps the passphrase.
+  - Snapshot import mocked: `with-dice-50` drives both the collision and the clear result in the registry
+    configuration, a tampered snapshot is refused, and release builds show `NoRegistryKey`'s text.
+- You review the screen captures: open. The registry configuration's capture set at b74b0eb (11,618 PNG files,
+  index.html SHA-256 430a6d79...) and its review page (review.html and review/, zipped: 145,436 bytes, SHA-256
+  2d9a083f...) are ready to send. Awaiting the owner's QR scan record and verdict.
+- Also met: runtime failures halt with nothing held (Q25); the 99-roll minimum holds through Stop, Cannot check, the
+  idle wipe and KEY2, and only Ready (Skip or a passed check), a halt or a power cycle drops it (Q26); Protected
+  screens are gated, covered after 30 s and wiped at 10 minutes (Q29); the verify.py tie recomputes the words and
+  Seal ID of a Mixed run from C, D and the rolls; the release artifacts scan clean on all six cross legs, pi/app's
+  ARM rlib among them, and the test-registry simulator carries exactly its two markers and the test key.
+- CI: run 38467985842 on 0cdfc8a, the PR head, is green: all 14 Entropy check runs pass (the Vercel check, not
+  required, is ignored); test 5m27s, gates 8m39s, coverage 97.38% of core's lines, inside group 14's budgets.
+  b74b0eb (pi/sim's tests only) and this commit (this file only) run after the next push.
+- Every plan and Verification item of M3 is ticked with its proof but four: group 17's two items (the owner's capture
+  review, and the stage reviews' severity tally), Verification's "the owner reviews the captures", and "Definition of
+  done", which waits for group 17. No CI job, required check or ruleset changed; the nine new crates are the approved
+  ones.
+- Open items; none is part of the gate:
+  - for the owner: the QR and info pages offer no KEY1 "back", which pi-firmware.md's Buttons table gives them
+    (`KeyMap`'s doc, commit 8c): give those pages KEY1 "back" as the table says, or amend the table to match.
+  - for the owner: when braille Tetris comes to the Pi (Q27 (c)): M4, right after M3, or with the phones (M5, M6).
+  - low: Python `random` reached through a dotted import (for example `import jax.random`) is not caught by the
+    banned-API gate's RNG rule; a follow-up for M4.
+  - low: Snake's speed is tied to the hwrng block (one cell per step 4 Tick, 100 ms in the simulator); M4 may give it
+    a tick of its own when it sets the device's Tick from the measured hwrng rate.
+  - low: `gates` takes 8m26s-8m39s of its 10-minute budget, so the next canaries need the budget re-planned (Q31 (f)
+    approved 12 minutes in advance).
+  - low: owner item 13, the seed-pipeline.png redraw (docs/img/seed-pipeline.png still reads "50 rolls give 129
+    bits; 99 give 256"): it needs the owner's source file, otherwise M7's docs pass draws it from a committed script
+    (Q34).
+  - low: index.html's "first capture" section shows placeholders for four screens that throwaway runs reach first
+    (collision-qr, words-insert, readback-entry, reveal-d); review.html shows drawn captures of all but reveal-d.
+  - low: CLAUDE.md's Commands comment for capture_set does not name review.html.
+- Per CLAUDE.md, M4 does not start until the owner approves the gate.
