@@ -33,6 +33,10 @@
 //!   cycles, Protected frames as the scenario says (`Scenario::protected`). A capture also keeps
 //!   the payload of the QR code its file shows as drawn, for the review page; a placeholder's is
 //!   never kept, so no throwaway run's Protected payload is.
+//! - A run whose Protected frames are captured as drawn must be a vector run: one of a Mixed
+//!   session's screens (`MIXED_ONLY`) in it fails the scenario, in every run, captured or not.
+//!   A Mixed seed comes from a random D, so its Protected frames and payloads are a throwaway
+//!   seed's, never to be written as drawn; a dice-only seed comes from the script's rolls.
 //! - Nothing here prints screen text: `report` gets the scenario's name and counts.
 
 use std::collections::{BTreeMap, VecDeque};
@@ -58,6 +62,15 @@ const GO_DOMAIN: &[u8] = b"KCE/v1/go";
 const CROCKFORD: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 /// The longest BIP39 word: a secret longer than this is looked for inside every Public text.
 const LONGEST_WORD: usize = 8;
+/// The screens only a Mixed session shows: step 4's hwrng intake and Snake, the commitment, and
+/// D (pi-firmware.md steps 4, 5 and 14). Every Mixed session shows hwrng first.
+const MIXED_ONLY: [ScreenId; 5] = [
+    ScreenId::Hwrng,
+    ScreenId::GameSnake,
+    ScreenId::Commitment,
+    ScreenId::RevealDOffer,
+    ScreenId::RevealD,
+];
 
 /// An entry grid as Q32 (a) lays it out: its symbols row by row and its columns. The cursor wraps
 /// within its row and its column; a cell past the last symbol is empty.
@@ -400,7 +413,8 @@ pub struct Scenario {
     pub name: &'static str,
     pub hwrng: HwRngStream,
     /// How a capture writes the run's Protected frames (Q30 (g)): as drawn for a vector run,
-    /// whose words come from public roll strings or files, and as the placeholder otherwise.
+    /// whose words come from public roll strings or files, and as the placeholder otherwise. A
+    /// run marked as drawn fails on any of a Mixed session's screens (`MIXED_ONLY`).
     pub protected: ProtectedFrames,
     pub steps: Vec<Step>,
 }
@@ -585,6 +599,13 @@ impl Run {
             if !self.counts.screens.contains(&present.id) {
                 self.counts.screens.push(present.id);
             }
+            assert!(
+                self.protected == ProtectedFrames::Placeholder || !MIXED_ONLY.contains(&present.id),
+                "step {}: {} in a run whose Protected frames are captured as drawn: only a \
+                 dice-only vector run may be",
+                self.counts.steps,
+                present.id.name()
+            );
             for element in &present.elements {
                 if let Shown::Qr(payload) = &element.item {
                     assert!(
@@ -1039,6 +1060,25 @@ mod tests {
             hwrng: HwRngStream::Counting,
             protected: ProtectedFrames::Placeholder,
             steps: vec![Step::Key(Key::Press)],
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "hwrng in a run whose Protected frames are captured as drawn")]
+    fn a_mixed_session_in_a_run_marked_as_drawn_fails() {
+        // A Mixed session's D is random, so a run that holds one may not mark its Protected
+        // frames as drawn: it fails on the session's first screen, before any secret.
+        run(Scenario {
+            name: "mixed-as-drawn",
+            hwrng: HwRngStream::Counting,
+            protected: ProtectedFrames::AsDrawn,
+            steps: vec![
+                Step::Expect(ScreenId::Home),
+                Step::Key(Key::Press),
+                Step::Expect(ScreenId::Length),
+                Step::Key(Key::Press),
+                Step::Expect(ScreenId::Hwrng),
+            ],
         });
     }
 

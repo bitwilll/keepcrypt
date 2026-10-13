@@ -5280,6 +5280,14 @@ carries it, and every commit names a proof that runs at that commit.
   it; the collision report's capture is the placeholder, its payload not kept, and the page holds neither the payload
   nor its seal code. Mutated in place and restored, keeping a placeholder's payload in the driver fails it, and also
   listing it on the page (with the driver's check disabled) fails the page's check.
+  Proof (review fix, commit 21b): whether a run's Protected frames, and since commit 21 its QR payloads, are written
+  as drawn rested on each scenario's hand-set `Scenario::protected`: a Mixed run marked `AsDrawn` passed every test
+  and `capture_set`, writing a random seed's frames and listing its collision report on the review page. The driver
+  now fails a run marked `AsDrawn` on any of a Mixed session's screens (`MIXED_ONLY`: hwrng, game-snake, commitment,
+  reveal-d-offer, reveal-d; every Mixed session shows hwrng first), in every run, captured or not, so every `cargo
+  test` checks the six vector scenarios' marks; `a_mixed_session_in_a_run_marked_as_drawn_fails` pins it. In place
+  and restored: `runtime_stop` and `mixed_12_restarts` marked `AsDrawn` each fail at step 5 on hwrng, and with the
+  check disabled the new test fails.
 
   Proof for this group: both configurations' test output, with per-scenario step, screen and dead-key counts; the
   capture set and index under Review.
@@ -6060,6 +6068,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
 21. pi/sim: `capture_set` also writes the owner's review page: the first capture of every screen, the reveal-d
     specimen, and each QR capture with core's string beside it (groups 11 and 17; a lead decision). Also
     `check_backup`'s KEY2 assertion drops `!keeps_wiped()`, trivially true in a run that holds no `Wiped`.
+    21b. pi/sim: the security and recompute reviews: a run marked to capture its Protected frames as drawn fails on
+    any of a Mixed session's screens, so only a dice-only vector run can be.
 22. tasks/todo.md: the M3 Review, with pasted proof and the gate report; the owner's verdict on the captures comes
     later.
 
