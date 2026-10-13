@@ -140,7 +140,8 @@ jobs:
     # scripts/canaries.sh's build_probe does), goes through the artifact scan, which must exit 1
     # with exactly three hits: the registry marker, the simulator marker and the test key, so no
     # stub marker (rule 10). The scan also shows no foreign RNG crate symbol. It cannot see std's
-    # OS-seeded hashing, which the grep gate's hash ban covers.
+    # OS-seeded hashing: the grep gate's hash ban covers that in the shipped crates' sources (core,
+    # ffi and pi/app), and pi/sim's own code never ships.
     name: test
     needs: changes
     if: needs.changes.outputs.entropy == 'true'

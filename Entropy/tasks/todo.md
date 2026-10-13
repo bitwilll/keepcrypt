@@ -5346,7 +5346,8 @@ carries it, and every commit names a proof that runs at that commit.
     hits: `Marker: ... KC_TEST_REGISTRY_DO_NOT_SHIP`, `Marker: ... KC_SIMULATOR_DO_NOT_SHIP` and the `TestKey` hit,
     and no `KC_TEST_SOURCE_DO_NOT_SHIP`.
   - This scan shows the expected markers and no foreign RNG crate symbol. It cannot see std's OS-seeded hashing; the
-    hash ban (group 13) covers that.
+    hash ban (group 13) covers that in the shipped crates' sources (core, ffi, pi/app), and pi/sim's own code never
+    ships (review fix, commit 16b).
 
   Proof (commit 16; the box stays open for CI, the first x86_64 Linux build): the three steps follow the two existing
   ones; the scan step needs exit 1, the three hit lines, `3 hit(s) in 1 file(s)` and no stub marker. Ruby's YAML
@@ -5355,6 +5356,11 @@ carries it, and every commit names a proof that runs at that commit.
   the release build in `target/pi-sim-scan` takes 10 s; the step's own script, with only the triple swapped, prints
   exactly the registry marker, the simulator marker and the `TestKey` hit and passes. It fails on a build without the
   test key (1 hit), a copy with the stub marker appended (4 hits), a clean file (exit 0) and a missing file.
+  Proof (review fix, commit 16b): the step's comment said the grep gate's hash ban covers the std hashing this scan
+  cannot see, but the ban reads only core/src, ffi/src and pi/app/src: in the plan review's scratch copy a `HashMap`
+  in pi/sim/src/main.rs, the scanned binary's own code, left the gate clean. The comment now says the ban covers the
+  shipped crates' sources and pi/sim's own code never ships; no command changed, and Ruby's YAML parser still reads
+  the workflow.
 - [ ] `cross` job: on the leg whose crates include `keepcrypt-pi`, also
   `cargo build --release --locked -p keepcrypt-pi --lib --target "$TARGET"`, and scan
   `libkeepcrypt_pi.rlib` with the core artifacts. It must be clean (an archive needs no OS import).
@@ -5671,6 +5677,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     15d. scripts: the recompute review: the release probe's `game_random` call counts only outside every `//` and
     `/* */` comment.
 16. ci, .github: the `test` and `cross` steps and comments; CODEOWNERS adds `pi/sim/` (group 14).
+    16b. ci: the plan review: the `test` job's comment says the hash ban covers the shipped crates' sources, not
+    pi/sim's.
 17. CLAUDE.md: Commands for M3.
 18. tasks/todo.md: the M3 Review, with pasted proof, the owner's verdict on the captures and the gate report.
 
