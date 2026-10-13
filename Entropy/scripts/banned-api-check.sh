@@ -121,7 +121,8 @@
 #              SystemTime or Instant: a game holds no session and no pool input, and keeps no
 #              clock. game_random in any file outside core/src/source.rs, core/src/lib.rs,
 #              core/tests/, core/examples/release_probe.rs and pi/app/src/games/. Session::new
-#              (spaces around :: allowed) in any file under pi/app/src but pi/app/src/app.rs, and
+#              (spaces around :: allowed, and with the state named, Session::<Collecting>::new or
+#              <Session<Collecting>>::new) in any file under pi/app/src but pi/app/src/app.rs, and
 #              each match after its first in app.rs: pi/app starts sessions in one place, so a kept
 #              Wiped's 99-roll minimum cannot be skipped. And whenever core exists,
 #              core/examples/release_probe.rs must call game_random on a line that is not a // or
@@ -536,9 +537,13 @@ game_random_use() {
   grep -n -a -E -e 'game_random' -- "$1"
 }
 
-# Shell, under pi/app/src: Session::new, the one constructor that ignores a kept Wiped.
+# Shell, under pi/app/src: Session::new, the one constructor that ignores a kept Wiped, also with
+# its state named, as a turbofish (Session::<Collecting>::new) or a qualified path
+# (<Session<Collecting>>::new). The state's brackets hold no ; = ( or ), so a session's type before
+# another call on the line ("let s: Session<Collecting> = Box::<u8>::new(x)") passes; Session as
+# another constructor's last type argument (Box::<Session<Collecting>>::new) is a hit too.
 session_new() {
-  grep -n -a -E -e "${L}Session[[:space:]]*::[[:space:]]*new$R" -- "$1"
+  grep -n -a -E -e "${L}Session[[:space:]]*((::)?[[:space:]]*<[^;=()]*>[[:space:]]*)?::[[:space:]]*new$R" -- "$1"
 }
 
 # Shell, in pi/app/src/app.rs: every Session::new after the first, which new_session holds.

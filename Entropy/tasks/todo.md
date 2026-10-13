@@ -5310,6 +5310,14 @@ carries it, and every commit names a proof that runs at that commit.
   KC_TEST_REGISTRY_DO_NOT_SHIP`, `Marker: ... KC_SIMULATOR_DO_NOT_SHIP` and the `TestKey` hit (exit 1), no stub
   marker, `_getentropy` imported; without the test key, only the simulator marker. Canaries 61/61; `cargo llvm-cov`
   97.38% of core's lines, over the 95% floor.
+  Proof (review fix, commit 15b): `Session::new` matched only that spelling, while core's `impl Session<Collecting>`
+  also takes `Session::<Collecting>::new(..)` and `<Session<Collecting>>::new(..)`: the security review's mutants, a
+  restart through the turbofish in app.rs and the qualified path in `app/ready.rs`, compiled and the gate stayed
+  clean. The pattern now takes the state named either way (its brackets hold no `;`, `=`, `(` or `)`), with fixtures
+  `shell-session-new-turbofish`, `-qualified-path` and `-turbofish-twice-in-app` (spaced) and four near misses in
+  `clean-shell-allowed`. `--selftest` passes 418/418 under sh and dash; the gate is clean on the tree and names both
+  mutants; in a scratch copy with the artifact selftest stubbed, the pattern without the `::` before the brackets,
+  without the brackets, or letting them hold `=`, or `(` and `)`, each turns the selftest red.
 
 **14. CI, CODEOWNERS and the commands of record (Q31)**
 - [ ] `test` job, after its two existing steps:
@@ -5639,6 +5647,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     14c. pi/sim: the recompute review: a live session finds the empty stick in the slot from power-on.
 15. scripts, core: the Shell category, the hash ban with pool.rs's `BTreeSet`, the pi/app forbid lines, the simulator
     marker, Q31 (h)'s routes, and fixtures (group 13).
+    15b. scripts: the security review: the Shell category's `Session::new` also matches the turbofish and the
+    qualified path.
 16. ci, .github: the `test` and `cross` steps and comments; CODEOWNERS adds `pi/sim/` (group 14).
 17. CLAUDE.md: Commands for M3.
 18. tasks/todo.md: the M3 Review, with pasted proof, the owner's verdict on the captures and the gate report.
