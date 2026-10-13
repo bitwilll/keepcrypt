@@ -4866,6 +4866,14 @@ carries it, and every commit names a proof that runs at that commit.
   `the_bip39_passphrase_stops_at_100_characters_in_its_own_buffer`: with 99 characters typed, type is offered; the
   100th is taken with the buffer's capacity unchanged; then type is offered no more and a 101st press draws nothing.
   It passes, and fails with that mutant in a scratch copy.
+  Proof (review fix, commit 12i): no test could see whether a step's secret goes when its screens are left, as the
+  module docs say: mutants keeping the backup passphrase's display copy after the confirm, the watch-only export after
+  its QRs, the registration after register-qr, or the typed BIP39 passphrase after the export each passed both
+  configurations. `leaving_a_steps_screens_drops_what_they_showed` drives a read-back dice-only ceremony through step
+  11's pages and confirm, step 12 with a typed passphrase and step 13, and names what the stage holds at each screen:
+  the passphrase until both answers are right, the export (and no typed text) until the descriptor QR is left, the
+  registration until register-qr is left. It passes, and each of the four mutants, in a scratch copy, fails it. (The
+  review's marking mutants are commit 11e's.)
 - [x] Load registry snapshot:
   - `usb-insert` → `usb-pick` (when there is more than one `.kcr`) → `wait` → `verify_snapshot`;
   - then `snapshot-loaded` (number, date, entries) or `snapshot-failed` with core's text. In release builds that is
@@ -5396,6 +5404,7 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     12g. pi/app: the plan review: a refused backup passphrase puts the grid cursor back on the first symbol, and the
     docs say where an entry grid's cursor may rest.
     12h. pi/app: the security review: a unit test pins the BIP39 passphrase's 100-character cap in its own buffer.
+    12i. pi/app: the recompute review: a unit test shows each step's secret dropped when its screens are left.
 13. pi/app, pi/sim: Snake; `mixed_12_restarts` in full, the verify.py tie, `every_screen_is_expected`,
     `drill_12_repeats` and `capture_set` (groups 10, 11).
 14. pi/sim: the interactive bin (group 12).

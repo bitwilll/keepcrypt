@@ -1524,6 +1524,82 @@ mod tests {
         assert!(full(&app));
     }
 
+    /// What the Ready stage holds besides the session, by name.
+    fn holding(app: &App<Fake>) -> &'static str {
+        match &app.held.stage {
+            Stage::Ready { steps, .. } => match steps.holding {
+                Holding::Nothing => "nothing",
+                Holding::Mismatch(_) => "a mismatch",
+                Holding::Passphrase(_) => "the backup passphrase",
+                Holding::Export(_) => "the watch-only export",
+                Holding::Registration(_) => "the registration",
+                Holding::DeviceLeg(_) => "D",
+            },
+            _ => "no Ready stage",
+        }
+    }
+
+    #[test]
+    fn leaving_a_steps_screens_drops_what_they_showed() {
+        let mut app = booted();
+        let mut ready = sealed(None).skip_check();
+        let typed: Vec<(u8, String)> = ready
+            .braille()
+            .iter()
+            .map(|insert| (insert.position(), insert.word().chars().take(4).collect()))
+            .collect();
+        for (position, letters) in typed {
+            assert!(ready.check_readback(position, &letters).is_ok());
+        }
+        app.held.stage = Stage::Ready {
+            session: ready,
+            steps: Steps::new(),
+        };
+        // Step 11: the passphrase's display copy, from its pages until both answers are right.
+        drawn(&mut app, View::new(ScreenId::BackupOffer, Note::None));
+        play(&mut app, &[Key::Press, Key::Press, Key::Key3, Key::Press]);
+        assert_eq!(holding(&app), "the backup passphrase");
+        for _ in 0..2 {
+            assert_eq!(app.view.id, ScreenId::BackupConfirm);
+            let right = match &app.held.stage {
+                Stage::Ready { steps, .. } => match &steps.holding {
+                    Holding::Passphrase(new) => {
+                        let (position, choices) = new.challenge().questions()[app.view.page];
+                        let word = new.words().nth(usize::from(position) - 1);
+                        choices.iter().position(|&choice| Some(choice) == word)
+                    }
+                    _ => None,
+                },
+                _ => None,
+            };
+            let downs = vec![Key::Down; right.expect("the right word is a choice")];
+            play(&mut app, &downs);
+            play(&mut app, &[Key::Press]);
+        }
+        assert_eq!(app.view.id, ScreenId::UsbInsert);
+        assert_eq!(holding(&app), "nothing");
+        // Step 12 with a BIP39 passphrase: its text, once the export is made; the export, once
+        // its QRs are left.
+        drawn(&mut app, View::new(ScreenId::Bip39Ask, Note::None));
+        play(
+            &mut app,
+            &[Key::Down, Key::Press, Key::Press, Key::Press, Key::Key3],
+        );
+        assert_eq!(app.view.id, ScreenId::WatchSummary);
+        assert_eq!(holding(&app), "the watch-only export");
+        assert!(matches!(&app.held.stage, Stage::Ready { steps, .. } if steps.typed.is_empty()));
+        play(&mut app, &[Key::Press, Key::Press, Key::Press, Key::Press]);
+        assert_eq!(app.view.id, ScreenId::RegisterOffer);
+        assert_eq!(holding(&app), "nothing");
+        // Step 13: the registration, once register-qr is left (dice-only: no step 14).
+        play(&mut app, &[Key::Press, Key::Press]);
+        assert_eq!(app.view.id, ScreenId::RegisterQr);
+        assert_eq!(holding(&app), "the registration");
+        play(&mut app, &[Key::Press]);
+        assert_eq!(app.view.id, ScreenId::Checklist);
+        assert_eq!(holding(&app), "nothing");
+    }
+
     /// Draws the current screen on the fake display, which checks that the model fits and keeps
     /// every Protected element on a Protected screen.
     fn drawn(app: &mut App<Fake>, view: View) {
