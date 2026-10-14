@@ -1,0 +1,2 @@
+A text file holding the two device files std reads for its hash keys when getrandom fails:
+/dev/urandom and /dev/random. Neither may appear in a shipped artifact (tasks/todo.md, M4 group 12).

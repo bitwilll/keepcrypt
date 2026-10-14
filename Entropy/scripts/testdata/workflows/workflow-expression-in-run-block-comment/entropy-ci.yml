@@ -1,0 +1,9 @@
+permissions:
+  contents: read
+jobs:
+  a:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: |
+          # GitHub expands this before the shell reads it: ${{ github.head_ref }}
+          echo one

@@ -11,10 +11,18 @@
 //! - `--crate-name rand` (and, for Android only, each other crate of deny.toml's RNG list):
 //!   `rngs::next_u32` becomes a defined `rand::` symbol;
 //! - `--crate-name getrandom`: `backends::use_file::fill_inner` becomes one of getrandom's fallback
-//!   symbols (tasks/todo.md, M1 Q8).
+//!   symbols (tasks/todo.md, M1 Q8);
+//! - `--cfg kc_random_state`: a call of `RandomState::new()`, std's own OS read behind HashMap
+//!   (rule 1; tasks/todo.md, M4 group 12), which links std for that case alone.
 //! Under any other crate name those two functions are harmless, so every case holds them.
 //! Not part of any build: scripts/testdata/ is outside the workspace and the grep gate's scan.
-#![no_std]
+#![cfg_attr(not(kc_random_state), no_std)]
+
+#[cfg(kc_random_state)]
+#[inline(never)]
+pub fn kc_fixture_random_state() -> std::collections::hash_map::RandomState {
+    std::collections::hash_map::RandomState::new()
+}
 
 #[cfg(all(target_os = "android", not(kc_no_os_import)))]
 unsafe extern "C" {

@@ -1,0 +1,12 @@
+permissions:
+  contents: read
+jobs:
+  a:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Diff
+        run: |
+          base=HEAD^1
+          git diff --quiet "$base" ${{ github.event.pull_request.head.sha }}
+        env:
+          AFTER: ${{ github.sha }}

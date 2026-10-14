@@ -1,0 +1,8 @@
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  a:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo one

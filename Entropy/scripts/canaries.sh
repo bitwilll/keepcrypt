@@ -1047,6 +1047,72 @@ verifier_canary verifier-reach "    results = known_answers(KNOWN_ANSWERS)" \
     "takes getpass.io, not in the recorded list" \
     "rule (e): lone copy: audit: open for writing: '/dev/null'"
 
+# The grep gate's Device category on the real firmware (CLAUDE.md rules 5 and 8; tasks/todo.md,
+# M4 group 11): one line planted in the copy of a real pi/app file, one per rule, must fail
+# scripts/banned-api-check.sh on the copy with exactly that hit, so a widened path list, a new
+# exception or a dropped rule turns CI red. The copy is the one the real-* canaries use; each file
+# is restored afterwards.
+# device_canary NAME FILE LINE: appends LINE to the copy's FILE; the gate must report Device at
+# FILE with LINE and nothing else.
+device_canary() {
+    name=$1
+    cp "$root/$2" "$tmp/$2" || exit 1
+    printf '%s\n' "$3" >> "$tmp/$2" || exit 1
+    expect_failure "$name" sh "$root/scripts/banned-api-check.sh" "$tmp"
+    need "Device: $2:"
+    need "$3"
+    need "banned-api-check: 1 hit(s) in "
+    verdict
+    cp "$root/$2" "$tmp/$2" || exit 1
+}
+device_canary device-path-literal pi/app/src/app.rs \
+    'const KC_GATE_CANARY_CMDLINE: &str = "/proc/cmdline"; // gate canary (temp copy only): a path outside paths.rs'
+device_canary device-file-api pi/app/src/hal.rs \
+    'fn kc_gate_canary(path: &str) -> std::io::Result<std::fs::File> { std::fs::File::open(path) } // gate canary (temp copy only)'
+device_canary device-hardware-crate pi/app/src/input.rs \
+    'fn kc_gate_canary() -> Result<rppal::gpio::Gpio, rppal::gpio::Error> { rppal::gpio::Gpio::new() } // gate canary (temp copy only)'
+device_canary device-buffered-reader pi/app/src/device/hwrng.rs \
+    '// Gate canary (temp copy only): a BufReader would hold a copy of the samples.'
+
+# The workflow hardening check (tasks/todo.md, M4 group 11; Q38 (d)): a copy of the real
+# entropy-ci.yml with every rule broken once (the top-level token widened to write, which also
+# loses contents: read, and a job that runs on workflow_run, uses an action by tag, pastes an
+# expression into a run line and a run block, and reads a secret) must fail
+# scripts/banned-api-check.sh --workflows with those seven hits, and no other: the real file
+# is clean, as CI's gates job checks on every run.
+name=workflow-hardening
+wfd="$work/workflows"
+wfc="$wfd/entropy-ci.yml"
+mkdir "$wfd" || exit 1
+cp "$root/../.github/workflows/entropy-ci.yml" "$wfc" || exit 1
+replace "$wfc" 'permissions:
+  contents: read' 'permissions:
+  contents: write'
+cat >> "$wfc" <<'EOF'
+
+  canary:
+    # Gate canary (scripts/canaries.sh, temp copy only): every hardening rule broken once.
+    if: github.event_name == 'workflow_run'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: echo "${{ github.head_ref }}"
+      - env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git diff --quiet "$base" ${{ github.event.pull_request.head.sha }}
+EOF
+expect_failure "$name" sh "$root/scripts/banned-api-check.sh" --workflows "$wfd"
+need "Workflow: $wfc:1: missing a top-level permissions block that holds contents: read"
+need "Workflow: $wfc:32:   contents: write"
+need "if: github.event_name == 'workflow_run'"
+need "uses: actions/checkout@v7"
+need 'run: echo "${{ github.head_ref }}"'
+need 'TOKEN: ${{ secrets.GITHUB_TOKEN }}'
+need 'git diff --quiet "$base" ${{ github.event.pull_request.head.sha }}'
+need "7 hit(s) in 1 workflow(s)"
+verdict
+
 # The release-artifact scan (CLAUDE.md rule 10; tasks/todo.md, M1 group 11 and Q3, Q8): the
 # release probe (core/examples/release_probe.rs) and core's rlib, built in release mode for the
 # host three ways, one package at a time (-p), in their own target directory. On a Linux host the
@@ -1068,9 +1134,11 @@ case $host in
     *-linux-*) cfg_var=CARGO_TARGET_$(printf '%s' "$host" | tr 'a-z-' 'A-Z_')_RUSTFLAGS ;;
     *) cfg_var= ;;
 esac
-# build_probe [FEATURES]: builds core's rlib and the probe for the host; prints the output on failure.
+# build_probe [FEATURES] [ROOT]: builds core's rlib and the probe for the host, from the workspace
+# at ROOT (the real one by default); prints the output on failure.
 build_probe() {
-    set -- cargo build --release --locked -p keepcrypt-core --lib --example release_probe \
+    set -- cargo build --release --locked --manifest-path "${2:-$root}/Cargo.toml" \
+        -p keepcrypt-core --lib --example release_probe \
         --target "$host" --target-dir "$probe_dir" ${1:+--features "$1"}
     if [ -n "$cfg_var" ]; then
         set -- env "$cfg_var=--cfg getrandom_backend=\"linux_getrandom\"" "$@"
@@ -1121,10 +1189,34 @@ else
     echo "FAIL: $name: the build failed"
     status=1
 fi
+# - Positive control 3 (tasks/todo.md, M4 group 12): std's random-key path. The copy's probe, with
+#   a RandomState (a HashMap's hasher, whose keys std reads from the OS itself) planted at the
+#   start of run(), built with default features from the copy into the same target directory
+#   (the registry crates are shared, core and the probe rebuild for the copy's path), must fail
+#   the scan with StdRandom hits in the probe, hashmap_random_keys among them, and none in the
+#   rlib, which the copy leaves as it is. Last of the probe canaries: its build overwrites their
+#   two files. black_box keeps the value alive without a must_use warning.
+name=release-probe-std-random
+replace "$tmp/core/examples/release_probe.rs" '    self_test().map_err(|_| 10)?;' \
+    '    core::hint::black_box(std::collections::hash_map::RandomState::new()); // gate canary (temp copy only)
+    self_test().map_err(|_| 10)?;'
+if build_probe "" "$tmp"; then
+    expect_failure "$name" sh "$root/scripts/banned-api-check.sh" --artifact "$host" "$rlib" "$probe"
+    need "StdRandom: $probe: symbol "
+    need "hashmap_random_keys"
+    never "StdRandom: $rlib"
+    never "Marker:"
+    never "TestKey:"
+    verdict
+else
+    echo "FAIL: $name: the build failed"
+    status=1
+fi
+cp "$root/core/examples/release_probe.rs" "$tmp/core/examples/release_probe.rs" || exit 1
 
 # The number of checks above, pinned, so a canary that is deleted, or skipped by a broken branch,
 # turns CI red too. A real change to the canaries updates this pin in the same reviewed change.
-want_checks=62
+want_checks=68
 if [ "$checks" -ne "$want_checks" ]; then
     echo "FAIL: $checks checks ran; scripts/canaries.sh pins $want_checks"
     status=1

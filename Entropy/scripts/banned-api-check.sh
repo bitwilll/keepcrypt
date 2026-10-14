@@ -8,16 +8,21 @@
 #   scripts/banned-api-check.sh --artifact TARGET FILE...
 #                                           scan built release artifacts for TARGET (see "Artifact
 #                                           mode" below)
+#   scripts/banned-api-check.sh --workflows DIR
+#                                           check every DIR/entropy-*.yml GitHub workflow's hardening
+#                                           (see "Workflow mode" below)
 #   scripts/banned-api-check.sh --selftest  every fixture in scripts/testdata/banned-api/ must trip the
 #                                           gate for its category; every clean-* fixture must pass; the
 #                                           artifact fixtures in scripts/testdata/artifact/ must give
-#                                           exactly their pinned hits (needs the pinned toolchain)
+#                                           exactly their pinned hits (needs the pinned toolchain); the
+#                                           workflow fixtures in scripts/testdata/workflows/ must trip
+#                                           or pass the workflow check as their names say
 #
 # Prints "<category>: <file>:<line>: <text>" per hit, then a summary. Exit 0 clean, 1 hits,
 # 2 usage or read error: a file that cannot be read fails the gate, it is never skipped.
 #
 # Artifact mode (docs/build-plan.md "Security rules enforced in CI", rows "One RNG path in shipped
-# binaries" and "Test stubs never ship"; tasks/todo.md, M1 Q3, Q8 and group 11). Prints
+# binaries" and "Test stubs never ship"; tasks/todo.md, M1 Q3, Q8 and group 11; M4 group 12). Prints
 # "<category>: <file>: <detail>" per hit, then a summary; exit 0 clean, 1 hits, 2 error (an
 # unreadable file, a file llvm-nm cannot read, no llvm-nm, a TARGET with no rule, bad usage).
 #   Marker     any file holding KC_TEST_SOURCE_DO_NOT_SHIP or KC_TEST_REGISTRY_DO_NOT_SHIP (rule 10),
@@ -27,7 +32,10 @@
 #              and checked against vectors/kcr.json by the selftest)
 #   Format     a file that is not an ELF, Mach-O or ar file (an rlib is an ar file): its symbols
 #              cannot be checked, so it fails. So does a thin ar file (!<thin>), which holds only its
-#              members' paths: the marker and key searches would never see the members' bytes
+#              members' paths: the marker and key searches would never see the members' bytes. And
+#              so does a stripped ELF or Mach-O file (M4 group 12): an ELF with no .symtab section,
+#              or any object or linked file for which llvm-nm lists no symbol at all. A stripped
+#              file prints no symbols, so the symbol rules below would pass it silently
 #   Symbol     read with the pinned toolchain's llvm-nm (llvm-tools-preview), in every object file,
 #              linked file and archive member: an undefined rand, random, srand, srandom, rand_r,
 #              random_r, srandom_r, *rand48, seed48, lcong48, initstate or setstate (these six also
@@ -38,6 +46,11 @@
 #              getrandom's fallback modules, backends::use_file and
 #              backends::linux_android_with_fallback (Q8: the Linux and Android artifacts are built
 #              with --cfg getrandom_backend="linux_getrandom", which has no fallback)
+#   StdRandom  std's own OS read, the random keys behind HashMap's RandomState (rule 1; M4 group
+#              12: the grep gate's hash ban covers the shipped sources, this covers what was
+#              linked): in every file, a symbol, demangled, that holds hashmap_random_keys,
+#              RandomState, std::sys::random or the mangled module path 3std3sys6random, and the
+#              byte string /dev/urandom or /dev/random, which std's fallback reads
 #   OSImport   an object or linked file (not an archive: core's rlib calls the getrandom crate,
 #              whose own rlib imports the OS call) without the OS import for TARGET: getrandom on
 #              Linux and Android, _CCRandomGenerateBytes on iOS (Q8), and _getentropy on macOS,
@@ -45,14 +58,35 @@
 # The byte searches run on an od dump, one "xx" per byte, so they match whole bytes of any value
 # with plain fixed-string greps.
 #
+# Workflow mode (tasks/todo.md, M4 group 11; Q38 (d): CI checks that the workflows keep their
+# hardening, which until M4 lived only in a comment in entropy-ci.yml). Every DIR/entropy-*.yml
+# (none is an error) is read line by line; comments count. Prints "Workflow: <file>:<line>:
+# <text>" per hit, then a summary; exit 0 clean, 1 hits, 2 error. Each file must have:
+#   - a top-level permissions block that holds "contents: read" (missing: reported at line 1), and
+#     no write permission anywhere: no "<scope>: write" entry in any permissions block and no
+#     "permissions: write-all";
+#   - every "uses:" one of actions/checkout, actions/cache or actions/upload-artifact, pinned to a
+#     40-hex commit SHA (a tag, a branch, a short SHA or any other action is a hit);
+#   - no "secrets." anywhere;
+#   - no pull_request_target and no workflow_run anywhere (the triggers that run with the base
+#     repository's token on a fork's code);
+#   - no "${{" inside a run: step, on its line or in its block scalar (every line indented past
+#     the run key until the next line that is not): expressions reach scripts through env: and
+#     with: only, so no event data is pasted into a shell. A run: key with no value (defaults.run)
+#     is read the same way, so an expression under it is a hit too.
+#
 # Categories (main patterns; the full lists are in the check functions below; comments count
 # everywhere):
 #   RNG        rule 1: any PRNG, and any OS RNG outside core: Math.random, java.util.Random, a bare
 #              Random( (Kotlin has no "new"), SecureRandom, SplittableRandom, SecRandomCopyBytes,
-#              arc4random, GameplayKit GK*Random* and GK*Distribution, Python random (also as
-#              "import (random, ..." and, in a .py file, a wrapped import line that holds only
-#              names and random, such as "    random," or "    random \", and a line starting
-#              "    random import" after "from \"), C rand(), rand_r(), random(), drand48, C++
+#              arc4random, GameplayKit GK*Random* and GK*Distribution, Python random through any
+#              module path (tasks/todo.md, M4 group 11: "import random", "import jax.random",
+#              "import numpy.random as r", "import os, jax.random", "from random import x", "from
+#              jax.random import x", "from a.random.b import x": any import whose dotted module
+#              path has a random component; also "import (random, ..." and, in a .py file, a
+#              wrapped import line that holds only names and such a module, such as "    random,",
+#              "    jax.random as r," or "    random \", and a line starting "    random import" or
+#              "    jax.random import" after "from \"), C rand(), rand_r(), random(), drand48, C++
 #              mt19937, *_random_engine, random_device, minstd_rand, Rust rand:: and rand_core::,
 #              Kotlin/Swift .random( and .shuffled(. Rule 1 allows one source of OS randomness, so
 #              every file except core/src/source.rs and core/src/source/ is also barred from the OS
@@ -160,6 +194,29 @@
 #              not code) pass. In any file: a C/C++ #include (also %:include, #include_next,
 #              #import) of a name with a binary extension ("#include "lut.png""), any letter case,
 #              since that file is never scanned.
+#   Device     rule 8 as Q40 and Q51 amended it, and rule 5 (tasks/todo.md, M4 group 11): the Pi
+#              firmware's files, device paths and processes, in pi/app only. Path literals: every
+#              string literal that starts with / in a .rs file under pi/app/src ("/..., b"/...,
+#              r"/...) lives in pi/app/src/device/paths.rs and is one of /dev/hwrng,
+#              /dev/mmcblk0p2, /dev, /sys/block and /mnt/usb, the paths docs/pi-firmware.md's
+#              Process rules list for our own code (rppal builds its own /dev/spidev*, /dev/gpio*
+#              and /proc paths, read from its source and on that list too). File APIs: the fs
+#              module (fs::, std::fs, std::{.. fs ..} and a wrapped "    fs,"), File::,
+#              OpenOptions, read_dir, read_link and remove_file appear only under
+#              pi/app/src/device/; create_new only in pi/app/src/device/usb.rs (the one file the
+#              firmware ever creates, the backup); and .create(true), .truncate(, .append(,
+#              fs::write, fs::copy, rename, create_dir*, remove_dir*, set_permissions and symlink*
+#              appear nowhere in pi/app, except that a device test file may use create_dir,
+#              fs::write and remove_dir_all for its temp-dir fixtures. That test file is
+#              pi/app/src/device/**/tests.rs whose parent (X.rs or X/mod.rs for X/tests.rs) holds
+#              "#[cfg(test)]" on the line right before "mod tests;"; any other tests.rs is an
+#              ordinary device file, and the exception never covers path literals. Crates and
+#              mounts: rppal:: and nix:: appear only under pi/app/src/device/, MNT_FORCE nowhere in
+#              pi/app and MNT_DETACH only in pi/app/src/device/usb.rs. Processes, threads,
+#              buffering: std::process::Command (process::Command), thread::spawn, thread::Builder
+#              and BufReader appear nowhere in pi/app (a buffered reader would hold a copy of hwrng
+#              samples or stick bytes). std::net is the Network category's, which already bans it
+#              in pi/app as everywhere outside registry/.
 #
 # Fail-closed noise, not bypasses (rename or spell it out instead): a named format argument called
 # path that rustfmt wraps onto its own line ("        path = \"seed.age\",") is an Include hit in
@@ -176,7 +233,9 @@
 # "    args.config," as a call's argument), is a hit like a wrapped import line (rename the
 # variable). Comments count for the Shell category too: a test or comment that
 # names game_random outside core and the games is a hit (call it the game call), and so is a
-# comment under pi/app/src that names Session::new (write "core's constructor").
+# comment under pi/app/src that names Session::new (write "core's constructor"). Under pi/app, a
+# comment that names BufReader, thread::spawn or a quoted "/path" is a Device hit (name the path
+# constant instead); so is a Vec's .truncate( or .append( (write the loop or use extend).
 #
 # Portable on purpose: POSIX sh, POSIX ERE (no \b \s \< \>, no -P -w), POSIX sed (BRE, in
 # selectable() and textselection()) and LC_ALL=C, so BSD grep and sed (macOS) and GNU grep and sed
@@ -208,12 +267,16 @@ self=$here/$(basename "$0")
 
 usage() {
   cat <<'EOF'
-usage: scripts/banned-api-check.sh [--selftest | DIR | --artifact TARGET FILE...]
+usage: scripts/banned-api-check.sh [--selftest | DIR | --artifact TARGET FILE... | --workflows DIR]
   (none)      scan the repo this script lives in
   DIR         scan DIR as if it were the repo root
   --artifact  scan release artifacts built for TARGET: test markers, the test registry key, RNG
-              symbols other than TARGET's OS import, and that import (see the script header)
-  --selftest  run the fixtures in scripts/testdata/banned-api/ and scripts/testdata/artifact/
+              symbols other than TARGET's OS import, std's random-key path, a stripped file, and
+              that import (see the script header)
+  --workflows check every DIR/entropy-*.yml workflow's hardening: read-only permissions, three
+              SHA-pinned actions, no secrets, no fork-trusting trigger, no expression in a run step
+  --selftest  run the fixtures in scripts/testdata/banned-api/, scripts/testdata/artifact/ and
+              scripts/testdata/workflows/
 Hits: RNG APIs (and the OS RNG read outside core/src/source), network APIs, Python network imports
 and hard-coded http URLs (outside registry/), clipboard, copy and share APIs and Python clipboard
 modules, tools and calls, getrandom in a .rs file outside core/src/source, std's OS-seeded hashing
@@ -221,9 +284,12 @@ in core/src, ffi/src or pi/app/src, a core/src/lib.rs (and pi/app's lib.rs and m
 #![forbid(unsafe_code)], in Rust under core/, ffi/ or pi/app/ a discarded result (_ =, an _name
 binding, drop or forget of a call), clippy as a cfg predicate and /dev/stdout, /dev/stderr or
 /dev/tty, include! (by any path or alias) or a path attribute in any .rs file, a C #include of a
-file with a binary extension, and the shells' paths to core: a session, pool input or clock named
+file with a binary extension, the shells' paths to core: a session, pool input or clock named
 in the games, game_random named outside core and the games, a second Session::new in pi/app, and
-a release probe that does not call game_random.
+a release probe that does not call game_random; and in pi/app the firmware's device rules: a
+path literal outside device/paths.rs or off its list, a file API outside device/, a file created
+outside device/usb.rs or any truncating, appending, renaming or directory API, rppal or nix
+outside device/, MNT_FORCE, MNT_DETACH outside device/usb.rs, a process, a thread or BufReader.
 A directory symlink is refused. Exit 0 clean, 1 hits, 2 usage or read error.
 EOF
 }
@@ -237,12 +303,22 @@ R='([^A-Za-z0-9_]|$)'
 binext='png|jpg|jpeg|gif|webp|ico|icns|pdf|zip|gz|xz|bz2|zst|tar|jar|aar|apk|aab|ipa|so|dylib|a|rlib|o|class|dex|ttf|otf|woff|woff2|mp3|mp4|wav|car'
 binary="[.]($binext)\$"
 
+# A dotted module path's leading components ("jax." in jax.random, "a." and "b." in a.b.c), for
+# the Python import shapes below and in pyimport().
+dotted='([A-Za-z0-9_]+[.])*'
+# A module path whose last component is random, with any components after it: random, jax.random,
+# a.random.b (tasks/todo.md, M4 group 11: any import whose path has a random component).
+pyrandmod="${dotted}random([.][A-Za-z0-9_]+)*"
+
 # Each check runs grep -n on one file: prints "<line>:<text>", exits 0 hit, 1 none, 2 error.
 # Rule 1 covers app code too: only core reads the OS RNG, so SecureRandom and SecRandomCopyBytes
 # are banned like the PRNGs. A bare Random( is java.util.Random in Kotlin after import java.util.*;
 # the word boundary keeps SecureRandom( and RandomAccessFile( out of it. Python imports: "import
-# random", "import os, random" and "from numpy import(array, random)" (the comma pattern), and
-# "from numpy import (random, array)" (random first inside the parenthesis).
+# random", "import jax.random", "import numpy.random as r", "import os, random", "import os,
+# jax.random" and "from numpy import(array, random)" (the comma pattern), "from numpy import
+# (random, array)" (random first inside the parenthesis), "from random import x" and "from
+# jax.random import x" (the from pattern, any dotted path with a random component). Anchored on
+# the import, so randomize, randomart and a random word in a string pass.
 rng() {
   grep -n -a -E \
     -e 'Math[.]random' \
@@ -262,10 +338,10 @@ rng() {
     -e '[.]randomElement[[:space:]]*[(]' \
     -e '[.]shuffled[[:space:]]*[(]' \
     -e '[.]shuffle[[:space:]]*[(]' \
-    -e "${L}import[[:space:]]+random$R" \
-    -e "${L}import[[:space:](][(A-Za-z0-9_.,[:space:]]*,[[:space:]]*random$R" \
+    -e "${L}import[[:space:]]+$pyrandmod$R" \
+    -e "${L}import[[:space:](][(A-Za-z0-9_.,[:space:]]*,[[:space:]]*$pyrandmod$R" \
     -e "${L}import[[:space:]]*[(][[:space:]]*random$R" \
-    -e "${L}from[[:space:]]+random$R" \
+    -e "${L}from[[:space:]]+$pyrandmod$R" \
     -e 'numpy[.]random' \
     -e 'np[.]random' \
     -e 'mt19937' \
@@ -298,14 +374,15 @@ osrng() {
 
 # .py files only: a line that holds nothing but names and random, as an import wraps it inside
 # "from numpy import (" ... ")" or after a backslash: "    random,", "    random)", "    random as
-# r,", "    array, random", "    random \" or a bare "    random". The other names must be
-# comma-separated words, so a word list such as "ranch random range" passes; a word list one word
+# r,", "    array, random", "    random \" or a bare "    random", random being any module path
+# with a random component ("    jax.random as r,"). The other names must be comma-separated
+# words or dotted names, so a word list such as "ranch random range" passes; a word list one word
 # per line belongs in a .txt file. After "from \" the next line starts with the module:
-# "    random import choice".
+# "    random import choice", "    jax.random import key".
 pyrandom() {
   grep -n -a -E \
-    -e '^[[:space:]]*random[[:space:]]+import([^A-Za-z0-9_]|$)' \
-    -e '^[[:space:]]*([A-Za-z0-9_]+([[:space:]]+as[[:space:]]+[A-Za-z0-9_]+)?[[:space:]]*,[[:space:]]*)*random([[:space:]]+as[[:space:]]+[A-Za-z0-9_]+)?[[:space:]]*([,)#]|\\|$)' \
+    -e "^[[:space:]]*$pyrandmod[[:space:]]+import$R" \
+    -e "^[[:space:]]*([A-Za-z0-9_.]+([[:space:]]+as[[:space:]]+[A-Za-z0-9_]+)?[[:space:]]*,[[:space:]]*)*$pyrandmod([[:space:]]+as[[:space:]]+[A-Za-z0-9_]+)?[[:space:]]*([,)#]|\\\\|\$)" \
     -- "$1"
 }
 
@@ -358,7 +435,6 @@ network() {
 # gevent.socket", "    gevent.socket import x" after "from \" and "    eventlet.green.socket" on a
 # wrapped line. Anchored on the import, so the names pass in a URL such as
 # "https://registry.invalid", in other strings, as attributes and inside longer names.
-dotted='([A-Za-z0-9_]+[.])*'
 pyimport() {
   grep -n -a -E \
     -e "${L}import[[:space:]]+$dotted$1$R" \
@@ -648,6 +724,128 @@ cinclude() {
     -- "$1"
 }
 
+# --- Device (tasks/todo.md, M4 group 11; rule 8 as Q40 and Q51 amended it, rule 5) ---------------
+
+# Rule 8, for .rs files under pi/app/src but device/paths.rs: a string literal that starts with /
+# ("/dev/x", b"/dev/x", r"/dev/x", r#"/dev/x"#) names a device or kernel path, and every such path
+# is a constant in pi/app/src/device/paths.rs. A "/" inside a longer string ("a/b") and a '/' char
+# pass.
+device_paths() {
+  grep -n -a -E -e '"/' -- "$1"
+}
+
+# The constants of pi/app/src/device/paths.rs: the five paths docs/pi-firmware.md's Process rules
+# give the firmware's own code. sed deletes each allowed literal, with its quotes, and a line with
+# any other "/ left is a hit (same h/x shape as selectable()).
+device_paths_list() {
+  t=$(grep -n -a -E -e '"/' -- "$1")
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  t=$(printf '%s\n' "$t" | sed \
+    -e h \
+    -e 's|"/dev/hwrng"||g' \
+    -e 's|"/dev/mmcblk0p2"||g' \
+    -e 's|"/dev"||g' \
+    -e 's|"/sys/block"||g' \
+    -e 's|"/mnt/usb"||g' \
+    -e '/"\//!d' \
+    -e x
+  ) || return 2
+  [ -n "$t" ] || return 1
+  printf '%s\n' "$t"
+}
+
+# Rule 8, for pi/app files outside pi/app/src/device/: the file APIs only the device module may
+# call. The fs module by any path (fs::, std::fs, a grouped std::{io, fs} and the "    fs," line
+# rustfmt wraps it to), File::, OpenOptions, read_dir, read_link and remove_file, as words.
+device_file_api() {
+  grep -n -a -E \
+    -e "${L}fs[[:space:]]*::" \
+    -e "${L}std[[:space:]]*::[[:space:]]*fs$R" \
+    -e "${L}std[[:space:]]*::[[:space:]]*[{]([^;]*[^A-Za-z0-9_])?fs$R" \
+    -e '^[[:space:]]*fs[[:space:]]*,[[:space:]]*$' \
+    -e "${L}File[[:space:]]*::" \
+    -e "${L}(OpenOptions|read_dir|read_link|remove_file)$R" \
+    -- "$1"
+}
+
+# Rule 8, for pi/app files but pi/app/src/device/usb.rs: create_new is the one open that creates a
+# file, and the backup's open in usb.rs is the only one.
+device_create_new() {
+  grep -n -a -E -e "${L}create_new$R" -- "$1"
+}
+
+# Rule 8, for every pi/app file: the APIs that write over, grow, move or remove what is already on
+# the stick, or make directories or links; the firmware only ever creates one new file.
+# .create(true) opens for writing whether or not the file exists; .truncate( and .append( are
+# OpenOptions' and also Vec's, which hit too (write the loop). create_dir and remove_dir take
+# their _all forms with them; symlink takes symlink_metadata (fail closed).
+device_write_api() {
+  grep -n -a -E \
+    -e '[.][[:space:]]*create[[:space:]]*[(][[:space:]]*true' \
+    -e '[.][[:space:]]*(truncate|append)[[:space:]]*[(]' \
+    -e "${L}fs[[:space:]]*::[[:space:]]*(write|copy)$R" \
+    -e "${L}(rename|set_permissions)$R" \
+    -e "${L}(create_dir|remove_dir|symlink)" \
+    -- "$1"
+}
+
+# The same, for a device test file (tests_rs_declared below), which may use create_dir, fs::write
+# and remove_dir_all for its temp-dir fixtures: create_dir_all, remove_dir and the rest still hit.
+device_write_api_in_tests() {
+  grep -n -a -E \
+    -e '[.][[:space:]]*create[[:space:]]*[(][[:space:]]*true' \
+    -e '[.][[:space:]]*(truncate|append)[[:space:]]*[(]' \
+    -e "${L}fs[[:space:]]*::[[:space:]]*copy$R" \
+    -e "${L}(rename|set_permissions)$R" \
+    -e "${L}(create_dir_|remove_dir($|[^_])|symlink)" \
+    -- "$1"
+}
+
+# tests_rs_declared FILE, FILE being pi/app/src/device/**/tests.rs: true if its parent module file
+# (X.rs or X/mod.rs for X/tests.rs) declares it with "#[cfg(test)]" on the line right before
+# "mod tests;", so the file is compiled for cargo test alone. A missing or unreadable parent, or
+# a blank line or another attribute between the two, means no exception (fail closed).
+tests_rs_declared() {
+  x=${1%/tests.rs}
+  for parent in "$x.rs" "$x/mod.rs"; do
+    [ -f "$parent" ] || continue
+    if awk '
+      prev ~ /^[[:space:]]*#\[cfg\(test\)\][[:space:]]*$/ && $0 ~ /^[[:space:]]*mod tests;[[:space:]]*$/ { found = 1 }
+      { prev = $0 }
+      END { exit !found }' "$parent" 2>/dev/null; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Rule 8 and Q36 (e), for pi/app files outside pi/app/src/device/: the hardware crates are the
+# device module's.
+device_crates() {
+  grep -n -a -E -e "${L}(rppal|nix)[[:space:]]*::" -- "$1"
+}
+
+# The mount flags (tasks/todo.md, M4 group 8): MNT_FORCE nowhere in pi/app (it abandons writes),
+# MNT_DETACH only in pi/app/src/device/usb.rs, which chooses it for a removed stick.
+mnt_force() {
+  grep -n -a -E -e 'MNT_FORCE' -- "$1"
+}
+
+mnt_detach() {
+  grep -n -a -E -e 'MNT_DETACH' -- "$1"
+}
+
+# Rule 5, for every pi/app file: no child process, no thread (the Pi Zero has one core, and the
+# firmware has one loop; Q39 (b)), and no BufReader, which would hold a copy of hwrng samples or
+# stick bytes outside the buffer the app wipes.
+device_threads() {
+  grep -n -a -E \
+    -e 'process[[:space:]]*::[[:space:]]*Command' \
+    -e "thread[[:space:]]*::[[:space:]]*(spawn|Builder)$R" \
+    -e 'BufReader' \
+    -- "$1"
+}
+
 # report CATEGORY CHECK FILE: print and count each hit of CHECK in FILE.
 report() {
   out=$("$2" "$3")
@@ -739,6 +937,36 @@ EOF
     case $rel in core/*.rs | ffi/*.rs | pi/app/*.rs) report FailOpen failopen "$rel" ;; esac
     case $rel in *.rs) report Include include_code "$rel" ;; esac
     report Include cinclude "$rel"
+    # Device: the firmware's paths, file APIs, hardware crates, mount flags, processes and
+    # threads, in pi/app only ('*' matches '/', so pi/app/src/device/* is the whole module).
+    case $rel in
+      pi/app/*)
+        case $rel in
+          pi/app/src/device/paths.rs) report Device device_paths_list "$rel" ;;
+          pi/app/src/*.rs) report Device device_paths "$rel" ;;
+        esac
+        case $rel in
+          pi/app/src/device/*) ;;
+          *) report Device device_file_api "$rel"; report Device device_crates "$rel" ;;
+        esac
+        case $rel in
+          pi/app/src/device/usb.rs) ;;
+          *) report Device device_create_new "$rel"; report Device mnt_detach "$rel" ;;
+        esac
+        case $rel in
+          pi/app/src/device/tests.rs | pi/app/src/device/*/tests.rs)
+            if tests_rs_declared "$rel"; then
+              report Device device_write_api_in_tests "$rel"
+            else
+              report Device device_write_api "$rel"
+            fi
+            ;;
+          *) report Device device_write_api "$rel" ;;
+        esac
+        report Device mnt_force "$rel"
+        report Device device_threads "$rel"
+        ;;
+    esac
   done <<EOF
 $files
 EOF
@@ -785,7 +1013,7 @@ fresh() {
 expect() {
   out=$(sh "$self" "$2" 2>&1)
   rc=$?
-  cats='^(RNG|Network|Clipboard|Rule1|FailOpen|Include|Shell): '
+  cats='^(RNG|Network|Clipboard|Rule1|FailOpen|Include|Shell|Device): '
   hit=$(printf '%s\n' "$out" | grep -E "$cats")
   count=$(printf '%s\n' "$out" | grep -c -E "$cats")
   ok=no
@@ -836,6 +1064,7 @@ selftest() {
       failopen-*) want=FailOpen ;;
       include-*) want=Include ;;
       shell-*) want=Shell ;;
+      device-*) want=Device ;;
       clean-*) want=clean ;;
       *) fail=$((fail + 1)); printf 'FAIL %s: unknown prefix\n' "$name"; continue ;;
     esac
@@ -857,12 +1086,46 @@ selftest() {
       mkdir -p "$d/registry" && cp -R "$fx/." "$d/registry/" || exit 2
       expect "$name under registry/" "$d" clean
     fi
-    # FailOpen covers core/, ffi/ and pi/app/ only: the same file in pi/sim/src/ passes.
-    if [ "$want" = FailOpen ]; then
+    # FailOpen covers core/, ffi/ and pi/app/ only, and Device covers pi/app/ only: the same file
+    # in pi/sim/src/ passes.
+    if [ "$want" = FailOpen ] || [ "$want" = Device ]; then
       fresh
       mkdir -p "$d/pi/sim/src" && cp "$fx/$file" "$d/pi/sim/src/" || exit 2
       expect "$name in pi/sim/" "$d" clean
     fi
+  done
+  # The device test-file exception needs the test file and its parent, so these cases are built
+  # here (a fixture holds one file): fs::write in device/usb/tests.rs passes only when usb.rs (or
+  # usb/mod.rs) declares it with #[cfg(test)] on the line right before "mod tests;"; a parent
+  # without the attribute, with a blank line between the two, or with the attribute on the same
+  # line gives no exception, and neither does a missing parent (the device-fs-write-in-tests-rs-
+  # without-parent fixture). The exception never covers path literals or the other write APIs.
+  tests_rs='pi/app/src/device/usb/tests.rs'
+  declared='#[cfg(test)]
+mod tests;'
+  for parent in pi/app/src/device/usb.rs pi/app/src/device/usb/mod.rs; do
+    fresh
+    mkdir -p "$d/pi/app/src/device/usb" || exit 2
+    printf '%s\n' "$declared" >"$d/$parent" || exit 2
+    echo 'fs::write(dir.join("b.age"), b"b").expect("a file");' >"$d/$tests_rs" || exit 2
+    expect "clean-device-tests-rs-declared-in-${parent##*/}" "$d" clean
+  done
+  for case in 'without-cfg-test:mod tests;' 'cfg-test-blank-line-before-mod:#[cfg(test)]
+
+mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
+    fresh
+    mkdir -p "$d/pi/app/src/device/usb" || exit 2
+    printf '%s\n' "${case#*:}" >"$d/pi/app/src/device/usb.rs" || exit 2
+    echo 'fs::write(dir.join("b.age"), b"b").expect("a file");' >"$d/$tests_rs" || exit 2
+    expect "device-tests-rs-${case%%:*}" "$d" Device "$tests_rs"
+  done
+  for case in 'path-literal:let dir = Path::new("/tmp/kc");' 'remove-dir:fs::remove_dir(dir.join("folder.age")).expect("removed");' \
+    'create-dir-all:fs::create_dir_all(dir.join("a/b")).expect("folders");' 'rename:fs::rename(dir.join("a.age"), dir.join("b.age")).expect("moved");'; do
+    fresh
+    mkdir -p "$d/pi/app/src/device/usb" || exit 2
+    printf '%s\n' "$declared" >"$d/pi/app/src/device/usb.rs" || exit 2
+    printf '%s\n' "${case#*:}" >"$d/$tests_rs" || exit 2
+    expect "device-declared-tests-rs-${case%%:*}" "$d" Device "$tests_rs"
   done
   # The regression review's probe: core/src/source.rs may name getrandom, so FailOpen is the only
   # hit for the two discards clippy lets through. Kept here, not in git: a fixture's pi/sim/ copy
@@ -924,10 +1187,11 @@ selftest() {
   fresh
   rm "$d/core/examples/release_probe.rs" || exit 2
   expect 'shell-release-probe-absent' "$d" Shell core/examples/release_probe.rs
-  for want in RNG Network Clipboard Rule1 FailOpen Include Shell clean; do
+  for want in RNG Network Clipboard Rule1 FailOpen Include Shell Device clean; do
     case "$seen " in *" $want "*) ;; *) fail=$((fail + 1)); echo "FAIL no $want fixture" ;; esac
   done
   artifact_selftest
+  workflows_selftest
   echo "selftest: $pass passed, $fail failed"
   [ "$fail" -eq 0 ] || exit 1
   exit 0
@@ -1014,6 +1278,7 @@ artifact() {
   undefined_rng="^$p(rand|random|srand|srandom|rand_r|random_r|srandom_r|([A-Za-z0-9_]*rand48|seed48|lcong48|initstate|setstate)(_r)?|arc4random[A-Za-z0-9_]*|SecRandomCopyBytes$extra)\$"
   rng_crates="(^|[^A-Za-z0-9_])($(printf '%s\n' $rng_crate_names | tr '\n' '|' | sed 's/|$//'))::"
   fallback='(^|[^A-Za-z0-9_])getrandom::backends::(use_file|linux_android_with_fallback)::'
+  std_random='hashmap_random_keys|RandomState|std::sys::random|3std3sys6random'
   toolchain_bin
   atmp=$(mktemp -d "${TMPDIR:-/tmp}/banned-api-artifact.XXXXXX") || exit 2
   trap 'rm -rf "$atmp"' EXIT
@@ -1038,6 +1303,13 @@ artifact() {
     if grep -q -F -e "$keybytes" "$atmp/dump"; then
       ahit TestKey "$f" "the test registry public key $testkey"
     fi
+    # The device files std's random-key fallback reads, as bytes in any file (the symbol half of
+    # the StdRandom rule follows the symbol rules below).
+    for path in /dev/urandom /dev/random; do
+      if grep -q -F -e "$(printf '%s' "$path" | od -An -v -tx1 | tr -s ' \n' '  ' | sed 's/ $//')" "$atmp/dump"; then
+        ahit StdRandom "$f" "byte string $path"
+      fi
+    done
     magic=$(od -An -N8 -tx1 "$f" | tr -d ' \n')
     case $magic in
       213c617263683e0a) kind=archive ;;
@@ -1053,6 +1325,22 @@ artifact() {
     esac
     symbols "$f" "$atmp/all" -C
     symbols "$f" "$atmp/undefined" -u
+    # A stripped file: an ELF with no .symtab section, or any object or linked file whose symbol
+    # list is empty (llvm-nm says "no symbols" and exits 0). Nothing below could check it.
+    if [ "$kind" = object ]; then
+      stripped=no
+      case $magic in
+        7f454c46*)
+          "$bin/llvm-readobj" --section-headers "$f" >"$atmp/sections" 2>/dev/null || exit 2
+          grep -q -F -e 'Name: .symtab' "$atmp/sections" || stripped=yes
+          ;;
+      esac
+      [ -s "$atmp/all" ] || stripped=yes
+      if [ "$stripped" = yes ]; then
+        ahit Format "$f" 'a stripped file with no symbol table (.symtab), so its symbols cannot be checked'
+        continue
+      fi
+    fi
     grep -E -e "$undefined_rng" "$atmp/undefined" >"$atmp/hits"
     [ $? -le 1 ] || exit 2
     from_list Symbol "$f" 'undefined ' "$atmp/hits"
@@ -1062,6 +1350,11 @@ artifact() {
     grep -E -e "$fallback" "$atmp/all" >"$atmp/hits"
     [ $? -le 1 ] || exit 2
     from_list Symbol "$f" "getrandom's fallback " "$atmp/hits"
+    # std's random-key path: its symbols, demangled (a name llvm-nm cannot demangle stays mangled,
+    # where 3std3sys6random is the module path); the byte strings were searched above.
+    grep -E -e "$std_random" "$atmp/all" >"$atmp/hits"
+    [ $? -le 1 ] || exit 2
+    from_list StdRandom "$f" 'symbol ' "$atmp/hits"
     if [ "$kind" = archive ]; then
       archives=$((archives + 1))
     else
@@ -1074,8 +1367,179 @@ artifact() {
     echo "banned-api-check --artifact $target: $hits hit(s) in $n file(s)"
     exit 1
   fi
-  echo "banned-api-check --artifact $target: clean, $n file(s): no marker, no test key, no other RNG symbol; $import imported by all $linked object or linked file(s) ($archives archive(s), which need no import)"
+  echo "banned-api-check --artifact $target: clean, $n file(s): no marker, no test key, no other RNG symbol, no std random-key path, no stripped file; $import imported by all $linked object or linked file(s) ($archives archive(s), which need no import)"
   exit 0
+}
+
+# --- Workflow mode -------------------------------------------------------------------------------
+
+# workflow_check FILE: the hardening rules of the script header, as "<line>:<text>" lines on
+# stdout, in file order; exit 0 hits, 1 none, 2 unreadable. The awk pass follows two kinds of
+# block: a run: step (its own line, then every following line indented past the run key, blank
+# lines included, is the script: "${{" anywhere there is a hit) and a permissions: block (an
+# entry whose value starts with write is a hit; the top-level block must hold contents: read, or
+# the file is reported at line 1). A permissions value on the key's own line (write-all, read-all,
+# { contents: read }) is read there. Keys inside a run block are script text, not YAML. The
+# other rules are plain greps over every line: uses: not pinned to one of the three actions at a
+# 40-hex SHA, secrets., pull_request_target, workflow_run.
+workflow_check() {
+  wf=$1
+  [ -f "$wf" ] && [ -r "$wf" ] || return 2
+  t=$(awk '
+    function indent(s) { match(s, /^ */); return RLENGTH }
+    {
+      line = $0
+      sub(/\r$/, "", line)
+      blank = (line ~ /^[[:space:]]*$/)
+      ind = indent(line)
+      if (inrun && !blank && ind <= runind) inrun = 0
+      if (inperm && !blank && ind <= permind) inperm = 0
+      if (inrun) {
+        if (index(line, "${{")) print NR ":" line
+        next
+      }
+      if (inperm && !blank) {
+        if (line ~ /^[[:space:]]*[A-Za-z_-]+:[[:space:]]*write/) print NR ":" line
+        if (permind == 0 && line ~ /^[[:space:]]+contents:[[:space:]]*read[[:space:]]*(#.*)?$/) top_ok = 1
+      }
+      if (match(line, /^[[:space:]]*(- )?run:/)) {
+        rest = substr(line, RLENGTH + 1)
+        sub(/^[[:space:]]+/, "", rest)
+        if (index(rest, "${{")) print NR ":" line
+        inrun = 1
+        runind = ind + (line ~ /^[[:space:]]*- / ? 2 : 0)
+        next
+      }
+      if (match(line, /^[[:space:]]*(- )?permissions:/)) {
+        rest = substr(line, RLENGTH + 1)
+        sub(/^[[:space:]]+/, "", rest)
+        sub(/[[:space:]]+#.*$/, "", rest)
+        keyind = ind + (line ~ /^[[:space:]]*- / ? 2 : 0)
+        if (rest == "" || rest ~ /^#/) {
+          inperm = 1
+          permind = keyind
+        } else {
+          if (rest ~ /write/) print NR ":" line
+          if (keyind == 0 && rest ~ /^\{[[:space:]]*contents:[[:space:]]*read[[:space:]]*\}$/) top_ok = 1
+        }
+      }
+    }
+    END { if (!top_ok) print "1:missing a top-level permissions block that holds contents: read" }
+  ' "$wf") || return 2
+  u=$(grep -n -a -E -e '^[[:space:]]*(- )?uses:' -- "$wf" |
+    grep -v -E -e '^[0-9]+:[[:space:]]*(- )?uses:[[:space:]]*actions/(checkout|cache|upload-artifact)@[0-9a-f]{40}[[:space:]]*(#.*)?$')
+  [ $? -le 1 ] || return 2
+  g=$(grep -n -a -E -e 'secrets[.]' -e "${L}(pull_request_target|workflow_run)$R" -- "$wf")
+  [ $? -le 1 ] || return 2
+  t=$(printf '%s\n%s\n%s\n' "$t" "$u" "$g" | sed '/^$/d' | sort -t : -k 1,1n -s)
+  [ -n "$t" ] || return 1
+  printf '%s\n' "$t"
+}
+
+workflows() {
+  dir=${1%/}
+  [ -d "$dir" ] || { printf 'banned-api-check: --workflows: %s is not a directory\n' "$1" >&2; exit 2; }
+  hits=0
+  n=0
+  for wf in "$dir"/entropy-*.yml; do
+    [ -e "$wf" ] || continue
+    n=$((n + 1))
+    out=$(workflow_check "$wf")
+    case $? in
+      0) ;;
+      1) continue ;;
+      *) printf 'banned-api-check: cannot read %s\n' "$wf" >&2; exit 2 ;;
+    esac
+    while IFS= read -r line; do
+      printf 'Workflow: %s:%s: %s\n' "$wf" "${line%%:*}" "${line#*:}"
+      hits=$((hits + 1))
+    done <<EOF
+$out
+EOF
+  done
+  if [ "$n" -eq 0 ]; then
+    printf 'banned-api-check: --workflows: no entropy-*.yml in %s\n' "$dir" >&2
+    exit 2
+  fi
+  if [ "$hits" -ne 0 ]; then
+    echo "banned-api-check --workflows $dir: $hits hit(s) in $n workflow(s)"
+    exit 1
+  fi
+  echo "banned-api-check --workflows $dir: clean, $n workflow(s): read-only permissions, pinned actions, no secrets, no fork-trusting trigger, no expression in a run step"
+  exit 0
+}
+
+# --- Workflow selftest ---------------------------------------------------------------------------
+
+# wexpect NAME DIR WANT: run the workflow check on DIR in a new process. WANT=clean needs exit 0
+# and no hit; WANT=error needs exit 2; any other WANT is the one file the hit must name (as
+# DIR/<file>): exit 1 and exactly one "Workflow: DIR/<file>:<line>: <text>" line, where <text> is
+# line <line> of the file as it stands, or a "missing ..." message.
+wexpect() {
+  out=$(sh "$self" --workflows "$2" 2>&1)
+  rc=$?
+  hit=$(printf '%s\n' "$out" | grep -E '^Workflow: ')
+  count=$(printf '%s\n' "$out" | grep -c -E '^Workflow: ')
+  ok=no
+  if [ "$3" = clean ]; then
+    [ "$rc" -eq 0 ] && [ "$count" -eq 0 ] && ok=yes
+  elif [ "$3" = error ]; then
+    [ "$rc" -eq 2 ] && ok=yes && hit="exit 2: ${out##*$nl}"
+  elif [ "$rc" -eq 1 ] && [ "$count" -eq 1 ]; then
+    case $hit in
+      "Workflow: $2/$3:"[0-9]*)
+        at=${hit#"Workflow: $2/$3:"}
+        case ${at#*: } in
+          'missing '*) ok=yes ;;
+          *) [ "${at#*: }" = "$(sed -n "${at%%:*}p" "$2/$3")" ] && ok=yes ;;
+        esac
+        ;;
+    esac
+  fi
+  if [ "$ok" = yes ]; then
+    pass=$((pass + 1))
+    printf 'PASS %s -> %s\n' "$1" "${hit:-clean}"
+  else
+    fail=$((fail + 1))
+    printf 'FAIL %s: wanted %s, got exit %s:\n' "$1" "$3" "$rc"
+    printf '%s\n' "$out" | sed 's/^/    /'
+  fi
+}
+
+# Every directory of scripts/testdata/workflows/: a workflow-* case holds one entropy-*.yml that
+# must give exactly one hit, a clean-* case any number that must all pass. Then the errors: a
+# directory with no entropy-*.yml, and a missing directory.
+workflows_selftest() {
+  wseen=
+  for fx in "$here/testdata/workflows"/*/; do
+    [ -d "$fx" ] || continue
+    fx=${fx%/}
+    name=${fx##*/}
+    case $name in
+      workflow-*) want=hit ;;
+      clean-*) want=clean ;;
+      *) fail=$((fail + 1)); printf 'FAIL %s: unknown prefix\n' "$name"; continue ;;
+    esac
+    wseen="$wseen $want"
+    if [ "$want" = hit ]; then
+      file=$(cd "$fx" && find . -type f ! -name .DS_Store) || exit 2
+      case $file in
+        ./entropy-*.yml) ;;
+        *) fail=$((fail + 1)); printf 'FAIL %s: a fixture holds exactly one entropy-*.yml\n' "$name"; continue ;;
+      esac
+      want=${file#./}
+    fi
+    wexpect "$name" "$fx" "$want"
+  done
+  for want in hit clean; do
+    case "$wseen " in *" $want "*) ;; *) fail=$((fail + 1)); echo "FAIL no $want workflow fixture" ;; esac
+  done
+  i=$((i + 1))
+  d=$tmp/$i
+  mkdir -p "$d" || exit 2
+  : >"$d/other.yml" || exit 2
+  wexpect 'workflow-error-no-entropy-yml' "$d" error
+  wexpect 'workflow-error-missing-dir' "$tmp/absent" error
 }
 
 # --- Artifact selftest -------------------------------------------------------------------------
@@ -1090,7 +1554,7 @@ aexpect() {
   shift 3
   out=$(sh "$self" --artifact "$@" 2>&1)
   rc=$?
-  got=$(printf '%s\n' "$out" | grep -E '^(Marker|TestKey|Format|Symbol|OSImport): ' | sort)
+  got=$(printf '%s\n' "$out" | grep -E '^(Marker|TestKey|Format|Symbol|StdRandom|OSImport): ' | sort)
   ok=no
   if [ "$rc" -eq "$want_rc" ]; then
     if [ "$want_rc" -eq 2 ]; then
@@ -1138,7 +1602,7 @@ artifact_selftest() {
     case $t in *-apple-*) p=_ import=_CCRandomGenerateBytes ;; *) p= import=getrandom ;; esac
     for c in clean:kc_fixture: arc4random:kc_fixture:kc_arc4random no-os-import:kc_fixture:kc_no_os_import \
       getentropy:kc_fixture:kc_getentropy libc-r:kc_fixture:kc_libc_r rand-crate:rand: \
-      getrandom-fallback:getrandom:; do
+      getrandom-fallback:getrandom: random-state:kc_fixture:kc_random_state; do
       case_name=${c%%:*}
       rest=${c#*:}
       crate=${rest%%:*}
@@ -1183,6 +1647,28 @@ Symbol: $o-rand-crate.o: rand-family symbol rand::rngs::next_u32" "$t" "$o-rand-
     "$bin/llvm-ar" rcsT "$o-thin.rlib" "$o-clean.o" || exit 2
     aexpect "artifact-$t-thin-archive" 1 \
       "Format: $o-thin.rlib: a thin archive, which holds its members' paths, not their bytes" "$t" "$o-thin.rlib"
+    # A stripped object (tasks/todo.md, M4 group 12): llvm-strip takes the symbol table off the
+    # object with no imports (one with relocations keeps the symbols they name), and the scan
+    # must refuse the file rather than find no RNG symbol in it; the missing OS import is not
+    # reached.
+    cp "$o-no-os-import.o" "$o-stripped.o" && "$bin/llvm-strip" --strip-all "$o-stripped.o" || exit 2
+    aexpect "artifact-$t-stripped-object" 1 \
+      "Format: $o-stripped.o: a stripped file with no symbol table (.symtab), so its symbols cannot be checked" \
+      "$t" "$o-stripped.o"
+    # std's random keys (M4 group 12): RandomState::new() inlines into the fixture, leaving the
+    # thread-local KEYS and the hashmap_random_keys import, every one of them a hit; the OS import
+    # is present. The names are std 1.98.1's and move with the toolchain.
+    case $t in
+      *-apple-*) std_hits="StdRandom: $o-random-state.o: symbol <std::hash::random::RandomState>::new::KEYS::{K#0}::{closure#1}::__RUST_STD_INTERNAL_VAL
+StdRandom: $o-random-state.o: symbol <std::sys::thread_local::native::lazy::Storage<core::cell::Cell<(u64, u64)>, !>>::get_or_init_slow::<<std::hash::random::RandomState>::new::KEYS::__rust_std_internal_init_fn>
+StdRandom: $o-random-state.o: symbol <std::thread::local::LocalKey<core::cell::Cell<(u64, u64)>>>::with::<<std::hash::random::RandomState>::new::{closure#0}, std::hash::random::RandomState>
+StdRandom: $o-random-state.o: symbol std::sys::random::hashmap_random_keys" ;;
+      *) std_hits="StdRandom: $o-random-state.o: symbol <std::hash::random::RandomState>::new::KEYS::{closure#0}::__RUST_STD_INTERNAL_VAL
+StdRandom: $o-random-state.o: symbol <std::sys::thread_local::os::Storage<core::cell::Cell<(u64, u64)>, 8>>::try_initialize::<<std::hash::random::RandomState>::new::KEYS::__rust_std_internal_init_fn>
+StdRandom: $o-random-state.o: symbol <std::thread::local::LocalKey<core::cell::Cell<(u64, u64)>>>::with::<<std::hash::random::RandomState>::new::{closure#0}, std::hash::random::RandomState>
+StdRandom: $o-random-state.o: symbol std::sys::random::linux::hashmap_random_keys" ;;
+    esac
+    aexpect "artifact-$t-std-random-state" 1 "$std_hits" "$t" "$o-random-state.o"
   done
   # Each other crate of the list, on one target: every symbol in it is a hit, as in rand.
   t=aarch64-linux-android
@@ -1217,6 +1703,11 @@ Format: $mf: not an ELF, Mach-O or ar file, so its symbols cannot be checked" "$
   printf "x$octal\n" >"$a/test-key.bin" || exit 2
   aexpect 'artifact-test-key-bytes' 1 "TestKey: $a/test-key.bin: the test registry public key $testkey
 Format: $a/test-key.bin: not an ELF, Mach-O or ar file, so its symbols cannot be checked" "$t" "$a/test-key.bin"
+  # The device files std's fallback reads, as bytes in any file (M4 group 12).
+  mf=$fixture/std-random-paths.txt
+  aexpect 'artifact-std-random-byte-strings' 1 "StdRandom: $mf: byte string /dev/urandom
+StdRandom: $mf: byte string /dev/random
+Format: $mf: not an ELF, Mach-O or ar file, so its symbols cannot be checked" "$t" "$mf"
   # Each file is reported on its own: a clean object beside a marker file.
   mf=$fixture/marker-source.txt
   aexpect 'artifact-two-files' 1 "Marker: $mf: KC_TEST_SOURCE_DO_NOT_SHIP
@@ -1230,6 +1721,7 @@ Format: $mf: not an ELF, Mach-O or ar file, so its symbols cannot be checked" "$
 
 case ${1-} in
   --artifact) shift; [ $# -ge 1 ] || { usage >&2; exit 2; }; artifact "$@" ;;
+  --workflows) shift; [ $# -eq 1 ] || { usage >&2; exit 2; }; workflows "$1" ;;
 esac
 
 case $# in

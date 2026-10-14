@@ -1,0 +1,9 @@
+name: no permissions block at the top, so the token keeps its default scopes
+on: [pull_request]
+jobs:
+  a:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - run: echo one

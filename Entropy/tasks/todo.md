@@ -7903,7 +7903,7 @@ stale (Q43 (d)).
   sentences); the banned-API gate clean (211 files) and its selftest 427/427; fmt, both clippy runs,
   `cargo test --workspace` (443 passed, 3 ignored), core's test-sources run (269 passed, 1 ignored) and pi-sim with
   the test registry (69 passed, 2 ignored) pass.
-- [ ] A Device category. Each rule gets hit and clean selftest fixtures and one canary:
+- [x] A Device category. Each rule gets hit and clean selftest fixtures and one canary:
   - **Path literals.** Every string literal starting with `/` in `pi/app/src` lives in `device/paths.rs` and is one of
     `/dev/hwrng`, `/dev/mmcblk0p2`, `/dev`, `/sys/block`, `/mnt/usb`. rppal builds its own `/dev/spidev*`, `/dev/gpio*`
     and `/proc` paths.
@@ -7921,11 +7921,32 @@ stale (Q43 (d)).
     `MNT_DETACH` only in `device/usb.rs`.
   - **Processes, threads, buffering.** `std::process::Command`, `std::net`, `thread::spawn`, `thread::Builder` and
     `BufReader` appear nowhere in pi/app.
-- [ ] Python `random` through any module path: any `import` or `from … import` whose module path has a `random`
+
+  Proof (commit 12): `scripts/banned-api-check.sh`'s Device category, in pi/app only, with 35 `device-*` hit fixtures
+  (one file each, and each also clean when copied to pi/sim/src), the `clean-device-allowed` fixture (the five
+  constants, the glue's and usb.rs's APIs, a declared tests.rs with its temp-dir calls, the simulator's files and
+  threads) and 9 built-in cases for the test-file exception (fs::write in usb/tests.rs passes under a usb.rs or
+  usb/mod.rs that holds `#[cfg(test)]` right before `mod tests;`; a parent without the attribute, with a blank line
+  between, with both on one line, or missing, gives a hit; a declared tests.rs still hits on a path literal,
+  `remove_dir`, `create_dir_all` and `rename`). The fs module is matched by any path (`fs::`, `std::fs`, `std::{io,
+  fs}`, a wrapped `    fs,`); `create_new` is matched as a word; `.truncate(` and `.append(` hit a Vec's too
+  (fail-closed noise, noted in the header); `std::net` is left to the Network category, which already bans it in
+  pi/app, so one line is never two hits. Four canaries plant one line each in the copy of a real file (a
+  `"/proc/cmdline"` in app.rs, `std::fs::File::open` in hal.rs, `rppal::gpio::Gpio::new` in input.rs, a `BufReader`
+  comment in device/hwrng.rs) and need exactly that Device hit. The gate is clean on the tree (214 files) and on a
+  clean export of HEAD (211 files); `--selftest` 542/0 under sh and dash; canaries 68/68.
+- [x] Python `random` through any module path: any `import` or `from … import` whose module path has a `random`
   component (`(^|\.)random(\.|$)`), alone or with `as`, is an RNG hit. This closes the open low item. Hit fixtures:
   `import jax.random`, `from jax.random import x`, `from torch.random import x`; the two forms already caught
   (`from numpy import random`, `import numpy.random as r`) stay caught; clean fixtures: `import randomize`,
   `from mylib import randomize`.
+  Proof (commit 12): `rng()`'s import, import-list and from patterns take `([A-Za-z0-9_]+[.])*random([.][A-Za-z0-9_]+)*`
+  in place of `random`, and `pyrandom()`'s two .py-only shapes (the module line after `from \` and the wrapped
+  import line) take the same; nine fixtures hit (`import jax.random`, `from jax.random import PRNGKey`, `from
+  torch.random import manual_seed`, `from numpy import random`, `import numpy.random as r`, `import lab.random.keys`,
+  `import os, jax.random`, a wrapped `    jax.random` after `import json, \`, and `    jax.random import key` after
+  `from \`), and `clean-near-misses` gains `import randomize`, `from mylib import randomize`, `import
+  jax.randomness` and `from lab.randomart import draw`. `--selftest` 542/0.
 - [ ] `--workflows DIR`, run in `gates` over `.github/workflows/entropy-*.yml` (commits 12-13). Each file must have:
   - top-level `permissions: contents: read`, and no `write` permission anywhere;
   - every `uses:` one of `actions/checkout`, `actions/cache` or `actions/upload-artifact`, pinned to a 40-hex SHA;
@@ -7934,6 +7955,19 @@ stale (Q43 (d)).
   - no `${{` inside a `run:` block (expressions reach scripts through `env:` and `with:` only).
 
   Hit and clean fixtures, one canary; entropy-ci.yml passes as it stands.
+  Proof (commit 12, the check; the `gates` step is commit 13): `scripts/banned-api-check.sh --workflows DIR` reads
+  every `DIR/entropy-*.yml` (none is exit 2) with one awk pass that follows `run:` blocks (the key's line and every
+  line indented past the key, a value-less `defaults: run:` included) for `${{`, and `permissions:` blocks for a
+  `<scope>: write` entry or `write-all`, and requires a top-level block with `contents: read` (missing: a hit at
+  line 1); plain greps take an unpinned or foreign `uses:`, `secrets.`, `pull_request_target` and `workflow_run`.
+  17 `workflow-*` fixtures hit (missing, `{}`, a job's `contents: write` and `write-all`, a top-level `id-token:
+  write`, a tag, a short SHA, another action, a `docker://` image, `secrets.`, both triggers, `${{` on a run line,
+  in a block, in a block's comment, on a block's last line, and under `defaults: run:`), two `clean-*` fixtures pass
+  (a hardened file in entropy-ci.yml's shape with expressions in concurrency, outputs, env, with and a comment, and
+  two files with the flow and block permission forms), and two built-in errors (no `entropy-*.yml`, a missing DIR).
+  The real `../.github/workflows` is clean under sh and dash. One canary copies the real entropy-ci.yml, widens the
+  token to write and appends a job that breaks every other rule once, and needs exactly those 7 hits. canaries
+  68/68.
 - [ ] `--os-config pi/os`, a text-only check run in `gates`. It lands in commit 17, with `expected/`. It checks:
   - inittab equals Q35's three lines;
   - fstab's options;
@@ -7958,14 +7992,31 @@ stale (Q43 (d)).
   stand-in gcc, and scans the result with the two rlibs and the probe. It must have `U getrandom` and a symbol table, and
   no marker, no test key, and no foreign RNG or fallback symbol. The comments at :413-417 and :478-479 say the shipped
   binary comes from the image workflow's Buildroot toolchain.
-- [ ] The artifact scan's Format rule: a linked ELF with no `.symtab` is a hit, tested with a stripped-binary fixture. A
+- [x] The artifact scan's Format rule: a linked ELF with no `.symtab` is a hit, tested with a stripped-binary fixture. A
   stripped file prints no symbols, so the RNG-crate rule would otherwise pass silently.
+  Proof (commit 12): for every ELF or Mach-O file, `--artifact` reports `Format: ... a stripped file with no symbol
+  table (.symtab), so its symbols cannot be checked` and moves on when the ELF has no `.symtab` section
+  (`llvm-readobj --section-headers`) or llvm-nm lists no symbol at all (it prints "no symbols" to stderr and exits
+  0, which the symbol rules would have passed). The fixture is the no-import object after `llvm-strip --strip-all`
+  (an object with relocations keeps the symbols they name), for aarch64-linux-android (ELF) and aarch64-apple-ios
+  (Mach-O): exactly that one hit each, the missing OS import not reached. A linked binary cannot be made here (no
+  Linux or Android linker); the rule reads the same tables.
 - [ ] std's random-key path, in `--artifact` and `--image` for every linked file: a symbol containing
   `hashmap_random_keys`, `RandomState` or std's `sys::random` module (mangled `3std3sys6random`), or the byte string
   `/dev/urandom` or `/dev/random`, is a hit. Positive control: a fixture object that calls
   `std::collections::hash_map::RandomState::new()`, compiled like the existing fixtures (or, if that inlines away, a
   symbol of that name), plus one canary. The first `keepcrypt-pi` is checked once by hand as well; if the path is
   linked, find which crate uses it, then stop and ask.
+  Proof (commit 12, `--artifact`; `--image` is commit 17 and the `keepcrypt-pi` check commit 13): a `StdRandom`
+  category in every file, archives included: each demangled symbol holding `hashmap_random_keys`, `RandomState`,
+  `std::sys::random` or `3std3sys6random`, and the byte strings `/dev/urandom` and `/dev/random`. The fixture
+  (`--cfg kc_random_state`, which drops `no_std` for that case) calls `RandomState::new()`; at the fixtures' opt-level
+  1 it inlines, leaving the thread-local KEYS, its initialiser, `LocalKey::with` and the `hashmap_random_keys`
+  import, four pinned hits per target (std 1.98.1's names), with the OS import present. `std-random-paths.txt`
+  gives both byte-string hits. The canary plants `black_box(RandomState::new())` at the start of the copy's
+  `release_probe.rs` run() and builds it like the control: the probe fails the scan with StdRandom symbols,
+  `hashmap_random_keys` among them, the unchanged rlib has none. The real host probe and rlib (`release-probe-default`)
+  stay clean, so the control still passes; the Linux and Android probes are first scanned by CI's cross job.
 - [ ] `test` gains a step: make the loop-device fixture (group 8), build pi/app's bin tests with `--no-run`, run
   `loop_device` as root with `sudo --preserve-env=KC_LOOP_DEV,KC_LOOP_RO,KC_LOOP_MNT,KC_MOUNTINFO`, then detach the loop
   device in an `if: always()` step. (9d) The step fails unless the run reports exactly `1 passed`: a renamed test, a
