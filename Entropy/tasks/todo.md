@@ -7519,6 +7519,10 @@ stale (Q43 (d)).
   to them) and at most a day (rppal casts it to an `i32`). `Edge` carries no `seqno`: each edge carries its line's new
   level, so the debouncer needs none. Scratch mutations, not committed, each fail at least one test: no sort, no drain,
   polling past the deadline, truncated waits, no cap, rising as down, `tv_nsec` unchecked.
+  Proof (review fix, commit 8b): the scripted source never failed, so a loop that swallowed a GPIO fault, on the drain
+  of queued edges or on a wait, or turned it into another `HalError`, passed every test, and would never halt with
+  "button fault". The script can now fail one call: `an_edge_source_fault_is_the_loops_fault` fails the drain, then the
+  wait, and gets `Buttons` back each time; each of those four mutants fails it.
 
 **7. Device: the hwrng (pure; `device/hwrng.rs`; Q39 (c))**
 - [x] `fill_block<R: RawRead, C: Clock>(raw, clock, block, deadline)` reads straight into the caller's 64-byte block until
@@ -8586,6 +8590,8 @@ The PR is a draft from commit 1.
    7f. tasks/todo.md: the plan review: group 10's dead-code rule also covers the pure items only the tests use, which
    commit 11's Linux builds would find dead: `PROFILES`, `ST7789_INIT_OPCODES` and `INVOFF`.
 8. pi/app (bin): `device/keys.rs` and `device/hwrng.rs` (groups 6, 7).
+   8b. pi/app: the recompute review: an edge source fault, on the drain or on a wait, comes back from the key loop as
+   `Buttons`.
 9. pi/app (bin): `device/usb.rs`, `SysBlock`, `device/usb/tests.rs` with the `#[ignore]`d loop-device test (group 8).
 10. pi/app (bin), pi/os, .github: `device/rootfs.rs` and its vector; `pi/os/rootfs-prefix.py`; `gates` runs its
     `--selftest` (group 9).

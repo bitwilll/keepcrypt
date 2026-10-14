@@ -1,7 +1,7 @@
 //! The key loop's tests (tasks/todo.md, M4 group 6), on a scripted edge source and a clock that
 //! moves only while the loop waits: a bounce train, a held key, the time a press carries, the
-//! deadline (ahead, already past, `u64::MAX`), the waits, conversions out of range, a lost edge,
-//! and edges queued while the device was busy.
+//! deadline (ahead, already past, `u64::MAX`), the waits, conversions out of range, a fault of the
+//! edge source, a lost edge, and edges queued while the device was busy.
 
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
@@ -36,6 +36,10 @@ struct Script {
     edges: VecDeque<Queued>,
     clock: Rc<Cell<u64>>,
     waits: Waits,
+    /// The calls made so far, zero timeouts included.
+    calls: usize,
+    /// The call, counted from 0, that fails with `Buttons`, as a GPIO fault would.
+    fail_at: Option<usize>,
 }
 
 impl EdgeSource for Script {
@@ -43,6 +47,11 @@ impl EdgeSource for Script {
         let now_ns = self.clock.get();
         if timeout != Some(Duration::ZERO) {
             self.waits.borrow_mut().push(timeout);
+        }
+        let call = self.calls;
+        self.calls += 1;
+        if self.fail_at == Some(call) {
+            return Err(HalError::Buttons);
         }
         let until_ns = match timeout {
             Some(timeout) => now_ns + u64::try_from(timeout.as_nanos()).expect("a test timeout"),
@@ -105,6 +114,8 @@ fn start(now_ns: u64, edges: Vec<Queued>) -> (KeyLoop<Script, TestClock>, Rc<Cel
         edges: edges.into(),
         clock: Rc::clone(&clock),
         waits: Rc::clone(&waits),
+        calls: 0,
+        fail_at: None,
     };
     (
         KeyLoop::new(script, TestClock(Rc::clone(&clock))),
@@ -329,6 +340,20 @@ fn times_out_of_range_and_unknown_pins_are_refused() {
 #[should_panic(expected = "the monotonic clock is out of range")]
 fn a_clock_reading_out_of_range_panics() {
     clock_ns(-1i64, 0i64);
+}
+
+/// A fault of the edge source (a GPIO error on the device) comes back from the loop unchanged,
+/// whether it meets the drain of queued edges or a wait: `Buttons`, which halts (rule 3).
+#[test]
+fn an_edge_source_fault_is_the_loops_fault() {
+    // With nothing queued, call 0 is the drain and call 1 the wait.
+    for call in [0, 1] {
+        let (mut keys, _, waits) = start(0, Vec::new());
+        keys.edges.fail_at = Some(call);
+        assert_eq!(keys.next_event(S), Err(HalError::Buttons), "call {call}");
+        assert_eq!(waits.borrow().len(), call, "call {call}");
+    }
+    assert!(HalError::Buttons.halts());
 }
 
 /// Three presses of the joystick, with edges lost (the kernel dropped them from a full queue; their
