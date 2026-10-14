@@ -27,9 +27,9 @@ zeroize = { version = "1.9.0", features = ["derive"] }
 sha2 = "0.11.0"
 
 # Linux only: the device module's glue in the keepcrypt-pi binary calls these, never the library
-# pi/sim links (tasks/todo.md, M4 Q36 (a), (e)). KeepCrypt's own code has no unsafe code; it all
-# stays inside these crates, libc and std (Q36 (d)). deny.toml's [[bans.features]] pins both
-# crates' features exactly.
+# pi/sim links (tasks/todo.md, M4 Q36 (a), (e)). KeepCrypt's own code has no unsafe code; the
+# unsafe code the hardware access needs stays inside these crates, libc and std (Q36 (d)).
+# deny.toml's [[bans.features]] pins both crates' features exactly.
 [target.'cfg(target_os = "linux")'.dependencies]
 # GPIO pull-ups and both-edge key events with the kernel's CLOCK_MONOTONIC timestamps, the panel's
 # DC, RST and backlight outputs, and spidev SPI (build-plan.md:76). Its author archived it on

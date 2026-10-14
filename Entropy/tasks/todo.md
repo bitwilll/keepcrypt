@@ -7872,6 +7872,8 @@ The PR is a draft from commit 1.
 5. pi/app, Cargo.lock, supply-chain, deny.toml, scripts/canaries.sh: the four crates, the feature bans, the pins (group 2).
    5b. tasks/todo.md: the plan review: group 2's canary item and the dependency table's bitflags row say what commit 5
    built: the `reboot` canary, and the imported chain from google's 1.3.2 audit.
+   5c. pi/app: the plan review: Cargo.toml's comment says the unsafe code the hardware access needs stays inside rppal,
+   nix, libc and std, not all unsafe code (zeroize and sha2 have their own).
 
 **Stage B: app and device logic, tested on the host**
 
