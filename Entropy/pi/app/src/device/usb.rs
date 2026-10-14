@@ -2,8 +2,8 @@
 //! tasks/todo.md, M4 group 8, Q39 (f); CLAUDE.md rule 8).
 //!
 //! - Pure: `DeviceUsb` implements `hal::Usb` over a `Locate` (where the stick is, looked up afresh
-//!   for each call) and a `Mounter` (mount(2) and umount2(2)), which group 10's Linux glue
-//!   implements and the tests fake. Its only file I/O is on the stick, under the mount point.
+//!   for each call) and a `Mounter` (mount(2), umount2(2) and the syncs), which group 10's Linux
+//!   glue implements and the tests fake. Its only file I/O is on the stick, under the mount point.
 //! - The finder (`Finder`, over `SysBlock`'s view of `/sys/block`) takes exactly one stick: an `sd`
 //!   disk on a USB bus, by its first partition, or the whole disk when it has none. Two or more are
 //!   `ManySticks`, "more than one USB stick is inserted".
@@ -108,13 +108,18 @@ impl Unmount {
     }
 }
 
-/// mount(2) and umount2(2) of the stick. Group 10's Linux glue implements it over nix; the tests
-/// record it, and on a loop device call the kernel.
+/// mount(2) and umount2(2) of the stick, and the syncs of what a write changes on it. Group 10's
+/// Linux glue implements the first two over nix and keeps `sync` as it is; the tests record all
+/// three, and on a loop device call the kernel.
 pub trait Mounter {
     /// Mounts `device` at `target` as `plan` says.
     fn mount(&mut self, device: &Path, target: &Path, plan: MountPlan) -> io::Result<()>;
     /// Unmounts `target` as `how` says.
     fn unmount(&mut self, target: &Path, how: Unmount) -> io::Result<()>;
+    /// Writes `file`, a file or a directory on the mounted stick, through to the stick: fsync(2).
+    fn sync(&mut self, file: &File) -> io::Result<()> {
+        file.sync_all()
+    }
 }
 
 /// The stick a lookup found.
@@ -290,13 +295,14 @@ impl<L: Locate, M: Mounter> DeviceUsb<L, M> {
             Ok(file) => file,
             Err(error) => return self.unmount(Err(fault(&error, HalError::Write))),
         };
-        match fill(file, bytes, &self.mount_point).and_then(|()| self.plain_unmount()) {
+        let filled = fill(&mut self.mounter, file, bytes, &self.mount_point);
+        match filled.and_then(|()| self.plain_unmount()) {
             Ok(()) => {
                 self.written = Some(name.clone());
                 Ok(Written::new(name))
             }
             Err(error) => {
-                let failed = match remove_synced(&path, &self.mount_point) {
+                let failed = match remove_synced(&mut self.mounter, &path, &self.mount_point) {
                     // Nothing this call created is left.
                     Ok(()) => Err(error),
                     // Removed where it can be (pi-firmware.md "On failure"): the fault reported is
@@ -317,14 +323,15 @@ impl<L: Locate, M: Mounter> DeviceUsb<L, M> {
         }
     }
 
-    /// Mounts the stick as `plan` says, runs `call` on the mount point, and unmounts.
+    /// Mounts the stick as `plan` says, runs `call` on the mounter and the mount point, and
+    /// unmounts.
     fn on_stick<T>(
         &mut self,
         plan: MountPlan,
-        call: impl FnOnce(&Path) -> Result<T, HalError>,
+        call: impl FnOnce(&mut M, &Path) -> Result<T, HalError>,
     ) -> Result<T, HalError> {
         self.mount(plan)?;
-        let outcome = call(&self.mount_point);
+        let outcome = call(&mut self.mounter, &self.mount_point);
         self.unmount(outcome)
     }
 
@@ -378,11 +385,13 @@ impl<L: Locate, M: Mounter> Usb for DeviceUsb<L, M> {
     }
 
     fn list(&mut self, kind: FileKind) -> Result<Vec<FileName>, HalError> {
-        self.on_stick(READ_PLAN, |dir| list_dir(dir, kind))
+        self.on_stick(READ_PLAN, |_, dir| list_dir(dir, kind))
     }
 
     fn read(&mut self, name: &FileName, max: usize) -> Result<Zeroizing<Vec<u8>>, HalError> {
-        self.on_stick(READ_PLAN, |dir| read_capped(&dir.join(name.as_str()), max))
+        self.on_stick(READ_PLAN, |_, dir| {
+            read_capped(&dir.join(name.as_str()), max)
+        })
     }
 
     fn write_backup(&mut self, file: &BackupFile) -> Result<Written, HalError> {
@@ -395,15 +404,15 @@ impl<L: Locate, M: Mounter> Usb for DeviceUsb<L, M> {
         max: usize,
     ) -> Result<Zeroizing<Vec<u8>>, HalError> {
         self.recorded(written)?;
-        self.on_stick(READ_PLAN, |dir| {
+        self.on_stick(READ_PLAN, |_, dir| {
             read_capped(&dir.join(written.name().as_str()), max)
         })
     }
 
     fn remove_written(&mut self, written: Written) -> Result<(), HalError> {
         self.recorded(&written)?;
-        let removed = self.on_stick(WRITE_PLAN, |dir| {
-            remove_synced(&dir.join(written.name().as_str()), dir)
+        let removed = self.on_stick(WRITE_PLAN, |mounter, dir| {
+            remove_synced(mounter, &dir.join(written.name().as_str()), dir)
         });
         if removed.is_ok() {
             self.written = None;
@@ -457,25 +466,33 @@ fn read_bounded<R: Read>(file: R, len: u64, max: usize) -> Result<Zeroizing<Vec<
     Ok(bytes)
 }
 
-/// All of `bytes` into the new `file`, then the file and its directory `dir` synced to the stick.
-/// The file is closed when this returns, so the unmount that follows does not find the stick busy.
-fn fill(mut file: File, bytes: &[u8], dir: &Path) -> Result<(), HalError> {
+/// All of `bytes` into the new `file`, then the file and its directory `dir` synced to the stick
+/// through `mounter`. The file is closed when this returns, so the unmount that follows does not
+/// find the stick busy.
+fn fill<M: Mounter>(
+    mounter: &mut M,
+    mut file: File,
+    bytes: &[u8],
+    dir: &Path,
+) -> Result<(), HalError> {
     file.write_all(bytes)
         .map_err(|error| fault(&error, HalError::Write))?;
-    file.sync_all()
+    mounter
+        .sync(&file)
         .map_err(|error| fault(&error, HalError::Sync))?;
-    sync_dir(dir)
+    sync_dir(mounter, dir)
 }
 
-/// Removes file `path`, then syncs its directory `dir`.
-fn remove_synced(path: &Path, dir: &Path) -> Result<(), HalError> {
+/// Removes file `path`, then syncs its directory `dir` through `mounter`.
+fn remove_synced<M: Mounter>(mounter: &mut M, path: &Path, dir: &Path) -> Result<(), HalError> {
     fs::remove_file(path).map_err(|error| fault(&error, HalError::Remove))?;
-    sync_dir(dir)
+    sync_dir(mounter, dir)
 }
 
-/// Syncs directory `dir`, so that a file created or removed in it is on the stick.
-fn sync_dir(dir: &Path) -> Result<(), HalError> {
+/// Syncs directory `dir` through `mounter`, so that a file created or removed in it is on the
+/// stick.
+fn sync_dir<M: Mounter>(mounter: &mut M, dir: &Path) -> Result<(), HalError> {
     File::open(dir)
-        .and_then(|dir| dir.sync_all())
+        .and_then(|dir| mounter.sync(&dir))
         .map_err(|error| fault(&error, HalError::Sync))
 }

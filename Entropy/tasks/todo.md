@@ -7657,6 +7657,15 @@ stale (Q43 (d)).
   "The unmount's fault unless the call had failed already": `a_calls_fault_comes_before_a_failed_unmounts` reads a
   missing file and writes over an existing name with the plain unmount failing (EBUSY): `Read` and `Exists`, each after
   a lazy detach. Each review mutant fails its test (the whole file read; the unmount's fault reported).
+  Proof (review fix, commit 9c): step 5's syncs could not be seen on a host temp dir, so deleting the file's sync,
+  either directory sync, or the sync inside `sync_dir` passed. They now go through `Mounter::sync`, whose default is
+  `File::sync_all` (the Linux glue keeps it), so the recording mounter logs each one, only while the stick is mounted,
+  and can fail it; that default's one line is the only sync code no test sees.
+  `a_write_syncs_its_file_then_its_directory_and_a_failed_sync_removes_the_file`: a write syncs the file once it holds
+  all 8 bytes, then the directory; a removal syncs the directory; a failed file sync (EIO `Sync`, ENOSPC `Write`) or
+  directory sync removes the file, syncs the directory and unmounts plainly, with no record. So a failed sync is now
+  made on the host; a full stick is still not. Each of those mutants fails it, and so do a sync before the write and a
+  failed sync named `Write`.
 - [x] Host contract tests in `device/usb/tests.rs`, over a temp dir from `std::env::temp_dir()` and a recording
   `Mounter`, mirroring pi/sim/tests/hal.rs.
 
@@ -7745,7 +7754,8 @@ stale (Q43 (d)).
     simulator. Edges are read with `Gpio::poll_interrupts`, which is synchronous and uses no thread.
   - Clock: nix `clock_gettime(CLOCK_MONOTONIC)`.
   - HwRng: `/dev/hwrng`, opened once with `O_NONBLOCK`.
-  - Usb: `DeviceUsb` with the `SysBlock` implementation and nix `mount`/`umount2`.
+  - Usb: `DeviceUsb` with the `SysBlock` implementation and nix `mount`/`umount2`; `Mounter::sync` keeps its default,
+    `File::sync_all` (9c).
   - `build_info`: `CARGO_PKG_VERSION`, the prefix, and `simulator: false`.
 
   Every rppal and nix error maps to its trait's `HalError`.
@@ -8619,6 +8629,8 @@ The PR is a draft from commit 1.
 9. pi/app (bin): `device/usb.rs`, `SysBlock`, `device/usb/tests.rs` with the `#[ignore]`d loop-device test (group 8).
    9b. pi/app: the recompute review: a read takes at most one byte past its limit, shown on a counting reader, and a
    call's fault comes before a failed unmount's.
+   9c. pi/app: the recompute review: the write's and the removal's syncs go through `Mounter::sync`, so the tests see
+   their order and a failed sync is `Sync` with the file removed.
 10. pi/app (bin), pi/os, .github: `device/rootfs.rs` and its vector; `pi/os/rootfs-prefix.py`; `gates` runs its
     `--selftest` (group 9).
 

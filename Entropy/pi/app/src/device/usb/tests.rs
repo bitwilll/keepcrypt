@@ -3,8 +3,8 @@
 //! - On every host: the finder over a `/sys/block` in memory; the mount plans, the unmounts and the
 //!   errno table, pinned; and `hal::Usb`'s contract over a temp dir standing in for the mounted
 //!   stick and a recording `Mounter`, as pi/sim/tests/hal.rs holds the simulator to it. Nothing is
-//!   mounted there, so these tests pin which mount each call asks for, not what the kernel makes of
-//!   it.
+//!   mounted there, so these tests pin which mount and which syncs each call asks for, not what
+//!   the kernel makes of them.
 //! - On Linux: the plans against the kernel's flags; and, as root in CI's test job only
 //!   (`#[ignore]`d), `loop_device`, the same calls on a FAT32 loop device through mount(2) and
 //!   umount2(2).
@@ -128,7 +128,15 @@ enum Call {
     },
 }
 
-/// Records every call and mounts nothing; a call fails, with an errno, when told to.
+/// One sync a `Mounter` was asked for: of a file, with its length then, or of a directory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Flushed {
+    File(u64),
+    Dir,
+}
+
+/// Records every call and mounts nothing; a call fails, with an errno, when told to. Syncs are
+/// recorded apart, each only while the stick is mounted.
 #[derive(Default)]
 struct Recorder {
     calls: Vec<Call>,
@@ -138,6 +146,11 @@ struct Recorder {
     plain_fails: VecDeque<i32>,
     /// The errno every lazy detach fails with.
     detach_fails: Option<i32>,
+    syncs: Vec<Flushed>,
+    /// What the next syncs give, in order: an errno to fail with, or `None`.
+    sync_fails: VecDeque<Option<i32>>,
+    /// True from a mount that worked until an unmount that did.
+    mounted: bool,
 }
 
 impl Mounter for Recorder {
@@ -149,7 +162,10 @@ impl Mounter for Recorder {
         });
         match self.mount_fails.take() {
             Some(errno) => Err(io::Error::from_raw_os_error(errno)),
-            None => Ok(()),
+            None => {
+                self.mounted = true;
+                Ok(())
+            }
         }
     }
 
@@ -163,6 +179,23 @@ impl Mounter for Recorder {
             Unmount::Detach => self.detach_fails,
         };
         match fails {
+            Some(errno) => Err(io::Error::from_raw_os_error(errno)),
+            None => {
+                self.mounted = false;
+                Ok(())
+            }
+        }
+    }
+
+    fn sync(&mut self, file: &File) -> io::Result<()> {
+        assert!(self.mounted, "a sync while the stick is not mounted");
+        let metadata = file.metadata()?;
+        self.syncs.push(if metadata.is_dir() {
+            Flushed::Dir
+        } else {
+            Flushed::File(metadata.len())
+        });
+        match self.sync_fails.pop_front().flatten() {
             Some(errno) => Err(io::Error::from_raw_os_error(errno)),
             None => Ok(()),
         }
@@ -601,6 +634,39 @@ fn a_write_creates_a_new_file_that_alone_can_be_read_back_and_removed() {
     assert_eq!(
         usb.mounter.calls,
         calls(&dir, &[WRITE_PLAN, READ_PLAN, READ_PLAN, WRITE_PLAN])
+    );
+    clear(&dir);
+}
+
+/// Step 5: the new file is synced once it holds every byte, then its directory, while the stick
+/// is mounted; a removal syncs the directory. A sync that fails is `Sync`, or the errno table's
+/// fault (a full stick's ENOSPC is `Write`), and the file the write created is removed, its
+/// directory synced, before the plain unmount.
+#[test]
+fn a_write_syncs_its_file_then_its_directory_and_a_failed_sync_removes_the_file() {
+    let dir = scratch("sync");
+    let mut usb = device(one_stick(), &dir);
+    let written = usb.write_new(BACKUP, b"age file").expect("written");
+    assert_eq!(usb.mounter.syncs, [Flushed::File(8), Flushed::Dir]);
+    assert_eq!(usb.remove_written(written), Ok(()));
+    assert_eq!(usb.mounter.syncs[2..], [Flushed::Dir]);
+    let (file, folder) = (Flushed::File(8), Flushed::Dir);
+    for (fails, fault, syncs) in [
+        (&[Some(5)][..], HalError::Sync, &[file, folder][..]),
+        (&[Some(28)], HalError::Write, &[file, folder]),
+        (&[None, Some(5)], HalError::Sync, &[file, folder, folder]),
+    ] {
+        usb.mounter.calls.clear();
+        usb.mounter.syncs.clear();
+        usb.mounter.sync_fails = fails.iter().copied().collect();
+        assert_eq!(usb.write_new(BACKUP, b"age file"), Err(fault));
+        assert_eq!(usb.mounter.syncs, syncs);
+        assert!(names_in(&dir).is_empty());
+        assert_eq!(usb.mounter.calls, calls(&dir, &[WRITE_PLAN]));
+    }
+    assert_eq!(
+        usb.read_written(&Written::new(name(BACKUP)), 64),
+        Err(HalError::NotWritten)
     );
     clear(&dir);
 }
