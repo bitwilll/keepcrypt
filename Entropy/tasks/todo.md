@@ -7564,8 +7564,8 @@ stale (Q43 (d)).
 
 **8. Device: the USB stick (pure; `device/usb.rs`; Q39 (f))**
 - [x] The finder works over a `SysBlock` trait (the block entries, each entry's resolved device link, its `ro` flag, and
-  whether `<dev>1` exists). The Linux implementation in `linux.rs` reads `/sys/block`; tests use an in-memory fake, so no
-  fixture tree or symlink is created.
+  whether `<dev>1` exists). Tests use an in-memory fake, so no fixture tree or symlink is created; the Linux
+  implementation over `/sys/block` is group 10's (9d moved that sentence there).
   - a stick is an `sd*` entry whose resolved link contains a `/usb` component;
   - exactly one stick is accepted; more give `ManySticks`;
   - it uses partition `<dev>1` if present, otherwise the whole disk;
@@ -7586,7 +7586,14 @@ stale (Q43 (d)).
   alone; on the Pi it runs `.../20980000.usb/usb1/1-1/...`. The finder implements a `Locate` trait, which the
   loop-device test implements to bypass it. `ReadOnly` before any write is `DeviceUsb`'s check (two items down). The
   Linux `SysBlock` is group 10's (commit 11).
-- [x] Mount plans as data, at `/mnt/usb`, vfat only:
+  Proof (review fix, commit 9d): the plan and security reviews found three claims in group 8's ticked items that commit
+  9 does not prove: the Linux `SysBlock` over `/sys/block` and the mount point `/mnt/usb` (both commit 11's glue), and
+  FAT's letter case giving `Exists` (only the unticked loop-device test can show it; the host tests make no claim on
+  case). They move to group 10's Usb line and to the loop-device item, so each ticked item now claims what commit 9
+  proves, with 9b and 9c's tests for its read bound, syncs and failed sync. The security review also found that the
+  loop-device test proves a copy of the mount calls (its `Kernel` calls nix itself) and that its planned CI run passes
+  with no test run at all: the loop-device item and group 12's step now say how commit 11 and commit 13 close both.
+- [x] Mount plans as data, vfat only (the mount point, `/mnt/usb`, is group 10's; 9d moved it there):
   - reads: `RDONLY | NOSUID | NODEV | NOEXEC`;
   - the write: `NOSUID | NODEV | NOEXEC`;
   - never `MNT_FORCE`; `MNT_DETACH` only to clean up after `Removed` or a failed unmount.
@@ -7615,7 +7622,8 @@ stale (Q43 (d)).
   - `read_written` (on a fresh read-only mount) and `remove_written` refuse anything but the recorded file
     (`NotWritten`).
   - Errors:
-    - EEXIST → `Exists`. FAT is case-insensitive, so a name differing only in case also gives `Exists`;
+    - EEXIST → `Exists` (on FAT, which ignores letter case, a name differing only in case too: the loop-device item
+      proves it; 9d);
     - EROFS → `ReadOnly`;
     - ENOSPC/EFBIG → `Write`;
     - a vanished sysfs entry, or ENODEV/ENXIO after removal → `Removed`;
@@ -7683,6 +7691,10 @@ stale (Q43 (d)).
   - the read-back works under a read-only remount;
   - `remove_written` works;
   - nothing is left mounted after any call (checked in `KC_MOUNTINFO`).
+
+  (9d) Commit 9's test drives a `Kernel` mounter that calls nix itself, a copy of the glue's mount calls. From commit 11
+  it drives the glue's own `Mounter` (linux.rs's, over nix), with `Kernel` wrapping it to check each mount against
+  `KC_MOUNTINFO`, so the run proves the mount and unmount calls the image ships.
 
   Proof:
   - `SysBlock` fake tests: one stick with and without a partition; `mmcblk0`, `loop0`, `ram0` and a non-USB `sd` ignored;
@@ -7754,8 +7766,8 @@ stale (Q43 (d)).
     simulator. Edges are read with `Gpio::poll_interrupts`, which is synchronous and uses no thread.
   - Clock: nix `clock_gettime(CLOCK_MONOTONIC)`.
   - HwRng: `/dev/hwrng`, opened once with `O_NONBLOCK`.
-  - Usb: `DeviceUsb` with the `SysBlock` implementation and nix `mount`/`umount2`; `Mounter::sync` keeps its default,
-    `File::sync_all` (9c).
+  - Usb: `DeviceUsb` with the `SysBlock` implementation over `/sys/block`, the mount point `/mnt/usb` (both from group
+    8's items, 9d) and nix `mount`/`umount2`; `Mounter::sync` keeps its default, `File::sync_all` (9c).
   - `build_info`: `CARGO_PKG_VERSION`, the prefix, and `simulator: false`.
 
   Every rppal and nix error maps to its trait's `HalError`.
@@ -7860,7 +7872,8 @@ stale (Q43 (d)).
   linked, find which crate uses it, then stop and ask.
 - [ ] `test` gains a step: make the loop-device fixture (group 8), build pi/app's bin tests with `--no-run`, run
   `loop_device` as root with `sudo --preserve-env=KC_LOOP_DEV,KC_LOOP_RO,KC_LOOP_MNT,KC_MOUNTINFO`, then detach the loop
-  device in an `if: always()` step.
+  device in an `if: always()` step. (9d) The step fails unless the run reports exactly `1 passed`: a renamed test, a
+  wrong path or a build without it runs no test and exits 0 ("0 passed; ... filtered out").
 - [ ] `gates` runs `rootfs-prefix.py --selftest` (commit 10), `--workflows` (commit 13) and `--os-config` (commit 17).
 
   Proof:
@@ -8631,6 +8644,9 @@ The PR is a draft from commit 1.
    call's fault comes before a failed unmount's.
    9c. pi/app: the recompute review: the write's and the removal's syncs go through `Mounter::sync`, so the tests see
    their order and a failed sync is `Sync` with the file removed.
+   9d. tasks/todo.md: the plan and security reviews: group 8's ticked items claim only what commit 9 proves (the Linux
+   `SysBlock` and `/mnt/usb` move to group 10, FAT's letter case to the loop-device item); from commit 11 the
+   loop-device test drives the glue's `Mounter`, and commit 13's step needs exactly `1 passed`.
 10. pi/app (bin), pi/os, .github: `device/rootfs.rs` and its vector; `pi/os/rootfs-prefix.py`; `gates` runs its
     `--selftest` (group 9).
 
