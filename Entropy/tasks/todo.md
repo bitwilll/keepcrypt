@@ -5720,7 +5720,7 @@ amended; rules 5, 6), and on the BIP39-passphrase entry (the owner's decision of
     another screen than bip39-ask, or dropping the session; KEY2 hidden on bip39-entry's empty entry or at 100
     characters; KEY2 offered on readback-entry.
   - The captures sent to the owner (b74b0eb) show bip39-entry without KEY2; the lead says whether `capture_set` runs
-    again (group 17).
+    again (group 17). Not part of this item's proof: it is open in group 17's capture item, as the lead's (24b).
 
   Proof (commit 24):
   - pi/app (`cargo test -p keepcrypt-pi --locked`: 114 passed):
@@ -5799,6 +5799,10 @@ amended; rules 5, 6), and on the BIP39-passphrase entry (the owner's decision of
   Decided (owner, 2026-10-14, "yes to 2-4"; under "Raised by the M3 gate report"): B's two are fixed by commits 23-24,
   the Buttons table amended to the app's KEY1 (23) and KEY2 "back" on bip39-entry (24). The box stays open until
   commit 24 lands with its proof.
+  Recorded (review fix, commit 24b): commit 24 (856580a) has landed with its proof (group 15's last item), so
+  bip39-entry no longer has the trap, and B's two mediums are fixed. The box now waits for the review of commits
+  23-24. Of its two medium findings, Verification's stale line on bip39-entry's KEY2 is fixed by 24b, and the capture
+  set that predates commit 24 waits for the lead's decision (the next item).
 - [ ] The registry-config capture set and its review page, zipped and sent to the owner with its index (Q30 (g)).
   The review page (commit 21) is the owner's working view inside the zip; the full set and index.html are the record.
   Corrected (lead, 2026-10-14): commit 21 planned to send only review.html and review/, as the full set is 1.9 GB
@@ -5825,6 +5829,15 @@ amended; rules 5, 6), and on the BIP39-passphrase entry (the owner's decision of
   `2cb7c72f522a7b8e8290fafc2842f68c48b1883963a606fa8d5907c4e5701e1b`, so the record does not rest on the zip's bytes
   alone; the zip's full recipe is under "M3: local proof", where the recompute review found the description too
   loose to reproduce 2d9a083f... (deflate's level and the entries' attributes were not given).
+  Open (review fix, commit 24b; the lead's decision, before commit 25): the set above predates commit 24 (856580a),
+  the only change to pi/app or core since b74b0eb. Its bip39-entry frames offer no KEY2 (b74b0eb pinned
+  "bip39-entry: move move move move add del - done"), and its `dice_24_code` run has no back round (341 steps and
+  216 dead keys then, 351 and 214 since commit 24). So the owner's verdict on button handling would cover captures
+  without the KEY2 "back" the owner decided on 2026-10-14. Either `capture_set` runs again on the pushed head once
+  CI is green, and the new zips go to the owner with their SHA-256s; or the owner is told that the set predates
+  commit 24 and gets its changed frames (bip39-entry's footer with "2 back", then bip39-ask, then the empty entry).
+  The lead records which here and in the gate status. Group 15's last item leaves this to the lead (its last planned
+  proof line) and is ticked without it.
 
 **Deferred, with their milestone**
 - **M4:**
@@ -5915,12 +5928,16 @@ amended; rules 5, 6), and on the BIP39-passphrase entry (the owner's decision of
   - from backup-check-entry to home with nothing held, and the file left on the stick, KEY2 offered there on an
     empty entry, on the 8th word and after a refusal;
   - on either grid, a kept `Wiped` stays kept (Q26), so an idle wipe after KEY2 still leaves a 99-roll restart;
-  - no KEY2 on readback-entry or bip39-entry, and every footer within 240 px.
+  - no KEY2 on readback-entry or bip39-entry (bip39-entry amended by the owner on 2026-10-14: the next item), and
+    every footer within 240 px.
 
   Proof: group 15's unit tests, `check_restarts`, `check_backup`, the dead-key probes.
   Proof (M3 Review, 2026-10-14): group 15's unit tests (pi/app: 113 passed), `check_restarts` and `check_backup` in
   both configurations, and `dice_24_code`'s dead KEY2 on readback-entry and bip39-entry pass in CI on 0cdfc8a (run
   38467985842, the first run holding all of group 15) and locally at b74b0eb.
+  Amended (review fix, commit 24b): that proof is of 0cdfc8a and b74b0eb. Since commit 24 (856580a) bip39-entry
+  offers KEY2 "back", and `dice_24_code` asserts it there (`offers_back`) and presses it, where it pressed a dead
+  KEY2; its dead KEY2 on readback-entry stays. bip39-entry's proof is the next item's.
 - [ ] **KEY2 "back" on bip39-entry** (the owner's decision of 2026-10-14; Q32 (a) as amended again): to bip39-ask
   with the typed text wiped and the `Ready` session kept, offered empty, with text typed and at 100 characters; "I use
   a passphrase" then opens an empty entry behind the privacy gate; readback-entry alone has no KEY2, and every footer
@@ -5977,6 +5994,8 @@ amended; rules 5, 6), and on the BIP39-passphrase entry (the owner's decision of
   Proof: the owner's verdict and the scan record, quoted under Review.
   Awaiting the owner (M3 Review, 2026-10-14): the capture run under "M3: local proof" (b74b0eb, registry
   configuration) and its zipped review page are ready to send; the scan record and the verdict are not in yet.
+  Open (review fix, commit 24b): that run predates commit 24's KEY2 "back" on bip39-entry; whether it is captured
+  again is the lead's decision (group 17's capture item).
 - [x] **Runtime failures halt** (Q25; design.md:178): boot and continuous health failures, an injected game error and
   HAL faults all end on `halt` with no secret held.
 
@@ -6271,6 +6290,9 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     did.
 24. pi/app, pi/sim: KEY2 "back" on bip39-entry, `KeyMap`'s doc on the QR and info pages, unit tests and
     `dice_24_code` (group 15's last item).
+    24b. tasks/todo.md: the plan review: Verification's ticked KEY2 "back" item points at bip39-entry's amendment,
+    group 17's tally says commit 24 landed, and group 17 holds the lead's open decision on the capture set, which
+    predates commit 24.
 25. tasks/todo.md: the owner's capture verdict and the closing Review lines.
 
 Review fixes are listed as N.b entries under the commit they amend.
