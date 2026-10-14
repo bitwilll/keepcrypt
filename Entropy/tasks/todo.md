@@ -7357,6 +7357,12 @@ stale (Q43 (d)).
   the wait screen, the call and the refusal's present: nothing, the idle timer included; the next KEY2 goes Home. In
   scratch copies, that pair of removals, and the wait screen's `presented` alone, fail it, and the idle restart before
   the check fails the boot, gate and stick-read tests too.
+  Note (stage C's plan and recompute reviews, 2026-10-15): that mutant claim held at 6c only. Since commit 11
+  (91f23d8) `entry_typed` enters the refusal anew, and that present moves the fence past every press the test makes,
+  so at HEAD the test passes with the wait screen's `presented` and the `fence()` after the refused `decrypt_backup`
+  both removed (reproduced: 130 passed). In this path no test HAL observation can tell the two apart, since a press
+  is read only after `entry_typed` returns; both stay as belt and braces, and the lead decides whether to drop them
+  (see the concern in stage C's review report).
 
   Lead decisions (stage B's review, 2026-10-14): (1) the fence follows `enter_page` (3db333f), not the `ScreenId`: that
   is the reading of Q39 (a) and PF:105 that drops a press queued behind any page or note change, and the References and
@@ -7887,6 +7893,10 @@ stale (Q43 (d)).
   Proof (commit 11): `run` sets the hook and catches nothing (`catch_unwind` stays in clippy.toml's ban); `PiHal`'s
   first field is the panel, so the app's `hal` drop blanks it before the session is dropped; the `mode` test and
   the earlier `show_stop` and `Drop` tests pass. CI's lint and cross runs and commit 17's inittab check remain.
+  Note (stage C's recompute review, 2026-10-15): the panel-first field order is a reviewed-by-reading claim, pinned
+  by the struct's doc comment and no test: swapping the fields compiles and lints clean, and no host test builds
+  `PiHal` (hardware cannot show drop order either). Rust drops fields in declaration order, so the comment next to
+  the struct is the pin.
 
 **11. Gates (banned-api-check.sh, canaries)**
 - [x] Open owner item, before commit 12: Q51 (rule 8's path list). Rule 8's sentence and PF:81 say the list is complete
@@ -8876,7 +8886,8 @@ The PR is a draft from commit 1.
     rppal name, and calls the globs patterns, every listed path kept; Q51 and group 11's item marked answered; stage B's
     two lead decisions on the fence recorded (References and terms, groups 4 and 10).
     10d. CLAUDE.md: rule 8's "fixed entries under `/proc` and `/sys`" becomes "fixed entries and patterns under `/proc`
-    and `/sys`"; nothing else in the rule changes.
+    and `/sys`"; nothing else in the rule changes. (Made after commit 13, in stage C's review: 10c's message, commit
+    12's message and this plan had named it as done while rule 8 still said "fixed entries".)
     10e. docs: stage C's plan, security and recompute reviews: PF:81's rppal sentence claims only what the rppal review
     note checked (the paths opened by the GPIO, SPI and board-identification code the firmware calls) and names the
     I2C, PWM, UART and Pi 5 paths its source also holds, which the firmware never reaches.
