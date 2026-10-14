@@ -7418,8 +7418,8 @@ stale (Q43 (d)).
   For the HAT, the byte stream is the approved one, byte for byte. The backlight comes on after the first successful
   present.
   Proof (commit 7): the HAT's recorded init equals steps 1-8 as approved before Q44, which the test writes out from
-  the plan: 66 bus calls, 57 of them commands and writes. The gamma tables equal SeedSigner's `ST7789.py` and
-  Waveshare's `LCD_1in3.c` [S6, S34], both re-read 2026-10-14.
+  the plan: 65 bus calls (7e; this line said 66), 57 of them commands and writes. The gamma tables equal SeedSigner's
+  `ST7789.py` and Waveshare's `LCD_1in3.c` [S6, S34], both re-read 2026-10-14.
 - [x] Present:
   - CASET `origin.x .. origin.x + 239`, RASET `origin.y .. origin.y + 239`, RAMWR (for the HAT, `00 00 00 EF` twice, as
     approved);
@@ -8578,6 +8578,7 @@ The PR is a draft from commit 1.
    7c. pi/app: the security review: the `PROFILES` checks refuse an LCMCTRL step with XMV, which flips MADCTL's MV.
    7d. pi/app: the recompute review: a bus fault in `hal::Display::present` under `show_stop`, and a display fault in
    `show_stop` itself, give `Display` at once, the panel's backlight off.
+   7e. tasks/todo.md: the plan and recompute reviews: commit 7's init proof counts 65 bus calls, not 66.
 8. pi/app (bin): `device/keys.rs` and `device/hwrng.rs` (groups 6, 7).
 9. pi/app (bin): `device/usb.rs`, `SysBlock`, `device/usb/tests.rs` with the `#[ignore]`d loop-device test (group 8).
 10. pi/app (bin), pi/os, .github: `device/rootfs.rs` and its vector; `pi/os/rootfs-prefix.py`; `gates` runs its
