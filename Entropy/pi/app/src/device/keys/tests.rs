@@ -1,7 +1,8 @@
 //! The key loop's tests (tasks/todo.md, M4 group 6), on a scripted edge source and a clock that
 //! moves only while the loop waits: a bounce train, a held key, the time a press carries, the
 //! deadline (ahead, already past, `u64::MAX`), the waits, conversions out of range, a fault of the
-//! edge source, a lost edge, and edges queued while the device was busy.
+//! edge source, a lost edge, edges queued while the device was busy, and the time read before
+//! them.
 
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
@@ -40,6 +41,9 @@ struct Script {
     calls: usize,
     /// The call, counted from 0, that fails with `Buttons`, as a GPIO fault would.
     fail_at: Option<usize>,
+    /// How long the device is held up (preempted, say) right after a zero timeout that finds no
+    /// edge ready: the end of a drain of queued edges.
+    held_up_ns: u64,
 }
 
 impl EdgeSource for Script {
@@ -68,7 +72,11 @@ impl EdgeSource for Script {
                     u64::MAX,
                     "a wait with no timeout and no edge left"
                 );
-                self.clock.set(until_ns);
+                let end_ns = match timeout {
+                    Some(Duration::ZERO) => now_ns + self.held_up_ns,
+                    _ => until_ns,
+                };
+                self.clock.set(end_ns);
                 Ok(None)
             }
         }
@@ -116,6 +124,7 @@ fn start(now_ns: u64, edges: Vec<Queued>) -> (KeyLoop<Script, TestClock>, Rc<Cel
         waits: Rc::clone(&waits),
         calls: 0,
         fail_at: None,
+        held_up_ns: 0,
     };
     (
         KeyLoop::new(script, TestClock(Rc::clone(&clock))),
@@ -340,6 +349,21 @@ fn times_out_of_range_and_unknown_pins_are_refused() {
 #[should_panic(expected = "the monotonic clock is out of range")]
 fn a_clock_reading_out_of_range_panics() {
     clock_ns(-1i64, 0i64);
+}
+
+/// The time first, then every edge already queued: a press is judged at a time read before the
+/// drain, with every edge stamped before it. Up goes down at 0 and up again at 19.5 ms; the loop
+/// reads 19.4 ms, drains while the release is not queued yet, and is held up 0.7 ms. Judged at
+/// 19.4 ms the press is not due, and the release then ends it. Judged at a time read after the
+/// drain, 20.1 ms, the 19.5 ms glitch would be a press.
+#[test]
+fn a_press_is_judged_at_a_time_read_before_the_drain() {
+    let (mut keys, _, _) = start(
+        19_400_000,
+        live(&[(Key::Up, true, 0), (Key::Up, false, 19_500_000)]),
+    );
+    keys.edges.held_up_ns = 700_000;
+    assert!(presses(&mut keys, S).is_empty());
 }
 
 /// A fault of the edge source (a GPIO error on the device) comes back from the loop unchanged,

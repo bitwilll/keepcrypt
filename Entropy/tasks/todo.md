@@ -7523,6 +7523,11 @@ stale (Q43 (d)).
   of queued edges or on a wait, or turned it into another `HalError`, passed every test, and would never halt with
   "button fault". The script can now fail one call: `an_edge_source_fault_is_the_loops_fault` fails the drain, then the
   wait, and gets `Buttons` back each time; each of those four mutants fails it.
+  Proof (review fix, commit 8c): the order keys.rs documents, the time first and then every edge already queued, was
+  untested: the script made edges readable only inside waits, so reading the clock after the drain passed. Then a key
+  that bounces back up just before a late clock read counts as a press. The script can now hold the device up right
+  after a drain; `a_press_is_judged_at_a_time_read_before_the_drain` reads 19.4 ms, drains before a release stamped
+  19.5 ms is queued, and is held up 0.7 ms: no press, while the swapped order makes the 19.5 ms glitch a press.
 
 **7. Device: the hwrng (pure; `device/hwrng.rs`; Q39 (c))**
 - [x] `fill_block<R: RawRead, C: Clock>(raw, clock, block, deadline)` reads straight into the caller's 64-byte block until
@@ -8592,6 +8597,8 @@ The PR is a draft from commit 1.
 8. pi/app (bin): `device/keys.rs` and `device/hwrng.rs` (groups 6, 7).
    8b. pi/app: the recompute review: an edge source fault, on the drain or on a wait, comes back from the key loop as
    `Buttons`.
+   8c. pi/app: the recompute review: a test holds the key loop up between its drain and the next statement, so a press
+   is shown judged at the time read before the drain.
 9. pi/app (bin): `device/usb.rs`, `SysBlock`, `device/usb/tests.rs` with the `#[ignore]`d loop-device test (group 8).
 10. pi/app (bin), pi/os, .github: `device/rootfs.rs` and its vector; `pi/os/rootfs-prefix.py`; `gates` runs its
     `--selftest` (group 9).
