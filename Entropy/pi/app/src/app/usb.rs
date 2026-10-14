@@ -68,7 +68,9 @@ impl<H: Hal> App<H> {
 
     /// The files of `kind` on the stick: one is opened, several are listed, none is said.
     fn list(&mut self, kind: FileKind) -> Result<(), Stop> {
-        let names = match self.hal.list(kind) {
+        let listed = self.hal.list(kind);
+        self.fence();
+        let names = match listed {
             Ok(names) => names,
             Err(fault) => return self.usb_refused(Flow::Open(kind), fault),
         };
@@ -122,14 +124,18 @@ impl<H: Hal> App<H> {
             FileKind::Kcr => MAX_SNAPSHOT_BYTES,
             FileKind::Age => MAX_BACKUP_BYTES,
         };
-        let file = match self.hal.read(name, max) {
+        let read = self.hal.read(name, max);
+        self.fence();
+        let file = match read {
             Ok(file) => file,
             Err(fault) => return self.usb_refused(Flow::Open(kind), fault),
         };
         match kind {
             FileKind::Kcr => {
                 self.wait(screens::WAIT_SNAPSHOT)?;
-                match verify_snapshot(&file) {
+                let verified = verify_snapshot(&file);
+                self.fence();
+                match verified {
                     Ok(snapshot) => {
                         self.held.snapshot = Some(snapshot);
                         self.enter(ScreenId::SnapshotLoaded, Note::None);
@@ -174,6 +180,7 @@ impl<H: Hal> App<H> {
                 match decrypt_backup(&file, &passphrase) {
                     Ok(backup) => {
                         let seal = backup.seal().map_err(Stop::Core)?;
+                        self.fence();
                         self.held.stage = Stage::Checked {
                             backup,
                             seal: Box::new(seal),
@@ -181,7 +188,10 @@ impl<H: Hal> App<H> {
                         self.enter(ScreenId::BackupCheckResult, Note::None);
                         return self.redraw();
                     }
-                    Err(error) => refused(error)?,
+                    Err(error) => {
+                        self.fence();
+                        refused(error)?
+                    }
                 }
             }
         };
@@ -210,7 +220,10 @@ impl<H: Hal> App<H> {
         let file = self.export(|session| session.encrypt_backup(&CREATED_BY))?;
         let written = match self.hal.write_backup(&file) {
             Ok(written) => written,
-            Err(fault) => return self.backup_failed(Refusal::Usb(usb_fault(fault)?), None),
+            Err(fault) => {
+                self.fence();
+                return self.backup_failed(Refusal::Usb(usb_fault(fault)?), None);
+            }
         };
         let verdict = match self.hal.read_written(&written, MAX_BACKUP_BYTES) {
             Err(fault) => Err(Refusal::Usb(usb_fault(fault)?)),
@@ -224,6 +237,7 @@ impl<H: Hal> App<H> {
         };
         match verdict {
             Ok(()) => {
+                self.fence();
                 self.enter(ScreenId::BackupVerified, Note::None);
                 self.redraw()
             }
@@ -233,6 +247,7 @@ impl<H: Hal> App<H> {
                     Ok(()) => None,
                     Err(fault) => Some(usb_fault(fault)?),
                 };
+                self.fence();
                 self.backup_failed(reason, left)
             }
         }

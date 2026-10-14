@@ -7247,25 +7247,38 @@ stale (Q43 (d)).
   is unchanged from M3's Review: lines 8408, missed 220, 97.38%; regions 96.88%; functions 96.32%.
 
 **4. The app changes the hardware needs (pi/app lib, pi/sim; tested on the host)**
-- [ ] `HalError` gains four variants. The first three halt; `ManySticks` returns to its screen.
+- [x] `HalError` gains four variants. The first three halt; `ManySticks` returns to its screen.
   - `MemoryLock`: "memory could not be locked";
   - `RootFs`: "the root filesystem could not be read";
   - `Stopped`: "the firmware stopped unexpectedly";
   - `ManySticks`: "more than one USB stick is inserted".
 
   Proof: hal.rs's tests over `HalError::ALL` (text and `halts()`), updated.
-- [ ] `pub fn show_stop<D: Display>(display: &mut D, fault: HalError) -> Result<(), HalError>` presents `screens::blank()`,
+  Proof (commit 6): `cargo test -p keepcrypt-pi --locked`: `every_hal_error_displays_fixed_text` pins all 19 texts, and
+  `display_button_hwrng_and_start_up_faults_halt_and_usb_faults_do_not` finds exactly Display, Buttons, HwRng,
+  MemoryLock, RootFs and Stopped halting; app.rs's test over `HalError::ALL` sends `ManySticks` back to its screen
+  through `usb_fault`.
+- [x] `pub fn show_stop<D: Display>(display: &mut D, fault: HalError) -> Result<(), HalError>` presents `screens::blank()`,
   then the normal halt screen with the fault's text, through a `Painter`. It takes only a display, so it holds no session
   and cannot reach the hwrng or the stick.
   Proof: a unit test on a recording display (black frame first, then the halt screen's model with the text);
   `every_screen_is_expected` still passes.
-- [ ] The boot screen and About fit version `0.0.0` and a 19-character prefix (`0123-4567-89ab-cdef`).
+  Proof (commit 6): `show_stop_draws_a_black_frame_then_the_apps_halt_screen_for_every_fault`: for each of the 19
+  faults, the test HAL's display records a black frame, then the halt model with the fault's text and no key, frame for
+  frame what `App::halt` draws; stop mode's shows "the firmware stopped unexpectedly". `screens::halt` is the one
+  stop-screen model for both, and lib.rs re-exports `show_stop` for group 10. `every_screen_is_expected` passes in both
+  pi/sim configurations.
+- [x] The boot screen and About fit version `0.0.0` and a 19-character prefix (`0123-4567-89ab-cdef`).
   Proof: the fits test on both screens (screens.rs:512, :581) with that `rootfs` value.
-- [ ] `Key::bcm_pin(self) -> u8`, a `pub const fn` in input.rs, gives each key's BCM pin in code (input.rs:27-48 has the
+  Proof (commit 6): `boot_and_about_fit_the_version_and_a_root_filesystem_prefix`: both models fit, with each of the
+  four banner combinations, and show "Version 0.0.0" and "Root filesystem 0123-4567-89ab-cdef" whole.
+- [x] `Key::bcm_pin(self) -> u8`, a `pub const fn` in input.rs, gives each key's BCM pin in code (input.rs:27-48 has the
   pins only as doc comments). Group 6's `device/keys.rs` and group 10's `PiHal` take the pins from it.
   Proof: a unit test pins all eight against pi-firmware.md's pin table (PF:36-37: Up 6, Down 19, Left 5, Right 26,
   Press 13; KEY1 21, KEY2 20, KEY3 16) and checks that the eight pins are distinct.
-- [ ] The fence (Q39 (a)). `App` sets `fence_ns = hal.now_ns()`:
+  Proof (commit 6): `each_key_has_its_bcm_pin_from_the_pin_map_and_no_two_share_one` pins those eight and finds 8
+  distinct pins. The variants' doc comments no longer repeat the pins, so `bcm_pin` is their one copy in pi/app.
+- [x] The fence (Q39 (a)). `App` sets `fence_ns = hal.now_ns()`:
   - right after every successful present whose `ScreenId` differs from the previous present's (this covers the
     PrivacyGate, SkipConfirm, StopConfirm, CannotCheckConfirm and BackupConfirm screens and every screen after a blocking
     call);
@@ -7283,6 +7296,24 @@ stale (Q43 (d)).
     press during a step 4 tick's redraw acts;
   - pi/sim's gate scenarios still pass in both configurations, and any scenario that needs a change is listed with the
     reason.
+
+  Proof (commit 6): eight app.rs tests on the test HAL, whose clock now also moves 25 ms in each present and 50 ms in
+  each hwrng or stick call, and whose presses can carry an earlier stamp:
+  - a press stamped during boot (the boot screen, the first and the last hwrng block, before Home was fully shown),
+    during `finish`, during a stick read that returns to usb-pick, during `WAIT_BACKUP` and the write, or before the
+    privacy gate's present finished changes nothing: no present, no stage or cursor change, the idle deadline kept. One
+    stamped at the present's end acts, and so does the next press;
+  - in step 4, a fenced KEY1 on game-snake adds exactly one extra and leaves Snake open; the next KEY1 leaves it and
+    adds one more;
+  - KEY1 during a step 4 tick's redraw of game-snake, and Up during a dice redraw, act;
+  - negative controls, scratch edits not committed: without the check in `key()` 6 of the 8 fail; without the fence
+    after `hal.read` the stick-read test fails (usb-pick came back, so only that fence stops the press); with the idle
+    reset before the check the `finish` and backup tests fail; with the check before `add_extra` the step 4 test fails.
+
+  pi/sim: no scenario changed. `cargo test -p keepcrypt-pi-sim --locked` and `--features keepcrypt-core/test-registry`
+  pass (gate: 20 passed, 1 ignored, each). A scratch probe that panicked on any fenced press passed every gate, hal and
+  live test in both configurations: SimHal's clock moves only with its script, never inside a present or a blocking
+  call, so no scripted press begins before a fence. The fence's proof is therefore app.rs's tests.
 
 **5. Device: the panel (pure; `device/panel.rs`; Q36 (c), Q44)**
 - [ ] `Panel<B: Bus>` runs over the approved `Bus` trait (unchanged) and one `&'static PanelProfile`. The trait:
@@ -8193,7 +8224,8 @@ What does not change, in M4 or M4b (Q44-Q50):
   `--os-config` and `--image`, and no catch anywhere.
 - [ ] **Read-only mounts and create-new writes** (stick.rs:14-17): the loop-device test in `test`, including the
   untouched existing file.
-- [ ] **The fence:** group 4's tests, including a stick read and the PrivacyGate's present.
+- [x] **The fence:** group 4's tests, including a stick read and the PrivacyGate's present.
+  Proof: group 4's fence item (commit 6).
 - [ ] **Carried items:** each line of M3's "Deferred for M4" is proven or decided, one line each under Review:
   - drivers: groups 5-8;
   - no `unsafe`: group 2;

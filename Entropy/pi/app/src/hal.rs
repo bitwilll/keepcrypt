@@ -6,7 +6,8 @@
 //!
 //! - Every fault is a `HalError` with fixed text and no payload, so no error can carry a secret or
 //!   a piece of what a stick supplied (rule 5). `HalError::halts` sorts them by Q25: a display,
-//!   button or hwrng fault halts the device; a USB fault returns to its screen.
+//!   button or hwrng fault halts the device, and so do the device's own start-up faults and stop
+//!   mode (M4, Q35 and Q39 (e), (g)); a USB fault returns to its screen.
 //! - Files (rule 8): the app reaches a stick only through `Usb`. It lists and reads only `.age`
 //!   and `.kcr` files with `FileName`'s names, under a read-only mount, and writes only a core
 //!   `BackupFile`, as a new file that never replaces another. Only the file just written can be
@@ -38,8 +39,16 @@ pub enum HalError {
     Buttons,
     /// `/dev/hwrng` did not give a whole block.
     HwRng,
+    /// The firmware's memory could not be locked, before any secret exists (Q39 (e)).
+    MemoryLock,
+    /// The root filesystem could not be read for its hash prefix (Q39 (g)).
+    RootFs,
+    /// The firmware process ended, and stop mode says so (Q35).
+    Stopped,
     /// No USB stick is inserted.
     NoStick,
+    /// More than one USB stick is inserted (Q39 (f)).
+    ManySticks,
     /// The stick was removed during the operation.
     Removed,
     /// The stick could not be mounted.
@@ -72,7 +81,11 @@ impl HalError {
             HalError::Display => "display fault",
             HalError::Buttons => "button fault",
             HalError::HwRng => "hwrng read fault",
+            HalError::MemoryLock => "memory could not be locked",
+            HalError::RootFs => "the root filesystem could not be read",
+            HalError::Stopped => "the firmware stopped unexpectedly",
             HalError::NoStick => "no USB stick found",
+            HalError::ManySticks => "more than one USB stick is inserted",
             HalError::Removed => "the USB stick was removed",
             HalError::Mount => "the USB stick could not be mounted",
             HalError::ReadOnly => "the USB stick is mounted read-only",
@@ -88,11 +101,18 @@ impl HalError {
     }
 
     /// True when the fault halts the device until a power cycle (Q25: every display, button or
-    /// hwrng fault); false for a USB fault, which returns to its own screen.
+    /// hwrng fault; Q35 and Q39 (e), (g): stop mode, and a memory lock or root filesystem fault at
+    /// start-up); false for a USB fault, which returns to its own screen.
     pub const fn halts(self) -> bool {
         match self {
-            HalError::Display | HalError::Buttons | HalError::HwRng => true,
+            HalError::Display
+            | HalError::Buttons
+            | HalError::HwRng
+            | HalError::MemoryLock
+            | HalError::RootFs
+            | HalError::Stopped => true,
             HalError::NoStick
+            | HalError::ManySticks
             | HalError::Removed
             | HalError::Mount
             | HalError::ReadOnly
@@ -312,7 +332,11 @@ mod tests {
                 HalError::Display => "display fault",
                 HalError::Buttons => "button fault",
                 HalError::HwRng => "hwrng read fault",
+                HalError::MemoryLock => "memory could not be locked",
+                HalError::RootFs => "the root filesystem could not be read",
+                HalError::Stopped => "the firmware stopped unexpectedly",
                 HalError::NoStick => "no USB stick found",
+                HalError::ManySticks => "more than one USB stick is inserted",
                 HalError::Removed => "the USB stick was removed",
                 HalError::Mount => "the USB stick could not be mounted",
                 HalError::ReadOnly => "the USB stick is mounted read-only",
@@ -331,12 +355,20 @@ mod tests {
     }
 
     #[test]
-    fn display_button_and_hwrng_faults_halt_and_usb_faults_do_not() {
+    fn display_button_hwrng_and_start_up_faults_halt_and_usb_faults_do_not() {
         let halting: Vec<HalError> = HalError::ALL.into_iter().filter(|e| e.halts()).collect();
         assert_eq!(
             halting,
-            [HalError::Display, HalError::Buttons, HalError::HwRng]
+            [
+                HalError::Display,
+                HalError::Buttons,
+                HalError::HwRng,
+                HalError::MemoryLock,
+                HalError::RootFs,
+                HalError::Stopped,
+            ]
         );
+        assert!(!HalError::ManySticks.halts());
     }
 
     #[test]

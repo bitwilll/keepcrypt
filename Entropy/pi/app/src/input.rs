@@ -1,8 +1,9 @@
 //! Button input and the idle timer (docs/pi-firmware.md "Buttons", "Protected screens and idle";
 //! tasks/todo.md, M3 group 5, Q29 and Q32 (a)).
 //!
-//! - One press is one event: presses are debounced and nothing more, with no auto-repeat and no
-//!   type-ahead filter.
+//! - One press is one event: presses are debounced, with no auto-repeat. A press that began
+//!   before its screen was fully shown, or while the device was busy, does nothing but feed the
+//!   pool in Mixed `Collecting` (the app's fence, Q39 (a)).
 //! - `Debouncer` is pure: raw edges and the time in, presses out. M4's GPIO driver reuses it, and
 //!   the simulator runs every scripted press through it as a bounce train.
 //! - `Idle` is pure too: the time of the last key in, and the step due on the current screen, and
@@ -25,25 +26,25 @@ pub const WARN_NS: u64 = 540_000_000_000;
 pub const WIPE_NS: u64 = 600_000_000_000;
 
 listed_enum! {
-/// The joystick's five inputs and the three keys of the Waveshare HAT, with their BCM pins
-/// (pi-firmware.md, "Pin map used by the firmware").
+/// The joystick's five inputs and the three keys of the Waveshare HAT; `Key::bcm_pin` gives each
+/// one's BCM pin.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
-    /// Joystick up, BCM 6.
+    /// Joystick up.
     Up,
-    /// Joystick down, BCM 19.
+    /// Joystick down.
     Down,
-    /// Joystick left, BCM 5.
+    /// Joystick left.
     Left,
-    /// Joystick right, BCM 26.
+    /// Joystick right.
     Right,
-    /// Joystick press, BCM 13.
+    /// Joystick press.
     Press,
-    /// KEY1, BCM 21.
+    /// KEY1.
     Key1,
-    /// KEY2, BCM 20.
+    /// KEY2.
     Key2,
-    /// KEY3, BCM 16.
+    /// KEY3.
     Key3,
 }
 }
@@ -60,6 +61,21 @@ impl Key {
             Key::Key1 => 5,
             Key::Key2 => 6,
             Key::Key3 => 7,
+        }
+    }
+
+    /// The BCM pin the key switches to ground (pi-firmware.md, "Pin map used by the firmware"):
+    /// the device's key driver reads these, the same on every screen (M4, Q48).
+    pub const fn bcm_pin(self) -> u8 {
+        match self {
+            Key::Up => 6,
+            Key::Down => 19,
+            Key::Left => 5,
+            Key::Right => 26,
+            Key::Press => 13,
+            Key::Key1 => 21,
+            Key::Key2 => 20,
+            Key::Key3 => 16,
         }
     }
 }
@@ -246,6 +262,8 @@ impl Idle {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::*;
 
     const MS: u64 = 1_000_000;
@@ -265,6 +283,28 @@ mod tests {
         for (index, key) in Key::ALL.into_iter().enumerate() {
             assert_eq!(key.index(), index);
         }
+    }
+
+    #[test]
+    fn each_key_has_its_bcm_pin_from_the_pin_map_and_no_two_share_one() {
+        // pi-firmware.md, "Pin map used by the firmware": KEY1, KEY2, KEY3 on 21, 20, 16; the
+        // joystick's up, down, left, right and press on 6, 19, 5, 26, 13.
+        let pins: Vec<(Key, u8)> = Key::ALL.into_iter().map(|k| (k, k.bcm_pin())).collect();
+        assert_eq!(
+            pins,
+            [
+                (Key::Up, 6),
+                (Key::Down, 19),
+                (Key::Left, 5),
+                (Key::Right, 26),
+                (Key::Press, 13),
+                (Key::Key1, 21),
+                (Key::Key2, 20),
+                (Key::Key3, 16),
+            ]
+        );
+        let distinct: BTreeSet<u8> = pins.iter().map(|&(_, pin)| pin).collect();
+        assert_eq!(distinct.len(), Key::ALL.len());
     }
 
     #[test]
