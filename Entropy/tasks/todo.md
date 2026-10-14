@@ -7639,7 +7639,9 @@ stale (Q43 (d)).
   - `--image-lists`, `--image`, `--selftest-image`, `--os-config` and `--workflows`;
   - the loop-device test and its environment;
   - `python3 -I pi/os/rootfs-prefix.py --selftest`;
-  - the capture_set comment now naming review.html (an M3 low item; Q43 (e)).
+  - the capture_set comment now naming review.html (an M3 low item; Q43 (e));
+  - the check count on the `scripts/canaries.sh` line, set to `want_checks` as it stands after commits 12 and 17 add
+    their canaries (`want_checks` is 62 since commit 5; the line still says 61).
 - [ ] `gates` at or under 12 minutes (Q31 (f)); `test` within its budget; image leg times recorded.
   Proof: `git diff --name-only`; job times from the PR head.
 
@@ -7874,6 +7876,8 @@ The PR is a draft from commit 1.
    built: the `reboot` canary, and the imported chain from google's 1.3.2 audit.
    5c. pi/app: the plan review: Cargo.toml's comment says the unsafe code the hardware access needs stays inside rppal,
    nix, libc and std, not all unsafe code (zeroize and sha2 have their own).
+   5d. tasks/todo.md: the plan and recompute reviews: group 18's Commands commit also sets the canaries count, which
+   commit 5 raised to 62 while CLAUDE.md's Commands line still says 61.
 
 **Stage B: app and device logic, tested on the host**
 
