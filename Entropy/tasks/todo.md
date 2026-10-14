@@ -7904,6 +7904,12 @@ stale (Q43 (d)).
   sentences); the banned-API gate clean (211 files) and its selftest 427/427; fmt, both clippy runs,
   `cargo test --workspace` (443 passed, 3 ignored), core's test-sources run (269 passed, 1 ignored) and pi-sim with
   the test registry (69 passed, 2 ignored) pass.
+  Proof (review fix, commit 10e): stage C's reviews read rppal 0.22.1's source and found paths off the list in modules
+  the firmware never calls (`/dev/gpiomem0` in gpio/gpiomem/rp1.rs, chosen only for `GpioInterface::Rp1`; I2C, PWM
+  and UART nodes in i2c.rs, pwm/sysfs.rs and uart.rs), so 10c's "rppal's paths were read from its source and are all
+  on it" claimed more than was checked. PF:81 now makes the rppal review note's scoped claim (the paths opened by the
+  GPIO code for the BCM2835 interface, the SPI code and the board identification are all on the list) and names the
+  never-reached modules. `vectorgen.py --selftest` 13/13 and `verify.py selftest` (8 groups) on Python 3.12 and 3.9.
 - [x] A Device category. Each rule gets hit and clean selftest fixtures and one canary:
   - **Path literals.** Every string literal starting with `/` in `pi/app/src` lives in `device/paths.rs` and is one of
     `/dev/hwrng`, `/dev/mmcblk0p2`, `/dev`, `/sys/block`, `/mnt/usb`. rppal builds its own `/dev/spidev*`, `/dev/gpio*`
@@ -8836,6 +8842,9 @@ The PR is a draft from commit 1.
     two lead decisions on the fence recorded (References and terms, groups 4 and 10).
     10d. CLAUDE.md: rule 8's "fixed entries under `/proc` and `/sys`" becomes "fixed entries and patterns under `/proc`
     and `/sys`"; nothing else in the rule changes.
+    10e. docs: stage C's plan, security and recompute reviews: PF:81's rppal sentence claims only what the rppal review
+    note checked (the paths opened by the GPIO, SPI and board-identification code the firmware calls) and names the
+    I2C, PWM, UART and Pi 5 paths its source also holds, which the firmware never reaches.
 
 **Stage C: Linux glue, main, gates, CI**
 
