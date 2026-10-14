@@ -7034,7 +7034,7 @@ stale (Q43 (d)).
   - the review note under "New dependencies".
 
 **3. Core: auto-trait assertions (todo.md:5898)**
-- [ ] `core/tests/auto_traits.rs`, compile-time only:
+- [x] `core/tests/auto_traits.rs`, compile-time only:
   - `Send` for `Session<S>` in all six states, `Wiped`, `VerifiedSnapshot`, `CheckedBackup`, `BackupFile` and
     `CoreError`;
   - `Sync` for `Session<S>`.
@@ -7044,6 +7044,12 @@ stale (Q43 (d)).
   - `cargo test -p keepcrypt-core --locked --test auto_traits` in both configurations;
   - a negative control (`Rc<u8>`) fails with E0277 in a scratch copy, pasted under Review and not committed;
   - coverage unchanged.
+
+  Proof (commit 4): `Sync` is asserted in all six states too (one `Box<Inner>` behind uninhabited markers, so Sync in
+  one state is Sync in all). `--test auto_traits` builds and runs 0 tests, exit 0, with and without
+  `--features test-sources`. A scratch copy adding `send::<std::rc::Rc<u8>>()` fails with E0277 "`Rc<u8>` cannot be
+  sent between threads safely" (exit 1), and one adding `sync::<core::cell::Cell<u8>>()` with E0277. `cargo llvm-cov`
+  is unchanged from M3's Review: lines 8408, missed 220, 97.38%; regions 96.88%; functions 96.32%.
 
 **4. The app changes the hardware needs (pi/app lib, pi/sim; tested on the host)**
 - [ ] `HalError` gains four variants. The first three halt; `ManySticks` returns to its screen.
