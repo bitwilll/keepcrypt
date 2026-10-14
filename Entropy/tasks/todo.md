@@ -7555,6 +7555,12 @@ stale (Q43 (d)).
   the whole block, whatever each read gives; the 1 ms pause is `RawRead::sleep_ms`, so the logic stays pure. Scratch
   mutations, not committed, each fail a test: reads into the whole block, EOF read again, other errors retried, the
   deadline 1 ms late.
+  Proof (review fix, commit 8d): "whatever each read gives" was untested: the test clock moved only in sleeps, so a
+  deadline checked only after `WouldBlock` passed, though then reads that each wait about a second in the kernel and
+  give a byte take about 64 s a block, and an `EINTR` storm never ends. The scripted device's reads can now take time:
+  `slow_or_interrupted_reads_fail_at_the_deadline_too` gives one byte, or `Interrupted`, per 100 ms read, and fails at
+  exactly 2 s after 20 reads (20 bytes served, or none), with no sleep. That mutant fails it, and so does an
+  `Interrupted` that skips the deadline check.
 
 **8. Device: the USB stick (pure; `device/usb.rs`; Q39 (f))**
 - [x] The finder works over a `SysBlock` trait (the block entries, each entry's resolved device link, its `ro` flag, and
@@ -8599,6 +8605,8 @@ The PR is a draft from commit 1.
    `Buttons`.
    8c. pi/app: the recompute review: a test holds the key loop up between its drain and the next statement, so a press
    is shown judged at the time read before the drain.
+   8d. pi/app: the recompute review: the hwrng's 2 s deadline is shown to hold for reads that are slow or interrupted,
+   not only for reads that find nothing.
 9. pi/app (bin): `device/usb.rs`, `SysBlock`, `device/usb/tests.rs` with the `#[ignore]`d loop-device test (group 8).
 10. pi/app (bin), pi/os, .github: `device/rootfs.rs` and its vector; `pi/os/rootfs-prefix.py`; `gates` runs its
     `--selftest` (group 9).

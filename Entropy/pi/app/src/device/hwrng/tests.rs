@@ -1,7 +1,7 @@
 //! The hwrng reader's tests (tasks/todo.md, M4 group 7, Q39 (c)), on a scripted device and a clock
-//! that moves only while the reader sleeps: a block arriving in pieces, straight into place and
-//! nothing past it; reads that find nothing, until and past the deadline; end of file; interrupted
-//! reads; other errors.
+//! that moves while the reader sleeps, and while a slow read waits: a block arriving in pieces,
+//! straight into place and nothing past it; reads that find nothing, until and past the deadline;
+//! slow and interrupted reads at the deadline; end of file; interrupted reads; other errors.
 
 use std::cell::Cell;
 use std::collections::VecDeque;
@@ -33,7 +33,8 @@ impl Clock for TestClock {
 }
 
 /// A device that serves the stream 0, 1, 2, … (mod 256) as its script says, then finds nothing
-/// yet (`WouldBlock`) forever, as a stalled hwrng would. Each sleep moves the clock.
+/// yet (`WouldBlock`) forever, as a stalled hwrng would. Each sleep moves the clock, and so does
+/// each read when it takes time.
 struct Device {
     script: VecDeque<Read>,
     /// The stream's bytes served so far.
@@ -42,11 +43,14 @@ struct Device {
     asked: Vec<usize>,
     sleeps: u32,
     clock: Rc<Cell<u64>>,
+    /// How long each read takes, whatever it gives: one that waits inside the kernel.
+    read_ns: u64,
 }
 
 impl RawRead for Device {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.asked.push(buf.len());
+        self.clock.set(self.clock.get() + self.read_ns);
         match self.script.pop_front() {
             Some(Read::Bytes(count)) => {
                 let count = count.min(buf.len());
@@ -77,6 +81,7 @@ fn device(now_ns: u64, script: &[Read]) -> (Device, TestClock) {
         asked: Vec::new(),
         sleeps: 0,
         clock: Rc::clone(&clock),
+        read_ns: 0,
     };
     (device, TestClock(clock))
 }
@@ -159,6 +164,29 @@ fn reads_that_find_nothing_fail_at_the_deadline_and_not_before() {
     );
     assert_eq!(clock.now_ns(), start + 2 * S);
     assert_eq!(raw.served, 10);
+}
+
+/// The deadline holds for the whole block, whatever each read gives: reads that each wait 100 ms
+/// in the kernel and then give a byte, or are interrupted, fail at 2 s, after 20 reads.
+#[test]
+fn slow_or_interrupted_reads_fail_at_the_deadline_too() {
+    let start = 5 * S;
+    for (read, served) in [
+        (Read::Bytes(1), 20),
+        (Read::Fail(ErrorKind::Interrupted), 0),
+    ] {
+        let (mut raw, clock) = device(start, &[read; 64]);
+        raw.read_ns = 100 * MS;
+        let mut block = [0; 64];
+        assert_eq!(
+            fill_block(&mut raw, &clock, &mut block, DEADLINE_NS),
+            Err(HalError::HwRng)
+        );
+        assert_eq!(clock.now_ns(), start + 2 * S);
+        assert_eq!(raw.asked.len(), 20);
+        assert_eq!(raw.served, served);
+        assert_eq!(raw.sleeps, 0);
+    }
 }
 
 /// End of file, at once or after part of a block, is a fault, with no sleep and no further read.
