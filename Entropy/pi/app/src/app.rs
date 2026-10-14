@@ -2429,6 +2429,12 @@ mod tests {
         assert!(texts.contains(&String::from("the firmware stopped unexpectedly")));
     }
 
+    /// When the idle timer would cover a Protected screen: it moves only when a key restarts the
+    /// timer. On a Public screen with nothing held, `deadline` is the same either way.
+    fn idle_cover_ns(app: &App<Fake>) -> Option<u64> {
+        app.idle.next_ns(0, Class::Protected, true)
+    }
+
     #[test]
     fn a_press_made_during_boot_does_nothing_and_the_next_acts() {
         let mut app = booted();
@@ -2439,17 +2445,20 @@ mod tests {
         let (first_read, _) = app.hal.calls[0];
         let (last_read, _) = app.hal.calls[BOOT_BLOCKS - 1];
         // Down would move Home's cursor. Pressed while the boot screen was drawn, while the hwrng
-        // was read (behind the known-answer tests) or before Home was fully shown: nothing.
-        let presents = app.hal.shown.len();
+        // was read (behind the known-answer tests) or before Home was fully shown: nothing, not
+        // even the idle timer's restart.
+        let (presents, idle) = (app.hal.shown.len(), idle_cover_ns(&app));
         for began_ns in [boot.from_ns, first_read + 1, last_read + 1, home.to_ns - 1] {
             press_at(&mut app, Key::Down, began_ns);
             assert_eq!(app.view.cursor, 0);
             assert_eq!(app.hal.shown.len(), presents);
+            assert_eq!(idle_cover_ns(&app), idle);
         }
         // Pressed once Home was on the panel: it acts.
         let home_shown_ns = app.hal.last().to_ns;
         press_at(&mut app, Key::Down, home_shown_ns);
         assert_eq!(app.view.cursor, 1);
+        assert_ne!(idle_cover_ns(&app), idle);
         play(&mut app, &[Key::Down]);
         assert_eq!(app.view.cursor, 2);
     }
@@ -2467,16 +2476,19 @@ mod tests {
         let gate = app.hal.last();
         assert_eq!(gate.id, ScreenId::PrivacyGate);
         let (from_ns, to_ns) = (gate.from_ns, gate.to_ns);
-        // A second Press, queued behind the first while the gate was being drawn: nothing.
-        let presents = app.hal.shown.len();
+        // A second Press, queued behind the first while the gate was being drawn: nothing, not even
+        // the idle timer's restart.
+        let (presents, idle) = (app.hal.shown.len(), idle_cover_ns(&app));
         for began_ns in [from_ns, to_ns - 1] {
             press_at(&mut app, Key::Press, began_ns);
             assert_eq!(app.view.id, ScreenId::PrivacyGate);
             assert_eq!(app.hal.shown.len(), presents);
+            assert_eq!(idle_cover_ns(&app), idle);
         }
         // Pressed once the gate was on the panel: it passes.
         press_at(&mut app, Key::Press, to_ns);
         assert_eq!(app.view.id, ScreenId::CollisionQr);
+        assert_ne!(idle_cover_ns(&app), idle);
     }
 
     /// A dice-only 12-word session through Skip with every insert read back: steps 10-15 are
@@ -2693,15 +2705,54 @@ mod tests {
         assert_eq!(redrawn.keys, KeyMap::BACK);
         let (read_from_ns, read_to_ns) = *app.hal.calls.last().expect("the read");
         assert!(read_to_ns <= redrawn.from_ns);
-        // KEY1 would go Home.
-        let presents = app.hal.shown.len();
+        // KEY1 would go Home: nothing, not even the idle timer's restart.
+        let (presents, idle) = (app.hal.shown.len(), idle_cover_ns(&app));
         for began_ns in [read_from_ns + 1, read_to_ns - 1] {
             press_at(&mut app, Key::Key1, began_ns);
             assert_eq!(app.view.id, ScreenId::UsbPick);
             assert_eq!(app.hal.shown.len(), presents);
+            assert_eq!(idle_cover_ns(&app), idle);
         }
         play(&mut app, &[Key::Key1]);
         assert_eq!(app.view.id, ScreenId::Home);
+        assert_ne!(idle_cover_ns(&app), idle);
+    }
+
+    #[test]
+    fn a_press_made_while_a_refused_backup_was_opened_does_nothing_on_the_entry_it_returns_to() {
+        let mut app = booted();
+        let mut typed = Zeroizing::new(String::with_capacity(crate::grid::ENTRIES_LEN));
+        typed.push_str("aban aban aban aban aban aban aban aban");
+        app.held.stage = Stage::BackupCheck {
+            file: Zeroizing::new(vec![b'-'; 64]),
+            typed,
+        };
+        drawn(&mut app, View::new(ScreenId::BackupCheckEntry, Note::None));
+        // Done on the eighth entry: the wait screen, then the file does not open, and
+        // backup-check-entry comes back, emptied, with core's refusal. That screen was entered
+        // nowhere, so only the wait screen's present and the fence after the call stop a press made
+        // meanwhile.
+        play(&mut app, &[Key::Key3]);
+        assert!(matches!(app.view.note, Note::Refused(Refusal::Core(_))));
+        let refused = app.hal.last();
+        assert_eq!(refused.id, ScreenId::BackupCheckEntry);
+        let wait = &app.hal.shown[app.hal.shown.len() - 2];
+        assert_eq!(wait.id, ScreenId::Wait);
+        assert!(wait.texts.contains(&String::from(screens::WAIT_OPEN)));
+        // KEY2 would go Home and drop the backup. Pressed while the wait screen was drawn, while the
+        // file was opened (the fake clock stands still in core's call) or before the refusal was
+        // fully shown: nothing, not even the idle timer's restart.
+        let (presents, idle) = (app.hal.shown.len(), idle_cover_ns(&app));
+        for began_ns in [wait.from_ns, wait.to_ns, refused.to_ns - 1] {
+            press_at(&mut app, Key::Key2, began_ns);
+            assert_eq!(app.view.id, ScreenId::BackupCheckEntry);
+            assert!(matches!(app.held.stage, Stage::BackupCheck { .. }));
+            assert_eq!(app.hal.shown.len(), presents);
+            assert_eq!(idle_cover_ns(&app), idle);
+        }
+        play(&mut app, &[Key::Key2]);
+        assert_eq!(app.view.id, ScreenId::Home);
+        assert!(!app.holds_secrets());
     }
 
     #[test]

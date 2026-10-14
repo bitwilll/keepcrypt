@@ -7334,6 +7334,17 @@ stale (Q43 (d)).
   screen without entering it. pi/app's 127 tests and pi/sim's (gate: 20 passed, 1 ignored, each configuration) pass,
   and the scratch probe that panics on any fenced press still passes every pi/sim test in both configurations.
 
+  Proof (review fix, commit 6c): "the idle deadline kept" held only where secrets are held (the `finish` and backup
+  tests); on boot's Home, the privacy gate and usb-pick nothing is held and `deadline` is the same either way. Those
+  three tests now read the idle timer itself: a fenced press leaves it, and the next press restarts it. No test covered
+  the one blocking call that returns to its screen without entering it: a backup that does not open (the wait screen,
+  then backup-check-entry again, emptied, with core's refusal), where removing both the wait screen's `presented` and
+  the fence after the refused call passed everything.
+  `a_press_made_while_a_refused_backup_was_opened_does_nothing_on_the_entry_it_returns_to` presses KEY2 (Home) during
+  the wait screen, the call and the refusal's present: nothing, the idle timer included; the next KEY2 goes Home. In
+  scratch copies, that pair of removals, and the wait screen's `presented` alone, fail it, and the idle restart before
+  the check fails the boot, gate and stick-read tests too.
+
 **5. Device: the panel (pure; `device/panel.rs`; Q36 (c), Q44)**
 - [x] `Panel<B: Bus>` runs over the approved `Bus` trait (unchanged) and one `&'static PanelProfile`. The trait:
   `trait Bus { command(cmd, args) -> Result<(), HalError>; data(bytes) -> Result<(), HalError>; reset(high); backlight(on); sleep_ms(ms) }`.
@@ -8530,6 +8541,8 @@ The PR is a draft from commit 1.
    6b. pi/app: the plan, security and recompute reviews: the fence also moves on another page or note of the same
    screen, so no queued press acts on backup-passphrase's words 5-8, backup-confirm's second question, the checklist's
    second page, a words page, a read-back match or the next insert before it was shown.
+   6c. pi/app: the plan and recompute reviews: the boot, privacy-gate and stick-read fence tests check the idle timer,
+   and a press made while a refused backup was opened does nothing on the entry it returns to.
 7. pi/app (bin): `#[cfg(test)] mod device;` and `device/panel.rs` with the HAT profile, `ST7789_INIT_OPCODES` and `PANEL`
    (group 5).
 8. pi/app (bin): `device/keys.rs` and `device/hwrng.rs` (groups 6, 7).
