@@ -7030,8 +7030,8 @@ stale (Q43 (d)).
     `mount` pulls in `uio`);
   - a comment recording that rppal is archived.
 
-  canaries.sh's `[bans]` and manifest pins change in the same commit, with one new canary: a copy that enables nix's
-  `net` feature must fail `cargo deny`.
+  canaries.sh's `[bans]` and manifest pins change in the same commit, with one new canary: a copy that enables
+  ~~nix's `net` feature~~ an unlisted nix feature must fail `cargo deny`. As built: `reboot` (the proof says why).
   Proof (commit 5): `cargo deny --locked check` gives "advisories ok, bans ok, licenses ok, sources ok" (only the old
   hex-conservative and syn duplicate warnings). canaries 62/62: the `[bans]` static check pins `[[bans.features]]`;
   the manifest pin holds rppal and nix to pi/app's Linux table with exactly the specs above, and
@@ -7796,7 +7796,7 @@ stale (Q43 (d)).
 | --- | --- | --- | --- | --- | --- |
 | rppal | =0.22.1 | 2024-12-11 | MIT | GPIO pull-ups, both-edge events with kernel `CLOCK_MONOTONIC` timestamps, DC/RST/BL outputs, spidev SPI; BP:76. **Archived 2025-07-01** | exemption, plus the group 2 review note |
 | nix | =0.31.3 | 2026-05-11 | MIT | Safe `mlockall`, `mount`/`umount2`, `clock_gettime(CLOCK_MONOTONIC)`, `O_NONBLOCK`; every call is a libc import the scan can see | exemption (mozilla's deltas stop at 0.30.1, with no full base audit) |
-| bitflags | 2.11.1 (`--precise`) | 2026-04-14 | MIT OR Apache-2.0 | nix's flag types | imports (google 2.4.2 full audit, then deltas to 2.11.1) |
+| bitflags | 2.11.1 (`--precise`) | 2026-04-14 | MIT OR Apache-2.0 | nix's flag types | imports (google's 1.3.2 full audit, then mozilla and bytecode-alliance deltas to 2.11.1; as built, commit 5) |
 | cfg_aliases | 0.2.2 | 2026-07-16 | MIT | nix's build dependency | exemption (the imported deltas lack a safe-to-deploy base) |
 
 - **New edges to crates already locked:** keepcrypt-pi → sha2 0.11.0; rppal and nix → libc 0.2.189; nix → cfg-if 1.0.5.
@@ -7870,6 +7870,8 @@ The PR is a draft from commit 1.
 3. CLAUDE.md: rule 8's sentence (Q40 (a)). 3b. `.github/CODEOWNERS:7-9`, if approved (Q43 (d)).
 4. core: `tests/auto_traits.rs` (group 3).
 5. pi/app, Cargo.lock, supply-chain, deny.toml, scripts/canaries.sh: the four crates, the feature bans, the pins (group 2).
+   5b. tasks/todo.md: the plan review: group 2's canary item and the dependency table's bitflags row say what commit 5
+   built: the `reboot` canary, and the imported chain from google's 1.3.2 audit.
 
 **Stage B: app and device logic, tested on the host**
 
