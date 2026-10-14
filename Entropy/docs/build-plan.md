@@ -68,12 +68,12 @@ keepcrypt/
 | Area | Choice | Why |
 | --- | --- | --- |
 | Core language | Rust stable, pinned in `rust-toolchain.toml`; `#![forbid(unsafe_code)]` in `core/` | Memory safety; one implementation for every platform |
-| Pi target | `arm-unknown-linux-gnueabihf` (Pi Zero v1.3 is ARMv6), built inside Buildroot | Matches the radio-less Pi Zero; reproducible toolchain |
+| Pi target | `arm-unknown-linux-gnueabihf` (Pi Zero v1.3 is ARMv6), built inside Buildroot with the Rust toolchain pinned in `rust-toolchain.toml` (not Buildroot's own Rust) and Buildroot's C toolchain; the firmware binary keeps its symbol table for the release scan | Matches the radio-less Pi Zero; reproducible toolchain |
 | Android | Kotlin, Jetpack Compose, `cargo-ndk`, minSdk 31 | API 31 adds overlay hiding; FLAG\_SECURE is less reliable on 30 and below |
 | iOS | Swift, SwiftUI, XCFramework from `cargo` + UniFFI, iOS 17+ | iOS 17 adds `sceneCaptureState` for capture detection |
 | Bindings | Mozilla UniFFI | Generates Kotlin and Swift from one Rust interface |
 | Core crates | `getrandom`, `sha2`, `bip39`, `bitcoin` (fingerprint, address), `miniscript` (descriptors), `unicode-normalization` (NFKD of the BIP39 passphrase), a single-frame BC-UR encoder and strict single-part decoder written in core with no crate (watch-only and go-ahead QRs), the age v1 scrypt format written in core from the RustCrypto `scrypt`, `chacha20poly1305`, `poly1305` (named only to switch on its `zeroize`, which wipes the one-time key), `hkdf`, `hmac` and `base64ct` crates (not the `age` crate), `ed25519-dalek` (signature verification only), `zeroize`, `secrecy`, `thiserror` | Small, widely reviewed; nothing else without review |
-| Pi crates | `rppal` (GPIO, SPI), `mipidsi` (ST7789), `embedded-graphics`, `qrcodegen-no-heap` (QR codes encoded into buffers the app wipes after drawing); the simulator needs no display or image crate: it writes the app's own frames as PNG files itself | Userspace drivers, testable on a desktop |
+| Pi crates | `rppal` (GPIO, SPI; its last release, pinned: its author archived it in July 2025, and the parts the firmware calls are reviewed), `nix` (memory locking, mounting the stick, the monotonic clock, the non-blocking hwrng open), `embedded-graphics`, `qrcodegen-no-heap` (QR codes encoded into buffers the app wipes after drawing); the ST7789 driver is KeepCrypt's own; the simulator needs no display or image crate: it writes the app's own frames as PNG files itself | Userspace drivers, testable on a desktop; no unsafe code in KeepCrypt's own Pi code, only inside `rppal`, `nix`, libc and Rust's standard library |
 | Verifier | Python 3, standard library only | Anyone can read and run it offline |
 | Dependency hygiene | `Cargo.lock` committed, `cargo-deny`, `cargo-audit`, `cargo-vet` | Supply-chain control; Coldcard's bug came from a submodule |
 | Registry | Rust (axum, SQLite) server; static TypeScript page with no third-party scripts | The only networked component; small enough to audit |
@@ -312,7 +312,7 @@ Each test exists to catch one specific way seed generation has failed in the rea
 | Error injection on every source | Core | Every build | Fallbacks and fail-open exception handlers |
 | Repetition Count and Adaptive Proportion with known stuck and biased streams | Core | Every build | Health tests that never fire |
 | Typestate misuse | Core | Every build (`trybuild` compile-fail tests) | Dice before commitment; reveal before finish |
-| Birthday collision, 1,000,000 device legs | Core, Pi | Nightly | A state narrower than about 36 bits |
+| Birthday collision, 1,000,000 device legs | Core, Pi (reboots: M8 bench image) | Nightly | A state narrower than about 36 bits |
 | Symbol and stub-marker scan | Release artifacts | Every release build | Wrong RNG linked; test stubs shipped |
 | Verifier agreement, 1,000 cases | Verifier | Every build | Core and verifier disagreeing |
 | Screen-capture tests | Android, iOS | Every app build on real devices | Seed words reaching a screenshot, recording or app switcher |

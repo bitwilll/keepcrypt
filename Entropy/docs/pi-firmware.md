@@ -37,6 +37,10 @@ Phase 1 uses the same proven parts as SeedSigner, so builders can buy them anywh
 | Joystick up, down, left, right, press | 6, 19, 5, 26, 13 |
 | SPI SCLK, MOSI, CS (CE0) | 11, 10, 8 |
 | Display data/command | 25 |
+| Display reset | 27 |
+| Backlight (active high) | 24 |
+
+The keys and joystick switch to ground; config.txt sets their pull-ups and the firmware sets them again. MISO is not wired and the firmware does not read the panel back, so a dead panel is not detected; only SPI write errors are display faults.
 
 ## OS image
 
@@ -45,13 +49,13 @@ The image is a minimal Buildroot Linux whose only job is to start `keepcrypt-pi`
 | Layer | Configuration |
 | --- | --- |
 | Build system | Buildroot external tree in `pi/os/`, `keepcrypt_pizero_defconfig`, pinned Buildroot and Raspberry Pi kernel versions |
-| Kernel | All drivers built in, module loading off; SPI, GPIO, BCM2835 hwrng, USB host mass storage and VFAT on; Wi-Fi, Bluetooth, USB networking and debugfs off; networking disabled wherever the kernel allows |
+| Kernel | An allow-list: only what the board, the display, the buttons, the BCM2835 hwrng, the SD card and one USB stick need (SPI, GPIO, USB host mass storage, VFAT and SquashFS), all built in, with module loading off. Networking (and with it Wi-Fi, Bluetooth and USB networking), USB gadget mode, extra USB drivers (serial adapters, cameras, keyboards), other disk formats (exFAT, NTFS, Mac and the rest), swap, crash dumps and debugging hooks (debugfs included) are left out. The final kernel config is one committed file, reviewed line by line, and any difference from it fails CI |
 | Root filesystem | SquashFS, read-only; `/tmp` and `/run` on tmpfs; no swap; no persistent writable partition |
-| Init | BusyBox init with one respawn entry: `/usr/bin/keepcrypt-pi` |
+| Init | BusyBox init with no shell and no respawn: it mounts the fstab entries, runs `/usr/bin/keepcrypt-pi` once and waits for it; if that process ever ends, it runs `/usr/bin/keepcrypt-pi --stopped` once, which only shows the stop screen until a power cycle (see Finish and halts) |
 | Consoles | No getty on serial or HDMI in release builds; a separately named dev image may enable serial for debugging |
 | USB stick | Never automounted; mounted only during backup export, backup checks or snapshot import, at `/mnt/usb` with `nodev,nosuid,noexec`, then synced and unmounted |
 
-**Honest limits of the Pi Zero.** It boots through closed Broadcom GPU firmware and has no secure boot, so the device cannot prove its own image is genuine. Users must check the image signature before flashing and keep the card physically under their control. The boot screen shows a hash prefix of the root filesystem; that catches corruption, not a deliberately altered image.
+**Honest limits of the Pi Zero.** It boots through closed Broadcom GPU firmware and has no secure boot, so the device cannot prove its own image is genuine. Users must check the image signature before flashing and keep the card physically under their control. At every boot the firmware hashes its own root filesystem: SHA-256 over the SquashFS image on the root partition, its first `bytes_used` bytes rounded up to a multiple of 4,096 (the size mksquashfs pads it to). The boot screen and About show the digest's first 8 bytes as 16 lowercase hex characters in four dash-separated groups of four, and CI publishes the same prefix with each image. That catches corruption, not a deliberately altered image.
 
 ## Firmware application architecture
 
@@ -59,9 +63,9 @@ The image is a minimal Buildroot Linux whose only job is to start `keepcrypt-pi`
 
 | Component | Responsibility | Implementation |
 | --- | --- | --- |
-| `hal::Display` | Draw 240x240 frames | `rppal` SPI plus `mipidsi` ST7789 driver; the simulator receives the same frames, exactly the pixels the panel gets, and writes them as PNG files itself, headless, with no display or image crate |
-| `hal::Buttons` | Joystick and 3 keys | `rppal` GPIO inputs with pull-ups, edge interrupts, 20 ms debounce; each event carries a `CLOCK_MONOTONIC` nanosecond timestamp |
-| `hal::HwRng` | Raw hardware samples | Reads `/dev/hwrng` in 64-byte blocks for the core's health tests |
+| `hal::Display` | Draw 240x240 frames | `rppal` SPI plus KeepCrypt's own ST7789 driver, which sends Waveshare's full start-up settings, blanks all of the panel's frame memory before the panel turns on and again on a crash, and wipes its transfer buffer after every frame; the simulator receives the same frames, exactly the pixels the panel gets, and writes them as PNG files itself, headless, with no display or image crate |
+| `hal::Buttons` | Joystick and 3 keys | `rppal` GPIO inputs with pull-ups and both-edge interrupts, read without a thread; the firmware's own 20 ms debounce, the same as the simulator's; each event carries the kernel's `CLOCK_MONOTONIC` timestamp of its edge, in nanoseconds |
+| `hal::HwRng` | Raw hardware samples | Reads `/dev/hwrng` in non-blocking mode, in 64-byte blocks for the core's health tests; a block still incomplete 2 seconds after it was asked for halts the device with "hwrng read fault". A wait inside the kernel driver can still stall the screen past that, and still makes no seed |
 | `hal::Usb` | Backup export and snapshot import | Detects a stick under `/sys/block`, mounts, writes, syncs, unmounts |
 | `ceremony` | Drives the core session | Owns the typestate `Session`; nothing else can reach it |
 | `ui` | Screens and navigation | A screen state machine on `embedded-graphics`; large fonts; insert view shows one word per page with its five braille faces |
@@ -71,15 +75,16 @@ The image is a minimal Buildroot Linux whose only job is to start `keepcrypt-pi`
 
 **Process rules.**
 
-- Lock memory with `mlockall` at start; secrets never leave RAM.
-- Wipe the session after 10 minutes without input, on any failure, and before power-off. Any failure, at boot or later, then halts the device until a power cycle; only refusals of what the user or a stick supplied return to their screen (see Finish and halts).
+- Lock all memory with `mlockall` at start, before any secret exists; if that fails, the device halts with "memory could not be locked". With no swap and no crash dumps, and freed memory zeroed by the kernel, secrets never leave RAM.
+- Wipe the session after 10 minutes without input, on any failure, and at Finish, before "Safe to power off" is shown. Any failure, at boot or later, then halts the device until a power cycle; only refusals of what the user or a stick supplied return to their screen (see Finish and halts).
 - The simulator is for development only and is never part of the image; CI checks the image contains no simulator symbols.
+- Besides the `.age` backups and `.kcr` snapshots on the stick, the firmware touches only device and kernel interfaces, each at a fixed path: it reads `/dev/hwrng`, its root partition `/dev/mmcblk0p2` (for the boot hash), `/proc/cpuinfo` and `/sys/firmware/devicetree/base/{compatible,model}` (which `rppal` reads to identify the board) and `/sys/block/**` (to find the stick); it drives the GPIO and SPI device nodes `/dev/gpiomem`, `/dev/gpiochip*` and `/dev/spidev0.0`; and it mounts only the stick's `/dev/sdX1`, or the whole `/dev/sdX` when it has no first partition, at `/mnt/usb`. A grep gate holds the firmware's own path literals to this list.
 
 ## User flow
 
 A ceremony is fifteen screens in a fixed order: the typestate orders steps 1-8, core's read-back gate holds back the five exports until step 9 completes, and the firmware runs steps 10-15 in order, each optional one with a Skip. Dice-only mode skips steps 4, 5 and 14.
 
-1. **Boot and self-test.** Version, root filesystem hash prefix, known-answer tests and the hwrng startup test. Any failure shows a red stop screen that no key leaves; no seed can be made until a power cycle reruns these tests. The same screen ends any later failure (see Finish and halts).
+1. **Boot and self-test.** Version, the root filesystem's hash prefix (16 hex characters, also shown in About), known-answer tests and the hwrng startup test. Any failure shows a red stop screen that no key leaves; no seed can be made until a power cycle reruns these tests. The same screen ends any later failure (see Finish and halts).
 2. **Home.** New seed, Dice-only seed, Check a backup, Load registry snapshot, About.
 3. **Length.** 12 words (default; fills one KeepCrypt Hinge or Screw) or 24.
 4. **Device entropy.** Progress bar of health-tested hwrng bytes toward 1,536 (the 1,024 discarded startup samples, then one 512-sample window); the first window credits 2,048 bits, more than the 512 required, all at once at the end, and `getrandom` is read at the commitment; "Play while you wait" opens Snake.
@@ -97,7 +102,7 @@ A ceremony is fifteen screens in a fixed order: the typestate orders steps 1-8, 
 
 ### Buttons
 
-One press is one event: presses are debounced and nothing more, with no auto-repeat and no type-ahead filter. A footer on every screen names each key's action there.
+One press is one event: presses are debounced, with no auto-repeat. A press made before the current screen was fully drawn, or while the device was busy (starting up, computing, or reading or writing the stick), does nothing, so presses queued on the one-core Pi Zero cannot skip a screen, a privacy gate included, before it was seen; before the commitment in Mixed mode such a press still feeds its timing to `Session::add_extra`. A screen that only redraws itself (dice entry, step 4's progress bar, Snake) keeps every press. A footer on every screen names each key's action there.
 
 | Screen kind | Up / Down | Left / Right | Press | KEY1 | KEY2 | KEY3 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -127,7 +132,8 @@ Every screen is Protected or Public. Protected screens show a secret: the words 
 - **Halts:** any failure, at boot or later, ends on the red stop screen of step 1. Everything secret the firmware holds is wiped first, the screen names the failure in fixed text, and no key leaves it; only a power cycle does, and it reruns the boot self-test and the hwrng startup test before any new seed. There is no retry and no other source, so an intermittent hwrng fault cannot pass on a second try, and a dice-only seed cannot follow straight after an hwrng failure.
 - **What halts:** every error that ended a session; every known-answer-test, entropy-source, health-test, internal or export-self-check error from any core call, `game_random` included; and every display, button or hwrng fault.
 - **What does not:** only refusals of what the user or a stick supplied return to their own screen, naming the refusal in fixed text: a wrong go-ahead code, a read-back mismatch, a wrong backup passphrase or unrecognised entry, an empty BIP39 passphrase, a refused snapshot, and USB faults.
-- **The 99-roll minimum:** a power cycle forgets a pending 99-roll minimum after a collision, as power-off always has.
+- **Crashes:** a crash of the firmware ends on the same stop screen, and nothing restarts on its own. The screen goes black, the process ends, which wipes any open session as power-off would, and init starts a separate stop mode that holds nothing and shows "the firmware stopped unexpectedly" until a power cycle. A crash prints nothing anywhere, since a crash message could hold secrets. If Linux itself crashes, it does not reboot (`panic=0`): the screen freezes on whatever it showed until power-off.
+- **The 99-roll minimum:** a power cycle or a crash forgets a pending 99-roll minimum after a collision, as power-off always has.
 
 ## Games, sensors and the entropy pool
 
@@ -143,12 +149,12 @@ Snake (Tetris later) stays in the product as an optional waiting screen and a so
 
 The device writes exactly one kind of file, an age-encrypted backup (format in the build plan), and proves it decrypts before saying it worked.
 
-**Reading a registry snapshot.** The same port accepts a stick holding a `.kcr` snapshot before the ceremony. The device mounts it read-only, checks the Ed25519 signature against the pinned key, loads it into RAM and unmounts it. Besides KeepCrypt's own .age backups, a snapshot is the only file the device ever reads.
+**Reading a registry snapshot.** The same port accepts a stick holding a `.kcr` snapshot before the ceremony. The device mounts it read-only, checks the Ed25519 signature against the pinned key, loads it into RAM and unmounts it. Besides KeepCrypt's own .age backups, a snapshot is the only file the device ever reads (device and kernel interfaces aside).
 
 1. **Passphrase.** The core generates an 8-word backup passphrase. The screen shows it four words at a time with the label "Backup passphrase: store apart from the USB stick."
 2. **Confirm.** The user picks 2 random passphrase words from four choices each.
 3. **Insert stick.** FAT32 stick in the OTG port; the device waits until it appears.
-4. **Encrypt and write.** scrypt at log2 N = 18 takes noticeable time on a Pi Zero, so a progress screen stays up. The file `keepcrypt-backup-<8 hex>.age` is written as a new file, never over an existing one, then synced, and the stick unmounted.
+4. **Encrypt and write.** scrypt at log2 N = 18 takes noticeable time on a Pi Zero, so a wait screen stays up. The file `keepcrypt-backup-<8 hex>.age` is written as a new file, never over an existing one, then synced, and the stick unmounted.
 5. **Read back.** Remount read-only, decrypt in RAM, compare the fingerprint, unmount. Only then: "Backup verified. Remove the stick."
 6. **On failure.** Delete the partial file if possible, show the error, and keep the ceremony open so the user can retry or skip.
 
@@ -159,17 +165,23 @@ The device writes exactly one kind of file, an age-encrypted backup (format in t
 Builders either reproduce the image from source or verify a signed release; both paths end with a disposable verification run before any real seed is made.
 
 ```bash
-# Build from source on a Linux x86_64 host (a pinned Docker image is provided)
-git clone https://github.com/<your-org>/keepcrypt && cd keepcrypt
-make -C pi/os image          # Buildroot with BR2_EXTERNAL=pi/os, keepcrypt_pizero_defconfig
-make -C pi/os repro-check    # builds twice in clean containers and compares SHA-256
+# Build from source on a Linux x86_64 host, as CI does on GitHub's hosted runners
+# (a pinned build container and rebuilds in clean containers come with M7's outside reproduction)
+git clone https://github.com/bitwilll/keepcrypt && cd keepcrypt
+export KC_WORK=/kc-work              # build directory: outside Entropy/, no spaces, the same path in every build
+make -C Entropy/pi/os source         # fetches every pinned input; the only step with network access
+make -C Entropy/pi/os image          # Buildroot with BR2_EXTERNAL=Entropy/pi/os, keepcrypt_pizero_defconfig, offline
+make -C Entropy/pi/os repro-check    # builds twice in fresh output directories at the same path and compares SHA-256
 
 # Or verify a release download
 minisign -Vm keepcrypt-pi-1.0.0.img -P <release-public-key>
 sha256sum keepcrypt-pi-1.0.0.img   # must match SHA256SUMS in the release
 
-# Flash (double-check the device name first)
+# Flash on Linux (double-check the device name first)
 sudo dd if=keepcrypt-pi-1.0.0.img of=/dev/sdX bs=4M conv=fsync status=progress
+# Flash on macOS (diskutil list names the card; double-check N first)
+diskutil unmountDisk /dev/diskN
+sudo dd if=keepcrypt-pi-1.0.0.img of=/dev/rdiskN bs=4m
 ```
 
 **First-boot checklist.**
