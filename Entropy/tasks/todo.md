@@ -5688,7 +5688,7 @@ amended; rules 5, 6), and on the BIP39-passphrase entry (the owner's decision of
   `back_on_the_code_grid_keeps_the_check_and_its_url_and_wipes_the_code` now finds KEY2 "back" with the 8 symbols
   typed, before its KEY3, and that mutant fails it. The opposite mutant (no back on an empty entry) fails 19c's test
   and `check_restarts` in both configurations (`cargo test -p keepcrypt-pi --locked`: 113 passed on the fix).
-- [ ] KEY2 "back" on bip39-entry, and `KeyMap`'s doc on the QR and info pages (the owner's decisions of 2026-10-14,
+- [x] KEY2 "back" on bip39-entry, and `KeyMap`'s doc on the QR and info pages (the owner's decisions of 2026-10-14,
   under "Raised by the M3 gate report"; commit 24). For bip39-entry this replaces the first two items' "keep `GRID`"
   and "never offers KEY2"; readback-entry keeps both.
   - `screen.rs`: bip39-entry takes `GRID_BACK`, and readback-entry alone keeps `GRID`; `GRID`'s and `GRID_BACK`'s
@@ -5720,6 +5720,31 @@ amended; rules 5, 6), and on the BIP39-passphrase entry (the owner's decision of
     characters; KEY2 offered on readback-entry.
   - The captures sent to the owner (b74b0eb) show bip39-entry without KEY2; the lead says whether `capture_set` runs
     again (group 17).
+
+  Proof (commit 24):
+  - pi/app (`cargo test -p keepcrypt-pi --locked`: 114 passed):
+    `back_on_the_bip39_passphrase_grid_wipes_the_text_in_place_and_shows_bip39_ask` walks bip39-ask, the gate and
+    bip39-entry; with " !" typed, KEY2 shows bip39-ask with `steps.typed` empty at the same capacity and address (no
+    reallocation), the session still `Ready` with every word read back, and nothing held (no export); "I use a
+    passphrase" and the gate give an empty entry, with neither delete nor done; at 100 characters type is gone, and
+    KEY2 wipes them the same way. KEY2 "back" is found on each of the three grid pages empty, with text typed and at
+    100 characters. `every_key_map_is_pinned` pins bip39-entry as "move move move move add del back done", and the
+    footer test finds every id's legend within 240 px.
+  - `dice_24_code` passes in both configurations (351 steps, 41 screens and 214 dead keys in each; 341 and 216
+    before): on bip39-entry, KEY2 "back" on the empty entry, "T" typed, KEY2 "back" again, KEY2: bip39-ask; Down,
+    Press and the gate: an empty entry (neither delete nor done); then "Tr3zor!" as before, whose wallet's
+    fingerprint and account and descriptor QRs equal core's export. readback-entry's `Step::Dead(Key::Key2)` stays;
+    the probes no longer press KEY2 on bip39-entry (`wipes_clear_the_stage`: 156 dead keys, 157 before).
+  - In a scratch copy, each mutant fails a test: KEY2 keeping the text (the unit test only: "I use a passphrase"
+    zeroizes the entry again, so no scenario can see it); showing watch-offer, or dropping the session (the unit
+    test, and `dice_24_code` step 318 in both configurations); KEY2 hidden on the empty entry (the unit test, and
+    step 314, "KEY2 back on an empty entry") or at 100 characters (the unit test); `GRID` on bip39-entry (the pin,
+    the unit test and step 314); `GRID_BACK` on readback-entry (the pin, the footer test and step 125, "Key2 is
+    offered here"); and a fresh buffer in place of the wipe (the unit test's address check).
+  - The owner's set in target/tmp/pi-sim-captures/registry/ was not touched (its files' digest is unchanged). In the
+    scratch copy, with its own target dir, `capture_set` (registry) passes and draws bip39-entry's footer
+    "^v<> move  OK add  1 del  2 back  3 done", then bip39-ask, then the empty entry's "^v<> move  OK add  2 back".
+    Whether the owner's set is captured again stays the lead's (group 17).
 
 **16. The simulator's strip (a lead decision between Q30 (h) and Q33 (j); the strip's part of group 12's open item)**
 - [x] `ui/render.rs`: in a simulator build the top strip reads "SIMULATOR · NOT FOR REAL FUNDS" when the simulator

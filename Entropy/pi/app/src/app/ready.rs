@@ -333,6 +333,19 @@ impl<H: Hal> App<H> {
         self.redraw()
     }
 
+    /// KEY2 on bip39-entry (the owner's decision of 2026-10-14): back to bip39-ask, the typed
+    /// passphrase wiped in place. The stage stays `Ready` with the same session and holdings, and
+    /// no core call or export is made: the export is still made only from a typed passphrase or
+    /// "No BIP39 passphrase". Not a refusal or a halt (Q25).
+    pub(super) fn passphrase_back(&mut self) -> Result<(), Stop> {
+        match &mut self.held.stage {
+            Stage::Ready { steps, .. } => steps.typed.zeroize(),
+            _ => return Err(OUT_OF_ORDER),
+        }
+        self.enter(ScreenId::Bip39Ask, Note::None);
+        self.redraw()
+    }
+
     /// Step 15: after the checklist the session is wiped, the screen goes black and "Safe to
     /// power off" stays; no key leaves it (Q33 (f)). A loaded snapshot stays until power-off.
     fn finish(&mut self) -> Result<(), Stop> {

@@ -65,13 +65,12 @@ pub enum Kind {
 
 /// Each key's action label on a screen, or none for a dead key (Q32 (a)). The footer names every
 /// labelled key's action; a key without a label does nothing there. The constants follow the rows
-/// of pi-firmware.md's "Buttons" table, split where a screen of that kind offers fewer keys, with
-/// two differences: the table's "QR and info pages" row gives KEY1 "back", and `PAGES` and
-/// `CONTINUE` leave it out, which awaits the owner's decision; and the entry grids' labels are
+/// of pi-firmware.md's "Buttons" table, split where a screen of that kind offers fewer keys: of
+/// the QR and info pages, only About, the re-check QR and the wait for a stick offer KEY1 "back"
+/// (`PAGE`, `BACK`), as the table says. The one difference is that the entry grids' labels are
 /// shorter than the table's action names ("move", "add", "del"), so that `GRID_BACK`'s five
-/// entries fit the 240 px footer in full. KEY2 "back" is on the go-ahead code and the
-/// backup-passphrase grid of "Check a backup" only (`GRID_BACK`, the owner's decision of
-/// 2026-10-13).
+/// entries fit the 240 px footer in full. KEY2 "back" is on every entry grid but the read-back
+/// (`GRID_BACK`, the owner's decisions of 2026-10-13 and 2026-10-14).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KeyMap {
     labels: [Option<&'static str>; Key::ALL.len()],
@@ -103,7 +102,7 @@ impl KeyMap {
         .with(Key::Key1, "overview")
         .with(Key::Key2, "prev")
         .with(Key::Key3, "next");
-    /// Entry grids: the cursor, type, delete and done (the read-back and the BIP39 passphrase).
+    /// Entry grids: the cursor, type, delete and done. The read-back's alone, with no way back.
     pub const GRID: KeyMap = KeyMap::NONE
         .with(Key::Up, "move")
         .with(Key::Down, "move")
@@ -112,8 +111,9 @@ impl KeyMap {
         .with(Key::Press, "add")
         .with(Key::Key1, "del")
         .with(Key::Key3, "done");
-    /// Entry grids with a way back: the go-ahead code, back to the seal card's actions, and the
-    /// backup passphrase of "Check a backup", back Home.
+    /// Entry grids with a way back: the go-ahead code, back to the seal card's actions; the backup
+    /// passphrase of "Check a backup", back Home; and the BIP39 passphrase, back to the question
+    /// whether one is used.
     pub const GRID_BACK: KeyMap = KeyMap::GRID.with(Key::Key2, "back");
     /// A read-back mismatch: re-enter that insert, or show it.
     pub const MISMATCH: KeyMap = KeyMap::NONE
@@ -309,7 +309,7 @@ impl ScreenId {
             ScreenId::Bip39Ask => ("bip39-ask", Public, Waiting, KeyMap::MENU),
             ScreenId::WatchSummary => ("watch-summary", Public, Waiting, KeyMap::CONTINUE),
             ScreenId::RegisterOffer => ("register-offer", Public, Waiting, KeyMap::MENU),
-            ScreenId::Bip39Entry => ("bip39-entry", Protected, Waiting, KeyMap::GRID),
+            ScreenId::Bip39Entry => ("bip39-entry", Protected, Waiting, KeyMap::GRID_BACK),
             ScreenId::WatchAccountQr => ("watch-account-qr", Protected, Waiting, KeyMap::PAGES),
             ScreenId::WatchDescriptorQr => {
                 ("watch-descriptor-qr", Protected, Waiting, KeyMap::PAGES)
@@ -847,11 +847,11 @@ mod tests {
     #[test]
     fn every_key_map_is_pinned() {
         // Each id's labels in `Key::ALL` order (up, down, left, right, press, KEY1, KEY2, KEY3),
-        // "-" for a dead key, so a change to any key map is a reviewed change of this table. The
-        // QR and info pages offer no KEY1 "back" (see `KeyMap`). Of the entry grids, code-entry and
-        // backup-check-entry offer KEY2 "back", and readback-entry and bip39-entry no KEY2 (the
-        // owner's decision of 2026-10-13). One model relabels a key: Press on a checked backup's
-        // last insert is "done" (`screens::ready`, `check_backup`).
+        // "-" for a dead key, so a change to any key map is a reviewed change of this table. Of the
+        // QR and info pages, about, usb-insert and backup-check-recheck-qr alone offer KEY1 "back",
+        // as the table says. Every entry grid offers KEY2 "back" but readback-entry (the owner's
+        // decisions of 2026-10-13 and 2026-10-14). One model relabels a key: Press on a checked
+        // backup's last insert is "done" (`screens::ready`, `check_backup`).
         let actual: Vec<String> = ScreenId::ALL
             .into_iter()
             .map(|id| {
@@ -912,7 +912,7 @@ mod tests {
             "bip39-ask: move move - - select - - -",
             "watch-summary: - - - - continue - - -",
             "register-offer: move move - - select - - -",
-            "bip39-entry: move move move move add del - done",
+            "bip39-entry: move move move move add del back done",
             "watch-account-qr: - - - - continue - prev next",
             "watch-descriptor-qr: - - - - continue - prev next",
             "register-qr: - - - - continue - - -",

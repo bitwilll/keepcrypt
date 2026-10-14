@@ -1019,9 +1019,9 @@ impl<H: Hal> App<H> {
         self.redraw()
     }
 
-    /// An entry grid (Q32 (a)): move, type, delete, done, and back on the code and
-    /// backup-passphrase grids. The model offers a symbol only when its grid accepts it next, and
-    /// done only for a complete entry.
+    /// An entry grid (Q32 (a)): move, type, delete, done, and back on every grid but the
+    /// read-back. The model offers a symbol only when its grid accepts it next, and done only for a
+    /// complete entry.
     fn typing(&mut self, grid: Grid, key: Key) -> Result<(), Stop> {
         if let Some(cursor) = grid.moved(self.view.cursor, key) {
             self.view.cursor = cursor;
@@ -1040,6 +1040,7 @@ impl<H: Hal> App<H> {
             Key::Key2 => {
                 return match self.view.id {
                     ScreenId::CodeEntry => self.code_back(),
+                    ScreenId::Bip39Entry => self.passphrase_back(),
                     ScreenId::BackupCheckEntry => self.entry_back(),
                     _ => Err(OUT_OF_ORDER),
                 };
@@ -1759,6 +1760,90 @@ mod tests {
         play(&mut app, &[Key::Press]);
         assert_eq!(app.hal.shown.len(), presents);
         assert!(full(&app));
+    }
+
+    #[test]
+    fn back_on_the_bip39_passphrase_grid_wipes_the_text_in_place_and_shows_bip39_ask() {
+        let mut app = booted();
+        // A dice-only ceremony, every insert read back from its own faces, so step 12 draws.
+        let mut ready = sealed(None).skip_check();
+        let typed: Vec<(u8, String)> = ready
+            .braille()
+            .iter()
+            .map(|insert| (insert.position(), insert.word().chars().take(4).collect()))
+            .collect();
+        for (position, letters) in typed {
+            assert!(matches!(
+                ready.check_readback(position, &letters),
+                Ok(keepcrypt_core::ReadbackResult::Match)
+            ));
+        }
+        app.held.stage = Stage::Ready {
+            session: ready,
+            steps: Steps::new(),
+        };
+        // The passphrase's buffer: its text, its capacity and its address.
+        let buffer = |app: &App<Fake>| match &app.held.stage {
+            Stage::Ready { steps, .. } => (
+                steps.typed.as_str().to_owned(),
+                steps.typed.capacity(),
+                steps.typed.as_ptr(),
+            ),
+            _ => panic!("the Ready stage"),
+        };
+        let (_, capacity, at) = buffer(&app);
+        // KEY2 "back" on each of the grid's three pages.
+        let back_on_every_page = |app: &mut App<Fake>| {
+            for page in 0..3 {
+                let mut view = View::new(ScreenId::Bip39Entry, Note::None);
+                view.cursor = page * Grid::Ascii.columns() * crate::grid::PAGE_ROWS;
+                drawn(app, view);
+                let shown = app.hal.last();
+                let named = format!("Grid page {} of 3", page + 1);
+                assert!(shown.texts.iter().any(|text| text.contains(&named)));
+                assert_eq!(shown.keys.label(Key::Key2), Some("back"), "{named}");
+            }
+        };
+        // "I use a passphrase", through the gate: back is offered on the empty entry.
+        drawn(&mut app, View::new(ScreenId::Bip39Ask, Note::None));
+        play(&mut app, &[Key::Down, Key::Press]);
+        assert_eq!(app.view.id, ScreenId::PrivacyGate);
+        play(&mut app, &[Key::Press]);
+        assert_eq!(app.view.id, ScreenId::Bip39Entry);
+        assert_eq!(app.hal.last().keys.label(Key::Key2), Some("back"));
+        back_on_every_page(&mut app);
+        // Two characters typed: back is offered on every page; KEY2 shows bip39-ask, the text
+        // wiped in its own buffer, the session kept and no export made.
+        drawn(&mut app, View::new(ScreenId::Bip39Entry, Note::None));
+        play(&mut app, &[Key::Press, Key::Right, Key::Press]);
+        assert_eq!(buffer(&app).0, " !");
+        back_on_every_page(&mut app);
+        play(&mut app, &[Key::Key2]);
+        assert_eq!(app.hal.last().id, ScreenId::Bip39Ask);
+        assert_eq!(buffer(&app), (String::new(), capacity, at));
+        assert!(
+            matches!(&app.held.stage, Stage::Ready { session, .. } if session.readback_complete())
+        );
+        assert_eq!(holding(&app), "nothing");
+        // "I use a passphrase" and the gate again: an empty entry, with neither delete nor done.
+        play(&mut app, &[Key::Down, Key::Press]);
+        assert_eq!(app.view.id, ScreenId::PrivacyGate);
+        play(&mut app, &[Key::Press]);
+        assert_eq!(app.view.id, ScreenId::Bip39Entry);
+        let empty = app.hal.last();
+        assert_eq!(empty.keys.label(Key::Key1), None);
+        assert_eq!(empty.keys.label(Key::Key3), None);
+        assert_eq!(empty.keys.label(Key::Key2), Some("back"));
+        // At 100 characters type is offered no more, and back still is; KEY2 wipes them too.
+        match &mut app.held.stage {
+            Stage::Ready { steps, .. } => steps.typed.push_str(&"a".repeat(MAX_PASSPHRASE)),
+            _ => panic!("the Ready stage"),
+        }
+        back_on_every_page(&mut app);
+        assert_eq!(app.hal.last().keys.label(Key::Press), None);
+        play(&mut app, &[Key::Key2]);
+        assert_eq!(app.hal.last().id, ScreenId::Bip39Ask);
+        assert_eq!(buffer(&app), (String::new(), capacity, at));
     }
 
     /// What the Ready stage holds besides the session, by name.

@@ -220,7 +220,8 @@ fn latest_shows(what: &'static str, text: String) -> Step {
     Assert(what, Box::new(move |seen| shows(seen.latest, &text)))
 }
 
-/// An assertion that the latest present offers KEY2 "back" (the owner's decision of 2026-10-13).
+/// An assertion that the latest present offers KEY2 "back" (the owner's decisions of 2026-10-13
+/// and 2026-10-14).
 fn offers_back(what: &'static str) -> Step {
     Assert(
         what,
@@ -1184,9 +1185,10 @@ fn core_export(
 /// inserts with the device swap, equal to kcr.json's; the cover and one press; each kind of
 /// read-back mistake, then corrected; a wrong confirm pick, a write fault and Retry, a read-back
 /// that does not verify (the file removed), another whose removal fails (the file stays, and
-/// backup-failed says so), then a verified backup the shown passphrase opens; the watch-only QRs
-/// of a typed BIP39 passphrase's wallet, equal to core's; the registration QR; the checklist and
-/// power-off.
+/// backup-failed says so), then a verified backup the shown passphrase opens; KEY2 back from the
+/// BIP39-passphrase entry with a character typed, and the entry opened again empty; the
+/// watch-only QRs of a typed BIP39 passphrase's wallet, equal to core's; the registration QR; the
+/// checklist and power-off.
 fn dice_24_code() -> Scenario {
     let all_99 = rolls("coldcard-99");
     let mut first_98 = all_99.clone();
@@ -1332,7 +1334,7 @@ fn dice_24_code() -> Scenario {
                 ),
                 key(Key::Press),
                 Expect(ScreenId::ReadbackEntry),
-                // KEY2 "back" is the go-ahead code's and the backup check's alone.
+                // Of the entry grids, the read-back alone has no KEY2 "back".
                 Step::Dead(Key::Key2),
             ],
             // 6. The read-back: each kind of mistake, then corrected.
@@ -1544,7 +1546,25 @@ fn dice_24_code() -> Scenario {
                 Expect(ScreenId::PrivacyGate),
                 key(Key::Press),
                 Expect(ScreenId::Bip39Entry),
-                Step::Dead(Key::Key2),
+                // KEY2 "back" with a character typed: the question again, and the entry opened
+                // from it again is empty.
+                offers_back("KEY2 back on an empty entry"),
+                Type(String::from("T")),
+                offers_back("KEY2 back with a character typed"),
+                key(Key::Key2),
+                Expect(ScreenId::Bip39Ask),
+                key(Key::Down),
+                key(Key::Press),
+                Expect(ScreenId::PrivacyGate),
+                key(Key::Press),
+                Expect(ScreenId::Bip39Entry),
+                Assert(
+                    "the entry opened again is empty: neither delete nor done is offered",
+                    Box::new(|seen| {
+                        seen.latest.keys.label(Key::Key1).is_none()
+                            && seen.latest.keys.label(Key::Key3).is_none()
+                    }),
+                ),
                 Type(BIP39_PASSPHRASE.to_owned()),
                 key(Key::Key3),
                 Expect(ScreenId::WatchSummary),

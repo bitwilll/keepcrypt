@@ -570,6 +570,7 @@ fn confirm<'a>(page: Page<'a>, steps: &'a Steps, view: &View) -> Result<Screen<'
 
 /// bip39-entry (step 12; Q32 (c)): the passphrase as typed, a space shown as `·`, and the
 /// printable-ASCII grid's page. Type is offered below 100 characters, delete and done above none.
+/// KEY2, always offered, goes back to bip39-ask.
 fn passphrase_entry<'a>(page: Page<'a>, steps: &'a Steps, view: &View) -> Screen<'a> {
     let typed = steps.typed.as_str();
     // '·' is two bytes of UTF-8.
