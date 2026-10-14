@@ -15,6 +15,8 @@ use Op::{Backlight, Command, Data, Reset, Sleep};
 
 /// MADCTL's MV bit: rows and columns swapped [S31].
 const MV: u8 = 0x20;
+/// LCMCTRL's XMV bit, which the controller XORs with MADCTL's MV ([S31] p.275).
+const XMV: u8 = 0x02;
 /// The commands and data writes init sends on the HAT: MADCTL, 13 settings, SLPOUT, the window
 /// (3), 38 writes of zeros and DISPON.
 const INIT_SENDS: usize = 57;
@@ -326,6 +328,15 @@ fn faults(profile: &PanelProfile) -> Vec<&'static str> {
     if profile.ram != whole {
         faults.push("ram");
     }
+    // `madctl` alone sets the orientation: an LCMCTRL step with XMV would flip MV, and with it the
+    // memory the blank must cover.
+    if profile
+        .init
+        .iter()
+        .any(|step| step.cmd == LCMCTRL && step.args.iter().any(|arg| arg & XMV != 0))
+    {
+        faults.push("xmv");
+    }
     // The 240×240 window at `origin` lies inside `ram`.
     let fits = |at: u16, room: u16| u32::from(at) + u32::from(SIDE) <= u32::from(room);
     if !(fits(profile.origin.x, profile.ram.width) && fits(profile.origin.y, profile.ram.height)) {
@@ -585,9 +596,9 @@ fn spans_are_inclusive_and_refuse_empty_or_overflowing_ones() {
     assert_eq!(FRAME_PIXELS, usize::from(SIDE) * usize::from(SIDE));
 }
 
-/// Every profile passes the checks (Q44): the blank covers the controller's whole memory, the
-/// window lies inside it, every opcode is on the allow-list, one COLMOD at 16 bits a pixel, a bus
-/// speed, and a unique name. The allow-list is the plan's 14 opcodes. `PROFILES` holds exactly the
+/// Every profile passes the checks (Q44): the blank covers the controller's whole memory, no
+/// LCMCTRL step flips MADCTL's MV, the window lies inside it, every opcode is on the allow-list,
+/// one COLMOD at 16 bits a pixel, a bus speed, and a unique name. The allow-list is the plan's 14 opcodes. `PROFILES` holds exactly the
 /// HAT, and `PANEL` is in it. Each check fails a profile made to break it.
 #[test]
 fn every_profile_passes_the_checks_and_each_check_fires() {
@@ -623,6 +634,21 @@ fn every_profile_passes_the_checks_and_each_check_fires() {
                 ..WAVESHARE_1IN3_HAT
             },
             "ram",
+        ),
+        // The HAT's LCMCTRL with XMV: the memory is 240×320 again, and a 320×240 blank would miss
+        // rows.
+        (
+            PanelProfile {
+                init: const {
+                    &[
+                        step(COLMOD, &[0x05]),
+                        step(LCMCTRL, &[0x2C | XMV]),
+                        step(INVON, &[]),
+                    ]
+                },
+                ..WAVESHARE_1IN3_HAT
+            },
+            "xmv",
         ),
         (
             PanelProfile {

@@ -7354,7 +7354,8 @@ stale (Q43 (d)).
   A profile is a `const` value that holds no pins and does no I/O:
   - `name: &'static str`;
   - `madctl: u8`, which the driver sends at step 3 and in `Drop`. Its MV bit (`0x20`) must match `ram`'s orientation,
-    and its colour-order bit (`0x08`) is part of it;
+    and its colour-order bit (`0x08`) is part of it. (7c) No `init` step sets LCMCTRL's XMV bit (`0x02`), which the
+    controller XORs with MV ([S31] p.275), so `madctl` alone gives the orientation;
   - `init: &'static [Step]`, each `Step { cmd: u8, args: &'static [u8], delay_ms: u16 }`: the rest of init steps 3-5
     below, in order. Every opcode must be in `ST7789_INIT_OPCODES`;
   - `ram: Size`, the controller's whole frame memory in the profile's orientation: 320×240 with MV set, or 240×320 with
@@ -7366,6 +7367,11 @@ stale (Q43 (d)).
   trait as above (`sleep_ms(u16)`, matching `delay_ms`), `Panel` holds the bus, one profile and the buffer, and
   `PanelProfile` has exactly these six fields (`Size` and `Point` hold `u16`s); `Panel` implements `hal::Display`, so
   `show_stop` draws over it.
+  Proof (review fix, commit 7c): the `PROFILES` checks read the orientation from `madctl`'s MV alone, while LCMCTRL is
+  on the allow-list and its XMV bit flips MV: a profile with the HAT's values and LCMCTRL `2E` passed every check, yet
+  on that panel the memory is 240×320 and a 320×240 blank misses rows. The checks now refuse any LCMCTRL step with XMV
+  (`xmv`), and that profile is among the broken ones, refused with `xmv` alone; without the check, it fails the test.
+  The HAT's `2C` has XMV clear.
 - [x] `ST7789_INIT_OPCODES` is an allow-list, the only opcodes a profile's `init` may hold:
   - COLMOD `3A`, PORCTRL `B2`, GCTRL `B7`, VCOMS `BB`, LCMCTRL `C0`, VDVVRHEN `C2`, VRHS `C3`, VDVS `C4`, FRCTRL2 `C6`,
     PWCTRL1 `D0`, PVGAMCTRL `E0`, NVGAMCTRL `E1`, INVOFF `20`, INVON `21`;
@@ -7453,6 +7459,7 @@ stale (Q43 (d)).
   - for every entry of `PROFILES`:
     - `ram` is 320×240 with MV set in `madctl`, or 240×320 with MV clear (the ST7789's whole frame memory), so the wipe
       always covers all of it;
+    - (7c) no LCMCTRL step sets XMV, which would flip MV;
     - the 240×240 window at `origin` lies inside `ram`;
     - every `init` opcode is in `ST7789_INIT_OPCODES`;
     - `init` has exactly one COLMOD step, and its low nibble is 5 (16 bits a pixel, which is what `Frame::raw()` sends);
@@ -8396,6 +8403,7 @@ What does not change, in M4 or M4b (Q44-Q50):
   blank of the frame alone, a fault that leaves the backlight on, a pause after every step.
   Proof (review fix, commit 7b): `ST7789_INIT_OPCODES`, the HAT's `spi_hz` and its `name` are pinned, and the
   memory-model wipe runs over every `PROFILES` entry; group 5's items.
+  Proof (review fix, commit 7c): the checks also refuse an LCMCTRL step that flips MV; group 5's `Panel` item.
 - [ ] **Panel variant (Q50), only if H1a showed one:** `WAVESHARE_1IN3_HAT` still equals the approved bytes; the
   variant's stream is pinned to the values H1a confirmed; H1a passes on the image that uses it.
 - [ ] **Kernel allow-list:** `--image` shows the build's `.config` equals `expected/linux.config`; `--os-config` clean;
@@ -8558,6 +8566,7 @@ The PR is a draft from commit 1.
    (group 5).
    7b. pi/app: the plan and recompute reviews: the panel tests pin `ST7789_INIT_OPCODES` to the plan's 14 bytes and the
    HAT's `spi_hz` and `name`, and run the memory-model wipe over every `PROFILES` entry.
+   7c. pi/app: the security review: the `PROFILES` checks refuse an LCMCTRL step with XMV, which flips MADCTL's MV.
 8. pi/app (bin): `device/keys.rs` and `device/hwrng.rs` (groups 6, 7).
 9. pi/app (bin): `device/usb.rs`, `SysBlock`, `device/usb/tests.rs` with the `#[ignore]`d loop-device test (group 8).
 10. pi/app (bin), pi/os, .github: `device/rootfs.rs` and its vector; `pi/os/rootfs-prefix.py`; `gates` runs its
@@ -8858,7 +8867,8 @@ Every finding of the plan's spec, security and feasibility review was accepted; 
   `documentation/asciidoc/computers/configuration/led_blink_warnings.adoc`, last changed 2026-06-22):
   https://www.raspberrypi.com/documentation/computers/configuration.html#led-behaviour,
   https://www.raspberrypi.com/documentation/computers/configuration.html#led-warning-flash-codes
-- [S31] Sitronix ST7789V datasheet v1.3 (MADCTL 36h, CASET 2Ah, RASET 2Bh; SWRESET p.163; RAMWR defaults p.202):
+- [S31] Sitronix ST7789V datasheet v1.3 (MADCTL 36h, CASET 2Ah, RASET 2Bh; SWRESET p.163; RAMWR defaults p.202;
+  LCMCTRL C0h p.275):
   https://dl.espressif.com/dl/schematics/LCD_ST7789.pdf
 - [S32] GitHub Actions events: `workflow_dispatch` needs the workflow on the default branch; `pull_request`'s `GITHUB_SHA`
   is the merge commit: https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows

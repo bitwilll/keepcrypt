@@ -148,6 +148,7 @@ pub struct PanelProfile {
     pub name: &'static str,
     /// MADCTL's byte, which the driver sends at init step 3 and in `Drop`. Its MV bit (`0x20`)
     /// swaps rows and columns and must match `ram`; its colour-order bit (`0x08`) is part of it.
+    /// LCMCTRL's XMV bit, which would flip MV, is never set in `init`.
     pub madctl: u8,
     /// The rest of init steps 3-5, after MADCTL, in order.
     pub init: &'static [Step],
