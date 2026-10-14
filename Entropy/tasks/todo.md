@@ -5575,7 +5575,7 @@ carries it, and every commit names a proof that runs at that commit.
   selftest (427), canaries 61/61, the release-artifact scans for aarch64-apple-darwin (core's two files and pi/app's
   rlib, clean) and both iOS targets, and the test-registry simulator's scan (exactly the three hits). The Pi and
   Android lines need cross toolchains this Mac lacks; CI's cross and test jobs run them.
-- [ ] Runtime budgets, measured against group 0's baseline:
+- [x] Runtime budgets, measured against group 0's baseline:
   - `test` grows by at most 6 minutes;
   - `gates` stays within 10 minutes (12 if Q31 (f)'s fallback is approved);
   - coverage stays at 95% of core's lines.
@@ -5590,6 +5590,11 @@ carries it, and every commit names a proof that runs at that commit.
   Open (review fix, commit 22b): the proof asks for the 14 check runs green on the PR head, and the head to be pushed
   is not 0cdfc8a: b74b0eb and its review fixes add tests to each configuration's gate run and have not run in CI.
   Ticked again by the lead after the push, with that run's ID and job times.
+  Proof (commit 25, 2026-10-14): run 38521472700 on 4256626 (24c), the PR head when it ran and the last commit that
+  changes code or tests (the commits after it change only this file): all 14 Entropy check runs pass, with unchanged
+  names (the Vercel check, not required, is ignored). Against main's 156c8ef: test 5m38s (+2m09s on 3m29s), within
+  the 6 minutes; gates 8m37s (canaries step 425 s, gate selftest 34 s, 427 passed), within 10 minutes; coverage
+  2m47s, 97.38% of core's lines (8408, missed 220), at least 95%. All three budgets are met, which closes 22b's line.
 
 **15. KEY2 "back" on the go-ahead code and backup-passphrase entry (the owner's decision of 2026-10-13; Q32 (a) as
 amended; rules 5, 6), and on the BIP39-passphrase entry (the owner's decision of 2026-10-14, the last item)**
@@ -5794,7 +5799,7 @@ amended; rules 5, 6), and on the BIP39-passphrase entry (the owner's decision of
   - `hal::BuildInfo::simulator`, `Banners::simulator`, render.rs's module doc and the bin's docs follow.
 
 **17. Review**
-- [ ] Plan, security and recompute reviews per stage (core; dependencies and foundation; screens; sim and CI), as in
+- [x] Plan, security and recompute reviews per stage (core; dependencies and foundation; screens; sim and CI), as in
   M2. Every high and medium finding is fixed, with "Proof (review fixes)" lines.
   Open (M3 Review, 2026-10-14): the 45 N.b review fixes of stages A to D2 are listed under "M3: local proof". The
   findings' severities, and so "every high and medium finding is fixed", are in the stage reviews' reports, which this
@@ -5811,6 +5816,11 @@ amended; rules 5, 6), and on the BIP39-passphrase entry (the owner's decision of
   bip39-entry no longer has the trap, and B's two mediums are fixed. The box now waits for the review of commits
   23-24. Of its two medium findings, Verification's stale line on bip39-entry's KEY2 is fixed by 24b, and the capture
   set that predates commit 24 waits for the lead's decision (the next item).
+  Recorded (lead, 2026-10-14; commit 25): stage F (commits 23-24) had no high finding and 2 medium ones, both fixed
+  in 6b87ba6 (24b): Verification's stale line on bip39-entry's KEY2, and the capture set's predating commit 24, which
+  24b recorded as the lead's open decision and the capture at 4256626 settles (the next item). B's last two mediums
+  are fixed by commits 23-24 (above). So every high and medium finding of M3 is fixed: none high, and 26 medium (A 0,
+  B 5, C 8, D 4, D2 2, E 5, F 2).
 - [ ] The registry-config capture set and its review page, zipped and sent to the owner with its index (Q30 (g)).
   The review page (commit 21) is the owner's working view inside the zip; the full set and index.html are the record.
   Corrected (lead, 2026-10-14): commit 21 planned to send only review.html and review/, as the full set is 1.9 GB
@@ -5846,6 +5856,28 @@ amended; rules 5, 6), and on the BIP39-passphrase entry (the owner's decision of
   commit 24 and gets its changed frames (bip39-entry's footer with "2 back", then bip39-ask, then the empty entry).
   The lead records which here and in the gate status. Group 15's last item leaves this to the lead (its last planned
   proof line) and is ticked without it.
+  Decided (lead, 2026-10-14; closes the Open line above): `capture_set` runs again on the final code head, and the
+  new zips go to the owner in place of b74b0eb's.
+  Recorded (lead, 2026-10-14): `capture_set` at 4256626 (24c), `git status --porcelain` empty, run from
+  2026-10-14T06:18:48Z, registry configuration, 227.78 s: 11,668 PNG files of 62 screens; index.html
+  SHA-256 `f0d58ed1867b86255dc90688c80d905cfb612ab72d91f331df8bc526066e3431`; review.html SHA-256
+  `8efc4c03f6889cf7a24a428a9e08ae4b5c2360dfce41655072c9ee1420c9395b`, with 72 copies in review/.
+  target/tmp/pi-sim-captures/registry-review.zip: 73 entries, 145,385 bytes, SHA-256
+  `3913ff5329a9a6837db5358dcde8a311be58bdb308ce30c4ee471a691017d0a0`. target/tmp/pi-sim-captures/registry-full.zip:
+  11,742 entries, 22,865,035 bytes, SHA-256 `def89c8f7d07bd4df1ceaa9983ab67ddd2d09fab5b78221df5b4e9b256922a09`. Both
+  zips use the recipes recorded above and under "M3: local proof". The lead checked the review recipe: rebuilt from
+  the old zip's own files, it reproduces 2d9a083f... byte for byte. Sent to the owner on 2026-10-14, replacing the
+  b74b0eb pair, which is kept locally as registry-review-b74b0eb.zip and registry-full-b74b0eb.zip.
+  Recorded (commit 25): read in place, with nothing written: the two zips' entries follow the recipes (review.html,
+  or index.html then review.html, first and the rest sorted; each dated 1980-01-01, deflated, mode 0644). Per
+  scenario the PNG files are boot_stops 6, runtime_stop 303, drill_12 1,393, dice_24_code 1,149, skip_and_idle 706,
+  mixed_12_restarts 1,535, wipes_clear_the_stage 3,108, check_backup 536 and check_restarts 2,931, plus the specimen.
+  review.html's 72 rows are each of the 62 screens once, the specimen and 9 more QR captures; 16 Protected captures
+  are drawn as is, all from vector runs. Beside its QR codes it lists 15 strings, by kind as at b74b0eb: 7 check URLs
+  (runtime_stop, mixed_12_restarts, drill_12, skip_and_idle, dice_24_code, wipes_clear_the_stage, check_restarts), 1
+  re-check URL (check_backup), 4 collision reports (dice-50's, in drill_12, skip_and_idle, wipes_clear_the_stage and
+  check_restarts), 1 account UR, 1 descriptor string (one QR code, two lines) and 1 registration (dice_24_code).
+  Awaiting the owner: the QR scan record and the verdict on this set, so the box stays open.
 
 **Deferred, with their milestone**
 - **M4:**
@@ -5889,6 +5921,9 @@ amended; rules 5, 6), and on the BIP39-passphrase entry (the owner's decision of
   `mixed_12_restarts`. Since 0cdfc8a none of the three scenarios changed (b74b0eb and its review fixes add tests,
   `Captures` code, and the driver check of 21b, which they pass), so CI's 0cdfc8a run still shows them passing; at
   922f272 gate.rs passes 20 and ignores 1 in both configurations locally. The lead re-cites CI on the pushed head.
+  Proof (commit 25, 2026-10-14): CI run 38521472700 on 4256626, the last commit that changes code or tests: the test
+  job's release and registry runs each pass gate.rs, 20 passed and 1 ignored (capture_set); locally at 4256626 the
+  same in both configurations, with the counts in the note under "M3: local proof"'s scenario table.
 - [x] **Gate: every screen.** `every_screen_is_expected`, against the inventory in group 8.
 
   Proof: test output.
@@ -5946,12 +5981,19 @@ amended; rules 5, 6), and on the BIP39-passphrase entry (the owner's decision of
   Amended (review fix, commit 24b): that proof is of 0cdfc8a and b74b0eb. Since commit 24 (856580a) bip39-entry
   offers KEY2 "back", and `dice_24_code` asserts it there (`offers_back`) and presses it, where it pressed a dead
   KEY2; its dead KEY2 on readback-entry stays. bip39-entry's proof is the next item's.
-- [ ] **KEY2 "back" on bip39-entry** (the owner's decision of 2026-10-14; Q32 (a) as amended again): to bip39-ask
+- [x] **KEY2 "back" on bip39-entry** (the owner's decision of 2026-10-14; Q32 (a) as amended again): to bip39-ask
   with the typed text wiped and the `Ready` session kept, offered empty, with text typed and at 100 characters; "I use
   a passphrase" then opens an empty entry behind the privacy gate; readback-entry alone has no KEY2, and every footer
   fits 240 px. `KeyMap`'s doc names no difference from pi-firmware.md's Buttons table but the grids' shorter labels.
 
   Proof: group 15's last item: its unit tests, `dice_24_code` in both configurations, the dead-key probes.
+  Proof (commit 25, 2026-10-14): group 15's last item's "Proof (commit 24)" (856580a) and 24c's line (4256626). In
+  CI, run 38521472700 on 4256626: pi lib 114 passed (the bip39-entry back test and `every_key_map_is_pinned` among
+  them), and gate.rs 20 passed and 1 ignored in each configuration (`dice_24_code` and the probes of
+  `wipes_clear_the_stage` among them). Locally at 4256626, in both configurations: `dice_24_code` 351 steps and 214
+  dead keys, `wipes_clear_the_stage` 156 dead keys. That zeroize, not clear, empties the text is held by review (lead
+  decision 13). `capture_set` at 4256626 ran `dice_24_code` with its back round, and the set sent to the owner holds
+  its frames (group 17's capture item).
 - [x] **The simulator's strip** (a lead decision; Q30 (h), Q33 (j)): "SIMULATOR · NOT FOR REAL FUNDS" when it is the
   only banner, as in live mode's release configuration, and "SIMULATOR" beside "TEST REGISTRY" in the registry
   configuration.
@@ -6004,6 +6046,10 @@ amended; rules 5, 6), and on the BIP39-passphrase entry (the owner's decision of
   configuration) and its zipped review page are ready to send; the scan record and the verdict are not in yet.
   Open (review fix, commit 24b): that run predates commit 24's KEY2 "back" on bip39-entry; whether it is captured
   again is the lead's decision (group 17's capture item).
+  Recaptured (lead, 2026-10-14; recorded in commit 25): the lead captured the set again at 4256626, which holds
+  commit 24, and sent its two zips to the owner on 2026-10-14 in place of b74b0eb's (group 17's capture item: 11,668
+  PNG files, index.html SHA-256 f0d58ed1..., the review zip 3913ff53..., the full zip def89c8f...). Awaiting the
+  owner's QR scan record and verdict on that set.
 - [x] **Runtime failures halt** (Q25; design.md:178): boot and continuous health failures, an injected game error and
   HAL faults all end on `halt` with no secret held.
 
@@ -6102,14 +6148,20 @@ amended; rules 5, 6), and on the BIP39-passphrase entry (the owner's decision of
   vectors come in through `include_str!`.
   5: since 21b the driver also fails any run marked to capture Protected frames as drawn on a Mixed session's
   screen.
-- [ ] **CI:** all 14 required check runs green; budgets met; canaries 61/61.
+- [x] **CI:** all 14 required check runs green; budgets met; canaries 61/61.
   Proof (M3 Review, 2026-10-14): run 38467985842 on 0cdfc8a, the PR head: all 14 required check runs pass, with
   unchanged names; budgets as group 14's last item; canaries 61/61 in its gates job. b74b0eb and this commit run after
   the next push.
   Open (review fix, commit 22b): b74b0eb, the commits after it and this one have not run in CI, so the proof covers
   an older head. Ticked again by the lead once CI on the pushed head is green, citing that run's ID.
+  Proof (commit 25, 2026-10-14): run 38521472700 on 4256626 (pull_request, PR #6; 06:18:49-06:27:37 UTC), the PR head
+  when it ran and the last commit that changes code or tests; the commits after it change only this file. All 14
+  Entropy check runs pass, with unchanged names; the Vercel check, not required, is ignored. Budgets as group 14's
+  last item: test 5m38s, gates 8m37s, coverage 2m47s at 97.38% of core's lines. Canaries 61/61 in its gates job.
 - [ ] **Definition of done** (CLAUDE.md), with proof pasted under Review.
   Open (M3 Review, 2026-10-14): waits for group 17's two items, and (22b) for CI on the pushed head.
+  Open (commit 25): CI on 4256626 is green and group 17's stage reviews are ticked, so it waits only for the owner's
+  QR scan record and verdict on the captures (group 17's capture item).
 
 ### New dependencies
 
@@ -6303,7 +6355,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     predates commit 24.
     24c. pi/app, tasks/todo.md: the security and recompute reviews: the bip39-entry back test's comment and commit
     24's proof say that its checks cannot tell `zeroize` from `clear`, which review holds.
-25. tasks/todo.md: the owner's capture verdict and the closing Review lines.
+25. tasks/todo.md: the M3 Review brought to 4256626: the recaptured capture set, the stale Review lines, and CI.
+26. tasks/todo.md: the owner's capture verdict and QR scan record, and the gate report's last line.
 
 Review fixes are listed as N.b entries under the commit they amend.
 
@@ -7995,8 +8048,9 @@ Apple M4 Max, macOS 27.0.1, toolchain 1.98.1 (rust-toolchain.toml), cargo-llvm-c
 `/usr/bin/python3` 3.9.6, run from `Entropy/`; the shell scripts also under `dash`. M3 ran 2026-10-11 to 2026-10-14
 on `m3-pi-sim` (draft PR #6) in stages. Each stage made its planned commits, had them reviewed three ways (plan,
 security, recompute), fixed what the reviews found, ran the full suite, and was pushed so that CI ran on its head;
-the last stage (commit 21 and this Review) is not pushed yet. Plan items are ticked above only where the proof
-covers them; the end of this section lists what is still open and what each waits for.
+the last stage (commit 21 and this Review) was not pushed when this was written (it and stage F have been since:
+"CI", below). Plan items are ticked above only where the proof covers them; the end of this section lists what is
+still open and what each waits for.
 
 **Group 0 baseline** (for group 14's budgets). Taken on 2026-10-14 from `git archive 8e6917b`, unpacked in the
 session scratchpad with its own target directory: the tree before commit 1, so the same code, scripts, vectors and
@@ -8113,7 +8167,7 @@ Stage D2: the owner's KEY2 decision of 2026-10-13 and the simulator's strip, com
   refusal
 - 19e: 0cdfc8a pi/app: KEY2 back is offered on code-entry with all 8 symbols typed
 
-Stage E: commit 21 and this Review (not pushed yet).
+Stage E: commit 21 and this Review (pushed since, with their review fixes; pushed head 98b4a6f).
 - 21: b74b0eb pi/sim: capture_set also writes the owner's review page: the first capture of every screen, the reveal-d
   specimen, and each QR capture with core's string beside it
 
@@ -8199,6 +8253,17 @@ throwaway_collision_qr     34       16       262    82       34       16       2
 The presents of `dice_24_code`, `mixed_12_restarts` and `check_restarts` vary from run to run by a few, since what
 they type follows fresh OS bytes (the go-ahead code on the grid, among others).
 
+Note (commit 25): the table's figures are b74b0eb's. At 4256626, `dice_24_code` is 351 steps and 214 dead keys
+(commit 24's back round on bip39-entry), and `wipes_clear_the_stage` has 156 dead keys (its probes no longer press
+KEY2 on bip39-entry). Re-run on 2026-10-14 to confirm, as `cargo test -p keepcrypt-pi-sim --locked [--features
+keepcrypt-core/test-registry] --test gate -- --test-threads=1 --nocapture`, with `git status --porcelain` empty
+before and after and target/tmp/pi-sim-captures/ untouched (registry/'s file paths, sizes and times, and the four
+zips', index.html's and review.html's SHA-256, the same before and after): release 20 passed and 1 ignored in 32.5 s,
+registry the same in 52.0 s. In both, `dice_24_code` is 351 steps, 41 screens and 214 dead keys (1,161 and 1,154
+presents), and `wipes_clear_the_stage` 757 steps, 33 screens, 3,108 presents and 156 dead keys. Every other row's
+steps, screens and dead keys are as in the table (presents: `mixed_12_restarts` 1,546 and 1,522, `check_restarts`
+2,405 and 2,918), and 21d's `vector_collision_qr` runs 31 steps, 15 screens, 238 presents and 75 dead keys in each.
+
 **Render timing** (`cargo test -p keepcrypt-pi-sim --locked --test timing -- --ignored --nocapture`, opt-level 0):
 
 ```text
@@ -8243,6 +8308,11 @@ These figures differ from the older ones in groups 11 and 14 (11,530, 11,528 and
 runs: the presents vary with the codes typed. The set cannot be reproduced byte for byte (fresh nonces, C, D and
 backup passphrases), so index.html's SHA-256, whose rows hold every PNG file's, pins this set. The zip is what the
 owner is sent (group 17); nothing was sent or uploaded yet.
+
+Note (commit 25): this was the only capture run until the lead captured the set again at 4256626, after commit 24,
+and sent that run's two zips to the owner on 2026-10-14 in place of this run's (group 17's capture item holds its
+record: 11,668 PNG files, index.html SHA-256 f0d58ed1..., the review zip 3913ff53..., the full zip def89c8f...).
+This run's zips are kept locally as registry-review-b74b0eb.zip and registry-full-b74b0eb.zip.
 
 **Live mode** (`cargo run -p keepcrypt-pi-sim --locked -- live --out target/pi-sim-live`, the release configuration,
 as Commands write it), a short session: Check a backup finds the empty stick in the slot (usb-pick) and KEY1 returns
@@ -8291,7 +8361,7 @@ required and is ignored, as the owner said. Every run below completed with all 1
 - Stage C, eb0563e: run 38405436278 (2026-10-13, 13:29-13:38 UTC).
 - Stage D, d00186e: run 38449716309 (2026-10-13, 18:48-18:56 UTC). It was the first run of the test job's
   simulator steps and of the Pi leg's pi/app rlib scan.
-- Stage D2, 0cdfc8a: run 38467985842 (2026-10-13, 21:05-21:14 UTC), the PR head now. Seen on 2026-10-14 with
+- Stage D2, 0cdfc8a: run 38467985842 (2026-10-13, 21:05-21:14 UTC), then the PR head. Seen on 2026-10-14 with
   `gh run list --branch m3-pi-sim` and read from the runs' jobs and logs:
 
 ```text
@@ -8336,6 +8406,27 @@ supply-chain (deny, audit, vet)   39s (52s)   advisories ok, bans ok, licenses o
 lint (fmt, clippy) 34s (34s); changes 5s (21s): pass
 ```
 
+Later runs (commit 25), each completed with all 14 Entropy check runs passed (Vercel ignored, as above):
+- Stage E, 98b4a6f (commits 21 and 22, 21b-21d and 22b-22g): run 38484466176 (2026-10-13, 23:28-23:34 UTC).
+- Stage F, 4256626 (commits 23-24, 23b, 24b and 24c; the last commit that changes code or tests): run 38521472700
+  (2026-10-14, 06:18-06:27 UTC), the PR head when it ran. Read with `gh run view` and the jobs' logs:
+
+```text
+test                            5m38s
+  cargo test --workspace --locked   80 s: core lib 166 passed, 1 ignored; pi lib 114; pi-sim gate 20 passed,
+                                    1 ignored (24.40 s), hal 7
+  -p keepcrypt-core --features test-sources   133 s: lib 194 passed, 1 ignored; check_flow 10
+  -p keepcrypt-pi-sim --features keepcrypt-core/test-registry   50 s: gate 20 passed, 1 ignored, hal 7
+  release build for x86_64-unknown-linux-gnu, then the scan step   34 s; 5490440 bytes; the two markers and the
+                                    TestKey line, "3 hit(s) in 1 file(s)"
+gates                           8m37s   banned-api-check: clean, 196 files scanned; vectorgen.py --selftest: 13
+                                    checks; gate selftest: 427 passed, 0 failed (34 s); canaries (425 s): PASS: all
+                                    61 checks ran
+coverage (core, 95% of lines)   2m47s   TOTAL regions 96.88%, functions 96.32%, lines 8408, missed 220, 97.38%
+cross, the six legs             1m50s-2m53s (arm-unknown-linux-gnueabihf 2m11s)
+verifier 53s; age-interop 54s; supply-chain 33s; lint 36s; changes 7s: pass
+```
+
 **Runtime budgets** (group 14), against group 0's CI baseline, the last main run 38122123944 on 156c8ef:
 
 ```text
@@ -8351,6 +8442,8 @@ coverage           2m46s, 97.39%  2m50s, 97.38%      2m24s, 97.38%      at least
 Q31 (f)'s 12-minute fallback for `gates` was not needed, and group 7's measurement kept Q31 (g)'s opt-level fallback
 out. b74b0eb and this commit run in CI after the next push; b74b0eb adds one test (a throwaway run of 34 steps and
 262 presents) to each configuration's gate run.
+At 4256626 (run 38521472700; commit 25): test 5m38s (+2m09s), gates 8m37s (canaries step 425 s, gate selftest
+34 s, 427), coverage 2m47s at 97.38% of core's lines: each budget is met (group 14's last item).
 
 **Lead decisions and deviations from the plan**, each with why:
 1. The simulator's strip (commit 20, 8c1a8c7; group 16). Q30 (h) gives live mode "SIMULATOR · NOT FOR REAL FUNDS" on
@@ -8383,6 +8476,8 @@ out. b74b0eb and this commit run in CI after the next push; b74b0eb adds one tes
    KEY2 dead. Commits: d2877f3 (18: docs and this plan, no code), 91135c9 (19), a91fb6d (19b), e20e206 (19c: a kept
    `Wiped` stays kept), 1d5842d (19d: offered empty, at word 8 and after a refusal) and 0cdfc8a (19e: offered with all
    8 symbols typed).
+   Amended by the owner on 2026-10-14 (under "Raised by the M3 gate report"; f1d9cda, 856580a): KEY2 on bip39-entry
+   is "back" to bip39-ask, the typed text wiped and the `Ready` session kept; readback-entry alone keeps KEY2 dead.
 7. The review page (commit 21, b74b0eb; groups 11 and 17). The full set is about 11,600 PNG files, too many for the
    owner to page through, so capture_set also writes review/ and review.html, the owner's working view; the full set
    and index.html stay the record. The owner still receives the full set zipped, as Q30 (g) approved: it zips to
@@ -8406,6 +8501,9 @@ out. b74b0eb and this commit run in CI after the next push; b74b0eb adds one tes
    5f46a48, a rustfmt of its assertion).
 10. The QR and info pages offer no KEY1 "back" (commit 8c, 3d73e12), which pi-firmware.md's Buttons table gives them.
     `KeyMap`'s doc says this awaits the owner's decision (open items, below).
+    Amended (the owner's decision of 2026-10-14, under "Raised by the M3 gate report"): the table now gives KEY1
+    "back" only on About, the re-check QR and the wait for a stick, the three such pages that offer it (f1d9cda), and
+    `KeyMap`'s doc no longer says it awaits the owner (856580a). No key map changed.
 11. The release probe's `game_random` call must stand on a line that is not a comment (stage-A finding 9, a lead
     decision; commits 15 and 15d), so dropping the call fails the gate. Commands' `TRYBUILD=overwrite` line gains
     `--locked` and also allows an owner-approved API change (commit 17).
@@ -8414,6 +8512,11 @@ out. b74b0eb and this commit run in CI after the next push; b74b0eb adds one tes
     in pi/sim's panel.rs by pi/app's `Painter` (10); Q28 (e)'s "3 imported audits" are 4 imports.lock entries (7b);
     the tests' one print site is tests/report/mod.rs (10f); and qrcodegen-no-heap 1.8.1's
     `error_correction_level()` misreads a version-11 L code, which pi/app never calls (9).
+13. Zeroize versus clear and pop (stage F's security and recompute reviews, 24c, 4256626). The typed buffers are
+    `Zeroizing`. The bytes that `pop()` (delete) or a `clear` would leave in spare capacity stay inside the same
+    allocation, which is zeroized on drop and on every wipe. The code calls `zeroize()` wherever it empties a buffer
+    on a way out (`code_back`, `passphrase_back`, the refusals). The tests cannot tell `zeroize` from `clear` under
+    `forbid(unsafe_code)`, so this is held by review, with no new gate.
 
 **Ticked in this commit** (each with its "Proof (M3 Review, 2026-10-14)" line above): group 0's answers and
 baseline; group 1's release_probe call (the cross scans); group 12's live bin; group 14's `test` and `cross` steps,
@@ -8421,16 +8524,18 @@ CLAUDE.md Commands and runtime budgets; and every Verification item but "the own
 "Definition of done". 22b unticks group 14's runtime budgets and Verification "CI" again: their proof is run
 38467985842 on 0cdfc8a, not the head to be pushed.
 
+**Ticked in commit 25** (each with its "Proof (commit 25, 2026-10-14)" line above, or for the reviews the lead's
+tally): group 14's runtime budgets, group 17's stage reviews, Verification's KEY2 "back" on bip39-entry, and
+Verification "CI", on run 38521472700 at 4256626.
+
 **Still unticked**, with what each waits for:
-- Group 17, the capture set and its review page, and Verification "Gate: the owner reviews the captures": the
-  capture run above is recorded and its zip is ready to send; awaiting the owner, who scans every QR capture on the
-  review page with a phone, compares each decoded text with core's string beside it, and gives a verdict. The lead
-  adds both, quoted with the date, in a later commit.
-- Group 17, the stage reviews: every N.b fix is listed above, but the high and medium tally ("every high and medium
-  finding is fixed") is in the stage reviews' reports, which this file does not hold; for the lead to record.
-- Verification "Definition of done": waits for the two group 17 items and CI on the pushed head.
-- Group 14's runtime budgets and Verification "CI" (unticked by 22b): CI on the pushed head, with all 14 required
-  check runs green and its job times inside the budgets. The lead ticks them again after the push, citing the run.
+- Group 17, the capture set and its review page, and Verification "Gate: the owner reviews the captures": the set
+  captured again at 4256626 is recorded in group 17, and its two zips were sent to the owner on 2026-10-14 in place
+  of b74b0eb's; awaiting the owner, who scans every QR capture on the review page with a phone, compares each
+  decoded text with core's string beside it, and gives a verdict. The lead adds both, quoted with the date, in
+  commit 26.
+- Verification "Definition of done": waits for the owner's QR scan record and verdict (CI on 4256626 is green, and
+  group 17's stage reviews are ticked).
 
 ### M3 gate status: awaiting the owner's review of the captures (2026-10-14)
 The gate in docs/build-plan.md:293. Deliverables: "Every screen including seal check with go-ahead code entry and
@@ -8439,10 +8544,11 @@ drives a full ceremony in the simulator; you review the screen captures".
 - Scripted run drives a full ceremony: met. pi/sim's gate.rs drives pi/app's `App` over the real core on `SimHal` in
   nine scenarios, each a test that fails on any unmet `Expect`, in the release configuration (`cargo test
   --workspace`) and the registry configuration (`--features keepcrypt-core/test-registry`). Between them
-  `drill_12`, `dice_24_code` and `mixed_12_restarts` run steps 1-15. Locally at b74b0eb both configurations pass
-  (gate 17 passed, 1 ignored, each); in CI the test job runs both on every pushed head, green on d00186e and 0cdfc8a.
-- Every screen: met, and so are the deliverables below but for bip39-entry's KEY2 "back", which the owner decided on
-  2026-10-14 (below) and commit 24 brings. `every_screen_is_expected`: the scenarios' `Expect` ids cover all 62
+  `drill_12`, `dice_24_code` and `mixed_12_restarts` run steps 1-15. Locally at 4256626 both configurations pass
+  (gate 20 passed, 1 ignored, each); in CI the test job runs both on every pushed head, green on d00186e, 0cdfc8a,
+  98b4a6f and 4256626.
+- Every screen: met, and so are the deliverables below, with bip39-entry's KEY2 "back" (the owner's decision of
+  2026-10-14, below) in since 856580a. `every_screen_is_expected`: the scenarios' `Expect` ids cover all 62
   `ScreenId`s with the test key, and all but snapshot-loaded and snapshot-date without it, as planned.
   - Seal check with go-ahead code entry: the code is typed on the 8×4 grid; a wrong code keeps the check and its URL
     and shows no words; the mock checker's G, from a check QR whose drawn modules match its payload, reveals the
@@ -8451,9 +8557,9 @@ drives a full ceremony in the simulator; you review the screen captures".
   - Braille pages: insert view and overview for 12 and 24 vector words with numbered dots, blank faces, lighter
     letters, mirror flags and device labels; the read-back names a mirror misread, a should-be-blank, a
     should-have-letter and a wrong letter.
-  - Button handling: met but for bip39-entry's KEY2 "back" (commit 24). The one documented mapping that differed,
-    the Buttons table's KEY1 "back" on the QR and info pages that the app does not offer (`KeyMap`'s doc, commit 8c),
-    is amended to the app by the owner's decision of 2026-10-14 (commit 23, below).
+  - Button handling: met. bip39-entry's KEY2 "back" is in since 856580a (commit 24), and the one documented mapping
+    that differed, the Buttons table's KEY1 "back" on the QR and info pages that the app does not offer (`KeyMap`'s
+    doc, commit 8c), is amended to the app by the owner's decision of 2026-10-14 (commit 23, below).
     Every scripted press goes through the Debouncer as a bounce train; every screen's footer names its keys within
     240 px; the dead-key probes press every unoffered key on each screen's first showing, and none draws anything.
   - Waiting-screen game: Snake, in Mixed step 4 only, closed at the quota, its bytes from `game_random` alone (the
@@ -8462,24 +8568,23 @@ drives a full ceremony in the simulator; you review the screen captures".
     stays), and Retry keeps the passphrase.
   - Snapshot import mocked: `with-dice-50` drives both the collision and the clear result in the registry
     configuration, a tampered snapshot is refused, and release builds show `NoRegistryKey`'s text.
-- You review the screen captures: open. The registry configuration's capture set at b74b0eb (11,618 PNG files,
-  index.html SHA-256 430a6d79...), zipped whole with its review page (22,758,419 bytes, SHA-256 662455b8...), and the
-  review page alone (145,436 bytes, SHA-256 2d9a083f...) are sent to the owner. Awaiting the owner's QR scan record
-  and verdict.
+- You review the screen captures: open. The registry configuration's capture set at 4256626, captured again after
+  commit 24 (11,668 PNG files of 62 screens, index.html SHA-256 f0d58ed1...), zipped whole with its review page
+  (11,742 entries, 22,865,035 bytes, SHA-256 def89c8f...), and the review page alone (73 entries, 145,385 bytes,
+  SHA-256 3913ff53...), were sent to the owner on 2026-10-14 in place of the b74b0eb set's zips (group 17's capture
+  item). Awaiting the owner's QR scan record and verdict.
 - Also met: runtime failures halt with nothing held (Q25); the 99-roll minimum holds through Stop, Cannot check, the
   idle wipe and KEY2, and only Ready (Skip or a passed check), a halt or a power cycle drops it (Q26); Protected
   screens are gated, covered after 30 s and wiped at 10 minutes (Q29); the verify.py tie recomputes the words and
   Seal ID of a Mixed run from C, D and the rolls; the release artifacts scan clean on all six cross legs, pi/app's
   ARM rlib among them, and the test-registry simulator carries exactly its two markers and the test key.
-- CI: run 38467985842 on 0cdfc8a, the PR head, is green: all 14 Entropy check runs pass (the Vercel check, not
-  required, is ignored); test 5m27s, gates 8m39s, coverage 97.38% of core's lines, inside group 14's budgets.
-  b74b0eb and its review fixes (pi/sim's tests and this file) and this commit run after the next push; until that run
-  is green, group 14's runtime budgets and Verification "CI" stay open (22b).
-- Every plan and Verification item of M3 is ticked with its proof but eight: group 17's two items (the owner's capture
-  review, and the stage reviews' severity tally), Verification's "the owner reviews the captures", "Definition of
-  done", which waits for group 17 and CI, group 14's runtime budgets and Verification "CI", which wait for CI on the
-  pushed head, and group 15's last item and Verification's KEY2 "back" on bip39-entry, which wait for commit 24. No
-  CI job, required check or ruleset changed; the nine new crates are the approved ones.
+- CI: run 38521472700 on 4256626, the PR head when it ran and the last commit that changes code or tests, is green:
+  all 14 Entropy check runs pass (the Vercel check, not required, is ignored); test 5m38s, gates 8m37s, coverage
+  97.38% of core's lines, inside group 14's budgets. The commits after 4256626 change only this file.
+- Every plan and Verification item of M3 is ticked with its proof but three: group 17's capture item and
+  Verification's "the owner reviews the captures", which wait for the owner's QR scan record and verdict, and
+  "Definition of done", which waits for them. Every high and medium finding of the stage reviews is fixed (group
+  17). No CI job, required check or ruleset changed; the nine new crates are the approved ones.
 - Decided by the owner on 2026-10-14 ("yes to 2-4"; under "Raised by the M3 gate report"), part of the gate's button
   handling: the QR and info pages offer no KEY1 "back", which pi-firmware.md's Buttons table gave them (`KeyMap`'s
   doc, commit 8c): give those pages KEY1 "back" as the table says, or amend the table to match. The lead recommended
