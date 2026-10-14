@@ -142,6 +142,15 @@ jobs:
     # stub marker (rule 10). The scan also shows no foreign RNG crate symbol. It cannot see std's
     # OS-seeded hashing: the grep gate's hash ban covers that in the shipped crates' sources (core,
     # ffi and pi/app), and pi/sim's own code never ships.
+    # M4 (tasks/todo.md, groups 8 and 12): the stick driver's loop-device test. The last steps make
+    # a 16 MiB FAT32 image on a loop device and a mount point, name them and the test's own
+    # mountinfo in the KC_* variables, build pi/app's binary tests as the runner's user, and run
+    # device::usb::tests::loop_device alone as root, with only those variables preserved: the
+    # driver's read-only mounts, create-new write, read-back and removal through the glue's own
+    # mount(2) and umount2(2), on a filesystem that ignores letter case. The test fails if a
+    # variable is missing and holds no path literal. The step fails unless exactly 1 passed (9d): a
+    # renamed test, a wrong path or a build without it runs no test and exits 0. The loop device
+    # is detached whatever happened.
     name: test
     needs: changes
     if: needs.changes.outputs.entropy == 'true'
@@ -191,6 +200,52 @@ jobs:
             case $out in *"$want"*) ;; *) fail "no line holds \"$want\"" ;; esac
           done
           case $out in *KC_TEST_SOURCE_DO_NOT_SHIP*) fail "the stub marker" ;; esac
+      # Ubuntu's dosfstools, for mkfs.vfat; the runner image does not promise it.
+      - name: A 16 MiB FAT32 loop device and a mount point, the stick of the loop-device test
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends dosfstools
+          img=$RUNNER_TEMP/stick.img
+          mnt=$RUNNER_TEMP/usb
+          truncate -s 16M "$img"
+          mkfs.vfat -F 32 "$img"
+          mkdir "$mnt"
+          dev=$(sudo losetup --find --show "$img")
+          ro=/sys/block/${dev#/dev/}/ro
+          sudo losetup --list "$dev"
+          echo "$ro: $(cat "$ro")"
+          {
+            echo "KC_LOOP_DEV=$dev"
+            echo "KC_LOOP_RO=$ro"
+            echo "KC_LOOP_MNT=$mnt"
+            echo "KC_MOUNTINFO=/proc/self/mountinfo"
+          } | tee -a "$GITHUB_ENV"
+      # The test binary is the one executable cargo reports for the bin target; it is run by its
+      # path, so sudo builds nothing.
+      - name: Run the loop-device test as root (exactly 1 passed)
+        run: |
+          cargo test -p keepcrypt-pi --locked --bin keepcrypt-pi --no-run
+          tests=$(cargo test -p keepcrypt-pi --locked --bin keepcrypt-pi --no-run --message-format=json |
+            jq -r 'select(.reason == "compiler-artifact" and .executable != null) | .executable')
+          echo "test binary: $tests"
+          fail() { echo "FAIL: the loop-device test: $1" >&2; exit 1; }
+          case $tests in
+            */keepcrypt_pi-*) ;;
+            *) fail "no keepcrypt_pi test binary in cargo's output: \"$tests\"" ;;
+          esac
+          [ "$(printf '%s\n' "$tests" | wc -l)" -eq 1 ] || fail "more than one test binary"
+          rc=0
+          out=$(sudo --preserve-env=KC_LOOP_DEV,KC_LOOP_RO,KC_LOOP_MNT,KC_MOUNTINFO "$tests" --ignored --exact device::usb::tests::loop_device 2>&1) || rc=$?
+          printf '%s\n' "$out"
+          [ "$rc" -eq 0 ] || fail "exit $rc"
+          case $out in *"test device::usb::tests::loop_device ... ok"*) ;; *) fail "loop_device did not run" ;; esac
+          case $out in *"test result: ok. 1 passed; 0 failed; 0 ignored;"*) ;; *) fail "not exactly 1 passed" ;; esac
+      - name: Detach the loop device
+        if: always()
+        run: |
+          [ -n "$KC_LOOP_DEV" ] || { echo "no loop device was set up"; exit 0; }
+          if mountpoint -q "$KC_LOOP_MNT"; then sudo umount --lazy "$KC_LOOP_MNT"; fi
+          sudo losetup --detach "$KC_LOOP_DEV"
 
   supply-chain:
     # Rules 1, 5 and 11: deny.toml bans the rand family, network and logging crates, allows
@@ -234,10 +289,14 @@ jobs:
 
   gates:
     # Rule 1 and the network and clipboard bans as a grep gate, plus its self-test (with the
-    # release-artifact scan's fixtures, which rustc builds for an Android and an iOS target); the
-    # verifier self-test (13 checks: every vectors/ file regenerated or recomputed, Coldcard's
-    # hash-pinned scripts re-run behind rolls.json and on agreement.json's dice-only subset, and
-    # lone copies of the shipped verify.py under an audit hook, piped and in a pseudo-terminal); the
+    # release-artifact scan's fixtures, which rustc builds for an Android and an iOS target, and the
+    # workflow fixtures); the workflow hardening check (tasks/todo.md, M4 group 11; Q38 (d)): every
+    # entropy-*.yml in .github/workflows keeps the header's rules, a read-only token, the three
+    # allowed actions pinned by SHA, no secrets, no fork-trusting trigger and no expression inside a
+    # run step; the verifier self-test (13 checks: every vectors/ file regenerated or recomputed,
+    # Coldcard's hash-pinned scripts re-run behind rolls.json and on agreement.json's dice-only
+    # subset, and lone copies of the shipped verify.py under an audit hook, piped and in a
+    # pseudo-terminal); the
     # root filesystem prefix script's self-test (tasks/todo.md, M4 group 9): the vector's prefix
     # that pi/app's device/rootfs test pins, recomputed by the script that gives each image's, and
     # each of its refusals; and
@@ -256,8 +315,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # The grep gate runs first, on the bare checkout, before anything writes target/.
+      # The grep gate runs first, on the bare checkout, before anything writes target/. The
+      # workflows live at the repo root, so the hardening check is given ../.github/workflows.
       - run: scripts/banned-api-check.sh
+      - run: scripts/banned-api-check.sh --workflows ../.github/workflows
       - run: python3 -I tools/verify/vectorgen.py --selftest
       - run: python3 -I pi/os/rootfs-prefix.py --selftest
       - name: Install the pinned toolchain (rust-toolchain.toml)
@@ -416,8 +477,11 @@ jobs:
     # CARGO_TARGET_<TARGET>_RUSTFLAGS: never a workflow-wide RUSTFLAGS, which would also reach the
     # host's build scripts. M3 (tasks/todo.md, Q31 (c)): the leg whose crates include keepcrypt-pi
     # also builds pi/app's release rlib, scanned with core's artifacts; it must be clean, and as an
-    # archive it needs no OS import. No keepcrypt-pi binary is linked or scanned before M4: a real
-    # Pi binary moves to Buildroot in M4 and the app libraries to M5 and M6. Every step checks the
+    # archive it needs no OS import. M4 (tasks/todo.md, group 12): that leg also links the
+    # keepcrypt-pi binary with the stand-in gcc below and scans it with the rest: it must import
+    # getrandom, keep its symbol table, and hold no marker, test key, std random-key path or other
+    # RNG symbol. The shipped binary comes from the image workflow's Buildroot toolchain; this one
+    # is scanned, never run. The app libraries for the phones are M5 and M6. Every step checks the
     # changes job (see the header).
     name: cross (${{ matrix.target }})
     needs: changes
@@ -479,8 +543,9 @@ jobs:
       # The C parts (secp256k1-sys) need a C compiler for each target, and the probe a linker.
       - name: C compiler and linker for the Pi Zero (Ubuntu's arm-linux-gnueabihf gcc)
         if: needs.changes.outputs.entropy == 'true' && matrix.target == 'arm-unknown-linux-gnueabihf'
-        # Stand-in until M4, where Buildroot's ARMv6 toolchain replaces it. The probe links against
-        # Ubuntu's armhf glibc; it is scanned, never run.
+        # A stand-in: the shipped binary comes from the image workflow's Buildroot ARMv6 toolchain
+        # (tasks/todo.md, M4 group 12). The probe and the keepcrypt-pi binary built here link
+        # against Ubuntu's armhf glibc; they are scanned, never run.
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends gcc-arm-linux-gnueabihf libc6-dev-armhf-cross
@@ -531,10 +596,14 @@ jobs:
       - name: Build the release rlib and the release probe (default features)
         if: needs.changes.outputs.entropy == 'true'
         run: cargo build --release --locked -p keepcrypt-core --lib --example release_probe --target "$TARGET"
-      # M3: the step below scans this rlib on the same condition (keepcrypt-pi among the crates).
+      # M3, M4: the scan step scans this rlib and the binary on the same condition (keepcrypt-pi
+      # among the crates).
       - name: Build pi/app's release rlib (default features)
         if: needs.changes.outputs.entropy == 'true' && contains(format(' {0} ', matrix.crates), ' keepcrypt-pi ')
         run: cargo build --release --locked -p keepcrypt-pi --lib --target "$TARGET"
+      - name: Build pi/app's release binary (default features)
+        if: needs.changes.outputs.entropy == 'true' && contains(format(' {0} ', matrix.crates), ' keepcrypt-pi ')
+        run: cargo build --release --locked -p keepcrypt-pi --bin keepcrypt-pi --target "$TARGET"
       - name: Scan the release artifacts (markers, test key, RNG symbols, the OS import)
         if: needs.changes.outputs.entropy == 'true'
         env:
@@ -542,12 +611,18 @@ jobs:
         run: |
           rlib="target/$TARGET/release/libkeepcrypt_core.rlib"
           probe="target/$TARGET/release/examples/release_probe"
+          pi="target/$TARGET/release/keepcrypt-pi"
           files=("$rlib" "$probe")
           case " $CRATES " in
-            *" keepcrypt-pi "*) files+=("target/$TARGET/release/libkeepcrypt_pi.rlib") ;;
+            *" keepcrypt-pi "*) files+=("target/$TARGET/release/libkeepcrypt_pi.rlib" "$pi") ;;
           esac
           for f in "${files[@]}"; do
             size=$(wc -c < "$f")
             echo "$f: $((size)) bytes"
           done
+          # The binary's OS import as llvm-nm prints it, for Review (tasks/todo.md, M4 group 12);
+          # the scan requires it (OSImport) and refuses a stripped file (Format).
+          case " $CRATES " in
+            *" keepcrypt-pi "*) "$(rustc --print target-libdir)/../bin/llvm-nm" -u "$pi" | grep -E '(^| )getrandom(@|$)' ;;
+          esac
           scripts/banned-api-check.sh --artifact "$TARGET" "${files[@]}"

@@ -7718,6 +7718,7 @@ stale (Q43 (d)).
   Proof (commit 11): `Kernel` holds linux.rs's `KernelMounter` and forwards `mount`, `unmount` and `sync` to it,
   checking mountinfo around the glue's own call; the flag conversion is now the glue's alone. The ARM clippy with
   `--all-targets` compiles it; the run is commit 13's.
+  Proof (commit 13, the steps): the test job's three steps, as group 12's `test` item says. The run is CI's.
 
   Proof:
   - `SysBlock` fake tests: one stick with and without a partition; `mmcblk0`, `loop0`, `ram0` and a non-USB `sd` ignored;
@@ -7968,6 +7969,8 @@ stale (Q43 (d)).
   The real `../.github/workflows` is clean under sh and dash. One canary copies the real entropy-ci.yml, widens the
   token to write and appends a job that breaks every other rule once, and needs exactly those 7 hits. canaries
   68/68.
+  Proof (commit 13, the `gates` step): as group 12's `gates` item says; entropy-ci.yml, which the same commit extends,
+  stays clean. The run is CI's.
 - [ ] `--os-config pi/os`, a text-only check run in `gates`. It lands in commit 17, with `expected/`. It checks:
   - inittab equals Q35's three lines;
   - fstab's options;
@@ -7992,6 +7995,15 @@ stale (Q43 (d)).
   stand-in gcc, and scans the result with the two rlibs and the probe. It must have `U getrandom` and a symbol table, and
   no marker, no test key, and no foreign RNG or fallback symbol. The comments at :413-417 and :478-479 say the shipped
   binary comes from the image workflow's Buildroot toolchain.
+  Proof (commit 13, the steps; the run is CI's): the Pi leg's new step "Build pi/app's release binary (default
+  features)" runs `cargo build --release --locked -p keepcrypt-pi --bin keepcrypt-pi --target "$TARGET"` on the rlib
+  step's condition (keepcrypt-pi among the leg's crates), right after it; the scan step adds
+  `target/$TARGET/release/keepcrypt-pi` as its fourth file, first prints the binary's `U getrandom` line from the
+  toolchain's llvm-nm (`rustc --print target-libdir`'s sibling `bin/`), and the scan's OSImport, Format and StdRandom
+  rules check the import, the symbol table and std's random-key path. Both comments now say the shipped binary comes
+  from the image workflow's Buildroot toolchain and that this one is scanned, never run. No ARM linker here: the lead
+  reads the Pi leg's "Build pi/app's release binary" step, its `U getrandom` line and the scan's `clean, 4 file(s)`
+  line.
 - [x] The artifact scan's Format rule: a linked ELF with no `.symtab` is a hit, tested with a stripped-binary fixture. A
   stripped file prints no symbols, so the RNG-crate rule would otherwise pass silently.
   Proof (commit 12): for every ELF or Mach-O file, `--artifact` reports `Format: ... a stripped file with no symbol
@@ -8021,7 +8033,24 @@ stale (Q43 (d)).
   `loop_device` as root with `sudo --preserve-env=KC_LOOP_DEV,KC_LOOP_RO,KC_LOOP_MNT,KC_MOUNTINFO`, then detach the loop
   device in an `if: always()` step. (9d) The step fails unless the run reports exactly `1 passed`: a renamed test, a
   wrong path or a build without it runs no test and exits 0 ("0 passed; ... filtered out").
+  Proof (commit 13, the steps; the run is CI's): three steps end `test`, after the simulator scan. The first installs
+  Ubuntu's dosfstools (the runner image does not promise mkfs.vfat), makes `$RUNNER_TEMP/stick.img` (`truncate -s 16M`,
+  `mkfs.vfat -F 32`) and the mount point `$RUNNER_TEMP/usb`, attaches the image with `sudo losetup --find --show`, and
+  writes `KC_LOOP_DEV`, `KC_LOOP_RO` (`/sys/block/loopN/ro`), `KC_LOOP_MNT` and `KC_MOUNTINFO` (`/proc/self/mountinfo`)
+  to `GITHUB_ENV`. The second builds the bin tests with `--no-run` as the runner's user, takes the one executable cargo
+  reports for the bin target (`--message-format=json`, jq), runs it under
+  `sudo --preserve-env=KC_LOOP_DEV,KC_LOOP_RO,KC_LOOP_MNT,KC_MOUNTINFO` with
+  `--ignored --exact device::usb::tests::loop_device`, and fails unless the run exits 0 and prints both
+  `test device::usb::tests::loop_device ... ok` and `test result: ok. 1 passed; 0 failed; 0 ignored;`. The third,
+  `if: always()`, lazily unmounts a leftover mount and detaches the loop device. That step's shell, run on the Mac
+  without sudo against the host test binary, fails as planned where the Linux-only test is filtered out (`0 passed;
+  ... 58 filtered out`: "loop_device did not run"). No loop device here: the lead reads the test job's "Run the
+  loop-device test as root (exactly 1 passed)" step.
 - [ ] `gates` runs `rootfs-prefix.py --selftest` (commit 10), `--workflows` (commit 13) and `--os-config` (commit 17).
+  Proof (commit 13, `--workflows`; `--os-config` is commit 17): `gates` runs
+  `scripts/banned-api-check.sh --workflows ../.github/workflows` right after the grep gate, on the bare checkout (the
+  workflows live at the repo root). The check is clean on the file as committed, under sh and dash. The run is CI's:
+  the lead reads the gates job's `--workflows` line (`clean, 1 workflow(s)`).
 
   Proof:
   - a green run on the PR head, with all 14 required checks and unchanged names;
