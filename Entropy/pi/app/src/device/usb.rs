@@ -430,20 +430,27 @@ fn list_dir(dir: &Path, kind: FileKind) -> Result<Vec<FileName>, HalError> {
     Ok(names)
 }
 
-/// File `path`'s bytes, read straight into a wiping buffer: `TooLarge` past `max`. The buffer has
-/// room for the file and one byte more, but never more than `max + 1` bytes, so the read stops one
-/// byte past `max` and never grows the buffer, which would leave an unwiped copy behind.
+/// File `path`'s bytes, read straight into a wiping buffer: `TooLarge` past `max` (`read_bounded`).
 fn read_capped(path: &Path, max: usize) -> Result<Zeroizing<Vec<u8>>, HalError> {
     let read = |error: io::Error| fault(&error, HalError::Read);
     let file = File::open(path).map_err(read)?;
-    let room = match usize::try_from(file.metadata().map_err(read)?.len()) {
+    let len = file.metadata().map_err(read)?.len();
+    read_bounded(file, len, max)
+}
+
+/// The bytes of `file`, `len` long by its metadata, read straight into a wiping buffer: `TooLarge`
+/// past `max`. The buffer has room for the file and one byte more, but never more than `max + 1`
+/// bytes, so the read stops one byte past `max` and never grows the buffer, which would leave an
+/// unwiped copy behind, however large the file.
+fn read_bounded<R: Read>(file: R, len: u64, max: usize) -> Result<Zeroizing<Vec<u8>>, HalError> {
+    let room = match usize::try_from(len) {
         Ok(len) if len < max => len + 1,
         _ => max.saturating_add(1),
     };
     let mut bytes = Zeroizing::new(Vec::with_capacity(room));
     file.take(u64::try_from(room).expect("a usize fits a u64"))
         .read_to_end(&mut bytes)
-        .map_err(read)?;
+        .map_err(|error| fault(&error, HalError::Read))?;
     if bytes.len() > max {
         return Err(HalError::TooLarge);
     }

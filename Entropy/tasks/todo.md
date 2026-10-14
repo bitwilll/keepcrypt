@@ -7650,6 +7650,13 @@ stale (Q43 (d)).
   grown buffer would leave an unwiped copy). The host tests make no claim on letter case, which the host's filesystem
   decides (APFS ignores it, ext4 does not); the loop-device test makes it on FAT. File dates need no code: with no
   clock, the kernel's FAT driver writes 1980-01-01, FAT's earliest date (fs/fat/misc.c, `fat_time_unix2fat`).
+  Proof (review fix, commit 9b): two of the behaviours above had no test. "Read at most `max + 1` bytes": the over-limit
+  tests saw only `TooLarge`, so a read of the whole file before that check passed, and a multi-GB file on a hostile
+  stick could fill the Pi's memory. The bound now sits in `read_bounded`, which takes any reader, and
+  `a_read_takes_one_byte_past_the_limit_and_no_more` reads a 1 MiB file with a limit of 10: 11 bytes, then `TooLarge`.
+  "The unmount's fault unless the call had failed already": `a_calls_fault_comes_before_a_failed_unmounts` reads a
+  missing file and writes over an existing name with the plain unmount failing (EBUSY): `Read` and `Exists`, each after
+  a lazy detach. Each review mutant fails its test (the whole file read; the unmount's fault reported).
 - [x] Host contract tests in `device/usb/tests.rs`, over a temp dir from `std::env::temp_dir()` and a recording
   `Mounter`, mirroring pi/sim/tests/hal.rs.
 
@@ -8610,6 +8617,8 @@ The PR is a draft from commit 1.
    8e. pi/app: the plan review: hwrng.rs's doc says "no buffered reader", so group 11's planned rule (no `BufReader`
    anywhere in pi/app, where the gate counts comments) has nothing to flag there.
 9. pi/app (bin): `device/usb.rs`, `SysBlock`, `device/usb/tests.rs` with the `#[ignore]`d loop-device test (group 8).
+   9b. pi/app: the recompute review: a read takes at most one byte past its limit, shown on a counting reader, and a
+   call's fault comes before a failed unmount's.
 10. pi/app (bin), pi/os, .github: `device/rootfs.rs` and its vector; `pi/os/rootfs-prefix.py`; `gates` runs its
     `--selftest` (group 9).
 

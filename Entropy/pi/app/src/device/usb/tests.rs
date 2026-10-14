@@ -509,6 +509,66 @@ fn reads_are_read_only_and_stop_one_byte_past_the_limit_without_growing_the_buff
     clear(&dir);
 }
 
+/// A file of `left` bytes that counts the bytes read from it.
+struct Counting {
+    left: usize,
+    read: usize,
+}
+
+impl Read for Counting {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let count = self.left.min(buf.len());
+        buf[..count].fill(0xA5);
+        self.left -= count;
+        self.read += count;
+        Ok(count)
+    }
+}
+
+/// A file far larger than the limit, as a hostile stick could hold: one byte past `max` is read, and
+/// no more, so the buffer never grows and the Pi's memory is never filled.
+#[test]
+fn a_read_takes_one_byte_past_the_limit_and_no_more() {
+    let mib = 1 << 20;
+    let mut file = Counting { left: mib, read: 0 };
+    let len = u64::try_from(mib).expect("a MiB");
+    assert_eq!(read_bounded(&mut file, len, 10), Err(HalError::TooLarge));
+    assert_eq!(file.read, 11);
+    let mut file = Counting { left: mib, read: 0 };
+    let read = read_bounded(&mut file, len, mib).expect("read");
+    assert_eq!(
+        (read.len(), read.capacity(), file.read),
+        (mib, mib + 1, mib)
+    );
+}
+
+/// A call that fails keeps its own fault when the unmount after it fails too, and the stick is still
+/// detached: a read of a missing file is `Read`, and a write over an existing name `Exists`, not
+/// `Unmount`.
+#[test]
+fn a_calls_fault_comes_before_a_failed_unmounts() {
+    let dir = scratch("fault-and-unmount");
+    fs::write(dir.join(BACKUP), b"earlier").expect("a file");
+    let mut usb = device(one_stick(), &dir);
+    usb.mounter.plain_fails = VecDeque::from([16]);
+    assert_eq!(usb.read(&name("gone.age"), 64), Err(HalError::Read));
+    usb.mounter.plain_fails = VecDeque::from([16]);
+    assert_eq!(usb.write_new(BACKUP, b"new"), Err(HalError::Exists));
+    let failed = |plan| {
+        [
+            mount(&dir, plan),
+            unmount(&dir, Unmount::Plain),
+            unmount(&dir, Unmount::Detach),
+        ]
+    };
+    assert_eq!(
+        usb.mounter.calls,
+        [failed(READ_PLAN), failed(WRITE_PLAN)].concat()
+    );
+    assert_eq!(fs::read(dir.join(BACKUP)).expect("the file"), b"earlier");
+    clear(&dir);
+}
+
 #[test]
 fn a_write_creates_a_new_file_that_alone_can_be_read_back_and_removed() {
     let dir = scratch("write");
