@@ -7269,6 +7269,10 @@ stale (Q43 (d)).
   frame what `App::halt` draws; stop mode's shows "the firmware stopped unexpectedly". `screens::halt` is the one
   stop-screen model for both, and lib.rs re-exports `show_stop` for group 10. `every_screen_is_expected` passes in both
   pi/sim configurations.
+  Proof (review fix, commit 7d): no test gave `show_stop` a failing display, so swallowing or remapping its display
+  fault passed (rule 3: a display fault halts). The test HAL's display can now fail one present:
+  `show_stop_gives_a_display_fault_back_at_once` fails the black frame, then the halt screen, and gets `Display` back
+  at once with nothing drawn after it; either mutant fails it.
 - [x] The boot screen and About fit version `0.0.0` and a 19-character prefix (`0123-4567-89ab-cdef`).
   Proof: the fits test on both screens (screens.rs:512, :581) with that `rootfs` value.
   Proof (commit 6): `boot_and_about_fit_the_version_and_a_root_filesystem_prefix`: both models fit, with each of the
@@ -7432,6 +7436,11 @@ stale (Q43 (d)).
   Proof (commit 7): `the_backlight_stays_off_until_a_frame_is_in_and_goes_off_on_every_error`: a bus that stops at
   each of init's 57 calls or a present's 32 gives `Display` and the backlight off, with the calls before it unchanged.
   The fake bus fails with `Write`, so `Display` is the panel's own.
+  Proof (review fix, commit 7d): that test calls the private `show`; nothing sent a bus fault through
+  `hal::Display::present`, the method the app and `show_stop` call, so a `present` that swallowed or remapped it
+  passed. `a_bus_fault_in_show_stop_is_a_display_fault_with_the_backlight_off` runs `show_stop` over the panel with the
+  bus stopping at each of its two presents' 64 calls: `Display`, the backlight off, nothing sent after the fault; both
+  mutants fail it.
 - [x] `Drop`:
   - sends the profile's `madctl` (so the window is valid whatever state init reached), step 7's full-memory window,
     RAMWR and the zeros from a static zero buffer;
@@ -8567,6 +8576,8 @@ The PR is a draft from commit 1.
    7b. pi/app: the plan and recompute reviews: the panel tests pin `ST7789_INIT_OPCODES` to the plan's 14 bytes and the
    HAT's `spi_hz` and `name`, and run the memory-model wipe over every `PROFILES` entry.
    7c. pi/app: the security review: the `PROFILES` checks refuse an LCMCTRL step with XMV, which flips MADCTL's MV.
+   7d. pi/app: the recompute review: a bus fault in `hal::Display::present` under `show_stop`, and a display fault in
+   `show_stop` itself, give `Display` at once, the panel's backlight off.
 8. pi/app (bin): `device/keys.rs` and `device/hwrng.rs` (groups 6, 7).
 9. pi/app (bin): `device/usb.rs`, `SysBlock`, `device/usb/tests.rs` with the `#[ignore]`d loop-device test (group 8).
 10. pi/app (bin), pi/os, .github: `device/rootfs.rs` and its vector; `pi/os/rootfs-prefix.py`; `gates` runs its

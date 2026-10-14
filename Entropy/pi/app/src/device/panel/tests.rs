@@ -439,6 +439,25 @@ fn the_blank_screen_writes_115_200_zero_bytes() {
     assert_eq!(halt.last(), Some(&Backlight(true)));
 }
 
+/// `show_stop` draws through `hal::Display::present`, as the app does: a bus that stops at any
+/// call of its two presents gives `Display`, with the backlight off and nothing sent after it.
+#[test]
+fn a_bus_fault_in_show_stop_is_a_display_fault_with_the_backlight_off() {
+    for call in 0..2 * PRESENT_SENDS {
+        let (panel, log) = start(&WAVESHARE_1IN3_HAT, INIT_SENDS + call..usize::MAX);
+        let mut panel = panel.expect("init");
+        take(&log);
+        assert_eq!(
+            show_stop(&mut panel, HalError::Stopped),
+            Err(HalError::Display),
+            "call {call}"
+        );
+        let ops = take(&log);
+        assert_eq!(sends(&ops), call, "call {call}");
+        assert_eq!(ops.last(), Some(&Backlight(false)), "call {call}");
+    }
+}
+
 /// After a present, and after one whose write failed once the buffer held frame bytes. A slice
 /// that is not one whole frame sends nothing; only the backlight goes off.
 #[test]

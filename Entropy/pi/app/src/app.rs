@@ -1227,6 +1227,8 @@ mod tests {
         hwrng_fault: bool,
         /// `Usb::stick`'s answer. Every other call on the stick fails with `NoStick` either way.
         stick: bool,
+        /// A display fault on the present tried when `shown` holds this many: it keeps nothing.
+        display_fault_at: Option<usize>,
         shown: Vec<Shown>,
         /// Each hwrng or stick call's span on the fake clock, in order.
         calls: Vec<(u64, u64)>,
@@ -1242,6 +1244,7 @@ mod tests {
                 served: 0,
                 hwrng_fault: false,
                 stick: false,
+                display_fault_at: None,
                 shown: Vec::new(),
                 calls: Vec::new(),
             }
@@ -1261,6 +1264,9 @@ mod tests {
 
     impl Display for Fake {
         fn present(&mut self, frame: &Frame, screen: &Screen<'_>) -> Result<(), HalError> {
+            if self.display_fault_at == Some(self.shown.len()) {
+                return Err(HalError::Display);
+            }
             let id = screen.id();
             assert!(!screen.has_protected() || id.class() == Class::Protected);
             assert!(screen.fits(), "{}", id.name());
@@ -2427,6 +2433,21 @@ mod tests {
         show_stop(&mut display, HalError::Stopped).expect("the stop screen draws");
         let texts = &display.last().texts;
         assert!(texts.contains(&String::from("the firmware stopped unexpectedly")));
+    }
+
+    #[test]
+    fn show_stop_gives_a_display_fault_back_at_once() {
+        // The black frame or the halt screen fails: `Display` at once, and nothing drawn after it.
+        for (fault_at, drawn) in [(0, &[][..]), (1, &[ScreenId::Blank])] {
+            let mut display = Fake::new();
+            display.display_fault_at = Some(fault_at);
+            assert_eq!(
+                show_stop(&mut display, HalError::Stopped),
+                Err(HalError::Display)
+            );
+            let shown: Vec<ScreenId> = display.shown.iter().map(|s| s.id).collect();
+            assert_eq!(shown, drawn);
+        }
     }
 
     /// When the idle timer would cover a Protected screen: it moves only when a key restarts the
