@@ -7931,6 +7931,12 @@ stale (Q43 (d)).
     - `.create(true)`, `.truncate(`, `.append(`, `fs::write`, `fs::copy`, `rename`, `create_dir`, `remove_dir`,
       `set_permissions` and `symlink` appear nowhere in pi/app, except that `device/**/tests.rs` may use `create_dir`,
       `fs::write` and `remove_dir_all` for temp-dir fixtures.
+      Note (stage C's security review, 2026-10-15): this list is the gate's whole reach. An in-place overwrite
+      (`OpenOptions::new().write(true).open(existing)`), `.create(flag)` with a non-literal flag and `fs::hard_link`
+      pass it under device/, so rule 8's "only one new file is ever written" rests on review of device/usb.rs's
+      single `create_new` open, which the gate does hold to usb.rs; the script's header and the rule's comment say so
+      (commit 12d). Widening the list (banning `.write(true)` and `.create(` outside usb.rs, `hard_link`) is a change
+      to this approved list and waits for the lead.
     - That exception holds only for a `tests.rs` whose parent declares it with `#[cfg(test)]` on the line before
       `mod tests;`. Fixtures: the same API in a non-test device file is a hit; a `tests.rs` declared without
       `#[cfg(test)]` is a hit; the exception never covers path literals.
@@ -8909,6 +8915,9 @@ The PR is a draft from commit 1.
     next-line and flow-mapping `write`, bans `secrets` as a word and `github.token`, reads a run key after any dash
     width, quoted or in a flow mapping, and reads `entropy-*.yaml` too; 15 fixtures; entropy-ci.yml's two "no secrets"
     comments say "no secret".
+    12d. scripts, tasks/todo.md: stage C's security review: the write-API rule's header, comment and group 11's list
+    say that an in-place overwrite, `.create(` with a non-literal flag and `fs::hard_link` under device/ are held by
+    review, not by the gate; the list itself is unchanged (widening it waits for the lead).
 13. .github: the cross leg links and scans `keepcrypt-pi`; `test` runs the loop-device test; `gates` runs `--workflows`
     (group 12).
 

@@ -216,7 +216,10 @@
 #              firmware ever creates, the backup); and .create(true), .truncate(, .append(,
 #              fs::write, fs::copy, rename, create_dir*, remove_dir*, set_permissions and symlink*
 #              appear nowhere in pi/app, except that a device test file may use create_dir,
-#              fs::write and remove_dir_all for its temp-dir fixtures. That test file is
+#              fs::write and remove_dir_all for its temp-dir fixtures (an in-place overwrite
+#              through .write(true).open( of an existing file, .create( with a non-literal flag and
+#              fs::hard_link are not on that list: review of the device module holds them, not the
+#              gate). That test file is
 #              pi/app/src/device/**/tests.rs whose parent (X.rs or X/mod.rs for X/tests.rs) holds
 #              "#[cfg(test)]" on the line right before "mod tests;"; any other tests.rs is an
 #              ordinary device file, and the exception never covers path literals. Crates and
@@ -792,11 +795,15 @@ device_create_new() {
   grep -n -a -E -e "${L}create_new$R" -- "$1"
 }
 
-# Rule 8, for every pi/app file: the APIs that write over, grow, move or remove what is already on
-# the stick, or make directories or links; the firmware only ever creates one new file.
-# .create(true) opens for writing whether or not the file exists; .truncate( and .append( are
-# OpenOptions' and also Vec's, which hit too (write the loop). create_dir and remove_dir take
-# their _all forms with them; symlink takes symlink_metadata (fail closed).
+# Rule 8, for every pi/app file: the listed APIs that write over, grow, move or remove what is
+# already on the stick, or make directories or links (tasks/todo.md, M4 group 11); the firmware
+# only ever creates one new file. .create(true) opens for writing whether or not the file exists;
+# .truncate( and .append( are OpenOptions' and also Vec's, which hit too (write the loop).
+# create_dir and remove_dir take their _all forms with them; symlink takes symlink_metadata (fail
+# closed). Not on the list, so held by review of pi/app/src/device/ and not by this gate: an
+# in-place overwrite through OpenOptions .write(true).open( of an existing file, .create( with a
+# flag that is not the literal true, and fs::hard_link; usb.rs's one .write(true) is the
+# create_new open above, and nothing else under device/ opens for writing.
 device_write_api() {
   grep -n -a -E \
     -e '[.][[:space:]]*create[[:space:]]*[(][[:space:]]*true' \
