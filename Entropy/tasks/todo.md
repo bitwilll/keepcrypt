@@ -7375,11 +7375,18 @@ stale (Q43 (d)).
 
   Proof (commit 7): `every_profile_passes_the_checks_and_each_check_fires`: every `init` opcode of `PROFILES` and of
   the test-only profile is on the 14-entry list; profiles that hold MADCTL or DISPON fail the check.
+  Proof (review fix, commit 7b): no test pinned the list itself: INVOFF as `0x28` (DISPOFF), or SWRESET, CASET or RAMWR
+  in INVOFF's place, passed every test, so a later profile could send an opcode the driver owns. The checks test now
+  pins `ST7789_INIT_OPCODES` to the 14 bytes above, written out; each of those mutants fails it.
 - [x] One profile, `WAVESHARE_1IN3_HAT`, holds exactly the approved values: `madctl` `0x70`, the approved COLMOD-to-INVON
   steps, `ram` 320×240, `origin` (0, 0), 40 MHz. `PROFILES` lists every profile. In M4 it holds only this one, or two
   if Q50 applies.
   Proof (commit 7): `the_hats_init_stream_is_the_approved_one_byte_for_byte`; the checks test finds `PROFILES` equal
   to `[&WAVESHARE_1IN3_HAT]`. Its `name` is `st7789-240x240`, Q47's name for this screen type.
+  Proof (review fix, commit 7b): the init stream carries neither `spi_hz` nor `name`, and `PROFILES` was compared with
+  the constant itself, so 4 MHz or another name passed. The init stream test now pins 40 MHz and `st7789-240x240`, and
+  the memory-model test (init and `Drop` leave all of `ram` black) runs over every `PROFILES` entry, not the HAT by
+  name, so a profile Q50 or M4b adds gets it too.
 - [x] `pub const PANEL: &PanelProfile = &WAVESHARE_1IN3_HAT;` is the one line that names the image's profile. Group 10
   uses it, and M4b's B3 replaces it.
   Proof (commit 7): the line is in `device/panel.rs`; the tests find `PANEL` equal to the HAT and in `PROFILES`.
@@ -8387,6 +8394,8 @@ What does not change, in M4 or M4b (Q44-Q50):
   on the memory model, writes only its window. Scratch mutations, not committed, each fail at least one test: no
   zeroize, no backlight on, `Drop` without its blank, no length check, the origin ignored, little-endian pixels, a
   blank of the frame alone, a fault that leaves the backlight on, a pause after every step.
+  Proof (review fix, commit 7b): `ST7789_INIT_OPCODES`, the HAT's `spi_hz` and its `name` are pinned, and the
+  memory-model wipe runs over every `PROFILES` entry; group 5's items.
 - [ ] **Panel variant (Q50), only if H1a showed one:** `WAVESHARE_1IN3_HAT` still equals the approved bytes; the
   variant's stream is pinned to the values H1a confirmed; H1a passes on the image that uses it.
 - [ ] **Kernel allow-list:** `--image` shows the build's `.config` equals `expected/linux.config`; `--os-config` clean;
@@ -8547,6 +8556,8 @@ The PR is a draft from commit 1.
    the measured hwrng rate (Q42 (a) moved that to M8).
 7. pi/app (bin): `#[cfg(test)] mod device;` and `device/panel.rs` with the HAT profile, `ST7789_INIT_OPCODES` and `PANEL`
    (group 5).
+   7b. pi/app: the plan and recompute reviews: the panel tests pin `ST7789_INIT_OPCODES` to the plan's 14 bytes and the
+   HAT's `spi_hz` and `name`, and run the memory-model wipe over every `PROFILES` entry.
 8. pi/app (bin): `device/keys.rs` and `device/hwrng.rs` (groups 6, 7).
 9. pi/app (bin): `device/usb.rs`, `SysBlock`, `device/usb/tests.rs` with the `#[ignore]`d loop-device test (group 8).
 10. pi/app (bin), pi/os, .github: `device/rootfs.rs` and its vector; `pi/os/rootfs-prefix.py`; `gates` runs its

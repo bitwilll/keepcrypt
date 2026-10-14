@@ -361,6 +361,9 @@ fn the_hats_init_stream_is_the_approved_one_byte_for_byte() {
     let ops = take(&log);
     assert_ops(&ops, &approved_init());
     assert_eq!(sends(&ops), INIT_SENDS);
+    // What the stream does not carry: Q47's name for this screen type, and the approved 40 MHz.
+    assert_eq!(WAVESHARE_1IN3_HAT.name, "st7789-240x240");
+    assert_eq!(WAVESHARE_1IN3_HAT.spi_hz, 40_000_000);
     // The image's profile, so this is what the image sends.
     assert_eq!(PANEL, &WAVESHARE_1IN3_HAT);
 }
@@ -520,10 +523,10 @@ fn init_and_drop_each_send_madctl_the_320_by_240_window_and_153_600_zero_bytes()
 
 /// On the model of frame memory, which power-on leaves random: init leaves every pixel black; a
 /// present fills exactly the 240×240 window at the profile's origin, pixel for pixel, and nothing
-/// else; `Drop` leaves every pixel black again. For the HAT and the test-only profile.
+/// else; `Drop` leaves every pixel black again. For every profile and the test-only one.
 #[test]
 fn init_blanks_all_of_memory_a_present_writes_only_its_window_and_drop_blanks_it_again() {
-    for profile in [&WAVESHARE_1IN3_HAT, &OFFSET] {
+    for profile in PROFILES.iter().copied().chain([&OFFSET]) {
         let (panel, log) = start(profile, 0..0);
         let mut panel = panel.expect("init");
         let mut memory = Memory::new(profile.ram);
@@ -584,10 +587,18 @@ fn spans_are_inclusive_and_refuse_empty_or_overflowing_ones() {
 
 /// Every profile passes the checks (Q44): the blank covers the controller's whole memory, the
 /// window lies inside it, every opcode is on the allow-list, one COLMOD at 16 bits a pixel, a bus
-/// speed, and a unique name. `PROFILES` holds exactly the HAT, and `PANEL` is in it. Each check
-/// fails a profile made to break it.
+/// speed, and a unique name. The allow-list is the plan's 14 opcodes. `PROFILES` holds exactly the
+/// HAT, and `PANEL` is in it. Each check fails a profile made to break it.
 #[test]
 fn every_profile_passes_the_checks_and_each_check_fires() {
+    // The allow-list is group 5's, written out from the plan: COLMOD, PORCTRL, GCTRL, VCOMS, LCMCTRL,
+    // VDVVRHEN, VRHS, VDVS, FRCTRL2, PWCTRL1, PVGAMCTRL, NVGAMCTRL, INVOFF and INVON.
+    assert_eq!(
+        ST7789_INIT_OPCODES,
+        [
+            0x3A, 0xB2, 0xB7, 0xBB, 0xC0, 0xC2, 0xC3, 0xC4, 0xC6, 0xD0, 0xE0, 0xE1, 0x20, 0x21
+        ]
+    );
     for profile in PROFILES.iter().copied().chain([&OFFSET]) {
         assert_eq!(faults(profile), Vec::<&str>::new(), "{}", profile.name);
     }
