@@ -14,6 +14,7 @@
 use secrecy::{ExposeSecret, SecretString};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
+use crate::braille::{READBACK_FACES, word_with_key};
 use crate::error::{BackupError, CoreError, InternalFault};
 
 /// The most words a seed has.
@@ -322,6 +323,40 @@ impl TypedBackupPassphrase {
         Ok(typed)
     }
 
+    /// Exactly 8 entries as the Pi's joystick types them (docs/pi-firmware.md "Encrypted backup to
+    /// a USB stick"; tasks/todo.md, M3 Q32 (b)): each the first four letters of a word in the BIP39
+    /// English list, or the whole word when it has three. Lowercase ASCII only, no case folding; a
+    /// longer whole word is refused too. The first four letters identify every word, so, as in the
+    /// read-back, each entry names at most one. Anything else is `Backup(PassphraseWords)`, before
+    /// any scrypt run.
+    pub fn from_first_four(words: &[&str]) -> Result<Self, CoreError> {
+        let mut typed = Self {
+            indices: [0; BACKUP_PASSPHRASE_WORDS],
+        };
+        if words.len() != BACKUP_PASSPHRASE_WORDS {
+            return Err(CoreError::Backup(BackupError::PassphraseWords));
+        }
+        // Each entry's faces 1-4, the read-back's key (a three-letter word's fourth face is blank),
+        // filled in place in one zeroizing buffer, since the letters name a passphrase word.
+        let mut key = Zeroizing::new([None; READBACK_FACES]);
+        for (slot, entry) in typed.indices.iter_mut().zip(words) {
+            let letters = entry.as_bytes();
+            if !(3..=READBACK_FACES).contains(&letters.len())
+                || !letters.iter().all(u8::is_ascii_lowercase)
+            {
+                return Err(CoreError::Backup(BackupError::PassphraseWords));
+            }
+            for (i, face) in key.iter_mut().enumerate() {
+                *face = letters.get(i).copied();
+            }
+            match word_with_key(&key) {
+                Some(index) => *slot = index,
+                None => return Err(CoreError::Backup(BackupError::PassphraseWords)),
+            }
+        }
+        Ok(typed)
+    }
+
     /// The age passphrase text, for `decrypt_backup`.
     pub(crate) fn text(&self) -> Zeroizing<String> {
         passphrase_text(&self.indices)
@@ -575,6 +610,81 @@ mod tests {
                     Err(CoreError::Backup(BackupError::PassphraseWords))
                 ),
                 "{words:?}"
+            );
+        }
+    }
+
+    /// What the Pi's joystick types for a word: its first four letters, or the whole word when it
+    /// has three.
+    fn first_four(word: &str) -> &str {
+        &word[..word.len().min(READBACK_FACES)]
+    }
+
+    // Every list word, eight at a time (2,048 = 256 x 8), comes back from its first four letters,
+    // or from the whole word for the three-letter ones (Q32 (b)).
+    #[test]
+    fn typed_backup_passphrase_takes_every_word_from_its_first_four() {
+        let mut chunks = 0;
+        let mut three_letter = 0;
+        for (chunk, words) in word_list().chunks(BACKUP_PASSPHRASE_WORDS).enumerate() {
+            let entries: Vec<&str> = words.iter().map(|w| first_four(w)).collect();
+            three_letter += entries.iter().filter(|e| e.len() == 3).count();
+            let want: [u16; BACKUP_PASSPHRASE_WORDS] = core::array::from_fn(|i| {
+                u16::try_from(chunk * BACKUP_PASSPHRASE_WORDS + i).expect("below 2,048")
+            });
+            match TypedBackupPassphrase::from_first_four(&entries) {
+                Ok(t) => assert_eq!(t.indices(), &want),
+                Err(e) => panic!("{entries:?} rejected: {e}"),
+            }
+            chunks += 1;
+        }
+        assert_eq!(chunks, 256);
+        assert_eq!(three_letter, 103);
+    }
+
+    // Anything but 8 entries, each 4 lowercase letters that begin a list word or a whole
+    // three-letter list word, is refused. The accepted eight are backup.json's `stream`
+    // passphrase, typed as first fours.
+    #[test]
+    fn typed_backup_passphrase_refuses_anything_but_eight_first_fours() {
+        let eight = [
+            "fly", "fanc", "holl", "cont", "gene", "vast", "mill", "pipe",
+        ];
+        match TypedBackupPassphrase::from_first_four(&eight) {
+            Ok(t) => assert_eq!(t.indices(), &[719, 663, 871, 379, 774, 1933, 1125, 1322]),
+            Err(e) => panic!("rejected: {e}"),
+        }
+        let mut bad: Vec<Vec<&str>> = vec![
+            eight[..7].to_vec(),
+            [&eight[..], &["pipe"]].concat(),
+            Vec::new(),
+        ];
+        for entry in [
+            "abcd",      // 4 letters that begin no word
+            "zzzz",      // likewise
+            "aba",       // 3 letters that begin abandon, but no three-letter word
+            "zzz",       // 3 letters, no word
+            "Fanc",      // uppercase
+            "FLY",       // likewise, a whole three-letter word
+            "fancy",     // a whole word longer than four letters
+            "fa",        // too short
+            "",          // empty
+            "fanc ",     // a trailing space
+            " fly",      // a leading space
+            "fan1",      // a digit
+            "f\u{e1}nc", // not ASCII
+        ] {
+            let mut entries = eight.to_vec();
+            entries[1] = entry;
+            bad.push(entries);
+        }
+        for entries in &bad {
+            assert!(
+                matches!(
+                    TypedBackupPassphrase::from_first_four(entries),
+                    Err(CoreError::Backup(BackupError::PassphraseWords))
+                ),
+                "{entries:?}"
             );
         }
     }

@@ -58,6 +58,6 @@ pub use session::{
     Checking, Collecting, Committed, Discard, GoAhead, Mode, Platform, Ready, Rejected, Rolling,
     Sealed, SeedLength, Session, State, Wiped,
 };
-pub use source::{ExtraSource, HW_BYTES_NEEDED};
+pub use source::{ExtraSource, HW_BYTES_NEEDED, game_random};
 #[cfg(feature = "test-sources")]
 pub use source::{StubEntropy, StubSource, WipeProbe};

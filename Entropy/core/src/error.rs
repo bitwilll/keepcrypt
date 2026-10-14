@@ -431,7 +431,8 @@ pub enum BackupError {
     /// A KeepCrypt backup version this build does not read.
     #[error("unsupported backup version")]
     UnsupportedVersion,
-    /// Typed backup passphrase words that are not exactly 8 words from the list.
+    /// Typed backup passphrase words that are not exactly 8 words from the list, or (through
+    /// `TypedBackupPassphrase::from_first_four`) not their first four letters.
     #[error("the backup passphrase must be 8 words from the BIP39 English list")]
     PassphraseWords,
 }

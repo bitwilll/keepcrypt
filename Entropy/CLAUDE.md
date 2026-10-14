@@ -44,8 +44,9 @@ pass. If one seems to block you, ask the owner.
    everywhere in shipped code: the `rand` crate family in `core/`, `Math.random`,
    `java.util.Random`, `kotlin.random.Random`, `arc4random_uniform` in app code,
    Python `random`, `mt19937`, `rand()`/`srand()`, and any hand-written PRNG.
-   Games get their bytes from core's separate game-randomness call, which makes its own
-   `getrandom` call and never touches the pool.
+   Games get their bytes from core's separate `game_random` call, which makes its own
+   `getrandom` call and never touches the pool. `game_random` is never used for dice, D,
+   nonces, passphrases or any pool input.
 2. **Never narrow the pipe:** nothing between the pool and the seed is narrower than 256 bits.
    No truncation to `u32`/`u64`, no integer casts of secret material, no "reseed with 4 bytes".
 3. **Fail closed:** no fallback source, no default value, no `unwrap_or*` and no
@@ -71,7 +72,9 @@ pass. If one seems to block you, ask the owner.
     the marker string `KC_TEST_SOURCE_DO_NOT_SHIP`. The test registry key lives behind the
     separate `test-registry` feature, which `test-sources` turns on (never the reverse), and
     embeds the marker `KC_TEST_REGISTRY_DO_NOT_SHIP`. CI fails any release artifact that contains
-    either marker, the test registry key or an unexpected RNG symbol.
+    either marker, the test registry key or an unexpected RNG symbol. The Pi simulator
+    (`pi/sim`), with its fake hwrng and stick, never ships: every simulator build embeds
+    `KC_SIMULATOR_DO_NOT_SHIP`, and CI fails any release artifact that contains it.
 11. **No home-made crypto:** use only the crates named in `docs/build-plan.md`. Adding any
     dependency needs owner approval and a `cargo vet` entry.
 12. **No real seeds in tests:** use the vectors in `vectors/` only. Never commit secrets or keys.
@@ -122,10 +125,17 @@ cargo test --workspace --locked      # the release configuration: no test featur
 cargo test -p keepcrypt-core --locked --features test-sources   # stub, fault-injection and test-registry tests,
                                      # and the agreement test, which replays vectors/agreement.json on stub entropy
 # Test features are switched on only like this, with -p, never in a manifest (canaries.sh enforces it).
+# The Pi simulator (pi/sim; `cargo test --workspace` above is its release configuration):
+cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry   # the gate run, full drill
+cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry --test gate -- --ignored --exact capture_set   # captures in target/tmp/pi-sim-captures/
+cargo run -p keepcrypt-pi-sim --locked -- live --out target/pi-sim-live   # Protected screens are placeholders;
+                                     # one input a line on stdin: w a s d, an empty line (press), 1 2 3, tN (N s, no key);
+                                     # any other line or command line ends it with exit status 2, printing nothing
 cargo llvm-cov --locked -p keepcrypt-core --features test-sources --no-cfg-coverage --fail-under-lines 95 --summary-only
                                      # cargo-llvm-cov 0.9.1; the M1 gate is 95% of core's lines
-TRYBUILD=overwrite cargo test -p keepcrypt-core --test typestate   # only after a toolchain or trybuild bump:
-                                     # regenerates the pinned .stderr files; review the diff
+TRYBUILD=overwrite cargo test -p keepcrypt-core --locked --test typestate   # only after a toolchain or trybuild bump,
+                                     # or an owner-approved API change (M3's borrowing restart): regenerates the
+                                     # pinned .stderr files; review the diff
 cargo deny --locked check && cargo audit && cargo vet --locked   # plain `cargo vet` re-fetches imports
 scripts/check-path-deps.sh           # every non-workspace crate comes from crates.io (no path or git overrides)
 python3 -I tools/verify/vectorgen.py --selftest   # 13 checks; also with /usr/bin/python3 -I (3.9, the floor)
@@ -144,12 +154,22 @@ python3 -I tools/verify/verify.py mixed --words N    # N is 12 or 24: prompts fo
 python3 -I tools/verify/verify.py dice --words N     # prompts for the rolls of a dice-only run (Coldcard's too)
 scripts/age-interop.py --core        # the age CLI against tools/verify/ and core, both directions, work factor 18
                                      # (needs age; CI: Ubuntu's 1.1.1). --generate rewrites age_cli_written.json
-scripts/banned-api-check.sh          # grep gate for banned RNG, network and clipboard APIs
+scripts/banned-api-check.sh          # grep gate for banned RNG, network and clipboard APIs, std's OS-seeded hashing
+                                     # in core, ffi and pi/app, and the Shell category: no session, pool input or
+                                     # clock in the games, game_random only in core and the games, one Session::new
+                                     # in pi/app, and the release probe's game_random call
 scripts/banned-api-check.sh --selftest   # also builds the artifact fixtures (needs the pinned toolchain)
 # Release-artifact scan (CI's cross job, per target T; on Linux and Android T builds with
 # CARGO_TARGET_<T>_RUSTFLAGS='--cfg getrandom_backend="linux_getrandom"'):
 cargo build --release --locked -p keepcrypt-core --lib --example release_probe --target T
 scripts/banned-api-check.sh --artifact T target/T/release/libkeepcrypt_core.rlib target/T/release/examples/release_probe
+# On the Pi target (arm-unknown-linux-gnueabihf) also pi/app's release rlib, scanned with those two (clean):
+cargo build --release --locked -p keepcrypt-pi --lib --target T
+scripts/banned-api-check.sh --artifact T target/T/release/libkeepcrypt_core.rlib target/T/release/examples/release_probe target/T/release/libkeepcrypt_pi.rlib
+# The test-registry simulator (CI's test job, T = x86_64-unknown-linux-gnu with the same cfg, its own target dir);
+# exit 1 with exactly the registry marker, the simulator marker and the test key, and no stub marker:
+cargo build --release --locked -p keepcrypt-pi-sim --bin keepcrypt-pi-sim --features keepcrypt-core/test-registry --target T --target-dir target/pi-sim-scan
+scripts/banned-api-check.sh --artifact T target/pi-sim-scan/T/release/keepcrypt-pi-sim
 scripts/canaries.sh                  # 61 checks: proves every gate still fires, the scan's positive controls included
 ```
 

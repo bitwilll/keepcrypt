@@ -316,41 +316,52 @@ fn age_backups() {
     assert!(decrypt_backup(&stream("age/garbage", 9_000), &typed).is_err());
 }
 
+/// Whole words through `from_words`, and their first fours (Q32 (b)) through `from_first_four`.
 #[test]
 fn typed_backup_words() {
-    let base = [
+    type FromTyped = fn(&[&str]) -> Result<TypedBackupPassphrase, CoreError>;
+    let words = [
         "praise", "bone", "derive", "dinner", "acid", "winter", "choose", "control",
     ];
-    let mut lists: Vec<Vec<String>> = (0..=9)
-        .map(|n| {
-            base.iter()
-                .cycle()
-                .take(n)
-                .map(|w| (*w).to_owned())
-                .collect()
-        })
-        .collect();
-    for at in 0..base.len() {
-        for word in [
-            "", " ", "PRAISE", "prais", "praisee", "\u{e9}", "zoo\0", "a b",
-        ] {
-            let mut list: Vec<String> = base.iter().map(|w| (*w).to_owned()).collect();
-            list[at] = word.to_owned();
-            lists.push(list);
+    let fours = [
+        "prai", "bone", "deri", "dinn", "acid", "wint", "choo", "cont",
+    ];
+    let constructors: [(&[&str; 8], FromTyped); 2] = [
+        (&words, TypedBackupPassphrase::from_words),
+        (&fours, TypedBackupPassphrase::from_first_four),
+    ];
+    for (base, from_typed) in constructors {
+        let mut lists: Vec<Vec<String>> = (0..=9)
+            .map(|n| {
+                base.iter()
+                    .cycle()
+                    .take(n)
+                    .map(|w| (*w).to_owned())
+                    .collect()
+            })
+            .collect();
+        for at in 0..base.len() {
+            for word in [
+                "", " ", "PRAISE", "prais", "praisee", "\u{e9}", "zoo\0", "a b", "pra",
+            ] {
+                let mut list: Vec<String> = base.iter().map(|w| (*w).to_owned()).collect();
+                list[at] = word.to_owned();
+                lists.push(list);
+            }
         }
+        lists.push(vec![
+            String::from_utf8_lossy(&stream("words", 300))
+                .into_owned();
+            8
+        ]);
+        lists.push(vec!["abandon".to_owned(); 10_000]);
+        let mut accepted = 0;
+        for list in &lists {
+            let typed: Vec<&str> = list.iter().map(String::as_str).collect();
+            accepted += usize::from(from_typed(&typed).is_ok());
+        }
+        assert_eq!(accepted, 1, "only the eight entries themselves");
     }
-    lists.push(vec![
-        String::from_utf8_lossy(&stream("words", 300))
-            .into_owned();
-        8
-    ]);
-    lists.push(vec!["abandon".to_owned(); 10_000]);
-    let mut accepted = 0;
-    for list in &lists {
-        let words: Vec<&str> = list.iter().map(String::as_str).collect();
-        accepted += usize::from(TypedBackupPassphrase::from_words(&words).is_ok());
-    }
-    assert_eq!(accepted, 1, "only the eight list words themselves");
 }
 
 #[test]

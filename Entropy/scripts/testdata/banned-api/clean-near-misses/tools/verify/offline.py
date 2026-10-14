@@ -56,3 +56,25 @@ the_clipboard = None  # a name, not osascript's phrase
 SHOP = "lathe clipboard"  # after a longer word that ends in the
 text = history.clipboard_text  # a longer attribute
 import clipboard_notes  # a local module with a longer name
+# Look-alikes of M3's routes: longer last parts of a dotted name, logging's and multiprocessing's
+# offline modules, tkinter's other selection calls, Tcl's other commands, pandas' other names,
+# JXA's call in lower case, and the two cmdlet aliases on a line that starts no shell or inside
+# longer words.
+import gevent.sockets_compat  # socket: a dotted name whose last part is longer
+from gevent.socketpool import Pool  # socket: a longer last part after from
+import configparser  # config: a longer name
+from multiprocessing import pool  # the package's offline pool; its managers module is refused
+from logging import Formatter  # config: only in this comment
+report(
+    args.config_file,
+    self.managers_seen,
+)
+last_selection_own = None  # tkinter's call inside a longer name
+root.tk.call("wm", "title", root._w, "KeepCrypt")  # Tcl's other commands
+root.tk.eval("winfo exists .")
+NOTE = call("clipboards")  # a longer word
+KEY = "clipboard_text"  # a longer name in a string
+skip_clipboard_set = True  # pandas' call inside a longer name
+theclipboard_hint = None  # JXA's call keeps its capital C
+scb = gcb = 0  # ordinary names on a line that starts no shell
+TOOLS = ("pwsh", "gcbx", "scb_count")  # PowerShell beside longer words

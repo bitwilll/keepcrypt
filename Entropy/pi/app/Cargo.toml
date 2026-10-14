@@ -7,8 +7,21 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
+# Only the crates named in docs/build-plan.md. Adding one needs owner approval and a cargo-vet entry.
+# No [dev-dependencies] table: scripts/canaries.sh appends one to a copy of this file, so tests
+# that read vectors live in pi/sim.
 [dependencies]
 keepcrypt-core.workspace = true
+# Fonts, shapes and the DrawTarget that the app's frame implements (tasks/todo.md, M3 Q28 (a)). It
+# has no default features, so defmt, fixed_point and nalgebra_support stay off. autocfg (num-traits'
+# build dependency, through float-cmp) is held at 1.5.0 by `cargo update --precise`: the imported
+# cargo-vet audits cover 1.5.0, not 1.5.1.
+embedded-graphics = "0.8.2"
+# QR codes encoded into buffers the app owns and wipes after drawing, since the registration and
+# collision-report QRs carry seal codes (Q28 (b)). The caret spec excludes the yanked 1.8.0.
+qrcodegen-no-heap = "1.8.1"
+# Wipes the entry-grid buffers, the frame and the QR buffers (rule 5); core's spec.
+zeroize = { version = "1.9.0", features = ["derive"] }
 
 [lints.rust]
 # scripts/canaries.sh pins this table and [lints.clippy] below exactly, per crate.

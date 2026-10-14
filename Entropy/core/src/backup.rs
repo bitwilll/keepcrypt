@@ -835,6 +835,53 @@ mod tests {
         }
     }
 
+    /// A passphrase as the Pi's joystick types it (Q32 (b)): each word's first four letters, or
+    /// the whole word when it has three.
+    fn first_fours(passphrase: &str) -> Vec<&str> {
+        passphrase
+            .split(' ')
+            .map(|w| &w[..w.len().min(4)])
+            .collect()
+    }
+
+    // Every backup.json passphrase comes back from its first fours as the same 8 words, and only
+    // CCTV's "password" (in its two files) is refused both ways; decrypt_backup opens abandon-12
+    // through them.
+    #[test]
+    fn first_fours_give_every_backup_json_passphrase() {
+        let doc = read("backup.json");
+        let mut refused = 0;
+        for case in ["passphrases", "age_files", "age_refused"]
+            .iter()
+            .flat_map(|section| doc[*section].as_array().expect("a list"))
+        {
+            let passphrase = text(&case["passphrase"]);
+            let words: Vec<&str> = passphrase.split(' ').collect();
+            match (
+                TypedBackupPassphrase::from_words(&words),
+                TypedBackupPassphrase::from_first_four(&first_fours(passphrase)),
+            ) {
+                (Ok(whole), Ok(fours)) => assert_eq!(fours.indices(), whole.indices()),
+                (Err(_), Err(e)) => {
+                    assert_eq!(e, CoreError::Backup(BackupError::PassphraseWords));
+                    refused += 1;
+                }
+                _ => panic!("{}: from_words and from_first_four disagree", case["name"]),
+            }
+        }
+        assert_eq!(refused, 2, "cctv-scrypt and cctv-armor-scrypt");
+        let file = named(&doc["age_files"], "abandon-12");
+        let fours = TypedBackupPassphrase::from_first_four(&first_fours(text(&file["passphrase"])))
+            .expect("8 first fours");
+        let checked = decrypt_backup(&case_file(file), &fours).expect("checked");
+        let case = plaintext_case(&doc, "abandon-12");
+        assert_eq!(checked.fingerprint(), fingerprint_of(case));
+        assert_eq!(
+            checked.reveal_words().collect::<Vec<_>>().join(" "),
+            text(&case["mnemonic"])
+        );
+    }
+
     #[test]
     fn checked_backup_zeroizes() {
         let mut checked = CheckedBackup {

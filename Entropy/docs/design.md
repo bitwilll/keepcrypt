@@ -261,7 +261,7 @@ Run seed generation as one small, isolated module: two independent legs, a singl
 
 The device leg carries a full 256 bits and the dice leg at least 128 (about 256 with 99 rolls: 255.9, which the figure's "99 give 256" rounds up); the commitment is shown before any roll, so neither side can steer the other. The dashed path is the user's own check on a separate offline computer.
 
-**Kept out of the seed module:** the games, any network stack, file storage, and logging. They run in a separate process that can only add uncredited bytes to the pool, never read from it.
+**Kept out of the seed module:** the games, any network stack, file storage, and logging. None of them can read the pool. The games run in the app's one process but hold no path to the session: they take their bytes only from core's separate `game_random` call, and only the ceremony loop forwards their button timing to the pool, uncredited.
 
 ## Implementation plan
 
@@ -282,7 +282,7 @@ Build the verifiable core first, prove it, then add hardware and extras. Each ph
 - [ ] Integrate an Infinite Noise TRNG or your own avalanche board, read in raw mode
 - [ ] Lab characterization with `ea_non_iid` and `ea_restart` across boards and temperatures
 - [ ] Add camera, mic, IMU and keypress timing as uncredited pool inputs
-- [ ] Optional game as a waiting screen, using a separate throwaway RNG that never touches the pool
+- [ ] Optional game as a waiting screen, using a separate throwaway RNG that never touches the pool (lands early, with the Pi app in milestone M3)
 - [ ] **Gate:** credits documented with data; health tests tuned to measured H; extras proven unable to reduce output entropy
 
 ### Phase 3: release hardening

@@ -73,7 +73,7 @@ keepcrypt/
 | iOS | Swift, SwiftUI, XCFramework from `cargo` + UniFFI, iOS 17+ | iOS 17 adds `sceneCaptureState` for capture detection |
 | Bindings | Mozilla UniFFI | Generates Kotlin and Swift from one Rust interface |
 | Core crates | `getrandom`, `sha2`, `bip39`, `bitcoin` (fingerprint, address), `miniscript` (descriptors), `unicode-normalization` (NFKD of the BIP39 passphrase), a single-frame BC-UR encoder and strict single-part decoder written in core with no crate (watch-only and go-ahead QRs), the age v1 scrypt format written in core from the RustCrypto `scrypt`, `chacha20poly1305`, `poly1305` (named only to switch on its `zeroize`, which wipes the one-time key), `hkdf`, `hmac` and `base64ct` crates (not the `age` crate), `ed25519-dalek` (signature verification only), `zeroize`, `secrecy`, `thiserror` | Small, widely reviewed; nothing else without review |
-| Pi crates | `rppal` (GPIO, SPI), `mipidsi` (ST7789), `embedded-graphics`, `embedded-graphics-simulator` (sim only) | Userspace drivers, testable on a desktop |
+| Pi crates | `rppal` (GPIO, SPI), `mipidsi` (ST7789), `embedded-graphics`, `qrcodegen-no-heap` (QR codes encoded into buffers the app wipes after drawing); the simulator needs no display or image crate: it writes the app's own frames as PNG files itself | Userspace drivers, testable on a desktop |
 | Verifier | Python 3, standard library only | Anyone can read and run it offline |
 | Dependency hygiene | `Cargo.lock` committed, `cargo-deny`, `cargo-audit`, `cargo-vet` | Supply-chain control; Coldcard's bug came from a submodule |
 | Registry | Rust (axum, SQLite) server; static TypeScript page with no third-party scripts | The only networked component; small enough to audit |
@@ -88,7 +88,7 @@ keepcrypt/
 | --- | --- |
 | `pool` | SHA-512 pool; absorbs records as source id (u16), length (u64, big-endian), data |
 | `health` | Repetition Count, Adaptive Proportion and startup tests on raw samples |
-| `source` | Source ids and credit policy; reads `getrandom()` itself so no shell can skip it; from M3, also the games' randomness, from a separate `getrandom()` call that never touches the pool |
+| `source` | Source ids and credit policy; reads `getrandom()` itself so no shell can skip it; from M3, also `game_random`, the games' randomness, from a separate `getrandom()` call that never touches the pool |
 | `dice` | Roll validation (1 to 6 only), entropy count at 2.585 bits per roll, ASCII string |
 | `seed` | Commitment C, combine E, dice-only E, BIP39 encoding, fingerprint and first address via rust-bitcoin |
 | `backup` | age encryption with an scrypt passphrase; generated 8-word backup passphrases |
@@ -150,7 +150,9 @@ pub enum Rejected { Retry(Session<Checking>, CheckError), Collision(Wiped) } // 
 pub enum Discard { Collision, CannotCheck }
 impl Wiped {
     pub fn collision_report(&self) -> Option<&CollisionReport>;   // the seal code to report, only after a collision
-    pub fn restart(self, len: SeedLength, mode: Mode) -> Result<Session<Collecting>, CoreError>; // fresh legs; 99-roll minimum after a collision, kept through Cannot check
+    pub fn restart(&self, len: SeedLength, mode: Mode) -> Result<Session<Collecting>, CoreError>; // fresh legs; 99-roll minimum after a collision, kept through Cannot check;
+                                                                  // borrows, so the shell can keep the Wiped and restart from it again,
+                                                                  // as after the Pi's idle wipe; an Err leaves the Wiped, which holds no seed
 }
 impl Session<Ready> {
     pub fn mnemonic(&self) -> &SecretMnemonic;
@@ -194,14 +196,19 @@ impl VerifiedProof {                                              // the same nu
 }
 // RegistryDate: new(year: u16, month: u8, day: u8) or from_yyyymmdd(value: u32) -> Result<Self, CoreError>, a real
 // date or Snapshot(BadDate); the shell's clock gives today.
-// Typed backup words reach only decrypt_backup. CheckedBackup: fingerprint() and seal(); the words and
-// braille only through reveal_words() and reveal_braille(). The free functions run their own KAT groups,
-// except render_text and registry_key_is_test.
+// Typed backup words reach only decrypt_backup, as a TypedBackupPassphrase: from_words(words: &[&str]) takes the
+// 8 words exactly as listed; from_first_four(words: &[&str]), for the Pi's joystick, takes 8 entries, each the
+// first four lowercase letters of a list word or a whole three-letter word; anything else is refused before any
+// scrypt run, and no word list leaves core. CheckedBackup: fingerprint() and seal(); the words and braille only
+// through reveal_words() and reveal_braille(). The free functions run their own KAT groups, except render_text,
+// registry_key_is_test and game_random (below).
 // test-sources builds add the stubs (StubSource, StubEntropy, WipeProbe) and twins that take one or make a KAT
 // group fail (new_with_stub, restart_with_stub, *_with_kat_fault); release builds have none.
-// M3 adds the games' call to source, with the Pi games as its first consumer: a free function that fills a
-// buffer from its own getrandom call and never touches the pool or a session; the phones reach it through the
-// FFI in M5 and M6.
+// M3 adds game_random(buf: &mut [u8]) -> Result<(), CoreError> to source, with the Pi games as its first
+// consumer: a free function that fills buf from its own getrandom call and never touches the pool or a session.
+// It is for games only, never for dice, D, nonces, passphrases or any pool input; its bytes are plain, since
+// games draw them; it runs no KAT group and has no stub twin, so it reads the real OS in every build. The phones
+// reach it through the FFI in M5 and M6.
 ```
 
 **Credit policy.**

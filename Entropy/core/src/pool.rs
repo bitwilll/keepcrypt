@@ -64,7 +64,7 @@ mod tests {
     use crate::source::ExtraSource;
     use crate::test_vectors::{hex, keepcrypt_json, named, text};
     use serde_json::Value;
-    use std::collections::HashSet;
+    use std::collections::BTreeSet;
 
     fn source_id(id: &Value) -> SourceId {
         match id.as_u64().expect("an id") {
@@ -150,7 +150,7 @@ mod tests {
         let base =
             hex(&named(&keepcrypt_json()["pool"], "one-os-record")["records"][0]["data_hex"]);
         assert_eq!(base.len(), 64);
-        let mut seen = HashSet::new();
+        let mut seen = BTreeSet::new();
         assert!(seen.insert(device_leg(&[(SourceId::Os, base.clone())])));
         for bit in 0..512 {
             let mut flipped = base.clone();
