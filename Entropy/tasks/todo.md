@@ -7608,7 +7608,7 @@ stale (Q43 (d)).
   - the loop-device test green in CI.
 
 **9. Device: the rootfs prefix (pure; `device/rootfs.rs`; Q39 (g))**
-- [ ] `prefix<R: Read>(device, partition_len)`:
+- [x] `prefix<R: Read>(device, partition_len)`:
   1. Check the SquashFS magic `hsqs` at byte 0 and version 4.0 at bytes 28-31.
   2. Read `bytes_used` as a u64 little-endian at byte 40, and round it up to 4,096. mksquashfs pads to 4,096, so this is
      exactly the `rootfs.squashfs` file.
@@ -7617,6 +7617,26 @@ stale (Q43 (d)).
   5. The prefix is the first 8 digest bytes, as 16 lowercase hex characters in four groups of four.
 
   Any failure is `RootFs`.
+  Proof (commit 10): `cargo test -p keepcrypt-pi --locked --bin keepcrypt-pi`: 50 passed, 8 of them in
+  `device/rootfs/tests.rs`, on partitions in memory:
+  - the vector (the magic, version 4.0 and `bytes_used` 4,096 are its only non-zero bytes) gives `722a-ccc1-0d67-011e`,
+    pinned as `VECTOR_PREFIX`; digest bytes `01 23 … ef` give `0123-4567-89ab-cdef`;
+  - `bytes_used` 96, 4,095, 4,096, 4,097, 12,288 and 12,289 hash 4,096, 4,096, 4,096, 8,192, 12,288 and 16,384 bytes:
+    a change to the last byte hashed changes the prefix, one to the next byte does not;
+  - a 200,000-byte image in a 1 MiB partition is read as 96 bytes, three reads of 65,536 and one of 4,000, and no
+    further; a device that gives at most 1,000 bytes a read, or interrupts three reads, gives the same prefix;
+  - `RootFs`, which halts: the big-endian magic, another or none; versions 3.0, 4.1, 5.0 and a big-endian 4.0; a
+    `bytes_used` of 0, 1 or 95; one rounding past the partition (12,289 and 16,384 in 12 KiB, 5,000 in 6,000 bytes) or
+    past `u64::MAX`; a read that ends early (at 0, 95, 96, 4,096 or 8,191 bytes) or fails. A bad superblock is found
+    after its 96 bytes and nothing more, and nothing is read after a failed read.
+
+  As built: `bytes_used` must also cover the 96-byte superblock, on the device and in `rootfs-prefix.py`: a smaller one
+  is no SquashFS image, and 0 would round to no bytes at all. `VECTOR_PREFIX` is the vector's one pinned copy:
+  `rootfs-prefix.py --selftest` reads that line from `device/rootfs/tests.rs` and must compute the same. Scratch
+  mutations, not committed, each fail at least one test (18): no rounding; no partition check, or a strict one; no
+  `bytes_used` minimum, or a strict one; the magic or the version unchecked, or only the major version; `bytes_used`
+  big-endian or at byte 48; whole chunks read past the length; 1,000-byte reads; one read for `read_exact`; the
+  superblock not hashed; uppercase digits; nibbles swapped; the last 8 digest bytes; groups of 8 digits.
 - [ ] `pi/os/rootfs-prefix.py` (standard library only, run with `-I`) lands in the same commit (10), and `gates` runs its
   `--selftest`. It:
   - computes the same rule from an image's partition 2;

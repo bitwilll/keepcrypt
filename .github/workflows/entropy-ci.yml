@@ -237,7 +237,10 @@ jobs:
     # release-artifact scan's fixtures, which rustc builds for an Android and an iOS target); the
     # verifier self-test (13 checks: every vectors/ file regenerated or recomputed, Coldcard's
     # hash-pinned scripts re-run behind rolls.json and on agreement.json's dice-only subset, and
-    # lone copies of the shipped verify.py under an audit hook, piped and in a pseudo-terminal); and
+    # lone copies of the shipped verify.py under an audit hook, piped and in a pseudo-terminal); the
+    # root filesystem prefix script's self-test (tasks/todo.md, M4 group 9): the vector's prefix
+    # that pi/app's device/rootfs test pins, recomputed by the script that gives each image's, and
+    # each of its refusals; and
     # the canaries: crates that must fail cargo-deny and clippy, mutated copies of the real crates,
     # a path override, the dependency graph pins, a changed byte in each vectors file vectorgen.py
     # writes or reads back, a changed agreement.json value core's agreement test must refuse,
@@ -256,6 +259,7 @@ jobs:
       # The grep gate runs first, on the bare checkout, before anything writes target/.
       - run: scripts/banned-api-check.sh
       - run: python3 -I tools/verify/vectorgen.py --selftest
+      - run: python3 -I pi/os/rootfs-prefix.py --selftest
       - name: Install the pinned toolchain (rust-toolchain.toml)
         run: |
           rustup toolchain install
