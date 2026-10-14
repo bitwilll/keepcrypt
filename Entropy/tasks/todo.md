@@ -7316,7 +7316,7 @@ stale (Q43 (d)).
   call, so no scripted press begins before a fence. The fence's proof is therefore app.rs's tests.
 
 **5. Device: the panel (pure; `device/panel.rs`; Q36 (c), Q44)**
-- [ ] `Panel<B: Bus>` runs over the approved `Bus` trait (unchanged) and one `&'static PanelProfile`. The trait:
+- [x] `Panel<B: Bus>` runs over the approved `Bus` trait (unchanged) and one `&'static PanelProfile`. The trait:
   `trait Bus { command(cmd, args) -> Result<(), HalError>; data(bytes) -> Result<(), HalError>; reset(high); backlight(on); sleep_ms(ms) }`.
   - `reset` and `backlight` are single register writes that cannot fail.
   - Every `data` call sends the whole slice or fails.
@@ -7331,18 +7331,29 @@ stale (Q43 (d)).
     MV clear. Init, `Drop` and stop mode blank all of it;
   - `origin: Point`, where the 240×240 frame sits in that memory;
   - `spi_hz: u32`.
-- [ ] `ST7789_INIT_OPCODES` is an allow-list, the only opcodes a profile's `init` may hold:
+
+  Proof (commit 7): `cargo test -p keepcrypt-pi --locked --bin keepcrypt-pi`: 10 passed. `device/panel.rs` has the
+  trait as above (`sleep_ms(u16)`, matching `delay_ms`), `Panel` holds the bus, one profile and the buffer, and
+  `PanelProfile` has exactly these six fields (`Size` and `Point` hold `u16`s); `Panel` implements `hal::Display`, so
+  `show_stop` draws over it.
+- [x] `ST7789_INIT_OPCODES` is an allow-list, the only opcodes a profile's `init` may hold:
   - COLMOD `3A`, PORCTRL `B2`, GCTRL `B7`, VCOMS `BB`, LCMCTRL `C0`, VDVVRHEN `C2`, VRHS `C3`, VDVS `C4`, FRCTRL2 `C6`,
     PWCTRL1 `D0`, PVGAMCTRL `E0`, NVGAMCTRL `E1`, INVOFF `20`, INVON `21`;
   - everything else either belongs to the driver or is never sent: MADCTL, sleep in and out, display on and off,
     windows, memory writes, scrolling, partial mode and idle mode;
   - INVOFF is on the list because some panels need inversion off (Q50; [S36]).
-- [ ] One profile, `WAVESHARE_1IN3_HAT`, holds exactly the approved values: `madctl` `0x70`, the approved COLMOD-to-INVON
+
+  Proof (commit 7): `every_profile_passes_the_checks_and_each_check_fires`: every `init` opcode of `PROFILES` and of
+  the test-only profile is on the 14-entry list; profiles that hold MADCTL or DISPON fail the check.
+- [x] One profile, `WAVESHARE_1IN3_HAT`, holds exactly the approved values: `madctl` `0x70`, the approved COLMOD-to-INVON
   steps, `ram` 320×240, `origin` (0, 0), 40 MHz. `PROFILES` lists every profile. In M4 it holds only this one, or two
   if Q50 applies.
-- [ ] `pub const PANEL: &PanelProfile = &WAVESHARE_1IN3_HAT;` is the one line that names the image's profile. Group 10
+  Proof (commit 7): `the_hats_init_stream_is_the_approved_one_byte_for_byte`; the checks test finds `PROFILES` equal
+  to `[&WAVESHARE_1IN3_HAT]`. Its `name` is `st7789-240x240`, Q47's name for this screen type.
+- [x] `pub const PANEL: &PanelProfile = &WAVESHARE_1IN3_HAT;` is the one line that names the image's profile. Group 10
   uses it, and M4b's B3 replaces it.
-- [ ] Init, in order. The driver owns every step that is the same for every screen. The profile supplies `madctl` and its
+  Proof (commit 7): the line is in `device/panel.rs`; the tests find `PANEL` equal to the HAT and in `PROFILES`.
+- [x] Init, in order. The driver owns every step that is the same for every screen. The profile supplies `madctl` and its
   `init` steps:
   1. Backlight low.
   2. RST high 10 ms, low 10 ms, high, then 120 ms.
@@ -7359,18 +7370,34 @@ stale (Q43 (d)).
 
   For the HAT, the byte stream is the approved one, byte for byte. The backlight comes on after the first successful
   present.
-- [ ] Present:
+  Proof (commit 7): the HAT's recorded init equals steps 1-8 as approved before Q44, which the test writes out from
+  the plan: 66 bus calls, 57 of them commands and writes. The gamma tables equal SeedSigner's `ST7789.py` and
+  Waveshare's `LCD_1in3.c` [S6, S34], both re-read 2026-10-14.
+- [x] Present:
   - CASET `origin.x .. origin.x + 239`, RASET `origin.y .. origin.y + 239`, RAMWR (for the HAT, `00 00 00 EF` twice, as
     approved);
   - then `Frame::raw()`, high byte first, as 29 writes of at most 4,096 bytes through one `Zeroizing<[u8; 4096]>`;
   - the buffer is zeroized after every present, error paths included;
   - the API offers no partial window.
-- [ ] Any bus error turns the backlight off, then returns `HalError::Display`.
-- [ ] `Drop`:
+
+  Proof (commit 7):
+  - `a_present_sends_the_window_then_the_frame_high_byte_first_in_29_writes`: `00 00 00 EF` twice, 28 writes of 4,096
+    and one of 512, 115,200 bytes, and 0xF800 gives `F8 00`;
+  - `the_buffer_is_zero_after_a_present_and_after_a_failed_one`: a lost write at each of a present's 29 writes; a slice
+    that is not one whole frame sends nothing.
+- [x] Any bus error turns the backlight off, then returns `HalError::Display`.
+  Proof (commit 7): `the_backlight_stays_off_until_a_frame_is_in_and_goes_off_on_every_error`: a bus that stops at
+  each of init's 57 calls or a present's 32 gives `Display` and the backlight off, with the calls before it unchanged.
+  The fake bus fails with `Write`, so `Display` is the panel's own.
+- [x] `Drop`:
   - sends the profile's `madctl` (so the window is valid whatever state init reached), step 7's full-memory window,
     RAMWR and the zeros from a static zero buffer;
   - then turns the backlight off;
   - handles a write error there with an explicit `match`, never `let _`.
+
+  Proof (commit 7): `init_and_drop_each_send_madctl_the_320_by_240_window_and_153_600_zero_bytes`; on a stopped bus
+  `Drop` still turns the backlight off. On the tests' model of frame memory, which starts non-black, init and `Drop`
+  each leave all 320×240 pixels black, for the HAT and the test-only profile.
 - [ ] The HAT profile's `madctl` (orientation and colour order), its INVON step and its `spi_hz` (40 MHz, SPI mode 0) are
   values that H1a confirms.
   - 40 MHz is Waveshare's demo rate. It is above the ST7789VW datasheet's serial write timing, which the field's doc
@@ -8212,10 +8239,14 @@ What does not change, in M4 or M4b (Q44-Q50):
   - a backup is written and read back under `mlockall`.
 
   Proof: H1a, H1, H2.
-- [ ] **Panel profile (Q44):** the HAT profile's init stream equals the approved bytes; the `PROFILES` checks and the
+- [x] **Panel profile (Q44):** the HAT profile's init stream equals the approved bytes; the `PROFILES` checks and the
   test-only tests with `origin` (40, 0) pass; `PROFILES` holds exactly the HAT, or the HAT and `WAVESHARE_1IN3_HAT_B` if
   Q50 applied.
   Proof: group 5's tests in commit 7.
+  Proof (commit 7): the 10 tests in `device/panel/tests.rs` pass; the test-only profile gives CASET `00 28 01 17` and,
+  on the memory model, writes only its window. Scratch mutations, not committed, each fail at least one test: no
+  zeroize, no backlight on, `Drop` without its blank, no length check, the origin ignored, little-endian pixels, a
+  blank of the frame alone, a fault that leaves the backlight on, a pause after every step.
 - [ ] **Panel variant (Q50), only if H1a showed one:** `WAVESHARE_1IN3_HAT` still equals the approved bytes; the
   variant's stream is pinned to the values H1a confirmed; H1a passes on the image that uses it.
 - [ ] **Kernel allow-list:** `--image` shows the build's `.config` equals `expected/linux.config`; `--os-config` clean;
