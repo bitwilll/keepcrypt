@@ -7426,12 +7426,12 @@ stale (Q43 (d)).
     - no present writes outside the 240×240 window.
 
 **6. Device: keys and clock (pure; `device/keys.rs`)**
-- [ ] `KeyLoop<E: EdgeSource, C: Clock>` implements `next_event`:
+- [x] `KeyLoop<E: EdgeSource, C: Clock>` implements `next_event`:
   - each edge goes into `input::Debouncer` with its kernel timestamp. A falling edge means down, and edges map to keys
     through `Key::bcm_pin` (group 4);
   - it waits until the earlier of `deadline_ns` and `Debouncer::due_ns()`. `u64::MAX` waits with no timeout;
   - it returns `Tick` once the deadline passes.
-- [ ] Checked conversions of the kernel `Duration` and of `(tv_sec, tv_nsec)` to u64 nanoseconds.
+- [x] Checked conversions of the kernel `Duration` and of `(tv_sec, tv_nsec)` to u64 nanoseconds.
   - On an edge, overflow is `HalError::Buttons`.
   - On the clock, overflow panics with fixed text, because `now_ns` returns no `Result`; the panic ends in stop mode.
 
@@ -7445,8 +7445,30 @@ stale (Q43 (d)).
   - overflow is refused;
   - a lost edge (a `seqno` gap) costs at most the next press of that key.
 
+  Proof (commit 8): `cargo test -p keepcrypt-pi --locked --bin keepcrypt-pi`: 25 passed, 10 of them in
+  `device/keys/tests.rs`, on a scripted `EdgeSource` and a clock that moves only while the loop waits:
+  - a bounce train is one press, 20 ms after its last edge, at its first edge's time; a key held 60 s gives one press,
+    its bouncing release none, and the next press after a stable release a new one;
+  - with no press the loop waits until the deadline and ticks there; with one pending, until the earlier of the two;
+  - a deadline already past ticks at once, with no wait, after a press that settled by it; one that settled after it
+    comes on a later call, as in pi/sim;
+  - `u64::MAX` with no press pending waits with no timeout;
+  - an edge time past `u64::MAX` ns and a pin that is no key's give `Buttons`; `timespec_ns` takes `i32` and `i64`
+    fields and refuses a negative one, `tv_nsec` of a second or more and anything past `u64::MAX` ns; `clock_ns` then
+    panics with "the monotonic clock is out of range";
+  - the joystick's first release lost, its second press lost, or both: only the second press is lost, and KEY1's press
+    meanwhile is kept.
+
+  As built, beyond the list: before it judges a press, the loop takes in every edge already queued and gives them to
+  the debouncer in time order, which `Debouncer::edge` requires and rppal's order (one queued edge of each ready line in
+  turn) does not give; a 5 ms glitch queued while the device was busy is then no press, nor a 15 ms press whose release
+  rppal gives after another line's later one. Waits are whole milliseconds rounded up (rppal truncates epoll's timeout
+  to them) and at most a day (rppal casts it to an `i32`). `Edge` carries no `seqno`: each edge carries its line's new
+  level, so the debouncer needs none. Scratch mutations, not committed, each fail at least one test: no sort, no drain,
+  polling past the deadline, truncated waits, no cap, rising as down, `tv_nsec` unchecked.
+
 **7. Device: the hwrng (pure; `device/hwrng.rs`; Q39 (c))**
-- [ ] `fill_block<R: RawRead, C: Clock>(raw, clock, block, deadline)` reads straight into the caller's 64-byte block until
+- [x] `fill_block<R: RawRead, C: Clock>(raw, clock, block, deadline)` reads straight into the caller's 64-byte block until
   it is full:
   - `WouldBlock`: sleep 1 ms and retry, until 2 s after the call, then `HalError::HwRng`;
   - `Interrupted`: retry;
@@ -7458,6 +7480,19 @@ stale (Q43 (d)).
   closed). This goes on M7's audit list.
   Proof: unit tests (user-space logic only): a whole block arriving in pieces; `WouldBlock` past the deadline; EOF;
   interrupted; other errors.
+  Proof (commit 8): 5 tests in `device/hwrng/tests.rs`, on a scripted device and a clock that moves 1 ms per sleep:
+  - 1, 7, 20 and 36 bytes, with a `WouldBlock` and an `Interrupted` between, land in place; each read asks for exactly
+    the bytes missing (64, 63, 63, 56, 56, 36), and the next block starts at the stream's 65th byte;
+  - a device that finds nothing is read 2,000 times and fails at exactly 2 s; one whose block completes on the read at
+    1.999 s passes; 10 bytes, then nothing, still fail at 2 s;
+  - EOF (at once or after 10 bytes), seven other error kinds and a count past the bytes asked for each fail after that
+    read, with no sleep;
+  - `DEADLINE_NS` is pinned to 2 s, and `HwRng`'s text to "hwrng read fault", which halts.
+
+  As built: the call's `deadline` is `deadline_ns`, the time allowed (the device passes `DEADLINE_NS`); it holds for
+  the whole block, whatever each read gives; the 1 ms pause is `RawRead::sleep_ms`, so the logic stays pure. Scratch
+  mutations, not committed, each fail a test: reads into the whole block, EOF read again, other errors retried, the
+  deadline 1 ms late.
 
 **8. Device: the USB stick (pure; `device/usb.rs`; Q39 (f))**
 - [ ] The finder works over a `SysBlock` trait (the block entries, each entry's resolved device link, its `ro` flag, and
