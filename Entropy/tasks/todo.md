@@ -6582,8 +6582,8 @@ Code follows "Commit order on `m4-pi-hardware`" below, stage by stage.
   at that commit, and the tree is clean.
 - Rules are cited from the clone's `Entropy/CLAUDE.md`. The copy injected from the `Entropy-Keep Crypt/` folder is stale:
   - its rule 1 lacks `game_random` (clone CLAUDE.md:47-49);
-  - its rule 10 lacks the registry and simulator markers (:71-77);
-  - its Commands lack the M3 lines (:120-173).
+  - its rule 10 lacks the registry and simulator markers (:75-81);
+  - its Commands lack the M3 lines (:124-177).
 - The gate (build-plan.md:294): "Full ceremony on a Pi Zero v1.3, checked with the offline verifier; two clean builds give
   the same image hash; the watch-only QR imports into Sparrow and Bitcoin Core with the same first address".
 - Deliverables (same line): ST7789 and button drivers, hwrng reader, Buildroot image, USB export.
@@ -6718,7 +6718,7 @@ Code follows "Commit order on `m4-pi-hardware`" below, stage by stage.
   - clearing the ST7789's memory on every wipe;
   - the crash path;
   - Buildroot, the reproducible hash, linking and scanning a release `keepcrypt-pi`, and the image's no-simulator check
-    (pi-firmware.md:76);
+    (pi-firmware.md:80);
   - KAT, snapshot and scrypt timing, peak memory, and the worker-thread decision with a `Session: Send` assertion;
   - QR scans at 3 px, the Sparrow and Bitcoin Core import, and the getrandom cfg in Buildroot;
   - a real-Pi `verify.py mixed` run;
@@ -6759,7 +6759,7 @@ Code follows "Commit order on `m4-pi-hardware`" below, stage by stage.
   - MISO is not wired and the firmware does not read the panel back, so a dead panel is not detected; only SPI write
     errors are display faults.
   - SPI runs in mode 0.
-  - pi-firmware.md:32-39 lists neither RST nor BL.
+  - pi-firmware.md:32-39 listed neither RST nor BL; commit 2 (a7a91cc) adds both (PF:40-41).
 - **The ST7789 and spidev.**
   - spidev takes at most 4,096 bytes per write by default (`bufsiz`) [S24], so a 115,200-byte frame needs 29 writes.
   - The controller has 240×320 of frame memory. MADCTL `0x70` sets MV (rows and columns swapped), so the address space
@@ -6830,7 +6830,7 @@ Code follows "Commit order on `m4-pi-hardware`" below, stage by stage.
 - **The Pi Zero v1.3 is single-core** (ARM1176JZF-S, `BR2_arm1176jzf_s` [S12]). A worker thread would keep the UI
   responsive but would not make anything faster.
 - **The Seal ID on a Skip run.** It appears only in "Check a backup"'s result (pi/app/src/screens/usb.rs:104-111). The seal
-  card appears only after "Check now" (pi-firmware.md:88), and once a check starts there is no Skip (rule 6).
+  card appears only after "Check now" (pi-firmware.md:93), and once a check starts there is no Skip (rule 6).
 - **A stray file.** `Entropy/1.txt` is tracked (commit 940892b; it contains "here").
 - **Two approvals.** BP:278 puts core/, ffi/ and pi/os/ under two approvals; the ruleset has
   `required_approving_review_count 0` (todo.md:7180), todo.md:322 says each gate's Review notes the rule is unmet with one
@@ -7104,7 +7104,7 @@ stale (Q43 (d)).
     verification; backup open (with `seal`); backup write, with read-back and verify; `finish` (app.rs:999); both
     `watch_only` calls (ready.rs:116, :325); `hal.list` (app/usb.rs:71); `hal.read` (:125).
 
-  In `key()`, a press with `at_ns < fence_ns` still goes to `add_extra` while the stage is Collecting (PF:69 and :136
+  In `key()`, a press with `at_ns < fence_ns` still goes to `add_extra` while the stage is Collecting (PF:73 and :142
   stay true), then returns: no idle reset, no overlay removal, no key map. The idle reset moves after this check.
   input.rs:4-5 ("no type-ahead filter") is reworded in the same commit; the Debouncer bullet at :6-7 stays as it is.
   Proof:
@@ -7518,7 +7518,7 @@ stale (Q43 (d)).
   - leg (a)'s log of `make image`, with the time, `df -h` and the image size;
   - `--os-config` clean from commit 17.
 
-**14. The image scan (Q38 (d); PF:76; BP:271-272; rule 10)**
+**14. The image scan (Q38 (d); PF:80; BP:271-272; rule 10)**
 - [ ] `banned-api-check.sh --image-lists IMG KCONFIG` (commit 15) unpacks the image and prints the boot and root file
   lists (path, type, mode, link target), `keepcrypt-pi`'s import list, per-partition SHA-256s, an `mdir -a` listing of
   partition 1, and KCONFIG. It uses the build's host `unsquashfs` and `mcopy`:
@@ -7714,7 +7714,7 @@ stale (Q43 (d)).
   Proof: the three addresses, both versions and the camera model under Review.
 - [ ] **Matrix "Reproducible build"** (Pi image): as the second gate item, plus `pins.txt`.
 - [ ] **Matrix "Full ceremony with offline verification"** (Pi): as the first gate item, with the test backup opened by
-  `age -d` (PF:179).
+  `age -d` (PF:191).
 - [ ] **Matrix "Watch-only import"** (Pi): as the third gate item.
 - [ ] **Matrix "Symbol and stub-marker scan":**
   - the cross leg scans `keepcrypt-pi` on every PR;
@@ -7864,6 +7864,8 @@ The PR is a draft from commit 1.
 **Stage A: decisions, docs, core, dependencies**
 1. tasks/todo.md: the M4 plan and the owner's answers to Q35-Q43. The title becomes "milestones M0 to M4".
    1b. tasks/todo.md: the owner's answers to Q35-Q43 ("approve all", 2026-10-14), recorded after commit 1 (49423fc).
+   1c. tasks/todo.md: the plan review: the plan's pi-firmware.md and CLAUDE.md line citations after commits 2 and 3
+   (a7a91cc, ed15bd2); Q35-Q43's text stays as the owner approved it.
 2. docs: the approved edits (Q40; Q42 (b)), alone; plus `1.txt` if approved.
 3. CLAUDE.md: rule 8's sentence (Q40 (a)). 3b. `.github/CODEOWNERS:7-9`, if approved (Q43 (d)).
 4. core: `tests/auto_traits.rs` (group 3).
