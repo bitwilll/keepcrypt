@@ -2750,9 +2750,9 @@ mod tests {
         };
         drawn(&mut app, View::new(ScreenId::BackupCheckEntry, Note::None));
         // Done on the eighth entry: the wait screen, then the file does not open, and
-        // backup-check-entry comes back, emptied, with core's refusal. That screen was entered
-        // nowhere, so only the wait screen's present and the fence after the call stop a press made
-        // meanwhile.
+        // backup-check-entry comes back, emptied, with core's refusal, entered anew. The wait
+        // screen's present, the fence after the call and the refusal's own present each stop a
+        // press made meanwhile.
         play(&mut app, &[Key::Key3]);
         assert!(matches!(app.view.note, Note::Refused(Refusal::Core(_))));
         let refused = app.hal.last();
@@ -2774,6 +2774,58 @@ mod tests {
         play(&mut app, &[Key::Key2]);
         assert_eq!(app.view.id, ScreenId::Home);
         assert!(!app.holds_secrets());
+    }
+
+    #[test]
+    fn a_press_made_before_an_unrecognised_entrys_refusal_was_shown_types_nothing() {
+        // Group 10's lead decision (stage B's review): the one reachable refusal shown with no
+        // blocking call before it is entered anew, so its present moves the fence.
+        let mut app = booted();
+        let mut typed = Zeroizing::new(String::with_capacity(crate::grid::ENTRIES_LEN));
+        // Eight entries; the first is no word's first four letters.
+        typed.push_str("zzzz aban aban aban aban aban aban aban");
+        app.held.stage = Stage::BackupCheck {
+            file: Zeroizing::new(Vec::new()),
+            typed,
+        };
+        drawn(&mut app, View::new(ScreenId::BackupCheckEntry, Note::None));
+        // Done on the eighth entry: core refuses the entries before any file is opened, so no call
+        // blocked and no wait screen was shown, and backup-check-entry comes back, emptied, with
+        // core's refusal. Only that screen's own present can stop a press made meanwhile.
+        play(&mut app, &[Key::Key3]);
+        assert!(matches!(
+            app.view.note,
+            Note::Refused(Refusal::Core(CoreError::Backup(
+                keepcrypt_core::BackupError::PassphraseWords
+            )))
+        ));
+        let refused = app.hal.last();
+        assert_eq!(refused.id, ScreenId::BackupCheckEntry);
+        let (from_ns, to_ns) = (refused.from_ns, refused.to_ns);
+        assert_eq!(
+            app.hal.shown[app.hal.shown.len() - 2].id,
+            ScreenId::BackupCheckEntry,
+            "no wait screen"
+        );
+        // Press would type 'a', the symbol under the emptied entry's cursor. Made while the
+        // refusal was drawn: nothing, not even the idle timer's restart.
+        let (presents, idle) = (app.hal.shown.len(), idle_cover_ns(&app));
+        for began_ns in [from_ns, to_ns - 1] {
+            press_at(&mut app, Key::Press, began_ns);
+            assert!(
+                matches!(&app.held.stage, Stage::BackupCheck { typed, .. } if typed.is_empty())
+            );
+            assert_eq!(app.view.cursor, 0);
+            assert_eq!(app.hal.shown.len(), presents);
+            assert_eq!(idle_cover_ns(&app), idle);
+        }
+        // Pressed once the refusal was on the panel: it types.
+        press_at(&mut app, Key::Press, to_ns);
+        assert!(
+            matches!(&app.held.stage, Stage::BackupCheck { typed, .. } if typed.as_str() == "a")
+        );
+        assert_eq!(app.hal.shown.len(), presents + 1);
+        assert_ne!(idle_cover_ns(&app), idle);
     }
 
     #[test]

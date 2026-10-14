@@ -159,7 +159,7 @@ impl<H: Hal> App<H> {
 
     /// Done on backup-check-entry: the entry is complete, and the next one starts; after the
     /// eighth, the passphrase opens the backup (Q32 (b)). An unrecognised entry or a wrong
-    /// passphrase returns to the entry, emptied, with core's text.
+    /// passphrase returns to the entry, emptied, with core's text, as a screen entered anew.
     pub(super) fn entry_typed(&mut self) -> Result<(), Stop> {
         let Stage::BackupCheck { file, mut typed } = self.take() else {
             return Err(OUT_OF_ORDER);
@@ -196,9 +196,10 @@ impl<H: Hal> App<H> {
             }
         };
         self.held.stage = Stage::BackupCheck { file, typed };
-        // The entry is emptied, so the cursor no longer rests on a letter of it.
-        self.view.cursor = 0;
-        self.view.note = Note::Refused(refusal);
+        // The entry comes back emptied, its cursor on the first symbol, as a screen entered anew:
+        // its present moves the fence, so a press queued behind it types nothing (Q39 (a); for the
+        // unrecognised entry no call blocked, so nothing else would).
+        self.enter(ScreenId::BackupCheckEntry, Note::Refused(refusal));
         self.redraw()
     }
 

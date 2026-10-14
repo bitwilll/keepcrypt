@@ -6,15 +6,17 @@
 //!   mounted there, so these tests pin which mount and which syncs each call asks for, not what
 //!   the kernel makes of them.
 //! - On Linux: the plans against the kernel's flags; and, as root in CI's test job only
-//!   (`#[ignore]`d), `loop_device`, the same calls on a FAT32 loop device through mount(2) and
-//!   umount2(2).
+//!   (`#[ignore]`d), `loop_device`, the same calls on a FAT32 loop device through the glue's own
+//!   mounter (linux.rs's `KernelMounter`, over mount(2) and umount2(2)).
 
 use std::collections::VecDeque;
 use std::os::unix::ffi::OsStringExt;
 
 #[cfg(target_os = "linux")]
-use nix::mount::{MntFlags, MsFlags};
+use nix::mount::MsFlags;
 
+#[cfg(target_os = "linux")]
+use super::super::linux::KernelMounter;
 use super::*;
 
 const BACKUP: &str = "keepcrypt-backup-0a1b2c3d.age";
@@ -949,12 +951,14 @@ impl Locate for LoopStick {
     }
 }
 
-/// mount(2) and umount2(2) through nix, as group 10's glue makes them, checking each mount against
-/// mountinfo: one mount at the mount point, vfat from the loop device, `nosuid,nodev,noexec`, and
-/// read-only exactly for a read-only plan, where no file can be created (EROFS).
+/// The glue's own mount(2) and umount2(2) (linux.rs's `KernelMounter`, the one the image ships;
+/// 9d), checking each mount against mountinfo: one mount at the mount point, vfat from the loop
+/// device, `nosuid,nodev,noexec`, and read-only exactly for a read-only plan, where no file can be
+/// created (EROFS).
 #[cfg(target_os = "linux")]
 struct Kernel {
     env: LoopEnv,
+    glue: KernelMounter,
     /// Each mount in order: `r` read-only, `w` read-write.
     mounts: String,
     /// Holds the mount point open from the next plain unmount until the detach, so that the plain
@@ -966,8 +970,7 @@ struct Kernel {
 #[cfg(target_os = "linux")]
 impl Mounter for Kernel {
     fn mount(&mut self, device: &Path, target: &Path, plan: MountPlan) -> io::Result<()> {
-        let flags = MsFlags::from_bits(plan.flags).expect("flags the kernel defines");
-        nix::mount::mount(Some(device), target, Some(plan.fstype), flags, None::<&str>)?;
+        self.glue.mount(device, target, plan)?;
         let mounts = self.env.mounts();
         let [[options, fstype, source]] = mounts.as_slice() else {
             panic!("one mount at the mount point, not {mounts:?}");
@@ -993,13 +996,16 @@ impl Mounter for Kernel {
         if self.busy && how == Unmount::Plain {
             self.held = Some(File::open(target)?);
         }
-        let flags = MntFlags::from_bits(how.flags()).expect("flags the kernel defines");
-        let unmounted = nix::mount::umount2(target, flags).map_err(io::Error::from);
+        let unmounted = self.glue.unmount(target, how);
         if how == Unmount::Detach {
             self.busy = false;
             self.held = None;
         }
         unmounted
+    }
+
+    fn sync(&mut self, file: &File) -> io::Result<()> {
+        self.glue.sync(file)
     }
 }
 
@@ -1019,6 +1025,7 @@ fn loop_device() {
     let env = LoopEnv::from_env();
     let kernel = Kernel {
         env: env.clone(),
+        glue: KernelMounter,
         mounts: String::new(),
         busy: false,
         held: None,

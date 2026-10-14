@@ -7715,6 +7715,9 @@ stale (Q43 (d)).
   (9d) Commit 9's test drives a `Kernel` mounter that calls nix itself, a copy of the glue's mount calls. From commit 11
   it drives the glue's own `Mounter` (linux.rs's, over nix), with `Kernel` wrapping it to check each mount against
   `KC_MOUNTINFO`, so the run proves the mount and unmount calls the image ships.
+  Proof (commit 11): `Kernel` holds linux.rs's `KernelMounter` and forwards `mount`, `unmount` and `sync` to it,
+  checking mountinfo around the glue's own call; the flag conversion is now the glue's alone. The ARM clippy with
+  `--all-targets` compiles it; the run is commit 13's.
 
   Proof:
   - `SysBlock` fake tests: one stick with and without a partition; `mmcblk0`, `loop0`, `ram0` and a non-USB `sd` ignored;
@@ -7783,6 +7786,18 @@ stale (Q43 (d)).
 
   Each commit runs clippy with `-D warnings` on the Mac (tests), in lint (x86_64 Linux, `--all-targets`) and in cross
   (ARM).
+
+  Proof (commit 11): main.rs declares `#[cfg(any(target_os = "linux", test))] mod device;`, and `linux.rs` and
+  `paths.rs` are `#[cfg(target_os = "linux")]`. `PROFILES` and `ST7789_INIT_OPCODES` carry the `cfg_attr(not(test),
+  expect(dead_code, ..))`; `INVOFF` carries nothing, because with those two in place no build shows it dead: rustc
+  1.98.1 neither reports an item reachable only through an expected item nor refuses an expectation on it (a
+  three-line scratch probe, and a scratch copy with an expectation on `INVOFF`, both compile), so the attribute would
+  say nothing. Clippy with `-D warnings` is clean on the Mac (both workspace runs) and for
+  `arm-unknown-linux-gnueabihf` with `--all-targets` (the glue and its Linux-only tests) and with `--bins` (the
+  non-test build the expectations are written for; check only, with clang for secp256k1-sys and the getrandom cfg).
+  Scratch copies, not committed: `PROFILES` without its expectation fails that build ("constant `PROFILES` is never
+  used"); a type error planted in linux.rs fails both ARM runs. CI's lint job (x86_64 Linux) is the run that
+  remains.
 - [ ] `device/linux.rs` (Linux): `PiHal` implements the traits.
   - Display: `Panel` over rppal `Spi::new(Spi0, Ss0, PANEL.spi_hz, Mode0)` and output pins DC 25, RST 27, BL 24 (the
     same pins for every screen, as Q48 decided).
@@ -7796,8 +7811,24 @@ stale (Q43 (d)).
   - `build_info`: `CARGO_PKG_VERSION`, the prefix, and `simulator: false`.
 
   Every rppal and nix error maps to its trait's `HalError`.
-- [ ] `device::mode(args)` (pure): no argument means `Run`; anything else, `--stopped` included, means `Stopped` (fail
+
+  Proof (commit 11): built in `device/linux.rs`, compiled for the Pi target by the ARM clippy above and never run here
+  (no Pi and no Linux host; H1a is its first run). `SpiBus`: `Spi::new(Spi0, Ss0, PANEL.spi_hz, Mode0)` and the
+  pins DC 25, RST 27, BL 24, each opened low and kept as the driver leaves it when dropped (rppal would otherwise
+  return it to an input and float the backlight); a short write is `Display`. `GpioEdges`: the eight
+  `into_input_pullup` pins with `set_interrupt(Both, None)`, read by `Gpio::poll_interrupts` with `reset` false, so
+  an edge rppal holds is given out, not dropped; FallingEdge and RisingEdge are the edge, anything else `Buttons`.
+  `MonotonicClock`: `clock_gettime(CLOCK_MONOTONIC)` through `keys::clock_ns`; a clock error is a fixed-text panic.
+  `HwRngDevice`: `/dev/hwrng` opened once with `O_NONBLOCK` and read with `std::io::Read`, through `fill_block` with
+  `DEADLINE_NS`. `SysFs` over `/sys/block` (`read_dir`, `read_link`, `ro`, `<name>1`) and `KernelMounter`
+  (`MsFlags::from_bits(plan.flags)`, `MntFlags::from_bits(how.flags())`, `EINVAL` for bits the kernel does not
+  define, `sync` at its default), at `/mnt/usb` with the nodes under `/dev`. `build_info` is `CARGO_PKG_VERSION`,
+  the prefix and `simulator: false`. The panel is `PiHal`'s first field. The five path literals are `paths.rs`'s.
+- [x] `device::mode(args)` (pure): no argument means `Run`; anything else, `--stopped` included, means `Stopped` (fail
   closed).
+  Proof (commit 11): `device::tests::no_argument_runs_and_any_argument_is_stop_mode`: no argument is `Run`;
+  `--stopped`, `--run`, an empty argument, `--stopped` twice and `x --stopped` are `Stopped`. `run` passes it
+  `env::args_os().skip(1)`.
 - [ ] `device::run() -> !` (Linux), in this order:
   1. `std::panic::set_hook` with a hook that ignores its argument and prints nothing.
   2. Open the panel and init it, so all frame memory is black. On failure: drive the backlight low if its pin opened,
@@ -7809,8 +7840,18 @@ stale (Q43 (d)).
   7. `App::new(pi).run()`.
 
   Park is `loop { std::thread::park() }`. The process never exits, so init never moves on.
-- [ ] main.rs keeps `#![forbid(unsafe_code)]`. On Linux it calls `device::run()`; elsewhere it stays `fn main() {}`.
-- [ ] (Lead decision, stage B's review, 2026-10-14; group 4's fence item.) In the lib, backup-check-entry's
+
+  Proof (commit 11): built as listed, compiled by the ARM clippy and first run on the board (H1a). The hook is
+  `|_| {}`. `Gpio::new` fails to a bare park; the backlight pin is opened first and low, then DC, RST and the SPI,
+  then `Panel::new`, whose own fault path turns the backlight off. The prefix's partition length comes from
+  `seek(SeekFrom::End(0))`, then the device is rewound, since a block device's metadata gives no length. `stop`
+  takes the panel by value and parks on it, so the panel is never dropped and the stop screen stays; a display fault
+  there parks all the same. The keys are opened before the hwrng, and `DeviceUsb` opens nothing until a call.
+- [x] main.rs keeps `#![forbid(unsafe_code)]`. On Linux it calls `device::run()`; elsewhere it stays `fn main() {}`.
+  Proof (commit 11): main.rs is the forbid line, the cfg'd `mod device` and two `main`s, `device::run()` under
+  `cfg(target_os = "linux")` and `fn main() {}` elsewhere. The banned-API gate finds the forbid line (clean, 214
+  files); the Mac builds and tests the empty `main`; the ARM clippy compiles the Linux one.
+- [x] (Lead decision, stage B's review, 2026-10-14; group 4's fence item.) In the lib, backup-check-entry's
   "unrecognised entry" refusal (app/usb.rs's `entry_typed`, when `from_first_four` refuses the entries) is entered
   through `enter` with its `Note::Refused`, not set on the view in place, so its first present is a new screen and moves
   the fence: a press queued behind that present no longer types into the emptied entry. The wrong-passphrase refusal
@@ -7819,6 +7860,15 @@ stale (Q43 (d)).
   Proof: an app.rs test on the test HAL: a press stamped during the refusal's present changes nothing (no present, no
   letter typed, the idle timer kept) and the next press types; in a scratch copy, HEAD's in-place note fails it.
   pi/sim's gate scenarios still pass in both configurations.
+  Proof (commit 11): `entry_typed`'s one tail is `self.enter(ScreenId::BackupCheckEntry, Note::Refused(refusal))`,
+  so both refusals are entered anew (the wrong-passphrase one keeps its `fence()` after `decrypt_backup` as well,
+  and the 6c test's comment says so); `enter` puts the cursor on the first symbol as before, and no gate opens
+  between two Protected screens. `a_press_made_before_an_unrecognised_entrys_refusal_was_shown_types_nothing`:
+  eight entries whose first is no word's, then Done; no wait screen was shown; a Press stamped at the refusal
+  present's start or just before its end types nothing (the entry stays empty, the cursor on 0, no present, the idle
+  timer kept), and one stamped at its end types `a` and restarts the timer. In a scratch copy, HEAD's in-place note
+  fails it at the first fenced press (the press typed). pi/app's lib tests 130; pi/sim's gate 20 passed, 1 ignored,
+  in both configurations.
 - [ ] A panic unwinds out of `run`. The `App` drops `hal` first, so the panel blanks and its backlight goes off; then the
   session zeroizes. The process exits, and init starts stop mode. An abort skips every `Drop`; in that case stop mode's
   re-init blanks the panel within about a second.
@@ -7832,6 +7882,10 @@ stale (Q43 (d)).
   - the inittab byte-for-byte check comes with `--os-config` in commit 17.
 
   The crash path is not forced on hardware in M4 (Q42 (a)).
+
+  Proof (commit 11): `run` sets the hook and catches nothing (`catch_unwind` stays in clippy.toml's ban); `PiHal`'s
+  first field is the panel, so the app's `hal` drop blanks it before the session is dropped; the `mode` test and
+  the earlier `show_stop` and `Drop` tests pass. CI's lint and cross runs and commit 17's inittab check remain.
 
 **11. Gates (banned-api-check.sh, canaries)**
 - [x] Open owner item, before commit 12: Q51 (rule 8's path list). Rule 8's sentence and PF:81 say the list is complete

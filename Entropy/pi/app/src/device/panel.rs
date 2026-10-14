@@ -71,6 +71,13 @@ const NVGAMCTRL: u8 = 0xE1;
 /// settings. Everything else belongs to the driver or is never sent: MADCTL, sleep in and out,
 /// display on and off, windows, memory writes, scrolling, partial mode and idle mode. INVOFF is
 /// here because some panels need inversion off (Q50; [S36]).
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the PROFILES checks' allow-list, read by the tests alone"
+    )
+)]
 pub const ST7789_INIT_OPCODES: [u8; 14] = [
     COLMOD, PORCTRL, GCTRL, VCOMS, LCMCTRL, VDVVRHEN, VRHS, VDVS, FRCTRL2, PWCTRL1, PVGAMCTRL,
     NVGAMCTRL, INVOFF, INVON,
@@ -209,6 +216,13 @@ pub const WAVESHARE_1IN3_HAT: PanelProfile = PanelProfile {
 
 /// Every profile, each checked by the tests: in M4 the HAT alone, or a second HAT profile if Q50
 /// applies.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the tests check every profile; the image uses PANEL alone"
+    )
+)]
 pub const PROFILES: &[&PanelProfile] = &[&WAVESHARE_1IN3_HAT];
 
 /// The image's profile: the one line that names it. Group 10 uses it; M4b's B3 replaces it.
