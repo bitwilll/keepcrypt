@@ -4,8 +4,8 @@
 //!   `RawRead` (one read(2) of `/dev/hwrng`, opened non-blocking, and a pause), which group 10's
 //!   Linux glue implements and the tests script, and a `hal::Clock`. It does no I/O of its own.
 //! - Each read goes straight into the caller's block and asks for exactly the bytes still missing:
-//!   no `BufReader`, no copy, and no read past the block's 64 bytes, so no sample is held anywhere
-//!   else.
+//!   no buffered reader, no copy, and no read past the block's 64 bytes, so no sample is held
+//!   anywhere else.
 //! - A block still incomplete 2 seconds after it was asked for is `HalError::HwRng`, "hwrng read
 //!   fault", which halts the device (Q39 (c)): no retry after that, no default and no fallback
 //!   source (rule 3).

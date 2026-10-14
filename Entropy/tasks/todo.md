@@ -8607,6 +8607,8 @@ The PR is a draft from commit 1.
    is shown judged at the time read before the drain.
    8d. pi/app: the recompute review: the hwrng's 2 s deadline is shown to hold for reads that are slow or interrupted,
    not only for reads that find nothing.
+   8e. pi/app: the plan review: hwrng.rs's doc says "no buffered reader", so group 11's planned rule (no `BufReader`
+   anywhere in pi/app, where the gate counts comments) has nothing to flag there.
 9. pi/app (bin): `device/usb.rs`, `SysBlock`, `device/usb/tests.rs` with the `#[ignore]`d loop-device test (group 8).
 10. pi/app (bin), pi/os, .github: `device/rootfs.rs` and its vector; `pi/os/rootfs-prefix.py`; `gates` runs its
     `--selftest` (group 9).
