@@ -7495,18 +7495,42 @@ stale (Q43 (d)).
   deadline 1 ms late.
 
 **8. Device: the USB stick (pure; `device/usb.rs`; Q39 (f))**
-- [ ] The finder works over a `SysBlock` trait (the block entries, each entry's resolved device link, its `ro` flag, and
+- [x] The finder works over a `SysBlock` trait (the block entries, each entry's resolved device link, its `ro` flag, and
   whether `<dev>1` exists). The Linux implementation in `linux.rs` reads `/sys/block`; tests use an in-memory fake, so no
   fixture tree or symlink is created.
   - a stick is an `sd*` entry whose resolved link contains a `/usb` component;
   - exactly one stick is accepted; more give `ManySticks`;
   - it uses partition `<dev>1` if present, otherwise the whole disk;
   - `ro` = 1 gives `ReadOnly` before any write.
-- [ ] Mount plans as data, at `/mnt/usb`, vfat only:
+
+  Proof (commit 9): `cargo test -p keepcrypt-pi --locked --bin keepcrypt-pi`: 42 passed, 17 of them in
+  `device/usb/tests.rs`. Five run the finder on a `/sys/block` in memory, with links as read_link gives them:
+  - `sdb` on root hub `usb1` is the stick, as `dev/sdb1`, or `dev/sdb` with no partition; `mmcblk0`, `loop0`, `ram0`
+    and a SATA `sda` beside it are ignored;
+  - also ignored: `sr0`, `sd`, `sdA`, `sd1` and `xsda` on a USB bus; `sd` disks whose paths hold `20980000.usb`,
+    `usbmon`, `usb`, `xusb1` or `usb1x` but no root hub; a name that is not UTF-8;
+  - two USB disks (`sda` and `sdb`, `sdz` and `sdaa`) give `ManySticks`;
+  - `ro` `1\n` marks the stick read-only and `0\n` writable; any other bytes give `Mount`;
+  - a link, `ro` or partition that vanished after the listing gives `Removed`; any other sysfs error, `Mount`.
+
+  As built: "a `/usb` component" is matched by whole component, as stage A's review asked, with no path literal: a
+  component that is `usb` and a bus number (`usb1`), a USB root hub. No component of a real USB disk's path is `usb`
+  alone; on the Pi it runs `.../20980000.usb/usb1/1-1/...`. The finder implements a `Locate` trait, which the
+  loop-device test implements to bypass it. `ReadOnly` before any write is `DeviceUsb`'s check (two items down). The
+  Linux `SysBlock` is group 10's (commit 11).
+- [x] Mount plans as data, at `/mnt/usb`, vfat only:
   - reads: `RDONLY | NOSUID | NODEV | NOEXEC`;
   - the write: `NOSUID | NODEV | NOEXEC`;
   - never `MNT_FORCE`; `MNT_DETACH` only to clean up after `Removed` or a failed unmount.
-- [ ] `DeviceUsb<M: Mounter>` implements `hal::Usb` over a device path, its `ro` flag source and a mount point:
+
+  Proof (commit 9): `the_mount_plans_unmounts_and_errno_table_are_pinned`: `READ_PLAN` is vfat with flags 15 and
+  `WRITE_PLAN` vfat with 14 (Linux's `MS_RDONLY` 1, `MS_NOSUID` 2, `MS_NODEV` 4, `MS_NOEXEC` 8); `Unmount` has only
+  `Plain` (0) and `Detach` (2, `MNT_DETACH`), so no forced unmount can be asked for. The contract tests find a detach
+  only after `Removed` or a failed plain unmount. On Linux, `the_mount_plans_hold_the_kernels_flags` checks both plans
+  against nix's `MsFlags` (CI's test job). As built: the flags are `c_ulong` and `c_int`, mount(2)'s and umount2(2)'s
+  own types, so group 10's glue passes them unconverted (32-bit ARM's `c_ulong` is `u32`). The mount point is
+  `DeviceUsb`'s; commit 11 gives it `/mnt/usb`.
+- [x] `DeviceUsb<M: Mounter>` implements `hal::Usb` over a device path, its `ro` flag source and a mount point:
   - `list`: read-only mount, top-level `read_dir`, `FileName` filter, unmount.
   - `read`: read-only mount; read at most `max + 1` bytes into `Zeroizing<Vec<u8>>` (more than `max` is `TooLarge`);
     unmount.
@@ -7530,8 +7554,39 @@ stale (Q43 (d)).
     - a failed mount → `Mount` (exFAT and NTFS included);
     - a failed sync → `Sync`;
     - a failed unmount → `Unmount`, followed by a lazy detach so the next mount starts clean.
-- [ ] Host contract tests in `device/usb/tests.rs`, over a temp dir from `std::env::temp_dir()` and a recording
+
+  Proof (commit 9): `DeviceUsb<L: Locate, M: Mounter>` (`L` gives the device path and its `ro` flag, for each call),
+  over a temp dir and a recording mounter:
+  - with no stick, or two, every call is `NoStick` or `ManySticks` before any mount;
+  - listings and reads mount `READ_PLAN`, then unmount; a listing holds only files of the kind with accepted names, in
+    byte order (a folder `folder.age` is left out); an 11-byte file reads at `max` 11 and 64 into a buffer of capacity
+    12, never grown, and is `TooLarge` at 10 and 0; a missing file or a folder is `Read`;
+  - a write mounts `WRITE_PLAN`, creates the file and records it; only that name reads back (`READ_PLAN`) or is removed
+    (`WRITE_PLAN`); another file, or the backup's name in capitals, is `NotWritten` with no mount;
+  - an existing name is `Exists`, and the file stays byte for byte; a refused name is `Write`, and a stick whose `ro` is
+    `1\n` is `ReadOnly`, both before any mount; after any refused later attempt (over the name, read-only, a mount
+    fault, a bad name, no stick) the earlier file is neither read back nor removed;
+  - a mount that fails with EINVAL (exFAT, NTFS) or EIO is `Mount`, with ENODEV or ENXIO `Removed`, with EROFS
+    `ReadOnly`, and nothing is unmounted;
+  - a plain unmount that fails with EBUSY is `Unmount` after a lazy detach, also when the detach fails, and the next
+    call mounts as ever; ENXIO there is `Removed`; after `Removed` the detach comes at once;
+  - a write whose unmount fails removes the file it created and nothing else, retries the plain unmount, and detaches if
+    that fails too; removing a file that is already gone is `Remove`, and the record stays;
+  - the errno table at every step: EEXIST `Exists`, EROFS `ReadOnly`, ENOSPC and EFBIG `Write`, ENODEV and ENXIO
+    `Removed`; EPERM, ENOENT, EIO, EACCES, EBUSY, EINVAL and an error with no errno give the step's own fault.
+
+  A failed sync and a full stick cannot be made on a host temp dir; the table and the removal path above cover them.
+  As built: `write_backup` calls `write_new(name, bytes)`, which the tests call directly: only a session makes a
+  `BackupFile`, and pi/app holds one `Session::new`. A listing sorts by name, as the simulator does, and leaves out
+  anything but files. A read sizes its buffer to the file and one byte more, at most `max + 1`, so it never grows (a
+  grown buffer would leave an unwiped copy). The host tests make no claim on letter case, which the host's filesystem
+  decides (APFS ignores it, ext4 does not); the loop-device test makes it on FAT. File dates need no code: with no
+  clock, the kernel's FAT driver writes 1980-01-01, FAT's earliest date (fs/fat/misc.c, `fat_time_unix2fat`).
+- [x] Host contract tests in `device/usb/tests.rs`, over a temp dir from `std::env::temp_dir()` and a recording
   `Mounter`, mirroring pi/sim/tests/hal.rs.
+
+  Proof (commit 9): 11 of the 17 tests, the cases of pi/sim/tests/hal.rs and pi/sim/src/stick.rs, as the item above
+  lists, including `a_refused_write_leaves_an_existing_file_untouched`.
 - [ ] A Linux-only `#[ignore]`d test, `device::usb::tests::loop_device`, run as root in the `test` job (group 12). The CI
   step, not the test, makes the fixture: `truncate -s 16M`, `mkfs.vfat -F 32`, `losetup --find --show`, and a mount
   point. It passes `KC_LOOP_DEV`, `KC_LOOP_RO` (`/sys/block/loopN/ro`), `KC_LOOP_MNT` and `KC_MOUNTINFO`

@@ -6,7 +6,9 @@
 //!   - `panel`, the screen's driver over a `Bus`, with each screen's settings as one profile
 //!     (Q44);
 //!   - `keys`, the key lines' edges through the app's debouncer, and the clock's conversion;
-//!   - `hwrng`, 64-byte blocks of raw samples, each due within 2 seconds (Q39 (c)).
+//!   - `hwrng`, 64-byte blocks of raw samples, each due within 2 seconds (Q39 (c));
+//!   - `usb`, exactly one FAT32 stick, mounted read-only for every read, written only as a new
+//!     file (Q39 (f)).
 //! - Their tests are `device/**/tests.rs`, each declared `#[cfg(test)] mod tests;`.
 //! - main.rs declares this module for `cargo test` alone until group 10's Linux glue, which runs
 //!   the drivers on the Pi, widens it to Linux builds.
@@ -14,3 +16,4 @@
 mod hwrng;
 mod keys;
 mod panel;
+mod usb;
