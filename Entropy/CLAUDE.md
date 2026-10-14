@@ -72,7 +72,9 @@ pass. If one seems to block you, ask the owner.
     the marker string `KC_TEST_SOURCE_DO_NOT_SHIP`. The test registry key lives behind the
     separate `test-registry` feature, which `test-sources` turns on (never the reverse), and
     embeds the marker `KC_TEST_REGISTRY_DO_NOT_SHIP`. CI fails any release artifact that contains
-    either marker, the test registry key or an unexpected RNG symbol.
+    either marker, the test registry key or an unexpected RNG symbol. The Pi simulator
+    (`pi/sim`), with its fake hwrng and stick, never ships: every simulator build embeds
+    `KC_SIMULATOR_DO_NOT_SHIP`, and CI fails any release artifact that contains it.
 11. **No home-made crypto:** use only the crates named in `docs/build-plan.md`. Adding any
     dependency needs owner approval and a `cargo vet` entry.
 12. **No real seeds in tests:** use the vectors in `vectors/` only. Never commit secrets or keys.

@@ -846,6 +846,9 @@ supply-chain, scripts, .github, docs, CLAUDE.md), so the whole PR needs your rev
     - Amended by the owner on 2026-10-13, during M3 ("Raised by stage C's review during M3", below): the Entry grids
       row's KEY2 is "back" on the go-ahead code and on the backup-passphrase entry of "Check a backup", and stays "-"
       on the read-back and BIP39-passphrase entries.
+    - Amended again by the owner on 2026-10-14, at the M3 gate ("Raised by the M3 gate report", below): the Entry
+      grids row's KEY2 is also "back" on the BIP39-passphrase entry, so the read-back alone has none; and the QR and
+      info pages row's KEY1 is "back" only on About, the re-check QR and the wait for a stick, as the app has it.
 
     Otherwise: a letter wheel (Up/Down cycles a character), or KEY1 always means Back.
 
@@ -945,7 +948,7 @@ stage C's reviewers (commits 11-12) found the problem it fixes.
         nonce, and the typed code is cleared;
       - on `backup-check-entry`, KEY2 is "back": it returns Home and drops the backup that was read (the file stays on
         the stick);
-      - `readback-entry` and `bip39-entry` keep KEY2 "-".
+      - `readback-entry` and `bip39-entry` keep KEY2 "-" (bip39-entry amended by the owner on 2026-10-14, below).
       Applied in commit 18, with no code, as commit 2 did for Q34: pi-firmware.md's Buttons table and its Entry grids
       note, step 7's seal card and "Check a backup" (under "Restoring later"); Q32 (a)'s amendment, the screen
       inventory, and group 15 with its Verification line in this plan. seal-watchonly-braille.md and mobile-apps.md
@@ -954,6 +957,48 @@ stage C's reviewers (commits 11-12) found the problem it fixes.
       Proof (commit 18): `git diff --name-only` lists only `docs/pi-firmware.md` and `tasks/todo.md`, and
       pi-firmware.md keeps its 188 lines; `vectorgen.py --selftest` (13 checks) and `verify.py selftest` (8 groups)
       pass on Python 3.12 and 3.9; `banned-api-check.sh` is clean (199 files) and `--selftest` passes 427/427; canaries 61/61.
+
+### Raised by the M3 gate report (three owner items, answered 2026-10-14)
+Three owner decisions taken at the M3 gate, on the open items of "M3 gate status" (commit 22g, 98b4a6f). Stage B's
+review raised all three; the first two are B's two medium findings left open (group 17's tally). Answered 2026-10-14,
+in the owner's words: "yes to 2-4", the lead's items 2 to 4, each as the lead recommended. They amend Q32 (a)'s key
+map again and the 2026-10-13 decision's last point.
+- [x] **No way back from the BIP39-passphrase entry** (item 2). bip39-entry (step 12, after "I use a passphrase" on
+      bip39-ask) has the trap the 2026-10-13 decision closed on code-entry and backup-check-entry: once there, only a
+      typed passphrase or the idle wipe leaves it, so a mistaken Yes pushes the user to type a passphrase they do not
+      use. Decided: on `bip39-entry`, KEY2 is "back": it returns to `bip39-ask` with the typed text wiped and the
+      `Ready` session kept, as KEY2 does on code-entry and backup-check-entry. `readback-entry` alone keeps KEY2 "-".
+- [x] **KEY1 on the QR and info pages** (item 3). pi-firmware.md's Buttons table gave the "QR and info pages" row
+      KEY1 "back", which the app's paged pages (`PAGES`: the seal card, the backup passphrase, the watch-only QRs, the
+      checklist) and one-page notices and results (`CONTINUE`, the registration QR among them) do not offer
+      (`KeyMap`'s doc, commit 8c). Decided: amend the table to match the app; no key map changes. Three pages of that
+      kind do offer KEY1 "back", to Home, the backup offer or the backup check's result, with nothing lost: about and
+      backup-check-recheck-qr (`PAGE`) and usb-insert (`BACK`). So the row's KEY1 cell becomes "back, only on About,
+      the re-check QR and the wait for a stick", not "-" (a reading of "amend the table to match"). The "Menus,
+      offers" row's "back, only where nothing is lost" stays true: length and usb-pick go back Home, skip-confirm to
+      check-prompt, check-actions to the check QR, and stop-confirm and cannot-check-confirm to check-actions, each
+      holding all it held.
+- [x] **Rule 10 and the simulator's marker** (item 4). CLAUDE.md rule 10 named the test-sources and test-registry
+      markers but not the simulator's. Decided: rule 10 gains the lead's sentence, verbatim, and keeps its other
+      words: "The Pi simulator (`pi/sim`), with its fake hwrng and stick, never ships: every simulator build embeds
+      `KC_SIMULATOR_DO_NOT_SHIP`, and CI fails any release artifact that contains it." Commit 15 already enforces it
+      (pi/sim's `#[used]` marker, the artifact scan's marker list, the test job's scan of the test-registry
+      simulator), so no code or CI changes.
+
+Applied in commit 23, with no code, as commits 2 and 18 did: pi-firmware.md's Buttons table (the Entry grids row's
+KEY2 and the QR and info pages row's KEY1), its Entry grids note and step 12; CLAUDE.md rule 10; and in this plan,
+Q32 (a)'s amendment, the screen inventory, group 15's last item and its Verification line, group 17's tally, the gate
+status and the commit order. seal-watchonly-braille.md and mobile-apps.md name no key of these screens, so neither
+changes. The code is commit 24 (group 15's last item).
+
+Proof (commit 23): `git diff --name-only` lists only `CLAUDE.md`, `docs/pi-firmware.md` and `tasks/todo.md`.
+pi-firmware.md keeps its 188 lines (every edit is within an existing line, so the plan's line citations hold); CLAUDE.md
+gains two lines inside rule 10, after the only line the plan cites (CLAUDE.md:47). fmt and both clippy runs are clean;
+`cargo test --workspace --locked` (370 passed, 3 ignored; gate 20 passed, 1 ignored), `cargo test -p keepcrypt-core
+--locked --features test-sources` (269 passed, 1 ignored) and the registry configuration's pi/sim tests (69 passed, 2
+ignored; gate 20 passed, 1 ignored) pass; `vectorgen.py --selftest` (13 checks) and `verify.py selftest` (8 groups) pass
+on Python 3.12 and 3.9; `banned-api-check.sh` is clean (199 files) and `--selftest` passes 427/427; canaries 61/61. No
+script reads CLAUDE.md or docs/.
 
 ### Later
 - [ ] Release signing: minisign or GPG, and who holds the key offline? (M7)
@@ -4699,8 +4744,10 @@ carries it, and every commit names a proof that runs at that commit.
 
   KEY2 "back" (the owner's decision of 2026-10-13, group 15) adds no id: code-entry returns to check-actions with the
   same check and nonce, its typed code cleared, and backup-check-entry returns to home, dropping the backup read from
-  the stick. readback-entry and bip39-entry offer no KEY2. Neither move crosses the privacy gate, which stands only
-  where a Protected screen is entered from a Public one.
+  the stick. Neither move crosses the privacy gate, which stands only where a Protected screen is entered from a
+  Public one. KEY2 "back" on bip39-entry (the owner's decision of 2026-10-14, group 15's last item) adds none either:
+  it returns to bip39-ask with the typed text wiped, crossing no gate, and "I use a passphrase" then passes the gate
+  again to an empty entry. readback-entry alone offers no KEY2.
 
   Proof (commit 13): `every_screen_is_expected` passes in both configurations: the union of the `Expect` ids of the
   nine scenarios in `scenarios(config)` (each one a test of its own, which fails on an unmet `Expect`) is all 62 ids
@@ -5544,7 +5591,7 @@ carries it, and every commit names a proof that runs at that commit.
   Ticked again by the lead after the push, with that run's ID and job times.
 
 **15. KEY2 "back" on the go-ahead code and backup-passphrase entry (the owner's decision of 2026-10-13; Q32 (a) as
-amended; rules 5, 6)**
+amended; rules 5, 6), and on the BIP39-passphrase entry (the owner's decision of 2026-10-14, the last item)**
 - [x] `screen.rs`: `KeyMap::GRID_BACK`, the grid map with KEY2 "back", for code-entry and backup-check-entry;
   readback-entry and bip39-entry keep `GRID`, with KEY2 dead.
   - The footer must still fit the 240 px panel. With today's labels the grid map and KEY2 make 46 characters
@@ -5641,6 +5688,38 @@ amended; rules 5, 6)**
   `back_on_the_code_grid_keeps_the_check_and_its_url_and_wipes_the_code` now finds KEY2 "back" with the 8 symbols
   typed, before its KEY3, and that mutant fails it. The opposite mutant (no back on an empty entry) fails 19c's test
   and `check_restarts` in both configurations (`cargo test -p keepcrypt-pi --locked`: 113 passed on the fix).
+- [ ] KEY2 "back" on bip39-entry, and `KeyMap`'s doc on the QR and info pages (the owner's decisions of 2026-10-14,
+  under "Raised by the M3 gate report"; commit 24). For bip39-entry this replaces the first two items' "keep `GRID`"
+  and "never offers KEY2"; readback-entry keeps both.
+  - `screen.rs`: bip39-entry takes `GRID_BACK`, and readback-entry alone keeps `GRID`; `GRID`'s and `GRID_BACK`'s
+    docs say so. `KeyMap`'s doc no longer names a difference on the QR and info pages or says it awaits the owner:
+    pi-firmware.md's Buttons table now gives KEY1 "back" only on About, the re-check QR and the wait for a stick,
+    which `PAGE` and `BACK` offer (commit 23), so the grids' shorter labels are the one difference left.
+    `every_key_map_is_pinned` pins bip39-entry as "move move move move add del back done", and its comment follows.
+    No other key map changes.
+  - `app.rs`: KEY2 in `typing` on bip39-entry: the typed passphrase (`steps.typed`) is zeroized in place, then
+    bip39-ask shows. The stage stays `Ready` with the same session and holdings, and no core call or export is made.
+    Not a refusal or a halt (Q25), and no step is skipped: the watch-only export is still only made from a typed
+    passphrase or "No BIP39 passphrase".
+  - The model (`screens/ready.rs`, which offers type, delete and done by the text typed): KEY2 is offered on the
+    empty entry, with text typed and at 100 characters, on each of the grid's three pages. bip39-ask is Public, so
+    going back crosses no gate; "I use a passphrase" passes the privacy gate again to an empty entry
+    (`WithPassphrase` already zeroizes it).
+
+  Proof:
+  - pi/app unit tests: with characters typed on bip39-entry, KEY2 shows bip39-ask, the stage still `Ready` and
+    `steps.typed` empty; "I use a passphrase" and the gate then give an empty entry. KEY2 "back" is found on the
+    empty entry, with text typed and at 100 characters, on each grid page. `every_key_map_is_pinned` and the footer
+    test pass, every id's legend within 240 px.
+  - `dice_24_code` (both configurations): on bip39-entry, a character typed, then KEY2: bip39-ask; "I use a
+    passphrase" and the gate: an empty entry; then the passphrase typed as before, and the passphrase's wallet's
+    fingerprint and QRs as before. Its `Step::Dead(Key::Key2)` on bip39-entry goes, the one on readback-entry stays.
+  - The dead-key probes no longer press KEY2 on bip39-entry, and still press it on readback-entry.
+  - In a scratch copy, each of these mutants fails a test: KEY2 on bip39-entry keeping the typed text, showing
+    another screen than bip39-ask, or dropping the session; KEY2 hidden on bip39-entry's empty entry or at 100
+    characters; KEY2 offered on readback-entry.
+  - The captures sent to the owner (b74b0eb) show bip39-entry without KEY2; the lead says whether `capture_set` runs
+    again (group 17).
 
 **16. The simulator's strip (a lead decision between Q30 (h) and Q33 (j); the strip's part of group 12's open item)**
 - [x] `ui/render.rs`: in a simulator build the top strip reads "SIMULATOR · NOT FOR REAL FUNDS" when the simulator
@@ -5688,10 +5767,12 @@ amended; rules 5, 6)**
   file does not hold; the lead records them.
   Recorded (lead, 2026-10-14, from the stage workflows' journals): no high finding in any M3 stage. Medium findings:
   A (commits 2-6) 0; B (7-10) 5; C (11-12) 8; D (13-17) 4; D2 (18-20) 2; E (21-22) 5. All are fixed but two of B's,
-  which wait for the owner (gate status): the QR and info pages' KEY1 "back", and the entry grids with no way out,
+  which waited for the owner (gate status): the QR and info pages' KEY1 "back", and the entry grids with no way out,
   which the owner's KEY2 decision closed for code-entry and backup-check-entry (C's three mediums on the same trap)
   and which bip39-entry still has. E's two mediums on Q30 (g) are closed by sending the full set as approved (below).
-  The box stays open until the owner decides those two.
+  Decided (owner, 2026-10-14, "yes to 2-4"; under "Raised by the M3 gate report"): B's two are fixed by commits 23-24,
+  the Buttons table amended to the app's KEY1 (23) and KEY2 "back" on bip39-entry (24). The box stays open until
+  commit 24 lands with its proof.
 - [ ] The registry-config capture set and its review page, zipped and sent to the owner with its index (Q30 (g)).
   The review page (commit 21) is the owner's working view inside the zip; the full set and index.html are the record.
   Corrected (lead, 2026-10-14): commit 21 planned to send only review.html and review/, as the full set is 1.9 GB
@@ -5814,6 +5895,12 @@ amended; rules 5, 6)**
   Proof (M3 Review, 2026-10-14): group 15's unit tests (pi/app: 113 passed), `check_restarts` and `check_backup` in
   both configurations, and `dice_24_code`'s dead KEY2 on readback-entry and bip39-entry pass in CI on 0cdfc8a (run
   38467985842, the first run holding all of group 15) and locally at b74b0eb.
+- [ ] **KEY2 "back" on bip39-entry** (the owner's decision of 2026-10-14; Q32 (a) as amended again): to bip39-ask
+  with the typed text wiped and the `Ready` session kept, offered empty, with text typed and at 100 characters; "I use
+  a passphrase" then opens an empty entry behind the privacy gate; readback-entry alone has no KEY2, and every footer
+  fits 240 px. `KeyMap`'s doc names no difference from pi-firmware.md's Buttons table but the grids' shorter labels.
+
+  Proof: group 15's last item: its unit tests, `dice_24_code` in both configurations, the dead-key probes.
 - [x] **The simulator's strip** (a lead decision; Q30 (h), Q33 (j)): "SIMULATOR · NOT FOR REAL FUNDS" when it is the
   only banner, as in live mode's release configuration, and "SIMULATOR" beside "TEST REGISTRY" in the registry
   configuration.
@@ -6149,6 +6236,14 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     22g. tasks/todo.md: the lead: the full capture set zipped for the owner as Q30 (g) approved, the stage reviews'
     severity tally, and three open items for the owner (bip39-entry's way out, KEY1 on the QR and info pages, and
     CLAUDE.md rule 10's simulator marker).
+23. docs, CLAUDE.md, tasks/todo.md: the owner's three decisions of 2026-10-14 ("yes to 2-4"), with no code:
+    bip39-entry's KEY2 "back" and the QR and info pages' KEY1 in pi-firmware.md's Buttons table, its Entry grids note
+    and step 12; rule 10's simulator marker in CLAUDE.md; the decisions recorded under "Raised by the M3 gate report",
+    Q32 (a) amended again, the screen inventory, group 15's last item and its Verification line, group 17's tally and
+    the gate status. Also lead decision 7's one line over 120 characters (22g) is rewrapped.
+24. pi/app, pi/sim: KEY2 "back" on bip39-entry, `KeyMap`'s doc on the QR and info pages, unit tests and
+    `dice_24_code` (group 15's last item).
+25. tasks/todo.md: the owner's capture verdict and the closing Review lines.
 
 Review fixes are listed as N.b entries under the commit they amend.
 
@@ -8231,20 +8326,20 @@ out. b74b0eb and this commit run in CI after the next push; b74b0eb adds one tes
 7. The review page (commit 21, b74b0eb; groups 11 and 17). The full set is about 11,600 PNG files, too many for the
    owner to page through, so capture_set also writes review/ and review.html, the owner's working view; the full set
    and index.html stay the record. The owner still receives the full set zipped, as Q30 (g) approved: it zips to
-   22.8 MB (the PNG files are stored uncompressed), so this is an aid, not a replacement (lead, 2026-10-14). Readings taken: "the first capture of every screen" is
-   the first one drawn as is, and the first capture only when every capture of that screen is a placeholder (only
-   reveal-d's are, beside its specimen); a string is listed only for a Public QR code or a vector run's Protected one,
-   so the two throwaway collision reports (`runtime_stop`, `mixed_12_restarts`), which are placeholders, are not on
-   the page. index.html is unchanged, so its "first capture" section still shows the placeholders of collision-qr,
-   words-insert, readback-entry and reveal-d, which throwaway runs reach first. The record under Review is the zip's
-   SHA-256 and index.html's (above). CLAUDE.md's Commands comment for capture_set and group 14's commands-of-record
-   line still name only "captures in target/tmp/pi-sim-captures/", which stays true; neither names review.html.
-   Also beside Q30 (g), which has captures come only from `capture_set`: the review page's tests, run by every `cargo
-   test`, capture two short runs as `capture_set` does, a throwaway one (262 presents, its Protected frames
-   placeholders) and a dice-only vector one (238 presents, as drawn, 21d), each into target/tmp/pi-sim-review-rule/,
-   cleared again when its run ends (21c). And `capture_set` copies the PNG files it wrote into review/, reading them
-   back, and writes a second HTML page, where the plan's Files line said pi/sim reads no file and writes only PNGs and
-   an index; that line and Verification "Rules" say so (22d).
+   22.8 MB (the PNG files are stored uncompressed), so this is an aid, not a replacement (lead, 2026-10-14). Readings
+   taken: "the first capture of every screen" is the first one drawn as is, and the first capture only when every
+   capture of that screen is a placeholder (only reveal-d's are, beside its specimen); a string is listed only for a
+   Public QR code or a vector run's Protected one, so the two throwaway collision reports (`runtime_stop`,
+   `mixed_12_restarts`), which are placeholders, are not on the page. index.html is unchanged, so its "first capture"
+   section still shows the placeholders of collision-qr, words-insert, readback-entry and reveal-d, which throwaway runs
+   reach first. The record under Review is the zip's SHA-256 and index.html's (above). CLAUDE.md's Commands comment for
+   capture_set and group 14's commands-of-record line still name only "captures in target/tmp/pi-sim-captures/", which
+   stays true; neither names review.html. Also beside Q30 (g), which has captures come only from `capture_set`: the
+   review page's tests, run by every `cargo test`, capture two short runs as `capture_set` does, a throwaway one (262
+   presents, its Protected frames placeholders) and a dice-only vector one (238 presents, as drawn, 21d), each into
+   target/tmp/pi-sim-review-rule/, cleared again when its run ends (21c). And `capture_set` copies the PNG files it
+   wrote into review/, reading them back, and writes a second HTML page, where the plan's Files line said pi/sim reads
+   no file and writes only PNGs and an index; that line and Verification "Rules" say so (22d).
 8. Group 0's baseline was taken at the end (2026-10-14), from an archive of 8e6917b, not before commit 2; the tree is
    the same, so its figures stand (above).
 9. Commit 1 is two commits (b8e6143, the plan and the questions; 63e400f, the answers), and 12g is two (c171599 and
@@ -8286,9 +8381,9 @@ drives a full ceremony in the simulator; you review the screen captures".
   --workspace`) and the registry configuration (`--features keepcrypt-core/test-registry`). Between them
   `drill_12`, `dice_24_code` and `mixed_12_restarts` run steps 1-15. Locally at b74b0eb both configurations pass
   (gate 17 passed, 1 ignored, each); in CI the test job runs both on every pushed head, green on d00186e and 0cdfc8a.
-- Every screen: met, and so are the deliverables below but for one button mapping. `every_screen_is_expected`: the
-  scenarios' `Expect` ids cover all 62 `ScreenId`s with the test key, and all but snapshot-loaded and snapshot-date
-  without it, as planned.
+- Every screen: met, and so are the deliverables below but for bip39-entry's KEY2 "back", which the owner decided on
+  2026-10-14 (below) and commit 24 brings. `every_screen_is_expected`: the scenarios' `Expect` ids cover all 62
+  `ScreenId`s with the test key, and all but snapshot-loaded and snapshot-date without it, as planned.
   - Seal check with go-ahead code entry: the code is typed on the 8×4 grid; a wrong code keeps the check and its URL
     and shows no words; the mock checker's G, from a check QR whose drawn modules match its payload, reveals the
     words; a loaded snapshot asks for its date before every reveal; KEY2 leads back from the code grid (the owner's
@@ -8296,8 +8391,9 @@ drives a full ceremony in the simulator; you review the screen captures".
   - Braille pages: insert view and overview for 12 and 24 vector words with numbered dots, blank faces, lighter
     letters, mirror flags and device labels; the read-back names a mirror misread, a should-be-blank, a
     should-have-letter and a wrong letter.
-  - Button handling: met but for one documented mapping: pi-firmware.md's Buttons table gives the QR and info pages
-    KEY1 "back", which the app does not offer (`KeyMap`'s doc, commit 8c); it awaits the owner's decision (below).
+  - Button handling: met but for bip39-entry's KEY2 "back" (commit 24). The one documented mapping that differed,
+    the Buttons table's KEY1 "back" on the QR and info pages that the app does not offer (`KeyMap`'s doc, commit 8c),
+    is amended to the app by the owner's decision of 2026-10-14 (commit 23, below).
     Every scripted press goes through the Debouncer as a bounce train; every screen's footer names its keys within
     240 px; the dead-key probes press every unoffered key on each screen's first showing, and none draws anything.
   - Waiting-screen game: Snake, in Mixed step 4 only, closed at the quota, its bytes from `game_random` alone (the
@@ -8319,22 +8415,26 @@ drives a full ceremony in the simulator; you review the screen captures".
   required, is ignored); test 5m27s, gates 8m39s, coverage 97.38% of core's lines, inside group 14's budgets.
   b74b0eb and its review fixes (pi/sim's tests and this file) and this commit run after the next push; until that run
   is green, group 14's runtime budgets and Verification "CI" stay open (22b).
-- Every plan and Verification item of M3 is ticked with its proof but six: group 17's two items (the owner's capture
+- Every plan and Verification item of M3 is ticked with its proof but eight: group 17's two items (the owner's capture
   review, and the stage reviews' severity tally), Verification's "the owner reviews the captures", "Definition of
-  done", which waits for group 17 and CI, and group 14's runtime budgets and Verification "CI", which wait for CI on
-  the pushed head. No CI job, required check or ruleset changed; the nine new crates are the approved ones.
-- Open, part of the gate's button handling, for the owner: the QR and info pages offer no KEY1 "back", which
-  pi-firmware.md's Buttons table gives them (`KeyMap`'s doc, commit 8c): give those pages KEY1 "back" as the table
-  says, or amend the table to match. The lead recommends amending the table: most of these pages follow a one-way
-  step (a started check, a wipe, a written backup), and waiting on the privacy gate loses nothing.
-- Open, part of the gate's button handling, for the owner: bip39-entry (step 12, after "Do you use a BIP39
-  passphrase?") has the trap the KEY2 decision closed elsewhere: once there, only a typed passphrase or the idle wipe
-  leaves it, so a mistaken Yes pushes the user to type a passphrase they do not use. Stage B's review named it; the
-  lead left it out of the 2026-10-13 question. The lead recommends KEY2 "back" to bip39-ask, the typed text wiped.
-- Open, for the owner: CLAUDE.md rule 10 names the test-sources and test-registry markers but not the simulator's
-  (stage B's review). The lead proposes adding: "The Pi simulator (`pi/sim`), with its fake hwrng and stick, never
-  ships: every simulator build embeds `KC_SIMULATOR_DO_NOT_SHIP`, and CI fails any release artifact that contains
-  it." Commit 15 already enforces this; only the rule's text is missing.
+  done", which waits for group 17 and CI, group 14's runtime budgets and Verification "CI", which wait for CI on the
+  pushed head, and group 15's last item and Verification's KEY2 "back" on bip39-entry, which wait for commit 24. No
+  CI job, required check or ruleset changed; the nine new crates are the approved ones.
+- Decided by the owner on 2026-10-14 ("yes to 2-4"; under "Raised by the M3 gate report"), part of the gate's button
+  handling: the QR and info pages offer no KEY1 "back", which pi-firmware.md's Buttons table gave them (`KeyMap`'s
+  doc, commit 8c): give those pages KEY1 "back" as the table says, or amend the table to match. The lead recommended
+  amending the table: most of these pages follow a one-way step (a started check, a wipe, a written backup), and
+  waiting on the privacy gate loses nothing. Amended in commit 23: the row's KEY1 is "back" only on About, the
+  re-check QR and the wait for a stick, the three pages of that kind that offer it; no key map changes.
+- Decided by the owner on 2026-10-14 (as above), part of the gate's button handling: bip39-entry (step 12, after "Do
+  you use a BIP39 passphrase?") has the trap the KEY2 decision closed elsewhere: once there, only a typed passphrase
+  or the idle wipe leaves it, so a mistaken Yes pushes the user to type a passphrase they do not use. Stage B's
+  review named it; the lead left it out of the 2026-10-13 question. The lead recommended KEY2 "back" to bip39-ask,
+  the typed text wiped: in the docs and this plan in commit 23, in the code in commit 24 (group 15's last item).
+- Decided by the owner on 2026-10-14 (as above): CLAUDE.md rule 10 named the test-sources and test-registry markers
+  but not the simulator's (stage B's review). The lead proposed adding: "The Pi simulator (`pi/sim`), with its fake
+  hwrng and stick, never ships: every simulator build embeds `KC_SIMULATOR_DO_NOT_SHIP`, and CI fails any release
+  artifact that contains it." Added verbatim in commit 23; commit 15 already enforces it.
 - Open items; none is part of the gate:
   - for the owner: when braille Tetris comes to the Pi (Q27 (c)): M4, right after M3, or with the phones (M5, M6).
   - low: Python `random` reached through a dotted import (for example `import jax.random`) is not caught by the

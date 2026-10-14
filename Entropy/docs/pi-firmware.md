@@ -90,7 +90,7 @@ A ceremony is fifteen screens in a fixed order: the typestate orders steps 1-8, 
 9. **Read-back from the metal.** The user enters the first four letters of every punched insert, in order; the device compares each with the seed and names any mismatch. Users without metal re-enter their paper words the same way.
 10. **Wallet summary.** Fingerprint and first receive address, to compare after restoring.
 11. **Encrypted backup (optional).** See the USB section below.
-12. **Watch-only export (optional).** Account QR for Sparrow and descriptor QR for Bitcoin Core; asks for the BIP39 passphrase first if the user uses one. The Pi takes BIP39 passphrases of printable ASCII (0x20 to 0x7E), up to 100 characters; a wallet whose passphrase uses other characters gets no watch-only export from the Pi, and its user builds the watch-only wallet in their coordinator after restoring.
+12. **Watch-only export (optional).** Account QR for Sparrow and descriptor QR for Bitcoin Core; asks for the BIP39 passphrase first if the user uses one; KEY2 on the passphrase entry goes back to the question whether the user has one, wiping what was typed. The Pi takes BIP39 passphrases of printable ASCII (0x20 to 0x7E), up to 100 characters; a wallet whose passphrase uses other characters gets no watch-only export from the Pi, and its user builds the watch-only wallet in their coordinator after restoring.
 13. **Register seal (optional, once).** Registration QR for a second device.
 14. **Reveal D (optional).** For verification runs only, with a warning that D plus the rolls recreates the seed. D is shown as 16 groups of 4 hex characters, like C. On the offline computer, type each value into verify.py only after its prompt appears: anything typed earlier is dropped, though the terminal may already have shown it.
 15. **Finish.** The SeedBook "before you walk away" checklist, then the session is wiped and "Safe to power off" is shown.
@@ -104,12 +104,12 @@ One press is one event: presses are debounced and nothing more, with no auto-rep
 | Menus, offers | move | - | select | back, only where nothing is lost | - | - |
 | Dice | pick 1 to 6 (blank after each confirm) | - | confirm | undo | - | Done, once the minimum is met |
 | Words | - | - | read-back, on the last insert (back to entry when reviewing a mismatch) | overview on/off | previous | next |
-| Entry grids | cursor | cursor | type | delete | back, on the go-ahead code and backup-passphrase entry | done |
+| Entry grids | cursor | cursor | type | delete | back, on the go-ahead code, backup-passphrase and BIP39-passphrase entry | done |
 | Read-back mismatch | - | - | re-enter | show the insert | - | - |
 | Snake | steer | steer | play again, after a round ends | leave | - | - |
-| QR and info pages | - | - | continue | back | previous page | next page |
+| QR and info pages | - | - | continue | back, only on About, the re-check QR and the wait for a stick | previous page | next page |
 
-- **Entry grids:** the go-ahead code uses the 32 Crockford symbols in 8×4; read-back and backup-passphrase words use a-z plus "blank" in 7×4; the BIP39 passphrase uses printable ASCII in three 8×4 pages. KEY2 on the go-ahead code goes back to the seal card's actions page with the same check and nonce, and clears what was typed; on the backup passphrase of "Check a backup" it returns Home and drops the backup the device read, leaving the file on the stick. The read-back and BIP39-passphrase entries have no KEY2.
+- **Entry grids:** the go-ahead code uses the 32 Crockford symbols in 8×4; read-back and backup-passphrase words use a-z plus "blank" in 7×4; the BIP39 passphrase uses printable ASCII in three 8×4 pages. KEY2 on the go-ahead code goes back to the seal card's actions page with the same check and nonce, and clears what was typed; on the backup passphrase of "Check a backup" it returns Home and drops the backup the device read, leaving the file on the stick; on the BIP39 passphrase it goes back to the question whether the user has one, and wipes what was typed. The read-back alone has no KEY2.
 - **Confirmations:** confirm is disabled at 256 rolls, and the one-way choices (Skip, Match found, Cannot check) each take a confirm screen.
 
 ### Protected screens and idle
