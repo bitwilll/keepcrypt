@@ -5821,7 +5821,7 @@ amended; rules 5, 6), and on the BIP39-passphrase entry (the owner's decision of
   24b recorded as the lead's open decision and the capture at 4256626 settles (the next item). B's last two mediums
   are fixed by commits 23-24 (above). So every high and medium finding of M3 is fixed: none high, and 26 medium (A 0,
   B 5, C 8, D 4, D2 2, E 5, F 2).
-- [ ] The registry-config capture set and its review page, zipped and sent to the owner with its index (Q30 (g)).
+- [x] The registry-config capture set and its review page, zipped and sent to the owner with its index (Q30 (g)).
   The review page (commit 21) is the owner's working view inside the zip; the full set and index.html are the record.
   Corrected (lead, 2026-10-14): commit 21 planned to send only review.html and review/, as the full set is 1.9 GB
   on disk, but its PNG files are stored uncompressed and the whole set zips to 22.8 MB, so the owner gets the full
@@ -5878,6 +5878,11 @@ amended; rules 5, 6), and on the BIP39-passphrase entry (the owner's decision of
   re-check URL (check_backup), 4 collision reports (dice-50's, in drill_12, skip_and_idle, wipes_clear_the_stage and
   check_restarts), 1 account UR, 1 descriptor string (one QR code, two lines) and 1 registration (dice_24_code).
   Awaiting the owner: the QR scan record and the verdict on this set, so the box stays open.
+  Verdict (the owner, 2026-10-14, commit 26): "all match, looks good", in answer to the lead's request to scan every
+  QR code and check the screens. Scan record: the owner scanned the 15 QR captures on review.html from
+  registry-review.zip (3913ff53...) with a phone: 7 check URLs, 1 re-check URL, 4 collision reports, the account UR,
+  the descriptors and the registration. Every decoded text equals core's string beside it, and the screens look
+  right.
 
 **Deferred, with their milestone**
 - **M4:**
@@ -6039,7 +6044,7 @@ amended; rules 5, 6), and on the BIP39-passphrase entry (the owner's decision of
   with "no registry key is pinned in this build"; registry, flipped-signature-r refused ("bad signature"),
   with-dice-50 loaded ("Snapshot No. 4, dated 2026-03-01, 7 entries."), the collision before any word, and "No
   collision for seal 9FHYMCQA as of 2026-03-01."
-- [ ] **Gate: the owner reviews the captures,** with every QR scanned.
+- [x] **Gate: the owner reviews the captures,** with every QR scanned.
 
   Proof: the owner's verdict and the scan record, quoted under Review.
   Awaiting the owner (M3 Review, 2026-10-14): the capture run under "M3: local proof" (b74b0eb, registry
@@ -6050,6 +6055,10 @@ amended; rules 5, 6), and on the BIP39-passphrase entry (the owner's decision of
   commit 24, and sent its two zips to the owner on 2026-10-14 in place of b74b0eb's (group 17's capture item: 11,668
   PNG files, index.html SHA-256 f0d58ed1..., the review zip 3913ff53..., the full zip def89c8f...). Awaiting the
   owner's QR scan record and verdict on that set.
+  Proof (commit 26): the owner's verdict on the set captured at 4256626, 2026-10-14: "all match, looks good". Scan
+  record: the owner scanned the 15 QR captures on review.html from registry-review.zip (3913ff53...) with a phone: 7
+  check URLs, 1 re-check URL, 4 collision reports, the account UR, the descriptors and the registration. Every
+  decoded text equals core's string beside it, and the screens look right.
 - [x] **Runtime failures halt** (Q25; design.md:178): boot and continuous health failures, an injected game error and
   HAL faults all end on `halt` with no secret held.
 
@@ -6158,10 +6167,13 @@ amended; rules 5, 6), and on the BIP39-passphrase entry (the owner's decision of
   when it ran and the last commit that changes code or tests; the commits after it change only this file. All 14
   Entropy check runs pass, with unchanged names; the Vercel check, not required, is ignored. Budgets as group 14's
   last item: test 5m38s, gates 8m37s, coverage 2m47s at 97.38% of core's lines. Canaries 61/61 in its gates job.
-- [ ] **Definition of done** (CLAUDE.md), with proof pasted under Review.
+- [x] **Definition of done** (CLAUDE.md), with proof pasted under Review.
   Open (M3 Review, 2026-10-14): waits for group 17's two items, and (22b) for CI on the pushed head.
   Open (commit 25): CI on 4256626 is green and group 17's stage reviews are ticked, so it waits only for the owner's
   QR scan record and verdict on the captures (group 17's capture item).
+  Proof (commit 26): with the owner's capture verdict in, every plan and Verification item of M3 is ticked with
+  its proof under Review; tests, vectors, clippy, fmt, deny and the banned-API gate are clean locally and in CI
+  (run 38521472700 on 4256626, the last commit that changes code or tests).
 
 ### New dependencies
 
@@ -8529,15 +8541,10 @@ tally): group 14's runtime budgets, group 17's stage reviews, Verification's KEY
 Verification "CI", on run 38521472700 at 4256626.
 
 **Still unticked**, with what each waits for:
-- Group 17, the capture set and its review page, and Verification "Gate: the owner reviews the captures": the set
-  captured again at 4256626 is recorded in group 17, and its two zips were sent to the owner on 2026-10-14 in place
-  of b74b0eb's; awaiting the owner, who scans every QR capture on the review page with a phone, compares each
-  decoded text with core's string beside it, and gives a verdict. The lead adds both, quoted with the date, in
-  commit 26.
-- Verification "Definition of done": waits for the owner's QR scan record and verdict (CI on 4256626 is green, and
-  group 17's stage reviews are ticked).
+- None in M3. With the owner's capture verdict of 2026-10-14 ("all match, looks good", commit 26), every plan
+  and Verification item of the M3 section is ticked with its proof.
 
-### M3 gate status: awaiting the owner's review of the captures (2026-10-14)
+### M3 gate status: MET, approved by the owner (2026-10-14)
 The gate in docs/build-plan.md:293. Deliverables: "Every screen including seal check with go-ahead code entry and
 braille pages, button handling, waiting-screen game, USB export and snapshot import mocked". Proof: "Scripted run
 drives a full ceremony in the simulator; you review the screen captures".
@@ -8568,11 +8575,12 @@ drives a full ceremony in the simulator; you review the screen captures".
     stays), and Retry keeps the passphrase.
   - Snapshot import mocked: `with-dice-50` drives both the collision and the clear result in the registry
     configuration, a tampered snapshot is refused, and release builds show `NoRegistryKey`'s text.
-- You review the screen captures: open. The registry configuration's capture set at 4256626, captured again after
+- You review the screen captures: met. The registry configuration's capture set at 4256626, captured again after
   commit 24 (11,668 PNG files of 62 screens, index.html SHA-256 f0d58ed1...), zipped whole with its review page
   (11,742 entries, 22,865,035 bytes, SHA-256 def89c8f...), and the review page alone (73 entries, 145,385 bytes,
   SHA-256 3913ff53...), were sent to the owner on 2026-10-14 in place of the b74b0eb set's zips (group 17's capture
-  item). Awaiting the owner's QR scan record and verdict.
+  item). The owner's verdict, 2026-10-14: "all match, looks good". Scan record: the owner scanned all 15 QR
+  captures on the review page; every decoded text equals core's string beside it (group 17).
 - Also met: runtime failures halt with nothing held (Q25); the 99-roll minimum holds through Stop, Cannot check, the
   idle wipe and KEY2, and only Ready (Skip or a passed check), a halt or a power cycle drops it (Q26); Protected
   screens are gated, covered after 30 s and wiped at 10 minutes (Q29); the verify.py tie recomputes the words and
@@ -8581,10 +8589,9 @@ drives a full ceremony in the simulator; you review the screen captures".
 - CI: run 38521472700 on 4256626, the PR head when it ran and the last commit that changes code or tests, is green:
   all 14 Entropy check runs pass (the Vercel check, not required, is ignored); test 5m38s, gates 8m37s, coverage
   97.38% of core's lines, inside group 14's budgets. The commits after 4256626 change only this file.
-- Every plan and Verification item of M3 is ticked with its proof but three: group 17's capture item and
-  Verification's "the owner reviews the captures", which wait for the owner's QR scan record and verdict, and
-  "Definition of done", which waits for them. Every high and medium finding of the stage reviews is fixed (group
-  17). No CI job, required check or ruleset changed; the nine new crates are the approved ones.
+- Every plan and Verification item of M3 is ticked with its proof. Every high and medium finding of the stage
+  reviews is fixed (group 17). No CI job, required check or ruleset changed; the nine new crates are the approved
+  ones.
 - Decided by the owner on 2026-10-14 ("yes to 2-4"; under "Raised by the M3 gate report"), part of the gate's button
   handling: the QR and info pages offer no KEY1 "back", which pi-firmware.md's Buttons table gave them (`KeyMap`'s
   doc, commit 8c): give those pages KEY1 "back" as the table says, or amend the table to match. The lead recommended
@@ -8614,4 +8621,5 @@ drives a full ceremony in the simulator; you review the screen captures".
   - low: index.html's "first capture" section shows placeholders for four screens that throwaway runs reach first
     (collision-qr, words-insert, readback-entry, reveal-d); review.html shows drawn captures of all but reveal-d.
   - low: CLAUDE.md's Commands comment for capture_set does not name review.html.
-- Per CLAUDE.md, M4 does not start until the owner approves the gate.
+- The owner approved the gate on 2026-10-14 with the capture verdict above. Per CLAUDE.md, M4 starts only when the
+  owner says so.
