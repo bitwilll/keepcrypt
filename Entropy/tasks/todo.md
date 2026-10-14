@@ -1001,7 +1001,9 @@ on Python 3.12 and 3.9; `banned-api-check.sh` is clean (199 files) and `--selfte
 script reads CLAUDE.md. vectorgen.py reads docs/: its `--selftest` checks the sentences it pins there, pi-firmware.md's
 backup sentences among them, and commit 23 edits none of them (23b; this line said that no script read docs/).
 
-### Needed before M4 code (Q35-Q43)
+### Needed before M4 code (Q35-Q43, answered 2026-10-14)
+The owner answered "approve all" on 2026-10-14: every recommendation below is decided, and "Otherwise" is not taken.
+
 Please answer these before any M4 code is written. Each starts with what I recommend and says what changes if you choose
 otherwise; "as recommended" is a full answer. They are in order of importance. Almost every M4 commit touches paths you
 own in CODEOWNERS, so the whole PR needs your review, as M1-M3's did.
@@ -6570,8 +6572,8 @@ Review fixes are listed as N.b entries under the commit they amend.
 
 ## M4: Pi hardware and OS image (`pi/app` device HAL, `pi/os`)
 
-Status (2026-10-14): this is a plan and has not been checked in with the owner. No implementation code is written until
-Q35-Q43 are answered.
+Status (2026-10-14): the owner approved this plan and every recommendation of Q35-Q43 ("approve all", 2026-10-14).
+Code follows "Commit order on `m4-pi-hardware`" below, stage by stage.
 
 ### Inputs from M3 (folded into the plan below)
 
@@ -7793,6 +7795,7 @@ The PR is a draft from commit 1.
 
 **Stage A: decisions, docs, core, dependencies**
 1. tasks/todo.md: the M4 plan and the owner's answers to Q35-Q43. The title becomes "milestones M0 to M4".
+   1b. tasks/todo.md: the owner's answers to Q35-Q43 ("approve all", 2026-10-14), recorded after commit 1 (49423fc).
 2. docs: the approved edits (Q40; Q42 (b)), alone; plus `1.txt` if approved.
 3. CLAUDE.md: rule 8's sentence (Q40 (a)). 3b. `.github/CODEOWNERS:7-9`, if approved (Q43 (d)).
 4. core: `tests/auto_traits.rs` (group 3).
