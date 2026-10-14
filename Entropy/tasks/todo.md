@@ -1345,8 +1345,9 @@ answer.
     - (ii) If text is readable and the QR codes scan, accept the washed-out look in M4 and leave the second block to
       M4b.
 
-### Raised by stage A's review (Q51, rule 8's path list; open, needed before commit 12)
-The lead is asking the owner now. Commit 12 (group 11's path-literal rule) waits for the answer.
+### Raised by stage A's review (Q51, rule 8's path list; answered 2026-10-14)
+The owner answered "Yes" on 2026-10-14: the recommendation below is decided. Commits 10c (PF:81, with this record) and
+10d (CLAUDE.md rule 8) apply it, and commit 12 (group 11's path-literal rule) no longer waits.
 
 51. **Rule 8's path list leaves reads out** (CLAUDE.md rule 8; PF:81)
     - Rule 8's sentence (commit 3, ed15bd2) and PF:81 (commit 2, a7a91cc) say the path list is complete and the paths
@@ -6740,8 +6741,9 @@ Review fixes are listed as N.b entries under the commit they amend.
 
 Status (2026-10-14): the owner approved this plan and every recommendation of Q35-Q43 ("approve all", 2026-10-14).
 The owner then approved Q44-Q50 (other Waveshare screens, "approve all", 2026-10-14): group 5's panel driver keeps each
-screen's settings as one profile, and M4b, under "Deferred", adds more screens after the M4 gate. Q51 (rule 8's path
-list) is open, and commit 12 waits for it. Code follows "Commit order on `m4-pi-hardware`" below, stage by stage.
+screen's settings as one profile, and M4b, under "Deferred", adds more screens after the M4 gate. The owner answered Q51
+(rule 8's path list) "Yes" on 2026-10-14: commits 10c and 10d apply it, and commit 12 no longer waits. Code follows
+"Commit order on `m4-pi-hardware`" below, stage by stage.
 
 ### Inputs from M3 (folded into the plan below)
 
@@ -7041,8 +7043,12 @@ stale (Q43 (d)).
   (Q35). It shows the stop screen until a power cycle and holds nothing.
 - **The fence:** the clock reading taken right after the latest present that showed a different screen, or right after
   the latest call that can block, whichever is later. A press that began before the fence does nothing beyond feeding
-  `add_extra` while Collecting (Q39 (a)). A different screen is another `ScreenId`, or another page or note of the same
-  one that the app entered (6b): what PF:105 calls a screen that was not yet fully drawn.
+  `add_extra` while Collecting (Q39 (a)). For the fence, a screen is one `enter_page`, not one `ScreenId` (lead
+  decision, stage B's review, 2026-10-14): a different screen is the first present after any `enter_page` (3db333f,
+  6b), another page or note of the same id included, or a present of another id. That is the reading of Q39 (a) and
+  PF:105 (a screen that was not yet fully drawn) that drops a press queued behind any page or note change. A refusal
+  shown in place, with no `enter_page` and no blocking call, moves no fence; the app has one such refusal that can be
+  reached, and group 10's item closes it in commit 11.
 - **The image:** `keepcrypt-pi-0.0.0.img`, built from `pi/os`.
 - **The image workflow:** `.github/workflows/entropy-pi-image.yml`.
 - **The gate image:** the image the owner runs H1-H4 on. It is valid only if the image workflow's run at the final PR
@@ -7351,6 +7357,17 @@ stale (Q43 (d)).
   the wait screen, the call and the refusal's present: nothing, the idle timer included; the next KEY2 goes Home. In
   scratch copies, that pair of removals, and the wait screen's `presented` alone, fail it, and the idle restart before
   the check fails the boot, gate and stick-read tests too.
+
+  Lead decisions (stage B's review, 2026-10-14): (1) the fence follows `enter_page` (3db333f), not the `ScreenId`: that
+  is the reading of Q39 (a) and PF:105 that drops a press queued behind any page or note change, and the References and
+  terms now say that for the fence a screen is one `enter_page`. (2) The 6b fix left one gap: a refusal shown in place,
+  with no `enter_page` and no blocking call, keeps a queued press, and the app has one such refusal that can be reached,
+  backup-check-entry's "unrecognised entry" (app/usb.rs's `entry_typed` sets `view.note` and redraws; the
+  wrong-passphrase refusal beside it has the fence after `decrypt_backup`). Commit 11 enters that refusal through
+  `enter`, so the fence covers it (group 10's item). The only other in-place refusal, bip39-entry's empty passphrase
+  (app/ready.rs's `passphrase_typed`), cannot be reached, because the grid offers no done key on an empty entry
+  (`back_on_the_bip39_passphrase_grid_wipes_the_text_in_place_and_shows_bip39_ask` checks KEY3 is unlabelled there); it
+  is noted as unreachable and stays as it is.
 
 **5. Device: the panel (pure; `device/panel.rs`; Q36 (c), Q44)**
 - [x] `Panel<B: Bus>` runs over the approved `Bus` trait (unchanged) and one `&'static PanelProfile`. The trait:
@@ -7793,6 +7810,15 @@ stale (Q43 (d)).
 
   Park is `loop { std::thread::park() }`. The process never exits, so init never moves on.
 - [ ] main.rs keeps `#![forbid(unsafe_code)]`. On Linux it calls `device::run()`; elsewhere it stays `fn main() {}`.
+- [ ] (Lead decision, stage B's review, 2026-10-14; group 4's fence item.) In the lib, backup-check-entry's
+  "unrecognised entry" refusal (app/usb.rs's `entry_typed`, when `from_first_four` refuses the entries) is entered
+  through `enter` with its `Note::Refused`, not set on the view in place, so its first present is a new screen and moves
+  the fence: a press queued behind that present no longer types into the emptied entry. The wrong-passphrase refusal
+  next to it keeps the fence after `decrypt_backup`. bip39-entry's empty-passphrase refusal (app/ready.rs's
+  `passphrase_typed`) stays in place: it cannot be reached, since the grid offers no done key on an empty entry.
+  Proof: an app.rs test on the test HAL: a press stamped during the refusal's present changes nothing (no present, no
+  letter typed, the idle timer kept) and the next press types; in a scratch copy, HEAD's in-place note fails it.
+  pi/sim's gate scenarios still pass in both configurations.
 - [ ] A panic unwinds out of `run`. The `App` drops `hal` first, so the panel blanks and its backlight goes off; then the
   session zeroizes. The process exits, and init starts stop mode. An abort skips every `Drop`; in that case stop mode's
   re-init blanks the panel within about a second.
@@ -7808,13 +7834,21 @@ stale (Q43 (d)).
   The crash path is not forced on hardware in M4 (Q42 (a)).
 
 **11. Gates (banned-api-check.sh, canaries)**
-- [ ] Open owner item, before commit 12: Q51 (rule 8's path list). Rule 8's sentence and PF:81 say the list is complete
+- [x] Open owner item, before commit 12: Q51 (rule 8's path list). Rule 8's sentence and PF:81 say the list is complete
   and its paths fixed. Stage A's review found reads it leaves out: the dynamic loader's own files, glibc's
   `/proc/self/maps` before `main`, `/dev/null` if a standard fd is closed, and rppal's `/dev/mem` attempt, which
   `CONFIG_DEVMEM=n` makes fail. The list also holds glob patterns. Recommended: PF:81 lists these reads too, says the
   grep gate covers the paths our code and rppal name, and calls the globs patterns; rule 8's "fixed entries under
   `/proc` and `/sys`" becomes "fixed entries and patterns under `/proc` and `/sys`".
   Proof: the owner's answer under Q51.
+  Proof (commit 10c): the owner's "Yes" (2026-10-14) under Q51. PF:81 keeps every path it listed, calls the
+  four globs patterns, lists the runtime's own reads (the loader's files, glibc's `/proc/self/maps` before `main`,
+  `/dev/null` for a closed standard descriptor, rppal's `/dev/mem` attempt under `CONFIG_DEVMEM=n`) and says the
+  grep gate covers the paths our code and rppal name, not those reads; rule 8's wording is commit 10d.
+  `vectorgen.py --selftest` 13/13 and `verify.py selftest` (8 groups) on Python 3.12 and 3.9 (vectorgen pins PF
+  sentences); the banned-API gate clean (211 files) and its selftest 427/427; fmt, both clippy runs,
+  `cargo test --workspace` (443 passed, 3 ignored), core's test-sources run (269 passed, 1 ignored) and pi-sim with
+  the test registry (69 passed, 2 ignored) pass.
 - [ ] A Device category. Each rule gets hit and clean selftest fixtures and one canary:
   - **Path literals.** Every string literal starting with `/` in `pi/app/src` lives in `device/paths.rs` and is one of
     `/dev/hwrng`, `/dev/mmcblk0p2`, `/dev`, `/sys/block`, `/mnt/usb`. rppal builds its own `/dev/spidev*`, `/dev/gpio*`
@@ -8216,7 +8250,7 @@ What does not change, in M4 or M4b (Q44-Q50):
 - The M4 gate (BP:294), the answers to Q35-Q43 and the four approved crates (rule 11).
   - No crate is added anywhere below.
   - Every screen considered here is SPI plus GPIO, which rppal 0.22.1 already covers.
-- Rule 8 and CLAUDE.md, under the recommendations (Q51, open, is a separate item).
+- Rule 8 and CLAUDE.md, under the recommendations (Q51, answered 2026-10-14, is a separate item: commits 10c and 10d).
   - Commit 3 has landed (ed15bd2) with the approved sentence.
   - Only Q47 (c), which was not taken, would have needed a later CLAUDE.md commit adding `/proc/cmdline`.
 - No `unsafe` (Q36 (d)).
@@ -8661,14 +8695,22 @@ The PR is a draft from commit 1.
     `--selftest` (group 9).
     10b. pi/os: the recompute review: `rootfs-prefix.py --selftest` accepts `bytes_used` 96, the boundary the device
     accepts.
+    10c. docs, tasks/todo.md: Q51 answered (the owner's "Yes", 2026-10-14): PF:81 also lists the runtime's own reads
+    (the dynamic loader's files, glibc's `/proc/self/maps` before `main`, `/dev/null` for a closed standard descriptor,
+    rppal's `/dev/mem` attempt, which `CONFIG_DEVMEM=n` makes fail), says the grep gate covers the paths our code and
+    rppal name, and calls the globs patterns, every listed path kept; Q51 and group 11's item marked answered; stage B's
+    two lead decisions on the fence recorded (References and terms, groups 4 and 10).
+    10d. CLAUDE.md: rule 8's "fixed entries under `/proc` and `/sys`" becomes "fixed entries and patterns under `/proc`
+    and `/sys`"; nothing else in the rule changes.
 
 **Stage C: Linux glue, main, gates, CI**
 
 11. pi/app (bin): `device/linux.rs`, `device/paths.rs`, `device::run`, stop mode, main.rs, the widened `mod device`
-    (group 10).
+    (group 10); and, in the lib, backup-check-entry's "unrecognised entry" refusal entered through `enter`, so the fence
+    covers it (group 10's lead-decision item).
 12. scripts: the Device category and test-file exception, Python `random` through any module path, the `.symtab` Format
     rule, std's random-key rule, `--workflows`, fixtures, canaries (groups 11, 12). It starts only after the owner
-    answers Q51 (group 11).
+    answers Q51 (group 11; answered 2026-10-14, applied in 10c and 10d).
 13. .github: the cross leg links and scans `keepcrypt-pi`; `test` runs the loop-device test; `gates` runs `--workflows`
     (group 12).
 
