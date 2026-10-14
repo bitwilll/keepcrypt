@@ -7744,6 +7744,11 @@ stale (Q43 (d)).
     the Rust test and recomputed by `rootfs-prefix.py --selftest` in `gates` (a required check);
   - the Rust tests also cover a bad magic, a short read and an oversized `bytes_used`.
 
+  Proof (review fix, commit 10b): only the device pinned the boundary `bytes_used` 96: the script's refusals cover 0
+  and 95 and nothing accepted 96, so a script that refused 96 passed its selftest while `rootfs.rs` accepts it. The
+  selftest's image check now also takes `bytes_used` 96, padded to 4,096 bytes, and gets the whole padded file's
+  prefix, as the device does; `<=` in place of `<` fails it on Python 3.12 and 3.9. Still 4 checks.
+
 **10. Device: Linux glue, `main`, stop mode (Q35, Q39 (e))**
 - [ ] Module declaration across commits:
   - commit 7 declares `#[cfg(test)] mod device;` in main.rs, and each later commit adds its submodule;
@@ -8649,6 +8654,8 @@ The PR is a draft from commit 1.
    loop-device test drives the glue's `Mounter`, and commit 13's step needs exactly `1 passed`.
 10. pi/app (bin), pi/os, .github: `device/rootfs.rs` and its vector; `pi/os/rootfs-prefix.py`; `gates` runs its
     `--selftest` (group 9).
+    10b. pi/os: the recompute review: `rootfs-prefix.py --selftest` accepts `bytes_used` 96, the boundary the device
+    accepts.
 
 **Stage C: Linux glue, main, gates, CI**
 

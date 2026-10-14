@@ -169,20 +169,22 @@ def check_vector():
 
 
 def check_image():
-    """The vector as partition 2 gives the pinned prefix, whatever follows it in the partition. An image whose
-    bytes_used is 4,000, padded with zeros to 4,096 as mksquashfs pads it, gives the prefix of the whole padded
-    file."""
+    """The vector as partition 2 gives the pinned prefix, whatever follows it in the partition. Images whose
+    bytes_used is 96, the least the rule takes (the superblock alone), or 4,000, padded with zeros to 4,096 as
+    mksquashfs pads them, give the prefix of the whole padded file, as on the device."""
     pinned = pinned_prefix()
     problems = []
     for sectors in (8, 9, 64):
         prefix = image_prefix(io.BytesIO(disk(vector(), sectors)), PAD)
         if prefix != pinned:
             problems.append("a partition 2 of %d sectors gives %s, not %s" % (sectors, prefix, pinned))
-    padded = vector(bytes_used=4000)
-    want = grouped(hashlib.sha256(padded).digest())
-    prefix = image_prefix(io.BytesIO(disk(padded, 9)), len(padded))
-    if prefix != want:
-        problems.append("bytes_used 4000 gives %s, not %s, the prefix of the padded file" % (prefix, want))
+    for bytes_used in (SUPERBLOCK_LEN, 4000):
+        padded = vector(bytes_used=bytes_used)
+        want = grouped(hashlib.sha256(padded).digest())
+        prefix = image_prefix(io.BytesIO(disk(padded, 9)), len(padded))
+        if prefix != want:
+            problems.append("bytes_used %d gives %s, not %s, the prefix of the padded file" % (bytes_used, prefix,
+                                                                                             want))
     return problems
 
 
@@ -240,7 +242,7 @@ def check_refusals():
 def selftest():
     checks = (
         ("the vector gives the prefix pi/app/src/device/rootfs/tests.rs pins", check_vector),
-        ("the vector as partition 2 of an image, whatever follows it there; bytes_used 4,000 padded to 4,096",
+        ("the vector as partition 2 of an image, whatever follows it there; bytes_used 96 and 4,000 padded to 4,096",
          check_image),
         ("the command line on files: the prefix, or a refusal for a rootfs.squashfs of another size",
          check_command),
