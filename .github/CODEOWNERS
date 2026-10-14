@@ -4,9 +4,10 @@
 # it is a verified email of an account with write access to this repo;
 # `gh api repos/bitwilll/keepcrypt/codeowners/errors` lists any problem.
 #
-# This file says who must review, not how many. GitHub accepts an approval from any one owner
-# on a line. The two approvals for Entropy/core/, ffi/ and pi/os/ come from branch protection on
-# main (required approving reviews = 2), not from this file.
+# This file names each path's owner, not how many must approve. Ruleset 24833307 on main (no
+# bypass actors) requires a pull request and the 14 Entropy CI check runs, but 0 approving
+# reviews and no code-owner review, so docs/build-plan.md's two approvals for Entropy/core/,
+# ffi/ and pi/os/ are unmet while the owner is the only maintainer (tasks/todo.md, M1 Q12).
 #
 # Syntax, from GitHub's "About code owners" (github/docs commit 0b183d5):
 # - patterns follow gitignore rules, except that "!" negation, "[ ]" ranges and "\#" escapes
