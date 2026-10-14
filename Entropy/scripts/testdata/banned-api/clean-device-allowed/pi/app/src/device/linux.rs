@@ -1,5 +1,7 @@
-// The device module alone opens files, calls rppal and nix, and parks the thread.
+// The device module alone opens files, calls rppal and nix, and parks the thread; linux.rs alone
+// imports the thread module, for park and sleep. The firmware process is one thread.
 use std::fs::{self, File, OpenOptions};
+use std::thread;
 use std::os::unix::fs::OpenOptionsExt;
 use nix::mount::{MntFlags, MsFlags};
 use rppal::gpio::Gpio;
@@ -11,6 +13,7 @@ for entry in fs::read_dir(paths::SYS_BLOCK)? {
 nix::mount::mount(Some(device), paths::USB_MOUNT, Some("vfat"), MsFlags::MS_RDONLY, None::<&str>)?;
 let flags = MntFlags::from_bits(how.flags()).ok_or(Errno::EINVAL)?;
 let gpio = Gpio::new()?;
+thread::sleep(Duration::from_millis(u64::from(ms)));
 loop {
-    std::thread::park();
+    thread::park();
 }

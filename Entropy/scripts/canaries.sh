@@ -1073,6 +1073,9 @@ device_canary device-hardware-crate pi/app/src/input.rs \
     'fn kc_gate_canary() -> Result<rppal::gpio::Gpio, rppal::gpio::Error> { rppal::gpio::Gpio::new() } // gate canary (temp copy only)'
 device_canary device-buffered-reader pi/app/src/device/hwrng.rs \
     '// Gate canary (temp copy only): a BufReader would hold a copy of the samples.'
+# The grouped shape rustfmt gives two imports, which names no item right after the ::.
+device_canary device-grouped-process-use pi/app/src/app.rs \
+    'use std::process::{Command, Stdio}; // gate canary (temp copy only): the module by any path'
 
 # The workflow hardening check (tasks/todo.md, M4 group 11; Q38 (d)): a copy of the real
 # entropy-ci.yml with every rule broken once (the top-level token widened to write, which also
@@ -1216,7 +1219,7 @@ cp "$root/core/examples/release_probe.rs" "$tmp/core/examples/release_probe.rs" 
 
 # The number of checks above, pinned, so a canary that is deleted, or skipped by a broken branch,
 # turns CI red too. A real change to the canaries updates this pin in the same reviewed change.
-want_checks=68
+want_checks=69
 if [ "$checks" -ne "$want_checks" ]; then
     echo "FAIL: $checks checks ran; scripts/canaries.sh pins $want_checks"
     status=1

@@ -7942,6 +7942,23 @@ stale (Q43 (d)).
   `"/proc/cmdline"` in app.rs, `std::fs::File::open` in hal.rs, `rppal::gpio::Gpio::new` in input.rs, a `BufReader`
   comment in device/hwrng.rs) and need exactly that Device hit. The gate is clean on the tree (214 files) and on a
   clean export of HEAD (211 files); `--selftest` 542/0 under sh and dash; canaries 68/68.
+  Proof (review fix, commit 12b): stage C's security review found the process and thread rule matched only the item
+  named right after the `::`, so the grouped use rustfmt itself produces (`use std::process::{Command, Stdio};`,
+  `use std::thread::{spawn};`) and `thread::scope` passed; and that `    fs as f,` in a wrapped group and `extern
+  crate rppal as hw;` passed the fs and crate rules. The process and thread modules are now matched by any path, as
+  fs is (`process::`, `thread::`, `std::process`, `std::thread`, inside a `std::{...}` group, a wrapped `    process,`
+  or `    thread as t,` line), after sed deletes the calls the firmware makes: `std::process::id(` anywhere (the
+  device tests' temp-dir name) and, in device/linux.rs alone, `use std::thread;`, `thread::park(` and
+  `thread::sleep(`; the fs rule's wrapped line takes an alias and needs no trailing comma; `extern crate` hits
+  outside device/. Nine new `device-*` fixtures (the two grouped uses, `thread::scope` in linux.rs, `use std::thread;`
+  outside it, `use std::{io, process};`, `use std::process;` in a tests.rs, the wrapped `thread as t` and `fs as f`
+  lines, `extern crate rppal as hw;`), `clean-device-allowed` gains linux.rs's `use std::thread;`, `thread::sleep(`
+  and `thread::park(` and the tests' `std::process::id()`, and a fifth Device canary plants `use
+  std::process::{Command, Stdio};` in the copy of app.rs. `--selftest` 560/0 under sh and dash; the gate clean on the
+  tree (214 files) under both; canaries 69/69 (the pin in canaries.sh is 69; CLAUDE.md's Commands line is commit
+  18's, 5d). The artifact scan's Format comment and header now say the empty symbol list is the operative
+  stripped-file test (llvm-nm reads .symtab, not .dynsym) and the .symtab check names the cause: the recompute
+  review showed dropping the .symtab term leaves the selftest unchanged, so no behaviour changed.
 - [x] Python `random` through any module path: any `import` or `from … import` whose module path has a `random`
   component (`(^|\.)random(\.|$)`), alone or with `as`, is an RNG hit. This closes the open low item. Hit fixtures:
   `import jax.random`, `from jax.random import x`, `from torch.random import x`; the two forms already caught
@@ -8854,6 +8871,11 @@ The PR is a draft from commit 1.
 12. scripts: the Device category and test-file exception, Python `random` through any module path, the `.symtab` Format
     rule, std's random-key rule, `--workflows`, fixtures, canaries (groups 11, 12). It starts only after the owner
     answers Q51 (group 11; answered 2026-10-14, applied in 10c and 10d).
+    12b. scripts: stage C's security review: the Device category matches the process and thread modules by any path
+    (a grouped `use std::process::{Command, Stdio};` and `thread::scope` hit), allowing only `std::process::id()` and
+    linux.rs's `use std::thread;`, `thread::park(` and `thread::sleep(`; the fs rule's wrapped line takes an alias;
+    `extern crate` hits outside device/; fixtures and a fifth Device canary (69); the Format comment says the empty
+    symbol list is the operative stripped-file test.
 13. .github: the cross leg links and scans `keepcrypt-pi`; `test` runs the loop-device test; `gates` runs `--workflows`
     (group 12).
 

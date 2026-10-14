@@ -33,9 +33,11 @@
 #   Format     a file that is not an ELF, Mach-O or ar file (an rlib is an ar file): its symbols
 #              cannot be checked, so it fails. So does a thin ar file (!<thin>), which holds only its
 #              members' paths: the marker and key searches would never see the members' bytes. And
-#              so does a stripped ELF or Mach-O file (M4 group 12): an ELF with no .symtab section,
-#              or any object or linked file for which llvm-nm lists no symbol at all. A stripped
-#              file prints no symbols, so the symbol rules below would pass it silently
+#              so does a stripped ELF or Mach-O file (M4 group 12): any object or linked file for
+#              which llvm-nm lists no symbol at all (the operative test: a stripped ELF lists none
+#              too, since llvm-nm reads .symtab, not .dynsym), and an ELF with no .symtab section,
+#              which names the cause. A stripped file prints no symbols, so the symbol rules below
+#              would pass it silently
 #   Symbol     read with the pinned toolchain's llvm-nm (llvm-tools-preview), in every object file,
 #              linked file and archive member: an undefined rand, random, srand, srandom, rand_r,
 #              random_r, srandom_r, *rand48, seed48, lcong48, initstate or setstate (these six also
@@ -201,8 +203,8 @@
 #              /dev/mmcblk0p2, /dev, /sys/block and /mnt/usb, the paths docs/pi-firmware.md's
 #              Process rules list for our own code (rppal builds its own /dev/spidev*, /dev/gpio*
 #              and /proc paths, read from its source and on that list too). File APIs: the fs
-#              module (fs::, std::fs, std::{.. fs ..} and a wrapped "    fs,"), File::,
-#              OpenOptions, read_dir, read_link and remove_file appear only under
+#              module (fs::, std::fs, std::{.. fs ..} and a wrapped "    fs," or "    fs as f,"),
+#              File::, OpenOptions, read_dir, read_link and remove_file appear only under
 #              pi/app/src/device/; create_new only in pi/app/src/device/usb.rs (the one file the
 #              firmware ever creates, the backup); and .create(true), .truncate(, .append(,
 #              fs::write, fs::copy, rename, create_dir*, remove_dir*, set_permissions and symlink*
@@ -211,12 +213,18 @@
 #              pi/app/src/device/**/tests.rs whose parent (X.rs or X/mod.rs for X/tests.rs) holds
 #              "#[cfg(test)]" on the line right before "mod tests;"; any other tests.rs is an
 #              ordinary device file, and the exception never covers path literals. Crates and
-#              mounts: rppal:: and nix:: appear only under pi/app/src/device/, MNT_FORCE nowhere in
-#              pi/app and MNT_DETACH only in pi/app/src/device/usb.rs. Processes, threads,
-#              buffering: std::process::Command (process::Command), thread::spawn, thread::Builder
-#              and BufReader appear nowhere in pi/app (a buffered reader would hold a copy of hwrng
-#              samples or stick bytes). std::net is the Network category's, which already bans it
-#              in pi/app as everywhere outside registry/.
+#              mounts: rppal:: and nix:: appear only under pi/app/src/device/, and so does extern
+#              crate (which could bring either in under another name); MNT_FORCE nowhere in pi/app
+#              and MNT_DETACH only in pi/app/src/device/usb.rs. Processes, threads, buffering: the
+#              process and thread modules by any path (process::, thread::, std::process,
+#              std::thread, inside a std::{..} group, a wrapped "    process," or "    thread as
+#              t," line), so a grouped use std::process::{Command, Stdio} or thread::scope hits
+#              too, appear nowhere in pi/app but as std::process::id() (a temp-dir name in the
+#              device tests) and, in pi/app/src/device/linux.rs alone, use std::thread; with
+#              thread::park() and thread::sleep( (the parked stop screen and the panel's init
+#              delays); and BufReader appears nowhere in pi/app (a buffered reader would hold a copy
+#              of hwrng samples or stick bytes). std::net is the Network category's, which already
+#              bans it in pi/app as everywhere outside registry/.
 #
 # Fail-closed noise, not bypasses (rename or spell it out instead): a named format argument called
 # path that rustfmt wraps onto its own line ("        path = \"seed.age\",") is an Include hit in
@@ -234,12 +242,14 @@
 # variable). Comments count for the Shell category too: a test or comment that
 # names game_random outside core and the games is a hit (call it the game call), and so is a
 # comment under pi/app/src that names Session::new (write "core's constructor"). Under pi/app, a
-# comment that names BufReader, thread::spawn or a quoted "/path" is a Device hit (name the path
-# constant instead); so is a Vec's .truncate( or .append( (write the loop or use extend).
+# comment that names BufReader, process::Command, thread::spawn or a quoted "/path" is a Device hit
+# (name the path constant instead); so is a Vec's .truncate( or .append( (write the loop or use
+# extend), and so is use std::process; or use std::{io, thread}; even where std::process::id() or
+# use std::thread; passes (write those).
 #
 # Portable on purpose: POSIX sh, POSIX ERE (no \b \s \< \>, no -P -w), POSIX sed (BRE, in
-# selectable() and textselection()) and LC_ALL=C, so BSD grep and sed (macOS) and GNU grep and sed
-# (ubuntu CI) agree.
+# selectable() and textselection(); ERE with -E, which BSD and GNU sed share, in threads_by_path())
+# and LC_ALL=C, so BSD grep and sed (macOS) and GNU grep and sed (ubuntu CI) agree.
 # Not scanned: .git/ target/ docs/ tasks/ CLAUDE.md scripts/testdata/, this script, and files with
 # a binary extension (the list at $binext below).
 #
@@ -755,14 +765,15 @@ device_paths_list() {
 }
 
 # Rule 8, for pi/app files outside pi/app/src/device/: the file APIs only the device module may
-# call. The fs module by any path (fs::, std::fs, a grouped std::{io, fs} and the "    fs," line
-# rustfmt wraps it to), File::, OpenOptions, read_dir, read_link and remove_file, as words.
+# call. The fs module by any path (fs::, std::fs, a grouped std::{io, fs} and the "    fs," or
+# "    fs as f," line rustfmt wraps it to, with or without the trailing comma), File::,
+# OpenOptions, read_dir, read_link and remove_file, as words.
 device_file_api() {
   grep -n -a -E \
     -e "${L}fs[[:space:]]*::" \
     -e "${L}std[[:space:]]*::[[:space:]]*fs$R" \
     -e "${L}std[[:space:]]*::[[:space:]]*[{]([^;]*[^A-Za-z0-9_])?fs$R" \
-    -e '^[[:space:]]*fs[[:space:]]*,[[:space:]]*$' \
+    -e '^[[:space:]]*fs([[:space:]]+as[[:space:]]+[A-Za-z_][A-Za-z0-9_]*)?[[:space:]]*,?[[:space:]]*$' \
     -e "${L}File[[:space:]]*::" \
     -e "${L}(OpenOptions|read_dir|read_link|remove_file)$R" \
     -- "$1"
@@ -820,9 +831,10 @@ tests_rs_declared() {
 }
 
 # Rule 8 and Q36 (e), for pi/app files outside pi/app/src/device/: the hardware crates are the
-# device module's.
+# device module's, and so is extern crate, which could bring one in under another name (extern
+# crate rppal as hw; hw::gpio::Gpio::new()); the 2018 edition needs it for nothing else.
 device_crates() {
-  grep -n -a -E -e "${L}(rppal|nix)[[:space:]]*::" -- "$1"
+  grep -n -a -E -e "${L}(rppal|nix)[[:space:]]*::" -e "${L}extern[[:space:]]+crate$R" -- "$1"
 }
 
 # The mount flags (tasks/todo.md, M4 group 8): MNT_FORCE nowhere in pi/app (it abandons writes),
@@ -837,13 +849,41 @@ mnt_detach() {
 
 # Rule 5, for every pi/app file: no child process, no thread (the Pi Zero has one core, and the
 # firmware has one loop; Q39 (b)), and no BufReader, which would hold a copy of hwrng samples or
-# stick bytes outside the buffer the app wipes.
+# stick bytes outside the buffer the app wipes. The process and thread modules are matched by any
+# path, as device_file_api matches fs (a grouped use std::process::{Command, Stdio} or
+# use std::thread::{scope} names no item right after the ::): process:: and thread::, std::process
+# and std::thread as words, either inside a std::{...} group, and a wrapped "    process," or
+# "    thread as t," line. sed first deletes the calls the firmware makes (same h/x shape as
+# device_paths_list, so a line that holds one of them and anything else still hits):
+# std::process::id( anywhere (a temp-dir name in the device tests) and, in pi/app/src/device/
+# linux.rs alone, "use std::thread;" with thread::park( and thread::sleep( (the parked stop screen
+# and the panel's init delays).
 device_threads() {
-  grep -n -a -E \
-    -e 'process[[:space:]]*::[[:space:]]*Command' \
-    -e "thread[[:space:]]*::[[:space:]]*(spawn|Builder)$R" \
-    -e 'BufReader' \
-    -- "$1"
+  threads_by_path "$1" \
+    -e 's/std[[:space:]]*::[[:space:]]*process[[:space:]]*::[[:space:]]*id[[:space:]]*\(//g'
+}
+
+device_threads_in_linux_rs() {
+  threads_by_path "$1" \
+    -e 's/std[[:space:]]*::[[:space:]]*process[[:space:]]*::[[:space:]]*id[[:space:]]*\(//g' \
+    -e 's/std[[:space:]]*::[[:space:]]*thread[[:space:]]*;//g' \
+    -e 's/thread[[:space:]]*::[[:space:]]*(park|sleep)[[:space:]]*\(//g'
+}
+
+# threads_by_path FILE SED-EXPRESSION...: device_threads over FILE with the given deletions.
+threads_by_path() {
+  f=$1
+  shift
+  t=$(grep -n -a -E -e "${L}(process|thread)$R" -e 'BufReader' -- "$f")
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  t=$(printf '%s\n' "$t" | sed -E \
+    -e h \
+    "$@" \
+    -e '/(^|[^A-Za-z0-9_])(process|thread)[[:space:]]*::|(^|[^A-Za-z0-9_])std[[:space:]]*::[[:space:]]*(process|thread)([^A-Za-z0-9_]|$)|(^|[^A-Za-z0-9_])std[[:space:]]*::[[:space:]]*\{([^;]*[^A-Za-z0-9_])?(process|thread)([^A-Za-z0-9_]|$)|^[0-9]+:[[:space:]]*(process|thread)([[:space:]]+as[[:space:]]+[A-Za-z_][A-Za-z0-9_]*)?[[:space:]]*,?[[:space:]]*$|BufReader/!d' \
+    -e x
+  ) || return 2
+  [ -n "$t" ] || return 1
+  printf '%s\n' "$t"
 }
 
 # report CATEGORY CHECK FILE: print and count each hit of CHECK in FILE.
@@ -964,7 +1004,10 @@ EOF
           *) report Device device_write_api "$rel" ;;
         esac
         report Device mnt_force "$rel"
-        report Device device_threads "$rel"
+        case $rel in
+          pi/app/src/device/linux.rs) report Device device_threads_in_linux_rs "$rel" ;;
+          *) report Device device_threads "$rel" ;;
+        esac
         ;;
     esac
   done <<EOF
@@ -1325,8 +1368,10 @@ artifact() {
     esac
     symbols "$f" "$atmp/all" -C
     symbols "$f" "$atmp/undefined" -u
-    # A stripped file: an ELF with no .symtab section, or any object or linked file whose symbol
-    # list is empty (llvm-nm says "no symbols" and exits 0). Nothing below could check it.
+    # A stripped file: any object or linked file whose symbol list is empty (llvm-nm says "no
+    # symbols" and exits 0), which is the operative test, since llvm-nm reads .symtab and not
+    # .dynsym, so a stripped linked ELF lists nothing too; the .symtab check names the cause for
+    # an ELF. Nothing below could check such a file.
     if [ "$kind" = object ]; then
       stripped=no
       case $magic in
