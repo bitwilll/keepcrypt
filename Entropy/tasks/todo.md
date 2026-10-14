@@ -998,7 +998,8 @@ gains two lines inside rule 10, after the only line the plan cites (CLAUDE.md:47
 --locked --features test-sources` (269 passed, 1 ignored) and the registry configuration's pi/sim tests (69 passed, 2
 ignored; gate 20 passed, 1 ignored) pass; `vectorgen.py --selftest` (13 checks) and `verify.py selftest` (8 groups) pass
 on Python 3.12 and 3.9; `banned-api-check.sh` is clean (199 files) and `--selftest` passes 427/427; canaries 61/61. No
-script reads CLAUDE.md or docs/.
+script reads CLAUDE.md. vectorgen.py reads docs/: its `--selftest` checks the sentences it pins there, pi-firmware.md's
+backup sentences among them, and commit 23 edits none of them (23b; this line said that no script read docs/).
 
 ### Later
 - [ ] Release signing: minisign or GPG, and who holds the key offline? (M7)
@@ -6266,6 +6267,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     and step 12; rule 10's simulator marker in CLAUDE.md; the decisions recorded under "Raised by the M3 gate report",
     Q32 (a) amended again, the screen inventory, group 15's last item and its Verification line, group 17's tally and
     the gate status. Also lead decision 7's one line over 120 characters (22g) is rewrapped.
+    23b. tasks/todo.md: the plan review: commit 23's proof says that vectorgen.py reads docs/, where it said no script
+    did.
 24. pi/app, pi/sim: KEY2 "back" on bip39-entry, `KeyMap`'s doc on the QR and info pages, unit tests and
     `dice_24_code` (group 15's last item).
 25. tasks/todo.md: the owner's capture verdict and the closing Review lines.
