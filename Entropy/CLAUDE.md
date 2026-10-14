@@ -64,7 +64,11 @@ pass. If one seems to block you, ask the owner.
 7. **Seal:** computed only from the BIP39 seed with an empty passphrase, never from public keys.
 8. **Files:** the only file ever written is the age v1 backup (scrypt only, log2 N = 18,
    generated 8-word passphrase). The only files ever read are `.age` backups and signed
-   `.kcr` registry snapshots.
+   `.kcr` registry snapshots. Device and kernel interfaces are not files in this sense: the Pi
+   firmware also reads `/dev/hwrng`, its root partition (for the boot hash) and fixed entries
+   under `/proc` and `/sys` (the board and USB sticks), drives its GPIO and SPI device nodes,
+   and mounts only the USB stick, at `/mnt/usb`. pi-firmware.md's Process rules list every
+   path, and a grep gate holds the firmware to that list.
 9. **Apps:** Android has no `INTERNET` permission and sets `FLAG_SECURE` on every window,
    including dialogs and popups. iOS has no networking code and uses capture-state redaction,
    discard-on-screenshot and an app-switcher cover. No analytics, crash or ad SDKs.
