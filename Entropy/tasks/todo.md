@@ -7028,6 +7028,9 @@ stale (Q43 (d)).
 - PF = pi-firmware.md, BP = build-plan.md, swb = seal-watchonly-braille.md, all in `docs/`. Also CLAUDE.md, lessons.md and
   this file. Q35-Q43 are this milestone's questions, with Q44-Q50 (other Waveshare screens) and Q51 (rule 8's path
   list).
+  - Line numbers into this file (`todo.md:N`) in this M4 section, its inputs included, and in Q35-Q43 are f967dd4's
+    (`git show f967dd4:Entropy/tasks/todo.md`), the file the plan was read from (1e). Lines before 1004 have not moved
+    since; from 1004 on, the questions inserted there and this section have moved them.
 - **Device code:** `pi/app/src/device/`, a module of the `keepcrypt-pi` binary, declared in main.rs. It is not part of the
   library that pi/sim links.
   - Its **pure parts** build on every host and are unit-tested on the Mac and in CI.
@@ -8603,6 +8606,8 @@ The PR is a draft from commit 1.
    display amendment: group 5's panel profiles, group 10's Display line, group 16's variant HAT item (Q50), H1a's panel
    line, commit 7, two Verification items, M4b under "Deferred", and [S34]-[S37]; the owner's hardware notes in H0; and
    Q51, open, which commit 12 waits for.
+   1e. tasks/todo.md: the plan review: the plan's `todo.md:N` citations are f967dd4's line numbers, as References and
+   terms now says.
 2. docs: the approved edits (Q40; Q42 (b)), alone; plus `1.txt` if approved.
 3. CLAUDE.md: rule 8's sentence (Q40 (a)). 3b. `.github/CODEOWNERS:7-9`, if approved (Q43 (d)).
 4. core: `tests/auto_traits.rs` (group 3).
