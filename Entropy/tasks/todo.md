@@ -7038,7 +7038,8 @@ stale (Q43 (d)).
   (Q35). It shows the stop screen until a power cycle and holds nothing.
 - **The fence:** the clock reading taken right after the latest present that showed a different screen, or right after
   the latest call that can block, whichever is later. A press that began before the fence does nothing beyond feeding
-  `add_extra` while Collecting (Q39 (a)).
+  `add_extra` while Collecting (Q39 (a)). A different screen is another `ScreenId`, or another page or note of the same
+  one that the app entered (6b): what PF:105 calls a screen that was not yet fully drawn.
 - **The image:** `keepcrypt-pi-0.0.0.img`, built from `pi/os`.
 - **The image workflow:** `.github/workflows/entropy-pi-image.yml`.
 - **The gate image:** the image the owner runs H1-H4 on. It is valid only if the image workflow's run at the final PR
@@ -7279,9 +7280,11 @@ stale (Q43 (d)).
   Proof (commit 6): `each_key_has_its_bcm_pin_from_the_pin_map_and_no_two_share_one` pins those eight and finds 8
   distinct pins. The variants' doc comments no longer repeat the pins, so `bcm_pin` is their one copy in pi/app.
 - [x] The fence (Q39 (a)). `App` sets `fence_ns = hal.now_ns()`:
-  - right after every successful present whose `ScreenId` differs from the previous present's (this covers the
-    PrivacyGate, SkipConfirm, StopConfirm, CannotCheckConfirm and BackupConfirm screens and every screen after a blocking
-    call);
+  - right after every successful present whose `ScreenId` differs from the previous present's, or (6b) that is the first
+    present after `enter_page` moved to another page or note of the same `ScreenId` (this covers the PrivacyGate,
+    SkipConfirm, StopConfirm, CannotCheckConfirm and BackupConfirm screens, backup-confirm's second question, the
+    second page of backup-passphrase and of the checklist, each words page, a read-back match, the next insert's
+    entry, and every screen after a blocking call);
   - right after every call that can block, even when it returns to the same screen: boot; `begin`; snapshot
     verification; backup open (with `seal`); backup write, with read-back and verify; `finish` (app.rs:999); both
     `watch_only` calls (ready.rs:116, :325); `hal.list` (app/usb.rs:71); `hal.read` (:125).
@@ -7314,6 +7317,22 @@ stale (Q43 (d)).
   pass (gate: 20 passed, 1 ignored, each). A scratch probe that panicked on any fenced press passed every gate, hal and
   live test in both configurations: SimHal's clock moves only with its script, never inside a present or a blocking
   call, so no scripted press begins before a fence. The fence's proof is therefore app.rs's tests.
+
+  Proof (review fix, commit 6b): the fence moved only on a new `ScreenId`, so a press queued behind a page flip acted on
+  a page never seen: Press on backup-passphrase's words 5-8 went on to backup-confirm; Press answered backup-confirm's
+  second question with its first choice (a pass 1 time in 4, after which the passphrase is never shown again); Press on
+  the checklist's second page wiped the session. PF:105 promises none of this, and the item claimed BackupConfirm.
+  `enter_page` now makes its next present a new screen whatever the id, while redraws in place (cursors, typing, dice,
+  step 4, Snake) still move no fence. Three tests,
+  `a_press_made_before_the_second_passphrase_page_or_question_was_shown_does_nothing`,
+  `a_press_made_before_the_checklists_second_page_was_shown_does_not_finish` and
+  `a_press_made_before_the_next_insert_or_a_read_back_match_was_shown_does_nothing`, press during each such present, at
+  its start and just before its end: no present, no other screen, page or cursor, no idle restart; the next press acts.
+  All three fail on the `ScreenId` rule; with the page alone added to the id (the reviews' proposal, in a scratch copy)
+  the read-back match still fails. usb-pick's return with a fault is now a new note too, so the stick-read test no
+  longer rests on the fence after `hal.read` alone; the fences after blocking calls stay, for a call that returns to its
+  screen without entering it. pi/app's 127 tests and pi/sim's (gate: 20 passed, 1 ignored, each configuration) pass,
+  and the scratch probe that panics on any fenced press still passes every pi/sim test in both configurations.
 
 **5. Device: the panel (pure; `device/panel.rs`; Q36 (c), Q44)**
 - [x] `Panel<B: Bus>` runs over the approved `Bus` trait (unchanged) and one `&'static PanelProfile`. The trait:
@@ -8367,6 +8386,8 @@ What does not change, in M4 or M4b (Q44-Q50):
   untouched existing file.
 - [x] **The fence:** group 4's tests, including a stick read and the PrivacyGate's present.
   Proof: group 4's fence item (commit 6).
+  Proof (review fix, commit 6b): another page or note of the same screen moves the fence too, as PF:105 promises; group
+  4's fence item.
 - [ ] **Carried items:** each line of M3's "Deferred for M4" is proven or decided, one line each under Review:
   - drivers: groups 5-8;
   - no `unsafe`: group 2;
@@ -8506,6 +8527,9 @@ The PR is a draft from commit 1.
 
 6. pi/app (lib), pi/sim: the new `HalError` variants, `show_stop`, the boot and About fits, `Key::bcm_pin`, the fence
    (group 4).
+   6b. pi/app: the plan, security and recompute reviews: the fence also moves on another page or note of the same
+   screen, so no queued press acts on backup-passphrase's words 5-8, backup-confirm's second question, the checklist's
+   second page, a words page, a read-back match or the next insert before it was shown.
 7. pi/app (bin): `#[cfg(test)] mod device;` and `device/panel.rs` with the HAT profile, `ST7789_INIT_OPCODES` and `PANEL`
    (group 5).
 8. pi/app (bin): `device/keys.rs` and `device/hwrng.rs` (groups 6, 7).
