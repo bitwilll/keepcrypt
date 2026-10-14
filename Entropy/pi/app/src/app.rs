@@ -1782,7 +1782,10 @@ mod tests {
             session: ready,
             steps: Steps::new(),
         };
-        // The passphrase's buffer: its text, its capacity and its address.
+        // The passphrase's buffer: its text, its capacity and its address. They show the text gone
+        // from a buffer that was not replaced, but not that its bytes were overwritten: `clear`
+        // gives the same three and leaves the bytes in the spare capacity, which no safe code can
+        // read (`forbid(unsafe_code)`). That `passphrase_back` calls `zeroize` is held by review.
         let buffer = |app: &App<Fake>| match &app.held.stage {
             Stage::Ready { steps, .. } => (
                 steps.typed.as_str().to_owned(),

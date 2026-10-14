@@ -5746,6 +5746,14 @@ amended; rules 5, 6), and on the BIP39-passphrase entry (the owner's decision of
     scratch copy, with its own target dir, `capture_set` (registry) passes and draws bip39-entry's footer
     "^v<> move  OK add  1 del  2 back  3 done", then bip39-ask, then the empty entry's "^v<> move  OK add  2 back".
     Whether the owner's set is captured again stays the lead's (group 17).
+  Proof (review fix, commit 24c): the security and recompute reviews: in a scratch copy, `steps.typed.clear()` in
+  place of `zeroize()` in `passphrase_back` passes every test (`cargo test -p keepcrypt-pi --locked`: 114 passed).
+  The unit test compares the text, the capacity and the address, and `clear` keeps all three while it leaves the
+  bytes in the spare capacity; pi/app forbids unsafe code, so no test can read that capacity, and `dice_24_code`
+  cannot see the buffer ("I use a passphrase" zeroizes it again). So "the text wiped in its own buffer" above is
+  tested as emptied in place, not reallocated; that the bytes are zeroized, not cleared, is held by review of
+  `passphrase_back`, and the unit test's comment says so. `self.typed()?.clear()` in `code_back` survives in the same
+  way (since commit 19). No gate is added for it (the lead's decision).
 
 **16. The simulator's strip (a lead decision between Q30 (h) and Q33 (j); the strip's part of group 12's open item)**
 - [x] `ui/render.rs`: in a simulator build the top strip reads "SIMULATOR · NOT FOR REAL FUNDS" when the simulator
@@ -6293,6 +6301,8 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
     24b. tasks/todo.md: the plan review: Verification's ticked KEY2 "back" item points at bip39-entry's amendment,
     group 17's tally says commit 24 landed, and group 17 holds the lead's open decision on the capture set, which
     predates commit 24.
+    24c. pi/app, tasks/todo.md: the security and recompute reviews: the bip39-entry back test's comment and commit
+    24's proof say that its checks cannot tell `zeroize` from `clear`, which review holds.
 25. tasks/todo.md: the owner's capture verdict and the closing Review lines.
 
 Review fixes are listed as N.b entries under the commit they amend.
