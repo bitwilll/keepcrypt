@@ -6991,38 +6991,64 @@ stale (Q43 (d)).
   Proof: the diff touches only `.github/CODEOWNERS:7-9`; `gh api repos/bitwilll/keepcrypt/codeowners/errors` is empty.
 
 **2. Dependencies (Q36; rule 11)**
-- [ ] pi/app/Cargo.toml gains these, with comments naming the approvals:
+- [x] pi/app/Cargo.toml gains these, with comments naming the approvals:
   - under `[target.'cfg(target_os = "linux")'.dependencies]`:
     - `rppal = { version = "=0.22.1", default-features = false }`;
     - `nix = { version = "=0.31.3", default-features = false, features = ["fs", "mman", "mount", "time"] }`;
   - under `[dependencies]`: `sha2 = "0.11.0"` (core's version; core's spec adds the `zeroize` feature, which feature
     unification turns on anyway; the same spec as pi/sim's at pi/sim/Cargo.toml:21; a new edge to a crate already
     locked), for the rootfs prefix.
-- [ ] Cargo.lock gains exactly four entries:
+
+  Proof (commit 5): `cargo tree -p keepcrypt-pi --target arm-unknown-linux-gnueabihf -e normal,build` resolves rppal
+  with no features and nix with `fs,mman,mount,time,uio`; on the macOS host keepcrypt-pi's tree holds none of rppal,
+  nix, bitflags or cfg_aliases. rppal and nix compile for the Pi target (`cargo check -p rppal -p nix --target
+  arm-unknown-linux-gnueabihf`, exit 0); keepcrypt-pi itself does not, locally, since secp256k1-sys needs
+  `arm-linux-gnueabihf-gcc` (CI's cross leg has it).
+- [x] Cargo.lock gains exactly four entries:
   - rppal 0.22.1;
   - nix 0.31.3;
   - bitflags 2.11.1, held by `cargo update -p bitflags --precise 2.11.1` because 2.13.2 is past the imported audits;
   - cfg_aliases 0.2.2.
 
   nix also uses libc 0.2.189 and cfg-if 1.0.5, both already locked.
-- [ ] supply-chain:
+  Proof (commit 5): `git diff Cargo.lock` adds exactly these four, each checksum equal to crates.io's and to the
+  downloaded archive's SHA-256, plus keepcrypt-pi's edges to nix, rppal and sha2; cargo first resolved bitflags 2.13.2.
+  Published 2024-12-11, 2026-05-11, 2026-04-14 and 2026-07-16, all before the 2026-09-30 cutoff (re-checked
+  2026-10-14). Pi builds that include keepcrypt-pi now resolve libc with `default,extra_traits,std` (rppal's default
+  edge and nix's `extra_traits`), where HEAD's had none: trait impls and std only, no new code path or import.
+- [x] supply-chain:
   - safe-to-deploy exemptions for rppal 0.22.1, nix 0.31.3 and cfg_aliases 0.2.2, each with a comment on what the lead
     reviewed;
   - bitflags 2.11.1 through the imported audit chain (imports.lock gains its entries).
-- [ ] deny.toml:
+
+  Proof (commit 5): the three exemptions carry `notes`. One unlocked `cargo vet --no-minimize-exemptions` added only
+  bitflags audits to imports.lock: google's full audit of 1.3.2, then mozilla and bytecode-alliance deltas to 2.11.1
+  (cargo vet's chain; google's 2.4.2 audit is not the one it recorded). `cargo vet --locked`: 18 fully audited, 85
+  exempted (HEAD: 17 and 82).
+- [x] deny.toml:
   - `[[bans.features]]` with `exact = true` for rppal (no features) and for nix (`fs`, `mman`, `mount`, `time`, `uio`;
     `mount` pulls in `uio`);
   - a comment recording that rppal is archived.
 
   canaries.sh's `[bans]` and manifest pins change in the same commit, with one new canary: a copy that enables nix's
   `net` feature must fail `cargo deny`.
-- [ ] A scoped review note on the rppal modules the binary calls (`gpio`, `gpio/interrupt`, `gpio/ioctl`,
+  Proof (commit 5): `cargo deny --locked check` gives "advisories ok, bans ok, licenses ok, sources ok" (only the old
+  hex-conservative and syn duplicate warnings). canaries 62/62: the `[bans]` static check pins `[[bans.features]]`;
+  the manifest pin holds rppal and nix to pi/app's Linux table with exactly the specs above, and
+  `test-features-in-manifests` must now also name a widened nix spec and an rppal in pi/sim; the new canary,
+  `deny-nix-feature`, asks for nix's `reboot` from pi/sim and fails with `exact-features-mismatch` ("'reboot' feature
+  was enabled but not explicitly allowed"). `reboot`, not `net`: `net` pulls in memoffset, which Cargo.lock does not
+  hold, so the copy could not resolve offline and would download a fifth crate. With HEAD's deny.toml the same copy
+  gives "bans ok".
+- [x] A scoped review note on the rppal modules the binary calls (`gpio`, `gpio/interrupt`, `gpio/ioctl`,
   `gpio/gpiomem/bcm`, `spi`, `system`):
   - no prints;
   - no thread unless async interrupts are used, and they are not;
   - the `/dev/mem` fallback is closed by `CONFIG_DEVMEM=n`;
   - no REALTIME event clock;
   - its unsafe sites are listed.
+
+  Proof (commit 5): "rppal 0.22.1 review note" under "New dependencies".
 
   Proof:
   - `cargo deny --locked check && cargo audit && cargo vet --locked` clean;
@@ -7781,6 +7807,42 @@ stale (Q43 (d)).
     that would raise its exemption;
   - gpiocdev 0.8.0, spidev 0.7.1 and the 5 further crates they bring (Q36 (b));
   - linux-embedded-hal 0.5.0.
+
+**rppal 0.22.1 review note (group 2; commit 5, 2026-10-14)**
+Read from the downloaded `.crate`, whose SHA-256 equals Cargo.lock's (`c1ce3b01…b026`). Scope: the modules the binary
+calls, `gpio` (gpio.rs, gpio/pin.rs), `gpio/interrupt` (with gpio/epoll.rs, which its synchronous poll uses),
+`gpio/ioctl`, `gpio/gpiomem/bcm`, `spi` (spi.rs, spi/ioctl.rs, spi/segment.rs) and `system`, plus macros.rs.
+- **Prints:** none; the crate has no `println!`, `eprintln!`, `print!`, `dbg!` or logging call anywhere.
+- **Threads:** `thread::spawn` only for async interrupts (gpio/interrupt.rs:257, behind `set_async_interrupt`,
+  pin.rs:538) and software PWM (gpio/soft_pwm.rs:44); the firmware uses neither. `poll_interrupts` (gpio.rs:510) and
+  `set_interrupt` (pin.rs:475) run epoll in the caller's thread. bcm.rs:315 and :320 only sleep 5 µs while clocking a
+  pull-up.
+- **`/dev/mem`:** `GpioMem::open` (bcm.rs:58-91) maps `/dev/gpiomem` (:17) and on any error tries `/dev/mem` (:18,
+  `map_devmem` at :123-150, at the SoC's peripheral base). The image's `CONFIG_DEVMEM=n` (group 13) leaves no
+  `/dev/mem`, so that path fails closed; H1a exercises `/dev/gpiomem`.
+- **Event clock:** `LINE_FLAG_EVENT_CLOCK_REALTIME` (gpio/ioctl.rs:101) is only read back from line info (:209, :270).
+  `EventRequest::new` (:576-627) sets only `LINE_FLAG_INPUT` and the edge flags, so edge timestamps are the kernel's
+  default `CLOCK_MONOTONIC`; `Event.seqno` is the kernel's `line_seqno` (:560).
+- **Paths opened:** `/dev/gpiomem`, `/dev/mem` (the fallback), `/dev/gpiochipN` (ioctl.rs:19, `find_gpiochip` at
+  :651-676, from N = 0 up to the first that is missing or carries the BCM driver's label), `/dev/spidevB.S`
+  (spi.rs:452), `/proc/cpuinfo` (system.rs:165) and `/sys/firmware/devicetree/base/{compatible,model}` (system.rs:231,
+  :274). All are on pi-firmware.md's list (PF:81), `/dev/mem` aside.
+- **Calls the drivers must check:** `Spi::write` (spi.rs:647) is one write(2) and returns the count written, so group
+  5's bus treats a short count as `HalError::Display`. A poisoned mutex panics (`.lock().unwrap()` at gpio.rs:413,
+  :516; pin.rs:479, :488, :517), which ends in stop mode.
+- **Unsafe sites in scope:**
+  - gpio.rs:407: a `static mut` shared state written once under `Once`, then only borrowed shared.
+  - gpio/gpiomem/bcm.rs: :105 and :134 `mmap` of `/dev/gpiomem` and `/dev/mem`; :154 and :159 volatile register read
+    and write within the 61-word map; :167 `munmap` in `Drop`; :196 `transmute` of a 0 or 1 bit to `Level`; :332 and
+    :334 `unsafe impl Send` and `Sync` for `GpioMem`, whose read-modify-write registers take per-register atomic locks.
+  - gpio/ioctl.rs: :131, :346, :464 and :619 GPIO v2 ioctls on `repr(C)` structs; :477 `GET_VALUES`; :486 and :635
+    `close`; :538 a `read` of one `LineEvent`, refused if short; :310 a union read inside a `Debug` impl.
+  - gpio/epoll.rs: :26 `eventfd`, :33 `write`, :45 and :112 `close`, :59 `epoll_create1`, :69, :80 and :88
+    `epoll_ctl`, :104 `epoll_wait`.
+  - spi.rs:694 `unsafe impl Send for Spi`; spi/ioctl.rs:67-103 the mode, bit-order, word-size and speed ioctls, and
+    :107 `SPI_IOC_MESSAGE` over the segment slice.
+  - macros.rs:23 and :36: `init_array!` (an array of `MaybeUninit`, filled element by element, then transmuted).
+  - system.rs and spi/segment.rs: none.
 
 **Image inputs (non-crate; Q37 (d); recorded in `pi/os/pins.txt`)**
 

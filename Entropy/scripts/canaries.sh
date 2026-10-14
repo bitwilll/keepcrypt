@@ -331,6 +331,45 @@ EOF
     fi
 fi
 
+# deny.toml [[bans.features]] on the real workspace (tasks/todo.md, M4 group 2): a nix feature
+# beyond the list, asked for by another member, must fail `cargo deny check bans`, naming the
+# feature. Cargo merges a dependency's features across the workspace, so the ban must hold
+# whichever manifest asks. The feature is reboot: net would pull in memoffset, a crate Cargo.lock
+# does not hold, which could not resolve offline; reboot adds only an edge to the locked nix
+# (fetched for every target by real-deny-bans above).
+name=deny-nix-feature
+feat="$work/features"
+mkdir "$feat" || exit 1
+for f in "$root"/* "$root"/.[!.]* "$root"/..?*; do
+    [ -e "$f" ] || continue
+    case ${f##*/} in
+        target | .git) continue ;;
+    esac
+    cp -RP "$f" "$feat/" || exit 1
+done
+cat >> "$feat/pi/sim/Cargo.toml" <<'EOF'
+
+# Gate canary (scripts/canaries.sh, temp copy only): a nix feature beyond deny.toml's list.
+[target.'cfg(target_os = "linux")'.dependencies.nix]
+version = "=0.31.3"
+default-features = false
+features = ["reboot"]
+EOF
+if ! out=$(cargo update --offline --workspace --manifest-path "$feat/Cargo.toml" 2>&1); then
+    printf '%s\n' "$out" | tail -n 30
+    echo "FAIL: $name: could not add the nix edge to the copy's Cargo.lock offline"
+    status=1
+else
+    expect_failure "$name" cargo deny --color never --manifest-path "$feat/Cargo.toml" \
+        --config "$feat/deny.toml" --offline --locked check bans
+    need "error[exact-features-mismatch]: feature set for crate 'nix = 0.31.3' did not match exactly"
+    need "'reboot' feature was enabled but not explicitly allowed"
+    need "nix feature 'reboot'"
+    need "bans FAILED"
+    never "error[banned]"
+    verdict
+fi
+
 # A [patch] path override must fail scripts/check-path-deps.sh and be named, even though only a
 # feature pulls the patched crate in (the check reads every feature).
 expect_failure "path-override" sh "$root/scripts/check-path-deps.sh" \
@@ -513,9 +552,11 @@ sys.exit(1 if bad else 0)
 # - [bans] deny is exactly the list below, all plain crate names (an inline table could carry
 #   wrappers, a name@version bans only some versions), so removing any entry fails; skip,
 #   skip-tree and exceptions are absent or empty;
+# - [[bans.features]] is exactly the two entries below (tasks/todo.md, M4 group 2): rppal with
+#   no features and nix with five, both exact, so a widened list or a dropped entry fails;
 # - [sources] is exactly crates.io only, with unknown registries and git sources denied (so an
 #   allow-org or private key fails too).
-static_check "deny.toml [graph], [bans] deny and [sources] exactly as pinned" python3 -I -c '
+static_check "deny.toml [graph], [bans] deny, [[bans.features]] and [sources] exactly as pinned" python3 -I -c '
 import sys, tomllib
 GRAPH = {"all-features": True}
 DENY = [
@@ -523,6 +564,10 @@ DENY = [
     "rand_isaac", "fastrand", "oorandom", "nanorand", "tinyrand", "turborand",
     "tokio", "mio", "hyper", "h2", "reqwest", "ureq", "curl", "isahc", "axum", "async-std",
     "log", "tracing", "slog", "env_logger",
+]
+FEATURES = [
+    {"crate": "rppal", "exact": True, "allow": []},
+    {"crate": "nix", "exact": True, "allow": ["fs", "mman", "mount", "time", "uio"]},
 ]
 SOURCES = {
     "unknown-registry": "deny",
@@ -570,6 +615,8 @@ elif deny != DENY:
 for key in ("skip", "skip-tree", "exceptions"):
     if key in bans and bans[key] != []:
         bad.append("[bans] %s is not empty: %r" % (key, bans[key]))
+if bans.get("features") != FEATURES:
+    bad.append("[[bans.features]] is %r, needs %r" % (bans.get("features"), FEATURES))
 bad += compare("[sources]", cfg.get("sources"), SOURCES)
 for line in bad:
     print(line)
@@ -591,7 +638,11 @@ sys.exit(1 if bad else 0)
 # - the root [profile] tables are exactly the ones below. Release must unwind, so a panic drops
 #   and wipes the session (abort skips that wipe, and cargo test always unwinds, so no test would
 #   notice a switch); core keeps overflow checks in release.
-# A real change to either pin is a reviewed change here too.
+# - the Pi hardware crates, rppal and nix, are named only in pi/app/Cargo.toml's Linux
+#   dependencies, with exactly the specs below (tasks/todo.md, M4 group 2; Q36 (a), (e)), so
+#   neither the simulator nor core nor the FFI can take them on; deny.toml's [[bans.features]]
+#   pins the features they resolve with, whichever manifest asks.
+# A real change to any of these pins is a reviewed change here too.
 manifest_pins='
 import sys, tomllib
 from pathlib import Path
@@ -601,6 +652,11 @@ CORE_FEATURES = {"default": [], "test-registry": [], "test-sources": ["test-regi
 PROFILE = {
     "release": {"panic": "unwind", "package": {"keepcrypt-core": {"overflow-checks": True}}},
     "dev": {"package": {"*": {"opt-level": 3}}},
+}
+HARDWARE_AT = ("pi/app/Cargo.toml", ["target", "cfg(target_os = \"linux\")", "dependencies"])
+HARDWARE = {
+    "rppal": {"version": "=0.22.1", "default-features": False},
+    "nix": {"version": "=0.31.3", "default-features": False, "features": ["fs", "mman", "mount", "time"]},
 }
 
 def turns_on(value):
@@ -636,6 +692,17 @@ def feature_lists(node, path):
         for i, item in enumerate(node):
             yield from feature_lists(item, path + [str(i)])
 
+def hardware(node, path):
+    """Every dotted path below node that names a Pi hardware crate, as a key or as a package rename."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key in HARDWARE or (key == "package" and isinstance(value, str) and value in HARDWARE):
+                yield ".".join(path + [key])
+            yield from hardware(value, path + [key])
+    elif isinstance(node, list):
+        for i, item in enumerate(node):
+            yield from hardware(item, path + [str(i)])
+
 def load(root, rel):
     with open(root / rel, "rb") as f:
         return tomllib.load(f)
@@ -651,9 +718,20 @@ except (OSError, tomllib.TOMLDecodeError) as err:
     sys.exit(1)
 bad += compare("Cargo.toml: profile", top.get("profile"), PROFILE)
 core_seen = False
+hardware_paths = [".".join(HARDWARE_AT[1] + [name]) for name in HARDWARE]
 for rel, doc in manifests:
     for where, values in feature_lists(doc, []):
         bad += ["%s: %s turns on %s" % (rel, where, v) for v in values if turns_on(v)]
+    bad += ["%s: %s names a Pi hardware crate, allowed only in %s under %s"
+            % (rel, where, HARDWARE_AT[0], ".".join(HARDWARE_AT[1]))
+            for where in hardware(doc, []) if rel != HARDWARE_AT[0] or where not in hardware_paths]
+    if rel == HARDWARE_AT[0]:
+        table = doc
+        for key in HARDWARE_AT[1]:
+            table = table.get(key) if isinstance(table, dict) else None
+        for name, spec in HARDWARE.items():
+            got = table.get(name) if isinstance(table, dict) else None
+            bad += compare("%s: %s" % (rel, ".".join(HARDWARE_AT[1] + [name])), got, spec)
     if rel == "Cargo.toml":
         continue
     features = doc.get("features")
@@ -669,12 +747,12 @@ for line in bad:
     print(line)
 sys.exit(1 if bad else 0)
 '
-static_check "core [features] and the root [profile] exactly as pinned; no manifest turns on a test feature" \
+static_check "core [features], the root [profile] and the Pi hardware crates exactly as pinned; no manifest turns on a test feature" \
     python3 -I -c "$manifest_pins" "$root"
 
 # ... and the check must fire, on a copy of the five manifests. One copy carries every route by
-# which a manifest could turn a test feature on, the other both profile changes; each must be
-# named.
+# which a manifest could turn a test feature on, a widened nix spec and rppal outside keepcrypt-pi,
+# the other both profile changes; each must be named.
 fresh_manifests() {
     m="$work/manifests"
     rm -rf "$m"
@@ -698,6 +776,8 @@ fresh_manifests
 replace "$m/Cargo.toml" 'keepcrypt-core = { path = "core" }' \
     'keepcrypt-core = { path = "core", features = ["test-sources"] }'
 replace "$m/core/Cargo.toml" 'default = []' 'default = ["test-registry"]'
+replace "$m/pi/app/Cargo.toml" 'features = ["fs", "mman", "mount", "time"]' \
+    'features = ["fs", "mman", "mount", "reboot", "time"]'
 cat >> "$m/pi/app/Cargo.toml" <<'EOF'
 
 # Gate canary (scripts/canaries.sh, temp copy only): a test feature through a dev-dependency.
@@ -710,6 +790,10 @@ cat >> "$m/pi/sim/Cargo.toml" <<'EOF'
 # normal dependency.
 [target.'cfg(unix)'.dependencies]
 keepcrypt-core = { workspace = true, features = ["test-registry"] }
+
+# Gate canary (scripts/canaries.sh, temp copy only): a Pi hardware crate outside keepcrypt-pi.
+[target.'cfg(target_os = "linux")'.dependencies]
+rppal = { version = "=0.22.1", default-features = false }
 EOF
 cat >> "$m/ffi/Cargo.toml" <<'EOF'
 
@@ -723,6 +807,8 @@ need "core/Cargo.toml: features.default is ['test-registry'], needs []"
 need "pi/app/Cargo.toml: dev-dependencies.keepcrypt-core.features turns on test-sources"
 need "pi/sim/Cargo.toml: target.cfg(unix).dependencies.keepcrypt-core.features turns on test-registry"
 need "ffi/Cargo.toml: features.probe turns on keepcrypt-core?/test-sources"
+need "pi/app/Cargo.toml: target.cfg(target_os = \"linux\").dependencies.nix.features is ['fs', 'mman', 'mount', 'reboot', 'time'], needs ['fs', 'mman', 'mount', 'time']"
+need "pi/sim/Cargo.toml: target.cfg(target_os = \"linux\").dependencies.rppal names a Pi hardware crate, allowed only in pi/app/Cargo.toml under target.cfg(target_os = \"linux\").dependencies"
 never "profile"
 verdict
 
@@ -1038,7 +1124,7 @@ fi
 
 # The number of checks above, pinned, so a canary that is deleted, or skipped by a broken branch,
 # turns CI red too. A real change to the canaries updates this pin in the same reviewed change.
-want_checks=61
+want_checks=62
 if [ "$checks" -ne "$want_checks" ]; then
     echo "FAIL: $checks checks ran; scripts/canaries.sh pins $want_checks"
     status=1
