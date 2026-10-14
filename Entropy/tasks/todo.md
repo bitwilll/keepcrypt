@@ -1366,6 +1366,27 @@ The owner answered "Yes" on 2026-10-14: the recommendation below is decided. Com
       patterns.
     - Rule 8's "fixed entries under `/proc` and `/sys`" becomes "fixed entries and patterns under `/proc` and `/sys`".
 
+### Raised by stage C's CI (Q52, std's getrandom statics on the Pi target; decided 2026-10-15)
+Decided by the lead on 2026-10-15 under the owner's standing instruction of that day ("dont ask me further, go ahead
+automatically"); commit 13b applies it.
+
+52. **std's getrandom statics in the Pi binaries** (M4 group 12, std's random-key path)
+    - CI run 38652814808 at 8484278, job "cross (arm-unknown-linux-gnueabihf)": the StdRandom rule flags three std
+      data symbols in both `release_probe` and `keepcrypt-pi` (six hits): `std::sys::random::linux::getrandom::DEVICE`,
+      `...::GETRANDOM_AVAILABLE (.0)` and `...::GRND_INSECURE_AVAILABLE (.0)`.
+    - Cause: LLVM's global-merge pass packs the three statics into std's 24-byte `.data..L_MergedGlobals` block with
+      `std::sys::thread_local::guard::key::enable::DTORS` and `__dso_handle`. Every binary on this target uses that
+      block through `std::sys::thread_local::destructors::linux_like::register`, so `--gc-sections` keeps the block but
+      drops every function that reads the three statics. Neither binary holds the function
+      `std::sys::random::linux::getrandom`, `hashmap_random_keys`, `SystemRng` or `/dev/urandom`; no crate uses the
+      path, and the bytes were already there in M3.
+
+    Decided:
+    - On `*-linux-gnueabihf` only, and only in object or linked files (never archives), the scan lets exactly these
+      three names through when `llvm-nm -C -P --defined-only` types them `d` (local data) and nothing else.
+    - The reader function (type `t`), `hashmap_random_keys`, the `RandomState` symbols and the `/dev/urandom` and
+      `/dev/random` bytes stay hits. Commit 17's `--image` scan needs the same allowance.
+
 ### Later
 - [ ] Release signing: minisign or GPG, and who holds the key offline? (M7)
 - [ ] Registry domain name (M9; until then M1 uses a placeholder constant in the check-QR URL)
@@ -8086,6 +8107,18 @@ stale (Q43 (d)).
   `release_probe.rs` run() and builds it like the control: the probe fails the scan with StdRandom symbols,
   `hashmap_random_keys` among them, the unchanged rlib has none. The real host probe and rlib (`release-probe-default`)
   stay clean, so the control still passes; the Linux and Android probes are first scanned by CI's cross job.
+  Proof/decision (commit 13b, Q52): CI run 38652814808 at 8484278, job "cross (arm-unknown-linux-gnueabihf)", failed
+  the scan with six StdRandom hits, three in `release_probe` and three in `keepcrypt-pi`:
+  `std::sys::random::linux::getrandom::DEVICE`, `...::GETRANDOM_AVAILABLE (.0)` and `...::GRND_INSECURE_AVAILABLE (.0)`.
+  They are std's statics, kept only because LLVM's global-merge put them in std's `.data..L_MergedGlobals` block beside
+  the thread-local destructor list that every binary uses; no reader code is linked (no
+  `std::sys::random::linux::getrandom` function, no `hashmap_random_keys`, no `SystemRng`, no `/dev/urandom`). The
+  first `keepcrypt-pi` check therefore found the path's data, not its use, and no crate to ask about. As Q52 decides,
+  `--artifact` on `*-linux-gnueabihf` drops exactly these three names when they are type `d` in an object or linked
+  file (`std_passengers`); fixtures built as `--crate-name std` for arm-unknown-linux-gnueabihf: the three statics
+  pass there (exit 0), give the three hits as aarch64-linux-android and inside an archive, the kept reader function is
+  the one hit beside them, and a DEVICE in `.bss` (type `b`) stays a hit. `--image` (commit 17) needs the same
+  allowance. CI must show the ARM leg's scan clean with 4 files and every other leg unchanged.
 - [ ] `test` gains a step: make the loop-device fixture (group 8), build pi/app's bin tests with `--no-run`, run
   `loop_device` as root with `sudo --preserve-env=KC_LOOP_DEV,KC_LOOP_RO,KC_LOOP_MNT,KC_MOUNTINFO`, then detach the loop
   device in an `if: always()` step. (9d) The step fails unless the run reports exactly `1 passed`: a renamed test, a
@@ -8920,6 +8953,10 @@ The PR is a draft from commit 1.
     review, not by the gate; the list itself is unchanged (widening it waits for the lead).
 13. .github: the cross leg links and scans `keepcrypt-pi`; `test` runs the loop-device test; `gates` runs `--workflows`
     (group 12).
+    13b. scripts, .github, tasks/todo.md: stage C's CI (run 38652814808, Q52, decided by the lead under the owner's
+    standing instruction of 2026-10-15): on `*-linux-gnueabihf`, `--artifact` lets std's three getrandom statics
+    through when they are local data (type `d`) in an object or linked file; five fixture cases; the gates comment
+    names the third fixture target. Commit 17's `--image` needs the same allowance.
 
 **Stage D: the image**
 
@@ -8929,7 +8966,8 @@ The PR is a draft from commit 1.
     (groups 14, 15). Then H1a on its image; bring-up fixes as 15b, 15c, … (group 16).
 16. pi/os: `expected/` (lists and `linux.config`) from the run after H1a passes, reviewed line by line (group 15).
 17. scripts, .github: `--image`, `--selftest-image` and `--os-config`, their fixtures and canaries; the scan step in both
-    legs; `gates` runs `--os-config` (groups 11, 14, 15).
+    legs; `gates` runs `--os-config` (groups 11, 14, 15). `--image` takes 13b's std-statics allowance (Q52) for the
+    image's linked files.
 18. CLAUDE.md: Commands (group 18).
 
 **Stage E: hardware and review**

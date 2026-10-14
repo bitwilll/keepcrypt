@@ -52,7 +52,12 @@
 #              12: the grep gate's hash ban covers the shipped sources, this covers what was
 #              linked): in every file, a symbol, demangled, that holds hashmap_random_keys,
 #              RandomState, std::sys::random or the mangled module path 3std3sys6random, and the
-#              byte string /dev/urandom or /dev/random, which std's fallback reads
+#              byte string /dev/urandom or /dev/random, which std's fallback reads. One exception,
+#              on *-linux-gnueabihf in an object or linked file (never an archive): the three
+#              statics of std::sys::random::linux::getrandom (DEVICE, GETRANDOM_AVAILABLE (.0),
+#              GRND_INSECURE_AVAILABLE (.0)) pass when llvm-nm types each of them d (local data)
+#              only, since LLVM's global-merge keeps them beside data every binary uses (Q52); the
+#              function itself stays a hit
 #   OSImport   an object or linked file (not an archive: core's rlib calls the getrandom crate,
 #              whose own rlib imports the OS call) without the OS import for TARGET: getrandom on
 #              Linux and Android, _CCRandomGenerateBytes on iOS (Q8), and _getentropy on macOS,
@@ -1336,10 +1341,29 @@ artifact() {
   rng_crates="(^|[^A-Za-z0-9_])($(printf '%s\n' $rng_crate_names | tr '\n' '|' | sed 's/|$//'))::"
   fallback='(^|[^A-Za-z0-9_])getrandom::backends::(use_file|linux_android_with_fallback)::'
   std_random='hashmap_random_keys|RandomState|std::sys::random|3std3sys6random'
+  # std's passengers on the Pi target (tasks/todo.md, M4 group 12, Q52): on
+  # arm-unknown-linux-gnueabihf, LLVM's global-merge pass packs these three statics of std's
+  # getrandom into std's 24-byte .data..L_MergedGlobals block with the thread-local destructor
+  # list (DTORS) and __dso_handle. Every binary uses that block through std's thread-local
+  # destructor registration, so --gc-sections keeps it but drops every function that reads the
+  # three statics. As exactly these names, typed d (local data) in an object or linked file, they
+  # are not hits; the reader function (type t), hashmap_random_keys, RandomState and the device
+  # file byte strings still are. Empty on every other target.
+  case $target in
+    *-linux-gnueabihf)
+      std_passengers='std::sys::random::linux::getrandom::DEVICE
+std::sys::random::linux::getrandom::GETRANDOM_AVAILABLE (.0)
+std::sys::random::linux::getrandom::GRND_INSECURE_AVAILABLE (.0)'
+      ;;
+    *) std_passengers= ;;
+  esac
   toolchain_bin
   atmp=$(mktemp -d "${TMPDIR:-/tmp}/banned-api-artifact.XXXXXX") || exit 2
   trap 'rm -rf "$atmp"' EXIT
   trap 'exit 2' HUP INT TERM
+  if [ -n "$std_passengers" ]; then
+    printf '%s\n' "$std_passengers" >"$atmp/passengers" || exit 2
+  fi
   keybytes=$(printf '%s\n' "$testkey" | sed 's/../ &/g')
   hits=0
   n=0
@@ -1413,6 +1437,31 @@ artifact() {
     # where 3std3sys6random is the module path); the byte strings were searched above.
     grep -E -e "$std_random" "$atmp/all" >"$atmp/hits"
     [ $? -le 1 ] || exit 2
+    # std's passengers (Q52, see std_passengers above): in an object or linked file only, a hit
+    # that is exactly one of the names, and that llvm-nm types d on every line that names it
+    # (-P prints "name type value size"; a name followed by any other type, or by more text, is
+    # kept), is dropped. awk tells the files apart by name, so no pattern file is ever empty.
+    if [ -n "$std_passengers" ] && [ "$kind" = object ] && [ -s "$atmp/hits" ]; then
+      if ! "$bin/llvm-nm" -C -P --defined-only "$f" >"$atmp/defined" 2>"$atmp/nm-err"; then
+        printf 'banned-api-check: llvm-nm cannot read %s:\n' "$f" >&2
+        sed 's/^/    /' "$atmp/nm-err" >&2
+        exit 2
+      fi
+      awk '
+        FILENAME == ARGV[1] { want[$0] = 1; next }
+        FILENAME == ARGV[2] {
+          for (n in want)
+            if (index($0, n " ") == 1) {
+              split(substr($0, length(n) + 2), fld, " ")
+              if (fld[1] == "d") typed_d[n] = 1
+              else other[n] = 1
+            }
+          next
+        }
+        !(($0 in typed_d) && !($0 in other))
+      ' "$atmp/passengers" "$atmp/defined" "$atmp/hits" >"$atmp/kept" || exit 2
+      mv "$atmp/kept" "$atmp/hits" || exit 2
+    fi
     from_list StdRandom "$f" 'symbol ' "$atmp/hits"
     if [ "$kind" = archive ]; then
       archives=$((archives + 1))
@@ -1737,6 +1786,34 @@ StdRandom: $o-random-state.o: symbol std::sys::random::linux::hashmap_random_key
     esac
     aexpect "artifact-$t-std-random-state" 1 "$std_hits" "$t" "$o-random-state.o"
   done
+  # std's passengers on the Pi target (tasks/todo.md, M4 group 12, Q52): an object built as std
+  # whose getrandom inlines away leaves its three statics as local data (type d), which pass on
+  # arm-unknown-linux-gnueabihf and nowhere else, and never inside an archive; the reader object
+  # keeps the function (type t), which is a hit beside the passing statics; and a DEVICE in .bss
+  # (type b) is a hit, since only type d passes.
+  t=arm-unknown-linux-gnueabihf
+  for c in std-passengers:kc_std_passengers std-reader:kc_std_reader std-bss:kc_std_bss; do
+    if ! (cd "$repo" && rustc --edition 2024 --crate-type lib --crate-name std --emit obj \
+      -C panic=abort -C opt-level=1 --target "$t" --cfg "${c#*:}" \
+      -o "$a/$t-${c%%:*}.o" "$fixture/fixture.rs") >"$a/rustc.log" 2>&1; then
+      fail=$((fail + 1))
+      printf 'FAIL artifact %s %s: rustc could not build the fixture:\n' "$t" "${c%%:*}"
+      sed 's/^/    /' "$a/rustc.log"
+    fi
+  done
+  o=$a/$t
+  sp=std::sys::random::linux::getrandom
+  aexpect "artifact-$t-std-passengers-allowed" 0 '' "$t" "$o-std-passengers.o"
+  aexpect 'artifact-aarch64-linux-android-std-passengers' 1 "StdRandom: $o-std-passengers.o: symbol $sp::DEVICE
+StdRandom: $o-std-passengers.o: symbol $sp::GETRANDOM_AVAILABLE (.0)
+StdRandom: $o-std-passengers.o: symbol $sp::GRND_INSECURE_AVAILABLE (.0)" aarch64-linux-android "$o-std-passengers.o"
+  aexpect "artifact-$t-std-reader" 1 "StdRandom: $o-std-reader.o: symbol $sp" "$t" "$o-std-reader.o"
+  aexpect "artifact-$t-std-passenger-in-bss" 1 "StdRandom: $o-std-bss.o: symbol $sp::DEVICE" "$t" "$o-std-bss.o"
+  rm -f "$o-std-passengers.rlib"
+  "$bin/llvm-ar" rcs "$o-std-passengers.rlib" "$o-std-passengers.o" || exit 2
+  aexpect "artifact-$t-std-passengers-archive" 1 "StdRandom: $o-std-passengers.rlib: symbol $sp::DEVICE
+StdRandom: $o-std-passengers.rlib: symbol $sp::GETRANDOM_AVAILABLE (.0)
+StdRandom: $o-std-passengers.rlib: symbol $sp::GRND_INSECURE_AVAILABLE (.0)" "$t" "$o-std-passengers.rlib"
   # Each other crate of the list, on one target: every symbol in it is a hit, as in rand.
   t=aarch64-linux-android
   for crate in $rng_crate_names; do
