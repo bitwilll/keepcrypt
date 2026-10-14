@@ -8543,6 +8543,8 @@ The PR is a draft from commit 1.
    second page, a words page, a read-back match or the next insert before it was shown.
    6c. pi/app: the plan and recompute reviews: the boot, privacy-gate and stick-read fence tests check the idle timer,
    and a press made while a refused backup was opened does nothing on the entry it returns to.
+   6d. pi/app: the plan review: `BLOCK_TICK_NS`'s doc says the device keeps 100 ms (Q39 (d)), not that M4 sets it from
+   the measured hwrng rate (Q42 (a) moved that to M8).
 7. pi/app (bin): `#[cfg(test)] mod device;` and `device/panel.rs` with the HAT profile, `ST7789_INIT_OPCODES` and `PANEL`
    (group 5).
 8. pi/app (bin): `device/keys.rs` and `device/hwrng.rs` (groups 6, 7).

@@ -68,8 +68,8 @@ use crate::ui::{Painter, PresentError, RenderError};
 
 /// The boot test reads 16 blocks of 64 samples: core's `hwrng_boot_test` takes exactly 1,024.
 const BOOT_BLOCKS: usize = 16;
-/// Step 4 reads one hwrng block per tick. 100 ms in the simulator; M4 sets the device's from the
-/// measured hwrng rate.
+/// Step 4 reads one hwrng block per tick: 100 ms, on the device as in the simulator (Q39 (d)). H2
+/// times step 4 on the hardware; slower reads set the pace themselves (`tick`).
 const BLOCK_TICK_NS: u64 = 100_000_000;
 /// usb-insert looks for a stick once per tick of this length: the device notices it by itself.
 const STICK_POLL_NS: u64 = 100_000_000;
