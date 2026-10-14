@@ -7707,7 +7707,11 @@ stale (Q43 (d)).
   - commit 11 widens it to `#[cfg(any(target_os = "linux", test))]`;
   - `device/linux.rs` and `device/paths.rs` are `#[cfg(target_os = "linux")]`;
   - a pure item used only by the Linux glue gets `#[cfg_attr(not(target_os = "linux"), expect(dead_code, reason = ".."))]`
-    if a build shows it dead.
+    if a build shows it dead;
+  - (7f) a pure item used only by the tests gets `#[cfg_attr(not(test), expect(dead_code, reason = ".."))]`, which only
+    the Linux builds that are not `cargo test` see: `PROFILES` and `ST7789_INIT_OPCODES`, the `PROFILES` checks' data,
+    and `INVOFF`, which only that list uses, if a build still shows it dead. A scratch non-test build at 9fe39de, with
+    `mod device` compiled and the glue's uses of each driver stubbed in, shows exactly these three dead.
 
   Each commit runs clippy with `-D warnings` on the Mac (tests), in lint (x86_64 Linux, `--all-targets`) and in cross
   (ARM).
@@ -8579,6 +8583,8 @@ The PR is a draft from commit 1.
    7d. pi/app: the recompute review: a bus fault in `hal::Display::present` under `show_stop`, and a display fault in
    `show_stop` itself, give `Display` at once, the panel's backlight off.
    7e. tasks/todo.md: the plan and recompute reviews: commit 7's init proof counts 65 bus calls, not 66.
+   7f. tasks/todo.md: the plan review: group 10's dead-code rule also covers the pure items only the tests use, which
+   commit 11's Linux builds would find dead: `PROFILES`, `ST7789_INIT_OPCODES` and `INVOFF`.
 8. pi/app (bin): `device/keys.rs` and `device/hwrng.rs` (groups 6, 7).
 9. pi/app (bin): `device/usb.rs`, `SysBlock`, `device/usb/tests.rs` with the `#[ignore]`d loop-device test (group 8).
 10. pi/app (bin), pi/os, .github: `device/rootfs.rs` and its vector; `pi/os/rootfs-prefix.py`; `gates` runs its
