@@ -1199,6 +1199,172 @@ own in CODEOWNERS, so the whole PR needs your review, as M1-M3's did.
     (e) M3's low item on CLAUDE.md's capture_set comment is fixed in the Commands commit; index.html's placeholders wait
     for the next capture change. No answer needed unless you want otherwise.
 
+### Raised by the owner's screen request (Q44-Q50, answered 2026-10-14)
+The owner's request (2026-10-14): "currently its 1.3" screen but do give options for various waveshare screen sizes."
+After the options memo, the owner answered "approve all" on 2026-10-14: every recommendation below is decided, and
+"Otherwise" is not taken. They are applied in commit 1d, with no code: group 5's panel profiles, group 10's Display line,
+group 16's variant HAT item, H1a's panel line, commit 7, two Verification items and the M4b plan under M4's "Deferred".
+The memo's A4, which Q44 cites, is the risk that a late-model HAT looks washed out or colour-inverted with the approved
+settings (group 16's Q50 item; [S36]).
+
+Each question starts with what I recommend, then says what changes if you choose otherwise. "As recommended" is a full
+answer.
+- Q44 is needed before commit 7.
+- Q50 matters only if H1a shows a problem with your HAT. Answering it now avoids a stop at H1a.
+- The others are needed before M4b starts and do not hold up M4.
+
+44. **The display driver in M4**
+    Recommended:
+    - M4 supports only the 1.3-inch HAT, and its gate does not change.
+    - The display driver (commit 7) keeps everything specific to a screen as one block of data: its start-up settings,
+      its orientation byte, its size, where our 240×240 picture sits on it, and its bus speed. The HAT is the only
+      block.
+    - The HAT's start-up bytes stay exactly as approved. The cost is about 40 lines and four tests, including checks
+      that no block can skip part of the crash wipe or send a command the driver does not allow.
+    - A later screen is then a new block of data with its tests, not a new driver. A HAT that needs different colour
+      settings (A4) gets its own block without touching the approved one.
+
+    Otherwise: write the driver for the HAT alone, as approved, and reshape it when a second screen is added.
+
+45. **Which other screens to offer**
+    Recommended:
+    - the 1.3-inch and 1.54-inch LCD modules, which should run the HAT's image unchanged when wired to the HAT's pins;
+    - the 2-inch LCD module (240×320), with one new block of settings;
+    - not now:
+      - the 2.4-inch. It has a different controller, so its block carries that controller's own start-up table, which
+        exists only in a Waveshare download;
+      - the 1.69-inch, whose rounded corners may clip the picture, and whose table is in a second download;
+      - revisit both after the 2-inch works;
+    - never: anything narrower than 240 pixels (the 1.44-inch HAT, and the 0.96, 1.14, 1.47, 1.8 and 1.9-inch modules),
+      the round 1.28-inch, OLEDs, e-paper, and the boards whose keys sit on our display pins.
+
+    Otherwise:
+    - (i) also add the 2.4-inch and the 1.69-inch in M4b;
+    - (ii) add the 1.44-inch HAT, because it plugs straight on with the same keys. The cost:
+      - all 62 screens laid out again for 128×128;
+      - every capture redone and reviewed again;
+      - the descriptor QR split into two codes, which changes the watch-only format in seal-watchonly-braille.md;
+    - (iii) add the 3.5-inch (F) or (G) boards: bigger, but 5 V, no keys, and a third controller.
+
+46. **How a bigger screen shows the picture**
+    Recommended: every screen shows the same 240×240 picture, pixel for pixel, centred, with the rest black.
+    - Nothing in the screens, their tests or your approved captures changes.
+    - The bigger pixels make text and QR codes physically larger: a QR module is 0.38 mm on the 2-inch, against 0.29 mm
+      on the HAT.
+
+    Otherwise: layouts designed for each resolution. Each comes with its own capture set (about 11,700 images) for you
+    to review again, and the QR codes would not grow on any screen 240 pixels wide.
+
+47. **How a screen is chosen**
+    Recommended: one image per screen type, chosen when CI builds it.
+    - The file name says which screen type it is for, for example `keepcrypt-pi-0.0.0-st7789-240x320.img`. You flash
+      the one for your screen.
+    - The HAT's image becomes `keepcrypt-pi-0.0.0-st7789-240x240.img`. Q43 (b) had named it `keepcrypt-pi-0.0.0.img`.
+    - Each image holds only its own screen's settings, and has its own fingerprint and its own pair of identical builds.
+    - A missing or mistyped screen name stops the build. CI also checks that each screen type's program differs from
+      the others, which proves the name really reached the compiler.
+    - Rule 8 and the crash-path start-up lines stay as approved.
+    - CI builds only the HAT image per PR, as M4 does. The other images are built twice each: weekly, whenever the
+      display driver or the OS image changes, and for releases.
+
+    Otherwise:
+    - (b) One firmware program holding every screen's settings, with each image naming its screen on its start-up line.
+      CI is cheaper, but every image carries every screen's code, and Q35's start-up lines change.
+    - (c) One image for every screen, with the screen named in `cmdline.txt` on the card's boot partition. You get one
+      download, but:
+      - rule 8's new sentence must also allow `/proc/cmdline`;
+      - the setting sits outside the fingerprint, on the partition macOS may write to;
+      - a wrong edit can stop the card booting.
+    - (d) One image for every screen, chosen by a wire: module builds connect one spare pin to ground. There is no
+      setting, but a loose wire picks the wrong screen.
+    - (e) A key held at power-on (possible, not recommended). It needs no picture, but with no saved setting you hold
+      it on every boot and a slip silently picks the default. It also needs every screen's settings in every image, and
+      an exception to the approved rule that presses during start-up do nothing.
+
+    Not possible:
+    - a setting saved on the card (rule 8);
+    - detecting the screen (the panels cannot be read back).
+
+48. **Keys and wiring for screens without keys**
+    Recommended: one pin map for every screen.
+    - A module is wired exactly like the HAT: DC to BCM 25, reset to BCM 27, chip select to CE0, and backlight to
+      BCM 24 (header pin 18), not to BCM 18 as Waveshare's guide shows.
+    - The keys are a 5-way joystick switch and three push buttons, each wired from one of the HAT's eight key pins to
+      ground.
+    - The joystick goes left of the screen and KEY1 to KEY3 top to bottom on the right, so the footer's key names
+      match.
+    - Every image then drives the same pins and uses the same config.txt, so flashing the wrong image can never drive a
+      pin that is wired as a key.
+
+    Otherwise: Waveshare's wiring, with the backlight on BCM 18. Each screen's settings then include pins, config.txt
+    differs per image, and a test must keep display pins off key pins.
+
+49. **Testing, timing and sources**
+    Recommended:
+    - (a) A screen is offered only after a short check on real hardware with its exact image. That check is the new
+      checklist H6:
+      - boot and fingerprint;
+      - picture upright, true colours, edges not cut off;
+      - all 8 keys;
+      - the account QR scanned by Sparrow.
+
+      Everything else runs in CI: on every PR for the HAT, and for the other screens whenever their code changes,
+      weekly and for releases. That covers the start-up bytes against Waveshare's code, the picture placement and the
+      wipe size. A screen nobody has checked is not built into release images and is not listed as supported.
+    - (b) You buy the screens you want offered:
+      - the 1.54-inch module (about $9.49) and the 2-inch module (about $10.99), both listed on Waveshare's site on
+        2026-10-14;
+      - a 5-way joystick switch, three push buttons and jumper wires;
+      - optionally the 1.3-inch module ($9.49). It uses the HAT's panel, so it is not needed.
+    - (c) The work comes as a short step, M4b, on its own branch right after you approve the M4 gate.
+      - Its own small gate is H6 on each new screen, plus two identical builds of each new image.
+      - M4's gate does not change.
+    - (d) In M4b, the lead may download one file from Waveshare, `LCD_Module_RPI_code.zip`, the Raspberry Pi code for
+      the 1.3, 1.54, 2 and 2.4-inch modules. The lead will ask you first, giving its size. The modules' settings are
+      then checked against Waveshare's own module code rather than its Pico-board code.
+
+    Otherwise:
+    - (a) offer unchecked screens marked "untested";
+    - (c) fold the work into M7's releases, or wait until a builder asks;
+    - (d) no download: the Pico-board code stays the stand-in, H6 is the only confirmation, and the 2.4-inch and
+      1.69-inch cannot be added.
+
+50. **If your HAT turns out to be a variant (only if H1a shows washed-out or inverted colours)**
+    Recommended:
+    - The approved HAT settings stay unchanged, for every other 1.3-inch HAT.
+    - Your unit gets a second settings block with the values bring-up confirms on it. The M4 image uses that block, so
+      the gate is tested on exactly what you see. M4 still builds one image.
+    - Inverted colours: the second block is the approved one with inversion off.
+    - Washed-out greys: the values start from the ones Waveshare gave SeedSigner and may change up to six settings. The
+      lead records each value tried and where it came from.
+    - The image for the other kind of HAT comes in M4b and is offered only after someone checks it on that kind of HAT.
+
+    Otherwise:
+    - (i) M4 builds both HAT images. That pulls M4b's per-screen selection (B3 and part of B4) into M4 and adds two
+      image builds to every PR. You could check only one of the two images.
+    - (ii) If text is readable and the QR codes scan, accept the washed-out look in M4 and leave the second block to
+      M4b.
+
+### Raised by stage A's review (Q51, rule 8's path list; open, needed before commit 12)
+The lead is asking the owner now. Commit 12 (group 11's path-literal rule) waits for the answer.
+
+51. **Rule 8's path list leaves reads out** (CLAUDE.md rule 8; PF:81)
+    - Rule 8's sentence (commit 3, ed15bd2) and PF:81 (commit 2, a7a91cc) say the path list is complete and the paths
+      fixed.
+    - Stage A's review found reads the list leaves out:
+      - the dynamic loader's own files;
+      - glibc's `/proc/self/maps` before `main`;
+      - `/dev/null` if a standard fd is closed;
+      - rppal's `/dev/mem` attempt, which `CONFIG_DEVMEM=n` makes fail (the rppal review note under M4's "New
+        dependencies").
+    - The list also holds glob patterns (`/dev/gpiochip*`, `/sys/firmware/devicetree/base/{compatible,model}`,
+      `/sys/block/**`, `/dev/sdX1`).
+
+    Recommended:
+    - PF:81 lists these reads too, says the grep gate covers the paths our code and rppal name, and calls the globs
+      patterns.
+    - Rule 8's "fixed entries under `/proc` and `/sys`" becomes "fixed entries and patterns under `/proc` and `/sys`".
+
 ### Later
 - [ ] Release signing: minisign or GPG, and who holds the key offline? (M7)
 - [ ] Registry domain name (M9; until then M1 uses a placeholder constant in the check-QR URL)
@@ -6573,7 +6739,9 @@ Review fixes are listed as N.b entries under the commit they amend.
 ## M4: Pi hardware and OS image (`pi/app` device HAL, `pi/os`)
 
 Status (2026-10-14): the owner approved this plan and every recommendation of Q35-Q43 ("approve all", 2026-10-14).
-Code follows "Commit order on `m4-pi-hardware`" below, stage by stage.
+The owner then approved Q44-Q50 (other Waveshare screens, "approve all", 2026-10-14): group 5's panel driver keeps each
+screen's settings as one profile, and M4b, under "Deferred", adds more screens after the M4 gate. Q51 (rule 8's path
+list) is open, and commit 12 waits for it. Code follows "Commit order on `m4-pi-hardware`" below, stage by stage.
 
 ### Inputs from M3 (folded into the plan below)
 
@@ -6858,7 +7026,8 @@ stale (Q43 (d)).
 
 **References and terms**
 - PF = pi-firmware.md, BP = build-plan.md, swb = seal-watchonly-braille.md, all in `docs/`. Also CLAUDE.md, lessons.md and
-  this file. Q35-Q43 are this milestone's questions.
+  this file. Q35-Q43 are this milestone's questions, with Q44-Q50 (other Waveshare screens) and Q51 (rule 8's path
+  list).
 - **Device code:** `pi/app/src/device/`, a module of the `keepcrypt-pi` binary, declared in main.rs. It is not part of the
   library that pi/sim links.
   - Its **pure parts** build on every host and are unit-tested on the Mac and in CI.
@@ -7115,44 +7284,88 @@ stale (Q43 (d)).
   - pi/sim's gate scenarios still pass in both configurations, and any scenario that needs a change is listed with the
     reason.
 
-**5. Device: the ST7789 panel (pure; `device/panel.rs`; Q36 (c))**
-- [ ] `St7789<B: Bus>` runs over this trait:
+**5. Device: the panel (pure; `device/panel.rs`; Q36 (c), Q44)**
+- [ ] `Panel<B: Bus>` runs over the approved `Bus` trait (unchanged) and one `&'static PanelProfile`. The trait:
   `trait Bus { command(cmd, args) -> Result<(), HalError>; data(bytes) -> Result<(), HalError>; reset(high); backlight(on); sleep_ms(ms) }`.
   - `reset` and `backlight` are single register writes that cannot fail.
   - Every `data` call sends the whole slice or fails.
-- [ ] Init, in order:
+
+  A profile is a `const` value that holds no pins and does no I/O:
+  - `name: &'static str`;
+  - `madctl: u8`, which the driver sends at step 3 and in `Drop`. Its MV bit (`0x20`) must match `ram`'s orientation,
+    and its colour-order bit (`0x08`) is part of it;
+  - `init: &'static [Step]`, each `Step { cmd: u8, args: &'static [u8], delay_ms: u16 }`: the rest of init steps 3-5
+    below, in order. Every opcode must be in `ST7789_INIT_OPCODES`;
+  - `ram: Size`, the controller's whole frame memory in the profile's orientation: 320×240 with MV set, or 240×320 with
+    MV clear. Init, `Drop` and stop mode blank all of it;
+  - `origin: Point`, where the 240×240 frame sits in that memory;
+  - `spi_hz: u32`.
+- [ ] `ST7789_INIT_OPCODES` is an allow-list, the only opcodes a profile's `init` may hold:
+  - COLMOD `3A`, PORCTRL `B2`, GCTRL `B7`, VCOMS `BB`, LCMCTRL `C0`, VDVVRHEN `C2`, VRHS `C3`, VDVS `C4`, FRCTRL2 `C6`,
+    PWCTRL1 `D0`, PVGAMCTRL `E0`, NVGAMCTRL `E1`, INVOFF `20`, INVON `21`;
+  - everything else either belongs to the driver or is never sent: MADCTL, sleep in and out, display on and off,
+    windows, memory writes, scrolling, partial mode and idle mode;
+  - INVOFF is on the list because some panels need inversion off (Q50; [S36]).
+- [ ] One profile, `WAVESHARE_1IN3_HAT`, holds exactly the approved values: `madctl` `0x70`, the approved COLMOD-to-INVON
+  steps, `ram` 320×240, `origin` (0, 0), 40 MHz. `PROFILES` lists every profile. In M4 it holds only this one, or two
+  if Q50 applies.
+- [ ] `pub const PANEL: &PanelProfile = &WAVESHARE_1IN3_HAT;` is the one line that names the image's profile. Group 10
+  uses it, and M4b's B3 replaces it.
+- [ ] Init, in order. The driver owns every step that is the same for every screen. The profile supplies `madctl` and its
+  `init` steps:
   1. Backlight low.
   2. RST high 10 ms, low 10 ms, high, then 120 ms.
-  3. MADCTL `0x70`, COLMOD `0x05`.
+  3. MADCTL with the profile's `madctl` (driver; `0x70` for the HAT), then COLMOD `0x05` (profile).
   4. PORCTRL `0C 0C 00 33 33`, GCTRL `35`, VCOMS `19`, LCMCTRL `2C`, VDVVRHEN `01`, VRHS `12`, VDVS `20`, FRCTRL2 `0F`,
-     PWCTRL1 `A4 A1`.
-  5. PVGAMCTRL and NVGAMCTRL (Waveshare's tables, as SeedSigner ships them [S6]), then INVON.
+     PWCTRL1 `A4 A1` (profile).
+  5. PVGAMCTRL and NVGAMCTRL (Waveshare's tables, as SeedSigner ships them [S6]), then INVON (profile).
   6. SLPOUT, then 120 ms [S23].
-  7. Zeros over all of frame memory in the MV orientation: CASET `00 00 01 3F`, RASET `00 00 00 EF`, RAMWR, then 153,600
-     zero bytes (38 writes: 37 × 4,096 and one of 2,048) [S31].
+  7. Zeros over all of `ram`:
+     - CASET `0 .. ram.width - 1`, RASET `0 .. ram.height - 1`, RAMWR;
+     - then `ram.width × ram.height × 2` zero bytes in 4,096-byte writes;
+     - for the HAT: `00 00 01 3F`, `00 00 00 EF`, 153,600 bytes, 38 writes (37 × 4,096 and one of 2,048) [S31].
   8. DISPON.
 
-  The backlight comes on after the first successful present.
+  For the HAT, the byte stream is the approved one, byte for byte. The backlight comes on after the first successful
+  present.
 - [ ] Present:
-  - CASET `00 00 00 EF`, RASET `00 00 00 EF`, RAMWR;
+  - CASET `origin.x .. origin.x + 239`, RASET `origin.y .. origin.y + 239`, RAMWR (for the HAT, `00 00 00 EF` twice, as
+    approved);
   - then `Frame::raw()`, high byte first, as 29 writes of at most 4,096 bytes through one `Zeroizing<[u8; 4096]>`;
   - the buffer is zeroized after every present, error paths included;
   - the API offers no partial window.
 - [ ] Any bus error turns the backlight off, then returns `HalError::Display`.
-- [ ] `Drop` sends MADCTL `0x70` (so the window is valid whatever state init reached), the full-memory window of step 7,
-  RAMWR and 153,600 zeros from a static zero buffer, then turns the backlight off. A write error there is handled by an
-  explicit `match`, never `let _`.
-- [ ] MADCTL, colour order, inversion and the 40 MHz SPI request (mode 0) are constants that H1a confirms. 40 MHz is
-  Waveshare's demo rate and above the ST7789VW datasheet's serial write timing, which the constant's doc cites; if H1a
-  shows a corrupt or dark panel, the first bring-up fix lowers it to an in-spec rate (lead decision, 2026-10-14).
+- [ ] `Drop`:
+  - sends the profile's `madctl` (so the window is valid whatever state init reached), step 7's full-memory window,
+    RAMWR and the zeros from a static zero buffer;
+  - then turns the backlight off;
+  - handles a write error there with an explicit `match`, never `let _`.
+- [ ] The HAT profile's `madctl` (orientation and colour order), its INVON step and its `spi_hz` (40 MHz, SPI mode 0) are
+  values that H1a confirms.
+  - 40 MHz is Waveshare's demo rate. It is above the ST7789VW datasheet's serial write timing, which the field's doc
+    cites.
+  - If H1a shows a corrupt or dark panel, the first bring-up fix lowers it to an in-spec rate (lead decision,
+    2026-10-14).
 
   Proof: unit tests on a recording bus:
-  - the init byte stream is pinned, with the datasheet's address ranges for MV = 1 quoted in the test's doc [S31];
+  - the HAT profile's init byte stream is pinned to the approved list byte for byte, with the datasheet's address ranges
+    for MV = 1 quoted in the test's doc [S31];
   - window bytes, 29 chunks summing to 115,200, and byte order (0xF800 gives `F8 00`);
   - `screens::blank()` writes 115,200 zero bytes;
   - the buffer is all zero after a present and after a failed one;
   - the backlight goes off on every error and in `Drop`, and stays off until the first present;
-  - init and `Drop` each write the 320×240 window and 153,600 zero bytes.
+  - init and `Drop` each send MADCTL `0x70`, the 320×240 window and 153,600 zero bytes;
+  - for every entry of `PROFILES`:
+    - `ram` is 320×240 with MV set in `madctl`, or 240×320 with MV clear (the ST7789's whole frame memory), so the wipe
+      always covers all of it;
+    - the 240×240 window at `origin` lies inside `ram`;
+    - every `init` opcode is in `ST7789_INIT_OPCODES`;
+    - `init` has exactly one COLMOD step, and its low nibble is 5 (16 bits a pixel, which is what `Frame::raw()` sends);
+    - `spi_hz` is non-zero, and names are unique;
+  - a test-only profile in `device/panel/tests.rs` (`#[cfg(test)]`; `ram` 320×240, `origin` (40, 0)) shows that:
+    - the window bytes follow `origin` (CASET `00 28 01 17`);
+    - the wipe covers all of `ram`;
+    - no present writes outside the 240×240 window.
 
 **6. Device: keys and clock (pure; `device/keys.rs`)**
 - [ ] `KeyLoop<E: EdgeSource, C: Clock>` implements `next_event`:
@@ -7278,7 +7491,8 @@ stale (Q43 (d)).
   Each commit runs clippy with `-D warnings` on the Mac (tests), in lint (x86_64 Linux, `--all-targets`) and in cross
   (ARM).
 - [ ] `device/linux.rs` (Linux): `PiHal` implements the traits.
-  - Display: `St7789` over rppal `Spi::new(Spi0, Ss0, 40 MHz, Mode0)` and output pins DC 25, RST 27, BL 24.
+  - Display: `Panel` over rppal `Spi::new(Spi0, Ss0, PANEL.spi_hz, Mode0)` and output pins DC 25, RST 27, BL 24 (the
+    same pins for every screen, as Q48 decided).
   - Buttons: eight rppal `InputPin`s, on the pins `Key::bcm_pin` gives, with pull-ups and
     `set_interrupt(Trigger::Both, None)`. There is no kernel debounce, so one debouncer serves both the device and the
     simulator. Edges are read with `Gpio::poll_interrupts`, which is synchronous and uses no thread.
@@ -7317,6 +7531,13 @@ stale (Q43 (d)).
   The crash path is not forced on hardware in M4 (Q42 (a)).
 
 **11. Gates (banned-api-check.sh, canaries)**
+- [ ] Open owner item, before commit 12: Q51 (rule 8's path list). Rule 8's sentence and PF:81 say the list is complete
+  and its paths fixed. Stage A's review found reads it leaves out: the dynamic loader's own files, glibc's
+  `/proc/self/maps` before `main`, `/dev/null` if a standard fd is closed, and rppal's `/dev/mem` attempt, which
+  `CONFIG_DEVMEM=n` makes fail. The list also holds glob patterns. Recommended: PF:81 lists these reads too, says the
+  grep gate covers the paths our code and rppal name, and calls the globs patterns; rule 8's "fixed entries under
+  `/proc` and `/sys`" becomes "fixed entries and patterns under `/proc` and `/sys`".
+  Proof: the owner's answer under Q51.
 - [ ] A Device category. Each rule gets hit and clean selftest fixtures and one canary:
   - **Path literals.** Every string literal starting with `/` in `pi/app/src` lives in `device/paths.rs` and is one of
     `/dev/hwrng`, `/dev/mmcblk0p2`, `/dev`, `/sys/block`, `/mnt/usb`. rppal builds its own `/dev/spidev*`, `/dev/gpio*`
@@ -7611,6 +7832,17 @@ stale (Q43 (d)).
 - [ ] H1a on commit 15's image, and H1-H4, plus any H5 items, recorded under Review in Q41 (c)'s form only.
 - [ ] Bring-up fixes found on hardware (orientation, colour order, SPI clock, timings, kernel options, firmware files) are
   commits that name the owner's observation and the root cause. The check that found the problem is repeated after each.
+- [ ] If H1a shows inverted colours or washed-out greys (Q50):
+  - This is a panel variant, not a wrong value. Inverted: some ST7789 panels need inversion off, and which ones is not
+    known [S36: #1052]. Washed out: Waveshare's late-model values change MADCTL, GCTRL, VCOMS, VRHS and both gamma
+    tables, and upstream has not settled them [S36: #726, #822].
+  - `WAVESHARE_1IN3_HAT` stays as approved, with its pinned test, for every other HAT.
+  - The owner's unit gets a second profile, `WAVESHARE_1IN3_HAT_B`, pinned to the values H1a confirms, and `PANEL` names
+    it for the M4 image (Q50, as recommended).
+  - The fix may touch `madctl` and the GCTRL, VCOMS, VRHS, gamma and INVON/INVOFF steps. If MV changes, `ram` changes
+    with it (group 5's checks).
+  - The bring-up commit names the owner's observation, each value tried and the source of each value. H1a repeats on the
+    new image.
 - [ ] The gate image rule: H1-H4 count for the gate only if the image workflow's run at the final PR head gives the same
   image SHA-256 as the image the owner used. A later fix that changes the hash means H1-H4 run again on the new image.
   `tasks/`-only commits do not change it (fixed `SOURCE_DATE_EPOCH`), and the final head's run shows that.
@@ -7653,6 +7885,9 @@ stale (Q43 (d)).
   pi/os/ are unmet while there is one maintainer (todo.md:322); M4 is the first milestone with pi/os.
 
 **Deferred, with their milestone**
+- **M4b** (after the M4 gate; Q45-Q50): more Waveshare screens: the 240×320 profile, one image per screen type, the
+  image workflow's screen list, the wiring docs and H6; and the second HAT image if Q50 made one. It is the planned
+  follow-up step, on its own branch after the M4 gate; its plan follows this list.
 - **M5, M6:** UniFFI relies on group 3's assertions. Nothing else moves there.
 - **M7:**
   - the pinned build container (Debian by digest, snapshot apt) and `repro-check` "in clean containers"; a third-party
@@ -7694,6 +7929,211 @@ stale (Q43 (d)).
     config already allows only that driver);
   - a longer step 4 pace, or a Snake tick of its own;
   - index.html's first-capture placeholders, with the next capture-set change.
+
+**M4b: more Waveshare screens (`m4b-screens`, after the M4 gate is approved; Q45-Q50)**
+M4b gets its own branch and PR, with its own gate, which the owner approves before the work starts. Commands, budgets and
+the required check names are unchanged.
+
+What does not change, in M4 or M4b (Q44-Q50):
+- The M4 gate (BP:294), the answers to Q35-Q43 and the four approved crates (rule 11).
+  - No crate is added anywhere below.
+  - Every screen considered here is SPI plus GPIO, which rppal 0.22.1 already covers.
+- Rule 8 and CLAUDE.md, under the recommendations (Q51, open, is a separate item).
+  - Commit 3 has landed (ed15bd2) with the approved sentence.
+  - Only Q47 (c), which was not taken, would have needed a later CLAUDE.md commit adding `/proc/cmdline`.
+- No `unsafe` (Q36 (d)).
+- No simulator or test code in any image (rule 10). Group 5's test-only profile lives in `device/panel/tests.rs`, which
+  is declared only as `#[cfg(test)] mod tests;`, so rustc never compiles it outside `cargo test`.
+- The M4 docs (commit 2, a7a91cc). Docs for other screens come with M4b.
+- No new simulator captures in M4 or M4b.
+  - Centring leaves every frame byte-identical.
+  - pi/sim keeps its 240×240 panel (pi/sim/src/panel.rs:27-28, :44).
+
+**B0. Before code**
+- [ ] Record the owner's answers to Q44-Q50.
+- [ ] The owner has the screens to be offered (Q49 (b)) and the switches.
+- [ ] Where each module profile's values come from (Q49 (d)):
+  - Recommended: with the owner's yes, download one file, Waveshare's `LCD_Module_RPI_code.zip` from
+    files.waveshare.com. It is linked from the 1.3, 1.54, 2 and 2.4-inch module wikis, whose file lists cover all four
+    sizes. The lead states its size when asking. The file goes into its own new, empty directory and is read as data
+    only. Each module profile is then pinned to it.
+  - The 1.69-inch is not in that archive's file list. Adding it needs a second download, its own wiki's archive, with
+    its own yes.
+  - Otherwise: profiles are pinned to Waveshare's Pico-board drivers [S34, S35], labelled in each test's doc as a
+    stand-in, and H6 is the only confirmation for the modules. The 2.4-inch and the 1.69-inch cannot be added without a
+    download.
+
+**B1. Docs, alone (first code-free commit)**
+- [ ] PF:23:
+  - the screen row reads "Waveshare 1.3-inch LCD HAT, or a supported screen below";
+  - a new "Supported screens" table lists screen, image, wiring, and "checked on hardware" with the H6 date.
+- [ ] PF:32-43 says "One pin map for every screen" and gives:
+  - the module wiring and switch wiring with header pins (Q48);
+  - the backlight on BCM 24;
+  - the joystick and key placement.
+- [ ] PF:66 (`hal::Display`) reads: "Draw 240x240 frames, centred on screens larger than 240×240; one block of settings
+  per screen type, chosen when the image is built."
+- [ ] PF:163-184: `make -C Entropy/pi/os image PANEL=<name>` and `make -C Entropy/pi/os repro-check PANEL=<name>` (both
+  refuse a missing name), the list of names, and "flash the image named for your screen".
+- [ ] BP:76's "the ST7789 driver is KeepCrypt's own" becomes "the display driver is KeepCrypt's own: one driver, one
+  block of settings per screen type". The wording names no controller, so it stays true if the ILI9341 is added.
+- [ ] BP's milestone table gains an M4b row with its gate, in the owner's wording.
+- [ ] BP:50 and swb:90 stay as they are, because the frame is still 240 × 240.
+
+  Proof:
+  - `git diff --name-only` lists only `docs/`;
+  - `vectorgen.py --selftest` passes (it pins PF sentences);
+  - `verify.py --selftest` passes;
+  - banned-api-check is clean.
+
+**B2. Profiles (`device/panel.rs`)**
+- [ ] `ST7789_240X320`, for the Waveshare 2-inch module:
+  - the 2-inch values: VCOMS `1F`, its two gamma tables, INVON, from the module archive's 2-inch file if Q49 (d) is yes,
+    otherwise from `LCD_2in.c` [S35] as a stand-in;
+  - `madctl` `0x70`, `ram` 320×240, `origin` (40, 0);
+  - the picture is landscape like the HAT's: joystick left, keys right.
+- [ ] The 1.3-inch and 1.54-inch modules use `WAVESHARE_1IN3_HAT` unchanged, because Waveshare's values for these sizes
+  are identical [S34], to be confirmed against the archive if Q49 (d) is yes. If H6 shows that a module needs a lower
+  bus speed over jumper wires, it gets its own profile and image.
+- [ ] If Q50 made `WAVESHARE_1IN3_HAT_B` in M4, it gets its own image name here (`st7789-240x240-b`).
+- [ ] Only if Q45 adds them:
+  - `ILI9341_240X320`: one more profile under the same driver, not a second driver. The driver's own steps (reset,
+    MADCTL, SLPOUT, CASET, RASET, RAMWR, DISPON) use the same opcodes on the ILI9341, and its frame memory is also
+    240×320.
+    - It brings its own init table from the archive's 2.4-inch file, COLMOD `0x55` and its colour order in `madctl`.
+    - A new `controller` field selects its own reviewed allow-list, because the ILI9341 reuses some opcodes for other
+      registers (for example `C0`, `E0`, `E1`).
+    - `spi_hz` comes from the archive's demo and is confirmed at H6. A slower rate makes each present take longer.
+  - A 1.69-inch profile: `madctl` `0x70`, `ram` 320×240 (the controller's whole memory) and `origin` (40, 0). That
+    origin is the panel's 20-column offset in memory, which I computed (no Waveshare file states it), plus 20 to centre.
+    H6 confirms both.
+
+  Proof:
+  - each profile's init stream is pinned against its cited source. The test's doc lists every deviation from that
+    source. For `LCD_2in.c` these are:
+    - MADCTL `0x70` (the driver's `madctl`), not `0x00`. `LCD_2IN_InitReg` starts with MADCTL `0x00`, which overrides
+      the `0x70` that `LCD_2IN_SetAttributes` sends just before it, so the demo always ends up portrait;
+    - InitReg's early INVON (its third command) is dropped. INVON is sent once, after the gamma tables, as on the HAT;
+    - InitReg's CASET `00 00 01 3F` and RASET `00 00 00 EF` are dropped. The driver owns windows, and its wipe sends the
+      full-memory window;
+    - SLPOUT and DISPON are sent by the driver (steps 6 and 8);
+    - if the profile is pinned to the module archive instead, its deviations are listed the same way;
+  - window bytes;
+  - wipe size and write count;
+  - byte order;
+  - the `PROFILES` checks from group 5.
+
+**B3. Selection when the image is built (Q47 (a))**
+- [ ] `PANEL` (group 5's one line) becomes the profile named by `option_env!("KEEPCRYPT_PI_PANEL")`, resolved in a
+  `const` by a const fn that compares the bytes:
+  - unset gives `WAVESHARE_1IN3_HAT`, so `cargo test`, `lint`, coverage, pi/sim and the CI cross leg, none of which
+    makes an image, are unchanged;
+  - a known name gives that profile;
+  - an empty or unknown value stops the build with fixed text (a const-evaluation panic);
+  - cargo tracks variables read by `option_env!`, so a change rebuilds only `keepcrypt-pi`.
+- [ ] The image path never relies on "unset". It fails closed:
+  - `make image`, `make repro-check` and `make scan` require `PANEL=<name>`. Before Buildroot starts, they refuse a
+    missing, empty or unlisted name and print the list;
+  - `package/keepcrypt-pi/keepcrypt-pi.mk` sets `KEEPCRYPT_PI_PANEL` explicitly in the cargo command's environment
+    (group 13's `env -u RUSTFLAGS` line), because Buildroot runs cargo with its own environment. The .mk also refuses an
+    empty value itself;
+  - the image is named `keepcrypt-pi-0.0.0-<name>.img`, and the build log prints the name next to the binary's SHA-256.
+- [ ] Why not the alternatives:
+  - Not a cargo feature: the lint job runs `cargo clippy --workspace --all-targets --all-features`
+    (entropy-ci.yml:128), which mutually exclusive features would break.
+  - Not `--cfg` in RUSTFLAGS: an unknown value would silently give the HAT, the .mk unsets RUSTFLAGS, and any change to
+    RUSTFLAGS rebuilds every crate.
+- [ ] pi/os: the Makefile holds one list, `PANELS := st7789-240x240 st7789-240x320`, plus anything Q45 or Q50 adds.
+  - config.txt, cmdline.txt, inittab, `expected/` and the kernel config are the same for every image (one pin map).
+
+  Proof:
+  - a unit test per name, and one showing that unset gives the HAT;
+  - canaries: `KEEPCRYPT_PI_PANEL=nonsense` and `KEEPCRYPT_PI_PANEL=` (empty) each fail the build with the fixed text;
+  - `make image` with no `PANEL`, an empty one and an unlisted one each stop before Buildroot (logs under Review);
+  - canaries (n + 2)/(n + 2).
+
+**B4. The image workflow's screen list (`entropy-pi-image.yml`)**
+- [ ] A matrix over `PANELS`:
+  - per PR, `st7789-240x240` only;
+  - every panel when the PR touches `Entropy/pi/app/src/device/panel.rs`, `Entropy/pi/app/src/device/panel/**`,
+    `Entropy/pi/os/**` or the workflow file itself;
+  - every panel weekly and on `workflow_dispatch`.
+- [ ] Each panel gets:
+  - two legs and its compare job;
+  - the scan: `--image` against the one `expected/`, with `BIN_SHA256` from its own legs;
+  - the upload.
+- [ ] **`pi-image panels differ`**: it needs every panel's compare job and fails if any two panels' `BIN_SHA256` are
+  equal.
+  - Profiles differ in data, so equal binaries mean a name never reached the compiler.
+  - It runs on every run that builds two or more panels, which is every run that builds a non-HAT image. A HAT-only run
+    needs no such check: a lost name gives the HAT, which is what that image is.
+  - The check is a short script under `scripts/` with a `--selftest` that feeds it two equal hashes and expects a
+    failure (its canary).
+  - M7 signs release images only from a run where this job is green.
+- [ ] Job names carry the panel, for example `pi-image build (a, st7789-240x320)`, and collide with none of the 14
+  required names.
+- [ ] The step summary lists, per panel, the commit, the image SHA-256, the rootfs prefix and the binary SHA-256.
+- [ ] `--workflows` hardening applies unchanged.
+
+  Proof: a green run at the final head, with every panel's `reproducible (a = b)` job and `panels differ`; leg times and
+  disk use under Review.
+
+**B5. Owner hardware check H6 (per newly offered screen, on its exact image)**
+- [ ] Setup:
+  - wire as in PF's table and flash the image named for the screen;
+  - note the ACT LED;
+  - the boot screen's prefix matches the run summary.
+- [ ] Picture:
+  - upright, true colours, no noise;
+  - bands black and even (240×320);
+  - offset check: the step title's first letter is whole at the left edge, and the footer is whole at the bottom;
+  - the account QR's light square shows black on all four sides.
+- [ ] All 8 inputs act once per press over about 20 presses, and holding a key gives one action.
+- [ ] An idle wipe goes black.
+- [ ] A throwaway Mixed 12-word run up to step 12, taking Skip at step 7, recorded only in Q41 (c)'s form:
+  - Sparrow scans the account QR off this screen, and its first address equals the wallet summary's;
+  - a phone decodes the descriptor QR.
+- [ ] If the HAT image's hash changed in M4b, H1 (boot and keys) repeats on the HAT with the new image.
+
+  No verify.py run and no backup are needed for the new screens. Apart from the panel profile, their firmware and frames
+  are the HAT's, which the M4 gate covers.
+
+**B6. Review and gate**
+- [ ] Plan, security and recompute reviews, with every high and medium finding fixed.
+- [ ] Proposed M4b gate:
+  - every offered screen passes H6 on its exact image;
+  - each image's two builds give the same hash at the final head, and `panels differ` is green;
+  - the HAT image passes H1 if its hash changed;
+  - no image or doc lists an unchecked screen as supported.
+
+**Commit order on `m4b-screens`**
+1. tasks/todo.md: the M4b plan and the owner's answers to Q44-Q50.
+2. docs: B1, alone.
+3. pi/app (bin): the new profiles and their tests (B2).
+4. pi/app (bin), scripts: `KEEPCRYPT_PI_PANEL` selection and its canaries (B3).
+5. pi/os: `PANELS`, the required `PANEL=`, the .mk's explicit variable and the image names (B3).
+6. .github, scripts: the image workflow's matrix, `panels differ` and its selftest (B4).
+7. CLAUDE.md: Commands gain `make -C pi/os image PANEL=<name>`.
+8. Bring-up fixes from H6, each with the owner's observation and the root cause.
+9. tasks/todo.md: Review, H6 records and the gate report.
+
+**M4b Verification**
+- [ ] **Per profile:** the init stream pinned to its source, with deviations listed; window, wipe and byte-order tests;
+  the `PROFILES` checks.
+- [ ] **Selection:**
+  - unset gives the HAT, and each name gives its profile;
+  - an unknown or empty name fails the build (canaries);
+  - `make` refuses a missing, empty or unknown `PANEL`;
+  - `panels differ` is green at the final head, and its selftest fails on equal hashes.
+- [ ] **Reproducible per image:** each panel's `reproducible (a = b)` is green at the final head; hashes recorded.
+- [ ] **Image scan per image:** `--image` is clean for every panel; config files are identical across images.
+- [ ] **Hardware:** H6 per offered screen; H1 on the HAT if its hash changed.
+- [ ] **Rules:**
+  - 8: unchanged (no new path);
+  - 10: no test profile in any image, because `device/panel/tests.rs` is declared only as `#[cfg(test)] mod tests;`
+    (the line shown under Review); the scan's existing markers stay clean;
+  - 11: no new crate (`git diff Cargo.lock` is empty).
+- [ ] **Docs:** the Supported screens table lists only screens with an H6 record.
 
 ### Verification
 - [ ] **Gate: full ceremony on a Pi Zero v1.3, checked with the offline verifier.** H2 and H3 on the gate image (the
@@ -7741,6 +8181,12 @@ stale (Q43 (d)).
   - a backup is written and read back under `mlockall`.
 
   Proof: H1a, H1, H2.
+- [ ] **Panel profile (Q44):** the HAT profile's init stream equals the approved bytes; the `PROFILES` checks and the
+  test-only tests with `origin` (40, 0) pass; `PROFILES` holds exactly the HAT, or the HAT and `WAVESHARE_1IN3_HAT_B` if
+  Q50 applied.
+  Proof: group 5's tests in commit 7.
+- [ ] **Panel variant (Q50), only if H1a showed one:** `WAVESHARE_1IN3_HAT` still equals the approved bytes; the
+  variant's stream is pinned to the values H1a confirmed; H1a passes on the image that uses it.
 - [ ] **Kernel allow-list:** `--image` shows the build's `.config` equals `expected/linux.config`; `--os-config` clean;
   the commit 16 review note.
 - [ ] **Crash path:** the panel's `Drop` test, the `show_stop` test, `mode`'s tests, the inittab and `panic=0` checked by
@@ -7868,6 +8314,10 @@ The PR is a draft from commit 1.
    1b. tasks/todo.md: the owner's answers to Q35-Q43 ("approve all", 2026-10-14), recorded after commit 1 (49423fc).
    1c. tasks/todo.md: the plan review: the plan's pi-firmware.md and CLAUDE.md line citations after commits 2 and 3
    (a7a91cc, ed15bd2); Q35-Q43's text stays as the owner approved it.
+   1d. tasks/todo.md: the owner's answers to Q44-Q50 (other Waveshare screens, "approve all", 2026-10-14) and the
+   display amendment: group 5's panel profiles, group 10's Display line, group 16's variant HAT item (Q50), H1a's panel
+   line, commit 7, two Verification items, M4b under "Deferred", and [S34]-[S37]; the owner's hardware notes in H0; and
+   Q51, open, which commit 12 waits for.
 2. docs: the approved edits (Q40; Q42 (b)), alone; plus `1.txt` if approved.
 3. CLAUDE.md: rule 8's sentence (Q40 (a)). 3b. `.github/CODEOWNERS:7-9`, if approved (Q43 (d)).
 4. core: `tests/auto_traits.rs` (group 3).
@@ -7883,7 +8333,8 @@ The PR is a draft from commit 1.
 
 6. pi/app (lib), pi/sim: the new `HalError` variants, `show_stop`, the boot and About fits, `Key::bcm_pin`, the fence
    (group 4).
-7. pi/app (bin): `#[cfg(test)] mod device;` and `device/panel.rs` (group 5).
+7. pi/app (bin): `#[cfg(test)] mod device;` and `device/panel.rs` with the HAT profile, `ST7789_INIT_OPCODES` and `PANEL`
+   (group 5).
 8. pi/app (bin): `device/keys.rs` and `device/hwrng.rs` (groups 6, 7).
 9. pi/app (bin): `device/usb.rs`, `SysBlock`, `device/usb/tests.rs` with the `#[ignore]`d loop-device test (group 8).
 10. pi/app (bin), pi/os, .github: `device/rootfs.rs` and its vector; `pi/os/rootfs-prefix.py`; `gates` runs its
@@ -7894,7 +8345,8 @@ The PR is a draft from commit 1.
 11. pi/app (bin): `device/linux.rs`, `device/paths.rs`, `device::run`, stop mode, main.rs, the widened `mod device`
     (group 10).
 12. scripts: the Device category and test-file exception, Python `random` through any module path, the `.symtab` Format
-    rule, std's random-key rule, `--workflows`, fixtures, canaries (groups 11, 12).
+    rule, std's random-key rule, `--workflows`, fixtures, canaries (groups 11, 12). It starts only after the owner
+    answers Q51 (group 11).
 13. .github: the cross leg links and scans `keepcrypt-pi`; `test` runs the loop-device test; `gates` runs `--workflows`
     (group 12).
 
@@ -7935,6 +8387,11 @@ seed, which is what those screens are for. Write throwaway values on paper and d
   - a 5 V power bank;
   - 5 dice;
   - pencil and paper.
+- [ ] Your hardware (owner's note, 2026-10-14): the board and screen are your SeedSigner device, a Raspberry Pi Zero v1.3
+  (no Wi-Fi) with the Waveshare 1.3-inch LCD HAT and a camera module.
+  - KeepCrypt boots from a separate microSD card, the new card above. Take the SeedSigner card out; it stays untouched.
+  - The camera may stay attached, because the image never enables it: config.txt has no `start_x`, and the kernel has
+    no camera support (`MEDIA_SUPPORT` and `I2C` are forbidden, group 13). The camera is M8.
 - [ ] An offline computer with Python 3.9 or later, `age`, and `tools/verify/verify.py` from the gate image's commit. The
   lead gives you the commit and the file's SHA-256.
 - [ ] A computer with the current Sparrow and Bitcoin Core 31.1 [S22], a webcam that focuses at about 10 cm (an autofocus
@@ -7970,6 +8427,9 @@ seed, which is what those screens are for. Write throwaway values on paper and d
 - [ ] The boot screen shows `0.0.0` and a prefix equal to the run summary's.
 - [ ] Panel: Home is upright, as in the M3 captures, with the joystick on the left; colours match the captures; no band of
   noise; sharp text.
+  - If the picture looks inverted (like a photo negative) or washed out (blacks look grey, colours pale), say which, in
+    words. It is a known panel variant. The fix is a second settings block for your unit (Q50), not a change for every
+    HAT.
 - [ ] Keys:
   - each of the 8 inputs acts once per press over about 20 presses;
   - holding a key gives one action (the dice screen shows this);
@@ -8184,6 +8644,38 @@ Every finding of the plan's spec, security and feasibility review was accepted; 
   is `20104000.rng`:
   https://github.com/raspberrypi/linux/blob/21b410140c47ffab5668399f6f143c7d7b935c8b/drivers/of/platform.c,
   https://github.com/raspberrypi/linux/blob/21b410140c47ffab5668399f6f143c7d7b935c8b/drivers/of/device.c
+- [S34] Waveshare's **Pico-LCD board** drivers for the 1.3-inch and 1.54-inch 240×240 ST7789 panels, used as a stand-in
+  for the same-size Raspberry Pi modules. The repository's README describes itself as Pico-LCD/OLED series driver code.
+  The module wikis link only archives (`LCD_Module_RPI_code.zip`, `LCD_Module_code.zip`/`.7z`, `Waveshare_fbcp.zip`),
+  with no Pico code and no GitHub link.
+  - Both start-up sequences are identical, and they equal the approved HAT bytes and SeedSigner's ST7789.py:
+    - COLMOD 05; PORCTRL 0C 0C 00 33 33; GCTRL 35; VCOMS 19; LCMCTRL 2C; VDVVRHEN 01; VRHS 12; VDVS 20; FRCTRL2 0F;
+      PWCTRL1 A4 A1;
+    - the same two gamma tables; INVON; MADCTL 0x70 or 0x00; no window offset.
+  - https://raw.githubusercontent.com/waveshare/Pico_code/main/c/lib/LCD/LCD_1in3.c and `LCD_1in54.c`.
+- [S35] Waveshare's **Pico-LCD board** driver for the 2-inch 240×320 ST7789VW, a stand-in for the 2-inch module.
+  - `LCD_2IN_InitReg` sends, in order: MADCTL 00; COLMOD 05; INVON; CASET 00 00 01 3F; RASET 00 00 00 EF; PORCTRL 0C 0C
+    00 33 33; GCTRL 35; VCOMS 1F; LCMCTRL 2C; VDVVRHEN 01; VRHS 12; VDVS 20; FRCTRL2 0F; PWCTRL1 A4 A1; its own two gamma
+    tables; INVON; SLPOUT; DISPON.
+  - `LCD_2IN_Init` calls `LCD_2IN_SetAttributes` (MADCTL 70 or 00) before InitReg, so InitReg's 00 wins.
+  - https://raw.githubusercontent.com/waveshare/Pico_code/main/c/lib/LCD/LCD_2in.c
+- [S36] SeedSigner:
+  - late-model 1.3-inch HAT values: issue #726 (open; Waveshare's values change MADCTL, GCTRL, VCOMS, VRHS and both
+    gamma tables; 21 comments) and open PR #822 (a gamma curve setting), at
+    https://github.com/SeedSigner/seedsigner/issues/726 and /pull/822;
+  - panels that need inversion off: open PR #1052 (only a few reports; which displays is unknown), at
+    https://github.com/SeedSigner/seedsigner/pull/1052. Issue #754 is not cited: it is a backwards settings toggle,
+    which #1052 closes;
+  - display options: `src/seedsigner/models/settings_definition.py` and `hardware/displays/display_driver.py` at b2199c6;
+  - the 3rdIteration fork's `docs/hardware_platform_support.md` (dev branch): a 5-second joystick hold on the home screen
+    switches the display driver.
+- [S37] Waveshare wikis and product pages for every screen the options memo weighed (Q45), each wiki at
+  `https://www.waveshare.com/wiki/<name>`; those M4b names: `1.3inch_LCD_HAT`, `1.3inch_LCD_Module`,
+  `1.54inch_LCD_Module`, `2inch_LCD_Module`, `2.4inch_LCD_Module` and `1.69inch_LCD_Module`. They include:
+  - the module wiring (DIN 10, CLK 11, CS CE0, DC 25, RST 27, BL 18);
+  - the Raspberry Pi demo's file list on the 2 and 2.4-inch wikis (Python tests for 0.96, 1.14, 1.28, 1.3, 1.47, 1.54,
+    1.8, 2 and 2.4 inch; no 1.69);
+  - the prices quoted in Q49.
 
 ---
 
