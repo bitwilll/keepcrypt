@@ -1,0 +1,7 @@
+permissions:
+  contents: read
+jobs:
+  a:
+    runs-on: ubuntu-24.04
+    steps:
+      - {name: x, run: "echo ${{ github.ref }}"}

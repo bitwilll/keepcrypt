@@ -12,7 +12,7 @@
 # reports one check under its unexpanded name, not one per target. A ruleset must require the
 # changes job too: if it fails, the jobs that need it are skipped, and skipped counts as passing.
 #
-# Hardening: read-only token and no secrets; only actions/checkout and actions/cache, pinned by
+# Hardening: read-only token and no secret; only actions/checkout and actions/cache, pinned by
 # commit SHA; no event data (github.event.*, head_ref) inside run scripts; tools built from
 # crates.io with their own lockfiles; the toolchain comes from rust-toolchain.toml through the
 # runner's preinstalled rustup.
@@ -292,7 +292,7 @@ jobs:
     # release-artifact scan's fixtures, which rustc builds for an Android and an iOS target, and the
     # workflow fixtures); the workflow hardening check (tasks/todo.md, M4 group 11; Q38 (d)): every
     # entropy-*.yml in .github/workflows keeps the header's rules, a read-only token, the three
-    # allowed actions pinned by SHA, no secrets, no fork-trusting trigger and no expression inside a
+    # allowed actions pinned by SHA, no secret, no fork-trusting trigger and no expression inside a
     # run step; the verifier self-test (13 checks: every vectors/ file regenerated or recomputed,
     # Coldcard's hash-pinned scripts re-run behind rolls.json and on agreement.json's dice-only
     # subset, and lone copies of the shipped verify.py under an audit hook, piped and in a

@@ -1,0 +1,8 @@
+permissions: { contents: read }
+jobs:
+  b:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - run: echo two

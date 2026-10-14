@@ -9,8 +9,8 @@
 #                                           scan built release artifacts for TARGET (see "Artifact
 #                                           mode" below)
 #   scripts/banned-api-check.sh --workflows DIR
-#                                           check every DIR/entropy-*.yml GitHub workflow's hardening
-#                                           (see "Workflow mode" below)
+#                                           check every DIR/entropy-*.yml and entropy-*.yaml GitHub
+#                                           workflow's hardening (see "Workflow mode" below)
 #   scripts/banned-api-check.sh --selftest  every fixture in scripts/testdata/banned-api/ must trip the
 #                                           gate for its category; every clean-* fixture must pass; the
 #                                           artifact fixtures in scripts/testdata/artifact/ must give
@@ -62,20 +62,27 @@
 #
 # Workflow mode (tasks/todo.md, M4 group 11; Q38 (d): CI checks that the workflows keep their
 # hardening, which until M4 lived only in a comment in entropy-ci.yml). Every DIR/entropy-*.yml
-# (none is an error) is read line by line; comments count. Prints "Workflow: <file>:<line>:
-# <text>" per hit, then a summary; exit 0 clean, 1 hits, 2 error. Each file must have:
-#   - a top-level permissions block that holds "contents: read" (missing: reported at line 1), and
-#     no write permission anywhere: no "<scope>: write" entry in any permissions block and no
-#     "permissions: write-all";
+# and DIR/entropy-*.yaml (GitHub runs both extensions; none at all is an error) is read line by
+# line; comments count. Prints "Workflow: <file>:<line>: <text>" per hit, then a summary; exit 0
+# clean, 1 hits, 2 error. Each file must have:
+#   - a top-level permissions block that holds "contents: read", exactly so (missing: reported at
+#     line 1), and no write permission anywhere: no line holding write, in any letter case, inside
+#     any permissions block (so "contents: write", a quoted "write", a value on the line after its
+#     scope, and a flow mapping on its own line all hit) and no write on a "permissions:" key's
+#     own line (write-all, { contents: write });
 #   - every "uses:" one of actions/checkout, actions/cache or actions/upload-artifact, pinned to a
 #     40-hex commit SHA (a tag, a branch, a short SHA or any other action is a hit);
-#   - no "secrets." anywhere;
+#   - no secrets as a word anywhere (secrets.X, secrets[X], toJSON(secrets), and prose: write "a
+#     secret") and no github.token (the same token as secrets.GITHUB_TOKEN), also as
+#     github['token'];
 #   - no pull_request_target and no workflow_run anywhere (the triggers that run with the base
 #     repository's token on a fork's code);
 #   - no "${{" inside a run: step, on its line or in its block scalar (every line indented past
 #     the run key until the next line that is not): expressions reach scripts through env: and
-#     with: only, so no event data is pasted into a shell. A run: key with no value (defaults.run)
-#     is read the same way, so an expression under it is a hit too.
+#     with: only, so no event data is pasted into a shell. The key may follow a dash of any width
+#     ("-   run:"), be quoted ("run":) or sit in a flow mapping ({name: x, run: "..."}), and a
+#     run: key with no value (defaults.run) is read the same way, so an expression under it is a
+#     hit too.
 #
 # Categories (main patterns; the full lists are in the check functions below; comments count
 # everywhere):
@@ -283,7 +290,7 @@ usage: scripts/banned-api-check.sh [--selftest | DIR | --artifact TARGET FILE...
   --artifact  scan release artifacts built for TARGET: test markers, the test registry key, RNG
               symbols other than TARGET's OS import, std's random-key path, a stripped file, and
               that import (see the script header)
-  --workflows check every DIR/entropy-*.yml workflow's hardening: read-only permissions, three
+  --workflows check every DIR/entropy-*.yml and .yaml workflow's hardening: read-only permissions, three
               SHA-pinned actions, no secrets, no fork-trusting trigger, no expression in a run step
   --selftest  run the fixtures in scripts/testdata/banned-api/, scripts/testdata/artifact/ and
               scripts/testdata/workflows/
@@ -1419,14 +1426,18 @@ artifact() {
 # --- Workflow mode -------------------------------------------------------------------------------
 
 # workflow_check FILE: the hardening rules of the script header, as "<line>:<text>" lines on
-# stdout, in file order; exit 0 hits, 1 none, 2 unreadable. The awk pass follows two kinds of
-# block: a run: step (its own line, then every following line indented past the run key, blank
-# lines included, is the script: "${{" anywhere there is a hit) and a permissions: block (an
-# entry whose value starts with write is a hit; the top-level block must hold contents: read, or
-# the file is reported at line 1). A permissions value on the key's own line (write-all, read-all,
-# { contents: read }) is read there. Keys inside a run block are script text, not YAML. The
-# other rules are plain greps over every line: uses: not pinned to one of the three actions at a
-# 40-hex SHA, secrets., pull_request_target, workflow_run.
+# stdout, in file order, each line at most once; exit 0 hits, 1 none, 2 unreadable. The awk pass
+# follows two kinds of block: a run: step (its own line, then every following line indented past
+# the run key, blank lines included, is the script: "${{" anywhere there is a hit) and a
+# permissions: block (any line holding write, in any letter case, is a hit, so a quoted value, a
+# value on the line after its scope and a flow mapping on its own line are read as GitHub reads
+# them; the top-level block must hold an unquoted contents: read, or the file is reported at line
+# 1). A permissions value on the key's own line (write-all, read-all, { contents: read }) is read
+# there. A block key (run, permissions) may follow a dash of any width and may be quoted; a run
+# key inside a flow mapping ({run: ..., or , run: ...) is read for "${{" on its line. Keys inside
+# a run block are script text, not YAML. The other rules are plain greps over every line: uses:
+# not pinned to one of the three actions at a 40-hex SHA, the word secrets, github.token (also
+# github['token']), pull_request_target, workflow_run.
 workflow_check() {
   wf=$1
   [ -f "$wf" ] && [ -r "$wf" ] || return 2
@@ -1437,6 +1448,7 @@ workflow_check() {
       sub(/\r$/, "", line)
       blank = (line ~ /^[[:space:]]*$/)
       ind = indent(line)
+      hit = 0
       if (inrun && !blank && ind <= runind) inrun = 0
       if (inperm && !blank && ind <= permind) inperm = 0
       if (inrun) {
@@ -1444,37 +1456,40 @@ workflow_check() {
         next
       }
       if (inperm && !blank) {
-        if (line ~ /^[[:space:]]*[A-Za-z_-]+:[[:space:]]*write/) print NR ":" line
+        if (tolower(line) ~ /write/) hit = 1
         if (permind == 0 && line ~ /^[[:space:]]+contents:[[:space:]]*read[[:space:]]*(#.*)?$/) top_ok = 1
       }
-      if (match(line, /^[[:space:]]*(- )?run:/)) {
+      keyind = ind
+      if (match(line, /^[[:space:]]*-[[:space:]]+/)) keyind = RLENGTH
+      if (match(line, /^[[:space:]]*(-[[:space:]]+)?["'\'']?run["'\'']?:/)) {
         rest = substr(line, RLENGTH + 1)
         sub(/^[[:space:]]+/, "", rest)
-        if (index(rest, "${{")) print NR ":" line
+        if (index(rest, "${{")) hit = 1
         inrun = 1
-        runind = ind + (line ~ /^[[:space:]]*- / ? 2 : 0)
-        next
-      }
-      if (match(line, /^[[:space:]]*(- )?permissions:/)) {
+        runind = keyind
+      } else if (line ~ /[{,][[:space:]]*["'\'']?run["'\'']?[[:space:]]*:/ && index(line, "${{")) {
+        hit = 1
+      } else if (match(line, /^[[:space:]]*(-[[:space:]]+)?["'\'']?permissions["'\'']?:/)) {
         rest = substr(line, RLENGTH + 1)
         sub(/^[[:space:]]+/, "", rest)
         sub(/[[:space:]]+#.*$/, "", rest)
-        keyind = ind + (line ~ /^[[:space:]]*- / ? 2 : 0)
         if (rest == "" || rest ~ /^#/) {
           inperm = 1
           permind = keyind
         } else {
-          if (rest ~ /write/) print NR ":" line
+          if (tolower(rest) ~ /write/) hit = 1
           if (keyind == 0 && rest ~ /^\{[[:space:]]*contents:[[:space:]]*read[[:space:]]*\}$/) top_ok = 1
         }
       }
+      if (hit) print NR ":" line
     }
     END { if (!top_ok) print "1:missing a top-level permissions block that holds contents: read" }
   ' "$wf") || return 2
   u=$(grep -n -a -E -e '^[[:space:]]*(- )?uses:' -- "$wf" |
     grep -v -E -e '^[0-9]+:[[:space:]]*(- )?uses:[[:space:]]*actions/(checkout|cache|upload-artifact)@[0-9a-f]{40}[[:space:]]*(#.*)?$')
   [ $? -le 1 ] || return 2
-  g=$(grep -n -a -E -e 'secrets[.]' -e "${L}(pull_request_target|workflow_run)$R" -- "$wf")
+  g=$(grep -n -a -E -e "${L}secrets$R" -e "${L}github[[:space:]]*[.[][[:space:]]*['\"]?token$R" \
+    -e "${L}(pull_request_target|workflow_run)$R" -- "$wf")
   [ $? -le 1 ] || return 2
   t=$(printf '%s\n%s\n%s\n' "$t" "$u" "$g" | sed '/^$/d' | sort -t : -k 1,1n -s)
   [ -n "$t" ] || return 1
@@ -1486,7 +1501,7 @@ workflows() {
   [ -d "$dir" ] || { printf 'banned-api-check: --workflows: %s is not a directory\n' "$1" >&2; exit 2; }
   hits=0
   n=0
-  for wf in "$dir"/entropy-*.yml; do
+  for wf in "$dir"/entropy-*.yml "$dir"/entropy-*.yaml; do
     [ -e "$wf" ] || continue
     n=$((n + 1))
     out=$(workflow_check "$wf")
@@ -1503,7 +1518,7 @@ $out
 EOF
   done
   if [ "$n" -eq 0 ]; then
-    printf 'banned-api-check: --workflows: no entropy-*.yml in %s\n' "$dir" >&2
+    printf 'banned-api-check: --workflows: no entropy-*.yml or entropy-*.yaml in %s\n' "$dir" >&2
     exit 2
   fi
   if [ "$hits" -ne 0 ]; then
@@ -1551,9 +1566,9 @@ wexpect() {
   fi
 }
 
-# Every directory of scripts/testdata/workflows/: a workflow-* case holds one entropy-*.yml that
-# must give exactly one hit, a clean-* case any number that must all pass. Then the errors: a
-# directory with no entropy-*.yml, and a missing directory.
+# Every directory of scripts/testdata/workflows/: a workflow-* case holds one entropy-*.yml or
+# entropy-*.yaml that must give exactly one hit, a clean-* case any number that must all pass.
+# Then the errors: a directory with no entropy-*.yml or .yaml, and a missing directory.
 workflows_selftest() {
   wseen=
   for fx in "$here/testdata/workflows"/*/; do
@@ -1569,8 +1584,8 @@ workflows_selftest() {
     if [ "$want" = hit ]; then
       file=$(cd "$fx" && find . -type f ! -name .DS_Store) || exit 2
       case $file in
-        ./entropy-*.yml) ;;
-        *) fail=$((fail + 1)); printf 'FAIL %s: a fixture holds exactly one entropy-*.yml\n' "$name"; continue ;;
+        ./entropy-*.yml | ./entropy-*.yaml) ;;
+        *) fail=$((fail + 1)); printf 'FAIL %s: a fixture holds exactly one entropy-*.yml or .yaml\n' "$name"; continue ;;
       esac
       want=${file#./}
     fi

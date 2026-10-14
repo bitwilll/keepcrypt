@@ -7992,6 +7992,24 @@ stale (Q43 (d)).
   The real `../.github/workflows` is clean under sh and dash. One canary copies the real entropy-ci.yml, widens the
   token to write and appends a job that breaks every other rule once, and needs exactly those 7 hits. canaries
   68/68.
+  Proof (review fix, commit 12c): stage C's security and recompute reviews found the check fail-open in five places
+  (each reproduced on a scratch fixture, "clean"): a job's `contents: "write"` (quoted) or a `contents:` whose
+  `write` sits on the next line, since the entry pattern needed an unquoted `write` on the key's line; `${{
+  secrets[format('GITHUB_TOKEN')] }}`, `${{ toJSON(secrets) }}` and `${{ github.token }}` (the same token as
+  `secrets.GITHUB_TOKEN`), since the grep was `secrets[.]`; a run key after a wider dash (`-   run:`), quoted
+  (`"run":`) or in a flow mapping (`- {name: x, run: "..."}`), since the awk needed `- run:`; and an
+  `entropy-*.yaml` file, which GitHub runs and the loop never read. Now: in a permissions block any line holding
+  `write` (any letter case) is a hit, so the quoted, next-line and flow-mapping forms are read as GitHub reads them
+  (top_ok still needs an unquoted `contents: read`); `secrets` is banned as a word (the two "no secrets" comments in
+  entropy-ci.yml become "no secret"; the header's noise list says so) and `github.token` also as `github['token']`;
+  a block key may follow a dash of any width and may be quoted, a flow mapping's `run:` is read for `${{` on its
+  line, and each line prints at most once; the loop reads `entropy-*.yml` and `entropy-*.yaml`. 14 new `workflow-*`
+  hit fixtures (quoted write, write on the next line, a flow mapping on its own line, `secrets[...]`,
+  `toJSON(secrets)`, `secrets` in prose, `github.token`, `github['token']`, a wide dash on a run line and before a
+  run block, a flow-mapping run, a `"run"` and a `'run'` key, a job write in an `entropy-pi-image.yaml`) and
+  `clean-yaml-extension` (a clean `.yml` beside a clean `.yaml`, 2 workflows read). `--selftest` 575/0 under sh and
+  dash; the real `../.github/workflows` clean under both; `ruby -ryaml` parses the edited entropy-ci.yml; the gate
+  clean on the tree (214 files); canaries 69/69 (the workflow canary still needs exactly 7 hits).
   Proof (commit 13, the `gates` step): as group 12's `gates` item says; entropy-ci.yml, which the same commit extends,
   stays clean. The run is CI's.
 - [ ] `--os-config pi/os`, a text-only check run in `gates`. It lands in commit 17, with `expected/`. It checks:
@@ -8876,6 +8894,10 @@ The PR is a draft from commit 1.
     linux.rs's `use std::thread;`, `thread::park(` and `thread::sleep(`; the fs rule's wrapped line takes an alias;
     `extern crate` hits outside device/; fixtures and a fifth Device canary (69); the Format comment says the empty
     symbol list is the operative stripped-file test.
+    12c. scripts, .github: stage C's security and recompute reviews: `--workflows` reads a permissions block's quoted,
+    next-line and flow-mapping `write`, bans `secrets` as a word and `github.token`, reads a run key after any dash
+    width, quoted or in a flow mapping, and reads `entropy-*.yaml` too; 15 fixtures; entropy-ci.yml's two "no secrets"
+    comments say "no secret".
 13. .github: the cross leg links and scans `keepcrypt-pi`; `test` runs the loop-device test; `gates` runs `--workflows`
     (group 12).
 
