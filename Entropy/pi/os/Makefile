@@ -7,8 +7,8 @@
 #                                       every download of the build (Buildroot checks each by
 #                                       its hash) and the crates (cargo fetch --locked): the only
 #                                       target that uses the network
-#   make -C Entropy/pi/os image         build the image afresh in $(KC_WORK)/out, offline, and
-#                                       print its SHA-256
+#   make -C Entropy/pi/os image         build the image afresh in $(KC_WORK)/out, offline (a
+#                                       missing download fails it), and print its SHA-256
 #   make -C Entropy/pi/os repro-check   build it twice in fresh output directories at the same
 #                                       path and compare the two images
 #
@@ -57,6 +57,12 @@ BR_SRC := $(KC_WORK)/buildroot-$(BR_VERSION)
 OUT := $(KC_WORK)/out
 IMAGE := keepcrypt-pi-0.0.0.img
 BR := BR2_DL_DIR=$(KC_WORK)/dl $(MAKE) -C $(BR_SRC) O=$(OUT) BR2_EXTERNAL=$(OS)
+# make image never downloads. Buildroot takes a file already in dl/ that has its pinned hash, and
+# looks for any other only at its primary site, here dl/ itself (package/pkg-download.mk's
+# DOWNLOAD_URIS; support/download/dl-wrapper), so a file make source did not fetch fails the
+# build instead of being fetched. Set on the command line, these override the .config's empty
+# BR2_PRIMARY_SITE where Buildroot reads them.
+BR_OFFLINE := $(BR) BR2_PRIMARY_SITE=file://$(KC_WORK)/dl BR2_PRIMARY_SITE_ONLY=y
 
 # check-pins DIR, PINS: each "hash file:SHA-256:file" of PINS must be a line of DIR's hash file.
 define check-pins
@@ -98,13 +104,13 @@ image:
 	$(call check-pins,$(BR_SRC),$(BR_PINS))
 	rm -rf $(OUT)
 	$(BR) keepcrypt_pizero_defconfig
-	$(BR) toolchain host-flex host-bison linux-patch
+	$(BR_OFFLINE) toolchain host-flex host-bison linux-patch
 	vars=$$($(BR) -s --no-print-directory VARS='LINUX_DIR TARGET_CROSS' printvars) && \
 	linux_dir=$$(printf '%s\n' "$$vars" | sed -n 's/^LINUX_DIR=//p') && \
 	cross=$$(printf '%s\n' "$$vars" | sed -n 's/^TARGET_CROSS=//p') && \
 	PATH="$(OUT)/host/bin:$$PATH" sh $(OS)/kconfig.sh "$$linux_dir" "$$cross" \
 		$(OS)/board/pizero/linux.fragment $(OUT)/keepcrypt-linux.config $(OUT)/kconfig
-	$(BR)
+	$(BR_OFFLINE)
 	cd $(OUT)/images && sha256sum $(IMAGE)
 
 repro-check:
