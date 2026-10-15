@@ -8086,6 +8086,15 @@ stale (Q43 (d)).
   (one per line: the board file has none and needs none), beside the unquoted word rule. Fixture
   `osconfig-cmdline-quoted-console` (both quoted words on the board line) gives exactly that one hit; 29
   `osconfig-*` fixtures. `--selftest` 683/0 under sh and dash; the gate clean on the tree.
+  Proof (review fix, 17a-d): the same review found the fstab rule reading only the presence of ro, nosuid, nodev and
+  noexec, not the absence of their negations, so `ro,nosuid,nodev,noexec,rw,exec,suid,dev` on the proc line and
+  `nosuid,nodev,noexec,exec,...` on the /tmp line passed clean (reproduced on a copy of `clean-pizero`), while
+  BusyBox's mount (util-linux/mount.c, the option table and `parse_mount_options`) applies options in order and maps
+  rw, exec, suid and dev to the flag's complement, so those lines mount read-write and exec; the image's /etc/fstab
+  is this overlay file and `--image` re-checks only the inittab, so `--os-config` is the one fstab gate. Now any
+  line that carries rw, exec, suid, dev or remount is a Fstab hit naming the word. Fixtures
+  `osconfig-fstab-proc-rw-after-ro` and `osconfig-fstab-tmpfs-exec-after-noexec`, exactly one hit each; 31
+  `osconfig-*` fixtures. `--selftest` 685/0 under sh and dash; the gate clean on the tree.
 - [ ] The existing rules scan `pi/os/` files from their first commit. A false hit in a kernel or BusyBox config gets a
   reviewed per-path rule with fixtures, never a blanket exclude.
 
@@ -9265,6 +9274,8 @@ The PR is a draft from commit 1.
     the header promises, not a FAIL of the scan on an empty hash (group 14, `--selftest-image`).
     17a-c. scripts: a double quote in cmdline.txt is a Cmdline hit, since the kernel reads `"console=x"` as console=x
     (group 11, `--os-config`); fixture `osconfig-cmdline-quoted-console`.
+    17a-d. scripts: an fstab line that carries rw, exec, suid, dev or remount is a Fstab hit, since BusyBox's mount
+    applies options in order and each clears the flag before it (group 11, `--os-config`); two fixtures.
 18. CLAUDE.md: Commands (group 18).
 
 **Stage E: hardware and review**

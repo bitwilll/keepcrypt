@@ -202,8 +202,9 @@
 #   Inittab    exactly the three lines ::sysinit:/bin/mount -a, ::wait:/usr/bin/keepcrypt-pi and
 #              ::once:/usr/bin/keepcrypt-pi --stopped (Q35).
 #   Fstab      every proc and sysfs line carries ro, nosuid, nodev and noexec; every tmpfs line
-#              nosuid, nodev, noexec and a size=; no line of another filesystem type; at least
-#              one line.
+#              nosuid, nodev, noexec and a size=; no line carries rw, exec, suid, dev or remount
+#              (mount applies options in order, so a later one clears the flag before it); no
+#              line of another filesystem type; at least one line.
 #   Cmdline    no console= and no init= word, and no double quote (the kernel strips a word's quotes
 #              before it reads param=value); the words ro, panic=0 and init_on_free=1.
 #   ConfigTxt  no enable_uart=1, dtoverlay, start_file, fixup_file or plain gpu_mem= line; the
@@ -2127,14 +2128,19 @@ inittab_check() {
 }
 
 # fstab_check FILE NAME: every proc and sysfs line carries ro, nosuid, nodev and noexec, every
-# tmpfs line nosuid, nodev, noexec and a size=, and there is no line of another filesystem type
-# (and at least one line; comments and blank lines are skipped).
+# tmpfs line nosuid, nodev, noexec and a size=, no line carries rw, exec, suid, dev or remount
+# (BusyBox's mount applies options in order, so a later rw, exec, suid or dev clears the flag
+# before it: util-linux/mount.c's option table maps each to the flag's complement), and there is
+# no line of another filesystem type (and at least one line; comments and blank lines are
+# skipped).
 fstab_check() {
   fout=$(awk '
     /^[[:space:]]*(#|$)/ { next }
     {
       n++
       opts = "," $4 ","
+      split("rw exec suid dev remount", clears, " ")
+      for (i = 1; i <= 5; i++) if (index(opts, "," clears[i] ",")) print NR ": " $3 " on " $2 " carries " clears[i] ", which clears the flag before it"
       if ($3 == "proc" || $3 == "sysfs") {
         split("ro nosuid nodev noexec", want, " ")
         for (i = 1; i <= 4; i++) if (!index(opts, "," want[i] ",")) print NR ": " $3 " on " $2 " lacks " want[i]
