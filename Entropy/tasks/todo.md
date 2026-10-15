@@ -8207,10 +8207,12 @@ stale (Q43 (d)).
   - Forbidden at `y` or `m` (a second check behind the exact config):
     - `MODULES`, `NET`, `USB_GADGET`;
     - `DEVMEM`, `SWAP`, `ZSWAP`, `ZRAM`, `COREDUMP`;
-    - `DEBUG_FS`, `MAGIC_SYSRQ`, `KEXEC`;
+    - `DEBUG_FS`, `FTRACE` and `BLK_DEV_IO_TRACE` (which selects `DEBUG_FS`; 15i), `MAGIC_SYSRQ`, `KEXEC`,
+      `KGDB` (bcmrpi_defconfig builds it in; 15i);
     - `VT`, `FRAMEBUFFER_CONSOLE`, `IKCONFIG`, `GPIO_SYSFS`;
     - `BPF_SYSCALL`, `USER_NS`, `IO_URING`, `BINFMT_MISC`;
-    - `SOUND`, `MEDIA_SUPPORT`, `DRM`, `FB_TFT`, `HID`, `INPUT_JOYDEV`, and `I2C` until M8;
+    - `SOUND`, `MEDIA_SUPPORT`, `DRM`, `FB_TFT`, `HID`, `USB_HID` (which defaults to y and selects `HID`; 15i),
+      `INPUT_JOYDEV`, and `I2C` until M8;
     - `USB_SERIAL`, `USB_UAS`, `USB_PRINTER`, `USB_ACM`;
     - `EXFAT_FS`, `NTFS3_FS`, `HFS_FS`, `HFSPLUS_FS`, `BTRFS_FS`, `XFS_FS`, `ISO9660_FS`, `UDF_FS`, `FUSE_FS`;
     - every `*_PARTITION` except `MSDOS_PARTITION`;
@@ -9090,6 +9092,14 @@ The PR is a draft from commit 1.
     15h. tasks/todo.md: stage D's reviews: these entries, the readings in groups 13-15 and the Image inputs table,
     config.txt ticked (commit 14's proof covers it), group 13's trailing proof labelled as the group's, the Makefile's
     `scan` target given to commit 17, and kconfig.sh's selftest added to group 18's Commands.
+    15i. pi/os, tasks/todo.md: image run 38683063774 (both legs): kconfig.sh refused the config, `DEBUG_FS` and `HID`
+    selected back on. In the pinned tree, bcmrpi_defconfig's `BLK_DEV_IO_TRACE=y` selects `DEBUG_FS`
+    (kernel/trace/Kconfig), and `USB_HID`, `default y` and unset by bcmrpi_defconfig, selects `HID`
+    (drivers/hid/usbhid/Kconfig). Neither is required, so group 13's "stop and ask" does not apply: the fragment
+    forbids `FTRACE` (every tracer), `BLK_DEV_IO_TRACE` and `USB_HID`. A scan of every forbidden option's selectors
+    in the pinned tree found no other set or `default y` one outside an off menu, and found bcmrpi_defconfig's
+    `KGDB=y`, the kernel debugger, which the fragment now forbids too (lead decisions under the owner's standing
+    instruction of 2026-10-15).
 16. pi/os: `expected/` (lists and `linux.config`) from the run after H1a passes, reviewed line by line (group 15).
 17. scripts, .github, pi/os: `--image`, `--selftest-image` and `--os-config`, their fixtures and canaries; the scan step
     in both legs; `gates` runs `--os-config`; the Makefile's `scan` target, which runs `--image` (groups 11, 13, 14,

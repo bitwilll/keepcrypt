@@ -54,10 +54,15 @@ CONFIG_LEDS_TRIGGER_ACTPWR=y
 # CONFIG_ZSWAP is not set
 # CONFIG_ZRAM is not set
 # CONFIG_COREDUMP is not set
-# No debugging hooks and no second kernel.
+# No debugging hooks, no kernel tracers and no second kernel. bcmrpi_defconfig's
+# BLK_DEV_IO_TRACE, a tracer under FTRACE, selects DEBUG_FS.
 # CONFIG_DEBUG_FS is not set
+# CONFIG_FTRACE is not set
+# CONFIG_BLK_DEV_IO_TRACE is not set
 # CONFIG_MAGIC_SYSRQ is not set
 # CONFIG_KEXEC is not set
+# bcmrpi_defconfig builds in the kernel debugger.
+# CONFIG_KGDB is not set
 # No console on a screen, no config in the kernel, no sysfs GPIO.
 # CONFIG_VT is not set
 # CONFIG_FRAMEBUFFER_CONSOLE is not set
@@ -74,6 +79,8 @@ CONFIG_LEDS_TRIGGER_ACTPWR=y
 # CONFIG_DRM is not set
 # CONFIG_FB_TFT is not set
 # CONFIG_HID is not set
+# USB_HID defaults to y (bcmrpi_defconfig does not set it) and selects HID: a USB keyboard.
+# CONFIG_USB_HID is not set
 # CONFIG_INPUT_JOYDEV is not set
 # CONFIG_I2C is not set
 # No USB drivers but mass storage.
