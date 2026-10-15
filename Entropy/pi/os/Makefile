@@ -41,10 +41,19 @@ endif
 ifneq ($(patsubst /%,/,$(KC_WORK)),/)
 $(error KC_WORK must be an absolute path: $(KC_WORK))
 endif
-ifeq ($(abspath $(KC_WORK)),/)
+# KC_WORK as the kernel resolves it, also before make source creates it: its longest existing
+# ancestor with every symlink resolved, then the rest of the path ($(realpath) of a path that
+# does not exist yet is empty, and $(abspath) resolves no symlink).
+KC_WORK_REAL := $(abspath $(shell d=$(KC_WORK); t=; \
+	while [ ! -e "$$d" ]; do t=/$$(basename "$$d")$$t; d=$$(dirname "$$d"); done; \
+	cd "$$d" 2>/dev/null && printf '%s%s\n' "$$(pwd -P)" "$$t"))
+ifeq ($(KC_WORK_REAL),)
+$(error KC_WORK cannot be resolved: $(KC_WORK))
+endif
+ifneq ($(filter /,$(abspath $(KC_WORK)) $(KC_WORK_REAL)),)
 $(error KC_WORK must not be /)
 endif
-ifneq ($(filter $(ENTROPY) $(ENTROPY)/% $(realpath $(ENTROPY)) $(realpath $(ENTROPY))/%,$(abspath $(KC_WORK)) $(realpath $(KC_WORK))),)
+ifneq ($(filter $(ENTROPY) $(ENTROPY)/% $(realpath $(ENTROPY)) $(realpath $(ENTROPY))/%,$(abspath $(KC_WORK)) $(KC_WORK_REAL)),)
 $(error KC_WORK must be outside Entropy/: $(KC_WORK))
 endif
 
