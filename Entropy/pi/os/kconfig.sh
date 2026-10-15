@@ -20,6 +20,14 @@
 #
 # Usage: kconfig.sh LINUX_DIR CROSS_COMPILE FRAGMENT OUT_CONFIG WORK_DIR
 # Exit 0 written; 1 a fragment line did not hold, or an =m line is left; 2 usage or build error.
+#
+# kconfig.sh --selftest runs the checks above on a stub kernel tree, with the committed fragment:
+# its bcmrpi_defconfig writes a small config with modules, and its olddefconfig keeps each
+# symbol's last line, then adds the case's lines, as a select in Kconfig would. Exit 0 needs the
+# clean tree written with no =m left (so step 2's edit holds), and exit 1 with the one message,
+# nothing written, for a forbidden option selected back on, a required option dropped and a
+# module left; and exit 2 for a fragment line of another kind and a bad usage. Exit 0 all
+# passed, 1 not.
 set -u
 
 die() {
@@ -27,6 +35,79 @@ die() {
   exit 2
 }
 
+# kcase NAME WANT-EXIT WANT-LINE ADD [FRAGMENT]: run this script on the stub tree, olddefconfig
+# adding the lines of ADD; the exit must be WANT-EXIT and WANT-LINE a whole line of the output,
+# and the config is written only on exit 0.
+kcase() {
+  printf '%s' "$4" >"$st/add" || exit 2
+  rm -f "$st/out.config"
+  out=$(sh "$self" "$st/linux" "$st/cross-" "${5:-$fragment}" "$st/out.config" "$st/work" 2>&1)
+  rc=$?
+  ok=no
+  if [ "$rc" -eq "$2" ] && printf '%s\n' "$out" | grep -q -x -F -e "$3"; then
+    if [ "$rc" -eq 0 ]; then
+      [ -f "$st/out.config" ] && ! grep -q -e '=m$' "$st/out.config" && ok=yes
+    else
+      [ ! -e "$st/out.config" ] && ok=yes
+    fi
+  fi
+  if [ "$ok" = yes ]; then
+    pass=$((pass + 1))
+    printf 'PASS %s -> exit %s: %s\n' "$1" "$rc" "$3"
+  else
+    fail=$((fail + 1))
+    printf 'FAIL %s: wanted exit %s with "%s", got exit %s:\n' "$1" "$2" "$3" "$rc"
+    printf '%s\n' "$out" | sed 's/^/    /'
+  fi
+}
+
+selftest() {
+  self=$0
+  fragment=$(cd "$(dirname "$0")" && pwd -P)/board/pizero/linux.fragment
+  [ -f "$fragment" ] || die "no fragment: $fragment"
+  st=$(mktemp -d "${TMPDIR:-/tmp}/kconfig-selftest.XXXXXX") || exit 2
+  trap 'rm -rf "$st"' EXIT
+  trap 'exit 2' HUP INT TERM
+  mkdir -p "$st/linux/arch/arm/configs" || exit 2
+  printf '%s\n' 'CONFIG_MODULES=y' 'CONFIG_SQUASHFS=y' 'CONFIG_I2C=m' 'CONFIG_USB_SERIAL=m' \
+    'CONFIG_ZZ_STUB=m' '# CONFIG_DEVMEM is not set' >"$st/linux/arch/arm/configs/bcmrpi_defconfig" ||
+    exit 2
+  printf '%s\n' '{ sym = "" }' \
+    '/^CONFIG_[A-Za-z0-9_]+=/ { sym = $0; sub(/=.*/, "", sym) }' \
+    '/^# CONFIG_[A-Za-z0-9_]+ is not set$/ { sym = $2 }' \
+    'sym != "" { if (!(sym in last)) order[n++] = sym; last[sym] = $0 }' \
+    'END { for (i = 0; i < n; i++) print last[order[i]] }' >"$st/linux/olddefconfig.awk" || exit 2
+  printf 'bcmrpi_defconfig:\n\tcp arch/arm/configs/bcmrpi_defconfig $(O)/.config\n' >"$st/linux/Makefile" &&
+    printf 'olddefconfig:\n\tawk -f olddefconfig.awk $(O)/.config %s/add >$(O)/.new && mv $(O)/.new $(O)/.config\n' \
+      "$st" >>"$st/linux/Makefile" &&
+    printf '#!/bin/sh\nexit 0\n' >"$st/cross-gcc" && chmod +x "$st/cross-gcc" || exit 2
+  pass=0
+  fail=0
+  kcase clean 0 "kconfig.sh: $st/out.config written, $(grep -c -e '=y$' "$fragment") options built in" ''
+  kcase forbidden-selected-back-on 1 'kconfig.sh: CONFIG_I2C, forbidden, is in the result: CONFIG_I2C=y' \
+    'CONFIG_I2C=y'
+  kcase required-dropped 1 'kconfig.sh: CONFIG_SQUASHFS is not =y in the result' \
+    '# CONFIG_SQUASHFS is not set'
+  kcase module-left 1 'kconfig.sh: a module is left: CONFIG_ZZ_STUB=m' 'CONFIG_ZZ_STUB=m'
+  { cat "$fragment" && echo 'CONFIG_ZZ_STUB=m'; } >"$st/bad.fragment" || exit 2
+  kcase fragment-line-of-another-kind 2 \
+    "kconfig.sh: not a required, forbidden, comment or blank line in $st/bad.fragment: CONFIG_ZZ_STUB=m" \
+    '' "$st/bad.fragment"
+  out=$(sh "$self" 2>&1)
+  rc=$?
+  if [ "$rc" -eq 2 ] && [ "$out" = 'kconfig.sh: usage: kconfig.sh LINUX_DIR CROSS_COMPILE FRAGMENT OUT_CONFIG WORK_DIR' ]; then
+    pass=$((pass + 1))
+    printf 'PASS usage -> exit 2: %s\n' "$out"
+  else
+    fail=$((fail + 1))
+    printf 'FAIL usage: wanted exit 2 with the usage line, got exit %s: %s\n' "$rc" "$out"
+  fi
+  echo "kconfig.sh --selftest: $pass passed, $fail failed"
+  [ "$fail" -eq 0 ] || exit 1
+  exit 0
+}
+
+[ $# -eq 1 ] && [ "$1" = --selftest ] && selftest
 [ $# -eq 5 ] || die 'usage: kconfig.sh LINUX_DIR CROSS_COMPILE FRAGMENT OUT_CONFIG WORK_DIR'
 src=$1
 cross=$2

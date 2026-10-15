@@ -299,7 +299,9 @@ jobs:
     # pseudo-terminal); the
     # root filesystem prefix script's self-test (tasks/todo.md, M4 group 9): the vector's prefix
     # that pi/app's device/rootfs test pins, recomputed by the script that gives each image's, and
-    # each of its refusals; and
+    # each of its refusals; the kernel allow-list script's self-test (M4 group 13): kconfig.sh on
+    # a stub kernel tree, refusing a forbidden option selected back on, a required one dropped and
+    # a module left; and
     # the canaries: crates that must fail cargo-deny and clippy, mutated copies of the real crates,
     # a path override, the dependency graph pins, a changed byte in each vectors file vectorgen.py
     # writes or reads back, a changed agreement.json value core's agreement test must refuse,
@@ -321,6 +323,7 @@ jobs:
       - run: scripts/banned-api-check.sh --workflows ../.github/workflows
       - run: python3 -I tools/verify/vectorgen.py --selftest
       - run: python3 -I pi/os/rootfs-prefix.py --selftest
+      - run: sh pi/os/kconfig.sh --selftest
       - name: Install the pinned toolchain (rust-toolchain.toml)
         run: |
           rustup toolchain install
