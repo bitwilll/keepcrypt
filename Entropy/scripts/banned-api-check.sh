@@ -2017,6 +2017,91 @@ image_lists_selftest() {
     image_mbr "$a/$name.img" 16 "$@"
     iexpect "image-lists-$name" "$a/$name.img: ${rest#*|}" "$a/$name.img" "$k"
   done
+  image_lists_stub_selftest
+}
+
+# The listing itself, with stub host tools on PATH and a stub rustc whose sysroot holds a stub
+# llvm-nm, on the image's layout with the magic: the stub mcopy extracts two files and a
+# directory, mdir prints two lines, unsquashfs -lln prints a fixed transcript (a directory, a
+# setuid file, a symlink, a device with its "major,  minor", a name with spaces and a date in it)
+# and unpacks a stub keepcrypt-pi, and llvm-nm prints its imports out of order with a duplicate.
+# The whole output must be exactly the expected one, SHA-256s included; then a transcript line
+# with no date is refused.
+image_lists_stub_selftest() {
+  st=$a/stub
+  mkdir -p "$st/bin" "$st/sysroot/lib/rustlib/stubhost/bin" || exit 2
+  printf '#!/bin/sh\ncase $1 in --print) echo %s/sysroot ;; -vV) echo "host: stubhost" ;; esac\n' \
+    "$st" >"$st/bin/rustc" || exit 2
+  printf '%s\n' '#!/bin/sh' 'for d; do :; done' \
+    'mkdir "${d}overlays" && echo a >"${d}config.txt" && echo b >"${d}start.elf"' >"$st/bin/mcopy" || exit 2
+  printf '%s\n' '#!/bin/sh' 'echo " Volume in drive : has no label"' \
+    'echo "config   txt         2 2026-09-04  15:16  config.txt"' >"$st/bin/mdir" || exit 2
+  printf '%s\n' '#!/bin/sh' "case \$1 in -lln) cat '$st/lln' ;;" \
+    '*) mkdir -p "$3/usr/bin" && echo stub >"$3/usr/bin/keepcrypt-pi" ;; esac' >"$st/bin/unsquashfs" || exit 2
+  printf '%s\n' '#!/bin/sh' "printf '%s\\n' '         U getrandom@GLIBC_2.25' '         w __gmon_start__' \\" \
+    "  '         U abort@GLIBC_2.4' '         U abort@GLIBC_2.4'" >"$st/sysroot/lib/rustlib/stubhost/bin/llvm-nm" ||
+    exit 2
+  chmod +x "$st/bin/rustc" "$st/bin/mcopy" "$st/bin/mdir" "$st/bin/unsquashfs" \
+    "$st/sysroot/lib/rustlib/stubhost/bin/llvm-nm" || exit 2
+  printf '%s\n' 'drwxr-xr-x 0/0                    81 2026-09-04 15:16 squashfs-root' \
+    '-rwsr-xr-x 0/0                 81234 2026-09-04 15:16 squashfs-root/bin/busybox' \
+    'lrwxrwxrwx 0/0                     7 2026-09-04 15:16 squashfs-root/bin/mount -> busybox' \
+    'crw-r--r-- 0/0                 5,  1 2026-09-04 15:16 squashfs-root/dev/console' \
+    '-rw-r--r-- 0/0                     5 2026-09-04 15:16 squashfs-root/etc/a file 2026-01-01 10:10 x' \
+    '-rwxr-xr-x 0/0               1234567 2026-09-04 15:16 squashfs-root/usr/bin/keepcrypt-pi' >"$st/lln" ||
+    exit 2
+  img=$a/tools.img
+  want="== banned-api-check --image-lists $img $k
+== partition table (MBR)
+disk signature 0x00000000
+partition 1: type 0x0c, boot flag 0x00, first sector 1, 4 sectors
+partition 2: type 0x83, boot flag 0x00, first sector 5, 8 sectors
+== SHA-256
+sha256 image 32ce8169e9d2f23385fbe44443f32409d3b75e809cda11c12b1b99ceddce52e8
+sha256 partition-1 e5a00aa9991ac8a5ee3109844d84a55583bd20572ad3ffcd42792f3c36b183ad
+sha256 partition-2 719cbc3103ceb5bda7ee7837616e3a7a0fb531bcd07160aa8a6d0fd1e96d822d
+sha256 keepcrypt-pi 25cf54c697a69632c5952486ec189be371ddddc422bca30910f17b2c3a0ba31d
+== boot files (partition 1, FAT: path, type)
+/ dir
+/config.txt file
+/overlays dir
+/start.elf file
+== boot mdir -a (partition 1)
+ Volume in drive : has no label
+config   txt         2 2026-09-04  15:16  config.txt
+== root files (partition 2, SquashFS: path, mode, link target)
+/ drwxr-xr-x
+/bin/busybox -rwsr-xr-x
+/bin/mount lrwxrwxrwx -> busybox
+/dev/console crw-r--r--
+/etc/a file 2026-01-01 10:10 x -rw-r--r--
+/usr/bin/keepcrypt-pi -rwxr-xr-x
+== keepcrypt-pi imports (/usr/bin/keepcrypt-pi, llvm-nm -D -u: type, symbol)
+U abort@GLIBC_2.4
+U getrandom@GLIBC_2.25
+w __gmon_start__
+== kernel config (KCONFIG)
+CONFIG_HW_RANDOM_BCM2835=y
+banned-api-check --image-lists $img: listed, not scanned"
+  out=$(PATH="$st/bin:$PATH" sh "$self" --image-lists "$img" "$k" 2>&1)
+  rc=$?
+  if [ "$rc" -eq 0 ] && [ "$out" = "$want" ]; then
+    pass=$((pass + 1))
+    echo 'PASS image-lists-stub-tools-listing -> exit 0: the expected listing'
+  else
+    fail=$((fail + 1))
+    printf 'FAIL image-lists-stub-tools-listing: wanted exit 0 and the expected listing, got exit %s:\n' "$rc"
+    printf '%s\n' "$out" >"$st/got"
+    printf '%s\n' "$want" >"$st/want"
+    diff "$st/want" "$st/got" | sed 's/^/    /'
+  fi
+  echo '-rw-r--r-- 0/0 5 squashfs-root/etc/no-date' >>"$st/lln" || exit 2
+  opath=$PATH
+  PATH=$st/bin:$PATH
+  iexpect 'image-lists-stub-tools-unreadable-root-line' \
+    "$img: unsquashfs -lln printed a line this script cannot read: -rw-r--r-- 0/0 5 squashfs-root/etc/no-date" \
+    "$img" "$k"
+  PATH=$opath
 }
 
 # --- Artifact selftest -------------------------------------------------------------------------
