@@ -275,7 +275,7 @@ jobs:
           [ -n "$IMAGE_A" ] && [ -n "$IMAGE_B" ] || fail "a leg gave no image hash"
           [ "$IMAGE_A" = "$IMAGE_B" ] || fail "the two builds gave different images (the partition hashes above say which part)"
           [ -n "$COMMIT_A" ] && [ "$COMMIT_A" = "$COMMIT_B" ] || fail "the legs built different commits"
-          [ "$RESULT_A" = success ] && [ "$RESULT_B" = success ] || fail "a leg failed after its build (a scan step); the image is not accepted"
+          [ "$RESULT_A" = success ] && [ "$RESULT_B" = success ] || fail "a leg's result is not success (a: $RESULT_A, b: $RESULT_B): a step after its build failed, its scan or leg a's upload, or the leg was cancelled; the image is not accepted"
           echo "both legs built $COMMIT_A into $NAME_A, SHA-256 $IMAGE_A, and both scans passed"
           {
             echo "## Entropy Pi image"

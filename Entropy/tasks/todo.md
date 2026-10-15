@@ -8643,6 +8643,12 @@ stale (Q43 (d)).
     not scanned" and says instead that both legs' `--image` scans against `pi/os/expected/` passed, as they must
     for the legs to succeed (the job now fails unless both legs' results are `success`), and names the binary hash
     as the build's. The workflow's header and step comments no longer say "until commit 17b".
+    Proof (review fix, 17b-c): the compare job's result check is unchanged (`success` for both legs or exit 1, no
+    summary); its message now prints both results and names what a non-success result covers, since the old "(a
+    scan step)" also fired for a failed upload on leg a or a cancelled leg. The block re-extracted from the YAML as
+    committed and run against stubs: `success`/`failure` and `success`/`cancelled` each exit 1 with "a leg's result
+    is not success (a: success, b: failure)" (or `cancelled`) and write no summary; `success`/`success` with equal
+    images writes the summary; differing images still fail on "the two builds gave different images".
   - Timeout: 180 minutes per leg.
 
   Proof (commit 15, the jobs; the runs are CI's): `pi-image build (a)` and `pi-image build (b)` (jobs `build-a`,
@@ -9444,6 +9450,9 @@ The PR is a draft from commit 1.
     17b-b. .github: "Hash and list" refuses an `--image-lists` print with no `sha256 keepcrypt-pi` line as that,
     before the built-equals-packed comparison, which named a wrong binary for a missing line (a message only; the
     step failed either way).
+    17b-c. .github: the compare job's refusal of a leg whose result is not `success` prints both results and names
+    what that covers (a failed step after the build, its scan or leg a's upload, or a cancelled leg) in place of "(a
+    scan step)", which it also said for an upload failure or a cancelled leg (a message only; no logic change).
 18. CLAUDE.md: Commands (group 18): 14a3121.
 
 **Stage E: hardware and review**
