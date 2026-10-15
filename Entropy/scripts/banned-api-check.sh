@@ -14,14 +14,28 @@
 #   scripts/banned-api-check.sh --image-lists IMG KCONFIG
 #                                           unpack the Pi image IMG and print its lists, with the
 #                                           kernel config KCONFIG (see "Image lists mode" below)
+#   scripts/banned-api-check.sh --image IMG EXPECTED_DIR KCONFIG BIN_SHA256
+#                                           scan the Pi image IMG against the reviewed lists in
+#                                           EXPECTED_DIR (pi/os/expected), its kernel config KCONFIG
+#                                           and the SHA-256 of its keepcrypt-pi (see "Image scan
+#                                           mode" below)
+#   scripts/banned-api-check.sh --selftest-image IMG KCONFIG
+#                                           the image scan's positive controls, as mutations of the
+#                                           built image IMG (see "Image selftest mode" below)
+#   scripts/banned-api-check.sh --os-config OS_DIR
+#                                           the text-only checks of the image's configuration in
+#                                           OS_DIR (pi/os; see "OS configuration mode" below)
 #   scripts/banned-api-check.sh --selftest  every fixture in scripts/testdata/banned-api/ must trip the
 #                                           gate for its category; every clean-* fixture must pass; the
 #                                           artifact fixtures in scripts/testdata/artifact/ must give
 #                                           exactly their pinned hits (needs the pinned toolchain); the
 #                                           workflow fixtures in scripts/testdata/workflows/ must trip
-#                                           or pass the workflow check as their names say; and the
+#                                           or pass the workflow check as their names say; the
 #                                           image lists' built-in cases must be refused before any
-#                                           host tool runs
+#                                           host tool runs; the OS configuration fixtures in
+#                                           scripts/testdata/os-config/ must pass or fail as their
+#                                           names say; and the image scan's built-in cases must be
+#                                           refused, or, on a stub image, give exactly their one hit
 #
 # Prints "<category>: <file>:<line>: <text>" per hit, then a summary. Exit 0 clean, 1 hits,
 # 2 usage or read error: a file that cannot be read fails the gate, it is never skipped.
@@ -118,6 +132,90 @@
 #     are left out;
 #   - keepcrypt-pi's dynamic imports, "<type> <symbol>@<version>" (llvm-nm -D -u);
 #   - KCONFIG as it stands.
+#
+# Image scan mode (tasks/todo.md, M4 groups 11, 13 and 14; Q38 (d); rule 10): the image workflow
+# runs it on each leg's image against pi/os/expected/, the lists the lead reviewed line by line
+# (commit 16), and pi/os/Makefile's scan target runs it by hand. It unpacks IMG as the lists mode
+# does (the same layout refusals, the same host tools) and makes the same lists, then judges.
+# Prints "<Category>: <file>: <detail>" per hit, the file named by its path inside the image
+# ("/usr/bin/keepcrypt-pi", "partition-1:/config.txt") or as given, then a one-line count; exit 0
+# clean, 1 hits, 2 anything that cannot be read, unpacked or run. Nothing passes vacuously: a
+# missing or empty EXPECTED_DIR file, a BIN_SHA256 that is not 64 hex digits, a tool missing
+# from PATH, an ELF llvm-nm cannot read or a missing board file is exit 2, never a pass.
+# EXPECTED_DIR holds boot.list and root.list (the exact text --image-lists prints under its two
+# file-list headings), linux.config (the .config the kernel was built with), kconfig-required and
+# kconfig-forbidden (one CONFIG_ symbol per line: the =y lines and the "# ... is not set" lines
+# of pi/os/board/pizero/linux.fragment, in its order, so the three cannot drift) and
+# keepcrypt-pi.imports (the exact text of the imports heading). The rules:
+#   List       boot.list and root.list equal EXPECTED_DIR's byte for byte (the diff on stderr).
+#   Deny       whether or not the lists match, the root list holds no path or link target whose
+#              base name is sh, ash, hush, getty, login, dropbear, sshd, telnetd or udhcpc, nothing
+#              under /lib/modules, /usr/lib/modules or /etc/init.d, no setuid, setgid or sticky
+#              mode (an s or t among the nine permission letters) but /tmp's own drwxrwxrwt, and no
+#              name that ends .age or holds seed, backup or mnemonic.
+#   Boot       partition 1 holds exactly one start/fixup pair, start.elf and fixup.dat, and no
+#              other start*.elf or fixup*.dat; its cmdline.txt and config.txt equal
+#              pi/os/board/pizero's, found from this script's path, byte for byte.
+#   Inittab    the root's /etc/inittab is a file holding exactly Q35's three lines (below).
+#   Kconfig    KCONFIG equals EXPECTED_DIR/linux.config byte for byte; kconfig-required and
+#              kconfig-forbidden equal the fragment's lists; and KCONFIG has every required option
+#              at =y, no forbidden option at y or m, and CONFIG_HW_RANDOM_BCM2835=y as the only
+#              CONFIG_HW_RANDOM_* driver.
+#   Marker, TestKey
+#              the raw image (SquashFS is compressed, so this alone would miss the root's files),
+#              every file of partition 1 (the VideoCore start.elf and zImage among them) and every
+#              file of the root, as in the artifact scan.
+#   Format, Symbol
+#              every ELF file of the root other than keepcrypt-pi (found by its magic, not its
+#              name; Buildroot strips them all but the loader, todo.md [S10]) must list dynamic symbols
+#              (llvm-nm -D; a stripped static ELF lists none and is a Format hit) and, among its
+#              undefined ones, no banned RNG import (the artifact scan's list: rand, random, srand,
+#              the rand48 family, arc4random and the rest, getentropy), and no rand-crate or
+#              getrandom-fallback symbol. glibc's libc.so.6 and ld-linux define rand and the rest
+#              rather than import them, so only undefined symbols count against them.
+#   Binary     /usr/bin/keepcrypt-pi gets the whole artifact scan for arm-unknown-linux-gnueabihf
+#              (Marker, TestKey, Format with a .symtab required, Symbol, StdRandom with Q52's
+#              passengers allowed exactly as there, OSImport: getrandom), and then: no symbol or
+#              byte string keepcrypt_pi_sim (one hit), imports equal to keepcrypt-pi.imports, and
+#              a SHA-256 equal to BIN_SHA256.
+#
+# Image selftest mode (tasks/todo.md, M4 group 14): the image workflow runs it on the image each
+# leg built, where the host tools (mcopy, mdir, unsquashfs, mksquashfs in KC_WORK/out/host/bin)
+# and the pinned toolchain's llvm tools are on PATH; it exits 2 where they are not, and where a
+# control cannot be built. The built image is the clean fixture: a stand-in EXPECTED_DIR is made
+# from --image-lists' own output on IMG plus the fragment's two lists, and --image must pass on it
+# (the control). Then each of group 14's 14 positive controls is a mutation of the image (the
+# root unpacked afresh, edited and repacked with mksquashfs -no-xattrs; partition 1 copied and a
+# file replaced with mcopy -o; the pieces reassembled under a fresh MBR sized to them), of KCONFIG
+# or of BIN_SHA256, isolated so that the named rule alone fires: a mutated root's lists stand in
+# for expected/ (so only the deny-list, marker, key or ELF rule can fail it), and a mutated
+# KCONFIG is also the stand-in linux.config except in the one-line-off case. The ELF controls (a
+# stripped shared object importing rand, a stripped static executable) are built from
+# scripts/testdata/image/controls.rs with rustc, rust-lld and llvm-objcopy alone, so no cross
+# compiler is needed. Prints PASS or FAIL per control and a count; exit 0 all passed, 1 not.
+#
+# OS configuration mode (tasks/todo.md, M4 groups 11 and 13): text only, runs anywhere, on
+# OS_DIR/board/pizero/{rootfs-overlay/etc/inittab, rootfs-overlay/etc/fstab, cmdline.txt,
+# config.txt, busybox.config, linux.fragment} and OS_DIR/expected/{linux.config,
+# kconfig-required, kconfig-forbidden}; a missing expected/ or a missing or empty file is exit 2.
+# Prints "<Category>: <file>[:<line>]: <detail>" per hit, then a count; exit 0 clean, 1 hits.
+#   Inittab    exactly the three lines ::sysinit:/bin/mount -a, ::wait:/usr/bin/keepcrypt-pi and
+#              ::once:/usr/bin/keepcrypt-pi --stopped (Q35).
+#   Fstab      every proc and sysfs line carries ro, nosuid, nodev and noexec; every tmpfs line
+#              nosuid, nodev, noexec and a size=; no line of another filesystem type; at least
+#              one line.
+#   Cmdline    no console= and no init= word; the words ro, panic=0 and init_on_free=1.
+#   ConfigTxt  no enable_uart=1, dtoverlay, start_file, fixup_file or plain gpu_mem= line; the
+#              gpu_mem_* lines are gpu_mem_256=100, gpu_mem_512=100 and gpu_mem_1024=100, each
+#              once (comments skipped).
+#   Kconfig    expected/kconfig-required and kconfig-forbidden equal the fragment's =y and
+#              "is not set" lines, and expected/linux.config keeps them with exactly one
+#              CONFIG_HW_RANDOM_* driver, BCM2835, as in the image scan.
+#   BusyBox    only init and mount: CONFIG_INIT, FEATURE_USE_INITTAB, MOUNT, FEATURE_MOUNT_FSTAB,
+#              FEATURE_MOUNT_FLAGS, SH_IS_NONE and BASH_IS_NONE at =y; none of the denied applets
+#              (busybox_denied below: the shells, getty, login, su, the network, module, power,
+#              swap and loop tools, seedrng, vi) at =y; no CONFIG_SH_IS_* or CONFIG_BASH_IS_*
+#              selector at =y but the two _NONE ones.
 #
 # Categories (main patterns; the full lists are in the check functions below; comments count
 # everywhere):
@@ -323,7 +421,8 @@ self=$here/$(basename "$0")
 usage() {
   cat <<'EOF'
 usage: scripts/banned-api-check.sh [--selftest | DIR | --artifact TARGET FILE... | --workflows DIR |
-                                   --image-lists IMG KCONFIG]
+                                   --image-lists IMG KCONFIG | --image IMG EXPECTED_DIR KCONFIG BIN_SHA256 |
+                                   --selftest-image IMG KCONFIG | --os-config OS_DIR]
   (none)      scan the repo this script lives in
   DIR         scan DIR as if it were the repo root
   --artifact  scan release artifacts built for TARGET: test markers, the test registry key, RNG
@@ -337,8 +436,23 @@ usage: scripts/banned-api-check.sh [--selftest | DIR | --artifact TARGET FILE...
               build's host tools and print its partition table, SHA-256s, boot and root file lists,
               mdir -a listing, keepcrypt-pi's imports and the kernel config KCONFIG; a listing,
               not a scan
-  --selftest  run the fixtures in scripts/testdata/banned-api/, scripts/testdata/artifact/ and
-              scripts/testdata/workflows/, and the image lists' built-in cases
+  --image     scan the Pi image IMG: its boot and root lists and keepcrypt-pi's imports equal
+              EXPECTED_DIR's (pi/os/expected), no denied program, module, start-up script,
+              setuid file or seed file, start.elf and fixup.dat alone, the board's cmdline.txt and
+              config.txt, Q35's inittab, KCONFIG equal to the expected kernel config and keeping
+              the fragment's required and forbidden lists with one hwrng driver, no marker or test
+              key in the image or any file, dynamic symbols and no RNG import in every other ELF,
+              and keepcrypt-pi under the artifact rules with no simulator name and SHA-256
+              BIN_SHA256
+  --selftest-image
+              the image scan's positive controls as mutations of the built image IMG (needs the
+              build's host tools and the pinned toolchain on PATH)
+  --os-config the text-only checks of OS_DIR (pi/os): Q35's inittab, the fstab's options,
+              cmdline.txt, config.txt, expected/linux.config against the fragment's lists (which
+              expected/kconfig-required and kconfig-forbidden must equal) and BusyBox's applets
+  --selftest  run the fixtures in scripts/testdata/banned-api/, scripts/testdata/artifact/,
+              scripts/testdata/workflows/ and scripts/testdata/os-config/, the image lists' built-in
+              cases and the image scan's, on a stub image
 Hits: RNG APIs (and the OS RNG read outside core/src/source), network APIs, Python network imports
 and hard-coded http URLs (outside registry/), clipboard, copy and share APIs and Python clipboard
 modules, tools and calls, getrandom in a .rs file outside core/src/source, std's OS-seeded hashing
@@ -1292,6 +1406,8 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   artifact_selftest
   workflows_selftest
   image_lists_selftest
+  os_config_selftest
+  image_selftest
   echo "selftest: $pass passed, $fail failed"
   [ "$fail" -eq 0 ] || exit 1
   exit 0
@@ -1362,10 +1478,12 @@ from_list() {
   done <"$4"
 }
 
-artifact() {
+# artifact_rules TARGET: the rules of the artifact scan for TARGET, as the variables artifact_file
+# reads (the image scan sets them for the Pi target too): the platform symbol prefix p, the OS
+# import, the undefined-RNG, rand-crate, getrandom-fallback and std-random patterns, std's
+# passengers (written to $atmp/passengers, so $atmp is set first) and the test key's bytes.
+artifact_rules() {
   target=$1
-  shift
-  [ $# -ge 1 ] || { usage >&2; exit 2; }
   # The OS import each target's getrandom backend calls (Q8), and the platform symbol prefix.
   case $target in
     *-linux-gnu | *-linux-gnueabihf | *-linux-android | *-linux-androideabi)
@@ -1395,119 +1513,148 @@ std::sys::random::linux::getrandom::GRND_INSECURE_AVAILABLE (.0)'
       ;;
     *) std_passengers= ;;
   esac
-  toolchain_bin
-  atmp=$(mktemp -d "${TMPDIR:-/tmp}/banned-api-artifact.XXXXXX") || exit 2
-  trap 'rm -rf "$atmp"' EXIT
-  trap 'exit 2' HUP INT TERM
   if [ -n "$std_passengers" ]; then
     printf '%s\n' "$std_passengers" >"$atmp/passengers" || exit 2
   fi
   keybytes=$(printf '%s\n' "$testkey" | sed 's/../ &/g')
+}
+
+# hexbytes TEXT: TEXT's bytes as dump() lays them out, for a fixed-string search of a dump.
+hexbytes() {
+  printf '%s' "$1" | od -An -v -tx1 | tr -s ' \n' '  ' | sed 's/ $//'
+}
+
+# byte_scan FILE NAME: FILE's bytes into $atmp/dump, then the Marker and TestKey rules on them,
+# reported under NAME (the image scan names a file by its path inside the image).
+byte_scan() {
+  dump "$1" >"$atmp/dump" || { printf 'banned-api-check: cannot read %s\n' "$2" >&2; exit 2; }
+  for m in $markers; do
+    if grep -q -F -e "$(hexbytes "$m")" "$atmp/dump"; then
+      ahit Marker "$2" "$m"
+    fi
+  done
+  if grep -q -F -e "$keybytes" "$atmp/dump"; then
+    ahit TestKey "$2" "the test registry public key $testkey"
+  fi
+}
+
+# artifact_file FILE [NAME]: every artifact rule on FILE, reported under NAME (FILE by default),
+# with artifact_rules' variables set and $atmp a scratch directory. Returns 0 when every rule
+# ran, 1 when a Format hit stopped the symbol rules (a thin archive, a file of another format, a
+# stripped file). Counts linked files and archives.
+artifact_file() {
+  f=$1
+  aname=${2:-$1}
+  if [ ! -f "$f" ] || [ ! -r "$f" ]; then
+    printf 'banned-api-check: cannot read %s\n' "$aname" >&2
+    exit 2
+  fi
+  byte_scan "$f" "$aname"
+  # The device files std's random-key fallback reads, as bytes in any file (the symbol half of
+  # the StdRandom rule follows the symbol rules below).
+  for path in /dev/urandom /dev/random; do
+    if grep -q -F -e "$(hexbytes "$path")" "$atmp/dump"; then
+      ahit StdRandom "$aname" "byte string $path"
+    fi
+  done
+  magic=$(od -An -N8 -tx1 "$f" | tr -d ' \n')
+  case $magic in
+    213c617263683e0a) kind=archive ;;
+    213c7468696e3e0a)
+      ahit Format "$aname" "a thin archive, which holds its members' paths, not their bytes"
+      return 1
+      ;;
+    7f454c46* | feedface* | feedfacf* | cefaedfe* | cffaedfe* | cafebabe*) kind=object ;;
+    *)
+      ahit Format "$aname" 'not an ELF, Mach-O or ar file, so its symbols cannot be checked'
+      return 1
+      ;;
+  esac
+  symbols "$f" "$atmp/all" -C
+  symbols "$f" "$atmp/undefined" -u
+  # A stripped file: any object or linked file whose symbol list is empty (llvm-nm says "no
+  # symbols" and exits 0), which is the operative test, since llvm-nm reads .symtab and not
+  # .dynsym, so a stripped linked ELF lists nothing too; the .symtab check names the cause for
+  # an ELF. Nothing below could check such a file.
+  if [ "$kind" = object ]; then
+    stripped=no
+    case $magic in
+      7f454c46*)
+        "$bin/llvm-readobj" --section-headers "$f" >"$atmp/sections" 2>/dev/null || exit 2
+        grep -q -F -e 'Name: .symtab' "$atmp/sections" || stripped=yes
+        ;;
+    esac
+    [ -s "$atmp/all" ] || stripped=yes
+    if [ "$stripped" = yes ]; then
+      ahit Format "$aname" 'a stripped file with no symbol table (.symtab), so its symbols cannot be checked'
+      return 1
+    fi
+  fi
+  grep -E -e "$undefined_rng" "$atmp/undefined" >"$atmp/hits"
+  [ $? -le 1 ] || exit 2
+  from_list Symbol "$aname" 'undefined ' "$atmp/hits"
+  grep -E -e "$rng_crates" "$atmp/all" >"$atmp/hits"
+  [ $? -le 1 ] || exit 2
+  from_list Symbol "$aname" 'rand-family symbol ' "$atmp/hits"
+  grep -E -e "$fallback" "$atmp/all" >"$atmp/hits"
+  [ $? -le 1 ] || exit 2
+  from_list Symbol "$aname" "getrandom's fallback " "$atmp/hits"
+  # std's random-key path: its symbols, demangled (a name llvm-nm cannot demangle stays mangled,
+  # where 3std3sys6random is the module path); the byte strings were searched above.
+  grep -E -e "$std_random" "$atmp/all" >"$atmp/hits"
+  [ $? -le 1 ] || exit 2
+  # std's passengers (Q52, see std_passengers above): in an object or linked file only, a hit
+  # that is exactly one of the names, and that llvm-nm types d on every line that names it
+  # (-P prints "name type value size"; a name followed by any other type, or by more text, is
+  # kept), is dropped. awk tells the files apart by name, so no pattern file is ever empty.
+  if [ -n "$std_passengers" ] && [ "$kind" = object ] && [ -s "$atmp/hits" ]; then
+    if ! "$bin/llvm-nm" -C -P --defined-only "$f" >"$atmp/defined" 2>"$atmp/nm-err"; then
+      printf 'banned-api-check: llvm-nm cannot read %s:\n' "$aname" >&2
+      sed 's/^/    /' "$atmp/nm-err" >&2
+      exit 2
+    fi
+    awk '
+      FILENAME == ARGV[1] { want[$0] = 1; next }
+      FILENAME == ARGV[2] {
+        for (n in want)
+          if (index($0, n " ") == 1) {
+            split(substr($0, length(n) + 2), fld, " ")
+            if (fld[1] == "d") typed_d[n] = 1
+            else other[n] = 1
+          }
+        next
+      }
+      !(($0 in typed_d) && !($0 in other))
+    ' "$atmp/passengers" "$atmp/defined" "$atmp/hits" >"$atmp/kept" || exit 2
+    mv "$atmp/kept" "$atmp/hits" || exit 2
+  fi
+  from_list StdRandom "$aname" 'symbol ' "$atmp/hits"
+  if [ "$kind" = archive ]; then
+    archives=$((archives + 1))
+  else
+    linked=$((linked + 1))
+    grep -q -x -F -e "$import" "$atmp/undefined" ||
+      ahit OSImport "$aname" "no undefined $import, the OS import on $target"
+  fi
+  return 0
+}
+
+artifact() {
+  target=$1
+  shift
+  [ $# -ge 1 ] || { usage >&2; exit 2; }
+  toolchain_bin
+  atmp=$(mktemp -d "${TMPDIR:-/tmp}/banned-api-artifact.XXXXXX") || exit 2
+  trap 'rm -rf "$atmp"' EXIT
+  trap 'exit 2' HUP INT TERM
+  artifact_rules "$target"
   hits=0
   n=0
   linked=0
   archives=0
   for f in "$@"; do
     n=$((n + 1))
-    if [ ! -f "$f" ] || [ ! -r "$f" ]; then
-      printf 'banned-api-check: cannot read %s\n' "$f" >&2
-      exit 2
-    fi
-    dump "$f" >"$atmp/dump" || { printf 'banned-api-check: cannot read %s\n' "$f" >&2; exit 2; }
-    for m in $markers; do
-      if grep -q -F -e "$(printf '%s' "$m" | od -An -v -tx1 | tr -s ' \n' '  ' | sed 's/ $//')" "$atmp/dump"; then
-        ahit Marker "$f" "$m"
-      fi
-    done
-    if grep -q -F -e "$keybytes" "$atmp/dump"; then
-      ahit TestKey "$f" "the test registry public key $testkey"
-    fi
-    # The device files std's random-key fallback reads, as bytes in any file (the symbol half of
-    # the StdRandom rule follows the symbol rules below).
-    for path in /dev/urandom /dev/random; do
-      if grep -q -F -e "$(printf '%s' "$path" | od -An -v -tx1 | tr -s ' \n' '  ' | sed 's/ $//')" "$atmp/dump"; then
-        ahit StdRandom "$f" "byte string $path"
-      fi
-    done
-    magic=$(od -An -N8 -tx1 "$f" | tr -d ' \n')
-    case $magic in
-      213c617263683e0a) kind=archive ;;
-      213c7468696e3e0a)
-        ahit Format "$f" "a thin archive, which holds its members' paths, not their bytes"
-        continue
-        ;;
-      7f454c46* | feedface* | feedfacf* | cefaedfe* | cffaedfe* | cafebabe*) kind=object ;;
-      *)
-        ahit Format "$f" 'not an ELF, Mach-O or ar file, so its symbols cannot be checked'
-        continue
-        ;;
-    esac
-    symbols "$f" "$atmp/all" -C
-    symbols "$f" "$atmp/undefined" -u
-    # A stripped file: any object or linked file whose symbol list is empty (llvm-nm says "no
-    # symbols" and exits 0), which is the operative test, since llvm-nm reads .symtab and not
-    # .dynsym, so a stripped linked ELF lists nothing too; the .symtab check names the cause for
-    # an ELF. Nothing below could check such a file.
-    if [ "$kind" = object ]; then
-      stripped=no
-      case $magic in
-        7f454c46*)
-          "$bin/llvm-readobj" --section-headers "$f" >"$atmp/sections" 2>/dev/null || exit 2
-          grep -q -F -e 'Name: .symtab' "$atmp/sections" || stripped=yes
-          ;;
-      esac
-      [ -s "$atmp/all" ] || stripped=yes
-      if [ "$stripped" = yes ]; then
-        ahit Format "$f" 'a stripped file with no symbol table (.symtab), so its symbols cannot be checked'
-        continue
-      fi
-    fi
-    grep -E -e "$undefined_rng" "$atmp/undefined" >"$atmp/hits"
-    [ $? -le 1 ] || exit 2
-    from_list Symbol "$f" 'undefined ' "$atmp/hits"
-    grep -E -e "$rng_crates" "$atmp/all" >"$atmp/hits"
-    [ $? -le 1 ] || exit 2
-    from_list Symbol "$f" 'rand-family symbol ' "$atmp/hits"
-    grep -E -e "$fallback" "$atmp/all" >"$atmp/hits"
-    [ $? -le 1 ] || exit 2
-    from_list Symbol "$f" "getrandom's fallback " "$atmp/hits"
-    # std's random-key path: its symbols, demangled (a name llvm-nm cannot demangle stays mangled,
-    # where 3std3sys6random is the module path); the byte strings were searched above.
-    grep -E -e "$std_random" "$atmp/all" >"$atmp/hits"
-    [ $? -le 1 ] || exit 2
-    # std's passengers (Q52, see std_passengers above): in an object or linked file only, a hit
-    # that is exactly one of the names, and that llvm-nm types d on every line that names it
-    # (-P prints "name type value size"; a name followed by any other type, or by more text, is
-    # kept), is dropped. awk tells the files apart by name, so no pattern file is ever empty.
-    if [ -n "$std_passengers" ] && [ "$kind" = object ] && [ -s "$atmp/hits" ]; then
-      if ! "$bin/llvm-nm" -C -P --defined-only "$f" >"$atmp/defined" 2>"$atmp/nm-err"; then
-        printf 'banned-api-check: llvm-nm cannot read %s:\n' "$f" >&2
-        sed 's/^/    /' "$atmp/nm-err" >&2
-        exit 2
-      fi
-      awk '
-        FILENAME == ARGV[1] { want[$0] = 1; next }
-        FILENAME == ARGV[2] {
-          for (n in want)
-            if (index($0, n " ") == 1) {
-              split(substr($0, length(n) + 2), fld, " ")
-              if (fld[1] == "d") typed_d[n] = 1
-              else other[n] = 1
-            }
-          next
-        }
-        !(($0 in typed_d) && !($0 in other))
-      ' "$atmp/passengers" "$atmp/defined" "$atmp/hits" >"$atmp/kept" || exit 2
-      mv "$atmp/kept" "$atmp/hits" || exit 2
-    fi
-    from_list StdRandom "$f" 'symbol ' "$atmp/hits"
-    if [ "$kind" = archive ]; then
-      archives=$((archives + 1))
-    else
-      linked=$((linked + 1))
-      grep -q -x -F -e "$import" "$atmp/undefined" ||
-        ahit OSImport "$f" "no undefined $import, the OS import on $target"
-    fi
+    artifact_file "$f" || :
   done
   if [ "$hits" -ne 0 ]; then
     echo "banned-api-check --artifact $target: $hits hit(s) in $n file(s)"
@@ -1632,9 +1779,12 @@ EOF
 
 # --- Image lists mode ----------------------------------------------------------------------------
 
-# ifail MESSAGE: IMG cannot be listed (exit 2).
+# The image mode running (--image-lists, --image or --selftest-image), for the messages below.
+imode=--image-lists
+
+# ifail MESSAGE: IMG cannot be listed or scanned (exit 2).
 ifail() {
-  printf 'banned-api-check: --image-lists: %s: %s\n' "$img" "$1" >&2
+  printf 'banned-api-check: %s: %s: %s\n' "$imode" "$img" "$1" >&2
   exit 2
 }
 
@@ -1672,7 +1822,7 @@ icopy() {
 # ($f1 $s1 $n1) and partition 2 ($f2 $s2 $n2). Every check that needs no tool comes first.
 image_unpack() {
   img=$1
-  [ -f "$img" ] && [ -r "$img" ] || { printf 'banned-api-check: --image-lists: cannot read %s\n' "$img" >&2; exit 2; }
+  [ -f "$img" ] && [ -r "$img" ] || { printf 'banned-api-check: %s: cannot read %s\n' "$imode" "$img" >&2; exit 2; }
   isize=$(wc -c <"$img") || exit 2
   isize=$((isize))
   [ "$isize" -ge 512 ] || ifail "$isize bytes, shorter than an MBR (512)"
@@ -1749,13 +1899,9 @@ image_unpack() {
     itool 'unsquashfs could not unpack partition 2'
 }
 
-# image_lists IMG KCONFIG: unpack IMG and print its lists, under "== " headings (see "Image lists
-# mode").
-image_lists() {
-  kconfig=$2
-  [ -f "$kconfig" ] && [ -r "$kconfig" ] || { printf 'banned-api-check: --image-lists: cannot read %s\n' "$kconfig" >&2; exit 2; }
-  image_unpack "$1"
-  # The boot list: path and type, from the extracted files (FAT has no mode and no link).
+# image_boot_list: the boot list, $iw/boot.list, from the extracted files (FAT has no mode and no
+# link): "<path> <dir|file>", sorted.
+image_boot_list() {
   (cd "$iw/boot" && find . -print) >"$iw/boot.find" || exit 2
   while IFS= read -r p; do
     f=$iw/boot/${p#./}
@@ -1774,9 +1920,13 @@ image_lists() {
     esac
   done <"$iw/boot.find" >"$iw/boot.unsorted"
   sort "$iw/boot.unsorted" >"$iw/boot.list" || exit 2
-  # The root list: "<path> <mode>[ -> <target>]" from unsquashfs -lln, whose lines are "<mode>
-  # <uid>/<gid> <size, or major,minor> <yyyy-mm-dd> <hh:mm> squashfs-root<path>[ -> <target>]".
-  # The mode string's first letter is the type. Owners, sizes and times are left out.
+}
+
+# image_root_list: the root list, $iw/root.list: "<path> <mode>[ -> <target>]" from unsquashfs
+# -lln ($iw/root.lln), whose lines are "<mode> <uid>/<gid> <size, or major,minor> <yyyy-mm-dd>
+# <hh:mm> squashfs-root<path>[ -> <target>]". The mode string's first letter is the type. Owners,
+# sizes and times are left out. Sorted.
+image_root_list() {
   awk -v badf="$iw/root.bad" '
     function bad() { print > badf; failed = 1; exit }
     {
@@ -1800,7 +1950,12 @@ image_lists() {
     ifail "unsquashfs -lln printed a line this script cannot read: $(cat "$iw/root.bad")"
   [ -s "$iw/root.unsorted" ] || ifail 'unsquashfs -lln listed nothing'
   sort "$iw/root.unsorted" >"$iw/root.list" || exit 2
-  # keepcrypt-pi's imports: "<type> <symbol>@<version>" from llvm-nm -D -u (U, or w for weak).
+}
+
+# image_imports: keepcrypt-pi's imports, $iw/imports.list: "<type> <symbol>@<version>" from
+# llvm-nm -D -u (U, or w for weak), sorted without duplicates. Sets $kp, the unpacked
+# /usr/bin/keepcrypt-pi, and $bin (toolchain_bin).
+image_imports() {
   kp=$iw/root/usr/bin/keepcrypt-pi
   [ -f "$kp" ] && [ ! -h "$kp" ] || ifail 'partition 2 holds no file /usr/bin/keepcrypt-pi'
   toolchain_bin
@@ -1808,6 +1963,17 @@ image_lists() {
   awk 'NF == 2 { print $1, $2; next } NF { exit 1 }' "$iw/nm" >"$iw/imports.unsorted" ||
     ifail 'llvm-nm -D -u printed a line that is not "<type> <symbol>"'
   sort -u "$iw/imports.unsorted" >"$iw/imports.list" || exit 2
+}
+
+# image_lists IMG KCONFIG: unpack IMG and print its lists, under "== " headings (see "Image lists
+# mode").
+image_lists() {
+  kconfig=$2
+  [ -f "$kconfig" ] && [ -r "$kconfig" ] || { printf 'banned-api-check: --image-lists: cannot read %s\n' "$kconfig" >&2; exit 2; }
+  image_unpack "$1"
+  image_boot_list
+  image_root_list
+  image_imports
   h_img=$(sha256 "$img") || exit 2
   h_p1=$(sha256 "$iw/p1.img") || exit 2
   h_p2=$(sha256 "$iw/p2.img") || exit 2
@@ -1833,6 +1999,712 @@ image_lists() {
   echo '== kernel config (KCONFIG)'
   cat "$kconfig" || exit 2
   echo "banned-api-check --image-lists $img: listed, not scanned"
+  exit 0
+}
+
+# --- OS configuration and image scan: the shared rules -------------------------------------------
+
+# The image's inittab (tasks/todo.md, M4 group 13; Q35): the whole file is these three lines.
+inittab_lines='::sysinit:/bin/mount -a
+::wait:/usr/bin/keepcrypt-pi
+::once:/usr/bin/keepcrypt-pi --stopped'
+
+# BusyBox (tasks/todo.md, M4 groups 11 and 13): the applets the image must build, as CONFIG_
+# symbols at =y (init reading /etc/inittab; mount reading /etc/fstab, with the flags that give it
+# nosuid, nodev and noexec; no shell as sh or bash), and the ones it must not: shells, logins,
+# network, module, power, swap and loop tools, seedrng and vi.
+busybox_required='INIT FEATURE_USE_INITTAB MOUNT FEATURE_MOUNT_FSTAB FEATURE_MOUNT_FLAGS SH_IS_NONE BASH_IS_NONE'
+busybox_denied='ASH HUSH SH_IS_ASH SH_IS_HUSH GETTY LOGIN SU SULOGIN TELNETD HTTPD FTPD TFTP WGET NC
+UDHCPC UDHCPD IFCONFIG IP ROUTE PING SYSLOGD KLOGD CROND MODPROBE INSMOD RMMOD HALT REBOOT POWEROFF
+SWAPON SWAPOFF LOSETUP SEEDRNG VI SH'
+
+# The programs the root must not hold, as a path's or a link target's base name.
+denied_programs='sh|ash|hush|getty|login|dropbear|sshd|telnetd|udhcpc'
+
+# readable FILE MODE: FILE must be a readable, non-empty regular file (through a symlink or not),
+# or MODE exits 2: a missing or empty list is an error, never a pass.
+readable() {
+  [ -f "$1" ] && [ -r "$1" ] && [ -s "$1" ] ||
+    { printf 'banned-api-check: %s: cannot read %s, or it is empty\n' "$2" "$1" >&2; exit 2; }
+}
+
+# lines_as_hits CATEGORY NAME TEXT: one hit per line of TEXT, each "<line>: <detail>" reported as
+# "CATEGORY: NAME:<line>: <detail>" (the file's line, as the repo scan reports).
+lines_as_hits() {
+  [ -n "$3" ] || return 0
+  while IFS= read -r line; do
+    ahit "$1" "$2:${line%%:*}" "${line#*: }"
+  done <<EOF
+$3
+EOF
+}
+
+# show_diff EXPECTED GOT: the difference between two lists, indented, on stderr.
+show_diff() {
+  diff "$1" "$2" | sed 's/^/    /' >&2
+}
+
+# fragment_lists FRAGMENT REQUIRED FORBIDDEN MODE: the symbols of FRAGMENT's CONFIG_X=y lines into
+# the file REQUIRED and of its "# CONFIG_X is not set" lines into FORBIDDEN, one per line in the
+# fragment's order: the exact content expected/kconfig-required and kconfig-forbidden must hold,
+# so the three cannot drift. A line of another kind (anything but those two, a comment or a blank
+# line, as pi/os/kconfig.sh refuses it), or a fragment with no line of either kind, is exit 2.
+fragment_lists() {
+  readable "$1" "$4"
+  : >"$2" && : >"$3" || exit 2
+  bad=$(awk -v req="$2" -v forb="$3" '
+    /^CONFIG_[A-Za-z0-9_]+=y$/ { sub(/=y$/, ""); print > req; next }
+    /^# CONFIG_[A-Za-z0-9_]+ is not set$/ { print $2 > forb; next }
+    /^#/ || /^[[:space:]]*$/ { next }
+    { print NR ": " $0; exit 1 }
+  ' "$1") || {
+    printf 'banned-api-check: %s: %s: a fragment line of another kind at line %s\n' "$4" "$1" "$bad" >&2
+    exit 2
+  }
+  [ -s "$2" ] && [ -s "$3" ] || {
+    printf 'banned-api-check: %s: %s: has no CONFIG_X=y line, or no "# CONFIG_X is not set" line\n' "$4" "$1" >&2
+    exit 2
+  }
+}
+
+# lists_match EXPECTED FRAGMENT WORK MODE: expected/kconfig-required and kconfig-forbidden equal
+# FRAGMENT's two lists byte for byte (Kconfig hits otherwise); the lists stay in WORK/required and
+# WORK/forbidden for kconfig_check.
+lists_match() {
+  fragment_lists "$2" "$3/required" "$3/forbidden" "$4"
+  cmp -s "$3/required" "$1/kconfig-required" ||
+    ahit Kconfig "$1/kconfig-required" "does not equal the CONFIG_X=y lines of $2, one symbol per line in its order"
+  cmp -s "$3/forbidden" "$1/kconfig-forbidden" ||
+    ahit Kconfig "$1/kconfig-forbidden" "does not equal the \"# CONFIG_X is not set\" lines of $2, one symbol per line in its order"
+}
+
+# kconfig_check CONFIG NAME REQUIRED FORBIDDEN: the kernel config rules (tasks/todo.md, M4 groups
+# 11, 13 and 14) on the config file CONFIG, reported as NAME: every symbol of the file REQUIRED at
+# =y, no symbol of FORBIDDEN at y or m, and CONFIG_HW_RANDOM_BCM2835=y the only CONFIG_HW_RANDOM_*
+# driver set.
+kconfig_check() {
+  kout=$(awk -v req="$3" -v forb="$4" '
+    BEGIN {
+      while ((getline s < req) > 0) { need[s] = 1; order[n++] = s }
+      while ((getline s < forb) > 0) ban[s] = 1
+      close(req)
+      close(forb)
+    }
+    /^CONFIG_[A-Za-z0-9_]+=/ {
+      sym = $0
+      sub(/=.*/, "", sym)
+      val = substr($0, length(sym) + 2)
+      if (sym in need && val == "y") have[sym] = 1
+      if (sym in ban && (val == "y" || val == "m")) print "forbidden option " sym " is set (=" val ")"
+      if (sym ~ /^CONFIG_HW_RANDOM_/ && (val == "y" || val == "m")) {
+        if (sym == "CONFIG_HW_RANDOM_BCM2835") { if (val == "y") bcm = 1 }
+        else print "a hwrng driver other than BCM2835 is set: " sym "=" val
+      }
+    }
+    END {
+      for (i = 0; i < n; i++) if (!(order[i] in have)) print "required option " order[i] " is not =y"
+      if (!bcm) print "CONFIG_HW_RANDOM_BCM2835=y, the one hwrng driver, is not set"
+    }
+  ' "$1") || exit 2
+  [ -n "$kout" ] || return 0
+  while IFS= read -r line; do
+    ahit Kconfig "$2" "$line"
+  done <<EOF
+$kout
+EOF
+}
+
+# inittab_check FILE NAME: FILE is exactly Q35's three lines.
+inittab_check() {
+  if [ -h "$1" ]; then
+    ahit Inittab "$2" 'is a symlink, not a file'
+  elif [ ! -f "$1" ]; then
+    ahit Inittab "$2" 'is missing'
+  elif ! printf '%s\n' "$inittab_lines" | cmp -s - "$1"; then
+    ahit Inittab "$2" "is not exactly the three lines ::sysinit:/bin/mount -a, ::wait:/usr/bin/keepcrypt-pi and ::once:/usr/bin/keepcrypt-pi --stopped (Q35)"
+  fi
+}
+
+# fstab_check FILE NAME: every proc and sysfs line carries ro, nosuid, nodev and noexec, every
+# tmpfs line nosuid, nodev, noexec and a size=, and there is no line of another filesystem type
+# (and at least one line; comments and blank lines are skipped).
+fstab_check() {
+  fout=$(awk '
+    /^[[:space:]]*(#|$)/ { next }
+    {
+      n++
+      opts = "," $4 ","
+      if ($3 == "proc" || $3 == "sysfs") {
+        split("ro nosuid nodev noexec", want, " ")
+        for (i = 1; i <= 4; i++) if (!index(opts, "," want[i] ",")) print NR ": " $3 " on " $2 " lacks " want[i]
+      } else if ($3 == "tmpfs") {
+        split("nosuid nodev noexec", want, " ")
+        for (i = 1; i <= 3; i++) if (!index(opts, "," want[i] ",")) print NR ": tmpfs on " $2 " lacks " want[i]
+        if (!index(opts, ",size=")) print NR ": tmpfs on " $2 " has no size="
+      } else print NR ": a filesystem of another type, " $3 ", on " $2
+    }
+    END { if (!n) print "1: no filesystem line" }
+  ' "$1") || exit 2
+  lines_as_hits Fstab "$2" "$fout"
+}
+
+# cmdline_check FILE NAME: no console= or init= word, and the words ro, panic=0 and init_on_free=1.
+cmdline_check() {
+  cout=$(awk '
+    {
+      for (i = 1; i <= NF; i++) {
+        seen[$i] = 1
+        if ($i ~ /^(console|init)=/) print NR ": " $i
+      }
+    }
+    END {
+      split("ro panic=0 init_on_free=1", want, " ")
+      for (i = 1; i <= 3; i++) if (!(want[i] in seen)) print "1: no " want[i]
+    }
+  ' "$1") || exit 2
+  lines_as_hits Cmdline "$2" "$cout"
+}
+
+# config_txt_check FILE NAME: no enable_uart=1, dtoverlay, start_file, fixup_file or plain
+# gpu_mem= line, and the gpu_mem_* lines exactly gpu_mem_256=100, gpu_mem_512=100 and
+# gpu_mem_1024=100, each once (the default start.elf and fixup.dat pair boots them; comments are
+# skipped).
+config_txt_check() {
+  cout=$(awk '
+    /^[[:space:]]*(#|$)/ { next }
+    /^enable_uart=1[[:space:]]*$/ { print NR ": " $0 }
+    /^dtoverlay/ { print NR ": " $0 }
+    /^(start_file|fixup_file)/ { print NR ": " $0 }
+    /^gpu_mem=/ { print NR ": " $0 " (a plain gpu_mem selects other firmware files)" }
+    /^gpu_mem_/ {
+      if ($0 == "gpu_mem_256=100" || $0 == "gpu_mem_512=100" || $0 == "gpu_mem_1024=100") have[$0]++
+      else { print NR ": " $0; key = $0; sub(/=.*/, "", key); off[key] = 1 }
+    }
+    END {
+      split("gpu_mem_256=100 gpu_mem_512=100 gpu_mem_1024=100", want, " ")
+      for (i = 1; i <= 3; i++) {
+        key = want[i]
+        sub(/=.*/, "", key)
+        if (have[want[i]] != 1 && !(key in off)) print "1: " want[i] " does not appear exactly once"
+      }
+    }
+  ' "$1") || exit 2
+  lines_as_hits ConfigTxt "$2" "$cout"
+}
+
+# busybox_check FILE NAME: every $busybox_required symbol at =y, no $busybox_denied symbol at =y,
+# and no CONFIG_SH_IS_* or CONFIG_BASH_IS_* shell selector at =y but the two _NONE ones.
+busybox_check() {
+  bout=$(awk -v req="$(printf '%s' "$busybox_required" | tr '\n' ' ')" \
+    -v deny="$(printf '%s' "$busybox_denied" | tr '\n' ' ')" '
+    BEGIN {
+      nr = split(req, r, " ")
+      nd = split(deny, d, " ")
+      for (i = 1; i <= nd; i++) denied["CONFIG_" d[i]] = 1
+    }
+    /^CONFIG_[A-Za-z0-9_]+=y$/ {
+      sym = $0
+      sub(/=y$/, "", sym)
+      have[sym] = 1
+      if (sym in denied) print NR ": " $0 " (an applet the image must not build)"
+      else if (sym ~ /^CONFIG_(SH|BASH)_IS_/ && sym != "CONFIG_SH_IS_NONE" && sym != "CONFIG_BASH_IS_NONE")
+        print NR ": " $0 " (a shell selected)"
+    }
+    END { for (i = 1; i <= nr; i++) if (!(("CONFIG_" r[i]) in have)) print "1: CONFIG_" r[i] "=y is missing" }
+  ' "$1") || exit 2
+  lines_as_hits BusyBox "$2" "$bout"
+}
+
+# --- OS configuration mode -----------------------------------------------------------------------
+
+# os_config OS_DIR: the text-only checks of pi/os (see "OS configuration mode" in the header).
+os_config() {
+  os=${1%/}
+  [ -d "$os" ] || { printf 'banned-api-check: --os-config: %s is not a directory\n' "$1" >&2; exit 2; }
+  board=$os/board/pizero
+  exp=$os/expected
+  [ -d "$exp" ] || {
+    printf 'banned-api-check: --os-config: %s has no expected/ directory (tasks/todo.md, M4 commit 16: the lists, linux.config, kconfig-required and kconfig-forbidden of the reviewed image)\n' "$os" >&2
+    exit 2
+  }
+  for f in "$board/rootfs-overlay/etc/inittab" "$board/rootfs-overlay/etc/fstab" "$board/cmdline.txt" \
+    "$board/config.txt" "$board/busybox.config" "$board/linux.fragment" "$exp/linux.config" \
+    "$exp/kconfig-required" "$exp/kconfig-forbidden"; do
+    readable "$f" --os-config
+  done
+  otmp=$(mktemp -d "${TMPDIR:-/tmp}/banned-api-os-config.XXXXXX") || exit 2
+  trap 'rm -rf "$otmp"' EXIT
+  trap 'exit 2' HUP INT TERM
+  hits=0
+  inittab_check "$board/rootfs-overlay/etc/inittab" "$board/rootfs-overlay/etc/inittab"
+  fstab_check "$board/rootfs-overlay/etc/fstab" "$board/rootfs-overlay/etc/fstab"
+  cmdline_check "$board/cmdline.txt" "$board/cmdline.txt"
+  config_txt_check "$board/config.txt" "$board/config.txt"
+  lists_match "$exp" "$board/linux.fragment" "$otmp" --os-config
+  kconfig_check "$exp/linux.config" "$exp/linux.config" "$otmp/required" "$otmp/forbidden"
+  busybox_check "$board/busybox.config" "$board/busybox.config"
+  if [ "$hits" -ne 0 ]; then
+    echo "banned-api-check --os-config $os: $hits hit(s)"
+    exit 1
+  fi
+  echo "banned-api-check --os-config $os: clean: Q35's inittab, the fstab's options, cmdline.txt and config.txt as the plan says, expected/linux.config with the fragment's required and forbidden lists (which expected/kconfig-required and kconfig-forbidden equal) and one hwrng driver, and BusyBox with init and mount and no denied applet or shell"
+  exit 0
+}
+
+# --- Image scan mode -----------------------------------------------------------------------------
+
+# deny_check LIST: the deny list over the root list LIST (tasks/todo.md, M4 group 14, step 5), as
+# Deny hits by path: a shell or login program as a path's or a link target's base name
+# ($denied_programs), anything under /lib/modules, /usr/lib/modules or /etc/init.d, a setuid,
+# setgid or sticky mode (any s or t in the mode string's nine permission letters) other than /tmp's
+# own drwxrwxrwt, and a name that ends .age or holds seed, backup or mnemonic.
+deny_check() {
+  dout=$(awk -v denied="^($denied_programs)\$" '
+    function base(p) { sub(/\/$/, "", p); sub(/.*\//, "", p); return p }
+    {
+      line = $0
+      target = ""
+      at = index(line, " -> ")
+      if (at) { target = substr(line, at + 4); line = substr(line, 1, at - 1) }
+      if (!match(line, / [^ ]+$/)) { print "\tcannot read the root list line: " $0; exit 1 }
+      mode = substr(line, RSTART + 1)
+      path = substr(line, 1, RSTART - 1)
+      b = base(path)
+      if (b ~ denied) print path "\ta shell or login program, " b
+      else if (target != "" && base(target) ~ denied) print path "\ta link to a shell or login program, " target
+      if (path ~ /^\/(usr\/)?lib\/modules(\/|$)/) print path "\tkernel modules"
+      if (path ~ /^\/etc\/init\.d(\/|$)/) print path "\tstart-up scripts"
+      if (substr(mode, 2) ~ /[sStT]/ && !(path == "/tmp" && mode == "drwxrwxrwt")) print path "\tsetuid, setgid or sticky mode " mode
+      lb = tolower(b)
+      if (lb ~ /\.age$/ || lb ~ /seed|backup|mnemonic/) print path "\tlooks like a seed or backup file"
+    }
+  ' "$1") || ifail "${dout#?}"
+  [ -n "$dout" ] || return 0
+  tab=$(printf '\t')
+  while IFS= read -r line; do
+    ahit Deny "${line%%"$tab"*}" "${line#*"$tab"}"
+  done <<EOF
+$dout
+EOF
+}
+
+# boot_check: partition 1 holds exactly one start/fixup pair, start.elf and fixup.dat (no other
+# start*.elf or fixup*.dat), and its cmdline.txt and config.txt equal the board files byte for
+# byte ($board, the repo's pi/os/board/pizero).
+boot_check() {
+  bout=$(awk '
+    /^\/start[^\/]*\.elf file$/ { starts = starts (starts == "" ? "" : ", ") substr($0, 2, length($0) - 6) }
+    /^\/fixup[^\/]*\.dat file$/ { fixups = fixups (fixups == "" ? "" : ", ") substr($0, 2, length($0) - 6) }
+    END {
+      if (starts != "start.elf") print "holds " (starts == "" ? "no start*.elf" : starts) ", not exactly start.elf"
+      if (fixups != "fixup.dat") print "holds " (fixups == "" ? "no fixup*.dat" : fixups) ", not exactly fixup.dat"
+    }
+  ' "$iw/boot.list") || exit 2
+  if [ -n "$bout" ]; then
+    while IFS= read -r line; do
+      ahit Boot partition-1 "$line"
+    done <<EOF
+$bout
+EOF
+  fi
+  for f in cmdline.txt config.txt; do
+    if [ ! -f "$iw/boot/$f" ]; then
+      ahit Boot "partition-1:/$f" 'is missing'
+    elif ! cmp -s "$iw/boot/$f" "$board/$f"; then
+      ahit Boot "partition-1:/$f" "differs from pi/os/board/pizero/$f (the diff is on stderr)"
+      show_diff "$board/$f" "$iw/boot/$f"
+    fi
+  done
+}
+
+# elf_check FILE NAME: the rules for an ELF file of the root other than keepcrypt-pi (tasks/todo.md,
+# M4 group 14, step 3; Buildroot strips them, so their dynamic symbols are read, llvm-nm -D): it
+# must list dynamic symbols at all (a stripped static file lists none, and nothing could check
+# it), and import no banned RNG symbol and define no rand-crate or getrandom-fallback symbol.
+# glibc's libc.so.6 and ld-linux define rand, random, srand and the rest rather than import them,
+# so only the undefined symbols meet the import rule.
+elf_check() {
+  symbols "$1" "$iw/dyn" -D
+  if [ ! -s "$iw/dyn" ]; then
+    ahit Format "$2" 'an ELF with no dynamic symbol table (a stripped static file), whose imports cannot be checked'
+    return
+  fi
+  symbols "$1" "$iw/dynu" -D -u
+  grep -E -e "$undefined_rng" "$iw/dynu" >"$iw/hits"
+  [ $? -le 1 ] || exit 2
+  from_list Symbol "$2" 'undefined ' "$iw/hits"
+  symbols "$1" "$iw/dync" -D -C
+  grep -E -e "$rng_crates" "$iw/dync" >"$iw/hits"
+  [ $? -le 1 ] || exit 2
+  from_list Symbol "$2" 'rand-family symbol ' "$iw/hits"
+  grep -E -e "$fallback" "$iw/dync" >"$iw/hits"
+  [ $? -le 1 ] || exit 2
+  from_list Symbol "$2" "getrandom's fallback " "$iw/hits"
+}
+
+# image_scan IMG EXPECTED_DIR KCONFIG BIN_SHA256: the image scan (see "Image scan mode" in the
+# header). Every input is checked before the image is unpacked: the four arguments, the six
+# files of EXPECTED_DIR (readable and non-empty) and the repo's board files this scan compares
+# against (pi/os/board/pizero's cmdline.txt, config.txt and linux.fragment, found from this
+# script's path).
+image_scan() {
+  imode=--image
+  img=$1
+  exp=${2%/}
+  kconfig=$3
+  want_sha=$4
+  printf '%s\n' "$want_sha" | grep -q -x -E '[0-9a-f]{64}' ||
+    { printf 'banned-api-check: --image: BIN_SHA256 is not 64 lowercase hex digits: %s\n' "$want_sha" >&2; exit 2; }
+  [ -d "$exp" ] || { printf 'banned-api-check: --image: EXPECTED_DIR %s is not a directory\n' "$2" >&2; exit 2; }
+  for f in boot.list root.list linux.config kconfig-required kconfig-forbidden keepcrypt-pi.imports; do
+    readable "$exp/$f" --image
+  done
+  readable "$kconfig" --image
+  board=$(cd "$here/../pi/os/board/pizero" 2>/dev/null && pwd -P) ||
+    { echo 'banned-api-check: --image: no pi/os/board/pizero beside this script' >&2; exit 2; }
+  for f in cmdline.txt config.txt linux.fragment; do
+    readable "$board/$f" --image
+  done
+  image_unpack "$img"
+  image_boot_list
+  image_root_list
+  image_imports
+  atmp=$iw
+  artifact_rules arm-unknown-linux-gnueabihf
+  hits=0
+  linked=0
+  archives=0
+  # 1. The lists equal expected/.
+  if ! cmp -s "$iw/boot.list" "$exp/boot.list"; then
+    ahit List "$exp/boot.list" "differs from the image's boot file list (the diff is on stderr)"
+    show_diff "$exp/boot.list" "$iw/boot.list"
+  fi
+  if ! cmp -s "$iw/root.list" "$exp/root.list"; then
+    ahit List "$exp/root.list" "differs from the image's root file list (the diff is on stderr)"
+    show_diff "$exp/root.list" "$iw/root.list"
+  fi
+  if ! cmp -s "$iw/imports.list" "$exp/keepcrypt-pi.imports"; then
+    ahit Binary /usr/bin/keepcrypt-pi "imports differ from $exp/keepcrypt-pi.imports (the diff is on stderr)"
+    show_diff "$exp/keepcrypt-pi.imports" "$iw/imports.list"
+  fi
+  # 2. The deny list and partition 1's files, whether or not the lists matched.
+  deny_check "$iw/root.list"
+  boot_check
+  # 3. The inittab.
+  inittab_check "$iw/root/etc/inittab" /etc/inittab
+  # 4. The kernel config: KCONFIG equals expected/linux.config, expected/kconfig-required and
+  # kconfig-forbidden equal the fragment's lists, and KCONFIG keeps those lists and one hwrng
+  # driver.
+  if ! cmp -s "$kconfig" "$exp/linux.config"; then
+    ahit Kconfig "$kconfig" "differs from $exp/linux.config (the diff is on stderr)"
+    show_diff "$exp/linux.config" "$kconfig"
+  fi
+  lists_match "$exp" "$board/linux.fragment" "$iw" --image
+  kconfig_check "$kconfig" "$kconfig" "$iw/required" "$iw/forbidden"
+  # 5. Bytes: the raw image (SquashFS is compressed, so this alone would miss a marker inside
+  # the root), every file of partition 1 (the VideoCore start.elf and zImage among them) and
+  # every file of the root but keepcrypt-pi, which artifact_file searches below. Every ELF file
+  # of the root other than keepcrypt-pi gets elf_check; a symlink is listed, not read.
+  byte_scan "$img" "$img"
+  (cd "$iw/boot" && find . -type f -print) | sort >"$iw/boot.files" || exit 2
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    byte_scan "$iw/boot/${p#./}" "partition-1:/${p#./}"
+  done <"$iw/boot.files"
+  (cd "$iw/root" && find . -type f -print) | sort >"$iw/root.files" || exit 2
+  elfs=0
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    rel=/${p#./}
+    [ "$rel" = /usr/bin/keepcrypt-pi ] && continue
+    byte_scan "$iw/root$rel" "$rel"
+    magic=$(od -An -N4 -tx1 "$iw/root$rel" | tr -d ' \n')
+    if [ "$magic" = 7f454c46 ]; then
+      elfs=$((elfs + 1))
+      elf_check "$iw/root$rel" "$rel"
+    fi
+  done <"$iw/root.files"
+  # 6. /usr/bin/keepcrypt-pi: the artifact rules for the Pi target (the OS import, a .symtab,
+  # no RNG symbol, std's random-key path absent, with Q52's passengers allowed), no simulator
+  # crate as a symbol or as bytes (one hit), and the SHA-256 given.
+  sim=
+  if artifact_file "$kp" /usr/bin/keepcrypt-pi; then
+    sim=$(grep -E -e 'keepcrypt_pi_sim' "$iw/all" | head -n 1)
+  fi
+  if [ -n "$sim" ]; then
+    ahit Binary /usr/bin/keepcrypt-pi "names the simulator crate: symbol $sim"
+  elif grep -q -F -e "$(hexbytes keepcrypt_pi_sim)" "$iw/dump"; then
+    ahit Binary /usr/bin/keepcrypt-pi 'names the simulator crate: byte string keepcrypt_pi_sim'
+  fi
+  got_sha=$(sha256 "$kp") || exit 2
+  [ "$got_sha" = "$want_sha" ] || ahit Binary /usr/bin/keepcrypt-pi "SHA-256 $got_sha, not BIN_SHA256 $want_sha"
+  if [ "$hits" -ne 0 ]; then
+    echo "banned-api-check --image $img: $hits hit(s)"
+    exit 1
+  fi
+  echo "banned-api-check --image $img: clean: the boot and root lists and keepcrypt-pi's imports equal $exp, no denied file, start.elf and fixup.dat alone, the board's cmdline.txt and config.txt, Q35's inittab, the kernel config equals $exp/linux.config and keeps the fragment's lists with one hwrng driver, no marker or test key in the image or any file, $elfs other ELF file(s) with dynamic symbols and no RNG import, and /usr/bin/keepcrypt-pi passes the artifact rules with no simulator name and SHA-256 $want_sha"
+  exit 0
+}
+
+# --- Image selftest mode -------------------------------------------------------------------------
+
+# The hit categories of the image scan, for its selftests.
+icats='^(Marker|TestKey|Format|Symbol|StdRandom|OSImport|Binary|List|Deny|Boot|Inittab|Kconfig): '
+
+# sifail MESSAGE: a control cannot be built (exit 2).
+sifail() {
+  printf 'banned-api-check: --selftest-image: %s\n' "$1" >&2
+  exit 2
+}
+
+# write_testkey FILE: the test registry key's 32 bytes, inside other bytes, into FILE.
+write_testkey() {
+  octal=
+  rest=$testkey
+  while [ -n "$rest" ]; do
+    octal=$octal$(printf '\\%03o' "0x${rest%"${rest#??}"}")
+    rest=${rest#??}
+  done
+  printf "x$octal\n" >"$1" || exit 2
+}
+
+# build_elf_controls DIR: ELF files for the Pi target, built with the pinned toolchain alone (rustc
+# --emit obj, rust-lld, llvm-objcopy; no cross compiler) from scripts/testdata/image/controls.rs:
+# DIR/getrandom.so, a shared object that imports getrandom and keeps its .symtab (a stand-in for
+# keepcrypt-pi and the root's libraries); DIR/sim.so, the same with a keepcrypt_pi_sim_hwrng
+# symbol; DIR/rand-stripped.so, a stripped shared object that imports rand (dynamic symbols
+# only); DIR/static-stripped, a stripped static executable with no symbols at all. Exit 2 if one
+# cannot be built.
+build_elf_controls() {
+  cdir=$1
+  mkdir -p "$cdir" || exit 2
+  csrc=$here/testdata/image/controls.rs
+  [ -f "$csrc" ] || sifail "no $csrc"
+  for c in getrandom:kc_getrandom sim:kc_sim rand:kc_rand static:kc_static; do
+    if ! (cd "$repo" && rustc --edition 2024 --crate-type lib --crate-name kc_control --emit obj \
+      -C panic=abort -C opt-level=1 --target arm-unknown-linux-gnueabihf --cfg "${c#*:}" \
+      -o "$cdir/${c%%:*}.o" "$csrc") >"$cdir/rustc.log" 2>&1; then
+      sed 's/^/    /' "$cdir/rustc.log" >&2
+      sifail "rustc could not build the ${c%%:*} control"
+    fi
+  done
+  for c in getrandom sim rand; do
+    "$bin/rust-lld" -flavor gnu -shared -o "$cdir/$c.so" "$cdir/$c.o" >"$cdir/lld.log" 2>&1 ||
+      { sed 's/^/    /' "$cdir/lld.log" >&2; sifail "rust-lld could not link the $c control"; }
+  done
+  "$bin/rust-lld" -flavor gnu -e _start -o "$cdir/static" "$cdir/static.o" >"$cdir/lld.log" 2>&1 ||
+    { sed 's/^/    /' "$cdir/lld.log" >&2; sifail 'rust-lld could not link the static control'; }
+  mv "$cdir/rand.so" "$cdir/rand-stripped.so" && mv "$cdir/static" "$cdir/static-stripped" || exit 2
+  "$bin/llvm-objcopy" --strip-all "$cdir/rand-stripped.so" && "$bin/llvm-objcopy" --strip-all "$cdir/static-stripped" ||
+    sifail 'llvm-objcopy could not strip a control'
+}
+
+# si_lists IMG DIR KCONFIG: a stand-in EXPECTED_DIR at DIR from --image-lists' own output on IMG
+# (its boot and root lists and import list, under their headings), KCONFIG as linux.config and the
+# fragment's two lists ($fraglists/required and forbidden). Prints the binary's SHA-256 from the
+# listing.
+si_lists() {
+  lout=$(sh "$self" --image-lists "$1" "$3" 2>&1) || { printf '%s\n' "$lout" >&2; sifail "--image-lists failed on $1"; }
+  mkdir -p "$2" || exit 2
+  printf '%s\n' "$lout" | awk -v dir="$2" '
+    /^== / {
+      out = ""
+      if (index($0, "== boot files") == 1) out = dir "/boot.list"
+      else if (index($0, "== root files") == 1) out = dir "/root.list"
+      else if (index($0, "== keepcrypt-pi imports") == 1) out = dir "/keepcrypt-pi.imports"
+      next
+    }
+    /^banned-api-check / { out = "" }
+    out != "" { print > out }
+  ' || exit 2
+  cp "$3" "$2/linux.config" && cp "$fraglists/required" "$2/kconfig-required" &&
+    cp "$fraglists/forbidden" "$2/kconfig-forbidden" || exit 2
+  printf '%s\n' "$lout" | sed -n 's/^sha256 keepcrypt-pi \([0-9a-f]\{64\}\)$/\1/p'
+}
+
+# sicase NAME WANT-HIT IMG EXPECTED_DIR KCONFIG BIN_SHA256: --image on the four arguments, in a
+# new process, must exit 1 with exactly one hit, which starts with WANT-HIT; with WANT-HIT empty
+# (a control), exit 0 with no hit.
+sicase() {
+  sout=$(sh "$self" --image "$3" "$4" "$5" "$6" 2>&1)
+  rc=$?
+  got=$(printf '%s\n' "$sout" | grep -E "$icats")
+  count=$(printf '%s\n' "$sout" | grep -c -E "$icats")
+  ok=no
+  if [ -z "$2" ]; then
+    [ "$rc" -eq 0 ] && [ "$count" -eq 0 ] && ok=yes
+  elif [ "$rc" -eq 1 ] && [ "$count" -eq 1 ]; then
+    case $got in "$2"*) ok=yes ;; esac
+  fi
+  if [ "$ok" = yes ]; then
+    pass=$((pass + 1))
+    printf 'PASS %s -> exit %s: %s\n' "$1" "$rc" "${got:-clean}"
+  else
+    fail=$((fail + 1))
+    printf 'FAIL %s: wanted exit %s with %s, got exit %s:\n' "$1" "${2:+1}${2:-0}" "${2:-no hit}" "$rc"
+    printf '%s\n' "$sout" | sed 's/^/    /'
+  fi
+}
+
+# si_root NAME: a fresh unpack of the image's root into $sw/NAME/root, for a mutation.
+si_root() {
+  mkdir -p "$sw/$1" || exit 2
+  unsquashfs -no-progress -d "$sw/$1/root" "$iw/p2.img" >"$sw/$1/log" 2>&1 ||
+    { sed 's/^/    /' "$sw/$1/log" >&2; sifail "unsquashfs could not unpack the root for $1"; }
+}
+
+# si_image NAME P1 [ROOT]: $sw/NAME.img from the partition-1 image P1 (the image's own, or an
+# edited copy) and either ROOT, repacked with mksquashfs -no-xattrs, or the image's own partition
+# 2; a fresh MBR sized to the two (image_mbr), partition 1 at the image's first sector and
+# partition 2 right after it.
+si_image() {
+  n=$1
+  p1=$2
+  mkdir -p "$sw/$n" || exit 2
+  if [ -n "${3-}" ]; then
+    mksquashfs "$3" "$sw/$n/p2.img" -no-xattrs -noappend -all-root -no-progress >"$sw/$n/mksquashfs.log" 2>&1 ||
+      { sed 's/^/    /' "$sw/$n/mksquashfs.log" >&2; sifail "mksquashfs could not repack the root for $n"; }
+    p2=$sw/$n/p2.img
+  else
+    p2=$iw/p2.img
+  fi
+  c1=$(($(wc -c <"$p1") / 512))
+  c2=$((($(wc -c <"$p2") + 511) / 512))
+  image_mbr "$sw/$n.img" $((s1 + c1 + c2)) 55aa "0c:$s1:$c1" "83:$((s1 + c1)):$c2" -
+  dd if="$p1" of="$sw/$n.img" bs=512 seek="$s1" conv=notrunc 2>/dev/null || exit 2
+  dd if="$p2" of="$sw/$n.img" bs=512 seek=$((s1 + c1)) conv=notrunc 2>/dev/null || exit 2
+}
+
+# si_boot NAME FILE TEXT: $sw/NAME/p1.img, a copy of partition 1 with its FILE replaced by TEXT
+# (mcopy -o into the copy).
+si_boot() {
+  mkdir -p "$sw/$1" || exit 2
+  cp "$iw/p1.img" "$sw/$1/p1.img" && printf '%s\n' "$3" >"$sw/$1/$2" || exit 2
+  MTOOLS_SKIP_CHECK=1 mcopy -o -i "$sw/$1/p1.img" "$sw/$1/$2" "::$2" >"$sw/$1/mcopy.log" 2>&1 ||
+    { sed 's/^/    /' "$sw/$1/mcopy.log" >&2; sifail "mcopy could not replace $2 for $1"; }
+}
+
+# si_kconfig NAME SED-EXPRESSION: $sw/NAME/linux.config, KCONFIG with SED-EXPRESSION applied.
+si_kconfig() {
+  mkdir -p "$sw/$1" || exit 2
+  sed -e "$2" "$kconfig" >"$sw/$1/linux.config" || exit 2
+}
+
+# selftest_image IMG KCONFIG: the image scan's positive controls on the built image (see "Image
+# selftest mode" in the header).
+selftest_image() {
+  imode=--selftest-image
+  img=$1
+  kconfig=$2
+  readable "$kconfig" --selftest-image
+  for tool in mcopy mdir unsquashfs mksquashfs; do
+    command -v "$tool" >/dev/null 2>&1 ||
+      sifail "no $tool on PATH (the build's host tools are in KC_WORK/out/host/bin)"
+  done
+  toolchain_bin
+  for t in llvm-objcopy rust-lld; do
+    [ -x "$bin/$t" ] || sifail "no $t in $bin (rust-toolchain.toml lists llvm-tools-preview)"
+  done
+  sw=$(mktemp -d "${TMPDIR:-/tmp}/banned-api-selftest-image.XXXXXX") || exit 2
+  trap 'rm -rf "$sw"' EXIT
+  trap 'exit 2' HUP INT TERM
+  image_unpack "$img"
+  trap 'rm -rf "$iw" "$sw"' EXIT
+  image_imports
+  fraglists=$sw
+  fragment_lists "$here/../pi/os/board/pizero/linux.fragment" "$sw/required" "$sw/forbidden" --selftest-image
+  build_elf_controls "$sw/elf"
+  pass=0
+  fail=0
+  # The control: the image passes against its own lists.
+  sha=$(si_lists "$img" "$sw/clean" "$kconfig")
+  sicase 'selftest-image-clean-image' '' "$img" "$sw/clean" "$kconfig" "$sha"
+  # Mutations of the root (its lists stand in for expected/, so only the named rule can fail).
+  si_root marker
+  printf 'KC_TEST_SOURCE_DO_NOT_SHIP\n' >"$sw/marker/root/etc/kc-canary.txt" || exit 2
+  si_image marker "$iw/p1.img" "$sw/marker/root"
+  sha=$(si_lists "$sw/marker.img" "$sw/marker/expected" "$kconfig")
+  sicase 'selftest-image-marker-in-a-text-file' 'Marker: /etc/kc-canary.txt: KC_TEST_SOURCE_DO_NOT_SHIP' \
+    "$sw/marker.img" "$sw/marker/expected" "$kconfig" "$sha"
+  si_root testkey
+  write_testkey "$sw/testkey/root/etc/kc-canary.bin"
+  si_image testkey "$iw/p1.img" "$sw/testkey/root"
+  sha=$(si_lists "$sw/testkey.img" "$sw/testkey/expected" "$kconfig")
+  sicase 'selftest-image-test-key-file' "TestKey: /etc/kc-canary.bin: the test registry public key $testkey" \
+    "$sw/testkey.img" "$sw/testkey/expected" "$kconfig" "$sha"
+  si_root rand
+  cp "$sw/elf/rand-stripped.so" "$sw/rand/root/lib/libkc-canary.so.1" || exit 2
+  si_image rand "$iw/p1.img" "$sw/rand/root"
+  sha=$(si_lists "$sw/rand.img" "$sw/rand/expected" "$kconfig")
+  sicase 'selftest-image-stripped-elf-importing-rand' 'Symbol: /lib/libkc-canary.so.1: undefined rand' \
+    "$sw/rand.img" "$sw/rand/expected" "$kconfig" "$sha"
+  si_root static
+  cp "$sw/elf/static-stripped" "$sw/static/root/usr/bin/kc-canary" || exit 2
+  si_image static "$iw/p1.img" "$sw/static/root"
+  sha=$(si_lists "$sw/static.img" "$sw/static/expected" "$kconfig")
+  sicase 'selftest-image-stripped-static-elf' 'Format: /usr/bin/kc-canary: an ELF with no dynamic symbol table' \
+    "$sw/static.img" "$sw/static/expected" "$kconfig" "$sha"
+  si_root sh
+  ln -s busybox "$sw/sh/root/bin/sh" || exit 2
+  si_image sh "$iw/p1.img" "$sw/sh/root"
+  sha=$(si_lists "$sw/sh.img" "$sw/sh/expected" "$kconfig")
+  sicase 'selftest-image-bin-sh' 'Deny: /bin/sh: a shell or login program, sh' \
+    "$sw/sh.img" "$sw/sh/expected" "$kconfig" "$sha"
+  si_root stripped
+  "$bin/llvm-objcopy" --strip-all "$sw/stripped/root/usr/bin/keepcrypt-pi" || sifail 'llvm-objcopy could not strip keepcrypt-pi'
+  si_image stripped "$iw/p1.img" "$sw/stripped/root"
+  sha=$(si_lists "$sw/stripped.img" "$sw/stripped/expected" "$kconfig")
+  sicase 'selftest-image-stripped-keepcrypt-pi' 'Format: /usr/bin/keepcrypt-pi: a stripped file with no symbol table (.symtab)' \
+    "$sw/stripped.img" "$sw/stripped/expected" "$kconfig" "$sha"
+  si_root urandom
+  printf '/dev/urandom' >>"$sw/urandom/root/usr/bin/keepcrypt-pi" || exit 2
+  si_image urandom "$iw/p1.img" "$sw/urandom/root"
+  sha=$(si_lists "$sw/urandom.img" "$sw/urandom/expected" "$kconfig")
+  sicase 'selftest-image-urandom-in-keepcrypt-pi' 'StdRandom: /usr/bin/keepcrypt-pi: byte string /dev/urandom' \
+    "$sw/urandom.img" "$sw/urandom/expected" "$kconfig" "$sha"
+  # The binary's hash.
+  sha=$(si_lists "$img" "$sw/hash" "$kconfig")
+  sicase 'selftest-image-wrong-binary-hash' 'Binary: /usr/bin/keepcrypt-pi: SHA-256 ' \
+    "$img" "$sw/hash" "$kconfig" "$(printf '%064d' 0)"
+  # Partition 1: cmdline.txt and config.txt differ from the board files.
+  si_boot console cmdline.txt "$(cat "$iw/boot/cmdline.txt") console=ttyAMA0,115200"
+  si_image console "$sw/console/p1.img"
+  sha=$(si_lists "$sw/console.img" "$sw/console/expected" "$kconfig")
+  sicase 'selftest-image-console-in-cmdline' 'Boot: partition-1:/cmdline.txt: differs from pi/os/board/pizero/cmdline.txt' \
+    "$sw/console.img" "$sw/console/expected" "$kconfig" "$sha"
+  si_boot gpumem config.txt "$(cat "$iw/boot/config.txt")
+gpu_mem=16"
+  si_image gpumem "$sw/gpumem/p1.img"
+  sha=$(si_lists "$sw/gpumem.img" "$sw/gpumem/expected" "$kconfig")
+  sicase 'selftest-image-gpu-mem-16-config-with-start-elf' 'Boot: partition-1:/config.txt: differs from pi/os/board/pizero/config.txt' \
+    "$sw/gpumem.img" "$sw/gpumem/expected" "$kconfig" "$sha"
+  # The kernel config: one line off expected/linux.config (which stays the build's), then three
+  # mutations that expected/linux.config follows, so the forbidden, hwrng and required rules are
+  # what fire.
+  si_kconfig offline '$a\
+# one line off (selftest-image)'
+  sha=$(si_lists "$img" "$sw/offline/expected" "$kconfig")
+  sicase 'selftest-image-kconfig-one-line-off' "Kconfig: $sw/offline/linux.config: differs from $sw/offline/expected/linux.config" \
+    "$img" "$sw/offline/expected" "$sw/offline/linux.config" "$sha"
+  si_kconfig net '/^# CONFIG_NET is not set$/d
+$a\
+CONFIG_NET=y'
+  sha=$(si_lists "$img" "$sw/net/expected" "$sw/net/linux.config")
+  sicase 'selftest-image-kconfig-net' "Kconfig: $sw/net/linux.config: forbidden option CONFIG_NET is set (=y)" \
+    "$img" "$sw/net/expected" "$sw/net/linux.config" "$sha"
+  si_kconfig hwrng '$a\
+CONFIG_HW_RANDOM_CANARY=y'
+  sha=$(si_lists "$img" "$sw/hwrng/expected" "$sw/hwrng/linux.config")
+  sicase 'selftest-image-kconfig-two-hwrng-drivers' \
+    "Kconfig: $sw/hwrng/linux.config: a hwrng driver other than BCM2835 is set: CONFIG_HW_RANDOM_CANARY=y" \
+    "$img" "$sw/hwrng/expected" "$sw/hwrng/linux.config" "$sha"
+  si_kconfig missing 's/^CONFIG_LEDS_TRIGGER_ACTPWR=y$/# CONFIG_LEDS_TRIGGER_ACTPWR is not set/'
+  sha=$(si_lists "$img" "$sw/missing/expected" "$sw/missing/linux.config")
+  sicase 'selftest-image-kconfig-missing-required-option' \
+    "Kconfig: $sw/missing/linux.config: required option CONFIG_LEDS_TRIGGER_ACTPWR is not =y" \
+    "$img" "$sw/missing/expected" "$sw/missing/linux.config" "$sha"
+  echo "selftest-image: $pass passed, $fail failed"
+  [ "$fail" -eq 0 ] || exit 1
   exit 0
 }
 
@@ -1912,12 +2784,17 @@ workflows_selftest() {
 # --- Image lists selftest ------------------------------------------------------------------------
 
 # iexpect NAME TEXT ARG...: run --image-lists ARG... in a new process; it must exit 2 with TEXT in
-# its output.
+# its output. ixexpect MODE NAME TEXT ARG... does the same for another image mode.
 iexpect() {
-  iname=$1
-  want=$2
-  shift 2
-  out=$(sh "$self" --image-lists "$@" 2>&1)
+  ixexpect --image-lists "$@"
+}
+
+ixexpect() {
+  imd=$1
+  iname=$2
+  want=$3
+  shift 3
+  out=$(sh "$self" "$imd" "$@" 2>&1)
   rc=$?
   ok=no
   if [ "$rc" -eq 2 ]; then
@@ -2104,6 +2981,361 @@ banned-api-check --image-lists $img: listed, not scanned"
   PATH=$opath
 }
 
+# --- OS configuration selftest -------------------------------------------------------------------
+
+# oexpect NAME DIR WANT [TEXT]: run --os-config DIR in a new process. WANT=clean needs exit 0 and
+# no hit, WANT=error exit 2 with TEXT in the output, any other WANT exit 1 and exactly one hit, of
+# category WANT.
+oexpect() {
+  out=$(sh "$self" --os-config "$2" 2>&1)
+  rc=$?
+  ocats='^(Inittab|Fstab|Cmdline|ConfigTxt|Kconfig|BusyBox): '
+  hit=$(printf '%s\n' "$out" | grep -E "$ocats")
+  count=$(printf '%s\n' "$out" | grep -c -E "$ocats")
+  ok=no
+  if [ "$3" = clean ]; then
+    [ "$rc" -eq 0 ] && [ "$count" -eq 0 ] && ok=yes
+  elif [ "$3" = error ]; then
+    if [ "$rc" -eq 2 ]; then
+      case $out in *"${4:-}"*) ok=yes; hit="exit 2: ${out##*$nl}" ;; esac
+    fi
+  elif [ "$rc" -eq 1 ] && [ "$count" -eq 1 ]; then
+    case $hit in "$3: "*) ok=yes ;; esac
+  fi
+  if [ "$ok" = yes ]; then
+    pass=$((pass + 1))
+    printf 'PASS %s -> %s\n' "$1" "${hit:-clean}"
+  else
+    fail=$((fail + 1))
+    printf 'FAIL %s: wanted %s %s, got exit %s:\n' "$1" "$3" "${4:-}" "$rc"
+    printf '%s\n' "$out" | sed 's/^/    /'
+  fi
+}
+
+# Every directory of scripts/testdata/os-config/ is a pi/os-shaped tree (board/pizero/... and
+# expected/...). clean-pizero is the whole tree, which must pass: the board's real inittab, fstab,
+# cmdline.txt and config.txt, a BusyBox config of the lines the check reads, a short fragment of
+# both kinds of line and an expected/ that matches it. Every osconfig-<category>-* holds the one
+# file of that tree it changes, copied over a copy of clean-pizero, and must fail with exactly one
+# hit of its category. Then the errors, built here: no expected/, a missing or an empty file, a
+# fragment line of another kind, and a path that is not a directory.
+os_config_selftest() {
+  ofx=$here/testdata/os-config
+  clean=$ofx/clean-pizero
+  if [ ! -d "$clean" ]; then
+    fail=$((fail + 1))
+    echo 'FAIL no clean-pizero os-config fixture'
+    return
+  fi
+  oseen=
+  for fx in "$ofx"/*/; do
+    [ -d "$fx" ] || continue
+    fx=${fx%/}
+    name=${fx##*/}
+    case $name in
+      clean-*) want=clean ;;
+      osconfig-inittab-*) want=Inittab ;;
+      osconfig-fstab-*) want=Fstab ;;
+      osconfig-cmdline-*) want=Cmdline ;;
+      osconfig-config-txt-*) want=ConfigTxt ;;
+      osconfig-kconfig-*) want=Kconfig ;;
+      osconfig-busybox-*) want=BusyBox ;;
+      *) fail=$((fail + 1)); printf 'FAIL %s: unknown prefix\n' "$name"; continue ;;
+    esac
+    oseen="$oseen $want"
+    d=$tmp/os-config/$name
+    mkdir -p "$d" && cp -R "$clean/." "$d/" || exit 2
+    if [ "$want" != clean ]; then
+      file=$(cd "$fx" && find . -type f ! -name .DS_Store) || exit 2
+      case $file in
+        '' | *"$nl"*) fail=$((fail + 1)); printf 'FAIL %s: a fixture holds exactly one file\n' "$name"; continue ;;
+      esac
+    fi
+    [ "$name" = clean-pizero ] || cp -R "$fx/." "$d/" || exit 2
+    oexpect "$name" "$d" "$want"
+  done
+  for want in clean Inittab Fstab Cmdline ConfigTxt Kconfig BusyBox; do
+    case "$oseen " in *" $want "*) ;; *) fail=$((fail + 1)); echo "FAIL no $want os-config fixture" ;; esac
+  done
+  d=$tmp/os-config/errors
+  rm -rf "$d" && mkdir -p "$d" && cp -R "$clean/." "$d/" || exit 2
+  mv "$d/expected" "$d/expected.away" || exit 2
+  oexpect 'osconfig-error-no-expected' "$d" error 'has no expected/ directory'
+  mv "$d/expected.away" "$d/expected" || exit 2
+  mv "$d/board/pizero/rootfs-overlay/etc/fstab" "$d/fstab.away" || exit 2
+  oexpect 'osconfig-error-missing-fstab' "$d" error "cannot read $d/board/pizero/rootfs-overlay/etc/fstab, or it is empty"
+  mv "$d/fstab.away" "$d/board/pizero/rootfs-overlay/etc/fstab" || exit 2
+  cp "$d/expected/kconfig-required" "$d/required.away" && : >"$d/expected/kconfig-required" || exit 2
+  oexpect 'osconfig-error-empty-kconfig-required' "$d" error "cannot read $d/expected/kconfig-required, or it is empty"
+  mv "$d/required.away" "$d/expected/kconfig-required" || exit 2
+  cp "$d/board/pizero/linux.fragment" "$d/fragment.away" && echo 'CONFIG_I2C=m' >>"$d/board/pizero/linux.fragment" || exit 2
+  oexpect 'osconfig-error-fragment-line-of-another-kind' "$d" error 'a fragment line of another kind at line'
+  mv "$d/fragment.away" "$d/board/pizero/linux.fragment" || exit 2
+  oexpect 'osconfig-error-not-a-directory' "$d/board/pizero/cmdline.txt" error 'is not a directory'
+}
+
+# --- Image scan selftest -------------------------------------------------------------------------
+
+# The scan's refusals, which run on any machine, then the scan itself on a stub image: the image
+# lists' layout with the SquashFS magic, stub host tools (mcopy extracts $KC_STUB/boot, unsquashfs
+# lists $KC_STUB/root as the real tool does and unpacks it), the real toolchain, and ELF files
+# built for the Pi target with it (build_elf_controls) standing in for keepcrypt-pi, BusyBox and
+# the libraries. The stub tree passes against lists made from it (the control); then each rule
+# gets a mutation of a fresh copy of the tree, of the kernel config or of the expected lists,
+# which must fail with exactly that one hit (the lists are remade from the mutated tree where the
+# mutation changes them, so only the named rule can fail).
+image_selftest() {
+  a=$tmp/image-scan
+  mkdir -p "$a/expected" || exit 2
+  for f in boot.list root.list linux.config kconfig-required kconfig-forbidden keepcrypt-pi.imports; do
+    echo x >"$a/expected/$f" || exit 2
+  done
+  k=$a/linux.config
+  echo 'CONFIG_HW_RANDOM_BCM2835=y' >"$k" || exit 2
+  zero=$(printf '%064d' 0)
+  image_mbr "$a/layout.img" 16 55aa 0c:1:4 83:5:8 -
+  ixexpect --image 'image-error-usage' 'usage:' "$a/layout.img" "$a/expected" "$k"
+  ixexpect --image 'image-error-bad-sha256' 'BIN_SHA256 is not 64 lowercase hex digits: abc' "$a/layout.img" "$a/expected" "$k" abc
+  ixexpect --image 'image-error-missing-expected-dir' "EXPECTED_DIR $a/absent is not a directory" "$a/layout.img" "$a/absent" "$k" "$zero"
+  rm "$a/expected/root.list" || exit 2
+  ixexpect --image 'image-error-missing-expected-file' "cannot read $a/expected/root.list, or it is empty" "$a/layout.img" "$a/expected" "$k" "$zero"
+  : >"$a/expected/root.list" || exit 2
+  ixexpect --image 'image-error-empty-expected-list' "cannot read $a/expected/root.list, or it is empty" "$a/layout.img" "$a/expected" "$k" "$zero"
+  echo x >"$a/expected/root.list" || exit 2
+  ixexpect --image 'image-error-missing-kconfig' "cannot read $a/absent.config, or it is empty" "$a/layout.img" "$a/expected" "$a/absent.config" "$zero"
+  ixexpect --image 'image-error-missing-image' "--image: cannot read $a/absent.img" "$a/absent.img" "$a/expected" "$k" "$zero"
+  ixexpect --image 'image-layout-without-squashfs-magic' \
+    "--image: $a/layout.img: partition 2 does not start with the SquashFS magic hsqs" "$a/layout.img" "$a/expected" "$k" "$zero"
+  ixexpect --selftest-image 'selftest-image-error-usage' 'usage:' "$a/layout.img"
+  ixexpect --selftest-image 'selftest-image-error-missing-kconfig' "cannot read $a/absent.config, or it is empty" "$a/layout.img" "$a/absent.config"
+  # The layout with the magic is accepted up to the host tools, as in --image-lists.
+  image_mbr "$a/tools.img" 16 55aa 0c:1:4 83:5:8 -
+  printf hsqs | dd of="$a/tools.img" bs=512 seek=5 conv=notrunc 2>/dev/null || exit 2
+  mkdir "$a/bin" || exit 2
+  for t in basename dirname wc dd od awk tr mktemp rm grep cat cd; do
+    p=$(command -v "$t") || continue
+    [ -x "$p" ] && ln -s "$p" "$a/bin/$t"
+  done
+  shell=$(command -v sh) || exit 2
+  for m in --image --selftest-image; do
+    case $m in
+      --image) out=$(PATH=$a/bin "$shell" "$self" --image "$a/tools.img" "$a/expected" "$k" "$zero" 2>&1) ;;
+      *) out=$(PATH=$a/bin "$shell" "$self" --selftest-image "$a/tools.img" "$k" 2>&1) ;;
+    esac
+    rc=$?
+    want="banned-api-check: $m: no mcopy on PATH (the build's host tools are in KC_WORK/out/host/bin)"
+    case $m in --image) want="banned-api-check: --image: $a/tools.img: no mcopy on PATH (the build's host tools are in KC_WORK/out/host/bin)" ;; esac
+    if [ "$rc" -eq 2 ] && [ "$out" = "$want" ]; then
+      pass=$((pass + 1))
+      printf 'PASS %s-layout-with-magic-needs-the-host-tools -> exit 2: %s\n' "${m#--}" "$out"
+    else
+      fail=$((fail + 1))
+      printf 'FAIL %s-layout-with-magic-needs-the-host-tools: wanted exit 2 with "%s", got exit %s:\n' "${m#--}" "$want" "$rc"
+      printf '%s\n' "$out" | sed 's/^/    /'
+    fi
+  done
+  image_stub_scan_selftest
+}
+
+# stub_tree NAME: $tree, a fresh copy of the pristine stub tree ($st/tree), which the stub tools
+# read through KC_STUB, and $kc, the pristine kernel config.
+stub_tree() {
+  tree=$st/cases/$1
+  mkdir -p "$st/cases" && cp -RPp "$st/tree" "$tree" || exit 2
+  KC_STUB=$tree
+  export KC_STUB
+  kc=$st/linux.config
+}
+
+# stub_case NAME WANT-HIT [SHA]: lists remade from $tree as it stands (and $kc as the kernel
+# config), then the scan, which must give the one hit WANT-HIT (empty: clean), with the binary's
+# SHA-256 from the listing unless SHA is given.
+stub_case() {
+  sha=$(si_lists "$img" "$tree/expected" "$kc")
+  [ -n "${3-}" ] && sha=$3
+  sicase "image-stub-$1" "$2" "$img" "$tree/expected" "$kc" "$sha"
+}
+
+image_stub_scan_selftest() {
+  st=$a/stub
+  mkdir -p "$st/bin" "$st/tree/boot" || exit 2
+  toolchain_bin
+  build_elf_controls "$st/elf"
+  # The stub tools, driven by KC_STUB. mcopy: the directory given last gets $KC_STUB/boot's files.
+  # unsquashfs -lln: $KC_STUB/root listed as the real tool lists an image (mode, owner, size, date,
+  # time, squashfs-root path, a link's target); otherwise the tree copied to the -d directory.
+  cat >"$st/bin/mcopy" <<'EOF'
+#!/bin/sh
+for d; do :; done
+cp -R "$KC_STUB/boot/." "$d"
+EOF
+  cat >"$st/bin/mdir" <<'EOF'
+#!/bin/sh
+echo " Volume in drive : has no label"
+EOF
+  cat >"$st/bin/unsquashfs" <<'EOF'
+#!/bin/sh
+case $1 in
+  -lln)
+    cd "$KC_STUB/root" || exit 1
+    find . | LC_ALL=C sort | while IFS= read -r p; do
+      m=$(ls -ld "$p" | cut -c1-10)
+      case $p in .) n=squashfs-root ;; *) n=squashfs-root/${p#./} ;; esac
+      if [ -h "$p" ]; then
+        printf '%s 0/0 7 2026-09-04 15:16 %s -> %s\n' "$m" "$n" "$(readlink "$p")"
+      else
+        printf '%s 0/0 1 2026-09-04 15:16 %s\n' "$m" "$n"
+      fi
+    done
+    ;;
+  *) cp -RP "$KC_STUB/root" "$3" ;;
+esac
+EOF
+  chmod +x "$st/bin/mcopy" "$st/bin/mdir" "$st/bin/unsquashfs" || exit 2
+  # The pristine tree: the root the image has (BusyBox, keepcrypt-pi, the loader and libraries as
+  # the getrandom control, the overlay's inittab and fstab, os-release, the mount points, /tmp
+  # sticky) and partition 1's seven files (the board's cmdline.txt and config.txt, the rest text).
+  r=$st/tree/root
+  mkdir -p "$r/bin" "$r/dev" "$r/etc" "$r/lib" "$r/mnt/usb" "$r/proc" "$r/run" "$r/sys" "$r/tmp" "$r/usr/bin" "$r/usr/lib" || exit 2
+  chmod 1777 "$r/tmp" || exit 2
+  cp "$st/elf/getrandom.so" "$r/bin/busybox" && ln -s busybox "$r/bin/mount" || exit 2
+  printf '%s\n' "$inittab_lines" >"$r/etc/inittab" && cp "$here/../pi/os/board/pizero/rootfs-overlay/etc/fstab" "$r/etc/fstab" || exit 2
+  cp "$st/elf/getrandom.so" "$r/lib/ld-linux-armhf.so.3" && cp "$st/elf/getrandom.so" "$r/lib/libc.so.6" || exit 2
+  cp "$st/elf/getrandom.so" "$r/usr/bin/keepcrypt-pi" || exit 2
+  echo 'NAME=Buildroot' >"$r/usr/lib/os-release" && ln -s ../usr/lib/os-release "$r/etc/os-release" || exit 2
+  b=$st/tree/boot
+  for f in bootcode.bin start.elf fixup.dat zImage bcm2708-rpi-zero.dtb; do echo "$f" >"$b/$f" || exit 2; done
+  cp "$here/../pi/os/board/pizero/cmdline.txt" "$here/../pi/os/board/pizero/config.txt" "$b/" || exit 2
+  # The kernel config: the fragment's required options alone, so it passes the fragment's rules.
+  sed -n 's/^\(CONFIG_[A-Za-z0-9_]*=y\)$/\1/p' "$here/../pi/os/board/pizero/linux.fragment" >"$st/linux.config" || exit 2
+  fraglists=$st
+  fragment_lists "$here/../pi/os/board/pizero/linux.fragment" "$st/required" "$st/forbidden" --selftest
+  img=$a/tools.img
+  opath=$PATH
+  PATH=$st/bin:$PATH
+  stub_tree clean
+  stub_case clean ''
+  # The lists.
+  stub_tree boot-list
+  sha=$(si_lists "$img" "$tree/expected" "$kc")
+  grep -v '^/zImage ' "$tree/expected/boot.list" >"$tree/boot.list" && mv "$tree/boot.list" "$tree/expected/boot.list" || exit 2
+  sicase image-stub-boot-list-differs "List: $tree/expected/boot.list: differs from the image's boot file list" "$img" "$tree/expected" "$kc" "$sha"
+  stub_tree root-list
+  sha=$(si_lists "$img" "$tree/expected" "$kc")
+  echo '/etc/kc-canary -rw-r--r--' >>"$tree/expected/root.list" || exit 2
+  sicase image-stub-root-list-differs "List: $tree/expected/root.list: differs from the image's root file list" "$img" "$tree/expected" "$kc" "$sha"
+  stub_tree imports
+  sha=$(si_lists "$img" "$tree/expected" "$kc")
+  echo 'U rand' >>"$tree/expected/keepcrypt-pi.imports" || exit 2
+  sicase image-stub-imports-differ "Binary: /usr/bin/keepcrypt-pi: imports differ from $tree/expected/keepcrypt-pi.imports" "$img" "$tree/expected" "$kc" "$sha"
+  # The deny list, with the lists remade from the mutated tree.
+  stub_tree sh
+  ln -s busybox "$tree/root/bin/sh" || exit 2
+  stub_case bin-sh 'Deny: /bin/sh: a shell or login program, sh'
+  stub_tree link-to-ash
+  ln -s /bin/ash "$tree/root/usr/bin/kc-canary" || exit 2
+  stub_case link-to-a-shell 'Deny: /usr/bin/kc-canary: a link to a shell or login program, /bin/ash'
+  stub_tree setuid
+  chmod u+s "$tree/root/bin/busybox" || exit 2
+  stub_case setuid-busybox 'Deny: /bin/busybox: setuid, setgid or sticky mode -rwsr-xr-x'
+  stub_tree sticky
+  chmod 1755 "$tree/root/run" || exit 2
+  stub_case sticky-run 'Deny: /run: setuid, setgid or sticky mode drwxr-xr-t'
+  stub_tree modules
+  mkdir "$tree/root/lib/modules" || exit 2
+  stub_case lib-modules 'Deny: /lib/modules: kernel modules'
+  stub_tree init-d
+  mkdir "$tree/root/etc/init.d" || exit 2
+  stub_case etc-init-d 'Deny: /etc/init.d: start-up scripts'
+  stub_tree age
+  echo x >"$tree/root/etc/kc-canary.age" || exit 2
+  stub_case age-file 'Deny: /etc/kc-canary.age: looks like a seed or backup file'
+  stub_tree backup
+  echo x >"$tree/root/usr/lib/Backup-words.txt" || exit 2
+  stub_case backup-file 'Deny: /usr/lib/Backup-words.txt: looks like a seed or backup file'
+  # Partition 1.
+  stub_tree start-cd
+  echo s >"$tree/boot/start_cd.elf" || exit 2
+  stub_case start-cd-elf 'Boot: partition-1: holds start.elf, start_cd.elf, not exactly start.elf'
+  stub_tree no-fixup
+  rm "$tree/boot/fixup.dat" || exit 2
+  stub_case no-fixup-dat 'Boot: partition-1: holds no fixup*.dat, not exactly fixup.dat'
+  stub_tree console
+  echo 'root=/dev/mmcblk0p2 rootfstype=squashfs ro rootwait panic=0 init_on_free=1 quiet loglevel=0 console=ttyAMA0,115200' >"$tree/boot/cmdline.txt" || exit 2
+  stub_case console-in-cmdline 'Boot: partition-1:/cmdline.txt: differs from pi/os/board/pizero/cmdline.txt'
+  stub_tree gpu-mem
+  echo 'gpu_mem=16' >>"$tree/boot/config.txt" || exit 2
+  stub_case gpu-mem-16-config 'Boot: partition-1:/config.txt: differs from pi/os/board/pizero/config.txt'
+  # The inittab.
+  stub_tree inittab
+  printf '%s\n' '::sysinit:/bin/mount -a' '::respawn:/usr/bin/keepcrypt-pi' >"$tree/root/etc/inittab" || exit 2
+  stub_case inittab-respawn 'Inittab: /etc/inittab: is not exactly the three lines'
+  stub_tree inittab-link
+  rm "$tree/root/etc/inittab" && ln -s ../usr/lib/os-release "$tree/root/etc/inittab" || exit 2
+  stub_case inittab-symlink 'Inittab: /etc/inittab: is a symlink, not a file'
+  # The kernel config: one line off expected/linux.config (which stays the pristine one), then
+  # mutations that expected/linux.config follows.
+  stub_tree kconfig-off
+  { cat "$st/linux.config"; echo '# one line off (selftest)'; } >"$tree/linux.config" || exit 2
+  sha=$(si_lists "$img" "$tree/expected" "$kc")
+  sicase image-stub-kconfig-one-line-off "Kconfig: $tree/linux.config: differs from $tree/expected/linux.config" "$img" "$tree/expected" "$tree/linux.config" "$sha"
+  stub_tree kconfig-net
+  { cat "$st/linux.config"; echo 'CONFIG_NET=y'; } >"$tree/linux.config" && kc=$tree/linux.config || exit 2
+  stub_case kconfig-net "Kconfig: $tree/linux.config: forbidden option CONFIG_NET is set (=y)"
+  stub_tree kconfig-module
+  { cat "$st/linux.config"; echo 'CONFIG_USB_SERIAL=m'; } >"$tree/linux.config" && kc=$tree/linux.config || exit 2
+  stub_case kconfig-forbidden-module "Kconfig: $tree/linux.config: forbidden option CONFIG_USB_SERIAL is set (=m)"
+  stub_tree kconfig-required
+  grep -v '^CONFIG_SPI_SPIDEV=y$' "$st/linux.config" >"$tree/linux.config" && kc=$tree/linux.config || exit 2
+  stub_case kconfig-missing-required "Kconfig: $tree/linux.config: required option CONFIG_SPI_SPIDEV is not =y"
+  stub_tree kconfig-hwrng
+  { cat "$st/linux.config"; echo 'CONFIG_HW_RANDOM_CANARY=y'; } >"$tree/linux.config" && kc=$tree/linux.config || exit 2
+  stub_case kconfig-second-hwrng "Kconfig: $tree/linux.config: a hwrng driver other than BCM2835 is set: CONFIG_HW_RANDOM_CANARY=y"
+  stub_tree required-drift
+  sha=$(si_lists "$img" "$tree/expected" "$kc")
+  grep -v '^CONFIG_TTY$' "$st/required" >"$tree/expected/kconfig-required" || exit 2
+  sicase image-stub-kconfig-required-list-drift "Kconfig: $tree/expected/kconfig-required: does not equal the CONFIG_X=y lines" "$img" "$tree/expected" "$kc" "$sha"
+  stub_tree forbidden-drift
+  sha=$(si_lists "$img" "$tree/expected" "$kc")
+  echo CONFIG_KC_CANARY >>"$tree/expected/kconfig-forbidden" || exit 2
+  sicase image-stub-kconfig-forbidden-list-drift "Kconfig: $tree/expected/kconfig-forbidden: does not equal the \"# CONFIG_X is not set\" lines" "$img" "$tree/expected" "$kc" "$sha"
+  # Bytes: a marker in a boot file, in a root file and in the raw image; the test key in a file.
+  stub_tree marker-boot
+  echo KC_SIMULATOR_DO_NOT_SHIP >>"$tree/boot/zImage" || exit 2
+  stub_case marker-in-boot-file 'Marker: partition-1:/zImage: KC_SIMULATOR_DO_NOT_SHIP'
+  stub_tree marker-root
+  echo KC_TEST_REGISTRY_DO_NOT_SHIP >>"$tree/root/usr/lib/os-release" || exit 2
+  stub_case marker-in-root-file 'Marker: /usr/lib/os-release: KC_TEST_REGISTRY_DO_NOT_SHIP'
+  stub_tree marker-raw
+  cp "$img" "$tree/raw.img" && printf KC_TEST_SOURCE_DO_NOT_SHIP | dd of="$tree/raw.img" bs=512 seek=7 conv=notrunc 2>/dev/null || exit 2
+  sha=$(si_lists "$tree/raw.img" "$tree/expected" "$kc")
+  sicase image-stub-marker-in-raw-image "Marker: $tree/raw.img: KC_TEST_SOURCE_DO_NOT_SHIP" "$tree/raw.img" "$tree/expected" "$kc" "$sha"
+  stub_tree testkey
+  write_testkey "$tree/root/etc/kc-canary.bin"
+  stub_case test-key-file "TestKey: /etc/kc-canary.bin: the test registry public key $testkey"
+  # keepcrypt-pi: the hash, a stripped file, the fallback's device path, the simulator's name;
+  # the other ELF files: a stripped import of rand, a stripped static file.
+  stub_tree hash
+  stub_case wrong-binary-hash 'Binary: /usr/bin/keepcrypt-pi: SHA-256 ' "$zero"
+  stub_tree stripped
+  "$bin/llvm-objcopy" --strip-all "$tree/root/usr/bin/keepcrypt-pi" || exit 2
+  stub_case stripped-keepcrypt-pi 'Format: /usr/bin/keepcrypt-pi: a stripped file with no symbol table (.symtab)'
+  stub_tree urandom
+  printf '/dev/urandom' >>"$tree/root/usr/bin/keepcrypt-pi" || exit 2
+  stub_case urandom-in-keepcrypt-pi 'StdRandom: /usr/bin/keepcrypt-pi: byte string /dev/urandom'
+  stub_tree sim
+  cp "$st/elf/sim.so" "$tree/root/usr/bin/keepcrypt-pi" || exit 2
+  stub_case simulator-symbol-in-keepcrypt-pi 'Binary: /usr/bin/keepcrypt-pi: names the simulator crate: symbol keepcrypt_pi_sim_hwrng'
+  stub_tree rand
+  cp "$st/elf/rand-stripped.so" "$tree/root/lib/libkc-canary.so.1" || exit 2
+  stub_case stripped-elf-importing-rand 'Symbol: /lib/libkc-canary.so.1: undefined rand'
+  stub_tree static
+  cp "$st/elf/static-stripped" "$tree/root/usr/bin/kc-canary" || exit 2
+  stub_case stripped-static-elf 'Format: /usr/bin/kc-canary: an ELF with no dynamic symbol table'
+  PATH=$opath
+  unset KC_STUB
+}
+
 # --- Artifact selftest -------------------------------------------------------------------------
 
 # aexpect NAME WANT-EXIT WANT-HITS TARGET FILE...: run the artifact scan in a new process. The exit
@@ -2284,13 +3516,7 @@ Symbol: $o.o: rand-family symbol $crate::rngs::next_u32" "$t" "$o.o"
     aexpect "artifact-marker-${m%%:*}-text" 1 "Marker: $mf: ${m#*:}
 Format: $mf: not an ELF, Mach-O or ar file, so its symbols cannot be checked" "$t" "$mf"
   done
-  octal=
-  rest=$testkey
-  while [ -n "$rest" ]; do
-    octal=$octal$(printf '\\%03o' "0x${rest%"${rest#??}"}")
-    rest=${rest#??}
-  done
-  printf "x$octal\n" >"$a/test-key.bin" || exit 2
+  write_testkey "$a/test-key.bin"
   aexpect 'artifact-test-key-bytes' 1 "TestKey: $a/test-key.bin: the test registry public key $testkey
 Format: $a/test-key.bin: not an ELF, Mach-O or ar file, so its symbols cannot be checked" "$t" "$a/test-key.bin"
   # The device files std's fallback reads, as bytes in any file (M4 group 12).
@@ -2313,6 +3539,9 @@ case ${1-} in
   --artifact) shift; [ $# -ge 1 ] || { usage >&2; exit 2; }; artifact "$@" ;;
   --workflows) shift; [ $# -eq 1 ] || { usage >&2; exit 2; }; workflows "$1" ;;
   --image-lists) shift; [ $# -eq 2 ] || { usage >&2; exit 2; }; image_lists "$1" "$2" ;;
+  --image) shift; [ $# -eq 4 ] || { usage >&2; exit 2; }; image_scan "$1" "$2" "$3" "$4" ;;
+  --selftest-image) shift; [ $# -eq 2 ] || { usage >&2; exit 2; }; selftest_image "$1" "$2" ;;
+  --os-config) shift; [ $# -eq 1 ] || { usage >&2; exit 2; }; os_config "$1" ;;
 esac
 
 case $# in

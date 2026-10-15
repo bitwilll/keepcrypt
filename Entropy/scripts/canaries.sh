@@ -1116,6 +1116,35 @@ need 'git diff --quiet "$base" ${{ github.event.pull_request.head.sha }}'
 need "7 hit(s) in 1 workflow(s)"
 verdict
 
+# The OS configuration check (tasks/todo.md, M4 groups 11 and 13; commit 17a): a temp copy of
+# the clean fixture, scripts/testdata/os-config/clean-pizero, must pass banned-api-check.sh
+# --os-config (the control), and three copies with one change each must fail it with exactly the
+# one hit of the rule broken: the inittab's wait line made a respawn line, a console= word in
+# cmdline.txt, and an expected/kconfig-forbidden that no longer equals the fragment's "is not set"
+# lines. Text only, so these run on every machine, as the gates job does.
+osc="$work/os-config"
+cp -R "$root/scripts/testdata/os-config/clean-pizero" "$osc" || exit 1
+static_check "os-config: the clean fixture passes (control)" sh "$root/scripts/banned-api-check.sh" --os-config "$osc"
+# osconfig_canary NAME FILE OLD NEW CATEGORY: a fresh copy of the clean fixture with OLD replaced
+# by NEW in FILE must fail --os-config with exactly one hit, of CATEGORY, naming FILE.
+osconfig_canary() {
+    name=$1
+    oc="$work/os-config-$name"
+    rm -rf "$oc"
+    cp -R "$root/scripts/testdata/os-config/clean-pizero" "$oc" || exit 1
+    replace "$oc/$2" "$3" "$4"
+    expect_failure "$name" sh "$root/scripts/banned-api-check.sh" --os-config "$oc"
+    need "$5: $oc/$2"
+    need "banned-api-check --os-config $oc: 1 hit(s)"
+    verdict
+}
+osconfig_canary os-config-inittab board/pizero/rootfs-overlay/etc/inittab \
+    '::wait:/usr/bin/keepcrypt-pi' '::respawn:/usr/bin/keepcrypt-pi' Inittab
+osconfig_canary os-config-cmdline-console board/pizero/cmdline.txt \
+    'rootwait panic=0' 'rootwait console=ttyAMA0,115200 panic=0' Cmdline
+osconfig_canary os-config-kconfig-forbidden-drift expected/kconfig-forbidden \
+    'CONFIG_DEVMEM' 'CONFIG_DEVPORT' Kconfig
+
 # The release-artifact scan (CLAUDE.md rule 10; tasks/todo.md, M1 group 11 and Q3, Q8): the
 # release probe (core/examples/release_probe.rs) and core's rlib, built in release mode for the
 # host three ways, one package at a time (-p), in their own target directory. On a Linux host the
@@ -1219,7 +1248,7 @@ cp "$root/core/examples/release_probe.rs" "$tmp/core/examples/release_probe.rs" 
 
 # The number of checks above, pinned, so a canary that is deleted, or skipped by a broken branch,
 # turns CI red too. A real change to the canaries updates this pin in the same reviewed change.
-want_checks=69
+want_checks=73
 if [ "$checks" -ne "$want_checks" ]; then
     echo "FAIL: $checks checks ran; scripts/canaries.sh pins $want_checks"
     status=1

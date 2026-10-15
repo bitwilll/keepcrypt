@@ -8058,6 +8058,26 @@ stale (Q43 (d)).
   - `expected/linux.config` has every required option at `=y`, no forbidden option at `y` or `m`, and exactly one
     `CONFIG_HW_RANDOM_*` driver, BCM2835;
   - BusyBox enables only `init` and `mount`.
+
+  Proof (17a, the mode; the `gates` step and the real `pi/os` run are 17b's, after commit 16 adds `expected/`):
+  `scripts/banned-api-check.sh --os-config OS_DIR` checks the six board files and the three `expected/` files named
+  above (a missing `expected/`, or a missing or empty file, is exit 2: `--os-config pi/os` exits 2 today, naming the
+  missing `expected/`), and prints `<Category>: <file>[:<line>]: <detail>` per hit (Inittab, Fstab, Cmdline, ConfigTxt,
+  Kconfig, BusyBox). Readings: fstab's "options" are ro, nosuid, nodev, noexec on every proc and sysfs line, nosuid,
+  nodev, noexec and a size= on every tmpfs line, no line of another type and at least one line; "BusyBox enables
+  only init and mount" is CONFIG_INIT, FEATURE_USE_INITTAB, MOUNT, FEATURE_MOUNT_FSTAB, FEATURE_MOUNT_FLAGS,
+  SH_IS_NONE and BASH_IS_NONE at =y (the two FEATURE_MOUNT_* and FEATURE_USE_INITTAB added to the lead's four, since
+  without them the inittab and fstab this mode checks are never read), none of a committed list of 35 applet
+  symbols at =y, and no other SH_IS_*/BASH_IS_* selector at =y; `expected/kconfig-required` and `kconfig-forbidden`
+  must equal the fragment's `=y` and `is not set` symbols in its order, so the three cannot drift. Fixtures in
+  `scripts/testdata/os-config/`: `clean-pizero` (the real inittab, fstab, cmdline.txt and config.txt; a BusyBox
+  config of the lines read; a 12-line fragment and a matching `expected/`) passes, and 28 `osconfig-<category>-*`
+  fixtures, each one file copied over a copy of it, fail with exactly one hit of that category (two inittab, four
+  fstab, four cmdline, six config.txt, six kconfig, six BusyBox); five built-in errors exit 2 (no `expected/`, a
+  missing fstab, an empty `kconfig-required`, a fragment line of another kind, a path that is not a directory).
+  `--selftest` 682/0 under sh and dash; the gate clean on the tree (235 files); canaries 73/73 with the four
+  `--os-config` canaries (the clean copy as the control, then the inittab's wait line made respawn, a `console=` in
+  cmdline.txt and a `kconfig-forbidden` that no longer equals the fragment, each exactly one hit of its rule).
 - [ ] The existing rules scan `pi/os/` files from their first commit. A false hit in a kernel or BusyBox config gets a
   reviewed per-path rule with fixtures, never a blanket exclude.
 
@@ -8177,6 +8197,14 @@ stale (Q43 (d)).
   - it runs `kconfig.sh` after `make toolchain linux-patch` and before the full build (as built:
     `make toolchain host-flex host-bison linux-patch`, since Kconfig's conf needs flex and bison; 14g);
   - `repro-check` builds twice, in fresh output directories at the same path, and compares the results.
+
+  Proof (17a, the `scan` target alone): `make -C pi/os scan` refuses to run without `$(OUT)/images/$(IMAGE)` or
+  with other than one `$(OUT)/build/linux-*/.config` (it never rebuilds: "after image" read as "run after make
+  image"), then runs `--image-lists` with `$(OUT)/host/bin` first on PATH to take the binary's SHA-256 and `--image
+  $(OUT)/images/$(IMAGE) $(OS)/expected <.config> <hash>`. Run on this Mac from a copy of `pi/os` at a space-free
+  path against a stub `KC_WORK` (stub mcopy, mdir and unsquashfs in `out/host/bin`, a 16-sector image with the
+  SquashFS magic, the fragment's `=y` lines as the `.config`, an `expected/` made from `--image-lists`): clean, exit
+  0, "3 other ELF file(s)"; with a `/bin/sh` link planted in the stub root, exit 1 with the List and Deny hits.
 - [ ] The kernel config is an allow-list (Q37 (b)):
   - `kconfig.sh` (committed) runs in the pinned kernel tree: `bcmrpi_defconfig`; every `=m` line turned off and
     `MODULES` off; then `linux.fragment`; then `olddefconfig`. Its output is the build's custom kernel config.
@@ -8370,6 +8398,30 @@ stale (Q43 (d)).
   6. `cmdline.txt` and `config.txt` equal the board files byte for byte, and the inittab equals Q35's.
   7. KCONFIG equals `expected/linux.config` exactly; it has every required option at `=y`, no forbidden option at `y` or
      `m`, and exactly one `CONFIG_HW_RANDOM_*` driver, BCM2835.
+
+  Proof (17a, the mode; its run on a real image is CI's, 17b): `--image IMG EXPECTED_DIR KCONFIG BIN_SHA256` reuses
+  `image_unpack` and the lists mode's three list builders, then applies steps 2-7 as `List`, `Deny`, `Boot`,
+  `Inittab`, `Kconfig`, `Marker`/`TestKey` (the raw image, every partition-1 file, every root file), `Format`/`Symbol`
+  (every other ELF of the root, found by its magic: dynamic symbols present, no undefined banned RNG import, no
+  rand-crate or fallback symbol) and `Binary` (keepcrypt-pi under the whole `--artifact` rule set for
+  arm-unknown-linux-gnueabihf through the factored `artifact_file`, Q52's passengers included; no `keepcrypt_pi_sim`
+  symbol or byte string, one hit; imports equal to `expected/keepcrypt-pi.imports`; the SHA-256). The deny list
+  reads "any seed file" as a name ending `.age` or holding seed, backup or mnemonic, and "any setuid file" as any
+  s or t among the nine permission letters but `/tmp`'s `drwxrwxrwt`. Exit 2 for a BIN_SHA256 that is not 64 hex
+  digits, a missing EXPECTED_DIR, a missing or empty file in it, an unreadable KCONFIG, a missing board file, the
+  lists mode's layout refusals and a missing host tool, so nothing passes vacuously. Built-in `--selftest` cases:
+  nine refusals (usage, the SHA-256, the directory, a missing and an empty list, KCONFIG, the image, the magic, no
+  mcopy; three more for `--selftest-image`), then the scan on a stub image (stub mcopy, mdir and unsquashfs driven by
+  `KC_STUB`, the real toolchain, Pi-target ELF files built from `scripts/testdata/image/controls.rs` with rustc,
+  rust-lld and llvm-objcopy): the stub tree passes against lists made from it, and 34 mutations each fail with
+  exactly the one named hit (the three lists; `/bin/sh`, a link to `/bin/ash`, a setuid busybox, a sticky `/run`,
+  `/lib/modules`, `/etc/init.d`, a `.age` and a `Backup-*` file; `start_cd.elf`, no `fixup.dat`, a `console=` and
+  a `gpu_mem=16`; a respawn inittab and a symlinked one; the kernel config one line off, `CONFIG_NET=y`,
+  `CONFIG_USB_SERIAL=m`, a missing required option, a second hwrng driver, each list drifting from the fragment; a
+  marker in a boot file, in a root file and in the raw image, the test key; the wrong hash, a stripped keepcrypt-pi,
+  `/dev/urandom` in it, the simulator's symbol in it, a stripped library importing rand, a stripped static file).
+  `--selftest` 682/0 under sh and dash. No mtools or squashfs-tools here: the real tools run first in CI's image
+  legs.
 - [ ] `--selftest-image`, run by the image workflow because it has the host tools. Each of these positive controls must
   fail:
   - a marker planted in a text file;
@@ -8390,6 +8442,20 @@ stale (Q43 (d)).
   The clean fixture must pass.
   Proof: `--selftest-image` in every image run from commit 17; `--image` clean on the gate image, with its output
   pasted.
+  Proof (17a, the mode; its first run is CI's, in both legs' "Scan selftest" step after "Hash and list"): the
+  built image is the clean fixture: a stand-in `expected/` comes from `--image-lists`' own output on it plus the
+  fragment's two lists, and `--image` must pass (the control); then the 14 controls above, each a mutation of the
+  image (the root unpacked afresh with unsquashfs, edited, repacked with `mksquashfs -no-xattrs`; partition 1
+  copied and a file replaced with `mcopy -o`; the pieces under a fresh `image_mbr` sized to them, partition 1 at
+  the image's first sector), of KCONFIG or of BIN_SHA256, must fail with exactly the one named hit: a mutated
+  root's own lists stand in for `expected/`, a mutated KCONFIG is also the stand-in `linux.config` except in the
+  one-line-off case, and the two hwrng-driver control adds a `CONFIG_HW_RANDOM_CANARY=y` so the forbidden rule does
+  not fire with it. The ELF controls (a stripped shared object importing rand with dynamic symbols only, a
+  stripped static executable) are built from `scripts/testdata/image/controls.rs` with rustc `--emit obj`,
+  rust-lld and llvm-objcopy alone, so no cross prefix is passed; a missing host tool (mcopy, mdir, unsquashfs,
+  mksquashfs) or a control that cannot be built is exit 2. PASS or FAIL per control and a count; exit 1 on any
+  FAIL. Here only its refusals ran (`--selftest`); the same mutations ran on the stub image through `--image`'s
+  built-in cases.
 
 **15. The image workflow (Q38 (a)-(c))**
 - [ ] `entropy-pi-image.yml` ("Entropy Pi image"), not a required check (commit 15).
@@ -8430,6 +8496,11 @@ stale (Q43 (d)).
     3. "hash and list": set the job outputs (image SHA-256, per-partition SHA-256s, the rootfs prefix from
        `rootfs-prefix.py`, the binary's SHA-256) and print `--image-lists`;
     4. "scan" (from commit 17): `--selftest-image`, then `--image` against the committed `expected/`.
+       Proof (17a, the first half): the shared step "Scan selftest (--selftest-image on this build)" runs after
+       "Hash and list" and before the upload, on the one image and the one `.config` of the build, with
+       `$KC_WORK/out/host/bin` first on PATH and no cross prefix (the controls need none); `--workflows` stays clean
+       on both workflows under sh and dash, `ruby -ryaml` parses the file (10 anchored steps in each leg), the job
+       names are unchanged, and the upload and the summary's "not scanned" text wait for 17b.
   - **`pi-image reproducible (a = b)`**: `needs` both legs with `if: ${{ !cancelled() }}`, so it runs even when a scan
     fails; it fails unless both image hashes are non-empty and equal, then writes the commit, the image SHA-256, the
     rootfs prefix and the binary SHA-256 to the step summary.

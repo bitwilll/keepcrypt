@@ -1,0 +1,4 @@
+::sysinit:/bin/mount -a
+::wait:/usr/bin/keepcrypt-pi
+::once:/usr/bin/keepcrypt-pi --stopped
+::ctrlaltdel:/sbin/reboot

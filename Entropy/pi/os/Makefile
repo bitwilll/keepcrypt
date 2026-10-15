@@ -11,6 +11,11 @@
 #                                       missing download fails it), and print its SHA-256
 #   make -C Entropy/pi/os repro-check   build it twice in fresh output directories at the same
 #                                       path and compare the two images
+#   make -C Entropy/pi/os scan          after make image: list the built image (banned-api-check.sh
+#                                       --image-lists, which gives the binary's SHA-256), then scan
+#                                       it against expected/ (--image, with the kernel's .config and
+#                                       that hash), with the build's host tools first on PATH; it
+#                                       never rebuilds, and refuses to run without an image
 #
 # KC_WORK (default /kc-work) holds Buildroot, its downloads, the crates and the build. It must be
 # an absolute path outside Entropy/ with no spaces, and the same in every build: Buildroot's
@@ -87,7 +92,7 @@ define print-time
 	@printf 'pi/os: SOURCE_DATE_EPOCH=%s TZ=%s KC_WORK=%s\n' "$$SOURCE_DATE_EPOCH" "$$TZ" "$(KC_WORK)"
 endef
 
-.PHONY: source image repro-check
+.PHONY: source image repro-check scan
 
 source:
 	$(print-time)
@@ -131,3 +136,15 @@ repro-check:
 	sha256sum $(KC_WORK)/repro/first.img $(OUT)/images/$(IMAGE)
 	cmp $(KC_WORK)/repro/first.img $(OUT)/images/$(IMAGE)
 	@echo 'pi/os: both builds gave the same image'
+
+# The image scan (tasks/todo.md, M4 groups 14 and 15; Q38 (d)) on the image make image left in
+# $(OUT): the kernel's .config is the one under $(OUT)/build/linux-*/, and the binary's SHA-256 is
+# the one --image-lists prints for the image's own /usr/bin/keepcrypt-pi.
+scan:
+	test -f $(OUT)/images/$(IMAGE) || { echo 'pi/os: no $(IMAGE) in $(OUT)/images; run make image first' >&2; exit 1; }
+	set -- $(OUT)/build/linux-*/.config && [ $$# -eq 1 ] && [ -f "$$1" ] || \
+		{ echo 'pi/os: not exactly one kernel .config under $(OUT)/build/linux-*/' >&2; exit 1; } && \
+	hash=$$(PATH="$(OUT)/host/bin:$$PATH" sh $(ENTROPY)/scripts/banned-api-check.sh --image-lists $(OUT)/images/$(IMAGE) "$$1" | \
+		sed -n 's/^sha256 keepcrypt-pi \([0-9a-f]\{64\}\)$$/\1/p') && [ -n "$$hash" ] || \
+		{ echo 'pi/os: --image-lists gave no keepcrypt-pi SHA-256' >&2; exit 1; } && \
+	PATH="$(OUT)/host/bin:$$PATH" sh $(ENTROPY)/scripts/banned-api-check.sh --image $(OUT)/images/$(IMAGE) $(OS)/expected "$$1" "$$hash"

@@ -9,7 +9,7 @@
 # Not one of the 14 required checks (Q38 (b)), so path filters are safe: a skipped run never
 # leaves a required check pending. The rule instead: no PR that changes the image merges without
 # a green run of this workflow on its final head commit, recorded in tasks/todo.md's Review.
-# Until commit 17 adds the scan (banned-api-check.sh --image against pi/os/expected/), the image
+# Until commit 17b adds the scan (banned-api-check.sh --image against pi/os/expected/), the image
 # is for the owner's boot check (H1a) only, and the summary says so.
 #
 # Hardening, as in entropy-ci.yml, whose gates job checks this file too (banned-api-check.sh
@@ -171,7 +171,22 @@ jobs:
             echo "prefix=$prefix"
             echo "binary=$binary"
           } | tee -a "$GITHUB_OUTPUT"
-      # Leg a only. Until commit 17's scan, for the owner's boot check (H1a) only.
+      # The image scan's own positive controls on this build (banned-api-check.sh --selftest-image;
+      # tasks/todo.md, M4 group 14): the unchanged image must pass --image against the lists made
+      # from it, and fourteen mutations of it (a planted marker, the test key, a shell, stripped
+      # and RNG-importing ELF files, a changed cmdline.txt, config.txt or kernel config, a wrong
+      # binary hash) must each fail for the named rule. The ELF controls are built with the pinned
+      # toolchain alone (rustc, rust-lld, llvm-objcopy), so no cross prefix is passed. The scan
+      # against pi/os/expected/ (--image) comes with commit 17b, once commit 16 has the lists.
+      - name: Scan selftest (--selftest-image on this build)
+        run: |
+          shopt -s nullglob
+          imgs=("$KC_WORK"/out/images/keepcrypt-pi-*.img)
+          configs=("$KC_WORK"/out/build/linux-*/.config)
+          [ "${#imgs[@]}" -eq 1 ] && [ "${#configs[@]}" -eq 1 ] || { echo "FAIL: not exactly one image and one .config" >&2; exit 1; }
+          PATH="$KC_WORK/out/host/bin:$PATH" scripts/banned-api-check.sh --selftest-image "${imgs[0]}" "${configs[0]}"
+      # Leg a only. Until commit 17b's scan against pi/os/expected/, for the owner's boot check
+      # (H1a) only.
       - name: Upload the image (leg a; boot check only, not scanned)
         if: env.LEG == 'a'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
