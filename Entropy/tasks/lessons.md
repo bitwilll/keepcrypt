@@ -34,3 +34,15 @@ device, but the Pi Zero has no real-time clock.
 **Root Cause:** A phone assumption was applied to the Pi without checking the hardware.
 **Rule:** Check every time-based rule against each target: phones warn by date; the Pi shows the
 date and asks the user to confirm it.
+
+## Boot-path changes ship proven, not flagged (2026-10-15)
+**Mistake:** Commit 15l removed the kernel's TTY layer, leaving the image with no console device, and the report to
+the owner named "init copes with no console, but only your boot check proves it" as a risk for H1a to settle. The
+owner had to ask for it to be fixed.
+**Root Cause:** The removal was judged option by option (prompt visible, no selector, nothing uses it) without
+asking what PID 1 and the firmware do on the first boot without a console; "the hardware test will tell" was
+accepted for a question the pinned sources answer.
+**Rule:** A change on the boot path (kernel options, init, the firmware's start-up, the image layout) ships only
+with every failure mode it introduces resolved first: read the pinned source of each component that sees the
+change, or take the conservative option, and put the proof in the commit and todo.md. A known unproven risk is never
+handed to the owner's hardware session.

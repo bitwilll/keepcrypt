@@ -42,6 +42,15 @@ CONFIG_INIT_ON_FREE_DEFAULT_ON=y
 # The ACT LED's normal pattern under Linux, which the first boot check reads.
 CONFIG_LEDS_GPIO=y
 CONFIG_LEDS_TRIGGER_ACTPWR=y
+# The console device, with no output path (15m). ttynull registers as a console with a tty binding;
+# with no console= on the command line and no UART driver to register the device tree's serial0,
+# printk's register_console makes the first such console the console device, so /dev/console
+# always opens: the kernel's console_on_rootfs gives init its standard files on it, and BusyBox
+# init's tcgetattr/tcsetattr and the firmware's standard files see an ordinary tty that discards
+# writes. Without a console device, init would start with its standard files closed and fall back
+# to /dev/null, a path the pinned sources also allow but that H1a would have been the first to run.
+CONFIG_TTY=y
+CONFIG_NULL_TTY=y
 
 # Forbidden.
 # No modules, no network, no USB gadget mode.
@@ -204,10 +213,12 @@ CONFIG_LEDS_TRIGGER_ACTPWR=y
 # CONFIG_PROC_PAGE_MONITOR is not set
 # CONFIG_PSTORE is not set
 # CONFIG_ALLOW_DEV_COREDUMP is not set
-# No TTY at all: no serial port driver, serial device bus, pseudo-terminals or line disciplines
-# (config.txt has enable_uart=0; init and keepcrypt-pi run with /dev/null as their standard files).
-# CONFIG_TTY is not set
+# No serial port driver (config.txt has enable_uart=0; without a UART driver the device tree's
+# stdout-path selects nothing), no serial device bus, no pseudo-terminals, no line-discipline
+# loading, no TIOCSTI, no /dev/ttyprintk: the only tty is ttynull (15m).
 # CONFIG_SERIAL_DEV_BUS is not set
+# CONFIG_SERIAL_NONSTANDARD is not set
+# CONFIG_LEGACY_PTYS is not set
 # CONFIG_SERIAL_8250 is not set
 # CONFIG_SERIAL_AMBA_PL011 is not set
 # CONFIG_LEGACY_TIOCSTI is not set

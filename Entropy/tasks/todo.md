@@ -8204,6 +8204,7 @@ stale (Q43 (d)).
     - hardening: `INIT_ON_FREE_DEFAULT_ON`;
     - the ACT LED's normal pattern under Linux, which H1a reads: `LEDS_GPIO`, `LEDS_TRIGGER_ACTPWR` (lead decision,
       2026-10-14).
+    - the console device: `TTY` and `NULL_TTY`, so `/dev/console` always opens, on a tty that discards writes (15m).
   - Forbidden at `y` or `m` (a second check behind the exact config):
     - `MODULES`, `NET`, `USB_GADGET`;
     - `DEVMEM`, `SWAP`, `ZSWAP`, `ZRAM`, `COREDUMP`;
@@ -8218,7 +8219,8 @@ stale (Q43 (d)).
     - every `*_PARTITION` except `MSDOS_PARTITION`;
     - every `HW_RANDOM_*` driver except BCM2835.
     - the 113 options the review of every `=y` line removed (15l), grouped by reason in `linux.fragment`: kernel
-      facilities nothing uses, debugging and symbol interfaces, the TTY layer and serial drivers, input, HID, CEC and
+      facilities nothing uses, debugging and symbol interfaces, the serial drivers, pseudo-terminals and line-discipline
+      loading (the TTY core stays, 15m), input, HID, CEC and
       framebuffer, hardware the Zero lacks or the image does not use (the Arasan SDIO host among them; the SD card is
       on sdhost), run-time code and device-tree loading, extra block-layer features, filesystems and formats beyond
       vfat and xz SquashFS, unused kernel crypto, LED triggers other than actpwr, and slab merging.
@@ -9131,6 +9133,25 @@ The PR is a draft from commit 1.
     warns and BusyBox init points its standard files at /dev/null, which devtmpfs provides. H1 repeats the boot
     check on this kernel. The keep groups are the basis of commit 16's review note (lead decision under the owner's
     standing instruction of 2026-10-15).
+    15m. pi/os, tasks/todo.md, tasks/lessons.md: the owner's correction of 15l's TTY removal ("fix the terminal
+    layer issue and make sure we have no risk regarding functions or failures"). The fragment requires `TTY` and
+    `NULL_TTY` and keeps every serial driver, `SERIAL_DEV_BUS`, `SERIAL_NONSTANDARD`, both PTY kinds,
+    `LDISC_AUTOLOAD`, `LEGACY_TIOCSTI` and `TTY_PRINTK` forbidden. Read in the pinned sources: ttynull registers a
+    console with a tty binding at init (drivers/tty/ttynull.c); `register_console` enables the first such console as
+    the console device when `preferred_console < 0` (kernel/printk/printk.c, `try_enable_default_console`), and
+    `preferred_console` is set only by `console=` (absent from cmdline.txt) or by `of_console_check`, which
+    serial_core.c calls when a UART port registers, and both UART drivers are forbidden, so the device tree's
+    `stdout-path = "serial0:115200n8"` (bcm270x.dtsi) selects nothing; `console_on_rootfs` (init/main.c) then opens
+    `/dev/console` and gives init its three standard files; `tty_open` returns ENODEV only when no console device
+    exists (drivers/tty/tty_io.c). BusyBox 1.38.0's init (the pinned tarball, hash checked): `console_init` with no
+    CONSOLE variable keeps those files, `VT_OPENQRY` fails on a non-VT tty so `log_console` becomes NULL and messages
+    go to stderr, `set_sane_term` returns when `tcgetattr` fails and otherwise sets ordinary control characters,
+    inittab entries with an empty terminal use init's files, and `FEATURE_INIT_SCTTY` is off. The firmware never
+    reads stdin or writes stdout or stderr (no `print`, `eprintln` or `isatty` in pi/app/src), its panic hook prints
+    nothing (linux.rs), and every failure parks on the panel. `/dev/null` comes from the memory devices
+    (drivers/char/mem.c) with or without TTY, so the no-console path 15l relied on was also sound, but it was
+    unproven when 15l shipped; 15m removes the dependence on it. The 15l image (7d96c29, both legs equal) is
+    superseded before any hardware session (lead decision under the owner's standing instruction of 2026-10-15).
 16. pi/os: `expected/` (lists and `linux.config`) from the run after H1a passes, reviewed line by line (group 15).
 17. scripts, .github, pi/os: `--image`, `--selftest-image` and `--os-config`, their fixtures and canaries; the scan step
     in both legs; `gates` runs `--os-config`; the Makefile's `scan` target, which runs `--image` (groups 11, 13, 14,
