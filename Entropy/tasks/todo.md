@@ -8491,7 +8491,7 @@ stale (Q43 (d)).
   `/dev/urandom` in it, the simulator's symbol in it, a stripped library importing rand, a stripped static file).
   `--selftest` 682/0 under sh and dash. No mtools or squashfs-tools here: the real tools run first in CI's image
   legs.
-- [ ] `--selftest-image`, run by the image workflow because it has the host tools. Each of these positive controls must
+- [x] `--selftest-image`, run by the image workflow because it has the host tools. Each of these positive controls must
   fail:
   - a marker planted in a text file;
   - a test-key file;
@@ -8513,6 +8513,12 @@ stale (Q43 (d)).
   The clean fixture must pass.
   Proof: `--selftest-image` in every image run from commit 17; `--image` clean on the gate image, with its output
   pasted.
+  Proof (17a, run 38747606208 on ba03201): both legs' "Scan selftest" step ran `--selftest-image` on the image they
+  had just built: the clean control passed (`--image` clean on the real image against the lists made from it), and
+  all 17 controls (the 14 above, 17a-g's two symbol controls and the test-key control counted apart) each failed for
+  the named rule, `selftest-image: 17 passed, 0 failed` in legs a and b. The image's SHA-256 stayed
+  `4b13c095f76c4a42efc67090fec96650d070a385bb8a58b4fd7067c0d936adde`, equal to run 38690004157's, so 17a changed no
+  image input and H1a's image is still the current one. `gates` ran in 9 min 59 s (Q31 (f)'s 12-minute budget).
   Proof (17a, the mode; its first run is CI's, in both legs' "Scan selftest" step after "Hash and list"): the
   built image is the clean fixture: a stand-in `expected/` comes from `--image-lists`' own output on it plus the
   fragment's two lists, and `--image` must pass (the control); then the 14 controls above, each a mutation of the
@@ -9360,6 +9366,8 @@ The PR is a draft from commit 1.
     17a-i. pi/os, tasks/todo.md: the Makefile's `scan` hashes the keepcrypt-pi cargo built, in the package's build
     directory, as BIN_SHA256, in place of `--image-lists`' hash of the image's own file, which `--image` compared with
     itself; it refuses to run without that file.
+    17a-j. scripts: `sicase`'s FAIL line prints the wanted exit code, 1 or 0, not 1 followed by the hit text (a
+    message only, found by the lead in the stage report).
 18. CLAUDE.md: Commands (group 18).
 
 **Stage E: hardware and review**
