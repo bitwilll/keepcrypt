@@ -8456,6 +8456,14 @@ stale (Q43 (d)).
   mksquashfs) or a control that cannot be built is exit 2. PASS or FAIL per control and a count; exit 1 on any
   FAIL. Here only its refusals ran (`--selftest`); the same mutations ran on the stub image through `--image`'s
   built-in cases.
+  Proof (review fix, 17a-b): stage D2a's recompute review found that a control that cannot be listed gave a FAIL,
+  not the exit 2 the header promises: `si_lists` calls `sifail` (exit 2) when `--image-lists` fails, but every caller
+  ran it as `sha=$(si_lists ...)`, where the exit ends the command substitution alone, so the parent went on with an
+  empty hash, `--image` refused it (exit 2) and `sicase` printed `FAIL ...: wanted exit 0 with no hit, got exit 2`
+  (reproduced on a copy of the script whose `si_lists` drops KCONFIG: the stub selftest printed that FAIL for
+  `image-stub-clean` and went on). Now every one of the 23 callers runs `sha=$(si_lists ...) || exit 2`, since the
+  assignment carries the substitution's status; the same copy now stops at `sifail`'s message with exit 2.
+  `--selftest` 682/0 under sh and dash.
 
 **15. The image workflow (Q38 (a)-(c))**
 - [ ] `entropy-pi-image.yml` ("Entropy Pi image"), not a required check (commit 15).
@@ -9244,6 +9252,9 @@ The PR is a draft from commit 1.
     `gates` are unchanged.
     17b (after 16): both legs run `--image` against the committed `expected/` before the upload, the upload runs only
     after the scan passes, the summary drops "Boot check only, not scanned", and `gates` runs `--os-config pi/os`.
+    Review fixes of 17a (stage D2a's review of 430678b..349c1b2), each with its proof under the item it amends:
+    17a-b. scripts: every `sha=$(si_lists ...)` carries `|| exit 2`, so a control that cannot be listed is exit 2, as
+    the header promises, not a FAIL of the scan on an empty hash (group 14, `--selftest-image`).
 18. CLAUDE.md: Commands (group 18).
 
 **Stage E: hardware and review**

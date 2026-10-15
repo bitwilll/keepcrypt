@@ -2502,7 +2502,9 @@ build_elf_controls() {
 # si_lists IMG DIR KCONFIG: a stand-in EXPECTED_DIR at DIR from --image-lists' own output on IMG
 # (its boot and root lists and import list, under their headings), KCONFIG as linux.config and the
 # fragment's two lists ($fraglists/required and forbidden). Prints the binary's SHA-256 from the
-# listing.
+# listing. Every caller runs it as sha=$(si_lists ...) || exit 2: sifail's exit 2 ends the command
+# substitution alone, and the assignment carries its status, so a control that cannot be listed
+# is exit 2 rather than a FAIL of the scan on an empty hash.
 si_lists() {
   lout=$(sh "$self" --image-lists "$1" "$3" 2>&1) || { printf '%s\n' "$lout" >&2; sifail "--image-lists failed on $1"; }
   mkdir -p "$2" || exit 2
@@ -2617,65 +2619,65 @@ selftest_image() {
   pass=0
   fail=0
   # The control: the image passes against its own lists.
-  sha=$(si_lists "$img" "$sw/clean" "$kconfig")
+  sha=$(si_lists "$img" "$sw/clean" "$kconfig") || exit 2
   sicase 'selftest-image-clean-image' '' "$img" "$sw/clean" "$kconfig" "$sha"
   # Mutations of the root (its lists stand in for expected/, so only the named rule can fail).
   si_root marker
   printf 'KC_TEST_SOURCE_DO_NOT_SHIP\n' >"$sw/marker/root/etc/kc-canary.txt" || exit 2
   si_image marker "$iw/p1.img" "$sw/marker/root"
-  sha=$(si_lists "$sw/marker.img" "$sw/marker/expected" "$kconfig")
+  sha=$(si_lists "$sw/marker.img" "$sw/marker/expected" "$kconfig") || exit 2
   sicase 'selftest-image-marker-in-a-text-file' 'Marker: /etc/kc-canary.txt: KC_TEST_SOURCE_DO_NOT_SHIP' \
     "$sw/marker.img" "$sw/marker/expected" "$kconfig" "$sha"
   si_root testkey
   write_testkey "$sw/testkey/root/etc/kc-canary.bin"
   si_image testkey "$iw/p1.img" "$sw/testkey/root"
-  sha=$(si_lists "$sw/testkey.img" "$sw/testkey/expected" "$kconfig")
+  sha=$(si_lists "$sw/testkey.img" "$sw/testkey/expected" "$kconfig") || exit 2
   sicase 'selftest-image-test-key-file' "TestKey: /etc/kc-canary.bin: the test registry public key $testkey" \
     "$sw/testkey.img" "$sw/testkey/expected" "$kconfig" "$sha"
   si_root rand
   cp "$sw/elf/rand-stripped.so" "$sw/rand/root/lib/libkc-canary.so.1" || exit 2
   si_image rand "$iw/p1.img" "$sw/rand/root"
-  sha=$(si_lists "$sw/rand.img" "$sw/rand/expected" "$kconfig")
+  sha=$(si_lists "$sw/rand.img" "$sw/rand/expected" "$kconfig") || exit 2
   sicase 'selftest-image-stripped-elf-importing-rand' 'Symbol: /lib/libkc-canary.so.1: undefined rand' \
     "$sw/rand.img" "$sw/rand/expected" "$kconfig" "$sha"
   si_root static
   cp "$sw/elf/static-stripped" "$sw/static/root/usr/bin/kc-canary" || exit 2
   si_image static "$iw/p1.img" "$sw/static/root"
-  sha=$(si_lists "$sw/static.img" "$sw/static/expected" "$kconfig")
+  sha=$(si_lists "$sw/static.img" "$sw/static/expected" "$kconfig") || exit 2
   sicase 'selftest-image-stripped-static-elf' 'Format: /usr/bin/kc-canary: an ELF with no dynamic symbol table' \
     "$sw/static.img" "$sw/static/expected" "$kconfig" "$sha"
   si_root sh
   ln -s busybox "$sw/sh/root/bin/sh" || exit 2
   si_image sh "$iw/p1.img" "$sw/sh/root"
-  sha=$(si_lists "$sw/sh.img" "$sw/sh/expected" "$kconfig")
+  sha=$(si_lists "$sw/sh.img" "$sw/sh/expected" "$kconfig") || exit 2
   sicase 'selftest-image-bin-sh' 'Deny: /bin/sh: a shell or login program, sh' \
     "$sw/sh.img" "$sw/sh/expected" "$kconfig" "$sha"
   si_root stripped
   "$bin/llvm-objcopy" --strip-all "$sw/stripped/root/usr/bin/keepcrypt-pi" || sifail 'llvm-objcopy could not strip keepcrypt-pi'
   si_image stripped "$iw/p1.img" "$sw/stripped/root"
-  sha=$(si_lists "$sw/stripped.img" "$sw/stripped/expected" "$kconfig")
+  sha=$(si_lists "$sw/stripped.img" "$sw/stripped/expected" "$kconfig") || exit 2
   sicase 'selftest-image-stripped-keepcrypt-pi' 'Format: /usr/bin/keepcrypt-pi: a stripped file with no symbol table (.symtab)' \
     "$sw/stripped.img" "$sw/stripped/expected" "$kconfig" "$sha"
   si_root urandom
   printf '/dev/urandom' >>"$sw/urandom/root/usr/bin/keepcrypt-pi" || exit 2
   si_image urandom "$iw/p1.img" "$sw/urandom/root"
-  sha=$(si_lists "$sw/urandom.img" "$sw/urandom/expected" "$kconfig")
+  sha=$(si_lists "$sw/urandom.img" "$sw/urandom/expected" "$kconfig") || exit 2
   sicase 'selftest-image-urandom-in-keepcrypt-pi' 'StdRandom: /usr/bin/keepcrypt-pi: byte string /dev/urandom' \
     "$sw/urandom.img" "$sw/urandom/expected" "$kconfig" "$sha"
   # The binary's hash.
-  sha=$(si_lists "$img" "$sw/hash" "$kconfig")
+  sha=$(si_lists "$img" "$sw/hash" "$kconfig") || exit 2
   sicase 'selftest-image-wrong-binary-hash' 'Binary: /usr/bin/keepcrypt-pi: SHA-256 ' \
     "$img" "$sw/hash" "$kconfig" "$(printf '%064d' 0)"
   # Partition 1: cmdline.txt and config.txt differ from the board files.
   si_boot console cmdline.txt "$(cat "$iw/boot/cmdline.txt") console=ttyAMA0,115200"
   si_image console "$sw/console/p1.img"
-  sha=$(si_lists "$sw/console.img" "$sw/console/expected" "$kconfig")
+  sha=$(si_lists "$sw/console.img" "$sw/console/expected" "$kconfig") || exit 2
   sicase 'selftest-image-console-in-cmdline' 'Boot: partition-1:/cmdline.txt: differs from pi/os/board/pizero/cmdline.txt' \
     "$sw/console.img" "$sw/console/expected" "$kconfig" "$sha"
   si_boot gpumem config.txt "$(cat "$iw/boot/config.txt")
 gpu_mem=16"
   si_image gpumem "$sw/gpumem/p1.img"
-  sha=$(si_lists "$sw/gpumem.img" "$sw/gpumem/expected" "$kconfig")
+  sha=$(si_lists "$sw/gpumem.img" "$sw/gpumem/expected" "$kconfig") || exit 2
   sicase 'selftest-image-gpu-mem-16-config-with-start-elf' 'Boot: partition-1:/config.txt: differs from pi/os/board/pizero/config.txt' \
     "$sw/gpumem.img" "$sw/gpumem/expected" "$kconfig" "$sha"
   # The kernel config: one line off expected/linux.config (which stays the build's), then three
@@ -2683,23 +2685,23 @@ gpu_mem=16"
   # what fire.
   si_kconfig offline '$a\
 # one line off (selftest-image)'
-  sha=$(si_lists "$img" "$sw/offline/expected" "$kconfig")
+  sha=$(si_lists "$img" "$sw/offline/expected" "$kconfig") || exit 2
   sicase 'selftest-image-kconfig-one-line-off' "Kconfig: $sw/offline/linux.config: differs from $sw/offline/expected/linux.config" \
     "$img" "$sw/offline/expected" "$sw/offline/linux.config" "$sha"
   si_kconfig net '/^# CONFIG_NET is not set$/d
 $a\
 CONFIG_NET=y'
-  sha=$(si_lists "$img" "$sw/net/expected" "$sw/net/linux.config")
+  sha=$(si_lists "$img" "$sw/net/expected" "$sw/net/linux.config") || exit 2
   sicase 'selftest-image-kconfig-net' "Kconfig: $sw/net/linux.config: forbidden option CONFIG_NET is set (=y)" \
     "$img" "$sw/net/expected" "$sw/net/linux.config" "$sha"
   si_kconfig hwrng '$a\
 CONFIG_HW_RANDOM_CANARY=y'
-  sha=$(si_lists "$img" "$sw/hwrng/expected" "$sw/hwrng/linux.config")
+  sha=$(si_lists "$img" "$sw/hwrng/expected" "$sw/hwrng/linux.config") || exit 2
   sicase 'selftest-image-kconfig-two-hwrng-drivers' \
     "Kconfig: $sw/hwrng/linux.config: a hwrng driver other than BCM2835 is set: CONFIG_HW_RANDOM_CANARY=y" \
     "$img" "$sw/hwrng/expected" "$sw/hwrng/linux.config" "$sha"
   si_kconfig missing 's/^CONFIG_LEDS_TRIGGER_ACTPWR=y$/# CONFIG_LEDS_TRIGGER_ACTPWR is not set/'
-  sha=$(si_lists "$img" "$sw/missing/expected" "$sw/missing/linux.config")
+  sha=$(si_lists "$img" "$sw/missing/expected" "$sw/missing/linux.config") || exit 2
   sicase 'selftest-image-kconfig-missing-required-option' \
     "Kconfig: $sw/missing/linux.config: required option CONFIG_LEDS_TRIGGER_ACTPWR is not =y" \
     "$img" "$sw/missing/expected" "$sw/missing/linux.config" "$sha"
@@ -3151,7 +3153,7 @@ stub_tree() {
 # config), then the scan, which must give the one hit WANT-HIT (empty: clean), with the binary's
 # SHA-256 from the listing unless SHA is given.
 stub_case() {
-  sha=$(si_lists "$img" "$tree/expected" "$kc")
+  sha=$(si_lists "$img" "$tree/expected" "$kc") || exit 2
   [ -n "${3-}" ] && sha=$3
   sicase "image-stub-$1" "$2" "$img" "$tree/expected" "$kc" "$sha"
 }
@@ -3217,15 +3219,15 @@ EOF
   stub_case clean ''
   # The lists.
   stub_tree boot-list
-  sha=$(si_lists "$img" "$tree/expected" "$kc")
+  sha=$(si_lists "$img" "$tree/expected" "$kc") || exit 2
   grep -v '^/zImage ' "$tree/expected/boot.list" >"$tree/boot.list" && mv "$tree/boot.list" "$tree/expected/boot.list" || exit 2
   sicase image-stub-boot-list-differs "List: $tree/expected/boot.list: differs from the image's boot file list" "$img" "$tree/expected" "$kc" "$sha"
   stub_tree root-list
-  sha=$(si_lists "$img" "$tree/expected" "$kc")
+  sha=$(si_lists "$img" "$tree/expected" "$kc") || exit 2
   echo '/etc/kc-canary -rw-r--r--' >>"$tree/expected/root.list" || exit 2
   sicase image-stub-root-list-differs "List: $tree/expected/root.list: differs from the image's root file list" "$img" "$tree/expected" "$kc" "$sha"
   stub_tree imports
-  sha=$(si_lists "$img" "$tree/expected" "$kc")
+  sha=$(si_lists "$img" "$tree/expected" "$kc") || exit 2
   echo 'U rand' >>"$tree/expected/keepcrypt-pi.imports" || exit 2
   sicase image-stub-imports-differ "Binary: /usr/bin/keepcrypt-pi: imports differ from $tree/expected/keepcrypt-pi.imports" "$img" "$tree/expected" "$kc" "$sha"
   # The deny list, with the lists remade from the mutated tree.
@@ -3277,7 +3279,7 @@ EOF
   # mutations that expected/linux.config follows.
   stub_tree kconfig-off
   { cat "$st/linux.config"; echo '# one line off (selftest)'; } >"$tree/linux.config" || exit 2
-  sha=$(si_lists "$img" "$tree/expected" "$kc")
+  sha=$(si_lists "$img" "$tree/expected" "$kc") || exit 2
   sicase image-stub-kconfig-one-line-off "Kconfig: $tree/linux.config: differs from $tree/expected/linux.config" "$img" "$tree/expected" "$tree/linux.config" "$sha"
   stub_tree kconfig-net
   { cat "$st/linux.config"; echo 'CONFIG_NET=y'; } >"$tree/linux.config" && kc=$tree/linux.config || exit 2
@@ -3292,11 +3294,11 @@ EOF
   { cat "$st/linux.config"; echo 'CONFIG_HW_RANDOM_CANARY=y'; } >"$tree/linux.config" && kc=$tree/linux.config || exit 2
   stub_case kconfig-second-hwrng "Kconfig: $tree/linux.config: a hwrng driver other than BCM2835 is set: CONFIG_HW_RANDOM_CANARY=y"
   stub_tree required-drift
-  sha=$(si_lists "$img" "$tree/expected" "$kc")
+  sha=$(si_lists "$img" "$tree/expected" "$kc") || exit 2
   grep -v '^CONFIG_TTY$' "$st/required" >"$tree/expected/kconfig-required" || exit 2
   sicase image-stub-kconfig-required-list-drift "Kconfig: $tree/expected/kconfig-required: does not equal the CONFIG_X=y lines" "$img" "$tree/expected" "$kc" "$sha"
   stub_tree forbidden-drift
-  sha=$(si_lists "$img" "$tree/expected" "$kc")
+  sha=$(si_lists "$img" "$tree/expected" "$kc") || exit 2
   echo CONFIG_KC_CANARY >>"$tree/expected/kconfig-forbidden" || exit 2
   sicase image-stub-kconfig-forbidden-list-drift "Kconfig: $tree/expected/kconfig-forbidden: does not equal the \"# CONFIG_X is not set\" lines" "$img" "$tree/expected" "$kc" "$sha"
   # Bytes: a marker in a boot file, in a root file and in the raw image; the test key in a file.
@@ -3308,7 +3310,7 @@ EOF
   stub_case marker-in-root-file 'Marker: /usr/lib/os-release: KC_TEST_REGISTRY_DO_NOT_SHIP'
   stub_tree marker-raw
   cp "$img" "$tree/raw.img" && printf KC_TEST_SOURCE_DO_NOT_SHIP | dd of="$tree/raw.img" bs=512 seek=7 conv=notrunc 2>/dev/null || exit 2
-  sha=$(si_lists "$tree/raw.img" "$tree/expected" "$kc")
+  sha=$(si_lists "$tree/raw.img" "$tree/expected" "$kc") || exit 2
   sicase image-stub-marker-in-raw-image "Marker: $tree/raw.img: KC_TEST_SOURCE_DO_NOT_SHIP" "$tree/raw.img" "$tree/expected" "$kc" "$sha"
   stub_tree testkey
   write_testkey "$tree/root/etc/kc-canary.bin"
