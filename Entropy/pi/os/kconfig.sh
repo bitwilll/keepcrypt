@@ -14,8 +14,9 @@
 #      (BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE). Buildroot then applies its own fixups and runs
 #      olddefconfig again; pi/os/expected/linux.config is the config the kernel was built with.
 # The kernel's build directory is WORK_DIR (made afresh, outside the tree), so the tree Buildroot
-# configures next is left untouched. The Makefile runs this after `make toolchain linux-patch`,
-# with Buildroot's host tools (flex, bison) first on PATH; Kconfig probes the cross compiler.
+# configures next is left untouched. The Makefile runs this after `make toolchain host-flex
+# host-bison linux-patch` (Kconfig's conf needs flex and bison), with Buildroot's host tools
+# first on PATH; Kconfig probes the cross compiler.
 #
 # Usage: kconfig.sh LINUX_DIR CROSS_COMPILE FRAGMENT OUT_CONFIG WORK_DIR
 # Exit 0 written; 1 a fragment line did not hold, or an =m line is left; 2 usage or build error.
