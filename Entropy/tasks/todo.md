@@ -8217,6 +8217,11 @@ stale (Q43 (d)).
     - `EXFAT_FS`, `NTFS3_FS`, `HFS_FS`, `HFSPLUS_FS`, `BTRFS_FS`, `XFS_FS`, `ISO9660_FS`, `UDF_FS`, `FUSE_FS`;
     - every `*_PARTITION` except `MSDOS_PARTITION`;
     - every `HW_RANDOM_*` driver except BCM2835.
+    - the 113 options the review of every `=y` line removed (15l), grouped by reason in `linux.fragment`: kernel
+      facilities nothing uses, debugging and symbol interfaces, the TTY layer and serial drivers, input, HID, CEC and
+      framebuffer, hardware the Zero lacks or the image does not use (the Arasan SDIO host among them; the SD card is
+      on sdhost), run-time code and device-tree loading, extra block-layer features, filesystems and formats beyond
+      vfat and xz SquashFS, unused kernel crypto, LED triggers other than actpwr, and slab merging.
   - If a required option selects a forbidden one: stop and ask.
 - [ ] The defconfig, based on 2026.08's `raspberrypi0_defconfig`:
   - `BR2_arm1176jzf_s` and its Bootlin toolchain;
@@ -9115,6 +9120,17 @@ The PR is a draft from commit 1.
     names them, and fs/common.mk runs makedevs inside fakeroot after post-build.sh. post-fakeroot.sh
     (`BR2_ROOTFS_POST_FAKEROOT_SCRIPT`) removes them on the filesystem copy, refusing any path but
     `.../buildroot-fs/<fs>/target` with the fakeroot script beside it.
+    15l. pi/os, tasks/todo.md: the lead's review of every `=y` line of image run 38684224715's config (794 lines,
+    four reviewers by section, each followed by an adversarial verifier; 8 agents): 113 options removed, each checked
+    in the pinned tree for a visible prompt (EXPERT=y) and for selectors that stay on, the selector pairs forbidden
+    together (CGROUPS with SCHED_AUTOGROUP, KALLSYMS with KPROBES and LATENCYTOP, NVMEM with RTC_CLASS, CONFIGFS_FS
+    and OF_OVERLAY with OF_CONFIGFS, TMPFS_XATTR with TMPFS_POSIX_ACL, SCHEDSTATS with LATENCYTOP). The boot-path
+    ones were rechecked by the lead: the Zero's device tree puts the SD card on sdhost (`mmc0 = &sdhost`,
+    bcm2708-rpi.dtsi), which MMC_BCM2835 drives, so the Arasan host (MMC_BCM2835_MMC) and SDHCI go; MMC_BLOCK
+    depends only on BLOCK, so BLK_DEV (loop and RAM disks) goes; with TTY off there is no /dev/console, the kernel
+    warns and BusyBox init points its standard files at /dev/null, which devtmpfs provides. H1 repeats the boot
+    check on this kernel. The keep groups are the basis of commit 16's review note (lead decision under the owner's
+    standing instruction of 2026-10-15).
 16. pi/os: `expected/` (lists and `linux.config`) from the run after H1a passes, reviewed line by line (group 15).
 17. scripts, .github, pi/os: `--image`, `--selftest-image` and `--os-config`, their fixtures and canaries; the scan step
     in both legs; `gates` runs `--os-config`; the Makefile's `scan` target, which runs `--image` (groups 11, 13, 14,

@@ -162,3 +162,140 @@ CONFIG_LEDS_TRIGGER_ACTPWR=y
 # CONFIG_HW_RANDOM_ROCKCHIP is not set
 # CONFIG_HW_RANDOM_TPM is not set
 # CONFIG_HW_RANDOM_PPC4XX is not set
+
+# From the review of every =y line of the built config (15l): each line below was checked in the
+# pinned tree for a visible prompt and for selectors that stay on.
+# Kernel facilities no process here uses: control groups, namespaces, SysV IPC, cross-process memory
+# access, accounting, file handles, AIO, kcmp, notify, quotas, the automounter, keys and integrity.
+# CONFIG_CGROUPS is not set
+# CONFIG_SCHED_AUTOGROUP is not set
+# CONFIG_NAMESPACES is not set
+# CONFIG_SYSVIPC is not set
+# CONFIG_CROSS_MEMORY_ATTACH is not set
+# CONFIG_BSD_PROCESS_ACCT is not set
+# CONFIG_PSI is not set
+# CONFIG_RELAY is not set
+# CONFIG_BLK_DEV_INITRD is not set
+# CONFIG_UID16 is not set
+# CONFIG_SYSFS_SYSCALL is not set
+# CONFIG_FHANDLE is not set
+# CONFIG_AIO is not set
+# CONFIG_KCMP is not set
+# CONFIG_CACHESTAT_SYSCALL is not set
+# CONFIG_FANOTIFY is not set
+# CONFIG_INOTIFY_USER is not set
+# CONFIG_DNOTIFY is not set
+# CONFIG_QUOTA is not set
+# CONFIG_AUTOFS_FS is not set
+# CONFIG_KEYS is not set
+# CONFIG_SECURITYFS is not set
+# CONFIG_INTEGRITY is not set
+# No kernel symbols, probes, performance counters, profiling, latency or scheduler statistics,
+# hung-task watchdog, page maps, persistent log store or device core dumps.
+# CONFIG_KALLSYMS is not set
+# CONFIG_KPROBES is not set
+# CONFIG_PERF_EVENTS is not set
+# CONFIG_PROFILING is not set
+# CONFIG_ARM_PMU is not set
+# CONFIG_LATENCYTOP is not set
+# CONFIG_SCHEDSTATS is not set
+# CONFIG_DETECT_HUNG_TASK is not set
+# CONFIG_BOOT_PRINTK_DELAY is not set
+# CONFIG_PROC_PAGE_MONITOR is not set
+# CONFIG_PSTORE is not set
+# CONFIG_ALLOW_DEV_COREDUMP is not set
+# No TTY at all: no serial port driver, serial device bus, pseudo-terminals or line disciplines
+# (config.txt has enable_uart=0; init and keepcrypt-pi run with /dev/null as their standard files).
+# CONFIG_TTY is not set
+# CONFIG_SERIAL_DEV_BUS is not set
+# CONFIG_SERIAL_8250 is not set
+# CONFIG_SERIAL_AMBA_PL011 is not set
+# CONFIG_LEGACY_TIOCSTI is not set
+# CONFIG_LDISC_AUTOLOAD is not set
+# CONFIG_TTY_PRINTK is not set
+# CONFIG_UNIX98_PTYS is not set
+# No input layer, HID, remote controls, HDMI CEC, framebuffer or character displays: the panel is
+# driven over spidev and the keys over the GPIO character device.
+# CONFIG_INPUT is not set
+# CONFIG_HID_SUPPORT is not set
+# CONFIG_RC_CORE is not set
+# CONFIG_MEDIA_CEC_SUPPORT is not set
+# CONFIG_FB is not set
+# CONFIG_AUXDISPLAY is not set
+# CONFIG_ACCESSIBILITY is not set
+# Hardware the Pi Zero v1.3 does not have or the image does not use: staging and VideoCore
+# character drivers, RTC, NVMEM, DMA heaps, virtio and vhost, PWM, power supply, hwmon, power-off,
+# PPS, SPI target mode, the Pi 3/4 GPIO expander, the Arasan SDIO host (the SD card is on sdhost),
+# SDHCI, eMMC and Wi-Fi power sequencing, BCM2711/STB clocks and resets, /dev/port.
+# CONFIG_STAGING is not set
+# CONFIG_BRCM_CHAR_DRIVERS is not set
+# CONFIG_MFD_STMPE is not set
+# CONFIG_RTC_CLASS is not set
+# CONFIG_NVMEM is not set
+# CONFIG_DMABUF_HEAPS is not set
+# CONFIG_SYNC_FILE is not set
+# CONFIG_VHOST_MENU is not set
+# CONFIG_VIRTIO_MENU is not set
+# CONFIG_PWM is not set
+# CONFIG_POWER_SUPPLY is not set
+# CONFIG_HWMON is not set
+# CONFIG_POWER_RESET is not set
+# CONFIG_PPS is not set
+# CONFIG_SPI_SLAVE is not set
+# CONFIG_GPIO_RASPBERRYPI_EXP is not set
+# CONFIG_MMC_BCM2835_MMC is not set
+# CONFIG_MMC_SDHCI is not set
+# CONFIG_MMC_HSQ is not set
+# CONFIG_PWRSEQ_EMMC is not set
+# CONFIG_PWRSEQ_SIMPLE is not set
+# CONFIG_CLK_BCM2711_DVP is not set
+# CONFIG_RESET_BRCMSTB is not set
+# CONFIG_RESET_BRCMSTB_RESCAL is not set
+# CONFIG_DEVPORT is not set
+# No interface that loads or changes code, devices or the device tree at run time: device tree
+# overlays and configfs (the firmware applies dtparam itself), the uevent helper, the firmware
+# loader, #! scripts, and the GPIO character device's v1 ABI (rppal 0.22.1 uses v2).
+# CONFIG_OF_CONFIGFS is not set
+# CONFIG_OF_OVERLAY is not set
+# CONFIG_CONFIGFS_FS is not set
+# CONFIG_UEVENT_HELPER is not set
+# CONFIG_FW_LOADER is not set
+# CONFIG_BINFMT_SCRIPT is not set
+# CONFIG_GPIO_CDEV_V1 is not set
+# Block layer: only the SD card and one stick. No loop or RAM disks, bsg, integrity, writes to a
+# mounted device, extra I/O schedulers, MD, low-level SCSI drivers or legacy autoload.
+# CONFIG_BLK_DEV is not set
+# CONFIG_BLK_DEV_BSG is not set
+# CONFIG_BLK_DEV_BSGLIB is not set
+# CONFIG_BLK_DEV_INTEGRITY is not set
+# CONFIG_BLK_DEV_WRITE_MOUNTED is not set
+# CONFIG_IOSCHED_BFQ is not set
+# CONFIG_MQ_IOSCHED_KYBER is not set
+# CONFIG_MD is not set
+# CONFIG_SCSI_LOWLEVEL is not set
+# CONFIG_BLOCK_LEGACY_AUTOLOAD is not set
+# Filesystems: only vfat and xz SquashFS without xattrs; tmpfs without ACLs or xattrs.
+# CONFIG_EXT4_FS is not set
+# CONFIG_F2FS_FS is not set
+# CONFIG_MSDOS_FS is not set
+# CONFIG_TMPFS_POSIX_ACL is not set
+# CONFIG_TMPFS_XATTR is not set
+# CONFIG_SQUASHFS_XATTR is not set
+# CONFIG_SQUASHFS_ZLIB is not set
+# CONFIG_SQUASHFS_LZO is not set
+# CONFIG_SQUASHFS_ZSTD is not set
+# Kernel crypto with no user in this kernel.
+# CONFIG_CRYPTO_RSA is not set
+# CONFIG_CRYPTO_DH is not set
+# CONFIG_CRYPTO_DES is not set
+# CONFIG_CRYPTO_CBC is not set
+# CONFIG_CRYPTO_LZO is not set
+# LED triggers other than actpwr, which the ACT LED uses.
+# CONFIG_LEDS_TRIGGER_TIMER is not set
+# CONFIG_LEDS_TRIGGER_ONESHOT is not set
+# CONFIG_LEDS_TRIGGER_HEARTBEAT is not set
+# CONFIG_LEDS_TRIGGER_BACKLIGHT is not set
+# CONFIG_LEDS_TRIGGER_CPU is not set
+# Slab caches are not merged (hardening); USB devices are not announced in the kernel log.
+# CONFIG_SLAB_MERGE_DEFAULT is not set
+# CONFIG_USB_ANNOUNCE_NEW_DEVICES is not set
