@@ -17,7 +17,7 @@
 # reproducible mode (BR2_REPRODUCIBLE) needs the same output path, and keepcrypt-pi is built at
 # fixed paths instead of with path remapping. SOURCE_DATE_EPOCH comes from pins.txt and TZ is UTC,
 # so equal trees give equal images whatever the commit or build time; both are printed. No step
-# needs git. The image is named for its screen type (Q47); M4 builds only the HAT's.
+# needs git. The image is keepcrypt-pi-0.0.0.img (Q43 (b)); M4b names each image for its screen.
 SHELL := /bin/sh
 .SUFFIXES:
 
@@ -55,7 +55,7 @@ export TZ := UTC
 BR_TARBALL := $(KC_WORK)/dl/buildroot-$(BR_VERSION).tar.xz
 BR_SRC := $(KC_WORK)/buildroot-$(BR_VERSION)
 OUT := $(KC_WORK)/out
-IMAGE := keepcrypt-pi-0.0.0-st7789-240x240.img
+IMAGE := keepcrypt-pi-0.0.0.img
 BR := BR2_DL_DIR=$(KC_WORK)/dl $(MAKE) -C $(BR_SRC) O=$(OUT) BR2_EXTERNAL=$(OS)
 
 # check-pins DIR, PINS: each "hash file:SHA-256:file" of PINS must be a line of DIR's hash file.
