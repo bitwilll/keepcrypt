@@ -3049,7 +3049,8 @@ oexpect() {
 # both kinds of line and an expected/ that matches it. Every osconfig-<category>-* holds the one
 # file of that tree it changes, copied over a copy of clean-pizero, and must fail with exactly one
 # hit of its category. Then the errors, built here: no expected/, a missing or an empty file, a
-# fragment line of another kind, and a path that is not a directory.
+# fragment line of another kind, a fragment with no "is not set" line, and a path that is not a
+# directory.
 os_config_selftest() {
   ofx=$here/testdata/os-config
   clean=$ofx/clean-pizero
@@ -3101,6 +3102,8 @@ os_config_selftest() {
   mv "$d/required.away" "$d/expected/kconfig-required" || exit 2
   cp "$d/board/pizero/linux.fragment" "$d/fragment.away" && echo 'CONFIG_I2C=m' >>"$d/board/pizero/linux.fragment" || exit 2
   oexpect 'osconfig-error-fragment-line-of-another-kind' "$d" error 'a fragment line of another kind at line'
+  grep -v ' is not set$' "$d/fragment.away" >"$d/board/pizero/linux.fragment" || exit 2
+  oexpect 'osconfig-error-fragment-without-is-not-set-lines' "$d" error 'has no CONFIG_X=y line, or no "# CONFIG_X is not set" line'
   mv "$d/fragment.away" "$d/board/pizero/linux.fragment" || exit 2
   oexpect 'osconfig-error-not-a-directory' "$d/board/pizero/cmdline.txt" error 'is not a directory'
 }
@@ -3272,6 +3275,9 @@ EOF
   stub_tree sticky
   chmod 1755 "$tree/root/run" || exit 2
   stub_case sticky-run 'Deny: /run: setuid, setgid or sticky mode drwxr-xr-t'
+  stub_tree var-tmp
+  mkdir -p "$tree/root/var/tmp" && chmod 1777 "$tree/root/var/tmp" || exit 2
+  stub_case sticky-var-tmp 'Deny: /var/tmp: setuid, setgid or sticky mode drwxrwxrwt'
   stub_tree modules
   mkdir "$tree/root/lib/modules" || exit 2
   stub_case lib-modules 'Deny: /lib/modules: kernel modules'
@@ -3344,7 +3350,8 @@ EOF
   stub_tree testkey
   write_testkey "$tree/root/etc/kc-canary.bin"
   stub_case test-key-file "TestKey: /etc/kc-canary.bin: the test registry public key $testkey"
-  # keepcrypt-pi: the hash, a stripped file, the fallback's device path, the simulator's name;
+  # keepcrypt-pi: the hash, a stripped file, the fallback's device path, the simulator's name as
+  # a symbol and as bytes;
   # the other ELF files: a stripped import of rand, a stripped file defining a rand-crate symbol
   # and one defining a getrandom-fallback symbol, a stripped static file.
   stub_tree hash
@@ -3358,6 +3365,9 @@ EOF
   stub_tree sim
   cp "$st/elf/sim.so" "$tree/root/usr/bin/keepcrypt-pi" || exit 2
   stub_case simulator-symbol-in-keepcrypt-pi 'Binary: /usr/bin/keepcrypt-pi: names the simulator crate: symbol keepcrypt_pi_sim_hwrng'
+  stub_tree sim-bytes
+  printf keepcrypt_pi_sim >>"$tree/root/usr/bin/keepcrypt-pi" || exit 2
+  stub_case simulator-bytes-in-keepcrypt-pi 'Binary: /usr/bin/keepcrypt-pi: names the simulator crate: byte string keepcrypt_pi_sim'
   stub_tree rand
   cp "$st/elf/rand-stripped.so" "$tree/root/lib/libkc-canary.so.1" || exit 2
   stub_case stripped-elf-importing-rand 'Symbol: /lib/libkc-canary.so.1: undefined rand'

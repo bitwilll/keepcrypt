@@ -8119,6 +8119,18 @@ stale (Q43 (d)).
   `CONFIG_UDHCPC=y` now as "not a symbol the image sets"), and fixture `osconfig-busybox-dd` (`CONFIG_DD=y` added)
   gives one; 34 `osconfig-*` fixtures. `--image`'s root list (17b) proves "only" at the image through the applet
   symlinks; this proves it at the source. `--selftest` 688/0 under sh and dash; the gate clean on the tree.
+  Proof (review fix, 17a-h): stage D2a's recompute review listed sub-rules of `--os-config` and `--image` that no
+  fixture or case exercised (a mutation dropping each survived `--selftest`), so each gets one: fixtures
+  `osconfig-fstab-tmpfs-no-noexec` (a /tmp line without noexec), `osconfig-fstab-comments-only` ("no filesystem
+  line"), `osconfig-cmdline-no-init-on-free`, `osconfig-config-txt-fixup-file` (`fixup_file=fixup_x.dat`) and
+  `osconfig-config-txt-gpu-mem-512-twice`, exactly one hit each (39 `osconfig-*` fixtures); the built-in error
+  `osconfig-error-fragment-without-is-not-set-lines` (the fragment's `=y` lines alone, exit 2 naming the missing
+  kind); and two stub cases of the image scan, the bytes `keepcrypt_pi_sim` appended to keepcrypt-pi (`Binary:
+  ... byte string keepcrypt_pi_sim`) and a 1777 `/var/tmp` (`Deny: /var/tmp: ... drwxrwxrwt`, so the sticky
+  exemption stays `/tmp`'s alone). The ninth, `kconfig_check`'s "CONFIG_HW_RANDOM_BCM2835=y, the one hwrng driver,
+  is not set", cannot be a one-hit fixture while the fragment (the real one and `clean-pizero`'s) requires
+  BCM2835, since the required rule fires with it; it stays as the rule's second half for a fragment that would not.
+  `--selftest` 698/0 under sh and dash; the gate clean on the tree.
 - [ ] The existing rules scan `pi/os/` files from their first commit. A false hit in a kernel or BusyBox config gets a
   reviewed per-path rule with fixtures, never a blanket exclude.
 
@@ -9323,6 +9335,8 @@ The PR is a draft from commit 1.
     17a-g. scripts, .github: positive controls for group 14 step 3's rand-crate and getrandom-fallback symbol rules on
     the root's other ELF files, as two stripped controls built from `controls.rs` (`kc_rand_crate`, `kc_fallback`), in
     the stub selftest and in `--selftest-image` (16 controls).
+    17a-h. scripts: a fixture or case for each sub-rule the review found unexercised: five `osconfig-*` fixtures, the
+    fragment-without-"is not set" error, and two stub cases (the simulator's name as bytes, a sticky `/var/tmp`).
 18. CLAUDE.md: Commands (group 18).
 
 **Stage E: hardware and review**
