@@ -105,11 +105,14 @@ jobs:
           sudo install -d -o "$(id -u)" -g "$(id -g)" "$KC_WORK"
           ls -ld "$KC_WORK"
       # The mandatory host packages of Buildroot's manual ("System requirements"), from Ubuntu;
-      # most are on the runner image already.
+      # most are on the runner image already. Like the runner image, they are not pinned (Q38 (e):
+      # a pinned build container comes with M7; pi/os/pins.txt), so each leg prints the versions
+      # it got, the host compilers' among them, and a difference between the legs can be traced.
       - name: Buildroot's host packages (Ubuntu's)
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends bc build-essential cpio file patch rsync unzip wget
+          dpkg-query -W -f '${Package} ${Version}\n' bc build-essential cpio file patch rsync unzip wget gcc g++ make
       # keepcrypt-pi is built inside Buildroot with this toolchain (pi/os/package/keepcrypt-pi),
       # and llvm-nm, which lists its imports, is its llvm-tools-preview.
       - name: Install the pinned toolchain (rust-toolchain.toml)

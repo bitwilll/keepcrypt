@@ -5,7 +5,10 @@
 # Buildroot by BR_URL and refuses it unless it has BR_SHA256, and `make source` and `make image`
 # check every *_PINS entry ("hash file:SHA-256:file") against the hash file that Buildroot reads,
 # so this record cannot drift from what is built. Until the M7 audit the hashes are checked, the
-# sources not reviewed.
+# sources not reviewed. The build host is not pinned here: the ubuntu-24.04 runner image and the
+# Ubuntu packages the image workflow installs (Buildroot's host packages, the host compilers
+# among them) stay unpinned until M7's pinned build container (Q38 (e)); each leg prints the
+# runner image's version and those packages' versions.
 
 # The build time (`SOURCE_DATE_EPOCH`): a constant, so equal trees give equal images whatever the
 # commit time. It is Buildroot 2026.08's own BR2_VERSION_EPOCH, 2026-09-04 15:16:40 UTC, the time
