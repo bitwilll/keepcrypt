@@ -8301,6 +8301,20 @@ stale (Q43 (d)).
   lists (path, type, mode, link target), `keepcrypt-pi`'s import list, per-partition SHA-256s, an `mdir -a` listing of
   partition 1, and KCONFIG. It uses the build's host `unsquashfs` and `mcopy`:
   1. Read the MBR. Extract partition 1 with `mcopy -s`. Check partition 2's SquashFS magic and unpack it.
+
+  Proof (commit 15, the mode and its refusals; a real image's lists are CI's): `--image-lists` refuses, with exit 2
+  and before any host tool runs, any MBR but the image's (no `55 aa`, partition 1 not type 0x0c or 2 not 0x83, an
+  empty partition, one at sector 0, past the end, or 2 not after 1, entry 3 or 4 in use) and a partition 2 without
+  `hsqs`; then, with the build's `mcopy`, `mdir` and `unsquashfs` on PATH and the toolchain's llvm-nm, it extracts
+  partition 1 (`mcopy -s`), lists it (`mdir -a`), lists partition 2 from its SquashFS metadata (`unsquashfs -lln`, so
+  setuid bits and links appear as built), unpacks it, and prints under `== ` headings the partition table, `sha256
+  <image|partition-1|partition-2|keepcrypt-pi> <hex>`, the boot list (`<path> <dir|file>`), the `mdir -a` listing,
+  the root list (`<path> <mode>[ -> <target>]`), keepcrypt-pi's `llvm-nm -D -u` imports and KCONFIG. 14 built-in
+  cases in `--selftest` (594/0 under sh and dash): the usage error, an unreadable image and KCONFIG, the 10 layout
+  refusals, and the image's layout with the magic stopping exactly at "no mcopy on PATH" under a PATH without the
+  host tools. No mtools or squashfs-tools
+  here: the listing path ran only against scratch stub tools; the lead reads the first image run's "Hash and list"
+  step.
 - [ ] `banned-api-check.sh --image IMG EXPECTED_DIR KCONFIG BIN_SHA256` (commit 17) reuses that unpacking, then:
   2. Search every extracted file and the raw image for the three markers and the test key. SquashFS is compressed, so
      scanning the `.img` alone would find nothing.
@@ -8355,6 +8369,16 @@ stale (Q43 (d)).
     commit, and every job prints the commit it built.
   - Hardening as in entropy-ci.yml, enforced by `--workflows`: `permissions: contents: read`, no secrets, event data only
     through `env:` and `with:`, actions pinned by SHA. Concurrency cancels an older run on the same ref.
+
+  Proof (commit 15, the file; the runs are CI's): `.github/workflows/entropy-pi-image.yml` has these triggers (path
+  filters `Entropy/**` and the file itself, a Monday cron, `workflow_dispatch` with an optional `ref`), checks out
+  `github.event.pull_request.head.sha || inputs.ref || github.sha` without credentials, has top-level `permissions:
+  contents: read` and no other permissions block, and cancels in progress per workflow, ref and requested ref.
+  `banned-api-check.sh --workflows ../.github/workflows` is clean under sh and dash (`clean, 2 workflow(s)`), and a
+  scratch copy with a write token, a tag-pinned upload and `${{ github.sha }}` in a run block gives those 4 hits;
+  `ruby -ryaml` parses both workflows (the second leg's anchored steps resolve to the same 9); entropy-ci.yml is
+  unchanged. upload-artifact v7.0.1 is `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` by GitHub's API (tag ref, a
+  commit of 2026-04-10, before the 2026-10-01 cutoff).
 - [ ] Jobs, whose names collide with none of the 14:
   - **`pi-image build (a)` and `pi-image build (b)`**: fresh `ubuntu-24.04` runners at the same `KC_WORK`. Leg a restores
     `dl/` from `actions/cache` by exact key; leg b downloads everything fresh. Each leg's steps, in order:
@@ -8372,6 +8396,20 @@ stale (Q43 (d)).
     commit 17 the upload runs only after its scan passes. Before that (commits 15-16) the summary marks the image "boot
     check only, not scanned".
   - Timeout: 180 minutes per leg.
+
+  Proof (commit 15, the jobs; the runs are CI's): `pi-image build (a)` and `pi-image build (b)` (jobs `build-a`,
+  `build-b`, none of the 14 names) share one anchored step list and differ only in `LEG`: checkout; step 1 removes
+  the Android SDK, .NET, GHC and ghcup, CodeQL and Swift, then prints the commit, `ImageOS`, `ImageVersion`,
+  `SOURCE_DATE_EPOCH` (from pins.txt) and `df -h`; a fresh `/kc-work` (refused if present); Buildroot's mandatory
+  host packages from Ubuntu; the pinned toolchain; leg a alone restores `/kc-work/dl` by exact key
+  (`hashFiles` of pins.txt, the defconfig and linux.hash; no restore-keys); `time make -C pi/os source image`;
+  "Hash and list" (the one `keepcrypt-pi-*.img` and the one `out/build/linux-*/.config`, the image SHA-256 checked
+  against `--image-lists`'s, the partition and binary SHA-256s from it, the prefix from `rootfs-prefix.py`, `df -h`,
+  the outputs); and leg a alone uploads the `.img` with `archive: false`, `retention-days: 14`,
+  `if-no-files-found: error`. `pi-image reproducible (a = b)` needs both with `if: ${{ !cancelled() }}`, prints
+  each output of both legs, fails unless both image hashes are non-empty and equal and both legs built the same
+  commit, then writes the commit, the image, its SHA-256, the prefix, the binary's SHA-256 and "Boot check only,
+  not scanned" to the step summary. 180 minutes per leg.
 - [ ] The bootstrap of `expected/`:
   - commit 15's runs build, compare and print the lists, with no scan;
   - the owner runs H1a on that image; bring-up fixes follow as their own commits;

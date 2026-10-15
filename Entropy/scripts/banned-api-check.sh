@@ -11,12 +11,17 @@
 #   scripts/banned-api-check.sh --workflows DIR
 #                                           check every DIR/entropy-*.yml and entropy-*.yaml GitHub
 #                                           workflow's hardening (see "Workflow mode" below)
+#   scripts/banned-api-check.sh --image-lists IMG KCONFIG
+#                                           unpack the Pi image IMG and print its lists, with the
+#                                           kernel config KCONFIG (see "Image lists mode" below)
 #   scripts/banned-api-check.sh --selftest  every fixture in scripts/testdata/banned-api/ must trip the
 #                                           gate for its category; every clean-* fixture must pass; the
 #                                           artifact fixtures in scripts/testdata/artifact/ must give
 #                                           exactly their pinned hits (needs the pinned toolchain); the
 #                                           workflow fixtures in scripts/testdata/workflows/ must trip
-#                                           or pass the workflow check as their names say
+#                                           or pass the workflow check as their names say; and the
+#                                           image lists' built-in cases must be refused before any
+#                                           host tool runs
 #
 # Prints "<category>: <file>:<line>: <text>" per hit, then a summary. Exit 0 clean, 1 hits,
 # 2 usage or read error: a file that cannot be read fails the gate, it is never skipped.
@@ -88,6 +93,29 @@
 #     ("-   run:"), be quoted ("run":) or sit in a flow mapping ({name: x, run: "..."}), and a
 #     run: key with no value (defaults.run) is read the same way, so an expression under it is a
 #     hit too.
+#
+# Image lists mode (tasks/todo.md, M4 groups 14 and 15; Q38 (d)): the image workflow's "hash and
+# list" step prints with it what commit 16 commits to pi/os/expected/ for review and the image
+# scan compares from commit 17. It lists, it does not judge: exit 0 listed, 2 an image it cannot
+# read or list. IMG is a disk image that starts with an MBR, KCONFIG the kernel's .config. The MBR
+# must hold the boot signature and exactly the image's two partitions: 1 FAT32 with LBA (type
+# 0x0c) and 2 Linux (0x83), each non-empty, after the MBR and inside the image, 2 after 1, and
+# entries 3 and 4 empty; partition 2 must start with SquashFS's magic hsqs. These checks need no
+# tool. Then, with the build's host mcopy, mdir and unsquashfs on PATH (KC_WORK/out/host/bin)
+# and the pinned toolchain's llvm-nm, it extracts partition 1 with mcopy -s, unpacks partition
+# 2 with unsquashfs, and prints, each part under a "== " heading:
+#   - the partition table: the disk signature, and each partition's type, boot flag, first
+#     sector and sector count;
+#   - "sha256 <name> <hex>" for the image, partition-1, partition-2 and keepcrypt-pi (the
+#     image's /usr/bin/keepcrypt-pi);
+#   - the boot file list, "<path> <dir|file>" (FAT has no mode and no link);
+#   - mdir -a of partition 1;
+#   - the root file list, "<path> <mode>[ -> <target>]", read from the SquashFS's own metadata
+#     (unsquashfs -lln), so setuid bits and links are listed as built, not as an unprivileged
+#     unpack leaves them; the mode string's first letter is the type; owners, sizes and times
+#     are left out;
+#   - keepcrypt-pi's dynamic imports, "<type> <symbol>@<version>" (llvm-nm -D -u);
+#   - KCONFIG as it stands.
 #
 # Categories (main patterns; the full lists are in the check functions below; comments count
 # everywhere):
@@ -292,7 +320,8 @@ self=$here/$(basename "$0")
 
 usage() {
   cat <<'EOF'
-usage: scripts/banned-api-check.sh [--selftest | DIR | --artifact TARGET FILE... | --workflows DIR]
+usage: scripts/banned-api-check.sh [--selftest | DIR | --artifact TARGET FILE... | --workflows DIR |
+                                   --image-lists IMG KCONFIG]
   (none)      scan the repo this script lives in
   DIR         scan DIR as if it were the repo root
   --artifact  scan release artifacts built for TARGET: test markers, the test registry key, RNG
@@ -300,8 +329,13 @@ usage: scripts/banned-api-check.sh [--selftest | DIR | --artifact TARGET FILE...
               that import (see the script header)
   --workflows check every DIR/entropy-*.yml and .yaml workflow's hardening: read-only permissions, three
               SHA-pinned actions, no secrets, no fork-trusting trigger, no expression in a run step
+  --image-lists
+              unpack the Pi image IMG (an MBR, a FAT32 boot partition, a SquashFS root) with the
+              build's host tools and print its partition table, SHA-256s, boot and root file lists,
+              mdir -a listing, keepcrypt-pi's imports and the kernel config KCONFIG; a listing,
+              not a scan
   --selftest  run the fixtures in scripts/testdata/banned-api/, scripts/testdata/artifact/ and
-              scripts/testdata/workflows/
+              scripts/testdata/workflows/, and the image lists' built-in cases
 Hits: RNG APIs (and the OS RNG read outside core/src/source), network APIs, Python network imports
 and hard-coded http URLs (outside registry/), clipboard, copy and share APIs and Python clipboard
 modules, tools and calls, getrandom in a .rs file outside core/src/source, std's OS-seeded hashing
@@ -1254,6 +1288,7 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   done
   artifact_selftest
   workflows_selftest
+  image_lists_selftest
   echo "selftest: $pass passed, $fail failed"
   [ "$fail" -eq 0 ] || exit 1
   exit 0
@@ -1585,6 +1620,212 @@ EOF
   exit 0
 }
 
+# --- Image lists mode ----------------------------------------------------------------------------
+
+# ifail MESSAGE: IMG cannot be listed (exit 2).
+ifail() {
+  printf 'banned-api-check: --image-lists: %s: %s\n' "$img" "$1" >&2
+  exit 2
+}
+
+# itool MESSAGE: a tool failed; its output ($iw/log) goes with the message.
+itool() {
+  sed 's/^/    /' "$iw/log" >&2
+  ifail "$1"
+}
+
+# sha256 FILE: FILE's SHA-256 as 64 lowercase hex digits (sha256sum on Linux, shasum on macOS).
+sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    s=$(sha256sum <"$1") || exit 2
+  elif command -v shasum >/dev/null 2>&1; then
+    s=$(shasum -a 256 <"$1") || exit 2
+  else
+    echo 'banned-api-check: no sha256sum or shasum' >&2
+    exit 2
+  fi
+  printf '%s\n' "${s%% *}"
+}
+
+# icopy P START COUNT: partition P, COUNT sectors from sector START of IMG, into $iw/pP.img.
+icopy() {
+  dd if="$img" of="$iw/p$1.img" bs=512 skip="$2" count="$3" 2>/dev/null || ifail "cannot copy partition $1"
+  got=$(wc -c <"$iw/p$1.img") || exit 2
+  [ $((got)) -eq $(($3 * 512)) ] || ifail "partition $1 copied $((got)) bytes, not $(($3 * 512))"
+}
+
+# image_unpack IMG: refuses any layout but the image's (see "Image lists mode"), copies the two
+# partitions to $iw/p1.img and $iw/p2.img, extracts partition 1 into $iw/boot (mcopy -s) and
+# lists it ($iw/mdir, mdir -a), lists partition 2's SquashFS metadata ($iw/root.lln, unsquashfs
+# -lln) and unpacks it into $iw/root. Sets $iw (a temporary directory, removed on exit) and the
+# partition table: $mbr_sig, and the boot flag, first sector and sector count of partition 1
+# ($f1 $s1 $n1) and partition 2 ($f2 $s2 $n2). Every check that needs no tool comes first.
+image_unpack() {
+  img=$1
+  [ -f "$img" ] && [ -r "$img" ] || { printf 'banned-api-check: --image-lists: cannot read %s\n' "$img" >&2; exit 2; }
+  isize=$(wc -c <"$img") || exit 2
+  isize=$((isize))
+  [ "$isize" -ge 512 ] || ifail "$isize bytes, shorter than an MBR (512)"
+  # The MBR: the disk signature at bytes 440-443, four 16-byte partition entries from byte 446
+  # (the boot flag at +0, the type at +4, the first sector and the sector count as little-endian
+  # u32s at +8 and +12), the boot signature 55 aa at byte 510. awk prints "ok <signature> <flag>
+  # <first> <count> <flag> <first> <count>" or "error <reason>".
+  layout=$(dd if="$img" bs=512 count=1 2>/dev/null | od -An -v -tx1 | awk -v sectors=$((isize / 512)) '
+    function hex(h,    i, v) {
+      v = 0
+      for (i = 1; i <= length(h); i++) v = v * 16 + index("0123456789abcdef", substr(h, i, 1)) - 1
+      return v
+    }
+    function u32(at) { return hex(b[at + 3] b[at + 2] b[at + 1] b[at]) }
+    { for (i = 1; i <= NF; i++) b[n++] = $i }
+    END {
+      if (n != 512) { print "error its MBR read " n " bytes, not 512"; exit }
+      if (b[510] != "55" || b[511] != "aa") { print "error no MBR boot signature (55 aa at byte 510)"; exit }
+      for (e = 3; e <= 4; e++)
+        for (i = 0; i < 16; i++)
+          if (b[446 + 16 * (e - 1) + i] != "00") { print "error partition entry " e " is not empty"; exit }
+      want[1] = "0c"; kind[1] = "FAT32 with LBA"
+      want[2] = "83"; kind[2] = "Linux"
+      out = "ok 0x" b[443] b[442] b[441] b[440]
+      for (e = 1; e <= 2; e++) {
+        at = 446 + 16 * (e - 1)
+        first[e] = u32(at + 8)
+        count[e] = u32(at + 12)
+        if (b[at + 4] != want[e]) {
+          print "error partition " e " has type 0x" b[at + 4] ", not " kind[e] " (0x" want[e] ")"
+          exit
+        }
+        if (count[e] == 0) { print "error partition " e " is empty"; exit }
+        if (first[e] == 0) { print "error partition " e " starts at sector 0, the MBR"; exit }
+        if (first[e] + count[e] > sectors) {
+          print "error partition " e " ends at sector " first[e] + count[e] ", past the image (" sectors " sectors)"
+          exit
+        }
+        out = out " " b[at] " " first[e] " " count[e]
+      }
+      if (first[1] + count[1] > first[2]) {
+        print "error partition 2 (first sector " first[2] ") does not start after partition 1 (sectors " first[1] "-" first[1] + count[1] - 1 ")"
+        exit
+      }
+      print out
+    }')
+  case $layout in
+    'ok '*) ;;
+    'error '*) ifail "${layout#error }" ;;
+    *) ifail 'cannot read its MBR' ;;
+  esac
+  set -- $layout
+  mbr_sig=$2 f1=$3 s1=$4 n1=$5 f2=$6 s2=$7 n2=$8
+  iw=$(mktemp -d "${TMPDIR:-/tmp}/banned-api-image.XXXXXX") || exit 2
+  trap 'rm -rf "$iw"' EXIT
+  trap 'exit 2' HUP INT TERM
+  icopy 1 "$s1" "$n1"
+  icopy 2 "$s2" "$n2"
+  magic=$(dd if="$iw/p2.img" bs=4 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n')
+  [ "$magic" = 68737173 ] || ifail 'partition 2 does not start with the SquashFS magic hsqs'
+  for tool in mcopy mdir unsquashfs; do
+    command -v "$tool" >/dev/null 2>&1 ||
+      ifail "no $tool on PATH (the build's host tools are in KC_WORK/out/host/bin)"
+  done
+  # MTOOLS_SKIP_CHECK=1 as genimage sets it when it writes partition 1 with the same mtools.
+  mkdir "$iw/boot" || exit 2
+  MTOOLS_SKIP_CHECK=1 mcopy -s -n -i "$iw/p1.img" '::*' "$iw/boot/" >"$iw/log" 2>&1 ||
+    itool 'mcopy -s could not extract partition 1'
+  MTOOLS_SKIP_CHECK=1 mdir -a -i "$iw/p1.img" '::' >"$iw/mdir" 2>"$iw/log" ||
+    itool 'mdir -a could not list partition 1'
+  unsquashfs -lln "$iw/p2.img" >"$iw/root.lln" 2>"$iw/log" ||
+    itool 'unsquashfs -lln could not list partition 2'
+  unsquashfs -no-progress -d "$iw/root" "$iw/p2.img" >"$iw/log" 2>&1 ||
+    itool 'unsquashfs could not unpack partition 2'
+}
+
+# image_lists IMG KCONFIG: unpack IMG and print its lists, under "== " headings (see "Image lists
+# mode").
+image_lists() {
+  kconfig=$2
+  [ -f "$kconfig" ] && [ -r "$kconfig" ] || { printf 'banned-api-check: --image-lists: cannot read %s\n' "$kconfig" >&2; exit 2; }
+  image_unpack "$1"
+  # The boot list: path and type, from the extracted files (FAT has no mode and no link).
+  (cd "$iw/boot" && find . -print) >"$iw/boot.find" || exit 2
+  while IFS= read -r p; do
+    f=$iw/boot/${p#./}
+    if [ -h "$f" ]; then
+      ifail "mcopy extracted a symlink from partition 1: $p"
+    elif [ -d "$f" ]; then
+      t=dir
+    elif [ -f "$f" ]; then
+      t=file
+    else
+      ifail "mcopy extracted neither a file nor a directory from partition 1: $p"
+    fi
+    case $p in
+      .) printf '/ %s\n' "$t" ;;
+      *) printf '/%s %s\n' "${p#./}" "$t" ;;
+    esac
+  done <"$iw/boot.find" >"$iw/boot.unsorted"
+  sort "$iw/boot.unsorted" >"$iw/boot.list" || exit 2
+  # The root list: "<path> <mode>[ -> <target>]" from unsquashfs -lln, whose lines are "<mode>
+  # <uid>/<gid> <size, or major,minor> <yyyy-mm-dd> <hh:mm> squashfs-root<path>[ -> <target>]".
+  # The mode string's first letter is the type. Owners, sizes and times are left out.
+  awk -v badf="$iw/root.bad" '
+    function bad() { print > badf; failed = 1; exit }
+    {
+      if (!match($0, / [0-9]+-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9] /)) bad()
+      mode = $1
+      path = substr($0, RSTART + RLENGTH)
+      target = ""
+      if (substr(mode, 1, 1) == "l") {
+        at = index(path, " -> ")
+        if (!at) bad()
+        target = substr(path, at)
+        path = substr(path, 1, at - 1)
+      }
+      if (path == "squashfs-root") path = "/"
+      else if (index(path, "squashfs-root/") == 1) path = substr(path, 14)
+      else bad()
+      print path " " mode target
+    }
+    END { if (failed) exit 1 }
+  ' "$iw/root.lln" >"$iw/root.unsorted" ||
+    ifail "unsquashfs -lln printed a line this script cannot read: $(cat "$iw/root.bad")"
+  [ -s "$iw/root.unsorted" ] || ifail 'unsquashfs -lln listed nothing'
+  sort "$iw/root.unsorted" >"$iw/root.list" || exit 2
+  # keepcrypt-pi's imports: "<type> <symbol>@<version>" from llvm-nm -D -u (U, or w for weak).
+  kp=$iw/root/usr/bin/keepcrypt-pi
+  [ -f "$kp" ] && [ ! -h "$kp" ] || ifail 'partition 2 holds no file /usr/bin/keepcrypt-pi'
+  toolchain_bin
+  "$bin/llvm-nm" -D -u "$kp" >"$iw/nm" 2>"$iw/log" || itool 'llvm-nm -D -u cannot read /usr/bin/keepcrypt-pi'
+  awk 'NF == 2 { print $1, $2; next } NF { exit 1 }' "$iw/nm" >"$iw/imports.unsorted" ||
+    ifail 'llvm-nm -D -u printed a line that is not "<type> <symbol>"'
+  sort -u "$iw/imports.unsorted" >"$iw/imports.list" || exit 2
+  h_img=$(sha256 "$img") || exit 2
+  h_p1=$(sha256 "$iw/p1.img") || exit 2
+  h_p2=$(sha256 "$iw/p2.img") || exit 2
+  h_kp=$(sha256 "$kp") || exit 2
+  echo "== banned-api-check --image-lists $img $kconfig"
+  echo '== partition table (MBR)'
+  echo "disk signature $mbr_sig"
+  echo "partition 1: type 0x0c, boot flag 0x$f1, first sector $s1, $n1 sectors"
+  echo "partition 2: type 0x83, boot flag 0x$f2, first sector $s2, $n2 sectors"
+  echo '== SHA-256'
+  echo "sha256 image $h_img"
+  echo "sha256 partition-1 $h_p1"
+  echo "sha256 partition-2 $h_p2"
+  echo "sha256 keepcrypt-pi $h_kp"
+  echo '== boot files (partition 1, FAT: path, type)'
+  cat "$iw/boot.list"
+  echo '== boot mdir -a (partition 1)'
+  cat "$iw/mdir"
+  echo '== root files (partition 2, SquashFS: path, mode, link target)'
+  cat "$iw/root.list"
+  echo '== keepcrypt-pi imports (/usr/bin/keepcrypt-pi, llvm-nm -D -u: type, symbol)'
+  cat "$iw/imports.list"
+  echo '== kernel config (KCONFIG)'
+  cat "$kconfig" || exit 2
+  echo "banned-api-check --image-lists $img: listed, not scanned"
+  exit 0
+}
+
 # --- Workflow selftest ---------------------------------------------------------------------------
 
 # wexpect NAME DIR WANT: run the workflow check on DIR in a new process. WANT=clean needs exit 0
@@ -1656,6 +1897,109 @@ workflows_selftest() {
   : >"$d/other.yml" || exit 2
   wexpect 'workflow-error-no-entropy-yml' "$d" error
   wexpect 'workflow-error-missing-dir' "$tmp/absent" error
+}
+
+# --- Image lists selftest ------------------------------------------------------------------------
+
+# iexpect NAME TEXT ARG...: run --image-lists ARG... in a new process; it must exit 2 with TEXT in
+# its output.
+iexpect() {
+  iname=$1
+  want=$2
+  shift 2
+  out=$(sh "$self" --image-lists "$@" 2>&1)
+  rc=$?
+  ok=no
+  if [ "$rc" -eq 2 ]; then
+    case $out in *"$want"*) ok=yes ;; esac
+  fi
+  if [ "$ok" = yes ]; then
+    pass=$((pass + 1))
+    printf 'PASS %s -> exit 2: %s\n' "$iname" "${out##*$nl}"
+  else
+    fail=$((fail + 1))
+    printf 'FAIL %s: wanted exit 2 with "%s", got exit %s:\n' "$iname" "$want" "$rc"
+    printf '%s\n' "$out" | sed 's/^/    /'
+  fi
+}
+
+# le32 N: N as four little-endian bytes.
+le32() {
+  printf "$(printf '\\%03o\\%03o\\%03o\\%03o' $(($1 & 255)) $(($1 >> 8 & 255)) $(($1 >> 16 & 255)) $(($1 >> 24 & 255)))"
+}
+
+# image_mbr FILE SECTORS SIG ENTRY1 ENTRY2 ENTRY3: FILE, SECTORS zero sectors with an MBR in the
+# first: each ENTRY is TYPE:FIRST:COUNT (TYPE in hex) or - for an empty entry, entry 4 is empty,
+# and SIG is the two bytes at 510 in hex.
+image_mbr() {
+  dd if=/dev/zero of="$1" bs=512 count="$2" 2>/dev/null || exit 2
+  for e in "$4" "$5" "$6" -; do
+    case $e in
+      -) printf '\000\000\000\000\000\000\000\000' && printf '\000\000\000\000\000\000\000\000' ;;
+      *)
+        r=${e#*:}
+        printf '\000\000\000\000' && printf "\\$(printf '%03o' $((0x${e%%:*})))" &&
+          printf '\000\000\000' && le32 "${r%%:*}" && le32 "${r#*:}"
+        ;;
+    esac
+  done >"$1.mbr" || exit 2
+  printf "\\$(printf '%03o' $((0x${3%??})))\\$(printf '%03o' $((0x${3#??})))" >>"$1.mbr" || exit 2
+  dd if="$1.mbr" of="$1" bs=1 seek=446 conv=notrunc 2>/dev/null || exit 2
+}
+
+# Every refusal that comes before the host tools, so these run on any machine: the image's
+# layout (16 sectors: partition 1 FAT32 at sectors 1-4, partition 2 Linux at 5-12) is accepted
+# up to its missing SquashFS magic, and each change to it is refused. A real image's lists come
+# from the image workflow, which has the build's host tools.
+image_lists_selftest() {
+  a=$tmp/image
+  mkdir -p "$a" || exit 2
+  k=$a/linux.config
+  echo 'CONFIG_HW_RANDOM_BCM2835=y' >"$k" || exit 2
+  iexpect 'image-lists-error-usage' 'usage:' "$a/x.img"
+  image_mbr "$a/layout.img" 16 55aa 0c:1:4 83:5:8 -
+  iexpect 'image-lists-error-missing-kconfig' "cannot read $a/absent.config" "$a/layout.img" "$a/absent.config"
+  iexpect 'image-lists-error-missing-image' "cannot read $a/absent.img" "$a/absent.img" "$k"
+  iexpect 'image-lists-layout-without-squashfs-magic' \
+    "$a/layout.img: partition 2 does not start with the SquashFS magic hsqs" "$a/layout.img" "$k"
+  # The layout with the magic is accepted up to the host tools: here a PATH that holds only the
+  # tools the checks before them use, and no mcopy.
+  image_mbr "$a/tools.img" 16 55aa 0c:1:4 83:5:8 -
+  printf hsqs | dd of="$a/tools.img" bs=512 seek=5 conv=notrunc 2>/dev/null || exit 2
+  mkdir "$a/bin" || exit 2
+  for t in basename dirname wc dd od awk tr mktemp rm; do
+    ln -s "$(command -v "$t")" "$a/bin/$t" || exit 2
+  done
+  shell=$(command -v sh) || exit 2
+  out=$(PATH=$a/bin "$shell" "$self" --image-lists "$a/tools.img" "$k" 2>&1)
+  rc=$?
+  want="$a/tools.img: no mcopy on PATH (the build's host tools are in KC_WORK/out/host/bin)"
+  if [ "$rc" -eq 2 ] && [ "$out" = "banned-api-check: --image-lists: $want" ]; then
+    pass=$((pass + 1))
+    printf 'PASS image-lists-layout-with-magic-needs-the-host-tools -> exit 2: %s\n' "$out"
+  else
+    fail=$((fail + 1))
+    printf 'FAIL image-lists-layout-with-magic-needs-the-host-tools: wanted exit 2 with "%s", got exit %s:\n' "$want" "$rc"
+    printf '%s\n' "$out" | sed 's/^/    /'
+  fi
+  dd if="$a/layout.img" of="$a/short.img" bs=100 count=1 2>/dev/null || exit 2
+  iexpect 'image-lists-shorter-than-mbr' "$a/short.img: 100 bytes, shorter than an MBR (512)" "$a/short.img" "$k"
+  # NAME|SIG ENTRY1 ENTRY2 ENTRY3|REASON
+  for case in 'no-boot-signature|0000 0c:1:4 83:5:8 -|no MBR boot signature (55 aa at byte 510)' \
+    'partition-1-linux|55aa 83:1:4 83:5:8 -|partition 1 has type 0x83, not FAT32 with LBA (0x0c)' \
+    'partition-2-fat|55aa 0c:1:4 0c:5:8 -|partition 2 has type 0x0c, not Linux (0x83)' \
+    'third-partition|55aa 0c:1:4 83:5:8 83:13:2|partition entry 3 is not empty' \
+    'partition-1-empty|55aa 0c:1:0 83:5:8 -|partition 1 is empty' \
+    'partition-1-at-sector-0|55aa 0c:0:4 83:5:8 -|partition 1 starts at sector 0, the MBR' \
+    'partition-2-past-the-end|55aa 0c:1:4 83:5:20 -|partition 2 ends at sector 25, past the image (16 sectors)' \
+    'partition-2-inside-partition-1|55aa 0c:1:4 83:3:8 -|partition 2 (first sector 3) does not start after partition 1 (sectors 1-4)'; do
+    name=${case%%|*}
+    rest=${case#*|}
+    # SIG and the three entries, split on purpose.
+    set -- ${rest%%|*}
+    image_mbr "$a/$name.img" 16 "$@"
+    iexpect "image-lists-$name" "$a/$name.img: ${rest#*|}" "$a/$name.img" "$k"
+  done
 }
 
 # --- Artifact selftest -------------------------------------------------------------------------
@@ -1866,6 +2210,7 @@ Format: $mf: not an ELF, Mach-O or ar file, so its symbols cannot be checked" "$
 case ${1-} in
   --artifact) shift; [ $# -ge 1 ] || { usage >&2; exit 2; }; artifact "$@" ;;
   --workflows) shift; [ $# -eq 1 ] || { usage >&2; exit 2; }; workflows "$1" ;;
+  --image-lists) shift; [ $# -eq 2 ] || { usage >&2; exit 2; }; image_lists "$1" "$2" ;;
 esac
 
 case $# in

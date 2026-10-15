@@ -1,0 +1,237 @@
+# KeepCrypt-Entropy Pi image (Entropy/tasks/todo.md, M4 groups 14 and 15; Q38): the SD card image
+# built from Entropy/pi/os twice, on two fresh runners at the same KC_WORK, and a third job that
+# fails unless both builds gave the same image (docs/build-plan.md, "Reproducible build"). Leg a
+# restores Buildroot's downloads (dl/) from the cache by exact key and leg b downloads everything
+# afresh; Buildroot checks every download by its hash either way. Leg a uploads the image, kept
+# 14 days, which the owner downloads signed in to GitHub; any commit can be rebuilt after that by
+# hand, through workflow_dispatch's ref (once this workflow is on main).
+#
+# Not one of the 14 required checks (Q38 (b)), so path filters are safe: a skipped run never
+# leaves a required check pending. The rule instead: no PR that changes the image merges without
+# a green run of this workflow on its final head commit, recorded in tasks/todo.md's Review.
+# Until commit 17 adds the scan (banned-api-check.sh --image against pi/os/expected/), the image
+# is for the owner's boot check (H1a) only, and the summary says so.
+#
+# Hardening, as in entropy-ci.yml, whose gates job checks this file too (banned-api-check.sh
+# --workflows): read-only token and no secret; only actions/checkout, actions/cache and
+# actions/upload-artifact, pinned by commit SHA; no event data inside run scripts (it reaches them
+# through env and with only). Every job builds a PR's head commit, never GitHub's merge commit,
+# or a dispatch's ref, or the pushed or scheduled commit, and prints the commit it built.
+#
+# The two legs share one list of steps (a YAML anchor), so they cannot drift apart; the job-level
+# LEG says which leg runs, and only the cache and upload steps read it.
+
+name: Entropy Pi image
+
+on:
+  pull_request:
+    paths:
+      - 'Entropy/**'
+      - '.github/workflows/entropy-pi-image.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Entropy/**'
+      - '.github/workflows/entropy-pi-image.yml'
+  schedule:
+    # Weekly (Mondays, 04:17 UTC): main still builds the same image, from fresh downloads in leg b.
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'The commit, branch or tag to build (empty: the branch the run starts from)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  # A newer run on the same ref (for a dispatch, the same requested ref) cancels the older one.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    # Explicit bash runs with -eo pipefail: any failing command fails the step.
+    shell: bash
+
+env:
+  # The build directory, the same path in every build (pi/os/Makefile).
+  KC_WORK: /kc-work
+
+jobs:
+  build-a:
+    name: pi-image build (a)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      LEG: a
+    defaults: &leg-defaults
+      run:
+        shell: bash
+        working-directory: Entropy
+    outputs: &leg-outputs
+      commit: ${{ steps.hash.outputs.commit }}
+      name: ${{ steps.hash.outputs.name }}
+      image: ${{ steps.hash.outputs.image }}
+      partition1: ${{ steps.hash.outputs.partition1 }}
+      partition2: ${{ steps.hash.outputs.partition2 }}
+      prefix: ${{ steps.hash.outputs.prefix }}
+      binary: ${{ steps.hash.outputs.binary }}
+    steps: &leg-steps
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || inputs.ref || github.sha }}
+      # GitHub promises only 14 GB free on a standard hosted runner. These preinstalled SDKs are
+      # unused here; the system's compilers and Python, and rustup, stay.
+      - name: Free disk space; print the commit, the runner image, SOURCE_DATE_EPOCH and df -h
+        run: |
+          df -h /
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL /usr/share/swift
+          echo "commit: $(git rev-parse HEAD)"
+          echo "ImageOS: $ImageOS"
+          echo "ImageVersion: $ImageVersion"
+          echo "SOURCE_DATE_EPOCH: $(sed -n 's/^SOURCE_DATE_EPOCH = //p' pi/os/pins.txt)"
+          df -h
+      - name: KC_WORK, a fresh build directory outside the checkout
+        run: |
+          if [ -e "$KC_WORK" ]; then echo "FAIL: $KC_WORK exists on a fresh runner" >&2; exit 1; fi
+          sudo install -d -o "$(id -u)" -g "$(id -g)" "$KC_WORK"
+          ls -ld "$KC_WORK"
+      # The mandatory host packages of Buildroot's manual ("System requirements"), from Ubuntu;
+      # most are on the runner image already.
+      - name: Buildroot's host packages (Ubuntu's)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bc build-essential cpio file patch rsync unzip wget
+      # keepcrypt-pi is built inside Buildroot with this toolchain (pi/os/package/keepcrypt-pi),
+      # and llvm-nm, which lists its imports, is its llvm-tools-preview.
+      - name: Install the pinned toolchain (rust-toolchain.toml)
+        run: |
+          rustup toolchain install
+          rustc --version
+          cargo --version
+      # Leg a only, by exact key (no restore-keys); on a miss the post step saves what leg a
+      # downloaded. Buildroot uses a cached file only if it has the pinned hash.
+      - name: Buildroot's downloads from the cache (leg a; leg b downloads afresh)
+        if: env.LEG == 'a'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.KC_WORK }}/dl
+          key: ${{ runner.os }}-${{ runner.arch }}-pi-image-dl-${{ hashFiles('Entropy/pi/os/pins.txt', 'Entropy/pi/os/configs/keepcrypt_pizero_defconfig', 'Entropy/pi/os/patches/linux/linux.hash') }}
+      - name: make source image
+        run: time make -C pi/os source image
+      # The job's outputs, for the compare job, and the image's lists (banned-api-check.sh
+      # --image-lists, with the build's host mcopy, mdir and unsquashfs), which commit 16 commits
+      # to pi/os/expected/ for review. The image is the one keepcrypt-pi-*.img the build made
+      # (the Makefile names it for its screen type), the kernel config the .config it was built
+      # with, and the binary's SHA-256 that of the image's own /usr/bin/keepcrypt-pi.
+      - name: Hash and list
+        id: hash
+        run: |
+          fail() { echo "FAIL: hash and list: $1" >&2; exit 1; }
+          commit=$(git rev-parse HEAD)
+          shopt -s nullglob
+          imgs=("$KC_WORK"/out/images/keepcrypt-pi-*.img)
+          [ "${#imgs[@]}" -eq 1 ] || fail "not exactly one keepcrypt-pi-*.img in $KC_WORK/out/images: ${imgs[*]}"
+          configs=("$KC_WORK"/out/build/linux-*/.config)
+          [ "${#configs[@]}" -eq 1 ] || fail "not exactly one kernel .config in $KC_WORK/out/build: ${configs[*]}"
+          img=${imgs[0]}
+          size=$(wc -c < "$img")
+          echo "$img: $((size)) bytes"
+          sum=$(sha256sum "$img")
+          image=${sum%% *}
+          lists=$(PATH="$KC_WORK/out/host/bin:$PATH" scripts/banned-api-check.sh --image-lists "$img" "${configs[0]}")
+          printf '%s\n' "$lists"
+          get() { printf '%s\n' "$lists" | sed -n "s/^sha256 $1 \([0-9a-f]\{64\}\)\$/\1/p"; }
+          [ "$(get image)" = "$image" ] || fail "--image-lists hashed another image"
+          p1=$(get partition-1)
+          p2=$(get partition-2)
+          binary=$(get keepcrypt-pi)
+          prefix=$(python3 -I pi/os/rootfs-prefix.py "$img" "$KC_WORK/out/images/rootfs.squashfs")
+          for v in "$p1" "$p2" "$binary" "$prefix"; do [ -n "$v" ] || fail "an empty hash or prefix"; done
+          df -h
+          {
+            echo "commit=$commit"
+            echo "name=${img##*/}"
+            echo "path=$img"
+            echo "image=$image"
+            echo "partition1=$p1"
+            echo "partition2=$p2"
+            echo "prefix=$prefix"
+            echo "binary=$binary"
+          } | tee -a "$GITHUB_OUTPUT"
+      # Leg a only. Until commit 17's scan, for the owner's boot check (H1a) only.
+      - name: Upload the image (leg a; boot check only, not scanned)
+        if: env.LEG == 'a'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          path: ${{ steps.hash.outputs.path }}
+          archive: false
+          retention-days: 14
+          if-no-files-found: error
+
+  build-b:
+    name: pi-image build (b)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      LEG: b
+    defaults: *leg-defaults
+    outputs: *leg-outputs
+    steps: *leg-steps
+
+  reproducible:
+    # Runs when a leg failed too (from commit 17, when a scan failed), so the run always says
+    # whether the two builds agreed; not when the run was cancelled. Fails unless both image
+    # hashes are non-empty and equal, and both legs built the same commit; then the summary names
+    # the commit, the image and its SHA-256, the rootfs prefix and the binary's SHA-256.
+    name: pi-image reproducible (a = b)
+    needs: [build-a, build-b]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Both legs built the same commit into the same image
+        env:
+          RESULT_A: ${{ needs.build-a.result }}
+          RESULT_B: ${{ needs.build-b.result }}
+          COMMIT_A: ${{ needs.build-a.outputs.commit }}
+          COMMIT_B: ${{ needs.build-b.outputs.commit }}
+          NAME_A: ${{ needs.build-a.outputs.name }}
+          NAME_B: ${{ needs.build-b.outputs.name }}
+          IMAGE_A: ${{ needs.build-a.outputs.image }}
+          IMAGE_B: ${{ needs.build-b.outputs.image }}
+          PARTITION_1_A: ${{ needs.build-a.outputs.partition1 }}
+          PARTITION_1_B: ${{ needs.build-b.outputs.partition1 }}
+          PARTITION_2_A: ${{ needs.build-a.outputs.partition2 }}
+          PARTITION_2_B: ${{ needs.build-b.outputs.partition2 }}
+          PREFIX_A: ${{ needs.build-a.outputs.prefix }}
+          PREFIX_B: ${{ needs.build-b.outputs.prefix }}
+          BINARY_A: ${{ needs.build-a.outputs.binary }}
+          BINARY_B: ${{ needs.build-b.outputs.binary }}
+        run: |
+          for v in RESULT COMMIT NAME IMAGE PARTITION_1 PARTITION_2 PREFIX BINARY; do
+            a=${v}_A
+            b=${v}_B
+            echo "$v: a ${!a:-(none)}, b ${!b:-(none)}"
+          done
+          fail() { echo "FAIL: pi-image reproducible: $1" >&2; exit 1; }
+          [ -n "$IMAGE_A" ] && [ -n "$IMAGE_B" ] || fail "a leg gave no image hash"
+          [ "$IMAGE_A" = "$IMAGE_B" ] || fail "the two builds gave different images (the partition hashes above say which part)"
+          [ -n "$COMMIT_A" ] && [ "$COMMIT_A" = "$COMMIT_B" ] || fail "the legs built different commits"
+          echo "both legs built $COMMIT_A into $NAME_A, SHA-256 $IMAGE_A"
+          {
+            echo "## Entropy Pi image"
+            echo
+            echo "- Commit: \`$COMMIT_A\`"
+            echo "- Image: \`$NAME_A\`, leg a's artifact (kept 14 days)"
+            echo "- Image SHA-256, the same in legs a and b: \`$IMAGE_A\`"
+            echo "- Rootfs prefix: \`$PREFIX_A\`"
+            echo "- keepcrypt-pi SHA-256: \`$BINARY_A\`"
+            echo
+            echo "**Boot check only, not scanned.** No image scan runs yet (tasks/todo.md, M4 commit 17): this image is for the owner's boot check (H1a), never a ceremony."
+          } >> "$GITHUB_STEP_SUMMARY"
