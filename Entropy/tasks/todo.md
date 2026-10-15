@@ -9435,7 +9435,7 @@ The PR is a draft from commit 1.
     itself; it refuses to run without that file.
     17a-j. scripts: `sicase`'s FAIL line prints the wanted exit code, 1 or 0, not 1 followed by the hit text (a
     message only, found by the lead in the stage report).
-18. CLAUDE.md: Commands (group 18).
+18. CLAUDE.md: Commands (group 18): 14a3121.
 
 **Stage E: hardware and review**
 
