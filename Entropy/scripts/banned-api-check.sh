@@ -214,11 +214,10 @@
 #   Kconfig    expected/kconfig-required and kconfig-forbidden equal the fragment's =y and
 #              "is not set" lines, and expected/linux.config keeps them with exactly one
 #              CONFIG_HW_RANDOM_* driver, BCM2835, as in the image scan.
-#   BusyBox    only init and mount: CONFIG_INIT, FEATURE_USE_INITTAB, MOUNT, FEATURE_MOUNT_FSTAB,
-#              FEATURE_MOUNT_FLAGS, SH_IS_NONE and BASH_IS_NONE at =y; none of the denied applets
-#              (busybox_denied below: the shells, getty, login, su, the network, module, power,
-#              swap and loop tools, seedrng, vi) at =y; no CONFIG_SH_IS_* or CONFIG_BASH_IS_*
-#              selector at =y but the two _NONE ones.
+#   BusyBox    only init and mount, as an allow-list: CONFIG_INIT, FEATURE_USE_INITTAB, MOUNT,
+#              FEATURE_MOUNT_FSTAB, FEATURE_MOUNT_FLAGS, SH_IS_NONE and BASH_IS_NONE at =y, and no
+#              CONFIG_X=y line but those and the build settings pi/os/board/pizero/busybox.config
+#              keeps (busybox_allowed below), so no applet or shell can be added to it.
 #
 # Categories (main patterns; the full lists are in the check functions below; comments count
 # everywhere):
@@ -2012,14 +2011,16 @@ inittab_lines='::sysinit:/bin/mount -a
 ::wait:/usr/bin/keepcrypt-pi
 ::once:/usr/bin/keepcrypt-pi --stopped'
 
-# BusyBox (tasks/todo.md, M4 groups 11 and 13): the applets the image must build, as CONFIG_
-# symbols at =y (init reading /etc/inittab; mount reading /etc/fstab, with the flags that give it
-# nosuid, nodev and noexec; no shell as sh or bash), and the ones it must not: shells, logins,
-# network, module, power, swap and loop tools, seedrng and vi.
+# BusyBox (tasks/todo.md, M4 groups 11 and 13): "enables only init and mount" as an allow-list.
+# busybox_required must be at =y: init reading /etc/inittab, mount reading /etc/fstab with the
+# flags that give it nosuid, nodev and noexec, and no shell as sh or bash. busybox_allowed is every
+# CONFIG_ symbol pi/os/board/pizero/busybox.config sets at =y: those seven and the build settings it
+# keeps (its header names them), reviewed once with the file. Any other CONFIG_X=y line is a hit,
+# so no applet, shell, login, network, module, power, swap or loop tool, seedrng or vi can be added
+# without changing this list too.
 busybox_required='INIT FEATURE_USE_INITTAB MOUNT FEATURE_MOUNT_FSTAB FEATURE_MOUNT_FLAGS SH_IS_NONE BASH_IS_NONE'
-busybox_denied='ASH HUSH SH_IS_ASH SH_IS_HUSH GETTY LOGIN SU SULOGIN TELNETD HTTPD FTPD TFTP WGET NC
-UDHCPC UDHCPD IFCONFIG IP ROUTE PING SYSLOGD KLOGD CROND MODPROBE INSMOD RMMOD HALT REBOOT POWEROFF
-SWAPON SWAPOFF LOSETUP SEEDRNG VI SH'
+busybox_allowed="$busybox_required HAVE_DOT_CONFIG LONG_OPTS LFS TIME64 FEATURE_SYSLOG STATIC_LIBGCC
+INSTALL_APPLET_SYMLINKS NO_DEBUG_LIB FEATURE_BUFFERS_USE_MALLOC MONOTONIC_SYSCALL TRY_LOOP_CONFIGURE"
 
 # The programs the root must not hold, as a path's or a link target's base name.
 denied_programs='sh|ash|hush|getty|login|dropbear|sshd|telnetd|udhcpc'
@@ -2205,23 +2206,20 @@ config_txt_check() {
   lines_as_hits ConfigTxt "$2" "$cout"
 }
 
-# busybox_check FILE NAME: every $busybox_required symbol at =y, no $busybox_denied symbol at =y,
-# and no CONFIG_SH_IS_* or CONFIG_BASH_IS_* shell selector at =y but the two _NONE ones.
+# busybox_check FILE NAME: every $busybox_required symbol at =y, and no CONFIG_X=y line whose
+# symbol is outside $busybox_allowed.
 busybox_check() {
-  bout=$(awk -v req="$(printf '%s' "$busybox_required" | tr '\n' ' ')" \
-    -v deny="$(printf '%s' "$busybox_denied" | tr '\n' ' ')" '
+  bout=$(awk -v req="$busybox_required" -v allow="$(printf '%s' "$busybox_allowed" | tr '\n' ' ')" '
     BEGIN {
       nr = split(req, r, " ")
-      nd = split(deny, d, " ")
-      for (i = 1; i <= nd; i++) denied["CONFIG_" d[i]] = 1
+      na = split(allow, a, " ")
+      for (i = 1; i <= na; i++) allowed["CONFIG_" a[i]] = 1
     }
     /^CONFIG_[A-Za-z0-9_]+=y$/ {
       sym = $0
       sub(/=y$/, "", sym)
       have[sym] = 1
-      if (sym in denied) print NR ": " $0 " (an applet the image must not build)"
-      else if (sym ~ /^CONFIG_(SH|BASH)_IS_/ && sym != "CONFIG_SH_IS_NONE" && sym != "CONFIG_BASH_IS_NONE")
-        print NR ": " $0 " (a shell selected)"
+      if (!(sym in allowed)) print NR ": " $0 " (not a symbol the image sets: only init and mount build)"
     }
     END { for (i = 1; i <= nr; i++) if (!(("CONFIG_" r[i]) in have)) print "1: CONFIG_" r[i] "=y is missing" }
   ' "$1") || exit 2
@@ -2260,7 +2258,7 @@ os_config() {
     echo "banned-api-check --os-config $os: $hits hit(s)"
     exit 1
   fi
-  echo "banned-api-check --os-config $os: clean: Q35's inittab, the fstab's options, cmdline.txt and config.txt as the plan says, expected/linux.config with the fragment's required and forbidden lists (which expected/kconfig-required and kconfig-forbidden equal) and one hwrng driver, and BusyBox with init and mount and no denied applet or shell"
+  echo "banned-api-check --os-config $os: clean: Q35's inittab, the fstab's options, cmdline.txt and config.txt as the plan says, expected/linux.config with the fragment's required and forbidden lists (which expected/kconfig-required and kconfig-forbidden equal) and one hwrng driver, and BusyBox with init and mount and no other symbol set"
   exit 0
 }
 

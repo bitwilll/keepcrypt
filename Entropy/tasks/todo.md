@@ -8105,6 +8105,20 @@ stale (Q43 (d)).
   enable_uart=1 rule, and this item names the two. Fixtures `osconfig-config-txt-start-x` and
   `osconfig-config-txt-start-debug`, exactly one hit each; 33 `osconfig-*` fixtures. `--selftest` 687/0 under sh and
   dash; the gate clean on the tree.
+  Proof (review fix, 17a-f): stage D2a's plan review found 17a's reading of "BusyBox enables only `init` and `mount`"
+  (the seven required symbols, a deny list of 35 applet symbols and the shell selectors) let an added applet outside
+  the list pass: `CONFIG_DD=y`, `CONFIG_CHROOT=y` and `CONFIG_SETSID=y` appended to a copy of `clean-pizero`'s
+  busybox.config gave "clean". Now `busybox_check` is the allow-list the word "only" asks for: the seven required
+  symbols must be at =y, and every `CONFIG_X=y` line must be one of `busybox_allowed`, the 18 symbols
+  `pi/os/board/pizero/busybox.config` sets (the seven, and the build settings its header names: HAVE_DOT_CONFIG,
+  LONG_OPTS, LFS, TIME64, FEATURE_SYSLOG, STATIC_LIBGCC, INSTALL_APPLET_SYMLINKS, NO_DEBUG_LIB,
+  FEATURE_BUFFERS_USE_MALLOC, MONOTONIC_SYSCALL, TRY_LOOP_CONFIGURE), reviewed once with the file as the kernel's
+  lists are; the deny list and the selector rule go, since the allow-list subsumes them. The real busybox.config
+  passes (`--os-config` on a copy of `clean-pizero` holding it: clean), the reviewer's copy gives 3 BusyBox hits, the
+  six existing BusyBox fixtures still give exactly one hit each (`CONFIG_ASH=y`, `CONFIG_BASH_IS_ASH=y` and
+  `CONFIG_UDHCPC=y` now as "not a symbol the image sets"), and fixture `osconfig-busybox-dd` (`CONFIG_DD=y` added)
+  gives one; 34 `osconfig-*` fixtures. `--image`'s root list (17b) proves "only" at the image through the applet
+  symlinks; this proves it at the source. `--selftest` 688/0 under sh and dash; the gate clean on the tree.
 - [ ] The existing rules scan `pi/os/` files from their first commit. A false hit in a kernel or BusyBox config gets a
   reviewed per-path rule with fixtures, never a blanket exclude.
 
@@ -9288,6 +9302,9 @@ The PR is a draft from commit 1.
     applies options in order and each clears the flag before it (group 11, `--os-config`); two fixtures.
     17a-e. scripts, tasks/todo.md: a `start_x=1` or `start_debug=1` line in config.txt is a ConfigTxt hit, since each
     selects other firmware files as `start_file` and `gpu_mem=16` do (group 11, `--os-config`); two fixtures.
+    17a-f. scripts: BusyBox's check is an allow-list, every `CONFIG_X=y` line one of the 18 symbols the board's
+    busybox.config sets, in place of 17a's deny list of 35 applets, so "only init and mount" is what is checked
+    (group 11, `--os-config`); fixture `osconfig-busybox-dd`.
 18. CLAUDE.md: Commands (group 18).
 
 **Stage E: hardware and review**
