@@ -8251,7 +8251,9 @@ stale (Q43 (d)).
   `/tmp` and `/run` as tmpfs with `nosuid,nodev,noexec`, `size=1m` (modes 1777 and 0755), and nothing else.
   BusyBox's mount takes `nosuid`, `nodev` and `noexec` only with `FEATURE_MOUNT_FLAGS`, which busybox.config sets.
 - [ ] post-build.sh creates `/mnt/usb` and removes a committed list of skeleton files (`/etc/init.d/*`, `/etc/profile`,
-  `/etc/shells`). The file lists catch anything else.
+  `/etc/shells`). The file lists catch anything else. From 15j, `/lib` and `/usr/lib` keep only an allow-list: the
+  dynamic loader, `libc.so.6`, `libm.so.6`, `libgcc_s.so.1` (the two programs' needs, read from the first image) and
+  `os-release`; `ldd`, the network scripts and files and `/var/www` go.
 - [x] config.txt:
   - `kernel=zImage`;
   - `gpu_mem_256=100`, `gpu_mem_512=100`, `gpu_mem_1024=100`, as Buildroot's `board/raspberrypi/config_default.txt`
@@ -9100,6 +9102,13 @@ The PR is a draft from commit 1.
     in the pinned tree found no other set or `default y` one outside an off menu, and found bcmrpi_defconfig's
     `KGDB=y`, the kernel debugger, which the fragment now forbids too (lead decisions under the owner's standing
     instruction of 2026-10-15).
+    15j. pi/os, tasks/todo.md: image run 38684224715 (fa894a3) built both legs equal (image 35032b1c...), and its
+    root list held the external toolchain's whole runtime: libstdc++ (with its gdb script), libgomp, libatomic,
+    libnss_dns, libnss_files, libresolv, libanl, libnsl, glibc's libdl, libpthread, librt and libutil stubs, plus
+    `ldd`, the skeleton's network scripts and files and `/var/www`. The image's ELF headers (read from the artifact):
+    BusyBox needs `libc.so.6`; `keepcrypt-pi` names `libc.so.6`, `libgcc_s.so.1` and `libm.so.6`; both load through
+    `/lib/ld-linux-armhf.so.3`. post-build.sh keeps those four and `usr/lib/os-release` and removes the rest, so H1a
+    and commit 16's lists use the pruned image (lead decision under the owner's standing instruction of 2026-10-15).
 16. pi/os: `expected/` (lists and `linux.config`) from the run after H1a passes, reviewed line by line (group 15).
 17. scripts, .github, pi/os: `--image`, `--selftest-image` and `--os-config`, their fixtures and canaries; the scan step
     in both legs; `gates` runs `--os-config`; the Makefile's `scan` target, which runs `--image` (groups 11, 13, 14,
