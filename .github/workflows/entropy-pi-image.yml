@@ -167,6 +167,7 @@ jobs:
           p1=$(get partition-1)
           p2=$(get partition-2)
           packed=$(get keepcrypt-pi)
+          [ -n "$packed" ] || fail "--image-lists printed no sha256 keepcrypt-pi line"
           echo "keepcrypt-pi SHA-256: built $binary, packed $packed"
           [ "$packed" = "$binary" ] || fail "the image's /usr/bin/keepcrypt-pi is not the keepcrypt-pi cargo built"
           prefix=$(python3 -I pi/os/rootfs-prefix.py "$img" "$KC_WORK/out/images/rootfs.squashfs")

@@ -8626,6 +8626,11 @@ stale (Q43 (d)).
        `success`, so a failed scan never yields a summary that claims the scans passed. `--workflows` clean on both
        workflows under sh and dash (`clean, 2 workflow(s)`), `ruby -ryaml` parses the file (11 anchored steps in each
        leg), the three job names unchanged.
+       Proof (review fix, 17b-b): stage D2b's review ran the block with an `--image-lists` stub whose keepcrypt-pi
+       line carried no hash: the comparison ran first and failed with "is not the keepcrypt-pi cargo built". Now
+       `[ -n "$packed" ]` precedes it, so that print fails with "--image-lists printed no sha256 keepcrypt-pi line"
+       (the same stub driver, the block re-extracted from the YAML as committed); the equal and differing cases are
+       unchanged (`binary=<hash>` written; "is not the keepcrypt-pi cargo built").
   - **`pi-image reproducible (a = b)`**: `needs` both legs with `if: ${{ !cancelled() }}`, so it runs even when a scan
     fails; it fails unless both image hashes are non-empty and equal, then writes the commit, the image SHA-256, the
     rootfs prefix and the binary SHA-256 to the step summary.
@@ -9435,6 +9440,10 @@ The PR is a draft from commit 1.
     itself; it refuses to run without that file.
     17a-j. scripts: `sicase`'s FAIL line prints the wanted exit code, 1 or 0, not 1 followed by the hit text (a
     message only, found by the lead in the stage report).
+    Review fixes of 17b and 18 (stage D2b's review of 24582a8..ca57dee), each with its proof under the item it amends:
+    17b-b. .github: "Hash and list" refuses an `--image-lists` print with no `sha256 keepcrypt-pi` line as that,
+    before the built-equals-packed comparison, which named a wrong binary for a missing line (a message only; the
+    step failed either way).
 18. CLAUDE.md: Commands (group 18): 14a3121.
 
 **Stage E: hardware and review**
