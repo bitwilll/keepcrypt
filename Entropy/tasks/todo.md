@@ -8150,7 +8150,8 @@ stale (Q43 (d)).
 
 **13. The OS image: `pi/os` (Q37)**
 - [ ] Layout:
-  - `Makefile`, with targets `source`, `image`, `repro-check` and `scan`;
+  - `Makefile`, with targets `source`, `image`, `repro-check` and `scan` (`scan` in commit 17, which adds the `--image`
+    it runs; 15h);
   - `external.desc` (`KEEPCRYPT`), `external.mk`, `Config.in`;
   - `configs/keepcrypt_pizero_defconfig`;
   - `board/pizero/`: `linux.fragment`, `busybox.config`, `config.txt`, `cmdline.txt`, `genimage.cfg`, `post-build.sh`,
@@ -8166,12 +8167,15 @@ stale (Q43 (d)).
   There are no directory symlinks.
 - [ ] Makefile:
   - pins Buildroot 2026.08's URL and SHA-256;
-  - refuses a `KC_WORK` inside `Entropy/` or containing spaces;
+  - refuses a `KC_WORK` inside `Entropy/` or containing spaces (inside also through a symlink, before `make source`
+    creates it: 14f);
   - exports `SOURCE_DATE_EPOCH` from `pins.txt` (a fixed constant, set once in commit 14) and `TZ=UTC`, and prints both;
     it needs no git;
   - `make source` fetches with network access, including the crates via `cargo fetch --locked` into `$KC_WORK/cargo`;
-  - the build then runs offline with `O=$KC_WORK/out`;
-  - it runs `kconfig.sh` after `make toolchain linux-patch` and before the full build;
+  - the build then runs offline with `O=$KC_WORK/out` (enforced from 14e: Buildroot's primary site is `dl/` itself,
+    primary site only, so a missing download fails the build);
+  - it runs `kconfig.sh` after `make toolchain linux-patch` and before the full build (as built:
+    `make toolchain host-flex host-bison linux-patch`, since Kconfig's conf needs flex and bison; 14g);
   - `repro-check` builds twice, in fresh output directories at the same path, and compares the results.
 - [ ] The kernel config is an allow-list (Q37 (b)):
   - `kconfig.sh` (committed) runs in the pinned kernel tree: `bcmrpi_defconfig`; every `=m` line turned off and
@@ -8182,6 +8186,11 @@ stale (Q43 (d)).
     explicit `# … is not set` in the fragment.
   - `--image` fails on any difference between the build's `.config` and `expected/linux.config`; `--os-config` checks
     the committed file against the lists on every PR.
+
+  Proof (14h, the script's checks; the real kernel's run is CI's): `sh pi/os/kconfig.sh --selftest`, which `gates`
+  runs, is 6/0 under sh and dash on a stub kernel tree with the committed fragment: the clean tree written with no
+  `=m`; a forbidden option selected back on, a required one dropped and a module left each exit 1 with nothing
+  written; a fragment line of another kind and a bad usage exit 2. Each of six mutants of the checks fails it.
 - [ ] Kernel lists:
   - Required at `=y`:
     - SPI: `SPI_BCM2835`, `SPI_SPIDEV`;
@@ -8241,7 +8250,7 @@ stale (Q43 (d)).
   BusyBox's mount takes `nosuid`, `nodev` and `noexec` only with `FEATURE_MOUNT_FLAGS`, which busybox.config sets.
 - [ ] post-build.sh creates `/mnt/usb` and removes a committed list of skeleton files (`/etc/init.d/*`, `/etc/profile`,
   `/etc/shells`). The file lists catch anything else.
-- [ ] config.txt:
+- [x] config.txt:
   - `kernel=zImage`;
   - `gpu_mem_256=100`, `gpu_mem_512=100`, `gpu_mem_1024=100`, as Buildroot's `board/raspberrypi/config_default.txt`
     sets them [S12]; the 512 MB Pi Zero gives the GPU 100 MB and leaves about 412 MB for Linux;
@@ -8269,7 +8278,9 @@ stale (Q43 (d)).
   `mcopy -m`.
 - [ ] `package/keepcrypt-pi/keepcrypt-pi.mk`, a generic package (Q37 (c)):
   - its site is `Entropy/` (local, rsynced without `target` and `.git`);
-  - the build runs under `env -u RUSTFLAGS`, with:
+  - the build runs under `env -u RUSTFLAGS` (from 14c, with every host `CARGO_*` and `RUSTC*` variable, `RUSTFLAGS`,
+    `RUSTDOCFLAGS` and `RUSTUP_TOOLCHAIN` unset, `RUSTUP_HOME` kept: a host `CARGO_ENCODED_RUSTFLAGS` replaced the
+    getrandom cfg below), with:
     - `CARGO_HOME=$KC_WORK/cargo`;
     - CC, AR and the linker set to Buildroot's `TARGET_CC`/`TARGET_AR`;
     - `CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_RUSTFLAGS='--cfg getrandom_backend="linux_getrandom"'`;
@@ -8290,8 +8301,12 @@ stale (Q43 (d)).
   each before the 2026-10-01 cutoff. The Makefile includes it and checks every `OS_PINS`/`BR_PINS` entry against
   the hash file Buildroot reads: against our `linux.hash` and Buildroot's 2026.08 `.hash` files read from its git
   tag, all hold; a changed digit in a pin or in `linux.hash` stops it naming the file.
+  Reading (15g, a lead decision under the owner's standing instruction of 2026-10-15): the build host, the
+  ubuntu-24.04 runner image and the Ubuntu packages the image workflow installs, is not a pinned input until M7's
+  container (Q38 (e)); pins.txt's header says so, and each leg prints their versions (the Image inputs table's
+  "Build host" row).
 
-  Proof:
+  Proof (group 13 as a whole, not the `pins.txt` item, whose own proof is above; 15h):
   - gates clean over `pi/os/`, with no new exclusion;
   - leg (a)'s log of `make image`, with the time, `df -h` and the image size;
   - `--os-config` clean from commit 17.
@@ -8315,6 +8330,13 @@ stale (Q43 (d)).
   host tools. No mtools or squashfs-tools
   here: the listing path ran only against scratch stub tools; the lead reads the first image run's "Hash and list"
   step.
+  Proof (15e, 15f): 20 built-in cases, `--selftest` 601/0 under sh and dash: an entry 4 in use, a lone `55` at byte
+  510 and a partition 2 one sector past the end are refused, and one that ends on the last sector passes to the magic
+  check; with stub `mcopy`, `mdir`, `unsquashfs`, `rustc` and `llvm-nm`, the whole listing (a setuid file, a symlink,
+  a device, a name with spaces and a date in it, imports out of order with a duplicate, four pinned SHA-256s) equals
+  the expected text, and a root line with no date is refused. Mutants of the entry-4, signature and end checks, and
+  of the listing's link target, prefix, import dedup, line refusal, partition hash, boot type and KCONFIG dump, each
+  fail one case (the boot list's sort survives on macOS, where find already lists the stub's names in order).
 - [ ] `banned-api-check.sh --image IMG EXPECTED_DIR KCONFIG BIN_SHA256` (commit 17) reuses that unpacking, then:
   2. Search every extracted file and the raw image for the three markers and the test key. SquashFS is compressed, so
      scanning the `.img` alone would find nothing.
@@ -8369,15 +8391,22 @@ stale (Q43 (d)).
     commit, and every job prints the commit it built.
   - Hardening as in entropy-ci.yml, enforced by `--workflows`: `permissions: contents: read`, no secrets, event data only
     through `env:` and `with:`, actions pinned by SHA. Concurrency cancels an older run on the same ref.
+  - Held by review, not by `--workflows` (stage D's review; lead decision, 15h): `persist-credentials: false` on every
+    checkout, and the image workflow's head-SHA `ref`, which entropy-ci.yml does not share (its PR jobs build the merge
+    commit on purpose). The gate's scope predates M4.
 
   Proof (commit 15, the file; the runs are CI's): `.github/workflows/entropy-pi-image.yml` has these triggers (path
   filters `Entropy/**` and the file itself, a Monday cron, `workflow_dispatch` with an optional `ref`), checks out
   `github.event.pull_request.head.sha || inputs.ref || github.sha` without credentials, has top-level `permissions:
-  contents: read` and no other permissions block, and cancels in progress per workflow, ref and requested ref.
+  contents: read` and no other permissions block, and cancels in progress per workflow, ref and requested ref (15c:
+  per workflow, event, ref and requested ref, and only a PR run in progress; the reading of "cancels an older run on
+  the same ref" that never cancels main's push run, whose hash the gate needs after merge).
   `banned-api-check.sh --workflows ../.github/workflows` is clean under sh and dash (`clean, 2 workflow(s)`), and a
   scratch copy with a write token, a tag-pinned upload and `${{ github.sha }}` in a run block gives those 4 hits;
   `ruby -ryaml` parses both workflows (the second leg's anchored steps resolve to the same 9); entropy-ci.yml is
-  unchanged. upload-artifact v7.0.1 is `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` by GitHub's API (tag ref, a
+  unchanged (15b: its changes job now also counts a change to any `.github/workflows/entropy-*`, so `gates` runs
+  `--workflows` on a change to the image workflow alone; 15d: `--workflows` takes each action only at its approved
+  SHA). upload-artifact v7.0.1 is `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` by GitHub's API (tag ref, a
   commit of 2026-04-10, before the 2026-10-01 cutoff).
 - [ ] Jobs, whose names collide with none of the 14:
   - **`pi-image build (a)` and `pi-image build (b)`**: fresh `ubuntu-24.04` runners at the same `KC_WORK`. Leg a restores
@@ -8466,6 +8495,7 @@ stale (Q43 (d)).
   - `--image-lists`, `--image`, `--selftest-image`, `--os-config` and `--workflows`;
   - the loop-device test and its environment;
   - `python3 -I pi/os/rootfs-prefix.py --selftest`;
+  - `sh pi/os/kconfig.sh --selftest` (14h);
   - the capture_set comment now naming review.html (an M3 low item; Q43 (e));
   - the check count on the `scripts/canaries.sh` line, set to `want_checks` as it stands after commits 12 and 17 add
     their canaries (`want_checks` is 62 since commit 5; the line still says 61).
@@ -8909,6 +8939,7 @@ calls, `gpio` (gpio.rs, gpio/pin.rs), `gpio/interrupt` (with gpio/epoll.rs, whic
 | Rust | 1.98.1 (rust-toolchain.toml) | already pinned | rustup |
 | CI action | `actions/upload-artifact` v7.0.1 at `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` [S19] | 2026-04-10 | pinned SHA; `--workflows` |
 | Build time | `SOURCE_DATE_EPOCH` constant, set once in commit 14 | n/a | `pins.txt`; printed by every leg |
+| Build host | the `ubuntu-24.04` runner image and the Ubuntu packages the image workflow installs (Buildroot's host packages; `gcc`, `g++`, `make`), unpinned until M7's container (Q38 (e); 15g) | n/a | printed by every leg (`ImageOS`, `ImageVersion`, `dpkg-query`) |
 
 ### Commit order on `m4-pi-hardware`
 Each commit's proof runs at that commit. Each stage is reviewed (plan, security, recompute) before the next one starts.
@@ -9021,12 +9052,47 @@ The PR is a draft from commit 1.
 
 14. pi/os: the external tree, defconfig, `linux.fragment`, `kconfig.sh`, BusyBox config, overlay, board files, package,
     Makefile, `pins.txt` (group 13).
+    14b. pi/os, .github: stage D's plan review: the image is `keepcrypt-pi-0.0.0.img`, as References and terms, group
+    13's genimage.cfg item and H1a name it (Q43 (b)); commit 14 had used Q47's per-screen name, which M4b's B3 brings
+    with the `PANEL` selection (Q44-Q50's header puts Q47 before M4b).
+    14c. pi/os: stage D's security review: the keepcrypt-pi build unsets every host `CARGO_*` and `RUSTC*` variable,
+    `RUSTFLAGS`, `RUSTDOCFLAGS` and `RUSTUP_TOOLCHAIN`, keeping `RUSTUP_HOME`: a host `CARGO_ENCODED_RUSTFLAGS` replaced
+    the target's getrandom cfg, which brings back getrandom's fallback (rule 3). 14d. pi/os: 14c's comment named the
+    fallback's device path, which the grep gate flags: 14c's tree had that one hit, and 14d rewords it.
+    14e. pi/os: stage D's plan review: `make image` passes `BR2_PRIMARY_SITE=file://$KC_WORK/dl` and
+    `BR2_PRIMARY_SITE_ONLY=y` to Buildroot's build steps, so a file `make source` did not fetch fails the build
+    (Buildroot 2026.08's package/pkg-download.mk and support/download/dl-wrapper).
+    14f. pi/os: stage D's recompute review: the Makefile resolves `KC_WORK` through its longest existing ancestor, so a
+    `KC_WORK` not yet made, reached through a symlink to `Entropy/`, is refused. (14f's message lists those paths as
+    "refused before, accepted now"; it means accepted before, refused now.)
+    14g. pi/os: stage D's plan review: kconfig.sh's comment names the Makefile's step as built,
+    `toolchain host-flex host-bison linux-patch`; group 13's Makefile item records the reading.
+    14h. pi/os, .github: stage D's recompute review: `kconfig.sh --selftest` on a stub kernel tree, and `gates` runs it.
 15. scripts, .github: `--image-lists`; `entropy-pi-image.yml` with both legs, the compare job and the upload, no scan
-    (groups 14, 15). Then H1a on its image; bring-up fixes as 15b, 15c, … (group 16).
+    (groups 14, 15). Then H1a on its image; bring-up fixes as 15i, 15j, … (group 16; stage D's review fixes took
+    15b-15h).
+    15b. .github: stage D's plan and security reviews: entropy-ci's changes job also counts a change to any
+    `.github/workflows/entropy-*`, so `gates` runs `--workflows` on a change to the image workflow alone; the job's
+    required name and the file's line count stay (lead decision under the owner's standing instruction of 2026-10-15).
+    15c. .github: stage D's plan review: the image workflow groups runs by event too and cancels only an older PR run,
+    so a weekly or dispatched run never cancels main's push run.
+    15d. scripts, pi/os: stage D's security review: `--workflows` takes actions/checkout, cache and upload-artifact
+    only at their approved SHAs; one fixture.
+    15e. scripts: stage D's recompute review: the `--image-lists` selftest refuses an entry 4 in use, a lone `55` and
+    a partition 2 one sector past the end, and accepts one ending on the last sector.
+    15f. scripts: stage D's recompute review: the `--image-lists` selftest runs the listing with stub host tools and
+    pins its output, and refuses a root line it cannot read. (15f's message says each listing mutant fails the
+    listing case; the line-refusal mutant fails the refusal case.)
+    15g. .github, pi/os: stage D's plan review: each leg prints its Ubuntu packages' versions, and pins.txt says the
+    build host is not pinned until M7 (Q38 (e)).
+    15h. tasks/todo.md: stage D's reviews: these entries, the readings in groups 13-15 and the Image inputs table,
+    config.txt ticked (commit 14's proof covers it), group 13's trailing proof labelled as the group's, the Makefile's
+    `scan` target given to commit 17, and kconfig.sh's selftest added to group 18's Commands.
 16. pi/os: `expected/` (lists and `linux.config`) from the run after H1a passes, reviewed line by line (group 15).
-17. scripts, .github: `--image`, `--selftest-image` and `--os-config`, their fixtures and canaries; the scan step in both
-    legs; `gates` runs `--os-config` (groups 11, 14, 15). `--image` takes 13b's std-statics allowance (Q52) for the
-    image's linked files.
+17. scripts, .github, pi/os: `--image`, `--selftest-image` and `--os-config`, their fixtures and canaries; the scan step
+    in both legs; `gates` runs `--os-config`; the Makefile's `scan` target, which runs `--image` (groups 11, 13, 14,
+    15; `scan` given to this commit in 15h). `--image` takes 13b's std-statics allowance (Q52) for the image's linked
+    files.
 18. CLAUDE.md: Commands (group 18).
 
 **Stage E: hardware and review**
