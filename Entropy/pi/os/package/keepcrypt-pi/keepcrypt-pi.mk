@@ -31,8 +31,8 @@ endif
 # RUSTC* variable, RUSTFLAGS, RUSTDOCFLAGS and RUSTUP_TOOLCHAIN is unset first (RUSTUP_HOME stays,
 # so rustup finds toolchain 1.98.1), and the lines below are the build's only ones. A host's
 # CARGO_ENCODED_RUSTFLAGS, for one, would replace the getrandom cfg below and bring back
-# getrandom's /dev/urandom fallback (rule 3); a profile override, a wrapper or another toolchain
-# would change the binary. The getrandom backend is set for this target alone, as CI's cross job
+# getrandom's fallback to the kernel's random device file (rule 3); a profile override, a wrapper
+# or another toolchain would change the binary. The getrandom backend is set for this target alone, as CI's cross job
 # sets it; C code (secp256k1-sys) and the link use Buildroot's ARMv6 toolchain.
 define KEEPCRYPT_PI_BUILD_CMDS
 	cd $(@D) && \
