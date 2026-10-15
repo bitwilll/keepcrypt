@@ -8155,7 +8155,7 @@ stale (Q43 (d)).
   - `external.desc` (`KEEPCRYPT`), `external.mk`, `Config.in`;
   - `configs/keepcrypt_pizero_defconfig`;
   - `board/pizero/`: `linux.fragment`, `busybox.config`, `config.txt`, `cmdline.txt`, `genimage.cfg`, `post-build.sh`,
-    `post-image.sh`, `rootfs-overlay/etc/{inittab,fstab}`;
+    `post-fakeroot.sh` (15k), `post-image.sh`, `rootfs-overlay/etc/{inittab,fstab}`;
   - `kconfig.sh`;
   - `patches/linux/linux.hash`;
   - `package/keepcrypt-pi/`;
@@ -8253,7 +8253,8 @@ stale (Q43 (d)).
 - [ ] post-build.sh creates `/mnt/usb` and removes a committed list of skeleton files (`/etc/init.d/*`, `/etc/profile`,
   `/etc/shells`). The file lists catch anything else. From 15j, `/lib` and `/usr/lib` keep only an allow-list: the
   dynamic loader, `libc.so.6`, `libm.so.6`, `libgcc_s.so.1` (the two programs' needs, read from the first image) and
-  `os-release`; `ldd`, the network scripts and files and `/var/www` go.
+  `os-release`; `ldd` and the network files go. post-fakeroot.sh (15k) removes `/etc/network` and `/var/www`,
+  which Buildroot's `system/device_table.txt` makes again after post-build.sh.
 - [x] config.txt:
   - `kernel=zImage`;
   - `gpu_mem_256=100`, `gpu_mem_512=100`, `gpu_mem_1024=100`, as Buildroot's `board/raspberrypi/config_default.txt`
@@ -9109,6 +9110,11 @@ The PR is a draft from commit 1.
     BusyBox needs `libc.so.6`; `keepcrypt-pi` names `libc.so.6`, `libgcc_s.so.1` and `libm.so.6`; both load through
     `/lib/ld-linux-armhf.so.3`. post-build.sh keeps those four and `usr/lib/os-release` and removes the rest, so H1a
     and commit 16's lists use the pruned image (lead decision under the owner's standing instruction of 2026-10-15).
+    15k. pi/os, tasks/todo.md: image run 38686161966 (e81e186; image 3f87b23e..., equal) still listed `/etc/network`
+    (now mode 0777) with its four `*.d` directories, and `/var/www`: Buildroot 2026.08's `system/device_table.txt`
+    names them, and fs/common.mk runs makedevs inside fakeroot after post-build.sh. post-fakeroot.sh
+    (`BR2_ROOTFS_POST_FAKEROOT_SCRIPT`) removes them on the filesystem copy, refusing any path but
+    `.../buildroot-fs/<fs>/target` with the fakeroot script beside it.
 16. pi/os: `expected/` (lists and `linux.config`) from the run after H1a passes, reviewed line by line (group 15).
 17. scripts, .github, pi/os: `--image`, `--selftest-image` and `--os-config`, their fixtures and canaries; the scan step
     in both legs; `gates` runs `--os-config`; the Makefile's `scan` target, which runs `--image` (groups 11, 13, 14,

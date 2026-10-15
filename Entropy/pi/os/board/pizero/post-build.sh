@@ -9,8 +9,9 @@
 #   (BusyBox needs libc; keepcrypt-pi needs libc, libm and libgcc_s). The external toolchain copies
 #   every glibc and GCC runtime library (libstdc++, libgomp, libnss_dns, libresolv and more).
 #   usr/lib keeps os-release, which /etc/os-release links to.
-# - ldd (a shell script, with no shell to run it), the network scripts and files (the kernel has
-#   no network) and the skeleton's empty /var/www go.
+# - ldd (a shell script, with no shell to run it) and the network files go (the kernel has no
+#   network). Buildroot's device table makes /etc/network and /var/www again after this script, so
+#   post-fakeroot.sh removes those two.
 set -eu
 
 target=$1
@@ -33,5 +34,5 @@ for f in "$target"/lib/* "$target"/usr/lib/*; do
     *) rm -rf "$f" ;;
   esac
 done
-rm -rf "$target/usr/bin/ldd" "$target/etc/network" "$target/etc/hosts" "$target/etc/protocols" \
-  "$target/etc/services" "$target/etc/nsswitch.conf" "$target/etc/resolv.conf" "$target/var/www"
+rm -rf "$target/usr/bin/ldd" "$target/etc/hosts" "$target/etc/protocols" "$target/etc/services" \
+  "$target/etc/nsswitch.conf" "$target/etc/resolv.conf"
