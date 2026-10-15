@@ -8468,6 +8468,8 @@ stale (Q43 (d)).
   - a marker planted in a text file;
   - a test-key file;
   - a stripped ELF importing `rand` (dynamic symbols only);
+  - a stripped ELF defining a rand-crate symbol, and one defining a getrandom-fallback symbol (17a-g: the two rules
+    of group 14 step 3 that had no positive control);
   - a stripped static ELF;
   - a `/bin/sh`;
   - a stripped keepcrypt-pi;
@@ -8497,6 +8499,19 @@ stale (Q43 (d)).
   mksquashfs) or a control that cannot be built is exit 2. PASS or FAIL per control and a count; exit 1 on any
   FAIL. Here only its refusals ran (`--selftest`); the same mutations ran on the stub image through `--image`'s
   built-in cases.
+  Proof (review fix, 17a-g): stage D2a's recompute review found that step 3's two symbol rules on the root's other
+  ELF files (no rand-crate symbol, no getrandom-fallback symbol) had no positive control: a copy of the script with
+  either grep pattern replaced by a string that matches nothing still passed `--selftest` 682/0, since the stub
+  cases held only an import of libc's rand, the simulator's symbol and a static file. `controls.rs` gains
+  `kc_rand_crate` and `kc_fallback`: the getrandom-importing shared object plus a function exported under the
+  legacy-mangled name of `rand::rngs::next_u32` (`_ZN4rand4rngs8next_u3217h0000000000000000E`) or of
+  `getrandom::backends::use_file::fill_inner`, which `llvm-nm -D -C` demangles so the two patterns match them;
+  both are stripped like the root's libraries. Two stub cases plant each at `/lib/libkc-canary.so.1` and need
+  exactly `Symbol: ...: rand-family symbol rand::rngs::next_u32::h0000000000000000` or `Symbol: ...: getrandom's
+  fallback getrandom::backends::use_file::fill_inner::h0000000000000000`; `--selftest-image` gets the same two
+  controls (16 now; the workflow's comment says sixteen). The two mutated copies now fail `--selftest` on exactly
+  those cases (the proof pasted in the 17a-g commit). `--selftest` 690/0 under sh and dash; the gate clean on the
+  tree.
   Proof (review fix, 17a-b): stage D2a's recompute review found that a control that cannot be listed gave a FAIL,
   not the exit 2 the header promises: `si_lists` calls `sifail` (exit 2) when `--image-lists` fails, but every caller
   ran it as `sha=$(si_lists ...)`, where the exit ends the command substitution alone, so the parent went on with an
@@ -9305,6 +9320,9 @@ The PR is a draft from commit 1.
     17a-f. scripts: BusyBox's check is an allow-list, every `CONFIG_X=y` line one of the 18 symbols the board's
     busybox.config sets, in place of 17a's deny list of 35 applets, so "only init and mount" is what is checked
     (group 11, `--os-config`); fixture `osconfig-busybox-dd`.
+    17a-g. scripts, .github: positive controls for group 14 step 3's rand-crate and getrandom-fallback symbol rules on
+    the root's other ELF files, as two stripped controls built from `controls.rs` (`kc_rand_crate`, `kc_fallback`), in
+    the stub selftest and in `--selftest-image` (16 controls).
 18. CLAUDE.md: Commands (group 18).
 
 **Stage E: hardware and review**

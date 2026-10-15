@@ -184,13 +184,14 @@
 # and the pinned toolchain's llvm tools are on PATH; it exits 2 where they are not, and where a
 # control cannot be built. The built image is the clean fixture: a stand-in EXPECTED_DIR is made
 # from --image-lists' own output on IMG plus the fragment's two lists, and --image must pass on it
-# (the control). Then each of group 14's 14 positive controls is a mutation of the image (the
+# (the control). Then each of group 14's 16 positive controls is a mutation of the image (the
 # root unpacked afresh, edited and repacked with mksquashfs -no-xattrs; partition 1 copied and a
 # file replaced with mcopy -o; the pieces reassembled under a fresh MBR sized to them), of KCONFIG
 # or of BIN_SHA256, isolated so that the named rule alone fires: a mutated root's lists stand in
 # for expected/ (so only the deny-list, marker, key or ELF rule can fail it), and a mutated
 # KCONFIG is also the stand-in linux.config except in the one-line-off case. The ELF controls (a
-# stripped shared object importing rand, a stripped static executable) are built from
+# stripped shared object importing rand, one carrying a rand-crate symbol, one carrying a
+# getrandom-fallback symbol, a stripped static executable) are built from
 # scripts/testdata/image/controls.rs with rustc, rust-lld and llvm-objcopy alone, so no cross
 # compiler is needed. Prints PASS or FAIL per control and a count; exit 0 all passed, 1 not.
 #
@@ -2484,14 +2485,16 @@ write_testkey() {
 # DIR/getrandom.so, a shared object that imports getrandom and keeps its .symtab (a stand-in for
 # keepcrypt-pi and the root's libraries); DIR/sim.so, the same with a keepcrypt_pi_sim_hwrng
 # symbol; DIR/rand-stripped.so, a stripped shared object that imports rand (dynamic symbols
-# only); DIR/static-stripped, a stripped static executable with no symbols at all. Exit 2 if one
-# cannot be built.
+# only); DIR/rand-crate-stripped.so and DIR/fallback-stripped.so, stripped shared objects that
+# define a symbol of the rand crate (rand::rngs::next_u32) and of getrandom's use_file fallback;
+# DIR/static-stripped, a stripped static executable with no symbols at all. Exit 2 if one cannot
+# be built.
 build_elf_controls() {
   cdir=$1
   mkdir -p "$cdir" || exit 2
   csrc=$here/testdata/image/controls.rs
   [ -f "$csrc" ] || sifail "no $csrc"
-  for c in getrandom:kc_getrandom sim:kc_sim rand:kc_rand static:kc_static; do
+  for c in getrandom:kc_getrandom sim:kc_sim rand:kc_rand rand-crate:kc_rand_crate fallback:kc_fallback static:kc_static; do
     if ! (cd "$repo" && rustc --edition 2024 --crate-type lib --crate-name kc_control --emit obj \
       -C panic=abort -C opt-level=1 --target arm-unknown-linux-gnueabihf --cfg "${c#*:}" \
       -o "$cdir/${c%%:*}.o" "$csrc") >"$cdir/rustc.log" 2>&1; then
@@ -2499,15 +2502,16 @@ build_elf_controls() {
       sifail "rustc could not build the ${c%%:*} control"
     fi
   done
-  for c in getrandom sim rand; do
+  for c in getrandom sim rand rand-crate fallback; do
     "$bin/rust-lld" -flavor gnu -shared -o "$cdir/$c.so" "$cdir/$c.o" >"$cdir/lld.log" 2>&1 ||
       { sed 's/^/    /' "$cdir/lld.log" >&2; sifail "rust-lld could not link the $c control"; }
   done
   "$bin/rust-lld" -flavor gnu -e _start -o "$cdir/static" "$cdir/static.o" >"$cdir/lld.log" 2>&1 ||
     { sed 's/^/    /' "$cdir/lld.log" >&2; sifail 'rust-lld could not link the static control'; }
-  mv "$cdir/rand.so" "$cdir/rand-stripped.so" && mv "$cdir/static" "$cdir/static-stripped" || exit 2
-  "$bin/llvm-objcopy" --strip-all "$cdir/rand-stripped.so" && "$bin/llvm-objcopy" --strip-all "$cdir/static-stripped" ||
-    sifail 'llvm-objcopy could not strip a control'
+  for c in rand-stripped.so:rand.so rand-crate-stripped.so:rand-crate.so fallback-stripped.so:fallback.so static-stripped:static; do
+    mv "$cdir/${c#*:}" "$cdir/${c%%:*}" || exit 2
+    "$bin/llvm-objcopy" --strip-all "$cdir/${c%%:*}" || sifail "llvm-objcopy could not strip the ${c#*:} control"
+  done
 }
 
 # si_lists IMG DIR KCONFIG: a stand-in EXPECTED_DIR at DIR from --image-lists' own output on IMG
@@ -2651,6 +2655,20 @@ selftest_image() {
   sha=$(si_lists "$sw/rand.img" "$sw/rand/expected" "$kconfig") || exit 2
   sicase 'selftest-image-stripped-elf-importing-rand' 'Symbol: /lib/libkc-canary.so.1: undefined rand' \
     "$sw/rand.img" "$sw/rand/expected" "$kconfig" "$sha"
+  si_root rand-crate
+  cp "$sw/elf/rand-crate-stripped.so" "$sw/rand-crate/root/lib/libkc-canary.so.1" || exit 2
+  si_image rand-crate "$iw/p1.img" "$sw/rand-crate/root"
+  sha=$(si_lists "$sw/rand-crate.img" "$sw/rand-crate/expected" "$kconfig") || exit 2
+  sicase 'selftest-image-stripped-elf-with-rand-crate-symbol' \
+    'Symbol: /lib/libkc-canary.so.1: rand-family symbol rand::rngs::next_u32::h0000000000000000' \
+    "$sw/rand-crate.img" "$sw/rand-crate/expected" "$kconfig" "$sha"
+  si_root fallback
+  cp "$sw/elf/fallback-stripped.so" "$sw/fallback/root/lib/libkc-canary.so.1" || exit 2
+  si_image fallback "$iw/p1.img" "$sw/fallback/root"
+  sha=$(si_lists "$sw/fallback.img" "$sw/fallback/expected" "$kconfig") || exit 2
+  sicase 'selftest-image-stripped-elf-with-getrandom-fallback-symbol' \
+    "Symbol: /lib/libkc-canary.so.1: getrandom's fallback getrandom::backends::use_file::fill_inner::h0000000000000000" \
+    "$sw/fallback.img" "$sw/fallback/expected" "$kconfig" "$sha"
   si_root static
   cp "$sw/elf/static-stripped" "$sw/static/root/usr/bin/kc-canary" || exit 2
   si_image static "$iw/p1.img" "$sw/static/root"
@@ -3327,7 +3345,8 @@ EOF
   write_testkey "$tree/root/etc/kc-canary.bin"
   stub_case test-key-file "TestKey: /etc/kc-canary.bin: the test registry public key $testkey"
   # keepcrypt-pi: the hash, a stripped file, the fallback's device path, the simulator's name;
-  # the other ELF files: a stripped import of rand, a stripped static file.
+  # the other ELF files: a stripped import of rand, a stripped file defining a rand-crate symbol
+  # and one defining a getrandom-fallback symbol, a stripped static file.
   stub_tree hash
   stub_case wrong-binary-hash 'Binary: /usr/bin/keepcrypt-pi: SHA-256 ' "$zero"
   stub_tree stripped
@@ -3342,6 +3361,12 @@ EOF
   stub_tree rand
   cp "$st/elf/rand-stripped.so" "$tree/root/lib/libkc-canary.so.1" || exit 2
   stub_case stripped-elf-importing-rand 'Symbol: /lib/libkc-canary.so.1: undefined rand'
+  stub_tree rand-crate
+  cp "$st/elf/rand-crate-stripped.so" "$tree/root/lib/libkc-canary.so.1" || exit 2
+  stub_case stripped-elf-with-rand-crate-symbol 'Symbol: /lib/libkc-canary.so.1: rand-family symbol rand::rngs::next_u32::h0000000000000000'
+  stub_tree fallback
+  cp "$st/elf/fallback-stripped.so" "$tree/root/lib/libkc-canary.so.1" || exit 2
+  stub_case stripped-elf-with-getrandom-fallback-symbol "Symbol: /lib/libkc-canary.so.1: getrandom's fallback getrandom::backends::use_file::fill_inner::h0000000000000000"
   stub_tree static
   cp "$st/elf/static-stripped" "$tree/root/usr/bin/kc-canary" || exit 2
   stub_case stripped-static-elf 'Format: /usr/bin/kc-canary: an ELF with no dynamic symbol table'

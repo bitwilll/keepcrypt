@@ -8,17 +8,23 @@
 //! - `kc_sim`: that, plus a defined keepcrypt_pi_sim_hwrng symbol, the simulator crate's name;
 //! - `kc_rand`: that, plus an import of libc's rand, then stripped to its dynamic symbols: a
 //!   library of the root that draws from a PRNG;
+//! - `kc_rand_crate`: that, plus a function exported under the legacy-mangled name of
+//!   `rand::rngs::next_u32` (`_ZN4rand4rngs8next_u3217h0000000000000000E`, which llvm-nm -C
+//!   demangles to it), then stripped: a library of the root that carries a rand-family crate;
+//! - `kc_fallback`: that, plus a function exported under the mangled name of
+//!   `getrandom::backends::use_file::fill_inner`, then stripped: a library of the root that
+//!   carries getrandom's device-file fallback;
 //! - `kc_static`: an executable with an entry point and nothing else, then stripped: a static file
 //!   with no symbols at all, which the scan must refuse rather than pass.
 //! Not part of any build: scripts/testdata/ is outside the workspace and the grep gate's scan.
 #![no_std]
 
-#[cfg(any(kc_getrandom, kc_sim, kc_rand))]
+#[cfg(any(kc_getrandom, kc_sim, kc_rand, kc_rand_crate, kc_fallback))]
 unsafe extern "C" {
     fn getrandom(buf: *mut u8, len: usize, flags: u32) -> isize;
 }
 
-#[cfg(any(kc_getrandom, kc_sim, kc_rand))]
+#[cfg(any(kc_getrandom, kc_sim, kc_rand, kc_rand_crate, kc_fallback))]
 #[unsafe(no_mangle)]
 pub extern "C" fn kc_control_fill(buf: *mut u8, len: usize) -> isize {
     unsafe { getrandom(buf, len, 0) }
@@ -39,6 +45,18 @@ unsafe extern "C" {
 #[unsafe(no_mangle)]
 pub extern "C" fn kc_control_draw() -> i32 {
     unsafe { rand() }
+}
+
+#[cfg(kc_rand_crate)]
+#[unsafe(export_name = "_ZN4rand4rngs8next_u3217h0000000000000000E")]
+pub extern "C" fn kc_control_rand_crate() -> u32 {
+    4
+}
+
+#[cfg(kc_fallback)]
+#[unsafe(export_name = "_ZN9getrandom8backends8use_file10fill_inner17h0000000000000000E")]
+pub extern "C" fn kc_control_fallback() -> isize {
+    0
 }
 
 #[cfg(kc_static)]
