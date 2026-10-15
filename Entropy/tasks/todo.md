@@ -7070,7 +7070,7 @@ stale (Q43 (d)).
   PF:105 (a screen that was not yet fully drawn) that drops a press queued behind any page or note change. A refusal
   shown in place, with no `enter_page` and no blocking call, moves no fence; the app has one such refusal that can be
   reached, and group 10's item closes it in commit 11.
-- **The image:** `keepcrypt-pi-0.0.0.img`, built from `pi/os`.
+- **The image:** `keepcrypt-pi-0.0.0-st7789-240x240.img` (Q47; Q43 (b) had `keepcrypt-pi-0.0.0.img`), built from `pi/os`.
 - **The image workflow:** `.github/workflows/entropy-pi-image.yml`.
 - **The gate image:** the image the owner runs H1-H4 on. It is valid only if the image workflow's run at the final PR
   head gives the same SHA-256.
@@ -8270,7 +8270,7 @@ stale (Q43 (d)).
   - partition 1: FAT, a whole number of MiB, `mkdosfs --invariant`, the explicit file list `bootcode.bin`, `start.elf`,
     `fixup.dat`, `config.txt`, `cmdline.txt`, `zImage`, `bcm2708-rpi-zero.dtb`;
   - partition 2: `rootfs.squashfs`;
-  - output `keepcrypt-pi-0.0.0.img`.
+  - output `keepcrypt-pi-0.0.0-st7789-240x240.img` (Q47).
 - [ ] post-image.sh sets every partition-1 input's mtime to `SOURCE_DATE_EPOCH` before genimage runs; that matters only
   for the `mcopy -m` fallback below. genimage's `mcopy -sp` has no `-m`, so mtools stamps the files with
   `SOURCE_DATE_EPOCH` itself, written as local time under `TZ=UTC` [S29]; the two legs confirm it. If partition 1
@@ -9055,6 +9055,8 @@ The PR is a draft from commit 1.
     14b. pi/os, .github: stage D's plan review: the image is `keepcrypt-pi-0.0.0.img`, as References and terms, group
     13's genimage.cfg item and H1a name it (Q43 (b)); commit 14 had used Q47's per-screen name, which M4b's B3 brings
     with the `PANEL` selection (Q44-Q50's header puts Q47 before M4b).
+    14i. pi/os, .github, tasks/todo.md: the lead: the HAT image is `keepcrypt-pi-0.0.0-st7789-240x240.img`, as the
+    owner's Q47 answer says ("The HAT's image becomes ..."), which outranks 14b's reading of Q43 (b).
     14c. pi/os: stage D's security review: the keepcrypt-pi build unsets every host `CARGO_*` and `RUSTC*` variable,
     `RUSTFLAGS`, `RUSTDOCFLAGS` and `RUSTUP_TOOLCHAIN`, keeping `RUSTUP_HOME`: a host `CARGO_ENCODED_RUSTFLAGS` replaced
     the target's getrandom cfg, which brings back getrandom's fallback (rule 3). 14d. pi/os: 14c's comment named the
@@ -9136,10 +9138,10 @@ seed, which is what those screens are for. Write throwaway values on paper and d
   SeedSigner [S5, S6].)
 
 **H1a. First boot check (on the first image the workflow builds; no seed)**
-- [ ] While signed in to GitHub, download `keepcrypt-pi-0.0.0.img` from the run the lead names. Its `shasum -a 256` must
+- [ ] While signed in to GitHub, download `keepcrypt-pi-0.0.0-st7789-240x240.img` from the run the lead names. Its `shasum -a 256` must
   equal the run summary's hash.
 - [ ] Flash it with Raspberry Pi Imager ("Use custom", no customisation, verify on). Or by hand:
-  `diskutil unmountDisk /dev/diskN`, then `sudo dd if=keepcrypt-pi-0.0.0.img of=/dev/rdiskN bs=4m`. macOS may write to
+  `diskutil unmountDisk /dev/diskN`, then `sudo dd if=keepcrypt-pi-0.0.0-st7789-240x240.img of=/dev/rdiskN bs=4m`. macOS may write to
   the card's FAT partition when you insert it. That does not touch the root filesystem the prefix covers.
 - [ ] Power the Pi from the power bank, with nothing in the USB port. Watch the green ACT LED for the first 30 s and note
   what it does: steady, off, flickering, or a repeating group of flashes (count them, long and short separately). The

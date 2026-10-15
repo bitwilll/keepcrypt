@@ -133,8 +133,9 @@ jobs:
       # The job's outputs, for the compare job, and the image's lists (banned-api-check.sh
       # --image-lists, with the build's host mcopy, mdir and unsquashfs), which commit 16 commits
       # to pi/os/expected/ for review. The image is the one keepcrypt-pi-*.img the build made
-      # (keepcrypt-pi-0.0.0.img; M4b adds one per screen type), the kernel config the .config it
-      # was built with, and the binary's SHA-256 that of the image's own /usr/bin/keepcrypt-pi.
+      # (keepcrypt-pi-0.0.0-st7789-240x240.img, Q47; M4b adds one per screen type), the kernel config
+      # the .config it was built with, and the binary's SHA-256 that of the image's own
+      # /usr/bin/keepcrypt-pi.
       - name: Hash and list
         id: hash
         run: |
