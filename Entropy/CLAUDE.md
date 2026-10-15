@@ -187,9 +187,10 @@ sudo --preserve-env=KC_LOOP_DEV,KC_LOOP_RO,KC_LOOP_MNT,KC_MOUNTINFO target/debug
 # CARGO_TARGET_<T>_RUSTFLAGS='--cfg getrandom_backend="linux_getrandom"'):
 cargo build --release --locked -p keepcrypt-core --lib --example release_probe --target T
 scripts/banned-api-check.sh --artifact T target/T/release/libkeepcrypt_core.rlib target/T/release/examples/release_probe
-# On the Pi target (T = arm-unknown-linux-gnueabihf; CC_, AR_ and CFLAGS_arm_unknown_linux_gnueabihf and the
-# CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER set to Ubuntu's arm-linux-gnueabihf gcc, a stand-in: the shipped
-# binary is the image workflow's) also pi/app's release rlib and its keepcrypt-pi binary, scanned with those two
+# On the Pi target (T = arm-unknown-linux-gnueabihf; CC_arm_unknown_linux_gnueabihf and the
+# CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER set to Ubuntu's arm-linux-gnueabihf-gcc, AR_ to its ar and CFLAGS_
+# to -march=armv6zk -mfpu=vfp -mfloat-abi=hard -marm, a stand-in: the shipped binary is the image workflow's) also
+# pi/app's release rlib and its keepcrypt-pi binary, scanned with those two
 # (clean; the binary's getrandom import, which the scan requires, is printed with llvm-nm -u first):
 cargo build --release --locked -p keepcrypt-pi --lib --target T
 cargo build --release --locked -p keepcrypt-pi --bin keepcrypt-pi --target T
@@ -205,13 +206,15 @@ make -C pi/os source                 # the only target that uses the network: pi
 make -C pi/os image                  # afresh in $KC_WORK/out, offline (a missing download fails it); prints the SHA-256
 make -C pi/os repro-check            # builds it twice in fresh output directories and compares the two images
 make -C pi/os scan                   # after make image: --image-lists on the built image, then --image against expected/
-# What make scan runs, as CI's image legs run them (the build's host mcopy, mdir and unsquashfs first on PATH:
+# What CI's image legs run on their build, in this order (make scan runs the first and the last; the build's host
+# mcopy, mdir and unsquashfs first on PATH:
 # PATH="$KC_WORK/out/host/bin:$PATH"); IMG is $KC_WORK/out/images/keepcrypt-pi-0.0.0-st7789-240x240.img, KCONFIG the
 # one $KC_WORK/out/build/linux-*/.config and BIN_SHA256 the SHA-256 of the keepcrypt-pi cargo built, in
 # $KC_WORK/out/build/keepcrypt-pi-0.0.0/target/arm-unknown-linux-gnueabihf/release/ (so the packed binary is that file):
 scripts/banned-api-check.sh --image-lists IMG KCONFIG          # the listing pi/os/expected/ was reviewed from; not a scan
 scripts/banned-api-check.sh --selftest-image IMG KCONFIG       # the scan's positive controls, as mutations of the built image
-scripts/banned-api-check.sh --image IMG pi/os/expected KCONFIG BIN_SHA256   # the scan: clean on the gate image
+scripts/banned-api-check.sh --image IMG pi/os/expected KCONFIG BIN_SHA256   # the scan; a hit fails the leg before
+                                     # leg a's upload, so an uploaded image passed it
 scripts/canaries.sh                  # 73 checks: proves every gate still fires, the scan's positive controls included
 ```
 

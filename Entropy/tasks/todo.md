@@ -8734,6 +8734,15 @@ stale (Q43 (d)).
   reports one executable, target/debug/deps/keepcrypt_pi-<hash>, the path the sudo line names. The cross build, the
   loop-device test and the make targets are Linux-only and run in CI (`make -C pi/os` refuses this checkout's path,
   which has a space).
+  Proof (review fix, 18b): stage D2b's review read three comments against what runs: the `--image` line said "clean
+  on the gate image" though no `--image` run against `expected/` has happened (the Scan step is 17b's, unpushed; run
+  38747606208 ran `--selftest-image` alone), so it now says what the step does (a hit fails the leg before leg a's
+  upload); the Pi-target comment said all four cross variables are "set to Ubuntu's arm-linux-gnueabihf gcc" where
+  entropy-ci.yml sets `AR_` to `arm-linux-gnueabihf-ar` and `CFLAGS_` to `-march=armv6zk -mfpu=vfp -mfloat-abi=hard
+  -marm`, so it now names each; the three image-mode lines were "what make scan runs" though the Makefile's `scan`
+  runs `--image-lists` and `--image` alone (`--selftest-image` is the legs' "Scan selftest" step), so they are "what
+  CI's image legs run, in this order (make scan runs the first and the last)". The grep gate stays clean (241
+  files); no command changed.
 - [ ] `gates` at or under 12 minutes (Q31 (f)); `test` within its budget; image leg times recorded.
   Proof: `git diff --name-only`; job times from the PR head.
   Measured (commit 18): `gates` ran in 9 min 59 s in run 38747606112 (the CI run beside image run 38747606208);
@@ -9454,6 +9463,11 @@ The PR is a draft from commit 1.
     what that covers (a failed step after the build, its scan or leg a's upload, or a cancelled leg) in place of "(a
     scan step)", which it also said for an upload failure or a cancelled leg (a message only; no logic change).
 18. CLAUDE.md: Commands (group 18): 14a3121.
+    18b. CLAUDE.md, tasks/todo.md: three Commands comments say what is so: the `--image` line no longer claims "clean
+    on the gate image", a result no run has produced (its first run is CI's; commit 20 records it); the Pi-target
+    comment names each cross variable's value (CC_ and the LINKER gcc, AR_ ar, CFLAGS_ the ARMv6 flags), not "set to
+    gcc" for all four; the three image-mode lines are "what CI's image legs run" with `make scan` running the first
+    and the last, since `scan` never runs `--selftest-image`.
 
 **Stage E: hardware and review**
 
