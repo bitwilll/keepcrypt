@@ -12,10 +12,11 @@
 #   make -C Entropy/pi/os repro-check   build it twice in fresh output directories at the same
 #                                       path and compare the two images
 #   make -C Entropy/pi/os scan          after make image: list the built image (banned-api-check.sh
-#                                       --image-lists, which gives the binary's SHA-256), then scan
-#                                       it against expected/ (--image, with the kernel's .config and
-#                                       that hash), with the build's host tools first on PATH; it
-#                                       never rebuilds, and refuses to run without an image
+#                                       --image-lists), then scan it against expected/ (--image, with
+#                                       the kernel's .config and the SHA-256 of the keepcrypt-pi
+#                                       cargo built, so the packed binary is proved to be that
+#                                       file), with the build's host tools first on PATH; it never
+#                                       rebuilds, and refuses to run without an image or that file
 #
 # KC_WORK (default /kc-work) holds Buildroot, its downloads, the crates and the build. It must be
 # an absolute path outside Entropy/ with no spaces, and the same in every build: Buildroot's
@@ -139,12 +140,16 @@ repro-check:
 
 # The image scan (tasks/todo.md, M4 groups 14 and 15; Q38 (d)) on the image make image left in
 # $(OUT): the kernel's .config is the one under $(OUT)/build/linux-*/, and the binary's SHA-256 is
-# the one --image-lists prints for the image's own /usr/bin/keepcrypt-pi.
+# that of the keepcrypt-pi cargo wrote in the package's build directory (keepcrypt-pi.mk's
+# $(@D)/target/...), before Buildroot's install and the SquashFS pack: the scan's Binary rule then
+# proves the image's /usr/bin/keepcrypt-pi is the file cargo built. Taken from the image itself
+# (as --image-lists prints it) the rule would compare the file with itself and could never fail.
+BUILT_BIN := $(OUT)/build/keepcrypt-pi-0.0.0/target/arm-unknown-linux-gnueabihf/release/keepcrypt-pi
 scan:
 	test -f $(OUT)/images/$(IMAGE) || { echo 'pi/os: no $(IMAGE) in $(OUT)/images; run make image first' >&2; exit 1; }
+	test -f $(BUILT_BIN) || { echo 'pi/os: no $(BUILT_BIN), the keepcrypt-pi cargo built; run make image first' >&2; exit 1; }
 	set -- $(OUT)/build/linux-*/.config && [ $$# -eq 1 ] && [ -f "$$1" ] || \
 		{ echo 'pi/os: not exactly one kernel .config under $(OUT)/build/linux-*/' >&2; exit 1; } && \
-	hash=$$(PATH="$(OUT)/host/bin:$$PATH" sh $(ENTROPY)/scripts/banned-api-check.sh --image-lists $(OUT)/images/$(IMAGE) "$$1" | \
-		sed -n 's/^sha256 keepcrypt-pi \([0-9a-f]\{64\}\)$$/\1/p') && [ -n "$$hash" ] || \
-		{ echo 'pi/os: --image-lists gave no keepcrypt-pi SHA-256' >&2; exit 1; } && \
+	PATH="$(OUT)/host/bin:$$PATH" sh $(ENTROPY)/scripts/banned-api-check.sh --image-lists $(OUT)/images/$(IMAGE) "$$1" && \
+	hash=$$(sha256sum $(BUILT_BIN)) && hash=$${hash%% *} && \
 	PATH="$(OUT)/host/bin:$$PATH" sh $(ENTROPY)/scripts/banned-api-check.sh --image $(OUT)/images/$(IMAGE) $(OS)/expected "$$1" "$$hash"

@@ -8258,6 +8258,22 @@ stale (Q43 (d)).
   path against a stub `KC_WORK` (stub mcopy, mdir and unsquashfs in `out/host/bin`, a 16-sector image with the
   SquashFS magic, the fragment's `=y` lines as the `.config`, an `expected/` made from `--image-lists`): clean, exit
   0, "3 other ELF file(s)"; with a `/bin/sh` link planted in the stub root, exit 1 with the List and Deny hits.
+  Proof (review fix, 17a-i): stage D2a's security review found 17a's BIN_SHA256 a tautology: `scan` took it from
+  `--image-lists`' hash of the image's own `/usr/bin/keepcrypt-pi`, and `--image` hashes that same unpacked file,
+  so the Binary rule compared a file with itself and could never fail there (the selftest's wrong-hash control
+  proves only that the rule fires on a wrong input). Now `scan` hashes the keepcrypt-pi cargo wrote in the
+  package's build directory, `$(OUT)/build/keepcrypt-pi-0.0.0/target/arm-unknown-linux-gnueabihf/release/keepcrypt-pi`
+  (keepcrypt-pi.mk's `$(@D)/target/...`, before Buildroot's install and the SquashFS pack; `BR2_STRIP_EXCLUDE_FILES`
+  keeps the installed copy byte-equal), refuses to run without that file, still prints `--image-lists` for the log,
+  and passes that hash to `--image`, so the rule proves the packed binary is the file cargo built. Run on this Mac
+  from a space-free copy of `Entropy/pi/os`, `scripts` and `rust-toolchain.toml` against a stub `KC_WORK` (stub
+  mcopy, mdir and unsquashfs in `out/host/bin`, a 16-sector image with the SquashFS magic, the fragment's `=y`
+  lines as `out/build/linux-6.12.61/.config`, an `expected/` made from `--image-lists`, the root's four ELF files
+  one getrandom-importing control): `make scan` refuses without the image and without the built file (each its own
+  message, `Error 1`); with the built file equal to the root's keepcrypt-pi, clean, exit 0; with one byte appended
+  to the built file, exactly `Binary: /usr/bin/keepcrypt-pi: SHA-256 ec7e1e9b..., not BIN_SHA256 36ce9579...`, 1
+  hit, exit 1 (make: Error 1). The workflow's `binary` output has the same origin as 17a's hash (the image's own
+  file); 17b must pass a build-side hash to `--image`, not `steps.hash.outputs.binary` (noted under 17b).
 - [ ] The kernel config is an allow-list (Q37 (b)):
   - `kconfig.sh` (committed) runs in the pinned kernel tree: `bcmrpi_defconfig`; every `=m` line turned off and
     `MODULES` off; then `linux.fragment`; then `olddefconfig`. Its output is the build's custom kernel config.
@@ -9320,6 +9336,10 @@ The PR is a draft from commit 1.
     `gates` are unchanged.
     17b (after 16): both legs run `--image` against the committed `expected/` before the upload, the upload runs only
     after the scan passes, the summary drops "Boot check only, not scanned", and `gates` runs `--os-config pi/os`.
+    17b's BIN_SHA256 comes from the build, not the image (17a-i): the SHA-256 of
+    `$KC_WORK/out/build/keepcrypt-pi-0.0.0/target/arm-unknown-linux-gnueabihf/release/keepcrypt-pi` (as the Makefile's
+    `scan` takes it), recorded as a job output beside `binary`, since `steps.hash.outputs.binary` is `--image-lists`'
+    hash of the image's own file and `--image` would compare it with itself.
     Review fixes of 17a (stage D2a's review of 430678b..349c1b2), each with its proof under the item it amends:
     17a-b. scripts: every `sha=$(si_lists ...)` carries `|| exit 2`, so a control that cannot be listed is exit 2, as
     the header promises, not a FAIL of the scan on an empty hash (group 14, `--selftest-image`).
@@ -9337,6 +9357,9 @@ The PR is a draft from commit 1.
     the stub selftest and in `--selftest-image` (16 controls).
     17a-h. scripts: a fixture or case for each sub-rule the review found unexercised: five `osconfig-*` fixtures, the
     fragment-without-"is not set" error, and two stub cases (the simulator's name as bytes, a sticky `/var/tmp`).
+    17a-i. pi/os, tasks/todo.md: the Makefile's `scan` hashes the keepcrypt-pi cargo built, in the package's build
+    directory, as BIN_SHA256, in place of `--image-lists`' hash of the image's own file, which `--image` compared with
+    itself; it refuses to run without that file.
 18. CLAUDE.md: Commands (group 18).
 
 **Stage E: hardware and review**

@@ -47,8 +47,9 @@ define KEEPCRYPT_PI_BUILD_CMDS
 			--target arm-unknown-linux-gnueabihf
 endef
 
-# The installed file is the image's: it is never stripped, so its SHA-256 printed here is the one
-# the image scan checks.
+# The installed file is the image's: it is never stripped, so the SHA-256 printed here is the one
+# the image scan finds for /usr/bin/keepcrypt-pi, and the Makefile's scan target hashes the file
+# in $(@D)/target/ itself as the BIN_SHA256 that /usr/bin/keepcrypt-pi must equal.
 define KEEPCRYPT_PI_INSTALL_TARGET_CMDS
 	$(INSTALL) -D -m 0755 $(@D)/target/arm-unknown-linux-gnueabihf/release/keepcrypt-pi \
 		$(TARGET_DIR)/usr/bin/keepcrypt-pi
