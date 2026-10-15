@@ -80,8 +80,10 @@
 #     any permissions block (so "contents: write", a quoted "write", a value on the line after its
 #     scope, and a flow mapping on its own line all hit) and no write on a "permissions:" key's
 #     own line (write-all, { contents: write });
-#   - every "uses:" one of actions/checkout, actions/cache or actions/upload-artifact, pinned to a
-#     40-hex commit SHA (a tag, a branch, a short SHA or any other action is a hit);
+#   - every "uses:" one of actions/checkout, actions/cache or actions/upload-artifact, pinned to
+#     the one commit SHA approved for it (checkout v7.0.1, cache v6.1.0, upload-artifact v7.0.1,
+#     Q38 (c); pi/os/pins.txt): a tag, a branch, a short SHA, another SHA (another release, or a
+#     fork's commit, which GitHub serves under the action's name) or any other action is a hit;
 #   - no secrets as a word anywhere (secrets.X, secrets[X], toJSON(secrets), and prose: write "a
 #     secret") and no github.token (the same token as secrets.GITHUB_TOKEN), also as
 #     github['token'];
@@ -328,7 +330,8 @@ usage: scripts/banned-api-check.sh [--selftest | DIR | --artifact TARGET FILE...
               symbols other than TARGET's OS import, std's random-key path, a stripped file, and
               that import (see the script header)
   --workflows check every DIR/entropy-*.yml and .yaml workflow's hardening: read-only permissions, three
-              SHA-pinned actions, no secrets, no fork-trusting trigger, no expression in a run step
+              actions at their approved SHAs, no secrets, no fork-trusting trigger, no expression
+              in a run step
   --image-lists
               unpack the Pi image IMG (an MBR, a FAT32 boot partition, a SquashFS root) with the
               build's host tools and print its partition table, SHA-256s, boot and root file lists,
@@ -1516,6 +1519,13 @@ std::sys::random::linux::getrandom::GRND_INSECURE_AVAILABLE (.0)'
 
 # --- Workflow mode -------------------------------------------------------------------------------
 
+# The only actions a workflow may use, each at the one commit SHA approved for it (Q38 (c);
+# pi/os/pins.txt records upload-artifact's): actions/checkout v7.0.1, actions/cache v6.1.0 and
+# actions/upload-artifact v7.0.1, an ERE alternation. A new release is a reviewed change here.
+approved_actions='actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1'
+approved_actions="$approved_actions|actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9"
+approved_actions="$approved_actions|actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+
 # workflow_check FILE: the hardening rules of the script header, as "<line>:<text>" lines on
 # stdout, in file order, each line at most once; exit 0 hits, 1 none, 2 unreadable. The awk pass
 # follows two kinds of block: a run: step (its own line, then every following line indented past
@@ -1527,8 +1537,8 @@ std::sys::random::linux::getrandom::GRND_INSECURE_AVAILABLE (.0)'
 # there. A block key (run, permissions) may follow a dash of any width and may be quoted; a run
 # key inside a flow mapping ({run: ..., or , run: ...) is read for "${{" on its line. Keys inside
 # a run block are script text, not YAML. The other rules are plain greps over every line: uses:
-# not pinned to one of the three actions at a 40-hex SHA, the word secrets, github.token (also
-# github['token']), pull_request_target, workflow_run.
+# not one of the three actions at its approved SHA ($approved_actions), the word secrets,
+# github.token (also github['token']), pull_request_target, workflow_run.
 workflow_check() {
   wf=$1
   [ -f "$wf" ] && [ -r "$wf" ] || return 2
@@ -1577,7 +1587,7 @@ workflow_check() {
     END { if (!top_ok) print "1:missing a top-level permissions block that holds contents: read" }
   ' "$wf") || return 2
   u=$(grep -n -a -E -e '^[[:space:]]*(- )?uses:' -- "$wf" |
-    grep -v -E -e '^[0-9]+:[[:space:]]*(- )?uses:[[:space:]]*actions/(checkout|cache|upload-artifact)@[0-9a-f]{40}[[:space:]]*(#.*)?$')
+    grep -v -E -e "^[0-9]+:[[:space:]]*(- )?uses:[[:space:]]*($approved_actions)[[:space:]]*(#.*)?\$")
   [ $? -le 1 ] || return 2
   g=$(grep -n -a -E -e "${L}secrets$R" -e "${L}github[[:space:]]*[.[][[:space:]]*['\"]?token$R" \
     -e "${L}(pull_request_target|workflow_run)$R" -- "$wf")
