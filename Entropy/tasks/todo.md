@@ -8703,7 +8703,7 @@ stale (Q43 (d)).
   Proof: under Review, quoted from the owner's report.
 
 **18. Commands and budgets**
-- [ ] CLAUDE.md Commands, in their own commit:
+- [x] CLAUDE.md Commands, in their own commit:
   - the cross leg's `keepcrypt-pi` build and scan line;
   - `make -C pi/os source image repro-check` (Linux x86_64, `KC_WORK=/kc-work`);
   - `--image-lists`, `--image`, `--selftest-image`, `--os-config` and `--workflows`;
@@ -8713,8 +8713,20 @@ stale (Q43 (d)).
   - the capture_set comment now naming review.html (an M3 low item; Q43 (e));
   - the check count on the `scripts/canaries.sh` line, set to `want_checks` as it stands after commits 12 and 17 add
     their canaries (`want_checks` is 62 since commit 5; the line still says 61).
+  Proof (commit 18): `git diff --name-only` lists only `CLAUDE.md` (the capture_set comment lives there) and
+  `tasks/todo.md`. Every line is CI's or the Makefile's exact invocation; each that runs on this host was run as
+  written: `scripts/banned-api-check.sh` clean (241 files); `--workflows ../.github/workflows` clean, 2 workflows;
+  `--os-config pi/os` clean; `python3 -I pi/os/rootfs-prefix.py --selftest` and `/usr/bin/python3 -I` both
+  `selftest passed: 4 checks`; `sh pi/os/kconfig.sh --selftest` 6 passed, 0 failed; `--selftest` 698 passed, 0
+  failed under sh and under dash; `sh scripts/canaries.sh` `all 73 checks ran`, equal to `want_checks=73`
+  (scripts/canaries.sh:1251) and the Commands line; `cargo test -p keepcrypt-pi --locked --bin keepcrypt-pi --no-run`
+  reports one executable, target/debug/deps/keepcrypt_pi-<hash>, the path the sudo line names. The cross build, the
+  loop-device test and the make targets are Linux-only and run in CI (`make -C pi/os` refuses this checkout's path,
+  which has a space).
 - [ ] `gates` at or under 12 minutes (Q31 (f)); `test` within its budget; image leg times recorded.
   Proof: `git diff --name-only`; job times from the PR head.
+  Measured (commit 18): `gates` ran in 9 min 59 s in run 38747606112 (the CI run beside image run 38747606208);
+  the item stays open until the final head's run is read.
 
 **19. Review**
 - [ ] Plan, security and recompute reviews for each stage (A-E), as in M3. Every high and medium finding is fixed, with
