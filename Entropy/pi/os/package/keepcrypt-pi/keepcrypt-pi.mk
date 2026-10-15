@@ -27,11 +27,17 @@ $(error keepcrypt-pi: KC_WORK is not set; build the image with Entropy/pi/os/Mak
 endif
 endif
 
-# RUSTFLAGS is unset, so none from the build host reaches the binary. The getrandom backend is set
-# for this target alone, as CI's cross job sets it; C code (secp256k1-sys) and the link use
-# Buildroot's ARMv6 toolchain.
+# No cargo, rustc or rustup setting from the build host reaches the binary: every CARGO_* and
+# RUSTC* variable, RUSTFLAGS, RUSTDOCFLAGS and RUSTUP_TOOLCHAIN is unset first (RUSTUP_HOME stays,
+# so rustup finds toolchain 1.98.1), and the lines below are the build's only ones. A host's
+# CARGO_ENCODED_RUSTFLAGS, for one, would replace the getrandom cfg below and bring back
+# getrandom's /dev/urandom fallback (rule 3); a profile override, a wrapper or another toolchain
+# would change the binary. The getrandom backend is set for this target alone, as CI's cross job
+# sets it; C code (secp256k1-sys) and the link use Buildroot's ARMv6 toolchain.
 define KEEPCRYPT_PI_BUILD_CMDS
-	cd $(@D) && env -u RUSTFLAGS $(TARGET_MAKE_ENV) \
+	cd $(@D) && \
+	unset $$(env | sed -nE 's/^(CARGO_[A-Z0-9_]+|RUSTC[A-Z0-9_]*|RUSTFLAGS|RUSTDOCFLAGS|RUSTUP_TOOLCHAIN)=.*/\1/p') && \
+	env $(TARGET_MAKE_ENV) \
 		CARGO_HOME=$(KC_WORK)/cargo \
 		CC_arm_unknown_linux_gnueabihf="$(TARGET_CC)" \
 		AR_arm_unknown_linux_gnueabihf="$(TARGET_AR)" \
