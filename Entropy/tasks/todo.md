@@ -9152,6 +9152,11 @@ The PR is a draft from commit 1.
     (drivers/char/mem.c) with or without TTY, so the no-console path 15l relied on was also sound, but it was
     unproven when 15l shipped; 15m removes the dependence on it. The 15l image (7d96c29, both legs equal) is
     superseded before any hardware session (lead decision under the owner's standing instruction of 2026-10-15).
+    15n. tasks/todo.md: H1a's image is run 38690004157's (a4598b5, both legs equal): `keepcrypt-pi-0.0.0-st7789-240x240.img`,
+    36,426,240 bytes, SHA-256 `4b13c095f76c4a42efc67090fec96650d070a385bb8a58b4fd7067c0d936adde`, prefix
+    `76eb-725e-8163-7013`, artifact 11951494588 (kept until 2026-10-29). Its kernel has 515 built-in options; its
+    root holds BusyBox, keepcrypt-pi, the loader, libc, libm, libgcc_s and os-release. The lead downloaded the
+    artifact and checked the hash. Sent to the owner with H1a's checklist on 2026-10-15.
 16. pi/os: `expected/` (lists and `linux.config`) from the run after H1a passes, reviewed line by line (group 15).
 17. scripts, .github, pi/os: `--image`, `--selftest-image` and `--os-config`, their fixtures and canaries; the scan step
     in both legs; `gates` runs `--os-config`; the Makefile's `scan` target, which runs `--image` (groups 11, 13, 14,
@@ -9200,8 +9205,9 @@ seed, which is what those screens are for. Write throwaway values on paper and d
   SeedSigner [S5, S6].)
 
 **H1a. First boot check (on the first image the workflow builds; no seed)**
-- [ ] While signed in to GitHub, download `keepcrypt-pi-0.0.0-st7789-240x240.img` from the run the lead names. Its `shasum -a 256` must
-  equal the run summary's hash.
+- [ ] While signed in to GitHub, download `keepcrypt-pi-0.0.0-st7789-240x240.img` from the run the lead names (15n: run
+  38690004157, https://github.com/bitwilll/keepcrypt/actions/runs/38690004157). Its `shasum -a 256` must equal the run
+  summary's hash (`4b13c095f76c4a42efc67090fec96650d070a385bb8a58b4fd7067c0d936adde`).
 - [ ] Flash it with Raspberry Pi Imager ("Use custom", no customisation, verify on). Or by hand:
   `diskutil unmountDisk /dev/diskN`, then `sudo dd if=keepcrypt-pi-0.0.0-st7789-240x240.img of=/dev/rdiskN bs=4m`. macOS may write to
   the card's FAT partition when you insert it. That does not touch the root filesystem the prefix covers.
