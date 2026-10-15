@@ -1938,12 +1938,12 @@ le32() {
   printf "$(printf '\\%03o\\%03o\\%03o\\%03o' $(($1 & 255)) $(($1 >> 8 & 255)) $(($1 >> 16 & 255)) $(($1 >> 24 & 255)))"
 }
 
-# image_mbr FILE SECTORS SIG ENTRY1 ENTRY2 ENTRY3: FILE, SECTORS zero sectors with an MBR in the
-# first: each ENTRY is TYPE:FIRST:COUNT (TYPE in hex) or - for an empty entry, entry 4 is empty,
-# and SIG is the two bytes at 510 in hex.
+# image_mbr FILE SECTORS SIG ENTRY1 ENTRY2 ENTRY3 [ENTRY4]: FILE, SECTORS zero sectors with an MBR
+# in the first: each ENTRY is TYPE:FIRST:COUNT (TYPE in hex) or - for an empty entry, entry 4 is
+# empty when not given, and SIG is the two bytes at 510 in hex.
 image_mbr() {
   dd if=/dev/zero of="$1" bs=512 count="$2" 2>/dev/null || exit 2
-  for e in "$4" "$5" "$6" -; do
+  for e in "$4" "$5" "$6" "${7:--}"; do
     case $e in
       -) printf '\000\000\000\000\000\000\000\000' && printf '\000\000\000\000\000\000\000\000' ;;
       *)
@@ -1972,6 +1972,10 @@ image_lists_selftest() {
   iexpect 'image-lists-error-missing-image' "cannot read $a/absent.img" "$a/absent.img" "$k"
   iexpect 'image-lists-layout-without-squashfs-magic' \
     "$a/layout.img: partition 2 does not start with the SquashFS magic hsqs" "$a/layout.img" "$k"
+  # Partition 2 may end on the image's last sector: the layout checks pass it to the magic.
+  image_mbr "$a/to-the-end.img" 16 55aa 0c:1:4 83:5:11 -
+  iexpect 'image-lists-partition-2-to-the-last-sector' \
+    "$a/to-the-end.img: partition 2 does not start with the SquashFS magic hsqs" "$a/to-the-end.img" "$k"
   # The layout with the magic is accepted up to the host tools: here a PATH that holds only the
   # tools the checks before them use, and no mcopy.
   image_mbr "$a/tools.img" 16 55aa 0c:1:4 83:5:8 -
@@ -1994,18 +1998,21 @@ image_lists_selftest() {
   fi
   dd if="$a/layout.img" of="$a/short.img" bs=100 count=1 2>/dev/null || exit 2
   iexpect 'image-lists-shorter-than-mbr' "$a/short.img: 100 bytes, shorter than an MBR (512)" "$a/short.img" "$k"
-  # NAME|SIG ENTRY1 ENTRY2 ENTRY3|REASON
+  # NAME|SIG ENTRY1 ENTRY2 ENTRY3 [ENTRY4]|REASON
   for case in 'no-boot-signature|0000 0c:1:4 83:5:8 -|no MBR boot signature (55 aa at byte 510)' \
+    'boot-signature-55-only|5500 0c:1:4 83:5:8 -|no MBR boot signature (55 aa at byte 510)' \
     'partition-1-linux|55aa 83:1:4 83:5:8 -|partition 1 has type 0x83, not FAT32 with LBA (0x0c)' \
     'partition-2-fat|55aa 0c:1:4 0c:5:8 -|partition 2 has type 0x0c, not Linux (0x83)' \
     'third-partition|55aa 0c:1:4 83:5:8 83:13:2|partition entry 3 is not empty' \
+    'fourth-partition|55aa 0c:1:4 83:5:8 - 83:13:2|partition entry 4 is not empty' \
     'partition-1-empty|55aa 0c:1:0 83:5:8 -|partition 1 is empty' \
     'partition-1-at-sector-0|55aa 0c:0:4 83:5:8 -|partition 1 starts at sector 0, the MBR' \
     'partition-2-past-the-end|55aa 0c:1:4 83:5:20 -|partition 2 ends at sector 25, past the image (16 sectors)' \
+    'partition-2-one-past-the-end|55aa 0c:1:4 83:5:12 -|partition 2 ends at sector 17, past the image (16 sectors)' \
     'partition-2-inside-partition-1|55aa 0c:1:4 83:3:8 -|partition 2 (first sector 3) does not start after partition 1 (sectors 1-4)'; do
     name=${case%%|*}
     rest=${case#*|}
-    # SIG and the three entries, split on purpose.
+    # SIG and the three or four entries, split on purpose.
     set -- ${rest%%|*}
     image_mbr "$a/$name.img" 16 "$@"
     iexpect "image-lists-$name" "$a/$name.img: ${rest#*|}" "$a/$name.img" "$k"
