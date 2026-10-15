@@ -47,9 +47,12 @@ permissions:
   contents: read
 
 concurrency:
-  # A newer run on the same ref (for a dispatch, the same requested ref) cancels the older one.
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.ref }}
-  cancel-in-progress: true
+  # One group per event and ref (for a dispatch, also the requested ref). A newer PR run cancels
+  # the older one; any other run is never cancelled, as in entropy-ci.yml, so main's push run,
+  # which gives the gate's after-merge hash, always finishes, and only a newer push to main can
+  # replace it while it waits (GitHub keeps one queued run per group).
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ inputs.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 defaults:
   run:
