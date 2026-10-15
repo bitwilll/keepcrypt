@@ -1,0 +1,3 @@
+# raspberrypi/linux 21b410140c47 (6.12.61), as Buildroot 2026.08's
+# board/raspberrypi/patches/linux/linux.hash pins it (pins.txt). BR2_GLOBAL_PATCH_DIR points here.
+sha256  7c31df8061aae748a6e72417bfe743a54198fb5bdc96e229ecc605dc621d32ef  linux-21b410140c47ffab5668399f6f143c7d7b935c8b.tar.gz

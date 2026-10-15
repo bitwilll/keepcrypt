@@ -8226,12 +8226,19 @@ stale (Q43 (d)).
   - Buildroot's random-seed scripts off.
 - [ ] BusyBox: only `init` and `mount` (`FEATURE_USE_INITTAB`, `FEATURE_MOUNT_FSTAB`). No shell, getty, login, network or
   seedrng applets.
-- [ ] inittab (Q35), none of whose lines needs a shell:
+- [x] inittab (Q35), none of whose lines needs a shell:
   - `::sysinit:/bin/mount -a`;
   - `::wait:/usr/bin/keepcrypt-pi`;
   - `::once:/usr/bin/keepcrypt-pi --stopped`.
-- [ ] fstab: `proc` and `sysfs` read-only, `/tmp` and `/run` as tmpfs, all `nosuid,nodev,noexec` with a small `size=`.
+
+  Proof (commit 14): `board/pizero/rootfs-overlay/etc/inittab` is exactly these three lines (`cmp` against them,
+  equal); no command holds a character of BusyBox 1.38.0's `strpbrk` set in init/init.c:443 (`=` included), so
+  init execs each directly. `--os-config` (commit 17) and `--image` re-check it.
+- [x] fstab: `proc` and `sysfs` read-only, `/tmp` and `/run` as tmpfs, all `nosuid,nodev,noexec` with a small `size=`.
   The FAT boot partition gets no entry.
+  Proof (commit 14): `rootfs-overlay/etc/fstab` holds four entries: `proc` and `sysfs` with `ro,nosuid,nodev,noexec`,
+  `/tmp` and `/run` as tmpfs with `nosuid,nodev,noexec`, `size=1m` (modes 1777 and 0755), and nothing else.
+  BusyBox's mount takes `nosuid`, `nodev` and `noexec` only with `FEATURE_MOUNT_FLAGS`, which busybox.config sets.
 - [ ] post-build.sh creates `/mnt/usb` and removes a committed list of skeleton files (`/etc/init.d/*`, `/etc/profile`,
   `/etc/shells`). The file lists catch anything else.
 - [ ] config.txt:
@@ -8242,8 +8249,13 @@ stale (Q43 (d)).
   - `enable_uart=0`, `disable_splash=1`, `boot_delay=0`;
   - `gpio=5,6,13,16,19,20,21,26=ip,pu`;
   - `gpio=24=op,dl`, which keeps the backlight off until the firmware turns it on.
-- [ ] cmdline.txt:
+
+  Proof (commit 14): `board/pizero/config.txt` without its comment lines is exactly these 11 lines in this order
+  (`cmp`, equal); it has no `start_x`, `start_file`, `fixup_file`, `dtoverlay` or plain `gpu_mem=`, so the default
+  variant's `start.elf` and `fixup.dat` (with `BR2_PACKAGE_RPI_FIRMWARE_BOOTCODE_BIN=y`) boot it.
+- [x] cmdline.txt:
   `root=/dev/mmcblk0p2 rootfstype=squashfs ro rootwait panic=0 init_on_free=1 quiet loglevel=0`, with no `console=`.
+  Proof (commit 14): `board/pizero/cmdline.txt` is exactly that line and a newline (`cmp`, equal).
 - [ ] genimage.cfg:
   - MBR with a fixed disk signature;
   - partition 1: FAT, a whole number of MiB, `mkdosfs --invariant`, the explicit file list `bootcode.bin`, `start.elf`,
@@ -8267,8 +8279,17 @@ stale (Q43 (d)).
     so `panic = "unwind"` and core's `overflow-checks` hold;
   - it installs `/usr/bin/keepcrypt-pi` with mode 0755 and prints its SHA-256;
   - both builds use fixed paths instead of path remapping.
-- [ ] `pins.txt` records every non-crate input (version, date, URL and SHA-256; Q37 (d)) and the `SOURCE_DATE_EPOCH`
+- [x] `pins.txt` records every non-crate input (version, date, URL and SHA-256; Q37 (d)) and the `SOURCE_DATE_EPOCH`
   constant.
+  Proof (commit 14): `pi/os/pins.txt` records Buildroot 2026.08 (released 2026-09-04; its clearsigned `.sign`, DSA
+  signature checked 2026-10-15 by a scratch stdlib verifier against buildroot.org/~jacmet/pubkey.gpg, key
+  `AB07D806D2CE741FB886EE50B025BA8B59C36319`, valid, and invalid once the hash line is altered), Linux 21b410140c47
+  (2025-12-09), rpi-firmware 063bcab6c8a9 (2025-12-08, both dates from GitHub's commit API), the Bootlin toolchain
+  2025.08-1, BusyBox 1.38.0, genimage 20, squashfs-tools 4.7.5, mtools 4.0.49, dosfstools 4.2, Rust 1.98.1, the CI
+  action and `SOURCE_DATE_EPOCH = 1788535000` (Buildroot 2026.08's own `BR2_VERSION_EPOCH`, 2026-09-04 15:16:40 UTC),
+  each before the 2026-10-01 cutoff. The Makefile includes it and checks every `OS_PINS`/`BR_PINS` entry against
+  the hash file Buildroot reads: against our `linux.hash` and Buildroot's 2026.08 `.hash` files read from its git
+  tag, all hold; a changed digit in a pin or in `linux.hash` stops it naming the file.
 
   Proof:
   - gates clean over `pi/os/`, with no new exclusion;
