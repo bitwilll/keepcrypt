@@ -9391,7 +9391,7 @@ The PR is a draft from commit 1.
     `$KC_WORK/out/build/keepcrypt-pi-0.0.0/target/arm-unknown-linux-gnueabihf/release/keepcrypt-pi` (as the Makefile's
     `scan` takes it), recorded as a job output beside `binary`, since `steps.hash.outputs.binary` is `--image-lists`'
     hash of the image's own file and `--image` would compare it with itself.
-    17b (landed; stage D2b): .github, tasks/todo.md. "Hash and list" hashes the keepcrypt-pi cargo built, fails
+    17b (landed as 597e4a3; stage D2b): .github, tasks/todo.md. "Hash and list" hashes the keepcrypt-pi cargo built, fails
     unless that file exists and its hash equals `--image-lists`' `sha256 keepcrypt-pi` line (both printed), and
     exports it as the `binary` output (the lead's reading: one output, the two hashes proved equal, in place of a
     second output); the shared step "Scan (--image against pi/os/expected)" runs after "Scan selftest" and before
