@@ -131,9 +131,10 @@ cargo test -p keepcrypt-core --locked --features test-sources   # stub, fault-in
 # Test features are switched on only like this, with -p, never in a manifest (canaries.sh enforces it).
 # The Pi simulator (pi/sim; `cargo test --workspace` above is its release configuration):
 cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry   # the gate run, full drill
-cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry --test gate -- --ignored --exact capture_set   # captures in target/tmp/pi-sim-captures/:
-                                     # every PNG file and index.html (the record), and review.html with its copies in
-                                     # review/ (the owner's review page of some of them, each QR code beside its string)
+cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry --test gate -- --ignored --exact capture_set   # captures in target/tmp/pi-sim-captures/<registry|release>/
+                                     # (the configuration run): every scenario's PNG files in its own directory and
+                                     # index.html (the record), and review.html with its copies in review/ (the owner's
+                                     # review page of some of them, each QR code beside its string)
 cargo run -p keepcrypt-pi-sim --locked -- live --out target/pi-sim-live   # Protected screens are placeholders;
                                      # one input a line on stdin: w a s d, an empty line (press), 1 2 3, tN (N s, no key);
                                      # any other line or command line ends it with exit status 2, printing nothing
