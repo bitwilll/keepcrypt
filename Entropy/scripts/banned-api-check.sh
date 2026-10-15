@@ -2558,7 +2558,8 @@ sicase() {
     printf 'PASS %s -> exit %s: %s\n' "$1" "$rc" "${got:-clean}"
   else
     fail=$((fail + 1))
-    printf 'FAIL %s: wanted exit %s with %s, got exit %s:\n' "$1" "${2:+1}${2:-0}" "${2:-no hit}" "$rc"
+    if [ -n "$2" ]; then want_rc=1; else want_rc=0; fi
+    printf 'FAIL %s: wanted exit %s with %s, got exit %s:\n' "$1" "$want_rc" "${2:-no hit}" "$rc"
     printf '%s\n' "$sout" | sed 's/^/    /'
   fi
 }
