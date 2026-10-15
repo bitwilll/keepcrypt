@@ -8209,11 +8209,19 @@ stale (Q43 (d)).
   without sudo against the host test binary, fails as planned where the Linux-only test is filtered out (`0 passed;
   ... 58 filtered out`: "loop_device did not run"). No loop device here: the lead reads the test job's "Run the
   loop-device test as root (exactly 1 passed)" step.
-- [ ] `gates` runs `rootfs-prefix.py --selftest` (commit 10), `--workflows` (commit 13) and `--os-config` (commit 17).
+- [x] `gates` runs `rootfs-prefix.py --selftest` (commit 10), `--workflows` (commit 13) and `--os-config` (commit 17).
   Proof (commit 13, `--workflows`; `--os-config` is commit 17): `gates` runs
   `scripts/banned-api-check.sh --workflows ../.github/workflows` right after the grep gate, on the bare checkout (the
   workflows live at the repo root). The check is clean on the file as committed, under sh and dash. The run is CI's:
   the lead reads the gates job's `--workflows` line (`clean, 1 workflow(s)`).
+  Proof (17b, `--os-config`): `gates` runs `scripts/banned-api-check.sh --os-config pi/os` right after the
+  `--workflows` line, before the toolchain install (the mode reads text only); the job's comment names the check.
+  Clean on the tree as committed under sh and dash (`clean: Q35's inittab, the fstab's options, cmdline.txt and
+  config.txt as the plan says, expected/linux.config with the fragment's required and forbidden lists ... and one
+  hwrng driver, and BusyBox with init and mount and no other symbol set`); the 14 required job names are unchanged
+  (`ruby -ryaml` lists the same 9 job names); `--workflows ../.github/workflows` clean on both files (`clean, 2
+  workflow(s)`). The run is CI's: the gates job's `--os-config pi/os` line, to be read on the first run after the
+  lead pushes.
 
   Proof:
   - a green run on the PR head, with all 14 required checks and unchanged names;
@@ -8599,12 +8607,37 @@ stale (Q43 (d)).
        `$KC_WORK/out/host/bin` first on PATH and no cross prefix (the controls need none); `--workflows` stays clean
        on both workflows under sh and dash, `ruby -ryaml` parses the file (10 anchored steps in each leg), the job
        names are unchanged, and the upload and the summary's "not scanned" text wait for 17b.
+       Proof (17b, the second half; its run is CI's, to be read on the first run after the lead pushes): the shared
+       step "Scan (--image against pi/os/expected)" follows "Scan selftest" and precedes the upload, and runs
+       `scripts/banned-api-check.sh --image <the one image> pi/os/expected <the one .config> "$BINARY"` with
+       `$KC_WORK/out/host/bin` first on PATH, `BINARY` reaching it through `env:` from `steps.hash.outputs.binary`.
+       That output is now the SHA-256 of the keepcrypt-pi cargo built,
+       `$KC_WORK/out/build/keepcrypt-pi-0.0.0/target/arm-unknown-linux-gnueabihf/release/keepcrypt-pi` (as the
+       Makefile's `scan` takes it; 17a-i): "Hash and list" fails when that file is missing or when its hash differs
+       from `--image-lists`' `sha256 keepcrypt-pi` line, and prints both, so the scan's Binary rule proves the packed
+       binary is the file cargo built instead of comparing the image's file with itself; the other outputs are
+       unchanged. The three run blocks, extracted from the YAML as committed with `ruby -ryaml` and run under `bash
+       -eo pipefail` against a stub `KC_WORK` and a stub `banned-api-check.sh`: "Hash and list" writes
+       `binary=<the built file's SHA-256>` when it equals the packed one, fails with "is not the keepcrypt-pi cargo
+       built" when a byte differs and with "no ..., the keepcrypt-pi cargo built" when the file is missing; the scan
+       step passes the image, `pi/os/expected`, the `.config` and that hash with the host bin first on PATH, and
+       exits 1 when the scan does; the compare job writes the summary (no "Boot check only") when both legs
+       succeeded with equal images, and fails with "a leg failed after its build" when a leg's result is not
+       `success`, so a failed scan never yields a summary that claims the scans passed. `--workflows` clean on both
+       workflows under sh and dash (`clean, 2 workflow(s)`), `ruby -ryaml` parses the file (11 anchored steps in each
+       leg), the three job names unchanged.
   - **`pi-image reproducible (a = b)`**: `needs` both legs with `if: ${{ !cancelled() }}`, so it runs even when a scan
     fails; it fails unless both image hashes are non-empty and equal, then writes the commit, the image SHA-256, the
     rootfs prefix and the binary SHA-256 to the step summary.
   - Leg a uploads the `.img` with `actions/upload-artifact` v7.0.1 (`archive: false`, `retention-days: 14`). From
     commit 17 the upload runs only after its scan passes. Before that (commits 15-16) the summary marks the image "boot
     check only, not scanned".
+    Proof (17b; its run is CI's, to be read on the first run after the lead pushes): the upload step, "Upload the
+    image (leg a; scanned)", keeps `if: env.LEG == 'a'` and follows the scan step, so a scan hit, which fails that
+    step and the job, skips it: no image with a hit is uploaded. The compare job's summary drops "Boot check only,
+    not scanned" and says instead that both legs' `--image` scans against `pi/os/expected/` passed, as they must
+    for the legs to succeed (the job now fails unless both legs' results are `success`), and names the binary hash
+    as the build's. The workflow's header and step comments no longer say "until commit 17b".
   - Timeout: 180 minutes per leg.
 
   Proof (commit 15, the jobs; the runs are CI's): `pi-image build (a)` and `pi-image build (b)` (jobs `build-a`,
@@ -9358,6 +9391,16 @@ The PR is a draft from commit 1.
     `$KC_WORK/out/build/keepcrypt-pi-0.0.0/target/arm-unknown-linux-gnueabihf/release/keepcrypt-pi` (as the Makefile's
     `scan` takes it), recorded as a job output beside `binary`, since `steps.hash.outputs.binary` is `--image-lists`'
     hash of the image's own file and `--image` would compare it with itself.
+    17b (landed; stage D2b): .github, tasks/todo.md. "Hash and list" hashes the keepcrypt-pi cargo built, fails
+    unless that file exists and its hash equals `--image-lists`' `sha256 keepcrypt-pi` line (both printed), and
+    exports it as the `binary` output (the lead's reading: one output, the two hashes proved equal, in place of a
+    second output); the shared step "Scan (--image against pi/os/expected)" runs after "Scan selftest" and before
+    the upload, with that hash through `env:`; the upload, "Upload the image (leg a; scanned)", runs only when the
+    scan passed; the compare job fails unless both legs' results are `success` and its summary says both scans
+    passed and names the binary hash as the build's; `gates` runs `--os-config pi/os` beside `--workflows`. The
+    Makefile is unchanged (its `scan` header already says what 17b does). Proof under group 12's `gates` item and
+    group 15's step 4 and upload bullet; group 14's `--image` item waits for the gate image's clean scan output
+    (commit 20).
     Review fixes of 17a (stage D2a's review of 430678b..349c1b2), each with its proof under the item it amends:
     17a-b. scripts: every `sha=$(si_lists ...)` carries `|| exit 2`, so a control that cannot be listed is exit 2, as
     the header promises, not a FAIL of the scan on an empty hash (group 14, `--selftest-image`).

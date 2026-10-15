@@ -293,7 +293,10 @@ jobs:
     # workflow fixtures); the workflow hardening check (tasks/todo.md, M4 group 11; Q38 (d)): every
     # entropy-*.yml in .github/workflows keeps the header's rules, a read-only token, the three
     # allowed actions pinned by SHA, no secret, no fork-trusting trigger and no expression inside a
-    # run step; the verifier self-test (13 checks: every vectors/ file regenerated or recomputed,
+    # run step; the image's text-only configuration check (M4 group 11, --os-config): pi/os's
+    # inittab, fstab, cmdline.txt and config.txt, expected/linux.config against the fragment's
+    # required and forbidden lists with one hwrng driver, and BusyBox's config with init and mount
+    # alone; the verifier self-test (13 checks: every vectors/ file regenerated or recomputed,
     # Coldcard's hash-pinned scripts re-run behind rolls.json and on agreement.json's dice-only
     # subset, and lone copies of the shipped verify.py under an audit hook, piped and in a
     # pseudo-terminal); the
@@ -321,6 +324,7 @@ jobs:
       # workflows live at the repo root, so the hardening check is given ../.github/workflows.
       - run: scripts/banned-api-check.sh
       - run: scripts/banned-api-check.sh --workflows ../.github/workflows
+      - run: scripts/banned-api-check.sh --os-config pi/os
       - run: python3 -I tools/verify/vectorgen.py --selftest
       - run: python3 -I pi/os/rootfs-prefix.py --selftest
       - run: sh pi/os/kconfig.sh --selftest
