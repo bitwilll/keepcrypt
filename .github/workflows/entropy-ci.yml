@@ -1,13 +1,13 @@
 # KeepCrypt-Entropy CI: every Entropy/CLAUDE.md rule a machine can check runs on every PR and
-# every push to main that touches Entropy/ or this file (Entropy/docs/build-plan.md, "Security
-# rules enforced in CI"). The project lives in Entropy/ of the keepcrypt monorepo: every run
-# step starts there, and cache paths and hashFiles() name Entropy/ because they resolve from
-# the repo root.
+# every push to main that touches Entropy/ or an Entropy workflow (.github/workflows/entropy-*;
+# Entropy/docs/build-plan.md, "Security rules enforced in CI"). The project lives in Entropy/ of
+# the keepcrypt monorepo: every run step starts there, and cache paths and hashFiles() name
+# Entropy/ because they resolve from the repo root.
 #
 # No paths: filter (tasks/todo.md, M1 Q12): the workflow starts on every PR and every push to main,
-# and its first job, changes, says whether Entropy/ or this file changed. Every other job needs it
-# and is skipped otherwise, which GitHub counts as passing, so checks made required by a ruleset
-# never stay pending on a PR that does not touch Entropy/. (GitHub leaves a path-filtered workflow
+# and its first job, changes, says whether Entropy/ or an Entropy workflow changed. Every other
+# job needs it and is skipped otherwise, which GitHub counts as passing, so required checks never
+# stay pending on a PR that does not touch Entropy/. (GitHub leaves a path-filtered workflow
 # pending instead.) The cross matrix skips its steps rather than the job: a skipped matrix job
 # reports one check under its unexpanded name, not one per target. A ruleset must require the
 # changes job too: if it fails, the jobs that need it are skipped, and skipped counts as passing.
@@ -53,16 +53,16 @@ env:
 
 jobs:
   changes:
-    # Q12: did this PR or push change Entropy/ or this workflow? A pull request's checkout is its
-    # merge commit, whose first parent is the base branch; a push to main compares with the commit
-    # main pointed to before. Event data reaches the script through env only. A range that cannot
-    # be read (a new branch, a force push) counts as a change, so every job runs.
-    # The answer is git diff's exit code over the two pathspecs (from the repo root, since run
-    # steps start in Entropy/), never a text match on a list of names: --no-renames reports a file
+    # Q12: did this PR or push change Entropy/ or an Entropy workflow (entropy-*, so gates checks
+    # the image workflow's hardening too, Q38 (d); the job keeps its required name)? A pull
+    # request's checkout is its merge commit, whose first parent is the base branch; a push to main
+    # compares with the commit main pointed to before. Event data reaches the script through env
+    # only. A range that cannot be read (a new branch, a force push) counts as a change, so every
+    # job runs. The answer is git diff's exit code over the two pathspecs (from the repo root, the
+    # glob quoted for git), never a text match on a list of names: --no-renames reports a file
     # moved out of Entropy/ as the deletion it is (a rename lists only its new path), a pathspec
     # also matches the names git prints quoted (non-ASCII), and nothing pipes into an early-exiting
-    # reader, which under -eo pipefail turned a long list into "false" (SIGPIPE). The name list is
-    # read for the log only.
+    # reader, which under -eo pipefail turned a long list into "false" (SIGPIPE). Names: log only.
     name: changes (Entropy/ or this workflow)
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -83,7 +83,7 @@ jobs:
           cd "$top"
           if [ "$EVENT" = pull_request ]; then base=HEAD^1; else base=$BEFORE; fi
           rc=0
-          git diff --quiet --no-renames "$base" HEAD -- Entropy/ .github/workflows/entropy-ci.yml 2>/dev/null || rc=$?
+          git diff --quiet --no-renames "$base" HEAD -- Entropy/ '.github/workflows/entropy-*' 2>/dev/null || rc=$?
           case $rc in
             0) entropy=false ;;
             1) entropy=true ;;
