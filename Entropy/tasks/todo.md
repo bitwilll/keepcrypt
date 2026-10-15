@@ -8054,7 +8054,9 @@ stale (Q43 (d)).
   - fstab's options;
   - cmdline.txt has no `console=` or `init=`, and has `ro`, `panic=0` and `init_on_free=1`;
   - config.txt has no `enable_uart=1`, no `dtoverlay`, no `start_file`/`fixup_file` and no plain `gpu_mem=`, and its
-    only `gpu_mem` lines are `gpu_mem_256=100`, `gpu_mem_512=100` and `gpu_mem_1024=100`;
+    only `gpu_mem` lines are `gpu_mem_256=100`, `gpu_mem_512=100` and `gpu_mem_1024=100` (17a-e adds no `start_x=1`
+    and no `start_debug=1`, which select `start_x.elf`/`fixup_x.dat` and `start_db.elf`/`fixup_db.dat` as `start_file`
+    and a `gpu_mem` of 16 select other files);
   - `expected/linux.config` has every required option at `=y`, no forbidden option at `y` or `m`, and exactly one
     `CONFIG_HW_RANDOM_*` driver, BCM2835;
   - BusyBox enables only `init` and `mount`.
@@ -8095,6 +8097,14 @@ stale (Q43 (d)).
   line that carries rw, exec, suid, dev or remount is a Fstab hit naming the word. Fixtures
   `osconfig-fstab-proc-rw-after-ro` and `osconfig-fstab-tmpfs-exec-after-noexec`, exactly one hit each; 31
   `osconfig-*` fixtures. `--selftest` 685/0 under sh and dash; the gate clean on the tree.
+  Proof (review fix, 17a-e): the same review found config.txt's list, taken from this item, missing `start_x=1` and
+  `start_debug=1`, which select `start_x.elf`/`fixup_x.dat` and `start_db.elf`/`fixup_db.dat` just as `start_file`
+  and `gpu_mem=16` select other files (both passed clean on a copy of `clean-pizero`; group 13's config.txt proof
+  already says "no start_x"), bounded by `--image`'s Boot rule (exactly start.elf and fixup.dat present). Now a
+  `start_x=1` or `start_debug=1` line is a ConfigTxt hit "(selects other firmware files)", in the same shape as the
+  enable_uart=1 rule, and this item names the two. Fixtures `osconfig-config-txt-start-x` and
+  `osconfig-config-txt-start-debug`, exactly one hit each; 33 `osconfig-*` fixtures. `--selftest` 687/0 under sh and
+  dash; the gate clean on the tree.
 - [ ] The existing rules scan `pi/os/` files from their first commit. A false hit in a kernel or BusyBox config gets a
   reviewed per-path rule with fixtures, never a blanket exclude.
 
@@ -9276,6 +9286,8 @@ The PR is a draft from commit 1.
     (group 11, `--os-config`); fixture `osconfig-cmdline-quoted-console`.
     17a-d. scripts: an fstab line that carries rw, exec, suid, dev or remount is a Fstab hit, since BusyBox's mount
     applies options in order and each clears the flag before it (group 11, `--os-config`); two fixtures.
+    17a-e. scripts, tasks/todo.md: a `start_x=1` or `start_debug=1` line in config.txt is a ConfigTxt hit, since each
+    selects other firmware files as `start_file` and `gpu_mem=16` do (group 11, `--os-config`); two fixtures.
 18. CLAUDE.md: Commands (group 18).
 
 **Stage E: hardware and review**

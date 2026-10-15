@@ -207,7 +207,8 @@
 #              line of another filesystem type; at least one line.
 #   Cmdline    no console= and no init= word, and no double quote (the kernel strips a word's quotes
 #              before it reads param=value); the words ro, panic=0 and init_on_free=1.
-#   ConfigTxt  no enable_uart=1, dtoverlay, start_file, fixup_file or plain gpu_mem= line; the
+#   ConfigTxt  no enable_uart=1, dtoverlay, start_file, fixup_file, start_x=1, start_debug=1 or
+#              plain gpu_mem= line (each of the last five selects other firmware files); the
 #              gpu_mem_* lines are gpu_mem_256=100, gpu_mem_512=100 and gpu_mem_1024=100, each
 #              once (comments skipped).
 #   Kconfig    expected/kconfig-required and kconfig-forbidden equal the fragment's =y and
@@ -2175,16 +2176,18 @@ cmdline_check() {
   lines_as_hits Cmdline "$2" "$cout"
 }
 
-# config_txt_check FILE NAME: no enable_uart=1, dtoverlay, start_file, fixup_file or plain
-# gpu_mem= line, and the gpu_mem_* lines exactly gpu_mem_256=100, gpu_mem_512=100 and
-# gpu_mem_1024=100, each once (the default start.elf and fixup.dat pair boots them; comments are
-# skipped).
+# config_txt_check FILE NAME: no enable_uart=1, dtoverlay, start_file, fixup_file, start_x=1,
+# start_debug=1 or plain gpu_mem= line, and the gpu_mem_* lines exactly gpu_mem_256=100,
+# gpu_mem_512=100 and gpu_mem_1024=100, each once (the default start.elf and fixup.dat pair boots
+# them; start_x=1 selects start_x.elf and fixup_x.dat, start_debug=1 start_db.elf and
+# fixup_db.dat, as start_file and a gpu_mem of 16 select other files; comments are skipped).
 config_txt_check() {
   cout=$(awk '
     /^[[:space:]]*(#|$)/ { next }
     /^enable_uart=1[[:space:]]*$/ { print NR ": " $0 }
     /^dtoverlay/ { print NR ": " $0 }
     /^(start_file|fixup_file)/ { print NR ": " $0 }
+    /^start_(x|debug)=1[[:space:]]*$/ { print NR ": " $0 " (selects other firmware files)" }
     /^gpu_mem=/ { print NR ": " $0 " (a plain gpu_mem selects other firmware files)" }
     /^gpu_mem_/ {
       if ($0 == "gpu_mem_256=100" || $0 == "gpu_mem_512=100" || $0 == "gpu_mem_1024=100") have[$0]++
