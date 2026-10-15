@@ -8209,7 +8209,7 @@ stale (Q43 (d)).
   without sudo against the host test binary, fails as planned where the Linux-only test is filtered out (`0 passed;
   ... 58 filtered out`: "loop_device did not run"). No loop device here: the lead reads the test job's "Run the
   loop-device test as root (exactly 1 passed)" step.
-- [x] `gates` runs `rootfs-prefix.py --selftest` (commit 10), `--workflows` (commit 13) and `--os-config` (commit 17).
+- [ ] `gates` runs `rootfs-prefix.py --selftest` (commit 10), `--workflows` (commit 13) and `--os-config` (commit 17).
   Proof (commit 13, `--workflows`; `--os-config` is commit 17): `gates` runs
   `scripts/banned-api-check.sh --workflows ../.github/workflows` right after the grep gate, on the bare checkout (the
   workflows live at the repo root). The check is clean on the file as committed, under sh and dash. The run is CI's:
@@ -8221,7 +8221,8 @@ stale (Q43 (d)).
   hwrng driver, and BusyBox with init and mount and no other symbol set`); the 14 required job names are unchanged
   (`ruby -ryaml` lists the same 9 job names); `--workflows ../.github/workflows` clean on both files (`clean, 2
   workflow(s)`). The run is CI's: the gates job's `--os-config pi/os` line, to be read on the first run after the
-  lead pushes.
+  lead pushes. Unticked (review fix, 17b-d): 17b ticked it on the committed line alone; as the `test` item above
+  and group 15's 17b bullets, it waits for that run's log.
 
   Proof:
   - a green run on the PR head, with all 14 required checks and unchanged names;
@@ -8723,7 +8724,7 @@ stale (Q43 (d)).
   - `sh pi/os/kconfig.sh --selftest` (14h);
   - the capture_set comment now naming review.html (an M3 low item; Q43 (e));
   - the check count on the `scripts/canaries.sh` line, set to `want_checks` as it stands after commits 12 and 17 add
-    their canaries (`want_checks` is 62 since commit 5; the line still says 61).
+    their canaries (`want_checks` rose to 62 at commit 5; the line said 61 until commit 18).
   Proof (commit 18): `git diff --name-only` lists only `CLAUDE.md` (the capture_set comment lives there) and
   `tasks/todo.md`. Every line is CI's or the Makefile's exact invocation; each that runs on this host was run as
   written: `scripts/banned-api-check.sh` clean (241 files); `--workflows ../.github/workflows` clean, 2 workflows;
@@ -9211,7 +9212,7 @@ The PR is a draft from commit 1.
    5c. pi/app: the plan review: Cargo.toml's comment says the unsafe code the hardware access needs stays inside rppal,
    nix, libc and std, not all unsafe code (zeroize and sha2 have their own).
    5d. tasks/todo.md: the plan and recompute reviews: group 18's Commands commit also sets the canaries count, which
-   commit 5 raised to 62 while CLAUDE.md's Commands line still says 61.
+   commit 5 raised to 62 while CLAUDE.md's Commands line said 61 (so it stayed until commit 18).
 
 **Stage B: app and device logic, tested on the host**
 
@@ -9462,12 +9463,17 @@ The PR is a draft from commit 1.
     17b-c. .github: the compare job's refusal of a leg whose result is not `success` prints both results and names
     what that covers (a failed step after the build, its scan or leg a's upload, or a cancelled leg) in place of "(a
     scan step)", which it also said for an upload failure or a cancelled leg (a message only; no logic change).
+    17b-d. tasks/todo.md: group 12's `gates` item is `[ ]` again: 17b ticked it on the committed `--os-config pi/os`
+    line, whose run is CI's, while the `test` item and group 15's 17b bullets stay open for the same reason; the tick
+    returns when the first run's gates log is read.
 18. CLAUDE.md: Commands (group 18): 14a3121.
     18b. CLAUDE.md, tasks/todo.md: three Commands comments say what is so: the `--image` line no longer claims "clean
     on the gate image", a result no run has produced (its first run is CI's; commit 20 records it); the Pi-target
     comment names each cross variable's value (CC_ and the LINKER gcc, AR_ ar, CFLAGS_ the ARMv6 flags), not "set to
     gcc" for all four; the three image-mode lines are "what CI's image legs run" with `make scan` running the first
     and the last, since `scan` never runs `--selftest-image`.
+    18c. tasks/todo.md: group 18's Commands bullet and the 5d entry said the canaries line "still says 61"; it says 73
+    since 14a3121, so both read as history ("said 61 until commit 18").
 
 **Stage E: hardware and review**
 
