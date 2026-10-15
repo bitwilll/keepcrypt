@@ -8209,7 +8209,7 @@ stale (Q43 (d)).
   without sudo against the host test binary, fails as planned where the Linux-only test is filtered out (`0 passed;
   ... 58 filtered out`: "loop_device did not run"). No loop device here: the lead reads the test job's "Run the
   loop-device test as root (exactly 1 passed)" step.
-- [ ] `gates` runs `rootfs-prefix.py --selftest` (commit 10), `--workflows` (commit 13) and `--os-config` (commit 17).
+- [x] `gates` runs `rootfs-prefix.py --selftest` (commit 10), `--workflows` (commit 13) and `--os-config` (commit 17).
   Proof (commit 13, `--workflows`; `--os-config` is commit 17): `gates` runs
   `scripts/banned-api-check.sh --workflows ../.github/workflows` right after the grep gate, on the bare checkout (the
   workflows live at the repo root). The check is clean on the file as committed, under sh and dash. The run is CI's:
@@ -8223,6 +8223,9 @@ stale (Q43 (d)).
   workflow(s)`). The run is CI's: the gates job's `--os-config pi/os` line, to be read on the first run after the
   lead pushes. Unticked (review fix, 17b-d): 17b ticked it on the committed line alone; as the `test` item above
   and group 15's 17b bullets, it waits for that run's log.
+  Proof (run 38771532169, b9ed46a, read by the lead): the gates job printed `banned-api-check --os-config pi/os:
+  clean: ...` and `--workflows ../.github/workflows: clean, 2 workflow(s)`, `selftest: 698 passed, 0 failed` and
+  `PASS: all 73 checks ran`; 14 of 14 required checks green; gates 10 min 17 s. Ticked.
 
   Proof:
   - a green run on the PR head, with all 14 required checks and unchanged names;
@@ -8477,6 +8480,9 @@ stale (Q43 (d)).
   7. KCONFIG equals `expected/linux.config` exactly; it has every required option at `=y`, no forbidden option at `y` or
      `m`, and exactly one `CONFIG_HW_RANDOM_*` driver, BCM2835.
 
+  Proof (17b in CI, run 38771532075 on b9ed46a): both legs' `--image` against the committed `pi/os/expected/` on the
+  image they built: clean (the line is quoted under group 15's Jobs item). The item waits for the gate image's run,
+  whose output commit 20 pastes; if no bring-up fix follows H1a, that image is this one.
   Proof (17a, the mode; its run on a real image is CI's, 17b): `--image IMG EXPECTED_DIR KCONFIG BIN_SHA256` reuses
   `image_unpack` and the lists mode's three list builders, then applies steps 2-7 as `List`, `Deny`, `Boot`,
   `Inittab`, `Kconfig`, `Marker`/`TestKey` (the raw image, every partition-1 file, every root file), `Format`/`Symbol`
@@ -8593,7 +8599,7 @@ stale (Q43 (d)).
   `--workflows` on a change to the image workflow alone; 15d: `--workflows` takes each action only at its approved
   SHA). upload-artifact v7.0.1 is `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` by GitHub's API (tag ref, a
   commit of 2026-04-10, before the 2026-10-01 cutoff).
-- [ ] Jobs, whose names collide with none of the 14:
+- [x] Jobs, whose names collide with none of the 14:
   - **`pi-image build (a)` and `pi-image build (b)`**: fresh `ubuntu-24.04` runners at the same `KC_WORK`. Leg a restores
     `dl/` from `actions/cache` by exact key; leg b downloads everything fresh. Each leg's steps, in order:
     1. free disk space by removing the runner's preinstalled SDKs the build does not use (GitHub guarantees only
@@ -8665,6 +8671,14 @@ stale (Q43 (d)).
   each output of both legs, fails unless both image hashes are non-empty and equal and both legs built the same
   commit, then writes the commit, the image, its SHA-256, the prefix, the binary's SHA-256 and "Boot check only,
   not scanned" to the step summary. 180 minutes per leg.
+  Proof (run 38771532075, b9ed46a, read by the lead): both legs ran "Hash and list" (`keepcrypt-pi SHA-256: built
+  4f4dc6e4..., packed 4f4dc6e4...`, the cargo-built file and the image's copy equal), "Scan selftest" and "Scan
+  (--image against pi/os/expected)" (`banned-api-check --image ...: clean: the boot and root lists and keepcrypt-pi's
+  imports equal pi/os/expected, no denied file, start.elf and fixup.dat, ...`); leg a's upload followed its scan
+  (artifact 11993015797, kept until 2026-10-29); the compare job wrote "both legs built b9ed46a... into
+  keepcrypt-pi-0.0.0-st7789-240x240.img, SHA-256 4b13c095f76c4a42efc67090fec96650d070a385bb8a58b4fd7067c0d936adde,
+  and both scans passed", with no "Boot check only" text. Leg a 16 min 57 s, leg b 18 min 19 s. The image hash equals
+  runs 38690004157 and 38747606208's: commits 16-18 changed no image input. Ticked.
 - [ ] The bootstrap of `expected/`:
   - commit 15's runs build, compare and print the lists, with no scan;
   - the owner runs H1a on that image; bring-up fixes follow as their own commits;
@@ -8746,8 +8760,9 @@ stale (Q43 (d)).
   files); no command changed.
 - [ ] `gates` at or under 12 minutes (Q31 (f)); `test` within its budget; image leg times recorded.
   Proof: `git diff --name-only`; job times from the PR head.
-  Measured (commit 18): `gates` ran in 9 min 59 s in run 38747606112 (the CI run beside image run 38747606208);
-  the item stays open until the final head's run is read.
+  Measured (commit 18): `gates` ran in 9 min 59 s in run 38747606112 (the CI run beside image run 38747606208) and
+  10 min 17 s in run 38771532169 (b9ed46a, with `--os-config`); image legs 16 min 57 s (a) and 18 min 19 s (b) in run
+  38771532075. The item stays open until the final head's run is read.
 
 **19. Review**
 - [ ] Plan, security and recompute reviews for each stage (A-E), as in M3. Every high and medium finding is fixed, with
