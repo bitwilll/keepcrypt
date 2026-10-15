@@ -1,0 +1,8 @@
+/ dir
+/bcm2708-rpi-zero.dtb file
+/bootcode.bin file
+/cmdline.txt file
+/config.txt file
+/fixup.dat file
+/start.elf file
+/zImage file

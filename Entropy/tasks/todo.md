@@ -9327,6 +9327,18 @@ The PR is a draft from commit 1.
     root holds BusyBox, keepcrypt-pi, the loader, libc, libm, libgcc_s and os-release. The lead downloaded the
     artifact and checked the hash. Sent to the owner with H1a's checklist on 2026-10-15.
 16. pi/os: `expected/` (lists and `linux.config`) from the run after H1a passes, reviewed line by line (group 15).
+    Lead decision (2026-10-15, under the owner's standing instruction and "continue" while H1a is pending): commit 16
+    lands from run 38690004157 (a4598b5), the image H1a tests, before H1a's result; a bring-up fix that changes the
+    image regenerates `expected/` in the same commit, and H1 repeats the boot check on the gate image either way.
+    Review note (every `=y`, every file, every import): the 514 `=y` lines of `expected/linux.config` are a subset
+    of the 794 the 15l review classified (four reviewers by section, each with an adversarial verifier; the keep groups
+    in <session>/plans/m4-kconfig-review.json), plus `NULL_TTY` (15m); every value line that went belongs to an option
+    15l removed (`comm` and `diff` of the two configs, 2026-10-15). The 8 boot files are the firmware's bootcode.bin,
+    start.elf, fixup.dat, the kernel, the Zero's device tree, config.txt and cmdline.txt. The 53 root entries are the
+    skeleton's directories and links, BusyBox with its mount link, keepcrypt-pi, the loader, libc, libm, libgcc_s and
+    os-release (15j, 15k). The 94 imports are glibc's (GLIBC_2.4 to 2.34) and GCC's unwinder symbols, with
+    `getrandom@GLIBC_2.25` the one OS RNG import and `mlockall@GLIBC_2.4` (rule 5's memory lock); no rand-family
+    symbol. `kconfig-required` (29) and `kconfig-forbidden` (218) are the fragment's lines. `--os-config pi/os`: clean.
 17. scripts, .github, pi/os: `--image`, `--selftest-image` and `--os-config`, their fixtures and canaries; the scan step
     in both legs; `gates` runs `--os-config`; the Makefile's `scan` target, which runs `--image` (groups 11, 13, 14,
     15; `scan` given to this commit in 15h). `--image` takes 13b's std-statics allowance (Q52) for the image's linked
