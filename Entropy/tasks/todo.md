@@ -9162,6 +9162,17 @@ The PR is a draft from commit 1.
     in both legs; `gates` runs `--os-config`; the Makefile's `scan` target, which runs `--image` (groups 11, 13, 14,
     15; `scan` given to this commit in 15h). `--image` takes 13b's std-statics allowance (Q52) for the image's linked
     files.
+    Lead decision (2026-10-15, under the owner's standing instruction): commit 17 lands in two parts, because `--image`
+    and `--os-config` compare against `pi/os/expected/`, which commit 16 commits only after H1a passes.
+    17a (now): scripts gain `--image IMG EXPECTED_DIR KCONFIG BIN_SHA256`, `--selftest-image IMG KCONFIG` and
+    `--os-config OS_DIR`, their fixtures, `--selftest` cases and canaries (`want_checks` raised in the same commit); the
+    Makefile gains `scan`, which runs `--image` against `expected/`; both image legs run `--selftest-image` on the image
+    they built (its positive controls are mutations of that image, with the lists `--image-lists` prints for it standing
+    in for `expected/`, so it needs no committed lists); `--image` and `--os-config` can be run by hand against a
+    directory of lists made from a run's "Hash and list" output. The upload, the summary's "not scanned" text and
+    `gates` are unchanged.
+    17b (after 16): both legs run `--image` against the committed `expected/` before the upload, the upload runs only
+    after the scan passes, the summary drops "Boot check only, not scanned", and `gates` runs `--os-config pi/os`.
 18. CLAUDE.md: Commands (group 18).
 
 **Stage E: hardware and review**
