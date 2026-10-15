@@ -204,7 +204,8 @@
 #   Fstab      every proc and sysfs line carries ro, nosuid, nodev and noexec; every tmpfs line
 #              nosuid, nodev, noexec and a size=; no line of another filesystem type; at least
 #              one line.
-#   Cmdline    no console= and no init= word; the words ro, panic=0 and init_on_free=1.
+#   Cmdline    no console= and no init= word, and no double quote (the kernel strips a word's quotes
+#              before it reads param=value); the words ro, panic=0 and init_on_free=1.
 #   ConfigTxt  no enable_uart=1, dtoverlay, start_file, fixup_file or plain gpu_mem= line; the
 #              gpu_mem_* lines are gpu_mem_256=100, gpu_mem_512=100 and gpu_mem_1024=100, each
 #              once (comments skipped).
@@ -2148,10 +2149,13 @@ fstab_check() {
   lines_as_hits Fstab "$2" "$fout"
 }
 
-# cmdline_check FILE NAME: no console= or init= word, and the words ro, panic=0 and init_on_free=1.
+# cmdline_check FILE NAME: no console= or init= word, no double quote (the kernel's next_arg strips
+# a word's quotes before it reads param=value, so "console=x" is console=x; the board file has
+# none and needs none), and the words ro, panic=0 and init_on_free=1.
 cmdline_check() {
   cout=$(awk '
     {
+      if (index($0, "\"")) print NR ": a double quote (the kernel reads \"console=x\" as console=x)"
       for (i = 1; i <= NF; i++) {
         seen[$i] = 1
         if ($i ~ /^(console|init)=/) print NR ": " $i

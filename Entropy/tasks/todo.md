@@ -8078,6 +8078,14 @@ stale (Q43 (d)).
   `--selftest` 682/0 under sh and dash; the gate clean on the tree (235 files); canaries 73/73 with the four
   `--os-config` canaries (the clean copy as the control, then the inittab's wait line made respawn, a `console=` in
   cmdline.txt and a `kconfig-forbidden` that no longer equals the fragment, each exactly one hit of its rule).
+  Proof (review fix, 17a-c): stage D2a's security review found the `console=`/`init=` rule bypassed by quoting the
+  word: `"console=ttyAMA0,115200" "init=/bin/busybox"` in cmdline.txt passed `--os-config` clean (reproduced on a
+  copy of `clean-pizero`), while the kernel's `next_arg` (lib/cmdline.c) strips a word's leading quote before it
+  splits param=value, so it reads console= and init=; `--image`'s Boot rule only proves the image's cmdline.txt
+  equals this board file, so the board file is the one gate. Now any double quote in cmdline.txt is a Cmdline hit
+  (one per line: the board file has none and needs none), beside the unquoted word rule. Fixture
+  `osconfig-cmdline-quoted-console` (both quoted words on the board line) gives exactly that one hit; 29
+  `osconfig-*` fixtures. `--selftest` 683/0 under sh and dash; the gate clean on the tree.
 - [ ] The existing rules scan `pi/os/` files from their first commit. A false hit in a kernel or BusyBox config gets a
   reviewed per-path rule with fixtures, never a blanket exclude.
 
@@ -9255,6 +9263,8 @@ The PR is a draft from commit 1.
     Review fixes of 17a (stage D2a's review of 430678b..349c1b2), each with its proof under the item it amends:
     17a-b. scripts: every `sha=$(si_lists ...)` carries `|| exit 2`, so a control that cannot be listed is exit 2, as
     the header promises, not a FAIL of the scan on an empty hash (group 14, `--selftest-image`).
+    17a-c. scripts: a double quote in cmdline.txt is a Cmdline hit, since the kernel reads `"console=x"` as console=x
+    (group 11, `--os-config`); fixture `osconfig-cmdline-quoted-console`.
 18. CLAUDE.md: Commands (group 18).
 
 **Stage E: hardware and review**
