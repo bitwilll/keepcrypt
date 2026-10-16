@@ -9139,14 +9139,32 @@ What does not change, in M4 or M4b (Q44-Q50):
   the gate.
 
 **B2. Profiles (`device/panel.rs`)**
-- [ ] `ST7789_240X320`, for the Waveshare 2-inch module:
+- [x] `ST7789_240X320`, for the Waveshare 2-inch module:
   - the 2-inch values: VCOMS `1F`, its two gamma tables, INVON, from the module archive's 2-inch file if Q49 (d) is yes,
     otherwise from `LCD_2in.c` [S35] as a stand-in;
   - `madctl` `0x70`, `ram` 320×240, `origin` (40, 0);
   - the picture is landscape like the HAT's: joystick left, keys right.
-- [ ] The 1.3-inch and 1.54-inch modules use `WAVESHARE_1IN3_HAT` unchanged, because Waveshare's values for these sizes
+
+  Proof (M4b commit 3): `cargo test -p keepcrypt-pi --locked --bin keepcrypt-pi -- device::panel`: 23 passed.
+  `the_2_inch_modules_init_stream_is_its_files_with_the_listed_deviations` pins the init to `LCD_2inch.c`'s
+  `LCD_2IN_Init` (the archive's `RaspberryPi/c/lib/LCD/`, SHA-256 4dc89777...), written out in the test with the plan's
+  deviations applied one by one (MADCTL `0x70` not `0x00`, the early INVON, CASET and RASET dropped, SLPOUT and DISPON
+  the driver's, the reset the driver's); its settings differ from the HAT's only in VCOMS and the two gamma tables.
+  `LCD_2inch.py` sends the same bytes. Landscape is `madctl` `0x70`, the HAT's (MV set, `ram` 320×240), which the
+  archive's Python driver also sends for a 320×240 picture; which way up on the module is H6's (B5). Window
+  `00 28 01 17` and `00 00 00 EF`, 29 writes, 115,200 bytes, `F8 00`; init and `Drop` wipe 153,600 zero bytes in 38
+  writes; the memory model and the `PROFILES` checks run over it. Each of 12 mutants fails a test: VCOMS, a byte of
+  either gamma table, the origin, `madctl`, `ram`, INVON early or missing, `spi_hz`, the name, the profile out of
+  `PROFILES`, and the file's listing without its early INVON (that one the build, as the listing's length is fixed).
+- [x] The 1.3-inch and 1.54-inch modules use `WAVESHARE_1IN3_HAT` unchanged, because Waveshare's values for these sizes
   are identical [S34], to be confirmed against the archive if Q49 (d) is yes. If H6 shows that a module needs a lower
   bus speed over jumper wires, it gets its own profile and image.
+
+  Proof (M4b commit 3): `the_1_3_and_1_54_inch_modules_files_send_the_hats_settings`: the HAT's commands, less step 7's
+  window, equal what the archive's `LCD_1in3.c` and `LCD_1in54.c` send (MADCTL `0x70` from `SetAttributes(HORIZONTAL)`,
+  as both demos call it, then `InitReg`), 240×240 at no offset; the two files differ only in names and their header
+  dates, and `LCD_1inch3.py` and `LCD_1inch54.py` send the same. `WAVESHARE_1IN3_HAT` is unchanged; a
+  changed HAT VCOMS or listing VCOMS fails the test.
 - [x] If Q50 made `WAVESHARE_1IN3_HAT_B` in M4, it gets its own image name here (`st7789-240x240-b`).
   Not applicable (M4b commit 1): Q50 made no second HAT block, since H1a's colours were true.
 - [x] Only if Q45 adds them:
@@ -9229,12 +9247,17 @@ What does not change, in M4 or M4b (Q44-Q50):
   Proof (M4b commit 4): the selection is `option_env!` alone; the commit adds no `[features]` entry and no `--cfg` (its
   code changes are device/panel.rs, its tests and canaries.sh), and both clippy runs, `--all-features` included, are
   clean.
-- [ ] pi/os: the Makefile holds one list, `PANELS := st7789-240x240 st7789-240x320`, plus anything Q45 or Q50 adds.
+- [x] pi/os: the Makefile holds one list, `PANELS := st7789-240x240 st7789-240x320`, plus anything Q45 or Q50 adds.
   - config.txt, cmdline.txt, inittab, `expected/` and the kernel config are the same for every image (one pin map).
 
   Open (M4b commit 5): `PANELS := st7789-240x240` alone, until commit 3 adds `st7789-240x320` with its profile (M4b lead
   decision 4). No file under `board/`, `expected/` or `configs/` reads `PANEL` (only genimage.cfg's comment names it),
   so every image gets the same config.txt, cmdline.txt, inittab, `expected/` and kernel config.
+  Proof (M4b commit 3): `override PANELS := st7789-240x240 st7789-240x320`. On a space-free copy of pi/os, `make
+  panels` prints both, one a line; `make -n image`, `repro-check` and `scan` with `PANEL=st7789-240x320` pass the check
+  and give Buildroot `KEEPCRYPT_PI_PANEL=st7789-240x320` and `keepcrypt-pi-0.0.0-st7789-240x320.img`; no `PANEL`, an
+  empty one, `nonsense` and both names at once stop with the two names listed. The grep of `board/`, `expected/` and
+  `configs/` still finds only genimage.cfg's comment.
 
   Proof:
   - a unit test per name, and one showing that unset gives the HAT;
@@ -9396,8 +9419,10 @@ What does not change, in M4 or M4b (Q44-Q50):
 9. tasks/todo.md: Review, H6 records and the gate report.
 
 **M4b Verification**
-- [ ] **Per profile:** the init stream pinned to its source, with deviations listed; window, wipe and byte-order tests;
+- [x] **Per profile:** the init stream pinned to its source, with deviations listed; window, wipe and byte-order tests;
   the `PROFILES` checks.
+  Proof (M4b commit 3): the HAT's from M4 (group 5) and the 2-inch module's from B2's two items above; the `PROFILES`
+  checks find exactly the two, each sound, with unique names.
 - [ ] **Selection:**
   - unset gives the HAT, and each name gives its profile;
   - an unknown or empty name fails the build (canaries);

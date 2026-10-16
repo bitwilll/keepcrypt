@@ -2,7 +2,9 @@
 //! the controller's frame memory: the HAT's init pinned to the approved bytes; a present's window,
 //! writes and byte order; the buffer and the backlight on every error; `Drop`; the `PROFILES`
 //! checks; a test-only profile whose frame sits 40 columns in; and the profile's selection by name
-//! (M4b B3).
+//! (M4b B3). Then the 2-inch module's profile (M4b B2): its init pinned to Waveshare's file with
+//! every deviation listed, its window, wipe and byte order; and the 1.3-inch and 1.54-inch
+//! modules' files, which send the HAT's settings.
 
 use std::cell::RefCell;
 use std::collections::BTreeSet;
@@ -18,13 +20,15 @@ use Op::{Backlight, Command, Data, Reset, Sleep};
 const MV: u8 = 0x20;
 /// LCMCTRL's XMV bit, which the controller XORs with MADCTL's MV ([S31] p.275).
 const XMV: u8 = 0x02;
-/// The commands and data writes init sends on the HAT: MADCTL, 13 settings, SLPOUT, the window
-/// (3), 38 writes of zeros and DISPON.
+/// The commands and data writes init sends on the HAT, and on the 2-inch module: MADCTL, 13
+/// settings, SLPOUT, the window (3), 38 writes of zeros and DISPON.
 const INIT_SENDS: usize = 57;
 /// The commands and data writes of a present: the window (3) and 29 writes.
 const PRESENT_SENDS: usize = 32;
 /// The HAT's window columns, 0 to 239.
 const HAT_COLUMNS: [u8; 4] = [0x00, 0x00, 0x00, 0xEF];
+/// The 2-inch module's window columns, 40 to 279: the frame in the middle of 320.
+const TWO_INCH_COLUMNS: [u8; 4] = [0x00, 0x28, 0x01, 0x17];
 
 /// A test-only profile: the HAT's, with the 240×240 frame 40 columns in, as a 320×240 screen
 /// centres it. `tests.rs` is compiled only by `cargo test`.
@@ -620,7 +624,8 @@ fn spans_are_inclusive_and_refuse_empty_or_overflowing_ones() {
 /// Every profile passes the checks (Q44): the blank covers the controller's whole memory, no
 /// LCMCTRL step flips MADCTL's MV, the window lies inside it, every opcode is on the allow-list,
 /// one COLMOD at 16 bits a pixel, a bus speed, and a unique name. The allow-list is the plan's 14 opcodes. `PROFILES` holds exactly the
-/// HAT, and `PANEL` is in it. Each check fails a profile made to break it.
+/// HAT and the 2-inch module (M4b B2), and `PANEL` is in it. Each check fails a profile made to
+/// break it.
 #[test]
 fn every_profile_passes_the_checks_and_each_check_fires() {
     // The allow-list is group 5's, written out from the plan: COLMOD, PORCTRL, GCTRL, VCOMS, LCMCTRL,
@@ -636,7 +641,7 @@ fn every_profile_passes_the_checks_and_each_check_fires() {
     }
     let names: BTreeSet<&str> = PROFILES.iter().map(|profile| profile.name).collect();
     assert_eq!(names.len(), PROFILES.len());
-    assert_eq!(PROFILES, [&WAVESHARE_1IN3_HAT]);
+    assert_eq!(PROFILES, [&WAVESHARE_1IN3_HAT, &ST7789_240X320]);
     assert!(PROFILES.contains(&PANEL));
 
     for (broken, fault) in [
@@ -801,4 +806,253 @@ fn a_panel_name_one_byte_off_at_its_end_panics() {
 #[should_panic(expected = "KEEPCRYPT_PI_PANEL is empty or names no profile in PROFILES")]
 fn a_panel_name_one_byte_off_at_its_start_panics() {
     select(Some("tt7789-240x240"));
+}
+
+// Waveshare's Raspberry Pi module archive (M4b B2; Q49 (d)): `LCD_Module_RPI_code.zip`, 12,380,597
+// bytes, SHA-256 07afa6be35a710a7e811435eb048e474988cee0946e8e6e99a11b59f0644f0ac, from
+// https://files.waveshare.com/upload/8/8d/LCD_Module_RPI_code.zip, downloaded with the owner's yes
+// on 2026-10-16. Its files were read as text, and the two listings below are written out from
+// them, each file named by its path in the archive and its SHA-256.
+
+/// What `LCD_2IN_Init` sends after its reset, in order: the 2-inch module's driver,
+/// `LCD_Module_RPI_code/RaspberryPi/c/lib/LCD/LCD_2inch.c` (SHA-256
+/// 4dc89777c71ce0f4f9e543d322df3432d1dbae5c48bc65bbad123fc477073689). The archive's Python driver,
+/// `LCD_Module_RPI_code/RaspberryPi/python/lib/LCD_2inch.py` (SHA-256
+/// 9a7ed52e50292b1163289f69e139f1ac7e6fea9f1920a717652e1ea6f8dcb66b), sends the same in its `Init`.
+const LCD_2INCH_C: [(u8, &[u8]); 19] = [
+    (0x36, &[0x00]),
+    (0x3A, &[0x05]),
+    (0x21, &[]),
+    (0x2A, &[0x00, 0x00, 0x01, 0x3F]),
+    (0x2B, &[0x00, 0x00, 0x00, 0xEF]),
+    (0xB2, &[0x0C, 0x0C, 0x00, 0x33, 0x33]),
+    (0xB7, &[0x35]),
+    (0xBB, &[0x1F]),
+    (0xC0, &[0x2C]),
+    (0xC2, &[0x01]),
+    (0xC3, &[0x12]),
+    (0xC4, &[0x20]),
+    (0xC6, &[0x0F]),
+    (0xD0, &[0xA4, 0xA1]),
+    (
+        0xE0,
+        &[
+            0xD0, 0x08, 0x11, 0x08, 0x0C, 0x15, 0x39, 0x33, 0x50, 0x36, 0x13, 0x14, 0x29, 0x2D,
+        ],
+    ),
+    (
+        0xE1,
+        &[
+            0xD0, 0x08, 0x10, 0x08, 0x06, 0x06, 0x39, 0x44, 0x51, 0x0B, 0x16, 0x14, 0x2F, 0x31,
+        ],
+    ),
+    (0x21, &[]),
+    (0x11, &[]),
+    (0x29, &[]),
+];
+
+/// What the 1.3-inch and 1.54-inch modules' drivers send after their reset, in order, the same in
+/// both: `LCD_Module_RPI_code/RaspberryPi/c/lib/LCD/LCD_1in3.c` (SHA-256
+/// 77520a61d1485dc6a4f681dc8e5cfd38570fff5b322ac0e05c6ec924d1dc719f) and `LCD_1in54.c` beside it
+/// (SHA-256 c556d394588f00edb055cd11a34000e3839ea6a2acdd62984b6d655772abb25d), which differ only in
+/// names and the date in their headers. `LCD_*_Init(HORIZONTAL)`, as both demos call it
+/// (`c/examples/LCD_1in3_test.c`, SHA-256
+/// 28f50ec18a72614a8e8f154e0157f8e038fd47b0ef6d1b6685b18a076bc1f266, and `LCD_1in54_test.c`, SHA-256
+/// 9352a6058aef10b3a47dfba343452a7807ae6dae9a5ff675a457a49b52f20ebc), sends MADCTL `0x70` from
+/// `LCD_*_SetAttributes`, then the rest from `LCD_*_InitReg`. Both panels are 240×240, and both
+/// drivers' windows start at column and row 0. The Python drivers `python/lib/LCD_1inch3.py`
+/// (SHA-256 16f756df437b13d05f62e1fa86552746d36e23b9e3e2af5c355eb77fb7769105) and `LCD_1inch54.py`
+/// (SHA-256 d0ad8242638982c5efdac9053cc2728891906c5906c93e5f9900d0dbeb741ee5) send the same in
+/// their `Init`.
+const LCD_1IN3_C: [(u8, &[u8]); 16] = [
+    (0x36, &[0x70]),
+    (0x3A, &[0x05]),
+    (0xB2, &[0x0C, 0x0C, 0x00, 0x33, 0x33]),
+    (0xB7, &[0x35]),
+    (0xBB, &[0x19]),
+    (0xC0, &[0x2C]),
+    (0xC2, &[0x01]),
+    (0xC3, &[0x12]),
+    (0xC4, &[0x20]),
+    (0xC6, &[0x0F]),
+    (0xD0, &[0xA4, 0xA1]),
+    (
+        0xE0,
+        &[
+            0xD0, 0x04, 0x0D, 0x11, 0x13, 0x2B, 0x3F, 0x54, 0x4C, 0x18, 0x0D, 0x0B, 0x1F, 0x23,
+        ],
+    ),
+    (
+        0xE1,
+        &[
+            0xD0, 0x04, 0x0C, 0x11, 0x13, 0x2C, 0x3F, 0x44, 0x51, 0x2F, 0x1F, 0x1F, 0x20, 0x23,
+        ],
+    ),
+    (0x21, &[]),
+    (0x11, &[]),
+    (0x29, &[]),
+];
+
+/// The commands of a listing, as the recording bus logs them.
+fn commands(listing: &[(u8, &[u8])]) -> Vec<Op> {
+    listing
+        .iter()
+        .map(|&(cmd, args)| Command(cmd, args.to_vec()))
+        .collect()
+}
+
+/// The 2-inch module's init: `LCD_2INCH_C` in the driver's steps 1-8, with these deviations, each
+/// made below as it is named, because the driver owns that step on every screen:
+/// - MADCTL `0x70`, the profile's `madctl` (the HAT's), not `0x00`. The file's `0x00` leaves the
+///   panel portrait, 240 columns by 320 rows; the archive's Python driver sends `0x70` with the
+///   320×240 window for a 320×240 picture, so landscape is Waveshare's own setting too;
+/// - the file's early INVON, its third command, is dropped. INVON is sent once, after the gamma
+///   tables, where the file sends it again, as on the HAT;
+/// - its CASET `00 00 01 3F` and RASET `00 00 00 EF` are dropped. The driver owns windows, and its
+///   wipe (step 7) sends the full-memory window, which with MADCTL's MV set is the same bytes;
+/// - SLPOUT and DISPON are the driver's steps 6 and 8, with 120 ms after SLPOUT and the wipe
+///   before DISPON, where the file sends DISPON straight after SLPOUT;
+/// - the reset is the driver's step 2 (the file holds each level 100 ms), and the backlight is the
+///   driver's step 1 (the file's init does not drive it).
+///
+/// Step 7's window and wipe are the HAT's, since `ram` is the same 320×240.
+fn two_inch_init() -> Vec<Op> {
+    let mut file = commands(&LCD_2INCH_C);
+    assert_eq!(file[0], Command(0x36, vec![0x00]));
+    file[0] = Command(0x36, vec![0x70]);
+    assert_eq!(
+        file.drain(2..5).collect::<Vec<Op>>(),
+        [
+            Command(0x21, vec![]),
+            Command(0x2A, vec![0x00, 0x00, 0x01, 0x3F]),
+            Command(0x2B, vec![0x00, 0x00, 0x00, 0xEF]),
+        ]
+    );
+    assert_eq!(
+        file.split_off(file.len() - 2),
+        [Command(0x11, vec![]), Command(0x29, vec![])]
+    );
+    let mut ops = vec![
+        Backlight(false),
+        Reset(true),
+        Sleep(10),
+        Reset(false),
+        Sleep(10),
+        Reset(true),
+        Sleep(120),
+    ];
+    ops.extend(file);
+    ops.extend([Command(0x11, vec![]), Sleep(120)]);
+    ops.extend(blank_ops());
+    ops.push(Command(0x29, vec![]));
+    ops
+}
+
+/// The 2-inch module's recorded init equals `LCD_2inch.c`'s with the listed deviations, byte for
+/// byte. Its settings are the HAT's but for VCOMS (`1F`, not `19`) and the two gamma tables. Its
+/// name selects it (Q47 (a)), and its bus speed is the HAT's 40 MHz.
+#[test]
+fn the_2_inch_modules_init_stream_is_its_files_with_the_listed_deviations() {
+    let (panel, log) = start(&ST7789_240X320, 0..0);
+    assert!(panel.is_ok());
+    let ops = take(&log);
+    assert_ops(&ops, &two_inch_init());
+    assert_eq!(sends(&ops), INIT_SENDS);
+    let differ: Vec<u8> = WAVESHARE_1IN3_HAT
+        .init
+        .iter()
+        .zip(ST7789_240X320.init)
+        .filter(|(hat, two_inch)| hat != two_inch)
+        .map(|(hat, _)| hat.cmd)
+        .collect();
+    assert_eq!(differ, [VCOMS, PVGAMCTRL, NVGAMCTRL]);
+    assert_eq!(ST7789_240X320.init.len(), WAVESHARE_1IN3_HAT.init.len());
+    assert_eq!(ST7789_240X320.name, "st7789-240x320");
+    assert_eq!(ST7789_240X320.spi_hz, 40_000_000);
+    assert_eq!(select(Some("st7789-240x320")), &ST7789_240X320);
+}
+
+/// A present on the 2-inch module: CASET 00 28 01 17 (columns 40 to 279), RASET 00 00 00 EF,
+/// RAMWR, then the frame high byte first (0xF800 gives F8 00) in 28 writes of 4,096 and one of
+/// 512, 115,200 bytes, then the backlight on.
+#[test]
+fn a_present_on_the_2_inch_module_fills_columns_40_to_279_high_byte_first() {
+    let (panel, log) = start(&ST7789_240X320, 0..0);
+    let mut panel = panel.expect("init");
+    take(&log);
+    let mut pixels = vec![0; FRAME_PIXELS];
+    pixels[0] = 0xF800;
+    pixels[1] = 0x001F;
+    pixels[FRAME_PIXELS - 1] = 0x07E0;
+    assert_eq!(panel.show(&pixels), Ok(()));
+    let ops = take(&log);
+    assert_eq!(
+        ops[..3],
+        [
+            Command(0x2A, vec![0x00, 0x28, 0x01, 0x17]),
+            Command(0x2B, vec![0x00, 0x00, 0x00, 0xEF]),
+            Command(0x2C, vec![]),
+        ]
+    );
+    let writes: Vec<usize> = ops[3..ops.len() - 1]
+        .iter()
+        .map(|op| match op {
+            Data(bytes) => bytes.len(),
+            other => panic!("not a write: {other:?}"),
+        })
+        .collect();
+    assert_eq!(writes.len(), 29);
+    assert!(writes[..28].iter().all(|&len| len == 4096));
+    assert_eq!(writes[28], 512);
+    let bytes = data(&ops);
+    assert_eq!(bytes.len(), 115_200);
+    assert_eq!(bytes[..4], [0xF8, 0x00, 0x00, 0x1F]);
+    assert_eq!(bytes[115_198..], [0x07, 0xE0]);
+    assert_eq!(ops.last(), Some(&Backlight(true)));
+    assert_ops(&ops, &present_ops(TWO_INCH_COLUMNS, &pixels));
+    assert_eq!(sends(&ops), PRESENT_SENDS);
+}
+
+/// The 2-inch module's wipes: init's step 7 and `Drop` each send the whole 320×240 memory's window
+/// and 153,600 zero bytes in 38 writes (37 of 4,096 and one of 2,048), `Drop` after MADCTL `0x70`;
+/// `screens::blank()`, stop mode's first frame, is 115,200 zero bytes into columns 40 to 279.
+#[test]
+fn the_2_inch_modules_wipes_cover_all_of_memory_and_the_blank_screen_its_window() {
+    let blank = blank_ops();
+    assert_eq!(data(&blank), vec![0; 153_600]);
+    assert_eq!(sends(&blank), 3 + 38);
+    let (panel, log) = start(&ST7789_240X320, 0..0);
+    let mut panel = panel.expect("init");
+    let init = take(&log);
+    assert_eq!(
+        init[init.len() - 1 - blank.len()..init.len() - 1],
+        blank[..]
+    );
+    assert_eq!(show_stop(&mut panel, HalError::Stopped), Ok(()));
+    let ops = take(&log);
+    let (screen, halt) = ops.split_at(PRESENT_SENDS + 1);
+    assert_ops(screen, &present_ops(TWO_INCH_COLUMNS, &[0; FRAME_PIXELS]));
+    assert_eq!(data(screen).len(), 115_200);
+    assert_eq!(halt[..3], screen[..3]);
+    drop(panel);
+    let mut want = vec![Command(0x36, vec![0x70])];
+    want.extend(blank);
+    want.push(Backlight(false));
+    assert_ops(&take(&log), &want);
+}
+
+/// The 1.3-inch and 1.54-inch modules run the HAT's image (Q45; M4b B2): the commands the HAT's
+/// profile has the driver send, leaving out step 7's window, are `LCD_1IN3_C`, what the modules'
+/// files send, in the same order. Only steps the driver owns differ from the files: the reset,
+/// 120 ms after SLPOUT, and the wipe before DISPON.
+#[test]
+fn the_1_3_and_1_54_inch_modules_files_send_the_hats_settings() {
+    let (panel, log) = start(&WAVESHARE_1IN3_HAT, 0..0);
+    assert!(panel.is_ok());
+    let sent: Vec<Op> = take(&log)
+        .into_iter()
+        .filter(|op| matches!(op, Command(cmd, _) if ![CASET, RASET, RAMWR].contains(cmd)))
+        .collect();
+    assert_eq!(sent, commands(&LCD_1IN3_C));
+    assert_eq!(WAVESHARE_1IN3_HAT.origin, Point { x: 0, y: 0 });
 }

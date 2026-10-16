@@ -85,7 +85,7 @@ OUT := $(KC_WORK)/out
 # PANEL's own text. PANELS, PANEL_NAME and the two variables below that carry the name (IMAGE,
 # BR_IMAGE) are override: a value given on the command line or, with make -e, in the environment
 # is ignored, so no invocation skips the refusal or hands the build an unlisted name.
-override PANELS := st7789-240x240
+override PANELS := st7789-240x240 st7789-240x320
 override PANEL_NAME := $(if $(filter 1,$(words $(PANEL))),$(filter $(PANELS),$(PANEL)))
 PANEL_USAGE := make image, repro-check and scan need PANEL=<name>, one of: $(PANELS)
 ifneq ($(filter image repro-check scan,$(MAKECMDGOALS)),)
