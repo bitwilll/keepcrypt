@@ -9390,8 +9390,8 @@ What does not change, in M4 or M4b (Q44-Q50):
    Stage B3B4's reviews (plan, security, recompute): 9 findings, no high, 2 medium (decision M4b-4 cited but not yet
    recorded: now M4b-4 above; nothing tested `same`'s byte loop: 4b), 7 low (among them the make bypass, 5b; the
    linux.rs path, 6c and M4b-5; the stale "unchanged" lines, fixed in this commit). The stage suite at 0a711a3
-   passed (cargo test 455 passed with the new tests; canaries 81 under sh and dash, online; llvm-cov; deny, audit
-   and vet offline).
+   passed (cargo test --workspace: 21 suites, 453 passed, 3 ignored, the same with KEEPCRYPT_PI_PANEL=st7789-240x240;
+   canaries 81 under sh and dash, online; llvm-cov 97.38 % of lines; deny, audit and vet offline).
 8. Bring-up fixes from H6, each with the owner's observation and the root cause.
 9. tasks/todo.md: Review, H6 records and the gate report.
 
