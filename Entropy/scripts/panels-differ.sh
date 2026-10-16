@@ -11,7 +11,9 @@
 #   scripts/panels-differ.sh --selftest
 #                       two panels with the same hash must fail (the check's canary), and so must a
 #                       third equal to the first; two different hashes must pass; one panel, a name
-#                       given twice and a hash that is not 64 lowercase hex digits must be refused
+#                       given twice, a name that is not lowercase letters, digits and dashes, an
+#                       empty name, a pair with no = and a hash that is not 64 lowercase hex digits
+#                       must be refused
 #
 # Prints each panel and its hash, or one FAIL line per pair of panels with the same hash. Exit 0
 # every hash differs, 1 two panels share one, 2 usage.
@@ -63,6 +65,12 @@ selftest() {
     "st7789-240x240=$h1" 'st7789-240x320='
   scase upper-case-hash 2 "panels-differ: not a name and a SHA-256 of 64 lowercase hex digits: b=$upper" \
     "a=$h2" "b=$upper"
+  scase upper-case-name 2 "panels-differ: not a name and a SHA-256 of 64 lowercase hex digits: A=$h1" \
+    "A=$h1" "b=$h2"
+  scase empty-name 2 "panels-differ: not a name and a SHA-256 of 64 lowercase hex digits: =$h1" \
+    "=$h1" "b=$h2"
+  scase no-equals 2 "panels-differ: not a name and a SHA-256 of 64 lowercase hex digits: $h1" \
+    "$h1" "b=$h2"
   echo "panels-differ.sh --selftest: $pass passed, $fail failed"
   [ "$fail" -eq 0 ] || exit 1
   exit 0
