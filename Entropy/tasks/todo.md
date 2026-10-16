@@ -8816,7 +8816,7 @@ stale (Q43 (d)).
   keepcrypt-pi-0.0.0-st7789-240x240.img, SHA-256 4b13c095f76c4a42efc67090fec96650d070a385bb8a58b4fd7067c0d936adde,
   and both scans passed", with no "Boot check only" text. Leg a 16 min 57 s, leg b 18 min 19 s. The image hash equals
   runs 38690004157 and 38747606208's: commits 16-18 changed no image input. Ticked.
-- [x] The bootstrap of `expected/`:
+- [ ] The bootstrap of `expected/`:
   - commit 15's runs build, compare and print the lists, with no scan;
   - the owner runs H1a on that image; bring-up fixes follow as their own commits;
   - once H1a passes, commit 16 commits the lists and `linux.config` from that run, which the lead reviews line by line
@@ -8832,7 +8832,7 @@ stale (Q43 (d)).
   passed on run 38690004157's image; commit 16 (24582a8) committed its lists and `linux.config`, reviewed line by line
   (the review note under commit 16); 17a and 17b turned the scan on, and since then every run's legs pass `--image`
   before the upload (38771532075, 38797300298, 38851865089: equal hashes, the summary naming the commit). Run IDs, leg
-  times and disk use are under Review. The final PR head's run is commit 21's.
+  times and disk use are under Review. The final PR head's run is commit 21's; open until it is read (20c).
 
 **16. Hardware (owner) and bring-up fixes**
 - [ ] H1a on commit 15's image, and H1-H4, plus any H5 items, recorded under Review in Q41 (c)'s form only.
@@ -8912,7 +8912,7 @@ stale (Q43 (d)).
   runs `--image-lists` and `--image` alone (`--selftest-image` is the legs' "Scan selftest" step), so they are "what
   CI's image legs run, in this order (make scan runs the first and the last)". The grep gate stays clean (241
   files); no command changed.
-- [x] `gates` at or under 12 minutes (Q31 (f)); `test` within its budget; image leg times recorded.
+- [ ] `gates` at or under 12 minutes (Q31 (f)); `test` within its budget; image leg times recorded.
   Proof: `git diff --name-only`; job times from the PR head.
   Measured (commit 18): `gates` ran in 9 min 59 s in run 38747606112 (the CI run beside image run 38747606208) and
   10 min 17 s in run 38771532169 (b9ed46a, with `--os-config`); image legs 16 min 57 s (a) and 18 min 19 s (b) in run
@@ -8921,7 +8921,7 @@ stale (Q43 (d)).
   minutes), `test` 5 min 26 s (M3's budget, at most 6 minutes over main's 4 min 54 s: met), `cross
   (arm-unknown-linux-gnueabihf)` 1 min 46 s; image legs 14 min 07 s (a) and 13 min 40 s (b) in run 38851865089 (16 min
   57 s and 18 min 19 s in 38771532075; 17 min 23 s and 19 min 49 s in 38797300298). Commit 21 re-reads them at the final
-  head; a `tasks/`-only commit changes none of these inputs.
+  head; a `tasks/`-only commit changes none of these inputs. Open until then (20c).
 
 **19. Review**
 - [ ] Plan, security and recompute reviews for each stage (A-E), as in M3. Every high and medium finding is fixed, with
@@ -9189,7 +9189,7 @@ What does not change, in M4 or M4b (Q44-Q50):
   - `age -d` gives the same words.
 
   Proof: the owner's report in Q41 (c)'s form, with the run ID, the commit and the hash.
-- [x] **Gate: two clean builds give the same image hash.** `pi-image build (a)` and `(b)` on fresh runners, and
+- [ ] **Gate: two clean builds give the same image hash.** `pi-image build (a)` and `(b)` on fresh runners, and
   `pi-image reproducible (a = b)` green at the final PR head; after merge, main's push run gives the same hash (recorded
   in the PR conversation and in M5's Inputs).
   Proof: the run ID, the commit and both hashes.
@@ -9197,7 +9197,7 @@ What does not change, in M4 or M4b (Q44-Q50):
   (b9ed46a), 38797300298 (80bf4ac) and 38851865089 (de70f56): both legs and `pi-image reproducible (a = b)` green, both
   legs' SHA-256 `4b13c095f76c4a42efc67090fec96650d070a385bb8a58b4fd7067c0d936adde` (`gh run view <run> --log --job
   <compare job>`: `both legs built <commit> into keepcrypt-pi-0.0.0-st7789-240x240.img, SHA-256 4b13c095...`). The final
-  PR head's run is commit 21's to record, and main's push run after merge the PR conversation's.
+  PR head's run is commit 21's to record, and main's push run after merge the PR conversation's. Open until then (20c).
 - [ ] **Gate: the watch-only QR imports into Sparrow and Bitcoin Core with the same first address.** H4:
   - Sparrow scans the account QR off the panel (swb:218);
   - Core imports the descriptor text decoded off the panel (swb:222-227);
@@ -9205,9 +9205,9 @@ What does not change, in M4 or M4b (Q44-Q50):
   - Sparrow's acceptance of `crypto-account` is confirmed (todo.md:73; swb:235).
 
   Proof: the three addresses, both versions and the camera model under Review.
-- [x] **Matrix "Reproducible build"** (Pi image): as the second gate item, plus `pins.txt`.
+- [ ] **Matrix "Reproducible build"** (Pi image): as the second gate item, plus `pins.txt`.
   Proof (M4 Review, 2026-10-16): as the gate item above; `pins.txt` is commit 14's (its proof under group 13), checked
-  by the Makefile on every build, and every leg prints `SOURCE_DATE_EPOCH=1788535000`.
+  by the Makefile on every build, and every leg prints `SOURCE_DATE_EPOCH=1788535000`. Open with it (20c).
 - [ ] **Matrix "Full ceremony with offline verification"** (Pi): as the first gate item, with the test backup opened by
   `age -d` (PF:191).
 - [ ] **Matrix "Watch-only import"** (Pi): as the third gate item.
@@ -9315,13 +9315,13 @@ What does not change, in M4 or M4b (Q44-Q50):
   Proof (M4 Review, 2026-10-16): rules 1, 3, 5, 8, 10 and 11 are proven (the Review's "Rules" lines); 12 waits for
   commit 21's H2-H4 records, since the throwaway seed does not exist yet (the Review at de70f56 holds no secret, and
   H1a's record is the only hardware text).
-- [x] **CI:** all 14 required check runs green with unchanged names; the image workflow green at the final head;
+- [ ] **CI:** all 14 required check runs green with unchanged names; the image workflow green at the final head;
   canaries (61 + n)/(61 + n); budgets met.
   Proof: run IDs on the PR head.
   Proof (M4 Review, 2026-10-16): run 38851865443 on de70f56 (`pull_request`, PR #7): all 14 required check runs green
   with their names unchanged (`gh run view 38851865443 --repo bitwilll/keepcrypt --json jobs`); image run 38851865089
   green with the same hash; canaries 73/73 (61 + 12); `gates` 10 min 18 s, `test` 5 min 26 s, coverage 97.38 %. The
-  final head is commit 21's, and its run is commit 21's to record.
+  final head is commit 21's, and its run is commit 21's to record. Open until then (20c).
 - [ ] **Definition of done** (CLAUDE.md), with proof pasted under Review.
 
 ### New dependencies
@@ -9706,6 +9706,10 @@ The PR is a draft from commit 1.
     20b. tasks/todo.md: group 0's baseline line for `cargo test --workspace` reads 20 suites, 371 passed, 3 ignored,
     from a re-run in a `git archive f967dd4 Entropy` tree (the lead's draft figure, 25 suites, 319 passed, 5 ignored,
     did not add up: de70f56's 445 in 21 suites less M4's 74 tests and one suite; the Review's note saying so is gone).
+    20c. tasks/todo.md: five items commit 20 ticked on de70f56's runs are `[ ]` again, since their text names the final
+    PR head's run (and, for the image-hash gate, main's push run after merge), which commit 21 reads (decision 20):
+    group 15's bootstrap of `expected/`, group 18's budgets, and Verification's image-hash gate, Matrix "Reproducible
+    build" and CI. Their Proof lines keep the de70f56 evidence; the gate report reads "met at de70f56".
 21. tasks/todo.md: the owner's H records and verdict. Its image run must give the gate image's hash; the PR description
     names that run.
 
@@ -12640,23 +12644,26 @@ group 8's loop-device test; group 9's `rootfs-prefix.py`; group 10's module decl
 path; group 11's `--workflows`, `--os-config` and the existing rules over `pi/os/`; group 12's cross leg, std's
 random-key path and the `test` job's loop-device step; group 13's layout, kernel allow-list, kernel lists, defconfig,
 BusyBox, post-build.sh, genimage.cfg, post-image.sh and keepcrypt-pi.mk; group 14's `--image-lists` and `--image`; group
-15's workflow and the bootstrap of `expected/`; group 16's Q50 item (not applicable); group 18's budgets; Verification's
-image-hash gate, Matrix "Reproducible build", Matrix "Symbol and stub-marker scan", Matrix "Duplicate-seed drill" (M9),
-Matrix "Birthday collision" (Q42 (b)), Kernel allow-list, Crash path, Read-only mounts and create-new writes, and CI (at
-de70f56; the final head's run is commit 21's).
+15's workflow; group 16's Q50 item (not applicable); Verification's Matrix "Symbol and stub-marker scan", Matrix
+"Duplicate-seed drill" (M9), Matrix "Birthday collision" (Q42 (b)), Kernel allow-list, Crash path, and Read-only mounts
+and create-new writes. Five items this commit ticked on de70f56's runs are `[ ]` again (20c), since their text names the
+final PR head's run, which does not exist yet (decision 20): group 15's bootstrap of `expected/`, group 18's budgets,
+and Verification's image-hash gate, Matrix "Reproducible build" and CI; their Proof lines keep the de70f56 evidence.
 
 **Still unticked**, with what each waits for:
 - group 10's `PiHal`: Usb on the stick itself (H2 step 11, H3).
 - group 13's Makefile: `repro-check` has never been run (Linux only); the lead runs it or rules CI's two legs
   sufficient.
+- group 15's bootstrap of `expected/` and group 18's budgets: the final PR head's run (commit 21 reads it; 20c).
 - group 16: the H records (H2-H4); bring-up fixes (none through H1a; open until H2-H4 pass without one); the gate image
   rule (H2-H4 and the final head's run, commit 21).
 - group 17: the stopwatch times and the decisions (H2, H3).
 - group 19's two items: the lead ticks them at commit 21.
-- Verification: the ceremony gate and Matrix "Full ceremony" (H2, H3); the watch-only gate and Matrix "Watch-only
-  import" (H4); Matrix "BIP39, age and SHA" on hardware (`WAIT_SESSION`, H2); Matrix "Metal read-back drill" (H2 step
-  9); Drivers on hardware (black after a wipe and the backup under `mlockall`, H2); Carried items (lines 2, 9 and 10:
-  H2, H4, H3); Rules (12: commit 21's records); Definition of done (the gate).
+- Verification: the image-hash gate, Matrix "Reproducible build" and CI (the final PR head's run, and for the gate item
+  main's push run after merge: commit 21; 20c); the ceremony gate and Matrix "Full ceremony" (H2, H3); the watch-only
+  gate and Matrix "Watch-only import" (H4); Matrix "BIP39, age and SHA" on hardware (`WAIT_SESSION`, H2); Matrix
+  "Metal read-back drill" (H2 step 9); Drivers on hardware (black after a wipe and the backup under `mlockall`, H2);
+  Carried items (lines 2, 9 and 10: H2, H4, H3); Rules (12: commit 21's records); Definition of done (the gate).
 - M4b's items (B0 onwards) belong to M4b, after the M4 gate, and are not M4's.
 
 ### M4 gate status: PENDING the owner's H2-H4 (H1a and H1 passed 2026-10-16)
@@ -12664,9 +12671,9 @@ The gate in docs/build-plan.md:294. Deliverables: "ST7789 and button drivers, hw
 export". Proof: "Full ceremony on a Pi Zero v1.3, checked with the offline verifier; two clean builds give the same
 image hash; the watch-only QR imports into Sparrow and Bitcoin Core with the same first address". The hardware records
 are under "M4: hardware records" above.
-- Two clean builds give the same image hash: met. `pi-image build (a)` and `(b)` on fresh runners and `pi-image
-  reproducible (a = b)` green on every head since a4598b5: runs 38690004157, 38691830575, 38747606208, 38771532075,
-  38797300298 and 38851865089 on de70f56 all gave SHA-256
+- Two clean builds give the same image hash: met at de70f56. `pi-image build (a)` and `(b)` on fresh runners and
+  `pi-image reproducible (a = b)` green on every head since a4598b5: runs 38690004157, 38691830575, 38747606208,
+  38771532075, 38797300298 and 38851865089 on de70f56 all gave SHA-256
   `4b13c095f76c4a42efc67090fec96650d070a385bb8a58b4fd7067c0d936adde`, leg b from fresh downloads each time; from 17b
   each leg's `--image` scan against the committed lists passed before the upload. The final head's run is commit 21's to
   record.
