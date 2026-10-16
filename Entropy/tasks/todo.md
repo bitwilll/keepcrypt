@@ -8331,7 +8331,7 @@ stale (Q43 (d)).
   commit 14's, since 20e; `root.list` has `-rwxr-xr-x` for busybox), `expected/` with its six files (`boot.list`,
   `root.list`, `linux.config`, `kconfig-required`, `kconfig-forbidden`, `keepcrypt-pi.imports`); `find pi/os -type l`
   finds no symlink.
-- [ ] Makefile:
+- [x] Makefile:
   - pins Buildroot 2026.08's URL and SHA-256;
   - refuses a `KC_WORK` inside `Entropy/` or containing spaces (inside also through a symlink, before `make source`
     creates it: 14f);
@@ -8343,6 +8343,16 @@ stale (Q43 (d)).
   - it runs `kconfig.sh` after `make toolchain linux-patch` and before the full build (as built:
     `make toolchain host-flex host-bison linux-patch`, since Kconfig's conf needs flex and bison; 14g);
   - `repro-check` builds twice, in fresh output directories at the same path, and compares the results.
+
+  Proof (lead decision 21c, 2026-10-16): the plan left `repro-check`'s first run to the lead ("the lead runs it or rules
+  CI's two legs sufficient"), and CI's two legs are ruled sufficient for M4. Each leg runs `make -C pi/os source image`
+  on its own fresh runner at the same `KC_WORK` (`/kc-work`, refused if it already exists), so the pins, the offline
+  build, `SOURCE_DATE_EPOCH`, `TZ` and the kconfig.sh step run twice in every image run. `pi-image reproducible (a = b)`
+  then compares the two images across machines: eight runs, one hash. That is a stronger test than `repro-check`'s two
+  builds on one host. The `KC_WORK` refusals are 14f's, proven there. `repro-check` itself is `image` twice: each
+  `image` starts with `rm -rf $(OUT)`, so the second build has a fresh output directory at the same path, and the first
+  image waits in `$(KC_WORK)/repro` for `cmp`. Its first run moves to M7, with the clean-container `repro-check` already
+  in M7's list.
 
   Proof (17a, the `scan` target alone): `make -C pi/os scan` refuses to run without `$(OUT)/images/$(IMAGE)` or
   with other than one `$(OUT)/build/linux-*/.config` (it never rebuilds: "after image" read as "run after make
@@ -8839,13 +8849,18 @@ stale (Q43 (d)).
   times and disk use are under Review. The final PR head's run is commit 21's; open until it is read (20c).
 
 **16. Hardware (owner) and bring-up fixes**
-- [ ] H1a on commit 15's image, and H1-H4, plus any H5 items, recorded under Review in Q41 (c)'s form only.
+- [x] H1a on commit 15's image, and H1-H4, plus any H5 items, recorded under Review in Q41 (c)'s form only.
   Proof (H1a and H1, 2026-10-16): recorded above under the checklists and under Review; H2-H4 pending.
-- [ ] Bring-up fixes found on hardware (orientation, colour order, SPI clock, timings, kernel options, firmware files) are
+  Proof (21c, 2026-10-16): H1a, H1, H2, H3 and H4 are under "M4: hardware records", each in Q41 (c)'s form: the owner's
+  words, pass or fail, "matched" and stopwatch times. No value of the throwaway seed was sent, so none is recorded. No
+  H5 item was run; H5 stays optional, as the checklist says.
+- [x] Bring-up fixes found on hardware (orientation, colour order, SPI clock, timings, kernel options, firmware files) are
   commits that name the owner's observation and the root cause. The check that found the problem is repeated after each.
   Proof (M4 Review, 2026-10-16): H1a needed none (hash, prefix, panel and keys all matched); the fixes before it,
   15i-15m, came from the image runs' logs and the 15l review, each its own commit with its root cause. Open until H2-H4
   pass without one.
+  Proof (21c, 2026-10-16): H1a to H4 passed without a bring-up fix. Commit 19 was not needed, no hardware check was
+  repeated, and the image hash never changed from 4b13c095....
 - [x] If H1a shows inverted colours or washed-out greys (Q50):
   - This is a panel variant, not a wrong value. Inverted: some ST7789 panels need inversion off, and which ones is not
     known [S36: #1052]. Washed out: Waveshare's late-model values change MADCTL, GCTRL, VCOMS, VRHS and both gamma
@@ -8866,6 +8881,8 @@ stale (Q43 (d)).
   Proof (M4 Review, 2026-10-16): every run since a4598b5, de70f56's included, gives H1a's image hash, and the
   `tasks/`-only commits (02d87c0, 316d8a6, 80bf4ac, de70f56) changed nothing in it, as planned. Waits for H2-H4 and the
   final head's run (commit 21).
+  Proof (21c, 2026-10-16): H1a to H4 all ran on SHA-256 4b13c095.... H1a used run 38690004157's image, and the H2-H4
+  checklist named run 38771532075's: the same bytes. Only the final head's run is left (21d).
 
 **17. Measurements and decisions recorded (Q42 (a))**
 - [x] From the H1-H3 stopwatch times:
@@ -8949,7 +8966,8 @@ stale (Q43 (d)).
   follow-up step, on its own branch after the M4 gate; its plan follows this list.
 - **M5, M6:** UniFFI relies on group 3's assertions. Nothing else moves there.
 - **M7:**
-  - the pinned build container (Debian by digest, snapshot apt) and `repro-check` "in clean containers"; a third-party
+  - the pinned build container (Debian by digest, snapshot apt) and `repro-check` "in clean containers" (its first run,
+    lead decision 21c); a third-party
     reproduction and an arm64-host reproduction;
   - release versions, minisign, SHA256SUMS and the SBOM;
   - the move to Buildroot 2027.02 LTS and a current kernel, before the first release;
@@ -9211,19 +9229,24 @@ What does not change, in M4 or M4b (Q44-Q50):
   legs' SHA-256 `4b13c095f76c4a42efc67090fec96650d070a385bb8a58b4fd7067c0d936adde` (`gh run view <run> --log --job
   <compare job>`: `both legs built <commit> into keepcrypt-pi-0.0.0-st7789-240x240.img, SHA-256 4b13c095...`). The final
   PR head's run is commit 21's to record, and main's push run after merge the PR conversation's. Open until then (20c).
-- [ ] **Gate: the watch-only QR imports into Sparrow and Bitcoin Core with the same first address.** H4:
+- [x] **Gate: the watch-only QR imports into Sparrow and Bitcoin Core with the same first address.** H4:
   - Sparrow scans the account QR off the panel (swb:218);
   - Core imports the descriptor text decoded off the panel (swb:222-227);
   - both first receive addresses equal step 10's (swb:231);
   - Sparrow's acceptance of `crypto-account` is confirmed (todo.md:73; swb:235).
 
   Proof: the three addresses, both versions and the camera model under Review.
+  Proof (H4, 2026-10-16, 21c): "H4 done, both addresses matched". Sparrow scanned the account QR off the panel and so accepted
+  `crypto-account`; Core imported the descriptor text decoded off the panel; both first receive addresses equal step
+  10's. Under Q41 (c) the owner sent "matched" in place of the three addresses. The report names no wallet version and
+  no camera model, the one part of the planned proof that is missing (lead decision 23).
 - [ ] **Matrix "Reproducible build"** (Pi image): as the second gate item, plus `pins.txt`.
   Proof (M4 Review, 2026-10-16): as the gate item above; `pins.txt` is commit 14's (its proof under group 13), checked
   by the Makefile on every build, and every leg prints `SOURCE_DATE_EPOCH=1788535000`. Open with it (20c).
 - [ ] **Matrix "Full ceremony with offline verification"** (Pi): as the first gate item, with the test backup opened by
   `age -d` (PF:191).
-- [ ] **Matrix "Watch-only import"** (Pi): as the third gate item.
+- [x] **Matrix "Watch-only import"** (Pi): as the third gate item.
+  Proof (H4, 2026-10-16, 21c): as the third gate item.
 - [x] **Matrix "Symbol and stub-marker scan":**
   - the cross leg scans `keepcrypt-pi` on every PR;
   - the Buildroot-linked binary and the unpacked image pass `--image`;
@@ -9248,18 +9271,29 @@ What does not change, in M4 or M4b (Q44-Q50):
 - [x] **Matrix "Duplicate-seed drill"** (Pi): M9. M3's simulator drill stands until then.
   Proof (M4 Review, 2026-10-16): deferred to M9 as the plan says ("Deferred", M9: the duplicate-seed drill on hardware);
   M3's `drill_12` passes in both configurations at de70f56 (gate 20 passed, 1 ignored).
-- [ ] **Matrix "Metal read-back drill"** (Pi): H2 step 9's deliberate mirror misread and missing letter (and a
+- [x] **Matrix "Metal read-back drill"** (Pi): H2 step 9's deliberate mirror misread and missing letter (and a
   should-be-blank if a three-letter word comes up), each refused with the insert named and then corrected; M3's
   simulator drill (todo.md:5172-5184); optional H5 on a metal insert.
   Proof: H2.
+  Proof (H2, 2026-10-16, 21c): H2 step 9 passed as written ("H2 done, all passed"). The mirror misread was refused
+  with the insert named as a mirror misread, the missing letter was refused as a face that should have a letter, and
+  each was then corrected. The report does not say whether a three-letter word came up. M3's simulator drill stands,
+  and H5's metal insert stays optional.
 - [x] **Matrix "Birthday collision"** (Core, Pi): as Q42 (b) decides.
   Proof (M4 Review, 2026-10-16): Q42 (b) decided (approved 2026-10-14): the reboots stay; M7's nightly job covers core
   and the reboot part runs on M8's bench image; BP:315's row reads `Core, Pi (reboots: M8 bench image)` since commit 2
   (a7a91cc) and design.md is unchanged; both are in the Deferred list (M7, M8).
-- [ ] **Drivers on hardware:**
+- [x] **Drivers on hardware:**
   Proof (H1a, 2026-10-16): the panel upright with true colours and no noise band, and every input one event per
   press, on the owner's HAT; the boot reached Home, so the hwrng boot test passed (a failure halts before Home).
   Black after a wipe and the backup under `mlockall` wait for H2.
+  Proof (H2 and lead decision 22, 2026-10-16, 21c): H2 step 11 wrote a backup and read it back under `mlockall`.
+  `device::run` locks memory before the app starts and stops with `MemoryLock` if it cannot, so the 41 s backup ran
+  locked. H2 step 15 ran a wipe on the panel: `finish` (app/ready.rs) calls `wipe`, which presents `screens::blank()`,
+  then "Safe to power off". The black frame is a brief one between two screens, and the checklist did not ask the owner
+  to watch for it, so it is proven, not observed. Every wipe presents an all-black frame (group 5's memory-model tests,
+  over every `PROFILES` entry), through the present path H1a-H4 drew on, and H1a showed this panel's colours true, not
+  inverted, so black renders black. H5's idle wipe gives the owner a second chance to see it.
   - the panel is upright, with true colours, no noise band, and black after a wipe;
   - every input gives one event per press, with no repeat;
   - the boot hwrng test passes;
@@ -9302,7 +9336,7 @@ What does not change, in M4 or M4b (Q44-Q50):
   Proof: group 4's fence item (commit 6).
   Proof (review fix, commit 6b): another page or note of the same screen moves the fence too, as PF:105 promises; group
   4's fence item.
-- [ ] **Carried items:** each line of M3's "Deferred for M4" is proven or decided, one line each under Review:
+- [x] **Carried items:** each line of M3's "Deferred for M4" is proven or decided, one line each under Review:
   - drivers: groups 5-8;
   - no `unsafe`: group 2;
   - frame memory cleared: group 5;
@@ -9315,7 +9349,10 @@ What does not change, in M4 or M4b (Q44-Q50):
   - rule 8: Q40.
   Proof (M4 Review, 2026-10-16): the eleven lines are under Review ("Carried items"); three wait: the timing and
   worker-thread line (H2), the QR scans and imports (H4) and `verify.py mixed` (H3).
-- [ ] **Rules:**
+  Proof (21c, 2026-10-16): all eleven are proven or decided. Line 8, timing and the worker thread: group 17, every wait
+  under 60 s. Line 9, the scans and imports: H4. Line 10, `verify.py mixed`: H3. Lines 2, 3 and 5 gained their hardware
+  proof as well: step 4's 2.5 s, the stick in H2 and H3, and lead decision 22.
+- [x] **Rules:**
   - 1: getrandom only in core; the graph pin; the feature bans; std's random-key path absent; Python `random` through any
     module path caught.
   - 3: every driver fault is a fixed `HalError`; a stalled hwrng halts or stalls, never proceeds; no defaults or retries.
@@ -9330,6 +9367,9 @@ What does not change, in M4 or M4b (Q44-Q50):
   Proof (M4 Review, 2026-10-16): rules 1, 3, 5, 8, 10 and 11 are proven (the Review's "Rules" lines); 12 waits for
   commit 21's H2-H4 records, since the throwaway seed does not exist yet (the Review at de70f56 holds no secret, and
   H1a's record is the only hardware text).
+  Proof (21c, 2026-10-16): rule 12 holds. The H2-H4 records hold the owner's words, pass or fail, "matched" and times.
+  No value of the throwaway seed ever reached the lead: no C, D, roll, word or passphrase, and not even the public
+  fingerprint, addresses or Seal ID. So none can be in todo.md, the PR or a commit. The Review's Rules line 12 says so.
 - [ ] **CI:** all 14 required check runs green with unchanged names; the image workflow green at the final head;
   canaries (61 + n)/(61 + n); budgets met.
   Proof: run IDs on the PR head.
@@ -9733,6 +9773,14 @@ The PR is a draft from commit 1.
     longer carries the omission as a caveat.
 21. tasks/todo.md: the owner's H records and verdict. Its image run must give the gate image's hash; the PR description
     names that run.
+    21a. tasks/todo.md: the owner's H2 record and times (KATs 3 s, step 4 2.5 s, backup 41 s). The step 4 tick stays
+    100 ms and the worker thread stays out.
+    21b. tasks/todo.md: the owner's H3 record ("all matched", "Check a backup" 20 s). The ceremony half of the gate is
+    met, every `PiHal` field has run on the hardware, and every wait is under 60 s.
+    21c. tasks/todo.md: the owner's H4 record ("both addresses matched"). The watch-only gate, the Matrix items H2-H4
+    prove, group 16's records and bring-up items, Drivers on hardware, Carried items and Rules are ticked. Lead
+    decisions 21-23 cover `repro-check`, the black frame and the missing wallet versions. The items whose proof is the
+    final head's run stay open for 21d.
 
 Review fixes are listed as N.b entries under the commit they amend.
 
@@ -9854,12 +9902,12 @@ seed, which is what those screens are for. Write throwaway values on paper and d
   group 17 (21b).
 
 **H4. Watch-only import**
-- [ ] Sparrow, during H2 step 12 (note the version and the camera model): New wallet → single signature, native SegWit →
+- [x] Sparrow, during H2 step 12 (note the version and the camera model): New wallet → single signature, native SegWit →
   Airgapped Hardware Wallet → scan the account QR. Hold the panel as close as the camera focuses, about 8-12 cm, so the
   QR fills about a third of the frame. Its first receive address must equal step 10's. If a close, focused camera cannot
   read it, or Sparrow refuses the UR type, stop and tell the lead (Q41 (e)).
-- [ ] Phone, during H2 step 12: decode the descriptor QR and keep its two lines in a local note.
-- [ ] Bitcoin Core 31.1, after Finish:
+- [x] Phone, during H2 step 12: decode the descriptor QR and keep its two lines in a local note.
+- [x] Bitcoin Core 31.1, after Finish:
   1. Start it with networking off (`bitcoin-qt -networkactive=0`), so it does not sync.
   2. Move the two descriptor lines to the computer by typing them or a local transfer (AirDrop or a cable), never by
      email, chat or a cloud clipboard.
@@ -9867,7 +9915,8 @@ seed, which is what those screens are for. Write throwaway values on paper and d
   4. `importdescriptors` with the receive line (`"active":true, "internal":false`) and the change line
      (`"internal":true`), both with `"timestamp":"now"`.
   5. `getnewaddress "" "bech32"` must equal step 10's address.
-- [ ] Afterwards, delete both watch-only wallets and the phone note.
+- [x] Afterwards, delete both watch-only wallets and the phone note.
+  Proof (the owner, 2026-10-16): "H4 done, both addresses matched". The record is under "M4: hardware records" (21c).
 
 **H5. Optional**
 - [ ] A dice-only run, checked with `verify.py dice --words 12`.
@@ -12325,6 +12374,12 @@ drives a full ceremony in the simulator; you review the screen captures".
   `verify.py mixed --words 12` exited 0 with the device's 12 words; `age -d` gave the same words; after a power cycle,
   "Check a backup" took 20 s and showed step 10's fingerprint and verify.py's Seal ID. The paper and the backup were
   destroyed as the checklist says.
+- **H4, 2026-10-16**, during H2 step 12 and after Finish: "H4 done, both addresses matched". Sparrow scanned the account QR off the
+  panel and so accepted the `crypto-account` UR type (the checklist's stop condition did not occur); Bitcoin Core
+  imported the two descriptor lines decoded off the panel with networking off; both first receive addresses equal step
+  10's. The owner sent "matched", not the addresses, as Q41 (c) allows. The report names no Sparrow or Core version and
+  no camera model (the checklist named Bitcoin Core 31.1 and the current Sparrow). "H4 done" covers its last step: both
+  watch-only wallets and the phone note deleted.
 
 ### M4: local proof (2026-10-16, at de70f56)
 Apple M4 Max, macOS 27.0.1, toolchain 1.98.1 (rust-toolchain.toml), cargo-llvm-cov 0.9.1, python3 3.12.5 and
@@ -12568,24 +12623,27 @@ plan's "past 12, stop and re-plan" was not reached.
 
 ```text
 power-on to Home (KATs, hwrng boot test, rootfs hash)   14 s      (H1a, 2026-10-16)
-the WAIT_SESSION screen                                  pending, the owner's H2
-step 4 (the bar, 24 blocks at the 100 ms tick)           pending, the owner's H2
-the backup wait (two scrypt runs, write and read-back)   pending, the owner's H2
-"Check a backup"                                         pending, the owner's H3
+the WAIT_SESSION screen                                  3 s       (H2, 2026-10-16)
+step 4 (the bar, 24 blocks at the 100 ms tick)           2.5 s     (H2, 2026-10-16)
+the backup wait (two scrypt runs, write and read-back)   41 s      (H2, 2026-10-16)
+"Check a backup"                                         20 s      (H3, 2026-10-16)
 ```
+Every wait is under Q42 (a)'s 60 s, so the worker thread stays out; step 4's 2.5 s is the 100 ms tick's 2.4 s plus
+the draws, so the tick stays (group 17, 21a and 21b; the table filled by 21c).
 
 **Carried items** (M3's "Deferred, with their milestone", M4; Verification "Carried items"), one line each:
 1. rppal GPIO and the ST7789 driver, RST and backlight pins: groups 5-8 (commits 7, 8; KeepCrypt's own driver replaces
    mipidsi, Q36 (c)); RST 27 and BL 24 in PF's pin map (Q40 (b); [S5, S6]); H1a passed on the panel and the keys.
 2. the `/dev/hwrng` reader and the step 4 tick: group 7 (commit 8, the 2 s deadline, 8d); the tick stays 100 ms (Q39
-   (d), 6d) and the measured rate moves to M8 (Q42 (a)); step 4's time waits for H2.
+   (d), 6d) and the measured rate moves to M8 (Q42 (a)); step 4 took 2.5 s on the Pi Zero (H2), so the tick stays.
 3. real mount, write, sync and unmount at `/mnt/usb`, create-new writes, read-only mounts: group 8 (commit 9) and the
-   loop-device test in CI (`1 passed` at de70f56); on the stick itself, H2 step 11 and H3.
+   loop-device test in CI (`1 passed` at de70f56); on the stick itself, H2 step 11 (written and read back, 41 s) and
+   H3 ("Check a backup", 20 s).
 4. `mlockall` and where `unsafe` lives: `device::run` step 4 (commit 11), `MemoryLock` halts; no `unsafe` in KeepCrypt
    code (Q36 (d)), both forbid lines kept, the unsafe sites in rppal, nix, libc and std (the rppal review note under New
    dependencies).
 5. clearing the panel's memory on every wipe: group 5 (init and `Drop` blank 320×240, every wipe presents black, the
-   byte-swap buffer zeroized; commit 7's tests); "black after a wipe" on hardware waits for H2.
+   byte-swap buffer zeroized; commit 7's tests); on hardware, H2's Finish ran a wipe, proven black by lead decision 22.
 6. the crash path: group 10 (commit 11) and Q35: the silent hook, `Drop` blanks, inittab `wait` and `once`, `panic=0`;
    the docs say a crash drops the 99-roll minimum (commit 2); not forced on hardware in M4 (Q42 (a)).
 7. Buildroot, the reproducible hash, linking and scanning a release `keepcrypt-pi`, the no-simulator-symbols check:
@@ -12594,13 +12652,13 @@ the backup wait (two scrypt runs, write and read-back)   pending, the owner's H2
    (`--selftest-image`).
 8. KAT, snapshot and scrypt timing and peak memory, the worker thread, `Session: Send`: Q42 (a) moves the snapshot
    figures to M9 and scrypt's peak to M8 (a backup completed under `mlockall` stands in); the worker thread stays out
-   unless a wait exceeds 60 s (group 17, waits for H2); `Session: Send` and `Sync` are asserted at compile time by
+   unless a wait exceeds 60 s, and none did (group 17: 3 s, 2.5 s, 41 s, 20 s); `Session: Send` and `Sync` are asserted at compile time by
    core/tests/auto_traits.rs (commit 4).
 9. the QR scans off the real panel, the Sparrow and Bitcoin Core imports, the getrandom cfg in Buildroot: the scans and
-   imports wait for H4; the cfg is keepcrypt-pi.mk's `CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_RUSTFLAGS`, proven by `U
+   imports passed in H4 ("both addresses matched"); the cfg is keepcrypt-pi.mk's `CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_RUSTFLAGS`, proven by `U
    getrandom@GLIBC_2.25` in the cross leg's llvm-nm line and in `expected/keepcrypt-pi.imports`, with no fallback symbol
    (`--image`'s Symbol rule, its control 17a-g).
-10. a real-Pi ceremony checked with `verify.py mixed`: waits for H2 and H3.
+10. a real-Pi ceremony checked with `verify.py mixed`: H2 and H3 ("H3 done, all matched").
 11. rule 8's wording on device reads: Q40 (a), commit 3 (ed15bd2) and 10d (e70caa0); PF:81's path list (commits 2, 10c,
     10e; Q51).
 
@@ -12626,6 +12684,8 @@ the backup wait (two scrypt runs, write and read-back)   pending, the owner's H2
   checked by the Makefile; the Image inputs table); the workflow hardening check (`--workflows` clean, 2 workflows).
 - 12: this Review and the H records hold no secret: there is no throwaway seed yet (H2), and H1a's record is the only
   hardware text. Re-checked by commit 21 when the H2-H4 records land.
+  Re-checked (21c): the H2-H4 records hold the owner's words, pass or fail, "matched" and times. The owner sent no value
+  of the throwaway seed, public or secret, so none is here.
 
 **Lead decisions and deviations from the plan**, each with why (the dated entries are in the commit order):
 1. 13b (Q52): std's three getrandom statics on the Pi target are let through the artifact scan as local data only
@@ -12672,6 +12732,13 @@ the backup wait (two scrypt runs, write and read-back)   pending, the owner's H2
     from commit 11, and commit 13's step needs exactly `1 passed`.
 20. 17b-d: a plan item whose proof is a CI run is ticked only after that run's log is read (group 12's `gates` item was
     unticked again and re-ticked at 80bf4ac).
+21. 21c: `repro-check`'s first run moves to M7. CI's two legs, on separate fresh runners at the same `KC_WORK`, prove the
+    image reproducible for M4 (group 13's Makefile item).
+22. 21c: "black after a wipe" on hardware is proven rather than observed. H2's Finish ran a wipe on the panel, every wipe
+    presents an all-black frame, and H1a showed this panel's colours true. H5's idle wipe can show it directly (Drivers
+    on hardware).
+23. 21c: the watch-only gate is met on "both addresses matched", although the report names neither wallet version nor
+    the camera model that the item's proof lists. The gate report asks the owner for them.
 
 **Ticked in this commit** (each with its "Proof (M4 Review, 2026-10-16)" line above): group 0's four items (the answers,
 the baseline, the draft PR, `1.txt`); group 1's three (the docs edits, rule 8, CODEOWNERS); group 5's HAT values (H1a);
@@ -12685,23 +12752,15 @@ and create-new writes. Five items this commit ticked on de70f56's runs are `[ ]`
 final PR head's run, which does not exist yet (decision 20): group 15's bootstrap of `expected/`, group 18's budgets,
 and Verification's image-hash gate, Matrix "Reproducible build" and CI; their Proof lines keep the de70f56 evidence.
 
-**Still unticked**, with what each waits for:
-- group 10's `PiHal`: Usb on the stick itself (H2 step 11, H3).
-- group 13's Makefile: `repro-check` has never been run (Linux only); the lead runs it or rules CI's two legs
-  sufficient.
-- group 15's bootstrap of `expected/` and group 18's budgets: the final PR head's run (commit 21 reads it; 20c).
-- group 16: the H records (H2-H4); bring-up fixes (none through H1a; open until H2-H4 pass without one); the gate image
-  rule (H2-H4 and the final head's run, commit 21).
-- group 17: the stopwatch times and the decisions (H2, H3).
-- group 19's two items: the lead ticks them at commit 21.
-- Verification: the image-hash gate, Matrix "Reproducible build" and CI (the final PR head's run, and for the gate item
-  main's push run after merge: commit 21; 20c); the ceremony gate and Matrix "Full ceremony" (H2, H3); the watch-only
-  gate and Matrix "Watch-only import" (H4); Matrix "BIP39, age and SHA" on hardware (`WAIT_SESSION`, H2); Matrix
-  "Metal read-back drill" (H2 step 9); Drivers on hardware (black after a wipe and the backup under `mlockall`, H2);
-  Carried items (lines 2, 9 and 10: H2, H4, H3); Rules (12: commit 21's records); Definition of done (the gate).
+**Still unticked**, with what each waits for (updated by 21c):
+- group 15's bootstrap of `expected/`, group 16's gate image rule and group 18's budgets: the final head's run (21d).
+- group 19's two items: the stage E review of commit 21, then the gate report (21d).
+- Verification: the ceremony gate, the image-hash gate, Matrix "Reproducible build", Matrix "Full ceremony", CI and
+  Definition of done: the final head's run (21d). Main's push run after merge goes in the PR conversation and M5's
+  Inputs.
 - M4b's items (B0 onwards) belong to M4b, after the M4 gate, and are not M4's.
 
-### M4 gate status: PENDING the owner's H4 (H1a, H1, H2 and H3 passed 2026-10-16)
+### M4 gate status: PENDING the final head's run (H1a, H1, H2, H3 and H4 passed 2026-10-16)
 The gate in docs/build-plan.md:294. Deliverables: "ST7789 and button drivers, hwrng reader, Buildroot image, USB
 export". Proof: "Full ceremony on a Pi Zero v1.3, checked with the offline verifier; two clean builds give the same
 image hash; the watch-only QR imports into Sparrow and Bitcoin Core with the same first address". The hardware records
@@ -12719,10 +12778,10 @@ are under "M4: hardware records" above.
   tools/verify/verify.py mixed --words 12`, from the gate image's commit, exiting 0 with the device's 12 words; its Seal
   ID equal to "Check a backup"'s; `age -d` giving the same words; with the run ID, the commit and the hash. All of it is
   under "M4: hardware records".
-- The watch-only QR imports into Sparrow and Bitcoin Core with the same first address: pending: the owner's H4. It must
-  show Sparrow scanning the account QR off the panel (its version and the camera model), Bitcoin Core 31.1 importing the
-  descriptor text decoded off the panel, both first receive addresses equal to step 10's, and Sparrow's acceptance of
-  `crypto-account` (todo.md:73; swb:235).
+- The watch-only QR imports into Sparrow and Bitcoin Core with the same first address: met, 2026-10-16. The owner's
+  H4: "H4 done, both addresses matched" (21c). Sparrow scanned the account QR off the panel, accepting `crypto-account`; Core imported
+  the descriptor text decoded off the panel; both first receive addresses equal step 10's. The report names no wallet
+  version and no camera model (lead decision 23).
 - Deliverables: the ST7789 driver (device/panel.rs, the HAT profile, 15m's console decision), the key loop over the
   debouncer (device/keys.rs), the hwrng reader with its 2-second deadline (device/hwrng.rs), the Buildroot image (pi/os,
   pins.txt, the kernel allow-list, the scans) and the USB export (device/usb.rs, read-only mounts and create-new writes,
@@ -12730,7 +12789,8 @@ are under "M4: hardware records" above.
   text), the button driver (one event per press on all 8 inputs), the hwrng reader's boot test (Home reached, so the
   health test passed) and the image's boot (hash and prefix matched, 14 s). H2 proved the USB export's write and
   read-back (the backup verified in 41 s), the backup completing on the device and the new session behind `WAIT_SESSION`
-  (3 s); H3 proved "Check a backup" (20 s, read-only mount, the fingerprint matched); the watch-only QRs wait for H4; the panel black after a wipe is H5's idle-wipe check.
+  (3 s); H3 proved "Check a backup" (20 s, read-only mount, the fingerprint matched); H4 proved the watch-only QRs off the
+  panel; H2's Finish ran a wipe, proven black by lead decision 22.
 - Standing note: build-plan.md:278's two approvals for `core/`, `ffi/` and `pi/os/` are unmet while there is one
   maintainer (todo.md:322; CODEOWNERS:7-10 describes ruleset 24833307 as it is, e8c90d9). M4 is the first milestone with
   `pi/os/`.
