@@ -334,7 +334,7 @@ A release is a set of artifacts anyone can rebuild bit for bit and check against
 
 | Artifact | Reproducible? | How |
 | --- | --- | --- |
-| Pi image (`keepcrypt-pi-<version>.img`) | Yes | Pinned Buildroot release, pinned Rust toolchain, `SOURCE_DATE_EPOCH`; CI builds twice and compares SHA-256 |
+| Pi image, one per screen type in pi-firmware.md's Supported screens (`keepcrypt-pi-<version>-<name>.img`) | Yes | Pinned Buildroot release, pinned Rust toolchain, `SOURCE_DATE_EPOCH`; CI builds each image twice and compares SHA-256 |
 | Android APK | Yes, target | Deterministic Gradle settings; publish through F-Droid, which rebuilds from source; signed APK on GitHub releases |
 | iOS app | No | App Store re-signs binaries; publish source, exact Xcode version and build steps; recommend the Pi or Android for highest assurance |
 | Offline verifier | Trivially | A single Python file; its SHA-256 is printed in the release notes |
