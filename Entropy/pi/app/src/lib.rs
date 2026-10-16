@@ -3,10 +3,11 @@
 //! Everything that ships is here (tasks/todo.md, M3 "One app, two hardware layers"): the screen
 //! model (`screen`), the hardware traits that the device drivers (M4) and the simulator implement
 //! (`hal`), button input and the idle timer (`input`), the frame and its renderer (`ui`), and the
-//! app (`App`): the ceremony over core's typestate (`app`), the screens' models (`screens`), the
-//! entry grids (`grid`), the extras it forwards to the pool (`extras`) and the waiting-screen game
-//! (`games`). The simulator (pi/sim) implements `hal`; this crate never depends on it. This file
-//! holds the module list and one macro only.
+//! app (`App`, with `show_stop`, its stop screen for the device outside it): the ceremony over
+//! core's typestate (`app`), the screens' models (`screens`), the entry grids (`grid`), the extras
+//! it forwards to the pool (`extras`) and the waiting-screen game (`games`). The simulator
+//! (pi/sim) implements `hal`; this crate never depends on it. This file holds the module list and
+//! one macro only.
 
 #![forbid(unsafe_code)]
 
@@ -43,4 +44,4 @@ pub mod screen;
 mod screens;
 pub mod ui;
 
-pub use app::App;
+pub use app::{App, show_stop};

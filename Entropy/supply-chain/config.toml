@@ -83,6 +83,11 @@ criteria = "safe-to-deploy"
 version = "1.0.5"
 criteria = "safe-to-deploy"
 
+[[exemptions.cfg_aliases]]
+version = "0.2.2"
+criteria = "safe-to-deploy"
+notes = "nix's build dependency (tasks/todo.md, M4 Q36 (a)), published 2026-07-16. Reviewed for M4 commit 5: one source file with no unsafe code and no dependencies; its macro reads cargo's CARGO_CFG_* and PROFILE variables in nix's build script and prints cargo:rustc-cfg lines. The imported audits are safe-to-deploy deltas (mozilla 0.1.1 -> 0.2.1 -> 0.2.2) on a base audited only safe-to-run (google 0.1.1)."
+
 [[exemptions.chacha20]]
 version = "0.10.2"
 criteria = "safe-to-deploy"
@@ -211,6 +216,11 @@ criteria = "safe-to-deploy"
 version = "13.1.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.nix]]
+version = "0.31.3"
+criteria = "safe-to-deploy"
+notes = "The Pi firmware's mlockall, mount and umount2, clock_gettime and non-blocking open (tasks/todo.md, M4 Q36 (a)), published 2026-05-11, Linux only. Reviewed for M4 commit 5: the .crate matches the lock's checksum; normal dependencies bitflags, cfg-if and libc (with libc's extra_traits feature); memoffset and pin-utils are optional and stay off, since deny.toml pins its features to fs, mman, mount, time and uio; rand is a dev-dependency only; nothing prints and nothing reads the OS random source; its build script only emits cfg aliases. Mozilla's imported deltas stop at 0.30.1 with no full base audit."
+
 [[exemptions.pbkdf2]]
 version = "0.13.0"
 criteria = "safe-to-deploy"
@@ -231,6 +241,11 @@ notes = "1.8.0 was yanked on 2023-08-20, the day 1.8.1 came out. One source file
 [[exemptions.r-efi]]
 version = "6.0.0"
 criteria = "safe-to-deploy"
+
+[[exemptions.rppal]]
+version = "0.22.1"
+criteria = "safe-to-deploy"
+notes = "The Pi's GPIO and SPI (tasks/todo.md, M4 Q36 (a), (b)), Linux only. Archived by its author on 2025-07-01; 0.22.1 (2024-12-11) is the last release. Reviewed for M4 commit 5: the .crate matches the lock's checksum; libc is its only normal dependency and no feature is on (deny.toml pins that); the modules the firmware calls print nothing, spawn threads only for async interrupts and software PWM, which the firmware does not use, never set the REALTIME event clock flag, and fall back from /dev/gpiomem to /dev/mem, which the image's CONFIG_DEVMEM=n closes. The review note with their unsafe sites is under tasks/todo.md, M4 New dependencies. No audit on record."
 
 [[exemptions.salsa20]]
 version = "0.11.0"

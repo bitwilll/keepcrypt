@@ -13,3 +13,7 @@ words = ["random", "range"]
 HINT = "a random import is refused"  # random import: only in a string and this comment
 art = use_random \
     or None  # a continued line that ends in a longer name
+import randomize  # a longer module name, through any path
+from mylib import randomize
+import jax.randomness
+from lab.randomart import draw

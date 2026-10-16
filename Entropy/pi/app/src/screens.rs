@@ -505,7 +505,7 @@ fn date_text(date: RegistryDate) -> String {
 }
 
 /// The boot screen (step 1), shown while the self-tests run.
-pub fn boot(held: &Held) -> Screen<'_> {
+pub fn boot(held: &Held) -> Screen<'static> {
     Page::new(ScreenId::Boot, "Boot", held.banners)
         .text("KeepCrypt")
         .small(format!("Version {}", held.build.version))
@@ -553,7 +553,7 @@ pub fn model<'a>(held: &'a Held, view: &'a View) -> Result<Screen<'a>, Stop> {
             .small("Press any key to show it again.")
             .done(),
         (ScreenId::IdleWarning, _) => page("Idle").text("Still there?").small(IDLE_WARNING).done(),
-        (ScreenId::Halt, _) => halt(page("Stopped"), &view.note),
+        (ScreenId::Halt, _) => halt(banners, &view.note),
         (ScreenId::Home, _) => {
             let status = match &held.snapshot {
                 Some(snapshot) => format!(
@@ -800,13 +800,18 @@ pub fn model<'a>(held: &'a Held, view: &'a View) -> Result<Screen<'a>, Stop> {
     Ok(screen)
 }
 
-/// The stop screen (Q25): the failure's fixed text on red (`ui`), and no key.
-fn halt<'a>(page: Page<'a>, note: &Note) -> Screen<'a> {
+/// The stop screen (Q25): the failure's fixed text on red (`ui`), and no key. The app's halt
+/// shows it, and so does `app::show_stop` outside the app (Q35).
+pub fn halt(banners: Banners, note: &Note) -> Screen<'static> {
     let reason = match note {
         Note::Halt(stop) => stop.to_string(),
         _ => String::from("internal failure: a halt without its reason"),
     };
-    page.large("STOPPED").text(reason).small(HALTED).done()
+    Page::new(ScreenId::Halt, "Stopped", banners)
+        .large("STOPPED")
+        .text(reason)
+        .small(HALTED)
+        .done()
 }
 
 /// The seal card's second page: the Seal ID large, with its braille.
@@ -853,7 +858,11 @@ fn code_entry<'a>(page: Page<'a>, code: &Zeroizing<String>, cursor: usize) -> Sc
 
 #[cfg(test)]
 mod tests {
+    use keepcrypt_core::SeedLength;
+
     use super::*;
+    use crate::app::Plan;
+    use crate::hal::BuildInfo;
 
     #[test]
     fn continue_is_offered_only_at_the_quota() {
@@ -1011,6 +1020,58 @@ mod tests {
                 "reveal-d",
             ]
         );
+    }
+
+    #[test]
+    fn boot_and_about_fit_the_version_and_a_root_filesystem_prefix() {
+        // Version 0.0.0, the crate's until M7 sets release numbering (Q43 (b)), and a prefix as
+        // the device shows it: 16 hex characters in four dash-separated groups (Q39 (g)).
+        let prefix = "0123-4567-89ab-cdef";
+        assert_eq!(prefix.len(), 19);
+        for (test_registry, simulator) in
+            [(false, false), (true, false), (false, true), (true, true)]
+        {
+            let held = Held {
+                build: BuildInfo {
+                    version: "0.0.0",
+                    rootfs: String::from(prefix),
+                    simulator,
+                },
+                banners: Banners {
+                    test_registry,
+                    simulator,
+                },
+                stage: Stage::Idle,
+                kept: None,
+                plan: Plan {
+                    len: SeedLength::Words12,
+                    mode: Mode::Mixed,
+                },
+                snapshot: None,
+            };
+            let about = View {
+                id: ScreenId::About,
+                cursor: 0,
+                page: 0,
+                note: Note::None,
+                overlay: None,
+            };
+            for screen in [boot(&held), model(&held, &about).expect("About's model")] {
+                let name = screen.id().name();
+                assert!(screen.fits(), "{name}");
+                let texts: Vec<&str> = screen
+                    .elements()
+                    .iter()
+                    .filter_map(|element| match element.item() {
+                        Item::Small(text) => Some(text.as_str()),
+                        _ => None,
+                    })
+                    .collect();
+                assert!(texts.contains(&"Version 0.0.0"), "{name}");
+                let shown = format!("Root filesystem {prefix}");
+                assert!(texts.contains(&shown.as_str()), "{name}");
+            }
+        }
     }
 
     #[test]

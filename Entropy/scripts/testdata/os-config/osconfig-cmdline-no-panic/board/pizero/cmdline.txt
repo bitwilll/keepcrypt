@@ -1,0 +1,1 @@
+root=/dev/mmcblk0p2 rootfstype=squashfs ro rootwait init_on_free=1 quiet loglevel=0

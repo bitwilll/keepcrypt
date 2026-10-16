@@ -331,6 +331,45 @@ EOF
     fi
 fi
 
+# deny.toml [[bans.features]] on the real workspace (tasks/todo.md, M4 group 2): a nix feature
+# beyond the list, asked for by another member, must fail `cargo deny check bans`, naming the
+# feature. Cargo merges a dependency's features across the workspace, so the ban must hold
+# whichever manifest asks. The feature is reboot: net would pull in memoffset, a crate Cargo.lock
+# does not hold, which could not resolve offline; reboot adds only an edge to the locked nix
+# (fetched for every target by real-deny-bans above).
+name=deny-nix-feature
+feat="$work/features"
+mkdir "$feat" || exit 1
+for f in "$root"/* "$root"/.[!.]* "$root"/..?*; do
+    [ -e "$f" ] || continue
+    case ${f##*/} in
+        target | .git) continue ;;
+    esac
+    cp -RP "$f" "$feat/" || exit 1
+done
+cat >> "$feat/pi/sim/Cargo.toml" <<'EOF'
+
+# Gate canary (scripts/canaries.sh, temp copy only): a nix feature beyond deny.toml's list.
+[target.'cfg(target_os = "linux")'.dependencies.nix]
+version = "=0.31.3"
+default-features = false
+features = ["reboot"]
+EOF
+if ! out=$(cargo update --offline --workspace --manifest-path "$feat/Cargo.toml" 2>&1); then
+    printf '%s\n' "$out" | tail -n 30
+    echo "FAIL: $name: could not add the nix edge to the copy's Cargo.lock offline"
+    status=1
+else
+    expect_failure "$name" cargo deny --color never --manifest-path "$feat/Cargo.toml" \
+        --config "$feat/deny.toml" --offline --locked check bans
+    need "error[exact-features-mismatch]: feature set for crate 'nix = 0.31.3' did not match exactly"
+    need "'reboot' feature was enabled but not explicitly allowed"
+    need "nix feature 'reboot'"
+    need "bans FAILED"
+    never "error[banned]"
+    verdict
+fi
+
 # A [patch] path override must fail scripts/check-path-deps.sh and be named, even though only a
 # feature pulls the patched crate in (the check reads every feature).
 expect_failure "path-override" sh "$root/scripts/check-path-deps.sh" \
@@ -513,9 +552,11 @@ sys.exit(1 if bad else 0)
 # - [bans] deny is exactly the list below, all plain crate names (an inline table could carry
 #   wrappers, a name@version bans only some versions), so removing any entry fails; skip,
 #   skip-tree and exceptions are absent or empty;
+# - [[bans.features]] is exactly the two entries below (tasks/todo.md, M4 group 2): rppal with
+#   no features and nix with five, both exact, so a widened list or a dropped entry fails;
 # - [sources] is exactly crates.io only, with unknown registries and git sources denied (so an
 #   allow-org or private key fails too).
-static_check "deny.toml [graph], [bans] deny and [sources] exactly as pinned" python3 -I -c '
+static_check "deny.toml [graph], [bans] deny, [[bans.features]] and [sources] exactly as pinned" python3 -I -c '
 import sys, tomllib
 GRAPH = {"all-features": True}
 DENY = [
@@ -523,6 +564,10 @@ DENY = [
     "rand_isaac", "fastrand", "oorandom", "nanorand", "tinyrand", "turborand",
     "tokio", "mio", "hyper", "h2", "reqwest", "ureq", "curl", "isahc", "axum", "async-std",
     "log", "tracing", "slog", "env_logger",
+]
+FEATURES = [
+    {"crate": "rppal", "exact": True, "allow": []},
+    {"crate": "nix", "exact": True, "allow": ["fs", "mman", "mount", "time", "uio"]},
 ]
 SOURCES = {
     "unknown-registry": "deny",
@@ -570,6 +615,8 @@ elif deny != DENY:
 for key in ("skip", "skip-tree", "exceptions"):
     if key in bans and bans[key] != []:
         bad.append("[bans] %s is not empty: %r" % (key, bans[key]))
+if bans.get("features") != FEATURES:
+    bad.append("[[bans.features]] is %r, needs %r" % (bans.get("features"), FEATURES))
 bad += compare("[sources]", cfg.get("sources"), SOURCES)
 for line in bad:
     print(line)
@@ -591,7 +638,11 @@ sys.exit(1 if bad else 0)
 # - the root [profile] tables are exactly the ones below. Release must unwind, so a panic drops
 #   and wipes the session (abort skips that wipe, and cargo test always unwinds, so no test would
 #   notice a switch); core keeps overflow checks in release.
-# A real change to either pin is a reviewed change here too.
+# - the Pi hardware crates, rppal and nix, are named only in pi/app/Cargo.toml's Linux
+#   dependencies, with exactly the specs below (tasks/todo.md, M4 group 2; Q36 (a), (e)), so
+#   neither the simulator nor core nor the FFI can take them on; deny.toml's [[bans.features]]
+#   pins the features they resolve with, whichever manifest asks.
+# A real change to any of these pins is a reviewed change here too.
 manifest_pins='
 import sys, tomllib
 from pathlib import Path
@@ -601,6 +652,11 @@ CORE_FEATURES = {"default": [], "test-registry": [], "test-sources": ["test-regi
 PROFILE = {
     "release": {"panic": "unwind", "package": {"keepcrypt-core": {"overflow-checks": True}}},
     "dev": {"package": {"*": {"opt-level": 3}}},
+}
+HARDWARE_AT = ("pi/app/Cargo.toml", ["target", "cfg(target_os = \"linux\")", "dependencies"])
+HARDWARE = {
+    "rppal": {"version": "=0.22.1", "default-features": False},
+    "nix": {"version": "=0.31.3", "default-features": False, "features": ["fs", "mman", "mount", "time"]},
 }
 
 def turns_on(value):
@@ -636,6 +692,17 @@ def feature_lists(node, path):
         for i, item in enumerate(node):
             yield from feature_lists(item, path + [str(i)])
 
+def hardware(node, path):
+    """Every dotted path below node that names a Pi hardware crate, as a key or as a package rename."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key in HARDWARE or (key == "package" and isinstance(value, str) and value in HARDWARE):
+                yield ".".join(path + [key])
+            yield from hardware(value, path + [key])
+    elif isinstance(node, list):
+        for i, item in enumerate(node):
+            yield from hardware(item, path + [str(i)])
+
 def load(root, rel):
     with open(root / rel, "rb") as f:
         return tomllib.load(f)
@@ -651,9 +718,20 @@ except (OSError, tomllib.TOMLDecodeError) as err:
     sys.exit(1)
 bad += compare("Cargo.toml: profile", top.get("profile"), PROFILE)
 core_seen = False
+hardware_paths = [".".join(HARDWARE_AT[1] + [name]) for name in HARDWARE]
 for rel, doc in manifests:
     for where, values in feature_lists(doc, []):
         bad += ["%s: %s turns on %s" % (rel, where, v) for v in values if turns_on(v)]
+    bad += ["%s: %s names a Pi hardware crate, allowed only in %s under %s"
+            % (rel, where, HARDWARE_AT[0], ".".join(HARDWARE_AT[1]))
+            for where in hardware(doc, []) if rel != HARDWARE_AT[0] or where not in hardware_paths]
+    if rel == HARDWARE_AT[0]:
+        table = doc
+        for key in HARDWARE_AT[1]:
+            table = table.get(key) if isinstance(table, dict) else None
+        for name, spec in HARDWARE.items():
+            got = table.get(name) if isinstance(table, dict) else None
+            bad += compare("%s: %s" % (rel, ".".join(HARDWARE_AT[1] + [name])), got, spec)
     if rel == "Cargo.toml":
         continue
     features = doc.get("features")
@@ -669,12 +747,12 @@ for line in bad:
     print(line)
 sys.exit(1 if bad else 0)
 '
-static_check "core [features] and the root [profile] exactly as pinned; no manifest turns on a test feature" \
+static_check "core [features], the root [profile] and the Pi hardware crates exactly as pinned; no manifest turns on a test feature" \
     python3 -I -c "$manifest_pins" "$root"
 
 # ... and the check must fire, on a copy of the five manifests. One copy carries every route by
-# which a manifest could turn a test feature on, the other both profile changes; each must be
-# named.
+# which a manifest could turn a test feature on, a widened nix spec and rppal outside keepcrypt-pi,
+# the other both profile changes; each must be named.
 fresh_manifests() {
     m="$work/manifests"
     rm -rf "$m"
@@ -698,6 +776,8 @@ fresh_manifests
 replace "$m/Cargo.toml" 'keepcrypt-core = { path = "core" }' \
     'keepcrypt-core = { path = "core", features = ["test-sources"] }'
 replace "$m/core/Cargo.toml" 'default = []' 'default = ["test-registry"]'
+replace "$m/pi/app/Cargo.toml" 'features = ["fs", "mman", "mount", "time"]' \
+    'features = ["fs", "mman", "mount", "reboot", "time"]'
 cat >> "$m/pi/app/Cargo.toml" <<'EOF'
 
 # Gate canary (scripts/canaries.sh, temp copy only): a test feature through a dev-dependency.
@@ -710,6 +790,10 @@ cat >> "$m/pi/sim/Cargo.toml" <<'EOF'
 # normal dependency.
 [target.'cfg(unix)'.dependencies]
 keepcrypt-core = { workspace = true, features = ["test-registry"] }
+
+# Gate canary (scripts/canaries.sh, temp copy only): a Pi hardware crate outside keepcrypt-pi.
+[target.'cfg(target_os = "linux")'.dependencies]
+rppal = { version = "=0.22.1", default-features = false }
 EOF
 cat >> "$m/ffi/Cargo.toml" <<'EOF'
 
@@ -723,6 +807,8 @@ need "core/Cargo.toml: features.default is ['test-registry'], needs []"
 need "pi/app/Cargo.toml: dev-dependencies.keepcrypt-core.features turns on test-sources"
 need "pi/sim/Cargo.toml: target.cfg(unix).dependencies.keepcrypt-core.features turns on test-registry"
 need "ffi/Cargo.toml: features.probe turns on keepcrypt-core?/test-sources"
+need "pi/app/Cargo.toml: target.cfg(target_os = \"linux\").dependencies.nix.features is ['fs', 'mman', 'mount', 'reboot', 'time'], needs ['fs', 'mman', 'mount', 'time']"
+need "pi/sim/Cargo.toml: target.cfg(target_os = \"linux\").dependencies.rppal names a Pi hardware crate, allowed only in pi/app/Cargo.toml under target.cfg(target_os = \"linux\").dependencies"
 never "profile"
 verdict
 
@@ -961,6 +1047,104 @@ verifier_canary verifier-reach "    results = known_answers(KNOWN_ANSWERS)" \
     "takes getpass.io, not in the recorded list" \
     "rule (e): lone copy: audit: open for writing: '/dev/null'"
 
+# The grep gate's Device category on the real firmware (CLAUDE.md rules 5 and 8; tasks/todo.md,
+# M4 group 11): one line planted in the copy of a real pi/app file, one per rule, must fail
+# scripts/banned-api-check.sh on the copy with exactly that hit, so a widened path list, a new
+# exception or a dropped rule turns CI red. The copy is the one the real-* canaries use; each file
+# is restored afterwards.
+# device_canary NAME FILE LINE: appends LINE to the copy's FILE; the gate must report Device at
+# FILE with LINE and nothing else.
+device_canary() {
+    name=$1
+    cp "$root/$2" "$tmp/$2" || exit 1
+    printf '%s\n' "$3" >> "$tmp/$2" || exit 1
+    expect_failure "$name" sh "$root/scripts/banned-api-check.sh" "$tmp"
+    need "Device: $2:"
+    need "$3"
+    need "banned-api-check: 1 hit(s) in "
+    verdict
+    cp "$root/$2" "$tmp/$2" || exit 1
+}
+device_canary device-path-literal pi/app/src/app.rs \
+    'const KC_GATE_CANARY_CMDLINE: &str = "/proc/cmdline"; // gate canary (temp copy only): a path outside paths.rs'
+device_canary device-file-api pi/app/src/hal.rs \
+    'fn kc_gate_canary(path: &str) -> std::io::Result<std::fs::File> { std::fs::File::open(path) } // gate canary (temp copy only)'
+device_canary device-hardware-crate pi/app/src/input.rs \
+    'fn kc_gate_canary() -> Result<rppal::gpio::Gpio, rppal::gpio::Error> { rppal::gpio::Gpio::new() } // gate canary (temp copy only)'
+device_canary device-buffered-reader pi/app/src/device/hwrng.rs \
+    '// Gate canary (temp copy only): a BufReader would hold a copy of the samples.'
+# The grouped shape rustfmt gives two imports, which names no item right after the ::.
+device_canary device-grouped-process-use pi/app/src/app.rs \
+    'use std::process::{Command, Stdio}; // gate canary (temp copy only): the module by any path'
+
+# The workflow hardening check (tasks/todo.md, M4 group 11; Q38 (d)): a copy of the real
+# entropy-ci.yml with every rule broken once (the top-level token widened to write, which also
+# loses contents: read, and a job that runs on workflow_run, uses an action by tag, pastes an
+# expression into a run line and a run block, and reads a secret) must fail
+# scripts/banned-api-check.sh --workflows with those seven hits, and no other: the real file
+# is clean, as CI's gates job checks on every run.
+name=workflow-hardening
+wfd="$work/workflows"
+wfc="$wfd/entropy-ci.yml"
+mkdir "$wfd" || exit 1
+cp "$root/../.github/workflows/entropy-ci.yml" "$wfc" || exit 1
+replace "$wfc" 'permissions:
+  contents: read' 'permissions:
+  contents: write'
+cat >> "$wfc" <<'EOF'
+
+  canary:
+    # Gate canary (scripts/canaries.sh, temp copy only): every hardening rule broken once.
+    if: github.event_name == 'workflow_run'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: echo "${{ github.head_ref }}"
+      - env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git diff --quiet "$base" ${{ github.event.pull_request.head.sha }}
+EOF
+expect_failure "$name" sh "$root/scripts/banned-api-check.sh" --workflows "$wfd"
+need "Workflow: $wfc:1: missing a top-level permissions block that holds contents: read"
+need "Workflow: $wfc:32:   contents: write"
+need "if: github.event_name == 'workflow_run'"
+need "uses: actions/checkout@v7"
+need 'run: echo "${{ github.head_ref }}"'
+need 'TOKEN: ${{ secrets.GITHUB_TOKEN }}'
+need 'git diff --quiet "$base" ${{ github.event.pull_request.head.sha }}'
+need "7 hit(s) in 1 workflow(s)"
+verdict
+
+# The OS configuration check (tasks/todo.md, M4 groups 11 and 13; commit 17a): a temp copy of
+# the clean fixture, scripts/testdata/os-config/clean-pizero, must pass banned-api-check.sh
+# --os-config (the control), and three copies with one change each must fail it with exactly the
+# one hit of the rule broken: the inittab's wait line made a respawn line, a console= word in
+# cmdline.txt, and an expected/kconfig-forbidden that no longer equals the fragment's "is not set"
+# lines. Text only, so these run on every machine, as the gates job does.
+osc="$work/os-config"
+cp -R "$root/scripts/testdata/os-config/clean-pizero" "$osc" || exit 1
+static_check "os-config: the clean fixture passes (control)" sh "$root/scripts/banned-api-check.sh" --os-config "$osc"
+# osconfig_canary NAME FILE OLD NEW CATEGORY: a fresh copy of the clean fixture with OLD replaced
+# by NEW in FILE must fail --os-config with exactly one hit, of CATEGORY, naming FILE.
+osconfig_canary() {
+    name=$1
+    oc="$work/os-config-$name"
+    rm -rf "$oc"
+    cp -R "$root/scripts/testdata/os-config/clean-pizero" "$oc" || exit 1
+    replace "$oc/$2" "$3" "$4"
+    expect_failure "$name" sh "$root/scripts/banned-api-check.sh" --os-config "$oc"
+    need "$5: $oc/$2"
+    need "banned-api-check --os-config $oc: 1 hit(s)"
+    verdict
+}
+osconfig_canary os-config-inittab board/pizero/rootfs-overlay/etc/inittab \
+    '::wait:/usr/bin/keepcrypt-pi' '::respawn:/usr/bin/keepcrypt-pi' Inittab
+osconfig_canary os-config-cmdline-console board/pizero/cmdline.txt \
+    'rootwait panic=0' 'rootwait console=ttyAMA0,115200 panic=0' Cmdline
+osconfig_canary os-config-kconfig-forbidden-drift expected/kconfig-forbidden \
+    'CONFIG_DEVMEM' 'CONFIG_DEVPORT' Kconfig
+
 # The release-artifact scan (CLAUDE.md rule 10; tasks/todo.md, M1 group 11 and Q3, Q8): the
 # release probe (core/examples/release_probe.rs) and core's rlib, built in release mode for the
 # host three ways, one package at a time (-p), in their own target directory. On a Linux host the
@@ -982,9 +1166,11 @@ case $host in
     *-linux-*) cfg_var=CARGO_TARGET_$(printf '%s' "$host" | tr 'a-z-' 'A-Z_')_RUSTFLAGS ;;
     *) cfg_var= ;;
 esac
-# build_probe [FEATURES]: builds core's rlib and the probe for the host; prints the output on failure.
+# build_probe [FEATURES] [ROOT]: builds core's rlib and the probe for the host, from the workspace
+# at ROOT (the real one by default); prints the output on failure.
 build_probe() {
-    set -- cargo build --release --locked -p keepcrypt-core --lib --example release_probe \
+    set -- cargo build --release --locked --manifest-path "${2:-$root}/Cargo.toml" \
+        -p keepcrypt-core --lib --example release_probe \
         --target "$host" --target-dir "$probe_dir" ${1:+--features "$1"}
     if [ -n "$cfg_var" ]; then
         set -- env "$cfg_var=--cfg getrandom_backend=\"linux_getrandom\"" "$@"
@@ -1035,10 +1221,34 @@ else
     echo "FAIL: $name: the build failed"
     status=1
 fi
+# - Positive control 3 (tasks/todo.md, M4 group 12): std's random-key path. The copy's probe, with
+#   a RandomState (a HashMap's hasher, whose keys std reads from the OS itself) planted at the
+#   start of run(), built with default features from the copy into the same target directory
+#   (the registry crates are shared, core and the probe rebuild for the copy's path), must fail
+#   the scan with StdRandom hits in the probe, hashmap_random_keys among them, and none in the
+#   rlib, which the copy leaves as it is. Last of the probe canaries: its build overwrites their
+#   two files. black_box keeps the value alive without a must_use warning.
+name=release-probe-std-random
+replace "$tmp/core/examples/release_probe.rs" '    self_test().map_err(|_| 10)?;' \
+    '    core::hint::black_box(std::collections::hash_map::RandomState::new()); // gate canary (temp copy only)
+    self_test().map_err(|_| 10)?;'
+if build_probe "" "$tmp"; then
+    expect_failure "$name" sh "$root/scripts/banned-api-check.sh" --artifact "$host" "$rlib" "$probe"
+    need "StdRandom: $probe: symbol "
+    need "hashmap_random_keys"
+    never "StdRandom: $rlib"
+    never "Marker:"
+    never "TestKey:"
+    verdict
+else
+    echo "FAIL: $name: the build failed"
+    status=1
+fi
+cp "$root/core/examples/release_probe.rs" "$tmp/core/examples/release_probe.rs" || exit 1
 
 # The number of checks above, pinned, so a canary that is deleted, or skipped by a broken branch,
 # turns CI red too. A real change to the canaries updates this pin in the same reviewed change.
-want_checks=61
+want_checks=73
 if [ "$checks" -ne "$want_checks" ]; then
     echo "FAIL: $checks checks ran; scripts/canaries.sh pins $want_checks"
     status=1

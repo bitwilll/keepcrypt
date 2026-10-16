@@ -1,0 +1,1 @@
+root=/dev/mmcblk0p2 rootfstype=squashfs ro rootwait panic=0 quiet loglevel=0

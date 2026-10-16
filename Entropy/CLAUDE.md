@@ -64,7 +64,11 @@ pass. If one seems to block you, ask the owner.
 7. **Seal:** computed only from the BIP39 seed with an empty passphrase, never from public keys.
 8. **Files:** the only file ever written is the age v1 backup (scrypt only, log2 N = 18,
    generated 8-word passphrase). The only files ever read are `.age` backups and signed
-   `.kcr` registry snapshots.
+   `.kcr` registry snapshots. Device and kernel interfaces are not files in this sense: the Pi
+   firmware also reads `/dev/hwrng`, its root partition (for the boot hash) and fixed entries and
+   patterns under `/proc` and `/sys` (the board and USB sticks), drives its GPIO and SPI device
+   nodes, and mounts only the USB stick, at `/mnt/usb`. pi-firmware.md's Process rules list every
+   path, and a grep gate holds the firmware to that list.
 9. **Apps:** Android has no `INTERNET` permission and sets `FLAG_SECURE` on every window,
    including dialogs and popups. iOS has no networking code and uses capture-state redaction,
    discard-on-screenshot and an app-switcher cover. No analytics, crash or ad SDKs.
@@ -127,7 +131,10 @@ cargo test -p keepcrypt-core --locked --features test-sources   # stub, fault-in
 # Test features are switched on only like this, with -p, never in a manifest (canaries.sh enforces it).
 # The Pi simulator (pi/sim; `cargo test --workspace` above is its release configuration):
 cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry   # the gate run, full drill
-cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry --test gate -- --ignored --exact capture_set   # captures in target/tmp/pi-sim-captures/
+cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry --test gate -- --ignored --exact capture_set   # captures in target/tmp/pi-sim-captures/<registry|release>/
+                                     # (the configuration run): every scenario's PNG files in its own directory and
+                                     # index.html (the record), and review.html with its copies in review/ (the owner's
+                                     # review page of some of them, each QR code beside its string)
 cargo run -p keepcrypt-pi-sim --locked -- live --out target/pi-sim-live   # Protected screens are placeholders;
                                      # one input a line on stdin: w a s d, an empty line (press), 1 2 3, tN (N s, no key);
                                      # any other line or command line ends it with exit status 2, printing nothing
@@ -157,20 +164,59 @@ scripts/age-interop.py --core        # the age CLI against tools/verify/ and cor
 scripts/banned-api-check.sh          # grep gate for banned RNG, network and clipboard APIs, std's OS-seeded hashing
                                      # in core, ffi and pi/app, and the Shell category: no session, pool input or
                                      # clock in the games, game_random only in core and the games, one Session::new
-                                     # in pi/app, and the release probe's game_random call
+                                     # in pi/app, and the release probe's game_random call; and the Device category:
+                                     # pi/app's path literals only in device/paths.rs, file APIs, rppal and nix only
+                                     # under device/, no process, thread or BufReader
+scripts/banned-api-check.sh --workflows ../.github/workflows   # every entropy-*.yml keeps the hardening: read-only
+                                     # token, the three actions pinned by SHA, no secret, no fork-trusting trigger,
+                                     # no expression in a run step (the path is the monorepo's, as CI's gates job runs it)
+scripts/banned-api-check.sh --os-config pi/os   # the image's text-only configuration: Q35's inittab, the fstab's
+                                     # options, cmdline.txt, config.txt, expected/linux.config against the fragment's
+                                     # lists with one hwrng driver, and BusyBox with init and mount alone
 scripts/banned-api-check.sh --selftest   # also builds the artifact fixtures (needs the pinned toolchain)
+python3 -I pi/os/rootfs-prefix.py --selftest   # 4 checks: the rootfs prefix vector device/rootfs pins, recomputed
+                                     # by the script that gives each image's, and each refusal; also with /usr/bin/python3 -I
+sh pi/os/kconfig.sh --selftest       # the kernel allow-list on a stub tree: a forbidden option selected back on, a
+                                     # required one dropped and a module left are each refused
+# The stick driver's loop-device test (CI's test job: Linux, as root, #[ignore]d; the test binary is the one
+# executable cargo reports for the bin target, run by its path, so sudo builds nothing). The stick is a 16 MiB
+# FAT32 image on a loop device, named in KC_LOOP_DEV (/dev/loopN), KC_LOOP_RO (/sys/block/loopN/ro), KC_LOOP_MNT
+# (an empty directory) and KC_MOUNTINFO (/proc/self/mountinfo); a missing one fails the test. Exactly 1 passed:
+cargo test -p keepcrypt-pi --locked --bin keepcrypt-pi --no-run
+sudo --preserve-env=KC_LOOP_DEV,KC_LOOP_RO,KC_LOOP_MNT,KC_MOUNTINFO target/debug/deps/keepcrypt_pi-HASH --ignored --exact device::usb::tests::loop_device
 # Release-artifact scan (CI's cross job, per target T; on Linux and Android T builds with
 # CARGO_TARGET_<T>_RUSTFLAGS='--cfg getrandom_backend="linux_getrandom"'):
 cargo build --release --locked -p keepcrypt-core --lib --example release_probe --target T
 scripts/banned-api-check.sh --artifact T target/T/release/libkeepcrypt_core.rlib target/T/release/examples/release_probe
-# On the Pi target (arm-unknown-linux-gnueabihf) also pi/app's release rlib, scanned with those two (clean):
+# On the Pi target (T = arm-unknown-linux-gnueabihf; CC_arm_unknown_linux_gnueabihf and the
+# CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER set to Ubuntu's arm-linux-gnueabihf-gcc, AR_ to its ar and CFLAGS_
+# to -march=armv6zk -mfpu=vfp -mfloat-abi=hard -marm, a stand-in: the shipped binary is the image workflow's) also
+# pi/app's release rlib and its keepcrypt-pi binary, scanned with those two
+# (clean; the binary's getrandom import, which the scan requires, is printed with llvm-nm -u first):
 cargo build --release --locked -p keepcrypt-pi --lib --target T
-scripts/banned-api-check.sh --artifact T target/T/release/libkeepcrypt_core.rlib target/T/release/examples/release_probe target/T/release/libkeepcrypt_pi.rlib
+cargo build --release --locked -p keepcrypt-pi --bin keepcrypt-pi --target T
+scripts/banned-api-check.sh --artifact T target/T/release/libkeepcrypt_core.rlib target/T/release/examples/release_probe target/T/release/libkeepcrypt_pi.rlib target/T/release/keepcrypt-pi
 # The test-registry simulator (CI's test job, T = x86_64-unknown-linux-gnu with the same cfg, its own target dir);
 # exit 1 with exactly the registry marker, the simulator marker and the test key, and no stub marker:
 cargo build --release --locked -p keepcrypt-pi-sim --bin keepcrypt-pi-sim --features keepcrypt-core/test-registry --target T --target-dir target/pi-sim-scan
 scripts/banned-api-check.sh --artifact T target/pi-sim-scan/T/release/keepcrypt-pi-sim
-scripts/canaries.sh                  # 61 checks: proves every gate still fires, the scan's positive controls included
+# The Pi image (pi/os; Linux x86_64 hosts only; CI: .github/workflows/entropy-pi-image.yml builds it on two fresh
+# runners and compares). KC_WORK (default /kc-work) holds Buildroot, the downloads, the crates and the build: an
+# absolute path outside Entropy/ with no spaces, the same in every build (reproducibility needs the same path):
+make -C pi/os source                 # the only target that uses the network: pinned Buildroot, every download, the crates
+make -C pi/os image                  # afresh in $KC_WORK/out, offline (a missing download fails it); prints the SHA-256
+make -C pi/os repro-check            # builds it twice in fresh output directories and compares the two images
+make -C pi/os scan                   # after make image: --image-lists on the built image, then --image against expected/
+# What CI's image legs run on their build, in this order (make scan runs the first and the last; the build's host
+# mcopy, mdir and unsquashfs first on PATH:
+# PATH="$KC_WORK/out/host/bin:$PATH"); IMG is $KC_WORK/out/images/keepcrypt-pi-0.0.0-st7789-240x240.img, KCONFIG the
+# one $KC_WORK/out/build/linux-*/.config and BIN_SHA256 the SHA-256 of the keepcrypt-pi cargo built, in
+# $KC_WORK/out/build/keepcrypt-pi-0.0.0/target/arm-unknown-linux-gnueabihf/release/ (so the packed binary is that file):
+scripts/banned-api-check.sh --image-lists IMG KCONFIG          # the listing pi/os/expected/ was reviewed from; not a scan
+scripts/banned-api-check.sh --selftest-image IMG KCONFIG       # the scan's positive controls, as mutations of the built image
+scripts/banned-api-check.sh --image IMG pi/os/expected KCONFIG BIN_SHA256   # the scan; a hit fails the leg before
+                                     # leg a's upload, so an uploaded image passed it
+scripts/canaries.sh                  # 73 checks: proves every gate still fires, the scan's positive controls included
 ```
 
 ## Definition of done (every task)

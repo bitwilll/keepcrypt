@@ -1,0 +1,67 @@
+# Every outside input of the KeepCrypt Pi image that is not a crate (tasks/todo.md, M4 group 13 and
+# "Image inputs"; Q37 (d)): version, date, URL and SHA-256, each past the 14-day cool-off when it
+# was pinned (cutoff 2026-10-01 for this file's first version, 2026-10-15). Crates are pinned by
+# Entropy/Cargo.lock and supply-chain/. The Makefile includes this file (make syntax): it fetches
+# Buildroot by BR_URL and refuses it unless it has BR_SHA256, and `make source` and `make image`
+# check every *_PINS entry ("hash file:SHA-256:file") against the hash file that Buildroot reads,
+# so this record cannot drift from what is built. Until the M7 audit the hashes are checked, the
+# sources not reviewed. The build host is not pinned here: the ubuntu-24.04 runner image and the
+# Ubuntu packages the image workflow installs (Buildroot's host packages, the host compilers
+# among them) stay unpinned until M7's pinned build container (Q38 (e)); each leg prints the
+# runner image's version and those packages' versions.
+
+# The build time (`SOURCE_DATE_EPOCH`): a constant, so equal trees give equal images whatever the
+# commit time. It is Buildroot 2026.08's own BR2_VERSION_EPOCH, 2026-09-04 15:16:40 UTC, the time
+# Buildroot itself uses when it builds from its release tarball. The Makefile exports it, with
+# TZ=UTC, and prints both.
+SOURCE_DATE_EPOCH = 1788535000
+
+# Buildroot 2026.08, released 2026-09-04 (the signed buildroot-2026.08.tar.xz.sign says "released
+# Fri, 04 Sep 2026 17:34:35 +0200"). That clearsigned file's DSA signature was checked on
+# 2026-10-15 against https://buildroot.org/~jacmet/pubkey.gpg (Peter Korsgaard; key fingerprint
+# AB07 D806 D2CE 741F B886  EE50 B025 BA8B 59C3 6319), and it gives this SHA-256.
+BR_VERSION = 2026.08
+BR_URL = https://buildroot.org/downloads/buildroot-2026.08.tar.xz
+BR_SHA256 = 87aaca4164ea9d5c8085854953018263f7963f07c22e73a2a2185cc98c581c34
+
+# Linux: raspberrypi/linux 21b410140c47ffab5668399f6f143c7d7b935c8b (6.12.61), committed
+# 2025-12-09, the kernel Buildroot 2026.08's raspberrypi0_defconfig boots this board on, with its
+# hash from that release's board/raspberrypi/patches/linux/linux.hash. Downloaded by Buildroot
+# from https://github.com/raspberrypi/linux/archive/21b410140c47ffab5668399f6f143c7d7b935c8b
+# (configs/keepcrypt_pizero_defconfig), checked by our patches/linux/linux.hash.
+OS_PINS += patches/linux/linux.hash:7c31df8061aae748a6e72417bfe743a54198fb5bdc96e229ecc605dc621d32ef:linux-21b410140c47ffab5668399f6f143c7d7b935c8b.tar.gz
+
+# rpi-firmware: raspberrypi/firmware 063bcab6c8a90efb0d19f69d88cbbc7ec79cab68, committed
+# 2025-12-08, Buildroot 2026.08's pin, from
+# https://github.com/raspberrypi/firmware/archive/063bcab6c8a90efb0d19f69d88cbbc7ec79cab68; the
+# default variant only (bootcode.bin, start.elf, fixup.dat).
+BR_PINS += package/rpi-firmware/rpi-firmware.hash:812cb64617d6ffbc76f9b8dce8237b31159a1216b31845faec1bb75b6b6b291f:rpi-firmware-063bcab6c8a90efb0d19f69d88cbbc7ec79cab68.tar.gz
+
+# The toolchain: Bootlin armv6-eabihf glibc stable 2025.08-1, Buildroot 2026.08's pin for
+# BR2_TOOLCHAIN_EXTERNAL_BOOTLIN_ARMV6_EABIHF_GLIBC_STABLE (x86_64 hosts only), from
+# https://toolchains.bootlin.com/downloads/releases/toolchains/armv6-eabihf/tarballs/
+BR_PINS += toolchain/toolchain-external/toolchain-external-bootlin/toolchain-external-bootlin.hash:062c148a62785ce583f32e2e69bb1e8fc5dbb598bf4baacce0df118de4066de8:armv6-eabihf--glibc--stable-2025.08-1.tar.xz
+
+# BusyBox 1.38.0 (init and mount only; board/pizero/busybox.config), Buildroot 2026.08's version,
+# from https://www.busybox.net/downloads/busybox-1.38.0.tar.bz2
+BR_PINS += package/busybox/busybox.hash:34f9ea6ff8636f2c9241153b9114eefa9e65674a45318ae1ef95bb5f31c53bb2:busybox-1.38.0.tar.bz2
+
+# The image tools, each Buildroot 2026.08's version, built for the host:
+# genimage 20, from https://github.com/pengutronix/genimage/releases/download/v20/
+BR_PINS += package/genimage/genimage.hash:397545be2fa52d482c5fba9a11897c61324bfc559ea0efb700b9edba7a807b55:genimage-20.tar.xz
+# squashfs-tools 4.7.5, from https://github.com/plougher/squashfs-tools/releases/download/4.7.5/
+BR_PINS += package/squashfs/squashfs.hash:547b7b7f4d2e44bf91b6fc554664850c69563701deab9fd9cd7e21f694c88ea6:squashfs-tools-4.7.5.tar.gz
+# mtools 4.0.49, from the GNU mirror (https://ftpmirror.gnu.org/mtools/)
+BR_PINS += package/mtools/mtools.hash:76dfea98d923dfc9806ce34bd1786aa9b5a39d70f56f26c0670a348c664f1d2a:mtools-4.0.49.tar.lz
+# dosfstools 4.2, from https://github.com/dosfstools/dosfstools/releases/download/v4.2/
+BR_PINS += package/dosfstools/dosfstools.hash:64926eebf90092dca21b14259a5301b7b98e7b1943e8a201c7d726084809b527:dosfstools-4.2.tar.gz
+# Buildroot's other host packages (host-flex, host-bison, host-openssl, host-fakeroot and the rest)
+# are pinned by the .hash files inside the Buildroot tarball, which BR_SHA256 pins.
+
+# Rust 1.98.1, rustup's, pinned by Entropy/rust-toolchain.toml with the arm-unknown-linux-gnueabihf
+# target; the image's keepcrypt-pi is built with it inside Buildroot (package/keepcrypt-pi), not
+# with Buildroot's own Rust.
+
+# The CI upload step (commit 15's .github/workflows/entropy-pi-image.yml): actions/upload-artifact
+# v7.0.1, released 2026-04-10, pinned by its commit 043fb46d1a93c77aae656e7c1c64a875d1fc6a0a;
+# scripts/banned-api-check.sh --workflows refuses it at any other SHA.

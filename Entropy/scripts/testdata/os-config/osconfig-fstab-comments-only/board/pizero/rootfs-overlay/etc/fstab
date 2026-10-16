@@ -1,0 +1,4 @@
+# <file system> <mount point> <type> <options> <dump> <pass>
+# The kernel mounts the SquashFS root read-only (cmdline.txt) and devtmpfs on /dev; BusyBox init's
+# mount -a mounts these. The FAT boot partition is never mounted, and the USB stick only by the
+# firmware, at /mnt/usb.

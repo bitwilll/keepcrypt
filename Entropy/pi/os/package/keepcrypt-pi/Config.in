@@ -1,0 +1,7 @@
+config BR2_PACKAGE_KEEPCRYPT_PI
+	bool "keepcrypt-pi"
+	depends on BR2_arm
+	help
+	  The KeepCrypt firmware, Entropy/pi/app's keepcrypt-pi binary,
+	  built from the checkout this external tree is in with the
+	  rustup-pinned cargo 1.98.1 (tasks/todo.md, M4 group 13; Q37 (c)).

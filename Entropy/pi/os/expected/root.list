@@ -1,0 +1,53 @@
+/ drwxr-xr-x
+/bin drwxr-xr-x
+/bin/busybox -rwxr-xr-x
+/bin/mount lrwxrwxrwx -> busybox
+/dev drwxr-xr-x
+/dev/fd lrwxrwxrwx -> ../proc/self/fd
+/dev/log lrwxrwxrwx -> ../tmp/log
+/dev/pts drwxr-xr-x
+/dev/shm drwxr-xr-x
+/dev/stderr lrwxrwxrwx -> ../proc/self/fd/2
+/dev/stdin lrwxrwxrwx -> ../proc/self/fd/0
+/dev/stdout lrwxrwxrwx -> ../proc/self/fd/1
+/etc drwxr-xr-x
+/etc/fstab -rw-r--r--
+/etc/group -rw-r--r--
+/etc/inittab -rw-r--r--
+/etc/mtab lrwxrwxrwx -> ../proc/self/mounts
+/etc/os-release lrwxrwxrwx -> ../usr/lib/os-release
+/etc/passwd -rw-r--r--
+/etc/shadow -rw-------
+/lib drwxr-xr-x
+/lib/ld-linux-armhf.so.3 -rwxr-xr-x
+/lib/libc.so.6 -rwxr-xr-x
+/lib/libgcc_s.so.1 -rwxr-xr-x
+/lib/libm.so.6 -rwxr-xr-x
+/lib32 lrwxrwxrwx -> lib
+/media drwxr-xr-x
+/mnt drwxr-xr-x
+/mnt/usb drwxr-xr-x
+/opt drwxr-xr-x
+/proc drwxr-xr-x
+/root drwx------
+/run drwxr-xr-x
+/sbin drwxr-xr-x
+/sbin/init lrwxrwxrwx -> ../bin/busybox
+/sys drwxr-xr-x
+/tmp drwxrwxrwt
+/usr drwxr-xr-x
+/usr/bin drwxr-xr-x
+/usr/bin/keepcrypt-pi -rwxr-xr-x
+/usr/lib drwxr-xr-x
+/usr/lib/os-release -rw-r--r--
+/usr/lib32 lrwxrwxrwx -> lib
+/usr/sbin drwxr-xr-x
+/var drwxr-xr-x
+/var/cache lrwxrwxrwx -> ../tmp
+/var/lib drwxr-xr-x
+/var/lib/misc lrwxrwxrwx -> ../../tmp
+/var/lock lrwxrwxrwx -> ../run/lock
+/var/log lrwxrwxrwx -> ../tmp
+/var/run lrwxrwxrwx -> ../run
+/var/spool lrwxrwxrwx -> ../tmp
+/var/tmp lrwxrwxrwx -> ../tmp

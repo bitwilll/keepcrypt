@@ -24,6 +24,13 @@
 //!   covered, and the next press only uncovers it; at 9 minutes a warning appears while secrets
 //!   are held; at 10 minutes the stage is wiped (the kept `Wiped` and the snapshot stay) and the
 //!   device says so.
+//! - The fence (M4, Q39 (a)): a press that began before the screen on the panel was fully shown,
+//!   or while a call that can block ran, does nothing but reach the pool in Mixed `Collecting`.
+//!   Queued on the one-core Pi Zero, it could otherwise act on a screen, a privacy gate included,
+//!   before anyone saw it. Every screen the app enters moves the fence once drawn, another page or
+//!   note of the same one included (the passphrase's words 5-8, backup-confirm's second question,
+//!   the next insert, a read-back match). A redraw in place (a cursor, typing, dice entry, step
+//!   4's ticks, Snake) moves no fence, so it keeps every press.
 //! - Entering a Protected screen from a Public one passes the privacy gate (`enter_page`).
 //! - New sessions come from the kept `Wiped` while there is one, else from core's constructor,
 //!   whose one call in this crate is in `new_session` (Q26, Q33 (c); the banned-API gate's Shell
@@ -53,7 +60,7 @@ use zeroize::{Zeroize, Zeroizing};
 use crate::extras::{StageKind, extra_for};
 use crate::games::{GAME_BYTES, GameBytes, Snake};
 use crate::grid::{CODE_LEN, Grid, MAX_PASSPHRASE};
-use crate::hal::{BuildInfo, FileKind, FileName, Hal, HalError};
+use crate::hal::{BuildInfo, Display, FileKind, FileName, Hal, HalError};
 use crate::input::{Event, Idle, IdleStep, Key};
 use crate::screen::{Banners, KeyMap, ScreenId};
 use crate::screens::{self, Choice};
@@ -61,8 +68,8 @@ use crate::ui::{Painter, PresentError, RenderError};
 
 /// The boot test reads 16 blocks of 64 samples: core's `hwrng_boot_test` takes exactly 1,024.
 const BOOT_BLOCKS: usize = 16;
-/// Step 4 reads one hwrng block per tick. 100 ms in the simulator; M4 sets the device's from the
-/// measured hwrng rate.
+/// Step 4 reads one hwrng block per tick: 100 ms, on the device as in the simulator (Q39 (d)). H2
+/// times step 4 on the hardware; slower reads set the pace themselves (`tick`).
 const BLOCK_TICK_NS: u64 = 100_000_000;
 /// usb-insert looks for a stick once per tick of this length: the device notices it by itself.
 const STICK_POLL_NS: u64 = 100_000_000;
@@ -391,6 +398,30 @@ fn new_session(
     }
 }
 
+/// The stop screen outside the app (Q35): a black frame, then the halt screen with `fault`'s fixed
+/// text, as the app's halt draws it. The device shows it in stop mode and for a fault before the
+/// app starts. It takes only a display, so it holds no session and reaches neither the hwrng nor
+/// the stick.
+pub fn show_stop<D: Display>(display: &mut D, fault: HalError) -> Result<(), HalError> {
+    // The device's stop screen: the simulator never shows it.
+    let banners = Banners {
+        test_registry: registry_key_is_test(),
+        simulator: false,
+    };
+    let halt = screens::halt(banners, &Note::Halt(Stop::Hal(fault)));
+    let mut painter = Painter::new();
+    for screen in [screens::blank(), halt] {
+        match painter.present(display, &screen) {
+            Ok(()) => {}
+            Err(PresentError::Display(error)) => return Err(error),
+            // The halt screen is text alone, which always draws (the test draws it for every
+            // fault); were it not, no frame reached the panel, as on a display fault.
+            Err(PresentError::Render(_)) => return Err(HalError::Display),
+        }
+    }
+    Ok(())
+}
+
 /// The Pi app on the hardware `H`.
 pub struct App<H: Hal> {
     hal: H,
@@ -405,6 +436,14 @@ pub struct App<H: Hal> {
     /// Where Snake's bytes come from: core's game call (`games::GAME_BYTES`), handed to the game
     /// and never called here.
     game_bytes: GameBytes,
+    /// The fence (Q39 (a)): the clock reading right after the latest present of a new screen, or
+    /// right after the latest call that can block, whichever came later. A press that began
+    /// before it does nothing but feed the pool while Collecting.
+    fence_ns: u64,
+    /// The id of the model last presented, or `None` once the app entered a screen, a page or a
+    /// note (`enter_page`) it has not presented yet: a present of another id, or the first one
+    /// after `enter_page`, is of a new screen and moves the fence.
+    shown: Option<ScreenId>,
     /// Keys handed to the pool, counted where `key` hands them over: the unit tests' view of the
     /// app's one `add_extra` call.
     #[cfg(test)]
@@ -439,6 +478,8 @@ impl<H: Hal> App<H> {
             idle,
             next_block_ns: 0,
             game_bytes: GAME_BYTES,
+            fence_ns: 0,
+            shown: None,
             #[cfg(test)]
             extras: 0,
         }
@@ -501,8 +542,9 @@ impl<H: Hal> App<H> {
     }
 
     fn boot(&mut self) -> Result<(), Stop> {
-        self.painter
-            .present(&mut self.hal, &screens::boot(&self.held))?;
+        let screen = screens::boot(&self.held);
+        self.painter.present(&mut self.hal, &screen)?;
+        self.presented(screen.id());
         self_test().map_err(Stop::Core)?;
         let mut samples = Zeroizing::new([0u8; BOOT_BLOCKS * 64]);
         let (blocks, _) = samples.as_chunks_mut::<64>();
@@ -510,6 +552,7 @@ impl<H: Hal> App<H> {
             self.hal.read_block(block).map_err(Stop::Hal)?;
         }
         hwrng_boot_test(&samples[..]).map_err(Stop::Core)?;
+        self.fence();
         self.idle = Idle::new(self.hal.now_ns());
         self.enter(ScreenId::Home, Note::None);
         self.redraw()
@@ -543,7 +586,6 @@ impl<H: Hal> App<H> {
     }
 
     fn key(&mut self, key: Key, at_ns: u64) -> Result<(), Stop> {
-        self.idle.key(at_ns);
         let event = Event::Key { key, at_ns };
         if let (Some((source, bytes)), Stage::Collecting(session)) = (
             extra_for(self.held.stage.kind(), self.held.plan.mode, event),
@@ -555,6 +597,12 @@ impl<H: Hal> App<H> {
                 self.extras += 1;
             }
         }
+        // A press that began before its screen was fully shown, or while a call blocked, goes no
+        // further (Q39 (a)): not to the idle timer, an overlay or the key map.
+        if at_ns < self.fence_ns {
+            return Ok(());
+        }
+        self.idle.key(at_ns);
         if self.keys.label(key).is_none() {
             return Ok(());
         }
@@ -637,7 +685,9 @@ impl<H: Hal> App<H> {
     }
 
     /// Makes page `page` of `to` the current screen, through the privacy gate when it is
-    /// Protected and the current screen is Public. A gated screen takes no note.
+    /// Protected and the current screen is Public. A gated screen takes no note. It is a new
+    /// screen even when it keeps the id (another page or note), so its first present moves the
+    /// fence (Q39 (a)).
     fn enter_page(&mut self, to: ScreenId, page: usize, note: Note) {
         self.view = if screens::needs_gate(self.view.id, to) {
             View::new(
@@ -651,24 +701,43 @@ impl<H: Hal> App<H> {
         } else {
             View::paged(to, page, note)
         };
+        self.shown = None;
     }
 
     /// Draws the current screen and keeps the keys its model offers.
     fn redraw(&mut self) -> Result<(), Stop> {
         let screen = screens::model(&self.held, &self.view)?;
-        let keys = screen.keys();
+        let (id, keys) = (screen.id(), screen.keys());
         let shown = self.painter.present(&mut self.hal, &screen);
         drop(screen);
         shown?;
+        self.presented(id);
         self.keys = keys;
         Ok(())
     }
 
     /// Presents the wait screen while a blocking call runs (Q33 (k)), saying what it does.
     fn wait(&mut self, why: &'static str) -> Result<(), Stop> {
-        self.painter
-            .present(&mut self.hal, &screens::wait(&self.held, why))?;
+        let screen = screens::wait(&self.held, why);
+        self.painter.present(&mut self.hal, &screen)?;
+        self.presented(screen.id());
         Ok(())
+    }
+
+    /// After the panel took a model of `id`: a new screen (another id than the last present's, or
+    /// the first present after `enter_page`) moves the fence to now (Q39 (a)), and a redraw in
+    /// place leaves it.
+    fn presented(&mut self, id: ScreenId) {
+        if self.shown != Some(id) {
+            self.shown = Some(id);
+            self.fence_ns = self.hal.now_ns();
+        }
+    }
+
+    /// After a call that can block, even one that returns to the same screen: the fence moves to
+    /// now (Q39 (a)).
+    fn fence(&mut self) {
+        self.fence_ns = self.hal.now_ns();
     }
 
     /// Replaces the whole stage with `to` (`Idle` or `Halted`), dropping every secret it held,
@@ -676,7 +745,9 @@ impl<H: Hal> App<H> {
     fn wipe(&mut self, to: Stage) -> Result<(), Stop> {
         self.held.stage = to;
         self.view.overlay = None;
-        self.painter.present(&mut self.hal, &screens::blank())?;
+        let screen = screens::blank();
+        self.painter.present(&mut self.hal, &screen)?;
+        self.presented(screen.id());
         Ok(())
     }
 
@@ -713,6 +784,7 @@ impl<H: Hal> App<H> {
         self.wait(screens::WAIT_SESSION)?;
         let Plan { len, mode } = self.held.plan;
         let session = new_session(self.held.kept.as_ref(), len, mode).map_err(Stop::Core)?;
+        self.fence();
         self.held.stage = Stage::Collecting(session);
         self.next_block_ns = self.hal.now_ns().saturating_add(BLOCK_TICK_NS);
         let first = match mode {
@@ -997,6 +1069,7 @@ impl<H: Hal> App<H> {
                     return Err(OUT_OF_ORDER);
                 };
                 self.held.stage = Stage::Sealed(session.finish().map_err(Stop::Core)?);
+                self.fence();
                 self.enter(ScreenId::CheckPrompt, Note::None);
             }
             Key::Left | Key::Right | Key::Key2 => return Err(OUT_OF_ORDER),
@@ -1119,6 +1192,11 @@ mod tests {
     use crate::screen::{Class, Screen};
     use crate::ui::Frame;
 
+    /// The fake clock's time in one present: about one frame's SPI transfer on the device.
+    const PRESENT_NS: u64 = 25_000_000;
+    /// The fake clock's time in one call that can block: an hwrng block, or a call on the stick.
+    const BUSY_NS: u64 = 50_000_000;
+
     /// One present as the fake display keeps it.
     struct Shown {
         id: ScreenId,
@@ -1126,21 +1204,34 @@ mod tests {
         keys: KeyMap,
         texts: Vec<String>,
         frame: Vec<u16>,
+        /// The fake clock when the present began, and when the panel had the frame.
+        from_ns: u64,
+        to_ns: u64,
     }
 
-    /// The least hardware the app runs on: scripted keys and ticks, a clock that moves 1 ms per
-    /// key and to the app's deadline on a tick, the counting hwrng stream and no stick. The
-    /// display checks the two invariants the simulator checks (a Protected element only on a
-    /// Protected id, and the model fits) and keeps each present. Only public test text is ever
-    /// drawn here.
+    /// The least hardware the app runs on: scripted keys and ticks, the counting hwrng stream and
+    /// a stick that is never readable. The clock moves 1 ms per key, to the app's deadline on a
+    /// tick, and on by `PRESENT_NS` in each present and by `BUSY_NS` in each hwrng or stick call,
+    /// as the device's moves while it works (the fence, Q39 (a)); a key may carry an earlier
+    /// stamp, as a press queued behind that work. The display checks the two invariants the
+    /// simulator checks (a Protected element only on a Protected id, and the model fits) and keeps
+    /// each present. Only public test text is ever drawn here.
     struct Fake {
         keys: VecDeque<Key>,
         /// The next event is a tick at the app's deadline, not a key.
         tick: bool,
+        /// The time the next key's press began, when it began before the key is played.
+        stamp: Option<u64>,
         now_ns: u64,
         served: usize,
         hwrng_fault: bool,
+        /// `Usb::stick`'s answer. Every other call on the stick fails with `NoStick` either way.
+        stick: bool,
+        /// A display fault on the present tried when `shown` holds this many: it keeps nothing.
+        display_fault_at: Option<usize>,
         shown: Vec<Shown>,
+        /// Each hwrng or stick call's span on the fake clock, in order.
+        calls: Vec<(u64, u64)>,
     }
 
     impl Fake {
@@ -1148,23 +1239,39 @@ mod tests {
             Fake {
                 keys: VecDeque::new(),
                 tick: false,
+                stamp: None,
                 now_ns: 0,
                 served: 0,
                 hwrng_fault: false,
+                stick: false,
+                display_fault_at: None,
                 shown: Vec::new(),
+                calls: Vec::new(),
             }
         }
 
         fn last(&self) -> &Shown {
             self.shown.last().expect("a present")
         }
+
+        /// One hwrng or stick call: the clock moves on by `BUSY_NS`, and the call's span is kept.
+        fn busy(&mut self) {
+            let from_ns = self.now_ns;
+            self.now_ns += BUSY_NS;
+            self.calls.push((from_ns, self.now_ns));
+        }
     }
 
     impl Display for Fake {
         fn present(&mut self, frame: &Frame, screen: &Screen<'_>) -> Result<(), HalError> {
+            if self.display_fault_at == Some(self.shown.len()) {
+                return Err(HalError::Display);
+            }
             let id = screen.id();
             assert!(!screen.has_protected() || id.class() == Class::Protected);
             assert!(screen.fits(), "{}", id.name());
+            let from_ns = self.now_ns;
+            self.now_ns += PRESENT_NS;
             self.shown.push(Shown {
                 id,
                 title: screen.title().to_owned(),
@@ -1181,6 +1288,8 @@ mod tests {
                     })
                     .collect(),
                 frame: frame.raw().to_vec(),
+                from_ns,
+                to_ns: self.now_ns,
             });
             Ok(())
         }
@@ -1196,10 +1305,11 @@ mod tests {
             }
             let key = self.keys.pop_front().expect("a scripted key");
             self.now_ns += 1_000_000;
-            Ok(Event::Key {
-                key,
-                at_ns: self.now_ns,
-            })
+            let at_ns = match self.stamp.take() {
+                Some(began_ns) => began_ns,
+                None => self.now_ns,
+            };
+            Ok(Event::Key { key, at_ns })
         }
     }
 
@@ -1211,6 +1321,7 @@ mod tests {
 
     impl HwRng for Fake {
         fn read_block(&mut self, block: &mut [u8; 64]) -> Result<(), HalError> {
+            self.busy();
             if self.hwrng_fault {
                 return Err(HalError::HwRng);
             }
@@ -1224,15 +1335,18 @@ mod tests {
 
     impl Usb for Fake {
         fn stick(&mut self) -> Result<bool, HalError> {
-            Ok(false)
+            Ok(self.stick)
         }
         fn list(&mut self, _kind: FileKind) -> Result<Vec<FileName>, HalError> {
+            self.busy();
             Err(HalError::NoStick)
         }
         fn read(&mut self, _name: &FileName, _max: usize) -> Result<Zeroizing<Vec<u8>>, HalError> {
+            self.busy();
             Err(HalError::NoStick)
         }
         fn write_backup(&mut self, _file: &BackupFile) -> Result<Written, HalError> {
+            self.busy();
             Err(HalError::NoStick)
         }
         fn read_written(
@@ -1240,9 +1354,11 @@ mod tests {
             _written: &Written,
             _max: usize,
         ) -> Result<Zeroizing<Vec<u8>>, HalError> {
+            self.busy();
             Err(HalError::NoStick)
         }
         fn remove_written(&mut self, _written: Written) -> Result<(), HalError> {
+            self.busy();
             Err(HalError::NoStick)
         }
     }
@@ -1271,6 +1387,12 @@ mod tests {
             app.hal.keys.push_back(key);
             app.step();
         }
+    }
+
+    /// Plays `key` as a press that began at `began_ns`: one queued behind the work before it.
+    fn press_at(app: &mut App<Fake>, key: Key, began_ns: u64) {
+        app.hal.stamp = Some(began_ns);
+        play(app, &[key]);
     }
 
     /// A dice-only 12-word session through `finish` on "123456" repeated to its minimum.
@@ -2282,5 +2404,527 @@ mod tests {
             OUT_OF_ORDER.to_string(),
             "internal failure: a screen was reached out of order"
         );
+    }
+
+    #[test]
+    fn show_stop_draws_a_black_frame_then_the_apps_halt_screen_for_every_fault() {
+        for fault in HalError::ALL {
+            let mut display = Fake::new();
+            show_stop(&mut display, fault).expect("the stop screen draws");
+            let shown: Vec<ScreenId> = display.shown.iter().map(|s| s.id).collect();
+            assert_eq!(shown, [ScreenId::Blank, ScreenId::Halt], "{fault:?}");
+            assert!(display.shown[0].frame.iter().all(|&pixel| pixel == 0));
+            let halt = display.last();
+            assert!(
+                halt.texts.contains(&String::from(fault.text())),
+                "{fault:?}"
+            );
+            assert_eq!(halt.keys, KeyMap::NONE);
+            // Frame for frame what the app's own halt on that fault draws.
+            let mut app = App::new(Fake::new());
+            app.halt(Stop::Hal(fault));
+            assert_eq!(app.hal.shown.len(), 2);
+            for (app_shown, stop_shown) in app.hal.shown.iter().zip(&display.shown) {
+                assert!(app_shown.frame == stop_shown.frame, "{fault:?}");
+            }
+        }
+        // Stop mode's screen (Q35).
+        let mut display = Fake::new();
+        show_stop(&mut display, HalError::Stopped).expect("the stop screen draws");
+        let texts = &display.last().texts;
+        assert!(texts.contains(&String::from("the firmware stopped unexpectedly")));
+    }
+
+    #[test]
+    fn show_stop_gives_a_display_fault_back_at_once() {
+        // The black frame or the halt screen fails: `Display` at once, and nothing drawn after it.
+        for (fault_at, drawn) in [(0, &[][..]), (1, &[ScreenId::Blank])] {
+            let mut display = Fake::new();
+            display.display_fault_at = Some(fault_at);
+            assert_eq!(
+                show_stop(&mut display, HalError::Stopped),
+                Err(HalError::Display)
+            );
+            let shown: Vec<ScreenId> = display.shown.iter().map(|s| s.id).collect();
+            assert_eq!(shown, drawn);
+        }
+    }
+
+    /// When the idle timer would cover a Protected screen: it moves only when a key restarts the
+    /// timer. On a Public screen with nothing held, `deadline` is the same either way.
+    fn idle_cover_ns(app: &App<Fake>) -> Option<u64> {
+        app.idle.next_ns(0, Class::Protected, true)
+    }
+
+    #[test]
+    fn a_press_made_during_boot_does_nothing_and_the_next_acts() {
+        let mut app = booted();
+        let boot = &app.hal.shown[0];
+        assert_eq!(boot.id, ScreenId::Boot);
+        let home = app.hal.last();
+        assert_eq!(home.id, ScreenId::Home);
+        let (first_read, _) = app.hal.calls[0];
+        let (last_read, _) = app.hal.calls[BOOT_BLOCKS - 1];
+        // Down would move Home's cursor. Pressed while the boot screen was drawn, while the hwrng
+        // was read (behind the known-answer tests) or before Home was fully shown: nothing, not
+        // even the idle timer's restart.
+        let (presents, idle) = (app.hal.shown.len(), idle_cover_ns(&app));
+        for began_ns in [boot.from_ns, first_read + 1, last_read + 1, home.to_ns - 1] {
+            press_at(&mut app, Key::Down, began_ns);
+            assert_eq!(app.view.cursor, 0);
+            assert_eq!(app.hal.shown.len(), presents);
+            assert_eq!(idle_cover_ns(&app), idle);
+        }
+        // Pressed once Home was on the panel: it acts.
+        let home_shown_ns = app.hal.last().to_ns;
+        press_at(&mut app, Key::Down, home_shown_ns);
+        assert_eq!(app.view.cursor, 1);
+        assert_ne!(idle_cover_ns(&app), idle);
+        play(&mut app, &[Key::Down]);
+        assert_eq!(app.view.cursor, 2);
+    }
+
+    #[test]
+    fn a_press_made_before_the_privacy_gate_was_fully_shown_does_not_pass_it() {
+        let mut app = booted();
+        let wiped = sealed(None)
+            .start_check()
+            .expect("checking")
+            .discard(Discard::Collision);
+        app.held.kept = Some(wiped);
+        drawn(&mut app, View::new(ScreenId::Collision, Note::None));
+        play(&mut app, &[Key::Press]);
+        let gate = app.hal.last();
+        assert_eq!(gate.id, ScreenId::PrivacyGate);
+        let (from_ns, to_ns) = (gate.from_ns, gate.to_ns);
+        // A second Press, queued behind the first while the gate was being drawn: nothing, not even
+        // the idle timer's restart.
+        let (presents, idle) = (app.hal.shown.len(), idle_cover_ns(&app));
+        for began_ns in [from_ns, to_ns - 1] {
+            press_at(&mut app, Key::Press, began_ns);
+            assert_eq!(app.view.id, ScreenId::PrivacyGate);
+            assert_eq!(app.hal.shown.len(), presents);
+            assert_eq!(idle_cover_ns(&app), idle);
+        }
+        // Pressed once the gate was on the panel: it passes.
+        press_at(&mut app, Key::Press, to_ns);
+        assert_eq!(app.view.id, ScreenId::CollisionQr);
+        assert_ne!(idle_cover_ns(&app), idle);
+    }
+
+    /// A dice-only 12-word session through Skip with every insert read back: steps 10-15 are
+    /// open.
+    fn read_back() -> Session<Ready> {
+        let mut ready = sealed(None).skip_check();
+        let typed: Vec<(u8, String)> = ready
+            .braille()
+            .iter()
+            .map(|insert| (insert.position(), insert.word().chars().take(4).collect()))
+            .collect();
+        for (position, letters) in typed {
+            assert!(ready.check_readback(position, &letters).is_ok());
+        }
+        ready
+    }
+
+    /// The choice that answers the backup-confirm question on the panel.
+    fn right_choice(app: &App<Fake>) -> usize {
+        let right = match &app.held.stage {
+            Stage::Ready { steps, .. } => match &steps.holding {
+                Holding::Passphrase(new) => {
+                    let (position, choices) = new.challenge().questions()[app.view.page];
+                    let word = new.words().nth(usize::from(position) - 1);
+                    choices.iter().position(|&choice| Some(choice) == word)
+                }
+                _ => None,
+            },
+            _ => None,
+        };
+        right.expect("the right word is a choice")
+    }
+
+    /// `key`, pressed while the last present was drawn (at its start, and just before its end), as
+    /// a press queued behind the one that drew it: nothing changes, no present, no other screen,
+    /// page or cursor, and the idle timer does not restart.
+    fn unseen(app: &mut App<Fake>, key: Key) {
+        let (from_ns, to_ns) = (app.hal.last().from_ns, app.hal.last().to_ns);
+        let state = |app: &App<Fake>| {
+            let view = &app.view;
+            let presents = app.hal.shown.len();
+            (view.id, view.page, view.cursor, presents, app.deadline())
+        };
+        let before = state(app);
+        for began_ns in [from_ns, to_ns - 1] {
+            press_at(app, key, began_ns);
+            assert_eq!(state(app), before, "{key:?} at {began_ns}");
+        }
+    }
+
+    #[test]
+    fn a_press_made_before_the_second_passphrase_page_or_question_was_shown_does_nothing() {
+        let mut app = booted();
+        app.held.stage = Stage::Ready {
+            session: read_back(),
+            steps: Steps::new(),
+        };
+        // Step 11: Back up, the privacy gate, then KEY3 from words 1-4 to words 5-8, a page of
+        // the same screen. Press, queued behind KEY3, would go on to backup-confirm before words
+        // 5-8 were seen: nothing.
+        drawn(&mut app, View::new(ScreenId::BackupOffer, Note::None));
+        play(&mut app, &[Key::Press, Key::Press, Key::Key3]);
+        assert_eq!(
+            (app.hal.last().id, app.view.page),
+            (ScreenId::BackupPassphrase, 1)
+        );
+        unseen(&mut app, Key::Press);
+        play(&mut app, &[Key::Press]);
+        assert_eq!(app.view.id, ScreenId::BackupConfirm);
+        // The first question answered shows the second, on the same screen, with the cursor on
+        // its first choice. Press, queued behind the answer, would answer it unseen: nothing.
+        let downs = vec![Key::Down; right_choice(&app)];
+        play(&mut app, &downs);
+        play(&mut app, &[Key::Press]);
+        assert_eq!(
+            (app.hal.last().id, app.view.page),
+            (ScreenId::BackupConfirm, 1)
+        );
+        unseen(&mut app, Key::Press);
+        assert_eq!(holding(&app), "the backup passphrase");
+        // Answered once it was on the panel: the stick is next.
+        let downs = vec![Key::Down; right_choice(&app)];
+        play(&mut app, &downs);
+        play(&mut app, &[Key::Press]);
+        assert_eq!(app.view.id, ScreenId::UsbInsert);
+    }
+
+    #[test]
+    fn a_press_made_before_the_checklists_second_page_was_shown_does_not_finish() {
+        let mut app = booted();
+        app.held.stage = Stage::Ready {
+            session: read_back(),
+            steps: Steps::new(),
+        };
+        // KEY3 to the checklist's second page, items 4-6. Press, queued behind KEY3, would wipe
+        // the session and power off before they were seen: nothing.
+        drawn(&mut app, View::new(ScreenId::Checklist, Note::None));
+        play(&mut app, &[Key::Key3]);
+        assert_eq!((app.hal.last().id, app.view.page), (ScreenId::Checklist, 1));
+        unseen(&mut app, Key::Press);
+        assert!(app.holds_secrets());
+        play(&mut app, &[Key::Press]);
+        assert_eq!(app.view.id, ScreenId::PowerOff);
+        assert!(!app.holds_secrets());
+    }
+
+    #[test]
+    fn a_press_made_before_the_next_insert_or_a_read_back_match_was_shown_does_nothing() {
+        let mut app = booted();
+        let session = sealed(None).skip_check();
+        let first: String = session
+            .braille()
+            .iter()
+            .map(|insert| insert.word().chars().take(4).collect())
+            .next()
+            .expect("insert 1");
+        app.held.stage = Stage::Ready {
+            session,
+            steps: Steps::new(),
+        };
+        // Insert view: KEY3 to insert 2. KEY3, queued behind it, would page on to insert 3 with
+        // insert 2 unseen: nothing.
+        drawn(&mut app, View::new(ScreenId::WordsInsert, Note::None));
+        play(&mut app, &[Key::Key3]);
+        assert_eq!(
+            (app.hal.last().id, app.view.page),
+            (ScreenId::WordsInsert, 1)
+        );
+        unseen(&mut app, Key::Key3);
+        play(&mut app, &[Key::Key3]);
+        assert_eq!(app.view.page, 2);
+        // Insert 1 read back whole: done shows the match, the whole word, on the same screen.
+        // KEY3, queued behind done, would go on to insert 2 before the word was seen: nothing.
+        match &mut app.held.stage {
+            Stage::Ready { steps, .. } => steps.typed.push_str(&first),
+            _ => panic!("the Ready stage"),
+        }
+        drawn(&mut app, View::new(ScreenId::ReadbackEntry, Note::None));
+        play(&mut app, &[Key::Key3]);
+        assert!(matches!(app.view.note, Note::Matched));
+        unseen(&mut app, Key::Key3);
+        assert!(matches!(app.view.note, Note::Matched));
+        // KEY3 once the match was on the panel: insert 2's entry, the same screen again. Press,
+        // queued behind KEY3, would type insert 2's first face unseen: nothing.
+        play(&mut app, &[Key::Key3]);
+        assert!(matches!(app.view.note, Note::None));
+        let entry = |app: &App<Fake>| match &app.held.stage {
+            Stage::Ready { steps, .. } => (steps.position, steps.typed.len()),
+            _ => panic!("the Ready stage"),
+        };
+        assert_eq!(entry(&app), (2, 0));
+        unseen(&mut app, Key::Press);
+        assert_eq!(entry(&app), (2, 0));
+        play(&mut app, &[Key::Press]);
+        assert_eq!(entry(&app), (2, 1));
+    }
+
+    #[test]
+    fn a_press_made_during_finish_does_nothing() {
+        let mut app = booted();
+        let session = new_session(None, SeedLength::Words12, Mode::DiceOnly).expect("a session");
+        let mut rolling = session.commit().expect("committed").start_dice();
+        let minimum = rolling.minimum_rolls();
+        for face in (1..=6u8).cycle().take(usize::from(minimum)) {
+            rolling = rolling.push_roll(face).expect("a face");
+        }
+        app.held.stage = Stage::Rolling(rolling);
+        drawn(&mut app, View::new(ScreenId::Dice, Note::None));
+        // Done: core's finish (seed, PBKDF2 and seal), then check-prompt. The fake clock stands
+        // still in core's calls, so a press made during finish began after Done and before
+        // check-prompt was fully shown.
+        play(&mut app, &[Key::Key3]);
+        let prompt = app.hal.last();
+        assert_eq!(prompt.id, ScreenId::CheckPrompt);
+        let (from_ns, to_ns) = (prompt.from_ns, prompt.to_ns);
+        // Press would start the check: nothing, not even the idle timer's restart.
+        let (presents, deadline) = (app.hal.shown.len(), app.deadline());
+        for began_ns in [from_ns + 1, to_ns - 1] {
+            press_at(&mut app, Key::Press, began_ns);
+            assert!(matches!(app.held.stage, Stage::Sealed(_)));
+            assert_eq!(app.hal.shown.len(), presents);
+            assert_eq!(app.deadline(), deadline);
+        }
+        play(&mut app, &[Key::Press]);
+        assert!(matches!(app.held.stage, Stage::Checking { .. }));
+    }
+
+    #[test]
+    fn a_press_made_during_a_stick_read_does_nothing_on_the_screen_it_returns_to() {
+        let mut app = booted();
+        let names = ["a.age", "b.age"]
+            .into_iter()
+            .map(|name| FileName::new(name).expect("a backup name"))
+            .collect();
+        let pick = Note::Pick {
+            kind: FileKind::Age,
+            names,
+            problem: None,
+        };
+        drawn(&mut app, View::new(ScreenId::UsbPick, pick));
+        // Press opens a.age: the read fails, and usb-pick is shown again with the fault, a new note
+        // of the same screen. The fence after the read stops a press made during it, and so does
+        // that new screen's present.
+        play(&mut app, &[Key::Press]);
+        assert!(matches!(
+            app.view.note,
+            Note::Pick {
+                problem: Some(HalError::NoStick),
+                ..
+            }
+        ));
+        let redrawn = app.hal.last();
+        assert_eq!(redrawn.id, ScreenId::UsbPick);
+        assert_eq!(redrawn.keys, KeyMap::BACK);
+        let (read_from_ns, read_to_ns) = *app.hal.calls.last().expect("the read");
+        assert!(read_to_ns <= redrawn.from_ns);
+        // KEY1 would go Home: nothing, not even the idle timer's restart.
+        let (presents, idle) = (app.hal.shown.len(), idle_cover_ns(&app));
+        for began_ns in [read_from_ns + 1, read_to_ns - 1] {
+            press_at(&mut app, Key::Key1, began_ns);
+            assert_eq!(app.view.id, ScreenId::UsbPick);
+            assert_eq!(app.hal.shown.len(), presents);
+            assert_eq!(idle_cover_ns(&app), idle);
+        }
+        play(&mut app, &[Key::Key1]);
+        assert_eq!(app.view.id, ScreenId::Home);
+        assert_ne!(idle_cover_ns(&app), idle);
+    }
+
+    #[test]
+    fn a_press_made_while_a_refused_backup_was_opened_does_nothing_on_the_entry_it_returns_to() {
+        let mut app = booted();
+        let mut typed = Zeroizing::new(String::with_capacity(crate::grid::ENTRIES_LEN));
+        typed.push_str("aban aban aban aban aban aban aban aban");
+        app.held.stage = Stage::BackupCheck {
+            file: Zeroizing::new(vec![b'-'; 64]),
+            typed,
+        };
+        drawn(&mut app, View::new(ScreenId::BackupCheckEntry, Note::None));
+        // Done on the eighth entry: the wait screen, then the file does not open, and
+        // backup-check-entry comes back, emptied, with core's refusal, entered anew. The wait
+        // screen's present, the fence after the call and the refusal's own present each stop a
+        // press made meanwhile.
+        play(&mut app, &[Key::Key3]);
+        assert!(matches!(app.view.note, Note::Refused(Refusal::Core(_))));
+        let refused = app.hal.last();
+        assert_eq!(refused.id, ScreenId::BackupCheckEntry);
+        let wait = &app.hal.shown[app.hal.shown.len() - 2];
+        assert_eq!(wait.id, ScreenId::Wait);
+        assert!(wait.texts.contains(&String::from(screens::WAIT_OPEN)));
+        // KEY2 would go Home and drop the backup. Pressed while the wait screen was drawn, while the
+        // file was opened (the fake clock stands still in core's call) or before the refusal was
+        // fully shown: nothing, not even the idle timer's restart.
+        let (presents, idle) = (app.hal.shown.len(), idle_cover_ns(&app));
+        for began_ns in [wait.from_ns, wait.to_ns, refused.to_ns - 1] {
+            press_at(&mut app, Key::Key2, began_ns);
+            assert_eq!(app.view.id, ScreenId::BackupCheckEntry);
+            assert!(matches!(app.held.stage, Stage::BackupCheck { .. }));
+            assert_eq!(app.hal.shown.len(), presents);
+            assert_eq!(idle_cover_ns(&app), idle);
+        }
+        play(&mut app, &[Key::Key2]);
+        assert_eq!(app.view.id, ScreenId::Home);
+        assert!(!app.holds_secrets());
+    }
+
+    #[test]
+    fn a_press_made_before_an_unrecognised_entrys_refusal_was_shown_types_nothing() {
+        // Group 10's lead decision (stage B's review): the one reachable refusal shown with no
+        // blocking call before it is entered anew, so its present moves the fence.
+        let mut app = booted();
+        let mut typed = Zeroizing::new(String::with_capacity(crate::grid::ENTRIES_LEN));
+        // Eight entries; the first is no word's first four letters.
+        typed.push_str("zzzz aban aban aban aban aban aban aban");
+        app.held.stage = Stage::BackupCheck {
+            file: Zeroizing::new(Vec::new()),
+            typed,
+        };
+        drawn(&mut app, View::new(ScreenId::BackupCheckEntry, Note::None));
+        // Done on the eighth entry: core refuses the entries before any file is opened, so no call
+        // blocked and no wait screen was shown, and backup-check-entry comes back, emptied, with
+        // core's refusal. Only that screen's own present can stop a press made meanwhile.
+        play(&mut app, &[Key::Key3]);
+        assert!(matches!(
+            app.view.note,
+            Note::Refused(Refusal::Core(CoreError::Backup(
+                keepcrypt_core::BackupError::PassphraseWords
+            )))
+        ));
+        let refused = app.hal.last();
+        assert_eq!(refused.id, ScreenId::BackupCheckEntry);
+        let (from_ns, to_ns) = (refused.from_ns, refused.to_ns);
+        assert_eq!(
+            app.hal.shown[app.hal.shown.len() - 2].id,
+            ScreenId::BackupCheckEntry,
+            "no wait screen"
+        );
+        // Press would type 'a', the symbol under the emptied entry's cursor. Made while the
+        // refusal was drawn: nothing, not even the idle timer's restart.
+        let (presents, idle) = (app.hal.shown.len(), idle_cover_ns(&app));
+        for began_ns in [from_ns, to_ns - 1] {
+            press_at(&mut app, Key::Press, began_ns);
+            assert!(
+                matches!(&app.held.stage, Stage::BackupCheck { typed, .. } if typed.is_empty())
+            );
+            assert_eq!(app.view.cursor, 0);
+            assert_eq!(app.hal.shown.len(), presents);
+            assert_eq!(idle_cover_ns(&app), idle);
+        }
+        // Pressed once the refusal was on the panel: it types.
+        press_at(&mut app, Key::Press, to_ns);
+        assert!(
+            matches!(&app.held.stage, Stage::BackupCheck { typed, .. } if typed.as_str() == "a")
+        );
+        assert_eq!(app.hal.shown.len(), presents + 1);
+        assert_ne!(idle_cover_ns(&app), idle);
+    }
+
+    #[test]
+    fn a_press_made_while_the_backup_is_written_does_nothing() {
+        let mut app = booted();
+        let mut ready = sealed(None).skip_check();
+        let typed: Vec<(u8, String)> = ready
+            .braille()
+            .iter()
+            .map(|insert| (insert.position(), insert.word().chars().take(4).collect()))
+            .collect();
+        for (position, letters) in typed {
+            assert!(ready.check_readback(position, &letters).is_ok());
+        }
+        let (ready, passphrase) = ready
+            .generate_backup_passphrase()
+            .expect("a backup passphrase");
+        drop(passphrase);
+        app.held.stage = Stage::Ready {
+            session: ready,
+            steps: Steps::new(),
+        };
+        drawn(
+            &mut app,
+            View::new(ScreenId::UsbInsert, Note::Usb(Flow::Write)),
+        );
+        // The stick goes in: the wait screen, then the backup is encrypted and written, which
+        // fails, and backup-failed offers Retry.
+        app.hal.stick = true;
+        app.hal.tick = true;
+        app.step();
+        assert_eq!(app.view.id, ScreenId::BackupFailed);
+        let wait = app
+            .hal
+            .shown
+            .iter()
+            .rfind(|shown| shown.id == ScreenId::Wait)
+            .expect("the wait screen");
+        assert!(wait.texts.contains(&String::from(screens::WAIT_BACKUP)));
+        let (write_from_ns, write_to_ns) = *app.hal.calls.last().expect("the write");
+        assert!(wait.to_ns <= write_from_ns);
+        // Press (Retry) made once the wait screen was up, or during the write: nothing, not even
+        // the idle timer's restart.
+        let (presents, deadline) = (app.hal.shown.len(), app.deadline());
+        for began_ns in [wait.to_ns + 1, write_to_ns - 1] {
+            press_at(&mut app, Key::Press, began_ns);
+            assert_eq!(app.view.id, ScreenId::BackupFailed);
+            assert_eq!(app.hal.shown.len(), presents);
+            assert_eq!(app.deadline(), deadline);
+        }
+        play(&mut app, &[Key::Press]);
+        assert_eq!(app.view.id, ScreenId::UsbInsert);
+    }
+
+    #[test]
+    fn in_step_4_a_fenced_press_still_reaches_the_pool_and_does_nothing_else() {
+        // PF steps 4-5 and "Games, sensors and the entropy pool": every press before the
+        // commitment in Mixed mode feeds its timing to the pool.
+        let mut app = step_4();
+        play(&mut app, &[Key::Press]);
+        let snake = app.hal.last();
+        assert_eq!(snake.id, ScreenId::GameSnake);
+        let (to_ns, extras, presents) = (snake.to_ns, app.extras, app.hal.shown.len());
+        // KEY1 (leave Snake) made before Snake's first frame was fully shown: one extra, and
+        // nothing else.
+        press_at(&mut app, Key::Key1, to_ns - 1);
+        assert_eq!(app.extras, extras + 1);
+        assert_eq!(app.view.id, ScreenId::GameSnake);
+        assert_eq!(app.hal.shown.len(), presents);
+        // The next press acts, and reaches the pool too.
+        play(&mut app, &[Key::Key1]);
+        assert_eq!(app.extras, extras + 2);
+        assert_eq!(app.view.id, ScreenId::Hwrng);
+    }
+
+    #[test]
+    fn a_press_made_during_a_redraw_of_the_same_screen_acts() {
+        // Step 4's tick: an hwrng block, then Snake's redraw. KEY1 made during the redraw leaves.
+        let mut app = step_4();
+        play(&mut app, &[Key::Press]);
+        block(&mut app);
+        let redraw = app.hal.last();
+        assert_eq!(redraw.id, ScreenId::GameSnake);
+        let redraw_ns = redraw.from_ns + 1;
+        press_at(&mut app, Key::Key1, redraw_ns);
+        assert_eq!(app.view.id, ScreenId::Hwrng);
+        // Dice entry: Up made during the redraw of the last Up still picks the next face.
+        let mut app = booted();
+        let session = new_session(None, SeedLength::Words12, Mode::DiceOnly)
+            .expect("a session")
+            .commit()
+            .expect("committed")
+            .start_dice();
+        app.held.stage = Stage::Rolling(session);
+        drawn(&mut app, View::new(ScreenId::Dice, Note::None));
+        play(&mut app, &[Key::Up]);
+        assert_eq!(app.view.cursor, 1);
+        let redraw_ns = app.hal.last().from_ns + 1;
+        press_at(&mut app, Key::Up, redraw_ns);
+        assert_eq!(app.view.cursor, 2);
     }
 }

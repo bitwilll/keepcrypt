@@ -114,6 +114,7 @@ impl<H: Hal> App<H> {
             Choice::SkipWatchOnly => self.enter(ScreenId::RegisterOffer, Note::None),
             Choice::NoPassphrase => {
                 let export = self.export(|session| session.watch_only(None))?;
+                self.fence();
                 self.set_holding(Holding::Export(Box::new(export)))?;
                 self.enter(ScreenId::WatchSummary, Note::None);
             }
@@ -323,6 +324,7 @@ impl<H: Hal> App<H> {
             }
         };
         let export = self.export(|session| session.watch_only(Some(&passphrase)))?;
+        self.fence();
         drop(passphrase);
         let Stage::Ready { steps, .. } = &mut self.held.stage else {
             return Err(OUT_OF_ORDER);

@@ -1,0 +1,10 @@
+permissions:
+  contents: read
+jobs:
+  a:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Build
+        run: |
+          make image
+          echo built at ${{ github.run_id }}

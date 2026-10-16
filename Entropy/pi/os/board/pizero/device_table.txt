@@ -1,0 +1,5 @@
+# Applied after Buildroot's own tables (BR2_ROOTFS_DEVICE_TABLE), so these lines win. BusyBox's
+# package installs /bin/busybox setuid root (mode 4755) for its login and mount applets; this image
+# runs everything as root, has no login and allows no setuid file (tasks/todo.md, M4 group 14).
+# <name>	<type>	<mode>	<uid>	<gid>	<major>	<minor>	<start>	<inc>	<count>
+/bin/busybox	f	755	0	0	-	-	-	-	-

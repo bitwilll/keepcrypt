@@ -1,0 +1,312 @@
+# The kernel's allow-list (tasks/todo.md, M4 group 13; Q37 (b)). kconfig.sh starts from
+# bcmrpi_defconfig, turns every =m and MODULES off (with modules off, Kconfig would build every m
+# in), applies this fragment, then runs olddefconfig, and fails unless every line below holds in
+# the result. Required options are built in (=y); forbidden ones are not set, neither y nor m.
+# Every other =y line of the final config is reviewed once, in pi/os/expected/linux.config, and
+# anything not needed then gets its own line here.
+
+# Required.
+# SPI, for the display.
+CONFIG_SPI_BCM2835=y
+CONFIG_SPI_SPIDEV=y
+# GPIO, for the keys, the display's DC and reset, and the backlight.
+CONFIG_PINCTRL_BCM2835=y
+CONFIG_GPIO_CDEV=y
+CONFIG_RASPBERRYPI_GPIOMEM=y
+# The hardware random number generator.
+CONFIG_HW_RANDOM=y
+CONFIG_HW_RANDOM_BCM2835=y
+# One USB stick: the host controller and mass storage.
+CONFIG_USB_DWCOTG=y
+CONFIG_SCSI=y
+CONFIG_BLK_DEV_SD=y
+CONFIG_USB_STORAGE=y
+# The stick's MBR partition table.
+CONFIG_PARTITION_ADVANCED=y
+CONFIG_MSDOS_PARTITION=y
+# FAT32 on the stick; vfat's default iocharset is iso8859-1.
+CONFIG_VFAT_FS=y
+CONFIG_NLS_CODEPAGE_437=y
+CONFIG_NLS_ISO8859_1=y
+# The SD card, the SquashFS root and the kernel filesystems the image mounts.
+CONFIG_MMC_BCM2835=y
+CONFIG_SQUASHFS=y
+CONFIG_SQUASHFS_XZ=y
+CONFIG_TMPFS=y
+CONFIG_DEVTMPFS=y
+CONFIG_DEVTMPFS_MOUNT=y
+CONFIG_PROC_FS=y
+CONFIG_SYSFS=y
+# Freed memory is zeroed (cmdline.txt also sets init_on_free=1).
+CONFIG_INIT_ON_FREE_DEFAULT_ON=y
+# The ACT LED's normal pattern under Linux, which the first boot check reads.
+CONFIG_LEDS_GPIO=y
+CONFIG_LEDS_TRIGGER_ACTPWR=y
+# The console device, with no output path (15m). ttynull registers as a console with a tty binding;
+# with no console= on the command line and no UART driver to register the device tree's serial0,
+# printk's register_console makes the first such console the console device, so /dev/console
+# always opens: the kernel's console_on_rootfs gives init its standard files on it, and BusyBox
+# init's tcgetattr/tcsetattr and the firmware's standard files see an ordinary tty that discards
+# writes. Without a console device, init would start with its standard files closed and fall back
+# to /dev/null, a path the pinned sources also allow but that H1a would have been the first to run.
+CONFIG_TTY=y
+CONFIG_NULL_TTY=y
+
+# Forbidden.
+# No modules, no network, no USB gadget mode.
+# CONFIG_MODULES is not set
+# CONFIG_NET is not set
+# CONFIG_USB_GADGET is not set
+# No /dev/mem (rppal's fallback from /dev/gpiomem fails closed), no swap and no core dumps.
+# CONFIG_DEVMEM is not set
+# CONFIG_SWAP is not set
+# CONFIG_ZSWAP is not set
+# CONFIG_ZRAM is not set
+# CONFIG_COREDUMP is not set
+# No debugging hooks, no kernel tracers and no second kernel. bcmrpi_defconfig's
+# BLK_DEV_IO_TRACE, a tracer under FTRACE, selects DEBUG_FS.
+# CONFIG_DEBUG_FS is not set
+# CONFIG_FTRACE is not set
+# CONFIG_BLK_DEV_IO_TRACE is not set
+# CONFIG_MAGIC_SYSRQ is not set
+# CONFIG_KEXEC is not set
+# bcmrpi_defconfig builds in the kernel debugger.
+# CONFIG_KGDB is not set
+# No console on a screen, no config in the kernel, no sysfs GPIO.
+# CONFIG_VT is not set
+# CONFIG_FRAMEBUFFER_CONSOLE is not set
+# CONFIG_IKCONFIG is not set
+# CONFIG_GPIO_SYSFS is not set
+# Less kernel attack surface for a process that needs none of these.
+# CONFIG_BPF_SYSCALL is not set
+# CONFIG_USER_NS is not set
+# CONFIG_IO_URING is not set
+# CONFIG_BINFMT_MISC is not set
+# No sound, cameras, graphics, input devices or I2C (I2C until M8).
+# CONFIG_SOUND is not set
+# CONFIG_MEDIA_SUPPORT is not set
+# CONFIG_DRM is not set
+# CONFIG_FB_TFT is not set
+# CONFIG_HID is not set
+# USB_HID defaults to y (bcmrpi_defconfig does not set it) and selects HID: a USB keyboard.
+# CONFIG_USB_HID is not set
+# CONFIG_INPUT_JOYDEV is not set
+# CONFIG_I2C is not set
+# No USB drivers but mass storage.
+# CONFIG_USB_SERIAL is not set
+# CONFIG_USB_UAS is not set
+# CONFIG_USB_PRINTER is not set
+# CONFIG_USB_ACM is not set
+# No filesystem but FAT, SquashFS and the kernel's own.
+# CONFIG_EXFAT_FS is not set
+# CONFIG_NTFS3_FS is not set
+# CONFIG_HFS_FS is not set
+# CONFIG_HFSPLUS_FS is not set
+# CONFIG_BTRFS_FS is not set
+# CONFIG_XFS_FS is not set
+# CONFIG_ISO9660_FS is not set
+# CONFIG_UDF_FS is not set
+# CONFIG_FUSE_FS is not set
+# No partition table but MBR (every *_PARTITION of block/partitions/Kconfig at the kernel pin).
+# CONFIG_ACORN_PARTITION is not set
+# CONFIG_AIX_PARTITION is not set
+# CONFIG_OSF_PARTITION is not set
+# CONFIG_AMIGA_PARTITION is not set
+# CONFIG_ATARI_PARTITION is not set
+# CONFIG_IBM_PARTITION is not set
+# CONFIG_MAC_PARTITION is not set
+# CONFIG_SOLARIS_X86_PARTITION is not set
+# CONFIG_LDM_PARTITION is not set
+# CONFIG_SGI_PARTITION is not set
+# CONFIG_ULTRIX_PARTITION is not set
+# CONFIG_SUN_PARTITION is not set
+# CONFIG_KARMA_PARTITION is not set
+# CONFIG_EFI_PARTITION is not set
+# CONFIG_SYSV68_PARTITION is not set
+# CONFIG_CMDLINE_PARTITION is not set
+# No hwrng driver but BCM2835 (every HW_RANDOM_* driver of drivers/char/hw_random/Kconfig,
+# drivers/char/tpm/Kconfig and drivers/crypto/Kconfig at the kernel pin).
+# CONFIG_HW_RANDOM_TIMERIOMEM is not set
+# CONFIG_HW_RANDOM_INTEL is not set
+# CONFIG_HW_RANDOM_AMD is not set
+# CONFIG_HW_RANDOM_ATMEL is not set
+# CONFIG_HW_RANDOM_BA431 is not set
+# CONFIG_HW_RANDOM_IPROC_RNG200 is not set
+# CONFIG_HW_RANDOM_GEODE is not set
+# CONFIG_HW_RANDOM_N2RNG is not set
+# CONFIG_HW_RANDOM_VIA is not set
+# CONFIG_HW_RANDOM_IXP4XX is not set
+# CONFIG_HW_RANDOM_OMAP is not set
+# CONFIG_HW_RANDOM_OMAP3_ROM is not set
+# CONFIG_HW_RANDOM_OCTEON is not set
+# CONFIG_HW_RANDOM_PASEMI is not set
+# CONFIG_HW_RANDOM_VIRTIO is not set
+# CONFIG_HW_RANDOM_MXC_RNGA is not set
+# CONFIG_HW_RANDOM_IMX_RNGC is not set
+# CONFIG_HW_RANDOM_INGENIC_RNG is not set
+# CONFIG_HW_RANDOM_INGENIC_TRNG is not set
+# CONFIG_HW_RANDOM_NOMADIK is not set
+# CONFIG_HW_RANDOM_PSERIES is not set
+# CONFIG_HW_RANDOM_POWERNV is not set
+# CONFIG_HW_RANDOM_HISI is not set
+# CONFIG_HW_RANDOM_HISTB is not set
+# CONFIG_HW_RANDOM_ST is not set
+# CONFIG_HW_RANDOM_XGENE is not set
+# CONFIG_HW_RANDOM_STM32 is not set
+# CONFIG_HW_RANDOM_PIC32 is not set
+# CONFIG_HW_RANDOM_POLARFIRE_SOC is not set
+# CONFIG_HW_RANDOM_MESON is not set
+# CONFIG_HW_RANDOM_CAVIUM is not set
+# CONFIG_HW_RANDOM_MTK is not set
+# CONFIG_HW_RANDOM_S390 is not set
+# CONFIG_HW_RANDOM_EXYNOS is not set
+# CONFIG_HW_RANDOM_OPTEE is not set
+# CONFIG_HW_RANDOM_NPCM is not set
+# CONFIG_HW_RANDOM_KEYSTONE is not set
+# CONFIG_HW_RANDOM_CCTRNG is not set
+# CONFIG_HW_RANDOM_XIPHERA is not set
+# CONFIG_HW_RANDOM_ARM_SMCCC_TRNG is not set
+# CONFIG_HW_RANDOM_CN10K is not set
+# CONFIG_HW_RANDOM_JH7110 is not set
+# CONFIG_HW_RANDOM_ROCKCHIP is not set
+# CONFIG_HW_RANDOM_TPM is not set
+# CONFIG_HW_RANDOM_PPC4XX is not set
+
+# From the review of every =y line of the built config (15l): each line below was checked in the
+# pinned tree for a visible prompt and for selectors that stay on.
+# Kernel facilities no process here uses: control groups, namespaces, SysV IPC, cross-process memory
+# access, accounting, file handles, AIO, kcmp, notify, quotas, the automounter, keys and integrity.
+# CONFIG_CGROUPS is not set
+# CONFIG_SCHED_AUTOGROUP is not set
+# CONFIG_NAMESPACES is not set
+# CONFIG_SYSVIPC is not set
+# CONFIG_CROSS_MEMORY_ATTACH is not set
+# CONFIG_BSD_PROCESS_ACCT is not set
+# CONFIG_PSI is not set
+# CONFIG_RELAY is not set
+# CONFIG_BLK_DEV_INITRD is not set
+# CONFIG_UID16 is not set
+# CONFIG_SYSFS_SYSCALL is not set
+# CONFIG_FHANDLE is not set
+# CONFIG_AIO is not set
+# CONFIG_KCMP is not set
+# CONFIG_CACHESTAT_SYSCALL is not set
+# CONFIG_FANOTIFY is not set
+# CONFIG_INOTIFY_USER is not set
+# CONFIG_DNOTIFY is not set
+# CONFIG_QUOTA is not set
+# CONFIG_AUTOFS_FS is not set
+# CONFIG_KEYS is not set
+# CONFIG_SECURITYFS is not set
+# CONFIG_INTEGRITY is not set
+# No kernel symbols, probes, performance counters, profiling, latency or scheduler statistics,
+# hung-task watchdog, page maps, persistent log store or device core dumps.
+# CONFIG_KALLSYMS is not set
+# CONFIG_KPROBES is not set
+# CONFIG_PERF_EVENTS is not set
+# CONFIG_PROFILING is not set
+# CONFIG_ARM_PMU is not set
+# CONFIG_LATENCYTOP is not set
+# CONFIG_SCHEDSTATS is not set
+# CONFIG_DETECT_HUNG_TASK is not set
+# CONFIG_BOOT_PRINTK_DELAY is not set
+# CONFIG_PROC_PAGE_MONITOR is not set
+# CONFIG_PSTORE is not set
+# CONFIG_ALLOW_DEV_COREDUMP is not set
+# No serial port driver (config.txt has enable_uart=0; without a UART driver the device tree's
+# stdout-path selects nothing), no serial device bus, no pseudo-terminals, no line-discipline
+# loading, no TIOCSTI, no /dev/ttyprintk: the only tty is ttynull (15m).
+# CONFIG_SERIAL_DEV_BUS is not set
+# CONFIG_SERIAL_NONSTANDARD is not set
+# CONFIG_LEGACY_PTYS is not set
+# CONFIG_SERIAL_8250 is not set
+# CONFIG_SERIAL_AMBA_PL011 is not set
+# CONFIG_LEGACY_TIOCSTI is not set
+# CONFIG_LDISC_AUTOLOAD is not set
+# CONFIG_TTY_PRINTK is not set
+# CONFIG_UNIX98_PTYS is not set
+# No input layer, HID, remote controls, HDMI CEC, framebuffer or character displays: the panel is
+# driven over spidev and the keys over the GPIO character device.
+# CONFIG_INPUT is not set
+# CONFIG_HID_SUPPORT is not set
+# CONFIG_RC_CORE is not set
+# CONFIG_MEDIA_CEC_SUPPORT is not set
+# CONFIG_FB is not set
+# CONFIG_AUXDISPLAY is not set
+# CONFIG_ACCESSIBILITY is not set
+# Hardware the Pi Zero v1.3 does not have or the image does not use: staging and VideoCore
+# character drivers, RTC, NVMEM, DMA heaps, virtio and vhost, PWM, power supply, hwmon, power-off,
+# PPS, SPI target mode, the Pi 3/4 GPIO expander, the Arasan SDIO host (the SD card is on sdhost),
+# SDHCI, eMMC and Wi-Fi power sequencing, BCM2711/STB clocks and resets, /dev/port.
+# CONFIG_STAGING is not set
+# CONFIG_BRCM_CHAR_DRIVERS is not set
+# CONFIG_MFD_STMPE is not set
+# CONFIG_RTC_CLASS is not set
+# CONFIG_NVMEM is not set
+# CONFIG_DMABUF_HEAPS is not set
+# CONFIG_SYNC_FILE is not set
+# CONFIG_VHOST_MENU is not set
+# CONFIG_VIRTIO_MENU is not set
+# CONFIG_PWM is not set
+# CONFIG_POWER_SUPPLY is not set
+# CONFIG_HWMON is not set
+# CONFIG_POWER_RESET is not set
+# CONFIG_PPS is not set
+# CONFIG_SPI_SLAVE is not set
+# CONFIG_GPIO_RASPBERRYPI_EXP is not set
+# CONFIG_MMC_BCM2835_MMC is not set
+# CONFIG_MMC_SDHCI is not set
+# CONFIG_MMC_HSQ is not set
+# CONFIG_PWRSEQ_EMMC is not set
+# CONFIG_PWRSEQ_SIMPLE is not set
+# CONFIG_CLK_BCM2711_DVP is not set
+# CONFIG_RESET_BRCMSTB is not set
+# CONFIG_RESET_BRCMSTB_RESCAL is not set
+# CONFIG_DEVPORT is not set
+# No interface that loads or changes code, devices or the device tree at run time: device tree
+# overlays and configfs (the firmware applies dtparam itself), the uevent helper, the firmware
+# loader, #! scripts, and the GPIO character device's v1 ABI (rppal 0.22.1 uses v2).
+# CONFIG_OF_CONFIGFS is not set
+# CONFIG_OF_OVERLAY is not set
+# CONFIG_CONFIGFS_FS is not set
+# CONFIG_UEVENT_HELPER is not set
+# CONFIG_FW_LOADER is not set
+# CONFIG_BINFMT_SCRIPT is not set
+# CONFIG_GPIO_CDEV_V1 is not set
+# Block layer: only the SD card and one stick. No loop or RAM disks, bsg, integrity, writes to a
+# mounted device, extra I/O schedulers, MD, low-level SCSI drivers or legacy autoload.
+# CONFIG_BLK_DEV is not set
+# CONFIG_BLK_DEV_BSG is not set
+# CONFIG_BLK_DEV_BSGLIB is not set
+# CONFIG_BLK_DEV_INTEGRITY is not set
+# CONFIG_BLK_DEV_WRITE_MOUNTED is not set
+# CONFIG_IOSCHED_BFQ is not set
+# CONFIG_MQ_IOSCHED_KYBER is not set
+# CONFIG_MD is not set
+# CONFIG_SCSI_LOWLEVEL is not set
+# CONFIG_BLOCK_LEGACY_AUTOLOAD is not set
+# Filesystems: only vfat and xz SquashFS without xattrs; tmpfs without ACLs or xattrs.
+# CONFIG_EXT4_FS is not set
+# CONFIG_F2FS_FS is not set
+# CONFIG_MSDOS_FS is not set
+# CONFIG_TMPFS_POSIX_ACL is not set
+# CONFIG_TMPFS_XATTR is not set
+# CONFIG_SQUASHFS_XATTR is not set
+# CONFIG_SQUASHFS_ZLIB is not set
+# CONFIG_SQUASHFS_LZO is not set
+# CONFIG_SQUASHFS_ZSTD is not set
+# Kernel crypto with no user in this kernel.
+# CONFIG_CRYPTO_RSA is not set
+# CONFIG_CRYPTO_DH is not set
+# CONFIG_CRYPTO_DES is not set
+# CONFIG_CRYPTO_CBC is not set
+# CONFIG_CRYPTO_LZO is not set
+# LED triggers other than actpwr, which the ACT LED uses.
+# CONFIG_LEDS_TRIGGER_TIMER is not set
+# CONFIG_LEDS_TRIGGER_ONESHOT is not set
+# CONFIG_LEDS_TRIGGER_HEARTBEAT is not set
+# CONFIG_LEDS_TRIGGER_BACKLIGHT is not set
+# CONFIG_LEDS_TRIGGER_CPU is not set
+# Slab caches are not merged (hardening); USB devices are not announced in the kernel log.
+# CONFIG_SLAB_MERGE_DEFAULT is not set
+# CONFIG_USB_ANNOUNCE_NEW_DEVICES is not set

@@ -1,0 +1,10 @@
+on:
+  workflow_run:
+    workflows: [Entropy CI]
+permissions:
+  contents: read
+jobs:
+  a:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo one

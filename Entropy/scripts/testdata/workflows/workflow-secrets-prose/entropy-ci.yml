@@ -1,0 +1,8 @@
+permissions:
+  contents: read
+jobs:
+  a:
+    runs-on: ubuntu-24.04
+    # The token is read-only and no secrets are used.
+    steps:
+      - run: echo one

@@ -1,9 +1,10 @@
 # cargo-deny 0.20 policy for the device workspace (core, ffi, pi/app, pi/sim).
 # Run: cargo deny --locked check. scripts/canaries.sh proves on every CI run that the bans fire
 # for a normal, dev-only, target-only and feature-gated dependency (rand family, network, logging),
-# and for rand added to the real keepcrypt-core; and that a git dependency fails [sources]. It
-# also pins [graph], the [bans] deny list and [sources] to exactly the values below, so any edit
-# to them (an exclude, a removed ban, an allowed git source) fails until canaries.sh changes too.
+# and for rand added to the real keepcrypt-core; that a git dependency fails [sources]; and that
+# a nix feature beyond [[bans.features]]'s list fails. It also pins [graph], the [bans] deny list,
+# [[bans.features]] and [sources] to exactly the values below, so any edit to them (an exclude, a
+# removed ban, a widened feature list, an allowed git source) fails until canaries.sh changes too.
 # Weakening any entry below needs owner review (CODEOWNERS covers this file).
 
 [graph]
@@ -84,6 +85,23 @@ deny = [
     "slog",
     "env_logger",
 ]
+
+# The Pi hardware crates resolve with exactly these features in every build (tasks/todo.md, M4
+# group 2; Q36 (a)). all-features = true above reaches only our own crates' features, so these
+# entries are what keep a dependency's optional features off, whichever manifest asks for one.
+[[bans.features]]
+# rppal is archived: its author archived the repository on 2025-07-01, so 0.22.1 is its last
+# release (Q36 (b)). No features, so embedded-hal, hal and the rest stay off.
+crate = "rppal"
+exact = true
+allow = []
+
+[[bans.features]]
+# nix: memory locking, mounting the stick, the monotonic clock and the hwrng's open flags; mount
+# turns on uio. net, socket and every other feature stay off.
+crate = "nix"
+exact = true
+allow = ["fs", "mman", "mount", "time", "uio"]
 
 [sources]
 # crates.io only. Coldcard's weak-entropy bug came in through a git submodule.

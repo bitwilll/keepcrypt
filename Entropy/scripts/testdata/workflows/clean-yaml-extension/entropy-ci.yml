@@ -1,0 +1,55 @@
+# Expressions are fine outside run steps: in concurrency, outputs, env, with and if. A comment
+# may even show one, ${{ github.ref }}, outside a run block.
+name: Entropy CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    # A run key with no value: its block is read like a step's, and holds no expression.
+    shell: bash
+    working-directory: Entropy
+
+env:
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      entropy: ${{ steps.diff.outputs.entropy }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          # Shell parameter forms are not expressions: ${EVENT}, ${pkgs[@]}, ${t^^}, $(git rev-parse HEAD).
+          if [ "$EVENT" = pull_request ]; then base=HEAD^1; else base=$BEFORE; fi
+          echo "entropy=true" | tee -a "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: Entropy/target/
+          key: ${{ runner.os }}-${{ hashFiles('Entropy/Cargo.lock') }}
+      - run: cargo fmt --all --check
+      - name: Build
+        if: needs.changes.outputs.entropy == 'true'
+        run: cargo build --release --locked --target "$TARGET"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: keepcrypt-pi-${{ github.sha }}
+          path: /kc-work/images/keepcrypt-pi-0.0.0.img
+          retention-days: 14

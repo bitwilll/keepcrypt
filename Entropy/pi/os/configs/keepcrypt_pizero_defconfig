@@ -1,0 +1,52 @@
+# The KeepCrypt image for the Pi Zero v1.3 (tasks/todo.md, M4 group 13; Q37), from Buildroot
+# 2026.08's configs/raspberrypi0_defconfig: the same CPU, toolchain, kernel, device tree and
+# default rpi-firmware variant, which Buildroot boots this board on. Left out from it: the ext4
+# root, kmod, xz and the HDMI and serial consoles. Added: BR2_REPRODUCIBLE, the kernel allow-list
+# (kconfig.sh), BusyBox init with init and mount only, no shell, getty or root login, a read-only
+# SquashFS root, the keepcrypt-pi package, and our board files. pi/os/Makefile builds it, with
+# pi/os as the external tree and O=$(KC_WORK)/out.
+BR2_arm=y
+BR2_arm1176jzf_s=y
+BR2_TOOLCHAIN_EXTERNAL=y
+BR2_TOOLCHAIN_EXTERNAL_BOOTLIN_ARMV6_EABIHF_GLIBC_STABLE=y
+BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL_KEEPCRYPT_PATH)/patches"
+BR2_DOWNLOAD_FORCE_CHECK_HASHES=y
+BR2_REPRODUCIBLE=y
+# BR2_CCACHE is not set
+BR2_STRIP_EXCLUDE_FILES="keepcrypt-pi"
+BR2_INIT_BUSYBOX=y
+BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_DEVTMPFS=y
+BR2_ROOTFS_DEVICE_TABLE="system/device_table.txt $(BR2_EXTERNAL_KEEPCRYPT_PATH)/board/pizero/device_table.txt"
+BR2_TARGET_GENERIC_HOSTNAME=""
+BR2_TARGET_GENERIC_ISSUE=""
+# BR2_TARGET_ENABLE_ROOT_LOGIN is not set
+BR2_SYSTEM_BIN_SH_NONE=y
+# BR2_TARGET_GENERIC_GETTY is not set
+# BR2_TARGET_GENERIC_REMOUNT_ROOTFS_RW is not set
+BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_KEEPCRYPT_PATH)/board/pizero/rootfs-overlay"
+BR2_ROOTFS_POST_BUILD_SCRIPT="$(BR2_EXTERNAL_KEEPCRYPT_PATH)/board/pizero/post-build.sh"
+BR2_ROOTFS_POST_FAKEROOT_SCRIPT="$(BR2_EXTERNAL_KEEPCRYPT_PATH)/board/pizero/post-fakeroot.sh"
+BR2_ROOTFS_POST_IMAGE_SCRIPT="$(BR2_EXTERNAL_KEEPCRYPT_PATH)/board/pizero/post-image.sh"
+BR2_LINUX_KERNEL=y
+BR2_LINUX_KERNEL_CUSTOM_TARBALL=y
+BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION="$(call github,raspberrypi,linux,21b410140c47ffab5668399f6f143c7d7b935c8b)/linux-21b410140c47ffab5668399f6f143c7d7b935c8b.tar.gz"
+BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
+BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="$(BASE_DIR)/keepcrypt-linux.config"
+BR2_LINUX_KERNEL_DTS_SUPPORT=y
+BR2_LINUX_KERNEL_INTREE_DTS_NAME="broadcom/bcm2708-rpi-zero"
+BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL=y
+BR2_PACKAGE_BUSYBOX_CONFIG="$(BR2_EXTERNAL_KEEPCRYPT_PATH)/board/pizero/busybox.config"
+BR2_PACKAGE_RPI_FIRMWARE=y
+BR2_PACKAGE_RPI_FIRMWARE_BOOTCODE_BIN=y
+BR2_PACKAGE_RPI_FIRMWARE_VARIANT_PI=y
+BR2_PACKAGE_RPI_FIRMWARE_CONFIG_FILE="$(BR2_EXTERNAL_KEEPCRYPT_PATH)/board/pizero/config.txt"
+BR2_PACKAGE_RPI_FIRMWARE_CMDLINE_FILE="$(BR2_EXTERNAL_KEEPCRYPT_PATH)/board/pizero/cmdline.txt"
+# BR2_PACKAGE_RPI_FIRMWARE_INSTALL_DTB_OVERLAYS is not set
+# BR2_PACKAGE_URANDOM_SCRIPTS is not set
+BR2_PACKAGE_KEEPCRYPT_PI=y
+# BR2_TARGET_ROOTFS_TAR is not set
+BR2_TARGET_ROOTFS_SQUASHFS=y
+BR2_TARGET_ROOTFS_SQUASHFS4_XZ=y
+BR2_PACKAGE_HOST_DOSFSTOOLS=y
+BR2_PACKAGE_HOST_GENIMAGE=y
+BR2_PACKAGE_HOST_MTOOLS=y

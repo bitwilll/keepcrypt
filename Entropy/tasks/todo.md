@@ -1,4 +1,4 @@
-# Task: KeepCrypt milestones M0 to M3
+# Task: KeepCrypt milestones M0 to M4
 
 Spec: `docs/build-plan.md` (milestones, core API, CI rules) and `docs/seal-watchonly-braille.md`.
 Claude Code: refine this plan, then **check in with the owner before writing code**.
@@ -1000,6 +1000,392 @@ ignored; gate 20 passed, 1 ignored) pass; `vectorgen.py --selftest` (13 checks) 
 on Python 3.12 and 3.9; `banned-api-check.sh` is clean (199 files) and `--selftest` passes 427/427; canaries 61/61. No
 script reads CLAUDE.md. vectorgen.py reads docs/: its `--selftest` checks the sentences it pins there, pi-firmware.md's
 backup sentences among them, and commit 23 edits none of them (23b; this line said that no script read docs/).
+
+### Needed before M4 code (Q35-Q43, answered 2026-10-14)
+The owner answered "approve all" on 2026-10-14: every recommendation below is decided, and "Otherwise" is not taken.
+
+Please answer these before any M4 code is written. Each starts with what I recommend and says what changes if you choose
+otherwise; "as recommended" is a full answer. They are in order of importance. Almost every M4 commit touches paths you
+own in CODEOWNERS, so the whole PR needs your review, as M1-M3's did.
+
+35. **What happens if the firmware crashes?** (Q25; PF:50, :127, :130)
+    Recommended:
+    - The screen goes black, then shows a red stop screen: "the firmware stopped unexpectedly". Nothing restarts on its
+      own; you power the device off and on to start again.
+    - A crash prints nothing anywhere, because a crash message could contain secrets.
+    - Any open session is wiped, as at power-off, and a pending 99-roll minimum is forgotten, as at power-off.
+    - If Linux itself crashes, the screen freezes on whatever it showed until you power off. A watchdog that would blank
+      it is a question for the M7 audit.
+    - PF:50, :127 and :130 change to say this.
+
+    Otherwise:
+    - Restart automatically after a crash, as PF:50 says now. The start-up self-tests would then rerun without you, which
+      your answer to Q25 ruled out.
+    - No stop screen at all: a smaller image, but after some crashes the last screen, possibly your words, stays lit until
+      power-off.
+
+36. **New outside code for the hardware** (rule 11; BP:76; PF:62; todo.md:6215-6216)
+    Recommended:
+    - (a) Approve four small Rust crates: rppal 0.22.1 (the Pi's pins and display bus), nix 0.31.3 (safe access to a few
+      Linux functions: locking memory, mounting the stick, the clock), and two helpers nix needs, bitflags 2.11.1 and
+      cfg_aliases 0.2.2. Each is past the 14-day wait, has an approved licence, gets a cargo vet entry, and is limited to
+      the features we use.
+    - (b) Accept rppal although its author archived it in July 2025, so it gets no more updates. It serves one board that
+      will not change, through stable Linux interfaces; I review the parts we call, our kernel switches off its fallback
+      to raw memory, and the M7 audit lists it.
+    - (c) Our own display driver (about 150 lines) instead of the mipidsi crate M3 expected, which also drops
+      embedded-hal and spin_sleep. Ours sends the panel's full Waveshare start-up settings and wipes its buffer after
+      each frame. mipidsi's built-in model for this panel does not send those settings. We could add them to mipidsi in
+      safe code, but then we would maintain the start-up settings ourselves anyway and still take on mipidsi,
+      embedded-hal and spin_sleep.
+    - (d) No unsafe code in KeepCrypt itself. The unsafe parts stay inside rppal, nix, libc and Rust's standard library.
+    - (e) The hardware code lives inside the existing Pi firmware crate, not a new one, so the simulator's code contains
+      none of it.
+
+    Otherwise:
+    - The maintained alternatives (gpiocdev and spidev): 8 new lockfile entries instead of 4, including a second copy of
+      nix (0.29.0, next to 0.31.3); 7 if nix were held at 0.29.0 for everything.
+    - mipidsi as M3 planned: 3 more crates with no audits on record.
+    - A small crate of reviewed unsafe calls instead of nix: an exception to the no-unsafe rule.
+
+37. **Which Linux, and how small** (PF:41-54; BP:71; Q8)
+    Recommended:
+    - (a) Buildroot 2026.08 with exactly the kernel (6.12.61, December 2025), firmware and compiler that Buildroot itself
+      tests on the Pi Zero, so the first boot rests on a known-good combination. Its support ends in December 2026, and
+      6.12.61 lacks about ten months of kernel fixes; before the first release (M7) we move to the next long-term
+      Buildroot and a current kernel. The M4 image is a test image, never funded.
+    - (b) The kernel is cut down to an approved list: only what the board, the display, the buttons, the hardware random
+      number generator, the SD card and one USB stick need. Networking, extra USB drivers (cameras, serial adapters,
+      keyboards), other disk formats (exFAT, NTFS, Mac), swap, crash dumps and debugging hooks are all left out. Every
+      built-in option sits in one committed file that I review line by line once, and any change to it fails CI until
+      reviewed. PF:48 changes to say so.
+    - (c) The firmware program is built inside Buildroot with our pinned Rust 1.98.1 (Buildroot's own Rust is older),
+      keeping its symbols so the scans can check it. BP:71 changes to say so.
+    - (d) Everything else the image is built from (Buildroot, the kernel, the Pi firmware, the build tools, the upload
+      step) follows the same 14-day wait and is pinned by hash in `pi/os/pins.txt`. Until the M7 audit, hashes are
+      checked but the source is not reviewed.
+
+    Otherwise:
+    - Buildroot 2025.02, the long-term release supported to 2028: its Pi kernel (6.6.28, April 2024) is older still.
+    - A newer 6.12 kernel now: current fixes, but a combination Buildroot has not tested on this board, so the first boot
+      is riskier.
+    - The standard Pi kernel settings with only the docs' list turned off: roughly 800 extra modules (drivers,
+      filesystems and codecs) would still be built in.
+    - Review each input's source changes now, not only its hash.
+
+38. **Building, checking and delivering the image** (BP:320, :336; PF:162-165)
+    Recommended:
+    - (a) A separate CI workflow, "Entropy Pi image", builds the image twice on two fresh machines and fails unless the
+      two copies are identical. It runs on every PR and push that changes Entropy, weekly, and by hand after merge.
+    - (b) It is not one of your 14 required checks, so on its own it cannot block a merge, and its scan of the finished
+      image can fail while all 14 pass. The rule instead: no PR that changes the image merges without a green image run
+      on its final commit, recorded in Review. The required checks still scan the firmware program on every PR.
+    - (c) Approve one more GitHub action, `actions/upload-artifact` v7.0.1, pinned by its commit and used only to hand
+      you the image. You download it while signed in to GitHub. It is kept 14 days, and any commit can be rebuilt after
+      that.
+    - (d) Before an image is offered for a ceremony, CI unpacks it and checks everything that ships: no test markers or
+      test keys, no unexpected randomness, no shell or login programs, exactly the reviewed files and kernel options,
+      and the exact firmware program. CI also checks that both workflows keep their security settings.
+    - (e) The image is built directly on GitHub's machines for now. The pinned build container PF:162 promises, and
+      rebuilding in clean containers, come with M7's outside reproduction; PF:162-165 change to say so.
+
+    Otherwise:
+    - Make the image workflow a required check now (a ruleset change): every Entropy PR then waits for it. How long is
+      unmeasured until the first image run; I estimate 1-2 hours, for a full Buildroot, kernel and Rust build on one of
+      GitHub's 4-core machines (each build is stopped after 3 hours).
+    - Build locally with Docker Desktop (you would need to start it) instead of downloading.
+    - The pinned container now.
+
+39. **How the device behaves on hardware** (PF:63-65, :74, :82, :85, :100, :142-155)
+    Recommended:
+    - (a) A button press made before the current screen was fully drawn, or while the device was busy (starting up,
+      computing, reading or writing the stick), does nothing. The Pi Zero has one core, so such presses queue up and
+      could otherwise skip a privacy screen before you saw it. Presses before the commitment still feed the extra
+      randomness as today. PF:100 gains a sentence.
+    - (b) No background worker for long computations: with one core it would not be faster. Revisit if any wait exceeds
+      60 seconds.
+    - (c) If the hardware random number generator delivers nothing for 2 seconds, the device halts with "hwrng read
+      fault" instead of hanging. A stall deep inside Linux can still freeze the screen; either way no seed is made.
+    - (d) Step 4 keeps its 100 ms pace (about 2.4 seconds), and Snake keeps its speed. The test ceremony times it.
+    - (e) The firmware locks its memory so nothing can be written to disk; if that fails, it halts with "memory could not
+      be locked".
+    - (f) USB sticks: exactly one, formatted FAT32. Two sticks give "more than one USB stick is inserted", a
+      write-protected stick gives "mounted read-only" before anything is written, and exFAT or NTFS sticks give "could
+      not be mounted". A backup is only ever created as a new file, flushed, and read back fresh; a refused write never
+      touches files already on the stick. File dates show 1980-01-01, since the Pi has no clock.
+    - (g) At start-up the device fingerprints its own system: the first 16 characters of a SHA-256, shown on the boot
+      screen and in About, and published by CI with each image. It catches corruption, not a deliberate swap (dm-verity
+      would, an M7 candidate). It costs about a second at boot.
+
+    Otherwise: (a) deliver queued presses, as PF:100 reads today; (b) a worker with an animated wait screen now; (c)
+    blocking reads, which freeze the screen on a stall; (d) a slower pace, or a separate Snake timer; (f) refuse sticks
+    with no partition table, or take the first of several sticks; (g) no fingerprint, or dm-verity now.
+
+40. **Rule 8 and the doc edits** (CLAUDE.md:20, :65-67; PF:146; todo.md:5902)
+    Recommended, applied in their own commits with no code:
+    - (a) CLAUDE.md rule 8 gains this sentence: "Device and kernel interfaces are not files in this sense: the Pi
+      firmware also reads `/dev/hwrng`, its root partition (for the boot hash) and fixed entries under `/proc` and `/sys`
+      (the board and USB sticks), drives its GPIO and SPI device nodes, and mounts only the USB stick, at `/mnt/usb`.
+      pi-firmware.md's Process rules list every path, and a grep gate holds the firmware to that list."
+      - PF:146 gains "(device and kernel interfaces aside)".
+      - PF's Process rules list `/dev/hwrng`, `/dev/mmcblk0p2`, `/dev/gpiomem`, `/dev/gpiochip*`, `/dev/spidev0.0`,
+        `/proc/cpuinfo`, `/sys/firmware/devicetree/base/{compatible,model}`, `/sys/block/**` and the stick's
+        `/dev/sdX[1]`.
+    - (b) The PF:32-39 pin map gains "Display reset | 27" and "Backlight (active high) | 24", and: "The keys and joystick
+      switch to ground; config.txt sets their pull-ups and the firmware sets them again. MISO is not wired and the
+      firmware does not read the panel back, so a dead panel is not detected; only SPI write errors are display faults."
+    - (c) The edits that follow your other answers: PF:48 (Q37 (b)); PF:50, :127, :130 (Q35); PF:54, :82 (Q39 (g));
+      PF:62 and BP:71, :76 (Q36, Q37 (c)); PF:63-64 (kernel timestamps; the 2-second deadline, Q39 (c)); PF:74 (Q39 (e);
+      no swap, no crash dumps); PF:100 (Q39 (a)); PF:162-165 (Q38 (e)); BP:315 and design.md only as Q42 (b) decides.
+    - (d) Small fixes: PF:75's "before power-off" means at Finish; PF:151's "progress screen" becomes "wait screen";
+      PF:162-172 get `Entropy/pi/os`, `bitwilll/keepcrypt` and a macOS flashing line (`/dev/rdiskN`); design.md:278 puts
+      the birthday test in phase 1 while BP:297 puts it in M7 (the fix follows Q42 (b)).
+
+    Otherwise: change any wording; or keep rule 8 as it is and record device reads as a standing exception in todo.md.
+
+41. **The hardware test, and what is written down** (BP:294; rule 12; todo.md:3879; swb:200, :235)
+    Recommended:
+    - (a) Your hardware sessions (checklists H0-H5 in the plan): a boot-and-buttons check on the first image, with no
+      seed; later, on the final image, the same check, one full throwaway ceremony, the offline check and the wallet
+      imports.
+    - (b) The ceremony is Mixed mode, 12 words, choosing Skip at step 7, because no registry exists before M9. It is
+      never funded.
+    - (c) Only these go in the record: pass or fail, "matched" lines, wallet versions, stopwatch times, the camera model,
+      and the public values of the throwaway seed (Seal ID, fingerprint, first addresses). Never C, D, the rolls, the
+      words, a passphrase or the backup file.
+    - (d) If a fix after your ceremony changes the image, the boot check and the ceremony are repeated on the new image,
+      so the gate evidence always matches the code that merges.
+    - (e) No special developer image. If something cannot be fixed from your notes (a dark screen at first boot, the
+      account QR unreadable by a close, focused camera, or Sparrow refusing the QR type), I stop and ask before building
+      any fallback.
+
+    Otherwise: record yes or no only; or a developer image with a serial console now, which needs a cable under the HAT
+    and a shell that the release scan must keep out.
+
+42. **What moves to later milestones** (todo.md:2696-2703, :5898; design.md:166, :198; BP:315)
+    (a) Measurements M3 passed to M4. Recommended:
+    - snapshot verification time and memory move to M9, because release images cannot load snapshots before the registry
+      key exists;
+    - scrypt's exact peak and locked memory move to M8's bench image; in M4, "a backup completes with memory locked"
+      stands in;
+    - the hardware random number generator's measured rate moves to M8's entropy lab; M4 records step 4's time;
+    - a deliberate crash on hardware moves to M8's bench image; M4 proves the crash path in tests.
+
+    Otherwise: a bench image in M4 to measure them now (a new crate and a new marker).
+
+    (b) The birthday test on the Pi. design.md:198 generates about 1,000,000 device-leg values "across process restarts
+    and reboots with dice fixed", and design.md:166 checks cold-boot data for state that repeats across reboots; BP:315
+    lists the test as nightly for "Core, Pi". Recommended: keep the reboots. M7's nightly job covers core; the reboot
+    part runs on M8's bench image, the only setup that can reboot a Pi automatically; design.md stays as it is, and
+    BP:315's row gains "(reboots: M8 bench image)".
+
+    Otherwise: core only, with design.md:166 and :198 edited to drop reboots.
+
+43. **Housekeeping**
+    (a) Braille Tetris on the Pi (open since M3, Q27 (c)). Recommended: after M4, with or after the phones, so M4 stays
+    the hardware milestone. Otherwise: in M4, or right after it.
+
+    (b) Recommended: the version stays `0.0.0` until M7 sets release numbering; the image is `keepcrypt-pi-0.0.0.img`,
+    identified by its CI run, commit and fingerprint. Otherwise: 0.4.0 now, or the commit in the file name.
+
+    (c) `Entropy/1.txt` has been tracked since 940892b and holds "here". Recommended: remove it in commit 2. Otherwise:
+    keep it.
+
+    (d) `.github/CODEOWNERS:7-9` says main's branch protection requires two approving reviews, but the ruleset requires
+    none (todo.md:7180), so BP:278's two approvals for core/, ffi/ and pi/os/ are unmet while you are the only maintainer
+    (todo.md:322). Recommended: correct the comment to describe the actual setting, in its own commit for your review;
+    each gate report keeps noting the gap. Otherwise: leave it until a second maintainer joins.
+
+    (e) M3's low item on CLAUDE.md's capture_set comment is fixed in the Commands commit; index.html's placeholders wait
+    for the next capture change. No answer needed unless you want otherwise.
+
+### Raised by the owner's screen request (Q44-Q50, answered 2026-10-14)
+The owner's request (2026-10-14): "currently its 1.3" screen but do give options for various waveshare screen sizes."
+After the options memo, the owner answered "approve all" on 2026-10-14: every recommendation below is decided, and
+"Otherwise" is not taken. They are applied in commit 1d, with no code: group 5's panel profiles, group 10's Display line,
+group 16's variant HAT item, H1a's panel line, commit 7, two Verification items and the M4b plan under M4's "Deferred".
+The memo's A4, which Q44 cites, is the risk that a late-model HAT looks washed out or colour-inverted with the approved
+settings (group 16's Q50 item; [S36]).
+
+Each question starts with what I recommend, then says what changes if you choose otherwise. "As recommended" is a full
+answer.
+- Q44 is needed before commit 7.
+- Q50 matters only if H1a shows a problem with your HAT. Answering it now avoids a stop at H1a.
+- The others are needed before M4b starts and do not hold up M4.
+
+44. **The display driver in M4**
+    Recommended:
+    - M4 supports only the 1.3-inch HAT, and its gate does not change.
+    - The display driver (commit 7) keeps everything specific to a screen as one block of data: its start-up settings,
+      its orientation byte, its size, where our 240×240 picture sits on it, and its bus speed. The HAT is the only
+      block.
+    - The HAT's start-up bytes stay exactly as approved. The cost is about 40 lines and four tests, including checks
+      that no block can skip part of the crash wipe or send a command the driver does not allow.
+    - A later screen is then a new block of data with its tests, not a new driver. A HAT that needs different colour
+      settings (A4) gets its own block without touching the approved one.
+
+    Otherwise: write the driver for the HAT alone, as approved, and reshape it when a second screen is added.
+
+45. **Which other screens to offer**
+    Recommended:
+    - the 1.3-inch and 1.54-inch LCD modules, which should run the HAT's image unchanged when wired to the HAT's pins;
+    - the 2-inch LCD module (240×320), with one new block of settings;
+    - not now:
+      - the 2.4-inch. It has a different controller, so its block carries that controller's own start-up table, which
+        exists only in a Waveshare download;
+      - the 1.69-inch, whose rounded corners may clip the picture, and whose table is in a second download;
+      - revisit both after the 2-inch works;
+    - never: anything narrower than 240 pixels (the 1.44-inch HAT, and the 0.96, 1.14, 1.47, 1.8 and 1.9-inch modules),
+      the round 1.28-inch, OLEDs, e-paper, and the boards whose keys sit on our display pins.
+
+    Otherwise:
+    - (i) also add the 2.4-inch and the 1.69-inch in M4b;
+    - (ii) add the 1.44-inch HAT, because it plugs straight on with the same keys. The cost:
+      - all 62 screens laid out again for 128×128;
+      - every capture redone and reviewed again;
+      - the descriptor QR split into two codes, which changes the watch-only format in seal-watchonly-braille.md;
+    - (iii) add the 3.5-inch (F) or (G) boards: bigger, but 5 V, no keys, and a third controller.
+
+46. **How a bigger screen shows the picture**
+    Recommended: every screen shows the same 240×240 picture, pixel for pixel, centred, with the rest black.
+    - Nothing in the screens, their tests or your approved captures changes.
+    - The bigger pixels make text and QR codes physically larger: a QR module is 0.38 mm on the 2-inch, against 0.29 mm
+      on the HAT.
+
+    Otherwise: layouts designed for each resolution. Each comes with its own capture set (about 11,700 images) for you
+    to review again, and the QR codes would not grow on any screen 240 pixels wide.
+
+47. **How a screen is chosen**
+    Recommended: one image per screen type, chosen when CI builds it.
+    - The file name says which screen type it is for, for example `keepcrypt-pi-0.0.0-st7789-240x320.img`. You flash
+      the one for your screen.
+    - The HAT's image becomes `keepcrypt-pi-0.0.0-st7789-240x240.img`. Q43 (b) had named it `keepcrypt-pi-0.0.0.img`.
+    - Each image holds only its own screen's settings, and has its own fingerprint and its own pair of identical builds.
+    - A missing or mistyped screen name stops the build. CI also checks that each screen type's program differs from
+      the others, which proves the name really reached the compiler.
+    - Rule 8 and the crash-path start-up lines stay as approved.
+    - CI builds only the HAT image per PR, as M4 does. The other images are built twice each: weekly, whenever the
+      display driver or the OS image changes, and for releases.
+
+    Otherwise:
+    - (b) One firmware program holding every screen's settings, with each image naming its screen on its start-up line.
+      CI is cheaper, but every image carries every screen's code, and Q35's start-up lines change.
+    - (c) One image for every screen, with the screen named in `cmdline.txt` on the card's boot partition. You get one
+      download, but:
+      - rule 8's new sentence must also allow `/proc/cmdline`;
+      - the setting sits outside the fingerprint, on the partition macOS may write to;
+      - a wrong edit can stop the card booting.
+    - (d) One image for every screen, chosen by a wire: module builds connect one spare pin to ground. There is no
+      setting, but a loose wire picks the wrong screen.
+    - (e) A key held at power-on (possible, not recommended). It needs no picture, but with no saved setting you hold
+      it on every boot and a slip silently picks the default. It also needs every screen's settings in every image, and
+      an exception to the approved rule that presses during start-up do nothing.
+
+    Not possible:
+    - a setting saved on the card (rule 8);
+    - detecting the screen (the panels cannot be read back).
+
+48. **Keys and wiring for screens without keys**
+    Recommended: one pin map for every screen.
+    - A module is wired exactly like the HAT: DC to BCM 25, reset to BCM 27, chip select to CE0, and backlight to
+      BCM 24 (header pin 18), not to BCM 18 as Waveshare's guide shows.
+    - The keys are a 5-way joystick switch and three push buttons, each wired from one of the HAT's eight key pins to
+      ground.
+    - The joystick goes left of the screen and KEY1 to KEY3 top to bottom on the right, so the footer's key names
+      match.
+    - Every image then drives the same pins and uses the same config.txt, so flashing the wrong image can never drive a
+      pin that is wired as a key.
+
+    Otherwise: Waveshare's wiring, with the backlight on BCM 18. Each screen's settings then include pins, config.txt
+    differs per image, and a test must keep display pins off key pins.
+
+49. **Testing, timing and sources**
+    Recommended:
+    - (a) A screen is offered only after a short check on real hardware with its exact image. That check is the new
+      checklist H6:
+      - boot and fingerprint;
+      - picture upright, true colours, edges not cut off;
+      - all 8 keys;
+      - the account QR scanned by Sparrow.
+
+      Everything else runs in CI: on every PR for the HAT, and for the other screens whenever their code changes,
+      weekly and for releases. That covers the start-up bytes against Waveshare's code, the picture placement and the
+      wipe size. A screen nobody has checked is not built into release images and is not listed as supported.
+    - (b) You buy the screens you want offered:
+      - the 1.54-inch module (about $9.49) and the 2-inch module (about $10.99), both listed on Waveshare's site on
+        2026-10-14;
+      - a 5-way joystick switch, three push buttons and jumper wires;
+      - optionally the 1.3-inch module ($9.49). It uses the HAT's panel, so it is not needed.
+    - (c) The work comes as a short step, M4b, on its own branch right after you approve the M4 gate.
+      - Its own small gate is H6 on each new screen, plus two identical builds of each new image.
+      - M4's gate does not change.
+    - (d) In M4b, the lead may download one file from Waveshare, `LCD_Module_RPI_code.zip`, the Raspberry Pi code for
+      the 1.3, 1.54, 2 and 2.4-inch modules. The lead will ask you first, giving its size. The modules' settings are
+      then checked against Waveshare's own module code rather than its Pico-board code.
+
+    Otherwise:
+    - (a) offer unchecked screens marked "untested";
+    - (c) fold the work into M7's releases, or wait until a builder asks;
+    - (d) no download: the Pico-board code stays the stand-in, H6 is the only confirmation, and the 2.4-inch and
+      1.69-inch cannot be added.
+
+50. **If your HAT turns out to be a variant (only if H1a shows washed-out or inverted colours)**
+    Recommended:
+    - The approved HAT settings stay unchanged, for every other 1.3-inch HAT.
+    - Your unit gets a second settings block with the values bring-up confirms on it. The M4 image uses that block, so
+      the gate is tested on exactly what you see. M4 still builds one image.
+    - Inverted colours: the second block is the approved one with inversion off.
+    - Washed-out greys: the values start from the ones Waveshare gave SeedSigner and may change up to six settings. The
+      lead records each value tried and where it came from.
+    - The image for the other kind of HAT comes in M4b and is offered only after someone checks it on that kind of HAT.
+
+    Otherwise:
+    - (i) M4 builds both HAT images. That pulls M4b's per-screen selection (B3 and part of B4) into M4 and adds two
+      image builds to every PR. You could check only one of the two images.
+    - (ii) If text is readable and the QR codes scan, accept the washed-out look in M4 and leave the second block to
+      M4b.
+
+### Raised by stage A's review (Q51, rule 8's path list; answered 2026-10-14)
+The owner answered "Yes" on 2026-10-14: the recommendation below is decided. Commits 10c (PF:81, with this record) and
+10d (CLAUDE.md rule 8) apply it, and commit 12 (group 11's path-literal rule) no longer waits.
+
+51. **Rule 8's path list leaves reads out** (CLAUDE.md rule 8; PF:81)
+    - Rule 8's sentence (commit 3, ed15bd2) and PF:81 (commit 2, a7a91cc) say the path list is complete and the paths
+      fixed.
+    - Stage A's review found reads the list leaves out:
+      - the dynamic loader's own files;
+      - glibc's `/proc/self/maps` before `main`;
+      - `/dev/null` if a standard fd is closed;
+      - rppal's `/dev/mem` attempt, which `CONFIG_DEVMEM=n` makes fail (the rppal review note under M4's "New
+        dependencies").
+    - The list also holds glob patterns (`/dev/gpiochip*`, `/sys/firmware/devicetree/base/{compatible,model}`,
+      `/sys/block/**`, `/dev/sdX1`).
+
+    Recommended:
+    - PF:81 lists these reads too, says the grep gate covers the paths our code and rppal name, and calls the globs
+      patterns.
+    - Rule 8's "fixed entries under `/proc` and `/sys`" becomes "fixed entries and patterns under `/proc` and `/sys`".
+
+### Raised by stage C's CI (Q52, std's getrandom statics on the Pi target; decided 2026-10-15)
+Decided by the lead on 2026-10-15 under the owner's standing instruction of that day ("dont ask me further, go ahead
+automatically"); commit 13b applies it.
+
+52. **std's getrandom statics in the Pi binaries** (M4 group 12, std's random-key path)
+    - CI run 38652814808 at 8484278, job "cross (arm-unknown-linux-gnueabihf)": the StdRandom rule flags three std
+      data symbols in both `release_probe` and `keepcrypt-pi` (six hits): `std::sys::random::linux::getrandom::DEVICE`,
+      `...::GETRANDOM_AVAILABLE (.0)` and `...::GRND_INSECURE_AVAILABLE (.0)`.
+    - Cause: LLVM's global-merge pass packs the three statics into std's 24-byte `.data..L_MergedGlobals` block with
+      `std::sys::thread_local::guard::key::enable::DTORS` and `__dso_handle`. Every binary on this target uses that
+      block through `std::sys::thread_local::destructors::linux_like::register`, so `--gc-sections` keeps the block but
+      drops every function that reads the three statics. Neither binary holds the function
+      `std::sys::random::linux::getrandom`, `hashmap_random_keys`, `SystemRng` or `/dev/urandom`; no crate uses the
+      path, and the bytes were already there in M3.
+
+    Decided:
+    - On `*-linux-gnueabihf` only, and only in object or linked files (never archives), the scan lets exactly these
+      three names through when `llvm-nm -C -P --defined-only` types them `d` (local data) and nothing else.
+    - The reader function (type `t`), `hashmap_random_keys`, the `RandomState` symbols and the `/dev/urandom` and
+      `/dev/random` bytes stay hits. Commit 17's `--image` scan needs the same allowance.
 
 ### Later
 - [ ] Release signing: minisign or GPG, and who holds the key offline? (M7)
@@ -6372,6 +6758,3511 @@ Each commit's proof runs at that commit; scenarios grow with the screens they co
 
 Review fixes are listed as N.b entries under the commit they amend.
 
+## M4: Pi hardware and OS image (`pi/app` device HAL, `pi/os`)
+
+Status (2026-10-14): the owner approved this plan and every recommendation of Q35-Q43 ("approve all", 2026-10-14).
+The owner then approved Q44-Q50 (other Waveshare screens, "approve all", 2026-10-14): group 5's panel driver keeps each
+screen's settings as one profile, and M4b, under "Deferred", adds more screens after the M4 gate. The owner answered Q51
+(rule 8's path list) "Yes" on 2026-10-14: commits 10c and 10d apply it, and commit 12 no longer waits. Code follows
+"Commit order on `m4-pi-hardware`" below, stage by stage.
+
+### Inputs from M3 (folded into the plan below)
+
+**Starting point**
+- `m4-pi-hardware` was cut from main at f967dd4, the merge of M3 (PR #6, 2026-10-14). HEAD, main and origin/main all point
+  at that commit, and the tree is clean.
+- Rules are cited from the clone's `Entropy/CLAUDE.md`. The copy injected from the `Entropy-Keep Crypt/` folder is stale:
+  - its rule 1 lacks `game_random` (clone CLAUDE.md:47-49);
+  - its rule 10 lacks the registry and simulator markers (:75-81);
+  - its Commands lack the M3 lines (:124-177).
+- The gate (build-plan.md:294): "Full ceremony on a Pi Zero v1.3, checked with the offline verifier; two clean builds give
+  the same image hash; the watch-only QR imports into Sparrow and Bitcoin Core with the same first address".
+- Deliverables (same line): ST7789 and button drivers, hwrng reader, Buildroot image, USB export.
+- Matrix rows that bind the Pi image (build-plan.md:315-327):
+  - Birthday collision (nightly; Q42 (b));
+  - Symbol and stub-marker scan (BP:316's layer is "Release artifacts", not the Pi by name);
+  - Reproducible build;
+  - Full ceremony with offline verification;
+  - Duplicate-seed drill (needs M9's registry);
+  - Watch-only import;
+  - Metal read-back drill.
+
+  The last four run "before every release".
+
+**What pi/app gives M4**
+- `pi/app/src/main.rs:1-5` holds a doc line, `#![forbid(unsafe_code)]` and `fn main() {}`.
+- The HAL traits (hal.rs:200-266):
+  - `Display::present(&Frame, &Screen)`. The device ignores `screen`.
+  - `Buttons::next_event(deadline_ns)` returns a debounced press or a `Tick`. An early `Tick` is allowed.
+  - `Clock::now_ns() -> u64` cannot fail and shares the key timestamps' base.
+  - `HwRng::read_block(&mut [u8; 64])` gives exactly 64 bytes or an error.
+  - `Usb`: each call mounts and unmounts; listings and reads are read-only; `write_backup` only creates a new file; every
+    implementation keeps its own record of the file it last wrote (hal.rs:226-233); removal is limited to "whatever part
+    of the file it created" (hal.rs:245-247).
+  - `Hal { build_info }`.
+- `HalError` (hal.rs:34-66) has 15 variants, each with fixed text (`text`, :70-88). `halts()` (:92-108) is true for
+  Display, Buttons and HwRng only.
+- `BuildInfo { version, rootfs: String, simulator }` (hal.rs:188-197). `App::new` reads it once (app.rs:416-417). The
+  simulator shows `"sim"`. The workspace version is `0.0.0` (Cargo.toml:8). The boot screen (screens.rs:512) and About
+  (:581) both print "Root filesystem {}".
+- `App` (app.rs:395-412) has `hal` as its first field, so `hal` is dropped first when a panic unwinds. `run() -> !`
+  (:475-480) is documented as "M4's main".
+- Boot (app.rs:503-516): boot screen, `self_test()`, 16 × `read_block` into a `Zeroizing` buffer, `hwrng_boot_test`,
+  Home.
+- `halt` (app.rs:693-708) wipes to `Stage::Halted`, presents a black frame, then the stop screen. A Display fault there is
+  tolerated, and the panel then keeps whatever it last received. `wipe` (:676-681) always presents `screens::blank()`.
+- Step 4:
+  - `BLOCK_TICK_NS = 100 ms`, with the comment "M4 sets the device's from the measured hwrng rate" (app.rs:64-66).
+  - `tick` (:568-574) sets the next block time before it reads, so a slow read only delays the next read.
+  - Snake moves one cell per block and closes when the quota is met (`play`, :612-627).
+- Blocking calls behind `wait()` (app.rs:668-672; Q33 (k), todo.md:892-893):
+  - `begin` (:713);
+  - snapshot verification (app/usb.rs:131);
+  - backup open (usb.rs:173, with `CheckedBackup::seal` at :176);
+  - backup write (usb.rs:209).
+
+  Calls that block with no wait screen: `finish` at app.rs:999; `watch_only` at app/ready.rs:116 (the stored seed;
+  BIP32 and descriptor work only) and :325 (PBKDF2 for the passphrase);
+  `hal.list` at app/usb.rs:71 and `hal.read` at :125 (each mounts, reads and unmounts the stick; :148 then enters the
+  Protected `BackupCheckEntry`).
+- `key()` (app.rs:545-566) resets the idle timer, hands the press to `add_extra` while the stage is `Collecting`, then
+  checks the key map; a key on a cover or warning only removes it (:561-564). Nothing drops presses made while the loop
+  was busy; on hardware the kernel queues them for the next screen. input.rs:4-5 says "no type-ahead filter".
+- `input::Debouncer` (input.rs:109-175) is pure and level-based. `edge` (:118-135) records each edge's level, so a lost
+  edge costs at most the next press of that key. Its doc says M4's GPIO driver reuses it (input.rs:6-7).
+  - Keys and BCM pins: input.rs:27-48, as doc comments only; there is no pin map in code (group 4 adds one).
+  - `DEBOUNCE_NS` 20 ms, `COVER_NS` 30 s, `WARN_NS` 9 min, `WIPE_NS` 10 min (:18-25); the cover applies on Protected
+    screens, the warning and wipe on any screen while secrets are held (:217-224).
+- `Frame` (ui/frame.rs:30) is 240×240 RGB565 `u16`, row-major, with `raw()` at :62. `Painter::present` clears the frame
+  whether or not the present succeeds (ui/render.rs:123-136).
+- The read-back names a mirror misread, a should-be-blank, a should-have-letter and a wrong letter (M3 Verification,
+  todo.md:5950-5955, the sentence at :5953, its M3 Review proof at :5956; drill at :5172-5184, step 6 at :5179-5184).
+- Step 13 is `RegisterOffer` with "Show registration QR" and "Skip" (screens.rs:172-178, :220).
+- pi/sim embeds the simulator marker at pi/sim/src/lib.rs:38. stick.rs:14-17 says "The device's read-only mounts are
+  M4's to prove."
+
+**Core facts M4 relies on**
+- `hwrng_boot_test` takes exactly 1,024 samples. `add_hw_samples` works for Pi Mixed sessions only. `HW_BYTES_NEEDED` is
+  1,536. `Platform::Pi` is at core/src/session.rs:89-94.
+- `Session<S>` is a `Box<Inner>` plus `PhantomData<S>` (session.rs:140-143). A compile probe against the M3 rlibs showed
+  every state is `Send` and `Session<Ready>` is `Sync`. Nothing asserts this yet.
+- A backup is two scrypt runs at log2 N 18, about 256 MiB each (`WRITE_WORK_FACTOR`, core/src/backup/age.rs:60-62; the
+  reader's cap, `MAX_WORK_FACTOR` at :65, is also 18). The host takes 0.61-0.62 s for both (todo.md:1403-1405).
+- Release builds pin no registry key, so snapshots are refused with `NoRegistryKey` until M9
+  (core/src/seal/registry_key.rs:1-5).
+- core/src/kat.rs:756-759 embeds three files from `vectors/age/scrypt/` (`scrypt`, `armor_scrypt`,
+  `scrypt_work_factor_23`) with `include_bytes!`, so `vectors/` is an input of the shipped binary.
+
+**Gates that bind the new code**
+- `#![forbid(unsafe_code)]` is checked as an exact line in core/src/lib.rs and in pi/app's lib.rs and main.rs
+  (scripts/banned-api-check.sh:745-753).
+- pi/app/clippy.toml is identical to core's and is cmp-checked. It bans:
+  - the `unwrap_or*`, `map_or*`, `ok`, `err` and `or*` family;
+  - `mem::forget`;
+  - `std::panic::catch_unwind` (:27);
+  - `stdout` and `stderr`.
+- pi/app/Cargo.toml's pinned `[lints]` forbid `unused_must_use`, `disallowed_methods`, `let_underscore_must_use`, the
+  print lints and `dbg_macro`, and deny `allow_attributes` (so a lint exception is a reasoned `#[expect]`) (:26-45).
+  pi/app has no `[dev-dependencies]` table (canaries.sh appends one to a copy).
+- banned-api-check.sh (:722-743):
+  - `getrandom` may be named only in core/src/source.
+  - std's OS-seeded hashing is banned in `pi/app/src/*.rs`, subdirectories included, since `*` matches `/`.
+  - The Shell category applies.
+  - FailOpen covers `pi/app/*.rs`.
+  - `/dev/hwrng` is allowed (:60). `/dev/urandom` and `/dev/random` are hits anywhere, including a future `pi/os/`.
+  - A symlink to a directory fails the gate (:684-688), so Buildroot's trees must live outside `Entropy/`.
+  - No string literal in pi/app/src starts with `/` today.
+- The artifact scan's markers (:943) are the three `*_DO_NOT_SHIP` strings. Every linked file on `*-linux-gnueabihf` must
+  import `getrandom` (OSImport, :1065-1071). Its RNG rules cover libc RNG imports, the 13 RNG crates and getrandom's
+  fallback modules (:1010-1075); nothing catches std's own random-key path. Its fixtures are objects compiled from
+  scripts/testdata/artifact/fixture.rs at selftest time (:1112-1148; the compile loop is :1136-1148).
+- check-path-deps.sh:49 pins the members to exactly core, ffi, pi/app and pi/sim, and fails on any `.cargo/config*`.
+- canaries.sh: `want_checks=61` (:1041); the graph pin "getrandom's only dependent is keepcrypt-core" (:742-789); the
+  `[bans]`, `[lints]` and manifest pins.
+- deny.toml: `all-features = true` (:14) reaches workspace members only, not dependencies' optional features.
+  `unmaintained = "none"` (:27).
+- supply-chain/config.toml: libc 0.2.189 is exempted at safe-to-deploy (:198-200); windows-sys 0.61.2 only at safe-to-run
+  (:331-333).
+- No gate checks workflow hardening; it lives only in the comment at .github/workflows/entropy-ci.yml:15-18.
+
+**CI** (`.github/workflows/entropy-ci.yml`)
+- 14 required check runs (ruleset 24833307), whose names must not change: changes, lint, test, supply-chain, gates,
+  verifier (python 3.9), coverage, age-interop, and cross × 6.
+- Hardening allows only `actions/checkout` and `actions/cache`, pinned by SHA (:72, :114). Expressions reach scripts only
+  through `env:` and `with:`.
+- On `pull_request`, checkout gives GitHub's temporary merge commit (:56-57) [S32].
+- The cross Pi leg:
+  - uses Ubuntu's `gcc-arm-linux-gnueabihf`, commented "Stand-in until M4 … scanned, never run" (:478-479);
+  - builds core's rlib, `release_probe` and pi/app's release rlib, and scans them (:527-549);
+  - says "No keepcrypt-pi binary is linked or scanned before M4" (:415).
+- The getrandom cfg is set per target through `CARGO_TARGET_<T>_RUSTFLAGS`, never workflow-wide (:504-511; test job
+  :173).
+- `gates` took 8m26s-8m39s of its 10-minute budget (todo.md:8616-8617). Q31 (f) pre-approved 12 minutes
+  (todo.md:811-812).
+
+**Carried into M4**
+- M3's "Deferred, with their milestone" list (todo.md:5888-5902):
+  - rppal GPIO and the ST7789 driver, with RST and backlight checked against the schematic;
+  - the hwrng reader, and the step 4 Tick from its measured rate;
+  - real mount, write, sync and unmount at `/mnt/usb`;
+  - `mlockall`, and where any `unsafe` lives (ask first; Q31 (i), todo.md:821);
+  - clearing the ST7789's memory on every wipe;
+  - the crash path;
+  - Buildroot, the reproducible hash, linking and scanning a release `keepcrypt-pi`, and the image's no-simulator check
+    (pi-firmware.md:80);
+  - KAT, snapshot and scrypt timing, peak memory, and the worker-thread decision with a `Session: Send` assertion;
+  - QR scans at 3 px, the Sparrow and Bitcoin Core import, and the getrandom cfg in Buildroot;
+  - a real-Pi `verify.py mixed` run;
+  - rule 8's wording on device reads.
+- Earlier carry-overs:
+  - M1's measurement list (todo.md:2696-2703);
+  - "Confirm [v1 `crypto-account`] against Sparrow at M4" (todo.md:73);
+  - Q8's getrandom cfg, "Buildroot in M4" (todo.md:238-245);
+  - "transcript under Review" (todo.md:3879);
+  - "M4 adds … mipidsi 0.10.0, rppal 0.22.1 …, embedded-hal 1.0.0 and spin_sleep 1.3.3", each with its own approval
+    (todo.md:6215-6216).
+- Open items (todo.md:8610-8623):
+  - Tetris on the Pi (owner question, pending);
+  - Python `random` reached through a dotted import (low);
+  - Snake tied to the hwrng block (low);
+  - the gates budget (low);
+  - owner item 13 (M7);
+  - index.html's placeholders (low);
+  - the CLAUDE.md capture_set comment (low).
+
+**Found while planning (2026-10-14; read-only web and crates.io lookups, nothing downloaded or built)**
+- **rppal.**
+  - Its author archived the repository on 2025-07-01. 0.22.1 (2024-12-11) is the last release, and libc is its only
+    normal dependency [S1, S3].
+  - Its GPIO code maps `/dev/gpiomem` and falls back to `/dev/mem` [S2]. Raspberry Pi's gpiomem driver names its node
+    `gpiomem` for the legacy binding, or from the device tree's `chardev-name` for the new one [S26]; devtmpfs creates it
+    with no udev. At both Buildroot kernel pins, `bcm2708-rpi-zero` includes bcm270x-rpi.dtsi's legacy
+    `brcm,bcm2835-gpiomem` node, so the device file is `/dev/gpiomem` [S26]. H1a exercises it on the board.
+  - It identifies the board from `/proc/cpuinfo` and `/sys/firmware/devicetree/base/{compatible,model}` [S2].
+  - Its edge events never set the REALTIME clock flag, so they carry the kernel's default `CLOCK_MONOTONIC` timestamps.
+    `Event.seqno` is the kernel's per-line sequence number [S2].
+- **mipidsi 0.10.0.** Its ST7789 init sends only SLPOUT, MADCTL, INVON, COLMOD, NORON and DISPON. Adding Waveshare's
+  power, porch and gamma table would need its `unsafe fn dcs`, which our forbid line blocks, or our own `Model`
+  implementation, which is safe code but leaves us maintaining the init sequence anyway [S4].
+- **The Waveshare HAT** [S5, S6]:
+  - RST is BCM 27. The backlight is BCM 24, active high, through an S8050 transistor.
+  - The keys and joystick switch to ground, and the board has no pull-ups.
+  - MISO is not wired and the firmware does not read the panel back, so a dead panel is not detected; only SPI write
+    errors are display faults.
+  - SPI runs in mode 0.
+  - pi-firmware.md:32-39 listed neither RST nor BL; commit 2 (a7a91cc) adds both (PF:40-41).
+- **The ST7789 and spidev.**
+  - spidev takes at most 4,096 bytes per write by default (`bufsiz`) [S24], so a 115,200-byte frame needs 29 writes.
+  - The controller has 240×320 of frame memory. MADCTL `0x70` sets MV (rows and columns swapped), so the address space
+    becomes 320 columns × 240 rows: CASET 0-0x13F, RASET 0-0xEF [S31].
+  - The ST7789 keeps its frame memory through a hardware or software reset (p.202, RAMWR's defaults: "H/W Reset Contents
+    of memory is not cleared"; p.163: SWRESET leaves frame memory unaffected); it is random only at power-on [S31]. The
+    plan blanks the whole memory.
+- **Buildroot.**
+  - It ships Rust 1.97.1 in 2026.08, 1.96.1 in 2026.05.3 and 1.82.0 in 2025.02.18; only master has 1.98.1 [S8]. The
+    workspace sets `rust-version = "1.98.1"` (Cargo.toml:10), so Buildroot's cargo package type cannot build it. The plan
+    builds with rustup's cargo either way, so Buildroot's Rust does not separate one release from another.
+  - That cargo infrastructure would also force a nightly channel override, set overflow checks through the environment,
+    and add `-Wl,--allow-multiple-definition` on ARM [S9].
+  - By default Buildroot fully strips executables and shared libraries in the target tree, except `ld-*.so*` (for
+    example `ld-linux-armhf.so.3`) and `libpthread*.so*`, which get only `--strip-debug` and keep their `.symtab` [S10].
+    The plan's `.symtab` rule applies to `keepcrypt-pi` only, so the scan still works.
+  - `BR2_REPRODUCIBLE` is experimental and needs the same `O=` path in both builds [S11].
+  - 2026.08's `raspberrypi0_defconfig` pins raspberrypi/linux 21b410140c47 (6.12.61, 2025-12-09), the
+    `bcm2708-rpi-zero` device tree, Bootlin's ARMv6 glibc toolchain and rpi-firmware's default variant. Its board files
+    add an HDMI getty (post-build.sh) and serial and tty1 consoles (cmdline.txt) [S12]. 2025.02.18's pins 576cc10e1ed5
+    (6.6.28).
+  - Bootlin toolchains run on x86_64 hosts only [S13].
+- **The firmware files.** `gpu_mem=16` makes the VideoCore firmware load `start_cd.elf` and `fixup_cd.dat`, which
+  Buildroot installs only with rpi-firmware's cut-down variant; start and fixup files are a matched pair, and a mismatch
+  stops the board from booting [S20, S28]. raspberrypi0_defconfig is tested with the default variant (`start.elf`,
+  `fixup.dat`) and its board's `config_default.txt`, which sets `gpu_mem_256=100`, `gpu_mem_512=100` and
+  `gpu_mem_1024=100` [S12]. The plan keeps that tested combination: the same three `gpu_mem` lines and the default
+  variant. The 512 MB Pi Zero gives the GPU 100 MB, and scrypt's 256 MiB still fits in the about 412 MB left for Linux.
+- **The hwrng.**
+  - The 13 B/s regression (mainline 96cb9d055445, `hwrng_msleep(1000)`) and its fix b58a36008bfa (v6.7, `hwrng_yield`;
+    about 2,510 B/s on a Pi 3B+) are mainline changes [S14]. Raspberry Pi's downstream `bcm2835-rng.c`, which both
+    Buildroot Pi pins use, has its own bounded `usleep_range` retry loop and calls neither [S26]. So neither pin carries
+    the regression; the Pi Zero's actual rate is unmeasured until H2's step 4 stopwatch. (H2's 2.5 s matched the
+    tick's pace, so it gives only a lower bound of 64 bytes per 100 ms; the rate itself moves to M8, Q42 (a); 21c-b.)
+  - Linux credits the hwrng as full entropy (design.md:91), and its kthread feeds the CRNG [S15].
+  - `/dev/hwrng` honours `O_NONBLOCK`, returning `EAGAIN`, but `rng_dev_read` first takes the core's `reading_mutex`,
+    which the kthread holds during its own blocking read [S15]. The downstream driver's retries are bounded, so such a
+    wait ends when the driver gives up, not at a user-space deadline.
+- **The kernel config** (bcmrpi_defconfig, rpi-6.12.y [S16]; a saved copy has 1,250 `=m` lines and 360 `=y` lines):
+  - It builds `SPI_BCM2835`, `SPI_SPIDEV`, `RASPBERRYPI_GPIOMEM` and `SQUASHFS` as modules, and sets `NET=y`,
+    `USB_GADGET=y`, `ZSWAP=y`, `BPF_SYSCALL=y`, `USER_NS=y`, `MODULES=y`, `PARTITION_ADVANCED=y` and `MAC_PARTITION=y`.
+  - With `MODULES` off, Kconfig promotes every `m` to `y` [S27]. Turning modules off alone would therefore build all
+    1,250 modules into the kernel: USB serial, webcam, DVB and HID drivers, exFAT, NTFS, HFS+, Btrfs, XFS, ISO 9660, UDF,
+    FUSE, DRM, FB_TFT and more, many of which a device in the USB port would reach. Group 13 makes the config an
+    allow-list instead.
+  - vfat's default iocharset is iso8859-1 [S25], so `NLS_ISO8859_1=y` is required.
+- **BusyBox init** [S17]:
+  - It runs the SYSINIT entries, then the WAIT entries to completion, then the ONCE entries, then loops over RESPAWN.
+  - It runs any inittab command that contains a shell metacharacter (`=` included) through `/bin/sh -c`.
+  - With no `/etc/inittab`, it starts shells on the consoles.
+- **Reproducibility hazards with known fixes** [S18, S21, S29]:
+  - `mkdosfs --invariant`;
+  - a fixed genimage MBR disk signature;
+  - mksquashfs honours `SOURCE_DATE_EPOCH`; combining it with an absolute timestamp option (`-mkfs-time <time>`,
+    `-inode-time`/`-all-time <time>`, `-repro-time`) is fatal, while `-repro` and `-mkfs-time inode` are accepted;
+  - upstream mtools has honoured `SOURCE_DATE_EPOCH` since 4.0.20 (the Debian change was upstreamed; 4.0.49 reads it in
+    `getTimeNow()`) and writes local times, so the build sets `TZ=UTC`; genimage v20 calls `mcopy -sp` with no `-m`, so
+    partition-1 files get `SOURCE_DATE_EPOCH`;
+  - cargo's `trim-paths` is unstable in 1.98.1.
+- **GitHub.**
+  - Hosted runners are free for this public repo and allow 6 hours per job [S19].
+  - `workflow_dispatch` runs only workflows that exist on the default branch, so a new workflow runs before merge only
+    through `pull_request` [S32].
+  - `actions/upload-artifact` v7.0.1 is commit `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` (2026-04-10). v7.0.2
+    (2026-10-07) is still inside the cool-off [S19].
+- **std's random keys.** std's `hashmap_random_keys` (behind `RandomState`) reads the OS through getrandom and falls back
+  to `/dev/urandom`; a second OS read would break rule 1, and a dependency that builds a default `HashMap` would add no
+  new import.
+- **The Pi Zero v1.3 is single-core** (ARM1176JZF-S, `BR2_arm1176jzf_s` [S12]). A worker thread would keep the UI
+  responsive but would not make anything faster.
+- **The Seal ID on a Skip run.** It appears only in "Check a backup"'s result (pi/app/src/screens/usb.rs:104-111). The seal
+  card appears only after "Check now" (pi-firmware.md:93), and once a check starts there is no Skip (rule 6).
+- **A stray file.** `Entropy/1.txt` is tracked (commit 940892b; it contains "here").
+- **Two approvals.** BP:278 puts core/, ffi/ and pi/os/ under two approvals; the ruleset has
+  `required_approving_review_count 0` (todo.md:7180), todo.md:322 says each gate's Review notes the rule is unmet with one
+  maintainer, and `.github/CODEOWNERS:7-9` claims "required approving reviews = 2".
+
+**Local constraints**
+- macOS on Apple silicon with no ARM or Linux C cross compiler. secp256k1-sys stops any local Linux or ARM build, so
+  `cfg(target_os = "linux")` code is first compiled in CI: by the lint job on x86_64 Linux and the cross job on ARM. Pure
+  device code stays platform-independent and is tested on the Mac.
+- There is no qemu. The Docker daemon is off and starting it is the owner's call, so Buildroot runs in CI.
+- The owner holds the Pi Zero v1.3, the HAT, the sticks, the dice, Sparrow and Bitcoin Core. Every hardware step is an
+  owner checklist item (H0-H5).
+
+**lessons.md** (3 entries), and how M4 applies each:
+1. Computed numbers come from committed scripts that CI re-runs: the image hash, the rootfs prefix and the kernel config
+   come from committed scripts (`Makefile`, `rootfs-prefix.py`, `kconfig.sh`) that the image workflow and `gates` re-run.
+2. State the exact bytes of every hash input: the rootfs prefix rule is stated byte for byte, with a vector (group 9).
+3. The Pi has no clock: timers use `CLOCK_MONOTONIC` only, and FAT dates on the backup read 1980-01-01.
+
+**CODEOWNERS** (`.github/CODEOWNERS`) already lists `/Entropy/pi/os/` (:21), `/Entropy/pi/app/` (:23) and
+`/Entropy/pi/sim/` (:25). The new workflow falls under `/.github/`. No new line is needed. Its header comment (:7-9) is
+stale (Q43 (d)).
+
+### Plan
+
+**References and terms**
+- PF = pi-firmware.md, BP = build-plan.md, swb = seal-watchonly-braille.md, all in `docs/`. Also CLAUDE.md, lessons.md and
+  this file. Q35-Q43 are this milestone's questions, with Q44-Q50 (other Waveshare screens) and Q51 (rule 8's path
+  list).
+  - Line numbers into this file (`todo.md:N`) in this M4 section, its inputs included, and in Q35-Q43 are f967dd4's
+    (`git show f967dd4:Entropy/tasks/todo.md`), the file the plan was read from (1e). Lines before 1004 have not moved
+    since; from 1004 on, the questions inserted there and this section have moved them.
+- **Device code:** `pi/app/src/device/`, a module of the `keepcrypt-pi` binary, declared in main.rs. It is not part of the
+  library that pi/sim links.
+  - Its **pure parts** build on every host and are unit-tested on the Mac and in CI.
+  - Its **Linux glue** (`device/linux.rs` and `device/paths.rs`, `cfg(target_os = "linux")`) calls rppal, nix and device
+    files, and is compiled only in CI.
+  - Its **test files** are `device/**/tests.rs`, each declared `#[cfg(test)] mod tests;`.
+- **Stop mode:** `keepcrypt-pi --stopped`. BusyBox init starts it once after the firmware process ends for any reason
+  (Q35). It shows the stop screen until a power cycle and holds nothing.
+- **The fence:** the clock reading taken right after the latest present that showed a different screen, or right after
+  the latest call that can block, whichever is later. A press that began before the fence does nothing beyond feeding
+  `add_extra` while Collecting (Q39 (a)). For the fence, a screen is one `enter_page`, not one `ScreenId` (lead
+  decision, stage B's review, 2026-10-14): a different screen is the first present after any `enter_page` (3db333f,
+  6b), another page or note of the same id included, or a present of another id. That is the reading of Q39 (a) and
+  PF:105 (a screen that was not yet fully drawn) that drops a press queued behind any page or note change. A refusal
+  shown in place, with no `enter_page` and no blocking call, moves no fence; the app has one such refusal that can be
+  reached, and group 10's item closes it in commit 11.
+- **The image:** `keepcrypt-pi-0.0.0-st7789-240x240.img` (Q47; Q43 (b) had `keepcrypt-pi-0.0.0.img`), built from `pi/os`.
+- **The image workflow:** `.github/workflows/entropy-pi-image.yml`.
+- **The gate image:** the image the owner runs H1-H4 on. It is valid only if the image workflow's run at the final PR
+  head gives the same SHA-256.
+- **`KC_WORK`:** the build directory `/kc-work`. It is outside `Entropy/`, has no spaces, and has the same path in every
+  build.
+- **H0-H5:** the owner's hardware checklists below. H1a is the first boot check, on the first image the workflow builds.
+- "Halt", "throwaway run" and "kept Wiped" mean what they meant in M3.
+
+**Built into this plan (override any of them)**
+- **Scope is the gate plus M3's deferred list.** Out of scope: snapshots on release images (M9), signing and the SBOM
+  (M7), phase-2 sources (M8), and a dev or bench image (Q41 (e), Q42).
+- **One binary, one device module, no new workspace member** (Q36 (e)). The library pi/sim links has no hardware code.
+  rppal and nix are Linux-only target dependencies of keepcrypt-pi. The member pins, CODEOWNERS and the canaries' member
+  lists stay as they are.
+- **No `unsafe` in KeepCrypt code** (Q36 (d)). Both forbid lines stay. All unsafe code lives in rppal, nix, libc and std.
+- **Four new crates** (Q36 (a)):
+  - rppal `=0.22.1`, archived, with no features;
+  - nix `=0.31.3`, with features `fs`, `mman`, `mount`, `time`;
+  - bitflags 2.11.1, held at that version;
+  - cfg_aliases 0.2.2.
+
+  Our own ST7789 driver replaces mipidsi, embedded-hal and spin_sleep (Q36 (c)). `[[bans.features]]` pins the features
+  exactly.
+- **Crash path** (Q35):
+  - a silent panic hook;
+  - `panic = "unwind"` stays (Cargo.toml:18-21);
+  - the panel's `Drop` blanks all frame memory and turns the backlight off;
+  - inittab runs the firmware as a `wait` entry and stop mode as a `once` entry, with no respawn;
+  - `panic=0` on the kernel command line, so a kernel panic hangs instead of rebooting.
+
+  A crash, like power-off, forgets a pending 99-roll minimum.
+- **Fail closed on hardware** (rule 3; Q25):
+  - every driver fault maps to one fixed-text `HalError`;
+  - Display, Buttons, HwRng and the new MemoryLock, RootFs and Stopped halt;
+  - USB faults, including the new ManySticks, return to their screen;
+  - a 64-byte hwrng block that reads `EAGAIN` for 2 s halts (Q39 (c)); a wait inside the kernel driver can still block
+    the read, which stalls the screen and still yields no seed;
+  - no retries, defaults or fallbacks;
+  - `Clock::now_ns` has no error type, so a failed clock read panics, which ends in stop mode.
+- **The panel never shows a stale frame:**
+  - init blanks all of frame memory (320×240 under MV) before DISPON;
+  - the backlight comes on only after the first frame is drawn;
+  - every present writes the full window;
+  - every wipe already presents a black frame (app.rs:676-681);
+  - any SPI error turns the backlight off before the error returns;
+  - `Drop` blanks all frame memory and turns the backlight off;
+  - stop mode re-initialises the panel, which blanks it, before drawing the stop screen;
+  - the 4 KiB byte-swap buffer is zeroized after every present.
+- **Secrets** (rule 5):
+  - nothing is printed (silent hook, print lints, no console in the image);
+  - no `BufReader` on hwrng or stick reads;
+  - `mlockall(MCL_CURRENT | MCL_FUTURE)` before any secret exists;
+  - no swap, no core dumps, and freed pages are zeroed.
+- **Files** (rule 8, as amended by Q40):
+  - every path the firmware opens or mounts is a constant in `device/paths.rs`;
+  - file APIs appear only under `device/`;
+  - the only file creation is one `create_new` call in `device/usb.rs`;
+  - a refused write removes nothing it did not create;
+  - every listing and read uses a read-only mount, proven on a loop device in CI.
+- **Presses made before their screen was fully shown do nothing** (Q39 (a)): the fence above. Same-screen redraws (dice
+  entry, step 4 ticks, Snake) set no fence, so fast entry and Snake keep every press. There is no worker thread
+  (Q39 (b)).
+- **Step 4 keeps its 100 ms tick, and Snake its pace** (Q39 (d)). H2 times step 4 on the hardware.
+- **The image** (Q37):
+  - Buildroot 2026.08, with the pins its own `raspberrypi0_defconfig` boots on this board: kernel 21b410140c47, its
+    rpi-firmware (default variant, with `config_default.txt`'s `gpu_mem_256/512/1024=100`), and Bootlin's ARMv6 glibc
+    toolchain;
+  - a kernel config that is an allow-list: derived by a committed script, every built-in option reviewed once, and any
+    difference a CI failure (Q37 (b));
+  - BusyBox with only `init` and `mount`, and no shell;
+  - a read-only SquashFS root;
+  - `keepcrypt-pi` built by a generic package with the rustup-pinned cargo 1.98.1 (Q37 (c));
+  - `SOURCE_DATE_EPOCH` is a constant in `pi/os/pins.txt` and `TZ=UTC`, so equal trees give equal images whatever the
+    commit time.
+- **CI** (Q38). The 14 required names are unchanged.
+  - Per PR, in the required checks: the cross Pi leg links and scans `keepcrypt-pi`; `test` runs the loop-device USB test;
+    `gates` lints the committed OS config, the kernel config lists and both workflows' hardening, and runs
+    `rootfs-prefix.py --selftest`.
+  - A separate, non-required image workflow builds twice on fresh runners at the PR head commit, compares the hashes,
+    scans the unpacked image and uploads it. No PR that changes the image merges without a green image run at its final
+    head (Q38 (b)).
+- **Scans** (Q38 (d)): the image scan, the new gate rules, the workflow hardening check and the dotted Python `random` fix
+  are built in; `gates` may use the pre-approved 12 minutes, and past 12 the lead stops and re-plans.
+- **Evidence** (Q41):
+  - no dev or bench image in M4;
+  - H1a on the first image; then one throwaway Mixed 12-word ceremony on the gate image, taking Skip at step 7;
+  - stopwatch times;
+  - Review records only exit statuses, "matched" lines, versions, times, and the Public-screen values of the never-funded
+    seed.
+
+**0. Before code**
+- [x] Record the owner's answers to Q35-Q43, quoted with the date, under "Needed before M4 code".
+  Proof: the answers in this file.
+  Proof (M4 Review, 2026-10-16): fcbbd33 (1b) holds the owner's "approve all" of 2026-10-14 under "Needed before M4 code
+  (Q35-Q43, answered 2026-10-14)"; e6b151a (1d) adds Q44-Q50's and 440a656 (10c) Q51's.
+- [x] Baseline at f967dd4, pasted under "M4: local proof":
+  - `cargo test --workspace --locked` and the registry configuration, with counts and times;
+  - `banned-api-check.sh` file count and `--selftest` count;
+  - canaries 61/61, with wall time;
+  - `vectorgen.py --selftest` 13/13;
+  - `verify.py selftest`;
+  - the `test`, `gates` and `cross (arm-unknown-linux-gnueabihf)` job times of the last main run.
+
+  Proof: pasted under Review.
+  Proof (M4 Review, 2026-10-16): pasted under Review, "Group 0 baseline": the lead's run of 2026-10-16 in a separate
+  worktree, with the last main run 38534247238's `test`, `gates` and `cross (arm-unknown-linux-gnueabihf)` times.
+- [x] The PR is opened as a draft after commit 1, as in M3, so every push runs both workflows (the image workflow cannot
+  be dispatched by hand before it reaches main [S32]).
+  Proof (M4 Review, 2026-10-16): `gh pr view 7 --repo bitwilll/keepcrypt --json isDraft,createdAt`: a draft, created
+  2026-10-14T11:54:10Z, after commit 1 (49423fc, 11:26:39Z) and 1b (fcbbd33, 11:53:55Z); both workflows ran on every
+  pushed head ("CI" under Review).
+- [x] `Entropy/1.txt` is removed only if the owner says yes (Q43 (c)), in commit 2.
+  Proof (M4 Review, 2026-10-16): Q43 (c) approved ("approve all"); a7a91cc deletes `Entropy/1.txt` (one line), and the
+  tree at de70f56 has no `1.txt`.
+
+**1. Doc and rule edits (Q40), alone**
+- [x] The approved docs edits (Q40 (b)-(d)) go in commit 2, with no code. BP:315 and design.md:166/:198 change only as
+  Q42 (b) decides.
+  Proof:
+  - `git diff --name-only` of commit 2 lists only `docs/` (and `1.txt` if approved);
+  - `vectorgen.py --selftest` 13/13, since it pins sentences in pi-firmware.md (tools/verify/vectorgen.py:4129-4132);
+  - `verify.py selftest` on Python 3.12 and 3.9;
+  - banned-api-check clean.
+  Proof (M4 Review, 2026-10-16): `git diff --name-only a7a91cc^ a7a91cc` lists `docs/build-plan.md`,
+  `docs/pi-firmware.md` and `1.txt` alone; BP:315's row reads "Core, Pi (reboots: M8 bench image)" and design.md is
+  untouched, as Q42 (b) decided; at de70f56 `vectorgen.py --selftest` 13 checks and `verify.py selftest` 8 groups on
+  3.12.5 and 3.9.6, and the gate clean (241 files); CI green on the first head after it, c79e964 (run 38578364804).
+- [x] CLAUDE.md rule 8 gains the approved sentence (Q40 (a)), in commit 3.
+  Proof: the diff touches only rule 8's lines.
+  Proof (M4 Review, 2026-10-16): ed15bd2 touches `CLAUDE.md` alone, one hunk at rule 8 (`@@ -64,7 +64,11 @@`: Q40 (a)'s
+  sentence, 5 lines in, 1 out); 10d (e70caa0) later made "fixed entries" "fixed entries and patterns" in the same rule.
+- [x] The CODEOWNERS header correction, if approved (Q43 (d)), is its own commit next to commit 3.
+  Proof: the diff touches only `.github/CODEOWNERS:7-9`; `gh api repos/bitwilll/keepcrypt/codeowners/errors` is empty.
+  Proof (M4 Review, 2026-10-16): Q43 (d) approved; e8c90d9 touches `.github/CODEOWNERS` alone, one hunk (`@@ -4,9 +4,10
+  @@`: the comment's lines 7-9 now describe ruleset 24833307); `gh api repos/bitwilll/keepcrypt/codeowners/errors` lists
+  0 errors (2026-10-16).
+
+**2. Dependencies (Q36; rule 11)**
+- [x] pi/app/Cargo.toml gains these, with comments naming the approvals:
+  - under `[target.'cfg(target_os = "linux")'.dependencies]`:
+    - `rppal = { version = "=0.22.1", default-features = false }`;
+    - `nix = { version = "=0.31.3", default-features = false, features = ["fs", "mman", "mount", "time"] }`;
+  - under `[dependencies]`: `sha2 = "0.11.0"` (core's version; core's spec adds the `zeroize` feature, which feature
+    unification turns on anyway; the same spec as pi/sim's at pi/sim/Cargo.toml:21; a new edge to a crate already
+    locked), for the rootfs prefix.
+
+  Proof (commit 5): `cargo tree -p keepcrypt-pi --target arm-unknown-linux-gnueabihf -e normal,build` resolves rppal
+  with no features and nix with `fs,mman,mount,time,uio`; on the macOS host keepcrypt-pi's tree holds none of rppal,
+  nix, bitflags or cfg_aliases. rppal and nix compile for the Pi target (`cargo check -p rppal -p nix --target
+  arm-unknown-linux-gnueabihf`, exit 0); keepcrypt-pi itself does not, locally, since secp256k1-sys needs
+  `arm-linux-gnueabihf-gcc` (CI's cross leg has it).
+- [x] Cargo.lock gains exactly four entries:
+  - rppal 0.22.1;
+  - nix 0.31.3;
+  - bitflags 2.11.1, held by `cargo update -p bitflags --precise 2.11.1` because 2.13.2 is past the imported audits;
+  - cfg_aliases 0.2.2.
+
+  nix also uses libc 0.2.189 and cfg-if 1.0.5, both already locked.
+  Proof (commit 5): `git diff Cargo.lock` adds exactly these four, each checksum equal to crates.io's and to the
+  downloaded archive's SHA-256, plus keepcrypt-pi's edges to nix, rppal and sha2; cargo first resolved bitflags 2.13.2.
+  Published 2024-12-11, 2026-05-11, 2026-04-14 and 2026-07-16, all before the 2026-09-30 cutoff (re-checked
+  2026-10-14). Pi builds that include keepcrypt-pi now resolve libc with `default,extra_traits,std` (rppal's default
+  edge and nix's `extra_traits`), where HEAD's had none: trait impls and std only, no new code path or import.
+- [x] supply-chain:
+  - safe-to-deploy exemptions for rppal 0.22.1, nix 0.31.3 and cfg_aliases 0.2.2, each with a comment on what the lead
+    reviewed;
+  - bitflags 2.11.1 through the imported audit chain (imports.lock gains its entries).
+
+  Proof (commit 5): the three exemptions carry `notes`. One unlocked `cargo vet --no-minimize-exemptions` added only
+  bitflags audits to imports.lock: google's full audit of 1.3.2, then mozilla and bytecode-alliance deltas to 2.11.1
+  (cargo vet's chain; google's 2.4.2 audit is not the one it recorded). `cargo vet --locked`: 18 fully audited, 85
+  exempted (HEAD: 17 and 82).
+- [x] deny.toml:
+  - `[[bans.features]]` with `exact = true` for rppal (no features) and for nix (`fs`, `mman`, `mount`, `time`, `uio`;
+    `mount` pulls in `uio`);
+  - a comment recording that rppal is archived.
+
+  canaries.sh's `[bans]` and manifest pins change in the same commit, with one new canary: a copy that enables
+  ~~nix's `net` feature~~ an unlisted nix feature must fail `cargo deny`. As built: `reboot` (the proof says why).
+  Proof (commit 5): `cargo deny --locked check` gives "advisories ok, bans ok, licenses ok, sources ok" (only the old
+  hex-conservative and syn duplicate warnings). canaries 62/62: the `[bans]` static check pins `[[bans.features]]`;
+  the manifest pin holds rppal and nix to pi/app's Linux table with exactly the specs above, and
+  `test-features-in-manifests` must now also name a widened nix spec and an rppal in pi/sim; the new canary,
+  `deny-nix-feature`, asks for nix's `reboot` from pi/sim and fails with `exact-features-mismatch` ("'reboot' feature
+  was enabled but not explicitly allowed"). `reboot`, not `net`: `net` pulls in memoffset, which Cargo.lock does not
+  hold, so the copy could not resolve offline and would download a fifth crate. With HEAD's deny.toml the same copy
+  gives "bans ok".
+- [x] A scoped review note on the rppal modules the binary calls (`gpio`, `gpio/interrupt`, `gpio/ioctl`,
+  `gpio/gpiomem/bcm`, `spi`, `system`):
+  - no prints;
+  - no thread unless async interrupts are used, and they are not;
+  - the `/dev/mem` fallback is closed by `CONFIG_DEVMEM=n`;
+  - no REALTIME event clock;
+  - its unsafe sites are listed.
+
+  Proof (commit 5): "rppal 0.22.1 review note" under "New dependencies".
+
+  Proof:
+  - `cargo deny --locked check && cargo audit && cargo vet --locked` clean;
+  - `git diff Cargo.lock` adds exactly the four crates;
+  - `cargo tree -i getrandom` shows only keepcrypt-core;
+  - `cargo tree -p keepcrypt-pi --target arm-unknown-linux-gnueabihf -e normal,build,features` pasted;
+  - `scripts/check-path-deps.sh` passes;
+  - canaries (61 + n)/(61 + n);
+  - the review note under "New dependencies".
+
+**3. Core: auto-trait assertions (todo.md:5898)**
+- [x] `core/tests/auto_traits.rs`, compile-time only:
+  - `Send` for `Session<S>` in all six states, `Wiped`, `VerifiedSnapshot`, `CheckedBackup`, `BackupFile` and
+    `CoreError`;
+  - `Sync` for `Session<S>`.
+
+  Its doc gives the reasons: a later worker thread (Q39 (b)), and M5/M6's UniFFI objects.
+  Proof:
+  - `cargo test -p keepcrypt-core --locked --test auto_traits` in both configurations;
+  - a negative control (`Rc<u8>`) fails with E0277 in a scratch copy, pasted under Review and not committed;
+  - coverage unchanged.
+
+  Proof (commit 4): `Sync` is asserted in all six states too (one `Box<Inner>` behind uninhabited markers, so Sync in
+  one state is Sync in all). `--test auto_traits` builds and runs 0 tests, exit 0, with and without
+  `--features test-sources`. A scratch copy adding `send::<std::rc::Rc<u8>>()` fails with E0277 "`Rc<u8>` cannot be
+  sent between threads safely" (exit 1), and one adding `sync::<core::cell::Cell<u8>>()` with E0277. `cargo llvm-cov`
+  is unchanged from M3's Review: lines 8408, missed 220, 97.38%; regions 96.88%; functions 96.32%.
+
+**4. The app changes the hardware needs (pi/app lib, pi/sim; tested on the host)**
+- [x] `HalError` gains four variants. The first three halt; `ManySticks` returns to its screen.
+  - `MemoryLock`: "memory could not be locked";
+  - `RootFs`: "the root filesystem could not be read";
+  - `Stopped`: "the firmware stopped unexpectedly";
+  - `ManySticks`: "more than one USB stick is inserted".
+
+  Proof: hal.rs's tests over `HalError::ALL` (text and `halts()`), updated.
+  Proof (commit 6): `cargo test -p keepcrypt-pi --locked`: `every_hal_error_displays_fixed_text` pins all 19 texts, and
+  `display_button_hwrng_and_start_up_faults_halt_and_usb_faults_do_not` finds exactly Display, Buttons, HwRng,
+  MemoryLock, RootFs and Stopped halting; app.rs's test over `HalError::ALL` sends `ManySticks` back to its screen
+  through `usb_fault`.
+- [x] `pub fn show_stop<D: Display>(display: &mut D, fault: HalError) -> Result<(), HalError>` presents `screens::blank()`,
+  then the normal halt screen with the fault's text, through a `Painter`. It takes only a display, so it holds no session
+  and cannot reach the hwrng or the stick.
+  Proof: a unit test on a recording display (black frame first, then the halt screen's model with the text);
+  `every_screen_is_expected` still passes.
+  Proof (commit 6): `show_stop_draws_a_black_frame_then_the_apps_halt_screen_for_every_fault`: for each of the 19
+  faults, the test HAL's display records a black frame, then the halt model with the fault's text and no key, frame for
+  frame what `App::halt` draws; stop mode's shows "the firmware stopped unexpectedly". `screens::halt` is the one
+  stop-screen model for both, and lib.rs re-exports `show_stop` for group 10. `every_screen_is_expected` passes in both
+  pi/sim configurations.
+  Proof (review fix, commit 7d): no test gave `show_stop` a failing display, so swallowing or remapping its display
+  fault passed (rule 3: a display fault halts). The test HAL's display can now fail one present:
+  `show_stop_gives_a_display_fault_back_at_once` fails the black frame, then the halt screen, and gets `Display` back
+  at once with nothing drawn after it; either mutant fails it.
+- [x] The boot screen and About fit version `0.0.0` and a 19-character prefix (`0123-4567-89ab-cdef`).
+  Proof: the fits test on both screens (screens.rs:512, :581) with that `rootfs` value.
+  Proof (commit 6): `boot_and_about_fit_the_version_and_a_root_filesystem_prefix`: both models fit, with each of the
+  four banner combinations, and show "Version 0.0.0" and "Root filesystem 0123-4567-89ab-cdef" whole.
+- [x] `Key::bcm_pin(self) -> u8`, a `pub const fn` in input.rs, gives each key's BCM pin in code (input.rs:27-48 has the
+  pins only as doc comments). Group 6's `device/keys.rs` and group 10's `PiHal` take the pins from it.
+  Proof: a unit test pins all eight against pi-firmware.md's pin table (PF:36-37: Up 6, Down 19, Left 5, Right 26,
+  Press 13; KEY1 21, KEY2 20, KEY3 16) and checks that the eight pins are distinct.
+  Proof (commit 6): `each_key_has_its_bcm_pin_from_the_pin_map_and_no_two_share_one` pins those eight and finds 8
+  distinct pins. The variants' doc comments no longer repeat the pins, so `bcm_pin` is their one copy in pi/app.
+- [x] The fence (Q39 (a)). `App` sets `fence_ns = hal.now_ns()`:
+  - right after every successful present whose `ScreenId` differs from the previous present's, or (6b) that is the first
+    present after `enter_page` moved to another page or note of the same `ScreenId` (this covers the PrivacyGate,
+    SkipConfirm, StopConfirm, CannotCheckConfirm and BackupConfirm screens, backup-confirm's second question, the
+    second page of backup-passphrase and of the checklist, each words page, a read-back match, the next insert's
+    entry, and every screen after a blocking call);
+  - right after every call that can block, even when it returns to the same screen: boot; `begin`; snapshot
+    verification; backup open (with `seal`); backup write, with read-back and verify; `finish` (app.rs:999); both
+    `watch_only` calls (ready.rs:116, :325); `hal.list` (app/usb.rs:71); `hal.read` (:125).
+
+  In `key()`, a press with `at_ns < fence_ns` still goes to `add_extra` while the stage is Collecting (PF:73 and :142
+  stay true), then returns: no idle reset, no overlay removal, no key map. The idle reset moves after this check.
+  input.rs:4-5 ("no type-ahead filter") is reworded in the same commit; the Debouncer bullet at :6-7 stays as it is.
+  Proof:
+  - app.rs unit tests with the test HAL, whose clock advances inside blocking calls and presents: a press stamped during
+    `WAIT_BACKUP`, during boot, during `finish`, during a stick read, or before the PrivacyGate's present finished,
+    changes nothing; in Collecting such a press adds exactly one extra (the `extras` counter); the next press acts; a
+    press during a step 4 tick's redraw acts;
+  - pi/sim's gate scenarios still pass in both configurations, and any scenario that needs a change is listed with the
+    reason.
+
+  Proof (commit 6): eight app.rs tests on the test HAL, whose clock now also moves 25 ms in each present and 50 ms in
+  each hwrng or stick call, and whose presses can carry an earlier stamp:
+  - a press stamped during boot (the boot screen, the first and the last hwrng block, before Home was fully shown),
+    during `finish`, during a stick read that returns to usb-pick, during `WAIT_BACKUP` and the write, or before the
+    privacy gate's present finished changes nothing: no present, no stage or cursor change, the idle deadline kept. One
+    stamped at the present's end acts, and so does the next press;
+  - in step 4, a fenced KEY1 on game-snake adds exactly one extra and leaves Snake open; the next KEY1 leaves it and
+    adds one more;
+  - KEY1 during a step 4 tick's redraw of game-snake, and Up during a dice redraw, act;
+  - negative controls, scratch edits not committed: without the check in `key()` 6 of the 8 fail; without the fence
+    after `hal.read` the stick-read test fails (usb-pick came back, so only that fence stops the press); with the idle
+    reset before the check the `finish` and backup tests fail; with the check before `add_extra` the step 4 test fails.
+
+  pi/sim: no scenario changed. `cargo test -p keepcrypt-pi-sim --locked` and `--features keepcrypt-core/test-registry`
+  pass (gate: 20 passed, 1 ignored, each). A scratch probe that panicked on any fenced press passed every gate, hal and
+  live test in both configurations: SimHal's clock moves only with its script, never inside a present or a blocking
+  call, so no scripted press begins before a fence. The fence's proof is therefore app.rs's tests.
+
+  Proof (review fix, commit 6b): the fence moved only on a new `ScreenId`, so a press queued behind a page flip acted on
+  a page never seen: Press on backup-passphrase's words 5-8 went on to backup-confirm; Press answered backup-confirm's
+  second question with its first choice (a pass 1 time in 4, after which the passphrase is never shown again); Press on
+  the checklist's second page wiped the session. PF:105 promises none of this, and the item claimed BackupConfirm.
+  `enter_page` now makes its next present a new screen whatever the id, while redraws in place (cursors, typing, dice,
+  step 4, Snake) still move no fence. Three tests,
+  `a_press_made_before_the_second_passphrase_page_or_question_was_shown_does_nothing`,
+  `a_press_made_before_the_checklists_second_page_was_shown_does_not_finish` and
+  `a_press_made_before_the_next_insert_or_a_read_back_match_was_shown_does_nothing`, press during each such present, at
+  its start and just before its end: no present, no other screen, page or cursor, no idle restart; the next press acts.
+  All three fail on the `ScreenId` rule; with the page alone added to the id (the reviews' proposal, in a scratch copy)
+  the read-back match still fails. usb-pick's return with a fault is now a new note too, so the stick-read test no
+  longer rests on the fence after `hal.read` alone; the fences after blocking calls stay, for a call that returns to its
+  screen without entering it. pi/app's 127 tests and pi/sim's (gate: 20 passed, 1 ignored, each configuration) pass,
+  and the scratch probe that panics on any fenced press still passes every pi/sim test in both configurations.
+
+  Proof (review fix, commit 6c): "the idle deadline kept" held only where secrets are held (the `finish` and backup
+  tests); on boot's Home, the privacy gate and usb-pick nothing is held and `deadline` is the same either way. Those
+  three tests now read the idle timer itself: a fenced press leaves it, and the next press restarts it. No test covered
+  the one blocking call that returns to its screen without entering it: a backup that does not open (the wait screen,
+  then backup-check-entry again, emptied, with core's refusal), where removing both the wait screen's `presented` and
+  the fence after the refused call passed everything.
+  `a_press_made_while_a_refused_backup_was_opened_does_nothing_on_the_entry_it_returns_to` presses KEY2 (Home) during
+  the wait screen, the call and the refusal's present: nothing, the idle timer included; the next KEY2 goes Home. In
+  scratch copies, that pair of removals, and the wait screen's `presented` alone, fail it, and the idle restart before
+  the check fails the boot, gate and stick-read tests too.
+  Note (stage C's plan and recompute reviews, 2026-10-15): that mutant claim held at 6c only. Since commit 11
+  (91f23d8) `entry_typed` enters the refusal anew, and that present moves the fence past every press the test makes,
+  so at HEAD the test passes with the wait screen's `presented` and the `fence()` after the refused `decrypt_backup`
+  both removed (reproduced: 130 passed). In this path no test HAL observation can tell the two apart, since a press
+  is read only after `entry_typed` returns; both stay as belt and braces, and the lead decides whether to drop them
+  (see the concern in stage C's review report).
+
+  Lead decisions (stage B's review, 2026-10-14): (1) the fence follows `enter_page` (3db333f), not the `ScreenId`: that
+  is the reading of Q39 (a) and PF:105 that drops a press queued behind any page or note change, and the References and
+  terms now say that for the fence a screen is one `enter_page`. (2) The 6b fix left one gap: a refusal shown in place,
+  with no `enter_page` and no blocking call, keeps a queued press, and the app has one such refusal that can be reached,
+  backup-check-entry's "unrecognised entry" (app/usb.rs's `entry_typed` sets `view.note` and redraws; the
+  wrong-passphrase refusal beside it has the fence after `decrypt_backup`). Commit 11 enters that refusal through
+  `enter`, so the fence covers it (group 10's item). The only other in-place refusal, bip39-entry's empty passphrase
+  (app/ready.rs's `passphrase_typed`), cannot be reached, because the grid offers no done key on an empty entry
+  (`back_on_the_bip39_passphrase_grid_wipes_the_text_in_place_and_shows_bip39_ask` checks KEY3 is unlabelled there); it
+  is noted as unreachable and stays as it is.
+
+**5. Device: the panel (pure; `device/panel.rs`; Q36 (c), Q44)**
+- [x] `Panel<B: Bus>` runs over the approved `Bus` trait (unchanged) and one `&'static PanelProfile`. The trait:
+  `trait Bus { command(cmd, args) -> Result<(), HalError>; data(bytes) -> Result<(), HalError>; reset(high); backlight(on); sleep_ms(ms) }`.
+  - `reset` and `backlight` are single register writes that cannot fail.
+  - Every `data` call sends the whole slice or fails.
+
+  A profile is a `const` value that holds no pins and does no I/O:
+  - `name: &'static str`;
+  - `madctl: u8`, which the driver sends at step 3 and in `Drop`. Its MV bit (`0x20`) must match `ram`'s orientation,
+    and its colour-order bit (`0x08`) is part of it. (7c) No `init` step sets LCMCTRL's XMV bit (`0x02`), which the
+    controller XORs with MV ([S31] p.275), so `madctl` alone gives the orientation;
+  - `init: &'static [Step]`, each `Step { cmd: u8, args: &'static [u8], delay_ms: u16 }`: the rest of init steps 3-5
+    below, in order. Every opcode must be in `ST7789_INIT_OPCODES`;
+  - `ram: Size`, the controller's whole frame memory in the profile's orientation: 320×240 with MV set, or 240×320 with
+    MV clear. Init, `Drop` and stop mode blank all of it;
+  - `origin: Point`, where the 240×240 frame sits in that memory;
+  - `spi_hz: u32`.
+
+  Proof (commit 7): `cargo test -p keepcrypt-pi --locked --bin keepcrypt-pi`: 10 passed. `device/panel.rs` has the
+  trait as above (`sleep_ms(u16)`, matching `delay_ms`), `Panel` holds the bus, one profile and the buffer, and
+  `PanelProfile` has exactly these six fields (`Size` and `Point` hold `u16`s); `Panel` implements `hal::Display`, so
+  `show_stop` draws over it.
+  Proof (review fix, commit 7c): the `PROFILES` checks read the orientation from `madctl`'s MV alone, while LCMCTRL is
+  on the allow-list and its XMV bit flips MV: a profile with the HAT's values and LCMCTRL `2E` passed every check, yet
+  on that panel the memory is 240×320 and a 320×240 blank misses rows. The checks now refuse any LCMCTRL step with XMV
+  (`xmv`), and that profile is among the broken ones, refused with `xmv` alone; without the check, it fails the test.
+  The HAT's `2C` has XMV clear.
+- [x] `ST7789_INIT_OPCODES` is an allow-list, the only opcodes a profile's `init` may hold:
+  - COLMOD `3A`, PORCTRL `B2`, GCTRL `B7`, VCOMS `BB`, LCMCTRL `C0`, VDVVRHEN `C2`, VRHS `C3`, VDVS `C4`, FRCTRL2 `C6`,
+    PWCTRL1 `D0`, PVGAMCTRL `E0`, NVGAMCTRL `E1`, INVOFF `20`, INVON `21`;
+  - everything else either belongs to the driver or is never sent: MADCTL, sleep in and out, display on and off,
+    windows, memory writes, scrolling, partial mode and idle mode;
+  - INVOFF is on the list because some panels need inversion off (Q50; [S36]).
+
+  Proof (commit 7): `every_profile_passes_the_checks_and_each_check_fires`: every `init` opcode of `PROFILES` and of
+  the test-only profile is on the 14-entry list; profiles that hold MADCTL or DISPON fail the check.
+  Proof (review fix, commit 7b): no test pinned the list itself: INVOFF as `0x28` (DISPOFF), or SWRESET, CASET or RAMWR
+  in INVOFF's place, passed every test, so a later profile could send an opcode the driver owns. The checks test now
+  pins `ST7789_INIT_OPCODES` to the 14 bytes above, written out; each of those mutants fails it.
+- [x] One profile, `WAVESHARE_1IN3_HAT`, holds exactly the approved values: `madctl` `0x70`, the approved COLMOD-to-INVON
+  steps, `ram` 320×240, `origin` (0, 0), 40 MHz. `PROFILES` lists every profile. In M4 it holds only this one, or two
+  if Q50 applies.
+  Proof (commit 7): `the_hats_init_stream_is_the_approved_one_byte_for_byte`; the checks test finds `PROFILES` equal
+  to `[&WAVESHARE_1IN3_HAT]`. Its `name` is `st7789-240x240`, Q47's name for this screen type.
+  Proof (review fix, commit 7b): the init stream carries neither `spi_hz` nor `name`, and `PROFILES` was compared with
+  the constant itself, so 4 MHz or another name passed. The init stream test now pins 40 MHz and `st7789-240x240`, and
+  the memory-model test (init and `Drop` leave all of `ram` black) runs over every `PROFILES` entry, not the HAT by
+  name, so a profile Q50 or M4b adds gets it too.
+- [x] `pub const PANEL: &PanelProfile = &WAVESHARE_1IN3_HAT;` is the one line that names the image's profile. Group 10
+  uses it, and M4b's B3 replaces it.
+  Proof (commit 7): the line is in `device/panel.rs`; the tests find `PANEL` equal to the HAT and in `PROFILES`.
+- [x] Init, in order. The driver owns every step that is the same for every screen. The profile supplies `madctl` and its
+  `init` steps:
+  1. Backlight low.
+  2. RST high 10 ms, low 10 ms, high, then 120 ms.
+  3. MADCTL with the profile's `madctl` (driver; `0x70` for the HAT), then COLMOD `0x05` (profile).
+  4. PORCTRL `0C 0C 00 33 33`, GCTRL `35`, VCOMS `19`, LCMCTRL `2C`, VDVVRHEN `01`, VRHS `12`, VDVS `20`, FRCTRL2 `0F`,
+     PWCTRL1 `A4 A1` (profile).
+  5. PVGAMCTRL and NVGAMCTRL (Waveshare's tables, as SeedSigner ships them [S6]), then INVON (profile).
+  6. SLPOUT, then 120 ms [S23].
+  7. Zeros over all of `ram`:
+     - CASET `0 .. ram.width - 1`, RASET `0 .. ram.height - 1`, RAMWR;
+     - then `ram.width × ram.height × 2` zero bytes in 4,096-byte writes;
+     - for the HAT: `00 00 01 3F`, `00 00 00 EF`, 153,600 bytes, 38 writes (37 × 4,096 and one of 2,048) [S31].
+  8. DISPON.
+
+  For the HAT, the byte stream is the approved one, byte for byte. The backlight comes on after the first successful
+  present.
+  Proof (commit 7): the HAT's recorded init equals steps 1-8 as approved before Q44, which the test writes out from
+  the plan: 65 bus calls (7e; this line said 66), 57 of them commands and writes. The gamma tables equal SeedSigner's
+  `ST7789.py` and Waveshare's `LCD_1in3.c` [S6, S34], both re-read 2026-10-14.
+- [x] Present:
+  - CASET `origin.x .. origin.x + 239`, RASET `origin.y .. origin.y + 239`, RAMWR (for the HAT, `00 00 00 EF` twice, as
+    approved);
+  - then `Frame::raw()`, high byte first, as 29 writes of at most 4,096 bytes through one `Zeroizing<[u8; 4096]>`;
+  - the buffer is zeroized after every present, error paths included;
+  - the API offers no partial window.
+
+  Proof (commit 7):
+  - `a_present_sends_the_window_then_the_frame_high_byte_first_in_29_writes`: `00 00 00 EF` twice, 28 writes of 4,096
+    and one of 512, 115,200 bytes, and 0xF800 gives `F8 00`;
+  - `the_buffer_is_zero_after_a_present_and_after_a_failed_one`: a lost write at each of a present's 29 writes; a slice
+    that is not one whole frame sends nothing.
+- [x] Any bus error turns the backlight off, then returns `HalError::Display`.
+  Proof (commit 7): `the_backlight_stays_off_until_a_frame_is_in_and_goes_off_on_every_error`: a bus that stops at
+  each of init's 57 calls or a present's 32 gives `Display` and the backlight off, with the calls before it unchanged.
+  The fake bus fails with `Write`, so `Display` is the panel's own.
+  Proof (review fix, commit 7d): that test calls the private `show`; nothing sent a bus fault through
+  `hal::Display::present`, the method the app and `show_stop` call, so a `present` that swallowed or remapped it
+  passed. `a_bus_fault_in_show_stop_is_a_display_fault_with_the_backlight_off` runs `show_stop` over the panel with the
+  bus stopping at each of its two presents' 64 calls: `Display`, the backlight off, nothing sent after the fault; both
+  mutants fail it.
+- [x] `Drop`:
+  - sends the profile's `madctl` (so the window is valid whatever state init reached), step 7's full-memory window,
+    RAMWR and the zeros from a static zero buffer;
+  - then turns the backlight off;
+  - handles a write error there with an explicit `match`, never `let _`.
+
+  Proof (commit 7): `init_and_drop_each_send_madctl_the_320_by_240_window_and_153_600_zero_bytes`; on a stopped bus
+  `Drop` still turns the backlight off. On the tests' model of frame memory, which starts non-black, init and `Drop`
+  each leave all 320×240 pixels black, for the HAT and the test-only profile.
+- [x] The HAT profile's `madctl` (orientation and colour order), its INVON step and its `spi_hz` (40 MHz, SPI mode 0) are
+  values that H1a confirms.
+  - 40 MHz is Waveshare's demo rate. It is above the ST7789VW datasheet's serial write timing, which the field's doc
+    cites.
+  - If H1a shows a corrupt or dark panel, the first bring-up fix lowers it to an in-spec rate (lead decision,
+    2026-10-14).
+
+  Proof: unit tests on a recording bus:
+  - the HAT profile's init byte stream is pinned to the approved list byte for byte, with the datasheet's address ranges
+    for MV = 1 quoted in the test's doc [S31];
+  - window bytes, 29 chunks summing to 115,200, and byte order (0xF800 gives `F8 00`);
+  - `screens::blank()` writes 115,200 zero bytes;
+  - the buffer is all zero after a present and after a failed one;
+  - the backlight goes off on every error and in `Drop`, and stays off until the first present;
+  - init and `Drop` each send MADCTL `0x70`, the 320×240 window and 153,600 zero bytes;
+  - for every entry of `PROFILES`:
+    - `ram` is 320×240 with MV set in `madctl`, or 240×320 with MV clear (the ST7789's whole frame memory), so the wipe
+      always covers all of it;
+    - (7c) no LCMCTRL step sets XMV, which would flip MV;
+    - the 240×240 window at `origin` lies inside `ram`;
+    - every `init` opcode is in `ST7789_INIT_OPCODES`;
+    - `init` has exactly one COLMOD step, and its low nibble is 5 (16 bits a pixel, which is what `Frame::raw()` sends);
+    - `spi_hz` is non-zero, and names are unique;
+  - a test-only profile in `device/panel/tests.rs` (`#[cfg(test)]`; `ram` 320×240, `origin` (40, 0)) shows that:
+    - the window bytes follow `origin` (CASET `00 28 01 17`);
+    - the wipe covers all of `ram`;
+    - no present writes outside the 240×240 window.
+  Proof (M4 Review, 2026-10-16): H1a (the owner, 2026-10-16, on run 38690004157's image): Home upright with the joystick
+  on the left, colours as the captures, no noise band, sharp text, and each of the 8 inputs once per press, so `madctl`,
+  INVON and the 40 MHz clock are confirmed; the bring-up fix for a corrupt or dark panel was not needed. The unit tests
+  are commit 7's (Verification "Panel profile").
+
+**6. Device: keys and clock (pure; `device/keys.rs`)**
+- [x] `KeyLoop<E: EdgeSource, C: Clock>` implements `next_event`:
+  - each edge goes into `input::Debouncer` with its kernel timestamp. A falling edge means down, and edges map to keys
+    through `Key::bcm_pin` (group 4);
+  - it waits until the earlier of `deadline_ns` and `Debouncer::due_ns()`. `u64::MAX` waits with no timeout;
+  - it returns `Tick` once the deadline passes.
+- [x] Checked conversions of the kernel `Duration` and of `(tv_sec, tv_nsec)` to u64 nanoseconds.
+  - On an edge, overflow is `HalError::Buttons`.
+  - On the clock, overflow panics with fixed text, because `now_ns` returns no `Result`; the panic ends in stop mode.
+
+  Proof: unit tests:
+  - a bounce train gives one press;
+  - a held key never repeats;
+  - the press carries the time of its first edge;
+  - `Tick` arrives at the deadline;
+  - a deadline already past;
+  - `u64::MAX`;
+  - overflow is refused;
+  - a lost edge (a `seqno` gap) costs at most the next press of that key.
+
+  Proof (commit 8): `cargo test -p keepcrypt-pi --locked --bin keepcrypt-pi`: 25 passed, 10 of them in
+  `device/keys/tests.rs`, on a scripted `EdgeSource` and a clock that moves only while the loop waits:
+  - a bounce train is one press, 20 ms after its last edge, at its first edge's time; a key held 60 s gives one press,
+    its bouncing release none, and the next press after a stable release a new one;
+  - with no press the loop waits until the deadline and ticks there; with one pending, until the earlier of the two;
+  - a deadline already past ticks at once, with no wait, after a press that settled by it; one that settled after it
+    comes on a later call, as in pi/sim;
+  - `u64::MAX` with no press pending waits with no timeout;
+  - an edge time past `u64::MAX` ns and a pin that is no key's give `Buttons`; `timespec_ns` takes `i32` and `i64`
+    fields and refuses a negative one, `tv_nsec` of a second or more and anything past `u64::MAX` ns; `clock_ns` then
+    panics with "the monotonic clock is out of range";
+  - the joystick's first release lost, its second press lost, or both: only the second press is lost, and KEY1's press
+    meanwhile is kept.
+
+  As built, beyond the list: before it judges a press, the loop takes in every edge already queued and gives them to
+  the debouncer in time order, which `Debouncer::edge` requires and rppal's order (one queued edge of each ready line in
+  turn) does not give; a 5 ms glitch queued while the device was busy is then no press, nor a 15 ms press whose release
+  rppal gives after another line's later one. Waits are whole milliseconds rounded up (rppal truncates epoll's timeout
+  to them) and at most a day (rppal casts it to an `i32`). `Edge` carries no `seqno`: each edge carries its line's new
+  level, so the debouncer needs none. Scratch mutations, not committed, each fail at least one test: no sort, no drain,
+  polling past the deadline, truncated waits, no cap, rising as down, `tv_nsec` unchecked.
+  Proof (review fix, commit 8b): the scripted source never failed, so a loop that swallowed a GPIO fault, on the drain
+  of queued edges or on a wait, or turned it into another `HalError`, passed every test, and would never halt with
+  "button fault". The script can now fail one call: `an_edge_source_fault_is_the_loops_fault` fails the drain, then the
+  wait, and gets `Buttons` back each time; each of those four mutants fails it.
+  Proof (review fix, commit 8c): the order keys.rs documents, the time first and then every edge already queued, was
+  untested: the script made edges readable only inside waits, so reading the clock after the drain passed. Then a key
+  that bounces back up just before a late clock read counts as a press. The script can now hold the device up right
+  after a drain; `a_press_is_judged_at_a_time_read_before_the_drain` reads 19.4 ms, drains before a release stamped
+  19.5 ms is queued, and is held up 0.7 ms: no press, while the swapped order makes the 19.5 ms glitch a press.
+
+**7. Device: the hwrng (pure; `device/hwrng.rs`; Q39 (c))**
+- [x] `fill_block<R: RawRead, C: Clock>(raw, clock, block, deadline)` reads straight into the caller's 64-byte block until
+  it is full:
+  - `WouldBlock`: sleep 1 ms and retry, until 2 s after the call, then `HalError::HwRng`;
+  - `Interrupted`: retry;
+  - `Ok(0)` or any other error: `HwRng`;
+  - no `BufReader`, no copy, and no read past 64 bytes.
+
+  The deadline covers reads that return `EAGAIN`. A read that waits inside the kernel on the hwrng core's lock is
+  bounded by the downstream driver's retries, not by this deadline; it stalls the screen and still yields no bytes (fail
+  closed). This goes on M7's audit list.
+  Proof: unit tests (user-space logic only): a whole block arriving in pieces; `WouldBlock` past the deadline; EOF;
+  interrupted; other errors.
+  Proof (commit 8): 5 tests in `device/hwrng/tests.rs`, on a scripted device and a clock that moves 1 ms per sleep:
+  - 1, 7, 20 and 36 bytes, with a `WouldBlock` and an `Interrupted` between, land in place; each read asks for exactly
+    the bytes missing (64, 63, 63, 56, 56, 36), and the next block starts at the stream's 65th byte;
+  - a device that finds nothing is read 2,000 times and fails at exactly 2 s; one whose block completes on the read at
+    1.999 s passes; 10 bytes, then nothing, still fail at 2 s;
+  - EOF (at once or after 10 bytes), seven other error kinds and a count past the bytes asked for each fail after that
+    read, with no sleep;
+  - `DEADLINE_NS` is pinned to 2 s, and `HwRng`'s text to "hwrng read fault", which halts.
+
+  As built: the call's `deadline` is `deadline_ns`, the time allowed (the device passes `DEADLINE_NS`); it holds for
+  the whole block, whatever each read gives; the 1 ms pause is `RawRead::sleep_ms`, so the logic stays pure. Scratch
+  mutations, not committed, each fail a test: reads into the whole block, EOF read again, other errors retried, the
+  deadline 1 ms late.
+  Proof (review fix, commit 8d): "whatever each read gives" was untested: the test clock moved only in sleeps, so a
+  deadline checked only after `WouldBlock` passed, though then reads that each wait about a second in the kernel and
+  give a byte take about 64 s a block, and an `EINTR` storm never ends. The scripted device's reads can now take time:
+  `slow_or_interrupted_reads_fail_at_the_deadline_too` gives one byte, or `Interrupted`, per 100 ms read, and fails at
+  exactly 2 s after 20 reads (20 bytes served, or none), with no sleep. That mutant fails it, and so does an
+  `Interrupted` that skips the deadline check.
+
+**8. Device: the USB stick (pure; `device/usb.rs`; Q39 (f))**
+- [x] The finder works over a `SysBlock` trait (the block entries, each entry's resolved device link, its `ro` flag, and
+  whether `<dev>1` exists). Tests use an in-memory fake, so no fixture tree or symlink is created; the Linux
+  implementation over `/sys/block` is group 10's (9d moved that sentence there).
+  - a stick is an `sd*` entry whose resolved link contains a `/usb` component;
+  - exactly one stick is accepted; more give `ManySticks`;
+  - it uses partition `<dev>1` if present, otherwise the whole disk;
+  - `ro` = 1 gives `ReadOnly` before any write.
+
+  Proof (commit 9): `cargo test -p keepcrypt-pi --locked --bin keepcrypt-pi`: 42 passed, 17 of them in
+  `device/usb/tests.rs`. Five run the finder on a `/sys/block` in memory, with links as read_link gives them:
+  - `sdb` on root hub `usb1` is the stick, as `dev/sdb1`, or `dev/sdb` with no partition; `mmcblk0`, `loop0`, `ram0`
+    and a SATA `sda` beside it are ignored;
+  - also ignored: `sr0`, `sd`, `sdA`, `sd1` and `xsda` on a USB bus; `sd` disks whose paths hold `20980000.usb`,
+    `usbmon`, `usb`, `xusb1` or `usb1x` but no root hub; a name that is not UTF-8;
+  - two USB disks (`sda` and `sdb`, `sdz` and `sdaa`) give `ManySticks`;
+  - `ro` `1\n` marks the stick read-only and `0\n` writable; any other bytes give `Mount`;
+  - a link, `ro` or partition that vanished after the listing gives `Removed`; any other sysfs error, `Mount`.
+
+  As built: "a `/usb` component" is matched by whole component, as stage A's review asked, with no path literal: a
+  component that is `usb` and a bus number (`usb1`), a USB root hub. No component of a real USB disk's path is `usb`
+  alone; on the Pi it runs `.../20980000.usb/usb1/1-1/...`. The finder implements a `Locate` trait, which the
+  loop-device test implements to bypass it. `ReadOnly` before any write is `DeviceUsb`'s check (two items down). The
+  Linux `SysBlock` is group 10's (commit 11).
+  Proof (review fix, commit 9d): the plan and security reviews found three claims in group 8's ticked items that commit
+  9 does not prove: the Linux `SysBlock` over `/sys/block` and the mount point `/mnt/usb` (both commit 11's glue), and
+  FAT's letter case giving `Exists` (only the unticked loop-device test can show it; the host tests make no claim on
+  case). They move to group 10's Usb line and to the loop-device item, so each ticked item now claims what commit 9
+  proves, with 9b and 9c's tests for its read bound, syncs and failed sync. The security review also found that the
+  loop-device test proves a copy of the mount calls (its `Kernel` calls nix itself) and that its planned CI run passes
+  with no test run at all: the loop-device item and group 12's step now say how commit 11 and commit 13 close both.
+- [x] Mount plans as data, vfat only (the mount point, `/mnt/usb`, is group 10's; 9d moved it there):
+  - reads: `RDONLY | NOSUID | NODEV | NOEXEC`;
+  - the write: `NOSUID | NODEV | NOEXEC`;
+  - never `MNT_FORCE`; `MNT_DETACH` only to clean up after `Removed` or a failed unmount.
+
+  Proof (commit 9): `the_mount_plans_unmounts_and_errno_table_are_pinned`: `READ_PLAN` is vfat with flags 15 and
+  `WRITE_PLAN` vfat with 14 (Linux's `MS_RDONLY` 1, `MS_NOSUID` 2, `MS_NODEV` 4, `MS_NOEXEC` 8); `Unmount` has only
+  `Plain` (0) and `Detach` (2, `MNT_DETACH`), so no forced unmount can be asked for. The contract tests find a detach
+  only after `Removed` or a failed plain unmount. On Linux, `the_mount_plans_hold_the_kernels_flags` checks both plans
+  against nix's `MsFlags` (CI's test job). As built: the flags are `c_ulong` and `c_int`, mount(2)'s and umount2(2)'s
+  own types, so group 10's glue passes them unconverted (32-bit ARM's `c_ulong` is `u32`). The mount point is
+  `DeviceUsb`'s; commit 11 gives it `/mnt/usb`.
+- [x] `DeviceUsb<M: Mounter>` implements `hal::Usb` over a device path, its `ro` flag source and a mount point:
+  - `list`: read-only mount, top-level `read_dir`, `FileName` filter, unmount.
+  - `read`: read-only mount; read at most `max + 1` bytes into `Zeroizing<Vec<u8>>` (more than `max` is `TooLarge`);
+    unmount.
+  - `write_backup`:
+    1. Clear the record.
+    2. Check `ro`.
+    3. Mount for writing.
+    4. `OpenOptions::new().write(true).create_new(true)`; on success set `created`; then `write_all`.
+    5. `sync_all` on the file and on the mount point.
+    6. Unmount, then set the record.
+
+    On failure: if `created` is set, remove the file and sync; then unmount and return the error. When `create_new`
+    itself failed (`Exists`, `ReadOnly`, a mount error), nothing is removed (hal.rs:245-247; pi/sim/src/stick.rs:166-168).
+  - `read_written` (on a fresh read-only mount) and `remove_written` refuse anything but the recorded file
+    (`NotWritten`).
+  - Errors:
+    - EEXIST → `Exists` (on FAT, which ignores letter case, a name differing only in case too: the loop-device item
+      proves it; 9d);
+    - EROFS → `ReadOnly`;
+    - ENOSPC/EFBIG → `Write`;
+    - a vanished sysfs entry, or ENODEV/ENXIO after removal → `Removed`;
+    - a failed mount → `Mount` (exFAT and NTFS included);
+    - a failed sync → `Sync`;
+    - a failed unmount → `Unmount`, followed by a lazy detach so the next mount starts clean.
+
+  Proof (commit 9): `DeviceUsb<L: Locate, M: Mounter>` (`L` gives the device path and its `ro` flag, for each call),
+  over a temp dir and a recording mounter:
+  - with no stick, or two, every call is `NoStick` or `ManySticks` before any mount;
+  - listings and reads mount `READ_PLAN`, then unmount; a listing holds only files of the kind with accepted names, in
+    byte order (a folder `folder.age` is left out); an 11-byte file reads at `max` 11 and 64 into a buffer of capacity
+    12, never grown, and is `TooLarge` at 10 and 0; a missing file or a folder is `Read`;
+  - a write mounts `WRITE_PLAN`, creates the file and records it; only that name reads back (`READ_PLAN`) or is removed
+    (`WRITE_PLAN`); another file, or the backup's name in capitals, is `NotWritten` with no mount;
+  - an existing name is `Exists`, and the file stays byte for byte; a refused name is `Write`, and a stick whose `ro` is
+    `1\n` is `ReadOnly`, both before any mount; after any refused later attempt (over the name, read-only, a mount
+    fault, a bad name, no stick) the earlier file is neither read back nor removed;
+  - a mount that fails with EINVAL (exFAT, NTFS) or EIO is `Mount`, with ENODEV or ENXIO `Removed`, with EROFS
+    `ReadOnly`, and nothing is unmounted;
+  - a plain unmount that fails with EBUSY is `Unmount` after a lazy detach, also when the detach fails, and the next
+    call mounts as ever; ENXIO there is `Removed`; after `Removed` the detach comes at once;
+  - a write whose unmount fails removes the file it created and nothing else, retries the plain unmount, and detaches if
+    that fails too; removing a file that is already gone is `Remove`, and the record stays;
+  - the errno table at every step: EEXIST `Exists`, EROFS `ReadOnly`, ENOSPC and EFBIG `Write`, ENODEV and ENXIO
+    `Removed`; EPERM, ENOENT, EIO, EACCES, EBUSY, EINVAL and an error with no errno give the step's own fault.
+
+  A failed sync and a full stick cannot be made on a host temp dir; the table and the removal path above cover them.
+  As built: `write_backup` calls `write_new(name, bytes)`, which the tests call directly: only a session makes a
+  `BackupFile`, and pi/app holds one `Session::new`. A listing sorts by name, as the simulator does, and leaves out
+  anything but files. A read sizes its buffer to the file and one byte more, at most `max + 1`, so it never grows (a
+  grown buffer would leave an unwiped copy). The host tests make no claim on letter case, which the host's filesystem
+  decides (APFS ignores it, ext4 does not); the loop-device test makes it on FAT. File dates need no code: with no
+  clock, the kernel's FAT driver writes 1980-01-01, FAT's earliest date (fs/fat/misc.c, `fat_time_unix2fat`).
+  Proof (review fix, commit 9b): two of the behaviours above had no test. "Read at most `max + 1` bytes": the over-limit
+  tests saw only `TooLarge`, so a read of the whole file before that check passed, and a multi-GB file on a hostile
+  stick could fill the Pi's memory. The bound now sits in `read_bounded`, which takes any reader, and
+  `a_read_takes_one_byte_past_the_limit_and_no_more` reads a 1 MiB file with a limit of 10: 11 bytes, then `TooLarge`.
+  "The unmount's fault unless the call had failed already": `a_calls_fault_comes_before_a_failed_unmounts` reads a
+  missing file and writes over an existing name with the plain unmount failing (EBUSY): `Read` and `Exists`, each after
+  a lazy detach. Each review mutant fails its test (the whole file read; the unmount's fault reported).
+  Proof (review fix, commit 9c): step 5's syncs could not be seen on a host temp dir, so deleting the file's sync,
+  either directory sync, or the sync inside `sync_dir` passed. They now go through `Mounter::sync`, whose default is
+  `File::sync_all` (the Linux glue keeps it), so the recording mounter logs each one, only while the stick is mounted,
+  and can fail it; that default's one line is the only sync code no test sees.
+  `a_write_syncs_its_file_then_its_directory_and_a_failed_sync_removes_the_file`: a write syncs the file once it holds
+  all 8 bytes, then the directory; a removal syncs the directory; a failed file sync (EIO `Sync`, ENOSPC `Write`) or
+  directory sync removes the file, syncs the directory and unmounts plainly, with no record. So a failed sync is now
+  made on the host; a full stick is still not. Each of those mutants fails it, and so do a sync before the write and a
+  failed sync named `Write`.
+- [x] Host contract tests in `device/usb/tests.rs`, over a temp dir from `std::env::temp_dir()` and a recording
+  `Mounter`, mirroring pi/sim/tests/hal.rs.
+
+  Proof (commit 9): 11 of the 17 tests, the cases of pi/sim/tests/hal.rs and pi/sim/src/stick.rs, as the item above
+  lists, including `a_refused_write_leaves_an_existing_file_untouched`.
+- [x] A Linux-only `#[ignore]`d test, `device::usb::tests::loop_device`, run as root in the `test` job (group 12). The CI
+  step, not the test, makes the fixture: `truncate -s 16M`, `mkfs.vfat -F 32`, `losetup --find --show`, and a mount
+  point. It passes `KC_LOOP_DEV`, `KC_LOOP_RO` (`/sys/block/loopN/ro`), `KC_LOOP_MNT` and `KC_MOUNTINFO`
+  (`/proc/self/mountinfo`) through the environment. The test builds `DeviceUsb` from those values (bypassing the
+  finder), fails if any is missing, and holds no path literal. It checks:
+  - a create-new write succeeds;
+  - a second write gives `Exists`, and a file with the same name and one differing only in case, written there first,
+    are byte-identical afterwards;
+  - a write attempt under the read plan's mount fails with EROFS;
+  - the read-back works under a read-only remount;
+  - `remove_written` works;
+  - nothing is left mounted after any call (checked in `KC_MOUNTINFO`).
+
+  (9d) Commit 9's test drives a `Kernel` mounter that calls nix itself, a copy of the glue's mount calls. From commit 11
+  it drives the glue's own `Mounter` (linux.rs's, over nix), with `Kernel` wrapping it to check each mount against
+  `KC_MOUNTINFO`, so the run proves the mount and unmount calls the image ships.
+  Proof (commit 11): `Kernel` holds linux.rs's `KernelMounter` and forwards `mount`, `unmount` and `sync` to it,
+  checking mountinfo around the glue's own call; the flag conversion is now the glue's alone. The ARM clippy with
+  `--all-targets` compiles it; the run is commit 13's.
+  Proof (commit 13, the steps): the test job's three steps, as group 12's `test` item says. The run is CI's.
+
+  Proof:
+  - `SysBlock` fake tests: one stick with and without a partition; `mmcblk0`, `loop0`, `ram0` and a non-USB `sd` ignored;
+    two sticks; `ro`;
+  - the flag sets and the errno table are pinned;
+  - the contract tests, including "a refused write leaves an existing file untouched";
+  - the loop-device test green in CI.
+  Proof (M4 Review, 2026-10-16): run 38851865443 (de70f56), job `test`, the loop-device step: `KC_LOOP_DEV=/dev/loop0`
+  (`losetup --find --show` on `$RUNNER_TEMP/stick.img`), then `test device::usb::tests::loop_device ... ok` and `test
+  result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 59 filtered out`. The step is in every run since commit 13
+  (685e49e), all green; read here at de70f56.
+
+**9. Device: the rootfs prefix (pure; `device/rootfs.rs`; Q39 (g))**
+- [x] `prefix<R: Read>(device, partition_len)`:
+  1. Check the SquashFS magic `hsqs` at byte 0 and version 4.0 at bytes 28-31.
+  2. Read `bytes_used` as a u64 little-endian at byte 40, and round it up to 4,096. mksquashfs pads to 4,096, so this is
+     exactly the `rootfs.squashfs` file.
+  3. Refuse a rounded length past the partition length.
+  4. SHA-256 over exactly those bytes, in 64 KiB reads.
+  5. The prefix is the first 8 digest bytes, as 16 lowercase hex characters in four groups of four.
+
+  Any failure is `RootFs`.
+  Proof (commit 10): `cargo test -p keepcrypt-pi --locked --bin keepcrypt-pi`: 50 passed, 8 of them in
+  `device/rootfs/tests.rs`, on partitions in memory:
+  - the vector (the magic, version 4.0 and `bytes_used` 4,096 are its only non-zero bytes) gives `722a-ccc1-0d67-011e`,
+    pinned as `VECTOR_PREFIX`; digest bytes `01 23 … ef` give `0123-4567-89ab-cdef`;
+  - `bytes_used` 96, 4,095, 4,096, 4,097, 12,288 and 12,289 hash 4,096, 4,096, 4,096, 8,192, 12,288 and 16,384 bytes:
+    a change to the last byte hashed changes the prefix, one to the next byte does not;
+  - a 200,000-byte image in a 1 MiB partition is read as 96 bytes, three reads of 65,536 and one of 4,000, and no
+    further; a device that gives at most 1,000 bytes a read, or interrupts three reads, gives the same prefix;
+  - `RootFs`, which halts: the big-endian magic, another or none; versions 3.0, 4.1, 5.0 and a big-endian 4.0; a
+    `bytes_used` of 0, 1 or 95; one rounding past the partition (12,289 and 16,384 in 12 KiB, 5,000 in 6,000 bytes) or
+    past `u64::MAX`; a read that ends early (at 0, 95, 96, 4,096 or 8,191 bytes) or fails. A bad superblock is found
+    after its 96 bytes and nothing more, and nothing is read after a failed read.
+
+  As built: `bytes_used` must also cover the 96-byte superblock, on the device and in `rootfs-prefix.py`: a smaller one
+  is no SquashFS image, and 0 would round to no bytes at all. `VECTOR_PREFIX` is the vector's one pinned copy:
+  `rootfs-prefix.py --selftest` reads that line from `device/rootfs/tests.rs` and must compute the same. Scratch
+  mutations, not committed, each fail at least one test (18): no rounding; no partition check, or a strict one; no
+  `bytes_used` minimum, or a strict one; the magic or the version unchecked, or only the major version; `bytes_used`
+  big-endian or at byte 48; whole chunks read past the length; 1,000-byte reads; one read for `read_exact`; the
+  superblock not hashed; uppercase digits; nibbles swapped; the last 8 digest bytes; groups of 8 digits.
+- [x] `pi/os/rootfs-prefix.py` (standard library only, run with `-I`) lands in the same commit (10), and `gates` runs its
+  `--selftest`. It:
+  - computes the same rule from an image's partition 2;
+  - checks that the padded size equals the size of `rootfs.squashfs`;
+  - has a `--selftest` on the vector.
+
+  Proof:
+  - a vector: a 4,096-byte image (magic, version 4.0, `bytes_used = 4096`, everything else zero). Its prefix is pinned in
+    the Rust test and recomputed by `rootfs-prefix.py --selftest` in `gates` (a required check);
+  - the Rust tests also cover a bad magic, a short read and an oversized `bytes_used`.
+
+  Proof (review fix, commit 10b): only the device pinned the boundary `bytes_used` 96: the script's refusals cover 0
+  and 95 and nothing accepted 96, so a script that refused 96 passed its selftest while `rootfs.rs` accepts it. The
+  selftest's image check now also takes `bytes_used` 96, padded to 4,096 bytes, and gets the whole padded file's
+  prefix, as the device does; `<=` in place of `<` fails it on Python 3.12 and 3.9. Still 4 checks.
+  Proof (M4 Review, 2026-10-16): `python3 -I pi/os/rootfs-prefix.py --selftest` and `/usr/bin/python3 -I ...` print
+  `selftest passed: 4 checks` (3.12.5, 3.9.6); run 38851865443's `gates` prints the same line; `rootfs.rs`'s tests pass
+  in `cargo test --workspace` (pi bin 58); every image leg's prefix comes from this script ("Hash and list":
+  `76eb-725e-8163-7013`) and equalled the boot screen's in H1a ("all matched").
+
+**10. Device: Linux glue, `main`, stop mode (Q35, Q39 (e))**
+- [x] Module declaration across commits:
+  - commit 7 declares `#[cfg(test)] mod device;` in main.rs, and each later commit adds its submodule;
+  - commit 11 widens it to `#[cfg(any(target_os = "linux", test))]`;
+  - `device/linux.rs` and `device/paths.rs` are `#[cfg(target_os = "linux")]`;
+  - a pure item used only by the Linux glue gets `#[cfg_attr(not(target_os = "linux"), expect(dead_code, reason = ".."))]`
+    if a build shows it dead;
+  - (7f) a pure item used only by the tests gets `#[cfg_attr(not(test), expect(dead_code, reason = ".."))]`, which only
+    the Linux builds that are not `cargo test` see: `PROFILES` and `ST7789_INIT_OPCODES`, the `PROFILES` checks' data,
+    and `INVOFF`, which only that list uses, if a build still shows it dead. A scratch non-test build at 9fe39de, with
+    `mod device` compiled and the glue's uses of each driver stubbed in, shows exactly these three dead.
+
+  Each commit runs clippy with `-D warnings` on the Mac (tests), in lint (x86_64 Linux, `--all-targets`) and in cross
+  (ARM).
+
+  Proof (commit 11): main.rs declares `#[cfg(any(target_os = "linux", test))] mod device;`, and `linux.rs` and
+  `paths.rs` are `#[cfg(target_os = "linux")]`. `PROFILES` and `ST7789_INIT_OPCODES` carry the `cfg_attr(not(test),
+  expect(dead_code, ..))`; `INVOFF` carries nothing, because with those two in place no build shows it dead: rustc
+  1.98.1 neither reports an item reachable only through an expected item nor refuses an expectation on it (a
+  three-line scratch probe, and a scratch copy with an expectation on `INVOFF`, both compile), so the attribute would
+  say nothing. Clippy with `-D warnings` is clean on the Mac (both workspace runs) and for
+  `arm-unknown-linux-gnueabihf` with `--all-targets` (the glue and its Linux-only tests) and with `--bins` (the
+  non-test build the expectations are written for; check only, with clang for secp256k1-sys and the getrandom cfg).
+  Scratch copies, not committed: `PROFILES` without its expectation fails that build ("constant `PROFILES` is never
+  used"); a type error planted in linux.rs fails both ARM runs. CI's lint job (x86_64 Linux) is the run that
+  remains.
+  Proof (M4 Review, 2026-10-16): the run that remained, CI's `lint (fmt, clippy)` (x86_64 Linux, `--all-targets`, then
+  `--all-features`), is green on every head since commit 11 (91f23d8); at de70f56 (run 38851865443) both clippy runs
+  print `Finished dev profile`, the job 34 s, and `cross (arm-unknown-linux-gnueabihf)` builds the binary and both
+  rlibs.
+- [x] `device/linux.rs` (Linux): `PiHal` implements the traits.
+  - Display: `Panel` over rppal `Spi::new(Spi0, Ss0, PANEL.spi_hz, Mode0)` and output pins DC 25, RST 27, BL 24 (the
+    same pins for every screen, as Q48 decided).
+  - Buttons: eight rppal `InputPin`s, on the pins `Key::bcm_pin` gives, with pull-ups and
+    `set_interrupt(Trigger::Both, None)`. There is no kernel debounce, so one debouncer serves both the device and the
+    simulator. Edges are read with `Gpio::poll_interrupts`, which is synchronous and uses no thread.
+  - Clock: nix `clock_gettime(CLOCK_MONOTONIC)`.
+  - HwRng: `/dev/hwrng`, opened once with `O_NONBLOCK`.
+  - Usb: `DeviceUsb` with the `SysBlock` implementation over `/sys/block`, the mount point `/mnt/usb` (both from group
+    8's items, 9d) and nix `mount`/`umount2`; `Mounter::sync` keeps its default, `File::sync_all` (9c).
+  - `build_info`: `CARGO_PKG_VERSION`, the prefix, and `simulator: false`.
+
+  Every rppal and nix error maps to its trait's `HalError`.
+
+  Proof (commit 11): built in `device/linux.rs`, compiled for the Pi target by the ARM clippy above and never run here
+  (no Pi and no Linux host; H1a is its first run). `SpiBus`: `Spi::new(Spi0, Ss0, PANEL.spi_hz, Mode0)` and the
+  pins DC 25, RST 27, BL 24, each opened low and kept as the driver leaves it when dropped (rppal would otherwise
+  return it to an input and float the backlight); a short write is `Display`. `GpioEdges`: the eight
+  `into_input_pullup` pins with `set_interrupt(Both, None)`, read by `Gpio::poll_interrupts` with `reset` false, so
+  an edge rppal holds is given out, not dropped; FallingEdge and RisingEdge are the edge, anything else `Buttons`.
+  `MonotonicClock`: `clock_gettime(CLOCK_MONOTONIC)` through `keys::clock_ns`; a clock error is a fixed-text panic.
+  `HwRngDevice`: `/dev/hwrng` opened once with `O_NONBLOCK` and read with `std::io::Read`, through `fill_block` with
+  `DEADLINE_NS`. `SysFs` over `/sys/block` (`read_dir`, `read_link`, `ro`, `<name>1`) and `KernelMounter`
+  (`MsFlags::from_bits(plan.flags)`, `MntFlags::from_bits(how.flags())`, `EINVAL` for bits the kernel does not
+  define, `sync` at its default), at `/mnt/usb` with the nodes under `/dev`. `build_info` is `CARGO_PKG_VERSION`,
+  the prefix and `simulator: false`. The panel is `PiHal`'s first field. The five path literals are `paths.rs`'s.
+  Proof (M4 Review, 2026-10-16): H1a ran `PiHal`'s Display, Buttons, Clock (the debouncer's timing) and HwRng on the
+  board: the panel, the keys and the boot's hwrng test, all as planned. Usb (`DeviceUsb` over `SysBlock` and the mounts)
+  waits for H2 step 11 and H3's "Check a backup".
+  Proof (H2 and H3, 2026-10-16, 21b): Usb ran on the board: step 11 wrote the backup and read it back ("Backup verified"
+  in 41 s), and "Check a backup" found the stick, mounted it (read-only by the code, device/usb.rs, as CI's loop-device test
+  proves) and opened the backup (20 s, step 10's
+  fingerprint). Every `PiHal` field has now run on the hardware.
+- [x] `device::mode(args)` (pure): no argument means `Run`; anything else, `--stopped` included, means `Stopped` (fail
+  closed).
+  Proof (commit 11): `device::tests::no_argument_runs_and_any_argument_is_stop_mode`: no argument is `Run`;
+  `--stopped`, `--run`, an empty argument, `--stopped` twice and `x --stopped` are `Stopped`. `run` passes it
+  `env::args_os().skip(1)`.
+- [x] `device::run() -> !` (Linux), in this order:
+  1. `std::panic::set_hook` with a hook that ignores its argument and prints nothing.
+  2. Open the panel and init it, so all frame memory is black. On failure: drive the backlight low if its pin opened,
+     then park.
+  3. In `Stopped` mode: `show_stop(Stopped)`, then park. Nothing else is opened.
+  4. `mlockall(MCL_CURRENT | MCL_FUTURE)`. On failure: `show_stop(MemoryLock)`, then park.
+  5. Compute the rootfs prefix from `/dev/mmcblk0p2`. On failure: `show_stop(RootFs)`, then park.
+  6. Open the keys and `/dev/hwrng`. On failure: `show_stop(Buttons)` or `show_stop(HwRng)`, then park.
+  7. `App::new(pi).run()`.
+
+  Park is `loop { std::thread::park() }`. The process never exits, so init never moves on.
+
+  Proof (commit 11): built as listed, compiled by the ARM clippy and first run on the board (H1a). The hook is
+  `|_| {}`. `Gpio::new` fails to a bare park; the backlight pin is opened first and low, then DC, RST and the SPI,
+  then `Panel::new`, whose own fault path turns the backlight off. The prefix's partition length comes from
+  `seek(SeekFrom::End(0))`, then the device is rewound, since a block device's metadata gives no length. `stop`
+  takes the panel by value and parks on it, so the panel is never dropped and the stop screen stays; a display fault
+  there parks all the same. The keys are opened before the hwrng, and `DeviceUsb` opens nothing until a call.
+  Proof (M4 Review, 2026-10-16): H1a (2026-10-16) ran steps 1, 2 and 4-7 on the board: the boot reached Home in 14 s, so
+  the panel, `mlockall`, the prefix (equal to the run's), the keys and `/dev/hwrng` all opened and `App::new(pi).run()`
+  ran. Step 3 (stop mode) rests on the `mode` and `show_stop` tests alone, since M4 forces no crash on hardware (Q42
+  (a)).
+- [x] main.rs keeps `#![forbid(unsafe_code)]`. On Linux it calls `device::run()`; elsewhere it stays `fn main() {}`.
+  Proof (commit 11): main.rs is the forbid line, the cfg'd `mod device` and two `main`s, `device::run()` under
+  `cfg(target_os = "linux")` and `fn main() {}` elsewhere. The banned-API gate finds the forbid line (clean, 214
+  files); the Mac builds and tests the empty `main`; the ARM clippy compiles the Linux one.
+- [x] (Lead decision, stage B's review, 2026-10-14; group 4's fence item.) In the lib, backup-check-entry's
+  "unrecognised entry" refusal (app/usb.rs's `entry_typed`, when `from_first_four` refuses the entries) is entered
+  through `enter` with its `Note::Refused`, not set on the view in place, so its first present is a new screen and moves
+  the fence: a press queued behind that present no longer types into the emptied entry. The wrong-passphrase refusal
+  next to it keeps the fence after `decrypt_backup`. bip39-entry's empty-passphrase refusal (app/ready.rs's
+  `passphrase_typed`) stays in place: it cannot be reached, since the grid offers no done key on an empty entry.
+  Proof: an app.rs test on the test HAL: a press stamped during the refusal's present changes nothing (no present, no
+  letter typed, the idle timer kept) and the next press types; in a scratch copy, HEAD's in-place note fails it.
+  pi/sim's gate scenarios still pass in both configurations.
+  Proof (commit 11): `entry_typed`'s one tail is `self.enter(ScreenId::BackupCheckEntry, Note::Refused(refusal))`,
+  so both refusals are entered anew (the wrong-passphrase one keeps its `fence()` after `decrypt_backup` as well,
+  and the 6c test's comment says so); `enter` puts the cursor on the first symbol as before, and no gate opens
+  between two Protected screens. `a_press_made_before_an_unrecognised_entrys_refusal_was_shown_types_nothing`:
+  eight entries whose first is no word's, then Done; no wait screen was shown; a Press stamped at the refusal
+  present's start or just before its end types nothing (the entry stays empty, the cursor on 0, no present, the idle
+  timer kept), and one stamped at its end types `a` and restarts the timer. In a scratch copy, HEAD's in-place note
+  fails it at the first fenced press (the press typed). pi/app's lib tests 130; pi/sim's gate 20 passed, 1 ignored,
+  in both configurations.
+- [x] A panic unwinds out of `run`. The `App` drops `hal` first, so the panel blanks and its backlight goes off; then the
+  session zeroizes. The process exits, and init starts stop mode. An abort skips every `Drop`; in that case stop mode's
+  re-init blanks the panel within about a second.
+
+  Proof:
+  - `mode` unit tests;
+  - the `show_stop` test;
+  - the panel's `Drop` test;
+  - clippy clean in lint (x86_64 Linux) and cross (ARM);
+  - `catch_unwind` still banned;
+  - the inittab byte-for-byte check comes with `--os-config` in commit 17.
+
+  The crash path is not forced on hardware in M4 (Q42 (a)).
+
+  Proof (commit 11): `run` sets the hook and catches nothing (`catch_unwind` stays in clippy.toml's ban); `PiHal`'s
+  first field is the panel, so the app's `hal` drop blanks it before the session is dropped; the `mode` test and
+  the earlier `show_stop` and `Drop` tests pass. CI's lint and cross runs and commit 17's inittab check remain.
+  Note (stage C's recompute review, 2026-10-15): the panel-first field order is a reviewed-by-reading claim, pinned
+  by the struct's doc comment and no test: swapping the fields compiles and lints clean, and no host test builds
+  `PiHal` (hardware cannot show drop order either). Rust drops fields in declaration order, so the comment next to
+  the struct is the pin.
+  Proof (M4 Review, 2026-10-16): each listed proof is in: the `mode`, `show_stop` and panel `Drop` tests pass in `cargo
+  test --workspace` at de70f56 (pi bin 58); CI's `lint` and `cross (arm-unknown-linux-gnueabihf)` are green at de70f56
+  (run 38851865443); `catch_unwind` stays in pi/app/clippy.toml's `disallowed-methods` (core's and ffi's too);
+  `--os-config pi/os` checks the inittab (Q35's three lines: `wait`, `once`, no respawn) and `panic=0`, clean in `gates`
+  and here; `--image` re-checks both on the built image, clean in runs 38771532075, 38797300298 and 38851865089.
+
+**11. Gates (banned-api-check.sh, canaries)**
+- [x] Open owner item, before commit 12: Q51 (rule 8's path list). Rule 8's sentence and PF:81 say the list is complete
+  and its paths fixed. Stage A's review found reads it leaves out: the dynamic loader's own files, glibc's
+  `/proc/self/maps` before `main`, `/dev/null` if a standard fd is closed, and rppal's `/dev/mem` attempt, which
+  `CONFIG_DEVMEM=n` makes fail. The list also holds glob patterns. Recommended: PF:81 lists these reads too, says the
+  grep gate covers the paths our code and rppal name, and calls the globs patterns; rule 8's "fixed entries under
+  `/proc` and `/sys`" becomes "fixed entries and patterns under `/proc` and `/sys`".
+  Proof: the owner's answer under Q51.
+  Proof (commit 10c): the owner's "Yes" (2026-10-14) under Q51. PF:81 keeps every path it listed, calls the
+  four globs patterns, lists the runtime's own reads (the loader's files, glibc's `/proc/self/maps` before `main`,
+  `/dev/null` for a closed standard descriptor, rppal's `/dev/mem` attempt under `CONFIG_DEVMEM=n`) and says the
+  grep gate covers the paths our code and rppal name, not those reads; rule 8's wording is commit 10d.
+  `vectorgen.py --selftest` 13/13 and `verify.py selftest` (8 groups) on Python 3.12 and 3.9 (vectorgen pins PF
+  sentences); the banned-API gate clean (211 files) and its selftest 427/427; fmt, both clippy runs,
+  `cargo test --workspace` (443 passed, 3 ignored), core's test-sources run (269 passed, 1 ignored) and pi-sim with
+  the test registry (69 passed, 2 ignored) pass.
+  Proof (review fix, commit 10e): stage C's reviews read rppal 0.22.1's source and found paths off the list in modules
+  the firmware never calls (`/dev/gpiomem0` in gpio/gpiomem/rp1.rs, chosen only for `GpioInterface::Rp1`; I2C, PWM
+  and UART nodes in i2c.rs, pwm/sysfs.rs and uart.rs), so 10c's "rppal's paths were read from its source and are all
+  on it" claimed more than was checked. PF:81 now makes the rppal review note's scoped claim (the paths opened by the
+  GPIO code for the BCM2835 interface, the SPI code and the board identification are all on the list) and names the
+  never-reached modules. `vectorgen.py --selftest` 13/13 and `verify.py selftest` (8 groups) on Python 3.12 and 3.9.
+- [x] A Device category. Each rule gets hit and clean selftest fixtures and one canary:
+  - **Path literals.** Every string literal starting with `/` in `pi/app/src` lives in `device/paths.rs` and is one of
+    `/dev/hwrng`, `/dev/mmcblk0p2`, `/dev`, `/sys/block`, `/mnt/usb`. rppal builds its own `/dev/spidev*`, `/dev/gpio*`
+    and `/proc` paths.
+  - **File APIs.**
+    - `std::fs`, `File::`, `OpenOptions`, `read_dir`, `read_link` and `remove_file` appear only under
+      `pi/app/src/device/`.
+    - `create_new(true)` appears only in `device/usb.rs`.
+    - `.create(true)`, `.truncate(`, `.append(`, `fs::write`, `fs::copy`, `rename`, `create_dir`, `remove_dir`,
+      `set_permissions` and `symlink` appear nowhere in pi/app, except that `device/**/tests.rs` may use `create_dir`,
+      `fs::write` and `remove_dir_all` for temp-dir fixtures.
+      Note (stage C's security review, 2026-10-15): this list is the gate's whole reach. An in-place overwrite
+      (`OpenOptions::new().write(true).open(existing)`), `.create(flag)` with a non-literal flag and `fs::hard_link`
+      pass it under device/, so rule 8's "only one new file is ever written" rests on review of device/usb.rs's
+      single `create_new` open, which the gate does hold to usb.rs; the script's header and the rule's comment say so
+      (commit 12d). Widening the list (banning `.write(true)` and `.create(` outside usb.rs, `hard_link`) is a change
+      to this approved list and waits for the lead.
+    - That exception holds only for a `tests.rs` whose parent declares it with `#[cfg(test)]` on the line before
+      `mod tests;`. Fixtures: the same API in a non-test device file is a hit; a `tests.rs` declared without
+      `#[cfg(test)]` is a hit; the exception never covers path literals.
+  - **Crates and mounts.** `rppal::` and `nix::` appear only under `device/`. `MNT_FORCE` appears nowhere, and
+    `MNT_DETACH` only in `device/usb.rs`.
+  - **Processes, threads, buffering.** `std::process::Command`, `std::net`, `thread::spawn`, `thread::Builder` and
+    `BufReader` appear nowhere in pi/app.
+
+  Proof (commit 12): `scripts/banned-api-check.sh`'s Device category, in pi/app only, with 35 `device-*` hit fixtures
+  (one file each, and each also clean when copied to pi/sim/src), the `clean-device-allowed` fixture (the five
+  constants, the glue's and usb.rs's APIs, a declared tests.rs with its temp-dir calls, the simulator's files and
+  threads) and 9 built-in cases for the test-file exception (fs::write in usb/tests.rs passes under a usb.rs or
+  usb/mod.rs that holds `#[cfg(test)]` right before `mod tests;`; a parent without the attribute, with a blank line
+  between, with both on one line, or missing, gives a hit; a declared tests.rs still hits on a path literal,
+  `remove_dir`, `create_dir_all` and `rename`). The fs module is matched by any path (`fs::`, `std::fs`, `std::{io,
+  fs}`, a wrapped `    fs,`); `create_new` is matched as a word; `.truncate(` and `.append(` hit a Vec's too
+  (fail-closed noise, noted in the header); `std::net` is left to the Network category, which already bans it in
+  pi/app, so one line is never two hits. Four canaries plant one line each in the copy of a real file (a
+  `"/proc/cmdline"` in app.rs, `std::fs::File::open` in hal.rs, `rppal::gpio::Gpio::new` in input.rs, a `BufReader`
+  comment in device/hwrng.rs) and need exactly that Device hit. The gate is clean on the tree (214 files) and on a
+  clean export of HEAD (211 files); `--selftest` 542/0 under sh and dash; canaries 68/68.
+  Proof (review fix, commit 12b): stage C's security review found the process and thread rule matched only the item
+  named right after the `::`, so the grouped use rustfmt itself produces (`use std::process::{Command, Stdio};`,
+  `use std::thread::{spawn};`) and `thread::scope` passed; and that `    fs as f,` in a wrapped group and `extern
+  crate rppal as hw;` passed the fs and crate rules. The process and thread modules are now matched by any path, as
+  fs is (`process::`, `thread::`, `std::process`, `std::thread`, inside a `std::{...}` group, a wrapped `    process,`
+  or `    thread as t,` line), after sed deletes the calls the firmware makes: `std::process::id(` anywhere (the
+  device tests' temp-dir name) and, in device/linux.rs alone, `use std::thread;`, `thread::park(` and
+  `thread::sleep(`; the fs rule's wrapped line takes an alias and needs no trailing comma; `extern crate` hits
+  outside device/. Nine new `device-*` fixtures (the two grouped uses, `thread::scope` in linux.rs, `use std::thread;`
+  outside it, `use std::{io, process};`, `use std::process;` in a tests.rs, the wrapped `thread as t` and `fs as f`
+  lines, `extern crate rppal as hw;`), `clean-device-allowed` gains linux.rs's `use std::thread;`, `thread::sleep(`
+  and `thread::park(` and the tests' `std::process::id()`, and a fifth Device canary plants `use
+  std::process::{Command, Stdio};` in the copy of app.rs. `--selftest` 560/0 under sh and dash; the gate clean on the
+  tree (214 files) under both; canaries 69/69 (the pin in canaries.sh is 69; CLAUDE.md's Commands line is commit
+  18's, 5d). The artifact scan's Format comment and header now say the empty symbol list is the operative
+  stripped-file test (llvm-nm reads .symtab, not .dynsym) and the .symtab check names the cause: the recompute
+  review showed dropping the .symtab term leaves the selftest unchanged, so no behaviour changed.
+- [x] Python `random` through any module path: any `import` or `from … import` whose module path has a `random`
+  component (`(^|\.)random(\.|$)`), alone or with `as`, is an RNG hit. This closes the open low item. Hit fixtures:
+  `import jax.random`, `from jax.random import x`, `from torch.random import x`; the two forms already caught
+  (`from numpy import random`, `import numpy.random as r`) stay caught; clean fixtures: `import randomize`,
+  `from mylib import randomize`.
+  Proof (commit 12): `rng()`'s import, import-list and from patterns take `([A-Za-z0-9_]+[.])*random([.][A-Za-z0-9_]+)*`
+  in place of `random`, and `pyrandom()`'s two .py-only shapes (the module line after `from \` and the wrapped
+  import line) take the same; nine fixtures hit (`import jax.random`, `from jax.random import PRNGKey`, `from
+  torch.random import manual_seed`, `from numpy import random`, `import numpy.random as r`, `import lab.random.keys`,
+  `import os, jax.random`, a wrapped `    jax.random` after `import json, \`, and `    jax.random import key` after
+  `from \`), and `clean-near-misses` gains `import randomize`, `from mylib import randomize`, `import
+  jax.randomness` and `from lab.randomart import draw`. `--selftest` 542/0.
+- [x] `--workflows DIR`, run in `gates` over `.github/workflows/entropy-*.yml` (commits 12-13). Each file must have:
+  - top-level `permissions: contents: read`, and no `write` permission anywhere;
+  - every `uses:` one of `actions/checkout`, `actions/cache` or `actions/upload-artifact`, pinned to a 40-hex SHA;
+  - no `secrets.`;
+  - no `pull_request_target` or `workflow_run` trigger;
+  - no `${{` inside a `run:` block (expressions reach scripts through `env:` and `with:` only).
+
+  Hit and clean fixtures, one canary; entropy-ci.yml passes as it stands.
+  Proof (commit 12, the check; the `gates` step is commit 13): `scripts/banned-api-check.sh --workflows DIR` reads
+  every `DIR/entropy-*.yml` (none is exit 2) with one awk pass that follows `run:` blocks (the key's line and every
+  line indented past the key, a value-less `defaults: run:` included) for `${{`, and `permissions:` blocks for a
+  `<scope>: write` entry or `write-all`, and requires a top-level block with `contents: read` (missing: a hit at
+  line 1); plain greps take an unpinned or foreign `uses:`, `secrets.`, `pull_request_target` and `workflow_run`.
+  17 `workflow-*` fixtures hit (missing, `{}`, a job's `contents: write` and `write-all`, a top-level `id-token:
+  write`, a tag, a short SHA, another action, a `docker://` image, `secrets.`, both triggers, `${{` on a run line,
+  in a block, in a block's comment, on a block's last line, and under `defaults: run:`), two `clean-*` fixtures pass
+  (a hardened file in entropy-ci.yml's shape with expressions in concurrency, outputs, env, with and a comment, and
+  two files with the flow and block permission forms), and two built-in errors (no `entropy-*.yml`, a missing DIR).
+  The real `../.github/workflows` is clean under sh and dash. One canary copies the real entropy-ci.yml, widens the
+  token to write and appends a job that breaks every other rule once, and needs exactly those 7 hits. canaries
+  68/68.
+  Proof (review fix, commit 12c): stage C's security and recompute reviews found the check fail-open in five places
+  (each reproduced on a scratch fixture, "clean"): a job's `contents: "write"` (quoted) or a `contents:` whose
+  `write` sits on the next line, since the entry pattern needed an unquoted `write` on the key's line; `${{
+  secrets[format('GITHUB_TOKEN')] }}`, `${{ toJSON(secrets) }}` and `${{ github.token }}` (the same token as
+  `secrets.GITHUB_TOKEN`), since the grep was `secrets[.]`; a run key after a wider dash (`-   run:`), quoted
+  (`"run":`) or in a flow mapping (`- {name: x, run: "..."}`), since the awk needed `- run:`; and an
+  `entropy-*.yaml` file, which GitHub runs and the loop never read. Now: in a permissions block any line holding
+  `write` (any letter case) is a hit, so the quoted, next-line and flow-mapping forms are read as GitHub reads them
+  (top_ok still needs an unquoted `contents: read`); `secrets` is banned as a word (the two "no secrets" comments in
+  entropy-ci.yml become "no secret"; the header's noise list says so) and `github.token` also as `github['token']`;
+  a block key may follow a dash of any width and may be quoted, a flow mapping's `run:` is read for `${{` on its
+  line, and each line prints at most once; the loop reads `entropy-*.yml` and `entropy-*.yaml`. 14 new `workflow-*`
+  hit fixtures (quoted write, write on the next line, a flow mapping on its own line, `secrets[...]`,
+  `toJSON(secrets)`, `secrets` in prose, `github.token`, `github['token']`, a wide dash on a run line and before a
+  run block, a flow-mapping run, a `"run"` and a `'run'` key, a job write in an `entropy-pi-image.yaml`) and
+  `clean-yaml-extension` (a clean `.yml` beside a clean `.yaml`, 2 workflows read). `--selftest` 575/0 under sh and
+  dash; the real `../.github/workflows` clean under both; `ruby -ryaml` parses the edited entropy-ci.yml; the gate
+  clean on the tree (214 files); canaries 69/69 (the workflow canary still needs exactly 7 hits).
+  Proof (commit 13, the `gates` step): as group 12's `gates` item says; entropy-ci.yml, which the same commit extends,
+  stays clean. The run is CI's.
+  Proof (M4 Review, 2026-10-16): `gates` runs it on every PR: run 38851865443 (de70f56) prints `banned-api-check
+  --workflows ../.github/workflows: clean, 2 workflow(s): read-only permissions, pinned actions, no secrets, no
+  fork-trusting trigger, no expression in a run step`; the same here under sh. Its fixtures are among `--selftest`'s 698
+  cases and its canary among the 73.
+- [x] `--os-config pi/os`, a text-only check run in `gates`. It lands in commit 17, with `expected/`. It checks:
+  - inittab equals Q35's three lines;
+  - fstab's options;
+  - cmdline.txt has no `console=` or `init=`, and has `ro`, `panic=0` and `init_on_free=1`;
+  - config.txt has no `enable_uart=1`, no `dtoverlay`, no `start_file`/`fixup_file` and no plain `gpu_mem=`, and its
+    only `gpu_mem` lines are `gpu_mem_256=100`, `gpu_mem_512=100` and `gpu_mem_1024=100` (17a-e adds no `start_x=1`
+    and no `start_debug=1`, which select `start_x.elf`/`fixup_x.dat` and `start_db.elf`/`fixup_db.dat` as `start_file`
+    and a `gpu_mem` of 16 select other files);
+  - `expected/linux.config` has every required option at `=y`, no forbidden option at `y` or `m`, and exactly one
+    `CONFIG_HW_RANDOM_*` driver, BCM2835;
+  - BusyBox enables only `init` and `mount`.
+
+  Proof (17a, the mode; the `gates` step and the real `pi/os` run are 17b's, after commit 16 adds `expected/`):
+  `scripts/banned-api-check.sh --os-config OS_DIR` checks the six board files and the three `expected/` files named
+  above (a missing `expected/`, or a missing or empty file, is exit 2: `--os-config pi/os` exits 2 today, naming the
+  missing `expected/`), and prints `<Category>: <file>[:<line>]: <detail>` per hit (Inittab, Fstab, Cmdline, ConfigTxt,
+  Kconfig, BusyBox). Readings: fstab's "options" are ro, nosuid, nodev, noexec on every proc and sysfs line, nosuid,
+  nodev, noexec and a size= on every tmpfs line, no line of another type and at least one line; "BusyBox enables
+  only init and mount" is CONFIG_INIT, FEATURE_USE_INITTAB, MOUNT, FEATURE_MOUNT_FSTAB, FEATURE_MOUNT_FLAGS,
+  SH_IS_NONE and BASH_IS_NONE at =y (the two FEATURE_MOUNT_* and FEATURE_USE_INITTAB added to the lead's four, since
+  without them the inittab and fstab this mode checks are never read), none of a committed list of 35 applet
+  symbols at =y, and no other SH_IS_*/BASH_IS_* selector at =y; `expected/kconfig-required` and `kconfig-forbidden`
+  must equal the fragment's `=y` and `is not set` symbols in its order, so the three cannot drift. Fixtures in
+  `scripts/testdata/os-config/`: `clean-pizero` (the real inittab, fstab, cmdline.txt and config.txt; a BusyBox
+  config of the lines read; a 12-line fragment and a matching `expected/`) passes, and 28 `osconfig-<category>-*`
+  fixtures, each one file copied over a copy of it, fail with exactly one hit of that category (two inittab, four
+  fstab, four cmdline, six config.txt, six kconfig, six BusyBox); five built-in errors exit 2 (no `expected/`, a
+  missing fstab, an empty `kconfig-required`, a fragment line of another kind, a path that is not a directory).
+  `--selftest` 682/0 under sh and dash; the gate clean on the tree (235 files); canaries 73/73 with the four
+  `--os-config` canaries (the clean copy as the control, then the inittab's wait line made respawn, a `console=` in
+  cmdline.txt and a `kconfig-forbidden` that no longer equals the fragment, each exactly one hit of its rule).
+  Proof (review fix, 17a-c): stage D2a's security review found the `console=`/`init=` rule bypassed by quoting the
+  word: `"console=ttyAMA0,115200" "init=/bin/busybox"` in cmdline.txt passed `--os-config` clean (reproduced on a
+  copy of `clean-pizero`), while the kernel's `next_arg` (lib/cmdline.c) strips a word's leading quote before it
+  splits param=value, so it reads console= and init=; `--image`'s Boot rule only proves the image's cmdline.txt
+  equals this board file, so the board file is the one gate. Now any double quote in cmdline.txt is a Cmdline hit
+  (one per line: the board file has none and needs none), beside the unquoted word rule. Fixture
+  `osconfig-cmdline-quoted-console` (both quoted words on the board line) gives exactly that one hit; 29
+  `osconfig-*` fixtures. `--selftest` 683/0 under sh and dash; the gate clean on the tree.
+  Proof (review fix, 17a-d): the same review found the fstab rule reading only the presence of ro, nosuid, nodev and
+  noexec, not the absence of their negations, so `ro,nosuid,nodev,noexec,rw,exec,suid,dev` on the proc line and
+  `nosuid,nodev,noexec,exec,...` on the /tmp line passed clean (reproduced on a copy of `clean-pizero`), while
+  BusyBox's mount (util-linux/mount.c, the option table and `parse_mount_options`) applies options in order and maps
+  rw, exec, suid and dev to the flag's complement, so those lines mount read-write and exec; the image's /etc/fstab
+  is this overlay file and `--image` re-checks only the inittab, so `--os-config` is the one fstab gate. Now any
+  line that carries rw, exec, suid, dev or remount is a Fstab hit naming the word. Fixtures
+  `osconfig-fstab-proc-rw-after-ro` and `osconfig-fstab-tmpfs-exec-after-noexec`, exactly one hit each; 31
+  `osconfig-*` fixtures. `--selftest` 685/0 under sh and dash; the gate clean on the tree.
+  Proof (review fix, 17a-e): the same review found config.txt's list, taken from this item, missing `start_x=1` and
+  `start_debug=1`, which select `start_x.elf`/`fixup_x.dat` and `start_db.elf`/`fixup_db.dat` just as `start_file`
+  and `gpu_mem=16` select other files (both passed clean on a copy of `clean-pizero`; group 13's config.txt proof
+  already says "no start_x"), bounded by `--image`'s Boot rule (exactly start.elf and fixup.dat present). Now a
+  `start_x=1` or `start_debug=1` line is a ConfigTxt hit "(selects other firmware files)", in the same shape as the
+  enable_uart=1 rule, and this item names the two. Fixtures `osconfig-config-txt-start-x` and
+  `osconfig-config-txt-start-debug`, exactly one hit each; 33 `osconfig-*` fixtures. `--selftest` 687/0 under sh and
+  dash; the gate clean on the tree.
+  Proof (review fix, 17a-f): stage D2a's plan review found 17a's reading of "BusyBox enables only `init` and `mount`"
+  (the seven required symbols, a deny list of 35 applet symbols and the shell selectors) let an added applet outside
+  the list pass: `CONFIG_DD=y`, `CONFIG_CHROOT=y` and `CONFIG_SETSID=y` appended to a copy of `clean-pizero`'s
+  busybox.config gave "clean". Now `busybox_check` is the allow-list the word "only" asks for: the seven required
+  symbols must be at =y, and every `CONFIG_X=y` line must be one of `busybox_allowed`, the 18 symbols
+  `pi/os/board/pizero/busybox.config` sets (the seven, and the build settings its header names: HAVE_DOT_CONFIG,
+  LONG_OPTS, LFS, TIME64, FEATURE_SYSLOG, STATIC_LIBGCC, INSTALL_APPLET_SYMLINKS, NO_DEBUG_LIB,
+  FEATURE_BUFFERS_USE_MALLOC, MONOTONIC_SYSCALL, TRY_LOOP_CONFIGURE), reviewed once with the file as the kernel's
+  lists are; the deny list and the selector rule go, since the allow-list subsumes them. The real busybox.config
+  passes (`--os-config` on a copy of `clean-pizero` holding it: clean), the reviewer's copy gives 3 BusyBox hits, the
+  six existing BusyBox fixtures still give exactly one hit each (`CONFIG_ASH=y`, `CONFIG_BASH_IS_ASH=y` and
+  `CONFIG_UDHCPC=y` now as "not a symbol the image sets"), and fixture `osconfig-busybox-dd` (`CONFIG_DD=y` added)
+  gives one; 34 `osconfig-*` fixtures. `--image`'s root list (17b) proves "only" at the image through the applet
+  symlinks; this proves it at the source. `--selftest` 688/0 under sh and dash; the gate clean on the tree.
+  Proof (review fix, 17a-h): stage D2a's recompute review listed sub-rules of `--os-config` and `--image` that no
+  fixture or case exercised (a mutation dropping each survived `--selftest`), so each gets one: fixtures
+  `osconfig-fstab-tmpfs-no-noexec` (a /tmp line without noexec), `osconfig-fstab-comments-only` ("no filesystem
+  line"), `osconfig-cmdline-no-init-on-free`, `osconfig-config-txt-fixup-file` (`fixup_file=fixup_x.dat`) and
+  `osconfig-config-txt-gpu-mem-512-twice`, exactly one hit each (39 `osconfig-*` fixtures); the built-in error
+  `osconfig-error-fragment-without-is-not-set-lines` (the fragment's `=y` lines alone, exit 2 naming the missing
+  kind); and two stub cases of the image scan, the bytes `keepcrypt_pi_sim` appended to keepcrypt-pi (`Binary:
+  ... byte string keepcrypt_pi_sim`) and a 1777 `/var/tmp` (`Deny: /var/tmp: ... drwxrwxrwt`, so the sticky
+  exemption stays `/tmp`'s alone). The ninth, `kconfig_check`'s "CONFIG_HW_RANDOM_BCM2835=y, the one hwrng driver,
+  is not set", cannot be a one-hit fixture while the fragment (the real one and `clean-pizero`'s) requires
+  BCM2835, since the required rule fires with it; it stays as the rule's second half for a fragment that would not.
+  `--selftest` 698/0 under sh and dash; the gate clean on the tree.
+  Proof (M4 Review, 2026-10-16): run 38851865443's `gates` (as 38771532169's and 38797300316's) prints `banned-api-check
+  --os-config pi/os: clean: Q35's inittab, the fstab's options, cmdline.txt and config.txt as the plan says,
+  expected/linux.config with the fragment's required and forbidden lists (which expected/kconfig-required and
+  kconfig-forbidden equal) and one hwrng driver, and BusyBox with init and mount and no other symbol set`; the same here
+  under sh and dash.
+- [x] The existing rules scan `pi/os/` files from their first commit. A false hit in a kernel or BusyBox config gets a
+  reviewed per-path rule with fixtures, never a blanket exclude.
+
+  Proof:
+  - `--selftest` at its new count;
+  - canaries (61 + n)/(61 + n);
+  - the gate clean on the tree;
+  - `gates` at or under 12 minutes in CI (Q31 (f)).
+  Proof (M4 Review, 2026-10-16): `--selftest` 698 passed, 0 failed (sh and dash here; CI's `gates`); canaries 73/73 (61
+  + 12); the gate clean on the tree (CI 238 files; 241 here, the 3 gitignored `__pycache__` files more); `gates` 10 min
+  18 s at de70f56 (run 38851865443) and 10 min 17 s at b9ed46a, under Q31 (f)'s 12 minutes. No per-path rule was needed
+  for `pi/os/` (the Kconfig and BusyBox checks read those files by name, `--os-config`).
+
+**12. CI in entropy-ci.yml (required names unchanged)**
+- [x] The cross Pi leg also runs
+  `cargo build --release --locked -p keepcrypt-pi --bin keepcrypt-pi --target arm-unknown-linux-gnueabihf` with the
+  stand-in gcc, and scans the result with the two rlibs and the probe. It must have `U getrandom` and a symbol table, and
+  no marker, no test key, and no foreign RNG or fallback symbol. The comments at :413-417 and :478-479 say the shipped
+  binary comes from the image workflow's Buildroot toolchain.
+  Proof (commit 13, the steps; the run is CI's): the Pi leg's new step "Build pi/app's release binary (default
+  features)" runs `cargo build --release --locked -p keepcrypt-pi --bin keepcrypt-pi --target "$TARGET"` on the rlib
+  step's condition (keepcrypt-pi among the leg's crates), right after it; the scan step adds
+  `target/$TARGET/release/keepcrypt-pi` as its fourth file, first prints the binary's `U getrandom` line from the
+  toolchain's llvm-nm (`rustc --print target-libdir`'s sibling `bin/`), and the scan's OSImport, Format and StdRandom
+  rules check the import, the symbol table and std's random-key path. Both comments now say the shipped binary comes
+  from the image workflow's Buildroot toolchain and that this one is scanned, never run. No ARM linker here: the lead
+  reads the Pi leg's "Build pi/app's release binary" step, its `U getrandom` line and the scan's `clean, 4 file(s)`
+  line.
+  Proof (M4 Review, 2026-10-16): run 38851865443 (de70f56), job `cross (arm-unknown-linux-gnueabihf)`, 1 min 46 s: the
+  step builds `target/arm-unknown-linux-gnueabihf/release/keepcrypt-pi` (5,113,500 bytes; the rlibs 4,730,242 and
+  2,216,814 bytes, the probe 4,021,440), llvm-nm prints `U getrandom@GLIBC_2.25`, and the scan prints `banned-api-check
+  --artifact arm-unknown-linux-gnueabihf: clean, 4 file(s): no marker, no test key, no other RNG symbol, no std
+  random-key path, no stripped file; getrandom imported by all 2 ...`. Green on every head since 13b (ba0cc63).
+- [x] The artifact scan's Format rule: a linked ELF with no `.symtab` is a hit, tested with a stripped-binary fixture. A
+  stripped file prints no symbols, so the RNG-crate rule would otherwise pass silently.
+  Proof (commit 12): for every ELF or Mach-O file, `--artifact` reports `Format: ... a stripped file with no symbol
+  table (.symtab), so its symbols cannot be checked` and moves on when the ELF has no `.symtab` section
+  (`llvm-readobj --section-headers`) or llvm-nm lists no symbol at all (it prints "no symbols" to stderr and exits
+  0, which the symbol rules would have passed). The fixture is the no-import object after `llvm-strip --strip-all`
+  (an object with relocations keeps the symbols they name), for aarch64-linux-android (ELF) and aarch64-apple-ios
+  (Mach-O): exactly that one hit each, the missing OS import not reached. A linked binary cannot be made here (no
+  Linux or Android linker); the rule reads the same tables.
+- [x] std's random-key path, in `--artifact` and `--image` for every linked file: a symbol containing
+  `hashmap_random_keys`, `RandomState` or std's `sys::random` module (mangled `3std3sys6random`), or the byte string
+  `/dev/urandom` or `/dev/random`, is a hit. Positive control: a fixture object that calls
+  `std::collections::hash_map::RandomState::new()`, compiled like the existing fixtures (or, if that inlines away, a
+  symbol of that name), plus one canary. The first `keepcrypt-pi` is checked once by hand as well; if the path is
+  linked, find which crate uses it, then stop and ask.
+  Proof (commit 12, `--artifact`; `--image` is commit 17 and the `keepcrypt-pi` check commit 13): a `StdRandom`
+  category in every file, archives included: each demangled symbol holding `hashmap_random_keys`, `RandomState`,
+  `std::sys::random` or `3std3sys6random`, and the byte strings `/dev/urandom` and `/dev/random`. The fixture
+  (`--cfg kc_random_state`, which drops `no_std` for that case) calls `RandomState::new()`; at the fixtures' opt-level
+  1 it inlines, leaving the thread-local KEYS, its initialiser, `LocalKey::with` and the `hashmap_random_keys`
+  import, four pinned hits per target (std 1.98.1's names), with the OS import present. `std-random-paths.txt`
+  gives both byte-string hits. The canary plants `black_box(RandomState::new())` at the start of the copy's
+  `release_probe.rs` run() and builds it like the control: the probe fails the scan with StdRandom symbols,
+  `hashmap_random_keys` among them, the unchanged rlib has none. The real host probe and rlib (`release-probe-default`)
+  stay clean, so the control still passes; the Linux and Android probes are first scanned by CI's cross job.
+  Proof/decision (commit 13b, Q52): CI run 38652814808 at 8484278, job "cross (arm-unknown-linux-gnueabihf)", failed
+  the scan with six StdRandom hits, three in `release_probe` and three in `keepcrypt-pi`:
+  `std::sys::random::linux::getrandom::DEVICE`, `...::GETRANDOM_AVAILABLE (.0)` and `...::GRND_INSECURE_AVAILABLE (.0)`.
+  They are std's statics, kept only because LLVM's global-merge put them in std's `.data..L_MergedGlobals` block beside
+  the thread-local destructor list that every binary uses; no reader code is linked (no
+  `std::sys::random::linux::getrandom` function, no `hashmap_random_keys`, no `SystemRng`, no `/dev/urandom`). The
+  first `keepcrypt-pi` check therefore found the path's data, not its use, and no crate to ask about. As Q52 decides,
+  `--artifact` on `*-linux-gnueabihf` drops exactly these three names when they are type `d` in an object or linked
+  file (`std_passengers`); fixtures built as `--crate-name std` for arm-unknown-linux-gnueabihf: the three statics
+  pass there (exit 0), give the three hits as aarch64-linux-android and inside an archive, the kept reader function is
+  the one hit beside them, and a DEVICE in `.bss` (type `b`) stays a hit. `--image` (commit 17) needs the same
+  allowance. CI must show the ARM leg's scan clean with 4 files and every other leg unchanged.
+  Proof (M4 Review, 2026-10-16): as 13b asked, CI shows the ARM leg's scan clean with 4 files (`no std random-key path`;
+  run 38851865443, above) and the five other cross legs green; `--image`'s Binary rule applies the same rule set to the
+  packed `keepcrypt-pi`, clean in runs 38771532075, 38797300298 and 38851865089; the positive controls (the
+  `RandomState` fixture, `std-random-paths.txt`, the probe canary) are among `--selftest`'s 698 cases and the 73
+  canaries, which pass in `gates` and here.
+- [x] `test` gains a step: make the loop-device fixture (group 8), build pi/app's bin tests with `--no-run`, run
+  `loop_device` as root with `sudo --preserve-env=KC_LOOP_DEV,KC_LOOP_RO,KC_LOOP_MNT,KC_MOUNTINFO`, then detach the loop
+  device in an `if: always()` step. (9d) The step fails unless the run reports exactly `1 passed`: a renamed test, a
+  wrong path or a build without it runs no test and exits 0 ("0 passed; ... filtered out").
+  Proof (commit 13, the steps; the run is CI's): three steps end `test`, after the simulator scan. The first installs
+  Ubuntu's dosfstools (the runner image does not promise mkfs.vfat), makes `$RUNNER_TEMP/stick.img` (`truncate -s 16M`,
+  `mkfs.vfat -F 32`) and the mount point `$RUNNER_TEMP/usb`, attaches the image with `sudo losetup --find --show`, and
+  writes `KC_LOOP_DEV`, `KC_LOOP_RO` (`/sys/block/loopN/ro`), `KC_LOOP_MNT` and `KC_MOUNTINFO` (`/proc/self/mountinfo`)
+  to `GITHUB_ENV`. The second builds the bin tests with `--no-run` as the runner's user, takes the one executable cargo
+  reports for the bin target (`--message-format=json`, jq), runs it under
+  `sudo --preserve-env=KC_LOOP_DEV,KC_LOOP_RO,KC_LOOP_MNT,KC_MOUNTINFO` with
+  `--ignored --exact device::usb::tests::loop_device`, and fails unless the run exits 0 and prints both
+  `test device::usb::tests::loop_device ... ok` and `test result: ok. 1 passed; 0 failed; 0 ignored;`. The third,
+  `if: always()`, lazily unmounts a leftover mount and detaches the loop device. That step's shell, run on the Mac
+  without sudo against the host test binary, fails as planned where the Linux-only test is filtered out (`0 passed;
+  ... 58 filtered out`: "loop_device did not run"). No loop device here: the lead reads the test job's "Run the
+  loop-device test as root (exactly 1 passed)" step.
+  Proof (M4 Review, 2026-10-16): run 38851865443 (de70f56), job `test`, 5 min 26 s: `/dev/loop0` attached to
+  `$RUNNER_TEMP/stick.img`, `KC_LOOP_DEV=/dev/loop0`, then `test device::usb::tests::loop_device ... ok` and `test
+  result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 59 filtered out`; before it the simulator scan printed its
+  three lines and `3 hit(s) in 1 file(s)`.
+- [x] `gates` runs `rootfs-prefix.py --selftest` (commit 10), `--workflows` (commit 13) and `--os-config` (commit 17).
+  Proof (commit 13, `--workflows`; `--os-config` is commit 17): `gates` runs
+  `scripts/banned-api-check.sh --workflows ../.github/workflows` right after the grep gate, on the bare checkout (the
+  workflows live at the repo root). The check is clean on the file as committed, under sh and dash. The run is CI's:
+  the lead reads the gates job's `--workflows` line (`clean, 1 workflow(s)`).
+  Proof (17b, `--os-config`): `gates` runs `scripts/banned-api-check.sh --os-config pi/os` right after the
+  `--workflows` line, before the toolchain install (the mode reads text only); the job's comment names the check.
+  Clean on the tree as committed under sh and dash (`clean: Q35's inittab, the fstab's options, cmdline.txt and
+  config.txt as the plan says, expected/linux.config with the fragment's required and forbidden lists ... and one
+  hwrng driver, and BusyBox with init and mount and no other symbol set`); the 14 required job names are unchanged
+  (`ruby -ryaml` lists the same 9 job names); `--workflows ../.github/workflows` clean on both files (`clean, 2
+  workflow(s)`). The run is CI's: the gates job's `--os-config pi/os` line, to be read on the first run after the
+  lead pushes. Unticked (review fix, 17b-d): 17b ticked it on the committed line alone; as the `test` item above
+  and group 15's 17b bullets, it waits for that run's log.
+  Proof (run 38771532169, b9ed46a, read by the lead): the gates job printed `banned-api-check --os-config pi/os:
+  clean: ...` and `--workflows ../.github/workflows: clean, 2 workflow(s)`, `selftest: 698 passed, 0 failed` and
+  `PASS: all 73 checks ran`; 14 of 14 required checks green; gates 10 min 17 s. Ticked.
+
+  Proof:
+  - a green run on the PR head, with all 14 required checks and unchanged names;
+  - the cross leg's scan listing 4 files, all clean;
+  - the `llvm-nm` lines under Review;
+  - `test` and `gates` within budget.
+
+**13. The OS image: `pi/os` (Q37)**
+- [x] Layout:
+  - `Makefile`, with targets `source`, `image`, `repro-check` and `scan` (`scan` in commit 17, which adds the `--image`
+    it runs; 15h);
+  - `external.desc` (`KEEPCRYPT`), `external.mk`, `Config.in`;
+  - `configs/keepcrypt_pizero_defconfig`;
+  - `board/pizero/`: `linux.fragment`, `busybox.config`, `config.txt`, `cmdline.txt`, `genimage.cfg`,
+    `device_table.txt` (`/bin/busybox` at mode 755, so no setuid file; named here by 20e), `post-build.sh`,
+    `post-fakeroot.sh` (15k), `post-image.sh`, `rootfs-overlay/etc/{inittab,fstab}`;
+  - `kconfig.sh`;
+  - `patches/linux/linux.hash`;
+  - `package/keepcrypt-pi/`;
+  - `rootfs-prefix.py` (from commit 10);
+  - `pins.txt`;
+  - `expected/` (commit 16): the boot and root file lists, `linux.config`, `kconfig-required`, `kconfig-forbidden`,
+    `keepcrypt-pi.imports`.
+
+  There are no directory symlinks.
+  Proof (M4 Review, 2026-10-16): `ls -R pi/os` at de70f56 holds the files listed and no other (`device_table.txt`,
+  commit 14's, since 20e; `root.list` has `-rwxr-xr-x` for busybox), `expected/` with its six files (`boot.list`,
+  `root.list`, `linux.config`, `kconfig-required`, `kconfig-forbidden`, `keepcrypt-pi.imports`); `find pi/os -type l`
+  finds no symlink.
+- [x] Makefile:
+  - pins Buildroot 2026.08's URL and SHA-256;
+  - refuses a `KC_WORK` inside `Entropy/` or containing spaces (inside also through a symlink, before `make source`
+    creates it: 14f);
+  - exports `SOURCE_DATE_EPOCH` from `pins.txt` (a fixed constant, set once in commit 14) and `TZ=UTC`, and prints both;
+    it needs no git;
+  - `make source` fetches with network access, including the crates via `cargo fetch --locked` into `$KC_WORK/cargo`;
+  - the build then runs offline with `O=$KC_WORK/out` (enforced from 14e: Buildroot's primary site is `dl/` itself,
+    primary site only, so a missing download fails the build);
+  - it runs `kconfig.sh` after `make toolchain linux-patch` and before the full build (as built:
+    `make toolchain host-flex host-bison linux-patch`, since Kconfig's conf needs flex and bison; 14g);
+  - `repro-check` builds twice, in fresh output directories at the same path, and compares the results.
+
+  Proof (21c, corrected by review fix 21c-b, 2026-10-16): every bullet but the last runs in each CI image leg. Each leg
+  runs `make -C pi/os source image` on its own fresh runner at the same `KC_WORK` (`/kc-work`, refused if it already
+  exists), so the pins, `SOURCE_DATE_EPOCH` and `TZ`, the offline build and the kconfig.sh step run twice in every image
+  run, and `pi-image reproducible (a = b)` compares the two images across machines: seven runs to 30cefbc, one hash.
+  The `KC_WORK` refusals are 14f's.
+  `repro-check` had run nowhere. Commit 20's Review left it to the lead ("the lead runs it or rules the two legs
+  sufficient"); the approved plan item offers no such choice. 21c-b ran it on this Mac against a stub Buildroot: a
+  copy of `pi/os` with kconfig.sh stubbed, `BR` set to a stub that logs each call and writes the image on the full
+  build, the real `pins.txt` hash lines in the stub tree, and a marker that fails a build whose output directory is not
+  fresh. With a deterministic stub: exit 0; defconfig, toolchain and full build twice, the second in a fresh output
+  directory; both SHA-256s equal; "pi/os: both builds gave the same image". With a nondeterministic stub (the control):
+  exit 2, `cmp` printing "first.img ... differ: char 13, line 1". So the recipe does what the bullet says. What only a
+  real build shows, two full Buildroot builds on one host with shared `dl/`, `cargo/` and Buildroot source agreeing, is
+  not shown; CI's legs do not show it either, since each runs one `image`. That first real run moves to M7 with the
+  clean-container `repro-check` (lead decision 21), named in the gate report for the owner's approval.
+
+  Proof (17a, the `scan` target alone): `make -C pi/os scan` refuses to run without `$(OUT)/images/$(IMAGE)` or
+  with other than one `$(OUT)/build/linux-*/.config` (it never rebuilds: "after image" read as "run after make
+  image"), then runs `--image-lists` with `$(OUT)/host/bin` first on PATH to take the binary's SHA-256 and `--image
+  $(OUT)/images/$(IMAGE) $(OS)/expected <.config> <hash>`. Run on this Mac from a copy of `pi/os` at a space-free
+  path against a stub `KC_WORK` (stub mcopy, mdir and unsquashfs in `out/host/bin`, a 16-sector image with the
+  SquashFS magic, the fragment's `=y` lines as the `.config`, an `expected/` made from `--image-lists`): clean, exit
+  0, "3 other ELF file(s)"; with a `/bin/sh` link planted in the stub root, exit 1 with the List and Deny hits.
+  Proof (review fix, 17a-i): stage D2a's security review found 17a's BIN_SHA256 a tautology: `scan` took it from
+  `--image-lists`' hash of the image's own `/usr/bin/keepcrypt-pi`, and `--image` hashes that same unpacked file,
+  so the Binary rule compared a file with itself and could never fail there (the selftest's wrong-hash control
+  proves only that the rule fires on a wrong input). Now `scan` hashes the keepcrypt-pi cargo wrote in the
+  package's build directory, `$(OUT)/build/keepcrypt-pi-0.0.0/target/arm-unknown-linux-gnueabihf/release/keepcrypt-pi`
+  (keepcrypt-pi.mk's `$(@D)/target/...`, before Buildroot's install and the SquashFS pack; `BR2_STRIP_EXCLUDE_FILES`
+  keeps the installed copy byte-equal), refuses to run without that file, still prints `--image-lists` for the log,
+  and passes that hash to `--image`, so the rule proves the packed binary is the file cargo built. Run on this Mac
+  from a space-free copy of `Entropy/pi/os`, `scripts` and `rust-toolchain.toml` against a stub `KC_WORK` (stub
+  mcopy, mdir and unsquashfs in `out/host/bin`, a 16-sector image with the SquashFS magic, the fragment's `=y`
+  lines as `out/build/linux-6.12.61/.config`, an `expected/` made from `--image-lists`, the root's four ELF files
+  one getrandom-importing control): `make scan` refuses without the image and without the built file (each its own
+  message, `Error 1`); with the built file equal to the root's keepcrypt-pi, clean, exit 0; with one byte appended
+  to the built file, exactly `Binary: /usr/bin/keepcrypt-pi: SHA-256 ec7e1e9b..., not BIN_SHA256 36ce9579...`, 1
+  hit, exit 1 (make: Error 1). The workflow's `binary` output has the same origin as 17a's hash (the image's own
+  file); 17b must pass a build-side hash to `--image`, not `steps.hash.outputs.binary` (noted under 17b).
+  Proof (M4 Review, 2026-10-16): `source` and `image` run in every image leg (de70f56's leg a: `make source image` in 10
+  min 08 s, `pi/os: SOURCE_DATE_EPOCH=1788535000 TZ=UTC KC_WORK=/kc-work` printed, the image 36,426,240 bytes), and
+  `scan` is 17a-i's; `repro-check` has not been run anywhere (Linux only; CI's two legs are the reproducibility check),
+  so the item stays open until the lead runs it or rules the two legs sufficient.
+- [x] The kernel config is an allow-list (Q37 (b)):
+  - `kconfig.sh` (committed) runs in the pinned kernel tree: `bcmrpi_defconfig`; every `=m` line turned off and
+    `MODULES` off; then `linux.fragment`; then `olddefconfig`. Its output is the build's custom kernel config.
+  - `linux.fragment` turns on the required list and turns off the forbidden list (both below).
+  - `expected/linux.config` is the final `.config` the kernel was built with, committed in commit 16 after the lead
+    reviews every `=y` line once (including any symbol a `default m` promoted to `y`). Anything not needed gets an
+    explicit `# … is not set` in the fragment.
+  - `--image` fails on any difference between the build's `.config` and `expected/linux.config`; `--os-config` checks
+    the committed file against the lists on every PR.
+
+  Proof (14h, the script's checks; the real kernel's run is CI's): `sh pi/os/kconfig.sh --selftest`, which `gates`
+  runs, is 6/0 under sh and dash on a stub kernel tree with the committed fragment: the clean tree written with no
+  `=m`; a forbidden option selected back on, a required one dropped and a module left each exit 1 with nothing
+  written; a fragment line of another kind and a bad usage exit 2. Each of six mutants of the checks fails it.
+  Proof (M4 Review, 2026-10-16): `kconfig.sh` ran in every image build (15i's refusal in run 38683063774 shows it fails
+  the build; every later build passed it); `--image`'s Kconfig rule found the build's `.config` equal to
+  `expected/linux.config` in both legs of runs 38771532075, 38797300298 and 38851865089; `--os-config pi/os` clean in
+  `gates` and here; `kconfig.sh --selftest` 6 passed, 0 failed (sh, dash, CI).
+- [x] Kernel lists:
+  - Required at `=y`:
+    - SPI: `SPI_BCM2835`, `SPI_SPIDEV`;
+    - GPIO: `PINCTRL_BCM2835`, `GPIO_CDEV`, `RASPBERRYPI_GPIOMEM`;
+    - hwrng: `HW_RANDOM`, `HW_RANDOM_BCM2835`;
+    - USB storage: `USB_DWCOTG`, `SCSI`, `BLK_DEV_SD`, `USB_STORAGE`;
+    - partitions: `PARTITION_ADVANCED`, `MSDOS_PARTITION`;
+    - FAT: `VFAT_FS`, `NLS_CODEPAGE_437`, `NLS_ISO8859_1`;
+    - SD card and filesystems: `MMC_BCM2835`, `SQUASHFS`, `SQUASHFS_XZ`, `TMPFS`, `DEVTMPFS`, `DEVTMPFS_MOUNT`,
+      `PROC_FS`, `SYSFS`;
+    - hardening: `INIT_ON_FREE_DEFAULT_ON`;
+    - the ACT LED's normal pattern under Linux, which H1a reads: `LEDS_GPIO`, `LEDS_TRIGGER_ACTPWR` (lead decision,
+      2026-10-14).
+    - the console device: `TTY` and `NULL_TTY`, so `/dev/console` always opens, on a tty that discards writes (15m).
+  - Forbidden at `y` or `m` (a second check behind the exact config):
+    - `MODULES`, `NET`, `USB_GADGET`;
+    - `DEVMEM`, `SWAP`, `ZSWAP`, `ZRAM`, `COREDUMP`;
+    - `DEBUG_FS`, `FTRACE` and `BLK_DEV_IO_TRACE` (which selects `DEBUG_FS`; 15i), `MAGIC_SYSRQ`, `KEXEC`,
+      `KGDB` (bcmrpi_defconfig builds it in; 15i);
+    - `VT`, `FRAMEBUFFER_CONSOLE`, `IKCONFIG`, `GPIO_SYSFS`;
+    - `BPF_SYSCALL`, `USER_NS`, `IO_URING`, `BINFMT_MISC`;
+    - `SOUND`, `MEDIA_SUPPORT`, `DRM`, `FB_TFT`, `HID`, `USB_HID` (which defaults to y and selects `HID`; 15i),
+      `INPUT_JOYDEV`, and `I2C` until M8;
+    - `USB_SERIAL`, `USB_UAS`, `USB_PRINTER`, `USB_ACM`;
+    - `EXFAT_FS`, `NTFS3_FS`, `HFS_FS`, `HFSPLUS_FS`, `BTRFS_FS`, `XFS_FS`, `ISO9660_FS`, `UDF_FS`, `FUSE_FS`;
+    - every `*_PARTITION` except `MSDOS_PARTITION`;
+    - every `HW_RANDOM_*` driver except BCM2835.
+    - the 113 options the review of every `=y` line removed (15l), grouped by reason in `linux.fragment`: kernel
+      facilities nothing uses, debugging and symbol interfaces, the serial drivers, pseudo-terminals and line-discipline
+      loading (the TTY core stays, 15m), input, HID, CEC and
+      framebuffer, hardware the Zero lacks or the image does not use (the Arasan SDIO host among them; the SD card is
+      on sdhost), run-time code and device-tree loading, extra block-layer features, filesystems and formats beyond
+      vfat and xz SquashFS, unused kernel crypto, LED triggers other than actpwr, and slab merging.
+  - If a required option selects a forbidden one: stop and ask.
+  Proof (M4 Review, 2026-10-16): `expected/kconfig-required` is the 29 options above, `kconfig-forbidden` 218 lines,
+  both equal to the fragment's (`--os-config` checks that; clean); `expected/linux.config` has 514 `=y` lines; no
+  required option selected a forbidden one (15i's scan of every forbidden option's selectors), so "stop and ask" did not
+  arise.
+- [x] The defconfig, based on 2026.08's `raspberrypi0_defconfig`:
+  - `BR2_arm1176jzf_s` and its Bootlin toolchain;
+  - `BR2_DOWNLOAD_FORCE_CHECK_HASHES`;
+  - the kernel tarball 21b410140c47, checked by our `linux.hash`;
+  - `BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG` with `kconfig.sh`'s output, and the device tree `broadcom/bcm2708-rpi-zero`;
+  - rpi-firmware, default variant (`start.elf`, `fixup.dat`), with our config.txt and cmdline.txt;
+  - `BR2_REPRODUCIBLE`;
+  - `BR2_INIT_BUSYBOX` with our BusyBox config, and `BR2_SYSTEM_BIN_SH_NONE`;
+  - no getty, no read-write remount, devtmpfs only;
+  - SquashFS with xz and `-no-xattrs`, and no timestamp option (`-mkfs-time`, `-inode-time`, `-all-time`, `-repro`,
+    `-repro-time`): `SOURCE_DATE_EPOCH` sets the times;
+  - no tar image;
+  - host genimage, dosfstools and mtools;
+  - `BR2_STRIP_EXCLUDE_FILES="keepcrypt-pi"`;
+  - the keepcrypt-pi package;
+  - no ccache;
+  - Buildroot's random-seed scripts off.
+  Proof (M4 Review, 2026-10-16): `configs/keepcrypt_pizero_defconfig` read line by line at de70f56: `BR2_arm1176jzf_s`,
+  the Bootlin ARMv6 EABIhf glibc stable toolchain, `BR2_DOWNLOAD_FORCE_CHECK_HASHES`, the kernel tarball at 21b410140c47
+  with `BR2_GLOBAL_PATCH_DIR` (our `linux.hash`), `BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG` and `broadcom/bcm2708-rpi-zero`,
+  rpi-firmware's PI variant with `bootcode.bin`, our config.txt and cmdline.txt, `BR2_REPRODUCIBLE`, `BR2_INIT_BUSYBOX`
+  with our config and `BR2_SYSTEM_BIN_SH_NONE`, getty and the rw remount `is not set`, devtmpfs, SquashFS with xz,
+  `BR2_TARGET_ROOTFS_TAR is not set`, host genimage, dosfstools and mtools, `BR2_STRIP_EXCLUDE_FILES="keepcrypt-pi"`,
+  `BR2_PACKAGE_KEEPCRYPT_PI`, `BR2_CCACHE is not set`, `BR2_PACKAGE_URANDOM_SCRIPTS is not set`. The SquashFS arguments
+  are Buildroot 2026.08's defaults; equal images across runners and days (seven runs to 30cefbc) show the times come from
+  `SOURCE_DATE_EPOCH`.
+- [x] BusyBox: only `init` and `mount` (`FEATURE_USE_INITTAB`, `FEATURE_MOUNT_FSTAB`). No shell, getty, login, network or
+  seedrng applets.
+  Proof (M4 Review, 2026-10-16): `board/pizero/busybox.config` sets 18 symbols: `INIT`, `FEATURE_USE_INITTAB`, `MOUNT`,
+  `FEATURE_MOUNT_FLAGS`, `FEATURE_MOUNT_FSTAB`, `SH_IS_NONE`, `BASH_IS_NONE` and 11 library and build options;
+  `--os-config`'s allow-list (17a-f) is clean; the image's root list has `/bin/busybox`, `/bin/mount -> busybox` and
+  `/sbin/init -> ../bin/busybox` and no other applet link.
+- [x] inittab (Q35), none of whose lines needs a shell:
+  - `::sysinit:/bin/mount -a`;
+  - `::wait:/usr/bin/keepcrypt-pi`;
+  - `::once:/usr/bin/keepcrypt-pi --stopped`.
+
+  Proof (commit 14): `board/pizero/rootfs-overlay/etc/inittab` is exactly these three lines (`cmp` against them,
+  equal); no command holds a character of BusyBox 1.38.0's `strpbrk` set in init/init.c:443 (`=` included), so
+  init execs each directly. `--os-config` (commit 17) and `--image` re-check it.
+- [x] fstab: `proc` and `sysfs` read-only, `/tmp` and `/run` as tmpfs, all `nosuid,nodev,noexec` with a small `size=`.
+  The FAT boot partition gets no entry.
+  Proof (commit 14): `rootfs-overlay/etc/fstab` holds four entries: `proc` and `sysfs` with `ro,nosuid,nodev,noexec`,
+  `/tmp` and `/run` as tmpfs with `nosuid,nodev,noexec`, `size=1m` (modes 1777 and 0755), and nothing else.
+  BusyBox's mount takes `nosuid`, `nodev` and `noexec` only with `FEATURE_MOUNT_FLAGS`, which busybox.config sets.
+- [x] post-build.sh creates `/mnt/usb` and removes a committed list of skeleton files (`/etc/init.d/*`, `/etc/profile`,
+  `/etc/shells`). The file lists catch anything else. From 15j, `/lib` and `/usr/lib` keep only an allow-list: the
+  dynamic loader, `libc.so.6`, `libm.so.6`, `libgcc_s.so.1` (the two programs' needs, read from the first image) and
+  `os-release`; `ldd` and the network files go. post-fakeroot.sh (15k) removes `/etc/network` and `/var/www`,
+  which Buildroot's `system/device_table.txt` makes again after post-build.sh.
+  Proof (M4 Review, 2026-10-16): the script as committed (an absolute Buildroot target directory or exit 2; `mkdir -p
+  mnt/usb`; `rm -rf` of `etc/init.d`, `etc/profile`, `etc/profile.d` and `etc/shells`; every `lib/*` and `usr/lib/*` but
+  the loader, `libc.so.6`, `libm.so.6`, `libgcc_s.so.1` and `os-release` removed; `usr/bin/ldd` and the five network
+  files removed); `expected/root.list` (53 entries, held by the scan's List rule) shows the result: `/mnt/usb`, the four
+  libraries, `os-release`, and no `init.d`, `profile`, `shells`, `ldd`, `/etc/network` or `/var/www`.
+- [x] config.txt:
+  - `kernel=zImage`;
+  - `gpu_mem_256=100`, `gpu_mem_512=100`, `gpu_mem_1024=100`, as Buildroot's `board/raspberrypi/config_default.txt`
+    sets them [S12]; the 512 MB Pi Zero gives the GPU 100 MB and leaves about 412 MB for Linux;
+  - `dtparam=spi=on`, `dtparam=audio=off`;
+  - `enable_uart=0`, `disable_splash=1`, `boot_delay=0`;
+  - `gpio=5,6,13,16,19,20,21,26=ip,pu`;
+  - `gpio=24=op,dl`, which keeps the backlight off until the firmware turns it on.
+
+  Proof (commit 14): `board/pizero/config.txt` without its comment lines is exactly these 11 lines in this order
+  (`cmp`, equal); it has no `start_x`, `start_file`, `fixup_file`, `dtoverlay` or plain `gpu_mem=`, so the default
+  variant's `start.elf` and `fixup.dat` (with `BR2_PACKAGE_RPI_FIRMWARE_BOOTCODE_BIN=y`) boot it.
+- [x] cmdline.txt:
+  `root=/dev/mmcblk0p2 rootfstype=squashfs ro rootwait panic=0 init_on_free=1 quiet loglevel=0`, with no `console=`.
+  Proof (commit 14): `board/pizero/cmdline.txt` is exactly that line and a newline (`cmp`, equal).
+- [x] genimage.cfg:
+  - MBR with a fixed disk signature;
+  - partition 1: FAT, a whole number of MiB, `mkdosfs --invariant`, the explicit file list `bootcode.bin`, `start.elf`,
+    `fixup.dat`, `config.txt`, `cmdline.txt`, `zImage`, `bcm2708-rpi-zero.dtb`;
+  - partition 2: `rootfs.squashfs`;
+  - output `keepcrypt-pi-0.0.0-st7789-240x240.img` (Q47).
+  Proof (M4 Review, 2026-10-16): the file as committed: `hdimage` with `disk-signature = "0x4b435049"`; `boot.vfat` 32M
+  with `extraargs = "--invariant"` and exactly the seven files; partition `boot` type 0xC bootable and `rootfs` type
+  0x83 from `rootfs.squashfs`; the image `keepcrypt-pi-0.0.0-st7789-240x240.img` (14i). Every leg's `--image-lists`
+  shows that layout (`mdir -a`: 7 files, 5,013,420 bytes).
+- [x] post-image.sh sets every partition-1 input's mtime to `SOURCE_DATE_EPOCH` before genimage runs; that matters only
+  for the `mcopy -m` fallback below. genimage's `mcopy -sp` has no `-m`, so mtools stamps the files with
+  `SOURCE_DATE_EPOCH` itself, written as local time under `TZ=UTC` [S29]; the two legs confirm it. If partition 1
+  differs, the per-partition hashes and `mdir -a` listings locate it, and post-image.sh builds partition 1 itself with
+  `mcopy -m`.
+  Proof (M4 Review, 2026-10-16): the script runs `touch -d "@$SOURCE_DATE_EPOCH"` on `rpi-firmware/*`, `zImage` and the
+  dtb, then genimage with a fresh tmppath; the two legs give an equal partition 1 in every run since a4598b5 (at de70f56
+  `sha256 partition-1 948efd16...` in both legs), so the `mcopy -m` fallback was not needed.
+- [x] `package/keepcrypt-pi/keepcrypt-pi.mk`, a generic package (Q37 (c)):
+  - its site is `Entropy/` (local, rsynced without `target` and `.git`);
+  - the build runs under `env -u RUSTFLAGS` (from 14c, with every host `CARGO_*` and `RUSTC*` variable, `RUSTFLAGS`,
+    `RUSTDOCFLAGS` and `RUSTUP_TOOLCHAIN` unset, `RUSTUP_HOME` kept: a host `CARGO_ENCODED_RUSTFLAGS` replaced the
+    getrandom cfg below), with:
+    - `CARGO_HOME=$KC_WORK/cargo`;
+    - CC, AR and the linker set to Buildroot's `TARGET_CC`/`TARGET_AR`;
+    - `CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_RUSTFLAGS='--cfg getrandom_backend="linux_getrandom"'`;
+  - the command is
+    `cargo build --release --locked --offline -p keepcrypt-pi --bin keepcrypt-pi --target arm-unknown-linux-gnueabihf`.
+    It uses toolchain 1.98.1 from the copy's rust-toolchain.toml, default features, and the workspace's release profile,
+    so `panic = "unwind"` and core's `overflow-checks` hold;
+  - it installs `/usr/bin/keepcrypt-pi` with mode 0755 and prints its SHA-256;
+  - both builds use fixed paths instead of path remapping.
+  Proof (M4 Review, 2026-10-16): the file as committed: site `$(BR2_EXTERNAL_KEEPCRYPT_PATH)/../..` (Entropy/), method
+  local, rsync excluding `/target` (Buildroot's local method excludes `.git` itself); the build `unset`s every
+  `CARGO_*`, `RUSTC*`, `RUSTFLAGS`, `RUSTDOCFLAGS` and `RUSTUP_TOOLCHAIN` (14c), sets `CARGO_HOME=$(KC_WORK)/cargo`,
+  `CC_`, `AR_` and the `LINKER` from `TARGET_CC`/`TARGET_AR` and the getrandom cfg in
+  `CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_RUSTFLAGS`, then runs `cargo build --release --locked --offline -p
+  keepcrypt-pi --bin keepcrypt-pi --target arm-unknown-linux-gnueabihf`; install at mode 0755 with `sha256sum`;
+  `KC_WORK` is fixed. Every leg's "Hash and list" shows the built file equal to the packed one (`4f4dc6e4...`), and the
+  scan's Binary rule proves it.
+- [x] `pins.txt` records every non-crate input (version, date, URL and SHA-256; Q37 (d)) and the `SOURCE_DATE_EPOCH`
+  constant.
+  Proof (commit 14): `pi/os/pins.txt` records Buildroot 2026.08 (released 2026-09-04; its clearsigned `.sign`, DSA
+  signature checked 2026-10-15 by a scratch stdlib verifier against buildroot.org/~jacmet/pubkey.gpg, key
+  `AB07D806D2CE741FB886EE50B025BA8B59C36319`, valid, and invalid once the hash line is altered), Linux 21b410140c47
+  (2025-12-09), rpi-firmware 063bcab6c8a9 (2025-12-08, both dates from GitHub's commit API), the Bootlin toolchain
+  2025.08-1, BusyBox 1.38.0, genimage 20, squashfs-tools 4.7.5, mtools 4.0.49, dosfstools 4.2, Rust 1.98.1, the CI
+  action and `SOURCE_DATE_EPOCH = 1788535000` (Buildroot 2026.08's own `BR2_VERSION_EPOCH`, 2026-09-04 15:16:40 UTC),
+  each before the 2026-10-01 cutoff. The Makefile includes it and checks every `OS_PINS`/`BR_PINS` entry against
+  the hash file Buildroot reads: against our `linux.hash` and Buildroot's 2026.08 `.hash` files read from its git
+  tag, all hold; a changed digit in a pin or in `linux.hash` stops it naming the file.
+  Reading (15g, a lead decision under the owner's standing instruction of 2026-10-15): the build host, the
+  ubuntu-24.04 runner image and the Ubuntu packages the image workflow installs, is not a pinned input until M7's
+  container (Q38 (e)); pins.txt's header says so, and each leg prints their versions (the Image inputs table's
+  "Build host" row).
+
+  Proof (group 13 as a whole, not the `pins.txt` item, whose own proof is above; 15h):
+  - gates clean over `pi/os/`, with no new exclusion;
+  - leg (a)'s log of `make image`, with the time, `df -h` and the image size;
+  - `--os-config` clean from commit 17.
+
+**14. The image scan (Q38 (d); PF:80; BP:271-272; rule 10)**
+- [x] `banned-api-check.sh --image-lists IMG KCONFIG` (commit 15) unpacks the image and prints the boot and root file
+  lists (path, type, mode, link target), `keepcrypt-pi`'s import list, per-partition SHA-256s, an `mdir -a` listing of
+  partition 1, and KCONFIG. It uses the build's host `unsquashfs` and `mcopy`:
+  1. Read the MBR. Extract partition 1 with `mcopy -s`. Check partition 2's SquashFS magic and unpack it.
+
+  Proof (commit 15, the mode and its refusals; a real image's lists are CI's): `--image-lists` refuses, with exit 2
+  and before any host tool runs, any MBR but the image's (no `55 aa`, partition 1 not type 0x0c or 2 not 0x83, an
+  empty partition, one at sector 0, past the end, or 2 not after 1, entry 3 or 4 in use) and a partition 2 without
+  `hsqs`; then, with the build's `mcopy`, `mdir` and `unsquashfs` on PATH and the toolchain's llvm-nm, it extracts
+  partition 1 (`mcopy -s`), lists it (`mdir -a`), lists partition 2 from its SquashFS metadata (`unsquashfs -lln`, so
+  setuid bits and links appear as built), unpacks it, and prints under `== ` headings the partition table, `sha256
+  <image|partition-1|partition-2|keepcrypt-pi> <hex>`, the boot list (`<path> <dir|file>`), the `mdir -a` listing,
+  the root list (`<path> <mode>[ -> <target>]`), keepcrypt-pi's `llvm-nm -D -u` imports and KCONFIG. 14 built-in
+  cases in `--selftest` (594/0 under sh and dash): the usage error, an unreadable image and KCONFIG, the 10 layout
+  refusals, and the image's layout with the magic stopping exactly at "no mcopy on PATH" under a PATH without the
+  host tools. No mtools or squashfs-tools
+  here: the listing path ran only against scratch stub tools; the lead reads the first image run's "Hash and list"
+  step.
+  Proof (15e, 15f): 20 built-in cases, `--selftest` 601/0 under sh and dash: an entry 4 in use, a lone `55` at byte
+  510 and a partition 2 one sector past the end are refused, and one that ends on the last sector passes to the magic
+  check; with stub `mcopy`, `mdir`, `unsquashfs`, `rustc` and `llvm-nm`, the whole listing (a setuid file, a symlink,
+  a device, a name with spaces and a date in it, imports out of order with a duplicate, four pinned SHA-256s) equals
+  the expected text, and a root line with no date is refused. Mutants of the entry-4, signature and end checks, and
+  of the listing's link target, prefix, import dedup, line refusal, partition hash, boot type and KCONFIG dump, each
+  fail one case (the boot list's sort survives on macOS, where find already lists the stub's names in order).
+  Proof (M4 Review, 2026-10-16): every image leg's "Hash and list" step runs it on the real image with the build's host
+  tools; at de70f56 (run 38851865089, leg a): the partition table, `sha256 image 4b13c095...`, `partition-1
+  948efd16...`, `partition-2 76eb725e...`, `keepcrypt-pi 4f4dc6e4...`, the 8-entry boot list, the `mdir -a` listing (7
+  files, 5,013,420 bytes), the 53-entry root list, the 94 imports and the kernel config: the lists `expected/` was taken
+  from (commit 16).
+- [x] `banned-api-check.sh --image IMG EXPECTED_DIR KCONFIG BIN_SHA256` (commit 17) reuses that unpacking, then:
+  2. Search every extracted file and the raw image for the three markers and the test key. SquashFS is compressed, so
+     scanning the `.img` alone would find nothing.
+  3. Every ELF other than `keepcrypt-pi`, read with `llvm-nm -D` (Buildroot fully strips all of them except `ld-*.so*`
+     and `libpthread*.so*`, which keep their `.symtab` [S10]):
+     - it must have a dynamic symbol table (a stripped static ELF is a hit);
+     - no undefined banned RNG import, no rand-family symbol, no getrandom fallback symbol;
+     - VideoCore `start*.elf` and `zImage` get the marker search only;
+     - glibc's `libc.so` and `ld.so` define these symbols rather than import them, and the OS-import and `.symtab` rules
+       apply to `keepcrypt-pi` only.
+  4. `usr/bin/keepcrypt-pi`:
+     - the `--artifact` rules: `U getrandom`, a `.symtab`, and std's random-key path absent;
+     - no `keepcrypt_pi_sim` symbol;
+     - imports equal to `expected/keepcrypt-pi.imports`, so any change fails until reviewed;
+     - a SHA-256 equal to `BIN_SHA256`.
+  5. The file lists equal `expected/`. A deny list fails on `sh`, `ash`, `hush`, `getty`, `login`, `dropbear`, `sshd`,
+     `telnetd`, `udhcpc`, `/lib/modules`, `/etc/init.d`, any setuid file and any seed file. Partition 1 holds exactly one
+     start/fixup pair, `start.elf` and `fixup.dat`.
+  6. `cmdline.txt` and `config.txt` equal the board files byte for byte, and the inittab equals Q35's.
+  7. KCONFIG equals `expected/linux.config` exactly; it has every required option at `=y`, no forbidden option at `y` or
+     `m`, and exactly one `CONFIG_HW_RANDOM_*` driver, BCM2835.
+
+  Proof (17b in CI, run 38771532075 on b9ed46a): both legs' `--image` against the committed `pi/os/expected/` on the
+  image they built: clean (the line is quoted under group 15's Jobs item). The item waits for the gate image's run,
+  whose output commit 20 pastes; if no bring-up fix follows H1a, that image is this one.
+  Proof (17a, the mode; its run on a real image is CI's, 17b): `--image IMG EXPECTED_DIR KCONFIG BIN_SHA256` reuses
+  `image_unpack` and the lists mode's three list builders, then applies steps 2-7 as `List`, `Deny`, `Boot`,
+  `Inittab`, `Kconfig`, `Marker`/`TestKey` (the raw image, every partition-1 file, every root file), `Format`/`Symbol`
+  (every other ELF of the root, found by its magic: dynamic symbols present, no undefined banned RNG import, no
+  rand-crate or fallback symbol) and `Binary` (keepcrypt-pi under the whole `--artifact` rule set for
+  arm-unknown-linux-gnueabihf through the factored `artifact_file`, Q52's passengers included; no `keepcrypt_pi_sim`
+  symbol or byte string, one hit; imports equal to `expected/keepcrypt-pi.imports`; the SHA-256). The deny list
+  reads "any seed file" as a name ending `.age` or holding seed, backup or mnemonic, and "any setuid file" as any
+  s or t among the nine permission letters but `/tmp`'s `drwxrwxrwt`. Exit 2 for a BIN_SHA256 that is not 64 hex
+  digits, a missing EXPECTED_DIR, a missing or empty file in it, an unreadable KCONFIG, a missing board file, the
+  lists mode's layout refusals and a missing host tool, so nothing passes vacuously. Built-in `--selftest` cases:
+  nine refusals (usage, the SHA-256, the directory, a missing and an empty list, KCONFIG, the image, the magic, no
+  mcopy; three more for `--selftest-image`), then the scan on a stub image (stub mcopy, mdir and unsquashfs driven by
+  `KC_STUB`, the real toolchain, Pi-target ELF files built from `scripts/testdata/image/controls.rs` with rustc,
+  rust-lld and llvm-objcopy): the stub tree passes against lists made from it, and 34 mutations each fail with
+  exactly the one named hit (the three lists; `/bin/sh`, a link to `/bin/ash`, a setuid busybox, a sticky `/run`,
+  `/lib/modules`, `/etc/init.d`, a `.age` and a `Backup-*` file; `start_cd.elf`, no `fixup.dat`, a `console=` and
+  a `gpu_mem=16`; a respawn inittab and a symlinked one; the kernel config one line off, `CONFIG_NET=y`,
+  `CONFIG_USB_SERIAL=m`, a missing required option, a second hwrng driver, each list drifting from the fragment; a
+  marker in a boot file, in a root file and in the raw image, the test key; the wrong hash, a stripped keepcrypt-pi,
+  `/dev/urandom` in it, the simulator's symbol in it, a stripped library importing rand, a stripped static file).
+  `--selftest` 682/0 under sh and dash. No mtools or squashfs-tools here: the real tools run first in CI's image
+  legs.
+  Proof (M4 Review, 2026-10-16): the gate image's runs are every run since 17b, all on H1a's image (no bring-up fix
+  followed H1a): runs 38771532075 (b9ed46a), 38797300298 (80bf4ac) and 38851865089 (de70f56) each print, in both legs,
+  `banned-api-check --image /kc-work/out/images/keepcrypt-pi-0.0.0-st7789-240x240.img: clean: the boot and root lists
+  and keepcrypt-pi's imports equal pi/os/expected, no denied file, start.elf and fixup.dat alone, the board's
+  cmdline.txt and config.txt, Q35's inittab, the kernel config equals pi/os/expected/linux.config and keeps the f...`,
+  with `BIN_SHA256` 4f4dc6e4... from the cargo-built file. The final head's run is commit 21's to record.
+  Run at f0ae43e (21d): both legs of 38894923652 print the same clean `--image` line (group 15's 21d line).
+- [x] `--selftest-image`, run by the image workflow because it has the host tools. Each of these positive controls must
+  fail:
+  - a marker planted in a text file;
+  - a test-key file;
+  - a stripped ELF importing `rand` (dynamic symbols only);
+  - a stripped ELF defining a rand-crate symbol, and one defining a getrandom-fallback symbol (17a-g: the two rules
+    of group 14 step 3 that had no positive control);
+  - a stripped static ELF;
+  - a `/bin/sh`;
+  - a stripped keepcrypt-pi;
+  - a keepcrypt-pi with `/dev/urandom` in it;
+  - a wrong binary hash;
+  - `console=` in cmdline.txt;
+  - a `gpu_mem=16` config.txt with `start.elf`;
+  - a KCONFIG one line off `expected/linux.config`;
+  - `CONFIG_NET=y`;
+  - two hwrng drivers;
+  - a missing required option.
+
+  The clean fixture must pass.
+  Proof: `--selftest-image` in every image run from commit 17; `--image` clean on the gate image, with its output
+  pasted.
+  Proof (17a, run 38747606208 on ba03201): both legs' "Scan selftest" step ran `--selftest-image` on the image they
+  had just built: the clean control passed (`--image` clean on the real image against the lists made from it), and
+  all 17 controls (the 14 above, 17a-g's two symbol controls and the test-key control counted apart) each failed for
+  the named rule, `selftest-image: 17 passed, 0 failed` in legs a and b. The image's SHA-256 stayed
+  `4b13c095f76c4a42efc67090fec96650d070a385bb8a58b4fd7067c0d936adde`, equal to run 38690004157's, so 17a changed no
+  image input and H1a's image is still the current one. `gates` ran in 9 min 59 s (Q31 (f)'s 12-minute budget).
+  Proof (17a, the mode; its first run is CI's, in both legs' "Scan selftest" step after "Hash and list"): the
+  built image is the clean fixture: a stand-in `expected/` comes from `--image-lists`' own output on it plus the
+  fragment's two lists, and `--image` must pass (the control); then the 14 controls above, each a mutation of the
+  image (the root unpacked afresh with unsquashfs, edited, repacked with `mksquashfs -no-xattrs`; partition 1
+  copied and a file replaced with `mcopy -o`; the pieces under a fresh `image_mbr` sized to them, partition 1 at
+  the image's first sector), of KCONFIG or of BIN_SHA256, must fail with exactly the one named hit: a mutated
+  root's own lists stand in for `expected/`, a mutated KCONFIG is also the stand-in `linux.config` except in the
+  one-line-off case, and the two hwrng-driver control adds a `CONFIG_HW_RANDOM_CANARY=y` so the forbidden rule does
+  not fire with it. The ELF controls (a stripped shared object importing rand with dynamic symbols only, a
+  stripped static executable) are built from `scripts/testdata/image/controls.rs` with rustc `--emit obj`,
+  rust-lld and llvm-objcopy alone, so no cross prefix is passed; a missing host tool (mcopy, mdir, unsquashfs,
+  mksquashfs) or a control that cannot be built is exit 2. PASS or FAIL per control and a count; exit 1 on any
+  FAIL. Here only its refusals ran (`--selftest`); the same mutations ran on the stub image through `--image`'s
+  built-in cases.
+  Proof (review fix, 17a-g): stage D2a's recompute review found that step 3's two symbol rules on the root's other
+  ELF files (no rand-crate symbol, no getrandom-fallback symbol) had no positive control: a copy of the script with
+  either grep pattern replaced by a string that matches nothing still passed `--selftest` 682/0, since the stub
+  cases held only an import of libc's rand, the simulator's symbol and a static file. `controls.rs` gains
+  `kc_rand_crate` and `kc_fallback`: the getrandom-importing shared object plus a function exported under the
+  legacy-mangled name of `rand::rngs::next_u32` (`_ZN4rand4rngs8next_u3217h0000000000000000E`) or of
+  `getrandom::backends::use_file::fill_inner`, which `llvm-nm -D -C` demangles so the two patterns match them;
+  both are stripped like the root's libraries. Two stub cases plant each at `/lib/libkc-canary.so.1` and need
+  exactly `Symbol: ...: rand-family symbol rand::rngs::next_u32::h0000000000000000` or `Symbol: ...: getrandom's
+  fallback getrandom::backends::use_file::fill_inner::h0000000000000000`; `--selftest-image` gets the same two
+  controls (16 now; the workflow's comment says sixteen). The two mutated copies now fail `--selftest` on exactly
+  those cases (the proof pasted in the 17a-g commit). `--selftest` 690/0 under sh and dash; the gate clean on the
+  tree.
+  Proof (review fix, 17a-b): stage D2a's recompute review found that a control that cannot be listed gave a FAIL,
+  not the exit 2 the header promises: `si_lists` calls `sifail` (exit 2) when `--image-lists` fails, but every caller
+  ran it as `sha=$(si_lists ...)`, where the exit ends the command substitution alone, so the parent went on with an
+  empty hash, `--image` refused it (exit 2) and `sicase` printed `FAIL ...: wanted exit 0 with no hit, got exit 2`
+  (reproduced on a copy of the script whose `si_lists` drops KCONFIG: the stub selftest printed that FAIL for
+  `image-stub-clean` and went on). Now every one of the 23 callers runs `sha=$(si_lists ...) || exit 2`, since the
+  assignment carries the substitution's status; the same copy now stops at `sifail`'s message with exit 2.
+  `--selftest` 682/0 under sh and dash.
+
+**15. The image workflow (Q38 (a)-(c))**
+- [x] `entropy-pi-image.yml` ("Entropy Pi image"), not a required check (commit 15).
+  - Triggers:
+    - `pull_request` and pushes to main that touch `Entropy/**` (vectors/, ffi/ and tasks/ included) or the workflow
+      itself;
+    - weekly;
+    - `workflow_dispatch` with a `ref` input, which works once the workflow is on main (rebuilding a named commit after
+      the 14-day artifact expiry).
+  - Checkout uses `with: ref: ${{ github.event.pull_request.head.sha || inputs.ref || github.sha }}`, never the merge
+    commit, and every job prints the commit it built.
+  - Hardening as in entropy-ci.yml, enforced by `--workflows`: `permissions: contents: read`, no secrets, event data only
+    through `env:` and `with:`, actions pinned by SHA. Concurrency cancels an older run on the same ref.
+  - Held by review, not by `--workflows` (stage D's review; lead decision, 15h): `persist-credentials: false` on every
+    checkout, and the image workflow's head-SHA `ref`, which entropy-ci.yml does not share (its PR jobs build the merge
+    commit on purpose). The gate's scope predates M4.
+
+  Proof (commit 15, the file; the runs are CI's): `.github/workflows/entropy-pi-image.yml` has these triggers (path
+  filters `Entropy/**` and the file itself, a Monday cron, `workflow_dispatch` with an optional `ref`), checks out
+  `github.event.pull_request.head.sha || inputs.ref || github.sha` without credentials, has top-level `permissions:
+  contents: read` and no other permissions block, and cancels in progress per workflow, ref and requested ref (15c:
+  per workflow, event, ref and requested ref, and only a PR run in progress; the reading of "cancels an older run on
+  the same ref" that never cancels main's push run, whose hash the gate needs after merge).
+  `banned-api-check.sh --workflows ../.github/workflows` is clean under sh and dash (`clean, 2 workflow(s)`), and a
+  scratch copy with a write token, a tag-pinned upload and `${{ github.sha }}` in a run block gives those 4 hits;
+  `ruby -ryaml` parses both workflows (the second leg's anchored steps resolve to the same 9); entropy-ci.yml is
+  unchanged (15b: its changes job now also counts a change to any `.github/workflows/entropy-*`, so `gates` runs
+  `--workflows` on a change to the image workflow alone; 15d: `--workflows` takes each action only at its approved
+  SHA). upload-artifact v7.0.1 is `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` by GitHub's API (tag ref, a
+  commit of 2026-04-10, before the 2026-10-01 cutoff).
+  Proof (M4 Review, 2026-10-16): the workflow ran on every pushed head from 81c4964 (eight PR runs, "CI" under Review),
+  each building the PR head SHA (the compare job prints `COMMIT: a <sha>, b <sha>`, equal to the head); `--workflows` is
+  clean on it in every `gates` run; it is not among the 14 required checks (the ruleset is unchanged). The weekly and
+  `workflow_dispatch` triggers first fire once the file is on main.
+- [x] Jobs, whose names collide with none of the 14:
+  - **`pi-image build (a)` and `pi-image build (b)`**: fresh `ubuntu-24.04` runners at the same `KC_WORK`. Leg a restores
+    `dl/` from `actions/cache` by exact key; leg b downloads everything fresh. Each leg's steps, in order:
+    1. free disk space by removing the runner's preinstalled SDKs the build does not use (GitHub guarantees only
+       14 GB on a standard hosted runner; lead decision, 2026-10-14), then print the commit, `ImageOS`,
+       `ImageVersion`, `SOURCE_DATE_EPOCH` and `df -h`;
+    2. `make source image`;
+    3. "hash and list": set the job outputs (image SHA-256, per-partition SHA-256s, the rootfs prefix from
+       `rootfs-prefix.py`, the binary's SHA-256) and print `--image-lists`;
+    4. "scan" (from commit 17): `--selftest-image`, then `--image` against the committed `expected/`.
+       Proof (17a, the first half): the shared step "Scan selftest (--selftest-image on this build)" runs after
+       "Hash and list" and before the upload, on the one image and the one `.config` of the build, with
+       `$KC_WORK/out/host/bin` first on PATH and no cross prefix (the controls need none); `--workflows` stays clean
+       on both workflows under sh and dash, `ruby -ryaml` parses the file (10 anchored steps in each leg), the job
+       names are unchanged, and the upload and the summary's "not scanned" text wait for 17b.
+       Proof (17b, the second half; its run is CI's, to be read on the first run after the lead pushes): the shared
+       step "Scan (--image against pi/os/expected)" follows "Scan selftest" and precedes the upload, and runs
+       `scripts/banned-api-check.sh --image <the one image> pi/os/expected <the one .config> "$BINARY"` with
+       `$KC_WORK/out/host/bin` first on PATH, `BINARY` reaching it through `env:` from `steps.hash.outputs.binary`.
+       That output is now the SHA-256 of the keepcrypt-pi cargo built,
+       `$KC_WORK/out/build/keepcrypt-pi-0.0.0/target/arm-unknown-linux-gnueabihf/release/keepcrypt-pi` (as the
+       Makefile's `scan` takes it; 17a-i): "Hash and list" fails when that file is missing or when its hash differs
+       from `--image-lists`' `sha256 keepcrypt-pi` line, and prints both, so the scan's Binary rule proves the packed
+       binary is the file cargo built instead of comparing the image's file with itself; the other outputs are
+       unchanged. The three run blocks, extracted from the YAML as committed with `ruby -ryaml` and run under `bash
+       -eo pipefail` against a stub `KC_WORK` and a stub `banned-api-check.sh`: "Hash and list" writes
+       `binary=<the built file's SHA-256>` when it equals the packed one, fails with "is not the keepcrypt-pi cargo
+       built" when a byte differs and with "no ..., the keepcrypt-pi cargo built" when the file is missing; the scan
+       step passes the image, `pi/os/expected`, the `.config` and that hash with the host bin first on PATH, and
+       exits 1 when the scan does; the compare job writes the summary (no "Boot check only") when both legs
+       succeeded with equal images, and fails with "a leg failed after its build" when a leg's result is not
+       `success`, so a failed scan never yields a summary that claims the scans passed. `--workflows` clean on both
+       workflows under sh and dash (`clean, 2 workflow(s)`), `ruby -ryaml` parses the file (11 anchored steps in each
+       leg), the three job names unchanged.
+       Proof (review fix, 17b-b): stage D2b's review ran the block with an `--image-lists` stub whose keepcrypt-pi
+       line carried no hash: the comparison ran first and failed with "is not the keepcrypt-pi cargo built". Now
+       `[ -n "$packed" ]` precedes it, so that print fails with "--image-lists printed no sha256 keepcrypt-pi line"
+       (the same stub driver, the block re-extracted from the YAML as committed); the equal and differing cases are
+       unchanged (`binary=<hash>` written; "is not the keepcrypt-pi cargo built").
+  - **`pi-image reproducible (a = b)`**: `needs` both legs with `if: ${{ !cancelled() }}`, so it runs even when a scan
+    fails; it fails unless both image hashes are non-empty and equal, then writes the commit, the image SHA-256, the
+    rootfs prefix and the binary SHA-256 to the step summary.
+  - Leg a uploads the `.img` with `actions/upload-artifact` v7.0.1 (`archive: false`, `retention-days: 14`). From
+    commit 17 the upload runs only after its scan passes. Before that (commits 15-16) the summary marks the image "boot
+    check only, not scanned".
+    Proof (17b; its run is CI's, to be read on the first run after the lead pushes): the upload step, "Upload the
+    image (leg a; scanned)", keeps `if: env.LEG == 'a'` and follows the scan step, so a scan hit, which fails that
+    step and the job, skips it: no image with a hit is uploaded. The compare job's summary drops "Boot check only,
+    not scanned" and says instead that both legs' `--image` scans against `pi/os/expected/` passed, as they must
+    for the legs to succeed (the job now fails unless both legs' results are `success`), and names the binary hash
+    as the build's. The workflow's header and step comments no longer say "until commit 17b".
+    Proof (review fix, 17b-c): the compare job's result check is unchanged (`success` for both legs or exit 1, no
+    summary); its message now prints both results and names what a non-success result covers, since the old "(a
+    scan step)" also fired for a failed upload on leg a or a cancelled leg. The block re-extracted from the YAML as
+    committed and run against stubs: `success`/`failure` and `success`/`cancelled` each exit 1 with "a leg's result
+    is not success (a: success, b: failure)" (or `cancelled`) and write no summary; `success`/`success` with equal
+    images writes the summary; differing images still fail on "the two builds gave different images".
+  - Timeout: 180 minutes per leg.
+
+  Proof (commit 15, the jobs; the runs are CI's): `pi-image build (a)` and `pi-image build (b)` (jobs `build-a`,
+  `build-b`, none of the 14 names) share one anchored step list and differ only in `LEG`: checkout; step 1 removes
+  the Android SDK, .NET, GHC and ghcup, CodeQL and Swift, then prints the commit, `ImageOS`, `ImageVersion`,
+  `SOURCE_DATE_EPOCH` (from pins.txt) and `df -h`; a fresh `/kc-work` (refused if present); Buildroot's mandatory
+  host packages from Ubuntu; the pinned toolchain; leg a alone restores `/kc-work/dl` by exact key
+  (`hashFiles` of pins.txt, the defconfig and linux.hash; no restore-keys); `time make -C pi/os source image`;
+  "Hash and list" (the one `keepcrypt-pi-*.img` and the one `out/build/linux-*/.config`, the image SHA-256 checked
+  against `--image-lists`'s, the partition and binary SHA-256s from it, the prefix from `rootfs-prefix.py`, `df -h`,
+  the outputs); and leg a alone uploads the `.img` with `archive: false`, `retention-days: 14`,
+  `if-no-files-found: error`. `pi-image reproducible (a = b)` needs both with `if: ${{ !cancelled() }}`, prints
+  each output of both legs, fails unless both image hashes are non-empty and equal and both legs built the same
+  commit, then writes the commit, the image, its SHA-256, the prefix, the binary's SHA-256 and "Boot check only,
+  not scanned" to the step summary. 180 minutes per leg.
+  Proof (run 38771532075, b9ed46a, read by the lead): both legs ran "Hash and list" (`keepcrypt-pi SHA-256: built
+  4f4dc6e4..., packed 4f4dc6e4...`, the cargo-built file and the image's copy equal), "Scan selftest" and "Scan
+  (--image against pi/os/expected)" (`banned-api-check --image ...: clean: the boot and root lists and keepcrypt-pi's
+  imports equal pi/os/expected, no denied file, start.elf and fixup.dat, ...`); leg a's upload followed its scan
+  (artifact 11993015797, kept until 2026-10-29); the compare job wrote "both legs built b9ed46a... into
+  keepcrypt-pi-0.0.0-st7789-240x240.img, SHA-256 4b13c095f76c4a42efc67090fec96650d070a385bb8a58b4fd7067c0d936adde,
+  and both scans passed", with no "Boot check only" text. Leg a 16 min 57 s, leg b 18 min 19 s. The image hash equals
+  runs 38690004157 and 38747606208's: commits 16-18 changed no image input. Ticked.
+- [x] The bootstrap of `expected/`:
+  - commit 15's runs build, compare and print the lists, with no scan;
+  - the owner runs H1a on that image; bring-up fixes follow as their own commits;
+  - once H1a passes, commit 16 commits the lists and `linux.config` from that run, which the lead reviews line by line
+    (every `=y`, every file, every import);
+  - commit 17 turns the scan on, after which the list comparison is always mandatory.
+
+  Gate evidence comes only from runs after commit 17.
+  Proof:
+  - a green run on the final PR head: both legs, the scan, equal hashes, the summary naming the commit;
+  - run IDs, leg times and disk use under Review;
+  - the commit 16 review note.
+  Proof (M4 Review, 2026-10-16): as planned: commit 15's runs listed with no scan (38683063774 to 38691830575); H1a
+  passed on run 38690004157's image; commit 16 (24582a8) committed its lists and `linux.config`, reviewed line by line
+  (the review note under commit 16); 17a and 17b turned the scan on, and since then every run's legs pass `--image`
+  before the upload (38771532075, 38797300298, 38851865089: equal hashes, the summary naming the commit). Run IDs, leg
+  times and disk use are under Review. The final PR head's run is commit 21's; open until it is read (20c).
+  Run at f0ae43e (21d; the latest so far, not the final head): image run 38894923652 on f0ae43e: both legs green, each leg's `--image` scan
+  passed before the upload, `IMAGE: a 4b13c095..., b 4b13c095...`, and the summary "both legs built
+  f0ae43ea34c8655cabdc153cdbd69d627a936d00 into keepcrypt-pi-0.0.0-st7789-240x240.img, SHA-256 4b13c095..., and both
+  scans passed". Legs 15 min 58 s (a) and 18 min 59 s (b). The last commit of commit 21 ticks this from its parent's
+  run, and the PR description names the last head's own runs, as commit 21's plan entry says (lead decision 25).
+  Proof (21e, the run at b9a22c9, 21e's parent; lead decision 25): image run 38898547995: both legs green, each leg's `--image` scan passed (leg a's
+  upload followed both scans; leg b uploads nothing), `IMAGE: a 4b13c095..., b 4b13c095...`, and "both legs built b9a22c99dce38ac1091846dd762631ea67488a41 into keepcrypt-pi-0.0.0-st7789-240x240.img, SHA-256 4b13c095..., and both scans passed". Legs 15 min 29 s (a) and 19 min 48 s (b); each leg's last `df` reads `/dev/root 145G 40G
+  105G 28%`.
+
+**16. Hardware (owner) and bring-up fixes**
+- [x] H1a on commit 15's image, and H1-H4, plus any H5 items, recorded under Review in Q41 (c)'s form only.
+  Proof (H1a and H1, 2026-10-16): recorded above under the checklists and under Review; H2-H4 pending.
+  Proof (21c, 2026-10-16): H1a, H1, H2, H3 and H4 are under "M4: hardware records", each in Q41 (c)'s form: the owner's
+  words, pass or fail, "matched" and stopwatch times, with the lead's readings of them marked as such (21c-b). No value
+  of the throwaway seed was sent, so none is recorded. No
+  H5 item was run; H5 stays optional, as the checklist says.
+- [x] Bring-up fixes found on hardware (orientation, colour order, SPI clock, timings, kernel options, firmware files) are
+  commits that name the owner's observation and the root cause. The check that found the problem is repeated after each.
+  Proof (M4 Review, 2026-10-16): H1a needed none (hash, prefix, panel and keys all matched); the fixes before it,
+  15i-15m, came from the image runs' logs and the 15l review, each its own commit with its root cause. Open until H2-H4
+  pass without one.
+  Proof (21c, 2026-10-16): H1a to H4 passed without a bring-up fix. Commit 19 was not needed, no hardware check was
+  repeated, and the image hash never changed from 4b13c095....
+- [x] If H1a shows inverted colours or washed-out greys (Q50):
+  - This is a panel variant, not a wrong value. Inverted: some ST7789 panels need inversion off, and which ones is not
+    known [S36: #1052]. Washed out: Waveshare's late-model values change MADCTL, GCTRL, VCOMS, VRHS and both gamma
+    tables, and upstream has not settled them [S36: #726, #822].
+  - `WAVESHARE_1IN3_HAT` stays as approved, with its pinned test, for every other HAT.
+  - The owner's unit gets a second profile, `WAVESHARE_1IN3_HAT_B`, pinned to the values H1a confirms, and `PANEL` names
+    it for the M4 image (Q50, as recommended).
+  - The fix may touch `madctl` and the GCTRL, VCOMS, VRHS, gamma and INVON/INVOFF steps. If MV changes, `ram` changes
+    with it (group 5's checks).
+  - The bring-up commit names the owner's observation, each value tried and the source of each value. H1a repeats on the
+    new image.
+  Proof (M4 Review, 2026-10-16): not applicable: H1a's colours matched the captures (neither inverted nor washed out),
+  so no `WAVESHARE_1IN3_HAT_B` profile and no second image (as Verification's Q50 item records).
+- [x] The gate image rule: H1-H4 count for the gate only if the image workflow's run at the final PR head gives the same
+  image SHA-256 as the image the owner used. A later fix that changes the hash means H1-H4 run again on the new image.
+  `tasks/`-only commits do not change it (fixed `SOURCE_DATE_EPOCH`), and the final head's run shows that.
+  Proof: each fix's N.b entry; the repeated checks; the final head's run ID and hash next to the H records.
+  Proof (M4 Review, 2026-10-16): every run since a4598b5, de70f56's included, gives H1a's image hash, and the
+  `tasks/`-only commits (02d87c0, 316d8a6, 80bf4ac, de70f56) changed nothing in it, as planned. Waits for H2-H4 and the
+  final head's run (commit 21).
+  Proof (21c, 2026-10-16): H1a to H4 all ran on SHA-256 4b13c095...: the card flashed for H1a from run 38690004157's
+  artifact (a4598b5), not re-flashed, whose bytes equal the gate image the H2-H4 checklist named (run 38771532075,
+  b9ed46a). The owner's reports name no run, commit or hash; these are the lead's, from H1a's record. Only the final
+  head's run is left (21d).
+  Run at f0ae43e (21d; the latest so far, not the final head): image run 38894923652 on f0ae43e gives SHA-256 4b13c095..., the bytes of the card
+  H1a to H4 ran on. `git diff --name-only 30cefbc..f0ae43e` is `Entropy/tasks/todo.md` alone, and no bring-up fix was
+  made. H4b scans a test vector off a screen, not the image, so the rule does not touch it.
+  Proof (21e, the run at b9a22c9, 21e's parent; lead decision 25): image run 38898547995 gives SHA-256 4b13c095..., the card's bytes; `git diff
+  --name-only 30cefbc..b9a22c9` is `Entropy/tasks/todo.md` alone, and no bring-up fix was made.
+
+**17. Measurements and decisions recorded (Q42 (a))**
+- [x] From the H1-H3 stopwatch times:
+  - power-on to Home (KATs, hwrng boot test, rootfs hash): 14 s (the owner's H1a, 2026-10-16);
+  - the `WAIT_SESSION` screen: 3 s (the owner's H2, 2026-10-16);
+  - step 4: 2.5 s (H2);
+  - the backup wait (two scrypt runs, the write and the read-back): 41 s (H2);
+  - "Check a backup": 20 s (the owner's H3, 2026-10-16).
+  Proof (M4 Review, 2026-10-16): power-on to Home 14 s (H1a); the other four wait for the owner's H2 and H3.
+  Proof (H2, 2026-10-16, 21a): "KATs 3 s, step 4 2.5 s, backup 41 s"; "Check a backup" waits for H3.
+  Proof (H3, 2026-10-16, 21b): "H3 done, all matched, Check a backup 20 s". All five are measured.
+- [x] Decisions:
+  - step 4's tick stays 100 ms if step 4 takes about 2.4 s (24 blocks). Otherwise the hardware's pace is recorded, since a
+    slow read paces itself;
+  - the worker thread stays out unless a wait exceeds 60 s; if one does, stop and ask;
+  - a backup that completes under `mlockall` stands in for scrypt's peak and locked memory (exact figures: M8);
+  - snapshot time and memory: M9; the hwrng rate and a forced crash on hardware: M8.
+
+  Proof: under Review, quoted from the owner's report.
+  Proof (M4 Review, 2026-10-16): wait for H2's times (step 4, the backup wait) and H3's; no wait has been measured yet,
+  so the worker thread stays out so far.
+  Proof (H2, 2026-10-16, 21a): step 4 took 2.5 s against the planned 2.4 s (24 blocks at the 100 ms tick), so the tick
+  stays 100 ms and step 4 is paced by the tick, not by the hwrng read; the longest wait so far is the backup's 41 s,
+  under the 60 s line, so the worker thread stays out; the backup completed on the device (two scrypt runs at log2 N =
+  18, the write and the read-back), which stands in for scrypt's peak and locked memory as planned. H3's "Check a
+  backup" (one scrypt run) is the last wait to record.
+  Proof (H3, 2026-10-16, 21b): "Check a backup" took 20 s, half the backup's 41 s as one scrypt run against two. Every
+  wait is under 60 s, so the worker thread stays out of M4; snapshot timing (M9) and the hwrng rate (M8) stay deferred.
+
+**18. Commands and budgets**
+- [x] CLAUDE.md Commands, in their own commit:
+  - the cross leg's `keepcrypt-pi` build and scan line;
+  - `make -C pi/os source image repro-check` (Linux x86_64, `KC_WORK=/kc-work`);
+  - `--image-lists`, `--image`, `--selftest-image`, `--os-config` and `--workflows`;
+  - the loop-device test and its environment;
+  - `python3 -I pi/os/rootfs-prefix.py --selftest`;
+  - `sh pi/os/kconfig.sh --selftest` (14h);
+  - the capture_set comment now naming review.html (an M3 low item; Q43 (e));
+  - the check count on the `scripts/canaries.sh` line, set to `want_checks` as it stands after commits 12 and 17 add
+    their canaries (`want_checks` rose to 62 at commit 5; the line said 61 until commit 18).
+  Proof (commit 18): `git diff --name-only` lists only `CLAUDE.md` (the capture_set comment lives there) and
+  `tasks/todo.md`. Every line is CI's or the Makefile's exact invocation; each that runs on this host was run as
+  written: `scripts/banned-api-check.sh` clean (241 files); `--workflows ../.github/workflows` clean, 2 workflows;
+  `--os-config pi/os` clean; `python3 -I pi/os/rootfs-prefix.py --selftest` and `/usr/bin/python3 -I` both
+  `selftest passed: 4 checks`; `sh pi/os/kconfig.sh --selftest` 6 passed, 0 failed; `--selftest` 698 passed, 0
+  failed under sh and under dash; `sh scripts/canaries.sh` `all 73 checks ran`, equal to `want_checks=73`
+  (scripts/canaries.sh:1251) and the Commands line; `cargo test -p keepcrypt-pi --locked --bin keepcrypt-pi --no-run`
+  reports one executable, target/debug/deps/keepcrypt_pi-<hash>, the path the sudo line names. The cross build, the
+  loop-device test and the make targets are Linux-only and run in CI (`make -C pi/os` refuses this checkout's path,
+  which has a space).
+  Proof (review fix, 18b): stage D2b's review read three comments against what runs: the `--image` line said "clean
+  on the gate image" though no `--image` run against `expected/` has happened (the Scan step is 17b's, unpushed; run
+  38747606208 ran `--selftest-image` alone), so it now says what the step does (a hit fails the leg before leg a's
+  upload); the Pi-target comment said all four cross variables are "set to Ubuntu's arm-linux-gnueabihf gcc" where
+  entropy-ci.yml sets `AR_` to `arm-linux-gnueabihf-ar` and `CFLAGS_` to `-march=armv6zk -mfpu=vfp -mfloat-abi=hard
+  -marm`, so it now names each; the three image-mode lines were "what make scan runs" though the Makefile's `scan`
+  runs `--image-lists` and `--image` alone (`--selftest-image` is the legs' "Scan selftest" step), so they are "what
+  CI's image legs run, in this order (make scan runs the first and the last)". The grep gate stays clean (241
+  files); no command changed.
+- [x] `gates` at or under 12 minutes (Q31 (f)); `test` within its budget; image leg times recorded.
+  Proof: `git diff --name-only`; job times from the PR head.
+  Measured (commit 18): `gates` ran in 9 min 59 s in run 38747606112 (the CI run beside image run 38747606208) and
+  10 min 17 s in run 38771532169 (b9ed46a, with `--os-config`); image legs 16 min 57 s (a) and 18 min 19 s (b) in run
+  38771532075. The item stays open until the final head's run is read.
+  Proof (M4 Review, 2026-10-16): at de70f56 (run 38851865443) `gates` 10 min 18 s (1 min 42 s under Q31 (f)'s 12
+  minutes), `test` 5 min 26 s (M3's budget, at most 6 minutes over main's 4 min 54 s: met), `cross
+  (arm-unknown-linux-gnueabihf)` 1 min 46 s; image legs 14 min 07 s (a) and 13 min 40 s (b) in run 38851865089 (16 min
+  57 s and 18 min 19 s in 38771532075; 17 min 23 s and 19 min 49 s in 38797300298). Commit 21 re-reads them at the final
+  head; a `tasks/`-only commit changes none of these inputs. Open until then (20c).
+  Run at f0ae43e (21d; the latest so far, not the final head): CI run 38894923651 on f0ae43e: `gates` 10 min 13 s (1 min 47 s under 12 minutes),
+  `test` 5 min 50 s (M3's budget, at most 6 minutes over main's 4 min 54 s, Q31 (f) and group 14: met, +56 s; 5 min
+  20 s at 30cefbc and 5 min 26 s at de70f56), `cross (arm-unknown-linux-gnueabihf)` 1 min 57 s;
+  image legs 15 min 58 s (a) and 18 min 59 s (b) in run 38894923652.
+  Proof (21e, the run at b9a22c9, 21e's parent; lead decision 25): CI run 38898548352: `gates` 9 min 58 s (2 min 2 s under 12 minutes), `test` 5 min 21 s (M3's budget, at
+  most 6 minutes over main's 4 min 54 s: met), `cross (arm-unknown-linux-gnueabihf)` 2 min 29 s; image legs
+  15 min 29 s (a) and 19 min 48 s (b) in run 38898547995.
+
+**19. Review**
+- [x] Plan, security and recompute reviews for each stage (A-E), as in M3. Every high and medium finding is fixed, with
+  "Proof (review fixes)" lines.
+  Proof (21e): the Review's "Review fixes" paragraph lists the N.b entries by the commit each amends: A 7 (1b-1e,
+  5b-5d), B 19 (6b-6d, 7b-7f, 8b-8e, 9b-9d, 10b-10e; 10c is the owner's Q51 answer, not a review fix, and 10d was made
+  in stage C), C 4 (12b-12d, 13b), D 15 (14b-14i; 14i is the lead's), the bring-up 6 (15i-15n, not review fixes), D2a 9
+  (17a-b to 17a-j) and D2b 6 (17b-b to 17b-d, 18b-18d); stage E's are 20b-20e and 21c-b. A fix that changed tested
+  behaviour has a "Proof (review fix ...)" line under the item it touches; the rest change text, and the text is their
+  proof (that paragraph). The 15l kconfig review was a fourth, line by line.
+  Recorded (lead, 2026-10-16, from the stage workflows' journals, as M3 did): no stage review of commits 1-20 found a
+  high. Mediums: A (commits 2-5) 0; B (1c, 6-10) 3; C (10b-13) 4; D (14, 15) 4; D2a (17a) 2; D2b (17b, 18) 0; E
+  (commit 20) 5, which were two findings seen by all three lenses (the f967dd4 baseline figure; five items ticked
+  before the final head's run), fixed as 20b and 20c. Each stage's fixer fixed every high and medium finding or showed
+  it not real (the N.b entries). Commit 21's records had three reviews: 21a-21c after commit (evidence, rules and
+  completeness lenses: 7 high, 11 medium, 9 low, all applied as 21c-b), 21d before commit (evidence and consistency: 4
+  high, 8 medium, 9 low, all applied) and 21e before commit (evidence and consistency: 2 high, 5 medium, 10 low, all
+  applied). For those tasks-only record commits the lenses stand in for plan, security and recompute (lead decision 26).
+- [x] "M4: local proof" and "M4 gate status" under `## Review`, then the gate report against build-plan.md:294, then stop
+  and wait for approval. The gate report carries the standing note that BP:278's two approvals for core/, ffi/ and
+  pi/os/ are unmet while there is one maintainer (todo.md:322); M4 is the first milestone with pi/os.
+  Proof (21e): "M4: local proof" and "M4 gate status" are under Review; the gate status carries the standing note on
+  BP:278's two approvals and the decisions for the owner's approval. The gate report is that block, the PR description
+  (updated after 21e's push with 21e's own runs) and the lead's report to the owner on 2026-10-16, after which the lead
+  stops for the owner's approval.
+
+**Deferred, with their milestone**
+- **M4b** (after the M4 gate; Q45-Q50): more Waveshare screens: the 240×320 profile, one image per screen type, the
+  image workflow's screen list, the wiring docs and H6; and the second HAT image if Q50 made one. It is the planned
+  follow-up step, on its own branch after the M4 gate; its plan follows this list.
+- **M5, M6:** UniFFI relies on group 3's assertions. Nothing else moves there.
+- **M7:**
+  - the pinned build container (Debian by digest, snapshot apt) and `repro-check` "in clean containers" (its first real
+    build: lead decision 21); a third-party
+    reproduction and an arm64-host reproduction;
+  - release versions, minisign, SHA256SUMS and the SBOM;
+  - the move to Buildroot 2027.02 LTS and a current kernel, before the first release;
+  - dm-verity, if the owner wants more than a corruption check (Q39 (g));
+  - a hang watchdog, as an audit question;
+  - the audit list:
+    - the kernel FAT and USB storage paths, which a hostile stick could attack;
+    - rppal's and nix's unsafe sites;
+    - the kernel spidev buffer, which keeps the last chunk until the next transfer;
+    - an hwrng read waiting on the kernel's `reading_mutex` (group 7);
+    - Buildroot's `.hash` inputs, reviewed rather than only checked;
+  - making the image a required check (a ruleset change);
+  - the nightly birthday-collision job on core (Q42 (b));
+  - owner item 13.
+- **M8:**
+  - a separately named dev or bench image (never shipped, with its own marker). It is the vehicle for:
+    - the entropy-lab capture (`ea_non_iid`, `ea_restart`);
+    - the reboot part of the Pi birthday test (Q42 (b));
+    - exact peak and locked memory;
+    - the hwrng rate;
+    - a forced-crash check of stop mode on hardware;
+  - the Infinite Noise TRNG;
+  - sensors as extras;
+  - the camera go-ahead QR, which needs the full GPU firmware;
+  - I2C.
+- **M9:**
+  - the pinned registry key, so release images can load snapshots;
+  - snapshot time, and the snapshot-plus-scrypt memory peak, on the Pi;
+  - the snapshot-date screen and the duplicate-seed drill on hardware;
+  - a real go-ahead code on hardware.
+- **Tetris:** when the owner chooses (Q43 (a)).
+- **Later, on request:**
+  - a worker thread with an animated progress screen;
+  - a runtime check that `rng_current` is `20104000.rng` (the bcm2835-rng platform device on the Pi Zero, named after
+    its device-tree node [S15, S26, S33]), or that `/sys/class/misc/hw_random/rng_available` lists only it (the kernel
+    config already allows only that driver);
+  - a longer step 4 pace, or a Snake tick of its own;
+  - index.html's first-capture placeholders, with the next capture-set change.
+
+**M4b: more Waveshare screens (`m4b-screens`, after the M4 gate is approved; Q45-Q50)**
+M4b gets its own branch and PR, with its own gate, which the owner approves before the work starts. Commands, budgets and
+the required check names are unchanged.
+
+What does not change, in M4 or M4b (Q44-Q50):
+- The M4 gate (BP:294), the answers to Q35-Q43 and the four approved crates (rule 11).
+  - No crate is added anywhere below.
+  - Every screen considered here is SPI plus GPIO, which rppal 0.22.1 already covers.
+- Rule 8 and CLAUDE.md, under the recommendations (Q51, answered 2026-10-14, is a separate item: commits 10c and 10d).
+  - Commit 3 has landed (ed15bd2) with the approved sentence.
+  - Only Q47 (c), which was not taken, would have needed a later CLAUDE.md commit adding `/proc/cmdline`.
+- No `unsafe` (Q36 (d)).
+- No simulator or test code in any image (rule 10). Group 5's test-only profile lives in `device/panel/tests.rs`, which
+  is declared only as `#[cfg(test)] mod tests;`, so rustc never compiles it outside `cargo test`.
+- The M4 docs (commit 2, a7a91cc). Docs for other screens come with M4b.
+- No new simulator captures in M4 or M4b.
+  - Centring leaves every frame byte-identical.
+  - pi/sim keeps its 240×240 panel (pi/sim/src/panel.rs:27-28, :44).
+
+**B0. Before code**
+- [ ] Record the owner's answers to Q44-Q50.
+- [ ] The owner has the screens to be offered (Q49 (b)) and the switches.
+- [ ] Where each module profile's values come from (Q49 (d)):
+  - Recommended: with the owner's yes, download one file, Waveshare's `LCD_Module_RPI_code.zip` from
+    files.waveshare.com. It is linked from the 1.3, 1.54, 2 and 2.4-inch module wikis, whose file lists cover all four
+    sizes. The lead states its size when asking. The file goes into its own new, empty directory and is read as data
+    only. Each module profile is then pinned to it.
+  - The 1.69-inch is not in that archive's file list. Adding it needs a second download, its own wiki's archive, with
+    its own yes.
+  - Otherwise: profiles are pinned to Waveshare's Pico-board drivers [S34, S35], labelled in each test's doc as a
+    stand-in, and H6 is the only confirmation for the modules. The 2.4-inch and the 1.69-inch cannot be added without a
+    download.
+
+**B1. Docs, alone (first code-free commit)**
+- [ ] PF:23:
+  - the screen row reads "Waveshare 1.3-inch LCD HAT, or a supported screen below";
+  - a new "Supported screens" table lists screen, image, wiring, and "checked on hardware" with the H6 date.
+- [ ] PF:32-43 says "One pin map for every screen" and gives:
+  - the module wiring and switch wiring with header pins (Q48);
+  - the backlight on BCM 24;
+  - the joystick and key placement.
+- [ ] PF:66 (`hal::Display`) reads: "Draw 240x240 frames, centred on screens larger than 240×240; one block of settings
+  per screen type, chosen when the image is built."
+- [ ] PF:163-184: `make -C Entropy/pi/os image PANEL=<name>` and `make -C Entropy/pi/os repro-check PANEL=<name>` (both
+  refuse a missing name), the list of names, and "flash the image named for your screen".
+- [ ] BP:76's "the ST7789 driver is KeepCrypt's own" becomes "the display driver is KeepCrypt's own: one driver, one
+  block of settings per screen type". The wording names no controller, so it stays true if the ILI9341 is added.
+- [ ] BP's milestone table gains an M4b row with its gate, in the owner's wording.
+- [ ] BP:50 and swb:90 stay as they are, because the frame is still 240 × 240.
+
+  Proof:
+  - `git diff --name-only` lists only `docs/`;
+  - `vectorgen.py --selftest` passes (it pins PF sentences);
+  - `verify.py --selftest` passes;
+  - banned-api-check is clean.
+
+**B2. Profiles (`device/panel.rs`)**
+- [ ] `ST7789_240X320`, for the Waveshare 2-inch module:
+  - the 2-inch values: VCOMS `1F`, its two gamma tables, INVON, from the module archive's 2-inch file if Q49 (d) is yes,
+    otherwise from `LCD_2in.c` [S35] as a stand-in;
+  - `madctl` `0x70`, `ram` 320×240, `origin` (40, 0);
+  - the picture is landscape like the HAT's: joystick left, keys right.
+- [ ] The 1.3-inch and 1.54-inch modules use `WAVESHARE_1IN3_HAT` unchanged, because Waveshare's values for these sizes
+  are identical [S34], to be confirmed against the archive if Q49 (d) is yes. If H6 shows that a module needs a lower
+  bus speed over jumper wires, it gets its own profile and image.
+- [ ] If Q50 made `WAVESHARE_1IN3_HAT_B` in M4, it gets its own image name here (`st7789-240x240-b`).
+- [ ] Only if Q45 adds them:
+  - `ILI9341_240X320`: one more profile under the same driver, not a second driver. The driver's own steps (reset,
+    MADCTL, SLPOUT, CASET, RASET, RAMWR, DISPON) use the same opcodes on the ILI9341, and its frame memory is also
+    240×320.
+    - It brings its own init table from the archive's 2.4-inch file, COLMOD `0x55` and its colour order in `madctl`.
+    - A new `controller` field selects its own reviewed allow-list, because the ILI9341 reuses some opcodes for other
+      registers (for example `C0`, `E0`, `E1`).
+    - `spi_hz` comes from the archive's demo and is confirmed at H6. A slower rate makes each present take longer.
+  - A 1.69-inch profile: `madctl` `0x70`, `ram` 320×240 (the controller's whole memory) and `origin` (40, 0). That
+    origin is the panel's 20-column offset in memory, which I computed (no Waveshare file states it), plus 20 to centre.
+    H6 confirms both.
+
+  Proof:
+  - each profile's init stream is pinned against its cited source. The test's doc lists every deviation from that
+    source. For `LCD_2in.c` these are:
+    - MADCTL `0x70` (the driver's `madctl`), not `0x00`. `LCD_2IN_InitReg` starts with MADCTL `0x00`, which overrides
+      the `0x70` that `LCD_2IN_SetAttributes` sends just before it, so the demo always ends up portrait;
+    - InitReg's early INVON (its third command) is dropped. INVON is sent once, after the gamma tables, as on the HAT;
+    - InitReg's CASET `00 00 01 3F` and RASET `00 00 00 EF` are dropped. The driver owns windows, and its wipe sends the
+      full-memory window;
+    - SLPOUT and DISPON are sent by the driver (steps 6 and 8);
+    - if the profile is pinned to the module archive instead, its deviations are listed the same way;
+  - window bytes;
+  - wipe size and write count;
+  - byte order;
+  - the `PROFILES` checks from group 5.
+
+**B3. Selection when the image is built (Q47 (a))**
+- [ ] `PANEL` (group 5's one line) becomes the profile named by `option_env!("KEEPCRYPT_PI_PANEL")`, resolved in a
+  `const` by a const fn that compares the bytes:
+  - unset gives `WAVESHARE_1IN3_HAT`, so `cargo test`, `lint`, coverage, pi/sim and the CI cross leg, none of which
+    makes an image, are unchanged;
+  - a known name gives that profile;
+  - an empty or unknown value stops the build with fixed text (a const-evaluation panic);
+  - cargo tracks variables read by `option_env!`, so a change rebuilds only `keepcrypt-pi`.
+- [ ] The image path never relies on "unset". It fails closed:
+  - `make image`, `make repro-check` and `make scan` require `PANEL=<name>`. Before Buildroot starts, they refuse a
+    missing, empty or unlisted name and print the list;
+  - `package/keepcrypt-pi/keepcrypt-pi.mk` sets `KEEPCRYPT_PI_PANEL` explicitly in the cargo command's environment
+    (group 13's `env -u RUSTFLAGS` line), because Buildroot runs cargo with its own environment. The .mk also refuses an
+    empty value itself;
+  - the image is named `keepcrypt-pi-0.0.0-<name>.img`, and the build log prints the name next to the binary's SHA-256.
+- [ ] Why not the alternatives:
+  - Not a cargo feature: the lint job runs `cargo clippy --workspace --all-targets --all-features`
+    (entropy-ci.yml:128), which mutually exclusive features would break.
+  - Not `--cfg` in RUSTFLAGS: an unknown value would silently give the HAT, the .mk unsets RUSTFLAGS, and any change to
+    RUSTFLAGS rebuilds every crate.
+- [ ] pi/os: the Makefile holds one list, `PANELS := st7789-240x240 st7789-240x320`, plus anything Q45 or Q50 adds.
+  - config.txt, cmdline.txt, inittab, `expected/` and the kernel config are the same for every image (one pin map).
+
+  Proof:
+  - a unit test per name, and one showing that unset gives the HAT;
+  - canaries: `KEEPCRYPT_PI_PANEL=nonsense` and `KEEPCRYPT_PI_PANEL=` (empty) each fail the build with the fixed text;
+  - `make image` with no `PANEL`, an empty one and an unlisted one each stop before Buildroot (logs under Review);
+  - canaries (n + 2)/(n + 2).
+
+**B4. The image workflow's screen list (`entropy-pi-image.yml`)**
+- [ ] A matrix over `PANELS`:
+  - per PR, `st7789-240x240` only;
+  - every panel when the PR touches `Entropy/pi/app/src/device/panel.rs`, `Entropy/pi/app/src/device/panel/**`,
+    `Entropy/pi/os/**` or the workflow file itself;
+  - every panel weekly and on `workflow_dispatch`.
+- [ ] Each panel gets:
+  - two legs and its compare job;
+  - the scan: `--image` against the one `expected/`, with `BIN_SHA256` from its own legs;
+  - the upload.
+- [ ] **`pi-image panels differ`**: it needs every panel's compare job and fails if any two panels' `BIN_SHA256` are
+  equal.
+  - Profiles differ in data, so equal binaries mean a name never reached the compiler.
+  - It runs on every run that builds two or more panels, which is every run that builds a non-HAT image. A HAT-only run
+    needs no such check: a lost name gives the HAT, which is what that image is.
+  - The check is a short script under `scripts/` with a `--selftest` that feeds it two equal hashes and expects a
+    failure (its canary).
+  - M7 signs release images only from a run where this job is green.
+- [ ] Job names carry the panel, for example `pi-image build (a, st7789-240x320)`, and collide with none of the 14
+  required names.
+- [ ] The step summary lists, per panel, the commit, the image SHA-256, the rootfs prefix and the binary SHA-256.
+- [ ] `--workflows` hardening applies unchanged.
+
+  Proof: a green run at the final head, with every panel's `reproducible (a = b)` job and `panels differ`; leg times and
+  disk use under Review.
+
+**B5. Owner hardware check H6 (per newly offered screen, on its exact image)**
+- [ ] Setup:
+  - wire as in PF's table and flash the image named for the screen;
+  - note the ACT LED;
+  - the boot screen's prefix matches the run summary.
+- [ ] Picture:
+  - upright, true colours, no noise;
+  - bands black and even (240×320);
+  - offset check: the step title's first letter is whole at the left edge, and the footer is whole at the bottom;
+  - the account QR's light square shows black on all four sides.
+- [ ] All 8 inputs act once per press over about 20 presses, and holding a key gives one action.
+- [ ] An idle wipe goes black.
+- [ ] A throwaway Mixed 12-word run up to step 12, taking Skip at step 7, recorded only in Q41 (c)'s form:
+  - Sparrow scans the account QR off this screen, and its first address equals the wallet summary's;
+  - a phone decodes the descriptor QR.
+- [ ] If the HAT image's hash changed in M4b, H1 (boot and keys) repeats on the HAT with the new image.
+
+  No verify.py run and no backup are needed for the new screens. Apart from the panel profile, their firmware and frames
+  are the HAT's, which the M4 gate covers.
+
+**B6. Review and gate**
+- [ ] Plan, security and recompute reviews, with every high and medium finding fixed.
+- [ ] Proposed M4b gate:
+  - every offered screen passes H6 on its exact image;
+  - each image's two builds give the same hash at the final head, and `panels differ` is green;
+  - the HAT image passes H1 if its hash changed;
+  - no image or doc lists an unchecked screen as supported.
+
+**Commit order on `m4b-screens`**
+1. tasks/todo.md: the M4b plan and the owner's answers to Q44-Q50.
+2. docs: B1, alone.
+3. pi/app (bin): the new profiles and their tests (B2).
+4. pi/app (bin), scripts: `KEEPCRYPT_PI_PANEL` selection and its canaries (B3).
+5. pi/os: `PANELS`, the required `PANEL=`, the .mk's explicit variable and the image names (B3).
+6. .github, scripts: the image workflow's matrix, `panels differ` and its selftest (B4).
+7. CLAUDE.md: Commands gain `make -C pi/os image PANEL=<name>`.
+8. Bring-up fixes from H6, each with the owner's observation and the root cause.
+9. tasks/todo.md: Review, H6 records and the gate report.
+
+**M4b Verification**
+- [ ] **Per profile:** the init stream pinned to its source, with deviations listed; window, wipe and byte-order tests;
+  the `PROFILES` checks.
+- [ ] **Selection:**
+  - unset gives the HAT, and each name gives its profile;
+  - an unknown or empty name fails the build (canaries);
+  - `make` refuses a missing, empty or unknown `PANEL`;
+  - `panels differ` is green at the final head, and its selftest fails on equal hashes.
+- [ ] **Reproducible per image:** each panel's `reproducible (a = b)` is green at the final head; hashes recorded.
+- [ ] **Image scan per image:** `--image` is clean for every panel; config files are identical across images.
+- [ ] **Hardware:** H6 per offered screen; H1 on the HAT if its hash changed.
+- [ ] **Rules:**
+  - 8: unchanged (no new path);
+  - 10: no test profile in any image, because `device/panel/tests.rs` is declared only as `#[cfg(test)] mod tests;`
+    (the line shown under Review); the scan's existing markers stay clean;
+  - 11: no new crate (`git diff Cargo.lock` is empty).
+- [ ] **Docs:** the Supported screens table lists only screens with an H6 record.
+
+### Verification
+- [x] **Gate: full ceremony on a Pi Zero v1.3, checked with the offline verifier.** H2 and H3 on the gate image (the
+  final PR head's run gives its hash):
+  - `python3 -I tools/verify/verify.py mixed --words 12`, from the gate image's commit, exits 0 with the device's words;
+  - its Seal ID equals "Check a backup"'s;
+  - `age -d` gives the same words.
+
+  Proof: the owner's report in Q41 (c)'s form, with the run ID, the commit and the hash.
+  Proof (H2 and H3, 2026-10-16, 21c-b): "H2 done, all passed" and "H3 done, all matched, Check a backup 20 s", on the
+  card flashed for H1a from run 38690004157 (a4598b5), SHA-256 4b13c095..., the gate image's bytes (run 38771532075,
+  b9ed46a); the run, commit and hash are the lead's, from H1a's record. By the checklist's steps "all matched" covers
+  verify.py's exit 0 and words, the Seal ID and `age -d`; the verify.py commit and the offline computer are unconfirmed
+  (lead decision 23). Counts for the gate once the final head's run gives the same hash (group 16; 21d).
+  Run at f0ae43e (21d; the latest so far, not the final head): image run 38894923652 on f0ae43e gives 4b13c095..., the card's bytes, so H2 and H3
+  count for the gate. The owner's answer adds "offline yes". The copy of verify.py is not named; every copy since
+  f967dd4 has SHA-256 0ba842e2..., the gate image's commit's (b9ed46a), which is what covers "from the gate image's
+  commit" (lead decision 23).
+  Proof (21e, the run at b9a22c9, 21e's parent; lead decision 25): image run 38898547995 gives 4b13c095..., the card's bytes, so H2 and H3 count for
+  the gate.
+- [x] **Gate: two clean builds give the same image hash.** `pi-image build (a)` and `(b)` on fresh runners, and
+  `pi-image reproducible (a = b)` green at the final PR head. (Its after-merge clause, main's push run giving the same
+  hash, is the item after it: lead decision 25.)
+  Proof: the run ID, the commit and both hashes.
+  Proof (M4 Review, 2026-10-16): runs 38690004157 (a4598b5), 38691830575 (02d87c0), 38747606208 (ba03201), 38771532075
+  (b9ed46a), 38797300298 (80bf4ac) and 38851865089 (de70f56): both legs and `pi-image reproducible (a = b)` green, both
+  legs' SHA-256 `4b13c095f76c4a42efc67090fec96650d070a385bb8a58b4fd7067c0d936adde` (`gh run view <run> --log --job
+  <compare job>`: `both legs built <commit> into keepcrypt-pi-0.0.0-st7789-240x240.img, SHA-256 4b13c095...`). The final
+  PR head's run is commit 21's to record, and main's push run after merge the PR conversation's. Open until then (20c).
+  Run at f0ae43e (21d; the latest so far, not the final head): image run 38894923652 on f0ae43e (`pull_request`): `pi-image build (a)` and `(b)`
+  on fresh runners and `pi-image reproducible (a = b)` green, `IMAGE: a 4b13c095..., b 4b13c095...` (compare job
+  116959869652). Eight runs since a4598b5 give the one hash: the six above, 38869822983 (30cefbc) and 38894923652
+  (f0ae43e). Main's push run after merge is the next item (lead decision 25).
+  Proof (21e, the run at b9a22c9, 21e's parent; lead decision 25): image run 38898547995 (`pull_request`): both legs on fresh runners and `pi-image
+  reproducible (a = b)` green, `IMAGE: a 4b13c095..., b 4b13c095...` (compare job 116972352888). Nine runs since a4598b5 give the one hash.
+  Main's push run after merge is the next item.
+- [ ] **After merge: main's push run of the image workflow gives the same hash**, recorded in the PR conversation and in
+  M5's Inputs (split from the gate item by lead decision 25; the build-plan gate line is met by the PR head's runs).
+  M5's first commit ticks it, since no commit of this PR can follow the merge.
+- [x] **Gate: the watch-only QR imports into Sparrow and Bitcoin Core with the same first address.** H4:
+  - Sparrow scans the account QR off the panel (swb:218);
+  - Core imports the descriptor text decoded off the panel (swb:222-227);
+  - both first receive addresses equal step 10's (swb:231);
+  - Sparrow's acceptance of `crypto-account` is confirmed (todo.md:73; swb:235).
+
+  Proof: the three addresses, both versions and the camera model under Review.
+  Proof (H4, 2026-10-16, 21c; corrected by 21c-b): "H4 done, both addresses matched". By the checklist's steps, Sparrow
+  scanned the account QR off the panel and so accepted `crypto-account`, Core imported the descriptor text decoded off
+  the panel, and both first receive addresses equal step 10's. Two parts of the planned proof are missing: the owner
+  sent "matched" in place of the three addresses (Q41 (c) allows it), and the report names no wallet version and no
+  camera model, so swb:235's "current Sparrow and Bitcoin Core releases" and todo.md:73's confirmation of
+  `crypto-account` against Sparrow are tied to no release yet (lead decision 23). Unticked again by 21c-b: like the
+  ceremony gate, it counts only once the final head's run gives the same hash (group 16's gate image rule; 21d).
+  Run at f0ae43e (21d; not the final head): image run 38894923652 gives the same hash, and the owner's answer
+  gives the versions and the camera: Sparrow 2.3, Core 31.1, Logitech C920. Core 31.1 is current; Sparrow 2.3 is not
+  (2.5.5 is), so the bullet "Sparrow's acceptance of `crypto-account` is confirmed (todo.md:73; swb:235)" holds for
+  2.3 only. Open for H4b alone (lead decision 24).
+  Proof (21e, the run at b9a22c9, 21e's parent; lead decision 25): the image run gives the card's hash (38898547995), and H4b closes the
+  rest: "H4b done, Sparrow 2.5.5, matched". So the current Sparrow (2.5.5) accepts `crypto-account` and derives the vector's first
+  address, Core 31.1 (current) imported H4's descriptors, and H4's Sparrow 2.3 scan read the account QR off the real
+  panel with the C920. Every bullet holds: the scan off the panel (H4), Core's import (H4), both first addresses equal
+  step 10's (H4), and `crypto-account` confirmed against the current Sparrow (H4b; todo.md:73, swb:235). The three
+  addresses are the owner's "matched" (Q41 (c); lead decision 23), and H4b used the test vector off a screen, not
+  this device's wallet off the panel (lead decision 24).
+- [x] **Matrix "Reproducible build"** (Pi image): as the second gate item, plus `pins.txt`.
+  Proof (M4 Review, 2026-10-16): as the gate item above; `pins.txt` is commit 14's (its proof under group 13), checked
+  by the Makefile on every build, and every leg prints `SOURCE_DATE_EPOCH=1788535000`. Open with it (20c).
+  Run at f0ae43e (21d; not the final head): as the second gate item (run 38894923652); every leg prints
+  `SOURCE_DATE_EPOCH=1788535000`.
+  Proof (21e): as the second gate item (run 38898547995).
+- [x] **Matrix "Full ceremony with offline verification"** (Pi): as the first gate item, with the test backup opened by
+  `age -d` (PF:191).
+  Run at f0ae43e (21d; not the final head): as the first gate item; by the checklist's steps H3's "all matched" includes
+  `age -d` opening the test backup.
+  Proof (21e): as the first gate item.
+- [x] **Matrix "Watch-only import"** (Pi): as the third gate item.
+  Proof (H4, 2026-10-16, 21c): as the third gate item. Unticked again by 21c-b with it (21d).
+  Open with the third gate item for H4b (21d).
+  Proof (21e): as the third gate item.
+- [x] **Matrix "Symbol and stub-marker scan":**
+  - the cross leg scans `keepcrypt-pi` on every PR;
+  - the Buildroot-linked binary and the unpacked image pass `--image`;
+  - the test-registry simulator still gives exactly its three hits;
+  - every positive control fires, including std's random-key path and a stripped ELF.
+
+  Proof: CI logs of both workflows.
+  Proof (M4 Review, 2026-10-16): CI logs at de70f56: `cross (arm-unknown-linux-gnueabihf)` scans `keepcrypt-pi` with the
+  two rlibs and the probe (`U getrandom@GLIBC_2.25`; `clean, 4 file(s)`; run 38851865443), as on every head since
+  ba0cc63; both image legs pass `--image` on the Buildroot-linked binary and the unpacked image (run 38851865089; the
+  line under group 14); the test-registry simulator gives exactly its three lines and `3 hit(s) in 1 file(s)` (run
+  38851865443's `test`); the positive controls: `selftest-image: 17 passed, 0 failed` in both legs (the stripped ELFs,
+  the markers, the wrong hash among them), `--selftest` 698/0 (the `RandomState` fixture, `std-random-paths.txt`, the
+  stripped-file fixtures) and canaries 73/73 (the probe's `RandomState` canary among them), in `gates` and here.
+- [x] **Matrix "BIP39, age and SHA known-answer vectors"** on hardware: boot passes its KATs and the hwrng startup test on
+  the real BCM2835, and the new session passes behind `WAIT_SESSION`.
+  Proof: H1, H2.
+  Proof (H1a, 2026-10-16): the boot KATs and the hwrng startup test passed on the real BCM2835 (Home reached in
+  14 s); the new session behind `WAIT_SESSION` waits for H2.
+  Proof (H2, 2026-10-16, 21a): the new session's KATs passed behind `WAIT_SESSION` in 3 s and the ceremony ran to Finish
+  ("H2 done, all passed"; "KATs 3 s").
+- [x] **Matrix "Duplicate-seed drill"** (Pi): M9. M3's simulator drill stands until then.
+  Proof (M4 Review, 2026-10-16): deferred to M9 as the plan says ("Deferred", M9: the duplicate-seed drill on hardware);
+  M3's `drill_12` passes in both configurations at de70f56 (gate 20 passed, 1 ignored).
+- [x] **Matrix "Metal read-back drill"** (Pi): H2 step 9's deliberate mirror misread and missing letter (and a
+  should-be-blank if a three-letter word comes up), each refused with the insert named and then corrected; M3's
+  simulator drill (todo.md:5172-5184); optional H5 on a metal insert.
+  Proof: H2.
+  Proof (H2, 2026-10-16, 21c; worded by 21c-b): "H2 done, all passed". By the checklist's step 9, that means the
+  mirror misread was refused with the insert named as a mirror misread, the missing letter was refused as a face that
+  should have a letter, and each was then corrected. The report does not say whether a three-letter word came up.
+  M3's simulator drill stands, and H5's metal insert stays optional.
+- [x] **Matrix "Birthday collision"** (Core, Pi): as Q42 (b) decides.
+  Proof (M4 Review, 2026-10-16): Q42 (b) decided (approved 2026-10-14): the reboots stay; M7's nightly job covers core
+  and the reboot part runs on M8's bench image; BP:315's row reads `Core, Pi (reboots: M8 bench image)` since commit 2
+  (a7a91cc) and design.md is unchanged; both are in the Deferred list (M7, M8).
+- [x] **Drivers on hardware:**
+  Proof (H1a, 2026-10-16): the panel upright with true colours and no noise band, and every input one event per
+  press, on the owner's HAT; the boot reached Home, so the hwrng boot test passed (a failure halts before Home).
+  Black after a wipe and the backup under `mlockall` wait for H2.
+  Proof (H2 and lead decision 22, 2026-10-16, 21c; corrected by 21c-b): H2 step 11 wrote a backup and read it back
+  under `mlockall`: `device::run` locks memory before the app starts and stops with `MemoryLock` if it cannot, so the
+  41 s backup ran locked. H2 step 15 ran a wipe on the panel: `finish` (app/ready.rs) calls `wipe`, which presents
+  `screens::blank()` and then "Safe to power off". That black frame lasts one present between two screens, and no
+  checklist step asks to watch for it, so it is proven, not observed. A wipe presents `ScreenId::Blank` (app.rs's halt
+  tests: `[ScreenId::Blank, ScreenId::Halt]`); the blank screen renders all black (ui/render.rs
+  `a_model_with_nothing_in_it_draws_a_black_frame`) and reaches the HAT as 115,200 zero bytes (device/panel/tests.rs
+  `the_blank_screen_writes_115_200_zero_bytes`), through the present path H1a-H4 drew on; and H1a showed this panel's
+  colours true, not inverted, so zero bytes show black. No planned check holds the frame long enough to see: the idle
+  wipe is as brief (`idle_wipe` presents it, then "idle-wiped").
+  - the panel is upright, with true colours, no noise band, and black after a wipe;
+  - every input gives one event per press, with no repeat;
+  - the boot hwrng test passes;
+  - a backup is written and read back under `mlockall`.
+
+  Proof: H1a, H1, H2.
+- [x] **Panel profile (Q44):** the HAT profile's init stream equals the approved bytes; the `PROFILES` checks and the
+  test-only tests with `origin` (40, 0) pass; `PROFILES` holds exactly the HAT, or the HAT and `WAVESHARE_1IN3_HAT_B` if
+  Q50 applied.
+  Proof: group 5's tests in commit 7.
+  Proof (commit 7): the 10 tests in `device/panel/tests.rs` pass; the test-only profile gives CASET `00 28 01 17` and,
+  on the memory model, writes only its window. Scratch mutations, not committed, each fail at least one test: no
+  zeroize, no backlight on, `Drop` without its blank, no length check, the origin ignored, little-endian pixels, a
+  blank of the frame alone, a fault that leaves the backlight on, a pause after every step.
+  Proof (review fix, commit 7b): `ST7789_INIT_OPCODES`, the HAT's `spi_hz` and its `name` are pinned, and the
+  memory-model wipe runs over every `PROFILES` entry; group 5's items.
+  Proof (review fix, commit 7c): the checks also refuse an LCMCTRL step that flips MV; group 5's `Panel` item.
+- [x] **Panel variant (Q50), only if H1a showed one:** (not applicable: H1a's colours matched, 2026-10-16) `WAVESHARE_1IN3_HAT` still equals the approved bytes; the
+  variant's stream is pinned to the values H1a confirmed; H1a passes on the image that uses it.
+- [x] **Kernel allow-list:** `--image` shows the build's `.config` equals `expected/linux.config`; `--os-config` clean;
+  the commit 16 review note.
+  Proof (M4 Review, 2026-10-16): `--image` clean in both legs of runs 38771532075, 38797300298 and 38851865089 (its
+  Kconfig rule compares the build's `.config` with `expected/linux.config` line by line); `--os-config pi/os` clean in
+  `gates` (run 38851865443) and here under sh and dash; the commit 16 review note stands under the commit order (514
+  `=y` lines, every file, every import).
+- [x] **Crash path:** the panel's `Drop` test, the `show_stop` test, `mode`'s tests, the inittab and `panic=0` checked by
+  `--os-config` and `--image`, and no catch anywhere.
+  Proof (M4 Review, 2026-10-16): the `Drop`, `show_stop` and `mode` tests pass in `cargo test --workspace` at de70f56
+  (pi bin 58; CI 59 with the Linux-only one); `--os-config pi/os` (the inittab's three lines, `panic=0` in cmdline.txt)
+  clean in `gates` and here; `--image` re-checks the inittab and cmdline.txt on the built image, clean in runs
+  38771532075, 38797300298 and 38851865089; `catch_unwind` is in the three clippy.toml `disallowed-methods` lists and
+  both clippy runs are clean, so no catch is anywhere.
+- [x] **Read-only mounts and create-new writes** (stick.rs:14-17): the loop-device test in `test`, including the
+  untouched existing file.
+  Proof (M4 Review, 2026-10-16): run 38851865443 (de70f56), `test`: `test device::usb::tests::loop_device ... ok`, `1
+  passed; 0 failed; 0 ignored; 59 filtered out`, on `/dev/loop0`; its checks include the second write's `Exists` with
+  the existing file untouched (byte-identical afterwards), EROFS under the read plan's mount and the read-back under a
+  read-only remount (group 8's item).
+- [x] **The fence:** group 4's tests, including a stick read and the PrivacyGate's present.
+  Proof: group 4's fence item (commit 6).
+  Proof (review fix, commit 6b): another page or note of the same screen moves the fence too, as PF:105 promises; group
+  4's fence item.
+- [x] **Carried items:** each line of M3's "Deferred for M4" is proven or decided, one line each under Review:
+  - drivers: groups 5-8;
+  - no `unsafe`: group 2;
+  - frame memory cleared: group 5;
+  - crash path: group 10, Q35;
+  - Buildroot, the hash and the scans: groups 13-15;
+  - timing, memory and the worker thread: group 17, Q42 (a);
+  - QR scans and imports: H4;
+  - the getrandom cfg, via `U getrandom`: group 14;
+  - `verify.py mixed`: H3;
+  - rule 8: Q40.
+  Proof (M4 Review, 2026-10-16): the eleven lines are under Review ("Carried items"); three wait: the timing and
+  worker-thread line (H2), the QR scans and imports (H4) and `verify.py mixed` (H3).
+  Proof (21c, 2026-10-16): all eleven are proven or decided. Line 8, timing and the worker thread: group 17, every wait
+  under 60 s. Line 9, the scans and imports: H4. Line 10, `verify.py mixed`: H3. Lines 2 and 3 gained their hardware
+  proof as well (step 4's 2.5 s; the stick in H2 and H3), and line 5 its decision (lead decision 22: the wipe ran on
+  the panel in H2, its black frame proven by tests, not observed).
+- [x] **Rules:**
+  - 1: getrandom only in core; the graph pin; the feature bans; std's random-key path absent; Python `random` through any
+    module path caught.
+  - 3: every driver fault is a fixed `HalError`; a stalled hwrng halts or stalls, never proceeds; no defaults or retries.
+  - 5: nothing printed; the silent hook; the buffer zeroized; the panel blanked on wipe, fault, `Drop` and crash; no
+    console.
+  - 8: the paths gate, create-new only, the loop-device proof, Q40's wording.
+  - 10: the image and binary scans.
+  - 11: four approved, vetted crates past the cool-off; image inputs pinned; the workflow hardening check.
+  - 12: Review holds no secret of the throwaway seed.
+
+  Proof: gate, deny, vet and CI output.
+  Proof (M4 Review, 2026-10-16): rules 1, 3, 5, 8, 10 and 11 are proven (the Review's "Rules" lines); 12 waits for
+  commit 21's H2-H4 records, since the throwaway seed does not exist yet (the Review at de70f56 holds no secret, and
+  H1a's record is the only hardware text).
+  Proof (21c, 2026-10-16): rule 12 holds. The H2-H4 records hold the owner's words, pass or fail, "matched" and times.
+  No value of the throwaway seed ever reached the lead: no C, D, roll, word or passphrase, and not even the public
+  fingerprint, addresses or Seal ID. So none can be in todo.md, the PR or a commit. The Review's Rules line 12 says so.
+- [x] **CI:** all 14 required check runs green with unchanged names; the image workflow green at the final head;
+  canaries (61 + n)/(61 + n); budgets met.
+  Proof: run IDs on the PR head.
+  Proof (M4 Review, 2026-10-16): run 38851865443 on de70f56 (`pull_request`, PR #7): all 14 required check runs green
+  with their names unchanged (`gh run view 38851865443 --repo bitwilll/keepcrypt --json jobs`); image run 38851865089
+  green with the same hash; canaries 73/73 (61 + 12); `gates` 10 min 18 s, `test` 5 min 26 s, coverage 97.38 %. The
+  final head is commit 21's, and its run is commit 21's to record. Open until then (20c).
+  Run at f0ae43e (21d; the latest so far, not the final head): CI run 38894923651 on f0ae43e (`pull_request`, PR #7): 14 of 14 check runs green,
+  names unchanged; image run 38894923652 green with the same hash; canaries "PASS: all 73 checks ran" (61 + 12);
+  `--selftest` 698 passed, 0 failed; `kconfig.sh --selftest` 6 passed; the grep gate clean on 238 files; budgets as
+  group 18.
+  Proof (21e, the run at b9a22c9, 21e's parent; lead decision 25): CI run 38898548352 (`pull_request`, PR #7): 14 of 14 check runs green, names
+  unchanged; image run 38898547995 green with the same hash; canaries "PASS: all 73 checks ran"; `--selftest` "selftest: 698 passed, 0 failed";
+  the grep gate "banned-api-check: clean, 238 files scanned"; budgets as group 18. The PR description, updated after
+  21e's push, names 21e's own runs.
+- [x] **Definition of done** (CLAUDE.md), with proof pasted under Review.
+  Proof (21e): tests written with the code and passing locally and in CI (CI run 38898548352; "M4: local proof");
+  the docs' vectors cover the new behaviour where they define it (pi-firmware.md's rootfs prefix: rootfs.rs's
+  `the_vector_gives_the_pinned_prefix` and `rootfs-prefix.py --selftest`, both in that run; H4b confirmed on hardware
+  that the current Sparrow reads watchonly.json's account QR); clippy, fmt, deny and the banned-API gate clean in that run; the proof pasted under Review; and the
+  staff-engineer question answered by the stage reviews above, every high and medium finding fixed.
+
+### New dependencies
+
+**How this was checked (2026-10-14)**
+- crates.io API reads for versions, dates, licences, MSRVs, features and dependencies [S3].
+- The five imported cargo-vet audit files.
+- The local RustSec copy (6aed8466, 2026-10-13).
+- No crate archive was downloaded and no lockfile probe was built. Commit 5's `Cargo.lock` diff is the proof of the
+  lockfile effect.
+- The cool-off cutoff for today is 2026-09-30. It is re-checked at commit time.
+
+**Results**
+- Every version below was published before the cutoff, and every licence is on deny.toml's allow-list.
+- None pulls in rand, getrandom, log, tracing or a network crate as a normal or build dependency.
+  - nix lists `rand` only as a dev-dependency, which never enters our graph.
+  - `[[bans.features]]` keeps out nix's `net`, `socket` and other features, and rppal's `embedded-hal` and `hal`
+    features.
+- RustSec: nothing for rppal, bitflags or cfg_aliases. nix has only RUSTSEC-2021-0119, fixed long before 0.31.
+
+| Crate | Version | Published | Licence | Why | Vet |
+| --- | --- | --- | --- | --- | --- |
+| rppal | =0.22.1 | 2024-12-11 | MIT | GPIO pull-ups, both-edge events with kernel `CLOCK_MONOTONIC` timestamps, DC/RST/BL outputs, spidev SPI; BP:76. **Archived 2025-07-01** | exemption, plus the group 2 review note |
+| nix | =0.31.3 | 2026-05-11 | MIT | Safe `mlockall`, `mount`/`umount2`, `clock_gettime(CLOCK_MONOTONIC)`, `O_NONBLOCK`; every call is a libc import the scan can see | exemption (mozilla's deltas stop at 0.30.1, with no full base audit) |
+| bitflags | 2.11.1 (`--precise`) | 2026-04-14 | MIT OR Apache-2.0 | nix's flag types | imports (google's 1.3.2 full audit, then mozilla and bytecode-alliance deltas to 2.11.1; as built, commit 5) |
+| cfg_aliases | 0.2.2 | 2026-07-16 | MIT | nix's build dependency | exemption (the imported deltas lack a safe-to-deploy base) |
+
+- **New edges to crates already locked:** keepcrypt-pi → sha2 0.11.0; rppal and nix → libc 0.2.189; nix → cfg-if 1.0.5.
+- **Not added:**
+  - mipidsi 0.10.0, embedded-hal 1.0.0 and spin_sleep 1.3.3, which M3 listed as "M4 adds" (todo.md:6215-6216; Q36 (c));
+  - heapless and display-interface-spi;
+  - rustix 1.1.5, linux-raw-sys 0.12.1 and errno 0.3.14: raw syscalls the symbol scan cannot see, and a windows-sys edge
+    that would raise its exemption;
+  - gpiocdev 0.8.0, spidev 0.7.1 and the 5 further crates they bring (Q36 (b));
+  - linux-embedded-hal 0.5.0.
+
+**rppal 0.22.1 review note (group 2; commit 5, 2026-10-14)**
+Read from the downloaded `.crate`, whose SHA-256 equals Cargo.lock's (`c1ce3b01…b026`). Scope: the modules the binary
+calls, `gpio` (gpio.rs, gpio/pin.rs), `gpio/interrupt` (with gpio/epoll.rs, which its synchronous poll uses),
+`gpio/ioctl`, `gpio/gpiomem/bcm`, `spi` (spi.rs, spi/ioctl.rs, spi/segment.rs) and `system`, plus macros.rs.
+- **Prints:** none; the crate has no `println!`, `eprintln!`, `print!`, `dbg!` or logging call anywhere.
+- **Threads:** `thread::spawn` only for async interrupts (gpio/interrupt.rs:257, behind `set_async_interrupt`,
+  pin.rs:538) and software PWM (gpio/soft_pwm.rs:44); the firmware uses neither. `poll_interrupts` (gpio.rs:510) and
+  `set_interrupt` (pin.rs:475) run epoll in the caller's thread. bcm.rs:315 and :320 only sleep 5 µs while clocking a
+  pull-up.
+- **`/dev/mem`:** `GpioMem::open` (bcm.rs:58-91) maps `/dev/gpiomem` (:17) and on any error tries `/dev/mem` (:18,
+  `map_devmem` at :123-150, at the SoC's peripheral base). The image's `CONFIG_DEVMEM=n` (group 13) leaves no
+  `/dev/mem`, so that path fails closed; H1a exercises `/dev/gpiomem`.
+- **Event clock:** `LINE_FLAG_EVENT_CLOCK_REALTIME` (gpio/ioctl.rs:101) is only read back from line info (:209, :270).
+  `EventRequest::new` (:576-627) sets only `LINE_FLAG_INPUT` and the edge flags, so edge timestamps are the kernel's
+  default `CLOCK_MONOTONIC`; `Event.seqno` is the kernel's `line_seqno` (:560).
+- **Paths opened:** `/dev/gpiomem`, `/dev/mem` (the fallback), `/dev/gpiochipN` (ioctl.rs:19, `find_gpiochip` at
+  :651-676, from N = 0 up to the first that is missing or carries the BCM driver's label), `/dev/spidevB.S`
+  (spi.rs:452), `/proc/cpuinfo` (system.rs:165) and `/sys/firmware/devicetree/base/{compatible,model}` (system.rs:231,
+  :274). All are on pi-firmware.md's list (PF:81), `/dev/mem` aside.
+- **Calls the drivers must check:** `Spi::write` (spi.rs:647) is one write(2) and returns the count written, so group
+  5's bus treats a short count as `HalError::Display`. A poisoned mutex panics (`.lock().unwrap()` at gpio.rs:413,
+  :516; pin.rs:479, :488, :517), which ends in stop mode.
+- **Unsafe sites in scope:**
+  - gpio.rs:407: a `static mut` shared state written once under `Once`, then only borrowed shared.
+  - gpio/gpiomem/bcm.rs: :105 and :134 `mmap` of `/dev/gpiomem` and `/dev/mem`; :154 and :159 volatile register read
+    and write within the 61-word map; :167 `munmap` in `Drop`; :196 `transmute` of a 0 or 1 bit to `Level`; :332 and
+    :334 `unsafe impl Send` and `Sync` for `GpioMem`, whose read-modify-write registers take per-register atomic locks.
+  - gpio/ioctl.rs: :131, :346, :464 and :619 GPIO v2 ioctls on `repr(C)` structs; :477 `GET_VALUES`; :486 and :635
+    `close`; :538 a `read` of one `LineEvent`, refused if short; :310 a union read inside a `Debug` impl.
+  - gpio/epoll.rs: :26 `eventfd`, :33 `write`, :45 and :112 `close`, :59 `epoll_create1`, :69, :80 and :88
+    `epoll_ctl`, :104 `epoll_wait`.
+  - spi.rs:694 `unsafe impl Send for Spi`; spi/ioctl.rs:67-103 the mode, bit-order, word-size and speed ioctls, and
+    :107 `SPI_IOC_MESSAGE` over the segment slice.
+  - macros.rs:23 and :36: `init_array!` (an array of `MaybeUninit`, filled element by element, then transmuted).
+  - system.rs and spi/segment.rs: none.
+
+**Image inputs (non-crate; Q37 (d); recorded in `pi/os/pins.txt`)**
+
+| Input | Pin | Published | Checked by |
+| --- | --- | --- | --- |
+| Buildroot | 2026.08, tarball SHA-256 `87aaca4164ea9d5c8085854953018263f7963f07c22e73a2a2185cc98c581c34` [S7] | 2026-09-04 | the Makefile's SHA-256 check; once, in commit 14, the lead checks the clearsigned `.sign` against the key at buildroot.org/~jacmet/pubkey.gpg and records its fingerprint |
+| Linux | raspberrypi/linux `21b410140c47ffab5668399f6f143c7d7b935c8b` (6.12.61) [S12] | 2025-12-09 | `patches/linux/linux.hash` |
+| rpi-firmware | Buildroot 2026.08's pin, default variant (recorded in commit 14) | n/a | Buildroot's `rpi-firmware.hash` |
+| Toolchain | Bootlin armv6-eabihf glibc stable 2025.08-1 (2026.08's pin) [S12, S13] | 2025 | Buildroot's hash |
+| BusyBox, host tools | BusyBox 1.38.0, genimage 20, squashfs-tools 4.7.5, mtools 4.0.49, dosfstools 4.2 (2026.08's versions) [S18] | with Buildroot | Buildroot's `.hash` files |
+| Rust | 1.98.1 (rust-toolchain.toml) | already pinned | rustup |
+| CI action | `actions/upload-artifact` v7.0.1 at `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` [S19] | 2026-04-10 | pinned SHA; `--workflows` |
+| Build time | `SOURCE_DATE_EPOCH` constant, set once in commit 14 | n/a | `pins.txt`; printed by every leg |
+| Build host | the `ubuntu-24.04` runner image and the Ubuntu packages the image workflow installs (Buildroot's host packages; `gcc`, `g++`, `make`), unpinned until M7's container (Q38 (e); 15g) | n/a | printed by every leg (`ImageOS`, `ImageVersion`, `dpkg-query`) |
+
+### Commit order on `m4-pi-hardware`
+Each commit's proof runs at that commit. Each stage is reviewed (plan, security, recompute) before the next one starts.
+The PR is a draft from commit 1.
+
+**Stage A: decisions, docs, core, dependencies**
+1. tasks/todo.md: the M4 plan and the owner's answers to Q35-Q43. The title becomes "milestones M0 to M4".
+   1b. tasks/todo.md: the owner's answers to Q35-Q43 ("approve all", 2026-10-14), recorded after commit 1 (49423fc).
+   1c. tasks/todo.md: the plan review: the plan's pi-firmware.md and CLAUDE.md line citations after commits 2 and 3
+   (a7a91cc, ed15bd2); Q35-Q43's text stays as the owner approved it.
+   1d. tasks/todo.md: the owner's answers to Q44-Q50 (other Waveshare screens, "approve all", 2026-10-14) and the
+   display amendment: group 5's panel profiles, group 10's Display line, group 16's variant HAT item (Q50), H1a's panel
+   line, commit 7, two Verification items, M4b under "Deferred", and [S34]-[S37]; the owner's hardware notes in H0; and
+   Q51, open, which commit 12 waits for.
+   1e. tasks/todo.md: the plan review: the plan's `todo.md:N` citations are f967dd4's line numbers, as References and
+   terms now says.
+2. docs: the approved edits (Q40; Q42 (b)), alone; plus `1.txt` if approved.
+3. CLAUDE.md: rule 8's sentence (Q40 (a)). 3b. `.github/CODEOWNERS:7-9`, if approved (Q43 (d)).
+4. core: `tests/auto_traits.rs` (group 3).
+5. pi/app, Cargo.lock, supply-chain, deny.toml, scripts/canaries.sh: the four crates, the feature bans, the pins (group 2).
+   5b. tasks/todo.md: the plan review: group 2's canary item and the dependency table's bitflags row say what commit 5
+   built: the `reboot` canary, and the imported chain from google's 1.3.2 audit.
+   5c. pi/app: the plan review: Cargo.toml's comment says the unsafe code the hardware access needs stays inside rppal,
+   nix, libc and std, not all unsafe code (zeroize and sha2 have their own).
+   5d. tasks/todo.md: the plan and recompute reviews: group 18's Commands commit also sets the canaries count, which
+   commit 5 raised to 62 while CLAUDE.md's Commands line said 61 (so it stayed until commit 18).
+
+**Stage B: app and device logic, tested on the host**
+
+6. pi/app (lib), pi/sim: the new `HalError` variants, `show_stop`, the boot and About fits, `Key::bcm_pin`, the fence
+   (group 4).
+   6b. pi/app: the plan, security and recompute reviews: the fence also moves on another page or note of the same
+   screen, so no queued press acts on backup-passphrase's words 5-8, backup-confirm's second question, the checklist's
+   second page, a words page, a read-back match or the next insert before it was shown.
+   6c. pi/app: the plan and recompute reviews: the boot, privacy-gate and stick-read fence tests check the idle timer,
+   and a press made while a refused backup was opened does nothing on the entry it returns to.
+   6d. pi/app: the plan review: `BLOCK_TICK_NS`'s doc says the device keeps 100 ms (Q39 (d)), not that M4 sets it from
+   the measured hwrng rate (Q42 (a) moved that to M8).
+7. pi/app (bin): `#[cfg(test)] mod device;` and `device/panel.rs` with the HAT profile, `ST7789_INIT_OPCODES` and `PANEL`
+   (group 5).
+   7b. pi/app: the plan and recompute reviews: the panel tests pin `ST7789_INIT_OPCODES` to the plan's 14 bytes and the
+   HAT's `spi_hz` and `name`, and run the memory-model wipe over every `PROFILES` entry.
+   7c. pi/app: the security review: the `PROFILES` checks refuse an LCMCTRL step with XMV, which flips MADCTL's MV.
+   7d. pi/app: the recompute review: a bus fault in `hal::Display::present` under `show_stop`, and a display fault in
+   `show_stop` itself, give `Display` at once, the panel's backlight off.
+   7e. tasks/todo.md: the plan and recompute reviews: commit 7's init proof counts 65 bus calls, not 66.
+   7f. tasks/todo.md: the plan review: group 10's dead-code rule also covers the pure items only the tests use, which
+   commit 11's Linux builds would find dead: `PROFILES`, `ST7789_INIT_OPCODES` and `INVOFF`.
+8. pi/app (bin): `device/keys.rs` and `device/hwrng.rs` (groups 6, 7).
+   8b. pi/app: the recompute review: an edge source fault, on the drain or on a wait, comes back from the key loop as
+   `Buttons`.
+   8c. pi/app: the recompute review: a test holds the key loop up between its drain and the next statement, so a press
+   is shown judged at the time read before the drain.
+   8d. pi/app: the recompute review: the hwrng's 2 s deadline is shown to hold for reads that are slow or interrupted,
+   not only for reads that find nothing.
+   8e. pi/app: the plan review: hwrng.rs's doc says "no buffered reader", so group 11's planned rule (no `BufReader`
+   anywhere in pi/app, where the gate counts comments) has nothing to flag there.
+9. pi/app (bin): `device/usb.rs`, `SysBlock`, `device/usb/tests.rs` with the `#[ignore]`d loop-device test (group 8).
+   9b. pi/app: the recompute review: a read takes at most one byte past its limit, shown on a counting reader, and a
+   call's fault comes before a failed unmount's.
+   9c. pi/app: the recompute review: the write's and the removal's syncs go through `Mounter::sync`, so the tests see
+   their order and a failed sync is `Sync` with the file removed.
+   9d. tasks/todo.md: the plan and security reviews: group 8's ticked items claim only what commit 9 proves (the Linux
+   `SysBlock` and `/mnt/usb` move to group 10, FAT's letter case to the loop-device item); from commit 11 the
+   loop-device test drives the glue's `Mounter`, and commit 13's step needs exactly `1 passed`.
+10. pi/app (bin), pi/os, .github: `device/rootfs.rs` and its vector; `pi/os/rootfs-prefix.py`; `gates` runs its
+    `--selftest` (group 9).
+    10b. pi/os: the recompute review: `rootfs-prefix.py --selftest` accepts `bytes_used` 96, the boundary the device
+    accepts.
+    10c. docs, tasks/todo.md: Q51 answered (the owner's "Yes", 2026-10-14): PF:81 also lists the runtime's own reads
+    (the dynamic loader's files, glibc's `/proc/self/maps` before `main`, `/dev/null` for a closed standard descriptor,
+    rppal's `/dev/mem` attempt, which `CONFIG_DEVMEM=n` makes fail), says the grep gate covers the paths our code and
+    rppal name, and calls the globs patterns, every listed path kept; Q51 and group 11's item marked answered; stage B's
+    two lead decisions on the fence recorded (References and terms, groups 4 and 10).
+    10d. CLAUDE.md: rule 8's "fixed entries under `/proc` and `/sys`" becomes "fixed entries and patterns under `/proc`
+    and `/sys`"; nothing else in the rule changes. (Made after commit 13, in stage C's review: 10c's message, commit
+    12's message and this plan had named it as done while rule 8 still said "fixed entries".)
+    10e. docs: stage C's plan, security and recompute reviews: PF:81's rppal sentence claims only what the rppal review
+    note checked (the paths opened by the GPIO, SPI and board-identification code the firmware calls) and names the
+    I2C, PWM, UART and Pi 5 paths its source also holds, which the firmware never reaches.
+
+**Stage C: Linux glue, main, gates, CI**
+
+11. pi/app (bin): `device/linux.rs`, `device/paths.rs`, `device::run`, stop mode, main.rs, the widened `mod device`
+    (group 10); and, in the lib, backup-check-entry's "unrecognised entry" refusal entered through `enter`, so the fence
+    covers it (group 10's lead-decision item).
+12. scripts: the Device category and test-file exception, Python `random` through any module path, the `.symtab` Format
+    rule, std's random-key rule, `--workflows`, fixtures, canaries (groups 11, 12). It starts only after the owner
+    answers Q51 (group 11; answered 2026-10-14, applied in 10c and 10d).
+    12b. scripts: stage C's security review: the Device category matches the process and thread modules by any path
+    (a grouped `use std::process::{Command, Stdio};` and `thread::scope` hit), allowing only `std::process::id()` and
+    linux.rs's `use std::thread;`, `thread::park(` and `thread::sleep(`; the fs rule's wrapped line takes an alias;
+    `extern crate` hits outside device/; fixtures and a fifth Device canary (69); the Format comment says the empty
+    symbol list is the operative stripped-file test.
+    12c. scripts, .github: stage C's security and recompute reviews: `--workflows` reads a permissions block's quoted,
+    next-line and flow-mapping `write`, bans `secrets` as a word and `github.token`, reads a run key after any dash
+    width, quoted or in a flow mapping, and reads `entropy-*.yaml` too; 15 fixtures; entropy-ci.yml's two "no secrets"
+    comments say "no secret".
+    12d. scripts, tasks/todo.md: stage C's security review: the write-API rule's header, comment and group 11's list
+    say that an in-place overwrite, `.create(` with a non-literal flag and `fs::hard_link` under device/ are held by
+    review, not by the gate; the list itself is unchanged (widening it waits for the lead).
+13. .github: the cross leg links and scans `keepcrypt-pi`; `test` runs the loop-device test; `gates` runs `--workflows`
+    (group 12).
+    13b. scripts, .github, tasks/todo.md: stage C's CI (run 38652814808, Q52, decided by the lead under the owner's
+    standing instruction of 2026-10-15): on `*-linux-gnueabihf`, `--artifact` lets std's three getrandom statics
+    through when they are local data (type `d`) in an object or linked file; five fixture cases; the gates comment
+    names the third fixture target. Commit 17's `--image` needs the same allowance.
+
+**Stage D: the image**
+
+14. pi/os: the external tree, defconfig, `linux.fragment`, `kconfig.sh`, BusyBox config, overlay, board files, package,
+    Makefile, `pins.txt` (group 13).
+    14b. pi/os, .github: stage D's plan review: the image is `keepcrypt-pi-0.0.0.img`, as References and terms, group
+    13's genimage.cfg item and H1a name it (Q43 (b)); commit 14 had used Q47's per-screen name, which M4b's B3 brings
+    with the `PANEL` selection (Q44-Q50's header puts Q47 before M4b).
+    14i. pi/os, .github, tasks/todo.md: the lead: the HAT image is `keepcrypt-pi-0.0.0-st7789-240x240.img`, as the
+    owner's Q47 answer says ("The HAT's image becomes ..."), which outranks 14b's reading of Q43 (b).
+    14c. pi/os: stage D's security review: the keepcrypt-pi build unsets every host `CARGO_*` and `RUSTC*` variable,
+    `RUSTFLAGS`, `RUSTDOCFLAGS` and `RUSTUP_TOOLCHAIN`, keeping `RUSTUP_HOME`: a host `CARGO_ENCODED_RUSTFLAGS` replaced
+    the target's getrandom cfg, which brings back getrandom's fallback (rule 3). 14d. pi/os: 14c's comment named the
+    fallback's device path, which the grep gate flags: 14c's tree had that one hit, and 14d rewords it.
+    14e. pi/os: stage D's plan review: `make image` passes `BR2_PRIMARY_SITE=file://$KC_WORK/dl` and
+    `BR2_PRIMARY_SITE_ONLY=y` to Buildroot's build steps, so a file `make source` did not fetch fails the build
+    (Buildroot 2026.08's package/pkg-download.mk and support/download/dl-wrapper).
+    14f. pi/os: stage D's recompute review: the Makefile resolves `KC_WORK` through its longest existing ancestor, so a
+    `KC_WORK` not yet made, reached through a symlink to `Entropy/`, is refused. (14f's message lists those paths as
+    "refused before, accepted now"; it means accepted before, refused now.)
+    14g. pi/os: stage D's plan review: kconfig.sh's comment names the Makefile's step as built,
+    `toolchain host-flex host-bison linux-patch`; group 13's Makefile item records the reading.
+    14h. pi/os, .github: stage D's recompute review: `kconfig.sh --selftest` on a stub kernel tree, and `gates` runs it.
+15. scripts, .github: `--image-lists`; `entropy-pi-image.yml` with both legs, the compare job and the upload, no scan
+    (groups 14, 15). Then H1a on its image; bring-up fixes as 15i, 15j, … (group 16; stage D's review fixes took
+    15b-15h).
+    15b. .github: stage D's plan and security reviews: entropy-ci's changes job also counts a change to any
+    `.github/workflows/entropy-*`, so `gates` runs `--workflows` on a change to the image workflow alone; the job's
+    required name and the file's line count stay (lead decision under the owner's standing instruction of 2026-10-15).
+    15c. .github: stage D's plan review: the image workflow groups runs by event too and cancels only an older PR run,
+    so a weekly or dispatched run never cancels main's push run.
+    15d. scripts, pi/os: stage D's security review: `--workflows` takes actions/checkout, cache and upload-artifact
+    only at their approved SHAs; one fixture.
+    15e. scripts: stage D's recompute review: the `--image-lists` selftest refuses an entry 4 in use, a lone `55` and
+    a partition 2 one sector past the end, and accepts one ending on the last sector.
+    15f. scripts: stage D's recompute review: the `--image-lists` selftest runs the listing with stub host tools and
+    pins its output, and refuses a root line it cannot read. (15f's message says each listing mutant fails the
+    listing case; the line-refusal mutant fails the refusal case.)
+    15g. .github, pi/os: stage D's plan review: each leg prints its Ubuntu packages' versions, and pins.txt says the
+    build host is not pinned until M7 (Q38 (e)).
+    15h. tasks/todo.md: stage D's reviews: these entries, the readings in groups 13-15 and the Image inputs table,
+    config.txt ticked (commit 14's proof covers it), group 13's trailing proof labelled as the group's, the Makefile's
+    `scan` target given to commit 17, and kconfig.sh's selftest added to group 18's Commands.
+    15i. pi/os, tasks/todo.md: image run 38683063774 (both legs): kconfig.sh refused the config, `DEBUG_FS` and `HID`
+    selected back on. In the pinned tree, bcmrpi_defconfig's `BLK_DEV_IO_TRACE=y` selects `DEBUG_FS`
+    (kernel/trace/Kconfig), and `USB_HID`, `default y` and unset by bcmrpi_defconfig, selects `HID`
+    (drivers/hid/usbhid/Kconfig). Neither is required, so group 13's "stop and ask" does not apply: the fragment
+    forbids `FTRACE` (every tracer), `BLK_DEV_IO_TRACE` and `USB_HID`. A scan of every forbidden option's selectors
+    in the pinned tree found no other set or `default y` one outside an off menu, and found bcmrpi_defconfig's
+    `KGDB=y`, the kernel debugger, which the fragment now forbids too (lead decisions under the owner's standing
+    instruction of 2026-10-15).
+    15j. pi/os, tasks/todo.md: image run 38684224715 (fa894a3) built both legs equal (image 35032b1c...), and its
+    root list held the external toolchain's whole runtime: libstdc++ (with its gdb script), libgomp, libatomic,
+    libnss_dns, libnss_files, libresolv, libanl, libnsl, glibc's libdl, libpthread, librt and libutil stubs, plus
+    `ldd`, the skeleton's network scripts and files and `/var/www`. The image's ELF headers (read from the artifact):
+    BusyBox needs `libc.so.6`; `keepcrypt-pi` names `libc.so.6`, `libgcc_s.so.1` and `libm.so.6`; both load through
+    `/lib/ld-linux-armhf.so.3`. post-build.sh keeps those four and `usr/lib/os-release` and removes the rest, so H1a
+    and commit 16's lists use the pruned image (lead decision under the owner's standing instruction of 2026-10-15).
+    15k. pi/os, tasks/todo.md: image run 38686161966 (e81e186; image 3f87b23e..., equal) still listed `/etc/network`
+    (now mode 0777) with its four `*.d` directories, and `/var/www`: Buildroot 2026.08's `system/device_table.txt`
+    names them, and fs/common.mk runs makedevs inside fakeroot after post-build.sh. post-fakeroot.sh
+    (`BR2_ROOTFS_POST_FAKEROOT_SCRIPT`) removes them on the filesystem copy, refusing any path but
+    `.../buildroot-fs/<fs>/target` with the fakeroot script beside it.
+    15l. pi/os, tasks/todo.md: the lead's review of every `=y` line of image run 38684224715's config (794 lines,
+    four reviewers by section, each followed by an adversarial verifier; 8 agents): 113 options removed, each checked
+    in the pinned tree for a visible prompt (EXPERT=y) and for selectors that stay on, the selector pairs forbidden
+    together (CGROUPS with SCHED_AUTOGROUP, KALLSYMS with KPROBES and LATENCYTOP, NVMEM with RTC_CLASS, CONFIGFS_FS
+    and OF_OVERLAY with OF_CONFIGFS, TMPFS_XATTR with TMPFS_POSIX_ACL, SCHEDSTATS with LATENCYTOP). The boot-path
+    ones were rechecked by the lead: the Zero's device tree puts the SD card on sdhost (`mmc0 = &sdhost`,
+    bcm2708-rpi.dtsi), which MMC_BCM2835 drives, so the Arasan host (MMC_BCM2835_MMC) and SDHCI go; MMC_BLOCK
+    depends only on BLOCK, so BLK_DEV (loop and RAM disks) goes; with TTY off there is no /dev/console, the kernel
+    warns and BusyBox init points its standard files at /dev/null, which devtmpfs provides. H1 repeats the boot
+    check on this kernel. The keep groups are the basis of commit 16's review note (lead decision under the owner's
+    standing instruction of 2026-10-15).
+    15m. pi/os, tasks/todo.md, tasks/lessons.md: the owner's correction of 15l's TTY removal ("fix the terminal
+    layer issue and make sure we have no risk regarding functions or failures"). The fragment requires `TTY` and
+    `NULL_TTY` and keeps every serial driver, `SERIAL_DEV_BUS`, `SERIAL_NONSTANDARD`, both PTY kinds,
+    `LDISC_AUTOLOAD`, `LEGACY_TIOCSTI` and `TTY_PRINTK` forbidden. Read in the pinned sources: ttynull registers a
+    console with a tty binding at init (drivers/tty/ttynull.c); `register_console` enables the first such console as
+    the console device when `preferred_console < 0` (kernel/printk/printk.c, `try_enable_default_console`), and
+    `preferred_console` is set only by `console=` (absent from cmdline.txt) or by `of_console_check`, which
+    serial_core.c calls when a UART port registers, and both UART drivers are forbidden, so the device tree's
+    `stdout-path = "serial0:115200n8"` (bcm270x.dtsi) selects nothing; `console_on_rootfs` (init/main.c) then opens
+    `/dev/console` and gives init its three standard files; `tty_open` returns ENODEV only when no console device
+    exists (drivers/tty/tty_io.c). BusyBox 1.38.0's init (the pinned tarball, hash checked): `console_init` with no
+    CONSOLE variable keeps those files, `VT_OPENQRY` fails on a non-VT tty so `log_console` becomes NULL and messages
+    go to stderr, `set_sane_term` returns when `tcgetattr` fails and otherwise sets ordinary control characters,
+    inittab entries with an empty terminal use init's files, and `FEATURE_INIT_SCTTY` is off. The firmware never
+    reads stdin or writes stdout or stderr (no `print`, `eprintln` or `isatty` in pi/app/src), its panic hook prints
+    nothing (linux.rs), and every failure parks on the panel. `/dev/null` comes from the memory devices
+    (drivers/char/mem.c) with or without TTY, so the no-console path 15l relied on was also sound, but it was
+    unproven when 15l shipped; 15m removes the dependence on it. The 15l image (7d96c29, both legs equal) is
+    superseded before any hardware session (lead decision under the owner's standing instruction of 2026-10-15).
+    15n. tasks/todo.md: H1a's image is run 38690004157's (a4598b5, both legs equal): `keepcrypt-pi-0.0.0-st7789-240x240.img`,
+    36,426,240 bytes, SHA-256 `4b13c095f76c4a42efc67090fec96650d070a385bb8a58b4fd7067c0d936adde`, prefix
+    `76eb-725e-8163-7013`, artifact 11951494588 (kept until 2026-10-29). Its kernel has 514 built-in options (the
+    `=y` lines of `expected/linux.config`, commit 16's copy of this image's config; this entry said 515 until 20d); its
+    root holds BusyBox, keepcrypt-pi, the loader, libc, libm, libgcc_s and os-release. The lead downloaded the
+    artifact and checked the hash. Sent to the owner with H1a's checklist on 2026-10-15.
+16. pi/os: `expected/` (lists and `linux.config`) from the run after H1a passes, reviewed line by line (group 15).
+    Lead decision (2026-10-15, under the owner's standing instruction and "continue" while H1a is pending): commit 16
+    lands from run 38690004157 (a4598b5), the image H1a tests, before H1a's result; a bring-up fix that changes the
+    image regenerates `expected/` in the same commit, and H1 repeats the boot check on the gate image either way.
+    Review note (every `=y`, every file, every import): the 514 `=y` lines of `expected/linux.config` are a subset
+    of the 794 the 15l review classified (four reviewers by section, each with an adversarial verifier; the keep groups
+    in <session>/plans/m4-kconfig-review.json), plus `NULL_TTY` (15m); every value line that went belongs to an option
+    15l removed (`comm` and `diff` of the two configs, 2026-10-15). The 8 boot files are the firmware's bootcode.bin,
+    start.elf, fixup.dat, the kernel, the Zero's device tree, config.txt and cmdline.txt. The 53 root entries are the
+    skeleton's directories and links, BusyBox with its mount link, keepcrypt-pi, the loader, libc, libm, libgcc_s and
+    os-release (15j, 15k). The 94 imports are glibc's (GLIBC_2.4 to 2.34) and GCC's unwinder symbols, with
+    `getrandom@GLIBC_2.25` the one OS RNG import and `mlockall@GLIBC_2.4` (rule 5's memory lock); no rand-family
+    symbol. `kconfig-required` (29) and `kconfig-forbidden` (218) are the fragment's lines. `--os-config pi/os`: clean.
+17. scripts, .github, pi/os: `--image`, `--selftest-image` and `--os-config`, their fixtures and canaries; the scan step
+    in both legs; `gates` runs `--os-config`; the Makefile's `scan` target, which runs `--image` (groups 11, 13, 14,
+    15; `scan` given to this commit in 15h). `--image` takes 13b's std-statics allowance (Q52) for the image's linked
+    files.
+    Lead decision (2026-10-15, under the owner's standing instruction): commit 17 lands in two parts, because `--image`
+    and `--os-config` compare against `pi/os/expected/`, which commit 16 commits only after H1a passes.
+    17a (now): scripts gain `--image IMG EXPECTED_DIR KCONFIG BIN_SHA256`, `--selftest-image IMG KCONFIG` and
+    `--os-config OS_DIR`, their fixtures, `--selftest` cases and canaries (`want_checks` raised in the same commit); the
+    Makefile gains `scan`, which runs `--image` against `expected/`; both image legs run `--selftest-image` on the image
+    they built (its positive controls are mutations of that image, with the lists `--image-lists` prints for it standing
+    in for `expected/`, so it needs no committed lists); `--image` and `--os-config` can be run by hand against a
+    directory of lists made from a run's "Hash and list" output. The upload, the summary's "not scanned" text and
+    `gates` are unchanged.
+    17b (after 16): both legs run `--image` against the committed `expected/` before the upload, the upload runs only
+    after the scan passes, the summary drops "Boot check only, not scanned", and `gates` runs `--os-config pi/os`.
+    17b's BIN_SHA256 comes from the build, not the image (17a-i): the SHA-256 of
+    `$KC_WORK/out/build/keepcrypt-pi-0.0.0/target/arm-unknown-linux-gnueabihf/release/keepcrypt-pi` (as the Makefile's
+    `scan` takes it), recorded as a job output beside `binary`, since `steps.hash.outputs.binary` is `--image-lists`'
+    hash of the image's own file and `--image` would compare it with itself.
+    17b (landed as 597e4a3; stage D2b): .github, tasks/todo.md. "Hash and list" hashes the keepcrypt-pi cargo built, fails
+    unless that file exists and its hash equals `--image-lists`' `sha256 keepcrypt-pi` line (both printed), and
+    exports it as the `binary` output (the lead's reading: one output, the two hashes proved equal, in place of a
+    second output); the shared step "Scan (--image against pi/os/expected)" runs after "Scan selftest" and before
+    the upload, with that hash through `env:`; the upload, "Upload the image (leg a; scanned)", runs only when the
+    scan passed; the compare job fails unless both legs' results are `success` and its summary says both scans
+    passed and names the binary hash as the build's; `gates` runs `--os-config pi/os` beside `--workflows`. The
+    Makefile is unchanged (its `scan` header already says what 17b does). Proof under group 12's `gates` item and
+    group 15's step 4 and upload bullet; group 14's `--image` item waits for the gate image's clean scan output
+    (commit 20).
+    Review fixes of 17a (stage D2a's review of 430678b..349c1b2), each with its proof under the item it amends:
+    17a-b. scripts: every `sha=$(si_lists ...)` carries `|| exit 2`, so a control that cannot be listed is exit 2, as
+    the header promises, not a FAIL of the scan on an empty hash (group 14, `--selftest-image`).
+    17a-c. scripts: a double quote in cmdline.txt is a Cmdline hit, since the kernel reads `"console=x"` as console=x
+    (group 11, `--os-config`); fixture `osconfig-cmdline-quoted-console`.
+    17a-d. scripts: an fstab line that carries rw, exec, suid, dev or remount is a Fstab hit, since BusyBox's mount
+    applies options in order and each clears the flag before it (group 11, `--os-config`); two fixtures.
+    17a-e. scripts, tasks/todo.md: a `start_x=1` or `start_debug=1` line in config.txt is a ConfigTxt hit, since each
+    selects other firmware files as `start_file` and `gpu_mem=16` do (group 11, `--os-config`); two fixtures.
+    17a-f. scripts: BusyBox's check is an allow-list, every `CONFIG_X=y` line one of the 18 symbols the board's
+    busybox.config sets, in place of 17a's deny list of 35 applets, so "only init and mount" is what is checked
+    (group 11, `--os-config`); fixture `osconfig-busybox-dd`.
+    17a-g. scripts, .github: positive controls for group 14 step 3's rand-crate and getrandom-fallback symbol rules on
+    the root's other ELF files, as two stripped controls built from `controls.rs` (`kc_rand_crate`, `kc_fallback`), in
+    the stub selftest and in `--selftest-image` (16 controls).
+    17a-h. scripts: a fixture or case for each sub-rule the review found unexercised: five `osconfig-*` fixtures, the
+    fragment-without-"is not set" error, and two stub cases (the simulator's name as bytes, a sticky `/var/tmp`).
+    17a-i. pi/os, tasks/todo.md: the Makefile's `scan` hashes the keepcrypt-pi cargo built, in the package's build
+    directory, as BIN_SHA256, in place of `--image-lists`' hash of the image's own file, which `--image` compared with
+    itself; it refuses to run without that file.
+    17a-j. scripts: `sicase`'s FAIL line prints the wanted exit code, 1 or 0, not 1 followed by the hit text (a
+    message only, found by the lead in the stage report).
+    Review fixes of 17b and 18 (stage D2b's review of 24582a8..ca57dee), each with its proof under the item it amends:
+    17b-b. .github: "Hash and list" refuses an `--image-lists` print with no `sha256 keepcrypt-pi` line as that,
+    before the built-equals-packed comparison, which named a wrong binary for a missing line (a message only; the
+    step failed either way).
+    17b-c. .github: the compare job's refusal of a leg whose result is not `success` prints both results and names
+    what that covers (a failed step after the build, its scan or leg a's upload, or a cancelled leg) in place of "(a
+    scan step)", which it also said for an upload failure or a cancelled leg (a message only; no logic change).
+    17b-d. tasks/todo.md: group 12's `gates` item is `[ ]` again: 17b ticked it on the committed `--os-config pi/os`
+    line, whose run is CI's, while the `test` item and group 15's 17b bullets stay open for the same reason; the tick
+    returns when the first run's gates log is read.
+18. CLAUDE.md: Commands (group 18): 14a3121.
+    18b. CLAUDE.md, tasks/todo.md: three Commands comments say what is so: the `--image` line no longer claims "clean
+    on the gate image", a result no run has produced (its first run is CI's; commit 20 records it); the Pi-target
+    comment names each cross variable's value (CC_ and the LINKER gcc, AR_ ar, CFLAGS_ the ARMv6 flags), not "set to
+    gcc" for all four; the three image-mode lines are "what CI's image legs run" with `make scan` running the first
+    and the last, since `scan` never runs `--selftest-image`.
+    18c. tasks/todo.md: group 18's Commands bullet and the 5d entry said the canaries line "still says 61"; it says 73
+    since 14a3121, so both read as history ("said 61 until commit 18").
+    18d. CLAUDE.md: the capture_set comment names the configuration directory the captures land in, `registry/` or
+    `release/`, with each scenario's PNG files in its own directory and index.html and review.html beside them (b9ed46a;
+    a comment only, recorded here by commit 20).
+
+**Stage E: hardware and review**
+
+19. Bring-up fixes from H1-H4, each in its own commit with the owner's observation and the root cause; H1-H4 repeat if
+    the image hash changes (group 16).
+20. tasks/todo.md: the M4 Review with pasted proof, the measurements and the gate report (groups 17, 19).
+    20b. tasks/todo.md: group 0's baseline line for `cargo test --workspace` reads 20 suites, 371 passed, 3 ignored,
+    from a re-run in a `git archive f967dd4 Entropy` tree (the lead's draft figure, 25 suites, 319 passed, 5 ignored,
+    did not add up: de70f56's 445 in 21 suites less M4's 74 tests and one suite; the Review's note saying so is gone).
+    20c. tasks/todo.md: five items commit 20 ticked on de70f56's runs are `[ ]` again, since their text names the final
+    PR head's run (and, for the image-hash gate, main's push run after merge), which commit 21 reads (decision 20):
+    group 15's bootstrap of `expected/`, group 18's budgets, and Verification's image-hash gate, Matrix "Reproducible
+    build" and CI. Their Proof lines keep the de70f56 evidence; the gate report reads "met at de70f56".
+    20d. tasks/todo.md: 15n says the H1a image's kernel has 514 built-in options, as `grep -c '=y$'
+    pi/os/expected/linux.config`, the commit 16 note and the Review count; it said 515, a second figure for one config.
+    20e. tasks/todo.md: group 13's Layout names `board/pizero/device_table.txt` (commit 14's, which the defconfig's
+    `BR2_ROOTFS_DEVICE_TABLE` applies: `/bin/busybox` at mode 755), so the list matches the tree and its Proof line no
+    longer carries the omission as a caveat.
+21. tasks/todo.md: the owner's H records and verdict. Its image run must give the gate image's hash; the PR description
+    names that run.
+    21a. tasks/todo.md: the owner's H2 record and times (KATs 3 s, step 4 2.5 s, backup 41 s). The step 4 tick stays
+    100 ms and the worker thread stays out.
+    21b. tasks/todo.md: the owner's H3 record ("all matched", "Check a backup" 20 s). The ceremony half of the gate is
+    met, every `PiHal` field has run on the hardware, and every wait is under 60 s.
+    21c. tasks/todo.md: the owner's H4 record ("both addresses matched"). Ticked: the watch-only gate and Matrix
+    "Watch-only import" (both unticked again by 21c-b), group 16's records and bring-up items, group 13's Makefile,
+    Matrix "Metal read-back drill", Drivers on hardware, Carried items, Rules and the H4 checklist. Lead decisions
+    21-23 cover `repro-check`, the black frame and the missing wallet versions. The items whose proof is the final
+    head's run stay open for 21d, the ceremony gate and Matrix "Full ceremony" among them.
+    21c-b. tasks/todo.md: the review of 21a-21c (evidence, rules and completeness lenses, 27 findings): the records
+    keep the owner's words apart from the lead's readings (H3's offline computer and verify.py commit, H4's networking
+    and deletions, step 9's messages, the read-only mount); the run count is seven to 30cefbc, with 38869822983 added;
+    H2-H4 ran on the H1a card (run 38690004157), byte-equal to the checklist's 38771532075; the watch-only gate and its
+    Matrix item wait with the ceremony gate for the final head's run; `repro-check` run on a stub Buildroot, its real
+    run to M7; decision 22 cites the blank-screen tests; decision 23 lists every missing fact; Rules 12, the
+    measurement note, the hwrng-rate note, the H1a conditional and "Still unticked" brought up to date.
+    21d. tasks/todo.md: the owner's answer (Sparrow 2.3, Core 31.1, Logitech C920, offline yes) is recorded. It ticks
+    H0's offline-computer item; H0's parts and hardware items are ticked on the H1a-H4 records. Sparrow 2.3 is behind
+    the current 2.5.5, so H4b (its checklist added) and lead decision 24 cover it. The run at f0ae43e (CI 38894923651,
+    image 38894923652: 14 of 14 green, the one hash) is logged under the items that need the final head's run, which
+    stay open for the last commit (lead decision 25, which also splits off main's post-merge run). Reviewed before
+    commit (evidence and consistency lenses, 21 findings, all applied).
+    21e. tasks/todo.md: the owner's H4b (H4b done, Sparrow 2.5.5, matched) ticks the watch-only gate, Matrix "Watch-only import", the
+    H4b checklist and H0's computer item. The run at b9a22c9 (CI 38898548352, image 38898547995) ticks the items that need
+    the final head's run (lead decision 25), and group 19 and Definition of done close. The gate is met, waiting for
+    the owner's approval. Reviewed before commit (evidence and consistency lenses: 2 high, 5 medium, 10 low, all
+    applied: group 19's stage list rebuilt from the Review's tally with the journals' severities, lead decision 26,
+    the approval list, H4b described as a test vector off a screen, the image-hash item's after-merge clause moved out).
+
+Review fixes are listed as N.b entries under the commit they amend.
+
+### Owner hardware checklists (gate evidence)
+Send back only what Q41 (c) allows: pass or fail, "matched", versions, stopwatch times, the camera model, and the
+Public-screen values named below. Never send or photograph C, D, the rolls, the words, a passphrase, a Protected screen or
+the backup file. The one exception: in H4, Sparrow and your phone scan the account and descriptor QRs of this never-funded
+seed, which is what those screens are for. Write throwaway values on paper and destroy the paper after H3.
+
+**H0. Before the first boot**
+- [x] Parts:
+  - the Pi Zero v1.3 (not the W) with a soldered header;
+  - the Waveshare 1.3-inch LCD HAT;
+  - a new microSD card of 8 GB or more;
+  - a micro-USB OTG adapter;
+  - a USB stick formatted FAT32 (in Disk Utility: "MS-DOS (FAT)", Master Boot Record);
+  - a 5 V power bank;
+  - 5 dice;
+  - pencil and paper.
+  Proof (21d, the lead's reading): H1a's boot, H2's backup write and H3's read need these parts, and they passed.
+- [x] Your hardware (owner's note, 2026-10-14): the board and screen are your SeedSigner device, a Raspberry Pi Zero v1.3
+  (no Wi-Fi) with the Waveshare 1.3-inch LCD HAT and a camera module.
+  - KeepCrypt boots from a separate microSD card, the new card above. Take the SeedSigner card out; it stays untouched.
+  - The camera may stay attached, because the image never enables it: config.txt has no `start_x`, and the kernel has
+    no camera support (`MEDIA_SUPPORT` and `I2C` are forbidden, group 13). The camera is M8.
+  Proof (21d): H1a to H4 ran on it, on a separate microSD card.
+- [x] An offline computer with Python 3.9 or later, `age`, and `tools/verify/verify.py` from the gate image's commit. The
+  lead gives you the commit and the file's SHA-256.
+  Proof (the owner, 2026-10-16, 21d): "Sparrow 2.3, Core 31.1, Logitech C920, offline yes". The verify.py copy is not named; it has SHA-256
+  0ba842e2... at every commit since f967dd4.
+- [x] A computer with the current Sparrow and Bitcoin Core 31.1 [S22], a webcam that focuses at about 10 cm (an autofocus
+  USB webcam or document camera if the built-in one cannot), and a phone QR reader. Neither wallet needs to sync, and the
+  wallet is never funded.
+  Proof (the owner, 2026-10-16, 21d): "Sparrow 2.3, Core 31.1, Logitech C920". The lead's note: the C920 is an
+  autofocus webcam, and H4's scan off the panel worked with it. Sparrow 2.3
+  is not the current 2.5.5, so this stays open until H4b's update to 2.5.5 (lead decision 24).
+  Proof (the owner, 2026-10-16, 21e): "H4b done, Sparrow 2.5.5, matched". The lead's note: Sparrow is now the current
+  2.5.5; Core 31.1 (current) and the C920 are from the owner's 21d answer.
+- [ ] Optional: in Waveshare's schematic PDF [S5], check by eye that BLK drives Q1's base; the PDF's text names the
+  parts but not how they connect. (RST on BCM 27 and DC on BCM 25 are already confirmed by the wiki's table and
+  SeedSigner [S5, S6].)
+
+**H1a. First boot check (on the first image the workflow builds; no seed)**
+- [x] While signed in to GitHub, download `keepcrypt-pi-0.0.0-st7789-240x240.img` from the run the lead names (15n: run
+  38690004157, https://github.com/bitwilll/keepcrypt/actions/runs/38690004157). Its `shasum -a 256` must equal the run
+  summary's hash (`4b13c095f76c4a42efc67090fec96650d070a385bb8a58b4fd7067c0d936adde`).
+- [x] Flash it with Raspberry Pi Imager ("Use custom", no customisation, verify on). Or by hand:
+  `diskutil unmountDisk /dev/diskN`, then `sudo dd if=keepcrypt-pi-0.0.0-st7789-240x240.img of=/dev/rdiskN bs=4m`. macOS may write to
+  the card's FAT partition when you insert it. That does not touch the root filesystem the prefix covers.
+- [x] Power the Pi from the power bank, with nothing in the USB port. Watch the green ACT LED for the first 30 s and note
+  what it does: steady, off, flickering, or a repeating group of flashes (count them, long and short separately). The
+  lead reads any pattern against this table, taken from the Raspberry Pi documentation's LED warning flash codes [S30].
+  Long flashes come before short ones, and the pattern repeats after a two-second pause.
+  - Normal on a Zero: its one green LED is lit while powered and goes off briefly during microSD card activity.
+  - 0 long, 3 short: generic failure to boot.
+  - 0 long, 4 short: `start*.elf` not found.
+  - 0 long, 7 short: kernel image not found.
+  - 0 long, 8 short: SDRAM failure.
+  - 0 long, 9 short: insufficient SDRAM.
+  - 0 long, 10 short: in HALT state.
+  - 1 long, 2 short: SD card overcurrent detected.
+  - 2 long, 1 short: partition not FAT.
+  - 2 long, 2 short: failed to read from partition.
+  - 2 long, 3 short: extended partition not FAT.
+  - Any other code (2 long and 4 short, and every 3-long or 4-long code) is a Pi 4 or Pi 5 code, not expected on a Zero.
+- [x] Time power-on to Home with a stopwatch.
+- [x] The boot screen shows `0.0.0` and a prefix equal to the run summary's.
+- [x] Panel: Home is upright, as in the M3 captures, with the joystick on the left; colours match the captures; no band of
+  noise; sharp text.
+  - If the picture looks inverted (like a photo negative) or washed out (blacks look grey, colours pale), say which, in
+    words. It is a known panel variant. The fix is a second settings block for your unit (Q50), not a change for every
+    HAT.
+- [x] Keys:
+  - each of the 8 inputs acts once per press over about 20 presses;
+  - holding a key gives one action (the dice screen shows this);
+  - KEY1-KEY3 do what their footer labels say.
+- [x] Do not start a seed on this image. Power off.
+- [x] If the panel is dark, garbled or frozen: send the LED notes and stop (Q41 (e)). (Not applicable: it did not arise; 21c-b.)
+  Record (the owner, 2026-10-16, on run 38690004157's image, SHA-256 4b13c095..., the same bytes as every later
+  run's): "H1a passed, all matched, boot to Home 14 s". Hash and prefix matched; the panel and keys passed; no panel
+  variant (Q50 does not apply); the LED item was not reported beyond "all matched". The conditional item above did
+  not arise.
+
+**H1. Gate image boot check** (on the image the lead names after commit 18)
+- [x] Repeat H1a's download, hash check, flash, stopwatch, boot screen, panel and keys checks on this image.
+  Record (2026-10-16): the gate image (runs 38771532075 on b9ed46a and 38797300298 on 80bf4ac) has H1a's SHA-256
+  `4b13c095f76c4a42efc67090fec96650d070a385bb8a58b4fd7067c0d936adde` byte for byte, so H1a's pass on that card is H1
+  (lead decision, under the standing instruction): no re-flash, the owner continues to H2.
+
+**H2. Throwaway ceremony (Mixed, 12 words, on the gate image)**
+- [x] Idle timers: a cover after 30 s on a private screen, or a warning at 9 minutes, is expected. Any key removes it and
+  does nothing else. Press a key at least every few minutes: after 10 minutes with no key the session is wiped and the
+  ceremony starts over.
+- [x] New seed, 12 words. Stopwatch the "known-answer tests" wait, and step 4 from the bar's start until it is full.
+- [x] Step 5: write C on paper.
+- [x] Step 6: enter 50 rolls, writing each on paper.
+- [x] Step 7: choose Skip, then confirm.
+- [x] Step 8: write the 12 words on paper.
+- [x] Step 9: type the first four letters of each word on the joystick, with two deliberate mistakes, each corrected
+  after the device refuses it:
+  - on a word with e, i, d, f, h, j, r or w among its first four letters, type that letter's mirror partner once (e↔i,
+    d↔f, h↔j, r↔w). The device must refuse it and name the insert as a mirror misread;
+  - on a word of four or more letters, enter only its first three. The device must say the face should have a letter;
+  - if a word has only three letters, also type a fourth letter once. The device must say the face should be blank.
+- [x] Step 10: write the fingerprint and the first receive address on paper (both are public values).
+- [x] Step 11:
+  - write a backup to the stick;
+  - write the 8-word passphrase on paper;
+  - stopwatch the wait until "Backup verified".
+- [x] Step 12: answer no to the BIP39 passphrase. While each QR is on the panel, do only H4's scans (Sparrow, and the
+  phone decode of the descriptor QR). Leave the Core steps for after Finish.
+- [x] Step 13: choose Skip.
+- [x] Step 14: choose "Show D" and write D on paper.
+- [x] Step 15: Finish. "Safe to power off" stays on screen.
+  Proof (the owner, 2026-10-16): "H2 done, all passed, sending the times now"; "KATs 3 s, step 4 2.5 s, backup 41 s".
+  Every step above passed as written, step 9's deliberate mistakes included; the record is under "M4: hardware records"
+  and the times under group 17 (21a).
+
+**H3. Offline verification**
+- [x] Run `python3 -I tools/verify/verify.py mixed --words 12`. Type C, then D, then each roll, each only after its prompt
+  appears. Expect exit 0, the device's 12 words, and a Seal ID. Note the Seal ID.
+- [x] Run `age -d keepcrypt-backup-xxxxxxxx.age` with the 8 words. It must give the same 12 words.
+- [x] Power-cycle the Pi, choose "Check a backup" with the stick in, type the passphrase, and stopwatch the wait. The
+  fingerprint must equal step 10's, and the Seal ID must equal verify.py's.
+- [x] Destroy the paper. Delete the backup with `rm` in Terminal (or reformat the stick); Finder's Trash would keep a copy
+  in the stick's `.Trashes`.
+  Proof (the owner, 2026-10-16): "H3 done, all matched, Check a backup 20 s". The record is under "M4: hardware records" and the time under
+  group 17 (21b).
+
+**H4. Watch-only import**
+- [x] Sparrow, during H2 step 12 (note the version and the camera model): New wallet → single signature, native SegWit →
+  Airgapped Hardware Wallet → scan the account QR. Hold the panel as close as the camera focuses, about 8-12 cm, so the
+  QR fills about a third of the frame. Its first receive address must equal step 10's. If a close, focused camera cannot
+  read it, or Sparrow refuses the UR type, stop and tell the lead (Q41 (e)).
+- [x] Phone, during H2 step 12: decode the descriptor QR and keep its two lines in a local note.
+- [x] Bitcoin Core 31.1, after Finish:
+  1. Start it with networking off (`bitcoin-qt -networkactive=0`), so it does not sync.
+  2. Move the two descriptor lines to the computer by typing them or a local transfer (AirDrop or a cable), never by
+     email, chat or a cloud clipboard.
+  3. `createwallet "keepcrypt-watch" true true`.
+  4. `importdescriptors` with the receive line (`"active":true, "internal":false`) and the change line
+     (`"internal":true`), both with `"timestamp":"now"`.
+  5. `getnewaddress "" "bech32"` must equal step 10's address.
+- [x] Afterwards, delete both watch-only wallets and the phone note.
+  Proof (the owner, 2026-10-16): "H4 done, both addresses matched". The record is under "M4: hardware records" (21c).
+  The Sparrow version and the camera model the first item asks to note were not sent (lead decision 23; 21c-b).
+  Sent afterwards, 2026-10-16: Sparrow 2.3, Logitech C920 (21d).
+
+**H4b. The account QR in the current Sparrow** (lead decision 24; sent 2026-10-16 as H4b-current-sparrow.md with
+H4b-account-qr-test-vector.png)
+The QR is the test vector's account QR (vectors/watchonly.json, wallet "abandon", its `qr_text`, 258 characters),
+encoded with the device's encoder and settings (qrcodegen-no-heap 1.8.1 `encode_text`, `QrCodeEcc::Low` with boost,
+versions 1 to 11, the encoder's mask, as pi/app/src/ui/qr.rs): version 8 at Low, 49 modules, as qr.rs's
+`every_payload_kind_fits_at_3_px_or_more` test and todo.md:73 pin it (the crate's `error_correction_level()` getter calls it Quartile,
+the misreading qr.rs's `level()` corrects). macOS CoreImage decodes the PNG to the exact 258 characters.
+- [x] Update Sparrow to 2.5.5 and note the version in About.
+- [x] Open the PNG full screen; in Sparrow: New Wallet → Single Signature, Native Segwit → Airgapped Hardware Wallet →
+  Scan, holding the C920 so the QR fills about a third of the frame.
+- [x] Expect fingerprint `73c5da0a` and first receive address `bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu`; then delete
+  the wallet.
+- [x] Send back the Sparrow version and "matched" or "differs"; a refusal of the QR type, with Sparrow's exact message.
+  Proof (the owner, 2026-10-16, 21e): "H4b done, Sparrow 2.5.5, matched". The record is under "M4: hardware records".
+
+**H5. Optional**
+- [ ] A dice-only run, checked with `verify.py dice --words 12`.
+- [ ] A 24-word run.
+- [ ] A second run: choose Check now and scan the check QR with the phone (it decodes to a URL). Then choose Cannot check →
+  Start again. The session is wiped unseen and a new ceremony starts.
+- [ ] The idle wipe: a Protected screen left alone shows the cover at 30 s, the warning at 9 minutes, and the wipe at 10.
+- [ ] Pull the stick during the backup wait. Expect a USB refusal on its own screen, with the ceremony still open, not a
+  halt.
+- [ ] Refusals:
+  - a write-protected stick gives "mounted read-only";
+  - an exFAT stick gives "could not be mounted";
+  - two sticks through a hub give "more than one USB stick is inserted".
+- [ ] A metal read-back on a spare insert.
+
+### Critique log (2026-10-14)
+Every finding of the plan's spec, security and feasibility review was accepted; none was rejected.
+- Spec, medium, "slow range": corrected (both Buildroot Pi kernels use the downstream bounded loop [S26]); Q37 (a)
+  re-argued on tested pins versus kernel age; the "slow range" line is gone from Q39 (c).
+- Spec, medium, birthday test as a nit: now Q42 (b), quoting design.md:166 and :198; commit 2 leaves BP:315 alone unless
+  chosen.
+- Spec/security/feasibility (high), image traceability: checkout at the PR head SHA; `SOURCE_DATE_EPOCH` a constant in
+  `pins.txt`; the filter covers all of `Entropy/`; the gate image must match the final head's run (group 16); verify.py
+  from the same commit. Changed from the suggestion: no dispatch before merge, which GitHub does not allow [S32].
+- Spec, low, metal read-back: H2 step 9 makes deliberate mistakes.
+- Spec, low, fence drops extras: fenced presses still reach `add_extra` while Collecting; input.rs's doc is reworded.
+- Spec, low, stick reads unfenced; security, low, render race at the privacy gate: one rule covers both (a fence after
+  every new-screen present and every blocking call, `hal.list` and `hal.read` included).
+- Spec, low, non-required image check: Q38 (b) states the cost and the merge rule, with the ruleset change as the other
+  option.
+- Spec, low, two approvals: the standing note is in group 19; the stale CODEOWNERS comment is Q43 (d).
+- Spec, low / feasibility, high, `gpu_mem=16`: dropped; the default firmware is kept, and the start/fixup pair is checked by
+  `--os-config` and `--image`.
+- Spec, low, unnamed deferrals: Q42 (a).
+- Spec, low / feasibility, medium, loop test against the gates: CI makes the fixture and passes paths by environment; the
+  finder runs over a `SysBlock` fake; `device/**/tests.rs` gets a narrow, fixture-tested exception.
+- Spec, low / feasibility, medium, `expected/` bootstrap: commit 15 builds and lists with no scan, 16 commits the reviewed
+  lists, 17 turns the scan on; the compare job no longer waits on the scan.
+- Spec, low, checklists: step 13 Skip; the QR scanning exception; a local transfer of the descriptor text.
+- Spec, low, citations: todo.md:3898-3899 and :1403-1405.
+- Security, high, `MODULES` off promotes `m` to `y`: the kernel config is an exact, reviewed allow-list (group 13); the
+  NLS sentence is corrected.
+- Security, medium, std's random keys: a permanent `--artifact`/`--image` rule with a positive control and a canary.
+- Security, low, cleanup on `Exists`: a `created` flag; the loop test proves an existing file survives.
+- Security, low, dotted Python imports: a general module-path rule with the missing fixtures.
+- Security, low, workflow hardening: `--workflows` in `gates`.
+- Feasibility, medium, hardware tested last: H1a on commit 15's image, before the lists, the scans and Stage D's review;
+  ACT LED notes, read against the official table, which H1a now carries with its source [S30].
+- Feasibility, medium, `mod device` across commits: group 10's declaration plan.
+- Feasibility, medium, H4 distance and idle wipe: 8-12 cm, a fallback camera, Core after Finish with networking off,
+  the idle timers explained, `rm` for the backup.
+- Feasibility, low, stripped ELFs: `llvm-nm -D` for every other ELF; OSImport and `.symtab` on keepcrypt-pi only.
+- Feasibility, low, `O_NONBLOCK` and the kernel lock: the claim is narrowed (group 7) and put on M7's audit list.
+- Feasibility, low, proof order: `rootfs-prefix.py` in commit 10 with `gates`; the inittab proof in commit 17; About in the
+  fit test.
+- Feasibility, low, mtools: `TZ=UTC`, inputs touched to the epoch, per-partition hashes and `mdir -a` listings [S29].
+- Feasibility, low, MADCTL MV: the clear's window is 320×240 under MV, and `Drop` sets MADCTL first [S31].
+
+### Sources (outside facts above; read 2026-10-14)
+- [S1] rppal repository and README (archived 2025-07-01): https://github.com/golemparts/rppal
+- [S2] rppal 0.22.1 sources: https://docs.rs/rppal/0.22.1/src/rppal/
+  - `src/gpio/gpiomem/bcm.rs`: `/dev/gpiomem`, then `/dev/mem`;
+  - `src/system.rs`: `/proc/cpuinfo` and the device tree;
+  - `src/gpio/ioctl.rs`: the REALTIME flag is never set; `seqno` comes from `line_seqno`;
+  - `src/gpio.rs`: `Event` and `poll_interrupts`.
+- [S3] crates.io API metadata (versions, dates, licences, features, dependencies) for rppal, nix, bitflags, cfg_aliases,
+  mipidsi, embedded-hal, spin_sleep, rustix, linux-raw-sys, errno, gpiocdev, gpiocdev-uapi, ioctl-sys and spidev:
+  https://crates.io/api/v1/crates/
+- [S4] mipidsi 0.10.0 (`models/st7789.rs`; the public, unsealed `Model` trait in `models.rs`; the safe
+  `Interface::send_command` in `interface.rs`; the unsafe `Display::dcs`) and its CHANGELOG:
+  https://docs.rs/mipidsi/0.10.0/mipidsi/, https://github.com/almindor/mipidsi/blob/master/CHANGELOG.md
+- [S5] Waveshare 1.3inch LCD HAT wiki and schematic: https://www.waveshare.com/wiki/1.3inch_LCD_HAT,
+  https://files.waveshare.com/upload/a/a6/1.3inch-LCD-HAT-Schematic.pdf
+- [S6] SeedSigner's driver for this HAT:
+  https://github.com/SeedSigner/seedsigner/blob/dev/src/seedsigner/hardware/displays/ST7789.py, and
+  `hardware/buttons.py`
+- [S7] Buildroot releases, LTS policy and tarball signatures: https://buildroot.org/news.html,
+  https://buildroot.org/lts.html, https://buildroot.org/downloads/buildroot-2026.08.tar.xz.sign
+- [S8] Buildroot's Rust versions: https://gitlab.com/buildroot.org/buildroot/-/raw/2026.08/package/rust/rust.mk, and the
+  same file at 2025.02.18, 2026.05.3 and master
+- [S9] Buildroot 2026.08 `package/pkg-cargo.mk`:
+  https://gitlab.com/buildroot.org/buildroot/-/raw/2026.08/package/pkg-cargo.mk
+- [S10] Buildroot 2026.08 `package/Makefile.in` (`STRIPCMD`), `Config.in` (`BR2_STRIP_strip`, default y) and the
+  top-level `Makefile` (target-finalize strips executables and `*.so*` files except `libpthread*.so*`, `ld-*.so*` and
+  `*.ko`; the two libraries get only `--strip-debug`):
+  https://github.com/buildroot/buildroot/blob/2026.08/package/Makefile.in,
+  https://gitlab.com/buildroot.org/buildroot/-/raw/2026.08/Makefile
+- [S11] Buildroot 2026.08 `Config.in` (`BR2_REPRODUCIBLE`): https://gitlab.com/buildroot.org/buildroot/-/raw/2026.08/Config.in
+- [S12] Buildroot 2026.08 `configs/raspberrypi0_defconfig` and `board/raspberrypi/` (post-build.sh, cmdline.txt,
+  config_default.txt with `gpu_mem_256/512/1024=100`, patches/linux/linux.hash):
+  https://gitlab.com/buildroot.org/buildroot/-/raw/2026.08/configs/raspberrypi0_defconfig,
+  https://gitlab.com/buildroot.org/buildroot/-/raw/2026.08/board/raspberrypi/config_default.txt
+- [S13] Bootlin toolchains, x86_64 hosts only:
+  https://github.com/buildroot/buildroot/blob/2026.08/toolchain/toolchain-external/toolchain-external-bootlin/Config.in
+- [S14] The mainline bcm2835-rng throughput fix, its measurements and the regression it names (96cb9d055445):
+  https://github.com/torvalds/linux/commit/b58a36008bfa1aadf55f516bcbfae40c779eb54b
+- [S15] Linux `drivers/char/hw_random/core.c` (`default_quality = 1024`; `O_NONBLOCK` gives `-EAGAIN`; `reading_mutex` in
+  `rng_dev_read` and `hwrng_fillfn`; `rng_current` prints the source's name):
+  https://github.com/torvalds/linux/blob/master/drivers/char/hw_random/core.c
+- [S16] raspberrypi/linux `bcmrpi_defconfig`, rpi-6.12.y:
+  https://github.com/raspberrypi/linux/blob/rpi-6.12.y/arch/arm/configs/bcmrpi_defconfig
+- [S17] BusyBox `init/init.c` (action order, `/bin/sh -c` on metacharacters, defaults with no inittab):
+  https://github.com/mirror/busybox/blob/master/init/init.c
+- [S18] Image tools:
+  - genimage v20 (`image-vfat.c`, `image-hd.c`): https://github.com/pengutronix/genimage/tree/v20
+  - dosfstools `mkfs.fat --invariant`: https://github.com/dosfstools/dosfstools/blob/v4.2/manpages/mkfs.fat.8.in
+  - squashfs-tools 4.7.5 USAGE:
+    https://github.com/plougher/squashfs-tools/blob/4.7.5/Documentation/4.7.5/USAGE-MKSQUASHFS
+  - squashfs-tools 4.7.5 `mksquashfs.c` (which timestamp options are fatal with `SOURCE_DATE_EPOCH`):
+    https://github.com/plougher/squashfs-tools/blob/4.7.5/squashfs-tools/mksquashfs.c
+- [S19] GitHub-hosted runners, limits and required checks; upload-artifact releases:
+  https://docs.github.com/en/actions/reference/runners/github-hosted-runners,
+  https://docs.github.com/en/actions/reference/limits, https://github.com/actions/upload-artifact/releases
+- [S20] Raspberry Pi `config.txt` (`gpu_mem=16` and the cut-down firmware; start and fixup files are a matched pair):
+  https://www.raspberrypi.com/documentation/computers/config_txt.html
+- [S21] cargo `trim-paths` is unstable:
+  https://doc.rust-lang.org/nightly/cargo/reference/unstable.html#profile-trim-paths-option (and a local cargo 1.98.1 run
+  that rejects it)
+- [S22] Sparrow airgapped QR docs and Bitcoin Core downloads: https://www.sparrowwallet.com/docs/airgapped-wallet-qr.html,
+  https://bitcoincore.org/en/download/
+- [S23] Linux ST7789V panel driver (120 ms after sleep-out):
+  https://elixir.free-electrons.com/linux/v5.3/source/drivers/gpu/drm/panel/panel-sitronix-st7789v.c
+- [S24] Linux `drivers/spi/spidev.c` (`bufsiz` module parameter, default 4096):
+  https://github.com/torvalds/linux/blob/master/drivers/spi/spidev.c
+- [S25] Linux `fs/fat/Kconfig` (`FAT_DEFAULT_IOCHARSET`, default iso8859-1):
+  https://github.com/torvalds/linux/blob/master/fs/fat/Kconfig
+- [S26] raspberrypi/linux downstream drivers, rpi-6.12.y (the same `bcm2835_rng_read` loop at 2025.02's pin 576cc10e1ed5;
+  `bcm2835-rng.c` names the source after its platform device), and the Pi Zero's gpiomem node in `bcm270x-rpi.dtsi`
+  (legacy `brcm,bcm2835-gpiomem`, at both kernel pins):
+  https://github.com/raspberrypi/linux/blob/rpi-6.12.y/drivers/char/hw_random/bcm2835-rng.c,
+  https://github.com/raspberrypi/linux/blob/rpi-6.12.y/drivers/char/raspberrypi-gpiomem.c,
+  https://github.com/raspberrypi/linux/blob/rpi-6.12.y/arch/arm/boot/dts/broadcom/bcm270x-rpi.dtsi
+- [S27] Linux `scripts/kconfig/symbol.c` (`sym_get_type`, `sym_calc_value`, `sym_calc_visibility`: `m` becomes `y` with
+  modules off): https://github.com/torvalds/linux/blob/master/scripts/kconfig/symbol.c
+- [S28] Buildroot 2026.08 `package/rpi-firmware/Config.in` (default and cut-down variants):
+  https://gitlab.com/buildroot.org/buildroot/-/raw/2026.08/package/rpi-firmware/Config.in
+- [S29] mtools and `SOURCE_DATE_EPOCH`: upstream NEWS (v4_0_20 adds it) and 4.0.49's `misc.c` (`getTimeNow()`; Debian
+  4.0.49-1 carries no patches), https://sources.debian.org/data/main/m/mtools/4.0.49-1/NEWS,
+  https://sources.debian.org/data/main/m/mtools/4.0.49-1/misc.c; the original Debian change, mtools 4.0.18-2.1,
+  https://qastaging.launchpad.net/debian/+source/mtools/4.0.18-2.1; and the reproducible-builds thread on FAT images and
+  time zones, https://lists.reproducible-builds.org/pipermail/rb-general/2022-February/002488.html
+- [S30] Raspberry Pi documentation, LED behaviour and warning flash codes (source
+  `documentation/asciidoc/computers/configuration/led_blink_warnings.adoc`, last changed 2026-06-22):
+  https://www.raspberrypi.com/documentation/computers/configuration.html#led-behaviour,
+  https://www.raspberrypi.com/documentation/computers/configuration.html#led-warning-flash-codes
+- [S31] Sitronix ST7789V datasheet v1.3 (MADCTL 36h, CASET 2Ah, RASET 2Bh; SWRESET p.163; RAMWR defaults p.202;
+  LCMCTRL C0h p.275):
+  https://dl.espressif.com/dl/schematics/LCD_ST7789.pdf
+- [S32] GitHub Actions events: `workflow_dispatch` needs the workflow on the default branch; `pull_request`'s `GITHUB_SHA`
+  is the merge commit: https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows
+- [S33] Linux `drivers/of` at the kernel pin 21b410140c47: `of_device_add` (platform.c) sets the platform device's name
+  from `dev_name`, which `of_device_make_bus_id` (device.c) formats as `<address>.<node name>`, so the Pi Zero's hwrng
+  is `20104000.rng`:
+  https://github.com/raspberrypi/linux/blob/21b410140c47ffab5668399f6f143c7d7b935c8b/drivers/of/platform.c,
+  https://github.com/raspberrypi/linux/blob/21b410140c47ffab5668399f6f143c7d7b935c8b/drivers/of/device.c
+- [S34] Waveshare's **Pico-LCD board** drivers for the 1.3-inch and 1.54-inch 240×240 ST7789 panels, used as a stand-in
+  for the same-size Raspberry Pi modules. The repository's README describes itself as Pico-LCD/OLED series driver code.
+  The module wikis link only archives (`LCD_Module_RPI_code.zip`, `LCD_Module_code.zip`/`.7z`, `Waveshare_fbcp.zip`),
+  with no Pico code and no GitHub link.
+  - Both start-up sequences are identical, and they equal the approved HAT bytes and SeedSigner's ST7789.py:
+    - COLMOD 05; PORCTRL 0C 0C 00 33 33; GCTRL 35; VCOMS 19; LCMCTRL 2C; VDVVRHEN 01; VRHS 12; VDVS 20; FRCTRL2 0F;
+      PWCTRL1 A4 A1;
+    - the same two gamma tables; INVON; MADCTL 0x70 or 0x00; no window offset.
+  - https://raw.githubusercontent.com/waveshare/Pico_code/main/c/lib/LCD/LCD_1in3.c and `LCD_1in54.c`.
+- [S35] Waveshare's **Pico-LCD board** driver for the 2-inch 240×320 ST7789VW, a stand-in for the 2-inch module.
+  - `LCD_2IN_InitReg` sends, in order: MADCTL 00; COLMOD 05; INVON; CASET 00 00 01 3F; RASET 00 00 00 EF; PORCTRL 0C 0C
+    00 33 33; GCTRL 35; VCOMS 1F; LCMCTRL 2C; VDVVRHEN 01; VRHS 12; VDVS 20; FRCTRL2 0F; PWCTRL1 A4 A1; its own two gamma
+    tables; INVON; SLPOUT; DISPON.
+  - `LCD_2IN_Init` calls `LCD_2IN_SetAttributes` (MADCTL 70 or 00) before InitReg, so InitReg's 00 wins.
+  - https://raw.githubusercontent.com/waveshare/Pico_code/main/c/lib/LCD/LCD_2in.c
+- [S36] SeedSigner:
+  - late-model 1.3-inch HAT values: issue #726 (open; Waveshare's values change MADCTL, GCTRL, VCOMS, VRHS and both
+    gamma tables; 21 comments) and open PR #822 (a gamma curve setting), at
+    https://github.com/SeedSigner/seedsigner/issues/726 and /pull/822;
+  - panels that need inversion off: open PR #1052 (only a few reports; which displays is unknown), at
+    https://github.com/SeedSigner/seedsigner/pull/1052. Issue #754 is not cited: it is a backwards settings toggle,
+    which #1052 closes;
+  - display options: `src/seedsigner/models/settings_definition.py` and `hardware/displays/display_driver.py` at b2199c6;
+  - the 3rdIteration fork's `docs/hardware_platform_support.md` (dev branch): a 5-second joystick hold on the home screen
+    switches the display driver.
+- [S37] Waveshare wikis and product pages for every screen the options memo weighed (Q45), each wiki at
+  `https://www.waveshare.com/wiki/<name>`; those M4b names: `1.3inch_LCD_HAT`, `1.3inch_LCD_Module`,
+  `1.54inch_LCD_Module`, `2inch_LCD_Module`, `2.4inch_LCD_Module` and `1.69inch_LCD_Module`. They include:
+  - the module wiring (DIN 10, CLK 11, CS CE0, DC 25, RST 27, BL 18);
+  - the Raspberry Pi demo's file list on the 2 and 2.4-inch wikis (Python tests for 0.96, 1.14, 1.28, 1.3, 1.47, 1.54,
+    1.8, 2 and 2.4 inch; no 1.69);
+  - the prices quoted in Q49.
+
+---
+
 ## Review
 _Added after completion, with pasted proof for every ticked item._
 
@@ -8544,7 +12435,7 @@ Verification "CI", on run 38521472700 at 4256626.
 - None in M3. With the owner's capture verdict of 2026-10-14 ("all match, looks good", commit 26), every plan
   and Verification item of the M3 section is ticked with its proof.
 
-### M3 gate status: MET, approved by the owner (2026-10-14)
+### M3 gate status: MET, approved by the owner and merged (PR #6, 2026-10-14, as f967dd4)
 The gate in docs/build-plan.md:293. Deliverables: "Every screen including seal check with go-ahead code entry and
 braille pages, button handling, waiting-screen game, USB export and snapshot import mocked". Proof: "Scripted run
 drives a full ceremony in the simulator; you review the screen captures".
@@ -8623,3 +12514,489 @@ drives a full ceremony in the simulator; you review the screen captures".
   - low: CLAUDE.md's Commands comment for capture_set does not name review.html.
 - The owner approved the gate on 2026-10-14 with the capture verdict above. Per CLAUDE.md, M4 starts only when the
   owner says so.
+
+### M4: hardware records (the owner's reports, in Q41 (c)'s form)
+- **H1a, 2026-10-16**, on run 38690004157's image (a4598b5; SHA-256 `4b13c095f76c4a42efc67090fec96650d070a385bb8a58b4fd7067c0d936adde`,
+  prefix `76eb-725e-8163-7013`), the owner's SeedSigner hardware (Pi Zero v1.3, Waveshare 1.3-inch LCD HAT), a
+  separate microSD card: "H1a passed, all matched, boot to Home 14 s". No panel variant.
+- **H1**: the same bytes as every later run's image (38691830575, 38747606208, 38771532075, 38797300298), so H1a's
+  pass is H1; no re-flash.
+- **H2, 2026-10-16**, a throwaway Mixed 12-word ceremony to Finish on the H1a card (the checklist's hash equals it, so
+  no re-flash was needed): "H2 done, all passed, sending the times now", then "KATs 3 s, step 4 2.5 s, backup 41 s"
+  (the `WAIT_SESSION` screen; step 4 from the bar's start until full; step 11 from the write until "Backup verified"). The fingerprint, first address and Seal ID
+  comparisons come with H3 and H4.
+- **H3, 2026-10-16**: "H3 done, all matched, Check a backup 20 s". By the checklist's steps, "all matched" means
+  `verify.py mixed --words 12` exited 0 with the device's 12 words, `age -d` gave the same words, and after a power
+  cycle "Check a backup" showed step 10's fingerprint and verify.py's Seal ID; "H3 done" covers its last step, the paper
+  and the backup destroyed. The lead's notes, not in the report: the checklist sent with the gate image asked for an
+  offline computer and `tools/verify/verify.py` from b9ed46a (SHA-256 `0ba842e2b139e4d6971d19a5f7c7f906cca81e8d29c765cf0fe67010c1850645`),
+  and the owner confirmed neither. verify.py has that SHA-256 at every commit from main's f967dd4 to this branch's
+  head, so any M3 or M4 checkout gives the same verifier. H0's offline-computer item stays open until the owner
+  confirms it (lead decision 23).
+  The owner's answer, 2026-10-16: "Sparrow 2.3, Core 31.1, Logitech C920, offline yes": the computer was offline. Which verify.py copy was used is
+  not stated; every copy since f967dd4 is the same file (21d).
+- **H4, 2026-10-16**: "H4 done, both addresses matched". By the checklist's steps: Sparrow scanned the account QR off
+  the panel during H2 step 12, and an address from that scan means it accepted the `crypto-account` UR type (no refusal,
+  the checklist's stop condition, was reported); Bitcoin Core, started with `-networkactive=0`, imported the two
+  descriptor lines decoded off the panel after Finish; "matched" means both first receive addresses equal step 10's.
+  "H4 done" covers its last step, both watch-only wallets and the phone note deleted. Not in the report: the Sparrow and
+  Core versions and the camera model (the checklist named Bitcoin Core 31.1 and the current Sparrow), and the addresses
+  themselves, for which the owner sent "matched" as Q41 (c) allows (lead decision 23).
+  The owner's answer, 2026-10-16: "Sparrow 2.3, Core 31.1, Logitech C920, offline yes". Core 31.1 is the current release (v31.1, 2026-07-08). Sparrow's
+  current release is 2.5.5 (2026-09-17, GitHub's latest release of sparrowwallet/sparrow, read 2026-10-16), so H4
+  imported into an older Sparrow than seal-watchonly-braille.md's Rules ask ("the current Sparrow and Bitcoin Core
+  releases"); H4b covers it (lead decision 24; 21d).
+- **H4b, 2026-10-16**: "H4b done, Sparrow 2.5.5, matched". By the checklist's steps: Sparrow 2.5.5, the current release, scanned the
+  test vector's account QR off a screen with the C920, accepted the `crypto-account` UR type, and showed fingerprint
+  `73c5da0a` and first receive address `bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu`; the wallet was then deleted. The
+  vector is the published `abandon ... about` test seed (vectors/watchonly.json), so no secret is involved.
+- **The run read for the final head**: image run 38898547995 on b9a22c9, 21e's parent (lead decision 25): SHA-256
+  4b13c095..., the bytes of the card H1a to H4 ran on.
+
+### M4: local proof (2026-10-16, at de70f56)
+Apple M4 Max, macOS 27.0.1, toolchain 1.98.1 (rust-toolchain.toml), cargo-llvm-cov 0.9.1, python3 3.12.5 and
+`/usr/bin/python3` 3.9.6, Homebrew age 1.3.2, run from `Entropy/`; the shell scripts under `sh` and `dash`. M4 ran
+2026-10-14 to 2026-10-16 on `m4-pi-hardware` (draft PR #7) in stages; each stage made its planned commits, had them
+reviewed three ways (plan, security, recompute), fixed what the reviews found, and was pushed so that both workflows ran
+on its head. This section describes the tree at de70f56: commit 20 adds this text alone (tasks/todo.md), so every figure
+holds at commit 20, and commit 21 (the owner's H records and the verdict) follows. The Pi target, the Buildroot image
+and the loop-device test run only in CI (no ARM gcc, qemu, Docker or loop device on this Mac); their figures are CI's,
+with run IDs, read with the `gh` commands quoted under "CI". There is no Pi here: every hardware statement is the
+owner's, under "M4: hardware records". Plan items are ticked above only where the proof covers them; the end of this
+section lists what this commit ticks and what is still open, with what each waits for.
+
+**Group 0 baseline** at f967dd4 (M3's merge commit, the branch point): the lead's run of 2026-10-16 in a separate
+worktree. Its `cargo test --workspace` line was re-run on 2026-10-16 from a `git archive f967dd4 Entropy` tree with a
+fresh target directory (20b), since the figure the lead recorded for it, 25 suites, 319 passed, 5 ignored, did not add
+up from this tree; the other lines stand as the lead recorded them and agree with the M3 Review (196 files, 427 cases,
+61 checks, 13 checks, 8 groups). The "at HEAD" figures are de70f56's, from the suite below:
+
+```text
+cargo test --workspace --locked                 rc=0  20 suites, 371 passed, 3 ignored: core lib 166 (+1 ignored),
+                                                      ceremony 5, kat 7, kcr_release 3, os_source 2, typestate 1,
+                                                      vectors 4; ffi 0; pi lib 114, pi bin 0; sim lib 36, bin 3, gate 20
+                                                      (+1 ignored), hal 7, live 3, timing 0 (+1 ignored); the 4 doc-test
+                                                      suites 0; 29 s wall, warm. At HEAD 21 suites, 445 passed, 3
+                                                      ignored: 166+5+7+3+2+1+4 core, 130 pi lib, 58 pi bin, 36+3+20+7+3
+                                                      sim (M4 added the device module's 58, group 4's 16 lib tests and
+                                                      core's auto_traits suite, which holds no test)
+cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry
+                                                rc=0  gate 20 passed, 1 ignored; 18 s wall (15 s at HEAD)
+scripts/banned-api-check.sh                     rc=0  clean, 196 files scanned (241 at HEAD; CI 238)
+scripts/banned-api-check.sh --selftest          rc=0  selftest: 427 passed, 0 failed (698 at HEAD)
+python3 -I tools/verify/vectorgen.py --selftest rc=0  selftest passed: 13 checks (13 at HEAD)
+python3 -I tools/verify/verify.py selftest      rc=0  selftest passed: 8 known-answer groups (8 at HEAD)
+scripts/canaries.sh                             rc=0  PASS: all 61 checks ran; 200 s (HEAD: 73 checks, 257 s)
+```
+
+The last main run before M4, 38534247238 on f967dd4 (2026-10-14, `push`): `test` 4 min 54 s, `gates` 8 min 50 s, `cross
+(arm-unknown-linux-gnueabihf)` 2 min 19 s, `coverage` 4 min 19 s (`gh run view 38534247238 --repo bitwilll/keepcrypt
+--json jobs`).
+
+**Commits f967dd4..de70f56.** 92 commits (`git rev-list --count f967dd4..de70f56`), oldest first, by stage; the commit
+order's numbers in brackets (an N.b entry is a review fix to commit N; each commit's proof is the "Proof (commit N)" or
+"Proof (review fix, N.b)" line under its plan item and is not repeated here):
+- Stage A (planning and the doc edits): 49423fc [1], fcbbd33 [1b], a7a91cc [2], ed15bd2 [3], e8c90d9 [3b], 44d168d [4],
+  080a0bb [5], ebcce0f [1c], ba1d519 [5b], 907aa51 [5c], c79e964 [5d], e6b151a [1d]. CI 38559871768 (fcbbd33),
+  38578364804 (c79e964); e6b151a ran with stage B.
+- Stage B (the device logic, host-tested): bde0054 [6], fa38e6d [7], 4e2d4c0 [8], 95254db [9], 0460142 [10], 3db333f
+  [6b], c8ef972 [6c], c174501 [6d], ddef9df [7b], 346f7d5 [7c], 1caf2ff [7d], 9fe39de [7e], 8f1f6b5 [7f], f7e594d [8b],
+  c48186f [8c], da48f37 [8d], 969ce41 [8e], d44b9d0 [9b], e9309ea [9c], 53f1ce9 [9d], ca430cd [10b], 3e8099c [1e],
+  440a656 [10c; Q51]. CI 38625757440 (3e8099c); 440a656 ran with stage C.
+- Stage C (the glue, the gates, CI): 91f23d8 [11], b28cb2d [12], 685e49e [13], e70caa0 [10d], f5b30c1 [10e], b5e8e3c
+  [12b], 389b084 [12c], 7cf6d95 [the review notes], 8484278 [12d], ba0cc63 [13b; Q52]. CI 38652814808 (8484278, failure:
+  the ARM leg's StdRandom hit, Q52), 38656882262 (ba0cc63).
+- Stage D1 (the image and its workflow): f9b32bc [14], e9e5795 [15], 743a235 [14b], 7a6148e [15b], 8b5b098 [15c],
+  490f6a1 [15d], ae09707 [14c], 92ad043 [14d], e2dbc93 [14e], e1a217b [14f], 1de0ae7 [14g], 1f7eb4d [14h], 393be03
+  [15e], bbcdf57 [15f], de55f36 [15g], 4781cc7 [15h], 81c4964 [14i]. CI 38683063754; image 38683063774 (failure in
+  kconfig.sh, 15i).
+- Bring-up from the image runs (each pushed and built): fa894a3 [15i], e81e186 [15j], 286f489 [15k], 7d96c29 [15l],
+  a4598b5 [15m, the owner's correction], 02d87c0 [15n]. CI and image runs 38684224717 and 38684224715, 38686161866 and
+  38686161966, 38688223474 and 38688223472, 38690004171 and 38690004157, 38691830596 and 38691830575.
+- Stage D2a (the image scan's modes): 430678b [17 split], 349c1b2 [17a], adf0742 [17a-b], ed809b2 [17a-c], 571fba9
+  [17a-d], 8c251c3 [17a-e], fd3f778 [17a-f], 96ffd3d [17a-g], 3dffb59 [17a-h], 16a8bed [17a-i], ba03201 [17a-j], 316d8a6
+  [17a's CI proof]. CI 38747606112, image 38747606208 (ba03201); 316d8a6 ran with D2b.
+- Stage D2b (the lists, the scan in CI, Commands): 24582a8 [16], 597e4a3 [17b], 6c1953f [17b's hash], 14a3121 [18],
+  ca57dee [18's hash], 8ddbfdf [17b-b], 265b0a6 [17b-c], 5744c24 [18b], de5fa1e [17b-d, 18c], b9ed46a [18d], 80bf4ac
+  [17b's and group 12's CI proof]. CI 38771532169, image 38771532075 (b9ed46a); CI 38797300316, image 38797300298
+  (80bf4ac).
+- Stage E (hardware, Review, verdict): de70f56 [the H1a and H1 records]; CI 38851865443, image 38851865089. Commit 20
+  (this Review) and commit 21 (the owner's H records and verdict) follow.
+
+**Review fixes.** Every stage had plan, security and recompute reviews (three reviewers, each finding reproduced by a
+fixer, as in M3); the image's kernel config had a fourth, line by line (15l: four section reviewers, each with an
+adversarial verifier, over 794 `=y` lines). 66 N.b entries for f967dd4..de70f56 stand in the commit order, each under
+the commit it amends:
+65 as their own indented entries (18d, b9ed46a's, added by this commit) and 14d inside 14c's paragraph; by stage, A 7
+(1b-1e, 5b-5d), B 19 (6b-6d, 7b-7f, 8b-8e, 9b-9d, 10b-10e; 10d made in stage C), C 4 (12b-12d, 13b), D 15 (14b-14i,
+15b-15h), the bring-up 6 (15i-15n, from the image runs' logs, the 15l review and the owner's 15m), D2a 9 (17a-b to
+17a-j) and D2b 6 (17b-b to 17b-d, 18b-18d). Most have a "Proof (review fix, N.b)" line under the plan item they touch,
+naming the mutant or the reproduced finding; the rest change text in this file, CLAUDE.md, docs/ or a comment, and the
+text is their proof. Every high and medium finding is fixed; the findings' severities are in the stage reports, which
+this file does not copy (as in M3). One finding was the owner's: 15m (the TTY layer), recorded in tasks/lessons.md. This
+Review's own review fixes are the entries 20b onwards.
+
+**Suite at de70f56** (2026-10-16; `git status --porcelain` empty before and after; each command's full output in the
+session scratchpad):
+
+```text
+cargo fmt --all --check                                      rc=0
+cargo clippy --workspace --all-targets --locked -- -D warnings
+                                                             rc=0  Finished `dev` profile (warm cache)
+cargo clippy ... --all-features --locked -- -D warnings      rc=0  Finished `dev` profile
+cargo test --workspace --locked                              rc=0  445 passed, 3 ignored (32 s): core lib 166 (+1
+                                                             ignored), ceremony 5, kat 7, kcr_release 3, os_source 2,
+                                                             typestate 1, vectors 4, auto_traits 0 (compile-time); pi
+                                                             lib 130, bin 58 (CI: 59 passed, 1 ignored, with the
+                                                             cfg(target_os = "linux") usb tests, loop_device ignored
+                                                             outside the sudo step); pi-sim lib 36, bin 3, gate 20 (+1
+                                                             ignored: capture_set), hal 7, live 3, timing 0 (+1)
+cargo test -p keepcrypt-core --locked --features test-sources
+                                                             rc=0  269 passed, 1 ignored (62 s): lib 194 (+1), agreement
+                                                             9, ceremony 5, check_flow 10, error_injection 11, kat 7,
+                                                             kcr 3, kcr_release 0, no_panic 9, no_secret_text 5,
+                                                             os_source 2, panic_wipe 4, source_substitution 5, typestate
+                                                             1, vectors 4
+cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry
+                                                             rc=0  69 passed, 2 ignored (15 s): lib 36, bin 3, gate 20
+                                                             (+1; 11.9 s), hal 7, live 3, timing 0 (+1)
+... --test gate -- --ignored --exact capture_set             rc=0  1 passed in 226.8 s (227 s wall); 11,719 PNG files
+                                                             under target/tmp/pi-sim-captures/registry/ (this run's; the
+                                                             count varies with the codes typed, as the M3 Review says)
+cargo llvm-cov ... --fail-under-lines 95 --summary-only      rc=0  lines 8408, missed 220, 97.38 %; regions 96.88 %;
+                                                             functions 96.32 % (70 s)
+cargo deny --locked --offline check                          rc=0  advisories ok, bans ok, licenses ok, sources ok
+cargo audit --no-fetch                                       rc=0  1329 advisories (local copy), 107 crate dependencies,
+                                                             no finding
+cargo vet --locked                                           rc=0  Vetting Succeeded (18 fully audited, 85 exempted)
+scripts/check-path-deps.sh               (sh, dash)          rc=0  clean, 103 packages outside the workspace
+python3 -I tools/verify/vectorgen.py --selftest (3.12.5, 3.9.6)
+                                                             rc=0  selftest passed: 13 checks (14 s, 25 s)
+python3 -I tools/verify/verify.py selftest (3.12.5, 3.9.6)   rc=0  selftest passed: 8 known-answer groups
+python3 -I pi/os/rootfs-prefix.py --selftest (3.12.5, 3.9.6)
+                                                             rc=0  selftest passed: 4 checks
+sh pi/os/kconfig.sh --selftest           (sh, dash)          rc=0  6 passed, 0 failed
+scripts/banned-api-check.sh              (sh, dash)          rc=0  clean, 241 files scanned (CI: 238; here also the 3
+                                                             gitignored __pycache__ .pyc files)
+scripts/banned-api-check.sh --workflows ../.github/workflows
+                                                             rc=0  clean, 2 workflow(s): read-only permissions, pinned
+                                                             actions, no secrets, no fork-trusting trigger, no
+                                                             expression in a run step
+scripts/banned-api-check.sh --os-config pi/os  (sh, dash)    rc=0  clean: Q35's inittab, the fstab's options,
+                                                             cmdline.txt and config.txt as the plan says,
+                                                             expected/linux.config with the fragment's required and
+                                                             forbidden lists (which expected/kconfig-required and
+                                                             kconfig-forbidden equal) and one hwrng driver, and BusyBox
+                                                             with init and mount and no other symbol set
+scripts/banned-api-check.sh --selftest   (sh, dash)          rc=0  selftest: 698 passed, 0 failed (171 s, 170 s)
+scripts/canaries.sh                      (sh, dash)          rc=0  PASS: all 73 checks ran (257 s, 257 s)
+python3 scripts/age-interop.py --core  (Homebrew age 1.3.2)  rc=0  three ok lines (age -> KeepCrypt and KeepCrypt -> age
+                                                             at work factor 18, armored and binary; wrong passphrases
+                                                             refused by both; age decrypted all 11 backup.json files the
+                                                             readers accept and refused 14 of the 17 armor cases they
+                                                             refuse); 3 notes (armor cases age 1.3.2 accepts and the
+                                                             readers refuse)
+--artifact aarch64-apple-darwin (core rlib, release_probe, pi rlib)
+                                                             clean, 3 file(s): no marker, no test key, no other RNG
+                                                             symbol, no std random-key path, no stripped file;
+                                                             _getentropy imported by all 1 object or linked file(s) (2
+                                                             archive(s), which need no import)
+--artifact aarch64-apple-darwin on the darwin keepcrypt-pi alone
+                                                             exit 1, 1 hit(s) in 1 file(s): OSImport, no undefined
+                                                             _getentropy (by design: the empty main, below)
+--artifact aarch64-apple-ios and -sim (core rlib, release_probe)
+                                                             each: clean, 2 file(s): no marker, no test key, no other
+                                                             RNG symbol, no std random-key path, no stripped file;
+                                                             _CCRandomGenerateBytes imported by all 1 object or linked
+                                                             file(s) (1 archive(s), which need no import)
+--artifact on the test-registry simulator (aarch64-apple-darwin, target/pi-sim-scan)
+                                                             exit 1 as required: Marker KC_TEST_REGISTRY_DO_NOT_SHIP,
+                                                             Marker KC_SIMULATOR_DO_NOT_SHIP, TestKey (the test registry
+                                                             public key 42e9fa0e...b94b), 3 hit(s) in 1 file(s); no stub
+                                                             marker
+```
+
+The darwin `keepcrypt-pi` binary scanned alone gives one OSImport hit by design: its `main` is empty off Linux (main.rs:
+`#[cfg(not(target_os = "linux"))] fn main() {}`), so no core code and no getrandom import is linked; the four-file scan
+the plan names is the Pi target's, in CI's cross job (below). The deny and audit runs are offline here (`--offline`,
+`--no-fetch`); CI's supply-chain job runs both as Commands write them on the same Cargo.lock (unchanged since 080a0bb)
+and passed on every head.
+
+**The image.** Every run since a4598b5 built the same image, `keepcrypt-pi-0.0.0-st7789-240x240.img`, 36,426,240 bytes,
+SHA-256 `4b13c095f76c4a42efc67090fec96650d070a385bb8a58b4fd7067c0d936adde`, partition 1
+`948efd165e08ea671c1a189049858459af01e4ae324976293a17180348cbb55d`, partition 2
+`76eb725e8163701325597860cbb289b4e1b369c42a3e30f04a1e79badc6a2600`, rootfs prefix `76eb-725e-8163-7013`, keepcrypt-pi
+`4f4dc6e46bda3354c2ef2b59971e5543d4ba43f15e3f39a8d3dee075818d1122`: runs 38690004157 (a4598b5, the H1a image),
+38691830575 (02d87c0), 38747606208 (ba03201), 38771532075 (b9ed46a), 38797300298 (80bf4ac), 38851865089 (de70f56) and
+38869822983 (30cefbc, added by 21c-b), 38894923652 (f0ae43e) and 38898547995 (b9a22c9; both added by 21e), each
+with both legs equal (`gh run view <run> --repo bitwilll/keepcrypt --log --job <compare job>` prints `both legs
+built <commit> into keepcrypt-pi-0.0.0-st7789-240x240.img, SHA-256 4b13c095...`; the compare jobs are 116278570451,
+116284649579, 116475266591, 116556993222, 116646064043, 116818371755, 116877883263, 116959869652 and 116972352888). Its kernel has 514 `=y` options
+(bcmrpi_defconfig's 794 reviewed line by line, 113 removed by 15l, the TTY core and ttynull kept by 15m; 29 required and
+218 forbidden lines in the fragment; `wc -l pi/os/expected/*`); its boot partition holds the 8 entries of `boot.list`
+(`mdir -a`: 7 files, 5,013,420 bytes); its root holds the 53 entries of `root.list` (BusyBox with its init and mount
+links, keepcrypt-pi, the loader, libc, libm, libgcc_s, os-release and the skeleton's directories and links);
+keepcrypt-pi imports 94 symbols, `getrandom@GLIBC_2.25` the one OS RNG import and `mlockall@GLIBC_2.4` rule 5's lock.
+From 17b every leg scans its build before the upload: runs 38771532075, 38797300298 and 38851865089 each print, in both
+legs, `selftest-image: 17 passed, 0 failed` and `banned-api-check --image
+/kc-work/out/images/keepcrypt-pi-0.0.0-st7789-240x240.img: clean: the boot and root lists and keepcrypt-pi's imports
+equal pi/os/expected, no denied file, start.elf and fixup.dat alone, the board's cmdline.txt and config.txt, Q35's
+inittab, the kernel config equals pi/os/expected/linux.config and keeps the f...`; "Hash and list" prints `keepcrypt-pi
+SHA-256: built 4f4dc6e4..., packed 4f4dc6e4...`; leg a's upload follows its scan (artifacts 11951494588 from
+38690004157, 11993015797 from 38771532075 and 12026220962 from 38851865089, each 36,426,240 bytes, kept 14 days; `gh api
+repos/bitwilll/keepcrypt/actions/runs/<run>/artifacts`); the compare job writes "both legs built ... and both scans
+passed". Leg times: 38771532075 a 16 min 57 s, b 18 min 19 s; 38797300298 a 17 min 23 s, b 19 min 49 s; 38851865089 a 14
+min 07 s, b 13 min 40 s (`make source image` 10 min 08 s and 10 min 28 s; the runner's disk 145 GB, 34 GB used after
+step 1 freed the SDKs, 40 GB after the build). The earlier runs' iteration: the first (81c4964, 38683063774) stopped in
+kconfig.sh with DEBUG_FS and HID selected back on (15i); 38684224715 (fa894a3) and 38686161966 (e81e186) built equal
+images whose lists drove 15j and 15k; 38688223472 (7d96c29) built 15l's image, superseded by 15m before any hardware
+session.
+
+**CI.** Every stage was pushed and both workflows ran on the PR head (`pull_request`, PR #7, a draft since
+2026-10-14T11:54:10Z); the Vercel check is not one of the 14 and is ignored per the owner. Entropy CI: 14 of 14 required
+check runs green, names unchanged, on every head but 8484278 (run 38652814808: `cross (arm-unknown-linux-gnueabihf)`
+failed on the StdRandom hit that 13b resolved); the image workflow failed once, on 81c4964 (38683063774, kconfig.sh,
+15i), and was green on every head since. Runs on the branch, in order (`gh run list --repo bitwilll/keepcrypt --branch
+m4-pi-hardware --limit 40 --json databaseId,headSha,workflowName,conclusion,event,createdAt`): Entropy CI 38559871768,
+38578364804, 38625757440, 38652814808 (failure), 38656882262, 38683063754, 38684224717, 38686161866, 38688223474,
+38690004171, 38691830596, 38747606112, 38771532169, 38797300316, 38851865443; Entropy Pi image 38683063774 (failure),
+38684224715, 38686161966, 38688223472, 38690004157, 38691830575, 38747606208, 38771532075, 38797300298, 38851865089.
+Read with `gh run view <run> --repo bitwilll/keepcrypt --json headSha,conclusion,event,createdAt,jobs` (job names,
+conclusions, start and end times), `gh run view <run> --repo bitwilll/keepcrypt --log --job <job>` (the lines quoted in
+this section), `gh api repos/bitwilll/keepcrypt/actions/jobs/<job>` (a leg's steps and their times), `gh api
+repos/bitwilll/keepcrypt/actions/runs/<run>/artifacts` and `gh pr view 7 --repo bitwilll/keepcrypt --json
+isDraft,createdAt,commits`. At de70f56 (run 38851865443): `test` 5 min 26 s (the workspace, test-sources and registry
+runs with the counts above; the simulator scan `3 hit(s) in 1 file(s)` with both markers and the test key; the
+loop-device test `1 passed`); `gates` 10 min 18 s (`clean, 238 files scanned`, `--workflows` clean on 2 workflows,
+`--os-config pi/os` clean, `selftest passed: 13 checks`, `selftest passed: 4 checks`, `kconfig.sh --selftest: 6 passed,
+0 failed`, `selftest: 698 passed, 0 failed`, `PASS: all 73 checks ran`); `coverage` 2 min 55 s (lines 8408, missed 220,
+97.38 %); `cross (arm-unknown-linux-gnueabihf)` 1 min 46 s (`U getrandom@GLIBC_2.25`; `clean, 4 file(s)`); the five
+other cross legs, `verifier (python 3.9)`, `age-interop (age 1.1.1)`, `supply-chain (deny, audit, vet)` (`advisories ok,
+bans ok, licenses ok, sources ok`; 107 crate dependencies; `Vetting Succeeded (18 fully audited, 85 exempted)`), `lint
+(fmt, clippy)` (34 s) and `changes`: pass.
+
+**Runtime budgets** (group 18), against the last main run 38534247238 on f967dd4 and the three heads since 17b (runs
+38771532169 and 38771532075; 38797300316 and 38797300298; 38851865443 and 38851865089):
+
+```text
+                  f967dd4 (main)  b9ed46a          80bf4ac          de70f56          budget
+test              4m54s           3m51s            5m21s            5m26s (+0m32s)   at most +6 minutes (M3): met
+gates             8m50s           10m17s           10m03s           10m18s           within 12 minutes (Q31 (f)): met
+cross (arm leg)   2m19s           2m20s            2m19s            1m46s            none set (now scans keepcrypt-pi)
+coverage          4m19s           2m52s            2m10s            2m55s, 97.38%    at least 95% of core's lines: met
+image legs a / b  -               16m57s / 18m19s  17m23s / 19m49s  14m07s / 13m40s  none set; recorded
+```
+
+`gates` grew from 8 min 50 s to 10 min 18 s: `--selftest` from 427 to 698 cases, canaries from 61 to 73 checks (the
+canaries step 7 min 53 s by the log's timestamps, 04:43:30 to 04:51:23), and the new `--os-config`, `kconfig.sh
+--selftest` and `rootfs-prefix.py --selftest` steps. Q31 (f)'s 12-minute budget holds with 1 min 42 s to spare; the
+plan's "past 12, stop and re-plan" was not reached.
+
+**Measurements on hardware** (group 17, from the owner's stopwatch; Q42 (a)):
+
+```text
+power-on to Home (KATs, hwrng boot test, rootfs hash)   14 s      (H1a, 2026-10-16)
+the WAIT_SESSION screen                                  3 s       (H2, 2026-10-16)
+step 4 (the bar, 24 blocks at the 100 ms tick)           2.5 s     (H2, 2026-10-16)
+the backup wait (two scrypt runs, write and read-back)   41 s      (H2, 2026-10-16)
+"Check a backup"                                         20 s      (H3, 2026-10-16)
+```
+Every wait is under Q42 (a)'s 60 s, so the worker thread stays out; step 4's 2.5 s is within a hand stopwatch's error of
+the 100 ms tick's 2.4 s, so the tick stays (group 17, 21a and 21b; the table filled by 21c).
+
+**Carried items** (M3's "Deferred, with their milestone", M4; Verification "Carried items"), one line each:
+1. rppal GPIO and the ST7789 driver, RST and backlight pins: groups 5-8 (commits 7, 8; KeepCrypt's own driver replaces
+   mipidsi, Q36 (c)); RST 27 and BL 24 in PF's pin map (Q40 (b); [S5, S6]); H1a passed on the panel and the keys.
+2. the `/dev/hwrng` reader and the step 4 tick: group 7 (commit 8, the 2 s deadline, 8d); the tick stays 100 ms (Q39
+   (d), 6d) and the measured rate moves to M8 (Q42 (a)); step 4 took 2.5 s on the Pi Zero (H2), so the tick stays.
+3. real mount, write, sync and unmount at `/mnt/usb`, create-new writes, read-only mounts: group 8 (commit 9) and the
+   loop-device test in CI (`1 passed` at de70f56); on the stick itself, H2 step 11 (written and read back, 41 s) and
+   H3 ("Check a backup", 20 s).
+4. `mlockall` and where `unsafe` lives: `device::run` step 4 (commit 11), `MemoryLock` halts; no `unsafe` in KeepCrypt
+   code (Q36 (d)), both forbid lines kept, the unsafe sites in rppal, nix, libc and std (the rppal review note under New
+   dependencies).
+5. clearing the panel's memory on every wipe: group 5 (init and `Drop` blank 320×240, every wipe presents black, the
+   byte-swap buffer zeroized; commit 7's tests); on hardware, H2's Finish ran a wipe; its black frame is proven by tests, not observed
+   (lead decision 22).
+6. the crash path: group 10 (commit 11) and Q35: the silent hook, `Drop` blanks, inittab `wait` and `once`, `panic=0`;
+   the docs say a crash drops the 99-roll minimum (commit 2); not forced on hardware in M4 (Q42 (a)).
+7. Buildroot, the reproducible hash, linking and scanning a release `keepcrypt-pi`, the no-simulator-symbols check:
+   groups 13-15; seven runs with the one hash (to 30cefbc); the cross leg scans `keepcrypt-pi` (4 files clean); `--image`'s Binary rule
+   refuses a `keepcrypt_pi_sim` symbol or byte string, with the simulator marker as its positive control
+   (`--selftest-image`).
+8. KAT, snapshot and scrypt timing and peak memory, the worker thread, `Session: Send`: Q42 (a) moves the snapshot
+   figures to M9 and scrypt's peak to M8 (a backup completed under `mlockall` stands in); the worker thread stays out
+   unless a wait exceeds 60 s, and none did (group 17: 3 s, 2.5 s, 41 s, 20 s); `Session: Send` and `Sync` are asserted at compile time by
+   core/tests/auto_traits.rs (commit 4).
+9. the QR scans off the real panel, the Sparrow and Bitcoin Core imports, the getrandom cfg in Buildroot: the scans and
+   imports passed in H4 ("both addresses matched"); the cfg is keepcrypt-pi.mk's `CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_RUSTFLAGS`, proven by `U
+   getrandom@GLIBC_2.25` in the cross leg's llvm-nm line and in `expected/keepcrypt-pi.imports`, with no fallback symbol
+   (`--image`'s Symbol rule, its control 17a-g).
+10. a real-Pi ceremony checked with `verify.py mixed`: H2 and H3 ("H3 done, all matched").
+11. rule 8's wording on device reads: Q40 (a), commit 3 (ed15bd2) and 10d (e70caa0); PF:81's path list (commits 2, 10c,
+    10e; Q51).
+
+**Rules** (Verification "Rules"; each line's proof):
+- 1: `getrandom` only in `core/src/source` (the gate's categories, clean on 241 files); the graph pin and the feature
+  bans (`[[bans.features]]`, `cargo deny` ok; the `reboot` canary); std's random-key path absent (the ARM leg's `no std
+  random-key path`, the image's Binary rule); Python `random` through any module path (commit 12's rule, its fixtures
+  among the 698).
+- 3: every driver fault a fixed `HalError` (groups 5-8's tests, pi bin 58); a stalled hwrng halts or stalls, never
+  proceeds (8d's slow and interrupted reads); no defaults or retries (the drivers' tests; `unwrap_or*` banned by
+  clippy).
+- 5: nothing printed (the silent hook; no `print`, `eprintln` or `isatty` in pi/app/src; the Device category); the
+  buffer zeroized (commit 7's test); the panel blanked on wipe, fault, `Drop` and crash (groups 5 and 10's tests); no
+  console (15m: `/dev/console` opens on ttynull, which discards writes; `--os-config` and `--image` refuse a `console=`,
+  and every serial driver is forbidden).
+- 8: the paths gate (the Device category: path literals only in device/paths.rs, file APIs only under device/);
+  create-new only (one `create_new` call; the write-API rule, 12d); the loop-device proof (CI, `1 passed`); Q40's
+  wording (commit 3, 10d).
+- 10: the image scan (`--image` clean in three runs, `--selftest-image` 17/17) and the binary scans (the cross leg's 4
+  files, the simulator's three hits).
+- 11: the four approved crates (Q36 (a)), vetted (`cargo vet --locked`: 18 fully audited, 85 exempted; the dependency
+  table's dates all before the 2026-09-30 cutoff, and no crate added since commit 5); the image inputs pinned (pins.txt,
+  checked by the Makefile; the Image inputs table); the workflow hardening check (`--workflows` clean, 2 workflows).
+- 12: this Review and the H records hold no secret. The H1a-H4 records hold the owner's words, pass or fail,
+  "matched" and times, with the lead's readings marked; the owner sent no value of the throwaway seed, public or secret,
+  so none is here (re-checked by 21c and 21c-b).
+
+**Lead decisions and deviations from the plan**, each with why (the dated entries are in the commit order):
+1. 13b (Q52): std's three getrandom statics on the Pi target are let through the artifact scan as local data only
+   (LLVM's global merge packs them with the DTORS block); their reader function and the device-path byte strings stay
+   hits, with a positive control.
+2. 14i: the HAT's image is `keepcrypt-pi-0.0.0-st7789-240x240.img`, Q47's name, over 14b's reading of Q43 (b).
+3. 15i: `FTRACE`, `BLK_DEV_IO_TRACE`, `USB_HID` and `KGDB` forbidden after the first run showed `DEBUG_FS` and `HID`
+   selected back on; a scan of every forbidden option's selectors found no other.
+4. 15j, 15k: the root keeps only the four libraries its two programs load (read from the first image's ELF headers) and
+   loses ldd, the network files, `/etc/network` and `/var/www` (the last two in a post-fakeroot script, since
+   Buildroot's device table makes them again).
+5. 15l: 113 kernel options removed after a review of every `=y` line, each checked for a visible prompt and for
+   selectors that stay on.
+6. 15m, the owner's correction: the TTY core and ttynull stay, so `/dev/console` always opens on a tty that discards
+   writes; proven from the pinned kernel and BusyBox sources before the image was rebuilt (tasks/lessons.md).
+7. 17 split into 17a and 17b, since `--image` and `--os-config` compare against `expected/`, which commit 16 creates.
+8. 17a-f: "BusyBox enables only init and mount" is an allow-list of the 18 symbols the board's config sets, not a deny
+   list, so any added applet fails `--os-config`.
+9. 17a-i, 17b: the binary hash `--image` checks comes from the cargo-built file in Buildroot's build directory, never
+   from the image's own copy (which `--image` would compare with itself); the image workflow proves the two equal and
+   exports one `binary` output.
+10. Commit 16 landed from run 38690004157 before H1a's result, under the owner's "continue"; a bring-up fix that changed
+    the image would have regenerated it in the same commit. None was needed.
+11. Stage B's two fence decisions (440a656, 10c): recorded under References and terms and groups 4 and 10 (a screen is
+    one `enter_page`; backup-check-entry's refusal entered through `enter`).
+12. From planning (2026-10-14): the gpu_mem lines take Buildroot's tested values; `Key::bcm_pin` is a `const fn`; the
+    mipidsi reason is corrected; `LEDS_GPIO` and `LEDS_TRIGGER_ACTPWR` are required so H1a can read the ACT LED; the SPI
+    clock's in-spec fallback is noted (not needed); the image legs free the runner's disk first.
+13. 15b: entropy-ci's `changes` job also counts a change to any `.github/workflows/entropy-*`, so `gates` runs
+    `--workflows` on a change to the image workflow alone (the plan had it count `Entropy/` and entropy-ci.yml).
+14. 15c: the image workflow's concurrency groups runs by event too and cancels only an older PR run, so a weekly or
+    dispatched run never cancels main's push run, whose hash the gate needs after merge (the plan said "cancels an older
+    run on the same ref").
+15. 15g: the build host (the `ubuntu-24.04` runner image and the Ubuntu packages the legs install) is not a pinned input
+    until M7's container (Q38 (e)); pins.txt says so and each leg prints the versions (the plan had pins.txt record
+    every non-crate input).
+16. 15h: `persist-credentials: false` on every checkout and the image workflow's head-SHA `ref` are held by review, not
+    by `--workflows`, whose scope predates M4.
+17. 12d: an in-place overwrite, `.create(` with a non-literal flag and `fs::hard_link` under device/ are held by review,
+    not by the write-API rule; widening the rule waits for the lead.
+18. 7f: `PROFILES` and `ST7789_INIT_OPCODES` carry `cfg_attr(not(test), expect(dead_code, ..))` for the Linux non-test
+    builds; `INVOFF` carries none, since rustc 1.98.1 never shows it dead once those two are expected.
+19. 9d: group 8's ticked items claim only what commit 9 proves; the loop-device test drives the glue's own `Mounter`
+    from commit 11, and commit 13's step needs exactly `1 passed`.
+20. 17b-d: a plan item whose proof is a CI run is ticked only after that run's log is read (group 12's `gates` item was
+    unticked again and re-ticked at 80bf4ac).
+21. 21c, corrected by 21c-b: `repro-check`'s recipe is proven on a stub Buildroot (both outcomes), and its first real
+    two-build run moves to M7 with the clean container. CI's two legs prove the image reproducible across machines
+    for M4; neither they nor the stub show two real builds agreeing on one host (group 13's Makefile item). For the
+    owner's approval at the gate.
+22. 21c, corrected by 21c-b: "black after a wipe" on hardware is proven rather than observed. H2's Finish ran a wipe on
+    the panel, the blank screen is 115,200 zero bytes by test, and H1a showed this panel's colours true. No planned
+    check holds the black frame long enough to see, the idle wipe included (Drivers on hardware).
+23. 21c, widened by 21c-b: the owner's reports omit facts the plan's proofs list. For H4: the Sparrow and Core versions,
+    the camera model and the three addresses (sent as "matched"), so swb:235's "current releases" and todo.md:73's
+    `crypto-account` confirmation are tied to no release. For H3: which verify.py was used and that the computer was
+    offline (verify.py is identical at every commit since f967dd4). The gate report asks the owner for them; the
+    watch-only gate is ticked by 21d only with whatever the owner has sent by then, and says what is missing.
+    Partly answered 2026-10-16 (21d): "Sparrow 2.3, Core 31.1, Logitech C920, offline yes". Left: which verify.py
+    copy (every copy since f967dd4 is the same file, SHA-256 0ba842e2...), and the addresses themselves ("matched"
+    stands, as Q41 (c) allows). 21d did not tick the watch-only gate: see decision 24.
+24. 21d: H4 imported into Sparrow 2.3, and swb:235 asks for the current Sparrow, 2.5.5. H4 already proved the camera
+    reads the account QR off the real panel and Sparrow 2.3 decodes it, so H4b repeats only the decode on 2.5.5: the
+    test vector's account QR, encoded by the device's encoder and settings, scanned off a screen. A new ceremony would
+    add only the panel path H4 proved. The watch-only gate and Matrix "Watch-only import" wait for H4b.
+    Done 2026-10-16 (21e): "H4b done, Sparrow 2.5.5, matched". For the owner's approval at the gate.
+25. 21d: the items whose text needs the final PR head's run are ticked by commit 21's last commit, from its parent's
+    runs, since a commit cannot carry its own run; the PR description names the last head's runs, as commit 21's plan
+    entry says. The image-hash gate's "after merge, main's push run" clause is split into its own item, which M5's first
+    commit ticks; the build-plan gate line needs only the PR head's runs.
+26. 21e: commit 21's records are tasks-only, so their reviews used evidence (in place of recompute: every number, run
+    and quote checked against its source), rules (in place of security: CLAUDE.md, Q41 (c), the owner's words kept
+    apart) and completeness or consistency (in place of plan: every item's status against the plan and the other
+    records). Commit 20's review used the three named lenses.
+
+**Ticked in this commit** (each with its "Proof (M4 Review, 2026-10-16)" line above): group 0's four items (the answers,
+the baseline, the draft PR, `1.txt`); group 1's three (the docs edits, rule 8, CODEOWNERS); group 5's HAT values (H1a);
+group 8's loop-device test; group 9's `rootfs-prefix.py`; group 10's module declaration, `device::run` and the panic
+path; group 11's `--workflows`, `--os-config` and the existing rules over `pi/os/`; group 12's cross leg, std's
+random-key path and the `test` job's loop-device step; group 13's layout, kernel allow-list, kernel lists, defconfig,
+BusyBox, post-build.sh, genimage.cfg, post-image.sh and keepcrypt-pi.mk; group 14's `--image-lists` and `--image`; group
+15's workflow; group 16's Q50 item (not applicable); Verification's Matrix "Symbol and stub-marker scan", Matrix
+"Duplicate-seed drill" (M9), Matrix "Birthday collision" (Q42 (b)), Kernel allow-list, Crash path, and Read-only mounts
+and create-new writes. Five items this commit ticked on de70f56's runs are `[ ]` again (20c), since their text names the
+final PR head's run, which does not exist yet (decision 20): group 15's bootstrap of `expected/`, group 18's budgets,
+and Verification's image-hash gate, Matrix "Reproducible build" and CI; their Proof lines keep the de70f56 evidence.
+
+**Still unticked**, with what each waits for (updated by 21e):
+- After merge: main's push run of the image workflow gives the same hash (its own item; M5's first commit ticks it).
+- H0's optional schematic look and H5: optional, not part of the gate.
+- M4b's items (B0 onwards) belong to M4b, after the M4 gate, and are not M4's.
+
+### M4 gate status: MET (2026-10-16), waiting for the owner's approval
+The gate in docs/build-plan.md:294. Deliverables: "ST7789 and button drivers, hwrng reader, Buildroot image, USB
+export". Proof: "Full ceremony on a Pi Zero v1.3, checked with the offline verifier; two clean builds give the same
+image hash; the watch-only QR imports into Sparrow and Bitcoin Core with the same first address". The hardware records
+are under "M4: hardware records" above.
+- Two clean builds give the same image hash: met. The run at b9a22c9 (38898547995), 21e's parent, gives the one hash
+  again (lead decision 25). `pi-image build (a)` and `(b)` on fresh runners and
+  `pi-image reproducible (a = b)` green on every head since a4598b5: runs 38690004157, 38691830575, 38747606208,
+  38771532075, 38797300298, 38851865089 (de70f56), 38869822983 (30cefbc), 38894923652 (f0ae43e) and 38898547995 (b9a22c9) all gave SHA-256
+  `4b13c095f76c4a42efc67090fec96650d070a385bb8a58b4fd7067c0d936adde`, leg b from fresh downloads each time; from 17b
+  each leg's `--image` scan against the committed lists passed before the upload.
+- Full ceremony on a Pi Zero v1.3, checked with the offline verifier: met. It passed on hardware on 2026-10-16, and
+  the run at b9a22c9 (38898547995), 21e's parent, gives the card's hash (lead decision 25). H2-H4 ran on the card flashed
+  for H1a from run 38690004157's artifact (a4598b5), not re-flashed, whose SHA-256 4b13c095... is the gate image's (run
+  38771532075, b9ed46a) and every run's since a4598b5; the run, commit and hash are the lead's, from H1a's record.
+  The owner's H2: "H2 done, all passed" (21a); H3: "H3 done, all matched, Check a backup 20 s" (21b). The plan asked
+  them to show, in Q41 (c)'s form: the throwaway Mixed 12-word ceremony to Finish with Skip at step 7, the deliberate
+  read-back misreads refused and corrected; `python3 -I tools/verify/verify.py mixed --words 12`, from the gate image's
+  commit, exiting 0 with the device's 12 words; its Seal ID equal to "Check a backup"'s; `age -d` giving the same
+  words. By the checklist's steps the owner's words cover each, and the owner confirmed the computer was offline. The
+  verify.py copy is unnamed, and every copy since f967dd4 is the gate image's commit's file (lead decision 23, partly
+  answered).
+- The watch-only QR imports into Sparrow and Bitcoin Core with the same first address: met. H4 passed on hardware
+  with Sparrow 2.3, Core 31.1 and a Logitech C920: this device's account QR off the panel into Sparrow and its
+  descriptors into Core, both first addresses matching. H4b then showed the current Sparrow 2.5.5 accepts the same QR
+  type: "H4b done, Sparrow 2.5.5, matched", on the published test vector's account QR, encoded by the device's encoder
+  and scanned off a computer screen. No panel import of this device's wallet was made on 2.5.5 (lead decision 24, for
+  the owner's approval). The run at b9a22c9 gives the card's hash. The owner's H4: "H4 done, both
+  addresses matched" (21c). By the checklist's steps, Sparrow scanned the account QR off the panel, accepting
+  `crypto-account`; Core imported the descriptor text decoded off the panel; both first receive addresses equal step
+  10's. The versions and camera came in the owner's answer (lead decision 23).
+- Deliverables: the ST7789 driver (device/panel.rs, the HAT profile, 15m's console decision), the key loop over the
+  debouncer (device/keys.rs), the hwrng reader with its 2-second deadline (device/hwrng.rs), the Buildroot image (pi/os,
+  pins.txt, the kernel allow-list, the scans) and the USB export (device/usb.rs, read-only mounts and create-new writes,
+  the loop-device test in CI). H1a proved on hardware the panel driver (upright, true colours, no noise band, sharp
+  text), the button driver (one event per press on all 8 inputs), the hwrng reader's boot test (Home reached, so the
+  health test passed) and the image's boot (hash and prefix matched, 14 s). H2 proved the USB export's write and
+  read-back (the backup verified in 41 s), the backup completing on the device and the new session behind `WAIT_SESSION`
+  (3 s); H3 proved "Check a backup" on the stick (20 s, the fingerprint matched; the
+  read-only mount is the code's, proven by CI's loop-device test); H4 proved the watch-only QRs off the panel; H2's
+  Finish ran a wipe on the panel, its black frame proven by tests, not observed (lead decision 22).
+- For the owner's approval: lead decisions 21 (`repro-check`'s real run to M7), 22 (the wipe's black frame proven,
+  not observed), 24 (H4b's test-vector scan for the current Sparrow), 25 (the final head's run read from the last
+  commit's parent; main's post-merge run its own item) and 26 (stage E's review lenses).
+- Standing note: build-plan.md:278's two approvals for `core/`, `ffi/` and `pi/os/` are unmet while there is one
+  maintainer (todo.md:322; CODEOWNERS:7-10 describes ruleset 24833307 as it is, e8c90d9). M4 is the first milestone with
+  `pi/os/`.
+- After merge: main's push run of the image workflow must give the same hash, recorded in the PR conversation and in
+  M5's Inputs.

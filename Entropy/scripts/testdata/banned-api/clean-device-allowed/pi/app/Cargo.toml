@@ -1,0 +1,4 @@
+# The hardware crates are named in the manifest; the gate looks for their paths in code.
+[target.'cfg(target_os = "linux")'.dependencies]
+rppal = { version = "=0.22.1", default-features = false }
+nix = { version = "=0.31.3", default-features = false, features = ["fs", "mman", "mount", "time"] }
