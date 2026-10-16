@@ -8694,6 +8694,7 @@ stale (Q43 (d)).
 
 **16. Hardware (owner) and bring-up fixes**
 - [ ] H1a on commit 15's image, and H1-H4, plus any H5 items, recorded under Review in Q41 (c)'s form only.
+  Proof (H1a and H1, 2026-10-16): recorded above under the checklists and under Review; H2-H4 pending.
 - [ ] Bring-up fixes found on hardware (orientation, colour order, SPI clock, timings, kernel options, firmware files) are
   commits that name the owner's observation and the root cause. The check that found the problem is repeated after each.
 - [ ] If H1a shows inverted colours or washed-out greys (Q50):
@@ -8714,7 +8715,7 @@ stale (Q43 (d)).
 
 **17. Measurements and decisions recorded (Q42 (a))**
 - [ ] From the H1-H3 stopwatch times:
-  - power-on to Home (KATs, hwrng boot test, rootfs hash);
+  - power-on to Home (KATs, hwrng boot test, rootfs hash): 14 s (the owner's H1a, 2026-10-16);
   - the `WAIT_SESSION` screen;
   - step 4;
   - the backup wait (two scrypt runs, the write and the read-back);
@@ -9055,6 +9056,8 @@ What does not change, in M4 or M4b (Q44-Q50):
 - [ ] **Matrix "BIP39, age and SHA known-answer vectors"** on hardware: boot passes its KATs and the hwrng startup test on
   the real BCM2835, and the new session passes behind `WAIT_SESSION`.
   Proof: H1, H2.
+  Proof (H1a, 2026-10-16): the boot KATs and the hwrng startup test passed on the real BCM2835 (Home reached in
+  14 s); the new session behind `WAIT_SESSION` waits for H2.
 - [ ] **Matrix "Duplicate-seed drill"** (Pi): M9. M3's simulator drill stands until then.
 - [ ] **Matrix "Metal read-back drill"** (Pi): H2 step 9's deliberate mirror misread and missing letter (and a
   should-be-blank if a three-letter word comes up), each refused with the insert named and then corrected; M3's
@@ -9062,6 +9065,9 @@ What does not change, in M4 or M4b (Q44-Q50):
   Proof: H2.
 - [ ] **Matrix "Birthday collision"** (Core, Pi): as Q42 (b) decides.
 - [ ] **Drivers on hardware:**
+  Proof (H1a, 2026-10-16): the panel upright with true colours and no noise band, and every input one event per
+  press, on the owner's HAT; the boot reached Home, so the hwrng boot test passed (a failure halts before Home).
+  Black after a wipe and the backup under `mlockall` wait for H2.
   - the panel is upright, with true colours, no noise band, and black after a wipe;
   - every input gives one event per press, with no repeat;
   - the boot hwrng test passes;
@@ -9079,7 +9085,7 @@ What does not change, in M4 or M4b (Q44-Q50):
   Proof (review fix, commit 7b): `ST7789_INIT_OPCODES`, the HAT's `spi_hz` and its `name` are pinned, and the
   memory-model wipe runs over every `PROFILES` entry; group 5's items.
   Proof (review fix, commit 7c): the checks also refuse an LCMCTRL step that flips MV; group 5's `Panel` item.
-- [ ] **Panel variant (Q50), only if H1a showed one:** `WAVESHARE_1IN3_HAT` still equals the approved bytes; the
+- [x] **Panel variant (Q50), only if H1a showed one:** (not applicable: H1a's colours matched, 2026-10-16) `WAVESHARE_1IN3_HAT` still equals the approved bytes; the
   variant's stream is pinned to the values H1a confirmed; H1a passes on the image that uses it.
 - [ ] **Kernel allow-list:** `--image` shows the build's `.config` equals `expected/linux.config`; `--os-config` clean;
   the commit 16 review note.
@@ -9531,13 +9537,13 @@ seed, which is what those screens are for. Write throwaway values on paper and d
   SeedSigner [S5, S6].)
 
 **H1a. First boot check (on the first image the workflow builds; no seed)**
-- [ ] While signed in to GitHub, download `keepcrypt-pi-0.0.0-st7789-240x240.img` from the run the lead names (15n: run
+- [x] While signed in to GitHub, download `keepcrypt-pi-0.0.0-st7789-240x240.img` from the run the lead names (15n: run
   38690004157, https://github.com/bitwilll/keepcrypt/actions/runs/38690004157). Its `shasum -a 256` must equal the run
   summary's hash (`4b13c095f76c4a42efc67090fec96650d070a385bb8a58b4fd7067c0d936adde`).
-- [ ] Flash it with Raspberry Pi Imager ("Use custom", no customisation, verify on). Or by hand:
+- [x] Flash it with Raspberry Pi Imager ("Use custom", no customisation, verify on). Or by hand:
   `diskutil unmountDisk /dev/diskN`, then `sudo dd if=keepcrypt-pi-0.0.0-st7789-240x240.img of=/dev/rdiskN bs=4m`. macOS may write to
   the card's FAT partition when you insert it. That does not touch the root filesystem the prefix covers.
-- [ ] Power the Pi from the power bank, with nothing in the USB port. Watch the green ACT LED for the first 30 s and note
+- [x] Power the Pi from the power bank, with nothing in the USB port. Watch the green ACT LED for the first 30 s and note
   what it does: steady, off, flickering, or a repeating group of flashes (count them, long and short separately). The
   lead reads any pattern against this table, taken from the Raspberry Pi documentation's LED warning flash codes [S30].
   Long flashes come before short ones, and the pattern repeats after a two-second pause.
@@ -9553,22 +9559,29 @@ seed, which is what those screens are for. Write throwaway values on paper and d
   - 2 long, 2 short: failed to read from partition.
   - 2 long, 3 short: extended partition not FAT.
   - Any other code (2 long and 4 short, and every 3-long or 4-long code) is a Pi 4 or Pi 5 code, not expected on a Zero.
-- [ ] Time power-on to Home with a stopwatch.
-- [ ] The boot screen shows `0.0.0` and a prefix equal to the run summary's.
-- [ ] Panel: Home is upright, as in the M3 captures, with the joystick on the left; colours match the captures; no band of
+- [x] Time power-on to Home with a stopwatch.
+- [x] The boot screen shows `0.0.0` and a prefix equal to the run summary's.
+- [x] Panel: Home is upright, as in the M3 captures, with the joystick on the left; colours match the captures; no band of
   noise; sharp text.
   - If the picture looks inverted (like a photo negative) or washed out (blacks look grey, colours pale), say which, in
     words. It is a known panel variant. The fix is a second settings block for your unit (Q50), not a change for every
     HAT.
-- [ ] Keys:
+- [x] Keys:
   - each of the 8 inputs acts once per press over about 20 presses;
   - holding a key gives one action (the dice screen shows this);
   - KEY1-KEY3 do what their footer labels say.
-- [ ] Do not start a seed on this image. Power off.
+- [x] Do not start a seed on this image. Power off.
 - [ ] If the panel is dark, garbled or frozen: send the LED notes and stop (Q41 (e)).
+  Record (the owner, 2026-10-16, on run 38690004157's image, SHA-256 4b13c095..., the same bytes as every later
+  run's): "H1a passed, all matched, boot to Home 14 s". Hash and prefix matched; the panel and keys passed; no panel
+  variant (Q50 does not apply); the LED item was not reported beyond "all matched". The conditional item above did
+  not arise.
 
 **H1. Gate image boot check** (on the image the lead names after commit 18)
-- [ ] Repeat H1a's download, hash check, flash, stopwatch, boot screen, panel and keys checks on this image.
+- [x] Repeat H1a's download, hash check, flash, stopwatch, boot screen, panel and keys checks on this image.
+  Record (2026-10-16): the gate image (runs 38771532075 on b9ed46a and 38797300298 on 80bf4ac) has H1a's SHA-256
+  `4b13c095f76c4a42efc67090fec96650d070a385bb8a58b4fd7067c0d936adde` byte for byte, so H1a's pass on that card is H1
+  (lead decision, under the standing instruction): no re-flash, the owner continues to H2.
 
 **H2. Throwaway ceremony (Mixed, 12 words, on the gate image)**
 - [ ] Idle timers: a cover after 30 s on a private screen, or a warning at 9 minutes, is expected. Any key removes it and
@@ -12061,3 +12074,10 @@ drives a full ceremony in the simulator; you review the screen captures".
   - low: CLAUDE.md's Commands comment for capture_set does not name review.html.
 - The owner approved the gate on 2026-10-14 with the capture verdict above. Per CLAUDE.md, M4 starts only when the
   owner says so.
+
+### M4: hardware records (the owner's reports, in Q41 (c)'s form)
+- **H1a, 2026-10-16**, on run 38690004157's image (a4598b5; SHA-256 `4b13c095f76c4a42efc67090fec96650d070a385bb8a58b4fd7067c0d936adde`,
+  prefix `76eb-725e-8163-7013`), the owner's SeedSigner hardware (Pi Zero v1.3, Waveshare 1.3-inch LCD HAT), a
+  separate microSD card: "H1a passed, all matched, boot to Home 14 s". No panel variant.
+- **H1**: the same bytes as every later run's image (38691830575, 38747606208, 38771532075, 38797300298), so H1a's
+  pass is H1; no re-flash.
