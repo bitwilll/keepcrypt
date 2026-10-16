@@ -178,6 +178,8 @@ python3 -I pi/os/rootfs-prefix.py --selftest   # 4 checks: the rootfs prefix vec
                                      # by the script that gives each image's, and each refusal; also with /usr/bin/python3 -I
 sh pi/os/kconfig.sh --selftest       # the kernel allow-list on a stub tree: a forbidden option selected back on, a
                                      # required one dropped and a module left are each refused
+sh scripts/panels-differ.sh --selftest   # two panels with the same keepcrypt-pi SHA-256 must fail the check (its
+                                     # canary), as must a third equal to the first; two different hashes pass
 # The stick driver's loop-device test (CI's test job: Linux, as root, #[ignore]d; the test binary is the one
 # executable cargo reports for the bin target, run by its path, so sudo builds nothing). The stick is a 16 MiB
 # FAT32 image on a loop device, named in KC_LOOP_DEV (/dev/loopN), KC_LOOP_RO (/sys/block/loopN/ro), KC_LOOP_MNT
@@ -202,21 +204,28 @@ cargo build --release --locked -p keepcrypt-pi-sim --bin keepcrypt-pi-sim --feat
 scripts/banned-api-check.sh --artifact T target/pi-sim-scan/T/release/keepcrypt-pi-sim
 # The Pi image (pi/os; Linux x86_64 hosts only; CI: .github/workflows/entropy-pi-image.yml builds it on two fresh
 # runners and compares). KC_WORK (default /kc-work) holds Buildroot, the downloads, the crates and the build: an
-# absolute path outside Entropy/ with no spaces, the same in every build (reproducibility needs the same path):
+# absolute path outside Entropy/ with no spaces, the same in every build (reproducibility needs the same path).
+# One image per screen type (Q47 (a)): image, repro-check and scan need PANEL=<name>, and refuse a missing, empty or
+# unlisted name before anything runs, printing the list:
+make -C pi/os panels                 # prints the names PANEL takes (the Makefile's PANELS), one a line
 make -C pi/os source                 # the only target that uses the network: pinned Buildroot, every download, the crates
-make -C pi/os image                  # afresh in $KC_WORK/out, offline (a missing download fails it); prints the SHA-256
-make -C pi/os repro-check            # builds it twice in fresh output directories and compares the two images
-make -C pi/os scan                   # after make image: --image-lists on the built image, then --image against expected/
+make -C pi/os image PANEL=<name>     # afresh in $KC_WORK/out, offline (a missing download fails it); prints the SHA-256
+                                     # of keepcrypt-pi-0.0.0-<name>.img, whose keepcrypt-pi has <name>'s panel profile
+make -C pi/os repro-check PANEL=<name>   # builds it twice in fresh output directories and compares the two images
+make -C pi/os scan PANEL=<name>      # after make image: --image-lists on the built image, then --image against expected/
 # What CI's image legs run on their build, in this order (make scan runs the first and the last; the build's host
 # mcopy, mdir and unsquashfs first on PATH:
-# PATH="$KC_WORK/out/host/bin:$PATH"); IMG is $KC_WORK/out/images/keepcrypt-pi-0.0.0-st7789-240x240.img, KCONFIG the
+# PATH="$KC_WORK/out/host/bin:$PATH"); IMG is $KC_WORK/out/images/keepcrypt-pi-0.0.0-<name>.img, KCONFIG the
 # one $KC_WORK/out/build/linux-*/.config and BIN_SHA256 the SHA-256 of the keepcrypt-pi cargo built, in
 # $KC_WORK/out/build/keepcrypt-pi-0.0.0/target/arm-unknown-linux-gnueabihf/release/ (so the packed binary is that file):
 scripts/banned-api-check.sh --image-lists IMG KCONFIG          # the listing pi/os/expected/ was reviewed from; not a scan
 scripts/banned-api-check.sh --selftest-image IMG KCONFIG       # the scan's positive controls, as mutations of the built image
 scripts/banned-api-check.sh --image IMG pi/os/expected KCONFIG BIN_SHA256   # the scan; a hit fails the leg before
                                      # leg a's upload, so an uploaded image passed it
-scripts/canaries.sh                  # 73 checks: proves every gate still fires, the scan's positive controls included
+sh scripts/panels-differ.sh NAME=SHA256 NAME=SHA256...   # pi-image panels differ, on a run that builds two or more
+                                     # panels: each one's BIN_SHA256 (leg a's); exit 1 if two are equal, since a name
+                                     # then never reached the compiler
+scripts/canaries.sh                  # 76 checks: proves every gate still fires, the scan's positive controls included
 ```
 
 ## Definition of done (every task)
