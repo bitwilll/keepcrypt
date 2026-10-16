@@ -4,8 +4,8 @@
 # Run from the repo root. Exit 0 only if every canary failed as intended, every static check and
 # control passed, and the number of checks run equals the pin at the end.
 # Needs cargo-deny, git, and python3 3.11 or later (tomllib, for the static checks; CI runs 3.12),
-# a C compiler for the host (the release probe builds secp256k1-sys), and the pinned toolchain's
-# llvm-tools-preview (the artifact scan's llvm-nm).
+# a C compiler for the host (the release probe builds secp256k1-sys), the pinned toolchain's
+# llvm-tools-preview (the artifact scan's llvm-nm), and GNU make (the image path's panel name).
 # Needs the network only to fetch locked crates (deny-banned, clippy, agreement-core, cargo
 # fetch); the steps that add a crate or a git source resolve and check offline.
 set -u
@@ -1095,6 +1095,43 @@ for panel in nonsense ""; do
     verdict
 done
 
+# The image path's panel name (tasks/todo.md, M4b B3; Q47 (a)), which never relies on the HAT that
+# pi/app gives when no name is set: make image, repro-check and scan must stop while
+# pi/os/Makefile is parsed, with the list, when PANEL is missing, empty or not a name in PANELS;
+# a PANELS and PANEL_NAME given on the command line must not get an unlisted name past that check
+# (both are override); and keepcrypt-pi.mk, read as Buildroot reads it, must stop when
+# KEEPCRYPT_PI_PANEL is empty. make -n on a copy of pi/os under $work (the Makefile refuses a path
+# with a space), with a KC_WORK that does not exist: a refusal that stopped firing would print
+# recipe lines ("pi/os: ...") or a recipe's error ("] Error "), and not the text. The goals differ
+# so that each one of the Makefile's three is held to the check. A PANEL in the caller's
+# environment would be the name, so it goes.
+unset PANEL
+pm="$work/panel-make/Entropy/pi/os"
+mkdir -p "$work/panel-make/Entropy/pi" || exit 1
+cp -R "$root/pi/os" "$pm" || exit 1
+# panel_make NAME GOAL TEXT [VAR=VALUE...]: make -n GOAL on the copy must stop with TEXT and the list.
+panel_make() {
+    name=$1
+    goal=$2
+    text=$3
+    shift 3
+    expect_failure "$name" make -n --no-print-directory -C "$pm" "$goal" KC_WORK="$work/kc-work" "$@"
+    need "*** $text; make image, repro-check and scan need PANEL=<name>, one of: st7789-240x240"
+    never "pi/os: "
+    never "] Error "
+    verdict
+}
+panel_make panel-make-unset image "PANEL is not set"
+panel_make panel-make-empty scan "PANEL is empty" PANEL=
+panel_make panel-make-unlisted repro-check 'PANEL="nonsense" is not a name in the list' PANEL=nonsense
+panel_make panel-make-override image 'PANEL="nonsense" is not a name in the list' \
+    PANEL=nonsense PANELS=nonsense PANEL_NAME=nonsense
+expect_failure "panel-mk-empty" make -n --no-print-directory \
+    -f "$pm/package/keepcrypt-pi/keepcrypt-pi.mk" BR_BUILDING=y BR2_PACKAGE_KEEPCRYPT_PI=y \
+    KC_WORK="$work/kc-work" KEEPCRYPT_PI_PANEL=
+need "*** keepcrypt-pi: KEEPCRYPT_PI_PANEL is empty; build the image with Entropy/pi/os/Makefile and PANEL=<name>"
+verdict
+
 # pi-image panels differ (tasks/todo.md, M4b B4; Q47 (a)): two screen types whose keepcrypt-pi
 # binaries have the same SHA-256 must fail scripts/panels-differ.sh, naming both, since equal
 # binaries mean a panel name never reached the compiler. The image workflow runs the check only on
@@ -1277,7 +1314,7 @@ cp "$root/core/examples/release_probe.rs" "$tmp/core/examples/release_probe.rs" 
 
 # The number of checks above, pinned, so a canary that is deleted, or skipped by a broken branch,
 # turns CI red too. A real change to the canaries updates this pin in the same reviewed change.
-want_checks=76
+want_checks=81
 if [ "$checks" -ne "$want_checks" ]; then
     echo "FAIL: $checks checks ran; scripts/canaries.sh pins $want_checks"
     status=1
