@@ -751,9 +751,28 @@ fn st7789_240x240_selects_the_hat_and_each_name_its_profile() {
     }
 }
 
+/// A name that differs from a `PROFILES` name in one byte, the first, the last or any between, has
+/// that name's length, so only `same`'s byte compare tells them apart: it must, or a mistyped name
+/// of the right length would select that profile (rule 3).
+#[test]
+fn a_name_one_byte_off_a_profiles_name_is_not_the_same() {
+    for profile in PROFILES {
+        let name = profile.name.as_bytes();
+        assert!(same(name, name), "{}", profile.name);
+        for i in 0..name.len() {
+            let mut near = name.to_vec();
+            near[i] ^= 0x01;
+            assert!(!same(name, &near), "{}, byte {i} changed", profile.name);
+            assert!(!same(&near, name), "{}, byte {i} changed", profile.name);
+        }
+    }
+}
+
 // An unknown or empty name panics with fixed text, which in `PANEL`'s const evaluation stops the
 // build (scripts/canaries.sh: panel-name-nonsense and panel-name-empty). The HAT's name with a
-// trailing space agrees with it in every byte the HAT's name has, so only the length refuses it.
+// trailing space agrees with it in every byte the HAT's name has, so only the length refuses it;
+// with its last or its first byte changed it has the HAT name's length, so only the byte compare
+// refuses it.
 #[test]
 #[should_panic(expected = "KEEPCRYPT_PI_PANEL is empty or names no profile in PROFILES")]
 fn an_unknown_panel_name_panics() {
@@ -770,4 +789,16 @@ fn an_empty_panel_name_panics() {
 #[should_panic(expected = "KEEPCRYPT_PI_PANEL is empty or names no profile in PROFILES")]
 fn a_panel_name_with_a_trailing_space_panics() {
     select(Some("st7789-240x240 "));
+}
+
+#[test]
+#[should_panic(expected = "KEEPCRYPT_PI_PANEL is empty or names no profile in PROFILES")]
+fn a_panel_name_one_byte_off_at_its_end_panics() {
+    select(Some("st7789-240x241"));
+}
+
+#[test]
+#[should_panic(expected = "KEEPCRYPT_PI_PANEL is empty or names no profile in PROFILES")]
+fn a_panel_name_one_byte_off_at_its_start_panics() {
+    select(Some("tt7789-240x240"));
 }
