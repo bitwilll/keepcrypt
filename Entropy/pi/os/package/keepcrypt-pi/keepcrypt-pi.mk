@@ -25,6 +25,12 @@ ifeq ($(BR_BUILDING)$(BR2_PACKAGE_KEEPCRYPT_PI),yy)
 ifeq ($(KC_WORK),)
 $(error keepcrypt-pi: KC_WORK is not set; build the image with Entropy/pi/os/Makefile)
 endif
+# The screen type (tasks/todo.md, M4b B3): pi/os/Makefile's make image passes its checked
+# PANEL=<name> as KEEPCRYPT_PI_PANEL. Empty, it would stop the compile in pi/app's PANEL too, but
+# only after the toolchain and the kernel are built; this stops the build before anything runs.
+ifeq ($(KEEPCRYPT_PI_PANEL),)
+$(error keepcrypt-pi: KEEPCRYPT_PI_PANEL is empty; build the image with Entropy/pi/os/Makefile and PANEL=<name>)
+endif
 endif
 
 # No cargo, rustc or rustup setting from the build host reaches the binary: every CARGO_* and
@@ -33,7 +39,9 @@ endif
 # CARGO_ENCODED_RUSTFLAGS, for one, would replace the getrandom cfg below and bring back
 # getrandom's fallback to the kernel's random device file (rule 3); a profile override, a wrapper
 # or another toolchain would change the binary. The getrandom backend is set for this target alone, as CI's cross job
-# sets it; C code (secp256k1-sys) and the link use Buildroot's ARMv6 toolchain.
+# sets it; C code (secp256k1-sys) and the link use Buildroot's ARMv6 toolchain. KEEPCRYPT_PI_PANEL,
+# the screen type whose profile pi/app's PANEL compiles in, is set here too, not left to whatever
+# environment Buildroot runs the build in (M4b B3).
 define KEEPCRYPT_PI_BUILD_CMDS
 	cd $(@D) && \
 	unset $$(env | sed -nE 's/^(CARGO_[A-Z0-9_]+|RUSTC[A-Z0-9_]*|RUSTFLAGS|RUSTDOCFLAGS|RUSTUP_TOOLCHAIN)=.*/\1/p') && \
@@ -43,17 +51,20 @@ define KEEPCRYPT_PI_BUILD_CMDS
 		AR_arm_unknown_linux_gnueabihf="$(TARGET_AR)" \
 		CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER="$(TARGET_CC)" \
 		CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_RUSTFLAGS='--cfg getrandom_backend="linux_getrandom"' \
+		KEEPCRYPT_PI_PANEL="$(KEEPCRYPT_PI_PANEL)" \
 		cargo build --release --locked --offline -p keepcrypt-pi --bin keepcrypt-pi \
 			--target arm-unknown-linux-gnueabihf
 endef
 
-# The installed file is the image's: it is never stripped, so the SHA-256 printed here is the one
-# the image scan finds for /usr/bin/keepcrypt-pi, and the Makefile's scan target hashes the file
-# in $(@D)/target/ itself as the BIN_SHA256 that /usr/bin/keepcrypt-pi must equal.
+# The installed file is the image's: it is never stripped, so the SHA-256 printed here, next to
+# the screen type it was built for, is the one the image scan finds for /usr/bin/keepcrypt-pi, and
+# the Makefile's scan target hashes the file in $(@D)/target/ itself as the BIN_SHA256 that
+# /usr/bin/keepcrypt-pi must equal.
 define KEEPCRYPT_PI_INSTALL_TARGET_CMDS
 	$(INSTALL) -D -m 0755 $(@D)/target/arm-unknown-linux-gnueabihf/release/keepcrypt-pi \
 		$(TARGET_DIR)/usr/bin/keepcrypt-pi
-	cd $(TARGET_DIR) && sha256sum usr/bin/keepcrypt-pi
+	cd $(TARGET_DIR) && sum=$$(sha256sum usr/bin/keepcrypt-pi) && \
+		printf 'KEEPCRYPT_PI_PANEL=%s %s\n' "$(KEEPCRYPT_PI_PANEL)" "$$sum"
 endef
 
 $(eval $(generic-package))

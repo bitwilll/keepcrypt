@@ -9206,6 +9206,19 @@ What does not change, in M4 or M4b (Q44-Q50):
     (group 13's `env -u RUSTFLAGS` line), because Buildroot runs cargo with its own environment. The .mk also refuses an
     empty value itself;
   - the image is named `keepcrypt-pi-0.0.0-<name>.img`, and the build log prints the name next to the binary's SHA-256.
+
+  Proof (M4b commit 5, local stubs; open until the image run at this commit shows real Buildroot): the Makefile checks
+  `PANEL` when parsing any run whose goals include `image`, `repro-check` or `scan`, so `make source image` stops before
+  `source` too; the error names the case (`PANEL is not set`, `PANEL is empty`, `PANEL="nonsense" is not a name in the
+  list`) and prints `PANELS`. On a space-free copy of pi/os with a stub KC_WORK, a stub `BR` and curl that log every
+  call and kconfig.sh stubbed, `image`, `repro-check`, `scan` and `source image` each exit 2 with no call logged for no
+  `PANEL`, `PANEL=` and `PANEL=nonsense` (also two names, `%` and `st7789-240x320`). `PANEL=st7789-240x240` passes
+  `KEEPCRYPT_PI_PANEL=st7789-240x240` to both Buildroot builds, and `mv` names genimage's `keepcrypt-pi.img`
+  `keepcrypt-pi-0.0.0-st7789-240x240.img`; `repro-check` ends "pi/os: both builds gave the same image". The real .mk,
+  included by a harness with `BR_BUILDING=y`, stops on an unset or empty `KEEPCRYPT_PI_PANEL`, gives a stub cargo
+  `KEEPCRYPT_PI_PANEL=st7789-240x240`, and prints `KEEPCRYPT_PI_PANEL=st7789-240x240 <SHA-256>  usr/bin/keepcrypt-pi`;
+  with its env line deleted, a name set only as a make variable reaches cargo as unset. The image workflow's make line
+  passes `PANEL=st7789-240x240` until commit 6's matrix.
 - [x] Why not the alternatives:
   - Not a cargo feature: the lint job runs `cargo clippy --workspace --all-targets --all-features`
     (entropy-ci.yml:128), which mutually exclusive features would break.
@@ -9217,6 +9230,10 @@ What does not change, in M4 or M4b (Q44-Q50):
   clean.
 - [ ] pi/os: the Makefile holds one list, `PANELS := st7789-240x240 st7789-240x320`, plus anything Q45 or Q50 adds.
   - config.txt, cmdline.txt, inittab, `expected/` and the kernel config are the same for every image (one pin map).
+
+  Open (M4b commit 5): `PANELS := st7789-240x240` alone, until commit 3 adds `st7789-240x320` with its profile (M4b lead
+  decision 4). No file under `board/`, `expected/` or `configs/` reads `PANEL` (only genimage.cfg's comment names it),
+  so every image gets the same config.txt, cmdline.txt, inittab, `expected/` and kernel config.
 
   Proof:
   - a unit test per name, and one showing that unset gives the HAT;

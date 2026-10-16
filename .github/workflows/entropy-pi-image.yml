@@ -130,8 +130,9 @@ jobs:
         with:
           path: ${{ env.KC_WORK }}/dl
           key: ${{ runner.os }}-${{ runner.arch }}-pi-image-dl-${{ hashFiles('Entropy/pi/os/pins.txt', 'Entropy/pi/os/configs/keepcrypt_pizero_defconfig', 'Entropy/pi/os/patches/linux/linux.hash') }}
+      # make image needs PANEL=<name>, one of pi/os/Makefile's PANELS (Q47 (a)): here the HAT's.
       - name: make source image
-        run: time make -C pi/os source image
+        run: time make -C pi/os source image PANEL=st7789-240x240
       # The job's outputs, for the compare job and the scan, and the image's lists (banned-api-check.sh
       # --image-lists, with the build's host mcopy, mdir and unsquashfs), the reviewed copy of which
       # lives in pi/os/expected/ (commit 16). The image is the one keepcrypt-pi-*.img the build made
