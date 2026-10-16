@@ -33,7 +33,7 @@ Phase 1 uses the same proven parts as SeedSigner, so builders can buy them anywh
 
 | Screen | Image | Wiring | Checked on hardware |
 | --- | --- | --- | --- |
-| [Waveshare 1.3-inch LCD HAT](https://www.waveshare.com/product/displays/lcd-oled/lcd-oled-3/1.3inch-lcd-hat.htm) | `keepcrypt-pi-<version>-st7789-240x240.img` | Plugs onto the 40-pin header | 2026-10-16, on the image whose SHA-256 begins `4b13c095` (boot screen hash prefix `76eb-725e-8163-7013`) |
+| [Waveshare 1.3-inch LCD HAT](https://www.waveshare.com/product/displays/lcd-oled/lcd-oled-3/1.3inch-lcd-hat.htm) | `keepcrypt-pi-<version>-st7789-240x240.img` | Plugs onto the 40-pin header | 2026-10-16, on the image whose SHA-256 begins `4b13c095` (boot screen hash prefix `76eb-725e-8163-7013`); boot check 2026-10-17 on the image whose SHA-256 begins `2cf22c74` (prefix `3949-9677-0e09-93b4`) |
 
 **Pin map used by the firmware: one pin map for every screen** (the HAT's, from the Waveshare spec):
 
