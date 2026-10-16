@@ -1110,13 +1110,16 @@ pm="$work/panel-make/Entropy/pi/os"
 mkdir -p "$work/panel-make/Entropy/pi" || exit 1
 cp -R "$root/pi/os" "$pm" || exit 1
 # panel_make NAME GOAL TEXT [VAR=VALUE...]: make -n GOAL on the copy must stop with TEXT and the list.
+# The list is pinned whole, up to the period make adds, so a name dropped from PANELS fails here:
+# nothing else would see it, as the image workflow would then build the HAT's image alone and
+# never run panels differ. A name that joins PANELS joins this line in the same change.
 panel_make() {
     name=$1
     goal=$2
     text=$3
     shift 3
     expect_failure "$name" make -n --no-print-directory -C "$pm" "$goal" KC_WORK="$work/kc-work" "$@"
-    need "*** $text; make image, repro-check and scan need PANEL=<name>, one of: st7789-240x240"
+    need "*** $text; make image, repro-check and scan need PANEL=<name>, one of: st7789-240x240 st7789-240x320."
     never "pi/os: "
     never "] Error "
     verdict
