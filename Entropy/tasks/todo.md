@@ -9091,7 +9091,7 @@ What does not change, in M4 or M4b (Q44-Q50):
 - [ ] The owner has the screens to be offered (Q49 (b)) and the switches.
   Open (M4b commit 1): asked 2026-10-16: the 1.54-inch module, the 2-inch module, a 5-way joystick switch, three
   push buttons and jumper wires (the 1.3-inch module is optional). Needed by B5 (H6) only; B1-B4 do not wait for it.
-- [ ] Where each module profile's values come from (Q49 (d)):
+- [x] Where each module profile's values come from (Q49 (d)):
   - Recommended: with the owner's yes, download one file, Waveshare's `LCD_Module_RPI_code.zip` from
     files.waveshare.com. It is linked from the 1.3, 1.54, 2 and 2.4-inch module wikis, whose file lists cover all four
     sizes. The lead states its size when asking. The file goes into its own new, empty directory and is read as data
@@ -9105,6 +9105,10 @@ What does not change, in M4 or M4b (Q44-Q50):
   (`Content-Length` of a HEAD request; `Last-Modified` 2023-12-25), from
   https://files.waveshare.com/upload/8/8d/LCD_Module_RPI_code.zip, the link on both the 2-inch and the 1.54-inch
   module wikis (read 2026-10-16). B2 waits for the answer; B1 does not.
+  Proof (the owner, 2026-10-16, "yes, download the Waveshare zip"; M4b commit 3f): downloaded into its own new folder
+  in the session scratchpad, read as data only, never committed: 12,380,597 bytes, SHA-256
+  07afa6be35a710a7e811435eb048e474988cee0946e8e6e99a11b59f0644f0ac, 152 entries ([S38]). Commit 3 pins the 2-inch
+  profile to its `LCD_2inch.c` and confirms the 1.3-inch and 1.54-inch files send the HAT's bytes.
 
 **B1. Docs, alone (first code-free commit)**
 - [x] PF:23:
@@ -9144,6 +9148,9 @@ What does not change, in M4 or M4b (Q44-Q50):
     otherwise from `LCD_2in.c` [S35] as a stand-in;
   - `madctl` `0x70`, `ram` 320×240, `origin` (40, 0);
   - the picture is landscape like the HAT's: joystick left, keys right.
+    (Open to H6, lead decision M4b-6: Waveshare's demos turn their pictures before MADCTL 0x70, by 180 degrees on the
+    2-inch and a quarter turn on the 1.3-inch and 1.54-inch modules, so which way up our unturned frame shows depends
+    on how a module sits. H6's picture check settles it; PF's wiring then says which edge goes where.)
 
   Proof (M4b commit 3): `cargo test -p keepcrypt-pi --locked --bin keepcrypt-pi -- device::panel`: 23 passed.
   `the_2_inch_modules_init_stream_is_its_files_with_the_listed_deviations` pins the init to `LCD_2inch.c`'s
@@ -9254,8 +9261,9 @@ What does not change, in M4 or M4b (Q44-Q50):
   decision 4). No file under `board/`, `expected/` or `configs/` reads `PANEL` (only genimage.cfg's comment names it),
   so every image gets the same config.txt, cmdline.txt, inittab, `expected/` and kernel config.
   Proof (M4b commit 3): `override PANELS := st7789-240x240 st7789-240x320`. On a space-free copy of pi/os, `make
-  panels` prints both, one a line; `make -n image`, `repro-check` and `scan` with `PANEL=st7789-240x320` pass the check
-  and give Buildroot `KEEPCRYPT_PI_PANEL=st7789-240x320` and `keepcrypt-pi-0.0.0-st7789-240x320.img`; no `PANEL`, an
+  panels` prints both, one a line; `make -n image` and `repro-check` with `PANEL=st7789-240x320` pass the check and
+  give Buildroot `KEEPCRYPT_PI_PANEL=st7789-240x320` and `keepcrypt-pi-0.0.0-st7789-240x320.img`, and `scan` (which
+  runs no Buildroot build) passes the check and scans that image name (corrected by 3f); no `PANEL`, an
   empty one, `nonsense` and both names at once stop with the two names listed. The grep of `board/`, `expected/` and
   `configs/` still finds only genimage.cfg's comment.
 
@@ -9380,6 +9388,11 @@ What does not change, in M4 or M4b (Q44-Q50):
 - M4b-5 (6c): stage B3B4's security review found the image workflow's every-panel paths left out
   `pi/app/src/device/linux.rs` (the only runtime user of `PANEL`) and `pi/app/src/main.rs` (the device module's gate);
   both are added, which only widens B4's list. Commit 6 also added `scripts/panels-differ.sh` to it.
+- M4b-6 (3f, 2026-10-17): the modules' picture orientation is left to H6. Waveshare's demos turn their pictures
+  before MADCTL 0x70 (the 2-inch by 180 degrees, the 1.3-inch and 1.54-inch by a quarter turn), so whether our
+  unturned frame is upright depends on how the module is mounted. A module can be turned to put it upright (any
+  quarter turn for the square panels, half a turn for the 2-inch), so no code waits on it; H6 checks it, and PF's
+  wiring then names the edge. A bring-up fix (commit 8) changes `madctl` only if turning cannot help.
 - M4b-3 (2f): no backlight step and no idle-wipe step join PF's listing rule. The BL wire's rule is in PF (2d); B5's
   H6 keeps its idle-wipe line for new screens; the HAT's black frame stays as M4's lead decision 22 left it.
 
@@ -9396,6 +9409,14 @@ What does not change, in M4 or M4b (Q44-Q50):
    Not acted on, with reasons: the docs ahead of code (the plan's order); a check that PF's names equal the
    Makefile's `PANELS` (optional; B3 may add it); a backlight step in the listing rule (decision M4b-3).
 3. pi/app (bin): the new profiles and their tests (B2).
+   As made (after commits 4-7, decision M4b-4): 93cf0a4 (`ST7789_240X320` pinned to [S38]'s `LCD_2inch.c` with each
+   deviation listed and tested, the HAT's bytes confirmed against the 1.3-inch and 1.54-inch files, `st7789-240x320`
+   joins `PANELS`). Stage B2's plan, security and recompute reviews: 9 findings, all low. Fixed: 3b 1a762c1 (the
+   1.3/1.54 test's doc names the backlight among the driver's own steps), 3c 6e38114 (the panel_make canaries pin
+   `PANELS`' whole list), 3d c0a88d2 (the workflow header names linux.rs and main.rs). The lead's: 3e 9fbe608 (a test
+   pins `PANELS` to the `PROFILES` names; dropping st7789-240x320 fails it) and 3f (this file: B0's download item,
+   [S38], the orientation note and decision M4b-6, B3's `scan` proof corrected). The stage suite at c0a88d2 passed
+   (cargo test 457 passed, 3 ignored; 458 with 3e; canaries 81 under sh and dash).
 4. pi/app (bin), scripts: `KEEPCRYPT_PI_PANEL` selection and its canaries (B3).
    As made: aef5ff7 (before commit 3, decision M4b-4); 4b a6e035f (review fix: the tests refuse a name one byte off
    a `PROFILES` name at its first, last or any byte, which the byte loop in `same` needs).
@@ -10441,6 +10462,26 @@ Every finding of the plan's spec, security and feasibility review was accepted; 
   - the Raspberry Pi demo's file list on the 2 and 2.4-inch wikis (Python tests for 0.96, 1.14, 1.28, 1.3, 1.47, 1.54,
     1.8, 2 and 2.4 inch; no 1.69);
   - the prices quoted in Q49.
+- [S38] Waveshare's Raspberry Pi module code archive, downloaded with the owner's yes (2026-10-16):
+  `LCD_Module_RPI_code.zip`, https://files.waveshare.com/upload/8/8d/LCD_Module_RPI_code.zip (linked from the
+  2-inch and 1.54-inch module wikis), 12,380,597 bytes, SHA-256
+  07afa6be35a710a7e811435eb048e474988cee0946e8e6e99a11b59f0644f0ac, `Last-Modified` 2023-12-25. Read as data only,
+  never committed. The files commit 3 cites, by path under `LCD_Module_RPI_code/RaspberryPi/` and SHA-256:
+  - `c/lib/LCD/LCD_2inch.c` 4dc89777c71ce0f4f9e543d322df3432d1dbae5c48bc65bbad123fc477073689 (the 2-inch init);
+  - `c/lib/LCD/LCD_2inch.h` 5a49c4c9d2ff65ab7ae180a9de0eaaa43f749f66806e0a9390dab33eee08d666;
+  - `c/lib/LCD/LCD_1in3.c` 77520a61d1485dc6a4f681dc8e5cfd38570fff5b322ac0e05c6ec924d1dc719f;
+  - `c/lib/LCD/LCD_1in54.c` c556d394588f00edb055cd11a34000e3839ea6a2acdd62984b6d655772abb25d;
+  - `c/examples/LCD_2in_test.c` fbc7eebb57b1eb18da7ecc4f0edd1a794debd37f78cc95bf4ba98fa72a02d187;
+  - `c/examples/LCD_1in3_test.c` 28f50ec18a72614a8e8f154e0157f8e038fd47b0ef6d1b6685b18a076bc1f266;
+  - `c/examples/LCD_1in54_test.c` 9352a6058aef10b3a47dfba343452a7807ae6dae9a5ff675a457a49b52f20ebc;
+  - `c/lib/Config/DEV_Config.c` a73f63b619cbc7e686380885af16d09f09c9043d34652c5ebb50d720d2d91ab3;
+  - `python/lib/LCD_2inch.py` 9a7ed52e50292b1163289f69e139f1ac7e6fea9f1920a717652e1ea6f8dcb66b;
+  - `python/lib/LCD_1inch3.py` 16f756df437b13d05f62e1fa86552746d36e23b9e3e2af5c355eb77fb7769105;
+  - `python/lib/LCD_1inch54.py` d0ad8242638982c5efdac9053cc2728891906c5906c93e5f9900d0dbeb741ee5;
+  - `python/lib/lcdconfig.py` 3acbd379c903d530fb63bba75472e92cbc4e7cd0a584016062aa5a4e71e0aa69 (40 MHz, mode 0);
+  - `python/example/2inch_LCD_test.py` 5f6c7b1f9925810085e0da5aa55f089dcc0a6e9da79f902e1788fffd672a9f99.
+  The C and Python libraries agree on every 2-inch init byte; the 1.3-inch and 1.54-inch files equal the HAT's
+  approved bytes.
 
 ---
 
