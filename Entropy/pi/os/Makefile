@@ -82,9 +82,11 @@ OUT := $(KC_WORK)/out
 # profile pi/app gives when no name is set: image, repro-check and scan take the name from
 # PANEL=<name> and, before anything runs, refuse a PANEL that is missing, empty or not exactly one
 # name of PANELS, and print the list. PANEL_NAME, the listed name, is what the build uses, never
-# PANEL's own text.
-PANELS := st7789-240x240
-PANEL_NAME := $(if $(filter 1,$(words $(PANEL))),$(filter $(PANELS),$(PANEL)))
+# PANEL's own text. PANELS, PANEL_NAME and the two variables below that carry the name (IMAGE,
+# BR_IMAGE) are override: a value given on the command line or, with make -e, in the environment
+# is ignored, so no invocation skips the refusal or hands the build an unlisted name.
+override PANELS := st7789-240x240
+override PANEL_NAME := $(if $(filter 1,$(words $(PANEL))),$(filter $(PANELS),$(PANEL)))
 PANEL_USAGE := make image, repro-check and scan need PANEL=<name>, one of: $(PANELS)
 ifneq ($(filter image repro-check scan,$(MAKECMDGOALS)),)
 ifeq ($(PANEL_NAME),)
@@ -97,7 +99,7 @@ $(error PANEL="$(PANEL)" is not a name in the list; $(PANEL_USAGE))
 endif
 endif
 endif
-IMAGE := keepcrypt-pi-0.0.0-$(PANEL_NAME).img
+override IMAGE := keepcrypt-pi-0.0.0-$(PANEL_NAME).img
 BR := BR2_DL_DIR=$(KC_WORK)/dl $(MAKE) -C $(BR_SRC) O=$(OUT) BR2_EXTERNAL=$(OS)
 # make image never downloads. Buildroot takes a file already in dl/ that has its pinned hash, and
 # looks for any other only at its primary site, here dl/ itself (package/pkg-download.mk's
@@ -109,7 +111,7 @@ BR_OFFLINE := $(BR) BR2_PRIMARY_SITE=file://$(KC_WORK)/dl BR2_PRIMARY_SITE_ONLY=
 # cargo's environment, pi/app's PANEL reads it when keepcrypt-pi is compiled, and the .mk refuses
 # an empty one. The Buildroot tree builds keepcrypt-pi.img (board/pizero/genimage.cfg) whatever the
 # name; make image then names it $(IMAGE).
-BR_IMAGE := $(BR_OFFLINE) KEEPCRYPT_PI_PANEL=$(PANEL_NAME)
+override BR_IMAGE := $(BR_OFFLINE) KEEPCRYPT_PI_PANEL=$(PANEL_NAME)
 
 # check-pins DIR, PINS: each "hash file:SHA-256:file" of PINS must be a line of DIR's hash file.
 define check-pins
