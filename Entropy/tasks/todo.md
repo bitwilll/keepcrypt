@@ -9060,6 +9060,9 @@ stale (Q43 (d)).
 **M4b: more Waveshare screens (`m4b-screens`, after the M4 gate is approved; Q45-Q50)**
 M4b gets its own branch and PR, with its own gate, which the owner approves before the work starts. Commands, budgets and
 the required check names are unchanged.
+Status (M4b commit 1, 2026-10-16): the owner approved the M4 gate ("approved, merge it"; PR #7 merged as 95c4359) and
+then said "go ahead with M4b", read as approving this plan and its proposed gate (B6). Branch `m4b-screens` starts
+from 95c4359.
 
 What does not change, in M4 or M4b (Q44-Q50):
 - The M4 gate (BP:294), the answers to Q35-Q43 and the four approved crates (rule 11).
@@ -9077,8 +9080,16 @@ What does not change, in M4 or M4b (Q44-Q50):
   - pi/sim keeps its 240×240 panel (pi/sim/src/panel.rs:27-28, :44).
 
 **B0. Before code**
-- [ ] Record the owner's answers to Q44-Q50.
+- [x] Record the owner's answers to Q44-Q50.
+  Proof (M4b commit 1): answered 2026-10-14, "approve all", so every recommendation stands ("Raised by the owner's
+  screen request", above): Q44 one data block per screen type (built in M4); Q45 the 1.54-inch and 2-inch modules,
+  with the 1.3-inch module on the HAT's block, and the 2.4-inch and 1.69-inch revisited after the 2-inch works; Q46
+  the same centred 240×240 picture on every screen; Q47 one image per screen type, chosen when CI builds it; Q48 one
+  pin map for every screen, backlight on BCM 24; Q49 H6 per screen, the owner buys the screens, M4b as a short step
+  after M4, and one Waveshare download with the owner's yes; Q50 did not apply (H1a's colours were true).
 - [ ] The owner has the screens to be offered (Q49 (b)) and the switches.
+  Open (M4b commit 1): asked 2026-10-16: the 1.54-inch module, the 2-inch module, a 5-way joystick switch, three
+  push buttons and jumper wires (the 1.3-inch module is optional). Needed by B5 (H6) only; B1-B4 do not wait for it.
 - [ ] Where each module profile's values come from (Q49 (d)):
   - Recommended: with the owner's yes, download one file, Waveshare's `LCD_Module_RPI_code.zip` from
     files.waveshare.com. It is linked from the 1.3, 1.54, 2 and 2.4-inch module wikis, whose file lists cover all four
@@ -9089,6 +9100,10 @@ What does not change, in M4 or M4b (Q44-Q50):
   - Otherwise: profiles are pinned to Waveshare's Pico-board drivers [S34, S35], labelled in each test's doc as a
     stand-in, and H6 is the only confirmation for the modules. The 2.4-inch and the 1.69-inch cannot be added without a
     download.
+  Open (M4b commit 1): the download is asked of the owner, 2026-10-16: `LCD_Module_RPI_code.zip`, 12,380,597 bytes
+  (`Content-Length` of a HEAD request; `Last-Modified` 2023-12-25), from
+  https://files.waveshare.com/upload/8/8d/LCD_Module_RPI_code.zip, the link on both the 2-inch and the 1.54-inch
+  module wikis (read 2026-10-16). B2 waits for the answer; B1 does not.
 
 **B1. Docs, alone (first code-free commit)**
 - [ ] PF:23:
@@ -9122,8 +9137,9 @@ What does not change, in M4 or M4b (Q44-Q50):
 - [ ] The 1.3-inch and 1.54-inch modules use `WAVESHARE_1IN3_HAT` unchanged, because Waveshare's values for these sizes
   are identical [S34], to be confirmed against the archive if Q49 (d) is yes. If H6 shows that a module needs a lower
   bus speed over jumper wires, it gets its own profile and image.
-- [ ] If Q50 made `WAVESHARE_1IN3_HAT_B` in M4, it gets its own image name here (`st7789-240x240-b`).
-- [ ] Only if Q45 adds them:
+- [x] If Q50 made `WAVESHARE_1IN3_HAT_B` in M4, it gets its own image name here (`st7789-240x240-b`).
+  Not applicable (M4b commit 1): Q50 made no second HAT block, since H1a's colours were true.
+- [x] Only if Q45 adds them:
   - `ILI9341_240X320`: one more profile under the same driver, not a second driver. The driver's own steps (reset,
     MADCTL, SLPOUT, CASET, RASET, RAMWR, DISPON) use the same opcodes on the ILI9341, and its frame memory is also
     240×320.
@@ -9149,6 +9165,8 @@ What does not change, in M4 or M4b (Q44-Q50):
   - wipe size and write count;
   - byte order;
   - the `PROFILES` checks from group 5.
+  Not in M4b (M4b commit 1): Q45 as recommended revisits the 2.4-inch and the 1.69-inch after the 2-inch works, as
+  their own later step with their own download.
 
 **B3. Selection when the image is built (Q47 (a))**
 - [ ] `PANEL` (group 5's one line) becomes the profile named by `option_env!("KEEPCRYPT_PI_PANEL")`, resolved in a
@@ -9235,6 +9253,8 @@ What does not change, in M4 or M4b (Q44-Q50):
 
 **Commit order on `m4b-screens`**
 1. tasks/todo.md: the M4b plan and the owner's answers to Q44-Q50.
+   (As made, 2026-10-16: the answers and the go-ahead recorded, B0's two owner items asked, Q45's and Q50's
+   conditional items closed as not in M4b, and main's post-merge image run recorded for M4.)
 2. docs: B1, alone.
 3. pi/app (bin): the new profiles and their tests (B2).
 4. pi/app (bin), scripts: `KEEPCRYPT_PI_PANEL` selection and its canaries (B3).
@@ -9297,9 +9317,13 @@ What does not change, in M4 or M4b (Q44-Q50):
   Proof (21e, the run at b9a22c9, 21e's parent; lead decision 25): image run 38898547995 (`pull_request`): both legs on fresh runners and `pi-image
   reproducible (a = b)` green, `IMAGE: a 4b13c095..., b 4b13c095...` (compare job 116972352888). Nine runs since a4598b5 give the one hash.
   Main's push run after merge is the next item.
-- [ ] **After merge: main's push run of the image workflow gives the same hash**, recorded in the PR conversation and in
+- [x] **After merge: main's push run of the image workflow gives the same hash**, recorded in the PR conversation and in
   M5's Inputs (split from the gate item by lead decision 25; the build-plan gate line is met by the PR head's runs).
   M5's first commit ticks it, since no commit of this PR can follow the merge.
+  Proof (M4b commit 1, the first commit after the merge): main's push runs on 95c4359: Entropy CI 38914588096
+  (14 of 14 green) and Entropy Pi image 38914587720: "both legs built 95c435983fc7dc0d23e1273c6d7ef4c39ef39d31 into keepcrypt-pi-0.0.0-st7789-240x240.img, SHA-256 4b13c095..., and both scans passed" (compare job 117028048068). Recorded in PR #7's
+  conversation (comment 6217879052). The plan said M5's first commit; M4b's comes first, so it records it, and M5's
+  Inputs will carry it when M5's plan is written.
 - [x] **Gate: the watch-only QR imports into Sparrow and Bitcoin Core with the same first address.** H4:
   - Sparrow scans the account QR off the panel (swb:218);
   - Core imports the descriptor text decoded off the panel (swb:222-227);
