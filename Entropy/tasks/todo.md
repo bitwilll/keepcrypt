@@ -9609,7 +9609,8 @@ The PR is a draft from commit 1.
     superseded before any hardware session (lead decision under the owner's standing instruction of 2026-10-15).
     15n. tasks/todo.md: H1a's image is run 38690004157's (a4598b5, both legs equal): `keepcrypt-pi-0.0.0-st7789-240x240.img`,
     36,426,240 bytes, SHA-256 `4b13c095f76c4a42efc67090fec96650d070a385bb8a58b4fd7067c0d936adde`, prefix
-    `76eb-725e-8163-7013`, artifact 11951494588 (kept until 2026-10-29). Its kernel has 515 built-in options; its
+    `76eb-725e-8163-7013`, artifact 11951494588 (kept until 2026-10-29). Its kernel has 514 built-in options (the
+    `=y` lines of `expected/linux.config`, commit 16's copy of this image's config; this entry said 515 until 20d); its
     root holds BusyBox, keepcrypt-pi, the loader, libc, libm, libgcc_s and os-release. The lead downloaded the
     artifact and checked the hash. Sent to the owner with H1a's checklist on 2026-10-15.
 16. pi/os: `expected/` (lists and `linux.config`) from the run after H1a passes, reviewed line by line (group 15).
@@ -9710,6 +9711,8 @@ The PR is a draft from commit 1.
     PR head's run (and, for the image-hash gate, main's push run after merge), which commit 21 reads (decision 20):
     group 15's bootstrap of `expected/`, group 18's budgets, and Verification's image-hash gate, Matrix "Reproducible
     build" and CI. Their Proof lines keep the de70f56 evidence; the gate report reads "met at de70f56".
+    20d. tasks/todo.md: 15n says the H1a image's kernel has 514 built-in options, as `grep -c '=y$'
+    pi/os/expected/linux.config`, the commit 16 note and the Review count; it said 515, a second figure for one config.
 21. tasks/todo.md: the owner's H records and verdict. Its image run must give the gate image's hash; the PR description
     names that run.
 
