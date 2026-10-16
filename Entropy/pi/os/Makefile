@@ -17,6 +17,8 @@
 #                                       cargo built, so the packed binary is proved to be that
 #                                       file), with the build's host tools first on PATH; it never
 #                                       rebuilds, and refuses to run without an image or that file
+#   make -C Entropy/pi/os panels        print PANELS below, one name a line: the screen types the
+#                                       image workflow builds
 #
 # image, repro-check and scan are for one screen type and need PANEL=<name>, a name in PANELS
 # below, as in make -C Entropy/pi/os image PANEL=st7789-240x240.
@@ -122,7 +124,7 @@ define print-time
 	@printf 'pi/os: SOURCE_DATE_EPOCH=%s TZ=%s KC_WORK=%s\n' "$$SOURCE_DATE_EPOCH" "$$TZ" "$(KC_WORK)"
 endef
 
-.PHONY: source image repro-check scan
+.PHONY: source image repro-check scan panels
 
 source:
 	$(print-time)
@@ -183,3 +185,8 @@ scan:
 	PATH="$(OUT)/host/bin:$$PATH" sh $(ENTROPY)/scripts/banned-api-check.sh --image-lists $(OUT)/images/$(IMAGE) "$$1" && \
 	hash=$$(sha256sum $(BUILT_BIN)) && hash=$${hash%% *} && \
 	PATH="$(OUT)/host/bin:$$PATH" sh $(ENTROPY)/scripts/banned-api-check.sh --image $(OUT)/images/$(IMAGE) $(OS)/expected "$$1" "$$hash"
+
+# The screen types, one name a line, for the image workflow's matrix (tasks/todo.md, M4b B4): its
+# first job reads them from here at the commit it builds, so PANELS stays the one list.
+panels:
+	@printf '%s\n' $(PANELS)

@@ -1095,6 +1095,17 @@ for panel in nonsense ""; do
     verdict
 done
 
+# pi-image panels differ (tasks/todo.md, M4b B4; Q47 (a)): two screen types whose keepcrypt-pi
+# binaries have the same SHA-256 must fail scripts/panels-differ.sh, naming both, since equal
+# binaries mean a panel name never reached the compiler. The image workflow runs the check only on
+# a run that builds two or more panels, so this canary keeps it firing on every gates run.
+sha=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+expect_failure "panels-differ-equal" sh "$root/scripts/panels-differ.sh" \
+    "st7789-240x240=$sha" "st7789-240x320=$sha"
+need "FAIL: pi-image panels differ: st7789-240x240 and st7789-240x320 have the same keepcrypt-pi SHA-256, so a panel name did not reach the compiler: $sha"
+need "pi-image panels differ: 1 pair(s) of panels share a keepcrypt-pi SHA-256"
+verdict
+
 # The workflow hardening check (tasks/todo.md, M4 group 11; Q38 (d)): a copy of the real
 # entropy-ci.yml with every rule broken once (the top-level token widened to write, which also
 # loses contents: read, and a job that runs on workflow_run, uses an action by tag, pastes an
@@ -1266,7 +1277,7 @@ cp "$root/core/examples/release_probe.rs" "$tmp/core/examples/release_probe.rs" 
 
 # The number of checks above, pinned, so a canary that is deleted, or skipped by a broken branch,
 # turns CI red too. A real change to the canaries updates this pin in the same reviewed change.
-want_checks=75
+want_checks=76
 if [ "$checks" -ne "$want_checks" ]; then
     echo "FAIL: $checks checks ran; scripts/canaries.sh pins $want_checks"
     status=1

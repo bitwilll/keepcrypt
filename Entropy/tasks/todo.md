@@ -9247,10 +9247,33 @@ What does not change, in M4 or M4b (Q44-Q50):
   - every panel when the PR touches `Entropy/pi/app/src/device/panel.rs`, `Entropy/pi/app/src/device/panel/**`,
     `Entropy/pi/os/**` or the workflow file itself;
   - every panel weekly and on `workflow_dispatch`.
+
+  Proof (M4b commit 6, local stubs; open until the image runs show GitHub's matrix): the first job, `pi-image
+  panels`, reads `PANELS` at the commit built with the Makefile's new `panels` target (one name a line) and gives
+  the legs and compare jobs `include` entries of panel and slot. A pull request's or push's range is git diff's
+  three-dot one from `base.sha` or `before`, over the four paths and `Entropy/scripts/panels-differ.sh` (added: a
+  change to the check runs it); exit 0 gives the HAT alone, exit 1, no base or an unreadable range every panel;
+  `schedule` and `workflow_dispatch` every panel. Its run block, extracted with `ruby -ryaml` and run under `bash
+  -eo pipefail` in a scratch clone: with two names in `PANELS`, a range that changes pi/os gives both
+  (`several=true`), a docs-only pull request or push and a base-side pi/os change the HAT alone, `schedule` both,
+  a zero `before` or no base both; a list without the HAT, with a name twice, an upper-case name or nine names
+  fails.
 - [ ] Each panel gets:
   - two legs and its compare job;
   - the scan: `--image` against the one `expected/`, with `BIN_SHA256` from its own legs;
   - the upload.
+
+  Proof (M4b commit 6, local stubs; open until the image run at this commit): `build-a` and `build-b` share one
+  strategy (an anchor: `fail-fast: false`, `include` from the panels job) and run `make -C pi/os source image
+  PANEL="$PANEL"`; Hash and list also fails unless the one image is `keepcrypt-pi-0.0.0-<panel>.img` (stub run:
+  the other panel's name refused, no output written); the scan still takes `BIN_SHA256` from its own leg's hash
+  step; leg a's upload still follows both scans, its artifact named by the image file, so each panel's differs. A
+  matrix job's outputs are one map, so a last step (`if: !cancelled()`) writes the leg's panel, `job.status` and
+  hashes as JSON to the panel's slot (`s0`-`s7`). `pi-image reproducible (a = b, <panel>)` reads both legs' slot
+  and fails unless both gave a result for its panel, the images are equal and both built the panels job's commit
+  and succeeded. Stub runs: equal legs write the summary; differing images, a failed or missing leg, another
+  panel's result, differing commits, another commit than the panels job's and an empty image hash each fail with
+  their message and no summary.
 - [ ] **`pi-image panels differ`**: it needs every panel's compare job and fails if any two panels' `BIN_SHA256` are
   equal.
   - Profiles differ in data, so equal binaries mean a name never reached the compiler.
@@ -9259,10 +9282,32 @@ What does not change, in M4 or M4b (Q44-Q50):
   - The check is a short script under `scripts/` with a `--selftest` that feeds it two equal hashes and expects a
     failure (its canary).
   - M7 signs release images only from a run where this job is green.
+
+  Proof (M4b commit 6; the job first runs once commit 3 lists a second panel): `scripts/panels-differ.sh
+  NAME=SHA256...` exits 1 naming each pair with one hash, 2 on usage; `--selftest` gives "7 passed, 0 failed" under
+  sh and dash (two equal hashes exit 1, the canary; a third equal to the first; two different pass; one panel, a
+  name twice, an empty and an upper-case hash refused), and a copy whose comparison never fires fails it (5 passed,
+  2 failed). The gates job runs the selftest; canaries.sh's `panels-differ-equal` makes 76 checks. The job needs
+  the panels job, leg a and every compare job, runs when the panels job gives `several=true`, and checks each slot
+  holds its panel's result from the panels job's commit before calling the script. Stub runs: different binaries
+  pass and write the summary; equal binaries, a missing or swapped slot, another commit and an empty binary fail.
 - [ ] Job names carry the panel, for example `pi-image build (a, st7789-240x320)`, and collide with none of the 14
   required names.
+
+  Proof (M4b commit 6; the rendered names are the run's): `pi-image panels`, `pi-image build (a, ${{ matrix.panel
+  }})`, `pi-image build (b, ...)`, `pi-image reproducible (a = b, ...)` and `pi-image panels differ`. Each starts
+  with `pi-image`, which none of the 14 required names does.
 - [ ] The step summary lists, per panel, the commit, the image SHA-256, the rootfs prefix and the binary SHA-256.
-- [ ] `--workflows` hardening applies unchanged.
+
+  Proof (M4b commit 6, stub run; open until the run): each compare job writes "## Entropy Pi image: <panel>" with
+  the commit, the image and its SHA-256, the rootfs prefix and the binary SHA-256; panels differ lists each panel's
+  binary SHA-256.
+- [x] `--workflows` hardening applies unchanged.
+
+  Proof (M4b commit 6): banned-api-check.sh is unchanged and `--workflows ../.github/workflows` is clean under sh and
+  dash ("clean, 2 workflow(s)"); a scratch copy with an expression in each of the four new run blocks gives those 4
+  hits. Every checkout keeps `persist-credentials: false` and the head-SHA `ref`; the concurrency rules are
+  unchanged.
 
   Proof: a green run at the final head, with every panel's `reproducible (a = b)` job and `panels differ`; leg times and
   disk use under Review.
