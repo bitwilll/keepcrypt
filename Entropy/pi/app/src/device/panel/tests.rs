@@ -1043,8 +1043,9 @@ fn the_2_inch_modules_wipes_cover_all_of_memory_and_the_blank_screen_its_window(
 
 /// The 1.3-inch and 1.54-inch modules run the HAT's image (Q45; M4b B2): the commands the HAT's
 /// profile has the driver send, leaving out step 7's window, are `LCD_1IN3_C`, what the modules'
-/// files send, in the same order. Only steps the driver owns differ from the files: the reset,
-/// 120 ms after SLPOUT, and the wipe before DISPON.
+/// files send, in the same order. Only steps the driver owns differ from the files: the backlight
+/// (the files turn it on before the reset; the driver's step 1 turns it off, and it comes on only
+/// once a whole frame is in), the reset, 120 ms after SLPOUT, and the wipe before DISPON.
 #[test]
 fn the_1_3_and_1_54_inch_modules_files_send_the_hats_settings() {
     let (panel, log) = start(&WAVESHARE_1IN3_HAT, 0..0);
