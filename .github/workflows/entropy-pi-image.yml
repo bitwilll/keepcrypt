@@ -121,6 +121,7 @@ jobs:
           case " $names " in *" $hat "*) ;; *) fail "PANELS does not list the HAT's $hat" ;; esac
           echo "PANELS:$names"
           paths=(Entropy/pi/app/src/device/panel.rs Entropy/pi/app/src/device/panel/ Entropy/pi/os/
+            Entropy/pi/app/src/device/linux.rs Entropy/pi/app/src/main.rs
             Entropy/scripts/panels-differ.sh .github/workflows/entropy-pi-image.yml)
           build=$names
           if [ "$EVENT" = pull_request ] || [ "$EVENT" = push ]; then
