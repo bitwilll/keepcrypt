@@ -9359,7 +9359,13 @@ What does not change, in M4 or M4b (Q44-Q50):
 - [ ] A throwaway Mixed 12-word run up to step 12, taking Skip at step 7, recorded only in Q41 (c)'s form:
   - Sparrow scans the account QR off this screen, and its first address equals the wallet summary's;
   - a phone decodes the descriptor QR.
-- [ ] If the HAT image's hash changed in M4b, H1 (boot and keys) repeats on the HAT with the new image.
+- [x] If the HAT image's hash changed in M4b, H1 (boot and keys) repeats on the HAT with the new image.
+  Proof (the owner, 2026-10-17, M4b commit 3h): "H1 passed, all matched", on `keepcrypt-pi-0.0.0-st7789-240x240.img`
+  from image run 38972422480 (commit dd8b878), SHA-256 2cf22c74060d741eae01c16dab80f08bcd459ab3f3602015501222ef9c92a82f,
+  prefix `3949-9677-0e09-93b4` (binary f322d568...; the HAT image changed from M4's 4b13c095... because commit 4's
+  selection changed the linked binary, the HAT's settings bytes unchanged). By the checklist: the hash and prefix
+  matched, Home upright in true colours with no noise band, all 8 inputs once per press, a held key one action. PF's
+  HAT row names this image (3g, decision M4b-1). A later commit that changes this image repeats H1.
 
   No verify.py run and no backup are needed for the new screens. Apart from the panel profile, their firmware and frames
   are the HAT's, which the M4 gate covers.
