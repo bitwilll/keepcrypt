@@ -1057,3 +1057,21 @@ fn the_1_3_and_1_54_inch_modules_files_send_the_hats_settings() {
     assert_eq!(sent, commands(&LCD_1IN3_C));
     assert_eq!(WAVESHARE_1IN3_HAT.origin, Point { x: 0, y: 0 });
 }
+
+/// pi/os/Makefile's `PANELS` names exactly the `PROFILES` entries, in order (M4b B3, review of
+/// commit 3): a name dropped from `PANELS` would quietly stop its image being built and
+/// `pi-image panels differ` from running, and a profile missing from `PANELS` would never ship.
+#[test]
+fn the_makefiles_panels_list_names_every_profile_in_order() {
+    const MAKEFILE: &str = include_str!("../../../../os/Makefile");
+    let lines: Vec<&str> = MAKEFILE
+        .lines()
+        .filter(|line| line.starts_with("override PANELS :="))
+        .collect();
+    assert_eq!(lines.len(), 1, "one PANELS assignment in pi/os/Makefile");
+    let listed: Vec<&str> = lines[0]["override PANELS :=".len()..]
+        .split_whitespace()
+        .collect();
+    let names: Vec<&str> = PROFILES.iter().map(|profile| profile.name).collect();
+    assert_eq!(listed, names);
+}
