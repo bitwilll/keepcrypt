@@ -8867,11 +8867,12 @@ stale (Q43 (d)).
 **17. Measurements and decisions recorded (Q42 (a))**
 - [ ] From the H1-H3 stopwatch times:
   - power-on to Home (KATs, hwrng boot test, rootfs hash): 14 s (the owner's H1a, 2026-10-16);
-  - the `WAIT_SESSION` screen;
-  - step 4;
-  - the backup wait (two scrypt runs, the write and the read-back);
+  - the `WAIT_SESSION` screen: 3 s (the owner's H2, 2026-10-16);
+  - step 4: 2.5 s (H2);
+  - the backup wait (two scrypt runs, the write and the read-back): 41 s (H2);
   - "Check a backup".
   Proof (M4 Review, 2026-10-16): power-on to Home 14 s (H1a); the other four wait for the owner's H2 and H3.
+  Proof (H2, 2026-10-16, 21a): "KATs 3 s, step 4 2.5 s, backup 41 s"; "Check a backup" waits for H3.
 - [ ] Decisions:
   - step 4's tick stays 100 ms if step 4 takes about 2.4 s (24 blocks). Otherwise the hardware's pace is recorded, since a
     slow read paces itself;
@@ -8882,6 +8883,11 @@ stale (Q43 (d)).
   Proof: under Review, quoted from the owner's report.
   Proof (M4 Review, 2026-10-16): wait for H2's times (step 4, the backup wait) and H3's; no wait has been measured yet,
   so the worker thread stays out so far.
+  Proof (H2, 2026-10-16, 21a): step 4 took 2.5 s against the planned 2.4 s (24 blocks at the 100 ms tick), so the tick
+  stays 100 ms and step 4 is paced by the tick, not by the hwrng read; the longest wait so far is the backup's 41 s,
+  under the 60 s line, so the worker thread stays out; the backup completed on the device (two scrypt runs at log2 N =
+  18, the write and the read-back), which stands in for scrypt's peak and locked memory as planned. H3's "Check a
+  backup" (one scrypt run) is the last wait to record.
 
 **18. Commands and budgets**
 - [x] CLAUDE.md Commands, in their own commit:
@@ -9226,11 +9232,13 @@ What does not change, in M4 or M4b (Q44-Q50):
   38851865443's `test`); the positive controls: `selftest-image: 17 passed, 0 failed` in both legs (the stripped ELFs,
   the markers, the wrong hash among them), `--selftest` 698/0 (the `RandomState` fixture, `std-random-paths.txt`, the
   stripped-file fixtures) and canaries 73/73 (the probe's `RandomState` canary among them), in `gates` and here.
-- [ ] **Matrix "BIP39, age and SHA known-answer vectors"** on hardware: boot passes its KATs and the hwrng startup test on
+- [x] **Matrix "BIP39, age and SHA known-answer vectors"** on hardware: boot passes its KATs and the hwrng startup test on
   the real BCM2835, and the new session passes behind `WAIT_SESSION`.
   Proof: H1, H2.
   Proof (H1a, 2026-10-16): the boot KATs and the hwrng startup test passed on the real BCM2835 (Home reached in
   14 s); the new session behind `WAIT_SESSION` waits for H2.
+  Proof (H2, 2026-10-16, 21a): the new session's KATs passed behind `WAIT_SESSION` in 3 s and the ceremony ran to Finish
+  ("H2 done, all passed"; "KATs 3 s").
 - [x] **Matrix "Duplicate-seed drill"** (Pi): M9. M3's simulator drill stands until then.
   Proof (M4 Review, 2026-10-16): deferred to M9 as the plan says ("Deferred", M9: the duplicate-seed drill on hardware);
   M3's `drill_12` passes in both configurations at de70f56 (gate 20 passed, 1 ignored).
@@ -9800,30 +9808,33 @@ seed, which is what those screens are for. Write throwaway values on paper and d
   (lead decision, under the standing instruction): no re-flash, the owner continues to H2.
 
 **H2. Throwaway ceremony (Mixed, 12 words, on the gate image)**
-- [ ] Idle timers: a cover after 30 s on a private screen, or a warning at 9 minutes, is expected. Any key removes it and
+- [x] Idle timers: a cover after 30 s on a private screen, or a warning at 9 minutes, is expected. Any key removes it and
   does nothing else. Press a key at least every few minutes: after 10 minutes with no key the session is wiped and the
   ceremony starts over.
-- [ ] New seed, 12 words. Stopwatch the "known-answer tests" wait, and step 4 from the bar's start until it is full.
-- [ ] Step 5: write C on paper.
-- [ ] Step 6: enter 50 rolls, writing each on paper.
-- [ ] Step 7: choose Skip, then confirm.
-- [ ] Step 8: write the 12 words on paper.
-- [ ] Step 9: type the first four letters of each word on the joystick, with two deliberate mistakes, each corrected
+- [x] New seed, 12 words. Stopwatch the "known-answer tests" wait, and step 4 from the bar's start until it is full.
+- [x] Step 5: write C on paper.
+- [x] Step 6: enter 50 rolls, writing each on paper.
+- [x] Step 7: choose Skip, then confirm.
+- [x] Step 8: write the 12 words on paper.
+- [x] Step 9: type the first four letters of each word on the joystick, with two deliberate mistakes, each corrected
   after the device refuses it:
   - on a word with e, i, d, f, h, j, r or w among its first four letters, type that letter's mirror partner once (e↔i,
     d↔f, h↔j, r↔w). The device must refuse it and name the insert as a mirror misread;
   - on a word of four or more letters, enter only its first three. The device must say the face should have a letter;
   - if a word has only three letters, also type a fourth letter once. The device must say the face should be blank.
-- [ ] Step 10: write the fingerprint and the first receive address on paper (both are public values).
-- [ ] Step 11:
+- [x] Step 10: write the fingerprint and the first receive address on paper (both are public values).
+- [x] Step 11:
   - write a backup to the stick;
   - write the 8-word passphrase on paper;
   - stopwatch the wait until "Backup verified".
-- [ ] Step 12: answer no to the BIP39 passphrase. While each QR is on the panel, do only H4's scans (Sparrow, and the
+- [x] Step 12: answer no to the BIP39 passphrase. While each QR is on the panel, do only H4's scans (Sparrow, and the
   phone decode of the descriptor QR). Leave the Core steps for after Finish.
-- [ ] Step 13: choose Skip.
-- [ ] Step 14: choose "Show D" and write D on paper.
-- [ ] Step 15: Finish. "Safe to power off" stays on screen.
+- [x] Step 13: choose Skip.
+- [x] Step 14: choose "Show D" and write D on paper.
+- [x] Step 15: Finish. "Safe to power off" stays on screen.
+  Proof (the owner, 2026-10-16): "H2 done, all passed, sending the times now"; "KATs 3 s, step 4 2.5 s, backup 41 s".
+  Every step above passed as written, step 9's deliberate mistakes included; the record is under "M4: hardware records"
+  and the times under group 17 (21a).
 
 **H3. Offline verification**
 - [ ] Run `python3 -I tools/verify/verify.py mixed --words 12`. Type C, then D, then each roll, each only after its prompt
@@ -12297,6 +12308,10 @@ drives a full ceremony in the simulator; you review the screen captures".
   separate microSD card: "H1a passed, all matched, boot to Home 14 s". No panel variant.
 - **H1**: the same bytes as every later run's image (38691830575, 38747606208, 38771532075, 38797300298), so H1a's
   pass is H1; no re-flash.
+- **H2, 2026-10-16**, the same image, a throwaway Mixed 12-word ceremony to Finish on the same hardware: "H2 done, all
+  passed, sending the times now", then "KATs 3 s, step 4 2.5 s, backup 41 s" (the `WAIT_SESSION` screen; step 4 from the
+  bar's start until full; step 11 from the write until "Backup verified"). The fingerprint, first address and Seal ID
+  comparisons come with H3 and H4.
 
 ### M4: local proof (2026-10-16, at de70f56)
 Apple M4 Max, macOS 27.0.1, toolchain 1.98.1 (rust-toolchain.toml), cargo-llvm-cov 0.9.1, python3 3.12.5 and
@@ -12673,7 +12688,7 @@ and Verification's image-hash gate, Matrix "Reproducible build" and CI; their Pr
   Carried items (lines 2, 9 and 10: H2, H4, H3); Rules (12: commit 21's records); Definition of done (the gate).
 - M4b's items (B0 onwards) belong to M4b, after the M4 gate, and are not M4's.
 
-### M4 gate status: PENDING the owner's H2-H4 (H1a and H1 passed 2026-10-16)
+### M4 gate status: PENDING the owner's H3-H4 (H1a, H1 and H2 passed 2026-10-16)
 The gate in docs/build-plan.md:294. Deliverables: "ST7789 and button drivers, hwrng reader, Buildroot image, USB
 export". Proof: "Full ceremony on a Pi Zero v1.3, checked with the offline verifier; two clean builds give the same
 image hash; the watch-only QR imports into Sparrow and Bitcoin Core with the same first address". The hardware records
@@ -12684,8 +12699,9 @@ are under "M4: hardware records" above.
   `4b13c095f76c4a42efc67090fec96650d070a385bb8a58b4fd7067c0d936adde`, leg b from fresh downloads each time; from 17b
   each leg's `--image` scan against the committed lists passed before the upload. The final head's run is commit 21's to
   record.
-- Full ceremony on a Pi Zero v1.3, checked with the offline verifier: pending: the owner's H2 and H3 on the gate image
-  (SHA-256 4b13c095..., the image H1a booted). They must show, in Q41 (c)'s form: the throwaway Mixed 12-word ceremony
+- Full ceremony on a Pi Zero v1.3, checked with the offline verifier: the ceremony half is met: the owner's H2 on the
+  gate image (SHA-256 4b13c095..., the image H1a booted) ran to Finish, "H2 done, all passed", 2026-10-16 (21a); the
+  verifier half is pending the owner's H3. Together they must show, in Q41 (c)'s form: the throwaway Mixed 12-word ceremony
   to Finish with Skip at step 7, the deliberate read-back misreads refused and corrected; `python3 -I
   tools/verify/verify.py mixed --words 12`, from the gate image's commit, exiting 0 with the device's 12 words; its Seal
   ID equal to "Check a backup"'s; `age -d` giving the same words; with the run ID, the commit and the hash.
@@ -12698,9 +12714,9 @@ are under "M4: hardware records" above.
   pins.txt, the kernel allow-list, the scans) and the USB export (device/usb.rs, read-only mounts and create-new writes,
   the loop-device test in CI). H1a proved on hardware the panel driver (upright, true colours, no noise band, sharp
   text), the button driver (one event per press on all 8 inputs), the hwrng reader's boot test (Home reached, so the
-  health test passed) and the image's boot (hash and prefix matched, 14 s). The USB export on the stick (the backup
-  written and read back, "Check a backup"), the drivers' remaining checks (black after a wipe, the backup under
-  `mlockall`) and the new session behind `WAIT_SESSION` wait for H2 and H3; the watch-only QRs for H4.
+  health test passed) and the image's boot (hash and prefix matched, 14 s). H2 proved the USB export's write and
+  read-back (the backup verified in 41 s), the backup completing on the device and the new session behind `WAIT_SESSION`
+  (3 s); "Check a backup" waits for H3; the watch-only QRs for H4; the panel black after a wipe is H5's idle-wipe check.
 - Standing note: build-plan.md:278's two approvals for `core/`, `ffi/` and `pi/os/` are unmet while there is one
   maintainer (todo.md:322; CODEOWNERS:7-10 describes ruleset 24833307 as it is, e8c90d9). M4 is the first milestone with
   `pi/os/`.
