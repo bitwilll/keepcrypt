@@ -7860,7 +7860,7 @@ stale (Q43 (d)).
   `--all-features`), is green on every head since commit 11 (91f23d8); at de70f56 (run 38851865443) both clippy runs
   print `Finished dev profile`, the job 34 s, and `cross (arm-unknown-linux-gnueabihf)` builds the binary and both
   rlibs.
-- [ ] `device/linux.rs` (Linux): `PiHal` implements the traits.
+- [x] `device/linux.rs` (Linux): `PiHal` implements the traits.
   - Display: `Panel` over rppal `Spi::new(Spi0, Ss0, PANEL.spi_hz, Mode0)` and output pins DC 25, RST 27, BL 24 (the
     same pins for every screen, as Q48 decided).
   - Buttons: eight rppal `InputPin`s, on the pins `Key::bcm_pin` gives, with pull-ups and
@@ -7889,6 +7889,9 @@ stale (Q43 (d)).
   Proof (M4 Review, 2026-10-16): H1a ran `PiHal`'s Display, Buttons, Clock (the debouncer's timing) and HwRng on the
   board: the panel, the keys and the boot's hwrng test, all as planned. Usb (`DeviceUsb` over `SysBlock` and the mounts)
   waits for H2 step 11 and H3's "Check a backup".
+  Proof (H2 and H3, 2026-10-16, 21b): Usb ran on the board: step 11 wrote the backup and read it back ("Backup verified"
+  in 41 s), and "Check a backup" found the stick, mounted it read-only and opened the backup (20 s, step 10's
+  fingerprint). Every `PiHal` field has now run on the hardware.
 - [x] `device::mode(args)` (pure): no argument means `Run`; anything else, `--stopped` included, means `Stopped` (fail
   closed).
   Proof (commit 11): `device::tests::no_argument_runs_and_any_argument_is_stop_mode`: no argument is `Run`;
@@ -8865,15 +8868,16 @@ stale (Q43 (d)).
   final head's run (commit 21).
 
 **17. Measurements and decisions recorded (Q42 (a))**
-- [ ] From the H1-H3 stopwatch times:
+- [x] From the H1-H3 stopwatch times:
   - power-on to Home (KATs, hwrng boot test, rootfs hash): 14 s (the owner's H1a, 2026-10-16);
   - the `WAIT_SESSION` screen: 3 s (the owner's H2, 2026-10-16);
   - step 4: 2.5 s (H2);
   - the backup wait (two scrypt runs, the write and the read-back): 41 s (H2);
-  - "Check a backup".
+  - "Check a backup": 20 s (the owner's H3, 2026-10-16).
   Proof (M4 Review, 2026-10-16): power-on to Home 14 s (H1a); the other four wait for the owner's H2 and H3.
   Proof (H2, 2026-10-16, 21a): "KATs 3 s, step 4 2.5 s, backup 41 s"; "Check a backup" waits for H3.
-- [ ] Decisions:
+  Proof (H3, 2026-10-16, 21b): "H3 done, all matched, Check a backup 20 s". All five are measured.
+- [x] Decisions:
   - step 4's tick stays 100 ms if step 4 takes about 2.4 s (24 blocks). Otherwise the hardware's pace is recorded, since a
     slow read paces itself;
   - the worker thread stays out unless a wait exceeds 60 s; if one does, stop and ask;
@@ -8888,6 +8892,8 @@ stale (Q43 (d)).
   under the 60 s line, so the worker thread stays out; the backup completed on the device (two scrypt runs at log2 N =
   18, the write and the read-back), which stands in for scrypt's peak and locked memory as planned. H3's "Check a
   backup" (one scrypt run) is the last wait to record.
+  Proof (H3, 2026-10-16, 21b): "Check a backup" took 20 s, half the backup's 41 s as one scrypt run against two. Every
+  wait is under 60 s, so the worker thread stays out of M4; snapshot timing (M9) and the hwrng rate (M8) stay deferred.
 
 **18. Commands and budgets**
 - [x] CLAUDE.md Commands, in their own commit:
@@ -9837,13 +9843,15 @@ seed, which is what those screens are for. Write throwaway values on paper and d
   and the times under group 17 (21a).
 
 **H3. Offline verification**
-- [ ] Run `python3 -I tools/verify/verify.py mixed --words 12`. Type C, then D, then each roll, each only after its prompt
+- [x] Run `python3 -I tools/verify/verify.py mixed --words 12`. Type C, then D, then each roll, each only after its prompt
   appears. Expect exit 0, the device's 12 words, and a Seal ID. Note the Seal ID.
-- [ ] Run `age -d keepcrypt-backup-xxxxxxxx.age` with the 8 words. It must give the same 12 words.
-- [ ] Power-cycle the Pi, choose "Check a backup" with the stick in, type the passphrase, and stopwatch the wait. The
+- [x] Run `age -d keepcrypt-backup-xxxxxxxx.age` with the 8 words. It must give the same 12 words.
+- [x] Power-cycle the Pi, choose "Check a backup" with the stick in, type the passphrase, and stopwatch the wait. The
   fingerprint must equal step 10's, and the Seal ID must equal verify.py's.
-- [ ] Destroy the paper. Delete the backup with `rm` in Terminal (or reformat the stick); Finder's Trash would keep a copy
+- [x] Destroy the paper. Delete the backup with `rm` in Terminal (or reformat the stick); Finder's Trash would keep a copy
   in the stick's `.Trashes`.
+  Proof (the owner, 2026-10-16): "H3 done, all matched, Check a backup 20 s". The record is under "M4: hardware records" and the time under
+  group 17 (21b).
 
 **H4. Watch-only import**
 - [ ] Sparrow, during H2 step 12 (note the version and the camera model): New wallet → single signature, native SegWit →
@@ -12312,6 +12320,11 @@ drives a full ceremony in the simulator; you review the screen captures".
   passed, sending the times now", then "KATs 3 s, step 4 2.5 s, backup 41 s" (the `WAIT_SESSION` screen; step 4 from the
   bar's start until full; step 11 from the write until "Backup verified"). The fingerprint, first address and Seal ID
   comparisons come with H3 and H4.
+- **H3, 2026-10-16**, on an offline computer with `tools/verify/verify.py` from b9ed46a (SHA-256
+  `0ba842e2b139e4d6971d19a5f7c7f906cca81e8d29c765cf0fe67010c1850645`, unchanged through 30cefbc): "H3 done, all matched, Check a backup 20 s".
+  `verify.py mixed --words 12` exited 0 with the device's 12 words; `age -d` gave the same words; after a power cycle,
+  "Check a backup" took 20 s and showed step 10's fingerprint and verify.py's Seal ID. The paper and the backup were
+  destroyed as the checklist says.
 
 ### M4: local proof (2026-10-16, at de70f56)
 Apple M4 Max, macOS 27.0.1, toolchain 1.98.1 (rust-toolchain.toml), cargo-llvm-cov 0.9.1, python3 3.12.5 and
@@ -12688,7 +12701,7 @@ and Verification's image-hash gate, Matrix "Reproducible build" and CI; their Pr
   Carried items (lines 2, 9 and 10: H2, H4, H3); Rules (12: commit 21's records); Definition of done (the gate).
 - M4b's items (B0 onwards) belong to M4b, after the M4 gate, and are not M4's.
 
-### M4 gate status: PENDING the owner's H3-H4 (H1a, H1 and H2 passed 2026-10-16)
+### M4 gate status: PENDING the owner's H4 (H1a, H1, H2 and H3 passed 2026-10-16)
 The gate in docs/build-plan.md:294. Deliverables: "ST7789 and button drivers, hwrng reader, Buildroot image, USB
 export". Proof: "Full ceremony on a Pi Zero v1.3, checked with the offline verifier; two clean builds give the same
 image hash; the watch-only QR imports into Sparrow and Bitcoin Core with the same first address". The hardware records
@@ -12699,12 +12712,13 @@ are under "M4: hardware records" above.
   `4b13c095f76c4a42efc67090fec96650d070a385bb8a58b4fd7067c0d936adde`, leg b from fresh downloads each time; from 17b
   each leg's `--image` scan against the committed lists passed before the upload. The final head's run is commit 21's to
   record.
-- Full ceremony on a Pi Zero v1.3, checked with the offline verifier: the ceremony half is met: the owner's H2 on the
-  gate image (SHA-256 4b13c095..., the image H1a booted) ran to Finish, "H2 done, all passed", 2026-10-16 (21a); the
-  verifier half is pending the owner's H3. Together they must show, in Q41 (c)'s form: the throwaway Mixed 12-word ceremony
+- Full ceremony on a Pi Zero v1.3, checked with the offline verifier: met, 2026-10-16. The owner's H2 on the gate image
+  (run 38771532075, commit b9ed46a, SHA-256 4b13c095..., the image H1a booted) ran to Finish, "H2 done, all passed"
+  (21a); the owner's H3 checked it offline, "H3 done, all matched, Check a backup 20 s" (21b). The plan asked them to show, in Q41 (c)'s form: the throwaway Mixed 12-word ceremony
   to Finish with Skip at step 7, the deliberate read-back misreads refused and corrected; `python3 -I
   tools/verify/verify.py mixed --words 12`, from the gate image's commit, exiting 0 with the device's 12 words; its Seal
-  ID equal to "Check a backup"'s; `age -d` giving the same words; with the run ID, the commit and the hash.
+  ID equal to "Check a backup"'s; `age -d` giving the same words; with the run ID, the commit and the hash. All of it is
+  under "M4: hardware records".
 - The watch-only QR imports into Sparrow and Bitcoin Core with the same first address: pending: the owner's H4. It must
   show Sparrow scanning the account QR off the panel (its version and the camera model), Bitcoin Core 31.1 importing the
   descriptor text decoded off the panel, both first receive addresses equal to step 10's, and Sparrow's acceptance of
@@ -12716,7 +12730,7 @@ are under "M4: hardware records" above.
   text), the button driver (one event per press on all 8 inputs), the hwrng reader's boot test (Home reached, so the
   health test passed) and the image's boot (hash and prefix matched, 14 s). H2 proved the USB export's write and
   read-back (the backup verified in 41 s), the backup completing on the device and the new session behind `WAIT_SESSION`
-  (3 s); "Check a backup" waits for H3; the watch-only QRs for H4; the panel black after a wipe is H5's idle-wipe check.
+  (3 s); H3 proved "Check a backup" (20 s, read-only mount, the fingerprint matched); the watch-only QRs wait for H4; the panel black after a wipe is H5's idle-wipe check.
 - Standing note: build-plan.md:278's two approvals for `core/`, `ffi/` and `pi/os/` are unmet while there is one
   maintainer (todo.md:322; CODEOWNERS:7-10 describes ruleset 24833307 as it is, e8c90d9). M4 is the first milestone with
   `pi/os/`.
