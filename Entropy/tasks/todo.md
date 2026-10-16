@@ -9058,8 +9058,8 @@ stale (Q43 (d)).
   - index.html's first-capture placeholders, with the next capture-set change.
 
 **M4b: more Waveshare screens (`m4b-screens`, after the M4 gate is approved; Q45-Q50)**
-M4b gets its own branch and PR, with its own gate, which the owner approves before the work starts. Commands, budgets and
-the required check names are unchanged.
+M4b gets its own branch and PR, with its own gate, which the owner approves before the work starts. Budgets and the
+required check names are unchanged; CLAUDE.md's Commands gain the `PANEL=<name>` forms (commit 7), as B3 requires.
 Status (M4b commit 1, 2026-10-16): the owner approved the M4 gate ("approved, merge it"; PR #7 merged as 95c4359) and
 then said "go ahead with M4b", read as approving this plan and its proposed gate (B6). Branch `m4b-screens` starts
 from 95c4359.
@@ -9071,6 +9071,7 @@ What does not change, in M4 or M4b (Q44-Q50):
 - Rule 8 and CLAUDE.md, under the recommendations (Q51, answered 2026-10-14, is a separate item: commits 10c and 10d).
   - Commit 3 has landed (ed15bd2) with the approved sentence.
   - Only Q47 (c), which was not taken, would have needed a later CLAUDE.md commit adding `/proc/cmdline`.
+  - CLAUDE.md's rules do not change; its Commands block does (commits 7 and 7b), as the plan's commit 7 says.
 - No `unsafe` (Q36 (d)).
 - No simulator or test code in any image (rule 10). Group 5's test-only profile lives in `device/panel/tests.rs`, which
   is declared only as `#[cfg(test)] mod tests;`, so rustc never compiles it outside `cargo test`.
@@ -9348,6 +9349,14 @@ What does not change, in M4 or M4b (Q44-Q50):
   the pinned HAT profile already cover.
 - M4b-2 (2f): the HAT's Supported screens row rests on its M4 records (H1a-H4 on 4b13c095...), not on an H6; the
   Verification "Docs" item says so.
+- M4b-4 (2026-10-16): commits 4-7 (B3 and B4) run before commit 3 (B2), which waited on the owner's yes to the
+  Waveshare download, since they do not use the 2-inch values. Until commit 3, `PROFILES` and `PANELS` hold the HAT
+  alone, the selection works over `PROFILES` generically, and `panels differ` (which needs two panels) runs only from
+  commit 3's image run; its selftest and canaries run in `gates` from commit 6. The owner said yes to the download on
+  2026-10-16, after commits 4-7 had started.
+- M4b-5 (6c): stage B3B4's security review found the image workflow's every-panel paths left out
+  `pi/app/src/device/linux.rs` (the only runtime user of `PANEL`) and `pi/app/src/main.rs` (the device module's gate);
+  both are added, which only widens B4's list. Commit 6 also added `scripts/panels-differ.sh` to it.
 - M4b-3 (2f): no backlight step and no idle-wipe step join PF's listing rule. The BL wire's rule is in PF (2d); B5's
   H6 keeps its idle-wipe line for new screens; the HAT's black frame stays as M4's lead decision 22 left it.
 
@@ -9365,9 +9374,24 @@ What does not change, in M4 or M4b (Q44-Q50):
    Makefile's `PANELS` (optional; B3 may add it); a backlight step in the listing rule (decision M4b-3).
 3. pi/app (bin): the new profiles and their tests (B2).
 4. pi/app (bin), scripts: `KEEPCRYPT_PI_PANEL` selection and its canaries (B3).
+   As made: aef5ff7 (before commit 3, decision M4b-4); 4b a6e035f (review fix: the tests refuse a name one byte off
+   a `PROFILES` name at its first, last or any byte, which the byte loop in `same` needs).
 5. pi/os: `PANELS`, the required `PANEL=`, the .mk's explicit variable and the image names (B3).
+   As made: 750272d (also the image workflow's make line, `PANEL=st7789-240x240`, until commit 6); 5b 889e543
+   (review fix: `PANELS`, `PANEL_NAME`, `IMAGE` and `BR_IMAGE` are `override`, so neither the command line nor
+   `make -e` can bypass the name check); 5c 477067c (canaries: `make image`, `repro-check` and `scan` stop on a bad
+   name before Buildroot).
 6. .github, scripts: the image workflow's matrix, `panels differ` and its selftest (B4).
+   As made: 3f72c2b (also a phony `panels` target in pi/os/Makefile, so the workflow reads make's own `PANELS`; up to
+   eight panels); 6b 0a711a3 (review fix: panels-differ.sh's selftest also refuses an upper-case name, an empty name
+   and a malformed pair); 6c 3d29bf3 (the lead: linux.rs and main.rs in the every-panel paths, decision M4b-5).
 7. CLAUDE.md: Commands gain `make -C pi/os image PANEL=<name>`.
+   As made: f2f942e (also `make -C pi/os panels` and the panels-differ line); 7b 545e8a1 (the lead: canaries pins 81).
+   Stage B3B4's reviews (plan, security, recompute): 9 findings, no high, 2 medium (decision M4b-4 cited but not yet
+   recorded: now M4b-4 above; nothing tested `same`'s byte loop: 4b), 7 low (among them the make bypass, 5b; the
+   linux.rs path, 6c and M4b-5; the stale "unchanged" lines, fixed in this commit). The stage suite at 0a711a3
+   passed (cargo test 455 passed with the new tests; canaries 81 under sh and dash, online; llvm-cov; deny, audit
+   and vet offline).
 8. Bring-up fixes from H6, each with the owner's observation and the root cause.
 9. tasks/todo.md: Review, H6 records and the gate report.
 
