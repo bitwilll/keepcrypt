@@ -9703,6 +9703,9 @@ The PR is a draft from commit 1.
 19. Bring-up fixes from H1-H4, each in its own commit with the owner's observation and the root cause; H1-H4 repeat if
     the image hash changes (group 16).
 20. tasks/todo.md: the M4 Review with pasted proof, the measurements and the gate report (groups 17, 19).
+    20b. tasks/todo.md: group 0's baseline line for `cargo test --workspace` reads 20 suites, 371 passed, 3 ignored,
+    from a re-run in a `git archive f967dd4 Entropy` tree (the lead's draft figure, 25 suites, 319 passed, 5 ignored,
+    did not add up: de70f56's 445 in 21 suites less M4's 74 tests and one suite; the Review's note saying so is gone).
 21. tasks/todo.md: the owner's H records and verdict. Its image run must give the gate image's hash; the PR description
     names that run.
 
@@ -12297,14 +12300,20 @@ owner's, under "M4: hardware records". Plan items are ticked above only where th
 section lists what this commit ticks and what is still open, with what each waits for.
 
 **Group 0 baseline** at f967dd4 (M3's merge commit, the branch point): the lead's run of 2026-10-16 in a separate
-worktree, not repeated here (its figures stand as the lead recorded them; the "at HEAD" figures are de70f56's, from the
-suite below):
+worktree. Its `cargo test --workspace` line was re-run on 2026-10-16 from a `git archive f967dd4 Entropy` tree with a
+fresh target directory (20b), since the figure the lead recorded for it, 25 suites, 319 passed, 5 ignored, did not add
+up from this tree; the other lines stand as the lead recorded them and agree with the M3 Review (196 files, 427 cases,
+61 checks, 13 checks, 8 groups). The "at HEAD" figures are de70f56's, from the suite below:
 
 ```text
-cargo test --workspace --locked                 rc=0  25 suites, 319 passed, 5 ignored; 53 s wall in the fresh
-                                                      worktree (first compile included); at HEAD 445 passed, 3 ignored:
-                                                      166+5+7+3+2+1+4 core, 130 pi lib, 58 pi bin, 36+3+20+7+3 sim
-                                                      (M4 added the device module's 58 and group 4's 16 lib tests)
+cargo test --workspace --locked                 rc=0  20 suites, 371 passed, 3 ignored: core lib 166 (+1 ignored),
+                                                      ceremony 5, kat 7, kcr_release 3, os_source 2, typestate 1,
+                                                      vectors 4; ffi 0; pi lib 114, pi bin 0; sim lib 36, bin 3, gate 20
+                                                      (+1 ignored), hal 7, live 3, timing 0 (+1 ignored); the 4 doc-test
+                                                      suites 0; 29 s wall, warm. At HEAD 21 suites, 445 passed, 3
+                                                      ignored: 166+5+7+3+2+1+4 core, 130 pi lib, 58 pi bin, 36+3+20+7+3
+                                                      sim (M4 added the device module's 58, group 4's 16 lib tests and
+                                                      core's auto_traits suite, which holds no test)
 cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry
                                                 rc=0  gate 20 passed, 1 ignored; 18 s wall (15 s at HEAD)
 scripts/banned-api-check.sh                     rc=0  clean, 196 files scanned (241 at HEAD; CI 238)
@@ -12313,12 +12322,6 @@ python3 -I tools/verify/vectorgen.py --selftest rc=0  selftest passed: 13 checks
 python3 -I tools/verify/verify.py selftest      rc=0  selftest passed: 8 known-answer groups (8 at HEAD)
 scripts/canaries.sh                             rc=0  PASS: all 61 checks ran; 200 s (HEAD: 73 checks, 257 s)
 ```
-
-Note (commit 20): the lead's `cargo test --workspace` figure, 25 suites and 319 passed with 5 ignored, does not add up
-from this tree: de70f56 gives 445 passed and 3 ignored in 21 suites, and M4 added 74 tests (58 pi bin, 16 pi lib) and
-one suite (auto_traits), so f967dd4 is expected near 371 passed, 3 ignored, 20 suites (the M3 Review's per-suite counts
-at 4256626 give the same). That figure is the lead's to re-check; the other baseline lines agree with the M3 Review (196
-files, 427 cases, 61 checks, 13 checks, 8 groups).
 
 The last main run before M4, 38534247238 on f967dd4 (2026-10-14, `push`): `test` 4 min 54 s, `gates` 8 min 50 s, `cross
 (arm-unknown-linux-gnueabihf)` 2 min 19 s, `coverage` 4 min 19 s (`gh run view 38534247238 --repo bitwilll/keepcrypt
@@ -12356,14 +12359,16 @@ order's numbers in brackets (an N.b entry is a review fix to commit N; each comm
 
 **Review fixes.** Every stage had plan, security and recompute reviews (three reviewers, each finding reproduced by a
 fixer, as in M3); the image's kernel config had a fourth, line by line (15l: four section reviewers, each with an
-adversarial verifier, over 794 `=y` lines). 66 N.b entries stand in the commit order, each under the commit it amends:
+adversarial verifier, over 794 `=y` lines). 66 N.b entries for f967dd4..de70f56 stand in the commit order, each under
+the commit it amends:
 65 as their own indented entries (18d, b9ed46a's, added by this commit) and 14d inside 14c's paragraph; by stage, A 7
 (1b-1e, 5b-5d), B 19 (6b-6d, 7b-7f, 8b-8e, 9b-9d, 10b-10e; 10d made in stage C), C 4 (12b-12d, 13b), D 15 (14b-14i,
 15b-15h), the bring-up 6 (15i-15n, from the image runs' logs, the 15l review and the owner's 15m), D2a 9 (17a-b to
 17a-j) and D2b 6 (17b-b to 17b-d, 18b-18d). Most have a "Proof (review fix, N.b)" line under the plan item they touch,
 naming the mutant or the reproduced finding; the rest change text in this file, CLAUDE.md, docs/ or a comment, and the
 text is their proof. Every high and medium finding is fixed; the findings' severities are in the stage reports, which
-this file does not copy (as in M3). One finding was the owner's: 15m (the TTY layer), recorded in tasks/lessons.md.
+this file does not copy (as in M3). One finding was the owner's: 15m (the TTY layer), recorded in tasks/lessons.md. This
+Review's own review fixes are the entries 20b onwards.
 
 **Suite at de70f56** (2026-10-16; `git status --porcelain` empty before and after; each command's full output in the
 session scratchpad):
