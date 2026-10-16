@@ -10,12 +10,14 @@
 # The screen types are pi/os/Makefile's PANELS. The first job, panels, reads them at the commit
 # built and picks this run's (Q47 (a)): a pull request or a push to main builds the HAT's alone,
 # st7789-240x240, unless it changes a panel profile (pi/app/src/device/panel.rs or panel/),
-# anything under pi/os, this workflow or scripts/panels-differ.sh; then, as on the weekly and
-# dispatched runs, it builds every panel. Each panel gets its two legs, its compare job and leg a's
-# upload, each job named with its panel: pi-image build (a, st7789-240x320). A run that builds
-# two or more panels also runs pi-image panels differ, which fails if two panels' binaries are
-# equal: the profiles differ in data, so equal binaries mean a name never reached the compiler. A
-# HAT-only run needs no such check, since a lost name gives the HAT, which is what that image is.
+# pi/app/src/device/linux.rs (PANEL's only runtime user), pi/app/src/main.rs (the device module's
+# gate), anything under pi/os, this workflow or scripts/panels-differ.sh; then, as on the weekly
+# and dispatched runs, it builds every panel. Each panel gets its two legs, its compare job and
+# leg a's upload, each job named with its panel: pi-image build (a, st7789-240x320). A run that
+# builds two or more panels also runs pi-image panels differ, which fails if two panels' binaries
+# are equal: the profiles differ in data, so equal binaries mean a name never reached the
+# compiler. A HAT-only run needs no such check, since a lost name gives the HAT, which is what
+# that image is.
 #
 # Not one of the 14 required checks (Q38 (b)), so path filters are safe: a skipped run never
 # leaves a required check pending. The rule instead: no PR that changes the image merges without
