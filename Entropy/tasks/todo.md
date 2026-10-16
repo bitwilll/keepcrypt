@@ -9106,27 +9106,36 @@ What does not change, in M4 or M4b (Q44-Q50):
   module wikis (read 2026-10-16). B2 waits for the answer; B1 does not.
 
 **B1. Docs, alone (first code-free commit)**
-- [ ] PF:23:
+- [x] PF:23:
   - the screen row reads "Waveshare 1.3-inch LCD HAT, or a supported screen below";
   - a new "Supported screens" table lists screen, image, wiring, and "checked on hardware" with the H6 date.
-- [ ] PF:32-43 says "One pin map for every screen" and gives:
+- [x] PF:32-43 says "One pin map for every screen" and gives:
   - the module wiring and switch wiring with header pins (Q48);
   - the backlight on BCM 24;
   - the joystick and key placement.
-- [ ] PF:66 (`hal::Display`) reads: "Draw 240x240 frames, centred on screens larger than 240×240; one block of settings
+- [x] PF:66 (`hal::Display`) reads: "Draw 240x240 frames, centred on screens larger than 240×240; one block of settings
   per screen type, chosen when the image is built."
-- [ ] PF:163-184: `make -C Entropy/pi/os image PANEL=<name>` and `make -C Entropy/pi/os repro-check PANEL=<name>` (both
+- [x] PF:163-184: `make -C Entropy/pi/os image PANEL=<name>` and `make -C Entropy/pi/os repro-check PANEL=<name>` (both
   refuse a missing name), the list of names, and "flash the image named for your screen".
-- [ ] BP:76's "the ST7789 driver is KeepCrypt's own" becomes "the display driver is KeepCrypt's own: one driver, one
+- [x] BP:76's "the ST7789 driver is KeepCrypt's own" becomes "the display driver is KeepCrypt's own: one driver, one
   block of settings per screen type". The wording names no controller, so it stays true if the ILI9341 is added.
-- [ ] BP's milestone table gains an M4b row with its gate, in the owner's wording.
-- [ ] BP:50 and swb:90 stay as they are, because the frame is still 240 × 240.
+- [x] BP's milestone table gains an M4b row with its gate, in the owner's wording.
+- [x] BP:50 and swb:90 stay as they are, because the frame is still 240 × 240.
 
   Proof:
   - `git diff --name-only` lists only `docs/`;
   - `vectorgen.py --selftest` passes (it pins PF sentences);
   - `verify.py --selftest` passes;
   - banned-api-check is clean.
+  Proof (M4b commits 2-2e, a578ef4, 0200eaa, c0aa2b8, a81321b, b775025): `git diff --name-only c923063..b775025` lists
+  only `Entropy/docs/build-plan.md` and `Entropy/docs/pi-firmware.md`; `vectorgen.py --selftest` "selftest passed: 13
+  checks" on python3 and /usr/bin/python3 (no pinned sentence changed); `verify.py selftest` "8 known-answer groups"
+  on both; banned-api-check clean (241 files). The Supported screens table lists the HAT alone, by the image its
+  check ran on (SHA-256 4b13c095..., prefix 76eb-725e-8163-7013; lead decision M4b-2). The stage suite at a81321b
+  passed every local command (cargo test 445 passed, 3 ignored; canaries; llvm-cov; deny, audit and vet offline).
+  The header pins were recomputed from the 40-pin layout against input.rs and linux.rs. PF's build text describes
+  `PANEL=<name>` ahead of the code, as the plan orders; B3's commits make it true, and m4b-screens merges only at
+  the gate.
 
 **B2. Profiles (`device/panel.rs`)**
 - [ ] `ST7789_240X320`, for the Waveshare 2-inch module:
@@ -9251,11 +9260,29 @@ What does not change, in M4 or M4b (Q44-Q50):
   - the HAT image passes H1 if its hash changed;
   - no image or doc lists an unchecked screen as supported.
 
+**M4b lead decisions** (each for the owner's approval at the M4b gate)
+- M4b-1 (2e, 2026-10-16): the approved gate asks only H1 of the HAT if its image hash changes, and PF's listing rule
+  asked all four checks of every listed screen. PF now says a listed screen whose settings are unchanged stays listed
+  on a later image after the boot check alone (prefix and keys), its row naming that image. The gate stays as the
+  owner approved it; the alternative, a full re-check of the HAT, would add a throwaway ceremony for code H1a-H4 and
+  the pinned HAT profile already cover.
+- M4b-2 (2f): the HAT's Supported screens row rests on its M4 records (H1a-H4 on 4b13c095...), not on an H6; the
+  Verification "Docs" item says so.
+- M4b-3 (2f): no backlight step and no idle-wipe step join PF's listing rule. The BL wire's rule is in PF (2d); B5's
+  H6 keeps its idle-wipe line for new screens; the HAT's black frame stays as M4's lead decision 22 left it.
+
 **Commit order on `m4b-screens`**
 1. tasks/todo.md: the M4b plan and the owner's answers to Q44-Q50.
    (As made, 2026-10-16: the answers and the go-ahead recorded, B0's two owner items asked, Q45's and Q50's
    conditional items closed as not in M4b, and main's post-merge image run recorded for M4.)
 2. docs: B1, alone.
+   As made: a578ef4. Stage B1's plan, security and recompute reviews: 9 findings, no high, 2 medium (BP's release
+   table named one Pi image; the HAT row named no image), 7 low. Fixed: 2b (0200eaa, BP's release table: one image
+   per supported screen type), 2c (c0aa2b8, the HAT row names its checked image by SHA-256 and prefix), 2d (a81321b,
+   BL must reach BCM 24, never left open or tied to 3.3 V). The lead's: 2e (b775025, PF's listing rule lets a listed
+   screen with unchanged settings stay listed after the boot check alone, decision M4b-1) and 2f (this file).
+   Not acted on, with reasons: the docs ahead of code (the plan's order); a check that PF's names equal the
+   Makefile's `PANELS` (optional; B3 may add it); a backlight step in the listing rule (decision M4b-3).
 3. pi/app (bin): the new profiles and their tests (B2).
 4. pi/app (bin), scripts: `KEEPCRYPT_PI_PANEL` selection and its canaries (B3).
 5. pi/os: `PANELS`, the required `PANEL=`, the .mk's explicit variable and the image names (B3).
@@ -9280,7 +9307,8 @@ What does not change, in M4 or M4b (Q44-Q50):
   - 10: no test profile in any image, because `device/panel/tests.rs` is declared only as `#[cfg(test)] mod tests;`
     (the line shown under Review); the scan's existing markers stay clean;
   - 11: no new crate (`git diff Cargo.lock` is empty).
-- [ ] **Docs:** the Supported screens table lists only screens with an H6 record.
+- [ ] **Docs:** the Supported screens table lists only screens with an H6 record, or for the HAT its M4 hardware records
+  (H1a-H4, 2026-10-16) and, if its image hash changes in M4b, H1 on the new image (lead decision M4b-2).
 
 ### Verification
 - [x] **Gate: full ceremony on a Pi Zero v1.3, checked with the offline verifier.** H2 and H3 on the gate image (the
