@@ -225,7 +225,7 @@ scripts/banned-api-check.sh --image IMG pi/os/expected KCONFIG BIN_SHA256   # th
 sh scripts/panels-differ.sh NAME=SHA256 NAME=SHA256...   # pi-image panels differ, on a run that builds two or more
                                      # panels: each one's BIN_SHA256 (leg a's); exit 1 if two are equal, since a name
                                      # then never reached the compiler
-scripts/canaries.sh                  # 76 checks: proves every gate still fires, the scan's positive controls included
+scripts/canaries.sh                  # 81 checks: proves every gate still fires, the scan's positive controls included
 ```
 
 ## Definition of done (every task)
