@@ -7,7 +7,8 @@
 //! - Everything specific to a screen is one `PanelProfile`, a `const` of data: its orientation
 //!   byte, its start-up settings (only opcodes from `ST7789_INIT_OPCODES`), its whole frame memory,
 //!   where the 240×240 frame sits in it, and its bus speed. `PROFILES` lists every profile and
-//!   `PANEL` names the image's. M4 has one: the Waveshare 1.3-inch HAT, with the approved bytes.
+//!   `PANEL` is the image's, named by `KEEPCRYPT_PI_PANEL` when the binary is built (M4b B3). M4
+//!   has one: the Waveshare 1.3-inch HAT, with the approved bytes.
 //! - The driver owns every step that is the same on every screen: the reset, MADCTL, sleep out,
 //!   the windows, the memory writes and display on.
 //! - The panel never shows a stale frame. Init blanks all of frame memory before display on, and
@@ -215,18 +216,48 @@ pub const WAVESHARE_1IN3_HAT: PanelProfile = PanelProfile {
 };
 
 /// Every profile, each checked by the tests: in M4 the HAT alone, or a second HAT profile if Q50
-/// applies.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the tests check every profile; the image uses PANEL alone"
-    )
-)]
+/// applies. `PANEL` is chosen from it by name.
 pub const PROFILES: &[&PanelProfile] = &[&WAVESHARE_1IN3_HAT];
 
-/// The image's profile: the one line that names it. Group 10 uses it; M4b's B3 replaces it.
-pub const PANEL: &PanelProfile = &WAVESHARE_1IN3_HAT;
+/// The image's profile (Q47 (a); tasks/todo.md, M4b B3), resolved when the binary is compiled:
+/// the one `KEEPCRYPT_PI_PANEL` names, which the image build must always set. Unset, as in
+/// `cargo test`, lint and CI's cross job, it is the HAT. An empty or unknown name stops the build.
+/// Group 10 uses it.
+pub const PANEL: &PanelProfile = select(option_env!("KEEPCRYPT_PI_PANEL"));
+
+/// The profile in `PROFILES` whose `name` equals `name` byte for byte. No name looks up the HAT's,
+/// so unset and `st7789-240x240` give the same entry. Any other name, the empty one included,
+/// panics with fixed text: in `PANEL`'s const evaluation that stops the build, so a mistyped name
+/// never falls back to a default (rule 3).
+const fn select(name: Option<&str>) -> &'static PanelProfile {
+    let name = match name {
+        Some(name) => name.as_bytes(),
+        None => WAVESHARE_1IN3_HAT.name.as_bytes(),
+    };
+    let mut i = 0;
+    while i < PROFILES.len() {
+        if same(PROFILES[i].name.as_bytes(), name) {
+            return PROFILES[i];
+        }
+        i += 1;
+    }
+    panic!("KEEPCRYPT_PI_PANEL is empty or names no profile in PROFILES")
+}
+
+/// Whether `a` and `b` hold the same bytes (`==` on slices is not a const fn).
+const fn same(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < a.len() {
+        if a[i] != b[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
 
 /// The panel on `bus`, with `profile`'s settings. No `Debug` and no `Clone`: its buffer carries
 /// frame bytes during a present.

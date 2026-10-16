@@ -1,7 +1,8 @@
 //! The panel driver's tests (tasks/todo.md, M4 group 5, Q44), on a recording bus and a model of
 //! the controller's frame memory: the HAT's init pinned to the approved bytes; a present's window,
 //! writes and byte order; the buffer and the backlight on every error; `Drop`; the `PROFILES`
-//! checks; and a test-only profile whose frame sits 40 columns in.
+//! checks; a test-only profile whose frame sits 40 columns in; and the profile's selection by name
+//! (M4b B3).
 
 use std::cell::RefCell;
 use std::collections::BTreeSet;
@@ -375,7 +376,8 @@ fn the_hats_init_stream_is_the_approved_one_byte_for_byte() {
     // What the stream does not carry: Q47's name for this screen type, and the approved 40 MHz.
     assert_eq!(WAVESHARE_1IN3_HAT.name, "st7789-240x240");
     assert_eq!(WAVESHARE_1IN3_HAT.spi_hz, 40_000_000);
-    // The image's profile, so this is what the image sends.
+    // The image's profile with `KEEPCRYPT_PI_PANEL` unset or `st7789-240x240`, so this is what the
+    // HAT's image sends.
     assert_eq!(PANEL, &WAVESHARE_1IN3_HAT);
 }
 
@@ -730,4 +732,42 @@ fn every_profile_passes_the_checks_and_each_check_fires() {
     ] {
         assert_eq!(faults(&broken), [fault]);
     }
+}
+
+/// Q47 (a): with `KEEPCRYPT_PI_PANEL` unset, as in `cargo test`, lint and CI's cross job, the
+/// profile is the HAT.
+#[test]
+fn no_panel_name_selects_the_hat() {
+    assert_eq!(select(None), &WAVESHARE_1IN3_HAT);
+}
+
+/// The HAT's image name selects the HAT, and every profile in `PROFILES` is selected by its own
+/// name, so a profile added there is a name the build takes.
+#[test]
+fn st7789_240x240_selects_the_hat_and_each_name_its_profile() {
+    assert_eq!(select(Some("st7789-240x240")), &WAVESHARE_1IN3_HAT);
+    for profile in PROFILES {
+        assert_eq!(select(Some(profile.name)), *profile, "{}", profile.name);
+    }
+}
+
+// An unknown or empty name panics with fixed text, which in `PANEL`'s const evaluation stops the
+// build (scripts/canaries.sh: panel-name-nonsense and panel-name-empty). The HAT's name with a
+// trailing space agrees with it in every byte the HAT's name has, so only the length refuses it.
+#[test]
+#[should_panic(expected = "KEEPCRYPT_PI_PANEL is empty or names no profile in PROFILES")]
+fn an_unknown_panel_name_panics() {
+    select(Some("nonsense"));
+}
+
+#[test]
+#[should_panic(expected = "KEEPCRYPT_PI_PANEL is empty or names no profile in PROFILES")]
+fn an_empty_panel_name_panics() {
+    select(Some(""));
+}
+
+#[test]
+#[should_panic(expected = "KEEPCRYPT_PI_PANEL is empty or names no profile in PROFILES")]
+fn a_panel_name_with_a_trailing_space_panics() {
+    select(Some("st7789-240x240 "));
 }

@@ -9178,13 +9178,27 @@ What does not change, in M4 or M4b (Q44-Q50):
   their own later step with their own download.
 
 **B3. Selection when the image is built (Q47 (a))**
-- [ ] `PANEL` (group 5's one line) becomes the profile named by `option_env!("KEEPCRYPT_PI_PANEL")`, resolved in a
+- [x] `PANEL` (group 5's one line) becomes the profile named by `option_env!("KEEPCRYPT_PI_PANEL")`, resolved in a
   `const` by a const fn that compares the bytes:
   - unset gives `WAVESHARE_1IN3_HAT`, so `cargo test`, `lint`, coverage, pi/sim and the CI cross leg, none of which
     makes an image, are unchanged;
   - a known name gives that profile;
   - an empty or unknown value stops the build with fixed text (a const-evaluation panic);
   - cargo tracks variables read by `option_env!`, so a change rebuilds only `keepcrypt-pi`.
+
+  Proof (M4b commit 4): `PANEL = select(option_env!("KEEPCRYPT_PI_PANEL"))`. `select`, a const fn, returns the
+  `PROFILES` entry whose `name` equals the name byte for byte (no name looks up the HAT's) and otherwise panics with
+  "KEEPCRYPT_PI_PANEL is empty or names no profile in PROFILES". Tests: `no_panel_name_selects_the_hat`,
+  `st7789_240x240_selects_the_hat_and_each_name_its_profile` (also every `PROFILES` entry by its name), and
+  `should_panic` tests for `nonsense`, the empty name and `st7789-240x240 ` (a trailing space, which fails if `same`
+  drops its length check). Canaries `panel-name-nonsense` and `panel-name-empty` (`cargo check` of the binary's test
+  configuration) fail with `error[E0080]: evaluation panicked:` and that text, and report FAIL on a copy whose
+  `select` falls back to the HAT; `PASS: all 75 checks ran` (73 + 2) under sh and dash. With the variable unset and
+  with `st7789-240x240` alike, `cargo test --workspace --locked` gives 450 passed, 3 ignored (the binary's 63 passed
+  both ways). `cargo check -v` marks only keepcrypt-pi dirty ("the environment variable KEEPCRYPT_PI_PANEL changed").
+  On the Pi target (clippy and a release check, with a stub C compiler and nothing linked) the binary is clean, and
+  `nonsense` and the empty name stop it the same way. The Mac's release test binaries built unset and with
+  `st7789-240x240` are byte-identical (d857ecc7...); the Pi binary's bytes are the image run's to show.
 - [ ] The image path never relies on "unset". It fails closed:
   - `make image`, `make repro-check` and `make scan` require `PANEL=<name>`. Before Buildroot starts, they refuse a
     missing, empty or unlisted name and print the list;
@@ -9192,11 +9206,15 @@ What does not change, in M4 or M4b (Q44-Q50):
     (group 13's `env -u RUSTFLAGS` line), because Buildroot runs cargo with its own environment. The .mk also refuses an
     empty value itself;
   - the image is named `keepcrypt-pi-0.0.0-<name>.img`, and the build log prints the name next to the binary's SHA-256.
-- [ ] Why not the alternatives:
+- [x] Why not the alternatives:
   - Not a cargo feature: the lint job runs `cargo clippy --workspace --all-targets --all-features`
     (entropy-ci.yml:128), which mutually exclusive features would break.
   - Not `--cfg` in RUSTFLAGS: an unknown value would silently give the HAT, the .mk unsets RUSTFLAGS, and any change to
     RUSTFLAGS rebuilds every crate.
+
+  Proof (M4b commit 4): the selection is `option_env!` alone; the commit adds no `[features]` entry and no `--cfg` (its
+  code changes are device/panel.rs, its tests and canaries.sh), and both clippy runs, `--all-features` included, are
+  clean.
 - [ ] pi/os: the Makefile holds one list, `PANELS := st7789-240x240 st7789-240x320`, plus anything Q45 or Q50 adds.
   - config.txt, cmdline.txt, inittab, `expected/` and the kernel config are the same for every image (one pin map).
 

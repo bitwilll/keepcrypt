@@ -1077,6 +1077,24 @@ device_canary device-buffered-reader pi/app/src/device/hwrng.rs \
 device_canary device-grouped-process-use pi/app/src/app.rs \
     'use std::process::{Command, Stdio}; // gate canary (temp copy only): the module by any path'
 
+# The image's panel profile (tasks/todo.md, M4b B3; Q47 (a)): KEEPCRYPT_PI_PANEL set to a name no
+# profile in pi/app's PROFILES has, or set but empty, must stop the real keepcrypt-pi binary's
+# build in PANEL's const evaluation, with select's fixed text and that one error, so a mistyped
+# name never falls back to the HAT. Nothing in the tree changes; only the variable is set. The
+# binary is checked in its test configuration, which compiles the device module on every host
+# (off Linux, main.rs otherwise leaves it out), and rustc evaluates every const item, used or not,
+# so any build that compiles the module stops the same way. Cargo tracks the variables option_env!
+# reads, so each value rechecks keepcrypt-pi alone.
+for panel in nonsense ""; do
+    expect_failure "panel-name-${panel:-empty}" env KEEPCRYPT_PI_PANEL="$panel" cargo check \
+        --color never --manifest-path "$root/Cargo.toml" -p keepcrypt-pi --bin keepcrypt-pi \
+        --profile test --locked --target-dir "$root/target/canary-real"
+    need "KEEPCRYPT_PI_PANEL is empty or names no profile in PROFILES"
+    need "--> pi/app/src/device/panel.rs:"
+    need "could not compile \`keepcrypt-pi\` (bin \"keepcrypt-pi\" test) due to 1 previous error"
+    verdict
+done
+
 # The workflow hardening check (tasks/todo.md, M4 group 11; Q38 (d)): a copy of the real
 # entropy-ci.yml with every rule broken once (the top-level token widened to write, which also
 # loses contents: read, and a job that runs on workflow_run, uses an action by tag, pastes an
@@ -1248,7 +1266,7 @@ cp "$root/core/examples/release_probe.rs" "$tmp/core/examples/release_probe.rs" 
 
 # The number of checks above, pinned, so a canary that is deleted, or skipped by a broken branch,
 # turns CI red too. A real change to the canaries updates this pin in the same reviewed change.
-want_checks=73
+want_checks=75
 if [ "$checks" -ne "$want_checks" ]; then
     echo "FAIL: $checks checks ran; scripts/canaries.sh pins $want_checks"
     status=1
