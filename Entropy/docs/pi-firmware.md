@@ -29,7 +29,7 @@ Phase 1 uses the same proven parts as SeedSigner, so builders can buy them anywh
 | Phase 2: Pi camera (OV5647), I2S MEMS mic, I2C IMU | Uncredited extras | Camera lens covered; all three default off |
 | KeepCrypt Hinge or Screw (12 titanium inserts) with its jig, punch and Allen key, plus the SeedBook | Braille backup | One device per 12-word phrase; a 24-word seed needs two |
 
-**Supported screens.** Each screen type has its own image, which holds only that screen's settings (see Build, flash and verify). A screen is listed here only after a check on real hardware with its exact image: the boot screen's hash prefix matches the image's, the picture is upright in true colours with no edge cut off, all eight keys work, and Sparrow scans the account QR off the screen. A screen that is not listed has not been checked, and it is not built into release images.
+**Supported screens.** Each screen type has its own image, which holds only that screen's settings (see Build, flash and verify). A screen is listed here only after a check on real hardware with its exact image: the boot screen's hash prefix matches the image's, the picture is upright in true colours with no edge cut off, all eight keys work, and Sparrow scans the account QR off the screen. A listed screen whose settings are unchanged stays listed on a later image after the boot check alone (the hash prefix matches and all eight keys work), and its row then names that image. A screen that is not listed has not been checked, and it is not built into release images.
 
 | Screen | Image | Wiring | Checked on hardware |
 | --- | --- | --- | --- |
