@@ -9058,8 +9058,11 @@ stale (Q43 (d)).
   - index.html's first-capture placeholders, with the next capture-set change.
 
 **M4b: more Waveshare screens (`m4b-screens`, after the M4 gate is approved; Q45-Q50)**
-M4b gets its own branch and PR, with its own gate, which the owner approves before the work starts. Commands, budgets and
-the required check names are unchanged.
+M4b gets its own branch and PR, with its own gate, which the owner approves before the work starts. Budgets and the
+required check names are unchanged; CLAUDE.md's Commands gain the `PANEL=<name>` forms (commit 7), as B3 requires.
+Status (M4b commit 1, 2026-10-16): the owner approved the M4 gate ("approved, merge it"; PR #7 merged as 95c4359) and
+then said "go ahead with M4b", read as approving this plan and its proposed gate (B6). Branch `m4b-screens` starts
+from 95c4359.
 
 What does not change, in M4 or M4b (Q44-Q50):
 - The M4 gate (BP:294), the answers to Q35-Q43 and the four approved crates (rule 11).
@@ -9068,6 +9071,7 @@ What does not change, in M4 or M4b (Q44-Q50):
 - Rule 8 and CLAUDE.md, under the recommendations (Q51, answered 2026-10-14, is a separate item: commits 10c and 10d).
   - Commit 3 has landed (ed15bd2) with the approved sentence.
   - Only Q47 (c), which was not taken, would have needed a later CLAUDE.md commit adding `/proc/cmdline`.
+  - CLAUDE.md's rules do not change; its Commands block does (commits 7 and 7b), as the plan's commit 7 says.
 - No `unsafe` (Q36 (d)).
 - No simulator or test code in any image (rule 10). Group 5's test-only profile lives in `device/panel/tests.rs`, which
   is declared only as `#[cfg(test)] mod tests;`, so rustc never compiles it outside `cargo test`.
@@ -9077,9 +9081,17 @@ What does not change, in M4 or M4b (Q44-Q50):
   - pi/sim keeps its 240×240 panel (pi/sim/src/panel.rs:27-28, :44).
 
 **B0. Before code**
-- [ ] Record the owner's answers to Q44-Q50.
+- [x] Record the owner's answers to Q44-Q50.
+  Proof (M4b commit 1): answered 2026-10-14, "approve all", so every recommendation stands ("Raised by the owner's
+  screen request", above): Q44 one data block per screen type (built in M4); Q45 the 1.54-inch and 2-inch modules,
+  with the 1.3-inch module on the HAT's block, and the 2.4-inch and 1.69-inch revisited after the 2-inch works; Q46
+  the same centred 240×240 picture on every screen; Q47 one image per screen type, chosen when CI builds it; Q48 one
+  pin map for every screen, backlight on BCM 24; Q49 H6 per screen, the owner buys the screens, M4b as a short step
+  after M4, and one Waveshare download with the owner's yes; Q50 did not apply (H1a's colours were true).
 - [ ] The owner has the screens to be offered (Q49 (b)) and the switches.
-- [ ] Where each module profile's values come from (Q49 (d)):
+  Open (M4b commit 1): asked 2026-10-16: the 1.54-inch module, the 2-inch module, a 5-way joystick switch, three
+  push buttons and jumper wires (the 1.3-inch module is optional). Needed by B5 (H6) only; B1-B4 do not wait for it.
+- [x] Where each module profile's values come from (Q49 (d)):
   - Recommended: with the owner's yes, download one file, Waveshare's `LCD_Module_RPI_code.zip` from
     files.waveshare.com. It is linked from the 1.3, 1.54, 2 and 2.4-inch module wikis, whose file lists cover all four
     sizes. The lead states its size when asking. The file goes into its own new, empty directory and is read as data
@@ -9089,41 +9101,80 @@ What does not change, in M4 or M4b (Q44-Q50):
   - Otherwise: profiles are pinned to Waveshare's Pico-board drivers [S34, S35], labelled in each test's doc as a
     stand-in, and H6 is the only confirmation for the modules. The 2.4-inch and the 1.69-inch cannot be added without a
     download.
+  Open (M4b commit 1): the download is asked of the owner, 2026-10-16: `LCD_Module_RPI_code.zip`, 12,380,597 bytes
+  (`Content-Length` of a HEAD request; `Last-Modified` 2023-12-25), from
+  https://files.waveshare.com/upload/8/8d/LCD_Module_RPI_code.zip, the link on both the 2-inch and the 1.54-inch
+  module wikis (read 2026-10-16). B2 waits for the answer; B1 does not.
+  Proof (the owner, 2026-10-16, "yes, download the Waveshare zip"; M4b commit 3f): downloaded into its own new folder
+  in the session scratchpad, read as data only, never committed: 12,380,597 bytes, SHA-256
+  07afa6be35a710a7e811435eb048e474988cee0946e8e6e99a11b59f0644f0ac, 152 entries ([S38]). Commit 3 pins the 2-inch
+  profile to its `LCD_2inch.c` and confirms the 1.3-inch and 1.54-inch files send the HAT's bytes.
 
 **B1. Docs, alone (first code-free commit)**
-- [ ] PF:23:
+- [x] PF:23:
   - the screen row reads "Waveshare 1.3-inch LCD HAT, or a supported screen below";
   - a new "Supported screens" table lists screen, image, wiring, and "checked on hardware" with the H6 date.
-- [ ] PF:32-43 says "One pin map for every screen" and gives:
+- [x] PF:32-43 says "One pin map for every screen" and gives:
   - the module wiring and switch wiring with header pins (Q48);
   - the backlight on BCM 24;
   - the joystick and key placement.
-- [ ] PF:66 (`hal::Display`) reads: "Draw 240x240 frames, centred on screens larger than 240×240; one block of settings
+- [x] PF:66 (`hal::Display`) reads: "Draw 240x240 frames, centred on screens larger than 240×240; one block of settings
   per screen type, chosen when the image is built."
-- [ ] PF:163-184: `make -C Entropy/pi/os image PANEL=<name>` and `make -C Entropy/pi/os repro-check PANEL=<name>` (both
+- [x] PF:163-184: `make -C Entropy/pi/os image PANEL=<name>` and `make -C Entropy/pi/os repro-check PANEL=<name>` (both
   refuse a missing name), the list of names, and "flash the image named for your screen".
-- [ ] BP:76's "the ST7789 driver is KeepCrypt's own" becomes "the display driver is KeepCrypt's own: one driver, one
+- [x] BP:76's "the ST7789 driver is KeepCrypt's own" becomes "the display driver is KeepCrypt's own: one driver, one
   block of settings per screen type". The wording names no controller, so it stays true if the ILI9341 is added.
-- [ ] BP's milestone table gains an M4b row with its gate, in the owner's wording.
-- [ ] BP:50 and swb:90 stay as they are, because the frame is still 240 × 240.
+- [x] BP's milestone table gains an M4b row with its gate, in the owner's wording.
+- [x] BP:50 and swb:90 stay as they are, because the frame is still 240 × 240.
 
   Proof:
   - `git diff --name-only` lists only `docs/`;
   - `vectorgen.py --selftest` passes (it pins PF sentences);
   - `verify.py --selftest` passes;
   - banned-api-check is clean.
+  Proof (M4b commits 2-2e, a578ef4, 0200eaa, c0aa2b8, a81321b, b775025): `git diff --name-only c923063..b775025` lists
+  only `Entropy/docs/build-plan.md` and `Entropy/docs/pi-firmware.md`; `vectorgen.py --selftest` "selftest passed: 13
+  checks" on python3 and /usr/bin/python3 (no pinned sentence changed); `verify.py selftest` "8 known-answer groups"
+  on both; banned-api-check clean (241 files). The Supported screens table lists the HAT alone, by the image its
+  check ran on (SHA-256 4b13c095..., prefix 76eb-725e-8163-7013; lead decision M4b-2). The stage suite at a81321b
+  passed every local command (cargo test 445 passed, 3 ignored; canaries; llvm-cov; deny, audit and vet offline).
+  The header pins were recomputed from the 40-pin layout against input.rs and linux.rs. PF's build text describes
+  `PANEL=<name>` ahead of the code, as the plan orders; B3's commits make it true, and m4b-screens merges only at
+  the gate.
 
 **B2. Profiles (`device/panel.rs`)**
-- [ ] `ST7789_240X320`, for the Waveshare 2-inch module:
+- [x] `ST7789_240X320`, for the Waveshare 2-inch module:
   - the 2-inch values: VCOMS `1F`, its two gamma tables, INVON, from the module archive's 2-inch file if Q49 (d) is yes,
     otherwise from `LCD_2in.c` [S35] as a stand-in;
   - `madctl` `0x70`, `ram` 320×240, `origin` (40, 0);
   - the picture is landscape like the HAT's: joystick left, keys right.
-- [ ] The 1.3-inch and 1.54-inch modules use `WAVESHARE_1IN3_HAT` unchanged, because Waveshare's values for these sizes
+    (Open to H6, lead decision M4b-6: Waveshare's demos turn their pictures before MADCTL 0x70, by 180 degrees on the
+    2-inch and a quarter turn on the 1.3-inch and 1.54-inch modules, so which way up our unturned frame shows depends
+    on how a module sits. H6's picture check settles it; PF's wiring then says which edge goes where.)
+
+  Proof (M4b commit 3): `cargo test -p keepcrypt-pi --locked --bin keepcrypt-pi -- device::panel`: 23 passed.
+  `the_2_inch_modules_init_stream_is_its_files_with_the_listed_deviations` pins the init to `LCD_2inch.c`'s
+  `LCD_2IN_Init` (the archive's `RaspberryPi/c/lib/LCD/`, SHA-256 4dc89777...), written out in the test with the plan's
+  deviations applied one by one (MADCTL `0x70` not `0x00`, the early INVON, CASET and RASET dropped, SLPOUT and DISPON
+  the driver's, the reset the driver's); its settings differ from the HAT's only in VCOMS and the two gamma tables.
+  `LCD_2inch.py` sends the same bytes. Landscape is `madctl` `0x70`, the HAT's (MV set, `ram` 320×240), which the
+  archive's Python driver also sends for a 320×240 picture; which way up on the module is H6's (B5). Window
+  `00 28 01 17` and `00 00 00 EF`, 29 writes, 115,200 bytes, `F8 00`; init and `Drop` wipe 153,600 zero bytes in 38
+  writes; the memory model and the `PROFILES` checks run over it. Each of 12 mutants fails a test: VCOMS, a byte of
+  either gamma table, the origin, `madctl`, `ram`, INVON early or missing, `spi_hz`, the name, the profile out of
+  `PROFILES`, and the file's listing without its early INVON (that one the build, as the listing's length is fixed).
+- [x] The 1.3-inch and 1.54-inch modules use `WAVESHARE_1IN3_HAT` unchanged, because Waveshare's values for these sizes
   are identical [S34], to be confirmed against the archive if Q49 (d) is yes. If H6 shows that a module needs a lower
   bus speed over jumper wires, it gets its own profile and image.
-- [ ] If Q50 made `WAVESHARE_1IN3_HAT_B` in M4, it gets its own image name here (`st7789-240x240-b`).
-- [ ] Only if Q45 adds them:
+
+  Proof (M4b commit 3): `the_1_3_and_1_54_inch_modules_files_send_the_hats_settings`: the HAT's commands, less step 7's
+  window, equal what the archive's `LCD_1in3.c` and `LCD_1in54.c` send (MADCTL `0x70` from `SetAttributes(HORIZONTAL)`,
+  as both demos call it, then `InitReg`), 240×240 at no offset; the two files differ only in names and their header
+  dates, and `LCD_1inch3.py` and `LCD_1inch54.py` send the same. `WAVESHARE_1IN3_HAT` is unchanged; a
+  changed HAT VCOMS or listing VCOMS fails the test.
+- [x] If Q50 made `WAVESHARE_1IN3_HAT_B` in M4, it gets its own image name here (`st7789-240x240-b`).
+  Not applicable (M4b commit 1): Q50 made no second HAT block, since H1a's colours were true.
+- [x] Only if Q45 adds them:
   - `ILI9341_240X320`: one more profile under the same driver, not a second driver. The driver's own steps (reset,
     MADCTL, SLPOUT, CASET, RASET, RAMWR, DISPON) use the same opcodes on the ILI9341, and its frame memory is also
     240×320.
@@ -9149,29 +9200,80 @@ What does not change, in M4 or M4b (Q44-Q50):
   - wipe size and write count;
   - byte order;
   - the `PROFILES` checks from group 5.
+  Not in M4b (M4b commit 1): Q45 as recommended revisits the 2.4-inch and the 1.69-inch after the 2-inch works, as
+  their own later step with their own download.
 
 **B3. Selection when the image is built (Q47 (a))**
-- [ ] `PANEL` (group 5's one line) becomes the profile named by `option_env!("KEEPCRYPT_PI_PANEL")`, resolved in a
+- [x] `PANEL` (group 5's one line) becomes the profile named by `option_env!("KEEPCRYPT_PI_PANEL")`, resolved in a
   `const` by a const fn that compares the bytes:
   - unset gives `WAVESHARE_1IN3_HAT`, so `cargo test`, `lint`, coverage, pi/sim and the CI cross leg, none of which
     makes an image, are unchanged;
   - a known name gives that profile;
   - an empty or unknown value stops the build with fixed text (a const-evaluation panic);
   - cargo tracks variables read by `option_env!`, so a change rebuilds only `keepcrypt-pi`.
-- [ ] The image path never relies on "unset". It fails closed:
+
+  Proof (M4b commit 4): `PANEL = select(option_env!("KEEPCRYPT_PI_PANEL"))`. `select`, a const fn, returns the
+  `PROFILES` entry whose `name` equals the name byte for byte (no name looks up the HAT's) and otherwise panics with
+  "KEEPCRYPT_PI_PANEL is empty or names no profile in PROFILES". Tests: `no_panel_name_selects_the_hat`,
+  `st7789_240x240_selects_the_hat_and_each_name_its_profile` (also every `PROFILES` entry by its name), and
+  `should_panic` tests for `nonsense`, the empty name and `st7789-240x240 ` (a trailing space, which fails if `same`
+  drops its length check). Canaries `panel-name-nonsense` and `panel-name-empty` (`cargo check` of the binary's test
+  configuration) fail with `error[E0080]: evaluation panicked:` and that text, and report FAIL on a copy whose
+  `select` falls back to the HAT; `PASS: all 75 checks ran` (73 + 2) under sh and dash. With the variable unset and
+  with `st7789-240x240` alike, `cargo test --workspace --locked` gives 450 passed, 3 ignored (the binary's 63 passed
+  both ways). `cargo check -v` marks only keepcrypt-pi dirty ("the environment variable KEEPCRYPT_PI_PANEL changed").
+  On the Pi target (clippy and a release check, with a stub C compiler and nothing linked) the binary is clean, and
+  `nonsense` and the empty name stop it the same way. The Mac's release test binaries built unset and with
+  `st7789-240x240` are byte-identical (d857ecc7...); the Pi binary's bytes are the image run's to show.
+- [x] The image path never relies on "unset". It fails closed:
   - `make image`, `make repro-check` and `make scan` require `PANEL=<name>`. Before Buildroot starts, they refuse a
     missing, empty or unlisted name and print the list;
   - `package/keepcrypt-pi/keepcrypt-pi.mk` sets `KEEPCRYPT_PI_PANEL` explicitly in the cargo command's environment
     (group 13's `env -u RUSTFLAGS` line), because Buildroot runs cargo with its own environment. The .mk also refuses an
     empty value itself;
   - the image is named `keepcrypt-pi-0.0.0-<name>.img`, and the build log prints the name next to the binary's SHA-256.
-- [ ] Why not the alternatives:
+
+  Proof (M4b commit 5, local stubs; open until the image run at this commit shows real Buildroot): the Makefile checks
+  `PANEL` when parsing any run whose goals include `image`, `repro-check` or `scan`, so `make source image` stops before
+  `source` too; the error names the case (`PANEL is not set`, `PANEL is empty`, `PANEL="nonsense" is not a name in the
+  list`) and prints `PANELS`. On a space-free copy of pi/os with a stub KC_WORK, a stub `BR` and curl that log every
+  call and kconfig.sh stubbed, `image`, `repro-check`, `scan` and `source image` each exit 2 with no call logged for no
+  `PANEL`, `PANEL=` and `PANEL=nonsense` (also two names, `%` and `st7789-240x320`). `PANEL=st7789-240x240` passes
+  `KEEPCRYPT_PI_PANEL=st7789-240x240` to both Buildroot builds, and `mv` names genimage's `keepcrypt-pi.img`
+  `keepcrypt-pi-0.0.0-st7789-240x240.img`; `repro-check` ends "pi/os: both builds gave the same image". The real .mk,
+  included by a harness with `BR_BUILDING=y`, stops on an unset or empty `KEEPCRYPT_PI_PANEL`, gives a stub cargo
+  `KEEPCRYPT_PI_PANEL=st7789-240x240`, and prints `KEEPCRYPT_PI_PANEL=st7789-240x240 <SHA-256>  usr/bin/keepcrypt-pi`;
+  with its env line deleted, a name set only as a make variable reaches cargo as unset. The image workflow's make line
+  passes `PANEL=st7789-240x240` until commit 6's matrix.
+  Proof (M4b Review, 2026-10-17): the real Buildroot runs now show it. In every leg of image runs 38972422480
+  (dd8b878) and 38978353698 (058589f), `make -C pi/os source image PANEL="$PANEL"` puts `KEEPCRYPT_PI_PANEL=<name>`
+  on Buildroot's make line. The .mk prints `KEEPCRYPT_PI_PANEL=st7789-240x240 f322d568...  usr/bin/keepcrypt-pi`
+  (`st7789-240x320 ad701a99...` in that panel's legs), and genimage's image is moved to
+  `keepcrypt-pi-0.0.0-<name>.img`. The refusals: at 058589f, on a space-free copy of pi/os, `make -n image` stops at
+  parse time on an unset, empty, unknown, two-name or upper-case `PANEL`, and prints the two names. 5c's canaries
+  (image, repro-check and scan on a bad name; the .mk on an empty `KEEPCRYPT_PI_PANEL`) are among the 81 that pass
+  locally under sh and dash and in CI's gates job (run 38978353672).
+- [x] Why not the alternatives:
   - Not a cargo feature: the lint job runs `cargo clippy --workspace --all-targets --all-features`
     (entropy-ci.yml:128), which mutually exclusive features would break.
   - Not `--cfg` in RUSTFLAGS: an unknown value would silently give the HAT, the .mk unsets RUSTFLAGS, and any change to
     RUSTFLAGS rebuilds every crate.
-- [ ] pi/os: the Makefile holds one list, `PANELS := st7789-240x240 st7789-240x320`, plus anything Q45 or Q50 adds.
+
+  Proof (M4b commit 4): the selection is `option_env!` alone; the commit adds no `[features]` entry and no `--cfg` (its
+  code changes are device/panel.rs, its tests and canaries.sh), and both clippy runs, `--all-features` included, are
+  clean.
+- [x] pi/os: the Makefile holds one list, `PANELS := st7789-240x240 st7789-240x320`, plus anything Q45 or Q50 adds.
   - config.txt, cmdline.txt, inittab, `expected/` and the kernel config are the same for every image (one pin map).
+
+  Open (M4b commit 5): `PANELS := st7789-240x240` alone, until commit 3 adds `st7789-240x320` with its profile (M4b lead
+  decision 4). No file under `board/`, `expected/` or `configs/` reads `PANEL` (only genimage.cfg's comment names it),
+  so every image gets the same config.txt, cmdline.txt, inittab, `expected/` and kernel config.
+  Proof (M4b commit 3): `override PANELS := st7789-240x240 st7789-240x320`. On a space-free copy of pi/os, `make
+  panels` prints both, one a line; `make -n image` and `repro-check` with `PANEL=st7789-240x320` pass the check and
+  give Buildroot `KEEPCRYPT_PI_PANEL=st7789-240x320` and `keepcrypt-pi-0.0.0-st7789-240x320.img`, and `scan` (which
+  runs no Buildroot build) passes the check and scans that image name (corrected by 3f); no `PANEL`, an
+  empty one, `nonsense` and both names at once stop with the two names listed. The grep of `board/`, `expected/` and
+  `configs/` still finds only genimage.cfg's comment.
 
   Proof:
   - a unit test per name, and one showing that unset gives the HAT;
@@ -9180,16 +9282,55 @@ What does not change, in M4 or M4b (Q44-Q50):
   - canaries (n + 2)/(n + 2).
 
 **B4. The image workflow's screen list (`entropy-pi-image.yml`)**
-- [ ] A matrix over `PANELS`:
+- [x] A matrix over `PANELS`:
   - per PR, `st7789-240x240` only;
   - every panel when the PR touches `Entropy/pi/app/src/device/panel.rs`, `Entropy/pi/app/src/device/panel/**`,
     `Entropy/pi/os/**` or the workflow file itself;
   - every panel weekly and on `workflow_dispatch`.
-- [ ] Each panel gets:
+
+  Proof (M4b commit 6, local stubs; open until the image runs show GitHub's matrix): the first job, `pi-image
+  panels`, reads `PANELS` at the commit built with the Makefile's new `panels` target (one name a line) and gives
+  the legs and compare jobs `include` entries of panel and slot. A pull request's or push's range is git diff's
+  three-dot one from `base.sha` or `before`, over the four paths and `Entropy/scripts/panels-differ.sh` (added: a
+  change to the check runs it); exit 0 gives the HAT alone, exit 1, no base or an unreadable range every panel;
+  `schedule` and `workflow_dispatch` every panel. Its run block, extracted with `ruby -ryaml` and run under `bash
+  -eo pipefail` in a scratch clone: with two names in `PANELS`, a range that changes pi/os gives both
+  (`several=true`), a docs-only pull request or push and a base-side pi/os change the HAT alone, `schedule` both,
+  a zero `before` or no base both; a list without the HAT, with a name twice, an upper-case name or nine names
+  fails.
+  Proof (M4b Review, 2026-10-17): image run 38978353698 on 058589f. `pi-image panels` (job 117233088788) read
+  `PANELS: st7789-240x240 st7789-240x320` at the commit. Against base 95c4359 it found that this pull request changes
+  the workflow, panel.rs, panel/tests.rs, pi/os files and panels-differ.sh ("so every panel"). It gave
+  `matrix=[{"panel":"st7789-240x240","slot":"s0"},{"panel":"st7789-240x320","slot":"s1"}]` and `several=true`. Run
+  38972422480 on dd8b878 also built both panels. On 394953f (run 38957642890), `PANELS` held one name, so only the
+  HAT was built. HAT-alone (a run that touches no listed path) and the weekly run rest on commit 6's stub runs of the
+  extracted run block; the dispatch run takes the same non-PR, non-push branch as the stub-run `schedule` case, and
+  no run has exercised `workflow_dispatch` itself. No real run has shown them, because this PR's range against main
+  always touches pi/os and the weekly schedule runs from main.
+- [x] Each panel gets:
   - two legs and its compare job;
   - the scan: `--image` against the one `expected/`, with `BIN_SHA256` from its own legs;
   - the upload.
-- [ ] **`pi-image panels differ`**: it needs every panel's compare job and fails if any two panels' `BIN_SHA256` are
+
+  Proof (M4b commit 6, local stubs; open until the image run at this commit): `build-a` and `build-b` share one
+  strategy (an anchor: `fail-fast: false`, `include` from the panels job) and run `make -C pi/os source image
+  PANEL="$PANEL"`; Hash and list also fails unless the one image is `keepcrypt-pi-0.0.0-<panel>.img` (stub run:
+  the other panel's name refused, no output written); the scan still takes `BIN_SHA256` from its own leg's hash
+  step; leg a's upload still follows both scans, its artifact named by the image file, so each panel's differs. A
+  matrix job's outputs are one map, so a last step (`if: !cancelled()`) writes the leg's panel, `job.status` and
+  hashes as JSON to the panel's slot (`s0`-`s7`). `pi-image reproducible (a = b, <panel>)` reads both legs' slot
+  and fails unless both gave a result for its panel, the images are equal and both built the panels job's commit
+  and succeeded. Stub runs: equal legs write the summary; differing images, a failed or missing leg, another
+  panel's result, differing commits, another commit than the panels job's and an empty image hash each fail with
+  their message and no summary.
+  Proof (M4b Review, 2026-10-17): in image runs 38972422480 (dd8b878) and 38978353698 (058589f), each panel has legs
+  a and b and its `pi-image reproducible (a = b, <panel>)` job, all green. On 058589f, each leg prints
+  `selftest-image: 17 passed, 0 failed` and `banned-api-check --image .../keepcrypt-pi-0.0.0-<panel>.img: clean:
+  ...`, checked against the one `pi/os/expected/`. Its scan step takes `BINARY` from its own leg's hash (f322d568...
+  or ad701a99...). Leg a's upload follows its scans: artifacts 12080945216 (`keepcrypt-pi-0.0.0-st7789-240x240.img`)
+  and 12080283384 (`keepcrypt-pi-0.0.0-st7789-240x320.img`), 36,426,240 bytes each, with digests equal to the images'
+  SHA-256s.
+- [x] **`pi-image panels differ`**: it needs every panel's compare job and fails if any two panels' `BIN_SHA256` are
   equal.
   - Profiles differ in data, so equal binaries mean a name never reached the compiler.
   - It runs on every run that builds two or more panels, which is every run that builds a non-HAT image. A HAT-only run
@@ -9197,10 +9338,48 @@ What does not change, in M4 or M4b (Q44-Q50):
   - The check is a short script under `scripts/` with a `--selftest` that feeds it two equal hashes and expects a
     failure (its canary).
   - M7 signs release images only from a run where this job is green.
-- [ ] Job names carry the panel, for example `pi-image build (a, st7789-240x320)`, and collide with none of the 14
+
+  Proof (M4b commit 6; the job first runs once commit 3 lists a second panel): `scripts/panels-differ.sh
+  NAME=SHA256...` exits 1 naming each pair with one hash, 2 on usage; `--selftest` gives "7 passed, 0 failed" under
+  sh and dash (two equal hashes exit 1, the canary; a third equal to the first; two different pass; one panel, a
+  name twice, an empty and an upper-case hash refused), and a copy whose comparison never fires fails it (5 passed,
+  2 failed). The gates job runs the selftest; canaries.sh's `panels-differ-equal` makes 76 checks. The job needs
+  the panels job, leg a and every compare job, runs when the panels job gives `several=true`, and checks each slot
+  holds its panel's result from the panels job's commit before calling the script. Stub runs: different binaries
+  pass and write the summary; equal binaries, a missing or swapped slot, another commit and an empty binary fail.
+  Proof (M4b Review, 2026-10-17): `pi-image panels differ` ran green on both two-panel runs (job 117220260457 on
+  dd8b878, job 117239022130 on 058589f). Each printed `st7789-240x240: f322d568...`, `st7789-240x320: ad701a99...`
+  and `pi-image panels differ: 2 panels, 2 different keepcrypt-pi SHA-256s`. It was skipped on 394953f's HAT-only run
+  (38957642890). Its selftest fails on two equal hashes: `PASS equal -> exit 1` and `panels-differ.sh --selftest: 10
+  passed, 0 failed`, both in CI's gates job (run 38978353672) and locally under sh and dash. The
+  `panels-differ-equal` canary is among the 81. The rule that M7 signs only from a green run is for M7 to apply.
+- [x] Job names carry the panel, for example `pi-image build (a, st7789-240x320)`, and collide with none of the 14
   required names.
-- [ ] The step summary lists, per panel, the commit, the image SHA-256, the rootfs prefix and the binary SHA-256.
-- [ ] `--workflows` hardening applies unchanged.
+
+  Proof (M4b commit 6; the rendered names are the run's): `pi-image panels`, `pi-image build (a, ${{ matrix.panel
+  }})`, `pi-image build (b, ...)`, `pi-image reproducible (a = b, ...)` and `pi-image panels differ`. Each starts
+  with `pi-image`, which none of the 14 required names does.
+  Proof (M4b Review, 2026-10-17): run 38978353698's jobs are `pi-image panels`, `pi-image build (a, st7789-240x240)`,
+  `pi-image build (a, st7789-240x320)`, `pi-image build (b, st7789-240x240)`, `pi-image build (b, st7789-240x320)`,
+  `pi-image reproducible (a = b, st7789-240x240)`, `pi-image reproducible (a = b, st7789-240x320)` and `pi-image
+  panels differ`. None of Entropy CI's 14 job names (run 38978353672) starts with `pi-image`.
+- [x] The step summary lists, per panel, the commit, the image SHA-256, the rootfs prefix and the binary SHA-256.
+
+  Proof (M4b commit 6, stub run; open until the run): each compare job writes "## Entropy Pi image: <panel>" with
+  the commit, the image and its SHA-256, the rootfs prefix and the binary SHA-256; panels differ lists each panel's
+  binary SHA-256.
+  Proof (M4b Review, 2026-10-17): on run 38978353698, each compare job's step runs under `bash -e -o pipefail` and
+  passed. That step appends "## Entropy Pi image: <panel>" to the step summary, with the commit, the image name, the
+  image SHA-256, the rootfs prefix and the keepcrypt-pi SHA-256. Its log prints the values it wrote: `PREFIX: a
+  3949-9677-0e09-93b4, b 3949-9677-0e09-93b4` and `BINARY: a f322d568..., b f322d568...` for 240x240, and
+  `c38e-038a-eaf6-94f0` and `ad701a99...` for 240x320. `panels differ` appends each panel's keepcrypt-pi SHA-256. The
+  rendered summary is shown on the run's page; `gh` does not print it.
+- [x] `--workflows` hardening applies unchanged.
+
+  Proof (M4b commit 6): banned-api-check.sh is unchanged and `--workflows ../.github/workflows` is clean under sh and
+  dash ("clean, 2 workflow(s)"); a scratch copy with an expression in each of the four new run blocks gives those 4
+  hits. Every checkout keeps `persist-credentials: false` and the head-SHA `ref`; the concurrency rules are
+  unchanged.
 
   Proof: a green run at the final head, with every panel's `reproducible (a = b)` job and `panels differ`; leg times and
   disk use under Review.
@@ -9220,7 +9399,14 @@ What does not change, in M4 or M4b (Q44-Q50):
 - [ ] A throwaway Mixed 12-word run up to step 12, taking Skip at step 7, recorded only in Q41 (c)'s form:
   - Sparrow scans the account QR off this screen, and its first address equals the wallet summary's;
   - a phone decodes the descriptor QR.
-- [ ] If the HAT image's hash changed in M4b, H1 (boot and keys) repeats on the HAT with the new image.
+- [x] If the HAT image's hash changed in M4b, H1 (boot and keys) repeats on the HAT with the new image.
+  Proof (the owner, 2026-10-17, M4b commit 3h): "H1 passed, all matched", on `keepcrypt-pi-0.0.0-st7789-240x240.img`
+  from image run 38972422480 (commit dd8b878), SHA-256 2cf22c74060d741eae01c16dab80f08bcd459ab3f3602015501222ef9c92a82f,
+  prefix `3949-9677-0e09-93b4` (binary f322d568...; the HAT image changed twice: to a7656197... (keepcrypt-pi 959fd6b7...) at 394953f after
+  commits 4-7, then to 2cf22c74... (f322d568...) at dd8b878 when commit 3 added the second profile; the HAT's settings
+  bytes unchanged throughout; corrected by 9a). By the checklist: the hash and prefix
+  matched, Home upright in true colours with no noise band, all 8 inputs once per press, a held key one action. PF's
+  HAT row names this image (3g, decision M4b-1). A later commit that changes this image repeats H1.
 
   No verify.py run and no backup are needed for the new screens. Apart from the panel profile, their firmware and frames
   are the HAT's, which the M4 gate covers.
@@ -9233,34 +9419,116 @@ What does not change, in M4 or M4b (Q44-Q50):
   - the HAT image passes H1 if its hash changed;
   - no image or doc lists an unchecked screen as supported.
 
+**M4b lead decisions** (each for the owner's approval at the M4b gate)
+- M4b-1 (2e, 2026-10-16): the approved gate asks only H1 of the HAT if its image hash changes, and PF's listing rule
+  asked all four checks of every listed screen. PF now says a listed screen whose settings are unchanged stays listed
+  on a later image after the boot check alone (prefix and keys), its row naming that image. The gate stays as the
+  owner approved it; the alternative, a full re-check of the HAT, would add a throwaway ceremony for code H1a-H4 and
+  the pinned HAT profile already cover.
+- M4b-2 (2f): the HAT's Supported screens row rests on its M4 records (H1a-H4 on 4b13c095...), not on an H6; the
+  Verification "Docs" item says so.
+- M4b-4 (2026-10-16): commits 4-7 (B3 and B4) run before commit 3 (B2), which waited on the owner's yes to the
+  Waveshare download, since they do not use the 2-inch values. Until commit 3, `PROFILES` and `PANELS` hold the HAT
+  alone, the selection works over `PROFILES` generically, and `panels differ` (which needs two panels) runs only from
+  commit 3's image run; its selftest and canaries run in `gates` from commit 6. The owner said yes to the download on
+  2026-10-16, after commits 4-7 had started.
+- M4b-5 (6c): stage B3B4's security review found the image workflow's every-panel paths left out
+  `pi/app/src/device/linux.rs` (the only runtime user of `PANEL`) and `pi/app/src/main.rs` (the device module's gate);
+  both are added, which only widens B4's list. Commit 6 also added `scripts/panels-differ.sh` to it.
+- M4b-6 (3f, 2026-10-17): the modules' picture orientation is left to H6. Waveshare's demos turn their pictures
+  before MADCTL 0x70 (the 2-inch by 180 degrees, the 1.3-inch and 1.54-inch by a quarter turn), so whether our
+  unturned frame is upright depends on how the module is mounted. A module can be turned to put it upright (any
+  quarter turn for the square panels, half a turn for the 2-inch), so no code waits on it; H6 checks it, and PF's
+  wiring then names the edge. A bring-up fix (commit 8) changes `madctl` only if turning cannot help.
+- M4b-3 (2f): no backlight step and no idle-wipe step join PF's listing rule. The BL wire's rule is in PF (2d); B5's
+  H6 keeps its idle-wipe line for new screens; the HAT's black frame stays as M4's lead decision 22 left it.
+
 **Commit order on `m4b-screens`**
 1. tasks/todo.md: the M4b plan and the owner's answers to Q44-Q50.
+   (As made, 2026-10-16: the answers and the go-ahead recorded, B0's two owner items asked, Q45's and Q50's
+   conditional items closed as not in M4b, and main's post-merge image run recorded for M4.)
 2. docs: B1, alone.
+   As made: a578ef4. Stage B1's plan, security and recompute reviews: 9 findings, no high, 2 medium (BP's release
+   table named one Pi image; the HAT row named no image), 7 low. Fixed: 2b (0200eaa, BP's release table: one image
+   per supported screen type), 2c (c0aa2b8, the HAT row names its checked image by SHA-256 and prefix), 2d (a81321b,
+   BL must reach BCM 24, never left open or tied to 3.3 V). The lead's: 2e (b775025, PF's listing rule lets a listed
+   screen with unchanged settings stay listed after the boot check alone, decision M4b-1) and 2f (this file).
+   Not acted on, with reasons: the docs ahead of code (the plan's order); a check that PF's names equal the
+   Makefile's `PANELS` (optional; B3 may add it); a backlight step in the listing rule (decision M4b-3).
 3. pi/app (bin): the new profiles and their tests (B2).
+   As made (after commits 4-7, decision M4b-4): 93cf0a4 (`ST7789_240X320` pinned to [S38]'s `LCD_2inch.c` with each
+   deviation listed and tested, the HAT's bytes confirmed against the 1.3-inch and 1.54-inch files, `st7789-240x320`
+   joins `PANELS`). Stage B2's plan, security and recompute reviews: 9 findings, all low. Fixed: 3b 1a762c1 (the
+   1.3/1.54 test's doc names the backlight among the driver's own steps), 3c 6e38114 (the panel_make canaries pin
+   `PANELS`' whole list), 3d c0a88d2 (the workflow header names linux.rs and main.rs). The lead's: 3e 9fbe608 (a test
+   pins `PANELS` to the `PROFILES` names; dropping st7789-240x320 fails it) and 3f (this file: B0's download item,
+   [S38], the orientation note and decision M4b-6, B3's `scan` proof corrected). The stage suite at c0a88d2 passed
+   (cargo test 457 passed, 3 ignored; 458 with 3e; canaries 81 under sh and dash).
 4. pi/app (bin), scripts: `KEEPCRYPT_PI_PANEL` selection and its canaries (B3).
+   As made: aef5ff7 (before commit 3, decision M4b-4); 4b a6e035f (review fix: the tests refuse a name one byte off
+   a `PROFILES` name at its first, last or any byte, which the byte loop in `same` needs).
 5. pi/os: `PANELS`, the required `PANEL=`, the .mk's explicit variable and the image names (B3).
+   As made: 750272d (also the image workflow's make line, `PANEL=st7789-240x240`, until commit 6); 5b 889e543
+   (review fix: `PANELS`, `PANEL_NAME`, `IMAGE` and `BR_IMAGE` are `override`, so neither the command line nor
+   `make -e` can bypass the name check); 5c 477067c (canaries: `make image`, `repro-check` and `scan` stop on a bad
+   name before Buildroot).
 6. .github, scripts: the image workflow's matrix, `panels differ` and its selftest (B4).
+   As made: 3f72c2b (also a phony `panels` target in pi/os/Makefile, so the workflow reads make's own `PANELS`; up to
+   eight panels); 6b 0a711a3 (review fix: panels-differ.sh's selftest also refuses an upper-case name, an empty name
+   and a malformed pair); 6c 3d29bf3 (the lead: linux.rs and main.rs in the every-panel paths, decision M4b-5).
 7. CLAUDE.md: Commands gain `make -C pi/os image PANEL=<name>`.
+   As made: f2f942e (also `make -C pi/os panels` and the panels-differ line); 7b 545e8a1 (the lead: canaries pins 81).
+   Stage B3B4's reviews (plan, security, recompute): 9 findings, no high, 2 medium (decision M4b-4 cited but not yet
+   recorded: now M4b-4 above; nothing tested `same`'s byte loop: 4b), 7 low (among them the make bypass, 5b; the
+   linux.rs path, 6c and M4b-5; the stale "unchanged" lines, fixed in this commit). The stage suite at 0a711a3
+   passed (cargo test --workspace: 21 suites, 453 passed, 3 ignored, the same with KEEPCRYPT_PI_PANEL=st7789-240x240;
+   canaries 81 under sh and dash, online; llvm-cov 97.38 % of lines; deny, audit and vet offline).
+   The lead's later commits for B3B4, B2 and H1, by hash: 2f 27bba1a, 7c 0e98af5, 7d 394953f (the B3B4 suite count
+   corrected to 453), 3f dd8b878, 3g b5dc8b6 (PF's HAT row adds the boot check on 2cf22c74) and 3h 058589f (B5's H1
+   item).
 8. Bring-up fixes from H6, each with the owner's observation and the root cause.
 9. tasks/todo.md: Review, H6 records and the gate report.
+   As made in two parts. 9a (2026-10-17): the Review before H6, drafted from a fresh suite at 058589f and checked by two
+   reviewers before commit (evidence and completeness: 18 findings, 2 medium, all applied: the HAT image's two changes
+   in B5's H1 proof, M4's gate heading and after-merge line brought up to date). 9b, after H6: the H6 records, the
+   final head's runs and the gate report.
 
 **M4b Verification**
-- [ ] **Per profile:** the init stream pinned to its source, with deviations listed; window, wipe and byte-order tests;
+- [x] **Per profile:** the init stream pinned to its source, with deviations listed; window, wipe and byte-order tests;
   the `PROFILES` checks.
+  Proof (M4b commit 3): the HAT's from M4 (group 5) and the 2-inch module's from B2's two items above; the `PROFILES`
+  checks find exactly the two, each sound, with unique names.
 - [ ] **Selection:**
   - unset gives the HAT, and each name gives its profile;
   - an unknown or empty name fails the build (canaries);
   - `make` refuses a missing, empty or unknown `PANEL`;
   - `panels differ` is green at the final head, and its selftest fails on equal hashes.
 - [ ] **Reproducible per image:** each panel's `reproducible (a = b)` is green at the final head; hashes recorded.
-- [ ] **Image scan per image:** `--image` is clean for every panel; config files are identical across images.
+- [x] **Image scan per image:** `--image` is clean for every panel; config files are identical across images.
+  Proof (M4b Review, 2026-10-17): on runs 38972422480 (dd8b878) and 38978353698 (058589f), every leg of both panels
+  passed `--image` against the one `pi/os/expected/`; each compare job ends "and both scans passed". On 058589f each
+  leg prints `banned-api-check --image ...: clean: the boot and root lists and keepcrypt-pi's imports equal
+  pi/os/expected, ...`, a check that covers the board's cmdline.txt and config.txt, Q35's inittab and the kernel
+  config. Partition 1, the boot partition, is `948efd165e08...` in both images. Partition 2, the root, differs; the
+  two keepcrypt-pi binaries differ (f322d568..., ad701a99...), and each image's root list (names and modes), inittab,
+  cmdline.txt, config.txt and kernel config pass the same `expected/`. Commit 3's grep finds no reader of `PANEL`
+  under board/, expected/ or configs/.
 - [ ] **Hardware:** H6 per offered screen; H1 on the HAT if its hash changed.
-- [ ] **Rules:**
+- [x] **Rules:**
   - 8: unchanged (no new path);
   - 10: no test profile in any image, because `device/panel/tests.rs` is declared only as `#[cfg(test)] mod tests;`
     (the line shown under Review); the scan's existing markers stay clean;
   - 11: no new crate (`git diff Cargo.lock` is empty).
-- [ ] **Docs:** the Supported screens table lists only screens with an H6 record.
+  Proof (M4b Review, 2026-10-17): Rule 8: `git diff --stat 95c4359..058589f` changes 13 files. Under pi/app/src only
+  device/panel.rs and device/panel/tests.rs changed; the one new path in source is 3e's test-only
+  `include_str!("../../../../os/Makefile")`, read by rustc under `cfg(test)`, not a device path and in no image;
+  device/paths.rs is unchanged. Rule 10: device/panel.rs:27-28 is `#[cfg(test)]` followed by `mod tests;` (shown
+  under Review). Every leg's `--image` scan was clean on runs 38972422480 and 38978353698, the ARM cross leg gave
+  `clean, 4 file(s)`, and the test-registry simulator gave `3 hit(s) in 1 file(s)` (run 38978353672). Rule 11: `git
+  diff --quiet 95c4359..058589f -- Entropy/Cargo.lock` exits 0; `cargo vet --locked` gives 18 fully audited, 85
+  exempted; check-path-deps finds 103 packages, all from crates.io.
+- [ ] **Docs:** the Supported screens table lists only screens with an H6 record, or for the HAT its M4 hardware records
+  (H1a-H4, 2026-10-16) and, if its image hash changes in M4b, H1 on the new image (lead decision M4b-2).
 
 ### Verification
 - [x] **Gate: full ceremony on a Pi Zero v1.3, checked with the offline verifier.** H2 and H3 on the gate image (the
@@ -9297,9 +9565,13 @@ What does not change, in M4 or M4b (Q44-Q50):
   Proof (21e, the run at b9a22c9, 21e's parent; lead decision 25): image run 38898547995 (`pull_request`): both legs on fresh runners and `pi-image
   reproducible (a = b)` green, `IMAGE: a 4b13c095..., b 4b13c095...` (compare job 116972352888). Nine runs since a4598b5 give the one hash.
   Main's push run after merge is the next item.
-- [ ] **After merge: main's push run of the image workflow gives the same hash**, recorded in the PR conversation and in
+- [x] **After merge: main's push run of the image workflow gives the same hash**, recorded in the PR conversation and in
   M5's Inputs (split from the gate item by lead decision 25; the build-plan gate line is met by the PR head's runs).
   M5's first commit ticks it, since no commit of this PR can follow the merge.
+  Proof (M4b commit 1, the first commit after the merge): main's push runs on 95c4359: Entropy CI 38914588096
+  (14 of 14 green) and Entropy Pi image 38914587720: "both legs built 95c435983fc7dc0d23e1273c6d7ef4c39ef39d31 into keepcrypt-pi-0.0.0-st7789-240x240.img, SHA-256 4b13c095..., and both scans passed" (compare job 117028048068). Recorded in PR #7's
+  conversation (comment 6217879052). The plan said M5's first commit; M4b's comes first, so it records it, and M5's
+  Inputs will carry it when M5's plan is written.
 - [x] **Gate: the watch-only QR imports into Sparrow and Bitcoin Core with the same first address.** H4:
   - Sparrow scans the account QR off the panel (swb:218);
   - Core imports the descriptor text decoded off the panel (swb:222-227);
@@ -10260,6 +10532,26 @@ Every finding of the plan's spec, security and feasibility review was accepted; 
   - the Raspberry Pi demo's file list on the 2 and 2.4-inch wikis (Python tests for 0.96, 1.14, 1.28, 1.3, 1.47, 1.54,
     1.8, 2 and 2.4 inch; no 1.69);
   - the prices quoted in Q49.
+- [S38] Waveshare's Raspberry Pi module code archive, downloaded with the owner's yes (2026-10-16):
+  `LCD_Module_RPI_code.zip`, https://files.waveshare.com/upload/8/8d/LCD_Module_RPI_code.zip (linked from the
+  2-inch and 1.54-inch module wikis), 12,380,597 bytes, SHA-256
+  07afa6be35a710a7e811435eb048e474988cee0946e8e6e99a11b59f0644f0ac, `Last-Modified` 2023-12-25. Read as data only,
+  never committed. The files commit 3 cites, by path under `LCD_Module_RPI_code/RaspberryPi/` and SHA-256:
+  - `c/lib/LCD/LCD_2inch.c` 4dc89777c71ce0f4f9e543d322df3432d1dbae5c48bc65bbad123fc477073689 (the 2-inch init);
+  - `c/lib/LCD/LCD_2inch.h` 5a49c4c9d2ff65ab7ae180a9de0eaaa43f749f66806e0a9390dab33eee08d666;
+  - `c/lib/LCD/LCD_1in3.c` 77520a61d1485dc6a4f681dc8e5cfd38570fff5b322ac0e05c6ec924d1dc719f;
+  - `c/lib/LCD/LCD_1in54.c` c556d394588f00edb055cd11a34000e3839ea6a2acdd62984b6d655772abb25d;
+  - `c/examples/LCD_2in_test.c` fbc7eebb57b1eb18da7ecc4f0edd1a794debd37f78cc95bf4ba98fa72a02d187;
+  - `c/examples/LCD_1in3_test.c` 28f50ec18a72614a8e8f154e0157f8e038fd47b0ef6d1b6685b18a076bc1f266;
+  - `c/examples/LCD_1in54_test.c` 9352a6058aef10b3a47dfba343452a7807ae6dae9a5ff675a457a49b52f20ebc;
+  - `c/lib/Config/DEV_Config.c` a73f63b619cbc7e686380885af16d09f09c9043d34652c5ebb50d720d2d91ab3;
+  - `python/lib/LCD_2inch.py` 9a7ed52e50292b1163289f69e139f1ac7e6fea9f1920a717652e1ea6f8dcb66b;
+  - `python/lib/LCD_1inch3.py` 16f756df437b13d05f62e1fa86552746d36e23b9e3e2af5c355eb77fb7769105;
+  - `python/lib/LCD_1inch54.py` d0ad8242638982c5efdac9053cc2728891906c5906c93e5f9900d0dbeb741ee5;
+  - `python/lib/lcdconfig.py` 3acbd379c903d530fb63bba75472e92cbc4e7cd0a584016062aa5a4e71e0aa69 (40 MHz, mode 0);
+  - `python/example/2inch_LCD_test.py` 5f6c7b1f9925810085e0da5aa55f089dcc0a6e9da79f902e1788fffd672a9f99.
+  The C and Python libraries agree on every 2-inch init byte; the 1.3-inch and 1.54-inch files equal the HAT's
+  approved bytes.
 
 ---
 
@@ -12951,7 +13243,7 @@ and Verification's image-hash gate, Matrix "Reproducible build" and CI; their Pr
 - H0's optional schematic look and H5: optional, not part of the gate.
 - M4b's items (B0 onwards) belong to M4b, after the M4 gate, and are not M4's.
 
-### M4 gate status: MET (2026-10-16), waiting for the owner's approval
+### M4 gate status: MET, approved by the owner and merged (PR #7, 2026-10-16, as 95c4359)
 The gate in docs/build-plan.md:294. Deliverables: "ST7789 and button drivers, hwrng reader, Buildroot image, USB
 export". Proof: "Full ceremony on a Pi Zero v1.3, checked with the offline verifier; two clean builds give the same
 image hash; the watch-only QR imports into Sparrow and Bitcoin Core with the same first address". The hardware records
@@ -12999,4 +13291,305 @@ are under "M4: hardware records" above.
   maintainer (todo.md:322; CODEOWNERS:7-10 describes ruleset 24833307 as it is, e8c90d9). M4 is the first milestone with
   `pi/os/`.
 - After merge: main's push run of the image workflow must give the same hash, recorded in the PR conversation and in
-  M5's Inputs.
+  M5's Inputs. Done by M4b commit 1 (c923063): main's push run 38914587720 gave 4b13c095..., PR #7 comment
+  6217879052 (corrected by M4b 9a).
+
+### M4b: hardware records (the owner's reports, in Q41 (c)'s form)
+- **H1 on the HAT, 2026-10-17** (B5's last item, recorded by M4b commit 3h, 058589f): "H1 passed, all matched".
+  - The image: `keepcrypt-pi-0.0.0-st7789-240x240.img` from image run 38972422480 (commit dd8b878; that run's st7789-240x240 artifact is 12078186032).
+  - Its SHA-256 is `2cf22c74060d741eae01c16dab80f08bcd459ab3f3602015501222ef9c92a82f`, its boot screen prefix `3949-9677-0e09-93b4` and its keepcrypt-pi `f322d568...`.
+  - By the checklist's steps (the lead's reading, as B5 records it): the hash and prefix matched, Home was upright in true colours with no noise band, all 8 inputs acted once per press, and a held key gave one action.
+  - The run, commit and hash are the lead's, from the checklist sent with that image; the owner's whole report is "H1 passed, all matched". Not in the report: the boot-to-Home time, the ACT LED and the card used.
+  - Why H1 was due: the HAT image is no longer M4's `4b13c095...`. It became `a7656197...` at 394953f (after commits 4-7) and then `2cf22c74...` at dd8b878 (after commit 3). The HAT's settings bytes did not change; B2's test pins them.
+  - At HEAD: image run 38978353698 on 058589f gives the same SHA-256, prefix and binary, so this H1 holds at HEAD.
+  - PF's HAT row names this image (3g, b5dc8b6; decision M4b-1). A later commit that changes this image repeats H1.
+- **H6: none yet.** The owner has not run H6 on any new screen. The 1.54-inch and 2-inch modules were asked of the owner on 2026-10-16 (B0; Q49 (b): the owner buys the screens), and the owner has not yet reported having them. Each new screen needs its own H6 on its exact image:
+  - Waveshare 2-inch module: `keepcrypt-pi-0.0.0-st7789-240x320.img`. At HEAD its SHA-256 is `c6cc8aa0...46fb` and its prefix `c38e-038a-eaf6-94f0`.
+  - Waveshare 1.54-inch module: it uses the HAT's settings (B2), so it runs `keepcrypt-pi-0.0.0-st7789-240x240.img`. At HEAD that image is `2cf22c74...a82f`, prefix `3949-9677-0e09-93b4`.
+  - The 1.3-inch module is optional (Q45). It would use the same image as the 1.54-inch.
+  - H6 settles which way up each module shows (decision M4b-6). If a bring-up fix (commit 8) changes an image, H6 runs on the new image, and H1 repeats if the HAT image changes.
+
+### M4b: local proof (2026-10-17, at 058589f)
+Apple M4 Max, macOS 27.0.1, toolchain 1.98.1 (rust-toolchain.toml), cargo-llvm-cov 0.9.1, python3 3.12.5 and `/usr/bin/python3` 3.9.6, Homebrew age 1.3.2. Run from `Entropy/`, with the shell scripts also under `dash`.
+
+M4b ran 2026-10-16 to 2026-10-17 on `m4b-screens` (draft PR #8, opened 2026-10-16T14:39:16Z), branched from main's 95c4359. It ran in three stages: B1, then B3/B4, then B2 (decision M4b-4). Each stage made its planned commits and had plan, security and recompute reviews. It fixed every high and medium finding (none was high; all four mediums are fixed) and the lows it acted on, the commit order giving the reasons for the rest, and was pushed, so both workflows ran on its head.
+
+This section describes the tree at 058589f. The commit that adds it should change only tasks/todo.md, so every figure still holds there. The Pi image, the loop-device test and the cross release scans run only in CI. There is no Pi here, so every hardware statement is the owner's (see "M4b: hardware records").
+
+**Commits c923063..058589f.** There are 27 commits (`git rev-list --count c923063^..058589f`), listed oldest first by stage. The commit order's numbers are in brackets. Each commit's proof is the Proof line under its plan item.
+- Commit 1 (the plan, the owner's answers and the go-ahead): c923063 [1]. CI 38917511236; image 38917510904 (`4b13c095...`, M4's image).
+- Stage B1 (docs alone): a578ef4 [2], 0200eaa [2b], c0aa2b8 [2c], a81321b [2d], b775025 [2e], 27bba1a [2f]. CI 38926168550; image 38926168597 (`4b13c095...` again, since only docs changed).
+- Stage B3B4 (selection, `PANEL=` and the matrix): aef5ff7 [4], 750272d [5], 3f72c2b [6], f2f942e [7], a6e035f [4b], 889e543 [5b], 477067c [5c], 0a711a3 [6b], 545e8a1 [7b], 3d29bf3 [6c], 0e98af5 [7c], 394953f [7d].
+  - 0e98af5's runs (CI 38957601036, image 38957600918) were cancelled when 394953f was pushed 21 s later.
+  - CI 38957642911; image 38957642890 (the HAT alone; `panels differ` skipped).
+- Stage B2 (the 2-inch profile): 93cf0a4 [3], 1a762c1 [3b], 6e38114 [3c], c0a88d2 [3d], 9fbe608 [3e], dd8b878 [3f]. CI 38972422388; image 38972422480 (the first two-panel run).
+- The owner's H1: b5dc8b6 [3g] (PF's HAT row names `2cf22c74`) and 058589f [3h] (B5's H1 item). CI 38978353672; image 38978353698.
+
+**What each stage landed.**
+- B1 (docs):
+  - PF gained a Supported screens table, which lists the HAT alone, named by image SHA-256 and prefix.
+  - PF gained one pin map for every screen, with header pins and module wiring. BL must never be left open or tied to 3.3 V.
+  - PF's `hal::Display` line (PF:76 at 058589f; the plan's PF:66) and the `PANEL=<name>` builds were written.
+  - BP gained the new driver sentence (BP:76), an M4b row, and a release table with one image per supported screen type.
+  - 2e added PF's rule that a listed screen with unchanged settings stays listed after the boot check alone (M4b-1).
+  - `git diff --name-only c923063..b775025` lists only build-plan.md and pi-firmware.md.
+- B3/B4 (selection and the image workflow):
+  - `PANEL = select(option_env!("KEEPCRYPT_PI_PANEL"))` is a const byte compare over `PROFILES`. Unset gives the HAT; an empty or unknown name stops the build.
+  - `make image`, `repro-check` and `scan` need `PANEL=<name>` from the Makefile's `override PANELS`. They refuse a bad name while the Makefile is parsed.
+  - keepcrypt-pi.mk passes `KEEPCRYPT_PI_PANEL` to cargo and refuses an empty value.
+  - Images are named `keepcrypt-pi-0.0.0-<name>.img`.
+  - The image workflow builds a matrix over `make panels`. A PR or push builds the HAT alone unless it touches a panel path; weekly and dispatched runs build every panel. Each panel gets two legs, a compare job, scans and an upload.
+  - `pi-image panels differ` calls `scripts/panels-differ.sh`, whose selftest runs in `gates`.
+  - Canaries went from 73 to 81, and CLAUDE.md's Commands gained the `PANEL=<name>` forms.
+- B2 (the 2-inch profile):
+  - `ST7789_240X320` is pinned to `LCD_2inch.c` from Waveshare's archive [S38]. Each deviation is listed and tested, and each of 12 mutants fails a test.
+  - The 1.3-inch and 1.54-inch files were confirmed to send the HAT's bytes.
+  - `st7789-240x320` joined `PANELS`, and 3e added a test that pins `PANELS` to the `PROFILES` names.
+  - The archive (12,380,597 bytes, SHA-256 `07afa6be...`, 152 entries) was read as data only and never committed.
+
+**Stage reviews** (plan, security and recompute; the counts come from the commit order's As-made notes):
+- B1: 9 findings: no high, 2 medium, 7 low.
+  - The two mediums: BP's release table named only one Pi image (fixed by 2b), and the HAT row named no image (2c).
+  - 2d fixed a low (BL wiring). Three findings were not acted on; the commit order gives the reasons.
+- B3B4: 9 findings: no high, 2 medium, 7 low.
+  - The two mediums: decision M4b-4 was cited before it was recorded (recorded in 7c), and nothing tested `same`'s byte loop (4b).
+  - Lows fixed: the make bypass (5b), the linux.rs path (6c, M4b-5) and the stale "unchanged" lines (7c).
+- B2: 9 findings, all low. 3b, 3c and 3d are its fixes (the commit order's As-made note); the lead added 3e and 3f.
+- In all: 27 findings. None was high; all 4 mediums are fixed; 23 were low.
+- Stage suites:
+  - at a81321b: cargo test 445 passed, 3 ignored;
+  - at 0a711a3: 21 suites, 453 passed, 3 ignored (the same with `KEEPCRYPT_PI_PANEL=st7789-240x240`); canaries 81; llvm-cov 97.38 %;
+  - at c0a88d2: 457 passed, 3 ignored (458 with 3e); canaries 81.
+
+**Suite at 058589f** (2026-10-17; `git status --porcelain` was empty before and after; each command's output is in the session scratchpad):
+
+```text
+cargo fmt --all --check                                       rc=0
+cargo clippy --workspace --all-targets --locked -- -D warnings
+                                                              rc=0  Finished `dev` profile (from cache)
+cargo clippy ... --all-features --locked -- -D warnings       rc=0  Finished `dev` profile (from cache)
+cargo test --workspace --locked                               rc=0  21 suites, 458 passed, 0 failed, 3 ignored: core lib
+                                                              166 (+1 ignored), pi lib 130, pi bin 71, pi-sim gate 20
+                                                              (+1 ignored), timing 0 (+1 ignored)
+KEEPCRYPT_PI_PANEL=st7789-240x240 cargo test --workspace --locked
+                                                              rc=0  keepcrypt-pi recompiled (the variable took effect);
+                                                              21 suites, 458 passed, 3 ignored
+cargo test -p keepcrypt-core --locked --features test-sources
+                                                              rc=0  17 suites, 269 passed, 1 ignored (lib 194 +1,
+                                                              agreement 9, check_flow 10, error_injection 11, no_panic 9)
+cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry
+                                                              rc=0  7 suites, 69 passed, 2 ignored (gate 20 +1)
+... --test gate -- --ignored --exact capture_set              rc=0  1 passed in 227.96 s; registry/ 11,716 PNG with
+                                                              index.html and review.html; release/ 9,728 PNG with
+                                                              index.html
+cargo run -p keepcrypt-pi-sim --locked -- live --out target/pi-sim-live
+                                                              rc=0  4 inputs (s, press, t1, end of input): boot, home,
+                                                              home, length; live.png written; the line "bogus" exits 2
+cargo llvm-cov ... --fail-under-lines 95 --summary-only       rc=0  lines 8408, missed 220, 97.38 %; regions 96.88 %;
+                                                              functions 96.32 %
+cargo deny --locked --offline check                           rc=0  advisories ok, bans ok, licenses ok, sources ok (2
+                                                              duplicate warnings: hex-conservative, syn)
+cargo audit --no-fetch                                        rc=0  1329 advisories (local copy, latest commit 479c888c,
+                                                              2026-10-16), 107 crate dependencies, none found
+cargo vet --locked                                            rc=0  Vetting Succeeded (18 fully audited, 85 exempted)
+sh scripts/check-path-deps.sh                                 rc=0  clean, 103 packages outside the workspace, all from
+                                                              crates.io; members exactly core, ffi, pi/app, pi/sim
+python3 -I tools/verify/vectorgen.py --selftest (3.12.5, 3.9.6)
+                                                              rc=0  selftest passed: 13 checks
+python3 -I tools/verify/verify.py selftest (3.12.5, 3.9.6)    rc=0  selftest passed: 8 known-answer groups
+python3 -I pi/os/rootfs-prefix.py --selftest (3.12.5, 3.9.6)  rc=0  selftest passed: 4 checks
+sh scripts/banned-api-check.sh                                rc=0  clean, 242 files scanned (CI: 239; here also the 3
+                                                              ignored __pycache__ .pyc files, also clean)
+sh scripts/banned-api-check.sh --selftest                     rc=0  selftest: 698 passed, 0 failed
+sh scripts/banned-api-check.sh --workflows ../.github/workflows (sh, dash)
+                                                              rc=0  clean, 2 workflow(s)
+sh scripts/banned-api-check.sh --os-config pi/os              rc=0  clean
+sh scripts/panels-differ.sh --selftest         (sh, dash)     rc=0  10 passed, 0 failed
+sh pi/os/kconfig.sh --selftest                                rc=0  6 passed, 0 failed
+sh scripts/canaries.sh                         (sh, dash)     rc=0  PASS: all 81 checks ran, 0 FAIL (4 min 11 s under
+                                                              /bin/sh, bash 3.2)
+python3 -I scripts/age-interop.py --core   (Homebrew age 1.3.2)
+                                                              rc=0  three ok lines; age decrypted all 11 accepted
+                                                              backup.json files and refused 14 of the 17 armor cases;
+                                                              3 notes (armor cases age 1.3.2 accepts and the readers
+                                                              refuse)
+make -s -C <space-free copy>/pi/os panels                     rc=0  st7789-240x240, st7789-240x320
+make -n -C <space-free copy>/pi/os image PANEL=...            each refused at parse time: unset, empty, nonsense, two
+                                                              names, upper case ("... one of: st7789-240x240
+                                                              st7789-240x320. Stop.")
+```
+
+- The Mac's test count differs from CI's for a known reason. CI gives 459 passed and 4 ignored. Linux builds one more pi bin test (72 against 71), plus the loop_device test, which is ignored outside its sudo step.
+- Both clippy runs finished from cache. A cached run replays any warnings, so the clean result stands.
+- deny and audit ran offline against the local advisory copy. CI's supply-chain job ran both online on the same Cargo.lock and passed.
+- age-interop ran here with `python3 -I`, which is stricter than the line in Commands, and with age 1.3.2. Ubuntu's age 1.1.1 is checked only in CI (see below).
+- Not run, by design: `TRYBUILD=overwrite` and the vectorgen `--write-*` commands, since both rewrite tracked files. The interactive verify.py mixed and dice runs were also not run.
+
+**The images.** Run 38978353698 on 058589f built both images, and run 38972422480 on dd8b878 gave the same bytes.
+- `st7789-240x240` (the HAT; also the 1.54-inch module):
+  - SHA-256 `2cf22c74060d741eae01c16dab80f08bcd459ab3f3602015501222ef9c92a82f`;
+  - rootfs prefix `3949-9677-0e09-93b4` (partition 2 `394996770e09...`);
+  - keepcrypt-pi `f322d568aa5545bc0d53d3b2e1ca8dbfbe1703321c4d1ea1a4e4eb2899b27a48`;
+  - compare jobs 117220235384 (dd8b878) and 117238993162 (058589f); artifacts 12078186032 (dd8b878, the H1 image) and 12080945216 (058589f).
+- `st7789-240x320` (the 2-inch module):
+  - SHA-256 `c6cc8aa02fe5bb52b93f424ba827adeff1be0464b070f6f22eeedfcf396a46fb`;
+  - rootfs prefix `c38e-038a-eaf6-94f0` (partition 2 `c38e038aeaf6...`);
+  - keepcrypt-pi `ad701a99f7b49fe0916facf36277265f6054f42257d586706d60fa85612ffbcc`;
+  - compare jobs 117220235267 (dd8b878) and 117238993250 (058589f); artifacts 12078260916 (dd8b878) and 12080283384 (058589f).
+- What both images share:
+  - Each image is 36,426,240 bytes.
+  - Partition 1, the boot partition, is `948efd165e08ea671c1a189049858459af01e4ae324976293a17180348cbb55d` in both, the same as M4's image.
+  - Each compare job prints `both legs built <commit> into keepcrypt-pi-0.0.0-<name>.img, SHA-256 <hash>, and both scans passed`.
+  - On 058589f, each artifact is named by its image file, and GitHub's digest equals the image's SHA-256 (`gh api repos/bitwilll/keepcrypt/actions/runs/<run>/artifacts`).
+- `pi-image panels differ` (jobs 117220260457 on dd8b878 and 117239022130 on 058589f) printed:
+  - `st7789-240x240: f322d568...`
+  - `st7789-240x320: ad701a99...`
+  - `pi-image panels differ: 2 panels, 2 different keepcrypt-pi SHA-256s`
+
+  On 394953f's HAT-only run the job was skipped, as planned.
+- `pi-image panels` (job 117233088788 on 058589f):
+  - It printed `EVENT: pull_request`, `BASE: 95c4359...` and `PANELS: st7789-240x240 st7789-240x320`.
+  - It printed "this pull_request changes these, so every panel", followed by seven paths: the workflow, panel.rs, panel/tests.rs, the Makefile, genimage.cfg, keepcrypt-pi.mk and panels-differ.sh.
+  - It then gave `matrix=[{"panel":"st7789-240x240","slot":"s0"},{"panel":"st7789-240x320","slot":"s1"}]` and `several=true`.
+- Each leg on 058589f (read with `gh api --allow-escape-sequences repos/bitwilll/keepcrypt/actions/jobs/<job>/logs`) shows:
+  - the build step `time make -C pi/os source image PANEL="$PANEL"`;
+  - `KEEPCRYPT_PI_PANEL=<name>` on Buildroot's make line;
+  - the .mk's line `KEEPCRYPT_PI_PANEL=st7789-240x240 f322d568...  usr/bin/keepcrypt-pi` (`st7789-240x320 ad701a99...` in that panel's legs);
+  - `mv .../keepcrypt-pi.img .../keepcrypt-pi-0.0.0-<name>.img`;
+  - from "Hash and list": `keepcrypt-pi SHA-256: built X, packed X`;
+  - `selftest-image: 17 passed, 0 failed`;
+  - `banned-api-check --image .../keepcrypt-pi-0.0.0-<name>.img: clean: the boot and root lists and keepcrypt-pi's imports equal pi/os/expected, ...`.
+
+  The scan step's `BINARY` is its own leg's hash. Leg a's upload follows its scans, and the result step writes the panel's slot (`s0` or `s1`).
+- The HAT image over M4b:
+  - `4b13c095...` (keepcrypt-pi `4f4dc6e4...`) on c923063 and 27bba1a.
+  - `a7656197f22f4358820a6a747721c71c1ef5b3469372d6e410d50fc245e9ea2e` (prefix `12aa-9326-6e08-4300`, keepcrypt-pi `959fd6b7...`) on 394953f (compare job 117171966957), after commits 4-7.
+  - `2cf22c74...` on dd8b878 and 058589f. Between 394953f and dd8b878, the only changes to shipped code are commit 3's panel.rs and the Makefile's `PANELS` line (`git diff --stat 394953f..dd8b878`).
+- Leg times and disk use:
+  - On 058589f: st7789-240x240 legs a 12 min 50 s and b 13 min 35 s (`make source image` 9 min 01 s and 10 min 29 s); st7789-240x320 legs a 17 min 44 s and b 19 min 35 s (13 min 00 s and 14 min 23 s).
+  - Every leg's disk: 145 GB, with 59 GB used at the start, 34 GB after the freeing step and 40 GB after the build.
+  - On dd8b878: st7789-240x240 legs 16 min 39 s and 18 min 47 s; st7789-240x320 legs 13 min 05 s and 18 min 16 s.
+  - On 394953f (the HAT alone): legs 16 min 55 s and 13 min 53 s.
+  - The panels job took 4-6 s, each compare job 2-4 s, and panels differ 6-7 s.
+
+**CI.** Entropy CI ran 14 of 14 jobs green on every pushed head:
+- 38917511236 (c923063), 38926168550 (27bba1a), 38957642911 (394953f), 38972422388 (dd8b878) and 38978353672 (058589f);
+- the pair on 0e98af5 was cancelled (above);
+- the Vercel check is not one of the 14 and is ignored, per the owner.
+
+These were read with `gh run list --repo bitwilll/keepcrypt --branch m4b-screens`, `gh run view <run> --repo bitwilll/keepcrypt --json jobs` and `gh run view <run> --repo bitwilll/keepcrypt --log --job <job>`. At 058589f (run 38978353672):
+- `test` 4 min 16 s:
+  - 21 suites, 459 passed, 4 ignored: core 166 (+1), 5, 7, 3, 2, 1 and 4, plus auto_traits 0; ffi 0; pi lib 130; pi bin 72 (+1 ignored, loop_device); sim 36, 3, 20 (+1), 7 and 3, plus timing 0 (+1);
+  - then the test-sources and registry runs;
+  - the x86_64 test-registry simulator scan: `3 hit(s) in 1 file(s)`;
+  - the loop-device test under sudo: `test device::usb::tests::loop_device ... ok`, then `1 passed; 0 failed; 0 ignored; 0 measured; 72 filtered out`.
+- `gates` 10 min 08 s:
+  - `clean, 239 files scanned`;
+  - `--workflows` clean on 2 workflows; `--os-config pi/os` clean;
+  - `selftest passed: 13 checks` and `selftest passed: 4 checks`;
+  - `kconfig.sh --selftest: 6 passed, 0 failed`;
+  - `panels-differ.sh --selftest: 10 passed, 0 failed`, including `PASS equal -> exit 1`;
+  - `selftest: 698 passed, 0 failed`;
+  - `PASS: all 81 checks ran`. The canaries step took 7 min 41 s (22:55:39 to 23:03:20 in the log).
+- `coverage` 2 min 57 s: lines 8408, missed 220, 97.38 %.
+- `cross (arm-unknown-linux-gnueabihf)` 2 min 20 s: `U getrandom@GLIBC_2.25`; `clean, 4 file(s)`.
+- `supply-chain (deny, audit, vet)` 32 s: `advisories ok, bans ok, licenses ok, sources ok`; audit scanned 107 crate dependencies; `Vetting Succeeded (18 fully audited, 85 exempted)`.
+- `age-interop (age 1.1.1)` 1 min 10 s: `age --version: 1.1.1`; three ok lines; age refused 17 of the 17 armor cases the readers refuse.
+- `lint (fmt, clippy)` 29 s, `verifier (python 3.9)` 52 s, the five other cross legs 2 min 00 s to 2 min 53 s, and `changes` 7 s: all pass.
+
+**Runtime budgets.** The baseline is M3's last main run, 38534247238 on f967dd4 (test 4 min 54 s, gates 8 min 50 s, from the M4 Review):
+
+```text
+                  c923063          394953f          dd8b878                  058589f                  budget
+test              5m18s            5m37s            4m12s                    4m16s                    at most +6 minutes (M3): met
+gates             10m04s           9m52s            10m13s                   10m08s                   within 12 minutes (Q31 (f)): met
+coverage          2m30s            2m58s            2m48s                    2m57s, 97.38%            at least 95% of core's lines: met
+cross (arm leg)   2m28s            2m20s            2m24s                    2m20s                    none set
+image legs a / b  17m45s / 18m22s  16m55s / 13m53s  240x240 16m39s / 18m47s  240x240 12m50s / 13m35s  none set; recorded
+                                                    240x320 13m05s / 18m16s  240x320 17m44s / 19m35s
+```
+
+**What runs only in CI, or only on the owner's hardware** (not run here):
+- the loop-device test (Linux, as root) and the one extra Linux-only pi bin test;
+- the cross release-artifact scans for all six targets (there is no NDK or ARM gcc here, and the iOS scans were not tried locally);
+- the x86_64-linux test-registry simulator scan;
+- the Pi image work: `make source image` (CI's legs) and scan's checks (`--image-lists`, `--selftest-image`, `--image`), which need Linux x86_64. `repro-check`'s first real run belongs to M7 (M4 decision 21);
+- `panels-differ.sh` on real hashes;
+- age-interop against Ubuntu's age 1.1.1;
+- deny and audit against a freshly fetched advisory database;
+- H6 on each new screen, which only the owner can do and has not done yet.
+
+**Rules** (the Verification "Rules" item):
+- Rule 8: unchanged.
+  - `git diff --stat 95c4359..058589f` changes 13 files.
+  - Under pi/app/src, only device/panel.rs and device/panel/tests.rs changed. The one new path in source is 3e's test-only `include_str!("../../../../os/Makefile")` in tests.rs, read by rustc under `cfg(test)`: not a device path, not a path literal in the gate's sense, and in no image.
+  - device/paths.rs, core/, ffi/ and pi/sim/ are unchanged.
+- Rule 10: no test profile is in any image.
+  - device/panel.rs:27-28 declares the tests module for test builds only:
+    ```rust
+    #[cfg(test)]
+    mod tests;
+    ```
+  - Every leg's `--image` scan was clean on runs 38972422480 and 38978353698, with `selftest-image: 17 passed, 0 failed` in each.
+  - The ARM cross leg scanned 4 files clean, and the test-registry simulator still gives exactly its 3 hits.
+- Rule 11: no new crate.
+  - `git diff --quiet 95c4359..058589f -- Entropy/Cargo.lock` exits 0.
+  - vet: 18 fully audited, 85 exempted. check-path-deps: 103 packages, all from crates.io.
+- CLAUDE.md's rules are unchanged. Only its Commands block changed (commits 7 and 7b).
+
+**Lead decisions** (each one needs the owner's approval at the gate):
+- M4b-1 (2e): PF lets a listed screen whose settings are unchanged stay listed on a later image after the boot check alone (prefix and keys), with its row naming that image. The gate stays as the owner approved it: only H1 for the HAT.
+- M4b-2 (2f): the HAT's Supported screens row rests on its M4 records (H1a-H4 on `4b13c095...`), not on an H6.
+- M4b-3 (2f): no backlight step and no idle-wipe step join PF's listing rule. The BL wiring rule is in PF (2d), and H6 keeps its idle-wipe line.
+- M4b-4: B3 and B4 (commits 4-7) ran before B2 (commit 3), because B2 waited on the owner's yes to the Waveshare download.
+- M4b-5 (6c): after stage B3B4's security review, the image workflow's every-panel paths also cover `device/linux.rs` and `main.rs`.
+- M4b-6 (3f): the modules' picture orientation is left to H6. A module can be turned upright; a bring-up fix changes `madctl` only if turning cannot help.
+
+**Ticked in this commit, 9a** (each with its "Proof (M4b Review, 2026-10-17)" line under its item):
+- B3's fail-closed image path;
+- B4's matrix, per-panel jobs, `panels differ`, job names and step summary;
+- Verification's "Image scan per image" and "Rules".
+
+**Still unticked**, with what each waits for:
+- B0, "the owner has the screens": asked of the owner on 2026-10-16 (the 1.54-inch and 2-inch modules, the switches and wires); not yet reported.
+- B5's five H6 items: the owner's H6 on each offered screen, on its exact image.
+- B6's reviews: reviews of the commits after stage B2 (3g, 3h and this Review, 9a, were checked before commit; any bring-up fix in commit 8 and commit 9b still to come).
+- B6's gate: H6, then the final head's runs.
+- Verification:
+  - "Selection": its last bullet, `panels differ` green at the final head. Its other bullets are proven.
+  - "Reproducible per image": the final head's run. This item also carries B4's block proof, which asks for leg times and disk use at the final head; this section records 058589f's.
+  - "Hardware": H6 per offered screen. The HAT's H1 part is met.
+  - "Docs": the table holds at 058589f (the HAT alone). This item is ticked when the H6 rows land, or at the gate if none is added.
+
+### M4b gate status: PENDING H6
+The gate is in docs/build-plan.md:295. It is the proposed gate (B6) that the owner approved with "go ahead with M4b".
+- Deliverables: "A 240x320 screen profile, one image per screen type, the image workflow's screen list, the wiring docs".
+- Proof: the four clauses below.
+
+- "Every offered screen passes H6 ... on its exact image": pending.
+  - No H6 has been done yet; the 1.54-inch and 2-inch modules were asked of the owner on 2026-10-16.
+  - Their images at HEAD: the 2-inch module runs `st7789-240x320` (`c6cc8aa0...`, prefix `c38e-038a-eaf6-94f0`). The 1.54-inch module runs the HAT's `st7789-240x240` (`2cf22c74...`, prefix `3949-9677-0e09-93b4`).
+  - A screen without an H6 is not offered and gets no Supported screens row.
+- "each image's two builds give the same hash at the final head, and `panels differ` is green": met at 058589f, the latest head so far.
+  - Run 38978353698 has both panels' `reproducible (a = b)` jobs and `panels differ` green. So does run 38972422480 on dd8b878.
+  - The final head comes after H6 (commit 8 if needed, and 9b), so this clause waits for the run read for it (M4's decision 25 pattern: the last commit reads its parent's run).
+- "the HAT image passes H1 (boot and keys) if its hash changed": met.
+  - The hash changed from `4b13c095` to `2cf22c74`. On 2026-10-17 the owner reported "H1 passed, all matched" on the image the lead named, `2cf22c74` (run 38972422480, dd8b878).
+  - HEAD's run gives the same bytes. A later change to the HAT image repeats H1.
+- "no image or doc lists an unchecked screen as supported": holds at 058589f.
+  - PF's Supported screens table lists the HAT alone, with its M4 records and its boot check on `2cf22c74`.
+  - PF:175 names `st7789-240x320` as an image name and says only the table's screens have been checked.
+  - The 2-inch image exists only as a CI artifact, kept 14 days; it is not a release (M7 signs releases).
+  - This is re-checked when an H6 row lands.
+- Deliverables:
+  - the 240x320 profile: `ST7789_240X320` (93cf0a4);
+  - one image per screen type: `PANEL=<name>` (750272d, 889e543), with two images at HEAD;
+  - the image workflow's screen list: 3f72c2b, 0a711a3, 3d29bf3;
+  - the wiring docs: PF's one pin map and module wiring (a578ef4, a81321b) and the HAT row (c0aa2b8, b5dc8b6).
+- For the owner's approval: lead decisions M4b-1 to M4b-6, listed above.
+- Standing note: build-plan.md:278 asks for two approvals on `core/`, `ffi/` and `pi/os/`. That rule is unmet while there is one maintainer (todo.md:322; CODEOWNERS:7-10 describes ruleset 24833307 as it stands). M4b changes `pi/os/`: the Makefile, genimage.cfg and keepcrypt-pi.mk.
+- Next steps:
+  1. The owner runs H6 on each new screen.
+  2. Any bring-up fix (commit 8) comes with the owner's observation and its root cause.
+  3. Commit 9b adds the H6 records and the final head's runs, and reports this gate again.
+  - Commit 3 alone changed the st7789-240x240 image, so a commit-8 change in panel.rs may change it too; if it does, H1 on the HAT and the 1.54-inch module's H6 run again on the new image. Doing the 2-inch module's H6 first lets any 2-inch fix land before the 1.54-inch check.

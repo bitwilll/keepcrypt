@@ -17,14 +17,19 @@
 #                                       cargo built, so the packed binary is proved to be that
 #                                       file), with the build's host tools first on PATH; it never
 #                                       rebuilds, and refuses to run without an image or that file
+#   make -C Entropy/pi/os panels        print PANELS below, one name a line: the screen types the
+#                                       image workflow builds
+#
+# image, repro-check and scan are for one screen type and need PANEL=<name>, a name in PANELS
+# below, as in make -C Entropy/pi/os image PANEL=st7789-240x240.
 #
 # KC_WORK (default /kc-work) holds Buildroot, its downloads, the crates and the build. It must be
 # an absolute path outside Entropy/ with no spaces, and the same in every build: Buildroot's
 # reproducible mode (BR2_REPRODUCIBLE) needs the same output path, and keepcrypt-pi is built at
 # fixed paths instead of with path remapping. SOURCE_DATE_EPOCH comes from pins.txt and TZ is UTC,
 # so equal trees give equal images whatever the commit or build time; both are printed. No step
-# needs git. The image is keepcrypt-pi-0.0.0-st7789-240x240.img (Q47; Q43 (b) had keepcrypt-pi-0.0.0.img);
-# M4b adds one per screen type.
+# needs git. The image is keepcrypt-pi-0.0.0-<name>.img, one per screen type (Q47; Q43 (b) had
+# keepcrypt-pi-0.0.0.img).
 SHELL := /bin/sh
 .SUFFIXES:
 
@@ -71,7 +76,30 @@ export TZ := UTC
 BR_TARBALL := $(KC_WORK)/dl/buildroot-$(BR_VERSION).tar.xz
 BR_SRC := $(KC_WORK)/buildroot-$(BR_VERSION)
 OUT := $(KC_WORK)/out
-IMAGE := keepcrypt-pi-0.0.0-st7789-240x240.img
+
+# The screen types (Q47 (a); tasks/todo.md, M4b B3): one image per name, each the name of a
+# profile in pi/app's PROFILES (pi/app/src/device/panel.rs). The image path never relies on the
+# profile pi/app gives when no name is set: image, repro-check and scan take the name from
+# PANEL=<name> and, before anything runs, refuse a PANEL that is missing, empty or not exactly one
+# name of PANELS, and print the list. PANEL_NAME, the listed name, is what the build uses, never
+# PANEL's own text. PANELS, PANEL_NAME and the two variables below that carry the name (IMAGE,
+# BR_IMAGE) are override: a value given on the command line or, with make -e, in the environment
+# is ignored, so no invocation skips the refusal or hands the build an unlisted name.
+override PANELS := st7789-240x240 st7789-240x320
+override PANEL_NAME := $(if $(filter 1,$(words $(PANEL))),$(filter $(PANELS),$(PANEL)))
+PANEL_USAGE := make image, repro-check and scan need PANEL=<name>, one of: $(PANELS)
+ifneq ($(filter image repro-check scan,$(MAKECMDGOALS)),)
+ifeq ($(PANEL_NAME),)
+ifeq ($(origin PANEL),undefined)
+$(error PANEL is not set; $(PANEL_USAGE))
+else ifeq ($(strip $(PANEL)),)
+$(error PANEL is empty; $(PANEL_USAGE))
+else
+$(error PANEL="$(PANEL)" is not a name in the list; $(PANEL_USAGE))
+endif
+endif
+endif
+override IMAGE := keepcrypt-pi-0.0.0-$(PANEL_NAME).img
 BR := BR2_DL_DIR=$(KC_WORK)/dl $(MAKE) -C $(BR_SRC) O=$(OUT) BR2_EXTERNAL=$(OS)
 # make image never downloads. Buildroot takes a file already in dl/ that has its pinned hash, and
 # looks for any other only at its primary site, here dl/ itself (package/pkg-download.mk's
@@ -79,6 +107,11 @@ BR := BR2_DL_DIR=$(KC_WORK)/dl $(MAKE) -C $(BR_SRC) O=$(OUT) BR2_EXTERNAL=$(OS)
 # build instead of being fetched. Set on the command line, these override the .config's empty
 # BR2_PRIMARY_SITE where Buildroot reads them.
 BR_OFFLINE := $(BR) BR2_PRIMARY_SITE=file://$(KC_WORK)/dl BR2_PRIMARY_SITE_ONLY=y
+# make image's builds also name the screen type: keepcrypt-pi.mk sets KEEPCRYPT_PI_PANEL to it in
+# cargo's environment, pi/app's PANEL reads it when keepcrypt-pi is compiled, and the .mk refuses
+# an empty one. The Buildroot tree builds keepcrypt-pi.img (board/pizero/genimage.cfg) whatever the
+# name; make image then names it $(IMAGE).
+override BR_IMAGE := $(BR_OFFLINE) KEEPCRYPT_PI_PANEL=$(PANEL_NAME)
 
 # check-pins DIR, PINS: each "hash file:SHA-256:file" of PINS must be a line of DIR's hash file.
 define check-pins
@@ -93,7 +126,7 @@ define print-time
 	@printf 'pi/os: SOURCE_DATE_EPOCH=%s TZ=%s KC_WORK=%s\n' "$$SOURCE_DATE_EPOCH" "$$TZ" "$(KC_WORK)"
 endef
 
-.PHONY: source image repro-check scan
+.PHONY: source image repro-check scan panels
 
 source:
 	$(print-time)
@@ -120,13 +153,14 @@ image:
 	$(call check-pins,$(BR_SRC),$(BR_PINS))
 	rm -rf $(OUT)
 	$(BR) keepcrypt_pizero_defconfig
-	$(BR_OFFLINE) toolchain host-flex host-bison linux-patch
+	$(BR_IMAGE) toolchain host-flex host-bison linux-patch
 	vars=$$($(BR) -s --no-print-directory VARS='LINUX_DIR TARGET_CROSS' printvars) && \
 	linux_dir=$$(printf '%s\n' "$$vars" | sed -n 's/^LINUX_DIR=//p') && \
 	cross=$$(printf '%s\n' "$$vars" | sed -n 's/^TARGET_CROSS=//p') && \
 	PATH="$(OUT)/host/bin:$$PATH" sh $(OS)/kconfig.sh "$$linux_dir" "$$cross" \
 		$(OS)/board/pizero/linux.fragment $(OUT)/keepcrypt-linux.config $(OUT)/kconfig
-	$(BR_OFFLINE)
+	$(BR_IMAGE)
+	mv $(OUT)/images/keepcrypt-pi.img $(OUT)/images/$(IMAGE)
 	cd $(OUT)/images && sha256sum $(IMAGE)
 
 repro-check:
@@ -153,3 +187,8 @@ scan:
 	PATH="$(OUT)/host/bin:$$PATH" sh $(ENTROPY)/scripts/banned-api-check.sh --image-lists $(OUT)/images/$(IMAGE) "$$1" && \
 	hash=$$(sha256sum $(BUILT_BIN)) && hash=$${hash%% *} && \
 	PATH="$(OUT)/host/bin:$$PATH" sh $(ENTROPY)/scripts/banned-api-check.sh --image $(OUT)/images/$(IMAGE) $(OS)/expected "$$1" "$$hash"
+
+# The screen types, one name a line, for the image workflow's matrix (tasks/todo.md, M4b B4): its
+# first job reads them from here at the commit it builds, so PANELS stays the one list.
+panels:
+	@printf '%s\n' $(PANELS)

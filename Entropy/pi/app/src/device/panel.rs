@@ -7,7 +7,9 @@
 //! - Everything specific to a screen is one `PanelProfile`, a `const` of data: its orientation
 //!   byte, its start-up settings (only opcodes from `ST7789_INIT_OPCODES`), its whole frame memory,
 //!   where the 240×240 frame sits in it, and its bus speed. `PROFILES` lists every profile and
-//!   `PANEL` names the image's. M4 has one: the Waveshare 1.3-inch HAT, with the approved bytes.
+//!   `PANEL` is the image's, named by `KEEPCRYPT_PI_PANEL` when the binary is built (M4b B3). M4
+//!   has one, the Waveshare 1.3-inch HAT with the approved bytes; M4b adds the 2-inch module's
+//!   (B2).
 //! - The driver owns every step that is the same on every screen: the reset, MADCTL, sleep out,
 //!   the windows, the memory writes and display on.
 //! - The panel never shows a stale frame. Init blanks all of frame memory before display on, and
@@ -171,7 +173,9 @@ pub struct PanelProfile {
 
 /// The Waveshare 1.3-inch LCD HAT [S5]: Waveshare's start-up settings as SeedSigner ships them
 /// [S6], which Waveshare's Pico-board driver for the same panel also sends [S34]. These are the
-/// approved bytes; H1a confirms `madctl`, INVON and `spi_hz` on the board.
+/// approved bytes; H1a confirms `madctl`, INVON and `spi_hz` on the board. The 1.3-inch and
+/// 1.54-inch modules use it unchanged: Waveshare's Raspberry Pi module archive sends the same
+/// settings for both (M4b B2; the tests cite its files).
 pub const WAVESHARE_1IN3_HAT: PanelProfile = PanelProfile {
     name: "st7789-240x240",
     // MX, MV and ML set, RGB order: MV swaps rows and columns, so the memory is 320 columns by 240
@@ -214,19 +218,96 @@ pub const WAVESHARE_1IN3_HAT: PanelProfile = PanelProfile {
     spi_hz: 40_000_000,
 };
 
-/// Every profile, each checked by the tests: in M4 the HAT alone, or a second HAT profile if Q50
-/// applies.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the tests check every profile; the image uses PANEL alone"
-    )
-)]
-pub const PROFILES: &[&PanelProfile] = &[&WAVESHARE_1IN3_HAT];
+/// The Waveshare 2-inch LCD module (M4b B2; Q45, Q49 (d)): an ST7789VW panel of 240 columns by
+/// 320 rows, which is all of the controller's frame memory. Its settings are `LCD_2inch.c`'s from
+/// Waveshare's Raspberry Pi module archive, which its test cites: the HAT's, but for VCOMS and the
+/// two gamma tables. The picture is landscape, as on the HAT, and the 240×240 frame sits in the
+/// middle of the 320 columns, between two black bands of 40 (Q46). H6 confirms `madctl`, INVON
+/// and `spi_hz` on the module.
+pub const ST7789_240X320: PanelProfile = PanelProfile {
+    name: "st7789-240x320",
+    // The HAT's byte: MX, MV and ML set, RGB order. MV swaps rows and columns, so the memory is
+    // 320 columns by 240 rows [S31]. The archive's Python driver sends it for a 320×240 picture.
+    madctl: 0x70,
+    init: &[
+        // 16 bits a pixel, which is what `Frame::raw()` gives.
+        step(COLMOD, &[0x05]),
+        step(PORCTRL, &[0x0C, 0x0C, 0x00, 0x33, 0x33]),
+        step(GCTRL, &[0x35]),
+        step(VCOMS, &[0x1F]),
+        step(LCMCTRL, &[0x2C]),
+        step(VDVVRHEN, &[0x01]),
+        step(VRHS, &[0x12]),
+        step(VDVS, &[0x20]),
+        step(FRCTRL2, &[0x0F]),
+        step(PWCTRL1, &[0xA4, 0xA1]),
+        step(
+            PVGAMCTRL,
+            &[
+                0xD0, 0x08, 0x11, 0x08, 0x0C, 0x15, 0x39, 0x33, 0x50, 0x36, 0x13, 0x14, 0x29, 0x2D,
+            ],
+        ),
+        step(
+            NVGAMCTRL,
+            &[
+                0xD0, 0x08, 0x10, 0x08, 0x06, 0x06, 0x39, 0x44, 0x51, 0x0B, 0x16, 0x14, 0x2F, 0x31,
+            ],
+        ),
+        step(INVON, &[]),
+    ],
+    ram: Size {
+        width: 320,
+        height: 240,
+    },
+    // Centred: (320 - 240) / 2 columns in, and the 240 rows are all of them.
+    origin: Point { x: 40, y: 0 },
+    // The HAT's rate, which is also the archive's Python demo rate (its default SPI clock).
+    spi_hz: 40_000_000,
+};
 
-/// The image's profile: the one line that names it. Group 10 uses it; M4b's B3 replaces it.
-pub const PANEL: &PanelProfile = &WAVESHARE_1IN3_HAT;
+/// Every profile, each checked by the tests: the HAT's, which the 1.3-inch and 1.54-inch modules
+/// also run, and the 2-inch module's. `PANEL` is chosen from it by name.
+pub const PROFILES: &[&PanelProfile] = &[&WAVESHARE_1IN3_HAT, &ST7789_240X320];
+
+/// The image's profile (Q47 (a); tasks/todo.md, M4b B3), resolved when the binary is compiled:
+/// the one `KEEPCRYPT_PI_PANEL` names, which the image build must always set. Unset, as in
+/// `cargo test`, lint and CI's cross job, it is the HAT. An empty or unknown name stops the build.
+/// Group 10 uses it.
+pub const PANEL: &PanelProfile = select(option_env!("KEEPCRYPT_PI_PANEL"));
+
+/// The profile in `PROFILES` whose `name` equals `name` byte for byte. No name looks up the HAT's,
+/// so unset and `st7789-240x240` give the same entry. Any other name, the empty one included,
+/// panics with fixed text: in `PANEL`'s const evaluation that stops the build, so a mistyped name
+/// never falls back to a default (rule 3).
+const fn select(name: Option<&str>) -> &'static PanelProfile {
+    let name = match name {
+        Some(name) => name.as_bytes(),
+        None => WAVESHARE_1IN3_HAT.name.as_bytes(),
+    };
+    let mut i = 0;
+    while i < PROFILES.len() {
+        if same(PROFILES[i].name.as_bytes(), name) {
+            return PROFILES[i];
+        }
+        i += 1;
+    }
+    panic!("KEEPCRYPT_PI_PANEL is empty or names no profile in PROFILES")
+}
+
+/// Whether `a` and `b` hold the same bytes (`==` on slices is not a const fn).
+const fn same(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < a.len() {
+        if a[i] != b[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
 
 /// The panel on `bus`, with `profile`'s settings. No `Debug` and no `Clone`: its buffer carries
 /// frame bytes during a present.
