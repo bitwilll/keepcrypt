@@ -20,7 +20,7 @@ Phase 1 uses the same proven parts as SeedSigner, so builders can buy them anywh
 | Part | Purpose | Notes |
 | --- | --- | --- |
 | Raspberry Pi Zero v1.3 | Main board | No Wi-Fi or Bluetooth hardware; needs a soldered 40-pin header |
-| [Waveshare 1.3-inch LCD HAT](https://www.waveshare.com/product/displays/lcd-oled/lcd-oled-3/1.3inch-lcd-hat.htm) | Screen and controls | ST7789 over SPI, 240x240; joystick plus 3 keys |
+| [Waveshare 1.3-inch LCD HAT](https://www.waveshare.com/product/displays/lcd-oled/lcd-oled-3/1.3inch-lcd-hat.htm), or a supported screen below | Screen and controls | The HAT: ST7789 over SPI, 240x240; joystick plus 3 keys |
 | microSD card, 8 GB or more | Holds the read-only image | Use a new card for each release |
 | Micro-USB OTG adapter and a USB stick (FAT32) | Encrypted backup export | The Zero has one data USB port |
 | 5 V micro-USB power bank | Power | Keeps the device off any computer's USB port |
@@ -29,16 +29,26 @@ Phase 1 uses the same proven parts as SeedSigner, so builders can buy them anywh
 | Phase 2: Pi camera (OV5647), I2S MEMS mic, I2C IMU | Uncredited extras | Camera lens covered; all three default off |
 | KeepCrypt Hinge or Screw (12 titanium inserts) with its jig, punch and Allen key, plus the SeedBook | Braille backup | One device per 12-word phrase; a 24-word seed needs two |
 
-**Pin map used by the firmware** (from the Waveshare spec):
+**Supported screens.** Each screen type has its own image, which holds only that screen's settings (see Build, flash and verify). A screen is listed here only after a check on real hardware with its exact image: the boot screen's hash prefix matches the image's, the picture is upright in true colours with no edge cut off, all eight keys work, and Sparrow scans the account QR off the screen. A screen that is not listed has not been checked, and it is not built into release images.
 
-| Signal | BCM pin |
-| --- | --- |
-| KEY1, KEY2, KEY3 | 21, 20, 16 |
-| Joystick up, down, left, right, press | 6, 19, 5, 26, 13 |
-| SPI SCLK, MOSI, CS (CE0) | 11, 10, 8 |
-| Display data/command | 25 |
-| Display reset | 27 |
-| Backlight (active high) | 24 |
+| Screen | Image | Wiring | Checked on hardware |
+| --- | --- | --- | --- |
+| [Waveshare 1.3-inch LCD HAT](https://www.waveshare.com/product/displays/lcd-oled/lcd-oled-3/1.3inch-lcd-hat.htm) | `keepcrypt-pi-<version>-st7789-240x240.img` | Plugs onto the 40-pin header | 2026-10-16, version 0.0.0 |
+
+**Pin map used by the firmware: one pin map for every screen** (the HAT's, from the Waveshare spec):
+
+| Signal | BCM pin | Header pin | On a screen without keys |
+| --- | --- | --- | --- |
+| KEY1, KEY2, KEY3 | 21, 20, 16 | 40, 38, 36 | Three push buttons |
+| Joystick up, down, left, right, press | 6, 19, 5, 26, 13 | 31, 35, 29, 37, 33 | A 5-way joystick switch's five contacts |
+| SPI SCLK, MOSI, CS (CE0) | 11, 10, 8 | 23, 19, 24 | The screen's CLK, DIN, CS |
+| Display data/command | 25 | 22 | DC |
+| Display reset | 27 | 13 | RST |
+| Backlight (active high) | 24 | 18 | BL |
+| 3.3 V | - | 1 or 17 | VCC |
+| Ground | - | 6, 9, 14, 20, 25, 30, 34 or 39 | GND, the buttons' other side and the joystick's common |
+
+The HAT plugs onto the header and brings all of these. A screen without keys, such as one of Waveshare's LCD modules, is wired to the same pins as the last column shows, with its backlight on BCM 24 (header pin 18), not on BCM 18 as Waveshare's module guide shows. Its keys are a 5-way joystick switch and three push buttons: the joystick goes left of the screen and KEY1 to KEY3 top to bottom on its right, as on the HAT, so the footer's key names match. Every image drives these same pins and uses the same config.txt, so an image flashed for another screen never drives a pin that is wired as a key.
 
 The keys and joystick switch to ground; config.txt sets their pull-ups and the firmware sets them again. MISO is not wired and the firmware does not read the panel back, so a dead panel is not detected; only SPI write errors are display faults.
 
@@ -63,7 +73,7 @@ The image is a minimal Buildroot Linux whose only job is to start `keepcrypt-pi`
 
 | Component | Responsibility | Implementation |
 | --- | --- | --- |
-| `hal::Display` | Draw 240x240 frames | `rppal` SPI plus KeepCrypt's own ST7789 driver, which sends Waveshare's full start-up settings, blanks all of the panel's frame memory before the panel turns on and again on a crash, and wipes its transfer buffer after every frame; the simulator receives the same frames, exactly the pixels the panel gets, and writes them as PNG files itself, headless, with no display or image crate |
+| `hal::Display` | Draw 240x240 frames, centred on screens larger than 240x240; one block of settings per screen type, chosen when the image is built | `rppal` SPI plus KeepCrypt's own ST7789 driver, which sends Waveshare's full start-up settings, blanks all of the panel's frame memory before the panel turns on and again on a crash, and wipes its transfer buffer after every frame; the simulator receives the same frames, exactly the pixels the panel gets, and writes them as PNG files itself, headless, with no display or image crate |
 | `hal::Buttons` | Joystick and 3 keys | `rppal` GPIO inputs with pull-ups and both-edge interrupts, read without a thread; the firmware's own 20 ms debounce, the same as the simulator's; each event carries the kernel's `CLOCK_MONOTONIC` timestamp of its edge, in nanoseconds |
 | `hal::HwRng` | Raw hardware samples | Reads `/dev/hwrng` in non-blocking mode, in 64-byte blocks for the core's health tests; a block still incomplete 2 seconds after it was asked for halts the device with "hwrng read fault". A wait inside the kernel driver can still stall the screen past that, and still makes no seed |
 | `hal::Usb` | Backup export and snapshot import | Detects a stick under `/sys/block`, mounts, writes, syncs, unmounts |
@@ -162,26 +172,26 @@ The device writes exactly one kind of file, an age-encrypted backup (format in t
 
 ## Build, flash and verify
 
-Builders either reproduce the image from source or verify a signed release; both paths end with a disposable verification run before any real seed is made.
+Builders either reproduce the image from source or verify a signed release; both paths end with a disposable verification run before any real seed is made. Each screen type has its own image, `keepcrypt-pi-<version>-<name>.img`, and `<name>` is one of two names: `st7789-240x240`, the HAT's settings, and `st7789-240x320`, the settings for Waveshare's 2-inch module (240x320, with the 240x240 picture centred between black bands). `make image` and `make repro-check` need `PANEL=<name>`: both refuse a missing, empty or unknown name before Buildroot starts, and print the list. Only the screens in the Supported screens table have been checked on hardware; flash the image named for your screen.
 
 ```bash
 # Build from source on a Linux x86_64 host, as CI does on GitHub's hosted runners
 # (a pinned build container and rebuilds in clean containers come with M7's outside reproduction)
 git clone https://github.com/bitwilll/keepcrypt && cd keepcrypt
-export KC_WORK=/kc-work              # build directory: outside Entropy/, no spaces, the same path in every build
-make -C Entropy/pi/os source         # fetches every pinned input; the only step with network access
-make -C Entropy/pi/os image          # Buildroot with BR2_EXTERNAL=Entropy/pi/os, keepcrypt_pizero_defconfig, offline
-make -C Entropy/pi/os repro-check    # builds twice in fresh output directories at the same path and compares SHA-256
+export KC_WORK=/kc-work                          # build directory: outside Entropy/, no spaces, the same path in every build
+make -C Entropy/pi/os source                     # fetches every pinned input; the only step with network access
+make -C Entropy/pi/os image PANEL=<name>         # Buildroot with BR2_EXTERNAL=Entropy/pi/os, keepcrypt_pizero_defconfig, offline
+make -C Entropy/pi/os repro-check PANEL=<name>   # builds twice in fresh output directories at the same path and compares SHA-256
 
-# Or verify a release download
-minisign -Vm keepcrypt-pi-1.0.0.img -P <release-public-key>
-sha256sum keepcrypt-pi-1.0.0.img   # must match SHA256SUMS in the release
+# Or verify a release download: the image named for your screen
+minisign -Vm keepcrypt-pi-1.0.0-<name>.img -P <release-public-key>
+sha256sum keepcrypt-pi-1.0.0-<name>.img   # must match SHA256SUMS in the release
 
 # Flash on Linux (double-check the device name first)
-sudo dd if=keepcrypt-pi-1.0.0.img of=/dev/sdX bs=4M conv=fsync status=progress
+sudo dd if=keepcrypt-pi-1.0.0-<name>.img of=/dev/sdX bs=4M conv=fsync status=progress
 # Flash on macOS (diskutil list names the card; double-check N first)
 diskutil unmountDisk /dev/diskN
-sudo dd if=keepcrypt-pi-1.0.0.img of=/dev/rdiskN bs=4m
+sudo dd if=keepcrypt-pi-1.0.0-<name>.img of=/dev/rdiskN bs=4m
 ```
 
 **First-boot checklist.**
@@ -195,6 +205,7 @@ sudo dd if=keepcrypt-pi-1.0.0.img of=/dev/rdiskN bs=4m
 
 - [SeedSigner hardware list](https://seedsigner.com/hardware)
 - [Waveshare 1.3-inch LCD HAT specifications and pin map](https://www.waveshare.com/product/displays/lcd-oled/lcd-oled-3/1.3inch-lcd-hat.htm)
+- [Waveshare LCD module wiring for the Raspberry Pi (the 2-inch module's wiki)](https://www.waveshare.com/wiki/2inch_LCD_Module)
 - [Infinite Noise TRNG](https://tindie.com/products/WaywardGeek/infinite-noise)
 - [age v1 specification (C2SP)](https://age-encryption.org/v1)
 - [NIST SP800-90B Entropy Assessment tool](https://github.com/usnistgov/SP800-90B_EntropyAssessment)
