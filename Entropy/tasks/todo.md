@@ -8312,7 +8312,8 @@ stale (Q43 (d)).
     it runs; 15h);
   - `external.desc` (`KEEPCRYPT`), `external.mk`, `Config.in`;
   - `configs/keepcrypt_pizero_defconfig`;
-  - `board/pizero/`: `linux.fragment`, `busybox.config`, `config.txt`, `cmdline.txt`, `genimage.cfg`, `post-build.sh`,
+  - `board/pizero/`: `linux.fragment`, `busybox.config`, `config.txt`, `cmdline.txt`, `genimage.cfg`,
+    `device_table.txt` (`/bin/busybox` at mode 755, so no setuid file; named here by 20e), `post-build.sh`,
     `post-fakeroot.sh` (15k), `post-image.sh`, `rootfs-overlay/etc/{inittab,fstab}`;
   - `kconfig.sh`;
   - `patches/linux/linux.hash`;
@@ -8323,10 +8324,10 @@ stale (Q43 (d)).
     `keepcrypt-pi.imports`.
 
   There are no directory symlinks.
-  Proof (M4 Review, 2026-10-16): `ls -R pi/os` at de70f56 holds the files listed, `expected/` with its six files
-  (`boot.list`, `root.list`, `linux.config`, `kconfig-required`, `kconfig-forbidden`, `keepcrypt-pi.imports`), and one
-  file the list does not name, `board/pizero/device_table.txt` (commit 14: `/bin/busybox` at mode 755, so the root's
-  busybox is not setuid; `root.list` has `-rwxr-xr-x`); `find pi/os -type l` finds no symlink.
+  Proof (M4 Review, 2026-10-16): `ls -R pi/os` at de70f56 holds the files listed and no other (`device_table.txt`,
+  commit 14's, since 20e; `root.list` has `-rwxr-xr-x` for busybox), `expected/` with its six files (`boot.list`,
+  `root.list`, `linux.config`, `kconfig-required`, `kconfig-forbidden`, `keepcrypt-pi.imports`); `find pi/os -type l`
+  finds no symlink.
 - [ ] Makefile:
   - pins Buildroot 2026.08's URL and SHA-256;
   - refuses a `KC_WORK` inside `Entropy/` or containing spaces (inside also through a symlink, before `make source`
@@ -9713,6 +9714,9 @@ The PR is a draft from commit 1.
     build" and CI. Their Proof lines keep the de70f56 evidence; the gate report reads "met at de70f56".
     20d. tasks/todo.md: 15n says the H1a image's kernel has 514 built-in options, as `grep -c '=y$'
     pi/os/expected/linux.config`, the commit 16 note and the Review count; it said 515, a second figure for one config.
+    20e. tasks/todo.md: group 13's Layout names `board/pizero/device_table.txt` (commit 14's, which the defconfig's
+    `BR2_ROOTFS_DEVICE_TABLE` applies: `/bin/busybox` at mode 755), so the list matches the tree and its Proof line no
+    longer carries the omission as a caveat.
 21. tasks/todo.md: the owner's H records and verdict. Its image run must give the gate image's hash; the PR description
     names that run.
 
