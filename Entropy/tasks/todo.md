@@ -8839,7 +8839,7 @@ stale (Q43 (d)).
   keepcrypt-pi-0.0.0-st7789-240x240.img, SHA-256 4b13c095f76c4a42efc67090fec96650d070a385bb8a58b4fd7067c0d936adde,
   and both scans passed", with no "Boot check only" text. Leg a 16 min 57 s, leg b 18 min 19 s. The image hash equals
   runs 38690004157 and 38747606208's: commits 16-18 changed no image input. Ticked.
-- [ ] The bootstrap of `expected/`:
+- [x] The bootstrap of `expected/`:
   - commit 15's runs build, compare and print the lists, with no scan;
   - the owner runs H1a on that image; bring-up fixes follow as their own commits;
   - once H1a passes, commit 16 commits the lists and `linux.config` from that run, which the lead reviews line by line
@@ -8861,6 +8861,9 @@ stale (Q43 (d)).
   f0ae43ea34c8655cabdc153cdbd69d627a936d00 into keepcrypt-pi-0.0.0-st7789-240x240.img, SHA-256 4b13c095..., and both
   scans passed". Legs 15 min 58 s (a) and 18 min 59 s (b). The last commit of commit 21 ticks this from its parent's
   run, and the PR description names the last head's own runs, as commit 21's plan entry says (lead decision 25).
+  Proof (21e, the run at b9a22c9, 21e's parent; lead decision 25): image run 38898547995: both legs green, each leg's `--image` scan passed (leg a's
+  upload followed both scans; leg b uploads nothing), `IMAGE: a 4b13c095..., b 4b13c095...`, and "both legs built b9a22c99dce38ac1091846dd762631ea67488a41 into keepcrypt-pi-0.0.0-st7789-240x240.img, SHA-256 4b13c095..., and both scans passed". Legs 15 min 29 s (a) and 19 min 48 s (b); each leg's last `df` reads `/dev/root 145G 40G
+  105G 28%`.
 
 **16. Hardware (owner) and bring-up fixes**
 - [x] H1a on commit 15's image, and H1-H4, plus any H5 items, recorded under Review in Q41 (c)'s form only.
@@ -8889,7 +8892,7 @@ stale (Q43 (d)).
     new image.
   Proof (M4 Review, 2026-10-16): not applicable: H1a's colours matched the captures (neither inverted nor washed out),
   so no `WAVESHARE_1IN3_HAT_B` profile and no second image (as Verification's Q50 item records).
-- [ ] The gate image rule: H1-H4 count for the gate only if the image workflow's run at the final PR head gives the same
+- [x] The gate image rule: H1-H4 count for the gate only if the image workflow's run at the final PR head gives the same
   image SHA-256 as the image the owner used. A later fix that changes the hash means H1-H4 run again on the new image.
   `tasks/`-only commits do not change it (fixed `SOURCE_DATE_EPOCH`), and the final head's run shows that.
   Proof: each fix's N.b entry; the repeated checks; the final head's run ID and hash next to the H records.
@@ -8903,6 +8906,8 @@ stale (Q43 (d)).
   Run at f0ae43e (21d; the latest so far, not the final head): image run 38894923652 on f0ae43e gives SHA-256 4b13c095..., the bytes of the card
   H1a to H4 ran on. `git diff --name-only 30cefbc..f0ae43e` is `Entropy/tasks/todo.md` alone, and no bring-up fix was
   made. H4b scans a test vector off a screen, not the image, so the rule does not touch it.
+  Proof (21e, the run at b9a22c9, 21e's parent; lead decision 25): image run 38898547995 gives SHA-256 4b13c095..., the card's bytes; `git diff
+  --name-only 30cefbc..b9a22c9` is `Entropy/tasks/todo.md` alone, and no bring-up fix was made.
 
 **17. Measurements and decisions recorded (Q42 (a))**
 - [x] From the H1-H3 stopwatch times:
@@ -8962,7 +8967,7 @@ stale (Q43 (d)).
   runs `--image-lists` and `--image` alone (`--selftest-image` is the legs' "Scan selftest" step), so they are "what
   CI's image legs run, in this order (make scan runs the first and the last)". The grep gate stays clean (241
   files); no command changed.
-- [ ] `gates` at or under 12 minutes (Q31 (f)); `test` within its budget; image leg times recorded.
+- [x] `gates` at or under 12 minutes (Q31 (f)); `test` within its budget; image leg times recorded.
   Proof: `git diff --name-only`; job times from the PR head.
   Measured (commit 18): `gates` ran in 9 min 59 s in run 38747606112 (the CI run beside image run 38747606208) and
   10 min 17 s in run 38771532169 (b9ed46a, with `--os-config`); image legs 16 min 57 s (a) and 18 min 19 s (b) in run
@@ -8976,13 +8981,34 @@ stale (Q43 (d)).
   `test` 5 min 50 s (M3's budget, at most 6 minutes over main's 4 min 54 s, Q31 (f) and group 14: met, +56 s; 5 min
   20 s at 30cefbc and 5 min 26 s at de70f56), `cross (arm-unknown-linux-gnueabihf)` 1 min 57 s;
   image legs 15 min 58 s (a) and 18 min 59 s (b) in run 38894923652.
+  Proof (21e, the run at b9a22c9, 21e's parent; lead decision 25): CI run 38898548352: `gates` 9 min 58 s (2 min 2 s under 12 minutes), `test` 5 min 21 s (M3's budget, at
+  most 6 minutes over main's 4 min 54 s: met), `cross (arm-unknown-linux-gnueabihf)` 2 min 29 s; image legs
+  15 min 29 s (a) and 19 min 48 s (b) in run 38898547995.
 
 **19. Review**
-- [ ] Plan, security and recompute reviews for each stage (A-E), as in M3. Every high and medium finding is fixed, with
+- [x] Plan, security and recompute reviews for each stage (A-E), as in M3. Every high and medium finding is fixed, with
   "Proof (review fixes)" lines.
-- [ ] "M4: local proof" and "M4 gate status" under `## Review`, then the gate report against build-plan.md:294, then stop
+  Proof (21e): the Review's "Review fixes" paragraph lists the N.b entries by the commit each amends: A 7 (1b-1e,
+  5b-5d), B 19 (6b-6d, 7b-7f, 8b-8e, 9b-9d, 10b-10e; 10c is the owner's Q51 answer, not a review fix, and 10d was made
+  in stage C), C 4 (12b-12d, 13b), D 15 (14b-14i; 14i is the lead's), the bring-up 6 (15i-15n, not review fixes), D2a 9
+  (17a-b to 17a-j) and D2b 6 (17b-b to 17b-d, 18b-18d); stage E's are 20b-20e and 21c-b. A fix that changed tested
+  behaviour has a "Proof (review fix ...)" line under the item it touches; the rest change text, and the text is their
+  proof (that paragraph). The 15l kconfig review was a fourth, line by line.
+  Recorded (lead, 2026-10-16, from the stage workflows' journals, as M3 did): no stage review of commits 1-20 found a
+  high. Mediums: A (commits 2-5) 0; B (1c, 6-10) 3; C (10b-13) 4; D (14, 15) 4; D2a (17a) 2; D2b (17b, 18) 0; E
+  (commit 20) 5, which were two findings seen by all three lenses (the f967dd4 baseline figure; five items ticked
+  before the final head's run), fixed as 20b and 20c. Each stage's fixer fixed every high and medium finding or showed
+  it not real (the N.b entries). Commit 21's records had three reviews: 21a-21c after commit (evidence, rules and
+  completeness lenses: 7 high, 11 medium, 9 low, all applied as 21c-b), 21d before commit (evidence and consistency: 4
+  high, 8 medium, 9 low, all applied) and 21e before commit (evidence and consistency: 2 high, 5 medium, 10 low, all
+  applied). For those tasks-only record commits the lenses stand in for plan, security and recompute (lead decision 26).
+- [x] "M4: local proof" and "M4 gate status" under `## Review`, then the gate report against build-plan.md:294, then stop
   and wait for approval. The gate report carries the standing note that BP:278's two approvals for core/, ffi/ and
   pi/os/ are unmet while there is one maintainer (todo.md:322); M4 is the first milestone with pi/os.
+  Proof (21e): "M4: local proof" and "M4 gate status" are under Review; the gate status carries the standing note on
+  BP:278's two approvals and the decisions for the owner's approval. The gate report is that block, the PR description
+  (updated after 21e's push with 21e's own runs) and the lead's report to the owner on 2026-10-16, after which the lead
+  stops for the owner's approval.
 
 **Deferred, with their milestone**
 - **M4b** (after the M4 gate; Q45-Q50): more Waveshare screens: the 240×320 profile, one image per screen type, the
@@ -9237,7 +9263,7 @@ What does not change, in M4 or M4b (Q44-Q50):
 - [ ] **Docs:** the Supported screens table lists only screens with an H6 record.
 
 ### Verification
-- [ ] **Gate: full ceremony on a Pi Zero v1.3, checked with the offline verifier.** H2 and H3 on the gate image (the
+- [x] **Gate: full ceremony on a Pi Zero v1.3, checked with the offline verifier.** H2 and H3 on the gate image (the
   final PR head's run gives its hash):
   - `python3 -I tools/verify/verify.py mixed --words 12`, from the gate image's commit, exits 0 with the device's words;
   - its Seal ID equals "Check a backup"'s;
@@ -9253,9 +9279,11 @@ What does not change, in M4 or M4b (Q44-Q50):
   count for the gate. The owner's answer adds "offline yes". The copy of verify.py is not named; every copy since
   f967dd4 has SHA-256 0ba842e2..., the gate image's commit's (b9ed46a), which is what covers "from the gate image's
   commit" (lead decision 23).
-- [ ] **Gate: two clean builds give the same image hash.** `pi-image build (a)` and `(b)` on fresh runners, and
-  `pi-image reproducible (a = b)` green at the final PR head; after merge, main's push run gives the same hash (recorded
-  in the PR conversation and in M5's Inputs).
+  Proof (21e, the run at b9a22c9, 21e's parent; lead decision 25): image run 38898547995 gives 4b13c095..., the card's bytes, so H2 and H3 count for
+  the gate.
+- [x] **Gate: two clean builds give the same image hash.** `pi-image build (a)` and `(b)` on fresh runners, and
+  `pi-image reproducible (a = b)` green at the final PR head. (Its after-merge clause, main's push run giving the same
+  hash, is the item after it: lead decision 25.)
   Proof: the run ID, the commit and both hashes.
   Proof (M4 Review, 2026-10-16): runs 38690004157 (a4598b5), 38691830575 (02d87c0), 38747606208 (ba03201), 38771532075
   (b9ed46a), 38797300298 (80bf4ac) and 38851865089 (de70f56): both legs and `pi-image reproducible (a = b)` green, both
@@ -9266,10 +9294,13 @@ What does not change, in M4 or M4b (Q44-Q50):
   on fresh runners and `pi-image reproducible (a = b)` green, `IMAGE: a 4b13c095..., b 4b13c095...` (compare job
   116959869652). Eight runs since a4598b5 give the one hash: the six above, 38869822983 (30cefbc) and 38894923652
   (f0ae43e). Main's push run after merge is the next item (lead decision 25).
+  Proof (21e, the run at b9a22c9, 21e's parent; lead decision 25): image run 38898547995 (`pull_request`): both legs on fresh runners and `pi-image
+  reproducible (a = b)` green, `IMAGE: a 4b13c095..., b 4b13c095...` (compare job 116972352888). Nine runs since a4598b5 give the one hash.
+  Main's push run after merge is the next item.
 - [ ] **After merge: main's push run of the image workflow gives the same hash**, recorded in the PR conversation and in
   M5's Inputs (split from the gate item by lead decision 25; the build-plan gate line is met by the PR head's runs).
   M5's first commit ticks it, since no commit of this PR can follow the merge.
-- [ ] **Gate: the watch-only QR imports into Sparrow and Bitcoin Core with the same first address.** H4:
+- [x] **Gate: the watch-only QR imports into Sparrow and Bitcoin Core with the same first address.** H4:
   - Sparrow scans the account QR off the panel (swb:218);
   - Core imports the descriptor text decoded off the panel (swb:222-227);
   - both first receive addresses equal step 10's (swb:231);
@@ -9283,22 +9314,32 @@ What does not change, in M4 or M4b (Q44-Q50):
   camera model, so swb:235's "current Sparrow and Bitcoin Core releases" and todo.md:73's confirmation of
   `crypto-account` against Sparrow are tied to no release yet (lead decision 23). Unticked again by 21c-b: like the
   ceremony gate, it counts only once the final head's run gives the same hash (group 16's gate image rule; 21d).
-  Proof (21d): the final head's run gives the same hash (image run 38894923652 on f0ae43e), and the owner's answer
+  Run at f0ae43e (21d; not the final head): image run 38894923652 gives the same hash, and the owner's answer
   gives the versions and the camera: Sparrow 2.3, Core 31.1, Logitech C920. Core 31.1 is current; Sparrow 2.3 is not
   (2.5.5 is), so the bullet "Sparrow's acceptance of `crypto-account` is confirmed (todo.md:73; swb:235)" holds for
   2.3 only. Open for H4b alone (lead decision 24).
-- [ ] **Matrix "Reproducible build"** (Pi image): as the second gate item, plus `pins.txt`.
+  Proof (21e, the run at b9a22c9, 21e's parent; lead decision 25): the image run gives the card's hash (38898547995), and H4b closes the
+  rest: "H4b done, Sparrow 2.5.5, matched". So the current Sparrow (2.5.5) accepts `crypto-account` and derives the vector's first
+  address, Core 31.1 (current) imported H4's descriptors, and H4's Sparrow 2.3 scan read the account QR off the real
+  panel with the C920. Every bullet holds: the scan off the panel (H4), Core's import (H4), both first addresses equal
+  step 10's (H4), and `crypto-account` confirmed against the current Sparrow (H4b; todo.md:73, swb:235). The three
+  addresses are the owner's "matched" (Q41 (c); lead decision 23), and H4b used the test vector off a screen, not
+  this device's wallet off the panel (lead decision 24).
+- [x] **Matrix "Reproducible build"** (Pi image): as the second gate item, plus `pins.txt`.
   Proof (M4 Review, 2026-10-16): as the gate item above; `pins.txt` is commit 14's (its proof under group 13), checked
   by the Makefile on every build, and every leg prints `SOURCE_DATE_EPOCH=1788535000`. Open with it (20c).
   Run at f0ae43e (21d; not the final head): as the second gate item (run 38894923652); every leg prints
   `SOURCE_DATE_EPOCH=1788535000`.
-- [ ] **Matrix "Full ceremony with offline verification"** (Pi): as the first gate item, with the test backup opened by
+  Proof (21e): as the second gate item (run 38898547995).
+- [x] **Matrix "Full ceremony with offline verification"** (Pi): as the first gate item, with the test backup opened by
   `age -d` (PF:191).
   Run at f0ae43e (21d; not the final head): as the first gate item; by the checklist's steps H3's "all matched" includes
   `age -d` opening the test backup.
-- [ ] **Matrix "Watch-only import"** (Pi): as the third gate item.
+  Proof (21e): as the first gate item.
+- [x] **Matrix "Watch-only import"** (Pi): as the third gate item.
   Proof (H4, 2026-10-16, 21c): as the third gate item. Unticked again by 21c-b with it (21d).
   Open with the third gate item for H4b (21d).
+  Proof (21e): as the third gate item.
 - [x] **Matrix "Symbol and stub-marker scan":**
   - the cross leg scans `keepcrypt-pi` on every PR;
   - the Buildroot-linked binary and the unpacked image pass `--image`;
@@ -9426,7 +9467,7 @@ What does not change, in M4 or M4b (Q44-Q50):
   Proof (21c, 2026-10-16): rule 12 holds. The H2-H4 records hold the owner's words, pass or fail, "matched" and times.
   No value of the throwaway seed ever reached the lead: no C, D, roll, word or passphrase, and not even the public
   fingerprint, addresses or Seal ID. So none can be in todo.md, the PR or a commit. The Review's Rules line 12 says so.
-- [ ] **CI:** all 14 required check runs green with unchanged names; the image workflow green at the final head;
+- [x] **CI:** all 14 required check runs green with unchanged names; the image workflow green at the final head;
   canaries (61 + n)/(61 + n); budgets met.
   Proof: run IDs on the PR head.
   Proof (M4 Review, 2026-10-16): run 38851865443 on de70f56 (`pull_request`, PR #7): all 14 required check runs green
@@ -9437,7 +9478,16 @@ What does not change, in M4 or M4b (Q44-Q50):
   names unchanged; image run 38894923652 green with the same hash; canaries "PASS: all 73 checks ran" (61 + 12);
   `--selftest` 698 passed, 0 failed; `kconfig.sh --selftest` 6 passed; the grep gate clean on 238 files; budgets as
   group 18.
-- [ ] **Definition of done** (CLAUDE.md), with proof pasted under Review.
+  Proof (21e, the run at b9a22c9, 21e's parent; lead decision 25): CI run 38898548352 (`pull_request`, PR #7): 14 of 14 check runs green, names
+  unchanged; image run 38898547995 green with the same hash; canaries "PASS: all 73 checks ran"; `--selftest` "selftest: 698 passed, 0 failed";
+  the grep gate "banned-api-check: clean, 238 files scanned"; budgets as group 18. The PR description, updated after
+  21e's push, names 21e's own runs.
+- [x] **Definition of done** (CLAUDE.md), with proof pasted under Review.
+  Proof (21e): tests written with the code and passing locally and in CI (CI run 38898548352; "M4: local proof");
+  the docs' vectors cover the new behaviour where they define it (pi-firmware.md's rootfs prefix: rootfs.rs's
+  `the_vector_gives_the_pinned_prefix` and `rootfs-prefix.py --selftest`, both in that run; H4b confirmed on hardware
+  that the current Sparrow reads watchonly.json's account QR); clippy, fmt, deny and the banned-API gate clean in that run; the proof pasted under Review; and the
+  staff-engineer question answered by the stage reviews above, every high and medium finding fixed.
 
 ### New dependencies
 
@@ -9855,6 +9905,12 @@ The PR is a draft from commit 1.
     image 38894923652: 14 of 14 green, the one hash) is logged under the items that need the final head's run, which
     stay open for the last commit (lead decision 25, which also splits off main's post-merge run). Reviewed before
     commit (evidence and consistency lenses, 21 findings, all applied).
+    21e. tasks/todo.md: the owner's H4b (H4b done, Sparrow 2.5.5, matched) ticks the watch-only gate, Matrix "Watch-only import", the
+    H4b checklist and H0's computer item. The run at b9a22c9 (CI 38898548352, image 38898547995) ticks the items that need
+    the final head's run (lead decision 25), and group 19 and Definition of done close. The gate is met, waiting for
+    the owner's approval. Reviewed before commit (evidence and consistency lenses: 2 high, 5 medium, 10 low, all
+    applied: group 19's stage list rebuilt from the Review's tally with the journals' severities, lead decision 26,
+    the approval list, H4b described as a test vector off a screen, the image-hash item's after-merge clause moved out).
 
 Review fixes are listed as N.b entries under the commit they amend.
 
@@ -9885,12 +9941,14 @@ seed, which is what those screens are for. Write throwaway values on paper and d
   lead gives you the commit and the file's SHA-256.
   Proof (the owner, 2026-10-16, 21d): "Sparrow 2.3, Core 31.1, Logitech C920, offline yes". The verify.py copy is not named; it has SHA-256
   0ba842e2... at every commit since f967dd4.
-- [ ] A computer with the current Sparrow and Bitcoin Core 31.1 [S22], a webcam that focuses at about 10 cm (an autofocus
+- [x] A computer with the current Sparrow and Bitcoin Core 31.1 [S22], a webcam that focuses at about 10 cm (an autofocus
   USB webcam or document camera if the built-in one cannot), and a phone QR reader. Neither wallet needs to sync, and the
   wallet is never funded.
   Proof (the owner, 2026-10-16, 21d): "Sparrow 2.3, Core 31.1, Logitech C920". The lead's note: the C920 is an
   autofocus webcam, and H4's scan off the panel worked with it. Sparrow 2.3
   is not the current 2.5.5, so this stays open until H4b's update to 2.5.5 (lead decision 24).
+  Proof (the owner, 2026-10-16, 21e): "H4b done, Sparrow 2.5.5, matched". The lead's note: Sparrow is now the current
+  2.5.5; Core 31.1 (current) and the C920 are from the owner's 21d answer.
 - [ ] Optional: in Waveshare's schematic PDF [S5], check by eye that BLK drives Q1's base; the PDF's text names the
   parts but not how they connect. (RST on BCM 27 and DC on BCM 25 are already confirmed by the wiki's table and
   SeedSigner [S5, S6].)
@@ -10006,14 +10064,15 @@ H4b-account-qr-test-vector.png)
 The QR is the test vector's account QR (vectors/watchonly.json, wallet "abandon", its `qr_text`, 258 characters),
 encoded with the device's encoder and settings (qrcodegen-no-heap 1.8.1 `encode_text`, `QrCodeEcc::Low` with boost,
 versions 1 to 11, the encoder's mask, as pi/app/src/ui/qr.rs): version 8 at Low, 49 modules, as qr.rs's
-`every_payload_kind_fits` test and todo.md:73 pin it (the crate's `error_correction_level()` getter calls it Quartile,
+`every_payload_kind_fits_at_3_px_or_more` test and todo.md:73 pin it (the crate's `error_correction_level()` getter calls it Quartile,
 the misreading qr.rs's `level()` corrects). macOS CoreImage decodes the PNG to the exact 258 characters.
-- [ ] Update Sparrow to 2.5.5 and note the version in About.
-- [ ] Open the PNG full screen; in Sparrow: New Wallet → Single Signature, Native Segwit → Airgapped Hardware Wallet →
+- [x] Update Sparrow to 2.5.5 and note the version in About.
+- [x] Open the PNG full screen; in Sparrow: New Wallet → Single Signature, Native Segwit → Airgapped Hardware Wallet →
   Scan, holding the C920 so the QR fills about a third of the frame.
-- [ ] Expect fingerprint `73c5da0a` and first receive address `bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu`; then delete
+- [x] Expect fingerprint `73c5da0a` and first receive address `bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu`; then delete
   the wallet.
-- [ ] Send back the Sparrow version and "matched" or "differs"; a refusal of the QR type, with Sparrow's exact message.
+- [x] Send back the Sparrow version and "matched" or "differs"; a refusal of the QR type, with Sparrow's exact message.
+  Proof (the owner, 2026-10-16, 21e): "H4b done, Sparrow 2.5.5, matched". The record is under "M4: hardware records".
 
 **H5. Optional**
 - [ ] A dice-only run, checked with `verify.py dice --words 12`.
@@ -12487,7 +12546,12 @@ drives a full ceremony in the simulator; you review the screen captures".
   current release is 2.5.5 (2026-09-17, GitHub's latest release of sparrowwallet/sparrow, read 2026-10-16), so H4
   imported into an older Sparrow than seal-watchonly-braille.md's Rules ask ("the current Sparrow and Bitcoin Core
   releases"); H4b covers it (lead decision 24; 21d).
-- **H4b**: sent 2026-10-16; no report yet. Its checklist is under "Owner hardware checklists" (lead decision 24).
+- **H4b, 2026-10-16**: "H4b done, Sparrow 2.5.5, matched". By the checklist's steps: Sparrow 2.5.5, the current release, scanned the
+  test vector's account QR off a screen with the C920, accepted the `crypto-account` UR type, and showed fingerprint
+  `73c5da0a` and first receive address `bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu`; the wallet was then deleted. The
+  vector is the published `abandon ... about` test seed (vectors/watchonly.json), so no secret is involved.
+- **The run read for the final head**: image run 38898547995 on b9a22c9, 21e's parent (lead decision 25): SHA-256
+  4b13c095..., the bytes of the card H1a to H4 ran on.
 
 ### M4: local proof (2026-10-16, at de70f56)
 Apple M4 Max, macOS 27.0.1, toolchain 1.98.1 (rust-toolchain.toml), cargo-llvm-cov 0.9.1, python3 3.12.5 and
@@ -12664,9 +12728,10 @@ SHA-256 `4b13c095f76c4a42efc67090fec96650d070a385bb8a58b4fd7067c0d936adde`, part
 `76eb725e8163701325597860cbb289b4e1b369c42a3e30f04a1e79badc6a2600`, rootfs prefix `76eb-725e-8163-7013`, keepcrypt-pi
 `4f4dc6e46bda3354c2ef2b59971e5543d4ba43f15e3f39a8d3dee075818d1122`: runs 38690004157 (a4598b5, the H1a image),
 38691830575 (02d87c0), 38747606208 (ba03201), 38771532075 (b9ed46a), 38797300298 (80bf4ac), 38851865089 (de70f56) and
-38869822983 (30cefbc, added by 21c-b), each with both legs equal (`gh run view <run> --repo bitwilll/keepcrypt --log --job <compare job>` prints `both legs
+38869822983 (30cefbc, added by 21c-b), 38894923652 (f0ae43e) and 38898547995 (b9a22c9; both added by 21e), each
+with both legs equal (`gh run view <run> --repo bitwilll/keepcrypt --log --job <compare job>` prints `both legs
 built <commit> into keepcrypt-pi-0.0.0-st7789-240x240.img, SHA-256 4b13c095...`; the compare jobs are 116278570451,
-116284649579, 116475266591, 116556993222, 116646064043, 116818371755 and 116877883263). Its kernel has 514 `=y` options
+116284649579, 116475266591, 116556993222, 116646064043, 116818371755, 116877883263, 116959869652 and 116972352888). Its kernel has 514 `=y` options
 (bcmrpi_defconfig's 794 reviewed line by line, 113 removed by 15l, the TTY core and ttynull kept by 15m; 29 required and
 218 forbidden lines in the fragment; `wc -l pi/os/expected/*`); its boot partition holds the 8 entries of `boot.list`
 (`mdir -a`: 7 files, 5,013,420 bytes); its root holds the 53 entries of `root.list` (BusyBox with its init and mount
@@ -12859,10 +12924,15 @@ the 100 ms tick's 2.4 s, so the tick stays (group 17, 21a and 21b; the table fil
     reads the account QR off the real panel and Sparrow 2.3 decodes it, so H4b repeats only the decode on 2.5.5: the
     test vector's account QR, encoded by the device's encoder and settings, scanned off a screen. A new ceremony would
     add only the panel path H4 proved. The watch-only gate and Matrix "Watch-only import" wait for H4b.
+    Done 2026-10-16 (21e): "H4b done, Sparrow 2.5.5, matched". For the owner's approval at the gate.
 25. 21d: the items whose text needs the final PR head's run are ticked by commit 21's last commit, from its parent's
     runs, since a commit cannot carry its own run; the PR description names the last head's runs, as commit 21's plan
     entry says. The image-hash gate's "after merge, main's push run" clause is split into its own item, which M5's first
     commit ticks; the build-plan gate line needs only the PR head's runs.
+26. 21e: commit 21's records are tasks-only, so their reviews used evidence (in place of recompute: every number, run
+    and quote checked against its source), rules (in place of security: CLAUDE.md, Q41 (c), the owner's words kept
+    apart) and completeness or consistency (in place of plan: every item's status against the plan and the other
+    records). Commit 20's review used the three named lenses.
 
 **Ticked in this commit** (each with its "Proof (M4 Review, 2026-10-16)" line above): group 0's four items (the answers,
 the baseline, the draft PR, `1.txt`); group 1's three (the docs edits, rule 8, CODEOWNERS); group 5's HAT values (H1a);
@@ -12876,31 +12946,24 @@ and create-new writes. Five items this commit ticked on de70f56's runs are `[ ]`
 final PR head's run, which does not exist yet (decision 20): group 15's bootstrap of `expected/`, group 18's budgets,
 and Verification's image-hash gate, Matrix "Reproducible build" and CI; their Proof lines keep the de70f56 evidence.
 
-**Still unticked**, with what each waits for (updated by 21d):
-- the watch-only gate, Matrix "Watch-only import" and H0's computer item: H4b, the current Sparrow 2.5.5 (lead
-  decision 24).
-- group 15's bootstrap, group 16's gate image rule, group 18's budgets, the ceremony and image-hash gates, Matrix
-  "Reproducible build" and "Full ceremony", and CI: commit 21's last commit, from its parent's runs (lead decision 25).
-- group 19's first item: the stage E reviews of 21d and of the last commit, every high and medium finding fixed;
-  group 19's second item, then: the gate report; Definition of done after both.
-- After merge: main's push run (its own item now; M5's first commit ticks it).
+**Still unticked**, with what each waits for (updated by 21e):
+- After merge: main's push run of the image workflow gives the same hash (its own item; M5's first commit ticks it).
 - H0's optional schematic look and H5: optional, not part of the gate.
 - M4b's items (B0 onwards) belong to M4b, after the M4 gate, and are not M4's.
 
-### M4 gate status: PENDING H4b (the current Sparrow), the stage E review and the last commit's run, then the gate report and the owner's approval
+### M4 gate status: MET (2026-10-16), waiting for the owner's approval
 The gate in docs/build-plan.md:294. Deliverables: "ST7789 and button drivers, hwrng reader, Buildroot image, USB
 export". Proof: "Full ceremony on a Pi Zero v1.3, checked with the offline verifier; two clean builds give the same
 image hash; the watch-only QR imports into Sparrow and Bitcoin Core with the same first address". The hardware records
 are under "M4: hardware records" above.
-- Two clean builds give the same image hash: met at de70f56, and the run at f0ae43e (38894923652) gives the one hash
-  again; commit 21's last commit records it from its parent's run (lead decision 25). `pi-image build (a)` and `(b)` on fresh runners and
+- Two clean builds give the same image hash: met. The run at b9a22c9 (38898547995), 21e's parent, gives the one hash
+  again (lead decision 25). `pi-image build (a)` and `(b)` on fresh runners and
   `pi-image reproducible (a = b)` green on every head since a4598b5: runs 38690004157, 38691830575, 38747606208,
-  38771532075, 38797300298, 38851865089 (de70f56), 38869822983 (30cefbc) and 38894923652 (f0ae43e) all gave SHA-256
+  38771532075, 38797300298, 38851865089 (de70f56), 38869822983 (30cefbc), 38894923652 (f0ae43e) and 38898547995 (b9a22c9) all gave SHA-256
   `4b13c095f76c4a42efc67090fec96650d070a385bb8a58b4fd7067c0d936adde`, leg b from fresh downloads each time; from 17b
   each leg's `--image` scan against the committed lists passed before the upload.
-- Full ceremony on a Pi Zero v1.3, checked with the offline verifier: passed on hardware on 2026-10-16, and the run at
-  f0ae43e (38894923652) gives the card's hash; it counts for the gate when commit 21's last commit reads its parent's
-  run (lead decision 25). H2-H4 ran on the card flashed
+- Full ceremony on a Pi Zero v1.3, checked with the offline verifier: met. It passed on hardware on 2026-10-16, and
+  the run at b9a22c9 (38898547995), 21e's parent, gives the card's hash (lead decision 25). H2-H4 ran on the card flashed
   for H1a from run 38690004157's artifact (a4598b5), not re-flashed, whose SHA-256 4b13c095... is the gate image's (run
   38771532075, b9ed46a) and every run's since a4598b5; the run, commit and hash are the lead's, from H1a's record.
   The owner's H2: "H2 done, all passed" (21a); H3: "H3 done, all matched, Check a backup 20 s" (21b). The plan asked
@@ -12910,9 +12973,12 @@ are under "M4: hardware records" above.
   words. By the checklist's steps the owner's words cover each, and the owner confirmed the computer was offline. The
   verify.py copy is unnamed, and every copy since f967dd4 is the gate image's commit's file (lead decision 23, partly
   answered).
-- The watch-only QR imports into Sparrow and Bitcoin Core with the same first address: passed on hardware with Sparrow
-  2.3, Core 31.1 and a Logitech C920, 2026-10-16, and the run at f0ae43e gives the card's hash. Waits for H4b:
-  swb:235 asks for the current Sparrow, 2.5.5 (lead decision 24). The owner's H4: "H4 done, both
+- The watch-only QR imports into Sparrow and Bitcoin Core with the same first address: met. H4 passed on hardware
+  with Sparrow 2.3, Core 31.1 and a Logitech C920: this device's account QR off the panel into Sparrow and its
+  descriptors into Core, both first addresses matching. H4b then showed the current Sparrow 2.5.5 accepts the same QR
+  type: "H4b done, Sparrow 2.5.5, matched", on the published test vector's account QR, encoded by the device's encoder
+  and scanned off a computer screen. No panel import of this device's wallet was made on 2.5.5 (lead decision 24, for
+  the owner's approval). The run at b9a22c9 gives the card's hash. The owner's H4: "H4 done, both
   addresses matched" (21c). By the checklist's steps, Sparrow scanned the account QR off the panel, accepting
   `crypto-account`; Core imported the descriptor text decoded off the panel; both first receive addresses equal step
   10's. The versions and camera came in the owner's answer (lead decision 23).
@@ -12926,6 +12992,9 @@ are under "M4: hardware records" above.
   (3 s); H3 proved "Check a backup" on the stick (20 s, the fingerprint matched; the
   read-only mount is the code's, proven by CI's loop-device test); H4 proved the watch-only QRs off the panel; H2's
   Finish ran a wipe on the panel, its black frame proven by tests, not observed (lead decision 22).
+- For the owner's approval: lead decisions 21 (`repro-check`'s real run to M7), 22 (the wipe's black frame proven,
+  not observed), 24 (H4b's test-vector scan for the current Sparrow), 25 (the final head's run read from the last
+  commit's parent; main's post-merge run its own item) and 26 (stage E's review lenses).
 - Standing note: build-plan.md:278's two approvals for `core/`, `ffi/` and `pi/os/` are unmet while there is one
   maintainer (todo.md:322; CODEOWNERS:7-10 describes ruleset 24833307 as it is, e8c90d9). M4 is the first milestone with
   `pi/os/`.
