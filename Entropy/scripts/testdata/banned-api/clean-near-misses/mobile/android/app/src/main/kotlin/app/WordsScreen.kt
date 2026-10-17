@@ -1,7 +1,6 @@
-// Selection stays off and the only save path is the system "create document" picker.
+// Selection stays off; the only save path, the system "create document" picker, is in files/Documents.kt.
 binding.words.setTextIsSelectable(false)
 DisableSelection { Text(words) }
-val save = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { }
 val r = core.pickRandom(words)
 binding.hint.setTextIsSelectable( false ); binding.seal.setTextIsSelectable(false)
 SealText(code, textIsSelectable = false)

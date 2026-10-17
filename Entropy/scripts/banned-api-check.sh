@@ -430,10 +430,16 @@
 #              filesDir, cacheDir, getExternal, MediaStore, Room, SQLite, createTempFile,
 #              rememberSaveable, SavedStateHandle and takePersistableUriPermission, and
 #              openOutputStream, openInputStream and openFileDescriptor outside files/Documents.kt.
-#   KtIntent   outside the test source sets and files/Documents.kt: Intent(, startActivity,
-#              PendingIntent, sendBroadcast, registerReceiver, ShareCompat, createChooser,
-#              ACTION_VIEW, LocalUriHandler, openUri and LinkAnnotation; in GoOfflineScreen.kt only
-#              Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS) and startActivity( pass.
+#   KtIntent   outside the test source sets and files/Documents.kt: Intent( and its factory
+#              calls (Intent.parseUri), startActivity (and ForResult, startActivities,
+#              startIntentSender), start...Service, bind...Service, send...Broadcast,
+#              PendingIntent, registerReceiver, ShareCompat, createChooser, ACTION_VIEW,
+#              LocalUriHandler, openUri, LinkAnnotation, and the activity-result API
+#              (ActivityResultContract(s), registerForActivityResult,
+#              rememberLauncherForActivityResult) but a launcher of
+#              ActivityResultContracts.RequestPermission() on one line; in GoOfflineScreen.kt
+#              also startActivity(Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS)), whole on one
+#              line.
 #   KtDevice   outside the test source sets: the camera (Camera, Camera* classes, camera2,
 #              androidx.camera) only in camera/GoAheadScanner.kt, sensors (Sensor*) only in
 #              DeviceEntropyScreen.kt, and Settings.Global (and Settings.Secure and
@@ -1414,18 +1420,31 @@ kt_open_stream() {
 }
 
 # KtIntent (no share sheet, no link, no other app), outside src/test, src/androidTest and app's
-# files/Documents.kt; in app's GoOfflineScreen.kt only the airplane-mode settings intent and
-# startActivity( pass (kt_intent_airplane).
-ktintent_ere="(^|[^A-Za-z0-9_])Intent[[:space:]]*[(]|startActivity|PendingIntent|sendBroadcast|registerReceiver|ShareCompat|createChooser|ACTION_VIEW|LocalUriHandler|openUri|LinkAnnotation"
+# files/Documents.kt: Intent( and Intent's factory calls (Intent.parseUri, Intent.makeMainActivity:
+# a lower-case name after "Intent."; an upper-case constant only ever goes into an Intent(, which
+# hits), every start of an activity (startActivity, startActivityForResult, startActivities,
+# startIntentSender), service (start...Service, bind...Service) or broadcast (send...Broadcast,
+# registerReceiver), PendingIntent, ShareCompat, createChooser, ACTION_VIEW, LocalUriHandler,
+# openUri and LinkAnnotation, and the activity-result API (ActivityResultContracts and custom
+# ActivityResultContract classes, registerForActivityResult, rememberLauncherForActivityResult),
+# whose document, content and camera contracts reach other apps with no Intent( in our code. One
+# launcher shape passes everywhere, on one line: (remember|register)...ForActivityResult(
+# ActivityResultContracts.RequestPermission()), the scan screen's CAMERA prompt, which the
+# system's permission controller answers. In app's GoOfflineScreen.kt the one call
+# startActivity(Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS)) passes too, written whole on one
+# line, so no other intent can be started there (kt_intent_airplane).
+ktintent_ere="(^|[^A-Za-z0-9_])Intent[[:space:]]*([(]|[.][[:space:]]*[a-z])|startActivit|startIntentSender|start[A-Za-z]*Service|bind[A-Za-z]*Service|send[A-Za-z]*Broadcast|PendingIntent|registerReceiver|ShareCompat|createChooser|ACTION_VIEW|LocalUriHandler|openUri|LinkAnnotation|ActivityResultContract|(register|rememberLauncher)ForActivityResult"
+kt_permission_launcher='s/(register|rememberLauncher)ForActivityResult[[:space:]]*[(][[:space:]]*ActivityResultContracts[[:space:]]*[.][[:space:]]*RequestPermission[[:space:]]*[(][[:space:]]*[)][[:space:]]*[)]//g'
 ktintent() {
-  grep -n -a -E -e "$ktintent_ere" -- "$1"
+  t=$(grep -n -a -E -e "$ktintent_ere" -- "$1")
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  kept_hits "$ktintent_ere" -e "$kt_permission_launcher"
 }
 kt_intent_airplane() {
   t=$(grep -n -a -E -e "$ktintent_ere" -- "$1")
   case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
-  kept_hits "$ktintent_ere" \
-    -e 's/(^|[^A-Za-z0-9_])Intent[[:space:]]*[(][[:space:]]*(android[.]provider[.])?Settings[[:space:]]*[.][[:space:]]*ACTION_AIRPLANE_MODE_SETTINGS[[:space:]]*[)]/\1/g' \
-    -e 's/(^|[^A-Za-z0-9_])startActivity[[:space:]]*[(]/\1/g'
+  kept_hits "$ktintent_ere" -e "$kt_permission_launcher" \
+    -e 's/(^|[^A-Za-z0-9_])startActivity[[:space:]]*[(][[:space:]]*Intent[[:space:]]*[(][[:space:]]*(android[.]provider[.])?Settings[[:space:]]*[.][[:space:]]*ACTION_AIRPLANE_MODE_SETTINGS[[:space:]]*[)][[:space:]]*[)]/\1/g'
 }
 
 # KtDevice, outside src/test and src/androidTest: the camera (Camera, Camera* classes such as
