@@ -719,6 +719,7 @@ pyrandom() {
 # URL written into app code is a hit wherever it goes (a variable passed to contentsOf: later, a
 # link): Swift URL(string: "http (also NSURL, URLComponents, .init(string:) and a #"raw"# string),
 # and Kotlin URL("http and Uri.parse("http (also a """raw""" string), http in any letter case.
+# The plan's java.net.http (tasks/todo.md, M5 group 3) is under java.net. already.
 network() {
   grep -n -a -E \
     -e 'URLSession' \
@@ -744,7 +745,6 @@ network() {
     -e 'javax[.]net' \
     -e 'Socket[[:space:]]*[(]' \
     -e 'DatagramSocket' \
-    -e 'java[.]net[.]http' \
     -e 'ConnectivityManager' \
     -e 'Cronet' \
     -e 'DownloadManager' \
