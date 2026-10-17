@@ -1419,6 +1419,15 @@ automatically"); commit 13b applies it.
 
 ### Needed before M5 code (Q53-Q63, asked 2026-10-17)
 
+Answered 2026-10-17: "approve all as recommended". Every recommendation of Q53-Q63 stands and no "Otherwise" is taken. That
+includes, explicitly: the hand-written JNI bridge over jni-sys 0.3.0 with the one `catch_unwind` exception in `keepcrypt-jni` (Q53);
+the Gradle and Maven artifacts listed in Q54, the Android SDK licence accepted by CI when it installs the emulator and images (Q54),
+CODEOWNERS `/Entropy/mobile/` (Q54); the non-required Android job and the BP:318 and MA:74 rewording (Q55); nothing installed on
+this Mac and the x86-emulator limit accepted (Q56); the six doc frictions settled the Pi's way (Q57); the residuals (Q58); the rule 8
+and rule 1 sentences (Q59); the CI-only test-registry APK (Q60); M5b with the games and Tetris on both (Q61); the app ids and
+version 0.0.0 (Q62); the branch already cut from 95c4359 (Q63). Still open from Q56: the phone's model and Android version, which
+the owner names before P0b (commit 18's run); no commit before that needs it.
+
 Please answer these before any M5 code is written. Each starts with what I recommend; "as recommended" is a full answer.
 Everything else in the plan follows your standing instruction of 2026-10-15 and is recorded as a lead decision you can
 override. Almost every M5 commit touches paths you own in CODEOWNERS, so the whole PR needs your review.
@@ -10412,7 +10421,8 @@ Every finding of the plan's spec, security and feasibility review was accepted; 
 
 ## M5: Android app (`mobile/android`, the FFI)
 
-Status (2026-10-17): plan drafted, research only. No M5 code exists, and none is written before the owner answers Q53-Q63
+Status (2026-10-17): the owner answered Q53-Q63 "approve all as recommended" (commit 1b), so Stage A starts. The plan was
+drafted the same day as research only, with no M5 code written before the answers to Q53-Q63
 ("Needed before M5 code (Q53-Q63, asked 2026-10-17)" under "## Open questions for the owner", above). The owner asked
 for execution to start at once ("do it asap and make sure you start execution next step", 2026-10-17), so Stage A's
 commit 1 is this plan on `m5-android`, cut from 95c4359 (M5 lead decision 1). Code then follows "Commit order on
@@ -10750,8 +10760,9 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   "matched", versions, times, run IDs, hashes and Public values of gate seeds or of the throwaway seed.
 
 **0. Before code**
-- [ ] Record the owner's answers to Q53-Q63, quoted with the date, under "Needed before M5 code".
-  Proof: the answers in this file.
+- [x] Record the owner's answers to Q53-Q63, quoted with the date, under "Needed before M5 code".
+  Proof (M5 commit 1b): "approve all as recommended", 2026-10-17, recorded under that heading; the phone model (Q56) is the one
+  open detail, needed by P0b only.
 - [ ] Baseline at the branch base, pasted under "M5: local proof": `cargo test --workspace --locked` counts and time;
   the gate's file count and `--selftest` count; canaries N/N with wall time; `vectorgen.py --selftest`; `verify.py
   selftest`; the last main run's `test`, `gates` and three Android `cross` job times.
