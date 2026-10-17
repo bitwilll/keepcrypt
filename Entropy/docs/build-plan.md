@@ -32,7 +32,9 @@ Every platform links the same `keepcrypt-core`; a fix or an audit of the core co
 
 ![KeepCrypt system architecture · one core, three shells](img/architecture.png)
 
-The Pi firmware calls the core directly as a Rust crate; the phone apps go through generated UniFFI bindings. The dashed verifier runs on a separate offline computer and needs nothing from KeepCrypt except the published algorithm. The seal registry is reached only by a second device or a downloaded snapshot, so the devices themselves stay offline.
+The picture's "UniFFI" label predates M5: the phone bindings are the two hand-written crates `keepcrypt-ffi` (the safe layer) and `keepcrypt-jni` (the Android boundary, `libkeepcrypt.so`); Swift binding: M6.
+
+The Pi firmware calls the core directly as a Rust crate; the phone apps go through a small hand-written bridge: `keepcrypt-ffi` holds every rule over `keepcrypt-core` and contains no unsafe code, and one boundary crate per platform sits under it (`keepcrypt-jni` for Android; the Swift binding is chosen in M6). The dashed verifier runs on a separate offline computer and needs nothing from KeepCrypt except the published algorithm. The seal registry is reached only by a second device or a downloaded snapshot, so the devices themselves stay offline.
 
 ## Repository layout and toolchain
 
@@ -44,7 +46,8 @@ keepcrypt/
 ├─ tasks/todo.md, lessons.md  plan and corrections log
 ├─ docs/                      design, build plan, firmware, mobile, seal and braille
 ├─ core/                      keepcrypt-core: pool, health, dice, seed, seal, braille, descriptor, backup
-├─ ffi/                       keepcrypt-ffi: UniFFI bindings for Kotlin and Swift
+├─ ffi/                       keepcrypt-ffi: the safe FFI layer over the core (every rule, no unsafe code)
+│  └─ jni/                    keepcrypt-jni: hand-written JNI boundary for Android, built as libkeepcrypt.so
 ├─ pi/
 │  ├─ app/                    keepcrypt-pi: display, buttons, screens, QR, USB export and snapshot import
 │  ├─ sim/                    desktop simulator of the 240x240 screen and keys
@@ -69,9 +72,9 @@ keepcrypt/
 | --- | --- | --- |
 | Core language | Rust stable, pinned in `rust-toolchain.toml`; `#![forbid(unsafe_code)]` in `core/` | Memory safety; one implementation for every platform |
 | Pi target | `arm-unknown-linux-gnueabihf` (Pi Zero v1.3 is ARMv6), built inside Buildroot with the Rust toolchain pinned in `rust-toolchain.toml` (not Buildroot's own Rust) and Buildroot's C toolchain; the firmware binary keeps its symbol table for the release scan | Matches the radio-less Pi Zero; reproducible toolchain |
-| Android | Kotlin, Jetpack Compose, `cargo-ndk`, minSdk 31 | API 31 adds overlay hiding; FLAG\_SECURE is less reliable on 30 and below |
-| iOS | Swift, SwiftUI, XCFramework from `cargo` + UniFFI, iOS 17+ | iOS 17 adds `sceneCaptureState` for capture detection |
-| Bindings | Mozilla UniFFI | Generates Kotlin and Swift from one Rust interface |
+| Android | Kotlin, Jetpack Compose, `libkeepcrypt.so` built with plain `cargo` and the NDK's clang (no `cargo-ndk`), minSdk 31 | API 31 adds overlay hiding; FLAG\_SECURE is less reliable on 30 and below |
+| iOS | Swift, SwiftUI, XCFramework from `cargo` (Swift binding: chosen in M6), iOS 17+ | iOS 17 adds `sceneCaptureState` for capture detection |
+| Bindings | Hand-written: `keepcrypt-ffi` (the safe layer, which holds every rule and no unsafe code) and `keepcrypt-jni` (the JNI boundary over `jni-sys`, the only unsafe code and the one reviewed `catch_unwind`, so a Rust panic wipes the session instead of aborting the app); Swift binding: chosen in M6 | Every current UniFFI release pulls in a banned random crate, a second user of `getrandom`, MPL-2.0 code and a logging crate in its generator, and the `jni` crate needs a logging crate; `jni-sys` has no dependency, build script or feature, and a bridge we write keeps every buffer under our wipe rules |
 | Core crates | `getrandom`, `sha2`, `bip39`, `bitcoin` (fingerprint, address), `miniscript` (descriptors), `unicode-normalization` (NFKD of the BIP39 passphrase), a single-frame BC-UR encoder and strict single-part decoder written in core with no crate (watch-only and go-ahead QRs), the age v1 scrypt format written in core from the RustCrypto `scrypt`, `chacha20poly1305`, `poly1305` (named only to switch on its `zeroize`, which wipes the one-time key), `hkdf`, `hmac` and `base64ct` crates (not the `age` crate), `ed25519-dalek` (signature verification only), `zeroize`, `secrecy`, `thiserror` | Small, widely reviewed; nothing else without review |
 | Pi crates | `rppal` (GPIO, SPI; its last release, pinned: its author archived it in July 2025, and the parts the firmware calls are reviewed), `nix` (memory locking, mounting the stick, the monotonic clock, the non-blocking hwrng open), `embedded-graphics`, `qrcodegen-no-heap` (QR codes encoded into buffers the app wipes after drawing); the ST7789 driver is KeepCrypt's own; the simulator needs no display or image crate: it writes the app's own frames as PNG files itself | Userspace drivers, testable on a desktop; no unsafe code in KeepCrypt's own Pi code, only inside `rppal`, `nix`, libc and Rust's standard library |
 | Verifier | Python 3, standard library only | Anyone can read and run it offline |
@@ -267,7 +270,7 @@ Every rule below is checked by a machine on every pull request, because the Cold
 
 | Rule | How CI enforces it |
 | --- | --- |
-| Only `getrandom` supplies OS randomness | `cargo-deny` bans `rand`, `fastrand`, `oorandom`, `nanorand` and similar crates in `core/`; Clippy `disallowed-methods` and a grep gate reject `Math.random`, `java.util.Random`, `arc4random_uniform` in app code |
+| Only `getrandom` supplies OS randomness | `cargo-deny` bans `rand`, `fastrand`, `oorandom`, `nanorand` and similar crates in `core/`; the grep gate and the APK's compiled-code scan reject `Math.random`, `java.util.Random`, `arc4random_uniform` in app code |
 | One RNG path in shipped binaries | Symbol check on release binaries: the OS import for the target is present (`getrandom` on Linux and Android, `CCRandomGenerateBytes` on iOS), and no other RNG symbol (`rand`, `random`, `drand48`, `arc4random`) appears |
 | Test stubs never ship | Stubs live behind a `test-sources` feature (marker `KC_TEST_SOURCE_DO_NOT_SHIP`), and the test registry key behind a separate `test-registry` feature (marker `KC_TEST_REGISTRY_DO_NOT_SHIP`) that `test-sources` turns on, never the reverse; CI builds release artifacts with `--no-default-features` and greps them for both markers and the test key, a positive check rather than a `#ifndef`-style guard |
 | No unsafe code in the core | `#![forbid(unsafe_code)]` in `core/` |
@@ -315,7 +318,7 @@ Each test exists to catch one specific way seed generation has failed in the rea
 | Birthday collision, 1,000,000 device legs | Core, Pi (reboots: M8 bench image) | Nightly | A state narrower than about 36 bits |
 | Symbol and stub-marker scan | Release artifacts | Every release build | Wrong RNG linked; test stubs shipped |
 | Verifier agreement, 1,000 cases | Verifier | Every build | Core and verifier disagreeing |
-| Screen-capture tests | Android, iOS | Every app build on real devices | Seed words reaching a screenshot, recording or app switcher |
+| Screen-capture tests | Android, iOS | Every app build on CI emulators; one real phone at each app milestone's gate; a Pixel and a Samsung before every release | Seed words reaching a screenshot, recording or app switcher |
 | No-network checks | Android manifest, iOS privacy report | Every app build | Networking code or an SDK added later |
 | Reproducible build | Pi image, Android APK | Every release | A release that does not match its source |
 | Full ceremony with offline verification | Pi, Android, iOS | Before every release | Anything the unit tests missed |

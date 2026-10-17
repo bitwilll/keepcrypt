@@ -1,0 +1,1 @@
+resolver.openOutputStream(uri, "rwt")

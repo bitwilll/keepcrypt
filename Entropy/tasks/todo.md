@@ -1,4 +1,4 @@
-# Task: KeepCrypt milestones M0 to M4
+# Task: KeepCrypt milestones M0 to M5
 
 Spec: `docs/build-plan.md` (milestones, core API, CI rules) and `docs/seal-watchonly-braille.md`.
 Claude Code: refine this plan, then **check in with the owner before writing code**.
@@ -1416,6 +1416,162 @@ automatically"); commit 13b applies it.
     https://github.com/RustCrypto/password-hashes/issues/938;
   - Poly1305's r and s are now wiped on drop (b4871b9), except the backends' stack temporaries: the soft backend's in
     `State::new` and `finalize`, and, on x86_64-linux-android, the AVX2 backend's.
+
+### Needed before M5 code (Q53-Q63, asked 2026-10-17)
+
+Answered 2026-10-17: "approve all as recommended". Every recommendation of Q53-Q63 stands and no "Otherwise" is taken. That
+includes, explicitly: the hand-written JNI bridge over jni-sys 0.3.0 with the one `catch_unwind` exception in `keepcrypt-jni` (Q53);
+the Gradle and Maven artifacts listed in Q54, the Android SDK licence accepted by CI when it installs the emulator and images (Q54),
+CODEOWNERS `/Entropy/mobile/` (Q54); the non-required Android job and the BP:318 and MA:74 rewording (Q55); nothing installed on
+this Mac and the x86-emulator limit accepted (Q56); the six doc frictions settled the Pi's way (Q57); the residuals (Q58); the rule 8
+and rule 1 sentences (Q59); the CI-only test-registry APK (Q60); M5b with the games and Tetris on both (Q61); the app ids and
+version 0.0.0 (Q62); the branch already cut from 95c4359 (Q63). Still open from Q56: the phone's model and Android version, which
+the owner names before P0b (commit 18's run); no commit before that needs it.
+
+Please answer these before any M5 code is written. Each starts with what I recommend; "as recommended" is a full answer.
+Everything else in the plan follows your standing instruction of 2026-10-15 and is recorded as a lead decision you can
+override. Almost every M5 commit touches paths you own in CODEOWNERS, so the whole PR needs your review.
+
+53. **How the app talks to the Rust core** (BP:33, :35, :47, :72-74; MA:17, :23; deny.toml:43, :66, :83;
+    canaries.sh:384, :485-494, :866-875; ffi/clippy.toml:27)
+    Recommended:
+    - We write a small bridge ourselves over one new crate, jni-sys 0.3.0 (no dependencies, no build script,
+      MIT/Apache-2.0). No UniFFI, no JNA, no code generator. Every current UniFFI fails checks that pass today (a banned
+      random-number crate, a second user of the OS random source, the MPL-2.0 licence, a logging crate in its
+      generator), and the `jni` crate needs a logging crate.
+    - Two crates: `keepcrypt-ffi` holds every rule, contains no unsafe code and keeps the same lint list as core;
+      a new, small `keepcrypt-jni` (in `ffi/jni/`) is the only place with unsafe code. The workspace's pinned member list
+      grows from four crates to five.
+    - One reviewed exception to the "never catch a panic" rule, only in `keepcrypt-jni`. Without it a Rust panic kills
+      the app before the seed is wiped. The catch wipes everything and shows the stop screen; nothing carries on.
+    - `libkeepcrypt.so` is built with plain cargo and the NDK's compiler, as CI's Android jobs already do; no cargo-ndk.
+    - The docs change to match: BP:35, :47, :72, :74 and MA:17 and MA:23's Android column name the bridge and cargo.
+      BP:73 and MA:23's iPhone column say "Swift binding: chosen in M6". A line under the architecture picture says
+      the same (the picture has no editable source in the repo).
+    Otherwise: (b) UniFFI 0.29.1, pinned forever: MPL-2.0, about 13 crates, a separate generator, JNA's prebuilt library
+    in the app, and secrets in buffers UniFFI does not wipe; it would give M6 its Swift bindings. (c) A current UniFFI
+    with exceptions to the random-crate ban: not recommended, because it weakens rule 1's machine check.
+
+54. **Android build tools, libraries and supply chain** (rule 11; MA:126)
+    Recommended:
+    - Build: Gradle 9.7.1, the Android Gradle plugin 9.3.3, the Compose compiler plugin 2.4.20, JDK 17, NDK r30;
+      compileSdk 37, targetSdk 36 (Play's minimum), minSdk 31.
+    - In the app: activity-compose 1.13.0, Compose foundation 1.12.1 (no Material) and ZXing core 3.5.4, about 60
+      Apache-2.0 modules in all. profileinstaller is excluded because it writes files. Compose brings one small
+      prebuilt native library (graphics-path), which is allow-listed by hash and scanned.
+    - Tests only: androidx.test 1.7.0, ext-junit 1.3.0, UI Automator 2.4.0, JUnit 4.13.2 (EPL-1.0).
+    - The same controls as for crates. The 14-day wait applies to Maven too. Gradle checks every file's checksum
+      against a committed list, which a script reviews: Google's SHA-256 files, and for Maven Central (which publishes
+      no SHA-256 for several of these) SHA-1 plus the publisher's PGP signature. Lockfiles, and a committed list of
+      the shipped libraries that CI compares. Only Google's Maven and Maven Central. Gradle itself is fetched with a
+      pinned SHA-256, with no wrapper jar in git. No local jar or aar files and no remote build scripts.
+    - CODEOWNERS gains `/Entropy/mobile/`. CI accepts the Android SDK licence when it installs the emulator and its
+      system images (about 3.4 GB per run, cached); that acceptance is yours to give.
+    Otherwise: name any library to drop or swap. Material 3 or CameraX would replace hand-written parts, at the cost of
+    more modules and, for Material, popups to secure.
+
+55. **CI for the app** (the 14 required names; banned-api-check.sh:1675-1677; Q38 (b); BP:318; MA:74)
+    Recommended:
+    - The 14 required checks keep their names. The Android cross jobs also build and scan `libkeepcrypt.so` (shipping
+      and test registry), move from the unpinned NDK r27 to NDK r30 (installed if the image ever drops it) and check
+      16 KB pages. `test` runs the bridge's test-registry tests. `gates` runs the new Kotlin, Android and bridge rules,
+      which you own in `scripts/`.
+    - One new non-required job, `entropy-android.yml`, filtered by path like the Pi image workflow. It builds and checks
+      the APKs once, then runs emulators for Android 12 and 16 and one 16 KB-page image on those same files, so the
+      hashes you install are the ones tested. No new actions, no secrets.
+    - No PR touching those paths merges without its green run at the final head; making it required waits for M7.
+    - BP:318 reads "Every app build on CI emulators; one real phone at each app milestone's gate; a Pixel and a Samsung
+      before every release". MA:74's test line says the same, with CI's shell screenshot and recording in place of adb.
+    Otherwise: require the new job now (a ruleset change, and the path filters go); or keep MA:74 as written, which
+    needs a Pixel and a Samsung, developer options and adb at the M5 gate.
+
+56. **Your phone, this Mac, and what CI cannot run** (MA:74)
+    Recommended:
+    - Tell me which Android phone or phones you can use (model, Android 12 or later; 15 or later also tests the
+      recording cover). One phone counts for the gate together with the CI emulators. A second brand is P5 now, or M7.
+    - You install CI-built APKs by hand: no adb, no developer options. Sparrow, Bitcoin Core and the C920 as in M4. One
+      short early session (P0b, about 10 minutes) once the camera scanner exists, then P1-P4 at the end.
+    - Nothing is installed on this Mac; Kotlin builds and tests run in CI.
+    - Accept this limit: CI's emulators are Intel-type. The phone versions of the library are tested there only through
+      the emulator's ARM translation, if the image offers it, plus static checks. If an image offers no translation
+      for a version, that version's first real run is on your phone, and the plan says so in the gate report rather
+      than calling it proven.
+    Otherwise: install JDK 17, Android's command-line tools, NDK r30 and an ARM emulator here (about 8 GB). That makes
+    work faster and allows true ARM runs before your session. With no Android phone, the camera scan, real-device
+    capture and Sparrow items keep the gate open until one is available.
+
+57. **Doc frictions to settle in the docs commit** (MA:29, :34, :73, :123, :160; BP:201-202, :270; PF:120-136; swb:286)
+    Recommended, each as the Pi already does it:
+    - (a) Typing: a letter pad for the first four letters of each word, which core completes, so no word list leaves
+      core; pads for the go-ahead code and the BIP39 passphrase; never the system keyboard. MA's "word picker" becomes
+      "letter pad".
+    - (b) Protected screens: the Pi's list, its privacy gate, 30-second cover, 9-minute warning and 10-minute wipe.
+      Leaving the app on any Protected screen discards the seed (MA:34 names only the words and the backup passphrase).
+    - (c) Failures: the Pi's halt rule; the stop screen's only way out ends the app; a crash wipes and closes silently.
+      A new MA paragraph.
+    - (d) Offline: airplane mode on and Wi-Fi off (Wi-Fi can come back on inside airplane mode); going online wipes the
+      session. Bluetooth may stay on for braille displays. MA:123 changes.
+    - (e) swb:286: "speech only with headphones" becomes "with a warning to use headphones"; no app can tell where
+      TalkBack speaks.
+    - (f) BP:270: "Clippy `disallowed-methods` and a grep gate reject ... in app code" becomes "the grep gate and the
+      APK's compiled-code scan"; Clippy does not read Kotlin.
+    Otherwise: name any item to keep as written.
+
+58. **Secrets the app cannot fully wipe** (rules 5 and 8; MA:17; DS:62-64, :123)
+    Recommended: accept these as residuals for the M7 audit, with limits, and MA:17 gains one sentence naming them.
+    - Java memory: secrets cross only as byte arrays, one page at a time; the Rust copies are wiped; Kotlin zeroes its
+      arrays when a page leaves; a Java string exists only for the text on screen, which Compose and TalkBack need.
+      Java's moving garbage collector and text caches can still hold copies nothing can wipe.
+    - Crash dumps: if native code aborts (rare: a panic while cleaning up, or running out of memory), Android writes a
+      crash report that can include memory near the crash, so a secret could reach the phone's storage. Ordinary
+      errors and Rust panics wipe first and leave no report.
+    - Swap: some phones (for example Samsung's RAM Plus) swap memory to flash, and nothing in the app can prevent it.
+    Otherwise: draw each word letter by letter from native buffers (more code, weaker TalkBack), or render words to
+    images in Rust (no TalkBack). The crash-report and swap items have no fix in M5 either way.
+
+59. **How two rules read for an Android app** (CLAUDE.md rules 8 and 1; Q51)
+    Recommended:
+    - (a) Rule 8 gains one sentence: files the operating system keeps about an app (compiled code, runtime profiles,
+      package records) are not files the app writes. The app's own storage stays empty, which an emulator test proves
+      after every full ceremony.
+    - (b) Rule 1 gains one sentence: the bans bind KeepCrypt's own code, checked in our sources by the grep gate and in
+      the built app by a scan of our compiled classes. Library classes our code never reaches (for example Kotlin's own
+      `Random`, which ships inside its standard library) are allowed.
+    Otherwise: (a) rule 8 unchanged and read strictly (the emulator test still runs). (b) No banned class anywhere in the
+    app, which needs R8 shrinking and a whole-app scan now instead of in M7, and may not be achievable with Kotlin's
+    standard library.
+
+60. **The gate's test registry** (BP:295; todo.md:94-96, :3069-3070; swb:200)
+    Recommended: a second APK, built only in CI and never released. It has its own app id, the label "KeepCrypt TEST
+    REGISTRY", a strip on every screen, and core's `test-registry` feature switched on from the command line, never
+    test stubs. The gate uses kcr.json's signed fixtures as they are, so the phone first shows its Stale warning (they
+    are dated 2026-03-01), which the run also proves. No checker tool; the live test registry stays M9's. The shipping
+    APK refuses snapshots and go-ahead QRs until M9, and the typed code works.
+    Otherwise: regenerate fresh-dated fixtures (they go stale again in 30 days), or build a small test checker in
+    `tools/` (overlaps M9).
+
+61. **What M5 leaves for later, and Tetris with the phones** (MA:142, :171, :186; swb:292; todo.md:1185-1186, :4266-4267)
+    Recommended:
+    - (a) An M5b right after the M5 gate, on its own branch as M4b: "Verify another device's ceremony" (it needs a new
+      core function replaying agreement.json) and the waiting-screen games through `game_random`, with the gate change
+      that allows it in the bridge and the Kotlin games. Home shows neither until then. The camera entropy extra stays
+      M8.
+    - (b) Tetris: you approved Pi Tetris "after M4, with or after the phones" (Q43 (a)). Recommended: Snake and braille
+      Tetris on the phones and Tetris on the Pi together in M5b, one design for both.
+    Otherwise: all of it inside M5 (a longer milestone with a core change in the middle); or Snake only on the phones and
+    Tetris later on both.
+
+62. **App identity** (permanent once published)
+    Recommended: app ids `com.keepcrypt.entropy` and `com.keepcrypt.entropy.testregistry`; name "KeepCrypt"; version
+    0.0.0 until M7, so backups read `created-by: keepcrypt-android 0.0.0`; CI signs with a throwaway key made on the
+    runner (installing a newer run's APK means uninstalling first).
+    Otherwise: another id or name.
+
+63. **Where M5's branch starts** (M4b)
+    Recommended: cut `m5-android` from main after M4b merges. If H6 is still pending when you approve this plan, cut
+    from 95c4359 and merge main in when M4b lands; the shared files (CLAUDE.md Commands, canaries.sh's count,
+    banned-api-check.sh, this file) are merged by hand.
+    Otherwise: wait for M4b before any M5 commit.
 
 ## M0: Repo bootstrap
 
@@ -10262,6 +10418,1224 @@ Every finding of the plan's spec, security and feasibility review was accepted; 
   - the prices quoted in Q49.
 
 ---
+
+## M5: Android app (`mobile/android`, the FFI)
+
+Status (2026-10-17): the owner answered Q53-Q63 "approve all as recommended" (commit 1b), so Stage A starts. The plan was
+drafted the same day as research only, with no M5 code written before the answers to Q53-Q63
+("Needed before M5 code (Q53-Q63, asked 2026-10-17)" under "## Open questions for the owner", above). The owner asked
+for execution to start at once ("do it asap and make sure you start execution next step", 2026-10-17), so Stage A's
+commit 1 is this plan on `m5-android`, cut from 95c4359 (M5 lead decision 1). Code then follows "Commit order on
+`m5-android`" stage by stage and stops at the gate.
+
+How choices are made: on 2026-10-15 the owner said "dont ask me further, go ahead automatically". So wherever this plan
+leaves a choice, the lead takes the option under "Built into this plan" and records it as a dated lead decision. Q53-Q63
+are only what CLAUDE.md keeps for the owner: new dependencies (rule 11), doc and rule edits, readings of a rule, places
+where the docs and the gates disagree ("stop and ask"), the owner's own phone and computer, and scope moved between
+milestones.
+
+**M5 lead decisions** (dated; the owner can override any of them)
+- M5-1 (2026-10-17): `m5-android` is cut from 95c4359 while M4b waits on H6 (Q63's fallback), because the owner asked
+  for execution to start at once. When M4b merges, main is merged into `m5-android` and the shared files (CLAUDE.md
+  Commands, canaries.sh's `want_checks`, banned-api-check.sh, this file) are merged by hand.
+- M5-2 (2026-10-17): M5's commit 1 does not tick M4's after-merge item (todo.md:9300-9302 at 95c4359). M4b's commit 1
+  (c923063 on `m4b-screens`, PR #8) already records main's push run with the same hash, and two branches ticking the
+  same lines would only conflict at the merge. The run IDs are carried in "Starting point" below.
+- M5-3 (2026-10-17): MA:13 and MA:172 (the first-screen sentence and the Go offline step) are reworded to the Q57 (d)
+  rule, airplane mode on and Wi-Fi off, in commit 2c. Q57 (d) named only MA:123, but the rule is the owner's; leaving two
+  sentences with the old wording would make the document state two offline conditions (Stage A review finding 4).
+- M5-4 (2026-10-17): the gate's Build rule refuses any submodule (gitlink) under `mobile/`, not only one at a `build/` or
+  `.gradle/` path, because `git ls-files` cannot list a submodule's files, so the rule could not clear build output
+  committed through one (commit 3b; Coldcard's theft came through a submodule, BP:81). MA:25's "including dialogs" stays:
+  the plan builds no dialogs, and MA:70's rule is kept as the guard the gate enforces.
+- M5-5 (2026-10-17): a plan entry whose Proof constrains the diff (docs only; only the rules' lines) lands as two commits,
+  the change and then its tick in tasks/todo.md (2 = 73466b6 + f80c87f, 2b = 424b008 + 234edec), as M3 and M4 did.
+- M5-6 (2026-10-18): the test-registry flavour is named `withTestRegistry` (source set `src/withTestRegistry/`), because AGP
+  refuses flavour names that start with "test". Its app id stays `com.keepcrypt.entropy.testregistry` (Q62); the plan's
+  "testRegistry flavour" means this one.
+- M5-7 (2026-10-18): the root build keeps `org.jetbrains.kotlin.android` 2.4.20 with `apply false`. AGP 9.3.3 compiles
+  Kotlin itself and asks for kotlin-gradle-plugin 2.2.10; the marker resolves it to 2.4.20, the Kotlin Q54 approved and the
+  version the Compose compiler plugin 2.4.20 needs (run 39062895784). It is a build-time pin, never applied to a module,
+  so the modules still apply only AGP and the Compose compiler plugin.
+- M5-8 (2026-10-18): the gate's ban on the identifiers `thread` and `JoinHandle` covers the shipped FFI sources
+  (`ffi/src/`, `ffi/jni/src/`), not integration tests under `ffi/tests/` or `ffi/jni/tests/`, because group 8's
+  `ffi_discard_during_call` needs a second thread (`std::thread::scope`). A test thread cannot turn a shipped panic into
+  a value; the shipped crates stay banned. Changed in Stage C before commit 10.
+- M5-9 (2026-10-18): `scripts/android-rust.sh` (commit 14) writes `libkeepcrypt.so` to `app/src/<flavour>/jniLibs/<abi>/`,
+  Gradle's default native-library source set, instead of `app/build/rust/`. No `srcDir` line is needed, so the KtSdk
+  rule stays as it is; `.gitignore` already ignores `mobile/android/**/jniLibs/` and KtBinary refuses a tracked `.so`.
+- M5-10 (2026-10-18): the APKs carry exactly MA:23's three ABIs (arm64-v8a, armeabi-v7a, x86_64): `abiFilters` in commit
+  6, so graphics-path's x86 copy leaves the APK.
+
+Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). Once M4b merges, build-plan.md lines from
+293 on move down one (the M5 row becomes BP:296).
+
+### Inputs from M4 and earlier (folded into the plan below)
+
+**Starting point**
+- main is 95c4359, the merge of M4 (PR #7, 2026-10-16). Main's push runs: Entropy CI 38914588096 (14 of 14 green) and
+  Entropy Pi image 38914587720. M4b's commit 1 (c923063, on `m4b-screens`) records that run and ticks M4's after-merge
+  item (todo.md:9300-9302). M5's commit 1 leaves that tick to M4b (lead decision M5-2).
+- M4b is open on `m4b-screens`, waiting only on the owner's H6. It differs from main in pi/, docs/pi-firmware.md, BP's
+  M4b row, CLAUDE.md Commands, scripts (`want_checks` 73 -> 81; `panels-differ.sh --selftest` in gates) and this file.
+  M5 touches no pi/ file and not pi-firmware.md; it shares CLAUDE.md Commands, canaries.sh's `want_checks`,
+  banned-api-check.sh and this file (Q63).
+- Rules are cited from the clone's `Entropy/CLAUDE.md`. The copy in the `Entropy-Keep Crypt/` folder is stale (its rule 1
+  lacks `game_random`, its rule 10 lacks the registry and simulator markers).
+- Q52 is the last question used (todo.md:1369, "Raised by stage C's CI (Q52 ...)"), so M5's questions are Q53-Q63.
+- **The gate (BP:295):** "Screenshot and recording tests come back blank; merged manifest has no INTERNET permission;
+  backup round trip passes; snapshot import and Sparrow watch-only import work; a go-ahead QR from the test registry
+  reveals the words and a Stop wipes them". Deliverables: "Compose UI over the FFI, capture protection, backup via file
+  picker". Needs M1, M2.
+- **Matrix rows that name Android (BP:316-327)** and where each lands:
+
+  | Row | Ref | Home |
+  | --- | --- | --- |
+  | Symbol and stub-marker scan (every release build) | :316 | M5: both `libkeepcrypt.so` builds and both APKs |
+  | Screen-capture tests ("Every app build on real devices") | :318 | M5: CI emulators every build, real phone at the gate (Q55, Q56) |
+  | No-network checks | :319 | M5 |
+  | Reproducible build | :320 | M7 (pins laid in M5) |
+  | Full ceremony with offline verification | :321 | M5 |
+  | Duplicate-seed drill | :325 | M5 for the Android part; end to end in M9 |
+  | Watch-only import into Sparrow and Bitcoin Core | :326 | M5 (P3), as swb:235 asks of M4-M6 |
+  | Metal read-back drill | :327 | M5 |
+
+**What exists**
+- **ffi/:** `keepcrypt-ffi` is one doc line (ffi/src/lib.rs:1, "UniFFI bindings over `keepcrypt-core` for Kotlin and
+  Swift (M5)"), depends on core only (ffi/Cargo.toml:10-11), has no `[lib]` (an rlib). `[lints.rust]` holds only
+  `unused_must_use = "forbid"`; the shared clippy block has `disallowed_methods`, `let_underscore_must_use`,
+  `print_stdout`, `print_stderr`, `dbg_macro` at forbid and `allow_attributes(_without_reason)` at deny
+  (ffi/Cargo.toml:13-32), pinned by canaries.sh:496-547. ffi/clippy.toml must equal core's byte for byte
+  (canaries.sh:485-494) and bans `std::panic::catch_unwind` (ffi/clippy.toml:27); canaries.sh:97-105 requires every
+  clippy.toml entry to fire in the clippy-fallback canary. The gate's hash ban (banned-api-check.sh:1138) and FailOpen
+  rule (:1150) cover ffi. CI only lints ffi (entropy-ci.yml:596-603); :492 says "The app libraries for the phones are M5
+  and M6". Only keepcrypt-core has `overflow-checks = true` in release (Cargo.toml:23-25, pinned at canaries.sh:653).
+- **Core API** (core/src/lib.rs:28-63): `Session::new(len, mode, platform)` (session.rs:173), `add_extra`,
+  `credited_bits`/`required_bits`, `commit`, `commitment`, `start_dice`, `push_roll`/`undo_roll`/`rolls`/`millibits`/
+  `minimum_rolls`, `finish`, `seal`, `skip_check`, `start_check`, `check_request`, `reveal(GoAhead)`, `discard`,
+  `Wiped::restart(&self, len, mode)` (session/wiped.rs:129), `Wiped::collision_report`, the Ready accessors and gated
+  exports, and the free functions `self_test` (kat.rs:80), `decrypt_backup` (backup.rs:217), `verify_snapshot`
+  (seal/snapshot.rs:221), `verify_bucket_proof_qr` (seal/proof.rs:152), `registry_key_is_test` (seal/registry_key.rs:74),
+  `render_text`, `game_random` (source.rs:182), `RegistryDate::from_yyyymmdd` (seal/date.rs:49),
+  `TypedBackupPassphrase::{from_words, from_first_four}` (secret.rs:310, :332). `Platform::Phone` (session.rs:92) and
+  `BackupApp::Android` (backup.rs:51) exist. **No "Verify another device" API exists** (todo.md:4266-4267).
+- **Auto traits** (core/tests/auto_traits.rs): `Send` for the six session states, `Wiped`, `VerifiedSnapshot`,
+  `CheckedBackup`, `BackupFile`, `CoreError`; `Sync` for the six session states. A `static Mutex<Held>` needs only `Send`
+  contents, so no new assertion is needed.
+- **pi/app patterns the FFI copies:** `enum Stage` (app.rs:79), `struct Held` with `kept: Option<Wiped>` (app.rs:178-184),
+  `refused` (app.rs:235: which errors return to their screen and which halt), the one session constructor that restarts
+  from a kept `Wiped` (app.rs:387-399), the silent panic hook (device/linux.rs:59). `panic = "unwind"` is set at
+  Cargo.toml:18-21 so an unwinding panic drops and zeroizes the session. pi/sim takes `keepcrypt-core` as a direct,
+  featureless dependency so `--features keepcrypt-core/test-registry` resolves (pi/sim/Cargo.toml:12-15).
+- **Threads:** core/tests/panic_wipe.rs:18 observes a panic through `thread::spawn(..).join()`, so a workspace-wide
+  clippy ban on thread spawning would break core's own test (the identical clippy.toml files cannot differ).
+- **Vectors for the gate** (vectors/kcr.json): the test key; public dice-only seeds `dice-50-words12` (rolls "123456..."),
+  `dice-99-words12` and `dice-99-words24` (rolls "654321..."), each with `seal_code`, `seal_id`, `seal_tag_hex` and
+  `bucket`; snapshots `with-dice-50` (catches `dice-50-words12`), `stale-day-31`, `future-day-1`; proofs
+  `clear-empty-bucket` (bucket 310846, `dice-99-words12`'s) and `collision-dice-50`, with their UR text. All are dated
+  20260301, so a 2026-10 phone reads them as Stale (a warning, never a refusal). Also braille.json, watchonly.json,
+  backup.json, seal.json, agreement.json (Phone cases).
+- **CI:** 14 required checks (ruleset 24833307; names must not change): `changes (Entropy/ or this workflow)`, `lint (fmt,
+  clippy)`, `test`, `supply-chain (deny, audit, vet)`, `gates (banned APIs, verifier, canaries)`, `verifier (python
+  3.9)`, `coverage (core, 95% of lines)`, `age-interop (age 1.1.1)`, `cross (<target>)` x 6. The three Android cross
+  legs link with NDK clang at API 31 from the image's unpinned default NDK (`$ANDROID_NDK_HOME`, entropy-ci.yml:567-580),
+  set the getrandom cfg per target (:584-588), lint core and ffi, and build and scan only core's rlib and
+  `release_probe`. Steps, not jobs, are skipped by the changes job, so new steps carry its `if:`. `age-interop` drives
+  age through a pty, because age reads a passphrase only from a terminal (entropy-ci.yml:440-441, scripts/age-interop.py).
+- **Gates:** Kotlin RNG (banned-api-check.sh:501-539), network (:577-604) and clipboard/share (:654-669, :733-766) rules
+  exist with fixtures. No Kotlin rule exists for logging, windows, text fields, storage, intents, SDKs, build-script
+  file dependencies or the manifest. Binary extensions (jar, aar, apk, so, dex, class) are skipped (:482). `list()`
+  prunes fixed top-level paths only (:1080-1083). Workflows may use only checkout, cache and upload-artifact at pinned
+  SHAs (:1675-1677), and the words `secrets` and `github.token` are refused, so no job can download another job's
+  artifact (entropy-pi-image.yml passes only hashes between jobs, through `needs.*.outputs`). `game_random` outside
+  core's allowed files and `pi/app/src/games/` is a Shell hit (:1142-1145), pinned by the fixtures
+  `shell-game-random-in-ffi` and `shell-game-random-in-kotlin`; the pattern (:793-795) misses Kotlin's `gameRandom`.
+- **canaries.sh** pins the members `core, ffi, pi/app, pi/sim` (:384, with scripts/check-path-deps.sh), the lint tables,
+  deny's lists, the release profile (:653), that no manifest feature turns on a test feature (an ffi `[features]` probe
+  must fail, :798-809), and getrandom's only dependent, keepcrypt-core (:866-875). `want_checks` is 73 on main (:1251).
+- **CODEOWNERS** owns `/Entropy/ffi/` and `/Entropy/mobile/**/AndroidManifest.xml` (CODEOWNERS:21, :28), no Gradle file.
+  BP:278's two approvals for ffi remain unmet with one maintainer.
+
+**Carried into M5 (recorded in earlier plans)**
+- todo.md:1397-1398: "M5 must make any core panic wipe the session." (groups 8, 10)
+- todo.md:1404-1406, :3064-3067: after a Stop or a Cannot check, only `Wiped::restart`; ceremony tests assert "99 after
+  Stop" and "99 after a Cannot check" in the restart after a collision. (group 8)
+- todo.md:6289-6290: `game_random`, `from_first_four` and the borrowing restart through the FFI; the phones keep their
+  `Wiped` and decide their own runtime-error rule. (groups 8, 14; games to M5b, Q61)
+- todo.md:3069-3070, :94-96: test-registry builds turn on `keepcrypt-core/test-registry` from the command line with
+  `-p`, never in a manifest and never `test-sources`, and their scan shows the registry marker and no stub marker;
+  release builds pin no key until M9 (`NoRegistryKey`), and only the typed go-ahead code works there. (groups 11, 12, 5)
+- todo.md:136, :3071-3072: phones warn on Stale and Future; a ceremony test asserts each. (groups 8, 16)
+- todo.md:3090-3093: owned copies for `GoAhead`, the braille views and `CheckedBackup`'s reveals; the take-and-put-back
+  slot (also :2691); the getrandom cfg in the Android build ("in cargo-ndk"; plain cargo carries it the same way, Q53).
+- todo.md:4262-4267: C and D as 16 groups of 4 hex; a ceremony test types C, D and the rolls into `verify.py mixed` and
+  exits 0 (group 11); the "Verify another device" core API (M5b, Q61).
+- todo.md:4548, :1747-1753: M3-M6 add their artifacts to the release scan (groups 12, 5).
+- todo.md:1185-1186: Tetris on the Pi was approved "after M4, with or after the phones" (Q43 (a)); still unscheduled
+  (todo.md:6295). Q61.
+
+**Findings that shape the plan (read 2026-10-17; sources at the end)**
+1. **UniFFI fails today's gates.** Every release from 0.29.2 to 0.32.2 (2026-09-23) makes `uniffi` depend on
+   `uniffi_pipeline` -> `tempfile` -> `fastrand` (banned, deny.toml:66) and, through tempfile's default feature, on
+   `getrandom` (a second dependent, which canaries.sh:872-875 refuses) [S1-S3]. All UniFFI crates are MPL-2.0, not on
+   deny.toml:43's list. 0.29.1 avoids the tempfile chain but adds about 13 crates, a 45-crate bindgen tool with `log`
+   (banned, deny.toml:83), generated Kotlin and JNA's prebuilt `libjnidispatch.so` in the APK [S4]. The `jni` crate
+   0.22.4 depends on `log` [S5]. **jni-sys 0.3.0** (2017-07-21, MIT/Apache-2.0) has no dependency, build script or
+   feature. jni-sys 0.4.0 (2023-09-25) and later depend on the proc-macro crate jni-sys-macros (0.4.0 also has a
+   trybuild dev-dependency), and 0.3.1 (2026-03-22) re-exports 0.4 [S6].
+2. **A panic at a JNI boundary aborts before any destructor runs** (Rust >= 1.81; in 1.98.1 the personality returns
+   `_URC_FATAL_PHASE1_ERROR` for the terminate action, std gcc.rs:224-229, then `rtabort!`, panicking.rs:886-889) [S7].
+   The session would not be zeroized and Android writes a tombstone. So the wipe needs one catch at the boundary, which
+   ffi/clippy.toml bans and `disallowed_methods = "forbid"` keeps out of any `#[expect]` (Q53).
+3. **FLAG_SECURE:** SurfaceFlinger leaves secure layers out of any capture whose caller lacks `CAPTURE_BLACKOUT_CONTENT`,
+   and the shell lacks it, so `screencap`, `screenrecord` and `UiAutomation.takeScreenshot()` show those layers black
+   [S8]. `settings put secure disable_secure_windows 1` turns FLAG_SECURE off on a debuggable build (WMS.java:1029-1048)
+   [S9], but the setting is recent: its AOSP change ("Add secure setting disable_secure_windows", bug 309153458) dates
+   from about late 2023, so it is an Android 15-era addition and absent on API 31 [S30]. A black capture on its own
+   proves nothing (the app may not have drawn, or the emulator may not be producing frames), so every capture test
+   needs a positive control that works on API 31. Toasts (target >= 30) and platform `PopupWindow`, `Spinner`,
+   `ListPopupWindow` never carry the flag; Compose dialogs and popups default to `SecureFlagPolicy.Inherit` [S10, S11].
+4. **Merged manifest:** androidx.core adds `${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`; androidx.startup
+   adds an `InitializationProvider` with emoji2, lifecycle-process and profileinstaller initializers; profileinstaller
+   adds an exported receiver and **writes files** in filesDir (ProfileInstaller.java:64-65, :391-392) [S12].
+5. **Compose ui-graphics 1.12.1 depends on `androidx.graphics:graphics-path:1.0.1`**, which ships a prebuilt native
+   library, so the APK holds one third-party `.so` whatever the FFI [S13]; its name, hash and LOAD alignment are read
+   from the first APK. AGP strips packaged native libraries with the NDK it is told to use; AGP 9.3's default NDK
+   (28.2.13676358 per its release notes) is not on the runner, so `ndkVersion` is pinned (group 4).
+6. **Runner** (ubuntu-24.04 image 20261012): JDK 17 default (21, 25 too), Gradle 9.8.1, build-tools and platforms to 37,
+   NDK 27.3 (default), 29.0 and 30.0.16248370 (r30, the latest LTS [S16]), **no emulator and no system images**; KVM
+   works after a udev rule [S17, S18]. SDK `sys-img2-5` lists AOSP `default;x86_64` images for API 31 (657 MB), 35 and
+   36 (844 MB), none for 37; `google_apis;x86_64` for 31 (1.47 GB), 35 and 36 (1.90 GB); and 16 KB-page
+   `google_apis_ps16k;x86_64` for 35, 36 (1.85 GB) and 37.x. Google APIs images from Android 11 on are documented to
+   carry ARM binary translation; whether the ps16k image does is a probe fact (group 6).
+7. **Capture tools:** `screenrecord --output-format=raw-frames` writes raw frames to stdout (screenrecord.cpp:1363-1364),
+   so a recording is checked without a video decoder [S21]. screenrecord stops at 180 s by default
+   (`kMaxTimeLimitSec = 180`, screenrecord.cpp:102), and only newer releases accept `--time-limit 0` for no limit
+   (:1330), so API 31 records in segments. The Android 15 recording callback is driven only by MediaProjection
+   (ScreenRecordingCallbackController.java:71-94), so adb's screenrecord never fires it [S22].
+8. **Versions:** Compose 1.12.x needs compileSdk 37 and AGP 9 [S25]; Kotlin 2.4.20's tested range ends at AGP 9.3.1 and
+   Gradle 9.7.0 [S24]; Play requires targetSdk 36 since 2026-08-31 [S20]; from 2027-02-01 updates need 16 KB pages on
+   every 64-bit native library, the default for NDK r28+ [S19].
+9. **Offline state without permissions:** `Settings.Global` `AIRPLANE_MODE_ON` and `WIFI_ON` are readable [S26]; Wi-Fi
+   can be switched back on inside airplane mode.
+10. **Content capture:** the app side gates content capture only on `ContentCaptureOptions` and the manager
+    (ViewRootImpl.java:5509-5539); FLAG_SECURE's effect (`FLAG_DISABLED_BY_FLAG_SECURE`, ContentCaptureContext.java) is
+    applied by the service. The root view therefore opts out itself (group 14).
+11. **Maven checksums:** Google Maven publishes `.sha256` files (activity-compose 1.13.0's: 200); Maven Central publishes
+    only `.sha1` and `.asc` for several chosen artifacts (kotlin-stdlib 2.4.20, junit 4.13.2, zxing core 3.5.4 `.sha256`:
+    404), so the review of Gradle's verification file is per repository (group 4).
+12. **Doc frictions** (Q53, Q55, Q57): MA:29, :73, :160's "word picker" against BP:201-202's "no word list leaves core";
+    MA:23's `cargo-ndk` and BP:35, :47, :73, :74 and MA:17, :23's UniFFI against finding 1 (docs/img/architecture.png
+    also says UniFFI and has no source in the repo); MA:34's discard rule, narrower than the Pi's Protected list
+    (PF:122); MA:123's airplane-only rule against finding 9; BP:318's "on real devices" for every build and MA:74's
+    "`adb exec-out screencap -p` ... on at least one Pixel and one Samsung device"; BP:270's "Clippy
+    `disallowed-methods` ... in app code" (Clippy does not read Kotlin); swb:286's headphones-only speech, which no app
+    can enforce.
+
+**Local constraints**
+- This Mac has no Java runtime, Android SDK, Gradle, NDK or adb; installing any is the owner's call (Q56). The two FFI
+  crates and their host tests build and run on the Mac (jni-sys is declarations only). Android targets, Gradle, Kotlin
+  and every emulator test run in CI until Q56 says otherwise.
+- The emulators are x86_64. The arm64-v8a and armeabi-v7a `libkeepcrypt.so` run in CI only through an image's ARM
+  translation (group 6, probe); a translated run proves loading, symbol binding, `JNI_OnLoad` and the self-test, not
+  native ARM execution. If no image translates, the gap is named in Q56, not handed silently to the owner's phone.
+
+**How each lessons.md entry applies**
+1. Computed numbers come from committed scripts that CI re-runs: the manifest summary, the runtime classpath list, the
+   native-library list, the Maven checksum review, Gradle's verification file, the Seal IDs printed for P4 and the APK
+   hashes the owner installs all come from CI runs of committed scripts, with expected files under
+   `mobile/android/expected/` (as `pi/os/expected/` in M4).
+2. Exact bytes of every hash input: the tests' go-ahead code is SHA-256 over `"KCE/v1/go"` (9 ASCII bytes) || T (32
+   bytes) || n (8 bytes), first 40 bits in Crockford base32, with T and n read from the drawn check request; the APK tie
+   compares the SHA-256 of the exact `lib/<abi>/libkeepcrypt.so` entry with the scanned cargo output.
+3. Time rules per target: phones read the UTC date for freshness (`RegistryDate` from the shell, snapshot dates are UTC)
+   and warn on Stale and Future, each asserted with a fixed date; every timer uses `SystemClock.elapsedRealtime()`,
+   never the wall clock.
+4. Boot-path changes ship proven: the phone's boot path is `System.loadLibrary`, `JNI_OnLoad`, `SecureActivity.onCreate`
+   (FLAG_SECURE before any content) and the self-test before Home. CI proves each on x86_64 at API 31 and 36, the
+   16 KB-page load on a ps16k image, and the ARM libraries through translation if an image offers it (group 6). The
+   platform facts the design rests on are probed in Stage B, before any Rust or screen code. Whatever CI cannot run
+   (native ARM execution; armeabi-v7a if no image translates it) is stated to the owner in Q56 with the static checks
+   that cover it, never presented as proven.
+
+### Plan
+
+**References and terms**
+- BP = build-plan.md, MA = mobile-apps.md, PF = pi-firmware.md, swb = seal-watchonly-braille.md, DS = design.md, all in
+  `docs/`. `todo.md:N` is main's line N at 95c4359.
+- **The FFI** is two crates (Q53):
+  - `keepcrypt-ffi` (`ffi/`, rlib): the safe layer (`ceremony.rs`, `wire.rs`, `qr.rs`) holds every rule;
+    `#![forbid(unsafe_code)]`; its clippy.toml stays byte-identical to core's, so it cannot call `catch_unwind`.
+  - `keepcrypt-jni` (`ffi/jni/`, new workspace member, cdylib `libkeepcrypt.so`, MA:23's name): the JNI boundary, the
+    only unsafe code and the only `catch_unwind`. Depends on keepcrypt-ffi, jni-sys and, featureless, keepcrypt-core (so
+    `--features keepcrypt-core/test-registry` resolves, as pi/sim's edge does). Its clippy.toml is core's minus the one
+    `catch_unwind` line. M6 adds a sibling crate for Swift over the same safe layer.
+- **The slot:** one `static FFI: Mutex<Held>` in keepcrypt-ffi, `Held { stage, generation: u64, kept: Option<Wiped>,
+  snapshot: Option<VerifiedSnapshot>, backup: Option<CheckedBackup> }`, `Stage` as pi/app's (Idle, Collecting,
+  Committed, Rolling, Sealed, Checking, Ready, Halted) plus `Busy` while a long call runs. Tests build their own `Held`.
+- **Halt / refusal:** PF:129-136 and app.rs:235. A halt wipes everything and latches `Halted`; a refusal returns to its
+  screen with fixed text.
+- **Shipping APK / test-registry APK:** the `shipping` and `testRegistry` flavours of `:app`, both release build type,
+  neither debuggable (Q60). **Capture-control APK:** `:capture-control`, a CI-only app (never uploaded, never released)
+  that draws the same composables without FLAG_SECURE, the capture tests' positive control. **Canary APK:** a build that
+  must be refused.
+- **The Android workflow:** `.github/workflows/entropy-android.yml`, one non-required job `android (build, emulators)`
+  (Q55).
+- **Protected / Public:** PF:122's list, adopted for the phone (Q57).
+- **Gate seeds:** kcr.json's public dice-only seeds and fixtures. No other seed is named in a test, a capture or a report.
+- **P0-P5:** the owner's phone checklists below.
+
+**Built into this plan (override any of them)**
+- **Scope is the gate plus the carried items.** Out: "Verify another device" and the games (M5b, Q61); the camera
+  entropy extra (M8); reproducible APKs, signing and stores (M7); snapshots in shipping builds (M9). Touch timing and
+  motion sensors at zero credit (MA:139-140) are in.
+- **The FFI is hand-written JNI over jni-sys =0.3.0** (Q53): no UniFFI, JNA or generator. No handle crosses: Kotlin
+  calls free functions and the one ceremony lives in the slot. Every export returns a byte array whose first byte is a
+  status (ok, refused + code, discarded, halted) and whose rest has a fixed layout defined once in `wire.rs` and decoded
+  once in `Wire.kt`. Native code never throws; `Core.kt` raises `KcHalt` (a Kotlin `Error`) on the halt status, with
+  fixed text. Secrets cross only as byte arrays, one word page or screen at a time, and Kotlin zeroes them when the page
+  leaves (Q58).
+- **One catch, one place, one crate** (Q53): `guarded()` in keepcrypt-jni locks, moves the stage out, runs the safe call
+  under `catch_unwind`; on a panic the unwind has already dropped (and zeroized) the moved-out session, `Held` is
+  replaced by `Halted` (snapshot and kept `Wiped` dropped too) and the halt status returns. The payload is dropped
+  unread. A silent panic hook is set in `JNI_OnLoad`. keepcrypt-ffi keeps core's clippy.toml, so the safe layer cannot
+  catch through any path or re-export (clippy resolves paths, and keepcrypt-ffi does not depend on keepcrypt-jni). The
+  other way to turn a panic into a value, a joined thread, cannot be banned in the shared clippy.toml (core's
+  panic_wipe test uses it), so the gate refuses the identifiers `thread` and `JoinHandle` anywhere under `ffi/`
+  (both crates). A canary proves keepcrypt-jni's clippy.toml differs from core's by exactly that one line.
+- **Unsafe only in keepcrypt-jni:** `#![forbid(unsafe_code)]` in keepcrypt-ffi; in keepcrypt-jni,
+  `clippy::undocumented_unsafe_blocks` and `multiple_unsafe_ops_per_block` at deny (added to the shared clippy block;
+  no effect on crates that forbid unsafe). Every unsafe block holds one operation and a `SAFETY:` line.
+- **Overflow panics in both FFI crates:** `[profile.release.package.keepcrypt-ffi]` and `...keepcrypt-jni` set
+  `overflow-checks = true`, as core does, so a wrong length panics (and wipes) instead of wrapping.
+- **One `Session::new`**, in ceremony.rs, with `Platform::Phone`, used only when no `Wiped` is kept; otherwise
+  `kept.restart(len, mode)` (app.rs:387-399's rule). `kept` clears only on Skip or a passed reveal.
+- **A discard never waits for a long call:** long calls (`start` and `restart` with their KATs, `finish`, backup
+  encrypt and verify with scrypt at log2 N = 18, snapshot and proof verification) take the stage out under the lock,
+  leave `Busy` and the current `generation`, release the lock, run, then relock. A discard, wipe or halt during the run
+  locks briefly, drops everything held, sets the stage to Idle (or Halted) and increments `generation` (checked add; an
+  overflow halts). The finishing call sees a changed generation, drops its result (zeroizing it) and returns
+  "discarded". Any other call while `Busy` is a shell bug and halts. The main thread never blocks on a long call.
+- **Rust is built by script, not by Gradle:** `scripts/android-rust.sh <flavour>` builds `libkeepcrypt.so` with plain
+  cargo, NDK r30 clang at API 31 and the getrandom cfg, exactly as the cross legs do, for arm64-v8a, armeabi-v7a and
+  x86_64, plus the host library for JVM tests. Gradle only packages it (`keepDebugSymbols` on libkeepcrypt, so the
+  scanned bytes are the shipped bytes; `ndkVersion = "30.0.16248370"` so any strip of other libraries is
+  deterministic). No cargo-ndk.
+- **Three Gradle modules** (MA:24): `:core-ffi` (Native, Wire, Core, JVM tests against the host library), `:secure-ui`
+  (SecureActivity, monitors, Protected wrapper, timers, pads, QR/seal/braille drawing), `:app` (screens,
+  `CeremonyViewModel`, the pickers, the scanner); plus the CI-only `:capture-control`, which `:app` never depends on
+  (checked from the dependency report). Two Gradle plugins only.
+- **Compose foundation, no Material, no navigation library:** the screen is a `when` over the ViewModel's state, so no
+  back stack reaches a saved-state Bundle. **No dialogs, popups, menus, sheets, toasts, notifications or text fields at
+  all**: every prompt is a full screen, as on the Pi, so the app has one window and the system keyboard never opens.
+  MA:70's `SecureOn` rule holds with nothing to apply it to; the gate bans those APIs, and requires `SecureOn` if a
+  `DialogProperties`/`PopupProperties` ever appears.
+- **SecureActivity** (MA:41-65, plus): FLAG_SECURE before `super.onCreate`; `setHideOverlayWindows(true)`;
+  `setRecentsScreenshotEnabled(false)` on 33+; the recording callback on 35+ redacts Protected screens while recording
+  is reported; `filterTouchesWhenObscured` and autofill off on the root; `importantForContentCapture =
+  IMPORTANT_FOR_CONTENT_CAPTURE_NO_EXCLUDE_DESCENDANTS` on the root (finding 10); the root marked accessibility-data
+  sensitive on 34+ and word nodes `isSensitiveData`, so TalkBack braille keeps working; no saved instance state; the
+  starting window black with no icon; a configuration change is not "leaving the app".
+- **Nothing persisted** (rule 8): no preferences, files, databases, cache or saved state; the limits screen shows on
+  every start. The only write is the backup through `CreateDocument` (one `openOutputStream(uri, "rwt")`); the only
+  reads are `.age` and `.kcr` files through `OpenDocument`, checked by name and size before any byte is read; never
+  `takePersistableUriPermission`. profileinstaller is excluded and the startup provider removed.
+- **No network permission is ever stripped:** the only `tools:node="remove"` is on `InitializationProvider` (and
+  androidx.core's dynamic-receiver permission pair if the probe finds no library registers a receiver). A library that
+  asks for INTERNET turns CI red and is rejected.
+- **Offline** (Q57): airplane mode on and Wi-Fi off on every screen after "Go offline", Check a backup and Load registry
+  snapshot included; leaving that state wipes the session and returns to Go offline. Bluetooth may stay on (braille
+  displays).
+- **Protected screens, gate, cover, timers** (Q57): the Pi's list and timers (PF:120-127); "I'm alone, show words"
+  before the words (MA:177); leaving the app on a Protected screen discards at once; elsewhere a cover and a wipe after
+  60 s in the background; a picker or permission prompt the app opened counts as foreground time under the 10-minute
+  rule. A loaded snapshot and a kept `Wiped` survive these wipes and end with the process.
+- **Halts and crashes** (Q57): the Pi's rule. The stop screen holds nothing, and its only action ends the process. An
+  unexpected Kotlin exception goes to the app's own uncaught-exception handler, which replaces the platform default:
+  it calls `Native.wipeAll()` then `Process.killProcess`, logs nothing and shows nothing. The platform's crash path
+  (which logs the message to logcat and DropBox and shows a dialog) never runs; the proof is an empty crash buffer and
+  no DropBox entry for the package. No message in app code is built from runtime values. A native abort (a panic
+  inside a destructor, allocation failure, stack overflow) still writes a tombstone: an accepted residual (Q58).
+- **Snapshots:** as MA:176 and swb:121 say, the check runs automatically with a loaded snapshot. Loading shows the
+  snapshot's number, date, entry count and freshness, with a Stale or Future warning (swb:120's 30-day rule); the result
+  screen repeats any warning before the privacy gate. The shipping APK keeps the Home entry and refuses with "This
+  build trusts no registry key yet", as the Pi's release image does.
+- **Camera:** Camera2 plus ZXing core, for the go-ahead QR only; CAMERA asked on the scan screen; a refusal leaves the
+  typed code. QR codes the app shows are encoded in Rust with qrcodegen-no-heap into buffers wiped after the copy out.
+- **Watch-only proof uses Sparrow and Bitcoin Core** (swb:235 already asks it of M4-M6).
+- **Reproducibility groundwork, no check:** NDK, JDK, Gradle, AGP and the toolchain pinned; `dependenciesInfo` and
+  `vcsInfo` off; no baseline profiles; R8 off; PNG crunching off. Two-build comparison is M7.
+- **Rule 1 in compiled code** (Q59 (b)): the grep gate covers our sources; with R8 off the APK also carries library
+  classes such as `kotlin.random.Random`, so the APK check runs `dexdump` and refuses any reference to a banned class or
+  method from a `com.keepcrypt` class. Library classes no KeepCrypt code reaches are allowed.
+- **Every M5 APK is a development build:** First launch and About say "0.0.0 development build: do not use for real
+  funds"; CI signs with a throwaway key made on the runner; release signing is M7.
+- **CI** (Q55): the 14 required names unchanged. Required per PR: the Android cross legs build and scan both
+  `libkeepcrypt.so` configurations with NDK r30 (installed by `sdkmanager` at that exact revision if an image update
+  drops it) and check 16 KB alignment; `test` runs the FFI's test-registry tests; `gates` runs the new rules. The
+  non-required Android workflow is one job: it builds, checks, scans and signs the APKs once, then boots the emulators
+  one after another on those same bytes, so the SHA-256 printed for P0 is the one the emulators tested (no artifact
+  passes between jobs, so no fourth action). No M5 PR merges without its green run at the final head (Q38 (b)'s rule).
+- **Budgets:** `gates` within the approved 12 minutes (Q31 (f); M4b measured 10 min 08 s), `test` within 6 minutes. The
+  Android job's budget is set at commit 8 from its measured time plus 25%, with `timeout-minutes` at that budget and a
+  90-minute ceiling; system images, the emulator package and the Gradle distribution are cached with actions/cache keyed
+  on their revisions. An emulator boot failure may be re-run once, and the re-run is logged under Review; a test
+  failure is never re-run. Past any budget, the lead stops and re-plans.
+- **Evidence:** CI emulator runs for every gate item; the owner's P1-P4 on a phone; Review records only pass or fail,
+  "matched", versions, times, run IDs, hashes and Public values of gate seeds or of the throwaway seed.
+
+**0. Before code**
+- [x] Record the owner's answers to Q53-Q63, quoted with the date, under "Needed before M5 code".
+  Proof (M5 commit 1b): "approve all as recommended", 2026-10-17, recorded under that heading; the phone model (Q56) is the one
+  open detail, needed by P0b only.
+- [ ] Baseline at the branch base, pasted under "M5: local proof": `cargo test --workspace --locked` counts and time;
+  the gate's file count and `--selftest` count; canaries N/N with wall time; `vectorgen.py --selftest`; `verify.py
+  selftest`; the last main run's `test`, `gates` and three Android `cross` job times.
+  Proof: pasted under Review.
+- [ ] The PR opens as a draft after commit 1, so every push runs both workflows (the new workflow cannot be dispatched
+  by hand before it reaches main).
+  Proof: `gh pr view <n> --json isDraft,createdAt`.
+- [ ] **Platform probe (Stage B, before any Rust or screen code).** On the first Android build (commit 5): the runner's
+  NDK list and r30 path, JDK 17, `aapt2`/`zipalign`/`apksigner`/`llvm-readelf`/`dexdump` versions, the system images
+  `sdkmanager --list` offers, free disk; the merged manifest; the resolved runtime classpath; the APK's file list with
+  every `.so` and its LOAD alignment; `buildEnvironment`'s Kotlin plugin version; whether any library registers a
+  broadcast receiver; that dependency verification also checks cached artifacts. On the first emulator run (commit 8),
+  per image: screencap, `UiAutomation.takeScreenshot()` and `screenrecord --output-format=raw-frames` with its time
+  limit, the sizes it accepts and bytes per frame; that the capture-control APK's pixels come back; whether
+  `disable_secure_windows` exists (expected on 36, absent on 31); `WIFI_ON`'s values; the black starting window; that
+  the empty saved-state Bundle crashes nothing; whether UiAutomation sees and clicks data-sensitive nodes on 36; whether
+  `dumpsys content_capture` shows a service; that `logcat -b crash` and `dumpsys dropbox` are readable; and, for the
+  third image, `getconf PAGE_SIZE` = 16384 and whether `ro.product.cpu.abilist` lists arm64-v8a and armeabi-v7a
+  (translation). From commit 14: whether AGP strips `libkeepcrypt.so` without `keepDebugSymbols`.
+  Proof: each fact with its run ID under Review; any fact that differs from this plan stops the stage for a re-plan
+  before Stage C.
+  Proof (M5 commit 4c, partial: the build facts; the emulator facts come with commit 8): Entropy Android 39062895784 at
+  bee6877 (bootstrap mode), image ubuntu24 20261012.334.1, 86 GB free. JDK Temurin 17.0.20.1; Gradle 9.7.1; platforms
+  android-34 .. android-37.2 (compileSdk 37 resolves); build-tools 34.0.0 .. 37.0.0 (36.0.0 used: aapt2 2.20-13193326,
+  apksigner 0.9, zipalign, dexdump); NDK 27.3.13750724 (`$ANDROID_NDK_HOME`, the default), 29.0.14206865 and
+  30.0.16248370 (r30, `source.properties` checked), llvm-readelf from LLVM 21.0.0. `buildEnvironment`: AGP 9.3.3 asks for
+  kotlin-gradle-plugin 2.2.10, resolved to 2.4.20 by the root's pin (lead decision M5-7). BUILD SUCCESSFUL in 2 min 42
+  s: both flavours' release APKs (unsigned), both androidTest APKs, capture-control. Shipping APK (18,649,012 bytes,
+  `com.keepcrypt.entropy`, versionName 0.0.0, min 31, target 36, compile 37): permissions exactly HIDE_OVERLAY_WINDOWS,
+  DETECT_SCREEN_RECORDING and androidx.core's `com.keepcrypt.entropy.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` (declared
+  and used); no INTERNET; allowBackup, fullBackupContent and usesCleartextTraffic false, dataExtractionRules set,
+  extractNativeLibs false; one activity (MainActivity, exported launcher); no provider, receiver or service. Native
+  libraries: only graphics-path, `lib/{arm64-v8a,armeabi-v7a,x86,x86_64}/libandroidx.graphics.path.so` (SHA-256 41e9a793...,
+  41399eba..., eb0570b4..., 4e56c996...), every LOAD segment 0x4000-aligned; the x86 copy is outside MA:23's three ABIs
+  (lead decision M5-10). The shipping runtime classpath (the lockfile's `shippingReleaseRuntimeClasspath`) is 91
+  modules, not Q54's "about 60": AndroidX (activity, annotation, arch.core, autofill, collection, compose animation,
+  foundation, runtime and ui, concurrent, core, customview, emoji2, graphics, interpolator, lifecycle, navigationevent,
+  savedstate, startup, tracing, versionedparcelable, window), Guava's listenablefuture, ZXing core, Kotlin stdlib,
+  kotlinx-coroutines and serialization, JetBrains annotations and JSpecify; no profileinstaller, Material or navigation
+  library; every licence is checked by commit 6's review script. Bootstrap files kept at the session's
+  `plans/android-bootstrap-39062895784/` (artifact `android-bootstrap`, 454 components in verification-metadata.xml).
+
+**1. Doc and rule edits, alone (only those approved)**
+- [x] One commit changes only `docs/`: BP:35, :47, :72, :73, :74, MA:17 and both columns of MA:23, plus a line under
+  BP:33's architecture.png naming the two FFI crates and "Swift binding: M6" (Q53); MA:29, :73, :160, MA:34, a "When
+  something fails (Android)" paragraph, MA:123, BP:270 and swb:286 (Q57); MA:17's residual sentence (Q58); BP:318's
+  Runs cell and MA:74's test line (Q55).
+  Proof: `git diff --name-only` lists only docs/; `vectorgen.py --selftest` (it pins doc sentences) and `verify.py
+  selftest` (3.12, 3.9) pass; the gate is clean.
+  Proof (M5 commit 2, 73466b6): `git diff --name-only HEAD~1 HEAD` lists docs/build-plan.md, docs/mobile-apps.md and
+  docs/seal-watchonly-braille.md only; `vectorgen.py --selftest` 13/13 and `verify.py selftest` 8/8 on Python 3.12 and
+  3.9; `banned-api-check.sh` clean (241 files) and `--selftest` 698 passed, 0 failed; fmt, both clippy commands,
+  `cargo test --workspace --locked` (21 suites, 445 passed, 3 ignored) and the test-sources run (17 suites, 269 passed,
+  1 ignored) unchanged. The citations above stay main's at 95c4359; against it, BP lines from :35 now sit 2 lower and
+  from :48 3 lower, MA lines from :35 2 lower, swb unchanged.
+- [x] CLAUDE.md rule 8 gains Q59 (a)'s sentence and rule 1 Q59 (b)'s, if approved, in their own commit.
+  Proof: the diff touches only those rules' lines.
+  Proof (M5 commit 2b, 424b008): `git diff --name-only HEAD~1 HEAD` lists CLAUDE.md only, and `git diff -U0` shows two
+  hunks, rule 1's :49 (+3 lines) and rule 8's :71 (+2 lines), the new lines 88-96 columns wide; nothing in scripts/ or
+  tools/ pins CLAUDE.md's text (grep: comments only, plus the gate's skip of `./CLAUDE.md` and its selftest fixture);
+  `banned-api-check.sh` clean (241 files) and `--selftest` 698 passed, 0 failed; fmt, both clippy commands, `cargo test
+  --workspace --locked` (445 passed, 3 ignored) and the test-sources run (269 passed, 1 ignored) unchanged.
+
+**2. Repo hygiene**
+- [x] `.github/CODEOWNERS` gains `/Entropy/mobile/` (Q54). `.gitignore` gains `mobile/android/**/build/`, `.gradle/`,
+  `local.properties`, `*.apk`, `*.aab`, `*.jks`, `*.keystore` and the jniLibs output directory.
+  Proof: `gh api repos/bitwilll/keepcrypt/codeowners/errors` lists 0 errors; `git check-ignore` on one path of each.
+  Proof (M5 commit 3d): `gh api 'repos/bitwilll/keepcrypt/codeowners/errors?ref=m5-android'` on the pushed branch at
+  beb8ab6 returns `{"errors":[]}`.
+  Proof (M5 commit 3, partial): `git check-ignore -v` resolves `mobile/android/app/build/x.kt` and
+  `mobile/android/build/x` to `mobile/android/**/build/`, `.../src/main/jniLibs/arm64-v8a/libkeepcrypt.so` to
+  `mobile/android/**/jniLibs/` (the guard: the plan's android-rust.sh, commit 14, will write to `app/build/rust/`,
+  already under `build/`),
+  `mobile/android/.gradle/x` to `.gradle/`, `mobile/android/local.properties`, `a.apk`, `a.aab`, and `a.jks` and
+  `a.keystore` to the `*.jks` and `*.keystore` lines Entropy/.gitignore already had (lines 34-35); `app/build.gradle.kts`
+  and `buildSrc/x.kt` are not ignored. `gh api repos/bitwilll/keepcrypt/codeowners/errors` gives `{"errors":[]}`, but
+  the API reads main's file: the new `/Entropy/mobile/` line (the same shape as `/Entropy/core/`) is checked by the
+  lead after the push with `?ref=m5-android`, which closes this item.
+- [x] The gate's `list()` is unchanged (no `build/` skip: CI's `gates` runs on a fresh checkout, so a skip could only
+  hide committed files). A new rule refuses any tracked file under `mobile/**/build/` or `mobile/**/.gradle/`, read from
+  `git ls-files`.
+  Proof: `--selftest` cases: a tracked `mobile/android/app/build/x.kt` is a hit; an untracked one in a scratch repo is
+  not listed by the rule.
+  Proof (M5 commit 3): the Build category, after the per-file loop, `git ls-files -- mobile` filtered by
+  `^mobile/(.*/)?(build|[.]gradle)/`; `list()` untouched (`git diff` shows no hunk in it). `--selftest` 703 passed,
+  0 failed (698 + 5): the five scratch-repository cases pass, `build-tracked-app-build`, `build-tracked-dot-gradle`
+  and `build-tracked-mobile-build` each one `Build:` hit on their file (`git add -f`), `clean-build-untracked` (the
+  same file, not added) and `clean-build-gradle-files-tracked` (`app/build.gradle.kts` and `buildSrc/build.gradle.kts`
+  tracked) clean. By hand under /bin/dash: a tracked `mobile/android/prebuild/y.kt` is not a hit; a tree that is no
+  repository is silent; a PATH without git is exit 2 with "git is not on PATH". The gate on the tree: clean, 241 files.
+  Proof (M5 commit 3b, review fix): the rule now reads `git ls-files -s -z -- mobile` through a temp file (ls-files'
+  own exit status kept), so a name that plain ls-files prints quoted (a non-ASCII byte, a double quote) is matched
+  whole, and a gitlink (mode 160000, a submodule) anywhere under mobile/ is its own hit, since ls-files cannot list a
+  submodule's files. `--selftest` 707 passed, 0 failed (698 + 9): new `build-tracked-non-ascii-name` (é.kt, written
+  in octal), `build-tracked-double-quote-name` (a"b.kt), `build-tracked-submodule-at-build` and
+  `build-tracked-submodule-elsewhere` (`update-index --cacheinfo 160000`) each one `Build:` hit;
+  `clean-build-gradle-files-tracked` also tracks `gradle/libs.versions.toml` and
+  `gradle/wrapper/gradle-wrapper.properties`; the fixture-presence guard lists Build and the cases record it. Mutants,
+  fixtures linked: plain ls-files (no `-z`) fails both quoted-name cases, the gitlink alternative dropped fails both
+  submodule cases, `[.]?gradle` fails the gradle/ clean case, the Build block deleted gives "FAIL no Build fixture".
+  The same 707/0 under /bin/dash; the gate on the tree clean, 241 files, under both shells; no `banned-api-index.*`
+  left in TMPDIR.
+
+**3. Kotlin and Android gate rules (Q55; before any Kotlin lands)**
+- [x] New categories, each with hit and clean fixtures under `scripts/testdata/banned-api/`, covering `mobile/android/**`
+  (`.kt`, `.kts`, `.xml`, lockfiles, `libs.versions.toml`). Shipping sources (`src/main`) get every rule; `src/test` and
+  `src/androidTest` get KtLog, RNG, network, clipboard, KtSdk and KtWindow, and are exempt only from KtIntent, KtStorage,
+  KtDevice, KtFailOpen's catch list and KtInput's Activity rule; `:capture-control` is exempt only from the FLAG_SECURE
+  and Activity rules. Each scope has its own fixtures.
+  - **KtLog:** `android.util.Log`, `Log.[vdiwe](`, `Log.wtf(`, `println(`, `print(`, `System.out`, `System.err`,
+    `printStackTrace`, Timber, `java.util.logging`, slf4j; a `$` template inside an exception, `error(`, `check(` or
+    `require(` message.
+  - **KtFailOpen:** `runCatching`, `getOrNull`, `getOrElse`, `getOrDefault`, `onFailure`, a catch of `Throwable`,
+    `Exception`, `RuntimeException` or `Error`; any `catch` in `:core-ffi`. `KcHalt` is caught only in
+    `CeremonyViewModel.call`; Documents.kt may catch `IOException` and the scanner `CameraAccessException`, each mapped
+    to a refusal on its screen.
+  - **KtWindow:** Toast, Snackbar, Notification, `Dialog(`, `AlertDialog`, `DialogFragment`, `Popup(`, `PopupWindow`,
+    `ListPopupWindow`, `PopupMenu`, `DropdownMenu`, `ModalBottomSheet`, Spinner, `AutoCompleteTextView`, tooltips,
+    `WindowManager.addView`, `TYPE_APPLICATION_OVERLAY`; any `DialogProperties(`/`PopupProperties(` without
+    `securePolicy = SecureFlagPolicy.SecureOn`, parsed fail closed like `textselection()`.
+  - **KtInput:** `TextField`, `BasicTextField`, `OutlinedTextField`, `SecureTextField`, `EditText`,
+    `InputMethodManager`, `SoftwareKeyboardController`; an Activity subclass outside SecureActivity.kt.
+  - **KtStorage:** SharedPreferences, DataStore, `openFileOutput`/`openFileInput`, `FileOutputStream`/`FileInputStream`,
+    `File(`, `filesDir`, `cacheDir`, `getExternal`, MediaStore, Room, SQLite, `createTempFile`, `rememberSaveable`,
+    `SavedStateHandle`, `takePersistableUriPermission`; `openOutputStream`, `openInputStream` and `openFileDescriptor`
+    outside `app/.../files/Documents.kt`.
+  - **KtIntent:** `Intent(`, `startActivity`, `PendingIntent`, `sendBroadcast`, `registerReceiver`, `ShareCompat`,
+    `createChooser`, `ACTION_VIEW`, `LocalUriHandler`, `openUri`, `LinkAnnotation`, outside Documents.kt and the Go
+    offline screen (airplane-mode settings only).
+  - **Network additions:** `android.webkit`, WebView, `javax.net`, `Socket(`, `DatagramSocket`, `java.net.http`,
+    ConnectivityManager, Cronet, DownloadManager. **RNG addition:** `UUID.randomUUID`.
+  - **KtDevice:** camera classes only in `camera/GoAheadScanner.kt`; `SensorManager` only on the device-entropy screen;
+    `Settings.Global` only in `OfflineMonitor.kt`.
+  - **KtSdk (build files and lockfiles):** firebase, crashlytics, `com.google.android.gms`, play-services, mlkit,
+    sentry, bugsnag, acra, appcenter, datadog, newrelic, segment, mixpanel, amplitude, flurry, admob, facebook,
+    instabug, onesignal; any repository but `google()` and `mavenCentral()`; `gradlePluginPortal`, `jcenter`,
+    `mavenLocal`, `flatDir`, `includeBuild`; a `repositories {}` block outside settings.gradle.kts; local and remote
+    build inputs: `files(`, `fileTree(`, `apply(from`, `apply from:`, `buildscript {`, `classpath(`, and `srcDir(` or
+    `srcDirs(` naming a `build` path.
+  - **KtBinary:** any tracked file under `mobile/` with a binary extension (jar, aar, so, dex, class, apk, aab, jks,
+    keystore), read from `git ls-files`, not through the extension skip at :482.
+  - **KtManifest (source manifests):** `android.permission.INTERNET`, `ACCESS_NETWORK_STATE`, `ACCESS_WIFI_STATE`,
+    `allowBackup="true"`, `usesCleartextTraffic="true"`, `debuggable`, `<provider`, `<receiver`, `<service` (other than
+    `tools:node="remove"` lines); and, fail closed, an `<application` lacking `allowBackup="false"`,
+    `fullBackupContent="false"` or `dataExtractionRules`.
+  - **KtTestChannel:** the instrumentation status key `kc_ci_throwaway_passphrase` (group 18) appears only under
+    `mobile/android/app/src/androidTest/` and in `scripts/android-age-check.py`.
+  - **FFI:** exactly one `catch_unwind` call site in Rust source (comments and clippy.toml entries are not call sites),
+    in `ffi/jni/src/lib.rs`; exactly one `Session::new` under `ffi/`, in `ffi/src/ceremony.rs`; the identifiers
+    `thread` and `JoinHandle` nowhere under `ffi/`.
+  Proof: `--selftest` counts per category and scope; the gate clean on the tree; `gates` time.
+  Proof (M5 commit 4, partial; `gates` time in CI is the lead's, after the push): every scanned file under
+  mobile/android gets the code rules (Kotlin, Java, XML, Gradle files alike), by scope: `src/test` and
+  `src/androidTest` of any module (exactly those; `src/testRegistry/` ships), `mobile/android/capture-control/`, the rest.
+  The named files are the app's `files/Documents.kt`, `CeremonyViewModel.kt`, `camera/GoAheadScanner.kt`,
+  `GoOfflineScreen.kt` and `DeviceEntropyScreen.kt`, and secure-ui's `SecureActivity.kt` and `OfflineMonitor.kt`.
+  KtFailOpen's catch list is an allow-list (only those three catches, each in its file); the catch_unwind site is
+  required once ffi/jni/src/lib.rs exports a function (`extern "system"` or `no_mangle`), so commit 9's empty lib
+  passes; the one Session::new is required once ffi/src/ceremony.rs exists. `--selftest` 984 passed, 0 failed
+  (707 + 277), the same under /bin/dash. New hit cases per category and scope (main = every other mobile/android
+  file; test = `src/test` and `src/androidTest`): KtLog main 18, test 2, capture-control 1; KtFailOpen 21, 2, 1
+  (catch list 17 of them); KtWindow 27, 3, 1; KtInput 15, 2, 1 (Activity rule 8); KtStorage 25, -, 1; KtIntent 14, -,
+  1; KtDevice 10, -, 1; KtSdk 42 (build files and lockfiles), capture-control 1; KtManifest 19, 1, 1; KtTestChannel
+  main 1, test 2, capture-control 1, scripts 1; KtBinary 12 (scratch repositories); FFI 17; Network additions 9 plus
+  1 in androidTest; RNG randomUUID 1 plus 1 in test. Clean: clean-kt-shipping-allowed (the named files' exceptions
+  and near misses), clean-kt-test-scope, clean-kt-capture-control, clean-kt-build-files, clean-kt-manifest, clean-ffi,
+  clean-ktbinary-untracked-image-outside-mobile, and the scope copies: every hit fixture whose rule a scope skips is
+  copied there and scanned in one tree per scope, clean (src/test 75 fixtures, src/androidTest 75, capture-control
+  17). Three existing fixtures moved off a line the new KtIntent rule also hits (clipboard-action-send,
+  network-kotlin-uri-parse-literal; clean-near-misses' `Intent(ACTION_CREATE_DOCUMENT)` moved into its Documents.kt).
+  The gate on the tree: clean, 241 files (no prose hit under ffi/). canaries.sh 74/74 (new: kotlin-ffi-rules, five
+  planted hits on the real tree copy). Wall times on this Mac (load 3-5): gate 15.9 s (base 15.0 s), `--selftest`
+  4:39 (base 2:53), canaries 4:42 (base 4:19).
+  Proof (M5 commit 4c, the lead, from CI): review fixes 4b (7f878f7 .. bee6877) took `--selftest` to 1065 passed, 0 failed
+  (sh and dash), the gate to 263 files, canaries 74/74. Entropy CI 39062895694 at bee6877: 14 of 14 green, `gates (banned
+  APIs, verifier, canaries)` 10 min 41 s, within the approved 12 minutes (M4b measured 10 min 08 s).
+- [x] The Shell rule for `game_random` is unchanged in M5 (its ffi and Kotlin fixtures stay hits until M5b).
+  Proof: those fixtures still trip.
+  Proof (M5 commit 4): `game_random_use` and its path list untouched (only the release probe's comment stripping moved
+  into the shared `rust_code_match`); `--selftest` (sh and dash): `PASS shell-game-random-in-ffi -> Shell:
+  ffi/src/lib.rs:1` and `PASS shell-game-random-in-kotlin -> Shell: mobile/android/app/src/main/kotlin/app/Snake.kt:1`.
+
+**4. Gradle project and supply chain (Q54)**
+- [ ] `mobile/android/`: `settings.gradle.kts` (`FAIL_ON_PROJECT_REPOS`; `google()` content-filtered to `androidx.*`,
+  `com.android.*`, `com.google.*`; `mavenCentral()`; no plugin portal), `build.gradle.kts`, `gradle.properties`
+  (`org.gradle.java.installations.auto-download=false`, SDK auto-download off, no build scans),
+  `gradle/libs.versions.toml` with exact versions; compileSdk 37, targetSdk 36, minSdk 31, build-tools 36.0.0,
+  `ndkVersion` 30.0.16248370, JDK 17; profileinstaller excluded from every configuration; the reproducibility settings
+  in "Built into this plan". **Every** Gradle dependency and plugin of M5 (app, JVM test, androidTest, capture-control)
+  is declared in this commit, so lockfiles and verification metadata are written once.
+  Proof: the first run's `buildEnvironment` and `dependencies` output under Review.
+- [ ] Bootstrap, two commits. Commit 5 carries a `-Pkc.bootstrap=true` switch in the workflow: that run alone writes
+  locks and verification metadata (`--write-locks --write-verification-metadata sha256`) with strict locking and
+  verification off, and uploads them as an artifact. Commit 6 commits the reviewed files, turns on strict lock mode and
+  strict verification, and removes the switch; a gate rule fails if `kc.bootstrap` appears at the final head. Any
+  dependency added after commit 6 follows the same two-commit pattern, each pair recorded under Review.
+  Proof: commit 5's run ID and artifact; commit 6's green run in strict mode; the gate rule's fixture.
+- [ ] `scripts/android-gradle.sh` fetches `gradle-9.7.1-bin.zip` from services.gradle.org, checks its SHA-256 (pinned
+  in the script from the published `.sha256`, read at commit time) and runs it with `--no-daemon`; no wrapper jar in
+  git.
+  Proof: a run with a one-byte-wrong pin fails before Gradle starts (recorded once).
+- [ ] `gradle/verification-metadata.xml` (SHA-256 of every artifact, plugin and POM; no trusted-artifact wildcards) and
+  the lockfiles are reviewed by a committed script, `scripts/android-deps-review.py`, run in CI: for Google Maven
+  artifacts it compares Gradle's SHA-256 with the published `.sha256`; for Maven Central artifacts it compares the
+  published `.sha1` with the downloaded file's SHA-1 and verifies the `.asc` signature against a signer key pinned by
+  fingerprint in the metadata (`<trusted-key>` entries, scoped to their group). Any artifact that passes neither is
+  listed and blocks commit 6. `mobile/android/expected/shipping-runtime-classpath.txt` is the committed dependency
+  allow-list (MA:126).
+  Proof: the script's report under Review; a run with one changed checksum fails; an extra classpath line fails.
+- [ ] `scripts/android-rust.sh <flavour>` (from commit 14) builds the three ABIs with group 12's flags into
+  `app/build/rust/<flavour>/<abi>/` and the host library (x86_64-unknown-linux-gnu) for JVM tests; Gradle fails if a
+  flavour's library is missing.
+  Proof: the APK listing (group 5).
+
+**5. The manifest, the APK check and the APK scan (gate item 2; matrix "Symbol and stub-marker scan")**
+- [ ] `app/src/main/AndroidManifest.xml`: `HIDE_OVERLAY_WINDOWS`, `DETECT_SCREEN_RECORDING`, and from commit 18 `CAMERA`
+  (with `uses-feature camera required="false"`); `allowBackup="false"`, `fullBackupContent="false"`,
+  `dataExtractionRules` excluding everything, `usesCleartextTraffic="false"`; one exported launcher activity; the
+  removals named in "Built into this plan".
+  Proof: the expected summaries below.
+- [ ] `banned-api-check.sh --apk VARIANT APK EXPECTED_DIR` (the image scan's shape): `aapt2 dump permissions`, `dump
+  badging` and `dump xmltree AndroidManifest.xml` reduced to one summary (package, SDKs, every permission, every
+  component with exported flag, application flags, `<queries>`, `uses-library`), compared exactly with
+  `mobile/android/expected/manifest-<variant>.txt`; the manifest-merger report grepped for INTERNET and every removal.
+  Proof: `--selftest-apk` built-in cases (INTERNET, a provider, `allowBackup` true, debuggable, an extra exported
+  activity, a `<queries>` element each fail; the clean summary passes), run in `gates` without an SDK; in the Android
+  job a canary build (`-Pkc.canary=true`, adding `scripts/testdata/android-canary-lib/`, a library whose manifest asks
+  for INTERNET and declares a provider) must be refused, and a pass fails the job.
+- [ ] The same `--apk` run unpacks the APK with Python's zipfile: from commit 14, `lib/<abi>/libkeepcrypt.so` for
+  exactly the three ABIs, each byte-equal to the scanned cargo output and through the `--artifact` rules for its target
+  (shipping clean; test-registry exactly the registry marker and the test key); before commit 14, no libkeepcrypt at
+  all. Every other `.so` listed by name, ABI and SHA-256 in `mobile/android/expected/native-libs.txt` (graphics-path's)
+  and passing the image scan's `elf_check`; every 64-bit `.so` (arm64-v8a, x86_64), graphics-path's included, has
+  `0x4000` alignment on every LOAD segment; every dex and resource byte-scanned for the three markers and the test key;
+  `dexdump` finds no reference from a `com.keepcrypt` class to `java.util.Random`, `kotlin.random.Random`,
+  `Math.random`, `UUID.randomUUID` or `java.security.SecureRandom`; no other ELF; `zipalign -c -P 16 -v 4`;
+  `apksigner verify --print-certs` shows the run's throwaway key. The capture-control APK must not equal either
+  shipped APK's package id.
+  Proof: both APKs' output; selftest cases with built stub zips (an unlisted `.so`, a 4 KB-aligned 64-bit `.so`, a
+  marker in a dex, a stripped libkeepcrypt, a banned reference in a `com.keepcrypt` class) each give exactly one hit.
+
+**6. The Android workflow and the emulator harness (Q55)**
+- [ ] `entropy-android.yml`: on PRs and pushes to main touching `Entropy/mobile/**`, `Entropy/ffi/**`, `Entropy/core/**`,
+  `Entropy/Cargo.lock`, `Entropy/rust-toolchain.toml`, `Entropy/vectors/**`, the gate and android scripts and the
+  workflow, plus weekly and dispatch; `contents: read`; only the three approved actions; no secrets; expressions only
+  through `env:`; `timeout-minutes` per the budget. One job, in order: Rust libraries, all APKs (shipping,
+  test-registry, the test APK, capture-control), JVM tests, the `--apk` checks, the canary build, the throwaway signing,
+  the uploads (both APKs with SHA-256, the P4 files, the positive-control captures; the test-registry APK named
+  `NOT-FOR-RELEASE`), then the emulators one after another on those bytes: `default;x86_64` API 31, `default;x86_64`
+  API 36, and from commit 14 one 16 KB-page image (`google_apis_ps16k;x86_64` API 36, or the probe's choice). KVM udev
+  rule; `sdkmanager --install` with the SDK licence accepted (Q54); headless AVDs; images cached by revision.
+  `--workflows` passes on it.
+  Proof: the green run with each step's time; emulator and image revisions printed.
+- [ ] **Instrumentation:** `scripts/android-instrument.sh` runs `am instrument -w -r -e class ...` once per test class,
+  and once per test that halts or kills the process, so a latched `Halted` slot or a dead process never fails the next
+  test. The crash test is judged from the shell: the process is gone, no crash dialog window exists, `logcat -b crash`
+  holds no line naming the package, and `dumpsys dropbox` shows no new `data_app_crash` entry. No Test Orchestrator.
+  Proof: the per-class lines in the log.
+- [ ] **Driving:** the instrumentation shares the app's process, so flows call the same `CeremonyViewModel` entry points
+  the pads call (dice, letters, choices); UiAutomator clicks Public screens by resource id (Compose test tags with
+  `testTagsAsResourceId`), DocumentsUI, the camera permission prompt and Home. A UiAutomator smoke test on one
+  Protected pad runs on API 36 only if the probe shows UiAutomation sees data-sensitive nodes.
+  Proof: the flow tests pass on both APIs.
+- [ ] **Capture harness** (shell-uid captures through `UiAutomation.executeShellCommand` and `adb exec-out`, no root): for
+  every screen id (an exhaustive `when` maps each screen to an id, so a new screen without one fails to compile), the
+  test first proves the screen is drawn: the ViewModel reports that screen id and an `OnDrawListener` has seen a frame
+  after it. Then raw `screencap` and `UiAutomation.takeScreenshot()` are black over the app's window, `dumpsys window
+  windows` shows `SECURE` on every window of the package, and the recents thumbnail is the placeholder. Recording: a
+  full ceremony is recorded in back-to-back segments of `--time-limit 170` at a small `--size` the probe confirms, each
+  streamed through `scripts/android-frames.py`, which counts frames, checks the app window's pixels are all black, fails
+  on a gap between segments and keeps no frame.
+  Proof: per-screen pass lines and per-segment frame counts on both APIs.
+- [ ] **Positive controls (each missing control fails the job):** (a) the capture-control APK draws `dice-99-words12`'s
+  first words page and a Public screen with the same composables and no FLAG_SECURE; the same screencap,
+  `takeScreenshot()` and raw-frame calls must find its known pixels, on API 31 and 36. (b) The drawn-screen proof above,
+  before every app capture. (c) API 36 only, where the setting exists: `disable_secure_windows` is asserted unset or 0
+  first; set to 1, the app's own captures show the words page; back to 0, black again. The control captures (gate seeds
+  only; Reveal D never captured) are uploaded as the owner's screen review.
+  Proof: each control's result logged per API.
+- [ ] **First frame** (lessons 4): raw frames from before a cold launch to Home show nothing but black in the app's
+  window, with control (a)'s pipeline proven in the same run.
+  Proof: frame count and result on both APIs.
+- [ ] **ARM and 16 KB leg** (from commit 14): on the 16 KB-page image, `getconf PAGE_SIZE` is 16384, the x86_64 APK
+  installs, launches to Home and passes the self-test. If the image lists arm64-v8a (and armeabi-v7a) in its ABI list,
+  the APK is installed again with `--abi arm64-v8a` (then `armeabi-v7a`) and a small instrumented class runs
+  `JNI_OnLoad`, `self_test` and the `dice-50-words12` vector through `Native`. Statically, for every ABI: the `.so`
+  exports only `JNI_OnLoad` and `Java_com_keepcrypt_entropy_ffi_Native_*` among our symbols, its `DT_NEEDED` list is
+  libc, libm, libdl only, and every undefined symbol is defined in that ABI's API 31 stub libraries.
+  Proof: run ID; which ABIs ran translated, under Review; any ABI that did not run is named in the gate report and Q56.
+
+**7. Rust dependency and lint changes (Q53; rule 11)**
+- [ ] New member `ffi/jni` (`keepcrypt-jni`): `[lib] name = "keepcrypt"`, `crate-type = ["cdylib"]`; dependencies
+  `keepcrypt-ffi`, `keepcrypt-core` (featureless, commented as pi/sim's is), `jni-sys = { version = "=0.3.0",
+  default-features = false }`, `zeroize`. `keepcrypt-ffi`: `#![forbid(unsafe_code)]`, `zeroize` and
+  `qrcodegen-no-heap` (new edges to locked crates, core's and pi/app's specs), dev-dependency `sha2` (locked; the tests'
+  go-ahead code); its description says "safe layer". Both get `overflow-checks = true` in release profiles. The shared
+  clippy block in core, ffi, ffi/jni and pi/app gains `undocumented_unsafe_blocks` and `multiple_unsafe_ops_per_block`
+  at deny. scripts/check-path-deps.sh and canaries.sh's members pin become `core, ffi, ffi/jni, pi/app, pi/sim`.
+  Proof: `git diff Cargo.lock` adds exactly jni-sys 0.3.0 (checksum equal to crates.io's), keepcrypt-jni and the new
+  edges; `cargo tree -p keepcrypt-jni -e normal,build --target aarch64-linux-android` holds no rand, log or network crate
+  and no getrandom edge but core's; `cargo build -p keepcrypt-jni` writes `libkeepcrypt.dylib` on the Mac.
+- [ ] ffi/jni/clippy.toml = core's minus the `catch_unwind` entry, with a comment naming Q53. deny.toml gains an exact
+  `[[bans.features]]` entry for jni-sys (none). supply-chain: a safe-to-deploy exemption for jni-sys 0.3.0 with a review
+  note (read from the downloaded `.crate`, SHA-256 equal to Cargo.lock's: declarations only, no code that runs, no
+  print, no build script), downloaded only after Q53's yes.
+  Proof: `cargo deny --locked check`, `cargo audit`, `cargo vet --locked` pass; the review note under "New dependencies".
+- [ ] canaries.sh: core, ffi and pi/app clippy.toml stay identical; ffi/jni's differs from core's by exactly the
+  `catch_unwind` line (a canary that removes another line from it fails); the lint-table pins add the two clippy lints
+  and keepcrypt-ffi's forbid; the profile pin adds both FFI crates; the deny pins add the jni-sys entry; a canary
+  plants an `unsafe` block in keepcrypt-ffi and expects the forbid error (from commit 10, once ceremony.rs exists; at
+  commit 9 it plants it in lib.rs); a canary plants `std::panic::catch_unwind` in keepcrypt-ffi and expects clippy's
+  error; the getrandom graph pin is unchanged; the `[features]` probe covers both crates. `want_checks` and CLAUDE.md's
+  count move together (group 19).
+  Proof: canaries N/N locally and in `gates`, each new canary named in its output.
+
+**8. The FFI's safe layer (`ffi/src/ceremony.rs`)**
+- [ ] The slot as in References. Every call locks, takes the stage with `mem::replace(.., Stage::Idle)`, calls the
+  consuming core method and puts back what `Ok` gives; an `Err` has already wiped the session (session.rs:10-17). Long
+  calls follow "A discard never waits for a long call". A `PoisonError` is matched (never `unwrap_or_else`) and halts.
+  A call in a stage that does not offer it halts (a shell bug, fail closed).
+  Proof: unit tests for each stage's allowed and refused calls (group 11).
+- [ ] The halt rule mirrors app.rs:235: refusals are a wrong typed go-ahead code (`Rejected::Retry`, the Checking
+  session goes back), a read-back mismatch, a wrong or empty passphrase, `NoRegistryKey`, a bad snapshot, proof or
+  backup file; every other error halts, as does every `Err` from a call that took the session.
+  Proof: a table test over every `CoreError` variant, compared with app.rs's `refused`.
+- [ ] `start(len, mode)` per "One `Session::new`". `match_found()` = `discard(Collision)`, `cannot_check()` likewise,
+  each keeping the `Wiped`; after them only `start` is offered. `discard()` (background, idle, offline, leaving a
+  Protected screen) drops the stage and checked backup, keeps `kept` and `snapshot`; `end()` (Finish) drops the stage;
+  `wipe_all()` (crash path) drops everything. `add_hw_samples` is not exported; `add_extra` (InputTiming, Motion)
+  works only while Collecting. Skip is unreachable once Checking (rule 6).
+  Proof: tests "99 after Stop", "99 after Cannot check in the restart after a collision", "99 after an idle wipe
+  following a Stop", "50 after Skip", "every session is Platform::Phone".
+- [ ] Discard during a long call: a test holds a long call at a barrier, discards from another thread, releases it: the
+  result is dropped (a drop-observing value proves it), the call returns "discarded", the slot is Idle and the next
+  `start` works; the same with `wipe_all`; a non-discard call while `Busy` halts.
+  Proof: `ffi_discard_during_call`.
+- [ ] Owned copies: `reveal` builds `GoAhead` inside the call from the held snapshot, a proof verified in the same call
+  (`verify_bucket_proof_qr`) or the typed code; word pages, braille faces, the backup passphrase, D and `CheckedBackup`'s
+  reveals are copied per page through `Zeroizing` buffers.
+  Proof: tests per `GoAhead` kind; no borrowed core type appears in a public ffi signature.
+- [ ] Freshness: `today` comes from the shell as `yyyymmdd` (`RegistryDate::from_yyyymmdd`); results carry the
+  snapshot's or proof's number, date, count and freshness.
+  Proof: Current, Stale (`stale-day-31`) and Future (`future-day-1`) cases.
+
+**9. Wire format and QR matrices (`ffi/src/wire.rs`, `ffi/src/qr.rs`)**
+- [ ] Fixed layouts, each documented once: status byte and code; progress (credited and required bits, or rolls,
+  minimum and millibits); C or D (32 bytes); the seal card (8x8 grid bits, colour index, Seal ID ASCII, Seal ID braille
+  as UTF-8); a word page (position, SeedBook number u16 BE, word ASCII, five faces with dots and blank, mirror-pair and
+  lighter-face flags, "device 1 of 2 / 2 of 2" for 24 words); a read-back result; the summary (fingerprint, first
+  address); a QR matrix (size, then bits row-major); a snapshot or proof result. Lengths are built with `TryFrom` and
+  checked arithmetic. The status code table is pinned by a Rust test and Kotlin's copy by a JVM test.
+  Proof: byte-exact tests against braille.json, seal.json, watchonly.json and kcr.json values.
+- [ ] QR codes (check request, account, descriptor, registration, collision report, re-check without n) encoded with
+  qrcodegen-no-heap at pi/app's settings (pi/app/src/ui/qr.rs), working buffers wiped.
+  Proof: the JVM test decodes every matrix with ZXing and gets core's QR text (group 13).
+
+**10. The JNI boundary (`ffi/jni/src/lib.rs`, the only unsafe code)**
+- [ ] About 35 `#[unsafe(no_mangle)] pub extern "system" fn Java_com_keepcrypt_entropy_ffi_Native_<name>` exports
+  (package per Q62) and `JNI_OnLoad` (silent panic hook, JNI 1.6). Helpers read a `jbyteArray` into a
+  `Zeroizing<Vec<u8>>` under a size cap (lengths via `TryFrom`, no `as` on lengths) and return a new array; every JNI
+  call that can raise is followed by `ExceptionCheck`, and a pending exception halts. Nothing calls `Throw`.
+  Proof: clippy clean on the host and the five phone targets; a review note lists every unsafe block.
+- [ ] `guarded(f)` is the one `catch_unwind`, a safe generic function tested on the host with a panicking closure.
+  Proof: a test panics inside a Ready call: a drop-observing value moved out with the session is dropped, `Held` is
+  `Halted`, every later call halts, and nothing reaches stdout or stderr.
+
+**11. FFI tests (host; `cargo test -p keepcrypt-ffi -p keepcrypt-jni`, plain and with `--features keepcrypt-core/test-registry`)**
+- [ ] Every exit path empties the slot: Finish, discard (each Public and Protected stage), Match found, Cannot check,
+  halt by error, halt by panic, poisoned lock, discard during a long call. Core's own WipeProbe tests prove a dropped
+  session is zeroized; these prove the FFI drops it (MA:127). Neither crate declares a `[features]` table
+  (canaries.sh:798-809 covers both).
+  Proof: test names and counts under Review.
+- [ ] Vectors: each gate seed through `start`, dice and `finish` gives kcr.json's seal code, Seal ID and T, and after a
+  typed go-ahead code computed from the check request (lessons 2) the mnemonic and braille.
+  Proof: `ffi_dice_vectors`.
+- [ ] Mixed mode on the OS source: C, the rolls and the revealed D piped into `python3 -I tools/verify/verify.py mixed`
+  give the words and Seal ID the FFI showed, compared in memory and never printed (pi/sim's `verify_py_tie` pattern).
+  Proof: `ffi_verify_py_tie` exits 0 locally and in CI.
+- [ ] Test-registry configuration (tests branch on `registry_key_is_test()`, as pi/sim's do): `with-dice-50` loaded
+  catches the `dice-50-words12` rolls before any word page, and the restart needs 99; `clear-empty-bucket`'s UR reveals
+  `dice-99-words12`'s words, Stale at 2026-10-17 and Current at 2026-03-01; `collision-dice-50` gives a collision; a
+  wrong typed code gives Retry, then the right one reveals. In the plain build every snapshot and proof gives
+  `NoRegistryKey`.
+  Proof: `ffi_drill_12`, `ffi_proof_paths`, `ffi_no_registry_key`.
+- [ ] Backup: `encrypt_backup` -> `verify_backup` -> `decrypt_backup` with `from_first_four` entries gives the same
+  fingerprint and words; a wrong entry is refused before scrypt; the header says `keepcrypt-android 0.0.0`
+  (`CreatedBy::new(BackupApp::Android, 0, 0, 0)`). Read-back drill: a mirror-pair misread and a missed blank face are
+  named, and no export opens before a full read-back (BP:327).
+  Proof: `ffi_backup_round_trip`, `ffi_readback_drill`, within `test`'s budget.
+
+**12. Rust CI (required checks, no new names)**
+- [ ] The three Android cross legs: the NDK is `$ANDROID_SDK_ROOT/ndk/30.0.16248370`; if absent, `sdkmanager --install
+  "ndk;30.0.16248370"` installs it; its `source.properties` is printed and checked (no fallback to another NDK);
+  `cargo build --release --locked -p keepcrypt-jni --lib` per target, and again with `--features
+  keepcrypt-core/test-registry --target-dir target/ffi-test-registry`; the shipping `libkeepcrypt.so` joins the release
+  scan (getrandom imported, no marker, no test key, no RNG symbol, symbol table kept); the test-registry one shows
+  exactly its registry marker and the test key; `llvm-readelf -lW` shows `0x4000` on every LOAD segment for arm64 and
+  x86_64 (armeabi-v7a stays 4 KB, which Play allows); `llvm-nm -D` lists only `JNI_OnLoad` and
+  `Java_com_keepcrypt_entropy_ffi_Native_*` among our defined symbols. The image's NDK list is printed for Review.
+  Proof: a green run with both scans, the alignment and symbol lines; a planted 4 KB link flag turns the check red
+  (recorded once under Review).
+- [ ] `test` adds `cargo test -p keepcrypt-ffi -p keepcrypt-jni --locked --features keepcrypt-core/test-registry`.
+  Proof: `test`'s time against main's.
+
+**13. `:core-ffi` and the Rust libraries in the APK (commit 14)**
+- [ ] `Native.kt` (`internal object Native`, `System.loadLibrary("keepcrypt")`, the `external fun`s), `Wire.kt`
+  (decoders), `Secret` (a byte-array holder with `wipe()` and no content `toString`), `Core.kt` (typed calls, sealed
+  results, `KcHalt` on the halt status, no `catch`). The skeleton's static first screen becomes the real self-test.
+  Proof: the JVM tests below; the ARM and 16 KB leg (group 6).
+- [ ] JVM tests against the host library: group 11's vectors again through Kotlin; every QR matrix decoded with ZXing
+  equals core's QR text; a call in the wrong stage halts and every later call does too (forked JVM per class). An `:app`
+  JVM test renders `clear-empty-bucket`'s and `collision-dice-50`'s UR text as PNGs (ZXing's writer, tests only) and
+  reads them back with the scanner's own decode function; a Python standard-library step writes `with-dice-50.kcr` and
+  `stale-day-31.kcr` from kcr.json's hex, and `p4-seal-ids.txt` with the Seal IDs of `dice-50-words12` and
+  `dice-99-words12` from kcr.json. These public test files are the P4 artifact.
+  Proof: test counts per class in the Android job's log.
+
+**14. `:secure-ui` and `CeremonyViewModel`**
+- [ ] SecureActivity (from commit 5) as in "Built into this plan", `onStop` reporting "app left" only when not
+  `isChangingConfigurations`.
+  Proof: the emulator capture and lifecycle tests (group 6); the content-capture flag read back in-process, and
+  `dumpsys content_capture` shows no view events for the package where the probe found a service.
+- [ ] `OfflineMonitor` (a `ContentObserver` on `AIRPLANE_MODE_ON` and `WIFI_ON`, read again on every start; no receiver,
+  no permission); `Timers` (30 s cover, 9-minute warning, 10-minute idle wipe, 60 s background, the picker rule) on an
+  injected monotonic clock; the `Protected` wrapper (privacy gate, cover, recording redaction).
+  Proof: JVM tests of `Timers` with a fake clock for every rule and boundary (59 s keeps, 60 s wipes).
+- [ ] `CeremonyViewModel` owns the slot's use: UI state holds screen ids, page indices and `Secret` references only;
+  long calls run on `Dispatchers.Default` behind a "Working..." screen that ignores input; a lifecycle or offline
+  discard during "Working..." calls `discard()` at once and the call's "discarded" status returns the UI to its start
+  screen; `onCleared` calls `wipeAll()`.
+  Proof: JVM tests for every transition, including a press during "Working..."; emulator tests that leave the app during
+  a backup's scrypt and during the start-up self-test, and turn Wi-Fi on during `start`: no ANR, the session is gone.
+- [ ] The crash path: an `Application` subclass sets its handler (replacing the platform's) to `Native.wipeAll()` then
+  `Process.killProcess`; the stop screen's "Close app" calls `finishAndRemoveTask()` and ends the process.
+  Proof: a JVM test of the handler's order with a fake; on the emulator an androidTest-only trigger throws on the main
+  thread, judged from the shell as in group 6 (process gone, no dialog, empty crash buffer, no DropBox entry).
+- [ ] The pads: `DicePad`, `LetterPad` (a-z), `CrockfordPad` (32 symbols), `AsciiPad` (0x20-0x7E, up to 100 characters),
+  each writing into a `Secret`, keys in a fixed order, nothing about a key press in semantics on Protected screens.
+  Drawing: `QrMatrix`, `SealCard` (the 8x8 Okabe-Ito grid at 240 dp with Seal ID and braille, swb:84-90), braille faces.
+  Proof: JVM tests per pad and drawing helper.
+
+**15. Screens: start to dice** (MA:166-174; PF:83-89)
+- [ ] First launch (MA:13's limits, the development-build line, "use the Pi for life savings"; every start), Self-test
+  (`self_test()`, failure halts), Go offline (status; Start disabled until offline; a button opens airplane-mode
+  settings), Home (New seed, Dice-only seed, Check a backup, Load registry snapshot, About), Length (12 default, 24),
+  Device entropy (Mixed only: touch timestamps and accelerometer/gyroscope samples into `add_extra` until commit, zero
+  credit; MA:144's sentence), Commitment (C as 16x4 hex), Dice (pad, undo, count and bits, never the history; Done once
+  the minimum is met; confirm disabled at 256). Dice-only skips Device entropy and Commitment. System Back goes back
+  only where nothing is lost.
+  Proof: emulator flow tests on both APIs; Start disabled online; Wi-Fi on during dice wipes and returns to Go offline.
+
+**16. Screens: the collision check** (MA:175-176; swb:112-152)
+- [ ] The prompt ("Check now (recommended)" / "Skip", Skip confirmed on its own screen). With a loaded snapshot the check
+  runs automatically on the FFI thread and its result screen shows the snapshot's number, date and any warning.
+  Otherwise the seal card (seal at 240 dp, Seal ID with braille, the check QR) and "Scan go-ahead QR", "Type go-ahead
+  code", "Match found", "Cannot check" (each one-way choice confirmed). A wrong typed code is refused and the check,
+  nonce and actions stay. Match found: wiped unseen, the collision-report QR (Protected), "Add fresh entropy" restarts
+  at 99. Cannot check: wiped, "Start again" likewise. Results use swb:150-152's wording.
+  Proof: emulator tests in the shipping APK (typed code computed from the drawn check request; a wrong code keeps the
+  check) and the test-registry APK (snapshot drill: Match found before any words page, then "0 / 99").
+- [ ] The scanner (Camera2 + ZXing, commit 18): CAMERA asked on this screen only; `ImageReader` YUV_420_888 frames
+  reduced to luminance on a background thread and never stored; text over 4,296 characters dropped (swb:144); the first
+  decoded text goes to the same `onGoAheadText` the tests call; proof results show their date and any warning before
+  the words.
+  Proof: a JVM test runs the scanner's real frame-to-luminance and decode code on canned YUV_420_888 buffers built from
+  both UR PNGs, with row and pixel strides that differ from the width and each rotation; emulator tests feed both UR
+  texts to `onGoAheadText`; CAMERA not granted before the scan screen (`dumpsys package`); the owner's P0b right after
+  commit 18, and P4.
+
+**17. Screens: words to finish** (MA:177-184; PF:90-99; swb:276-290)
+- [ ] The privacy gate, then Words (one insert per page: position, word, SeedBook number, five faces with blanks,
+  mirror pairs and lighter faces flagged; a four-word overview; 24 words marked device 1 of 2 and 2 of 2), Read-back
+  (letter pad, first four letters of every insert; a mismatch names the insert), Wallet summary (fingerprint, first
+  address), Finish (the SeedBook checklist and safety copy, then `end()` and Home).
+  Proof: emulator flow tests; in-process, the words shown equal the gate seed's mnemonic; an e/i misread is named;
+  leaving the app on a words page discards at once; 70 s in the background on dice wipes and 50 s does not.
+
+**18. Screens: backup, Check a backup, watch-only, register, reveal D, snapshots, About, stop** (MA:146-162)
+- [ ] Backup: the 8-word passphrase (Protected), its 2-of-4 confirm, Save (`CreateDocument`, core's suggested name,
+  one `"rwt"` write, MA:156's cloud-folder line), read back with `openInputStream` and `verify_backup` before "Backup
+  verified"; a failure names the step. Check a backup: `OpenDocument`, name `.age` and size within core's limit before
+  reading, first-four entries, fingerprint, Seal ID and "Backup OK"; words only through the privacy gate; the re-check
+  QR. Watch-only: the BIP39 question, the ASCII pad, the account and descriptor QRs (Protected), the summary. Register
+  (once): the registration QR. Reveal D (Mixed only): warning, then 16x4 hex. Load registry snapshot: `.kcr` by name
+  and size, verified on the FFI thread, shown with number, date, count and any warning. About: version, flavour, source
+  address as plain text. Stop: red, fixed text, "Close app".
+- [ ] The CI `age -d` hand-off: for the CI throwaway seed only, the androidTest reads the backup passphrase from the
+  in-process `Secret` and sends it as the instrumentation status value `kc_ci_throwaway_passphrase`. The workflow pipes
+  `am instrument -r`'s output straight into `scripts/android-age-check.py`, which takes the value, feeds it to age 1.1.1
+  through age-interop.py's pty driver to decrypt the pulled backup, compares the fingerprint, and prints only pass or
+  fail. The value never reaches logcat, a file or the job log.
+  Proof: emulator tests: a backup saved to Downloads through DocumentsUI verifies, is decrypted by `age -d` in the job,
+  and Check a backup opens it; a wrong passphrase and a `.txt` file are refused (the latter before any byte is read);
+  the snapshot loads in the test-registry APK and is refused in the shipping APK; a root listing of the app's data
+  directories after the suite holds no file the app wrote, with a planted-file positive control (Q59 (a)); `dumpsys
+  package` shows no INTERNET; a grep of the job log for the passphrase's first word returns nothing.
+
+**19. Gate evidence and Commands**
+- [ ] CLAUDE.md Commands gains the ffi test-registry line, `--apk` and `--selftest-apk`, the android scripts (CI-only
+  ones marked so) and the new canaries count.
+  Proof: the diff touches only the Commands block; the count equals `want_checks`.
+- [ ] The owner's P0-P5 are issued with the run ID, commit and both APKs' SHA-256 of the final head's Android run, and
+  the Seal IDs from `p4-seal-ids.txt`.
+  Proof: the checklist block filled in.
+
+**20. Review**
+- [ ] "M5: local proof", the CI runs, the probe facts, "M5: device records", the gate status, numbered lead decisions,
+  "Ticked in this commit" and "Still unticked", as in M4.
+  Proof: the Review section.
+
+**Deferred, with their milestone**
+- **M5b** (after the M5 gate, its own branch, as M4b; Q61): "Verify another device's ceremony" (a core API replaying
+  agreement.json; its screen and hex and dice pads; Coldcard runs over 256 rolls cannot be checked); Snake and braille
+  Tetris on the phones' waiting screen through a `game_random` export in keepcrypt-jni, with the Shell rule's change
+  (pattern `game_?[Rr]andom`; allowed in that export and the Kotlin games folder; the two hit fixtures become
+  near-misses) and a Kotlin `games_names` analogue (no ceremony object, `addExtra` or clock); and the Pi's Tetris with
+  them, if Q61 (b).
+- **M6:** the iPhone app; Swift's binding as a sibling crate over keepcrypt-ffi (a C ABI or the owner's pick);
+  `staticlib`; the iOS capture layers (MA:78-114) and symbol list (todo.md:1395-1396); BP:73 and MA:23's iOS cell then
+  name it.
+- **M7:** two builds giving one APK hash and a third-party rebuild; release signing and SBOM; F-Droid, GitHub releases,
+  Play and the Data safety label; target 37; Android lint and R8 (the dex reference scan then runs on the shrunk APK);
+  an API 35 leg with MediaProjection automation for the recording callback; emulator and image pinning; making the
+  Android workflow required; Pixel and Samsung capture checks before release (MA:74 after Q55); graphics-path's native
+  library (review, rebuild or removal); the audit list: keepcrypt-jni and jni-sys, `:secure-ui`, Documents.kt, the
+  scanner, the JVM residuals (Q58: strings, Minikin and glyph caches, TalkBack's copy, the moving GC), tombstone memory
+  dumps and whether a non-dumpable flag suppresses them, zram and vendor disk swap, locking secret pages.
+- **M8:** the camera and microphone extras on phones; the Pi camera go-ahead QR.
+- **M9:** the real registry key (shipping APKs then load snapshots and go-ahead QRs), the live test registry and checker,
+  registration end to end, the duplicate-seed drill end to end.
+
+### Verification
+- [ ] **Gate: screenshot and recording tests come back blank.** Group 6's harness green on API 31 and 36 for both APKs
+  (every screen id with its drawn-screen proof; screencap, `UiAutomation`, segmented raw-frame recording, `SECURE` on
+  every window; control (a) on both APIs and control (c) on 36; the first frame), and the owner's P1 on a phone.
+  Proof: the run ID at the final head; P1's report.
+- [ ] **Gate: the merged manifest has no INTERNET permission.** `--apk` on both APKs equals the expected summaries
+  (exactly `HIDE_OVERLAY_WINDOWS`, `DETECT_SCREEN_RECORDING`, `CAMERA`, plus androidx.core's signature permission if
+  the probe kept it; no provider, receiver or service; backup off; not debuggable); the merger-report grep; the canary
+  APK refused; `--selftest-apk`'s INTERNET case fails; `dumpsys package` on the emulator.
+  Proof: both summaries and the run ID.
+- [ ] **Gate: the backup round trip passes.** `ffi_backup_round_trip`; the emulator's DocumentsUI save, "Backup
+  verified", `age -d` through the pty hand-off and Check a backup; P2 on the phone.
+  Proof: test names, run ID, P2.
+- [ ] **Gate: snapshot import works.** The test-registry APK loads `with-dice-50` through the picker with its Stale
+  warning and it stops `dice-50-words12` (emulator and P4); the shipping APK refuses it.
+  Proof: run ID, P4.
+- [ ] **Gate: Sparrow watch-only import works.** P3: Sparrow 2.5.5 imports the account QR from the phone and its first
+  receive address matches the wallet summary; Bitcoin Core 31.1 imports the descriptor with the same address (swb:235).
+  CI: the drawn matrices decode to core's QR text.
+  Proof: P3's report; the JVM test.
+- [ ] **Gate: a go-ahead QR from the test registry reveals the words.** P4's camera scan of `clear-empty-bucket` reveals
+  `dice-99-words12`'s words after the Stale warning, with the Seal ID checked first; CI feeds the same UR through the
+  decoder (canned YUV frames) and `onGoAheadText`.
+  Proof: P0b and P4, run ID.
+- [ ] **Gate: a Stop wipes them.** `collision-dice-50`'s QR and the `with-dice-50` snapshot each end in "Match found" with
+  no words page, the collision-report QR and a restart at 99 (`ffi_drill_12`, emulator, P4).
+  Proof: test names, run ID, P4.
+- [ ] **Boot path and native libraries:** the ARM and 16 KB leg green; which ABIs ran (natively or translated) recorded;
+  any ABI CI could not run named in the gate report.
+  Proof: run ID; the Review line.
+- [ ] **Matrix "Symbol and stub-marker scan"** (Android): both `libkeepcrypt.so` builds per ABI in the cross legs; both
+  APKs in the Android job, with the dex reference scan.
+  Proof: run IDs.
+- [ ] **Matrix "Screen-capture tests"**: every build on CI emulators; a real phone at the gate (P1), as BP:318 and MA:74
+  read after Q55.
+  Proof: the Android job's runs on every pushed head; P1.
+- [ ] **Matrix "No-network checks"**: the manifest summaries, the KtSdk, KtBinary and network rules, the classpath list.
+  Proof: run IDs; selftest counts.
+- [ ] **Matrix "Full ceremony with offline verification"** (Android): `ffi_verify_py_tie`; P2 with verify.py on the
+  offline computer (exit 0, same words, same Seal ID).
+  Proof: test output; P2.
+- [ ] **Matrix "Duplicate-seed drill"** (Android part): `ffi_drill_12` and the emulator drill; end to end in M9.
+  Proof: test output; run ID.
+- [ ] **Matrix "Watch-only import"**: P3.
+- [ ] **Matrix "Metal read-back drill"**: `ffi_readback_drill`; P2's deliberate misread.
+  Proof: test names; P2.
+- [ ] **Matrix "Reproducible build"** (APK): M7 (Deferred).
+- [ ] **CI:** the 14 required checks green at the final head with names unchanged; the Android job green at the final
+  head within its budget; `gates` <= 12 min and `test` <= 6 min; any emulator re-run logged.
+  Proof: run IDs and times.
+- [ ] **Definition of done:** tests alongside every commit; vectors wherever the docs define them; clippy, fmt, deny,
+  audit, vet and the banned-API gate clean; proof under Review; each stage's security review recorded.
+
+### New dependencies
+
+**How this was checked (2026-10-17)**
+- crates.io API reads (versions, dates, licences, dependencies); Google Maven and Maven Central `maven-metadata.xml`, POMs
+  and `Last-Modified` headers (HEAD requests); the SDK repository XML; the runner image README. Nothing was downloaded.
+- Cool-off cutoff today: 2026-10-03, re-checked at commit time; applied to Gradle and Maven artifacts too (Q54).
+
+**Rust**
+
+| Crate | Version | Published | Licence | Why | rand/log/network | Vet |
+| --- | --- | --- | --- | --- | --- | --- |
+| jni-sys | =0.3.0 | 2017-07-21 | MIT/Apache-2.0 | `jni.h`'s types and function table for keepcrypt-jni; no dependency, build script or feature | none | exemption with a review note |
+
+- **New workspace member:** keepcrypt-jni (ours). **New edges to locked crates:** keepcrypt-ffi -> zeroize,
+  qrcodegen-no-heap 1.8.1 (pi/app's, already exempted); keepcrypt-jni -> zeroize, keepcrypt-core; dev: sha2.
+- **Not added:** UniFFI (0.32.2: fastrand, a second getrandom dependent, MPL-2.0; 0.29.1: about 13 crates, MPL-2.0, a
+  45-crate bindgen with `log`, JNA); jni 0.22.4 (`log`); jni-sys 0.4.0 / 0.4.1 / 0.3.1 (jni-sys-macros, a proc macro,
+  for the same declarations); cargo-ndk 4.1.2 (a linker wrapper we do not need); rqrr 0.11.0 (a crate tree in the
+  shipped `.so`).
+
+**Gradle and Maven** (none in the Rust graph; runtime ones end up in the APK)
+
+| Artifact | Version | Published | Licence | Why |
+| --- | --- | --- | --- | --- |
+| Gradle (distribution, fetched by script, SHA-256 pinned) | 9.7.1 | 2026-08-19 | Apache-2.0 | build tool; 9.8.x is inside the cool-off [S15] |
+| com.android.application / library (AGP) | 9.3.3 | 2026-09-17 | Apache-2.0 | Android build; about 107 build-time modules, never shipped [S13] |
+| org.jetbrains.kotlin.plugin.compose | 2.4.20 | 2026-09-07 | Apache-2.0 | Compose compiler; Kotlin's tested range ends at AGP 9.3.1 / Gradle 9.7.0 [S14, S24] |
+| androidx.activity:activity-compose | 1.13.0 | 2026-03-11 | Apache-2.0 | `ComponentActivity`, `setContent`, result contracts, ViewModel [S13] |
+| androidx.compose.foundation:foundation (BOM 2026.09.00) | 1.12.1 | 2026-09-09 | Apache-2.0 | layout, text, input, Canvas; brings ui, runtime, graphics (graphics-path, a native library) [S13] |
+| com.google.zxing:core | 3.5.4 | 2025-11-11 | Apache-2.0 | go-ahead QR decoding; no dependencies [S14] |
+| androidx.test runner, core / ext-junit (tests only) | 1.7.0 / 1.3.0 | 2025-07-30 | Apache-2.0 | instrumentation [S13] |
+| androidx.test.uiautomator (tests only) | 2.4.0 | 2026-07-01 | Apache-2.0 | DocumentsUI, Home, the camera prompt, Public screens [S13] |
+| junit (+ hamcrest-core 1.3, tests only) | 4.13.2 | 2021-02-13 | EPL-1.0 (BSD-3-Clause) | JVM and instrumented tests [S14] |
+
+- About 60 transitive runtime modules (AndroidX, Kotlin stdlib 2.4.20, kotlinx-coroutines, annotations), all
+  Apache-2.0; the committed lockfiles and classpath list are the exact set. Checksums are reviewed per repository
+  (Google: SHA-256; Central: SHA-1 plus PGP signature, finding 11). **Excluded:** androidx.profileinstaller. **Not
+  added:** Material 3, navigation-compose, CameraX, ML Kit and Play services, JNA, a Compose UI-test library, Android
+  Test Orchestrator, actions/download-artifact or any other workflow action.
+- **SDK inputs** (preinstalled unless noted): NDK 30.0.16248370, platform 37, build-tools 36.0.0 (with `dexdump`),
+  JDK 17; installed by `sdkmanager` in CI: the emulator, `system-images;android-{31,36};default;x86_64` and one 16 KB
+  image (`system-images;android-36;google_apis_ps16k;x86_64`, about 1.85 GB, or the probe's pick).
+
+### Commit order on `m5-android`
+Each commit's proof runs at that commit. Each stage is reviewed (plan, security, recompute) before the next starts. The
+PR is a draft from commit 1. Review fixes are listed as N.b entries under the commit they amend.
+
+**Stage A: decisions, docs, hygiene**
+1. tasks/todo.md: the M5 plan and the owner's questions; the title becomes "milestones M0 to M5". 1b: the owner's
+   answers to Q53-Q63, quoted with the date, when they arrive.
+2. docs: the approved edits (group 1), alone. 2b: CLAUDE.md rules 8 and 1, if approved.
+3. .github/CODEOWNERS, .gitignore, scripts (the tracked-build-file rule) (group 2).
+
+**Stage B: gates and the platform probe (no Rust, no screens)**
+4. scripts: every Kotlin and Android rule with fixtures and canaries, before any Kotlin exists (group 3).
+5. mobile/android, scripts, .github: the Gradle project with every M5 dependency declared, three modules plus
+   `:capture-control`, SecureActivity and a static development-build screen (no native library yet), android-gradle.sh,
+   the workflow's build steps in bootstrap mode (group 4; the probe's build facts recorded).
+6. mobile/android, scripts: lockfiles, verification metadata and the classpath list from commit 5's run, reviewed by
+   android-deps-review.py; strict mode on; bootstrap switch removed (group 4).
+7. scripts, mobile/android/expected: `--apk`, `--selftest-apk`, the dex reference scan, the canary library, expected
+   manifests and native-lib list (group 5).
+8. .github, scripts, mobile/android: the emulator steps, instrumentation runner, capture harness, frame checker,
+   positive controls and first-frame test on the minimal app; the Android job's measured budget (group 6; the probe's
+   emulator facts recorded). Stage B's review compares every probe fact with this plan; a difference re-plans here.
+
+**Stage C: the FFI in Rust, tested on the Mac**
+9. ffi, ffi/jni (empty lib), Cargo.toml, Cargo.lock, deny.toml, supply-chain, scripts (canaries, check-path-deps), core
+   and pi/app lint blocks (group 7).
+10. ffi: the slot, stages, halts and refusals, the long-call rule, owned copies, with tests (groups 8, 11); the unsafe
+    canary moves to ceremony.rs.
+11. ffi: wire.rs and qr.rs, with byte-exact tests (group 9).
+12. ffi/jni: the exports, `guarded`, `JNI_OnLoad` (group 10).
+13. .github/workflows/entropy-ci.yml: NDK r30 (sdkmanager fallback), both `.so` builds and scans, the 16 KB and symbol
+    checks; `test`'s registry run (group 12).
+
+**Stage D: the Rust libraries in the app, protection**
+14. scripts, mobile/android, .github: android-rust.sh, `:core-ffi` with its JVM tests, libkeepcrypt in the APK and the
+    expected native-lib list, the real self-test, the ARM and 16 KB leg (groups 4, 13, 6; the strip fact recorded).
+15. mobile/android: `:secure-ui`, `CeremonyViewModel` skeleton, the crash path, `Timers` tests, discard during
+    "Working..." (group 14).
+
+**Stage E: the ceremony** (each commit adds its screens' emulator tests)
+16. Start screens to dice, the UI kit (group 15).
+17. The collision check without the camera (group 16).
+18. The camera scanner and its canned-frame test; CAMERA in the manifest and expected summaries (group 16). The owner's
+    P0b is issued from this commit's run.
+19. Privacy gate, words, read-back, summary, finish (group 17).
+20. Backup, Check a backup, the `age -d` hand-off (group 18).
+21. Watch-only, register, reveal D, snapshots, About, stop; the nothing-persisted listing (group 18).
+
+**Stage F: evidence**
+22. CLAUDE.md: Commands and the canaries count (group 19).
+23. tasks/todo.md: CI proof at the final head; P0-P5 issued.
+24. tasks/todo.md: the owner's reports, Review, the gate status MET, waiting for approval; the PR description lists the
+    gate evidence.
+
+### Owner phone checklists (gate evidence)
+Send back only: pass or fail, "matched", phone model and Android version, app and wallet versions, stopwatch times.
+Never send or photograph C, D, the rolls, the words or the backup passphrase of the throwaway seed, a Protected screen
+or the backup file; those stay on paper and the paper is destroyed after P2-P3. The gate seeds' rolls, words and Seal
+IDs are public vectors. The one exception, as in H4: Sparrow and Bitcoin Core read the account and descriptor QRs of the
+never-funded throwaway seed.
+
+**P0. Setup**
+- [ ] An Android 12+ phone (Q56), charged. The M4 computer with Sparrow 2.5.5, Bitcoin Core 31.1 and the C920, and an
+  offline computer with Python 3.9+ and verify.py from the final head's commit (the lead gives its SHA-256). Paper and
+  pen.
+- [ ] From the Android run the lead names: download both APKs and the P4 files; each `shasum -a 256` equals the run's
+  log; copy `with-dice-50.kcr` to the phone's Downloads; install the shipping APK (allow "Install unknown apps" for your
+  file manager only while installing).
+
+**P0b. Scanner smoke test (early, from commit 18's run; about 10 minutes)**
+- [ ] Install that run's test-registry APK (its strip reads TEST REGISTRY); airplane mode on, Wi-Fi off. Dice-only, 12
+  words, the 50 rolls `123456` repeated; before Check now, the Seal ID on the seal card equals `dice-50-words12`'s from
+  the lead (if not, a typing slip: start again). Check now; scan `goahead-collision-dice-50.png` on the computer screen:
+  "Match found", no words. Send pass or fail only. Uninstall the APK.
+
+**P1. Capture (shipping APK)**
+- [ ] On the dice screen, a words page and the backup passphrase: a hardware screenshot is blocked or black; a Quick
+  Settings screen recording is black on those screens; the recents card shows no content. On Android 15+, with a
+  recording running, a words page shows its "hidden while recording" cover.
+
+**P2. A throwaway ceremony (shipping APK)**
+- [ ] Airplane mode on, Wi-Fi off. New seed, 12 words.
+- [ ] At the Commitment screen, write C on paper.
+- [ ] Roll 50 real dice; write each roll on paper before tapping it.
+- [ ] At the check prompt, Skip (and confirm).
+- [ ] "I'm alone, show words"; copy the words. Read back from paper with one deliberate e/i misread first (it must be
+  named), then correctly.
+- [ ] Backup: write the 8-word passphrase on paper; confirm it; save to Downloads ("Backup verified").
+- [ ] Reveal D; write it on paper.
+- [ ] Go to P3 now, before Finish.
+
+**P3. Watch-only (same throwaway seed)**
+- [ ] Sparrow scans the account QR; its first receive address equals the wallet summary's. Bitcoin Core imports the
+  descriptor (H4's steps) with the same first address.
+- [ ] Finish. From Home, Check a backup with the saved file and the passphrase: "Backup OK", the same fingerprint and Seal
+  ID.
+- [ ] On the offline computer, `python3 -I tools/verify/verify.py mixed --words 12` with C, D and the rolls from paper
+  exits 0 with the same words and Seal ID.
+- [ ] Delete the backup file and destroy the paper.
+- [ ] In a later throwaway session, turning Wi-Fi on wipes it; leaving the app on a words page wipes it.
+
+**P4. The test registry** (a loaded snapshot or a pending 99-roll minimum lasts until the app's process ends). Before every
+scan or snapshot check, compare the seal card's Seal ID with the lead's value from `p4-seal-ids.txt`; if it differs, it
+was a typing slip: start again.
+- [ ] Uninstall the shipping APK; install the test-registry APK; airplane mode on, Wi-Fi off. Dice-only, 12 words, the 99
+  rolls `654321` repeated; Seal ID check; Check now; scan `goahead-clear-empty-bucket.png` on the computer screen: Stale
+  warning, then the words, which match kcr.json's `dice-99-words12`. Leave the app from that words page; on return the
+  session is gone.
+- [ ] Load `with-dice-50.kcr` (number, date, count and the Stale warning shown). Dice-only, 12 words, 50 rolls `123456`
+  repeated; Seal ID check; the check runs on its own: "Match found" with no words, the collision-report QR, "Add fresh
+  entropy" shows 0 / 99.
+- [ ] Force-stop the app and open it again. The same 50 rolls; Seal ID check; Check now; scan
+  `goahead-collision-dice-50.png`: "Match found", no words, 0 / 99.
+- [ ] Uninstall the test-registry APK.
+
+**P5. Second device (optional for the gate)**
+- [ ] P1 on a phone of the other brand, if you have one.
+
+### Critique log (2026-10-17)
+Each finding of the critique round and where it is resolved; none is rejected outright.
+- API 31 capture tests had no positive control (spec-security high; feasibility high, same issue): accepted. Control
+  (a), the capture-control APK on both APIs, plus (b), the drawn-screen proof before every capture; `disable_secure_windows`
+  is now an extra control on API 36 only; a missing control fails the job (group 6, finding 3).
+- Removing `catch_unwind` from ffi/clippy.toml lifted the ban for the whole safe layer: accepted. The boundary moves to
+  its own crate, keepcrypt-jni, and keepcrypt-ffi keeps core's clippy.toml and forbids unsafe. Part of the fix is changed:
+  `std::thread::spawn` cannot join the shared clippy list because core/tests/panic_wipe.rs:18 uses it and the files
+  must be identical. The gate therefore refuses `thread`/`JoinHandle` under `ffi/` instead (Built into this plan; groups
+  3, 7).
+- Local binary and remote build-script dependencies bypassed the supply-chain controls: accepted. KtSdk bans `files(`,
+  `fileTree(`, `apply(from`, `buildscript {`, `classpath(` and `srcDir` into build/; KtBinary refuses tracked binaries
+  under mobile/ (group 3).
+- The `build/` skip was a CI-only blind spot: accepted. The skip is dropped and tracked files under build/ and .gradle/
+  are refused (group 2).
+- MA:74's Pixel-and-Samsung adb test was not in any question: accepted. MA:74 joins Q55's doc edit; Pixel and Samsung go
+  to M7 before release (Q55, Q56).
+- The boot path was called proven while ARM and 16 KB loading first ran on the owner's phone: accepted. An ARM and 16 KB
+  leg runs on a ps16k image with translation if the probe finds it, plus static ELF checks. Lessons item 4 now names
+  what CI cannot run, and Q56 asks about it.
+- Rule 1 and library classes in an unshrunk APK: accepted. Q59 (b) asks for the reading, and the dex reference scan of
+  `com.keepcrypt` classes lands in M5 (group 5).
+- Doc edits and departures with no question: accepted. BP:270 joins Q57. The phone snapshot confirm is dropped to match
+  MA:176 and swb:121 (automatic, warning shown). Q53's edit list adds BP:73, MA:23's iOS cell and a line under
+  architecture.png, which has no source to redraw.
+- A discard during a long FFI call was undefined: accepted. Generation counter with the lock released during the call,
+  plus FFI and emulator tests (Built into this plan; groups 8, 14).
+- The `age -d` passphrase channel was undefined (raised twice): accepted. An androidTest-only status key piped into the
+  pty driver, never logged, with a gate rule pinning where it appears (groups 3, 18).
+- Tombstones, vendor swap and the contradictory crash-path text: accepted. One crash design (replaced handler, nothing
+  logged, crash buffer and DropBox checked); tombstones and swap are in Q58 as residuals.
+- Content capture was not addressed: accepted. A root opt-out flag and an emulator check (finding 10; group 14).
+- The 16 KB check missed graphics-path: accepted. Every 64-bit `.so` in the APK is checked (group 5).
+- No overflow checks in ffi: accepted, for both FFI crates, with the canary profile pin (group 7).
+- Wrong jni-sys history: corrected (0.4.0, 2023-09-25, already needs jni-sys-macros; finding 1, New dependencies).
+- Emulator jobs could not receive the build job's APKs: accepted, option (a). One job builds once and runs the emulators
+  in turn on the same bytes; no fourth action (Built into this plan; group 6).
+- screenrecord's 180 s cap and raw-frame volume: accepted. Segments of 170 s or less at a small size, streamed through a
+  checker that keeps nothing; the limits are probe facts (finding 7; group 6).
+- Process-global slot vs one instrumentation run; no driving mechanism stated: accepted. `am instrument` per class and
+  per halting test, the crash test judged from the shell, in-process ViewModel driving plus UiAutomator on Public
+  screens; data-sensitive visibility is a probe fact (group 6).
+- Strict locking could not be green at commit 10: accepted. All dependencies are declared up front, with a two-commit
+  bootstrap and a gate rule against a leftover switch (group 4).
+- No `.sha256` on Maven Central: accepted. Review per repository (SHA-1 plus PGP for Central) by a committed script
+  (finding 11; group 4).
+- Platform facts arrived after dependent work: accepted. Stage B is now the gates plus a minimal app and emulator probe
+  before any Rust or screen code; it is a stage on the milestone branch, because CLAUDE.md allows one branch per
+  milestone, so there is no throwaway PR.
+- The Camera2 scanner was first tested at the very end: accepted. Canned YUV-frame JVM tests and the owner's P0b right
+  after commit 18 (group 16).
+- P2 and P3 could not be completed as written: accepted. Rewritten in order, with C, the rolls, the passphrase and D on
+  paper.
+- P4 typing slips were ambiguous: accepted. A Seal ID check against `p4-seal-ids.txt` before every check.
+- Commits that could not pass their own proof: resolved by the new order. The unsafe canary is placed at commit 9 in
+  lib.rs and moved at 10; `nm -D` is at commit 13 in the cross legs; the static first screen comes before the real
+  self-test at 14.
+- Test-source scope and the passphrase hand-off: accepted. Scoped rule lists with fixtures (group 3); hand-off as above.
+- NDK rotation and AGP's default NDK: accepted. `ndkVersion` is pinned and the cross legs install r30 with sdkmanager
+  if it is missing (groups 4, 12).
+- No Android job budget, timeout or flake rule: accepted. Measured budget, `timeout-minutes`, image and Gradle caches,
+  and a one-re-run rule for boot failures only (Built into this plan).
+
+### Sources (outside facts above; read 2026-10-17, nothing downloaded)
+- [S1] https://crates.io/api/v1/crates/uniffi/0.32.2/dependencies
+- [S2] https://crates.io/api/v1/crates/uniffi_pipeline/0.32.2/dependencies
+- [S3] https://crates.io/api/v1/crates/tempfile/3.27.0/dependencies, https://docs.rs/crate/tempfile/3.27.0/features
+- [S4] https://crates.io/api/v1/crates/uniffi/0.29.1/dependencies, https://raw.githubusercontent.com/mozilla/uniffi-rs/main/CHANGELOG.md,
+  https://mozilla.github.io/uniffi-rs/latest/kotlin/gradle.html, https://repo1.maven.org/maven2/net/java/dev/jna/jna/maven-metadata.xml
+- [S5] https://crates.io/api/v1/crates/jni/0.22.4/dependencies
+- [S6] https://crates.io/api/v1/crates/jni-sys (0.3.0 2017-07-21; 0.4.0 2023-09-25 and 0.4.1 2026-01-09 -> jni-sys-macros;
+  0.3.1 2026-03-22 re-exports 0.4), https://crates.io/api/v1/crates/jni-sys/0.4.0/dependencies
+- [S7] https://blog.rust-lang.org/2024/09/05/Rust-1.81.0/; Rust 1.98.1 library/std/src/sys/personality/gcc.rs:224-229,
+  library/std/src/panicking.rs:886-889
+- [S8] AOSP SurfaceFlinger.cpp:7110-7111, :7250-7251; packages/Shell/AndroidManifest.xml:199-200;
+  UiAutomationConnection.java:229-249
+- [S9] AOSP WindowManagerService.java:1029-1048; WindowState.java:1940-1946; Settings.java `DISABLE_SECURE_WINDOWS`
+- [S10] AOSP PopupWindow.java:1654-1695; https://developer.android.com/about/versions/11/behavior-changes-11
+- [S11] https://developer.android.com/reference/kotlin/androidx/compose/ui/window/DialogProperties (default `Inherit`)
+- [S12] androidx ProfileInstaller.java:64-65, :391-392; androidx.core and androidx.startup manifests
+- [S13] https://dl.google.com/dl/android/maven2/ metadata and POMs: compose foundation and ui 1.12.1, activity-compose
+  1.13.0, AGP 9.3.3, ui-graphics-android 1.12.1 -> graphics-path 1.0.1, androidx.test runner 1.7.0, uiautomator 2.4.0
+- [S14] https://repo1.maven.org/maven2/ metadata and POMs: zxing core 3.5.4, Kotlin Compose plugin 2.4.20, junit 4.13.2
+- [S15] https://gradle.org/releases/ (9.7.1, 2026-08-19)
+- [S16] https://developer.android.com/ndk/downloads ("Latest LTS Version (r30)", 30.0.16248370)
+- [S17] https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md (image 20261012)
+- [S18] https://github.blog/changelog/2024-04-02-github-actions-hardware-accelerated-android-virtualization-now-available/
+- [S19] https://developer.android.com/guide/practices/page-sizes
+- [S20] https://developer.android.com/google/play/requirements/target-sdk
+- [S21] AOSP frameworks/av cmds/screenrecord/screenrecord.cpp:102, :1330, :1363-1364
+- [S22] AOSP ScreenRecordingCallbackController.java:71-94
+- [S24] https://kotlinlang.org/docs/gradle-configure-project.html (Kotlin Gradle plugin compatibility)
+- [S25] https://developer.android.com/develop/ui/compose/compiler (Compose 1.12 needs compileSdk 37 and AGP 9)
+- [S26] AOSP Settings.java (`AIRPLANE_MODE_ON`, `WIFI_ON` readable)
+- [S27] https://docs.gradle.org/current/userguide/dependency_verification.html (checksums and trusted PGP keys)
+- [S28] https://f-droid.org/docs/Reproducible_Builds/
+- [S29] https://github.com/sparrowwallet/sparrow/releases (Sparrow 2.5.5, 2026-09-17)
+- [S30] AOSP change "Add secure setting disable_secure_windows", bug 309153458
+  (https://gerrit.omnirom.org/plugins/gitiles/android_frameworks_base/+/95082e1306f24fa60b80a78ad033036efbc2f5e5%5E2)
+- [S31] https://dl.google.com/android/repository/sys-img/ `sys-img2-5` (default, google_apis, google_apis_ps16k image lists
+  and sizes); AOSP ViewRootImpl.java:5509-5539, ContentCaptureContext.java (`FLAG_DISABLED_BY_FLAG_SECURE`)
+- [S32] HEAD requests on repo1.maven.org for `.sha256`, `.sha1`, `.asc` (kotlin-stdlib 2.4.20, junit 4.13.2, zxing core
+  3.5.4) and dl.google.com (activity-compose 1.13.0)
 
 ## Review
 _Added after completion, with pasted proof for every ticked item._

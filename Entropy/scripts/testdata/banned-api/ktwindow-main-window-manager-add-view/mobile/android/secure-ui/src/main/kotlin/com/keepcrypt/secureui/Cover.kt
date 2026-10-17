@@ -1,0 +1,1 @@
+windowManager.addView(cover, params)

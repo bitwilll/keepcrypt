@@ -1,0 +1,1 @@
+val dir = Environment.getExternalStorageDirectory()

@@ -2,6 +2,21 @@
 # Release artifacts come from CI only, so a local test-sources build never reaches git (rule 10).
 target/
 
+# The Android app's build output (tasks/todo.md, M5 group 2): every module's build/ at any depth
+# under mobile/android/ (the plan's scripts/android-rust.sh, M5 commit 14, will write libkeepcrypt.so
+# to app/build/rust/), and any jniLibs/ directory as a guard, since the plan packages the libraries
+# from app/build/rust/ and never from a source tree. The gate refuses a tracked file under
+# mobile/**/build/ or mobile/**/.gradle/ (scripts/banned-api-check.sh, Build), so an ignore here
+# hides nothing from CI.
+mobile/android/**/build/
+mobile/android/**/jniLibs/
+# Gradle's per-project cache, and the Android SDK path of one machine.
+.gradle/
+local.properties
+# Built packages: every APK and AAB comes from CI (rule 10, as target/ above).
+*.apk
+*.aab
+
 # macOS Finder metadata; it leaks folder names (Git: small, focused commits).
 .DS_Store
 
