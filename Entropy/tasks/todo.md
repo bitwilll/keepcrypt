@@ -10798,8 +10798,13 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   `cargo test --workspace --locked` (21 suites, 445 passed, 3 ignored) and the test-sources run (17 suites, 269 passed,
   1 ignored) unchanged. The citations above stay main's at 95c4359; against it, BP lines from :35 now sit 2 lower and
   from :48 3 lower, MA lines from :35 2 lower, swb unchanged.
-- [ ] CLAUDE.md rule 8 gains Q59 (a)'s sentence and rule 1 Q59 (b)'s, if approved, in their own commit.
+- [x] CLAUDE.md rule 8 gains Q59 (a)'s sentence and rule 1 Q59 (b)'s, if approved, in their own commit.
   Proof: the diff touches only those rules' lines.
+  Proof (M5 commit 2b, 424b008): `git diff --name-only HEAD~1 HEAD` lists CLAUDE.md only, and `git diff -U0` shows two
+  hunks, rule 1's :49 (+3 lines) and rule 8's :71 (+2 lines), the new lines 88-96 columns wide; nothing in scripts/ or
+  tools/ pins CLAUDE.md's text (grep: comments only, plus the gate's skip of `./CLAUDE.md` and its selftest fixture);
+  `banned-api-check.sh` clean (241 files) and `--selftest` 698 passed, 0 failed; fmt, both clippy commands, `cargo test
+  --workspace --locked` (445 passed, 3 ignored) and the test-sources run (269 passed, 1 ignored) unchanged.
 
 **2. Repo hygiene**
 - [ ] `.github/CODEOWNERS` gains `/Entropy/mobile/` (Q54). `.gitignore` gains `mobile/android/**/build/`, `.gradle/`,
