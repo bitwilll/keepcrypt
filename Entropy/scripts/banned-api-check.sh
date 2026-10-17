@@ -394,13 +394,15 @@
 #              this rule could not clear them.
 #   Kotlin and Android (tasks/todo.md, M5 group 3; Q55), on every scanned file under
 #              mobile/android (Kotlin, Java, XML, Gradle files, lockfiles), by scope: src/test
-#              and src/androidTest of any module (exactly those source sets; src/testRegistry/
-#              ships) skip KtIntent, KtStorage, KtDevice, KtFailOpen's catch list and KtInput's
-#              Activity rule; mobile/android/capture-control (the CI-only positive control,
-#              never shipped) skips only the FLAG_SECURE rule (KtWindow's securePolicy) and the
-#              Activity rule; every other file gets every rule. The named files below are the
-#              app's (mobile/android/app/src/main/.../NAME, at any depth under main/) unless
-#              secure-ui's is named.
+#              and src/androidTest right under a module's directory (mobile/android/<module>/,
+#              exactly those source sets: src/withTestRegistry/ is a flavour's and ships, and a
+#              src/test/ directory deeper down, under src/main/kotlin/ say, is compiled into the
+#              app and is shipping code) skip KtIntent, KtStorage, KtDevice, KtFailOpen's catch
+#              list and KtInput's Activity rule; mobile/android/capture-control (the CI-only
+#              positive control, never shipped) skips only the FLAG_SECURE rule (KtWindow's
+#              securePolicy) and the Activity rule; every other file gets every rule. The named
+#              files below are the app's (mobile/android/app/src/main/.../NAME, at any depth under
+#              main/) unless secure-ui's is named.
 #   KtLog      Log (android.util.Log, Log.v/d/i/w/e/wtf( ), println( and print(, System.out,
 #              System.err, printStackTrace, Timber, java.util.logging, slf4j, and a $ template in a
 #              string on a line that calls error(, check(, require(, checkNotNull( or
@@ -1630,13 +1632,18 @@ EOF
         ;;
     esac
     # Kotlin and Android: every file under mobile/android, by scope. src/test and src/androidTest
-    # (exactly those source sets: src/testRegistry/ ships) skip KtIntent, KtStorage, KtDevice,
-    # KtFailOpen's catch list and KtInput's Activity rule; :capture-control skips only the
-    # FLAG_SECURE and Activity rules; every other file, build files included, gets every rule.
+    # right under a module's directory (exactly those source sets: src/withTestRegistry/ ships)
+    # skip KtIntent, KtStorage, KtDevice, KtFailOpen's catch list and KtInput's Activity rule;
+    # :capture-control skips only the FLAG_SECURE and Activity rules; every other file, build
+    # files included, gets every rule. The module is the one path segment after mobile/android/,
+    # matched as a literal: a pattern's * would also match /, so .../src/main/kotlin/x/src/test/
+    # would pass as a test source set although Gradle compiles it into the app.
     case $rel in
       mobile/android/*)
+        ktmod=${rel#mobile/android/}
+        ktmod=${ktmod%%/*}
         case $rel in
-          mobile/android/*/src/test/* | mobile/android/*/src/androidTest/*) ktscope=test ;;
+          "mobile/android/$ktmod/src/test/"* | "mobile/android/$ktmod/src/androidTest/"*) ktscope=test ;;
           mobile/android/capture-control/*) ktscope=capture ;;
           *) ktscope=main ;;
         esac
