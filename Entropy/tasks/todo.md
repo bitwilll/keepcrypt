@@ -10812,7 +10812,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   Proof: `gh api repos/bitwilll/keepcrypt/codeowners/errors` lists 0 errors; `git check-ignore` on one path of each.
   Proof (M5 commit 3, partial): `git check-ignore -v` resolves `mobile/android/app/build/x.kt` and
   `mobile/android/build/x` to `mobile/android/**/build/`, `.../src/main/jniLibs/arm64-v8a/libkeepcrypt.so` to
-  `mobile/android/**/jniLibs/` (the guard: android-rust.sh writes to `app/build/rust/`, already under `build/`),
+  `mobile/android/**/jniLibs/` (the guard: the plan's android-rust.sh, commit 14, will write to `app/build/rust/`,
+  already under `build/`),
   `mobile/android/.gradle/x` to `.gradle/`, `mobile/android/local.properties`, `a.apk`, `a.aab`, and `a.jks` and
   `a.keystore` to the `*.jks` and `*.keystore` lines Entropy/.gitignore already had (lines 34-35); `app/build.gradle.kts`
   and `buildSrc/x.kt` are not ignored. `gh api repos/bitwilll/keepcrypt/codeowners/errors` gives `{"errors":[]}`, but
