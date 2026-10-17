@@ -1,0 +1,221 @@
+# KeepCrypt-Entropy Android (Entropy/tasks/todo.md, M5 groups 4-6; Q54, Q55): the Android app,
+# Entropy/mobile/android, built once in one job. As the plan's commits land, the same job builds
+# the Rust libraries, checks and scans the APKs, signs them with a throwaway key and then runs the
+# emulators one after another on those same bytes, so the hashes printed for the owner are the
+# ones tested (no artifact passes between jobs, so no fourth action is needed).
+#
+# This is commit 5's job, the bootstrap (M5 group 4): it builds the shipping and test-registry
+# APKs (the release build type of :app's flavours shipping and withTestRegistry, neither
+# debuggable, unsigned until the signing step comes), :app's instrumented-test APK for each, and
+# :capture-control's APK, and runs the JVM tests, all with -Pkc.bootstrap=true, --write-locks and
+# --write-verification-metadata sha256: strict locking and dependency verification are off, and
+# Gradle writes the lockfiles and gradle/verification-metadata.xml, which are uploaded as an
+# artifact for review. Commit 6 commits the reviewed files, turns strict locking and verification
+# on and removes the switch. The run also prints the platform probe's build facts (JDK, SDK, NDK,
+# Gradle, the plugins, each APK's files, native libraries and manifest) for the lead's record in
+# tasks/todo.md's Review.
+#
+# Not one of the 14 required checks (Q55), so path filters are safe, as in entropy-pi-image.yml:
+# a skipped run never leaves a required check pending. The rule instead (Q38 (b)): no PR that
+# touches these paths merges without a green run of this workflow on its final head.
+#
+# Hardening, as in entropy-ci.yml, whose gates job checks this file too (banned-api-check.sh
+# --workflows): read-only token and no secret; only actions/checkout and actions/upload-artifact,
+# pinned by commit SHA; no event data inside run scripts (it reaches them through env and with
+# only). Gradle comes from scripts/android-gradle.sh (pinned SHA-256, no wrapper jar), with only
+# Google's Maven and Maven Central (mobile/android/settings.gradle.kts), no JDK or SDK download,
+# no daemon and no build scan. The job builds a PR's head commit, never GitHub's merge commit, or
+# the pushed, scheduled or dispatched commit, and prints the commit it built.
+
+name: Entropy Android
+
+on:
+  pull_request:
+    paths:
+      - 'Entropy/mobile/**'
+      - 'Entropy/ffi/**'
+      - 'Entropy/core/**'
+      - 'Entropy/Cargo.lock'
+      - 'Entropy/rust-toolchain.toml'
+      - 'Entropy/vectors/**'
+      - 'Entropy/scripts/banned-api-check.sh'
+      - 'Entropy/scripts/android-*'
+      - '.github/workflows/entropy-android.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Entropy/mobile/**'
+      - 'Entropy/ffi/**'
+      - 'Entropy/core/**'
+      - 'Entropy/Cargo.lock'
+      - 'Entropy/rust-toolchain.toml'
+      - 'Entropy/vectors/**'
+      - 'Entropy/scripts/banned-api-check.sh'
+      - 'Entropy/scripts/android-*'
+      - '.github/workflows/entropy-android.yml'
+  schedule:
+    # Weekly (Mondays, 05:41 UTC): main still builds, from fresh downloads.
+    - cron: '41 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # A newer PR run cancels the older one; any other run always finishes, as in entropy-ci.yml.
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    # Explicit bash runs with -eo pipefail: any failing command fails the step.
+    shell: bash
+    working-directory: Entropy
+
+jobs:
+  android:
+    name: android (build, emulators)
+    runs-on: ubuntu-24.04
+    # A first bound for the build alone; commit 8 sets the job's budget from its measured time
+    # plus 25%, with a 90-minute ceiling (tasks/todo.md, M5 "Budgets").
+    timeout-minutes: 60
+    env:
+      # The SDK pieces the build uses (mobile/android/gradle/libs.versions.toml), checked below.
+      KC_BUILD_TOOLS: 36.0.0
+      KC_NDK: 30.0.16248370
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      # Gradle 9 and the Android Gradle plugin 9 run on JDK 17, the runner's default; it is named
+      # explicitly, and nothing downloads another (auto-download is off in gradle.properties). The
+      # NDK r30 and build-tools 36.0.0 must be the runner's own: the build installs nothing
+      # (android.builder.sdkDownload=false), and a missing one fails here, never falls back.
+      - name: Build facts (the runner, JDK 17, the Android SDK, build-tools and NDK r30)
+        run: |
+          fail() { echo "FAIL: build facts: $1" >&2; exit 1; }
+          echo "commit: $(git rev-parse HEAD)"
+          echo "ImageOS: $ImageOS"
+          echo "ImageVersion: $ImageVersion"
+          df -h
+          [ -n "${JAVA_HOME_17_X64:-}" ] && [ -x "$JAVA_HOME_17_X64/bin/java" ] || fail "no JDK 17 (JAVA_HOME_17_X64)"
+          "$JAVA_HOME_17_X64/bin/java" -version 2>&1 | tee "$RUNNER_TEMP/java-version"
+          grep -q '^openjdk version "17[.]' "$RUNNER_TEMP/java-version" || fail "JAVA_HOME_17_X64 is not a JDK 17"
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          sdk=${ANDROID_HOME:-}
+          [ -n "$sdk" ] && [ -d "$sdk" ] || fail "no Android SDK (ANDROID_HOME)"
+          echo "ANDROID_HOME: $sdk"
+          echo "ANDROID_SDK_ROOT: ${ANDROID_SDK_ROOT:-}"
+          echo "== platforms"
+          ls "$sdk/platforms"
+          echo "== build-tools"
+          ls "$sdk/build-tools"
+          echo "== ndk"
+          ls "$sdk/ndk"
+          echo "ANDROID_NDK_HOME (the image's default NDK): ${ANDROID_NDK_HOME:-}"
+          props=$sdk/ndk/$KC_NDK/source.properties
+          [ -f "$props" ] || fail "no NDK $KC_NDK ($props)"
+          cat "$props"
+          grep -q "^Pkg[.]Revision = $KC_NDK\$" "$props" || fail "$props is not NDK $KC_NDK"
+          bt=$sdk/build-tools/$KC_BUILD_TOOLS
+          [ -x "$bt/aapt2" ] || fail "no build-tools $KC_BUILD_TOOLS ($bt)"
+          echo "== tools"
+          echo "aapt2: $("$bt/aapt2" version 2>&1)"
+          echo "apksigner: $("$bt/apksigner" --version 2>&1)"
+          for t in zipalign dexdump; do
+            [ -x "$bt/$t" ] || fail "no $t in build-tools $KC_BUILD_TOOLS"
+            echo "$t: $bt/$t"
+          done
+          readelf=$sdk/ndk/$KC_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf
+          [ -x "$readelf" ] || fail "no llvm-readelf in NDK $KC_NDK"
+          "$readelf" --version | head -n 2
+          sdkmanager=$sdk/cmdline-tools/latest/bin/sdkmanager
+          [ -x "$sdkmanager" ] || fail "no sdkmanager ($sdkmanager)"
+          echo "== sdkmanager --list_installed"
+          "$sdkmanager" --list_installed
+          echo "== system images sdkmanager offers"
+          "$sdkmanager" --list | grep -E '^[[:space:]]*system-images;' | sort -u
+      # The Android SDK licence (Q54: the owner accepted it for CI, 2026-10-17). The runner image
+      # ships its SDK with the licences already accepted, so this step normally only lists the
+      # files in $ANDROID_HOME/licenses. If android-sdk-license is missing, sdkmanager --licenses
+      # writes the licence hash files there, answering yes to each licence; nothing is installed.
+      - name: Android SDK licences (Q54)
+        run: |
+          lic=$ANDROID_HOME/licenses
+          if [ -f "$lic/android-sdk-license" ]; then
+            echo "already accepted on the runner:"
+          else
+            echo "android-sdk-license missing: accepting with sdkmanager --licenses"
+            { yes || :; } | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
+          fi
+          ls "$lic"
+      - name: Gradle (scripts/android-gradle.sh --version)
+        run: sh scripts/android-gradle.sh --version
+      # The bootstrap build (group 4): buildEnvironment and every module's dependencies report (the
+      # plugin classpath and every configuration, the probe's Kotlin plugin version and resolved
+      # runtime classpath among them), the APKs and the JVM tests, in one Gradle run, so every
+      # configuration a later strict run resolves gets its lock state here. The whole log is kept
+      # for the artifact. A Gradle failure fails the step.
+      - name: Bootstrap build (lockfiles and verification metadata written; locking and verification off)
+        run: |
+          out=mobile/android/build/kc-bootstrap
+          mkdir -p "$out"
+          if ! sh scripts/android-gradle.sh -Pkc.bootstrap=true --write-locks --write-verification-metadata sha256 \
+            buildEnvironment \
+            :core-ffi:dependencies :secure-ui:dependencies :app:dependencies :capture-control:dependencies \
+            :app:assembleShippingRelease :app:assembleWithTestRegistryRelease \
+            :app:assembleShippingReleaseAndroidTest :app:assembleWithTestRegistryReleaseAndroidTest \
+            :capture-control:assembleRelease \
+            test 2>&1 | tee "$out/gradle.log"; then
+            echo "FAIL: the bootstrap build failed (above)" >&2
+            exit 1
+          fi
+      # The probe's APK facts (M5 group 0): each APK's SHA-256 and size, its file list, every native
+      # library with the alignment of each LOAD segment, and aapt2's view of its package, SDKs,
+      # permissions and merged manifest (components and their exported flags, receivers and
+      # providers included). Listed, not judged: commit 7's --apk check compares them with the
+      # reviewed expected files. Exactly the five APKs this build makes must exist.
+      - name: Build facts (the APKs)
+        run: |
+          fail() { echo "FAIL: APK facts: $1" >&2; exit 1; }
+          bt=$ANDROID_HOME/build-tools/$KC_BUILD_TOOLS
+          readelf=$ANDROID_HOME/ndk/$KC_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf
+          shopt -s nullglob globstar
+          apks=(mobile/android/app/build/outputs/apk/**/*.apk mobile/android/capture-control/build/outputs/apk/**/*.apk)
+          [ "${#apks[@]}" -eq 5 ] || fail "not exactly five APKs: ${apks[*]}"
+          for apk in "${apks[@]}"; do
+            echo "======== $apk"
+            size=$(wc -c < "$apk")
+            echo "size: $((size)) bytes"
+            sha256sum "$apk"
+            echo "== files"
+            unzip -Z1 "$apk" | sort
+            echo "== native libraries (LOAD alignment)"
+            dir=$(mktemp -d)
+            unzip -q "$apk" 'lib/*' -d "$dir" || [ "$?" -eq 11 ]
+            for so in "$dir"/lib/*/*.so; do
+              echo "${so#"$dir"/}: $(sha256sum < "$so" | cut -d ' ' -f 1)"
+              "$readelf" -lW "$so" | grep -E '^[[:space:]]*LOAD'
+            done
+            rm -rf "$dir"
+            echo "== aapt2 dump badging"
+            "$bt/aapt2" dump badging "$apk"
+            echo "== aapt2 dump permissions"
+            "$bt/aapt2" dump permissions "$apk"
+            echo "== aapt2 dump xmltree AndroidManifest.xml"
+            "$bt/aapt2" dump xmltree --file AndroidManifest.xml "$apk"
+          done
+      # The files commit 6 reviews and commits (kept 14 days): every module's gradle.lockfile, the
+      # verification metadata (SHA-256 of every artifact, plugin and POM the build fetched) and
+      # the build's log with the buildEnvironment and dependencies reports.
+      - name: Upload the bootstrap files (lockfiles, verification metadata, log)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-bootstrap
+          path: |
+            Entropy/mobile/android/**/gradle.lockfile
+            Entropy/mobile/android/gradle/verification-metadata.xml
+            Entropy/mobile/android/build/kc-bootstrap/gradle.log
+          retention-days: 14
+          if-no-files-found: error

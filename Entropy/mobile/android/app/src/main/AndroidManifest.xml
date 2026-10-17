@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The app's manifest (rule 9; tasks/todo.md, M5 group 5; docs/mobile-apps.md, "Architecture"):
+     no network permission, ever (a library that asks for one is rejected, never stripped); two
+     permissions for the capture protection, HIDE_OVERLAY_WINDOWS (Android 12) and
+     DETECT_SCREEN_RECORDING (Android 15); CAMERA comes with the go-ahead scanner (commit 18).
+     Nothing is backed up (allowBackup, fullBackupContent and the data extraction rules) and no
+     cleartext traffic is allowed. One exported activity, the launcher. The one removal is the
+     androidx.startup provider, which would run library initializers at start; profileinstaller,
+     the one that writes files, is excluded from every configuration (build.gradle.kts). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
+    <uses-permission android:name="android.permission.DETECT_SCREEN_RECORDING" />
+
+    <application
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:usesCleartextTraffic="false"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.KeepCrypt">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <provider android:name="androidx.startup.InitializationProvider" android:authorities="${applicationId}.androidx-startup" tools:node="remove" />
+    </application>
+</manifest>
