@@ -10450,6 +10450,22 @@ milestones.
   the plan builds no dialogs, and MA:70's rule is kept as the guard the gate enforces.
 - M5-5 (2026-10-17): a plan entry whose Proof constrains the diff (docs only; only the rules' lines) lands as two commits,
   the change and then its tick in tasks/todo.md (2 = 73466b6 + f80c87f, 2b = 424b008 + 234edec), as M3 and M4 did.
+- M5-6 (2026-10-18): the test-registry flavour is named `withTestRegistry` (source set `src/withTestRegistry/`), because AGP
+  refuses flavour names that start with "test". Its app id stays `com.keepcrypt.entropy.testregistry` (Q62); the plan's
+  "testRegistry flavour" means this one.
+- M5-7 (2026-10-18): the root build keeps `org.jetbrains.kotlin.android` 2.4.20 with `apply false`. AGP 9.3.3 compiles
+  Kotlin itself and asks for kotlin-gradle-plugin 2.2.10; the marker resolves it to 2.4.20, the Kotlin Q54 approved and the
+  version the Compose compiler plugin 2.4.20 needs (run 39062895784). It is a build-time pin, never applied to a module,
+  so the modules still apply only AGP and the Compose compiler plugin.
+- M5-8 (2026-10-18): the gate's ban on the identifiers `thread` and `JoinHandle` covers the shipped FFI sources
+  (`ffi/src/`, `ffi/jni/src/`), not integration tests under `ffi/tests/` or `ffi/jni/tests/`, because group 8's
+  `ffi_discard_during_call` needs a second thread (`std::thread::scope`). A test thread cannot turn a shipped panic into
+  a value; the shipped crates stay banned. Changed in Stage C before commit 10.
+- M5-9 (2026-10-18): `scripts/android-rust.sh` (commit 14) writes `libkeepcrypt.so` to `app/src/<flavour>/jniLibs/<abi>/`,
+  Gradle's default native-library source set, instead of `app/build/rust/`. No `srcDir` line is needed, so the KtSdk
+  rule stays as it is; `.gitignore` already ignores `mobile/android/**/jniLibs/` and KtBinary refuses a tracked `.so`.
+- M5-10 (2026-10-18): the APKs carry exactly MA:23's three ABIs (arm64-v8a, armeabi-v7a, x86_64): `abiFilters` in commit
+  6, so graphics-path's x86 copy leaves the APK.
 
 Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). Once M4b merges, build-plan.md lines from
 293 on move down one (the M5 row becomes BP:296).
@@ -10793,6 +10809,26 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   (translation). From commit 14: whether AGP strips `libkeepcrypt.so` without `keepDebugSymbols`.
   Proof: each fact with its run ID under Review; any fact that differs from this plan stops the stage for a re-plan
   before Stage C.
+  Proof (M5 commit 4c, partial: the build facts; the emulator facts come with commit 8): Entropy Android 39062895784 at
+  bee6877 (bootstrap mode), image ubuntu24 20261012.334.1, 86 GB free. JDK Temurin 17.0.20.1; Gradle 9.7.1; platforms
+  android-34 .. android-37.2 (compileSdk 37 resolves); build-tools 34.0.0 .. 37.0.0 (36.0.0 used: aapt2 2.20-13193326,
+  apksigner 0.9, zipalign, dexdump); NDK 27.3.13750724 (`$ANDROID_NDK_HOME`, the default), 29.0.14206865 and
+  30.0.16248370 (r30, `source.properties` checked), llvm-readelf from LLVM 21.0.0. `buildEnvironment`: AGP 9.3.3 asks for
+  kotlin-gradle-plugin 2.2.10, resolved to 2.4.20 by the root's pin (lead decision M5-7). BUILD SUCCESSFUL in 2 min 42
+  s: both flavours' release APKs (unsigned), both androidTest APKs, capture-control. Shipping APK (18,649,012 bytes,
+  `com.keepcrypt.entropy`, versionName 0.0.0, min 31, target 36, compile 37): permissions exactly HIDE_OVERLAY_WINDOWS,
+  DETECT_SCREEN_RECORDING and androidx.core's `com.keepcrypt.entropy.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` (declared
+  and used); no INTERNET; allowBackup, fullBackupContent and usesCleartextTraffic false, dataExtractionRules set,
+  extractNativeLibs false; one activity (MainActivity, exported launcher); no provider, receiver or service. Native
+  libraries: only graphics-path, `lib/{arm64-v8a,armeabi-v7a,x86,x86_64}/libandroidx.graphics.path.so` (SHA-256 41e9a793...,
+  41399eba..., eb0570b4..., 4e56c996...), every LOAD segment 0x4000-aligned; the x86 copy is outside MA:23's three ABIs
+  (lead decision M5-10). The shipping runtime classpath (the lockfile's `shippingReleaseRuntimeClasspath`) is 91
+  modules, not Q54's "about 60": AndroidX (activity, annotation, arch.core, autofill, collection, compose animation,
+  foundation, runtime and ui, concurrent, core, customview, emoji2, graphics, interpolator, lifecycle, navigationevent,
+  savedstate, startup, tracing, versionedparcelable, window), Guava's listenablefuture, ZXing core, Kotlin stdlib,
+  kotlinx-coroutines and serialization, JetBrains annotations and JSpecify; no profileinstaller, Material or navigation
+  library; every licence is checked by commit 6's review script. Bootstrap files kept at the session's
+  `plans/android-bootstrap-39062895784/` (artifact `android-bootstrap`, 454 components in verification-metadata.xml).
 
 **1. Doc and rule edits, alone (only those approved)**
 - [x] One commit changes only `docs/`: BP:35, :47, :72, :73, :74, MA:17 and both columns of MA:23, plus a line under
@@ -10856,7 +10892,7 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   left in TMPDIR.
 
 **3. Kotlin and Android gate rules (Q55; before any Kotlin lands)**
-- [ ] New categories, each with hit and clean fixtures under `scripts/testdata/banned-api/`, covering `mobile/android/**`
+- [x] New categories, each with hit and clean fixtures under `scripts/testdata/banned-api/`, covering `mobile/android/**`
   (`.kt`, `.kts`, `.xml`, lockfiles, `libs.versions.toml`). Shipping sources (`src/main`) get every rule; `src/test` and
   `src/androidTest` get KtLog, RNG, network, clipboard, KtSdk and KtWindow, and are exempt only from KtIntent, KtStorage,
   KtDevice, KtFailOpen's catch list and KtInput's Activity rule; `:capture-control` is exempt only from the FLAG_SECURE
@@ -10925,6 +10961,9 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   The gate on the tree: clean, 241 files (no prose hit under ffi/). canaries.sh 74/74 (new: kotlin-ffi-rules, five
   planted hits on the real tree copy). Wall times on this Mac (load 3-5): gate 15.9 s (base 15.0 s), `--selftest`
   4:39 (base 2:53), canaries 4:42 (base 4:19).
+  Proof (M5 commit 4c, the lead, from CI): review fixes 4b (7f878f7 .. bee6877) took `--selftest` to 1065 passed, 0 failed
+  (sh and dash), the gate to 263 files, canaries 74/74. Entropy CI 39062895694 at bee6877: 14 of 14 green, `gates (banned
+  APIs, verifier, canaries)` 10 min 41 s, within the approved 12 minutes (M4b measured 10 min 08 s).
 - [x] The Shell rule for `game_random` is unchanged in M5 (its ffi and Kotlin fixtures stay hits until M5b).
   Proof: those fixtures still trip.
   Proof (M5 commit 4): `game_random_use` and its path list untouched (only the release probe's comment stripping moved
