@@ -16,7 +16,14 @@
 # against what Google's Maven and Maven Central publish (scripts/android-deps-review.sh: published
 # SHA-256, or SHA-1 and the PGP signature by a pinned key, or SHA-1 alone for the 14 files lead
 # decision M5-11 names; the licences of the shipping classpath).
-# After the build it prints each APK's facts (files, native libraries, manifest) as commit 5 did.
+# After the build it prints each APK's facts (files, native libraries, manifest) as commit 5 did,
+# signs the five APKs with a throwaway key made on the runner for this run (never stored, never
+# uploaded, no secret; release signing is M7), and checks and scans the shipping and test-registry
+# APKs with scripts/banned-api-check.sh --apk against mobile/android/expected/ (M5 group 5): the
+# manifest summary, the merger report, the native libraries, the markers and test key, the dex
+# reference scan, zipalign and the signer. The capture-control APK must not carry either shipped
+# APK's package id, and a canary build (-Pkc.canary=true, adding a library that asks for INTERNET
+# and declares a provider) must be refused by --apk; a pass fails the job.
 #
 # Not one of the 14 required checks (Q55), so path filters are safe, as in entropy-pi-image.yml:
 # a skipped run never leaves a required check pending. The rule instead (Q38 (b)): no PR that
@@ -44,6 +51,7 @@ on:
       - 'Entropy/scripts/banned-api-check.sh'
       - 'Entropy/scripts/android-*'
       - 'Entropy/scripts/testdata/android-deps-review/**'
+      - 'Entropy/scripts/testdata/android-canary-lib/**'
       - 'Entropy/deny.toml'
       - '.github/workflows/entropy-android.yml'
   push:
@@ -58,6 +66,7 @@ on:
       - 'Entropy/scripts/banned-api-check.sh'
       - 'Entropy/scripts/android-*'
       - 'Entropy/scripts/testdata/android-deps-review/**'
+      - 'Entropy/scripts/testdata/android-canary-lib/**'
       - 'Entropy/deny.toml'
       - '.github/workflows/entropy-android.yml'
   schedule:
@@ -195,8 +204,8 @@ jobs:
       # The probe's APK facts (M5 group 0): each APK's SHA-256 and size, its file list, every native
       # library with the alignment of each LOAD segment, and aapt2's view of its package, SDKs,
       # permissions and merged manifest (components and their exported flags, receivers and
-      # providers included). Listed, not judged: commit 7's --apk check compares them with the
-      # reviewed expected files. Exactly the five APKs this build makes must exist.
+      # providers included). Listed, not judged here: the --apk step below judges the shipped two
+      # against the reviewed expected files. Exactly the five APKs this build makes must exist.
       - name: Build facts (the APKs)
         run: |
           fail() { echo "FAIL: APK facts: $1" >&2; exit 1; }
@@ -227,3 +236,103 @@ jobs:
             echo "== aapt2 dump xmltree AndroidManifest.xml"
             "$bt/aapt2" dump xmltree --file AndroidManifest.xml "$apk"
           done
+      # The throwaway signing key (M5 group 5; Q62): a PKCS12 key made here by keytool, in
+      # $RUNNER_TEMP, for this run alone. It is never stored or uploaded and is no secret (its store
+      # password is written below): it only lets the emulators install the APKs, and release
+      # signing is M7. Its certificate's SHA-256 is printed, and --apk checks that each signed APK
+      # has exactly this one signer.
+      - name: Throwaway signing key (keytool, this run only)
+        run: |
+          ks=$RUNNER_TEMP/kc-throwaway.p12
+          "$JAVA_HOME/bin/keytool" -genkeypair -keystore "$ks" -storetype PKCS12 -storepass kc-throwaway \
+            -alias kc -keyalg RSA -keysize 3072 -validity 30 \
+            -dname 'CN=KeepCrypt CI throwaway key, OU=development build, O=KeepCrypt'
+          cert=$("$JAVA_HOME/bin/keytool" -exportcert -keystore "$ks" -storetype PKCS12 -storepass kc-throwaway \
+            -alias kc | sha256sum | cut -d ' ' -f 1)
+          echo "throwaway certificate SHA-256: $cert"
+          echo "KC_CERT_SHA256=$cert" >> "$GITHUB_ENV"
+      # The five APKs signed with that key (apksigner from build-tools 36.0.0) into $RUNNER_TEMP/apks,
+      # named as Gradle names them without "-unsigned": the shipping and test-registry release APKs,
+      # their instrumented-test APKs and capture-control's. The emulator steps (commit 8) install
+      # these bytes, the ones checked below.
+      - name: Sign the APKs (apksigner, the throwaway key)
+        run: |
+          fail() { echo "FAIL: signing: $1" >&2; exit 1; }
+          bt=$ANDROID_HOME/build-tools/$KC_BUILD_TOOLS
+          out=$RUNNER_TEMP/apks
+          mkdir -p "$out"
+          shopt -s nullglob globstar
+          apks=(mobile/android/app/build/outputs/apk/**/*.apk mobile/android/capture-control/build/outputs/apk/**/*.apk)
+          [ "${#apks[@]}" -eq 5 ] || fail "not exactly five APKs: ${apks[*]}"
+          for apk in "${apks[@]}"; do
+            name=$(basename "$apk" .apk)
+            name=${name%-unsigned}
+            "$bt/apksigner" sign --ks "$RUNNER_TEMP/kc-throwaway.p12" --ks-type PKCS12 --ks-pass pass:kc-throwaway \
+              --ks-key-alias kc --out "$out/$name.apk" "$apk"
+          done
+          for want in app-shipping-release app-withTestRegistry-release capture-control-release; do
+            [ -f "$out/$want.apk" ] || fail "no $out/$want.apk"
+          done
+          (cd "$out" && sha256sum -- *.apk)
+      # M5 group 5's check and scan of the two shipped APKs (scripts/banned-api-check.sh --apk, whose
+      # header defines it): the manifest summary equals mobile/android/expected/manifest-<variant>.txt
+      # with the hard rules (no network permission, provider, receiver, service or <queries>, backup,
+      # cleartext traffic and debugging off, one exported activity), the merger report names no
+      # INTERNET, the native libraries equal expected/native-libs.txt (no libkeepcrypt before commit
+      # 14; elf_check; 64-bit ones 16 KB aligned; no other ELF), no marker or test key in any entry,
+      # no banned RNG reference from a com.keepcrypt class (dexdump), zipalign -c -P 16 and the
+      # throwaway key as the one signer. The tools come from build-tools 36.0.0 and NDK r30's LLVM.
+      - name: Check and scan the shipping and test-registry APKs (banned-api-check.sh --apk)
+        run: |
+          fail() { echo "FAIL: --apk: $1" >&2; exit 1; }
+          export PATH="$ANDROID_HOME/build-tools/$KC_BUILD_TOOLS:$ANDROID_HOME/ndk/$KC_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+          logs=mobile/android/app/build/outputs/logs
+          echo "== $logs"
+          ls "$logs"
+          for variant in shipping withTestRegistry; do
+            report=$logs/manifest-merger-$variant-release-report.txt
+            [ -f "$report" ] || fail "no merger report $report"
+            sh scripts/banned-api-check.sh --apk "$variant" "$RUNNER_TEMP/apks/app-$variant-release.apk" \
+              mobile/android/expected "$report" "$KC_CERT_SHA256"
+          done
+      # The capture-control APK is the capture tests' positive control (group 6), never shipped: it
+      # must not carry either shipped APK's package id (the package lines of the expected
+      # summaries), so it can never be installed in place of the app.
+      - name: The capture-control APK's package id is neither shipped APK's
+        run: |
+          fail() { echo "FAIL: capture-control: $1" >&2; exit 1; }
+          cc=$("$ANDROID_HOME/build-tools/$KC_BUILD_TOOLS/aapt2" dump packagename "$RUNNER_TEMP/apks/capture-control-release.apk")
+          echo "capture-control package: $cc"
+          [ -n "$cc" ] || fail "aapt2 printed no package id"
+          for variant in shipping withTestRegistry; do
+            pkg=$(sed -n 's/^package //p' "mobile/android/expected/manifest-$variant.txt")
+            [ -n "$pkg" ] || fail "no package line in mobile/android/expected/manifest-$variant.txt"
+            [ "$cc" != "$pkg" ] || fail "it has the $variant APK's package id $pkg"
+          done
+      # The canary (M5 group 5): the shipping APK rebuilt with -Pkc.canary=true, which adds
+      # scripts/testdata/android-canary-lib, a library whose manifest asks for INTERNET and declares
+      # a provider. Offline (the real build has fetched everything) and with strict verification, so
+      # it adds no dependency. Signed with the same key, it must be refused by --apk: exit 1, with
+      # both the INTERNET and the provider hit. A pass fails the job, and so does any other exit. The
+      # checked APKs are already in $RUNNER_TEMP/apks; the canary only overwrites Gradle's outputs and
+      # is never uploaded or installed.
+      - name: Canary build (-Pkc.canary=true) refused by --apk
+        run: |
+          fail() { echo "FAIL: canary: $1" >&2; exit 1; }
+          sh scripts/android-gradle.sh --dependency-verification strict --offline -Pkc.canary=true :app:assembleShippingRelease
+          bt=$ANDROID_HOME/build-tools/$KC_BUILD_TOOLS
+          "$bt/apksigner" sign --ks "$RUNNER_TEMP/kc-throwaway.p12" --ks-type PKCS12 --ks-pass pass:kc-throwaway \
+            --ks-key-alias kc --out "$RUNNER_TEMP/canary.apk" \
+            mobile/android/app/build/outputs/apk/shipping/release/app-shipping-release-unsigned.apk
+          export PATH="$bt:$ANDROID_HOME/ndk/$KC_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+          rc=0
+          sh scripts/banned-api-check.sh --apk shipping "$RUNNER_TEMP/canary.apk" mobile/android/expected \
+            mobile/android/app/build/outputs/logs/manifest-merger-shipping-release-report.txt "$KC_CERT_SHA256" \
+            > "$RUNNER_TEMP/canary.log" 2>&1 || rc=$?
+          cat "$RUNNER_TEMP/canary.log"
+          [ "$rc" -eq 1 ] || fail "--apk exited $rc on the canary APK, not 1 (refused)"
+          grep -q -e '^Manifest: .*: a network permission (rule 9): uses-permission android[.]permission[.]INTERNET$' \
+            "$RUNNER_TEMP/canary.log" || fail "no INTERNET hit"
+          grep -q -e '^Manifest: .*: a provider (the app has no provider, receiver or service): provider com[.]keepcrypt[.]canary[.]CanaryProvider ' \
+            "$RUNNER_TEMP/canary.log" || fail "no provider hit"
+          echo "the canary APK was refused, with the INTERNET and provider hits"

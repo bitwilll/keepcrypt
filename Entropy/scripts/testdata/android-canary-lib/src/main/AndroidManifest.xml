@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The canary library's manifest (tasks/todo.md, M5 group 5): what a library the app must reject
+     would add to the merged manifest, a network permission and a provider. The canary build's APK
+     must fail scripts/banned-api-check.sh --apk on both. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application>
+        <provider
+            android:name="com.keepcrypt.canary.CanaryProvider"
+            android:authorities="${applicationId}.kc-canary"
+            android:exported="false" />
+    </application>
+</manifest>

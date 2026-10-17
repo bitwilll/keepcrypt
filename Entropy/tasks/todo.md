@@ -11052,6 +11052,12 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   `dataExtractionRules` excluding everything, `usesCleartextTraffic="false"`; one exported launcher activity; the
   removals named in "Built into this plan".
   Proof: the expected summaries below.
+  Proof (M5 commit 7, partial; CAMERA comes with commit 18): `mobile/android/expected/manifest-shipping.txt` and
+  `manifest-withTestRegistry.txt`, reduced by `--apk`'s own code from run 39062895784's aapt2 dumps: exactly
+  HIDE_OVERLAY_WINDOWS, DETECT_SCREEN_RECORDING and androidx.core's DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION (declared
+  and used), backup, cleartext traffic and debugging off, extractNativeLibs false, one exported launcher activity,
+  the two androidx.window uses-library entries and the startup provider's removal (whose merger-report form is a
+  stand-in until the first run with the report: that run did not print it).
 - [ ] `banned-api-check.sh --apk VARIANT APK EXPECTED_DIR` (the image scan's shape): `aapt2 dump permissions`, `dump
   badging` and `dump xmltree AndroidManifest.xml` reduced to one summary (package, SDKs, every permission, every
   component with exported flag, application flags, `<queries>`, `uses-library`), compared exactly with
@@ -11060,6 +11066,17 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   activity, a `<queries>` element each fail; the clean summary passes), run in `gates` without an SDK; in the Android
   job a canary build (`-Pkc.canary=true`, adding `scripts/testdata/android-canary-lib/`, a library whose manifest asks
   for INTERNET and declares a provider) must be refused, and a pass fails the job.
+  Proof (M5 commit 7, partial; the Android job's `--apk` and canary runs are the lead's, after the push):
+  `sh scripts/banned-api-check.sh --selftest-apk` 34 passed, 0 failed in 7 s, under sh and /bin/dash and with python3
+  3.12 and /usr/bin/python3 3.9.6, with no Android SDK (stub aapt2, dexdump, zipalign, apksigner and llvm-nm): the
+  control passes (the shipping APK's dumps, `scripts/testdata/apk/`, reduce to the committed `manifest-shipping.txt`);
+  INTERNET, a provider, `allowBackup` true, debuggable, an extra exported activity and a `<queries>` element (each
+  against its own summary, so only the hard rule fires), a differing summary and INTERNET in the merger report each
+  give exactly one Manifest hit; 10 refusals exit 2. The summary format is defined once in the script's header ("APK
+  mode"). `--apk` takes the merger report and the run's certificate SHA-256 as two more arguments
+  (`VARIANT APK EXPECTED_DIR MERGER_REPORT CERT_SHA256`). The canary library is included by
+  `mobile/android/settings.gradle.kts` and depended on by `:app` only under `-Pkc.canary=true`, and built `--offline`
+  with strict verification; its own configurations are unlocked, since it has no lockfile.
 - [ ] The same `--apk` run unpacks the APK with Python's zipfile: from commit 14, `lib/<abi>/libkeepcrypt.so` for
   exactly the three ABIs, each byte-equal to the scanned cargo output and through the `--artifact` rules for its target
   (shipping clean; test-registry exactly the registry marker and the test key); before commit 14, no libkeepcrypt at
@@ -11072,6 +11089,14 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   shipped APK's package id.
   Proof: both APKs' output; selftest cases with built stub zips (an unlisted `.so`, a 4 KB-aligned 64-bit `.so`, a
   marker in a dex, a stripped libkeepcrypt, a banned reference in a `com.keepcrypt` class) each give exactly one hit.
+  Proof (M5 commit 7, partial; both APKs' output is the lead's, from CI; the stripped-libkeepcrypt case comes with
+  commit 14): `mobile/android/expected/native-libs.txt` lists graphics-path's three ABIs with run 39062895784's SHA-256s
+  (no x86, M5-10). `--selftest-apk`'s stub-zip cases each give exactly one hit: an unlisted `.so`, a 4 KB-aligned
+  64-bit `.so`, another SHA-256, a listed `.so` missing, libkeepcrypt.so before commit 14, an x86 `.so`, a `.so` for
+  another machine, an ELF outside `lib/`, a `.so` importing `rand` (elf_check), a marker in a dex, the test key in
+  `resources.arsc`, a marker in the zip comment, a banned reference in a `com.keepcrypt` class, zipalign failing and
+  another signer; a dex with no `com.keepcrypt` class exits 2. The workflow signs the five APKs with a keytool key made
+  in `$RUNNER_TEMP` each run and checks that capture-control's package id is neither shipped one.
 
 **6. The Android workflow and the emulator harness (Q55)**
 - [ ] `entropy-android.yml`: on PRs and pushes to main touching `Entropy/mobile/**`, `Entropy/ffi/**`, `Entropy/core/**`,

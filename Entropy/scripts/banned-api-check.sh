@@ -25,6 +25,14 @@
 #   scripts/banned-api-check.sh --os-config OS_DIR
 #                                           the text-only checks of the image's configuration in
 #                                           OS_DIR (pi/os; see "OS configuration mode" below)
+#   scripts/banned-api-check.sh --apk VARIANT APK EXPECTED_DIR MERGER_REPORT CERT_SHA256
+#                                           check and scan a signed Android APK against the reviewed
+#                                           files in EXPECTED_DIR (mobile/android/expected), its
+#                                           manifest-merger report and the run's signing certificate
+#                                           (see "APK mode" below)
+#   scripts/banned-api-check.sh --selftest-apk
+#                                           the APK check's refusals and rules on stub tools and stub
+#                                           APKs, with no Android SDK (see "APK selftest mode" below)
 #   scripts/banned-api-check.sh --selftest  every fixture in scripts/testdata/banned-api/ must trip the
 #                                           gate for its category; every clean-* fixture must pass; the
 #                                           Kotlin hit fixtures whose rule a scope skips must pass
@@ -227,6 +235,87 @@
 #              FEATURE_MOUNT_FSTAB, FEATURE_MOUNT_FLAGS, SH_IS_NONE and BASH_IS_NONE at =y, and no
 #              CONFIG_X=y line but those and the build settings pi/os/board/pizero/busybox.config
 #              keeps (busybox_allowed below), so no applet or shell can be added to it.
+#
+# APK mode (tasks/todo.md, M5 group 5; rule 9, rule 10, and rule 1 as Q59 (b) reads it): the Android
+# workflow runs it on the shipping and test-registry APKs once signed, and on the canary APK, which
+# it must refuse. VARIANT is one of :app's flavours, shipping or withTestRegistry; APK the signed
+# APK; EXPECTED_DIR mobile/android/expected; MERGER_REPORT the Android Gradle plugin's
+# manifest-merger report of that variant's release build; CERT_SHA256 the SHA-256 of the run's
+# throwaway signing certificate (64 lowercase hex digits). aapt2, dexdump, zipalign and apksigner
+# (the build-tools) and llvm-nm (the NDK's) come from PATH, and python3 -I reads the APK with its
+# zipfile module (the Python half, apk_py below). Prints the APK's SHA-256 and its manifest
+# summary, then "<Category>: <name>: <detail>" per hit and a one-line count; exit 0 clean, 1 hits,
+# 2 anything that cannot be read or run. Nothing passes vacuously: a bad argument, a missing or
+# empty expected file or report, a tool missing from PATH or failing, a dump or report line the
+# parsers cannot read, a malformed native-libs.txt line, and dex files in which dexdump lists no
+# com.keepcrypt class are each exit 2.
+# The manifest summary, defined here once, one fact per line: from aapt2 dump badging, package
+# NAME, versionName V, minSdk N and targetSdk N; from dump permissions, permission NAME (declared)
+# and uses-permission NAME (used; with maxSdkVersion=N when set), sorted, and any line of another
+# shape as permissions-dump LINE; from dump xmltree AndroidManifest.xml, application allowBackup=,
+# dataExtractionRules=, debuggable= (also true when badging prints application-debuggable),
+# extractNativeLibs=, fullBackupContent= and usesCleartextTraffic=, each always (unset when absent;
+# a resource reference reads set), and backupAgent=, networkSecurityConfig= and testOnly= when
+# present (and manifest sharedUserId=); every activity, activity-alias, provider, receiver and
+# service as KIND NAME exported=V (an absent exported reads as the platform's default: true with
+# an intent filter, false without), each followed by its intent filters as KIND NAME intent-filter
+# action:A category:C data:K=V,..., sorted by component; uses-library and uses-native-library NAME
+# required=V, sorted; then, sorted, uses-feature NAME required=V, queries TAG NAME (one line per
+# child of <queries>, or queries alone), and every other element of the application or the manifest
+# as application-element or manifest-element TAG NAME; and from the merger report, removed KEY
+# [ATTRIBUTE] for every node (a line at column 0) or attribute (indented one tab) with a record
+# whose verb is not ADDED, MERGED, INJECTED, IMPLIED or CONVERTED (tools:node="remove" records
+# REJECTED), sorted. The rules:
+#   Manifest   the summary equals EXPECTED_DIR/manifest-VARIANT.txt byte for byte (the diff on
+#              stderr). Whatever that file says, hard rules on the summary: a line (but a removed
+#              one) naming android.permission.INTERNET, ACCESS_NETWORK_STATE or ACCESS_WIFI_STATE;
+#              any provider, receiver or service; any queries line; allowBackup,
+#              fullBackupContent, usesCleartextTraffic or debuggable other than false, and
+#              dataExtractionRules unset; more than one exported activity or activity-alias (one
+#              hit naming them). And every line of MERGER_REPORT that names INTERNET: no network
+#              permission is ever stripped.
+#   NativeLib  every entry under lib/ is lib/<abi>/<name>.so for one of MA:23's three ABIs
+#              (arm64-v8a, armeabi-v7a, x86_64; lead decision M5-10); no libkeepcrypt.so at all
+#              (before M5 commit 14, which brings the Rust libraries); every other one an ELF,
+#              listed by ABI, name and SHA-256 in EXPECTED_DIR/native-libs.txt ("<abi> <name>
+#              <sha256>" lines: graphics-path's), of its ABI's ELF class and machine, and, when
+#              64-bit, with every LOAD segment aligned to a multiple of 0x4000 (16 KB pages); every
+#              listed one is in the APK; and no ELF anywhere else in it.
+#   Format, Symbol
+#              every native library that passed NativeLib goes through the image scan's elf_check
+#              (llvm-nm -D: dynamic symbols listed, no banned RNG import, no rand-crate or
+#              getrandom-fallback symbol).
+#   Marker, TestKey
+#              the three markers and the test key in the APK's own bytes (its stored entries, the
+#              zip comment) and in every entry, decompressed: dex files, resources, libraries.
+#   DexRef     dexdump -d of every .dex entry: in each class whose descriptor starts
+#              Lcom/keepcrypt/, any line naming java.util.Random, the kotlin.random or
+#              java.util.random package, ThreadLocalRandom, SplittableRandom,
+#              java.security.SecureRandom, Math.random, StrictMath.random or UUID.randomUUID
+#              (dex_banned below), one hit per class and name. Library classes are not judged
+#              (Q59 (b)): R8 is off, so the APK carries Kotlin's own Random.
+#   Zipalign   zipalign -c -P 16 -v 4 fails (4-byte entries, 16 KB-aligned native libraries).
+#   Signature  apksigner verify --print-certs fails, or lists any signer but exactly one, whose
+#              certificate SHA-256 is CERT_SHA256.
+#
+# APK selftest mode (tasks/todo.md, M5 group 5): CI's gates job runs it with no Android SDK, only
+# sh, python3's standard library and stub aapt2, dexdump, zipalign, apksigner and llvm-nm, which
+# print canned output (a stub dex file holds the text dexdump would print for it; a stub library is
+# an ELF header with its LOAD segments and the NM:<name> words the stub llvm-nm lists). The base
+# case is aapt2's three dumps of the shipping APK (scripts/testdata/apk/, from the Android run
+# 39062895784), a stand-in merger report that removes the androidx.startup provider, the run's
+# signer and a stub APK laid out as the real one; it must pass against the committed
+# mobile/android/expected/manifest-shipping.txt (the control). Each case changes one thing and must
+# give exactly that one hit: INTERNET, a provider, allowBackup true, debuggable, an extra exported
+# activity and a <queries> element (each against its own summary, so that only the hard rule can
+# fail it), a summary that differs from the expected one, INTERNET in the merger report; an
+# unlisted .so, a 4 KB-aligned 64-bit .so, another SHA-256, a listed .so missing, libkeepcrypt.so,
+# an x86 .so, a .so for another machine, an ELF outside lib/, a .so importing rand; a marker in a
+# dex file, the test key in resources.arsc, a marker in the zip comment, a banned reference in a
+# com.keepcrypt class; zipalign failing and another signer. Its refusals must exit 2: bad usage, a
+# bad VARIANT or CERT_SHA256, a missing expected directory, expected file, report or APK, no aapt2
+# on PATH, a malformed native-libs.txt line and no com.keepcrypt class. Prints PASS or FAIL per
+# case and a count; exit 0 all passed, 1 not.
 #
 # Categories (main patterns; the full lists are in the check functions below; comments count
 # everywhere but where a rule says otherwise):
@@ -577,7 +666,8 @@ usage() {
   cat <<'EOF'
 usage: scripts/banned-api-check.sh [--selftest | DIR | --artifact TARGET FILE... | --workflows DIR |
                                    --image-lists IMG KCONFIG | --image IMG EXPECTED_DIR KCONFIG BIN_SHA256 |
-                                   --selftest-image IMG KCONFIG | --os-config OS_DIR]
+                                   --selftest-image IMG KCONFIG | --os-config OS_DIR |
+                                   --apk VARIANT APK EXPECTED_DIR MERGER_REPORT CERT_SHA256 | --selftest-apk]
   (none)      scan the repo this script lives in
   DIR         scan DIR as if it were the repo root
   --artifact  scan release artifacts built for TARGET: test markers, the test registry key, RNG
@@ -605,6 +695,15 @@ usage: scripts/banned-api-check.sh [--selftest | DIR | --artifact TARGET FILE...
   --os-config the text-only checks of OS_DIR (pi/os): Q35's inittab, the fstab's options,
               cmdline.txt, config.txt, expected/linux.config against the fragment's lists (which
               expected/kconfig-required and kconfig-forbidden must equal) and BusyBox's applets
+  --apk       check and scan a signed APK of VARIANT (shipping or withTestRegistry): its manifest
+              summary equals EXPECTED_DIR's manifest-VARIANT.txt (mobile/android/expected) with no
+              network permission, provider, receiver, service or <queries>, backup and debugging off
+              and one exported activity; MERGER_REPORT names no INTERNET; its native libraries are
+              native-libs.txt's, through elf_check, 64-bit ones 16 KB aligned; no other ELF; no
+              marker or test key; no banned RNG reference from a com.keepcrypt class; zipalign; and
+              CERT_SHA256 the one signer (build-tools and the NDK's llvm-nm on PATH)
+  --selftest-apk
+              the APK check's refusals and rules on stub tools and stub APKs (sh and python3 only)
   --selftest  run the fixtures in scripts/testdata/banned-api/, scripts/testdata/artifact/,
               scripts/testdata/workflows/ and scripts/testdata/os-config/, the image lists' built-in
               cases and the image scan's, on a stub image
@@ -4573,6 +4672,842 @@ Format: $mf: not an ELF, Mach-O or ar file, so its symbols cannot be checked" "$
   aexpect 'artifact-error-no-file' 2 'usage:' "$t"
 }
 
+# --- APK mode ------------------------------------------------------------------------------------
+
+# apk_py COMMAND ARG...: the APK check's Python half (tasks/todo.md, M5 group 5: "unpacks the APK
+# with Python's zipfile"), the program fed to python3 -I on its standard input, standard library
+# only (a here-document inside $(...) would trip bash 3.2's parser, macOS's sh). manifest BADGING
+# PERMISSIONS XMLTREE REPORT OUT APK writes the manifest summary to OUT (see "APK mode" in the
+# header) and prints the manifest's hard-rule hits; scan APK NATIVE_LIST DIR TESTKEY MARKER...
+# byte-searches the APK and every entry, judges every lib/ entry against NATIVE_LIST, writes each
+# dex file and each native library that passed into DIR, and prints them; zip and elf build
+# --selftest-apk's stub APKs and shared objects. Lines out: "HIT<tab>CATEGORY<tab>NAME<tab>DETAIL" per hit, and from
+# scan "SO<tab>FILE<tab>ENTRY", "DEX<tab>FILE<tab>ENTRY" and "COUNT<tab>ENTRIES<tab>LIBRARIES".
+# Anything it cannot read or parse is exit 2, never a pass.
+apk_py() {
+  python3 -I - "$@" <<'APK_PY'
+import hashlib
+import re
+import struct
+import sys
+import zipfile
+
+ANDROID = "http://schemas.android.com/apk/res/android"
+# MA:23's three ABIs (lead decision M5-10), with the ELF class (1: 32-bit, 2: 64-bit) and machine
+# (EM_ARM 40, EM_X86_64 62, EM_AARCH64 183) of each; the 64-bit ones need 16 KB pages.
+ABIS = {"arm64-v8a": (2, 183), "armeabi-v7a": (1, 40), "x86_64": (2, 62)}
+PAGE = 0x4000
+NETWORK = ("android.permission.INTERNET", "android.permission.ACCESS_NETWORK_STATE",
+           "android.permission.ACCESS_WIFI_STATE")
+# The application flags the summary always lists, each with the value the hard rules require
+# (None: listed, judged only by the comparison), and those it lists when they are present.
+FLAGS = (("allowBackup", "false"), ("dataExtractionRules", "set"), ("debuggable", "false"),
+         ("extractNativeLibs", None), ("fullBackupContent", "false"), ("usesCleartextTraffic", "false"))
+WATCH = ("backupAgent", "networkSecurityConfig", "testOnly")
+COMPONENTS = ("activity", "activity-alias", "provider", "receiver", "service")
+SKIPPED = ("uses-sdk", "uses-permission", "uses-permission-sdk-23", "permission", "application")
+ATTR = re.compile(r"(?P<name>[^=(]+?)(?:\(0x[0-9a-fA-F]+\))?=(?P<value>.*)$")
+
+
+def error(msg):
+    sys.stderr.write("banned-api-check: --apk: %s\n" % msg)
+    sys.exit(2)
+
+
+def hit(category, name, detail):
+    print("HIT\t%s\t%s\t%s" % (category, name, detail))
+
+
+def text(path):
+    with open(path, "rb") as f:
+        return f.read().decode("utf-8", "replace")
+
+
+class Element:
+    def __init__(self, tag, indent):
+        self.tag, self.indent, self.attrs, self.children = tag, indent, {}, []
+
+
+def value(raw):
+    if raw.startswith('"'):
+        m = re.match(r'"((?:[^"\\]|\\.)*)"', raw)
+        return m.group(1) if m else raw
+    return raw.split(" ", 1)[0]
+
+
+def xmltree(path):
+    """aapt2 dump xmltree's tree: E lines are elements, A lines the attributes of the element above,
+    nesting by indentation; N (namespace) and T (text) lines are skipped, anything else is exit 2."""
+    root = Element("", -1)
+    stack = [root]
+    for n, line in enumerate(text(path).splitlines(), 1):
+        body = line.lstrip(" ")
+        indent = len(line) - len(body)
+        if not body or body.startswith("N: ") or body.startswith("T: "):
+            continue
+        if not (body.startswith("E: ") or body.startswith("A: ")):
+            error("%s line %d is not one aapt2 dump xmltree prints: %s" % (path, n, line))
+        while stack[-1].indent >= indent:
+            stack.pop()
+        if body.startswith("E: "):
+            el = Element(body[3:].split(" ", 1)[0], indent)
+            stack[-1].children.append(el)
+            stack.append(el)
+            continue
+        m = ATTR.match(body[3:])
+        if not m or stack[-1] is root:
+            error("%s line %d is not an attribute of an element: %s" % (path, n, line))
+        ns, sep, local = m.group("name").rpartition(":")
+        stack[-1].attrs[local if not sep or ns == ANDROID else m.group("name")] = value(m.group("value"))
+    return root
+
+
+def shown(v):
+    if v is None:
+        return "unset"
+    return "set" if v.startswith("@") else v
+
+
+def describe(el):
+    parts = [] if el.tag == "intent-filter" else [el.tag]
+    parts += [el.attrs[k] for k in ("name", "authorities") if k in el.attrs]
+    for c in el.children:
+        if c.tag in ("action", "category"):
+            parts.append("%s:%s" % (c.tag, c.attrs.get("name", "")))
+        else:
+            parts.append("%s:%s" % (c.tag, ",".join("%s=%s" % kv for kv in sorted(c.attrs.items()))))
+    return " ".join(parts)
+
+
+def manifest(badging, permissions, tree, report, out, apk):
+    b = text(badging)
+    pkg = re.search(r"^package: name='([^']*)'.* versionName='([^']*)'", b, re.M)
+    lo = re.search(r"^minSdkVersion:'([^']*)'$", b, re.M)
+    hi = re.search(r"^targetSdkVersion:'([^']*)'$", b, re.M)
+    if not (pkg and lo and hi):
+        error("aapt2 dump badging printed no package line with versionName, or no SDK lines")
+    head = ["package " + pkg.group(1), "versionName " + pkg.group(2), "minSdk " + lo.group(1),
+            "targetSdk " + hi.group(1)]
+    perms = []
+    for line in text(permissions).splitlines():
+        if not line.strip() or line.startswith("package: "):
+            continue
+        p = re.match(r"([a-z0-9-]+): name='([^']*)'(.*)$", line)
+        d = re.match(r"permission: (\S+)$", line)
+        if p:
+            perms.append(" ".join([p.group(1), p.group(2)] + p.group(3).replace("'", "").split()))
+        elif d:
+            perms.append("permission " + d.group(1))
+        else:
+            perms.append("permissions-dump " + line.strip())
+    tops = xmltree(tree).children
+    if len(tops) != 1 or tops[0].tag != "manifest":
+        error("aapt2 dump xmltree printed no single manifest element")
+    man = tops[0]
+    apps = [e for e in man.children if e.tag == "application"]
+    app = apps[0] if apps else Element("application", 0)
+    flags = []
+    for name, _ in FLAGS:
+        v = app.attrs.get(name)
+        if name == "debuggable":
+            v = "true" if v == "true" or re.search(r"^application-debuggable$", b, re.M) else (v or "false")
+        elif name == "dataExtractionRules":
+            v = "unset" if v is None else "set"
+        flags.append("application %s=%s" % (name, shown(v)))
+    flags += ["application %s=%s" % (k, shown(app.attrs[k])) for k in WATCH if k in app.attrs]
+    flags += ["manifest sharedUserId=" + man.attrs["sharedUserId"]] if "sharedUserId" in man.attrs else []
+    comps, libs, extra = [], [], []
+    for el in app.children:
+        name = el.attrs.get("name", "")
+        if el.tag in COMPONENTS:
+            filters = [c for c in el.children if c.tag == "intent-filter"]
+            exported = el.attrs.get("exported", "true" if filters else "false")
+            comps.append(["%s %s exported=%s" % (el.tag, name, exported)] +
+                         ["%s %s intent-filter %s" % (el.tag, name, describe(f)) for f in filters])
+        elif el.tag in ("uses-library", "uses-native-library"):
+            libs.append("%s %s required=%s" % (el.tag, name, el.attrs.get("required", "true")))
+        else:
+            extra.append(("application-element %s %s" % (el.tag, name)).rstrip())
+    extra += ["manifest-element application"] * (len(apps) - 1 if apps else 0)
+    for el in man.children:
+        if el.tag in SKIPPED:
+            continue
+        if el.tag == "queries":
+            extra += ["queries " + describe(c) for c in el.children] or ["queries"]
+        elif el.tag == "uses-feature":
+            extra.append("uses-feature %s required=%s" % (el.attrs.get("name", "glEsVersion=" + el.attrs.get("glEsVersion", "")),
+                                                          el.attrs.get("required", "true")))
+        else:
+            extra.append(("manifest-element %s %s" % (el.tag, el.attrs.get("name", ""))).rstrip())
+    # The merger report's removals: a node key starts a line, its attributes are indented one tab
+    # and each record is "VERB from ..."; every verb but these five removes a node or attribute.
+    removed, key, attr = set(), "", ""
+    for line in text(report).splitlines():
+        body = line.strip()
+        if not body or body.startswith("--"):
+            continue
+        verb = re.match(r"([A-Z]+) from( |$)", body)
+        if verb:
+            if verb.group(1) not in ("ADDED", "MERGED", "INJECTED", "IMPLIED", "CONVERTED"):
+                removed.add(("%s %s" % (key, attr)).strip())
+        elif line.startswith("\t"):
+            attr = body
+        else:
+            key, attr = body, ""
+    lines = (head + sorted(perms) + flags + [x for c in sorted(comps) for x in c] + sorted(libs) + sorted(extra)
+             + ["removed " + r for r in sorted(removed)])
+    with open(out, "w") as f:
+        f.write("\n".join(lines) + "\n")
+    # The hard rules, whatever the expected summary says.
+    for x in lines:
+        if not x.startswith("removed ") and any(p in x.split(" ") for p in NETWORK):
+            hit("Manifest", apk, "a network permission (rule 9): " + x)
+        if x.startswith("queries"):
+            hit("Manifest", apk, "a <queries> element (package visibility): " + x)
+    for c in comps:
+        kind = c[0].split(" ")[0]
+        if kind in ("provider", "receiver", "service"):
+            hit("Manifest", apk, "a %s (the app has no provider, receiver or service): %s" % (kind, c[0]))
+    for name, want in FLAGS:
+        got = [x for x in flags if x.startswith("application %s=" % name)][0].split("=", 1)[1]
+        if want is not None and got != want:
+            hit("Manifest", apk, "application %s=%s, not %s" % (name, got, want))
+    exported = sorted(c[0].split(" ")[1] for c in comps
+                      if c[0].split(" ")[0] in ("activity", "activity-alias") and c[0].endswith(" exported=true"))
+    if len(exported) > 1:
+        hit("Manifest", apk, "%d exported activities, not the one launcher: %s" % (len(exported), ", ".join(exported)))
+
+
+def elf_facts(data):
+    """(class, machine, [p_align of every PT_LOAD]) of an ELF file, or None if it is truncated."""
+    if len(data) < 52 or data[4] not in (1, 2) or data[5] not in (1, 2):
+        return None
+    e = "<" if data[5] == 1 else ">"
+    cls = data[4]
+    machine = struct.unpack(e + "H", data[18:20])[0]
+    if cls == 2:
+        if len(data) < 64:
+            return None
+        phoff = struct.unpack(e + "Q", data[32:40])[0]
+        phentsize, phnum = struct.unpack(e + "HH", data[54:58])
+        size, at, fmt = 56, 48, "Q"
+    else:
+        phoff = struct.unpack(e + "I", data[28:32])[0]
+        phentsize, phnum = struct.unpack(e + "HH", data[42:46])
+        size, at, fmt = 32, 28, "I"
+    if phentsize < size:
+        return None
+    aligns = []
+    for i in range(phnum):
+        ph = data[phoff + i * phentsize:phoff + i * phentsize + size]
+        if len(ph) < size:
+            return None
+        if struct.unpack(e + "I", ph[0:4])[0] == 1:
+            aligns.append(struct.unpack(e + fmt, ph[at:at + struct.calcsize(fmt)])[0])
+    return cls, machine, aligns
+
+
+def scan(apk, native_list, outdir, testkey, *markers):
+    key = bytes.fromhex(testkey)
+    want = {}
+    for n, line in enumerate(text(native_list).splitlines(), 1):
+        w = line.split(" ")
+        if len(w) != 3 or w[0] not in ABIS or not re.match(r"lib[A-Za-z0-9_.+-]+[.]so$", w[1]) \
+                or not re.match(r"[0-9a-f]{64}$", w[2]) or (w[0], w[1]) in want:
+            error('%s line %d is not "<abi> <name>.so <sha256>" for one of MA:23\'s three ABIs, once: %s'
+                  % (native_list, n, line))
+        want[(w[0], w[1])] = w[2]
+
+    def bytescan(data, name):
+        for m in markers:
+            if m.encode() in data:
+                hit("Marker", name, m)
+        if key in data:
+            hit("TestKey", name, "the test registry public key " + testkey)
+
+    with open(apk, "rb") as f:
+        bytescan(f.read(), apk)
+    seen, entries, libs = set(), 0, 0
+    try:
+        z = zipfile.ZipFile(apk)
+        infos = z.infolist()
+    except (zipfile.BadZipFile, OSError) as e:
+        error("%s is not a zip file Python can read: %s" % (apk, e))
+    for i, info in enumerate(infos):
+        if info.filename.endswith("/"):
+            continue
+        name = info.filename
+        entries += 1
+        try:
+            data = z.read(info)
+        except (zipfile.BadZipFile, OSError, RuntimeError, NotImplementedError) as e:
+            error("cannot read %s from %s: %s" % (name, apk, e))
+        bytescan(data, name)
+        elf = data[:4] == b"\x7fELF"
+        if name.endswith(".dex"):
+            path = "%s/dex-%d" % (outdir, i)
+            with open(path, "wb") as f:
+                f.write(data)
+            print("DEX\t%s\t%s" % (path, name))
+        parts = name.split("/")
+        if parts[0] != "lib":
+            if elf:
+                hit("NativeLib", name, "an ELF outside lib/<abi>/*.so")
+            continue
+        if len(parts) != 3 or not parts[2].endswith(".so"):
+            hit("NativeLib", name, "a file under lib/ that is not lib/<abi>/<name>.so")
+            continue
+        abi, so = parts[1], parts[2]
+        sha = hashlib.sha256(data).hexdigest()
+        if abi not in ABIS:
+            hit("NativeLib", name, "an ABI outside MA:23's three (arm64-v8a, armeabi-v7a, x86_64)")
+            continue
+        if so == "libkeepcrypt.so":
+            hit("NativeLib", name, "libkeepcrypt.so, which no APK carries before M5 commit 14")
+            continue
+        if not elf:
+            hit("NativeLib", name, "not an ELF file")
+            continue
+        seen.add((abi, so))
+        libs += 1
+        if (abi, so) not in want:
+            hit("NativeLib", name, "not in native-libs.txt (SHA-256 %s)" % sha)
+            continue
+        if sha != want[(abi, so)]:
+            hit("NativeLib", name, "SHA-256 %s, not native-libs.txt's %s" % (sha, want[(abi, so)]))
+            continue
+        facts = elf_facts(data)
+        if facts is None:
+            hit("Format", name, "a truncated ELF header or program header table")
+            continue
+        cls, machine, aligns = facts
+        if (cls, machine) != ABIS[abi]:
+            hit("NativeLib", name, "an ELF of class %d for machine %d, not %s's (%d, %d)" % ((cls, machine, abi) + ABIS[abi]))
+            continue
+        if cls == 2 and (not aligns or any(a < PAGE or a % PAGE for a in aligns)):
+            hit("NativeLib", name, "LOAD segments aligned to %s, not 0x4000 on every one (16 KB pages)"
+                % (", ".join("0x%x" % a for a in aligns) or "nothing (no LOAD segment)"))
+            continue
+        path = "%s/so-%d" % (outdir, i)
+        with open(path, "wb") as f:
+            f.write(data)
+        print("SO\t%s\t%s" % (path, name))
+    for abi, so in sorted(set(want) - seen):
+        hit("NativeLib", "lib/%s/%s" % (abi, so), "in native-libs.txt but not in the APK")
+    print("COUNT\t%d\t%d" % (entries, libs))
+
+
+def stub_zip(out, comment, *entries):
+    """The selftest's stub APKs: NAME=FILE entries, a .so stored as the real APK stores it, the rest
+    deflated (so a marker in an entry is not also in the zip's raw bytes)."""
+    with zipfile.ZipFile(out, "w") as z:
+        z.comment = comment.encode()
+        for e in entries:
+            name, path = e.split("=", 1)
+            with open(path, "rb") as f:
+                z.writestr(name, f.read(), zipfile.ZIP_STORED if name.endswith(".so") else zipfile.ZIP_DEFLATED)
+
+
+def stub_elf(out, abi, align, *symbols):
+    """The selftest's stub shared objects: an ELF header and two PT_LOAD segments aligned to ALIGN for
+    ABI, then each symbol as "NM:<name>", which the stub llvm-nm lists."""
+    cls, machine = ABIS[abi]
+    align = int(align, 16)
+    if cls == 2:
+        head = b"\x7fELF\x02\x01\x01" + bytes(9) + struct.pack("<HHIQQQIHHHHHH", 3, machine, 1, 0, 64, 0, 0, 64, 56, 2, 0, 0, 0)
+        phs = b"".join(struct.pack("<IIQQQQQQ", 1, 5, 0, 0, 0, 0, 0, align) for _ in range(2))
+    else:
+        head = b"\x7fELF\x01\x01\x01" + bytes(9) + struct.pack("<HHIIIIIHHHHHH", 3, machine, 1, 0, 52, 0, 0, 52, 32, 2, 0, 0, 0)
+        phs = b"".join(struct.pack("<IIIIIIII", 1, 0, 0, 0, 0, 0, 5, align) for _ in range(2))
+    with open(out, "wb") as f:
+        f.write(head + phs + "".join(" NM:" + s for s in symbols).encode() + b"\n")
+
+
+{"manifest": manifest, "scan": scan, "zip": stub_zip, "elf": stub_elf}[sys.argv[1]](*sys.argv[2:])
+APK_PY
+}
+
+# The dex reference scan's banned names (Q59 (b): rule 1 binds KeepCrypt's own compiled classes;
+# library classes our code never reaches are allowed), as dexdump writes them: the plan's five,
+# java.util.Random, kotlin.random.Random (here the whole kotlin.random package), Math.random,
+# UUID.randomUUID and java.security.SecureRandom, and the rest of what the grep gate's RNG rule
+# bans in Kotlin and Java sources: the java.util.random package, ThreadLocalRandom,
+# SplittableRandom and StrictMath.random. An ERE for awk.
+dex_banned='Ljava/util/Random;|Ljava/util/random/|Ljava/util/SplittableRandom;|Ljava/util/concurrent/ThreadLocalRandom;'
+dex_banned="$dex_banned|Ljava/security/SecureRandom;|Lkotlin/random/|Ljava/lang/(Strict)?Math;[.]random:|Ljava/util/UUID;[.]randomUUID:"
+
+# apkfail MESSAGE: the APK cannot be checked (exit 2).
+apkfail() {
+  printf 'banned-api-check: --apk: %s\n' "$1" >&2
+  exit 2
+}
+
+# apk_tool OUT TOOL ARG...: TOOL ARG... with its output in OUT; a tool that fails is exit 2, with
+# its error output.
+apk_tool() {
+  ato=$1
+  shift
+  "$@" >"$ato" 2>"$aw/log" </dev/null || { sed 's/^/    /' "$aw/log" >&2; apkfail "$* failed"; }
+}
+
+# apk_lines FILE: the Python half's lines in FILE: a hit is counted, a native library goes through
+# the image scan's elf_check, a dex file through dex_scan, and the counts are kept.
+apk_lines() {
+  tab=$(printf '\t')
+  while IFS=$tab read -r kind a b c; do
+    case $kind in
+      HIT) ahit "$a" "$b" "$c" ;;
+      SO) elf_check "$a" "$b" ;;
+      DEX) dex_scan "$a" "$b" ;;
+      COUNT) entries=$a libs=$b ;;
+      *) apkfail "the Python half printed an unknown line: $kind" ;;
+    esac
+  done <"$1"
+}
+
+# dex_scan FILE NAME: dexdump -d on one dex file of the APK. In every class whose descriptor starts
+# Lcom/keepcrypt/, each line (the class header, its fields, method signatures, code and debug
+# information) is searched for $dex_banned: one DexRef hit per class and banned name. Library
+# classes are not searched. The com.keepcrypt classes are counted, so a dexdump whose output
+# this awk cannot read fails the run (apk_scan) instead of passing it.
+dex_scan() {
+  apk_tool "$aw/dexdump" dexdump -d "$1"
+  ndex=$((ndex + 1))
+  awk -v banned="$dex_banned" -v q="'" -v name="$2" '
+    BEGIN { head = "  Class descriptor  : " q; t = "\t" }
+    index($0, head) == 1 {
+      d = substr($0, length(head) + 1)
+      sub(q ".*", "", d)
+      ours = index(d, "Lcom/keepcrypt/") == 1
+      if (ours) classes++
+      next
+    }
+    ours && match($0, banned) {
+      ref = substr($0, RSTART, RLENGTH)
+      if (!((d, ref) in seen)) {
+        seen[d, ref] = 1
+        print "HIT" t "DexRef" t name t d " references " ref
+      }
+    }
+    END { print "CLASSES" t (classes + 0) }
+  ' "$aw/dexdump" >"$aw/dexrefs" || exit 2
+  while IFS=$tab read -r dkind da db dc; do
+    case $dkind in
+      HIT) ahit "$da" "$db" "$dc" ;;
+      CLASSES) classes=$((classes + da)) ;;
+    esac
+  done <"$aw/dexrefs"
+}
+
+# apk_scan VARIANT APK EXPECTED_DIR MERGER_REPORT CERT_SHA256: the APK check and scan (see "APK
+# mode" in the header). Every argument and input file is checked, and every tool found, before
+# the APK is read.
+apk_scan() {
+  variant=$1
+  apk=$2
+  exp=${3%/}
+  report=$4
+  cert=$5
+  case $variant in
+    shipping | withTestRegistry) ;;
+    *) apkfail "VARIANT is shipping or withTestRegistry, not $variant" ;;
+  esac
+  printf '%s\n' "$cert" | grep -q -x -E '[0-9a-f]{64}' || apkfail "CERT_SHA256 is not 64 lowercase hex digits: $cert"
+  [ -d "$exp" ] || apkfail "EXPECTED_DIR $3 is not a directory"
+  readable "$exp/manifest-$variant.txt" --apk
+  readable "$exp/native-libs.txt" --apk
+  readable "$report" --apk
+  [ -f "$apk" ] && [ -r "$apk" ] || apkfail "cannot read $apk"
+  for tool in python3 aapt2 dexdump zipalign apksigner llvm-nm; do
+    command -v "$tool" >/dev/null 2>&1 ||
+      apkfail "no $tool on PATH (aapt2, dexdump, zipalign and apksigner from the build-tools, llvm-nm from the NDK)"
+  done
+  nm=$(command -v llvm-nm)
+  bin=${nm%/*}
+  aw=$(mktemp -d "${TMPDIR:-/tmp}/banned-api-apk.XXXXXX") || exit 2
+  trap 'rm -rf "$aw"' EXIT
+  trap 'exit 2' HUP INT TERM
+  atmp=$aw
+  iw=$aw
+  # elf_check's patterns: one rule for the three Android targets (the undefined RNG imports, the
+  # rand crates, getrandom's fallback).
+  artifact_rules aarch64-linux-android
+  hits=0
+  ndex=0
+  classes=0
+  entries=0
+  libs=0
+  echo "== banned-api-check --apk $variant $apk"
+  echo "sha256 $(sha256 "$apk")"
+  # 1. The manifest: aapt2's three dumps and the merger report reduced to the summary, which
+  # must equal the expected one; the hard rules hit whatever that file says; and the report
+  # names no INTERNET (no network permission is ever stripped).
+  apk_tool "$aw/badging" aapt2 dump badging "$apk"
+  apk_tool "$aw/permissions" aapt2 dump permissions "$apk"
+  apk_tool "$aw/xmltree" aapt2 dump xmltree --file AndroidManifest.xml "$apk"
+  apk_py manifest "$aw/badging" "$aw/permissions" "$aw/xmltree" "$report" "$aw/summary" "$apk" \
+    >"$aw/manifest" || exit 2
+  echo "== manifest summary"
+  cat "$aw/summary" || exit 2
+  echo "=="
+  apk_lines "$aw/manifest"
+  if ! cmp -s "$aw/summary" "$exp/manifest-$variant.txt"; then
+    ahit Manifest "$exp/manifest-$variant.txt" "differs from the APK's manifest summary (the diff is on stderr)"
+    show_diff "$exp/manifest-$variant.txt" "$aw/summary"
+  fi
+  grep -n -e INTERNET -- "$report" >"$aw/internet"
+  [ $? -le 1 ] || exit 2
+  while IFS= read -r line; do
+    ahit Manifest "$report:${line%%:*}" "names INTERNET: ${line#*:}"
+  done <"$aw/internet"
+  # 2. The APK's bytes and entries, the native libraries (each through elf_check) and the dex
+  # files (each through dex_scan).
+  apk_py scan "$apk" "$exp/native-libs.txt" "$aw" "$testkey" $markers >"$aw/scan" || exit 2
+  apk_lines "$aw/scan"
+  [ "$classes" -gt 0 ] ||
+    apkfail "dexdump listed no com.keepcrypt class in the APK's $ndex dex file(s), so the reference scan read none of KeepCrypt's code"
+  # 3. Alignment and the signature.
+  if ! zipalign -c -P 16 -v 4 "$apk" >"$aw/zipalign" 2>&1 </dev/null; then
+    ahit Zipalign "$apk" 'zipalign -c -P 16 -v 4 fails (its lines but the OK ones are on stderr)'
+    grep -v -e '(OK' "$aw/zipalign" | sed 's/^/    /' >&2
+  fi
+  if ! apksigner verify --print-certs "$apk" >"$aw/apksigner" 2>&1 </dev/null; then
+    ahit Signature "$apk" 'apksigner verify fails (its output is on stderr)'
+    sed 's/^/    /' "$aw/apksigner" >&2
+  else
+    signers=$(sed -n 's/^Signer #[0-9][0-9]* certificate SHA-256 digest: //p' "$aw/apksigner")
+    [ "$signers" = "$cert" ] ||
+      ahit Signature "$apk" "signed by $(printf '%s\n' "${signers:-no certificate}" | paste -s -d ' ' -), not by the run's throwaway key $cert alone"
+  fi
+  if [ "$hits" -ne 0 ]; then
+    echo "banned-api-check --apk $variant $apk: $hits hit(s)"
+    exit 1
+  fi
+  echo "banned-api-check --apk $variant $apk: clean: the manifest summary equals $exp/manifest-$variant.txt, with no network permission, provider, receiver, service or <queries>, backup, cleartext traffic and debugging off and one exported activity, and the merger report names no INTERNET; $libs native libraries exactly as $exp/native-libs.txt lists them, no libkeepcrypt (before M5 commit 14), each through elf_check and every 64-bit one 16 KB aligned, and no other ELF; no marker or test key in the APK or any of its $entries entries; $classes com.keepcrypt classes in $ndex dex files with no banned RNG reference; zipalign -c -P 16 -v 4 passes; signed by the run's throwaway key alone ($cert)"
+  exit 0
+}
+
+# --- APK selftest mode ---------------------------------------------------------------------------
+
+# The hit categories of the APK check, for its selftest.
+acats='^(Manifest|NativeLib|Format|Symbol|Marker|TestKey|DexRef|Zipalign|Signature): '
+
+# axexpect NAME TEXT ARG...: --apk ARG... in a new process, with the stub tools reading $c first on
+# PATH, must exit 2 with TEXT in its output.
+axexpect() {
+  axname=$1
+  want=$2
+  shift 2
+  out=$(KC_STUB=$c PATH=$st/bin:$PATH sh "$self" --apk "$@" 2>&1)
+  rc=$?
+  ok=no
+  if [ "$rc" -eq 2 ]; then
+    case $out in *"$want"*) ok=yes ;; esac
+  fi
+  if [ "$ok" = yes ]; then
+    pass=$((pass + 1))
+    printf 'PASS %s -> exit 2: %s\n' "$axname" "${out##*$nl}"
+  else
+    fail=$((fail + 1))
+    printf 'FAIL %s: wanted exit 2 with "%s", got exit %s:\n' "$axname" "$want" "$rc"
+    printf '%s\n' "$out" | sed 's/^/    /'
+  fi
+}
+
+# anew NAME: $c, a fresh copy of the base case ($st/base): the stub tools' outputs (aapt2's three
+# dumps, apksigner's), the merger report, the stub APK's files and its entry list
+# (ENTRY=FILE lines, FILE under $c) and the expected directory.
+anew() {
+  c=$st/$1
+  cp -R "$st/base" "$c" || exit 2
+}
+
+# abuild: $c/app.apk from $c/entries, with $c/comment as the zip comment.
+abuild() {
+  set --
+  while IFS= read -r e; do
+    set -- "$@" "${e%%=*}=$c/${e#*=}"
+  done <"$c/entries"
+  apk_py zip "$c/app.apk" "$(cat "$c/comment")" "$@" || exit 2
+}
+
+# alist: $c/expected/native-libs.txt from every lib/<abi>/<name>.so entry of $c/entries.
+alist() {
+  : >"$c/expected/native-libs.txt" || exit 2
+  while IFS= read -r e; do
+    case ${e%%=*} in
+      lib/*/*.so)
+        n=${e%%=*}
+        n=${n#lib/}
+        printf '%s %s %s\n' "${n%%/*}" "${n#*/}" "$(sha256 "$c/${e#*=}")" >>"$c/expected/native-libs.txt" || exit 2
+        ;;
+    esac
+  done <"$c/entries"
+}
+
+# aregen: $c/expected/manifest-shipping.txt remade from $c's dumps and report, so that only a hard
+# rule can fail the case.
+aregen() {
+  apk_py manifest "$c/badging.txt" "$c/permissions.txt" "$c/xmltree.txt" "$c/report.txt" \
+    "$c/expected/manifest-shipping.txt" x >/dev/null || exit 2
+}
+
+# aappend FILE LINE...: each LINE appended to FILE.
+aappend() {
+  af=$1
+  shift
+  printf '%s\n' "$@" >>"$af" || exit 2
+}
+
+# acase NAME WANT-HIT: $c's APK built, then --apk shipping on it in a new process, with the stub
+# tools reading $c, must exit 1 with exactly one hit, which starts with WANT-HIT; with WANT-HIT
+# empty (the control), exit 0 with no hit.
+acase() {
+  abuild
+  aout=$(KC_STUB=$c PATH=$st/bin:$PATH sh "$self" --apk shipping "$c/app.apk" "$c/expected" "$c/report.txt" "$acert" 2>&1)
+  rc=$?
+  got=$(printf '%s\n' "$aout" | grep -E "$acats")
+  count=$(printf '%s\n' "$aout" | grep -c -E "$acats")
+  ok=no
+  if [ -z "$2" ]; then
+    [ "$rc" -eq 0 ] && [ "$count" -eq 0 ] && ok=yes
+  elif [ "$rc" -eq 1 ] && [ "$count" -eq 1 ]; then
+    case $got in "$2"*) ok=yes ;; esac
+  fi
+  if [ "$ok" = yes ]; then
+    pass=$((pass + 1))
+    printf 'PASS %s -> exit %s: %s\n' "$1" "$rc" "${got:-clean}"
+  else
+    fail=$((fail + 1))
+    if [ -n "$2" ]; then want_rc=1; else want_rc=0; fi
+    printf 'FAIL %s: wanted exit %s with %s, got exit %s:\n' "$1" "$want_rc" "${2:-no hit}" "$rc"
+    printf '%s\n' "$aout" | sed 's/^/    /'
+  fi
+}
+
+# apk_selftest: --apk's refusals and hard rules on stub tools and stub APKs (see "APK selftest
+# mode" in the header).
+apk_selftest() {
+  st=$(mktemp -d "${TMPDIR:-/tmp}/banned-api-selftest-apk.XXXXXX") || exit 2
+  trap 'rm -rf "$st"' EXIT
+  trap 'exit 2' HUP INT TERM
+  td=$here/testdata/apk
+  committed=$here/../mobile/android/expected/manifest-shipping.txt
+  for f in "$td/badging.txt" "$td/permissions.txt" "$td/xmltree.txt" "$td/merger-report.txt" "$committed"; do
+    readable "$f" --selftest-apk
+  done
+  command -v python3 >/dev/null 2>&1 || { echo 'banned-api-check: --selftest-apk: no python3 on PATH' >&2; exit 2; }
+  pass=0
+  fail=0
+  acert=$(printf '%064d' 0 | tr 0 c)
+  # The stub tools. aapt2 prints $KC_STUB's dumps; dexdump prints the file it is given (a stub dex
+  # file is the text dexdump would print for it); zipalign passes unless $KC_STUB/zipalign-fails
+  # exists; apksigner prints $KC_STUB/apksigner.txt; llvm-nm lists the NM:<name> words in its file.
+  mkdir "$st/bin" || exit 2
+  cat >"$st/bin/aapt2" <<'STUB'
+#!/bin/sh
+case $1-$2 in
+  dump-badging) cat "$KC_STUB/badging.txt" ;;
+  dump-permissions) cat "$KC_STUB/permissions.txt" ;;
+  dump-xmltree) cat "$KC_STUB/xmltree.txt" ;;
+  *) echo "stub aapt2: $*" >&2; exit 1 ;;
+esac
+STUB
+  cat >"$st/bin/dexdump" <<'STUB'
+#!/bin/sh
+for f; do :; done
+cat "$f"
+STUB
+  cat >"$st/bin/zipalign" <<'STUB'
+#!/bin/sh
+if [ -f "$KC_STUB/zipalign-fails" ]; then
+  echo 'lib/arm64-v8a/libandroidx.graphics.path.so (BAD - 4096)'
+  echo 'Verification FAILED'
+  exit 1
+fi
+echo 'Verification succesful'
+STUB
+  cat >"$st/bin/apksigner" <<'STUB'
+#!/bin/sh
+cat "$KC_STUB/apksigner.txt"
+STUB
+  cat >"$st/bin/llvm-nm" <<'STUB'
+#!/bin/sh
+for f; do :; done
+grep -a -o 'NM:[A-Za-z0-9_]*' "$f" | sed 's/^NM://'
+STUB
+  chmod +x "$st/bin/aapt2" "$st/bin/dexdump" "$st/bin/zipalign" "$st/bin/apksigner" "$st/bin/llvm-nm" || exit 2
+  # The base case: aapt2's dumps of the shipping APK and a stand-in merger report
+  # (scripts/testdata/apk/), the run's signer, and a stub APK as the real one is laid out: the
+  # manifest, two dex files (a library class that names kotlin.random, which passes, and
+  # KeepCrypt's classes), resources and graphics-path's three libraries (the 32-bit one 4 KB
+  # aligned, which only 64-bit libraries may not be).
+  b=$st/base
+  mkdir -p "$b/files" "$b/expected" || exit 2
+  cp "$td/badging.txt" "$td/permissions.txt" "$td/xmltree.txt" "$b/" && cp "$td/merger-report.txt" "$b/report.txt" || exit 2
+  aappend "$b/apksigner.txt" 'Signer #1 certificate DN: CN=KeepCrypt CI throwaway key' "Signer #1 certificate SHA-256 digest: $acert"
+  : >"$b/comment" || exit 2
+  echo 'stub manifest' >"$b/files/AndroidManifest.xml" && echo 'stub resources' >"$b/files/resources.arsc" || exit 2
+  aappend "$b/files/classes.dex" "Processing 'classes.dex'..." "Opened 'classes.dex', DEX version '035'" \
+    'Class #0            -' "  Class descriptor  : 'Landroidx/compose/runtime/SnapshotStateKt;'" \
+    "  Superclass        : 'Ljava/lang/Object;'" \
+    '000100: 7110 0100 0000                         |0000: invoke-static {v0}, Lkotlin/random/RandomKt;.Random:(I)Lkotlin/random/Random; // method@0001' \
+    'Class #1            -' "  Class descriptor  : 'Lcom/keepcrypt/entropy/MainActivity;'" \
+    "  Superclass        : 'Lcom/keepcrypt/entropy/secure/SecureActivity;'" \
+    '0001b0: 7010 0200 0000                         |0000: invoke-direct {v0}, Lcom/keepcrypt/entropy/secure/SecureActivity;.<init>:()V // method@0002'
+  aappend "$b/files/classes2.dex" "Processing 'classes2.dex'..." 'Class #0            -' \
+    "  Class descriptor  : 'Lcom/keepcrypt/entropy/secure/SecureActivity;'" \
+    "  Superclass        : 'Landroidx/activity/ComponentActivity;'"
+  apk_py elf "$b/files/arm64.so" arm64-v8a 4000 memcpy __cxa_finalize &&
+    apk_py elf "$b/files/arm.so" armeabi-v7a 1000 memcpy __cxa_finalize &&
+    apk_py elf "$b/files/x64.so" x86_64 4000 memcpy __cxa_finalize || exit 2
+  aappend "$b/entries" AndroidManifest.xml=files/AndroidManifest.xml classes.dex=files/classes.dex \
+    classes2.dex=files/classes2.dex resources.arsc=files/resources.arsc \
+    lib/arm64-v8a/libandroidx.graphics.path.so=files/arm64.so lib/armeabi-v7a/libandroidx.graphics.path.so=files/arm.so \
+    lib/x86_64/libandroidx.graphics.path.so=files/x64.so
+  c=$b
+  alist
+  cp "$committed" "$b/expected/manifest-shipping.txt" || exit 2
+  # Refusals, before any tool runs or the APK is read.
+  e=$b/expected
+  axexpect apk-error-usage 'usage:' shipping "$b/app.apk" "$e" "$b/report.txt"
+  axexpect apk-error-variant 'VARIANT is shipping or withTestRegistry, not debug' debug "$b/app.apk" "$e" "$b/report.txt" "$acert"
+  axexpect apk-error-cert 'CERT_SHA256 is not 64 lowercase hex digits: CCCC' shipping "$b/app.apk" "$e" "$b/report.txt" CCCC
+  axexpect apk-error-missing-expected-dir "EXPECTED_DIR $st/absent is not a directory" shipping "$b/app.apk" "$st/absent" "$b/report.txt" "$acert"
+  axexpect apk-error-missing-expected-manifest "cannot read $e/manifest-withTestRegistry.txt, or it is empty" withTestRegistry "$b/app.apk" "$e" "$b/report.txt" "$acert"
+  axexpect apk-error-missing-report "cannot read $st/absent.txt, or it is empty" shipping "$b/app.apk" "$e" "$st/absent.txt" "$acert"
+  axexpect apk-error-missing-apk "cannot read $st/absent.apk" shipping "$st/absent.apk" "$e" "$b/report.txt" "$acert"
+  mkdir "$st/nobin" || exit 2
+  for t in basename dirname grep python3; do
+    ln -s "$(command -v "$t")" "$st/nobin/$t" || exit 2
+  done
+  shell=$(command -v sh) || exit 2
+  touch "$b/app.apk" || exit 2
+  out=$(PATH=$st/nobin "$shell" "$self" --apk shipping "$b/app.apk" "$e" "$b/report.txt" "$acert" 2>&1)
+  rc=$?
+  want='banned-api-check: --apk: no aapt2 on PATH (aapt2, dexdump, zipalign and apksigner from the build-tools, llvm-nm from the NDK)'
+  if [ "$rc" -eq 2 ] && [ "$out" = "$want" ]; then
+    pass=$((pass + 1))
+    printf 'PASS apk-error-no-aapt2 -> exit 2: %s\n' "$out"
+  else
+    fail=$((fail + 1))
+    printf 'FAIL apk-error-no-aapt2: wanted exit 2 with "%s", got exit %s:\n' "$want" "$rc"
+    printf '%s\n' "$out" | sed 's/^/    /'
+  fi
+  rm "$b/app.apk" || exit 2
+  # The control: the stub APK passes, its manifest summary from the shipping APK's dumps equal to
+  # the committed mobile/android/expected/manifest-shipping.txt.
+  anew clean
+  acase apk-clean ''
+  # The manifest's hard rules, each with the case's own summary as the expected one, so that only
+  # the rule can fail it; then the comparison itself.
+  anew internet
+  aappend "$c/permissions.txt" "uses-permission: name='android.permission.INTERNET'"
+  aappend "$c/xmltree.txt" '      E: uses-permission (line=60)' \
+    '        A: http://schemas.android.com/apk/res/android:name(0x01010003)="android.permission.INTERNET" (Raw: "android.permission.INTERNET")'
+  aregen
+  acase apk-manifest-internet "Manifest: $c/app.apk: a network permission (rule 9): uses-permission android.permission.INTERNET"
+  anew provider
+  aappend "$c/xmltree.txt" '          E: provider (line=60)' \
+    '            A: http://schemas.android.com/apk/res/android:name(0x01010003)="com.example.CanaryProvider" (Raw: "com.example.CanaryProvider")' \
+    '            A: http://schemas.android.com/apk/res/android:exported(0x01010010)=false'
+  aregen
+  acase apk-manifest-provider "Manifest: $c/app.apk: a provider (the app has no provider, receiver or service): provider com.example.CanaryProvider exported=false"
+  anew allow-backup
+  sed 's/allowBackup(0x01010280)=false/allowBackup(0x01010280)=true/' "$b/xmltree.txt" >"$c/xmltree.txt" || exit 2
+  aregen
+  acase apk-manifest-allow-backup-true "Manifest: $c/app.apk: application allowBackup=true, not false"
+  anew debuggable
+  awk '{ print } /allowBackup\(0x01010280\)=false/ { print "        A: http://schemas.android.com/apk/res/android:debuggable(0x0101000f)=true" }' \
+    "$b/xmltree.txt" >"$c/xmltree.txt" || exit 2
+  aappend "$c/badging.txt" application-debuggable
+  aregen
+  acase apk-manifest-debuggable "Manifest: $c/app.apk: application debuggable=true, not false"
+  anew exported
+  aappend "$c/xmltree.txt" '          E: activity (line=60)' \
+    '            A: http://schemas.android.com/apk/res/android:name(0x01010003)="com.keepcrypt.entropy.Other" (Raw: "com.keepcrypt.entropy.Other")' \
+    '            A: http://schemas.android.com/apk/res/android:exported(0x01010010)=true'
+  aregen
+  acase apk-manifest-extra-exported-activity "Manifest: $c/app.apk: 2 exported activities, not the one launcher: com.keepcrypt.entropy.MainActivity, com.keepcrypt.entropy.Other"
+  anew queries
+  aappend "$c/xmltree.txt" '      E: queries (line=60)' '          E: package (line=61)' \
+    '            A: http://schemas.android.com/apk/res/android:name(0x01010003)="com.example.wallet" (Raw: "com.example.wallet")'
+  aregen
+  acase apk-manifest-queries "Manifest: $c/app.apk: a <queries> element (package visibility): queries package com.example.wallet"
+  anew differs
+  sed 's/^targetSdk 36$/targetSdk 35/' "$committed" >"$c/expected/manifest-shipping.txt" || exit 2
+  acase apk-manifest-summary-differs "Manifest: $c/expected/manifest-shipping.txt: differs from the APK's manifest summary"
+  anew report-internet
+  n=$(wc -l <"$c/report.txt") || exit 2
+  aappend "$c/report.txt" 'uses-permission#android.permission.INTERNET' \
+    'ADDED from [com.example:canary:1.0] /stub/canary/AndroidManifest.xml:7:5-67' \
+    'REJECTED from /stub/app/src/main/AndroidManifest.xml:14:5-90'
+  aregen
+  acase apk-merger-report-internet "Manifest: $c/report.txt:$((n + 1)): names INTERNET: uses-permission#android.permission.INTERNET"
+  # The native libraries.
+  anew unlisted
+  aappend "$c/entries" lib/x86_64/libextra.so=files/x64.so
+  acase apk-unlisted-so 'NativeLib: lib/x86_64/libextra.so: not in native-libs.txt'
+  anew page-4k
+  apk_py elf "$c/files/arm64.so" arm64-v8a 1000 memcpy || exit 2
+  alist
+  acase apk-4kb-aligned-64-bit-so 'NativeLib: lib/arm64-v8a/libandroidx.graphics.path.so: LOAD segments aligned to 0x1000, 0x1000, not 0x4000 on every one'
+  anew listed-sha
+  sed 's/^\(x86_64 [^ ]*\) .*/\1 '"$(printf '%064d' 0)"'/' "$b/expected/native-libs.txt" >"$c/expected/native-libs.txt" || exit 2
+  acase apk-so-with-another-sha256 'NativeLib: lib/x86_64/libandroidx.graphics.path.so: SHA-256 '
+  anew listed-missing
+  aappend "$c/expected/native-libs.txt" "armeabi-v7a libgone.so $(printf '%064d' 0)"
+  acase apk-listed-so-missing 'NativeLib: lib/armeabi-v7a/libgone.so: in native-libs.txt but not in the APK'
+  anew libkeepcrypt
+  aappend "$c/entries" lib/arm64-v8a/libkeepcrypt.so=files/arm64.so
+  acase apk-libkeepcrypt-before-commit-14 'NativeLib: lib/arm64-v8a/libkeepcrypt.so: libkeepcrypt.so, which no APK carries before M5 commit 14'
+  anew abi-x86
+  aappend "$c/entries" lib/x86/libandroidx.graphics.path.so=files/x64.so
+  acase apk-so-for-x86 "NativeLib: lib/x86/libandroidx.graphics.path.so: an ABI outside MA:23's three"
+  anew other-machine
+  apk_py elf "$c/files/x64.so" armeabi-v7a 4000 memcpy || exit 2
+  alist
+  acase apk-so-for-another-machine 'NativeLib: lib/x86_64/libandroidx.graphics.path.so: an ELF of class 1 for machine 40'
+  anew elf-outside-lib
+  aappend "$c/entries" assets/payload.bin=files/x64.so
+  acase apk-elf-outside-lib 'NativeLib: assets/payload.bin: an ELF outside lib/<abi>/*.so'
+  anew rand
+  apk_py elf "$c/files/x64.so" x86_64 4000 memcpy rand || exit 2
+  alist
+  acase apk-so-importing-rand 'Symbol: lib/x86_64/libandroidx.graphics.path.so: undefined rand'
+  # The byte search and the dex reference scan.
+  anew marker-dex
+  aappend "$c/files/classes2.dex" '000200: 1a00 0400                              |0000: const-string v0, "KC_TEST_REGISTRY_DO_NOT_SHIP" // string@0004'
+  acase apk-marker-in-a-dex 'Marker: classes2.dex: KC_TEST_REGISTRY_DO_NOT_SHIP'
+  anew testkey
+  printf '%0256d\n' 0 >"$c/files/resources.arsc" && write_testkey "$c/key" && cat "$c/key" >>"$c/files/resources.arsc" || exit 2
+  acase apk-test-key-in-resources "TestKey: resources.arsc: the test registry public key $testkey"
+  anew comment
+  echo KC_SIMULATOR_DO_NOT_SHIP >"$c/comment" || exit 2
+  acase apk-marker-in-the-zip-comment "Marker: $c/app.apk: KC_SIMULATOR_DO_NOT_SHIP"
+  anew dexref
+  aappend "$c/files/classes.dex" '0001b6: 2200 0300                              |0003: new-instance v0, Ljava/util/Random; // type@0003'
+  acase apk-banned-reference-in-a-keepcrypt-class 'DexRef: classes.dex: Lcom/keepcrypt/entropy/MainActivity; references Ljava/util/Random;'
+  anew no-keepcrypt
+  sed '/^Class #1/,$d' "$b/files/classes.dex" >"$c/files/classes.dex" && : >"$c/files/classes2.dex" || exit 2
+  abuild
+  axexpect apk-error-no-keepcrypt-class 'dexdump listed no com.keepcrypt class' shipping "$c/app.apk" "$c/expected" "$c/report.txt" "$acert"
+  anew native-list
+  echo 'x86 libandroidx.graphics.path.so abc' >"$c/expected/native-libs.txt" || exit 2
+  abuild
+  axexpect apk-error-native-list-line "native-libs.txt line 1 is not" shipping "$c/app.apk" "$c/expected" "$c/report.txt" "$acert"
+  # Alignment and the signature.
+  anew zipalign
+  touch "$c/zipalign-fails" || exit 2
+  acase apk-zipalign-fails "Zipalign: $c/app.apk: zipalign -c -P 16 -v 4 fails"
+  anew signer
+  sed "s/$acert/$(printf '%064d' 0 | tr 0 d)/" "$b/apksigner.txt" >"$c/apksigner.txt" || exit 2
+  acase apk-another-signer "Signature: $c/app.apk: signed by $(printf '%064d' 0 | tr 0 d), not by the run's throwaway key"
+  echo "selftest-apk: $pass passed, $fail failed"
+  [ "$fail" -eq 0 ] || exit 1
+  exit 0
+}
+
 case ${1-} in
   --artifact) shift; [ $# -ge 1 ] || { usage >&2; exit 2; }; artifact "$@" ;;
   --workflows) shift; [ $# -eq 1 ] || { usage >&2; exit 2; }; workflows "$1" ;;
@@ -4580,6 +5515,8 @@ case ${1-} in
   --image) shift; [ $# -eq 4 ] || { usage >&2; exit 2; }; image_scan "$1" "$2" "$3" "$4" ;;
   --selftest-image) shift; [ $# -eq 2 ] || { usage >&2; exit 2; }; selftest_image "$1" "$2" ;;
   --os-config) shift; [ $# -eq 1 ] || { usage >&2; exit 2; }; os_config "$1" ;;
+  --apk) shift; [ $# -eq 5 ] || { usage >&2; exit 2; }; apk_scan "$1" "$2" "$3" "$4" "$5" ;;
+  --selftest-apk) shift; [ $# -eq 0 ] || { usage >&2; exit 2; }; apk_selftest ;;
 esac
 
 case $# in

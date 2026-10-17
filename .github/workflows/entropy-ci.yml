@@ -296,7 +296,10 @@ jobs:
     # run step; the image's text-only configuration check (M4 group 11, --os-config): pi/os's
     # inittab, fstab, cmdline.txt and config.txt, expected/linux.config against the fragment's
     # required and forbidden lists with one hwrng driver, and BusyBox's config with init and mount
-    # alone; the verifier self-test (13 checks: every vectors/ file regenerated or recomputed,
+    # alone; the APK check's self-test (M5 group 5, --selftest-apk; no Android SDK: stub tools and
+    # stub APKs): its refusals, and the manifest, native-library, marker, dex-reference, alignment
+    # and signer rules each firing exactly once on its case; the verifier self-test (13 checks:
+    # every vectors/ file regenerated or recomputed,
     # Coldcard's hash-pinned scripts re-run behind rolls.json and on agreement.json's dice-only
     # subset, and lone copies of the shipped verify.py under an audit hook, piped and in a
     # pseudo-terminal); the
@@ -325,6 +328,7 @@ jobs:
       - run: scripts/banned-api-check.sh
       - run: scripts/banned-api-check.sh --workflows ../.github/workflows
       - run: scripts/banned-api-check.sh --os-config pi/os
+      - run: scripts/banned-api-check.sh --selftest-apk
       - run: python3 -I tools/verify/vectorgen.py --selftest
       - run: python3 -I pi/os/rootfs-prefix.py --selftest
       - run: sh pi/os/kconfig.sh --selftest

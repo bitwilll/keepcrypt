@@ -41,3 +41,12 @@ rootProject.name = "keepcrypt-android"
 // MA:24's three modules and the CI-only positive control of the capture tests (group 6), which
 // :app never depends on.
 include(":core-ffi", ":secure-ui", ":app", ":capture-control")
+
+// The canary build only (tasks/todo.md, M5 group 5): -Pkc.canary=true adds the canary library,
+// scripts/testdata/android-canary-lib, which :app then depends on (app/build.gradle.kts); its
+// manifest asks for INTERNET and declares a provider, and the Android workflow requires
+// scripts/banned-api-check.sh --apk to refuse that APK. No real build sets the property.
+if (providers.gradleProperty("kc.canary").orNull == "true") {
+    include(":canary-lib")
+    project(":canary-lib").projectDir = file("../../scripts/testdata/android-canary-lib")
+}
