@@ -10810,11 +10810,26 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
 - [ ] `.github/CODEOWNERS` gains `/Entropy/mobile/` (Q54). `.gitignore` gains `mobile/android/**/build/`, `.gradle/`,
   `local.properties`, `*.apk`, `*.aab`, `*.jks`, `*.keystore` and the jniLibs output directory.
   Proof: `gh api repos/bitwilll/keepcrypt/codeowners/errors` lists 0 errors; `git check-ignore` on one path of each.
-- [ ] The gate's `list()` is unchanged (no `build/` skip: CI's `gates` runs on a fresh checkout, so a skip could only
+  Proof (M5 commit 3, partial): `git check-ignore -v` resolves `mobile/android/app/build/x.kt` and
+  `mobile/android/build/x` to `mobile/android/**/build/`, `.../src/main/jniLibs/arm64-v8a/libkeepcrypt.so` to
+  `mobile/android/**/jniLibs/` (the guard: android-rust.sh writes to `app/build/rust/`, already under `build/`),
+  `mobile/android/.gradle/x` to `.gradle/`, `mobile/android/local.properties`, `a.apk`, `a.aab`, and `a.jks` and
+  `a.keystore` to the `*.jks` and `*.keystore` lines Entropy/.gitignore already had (lines 34-35); `app/build.gradle.kts`
+  and `buildSrc/x.kt` are not ignored. `gh api repos/bitwilll/keepcrypt/codeowners/errors` gives `{"errors":[]}`, but
+  the API reads main's file: the new `/Entropy/mobile/` line (the same shape as `/Entropy/core/`) is checked by the
+  lead after the push with `?ref=m5-android`, which closes this item.
+- [x] The gate's `list()` is unchanged (no `build/` skip: CI's `gates` runs on a fresh checkout, so a skip could only
   hide committed files). A new rule refuses any tracked file under `mobile/**/build/` or `mobile/**/.gradle/`, read from
   `git ls-files`.
   Proof: `--selftest` cases: a tracked `mobile/android/app/build/x.kt` is a hit; an untracked one in a scratch repo is
   not listed by the rule.
+  Proof (M5 commit 3): the Build category, after the per-file loop, `git ls-files -- mobile` filtered by
+  `^mobile/(.*/)?(build|[.]gradle)/`; `list()` untouched (`git diff` shows no hunk in it). `--selftest` 703 passed,
+  0 failed (698 + 5): the five scratch-repository cases pass, `build-tracked-app-build`, `build-tracked-dot-gradle`
+  and `build-tracked-mobile-build` each one `Build:` hit on their file (`git add -f`), `clean-build-untracked` (the
+  same file, not added) and `clean-build-gradle-files-tracked` (`app/build.gradle.kts` and `buildSrc/build.gradle.kts`
+  tracked) clean. By hand under /bin/dash: a tracked `mobile/android/prebuild/y.kt` is not a hit; a tree that is no
+  repository is silent; a PATH without git is exit 2 with "git is not on PATH". The gate on the tree: clean, 241 files.
 
 **3. Kotlin and Android gate rules (Q55; before any Kotlin lands)**
 - [ ] New categories, each with hit and clean fixtures under `scripts/testdata/banned-api/`, covering `mobile/android/**`

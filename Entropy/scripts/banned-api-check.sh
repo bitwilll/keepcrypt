@@ -27,6 +27,8 @@
 #                                           OS_DIR (pi/os; see "OS configuration mode" below)
 #   scripts/banned-api-check.sh --selftest  every fixture in scripts/testdata/banned-api/ must trip the
 #                                           gate for its category; every clean-* fixture must pass; the
+#                                           Build rule's cases, scratch git repositories built here,
+#                                           must trip or pass as their names say; the
 #                                           artifact fixtures in scripts/testdata/artifact/ must give
 #                                           exactly their pinned hits (needs the pinned toolchain); the
 #                                           workflow fixtures in scripts/testdata/workflows/ must trip
@@ -371,6 +373,15 @@
 #              delays); and BufReader appears nowhere in pi/app (a buffered reader would hold a copy
 #              of hwrng samples or stick bytes). std::net is the Network category's, which already
 #              bans it in pi/app as everywhere outside registry/.
+#   Build      no tracked file under mobile/**/build/ or mobile/**/.gradle/ (tasks/todo.md, M5
+#              group 2): Gradle's output and its per-project cache never enter git, so a committed
+#              one is a hit, "Build: <file>: <detail>" with no line. The tracked files come from
+#              git ls-files, never from the scan list: list() keeps no build/ skip, since CI's gates
+#              runs on a fresh checkout, where a skip could only hide committed files, and an
+#              ignored local build tree is not a hit. A tree that is no git work tree (a copy, the
+#              selftest's scratch trees) has no tracked file, so the rule is silent there; git
+#              missing from PATH is exit 2. Gradle's own build.gradle.kts files and buildSrc/ are
+#              not output directories and pass.
 #
 # Fail-closed noise, not bypasses (rename or spell it out instead): a named format argument called
 # path that rustfmt wraps onto its own line ("        path = \"seed.age\",") is an Include hit in
@@ -468,7 +479,8 @@ in the games, game_random named outside core and the games, a second Session::ne
 a release probe that does not call game_random; and in pi/app the firmware's device rules: a
 path literal outside device/paths.rs or off its list, a file API outside device/, a file created
 outside device/usb.rs or any truncating, appending, renaming or directory API, rppal or nix
-outside device/, MNT_FORCE, MNT_DETACH outside device/usb.rs, a process, a thread or BufReader.
+outside device/, MNT_FORCE, MNT_DETACH outside device/usb.rs, a process, a thread or BufReader;
+and a tracked file (git ls-files) under mobile/**/build/ or mobile/**/.gradle/.
 A directory symlink is refused. Exit 0 clean, 1 hits, 2 usage or read error.
 EOF
 }
@@ -1199,6 +1211,24 @@ EOF
     echo 'Shell: core/examples/release_probe.rs:1: missing a call to game_random outside a comment'
     hits=$((hits + 1))
   fi
+  # Build: no tracked file under mobile/**/build/ or mobile/**/.gradle/, read from git's index
+  # (see the header). Outside a work tree nothing is tracked; without git nothing can be listed.
+  command -v git >/dev/null 2>&1 || {
+    echo 'banned-api-check: git is not on PATH, so the tracked files under mobile/ cannot be listed' >&2
+    exit 2
+  }
+  if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    tracked=$(git ls-files -- mobile) || exit 2
+    built=$(printf '%s\n' "$tracked" | grep -E '^mobile/(.*/)?(build|[.]gradle)/')
+    [ $? -le 1 ] || exit 2
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      echo "Build: $f: a tracked file under mobile/**/build/ or mobile/**/.gradle/ (build output never enters git)"
+      hits=$((hits + 1))
+    done <<EOF
+$built
+EOF
+  fi
   if [ "$hits" -ne 0 ]; then
     echo "banned-api-check: $hits hit(s) in $n files scanned ($skipped binary by extension, not scanned)"
     exit 1
@@ -1225,11 +1255,11 @@ fresh() {
 # WANT=error needs exit 2 and output containing FILE (if given, the expected message), any other
 # WANT needs exit 1 and exactly one hit "<WANT>: <FILE>:<line>: <text>", where <text> is line
 # <line> of FILE as it stands (the messages for a missing line or call, "missing ...", are the
-# exception).
+# exception), or a whole-file hit "<WANT>: <FILE>: <detail>" with no line (the Build rule).
 expect() {
   out=$(sh "$self" "$2" 2>&1)
   rc=$?
-  cats='^(RNG|Network|Clipboard|Rule1|FailOpen|Include|Shell|Device): '
+  cats='^(RNG|Network|Clipboard|Rule1|FailOpen|Include|Shell|Device|Build): '
   hit=$(printf '%s\n' "$out" | grep -E "$cats")
   count=$(printf '%s\n' "$out" | grep -c -E "$cats")
   ok=no
@@ -1248,6 +1278,7 @@ expect() {
           *) [ "${at#*: }" = "$(sed -n "${at%%:*}p" "$2/$4")" ] && ok=yes ;;
         esac
         ;;
+      "$3: $4: "*) ok=yes ;;
     esac
   fi
   if [ "$ok" = yes ]; then
@@ -1403,6 +1434,32 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   fresh
   rm "$d/core/examples/release_probe.rs" || exit 2
   expect 'shell-release-probe-absent' "$d" Shell core/examples/release_probe.rs
+  # The Build rule reads git's index, so its cases are scratch repositories made here (a fixture
+  # directory is none): a tracked file under mobile/**/build/ or mobile/**/.gradle/ is a hit (git
+  # add -f, so a global excludes file cannot keep it out), the same file untracked is not, and
+  # Gradle's build.gradle.kts files and buildSrc/ are not output directories. The fixture trees
+  # above are no repositories at all, which is the rule's silence outside a work tree.
+  for case in 'app-build:mobile/android/app/build/x.kt' 'dot-gradle:mobile/android/.gradle/config.properties' \
+    'mobile-build:mobile/build/x.kt'; do
+    x=${case#*:}
+    fresh
+    git init -q "$d" || exit 2
+    mkdir -p "$d/${x%/*}" && echo 'kc.gate.canary=true' >"$d/$x" || exit 2
+    git -C "$d" add -f -- "$x" || exit 2
+    expect "build-tracked-${case%%:*}" "$d" Build "$x"
+  done
+  fresh
+  git init -q "$d" || exit 2
+  mkdir -p "$d/mobile/android/app/build" && echo 'kc.gate.canary=true' >"$d/mobile/android/app/build/x.kt" || exit 2
+  expect 'clean-build-untracked' "$d" clean
+  fresh
+  git init -q "$d" || exit 2
+  mkdir -p "$d/mobile/android/app" "$d/mobile/android/buildSrc" || exit 2
+  for x in mobile/android/app/build.gradle.kts mobile/android/buildSrc/build.gradle.kts; do
+    echo 'plugins {}' >"$d/$x" || exit 2
+  done
+  git -C "$d" add -f -- mobile || exit 2
+  expect 'clean-build-gradle-files-tracked' "$d" clean
   for want in RNG Network Clipboard Rule1 FailOpen Include Shell Device clean; do
     case "$seen " in *" $want "*) ;; *) fail=$((fail + 1)); echo "FAIL no $want fixture" ;; esac
   done
