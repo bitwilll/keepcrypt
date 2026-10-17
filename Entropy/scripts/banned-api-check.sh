@@ -399,10 +399,10 @@
 #              src/test/ directory deeper down, under src/main/kotlin/ say, is compiled into the
 #              app and is shipping code) skip KtIntent, KtStorage, KtDevice, KtFailOpen's catch
 #              list and KtInput's Activity rule; mobile/android/capture-control (the CI-only
-#              positive control, never shipped) skips only the FLAG_SECURE rule (KtWindow's
-#              securePolicy) and the Activity rule; every other file gets every rule. The named
-#              files below are the app's (mobile/android/app/src/main/.../NAME, at any depth under
-#              main/) unless secure-ui's is named.
+#              positive control, never shipped) skips only the FLAG_SECURE rules (KtWindow's
+#              securePolicy and flag checks) and the Activity rule; every other file gets every
+#              rule. The named files below are the app's (mobile/android/app/src/main/.../NAME,
+#              at any depth under main/) unless secure-ui's is named.
 #   KtLog      Log (android.util.Log, Log.v/d/i/w/e/wtf( ), println( and print(, System.out,
 #              System.err, printStackTrace, Timber, java.util.logging, slf4j, and a $ template in a
 #              string on a line that calls error(, check(, require(, checkNotNull( or
@@ -419,7 +419,11 @@
 #              AutoCompleteTextView, tooltips, WindowManager's addView and
 #              TYPE_APPLICATION_OVERLAY; and, outside :capture-control, DialogProperties( or
 #              PopupProperties( without securePolicy = SecureFlagPolicy.SecureOn as a named
-#              argument closed on the same line (fail closed, like .textSelection()).
+#              argument closed on the same line (fail closed, like .textSelection()), and
+#              anything that can turn FLAG_SECURE off: clearFlags, setFlags but
+#              setFlags(WindowManager.LayoutParams.FLAG_SECURE,
+#              WindowManager.LayoutParams.FLAG_SECURE), attributes = ..., setAttributes and
+#              updateViewLayout.
 #   KtInput    TextField (Basic, Outlined, Secure), EditText, InputMethodManager and
 #              SoftwareKeyboardController; and, in shipping sources but secure-ui's
 #              SecureActivity.kt, an Activity subclass: a constructor call of a capitalized name
@@ -1367,6 +1371,18 @@ kt_secure_policy() {
     -e 's/(Dialog|Popup)Properties[[:space:]]*[(][^()]*securePolicy[[:space:]]*=[[:space:]]*SecureFlagPolicy[[:space:]]*[.][[:space:]]*SecureOn([^A-Za-z0-9_()][^()]*)?[)]//g'
 }
 
+# KtWindow's FLAG_SECURE rule (rule 9, MA:41), outside :capture-control: nothing turns FLAG_SECURE
+# off once SecureActivity has set it. clearFlags, any setFlags but SecureActivity's own
+# setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE) (a
+# setFlags(0, FLAG_SECURE) clears it), and a new window layout (attributes = ..., setAttributes,
+# updateViewLayout), which can drop the flag, are hits; reading window.attributes.flags passes.
+kt_flag_secure() {
+  t=$(grep -n -a -E -e "clearFlags|setFlags|${L}(attributes[[:space:]]*=([^=]|\$)|setAttributes|updateViewLayout)" -- "$1")
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  kept_hits "clearFlags|setFlags|(^|[^A-Za-z0-9_])(attributes[[:space:]]*=([^=]|\$)|setAttributes|updateViewLayout)" \
+    -e 's/setFlags[[:space:]]*[(][[:space:]]*WindowManager[[:space:]]*[.][[:space:]]*LayoutParams[[:space:]]*[.][[:space:]]*FLAG_SECURE[[:space:]]*,[[:space:]]*WindowManager[[:space:]]*[.][[:space:]]*LayoutParams[[:space:]]*[.][[:space:]]*FLAG_SECURE[[:space:]]*[)]//g'
+}
+
 # KtInput (Q57: the system keyboard never opens), every scope: text fields of any kind
 # (TextField, BasicTextField, OutlinedTextField, SecureTextField), EditText, InputMethodManager
 # and SoftwareKeyboardController.
@@ -1755,6 +1771,7 @@ EOF
         report KtFailOpen ktfailopen "$rel"
         report KtWindow ktwindow "$rel"
         [ "$ktscope" = capture ] || report KtWindow kt_secure_policy "$rel"
+        [ "$ktscope" = capture ] || report KtWindow kt_flag_secure "$rel"
         report KtInput ktinput "$rel"
         if [ "$ktscope" = main ]; then
           case $rel in

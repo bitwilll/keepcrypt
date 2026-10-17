@@ -3,3 +3,4 @@ results.putString("kc_ci_throwaway_passphrase", passphrase.text())
 startActivity(Intent(context, MainActivity::class.java))
 val shared = context.getSharedPreferences("test", 0)
 } catch (e: Throwable) {
+assertTrue(activity.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0)

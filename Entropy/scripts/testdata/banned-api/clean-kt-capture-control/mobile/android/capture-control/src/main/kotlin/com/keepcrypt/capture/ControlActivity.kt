@@ -2,3 +2,4 @@
 class ControlActivity : ComponentActivity() {
 val properties = DialogProperties(dismissOnBackPress = false)
 val popup = PopupProperties(securePolicy = SecureFlagPolicy.SecureOff)
+window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
