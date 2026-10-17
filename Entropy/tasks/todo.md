@@ -10786,12 +10786,18 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   before Stage C.
 
 **1. Doc and rule edits, alone (only those approved)**
-- [ ] One commit changes only `docs/`: BP:35, :47, :72, :73, :74, MA:17 and both columns of MA:23, plus a line under
+- [x] One commit changes only `docs/`: BP:35, :47, :72, :73, :74, MA:17 and both columns of MA:23, plus a line under
   BP:33's architecture.png naming the two FFI crates and "Swift binding: M6" (Q53); MA:29, :73, :160, MA:34, a "When
   something fails (Android)" paragraph, MA:123, BP:270 and swb:286 (Q57); MA:17's residual sentence (Q58); BP:318's
   Runs cell and MA:74's test line (Q55).
   Proof: `git diff --name-only` lists only docs/; `vectorgen.py --selftest` (it pins doc sentences) and `verify.py
   selftest` (3.12, 3.9) pass; the gate is clean.
+  Proof (M5 commit 2, 73466b6): `git diff --name-only HEAD~1 HEAD` lists docs/build-plan.md, docs/mobile-apps.md and
+  docs/seal-watchonly-braille.md only; `vectorgen.py --selftest` 13/13 and `verify.py selftest` 8/8 on Python 3.12 and
+  3.9; `banned-api-check.sh` clean (241 files) and `--selftest` 698 passed, 0 failed; fmt, both clippy commands,
+  `cargo test --workspace --locked` (21 suites, 445 passed, 3 ignored) and the test-sources run (17 suites, 269 passed,
+  1 ignored) unchanged. The citations above stay main's at 95c4359; against it, BP lines from :35 now sit 2 lower and
+  from :48 3 lower, MA lines from :35 2 lower, swb unchanged.
 - [ ] CLAUDE.md rule 8 gains Q59 (a)'s sentence and rule 1 Q59 (b)'s, if approved, in their own commit.
   Proof: the diff touches only those rules' lines.
 
