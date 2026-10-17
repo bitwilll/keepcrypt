@@ -10441,6 +10441,15 @@ milestones.
 - M5-2 (2026-10-17): M5's commit 1 does not tick M4's after-merge item (todo.md:9300-9302 at 95c4359). M4b's commit 1
   (c923063 on `m4b-screens`, PR #8) already records main's push run with the same hash, and two branches ticking the
   same lines would only conflict at the merge. The run IDs are carried in "Starting point" below.
+- M5-3 (2026-10-17): MA:13 and MA:172 (the first-screen sentence and the Go offline step) are reworded to the Q57 (d)
+  rule, airplane mode on and Wi-Fi off, in commit 2c. Q57 (d) named only MA:123, but the rule is the owner's; leaving two
+  sentences with the old wording would make the document state two offline conditions (Stage A review finding 4).
+- M5-4 (2026-10-17): the gate's Build rule refuses any submodule (gitlink) under `mobile/`, not only one at a `build/` or
+  `.gradle/` path, because `git ls-files` cannot list a submodule's files, so the rule could not clear build output
+  committed through one (commit 3b; Coldcard's theft came through a submodule, BP:81). MA:25's "including dialogs" stays:
+  the plan builds no dialogs, and MA:70's rule is kept as the guard the gate enforces.
+- M5-5 (2026-10-17): a plan entry whose Proof constrains the diff (docs only; only the rules' lines) lands as two commits,
+  the change and then its tick in tasks/todo.md (2 = 73466b6 + f80c87f, 2b = 424b008 + 234edec), as M3 and M4 did.
 
 Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). Once M4b merges, build-plan.md lines from
 293 on move down one (the M5 row becomes BP:296).
@@ -10807,9 +10816,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   --workspace --locked` (445 passed, 3 ignored) and the test-sources run (269 passed, 1 ignored) unchanged.
 
 **2. Repo hygiene**
-- [ ] `.github/CODEOWNERS` gains `/Entropy/mobile/` (Q54). `.gitignore` gains `mobile/android/**/build/`, `.gradle/`,
+- [x] `.github/CODEOWNERS` gains `/Entropy/mobile/` (Q54). `.gitignore` gains `mobile/android/**/build/`, `.gradle/`,
   `local.properties`, `*.apk`, `*.aab`, `*.jks`, `*.keystore` and the jniLibs output directory.
   Proof: `gh api repos/bitwilll/keepcrypt/codeowners/errors` lists 0 errors; `git check-ignore` on one path of each.
+  Proof (M5 commit 3d): `gh api 'repos/bitwilll/keepcrypt/codeowners/errors?ref=m5-android'` on the pushed branch at
+  beb8ab6 returns `{"errors":[]}`.
   Proof (M5 commit 3, partial): `git check-ignore -v` resolves `mobile/android/app/build/x.kt` and
   `mobile/android/build/x` to `mobile/android/**/build/`, `.../src/main/jniLibs/arm64-v8a/libkeepcrypt.so` to
   `mobile/android/**/jniLibs/` (the guard: the plan's android-rust.sh, commit 14, will write to `app/build/rust/`,
