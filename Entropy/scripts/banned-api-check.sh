@@ -444,12 +444,18 @@
 #              datadog, newrelic, segment, mixpanel, amplitude, flurry, admob, facebook,
 #              instabug and onesignal anywhere on a line; a repository but google() and
 #              mavenCentral() (maven, ivy, exclusiveContent, gradlePluginPortal, jcenter,
-#              mavenLocal, flatDir, includeBuild, a url or uri); files(, fileTree(, apply(from,
-#              apply from:, buildscript {, classpath(, and srcDir or srcDirs naming a build path;
-#              and a repositories block in any build file but mobile/android/settings.gradle.kts.
+#              mavenLocal, flatDir, includeBuild, a url or uri); files(, fileTree(,
+#              fileCollection, zipTree, tarTree, apply(from, apply from:, buildscript {,
+#              classpath(; a repositories block in any build file but
+#              mobile/android/settings.gradle.kts; and any srcDir, srcDirs, setSrcDirs,
+#              directories, srcFile or setSrcFile but srcDir("src/...") or srcDirs("src/...")
+#              with one plain path under the module's src/ (no .., no $, no build path).
 #   KtBinary   a tracked file (or link) under mobile/ with the extension jar, aar, so, dex, class,
-#              apk, aab, jks or keystore, any letter case, read from git ls-files as the Build
-#              rule reads it (the scan list skips binary extensions), "KtBinary: <file>: <detail>".
+#              apk, aab, jks or keystore, or any other code or archive extension the scan list
+#              skips (zip, gz, xz, bz2, zst, tar, ipa, dylib, a, rlib, o, car), any letter case,
+#              read from git ls-files as the Build rule reads it, "KtBinary: <file>: <detail>":
+#              the scan never reads those files, so none may be tracked where a build could use
+#              it. Images, fonts, sound and PDF stay allowed.
 #   KtManifest in every AndroidManifest.xml under mobile/android: android.permission.INTERNET,
 #              ACCESS_NETWORK_STATE and ACCESS_WIFI_STATE (a tools:node="remove" on them hits too:
 #              no network permission is ever stripped), allowBackup="true",
@@ -1444,8 +1450,9 @@ kt_settings() {
 # names anywhere on a line (datadoghq and io.sentry included); a repository other than google()
 # and mavenCentral() (maven, ivy, exclusiveContent, gradlePluginPortal, jcenter, mavenLocal,
 # flatDir, includeBuild, and a url or uri, which only a repository or a remote input takes);
-# files(, fileTree(, apply(from, apply from:, buildscript {, classpath(, and a srcDir or srcDirs
-# that names a build path (build/, buildDir, layout.buildDirectory).
+# files(, fileTree(, fileCollection, zipTree and tarTree (a local file or archive fed into the
+# build: objects.fileCollection().from("libs/x.zip") passes a dependency without files( ),
+# apply(from, apply from:, buildscript { and classpath(. Source sets are kt_source_sets'.
 kt_sdk() {
   grep -n -a -i -E \
     -e 'firebase|crashlytics|com[.]google[.]android[.]gms|play-services|mlkit|sentry|bugsnag|acra|appcenter|datadog' \
@@ -1454,11 +1461,27 @@ kt_sdk() {
     -e "${L}(exclusiveContent|gradlePluginPortal|jcenter|mavenLocal|flatDir|includeBuild)$R" \
     -e "${L}(url|uri|setUrl)[[:space:]]*[(=]" \
     -e "${L}(files|fileTree|classpath)[[:space:]]*[(]" \
+    -e "${L}(fileCollection|zipTree|tarTree)$R" \
     -e "${L}apply[[:space:]]*[(][[:space:]]*from" \
     -e "${L}apply[[:space:]]+from[[:space:]]*:" \
     -e "${L}buildscript[[:space:]]*[{]" \
-    -e "${L}srcDirs?[[:space:]]*([(]|[+]?=).*build" \
     -- "$1"
+}
+
+# KtSdk, in build files: a source set pointed anywhere but a plain path under the module's own
+# src/. Every srcDir, srcDirs, setSrcDirs, directories (AGP's newer source-set API), srcFile and
+# setSrcFile is a hit but srcDir("src/...") or srcDirs("src/...") with one literal path of
+# letters, digits, _, - and / (so no .., no $ and no build output). A build path
+# (build/rust, layout.buildDirectory) would compile or package what a script left there, another
+# manifest (manifest.srcFile) would escape KtManifest, and ../capture-control's sources would be
+# built into :app with that module's exemptions; the plan builds none of these (tasks/todo.md, M5
+# group 3: "srcDir( or srcDirs( naming a build path", here by allow-list so that no spelling
+# passes). How commit 14's libkeepcrypt.so reaches the APK is still to be decided (group 4).
+kt_source_sets() {
+  t=$(grep -n -a -E -e "${L}(srcDirs?|setSrcDirs|directories|srcFile|setSrcFile)$R" -- "$1")
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  kept_hits "(^|[^A-Za-z0-9_])(srcDirs?|setSrcDirs|directories|srcFile|setSrcFile)([^A-Za-z0-9_]|$)" \
+    -e 's#(^|[^A-Za-z0-9_])srcDirs?[[:space:]]*[(][[:space:]]*"src/[A-Za-z0-9_/-]*"[[:space:]]*[)]#\1#g'
 }
 
 # KtSdk, in build files but mobile/android/settings.gradle.kts: a repositories block, which only
@@ -1753,6 +1776,7 @@ EOF
         case $rel in
           *.gradle.kts | *.gradle | */gradle.properties | *.versions.toml | *.lockfile)
             report KtSdk kt_sdk "$rel"
+            report KtSdk kt_source_sets "$rel"
             case $rel in
               mobile/android/settings.gradle.kts) ;;
               *) report KtSdk kt_repositories "$rel" ;;
@@ -1847,13 +1871,14 @@ EOF
 $built
 EOF
     # KtBinary: a tracked file (or link; not a submodule, the Build rule's) under mobile/ with a
-    # binary extension, in any letter case. The scan list skips such files by extension, so they
-    # are read from the index too.
-    binaries=$(printf '%s\n' "$tracked" | grep -i -E "^1[02][0-7]{4} [^$tab]*${tab}mobile/.*[.](jar|aar|so|dex|class|apk|aab|jks|keystore)\$")
+    # binary extension, in any letter case: the plan's nine, and every other code or archive
+    # extension of $binext (whose files the scan never reads). The scan list skips such files by
+    # extension, so they are read from the index too.
+    binaries=$(printf '%s\n' "$tracked" | grep -i -E "^1[02][0-7]{4} [^$tab]*${tab}mobile/.*[.](jar|aar|so|dex|class|apk|aab|jks|keystore|zip|gz|xz|bz2|zst|tar|ipa|dylib|a|rlib|o|car)\$")
     [ $? -le 1 ] || exit 2
     while IFS= read -r e; do
       [ -n "$e" ] || continue
-      echo "KtBinary: ${e#*"$tab"}: a tracked binary under mobile/ (a jar, aar, so, dex, class, apk, aab, jks or keystore never enters git)"
+      echo "KtBinary: ${e#*"$tab"}: a tracked binary under mobile/ (no code, archive, package or key file enters git)"
       hits=$((hits + 1))
     done <<EOF
 $binaries
@@ -2162,14 +2187,18 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   git -C "$d" add -f -- mobile || exit 2
   expect 'clean-build-gradle-files-tracked' "$d" clean
   # KtBinary reads the index too, so its cases are scratch repositories as well: a tracked file
-  # under mobile/ with each binary extension (one in upper case, one under mobile/ios/, one a
-  # symlink) is a hit; the same file untracked, a tracked image and a tracked jar outside mobile/
-  # (which the scan skips by extension) are not.
+  # under mobile/ with each code or archive extension (one in upper case, one under mobile/ios/,
+  # one a symlink) is a hit; the same file untracked, a tracked image and font, and a tracked jar
+  # outside mobile/ (which the scan skips by extension) are not.
   for case in 'jar:mobile/android/app/libs/x.jar' 'aar:mobile/android/app/libs/x.aar' \
     'so:mobile/android/app/src/main/jniLibs/x86_64/libx.so' 'dex:mobile/android/app/classes.dex' \
     'class:mobile/android/core-ffi/Native.class' 'apk:mobile/android/app/app-shipping-release.apk' \
     'aab:mobile/android/app/app.aab' 'jks:mobile/android/release.jks' 'keystore:mobile/android/debug.keystore' \
-    'upper-case-jar:mobile/android/app/libs/X.JAR' 'ios-so:mobile/ios/libx.so'; do
+    'upper-case-jar:mobile/android/app/libs/X.JAR' 'ios-so:mobile/ios/libx.so' \
+    'zip:mobile/android/app/libs/evil.zip' 'gz:mobile/android/app/libs/x.tar.gz' 'xz:mobile/android/app/libs/x.xz' \
+    'bz2:mobile/android/app/libs/x.bz2' 'zst:mobile/android/app/libs/x.zst' 'tar:mobile/android/app/libs/x.tar' \
+    'ipa:mobile/ios/KeepCrypt.ipa' 'dylib:mobile/ios/libkc.dylib' 'a:mobile/android/app/libs/libkc.a' \
+    'rlib:mobile/android/app/libs/libkc.rlib' 'o:mobile/android/app/libs/kc.o' 'car:mobile/ios/Assets.car'; do
     x=${case#*:}
     fresh
     git init -q "$d" || exit 2
@@ -2185,9 +2214,11 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   seen="$seen KtBinary"
   fresh
   git init -q "$d" || exit 2
-  mkdir -p "$d/mobile/android/app/libs" "$d/mobile/android/app/src/main/res/drawable" "$d/tools" || exit 2
+  mkdir -p "$d/mobile/android/app/libs" "$d/mobile/android/app/src/main/res/drawable" \
+    "$d/mobile/android/app/src/main/res/font" "$d/tools" || exit 2
   echo 'kc.gate.canary=true' >"$d/mobile/android/app/libs/x.jar" || exit 2
   echo 'kc.gate.canary=true' >"$d/mobile/android/app/src/main/res/drawable/icon.png" || exit 2
+  echo 'kc.gate.canary=true' >"$d/mobile/android/app/src/main/res/font/braille.ttf" || exit 2
   echo 'kc.gate.canary=true' >"$d/tools/x.jar" || exit 2
   git -C "$d" add -f -- mobile/android/app/src tools || exit 2
   expect 'clean-ktbinary-untracked-image-outside-mobile' "$d" clean

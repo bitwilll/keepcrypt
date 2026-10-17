@@ -7,6 +7,7 @@ android {
     compileSdk = 37
     ndkVersion = "30.0.16248370"
     sourceSets["main"].kotlin.srcDir("src/main/kotlin")
+    sourceSets["main"].java.srcDirs( "src/main/java" )
 }
 dependencies {
     implementation(project(":core-ffi"))
