@@ -462,11 +462,12 @@
 #              throwaway seed's backup passphrase, tasks/todo.md M5 group 18) outside
 #              mobile/android/app/src/androidTest/ and scripts/android-age-check.py.
 #   FFI        in .rs files under ffi/ (tasks/todo.md, M5 groups 3 and 7; Q53): catch_unwind
-#              outside every comment (so ffi/clippy.toml's ban and a doc line are no call site;
-#              a use line is one, so the one call is written as a path) anywhere but
-#              ffi/jni/src/lib.rs, and each one after its first there; once that file exports a
-#              function (extern "system" or no_mangle outside a comment), its one catch_unwind is
-#              required (a missing one is reported at line 1). Session::new (the Shell rule's
+#              outside every comment and string or char literal (so ffi/clippy.toml's ban, a doc
+#              line and a string are no call site; a use line is one, so the one call is written
+#              as a path) anywhere but ffi/jni/src/lib.rs, and each one after its first there; an
+#              export (no_mangle, export_name, or an extern fn with any ABI string or none, outside
+#              comments and literals) anywhere but that file; and once that file exports a
+#              function, its one catch_unwind is required (a missing one is reported at line 1). Session::new (the Shell rule's
 #              shapes, comments counting) anywhere under ffi/ but ffi/src/ceremony.rs, each one
 #              after its first there, and none there once the file exists (reported at line 1).
 #              The identifiers thread and JoinHandle anywhere, comments included: a joined
@@ -940,44 +941,94 @@ session_new_again() {
 }
 
 # rust_code_match ERE FILE: prints "<line>:<text>" for each line of the Rust file FILE whose code,
-# with every comment removed, matches ERE, and exits 0 hit, 1 none, 2 unreadable (the grep checks'
-# codes). The awk pass drops each // comment to the end of its line and each /* */ comment, nested
-# and over lines as Rust's are, so a doc line, a commented-out call and a call after // or inside a
-# block comment do not count. A // or /* inside a string literal is read as a comment too, which
-# can only drop code. The code is matched with a space before and after it, so ERE names a word
+# with every comment and the contents of every string and char literal removed, matches ERE, and
+# exits 0 hit, 1 none, 2 unreadable (the grep checks' codes). The awk pass reads the file byte by
+# byte, as Rust's lexer does, so a doc line, a commented-out call, a call after // or inside a
+# block comment (nested and over lines as Rust's are), and a name inside a string do not count,
+# and a // or /* inside a literal starts no comment: reading one as a comment would drop the
+# code after it, and with it a banned call (a "/*" before a catch_unwind hid it). A string
+# literal ("..." with backslash escapes, also b"..." and c"...", and raw r"...", r#"..."# and
+# br#"..."#, over as many lines as it takes) is left as "" at its close, so extern "system"
+# reads extern "". A ' starts a char or byte literal only when one is there ('x', a character
+# of up to four bytes, '"', or an escape such as '\'' or '\u{1F600}'), and is a lifetime or a
+# label otherwise. The code is matched with a space before and after it, so ERE names a word
 # boundary as [^A-Za-z0-9_] on both sides, with no ^ or $ inside a group (awk dialects differ
 # there); the line printed is the line as it stands, comments included.
 rust_code_match() {
   [ -f "$2" ] && [ -r "$2" ] || return 2
-  awk -v ere="$1" '
+  awk -v ere="$1" -v sq="'" '
+    # charlen(line, i): the length of the char or byte literal whose opening quote is at i, or 0
+    # for a lifetime or a label: an escape runs to the next quote after the escaped character; a
+    # double quote, or one to four bytes holding no quote, backslash or double quote, is closed by
+    # the quote right after it.
+    function charlen(line, i,    k, ch) {
+      if (substr(line, i + 1, 1) == "\\") {
+        k = index(substr(line, i + 3), sq)
+        return k > 0 ? k + 2 : 0
+      }
+      if (substr(line, i + 1, 2) == "\"" sq) return 3
+      for (k = 1; k <= 5; k++) {
+        ch = substr(line, i + k, 1)
+        if (ch == sq) return k > 1 ? k + 1 : 0
+        if (ch == "" || ch == "\\" || ch == "\"") return 0
+      }
+      return 0
+    }
     {
       code = ""
-      rest = $0
-      while (rest != "") {
-        opens = index(rest, "/*")
+      line = $0
+      n = length(line)
+      i = 1
+      while (i <= n) {
+        c = substr(line, i, 1)
         if (depth > 0) {
-          closes = index(rest, "*/")
-          if (opens > 0 && (closes == 0 || opens < closes)) {
+          two = substr(line, i, 2)
+          if (two == "/*") {
             depth++
-            rest = substr(rest, opens + 2)
-          } else if (closes > 0) {
+            i += 2
+          } else if (two == "*/") {
             depth--
-            rest = substr(rest, closes + 2)
+            i += 2
+            if (depth == 0) code = code " "
           } else {
-            rest = ""
+            i++
+          }
+        } else if (instr) {
+          if (!israw && c == "\\") {
+            i += 2
+          } else if (c == "\"" && substr(line, i + 1, length(raw)) == raw) {
+            instr = 0
+            code = code "\"\""
+            i += 1 + length(raw)
+          } else {
+            i++
           }
         } else {
-          slashes = index(rest, "//")
-          if (slashes > 0 && (opens == 0 || slashes < opens)) {
-            code = code substr(rest, 1, slashes - 1)
-            rest = ""
-          } else if (opens > 0) {
-            code = code substr(rest, 1, opens - 1) " "
+          two = substr(line, i, 2)
+          rest = substr(line, i)
+          prev = i > 1 ? substr(line, i - 1, 1) : " "
+          if (two == "//") {
+            break
+          } else if (two == "/*") {
             depth = 1
-            rest = substr(rest, opens + 2)
+            i += 2
+          } else if (c == "\"") {
+            instr = 1
+            israw = 0
+            raw = ""
+            i++
+          } else if (prev !~ /[A-Za-z0-9_]/ && match(rest, /^[bc]?r#*"/)) {
+            instr = 1
+            israw = 1
+            raw = substr(rest, 1, RLENGTH - 1)
+            sub(/^[bc]?r/, "", raw)
+            i += RLENGTH
+          } else if (c == sq && (len = charlen(line, i)) > 0) {
+            code = code sq sq
+            i += len
           } else {
-            code = code rest
-            rest = ""
+            code = code c
+            i++
           }
         }
       }
@@ -1484,11 +1535,11 @@ kt_test_channel() {
 
 # --- FFI (tasks/todo.md, M5 groups 3 and 7; Q53), .rs files under ffi/ -------------------------------
 
-# One catch, one place: catch_unwind outside every comment (rust_code_match, so a doc line and
-# ffi/clippy.toml's ban entry are no site; a use line is, so the one site is a path call such as
-# std::panic::catch_unwind(...)), anywhere under ffi/ but ffi/jni/src/lib.rs, and each one after
-# the first in that file. Once that file declares an export (extern "system" or no_mangle outside
-# a comment), its one site is required (checked after the scan).
+# One catch, one place: catch_unwind outside every comment and literal (rust_code_match, so a doc
+# line, a string and ffi/clippy.toml's ban entry are no site; a use line is, so the one site is a
+# path call such as std::panic::catch_unwind(...)), anywhere under ffi/ but ffi/jni/src/lib.rs,
+# and each one after the first in that file. Once that file declares an export (ffi_export_ere),
+# its one site is required (checked after the scan).
 ffi_catch_unwind() {
   rust_code_match '[^A-Za-z0-9_]catch_unwind[^A-Za-z0-9_]' "$1"
 }
@@ -1498,6 +1549,17 @@ ffi_catch_unwind_again() {
   t=$(printf '%s\n' "$t" | sed 1d) || return 2
   [ -n "$t" ] || return 1
   printf '%s\n' "$t"
+}
+
+# Every export sits beside the one catch: outside every comment and literal, no_mangle and
+# export_name (bare or inside unsafe(...)) and an extern fn, with an ABI string ("system", "C",
+# "C-unwind", any: rust_code_match leaves it as "") or without one (which is "C"), are hits under
+# ffi/ anywhere but ffi/jni/src/lib.rs. An extern "C" and an extern "system" function share an
+# ABI on Android, and RegisterNatives can bind a native method to a function that is not
+# exported by name, so each form is one: in another file it would run with no catch_unwind.
+ffi_export_ere='[^A-Za-z0-9_](no_mangle|export_name|extern[[:space:]]*("")?[[:space:]]*fn)[^A-Za-z0-9_]'
+ffi_export() {
+  rust_code_match "$ffi_export_ere" "$1"
 }
 
 # The other way to turn a panic into a value, a joined thread, cannot be banned in the shared
@@ -1710,13 +1772,13 @@ EOF
       mobile/android/app/src/androidTest/* | scripts/android-age-check.py) ;;
       *) report KtTestChannel kt_test_channel "$rel" ;;
     esac
-    # FFI: one catch_unwind, in ffi/jni/src/lib.rs; one Session::new, in ffi/src/ceremony.rs (comments
-    # count, as under pi/app/src); no thread or JoinHandle.
+    # FFI: one catch_unwind, in ffi/jni/src/lib.rs, beside every export; one Session::new, in
+    # ffi/src/ceremony.rs (comments count, as under pi/app/src); no thread or JoinHandle.
     case $rel in
       ffi/*.rs)
         case $rel in
           ffi/jni/src/lib.rs) report FFI ffi_catch_unwind_again "$rel" ;;
-          *) report FFI ffi_catch_unwind "$rel" ;;
+          *) report FFI ffi_catch_unwind "$rel"; report FFI ffi_export "$rel" ;;
         esac
         case $rel in
           ffi/src/ceremony.rs) report FFI session_new_again "$rel" ;;
@@ -1749,8 +1811,7 @@ EOF
     echo 'FFI: ffi/src/ceremony.rs:1: missing the one Session::new under ffi/'
     hits=$((hits + 1))
   fi
-  if [ -f ffi/jni/src/lib.rs ] &&
-    rust_code_match '[^A-Za-z0-9_](extern[[:space:]]*"system"|no_mangle)[^A-Za-z0-9_]' ffi/jni/src/lib.rs >/dev/null &&
+  if [ -f ffi/jni/src/lib.rs ] && ffi_export ffi/jni/src/lib.rs >/dev/null &&
     ! ffi_catch_unwind ffi/jni/src/lib.rs >/dev/null; then
     echo 'FFI: ffi/jni/src/lib.rs:1: missing the one catch_unwind call site, which every JNI export needs'
     hits=$((hits + 1))
