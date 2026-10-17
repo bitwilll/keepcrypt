@@ -4,28 +4,31 @@
 # emulators one after another on those same bytes, so the hashes printed for the owner are the
 # ones tested (no artifact passes between jobs, so no fourth action is needed).
 #
-# This is commit 5's job, the bootstrap (M5 group 4): it builds the shipping and test-registry
-# APKs (the release build type of :app's flavours shipping and withTestRegistry, neither
-# debuggable, unsigned until the signing step comes), :app's instrumented-test APK for each, and
-# :capture-control's APK, and runs the JVM tests, all with -Pkc.bootstrap=true, --write-locks and
-# --write-verification-metadata sha256: strict locking and dependency verification are off, and
-# Gradle writes the lockfiles and gradle/verification-metadata.xml, which are uploaded as an
-# artifact for review. Commit 6 commits the reviewed files, turns strict locking and verification
-# on and removes the switch. The run also prints the platform probe's build facts (JDK, SDK, NDK,
-# Gradle, the plugins, each APK's files, native libraries and manifest) for the lead's record in
-# tasks/todo.md's Review.
+# From commit 6 (M5 group 4) the build is strict: every module's committed gradle.lockfile and
+# mobile/android/gradle/verification-metadata.xml must hold what Gradle resolves and downloads
+# (strict lock mode in build.gradle.kts; --dependency-verification strict on every Gradle call
+# here), or the build fails. The job builds the shipping and test-registry APKs (the release build
+# type of :app's flavours shipping and withTestRegistry, neither debuggable, unsigned until the
+# signing step comes), :app's instrumented-test APK for each and :capture-control's APK, and runs
+# the JVM tests. Before any Gradle run, so before any pinned plugin's code runs, it compares the
+# shipping runtime classpath with the committed allow-list
+# (mobile/android/expected/shipping-runtime-classpath.txt) and reviews every pinned artifact
+# against what Google's Maven and Maven Central publish (scripts/android-deps-review.sh: published
+# SHA-256, or SHA-1 and the PGP signature by a pinned key, or SHA-1 alone for the 14 files lead
+# decision M5-11 names; the licences of the shipping classpath).
+# After the build it prints each APK's facts (files, native libraries, manifest) as commit 5 did.
 #
 # Not one of the 14 required checks (Q55), so path filters are safe, as in entropy-pi-image.yml:
 # a skipped run never leaves a required check pending. The rule instead (Q38 (b)): no PR that
 # touches these paths merges without a green run of this workflow on its final head.
 #
 # Hardening, as in entropy-ci.yml, whose gates job checks this file too (banned-api-check.sh
-# --workflows): read-only token and no secret; only actions/checkout and actions/upload-artifact,
-# pinned by commit SHA; no event data inside run scripts (it reaches them through env and with
-# only). Gradle comes from scripts/android-gradle.sh (pinned SHA-256, no wrapper jar), with only
-# Google's Maven and Maven Central (mobile/android/settings.gradle.kts), no JDK or SDK download,
-# no daemon and no build scan. The job builds a PR's head commit, never GitHub's merge commit, or
-# the pushed, scheduled or dispatched commit, and prints the commit it built.
+# --workflows): read-only token and no secret; only actions/checkout, pinned by commit SHA; no
+# event data inside run scripts (it reaches them through env and with only). Gradle comes from
+# scripts/android-gradle.sh (pinned SHA-256, no wrapper jar), with only Google's Maven and Maven
+# Central (mobile/android/settings.gradle.kts), no JDK or SDK download, no daemon and no build
+# scan. The job builds a PR's head commit, never GitHub's merge commit, or the pushed, scheduled or
+# dispatched commit, and prints the commit it built.
 
 name: Entropy Android
 
@@ -40,6 +43,8 @@ on:
       - 'Entropy/vectors/**'
       - 'Entropy/scripts/banned-api-check.sh'
       - 'Entropy/scripts/android-*'
+      - 'Entropy/scripts/testdata/android-deps-review/**'
+      - 'Entropy/deny.toml'
       - '.github/workflows/entropy-android.yml'
   push:
     branches: [main]
@@ -52,6 +57,8 @@ on:
       - 'Entropy/vectors/**'
       - 'Entropy/scripts/banned-api-check.sh'
       - 'Entropy/scripts/android-*'
+      - 'Entropy/scripts/testdata/android-deps-review/**'
+      - 'Entropy/deny.toml'
       - '.github/workflows/entropy-android.yml'
   schedule:
     # Weekly (Mondays, 05:41 UTC): main still builds, from fresh downloads.
@@ -150,27 +157,41 @@ jobs:
             { yes || :; } | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
           fi
           ls "$lic"
-      - name: Gradle (scripts/android-gradle.sh --version)
-        run: sh scripts/android-gradle.sh --version
-      # The bootstrap build (group 4): buildEnvironment and every module's dependencies report (the
-      # plugin classpath and every configuration, the probe's Kotlin plugin version and resolved
-      # runtime classpath among them), the APKs and the JVM tests, in one Gradle run, so every
-      # configuration a later strict run resolves gets its lock state here. The whole log is kept
-      # for the artifact. A Gradle failure fails the step.
-      - name: Bootstrap build (lockfiles and verification metadata written; locking and verification off)
+      # The dependency review's recorded cases first (no network): a changed checksum, an extra
+      # classpath line, an unsigned or wrongly signed artifact and the rest must each fail. gpg
+      # checks the signatures (the runner's own; a missing gpg fails the step).
+      - name: Dependency review selftest (scripts/android-deps-review.py --selftest)
         run: |
-          out=mobile/android/build/kc-bootstrap
-          mkdir -p "$out"
-          if ! sh scripts/android-gradle.sh -Pkc.bootstrap=true --write-locks --write-verification-metadata sha256 \
-            buildEnvironment \
-            :core-ffi:dependencies :secure-ui:dependencies :app:dependencies :capture-control:dependencies \
+          command -v gpg || { echo "FAIL: no gpg on the runner" >&2; exit 1; }
+          gpg --version | head -n 1
+          python3 --version
+          python3 -I scripts/android-deps-review.py --selftest
+      # MA:126's dependency allow-list: the shipping APK's runtime classpath (the lockfile's
+      # shippingReleaseRuntimeClasspath, which the strict build below must resolve exactly), line
+      # for line.
+      - name: Shipping runtime classpath (mobile/android/expected/shipping-runtime-classpath.txt)
+        run: python3 -I scripts/android-deps-review.py classpath
+      # Every artifact of the verification metadata against its repository, before any Gradle run
+      # resolves a plugin, so no pinned build-time code has run in this job when the pins are read:
+      # Google's Maven by its published .sha256; Maven Central by the published .sha1 over the
+      # file's bytes (fetched here, not taken from a Gradle cache) and its .asc, verified by gpg with
+      # the committed keyring and a trusted key scoped to the artifact's group; the 14 files that
+      # publish neither (lead decision M5-11) by name, by SHA-1 and SHA-256; and the licences of the
+      # shipping classpath against deny.toml's allow list. Any failure fails it.
+      - name: Dependency review (scripts/android-deps-review.sh)
+        run: sh scripts/android-deps-review.sh "$RUNNER_TEMP/deps-mirror"
+      - name: Gradle (scripts/android-gradle.sh --version)
+        run: sh scripts/android-gradle.sh --dependency-verification strict --version
+      # The strict build (group 4): the APKs and the JVM tests, in one Gradle run. A configuration
+      # whose resolution differs from its lockfile, and a file whose SHA-256 is not the metadata's,
+      # fail it. A Gradle failure fails the step.
+      - name: Build (strict locking and dependency verification)
+        run: |
+          sh scripts/android-gradle.sh --dependency-verification strict \
             :app:assembleShippingRelease :app:assembleWithTestRegistryRelease \
             :app:assembleShippingReleaseAndroidTest :app:assembleWithTestRegistryReleaseAndroidTest \
             :capture-control:assembleRelease \
-            test 2>&1 | tee "$out/gradle.log"; then
-            echo "FAIL: the bootstrap build failed (above)" >&2
-            exit 1
-          fi
+            test
       # The probe's APK facts (M5 group 0): each APK's SHA-256 and size, its file list, every native
       # library with the alignment of each LOAD segment, and aapt2's view of its package, SDKs,
       # permissions and merged manifest (components and their exported flags, receivers and
@@ -206,16 +227,3 @@ jobs:
             echo "== aapt2 dump xmltree AndroidManifest.xml"
             "$bt/aapt2" dump xmltree --file AndroidManifest.xml "$apk"
           done
-      # The files commit 6 reviews and commits (kept 14 days): every module's gradle.lockfile, the
-      # verification metadata (SHA-256 of every artifact, plugin and POM the build fetched) and
-      # the build's log with the buildEnvironment and dependencies reports.
-      - name: Upload the bootstrap files (lockfiles, verification metadata, log)
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: android-bootstrap
-          path: |
-            Entropy/mobile/android/**/gradle.lockfile
-            Entropy/mobile/android/gradle/verification-metadata.xml
-            Entropy/mobile/android/build/kc-bootstrap/gradle.log
-          retention-days: 14
-          if-no-files-found: error

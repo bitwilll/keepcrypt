@@ -1,7 +1,9 @@
 # Every Gradle plugin and library of M5, at exact versions (tasks/todo.md, M5 "New dependencies";
 # Q54). All of them are declared from the first Gradle commit on, so the lockfiles and the
-# verification metadata are written once (group 4); a new one is a reviewed change with its own
-# two-commit bootstrap. Each was published at least 14 days before it was pinned here (2026-10-17).
+# verification metadata are written once (group 4). M5 expects no later dependency change: one
+# stops the work and the lead re-plans, since regenerating the pins needs a reviewed, temporary
+# exception to the gate's bootstrap rule (lead decision M5-13). Each was published at least 14
+# days before it was pinned here (2026-10-17).
 
 [versions]
 # The Android Gradle plugin 9.3.3 (2026-09-17), com.android.application and com.android.library.

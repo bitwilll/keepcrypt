@@ -27,6 +27,11 @@ android {
         targetSdk = libs.versions.android.target.sdk.get().toInt()
         versionCode = 1
         versionName = "0.0.0"
+        // Exactly MA:23's three ABIs (lead decision M5-10): a library's native code for any other
+        // (graphics-path's x86 copy) stays out of the APK.
+        ndk {
+            abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a", "x86_64"))
+        }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     flavorDimensions += "registry"

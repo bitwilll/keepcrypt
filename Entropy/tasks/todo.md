@@ -10466,6 +10466,32 @@ milestones.
   rule stays as it is; `.gitignore` already ignores `mobile/android/**/jniLibs/` and KtBinary refuses a tracked `.so`.
 - M5-10 (2026-10-18): the APKs carry exactly MA:23's three ABIs (arm64-v8a, armeabi-v7a, x86_64): `abiFilters` in commit
   6, so graphics-path's x86 copy leaves the APK.
+- M5-11 (2026-10-18): the 14 files that publish neither a `.sha256` (Google's Maven) nor an `.asc` (Maven Central) are
+  accepted by name only, each with the reason "SHA-1 only: no .sha256 or .asc published; published SHA-1 matches and
+  the bytes match the pinned SHA-256": androidx.arch.core:core-common:2.1.0 (pom); androidx.autofill:autofill:1.0.0
+  (aar, pom); androidx.concurrent:concurrent-futures:1.0.0 (jar, pom); androidx.interpolator:interpolator:1.0.0 (aar,
+  pom); androidx.versionedparcelable:versionedparcelable:1.1.1 (aar, pom); javax.inject:javax.inject:1 (jar, pom);
+  net.sf.kxml:kxml2:2.3.0 (jar, pom); org.sonatype.oss:oss-parent:7 (pom). `scripts/android-deps-review.py` holds
+  them as an exact list (group, name, version, file name), not a general third outcome: any other artifact without a
+  `.sha256` or `.asc` still fails, and a listed file whose published SHA-1 or pinned SHA-256 differs still fails
+  (selftest: a listed file passes in the base case; an unlisted SHA-1-only file fails; a listed file with a changed
+  SHA-1, Google's and Central's, or a changed pinned SHA-256 fails). Four of these modules ship (autofill,
+  concurrent-futures, interpolator, versionedparcelable): the owner is told.
+- M5-12 (2026-10-18): the 61 signer keys are trust on first use: `write-keys` pinned whatever key signed each `.asc` at
+  commit time, and from then on a changed signer fails. An independent check of each fingerprint against the
+  publisher's own records goes on the M7 audit list.
+- M5-13 (2026-10-18): every M5 dependency was declared in commit 5, so M5 expects no later dependency change. The plan's
+  "any dependency added after commit 6 follows the same two-commit pattern" is replaced: a later dependency change stops
+  the work and the lead re-plans (a regeneration needs a reviewed, temporary exception to the gate's bootstrap rule).
+  The plan's group 4 bootstrap bullet, the comment in `mobile/android/gradle/libs.versions.toml` and the gate's
+  `kt_bootstrap` comment say so.
+- M5-14 (2026-10-18): the gate goes beyond group 3's lists for commit 6, failing closed: KtLog skips only
+  `mobile/android/gradle/verification-metadata.xml` (it lists the Android Gradle plugin's build-time slf4j and holds no
+  code); the bootstrap rule refuses Gradle's lock and verification switches, including `-M` and `-F` (only `-F strict`
+  and mkfs.vfat's `-F <digit>` pass), the startParameter and lock-off APIs; `mobile/android/build.gradle.kts` must hold
+  `lockAllConfigurations()` and `lockMode.set(LockMode.STRICT)` as whole lines; `scripts/android-deps-review.sh`
+  fetches with curl, because the gate refuses network modules in Python outside `registry/`. The workflow keeps the
+  dependency review and the classpath compare before its first Gradle call.
 
 Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). Once M4b merges, build-plan.md lines from
 293 on move down one (the M5 row becomes BP:296).
@@ -10982,9 +11008,18 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
 - [ ] Bootstrap, two commits. Commit 5 carries a `-Pkc.bootstrap=true` switch in the workflow: that run alone writes
   locks and verification metadata (`--write-locks --write-verification-metadata sha256`) with strict locking and
   verification off, and uploads them as an artifact. Commit 6 commits the reviewed files, turns on strict lock mode and
-  strict verification, and removes the switch; a gate rule fails if `kc.bootstrap` appears at the final head. Any
-  dependency added after commit 6 follows the same two-commit pattern, each pair recorded under Review.
+  strict verification, and removes the switch; a gate rule fails if `kc.bootstrap` appears at the final head. Every M5
+  dependency is declared in commit 5, so M5 expects no later dependency change: one stops the work and the lead
+  re-plans, because a regeneration needs a reviewed, temporary exception to the gate's bootstrap rule (lead decision
+  M5-13).
   Proof: commit 5's run ID and artifact; commit 6's green run in strict mode; the gate rule's fixture.
+  Proof (M5 commit 6, partial; the strict CI run is the lead's): the switch is gone from build.gradle.kts and the
+  workflow (strict lock mode, `--dependency-verification strict` on every Gradle call, the upload step removed). The
+  gate rule (KtSdk `kt_bootstrap` and the strict-locking lines; Workflow mode, lead decision M5-14): `--selftest`
+  1102 passed, 0 failed under sh and /bin/dash, including `ktsdk-root-bootstrap-property`,
+  `ktsdk-gradle-properties-bootstrap-mixed-case`, `ktsdk-android-gradle-sh-bootstrap`, `workflow-kc-bootstrap`,
+  `workflow-kc-bootstrap-in-comment`, `ktsdk-root-build-file-absent` and the clean `clean-android-strict`; the gate
+  clean on the tree (273 files), `--workflows` clean (3 workflows).
 - [ ] `scripts/android-gradle.sh` fetches `gradle-9.7.1-bin.zip` from services.gradle.org, checks its SHA-256 (pinned
   in the script from the published `.sha256`, read at commit time) and runs it with `--no-daemon`; no wrapper jar in
   git.
@@ -10997,6 +11032,15 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   listed and blocks commit 6. `mobile/android/expected/shipping-runtime-classpath.txt` is the committed dependency
   allow-list (MA:126).
   Proof: the script's report under Review; a run with one changed checksum fails; an extra classpath line fails.
+  Proof (M5 commit 6, partial; no gpg on this Mac, so the signature checks and the strict CI run are the lead's):
+  `python3 -I scripts/android-deps-review.py --selftest --skip-pgp` 42 passed, 0 failed, 2 skipped (the two gpg-only
+  cases), the same on /usr/bin/python3 3.9.6; among them `fail-changed-checksum-google`,
+  `fail-changed-checksum-central`, `fail-classpath-extra-line` and M5-11's `fail-google-sha1-only` (unlisted),
+  `fail-sha1-only-listed-sha1-changed` (and `-central`) and `fail-sha1-only-listed-sha256-changed`, the base passing
+  with one listed Google and one listed Central file. `sh scripts/android-deps-review.sh <fresh mirror> -- --skip-pgp`
+  (3 rounds, 2092 files): 768 artifacts: 300 Google's Maven (SHA-256 matched), 454 Maven Central (SHA-1 matched, PGP
+  not checked), 14 accepted by name (M5-11), 0 failed; 61 trusted keys, 78 group scopes; shipping runtime classpath
+  91 modules, equal to the expected list; licences Apache-2.0 91; exit 3 (incomplete without PGP).
 - [ ] `scripts/android-rust.sh <flavour>` (from commit 14) builds the three ABIs with group 12's flags into
   `app/build/rust/<flavour>/<abi>/` and the host library (x86_64-unknown-linux-gnu) for JVM tests; Gradle fails if a
   flavour's library is missing.

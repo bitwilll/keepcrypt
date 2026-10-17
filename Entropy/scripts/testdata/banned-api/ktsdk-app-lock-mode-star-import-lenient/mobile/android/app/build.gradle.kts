@@ -1,0 +1,1 @@
+dependencyLocking { lockMode.set(LENIENT) }

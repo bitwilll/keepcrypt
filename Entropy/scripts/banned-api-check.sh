@@ -112,7 +112,11 @@
 #     with: only, so no event data is pasted into a shell. The key may follow a dash of any width
 #     ("-   run:"), be quoted ("run":) or sit in a flow mapping ({name: x, run: "..."}), and a
 #     run: key with no value (defaults.run) is read the same way, so an expression under it is a
-#     hit too.
+#     hit too;
+#   - no way back to the Android build's bootstrap (KtSdk's kt_bootstrap, tasks/todo.md, M5 group
+#     4): kc.bootstrap, --write-locks, --update-locks, --write-verification-metadata or its -M,
+#     LockMode.DEFAULT or LENIENT, dependency verification (or -F) set to anything but strict, or
+#     the build-script calls that turn locking or verification off, comments included.
 #
 # Image lists mode (tasks/todo.md, M4 groups 14 and 15; Q38 (d)): the image workflow's "hash and
 # list" step prints with it what commit 16 commits to pi/os/expected/ for review and the image
@@ -407,7 +411,9 @@
 #              System.err, printStackTrace, Timber, java.util.logging, slf4j, and a $ template in a
 #              string on a line that calls error(, check(, require(, checkNotNull( or
 #              requireNotNull( or builds an Exception, Error, Throwable or KcHalt (rules 3 and 5;
-#              no message in app code is built from runtime values).
+#              no message in app code is built from runtime values); not in
+#              mobile/android/gradle/verification-metadata.xml, a list of the build's own
+#              artifacts (the Android Gradle plugin's slf4j among them), never code.
 #   KtFailOpen runCatching, getOrNull, getOrElse, getOrDefault, onFailure, exceptionOrNull (and
 #              getCompletionExceptionOrNull), CoroutineExceptionHandler, SupervisorJob and
 #              supervisorScope as words, and recover, recoverCatching and fold as calls, in every
@@ -467,7 +473,18 @@
 #              classpath(; a repositories block in any build file but
 #              mobile/android/settings.gradle.kts; and any srcDir, srcDirs, setSrcDirs,
 #              directories, srcFile or setSrcFile but srcDir("src/...") or srcDirs("src/...")
-#              with one plain path under the module's src/ (no .., no $, no build path).
+#              with one plain path under the module's src/ (no .., no $, no build path). In build
+#              files but lockfiles (whose generated header names --write-locks), in
+#              scripts/android-gradle.sh and in every workflow (Workflow mode), the bootstrap
+#              (group 4): kc.bootstrap, --write-locks, --update-locks,
+#              --write-verification-metadata and its short -M, LockMode.DEFAULT or LENIENT,
+#              dependency verification (--dependency-verification, its short -F,
+#              org.gradle.dependency.verification) set to anything but strict, startParameter's
+#              verification and lock-writing settings, deactivateDependencyLocking,
+#              unlockAllConfigurations, ignoredDependencies, and lockMode or lockFile but the line
+#              lockMode.set(LockMode.STRICT). Whenever mobile/android exists,
+#              mobile/android/build.gradle.kts must hold the lines lockAllConfigurations() and
+#              lockMode.set(LockMode.STRICT) (a missing one is reported at line 1).
 #   KtBinary   a tracked file (or link) under mobile/ with the extension jar, aar, so, dex, class,
 #              apk, aab, jks or keystore, or any other code or archive extension the scan list
 #              skips (zip, gz, xz, bz2, zst, tar, ipa, dylib, a, rlib, o, car), any letter case,
@@ -568,7 +585,7 @@ usage: scripts/banned-api-check.sh [--selftest | DIR | --artifact TARGET FILE...
               that import (see the script header)
   --workflows check every DIR/entropy-*.yml and .yaml workflow's hardening: read-only permissions, three
               actions at their approved SHAs, no secrets, no fork-trusting trigger, no expression
-              in a run step
+              in a run step, no Android bootstrap switch
   --image-lists
               unpack the Pi image IMG (an MBR, a FAT32 boot partition, a SquashFS root) with the
               build's host tools and print its partition table, SHA-256s, boot and root file lists,
@@ -609,8 +626,9 @@ under mobile/. Under mobile/android, by scope (src/test and src/androidTest, :ca
 the rest): logging and runtime-built messages, fail-open Kotlin and catches outside the three
 allowed, dialogs, popups and other windows, text fields and activities but SecureActivity,
 storage, intents, the camera, sensors and system settings outside their files, SDKs, other
-repositories and local build inputs in build files, and the manifest's network permissions,
-backup, debug and components; a tracked binary under mobile/; the CI passphrase key outside its
+repositories, local build inputs and the bootstrap's switches in build files (and
+android-gradle.sh), strict locking missing from the root build file, and the manifest's network permissions, backup, debug and components; a
+tracked binary under mobile/; the CI passphrase key outside its
 two files; and under ffi/ a second catch_unwind or one outside ffi/jni/src/lib.rs, a second
 Session::new or one outside ffi/src/ceremony.rs, and thread or JoinHandle. A directory symlink
 is refused. Exit 0 clean, 1 hits, 2 usage or read error.
@@ -1562,6 +1580,52 @@ kt_repositories() {
   grep -n -a -E -e "${L}repositories[[:space:]]*[{(]" -- "$1"
 }
 
+# KtSdk, in build files but lockfiles, and in scripts/android-gradle.sh (and Workflow, in the
+# workflows; tasks/todo.md, M5 group 4): no way back to the bootstrap at the final head. Any letter
+# case: the bootstrap property kc.bootstrap, Gradle's switches that write lock state or
+# verification metadata (--write-locks, --update-locks, --write-verification-metadata), a lock mode
+# other than strict (LockMode.DEFAULT, LockMode.LENIENT), dependency verification set to lenient or
+# off (--dependency-verification, org.gradle.dependency.verification), and the build-script calls
+# that do the same or turn locking off (startParameter's DependencyVerificationMode,
+# WriteDependencyLocks, WriteDependencyVerifications and LockedDependenciesToUpdate;
+# deactivateDependencyLocking, unlockAllConfigurations, ignoredDependencies). As written, by
+# allow-list: Gradle's short options -M (--write-verification-metadata, any value) and -F
+# (--dependency-verification), alone or after its flags that take no value (-qM), but -F strict
+# (and a -F with a digit, mkfs.vfat's); dependency verification set to anything but strict (a
+# variable included); and lockMode or lockFile but the line lockMode.set(LockMode.STRICT) (so
+# neither a star-imported LENIENT nor a lockfile moved elsewhere passes). A -M or -F of another
+# program in a workflow is a hit too: spell its long option. M5 expects no dependency change after
+# commit 6 (lead decision M5-13): one stops the work for the lead's re-plan, because regenerating the
+# lockfiles and metadata needs a reviewed, temporary exception to this rule.
+kt_bootstrap() {
+  a=$(grep -n -a -i -E \
+    -e 'kc[.]bootstrap' \
+    -e '--(write-locks|update-locks|write-verification-metadata)' \
+    -e "${L}LockMode[[:space:]]*[.][[:space:]]*(DEFAULT|LENIENT)$R" \
+    -e "dependency[-.]verification[[:space:]=:\"']+(lenient|off)$R" \
+    -e 'DependencyVerificationMode|WriteDependencyLocks|WriteDependencyVerifications|LockedDependenciesToUpdate' \
+    -e 'deactivateDependencyLocking|unlockAllConfigurations|ignoredDependencies' \
+    -- "$1")
+  [ $? -le 1 ] || return 2
+  kbere="(^[0-9]+:|[[:space:]\"'=\\\\])-[adimqsStwvh]*[FM]|dependency[-.]verification[[:space:]=:\"']+|${L}(lockMode|lockFile|setLockMode|setLockFile)$R"
+  t=$(grep -n -a -E -e "(^|[[:space:]\"'=\\\\])-[adimqsStwvh]*[FM]" -e "dependency[-.]verification[[:space:]=:\"']+" \
+    -e "${L}(lockMode|lockFile|setLockMode|setLockFile)$R" -- "$1")
+  case $? in
+    0)
+      b=$(kept_hits "$kbere" \
+        -e 's/(^[0-9]+:|[[:space:]])-F[[:space:]]*([0-9]|strict([^A-Za-z0-9_]|$))/\1 /g' \
+        -e "s/dependency[-.]verification[[:space:]=:\"']+strict([^A-Za-z0-9_]|\$)/ /g" \
+        -e 's/(^|[^A-Za-z0-9_])lockMode[[:space:]]*[.][[:space:]]*set[[:space:]]*[(][[:space:]]*LockMode[[:space:]]*[.][[:space:]]*STRICT[[:space:]]*[)]/\1 /g')
+      [ $? -le 1 ] || return 2
+      ;;
+    1) b= ;;
+    *) return 2 ;;
+  esac
+  t=$(printf '%s\n%s\n' "$a" "$b" | sed '/^$/d' | sort -t : -k 1,1n -u)
+  [ -n "$t" ] || return 1
+  printf '%s\n' "$t"
+}
+
 # KtManifest (gate item 2; rule 9), in every AndroidManifest.xml under mobile/android: the network
 # permissions, even with tools:node="remove" (no network permission is ever stripped: a library
 # that asks for one is rejected), backup or cleartext switched on, and debuggable with any value.
@@ -1803,7 +1867,12 @@ EOF
           mobile/android/capture-control/*) ktscope=capture ;;
           *) ktscope=main ;;
         esac
-        report KtLog ktlog "$rel"
+        # The verification metadata lists the build's own artifacts (the Android Gradle plugin's
+        # slf4j among them), never code; the shipped classpath is the lockfiles' and the expected list's.
+        case $rel in
+          mobile/android/gradle/verification-metadata.xml) ;;
+          *) report KtLog ktlog "$rel" ;;
+        esac
         report KtFailOpen ktfailopen "$rel"
         report KtWindow ktwindow "$rel"
         [ "$ktscope" = capture ] || report KtWindow kt_secure_policy "$rel"
@@ -1849,6 +1918,8 @@ EOF
           *.gradle.kts | *.gradle | */gradle.properties | *.versions.toml | *.lockfile)
             report KtSdk kt_sdk "$rel"
             report KtSdk kt_source_sets "$rel"
+            # Not in lockfiles, whose generated header names Gradle's own --write-locks.
+            case $rel in *.lockfile) ;; *) report KtSdk kt_bootstrap "$rel" ;; esac
             case $rel in
               mobile/android/settings.gradle.kts) ;;
               *) report KtSdk kt_repositories "$rel" ;;
@@ -1864,6 +1935,7 @@ EOF
         esac
         ;;
     esac
+    case $rel in scripts/android-gradle.sh) report KtSdk kt_bootstrap "$rel" ;; esac
     case $rel in
       mobile/android/app/src/androidTest/* | scripts/android-age-check.py) ;;
       *) report KtTestChannel kt_test_channel "$rel" ;;
@@ -1910,6 +1982,17 @@ EOF
   if [ -f ffi/jni/src/lib.rs ] && ffi_export ffi/jni/src/lib.rs >/dev/null &&
     ! ffi_catch_unwind ffi/jni/src/lib.rs >/dev/null; then
     echo 'FFI: ffi/jni/src/lib.rs:1: missing the one catch_unwind call site, which every JNI export needs'
+    hits=$((hits + 1))
+  fi
+  # KtSdk: once mobile/android exists, its root build file locks every configuration strictly
+  # (group 4), each of the two lines whole on a line of its own, so a commented-out one is not
+  # one. Without them Gradle resolves with no lock state, and the classpath allow-list, which reads
+  # the lockfile, would no longer be what the build resolves.
+  kroot=mobile/android/build.gradle.kts
+  if [ -e mobile/android ] && ! { [ -f "$kroot" ] &&
+    grep -q -a -x -E -e '[[:space:]]*lockAllConfigurations[(][)][[:space:]]*' "$kroot" &&
+    grep -q -a -x -E -e '[[:space:]]*lockMode[.]set[(]LockMode[.]STRICT[)][[:space:]]*' "$kroot"; }; then
+    echo "KtSdk: $kroot:1: missing the lines lockAllConfigurations() and lockMode.set(LockMode.STRICT)"
     hits=$((hits + 1))
   fi
   # Build: no tracked file under mobile/**/build/ or mobile/**/.gradle/, read from git's index
@@ -1965,8 +2048,9 @@ EOF
 }
 
 # fresh: new repo-like dir $d holding only what the tree-wide checks need: core/src/lib.rs,
-# pi/app/src/lib.rs and pi/app/src/main.rs with the unsafe-code ban, and a release probe that
-# calls game_random. A fixture's file at one of these paths replaces it.
+# pi/app/src/lib.rs and pi/app/src/main.rs with the unsafe-code ban, a release probe that calls
+# game_random, and mobile/android/build.gradle.kts with the two strict-locking lines. A fixture's
+# file at one of these paths replaces it.
 fresh() {
   i=$((i + 1))
   d=$tmp/$i
@@ -1976,6 +2060,9 @@ fresh() {
   done
   echo 'fn main() -> Result<(), u8> { game_random(&mut [0; 32]).map_err(|_| 20) }' \
     >"$d/core/examples/release_probe.rs" || exit 2
+  mkdir -p "$d/mobile/android" || exit 2
+  printf '%s\n' 'dependencyLocking {' '    lockAllConfigurations()' '    lockMode.set(LockMode.STRICT)' '}' \
+    >"$d/mobile/android/build.gradle.kts" || exit 2
 }
 
 # expect NAME DIR WANT [FILE]: scan DIR in a new process. WANT=clean needs exit 0 and no hit,
@@ -2217,6 +2304,14 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   fresh
   rm "$d/core/examples/release_probe.rs" || exit 2
   expect 'shell-release-probe-absent' "$d" Shell core/examples/release_probe.rs
+  # The strict-locking lines are required whenever mobile/android exists, so a tree without the
+  # root build file is a hit and a tree without mobile/android is clean.
+  fresh
+  rm "$d/mobile/android/build.gradle.kts" || exit 2
+  expect 'ktsdk-root-build-file-absent' "$d" KtSdk mobile/android/build.gradle.kts
+  fresh
+  rm -r "$d/mobile" || exit 2
+  expect 'clean-no-mobile-android' "$d" clean
   # The Build rule reads git's index, so its cases are scratch repositories made here (a fixture
   # directory is none): a tracked file under mobile/**/build/ or mobile/**/.gradle/ is a hit (git
   # add -f, so a global excludes file cannot keep it out), also under a name that plain ls-files
@@ -2634,7 +2729,9 @@ workflow_check() {
   g=$(grep -n -a -E -e "${L}secrets$R" -e "${L}github[[:space:]]*[.[][[:space:]]*['\"]?token$R" \
     -e "${L}(pull_request_target|workflow_run)$R" -- "$wf")
   [ $? -le 1 ] || return 2
-  t=$(printf '%s\n%s\n%s\n' "$t" "$u" "$g" | sed '/^$/d' | sort -t : -k 1,1n -s)
+  b=$(kt_bootstrap "$wf")
+  [ $? -le 1 ] || return 2
+  t=$(printf '%s\n%s\n%s\n%s\n' "$t" "$u" "$g" "$b" | sed '/^$/d' | sort -t : -k 1,1n -s)
   [ -n "$t" ] || return 1
   printf '%s\n' "$t"
 }
@@ -2668,7 +2765,7 @@ EOF
     echo "banned-api-check --workflows $dir: $hits hit(s) in $n workflow(s)"
     exit 1
   fi
-  echo "banned-api-check --workflows $dir: clean, $n workflow(s): read-only permissions, pinned actions, no secrets, no fork-trusting trigger, no expression in a run step"
+  echo "banned-api-check --workflows $dir: clean, $n workflow(s): read-only permissions, pinned actions, no secrets, no fork-trusting trigger, no expression in a run step, no bootstrap switch"
   exit 0
 }
 

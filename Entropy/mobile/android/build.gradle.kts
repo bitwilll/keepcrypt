@@ -13,13 +13,6 @@ plugins {
     alias(libs.plugins.kotlin.compose) apply false
 }
 
-// The bootstrap switch (group 4, commit 5 only): the Android workflow's one run with
-// -Pkc.bootstrap=true writes the lockfiles and gradle/verification-metadata.xml, which commit 6
-// commits after review, with strict locking off (no lock state exists yet) and verification off (no
-// metadata file exists yet). Any other value, or none, is strict. Commit 6 removes the switch,
-// and a gate rule then fails if kc.bootstrap appears at all.
-val kcBootstrap = providers.gradleProperty("kc.bootstrap").orNull == "true"
-
 subprojects {
     // profileinstaller writes files into the app's own storage at start (rule 8), so no
     // configuration of any module has it (the androidx.startup provider that would start the
@@ -27,9 +20,11 @@ subprojects {
     configurations.configureEach {
         exclude(group = "androidx.profileinstaller", module = "profileinstaller")
     }
-    // Every configuration is locked; strict from commit 6 on, so an unlocked configuration fails.
+    // Every configuration is locked, strictly: a configuration with no lock state in the module's
+    // gradle.lockfile fails the build, and so does one that resolves to anything else (group 4;
+    // scripts/android-deps-review.py reviews the lockfiles with gradle/verification-metadata.xml).
     dependencyLocking {
         lockAllConfigurations()
-        lockMode.set(if (kcBootstrap) LockMode.DEFAULT else LockMode.STRICT)
+        lockMode.set(LockMode.STRICT)
     }
 }

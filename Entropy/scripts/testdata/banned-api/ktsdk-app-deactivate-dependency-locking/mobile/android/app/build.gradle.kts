@@ -1,0 +1,1 @@
+configurations.configureEach { resolutionStrategy.deactivateDependencyLocking() }

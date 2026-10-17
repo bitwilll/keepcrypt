@@ -1,0 +1,3 @@
+androidx.annotation:annotation:1.9.1
+androidx.collection:collection:1.5.0
+com.google.guava:listenablefuture:1.0
