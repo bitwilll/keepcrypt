@@ -10,7 +10,7 @@ The phone apps run the same core and the same ceremony as the Pi, but a phone is
 | Checking a Pi or Coldcard ceremony with the built-in verifier | Anything where an OS-level compromise is in your threat model |
 | Checking that an encrypted backup restores | Users who cannot keep the phone offline during the ceremony |
 
-**What no app can stop:** malware with OS-level control, a second camera pointed at the screen, or a rooted or jailbroken device. The app says this on its first screen in plain words and requires airplane mode during a ceremony.
+**What no app can stop:** malware with OS-level control, a second camera pointed at the screen, or a rooted or jailbroken device. The app says this on its first screen in plain words and requires airplane mode on and Wi-Fi off during a ceremony.
 
 ## Architecture
 
@@ -169,7 +169,7 @@ The phone ceremony mirrors the Pi screen for screen, so one user guide and one v
 
 1. **First launch.** What the app does, what no phone app can protect against, and a pointer to the Pi build for life savings.
 2. **Self-test.** Core known-answer tests; a failure blocks every ceremony.
-3. **Go offline.** Shows airplane-mode status; the Start button stays disabled until the phone is offline.
+3. **Go offline.** Shows the airplane-mode and Wi-Fi state; the Start button stays disabled until both say offline.
 4. **Home.** New seed, Dice-only seed, Check a backup, Load registry snapshot, Verify another device's ceremony, About.
 5. **Length.** 12 words (default; fills one KeepCrypt Hinge or Screw) or 24.
 6. **Device entropy.** Motion and touch extras are mixed in, with optional Snake or Tetris; the OS CSPRNG is read at the commitment.
