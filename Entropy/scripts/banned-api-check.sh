@@ -380,8 +380,13 @@
 #              runs on a fresh checkout, where a skip could only hide committed files, and an
 #              ignored local build tree is not a hit. A tree that is no git work tree (a copy, the
 #              selftest's scratch trees) has no tracked file, so the rule is silent there; git
-#              missing from PATH is exit 2. Gradle's own build.gradle.kts files and buildSrc/ are
-#              not output directories and pass.
+#              missing from PATH is exit 2. Gradle's own build.gradle.kts files, buildSrc/ and
+#              gradle/ (the version catalog and the wrapper) are not output directories and pass.
+#              The index is read with ls-files -s -z: -z names a file whole where plain ls-files
+#              would quote it (a non-ASCII byte, a double quote, a backslash), which would defeat
+#              the match, and -s shows the mode, so a gitlink (mode 160000, a submodule) anywhere
+#              under mobile/ is a hit of its own: ls-files cannot list a submodule's files, so
+#              this rule could not clear them.
 #
 # Fail-closed noise, not bypasses (rename or spell it out instead): a named format argument called
 # path that rustfmt wraps onto its own line ("        path = \"seed.age\",") is an Include hit in
@@ -480,8 +485,8 @@ a release probe that does not call game_random; and in pi/app the firmware's dev
 path literal outside device/paths.rs or off its list, a file API outside device/, a file created
 outside device/usb.rs or any truncating, appending, renaming or directory API, rppal or nix
 outside device/, MNT_FORCE, MNT_DETACH outside device/usb.rs, a process, a thread or BufReader;
-and a tracked file (git ls-files) under mobile/**/build/ or mobile/**/.gradle/.
-A directory symlink is refused. Exit 0 clean, 1 hits, 2 usage or read error.
+and a tracked file (git ls-files) under mobile/**/build/ or mobile/**/.gradle/, or a submodule
+under mobile/. A directory symlink is refused. Exit 0 clean, 1 hits, 2 usage or read error.
 EOF
 }
 
@@ -1218,12 +1223,25 @@ EOF
     exit 2
   }
   if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    tracked=$(git ls-files -- mobile) || exit 2
-    built=$(printf '%s\n' "$tracked" | grep -E '^mobile/(.*/)?(build|[.]gradle)/')
+    # One entry per line, "<mode> <object> <stage><tab><path>": -z keeps a name whole that plain
+    # ls-files would print quoted, and the newline check above already refused a newline in a
+    # name. The listing goes through a file so that ls-files' own exit status is read, which a
+    # pipeline into tr would hide.
+    tab=$(printf '\t')
+    index=$(mktemp "${TMPDIR:-/tmp}/banned-api-index.XXXXXX") || exit 2
+    trap 'rm -f "$index"' EXIT
+    trap 'exit 2' HUP INT TERM
+    git ls-files -s -z -- mobile >"$index" || exit 2
+    tracked=$(tr '\0' '\n' <"$index") || exit 2
+    built=$(printf '%s\n' "$tracked" | grep -E "^160000 |${tab}mobile/(.*/)?(build|[.]gradle)/")
     [ $? -le 1 ] || exit 2
-    while IFS= read -r f; do
-      [ -n "$f" ] || continue
-      echo "Build: $f: a tracked file under mobile/**/build/ or mobile/**/.gradle/ (build output never enters git)"
+    while IFS= read -r e; do
+      [ -n "$e" ] || continue
+      f=${e#*"$tab"}
+      case $e in
+        160000\ *) echo "Build: $f: a submodule under mobile/ (git ls-files cannot list its files, so this rule cannot clear them)" ;;
+        *) echo "Build: $f: a tracked file under mobile/**/build/ or mobile/**/.gradle/ (build output never enters git)" ;;
+      esac
       hits=$((hits + 1))
     done <<EOF
 $built
@@ -1436,16 +1454,30 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   expect 'shell-release-probe-absent' "$d" Shell core/examples/release_probe.rs
   # The Build rule reads git's index, so its cases are scratch repositories made here (a fixture
   # directory is none): a tracked file under mobile/**/build/ or mobile/**/.gradle/ is a hit (git
-  # add -f, so a global excludes file cannot keep it out), the same file untracked is not, and
-  # Gradle's build.gradle.kts files and buildSrc/ are not output directories. The fixture trees
-  # above are no repositories at all, which is the rule's silence outside a work tree.
+  # add -f, so a global excludes file cannot keep it out), also under a name that plain ls-files
+  # would print quoted (a non-ASCII byte, written in octal to keep this file ASCII, and a double
+  # quote); the same file untracked is not; a submodule (a gitlink entry written with
+  # update-index, whose commit need not exist) is a hit at a build/ path and anywhere else under
+  # mobile/; and Gradle's build.gradle.kts files, buildSrc/ and gradle/ are not output
+  # directories. The fixture trees above are no repositories at all, which is the rule's silence
+  # outside a work tree. The presence check below needs Build recorded here, as no fixture
+  # directory does it.
   for case in 'app-build:mobile/android/app/build/x.kt' 'dot-gradle:mobile/android/.gradle/config.properties' \
-    'mobile-build:mobile/build/x.kt'; do
+    'mobile-build:mobile/build/x.kt' "non-ascii-name:mobile/android/app/build/$(printf '\303\251').kt" \
+    'double-quote-name:mobile/android/app/build/a"b.kt'; do
     x=${case#*:}
     fresh
     git init -q "$d" || exit 2
     mkdir -p "$d/${x%/*}" && echo 'kc.gate.canary=true' >"$d/$x" || exit 2
     git -C "$d" add -f -- "$x" || exit 2
+    expect "build-tracked-${case%%:*}" "$d" Build "$x"
+  done
+  seen="$seen Build"
+  for case in 'submodule-at-build:mobile/android/app/build' 'submodule-elsewhere:mobile/android/vendor'; do
+    x=${case#*:}
+    fresh
+    git init -q "$d" || exit 2
+    git -C "$d" update-index --add --cacheinfo "160000,0123456789abcdef0123456789abcdef01234567,$x" || exit 2
     expect "build-tracked-${case%%:*}" "$d" Build "$x"
   done
   fresh
@@ -1454,13 +1486,14 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   expect 'clean-build-untracked' "$d" clean
   fresh
   git init -q "$d" || exit 2
-  mkdir -p "$d/mobile/android/app" "$d/mobile/android/buildSrc" || exit 2
-  for x in mobile/android/app/build.gradle.kts mobile/android/buildSrc/build.gradle.kts; do
+  mkdir -p "$d/mobile/android/app" "$d/mobile/android/buildSrc" "$d/mobile/android/gradle/wrapper" || exit 2
+  for x in mobile/android/app/build.gradle.kts mobile/android/buildSrc/build.gradle.kts \
+    mobile/android/gradle/libs.versions.toml mobile/android/gradle/wrapper/gradle-wrapper.properties; do
     echo 'plugins {}' >"$d/$x" || exit 2
   done
   git -C "$d" add -f -- mobile || exit 2
   expect 'clean-build-gradle-files-tracked' "$d" clean
-  for want in RNG Network Clipboard Rule1 FailOpen Include Shell Device clean; do
+  for want in RNG Network Clipboard Rule1 FailOpen Include Shell Device Build clean; do
     case "$seen " in *" $want "*) ;; *) fail=$((fail + 1)); echo "FAIL no $want fixture" ;; esac
   done
   artifact_selftest

@@ -10830,6 +10830,18 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   same file, not added) and `clean-build-gradle-files-tracked` (`app/build.gradle.kts` and `buildSrc/build.gradle.kts`
   tracked) clean. By hand under /bin/dash: a tracked `mobile/android/prebuild/y.kt` is not a hit; a tree that is no
   repository is silent; a PATH without git is exit 2 with "git is not on PATH". The gate on the tree: clean, 241 files.
+  Proof (M5 commit 3b, review fix): the rule now reads `git ls-files -s -z -- mobile` through a temp file (ls-files'
+  own exit status kept), so a name that plain ls-files prints quoted (a non-ASCII byte, a double quote) is matched
+  whole, and a gitlink (mode 160000, a submodule) anywhere under mobile/ is its own hit, since ls-files cannot list a
+  submodule's files. `--selftest` 707 passed, 0 failed (698 + 9): new `build-tracked-non-ascii-name` (é.kt, written
+  in octal), `build-tracked-double-quote-name` (a"b.kt), `build-tracked-submodule-at-build` and
+  `build-tracked-submodule-elsewhere` (`update-index --cacheinfo 160000`) each one `Build:` hit;
+  `clean-build-gradle-files-tracked` also tracks `gradle/libs.versions.toml` and
+  `gradle/wrapper/gradle-wrapper.properties`; the fixture-presence guard lists Build and the cases record it. Mutants,
+  fixtures linked: plain ls-files (no `-z`) fails both quoted-name cases, the gitlink alternative dropped fails both
+  submodule cases, `[.]?gradle` fails the gradle/ clean case, the Build block deleted gives "FAIL no Build fixture".
+  The same 707/0 under /bin/dash; the gate on the tree clean, 241 files, under both shells; no `banned-api-index.*`
+  left in TMPDIR.
 
 **3. Kotlin and Android gate rules (Q55; before any Kotlin lands)**
 - [ ] New categories, each with hit and clean fixtures under `scripts/testdata/banned-api/`, covering `mobile/android/**`
