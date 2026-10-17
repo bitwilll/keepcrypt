@@ -1,0 +1,1 @@
+val camera = Camera.open()

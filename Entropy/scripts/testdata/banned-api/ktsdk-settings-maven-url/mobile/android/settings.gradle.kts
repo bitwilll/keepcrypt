@@ -1,0 +1,1 @@
+maven("https://jitpack.io")

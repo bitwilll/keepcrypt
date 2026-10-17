@@ -2,7 +2,6 @@
 binding.words.setTextIsSelectable(false)
 DisableSelection { Text(words) }
 val save = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { }
-val pick = Intent(Intent.ACTION_CREATE_DOCUMENT)
 val r = core.pickRandom(words)
 binding.hint.setTextIsSelectable( false ); binding.seal.setTextIsSelectable(false)
 SealText(code, textIsSelectable = false)

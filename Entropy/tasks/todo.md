@@ -10903,8 +10903,33 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
     in `ffi/jni/src/lib.rs`; exactly one `Session::new` under `ffi/`, in `ffi/src/ceremony.rs`; the identifiers
     `thread` and `JoinHandle` nowhere under `ffi/`.
   Proof: `--selftest` counts per category and scope; the gate clean on the tree; `gates` time.
-- [ ] The Shell rule for `game_random` is unchanged in M5 (its ffi and Kotlin fixtures stay hits until M5b).
+  Proof (M5 commit 4, partial; `gates` time in CI is the lead's, after the push): every scanned file under
+  mobile/android gets the code rules (Kotlin, Java, XML, Gradle files alike), by scope: `src/test` and
+  `src/androidTest` of any module (exactly those; `src/testRegistry/` ships), `mobile/android/capture-control/`, the rest.
+  The named files are the app's `files/Documents.kt`, `CeremonyViewModel.kt`, `camera/GoAheadScanner.kt`,
+  `GoOfflineScreen.kt` and `DeviceEntropyScreen.kt`, and secure-ui's `SecureActivity.kt` and `OfflineMonitor.kt`.
+  KtFailOpen's catch list is an allow-list (only those three catches, each in its file); the catch_unwind site is
+  required once ffi/jni/src/lib.rs exports a function (`extern "system"` or `no_mangle`), so commit 9's empty lib
+  passes; the one Session::new is required once ffi/src/ceremony.rs exists. `--selftest` 984 passed, 0 failed
+  (707 + 277), the same under /bin/dash. New hit cases per category and scope (main = every other mobile/android
+  file; test = `src/test` and `src/androidTest`): KtLog main 18, test 2, capture-control 1; KtFailOpen 21, 2, 1
+  (catch list 17 of them); KtWindow 27, 3, 1; KtInput 15, 2, 1 (Activity rule 8); KtStorage 25, -, 1; KtIntent 14, -,
+  1; KtDevice 10, -, 1; KtSdk 42 (build files and lockfiles), capture-control 1; KtManifest 19, 1, 1; KtTestChannel
+  main 1, test 2, capture-control 1, scripts 1; KtBinary 12 (scratch repositories); FFI 17; Network additions 9 plus
+  1 in androidTest; RNG randomUUID 1 plus 1 in test. Clean: clean-kt-shipping-allowed (the named files' exceptions
+  and near misses), clean-kt-test-scope, clean-kt-capture-control, clean-kt-build-files, clean-kt-manifest, clean-ffi,
+  clean-ktbinary-untracked-image-outside-mobile, and the scope copies: every hit fixture whose rule a scope skips is
+  copied there and scanned in one tree per scope, clean (src/test 75 fixtures, src/androidTest 75, capture-control
+  17). Three existing fixtures moved off a line the new KtIntent rule also hits (clipboard-action-send,
+  network-kotlin-uri-parse-literal; clean-near-misses' `Intent(ACTION_CREATE_DOCUMENT)` moved into its Documents.kt).
+  The gate on the tree: clean, 241 files (no prose hit under ffi/). canaries.sh 74/74 (new: kotlin-ffi-rules, five
+  planted hits on the real tree copy). Wall times on this Mac (load 3-5): gate 15.9 s (base 15.0 s), `--selftest`
+  4:39 (base 2:53), canaries 4:42 (base 4:19).
+- [x] The Shell rule for `game_random` is unchanged in M5 (its ffi and Kotlin fixtures stay hits until M5b).
   Proof: those fixtures still trip.
+  Proof (M5 commit 4): `game_random_use` and its path list untouched (only the release probe's comment stripping moved
+  into the shared `rust_code_match`); `--selftest` (sh and dash): `PASS shell-game-random-in-ffi -> Shell:
+  ffi/src/lib.rs:1` and `PASS shell-game-random-in-kotlin -> Shell: mobile/android/app/src/main/kotlin/app/Snake.kt:1`.
 
 **4. Gradle project and supply chain (Q54)**
 - [ ] `mobile/android/`: `settings.gradle.kts` (`FAIL_ON_PROJECT_REPOS`; `google()` content-filtered to `androidx.*`,

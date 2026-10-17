@@ -1077,6 +1077,38 @@ device_canary device-buffered-reader pi/app/src/device/hwrng.rs \
 device_canary device-grouped-process-use pi/app/src/app.rs \
     'use std::process::{Command, Stdio}; // gate canary (temp copy only): the module by any path'
 
+# The Kotlin, Android and FFI categories on the real tree (tasks/todo.md, M5 group 3): one line per
+# FFI rule appended to the copy's ffi/src/lib.rs (a catch_unwind outside ffi/jni/src/lib.rs, a
+# thread, core's constructor outside ffi/src/ceremony.rs), and a Kotlin file and a manifest in a
+# module made up for the canary under the copy's mobile/android, must fail
+# scripts/banned-api-check.sh with exactly those five hits. So a dropped FFI rule, a narrowed
+# scope, or a list() that stops reaching mobile/android turns CI red, although no Kotlin is
+# committed yet. The copy's files are restored and the made-up module removed afterwards.
+name=kotlin-ffi-rules
+kmod="$tmp/mobile/android/kc-gate-canary/src/main"
+mkdir -p "$kmod/kotlin" || exit 1
+cat >> "$tmp/ffi/src/lib.rs" <<'EOF'
+pub fn kc_gate_canary_catch() -> bool { std::panic::catch_unwind(|| ()).is_ok() }
+pub fn kc_gate_canary_join() -> bool { std::thread::spawn(|| ()).join().is_ok() }
+pub fn kc_gate_canary_start() { keepcrypt_core::Session::new(); }
+EOF
+echo 'android.util.Log.d("kc", "gate canary")' > "$kmod/kotlin/KcGateCanary.kt" || exit 1
+echo '<uses-permission android:name="android.permission.INTERNET" />' > "$kmod/AndroidManifest.xml" || exit 1
+expect_failure "$name" sh "$root/scripts/banned-api-check.sh" "$tmp"
+need "FFI: ffi/src/lib.rs:"
+need "std::panic::catch_unwind(|| ())"
+need "std::thread::spawn(|| ())"
+need "keepcrypt_core::Session::new();"
+need "KtLog: mobile/android/kc-gate-canary/src/main/kotlin/KcGateCanary.kt:1: "
+need "KtManifest: mobile/android/kc-gate-canary/src/main/AndroidManifest.xml:1: "
+need "banned-api-check: 5 hit(s) in "
+verdict
+cp "$root/ffi/src/lib.rs" "$tmp/ffi/src/lib.rs" || exit 1
+rm -r "$tmp/mobile/android/kc-gate-canary" || exit 1
+for dir in "$tmp/mobile/android" "$tmp/mobile"; do
+    [ -e "$root/${dir#"$tmp/"}" ] || rmdir "$dir" || exit 1
+done
+
 # The workflow hardening check (tasks/todo.md, M4 group 11; Q38 (d)): a copy of the real
 # entropy-ci.yml with every rule broken once (the top-level token widened to write, which also
 # loses contents: read, and a job that runs on workflow_run, uses an action by tag, pastes an
@@ -1248,7 +1280,7 @@ cp "$root/core/examples/release_probe.rs" "$tmp/core/examples/release_probe.rs" 
 
 # The number of checks above, pinned, so a canary that is deleted, or skipped by a broken branch,
 # turns CI red too. A real change to the canaries updates this pin in the same reviewed change.
-want_checks=73
+want_checks=74
 if [ "$checks" -ne "$want_checks" ]; then
     echo "FAIL: $checks checks ran; scripts/canaries.sh pins $want_checks"
     status=1
