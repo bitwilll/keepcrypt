@@ -1,0 +1,1 @@
+supervisorScope { async { encrypt() } }

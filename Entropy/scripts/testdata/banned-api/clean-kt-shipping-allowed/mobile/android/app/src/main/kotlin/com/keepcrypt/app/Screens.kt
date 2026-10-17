@@ -12,3 +12,6 @@ error("unexpected stage")
 val price = "costs $5" // a $ outside any error, check, require or exception message
 val fileName = suggestedName.ifEmpty { "keepcrypt.age" }
 val sensorless = true
+class Pickers(private val activity: ComponentActivity) : Closeable {
+val hint = "To recover a wallet, read the words back."
+val steps = pages.foldIndexed(0) { i, n, _ -> n + i }

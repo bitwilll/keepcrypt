@@ -408,7 +408,10 @@
 #              string on a line that calls error(, check(, require(, checkNotNull( or
 #              requireNotNull( or builds an Exception, Error, Throwable or KcHalt (rules 3 and 5;
 #              no message in app code is built from runtime values).
-#   KtFailOpen runCatching, getOrNull, getOrElse, getOrDefault and onFailure, in every scope;
+#   KtFailOpen runCatching, getOrNull, getOrElse, getOrDefault, onFailure, exceptionOrNull (and
+#              getCompletionExceptionOrNull), CoroutineExceptionHandler, SupervisorJob and
+#              supervisorScope as words, and recover, recoverCatching and fold as calls, in every
+#              scope;
 #              and, outside the test source sets, the catch list: every catch (and Flow's
 #              .catch { }) is a hit but catch (x: KcHalt) in CeremonyViewModel.kt, catch (x:
 #              IOException) in files/Documents.kt and catch (x: CameraAccessException) in
@@ -427,12 +430,17 @@
 #   KtInput    TextField (Basic, Outlined, Secure), EditText, InputMethodManager and
 #              SoftwareKeyboardController; and, in shipping sources but secure-ui's
 #              SecureActivity.kt, an Activity subclass: a constructor call of a capitalized name
-#              ending in Activity (": ComponentActivity()") or Java's extends ...Activity, but
-#              SecureActivity( (the app's activity derives from it).
+#              ending in Activity (": ComponentActivity()"), a class header with no primary
+#              constructor whose supertypes name one (class X : ComponentActivity {, built through
+#              a secondary constructor), or Java's extends ...Activity, but SecureActivity (the
+#              app's activity derives from it). A typealias of an Activity is not seen.
 #   KtStorage  outside the test source sets (rule 8): SharedPreferences, DataStore,
 #              openFileOutput/openFileInput, FileOutputStream/FileInputStream, File(,
 #              filesDir, cacheDir, getExternal, MediaStore, Room, SQLite, createTempFile,
-#              rememberSaveable, SavedStateHandle and takePersistableUriPermission, and
+#              rememberSaveable, SavedStateHandle and takePersistableUriPermission; getDir(,
+#              dataDir, getDatabasePath, openOrCreateDatabase, RandomAccessFile, FileWriter,
+#              FileReader, java.nio.file, Files., Paths., Path.of, writeBytes(, writeText(,
+#              appendBytes(, appendText( and createDeviceProtectedStorageContext; and
 #              openOutputStream, openInputStream and openFileDescriptor outside files/Documents.kt.
 #   KtIntent   outside the test source sets and files/Documents.kt: Intent( and its factory
 #              calls (Intent.parseUri), startActivity (and ForResult, startActivities,
@@ -513,10 +521,12 @@
 # (write "the caller's own call"), and so is one that names Session::new outside ceremony.rs.
 # Under mobile/android, UI text in XML is scanned like code: write camera, sensor, room and
 # notification in lower case there ("Camera", "Sensor", "Room" and "Notification" hit), and a
-# word such as Toast or Spinner hits in any text. A catch of a qualified type
-# (java.io.IOException) in Documents.kt is a hit (import it), and so is a
-# DialogProperties(securePolicy = ...) wrapped over lines (keep the call on one line); a removal
-# of a manifest component is written on one line, tools:node="remove" with the tag.
+# word such as Toast or Spinner hits in any text. A collection's fold( is a KtFailOpen hit like
+# Result's (write the loop), and a local named attributes (val attributes = ...) is a KtWindow
+# hit (rename it). A catch of a qualified type (java.io.IOException) in Documents.kt is a hit
+# (import it), and so is a DialogProperties(securePolicy = ...) wrapped over lines (keep the
+# call on one line); a removal of a manifest component is written on one line,
+# tools:node="remove" with the tag.
 #
 # Portable on purpose: POSIX sh, POSIX ERE (no \b \s \< \>, no -P -w), POSIX sed (BRE, in
 # selectable() and textselection(); ERE with -E, which BSD and GNU sed share, in threads_by_path())
@@ -1301,9 +1311,18 @@ ktlog() {
 }
 
 # KtFailOpen (rule 3), every scope: Kotlin's ways to turn a failure into a value, runCatching and
-# Result's (and collections') getOrNull, getOrElse, getOrDefault and onFailure, as words.
+# Result's (and collections') getOrNull, getOrElse, getOrDefault and onFailure, Result's and a
+# Deferred's exceptionOrNull and getCompletionExceptionOrNull, and the coroutine handlers that
+# keep a failure from reaching the uncaught-exception handler (CoroutineExceptionHandler, and
+# SupervisorJob and supervisorScope, under which a failed async child is dropped unless
+# awaited), as words; and Result's recover, recoverCatching and fold as calls (as words they
+# would hit UI text such as "recover a wallet"), so a collection's fold( is a hit too.
 ktfailopen() {
-  grep -n -a -E -e "${L}(runCatching|getOrNull|getOrElse|getOrDefault|onFailure)$R" -- "$1"
+  grep -n -a -E \
+    -e "${L}(runCatching|getOrNull|getOrElse|getOrDefault|onFailure)$R" \
+    -e "${L}([A-Za-z]*[Ee]xceptionOrNull|CoroutineExceptionHandler|SupervisorJob|supervisorScope)$R" \
+    -e "${L}(recover|recoverCatching|fold)[[:space:]]*[({]" \
+    -- "$1"
 }
 
 # KtFailOpen's catch list, outside src/test and src/androidTest: every catch is a hit, Flow's
@@ -1394,19 +1413,28 @@ ktinput() {
 # call of Activity or of a capitalized name that ends in it (": ComponentActivity()", "object :
 # AppCompatActivity()", ", FragmentActivity()" after another supertype), which in app code is
 # only ever a superclass call, since the system makes activities, and Java's "extends ...Activity".
-# SecureActivity( passes, so the app's activity can derive from SecureActivity and keep its
-# FLAG_SECURE; startActivity( starts with a small letter and is KtIntent's.
+# A class with no primary constructor names its superclass without parentheses and calls it
+# from a secondary constructor ("class X : ComponentActivity {" then "constructor() : super()"),
+# so a class header whose supertypes, before any { or =, name a ...Activity not followed by ( is
+# a hit too (a class with a primary constructor must call its superclass there, which the first
+# shape sees). SecureActivity passes in each shape, so the app's activity can derive from
+# SecureActivity and keep its FLAG_SECURE; startActivity( starts with a small letter and is
+# KtIntent's. A typealias of an Activity is not seen.
+kt_activity_ere="(^|[^A-Za-z0-9_])([A-Z][A-Za-z0-9_]*)?Activity[[:space:]]*[(]|(^|[^A-Za-z0-9_])extends[[:space:]]+([A-Za-z0-9_]+[.])*[A-Za-z0-9_]*Activity([^A-Za-z0-9_]|$)|(^|[^A-Za-z0-9_])class[[:space:]]+[A-Za-z0-9_]+[[:space:]]*(<[^>]*>[[:space:]]*)?:[^{=]*Activity([^A-Za-z0-9_(]|$)"
 kt_activity() {
-  t=$(grep -n -a -E -e "${L}([A-Z][A-Za-z0-9_]*)?Activity[[:space:]]*[(]" -e "${L}extends[[:space:]]+([A-Za-z0-9_]+[.])*[A-Za-z0-9_]*Activity$R" -- "$1")
+  t=$(grep -n -a -E -e "$kt_activity_ere" -- "$1")
   case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
-  kept_hits "(^|[^A-Za-z0-9_])([A-Z][A-Za-z0-9_]*)?Activity[[:space:]]*[(]|(^|[^A-Za-z0-9_])extends[[:space:]]+([A-Za-z0-9_]+[.])*[A-Za-z0-9_]*Activity([^A-Za-z0-9_]|$)" \
-    -e 's/(^|[^A-Za-z0-9_])SecureActivity[[:space:]]*[(]/\1/g'
+  kept_hits "$kt_activity_ere" -e 's/(^|[^A-Za-z0-9_])SecureActivity([^A-Za-z0-9_]|$)/\1\2/g'
 }
 
 # KtStorage (rule 8: nothing is persisted), outside src/test and src/androidTest: preferences,
 # DataStore (also androidx.datastore in a build file), app-private files and their directories,
 # java.io.File's constructor, external storage, MediaStore, Room, SQLite, temp files, saved state
-# (rememberSaveable, SavedStateHandle) and persisted URI grants.
+# (rememberSaveable, SavedStateHandle) and persisted URI grants; and the other ways to an app
+# directory or file (getDir(, dataDir, getDatabasePath, openOrCreateDatabase,
+# createDeviceProtectedStorageContext), java.io's RandomAccessFile, FileWriter and FileReader,
+# java.nio.file (Files., Paths., Path.of) and Kotlin's File writers (writeBytes(, writeText(,
+# appendBytes(, appendText().
 ktstorage() {
   grep -n -a -E \
     -e 'SharedPreferences' \
@@ -1426,6 +1454,14 @@ ktstorage() {
     -e 'rememberSaveable' \
     -e 'SavedStateHandle' \
     -e 'takePersistableUriPermission' \
+    -e "${L}getDir[[:space:]]*[(]" \
+    -e '[Dd]ataDir' \
+    -e 'getDatabasePath|openOrCreateDatabase|createDeviceProtectedStorageContext' \
+    -e 'RandomAccessFile|File(Writer|Reader)' \
+    -e 'java[.]nio[.]file' \
+    -e "${L}(Files|Paths)[[:space:]]*[.]" \
+    -e "${L}Path[[:space:]]*[.][[:space:]]*of$R" \
+    -e "${L}(write|append)(Bytes|Text)[[:space:]]*[(]" \
     -- "$1"
 }
 
