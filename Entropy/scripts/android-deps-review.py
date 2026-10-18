@@ -612,7 +612,7 @@ def file_url_name(mirror, meta, art):
 
 
 def check_artifact(mirror, meta, art):
-    """(repository, failure reason or None, Central (asc, bytes) to verify, ACCEPTED_BY_NAME or None)."""
+    """(repository, failure reason or None, Central (asc, bytes) to verify, ACCEPTED_BY_NAME, or None)."""
     group, name, version, filename, want = art
     try:
         rel = rel_path(group, name, version, file_url_name(mirror, meta, art))
@@ -1076,6 +1076,11 @@ def cmd_classpath(root, write):
 # --- selftest -----------------------------------------------------------------------------------------
 
 
+# The base case's artifact count line: exit 0 (or 3 with --skip-pgp) says it passed, and this says the two
+# listed files were counted as accepted by name, not as failures.
+BASE_SUMMARY = "2 accepted by name (SHA-1 only, lead decision M5-11), 0 failed"
+
+
 def run_self(args):
     """This script in a new process (-I), its exit code and output."""
     p = subprocess.run([sys.executable, "-I", str(Path(__file__).resolve())] + args,
@@ -1097,16 +1102,16 @@ def overlay(src, dst):
 
 
 def selftest(skip_pgp):
-    """Every case of TESTDATA: base must pass; each fail-* case, base with its files laid over, must exit
-    as its expect.txt says ("<exit code>[ pgp]", then a line the output must hold; "pgp": only gpg
-    can see the failure, so --skip-pgp skips the case). A case with a gradle/ directory is reviewed
-    with it as --gradle-files. Then the urls list on the base."""
+    """Every case of TESTDATA: base must pass (BASE_SUMMARY); each fail-* case, base with its files laid
+    over, must exit as its expect.txt says ("<exit code>[ pgp]", then a line the output must hold; "pgp":
+    only gpg can see the failure, so --skip-pgp skips the case). A case with a gradle/ directory is
+    reviewed with it as --gradle-files. Then the urls list on the base."""
     base = TESTDATA / "base"
     cases = [("base", None)] + [(c.name, c) for c in sorted(TESTDATA.iterdir()) if c.is_dir() and c.name != "base"]
     passed = failed = skipped = 0
     for name, case in cases:
         if case is None:
-            want_rc, want_text, needs_pgp = 0, "android-deps-review: passed", False
+            want_rc, want_text, needs_pgp = 0, BASE_SUMMARY, False
         elif not name.startswith("fail-"):
             print("FAIL %s: a case is base or fail-*" % name)
             failed += 1
@@ -1119,7 +1124,7 @@ def selftest(skip_pgp):
             skipped += 1
             continue
         if skip_pgp and want_rc == 0:
-            want_rc, want_text = 3, "android-deps-review: incomplete"
+            want_rc = 3
         tmp = Path(tempfile.mkdtemp(prefix="kc-deps-selftest."))
         try:
             shutil.copytree(base, tmp / "t")
