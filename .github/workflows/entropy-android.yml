@@ -22,8 +22,8 @@
 # APKs with scripts/banned-api-check.sh --apk against mobile/android/expected/ (M5 group 5): the
 # manifest summary, the merger report, the native libraries, the markers and test key, the dex
 # reference scan, zipalign and the signer. The capture-control APK must not carry either shipped
-# APK's package id, and a canary build (-Pkc.canary=true, adding a library that asks for INTERNET
-# and declares a provider) must be refused by --apk; a pass fails the job.
+# APK's package id, and a canary build (the canary Gradle property set, adding a library that asks
+# for INTERNET and declares a provider) must be refused by --apk; a pass fails the job.
 #
 # Not one of the 14 required checks (Q55), so path filters are safe, as in entropy-pi-image.yml:
 # a skipped run never leaves a required check pending. The rule instead (Q38 (b)): no PR that
@@ -309,14 +309,15 @@ jobs:
             [ -n "$pkg" ] || fail "no package line in mobile/android/expected/manifest-$variant.txt"
             [ "$cc" != "$pkg" ] || fail "it has the $variant APK's package id $pkg"
           done
-      # The canary (M5 group 5): the shipping APK rebuilt with -Pkc.canary=true, which adds
-      # scripts/testdata/android-canary-lib, a library whose manifest asks for INTERNET and declares
-      # a provider. Offline (the real build has fetched everything) and with strict verification, so
+      # The canary (M5 group 5): the shipping APK rebuilt with the canary Gradle property set (its
+      # Gradle command below is the one line of any workflow that may name the property:
+      # banned-api-check.sh --workflows), which adds scripts/testdata/android-canary-lib, a library
+      # whose manifest asks for INTERNET and declares a provider. Offline (the real build has fetched everything) and with strict verification, so
       # it adds no dependency. Signed with the same key, it must be refused by --apk: exit 1, with
       # both the INTERNET and the provider hit. A pass fails the job, and so does any other exit. The
       # checked APKs are already in $RUNNER_TEMP/apks; the canary only overwrites Gradle's outputs and
       # is never uploaded or installed.
-      - name: Canary build (-Pkc.canary=true) refused by --apk
+      - name: Canary build refused by --apk
         run: |
           fail() { echo "FAIL: canary: $1" >&2; exit 1; }
           sh scripts/android-gradle.sh --dependency-verification strict --offline -Pkc.canary=true :app:assembleShippingRelease

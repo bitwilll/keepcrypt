@@ -124,7 +124,11 @@
 #   - no way back to the Android build's bootstrap (KtSdk's kt_bootstrap, tasks/todo.md, M5 group
 #     4): kc.bootstrap, --write-locks, --update-locks, --write-verification-metadata or its -M,
 #     LockMode.DEFAULT or LENIENT, dependency verification (or -F) set to anything but strict, or
-#     the build-script calls that turn locking or verification off, comments included.
+#     the build-script calls that turn locking or verification off, comments included;
+#   - the canary property kc.canary (any letter case, comments included) only as the canary
+#     step's one Gradle command line, whole: sh scripts/android-gradle.sh
+#     --dependency-verification strict --offline -Pkc.canary=true :app:assembleShippingRelease
+#     (kt_canary_workflow; tasks/todo.md, M5 group 5), and that line once.
 #
 # Image lists mode (tasks/todo.md, M4 groups 14 and 15; Q38 (d)): the image workflow's "hash and
 # list" step prints with it what commit 16 commits to pi/os/expected/ for review and the image
@@ -572,7 +576,12 @@
 #              verification and lock-writing settings, deactivateDependencyLocking,
 #              unlockAllConfigurations, ignoredDependencies, disableDependencyVerification (one
 #              configuration's verification off), and lockMode or lockFile but the line
-#              lockMode.set(LockMode.STRICT). Whenever mobile/android exists,
+#              lockMode.set(LockMode.STRICT). In the same files, the canary (group 5): kc.canary,
+#              projectDir, setProjectDir, includeFlat, buildFileName and setBuildFileName, any
+#              letter case, but the guard line if (providers.gradleProperty("kc.canary").orNull
+#              == "true") { in mobile/android/settings.gradle.kts and app/build.gradle.kts, and the
+#              canary library's projectDir line in the settings file as the guard block's third
+#              line, after include(":canary-lib") (kt_canary). Whenever mobile/android exists,
 #              mobile/android/build.gradle.kts must hold the lines lockAllConfigurations() and
 #              lockMode.set(LockMode.STRICT) (a missing one is reported at line 1).
 #   KtBinary   a tracked file (or link) under mobile/ with the extension jar, aar, so, dex, class,
@@ -676,7 +685,8 @@ usage: scripts/banned-api-check.sh [--selftest | DIR | --artifact TARGET FILE...
               that import (see the script header)
   --workflows check every DIR/entropy-*.yml and .yaml workflow's hardening: read-only permissions, three
               actions at their approved SHAs, no secrets, no fork-trusting trigger, no expression
-              in a run step, no Android bootstrap switch
+              in a run step, no Android bootstrap switch, the canary property only in the canary
+              step's Gradle command
   --image-lists
               unpack the Pi image IMG (an MBR, a FAT32 boot partition, a SquashFS root) with the
               build's host tools and print its partition table, SHA-256s, boot and root file lists,
@@ -1728,6 +1738,65 @@ kt_bootstrap() {
   printf '%s\n' "$t"
 }
 
+# KtSdk, in build files but lockfiles and in scripts/android-gradle.sh (and Workflow, in the
+# workflows: kt_canary_workflow): the canary build (tasks/todo.md, M5 group 5) is the one way a
+# project from outside mobile/android joins the build, and only with the canary property set. Any
+# letter case: the property's name kc.canary, and Gradle's ways to place a project or its build file
+# elsewhere (projectDir, setProjectDir, includeFlat, buildFileName, setBuildFileName; includeBuild is
+# kt_sdk's), comments included. Two lines pass, each whole and exact (MODE settings or app, the file
+# it is): the guard if (providers.gradleProperty("kc.canary").orNull == "true") { in
+# mobile/android/settings.gradle.kts and mobile/android/app/build.gradle.kts, and in the settings
+# file the canary library's projectDir line, only as the third line of the guard's block, after
+# include(":canary-lib") and before the closing }. So no real build includes the canary library,
+# whose build file and sources lie outside this scan, and no other project or build file comes from
+# outside mobile/android; the property cannot be set in gradle.properties or android-gradle.sh.
+kt_canary() {
+  [ -f "$1" ] && [ -r "$1" ] || return 2
+  t=$(awk -v mode="$2" '
+    { line[NR] = $0 }
+    END {
+      guard = "if (providers.gradleProperty(\"kc.canary\").orNull == \"true\") {"
+      inc = "    include(\":canary-lib\")"
+      dir = "    project(\":canary-lib\").projectDir = file(\"../../scripts/testdata/android-canary-lib\")"
+      for (i = 1; i <= NR; i++) {
+        l = " " tolower(line[i]) " "
+        if (!index(l, "kc.canary") &&
+          l !~ /[^a-z0-9_](projectdir|setprojectdir|includeflat|buildfilename|setbuildfilename)[^a-z0-9_]/) continue
+        if ((mode == "settings" || mode == "app") && line[i] == guard) continue
+        if (mode == "settings" && line[i] == dir && i > 2 && line[i - 2] == guard && line[i - 1] == inc &&
+          i < NR && line[i + 1] == "}") continue
+        print i ":" line[i]
+      }
+    }
+  ' "$1") || return 2
+  [ -n "$t" ] || return 1
+  printf '%s\n' "$t"
+}
+kt_canary_settings() { kt_canary "$1" settings; }
+kt_canary_app() { kt_canary "$1" app; }
+kt_canary_other() { kt_canary "$1" other; }
+
+# Workflow (tasks/todo.md, M5 group 5): the canary property only in the Android workflow's canary
+# step, as its one Gradle command line, whole and exact: sh scripts/android-gradle.sh
+# --dependency-verification strict --offline -Pkc.canary=true :app:assembleShippingRelease (any
+# indentation). Any other line naming kc.canary, any letter case and comments included, and each
+# such command line after the first, is a hit, so no other build of the workflow is a canary build.
+kt_canary_workflow() {
+  [ -f "$1" ] && [ -r "$1" ] || return 2
+  t=$(awk '
+    {
+      if (!index(tolower($0), "kc.canary")) next
+      if (!seen && $0 ~ /^[ ]*sh scripts\/android-gradle[.]sh --dependency-verification strict --offline -Pkc[.]canary=true :app:assembleShippingRelease$/) {
+        seen = 1
+        next
+      }
+      print NR ":" $0
+    }
+  ' "$1") || return 2
+  [ -n "$t" ] || return 1
+  printf '%s\n' "$t"
+}
+
 # KtManifest (gate item 2; rule 9), in every AndroidManifest.xml under mobile/android: the network
 # permissions, even with tools:node="remove" (no network permission is ever stripped: a library
 # that asks for one is rejected), backup or cleartext switched on, and debuggable with any value.
@@ -2023,6 +2092,12 @@ EOF
             # Not in lockfiles, whose generated header names Gradle's own --write-locks.
             case $rel in *.lockfile) ;; *) report KtSdk kt_bootstrap "$rel" ;; esac
             case $rel in
+              *.lockfile) ;;
+              mobile/android/settings.gradle.kts) report KtSdk kt_canary_settings "$rel" ;;
+              mobile/android/app/build.gradle.kts) report KtSdk kt_canary_app "$rel" ;;
+              *) report KtSdk kt_canary_other "$rel" ;;
+            esac
+            case $rel in
               mobile/android/settings.gradle.kts) ;;
               *) report KtSdk kt_repositories "$rel" ;;
             esac
@@ -2037,7 +2112,7 @@ EOF
         esac
         ;;
     esac
-    case $rel in scripts/android-gradle.sh) report KtSdk kt_bootstrap "$rel" ;; esac
+    case $rel in scripts/android-gradle.sh) report KtSdk kt_bootstrap "$rel"; report KtSdk kt_canary_other "$rel" ;; esac
     case $rel in
       mobile/android/app/src/androidTest/* | scripts/android-age-check.py) ;;
       *) report KtTestChannel kt_test_channel "$rel" ;;
@@ -2833,7 +2908,9 @@ workflow_check() {
   [ $? -le 1 ] || return 2
   b=$(kt_bootstrap "$wf")
   [ $? -le 1 ] || return 2
-  t=$(printf '%s\n%s\n%s\n%s\n' "$t" "$u" "$g" "$b" | sed '/^$/d' | sort -t : -k 1,1n -s)
+  k=$(kt_canary_workflow "$wf")
+  [ $? -le 1 ] || return 2
+  t=$(printf '%s\n%s\n%s\n%s\n%s\n' "$t" "$u" "$g" "$b" "$k" | sed '/^$/d' | sort -t : -k 1,1n -s)
   [ -n "$t" ] || return 1
   printf '%s\n' "$t"
 }
@@ -2867,7 +2944,7 @@ EOF
     echo "banned-api-check --workflows $dir: $hits hit(s) in $n workflow(s)"
     exit 1
   fi
-  echo "banned-api-check --workflows $dir: clean, $n workflow(s): read-only permissions, pinned actions, no secrets, no fork-trusting trigger, no expression in a run step, no bootstrap switch"
+  echo "banned-api-check --workflows $dir: clean, $n workflow(s): read-only permissions, pinned actions, no secrets, no fork-trusting trigger, no expression in a run step, no bootstrap switch, the canary property only in the canary step's Gradle command"
   exit 0
 }
 

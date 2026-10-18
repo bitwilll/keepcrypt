@@ -97,9 +97,10 @@ dependencies {
     androidTestImplementation(libs.junit)
 }
 
-// The canary build only (tasks/todo.md, M5 group 5): with -Pkc.canary=true (settings.gradle.kts) the
-// app also takes the canary library, whose manifest asks for INTERNET and declares a provider, so
-// that the Android workflow can prove scripts/banned-api-check.sh --apk refuses such an APK.
+// The canary build only (tasks/todo.md, M5 group 5): with the property the if below reads set to
+// true (settings.gradle.kts) the app also takes the canary library, whose manifest asks for INTERNET
+// and declares a provider, so that the Android workflow can prove scripts/banned-api-check.sh --apk
+// refuses such an APK.
 if (providers.gradleProperty("kc.canary").orNull == "true") {
     dependencies {
         implementation(project(":canary-lib"))

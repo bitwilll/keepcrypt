@@ -15,3 +15,8 @@ dependencies {
     implementation("com.google.zxing:core:3.5.4")
 }
 configurations.all { exclude(group = "androidx.profileinstaller") }
+if (providers.gradleProperty("kc.canary").orNull == "true") {
+    dependencies {
+        implementation(project(":canary-lib"))
+    }
+}

@@ -42,10 +42,12 @@ rootProject.name = "keepcrypt-android"
 // :app never depends on.
 include(":core-ffi", ":secure-ui", ":app", ":capture-control")
 
-// The canary build only (tasks/todo.md, M5 group 5): -Pkc.canary=true adds the canary library,
-// scripts/testdata/android-canary-lib, which :app then depends on (app/build.gradle.kts); its
-// manifest asks for INTERNET and declares a provider, and the Android workflow requires
-// scripts/banned-api-check.sh --apk to refuse that APK. No real build sets the property.
+// The canary build only (tasks/todo.md, M5 group 5): the Gradle property the if below reads, set to
+// true with -P, adds the canary library, scripts/testdata/android-canary-lib, which :app then depends
+// on (app/build.gradle.kts); its manifest asks for INTERNET and declares a provider, and the Android
+// workflow requires scripts/banned-api-check.sh --apk to refuse that APK. No real build sets the
+// property: the gate's KtSdk rule allows its name only in this if line, app/build.gradle.kts's and
+// the workflow's canary command, and a project from outside mobile/android only as this block has it.
 if (providers.gradleProperty("kc.canary").orNull == "true") {
     include(":canary-lib")
     project(":canary-lib").projectDir = file("../../scripts/testdata/android-canary-lib")
