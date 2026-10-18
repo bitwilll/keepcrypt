@@ -570,7 +570,8 @@
 #              dependency verification (--dependency-verification, its short -F,
 #              org.gradle.dependency.verification) set to anything but strict, startParameter's
 #              verification and lock-writing settings, deactivateDependencyLocking,
-#              unlockAllConfigurations, ignoredDependencies, and lockMode or lockFile but the line
+#              unlockAllConfigurations, ignoredDependencies, disableDependencyVerification (one
+#              configuration's verification off), and lockMode or lockFile but the line
 #              lockMode.set(LockMode.STRICT). Whenever mobile/android exists,
 #              mobile/android/build.gradle.kts must hold the lines lockAllConfigurations() and
 #              lockMode.set(LockMode.STRICT) (a missing one is reported at line 1).
@@ -1687,7 +1688,9 @@ kt_repositories() {
 # off (--dependency-verification, org.gradle.dependency.verification), and the build-script calls
 # that do the same or turn locking off (startParameter's DependencyVerificationMode,
 # WriteDependencyLocks, WriteDependencyVerifications and LockedDependenciesToUpdate;
-# deactivateDependencyLocking, unlockAllConfigurations, ignoredDependencies). As written, by
+# deactivateDependencyLocking, unlockAllConfigurations, ignoredDependencies; and ResolutionStrategy's
+# disableDependencyVerification, which skips verification-metadata.xml for one configuration, so a
+# tampered artifact of the locked version would pass). As written, by
 # allow-list: Gradle's short options -M (--write-verification-metadata, any value) and -F
 # (--dependency-verification), alone or after its flags that take no value (-qM), but -F strict
 # (and a -F with a digit, mkfs.vfat's); dependency verification set to anything but strict (a
@@ -1703,7 +1706,7 @@ kt_bootstrap() {
     -e "${L}LockMode[[:space:]]*[.][[:space:]]*(DEFAULT|LENIENT)$R" \
     -e "dependency[-.]verification[[:space:]=:\"']+(lenient|off)$R" \
     -e 'DependencyVerificationMode|WriteDependencyLocks|WriteDependencyVerifications|LockedDependenciesToUpdate' \
-    -e 'deactivateDependencyLocking|unlockAllConfigurations|ignoredDependencies' \
+    -e 'deactivateDependencyLocking|unlockAllConfigurations|ignoredDependencies|disableDependencyVerification' \
     -- "$1")
   [ $? -le 1 ] || return 2
   kbere="(^[0-9]+:|[[:space:]\"'=\\\\])-[adimqsStwvh]*[FM]|dependency[-.]verification[[:space:]=:\"']+|${L}(lockMode|lockFile|setLockMode|setLockFile)$R"
