@@ -94,6 +94,25 @@ internal object Capture {
      */
     fun screencap(): Bitmap {
         val (out, err) = shellWithErrors("screencap -p")
+        return decodePng(out, err)
+    }
+
+    /**
+     * A capture of the app's own screen through the shell's screencap: an image, or null when the
+     * platform refused the capture. Android 12's SurfaceFlinger gives a caller without
+     * CAPTURE_BLACKOUT_CONTENT no image at all while a secure window is shown, instead of blacking the
+     * window out (run 39309562117: `adb exec-out screencap -p` gave 0 bytes over the shipping app and
+     * 78,608 over capture-control in the same run; lead decision M5-18). A refusal counts only when it
+     * is exactly that, no bytes on stdout and none on stderr; anything else must be a PNG. ControlTest,
+     * run first, proves the same call returns an image of a screen without FLAG_SECURE.
+     */
+    fun screencapOrRefused(): Bitmap? {
+        val (out, err) = shellWithErrors("screencap -p")
+        if (out.isEmpty() && err.isEmpty()) return null
+        return decodePng(out, err)
+    }
+
+    private fun decodePng(out: ByteArray, err: ByteArray): Bitmap {
         val start = (0..out.size - PNG_SIGNATURE.size).firstOrNull { i ->
             PNG_SIGNATURE.indices.all { out[i + it] == PNG_SIGNATURE[it] }
         }
@@ -115,11 +134,24 @@ internal object Capture {
     }
 
     /** UiAutomation.takeScreenshot(), copied out of a hardware bitmap so its pixels can be read. */
-    fun screenshot(): Bitmap {
-        val shot = instrumentation.uiAutomation.takeScreenshot() ?: throw AssertionError("UiAutomation.takeScreenshot() gave no image")
+    fun screenshot(): Bitmap =
+        screenshotOrRefused() ?: throw AssertionError("UiAutomation.takeScreenshot() gave no image")
+
+    /** UiAutomation.takeScreenshot() of the app's own screen, or null when the platform refused it (M5-18). */
+    fun screenshotOrRefused(): Bitmap? {
+        val shot = instrumentation.uiAutomation.takeScreenshot() ?: return null
         if (shot.config != Bitmap.Config.HARDWARE) return shot
         return shot.copy(Bitmap.Config.ARGB_8888, false) ?: throw AssertionError("the screenshot could not be copied")
     }
+
+    /** Lit pixels in region of a capture that may have been refused: a refusal shows nothing, so 0. */
+    fun litOrRefused(image: Bitmap?, region: Rect): Int = if (image == null) 0 else litPixels(image, region)
+
+    /** Known-colour pixels of a capture that may have been refused: a refusal shows nothing, so 0. */
+    fun knownOrRefused(image: Bitmap?): Int = if (image == null) 0 else knownPixels(image)
+
+    /** How a capture of the app's screen came back, for probe lines. */
+    fun described(image: Bitmap?): String = if (image == null) "refused (no image)" else "a ${image.width}x${image.height} image"
 
     /** How many pixels inside region have a channel above BLACK_MAX. */
     fun litPixels(bitmap: Bitmap, region: Rect): Int {

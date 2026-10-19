@@ -17,9 +17,7 @@ import com.keepcrypt.entropy.Capture.KNOWN_MIN_RECENTS
 import com.keepcrypt.entropy.Capture.SETTLE_MS
 import com.keepcrypt.entropy.Capture.display
 import com.keepcrypt.entropy.Capture.finish
-import com.keepcrypt.entropy.Capture.knownPixels
 import com.keepcrypt.entropy.Capture.launch
-import com.keepcrypt.entropy.Capture.litPixels
 import com.keepcrypt.entropy.Capture.onMain
 import com.keepcrypt.entropy.Capture.openRecents
 import com.keepcrypt.entropy.Capture.pass
@@ -72,15 +70,15 @@ class CaptureTest {
             val display = display(activity)
             report("kc_region", "${region.left},${region.top},${region.right},${region.bottom}")
             report("kc_display", "${display.width()}x${display.height()}")
-            val cap = screencap()
-            val shot = screenshot()
-            Capture.assertCaptureSize(cap, display, "screencap")
-            Capture.assertCaptureSize(shot, display, "takeScreenshot")
-            val capLit = litPixels(cap, region)
-            val shotLit = litPixels(shot, region)
+            val cap = Capture.screencapOrRefused()
+            val shot = Capture.screenshotOrRefused()
+            if (cap != null) Capture.assertCaptureSize(cap, display, "screencap")
+            if (shot != null) Capture.assertCaptureSize(shot, display, "takeScreenshot")
+            val capLit = Capture.litOrRefused(cap, region)
+            val shotLit = Capture.litOrRefused(shot, region)
             val flagged = onMain { activity.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0 }
             val found = windows(pkg)
-            probe("screencap -p: a ${cap.width}x${cap.height} PNG; takeScreenshot(): ${shot.width}x${shot.height}")
+            probe("screencap -p: ${Capture.described(cap)}; takeScreenshot(): ${Capture.described(shot)}")
             probe("${screenId(screen)}: $capLit lit pixels in screencap, $shotLit in takeScreenshot over the app's window $region")
             assertEquals("lit pixels in screencap over the app's window", 0, capLit)
             assertEquals("lit pixels in takeScreenshot over the app's window", 0, shotLit)
@@ -107,10 +105,15 @@ class CaptureTest {
         proveDrawn(activity, Screen.FirstLaunch)
         val device = UiDevice.getInstance(Capture.instrumentation)
         openRecents(device)
-        val inCap = knownPixels(screencap())
-        val inShot = knownPixels(screenshot())
+        val cap = Capture.screencapOrRefused()
+        val shot = Capture.screenshotOrRefused()
+        val inCap = Capture.knownOrRefused(cap)
+        val inShot = Capture.knownOrRefused(shot)
         device.pressHome()
-        probe("recents: $inCap known-colour pixels in screencap, $inShot in takeScreenshot")
+        probe(
+            "recents: screencap ${Capture.described(cap)}, $inCap known-colour pixels; " +
+                "takeScreenshot ${Capture.described(shot)}, $inShot",
+        )
         assertTrue("the recents view shows the app's content", inCap < KNOWN_MIN_RECENTS && inShot < KNOWN_MIN_RECENTS)
         pass("recents: the thumbnail shows none of the app's content")
         finish(activity)
@@ -137,9 +140,14 @@ class CaptureTest {
             shell("settings put secure disable_secure_windows 1")
             SystemClock.sleep(2 * SETTLE_MS)
             proveDrawn(activity, Screen.FirstLaunch)
-            val cap = screencap()
-            val shot = screenshot()
-            intArrayOf(knownPixels(cap), knownPixels(shot), litPixels(cap, region), litPixels(shot, region))
+            // Where the platform reads the setting (enforced), the captures must be images; on API 31
+            // a refusal is recorded as showing nothing.
+            val cap = if (enforced) screencap() else Capture.screencapOrRefused()
+            val shot = if (enforced) screenshot() else Capture.screenshotOrRefused()
+            intArrayOf(
+                Capture.knownOrRefused(cap), Capture.knownOrRefused(shot),
+                Capture.litOrRefused(cap, region), Capture.litOrRefused(shot, region),
+            )
         } finally {
             if (before == "null") shell("settings delete secure disable_secure_windows")
             else shell("settings put secure disable_secure_windows " + before)
@@ -158,8 +166,11 @@ class CaptureTest {
         }
         SystemClock.sleep(2 * SETTLE_MS)
         proveDrawn(activity, Screen.FirstLaunch)
-        assertEquals("lit pixels in screencap after the setting went back", 0, litPixels(screencap(), region))
-        assertEquals("lit pixels in takeScreenshot after the setting went back", 0, litPixels(screenshot(), region))
+        assertEquals("lit pixels in screencap after the setting went back", 0, Capture.litOrRefused(Capture.screencapOrRefused(), region))
+        assertEquals(
+            "lit pixels in takeScreenshot after the setting went back", 0,
+            Capture.litOrRefused(Capture.screenshotOrRefused(), region),
+        )
         assertEquals("disable_secure_windows was not put back", before, shellText("settings get secure disable_secure_windows"))
         if (enforced) {
             pass("control (c): disable_secure_windows unset, then 1 shows the screen in screencap and takeScreenshot, then black again")
@@ -191,7 +202,7 @@ class CaptureTest {
         proveDrawn(again, Screen.FirstLaunch)
         val flagged = onMain { again.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0 }
         assertTrue("the recreated window lacks FLAG_SECURE", flagged)
-        assertEquals("lit pixels in screencap after the recreation", 0, litPixels(screencap(), region(again)))
+        assertEquals("lit pixels in screencap after the recreation", 0, Capture.litOrRefused(Capture.screencapOrRefused(), region(again)))
         probe("empty saved-state Bundle: the activity was recreated from it and drew its first screen again, secure; nothing crashed")
         pass("the empty saved-state Bundle: recreated, drawn, black")
         finish(again)

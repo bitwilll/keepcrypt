@@ -10519,6 +10519,14 @@ milestones.
   also records a second, short stream once the app's first screen is up and in focus: the first stream's first frame
   is the curtain's and screenrecord writes a frame only when the display changes, so a stream that carried nothing
   after the curtain would pass alone, while a fresh stream's first frame is composed at once (review of 8g; 8h).
+- M5-18 (2026-10-20): on Android 12 (API 31 emulator image SE1A.220826.006.A1) the shell's screencap of a screen
+  showing a secure window gives no image at all (0 bytes, empty stderr) instead of an image with the window black (run
+  39309562117 at 9058398: `adb exec-out screencap -p` 0 bytes over the shipping app, 78,608 over capture-control, 313,484
+  over the launcher; the instrumentation's own screencap 0 bytes). That is finding 3's protection in a stronger form, so the
+  capture tests count a refusal as blank only when it is exactly that (no bytes on stdout and none on stderr, or a null
+  takeScreenshot), and only beside a passing positive control in the same leg: ControlTest runs first and must get images
+  of capture-control's screen through the same calls, and the raw-frame recordings, which still work, must be black. Where
+  `disable_secure_windows` is read (API 36), the captures with it set to 1 must be images showing the screen.
 
 Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). Once M4b merges, build-plan.md lines from
 293 on move down one (the M5 row becomes BP:296).
