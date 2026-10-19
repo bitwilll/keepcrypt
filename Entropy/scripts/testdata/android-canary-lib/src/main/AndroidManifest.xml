@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The canary library's manifest (tasks/todo.md, M5 group 5): what a library the app must reject
      would add to the merged manifest, a network permission and a provider. The canary build's APK
-     must fail scripts/banned-api-check.sh --apk on both. -->
+     must fail the gate's APK check (scripts/banned-api-check.sh, apk mode) on both.
+     No double hyphen may appear inside an XML comment, so the option is not spelled here. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
