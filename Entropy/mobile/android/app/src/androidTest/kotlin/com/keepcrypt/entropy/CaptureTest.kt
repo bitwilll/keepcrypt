@@ -21,6 +21,7 @@ import com.keepcrypt.entropy.Capture.knownPixels
 import com.keepcrypt.entropy.Capture.launch
 import com.keepcrypt.entropy.Capture.litPixels
 import com.keepcrypt.entropy.Capture.onMain
+import com.keepcrypt.entropy.Capture.openRecents
 import com.keepcrypt.entropy.Capture.pass
 import com.keepcrypt.entropy.Capture.probe
 import com.keepcrypt.entropy.Capture.proveDrawn
@@ -94,16 +95,15 @@ class CaptureTest {
 
     /**
      * The recents thumbnail is the placeholder: in the recents view, opened from the drawn first
-     * screen, no pixel has the known colour of its content (ControlTest finds it in the control's).
+     * screen and proven on screen (Capture.openRecents), no pixel has the known colour of its content
+     * (ControlTest finds it in the control's).
      */
     @Test
     fun theRecentsThumbnailIsThePlaceholder() {
         val activity = launch()
         proveDrawn(activity, Screen.FirstLaunch)
         val device = UiDevice.getInstance(Capture.instrumentation)
-        assertTrue("the recents key was not sent", device.pressRecentApps())
-        device.waitForIdle()
-        SystemClock.sleep(2 * SETTLE_MS)
+        openRecents(device)
         val inCap = knownPixels(screencap())
         val inShot = knownPixels(screenshot())
         device.pressHome()

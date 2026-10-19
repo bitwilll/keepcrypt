@@ -1,17 +1,16 @@
 package com.keepcrypt.entropy
 
-import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.uiautomator.UiDevice
 import com.keepcrypt.entropy.Capture.CONTROL_PACKAGE
 import com.keepcrypt.entropy.Capture.KNOWN_MIN
 import com.keepcrypt.entropy.Capture.KNOWN_MIN_RECENTS
-import com.keepcrypt.entropy.Capture.SETTLE_MS
 import com.keepcrypt.entropy.Capture.display
 import com.keepcrypt.entropy.Capture.finish
 import com.keepcrypt.entropy.Capture.knownPixels
 import com.keepcrypt.entropy.Capture.launch
 import com.keepcrypt.entropy.Capture.litPixels
+import com.keepcrypt.entropy.Capture.openRecents
 import com.keepcrypt.entropy.Capture.pass
 import com.keepcrypt.entropy.Capture.probe
 import com.keepcrypt.entropy.Capture.proveDrawn
@@ -67,17 +66,23 @@ class ControlTest {
         UiDevice.getInstance(Capture.instrumentation).pressHome()
     }
 
+    /**
+     * In the recents view, proven on screen (Capture.openRecents), the control's thumbnail shows its
+     * known colour, and fewer such pixels than its whole screen showed just before: a scaled
+     * thumbnail, not the live window left in front.
+     */
     @Test
     fun theRecentsThumbnailShowsTheControlsScreen() {
         startControl()
+        val full = knownPixels(screencap())
         val device = UiDevice.getInstance(Capture.instrumentation)
-        assertTrue("the recents key was not sent", device.pressRecentApps())
-        device.waitForIdle()
-        SystemClock.sleep(2 * SETTLE_MS)
+        openRecents(device)
         val inCap = knownPixels(screencap())
         device.pressHome()
-        probe("capture control in recents: $inCap known-colour pixels in screencap")
+        probe("capture control in recents: $inCap known-colour pixels in screencap, $full on its whole screen before")
+        assertTrue("screencap does not show the capture control's screen", full >= KNOWN_MIN)
         assertTrue("the recents view does not show the capture control's screen", inCap >= KNOWN_MIN_RECENTS)
+        assertTrue("the recents view shows the control's whole screen, not a thumbnail", inCap * 10 < full * 9)
         pass("control (a): the recents thumbnail shows the capture control's screen")
     }
 }

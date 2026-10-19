@@ -12,6 +12,9 @@ import android.os.SystemClock
 import android.view.ViewTreeObserver
 import android.view.WindowInsets
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.By
+import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.Until
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
@@ -208,6 +211,35 @@ internal object Capture {
         assertTrue("am start of the capture control did not report Status: ok", out.lines().contains("Status: ok"))
         SystemClock.sleep(2 * SETTLE_MS)
     }
+
+    /**
+     * Opens the recents view and proves it is on screen before anything there is captured: the home
+     * app (what HOME resolves to, Launcher3's Quickstep on these images, which draws the recents
+     * view) must show its overview_panel, the view its own test library waits for. pressRecentApps
+     * only reports that the key was sent, and a recents view that never opened would leave the
+     * app's black window, or the control's whole screen, to be captured instead of a thumbnail.
+     */
+    fun openRecents(device: UiDevice) {
+        val home = homePackage()
+        assertTrue("the recents key was not sent", device.pressRecentApps())
+        val shown = device.wait(Until.hasObject(By.res(home, "overview_panel")), 10_000)
+        assertTrue("the recents view did not open (no $home:id/overview_panel); " + focus(), shown == true)
+        device.waitForIdle()
+        SystemClock.sleep(2 * SETTLE_MS)
+        probe("recents: $home's overview_panel is shown; " + focus())
+    }
+
+    /** The package of the activity HOME resolves to (cmd package resolve-activity --brief). */
+    private fun homePackage(): String {
+        val out = shellText("cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME")
+        val component = out.lines().last().trim()
+        assertTrue("HOME resolves to no activity: $out", component.contains('/'))
+        return component.substringBefore('/')
+    }
+
+    /** dumpsys window's focus lines, for the record. */
+    private fun focus(): String =
+        shellText("dumpsys window").lines().filter { it.contains("mCurrentFocus=") }.joinToString("; ") { it.trim() }
 
     /** block's value, computed on the main thread. */
     @Suppress("UNCHECKED_CAST")
