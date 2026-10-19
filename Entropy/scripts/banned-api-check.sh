@@ -256,14 +256,16 @@
 # The manifest summary, defined here once, one fact per line: from aapt2 dump badging, package
 # NAME, versionName V, minSdk N and targetSdk N; from dump permissions, permission NAME (declared)
 # and uses-permission NAME (used; with maxSdkVersion=N when set), sorted, and any line of another
-# shape as permissions-dump LINE; from dump xmltree AndroidManifest.xml, application allowBackup=,
-# dataExtractionRules=, debuggable= (also true when badging prints application-debuggable),
-# extractNativeLibs=, fullBackupContent= and usesCleartextTraffic=, each always (unset when absent;
-# a resource reference reads set), and backupAgent=, networkSecurityConfig= and testOnly= when
-# present (and manifest sharedUserId=); every activity, activity-alias, provider, receiver and
-# service as KIND NAME exported=V (an absent exported reads as the platform's default: true with
-# an intent filter, false without), each followed by its intent filters as KIND NAME intent-filter
-# action:A category:C data:K=V,..., sorted by component; uses-library and uses-native-library NAME
+# shape as permissions-dump LINE; from dump xmltree AndroidManifest.xml, application ATTR=V for
+# every attribute of <application> (its class name, appComponentFactory, process and the rest),
+# sorted, with allowBackup=, dataExtractionRules=, debuggable= (also true when badging prints
+# application-debuggable), extractNativeLibs=, fullBackupContent= and usesCleartextTraffic= always
+# there (unset when absent), a resource reference reading set wherever it is a value (its id
+# changes from build to build); manifest sharedUserId= when present; every activity, activity-alias,
+# provider, receiver and service as KIND NAME exported=V (an absent exported reads as the
+# platform's default: true with an intent filter, false without), then KIND NAME ATTR=V for each of
+# its other attributes, sorted, then its intent filters as KIND NAME intent-filter action:A
+# category:C data:K=V,..., sorted by component; uses-library and uses-native-library NAME
 # required=V, sorted; then, sorted, uses-feature NAME required=V, queries TAG NAME (one line per
 # child of <queries>, or queries alone), and every other element of the application or the manifest
 # as application-element or manifest-element TAG NAME; and from the merger report, removed KEY
@@ -314,15 +316,17 @@
 # mobile/android/expected/manifest-shipping.txt (the control). Each case changes one thing and must
 # give exactly that one hit: INTERNET, a provider, allowBackup true, debuggable, an extra exported
 # activity and a <queries> element (each against its own summary, so that only the hard rule can
-# fail it), a summary that differs from the expected one, INTERNET in the merger report; an
-# unlisted .so, a 4 KB-aligned 64-bit .so, another SHA-256, a listed .so missing, libkeepcrypt.so,
-# an x86 .so, a .so for another machine, an ELF outside lib/, a .so importing rand; a marker in a
-# dex file, the test key in resources.arsc, a marker in the zip comment, a reference from a
-# com.keepcrypt class to each name of dex_banned (a library class's passes in the base case; the
-# stub dexdump refuses to run without -d); zipalign failing and another signer. Its refusals must
-# exit 2: bad usage, a bad VARIANT or CERT_SHA256, a missing expected directory, expected file,
-# report or APK, no aapt2 on PATH, a malformed native-libs.txt line and no com.keepcrypt class.
-# Prints PASS or FAIL per case and a count; exit 0 all passed, 1 not.
+# fail it), a summary that differs from the expected one, a changed appComponentFactory, an added
+# Application class and an added activity attribute (each against the committed summary),
+# INTERNET in the merger report; an unlisted .so, a 4 KB-aligned 64-bit .so, another SHA-256, a
+# listed .so missing, libkeepcrypt.so, an x86 .so, a .so for another machine, an ELF outside lib/,
+# a .so importing rand; a marker in a dex file, the test key in resources.arsc, a marker in the
+# zip comment, a reference from a com.keepcrypt class to each name of dex_banned (a library
+# class's passes in the base case; the stub dexdump refuses to run without -d); zipalign failing
+# and another signer. Its refusals must exit 2: bad usage, a bad VARIANT or CERT_SHA256, a missing
+# expected directory, expected file, report or APK, no aapt2 on PATH, a malformed native-libs.txt
+# line and no com.keepcrypt class. Prints PASS or FAIL per case and a count; exit 0 all passed, 1
+# not.
 #
 # Categories (main patterns; the full lists are in the check functions below; comments count
 # everywhere but where a rule says otherwise):
@@ -4783,10 +4787,9 @@ PAGE = 0x4000
 NETWORK = ("android.permission.INTERNET", "android.permission.ACCESS_NETWORK_STATE",
            "android.permission.ACCESS_WIFI_STATE")
 # The application flags the summary always lists, each with the value the hard rules require
-# (None: listed, judged only by the comparison), and those it lists when they are present.
+# (None: listed, judged only by the comparison); every other attribute it lists when present.
 FLAGS = (("allowBackup", "false"), ("dataExtractionRules", "set"), ("debuggable", "false"),
          ("extractNativeLibs", None), ("fullBackupContent", "false"), ("usesCleartextTraffic", "false"))
-WATCH = ("backupAgent", "networkSecurityConfig", "testOnly")
 COMPONENTS = ("activity", "activity-alias", "provider", "receiver", "service")
 SKIPPED = ("uses-sdk", "uses-permission", "uses-permission-sdk-23", "permission", "application")
 ATTR = re.compile(r"(?P<name>[^=(]+?)(?:\(0x[0-9a-fA-F]+\))?=(?P<value>.*)$")
@@ -4889,15 +4892,15 @@ def manifest(badging, permissions, tree, report, out, apk):
     man = tops[0]
     apps = [e for e in man.children if e.tag == "application"]
     app = apps[0] if apps else Element("application", 0)
-    flags = []
+    attrs = dict(app.attrs)
     for name, _ in FLAGS:
         v = app.attrs.get(name)
         if name == "debuggable":
             v = "true" if v == "true" or re.search(r"^application-debuggable$", b, re.M) else (v or "false")
         elif name == "dataExtractionRules":
             v = "unset" if v is None else "set"
-        flags.append("application %s=%s" % (name, shown(v)))
-    flags += ["application %s=%s" % (k, shown(app.attrs[k])) for k in WATCH if k in app.attrs]
+        attrs[name] = v
+    flags = ["application %s=%s" % (k, shown(attrs[k])) for k in sorted(attrs)]
     flags += ["manifest sharedUserId=" + man.attrs["sharedUserId"]] if "sharedUserId" in man.attrs else []
     comps, libs, extra = [], [], []
     for el in app.children:
@@ -4906,6 +4909,8 @@ def manifest(badging, permissions, tree, report, out, apk):
             filters = [c for c in el.children if c.tag == "intent-filter"]
             exported = el.attrs.get("exported", "true" if filters else "false")
             comps.append(["%s %s exported=%s" % (el.tag, name, exported)] +
+                         ["%s %s %s=%s" % (el.tag, name, k, shown(el.attrs[k]))
+                          for k in sorted(el.attrs) if k not in ("name", "exported")] +
                          ["%s %s intent-filter %s" % (el.tag, name, describe(f)) for f in filters])
         elif el.tag in ("uses-library", "uses-native-library"):
             libs.append("%s %s required=%s" % (el.tag, name, el.attrs.get("required", "true")))
@@ -5528,6 +5533,20 @@ STUB
   anew differs
   sed 's/^targetSdk 36$/targetSdk 35/' "$committed" >"$c/expected/manifest-shipping.txt" || exit 2
   acase apk-manifest-summary-differs "Manifest: $c/expected/manifest-shipping.txt: differs from the APK's manifest summary"
+  # Every attribute of the application and of each component is in the summary: a library that
+  # swaps the class instantiating every component, adds an Application class or moves the
+  # activity to another process changes it, against the committed expected one.
+  anew app-component-factory
+  sed 's/"androidx[.]core[.]app[.]CoreComponentFactory"/"com.example.Factory"/' "$b/xmltree.txt" >"$c/xmltree.txt" || exit 2
+  acase apk-manifest-app-component-factory-changed "Manifest: $c/expected/manifest-shipping.txt: differs from the APK's manifest summary"
+  anew application-class
+  awk '{ print } /allowBackup\(0x01010280\)=false/ { print "        A: http://schemas.android.com/apk/res/android:name(0x01010003)=\"com.example.App\" (Raw: \"com.example.App\")" }' \
+    "$b/xmltree.txt" >"$c/xmltree.txt" || exit 2
+  acase apk-manifest-application-class-added "Manifest: $c/expected/manifest-shipping.txt: differs from the APK's manifest summary"
+  anew activity-process
+  awk '{ print } /exported\(0x01010010\)=true/ { print "            A: http://schemas.android.com/apk/res/android:process(0x01010011)=\":x\" (Raw: \":x\")" }' \
+    "$b/xmltree.txt" >"$c/xmltree.txt" || exit 2
+  acase apk-manifest-activity-attribute-added "Manifest: $c/expected/manifest-shipping.txt: differs from the APK's manifest summary"
   anew report-internet
   n=$(wc -l <"$c/report.txt") || exit 2
   aappend "$c/report.txt" 'uses-permission#android.permission.INTERNET' \
