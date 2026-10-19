@@ -148,6 +148,11 @@ shown = None
 while not stopped:
     with open(os.path.join(case, "screen")) as f:
         screen = f.read().strip()
+    # The stand-in adb rewrites the file with a shell redirection, which truncates it first; a read
+    # in between sees an empty file, not a screen (run 39336246707: a lit frame from that gap).
+    if not screen:
+        time.sleep(0.01)
+        continue
     if kind == "stream" and screen != shown and (shown is None or screen != "lit-unsent"):
         frame = bytearray(w * h * 3)
         if screen == "control":
