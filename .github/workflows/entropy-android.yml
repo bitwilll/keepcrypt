@@ -411,6 +411,13 @@ jobs:
       # a new dropbox entry).
       - name: Instrumentation runner selftest (scripts/android-instrument.sh --selftest)
         run: sh scripts/android-instrument.sh --selftest
+      # The emulator leg's own cases (no emulator): whole legs of android-emulator.sh, with the real
+      # frame checker, on a stand-in adb, emulator, screenrecord and instrument runner: a passing leg,
+      # and each way a leg must fail (a failing ControlTest or CaptureTest, at the leg's end; the
+      # control still in recents after pm clear; a recording that ends before its stop; the app's
+      # window lit in the first-frame stream, and lit with no frame after the curtain).
+      - name: Emulator leg selftest (scripts/android-emulator.sh --selftest)
+        run: sh scripts/android-emulator.sh --selftest
       # KVM for the emulators: the udev rule GitHub documents for its Linux runners.
       - name: KVM (udev rule)
         run: |

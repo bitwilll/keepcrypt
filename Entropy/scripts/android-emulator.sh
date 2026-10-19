@@ -50,8 +50,201 @@
 # that, or reaches the checker's cap (--duration, 120 s), fails.
 # Prints "pass: api=API ..." for each control and check that passed; exit 0 all passed, 1 anything
 # failed, 2 bad usage. The emulator is shut down on every exit.
+#
+# scripts/android-emulator.sh --selftest runs whole legs of this script, with the real frame checker,
+# on stand-ins written to a temporary directory: an adb, an emulator, a screenrecord that writes a raw
+# frame of the screen at its start and on each change of it until SIGINT, and an instrument runner. A
+# leg where everything passes exits 0; a failing ControlTest and a failing CaptureTest each exit 1 at
+# the leg's end, after the later checks ran; capture-control still in recents after pm clear, a
+# recording that ends before it is stopped, the app's window lit in the first-frame stream, and the
+# same with that stream carrying no frame after the curtain (only the second stream sees it) each
+# exit 1; too few arguments exit 2. Exit 0 when every case behaves, 1 otherwise. The legs run at once;
+# it takes about a minute.
 set -u
 unset CDPATH
+
+# selftest: the cases listed in the header, each a whole leg on its own case directory.
+selftest() {
+  self=$(cd "$(dirname "$0")" && pwd) || exit 2
+  st=$(mktemp -d "${TMPDIR:-/tmp}/kc-emulator-selftest.XXXXXX") || exit 2
+  trap 'rm -rf "$st"' EXIT
+  mkdir "$st/scripts" || exit 2
+  cp "$self/$(basename "$0")" "$st/scripts/android-emulator.sh" || exit 2
+  cp "$self/android-frames.py" "$st/scripts/android-frames.py" || exit 2
+  cat > "$st/scripts/android-instrument.sh" <<'EOF' || exit 2
+#!/bin/sh
+# The selftest's stand-in instrument runner: CaptureTest reports the window's region; the class
+# named in KC_FAILCLASS fails.
+echo "instrument stub: $5 $6"
+case $6 in *.CaptureTest) printf 'kc: region=0,48,720,1184
+kc: display=720x1280
+' ;; esac
+case $6 in *."${KC_FAILCLASS:-none}") exit 1 ;; esac
+exit 0
+EOF
+  cat > "$st/emulator" <<'EOF' || exit 2
+#!/bin/sh
+# The selftest's stand-in emulator: it boots at once and runs until adb's emu kill.
+case $1 in -help) echo '-no-metrics'; exit 0 ;; -version) echo 'stand-in emulator'; exit 0 ;; esac
+echo $$ > "$KC_STUB/emulator.pid"
+exec sleep 300
+EOF
+  cat > "$st/adb" <<'EOF' || exit 2
+#!/bin/sh
+# The selftest's stand-in adb: -s emulator-5554 COMMAND, answered from and into the case directory
+# $KC_STUB (screen: what the display shows; front: the package whose MainActivity was started last).
+s=$KC_STUB
+[ "$*" = start-server ] && exit 0
+[ "$1" = -s ] && [ "$2" = emulator-5554 ] || { echo "stub adb: unexpected: $*" >&2; exit 1; }
+shift 2
+case "$*" in
+  'emu kill') kill "$(cat "$s/emulator.pid")" ;;
+  'shell getprop sys.boot_completed') echo 1 ;;
+  'shell dumpsys power') echo '  mWakefulness=Awake' ;;
+  'shell dumpsys display') echo '  mScreenState=ON' ;;
+  'exec-out screencap -p') printf 'stand-in png' ;;
+  'shell screenrecord '*) exec python3 -I "$(dirname "$0")/screenrecord.py" "$s" none ;;
+  'exec-out screenrecord '*) exec python3 -I "$(dirname "$0")/screenrecord.py" "$s" stream ;;
+  'shell pkill -INT -x screenrecord') kill -INT "$(cat "$s/recorder.pid")" ;;
+  'install '*) echo Success ;;
+  'shell am start -W '*)
+    for a; do c=$a; done
+    case $c in
+      *.CurtainActivity) echo black > "$s/screen" ;;
+      *.ControlActivity) echo control > "$s/screen" ;;
+      *.MainActivity) echo "${KC_APP_SCREEN:-black}" > "$s/screen"; echo "${c%%/*}" > "$s/front" ;;
+    esac
+    printf 'Status: ok
+LaunchState: COLD
+'
+    ;;
+  'shell pm clear com.keepcrypt.entropy.capturecontrol') printf 'Success
+' ;;
+  'shell dumpsys activity recents')
+    echo 'ACTIVITY MANAGER RECENT TASKS (dumpsys activity recents)'
+    [ -z "${KC_RECENTS:-}" ] || echo '  * Recent #0: Task{a1 #12 type=standard A=10123:com.keepcrypt.entropy.capturecontrol}'
+    ;;
+  'shell dumpsys window') printf '  mCurrentFocus=Window{b2 u0 %s/com.keepcrypt.entropy.MainActivity}
+' "$(cat "$s/front")" ;;
+  'shell input '* | 'shell wm '* | 'shell settings '* | 'shell svc '* | 'shell getprop '* | 'shell getconf '* | \
+    'shell logcat -b crash -d' | 'shell dumpsys dropbox' | 'shell dumpsys content_capture' | \
+    'shell pm list instrumentation' | 'shell am force-stop '*) ;;
+  *) echo "stub adb: unexpected command: $*" >&2; exit 1 ;;
+esac
+EOF
+  cat > "$st/screenrecord.py" <<'EOF' || exit 2
+# The selftest's stand-in screenrecord --output-format=raw-frames --size 360x640 (rgb888): "stream"
+# writes a frame of the case's screen at its start and whenever the screen changes (but to
+# lit-unsent: the app's window drawn and no frame written for it), "none" writes nothing; both run
+# until SIGINT, or end after their first frame under KC_REC_END.
+import os, signal, sys, time
+case, kind = sys.argv[1], sys.argv[2]
+with open(os.path.join(case, "recorder.pid"), "w") as f:
+    f.write(str(os.getpid()))
+stopped = []
+signal.signal(signal.SIGINT, lambda *a: stopped.append(1))
+w, h = 360, 640
+shown = None
+while not stopped:
+    with open(os.path.join(case, "screen")) as f:
+        screen = f.read().strip()
+    if kind == "stream" and screen != shown and (shown is None or screen != "lit-unsent"):
+        frame = bytearray(w * h * 3)
+        if screen == "control":
+            frame[300 * w * 3:(300 * w + 100) * 3] = bytes((0xFF, 0xD5, 0x4F)) * 100
+        elif screen != "black":
+            frame[:] = b"\xff" * len(frame)
+        sys.stdout.buffer.write(frame)
+        sys.stdout.buffer.flush()
+        if os.environ.get("KC_REC_END"):
+            sys.exit(0)
+    shown = screen
+    time.sleep(0.05)
+EOF
+  chmod +x "$st/scripts/android-instrument.sh" "$st/emulator" "$st/adb" || exit 2
+  # leg NAME [VAR=VALUE...]: one whole leg on API 31 in the background, its case directory $st/NAME,
+  # with VAR=VALUE set for the stand-ins; its output in out and its exit status in rc.
+  leg() {
+    c=$st/$1
+    shift
+    mkdir -p "$c/sdk/emulator" "$c/sdk/system-images/android-31/default/x86_64" "$c/apks" || exit 2
+    cp "$st/emulator" "$c/sdk/emulator/emulator" || exit 2
+    echo 'Pkg.Revision=1' > "$c/sdk/system-images/android-31/default/x86_64/source.properties" || exit 2
+    for f in app-shipping-release app-shipping-release-androidTest app-withTestRegistry-release \
+      app-withTestRegistry-release-androidTest capture-control-release; do
+      : > "$c/apks/$f.apk" || exit 2
+    done
+    echo black > "$c/screen" || exit 2
+    {
+      env KC_STUB="$c" "$@" sh "$st/scripts/android-emulator.sh" 31 "$c/sdk" "$st/adb" "$c/apks" "$c/work"
+      echo $? > "$c/rc"
+    } > "$c/out" 2>&1 &
+  }
+  passed=0
+  failed=0
+  # expect NAME EXIT TEXT...: leg NAME exited EXIT and printed every TEXT.
+  expect() {
+    name=$1
+    want=$2
+    shift 2
+    got=$(cat "$st/$name/rc")
+    ok=yes
+    [ "$got" = "$want" ] || ok=no
+    for text in "$@"; do
+      grep -q -F -e "$text" "$st/$name/out" || ok=no
+    done
+    if [ "$ok" = yes ]; then
+      passed=$((passed + 1))
+      echo "PASS $name"
+    else
+      failed=$((failed + 1))
+      echo "FAIL $name (exit $got, wanted $want)"
+      sed 's/^/  | /' "$st/$name/out"
+    fi
+  }
+
+  leg pass
+  leg control-test-fails KC_FAILCLASS=ControlTest
+  leg capture-test-fails KC_FAILCLASS=CaptureTest
+  leg control-in-recents KC_RECENTS=1
+  leg recording-ends-early KC_REC_END=1
+  leg app-window-lit KC_APP_SCREEN=lit
+  leg app-window-lit-no-frame KC_APP_SCREEN=lit-unsent
+  wait
+  expect pass 0 "pass: api=31 control (a) raw frames" "pass: api=31 first frame (shipping): every frame black" \
+    "pass: api=31 first frame (shipping, its first screen up)" "pass: api=31 first frame (registry, its first screen up)" \
+    "emulator: api=31: every check passed"
+  expect control-test-fails 1 \
+    "instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.ControlTest) (the leg goes on" \
+    "instrument stub: com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.CaptureTest" \
+    "pass: api=31 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.ControlTest) (each reported above)"
+  expect capture-test-fails 1 \
+    "pass: api=31 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.CaptureTest); instrumented tests failed on com.keepcrypt.entropy.testregistry (com.keepcrypt.entropy.CaptureTest) (each reported above)"
+  expect control-in-recents 1 "probe: api=31 recents after pm clear com.keepcrypt.entropy.capturecontrol: 1 lines name it" \
+    "pass: api=31 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=31: capture-control is still in recents after pm clear (each reported above)"
+  expect recording-ends-early 1 "before it was stopped" "FAIL: emulator: api=31: control"
+  expect app-window-lit 1 "FAIL: emulator: api=31: shipping: a raw frame shows the app's window"
+  expect app-window-lit-no-frame 1 "pass: api=31 first frame (shipping): every frame black" \
+    "FAIL: emulator: api=31: shipping: a raw frame with the app's first screen up shows its window"
+  sh "$st/scripts/android-emulator.sh" 31 > "$st/out" 2>&1
+  if [ "$?" -eq 2 ] && grep -q -e '^usage: ' "$st/out"; then
+    passed=$((passed + 1))
+    echo "PASS too few arguments"
+  else
+    failed=$((failed + 1))
+    echo "FAIL too few arguments"
+  fi
+  echo "android-emulator selftest: $passed passed, $failed failed"
+  [ "$failed" -eq 0 ]
+}
+
+if [ $# -eq 1 ] && [ "$1" = --selftest ]; then
+  selftest
+  exit
+fi
 
 if [ $# -ne 5 ]; then
   echo "usage: scripts/android-emulator.sh API SDK_ROOT ADB APK_DIR WORK_DIR" >&2
