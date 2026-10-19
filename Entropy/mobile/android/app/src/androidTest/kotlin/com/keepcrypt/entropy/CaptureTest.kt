@@ -115,9 +115,11 @@ class CaptureTest {
 
     /**
      * Positive control (c), API 36 only, where the platform reads the setting (Android 15 added it):
-     * disable_secure_windows is unset or 0 first; set to 1, the app's own screencap shows its screen;
-     * back as it was, black again. On API 31 the same steps run as a probe of whether the setting is
-     * read there, and only the black-again check is asserted.
+     * disable_secure_windows is unset or 0 first; set to 1, the app's own captures (screencap and
+     * takeScreenshot) show its screen, both its known colour and lit pixels over the region the
+     * black assertions read, so litPixels and region are shown to see a screen that is drawn; back
+     * as it was, black again. On API 31 the same steps run as a probe of whether the setting is read
+     * there, and only the black-again check is asserted.
      */
     @Test
     fun disableSecureWindowsShowsTheScreenOnlyWhileSet() {
@@ -132,20 +134,32 @@ class CaptureTest {
             shell("settings put secure disable_secure_windows 1")
             SystemClock.sleep(2 * SETTLE_MS)
             proveDrawn(activity, Screen.FirstLaunch)
-            knownPixels(screencap())
+            val cap = screencap()
+            val shot = screenshot()
+            intArrayOf(knownPixels(cap), knownPixels(shot), litPixels(cap, region), litPixels(shot, region))
         } finally {
             if (before == "null") shell("settings delete secure disable_secure_windows")
             else shell("settings put secure disable_secure_windows " + before)
         }
-        probe("disable_secure_windows=1: the app's own screencap shows $shown known-colour pixels (the setting is read: ${shown >= KNOWN_MIN})")
-        if (enforced) assertTrue("disable_secure_windows=1 did not show the app's screen", shown >= KNOWN_MIN)
+        val (capKnown, shotKnown, capLit, shotLit) = shown
+        val read = capKnown >= KNOWN_MIN && shotKnown >= KNOWN_MIN && capLit > 0 && shotLit > 0
+        probe(
+            "disable_secure_windows=1: the app's own captures show $capKnown known-colour pixels in screencap, " +
+                "$shotKnown in takeScreenshot; $capLit and $shotLit lit pixels over the app's window $region (the setting is read: $read)",
+        )
+        if (enforced) {
+            assertTrue("disable_secure_windows=1: screencap does not show the app's screen", capKnown >= KNOWN_MIN)
+            assertTrue("disable_secure_windows=1: takeScreenshot does not show the app's screen", shotKnown >= KNOWN_MIN)
+            assertTrue("disable_secure_windows=1: no lit pixel in screencap over the app's window", capLit > 0)
+            assertTrue("disable_secure_windows=1: no lit pixel in takeScreenshot over the app's window", shotLit > 0)
+        }
         SystemClock.sleep(2 * SETTLE_MS)
         proveDrawn(activity, Screen.FirstLaunch)
         assertEquals("lit pixels in screencap after the setting went back", 0, litPixels(screencap(), region))
         assertEquals("lit pixels in takeScreenshot after the setting went back", 0, litPixels(screenshot(), region))
         assertEquals("disable_secure_windows was not put back", before, shellText("settings get secure disable_secure_windows"))
         if (enforced) {
-            pass("control (c): disable_secure_windows unset, then 1 shows the screen ($shown known-colour pixels), then black again")
+            pass("control (c): disable_secure_windows unset, then 1 shows the screen in screencap and takeScreenshot, then black again")
         } else {
             pass("disable_secure_windows probe done; black again after it")
         }
