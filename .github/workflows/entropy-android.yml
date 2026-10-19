@@ -24,7 +24,8 @@
 # reference scan, zipalign and the signer. The capture-control APK must not carry either shipped
 # APK's package id, and a canary build (the canary Gradle property set, adding a library that asks
 # for INTERNET, declares a provider and calls java.util.Random from a com.keepcrypt class) must be
-# refused by --apk; a pass fails the job.
+# refused by --apk; a pass fails the job. It then uploads the two checked APKs (the test-registry
+# one named NOT-FOR-RELEASE) with their SHA-256, kept 14 days.
 #
 # Then the emulators (M5 group 6, commit 8), one after another on those signed bytes:
 # system-images;android-31;default;x86_64 and system-images;android-36;default;x86_64, installed with
@@ -42,13 +43,14 @@
 # touches these paths merges without a green run of this workflow on its final head.
 #
 # Hardening, as in entropy-ci.yml, whose gates job checks this file too (banned-api-check.sh
-# --workflows): read-only token and no secret; only actions/checkout and actions/cache, pinned by
-# commit SHA; no event data inside run scripts (it reaches them through env and with only). A cache
-# written by a PR run is scoped to that PR, so main only restores caches written on main. Gradle comes from
-# scripts/android-gradle.sh (pinned SHA-256, no wrapper jar), with only Google's Maven and Maven
-# Central (mobile/android/settings.gradle.kts), no JDK or SDK download, no daemon and no build
-# scan. The job builds a PR's head commit, never GitHub's merge commit, or the pushed, scheduled or
-# dispatched commit, and prints the commit it built.
+# --workflows): read-only token and no secret; only actions/checkout, actions/cache and
+# actions/upload-artifact, pinned by commit SHA; no event data inside run scripts (it reaches them
+# through env and with only). A cache written by a PR run is scoped to that PR, so main only
+# restores caches written on main. Gradle comes from scripts/android-gradle.sh (pinned SHA-256,
+# no wrapper jar), with only Google's Maven and Maven Central (mobile/android/settings.gradle.kts),
+# no JDK or SDK download, no daemon and no build scan. The job builds a PR's head commit, never
+# GitHub's merge commit, or the pushed, scheduled or dispatched commit, and prints the commit it
+# built.
 
 name: Entropy Android
 
@@ -354,6 +356,27 @@ jobs:
           grep -q -e '^DexRef: classes[0-9]*[.]dex: Lcom/keepcrypt/canary/Canary; references Ljava/util/Random;$' \
             "$RUNNER_TEMP/canary.log" || fail "no DexRef hit for com.keepcrypt.canary.Canary"
           echo "the canary APK was refused, with the INTERNET, provider and DexRef hits"
+      # The uploads (M5 group 6), before the emulators and kept 14 days: the shipping and
+      # test-registry APKs signed and checked above, the test-registry one named NOT-FOR-RELEASE
+      # (built only in CI, never released; Q60), and SHA256SUMS with their SHA-256, also printed
+      # here, which the owner's P0 compares with each download. Nothing else: the throwaway key,
+      # the test APKs, capture-control's and the canary stay on the runner. The P4 files join at
+      # commit 14 and the positive-control captures with the words page (commit 19).
+      - name: Stage the uploads (both APKs, NOT-FOR-RELEASE, SHA256SUMS)
+        run: |
+          up=$RUNNER_TEMP/upload
+          mkdir "$up"
+          cp "$RUNNER_TEMP/apks/app-shipping-release.apk" "$up/app-shipping-release.apk"
+          cp "$RUNNER_TEMP/apks/app-withTestRegistry-release.apk" "$up/app-withTestRegistry-release-NOT-FOR-RELEASE.apk"
+          (cd "$up" && sha256sum -- *.apk > SHA256SUMS)
+          cat "$up/SHA256SUMS"
+      - name: Upload both APKs and SHA256SUMS
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-apks
+          path: ${{ runner.temp }}/upload/
+          retention-days: 14
+          if-no-files-found: error
       # The frame checker's own cases (no emulator): each pixel format, the region's scaling, and the
       # segment chain on stand-in recorders (a partial frame, a segment with no frame, a gap and a
       # failing recorder each fail).
