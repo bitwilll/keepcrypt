@@ -22,8 +22,195 @@
 # "kc: KEY=VALUE" (the window region the frame checker needs). The whole raw output is printed when a
 # run fails (the tests use gate seeds only). Prints "instrument: api=API PASS TEST (N tests)" per run.
 # Exit: 0 every run passed; 1 a run failed; 2 bad usage or an adb that cannot reach the emulator.
+#
+# scripts/android-instrument.sh --selftest runs this script on a stand-in adb (written to a temporary
+# directory) answering from recorded outputs: a passing class, the same with CRLF line ends and with
+# the process gone only after 2 s each pass; each status -1 to -4, a missing end status, shortMsg,
+# INSTRUMENTATION_FAILED and _ABORTED, no final INSTRUMENTATION_CODE: -1, no test, a process still
+# running after 20 s, a crash and a not-responding window, a crash-buffer line naming one of our
+# packages and a new data_app_crash entry each fail (exit 1); an unreadable dropbox and too few
+# arguments exit 2. Exit 0 when every case behaves, 1 otherwise. It takes about 25 s (the 20 s wait).
 set -u
 unset CDPATH
+
+# raw END TAIL: am instrument -r output for a two-test run of CaptureTest with the tests' kc_ status
+# values; END is the second test's end status ("none": no end status), TAIL the run's end: ok (the
+# runner's OK and INSTRUMENTATION_CODE: -1), code0 (OK, then INSTRUMENTATION_CODE: 0), crashed
+# (shortMsg), failed, aborted (INSTRUMENTATION_FAILED or _ABORTED after the OK), or empty (no test).
+raw() {
+  c=com.keepcrypt.entropy.CaptureTest
+  if [ "$2" != empty ]; then
+    for t in 1 2; do
+      printf 'INSTRUMENTATION_STATUS: class=%s\nINSTRUMENTATION_STATUS: current=%s\n' "$c" "$t"
+      printf 'INSTRUMENTATION_STATUS: id=AndroidJUnitRunner\nINSTRUMENTATION_STATUS: numtests=2\n'
+      printf 'INSTRUMENTATION_STATUS: stream=\nINSTRUMENTATION_STATUS: test=test%s\n' "$t"
+      printf 'INSTRUMENTATION_STATUS_CODE: 1\n'
+      if [ "$t" = 1 ]; then
+        printf 'INSTRUMENTATION_STATUS: kc_region=0,48,720,1184\nINSTRUMENTATION_STATUS_CODE: 2\n'
+        printf 'INSTRUMENTATION_STATUS: kc_probe=first-launch: 0 lit pixels\nINSTRUMENTATION_STATUS_CODE: 2\n'
+        printf 'INSTRUMENTATION_STATUS: kc_pass=first-launch: drawn, then black\nINSTRUMENTATION_STATUS_CODE: 2\n'
+      fi
+      end=0
+      [ "$t" = 1 ] || end=$1
+      if [ "$end" != none ]; then
+        printf 'INSTRUMENTATION_STATUS: class=%s\nINSTRUMENTATION_STATUS: current=%s\n' "$c" "$t"
+        printf 'INSTRUMENTATION_STATUS: stream=.\nINSTRUMENTATION_STATUS: test=test%s\n' "$t"
+        printf 'INSTRUMENTATION_STATUS_CODE: %s\n' "$end"
+      fi
+    done
+  fi
+  case $2 in
+    crashed) printf 'INSTRUMENTATION_RESULT: shortMsg=Process crashed.\nINSTRUMENTATION_CODE: 0\n' ;;
+    *)
+      n=2
+      [ "$2" = empty ] && n=0
+      printf 'INSTRUMENTATION_RESULT: stream=\n\nTime: 3.2\n\nOK (%s tests)\n\n\n' "$n"
+      case $2 in
+        failed) printf 'INSTRUMENTATION_FAILED: com.keepcrypt.entropy.test/androidx.test.runner.AndroidJUnitRunner\n' ;;
+        aborted) printf 'INSTRUMENTATION_ABORTED: System has crashed.\n' ;;
+      esac
+      if [ "$2" = code0 ]; then echo 'INSTRUMENTATION_CODE: 0'; else echo 'INSTRUMENTATION_CODE: -1'; fi
+      ;;
+  esac
+}
+
+# selftest: the cases listed in the header, each on a fresh case directory the stand-in adb reads.
+selftest() {
+  self=$(cd "$(dirname "$0")" && pwd)/$(basename "$0") || exit 2
+  st=$(mktemp -d "${TMPDIR:-/tmp}/kc-instrument-selftest.XXXXXX") || exit 2
+  trap 'rm -rf "$st"' EXIT
+  cat > "$st/adb" <<'EOF' || exit 2
+#!/bin/sh
+# The selftest's stand-in adb: -s emulator-5554 shell COMMAND, answered from the files in $KC_STUB.
+[ "$1" = -s ] && [ "$2" = emulator-5554 ] && [ "$3" = shell ] || { echo "stub adb: unexpected: $*" >&2; exit 1; }
+shift 3
+case "$*" in
+  'dumpsys dropbox')
+    [ -f "$KC_STUB/dropbox-fails" ] && exit 1
+    if [ -f "$KC_STUB/dropbox-read" ] && [ -f "$KC_STUB/dropbox-after" ]; then
+      cat "$KC_STUB/dropbox-after"
+    else
+      : > "$KC_STUB/dropbox-read"
+      cat "$KC_STUB/dropbox"
+    fi
+    ;;
+  'am instrument -w -r -e class com.keepcrypt.entropy.CaptureTest com.keepcrypt.entropy.test/androidx.test.runner.AndroidJUnitRunner')
+    cat "$KC_STUB/raw" ;;
+  'pidof com.keepcrypt.entropy')
+    # alive holds how many more times the process is still running, or "always".
+    [ -f "$KC_STUB/alive" ] || exit 1
+    n=$(cat "$KC_STUB/alive")
+    [ "$n" = always ] && { echo 4242; exit 0; }
+    [ "$n" -gt 0 ] || exit 1
+    echo $((n - 1)) > "$KC_STUB/alive"
+    echo 4242
+    ;;
+  'dumpsys window windows') cat "$KC_STUB/windows" ;;
+  'logcat -b crash -d') cat "$KC_STUB/crash" ;;
+  *) echo "stub adb: unexpected command: $*" >&2; exit 1 ;;
+esac
+EOF
+  chmod +x "$st/adb" || exit 2
+  passed=0
+  failed=0
+  # fresh: a case directory for a passing run; the case then changes what it needs.
+  fresh() {
+    rm -rf "$st/c" && mkdir "$st/c" || exit 2
+    raw 0 ok > "$st/c/raw"
+    printf 'Drop box contents: 2 entries\n\n2026-10-19 10:00:00 SYSTEM_BOOT (text, 20 bytes)\n2026-10-19 10:00:05 data_app_crash (text, 900 bytes)\n' > "$st/c/dropbox"
+    printf 'WINDOW MANAGER WINDOWS (dumpsys window windows)\n  Window #0 Window{a1 u0 com.android.launcher3/com.android.launcher3.uioverlay.QuickstepLauncher}:\n' > "$st/c/windows"
+    printf -- '--------- beginning of crash\nE AndroidRuntime: Process: com.example.other, PID: 1001\n' > "$st/c/crash"
+  }
+  # expect NAME EXIT TEXT...: the script on the stand-in adb exits EXIT and prints every TEXT.
+  expect() {
+    name=$1
+    want=$2
+    shift 2
+    KC_STUB=$st/c sh "$self" "$st/adb" emulator-5554 31 com.keepcrypt.entropy.test com.keepcrypt.entropy \
+      com.keepcrypt.entropy.CaptureTest > "$st/out" 2>&1
+    got=$?
+    ok=yes
+    [ "$got" -eq "$want" ] || ok=no
+    for text in "$@"; do
+      grep -q -F -e "$text" "$st/out" || ok=no
+    done
+    if [ "$ok" = yes ]; then
+      passed=$((passed + 1))
+      echo "PASS $name"
+    else
+      failed=$((failed + 1))
+      echo "FAIL $name (exit $got, wanted $want)"
+      sed 's/^/  | /' "$st/out"
+    fi
+  }
+  bad='failed, errored, ignored or aborted'
+
+  fresh
+  expect "a passing class" 0 "probe: api=31 first-launch: 0 lit pixels" "pass: api=31 first-launch: drawn, then black" \
+    "kc: region=0,48,720,1184" "instrument: api=31 PASS com.keepcrypt.entropy.CaptureTest (2 tests;"
+  fresh
+  raw 0 ok | awk '{ printf "%s\r\n", $0 }' > "$st/c/raw"
+  expect "a passing class with CRLF line ends" 0 "kc: region=0,48,720,1184" "instrument: api=31 PASS"
+  fresh
+  echo 2 > "$st/c/alive"
+  expect "a passing class whose process is gone after 2 s" 0 "instrument: api=31 PASS"
+  for code in -1 -2 -3 -4; do
+    fresh
+    raw "$code" ok > "$st/c/raw"
+    expect "end status $code" 1 "2 started, 1 passed, 1 $bad"
+  done
+  fresh
+  raw none ok > "$st/c/raw"
+  expect "a test with no end status" 1 "2 started, 1 passed, 0 $bad"
+  fresh
+  raw none crashed > "$st/c/raw"
+  expect "a crashed process (shortMsg)" 1 "2 started, 1 passed, 1 $bad"
+  fresh
+  raw 0 failed > "$st/c/raw"
+  expect "INSTRUMENTATION_FAILED" 1 "2 started, 2 passed, 1 $bad"
+  fresh
+  raw 0 aborted > "$st/c/raw"
+  expect "INSTRUMENTATION_ABORTED" 1 "2 started, 2 passed, 1 $bad"
+  fresh
+  raw 0 code0 > "$st/c/raw"
+  expect "no final INSTRUMENTATION_CODE: -1" 1 "2 started, 2 passed, 0 $bad"
+  fresh
+  raw 0 empty > "$st/c/raw"
+  expect "no test" 1 "0 started, 0 passed, 0 $bad"
+  fresh
+  echo always > "$st/c/alive"
+  expect "a process still running" 1 "com.keepcrypt.entropy is still running 20 s after the run"
+  fresh
+  echo '  Window #1 Window{b2 u0 Application Error: com.keepcrypt.entropy}:' >> "$st/c/windows"
+  expect "a crash window" 1 "a crash or not-responding window is open"
+  fresh
+  echo '  Window #1 Window{b2 u0 Application Not Responding: com.keepcrypt.entropy}:' >> "$st/c/windows"
+  expect "a not-responding window" 1 "a crash or not-responding window is open"
+  fresh
+  echo 'E AndroidRuntime: Process: com.keepcrypt.entropy.testregistry, PID: 4242' >> "$st/c/crash"
+  expect "a crash-buffer line naming one of our packages" 1 "logcat -b crash holds 1 line(s) naming com.keepcrypt.entropy"
+  fresh
+  { cat "$st/c/dropbox"; echo '2026-10-19 10:01:00 data_app_crash (text, 950 bytes)'; } > "$st/c/dropbox-after"
+  expect "a new data_app_crash entry" 1 "dumpsys dropbox gained 1 data_app_crash entries"
+  fresh
+  : > "$st/c/dropbox-fails"
+  expect "an unreadable dropbox" 2 "dumpsys dropbox cannot be read"
+  sh "$self" "$st/adb" emulator-5554 31 > "$st/out" 2>&1
+  if [ "$?" -eq 2 ] && grep -q -e '^usage: ' "$st/out"; then
+    passed=$((passed + 1))
+    echo "PASS too few arguments"
+  else
+    failed=$((failed + 1))
+    echo "FAIL too few arguments"
+  fi
+  echo "android-instrument selftest: $passed passed, $failed failed"
+  [ "$failed" -eq 0 ]
+}
+
+if [ $# -eq 1 ] && [ "$1" = --selftest ]; then
+  selftest
+  exit
+fi
 
 if [ $# -lt 6 ]; then
   echo "usage: scripts/android-instrument.sh ADB SERIAL API TEST_PACKAGE TARGET_PACKAGE TEST..." >&2
