@@ -478,7 +478,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libpulse0
           dpkg-query -W -f '${Package} ${Version}\n' libpulse0
-          missing=$(ldd "$qemu" | grep 'not found' || :)
+          # The emulator ships its own libraries (Qt, libc++, protobuf ...) in lib64/ and lib64/qt/lib/
+          # and its launcher puts them on the library path, so ldd is asked the same way; only a library
+          # from neither place counts as missing.
+          missing=$(LD_LIBRARY_PATH="$sdk/emulator/lib64:$sdk/emulator/lib64/qt/lib" ldd "$qemu" | grep 'not found' || :)
           [ -z "$missing" ] || { echo "$missing" >&2; fail "qemu needs shared libraries the runner lacks (above)"; }
           "$sdk/emulator/emulator" -version | head -n 1
           "$sdk/emulator/emulator" -accel-check
