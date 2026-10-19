@@ -70,10 +70,30 @@ internal object Capture {
 
     fun shellText(command: String): String = String(shell(command), Charsets.UTF_8).trim()
 
-    /** The shell's screencap, as a PNG decoded in memory. */
+    private val PNG_SIGNATURE = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+
+    /**
+     * The shell's screencap, as a PNG decoded in memory. Run 39289081979 showed the shell's own
+     * screencap working (`adb exec-out`, 313,287 bytes) while this one decoded to nothing, so a
+     * failure names what came back: its length and first bytes, and where the PNG starts, if at all.
+     */
     fun screencap(): Bitmap {
-        val png = shell("screencap -p")
-        return BitmapFactory.decodeByteArray(png, 0, png.size) ?: throw AssertionError("screencap -p gave no image")
+        val out = shell("screencap -p")
+        val start = (0..out.size - PNG_SIGNATURE.size).firstOrNull { i ->
+            PNG_SIGNATURE.indices.all { out[i + it] == PNG_SIGNATURE[it] }
+        }
+        val head = out.take(16).joinToString("") { String.format("%02x", it.toInt() and 0xFF) }
+        if (start == null) {
+            probe("screencap -p: no PNG in ${out.size} bytes, first $head")
+            throw AssertionError("screencap -p gave no PNG (the kc_probe line before this has its length)")
+        }
+        if (start != 0) probe("screencap -p: $start bytes before the PNG (first $head)")
+        val image = BitmapFactory.decodeByteArray(out, start, out.size - start)
+        if (image == null) {
+            probe("screencap -p: a PNG at $start of ${out.size} bytes that does not decode")
+            throw AssertionError("screencap -p gave a PNG that does not decode (see the kc_probe line before this)")
+        }
+        return image
     }
 
     /** UiAutomation.takeScreenshot(), copied out of a hardware bitmap so its pixels can be read. */
