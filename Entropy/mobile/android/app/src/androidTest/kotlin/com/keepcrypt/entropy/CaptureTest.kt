@@ -85,6 +85,7 @@ class CaptureTest {
             assertTrue("the window's flags lack FLAG_SECURE", flagged)
             assertTrue("dumpsys window windows lists no window of the app", found.isNotEmpty())
             assertTrue("no window's owner line names the app: windows are found by title alone", found.any { it.byOwner })
+            probe("windows of the app: " + found.joinToString("; ") { "${it.title} (by owner ${it.byOwner}, SECURE ${it.secure})" })
             for (w in found) assertTrue("a window without SECURE: " + w.title, w.secure)
             pass(
                 "${screenId(screen)}: drawn, then screencap and takeScreenshot black over the app's window; " +

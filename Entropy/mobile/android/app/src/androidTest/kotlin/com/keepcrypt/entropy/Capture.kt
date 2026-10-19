@@ -281,7 +281,11 @@ internal object Capture {
                 continue
             }
             if (title == null) continue
-            if (line.trim().split(Regex("""\s+""")).contains(owner)) owned = true
+            // The window's own owner line, WindowState.dump's "mOwnerUid=N showForAllUsers=B package=P ...".
+            // Any other line can name the app too (run 39311080988 counted com.android.systemui.ImageWallpaper
+            // as the app's from such a line), so only this one counts.
+            val trimmed = line.trim()
+            if (trimmed.startsWith("mOwnerUid=") && trimmed.split(Regex("""\s+""")).contains(owner)) owned = true
             val f = flags.find(line)
             if (!flagsSeen && f != null) {
                 flagsSeen = true
