@@ -470,6 +470,16 @@ jobs:
           [ "$(installed emulator)" = "$KC_EMULATOR_REV" ] || fail "the emulator installed is not $KC_EMULATOR_REV"
           [ "$(installed 'system-images;android-31;default;x86_64')" = "$KC_IMAGE_31_REV" ] || fail "the API 31 image is not $KC_IMAGE_31_REV"
           [ "$(installed 'system-images;android-36;default;x86_64')" = "$KC_IMAGE_36_REV" ] || fail "the API 36 image is not $KC_IMAGE_36_REV"
+          # The emulator's qemu links Ubuntu's PulseAudio client library, which the runner image lacks
+          # (run 39282207714: "libpulse.so.0: cannot open shared object file"). It comes from the
+          # image's own apt archive, as age and dosfstools do in entropy-ci.yml; CI only, never in an
+          # APK (lead decision M5-16). Every shared library qemu needs must then resolve.
+          qemu=$sdk/emulator/qemu/linux-x86_64/qemu-system-x86_64
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libpulse0
+          dpkg-query -W -f '${Package} ${Version}\n' libpulse0
+          missing=$(ldd "$qemu" | grep 'not found' || :)
+          [ -z "$missing" ] || { echo "$missing" >&2; fail "qemu needs shared libraries the runner lacks (above)"; }
           "$sdk/emulator/emulator" -version | head -n 1
           "$sdk/emulator/emulator" -accel-check
           "$ANDROID_HOME/platform-tools/adb" version

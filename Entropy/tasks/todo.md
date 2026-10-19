@@ -10498,6 +10498,10 @@ milestones.
   verification; the gate refuses the property anywhere else and refuses any include, projectDir or includeBuild that
   would place a project from outside `mobile/android` in a real build (commit 7b, 5626368). Its `com.keepcrypt` class
   calls `java.util.Random` so the canary step also proves the dex reference scan on the real dexdump (fa90eee).
+- M5-16 (2026-10-19): the Android job installs Ubuntu's `libpulse0` from the runner image's apt archive before the
+  emulator's first start, because the emulator 37.2.12 qemu links it and ubuntu-24.04 20261012 lacks it (run 39282207714:
+  "libpulse.so.0: cannot open shared object file"). It follows entropy-ci.yml's apt installs of age and dosfstools, prints
+  its version, and the step then fails if `ldd` finds any other library missing. CI only; nothing reaches an APK.
 
 Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). Once M4b merges, build-plan.md lines from
 293 on move down one (the M5 row becomes BP:296).
