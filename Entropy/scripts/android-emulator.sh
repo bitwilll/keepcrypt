@@ -39,7 +39,10 @@
 #      screen: some frame must show its known pixels (android-frames.py --expect visible).
 #   6. The first frame, for each app APK: the curtain, the app force-stopped, a recording from under
 #      the curtain through its cold launch (am start -W, which must report COLD) to its first screen
-#      and 3 s more: every frame black over the app's window (android-frames.py --expect black).
+#      and 3 s more: every frame black over the app's window (android-frames.py --expect black). Its
+#      first frame is the curtain's and a stream may carry no frame after it (screenrecord writes one
+#      only when the display changes), so a second recording starts with the app's first screen up,
+#      whose first frame screenrecord composes at once: every frame black over the window too.
 # Every recording is one continuous raw-frame stream with no time limit (lead decision M5-17: in
 # raw-frames mode screenrecord ignores --time-limit and records until SIGINT): the checker starts
 # it, and when the scenario is done this script sends the checker SIGTERM, which stops screenrecord
@@ -362,6 +365,11 @@ first_frame() {
     fail "$name: the app's activity is not in focus after its launch"
   stop_recording "$name" || fail "$name: a raw frame shows the app's window, or the stream failed its checks"
   echo "pass: api=$api first frame ($name): $(sed -n 's/^android-frames: PASS black: //p' "$frames")"
+  # A fresh stream with the app's first screen up: at least one frame recorded with it on screen.
+  start_recording "$name-up" --expect black --display "$4" --region "$3"
+  sleep 1
+  stop_recording "$name-up" || fail "$name: a raw frame with the app's first screen up shows its window, or the stream failed its checks"
+  echo "pass: api=$api first frame ($name, its first screen up): $(sed -n 's/^android-frames: PASS black: //p' "$frames")"
   dev shell am force-stop "$pkg" || fail "am force-stop $pkg failed"
 }
 

@@ -10515,7 +10515,10 @@ milestones.
   `--max-gap` seconds of the start, requires every frame black over the app's window (with `--expect black`) or some
   frame with at least `--min-known` of the control's known pixels (with `--expect visible`), fails on a partial trailing
   frame and keeps no frame. Finding 7, group 0's probe bullet, group 6's recording and first-frame bullets and the
-  Verification gate line say so (commit 8g); the critique log keeps what the plan said before.
+  Verification gate line say so (commit 8g); the critique log keeps what the plan said before. The first-frame check
+  also records a second, short stream once the app's first screen is up and in focus: the first stream's first frame
+  is the curtain's and screenrecord writes a frame only when the display changes, so a stream that carried nothing
+  after the curtain would pass alone, while a fresh stream's first frame is composed at once (review of 8g; 8h).
 
 Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). Once M4b merges, build-plan.md lines from
 293 on move down one (the M5 row becomes BP:296).
@@ -11187,8 +11190,9 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   36, a probe on 31. Results are the lead's, from CI. The control captures are not uploaded at this commit: the
   words page they are for comes with commit 19.
 - [ ] **First frame** (lessons 4): raw frames, one continuous stream from under the curtain before a cold launch,
-  through the launch to Home and a few seconds more, then stopped (M5-17), show nothing but black in the app's window,
-  with control (a)'s pipeline proven in the same run.
+  through the launch to Home and a few seconds more, then stopped, and a second stream started with that screen up (its
+  first frame is composed at once, so a frame is recorded with the app's screen up; M5-17), show nothing but black in
+  the app's window, with control (a)'s pipeline proven in the same run.
   Proof: frame count and result on both APIs.
   Proof (M5 commit 8, partial): capture-control's `CurtainActivity` (black, no FLAG_SECURE) under each cold launch
   (`am start -W`, which must report COLD), recorded by `android-frames.py --expect black` from before the launch;
