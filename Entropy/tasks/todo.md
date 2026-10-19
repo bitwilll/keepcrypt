@@ -1573,6 +1573,22 @@ override. Almost every M5 commit touches paths you own in CODEOWNERS, so the who
     banned-api-check.sh, this file) are merged by hand.
     Otherwise: wait for M4b before any M5 commit.
 
+### Raised by the owner during M5 stage B (Q64, decided 2026-10-20; re-plan pending)
+64. **How the phone apps are built** (BP:72-74; MA:17, :23-24; M6)
+    The owner asked whether one framework could serve both phones, and was given four options with all seed logic staying
+    in the shared Rust core either way: native Kotlin/Compose plus Swift/SwiftUI (the plan, recommended), Compose
+    Multiplatform, Flutter, or a comparison first.
+    - Answered 2026-10-20: "Compose Multiplatform". The Android Kotlin/Compose work continues, and the same Kotlin screens
+      are to run on iPhone too, with a C bridge to the Rust core and a small Swift layer for iPhone capture handling.
+    - Also from the owner, 2026-10-20: "do not wait for my phone model, I use iphone and android both". Q56's phone
+      question is answered: both an Android phone and an iPhone are available for the phone sessions; the models are
+      recorded with the session reports.
+    - What follows (CLAUDE.md Workflow 8): M5 stops before Stage C (the Rust bridge, commits 9-13) and before any screen
+      code. Stage B's Android build, gates and emulator harness continue, since they hold either way. The lead re-plans M5
+      and M6 for Compose Multiplatform in this file (the new dependencies and toolchain, the iPhone bridge and capture
+      layer, CI for the iPhone target, the doc edits) and brings the decisions that are the owner's (rule 11 approvals,
+      doc edits, milestone scope) as Q65 onward before any of that code is written.
+
 ## M0: Repo bootstrap
 
 ### Decisions built into this plan (override any of them)
@@ -10421,7 +10437,9 @@ Every finding of the plan's spec, security and feasibility review was accepted; 
 
 ## M5: Android app (`mobile/android`, the FFI)
 
-Status (2026-10-17): the owner answered Q53-Q63 "approve all as recommended" (commit 1b), so Stage A starts. The plan was
+Status (2026-10-20): Stages A and B (commits 1-8) are on the branch; the owner then chose Compose Multiplatform for
+both phones (Q64), so M5 pauses before Stage C for a re-plan. Earlier: the owner answered Q53-Q63 "approve all as
+recommended" (commit 1b), so Stage A started. The plan was
 drafted the same day as research only, with no M5 code written before the answers to Q53-Q63
 ("Needed before M5 code (Q53-Q63, asked 2026-10-17)" under "## Open questions for the owner", above). The owner asked
 for execution to start at once ("do it asap and make sure you start execution next step", 2026-10-17), so Stage A's
