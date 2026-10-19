@@ -23,7 +23,8 @@
 # manifest summary, the merger report, the native libraries, the markers and test key, the dex
 # reference scan, zipalign and the signer. The capture-control APK must not carry either shipped
 # APK's package id, and a canary build (the canary Gradle property set, adding a library that asks
-# for INTERNET and declares a provider) must be refused by --apk; a pass fails the job.
+# for INTERNET, declares a provider and calls java.util.Random from a com.keepcrypt class) must be
+# refused by --apk; a pass fails the job.
 #
 # Not one of the 14 required checks (Q55), so path filters are safe, as in entropy-pi-image.yml:
 # a skipped run never leaves a required check pending. The rule instead (Q38 (b)): no PR that
@@ -312,11 +313,13 @@ jobs:
       # The canary (M5 group 5): the shipping APK rebuilt with the canary Gradle property set (its
       # Gradle command below is the one line of any workflow that may name the property:
       # banned-api-check.sh --workflows), which adds scripts/testdata/android-canary-lib, a library
-      # whose manifest asks for INTERNET and declares a provider. Offline (the real build has fetched everything) and with strict verification, so
-      # it adds no dependency. Signed with the same key, it must be refused by --apk: exit 1, with
-      # both the INTERNET and the provider hit. A pass fails the job, and so does any other exit. The
-      # checked APKs are already in $RUNNER_TEMP/apks; the canary only overwrites Gradle's outputs and
-      # is never uploaded or installed.
+      # whose manifest asks for INTERNET and declares a provider and whose one class,
+      # com.keepcrypt.canary.Canary, calls java.util.Random. Offline (the real build has fetched
+      # everything) and with strict verification, so it adds no dependency. Signed with the same key,
+      # it must be refused by --apk: exit 1, with the INTERNET, the provider and the DexRef hit (the
+      # dex reference scan's positive control on the real dexdump). A pass fails the job, and so does
+      # any other exit. The checked APKs are already in $RUNNER_TEMP/apks; the canary only overwrites
+      # Gradle's outputs and is never uploaded or installed.
       - name: Canary build refused by --apk
         run: |
           fail() { echo "FAIL: canary: $1" >&2; exit 1; }
@@ -336,4 +339,6 @@ jobs:
             "$RUNNER_TEMP/canary.log" || fail "no INTERNET hit"
           grep -q -e '^Manifest: .*: a provider (the app has no provider, receiver or service): provider com[.]keepcrypt[.]canary[.]CanaryProvider ' \
             "$RUNNER_TEMP/canary.log" || fail "no provider hit"
-          echo "the canary APK was refused, with the INTERNET and provider hits"
+          grep -q -e '^DexRef: classes[0-9]*[.]dex: Lcom/keepcrypt/canary/Canary; references Ljava/util/Random;$' \
+            "$RUNNER_TEMP/canary.log" || fail "no DexRef hit for com.keepcrypt.canary.Canary"
+          echo "the canary APK was refused, with the INTERNET, provider and DexRef hits"
