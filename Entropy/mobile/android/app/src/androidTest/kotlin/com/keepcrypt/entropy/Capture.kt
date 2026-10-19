@@ -260,7 +260,15 @@ internal object Capture {
         val owner = "package=$pkg"
         // The app's uid: run 39329698964 showed com.android.systemui.ImageWallpaper's own owner line
         // holding package=pkg on API 31, so the line must also name the app's uid to count.
-        val uid = "mOwnerUid=" + instrumentation.targetContext.packageManager.getPackageUid(pkg, 0)
+        // Read through the shell, which sees every package: the app cannot look up capture-control's uid itself
+        // (package visibility; run 39331183291 gave NameNotFoundException). "package:PKG uid:U" per line.
+        val listed = shellText("cmd package list packages -U " + pkg).lines()
+            .map { it.trim().split(Regex("""\s+""")) }
+            .firstOrNull { it.firstOrNull() == "package:$pkg" }
+            ?.firstOrNull { it.startsWith("uid:") }
+            ?: throw AssertionError("cmd package list packages -U names no uid for the package")
+        val uid = "mOwnerUid=" + listed.removePrefix("uid:")
+        val blocks = HashMap<String, ArrayList<String>>()
         val flags = Regex("""(^|\s)fl=(.*)$""")
         val found = ArrayList<WindowFacts>()
         var title: String? = null
@@ -284,6 +292,10 @@ internal object Capture {
                 continue
             }
             if (title == null) continue
+            val kept = line.trim()
+            if (kept.startsWith("mOwnerUid=") || kept.startsWith("mSession=") || kept.startsWith("mAttrs=")) {
+                blocks.getOrPut(title!!) { ArrayList() }.add(kept.take(160))
+            }
             // The window's own owner line, WindowState.dump's "mOwnerUid=N showForAllUsers=B package=P ...".
             // Any other line can name the app too (run 39311080988 counted com.android.systemui.ImageWallpaper
             // as the app's from such a line), so only this one counts.
@@ -297,6 +309,7 @@ internal object Capture {
             }
         }
         close()
+        for (w in found) if (!w.secure) probe("window block of " + w.title + ": " + (blocks[w.title] ?: emptyList()).joinToString(" | "))
         return found
     }
 
