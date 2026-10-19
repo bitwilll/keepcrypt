@@ -11985,8 +11985,10 @@ Each finding of the critique round and where it is resolved; none is rejected ou
 
 ### Re-plan for Compose Multiplatform (Q64, 2026-10-20)
 
-Numbering note (2026-10-20): commits 8k and 8l went to emulator fixes (the app-window owner line) before this
-re-plan landed, so the re-plan's planned 8k, 8l, 8m ... become 8m, 8n, 8o ... when they are written.
+Numbering note (2026-10-20, corrected at commit 8o-b): commits 8k and 8l went to emulator fixes (the app-window owner
+line) before this re-plan landed, so the re-plan's planned 8k and 8k-b were written as 8m and 8n. Commits 8l-b to 8l-f
+then went to further emulator fixes, so the re-plan's planned 8l, 8n, 8o, 8p, 8q and 8r are written as 8o, 8p, 8q, 8r,
+8s and 8t, each with its -b where planned (8l-b is 8o-b); 8m stays removed. The plan text below keeps its own numbers.
 
 
 Written on 2026-10-20 at `m5-android` 057130d, as research only. No code was written and nothing outside this file was edited. Revision 2 settles every finding from the critique; the Critique log at the end says how. Stages A and B (commits 1-8j) stand. From Stage C on, this subsection replaces "Commit order on `m5-android`" (stages C-F) and amends the plan groups listed under "Plan text this replaces". Nothing below is written until the owner answers Q65-Q72 (CLAUDE.md Workflow 2 and 8). Where a choice is the lead's, it is a dated lead decision (M5-19 onward) that the owner can override. Q65-Q72 hold only what CLAUDE.md keeps for the owner. The install route and the tested iOS versions are M6 questions and are not asked now.
@@ -12407,6 +12409,14 @@ Now (commit 8l):
 - MA:24 "| Modules | `:app`, `:secure-ui` ..., `:core-ffi` | App target, `SecureUI` Swift package, core XCFramework |" -> "`:app`, `:secure-ui`, `:core-ffi`, `:screens` (shared) | App target with the Swift capture layer; no packages".
 - MA:34 "One `CeremonyViewModel` (Android) or `CeremonyModel` (iOS) owns the FFI session." -> "One shared `CeremonyModel` owns the FFI session."
 - MA:36 "A Rust panic is caught once, at the JNI boundary, ..." -> "at the bridge (`keepcrypt-guard`)".
+
+Proof (M5 commit 8o, 80bc278; the planned 8l): `git diff --name-only HEAD~1 HEAD` lists docs/build-plan.md and
+docs/mobile-apps.md only; `vectorgen.py --selftest` 13/13 and `verify.py selftest` 8/8 on Python 3.12 and 3.9;
+`banned-api-check.sh` clean (284 files) and `--selftest` 1116 passed, 0 failed; fmt, both clippy commands, `cargo test
+--workspace --locked` (21 suites, 445 passed, 3 ignored) and the test-sources run (17 suites, 269 passed, 1 ignored)
+unchanged. Every edit above landed and nothing else in docs/; the M6 list below did not. MA:24 keeps `:secure-ui`'s
+"(secure activity base, capture monitors)", which the quoted text shortens with "...". The citations here stay
+057130d's; against it, BP:50 now sits 1 lower and BP lines from :51 2 lower (BP:298/299 are now :300/301), MA unchanged.
 
 In M6, after its first probe. These are approved with Q72 as drafts. If a probe result fits neither the drafted text nor its stated alternative, the wording comes back to the owner.
 - MA:34's background rule, and MA:36's heading and stop-screen action, for iOS (Q71).
