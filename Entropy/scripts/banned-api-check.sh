@@ -295,9 +295,11 @@
 #   DexRef     dexdump -d of every .dex entry: in each class whose descriptor starts
 #              Lcom/keepcrypt/, any line naming java.util.Random, the kotlin.random or
 #              java.util.random package, ThreadLocalRandom, SplittableRandom,
-#              java.security.SecureRandom, Math.random, StrictMath.random or UUID.randomUUID
-#              (dex_banned below), one hit per class and name. Library classes are not judged
-#              (Q59 (b)): R8 is off, so the APK carries Kotlin's own Random.
+#              java.security.SecureRandom, Math.random, StrictMath.random, UUID.randomUUID,
+#              Collections.shuffle, or shuffle, shuffled, random or randomOrNull of a
+#              kotlin.collections, kotlin.ranges or kotlin.text class (dex_banned below), one hit
+#              per class and name. Library classes are not judged (Q59 (b)): R8 is off, so the
+#              APK carries Kotlin's own Random.
 #   Zipalign   zipalign -c -P 16 -v 4 fails (4-byte entries, 16 KB-aligned native libraries).
 #   Signature  apksigner verify --print-certs fails, or lists any signer but exactly one, whose
 #              certificate SHA-256 is CERT_SHA256.
@@ -315,11 +317,12 @@
 # fail it), a summary that differs from the expected one, INTERNET in the merger report; an
 # unlisted .so, a 4 KB-aligned 64-bit .so, another SHA-256, a listed .so missing, libkeepcrypt.so,
 # an x86 .so, a .so for another machine, an ELF outside lib/, a .so importing rand; a marker in a
-# dex file, the test key in resources.arsc, a marker in the zip comment, a banned reference in a
-# com.keepcrypt class; zipalign failing and another signer. Its refusals must exit 2: bad usage, a
-# bad VARIANT or CERT_SHA256, a missing expected directory, expected file, report or APK, no aapt2
-# on PATH, a malformed native-libs.txt line and no com.keepcrypt class. Prints PASS or FAIL per
-# case and a count; exit 0 all passed, 1 not.
+# dex file, the test key in resources.arsc, a marker in the zip comment, a reference from a
+# com.keepcrypt class to each name of dex_banned (a library class's passes in the base case; the
+# stub dexdump refuses to run without -d); zipalign failing and another signer. Its refusals must
+# exit 2: bad usage, a bad VARIANT or CERT_SHA256, a missing expected directory, expected file,
+# report or APK, no aapt2 on PATH, a malformed native-libs.txt line and no com.keepcrypt class.
+# Prints PASS or FAIL per case and a count; exit 0 all passed, 1 not.
 #
 # Categories (main patterns; the full lists are in the check functions below; comments count
 # everywhere but where a rule says otherwise):
@@ -5110,11 +5113,18 @@ APK_PY
 # The dex reference scan's banned names (Q59 (b): rule 1 binds KeepCrypt's own compiled classes;
 # library classes our code never reaches are allowed), as dexdump writes them: the plan's five,
 # java.util.Random, kotlin.random.Random (here the whole kotlin.random package), Math.random,
-# UUID.randomUUID and java.security.SecureRandom, and the rest of what the grep gate's RNG rule
-# bans in Kotlin and Java sources: the java.util.random package, ThreadLocalRandom,
-# SplittableRandom and StrictMath.random. An ERE for awk.
+# UUID.randomUUID and java.security.SecureRandom; the java.util.random package, ThreadLocalRandom,
+# SplittableRandom and StrictMath.random, which the grep gate's RNG rule also bans; and the
+# compiled forms of Kotlin's .shuffle( and .shuffled( (which that rule bans) and .random(:
+# java.util.Collections.shuffle (MutableList.shuffle() is inlined to it) and shuffle, shuffled,
+# random and randomOrNull of the kotlin.collections, kotlin.ranges and kotlin.text facade classes
+# (Iterable.shuffled(), Array.shuffle(), or any of them should a Kotlin release stop inlining it).
+# Their forms that take a Random name kotlin.random in the signature. A method reference
+# (List<String>::shuffled) gets past the grep gate's patterns; its compiled call does not get past
+# these. An ERE for awk.
 dex_banned='Ljava/util/Random;|Ljava/util/random/|Ljava/util/SplittableRandom;|Ljava/util/concurrent/ThreadLocalRandom;'
 dex_banned="$dex_banned|Ljava/security/SecureRandom;|Lkotlin/random/|Ljava/lang/(Strict)?Math;[.]random:|Ljava/util/UUID;[.]randomUUID:"
+dex_banned="$dex_banned|Ljava/util/Collections;[.]shuffle:|Lkotlin/(collections|ranges|text)/[A-Za-z_]*;[.](shuffled?|random|randomOrNull):"
 
 # apkfail MESSAGE: the APK cannot be checked (exit 2).
 apkfail() {
@@ -5380,8 +5390,9 @@ apk_selftest() {
   pass=0
   fail=0
   acert=$(printf '%064d' 0 | tr 0 c)
-  # The stub tools. aapt2 prints $KC_STUB's dumps; dexdump prints the file it is given (a stub dex
-  # file is the text dexdump would print for it); zipalign passes unless $KC_STUB/zipalign-fails
+  # The stub tools. aapt2 prints $KC_STUB's dumps; dexdump -d prints the file it is given (a stub
+  # dex file is the text dexdump would print for it; without -d the real one prints no code, so the
+  # stub refuses); zipalign passes unless $KC_STUB/zipalign-fails
   # exists; apksigner prints $KC_STUB/apksigner.txt; llvm-nm lists the NM:<name> words in its file.
   mkdir "$st/bin" || exit 2
   cat >"$st/bin/aapt2" <<'STUB'
@@ -5395,8 +5406,8 @@ esac
 STUB
   cat >"$st/bin/dexdump" <<'STUB'
 #!/bin/sh
-for f; do :; done
-cat "$f"
+[ $# -eq 2 ] && [ "$1" = -d ] || { echo "stub dexdump: wants -d FILE (the code, not only the headers), got: $*" >&2; exit 1; }
+cat "$2"
 STUB
   cat >"$st/bin/zipalign" <<'STUB'
 #!/bin/sh
@@ -5568,6 +5579,27 @@ STUB
   anew dexref
   aappend "$c/files/classes.dex" '0001b6: 2200 0300                              |0003: new-instance v0, Ljava/util/Random; // type@0003'
   acase apk-banned-reference-in-a-keepcrypt-class 'DexRef: classes.dex: Lcom/keepcrypt/entropy/MainActivity; references Ljava/util/Random;'
+  # Every other name of dex_banned, each in MainActivity's code as dexdump -d prints it (the base
+  # case's library class naming kotlin.random passes).
+  for adx in \
+    'kotlin-random-default|sget-object v0, Lkotlin/random/Random;.Default:Lkotlin/random/Random$Default; // field@0005|Lkotlin/random/' \
+    'math-random|invoke-static {}, Ljava/lang/Math;.random:()D // method@0006|Ljava/lang/Math;.random:' \
+    'strictmath-random|invoke-static {}, Ljava/lang/StrictMath;.random:()D // method@0006|Ljava/lang/StrictMath;.random:' \
+    'uuid-random-uuid|invoke-static {}, Ljava/util/UUID;.randomUUID:()Ljava/util/UUID; // method@0007|Ljava/util/UUID;.randomUUID:' \
+    'secure-random|new-instance v0, Ljava/security/SecureRandom; // type@0008|Ljava/security/SecureRandom;' \
+    'java-util-random-package|invoke-static {}, Ljava/util/random/RandomGenerator;.getDefault:()Ljava/util/random/RandomGenerator; // method@0009|Ljava/util/random/' \
+    'splittable-random|new-instance v0, Ljava/util/SplittableRandom; // type@000a|Ljava/util/SplittableRandom;' \
+    'thread-local-random|invoke-static {}, Ljava/util/concurrent/ThreadLocalRandom;.current:()Ljava/util/concurrent/ThreadLocalRandom; // method@000b|Ljava/util/concurrent/ThreadLocalRandom;' \
+    'collections-shuffle|invoke-static {v0}, Ljava/util/Collections;.shuffle:(Ljava/util/List;)V // method@000c|Ljava/util/Collections;.shuffle:' \
+    'kotlin-shuffled|invoke-static {v0}, Lkotlin/collections/CollectionsKt;.shuffled:(Ljava/lang/Iterable;)Ljava/util/List; // method@000d|Lkotlin/collections/CollectionsKt;.shuffled:' \
+    'kotlin-array-shuffle|invoke-static {v0}, Lkotlin/collections/ArraysKt___ArraysKt;.shuffle:([I)V // method@000e|Lkotlin/collections/ArraysKt___ArraysKt;.shuffle:' \
+    'kotlin-ranges-random|invoke-static {v0, v1}, Lkotlin/ranges/RangesKt___RangesKt;.random:(Lkotlin/ranges/IntRange;Lkotlin/random/Random;)I // method@000f|Lkotlin/ranges/RangesKt___RangesKt;.random:' \
+    'kotlin-text-random-or-null|invoke-static {v0}, Lkotlin/text/StringsKt___StringsKt;.randomOrNull:(Ljava/lang/CharSequence;)Ljava/lang/Character; // method@0010|Lkotlin/text/StringsKt___StringsKt;.randomOrNull:'; do
+    anew "dexref-${adx%%|*}"
+    aline=${adx#*|}
+    aappend "$c/files/classes.dex" "0001b6: 7100 0600 0000                         |0003: ${aline%|*}"
+    acase "apk-banned-reference-${adx%%|*}" "DexRef: classes.dex: Lcom/keepcrypt/entropy/MainActivity; references ${adx##*|}"
+  done
   anew no-keepcrypt
   sed '/^Class #1/,$d' "$b/files/classes.dex" >"$c/files/classes.dex" && : >"$c/files/classes2.dex" || exit 2
   abuild
