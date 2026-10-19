@@ -314,16 +314,20 @@
 # 39062895784), a stand-in merger report that removes the androidx.startup provider, the run's
 # signer and a stub APK laid out as the real one; it must pass against the committed
 # mobile/android/expected/manifest-shipping.txt (the control). Each case changes one thing and must
-# give exactly that one hit: INTERNET, a provider, allowBackup true, debuggable, an extra exported
-# activity and a <queries> element (each against its own summary, so that only the hard rule can
-# fail it), a summary that differs from the expected one, a changed appComponentFactory, an added
-# Application class and an added activity attribute (each against the committed summary),
-# INTERNET in the merger report; an unlisted .so, a 4 KB-aligned 64-bit .so, another SHA-256, a
-# listed .so missing, libkeepcrypt.so, an x86 .so, a .so for another machine, an ELF outside lib/,
-# a .so importing rand; a marker in a dex file, the test key in resources.arsc, a marker in the
-# zip comment, a reference from a com.keepcrypt class to each name of dex_banned (a library
-# class's passes in the base case; the stub dexdump refuses to run without -d); zipalign failing
-# and another signer. Its refusals must exit 2: bad usage, a bad VARIANT or CERT_SHA256, a missing
+# give exactly that one hit: INTERNET, ACCESS_NETWORK_STATE, ACCESS_WIFI_STATE, a provider, a
+# receiver, a service, allowBackup true, debuggable, fullBackupContent true, usesCleartextTraffic
+# true, dataExtractionRules unset, an extra exported activity, an exported activity-alias and a
+# <queries> element (each against its own summary, so that only the hard rule can fail it), a
+# summary that differs from the expected one, a changed appComponentFactory, an added Application
+# class and an added activity attribute (each against the committed summary), INTERNET in the
+# merger report; an unlisted .so, a 4 KB-aligned and a 0x6000-aligned 64-bit .so, a 64-bit .so with
+# no LOAD segment, another SHA-256, a listed .so missing, libkeepcrypt.so, an x86 .so, a .so for
+# another machine, a .so that is not an ELF, a truncated one, one in a subdirectory of lib/<abi>/,
+# an ELF outside lib/, a .so importing rand; a marker in a dex file, the test key in
+# resources.arsc, a marker in the zip comment, a reference from a com.keepcrypt class to each name
+# of dex_banned (a library class's passes in the base case); zipalign failing, another signer, a
+# second signer beside the run's and apksigner failing (the stub dexdump, zipalign and apksigner
+# refuse to run without --apk's exact arguments). Its refusals must exit 2: bad usage, a bad VARIANT or CERT_SHA256, a missing
 # expected directory, expected file, report or APK, no aapt2 on PATH, a malformed native-libs.txt
 # line and no com.keepcrypt class. Prints PASS or FAIL per case and a count; exit 0 all passed, 1
 # not.
@@ -5097,16 +5101,17 @@ def stub_zip(out, comment, *entries):
 
 
 def stub_elf(out, abi, align, *symbols):
-    """The selftest's stub shared objects: an ELF header and two PT_LOAD segments aligned to ALIGN for
-    ABI, then each symbol as "NM:<name>", which the stub llvm-nm lists."""
+    """The selftest's stub shared objects: an ELF header and two PT_LOAD segments aligned to ALIGN (hex)
+    for ABI, or with ALIGN none two PT_PHDR segments and no LOAD one, then each symbol as "NM:<name>",
+    which the stub llvm-nm lists."""
     cls, machine = ABIS[abi]
-    align = int(align, 16)
+    ptype, align = (6, PAGE) if align == "none" else (1, int(align, 16))
     if cls == 2:
         head = b"\x7fELF\x02\x01\x01" + bytes(9) + struct.pack("<HHIQQQIHHHHHH", 3, machine, 1, 0, 64, 0, 0, 64, 56, 2, 0, 0, 0)
-        phs = b"".join(struct.pack("<IIQQQQQQ", 1, 5, 0, 0, 0, 0, 0, align) for _ in range(2))
+        phs = b"".join(struct.pack("<IIQQQQQQ", ptype, 5, 0, 0, 0, 0, 0, align) for _ in range(2))
     else:
         head = b"\x7fELF\x01\x01\x01" + bytes(9) + struct.pack("<HHIIIIIHHHHHH", 3, machine, 1, 0, 52, 0, 0, 52, 32, 2, 0, 0, 0)
-        phs = b"".join(struct.pack("<IIIIIIII", 1, 0, 0, 0, 0, 0, 5, align) for _ in range(2))
+        phs = b"".join(struct.pack("<IIIIIIII", ptype, 0, 0, 0, 0, 0, 5, align) for _ in range(2))
     with open(out, "wb") as f:
         f.write(head + phs + "".join(" NM:" + s for s in symbols).encode() + b"\n")
 
@@ -5397,8 +5402,10 @@ apk_selftest() {
   acert=$(printf '%064d' 0 | tr 0 c)
   # The stub tools. aapt2 prints $KC_STUB's dumps; dexdump -d prints the file it is given (a stub
   # dex file is the text dexdump would print for it; without -d the real one prints no code, so the
-  # stub refuses); zipalign passes unless $KC_STUB/zipalign-fails
-  # exists; apksigner prints $KC_STUB/apksigner.txt; llvm-nm lists the NM:<name> words in its file.
+  # stub refuses); zipalign -c -P 16 -v 4 passes unless $KC_STUB/zipalign-fails exists; apksigner
+  # verify --print-certs prints $KC_STUB/apksigner.txt, or fails if $KC_STUB/apksigner-fails
+  # exists; llvm-nm lists the NM:<name> words in its file. zipalign and apksigner refuse other
+  # arguments, as dexdump does without -d, so --apk cannot drop one unseen.
   mkdir "$st/bin" || exit 2
   cat >"$st/bin/aapt2" <<'STUB'
 #!/bin/sh
@@ -5416,6 +5423,8 @@ cat "$2"
 STUB
   cat >"$st/bin/zipalign" <<'STUB'
 #!/bin/sh
+[ $# -eq 6 ] && [ "$1 $2 $3 $4 $5" = '-c -P 16 -v 4' ] && [ -f "$6" ] ||
+  { echo "stub zipalign: wants -c -P 16 -v 4 APK, got: $*" >&2; exit 1; }
 if [ -f "$KC_STUB/zipalign-fails" ]; then
   echo 'lib/arm64-v8a/libandroidx.graphics.path.so (BAD - 4096)'
   echo 'Verification FAILED'
@@ -5425,6 +5434,13 @@ echo 'Verification succesful'
 STUB
   cat >"$st/bin/apksigner" <<'STUB'
 #!/bin/sh
+[ $# -eq 3 ] && [ "$1 $2" = 'verify --print-certs' ] && [ -f "$3" ] ||
+  { echo "stub apksigner: wants verify --print-certs APK, got: $*" >&2; exit 1; }
+if [ -f "$KC_STUB/apksigner-fails" ]; then
+  echo 'DOES NOT VERIFY'
+  echo 'ERROR: APK Signature Scheme v2 signer #1: Malformed additional attribute'
+  exit 1
+fi
 cat "$KC_STUB/apksigner.txt"
 STUB
   cat >"$st/bin/llvm-nm" <<'STUB'
@@ -5530,6 +5546,37 @@ STUB
     '            A: http://schemas.android.com/apk/res/android:name(0x01010003)="com.example.wallet" (Raw: "com.example.wallet")'
   aregen
   acase apk-manifest-queries "Manifest: $c/app.apk: a <queries> element (package visibility): queries package com.example.wallet"
+  for p in ACCESS_NETWORK_STATE ACCESS_WIFI_STATE; do
+    anew "network-$p"
+    aappend "$c/permissions.txt" "uses-permission: name='android.permission.$p'"
+    aregen
+    acase "apk-manifest-$p" "Manifest: $c/app.apk: a network permission (rule 9): uses-permission android.permission.$p"
+  done
+  for k in receiver service; do
+    anew "$k"
+    aappend "$c/xmltree.txt" "          E: $k (line=60)" \
+      '            A: http://schemas.android.com/apk/res/android:name(0x01010003)="com.example.Canary" (Raw: "com.example.Canary")' \
+      '            A: http://schemas.android.com/apk/res/android:exported(0x01010010)=false'
+    aregen
+    acase "apk-manifest-$k" "Manifest: $c/app.apk: a $k (the app has no provider, receiver or service): $k com.example.Canary exported=false"
+  done
+  anew alias
+  aappend "$c/xmltree.txt" '          E: activity-alias (line=60)' \
+    '            A: http://schemas.android.com/apk/res/android:name(0x01010003)="com.keepcrypt.entropy.Alias" (Raw: "com.keepcrypt.entropy.Alias")' \
+    '            A: http://schemas.android.com/apk/res/android:exported(0x01010010)=true' \
+    '            A: http://schemas.android.com/apk/res/android:targetActivity(0x01010202)="com.keepcrypt.entropy.MainActivity" (Raw: "com.keepcrypt.entropy.MainActivity")'
+  aregen
+  acase apk-manifest-exported-activity-alias "Manifest: $c/app.apk: 2 exported activities, not the one launcher: com.keepcrypt.entropy.Alias, com.keepcrypt.entropy.MainActivity"
+  anew data-extraction
+  grep -v -e ':dataExtractionRules(' "$b/xmltree.txt" >"$c/xmltree.txt" || exit 2
+  aregen
+  acase apk-manifest-data-extraction-rules-unset "Manifest: $c/app.apk: application dataExtractionRules=unset, not set"
+  for f in fullBackupContent usesCleartextTraffic; do
+    anew "$f"
+    sed "s/:$f(\\(0x[0-9a-f]*\\))=false/:$f(\\1)=true/" "$b/xmltree.txt" >"$c/xmltree.txt" || exit 2
+    aregen
+    acase "apk-manifest-$f-true" "Manifest: $c/app.apk: application $f=true, not false"
+  done
   anew differs
   sed 's/^targetSdk 36$/targetSdk 35/' "$committed" >"$c/expected/manifest-shipping.txt" || exit 2
   acase apk-manifest-summary-differs "Manifest: $c/expected/manifest-shipping.txt: differs from the APK's manifest summary"
@@ -5585,6 +5632,24 @@ STUB
   apk_py elf "$c/files/x64.so" x86_64 4000 memcpy rand || exit 2
   alist
   acase apk-so-importing-rand 'Symbol: lib/x86_64/libandroidx.graphics.path.so: undefined rand'
+  anew page-24k
+  apk_py elf "$c/files/x64.so" x86_64 6000 memcpy || exit 2
+  alist
+  acase apk-64-bit-so-aligned-0x6000 'NativeLib: lib/x86_64/libandroidx.graphics.path.so: LOAD segments aligned to 0x6000, 0x6000, not 0x4000 on every one'
+  anew no-load
+  apk_py elf "$c/files/x64.so" x86_64 none memcpy || exit 2
+  alist
+  acase apk-64-bit-so-without-load-segment 'NativeLib: lib/x86_64/libandroidx.graphics.path.so: LOAD segments aligned to nothing (no LOAD segment), not 0x4000 on every one'
+  anew truncated
+  printf '\177ELF\002\001\001' >"$c/files/x64.so" || exit 2
+  alist
+  acase apk-truncated-elf 'Format: lib/x86_64/libandroidx.graphics.path.so: a truncated ELF header or program header table'
+  anew not-elf
+  aappend "$c/entries" lib/x86_64/libx.so=files/resources.arsc
+  acase apk-so-not-an-elf 'NativeLib: lib/x86_64/libx.so: not an ELF file'
+  anew subdirectory
+  aappend "$c/entries" lib/x86_64/sub/libx.so=files/x64.so
+  acase apk-so-in-a-subdirectory 'NativeLib: lib/x86_64/sub/libx.so: a file under lib/ that is not lib/<abi>/<name>.so'
   # The byte search and the dex reference scan.
   anew marker-dex
   aappend "$c/files/classes2.dex" '000200: 1a00 0400                              |0000: const-string v0, "KC_TEST_REGISTRY_DO_NOT_SHIP" // string@0004'
@@ -5634,6 +5699,12 @@ STUB
   anew signer
   sed "s/$acert/$(printf '%064d' 0 | tr 0 d)/" "$b/apksigner.txt" >"$c/apksigner.txt" || exit 2
   acase apk-another-signer "Signature: $c/app.apk: signed by $(printf '%064d' 0 | tr 0 d), not by the run's throwaway key"
+  anew signers
+  aappend "$c/apksigner.txt" 'Signer #2 certificate DN: CN=Someone else' "Signer #2 certificate SHA-256 digest: $(printf '%064d' 0 | tr 0 d)"
+  acase apk-a-second-signer "Signature: $c/app.apk: signed by $acert $(printf '%064d' 0 | tr 0 d), not by the run's throwaway key $acert alone"
+  anew apksigner
+  touch "$c/apksigner-fails" || exit 2
+  acase apk-apksigner-fails "Signature: $c/app.apk: apksigner verify fails"
   echo "selftest-apk: $pass passed, $fail failed"
   [ "$fail" -eq 0 ] || exit 1
   exit 0
