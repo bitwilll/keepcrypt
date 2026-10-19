@@ -440,6 +440,14 @@ def selftest():
         t0 = time.monotonic()
         return record(args, recorder, lambda: time.monotonic() - t0 >= stop_after, grace=1.0)
 
+    def logged(call):
+        """call()'s result and what it printed (printed again, for the log)."""
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            got = call()
+        sys.stdout.write(out.getvalue())
+        return got, out.getvalue()
+
     def refused(name, call):
         try:
             call()
@@ -460,15 +468,15 @@ def selftest():
     check("record: a first frame later than --max-gap fails",
           run("black", stand_in([black], sleep=1.5), max_gap=1.0, stop_after=3.0) == 1)
     check("record: a recorder (adb) that exits non-zero fails", run("black", stand_in([black], status=1)) == 1)
-    check("record: a recorder that ignores the stop fails", run("black", stand_in([black], on_stop="ignore")) == 1)
+    got, printed = logged(lambda: run("black", stand_in([black], on_stop="ignore")))
+    check("record: a recorder that ignores the stop fails, as not ending in time and on its killed exit",
+          got == 1 and "FAIL black: the recorder did not end and exit within 1 s of the stop; the recorder exited -9;"
+          in printed)
     check("record: a stream that ends before the stop fails", run("black", stand_in([black], on_stop="none")) == 1)
-    out = io.StringIO()
-    with contextlib.redirect_stdout(out):
-        got = run("black", stand_in([black], on_stop="orphan"))
-    sys.stdout.write(out.getvalue())
+    got, printed = logged(lambda: run("black", stand_in([black], on_stop="orphan")))
     check("record: a recorder that exits 0 on the stop but leaves its stream open fails on that alone",
           got == 1 and "android-frames: FAIL black: the recorder did not end and exit within 1 s of the stop; 1 frames"
-          in out.getvalue())
+          in printed)
     check("record: a scenario that outlasts --duration fails",
           run("black", stand_in([black]), duration=0.5, stop_after=5.0) == 1)
     check("record: visible passes on the known colour", run("visible", stand_in([black, seen])) == 0)
