@@ -1591,6 +1591,14 @@ override. Almost every M5 commit touches paths you own in CODEOWNERS, so the who
 
 ### Needed before M5 Stage C (Q65-Q72, asked 2026-10-20)
 
+Answered 2026-10-20: "Approve all as recommended" for Q65-Q72; for Q67's licences "Accept all six" (HarfBuzz
+MIT-Modern-Variant, ICU's legacy licence, libpng-2.0, libjpeg-turbo's IJG and Zlib, zlib's Zlib, Adobe's DNG SDK licence, for
+the iPhone target only; any further library or licence the linked binary shows comes back to the owner); for Q68 "Approve,
+pinned and signed" (scripts/konan-deps.sh fetches exactly the three named archives, pinned by SHA-256 from signature-verified
+files and checked against the Kotlin Release key, with download.jetbrains.com blocked during the build). Every other
+recommendation stands and no "Otherwise" is taken. Q70's rule wording still comes back after the first iPhone build (its
+second step), and Q65's braille-display risk stays the first item of M6.
+
 You chose Compose Multiplatform (Q64): one set of Kotlin screens for both phones, with all seed logic still in the shared Rust core. These questions cover only what CLAUDE.md keeps for you: new tools and libraries (rule 11), doc and rule edits, scope moved between milestones, CI runners, and places where the docs and the gates disagree. Each question starts with what I recommend, and "as recommended" is a full answer. The full plan is "Re-plan for Compose Multiplatform (Q64, 2026-10-20)" under M5. How builds get onto your iPhone, and which iOS versions are tested, will be asked when M6 starts; nothing in M5 depends on them.
 
 Two things you should know first. While researching, my agents ran two Xcode commands on your Mac:
@@ -10586,7 +10594,8 @@ Every finding of the plan's spec, security and feasibility review was accepted; 
 ## M5: Android app (`mobile/android`, the FFI)
 
 Status (2026-10-20): Stages A and B (commits 1-8) are on the branch; the owner then chose Compose Multiplatform for
-both phones (Q64), so M5 pauses before Stage C for a re-plan. Earlier: the owner answered Q53-Q63 "approve all as
+both phones (Q64); the re-plan and its questions Q65-Q72 were answered "approve all as recommended" the same day, so
+work resumes from the re-plan's commit order. Earlier: the owner answered Q53-Q63 "approve all as
 recommended" (commit 1b), so Stage A started. The plan was
 drafted the same day as research only, with no M5 code written before the answers to Q53-Q63
 ("Needed before M5 code (Q53-Q63, asked 2026-10-17)" under "## Open questions for the owner", above). The owner asked
