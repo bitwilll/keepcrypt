@@ -32,9 +32,9 @@ Every platform links the same `keepcrypt-core`; a fix or an audit of the core co
 
 ![KeepCrypt system architecture · one core, three shells](img/architecture.png)
 
-The picture's "UniFFI" label predates M5: the phone bindings are the two hand-written crates `keepcrypt-ffi` (the safe layer) and `keepcrypt-jni` (the Android boundary, `libkeepcrypt.so`); Swift binding: M6.
+The picture's "UniFFI" label predates M5: the phone bindings are the four hand-written crates `keepcrypt-ffi` (the safe layer), `keepcrypt-guard` (the one panic catch), `keepcrypt-jni` (the Android boundary, `libkeepcrypt.so`) and `keepcrypt-capi` (the iPhone C boundary, `libkeepcrypt_capi.a`, declared to Kotlin/Native by cinterop and linked into the app).
 
-The Pi firmware calls the core directly as a Rust crate; the phone apps go through a small hand-written bridge: `keepcrypt-ffi` holds every rule over `keepcrypt-core` and contains no unsafe code, and one boundary crate per platform sits under it (`keepcrypt-jni` for Android; the Swift binding is chosen in M6). The dashed verifier runs on a separate offline computer and needs nothing from KeepCrypt except the published algorithm. The seal registry is reached only by a second device or a downloaded snapshot, so the devices themselves stay offline.
+The Pi firmware calls the core directly as a Rust crate; the phone apps go through a small hand-written bridge: `keepcrypt-ffi` holds every rule over `keepcrypt-core` and contains no unsafe code, and one boundary crate per platform sits under it (`keepcrypt-jni` for Android, `keepcrypt-capi` for iPhone, both over `keepcrypt-guard`). The dashed verifier runs on a separate offline computer and needs nothing from KeepCrypt except the published algorithm. The seal registry is reached only by a second device or a downloaded snapshot, so the devices themselves stay offline.
 
 ## Repository layout and toolchain
 
@@ -47,14 +47,16 @@ keepcrypt/
 ├─ docs/                      design, build plan, firmware, mobile, seal and braille
 ├─ core/                      keepcrypt-core: pool, health, dice, seed, seal, braille, descriptor, backup
 ├─ ffi/                       keepcrypt-ffi: the safe FFI layer over the core (every rule, no unsafe code)
-│  └─ jni/                    keepcrypt-jni: hand-written JNI boundary for Android, built as libkeepcrypt.so
+│  ├─ guard/                  keepcrypt-guard: the one panic catch, under both boundaries (no unsafe code)
+│  ├─ jni/                    keepcrypt-jni: hand-written JNI boundary for Android, built as libkeepcrypt.so
+│  └─ capi/                   keepcrypt-capi: hand-written C boundary for iPhone, built as libkeepcrypt_capi.a
 ├─ pi/
 │  ├─ app/                    keepcrypt-pi: display, buttons, screens, QR, USB export and snapshot import
 │  ├─ sim/                    desktop simulator of the 240x240 screen and keys
 │  └─ os/                     Buildroot external tree, defconfig, overlays
 ├─ mobile/
-│  ├─ android/                Kotlin + Jetpack Compose
-│  └─ ios/                    Swift + SwiftUI
+│  ├─ android/                Gradle project: shared Compose Multiplatform screens and the Android app
+│  └─ ios/                    Xcode host and Swift capture layer (M6)
 ├─ registry/
 │  ├─ server/                 seal registry: Rust, axum, SQLite, transparency log, snapshot signer
 │  └─ web/                    static checking and registration page
@@ -72,9 +74,9 @@ keepcrypt/
 | --- | --- | --- |
 | Core language | Rust stable, pinned in `rust-toolchain.toml`; `#![forbid(unsafe_code)]` in `core/` | Memory safety; one implementation for every platform |
 | Pi target | `arm-unknown-linux-gnueabihf` (Pi Zero v1.3 is ARMv6), built inside Buildroot with the Rust toolchain pinned in `rust-toolchain.toml` (not Buildroot's own Rust) and Buildroot's C toolchain; the firmware binary keeps its symbol table for the release scan | Matches the radio-less Pi Zero; reproducible toolchain |
-| Android | Kotlin, Jetpack Compose, `libkeepcrypt.so` built with plain `cargo` and the NDK's clang (no `cargo-ndk`), minSdk 31 | API 31 adds overlay hiding; FLAG\_SECURE is less reliable on 30 and below |
-| iOS | Swift, SwiftUI, XCFramework from `cargo` (Swift binding: chosen in M6), iOS 17+ | iOS 17 adds `sceneCaptureState` for capture detection |
-| Bindings | Hand-written: `keepcrypt-ffi` (the safe layer, which holds every rule and no unsafe code) and `keepcrypt-jni` (the JNI boundary over `jni-sys`, the only unsafe code and the one reviewed `catch_unwind`, so a Rust panic wipes the session instead of aborting the app); Swift binding: chosen in M6 | Every current UniFFI release pulls in a banned random crate, a second user of `getrandom`, MPL-2.0 code and a logging crate in its generator, and the `jni` crate needs a logging crate; `jni-sys` has no dependency, build script or feature, and a bridge we write keeps every buffer under our wipe rules |
+| Android | Kotlin, Compose Multiplatform (Jetpack Compose on Android), `libkeepcrypt.so` built with plain `cargo` and the NDK's clang (no `cargo-ndk`), minSdk 31 | API 31 adds overlay hiding; FLAG\_SECURE is less reliable on 30 and below |
+| iOS | Compose Multiplatform screens (Kotlin/Native) in a Swift host for capture handling; `libkeepcrypt_capi.a` (C ABI) through cinterop; iOS 17+ | iOS 17 adds `sceneCaptureState` for capture detection |
+| Bindings | Hand-written: `keepcrypt-ffi` (the safe layer, which holds every rule and no unsafe code); `keepcrypt-guard` (the one reviewed `catch_unwind`, also with no unsafe code, so a Rust panic wipes the session instead of aborting the app); and the two boundaries over it, the only unsafe code: `keepcrypt-jni` (the JNI boundary over `jni-sys`, `libkeepcrypt.so`) and `keepcrypt-capi` (the C boundary for iPhone, two functions with a hand-written header, `libkeepcrypt_capi.a`) | Every current UniFFI release pulls in a banned random crate, a second user of `getrandom`, MPL-2.0 code and a logging crate in its generator, and the `jni` crate needs a logging crate; `jni-sys` has no dependency, build script or feature, and a bridge we write keeps every buffer under our wipe rules |
 | Core crates | `getrandom`, `sha2`, `bip39`, `bitcoin` (fingerprint, address), `miniscript` (descriptors), `unicode-normalization` (NFKD of the BIP39 passphrase), a single-frame BC-UR encoder and strict single-part decoder written in core with no crate (watch-only and go-ahead QRs), the age v1 scrypt format written in core from the RustCrypto `scrypt`, `chacha20poly1305`, `poly1305` (named only to switch on its `zeroize`, which wipes the one-time key), `hkdf`, `hmac` and `base64ct` crates (not the `age` crate), `ed25519-dalek` (signature verification only), `zeroize`, `secrecy`, `thiserror` | Small, widely reviewed; nothing else without review |
 | Pi crates | `rppal` (GPIO, SPI; its last release, pinned: its author archived it in July 2025, and the parts the firmware calls are reviewed), `nix` (memory locking, mounting the stick, the monotonic clock, the non-blocking hwrng open), `embedded-graphics`, `qrcodegen-no-heap` (QR codes encoded into buffers the app wipes after drawing); the ST7789 driver is KeepCrypt's own; the simulator needs no display or image crate: it writes the app's own frames as PNG files itself | Userspace drivers, testable on a desktop; no unsafe code in KeepCrypt's own Pi code, only inside `rppal`, `nix`, libc and Rust's standard library |
 | Verifier | Python 3, standard library only | Anyone can read and run it offline |
@@ -295,8 +297,8 @@ Build the core and the verifier first; every app is a thin shell that cannot sta
 | M2 | Offline verifier | `tools/verify/verify.py`, KeepCrypt vectors, age interop files | Verifier and core agree on 1,000 generated cases, including seal codes and braille; dice-only output matches Coldcard `rolls.py` | M1 |
 | M3 | Pi app on simulator | Every screen including seal check with go-ahead code entry and braille pages, button handling, waiting-screen game, USB export and snapshot import mocked | Scripted run drives a full ceremony in the simulator; you review the screen captures | M1 |
 | M4 | Pi hardware and OS image | ST7789 and button drivers, hwrng reader, Buildroot image, USB export | Full ceremony on a Pi Zero v1.3, checked with the offline verifier; two clean builds give the same image hash; the watch-only QR imports into Sparrow and Bitcoin Core with the same first address | M3 |
-| M5 | Android app | Compose UI over the FFI, capture protection, backup via file picker | Screenshot and recording tests come back blank; merged manifest has no INTERNET permission; backup round trip passes; snapshot import and Sparrow watch-only import work; a go-ahead QR from the test registry reveals the words and a Stop wipes them | M1, M2 |
-| M6 | iPhone app | SwiftUI over the FFI, capture handling, backup via document picker | Words hide during recording and mirroring; a screenshot discards the session; App Privacy Report shows no network use; snapshot import and Sparrow watch-only import work; a go-ahead QR from the test registry reveals the words and a Stop wipes them | M1, M2 |
+| M5 | Android app | Compose Multiplatform screens shared with M6, over the FFI (JNI on Android); capture protection; backup via file picker; the iPhone target compiles and the shared tests pass on the iOS simulator in CI | Screenshot and recording tests come back blank; merged manifest has no INTERNET permission; backup round trip passes; snapshot import and Sparrow watch-only import work; a go-ahead QR from the test registry reveals the words and a Stop wipes them; the shared tests pass on the iOS simulator | M1, M2 |
+| M6 | iPhone app | The shared Compose Multiplatform screens on iPhone over the C bridge (`keepcrypt-capi` through Kotlin/Native cinterop), a Swift host for capture handling, backup via document picker | Words hide during recording and mirroring; a screenshot discards the session; App Privacy Report shows no network use; snapshot import and Sparrow watch-only import work; a go-ahead QR from the test registry reveals the words and a Stop wipes them | M1, M2, M5 |
 | M7 | Hardening and audit | Birthday-collision job, signed reproducible releases, SBOM, threat-model review | External auditor signs off; a third party reproduces the Pi image and Android APK | M4, M5, M6 |
 | M8 | Phase-2 entropy | External TRNG, camera/mic/IMU extras, entropy-lab captures | Credits backed by `ea_non_iid` data; tests prove extras can never satisfy a quota | M4 |
 | M9 | Seal registry | Registry server, checking page and offline checker app, bucket-proof files, transparency log, daily signed snapshots | A duplicated test seed is stopped by a loaded snapshot, the website and the offline checker app on every platform; go-ahead codes and QRs reveal words only for clear seals; a collision report raises the count; schema and proxy config hold no IPs or codes | M1 |
