@@ -34,10 +34,13 @@
 #   5. The first frame, for each app APK: the curtain, the app force-stopped, a recording in two
 #      back-to-back segments of --time-limit 170 from before its cold launch (am start -W, which must
 #      report COLD) to its first screen and on: every frame black over the app's window
-#      (android-frames.py --expect black). The shipping app's first segment runs to its time limit,
-#      so screenrecord's own end is proven on each image (API 31's 180 s cap, no --time-limit 0); the
-#      test registry's is stopped once the first screen is up. Each second segment is stopped after
-#      its first frame.
+#      (android-frames.py --expect black). Segment 1 must still be recording once the app's first
+#      screen is up, and the last segment until it is stopped: adb exec-out carries no exit status
+#      of screenrecord's, so one that ended early is caught by the frames log ("segment N ended").
+#      The shipping app's first segment runs to its time limit and must have lasted at least the
+#      limit less 2 s (--min-first-segment), so screenrecord's own end is proven on each image (API
+#      31's 180 s cap, no --time-limit 0); the test registry's is stopped once the first screen is
+#      up. Each second segment is stopped after its first frame.
 # Prints "pass: api=API ..." for each control and check that passed; exit 0 all passed, 1 anything
 # failed, 2 bad usage. The emulator is shut down on every exit.
 set -u
@@ -266,6 +269,10 @@ curtain() {
 # stop_recording: screenrecord stops at once (SIGINT); the checker then ends that segment.
 stop_recording() { dev shell pkill -INT screenrecord > /dev/null 2>&1; }
 
+# recording FILE N: segment N of the frames log FILE has not ended (the checker prints "segment N
+# ended" when its stream does); 1 once it has.
+recording() { ! grep -q -e "segment $2 ended" "$1"; }
+
 # 4. Control (a) in raw frames, the same pipeline as the first-frame recordings below.
 curtain
 frames=$work/frames-control.log
@@ -283,15 +290,18 @@ cat "$frames"
 echo "pass: api=$api control (a) raw frames: $(sed -n 's/^android-frames: PASS visible: //p' "$frames")"
 
 # first_frame NAME PACKAGE REGION DISPLAY NATURAL: step 5 for one app; NATURAL=yes lets the first
-# segment run to its time limit.
+# segment run to its time limit, which it must then have lasted (less 2 s).
 first_frame() {
   name=$1
   pkg=$2
   curtain
   dev shell am force-stop "$pkg" || fail "am force-stop $pkg failed"
   frames=$work/frames-$name.log
+  min_first=0
+  [ "$5" = yes ] && min_first=$((limit - 2))
   python3 -I "$here/android-frames.py" record "$adb" "$serial" --size "$size" --format rgb888 \
-    --time-limit "$limit" --segments 2 --expect black --display "$4" --region "$3" > "$frames" 2>&1 &
+    --time-limit "$limit" --segments 2 --expect black --display "$4" --region "$3" \
+    --min-first-segment "$min_first" > "$frames" 2>&1 &
   fpid=$!
   wait_for "$frames" 'segment 1 first frame' 60 "$fpid" || { cat "$frames"; fail "$name: no first frame"; }
   start_activity "$pkg/com.keepcrypt.entropy.MainActivity"
@@ -300,6 +310,7 @@ first_frame() {
   dev shell dumpsys window > "$work/focus.txt" 2>&1
   grep -q -e "mCurrentFocus=.* $pkg/com[.]keepcrypt[.]entropy[.]MainActivity}" "$work/focus.txt" ||
     fail "$name: the app's activity is not in focus after its launch"
+  recording "$frames" 1 || { cat "$frames"; fail "$name: segment 1 ended before the app's first screen was up"; }
   if [ "$5" = yes ]; then
     say "$name: the first segment runs to its $limit s time limit"
     wait_for "$frames" 'segment 2 first frame' $((limit + 60)) "$fpid" || { cat "$frames"; fail "$name: no second segment"; }
@@ -308,11 +319,12 @@ first_frame() {
     wait_for "$frames" 'segment 2 first frame' 60 "$fpid" || { cat "$frames"; fail "$name: no second segment"; }
   fi
   sleep 2
+  recording "$frames" 2 || { cat "$frames"; fail "$name: segment 2 ended before it was stopped"; }
   stop_recording
   wait "$fpid"
   rc=$?
   cat "$frames"
-  [ "$rc" -eq 0 ] || fail "$name: a raw frame shows the app's window"
+  [ "$rc" -eq 0 ] || fail "$name: a raw frame shows the app's window, or a segment failed its checks"
   echo "pass: api=$api first frame and segments ($name): $(sed -n 's/^android-frames: PASS black: //p' "$frames")"
   dev shell am force-stop "$pkg" || fail "am force-stop $pkg failed"
 }

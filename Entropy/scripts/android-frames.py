@@ -6,12 +6,16 @@ keeps none of them: each frame lives in memory only while it is checked, nothing
 and only counts and pass or fail are printed. scripts/android-emulator.sh runs it.
 
   android-frames.py record ADB SERIAL --size WxH --format F --time-limit T --segments N --expect E
-                    [--display WxH --region L,T,R,B] [--max-gap S] [--min-known K]
+                    [--display WxH --region L,T,R,B] [--max-gap S] [--min-known K] [--min-first-segment S]
       records N back-to-back segments, each `ADB -s SERIAL exec-out screenrecord --output-format=raw-frames
       --size WxH --time-limit T -` (T at most 180: screenrecord stops there on API 31, which also refuses
       --time-limit 0, so a long recording is a chain of segments). A segment ends at its time limit or when
       the caller stops screenrecord (pkill -INT); the next one starts at once. adb's exec service puts the
-      remote stderr on the same stream, so the device's shell sends screenrecord's stderr to /dev/null.
+      remote stderr on the same stream, so the device's shell sends screenrecord's stderr to /dev/null, and
+      it carries no remote exit status: the recorder exit printed and checked is adb's own (a lost
+      connection), never screenrecord's. A screenrecord that ends early is caught by the segment's length
+      instead: --min-first-segment S fails a first segment that lasted less than S seconds (the caller
+      lets it run to its time limit), and the caller checks that a segment it relies on has not ended.
       Raw frames have no header: each is W*H pixels of F (rgb888, what screenrecord's FrameOutput writes,
       3 bytes a pixel; rgba8888 and rgb565 too), and a stream that is not a whole number of frames fails.
       --expect black: every pixel of every frame inside the app's window is black (no channel above 16).
@@ -35,7 +39,8 @@ and only counts and pass or fail are printed. scripts/android-emulator.sh runs i
   android-frames.py --selftest
       the frame logic on frames built in memory (each format, a lit pixel inside and outside the region,
       the known colour, the region's scaling) and the segment chain on stand-in recorders (python -c):
-      a partial frame, a segment with no frame, a gap and a failing recorder each fail.
+      a partial frame, a segment with no frame, a gap, a failing recorder and a first segment shorter
+      than --min-first-segment each fail.
 
 Exit codes: 0 pass, 1 fail, 2 usage or a tool that cannot run.
 """
@@ -172,6 +177,8 @@ def record(args, commands=None):
         raise Usage("--time-limit must be 1 to %d (never 0: API 31 refuses it)" % TIME_LIMIT_MAX)
     if args.segments < 1:
         raise Usage("--segments must be at least 1")
+    if args.min_first_segment < 0:
+        raise Usage("--min-first-segment must not be negative")
     if args.expect == "black":
         if args.display is None or args.region is None:
             raise Usage("--expect black needs --display and --region")
@@ -213,6 +220,8 @@ def record(args, commands=None):
             problems.append("segment %d ends in a partial frame (%d bytes)" % (index, left))
         if status != 0:
             problems.append("the recorder of segment %d exited %d" % (index, status))
+        if index == 1 and end - start < args.min_first_segment:
+            problems.append("segment 1 ended after %.1f s, before its %.1f s" % (end - start, args.min_first_segment))
         previous_end = end
     if args.expect == "black":
         if state["lit_frames"]:
@@ -333,10 +342,11 @@ def selftest():
         except Usage:
             check("refused: " + name, True)
 
-    def run(expect, commands, region_text="0,0,16,12", min_known=1, max_gap=5.0):
+    def run(expect, commands, region_text="0,0,16,12", min_known=1, max_gap=5.0, min_first_segment=0.0):
         args = argparse.Namespace(adb="adb", serial="emulator-5554", size="%dx%d" % (w, h), format="rgb888",
                                   time_limit=170, segments=len(commands), expect=expect, display="16x12",
-                                  region=region_text, max_gap=max_gap, min_known=min_known)
+                                  region=region_text, max_gap=max_gap, min_known=min_known,
+                                  min_first_segment=min_first_segment)
         return record(args, commands)
 
     black = frame_of("rgb888", w, h, {})
@@ -348,7 +358,11 @@ def selftest():
     check("record: a segment with no frame fails", run("black", [stand_in([black]), stand_in([])]) == 1)
     check("record: a gap before a segment's first frame fails",
           run("black", [stand_in([black]), stand_in([black], sleep=1.5)], max_gap=1.0) == 1)
-    check("record: a recorder that exits non-zero fails", run("black", [stand_in([black], status=1)]) == 1)
+    check("record: a recorder (adb) that exits non-zero fails", run("black", [stand_in([black], status=1)]) == 1)
+    check("record: a first segment as long as --min-first-segment passes",
+          run("black", [stand_in([black], sleep=0.3), stand_in([black])], min_first_segment=0.2) == 0)
+    check("record: a first segment shorter than --min-first-segment fails",
+          run("black", [stand_in([black]), stand_in([black])], min_first_segment=5.0) == 1)
     check("record: visible passes on the known colour", run("visible", [stand_in([black, seen])]) == 0)
     check("record: visible fails on black frames", run("visible", [stand_in([black, lit])]) == 1)
     failed = results.count(False)
@@ -373,6 +387,7 @@ def main(argv):
     rec.add_argument("--region")
     rec.add_argument("--max-gap", type=float, default=5.0)
     rec.add_argument("--min-known", type=int, default=10)
+    rec.add_argument("--min-first-segment", type=float, default=0.0)
     pro = sub.add_parser("probe")
     pro.add_argument("adb")
     pro.add_argument("serial")
