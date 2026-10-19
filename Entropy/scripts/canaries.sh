@@ -4,8 +4,8 @@
 # Run from the repo root. Exit 0 only if every canary failed as intended, every static check and
 # control passed, and the number of checks run equals the pin at the end.
 # Needs cargo-deny, git, and python3 3.11 or later (tomllib, for the static checks; CI runs 3.12),
-# a C compiler for the host (the release probe builds secp256k1-sys), and the pinned toolchain's
-# llvm-tools-preview (the artifact scan's llvm-nm).
+# a C compiler for the host (the release probe builds secp256k1-sys), the pinned toolchain's
+# llvm-tools-preview (the artifact scan's llvm-nm), and GNU make (the image path's panel name).
 # Needs the network only to fetch locked crates (deny-banned, clippy, agreement-core, cargo
 # fetch); the steps that add a crate or a git source resolve and check offline.
 set -u
@@ -1077,6 +1077,75 @@ device_canary device-buffered-reader pi/app/src/device/hwrng.rs \
 device_canary device-grouped-process-use pi/app/src/app.rs \
     'use std::process::{Command, Stdio}; // gate canary (temp copy only): the module by any path'
 
+# The image's panel profile (tasks/todo.md, M4b B3; Q47 (a)): KEEPCRYPT_PI_PANEL set to a name no
+# profile in pi/app's PROFILES has, or set but empty, must stop the real keepcrypt-pi binary's
+# build in PANEL's const evaluation, with select's fixed text and that one error, so a mistyped
+# name never falls back to the HAT. Nothing in the tree changes; only the variable is set. The
+# binary is checked in its test configuration, which compiles the device module on every host
+# (off Linux, main.rs otherwise leaves it out), and rustc evaluates every const item, used or not,
+# so any build that compiles the module stops the same way. Cargo tracks the variables option_env!
+# reads, so each value rechecks keepcrypt-pi alone.
+for panel in nonsense ""; do
+    expect_failure "panel-name-${panel:-empty}" env KEEPCRYPT_PI_PANEL="$panel" cargo check \
+        --color never --manifest-path "$root/Cargo.toml" -p keepcrypt-pi --bin keepcrypt-pi \
+        --profile test --locked --target-dir "$root/target/canary-real"
+    need "KEEPCRYPT_PI_PANEL is empty or names no profile in PROFILES"
+    need "--> pi/app/src/device/panel.rs:"
+    need "could not compile \`keepcrypt-pi\` (bin \"keepcrypt-pi\" test) due to 1 previous error"
+    verdict
+done
+
+# The image path's panel name (tasks/todo.md, M4b B3; Q47 (a)), which never relies on the HAT that
+# pi/app gives when no name is set: make image, repro-check and scan must stop while
+# pi/os/Makefile is parsed, with the list, when PANEL is missing, empty or not a name in PANELS;
+# a PANELS and PANEL_NAME given on the command line must not get an unlisted name past that check
+# (both are override); and keepcrypt-pi.mk, read as Buildroot reads it, must stop when
+# KEEPCRYPT_PI_PANEL is empty. make -n on a copy of pi/os under $work (the Makefile refuses a path
+# with a space), with a KC_WORK that does not exist: a refusal that stopped firing would print
+# recipe lines ("pi/os: ...") or a recipe's error ("] Error "), and not the text. The goals differ
+# so that each one of the Makefile's three is held to the check. A PANEL in the caller's
+# environment would be the name, so it goes.
+unset PANEL
+pm="$work/panel-make/Entropy/pi/os"
+mkdir -p "$work/panel-make/Entropy/pi" || exit 1
+cp -R "$root/pi/os" "$pm" || exit 1
+# panel_make NAME GOAL TEXT [VAR=VALUE...]: make -n GOAL on the copy must stop with TEXT and the list.
+# The list is pinned whole, up to the period make adds, so a name dropped from PANELS fails here:
+# nothing else would see it, as the image workflow would then build the HAT's image alone and
+# never run panels differ. A name that joins PANELS joins this line in the same change.
+panel_make() {
+    name=$1
+    goal=$2
+    text=$3
+    shift 3
+    expect_failure "$name" make -n --no-print-directory -C "$pm" "$goal" KC_WORK="$work/kc-work" "$@"
+    need "*** $text; make image, repro-check and scan need PANEL=<name>, one of: st7789-240x240 st7789-240x320."
+    never "pi/os: "
+    never "] Error "
+    verdict
+}
+panel_make panel-make-unset image "PANEL is not set"
+panel_make panel-make-empty scan "PANEL is empty" PANEL=
+panel_make panel-make-unlisted repro-check 'PANEL="nonsense" is not a name in the list' PANEL=nonsense
+panel_make panel-make-override image 'PANEL="nonsense" is not a name in the list' \
+    PANEL=nonsense PANELS=nonsense PANEL_NAME=nonsense
+expect_failure "panel-mk-empty" make -n --no-print-directory \
+    -f "$pm/package/keepcrypt-pi/keepcrypt-pi.mk" BR_BUILDING=y BR2_PACKAGE_KEEPCRYPT_PI=y \
+    KC_WORK="$work/kc-work" KEEPCRYPT_PI_PANEL=
+need "*** keepcrypt-pi: KEEPCRYPT_PI_PANEL is empty; build the image with Entropy/pi/os/Makefile and PANEL=<name>"
+verdict
+
+# pi-image panels differ (tasks/todo.md, M4b B4; Q47 (a)): two screen types whose keepcrypt-pi
+# binaries have the same SHA-256 must fail scripts/panels-differ.sh, naming both, since equal
+# binaries mean a panel name never reached the compiler. The image workflow runs the check only on
+# a run that builds two or more panels, so this canary keeps it firing on every gates run.
+sha=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+expect_failure "panels-differ-equal" sh "$root/scripts/panels-differ.sh" \
+    "st7789-240x240=$sha" "st7789-240x320=$sha"
+need "FAIL: pi-image panels differ: st7789-240x240 and st7789-240x320 have the same keepcrypt-pi SHA-256, so a panel name did not reach the compiler: $sha"
+need "pi-image panels differ: 1 pair(s) of panels share a keepcrypt-pi SHA-256"
+verdict
+
 # The workflow hardening check (tasks/todo.md, M4 group 11; Q38 (d)): a copy of the real
 # entropy-ci.yml with every rule broken once (the top-level token widened to write, which also
 # loses contents: read, and a job that runs on workflow_run, uses an action by tag, pastes an
@@ -1248,7 +1317,7 @@ cp "$root/core/examples/release_probe.rs" "$tmp/core/examples/release_probe.rs" 
 
 # The number of checks above, pinned, so a canary that is deleted, or skipped by a broken branch,
 # turns CI red too. A real change to the canaries updates this pin in the same reviewed change.
-want_checks=73
+want_checks=81
 if [ "$checks" -ne "$want_checks" ]; then
     echo "FAIL: $checks checks ran; scripts/canaries.sh pins $want_checks"
     status=1

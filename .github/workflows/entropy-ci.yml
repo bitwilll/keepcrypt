@@ -304,7 +304,9 @@ jobs:
     # that pi/app's device/rootfs test pins, recomputed by the script that gives each image's, and
     # each of its refusals; the kernel allow-list script's self-test (M4 group 13): kconfig.sh on
     # a stub kernel tree, refusing a forbidden option selected back on, a required one dropped and
-    # a module left; and
+    # a module left; the image workflow's panels-differ check's self-test (M4b B4), whose two equal
+    # binary hashes must fail it, on every run, since the image workflow runs the check only when
+    # it builds two or more panels; and
     # the canaries: crates that must fail cargo-deny and clippy, mutated copies of the real crates,
     # a path override, the dependency graph pins, a changed byte in each vectors file vectorgen.py
     # writes or reads back, a changed agreement.json value core's agreement test must refuse,
@@ -328,6 +330,7 @@ jobs:
       - run: python3 -I tools/verify/vectorgen.py --selftest
       - run: python3 -I pi/os/rootfs-prefix.py --selftest
       - run: sh pi/os/kconfig.sh --selftest
+      - run: sh scripts/panels-differ.sh --selftest
       - name: Install the pinned toolchain (rust-toolchain.toml)
         run: |
           rustup toolchain install

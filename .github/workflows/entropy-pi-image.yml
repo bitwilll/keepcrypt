@@ -1,18 +1,31 @@
-# KeepCrypt-Entropy Pi image (Entropy/tasks/todo.md, M4 groups 14 and 15; Q38): the SD card image
-# built from Entropy/pi/os twice, on two fresh runners at the same KC_WORK, and a third job that
-# fails unless both builds gave the same image (docs/build-plan.md, "Reproducible build"). Leg a
-# restores Buildroot's downloads (dl/) from the cache by exact key and leg b downloads everything
-# afresh; Buildroot checks every download by its hash either way. Leg a uploads the image, kept
-# 14 days, which the owner downloads signed in to GitHub; any commit can be rebuilt after that by
-# hand, through workflow_dispatch's ref (once this workflow is on main).
+# KeepCrypt-Entropy Pi image (Entropy/tasks/todo.md, M4 groups 14 and 15; Q38; M4b B4; Q47): one
+# SD card image per screen type, each built from Entropy/pi/os twice, on two fresh runners at the
+# same KC_WORK, and a third job per screen type that fails unless both builds gave the same image
+# (docs/build-plan.md, "Reproducible build"). Leg a restores Buildroot's downloads (dl/) from the
+# cache by exact key and leg b downloads everything afresh; Buildroot checks every download by its
+# hash either way. Leg a uploads the image, kept 14 days, which the owner downloads signed in to
+# GitHub; any commit can be rebuilt after that by hand, through workflow_dispatch's ref (once this
+# workflow is on main).
+#
+# The screen types are pi/os/Makefile's PANELS. The first job, panels, reads them at the commit
+# built and picks this run's (Q47 (a)): a pull request or a push to main builds the HAT's alone,
+# st7789-240x240, unless it changes a panel profile (pi/app/src/device/panel.rs or panel/),
+# pi/app/src/device/linux.rs (PANEL's only runtime user), pi/app/src/main.rs (the device module's
+# gate), anything under pi/os, this workflow or scripts/panels-differ.sh; then, as on the weekly
+# and dispatched runs, it builds every panel. Each panel gets its two legs, its compare job and
+# leg a's upload, each job named with its panel: pi-image build (a, st7789-240x320). A run that
+# builds two or more panels also runs pi-image panels differ, which fails if two panels' binaries
+# are equal: the profiles differ in data, so equal binaries mean a name never reached the
+# compiler. A HAT-only run needs no such check, since a lost name gives the HAT, which is what
+# that image is.
 #
 # Not one of the 14 required checks (Q38 (b)), so path filters are safe: a skipped run never
 # leaves a required check pending. The rule instead: no PR that changes the image merges without
 # a green run of this workflow on its final head commit, recorded in tasks/todo.md's Review.
-# Each leg scans the image it built against the reviewed lists in Entropy/pi/os/expected/
-# (banned-api-check.sh --image, with the kernel config it was built with and the SHA-256 of the
-# keepcrypt-pi cargo built); a hit fails the leg, so leg a uploads only an image that passed, and
-# the compare job, which runs either way, succeeds only when both legs did.
+# Each leg scans the image it built against the reviewed lists in Entropy/pi/os/expected/, the
+# same for every panel (banned-api-check.sh --image, with the kernel config it was built with and
+# the SHA-256 of the keepcrypt-pi cargo built); a hit fails the leg, so leg a uploads only an image
+# that passed, and the compare job, which runs either way, succeeds only when both legs did.
 #
 # Hardening, as in entropy-ci.yml, whose gates job checks this file too (banned-api-check.sh
 # --workflows): read-only token and no secret; only actions/checkout, actions/cache and
@@ -21,7 +34,10 @@
 # or a dispatch's ref, or the pushed or scheduled commit, and prints the commit it built.
 #
 # The two legs share one list of steps (a YAML anchor), so they cannot drift apart; the job-level
-# LEG says which leg runs, and only the cache and upload steps read it.
+# LEG says which leg runs, and only the cache and upload steps read it. A matrix job's outputs are
+# one map for all its jobs, in which an output two jobs set keeps the last one's value; so each leg
+# writes its result to its panel's own slot, s0 to s7, which the panels job assigns, and leaves
+# the other slots empty, which sets nothing.
 
 name: Entropy Pi image
 
@@ -36,7 +52,7 @@ on:
       - 'Entropy/**'
       - '.github/workflows/entropy-pi-image.yml'
   schedule:
-    # Weekly (Mondays, 04:17 UTC): main still builds the same image, from fresh downloads in leg b.
+    # Weekly (Mondays, 04:17 UTC): main still builds the same images, from fresh downloads in leg b.
     - cron: '17 4 * * 1'
   workflow_dispatch:
     inputs:
@@ -66,24 +82,109 @@ env:
   KC_WORK: /kc-work
 
 jobs:
+  panels:
+    # The panels this run builds (the header), from make -C pi/os panels at the commit built, each
+    # with its slot. A pull request's range is the three-dot one from its base (what it changed
+    # since it left the base branch), a push's from the commit main pointed to before, both read
+    # in the full history; the answer is git diff's exit code over the paths, never a text match on
+    # a list of names, and a range that cannot be read (no base, a force push) counts as a change,
+    # as in entropy-ci.yml's changes job. The names must be distinct, of a-z, 0-9 and -, and hold
+    # the HAT's; eight at most, one per slot.
+    name: pi-image panels
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      commit: ${{ steps.panels.outputs.commit }}
+      matrix: ${{ steps.panels.outputs.matrix }}
+      several: ${{ steps.panels.outputs.several }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || inputs.ref || github.sha }}
+          fetch-depth: 0
+      - name: The panels to build, each with its slot
+        id: panels
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          fail() { echo "FAIL: pi-image panels: $1" >&2; exit 1; }
+          commit=$(git rev-parse HEAD)
+          echo "commit: $commit"
+          hat=st7789-240x240
+          listed=$(make -s --no-print-directory -C Entropy/pi/os panels)
+          names=
+          for p in $listed; do
+            case $p in *[!a-z0-9-]*) fail "not a panel name: $p" ;; esac
+            case " $names " in *" $p "*) fail "PANELS lists $p twice" ;; esac
+            names="$names $p"
+          done
+          case " $names " in *" $hat "*) ;; *) fail "PANELS does not list the HAT's $hat" ;; esac
+          echo "PANELS:$names"
+          paths=(Entropy/pi/app/src/device/panel.rs Entropy/pi/app/src/device/panel/ Entropy/pi/os/
+            Entropy/pi/app/src/device/linux.rs Entropy/pi/app/src/main.rs
+            Entropy/scripts/panels-differ.sh .github/workflows/entropy-pi-image.yml)
+          build=$names
+          if [ "$EVENT" = pull_request ] || [ "$EVENT" = push ]; then
+            rc=0
+            if [ -n "$BASE" ]; then
+              git diff --quiet --no-renames "$BASE...HEAD" -- "${paths[@]}" 2>/dev/null || rc=$?
+            else
+              rc=128
+            fi
+            case $rc in
+              0)
+                build=$hat
+                echo "this $EVENT changes none of ${paths[*]}: the HAT's panel alone"
+                ;;
+              1)
+                echo "this $EVENT changes these, so every panel:"
+                git -c core.quotePath=false diff --name-only --no-renames "$BASE...HEAD" -- "${paths[@]}" | sed -n '1,50s/^/changed: /p'
+                ;;
+              *) echo "cannot read the range ${BASE:-(no base)}...HEAD (git diff exit $rc): every panel" ;;
+            esac
+          else
+            echo "a $EVENT run: every panel"
+          fi
+          set -- $build
+          [ "$#" -le 8 ] || fail "$# panels, more than the legs' eight result slots: add slots to the build jobs' outputs and raise this limit"
+          matrix=$(i=0; for p in "$@"; do echo "$p s$i"; i=$((i + 1)); done |
+            jq -R -n -c '[inputs | split(" ") | {panel: .[0], slot: .[1]}]')
+          if [ "$#" -ge 2 ]; then several=true; else several=false; fi
+          {
+            echo "commit=$commit"
+            echo "matrix=$matrix"
+            echo "several=$several"
+          } | tee -a "$GITHUB_OUTPUT"
+
   build-a:
-    name: pi-image build (a)
+    name: pi-image build (a, ${{ matrix.panel }})
+    needs: panels
     runs-on: ubuntu-24.04
     timeout-minutes: 180
+    strategy: &panel-matrix
+      # One job per panel; one panel's failure cancels no other.
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.panels.outputs.matrix) }}
     env:
       LEG: a
+      PANEL: ${{ matrix.panel }}
     defaults: &leg-defaults
       run:
         shell: bash
         working-directory: Entropy
+    # One output per slot (the header); each leg sets only its panel's.
     outputs: &leg-outputs
-      commit: ${{ steps.hash.outputs.commit }}
-      name: ${{ steps.hash.outputs.name }}
-      image: ${{ steps.hash.outputs.image }}
-      partition1: ${{ steps.hash.outputs.partition1 }}
-      partition2: ${{ steps.hash.outputs.partition2 }}
-      prefix: ${{ steps.hash.outputs.prefix }}
-      binary: ${{ steps.hash.outputs.binary }}
+      s0: ${{ steps.result.outputs.s0 }}
+      s1: ${{ steps.result.outputs.s1 }}
+      s2: ${{ steps.result.outputs.s2 }}
+      s3: ${{ steps.result.outputs.s3 }}
+      s4: ${{ steps.result.outputs.s4 }}
+      s5: ${{ steps.result.outputs.s5 }}
+      s6: ${{ steps.result.outputs.s6 }}
+      s7: ${{ steps.result.outputs.s7 }}
     steps: &leg-steps
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -91,12 +192,13 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || inputs.ref || github.sha }}
       # GitHub promises only 14 GB free on a standard hosted runner. These preinstalled SDKs are
       # unused here; the system's compilers and Python, and rustup, stay.
-      - name: Free disk space; print the commit, the runner image, SOURCE_DATE_EPOCH and df -h
+      - name: Free disk space; print the commit, the panel, the runner image, SOURCE_DATE_EPOCH and df -h
         run: |
           df -h /
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
             /opt/hostedtoolcache/CodeQL /usr/share/swift
           echo "commit: $(git rev-parse HEAD)"
+          echo "panel: $PANEL"
           echo "ImageOS: $ImageOS"
           echo "ImageVersion: $ImageVersion"
           echo "SOURCE_DATE_EPOCH: $(sed -n 's/^SOURCE_DATE_EPOCH = //p' pi/os/pins.txt)"
@@ -123,24 +225,27 @@ jobs:
           rustc --version
           cargo --version
       # Leg a only, by exact key (no restore-keys); on a miss the post step saves what leg a
-      # downloaded. Buildroot uses a cached file only if it has the pinned hash.
+      # downloaded (when several panels' legs a miss, the first to finish saves it). Buildroot
+      # uses a cached file only if it has the pinned hash.
       - name: Buildroot's downloads from the cache (leg a; leg b downloads afresh)
         if: env.LEG == 'a'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.KC_WORK }}/dl
           key: ${{ runner.os }}-${{ runner.arch }}-pi-image-dl-${{ hashFiles('Entropy/pi/os/pins.txt', 'Entropy/pi/os/configs/keepcrypt_pizero_defconfig', 'Entropy/pi/os/patches/linux/linux.hash') }}
+      # make image needs PANEL=<name>, one of pi/os/Makefile's PANELS (Q47 (a)): this job's panel.
       - name: make source image
-        run: time make -C pi/os source image
-      # The job's outputs, for the compare job and the scan, and the image's lists (banned-api-check.sh
-      # --image-lists, with the build's host mcopy, mdir and unsquashfs), the reviewed copy of which
-      # lives in pi/os/expected/ (commit 16). The image is the one keepcrypt-pi-*.img the build made
-      # (keepcrypt-pi-0.0.0-st7789-240x240.img, Q47; M4b adds one per screen type), the kernel config
-      # the .config it was built with, and the binary's SHA-256 that of the keepcrypt-pi cargo built
-      # in the package's build directory (as pi/os/Makefile's scan takes it; BR2_STRIP_EXCLUDE_FILES
-      # keeps the installed copy byte-equal), checked here against --image-lists' hash of the
-      # image's own /usr/bin/keepcrypt-pi. The scan's Binary rule then proves the packed binary is
-      # the file cargo built; given the image's own hash it would compare that file with itself.
+        run: time make -C pi/os source image PANEL="$PANEL"
+      # The leg's hashes, for the scan, the upload and the result step, and the image's lists
+      # (banned-api-check.sh --image-lists, with the build's host mcopy, mdir and unsquashfs), the
+      # reviewed copy of which lives in pi/os/expected/ (commit 16). The image is the one
+      # keepcrypt-pi-*.img the build made, which must be keepcrypt-pi-0.0.0-<this job's panel>.img
+      # (Q47), the kernel config the .config it was built with, and the binary's SHA-256 that of the
+      # keepcrypt-pi cargo built in the package's build directory (as pi/os/Makefile's scan takes
+      # it; BR2_STRIP_EXCLUDE_FILES keeps the installed copy byte-equal), checked here against
+      # --image-lists' hash of the image's own /usr/bin/keepcrypt-pi. The scan's Binary rule then
+      # proves the packed binary is the file cargo built; given the image's own hash it would
+      # compare that file with itself.
       - name: Hash and list
         id: hash
         run: |
@@ -154,6 +259,7 @@ jobs:
           built=$KC_WORK/out/build/keepcrypt-pi-0.0.0/target/arm-unknown-linux-gnueabihf/release/keepcrypt-pi
           [ -f "$built" ] || fail "no $built, the keepcrypt-pi cargo built"
           img=${imgs[0]}
+          [ "${img##*/}" = "keepcrypt-pi-0.0.0-$PANEL.img" ] || fail "the image is ${img##*/}, not keepcrypt-pi-0.0.0-$PANEL.img"
           size=$(wc -c < "$img")
           echo "$img: $((size)) bytes"
           sum=$(sha256sum "$img")
@@ -215,7 +321,7 @@ jobs:
           [ "${#imgs[@]}" -eq 1 ] && [ "${#configs[@]}" -eq 1 ] || { echo "FAIL: not exactly one image and one .config" >&2; exit 1; }
           PATH="$KC_WORK/out/host/bin:$PATH" scripts/banned-api-check.sh --image "${imgs[0]}" pi/os/expected "${configs[0]}" "$BINARY"
       # Leg a only, and only after the scan above passed: a failed step ends the job, so an image
-      # with a hit is never uploaded. Kept 14 days for the owner's hardware checks (H1-H4).
+      # with a hit is never uploaded. Kept 14 days for the owner's hardware checks (H1-H4, H6).
       - name: Upload the image (leg a; scanned)
         if: env.LEG == 'a'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -224,61 +330,91 @@ jobs:
           archive: false
           retention-days: 14
           if-no-files-found: error
+      # The leg's result in its panel's slot (the header), for the compare job and panels differ:
+      # the panel, the job's status when this last step runs (success only when the build, both
+      # scans and leg a's upload passed) and the outputs of Hash and list. It also runs after a
+      # failed step, so the compare job can say whether the two builds agreed; not when the run
+      # was cancelled.
+      - name: Result for the compare job (this panel's slot)
+        id: result
+        if: ${{ !cancelled() }}
+        env:
+          SLOT: ${{ matrix.slot }}
+          STATUS: ${{ job.status }}
+          COMMIT: ${{ steps.hash.outputs.commit }}
+          NAME: ${{ steps.hash.outputs.name }}
+          IMAGE: ${{ steps.hash.outputs.image }}
+          PARTITION_1: ${{ steps.hash.outputs.partition1 }}
+          PARTITION_2: ${{ steps.hash.outputs.partition2 }}
+          PREFIX: ${{ steps.hash.outputs.prefix }}
+          BINARY: ${{ steps.hash.outputs.binary }}
+        run: |
+          case $SLOT in s[0-7]) ;; *) echo "FAIL: result: not a slot s0-s7: $SLOT" >&2; exit 1 ;; esac
+          result=$(jq -n -c --arg panel "$PANEL" --arg status "$STATUS" --arg commit "$COMMIT" \
+            --arg name "$NAME" --arg image "$IMAGE" --arg partition1 "$PARTITION_1" \
+            --arg partition2 "$PARTITION_2" --arg prefix "$PREFIX" --arg binary "$BINARY" '$ARGS.named')
+          echo "$SLOT=$result" | tee -a "$GITHUB_OUTPUT"
 
   build-b:
-    name: pi-image build (b)
+    name: pi-image build (b, ${{ matrix.panel }})
+    needs: panels
     runs-on: ubuntu-24.04
     timeout-minutes: 180
+    strategy: *panel-matrix
     env:
       LEG: b
+      PANEL: ${{ matrix.panel }}
     defaults: *leg-defaults
     outputs: *leg-outputs
     steps: *leg-steps
 
   reproducible:
-    # Runs when a leg failed too (its scan, say), so the run always says whether the two builds
-    # agreed; not when the run was cancelled. Fails unless both image hashes are non-empty and
-    # equal, both legs built the same commit and both legs succeeded (so both scans passed); then
-    # the summary names the commit, the image and its SHA-256, the rootfs prefix and the binary's
-    # SHA-256.
-    name: pi-image reproducible (a = b)
-    needs: [build-a, build-b]
-    if: ${{ !cancelled() }}
+    # One per panel. Runs when a leg failed too (its scan, say), so the run always says whether
+    # the two builds agreed; not when the run was cancelled. Fails unless both legs gave a result
+    # for this panel, both image hashes are non-empty and equal, both legs built the commit the
+    # panels job read and both legs succeeded (so both scans passed); then the summary names the
+    # panel, the commit, the image and its SHA-256, the rootfs prefix and the binary's SHA-256.
+    name: pi-image reproducible (a = b, ${{ matrix.panel }})
+    needs: [panels, build-a, build-b]
+    if: ${{ !cancelled() && needs.panels.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    strategy: *panel-matrix
     steps:
       - name: Both legs built the same commit into the same image
         env:
-          RESULT_A: ${{ needs.build-a.result }}
-          RESULT_B: ${{ needs.build-b.result }}
-          COMMIT_A: ${{ needs.build-a.outputs.commit }}
-          COMMIT_B: ${{ needs.build-b.outputs.commit }}
-          NAME_A: ${{ needs.build-a.outputs.name }}
-          NAME_B: ${{ needs.build-b.outputs.name }}
-          IMAGE_A: ${{ needs.build-a.outputs.image }}
-          IMAGE_B: ${{ needs.build-b.outputs.image }}
-          PARTITION_1_A: ${{ needs.build-a.outputs.partition1 }}
-          PARTITION_1_B: ${{ needs.build-b.outputs.partition1 }}
-          PARTITION_2_A: ${{ needs.build-a.outputs.partition2 }}
-          PARTITION_2_B: ${{ needs.build-b.outputs.partition2 }}
-          PREFIX_A: ${{ needs.build-a.outputs.prefix }}
-          PREFIX_B: ${{ needs.build-b.outputs.prefix }}
-          BINARY_A: ${{ needs.build-a.outputs.binary }}
-          BINARY_B: ${{ needs.build-b.outputs.binary }}
+          PANEL: ${{ matrix.panel }}
+          COMMIT: ${{ needs.panels.outputs.commit }}
+          LEG_A: ${{ needs.build-a.outputs[matrix.slot] }}
+          LEG_B: ${{ needs.build-b.outputs[matrix.slot] }}
         run: |
-          for v in RESULT COMMIT NAME IMAGE PARTITION_1 PARTITION_2 PREFIX BINARY; do
+          # Each leg's result step wrote a JSON object to this panel's slot (empty: it gave none).
+          field() { [ -z "$1" ] || jq -r --arg k "$2" '.[$k] // ""' <<<"$1"; }
+          for x in A B; do
+            leg=LEG_$x
+            for v in PANEL:panel RESULT:status COMMIT:commit NAME:name IMAGE:image PARTITION_1:partition1 \
+              PARTITION_2:partition2 PREFIX:prefix BINARY:binary; do
+              value=$(field "${!leg}" "${v#*:}")
+              printf -v "${v%%:*}_$x" '%s' "$value"
+            done
+          done
+          echo "panel: $PANEL; commit: $COMMIT"
+          for v in PANEL RESULT COMMIT NAME IMAGE PARTITION_1 PARTITION_2 PREFIX BINARY; do
             a=${v}_A
             b=${v}_B
             echo "$v: a ${!a:-(none)}, b ${!b:-(none)}"
           done
           fail() { echo "FAIL: pi-image reproducible: $1" >&2; exit 1; }
+          [ -n "$LEG_A" ] && [ -n "$LEG_B" ] || fail "a leg gave no result for $PANEL: it was skipped or cancelled, or stopped before its last step"
+          [ "$PANEL_A" = "$PANEL" ] && [ "$PANEL_B" = "$PANEL" ] || fail "a leg's result is not $PANEL's"
           [ -n "$IMAGE_A" ] && [ -n "$IMAGE_B" ] || fail "a leg gave no image hash"
           [ "$IMAGE_A" = "$IMAGE_B" ] || fail "the two builds gave different images (the partition hashes above say which part)"
           [ -n "$COMMIT_A" ] && [ "$COMMIT_A" = "$COMMIT_B" ] || fail "the legs built different commits"
-          [ "$RESULT_A" = success ] && [ "$RESULT_B" = success ] || fail "a leg's result is not success (a: $RESULT_A, b: $RESULT_B): a step after its build failed, its scan or leg a's upload, or the leg was cancelled; the image is not accepted"
+          [ "$COMMIT_A" = "$COMMIT" ] || fail "the legs built $COMMIT_A, not $COMMIT, the commit the panels job read"
+          [ "$RESULT_A" = success ] && [ "$RESULT_B" = success ] || fail "a leg's result is not success (a: $RESULT_A, b: $RESULT_B): a step after its build failed, its scan or leg a's upload; the image is not accepted"
           echo "both legs built $COMMIT_A into $NAME_A, SHA-256 $IMAGE_A, and both scans passed"
           {
-            echo "## Entropy Pi image"
+            echo "## Entropy Pi image: $PANEL"
             echo
             echo "- Commit: \`$COMMIT_A\`"
             echo "- Image: \`$NAME_A\`, leg a's artifact (kept 14 days)"
@@ -287,4 +423,52 @@ jobs:
             echo "- keepcrypt-pi SHA-256, the build's (the file cargo built, which the image's /usr/bin/keepcrypt-pi equals): \`$BINARY_A\`"
             echo
             echo "**Scanned.** Both legs' scans of their image against the reviewed \`pi/os/expected/\` (\`banned-api-check.sh --image\`, with the kernel config and that binary hash) passed, as they must for the legs to succeed; each leg's \"Scan\" step holds the output."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  panels-differ:
+    # M4b B4 (Q47 (a)): on a run that builds two or more panels, after every panel's compare job
+    # passed, no two panels' keepcrypt-pi may be the same file (scripts/panels-differ.sh, whose
+    # --selftest, two equal hashes that must fail, runs in entropy-ci.yml's gates job). Each
+    # panel's binary SHA-256 is leg a's, which its compare job has matched to leg b's image; the
+    # check also needs every slot to hold its panel's result from the commit the panels job read.
+    # M7 signs release images only from a run where this job is green.
+    name: pi-image panels differ
+    needs: [panels, build-a, reproducible]
+    if: needs.panels.outputs.several == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+        working-directory: Entropy
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || inputs.ref || github.sha }}
+      - name: No two panels' keepcrypt-pi binaries are equal
+        env:
+          COMMIT: ${{ needs.panels.outputs.commit }}
+          MATRIX: ${{ needs.panels.outputs.matrix }}
+          RESULTS: ${{ toJSON(needs.build-a.outputs) }}
+        run: |
+          fail() { echo "FAIL: pi-image panels differ: $1" >&2; exit 1; }
+          echo "commit: $(git rev-parse HEAD)"
+          [ "$(git rev-parse HEAD)" = "$COMMIT" ] || fail "this job checked out another commit than the panels job's $COMMIT"
+          set --
+          for slot in $(jq -r '.[].slot' <<<"$MATRIX"); do
+            panel=$(jq -r --arg s "$slot" '.[] | select(.slot == $s) | .panel' <<<"$MATRIX")
+            leg=$(jq -r --arg s "$slot" '.[$s] // ""' <<<"$RESULTS")
+            [ -n "$leg" ] || fail "leg a gave no result for $panel"
+            [ "$(jq -r .panel <<<"$leg")" = "$panel" ] || fail "slot $slot does not hold $panel's result"
+            [ "$(jq -r .commit <<<"$leg")" = "$COMMIT" ] || fail "$panel was built from another commit than $COMMIT"
+            set -- "$@" "$panel=$(jq -r .binary <<<"$leg")"
+          done
+          sh scripts/panels-differ.sh "$@"
+          {
+            echo "## Entropy Pi image: panels differ"
+            echo
+            for pair in "$@"; do echo "- \`${pair%%=*}\`: keepcrypt-pi SHA-256 \`${pair#*=}\`"; done
+            echo
+            echo "No two panels' binaries are equal, so each panel's name reached the compiler."
           } >> "$GITHUB_STEP_SUMMARY"
