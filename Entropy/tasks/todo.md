@@ -10502,6 +10502,19 @@ milestones.
   emulator's first start, because the emulator 37.2.12 qemu links it and ubuntu-24.04 20261012 lacks it (run 39282207714:
   "libpulse.so.0: cannot open shared object file"). It follows entropy-ci.yml's apt installs of age and dosfstools, prints
   its version, and the step then fails if `ldd` finds any other library missing. CI only; nothing reaches an APK.
+- M5-17 (2026-10-19): every recording is one continuous raw-frame stream. In raw-frames mode screenrecord never checks
+  `--time-limit`: its loop is `while (!gStopRequested) { err = frameOutput->copyFrame(rawFp, 250000, rawFrames); ... }`
+  (frameworks/av cmds/screenrecord/screenrecord.cpp, android12-release lines 845-860; the same in main around line
+  1059), only the H.264 path's runEncoder checks endWhenNsec, and gStopRequested is set by its SIGINT/SIGTERM handler
+  (line 138). Run 39290401362 at 8f showed it: `screenrecord --output-format=raw-frames --size 360x640 --time-limit 1`
+  had not returned after 30 s. So `scripts/android-frames.py` starts the stream and stops it itself with SIGINT on the
+  device (`adb -s SERIAL shell pkill -INT -x screenrecord`) when the caller says the scenario is done (SIGTERM to the
+  checker) or at its `--duration` cap, which fails the recording (the scenario outlasted it); it then waits for the
+  stream to end and the local adb to exit, and a recorder that has not within 5 s of the SIGINT fails. No segments, no
+  `--time-limit` on raw frames, no 180 s logic. The checker still counts frames, requires the first frame within
+  `--max-gap` seconds of the start, requires every frame black over the app's window (or the control's known pixels),
+  fails on a partial trailing frame and keeps no frame. Finding 7, group 6's probe, recording and first-frame bullets
+  and the Verification gate line say so (commit 8g); the critique log keeps what the plan said before.
 
 Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). Once M4b merges, build-plan.md lines from
 293 on move down one (the M5 row becomes BP:296).
@@ -10647,7 +10660,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
 7. **Capture tools:** `screenrecord --output-format=raw-frames` writes raw frames to stdout (screenrecord.cpp:1363-1364),
    so a recording is checked without a video decoder [S21]. screenrecord stops at 180 s by default
    (`kMaxTimeLimitSec = 180`, screenrecord.cpp:102), and only newer releases accept `--time-limit 0` for no limit
-   (:1330), so API 31 records in segments. The Android 15 recording callback is driven only by MediaProjection
+   (:1330), but that limit binds only the H.264 path: raw-frames mode ignores it and records until SIGINT or SIGTERM
+   (its loop is `while (!gStopRequested)` around `copyFrame(rawFp, 250000, rawFrames)`, android12-release
+   screenrecord.cpp:845-860, the same in main around :1059; only runEncoder checks endWhenNsec; the signal handler sets
+   gStopRequested, :138), so a raw-frame recording is one continuous stream stopped with SIGINT (lead decision M5-17,
+   run 39290401362). The Android 15 recording callback is driven only by MediaProjection
    (ScreenRecordingCallbackController.java:71-94), so adb's screenrecord never fires it [S22].
 8. **Versions:** Compose 1.12.x needs compileSdk 37 and AGP 9 [S25]; Kotlin 2.4.20's tested range ends at AGP 9.3.1 and
    Gradle 9.7.0 [S24]; Play requires targetSdk 36 since 2026-08-31 [S20]; from 2027-02-01 updates need 16 KB pages on
@@ -10836,9 +10853,10 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   `sdkmanager --list` offers, free disk; the merged manifest; the resolved runtime classpath; the APK's file list with
   every `.so` and its LOAD alignment; `buildEnvironment`'s Kotlin plugin version; whether any library registers a
   broadcast receiver; that dependency verification also checks cached artifacts. On the first emulator run (commit 8),
-  per image: screencap, `UiAutomation.takeScreenshot()` and `screenrecord --output-format=raw-frames` with its time
-  limit, the sizes it accepts and bytes per frame; that the capture-control APK's pixels come back; whether
-  `disable_secure_windows` exists (expected on 36, absent on 31); `WIFI_ON`'s values; the black starting window; that
+  per image: screencap, `UiAutomation.takeScreenshot()` and `screenrecord --output-format=raw-frames` (the sizes it
+  accepts, its first frame's latency, the bytes a frame per format, and that SIGINT ends the stream; M5-17); that the
+  capture-control APK's pixels come back; whether `disable_secure_windows` exists (expected on 36, absent on 31);
+  `WIFI_ON`'s values; the black starting window; that
   the empty saved-state Bundle crashes nothing; whether UiAutomation sees and clicks data-sensitive nodes on 36; whether
   `dumpsys content_capture` shows a service; that `logcat -b crash` and `dumpsys dropbox` are readable; and, for the
   third image, `getconf PAGE_SIZE` = 16384 and whether `ro.product.cpu.abilist` lists arm64-v8a and armeabi-v7a
@@ -11144,10 +11162,13 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   test first proves the screen is drawn: the ViewModel reports that screen id and an `OnDrawListener` has seen a frame
   after it. Then raw `screencap` and `UiAutomation.takeScreenshot()` are black over the app's window, `dumpsys window
   windows` shows `SECURE` on every window of the package, and the recents thumbnail is the placeholder. Recording: a
-  full ceremony is recorded in back-to-back segments of `--time-limit 170` at a small `--size` the probe confirms, each
-  streamed through `scripts/android-frames.py`, which counts frames, checks the app window's pixels are all black, fails
-  on a gap between segments and keeps no frame.
-  Proof: per-screen pass lines and per-segment frame counts on both APIs.
+  full ceremony is recorded as one continuous raw-frame stream at a small `--size` the probe confirms, with no
+  `--time-limit` (raw frames ignore it; finding 7, M5-17), through `scripts/android-frames.py`, which starts it and
+  stops it with SIGINT on the device when the scenario is done or at its `--duration` cap (reaching the cap fails),
+  requires the first frame within `--max-gap` seconds of the start and the stream's end within a few seconds of the
+  SIGINT, counts frames, checks the app window's pixels are all black, fails on a partial trailing frame and keeps no
+  frame.
+  Proof: per-screen pass lines and per-recording frame counts on both APIs.
   Proof (M5 commit 8, partial): `Screen` and `screenId` (exhaustive `when`) in `:app`, `MainActivity.shownScreen` for
   the drawn-screen proof; `CaptureTest` and `Capture` under `app/src/androidTest/`; `python3 -I
   scripts/android-frames.py --selftest` 26 passed, 0 failed on 3.12 and /usr/bin/python3 3.9.6. Kotlin compiles and
@@ -11164,8 +11185,9 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   before every capture of the app; (c) `CaptureTest.disableSecureWindowsShowsTheScreenOnlyWhileSet`, asserted from API
   36, a probe on 31. Results are the lead's, from CI. The control captures are not uploaded at this commit: the
   words page they are for comes with commit 19.
-- [ ] **First frame** (lessons 4): raw frames from before a cold launch to Home show nothing but black in the app's
-  window, with control (a)'s pipeline proven in the same run.
+- [ ] **First frame** (lessons 4): raw frames, one continuous stream from under the curtain before a cold launch,
+  through the launch to Home and a few seconds more, then stopped (M5-17), show nothing but black in the app's window,
+  with control (a)'s pipeline proven in the same run.
   Proof: frame count and result on both APIs.
   Proof (M5 commit 8, partial): capture-control's `CurtainActivity` (black, no FLAG_SECURE) under each cold launch
   (`am start -W`, which must report COLD), recorded by `android-frames.py --expect black` from before the launch;
@@ -11421,7 +11443,7 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
 
 ### Verification
 - [ ] **Gate: screenshot and recording tests come back blank.** Group 6's harness green on API 31 and 36 for both APKs
-  (every screen id with its drawn-screen proof; screencap, `UiAutomation`, segmented raw-frame recording, `SECURE` on
+  (every screen id with its drawn-screen proof; screencap, `UiAutomation`, continuous raw-frame recording, `SECURE` on
   every window; control (a) on both APIs and control (c) on 36; the first frame), and the owner's P1 on a phone.
   Proof: the run ID at the final head; P1's report.
 - [ ] **Gate: the merged manifest has no INTERNET permission.** `--apk` on both APKs equals the expected summaries

@@ -24,23 +24,27 @@
 #      AIRPLANE_MODE_ON, disable_secure_windows, whether logcat -b crash and dumpsys dropbox can be
 #      read, what dumpsys content_capture shows, and screenrecord's raw-frame facts
 #      (android-frames.py probe).
-#   2. For each app APK (shipping, then test registry): CaptureTest, through android-instrument.sh
+#   2. Once the APKs are installed, the shell's own screencap (adb exec-out) with capture-control's
+#      first screen in front, then with the shipping app's: its exit, byte count and stderr only.
+#   3. ControlTest (positive control (a) in screencap, takeScreenshot, dumpsys and recents), once,
+#      first; then capture-control's data is cleared (pm clear), which also takes its tasks out of
+#      recents, so that its thumbnail is not beside the app's in CaptureTest's recents view.
+#   4. For each app APK (shipping, then test registry): CaptureTest, through android-instrument.sh
 #      (every screen drawn and then black in screencap and takeScreenshot, SECURE on every window,
 #      the recents thumbnail, disable_secure_windows, the empty saved-state Bundle, data-sensitive
 #      nodes). Its report gives the app window's region, which the frame checker reads.
-#   3. ControlTest (positive control (a) in screencap, takeScreenshot, dumpsys and recents), once.
-#   4. Control (a) in raw frames: capture-control's black curtain, a recording, the control's first
+#      A test class that fails is reported at once and fails the leg at its end: every class runs,
+#      so one run gives both the control's result and the app's.
+#   5. Control (a) in raw frames: capture-control's black curtain, a recording, the control's first
 #      screen: some frame must show its known pixels (android-frames.py --expect visible).
-#   5. The first frame, for each app APK: the curtain, the app force-stopped, a recording in two
-#      back-to-back segments of --time-limit 170 from before its cold launch (am start -W, which must
-#      report COLD) to its first screen and on: every frame black over the app's window
-#      (android-frames.py --expect black). Segment 1 must still be recording once the app's first
-#      screen is up, and the last segment until it is stopped: adb exec-out carries no exit status
-#      of screenrecord's, so one that ended early is caught by the frames log ("segment N ended").
-#      The shipping app's first segment runs to its time limit and must have lasted at least the
-#      limit less 2 s (--min-first-segment), so screenrecord's own end is proven on each image (API
-#      31's 180 s cap, no --time-limit 0); the test registry's is stopped once the first screen is
-#      up. Each second segment is stopped after its first frame.
+#   6. The first frame, for each app APK: the curtain, the app force-stopped, a recording from under
+#      the curtain through its cold launch (am start -W, which must report COLD) to its first screen
+#      and 3 s more: every frame black over the app's window (android-frames.py --expect black).
+# Every recording is one continuous raw-frame stream with no time limit (lead decision M5-17: in
+# raw-frames mode screenrecord ignores --time-limit and records until SIGINT): the checker starts
+# it, and when the scenario is done this script sends the checker SIGTERM, which stops screenrecord
+# with SIGINT on the device and must see the stream end within 5 s. A recording that ends before
+# that, or reaches the checker's cap (--duration, 120 s), fails.
 # Prints "pass: api=API ..." for each control and check that passed; exit 0 all passed, 1 anything
 # failed, 2 bad usage. The emulator is shut down on every exit.
 set -u
@@ -62,7 +66,7 @@ serial=emulator-5554
 image="system-images;android-$api;default;x86_64"
 avd=kc$api
 size=360x640
-limit=170
+cap=120
 control=com.keepcrypt.entropy.capturecontrol
 curtain=$control/$control.CurtainActivity
 
@@ -196,10 +200,16 @@ sleep 10
 wake=$(value dumpsys power | grep -o 'mWakefulness=[A-Za-z]*' | head -n 1)
 shown=$(value dumpsys display | grep -o 'mScreenState=[A-Z_]*' | head -n 1)
 probe "display: $wake; $shown"
-dev exec-out screencap -p > "$work/screencap-probe.png" 2> "$work/screencap-probe.err"
-rc=$?
-probe "adb exec-out screencap -p: exit $rc, $(wc -c < "$work/screencap-probe.png" | tr -d ' ') bytes, stderr: $(tr -d '\r' < "$work/screencap-probe.err" | tr '\n' ' ')"
-rm -f "$work/screencap-probe.png"
+# shell_screencap WHAT: the shell's own screencap while WHAT is on screen, as a probe line of its
+# exit, its byte count and its stderr. The PNG goes straight into wc and is never written anywhere.
+shell_screencap() {
+  bytes=$({
+    dev exec-out screencap -p 2> "$work/screencap.err"
+    echo $? > "$work/screencap.rc"
+  } | wc -c | tr -d ' ')
+  probe "adb exec-out screencap -p ($1): exit $(cat "$work/screencap.rc"), $bytes bytes, stderr: $(tr -d '\r' < "$work/screencap.err" | tr '\n' ' ')"
+}
+shell_screencap "the display just woken, no app started"
 case $wake in
   mWakefulness=Awake) ;;
   *) fail "the display is not awake ($wake; $shown)" ;;
@@ -231,6 +241,33 @@ for f in app-shipping-release app-withTestRegistry-release capture-control-relea
 done
 dev shell pm list instrumentation
 
+# start_activity COMPONENT [am start option...]: am start -W, which must report Status: ok; its
+# output is kept in $work/start.txt.
+start_activity() {
+  c=$1
+  shift
+  dev shell am start -W "$@" -n "$c" > "$work/start.txt" 2>&1
+  tr -d '\r' < "$work/start.txt"
+  grep -q -e '^Status: ok' "$work/start.txt" || fail "am start $c did not report Status: ok"
+}
+
+# 2. The shell's own screencap with each app in front. Run 39290401362: with the launcher in front
+# it held 319,321 bytes while the instrumentation's screencap held none.
+start_activity "$control/$control.ControlActivity"
+sleep 2
+shell_screencap "capture-control's first screen"
+start_activity com.keepcrypt.entropy/com.keepcrypt.entropy.MainActivity
+sleep 2
+shell_screencap "the shipping app's first screen"
+
+# fail_later MESSAGE: a failure reported now that fails the leg at its end, so the checks after it
+# still run.
+failed=
+fail_later() {
+  echo "FAIL: emulator: api=$api: $1 (the leg goes on, and fails at its end)" >&2
+  failed="$failed; $1"
+}
+
 # instrument TARGET CLASS...: android-instrument.sh on TARGET's test APK, its output kept in
 # $work/instrument.log for the kc: lines.
 instrument() {
@@ -239,10 +276,19 @@ instrument() {
   sh "$here/android-instrument.sh" "$adb" "$serial" "$api" "$target.test" "$target" "$@" > "$work/instrument.log" 2>&1
   rc=$?
   cat "$work/instrument.log"
-  [ "$rc" -eq 0 ] || fail "instrumented tests failed on $target"
+  [ "$rc" -eq 0 ] || fail_later "instrumented tests failed on $target ($*)"
 }
 
-# 2. CaptureTest on each app; each reports its window's region in the display's pixels.
+# 3. Control (a) in screencap, takeScreenshot, dumpsys and recents, first; then capture-control's
+# tasks leave recents with its (empty) data.
+instrument com.keepcrypt.entropy com.keepcrypt.entropy.ControlTest
+out=$(value pm clear "$control")
+[ "$out" = Success ] || fail "pm clear $control: $out"
+left=$(dev shell dumpsys activity recents 2>&1 | grep -c -e "$control")
+probe "recents after pm clear $control: $left lines name it"
+[ "$left" -eq 0 ] || fail_later "capture-control is still in recents after pm clear"
+
+# 4. CaptureTest on each app; each reports its window's region in the display's pixels.
 instrument com.keepcrypt.entropy com.keepcrypt.entropy.CaptureTest
 region_shipping=$(sed -n 's/^kc: region=//p' "$work/instrument.log" | tail -n 1)
 display_shipping=$(sed -n 's/^kc: display=//p' "$work/instrument.log" | tail -n 1)
@@ -251,9 +297,6 @@ region_registry=$(sed -n 's/^kc: region=//p' "$work/instrument.log" | tail -n 1)
 display_registry=$(sed -n 's/^kc: display=//p' "$work/instrument.log" | tail -n 1)
 [ -n "$region_shipping" ] && [ -n "$display_shipping" ] && [ -n "$region_registry" ] && [ -n "$display_registry" ] ||
   fail "CaptureTest reported no window region"
-
-# 3. Control (a) in screencap, takeScreenshot, dumpsys and recents.
-instrument com.keepcrypt.entropy com.keepcrypt.entropy.ControlTest
 
 # wait_for FILE TEXT SECONDS PID: until FILE holds TEXT; 1 when PID exits first or time runs out.
 wait_for() {
@@ -266,88 +309,66 @@ wait_for() {
   done
 }
 
-# start_activity COMPONENT [am start option...]: am start -W, which must report Status: ok; its
-# output is kept in $work/start.txt.
-start_activity() {
-  c=$1
-  shift
-  dev shell am start -W "$@" -n "$c" > "$work/start.txt" 2>&1
-  tr -d '\r' < "$work/start.txt"
-  grep -q -e '^Status: ok' "$work/start.txt" || fail "am start $c did not report Status: ok"
-}
-
 # curtain: capture-control's black curtain alone in its task, under whatever is launched next.
 curtain() {
   start_activity "$curtain" --activity-clear-task
   sleep 2
 }
 
-# stop_recording: screenrecord stops at once (SIGINT); the checker then ends that segment.
-stop_recording() { dev shell pkill -INT screenrecord > /dev/null 2>&1; }
+# start_recording NAME OPTION...: android-frames.py record in the background, one raw-frame stream
+# with no time limit and a cap of $cap s, its output in $work/frames-NAME.log; returns once its
+# first frame has come (the checker itself fails a first frame later than --max-gap, 5 s).
+start_recording() {
+  rname=$1
+  frames=$work/frames-$1.log
+  shift
+  python3 -I "$here/android-frames.py" record "$adb" "$serial" --size "$size" --format rgb888 --duration "$cap" \
+    "$@" > "$frames" 2>&1 &
+  fpid=$!
+  wait_for "$frames" 'first frame after' 60 "$fpid" || { cat "$frames"; fail "$rname: no first frame"; }
+}
 
-# recording FILE N: segment N of the frames log FILE has not ended (the checker prints "segment N
-# ended" when its stream does); 1 once it has.
-recording() { ! grep -q -e "segment $2 ended" "$1"; }
+# stop_recording NAME: the scenario is done. SIGTERM to the checker, which stops screenrecord with
+# SIGINT on the device, waits for the stream to end and judges it; 0 when it passed. A checker that
+# has already ended (its stream ended by itself, or it reached its cap) fails the leg here.
+stop_recording() {
+  kill -TERM "$fpid" 2> /dev/null || { cat "$frames"; fail "$1: the recording ended before the scenario was done"; }
+  wait "$fpid"
+  rc=$?
+  cat "$frames"
+  return "$rc"
+}
 
-# 4. Control (a) in raw frames, the same pipeline as the first-frame recordings below.
+# 5. Control (a) in raw frames, the same pipeline as the first-frame recordings below.
 curtain
-frames=$work/frames-control.log
-python3 -I "$here/android-frames.py" record "$adb" "$serial" --size "$size" --format rgb888 --time-limit "$limit" \
-  --segments 1 --expect visible > "$frames" 2>&1 &
-fpid=$!
-wait_for "$frames" 'segment 1 first frame' 60 "$fpid" || { cat "$frames"; fail "control: no first frame"; }
+start_recording control --expect visible
 start_activity "$control/$control.ControlActivity"
 sleep 3
-stop_recording
-wait "$fpid"
-rc=$?
-cat "$frames"
-[ "$rc" -eq 0 ] || fail "control (a): the raw frames do not show the capture-control's screen"
+stop_recording control || fail "control (a): the raw frames do not show the capture-control's screen"
 echo "pass: api=$api control (a) raw frames: $(sed -n 's/^android-frames: PASS visible: //p' "$frames")"
 
-# first_frame NAME PACKAGE REGION DISPLAY NATURAL: step 5 for one app; NATURAL=yes lets the first
-# segment run to its time limit, which it must then have lasted (less 2 s).
+# first_frame NAME PACKAGE REGION DISPLAY: step 6 for one app.
 first_frame() {
   name=$1
   pkg=$2
   curtain
   dev shell am force-stop "$pkg" || fail "am force-stop $pkg failed"
-  frames=$work/frames-$name.log
-  min_first=0
-  [ "$5" = yes ] && min_first=$((limit - 2))
-  python3 -I "$here/android-frames.py" record "$adb" "$serial" --size "$size" --format rgb888 \
-    --time-limit "$limit" --segments 2 --expect black --display "$4" --region "$3" \
-    --min-first-segment "$min_first" > "$frames" 2>&1 &
-  fpid=$!
-  wait_for "$frames" 'segment 1 first frame' 60 "$fpid" || { cat "$frames"; fail "$name: no first frame"; }
+  start_recording "$name" --expect black --display "$4" --region "$3"
   start_activity "$pkg/com.keepcrypt.entropy.MainActivity"
   grep -q -e '^LaunchState: COLD' "$work/start.txt" || fail "$name: am start did not report a cold launch"
   sleep 3
   dev shell dumpsys window > "$work/focus.txt" 2>&1
   grep -q -e "mCurrentFocus=.* $pkg/com[.]keepcrypt[.]entropy[.]MainActivity}" "$work/focus.txt" ||
     fail "$name: the app's activity is not in focus after its launch"
-  recording "$frames" 1 || { cat "$frames"; fail "$name: segment 1 ended before the app's first screen was up"; }
-  if [ "$5" = yes ]; then
-    say "$name: the first segment runs to its $limit s time limit"
-    wait_for "$frames" 'segment 2 first frame' $((limit + 60)) "$fpid" || { cat "$frames"; fail "$name: no second segment"; }
-  else
-    stop_recording
-    wait_for "$frames" 'segment 2 first frame' 60 "$fpid" || { cat "$frames"; fail "$name: no second segment"; }
-  fi
-  sleep 2
-  recording "$frames" 2 || { cat "$frames"; fail "$name: segment 2 ended before it was stopped"; }
-  stop_recording
-  wait "$fpid"
-  rc=$?
-  cat "$frames"
-  [ "$rc" -eq 0 ] || fail "$name: a raw frame shows the app's window, or a segment failed its checks"
-  echo "pass: api=$api first frame and segments ($name): $(sed -n 's/^android-frames: PASS black: //p' "$frames")"
+  stop_recording "$name" || fail "$name: a raw frame shows the app's window, or the stream failed its checks"
+  echo "pass: api=$api first frame ($name): $(sed -n 's/^android-frames: PASS black: //p' "$frames")"
   dev shell am force-stop "$pkg" || fail "am force-stop $pkg failed"
 }
 
-# 5. The first frame and the segments.
-first_frame shipping com.keepcrypt.entropy "$region_shipping" "$display_shipping" yes
-first_frame registry com.keepcrypt.entropy.testregistry "$region_registry" "$display_registry" no
+# 6. The first frame.
+first_frame shipping com.keepcrypt.entropy "$region_shipping" "$display_shipping"
+first_frame registry com.keepcrypt.entropy.testregistry "$region_registry" "$display_registry"
 probe "starting window: black (the raw frames from before each cold launch to the first screen show nothing but black in the app's window)"
 
+[ -z "$failed" ] || fail "${failed#; } (each reported above)"
 say "every check passed"

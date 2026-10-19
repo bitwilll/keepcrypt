@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
-"""The raw-frame checker of the Android workflow's capture harness (tasks/todo.md, M5 group 6; Q55).
+"""The raw-frame checker of the Android workflow's capture harness (tasks/todo.md, M5 group 6; Q55; M5-17).
 
 Python 3.9+, standard library only. It reads screenrecord's raw frames from an emulator through adb and
 keeps none of them: each frame lives in memory only while it is checked, nothing is written to any file,
 and only counts and pass or fail are printed. scripts/android-emulator.sh runs it.
 
-  android-frames.py record ADB SERIAL --size WxH --format F --time-limit T --segments N --expect E
-                    [--display WxH --region L,T,R,B] [--max-gap S] [--min-known K] [--min-first-segment S]
-      records N back-to-back segments, each `ADB -s SERIAL exec-out screenrecord --output-format=raw-frames
-      --size WxH --time-limit T -` (T at most 180: screenrecord stops there on API 31, which also refuses
-      --time-limit 0, so a long recording is a chain of segments). A segment ends at its time limit or when
-      the caller stops screenrecord (pkill -INT); the next one starts at once. adb's exec service puts the
-      remote stderr on the same stream, so the device's shell sends screenrecord's stderr to /dev/null, and
-      it carries no remote exit status: the recorder exit printed and checked is adb's own (adb that
-      cannot reach the device), never screenrecord's. A screenrecord that ends early is caught by the segment's length
-      instead: --min-first-segment S fails a first segment that lasted less than S seconds (the caller
-      lets it run to its time limit), and the caller checks that a segment it relies on has not ended.
+  android-frames.py record ADB SERIAL --size WxH --format F --duration S --expect E
+                    [--display WxH --region L,T,R,B] [--max-gap S] [--min-known K]
+      records one continuous stream, `ADB -s SERIAL exec-out screenrecord --output-format=raw-frames
+      --size WxH -`, with no --time-limit: in raw-frames mode screenrecord never reads its time limit
+      and records until SIGINT or SIGTERM sets its stop flag (frameworks/av cmds/screenrecord/
+      screenrecord.cpp, android12-release lines 845-860 and 138). The caller says the scenario is done
+      by sending this process SIGTERM; it then stops the device's recorder, `ADB -s SERIAL shell pkill
+      -INT -x screenrecord`, and the stream must end, and adb exit, within 5 s of that. At --duration S
+      seconds it stops the recorder the same way and fails (the scenario outlasted its cap). A stream
+      that ends before it is stopped, a first frame later than --max-gap seconds after the start (5
+      by default; none by then stops the recorder), and an adb that exits non-zero fail too. adb's exec
+      service puts the remote stderr on the same stream, so the device's shell sends screenrecord's
+      stderr to /dev/null, and it carries no remote exit status: the recorder exit printed and checked
+      is adb's own (adb that cannot reach the device), never screenrecord's.
       Raw frames have no header: each is W*H pixels of F (rgb888, what screenrecord's FrameOutput writes,
       3 bytes a pixel; rgba8888 and rgb565 too), and a stream that is not a whole number of frames fails.
       --expect black: every pixel of every frame inside the app's window is black (no channel above 16).
@@ -26,28 +29,33 @@ and only counts and pass or fail are printed. scripts/android-emulator.sh runs i
         have the known colour, the warning line of the first screen (Color(0xFFFFD54F), within 40, 40
         and 48 of it), so the same pipeline is shown to see a screen that is not protected. Their mean
         row tells the frames' orientation.
-      Every segment needs a frame, and the gap from one segment's end to the next one's first frame must
-      be at most --max-gap seconds (5 by default): a longer gap is time no segment recorded. Prints
-      "android-frames: segment K first frame" when each segment's first frame arrives (the caller waits
-      for it), a line of counts per segment and a PASS or FAIL line.
+      Prints "android-frames: first frame after T s" when the first frame arrives (the caller waits for
+      it), then, once the stream has ended, why and when it was stopped, a line of counts and a PASS or
+      FAIL line.
   android-frames.py probe ADB SERIAL API WxH...
       the platform probe's screenrecord facts (tasks/todo.md, M5 group 0), one "probe: api=API ..." line
-      each: for each size, whether screenrecord --output-format=raw-frames accepts it (exit status and
-      stderr's first line, through adb's shell protocol); whether it accepts --time-limit 180, 181 and 0
-      (still running after 4 s: accepted, then stopped); and, at the first size, the bytes a 2-second
-      raw-frame stream holds and which pixel formats divide them into whole frames. It judges nothing.
+      each: for each size, whether screenrecord --output-format=raw-frames accepts it (still recording
+      after 4 s: accepted; else its exit status and stderr's first line, through adb's shell protocol)
+      and whether the SIGINT then ends it; and, at the first size, a raw-frame stream stopped by SIGINT
+      after 2 s: the seconds to its first W*H bytes, its bytes in all, for each pixel format the bytes a
+      frame, the seconds to the first whole frame and whether the bytes are whole frames, and the
+      seconds from the SIGINT to the stream's end. It judges nothing.
   android-frames.py --selftest
       the frame logic on frames built in memory (each format, a pixel lit in each channel alone inside
       the region and lit pixels outside it, the known colour, the region's scaling and its rounding) and
-      the segment chain on stand-in recorders (python -c): a partial frame, a segment with no frame, a
-      gap, a failing recorder and a first segment shorter than --min-first-segment each fail; --time-limit
-      outside 1 to 180 and --expect black without --display or --region are refused; and --expect
-      visible's default --min-known refuses 9 known pixels and takes 10.
+      the stream on stand-in recorders (python -c) that, like screenrecord, end only on SIGINT: a lit
+      frame, a partial frame, no frame, a late first frame, a recorder that exits non-zero, one that
+      ignores the stop, one that ends before it is stopped and a scenario that outlasts --duration each
+      fail; --duration that is not above 0 and --expect black without --display or --region are
+      refused; and --expect visible's default --min-known refuses 9 known pixels and takes 10.
 
 Exit codes: 0 pass, 1 fail, 2 usage or a tool that cannot run.
 """
 
 import argparse
+import os
+import select
+import signal
 import subprocess
 import sys
 import time
@@ -57,7 +65,8 @@ BLACK_MAX = 16
 KNOWN = (0xFF, 0xD5, 0x4F)
 KNOWN_TOLERANCE = (40, 40, 48)
 CHUNK = 1 << 20
-TIME_LIMIT_MAX = 180
+STOP_GRACE = 5.0
+POLL = 0.1
 
 
 class Usage(Exception):
@@ -138,58 +147,101 @@ def say(line):
     print("android-frames: " + line, flush=True)
 
 
-def run_segment(index, command, frame_size, on_frame):
-    """Stream one recorder's stdout frame by frame into on_frame; nothing of a frame outlives the call.
-    Returns (frames, time of the first frame or None, time of the end, exit status, bytes left over)."""
+def device_stop(adb, serial):
+    """The stop of a recorder on the device: SIGINT to screenrecord (pkill -x, its exact name)."""
+    def stop(proc):
+        try:
+            subprocess.run([adb, "-s", serial, "shell", "pkill -INT -x screenrecord"], stdin=subprocess.DEVNULL,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=STOP_GRACE)
+        except OSError as e:
+            raise Usage("cannot run %s: %s" % (adb, e.strerror))
+        except subprocess.TimeoutExpired:
+            say("the stop (adb shell pkill) did not return within %g s" % STOP_GRACE)
+    return stop
+
+
+def stream(command, stop, frame_size, on_frame, should_stop, duration, max_gap, grace):
+    """Streams one recorder's stdout frame by frame into on_frame; nothing of a frame outlives the call.
+    The recorder is stopped (stop(proc), once) when should_stop() turns true, at duration seconds, or
+    when no frame has come max_gap seconds after the start; it then has grace seconds to end its stream
+    and exit, or it is killed. Returns a dict: frames; first, stopped and ended, seconds after the start
+    (None: never); why, the reason for the stop; status, the recorder's exit status; left, the bytes of
+    a partial frame at the end; in_time, whether it ended and exited within grace of the stop."""
     try:
         proc = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE)
     except OSError as e:
         raise Usage("cannot run %s: %s" % (command[0], e.strerror))
+    start = time.monotonic()
+    fd = proc.stdout.fileno()
     buf = bytearray()
-    frames = 0
-    first = None
+    out = {"frames": 0, "first": None, "stopped": None, "ended": None, "why": None}
     while True:
-        chunk = proc.stdout.read1(CHUNK)
+        now = time.monotonic() - start
+        if out["stopped"] is None:
+            if should_stop():
+                out["why"] = "the caller's stop"
+            elif now >= duration:
+                out["why"] = "the --duration cap of %g s" % duration
+            elif out["first"] is None and now > max_gap:
+                out["why"] = "no frame within --max-gap %g s" % max_gap
+            if out["why"]:
+                out["stopped"] = now
+                stop(proc)
+        elif now > out["stopped"] + grace:
+            break
+        if not select.select([fd], [], [], POLL)[0]:
+            continue
+        chunk = os.read(fd, CHUNK)
         if not chunk:
+            out["ended"] = time.monotonic() - start
             break
         buf += chunk
         while len(buf) >= frame_size:
             frame = bytes(buf[:frame_size])
             del buf[:frame_size]
-            frames += 1
-            if first is None:
-                first = time.monotonic()
-                say("segment %d first frame" % index)
-            on_frame(frame)
+            out["frames"] += 1
+            if out["first"] is None:
+                out["first"] = time.monotonic() - start
+            on_frame(frame, out["frames"], out["first"])
             frame = None
-    end = time.monotonic()
     proc.stdout.close()
-    status = proc.wait()
-    left = len(buf)
+    out["left"] = len(buf)
     buf = None
-    return frames, first, end, status, left
+    deadline = (out["stopped"] if out["stopped"] is not None else out["ended"]) + grace
+    try:
+        out["status"] = proc.wait(timeout=max(0.0, deadline - (time.monotonic() - start)))
+        out["in_time"] = out["ended"] is not None
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        out["status"] = proc.wait()
+        out["in_time"] = False
+    return out
 
 
-def record(args, commands=None):
-    """The record subcommand; commands (the selftest's stand-in recorders) replaces the adb command lines."""
+def record(args, recorder=None, should_stop=None, grace=STOP_GRACE):
+    """The record subcommand. recorder, a (command, stop) pair, and should_stop replace the adb command
+    line, the device's stop and the caller's SIGTERM (the selftest's stand-ins)."""
     width, height = parse_size(args.size)
     bpp = FORMATS[args.format]
     frame_size = width * height * bpp
-    if not 1 <= args.time_limit <= TIME_LIMIT_MAX:
-        raise Usage("--time-limit must be 1 to %d (never 0: API 31 refuses it)" % TIME_LIMIT_MAX)
-    if args.segments < 1:
-        raise Usage("--segments must be at least 1")
-    if args.min_first_segment < 0:
-        raise Usage("--min-first-segment must not be negative")
+    if not args.duration > 0:
+        raise Usage("--duration must be above 0")
     if args.expect == "black":
         if args.display is None or args.region is None:
             raise Usage("--expect black needs --display and --region")
         region = scale_region(parse_region(args.region), parse_size(args.display), (width, height))
-    remote = ("screenrecord --output-format=raw-frames --size %dx%d --time-limit %d - 2>/dev/null"
-              % (width, height, args.time_limit))
+    if recorder is None:
+        remote = "screenrecord --output-format=raw-frames --size %dx%d - 2>/dev/null" % (width, height)
+        recorder = ([args.adb, "-s", args.serial, "exec-out", remote], device_stop(args.adb, args.serial))
+    if should_stop is None:
+        signals = []
+        signal.signal(signal.SIGTERM, lambda number, frame: signals.append(number))
+        should_stop = lambda: bool(signals)
     state = {"lit_frames": 0, "best": 0, "best_rows": 0}
 
-    def on_frame(frame):
+    def on_frame(frame, index, first):
+        if index == 1:
+            say("first frame after %.1f s" % first)
         if args.expect == "black":
             if lit_pixels(frame, args.format, width, region):
                 state["lit_frames"] += 1
@@ -198,44 +250,43 @@ def record(args, commands=None):
             if count > state["best"]:
                 state["best"], state["best_rows"] = count, rows
 
+    say("recording (screenrecord --output-format=raw-frames --size %dx%d, no time limit) until the caller's "
+        "stop, at most %g s" % (width, height, args.duration))
+    out = stream(recorder[0], recorder[1], frame_size, on_frame, should_stop, args.duration, args.max_gap, grace)
     problems = []
-    total = 0
-    previous_end = None
-    for index in range(1, args.segments + 1):
-        command = commands[index - 1] if commands else [args.adb, "-s", args.serial, "exec-out", remote]
-        say("segment %d started (screenrecord --output-format=raw-frames --size %dx%d --time-limit %d)"
-            % (index, width, height, args.time_limit))
-        start = time.monotonic()
-        frames, first, end, status, left = run_segment(index, command, frame_size, on_frame)
-        total += frames
-        gap = "-"
-        if previous_end is not None and first is not None:
-            gap = "%.1f s" % (first - previous_end)
-            if first - previous_end > args.max_gap:
-                problems.append("a gap of %s before segment %d (at most %.1f s)" % (gap, index, args.max_gap))
-        say("segment %d ended after %.1f s: %d frames of %d bytes (%s %dx%d), gap before its first frame %s, "
-            "recorder exit %d, %d bytes left over" % (index, end - start, frames, frame_size, args.format, width,
-                                                       height, gap, status, left))
-        if frames == 0:
-            problems.append("no frame in segment %d" % index)
-        if left:
-            problems.append("segment %d ends in a partial frame (%d bytes)" % (index, left))
-        if status != 0:
-            problems.append("the recorder of segment %d exited %d" % (index, status))
-        if index == 1 and end - start < args.min_first_segment:
-            problems.append("segment 1 ended after %.1f s, before its %.1f s" % (end - start, args.min_first_segment))
-        previous_end = end
+    if out["stopped"] is None:
+        say("the stream ended by itself after %.1f s" % out["ended"])
+        problems.append("the stream ended after %.1f s, before it was stopped (raw frames end only on a stop)"
+                        % out["ended"])
+    else:
+        ended = ("the stream ended %.1f s later" % (out["ended"] - out["stopped"]) if out["ended"] is not None
+                 else "the stream had not ended %g s later (the recorder was killed)" % grace)
+        say("stopped (%s) after %.1f s: SIGINT to the recorder; %s" % (out["why"], out["stopped"], ended))
+        if out["why"].startswith("the --duration cap"):
+            problems.append("the scenario outlasted %s" % out["why"])
+    if not out["in_time"]:
+        problems.append("the recorder did not end and exit within %g s of the stop" % grace)
+    if out["first"] is None:
+        problems.append("no frame")
+    elif out["first"] > args.max_gap:
+        problems.append("the first frame came after %.1f s (at most %.1f s)" % (out["first"], args.max_gap))
+    if out["left"]:
+        problems.append("the stream ends in a partial frame (%d bytes)" % out["left"])
+    if out["status"] != 0:
+        problems.append("the recorder exited %d" % out["status"])
+    say("%d frames of %d bytes (%s %dx%d), recorder exit %d, %d bytes left over"
+        % (out["frames"], frame_size, args.format, width, height, out["status"], out["left"]))
+    total = out["frames"]
     if args.expect == "black":
         if state["lit_frames"]:
             problems.append("%d of %d frames show a lit pixel in the app's window" % (state["lit_frames"], total))
-        verdict = ("%d frames in %d segments, the app's window %d,%d,%d,%d of %dx%d"
-                   % ((total, args.segments) + region + (width, height)))
+        verdict = "%d frames, the app's window %d,%d,%d,%d of %dx%d" % ((total,) + region + (width, height))
     else:
         if state["best"] < args.min_known:
             problems.append("no frame shows %d pixels of the known colour (the most: %d)" % (args.min_known, state["best"]))
         mean = state["best_rows"] // state["best"] if state["best"] else -1
-        verdict = ("%d frames in %d segments; the most known-colour pixels in one frame %d (at least %d), their "
-                   "mean row %d of %d" % (total, args.segments, state["best"], args.min_known, mean, height))
+        verdict = ("%d frames; the most known-colour pixels in one frame %d (at least %d), their mean row %d of %d"
+                   % (total, state["best"], args.min_known, mean, height))
     if problems:
         say("FAIL %s: %s; %s" % (args.expect, "; ".join(problems), verdict))
         return 1
@@ -244,46 +295,63 @@ def record(args, commands=None):
     return 0
 
 
-def shell(adb, serial, command, timeout):
-    """Run command on the device through adb's shell protocol: (exit status, stderr's first line)."""
-    try:
-        done = subprocess.run([adb, "-s", serial, "shell", command], stdin=subprocess.DEVNULL,
-                              stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=timeout)
-    except OSError as e:
-        raise Usage("cannot run %s: %s" % (adb, e.strerror))
-    lines = done.stderr.decode("utf-8", "replace").strip().splitlines()
-    return done.returncode, lines[0] if lines else ""
-
-
 def probe(args):
     sizes = [parse_size(s) for s in args.sizes]
-    tag = "probe: api=%s screenrecord" % args.api
+    tag = "probe: api=%s screenrecord raw-frames" % args.api
+    stop = device_stop(args.adb, args.serial)
     for w, h in sizes:
-        status, err = shell(args.adb, args.serial,
-                            "screenrecord --output-format=raw-frames --size %dx%d --time-limit 1 - > /dev/null" % (w, h), 30)
-        print("%s raw-frames --size %dx%d --time-limit 1: exit %d%s" % (tag, w, h, status, ", stderr: " + err if err else ""),
-              flush=True)
-    w, h = sizes[0]
-    for limit in (180, 181, 0):
-        command = "screenrecord --output-format=raw-frames --size %dx%d --time-limit %d - > /dev/null" % (w, h, limit)
-        proc = subprocess.Popen([args.adb, "-s", args.serial, "shell", command], stdin=subprocess.DEVNULL,
-                                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        command = "screenrecord --output-format=raw-frames --size %dx%d - > /dev/null" % (w, h)
+        try:
+            proc = subprocess.Popen([args.adb, "-s", args.serial, "shell", command], stdin=subprocess.DEVNULL,
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        except OSError as e:
+            raise Usage("cannot run %s: %s" % (args.adb, e.strerror))
         try:
             err = proc.communicate(timeout=4)[1].decode("utf-8", "replace").strip().splitlines()
-            print("%s --time-limit %d: refused, exit %d%s" % (tag, limit, proc.returncode,
-                                                              ", stderr: " + err[0] if err else ""), flush=True)
+            print("%s --size %dx%d: refused, exit %d%s" % (tag, w, h, proc.returncode,
+                                                            ", stderr: " + err[0] if err else ""), flush=True)
+            continue
         except subprocess.TimeoutExpired:
-            shell(args.adb, args.serial, "pkill -INT screenrecord", 30)
-            proc.communicate(timeout=30)
-            print("%s --time-limit %d: accepted (still recording after 4 s, then stopped)" % (tag, limit), flush=True)
-    done = subprocess.run([args.adb, "-s", args.serial, "exec-out",
-                           "screenrecord --output-format=raw-frames --size %dx%d --time-limit 2 - 2>/dev/null" % (w, h)],
-                          stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, timeout=60)
-    n = len(done.stdout)
-    fits = ["%s (%d bytes a frame, %d frames)" % (f, w * h * b, n // (w * h * b))
-            for f, b in sorted(FORMATS.items()) if n and n % (w * h * b) == 0]
-    print("%s raw-frames --size %dx%d --time-limit 2: %d bytes; whole frames of %s" % (
-        tag, w, h, n, ", ".join(fits) if fits else "no format"), flush=True)
+            pass
+        stopped = time.monotonic()
+        stop(proc)
+        try:
+            proc.communicate(timeout=10)
+            ended = "SIGINT ended it %.1f s later, exit %d" % (time.monotonic() - stopped, proc.returncode)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.communicate()
+            ended = "still running 10 s after SIGINT (then killed)"
+        print("%s --size %dx%d: accepted (still recording after 4 s); %s" % (tag, w, h, ended), flush=True)
+    w, h = sizes[0]
+    # The stream in units of W*H bytes, which every format's frame is a whole number of: the times the
+    # units reached each format's frame, and nothing kept.
+    reached = {}
+    t0 = time.monotonic()
+
+    def on_unit(unit, count, first):
+        for f, b in FORMATS.items():
+            if count == b:
+                reached[f] = time.monotonic() - t0
+
+    remote = "screenrecord --output-format=raw-frames --size %dx%d - 2>/dev/null" % (w, h)
+    out = stream([args.adb, "-s", args.serial, "exec-out", remote], stop, w * h, on_unit,
+                 lambda: time.monotonic() - t0 >= 2, 60, 60, 10)
+    n = out["frames"] * w * h + out["left"]
+    if out["stopped"] is None:
+        ended = "the stream ended by itself after %.1f s, before the SIGINT" % out["ended"]
+    elif out["ended"] is None:
+        ended = "SIGINT after %.1f s; the stream had not ended 10 s later (killed)" % out["stopped"]
+    else:
+        ended = "SIGINT after %.1f s; the stream ended %.1f s later" % (out["stopped"], out["ended"] - out["stopped"])
+    print("%s --size %dx%d: the first %d bytes after %s, %d bytes in all; %s; adb exit %d" % (
+        tag, w, h, w * h, "%.1f s" % out["first"] if out["first"] is not None else "none", n, ended, out["status"]),
+        flush=True)
+    for f, b in sorted(FORMATS.items()):
+        size = w * h * b
+        print("%s --size %dx%d as %s: %d bytes a frame; %s; %s" % (
+            tag, w, h, f, size, "first whole frame after %.1f s" % reached[f] if f in reached else "no whole frame",
+            "%d whole frames" % (n // size) if n and n % size == 0 else "not a whole number of frames"), flush=True)
     return 0
 
 
@@ -305,11 +373,16 @@ def frame_of(fmt, width, height, pixels):
     return bytes(out)
 
 
-def stand_in(frames, tail=b"", sleep=0.0, status=0):
-    """A recorder that writes the given frames (after sleep seconds), then tail, then exits status."""
-    code = ("import sys, time\ntime.sleep(%r)\nsys.stdout.buffer.write(%r)\nsys.stdout.buffer.flush()\nsys.exit(%d)\n"
-            % (sleep, b"".join(frames) + tail, status))
-    return [sys.executable, "-I", "-c", code]
+def stand_in(frames, tail=b"", sleep=0.0, status=0, on_stop="exit"):
+    """A recorder that writes the given frames (after sleep seconds) and then tail, and records on, as
+    screenrecord does in raw-frames mode, until SIGINT, when it exits status. on_stop "ignore": it
+    ignores SIGINT (and gives up after 30 s); "none": it exits at once, before any stop."""
+    code = ("import signal, sys, time\nstopped = []\nsignal.signal(signal.SIGINT, %s)\ntime.sleep(%r)\n"
+            "sys.stdout.buffer.write(%r)\nsys.stdout.buffer.flush()\nend = time.monotonic() + 30\n"
+            "while %s and time.monotonic() < end:\n    time.sleep(0.02)\nsys.exit(%d)\n"
+            % ("signal.SIG_IGN" if on_stop == "ignore" else "lambda *a: stopped.append(1)", sleep,
+               b"".join(frames) + tail, "False" if on_stop == "none" else "not stopped", status))
+    return ([sys.executable, "-I", "-c", code], lambda proc: proc.send_signal(signal.SIGINT))
 
 
 def selftest():
@@ -349,13 +422,14 @@ def selftest():
         except Usage:
             check("refused: " + name, True)
 
-    def run(expect, commands, region_text="0,0,16,12", min_known=1, max_gap=5.0, min_first_segment=0.0,
-            time_limit=170, display="16x12"):
-        args = argparse.Namespace(adb="adb", serial="emulator-5554", size="%dx%d" % (w, h), format="rgb888",
-                                  time_limit=time_limit, segments=len(commands), expect=expect, display=display,
-                                  region=region_text, max_gap=max_gap, min_known=min_known,
-                                  min_first_segment=min_first_segment)
-        return record(args, commands)
+    def run(expect, recorder, region_text="0,0,16,12", min_known=1, max_gap=5.0, duration=30.0, display="16x12",
+            stop_after=0.6, parsed=None):
+        """record on a stand-in, the caller's stop coming stop_after seconds after the start."""
+        args = parsed or argparse.Namespace(adb="adb", serial="emulator-5554", size="%dx%d" % (w, h), format="rgb888",
+                                            duration=duration, expect=expect, display=display, region=region_text,
+                                            max_gap=max_gap, min_known=min_known)
+        t0 = time.monotonic()
+        return record(args, recorder, lambda: time.monotonic() - t0 >= stop_after, grace=1.0)
 
     def refused(name, call):
         try:
@@ -367,30 +441,34 @@ def selftest():
     black = frame_of("rgb888", w, h, {})
     lit = frame_of("rgb888", w, h, {(4, 3): (255, 255, 255)})
     seen = frame_of("rgb888", w, h, {(4, 3): yellow})
-    check("record: two black segments pass", run("black", [stand_in([black, black]), stand_in([black])]) == 0)
-    check("record: a lit frame in the second segment fails", run("black", [stand_in([black]), stand_in([black, lit])]) == 1)
-    check("record: a partial frame fails", run("black", [stand_in([black], tail=b"\0\0\0")]) == 1)
-    check("record: a segment with no frame fails", run("black", [stand_in([black]), stand_in([])]) == 1)
-    check("record: a gap before a segment's first frame fails",
-          run("black", [stand_in([black]), stand_in([black], sleep=1.5)], max_gap=1.0) == 1)
-    check("record: a recorder (adb) that exits non-zero fails", run("black", [stand_in([black], status=1)]) == 1)
-    check("record: a first segment as long as --min-first-segment passes",
-          run("black", [stand_in([black], sleep=0.3), stand_in([black])], min_first_segment=0.2) == 0)
-    check("record: a first segment shorter than --min-first-segment fails",
-          run("black", [stand_in([black]), stand_in([black])], min_first_segment=5.0) == 1)
-    check("record: visible passes on the known colour", run("visible", [stand_in([black, seen])]) == 0)
-    check("record: visible fails on black frames", run("visible", [stand_in([black, lit])]) == 1)
-    check("record: --time-limit 180 is accepted", run("black", [stand_in([black])], time_limit=180) == 0)
-    for limit in (0, 181):
-        refused("record --time-limit %d" % limit, lambda: run("black", [stand_in([black])], time_limit=limit))
-    refused("record --expect black without --display", lambda: run("black", [stand_in([black])], display=None))
-    refused("record --expect black without --region", lambda: run("black", [stand_in([black])], region_text=None))
+    check("record: black frames pass, the stream ending on the stop",
+          run("black", stand_in([black, black, black])) == 0)
+    check("record: a lit frame among black ones fails", run("black", stand_in([black, lit, black])) == 1)
+    check("record: a partial frame fails", run("black", stand_in([black], tail=b"\0\0\0")) == 1)
+    check("record: no frame fails", run("black", stand_in([]), max_gap=0.5, stop_after=3.0) == 1)
+    check("record: a first frame within --max-gap passes",
+          run("black", stand_in([black], sleep=0.3), max_gap=1.5, stop_after=1.0) == 0)
+    check("record: a first frame later than --max-gap fails",
+          run("black", stand_in([black], sleep=1.5), max_gap=1.0, stop_after=3.0) == 1)
+    check("record: a recorder (adb) that exits non-zero fails", run("black", stand_in([black], status=1)) == 1)
+    check("record: a recorder that ignores the stop fails", run("black", stand_in([black], on_stop="ignore")) == 1)
+    check("record: a stream that ends before the stop fails", run("black", stand_in([black], on_stop="none")) == 1)
+    check("record: a scenario that outlasts --duration fails",
+          run("black", stand_in([black]), duration=0.5, stop_after=5.0) == 1)
+    check("record: visible passes on the known colour", run("visible", stand_in([black, seen])) == 0)
+    check("record: visible fails on black frames", run("visible", stand_in([black, lit])) == 1)
+    for duration in (0, -1):
+        refused("record --duration %d" % duration, lambda: run("black", stand_in([black]), duration=duration))
+    refused("record --expect black without --display", lambda: run("black", stand_in([black]), display=None))
+    refused("record --expect black without --region", lambda: run("black", stand_in([black]), region_text=None))
     parsed = build_parser().parse_args(["record", "adb", "emulator-5554", "--size", "%dx%d" % (w, h), "--format",
-                                        "rgb888", "--time-limit", "170", "--segments", "1", "--expect", "visible"])
+                                        "rgb888", "--duration", "30", "--expect", "visible"])
     nine = frame_of("rgb888", w, h, {(x, 1): yellow for x in range(8)} | {(0, 2): yellow})
     ten = frame_of("rgb888", w, h, {(x, 1): yellow for x in range(8)} | {(0, 2): yellow, (1, 2): yellow})
-    check("record: visible's default --min-known (10) refuses 9 known pixels", record(parsed, [stand_in([nine])]) == 1)
-    check("record: visible's default --min-known (10) takes 10 known pixels", record(parsed, [stand_in([ten])]) == 0)
+    check("record: visible's default --min-known (10) refuses 9 known pixels",
+          run("visible", stand_in([nine]), parsed=parsed) == 1)
+    check("record: visible's default --min-known (10) takes 10 known pixels",
+          run("visible", stand_in([ten]), parsed=parsed) == 0)
     failed = results.count(False)
     print("android-frames selftest: %d passed, %d failed" % (results.count(True), failed), flush=True)
     return 1 if failed else 0
@@ -404,14 +482,12 @@ def build_parser():
     rec.add_argument("serial")
     rec.add_argument("--size", required=True)
     rec.add_argument("--format", required=True, choices=sorted(FORMATS))
-    rec.add_argument("--time-limit", type=int, required=True)
-    rec.add_argument("--segments", type=int, required=True)
+    rec.add_argument("--duration", type=float, required=True)
     rec.add_argument("--expect", required=True, choices=["black", "visible"])
     rec.add_argument("--display")
     rec.add_argument("--region")
     rec.add_argument("--max-gap", type=float, default=5.0)
     rec.add_argument("--min-known", type=int, default=10)
-    rec.add_argument("--min-first-segment", type=float, default=0.0)
     pro = sub.add_parser("probe")
     pro.add_argument("adb")
     pro.add_argument("serial")

@@ -400,8 +400,9 @@ jobs:
           retention-days: 14
           if-no-files-found: error
       # The frame checker's own cases (no emulator): each pixel format, the region's scaling, and the
-      # segment chain on stand-in recorders (a partial frame, a segment with no frame, a gap, a
-      # failing recorder and a short first segment each fail).
+      # stream on stand-in recorders that end only on SIGINT (a partial frame, no frame, a late first
+      # frame, a failing recorder, one that ignores the stop, one that ends before it and a scenario
+      # that outlasts --duration each fail).
       - name: Frame checker selftest (scripts/android-frames.py --selftest)
         run: python3 -I scripts/android-frames.py --selftest
       # The instrumentation runner's own cases (no emulator), on a stand-in adb: a passing class, and

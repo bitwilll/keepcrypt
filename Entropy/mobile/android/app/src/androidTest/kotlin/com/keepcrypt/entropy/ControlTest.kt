@@ -28,9 +28,10 @@ import org.junit.runner.RunWith
  * the same composable and no FLAG_SECURE, so the captures CaptureTest finds black must find its known
  * pixels here, through the same calls, and lit pixels over the very region (the app's window, from
  * Capture.region) whose lit-pixel count CaptureTest asserts is 0; a missing control fails the job.
- * The window parser must also tell its window apart (no SECURE). Run once per emulator, after
- * CaptureTest on both apps (the control's recents thumbnail would otherwise sit beside the app's
- * there). The raw-frame half of the control is scripts/android-emulator.sh's.
+ * The window parser must also tell its window apart (no SECURE). Run once per emulator, before
+ * CaptureTest (the positive control first); scripts/android-emulator.sh then clears capture-control's
+ * data (pm clear), which takes its tasks out of recents, so its thumbnail is not beside the app's in
+ * CaptureTest's recents view. The raw-frame half of the control is scripts/android-emulator.sh's.
  */
 @RunWith(AndroidJUnit4::class)
 class ControlTest {

@@ -23,11 +23,12 @@ import org.junit.Assert.fail
 
 /**
  * The capture harness's tools (tasks/todo.md, M5 group 6), shared by CaptureTest and ControlTest.
- * Every capture is the shell's (UiAutomation.executeShellCommand runs as the shell user, which lacks
- * CAPTURE_BLACKOUT_CONTENT, as adb does; no root) or UiAutomation.takeScreenshot(), read into memory
- * and never written to a file. Values go back to scripts/android-instrument.sh as instrumentation
- * status values (status code 2): kc_probe, the platform probe's facts; kc_pass, a check that passed;
- * kc_region and kc_display, the app window's region for the frame checker.
+ * Every capture is the shell's (UiAutomation.executeShellCommand and executeShellCommandRwe run as the
+ * shell user, which lacks CAPTURE_BLACKOUT_CONTENT, as adb does; no root) or
+ * UiAutomation.takeScreenshot(), read into memory and never written to a file. Values go back to
+ * scripts/android-instrument.sh as instrumentation status values (status code 2): kc_probe, the
+ * platform probe's facts; kc_pass, a check that passed; kc_region and kc_display, the app window's
+ * region for the frame checker.
  */
 internal object Capture {
     /** capture-control's package: the positive control, the same first screen with no FLAG_SECURE. */
@@ -70,27 +71,44 @@ internal object Capture {
 
     fun shellText(command: String): String = String(shell(command), Charsets.UTF_8).trim()
 
+    /**
+     * The shell's stdout and stderr for command, through executeShellCommandRwe (API 31, the minSdk),
+     * whose three descriptors are stdout, stdin and stderr: stdin is closed at once, then stdout is
+     * read to its end, then stderr.
+     */
+    fun shellWithErrors(command: String): Pair<ByteArray, ByteArray> {
+        val fds = instrumentation.uiAutomation.executeShellCommandRwe(command)
+        fds[1].close()
+        val out = ParcelFileDescriptor.AutoCloseInputStream(fds[0]).use { it.readBytes() }
+        val err = ParcelFileDescriptor.AutoCloseInputStream(fds[2]).use { it.readBytes() }
+        return Pair(out, err)
+    }
+
     private val PNG_SIGNATURE = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
 
     /**
      * The shell's screencap, as a PNG decoded in memory. Run 39289081979 showed the shell's own
-     * screencap working (`adb exec-out`, 313,287 bytes) while this one decoded to nothing, so a
-     * failure names what came back: its length and first bytes, and where the PNG starts, if at all.
+     * screencap working (`adb exec-out`, 313,287 bytes) while this one decoded to nothing, and run
+     * 39290401362 that it gave 0 bytes, so it runs through shellWithErrors and a failure names what
+     * came back: its length and first bytes, where the PNG starts, if at all, and screencap's stderr.
      */
     fun screencap(): Bitmap {
-        val out = shell("screencap -p")
+        val (out, err) = shellWithErrors("screencap -p")
         val start = (0..out.size - PNG_SIGNATURE.size).firstOrNull { i ->
             PNG_SIGNATURE.indices.all { out[i + it] == PNG_SIGNATURE[it] }
         }
         val head = out.take(16).joinToString("") { String.format("%02x", it.toInt() and 0xFF) }
+        val errors = String(err, Charsets.UTF_8).trim().lines().joinToString(" | ").take(500)
         if (start == null) {
-            probe("screencap -p: no PNG in ${out.size} bytes, first $head")
-            throw AssertionError("screencap -p gave no PNG (the kc_probe line before this has its length)")
+            probe("screencap -p: no PNG in ${out.size} bytes, first $head; stderr ${err.size} bytes: $errors")
+            throw AssertionError("screencap -p gave no PNG (the kc_probe line before this has its length and stderr)")
         }
         if (start != 0) probe("screencap -p: $start bytes before the PNG (first $head)")
         val image = BitmapFactory.decodeByteArray(out, start, out.size - start)
         if (image == null) {
-            probe("screencap -p: a PNG at $start of ${out.size} bytes that does not decode")
+            probe(
+                "screencap -p: a PNG at $start of ${out.size} bytes that does not decode; stderr ${err.size} bytes: $errors",
+            )
             throw AssertionError("screencap -p gave a PNG that does not decode (see the kc_probe line before this)")
         }
         return image

@@ -44,8 +44,9 @@ import org.junit.runner.RunWith
  * The capture harness on the app (tasks/todo.md, M5 group 6; gate item 1), run once per app APK by
  * scripts/android-instrument.sh. Every capture of the app comes after the drawn-screen proof, so a
  * black capture means the screen was protected, not that it was never drawn. The positive control
- * (a), the same captures finding capture-control's pixels, is ControlTest, which runs after this
- * class so that no task of the control is in the recents list here.
+ * (a), the same captures finding capture-control's pixels, is ControlTest, which runs before this
+ * class; scripts/android-emulator.sh then clears capture-control's data (pm clear), which takes its
+ * tasks out of the recents list, so that none of them is in the recents view here.
  */
 @RunWith(AndroidJUnit4::class)
 class CaptureTest {
