@@ -59,7 +59,8 @@ class CaptureTest {
     /**
      * For every screen id: drawn, then black over the app's window in the shell's screencap and in
      * UiAutomation.takeScreenshot(), FLAG_SECURE in the window's own flags, and SECURE on every window
-     * of the package in dumpsys window windows.
+     * of the package in dumpsys window windows, found by its owner line too (the owner line is shown
+     * to be read on this image: some window is found by it).
      */
     @Test
     fun everyScreenIsDrawnAndThenBlackInEveryCapture() {
@@ -84,6 +85,7 @@ class CaptureTest {
             assertEquals("lit pixels in takeScreenshot over the app's window", 0, shotLit)
             assertTrue("the window's flags lack FLAG_SECURE", flagged)
             assertTrue("dumpsys window windows lists no window of the app", found.isNotEmpty())
+            assertTrue("no window's owner line names the app: windows are found by title alone", found.any { it.byOwner })
             for (w in found) assertTrue("a window without SECURE: " + w.title, w.secure)
             pass(
                 "${screenId(screen)}: drawn, then screencap and takeScreenshot black over the app's window; " +

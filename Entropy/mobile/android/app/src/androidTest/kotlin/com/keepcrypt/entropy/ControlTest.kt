@@ -61,6 +61,7 @@ class ControlTest {
         assertTrue("screencap has no lit pixel over the app's window region", capLit > 0)
         assertTrue("takeScreenshot has no lit pixel over the app's window region", shotLit > 0)
         assertTrue("dumpsys window windows lists no window of the capture control", found.isNotEmpty())
+        assertTrue("no window's owner line names the capture control", found.any { it.byOwner })
         for (w in found) assertTrue("the capture control's window has SECURE: " + w.title, !w.secure)
         pass("control (a): screencap and takeScreenshot show the capture control's screen, lit over the app's window region; its windows lack SECURE")
         UiDevice.getInstance(Capture.instrumentation).pressHome()

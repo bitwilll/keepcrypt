@@ -170,38 +170,55 @@ internal object Capture {
         assertEquals(what + " height", display.height(), bitmap.height)
     }
 
-    /** A window of dumpsys window windows: its title, and whether its flags (fl=) hold SECURE. */
-    class WindowFacts(val title: String, val secure: Boolean)
+    /**
+     * A window of dumpsys window windows: its title, whether its flags (fl=) hold SECURE, and whether
+     * its owner line (package=) named the package.
+     */
+    class WindowFacts(val title: String, val secure: Boolean, val byOwner: Boolean)
 
     /**
-     * Every window of pkg that dumpsys window windows lists: a header "Window #N Window{ID uU TITLE}:"
-     * whose title is pkg, pkg/ACTIVITY or ends in " pkg" (the starting window's "Splash Screen pkg"),
-     * so another package that starts with pkg is not one.
+     * Every window of pkg that dumpsys window windows lists, each block starting at a header
+     * "Window #N Window{ID uU TITLE}:". A window is pkg's when its owner line ("mOwnerUid=U
+     * showForAllUsers=B package=PKG appop=OP") holds package=pkg as a whole word, which every window
+     * the app adds has whatever its title (a pop-up's or a panel's title names no package), or when
+     * its title is pkg, pkg/ACTIVITY or ends in " pkg" (the starting window's "Splash Screen pkg",
+     * which the system adds), so another package that starts with pkg is not one.
      */
     fun windows(pkg: String): List<WindowFacts> {
         val header = Regex("""^\s*Window #\d+ Window\{\S+ \S+ (.*)\}:\s*$""")
         val ours = Regex("""(^|\s)""" + Regex.escape(pkg) + """(/\S*)?$""")
+        val owner = "package=$pkg"
         val flags = Regex("""(^|\s)fl=(.*)$""")
         val found = ArrayList<WindowFacts>()
         var title: String? = null
+        var titled = false
+        var owned = false
         var secure = false
         var flagsSeen = false
+        fun close() {
+            val t = title
+            if (t != null && (titled || owned)) found.add(WindowFacts(t, secure, owned))
+        }
         for (line in shellText("dumpsys window windows").lines()) {
             val h = header.find(line)
             if (h != null) {
-                title?.let { found.add(WindowFacts(it, secure)) }
-                title = if (ours.containsMatchIn(h.groupValues[1])) h.groupValues[1] else null
+                close()
+                title = h.groupValues[1]
+                titled = ours.containsMatchIn(h.groupValues[1])
+                owned = false
                 secure = false
                 flagsSeen = false
                 continue
             }
+            if (title == null) continue
+            if (line.trim().split(Regex("""\s+""")).contains(owner)) owned = true
             val f = flags.find(line)
-            if (title != null && !flagsSeen && f != null) {
+            if (!flagsSeen && f != null) {
                 flagsSeen = true
                 secure = Regex("[A-Z_]+").findAll(f.groupValues[2]).any { it.value == "SECURE" }
             }
         }
-        title?.let { found.add(WindowFacts(it, secure)) }
+        close()
         return found
     }
 
