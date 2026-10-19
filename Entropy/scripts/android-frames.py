@@ -352,9 +352,11 @@ def probe(args):
         flush=True)
     for f, b in sorted(FORMATS.items()):
         size = w * h * b
+        whole = ("no bytes" if n == 0 else "%d whole frames" % (n // size) if n % size == 0
+                 else "not a whole number of frames")
         print("%s --size %dx%d as %s: %d bytes a frame; %s; %s" % (
             tag, w, h, f, size, "first whole frame after %.1f s" % reached[f] if f in reached else "no whole frame",
-            "%d whole frames" % (n // size) if n and n % size == 0 else "not a whole number of frames"), flush=True)
+            whole), flush=True)
     return 0
 
 
