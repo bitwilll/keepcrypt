@@ -1589,6 +1589,154 @@ override. Almost every M5 commit touches paths you own in CODEOWNERS, so the who
       layer, CI for the iPhone target, the doc edits) and brings the decisions that are the owner's (rule 11 approvals,
       doc edits, milestone scope) as Q65 onward before any of that code is written.
 
+### Needed before M5 Stage C (Q65-Q72, asked 2026-10-20)
+
+You chose Compose Multiplatform (Q64): one set of Kotlin screens for both phones, with all seed logic still in the shared Rust core. These questions cover only what CLAUDE.md keeps for you: new tools and libraries (rule 11), doc and rule edits, scope moved between milestones, CI runners, and places where the docs and the gates disagree. Each question starts with what I recommend, and "as recommended" is a full answer. The full plan is "Re-plan for Compose Multiplatform (Q64, 2026-10-20)" under M5. How builds get onto your iPhone, and which iOS versions are tested, will be asked when M6 starts; nothing in M5 depends on them.
+
+Two things you should know first. While researching, my agents ran two Xcode commands on your Mac:
+- `xcrun simctl list runtimes`, which looked read-only but made Xcode install its simulator components (CoreSimulator 1174.9.2);
+- `xcodebuild -version`, which only reads the version; I saw no change from it.
+
+Nothing else on your Mac or in the repo changed. From now on, no simulator, `xcodebuild` or device command, and no Xcode app, runs on your Mac without your yes.
+
+65. **When the iPhone app arrives: how M5 and M6 are split** (BP:298, :299; MA:17, :31; todo M6 items)
+    Recommended: (a).
+    - M5 builds the shared screens and ships the Android app, as planned.
+    - In M5 the iPhone version already compiles in CI and the shared tests run on an iPhone simulator, so problems show up early.
+    - Moving into M5: the iPhone compile, the iOS static library and its scan, the macOS workflow, and an early check that Compose exposes each word on a words page to VoiceOver as its own readable item.
+    - M6 adds the Swift capture layer, the iPhone file and camera parts, the iPhone release checks and your iPhone sessions (I0-I5). Nothing that M5's current plan delivers moves to M6.
+    - BP:298 and BP:299 change as written in the re-plan. The M5 gate gains "the shared tests pass on the iOS simulator"; the M6 gate is unchanged.
+    - **Biggest risk:** the docs promise braille-display support on iPhone (MA:31), and nobody has documented whether Compose on iPhone reaches a braille display. M5's VoiceOver check reduces that risk but cannot settle it. Your braille-display check on the iPhone is the first thing M6 does. If it fails, the iPhone words pages would have to be drawn natively in Swift (Q71 (b)), which undoes part of Q64. If the M5 check already fails, I stop and come back to you before writing more screens.
+
+    Otherwise:
+    - (b) M5 covers both phones and both gates. BP:299 is folded into BP:298, and CLAUDE.md:14, BP:300's Needs and every "M6" reference change. That makes one milestone, the largest yet. It would let the braille check happen inside the same milestone, but iPhone capture protection with Compose (Q71) stays unknown until late in it.
+    - (c) M5 declares only the Android target and M6 adds iPhone. M5 then needs no Mac toolchain. The costs: a second dependency regeneration in M6, the C bridge runs for the first time in M6, the braille risk is found even later, and a gate rule must stop Android-only code from creeping into the shared screens.
+
+66. **The iPhone bridge and the one panic catch** (Q53; BP:37, :49-50, :77; ffi/clippy.toml; canaries.sh:380-390, :485-494)
+    Recommended: (a).
+    - A new, very small Rust crate, `keepcrypt-capi`, gives iPhone a two-function C interface (`kc_max_out`, `kc_call`), built as `libkeepcrypt_capi.a`. Kotlin declares the interface, and each linked program names that one library explicitly. There is no XCFramework, and Swift never calls Rust.
+    - Q53's single panic catch moves out of `keepcrypt-jni` into a new crate, `keepcrypt-guard`, that has no unsafe code. Both boundaries call it, so there is still exactly one catch. `keepcrypt-jni` and `keepcrypt-capi` then keep core's lint list byte for byte.
+    - The workspace grows from four members to seven (Q53 planned five).
+    - No new crate from crates.io. The C header is hand-written (no cbindgen, which would be a new tool).
+
+    Otherwise:
+    - (b) One boundary crate (renamed, for example `keepcrypt-bridge`) holding both the JNI and C surfaces and the catch. That is five members, but each platform's library then carries the other's exports or needs per-target switches.
+    - (c) A second copy of the catch in `keepcrypt-capi`: two catch sites to review, against Q53's "one catch, one place, one crate".
+
+67. **New build tools and libraries for the shared screens** (rule 11; Q54; MA:126)
+    Recommended: approve the following at these exact versions, all past the 14-day wait.
+    - Gradle plugins:
+      - `org.jetbrains.kotlin.multiplatform` 2.4.20 (the same Kotlin as now);
+      - `com.android.kotlin.multiplatform.library` 9.3.3 (the same Android plugin release as now).
+    - Libraries: Compose Multiplatform 1.12.1 (`org.jetbrains.compose.runtime`, `.foundation`, `.ui`) and what they bring.
+      - On Android: thin wrappers over the Compose already approved, **plus one real upgrade**: the androidx savedstate libraries go from 1.3.2 to 1.4.0 (published 2025-11-05) inside the app. Any other version change the lockfile shows comes back to you by name before it is committed.
+      - On iPhone: iOS builds of the same androidx libraries, kotlinx coroutines, atomicfu 0.28.0, kotlinx-serialization-core 1.7.3, and **skiko 0.150.1**.
+      - **skiko puts a JetBrains-built copy of Skia (the graphics library Chrome and Android use) into the iPhone app. It is a prebuilt binary we cannot rebuild ourselves, about 58 MB per target before linking.** Its POM says Apache-2.0. Skia itself is BSD-3-Clause, which our licence list already allows. Skia also bundles other open-source code, which the review records library by library with its licence: read from JetBrains/skia at skiko 0.150.1's pin (m150-1f14f1166a; every `skia_use_system_*` off, so all of it is compiled in):
+        - on our licence list: Skia and its modules (BSD-3-Clause), expat (MIT), libwebp (BSD-3-Clause plus a patent grant),
+          piex (Apache-2.0), and the Unicode-3.0 part of ICU;
+        - **not on our licence list, so you approve each by name here:** HarfBuzz (MIT-Modern-Variant, an older MIT
+          wording), ICU's legacy licence (SPDX `ICU`, for code from ICU 1.8.1-57.1), libpng (libpng-2.0), libjpeg-turbo
+          (IJG and Zlib), zlib (Zlib) and Adobe's DNG SDK (Adobe's own "DNG SDK License Agreement", no SPDX id). All are
+          permissive; the DNG SDK one is a custom licence, and skiko links it for raw-photo decoding the app never uses;
+        - not confirmed without inspecting the binary: wuffs (Apache-2.0, built by default, possibly not linked for iOS) and
+          PartitionAlloc (probably test tools only). Commit 8q lists every archive member of the linked binary and any
+          library or licence not named here comes back to you.
+        These licences are added to the review script's list for the iPhone target only; the Rust allow list in deny.toml
+        does not change..
+    - Test and build helpers:
+      - `org.jetbrains.kotlin:kotlin-test` 2.4.20, tests only (the only test library that runs on iPhone), and `kotlin-test-junit` 2.4.20, which it uses on the JVM;
+      - `org.jetbrains.kotlin:kotlin-klib-commonizer-embeddable` 2.4.20, a build tool that lets the two iPhone targets share code.
+    - The Kotlin/Native compiler, `kotlin-native-prebuilt` 2.4.20: 290 MB for the Mac, and 220 MB for Linux if the probe shows the Linux job needs it. It goes through Gradle's checksum and signature checks like every other artifact, and it carries Kotlin's iPhone standard library.
+    - Not added:
+      - the `org.jetbrains.compose` Gradle plugin (it brings a hot-reload plugin we do not need);
+      - Material 3 (alpha);
+      - Compose 1.12.2 and Kotlin 2.4.21 (inside the 14-day wait; 1.12.2's iPhone fix is for text fields and dialogs, which the app does not have).
+    - Regenerating the lockfiles and checksum lists for these needs the one reviewed, temporary exception to the gate's bootstrap rule that M5-13 reserved. It runs on Linux and on macOS, the results are merged by a committed script and reviewed as one, and strict mode is back on in the next commit.
+
+    Otherwise: name anything to drop. Dropping skiko or Compose Multiplatform itself means the iPhone screens cannot be shared, which undoes Q64; the alternative is native SwiftUI screens in M6 (Q64's first option).
+
+68. **Three Kotlin/Native toolchain files from a third download site, one of them a compiler** (rule 11; Q54's "only Google's Maven and Maven Central")
+    Recommended: approve a script, `scripts/konan-deps.sh`, that fetches exactly three files from download.jetbrains.com.
+    - The files:
+      - `llvm-21-aarch64-macos-essentials-97.tar.gz` (151 MB). **This is the LLVM compiler back end. It turns Kotlin into machine code, so every instruction of the iPhone app's Kotlin code comes out of it. We have to trust it the way we trust the Rust compiler.**
+      - `lldb-4-macos.tar.gz` (64 MB), a debugger.
+      - `libffi-3.3-1-macos-arm64.tar.gz` (17 KB), a small helper library.
+    - The script refuses any file whose SHA-256 differs from the value pinned in it, or whose JetBrains signature does not verify against a pinned key. Without the script, the Kotlin compiler downloads these files itself and checks nothing.
+    - The signatures are checked against JetBrains' "Kotlin Release" key, whose fingerprint kotlinlang.org publishes
+      (`2FBA 29D0 8D2E 25EE 84C1 32C3 0729 A0AF F899 9A87`); the three archives and `kotlin-native-prebuilt` 2.4.20 are all
+      signed by its subkey `6F53 8074 CCEB F35F 28AF 9B06 6A09 75F8 B112 7B83` (valid to 2027-04-11). So these pins are
+      anchored to a published fingerprint, not only trusted on first use.
+    - One warning sign already: JetBrains' published `.sha256` for libffi lists the same digest as lldb's, so at least one
+      published hash file is wrong. The script pins hashes taken from signature-verified files, never from `.sha256` files.
+    - In CI, JetBrains' download site is blocked before the build starts, and the build begins from an empty toolchain folder. The compiler can therefore never fetch anything itself, and a CI test proves that a missing file makes the build fail.
+    - The exact names are read from the verified compiler at the first macOS run. Any addition (for example Linux files, if the Linux job needs them) comes back to you by name.
+
+    Otherwise:
+    - (b) Refuse the third site. The iPhone target then cannot be built, which means Q65 (c), and Q64 reopens.
+    - (c) Let the compiler download them unchecked. Not recommended: it is the kind of unverified fetch that rule 11 and the Coldcard lesson exist to stop.
+
+69. **CI for the iPhone target, and which Xcode** (Q55; runner choice. Kotlin 2.4.20 is tested only with Xcode 26.4; your Mac has 27.1.)
+    Recommended:
+    - A new non-required workflow, `entropy-ios.yml`, with one job on GitHub's macos-26 runner (free, since the repository is public).
+    - It is pinned to Xcode 26.4.1, which that image has, and fails if it is missing. Kotlin was tested with 26.4's first build (17E192); the image has only the 26.4.1 bug-fix build (17E202). I record that difference and never silence a warning about it.
+    - It uses JDK 17 from the image (the image's default is 21).
+    - It builds the iOS Rust library and scans it, runs the shared tests on the iPhone simulator, and checks that the library it scanned is byte for byte the one it linked. It scans the linked programs, with the same hardening as the Android job (pinned actions, read-only, no secrets).
+    - The two required iOS cross-compile checks keep their names and add the iOS library's build and scan.
+    - Builds on your Mac with Xcode 27.1 are best effort, and only matter from M6.
+
+    Otherwise:
+    - (b) Make the iPhone job required. Merges would then be blocked by any macOS runner trouble and by Apple's image changes.
+    - (c) Use Xcode 27 untested, with the warning silenced.
+
+70. **How rules 1, 5 and 9 read for library code inside the iPhone app** (CLAUDE.md:43-52 and rules 5, 9; BP:274; MA:127; Q59 (b))
+    On Android we scan only our own compiled classes, and library code our app never calls is allowed (Q59 (b)). The iPhone app is one binary that holds Kotlin's runtime, Compose, Skia, Swift and our Rust. Some of that library code touches things our rules ban:
+    - Skia's small internal random generator for graphics (`SkRandom`) and Kotlin's own `Random`;
+    - Compose's clipboard code (`UIPasteboard`), which our app never uses: it has no text fields and no selectable text;
+    - the basic file and print functions every runtime uses.
+
+    Recommended: approve this method now, and approve the exact rule wording after the first build shows the real symbols (commit 8q).
+    - Our Rust library is scanned exactly as strictly as today's builds.
+    - The linked iPhone programs are checked against a committed, reviewed list of every imported system function and framework, on every build.
+    - Our own Kotlin code is checked by a call scan: no direct call from our code into Kotlin's random generator, `Uuid.random`, the C random functions, the clipboard, storage or network. This is the iPhone version of Android's compiled-class scan.
+    - Hard failures anywhere in the binary:
+      - network functions and classes;
+      - OS random sources other than `CCRandomGenerateBytes`;
+      - high-level storage (`NSUserDefaults`, `NSFileManager`, Keychain, CoreData, iCloud);
+      - Compose's clipboard code, if our code can reach it.
+    - Allowed by name, only in library code our code never calls: Skia's `SkRandom`, Kotlin's `Random`, Compose's clipboard code, and the runtimes' basic file and print functions. Rule 8 itself is checked by behaviour (Q71), not by symbol.
+    - If the first build shows any banned import, I stop and bring you the exact symbols and where they come from. Then you approve the sentence added to rules 1, 5 and 9 (commit 8r).
+
+    Otherwise:
+    - (a) Write the rule sentence now, before any symbols are seen.
+    - (c) Treat any random, clipboard or file code in any library as a failure. No Compose iPhone build can pass that.
+
+71. **iPhone residual risks and the iOS-only rules** (MA:17, :34, :36, :86; rule 8; Q58; Q59 (a))
+    Recommended:
+    - Accept these for the M7 audit, as Q58 did for Android:
+      - Kotlin strings and Kotlin's iPhone memory cannot be wiped.
+      - Skia keeps a copy of up to 128 recently drawn texts in a cache Compose gives no switch for (Compose itself only clears it when a new font is registered; M6 tests whether we can use that).
+      - **Any unexpected Kotlin error on iPhone ends the app with a system crash report that includes the error's details.** This covers every unexpected error, not only native crashes. M6 wipes the session first; whether the report can be avoided is an M6 test.
+      - Screenshots cannot be blocked on iPhone (MA:84 already says so).
+    - To shrink the Skia copy on iPhone, Protected screens there draw secret text one letter per text element, so the cache holds single letters rather than words. This is iPhone-only, so your Q58 answer for Android is untouched. VoiceOver still receives each whole word, and only while it is on. Applying the same on Android would reopen Q58, so it is not proposed. MA:17 gains one sentence for the iPhone residuals.
+    - Rule 8 on iPhone: iOS itself writes files into every app's folder (a settings file, the app-switcher snapshot, the graphics shader cache). Our code writes none of them. Recommended reading: such system files are allowed only if they hold no secret. M6 proves it on the simulator by comparing the app's folder before and after a ceremony; any file holding seed material fails. The app-switcher snapshot must show the cover.
+    - The secure-text-field trick (MA:86) is tested first thing in M6, on the simulator and on your iPhone. It stays only if screenshots and recordings come out blank, touches work, the keyboard never opens and VoiceOver still reads the words. If it fails, MA:86's row is replaced by a sentence saying so. The gate never relied on it, and MA:86 says it is "never the only layer".
+    - iPhone can honour two Android rules only in another form, and MA:34 and MA:36 change to say so (in M6):
+      - the stop screen holds no secret and has no button, because Apple rejects apps that quit themselves; the next launch reruns the self-test;
+      - "wipe after 60 seconds in the background" becomes "wipe when iOS ends the background grace period or after 60 seconds, whichever comes first, checked on return", because iOS suspends a backgrounded app.
+    - No Protected content ever appears in a Compose dialog or popup. This is already true: the app has none, and the gate bans them.
+
+    Otherwise:
+    - (b) Draw the Protected screens natively in Swift on iPhone. There is no Skia copy, but those screens are no longer shared, which undoes much of Q64.
+    - (c) Name a residual you do not accept, and I re-plan around it.
+
+72. **The doc edits** (BP:35, :37, :49-50, :55-57, :75-77, :298, :299; MA:17, :21, :23, :24, :34, :36, :84-87, :89-110, :114, :116, :124, :127, :156)
+    Recommended: approve the list under "Doc edits" in the re-plan.
+    - The architecture, bridge and stack edits land now, alone in one docs-only commit (8l).
+    - The iPhone behaviour edits land in M6 after its first tests, with the wording in the list. If a test result fits neither the drafted wording nor its stated alternative, that edit comes back to you.
+    - design.md, pi-firmware.md, seal-watchonly-braille.md and CLAUDE.md rule 9 do not change. Rules 1, 5 and 9 change only through Q70's second step.
+
+    Otherwise: name any edit to change or hold. Held edits leave the docs saying "SwiftUI" and "Swift binding: chosen in M6" while the code says otherwise, and CLAUDE.md asks me to stop when docs and code disagree.
+
 ## M0: Repo bootstrap
 
 ### Decisions built into this plan (override any of them)
@@ -11790,6 +11938,566 @@ Each finding of the critique round and where it is resolved; none is rejected ou
   and sizes); AOSP ViewRootImpl.java:5509-5539, ContentCaptureContext.java (`FLAG_DISABLED_BY_FLAG_SECURE`)
 - [S32] HEAD requests on repo1.maven.org for `.sha256`, `.sha1`, `.asc` (kotlin-stdlib 2.4.20, junit 4.13.2, zxing core
   3.5.4) and dl.google.com (activity-compose 1.13.0)
+
+### Re-plan for Compose Multiplatform (Q64, 2026-10-20)
+
+Numbering note (2026-10-20): commits 8k and 8l went to emulator fixes (the app-window owner line) before this
+re-plan landed, so the re-plan's planned 8k, 8l, 8m ... become 8m, 8n, 8o ... when they are written.
+
+
+Written on 2026-10-20 at `m5-android` 057130d, as research only. No code was written and nothing outside this file was edited. Revision 2 settles every finding from the critique; the Critique log at the end says how. Stages A and B (commits 1-8j) stand. From Stage C on, this subsection replaces "Commit order on `m5-android`" (stages C-F) and amends the plan groups listed under "Plan text this replaces". Nothing below is written until the owner answers Q65-Q72 (CLAUDE.md Workflow 2 and 8). Where a choice is the lead's, it is a dated lead decision (M5-19 onward) that the owner can override. Q65-Q72 hold only what CLAUDE.md keeps for the owner. The install route and the tested iOS versions are M6 questions and are not asked now.
+
+Line numbers are `m5-android`'s at 057130d, after commit 2's doc edits. Main's BP:295/296 are BP:298/299 here, and main's BP:33-35, :47 and :72-74 are BP:35-37, :49-57 and :75-77 here. `todo.md:N` means line N on this branch.
+
+**What changes, in short**
+- **One set of screens.** The screens are written once in Kotlin (`commonMain`) and compiled twice: for Android, as now, and for iPhone through Kotlin/Native.
+  - On Android, Compose Multiplatform 1.12.1 wraps the Jetpack Compose 1.12.1 already pinned. The Android UI code does not change.
+  - The Android classpath still changes. About 15-25 wrapper modules are added, and the savedstate family rises from 1.3.2 to 1.4.0 [C3]. The exact delta comes from the lockfile and is named in Q67.
+- **Seed logic stays in core and `keepcrypt-ffi`.**
+  - Android reaches it through JNI (`libkeepcrypt.so`), as now.
+  - iPhone reaches it through a two-function C interface in a static library, `libkeepcrypt_capi.a`. Kotlin/Native declares that interface by cinterop.
+  - The Rust library is never packed into a Kotlin klib or framework. Each linked binary names its one Rust library explicitly. In M5 those binaries are the iOS test executables; in M6 it is the app.
+  - There is no XCFramework and no Swift binding. Swift never calls Rust.
+- **iPhone capture handling** (redaction while captured, discard on screenshot, app-switcher cover) lives in a small Swift host around the Compose view. The host tells the shared model what happened. This is M6.
+- **New for the owner to approve:**
+  - two Gradle plugins;
+  - the Compose Multiplatform libraries and their iOS builds (Skia among them);
+  - the Kotlin/Native compiler and the Kotlin klib commonizer;
+  - three Kotlin/Native toolchain archives from a third download host, one of which is the LLVM code generator;
+  - a macOS workflow.
+
+**Outside facts** (2026-10-20, from Maven metadata, `.module` files and POMs, `Last-Modified` from HEAD requests, release notes and docs; nothing downloaded; the cool-off cutoff is 2026-10-06)
+
+| Item | Fact | Source |
+| --- | --- | --- |
+| Compose Multiplatform `org.jetbrains.compose.*` | 1.12.0 (2026-08-25), **1.12.1 (2026-09-22, clears the cutoff)**, 1.12.2 (2026-10-15, clears 2026-10-29). 1.12.2's only iOS-specific fix is a crash when a `TextField` loses focus because a `Dialog` appears; it also has a multi-platform `graphicsLayer` shadow fix | [C1] |
+| What 1.12.1 holds | runtime, ui and foundation 1.12.1 on Jetpack 1.12.1. Material3 exists only as 1.12.0-alpha03. Lifecycle 2.11.0, savedstate 1.4.0, navigationevent wrapper 1.1.0 (it maps to androidx navigationevent 1.1.1), skiko 0.150.1 (Skia m150) | [C2], [C4] |
+| 1.12.1 on Android | `foundation-android` 1.12.1 is a 6 KB stub that depends on `androidx.compose.foundation:foundation:1.12.1`, the pinned version. `ui-android` 1.12.1 also requires `androidx.savedstate:savedstate-compose` 1.4.0 (Google's Maven, 2025-11-05), while `expected/shipping-runtime-classpath.txt` has the savedstate family at 1.3.2, so the APK's savedstate rises to 1.4.0. It also declares `savedstate-ktx` 1.3.1, `window` 1.5.0, `activity-ktx` 1.7.0 and `profileinstaller` 1.4.0, which may already be present at higher versions or excluded; unchecked until the lockfile. About 15-25 `org.jetbrains.compose.*` / `org.jetbrains.androidx.*` wrapper modules are added (Apache-2.0) | [C3] |
+| 1.12.1 on iOS, per target (`iosArm64`, `iosSimulatorArm64`) | About 47 coordinates before Gradle resolves redirects: Compose ui, ui-uikit (cinterop klib), graphics, text, foundation, animation and runtime; the iOS builds of androidx runtime 1.12.1, lifecycle 2.11.0, savedstate 1.4.0, navigationevent 1.1.1, collection 1.5.0 and annotation 1.9.1; atomicfu 0.28.0; kotlinx-coroutines-core (≥ 1.9.0, Gradle settles the version); kotlinx-serialization-core 1.7.3; **skiko-iosarm64 0.150.1, 57,722,494 B, a prebuilt Skia static library** (2026-07-02). All from Google's Maven and Maven Central, inside the existing content filters | [C4] |
+| Build-time Kotlin artifacts | The KMP plugin also resolves `org.jetbrains.kotlin:kotlin-klib-commonizer-embeddable:2.4.20` for the shared `iosMain`. `kotlin-test` resolves `kotlin-test-junit:2.4.20` on the JVM. Both are on Central, dated 2026-09-07 | [C9] |
+| Checksums and signatures | `.sha256`, `.sha512` and `.asc` exist for ui-iosarm64, skiko-iosarm64 (klib and cinterop klib), androidx runtime-iosarm64 and collection-iosarm64. `kotlin-native-prebuilt` 2.4.20 has `.asc` and `.sha1` but no `.sha256` (404), so it takes M5-11's PGP path | [C4] |
+| Kotlin | 2.4.20 (2026-09-07), unchanged. 2.4.21 (2026-10-08) is inside the cool-off and has no Native, Xcode or security fix relevant here. 2.5.0 is planned for December 2026 | [C5] |
+| Tested range of Kotlin 2.4.20-2.4.21 | Gradle ≤ 9.7.0, AGP ≤ 9.3.1, **Xcode 26.4**. Our Gradle 9.7.1 and AGP 9.3.3 are already outside it on Android (finding 8). KGP 2.4.20 warns only when AGP is too low | [C6] |
+| AGP 9 and KMP | A KMP module needs `org.jetbrains.kotlin.multiplatform` plus `com.android.kotlin.multiplatform.library` (9.3.3, Google's Maven, 2026-09-17). Combining KMP with `com.android.application` or `com.android.library` in one module is deprecated in AGP 9 (opt-in only) and removed in AGP 10. The KMP library plugin has one variant, no `externalNativeBuild` and no BuildConfig. Its current DSL is `kotlin { android { ... } }`; host and device tests are off unless `withHostTestBuilder {}` / `withDeviceTestBuilder {}` are declared | [C7] |
+| The `org.jetbrains.compose` Gradle plugin | Its `compose.*` aliases are deprecated since 1.10.0-beta01. Its POM brings `hot-reload-gradle-plugin` 1.2.0. It is not needed when the libraries are declared by direct coordinates beside the pinned `org.jetbrains.kotlin.plugin.compose` 2.4.20 | [C8] |
+| Kotlin/Native compiler | `kotlin.native.distribution.downloadFromMaven` defaults to true in 2.4.20. `kotlin-native-prebuilt:2.4.20:<host>@tar.gz` resolves through a Gradle configuration, so it falls under locking and `verification-metadata.xml`. macos-aarch64 is 290,167,116 B; linux-x86_64 is 219,971,249 B. The Kotlin/Native stdlib and platform libraries ship inside this bundle; they are not separate Maven artifacts | [C9] |
+| Kotlin/Native toolchain archives | KGP's `KotlinNativeBundleBuildService.downloadNativeDependencies` loads the bundle's `konan.properties` with no overrides (`airplaneMode = false` as shipped). konan's `DependencyProcessor` fetches anything missing from `dependenciesUrl = https://download.jetbrains.com/kotlin/native` (302 to download-cdn.jetbrains.com). It checks **no hash and no signature**, outside Gradle verification. It **skips** any dependency listed in `dependencies/.extracted` whose directory is non-empty, without looking at it. It **extracts without downloading** any archive already present in its cache directory, then deletes the archive. macOS arm64 needs `llvm-21-aarch64-macos-essentials-97.tar.gz` (151,150,049 B, 2026-04-20, at `.../kotlin/native/resources/llvm/21-aarch64-macos/`), `lldb-4-macos.tar.gz` (64,230,999 B) and `libffi-3.3-1-macos-arm64.tar.gz` (17,037 B). All three publish `.sha256` and `.asc`, which the fetcher never reads. The LLVM bundle is Kotlin/Native's code generator: it emits every machine instruction of the shipped Kotlin code. iOS sysroots come from the local Xcode | [C10] |
+| Xcode | Kotlin 2.4.20's `konan.properties` has `sdkVersion.ios = 26.4`, toolchain id `xcode_26.4_17E192`. This Mac has only Xcode 27.1 (27A9275) with iOS 26.5 and 27.0 simulators, and Kotlin warns "Xcode Version Too High". GitHub's `macos-26-arm64` image 20261013 has Xcode 26.0.1-26.6 and defaults to 26.6. `Xcode_26.4.app` is a symlink to 26.4.1 (17E202), so 17E192 is not present. It has iOS 26.2, 26.4 and 26.5 simulators. JDK 21 is the default; JDK 17 is at `$JAVA_HOME_17_arm64` | [C11] |
+| Compose on iOS | "Stable and production-ready" since 1.8.0 (May 2025). The accessibility tree is built lazily, on request. Support for VoiceOver braille displays is not documented either way. Text goes through Skia's paragraph layout. Compose's `FontCache` keeps Skia's `ParagraphCache` on (`PlatformFont.skiko.kt:294-329`, v1.12.1); the cache keeps a copy of each paragraph's text for up to 128 entries (Skia m150 `ParagraphCache.cpp`). There is no public switch, but Compose calls `fonts.paragraphCache.reset()` when a new typeface is registered (`:329`). Dialog and Popup layers attach under the window, outside the Compose host view (`ComposeLayersViewController.ios.kt:177-196`) | [C12] |
+| Minimum iOS | Kotlin/Native's `minVersion.ios = 15.0`. Compose 1.12 supports 14+. BP:76 says 17+. The required macos-26 legs set `IPHONEOS_DEPLOYMENT_TARGET=17.0` | [C13] |
+| The repo | `bitwilll/keepcrypt` is public, so GitHub's standard macOS runners cost nothing | `gh repo view` |
+
+**What the research did outside the clone.** Two Xcode commands ran on the owner's Mac.
+- `xcrun simctl list runtimes` triggered CoreSimulator's first-launch component install ("Install Started ... Install Succeeded"; framework 1174.9.2 replacing service 1171.7). That changed the Xcode simulator components on this Mac.
+- `xcodebuild -version` was run to read the Xcode version. No change from it was observed.
+
+Nothing else changed on the Mac, and nothing in the clone was edited, committed or pushed.
+
+From now on, `xcrun simctl`, `xcodebuild`, `xcrun devicectl`, Instruments and the Xcode app do not run on the owner's Mac without the owner's yes (Q56, "nothing installed on this Mac"). Symbols are read with `llvm-nm` / `llvm-objdump` from rustup's `llvm-tools-preview`, as the gate already does. The compiler and linker shims that `cargo` has used since M1 are unchanged. Commit 8k adds a lessons.md entry: Mistake, an Xcode command assumed read-only; Root cause, first-launch installs; Rule, the list above.
+
+**M5 lead decisions, re-plan** (2026-10-20. Each holds under Q65 (a) and is withdrawn or reworded if the owner picks otherwise.)
+- M5-19: the Gradle root stays `mobile/android`.
+  - 377 gate fixtures sit under `scripts/testdata/banned-api/**/mobile/android/`.
+  - About 130 path references name it: banned-api-check.sh 87, android-deps-review.py 12, entropy-android.yml 17, canaries.sh 7, android-gradle.sh 2, plus `.gitignore`, the canary library and two deps-review fixtures.
+  - The KMP template layout would rewrite all of them for no security gain. BP:55-57's tree says what the directories hold (Q72).
+- M5-20: the platform seams are Kotlin interfaces in `commonMain`, implemented in each platform's code and passed in at its entry point.
+  - The seams: documents, QR scanner, offline monitor, motion source, airplane-settings opener, monotonic clock, and the build's `testRegistry` flag (a KMP library has no flavours, so `:app` passes it in from `BuildConfig`).
+  - The only `expect`/`actual` is `Native`, so the iPhone target compiles in M5 with no iOS seam code and no stub that pretends to work.
+- M5-21: one dispatch call per boundary.
+  - `keepcrypt-ffi` gains `dispatch(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>>` over the safe calls. Op numbers and every layout are defined once in `wire.rs`, and Kotlin has one `Native.call(op, input)`.
+  - Android exports `Java_com_keepcrypt_entropy_ffi_Native_call` and `JNI_OnLoad` only, so group 12's symbol check narrows from `Java_com_keepcrypt_entropy_ffi_Native_*` to exactly those two.
+  - Q53's design (free functions, no handle, a status byte first, decoded once in `Wire.kt`) is unchanged. Only the number of exports drops.
+- M5-22: the `org.jetbrains.compose` Gradle plugin is not applied. The libraries are declared by direct coordinates. There is no material3 (alpha only), no resources library and no navigation library.
+- M5-23: Kotlin targets `iosArm64` and `iosSimulatorArm64` only, declared on every host and never conditionally, so a lockfile does not depend on the host that wrote it.
+  - There is no `iosX64`; the runners and this Mac are arm64.
+  - The Rust targets are `aarch64-apple-ios` and `aarch64-apple-ios-sim`, already in rust-toolchain.toml:11-12.
+  - The minimum is iOS 17.0 everywhere. `ios-rust.sh` sets `IPHONEOS_DEPLOYMENT_TARGET=17.0`, and Kotlin/Native gets `osVersionMin` 17.0 for both targets. The exact switch is a probe fact; it is one allow-listed line.
+- M5-24: Compose Multiplatform stays at 1.12.1 for M5.
+  - 1.12.2's iOS fix concerns a `TextField` losing focus to a `Dialog`, and the app has neither (todo.md:10812-10813, "No dialogs, popups ... or text fields at all"). Its shadow fix is cosmetic.
+  - M5 plans no later bump, and these fixes do not trigger M5-13's stop.
+- M5-25: `mobile/ios/` stays empty in M5. The gate refuses any tracked file under it until M6's first gate commit adds the Swift and Xcode rules.
+- M5-26: the Rust static libraries for iOS are built by `scripts/ios-rust.sh`, never by Gradle or Xcode (M5-9's rule for Android).
+  - It runs plain cargo for both targets: default features into `target/ios/`, and the feature set of group 13's JVM host library into `target/ios-test/`.
+  - It runs the release scan on each output and prints each SHA-256.
+- M5-27: the iOS expected lists live in `mobile/android/expected/` beside Android's (`ios-framework-classpath.txt`, `ios-test-imports.txt`), so CI compares every list from one place.
+- M5-28 (only if Q68 is approved): Kotlin/Native's data directory is project-local, `mobile/android/.konan/`, set by `konan.data.dir` in `gradle.properties`.
+  - It is git-ignored, refused by the Build rule if tracked, emptied at the start of every CI run and never cached by `actions/cache`.
+  - Nothing reads from or writes to `~/.konan`.
+- M5-29: the iOS tests run one test class per process, as the JVM tests do (group 13's forked JVM per class), because a halt latches the process-wide slot for good.
+  - CI takes the class list from the JVM run's results and runs the simulator test task once per class with a `--tests` filter. Each run is a fresh simulator process.
+  - There is no reset call in the FFI.
+
+**Module layout** (M5-19. MA:24's "three modules" becomes four Gradle modules, plus the iOS host in M6.)
+
+| Module | Plugins | Holds |
+| --- | --- | --- |
+| `:core-ffi`, becomes KMP | `org.jetbrains.kotlin.multiplatform`, `com.android.kotlin.multiplatform.library` | `commonMain`: `Wire`, `Core`, `Secret`, `KcHalt`, `expect object Native`. `androidMain`: the `actual` over JNI (`System.loadLibrary("keepcrypt")`). `iosMain`: the `actual` over cinterop (`src/nativeInterop/cinterop/keepcrypt.def`). Tests: `commonTest`, run as `androidHostTest` (JVM, host library, `forkEvery = 1`) and as `iosSimulatorArm64Test` (one class per run, M5-29). The ZXing round trips stay in `androidHostTest` (group 13) |
+| `:screens`, new, KMP | the same two plus `org.jetbrains.kotlin.plugin.compose` | `commonMain`: every screen, `Screen` and `screenId`, `CeremonyModel` (the plan's `CeremonyViewModel`, now platform-free), `Timers`, the pads, `QrMatrix`, `SealCard`, braille faces, `FirstLaunch.kt` (77 lines, moved from `:secure-ui`), and the seam interfaces (M5-20). `iosMain` (M6): `MainViewController()` and `IosEvents` |
+| `:secure-ui` | `com.android.library` | Android only: `SecureActivity`, `OfflineMonitor` (`Settings.Global`), the capture monitors |
+| `:app` | `com.android.application` | `MainActivity`; the `shipping` and `withTestRegistry` flavours, which pass `testRegistry` into `:screens` (M5-20); a ViewModel holder for `CeremonyModel` whose `onCleared` calls `wipeAll()`; the Android seam ends (`files/Documents.kt`, `camera/GoAheadScanner.kt` with ZXing, the airplane-settings intent, the `SensorManager` source); `androidTest`, unchanged (`testBuildType = "release"`, and flavours exist only here) |
+| `:capture-control` | `com.android.application` | as now, depending on `:screens`, where the composables move |
+| `mobile/ios/` (M6) | Xcode project, no packages | a SwiftUI/UIKit host around `ComposeUIViewController`, the Swift capture layer, XCTest UI tests |
+
+**The shared Kotlin API over the bridge**
+
+```kotlin
+// :core-ffi commonMain
+internal expect object Native { fun call(op: Int, input: ByteArray): ByteArray }
+// androidMain: actual over `private external fun call(op: Int, input: ByteArray): ByteArray` (keepcrypt-jni)
+// iosMain:     actual over kc_call: input and a kc_max_out()-sized output pinned (usePinned/addressOf),
+//              the returned length copied out, the output buffer filled with 0 before return;
+//              a negative return raises KcHalt
+```
+
+- [ ] `Wire.kt`, `Core.kt` (`KcHalt`, no `catch`), `Secret` (a byte-array holder with `wipe()` and no content `toString`) and `Native`'s `expect` go in `:core-ffi` `commonMain`. The two `actual`s are the only platform code in `:core-ffi`. Today's placeholder `Native.kt` (8 lines) and `Screen.kt` (14 lines) move first, in commit 8o.
+  - Proof: `commonTest` passes as `:core-ffi:androidHostTest` and as the per-class `:core-ffi:iosSimulatorArm64Test` runs, with the same class list and the same count in every class (both logs). The gate's `usePinned`/`addressOf` rule fires on a fixture outside `Native.ios.kt`.
+- [ ] Group 11's vectors, group 13's wrong-stage halt and the wire decoders run in `commonTest`. The same Kotlin tests then pass over JNI on the JVM and over the C ABI on the simulator, each class in its own process. The ZXing round trips stay JVM-only in `:core-ffi` `androidHostTest`, and the canned-frame scanner test stays in `:app`.
+  - Proof: the per-class counts in both jobs' logs. A planted wrong status byte fails both. A class that halts on purpose does not change the next class's result.
+- [ ] `CeremonyModel` and `Timers` in `:screens` `commonMain` own the slot's use exactly as group 14 says of `CeremonyViewModel`:
+  - they hold screen ids, page indices and `Secret` references only;
+  - long calls run on `Dispatchers.Default` behind "Working...";
+  - a discard during "Working..." calls `discard()` at once;
+  - the only `KcHalt` catch is `CeremonyModel.call`;
+  - the Android ViewModel in `:app` only holds the model.
+
+  Proof: group 14's tests, now in `commonTest`, pass on the JVM and on the simulator, including "59 s keeps, 60 s wipes" on the fake clock.
+
+**The iOS C-ABI bridge** (Q66 (a))
+
+Crates (the workspace grows from 4 members to 7: core, ffi, ffi/guard, ffi/jni, ffi/capi, pi/app, pi/sim):
+- `keepcrypt-ffi` (`ffi/`, rlib): unchanged role and rules. It keeps `#![forbid(unsafe_code)]` and core's clippy.toml byte for byte, and gains `dispatch` (M5-21).
+- `keepcrypt-guard` (`ffi/guard/`, rlib, new): `guarded(op, input)` locks, takes the stage out and runs `dispatch` under `catch_unwind`. On a panic it latches `Halted` and returns the halt status (Q53's text, moved).
+  - On its first call it installs the silent panic hook once (`std::sync::Once`), so neither boundary needs `JNI_OnLoad` for that.
+  - It has `#![forbid(unsafe_code)]`. Its clippy.toml is core's minus the one `catch_unwind` line.
+  - It holds the only `catch_unwind` in the workspace, in a crate with no unsafe code.
+- `keepcrypt-jni` (`ffi/jni/`, cdylib `libkeepcrypt.so`): JNI glue only (`Native_call`, `JNI_OnLoad`), over keepcrypt-guard and jni-sys =0.3.0. It now keeps core's clippy.toml byte for byte.
+- `keepcrypt-capi` (`ffi/capi/`, new): C glue only, over keepcrypt-guard.
+  - `crate-type = ["staticlib", "rlib"]` and `[lib] name = "keepcrypt_capi"`, giving `libkeepcrypt_capi.a`. The name differs from jni's `keepcrypt`, so no output names collide. The rlib lets its own integration tests link it.
+  - No new crates.io crate. Core's clippy.toml byte for byte.
+- `[profile.release.package.keepcrypt-capi]` and `...keepcrypt-guard` set `overflow-checks = true`. Release keeps `panic = "unwind"`.
+
+```c
+/* ffi/capi/include/keepcrypt.h, hand-written (no cbindgen, which would be a new tool under rule 11) */
+size_t  kc_max_out(void);
+int32_t kc_call(uint32_t op, const uint8_t *in, size_t in_len, uint8_t *out, size_t out_cap);
+/* returns the output length; a negative value is a shell bug, which halts. */
+```
+
+- [ ] keepcrypt-capi's `kc_call`:
+  - builds a slice only when `in_len > 0` (`in` may be null then), calls `guarded`, and copies the result into `out`; the result is zeroized on drop;
+  - never hands Rust memory across the boundary, so there is no free function;
+  - returns negative and latches `Halted` on an output larger than `out_cap` or a null pointer with a non-zero length;
+  - makes no callbacks into Kotlin (`staticCFunction` is banned);
+  - holds one operation and a `SAFETY:` line in every unsafe block (the existing deny lints).
+
+  Proof: integration tests in `ffi/capi/tests/` call `keepcrypt_capi::kc_call` / `kc_max_out` by Rust path, so they need no `extern "C"` declarations of their own. They cover group 8's stage and halt cases, a short `out_cap`, null pointers with zero and non-zero lengths, and a panic planted under `test-sources` that returns the halt status and leaves `Halted`. `cargo test -p keepcrypt-capi --locked` is green on the Mac (cargo, as since M1).
+- [ ] The header agrees with the library. A test parses `keepcrypt.h`'s two prototypes and compares them with `llvm-nm -g --defined-only` of `_kc_*` in the built `.a`: exactly `_kc_call` and `_kc_max_out`.
+  - Proof: the test is green, and a planted extra `#[no_mangle]` export fails it.
+- [ ] One catch. The gate's FFI rule allows `catch_unwind` only in `ffi/guard/src/lib.rs`, and `#[no_mangle]`/`extern "C"`/JNI exports only in `ffi/jni/src/lib.rs` and `ffi/capi/src/lib.rs`. Unsafe code is allowed only in the `keepcrypt-jni` and `keepcrypt-capi` crates, `ffi/capi/tests/` included. M5-8's `thread`/`JoinHandle` ban covers `ffi/src/`, `ffi/guard/src/`, `ffi/jni/src/` and `ffi/capi/src/`.
+  - Proof: fixtures for each placement. In the canaries, core's, ffi's, jni's and capi's clippy.toml are identical and guard's differs by exactly the one line (canaries.sh:485-494 grows). check-path-deps pins seven members (canaries.sh:380-390).
+- [ ] cinterop: `keepcrypt.def` holds exactly `headers = keepcrypt.h`, `headerFilter = keepcrypt.h` and `package = com.keepcrypt.native`.
+  - It has no `staticLibraries`, `libraryPaths` or `linkerOpts`, so no Rust code is packed into a klib or the framework.
+  - `compilerOpts -I` comes from the Gradle cinterop block and points only at `ffi/capi/include/`.
+  - The iOS **test** executables (both targets) link `target/ios-test/<triple>/release/libkeepcrypt_capi.a` through one `linkerOpts` line per target.
+  - The release framework links no Rust in M5. In M6 the app link adds the plain `target/ios/...` library, and `--ios-app` scans the result.
+
+  Proof: the gate's `.def` rule refuses a fixture with a `---` section, a second header, `staticLibraries`, `libraryPaths`, `linkerOpts`, or an include path outside that directory. The Gradle rule allows exactly the two test `linkerOpts` lines naming `target/ios-test/`.
+
+**The iOS capture layer** (M6 under Q65 (a); recorded now so the shared code leaves room for it)
+
+The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false`, `UIDeviceFamily = [1]`) with one `UIWindow`.
+- The window's root is a Swift `SecureHostViewController`. That controller holds the Kotlin `MainViewController()` as a child and a Swift `PrivacyCoverView` above it.
+- State flows one way, from Swift to Kotlin. An exported Kotlin `IosEvents` object (`captureChanged(Boolean)`, `screenshotTaken()`, `willResignActive()`, `didEnterBackground()`, `didBecomeActive()`, `offlineChanged(Boolean)`, main thread only) feeds the same `CeremonyModel` entry points that Android's `SecureActivity` feeds, so the wipe rules are written once.
+- Swift's covers never wait for Kotlin, so they fail closed.
+
+| MA rule | How | Where |
+| --- | --- | --- |
+| Capture redaction (MA:84) | `UITraitSceneCaptureState` via `registerForTraitChanges` (iOS 17), re-read at launch and in `sceneDidBecomeActive`. While captured, the Swift cover hides the whole window, and Kotlin also swaps the words for a placeholder | Swift watches, Kotlin redacts second |
+| Screenshot response (MA:85) | `userDidTakeScreenshotNotification` calls `IosEvents.screenshotTaken()`; `CeremonyModel` discards and explains | Swift forwards |
+| Secure-layer rendering (MA:86) | Only if M6's first probe passes (Q71): the Compose view inside a `UITextField` with `isSecureTextEntry`, `canBecomeFirstResponder = false`, not an accessibility element | Swift |
+| App-switcher cover (MA:87) | The cover is shown synchronously in `sceneWillResignActive` and removed in `sceneDidBecomeActive`. No `NSUserActivity`; `stateRestorationActivity` is nil | Swift |
+| Leaving the app (MA:34) | Going to the background on a Protected screen discards. On a Public screen, the wipe happens at the earlier of the background-task expiry and 60 s on a clock that counts while suspended, checked on return (Q71). `isIdleTimerDisabled` is set during a ceremony | Kotlin rules, Swift signals |
+| Offline (MA:125) | `NWPathMonitor` in one file; "satisfied" blocks or wipes | Swift or one `iosMain` file |
+| No clipboard (MA:127) | No text fields and no `SelectionContainer`; the gate bans `UIPasteboard` in our code. Compose's own clipboard code is read under Q70 | none |
+| Backup export (MA:156) | `UIDocumentPickerViewController` exports in-memory bytes, in one reviewed file. `.age`/`.kcr` import uses `UIDocumentPickerViewController(forOpeningContentTypes:)` | one file |
+| Go-ahead QR | `AVCaptureMetadataOutput` (ZXing is JVM only); the payload is checked in core | `iosMain` |
+| Stop screen (MA:36) | iOS: no secret and no action, because Apple rejects apps that quit themselves. The next launch reruns the self-test (Q71) | Kotlin |
+| Unhandled Kotlin exception | Kotlin/Native aborts the process on any unhandled exception and the system writes a crash report with the stack. The M6 hook (`setUnhandledExceptionHook`) wipes first; whether it can end the process without a report is an M6 probe (Q71) | Kotlin |
+| Files the system writes (rule 8) | M6 diffs the app container after a simulator ceremony: no file holds secret material, and the app-switcher snapshot shows the cover (Q71) | M6 check |
+
+**Gate changes (commit 8n, before any Kotlin moves; like commit 4)**
+- [ ] Source-set allow list. In the KMP modules (`core-ffi`, `screens`) the only source-set directories allowed under `src/` are `commonMain`, `commonTest`, `androidMain`, `androidHostTest`, `iosMain`, `iosTest` and `nativeInterop`. Any other directory under `src/` in those modules is refused, including `appleMain`, `nativeMain`, `iosArm64Main`, `iosSimulatorArm64Main` and `androidDeviceTest`. KMP source-set names under `src/` of any Android-only module are refused too, so no Kotlin escapes the iOS rules by its directory name.
+  - Proof: one failing fixture per refused name, and passing fixtures for the allowed ones.
+- [ ] Scopes (banned-api-check.sh:2043-2051). `commonTest`, `androidHostTest` and `iosTest` join `test`, by the same literal module-segment match. Every other allowed source set stays `main`. The fixture scope-copy logic (around :2358-2390) moves with them.
+  - Proof: fixtures. A `runCatching` in `screens/src/commonTest/` passes; the same code under `screens/src/commonMain/`, or in a nested `.../commonMain/kotlin/x/src/commonTest/` path, fails.
+- [ ] Named files (:2065-2095, header :504-513):
+  - `CeremonyViewModel.kt` becomes `screens/src/commonMain/**/CeremonyModel.kt`, the only `KcHalt` catch;
+  - the airplane-settings `Intent` and the `SensorManager` exceptions move to their `:app` files;
+  - `Documents.kt`, `GoAheadScanner.kt`, `SecureActivity.kt` and `OfflineMonitor.kt` are unchanged;
+  - KtFailOpen's "any catch in `:core-ffi`" now covers `androidMain` and `iosMain` too.
+
+  Proof: each moved exception has a passing fixture at the new path and a failing one at the old.
+- [ ] `iosMain`/`iosTest` Kotlin gets these iOS names on top of every Kt rule:
+  - storage: `NSUserDefaults`, `NSFileManager`, `NSFileHandle`, `writeToFile`, `NSKeyedArchiver`, `SecItemAdd`, CoreData, `NSUbiquitousKeyValueStore`, CloudKit;
+  - posix file and log calls: `fopen`, `fwrite`, `open(`, `printf`, `syslog`;
+  - intents: `openURL`, `UIActivityViewController`, `UIDocumentInteractionController`;
+  - windows: `UIAlertController`, `UIWindow(`, `UNUserNotificationCenter`, `UIMenu`;
+  - input: `UITextField`, `UITextView`, `becomeFirstResponder`;
+  - logging: `NSLog`, `os_log`, `AccessibilityDebugLogger`;
+  - randomness and identifiers: `platform.posix.rand`, `random`, `srand`, `drand48`, `NSUUID`;
+  - network C names: `nw_connection`, `nw_listener`, `nw_browser`, `nw_endpoint`, `nw_parameters`, `CFStream`, `CFSocket`, `getaddrinfo`, `socket(`;
+  - boundary rules: `staticCFunction` banned anywhere; `usePinned`/`addressOf` only in `core-ffi/src/iosMain/**/Native.ios.kt`; `setUnhandledExceptionHook` refused in M5.
+
+  The existing unanchored `URLSession`, `NWConnection`, `CFNetwork`, `UIPasteboard`, `arc4random` and `SecRandomCopyBytes` patterns already apply.
+
+  New for every Kotlin source, Android included: `kotlin.uuid` / `Uuid.random` (it reaches the OS random source outside the pool).
+
+  Proof: one failing fixture per name. `nw_path_*` is refused everywhere in M5 (the offline file is M6's). The gate passes on today's tree with the `kotlin.uuid` ban in place.
+- [ ] Kotlin outside the root: any `.kt`/`.kts` under `mobile/` outside `mobile/android/` is refused. Any tracked file under `mobile/ios/` is refused in M5 (M5-25).
+  - Proof: fixtures `mobile/shared/x.kt` and `mobile/ios/x.swift` fail under those rule names.
+- [ ] New file types and build lines:
+  - the `.def` rule (bridge section above);
+  - KtSdk allow-lists exactly the KMP DSL lines the build needs: `kotlin {`, `android {` inside `kotlin {}`, `withHostTestBuilder {`, `iosArm64`, `iosSimulatorArm64`, `cinterops`, `binaries.framework`, `isStatic = true`, the two test `linkerOpts` lines, the `osVersionMin` line, the simulator `device` line, `konan.data.dir`, and named `kotlin.native.*`/`kotlin.mpp.*`/`kotlin.apple.*` properties. A fixture checks that `android {` inside `kotlin {}` does not collide with the existing Android-block rules;
+  - KtSdk refuses `cocoapods {`, `swiftPMDependencies`, `kotlin.native.home`, `downloadFromMaven=false`, `xcodeCompatibility.nowarn` and `withDeviceTestBuilder`;
+  - KtBinary also refuses Mach-O files by magic number, and `*.framework/`, `*.xcframework/`, `*.klib` and `*.a` paths.
+
+  Proof: a fixture per item; the canary library still builds only under `kc.canary`.
+- [ ] Canaries cover the new scopes, the source-set allow list, the iOS rules, the `.def` rule and the refusals; `want_checks` is updated.
+  - Proof: `scripts/canaries.sh` green with the new count. Each new canary fails when its rule line is removed (shown once, under Review).
+
+**Build checks**
+- [ ] `--apk`, `--selftest-apk`, the dex reference scan and the expected manifests keep their code. `expected/shipping-runtime-classpath.txt` gains the wrapper modules and the version changes Q67 names (savedstate 1.4.0 and any others the lockfile shows). The dex scan's `Lcom/keepcrypt/` prefix now covers `:screens` and `:core-ffi` classes automatically.
+  - Proof: the Android job green at 8p with the new list, and every non-wrapper version change named under Review. The manifest summaries are unchanged, or the change is named.
+- [ ] iOS link facts in M5 (commit 8q, again at 14):
+  - `linkReleaseFrameworkIosArm64` builds a static framework from `:screens`. It holds Kotlin, Compose and skiko but no Rust. CI records its size and its archive-level `llvm-nm -u` list. That list over-reports, because nothing is dead-stripped, and is used only as the superset for the stop rule below.
+  - The compared list comes from linked binaries: the `iosSimulatorArm64` and `iosArm64` test executables, which link the `target/ios-test/` library from 14 on. CI records their `llvm-nm -u -m` imports and linked libraries, and compares the `iosArm64` imports with `expected/ios-test-imports.txt` (M5-27).
+  - Direct-call scan: `llvm-objdump -d --macho` of the unstripped `iosArm64` test executable lists every direct call from a `kfun:com.keepcrypt.*` symbol. Any call into `kfun:kotlin.random.*`, `kfun:kotlin.uuid.*`, the posix random functions, or Q70's deny list fails the build. The limit is stated under Review: indirect calls are not followed, and the source gate covers them.
+  - Marker and key scan: the framework and both test executables are scanned for `KC_TEST_SOURCE_DO_NOT_SHIP`, the registry marker and the test key. The framework must hold none of them. The test executables must hold exactly what their feature set embeds.
+  - The `minos` of the test executables (`LC_BUILD_VERSION`) is 17.0.
+  - Stop rule: any banned RNG, network, clipboard or storage import in the superset list stops the work and goes to the owner with the exact symbols and their sources (Q70). Banned means `_arc4random*`, `_SecRandomCopyBytes`, `_rand`, `_random`, `_drand48`, a network class or socket, `UIPasteboard`, or Q70's storage names.
+
+  Proof: the lists under Review with the run ID. A planted `arc4random_uniform` call in an `iosMain` canary shows up in the diff and in the direct-call scan, and fails both.
+- [ ] `expected/ios-framework-classpath.txt` lists every Maven module linked into the framework (Compose, skiko, the iOS androidx builds and so on), taken from the `iosArm64` link configuration in the lockfiles. It also names the Kotlin/Native stdlib and platform libraries as coming from the verified `kotlin-native-prebuilt` 2.4.20 bundle, not from Maven. `android-deps-review.py review` compares the list and checks licences.
+  - Proof: the review's output at 8p; a planted extra module fails it.
+- [ ] The `--ios-app` check and `--selftest-ios-app` are M6's, together with the Swift and Xcode gate rules. The check covers an unsigned Release device `.app` built in CI that links the plain library:
+  - Info.plist key allow-list, no entitlements, bundle contents;
+  - an `otool -L` framework allow-list;
+  - `nm -u -m` imports with `_CCRandomGenerateBytes` present;
+  - the direct-call scan, markers, arm64 only, minos 17.0.
+
+  Proof: M6's plan.
+
+**Dependency bootstrap** (commits 8o-8p; the reviewed temporary exception M5-13 requires, under Q67)
+- [ ] 8o declares the two plugins, the three Compose Multiplatform libraries and `kotlin-test` (tests only), with `apply false` at the root (M5-7's pattern).
+  - It switches both workflows to bootstrap mode once, with a dated note in `libs.versions.toml`'s header and in `kt_bootstrap`'s comment naming Q67 and this re-plan. No other switch, file or workflow changes the bootstrap rule.
+  - Proof: the diff; the gate refuses the bootstrap switch outside the two named workflow lines (fixture).
+- [ ] Two hosts write the locks:
+  - the Linux Android job writes locks and metadata for the Android and common configurations;
+  - the macOS job writes them for the iOS ones, `kotlin-native-prebuilt-2.4.20-macos-aarch64` and `kotlin-klib-commonizer-embeddable`;
+  - a committed `scripts/gradle-locks-merge.py` (standard library only, with `--selftest`) merges the two sets;
+  - strict mode then runs on both hosts against the merged files.
+
+  Proof: both jobs green in strict mode at 8p on the same merged files. The selftest covers a conflict (same coordinate, different hash) failing.
+- [ ] `android-deps-review.py` is extended:
+  - it reads `.klib` files and the Kotlin/Native `.tar.gz` (Central, `.asc`);
+  - new signers (JetBrains Compose, skiko, Kotlin/Native) are trusted on first use as under M5-12 and added to the M7 audit list;
+  - any growth of M5-11's SHA-1-only list is named again;
+  - skiko's POM says Apache-2.0, but it ships Skia (BSD-3-Clause, on deny.toml's allow list) and the third-party code Skia bundles. A named licence note, checked by coordinate, lists each bundled library with its licence, taken from skiko's published notices before Q67 is answered.
+
+  Proof: the review's output at 8p. Selftest cases fail for a klib without `.asc` and for the skiko note applied to another coordinate.
+- [ ] Strict mode goes back on and the switch is removed in 8p; from then on M5-13's stop applies again.
+  - Proof: the gate's bootstrap canary green at 8p.
+- [ ] Kotlin/Native toolchain archives (Q68), in the order below:
+  1. `scripts/konan-deps.sh` (in `android-gradle.sh`'s pattern) fetches exactly the three archives from their full URLs (LLVM under `resources/llvm/21-aarch64-macos/`). It checks each against a SHA-256 pinned in the script and checks its `.asc` with `gpg --verify` against a keyring holding only a pinned JetBrains key fingerprint. It places the archives in `mobile/android/.konan/cache/`, where the fetcher extracts them without downloading.
+  2. `.konan/dependencies/` is empty at the start of every run, so no restored or planted extracted tree is trusted. `.konan/` is never restored from a cache.
+  3. Before any Gradle call, CI maps `download.jetbrains.com` and `download-cdn.jetbrains.com` to an unroutable address in the runner's `/etc/hosts`. Any download the fetcher attempts then fails the build; it cannot happen silently. Gradle's own hosts are not affected.
+  4. After the build, `.konan/dependencies/.extracted` lists exactly the pinned names and `dependencies/` holds exactly those directories.
+  5. Kotlin/Native's `airplaneMode` is not relied on: KGP's download path ignores overrides. It is added as a second layer only if the probe shows a documented switch that this path honours.
+
+  The pins come from the 8o bootstrap run (M9): it reads the archive names from the verified bundle's `konan.properties`, `konan-deps.sh --bootstrap` checks each `.asc` against the pinned fingerprint and records each SHA-256, and the pins land with the reviewed lockfiles at 8p. The SHA-256 and the key come from the same host, so they are trust on first use, added to the M7 audit list as M5-12 does.
+
+  Proof: a canary removes one pre-seeded archive and the iOS build fails on the blocked host. The `.extracted` listing after a build equals the pinned list. A tampered archive fails `konan-deps.sh` (selftest).
+
+**CI for the iPhone target** (Q69)
+- [ ] `.github/workflows/entropy-ios.yml` has one non-required job, `ios (build, simulator)`, like `entropy-android.yml` under Q55.
+  - Hardening: only the three pinned actions, `contents: read`, no secrets, no `actions/cache` on `.konan/`, and path filters (`Entropy/mobile/**`, `Entropy/ffi/**`, `Entropy/core/**`, the scripts it runs).
+  - Toolchain:
+    - `runs-on: macos-26`;
+    - `DEVELOPER_DIR=/Applications/Xcode_26.4.1.app`, with `xcodebuild -version` printed and checked against 26.4.1 (17E202), and no fallback. Kotlin expects 17E192; the difference is recorded, and if KGP warns it is not silenced;
+    - rustup's pinned 1.98.1, not the image's;
+    - `JAVA_HOME=$JAVA_HOME_17_arm64`, with the version checked (the image's default is 21);
+    - Gradle through `android-gradle.sh`; `konan-deps.sh` and the host block;
+    - an Android SDK only if the KMP library's Android target needs one even for iOS tasks (probe);
+    - the simulator `device` pinned to one iPhone present on the image's iOS 26.5 runtime (probe fact, recorded).
+  - Steps: `ios-rust.sh` (from 14), which builds, scans and hashes both libraries; the per-class `:core-ffi:iosSimulatorArm64Test` and `:screens:iosSimulatorArm64Test` runs, with the class list and counts compared to the JVM run's; the release framework link and the linked-binary scans above; strict locking and verification as on Android.
+  - The SHA-256 of the `.a` each test executable links is checked against the hash `ios-rust.sh` printed after its scan, immediately before and after the link. So the library CI scanned is the library CI linked (lessons 2).
+
+  Proof: a green run with its time and the measured budget under Review. A missing pinned Xcode fails the job.
+- [ ] Required checks keep their names. The two existing `macos-26` cross legs (entropy-ci.yml:524-528):
+  - add `keepcrypt-guard keepcrypt-capi` to their clippy and build lists;
+  - build `libkeepcrypt_capi.a` plain and with `--features keepcrypt-core/test-registry --target-dir target/ffi-test-registry`;
+  - scan it as an archive with the same scan script `ios-rust.sh` uses: no marker and no test key in the plain build; exactly its registry marker and the test key in the other; no RNG symbol; `_kc_call` and `_kc_max_out` the only defined `_kc_*`.
+
+  These legs keep the image's default Xcode, as today. They prove the scan across compilers; the library that is linked is scanned again in `entropy-ios.yml`, as above.
+  - Proof: green legs with both scans. A planted marker in the plain build turns the leg red (shown once, under Review).
+- [ ] The Linux Android job may now resolve `kotlin-native-prebuilt-2.4.20-linux-x86_64` (220 MB) or need Linux toolchain archives. Which, if either, is a probe fact at 8o. The download hosts are blocked there too, so an unexpected download fails the build instead of happening silently. If anything is needed, its name and pins come back to the owner under Q67/Q68 before 8p.
+  - Proof: the probe line at 8o.
+
+**Accessibility probe in M5** (Q65; braille displays decide whether shared screens can work on iPhone)
+- [ ] At 16, the first words-page commit, an `iosTest` renders the words page over vector words (rule 12) and reads the accessibility elements Compose exposes. Each word must be one element whose label is the word, in page order.
+  - How this runs without a UIApplication (a hosted `ComposeUIViewController` in a test window, or Compose's semantics test API) is a probe fact.
+  - If it needs `org.jetbrains.compose.ui:ui-test`, that library comes back to the owner first (rule 11).
+  - If the probe fails, work stops and the owner hears before more screens are written.
+- [ ] The owner's braille-display check on the iPhone is the first item of M6, beside the secure-layer probe. This is the earliest a build can be installed.
+
+  Proof: the probe's output under Review at 16.
+
+**Milestone re-cut** (Q65 (a); proposed BP rows)
+- BP:298, M5 | Android app.
+  - Deliverables: "Compose Multiplatform screens shared with M6, over the FFI (JNI on Android); capture protection; backup via file picker; the iPhone target compiles and the shared tests pass on the iOS simulator in CI".
+  - Gate: unchanged, plus "the shared tests pass on the iOS simulator".
+  - Needs: M1, M2.
+- BP:299, M6 | iPhone app.
+  - Deliverables: "The shared Compose Multiplatform screens on iPhone over the C bridge (`keepcrypt-capi` through Kotlin/Native cinterop), a Swift host for capture handling, backup via document picker".
+  - Gate: unchanged.
+  - Needs: M1, M2, M5.
+- Stays in M6 (always iPhone work; nothing that M5's current plan delivers moves out of M5):
+  - the Swift host and capture layer;
+  - the iOS seam ends (document picker, AVFoundation QR, `NWPathMonitor`, motion);
+  - the Kotlin/Native unhandled-exception hook;
+  - the `--ios-app` check, the hooks build and XCTest;
+  - the container check (rule 8);
+  - the owner's braille-display and secure-layer probes;
+  - the install route and tested iOS versions (an M6 question; see below);
+  - the iPhone checklists I0-I5.
+
+  M5b's games stay in M5b and land in `commonMain`, so they reach both phones.
+
+**Commit order from Stage C on** (replaces stages C-F of "Commit order on `m5-android`". Each commit's proof runs at that commit, and each stage is reviewed before the next.)
+
+*Stage B2: re-plan, docs, gate, second bootstrap (no Rust, no screens)*
+- 8k. tasks/todo.md: this re-plan and Q65-Q72; the lessons.md entry on Xcode commands. 8k-b: the owner's answers, quoted with the date.
+- 8l. docs: Q72's "now" edits, alone. 8l-b: its tick.
+- 8m. (removed: the rule 1/5/9 sentence waits for Q70's wording after 8q, at 8r.)
+- 8n. scripts: the gate changes above, with fixtures and canaries.
+- 8o. mobile/android, scripts, .github:
+  - `:core-ffi` becomes KMP and `:screens` is added. `FirstLaunch`, `Screen` and the placeholder `Native` move, and `:capture-control` depends on `:screens`;
+  - plugins and libraries declared;
+  - `konan-deps.sh` in `--bootstrap` mode, the host block, and `konan.data.dir` (if Q68);
+  - the `entropy-ios.yml` skeleton;
+  - both workflows in bootstrap mode (the reviewed exception);
+  - the probe facts below recorded.
+- 8p. mobile/android, scripts:
+  - merged lockfiles and metadata, `gradle-locks-merge.py`, the extended review, the iOS classpath list, the archive pins;
+  - strict mode on and the switch removed;
+  - the Android expected classpath updated, with every non-wrapper version change named;
+  - the Android job, emulators included, green again.
+- 8q. .github, scripts, mobile/android/expected, tasks/todo.md:
+  - the release framework link with its size and superset import list;
+  - the test executables' linked imports and direct-call scan (no Rust yet), and `expected/ios-test-imports.txt`.
+
+  Stage B2's review compares every probe fact with this re-plan. A difference re-plans here, and a banned import goes to the owner (Q70).
+- 8r. CLAUDE.md: the rule 1/5/9 sentence in the wording the owner approves after seeing 8q's symbols (Q70).
+
+*Stage C: the FFI in Rust, tested on the Mac*
+- 9. ffi, ffi/guard, ffi/jni, ffi/capi (empty libs), Cargo.toml (seven members), Cargo.lock, deny.toml, supply-chain, scripts (check-path-deps, canaries), and core's and pi/app's lint blocks (group 7, amended).
+- 10. ffi: the slot, stages, halts, refusals, the long-call rule, owned copies and `dispatch` (groups 8, 11).
+- 11. ffi: `wire.rs` (with the op table) and `qr.rs`, with byte-exact tests (group 9).
+- 12. ffi/guard: `guarded` and the panic hook. ffi/jni: `Native_call` and `JNI_OnLoad` (group 10, amended).
+- 12b. ffi/capi: `kc_max_out`, `kc_call`, `include/keepcrypt.h`, the header/export test and the C-ABI integration tests.
+- 13. .github/workflows/entropy-ci.yml:
+  - the Android `.so` builds and scans as planned, with the symbol list per M5-21;
+  - the iOS `.a` builds and scans in the existing macos-26 legs;
+  - `test` adds `-p keepcrypt-guard -p keepcrypt-capi`.
+
+*Stage D: the Rust libraries in the apps, protection*
+- 14. scripts, mobile/android, .github:
+  - `android-rust.sh` and `ios-rust.sh`;
+  - `Native`'s two `actual`s, `keepcrypt.def` and the test `linkerOpts`;
+  - `commonTest` on the JVM (forked per class) and on the simulator (per class, M5-29);
+  - libkeepcrypt in the APK, the real self-test, the ARM and 16 KB leg;
+  - `entropy-ios.yml` links the test executables with Rust in, checks the linked library's hash, and reruns the marker, import and direct-call scans.
+- 15. mobile/android: `:secure-ui`; `CeremonyModel` and `Timers` in `:screens`, tested on both; the `:app` ViewModel holder and the `testRegistry` seam; the Android crash path; discard during "Working...".
+
+*Stage E: the ceremony* (16-21 as planned):
+- Screens go in `:screens` `commonMain`, and the Android seam ends go in `:app` and `:secure-ui`.
+- Commit 16 carries the accessibility probe above.
+- Each commit's emulator tests run as planned, and every commit keeps the per-class `iosSimulatorArm64Test` runs green.
+- No iOS seam end is written in M5.
+- The owner's P0b is still issued from commit 18's run.
+
+*Stage F: evidence* (22-24 as planned):
+- CLAUDE.md Commands gains `scripts/ios-rust.sh`, `scripts/konan-deps.sh --selftest` (if Q68) and `scripts/gradle-locks-merge.py --selftest`.
+- The iOS CI facts go under Review.
+- The gate report names what M5 proves on iOS: it compiles, the shared tests pass on the simulator, the scanned `.a` is the linked `.a`, and the framework holds no marker. It also names what M5 does not prove: any iPhone screen, capture handling, braille display or phone session.
+
+**iPhone phone checklists (M6 gate evidence; issued in M6, listed now so the owner sees the cost)**
+
+Send back only: pass or fail, "matched", the iPhone model and iOS version, and the app and wallet versions. The rules of P0-P5's preamble apply unchanged: nothing of the throwaway seed is sent or photographed.
+- **I0. Setup:** the iPhone, charged; the app installed by the route the M6 question picks; Developer Mode on; App Privacy Report turned on in Settings before the session; the M4 computer with Sparrow 2.5.5 and Bitcoin Core 31.1.
+- **I1. Capture:** on the dice screen, a words page and the backup passphrase:
+  - a Control Center screen recording shows the cover or a blank area;
+  - AirPlay mirroring to the Mac shows the cover;
+  - iPhone Mirroring from the Mac shows the cover;
+  - a hardware screenshot ends the session with the explanation;
+  - the app switcher shows the cover.
+- **I2. A throwaway ceremony:** as P2, with airplane mode on and Wi-Fi off, and the backup saved through the document picker ("Backup verified").
+- **I3. Watch-only:** as P3. Sparrow and Bitcoin Core show the same first address; Check a backup; `verify.py mixed`.
+- **I4. The test registry:** as P4, with the iOS test-registry build.
+- **I5. App Privacy Report and braille:** after I2-I4, the report lists no network activity for the app. If the owner has a braille display, VoiceOver reads a words page on it (MA:31).
+
+**Doc edits** (Q72; the exact current text on this branch, shortened with "...")
+
+Now (commit 8l):
+- BP:35 "... `keepcrypt-ffi` (the safe layer) and `keepcrypt-jni` (the Android boundary, `libkeepcrypt.so`); Swift binding: M6." -> add `keepcrypt-guard` (the one panic catch) and `keepcrypt-capi` (the iPhone C boundary, `libkeepcrypt_capi.a`, declared to Kotlin/Native by cinterop and linked into the app).
+- BP:37 "... one boundary crate per platform sits under it (`keepcrypt-jni` for Android; the Swift binding is chosen in M6)." -> "`keepcrypt-jni` for Android, `keepcrypt-capi` for iPhone, both over `keepcrypt-guard`".
+- BP:49-50 tree -> add `ffi/guard/` and `ffi/capi/` lines.
+- BP:55-57 tree "android/ Kotlin + Jetpack Compose", "ios/ Swift + SwiftUI" -> "android/ Gradle project: shared Compose Multiplatform screens and the Android app"; "ios/ Xcode host and Swift capture layer (M6)".
+- BP:75 "Kotlin, Jetpack Compose, ..." -> "Kotlin, Compose Multiplatform (Jetpack Compose on Android), ...".
+- BP:76 "Swift, SwiftUI, XCFramework from `cargo` (Swift binding: chosen in M6), iOS 17+" -> "Compose Multiplatform screens (Kotlin/Native) in a Swift host for capture handling; `libkeepcrypt_capi.a` (C ABI) through cinterop; iOS 17+".
+- BP:77 "... `keepcrypt-jni` (the JNI boundary over `jni-sys`, the only unsafe code and the one reviewed `catch_unwind`, ...); Swift binding: chosen in M6" -> the guard, jni and capi split.
+- BP:298, BP:299: Q65's rows.
+- MA:17 "... (`keepcrypt-jni` for Android; the Swift binding is chosen in M6) ..." -> the shared screens and the C bridge, plus Q71's iPhone residual sentence.
+- MA:21 "| UI | Kotlin, Jetpack Compose | Swift, SwiftUI |" -> "Compose Multiplatform, shared | Same, in a Swift host".
+- MA:23 iPhone cell "`KeepCryptCore.xcframework`; Swift binding: chosen in M6" -> "`libkeepcrypt_capi.a` (`keepcrypt-capi` over `keepcrypt-ffi`) through Kotlin/Native cinterop".
+- MA:24 "| Modules | `:app`, `:secure-ui` ..., `:core-ffi` | App target, `SecureUI` Swift package, core XCFramework |" -> "`:app`, `:secure-ui`, `:core-ffi`, `:screens` (shared) | App target with the Swift capture layer; no packages".
+- MA:34 "One `CeremonyViewModel` (Android) or `CeremonyModel` (iOS) owns the FFI session." -> "One shared `CeremonyModel` owns the FFI session."
+- MA:36 "A Rust panic is caught once, at the JNI boundary, ..." -> "at the bridge (`keepcrypt-guard`)".
+
+In M6, after its first probe. These are approved with Q72 as drafts. If a probe result fits neither the drafted text nor its stated alternative, the wording comes back to the owner.
+- MA:34's background rule, and MA:36's heading and stop-screen action, for iOS (Q71).
+- MA:86's row, kept or replaced (Q71).
+- MA:89-110's Swift sample, rewritten as the Swift host that observes capture state and the screenshot notification and tells the shared model.
+- MA:114 "Apply the same view wrapper ..." -> the Swift host's cover applies to every Protected screen.
+- MA:116's version list (the M6 question).
+- MA:124's iOS CI cell adds "and their Kotlin/Native names", the `--ios-app` import scan and the direct-call scan.
+- MA:127's iPhone cell "`.textSelection(.disabled)`" -> "no selectable text (no `SelectionContainer` in the app)".
+- MA:156 "`.fileExporter`" -> `UIDocumentPickerViewController`.
+
+No edits: design.md, pi-firmware.md, seal-watchonly-braille.md. CLAUDE.md rule 9 is framework-neutral and stays. Rules 1, 5 and 9 gain a sentence only at 8r (Q70).
+
+**Plan text this replaces or amends** (this branch's lines)
+- todo.md:10755 "M6 adds a sibling crate for Swift over the same safe layer" -> the bridge section above.
+- todo.md:10781-10788 "One catch, one place, one crate" -> the catch moves to keepcrypt-guard (Q66).
+- todo.md:10789 "Unsafe only in keepcrypt-jni" -> unsafe only in keepcrypt-jni and keepcrypt-capi.
+- todo.md:10792 "Overflow panics in both FFI crates" -> in all four FFI crates.
+- todo.md:10807-10810 "Three Gradle modules (MA:24)" -> the module layout above.
+- Plan groups:
+  - group 3's named files (todo.md:10988-11007) and group 4 (11057-11105);
+  - group 10 (exports) and group 12 (symbol list);
+  - group 13 (11348-11359): `:core-ffi` becomes KMP; `commonTest` runs on the JVM forked per class and on the simulator per class; ZXing stays in `androidHostTest`;
+  - group 14 (11370-11375): `CeremonyModel` in `commonMain`, held by `:app`; `testRegistry` passed in;
+  - groups 15-18: screens in `commonMain`, seams per M5-20; the accessibility probe at 16.
+- "New dependencies" (todo.md:11528-11569) gains the Q67 and Q68 tables.
+- "Commit order" (11571-11623): stages C-F as above.
+- P0's "An Android 12+ phone (Q56)" reads "the owner's Android phone (Q64)".
+- The "Deferred to M6" bullet (11461-11463) lists the "Stays in M6" items.
+
+**What is unchanged**
+- Stage A (commits 1-3d) and its doc edits (MA:29, 34, 36, 73-76, 125, 160; BP:273, :321; swb:286).
+- CLAUDE.md rules 1 and 8 as approved, until 8r. CODEOWNERS `/Entropy/mobile/` (it already covers `mobile/ios`). The Build rule and its gitlink ban.
+- Every existing Kt rule's patterns, plus one addition: the `kotlin.uuid` ban for all Kotlin. Kotlin in any allowed `mobile/android/<module>/src/` source set already gets every rule.
+- `--apk`, `--selftest-apk`, the dex scan, the canary library (M5-15), signing and the expected manifests (contents change as named). The emulator harness and M5-16/17/18. `androidTest` in `:app`. The `withTestRegistry` flavour (M5-6), Android-only.
+- The FFI's safe layer, slot, generation counter, halt rule, owned copies and status-first wire format (groups 8, 9, 11). This format is why the move is cheap: `Wire.kt` and `Core.kt` move into `commonMain` unchanged.
+- The 14 required check names. NDK r30, the 16 KB check and the symbol checks.
+- Kotlin 2.4.20, AGP 9.3.3, Gradle 9.7.1, compileSdk 37 / targetSdk 36 / minSdk 31, Jetpack Compose foundation 1.12.1, activity-compose 1.13.0, ZXing 3.5.4, jni-sys =0.3.0.
+- Lead decisions:
+  - M5-1..M5-6, M5-9..M5-12 and M5-14..M5-18 stand;
+  - M5-8 stands, and its path list grows (see the bridge section);
+  - M5-7 gains the two new plugin markers with `apply false`;
+  - M5-13 holds again after 8p.
+
+**Verification (additions to "Verification")**
+- [ ] **M5: the iPhone target compiles and the shared tests pass on the simulator.** `entropy-ios.yml` is green at the final head. The per-class `:core-ffi` and `:screens` simulator runs have the same class list and counts as the JVM runs. The release framework links and holds no marker or test key. The test executables' imports equal `expected/ios-test-imports.txt`, and the direct-call scan is clean.
+  - Proof: run ID and counts.
+- [ ] **The iOS static library passes the release scan, and the scanned library is the linked one.** Both macos-26 legs are green with the plain and test-registry `.a` scans. The header/export test is green. `entropy-ios.yml`'s linked-library hash equals `ios-rust.sh`'s scanned hash.
+  - Proof: run IDs; the scan and hash lines.
+- [ ] **One catch.** The gate's FFI rule and the clippy.toml canaries are green with seven members.
+  - Proof: canaries output.
+- [ ] **No unverified download.** Every run starts with an empty `.konan/dependencies/` and the download hosts blocked. The three archives pass `konan-deps.sh` (SHA-256 and `.asc`). `.extracted` equals the pinned list. The removed-archive canary turns red as expected. Every Gradle artifact in the merged verification metadata is reviewed.
+  - Proof: the review output, the listing and the canary.
+- [ ] **Accessibility on iOS, first look.** The commit 16 probe shows one element per word with the word as its label.
+  - Proof: the probe output.
+
+**Unverified until the probe (8o-8q, 14, 16) or M6; none is presented as proven**
+- Probe 8o-8q:
+  - whether strict lock mode accepts one merged lockfile set on both hosts;
+  - whether the Linux job resolves the Linux Kotlin/Native bundle or toolchain archives;
+  - whether any documented `airplaneMode` switch reaches KGP's download path (not relied on either way);
+  - the exact archive names in the verified bundle's `konan.properties`;
+  - which key signs the three archives, and whether `gpg` is on the macos-26 image;
+  - the `osVersionMin` switch, and that the `minos` of the linked binaries is 17.0;
+  - the simulator device name on the image;
+  - whether KGP warns on Xcode 26.4.1 (17E202) where it expects 17E192;
+  - whether the macos-26 image needs an Android SDK for the KMP library's Android target during iOS tasks;
+  - the exact Android classpath delta: savedstate 1.4.0 is known; the others listed in [C3] are unchecked; whether the merged manifest changes;
+  - the RNG, network, clipboard and storage imports of the linked iOS binaries (Kotlin/Native runtime, Skia's `SkRandom`, Compose's text and clipboard code), and the framework size;
+  - the direct-call scan's coverage on Kotlin/Native symbol names.
+- Probe 14:
+  - that the Kotlin/Native test task honours `--tests` per class and that each run is a fresh simulator process;
+  - that a cinterop klib without `staticLibraries` plus per-binary `linkerOpts` links on both targets.
+- Probe 16: how the accessibility probe runs without a UIApplication, and whether it needs `ui-test`.
+- Anytime: that Kotlin/Native's collector does not copy a `ByteArray` before `fill(0)`. Its docs describe a non-moving mark-and-sweep collector; this has not been checked.
+- M6:
+  - whether `sceneCaptureState` can be driven in a simulator test;
+  - whether `simctl io` captures leave a secure layer out;
+  - whether the app-switcher snapshot is readable from the simulator's container;
+  - what the system writes into the container (preferences plist, snapshots, Metal shader cache);
+  - whether the exception hook can end the process without a crash report;
+  - whether Compose's iOS accessibility reaches a VoiceOver braille display;
+  - whether a public path reaches `paragraphCache.reset()`;
+  - whether the secure-`UITextField` trick still hides a Metal view on iOS 26 and 27. Reports conflict: Bluesky's package still uses it (Daring Fireball 2026-08-20); one developer reports it failing on iOS 26 (B4X forum 2026-05-03); Apple says iOS has no anti-screenshot API (forums 838583).
+
+**Sources** (read 2026-10-20, nothing downloaded)
+- [C1] github.com/JetBrains/compose-multiplatform/releases (v1.12.0, v1.12.1, v1.12.2); Maven Central `Last-Modified` of ui-iosarm64 1.12.1 (2026-09-22 08:14 GMT) and 1.12.2 (2026-10-15).
+- [C2] kotlinlang.org/docs/multiplatform/whats-new-compose-112.html; kotlinlang.org/docs/multiplatform/compose-compatibility-and-versioning.html (2026-10-15).
+- [C3] Maven Central `foundation-android` and `ui-android` 1.12.1 `.module` and POMs; Google's Maven `savedstate-compose` 1.4.0 (2025-11-05); `expected/shipping-runtime-classpath.txt` at 057130d.
+- [C4] Gradle module metadata of Compose foundation, ui and runtime 1.12.1; HEAD requests on the checksum and `.asc` files named above; Google's Maven `maven-metadata.xml` for the androidx iOS klibs.
+- [C5] kotlinlang.org/docs/releases.html; github.com/JetBrains/kotlin/releases/tag/v2.4.21.
+- [C6] kotlinlang.org/docs/multiplatform/multiplatform-compatibility-guide.html; kotlinlang.org/docs/whatsnew2420.html; KGP 2.4.20 `KotlinToolingDiagnostics.kt`.
+- [C7] developer.android.com/build/migrate-to-built-in-kotlin (2026-09-15); developer.android.com/build/releases/agp-9-0-0-release-notes; developer.android.com/kotlin/multiplatform/plugin (2026-10-16).
+- [C8] kotlinlang.org/docs/multiplatform/whats-new-compose-110.html; the `org.jetbrains.compose` plugin POM.
+- [C9] KGP 2.4.20 `NativeProperties.kt` and `KotlinNativeBundleBuildService.kt`; HEAD on `kotlin-native-prebuilt` 2.4.20, `kotlin-klib-commonizer-embeddable` 2.4.20 and `kotlin-test-junit` 2.4.20.
+- [C10] Kotlin/Native 2.4.20 `konan.properties` and `DependencyProcessor.kt` (`downloadDependency`: the `.extracted` skip, the cache-archive extraction, no hash check); HEAD on the three archives and their `.sha256`/`.asc` at their real URLs.
+- [C11] github.com/actions/runner-images `images/macos/macos-26-arm64-Readme.md` (20261013); `xcodebuild -version` on this Mac (disclosed above).
+- [C12] blog.jetbrains.com (Compose Multiplatform 1.8.0 for iOS stable, 2025-05); kotlinlang.org/docs/multiplatform/compose-ios-accessibility.html; Compose 1.12.1 sources named above (`PlatformFont.skiko.kt:294-329`); Skia m150 `modules/skparagraph/src/ParagraphCache.cpp`.
+- [C13] kotlinlang.org/docs/multiplatform/multiplatform-ios-integration-overview.html (2026-07-21); Kotlin/Native 2.4.20 `konan.properties` (`minVersion.ios`).
+- Apple: developer.apple.com/forums/thread/762744, /760859, /838583; the `sceneCaptureState` and "Protecting sensitive content when screen sharing" pages.
+- Research scratch notes (not committed) are in the session scratchpad's `m5-cmp/` directory: `ios_arm64_tree.txt`, `ios_simarm64_tree.txt`, `repo-impact-facts.txt`, `ios-bridge-notes.txt`, `critique-evidence.txt` and the Kotlin source extracts.
+
+---
+
+### Critique log (revision 2, 2026-10-20)
+
+- **H1 accepted.** The guarantee is now network-level: the download hosts are blocked in `/etc/hosts`, every run starts with an empty `.konan/dependencies/`, `.konan/` is never cached, and `.extracted` must equal the pinned list after the build. Airplane mode is no longer relied on. The old proof "cache listing equals pinned list" was also wrong for a second reason: the fetcher deletes archives after extracting them. Q68 is reworded.
+- **H2 accepted.** The LLVM URL is corrected. `konan-deps.sh` checks `.asc` against a pinned fingerprint as well as SHA-256. The pins are named as trust on first use and added to the M7 list. Q68 presents LLVM as a compiler the owner must trust.
+- **H3 accepted.** M5-29 runs one class per simulator process, filtered from the JVM run's class list, with per-class proofs. The reset-call alternative is rejected because it adds FFI surface, even behind `test-sources`.
+- **H4 accepted, with a different design from the one suggested.** The `.def` has no `staticLibraries`, so Rust never enters a klib or the framework. The test executables link the test library by `linkerOpts`, and the M6 app link adds the plain library. The framework and the test binaries are scanned for both markers and the test key at 8q and at 14.
+- **H5 accepted.** An explicit source-set allow list in the KMP modules refuses `appleMain`, `nativeMain`, the per-target sets and the rest, with a fixture per name.
+- **H6 accepted.** The savedstate 1.3.2→1.4.0 change is named in Q67 and [C3], and the other declared modules are marked unchecked. Any further real-module change comes back by name.
+- **M1 accepted.** A direct-call scan from `kfun:com.keepcrypt.*` is added, with its limit stated. Q70 now recommends deciding the wording after 8q, so commit 8m is removed and 8r added.
+- **M2 accepted.** Q70 is widened to rules 1, 5 and 9, with an explicit deny list and allow list. libc file functions are allowed by name, and rule 8 is checked by behaviour.
+- **M3 accepted.** The rule 8 reading on iOS is added to Q71, with an M6 container-diff proof.
+- **M4 accepted.** Q71 and the capture table now say that any unhandled Kotlin exception aborts with a report.
+- **M5 accepted.** `ios-rust.sh` scans and hashes the exact `.a` it builds, and `entropy-ios.yml` checks that hash around the link.
+- **M6 accepted.** `kotlin-klib-commonizer-embeddable` and `kotlin-test-junit` are added to Q67. The stdlib is sourced from the bundle.
+- **M7 accepted.** The braille risk is in Q65, with an accessibility probe at commit 16 and the owner's braille check as M6's first item.
+- **M8 accepted in part.** The DSL now uses `kotlin { android { } }` and `withHostTestBuilder {}`, and a collision fixture is added. `withDeviceTestBuilder` is rejected and refused, because there are no device tests in KMP modules; `androidTest` stays in `:app`.
+- **M9 accepted.** Names and signatures are checked in the 8o bootstrap run, and the pins land at 8p.
+- **M10 accepted for M6.** CI builds the unsigned `.app` and the Mac only re-signs it. This is recorded for the M6 install question, which is deferred under L10.
+- **L1 accepted.** The minimum is 17.0 in `ios-rust.sh` and in Kotlin/Native `osVersionMin`, with a `minos` check in M5.
+- **L2 accepted.** capi's library is renamed `keepcrypt_capi`.
+- **L3 accepted.** capi uses `["staticlib", "rlib"]`, and its tests call by Rust path, so the gate's `extern "C"` placement rule still holds.
+- **L4 and L13 accepted.** `xcodebuild -version` is disclosed, the promise is limited to named Xcode tools, `llvm-nm`/`llvm-objdump` are used, and a lessons.md entry is planned at 8k.
+- **L5 accepted.** The navigationevent mapping, the "Stays in M6" wording, [C7]'s deprecation wording and the 17E192/17E202 difference are corrected.
+- **L6 accepted.** `testRegistry` is passed in as a seam, and ZXing stays in `:core-ffi` `androidHostTest`.
+- **L7 accepted.** The bundled licences are listed from skiko's notices before Q67; the lead must fill that in.
+- **L8 accepted.** The reset path is an M6 probe. The letter-per-element measure is now iPhone-only so Q58 is not reopened, and Q71 says applying it on Android would reopen Q58.
+- **L9 accepted.** The compared imports come from linked test executables. The framework's archive list is only a superset, used for the stop rule.
+- **L10 accepted.** M6 wording comes back if a probe fits neither draft. The install-route question is deferred to M6, so the questions are now Q65-Q72.
+- **L11 accepted.** The simulator device is pinned and recorded as a probe fact.
+- **L12 accepted.** All the names are added, and `kotlin.uuid` is banned for all Kotlin, Android included.
+- **Also corrected (found while revising):** the runner's default JDK is 21, so JDK 17 comes from `$JAVA_HOME_17_arm64`.
 
 ## Review
 _Added after completion, with pasted proof for every ticked item._
