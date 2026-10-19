@@ -10512,9 +10512,10 @@ milestones.
   checker) or at its `--duration` cap, which fails the recording (the scenario outlasted it); it then waits for the
   stream to end and the local adb to exit, and a recorder that has not within 5 s of the SIGINT fails. No segments, no
   `--time-limit` on raw frames, no 180 s logic. The checker still counts frames, requires the first frame within
-  `--max-gap` seconds of the start, requires every frame black over the app's window (or the control's known pixels),
-  fails on a partial trailing frame and keeps no frame. Finding 7, group 6's probe, recording and first-frame bullets
-  and the Verification gate line say so (commit 8g); the critique log keeps what the plan said before.
+  `--max-gap` seconds of the start, requires every frame black over the app's window (with `--expect black`) or some
+  frame with at least `--min-known` of the control's known pixels (with `--expect visible`), fails on a partial trailing
+  frame and keeps no frame. Finding 7, group 0's probe bullet, group 6's recording and first-frame bullets and the
+  Verification gate line say so (commit 8g); the critique log keeps what the plan said before.
 
 Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). Once M4b merges, build-plan.md lines from
 293 on move down one (the M5 row becomes BP:296).
@@ -11157,17 +11158,17 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   `testTagsAsResourceId`), DocumentsUI, the camera permission prompt and Home. A UiAutomator smoke test on one
   Protected pad runs on API 36 only if the probe shows UiAutomation sees data-sensitive nodes.
   Proof: the flow tests pass on both APIs.
-- [ ] **Capture harness** (shell-uid captures through `UiAutomation.executeShellCommand` and `adb exec-out`, no root): for
-  every screen id (an exhaustive `when` maps each screen to an id, so a new screen without one fails to compile), the
-  test first proves the screen is drawn: the ViewModel reports that screen id and an `OnDrawListener` has seen a frame
-  after it. Then raw `screencap` and `UiAutomation.takeScreenshot()` are black over the app's window, `dumpsys window
-  windows` shows `SECURE` on every window of the package, and the recents thumbnail is the placeholder. Recording: a
-  full ceremony is recorded as one continuous raw-frame stream at a small `--size` the probe confirms, with no
-  `--time-limit` (raw frames ignore it; finding 7, M5-17), through `scripts/android-frames.py`, which starts it and
-  stops it with SIGINT on the device when the scenario is done or at its `--duration` cap (reaching the cap fails),
-  requires the first frame within `--max-gap` seconds of the start and the stream's end within a few seconds of the
-  SIGINT, counts frames, checks the app window's pixels are all black, fails on a partial trailing frame and keeps no
-  frame.
+- [ ] **Capture harness** (shell-uid captures through `UiAutomation.executeShellCommandRwe` (screencap, with its stderr)
+  and `adb exec-out`, no root): for every screen id (an exhaustive `when` maps each screen to an id, so a new screen
+  without one fails to compile), the test first proves the screen is drawn: the ViewModel reports that screen id and an
+  `OnDrawListener` has seen a frame after it. Then raw `screencap` and `UiAutomation.takeScreenshot()` are black over
+  the app's window, `dumpsys window windows` shows `SECURE` on every window of the package, and the recents thumbnail is
+  the placeholder. Recording: a full ceremony is recorded as one continuous raw-frame stream at a small `--size` the
+  probe confirms, with no `--time-limit` (raw frames ignore it; finding 7, M5-17), through `scripts/android-frames.py`,
+  which starts it and stops it with SIGINT on the device when the scenario is done or at its `--duration` cap (reaching
+  the cap fails), requires the first frame within `--max-gap` seconds of the start and the stream's end within a few
+  seconds of the SIGINT, counts frames, checks the app window's pixels are all black, fails on a partial trailing frame
+  and keeps no frame.
   Proof: per-screen pass lines and per-recording frame counts on both APIs.
   Proof (M5 commit 8, partial): `Screen` and `screenId` (exhaustive `when`) in `:app`, `MainActivity.shownScreen` for
   the drawn-screen proof; `CaptureTest` and `Capture` under `app/src/androidTest/`; `python3 -I
@@ -11744,7 +11745,8 @@ Each finding of the critique round and where it is resolved; none is rejected ou
 - [S18] https://github.blog/changelog/2024-04-02-github-actions-hardware-accelerated-android-virtualization-now-available/
 - [S19] https://developer.android.com/guide/practices/page-sizes
 - [S20] https://developer.android.com/google/play/requirements/target-sdk
-- [S21] AOSP frameworks/av cmds/screenrecord/screenrecord.cpp:102, :1330, :1363-1364
+- [S21] AOSP frameworks/av cmds/screenrecord/screenrecord.cpp:102, :1330, :1363-1364; android12-release :138,
+  :845-860; main ~:1059
 - [S22] AOSP ScreenRecordingCallbackController.java:71-94
 - [S24] https://kotlinlang.org/docs/gradle-configure-project.html (Kotlin Gradle plugin compatibility)
 - [S25] https://developer.android.com/develop/ui/compose/compiler (Compose 1.12 needs compileSdk 37 and AGP 9)
