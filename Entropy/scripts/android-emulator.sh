@@ -187,7 +187,23 @@ for s in window_animation_scale transition_animation_scale animator_duration_sca
 done
 dev shell svc power stayon true || fail "svc power stayon failed"
 dev shell settings put system screen_off_timeout 1800000 || fail "settings put system screen_off_timeout failed"
+# Wake the display: stayon keeps an awake screen on but does not wake one that is already off, and
+# with the display off screencap returns nothing and screenrecord waits forever for a frame (run
+# 39287689866: "screencap -p gave no image"; the screenrecord probe timed out).
+dev shell input keyevent KEYCODE_WAKEUP || fail "input keyevent KEYCODE_WAKEUP failed"
+dev shell wm dismiss-keyguard > /dev/null 2>&1
 sleep 10
+wake=$(value dumpsys power | grep -o 'mWakefulness=[A-Za-z]*' | head -n 1)
+shown=$(value dumpsys display | grep -o 'mScreenState=[A-Z_]*' | head -n 1)
+probe "display: $wake; $shown"
+dev exec-out screencap -p > "$work/screencap-probe.png" 2> "$work/screencap-probe.err"
+rc=$?
+probe "adb exec-out screencap -p: exit $rc, $(wc -c < "$work/screencap-probe.png" | tr -d ' ') bytes, stderr: $(tr -d '\r' < "$work/screencap-probe.err" | tr '\n' ' ')"
+rm -f "$work/screencap-probe.png"
+case $wake in
+  mWakefulness=Awake) ;;
+  *) fail "the display is not awake ($wake; $shown)" ;;
+esac
 
 # 1. The shell's facts.
 probe "build: $(value getprop ro.build.fingerprint); sdk $(value getprop ro.build.version.sdk); type $(value getprop ro.build.type); ro.debuggable=$(value getprop ro.debuggable)"
