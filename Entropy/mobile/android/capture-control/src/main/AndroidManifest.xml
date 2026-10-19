@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The capture tests' positive control (tasks/todo.md, M5 group 6), CI only: the app's manifest
-     rules, without the capture-protection permissions, since it must be capturable. -->
+     rules, without the capture-protection permissions, since it must be capturable. The curtain
+     is exported so that the emulator's shell can start it under the app's cold launch. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
@@ -19,6 +20,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".CurtainActivity"
+            android:exported="true" />
         <provider android:name="androidx.startup.InitializationProvider" android:authorities="${applicationId}.androidx-startup" tools:node="remove" />
     </application>
 </manifest>

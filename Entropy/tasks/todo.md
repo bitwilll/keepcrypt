@@ -11116,11 +11116,20 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   rule; `sdkmanager --install` with the SDK licence accepted (Q54); headless AVDs; images cached by revision.
   `--workflows` passes on it.
   Proof: the green run with each step's time; emulator and image revisions printed.
+  Proof (M5 commit 8, partial; the run and its times are the lead's, from CI): the job's last steps are the frame
+  checker's selftest, the KVM udev rule, the revisions `sdkmanager --list` offers (the cache key), actions/cache of
+  `~/kc-sdk/emulator` and `~/kc-sdk/system-images`, `sdkmanager --install` into `$HOME/kc-sdk` with `--licenses`, the
+  installed revisions checked against the key, and one step per image running `scripts/android-emulator.sh`
+  (hand-written headless AVD, one logged boot re-run, `timeout-minutes: 90`). `banned-api-check.sh --workflows
+  ../.github/workflows` clean (3 workflows); the file parses as YAML (21 steps). No Android tool on this Mac.
 - [ ] **Instrumentation:** `scripts/android-instrument.sh` runs `am instrument -w -r -e class ...` once per test class,
   and once per test that halts or kills the process, so a latched `Halted` slot or a dead process never fails the next
   test. The crash test is judged from the shell: the process is gone, no crash dialog window exists, `logcat -b crash`
   holds no line naming the package, and `dumpsys dropbox` shows no new `data_app_crash` entry. No Test Orchestrator.
   Proof: the per-class lines in the log.
+  Proof (M5 commit 8, partial): `scripts/android-instrument.sh` against a stub adb with recorded `am instrument -r`
+  output: a passing class prints its probe, pass and `kc:` lines and "instrument: api=31 PASS ..."; a failed test and a
+  crashed process (shortMsg) each fail. The emulator run is the lead's.
 - [ ] **Driving:** the instrumentation shares the app's process, so flows call the same `CeremonyViewModel` entry points
   the pads call (dice, letters, choices); UiAutomator clicks Public screens by resource id (Compose test tags with
   `testTagsAsResourceId`), DocumentsUI, the camera permission prompt and Home. A UiAutomator smoke test on one
@@ -11135,6 +11144,10 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   streamed through `scripts/android-frames.py`, which counts frames, checks the app window's pixels are all black, fails
   on a gap between segments and keeps no frame.
   Proof: per-screen pass lines and per-segment frame counts on both APIs.
+  Proof (M5 commit 8, partial): `Screen` and `screenId` (exhaustive `when`) in `:app`, `MainActivity.shownScreen` for
+  the drawn-screen proof; `CaptureTest` and `Capture` under `app/src/androidTest/`; `python3 -I
+  scripts/android-frames.py --selftest` 26 passed, 0 failed on 3.12 and /usr/bin/python3 3.9.6. Kotlin compiles and
+  the emulator runs only in CI.
 - [ ] **Positive controls (each missing control fails the job):** (a) the capture-control APK draws `dice-99-words12`'s
   first words page and a Public screen with the same composables and no FLAG_SECURE; the same screencap,
   `takeScreenshot()` and raw-frame calls must find its known pixels, on API 31 and 36. (b) The drawn-screen proof above,
@@ -11142,9 +11155,17 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   first; set to 1, the app's own captures show the words page; back to 0, black again. The control captures (gate seeds
   only; Reveal D never captured) are uploaded as the owner's screen review.
   Proof: each control's result logged per API.
+  Proof (M5 commit 8, partial): (a) `ControlTest` (screencap, takeScreenshot, dumpsys window, recents) and the
+  raw-frame control in `scripts/android-emulator.sh` (`android-frames.py --expect visible`); (b) `Capture.proveDrawn`
+  before every capture of the app; (c) `CaptureTest.disableSecureWindowsShowsTheScreenOnlyWhileSet`, asserted from API
+  36, a probe on 31. Results are the lead's, from CI. The control captures are not uploaded at this commit: the
+  words page they are for comes with commit 19.
 - [ ] **First frame** (lessons 4): raw frames from before a cold launch to Home show nothing but black in the app's
   window, with control (a)'s pipeline proven in the same run.
   Proof: frame count and result on both APIs.
+  Proof (M5 commit 8, partial): capture-control's `CurtainActivity` (black, no FLAG_SECURE) under each cold launch
+  (`am start -W`, which must report COLD), recorded by `android-frames.py --expect black` from before the launch;
+  the control's recording comes first in the same leg. Results are the lead's, from CI.
 - [ ] **ARM and 16 KB leg** (from commit 14): on the 16 KB-page image, `getconf PAGE_SIZE` is 16384, the x86_64 APK
   installs, launches to Home and passes the self-test. If the image lists arm64-v8a (and armeabi-v7a) in its ABI list,
   the APK is installed again with `--abi arm64-v8a` (then `armeabi-v7a`) and a small instrumented class runs

@@ -26,13 +26,25 @@
 # for INTERNET, declares a provider and calls java.util.Random from a com.keepcrypt class) must be
 # refused by --apk; a pass fails the job.
 #
+# Then the emulators (M5 group 6, commit 8), one after another on those signed bytes:
+# system-images;android-31;default;x86_64 and system-images;android-36;default;x86_64, installed with
+# the emulator by sdkmanager into their own SDK root ($HOME/kc-sdk; the runner's SDK is left as it
+# is), with the SDK licence accepted (Q54), and cached by actions/cache under a key made of the three
+# revisions sdkmanager offers. KVM comes from a udev rule. scripts/android-emulator.sh runs each leg:
+# a headless AVD, a boot that may be re-run once (logged; a test failure is never re-run), the
+# platform probe's facts as "probe:" lines, the instrumented capture tests on both apps through
+# scripts/android-instrument.sh (one am instrument per class, judged from the shell), the positive
+# controls and the first-frame recordings through scripts/android-frames.py (raw frames streamed
+# and checked in memory, none kept).
+#
 # Not one of the 14 required checks (Q55), so path filters are safe, as in entropy-pi-image.yml:
 # a skipped run never leaves a required check pending. The rule instead (Q38 (b)): no PR that
 # touches these paths merges without a green run of this workflow on its final head.
 #
 # Hardening, as in entropy-ci.yml, whose gates job checks this file too (banned-api-check.sh
-# --workflows): read-only token and no secret; only actions/checkout, pinned by commit SHA; no
-# event data inside run scripts (it reaches them through env and with only). Gradle comes from
+# --workflows): read-only token and no secret; only actions/checkout and actions/cache, pinned by
+# commit SHA; no event data inside run scripts (it reaches them through env and with only). A cache
+# written by a PR run is scoped to that PR, so main only restores caches written on main. Gradle comes from
 # scripts/android-gradle.sh (pinned SHA-256, no wrapper jar), with only Google's Maven and Maven
 # Central (mobile/android/settings.gradle.kts), no JDK or SDK download, no daemon and no build
 # scan. The job builds a PR's head commit, never GitHub's merge commit, or the pushed, scheduled or
@@ -93,9 +105,9 @@ jobs:
   android:
     name: android (build, emulators)
     runs-on: ubuntu-24.04
-    # A first bound for the build alone; commit 8 sets the job's budget from its measured time
-    # plus 25%, with a 90-minute ceiling (tasks/todo.md, M5 "Budgets").
-    timeout-minutes: 60
+    # The 90-minute ceiling (tasks/todo.md, M5 "Budgets") until the first green run with the
+    # emulators is measured; the lead then sets the job's budget to that time plus 25%.
+    timeout-minutes: 90
     env:
       # The SDK pieces the build uses (mobile/android/gradle/libs.versions.toml), checked below.
       KC_BUILD_TOOLS: 36.0.0
@@ -342,3 +354,78 @@ jobs:
           grep -q -e '^DexRef: classes[0-9]*[.]dex: Lcom/keepcrypt/canary/Canary; references Ljava/util/Random;$' \
             "$RUNNER_TEMP/canary.log" || fail "no DexRef hit for com.keepcrypt.canary.Canary"
           echo "the canary APK was refused, with the INTERNET, provider and DexRef hits"
+      # The frame checker's own cases (no emulator): each pixel format, the region's scaling, and the
+      # segment chain on stand-in recorders (a partial frame, a segment with no frame, a gap and a
+      # failing recorder each fail).
+      - name: Frame checker selftest (scripts/android-frames.py --selftest)
+        run: python3 -I scripts/android-frames.py --selftest
+      # KVM for the emulators: the udev rule GitHub documents for its Linux runners.
+      - name: KVM (udev rule)
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo udevadm settle
+          ls -l /dev/kvm
+          [ -r /dev/kvm ] && [ -w /dev/kvm ] || { echo "FAIL: /dev/kvm is not usable" >&2; exit 1; }
+      # The emulator and the two system images come from sdkmanager, into their own SDK root. The
+      # revisions it offers now make the cache key, so a new revision is a fresh download, and the
+      # install below must end with exactly these revisions.
+      - name: Emulator and system image revisions (sdkmanager --list)
+        run: |
+          fail() { echo "FAIL: emulator revisions: $1" >&2; exit 1; }
+          sdk=$HOME/kc-sdk
+          mkdir -p "$sdk"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$sdk" --list > "$RUNNER_TEMP/sdk-list.txt"
+          rev() {
+            awk -v FS='|' -v p="$1" '{ n = $1; v = $2; gsub(/[[:space:]]/, "", n); gsub(/[[:space:]]/, "", v); if (n == p && v != "") { print v; exit } }' \
+              "$RUNNER_TEMP/sdk-list.txt"
+          }
+          emu=$(rev emulator)
+          i31=$(rev 'system-images;android-31;default;x86_64')
+          i36=$(rev 'system-images;android-36;default;x86_64')
+          [ -n "$emu" ] && [ -n "$i31" ] && [ -n "$i36" ] || fail "sdkmanager --list does not offer all three"
+          echo "emulator $emu; system-images;android-31;default;x86_64 $i31; system-images;android-36;default;x86_64 $i36"
+          {
+            echo "KC_EMULATOR_REV=$emu"
+            echo "KC_IMAGE_31_REV=$i31"
+            echo "KC_IMAGE_36_REV=$i36"
+            echo "KC_EMULATOR_KEY=emulator-$emu-android-31-$i31-android-36-$i36"
+          } >> "$GITHUB_ENV"
+      - name: The emulator and system images from the cache (keyed on their revisions)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/kc-sdk/emulator
+            ~/kc-sdk/system-images
+          key: ${{ runner.os }}-${{ runner.arch }}-android-emulator-${{ env.KC_EMULATOR_KEY }}
+      # The SDK licence (Q54: the owner accepted it for CI, 2026-10-17), written into the new SDK
+      # root by sdkmanager --licenses, answering yes; then the three packages (nothing to fetch on a
+      # cache hit), and their installed revisions checked against the key's.
+      - name: Emulator install (sdkmanager, the SDK licence accepted, Q54)
+        run: |
+          fail() { echo "FAIL: emulator install: $1" >&2; exit 1; }
+          sdk=$HOME/kc-sdk
+          sdkmanager=$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager
+          { yes || :; } | "$sdkmanager" --sdk_root="$sdk" --licenses > /dev/null
+          ls "$sdk/licenses"
+          "$sdkmanager" --sdk_root="$sdk" --install emulator 'system-images;android-31;default;x86_64' \
+            'system-images;android-36;default;x86_64' > "$RUNNER_TEMP/sdk-install.txt" || { tail -n 40 "$RUNNER_TEMP/sdk-install.txt"; fail "sdkmanager --install failed"; }
+          "$sdkmanager" --sdk_root="$sdk" --list_installed | tee "$RUNNER_TEMP/sdk-installed.txt"
+          installed() {
+            awk -v FS='|' -v p="$1" '{ n = $1; v = $2; gsub(/[[:space:]]/, "", n); gsub(/[[:space:]]/, "", v); if (n == p) print v }' \
+              "$RUNNER_TEMP/sdk-installed.txt"
+          }
+          [ "$(installed emulator)" = "$KC_EMULATOR_REV" ] || fail "the emulator installed is not $KC_EMULATOR_REV"
+          [ "$(installed 'system-images;android-31;default;x86_64')" = "$KC_IMAGE_31_REV" ] || fail "the API 31 image is not $KC_IMAGE_31_REV"
+          [ "$(installed 'system-images;android-36;default;x86_64')" = "$KC_IMAGE_36_REV" ] || fail "the API 36 image is not $KC_IMAGE_36_REV"
+          "$sdk/emulator/emulator" -version | head -n 1
+          "$sdk/emulator/emulator" -accel-check
+          "$ANDROID_HOME/platform-tools/adb" version
+      # The two emulator legs, one after another, on the APKs signed and checked above (group 6;
+      # the header of scripts/android-emulator.sh lists what each runs). The 16 KB-page image joins
+      # at commit 14.
+      - name: Emulator API 31 (system-images;android-31;default;x86_64)
+        run: sh scripts/android-emulator.sh 31 "$HOME/kc-sdk" "$ANDROID_HOME/platform-tools/adb" "$RUNNER_TEMP/apks" "$RUNNER_TEMP/emulator-31"
+      - name: Emulator API 36 (system-images;android-36;default;x86_64)
+        run: sh scripts/android-emulator.sh 36 "$HOME/kc-sdk" "$ANDROID_HOME/platform-tools/adb" "$RUNNER_TEMP/apks" "$RUNNER_TEMP/emulator-36"
