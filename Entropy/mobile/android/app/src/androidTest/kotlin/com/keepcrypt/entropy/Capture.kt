@@ -249,7 +249,7 @@ internal object Capture {
     /**
      * Every window of pkg that dumpsys window windows lists, each block starting at a header
      * "Window #N Window{ID uU TITLE}:". A window is pkg's when its owner line ("mOwnerUid=U
-     * showForAllUsers=B package=PKG appop=OP") holds package=pkg as a whole word, which every window
+     * showForAllUsers=B package=PKG appop=OP") names the app's uid and package=pkg as whole words, which every window
      * the app adds has whatever its title (a pop-up's or a panel's title names no package), or when
      * its title is pkg, pkg/ACTIVITY or ends in " pkg" (the starting window's "Splash Screen pkg",
      * which the system adds), so another package that starts with pkg is not one.
@@ -258,6 +258,9 @@ internal object Capture {
         val header = Regex("""^\s*Window #\d+ Window\{\S+ \S+ (.*)\}:\s*$""")
         val ours = Regex("""(^|\s)""" + Regex.escape(pkg) + """(/\S*)?$""")
         val owner = "package=$pkg"
+        // The app's uid: run 39329698964 showed com.android.systemui.ImageWallpaper's own owner line
+        // holding package=pkg on API 31, so the line must also name the app's uid to count.
+        val uid = "mOwnerUid=" + instrumentation.targetContext.packageManager.getPackageUid(pkg, 0)
         val flags = Regex("""(^|\s)fl=(.*)$""")
         val found = ArrayList<WindowFacts>()
         var title: String? = null
@@ -285,7 +288,8 @@ internal object Capture {
             // Any other line can name the app too (run 39311080988 counted com.android.systemui.ImageWallpaper
             // as the app's from such a line), so only this one counts.
             val trimmed = line.trim()
-            if (trimmed.startsWith("mOwnerUid=") && trimmed.split(Regex("""\s+""")).contains(owner)) owned = true
+            val words = trimmed.split(Regex("""\s+"""))
+            if (words.firstOrNull() == uid && words.contains(owner)) owned = true
             val f = flags.find(line)
             if (!flagsSeen && f != null) {
                 flagsSeen = true
