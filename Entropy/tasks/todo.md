@@ -10492,6 +10492,12 @@ milestones.
   `lockAllConfigurations()` and `lockMode.set(LockMode.STRICT)` as whole lines; `scripts/android-deps-review.sh`
   fetches with curl, because the gate refuses network modules in Python outside `registry/`. The workflow keeps the
   dependency review and the classpath compare before its first Gradle call.
+- M5-15 (2026-10-19): the canary library (`scripts/testdata/android-canary-lib/`) carries the one accepted lock-off,
+  `dependencyLocking { unlockAllConfigurations() }` in its own build file, because it is not part of any locked build. It
+  joins the build only under `-Pkc.canary=true`, in the workflow's one canary Gradle line, offline and with strict
+  verification; the gate refuses the property anywhere else and refuses any include, projectDir or includeBuild that
+  would place a project from outside `mobile/android` in a real build (commit 7b, 5626368). Its `com.keepcrypt` class
+  calls `java.util.Random` so the canary step also proves the dex reference scan on the real dexdump (fa90eee).
 
 Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). Once M4b merges, build-plan.md lines from
 293 on move down one (the M5 row becomes BP:296).
@@ -11103,7 +11109,7 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   `Entropy/Cargo.lock`, `Entropy/rust-toolchain.toml`, `Entropy/vectors/**`, the gate and android scripts and the
   workflow, plus weekly and dispatch; `contents: read`; only the three approved actions; no secrets; expressions only
   through `env:`; `timeout-minutes` per the budget. One job, in order: Rust libraries, all APKs (shipping,
-  test-registry, the test APK, capture-control), JVM tests, the `--apk` checks, the canary build, the throwaway signing,
+  test-registry, the test APK, capture-control), JVM tests, the throwaway signing (the `--apk` checks verify the run's certificate), the `--apk` checks, the canary build,
   the uploads (both APKs with SHA-256, the P4 files, the positive-control captures; the test-registry APK named
   `NOT-FOR-RELEASE`), then the emulators one after another on those bytes: `default;x86_64` API 31, `default;x86_64`
   API 36, and from commit 14 one 16 KB-page image (`google_apis_ps16k;x86_64` API 36, or the probe's choice). KVM udev
