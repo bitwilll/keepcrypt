@@ -37,10 +37,12 @@ and only counts and pass or fail are printed. scripts/android-emulator.sh runs i
       (still running after 4 s: accepted, then stopped); and, at the first size, the bytes a 2-second
       raw-frame stream holds and which pixel formats divide them into whole frames. It judges nothing.
   android-frames.py --selftest
-      the frame logic on frames built in memory (each format, a lit pixel inside and outside the region,
-      the known colour, the region's scaling) and the segment chain on stand-in recorders (python -c):
-      a partial frame, a segment with no frame, a gap, a failing recorder and a first segment shorter
-      than --min-first-segment each fail.
+      the frame logic on frames built in memory (each format, a pixel lit in each channel alone inside
+      the region and lit pixels outside it, the known colour, the region's scaling and its rounding) and
+      the segment chain on stand-in recorders (python -c): a partial frame, a segment with no frame, a
+      gap, a failing recorder and a first segment shorter than --min-first-segment each fail; --time-limit
+      outside 1 to 180 and --expect black without --display or --region are refused; and --expect
+      visible's default --min-known refuses 9 known pixels and takes 10.
 
 Exit codes: 0 pass, 1 fail, 2 usage or a tool that cannot run.
 """
@@ -326,6 +328,9 @@ def selftest():
               lit_pixels(alpha_only, fmt, w, region) == 0)
         inside = frame_of(fmt, w, h, {(3, 2): (40, 0, 0)})
         check("%s a lit pixel inside the region counts" % fmt, lit_pixels(inside, fmt, w, region) == 1)
+        for name, colour in (("green", (0, 40, 0)), ("blue", (0, 0, 40))):
+            only = frame_of(fmt, w, h, {(3, 2): colour})
+            check("%s a pixel lit in %s alone counts" % (fmt, name), lit_pixels(only, fmt, w, region) == 1)
         outside = frame_of(fmt, w, h, {(0, 0): (255, 255, 255), (7, 5): (255, 255, 255)})
         check("%s lit pixels outside the region do not" % fmt, lit_pixels(outside, fmt, w, region) == 0)
         dim = frame_of(fmt, w, h, {(3, 2): (16, 16, 16)})
@@ -334,6 +339,8 @@ def selftest():
         check("%s the known colour is counted, white is not" % fmt, known_pixels(marked, fmt, w, h) == (2, 8))
     check("the region scales and shrinks by one recorded pixel",
           scale_region((0, 48, 720, 1184), (720, 1280), (360, 640)) == (1, 25, 359, 591))
+    check("a region that does not scale exactly rounds inwards",
+          scale_region((1, 3, 719, 1183), (720, 1280), (360, 640)) == (2, 3, 358, 590))
     for name, bad in (("another aspect ratio", ((0, 0, 10, 10), (720, 1280), (360, 600))),
                       ("a region outside the display", ((0, 0, 721, 10), (720, 1280), (360, 640)))):
         try:
@@ -342,12 +349,20 @@ def selftest():
         except Usage:
             check("refused: " + name, True)
 
-    def run(expect, commands, region_text="0,0,16,12", min_known=1, max_gap=5.0, min_first_segment=0.0):
+    def run(expect, commands, region_text="0,0,16,12", min_known=1, max_gap=5.0, min_first_segment=0.0,
+            time_limit=170, display="16x12"):
         args = argparse.Namespace(adb="adb", serial="emulator-5554", size="%dx%d" % (w, h), format="rgb888",
-                                  time_limit=170, segments=len(commands), expect=expect, display="16x12",
+                                  time_limit=time_limit, segments=len(commands), expect=expect, display=display,
                                   region=region_text, max_gap=max_gap, min_known=min_known,
                                   min_first_segment=min_first_segment)
         return record(args, commands)
+
+    def refused(name, call):
+        try:
+            call()
+            check("refused: " + name, False)
+        except Usage:
+            check("refused: " + name, True)
 
     black = frame_of("rgb888", w, h, {})
     lit = frame_of("rgb888", w, h, {(4, 3): (255, 255, 255)})
@@ -365,14 +380,23 @@ def selftest():
           run("black", [stand_in([black]), stand_in([black])], min_first_segment=5.0) == 1)
     check("record: visible passes on the known colour", run("visible", [stand_in([black, seen])]) == 0)
     check("record: visible fails on black frames", run("visible", [stand_in([black, lit])]) == 1)
+    check("record: --time-limit 180 is accepted", run("black", [stand_in([black])], time_limit=180) == 0)
+    for limit in (0, 181):
+        refused("record --time-limit %d" % limit, lambda: run("black", [stand_in([black])], time_limit=limit))
+    refused("record --expect black without --display", lambda: run("black", [stand_in([black])], display=None))
+    refused("record --expect black without --region", lambda: run("black", [stand_in([black])], region_text=None))
+    parsed = build_parser().parse_args(["record", "adb", "emulator-5554", "--size", "%dx%d" % (w, h), "--format",
+                                        "rgb888", "--time-limit", "170", "--segments", "1", "--expect", "visible"])
+    nine = frame_of("rgb888", w, h, {(x, 1): yellow for x in range(8)} | {(0, 2): yellow})
+    ten = frame_of("rgb888", w, h, {(x, 1): yellow for x in range(8)} | {(0, 2): yellow, (1, 2): yellow})
+    check("record: visible's default --min-known (10) refuses 9 known pixels", record(parsed, [stand_in([nine])]) == 1)
+    check("record: visible's default --min-known (10) takes 10 known pixels", record(parsed, [stand_in([ten])]) == 0)
     failed = results.count(False)
     print("android-frames selftest: %d passed, %d failed" % (results.count(True), failed), flush=True)
     return 1 if failed else 0
 
 
-def main(argv):
-    if argv == ["--selftest"]:
-        return selftest()
+def build_parser():
     parser = argparse.ArgumentParser(prog="android-frames.py")
     sub = parser.add_subparsers(dest="command", required=True)
     rec = sub.add_parser("record")
@@ -393,7 +417,13 @@ def main(argv):
     pro.add_argument("serial")
     pro.add_argument("api")
     pro.add_argument("sizes", nargs="+")
-    args = parser.parse_args(argv)
+    return parser
+
+
+def main(argv):
+    if argv == ["--selftest"]:
+        return selftest()
+    args = build_parser().parse_args(argv)
     try:
         return record(args) if args.command == "record" else probe(args)
     except Usage as e:
