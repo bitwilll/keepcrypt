@@ -10702,6 +10702,10 @@ milestones.
   takeScreenshot), and only beside a passing positive control in the same leg: ControlTest runs first and must get images
   of capture-control's screen through the same calls, and the raw-frame recordings, which still work, must be black. Where
   `disable_secure_windows` is read (API 36), the captures with it set to 1 must be images showing the screen.
+- M5-30 (2026-10-20): the Android job's budget is 15 minutes (`timeout-minutes: 15`, commit 8l-e): run 39337431167 at 8l-d
+  took 12 minutes with cold emulator and Gradle caches, plus 25%. Commits that add a leg or tests (14's 16 KB image,
+  the screens) re-measure it; a slower run stops the job and the lead re-plans (Built into this plan, Budgets).
+  Commit 8l-e's message also names this file's changes, which a failed script left out; 8l-f carries them.
 
 Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). Once M4b merges, build-plan.md lines from
 293 on move down one (the M5 row becomes BP:296).
@@ -11070,6 +11074,18 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   kotlinx-coroutines and serialization, JetBrains annotations and JSpecify; no profileinstaller, Material or navigation
   library; every licence is checked by commit 6's review script. Bootstrap files kept at the session's
   `plans/android-bootstrap-39062895784/` (artifact `android-bootstrap`, 454 components in verification-metadata.xml).
+  Proof (M5 commit 8l-f, partial: the emulator facts; the 16 KB image and the strip fact come with commit 14): Entropy
+  Android 39337431167 at 8l-d, emulator 37.2.12 (-no-window, swiftshader_indirect), images android-31 default x86_64 rev 5
+  (SE1A.220826.006.A1, userdebug) and android-36 default x86_64 rev 2. Boot 30 s and 50 s. Both: page size 4096, ABI list
+  x86_64 only, wifi_on=1 and airplane_mode_on=0 at boot, `logcat -b crash` and `dumpsys dropbox` readable (exit 0),
+  the black starting window (raw frames from under the curtain through each cold launch all black), the empty
+  saved-state Bundle crashes nothing. API 31: no content_capture service; `disable_secure_windows` unset and not read;
+  a shell screencap of a screen with a secure window gives no image at all (M5-18), takeScreenshot likewise; data-
+  sensitive nodes do not exist before API 34. API 36: `disable_secure_windows` unset, and read (set to 1, the app's
+  captures show its screen); screencap and takeScreenshot give images, black over the app's window; UiAutomation sees a
+  data-sensitive node and its click reaches it. screenrecord raw frames: 360x640 and 720x1280 accepted, rgb888 (691,200
+  bytes a frame at 360x640), first frame after 0.2 s, SIGINT ends a stream within 0.1 s, --time-limit ignored (M5-17).
+  The emulator needed Ubuntu's libpulse0 (M5-16) and a woken display (8e).
 
 **1. Doc and rule edits, alone (only those approved)**
 - [x] One commit changes only `docs/`: BP:35, :47, :72, :73, :74, MA:17 and both columns of MA:23, plus a line under
@@ -11331,7 +11347,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   installed revisions checked against the key, and one step per image running `scripts/android-emulator.sh`
   (hand-written headless AVD, one logged boot re-run, `timeout-minutes: 90`). `banned-api-check.sh --workflows
   ../.github/workflows` clean (3 workflows); the file parses as YAML (21 steps). No Android tool on this Mac.
-- [ ] **Instrumentation:** `scripts/android-instrument.sh` runs `am instrument -w -r -e class ...` once per test class,
+  Proof (M5 commit 8l-f, partial: the 16 KB-page image joins at commit 14): run 39337431167 at 8l-d green in 12 min with
+  cold caches (the selftests 1 min 22 s, emulator install 53 s, API 31 leg 2 min 26 s, API 36 leg 2 min 57 s);
+  revisions printed (emulator 37.2.12, android-31 rev 5, android-36 rev 2); `timeout-minutes: 15` (8l-e), the measured
+  budget (M5-30).
+- [x] **Instrumentation:** `scripts/android-instrument.sh` runs `am instrument -w -r -e class ...` once per test class,
   and once per test that halts or kills the process, so a latched `Halted` slot or a dead process never fails the next
   test. The crash test is judged from the shell: the process is gone, no crash dialog window exists, `logcat -b crash`
   holds no line naming the package, and `dumpsys dropbox` shows no new `data_app_crash` entry. No Test Orchestrator.
@@ -11339,6 +11359,10 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   Proof (M5 commit 8, partial): `scripts/android-instrument.sh` against a stub adb with recorded `am instrument -r`
   output: a passing class prints its probe, pass and `kc:` lines and "instrument: api=31 PASS ..."; a failed test and a
   crashed process (shortMsg) each fail. The emulator run is the lead's.
+  Proof (M5 commit 8l-f): run 39337431167: ControlTest and CaptureTest run as separate `am instrument` calls per app and
+  API, each judged from the shell after it (process gone, no crash or not-responding window, `logcat -b crash` names
+  no package, no new dropbox `data_app_crash`), and a failing class no longer stops the leg (8g); `--selftest` 20/0.
+  The crash test itself comes with group 14.
 - [ ] **Driving:** the instrumentation shares the app's process, so flows call the same `CeremonyViewModel` entry points
   the pads call (dice, letters, choices); UiAutomator clicks Public screens by resource id (Compose test tags with
   `testTagsAsResourceId`), DocumentsUI, the camera permission prompt and Home. A UiAutomator smoke test on one
@@ -11360,6 +11384,10 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   the drawn-screen proof; `CaptureTest` and `Capture` under `app/src/androidTest/`; `python3 -I
   scripts/android-frames.py --selftest` 26 passed, 0 failed on 3.12 and /usr/bin/python3 3.9.6. Kotlin compiles and
   the emulator runs only in CI.
+  Proof (M5 commit 8l-f, partial: the full-ceremony recording comes with the screens): run 39337431167, on API 31 and 36,
+  both APKs: "first_launch: drawn, then screencap and takeScreenshot black over the app's window; SECURE on all 1 of
+  its windows" (on API 31 both captures are refused outright, M5-18), "recents: the thumbnail shows none of the app's
+  content", and the raw-frame recordings black (13-18 frames each).
 - [ ] **Positive controls (each missing control fails the job):** (a) the capture-control APK draws `dice-99-words12`'s
   first words page and a Public screen with the same composables and no FLAG_SECURE; the same screencap,
   `takeScreenshot()` and raw-frame calls must find its known pixels, on API 31 and 36. (b) The drawn-screen proof above,
@@ -11372,7 +11400,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   before every capture of the app; (c) `CaptureTest.disableSecureWindowsShowsTheScreenOnlyWhileSet`, asserted from API
   36, a probe on 31. Results are the lead's, from CI. The control captures are not uploaded at this commit: the
   words page they are for comes with commit 19.
-- [ ] **First frame** (lessons 4): raw frames, one continuous stream from under the curtain before a cold launch,
+  Proof (M5 commit 8l-f, partial: the words page comes with commit 19): run 39337431167: (a) on API 31 and 36 the control's
+  screen in screencap (4,555 and 4,597 known-colour pixels), takeScreenshot (the same), recents (1,572 and 1,391) and raw
+  frames (815 and 817 in one frame), its window without SECURE; (b) every app capture follows the drawn-screen proof;
+  (c) API 36: unset, then 1 shows the app's screen in both captures (4,597 known-colour pixels), then black again.
+- [x] **First frame** (lessons 4): raw frames, one continuous stream from under the curtain before a cold launch,
   through the launch to Home and a few seconds more, then stopped, and a second stream started with that screen up (its
   first frame is composed at once, so a frame is recorded with the app's screen up; M5-17), show nothing but black in
   the app's window, with control (a)'s pipeline proven in the same run.
@@ -11380,6 +11412,9 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   Proof (M5 commit 8, partial): capture-control's `CurtainActivity` (black, no FLAG_SECURE) under each cold launch
   (`am start -W`, which must report COLD), recorded by `android-frames.py --expect black` from before the launch;
   the control's recording comes first in the same leg. Results are the lead's, from CI.
+  Proof (M5 commit 8l-f): run 39337431167: API 31 shipping 14 + 1 frames, registry 13 + 1; API 36 shipping 16 + 1, registry
+  18 + 1; every frame black over the app's window, each launch COLD, with control (a)'s raw frames passing first in
+  the same leg.
 - [ ] **ARM and 16 KB leg** (from commit 14): on the 16 KB-page image, `getconf PAGE_SIZE` is 16384, the x86_64 APK
   installs, launches to Home and passes the self-test. If the image lists arm64-v8a (and armeabi-v7a) in its ABI list,
   the APK is installed again with `--abi arm64-v8a` (then `armeabi-v7a`) and a small instrumented class runs
