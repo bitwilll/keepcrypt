@@ -45,14 +45,17 @@ and only counts and pass or fail are printed. scripts/android-emulator.sh runs i
       the region and lit pixels outside it, the known colour, the region's scaling and its rounding) and
       the stream on stand-in recorders (python -c) that, like screenrecord, end only on SIGINT: a lit
       frame, a partial frame, no frame, a late first frame, a recorder that exits non-zero, one that
-      ignores the stop, one that ends before it is stopped and a scenario that outlasts --duration each
-      fail; --duration that is not above 0 and --expect black without --display or --region are
-      refused; and --expect visible's default --min-known refuses 9 known pixels and takes 10.
+      ignores the stop, one that exits 0 on the stop but leaves its stream open (that check alone), one
+      that ends before it is stopped and a scenario that outlasts --duration each fail; --duration that
+      is not above 0 and --expect black without --display or --region are refused; and --expect
+      visible's default --min-known refuses 9 known pixels and takes 10.
 
 Exit codes: 0 pass, 1 fail, 2 usage or a tool that cannot run.
 """
 
 import argparse
+import contextlib
+import io
 import os
 import select
 import signal
@@ -376,12 +379,16 @@ def frame_of(fmt, width, height, pixels):
 def stand_in(frames, tail=b"", sleep=0.0, status=0, on_stop="exit"):
     """A recorder that writes the given frames (after sleep seconds) and then tail, and records on, as
     screenrecord does in raw-frames mode, until SIGINT, when it exits status. on_stop "ignore": it
-    ignores SIGINT (and gives up after 30 s); "none": it exits at once, before any stop."""
-    code = ("import signal, sys, time\nstopped = []\nsignal.signal(signal.SIGINT, %s)\ntime.sleep(%r)\n"
-            "sys.stdout.buffer.write(%r)\nsys.stdout.buffer.flush()\nend = time.monotonic() + 30\n"
-            "while %s and time.monotonic() < end:\n    time.sleep(0.02)\nsys.exit(%d)\n"
+    ignores SIGINT (and gives up after 30 s); "none": it exits at once, before any stop; "orphan": on
+    SIGINT it exits status at once but leaves a child holding its stdout open for 4 s, so the stream
+    does not end."""
+    code = ("import signal, subprocess, sys, time\nstopped = []\nsignal.signal(signal.SIGINT, %s)\n"
+            "time.sleep(%r)\nsys.stdout.buffer.write(%r)\nsys.stdout.buffer.flush()\nend = time.monotonic() + 30\n"
+            "while %s and time.monotonic() < end:\n    time.sleep(0.02)\n%ssys.exit(%d)\n"
             % ("signal.SIG_IGN" if on_stop == "ignore" else "lambda *a: stopped.append(1)", sleep,
-               b"".join(frames) + tail, "False" if on_stop == "none" else "not stopped", status))
+               b"".join(frames) + tail, "False" if on_stop == "none" else "not stopped",
+               "subprocess.Popen([sys.executable, '-I', '-c', 'import time; time.sleep(4)'])\n"
+               if on_stop == "orphan" else "", status))
     return ([sys.executable, "-I", "-c", code], lambda proc: proc.send_signal(signal.SIGINT))
 
 
@@ -453,6 +460,13 @@ def selftest():
     check("record: a recorder (adb) that exits non-zero fails", run("black", stand_in([black], status=1)) == 1)
     check("record: a recorder that ignores the stop fails", run("black", stand_in([black], on_stop="ignore")) == 1)
     check("record: a stream that ends before the stop fails", run("black", stand_in([black], on_stop="none")) == 1)
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        got = run("black", stand_in([black], on_stop="orphan"))
+    sys.stdout.write(out.getvalue())
+    check("record: a recorder that exits 0 on the stop but leaves its stream open fails on that alone",
+          got == 1 and "android-frames: FAIL black: the recorder did not end and exit within 1 s of the stop; 1 frames"
+          in out.getvalue())
     check("record: a scenario that outlasts --duration fails",
           run("black", stand_in([black]), duration=0.5, stop_after=5.0) == 1)
     check("record: visible passes on the known colour", run("visible", stand_in([black, seen])) == 0)
