@@ -9440,6 +9440,12 @@ What does not change, in M4 or M4b (Q44-Q50):
   unturned frame is upright depends on how the module is mounted. A module can be turned to put it upright (any
   quarter turn for the square panels, half a turn for the 2-inch), so no code waits on it; H6 checks it, and PF's
   wiring then names the edge. A bring-up fix (commit 8) changes `madctl` only if turning cannot help.
+- M4b-7 (8b, 2026-10-20): the kernel's kconfig and build are given no rustc to probe (`RUSTC=false` in kconfig.sh
+  and `LINUX_MAKE_FLAGS` in external.mk), and expected/linux.config takes the probe-free values (CONFIG_RUSTC_VERSION=0,
+  CONFIG_RUSTC_LLVM_VERSION=0, no CONFIG_RUSTC_HAS_UNNECESSARY_TRANSMUTES). The Pi image run 39331183327 (on m5-android,
+  the same pi/ tree) failed one leg's scan because the runner images rolled their default rustc from 1.99.0 to 1.99.1 and
+  the kernel recorded it, though CONFIG_RUST is off. Run 39335212684 at 74b80be: all eight jobs green and both images
+  unchanged (st7789-240x240 2cf22c74..., st7789-240x320 c6cc8aa0...), so H1 on the HAT stands (M4b-1).
 - M4b-3 (2f): no backlight step and no idle-wipe step join PF's listing rule. The BL wire's rule is in PF (2d); B5's
   H6 keeps its idle-wipe line for new screens; the HAT's black frame stays as M4's lead decision 22 left it.
 
