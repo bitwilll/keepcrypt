@@ -276,6 +276,7 @@ internal object Capture {
         var owned = false
         var secure = false
         var flagsSeen = false
+        var ownerSeen = false
         fun close() {
             val t = title
             if (t != null && (titled || owned)) found.add(WindowFacts(t, secure, owned))
@@ -289,6 +290,7 @@ internal object Capture {
                 owned = false
                 secure = false
                 flagsSeen = false
+                ownerSeen = false
                 continue
             }
             if (title == null) continue
@@ -300,8 +302,14 @@ internal object Capture {
             // Any other line can name the app too (run 39311080988 counted com.android.systemui.ImageWallpaper
             // as the app's from such a line), so only this one counts.
             val trimmed = line.trim()
-            val words = trimmed.split(Regex("""\s+"""))
-            if (words.firstOrNull() == uid && words.contains(owner)) owned = true
+            // Only the block's first owner line is the window's own: run 39334935255 showed the wallpaper's
+            // block (mOwnerUid=10095 package=com.android.systemui) followed later by a second owner line, the
+            // wallpaper target's, which is the app's.
+            if (!ownerSeen && trimmed.startsWith("mOwnerUid=")) {
+                ownerSeen = true
+                val words = trimmed.split(Regex("""\s+"""))
+                if (words.firstOrNull() == uid && words.contains(owner)) owned = true
+            }
             val f = flags.find(line)
             if (!flagsSeen && f != null) {
                 flagsSeen = true
