@@ -31,12 +31,13 @@
 # system-images;android-31;default;x86_64 and system-images;android-36;default;x86_64, installed with
 # the emulator by sdkmanager into their own SDK root ($HOME/kc-sdk; the runner's SDK is left as it
 # is), with the SDK licence accepted (Q54), and cached by actions/cache under a key made of the three
-# revisions sdkmanager offers. KVM comes from a udev rule. scripts/android-emulator.sh runs each leg:
-# a headless AVD, a boot that may be re-run once (logged; a test failure is never re-run), the
-# platform probe's facts as "probe:" lines, the instrumented capture tests on both apps through
-# scripts/android-instrument.sh (one am instrument per class, judged from the shell), the positive
-# controls and the first-frame recordings through scripts/android-frames.py (raw frames streamed
-# and checked in memory, none kept).
+# revisions sdkmanager offers (the Gradle distribution is cached too, keyed on its pin). KVM comes
+# from a udev rule. scripts/android-emulator.sh runs each leg: a headless AVD, a boot that may be
+# re-run once (logged; a test failure is never re-run), the platform probe's facts as "probe:"
+# lines, the instrumented capture tests on both apps through scripts/android-instrument.sh (one am
+# instrument per class, judged from the shell), the positive controls and the first-frame
+# recordings through scripts/android-frames.py (raw frames streamed and checked in memory, none
+# kept).
 #
 # Not one of the 14 required checks (Q55), so path filters are safe, as in entropy-pi-image.yml:
 # a skipped run never leaves a required check pending. The rule instead (Q38 (b)): no PR that
@@ -85,7 +86,9 @@ on:
       - 'Entropy/deny.toml'
       - '.github/workflows/entropy-android.yml'
   schedule:
-    # Weekly (Mondays, 05:41 UTC): main still builds, from fresh downloads.
+    # Weekly (Mondays, 05:41 UTC): main still builds, from fresh downloads but for the cached
+    # emulator, system images and Gradle distribution, which main's cache serves while their
+    # revisions (and the Gradle pin, checked on every run) are unchanged.
     - cron: '41 5 * * 1'
   workflow_dispatch:
 
@@ -204,6 +207,25 @@ jobs:
       # shipping classpath against deny.toml's allow list. Any failure fails it.
       - name: Dependency review (scripts/android-deps-review.sh)
         run: sh scripts/android-deps-review.sh "$RUNNER_TEMP/deps-mirror"
+      # The Gradle distribution from the cache (M5 "Budgets"), keyed on the version and SHA-256
+      # pinned in scripts/android-gradle.sh, which checks the zip against that pin on every run, a
+      # restored one included, and removes it before any of it runs when the bytes differ. Only the
+      # zip in the script's default home is cached, never Gradle's user home and its caches.
+      - name: Gradle distribution cache key (the pin in scripts/android-gradle.sh)
+        run: |
+          v=$(sed -n 's/^version=\([0-9][0-9.]*\)$/\1/p' scripts/android-gradle.sh)
+          h=$(sed -n 's/^sha256=\([0-9a-f]\{64\}\)$/\1/p' scripts/android-gradle.sh)
+          [ -n "$v" ] && [ -n "$h" ] || { echo "FAIL: no version or SHA-256 pin in scripts/android-gradle.sh" >&2; exit 1; }
+          echo "gradle-$v-bin.zip, SHA-256 $h"
+          {
+            echo "KC_GRADLE_ZIP=gradle-$v-bin.zip"
+            echo "KC_GRADLE_KEY=gradle-$v-bin-$h"
+          } >> "$GITHUB_ENV"
+      - name: The Gradle distribution from the cache (keyed on its version and SHA-256)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.keepcrypt-gradle/${{ env.KC_GRADLE_ZIP }}
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.KC_GRADLE_KEY }}
       - name: Gradle (scripts/android-gradle.sh --version)
         run: sh scripts/android-gradle.sh --dependency-verification strict --version
       # The strict build (group 4): the APKs and the JVM tests, in one Gradle run. A configuration
