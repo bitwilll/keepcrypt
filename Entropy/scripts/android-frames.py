@@ -12,8 +12,8 @@ and only counts and pass or fail are printed. scripts/android-emulator.sh runs i
       --time-limit 0, so a long recording is a chain of segments). A segment ends at its time limit or when
       the caller stops screenrecord (pkill -INT); the next one starts at once. adb's exec service puts the
       remote stderr on the same stream, so the device's shell sends screenrecord's stderr to /dev/null, and
-      it carries no remote exit status: the recorder exit printed and checked is adb's own (a lost
-      connection), never screenrecord's. A screenrecord that ends early is caught by the segment's length
+      it carries no remote exit status: the recorder exit printed and checked is adb's own (adb that
+      cannot reach the device), never screenrecord's. A screenrecord that ends early is caught by the segment's length
       instead: --min-first-segment S fails a first segment that lasted less than S seconds (the caller
       lets it run to its time limit), and the caller checks that a segment it relies on has not ended.
       Raw frames have no header: each is W*H pixels of F (rgb888, what screenrecord's FrameOutput writes,
