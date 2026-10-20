@@ -11521,6 +11521,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   (keepcrypt-jni's table dropped), the `[features]` probe in all three FFI crates, `path-member` and
   `path-member-listed` with six members (their fixtures and source-replacement's gain guard and jni stand-ins); the
   getrandom graph pin unchanged. CLAUDE.md's count (73, main's) moves at commit 22 (group 19).
+  Proof (M5 commit 10, partial: the `gates` run is the lead's): the safe layer's unsafe canary plants its block in
+  ffi/src/ceremony.rs, where the sessions live, and needs clippy's error there and the note at lib.rs's
+  `#![forbid(unsafe_code)]` (`--> ffi/src/ceremony.rs:`, `--> ffi/src/lib.rs:`); the guard's stays in its lib.rs.
+  `scripts/canaries.sh` PASS: all 88 checks ran (5 min 37 s on this Mac), `real-keepcrypt-ffi-unsafe-code` and
+  `real-keepcrypt-guard-unsafe-code` among them.
 
 **8. The FFI's safe layer (`ffi/src/ceremony.rs`)**
 - [ ] The slot as in References. Every call locks, takes the stage with `mem::replace(.., Stage::Idle)`, calls the
@@ -11528,28 +11533,67 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   calls follow "A discard never waits for a long call". A `PoisonError` is matched (never `unwrap_or_else`) and halts.
   A call in a stage that does not offer it halts (a shell bug, fail closed).
   Proof: unit tests for each stage's allowed and refused calls (group 11).
-- [ ] The halt rule mirrors app.rs:235: refusals are a wrong typed go-ahead code (`Rejected::Retry`, the Checking
+  Proof (M5 commit 10, partial: a poisoned lock needs a panic under the lock, which keepcrypt-guard's tests plant at
+  commit 12): ffi/src/ceremony.rs holds `static FFI: Slot`, a `Mutex<Held>` with the stage (app.rs's, plus `Busy`
+  and `Halted`), the generation, the kept `Wiped`, a loaded snapshot and a checked backup; every call goes through
+  `call` (under the lock) or `long`, and `lock` matches a `PoisonError` and halts. `ffi_a_call_in_a_stage_that_does_
+  not_offer_it_halts`: each of the 37 calls in each of the 7 driven stages that does not offer it halts and empties
+  the slot (223 cases, each on a fresh slot); `ffi_queries_keep_their_stage` and the flows of group 11 call the
+  offered ones. `cargo test -p keepcrypt-ffi --locked`, plain and with `--features keepcrypt-core/test-registry`:
+  22 passed each (3 unit, 19 in ffi/tests/ceremony.rs).
+- [x] The halt rule mirrors app.rs:235: refusals are a wrong typed go-ahead code (`Rejected::Retry`, the Checking
   session goes back), a read-back mismatch, a wrong or empty passphrase, `NoRegistryKey`, a bad snapshot, proof or
   backup file; every other error halts, as does every `Err` from a call that took the session.
   Proof: a table test over every `CoreError` variant, compared with app.rs's `refused`.
-- [ ] `start(len, mode)` per "One `Session::new`". `match_found()` = `discard(Collision)`, `cannot_check()` likewise,
+  Proof (M5 commit 10): `ceremony::tests::the_core_error_table_is_app_rs_refused` sorts every `CoreError` value core's
+  generated lists reach (nested ones included) with the safe layer's `refused` and reads the two arms of app.rs's
+  `refused` from pi/app's source: each value is a refusal exactly when app.rs makes its variant one, and the two
+  arms name every variant once. Moving `EmptyPassphrase` to the halt arm on a copy fails it; dropping it fails to
+  compile (the exhaustive match).
+- [x] `start(len, mode)` per "One `Session::new`". `match_found()` = `discard(Collision)`, `cannot_check()` likewise,
   each keeping the `Wiped`; after them only `start` is offered. `discard()` (background, idle, offline, leaving a
   Protected screen) drops the stage and checked backup, keeps `kept` and `snapshot`; `end()` (Finish) drops the stage;
   `wipe_all()` (crash path) drops everything. `add_hw_samples` is not exported; `add_extra` (InputTiming, Motion)
   works only while Collecting. Skip is unreachable once Checking (rule 6).
   Proof: tests "99 after Stop", "99 after Cannot check in the restart after a collision", "99 after an idle wipe
   following a Stop", "50 after Skip", "every session is Platform::Phone".
-- [ ] Discard during a long call: a test holds a long call at a barrier, discards from another thread, releases it: the
+  Proof (M5 commit 10): `ffi_99_after_stop`, `ffi_99_after_cannot_check_in_the_restart_after_a_collision`,
+  `ffi_99_after_an_idle_wipe_following_a_stop`, `ffi_50_after_skip` and `ffi_every_session_is_platform_phone` (a
+  phone's 256/256 credited bits in Mixed mode, fresh and in a restart; the unit test `every_session_is_on_a_phone`
+  reads `Platform::Phone` itself) pass in both builds. `new_session` holds the one Session::new under ffi/ (the gate
+  is clean on the tree, 296 files); `add_extra` halts outside `Collecting` and no hwrng call exists; Skip
+  (`skip_check`) takes `Sealed` only. On copies, Skip keeping the `Wiped` fails `ffi_50_after_skip`, and a discard
+  dropping it fails `ffi_99_after_an_idle_wipe_following_a_stop` (and three others). Read as: after Match found and
+  Cannot check the session is gone and the next one is `start`'s; home's other calls (a snapshot, a backup check)
+  stay offered, as the Pi's Home is after its idle wipe.
+- [x] Discard during a long call: a test holds a long call at a barrier, discards from another thread, releases it: the
   result is dropped (a drop-observing value proves it), the call returns "discarded", the slot is Idle and the next
   `start` works; the same with `wipe_all`; a non-discard call while `Busy` halts.
   Proof: `ffi_discard_during_call`.
-- [ ] Owned copies: `reveal` builds `GoAhead` inside the call from the held snapshot, a proof verified in the same call
+  Proof (M5 commit 10): `ffi_discard_during_call` holds `Slot::hold` (the long-call path every long call takes, with
+  a test's work in place of core's) at a `Barrier` on a scoped second caller (M5-8, commit 9b): `Busy` meanwhile; a
+  discard returns at once and leaves `Idle`, the call returns `Discarded` and its `Drop`-observing result is
+  dropped, the kept `Wiped` stays (the next start needs 99 rolls); a wipe the same, the `Wiped` gone (50); a
+  `device_progress` while `Busy` halts, and the call returns `Halted`; an undisturbed call gives its result. Without
+  the generation check (a copy), it fails.
+- [x] Owned copies: `reveal` builds `GoAhead` inside the call from the held snapshot, a proof verified in the same call
   (`verify_bucket_proof_qr`) or the typed code; word pages, braille faces, the backup passphrase, D and `CheckedBackup`'s
   reveals are copied per page through `Zeroizing` buffers.
   Proof: tests per `GoAhead` kind; no borrowed core type appears in a public ffi signature.
-- [ ] Freshness: `today` comes from the shell as `yyyymmdd` (`RegistryDate::from_yyyymmdd`); results carry the
+  Proof (M5 commit 10): the snapshot kind in `ffi_drill_12`, the proof kind (verified inside `reveal_proof`, judged
+  under the lock) in `ffi_proof_paths` and `ffi_freshness`, the typed code in `ffi_dice_vectors` and
+  `ffi_proof_paths`. Word pages and their faces (`WordPage`, wiped on drop), the passphrase's pages
+  (`Zeroizing<String>`) and confirm (`Challenge`), D (`Zeroizing<[u8; 32]>`) and a checked backup's words (the same
+  `word_page`) leave as owned copies, one page at a time; the public signatures take `&str` and `&[u8]` inputs and
+  name owned types only (`ReadbackMismatch`, `WatchOnlyExport`, `SealRegistration`, `BackupFile`, `SealPublic` are
+  core's owned ones), no `Insert`, `Face`, `BrailleInserts` or `GoAhead`.
+- [x] Freshness: `today` comes from the shell as `yyyymmdd` (`RegistryDate::from_yyyymmdd`); results carry the
   snapshot's or proof's number, date, count and freshness.
   Proof: Current, Stale (`stale-day-31`) and Future (`future-day-1`) cases.
+  Proof (M5 commit 10): `ffi_freshness` (test-registry build) loads current-day-30, stale-day-31 and future-day-1 and
+  reveals with their proofs, at kcr.json's 2026-03-01: Current, Stale and Future each way; `Registry` carries the
+  number, date, count (a snapshot's seals, a proof's entries in its bucket) and freshness, and `ffi_drill_12` and
+  `ffi_proof_paths` pin whole headers. A `today` no calendar has is the shell's bug and halts.
 
 **9. Wire format and QR matrices (`ffi/src/wire.rs`, `ffi/src/qr.rs`)**
 - [ ] Fixed layouts, each documented once: status byte and code; progress (credited and required bits, or rolls,
@@ -11559,6 +11603,10 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   address); a QR matrix (size, then bits row-major); a snapshot or proof result. Lengths are built with `TryFrom` and
   checked arithmetic. The status code table is pinned by a Rust test and Kotlin's copy by a JVM test.
   Proof: byte-exact tests against braille.json, seal.json, watchonly.json and kcr.json values.
+  Proof (M5 commit 10, partial: the layouts and the refusal codes are commit 11's): wire.rs holds the status byte
+  (OK, REFUSED, DISCARDED, HALTED), `dispatch(op, input)` (M5-21) and `halt`, and the op table of the 16 calls whose
+  reply is the status alone; any other op, or an input that is not its exact layout, halts. `ffi_dispatch_status_ops`
+  runs a dice-only ceremony to a Stop and its restart through it, and nine malformed calls each halt.
 - [ ] QR codes (check request, account, descriptor, registration, collision report, re-check without n) encoded with
   qrcodegen-no-heap at pi/app's settings (pi/app/src/ui/qr.rs), working buffers wiped.
   Proof: the JVM test decodes every matrix with ZXing and gets core's QR text (group 13).
@@ -11579,23 +11627,56 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   session is zeroized; these prove the FFI drops it (MA:127). Neither crate declares a `[features]` table
   (canaries.sh:798-809 covers both).
   Proof: test names and counts under Review.
-- [ ] Vectors: each gate seed through `start`, dice and `finish` gives kcr.json's seal code, Seal ID and T, and after a
+  Proof (M5 commit 10, partial: a halt by panic and a poisoned lock are keepcrypt-guard's tests, commit 12):
+  `ffi_every_exit_path_empties_the_slot` (Finish; a discard in each of the six session stages; Match found and Cannot
+  check, which keep only a `Wiped`; halts by a face of 7, by too few rolls, by insert 13 of 12 and by an export before
+  the read-back, the first after a Stop, so the kept `Wiped` goes too), `ffi_discard_during_call`, and
+  `ffi_backup_round_trip` for a checked backup (Done and a discard).
+- [x] Vectors: each gate seed through `start`, dice and `finish` gives kcr.json's seal code, Seal ID and T, and after a
   typed go-ahead code computed from the check request (lessons 2) the mnemonic and braille.
   Proof: `ffi_dice_vectors`.
+  Proof (M5 commit 10): `ffi_dice_vectors`, both builds: dice-50-words12, dice-99-words12 and dice-99-words24 give
+  kcr.json's Seal ID and T; the go-ahead code the test computes from the drawn request (SHA-256 over the 9 bytes
+  "KCE/v1/go", T and n, first 40 bits in Crockford base32; checked first on kcr.json's four seeds' codes by
+  `ffi_test_helpers_match_their_vectors`) reveals the mnemonic, each page matching braille.json (SeedBook number,
+  faces with dots, blanks, the lighter face and mirror partners, device, devices and sequence); after the read-back the
+  registration QR carries kcr.json's seal code.
 - [ ] Mixed mode on the OS source: C, the rolls and the revealed D piped into `python3 -I tools/verify/verify.py mixed`
   give the words and Seal ID the FFI showed, compared in memory and never printed (pi/sim's `verify_py_tie` pattern).
   Proof: `ffi_verify_py_tie` exits 0 locally and in CI.
-- [ ] Test-registry configuration (tests branch on `registry_key_is_test()`, as pi/sim's do): `with-dice-50` loaded
+  Proof (M5 commit 10, partial: the CI run is the lead's): `ffi_verify_py_tie` passes on this Mac (python3 3.12),
+  plain and test-registry: a Mixed 12-word ceremony on the OS source, C and D typed as 16 groups of 4 hex digits with
+  dice-50-words12's rolls; verify.py's insert words and Seal ID equal the FFI's, compared in memory under a fixed
+  message.
+- [x] Test-registry configuration (tests branch on `registry_key_is_test()`, as pi/sim's do): `with-dice-50` loaded
   catches the `dice-50-words12` rolls before any word page, and the restart needs 99; `clear-empty-bucket`'s UR reveals
   `dice-99-words12`'s words, Stale at 2026-10-17 and Current at 2026-03-01; `collision-dice-50` gives a collision; a
   wrong typed code gives Retry, then the right one reveals. In the plain build every snapshot and proof gives
   `NoRegistryKey`.
   Proof: `ffi_drill_12`, `ffi_proof_paths`, `ffi_no_registry_key`.
+  Proof (M5 commit 10): the three pass in both builds, each branching on `registry_key_is_test()` (a probe that panics
+  in the registry branch fails only the test-registry run). Test registry: with-dice-50 (number 4, count 7, Stale at
+  2026-10-17) gives Collision with no words page, the destroyed seed's report and a 99-roll restart, whose
+  dice-99-words12 seed it clears; clear-empty-bucket's UR reveals dice-99-words12's words, Stale at 2026-10-17 and
+  Current at 2026-03-01; it is WrongBucket for dice-50-words12, whose check stays; collision-dice-50 gives Collision;
+  text that is no UR is `Snapshot(Ur(NotUr))`; a wrong typed code is WrongCode, then the right one reveals. Plain:
+  all 41 snapshots and 66 proofs of kcr.json give `NoRegistryKey`, nothing loads and the check stays. kcr.json holds
+  the gate's proofs as KCP1 bytes only, so the tests build each go-ahead QR's text from them as vectorgen.py's
+  kcp1_ur does, with an encoder checked first on watchonly.json's CRC-32, CBOR and UR vectors.
 - [ ] Backup: `encrypt_backup` -> `verify_backup` -> `decrypt_backup` with `from_first_four` entries gives the same
   fingerprint and words; a wrong entry is refused before scrypt; the header says `keepcrypt-android 0.0.0`
   (`CreatedBy::new(BackupApp::Android, 0, 0, 0)`). Read-back drill: a mirror-pair misread and a missed blank face are
   named, and no export opens before a full read-back (BP:327).
   Proof: `ffi_backup_round_trip`, `ffi_readback_drill`, within `test`'s budget.
+  Proof (M5 commit 10, partial: `test`'s time in CI is the lead's): both pass in both builds. The backup: the
+  passphrase page by page, a wrong confirm pick keeps the copy, the right ones drop it, `encrypt_backup` before the
+  confirm and a second generation halt; `verify_backup` passes the saved bytes and refuses one changed byte with the
+  words kept; verify.py's own age reader (loaded by path, the passphrase on stdin) reads `android 0.0.0` and the
+  summary's fingerprint; "Check a backup" refuses an entry that names no word as `Backup(PassphraseWords)`, before
+  scrypt, and swapped entries as `WrongPassphrase`, then gives the fingerprint, Seal ID and words, until Done or a
+  discard. The drill: r read as w is `MirrorMisread` on face 3, a letter on day's blank face 4 `ShouldBeBlank`, "var"
+  for various `ShouldHaveLetter`; a mismatch clears its insert; each export halts with one insert unread and works
+  after the last. Local times: the 19 integration tests take 2.6 s plain and 4.5 s with the test registry.
 
 **12. Rust CI (required checks, no new names)**
 - [ ] The three Android cross legs: the NDK is `$ANDROID_SDK_ROOT/ndk/30.0.16248370`; if absent, `sdkmanager --install

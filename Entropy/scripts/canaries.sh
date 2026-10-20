@@ -246,16 +246,16 @@ fn kc_gate_canary() {}
 EOF
 
 # No unsafe code under the boundary (tasks/todo.md, M5 group 7; Q53, Q66): an unsafe block appended
-# to the safe layer's and the guard's lib.rs in the copy, with its SAFETY: comment and one operation
-# so that only unsafe_code can object, must fail clippy as CI runs it, at that crate's own
-# #![forbid(unsafe_code)], so neither the attribute nor the lint level can be dropped or relaxed
-# unseen. (Commit 10 moves the safe layer's to ceremony.rs.)
-for lib in ffi/src/lib.rs ffi/guard/src/lib.rs; do
-    case $lib in
-        ffi/src/*) pkg=keepcrypt-ffi ;;
-        ffi/guard/*) pkg=keepcrypt-guard ;;
+# to the safe layer's ceremony.rs (where its sessions live, M5 commit 10) and the guard's lib.rs in
+# the copy, with its SAFETY: comment and one operation so that only unsafe_code can object, must
+# fail clippy as CI runs it, at that crate's own #![forbid(unsafe_code)] in its lib.rs, so neither
+# the attribute nor the lint level can be dropped or relaxed unseen.
+for plant in ffi/src/ceremony.rs ffi/guard/src/lib.rs; do
+    case $plant in
+        ffi/src/*) pkg=keepcrypt-ffi lib=ffi/src/lib.rs ;;
+        ffi/guard/*) pkg=keepcrypt-guard lib=ffi/guard/src/lib.rs ;;
     esac
-    cat "$root/$lib" - > "$tmp/$lib" <<'EOF' || exit 1
+    cat "$root/$plant" - > "$tmp/$plant" <<'EOF' || exit 1
 
 /// Gate canary (scripts/canaries.sh, temp copy only): unsafe code under the boundary.
 pub fn kc_gate_canary(byte: &u8) -> u8 {
@@ -265,8 +265,9 @@ pub fn kc_gate_canary(byte: &u8) -> u8 {
 EOF
     expect_failure "real-$pkg-unsafe-code" cargo clippy --color never --manifest-path "$tmp/Cargo.toml" \
         -p "$pkg" --lib --locked --target-dir "$root/target/canary-real" -- -D warnings
-    cp "$root/$lib" "$tmp/$lib" || exit 1
+    cp "$root/$plant" "$tmp/$plant" || exit 1
     need "usage of an \`unsafe\` block"
+    need "--> $plant:"
     need "--> $lib:"
     need "#![forbid(unsafe_code)]"
     need "could not compile \`$pkg\` (lib) due to 1 previous error"
