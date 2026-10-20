@@ -1759,11 +1759,8 @@ Nothing else on your Mac or in the repo changed. From now on, no simulator, `xco
     - Answered 2026-10-20: "Drop iPhone from M5". M5 ships the Android app only. The screens stay in the Compose
       Multiplatform modules, built for Android only, and the iPhone question (shared screens over a C bridge, or native
       screens) reopens when M6 starts. Q65's iPhone compile and simulator tests, Q66's `keepcrypt-capi`, Q68's fetch,
-      Q69's iPhone CI job and Q70's rule sentence move to M6; Q67's iPhone-only artifacts (Q67-approved) reach no APK in
-      M5: skiko 0.150.1 and ui-uikit 1.12.1 are resolved only as their `.module` and `-metadata.jar` for the shared
-      code's metadata compilation, and kotlin-klib-commonizer-embeddable, -api and kotlin-native-utils only as Kotlin
-      Gradle plugin tooling, none on the shipping or test-registry runtime classpath (8x; kotlin-native-prebuilt is not
-      resolved at all). The re-cut is "Re-cut after Q73 (2026-10-20)" under M5.
+      Q69's iPhone CI job and Q70's rule sentence move to M6; Q67's iPhone-only artifacts are not used in M5. The re-cut is
+      "Re-cut after Q73 (2026-10-20)" under M5.
 
 ## M0: Repo bootstrap
 
@@ -12458,13 +12455,13 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
     lockfiles show other version changes off the shipping classpath, which neither the plan nor 8x named and which Q67
     sends to the owner by name before they are committed: on :screens' own runtime, host-test runtime and lint
     classpaths, activity and activity-ktx 1.7.0 and core and core-ktx 1.16.0 (the app resolves 1.13.0 and 1.18.0, as
-    before); on its metadata
-    configurations, androidx lifecycle 2.11.0 (2.9.4 elsewhere), navigationevent 1.1.1 (1.0.0) and atomicfu 0.28.0
-    (0.22.0), with new modules there (lifecycle-viewmodel-compose 2.11.0, kotlinx-browser 0.5.0, ui-backhandler 1.12.1,
-    Compose's annotation-internal and collection-internal 1.10.0, the JetBrains lifecycle-viewmodel and
-    -viewmodel-savedstate 2.9.6 and navigationevent-compose 1.1.0); and Kotlin's scripting compiler plugin
-    (kotlin-scripting-common, -jvm, -compiler-embeddable and -compiler-impl-embeddable 2.4.20) on :core-ffi's and
-    :screens' kotlinCompilerPluginClasspath configurations (the 8x review; the owner's answer is the lead's to record).
+    before); on its metadata configurations, androidx lifecycle 2.11.0 (2.9.4 elsewhere), navigationevent 1.1.1 (1.0.0)
+    and atomicfu 0.28.0 (0.22.0), with new modules there (lifecycle-viewmodel-compose 2.11.0, kotlinx-browser 0.5.0,
+    ui-backhandler 1.12.1, Compose's annotation-internal and collection-internal 1.10.0, the JetBrains
+    lifecycle-viewmodel and -viewmodel-savedstate 2.9.6 and navigationevent-compose 1.1.0); and Kotlin's scripting
+    compiler plugin (kotlin-scripting-common, -jvm, -compiler-embeddable and -compiler-impl-embeddable 2.4.20) on
+    :core-ffi's and :screens' kotlinCompilerPluginClasspath configurations (the 8x review; the owner's answer is the
+    lead's to record).
 - [ ] iOS link facts in M5 (commit 8q, again at 14):
   - `linkReleaseFrameworkIosArm64` builds a static framework from `:screens`. It holds Kotlin, Compose and skiko but no Rust. CI records its size and its archive-level `llvm-nm -u` list. That list over-reports, because nothing is dead-stripped, and is used only as the superset for the stop rule below.
   - The compared list comes from linked binaries: the `iosSimulatorArm64` and `iosArm64` test executables, which link the `target/ios-test/` library from 14 on. CI records their `llvm-nm -u -m` imports and linked libraries, and compares the `iosArm64` imports with `expected/ios-test-imports.txt` (M5-27).
@@ -12536,6 +12533,9 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
   Proof: the review's output at 8p. Selftest cases fail for a klib without `.asc` and for the skiko note applied to another coordinate.
   Moved to M6 by Q73 (8w): reading klibs and the Kotlin/Native archive, the skiko and Kotlin/Native signers and the
   skiko licence note; the Compose Multiplatform signer and M5-11's list stay.
+  Amended at 8x-f (the 8x review): skiko's signer stays in M5 after all, as the metadata pins skiko's `.module` and
+  `-metadata.jar` and the review checks every pinned file ("Moves to M6" in "Re-cut after Q73"); its licence note stays
+  M6's.
   Proof (M5 commit 8x, partial; the review's fetch is the lead's): IPHONE_ONLY and its five selftest cases (under 8x's
   line in "Re-cut after Q73"). M5-11's list is unchanged here (14 files) and no signer is added: whether the list
   grows, and which keys sign the eleven new Maven Central groups, only the review's fetch shows. skiko's signer is
@@ -12937,8 +12937,16 @@ instructions forbid any fetch for research, HEAD requests included.
 
 **Moves to M6** (as planned in the re-plan, to be re-planned with the M6 question)
 - the `iosArm64`/`iosSimulatorArm64` targets, `kotlin-native-prebuilt`, skiko, the klib commonizer and the other
-  iPhone-only Q67 artifacts, as the iPhone build's inputs (the Android build still resolves skiko's and ui-uikit's
-  metadata and the klib commonizer, on no APK's runtime classpath: 8x);
+  iPhone-only Q67 artifacts, as the iPhone build's inputs;
+  Amended at 8x-f (the 8x review; for the owner at the M5 gate, since Q73's answer record says Q67's iPhone-only
+  artifacts "are not used in M5"): 8w removed the Apple targets, but the Android build still resolves some of what
+  Q67 lists for iPhone, at build time and on no runtime classpath of any lockfile (8x-b's check): skiko 0.150.1's and
+  ui-uikit 1.12.1's `.module` and `-metadata.jar`, with the common metadata of atomicfu 0.28.0, lifecycle 2.11.0 and
+  navigationevent 1.1.1 (the versions Q67 and [C4] list for iPhone), for :screens' metadata compilation; and
+  kotlin-klib-commonizer-embeddable 2.4.20 (Q67) on kotlinKlibCommonizerClasspath (:core-ffi, :screens).
+  kotlin-klib-commonizer-api and kotlin-native-utils are Kotlin Gradle plugin tooling pinned since commit 6, not
+  Q67's. So the review checks skiko's two pinned files and needs its signer in M5; skiko's licence note stays M6's,
+  as skiko is on no classpath that ships;
 - `scripts/konan-deps.sh`, `konan.data.dir`, the `.konan/` handling and the download-host block (Q68), with Q73's
   signature facts above;
 - `entropy-ios.yml` (Q69);
@@ -13004,6 +13012,9 @@ at 8v-c: this line and 10922d6's body said "from :51", but the guard/ line enter
   suites, 445 passed, 3 ignored) and the test-sources run (17 suites, 269 passed, 1 ignored) unchanged. Not run
   here: every Gradle build and Kotlin compile. The Android job's next bootstrap run proves the build resolves with
   the Android target alone; 8x reviews its lockfiles and metadata.
+  Amended at 8x-f (the 8x review): 8w removed the Apple targets, and with them the iPhone builds of Q67's iPhone-only
+  artifacts, but the Android build still resolves some of their metadata and the klib commonizer at build time, on no
+  runtime classpath ("Moves to M6", amended at 8x-f).
 - 8x. mobile/android, scripts: the lockfiles and verification metadata from 8w's Android bootstrap run, reviewed by
   `android-deps-review`; strict mode on and the bootstrap switch removed (the gate's bootstrap canary proves it); the
   expected classpath updated with every version change named; the Android job, emulators included, green again.
@@ -13025,7 +13036,8 @@ at 8v-c: this line and 10922d6's body said "from :51", but the guard/ line enter
   shipping classpath are listed under the classpath item's 8x proof). Q67's iPhone-only artifacts reach no APK:
   org.jetbrains.skiko:skiko:0.150.1 and org.jetbrains.compose.ui:ui-uikit:1.12.1 are pinned only as `.module` and
   `-metadata.jar`, on :screens' metadataCompileClasspath and its *ResolvableDependenciesMetadata and
-  all(Test)SourceSetsCompileDependenciesMetadata configurations, for the shared code's metadata compilation;
+  all(Test)SourceSetsCompileDependenciesMetadata configurations, for the shared code's metadata compilation (and
+  atomicfu 0.28.0's, which Q67 also lists for iPhone: added at 8x-f);
   kotlin-klib-commonizer-embeddable only on kotlinKlibCommonizerClasspath (:core-ffi, :screens), and
   kotlin-klib-commonizer-api and kotlin-native-utils (pinned since commit 6) only on the build classpath
   (buildEnvironment), all as Kotlin Gradle plugin tooling; none is on the shipping or test-registry runtime classpath,
