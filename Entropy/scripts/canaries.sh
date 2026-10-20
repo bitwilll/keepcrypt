@@ -1288,6 +1288,49 @@ bootstrap_exception_empty() {
 }
 static_check workflow-bootstrap-exception-empty bootstrap_exception_empty
 
+# The pin checks before Gradle (tasks/todo.md, M5 group 4; MA:126; Q54): entropy-android.yml runs the
+# shipping classpath compare and the dependency review, each as a run line of its own, before its
+# first non-comment line that names Gradle in any letter case, so no Gradle step runs before the pins
+# are read. The bootstrap runs (commits 8q and 8w) left both steps out with every gate green, and
+# commit 8x put them back (the 8x review). The real workflow must pass (the control), and a temp copy
+# without the compare and with the review moved after the build must fail for both reasons.
+review_before_gradle() {
+    awk -v cp='run: python3 -I scripts/android-deps-review.py classpath' \
+        -v rv='run: sh scripts/android-deps-review.sh "$RUNNER_TEMP/deps-mirror"' '
+        /^[[:space:]]*#/ { next }
+        { t = $0; sub(/^[[:space:]]*(-[[:space:]]+)?/, "", t); sub(/[[:space:]]+$/, "", t) }
+        !g && t == cp { c = NR }
+        !g && t == rv { r = NR }
+        !g && tolower($0) ~ /gradle/ { g = NR }
+        END {
+            if (!g) print FILENAME ": no line names Gradle"
+            if (!c) print FILENAME ": no \"" cp "\" line before the first line that names Gradle"
+            if (!r) print FILENAME ": no \"" rv "\" line before the first line that names Gradle"
+            exit !(g && c && r)
+        }' "$1"
+}
+static_check "entropy-android.yml: the classpath compare and the dependency review before any Gradle line (control)" \
+    review_before_gradle "$root/../.github/workflows/entropy-android.yml"
+name=workflow-review-before-gradle
+mkdir "$work/workflow-review" || exit 1
+wfr="$work/workflow-review/entropy-android.yml"
+cp "$root/../.github/workflows/entropy-android.yml" "$wfr" || exit 1
+replace "$wfr" '      - name: Shipping runtime classpath (mobile/android/expected/shipping-runtime-classpath.txt)
+        run: python3 -I scripts/android-deps-review.py classpath
+' ''
+replace "$wfr" '      - name: Dependency review (scripts/android-deps-review.sh)
+        run: sh scripts/android-deps-review.sh "$RUNNER_TEMP/deps-mirror"
+' ''
+cat >> "$wfr" <<'EOF'
+      # Gate canary (scripts/canaries.sh, temp copy only): the dependency review after the build.
+      - name: Dependency review (scripts/android-deps-review.sh)
+        run: sh scripts/android-deps-review.sh "$RUNNER_TEMP/deps-mirror"
+EOF
+expect_failure "$name" review_before_gradle "$wfr"
+need "$wfr: no \"run: python3 -I scripts/android-deps-review.py classpath\" line before the first line that names Gradle"
+need "$wfr: no \"run: sh scripts/android-deps-review.sh \"\$RUNNER_TEMP/deps-mirror\"\" line before the first line that names Gradle"
+verdict
+
 # The OS configuration check (tasks/todo.md, M4 groups 11 and 13; commit 17a): a temp copy of
 # the clean fixture, scripts/testdata/os-config/clean-pizero, must pass banned-api-check.sh
 # --os-config (the control), and three copies with one change each must fail it with exactly the
@@ -1420,7 +1463,7 @@ cp "$root/core/examples/release_probe.rs" "$tmp/core/examples/release_probe.rs" 
 
 # The number of checks above, pinned, so a canary that is deleted, or skipped by a broken branch,
 # turns CI red too. A real change to the canaries updates this pin in the same reviewed change.
-want_checks=77
+want_checks=79
 if [ "$checks" -ne "$want_checks" ]; then
     echo "FAIL: $checks checks ran; scripts/canaries.sh pins $want_checks"
     status=1

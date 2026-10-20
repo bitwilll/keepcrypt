@@ -13050,6 +13050,15 @@ at 8v-c: this line and 10922d6's body said "from :51", but the guard/ line enter
   app/gradle.lockfile); `classpath` on the tree passes (120 modules) on both. On a copy that checks every configuration
   the tree fails, on :screens' metadata configurations and kotlinKlibCommonizerClasspath; on a copy that checks the
   app's lockfile alone, exactly the capture-control case fails.
+  Proof (M5 commit 8x-d, the 8x review): nothing pinned the two pin checks 8x put back before Gradle (8q and 8w had
+  dropped them with every gate green; without them `--workflows` stays clean). canaries.sh's new static check needs
+  entropy-android.yml's `run: python3 -I scripts/android-deps-review.py classpath` and `run: sh
+  scripts/android-deps-review.sh "$RUNNER_TEMP/deps-mirror"` lines before its first non-comment line that names
+  Gradle in any letter case (today line 218, the distribution cache key step; the two run lines are 204 and 213), and
+  the `workflow-review-before-gradle` canary's copy, without the compare and with the review moved after the build,
+  fails it with both reasons. On copies, dropping either step, commenting out the compare or putting a Gradle call
+  before them each fails the check. `canaries.sh` PASS: all 79 checks ran (want_checks 77 -> 79; 327 s); the gate on
+  the tree clean (286 files). Tried with macOS's awk only; CI's gates job runs it with Ubuntu's.
 
 **Stages C-F** run as "Commit order from Stage C on" plans them, without the iPhone work: commit 9 creates ffi, ffi/guard
 and ffi/jni (six members); 12b is not built; 13 builds and scans the Android `.so` only (the existing macos-26 release scan
