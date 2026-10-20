@@ -11663,6 +11663,7 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
 - [ ] QR codes (check request, account, descriptor, registration, collision report, re-check without n) encoded with
   qrcodegen-no-heap at pi/app's settings (pi/app/src/ui/qr.rs), working buffers wiped.
   Proof: the JVM test decodes every matrix with ZXing and gets core's QR text (group 13).
+  Amended by M5-37 (2026-10-21): the matrices carry no text; commit 14 compares them as M5-37 says.
   Proof (M5 commit 11, partial: the ZXing decode is commit 14's): qr.rs encodes the six codes (the descriptors on two
   lines) with qrcodegen-no-heap at pi/app's settings (versions 1-11, low error correction boosted, the encoder's mode
   and mask) and copies the modules out row by row into a matrix wiped on drop; both working buffers are wiped after
@@ -11693,6 +11694,9 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   check, which keep only a `Wiped`; halts by a face of 7, by too few rolls, by insert 13 of 12 and by an export before
   the read-back, the first after a Stop, so the kept `Wiped` goes too), `ffi_discard_during_call`, and
   `ffi_backup_round_trip` for a checked backup (Done and a discard).
+  Proof (M5 commit 10c, ada7ef3, partial: a halt by panic is commit 12's, M5-38): `ffi_a_poisoned_lock_halts` holds a
+  long call whose result panics on drop, discards, then releases it; the lock is poisoned, the next call halts, the kept
+  `Wiped` is dropped and the halt latches. A copy whose lock skips the halt fails the test.
 - [x] Vectors: each gate seed through `start`, dice and `finish` gives kcr.json's seal code, Seal ID and T, and after a
   typed go-ahead code computed from the check request (lessons 2) the mnemonic and braille.
   Proof: `ffi_dice_vectors`.
@@ -11764,6 +11768,7 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   reads them back with the scanner's own decode function; a Python standard-library step writes `with-dice-50.kcr` and
   `stale-day-31.kcr` from kcr.json's hex, and `p4-seal-ids.txt` with the Seal IDs of `dice-50-words12` and
   `dice-99-words12` from kcr.json. These public test files are the P4 artifact.
+  Amended by M5-37 (2026-10-21): "every QR matrix decoded with ZXing equals core's QR text" reads as M5-37 says.
   Proof: test counts per class in the Android job's log.
 
 **14. `:secure-ui` and `CeremonyViewModel`**
@@ -13177,6 +13182,27 @@ they differ. Nothing in the Android plan is weakened.
   so group 12's test-registry build names core beside it (`-p keepcrypt-jni -p keepcrypt-core --features
   keepcrypt-core/test-registry`, which resolves core with the feature; checked with cargo tree at commit 9); and
   keepcrypt-jni's wiping buffers come through keepcrypt-guard's API, which re-exports nothing of keepcrypt-ffi.
+- M5-36 (2026-10-21): keepcrypt-ffi's `pub static FFI`, `Slot::new` (with `Default`) and the barrier seam `Slot::hold`
+  ship in the library, as commits 10 and 10c made them. They are accepted because nothing in the app can reach them:
+  keepcrypt-jni depends on keepcrypt-guard and jni-sys alone (M5-35), keepcrypt-guard's surface is `fn guarded` alone
+  (9d's gate rule), and `dispatch` has no op for `hold`. keepcrypt-ffi stays without `[features]`, so a feature to
+  hide them is not used.
+- M5-37 (2026-10-21): the QR replies carry the matrix only, never the text, so the seal codes in the registration and
+  collision-report texts and the xpub in the account and descriptor texts are not held twice in Java memory (commit 11).
+  Group 9's QR proof and group 13's ZXing bullet read accordingly: commit 14's JVM test decodes every matrix with
+  ZXing and compares the registration, collision-report and re-check texts with kcr.json's and seal.json's; it proves
+  the check request by decoding T and n and revealing with a go-ahead code built from them; and it checks the account
+  and descriptor matrices by structure and by the fingerprint inside the UR against the summary's (the gate seeds'
+  watch-only exports have no vector).
+- M5-38 (2026-10-21): the halt-by-panic test (group 10's second item, group 11's exit-path item) runs in
+  keepcrypt-guard's own unit tests: under `cfg(test)` only, `guarded` calls a private test dispatcher, which drives the
+  real slot to Ready through keepcrypt-ffi's own `dispatch`, moves a drop-observing value into its frame and panics; the
+  shipping build always calls `keepcrypt_ffi::dispatch`. The test shows the observer dropped, the slot Halted, every
+  later call halting, and no output (a child test process with stdout and stderr captured). If the gate's pinned
+  `guarded` line names the dispatcher, commit 12 changes the pin and its rule together.
+- M5-39 (2026-10-21): the `Restart` stage of commit 10d is confirmed as the Pi has it (pi/app/src/app.rs:864-873 and
+  :961-975): Match found, Cannot check and a collision found by a go-ahead all lead to it; only start, and
+  collision_report when a report is kept, are offered there; collision_report is offered nowhere else.
 
 **Out-of-plan download (commit 8q), recorded.** While writing 8q, the implementing agent fetched six small files from
 download.jetbrains.com onto this Mac (into the session scratchpad, not the repo): the `.asc` and `.sha256` of each of the three
@@ -13349,6 +13375,14 @@ at 8v-c: this line and 10922d6's body said "from :51", but the guard/ line enter
   matched, PGP not checked here: no gpg on this Mac), 14 accepted by name (M5-11's list, unchanged), 0 failed; 62
   trusted keys, 89 group scopes; shipping runtime classpath 120 modules, licences Apache-2.0 120; exit 3 (incomplete
   without PGP). The signature checks and the strict build run in CI.
+  Proof (M5 commit 8x, CI at 8x-g a40685b): Entropy Android 39444746648 green in strict mode (699 s against its
+  15-minute budget). android-deps-review in CI with gpg: 923 artifacts: 358 Google's Maven (SHA-256 matched), 551 Maven
+  Central (SHA-1 and PGP matched; 18 by a key since expired), 14 accepted by name (M5-11), 0 failed; 62 trusted keys,
+  89 group scopes; shipping runtime classpath 120 modules, Apache-2.0 120. Every Gradle call passes
+  `--dependency-verification strict`; both APKs' `--apk` checks are clean (manifest summaries equal, 3 native libraries
+  16 KB aligned, no marker or test key, 20 com.keepcrypt classes with no banned RNG reference, zipalign, the throwaway
+  key alone); the canary APK is refused with 5 hits; every emulator check on API 31 and 36 passed. Entropy CI
+  39444749499: 14 of 14; Entropy Pi image 39444752976: unchanged (4b13c095).
 
 **Stages C-F** run as "Commit order from Stage C on" plans them, without the iPhone work: commit 9 creates ffi, ffi/guard
 and ffi/jni (six members); 12b is not built; 13 builds and scans the Android `.so` only (the existing macos-26 release scan
