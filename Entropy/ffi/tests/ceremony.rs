@@ -594,10 +594,66 @@ fn held_call<M>(slot: &Slot, meanwhile: impl FnOnce(&Slot) -> M) -> Held<M> {
     }
 }
 
+/// What two long calls gave when a discard or a wipe overtook the first and the second started
+/// before the first ended: what `between` gave, each call's reply, and whether the first call's
+/// result was dropped.
+struct Overtaken {
+    between: Got,
+    first: Got,
+    second: Option<Got>,
+    dropped: bool,
+}
+
+/// Holds a long call at a barrier, runs `between` on this caller while the slot is `Busy`, then
+/// holds a second long call at its own barrier and releases the first while the second still runs,
+/// and the second after it. The second starts only from `Idle` (a `hold` anywhere else returns at
+/// once and would never reach its barrier), so nothing waits for a call that did not run.
+fn overtaken_call(slot: &Slot, between: fn(&Slot) -> Got) -> Overtaken {
+    let (entered, release) = (Barrier::new(2), Barrier::new(2));
+    let (entered_second, release_second) = (Barrier::new(2), Barrier::new(2));
+    let dropped = AtomicBool::new(false);
+    let (between, first, second) = std::thread::scope(|scope| {
+        let first = scope.spawn(|| {
+            got(slot.hold(|| {
+                entered.wait();
+                release.wait();
+                Observed(&dropped)
+            }))
+        });
+        entered.wait();
+        let between = between(slot);
+        let second = (slot.holds().stage == StageKind::Idle).then(|| {
+            let second = scope.spawn(|| {
+                got(slot.hold(|| {
+                    entered_second.wait();
+                    release_second.wait();
+                }))
+            });
+            entered_second.wait();
+            second
+        });
+        release.wait();
+        let first = first.join().expect("the first call returns");
+        let second = second.map(|second| {
+            release_second.wait();
+            second.join().expect("the second call returns")
+        });
+        (between, first, second)
+    });
+    Overtaken {
+        between,
+        first,
+        second,
+        dropped: dropped.load(Ordering::SeqCst),
+    }
+}
+
 // A discard never waits for a long call (todo.md, M5 group 8): with the call held at a barrier, a
 // discard takes the lock at once; the call's result is dropped and it returns Discarded; the slot
 // is Idle, keeps its `Wiped`, and the next start works. The same with a wipe, which drops the
-// `Wiped` too. Any other call while Busy halts. A call nothing interrupts gives its result.
+// `Wiped` too. Any other call while Busy halts. A call nothing interrupts gives its result. And a
+// discard or a wipe starts a new generation: the call it overtook drops its result even when a
+// second long call has started since and holds the slot `Busy` again, and the second gives its own.
 #[test]
 fn ffi_discard_during_call() {
     let stopped = || {
@@ -666,6 +722,27 @@ fn ffi_discard_during_call() {
         "dropped with its reply"
     );
     assert_eq!(slot.holds(), HOME);
+
+    let overtaking: [Case; 2] = [
+        ("a discard", |slot| got(slot.discard())),
+        ("a wipe", |slot| got(slot.wipe_all())),
+    ];
+    for (what, between) in overtaking {
+        let slot = stopped();
+        let overtaken = overtaken_call(&slot, between);
+        assert_eq!(overtaken.between, Got::Done, "{what}");
+        assert_eq!(
+            (overtaken.first, overtaken.dropped),
+            (Got::Discarded, true),
+            "{what}: the overtaken call drops its result"
+        );
+        assert_eq!(
+            overtaken.second,
+            Some(Got::Done),
+            "{what}: the call started since gives its own"
+        );
+        assert_eq!(slot.holds().stage, StageKind::Idle, "{what}");
+    }
 }
 
 // The test's own helpers first, each against vectors/: the JSON reader, CRC-32, the CBOR byte

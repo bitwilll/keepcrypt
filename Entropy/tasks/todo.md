@@ -11576,6 +11576,12 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   dropped, the kept `Wiped` stays (the next start needs 99 rolls); a wipe the same, the `Wiped` gone (50); a
   `device_progress` while `Busy` halts, and the call returns `Halted`; an undisturbed call gives its result. Without
   the generation check (a copy), it fails.
+  Proof (M5 commit 10b; the review found the line above did not hold: after a discard the slot is `Idle`, which the
+  `Busy` match alone turns into `Discarded`): `ffi_discard_during_call` also holds a second long call after the
+  discard, and after a wipe, and releases the first while the second runs: the first returns `Discarded` with its
+  result dropped, the second `Done`. On copies, the generation compare in `long`, `discard`'s new generation and
+  `wipe_all`'s each dropped fail it. `cargo test -p keepcrypt-ffi --locked`, plain and with `--features
+  keepcrypt-core/test-registry`: 37 passed each (11 unit, 26 in ffi/tests/ceremony.rs).
 - [x] Owned copies: `reveal` builds `GoAhead` inside the call from the held snapshot, a proof verified in the same call
   (`verify_bucket_proof_qr`) or the typed code; word pages, braille faces, the backup passphrase, D and `CheckedBackup`'s
   reveals are copied per page through `Zeroizing` buffers.
