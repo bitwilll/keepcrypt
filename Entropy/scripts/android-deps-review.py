@@ -38,11 +38,14 @@ recorded mirrors, so it needs no network.
       Any artifact that passes none of these is listed, and the review fails. Every module of every
       lockfile must have its component in the metadata. The shipping runtime classpath (the lockfile
       configuration shippingReleaseRuntimeClasspath of mobile/android/app/gradle.lockfile) must equal
-      mobile/android/expected/shipping-runtime-classpath.txt, the dependency allow-list, line for line.
-      And each of its modules' licences, read from its POM (or a parent POM's, followed up the chain;
-      each POM checked against the metadata's SHA-256 when it is listed there, else against its
-      repository's published .sha256 or .sha1), must be a known licence name (LICENCE_NAMES) whose
-      SPDX id is on deny.toml's [licenses] allow list. Prints the counts, every trusted key with its groups, and every module's licence.
+      mobile/android/expected/shipping-runtime-classpath.txt, the dependency allow-list, line for line, and
+      neither it nor the test-registry runtime classpath (withTestRegistryReleaseRuntimeClasspath, which the
+      lockfile must hold) may hold one of Q67's iPhone-only artifacts (IPHONE_ONLY: skiko, ui-uikit,
+      kotlin-native-prebuilt, the klib commonizer). And each of its modules' licences, read from its POM
+      (or a parent POM's, followed up the chain; each POM checked against the metadata's SHA-256 when it
+      is listed there, else against its repository's published .sha256 or .sha1), must be a known
+      licence name (LICENCE_NAMES) whose SPDX id is on deny.toml's [licenses] allow list. Prints the
+      counts, every trusted key with its groups, and every module's licence.
       --skip-pgp (only where gpg is missing, never in CI) leaves out the signature checks and exits 3
       even when everything else passes, so a run without them can never read as a pass.
   android-deps-review.py write-keys MIRROR [--root DIR]
@@ -58,7 +61,8 @@ recorded mirrors, so it needs no network.
       SHA1_ONLY's, which have no signer), or whose signer no server has, is listed (STOP) and the exit
       is 1: those need the lead.
   android-deps-review.py classpath [--write] [--root DIR]
-      compare (or, with --write, write) the expected shipping runtime classpath from the lockfile.
+      compare (or, with --write, write) the expected shipping runtime classpath from the lockfile; the compare
+      also refuses an iPhone-only artifact on the shipping or test-registry runtime classpath, as review does.
   android-deps-review.py --selftest [--skip-pgp]
       the recorded cases in scripts/testdata/android-deps-review/: the base passes, each fail-* case
       fails with its message (expect.txt). The cases that need gpg exit 3 with --skip-pgp.
@@ -89,7 +93,15 @@ SETTINGS = "mobile/android/settings.gradle.kts"
 EXPECTED = "mobile/android/expected/shipping-runtime-classpath.txt"
 APP_LOCKFILE = "mobile/android/app/gradle.lockfile"
 SHIPPING_CONFIGURATION = "shippingReleaseRuntimeClasspath"
+TEST_REGISTRY_CONFIGURATION = "withTestRegistryReleaseRuntimeClasspath"
 DENY = "deny.toml"
+# Q67's iPhone-only artifacts (tasks/todo.md, M5 re-cut after Q73, commit 8x). The Android build resolves skiko's and
+# ui-uikit's .module and -metadata.jar only for the shared code's metadata compilation, and the klib commonizer only as
+# Kotlin Gradle plugin tooling; kotlin-native-prebuilt not at all. No APK may carry any of them: a module of the skiko
+# group, or one whose name holds ui-uikit, kotlin-native-prebuilt or klib-commonizer, fails on the shipping or the
+# test-registry runtime classpath.
+IPHONE_ONLY = re.compile(r"(org\.jetbrains\.skiko:[^:]*|[^:]*:[^:]*(ui-uikit|kotlin-native-prebuilt|klib-commonizer)[^:]*)"
+                         r":[^:]*\Z", re.I)
 
 GOOGLE_URL = "https://dl.google.com/dl/android/maven2/"
 CENTRAL_URL = "https://repo.maven.apache.org/maven2/"
@@ -741,7 +753,9 @@ def shipping_classpath(root):
 
 
 def classpath_diff(root):
-    """(missing from the lockfile, extra in the lockfile, problems) against the expected list."""
+    """(missing from the lockfile, extra in the lockfile, problems) against the expected list. The problems include
+    every IPHONE_ONLY module on the shipping or the test-registry runtime classpath, and a test-registry runtime
+    classpath the lockfile does not hold."""
     want = expected_classpath(root)
     problems = []
     if want != sorted(set(want)) or any(ln.count(":") != 2 or ln != ln.strip() for ln in want):
@@ -749,6 +763,12 @@ def classpath_diff(root):
     got = set(shipping_classpath(root))
     if not got:
         problems.append("%s has no %s" % (APP_LOCKFILE, SHIPPING_CONFIGURATION))
+    for configuration in (SHIPPING_CONFIGURATION, TEST_REGISTRY_CONFIGURATION):
+        modules = lockfile_modules(root / APP_LOCKFILE, configuration)
+        if configuration == TEST_REGISTRY_CONFIGURATION and not modules:
+            problems.append("%s has no %s" % (APP_LOCKFILE, TEST_REGISTRY_CONFIGURATION))
+        problems += ["classpath: %s is an iPhone-only artifact (Q67) on the lockfile's %s" % (c, configuration)
+                     for c in sorted(modules) if IPHONE_ONLY.match(c)]
     return sorted(set(want) - got), sorted(got - set(want)), problems
 
 
@@ -1068,8 +1088,8 @@ def cmd_classpath(root, write):
         print("FAIL classpath: %s is in %s but not in the lockfile's %s" % (c, EXPECTED, SHIPPING_CONFIGURATION))
     if missing or extra or problems:
         return 1
-    print("android-deps-review: the shipping runtime classpath (%s, %d modules) equals %s"
-          % (SHIPPING_CONFIGURATION, len(got), EXPECTED))
+    print("android-deps-review: the shipping runtime classpath (%s, %d modules) equals %s; no iPhone-only artifact "
+          "on it or on %s" % (SHIPPING_CONFIGURATION, len(got), EXPECTED, TEST_REGISTRY_CONFIGURATION))
     return 0
 
 

@@ -1759,8 +1759,11 @@ Nothing else on your Mac or in the repo changed. From now on, no simulator, `xco
     - Answered 2026-10-20: "Drop iPhone from M5". M5 ships the Android app only. The screens stay in the Compose
       Multiplatform modules, built for Android only, and the iPhone question (shared screens over a C bridge, or native
       screens) reopens when M6 starts. Q65's iPhone compile and simulator tests, Q66's `keepcrypt-capi`, Q68's fetch,
-      Q69's iPhone CI job and Q70's rule sentence move to M6; Q67's iPhone-only artifacts are not used in M5. The re-cut is
-      "Re-cut after Q73 (2026-10-20)" under M5.
+      Q69's iPhone CI job and Q70's rule sentence move to M6; Q67's iPhone-only artifacts (Q67-approved) reach no APK in
+      M5: skiko 0.150.1 and ui-uikit 1.12.1 are resolved only as their `.module` and `-metadata.jar` for the shared
+      code's metadata compilation, and kotlin-klib-commonizer-embeddable, -api and kotlin-native-utils only as Kotlin
+      Gradle plugin tooling, none on the shipping or test-registry runtime classpath (8x; kotlin-native-prebuilt is not
+      resolved at all). The re-cut is "Re-cut after Q73 (2026-10-20)" under M5.
 
 ## M0: Repo bootstrap
 
@@ -12448,6 +12451,9 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
     and the pin review before Gradle, writes the list from the new lockfile (`android-deps-review.py classpath
     --write`), prints its diff against the committed one as probe: lines and uploads it; `--apk` still judges the APKs
     against the unchanged expected manifests and native-library list.
+  - Proof (M5 commit 8x, partial; the green Android job is the lead's): the list from run 39404714671's lockfile, 120
+    modules: the 29 wrapper modules added, and androidx.savedstate's five modules 1.3.2 -> 1.4.0, the one non-wrapper
+    version change (named under 8x's line in "Re-cut after Q73"); `classpath` compares it before Gradle again.
 - [ ] iOS link facts in M5 (commit 8q, again at 14):
   - `linkReleaseFrameworkIosArm64` builds a static framework from `:screens`. It holds Kotlin, Compose and skiko but no Rust. CI records its size and its archive-level `llvm-nm -u` list. That list over-reports, because nothing is dead-stripped, and is used only as the superset for the stop rule below.
   - The compared list comes from linked binaries: the `iosSimulatorArm64` and `iosArm64` test executables, which link the `target/ios-test/` library from 14 on. CI records their `llvm-nm -u -m` imports and linked libraries, and compares the `iosArm64` imports with `expected/ios-test-imports.txt` (M5-27).
@@ -12506,6 +12512,8 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
   their host's lock state and metadata, and upload them as `android-bootstrap` and `ios-bootstrap`.
   Moved to M6 by Q73 (8w): the macOS host and the merge script; 8w's Android run writes every lockfile and the
   metadata alone, and 8x reviews and commits them.
+  Proof (M5 commit 8x, partial; the strict run is the lead's): run 39404714671's five lockfiles and metadata are
+  committed unchanged, and the Android job builds strictly on them.
 - [ ] `android-deps-review.py` is extended:
   - it reads `.klib` files and the Kotlin/Native `.tar.gz` (Central, `.asc`);
   - new signers (JetBrains Compose, skiko, Kotlin/Native) are trusted on first use as under M5-12 and added to the M7 audit list;
@@ -12515,8 +12523,25 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
   Proof: the review's output at 8p. Selftest cases fail for a klib without `.asc` and for the skiko note applied to another coordinate.
   Moved to M6 by Q73 (8w): reading klibs and the Kotlin/Native archive, the skiko and Kotlin/Native signers and the
   skiko licence note; the Compose Multiplatform signer and M5-11's list stay.
-- [ ] Strict mode goes back on and the switch is removed in 8p; from then on M5-13's stop applies again.
+  Proof (M5 commit 8x, partial; the review's fetch is the lead's): IPHONE_ONLY and its five selftest cases (under 8x's
+  line in "Re-cut after Q73"). M5-11's list is unchanged here (14 files) and no signer is added: whether the list
+  grows, and which keys sign the eleven new Maven Central groups, only the review's fetch shows. skiko's signer is
+  needed in M5 after all, since the metadata pins skiko's `.module` and `-metadata.jar` and the review checks every
+  pinned file; its licence note stays M6's, as skiko is on no shipping classpath.
+- [x] Strict mode goes back on and the switch is removed in 8p; from then on M5-13's stop applies again.
   - Proof: the gate's bootstrap canary green at 8p.
+  - Proof (M5 commit 8x, the re-plan's 8p; settles the B2r review's three findings on this proof): the bootstrap line
+    and its flags are gone from entropy-android.yml, whose Gradle calls all pass `--dependency-verification strict`
+    again (build.gradle.kts kept `lockMode.set(LockMode.STRICT)` throughout), and `kt_bootstrap_exception=''`. 8p's
+    `workflow-bootstrap` canary passed whether the list was filled or empty, so it now also plants the second
+    bootstrap's own command (`if ! sh scripts/android-gradle.sh --write-locks --write-verification-metadata sha256 \`,
+    the line the list named) and needs both hits; and the new static check `workflow-bootstrap-exception-empty`
+    requires the gate's one assignment of the list, at any indentation, to be exactly `kt_bootstrap_exception=''`. On
+    a gate copy with 8w's list back, the planted copy gives 1 hit, not 2, and the static check fails; a second,
+    indented assignment or none fails it too. `canaries.sh` PASS: all 77 checks ran (want_checks 76 -> 77; 350 s on
+    this Mac); `--selftest` 1395 passed, 0 failed under sh and /bin/dash (unchanged); the gate on the tree clean (286
+    files: :screens' lockfile joins); fmt, both clippy commands, `cargo test --workspace --locked` (21 suites, 445
+    passed, 3 ignored) and the test-sources run (17 suites, 269 passed, 1 ignored) unchanged.
 - [ ] Kotlin/Native toolchain archives (Q68), in the order below:
   1. `scripts/konan-deps.sh` (in `android-gradle.sh`'s pattern) fetches exactly the three archives from their full URLs (LLVM under `resources/llvm/21-aarch64-macos/`). It checks each against a SHA-256 pinned in the script and checks its `.asc` with `gpg --verify` against a keyring holding only a pinned JetBrains key fingerprint. It places the archives in `mobile/android/.konan/cache/`, where the fetcher extracts them without downloading.
   2. `.konan/dependencies/` is empty at the start of every run, so no restored or planted extracted tree is trusted. `.konan/` is never restored from a cache.
@@ -12887,7 +12912,8 @@ instructions forbid any fetch for research, HEAD requests included.
 
 **Moves to M6** (as planned in the re-plan, to be re-planned with the M6 question)
 - the `iosArm64`/`iosSimulatorArm64` targets, `kotlin-native-prebuilt`, skiko, the klib commonizer and the other
-  iPhone-only Q67 artifacts;
+  iPhone-only Q67 artifacts, as the iPhone build's inputs (the Android build still resolves skiko's and ui-uikit's
+  metadata and the klib commonizer, on no APK's runtime classpath: 8x);
 - `scripts/konan-deps.sh`, `konan.data.dir`, the `.konan/` handling and the download-host block (Q68), with Q73's
   signature facts above;
 - `entropy-ios.yml` (Q69);
@@ -12956,6 +12982,50 @@ at 8v-c: this line and 10922d6's body said "from :51", but the guard/ line enter
 - 8x. mobile/android, scripts: the lockfiles and verification metadata from 8w's Android bootstrap run, reviewed by
   `android-deps-review`; strict mode on and the bootstrap switch removed (the gate's bootstrap canary proves it); the
   expected classpath updated with every version change named; the Android job, emulators included, green again.
+  Proof (M5 commit 8x, partial: the review against the repositories, the new signers and the strict CI run need a fetch
+  this commit was not allowed to make, and are the lead's): the five lockfiles (:screens' is new) and the verification
+  metadata are the Android bootstrap run 39404714671's at 1ae0df6 (green), copied unchanged from its android-bootstrap
+  artifact, and `android-deps-review.py classpath --write` on the copied app lockfile writes the run's classpath list
+  byte for byte. The metadata grows from 454 components (768 artifacts) to 536 (923): 82 components added, and 9
+  artifacts added to kept ones (the common `-metadata` jars of annotation, collection, Compose's runtime,
+  runtime-annotation, runtime-retain and runtime-saveable, coroutines and serialization, and kotlin-stdlib's `-all`
+  jar); none removed or changed, and the configuration and trusted keys are unchanged. The review's offline checks pass:
+  no metadata problem (one SHA-256 per artifact), the keyring's 61 keys equal the 61 trusted keys (78 group scopes),
+  every module of the five lockfiles (app 331, capture-control 317, core-ffi 204, screens 228, secure-ui 282) has its
+  component, and each of the 74 artifacts named apart from name-version has its component's `.module` pinned. The
+  shipping runtime classpath goes from 91 to 120 modules by exactly the 29 JetBrains wrapper modules
+  (org.jetbrains.compose.{animation,foundation,runtime,ui}:*:1.12.1, 24; org.jetbrains.androidx.lifecycle:*:2.9.6, 3;
+  org.jetbrains.androidx.savedstate:*:1.3.6, 2) and androidx.savedstate's five modules 1.3.2 -> 1.4.0 (Q67, [C3]), the
+  one non-wrapper version change; nothing else. Q67's iPhone-only artifacts reach no APK:
+  org.jetbrains.skiko:skiko:0.150.1 and org.jetbrains.compose.ui:ui-uikit:1.12.1 are pinned only as `.module` and
+  `-metadata.jar`, on :screens' metadataCompileClasspath and its *ResolvableDependenciesMetadata and
+  all(Test)SourceSetsCompileDependenciesMetadata configurations, for the shared code's metadata compilation;
+  kotlin-klib-commonizer-embeddable only on kotlinKlibCommonizerClasspath (:core-ffi, :screens), and
+  kotlin-klib-commonizer-api and kotlin-native-utils (pinned since commit 6) only on the build classpath
+  (buildEnvironment), all as Kotlin Gradle plugin tooling; none is on the shipping or test-registry runtime classpath,
+  and kotlin-native-prebuilt is not resolved at all. `android-deps-review.py classpath` (and review) now refuses any of
+  them on either runtime classpath (IPHONE_ONLY: the skiko group; ui-uikit, kotlin-native-prebuilt or klib-commonizer in
+  a name) and a lockfile without withTestRegistryReleaseRuntimeClasspath: `--selftest --skip-pgp` 51 passed, 0 failed, 2
+  skipped on Python 3.12 and 3.9.6 (46 before: `fail-iphone-only-on-shipping-classpath` (ui-uikit),
+  `fail-iphone-only-skiko-`, `-klib-commonizer-` and `-native-prebuilt-on-test-registry-classpath`,
+  `fail-lockfile-no-test-registry-configuration`; the base lockfile and four cases' own lockfiles gain the test-registry
+  configuration, so each case still fails for its own reason alone). On copies of the script with the check removed,
+  either configuration dropped from its loop, the missing-configuration check removed or one name dropped from
+  IPHONE_ONLY, exactly the matching cases fail. entropy-android.yml is pre-8q's again (the classpath compare and the
+  review before the first Gradle call, the strict build, no bootstrap line, probe step or upload step), with one comment
+  line for the new check, and `kt_bootstrap_exception=''`: `--workflows` clean on the three workflows (sh and dash), and
+  on 8w's bootstrap-mode workflow (as at 78297b7) the gate gives exactly one hit, line 249, the former exception line.
+  The strict-mode item under "Dependency bootstrap" carries the canary proof. Not settled here, because only a fetch can
+  settle it: the review against Google's Maven and Maven Central (`urls` on an empty mirror lists 1809 files for its
+  first round, 498 from dl.google.com and 1311 from repo.maven.apache.org), so whether M5-11's list grows; and the
+  signers of the Maven Central groups that have no trusted key yet: org.jetbrains.androidx.lifecycle,
+  org.jetbrains.androidx.navigationevent, org.jetbrains.androidx.savedstate, org.jetbrains.compose.animation,
+  org.jetbrains.compose.annotation-internal, org.jetbrains.compose.collection-internal,
+  org.jetbrains.compose.foundation, org.jetbrains.compose.runtime, org.jetbrains.compose.ui,
+  org.jetbrains.kotlin.multiplatform and org.jetbrains.skiko (the new artifacts of org.jetbrains.kotlin and
+  org.jetbrains.kotlinx may have new signers too). The keyring is not extended here, so the Android job's dependency
+  review fails closed on those artifacts until a write-keys run pins their signers (each a new trust-on-first-use signer
+  under M5-12, for the M7 audit list).
 
 **Stages C-F** run as "Commit order from Stage C on" plans them, without the iPhone work: commit 9 creates ffi, ffi/guard
 and ffi/jni (six members); 12b is not built; 13 builds and scans the Android `.so` only (the existing macos-26 release scan

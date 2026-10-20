@@ -1233,10 +1233,11 @@ need "7 hit(s) in 1 workflow(s)"
 verdict
 
 # The bootstrap rule on the real Android workflow (tasks/todo.md, M5 group 4; lead decision M5-13;
-# the re-plan's "Dependency bootstrap", Q67): a lock-writing Gradle line planted in a copy of
-# entropy-android.yml must fail scripts/banned-api-check.sh --workflows with exactly that one hit,
-# whatever kt_bootstrap_exception holds (an exception names one exact line, never this one), so a
-# widened exception or a dropped rule turns CI red, during the second bootstrap and after it.
+# the re-plan's "Dependency bootstrap", Q67; the re-cut after Q73): two lock-writing Gradle lines
+# planted in a copy of entropy-android.yml must fail scripts/banned-api-check.sh --workflows with
+# exactly those two hits: a one-line command no exception could name, and the second bootstrap's own
+# command (commits 8q and 8w), whose first line kt_bootstrap_exception named until commit 8x emptied
+# it. So a dropped rule, a widened exception or that exception put back turns CI red.
 name=workflow-bootstrap
 wfb="$work/workflows-bootstrap"
 mkdir "$wfb" || exit 1
@@ -1244,12 +1245,36 @@ cp "$root/../.github/workflows/entropy-android.yml" "$wfb/entropy-android.yml" |
 cat >> "$wfb/entropy-android.yml" <<'EOF'
       # Gate canary (scripts/canaries.sh, temp copy only): the lock-writing switch back on.
       - run: sh scripts/android-gradle.sh --write-locks --write-verification-metadata sha256 help
+      # Gate canary (temp copy only): the second bootstrap's Gradle line, which the exception named.
+      - name: Bootstrap build
+        run: |
+          if ! sh scripts/android-gradle.sh --write-locks --write-verification-metadata sha256 \
+            help; then
+            exit 1
+          fi
 EOF
 expect_failure "$name" sh "$root/scripts/banned-api-check.sh" --workflows "$wfb"
 need "Workflow: $wfb/entropy-android.yml:"
 need "- run: sh scripts/android-gradle.sh --write-locks --write-verification-metadata sha256 help"
-need "1 hit(s) in 1 workflow(s)"
+need "if ! sh scripts/android-gradle.sh --write-locks --write-verification-metadata sha256 \\"
+need "2 hit(s) in 1 workflow(s)"
 verdict
+
+# The exception list itself (lead decision M5-13): empty since commit 8x, so the gate grants no
+# lock-writing line in any workflow. The one assignment of kt_bootstrap_exception in
+# scripts/banned-api-check.sh must be exactly kt_bootstrap_exception='' (no other assignment, at any
+# indentation); a reviewed re-plan that fills it again changes this check with it.
+bootstrap_exception_empty() {
+    gate="$root/scripts/banned-api-check.sh"
+    set_lines=$(grep -n -E '^[[:space:]]*((export|readonly|local)[[:space:]]+)?kt_bootstrap_exception=' "$gate")
+    if [ "$set_lines" != "$(grep -n -x "kt_bootstrap_exception=''" "$gate")" ] || [ -z "$set_lines" ] ||
+        [ "$(printf '%s\n' "$set_lines" | wc -l | tr -d ' ')" != 1 ]; then
+        printf '%s\n' "$set_lines"
+        echo "kt_bootstrap_exception is not assigned exactly once, as kt_bootstrap_exception='' (above)"
+        return 1
+    fi
+}
+static_check workflow-bootstrap-exception-empty bootstrap_exception_empty
 
 # The OS configuration check (tasks/todo.md, M4 groups 11 and 13; commit 17a): a temp copy of
 # the clean fixture, scripts/testdata/os-config/clean-pizero, must pass banned-api-check.sh
@@ -1383,7 +1408,7 @@ cp "$root/core/examples/release_probe.rs" "$tmp/core/examples/release_probe.rs" 
 
 # The number of checks above, pinned, so a canary that is deleted, or skipped by a broken branch,
 # turns CI red too. A real change to the canaries updates this pin in the same reviewed change.
-want_checks=76
+want_checks=77
 if [ "$checks" -ne "$want_checks" ]; then
     echo "FAIL: $checks checks ran; scripts/canaries.sh pins $want_checks"
     status=1

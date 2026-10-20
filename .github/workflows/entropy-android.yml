@@ -39,18 +39,6 @@
 # recordings through scripts/android-frames.py (raw frames streamed and checked in memory, none
 # kept).
 #
-# Bootstrap mode (commits 8q and 8w, 2026-10-20; Entropy/tasks/todo.md, M5 re-plan for Compose
-# Multiplatform, "Dependency bootstrap", and "Re-cut after Q73"; Q67, Q73): the owner approved the
-# shared Compose Multiplatform screens and their libraries, then dropped the iPhone target from M5,
-# so the lockfiles and the verification metadata are regenerated for the Android target alone,
-# under the reviewed, temporary exception to the gate's bootstrap rule that lead decision M5-13
-# reserved (banned-api-check.sh's kt_bootstrap_exception names this workflow's one lock-writing
-# Gradle line). This job writes and uploads them, and commit 8x reviews and commits the files, puts
-# the strict build back and removes the exception. Until then this job builds once in that mode:
-# the shipping classpath list is regenerated from the new lockfile and printed as a diff, not
-# compared, and the review of the committed pins (scripts/android-deps-review.sh), whose files this
-# run replaces, waits for the files of commit 8x. The APK checks and the emulators run as before.
-#
 # Not one of the 14 required checks (Q55), so path filters are safe, as in entropy-pi-image.yml:
 # a skipped run never leaves a required check pending. The rule instead (Q38 (b)): no PR that
 # touches these paths merges without a green run of this workflow on its final head.
@@ -207,12 +195,21 @@ jobs:
           gpg --version | head -n 1
           python3 --version
           python3 -I scripts/android-deps-review.py --selftest
-      # In bootstrap mode (commits 8q and 8w) the two checks of the committed pins that run here
-      # before any Gradle run, MA:126's classpath compare (scripts/android-deps-review.py classpath)
-      # and the review of every artifact of the verification metadata against its repository
-      # (scripts/android-deps-review.sh), are left out: the bootstrap build replaces those files, so
-      # neither check would say anything about this build. Commit 8x runs both again, before the
-      # first Gradle run, on the files it commits.
+      # MA:126's dependency allow-list: the shipping APK's runtime classpath (the lockfile's
+      # shippingReleaseRuntimeClasspath, which the strict build below must resolve exactly), line
+      # for line; and none of Q67's iPhone-only artifacts (skiko, ui-uikit, kotlin-native-prebuilt,
+      # the klib commonizer) on the shipping or test-registry runtime classpath.
+      - name: Shipping runtime classpath (mobile/android/expected/shipping-runtime-classpath.txt)
+        run: python3 -I scripts/android-deps-review.py classpath
+      # Every artifact of the verification metadata against its repository, before any Gradle run
+      # resolves a plugin, so no pinned build-time code has run in this job when the pins are read:
+      # Google's Maven by its published .sha256; Maven Central by the published .sha1 over the
+      # file's bytes (fetched here, not taken from a Gradle cache) and its .asc, verified by gpg with
+      # the committed keyring and a trusted key scoped to the artifact's group; the 14 files that
+      # publish neither (lead decision M5-11) by name, by SHA-1 and SHA-256; and the licences of the
+      # shipping classpath against deny.toml's allow list. Any failure fails it.
+      - name: Dependency review (scripts/android-deps-review.sh)
+        run: sh scripts/android-deps-review.sh "$RUNNER_TEMP/deps-mirror"
       # The Gradle distribution from the cache (M5 "Budgets"), keyed on the version and SHA-256
       # pinned in scripts/android-gradle.sh, which checks the zip against that pin on every run, a
       # restored one included, and removes it before any of it runs when the bytes differ. Only the
@@ -234,52 +231,16 @@ jobs:
           key: ${{ runner.os }}-${{ runner.arch }}-${{ env.KC_GRADLE_KEY }}
       - name: Gradle (scripts/android-gradle.sh --version)
         run: sh scripts/android-gradle.sh --dependency-verification strict --version
-      # The bootstrap build (the reviewed, temporary exception, Q67 and Q73; its Gradle line is the
-      # one that banned-api-check.sh's kt_bootstrap_exception names for this workflow):
-      # buildEnvironment, every module's dependencies report (so every configuration gets its lock
-      # state), the five APKs and the JVM tests, in one Gradle run that writes every module's
-      # gradle.lockfile and adds the SHA-256 of every file it fetches to
-      # gradle/verification-metadata.xml. Lock state is written, not checked, and no checksum is
-      # checked while the metadata is written. The whole log is kept for the artifact. A Gradle
-      # failure fails the step.
-      - name: Bootstrap build (lockfiles and verification metadata written, Q67)
+      # The strict build (group 4): the APKs and the JVM tests, in one Gradle run. A configuration
+      # whose resolution differs from its lockfile, and a file whose SHA-256 is not the metadata's,
+      # fail it. A Gradle failure fails the step.
+      - name: Build (strict locking and dependency verification)
         run: |
-          out=mobile/android/build/kc-bootstrap
-          mkdir -p "$out"
-          if ! sh scripts/android-gradle.sh --write-locks --write-verification-metadata sha256 \
-            buildEnvironment \
-            :core-ffi:dependencies :screens:dependencies :secure-ui:dependencies :app:dependencies \
-            :capture-control:dependencies \
+          sh scripts/android-gradle.sh --dependency-verification strict \
             :app:assembleShippingRelease :app:assembleWithTestRegistryRelease \
             :app:assembleShippingReleaseAndroidTest :app:assembleWithTestRegistryReleaseAndroidTest \
             :capture-control:assembleRelease \
-            test 2>&1 | tee "$out/gradle.log"; then
-            echo "FAIL: the bootstrap build failed (above)" >&2
-            exit 1
-          fi
-      # The probe's classpath fact (the re-plan's "Unverified until the probe"): the shipping
-      # classpath's delta. The list is regenerated from the new lockfile into
-      # mobile/android/expected/shipping-runtime-classpath.txt for the artifact and printed as a
-      # diff against the committed one, not judged (commit 8x names every non-wrapper change).
-      - name: Probe facts (the shipping classpath regenerated, not compared)
-        run: |
-          python3 -I scripts/android-deps-review.py classpath --write
-          echo "probe: linux: the shipping runtime classpath against the committed list (- committed, + regenerated):"
-          git diff --no-color --unified=0 -- mobile/android/expected/shipping-runtime-classpath.txt | grep -E '^[-+][^-+]' | sed 's/^/probe:   /' || echo "probe:   unchanged"
-      # The files commit 8x reviews and commits (kept 14 days): every module's gradle.lockfile, the
-      # verification metadata, the regenerated classpath list, and the bootstrap build's log with its
-      # buildEnvironment and dependencies reports.
-      - name: Upload the bootstrap files (lockfiles, verification metadata, classpath list, log)
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: android-bootstrap
-          path: |
-            Entropy/mobile/android/**/gradle.lockfile
-            Entropy/mobile/android/gradle/verification-metadata.xml
-            Entropy/mobile/android/expected/shipping-runtime-classpath.txt
-            Entropy/mobile/android/build/kc-bootstrap/gradle.log
-          retention-days: 14
-          if-no-files-found: error
+            test
       # The probe's APK facts (M5 group 0): each APK's SHA-256 and size, its file list, every native
       # library with the alignment of each LOAD segment, and aapt2's view of its package, SDKs,
       # permissions and merged manifest (components and their exported flags, receivers and

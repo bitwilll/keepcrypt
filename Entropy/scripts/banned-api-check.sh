@@ -1913,9 +1913,11 @@ kt_bootstrap() {
 # bootstrap Gradle lines of entropy-android.yml and of the iPhone workflow. The owner's answer to
 # Q73 of 2026-10-20 ("Drop iPhone from M5") removed the iPhone workflow, so commit 8w keeps the
 # Android line alone, and the Android job writes the lock state and metadata once more without the
-# iPhone's configurations. Commit 8x commits the reviewed files and empties the list, and M5-13's
-# stop holds again.
-kt_bootstrap_exception='entropy-android.yml if ! sh scripts/android-gradle.sh --write-locks --write-verification-metadata sha256 \'
+# iPhone's configurations. Emptied at commit 8x, which commits the reviewed files, so M5-13's stop
+# holds again: scripts/canaries.sh pins the list empty (workflow-bootstrap-exception-empty) and
+# plants that former line in the real workflow, where it must hit, so a list filled again turns CI
+# red until a re-plan changes those checks too.
+kt_bootstrap_exception=''
 
 kt_bootstrap_exception_check() {
   printf '%s\n' "$kt_bootstrap_exception" | awk '
