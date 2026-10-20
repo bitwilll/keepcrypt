@@ -12383,6 +12383,12 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
   whose charset the review widened, left the allow list at 8w, and any device line is a hit
   (`ktsdk-kmp-8q-line-simulator-device`), so nothing is left to widen. The runs are under the One catch item's 8p-d
   proof.
+  Proof (M5 commit 8w-c, review): 8w's kotlin.apple. refusal had no case of its own (both kotlin.apple. fixtures also
+  hold xcodeCompatibility.nowarn), so a gate copy without `apple` in `kotlin[.](native|apple)[.]` passed `--selftest`.
+  `ktsdk-kmp-kotlin-apple-property` (gradle.properties) and `workflow-kotlin-apple-property` (a -P option) hold a
+  kotlin.apple. name with neither word, and each scans clean on that copy. `ktsdk-kmp-konan-property-upper-case`'s
+  value is upper case too (`KONAN.DATA.DIR=.KONAN`), so it alone scans clean on a copy whose build-file refusal is
+  case-sensitive. `--selftest` 1373 passed, 0 failed under sh and /bin/dash (1371 before: +2 fixtures).
 - [x] Canaries cover the new scopes, the source-set allow list, the iOS rules, the `.def` rule and the refusals; `want_checks` is updated.
   - Proof: `scripts/canaries.sh` green with the new count. Each new canary fails when its rule line is removed (shown once, under Review).
   - Proof (M5 commit 8p): `want_checks` 74 -> 76. `kmp-ios-rules`: nine planted hits on the real tree's copy (appleMain
