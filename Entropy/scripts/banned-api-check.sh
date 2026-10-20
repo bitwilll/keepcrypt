@@ -707,17 +707,18 @@
 #              and there every one but the path call std::panic::catch_unwind( in the body of the
 #              crate root's fn guarded, once (so a use line naming it, a rename, a re-export, a
 #              wrapper, a fn guarded in a mod, an impl or another fn, a macro_rules definition and a
-#              second call are hits); an export (no_mangle, export_name, or an extern fn with any
-#              ABI string or none, outside comments and literals) anywhere but ffi/jni/src/lib.rs,
-#              and there an export whose own body does not call keepcrypt_guard::guarded( (the
-#              crate root's no_mangle JNI_OnLoad aside) or that has no body, and macro_rules; the
-#              JNI names (a Java_ function, JNI_OnLoad, JNIEnv, jni_sys) outside comments and
-#              literals anywhere but ffi/jni/, and in ffi/jni/src/lib.rs an extern fn whose ABI is
-#              not "system"; macro_rules and macro_export outside comments and literals in any file
-#              under ffi/src/ and ffi/guard/src/ (lead decision M5-35), so no macro from the crates
-#              under the boundary writes an export; and once ffi/jni/src/lib.rs exports a function,
-#              the one catch_unwind call in fn guarded is required (a missing one is reported at
-#              ffi/jni/src/lib.rs:1).
+#              second call are hits); an export (no_mangle, export_name, or the word extern, which
+#              an extern fn with any ABI string or none starts, outside comments and literals)
+#              anywhere but ffi/jni/src/lib.rs, and there an export whose own body does not call
+#              keepcrypt_guard::guarded( (the crate root's no_mangle JNI_OnLoad aside) or that has
+#              no body, an extern that $ or ) follows (a macro's ABI), and macro_rules; the JNI
+#              names (a Java_ function, JNI_OnLoad, JNIEnv, jni_sys) outside comments and literals
+#              anywhere but ffi/jni/, and in ffi/jni/src/lib.rs an extern fn whose ABI is not
+#              "system"; macro_rules and macro_export outside comments and literals in any file
+#              under ffi/src/, ffi/guard/src/ and ffi/jni/src/ (lead decision M5-35; lib.rs's
+#              through the export scan), so no macro writes an export out of the export scan's
+#              sight; and once ffi/jni/src/lib.rs exports a function, the one catch_unwind call in
+#              fn guarded is required (a missing one is reported at ffi/jni/src/lib.rs:1).
 #              Session::new (the Shell rule's shapes, comments counting) anywhere under ffi/ but
 #              ffi/src/ceremony.rs, each one after its first there, and none there once the file
 #              exists (reported at line 1). The identifiers thread and JoinHandle anywhere but in
@@ -865,7 +866,7 @@ Mach-O, ELF, ar, zip, dex, keystore or compressed file among them) under mobile/
 key outside its two files; and under ffi/ a catch_unwind but the one std::panic::catch_unwind call
 in the crate root's fn guarded in ffi/guard/src/lib.rs, an export outside ffi/jni/src/lib.rs or one
 there that does not call keepcrypt_guard::guarded, macro_rules there or macro_rules and
-macro_export in ffi/src and ffi/guard/src, a JNI name outside ffi/jni/ or a C-ABI export in its
+macro_export in ffi/src, ffi/guard/src and ffi/jni/src, a JNI name outside ffi/jni/ or a C-ABI export in its
 lib.rs, a second Session::new or one outside ffi/src/ceremony.rs, and thread or JoinHandle outside
 ffi/tests/. A directory symlink is refused. Exit 0 clean, 1 hits, 2 usage or read error.
 EOF
@@ -2335,9 +2336,11 @@ ffi_guard_site() {
 }
 
 # Every export sits in ffi/jni/src/lib.rs and calls guarded(): outside every comment and literal,
-# no_mangle and export_name (bare or inside unsafe(...)) and an extern fn, with an ABI string
-# ("system", "C", "C-unwind", any: rust_code_match leaves it as "") or without one (which is "C"),
-# are hits under ffi/ anywhere but ffi/jni/src/lib.rs (ffi_export). An extern "C" and an extern
+# no_mangle and export_name (bare or inside unsafe(...)) and the word extern, which starts an extern
+# fn with an ABI string ("system", "C", "C-unwind", any: rust_code_match leaves it as "") or without
+# one (which is "C"), are hits under ffi/ anywhere but ffi/jni/src/lib.rs (ffi_export). The word
+# alone, whatever follows it, so an extern fn split from its fn over lines, one whose ABI a macro
+# takes as $abi, and an extern passed to a macro as tokens are hits too. An extern "C" and an extern
 # "system" function share an ABI on Android, and RegisterNatives can bind a native method to a
 # function that is not exported by name, so each form is one: in another file it would run outside
 # the reviewed boundary. keepcrypt-capi is M6's (Q73, M5-32), so ffi/capi/src/lib.rs is no boundary
@@ -2353,8 +2356,10 @@ ffi_guard_site() {
 # type) at its own line, so it is a hit too; an extern fn type in a helper's signature makes the
 # helper one, which fails closed. macro_rules is a hit of its own there: an export a macro writes
 # has its name and body only at the macro's call sites, out of the scan's sight, so every export
-# is written out in the file.
-ffi_export_ere='[^A-Za-z0-9_](no_mangle|export_name|extern[[:space:]]*("")?[[:space:]]*fn)[^A-Za-z0-9_]'
+# is written out in the file. So is an extern that $ or ) follows, with its ABI string or not: the
+# ABI a macro takes ($abi) or a macro call passes as tokens (call!(pub extern "system")), which a
+# macro from elsewhere would turn into an export.
+ffi_export_ere='[^A-Za-z0-9_](no_mangle|export_name|extern)[^A-Za-z0-9_]'
 ffi_export() {
   rust_code_match "$ffi_export_ere" "$1"
 }
@@ -2372,6 +2377,7 @@ ffi_export_scan() {
     function tok(t) {
       if (t == "(" && p1 == "guarded" && p2 == "::" && p3 == "keepcrypt_guard" && p4 != "::" && top > 0) ok[top] = 1
       if (t == "macro_rules") out(NR)
+      if ((t == "$" || t == ")") && (p1 == "extern" || (p1 == "\"\"" && p2 == "extern"))) out(NR)
       if (t == "no_mangle" || t == "export_name" || (t == "fn" && (p1 == "extern" || (p1 == "\"\"" && p2 == "extern")))) {
         if (!want) wl = NR
         want = 1
@@ -2440,12 +2446,14 @@ ffi_jni_abi() {
     -e 's/extern[[:space:]]*"system"[[:space:]]*fn([^A-Za-z0-9_]|$)/ /g'
 }
 
-# No export written by a macro from the crates under the boundary (lead decision M5-35): macro_rules
-# and macro_export, outside every comment and literal, are hits in any .rs file under ffi/src/ and
-# ffi/guard/src/ (ffi_macros), as ffi/jni/src/lib.rs's macro_rules is (ffi_export_scan). A macro
-# that keepcrypt-ffi or keepcrypt-guard exported and keepcrypt-jni called would split an export's
-# tokens between two crates, which the export scan, reading ffi/jni/src/lib.rs alone, cannot see
-# whole; so every export stays written out in that file. Their tests may define macros.
+# No export written by a macro (lead decision M5-35): macro_rules and macro_export, outside every
+# comment and literal, are hits in any .rs file under ffi/src/, ffi/guard/src/ and ffi/jni/src/
+# but ffi/jni/src/lib.rs (ffi_macros), whose macro_rules is the export scan's hit (ffi_export_scan).
+# A macro that keepcrypt-ffi or keepcrypt-guard exported and keepcrypt-jni called, or one in
+# another of keepcrypt-jni's files, would split an export's tokens between two files, which the
+# export scan, reading ffi/jni/src/lib.rs alone, cannot see whole (an extern fn whose ABI comes in
+# as $abi, bound by RegisterNatives from JNI_OnLoad, ran outside the catch); so every export stays
+# written out in that file. The crates' tests may define macros.
 ffi_macros() {
   rust_code_match '[^A-Za-z0-9_](macro_rules|macro_export)[^A-Za-z0-9_]' "$1"
 }
@@ -2742,9 +2750,9 @@ EOF
     esac
     # FFI: one catch_unwind, the path call in fn guarded in ffi/guard/src/lib.rs; exports only in
     # ffi/jni/src/lib.rs, each calling keepcrypt_guard::guarded, JNI names only under ffi/jni/ and
-    # only the JNI ABI in its lib.rs; no macro_rules or macro_export in ffi/src or ffi/guard/src;
-    # one Session::new, in ffi/src/ceremony.rs (comments count, as under pi/app/src); no thread or
-    # JoinHandle outside ffi/tests/ (M5-8).
+    # only the JNI ABI in its lib.rs; no macro_rules or macro_export in ffi/src, ffi/guard/src or
+    # ffi/jni/src; one Session::new, in ffi/src/ceremony.rs (comments count, as under pi/app/src);
+    # no thread or JoinHandle outside ffi/tests/ (M5-8).
     case $rel in
       ffi/*.rs)
         case $rel in
@@ -2754,7 +2762,10 @@ EOF
         esac
         case $rel in ffi/jni/src/lib.rs) report FFI ffi_jni_abi "$rel" ;; esac
         case $rel in ffi/jni/*) ;; *) report FFI ffi_jni_names "$rel" ;; esac
-        case $rel in ffi/src/*.rs | ffi/guard/src/*.rs) report FFI ffi_macros "$rel" ;; esac
+        case $rel in
+          ffi/jni/src/lib.rs) ;;
+          ffi/src/*.rs | ffi/guard/src/*.rs | ffi/jni/src/*.rs) report FFI ffi_macros "$rel" ;;
+        esac
         case $rel in
           ffi/src/ceremony.rs) report FFI session_new_again "$rel" ;;
           *) report FFI session_new "$rel" ;;
@@ -3529,6 +3540,48 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
     'fn from_java(env: *mut JNIEnv, input: jbyteArray) -> Zeroizing<Vec<u8>> {' '    read_capped(env, input, MAX_IN)' '}' \
     >"$d/ffi/jni/src/lib.rs" || exit 2
   expect 'clean-ffi-jni-exports-each-calling-guarded' "$d" clean
+  # A macro in another of keepcrypt-jni's files (lead decision M5-35): beside that guard and lib.rs's
+  # export that calls guarded, an extern fn the macro writes with the ABI it takes as $abi, or with
+  # the extern and ABI a call passes as tokens, is bound by RegisterNatives in JNI_OnLoad and would
+  # run outside the catch. The definition's line is a hit (ffi_macros), and so is the extern that $
+  # follows there (ffi_export) or the extern that ) follows in lib.rs's call (ffi_export_scan).
+  onload=$(printf '%s\n' '#[unsafe(no_mangle)]' \
+    'pub unsafe extern "system" fn JNI_OnLoad(vm: *mut JavaVM, reserved: *mut c_void) -> jint {' \
+    '    register(vm, &JNINativeMethod { name: NAME, signature: SIG, fnPtr: native_raw as *mut c_void });' \
+    '    JNI_VERSION_1_6' '}')
+  for mcase in abi-literal:glue.rs:1:3 abi-tokens:lib.rs:3:1; do
+    case ${mcase%%:*} in
+      abi-literal)
+        glue=$(printf '%s\n' 'macro_rules! boundary {' '    ($abi:literal, $name:ident) => {' \
+          '        pub extern $abi fn $name(env: *mut JNIEnv, op: jint) -> jbyte {' \
+          '            keepcrypt_ffi::dispatch(op as u32, &[])[0]' '        }' '    };' '}')
+        mcall='boundary!("system", native_raw);'
+        ;;
+      abi-tokens)
+        glue=$(printf '%s\n' 'macro_rules! boundary {' '    ($($abi:tt)*) => {' \
+          '        $($abi)* fn native_raw(env: *mut JNIEnv, op: jint) -> jbyte {' \
+          '            keepcrypt_ffi::dispatch(op as u32, &[])[0]' '        }' '    };' '}')
+        mcall='boundary!(pub extern "system");'
+        ;;
+    esac
+    fresh
+    mkdir -p "$d/ffi/guard/src" "$d/ffi/jni/src" || exit 2
+    printf '%s\n' "$guard" >"$d/ffi/guard/src/lib.rs" || exit 2
+    printf '%s\n' "$glue" >"$d/ffi/jni/src/glue.rs" || exit 2
+    printf '%s\n' '#[macro_use]' 'mod glue;' "$mcall" '#[unsafe(no_mangle)]' "$call" \
+      '    to_java(env, keepcrypt_guard::guarded(op as u32, &from_java(env, input)))' '}' "$onload" \
+      >"$d/ffi/jni/src/lib.rs" || exit 2
+    mat=${mcase#*:}
+    mfile=ffi/jni/src/${mat%%:*}
+    mat=${mat#*:}
+    atline=${mat%%:*}
+    malso=${mat#*:}
+    case $mfile in */lib.rs) afile=ffi/jni/src/glue.rs ;; *) afile=$mfile ;; esac
+    also="FFI: $afile:$malso: $(sed -n "${malso}p" "$d/$afile")"
+    expect "ffi-jni-macro-in-another-file-${mcase%%:*}-registered-native" "$d" FFI "$mfile"
+    also=
+    atline=
+  done
   # The alias crossing crates: a guard that re-exports catch_unwind under another name is a hit at
   # that line although the boundary beside it, whose export calls guarded, names no catch_unwind
   # when it catches and continues through the alias.
