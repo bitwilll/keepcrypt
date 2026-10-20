@@ -13003,9 +13003,11 @@ at 8v-c: this line and 10922d6's body said "from :51", but the guard/ line enter
   kotlin-klib-commonizer-embeddable only on kotlinKlibCommonizerClasspath (:core-ffi, :screens), and
   kotlin-klib-commonizer-api and kotlin-native-utils (pinned since commit 6) only on the build classpath
   (buildEnvironment), all as Kotlin Gradle plugin tooling; none is on the shipping or test-registry runtime classpath,
-  and kotlin-native-prebuilt is not resolved at all. `android-deps-review.py classpath` (and review) now refuses any of
-  them on either runtime classpath (IPHONE_ONLY: the skiko group; ui-uikit, kotlin-native-prebuilt or klib-commonizer in
-  a name) and a lockfile without withTestRegistryReleaseRuntimeClasspath: `--selftest --skip-pgp` 51 passed, 0 failed, 2
+  and kotlin-native-prebuilt is not resolved at all. `android-deps-review.py classpath` (and review) now refuses skiko,
+  ui-uikit, kotlin-native-prebuilt and the klib commonizer on either runtime classpath (IPHONE_ONLY: the skiko group;
+  ui-uikit, kotlin-native-prebuilt or klib-commonizer in a name; corrected at 8x-b: this said "any of them", but
+  IPHONE_ONLY does not name kotlin-native-utils, which is in no lockfile) and a lockfile without
+  withTestRegistryReleaseRuntimeClasspath: `--selftest --skip-pgp` 51 passed, 0 failed, 2
   skipped on Python 3.12 and 3.9.6 (46 before: `fail-iphone-only-on-shipping-classpath` (ui-uikit),
   `fail-iphone-only-skiko-`, `-klib-commonizer-` and `-native-prebuilt-on-test-registry-classpath`,
   `fail-lockfile-no-test-registry-configuration`; the base lockfile and four cases' own lockfiles gain the test-registry
@@ -13026,6 +13028,16 @@ at 8v-c: this line and 10922d6's body said "from :51", but the guard/ line enter
   org.jetbrains.kotlinx may have new signers too). The keyring is not extended here, so the Android job's dependency
   review fails closed on those artifacts until a write-keys run pins their signers (each a new trust-on-first-use signer
   under M5-12, for the M7 audit list).
+  Proof (M5 commit 8x-b, the 8x review): IPHONE_ONLY applies to every runtime classpath (a configuration whose name ends
+  RuntimeClasspath) of every module's lockfile, so the two androidTest APKs' and capture-control's classpaths are
+  covered too: on copies of the tree, skiko on the app's shippingReleaseAndroidTestRuntimeClasspath or
+  withTestRegistryReleaseAndroidTestRuntimeClasspath, or ui-uikit on capture-control's releaseRuntimeClasspath, passed
+  8x's `classpath` and now fails it. Each refusal names its lockfile. `--selftest --skip-pgp` 53 passed, 0 failed, 2
+  skipped on Python 3.12 and 3.9.6 (51 before: `fail-iphone-only-on-android-test-classpath` (skiko) and
+  `fail-iphone-only-on-capture-control-classpath` (ui-uikit); the four earlier IPHONE_ONLY cases' expect.txt name
+  app/gradle.lockfile); `classpath` on the tree passes (120 modules) on both. On a copy that checks every configuration
+  the tree fails, on :screens' metadata configurations and kotlinKlibCommonizerClasspath; on a copy that checks the
+  app's lockfile alone, exactly the capture-control case fails.
 
 **Stages C-F** run as "Commit order from Stage C on" plans them, without the iPhone work: commit 9 creates ffi, ffi/guard
 and ffi/jni (six members); 12b is not built; 13 builds and scans the Android `.so` only (the existing macos-26 release scan

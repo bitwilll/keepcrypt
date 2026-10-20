@@ -198,7 +198,8 @@ jobs:
       # MA:126's dependency allow-list: the shipping APK's runtime classpath (the lockfile's
       # shippingReleaseRuntimeClasspath, which the strict build below must resolve exactly), line
       # for line; and none of Q67's iPhone-only artifacts (skiko, ui-uikit, kotlin-native-prebuilt,
-      # the klib commonizer) on the shipping or test-registry runtime classpath.
+      # the klib commonizer) on any runtime classpath of any module's lockfile, the five APKs' among
+      # them.
       - name: Shipping runtime classpath (mobile/android/expected/shipping-runtime-classpath.txt)
         run: python3 -I scripts/android-deps-review.py classpath
       # Every artifact of the verification metadata against its repository, before any Gradle run

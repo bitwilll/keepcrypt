@@ -1,2 +1,2 @@
 1
-classpath: org.jetbrains.compose.ui:ui-uikit:1.12.1 is an iPhone-only artifact (Q67) on the lockfile's shippingReleaseRuntimeClasspath
+classpath: org.jetbrains.compose.ui:ui-uikit:1.12.1 is an iPhone-only artifact (Q67) on mobile/android/app/gradle.lockfile's shippingReleaseRuntimeClasspath
