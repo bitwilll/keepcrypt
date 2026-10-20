@@ -720,9 +720,11 @@
 #              ffi/jni/src/lib.rs:1).
 #              Session::new (the Shell rule's shapes, comments counting) anywhere under ffi/ but
 #              ffi/src/ceremony.rs, each one after its first there, and none there once the file
-#              exists (reported at line 1). The identifiers thread and JoinHandle anywhere, comments
-#              included: a joined thread would turn a panic into a value, and the shared clippy.toml
-#              cannot ban thread spawning (core/tests/panic_wipe.rs joins one).
+#              exists (reported at line 1). The identifiers thread and JoinHandle anywhere but in
+#              keepcrypt-ffi's integration tests (ffi/tests/, lead decision M5-8), comments included:
+#              a joined thread would turn a panic into a value, and the shared clippy.toml cannot ban
+#              thread spawning (core/tests/panic_wipe.rs joins one). A test thread turns no shipped
+#              panic into a value, and ffi_discard_during_call needs one.
 #
 # Fail-closed noise, not bypasses (rename or spell it out instead): a named format argument called
 # path that rustfmt wraps onto its own line ("        path = \"seed.age\",") is an Include hit in
@@ -864,8 +866,8 @@ key outside its two files; and under ffi/ a catch_unwind but the one std::panic:
 in the crate root's fn guarded in ffi/guard/src/lib.rs, an export outside ffi/jni/src/lib.rs or one
 there that does not call keepcrypt_guard::guarded, macro_rules there or macro_rules and
 macro_export in ffi/src and ffi/guard/src, a JNI name outside ffi/jni/ or a C-ABI export in its
-lib.rs, a second Session::new or one outside ffi/src/ceremony.rs, and thread or JoinHandle. A
-directory symlink is refused. Exit 0 clean, 1 hits, 2 usage or read error.
+lib.rs, a second Session::new or one outside ffi/src/ceremony.rs, and thread or JoinHandle outside
+ffi/tests/. A directory symlink is refused. Exit 0 clean, 1 hits, 2 usage or read error.
 EOF
 }
 
@@ -2450,9 +2452,11 @@ ffi_macros() {
 
 # The other way to turn a panic into a value, a joined thread, cannot be banned in the shared
 # clippy.toml (core/tests/panic_wipe.rs joins one), so the identifiers thread and JoinHandle are
-# refused anywhere under ffi/ (the four crates, ffi/guard, ffi/jni and ffi/capi included), comments
-# included (threads and thread_local are other words). M5-8 narrows it to the crates' src/ in
-# Stage C, before commit 10.
+# refused anywhere under ffi/ (ffi/guard, ffi/jni and ffi/capi included), comments included
+# (threads and thread_local are other words), but in keepcrypt-ffi's integration tests, ffi/tests/
+# (lead decision M5-8): a test thread turns no shipped panic into a value, and
+# ffi_discard_during_call holds a long call at a barrier from one. Every other place stays refused,
+# the other crates' tests/, a build script, examples and a tests/ directory under src/ among them.
 ffi_threads() {
   grep -n -a -E -e "${L}(thread|JoinHandle)$R" -- "$1"
 }
@@ -2740,7 +2744,7 @@ EOF
     # ffi/jni/src/lib.rs, each calling keepcrypt_guard::guarded, JNI names only under ffi/jni/ and
     # only the JNI ABI in its lib.rs; no macro_rules or macro_export in ffi/src or ffi/guard/src;
     # one Session::new, in ffi/src/ceremony.rs (comments count, as under pi/app/src); no thread or
-    # JoinHandle.
+    # JoinHandle outside ffi/tests/ (M5-8).
     case $rel in
       ffi/*.rs)
         case $rel in
@@ -2755,7 +2759,7 @@ EOF
           ffi/src/ceremony.rs) report FFI session_new_again "$rel" ;;
           *) report FFI session_new "$rel" ;;
         esac
-        report FFI ffi_threads "$rel"
+        case $rel in ffi/tests/*) ;; *) report FFI ffi_threads "$rel" ;; esac
         ;;
     esac
   done <<EOF

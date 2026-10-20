@@ -12323,6 +12323,15 @@ int32_t kc_call(uint32_t op, const uint8_t *in, size_t in_len, uint8_t *out, siz
     copies, macro_export dropped from the rule clears both macro_export fixtures, and ffi/guard/src dropped from its
     paths clears both guard ones. `--selftest` 1405 passed, 0 failed under sh and /bin/dash (1396 before: -3 fixtures,
     +3 built cases, +9 fixtures); the gate on the tree clean (292 files).
+  - Proof (M5 commit 9b, M5-8, before commit 10): the `thread`/`JoinHandle` ban skips keepcrypt-ffi's integration
+    tests, `ffi/tests/`, alone, and covers every other file under ffi/ as before (the other crates' tests/, a build
+    script, examples and a tests/ directory under src/ among them): the lead's "ffi/tests/ only" for commit 10's
+    barrier test, stricter than this item's src/ list. `ffi-thread-in-ffi-tests` became
+    `clean-ffi-thread-in-ffi-tests` (a scoped thread, its ScopedJoinHandle and a joined spawn in ffi/tests/slot.rs);
+    new hits `ffi-thread-in-guard-tests`, `-in-jni-tests`, `-in-src-tests-dir` and `-in-build-script`. On gate copies,
+    exempting every crate's tests/ (`ffi/*/tests/*`) clears the guard, jni and src/tests fixtures, and no exemption
+    hits the clean one. `--selftest` 1409 passed, 0 failed under sh and /bin/dash (1405 + 4 hit fixtures); the gate on
+    the tree clean (292 files).
 - [ ] cinterop: `keepcrypt.def` holds exactly `headers = keepcrypt.h`, `headerFilter = keepcrypt.h` and `package = com.keepcrypt.native`.
   - It has no `staticLibraries`, `libraryPaths` or `linkerOpts`, so no Rust code is packed into a klib or the framework.
   - `compilerOpts -I` comes from the Gradle cinterop block and points only at `ffi/capi/include/`.
