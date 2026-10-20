@@ -1042,6 +1042,82 @@ never "does not depend exactly once"
 verdict
 cp "$root/ffi/jni/Cargo.toml" "$mem/ffi/jni/Cargo.toml" || exit 1
 
+# The FFI crates' targets sit at cargo's default paths (lead decision M5-8): the gate exempts
+# keepcrypt-ffi's integration tests, ffi/tests/, from its thread ban by path and scopes its other
+# FFI rules by path, so a manifest that pointed a target elsewhere ([lib] path = "tests/x.rs")
+# would ship code from where those rules do not look. Every target of keepcrypt-ffi,
+# keepcrypt-guard and keepcrypt-jni, as cargo metadata reads it, is at the default path for its
+# kind: the lib at src/lib.rs, a test at tests/NAME.rs or tests/NAME/main.rs, a bin at src/main.rs,
+# src/bin/NAME.rs or src/bin/NAME/main.rs, an example or a bench under examples/ or benches/ the
+# same way, the build script at build.rs.
+ffi_paths='
+import json, os, subprocess, sys
+
+root = os.path.realpath(sys.argv[1])
+run = subprocess.run(["cargo", "metadata", "--no-deps", "--offline", "--locked", "--format-version", "1",
+                      "--manifest-path", os.path.join(root, "Cargo.toml")], capture_output=True, text=True)
+if run.returncode != 0:
+    print("cargo metadata failed:\n" + run.stderr)
+    sys.exit(1)
+by_path = {os.path.realpath(p["manifest_path"]): p for p in json.loads(run.stdout)["packages"]}
+
+# The paths cargo gives a target of these kinds and this name when the manifest names none.
+def defaults(base, kinds, name):
+    def under(directory):
+        return [os.path.join(base, directory, name + ".rs"), os.path.join(base, directory, name, "main.rs")]
+    if "custom-build" in kinds:
+        return [os.path.join(base, "build.rs")]
+    if "test" in kinds:
+        return under("tests")
+    if "bin" in kinds:
+        return [os.path.join(base, "src", "main.rs")] + under(os.path.join("src", "bin"))
+    if "example" in kinds:
+        return under("examples")
+    if "bench" in kinds:
+        return under("benches")
+    return [os.path.join(base, "src", "lib.rs")]
+
+bad = []
+for crate, rel in (("keepcrypt-ffi", "ffi"), ("keepcrypt-guard", "ffi/guard"), ("keepcrypt-jni", "ffi/jni")):
+    pkg = by_path.get(os.path.join(root, rel, "Cargo.toml"))
+    if pkg is None or pkg["name"] != crate:
+        bad.append("no workspace member %s at %s" % (crate, rel))
+        continue
+    for target in pkg["targets"]:
+        got = os.path.realpath(target["src_path"])
+        want = defaults(os.path.join(root, rel), target["kind"], target["name"])
+        if got not in want:
+            bad.append("%s: its %s target %s is at %s, not at the default %s" % (
+                crate, "/".join(target["kind"]), target["name"], os.path.relpath(got, root),
+                " or ".join(os.path.relpath(w, root) for w in want)))
+for line in bad:
+    print(line)
+sys.exit(1 if bad else 0)
+'
+static_check "keepcrypt-ffi, keepcrypt-guard and keepcrypt-jni keep every target at its default path" \
+    python3 -I -c "$ffi_paths" "$root"
+
+# ... and the check must fire: the copy's keepcrypt-ffi with its lib moved into ffi/tests/, where the
+# thread ban does not look, must fail it, naming that target and nothing else.
+name=ffi-lib-in-tests
+replace "$mem/ffi/Cargo.toml" 'publish.workspace = true
+' 'publish.workspace = true
+
+# Gate canary (scripts/canaries.sh, temp copy only): shipped code from where the thread ban does
+# not look.
+[lib]
+path = "tests/shipped.rs"
+'
+echo 'pub fn spawn_and_join() -> bool { std::thread::spawn(|| ()).join().is_ok() }' > "$mem/ffi/tests/shipped.rs" || exit 1
+expect_failure "$name" python3 -I -c "$ffi_paths" "$mem"
+need "keepcrypt-ffi: its lib target keepcrypt_ffi is at ffi/tests/shipped.rs, not at the default ffi/src/lib.rs"
+never "keepcrypt-guard"
+never "keepcrypt-jni"
+never "test target"
+verdict
+cp "$root/ffi/Cargo.toml" "$mem/ffi/Cargo.toml" || exit 1
+rm "$mem/ffi/tests/shipped.rs" || exit 1
+
 # The dependency graph (CLAUDE.md rules 1, 5 and 11; tasks/todo.md, M1 Q1-Q4 and group 12):
 # - serde, serde_core and serde_derive stay out of keepcrypt-core's normal and build graph, all
 #   features and all targets: serde arrives with the test-only dev-dependencies (trybuild,
@@ -1684,7 +1760,7 @@ cp "$root/core/examples/release_probe.rs" "$tmp/core/examples/release_probe.rs" 
 
 # The number of checks above, pinned, so a canary that is deleted, or skipped by a broken branch,
 # turns CI red too. A real change to the canaries updates this pin in the same reviewed change.
-want_checks=88
+want_checks=90
 if [ "$checks" -ne "$want_checks" ]; then
     echo "FAIL: $checks checks ran; scripts/canaries.sh pins $want_checks"
     status=1
