@@ -11585,6 +11585,13 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   with-dice-50, then halts by an op the table does not hold, halts by insert 13 of 12, or wipes: `Halted` or home,
   holding nothing, each time. On copies, `Held::halt` or `wipe_all` keeping the backup fails it in both builds, and
   keeping the snapshot fails it in the test-registry build. Both builds: 38 passed each.
+  Proof (M5 commit 10g): `ffi_home_restart_and_input_rules`: with "Check a backup" open, self_test, start, hold,
+  load_snapshot and open_backup each halt (home holds no checked backup); `collision_report` halts once the
+  restart's Collecting stage has begun; in the test-registry build a collision after a fresh Cannot check (whose
+  restart keeps 50 rolls, so dice-50-words12 meets collision-dice-50) replaces the kept `Wiped`, report and all; and
+  D halts in a dice-only seed after the read-back. On copies, `at_home` without its backup test, the report offered
+  in any stage and D as 32 zero bytes each fail it in both builds, and the collision keeping the older `Wiped` in the
+  test-registry build. Both builds: 39 passed each (11 unit, 28 in ffi/tests/ceremony.rs).
 - [x] Discard during a long call: a test holds a long call at a barrier, discards from another thread, releases it: the
   result is dropped (a drop-observing value proves it), the call returns "discarded", the slot is Idle and the next
   `start` works; the same with `wipe_all`; a non-discard call while `Busy` halts.
@@ -11619,6 +11626,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   reveals with their proofs, at kcr.json's 2026-03-01: Current, Stale and Future each way; `Registry` carries the
   number, date, count (a snapshot's seals, a proof's entries in its bucket) and freshness, and `ffi_drill_12` and
   `ffi_proof_paths` pin whole headers. A `today` no calendar has is the shell's bug and halts.
+  Proof (M5 commit 10g): a `today` of 20261332 (`load_snapshot`) or 20260230 (`reveal_proof`) halts in both builds
+  (`ffi_home_restart_and_input_rules`); a copy whose `registry_date` falls back to kcr.json's day fails it.
 
 **9. Wire format and QR matrices (`ffi/src/wire.rs`, `ffi/src/qr.rs`)**
 - [ ] Fixed layouts, each documented once: status byte and code; progress (credited and required bits, or rolls,

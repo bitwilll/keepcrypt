@@ -647,6 +647,101 @@ fn ffi_every_session_is_platform_phone() {
     assert!(slot.holds().kept, "from the kept Wiped");
 }
 
+// The slot's own rules (todo.md, M5 group 8; app.rs's home): home is no session and no checked
+// backup, so with "Check a backup" open each call that starts something halts and drops it; the
+// collision's report is offered at `Restart` alone, not in the restart's own stages; a collision
+// replaces a kept `Wiped` (a Cannot check's, with no report, in the test-registry build); a `today`
+// no calendar has is the shell's bug and halts; and D, which a dice-only seed does not have, halts
+// after the read-back.
+#[test]
+fn ffi_home_restart_and_input_rules() {
+    let starts: [Case; 5] = [
+        ("self_test", |slot| got(slot.self_test())),
+        ("start", |slot| {
+            got(slot.start(SeedLength::Words12, Mode::DiceOnly))
+        }),
+        ("hold", |slot| got(slot.hold(|| ()))),
+        ("load_snapshot", |slot| {
+            got(slot.load_snapshot(&[], VECTOR_DAY))
+        }),
+        ("open_backup", |slot| got(slot.open_backup(&[], &[]))),
+    ];
+    for (what, call) in starts {
+        let slot = Slot::new();
+        open_abandon_12(&slot);
+        assert_eq!(call(&slot), Got::Halted, "{what} with a backup open");
+        assert_eq!(slot.holds(), HALTED, "{what}");
+    }
+
+    let slot = Slot::new();
+    checking(&slot, "dice-50-words12");
+    done(slot.match_found());
+    done(slot.start(SeedLength::Words12, Mode::DiceOnly));
+    assert_eq!(
+        got(slot.collision_report()),
+        Got::Halted,
+        "no report once the restart has begun"
+    );
+    assert_eq!(slot.holds(), HALTED);
+
+    if registry_key_is_test() {
+        let slot = Slot::new();
+        checking(&slot, "dice-99-words12");
+        done(slot.cannot_check());
+        // A fresh session's Cannot check keeps its own 50-roll minimum, so the restart can be
+        // dice-50-words12, which collision-dice-50 holds.
+        checking(&slot, "dice-50-words12");
+        assert_eq!(
+            done(slot.reveal_proof(&proof_ur("collision-dice-50"), VECTOR_DAY)),
+            Revealed::Collision(Some(header(
+                "proofs",
+                "collision-dice-50",
+                Freshness::Current
+            )))
+        );
+        assert_eq!(
+            slot.holds(),
+            Holds {
+                stage: StageKind::Restart,
+                kept: true,
+                report: true,
+                ..HOME
+            },
+            "the collision's Wiped replaced the kept one"
+        );
+        assert_eq!(
+            done(slot.collision_report()).grouped_code(),
+            seed("dice-50-words12", "seal_code")
+        );
+        assert_eq!(next_minimum(&slot), 99);
+    }
+
+    let slot = Slot::new();
+    assert_eq!(
+        got(slot.load_snapshot(&snapshot("with-dice-50"), 20261332)),
+        Got::Halted,
+        "month 13"
+    );
+    let slot = Slot::new();
+    checking(&slot, "dice-99-words12");
+    assert_eq!(
+        got(slot.reveal_proof(&proof_ur("clear-empty-bucket"), 20260230)),
+        Got::Halted,
+        "February 30"
+    );
+    assert_eq!(slot.holds(), HALTED);
+
+    let slot = Slot::new();
+    drive(&slot, StageKind::Ready);
+    read_back_all(&slot);
+    assert_eq!(
+        got(slot.reveal_device_leg()),
+        Got::Halted,
+        "no D in dice-only mode"
+    );
+    assert_eq!(slot.holds(), HALTED);
+}
+
 /// A value whose drop is observed: the result of a long call that a discard overtook.
 struct Observed<'a>(&'a AtomicBool);
 
