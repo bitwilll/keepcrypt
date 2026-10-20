@@ -12873,6 +12873,10 @@ they differ. Nothing in the Android plan is weakened.
   ffi/jni, pi/app, pi/sim.
 - M5-33 (2026-10-20): M5-23 and M5-25 to M5-29 are withdrawn for M5 and come back with the M6 plan if M6 builds the shared
   screens for iPhone. `mobile/ios/` stays empty and the gate keeps refusing files under it (M5-25's rule stays).
+- M5-34 (2026-10-20): M4b's fix for the kernel's rustc probe (74b80be, M4b-7) is cherry-picked onto `m5-android` as
+  8y (79c75de), because the Pi image run 39404714666 at 1ae0df6 failed leg a's scan the same way (CONFIG_RUSTC_VERSION
+  109900 vs 109901; image 4b13c095 in both legs). M5-1's merge of main after M4b lands takes the same change from both
+  sides.
 
 **Out-of-plan download (commit 8q), recorded.** While writing 8q, the implementing agent fetched six small files from
 download.jetbrains.com onto this Mac (into the session scratchpad, not the repo): the `.asc` and `.sha256` of each of the three
