@@ -654,9 +654,8 @@
 #              commonMain, commonTest, androidMain, androidHostTest, iosMain, iosTest and
 #              nativeInterop right under src/, so appleMain, nativeMain, the per-target sets
 #              (iosArm64Main, iosSimulatorArm64Main), androidDeviceTest, Android's main and test,
-#              and a file right under src/ are refused (core-ffi's src/main, with the placeholder
-#              Native.kt, until commit 8q makes :core-ffi KMP); in every other module no KMP
-#              source-set name (one that ends in Main or Test but androidTest, or nativeInterop).
+#              and a file right under src/ are refused; in every other module no KMP source-set
+#              name (one that ends in Main or Test but androidTest, or nativeInterop).
 #   KtIos      (rules 1, 5, 8 and 9 in Kotlin/Native) in iosMain and iosTest right under any
 #              module's src/, on top of every Kt rule: Apple's storage (NSUserDefaults,
 #              NSFileManager, NSFileHandle, writeToFile, NSKeyedArchiver, SecItemAdd, CoreData,
@@ -1851,10 +1850,17 @@ kt_bootstrap() {
 # once, and after one space the one line of that workflow (any indentation, then exactly this text)
 # whose kt_bootstrap hits pass, the first time it occurs: a second copy of the line, any other line
 # and any other workflow still hit. Any other shape of the list is exit 2
-# (kt_bootstrap_exception_check). Empty: no exception. Commit 8q (the re-plan's 8o) fills it with
-# the two workflows' lock-writing Gradle lines and a dated note naming Q67; commit 8r (its 8p)
-# empties it with the switch gone, and M5-13's stop holds again.
-kt_bootstrap_exception=
+# (kt_bootstrap_exception_check). Empty: no exception.
+#
+# Filled at commit 8q (2026-10-20; the re-plan's 8o), under the owner's answer to Q67 of
+# 2026-10-20 ("approve all as recommended": the one reviewed, temporary exception, run on Linux and
+# on macOS, merged and reviewed as one, strict mode back on in the next commit): the bootstrap
+# Gradle line of entropy-android.yml, whose Linux run writes the lock state and metadata of the
+# Android and common configurations, and that of entropy-ios.yml, whose macOS run writes the
+# iPhone ones. Commit 8r (the re-plan's 8p) commits the reviewed, merged files and empties the
+# list with both lines gone, and M5-13's stop holds again.
+kt_bootstrap_exception='entropy-android.yml if ! sh scripts/android-gradle.sh --write-locks --write-verification-metadata sha256 \
+entropy-ios.yml if ! sh scripts/android-gradle.sh --write-locks --write-verification-metadata sha256 \'
 
 kt_bootstrap_exception_check() {
   printf '%s\n' "$kt_bootstrap_exception" | awk '
@@ -2087,9 +2093,7 @@ kt_test_channel() {
 # androidTest, and Android's main and test sets have no place in a KMP module. Every other module is
 # Android-only, and a KMP source-set name under its src/ (any name that ends in Main or Test but
 # androidTest, and nativeInterop) is refused, so no Kotlin escapes the iOS rules by its directory
-# name. :core-ffi still holds the placeholder Native.kt in src/main, the one transitional exception:
-# commit 8q makes :core-ffi KMP, moves Native into commonMain and deletes the core-ffi:main case
-# below.
+# name.
 kt_kmp_modules='core-ffi screens'
 kt_kmp_sets='commonMain commonTest androidMain androidHostTest iosMain iosTest nativeInterop'
 kt_kmp_module() {
@@ -2101,7 +2105,6 @@ kt_kmp_module() {
 kt_source_set_refused() {
   if kt_kmp_module "$1"; then
     case " $kt_kmp_sets " in *" $2 "*) return 1 ;; esac
-    [ "$1:$2" = core-ffi:main ] && return 1
     return 0
   fi
   case $2 in
@@ -4505,10 +4508,10 @@ workflows_selftest() {
   : >"$d/other.yml" || exit 2
   wexpect 'workflow-error-no-entropy-yml' "$d" error
   wexpect 'workflow-error-missing-dir' "$tmp/absent" error
-  # The bootstrap exception (kt_bootstrap_exception, empty in this script): copies of the script
-  # with a stand-in list (bxcopy) must pass the named line in the named workflow once, and refuse it
-  # anywhere else, a second time, with anything added, and in a build script; a list of any other
-  # shape is exit 2; this script, with the empty list, refuses the line.
+  # The bootstrap exception (kt_bootstrap_exception): copies of the script with a stand-in list
+  # (bxcopy) must pass the named line in the named workflow once, and refuse it anywhere else, a
+  # second time, with anything added, and in a build script; a list of any other shape is exit 2;
+  # this script, whose list names neither line, refuses the line.
   bxline='sh scripts/android-gradle.sh --write-locks --write-verification-metadata sha256 :core-ffi:dependencies'
   wfhead='permissions:
   contents: read
@@ -4524,13 +4527,22 @@ jobs:
     shift 2
     { printf '%s\n' "$wfhead"; for l in "$@"; do printf '      - run: |\n          %s\n' "$l"; done; } >"$bxd/$bxf" || exit 2
   }
-  # bxcopy LIST: $gate becomes a copy of this script whose kt_bootstrap_exception is LIST.
+  # bxcopy LIST: $gate becomes a copy of this script whose kt_bootstrap_exception is LIST. The
+  # assignment is the one line that starts kt_bootstrap_exception=, empty or with a single-quoted
+  # value, and every line after it up to the one that ends the quote.
   bxcopy() {
     gate=$tmp/bootstrap-exception.sh
     KC_BOOTSTRAP_LIST=$1 awk -v q="'" '
-      $0 == "kt_bootstrap_exception=" { print "kt_bootstrap_exception=" q ENVIRON["KC_BOOTSTRAP_LIST"] q; n++; next }
+      quoted { if (substr($0, length($0)) == q) quoted = 0; next }
+      index($0, "kt_bootstrap_exception=") == 1 {
+        print "kt_bootstrap_exception=" q ENVIRON["KC_BOOTSTRAP_LIST"] q
+        n++
+        v = substr($0, length("kt_bootstrap_exception=") + 1)
+        if (substr(v, 1, 1) == q && (length(v) == 1 || substr(v, length(v)) != q)) quoted = 1
+        next
+      }
       { print }
-      END { exit n != 1 }' "$self" >"$gate" || exit 2
+      END { exit n != 1 || quoted }' "$self" >"$gate" || exit 2
   }
   bxdir allowed entropy-android.yml "$bxline"
   wexpect 'workflow-bootstrap-line-without-an-exception' "$bxd" entropy-android.yml

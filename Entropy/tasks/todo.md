@@ -12097,6 +12097,11 @@ internal expect object Native { fun call(op: Int, input: ByteArray): ByteArray }
 
 - [ ] `Wire.kt`, `Core.kt` (`KcHalt`, no `catch`), `Secret` (a byte-array holder with `wipe()` and no content `toString`) and `Native`'s `expect` go in `:core-ffi` `commonMain`. The two `actual`s are the only platform code in `:core-ffi`. Today's placeholder `Native.kt` (8 lines) and `Screen.kt` (14 lines) move first, in commit 8o.
   - Proof: `commonTest` passes as `:core-ffi:androidHostTest` and as the per-class `:core-ffi:iosSimulatorArm64Test` runs, with the same class list and the same count in every class (both logs). The gate's `usePinned`/`addressOf` rule fires on a fixture outside `Native.ios.kt`.
+  - Proof (M5 commit 8q, partial: the moves; the expect object, its actuals, Wire, Core and Secret come with commits
+    10-14): the placeholder Native.kt is in core-ffi/src/commonMain (its comment names the two actuals to come);
+    Screen.kt and FirstLaunch.kt, from :app and :secure-ui, are in screens/src/commonMain, package
+    com.keepcrypt.entropy.screens, which MainActivity, ControlActivity and the three androidTest files import. The gate
+    is clean on the tree; the Kotlin compiles only in CI (no JDK or Gradle on this Mac).
 - [ ] Group 11's vectors, group 13's wrong-stage halt and the wire decoders run in `commonTest`. The same Kotlin tests then pass over JNI on the JVM and over the C ABI on the simulator, each class in its own process. The ZXing round trips stay JVM-only in `:core-ffi` `androidHostTest`, and the canned-frame scanner test stays in `:app`.
   - Proof: the per-class counts in both jobs' logs. A planted wrong status byte fails both. A class that halts on purpose does not change the next class's result.
 - [ ] `CeremonyModel` and `Timers` in `:screens` `commonMain` own the slot's use exactly as group 14 says of `CeremonyViewModel`:
@@ -12194,6 +12199,8 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
     both modules, a nested src/iosMain inside commonMain, and the app's main, test, androidTest and flavour sets.
     :core-ffi keeps src/main for today's placeholder Native.kt (the gate is clean on the tree); commit 8q, which makes
     :core-ffi KMP, deletes that one case (`core-ffi:main` in `kt_source_set_refused`).
+  - Proof (M5 commit 8q): :core-ffi is KMP with Native.kt in commonMain, so the `core-ffi:main` case and its two comment
+    mentions are gone; the new `ktsourceset-kmp-main-in-core-ffi` (core-ffi/src/main) fails as :screens' main does.
 - [x] Scopes (banned-api-check.sh:2043-2051). `commonTest`, `androidHostTest` and `iosTest` join `test`, by the same literal module-segment match. Every other allowed source set stays `main`. The fixture scope-copy logic (around :2358-2390) moves with them.
   - Proof: fixtures. A `runCatching` in `screens/src/commonTest/` passes; the same code under `screens/src/commonMain/`, or in a nested `.../commonMain/kotlin/x/src/commonTest/` path, fails.
   - Proof (M5 commit 8p): the test scope is src/test, src/androidTest, src/commonTest, src/androidHostTest and src/iosTest
@@ -12274,6 +12281,13 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
   path, and four Mach-O magics (no extension, named .txt, outside mobile/android, named .png) fail in scratch
   repositories; a real PNG passes. Build refuses a tracked mobile/**/.konan/ (`build-tracked-dot-konan`). The kt_canary
   rules and the canary library are untouched.
+  Proof (M5 commit 8q, partial): the real :core-ffi and :screens build files use only `kt_kmp_lines`' shapes (`kotlin {`,
+  `android {` with `withHostTestBuilder {}`, `iosArm64()`, `iosArm64 {` with `binaries.framework {` and `isStatic =
+  true`, `iosSimulatorArm64()`) and gradle.properties holds `konan.data.dir=.konan`; the gate is clean on them. No line
+  joins the list here: the osVersionMin switch, any named kotlin.native./kotlin.mpp./kotlin.apple. property and a
+  different data-directory form are probe facts of this commit's own CI runs, so each lands in the commit after them;
+  the cinterop block, its -I and the test linkerOpts lines come with commit 14, the device line with the first
+  simulator test run.
 - [x] Canaries cover the new scopes, the source-set allow list, the iOS rules, the `.def` rule and the refusals; `want_checks` is updated.
   - Proof: `scripts/canaries.sh` green with the new count. Each new canary fails when its rule line is removed (shown once, under Review).
   - Proof (M5 commit 8p): `want_checks` 74 -> 76. `kmp-ios-rules`: nine planted hits on the real tree's copy (appleMain
@@ -12294,6 +12308,10 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
 **Build checks**
 - [ ] `--apk`, `--selftest-apk`, the dex reference scan and the expected manifests keep their code. `expected/shipping-runtime-classpath.txt` gains the wrapper modules and the version changes Q67 names (savedstate 1.4.0 and any others the lockfile shows). The dex scan's `Lcom/keepcrypt/` prefix now covers `:screens` and `:core-ffi` classes automatically.
   - Proof: the Android job green at 8p with the new list, and every non-wrapper version change named under Review. The manifest summaries are unchanged, or the change is named.
+  - Proof (M5 commit 8q, partial: the regeneration): in bootstrap mode the Android job leaves out the classpath compare
+    and the pin review before Gradle, writes the list from the new lockfile (`android-deps-review.py classpath
+    --write`), prints its diff against the committed one as probe: lines and uploads it; `--apk` still judges the APKs
+    against the unchanged expected manifests and native-library list.
 - [ ] iOS link facts in M5 (commit 8q, again at 14):
   - `linkReleaseFrameworkIosArm64` builds a static framework from `:screens`. It holds Kotlin, Compose and skiko but no Rust. CI records its size and its archive-level `llvm-nm -u` list. That list over-reports, because nothing is dead-stripped, and is used only as the superset for the stop rule below.
   - The compared list comes from linked binaries: the `iosSimulatorArm64` and `iosArm64` test executables, which link the `target/ios-test/` library from 14 on. CI records their `llvm-nm -u -m` imports and linked libraries, and compares the `iosArm64` imports with `expected/ios-test-imports.txt` (M5-27).
@@ -12314,7 +12332,7 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
   Proof: M6's plan.
 
 **Dependency bootstrap** (commits 8o-8p; the reviewed temporary exception M5-13 requires, under Q67)
-- [ ] 8o declares the two plugins, the three Compose Multiplatform libraries and `kotlin-test` (tests only), with `apply false` at the root (M5-7's pattern).
+- [x] 8o declares the two plugins, the three Compose Multiplatform libraries and `kotlin-test` (tests only), with `apply false` at the root (M5-7's pattern).
   - It switches both workflows to bootstrap mode once, with a dated note in `libs.versions.toml`'s header and in `kt_bootstrap`'s comment naming Q67 and this re-plan. No other switch, file or workflow changes the bootstrap rule.
   - Proof: the diff; the gate refuses the bootstrap switch outside the two named workflow lines (fixture).
   - Proof (M5 commit 8p, partial: the mechanism, empty; 8q fills it): `kt_bootstrap_exception` in
@@ -12323,6 +12341,19 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
     script with a stand-in list: the line passes in the named workflow (and in both); it fails in entropy-ci.yml, a
     second time, with more on it, as another lock line, in android-gradle.sh, and with the empty list; four malformed
     lists exit 2.
+  - Proof (M5 commit 8q, the re-plan's 8o): the root build file gains the `kotlin-multiplatform` and
+    `android-kotlin-multiplatform-library` markers with `apply false`; libs.versions.toml gains them and `cmp-runtime`,
+    `cmp-foundation`, `cmp-ui` (org.jetbrains.compose.*:1.12.1, used only by :screens) and `kotlin-test` 2.4.20 (only
+    in the two modules' commonTest); every one was published by 2026-09-22 (Maven `Last-Modified`), before the cutoff
+    of 2026-10-06. The catalog's header and `kt_bootstrap_exception`'s comment carry the dated note naming Q67 and this
+    re-plan. The list holds exactly the two workflows' bootstrap lines (`if ! sh scripts/android-gradle.sh
+    --write-locks --write-verification-metadata sha256 \`): `--workflows` is clean on the four workflows, and on a copy
+    of the gate with the list emptied those two lines are the only hits (entropy-android.yml:275,
+    entropy-ios.yml:200); 8p's fixtures still fail the line in another workflow, a second time, with more on it and in
+    android-gradle.sh (the selftest's copy now replaces a filled, multi-line list too), and the `workflow-bootstrap`
+    canary's planted line is its one hit. `--selftest` 1298 passed, 0 failed under sh and /bin/dash (1297 + the
+    core-ffi main fixture; 456 s and 444 s on this Mac); `canaries.sh` PASS: all 76 checks ran (325 s); the gate on the
+    tree clean, 286 files.
 - [ ] Two hosts write the locks:
   - the Linux Android job writes locks and metadata for the Android and common configurations;
   - the macOS job writes them for the iOS ones, `kotlin-native-prebuilt-2.4.20-macos-aarch64` and `kotlin-klib-commonizer-embeddable`;
@@ -12330,6 +12361,11 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
   - strict mode then runs on both hosts against the merged files.
 
   Proof: both jobs green in strict mode at 8p on the same merged files. The selftest covers a conflict (same coordinate, different hash) failing.
+  Proof (M5 commit 8q, partial: the two bootstrap runs; the merge script, the merged files and the strict runs are
+  8r's): entropy-android.yml's bootstrap line (buildEnvironment, every module's dependencies report, the five APKs,
+  the JVM tests) and entropy-ios.yml's (buildEnvironment, the shared modules' dependencies reports, their common and
+  iPhone metadata compilations, both targets' test executables and the device target's release framework) each write
+  their host's lock state and metadata, and upload them as `android-bootstrap` and `ios-bootstrap`.
 - [ ] `android-deps-review.py` is extended:
   - it reads `.klib` files and the Kotlin/Native `.tar.gz` (Central, `.asc`);
   - new signers (JetBrains Compose, skiko, Kotlin/Native) are trusted on first use as under M5-12 and added to the M7 audit list;
@@ -12349,6 +12385,22 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
   The pins come from the 8o bootstrap run (M9): it reads the archive names from the verified bundle's `konan.properties`, `konan-deps.sh --bootstrap` checks each `.asc` against the pinned fingerprint and records each SHA-256, and the pins land with the reviewed lockfiles at 8p. The SHA-256 and the key come from the same host, so they are trust on first use, added to the M7 audit list as M5-12 does.
 
   Proof: a canary removes one pre-seeded archive and the iOS build fails on the blocked host. The `.extracted` listing after a build equals the pinned list. A tampered archive fails `konan-deps.sh` (selftest).
+  Proof (M5 commit 8q, partial: steps 1-3 in bootstrap mode, step 4 printed, not judged; the pins, the hard checks, the
+  selftest and the canary are 8r's): `scripts/konan-deps.sh --bootstrap` fetches the three archives and their .asc
+  from the full URLs (read on 2026-10-20: 151,150,049, 64,230,999 and 17,037 bytes; each .asc a binary-document
+  signature by the subkey 6F538074CCEBF35F28AF9B066A0975F8B1127B83, RSA, SHA-512), verifies each with gpg in a fresh
+  home holding only the Kotlin Release key (the 2FBA29D0... block of the committed verification keyring, three
+  subkeys with their bindings), prints each SHA-256 only after that, and places the archives in .konan/cache only when
+  all three pass; it refuses a non-empty .konan/dependencies or cache, and its plain mode refuses while a pin is "-".
+  On stand-in gpg and curl in the session scratchpad (no gpg on this Mac; nothing downloaded): all good, exit 0 and
+  three archives placed; a bad signature, another subkey's, an expired key's, a class-01 signature and a failed gpg,
+  exit 1 and nothing placed; a second public key or no subkey 6F53... after the import, a planted dependencies tree,
+  a full cache, a failed fetch, no key, bad usage and an unpinned plain run, exit 2; matching pins exit 0, one
+  mismatched pin exit 1, nothing placed; the same under /bin/dash. Both workflows remove .konan before the build and
+  map download.jetbrains.com and download-cdn.jetbrains.com to 0.0.0.0 and :: in /etc/hosts, then require curl to
+  fail on both; the iOS job prints the bundle's konan.properties lines, .extracted, the dependencies and cache
+  listings and ~/.konan after its build. gradle.properties sets `konan.data.dir=.konan`, and android-gradle.sh now
+  starts Gradle in mobile/android, so the relative path is the project's whichever way the plugin reads it.
 
 **CI for the iPhone target** (Q69)
 - [ ] `.github/workflows/entropy-ios.yml` has one non-required job, `ios (build, simulator)`, like `entropy-android.yml` under Q55.
@@ -12365,6 +12417,16 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
   - The SHA-256 of the `.a` each test executable links is checked against the hash `ios-rust.sh` printed after its scan, immediately before and after the link. So the library CI scanned is the library CI linked (lessons 2).
 
   Proof: a green run with its time and the measured budget under Review. A missing pinned Xcode fails the job.
+  Proof (M5 commit 8q, partial: the skeleton in bootstrap mode; Rust, the simulator runs, the link scans and the hash
+  check come with 8s and 14): one job `ios (build, simulator)` on macos-26, DEVELOPER_DIR
+  /Applications/Xcode_26.4.1.app/Contents/Developer (a missing one fails; `xcodebuild -version` must print Xcode 26.4.1
+  and build 17E202), JAVA_HOME from $JAVA_HOME_17_arm64 checked as a JDK 17, Gradle through android-gradle.sh,
+  konan-deps.sh and the host block; the three pinned actions only, `contents: read`, no secret, the Gradle zip the one
+  cached path, path filters on Entropy/mobile, ffi and core, the two scripts it runs and itself, and the 90-minute
+  ceiling until a run is measured. Its probe lines: gpg and an Android SDK on the image, the Xcode SDKs, the archives'
+  signatures and SHA-256, the bundle's archive names, download switches and minimum versions, .extracted, Xcode in the
+  Gradle log, the image's simulators, the linked files' size and minos, and one strict, offline Gradle run with the
+  image's Android SDK hidden. `--workflows` is clean on it.
 - [ ] Required checks keep their names. The two existing `macos-26` cross legs (entropy-ci.yml:524-528):
   - add `keepcrypt-guard keepcrypt-capi` to their clippy and build lists;
   - build `libkeepcrypt_capi.a` plain and with `--features keepcrypt-core/test-registry --target-dir target/ffi-test-registry`;
@@ -12374,6 +12436,10 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
   - Proof: green legs with both scans. A planted marker in the plain build turns the leg red (shown once, under Review).
 - [ ] The Linux Android job may now resolve `kotlin-native-prebuilt-2.4.20-linux-x86_64` (220 MB) or need Linux toolchain archives. Which, if either, is a probe fact at 8o. The download hosts are blocked there too, so an unexpected download fails the build instead of happening silently. If anything is needed, its name and pins come back to the owner under Q67/Q68 before 8p.
   - Proof: the probe line at 8o.
+  - Proof (M5 commit 8q, partial: the probe's step; its lines come from this commit's run): the Android job blocks the
+    download hosts before its bootstrap build and prints as probe: lines what the regenerated lockfiles and metadata
+    hold of kotlin-native-prebuilt and the klib commonizer, mobile/android/.konan and ~/.konan after the build, and
+    Kotlin/Native's lines in the Gradle log.
 
 **Accessibility probe in M5** (Q65; braille displays decide whether shared screens can work on iPhone)
 - [ ] At 16, the first words-page commit, an `iosTest` renders the words page over vector words (rule 12) and reads the accessibility elements Compose exposes. Each word must be one element whose label is the word, in page order.

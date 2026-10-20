@@ -31,6 +31,8 @@ import com.keepcrypt.entropy.Capture.shell
 import com.keepcrypt.entropy.Capture.shellText
 import com.keepcrypt.entropy.Capture.waitUntil
 import com.keepcrypt.entropy.Capture.windows
+import com.keepcrypt.entropy.screens.Screen
+import com.keepcrypt.entropy.screens.screenId
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals

@@ -19,6 +19,7 @@ import com.keepcrypt.entropy.Capture.screencap
 import com.keepcrypt.entropy.Capture.screenshot
 import com.keepcrypt.entropy.Capture.startControl
 import com.keepcrypt.entropy.Capture.windows
+import com.keepcrypt.entropy.screens.Screen
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith

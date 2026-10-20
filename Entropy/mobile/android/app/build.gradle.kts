@@ -1,6 +1,7 @@
-// :app (tasks/todo.md, M5 groups 4, 5 and 15-18; Q60, Q62): the screens, CeremonyViewModel, the
-// pickers and the scanner. Two flavours, both built only as the release build type and neither
-// debuggable: shipping (com.keepcrypt.entropy, the APK the owner installs) and withTestRegistry,
+// :app (tasks/todo.md, M5 groups 4, 5 and 15-18; Q60, Q62; the re-plan for Compose
+// Multiplatform): MainActivity over the shared screens of :screens, the holder of their ceremony
+// model, the pickers and the scanner. Two flavours, both built only as the release build type and
+// neither debuggable: shipping (com.keepcrypt.entropy, the APK the owner installs) and withTestRegistry,
 // the plan's test-registry APK (com.keepcrypt.entropy.testregistry, built only in CI and never
 // released; labelled "KeepCrypt TEST REGISTRY" with a strip on every screen). The Android Gradle
 // plugin refuses a flavour name that starts with "test", hence "with". The instrumented tests run
@@ -83,6 +84,7 @@ tasks.configureEach {
 
 dependencies {
     implementation(project(":core-ffi"))
+    implementation(project(":screens"))
     implementation(project(":secure-ui"))
     implementation(platform(libs.compose.bom))
     implementation(libs.activity.compose)

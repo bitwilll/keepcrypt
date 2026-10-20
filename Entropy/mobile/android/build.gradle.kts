@@ -2,7 +2,9 @@
 // here, once, at their catalog versions, and applied by the modules. The Android Gradle plugin 9
 // compiles Kotlin itself (its built-in Kotlin), so no module applies org.jetbrains.kotlin.android:
 // it is listed only so that the Kotlin compiler is the catalog's 2.4.20, the same version as the
-// Compose compiler plugin, whatever version the Android Gradle plugin itself depends on.
+// Compose compiler plugin, whatever version the Android Gradle plugin itself depends on. The shared
+// modules, :core-ffi and :screens, apply Kotlin Multiplatform and the Android Gradle plugin's plugin
+// for its Android target (the re-plan for Compose Multiplatform; lead decision M5-7's pattern).
 
 import org.gradle.api.artifacts.dsl.LockMode
 
@@ -11,6 +13,8 @@ plugins {
     alias(libs.plugins.android.library) apply false
     alias(libs.plugins.kotlin.android) apply false
     alias(libs.plugins.kotlin.compose) apply false
+    alias(libs.plugins.kotlin.multiplatform) apply false
+    alias(libs.plugins.android.kotlin.multiplatform.library) apply false
 }
 
 subprojects {

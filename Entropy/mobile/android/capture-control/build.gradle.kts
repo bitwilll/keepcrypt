@@ -1,8 +1,9 @@
 // :capture-control (tasks/todo.md, M5 groups 4 and 6): the capture tests' positive control, built
-// only in CI and never uploaded or released. It draws the app's composables (from :secure-ui) with
-// no FLAG_SECURE, so the same screencap, UiAutomation and raw-frame calls must find its pixels; a
-// missing control fails the job. Its own app id; :app never depends on it. Release build type,
-// not debuggable, with the app's reproducibility settings (and, as there, no lint until M7).
+// only in CI and never uploaded or released. It draws the app's composables (from :screens, with
+// :secure-ui's theme and backup rules) with no FLAG_SECURE, so the same screencap, UiAutomation and
+// raw-frame calls must find its pixels; a missing control fails the job. Its own app id; :app
+// never depends on it. Release build type, not debuggable, with the app's reproducibility
+// settings (and, as there, no lint until M7).
 
 plugins {
     alias(libs.plugins.android.application)
@@ -60,6 +61,7 @@ tasks.configureEach {
 }
 
 dependencies {
+    implementation(project(":screens"))
     implementation(project(":secure-ui"))
     implementation(platform(libs.compose.bom))
     implementation(libs.activity.compose)

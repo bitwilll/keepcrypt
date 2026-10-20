@@ -3,7 +3,7 @@ package com.keepcrypt.entropy.capturecontrol
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import com.keepcrypt.entropy.secure.FirstLaunch
+import com.keepcrypt.entropy.screens.FirstLaunch
 
 /**
  * The capture tests' positive control (tasks/todo.md, M5 group 6): the app's first screen, drawn by

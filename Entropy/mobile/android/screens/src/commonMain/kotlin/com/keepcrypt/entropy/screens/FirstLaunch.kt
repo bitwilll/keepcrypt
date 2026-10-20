@@ -1,4 +1,4 @@
-package com.keepcrypt.entropy.secure
+package com.keepcrypt.entropy.screens
 
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
@@ -26,7 +26,9 @@ import androidx.compose.ui.unit.sp
  * tasks/todo.md, M5 group 15): what no app can stop, that the Pi is the device for life savings,
  * and that every M5 build is a 0.0.0 development build. Static until the self-test and Go offline
  * screens follow it (commits 14 and 16). With testRegistry, the TEST REGISTRY strip is on top
- * (Q60). The scroll position lives in plain memory, never in saved state.
+ * (Q60). The scroll position lives in plain memory, never in saved state. Written once in :screens'
+ * common code (the re-plan for Compose Multiplatform), it is drawn by the app and the capture
+ * control on Android and compiled for iPhone as well.
  */
 @Composable
 fun FirstLaunch(testRegistry: Boolean) {

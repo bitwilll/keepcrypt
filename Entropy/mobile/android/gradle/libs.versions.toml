@@ -4,13 +4,30 @@
 # stops the work and the lead re-plans, since regenerating the pins needs a reviewed, temporary
 # exception to the gate's bootstrap rule (lead decision M5-13). Each was published at least 14
 # days before it was pinned here (2026-10-17).
+#
+# The one such exception (2026-10-20, Q67; the Compose Multiplatform re-plan, "Dependency
+# bootstrap"): the owner's Q64 added the shared screens, so commit 8q declares the two Kotlin
+# Multiplatform plugins, Compose Multiplatform's runtime, foundation and ui and kotlin-test below,
+# and the Android and iOS workflows regenerate the lockfiles and the verification metadata once,
+# each on its own host, under the gate's kt_bootstrap_exception. Commit 8r commits the reviewed,
+# merged files, turns the exception off and puts M5-13's stop back. The Kotlin Gradle plugin
+# resolves two approved build tools of its own at its version, 2.4.20, with no line here: the klib
+# commonizer (kotlin-klib-commonizer-embeddable) and the Kotlin/Native compiler
+# (kotlin-native-prebuilt), whose three toolchain archives scripts/konan-deps.sh fetches and
+# verifies (Q68). kotlin-test brings kotlin-test-junit 2.4.20 on the JVM. These were published by
+# 2026-09-22, before the 14-day cutoff of 2026-10-06.
 
 [versions]
-# The Android Gradle plugin 9.3.3 (2026-09-17), com.android.application and com.android.library.
+# The Android Gradle plugin 9.3.3 (2026-09-17), com.android.application, com.android.library and
+# com.android.kotlin.multiplatform.library.
 agp = "9.3.3"
 # Kotlin 2.4.20 (2026-09-07): the Compose compiler plugin and the Kotlin Gradle plugin that the
-# Android Gradle plugin's built-in Kotlin compiles with.
+# Android Gradle plugin's built-in Kotlin compiles with; the Kotlin Multiplatform plugin of
+# :core-ffi and :screens, and kotlin-test (tests only).
 kotlin = "2.4.20"
+# Compose Multiplatform 1.12.1 (2026-09-22; Q67, lead decision M5-24): runtime, foundation and ui,
+# by their coordinates, in :screens. On Android they stand for the Jetpack Compose 1.12.1 below.
+compose-multiplatform = "1.12.1"
 # In the app.
 activity-compose = "1.13.0"
 compose-bom = "2026.09.00"
@@ -38,9 +55,17 @@ androidx-test-core = { module = "androidx.test:core", version.ref = "test-runner
 androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "test-ext-junit" }
 androidx-test-uiautomator = { module = "androidx.test.uiautomator:uiautomator", version.ref = "test-uiautomator" }
 junit = { module = "junit:junit", version.ref = "junit" }
+cmp-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "compose-multiplatform" }
+cmp-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "compose-multiplatform" }
+cmp-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "compose-multiplatform" }
+kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+# The shared modules (Q67): Kotlin Multiplatform, with the Android Gradle plugin's own plugin for a
+# Kotlin Multiplatform library's Android target (com.android.kotlin.multiplatform.library, 9.3.3).
+kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+android-kotlin-multiplatform-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
