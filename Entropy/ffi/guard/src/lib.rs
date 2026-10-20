@@ -82,10 +82,11 @@ mod tests {
 
     use super::{OBSERVED, PLANTED, guarded};
 
-    /// Set for the child process alone, where the scenario runs with its output captured.
+    /// Set for the child process alone, where a scenario runs with its output captured.
     const CHILD: &str = "KC_GUARD_PANIC_CHILD";
-    /// The scenario's test, by its full name.
-    const SCENARIO: &str = "tests::scenario_a_panic_inside_a_ready_call";
+    /// The scenarios' tests, by their full names.
+    const READY: &str = "tests::scenario_a_panic_inside_a_ready_call";
+    const FIRST: &str = "tests::scenario_a_panic_in_the_first_call";
 
     /// kcr.json's rolls of gate seed dice-50-words12, as faces (rule 12: vectors/ only).
     fn rolls() -> Vec<u8> {
@@ -111,7 +112,7 @@ mod tests {
     /// to Ready through keepcrypt-ffi's dispatch on gate seed dice-50-words12 (12 words, dice only,
     /// Skip), then the planted panic. The unwind drops the word page the call held, the catch
     /// halts the slot, which holds nothing more, and every later call halts. It runs only in the
-    /// child process the test below starts, since the slot is the process's one.
+    /// child process a test below starts, since the slot is the process's one.
     #[test]
     fn scenario_a_panic_inside_a_ready_call() {
         if env::var_os(CHILD).is_none() {
@@ -149,13 +150,27 @@ mod tests {
         assert_eq!(FFI.holds(), halted);
     }
 
-    /// Runs the scenario above in a child process, as pi/sim's no-output tests run their binary:
-    /// it passes, nothing reaches stderr (the planted panic's message would, but for the silent
-    /// hook) and stdout holds the harness's own lines alone.
+    /// The hook is set before the first catch: on a fresh slot the process's first call through
+    /// guarded is the planted one, whose page call gives no page at Idle, and it panics. The catch
+    /// gives the halt status with the slot Halted, and the test below sees nothing on stderr. It
+    /// runs only in the child process that test starts.
     #[test]
-    fn a_panic_inside_a_ready_call_halts_drops_what_it_held_and_prints_nothing() {
+    fn scenario_a_panic_in_the_first_call() {
+        if env::var_os(CHILD).is_none() {
+            return;
+        }
+        assert_eq!(FFI.holds().stage, StageKind::Idle);
+        assert_eq!(call(PLANTED, &[]), [HALTED]);
+        assert!(!OBSERVED.load(Ordering::SeqCst), "no page at Idle");
+        assert_eq!(FFI.holds().stage, StageKind::Halted);
+    }
+
+    /// Runs `scenario` in a child process, as pi/sim's no-output tests run their binary: it
+    /// passes, nothing reaches stderr (the planted panic's message would, but for the silent hook)
+    /// and stdout holds the harness's own lines alone.
+    fn passes_silently(scenario: &str) {
         let output = Command::new(env::current_exe().expect("the test binary"))
-            .args([SCENARIO, "--exact", "--nocapture"])
+            .args([scenario, "--exact", "--nocapture"])
             .env(CHILD, "1")
             .output()
             .expect("the child runs");
@@ -163,7 +178,7 @@ mod tests {
         assert!(output.status.success(), "the scenario fails:\n{stdout}");
         assert!(output.stderr.is_empty(), "nothing on stderr");
         assert!(stdout.contains("running 1 test\n"), "the scenario ran");
-        let harness = format!("test {SCENARIO} ... ok");
+        let harness = format!("test {scenario} ... ok");
         let ours: Vec<&str> = stdout
             .lines()
             .filter(|line| {
@@ -174,5 +189,17 @@ mod tests {
             })
             .collect();
         assert!(ours.is_empty(), "stdout holds only the harness's lines");
+    }
+
+    #[test]
+    fn a_panic_inside_a_ready_call_halts_drops_what_it_held_and_prints_nothing() {
+        passes_silently(READY);
+    }
+
+    /// The silent hook is set before the first catch, not after it: a panic in the process's first
+    /// call prints nothing either.
+    #[test]
+    fn a_panic_in_the_first_call_prints_nothing() {
+        passes_silently(FIRST);
     }
 }

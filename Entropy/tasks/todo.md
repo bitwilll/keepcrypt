@@ -11713,6 +11713,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   reaches stderr), no catch, the observer forgotten before the panic, and a catch that returns the halt status without
   halting each fail it. `cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni --locked`, plain and with
   `--features keepcrypt-core/test-registry`: 11 + 28 + 2 + 3 passed each.
+  Proof (M5 commit 12d, review fix: the hook before the first catch): `a_panic_in_the_first_call_prints_nothing` runs
+  `scenario_a_panic_in_the_first_call` in a child process, where the process's first guarded call, on a fresh slot, is
+  the planted panic: the halt status, the slot Halted, no page observed, stderr empty. On a copy that sets the hook
+  after the catch only this test fails. keepcrypt-guard 4 passed, plain and with `--features
+  keepcrypt-core/test-registry`.
 
 **11. FFI tests (host; `cargo test -p keepcrypt-ffi -p keepcrypt-jni`, plain and with `--features keepcrypt-core/test-registry`)**
 - [x] Every exit path empties the slot: Finish, discard (each Public and Protected stage), Match found, Cannot check,
