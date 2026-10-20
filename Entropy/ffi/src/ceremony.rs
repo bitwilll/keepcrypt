@@ -1519,8 +1519,8 @@ mod tests {
     }
 
     // A halt latches: every later call, a discard and a wipe included, returns Halted. (A poisoned
-    // lock takes this same halt in `lock`; only a panic under the lock poisons it, which the guard's
-    // tests plant, M5 commit 12.)
+    // lock takes this same halt in `lock`: ffi/tests' ffi_a_poisoned_lock_halts poisons it with a
+    // panic under the lock.)
     #[test]
     fn a_halt_latches() {
         let slot = Slot::new();

@@ -11528,7 +11528,7 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   `real-keepcrypt-guard-unsafe-code` among them.
 
 **8. The FFI's safe layer (`ffi/src/ceremony.rs`)**
-- [ ] The slot as in References. Every call locks, takes the stage with `mem::replace(.., Stage::Idle)`, calls the
+- [x] The slot as in References. Every call locks, takes the stage with `mem::replace(.., Stage::Idle)`, calls the
   consuming core method and puts back what `Ok` gives; an `Err` has already wiped the session (session.rs:10-17). Long
   calls follow "A discard never waits for a long call". A `PoisonError` is matched (never `unwrap_or_else`) and halts.
   A call in a stage that does not offer it halts (a shell bug, fail closed).
@@ -11541,6 +11541,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   the slot (223 cases, each on a fresh slot); `ffi_queries_keep_their_stage` and the flows of group 11 call the
   offered ones. `cargo test -p keepcrypt-ffi --locked`, plain and with `--features keepcrypt-core/test-registry`:
   22 passed each (3 unit, 19 in ffi/tests/ceremony.rs).
+  Proof (M5 commit 10c): `ffi_a_poisoned_lock_halts` poisons the lock from ffi/tests/ (keepcrypt-guard's tests have
+  no thread and no catch, so they could not): a long call that a discard overtook drops its result under the lock,
+  and that result's `Drop` panics on the call's scoped thread; the next lock matches the `PoisonError` and halts, the
+  kept `Wiped` goes and `Halted` latches (a discard and a start return it). With `lock` handing out the poisoned
+  guard without the halt (a copy), it fails. Both builds: 38 passed each (11 unit, 27 in ffi/tests/ceremony.rs).
 - [x] The halt rule mirrors app.rs:235: refusals are a wrong typed go-ahead code (`Rejected::Retry`, the Checking
   session goes back), a read-back mismatch, a wrong or empty passphrase, `NoRegistryKey`, a bad snapshot, proof or
   backup file; every other error halts, as does every `Err` from a call that took the session.

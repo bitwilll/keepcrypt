@@ -398,8 +398,9 @@ fn ffi_queries_keep_their_stage() {
 
 // Every exit path empties the slot (todo.md, M5 group 11; MA:127): Finish, a discard in every
 // stage, Match found and Cannot check (a `Wiped` stays, which holds no seed), and a halt by error,
-// which drops the kept `Wiped` too. A halt by panic and a poisoned lock are keepcrypt-guard's tests
-// (M5 commit 12); a discard during a long call is ffi_discard_during_call.
+// which drops the kept `Wiped` too. A halt by panic is keepcrypt-guard's test (M5 commit 12); a
+// poisoned lock is ffi_a_poisoned_lock_halts, and a discard during a long call
+// ffi_discard_during_call.
 #[test]
 fn ffi_every_exit_path_empties_the_slot() {
     let slot = Slot::new();
@@ -592,6 +593,51 @@ fn held_call<M>(slot: &Slot, meanwhile: impl FnOnce(&Slot) -> M) -> Held<M> {
         reply,
         dropped: dropped.load(Ordering::SeqCst),
     }
+}
+
+/// A long call's result whose drop panics. A discard that overtook the call leaves its result to be
+/// dropped under the slot's lock, so the panic poisons the lock.
+struct PanicsOnDrop;
+
+impl Drop for PanicsOnDrop {
+    fn drop(&mut self) {
+        panic!("a result dropped under the lock panics");
+    }
+}
+
+// A poisoned lock halts (todo.md, M5 group 8): a long call that a discard overtook drops its result
+// under the lock, and a panic in that drop poisons it, so the next call's lock finds the
+// PoisonError. It halts there: the kept `Wiped` goes and `Halted` latches, a discard and a start
+// included. The panic ends the call's own thread, as it would end the boundary's call.
+#[test]
+fn ffi_a_poisoned_lock_halts() {
+    let slot = Slot::new();
+    checking(&slot, "dice-50-words12");
+    done(slot.match_found());
+    done(slot.discard());
+    assert!(slot.holds().kept, "a kept Wiped to drop");
+    let (entered, release) = (Barrier::new(2), Barrier::new(2));
+    let (discarded, panicked) = std::thread::scope(|scope| {
+        let call = scope.spawn(|| {
+            got(slot.hold(|| {
+                entered.wait();
+                release.wait();
+                PanicsOnDrop
+            }))
+        });
+        entered.wait();
+        let discarded = got(slot.discard());
+        release.wait();
+        (discarded, call.join().is_err())
+    });
+    assert_eq!(discarded, Got::Done, "the discard overtook the call");
+    assert!(panicked, "the result's drop panicked under the lock");
+    assert_eq!(slot.holds(), HALTED, "the poisoned lock halted the slot");
+    assert_eq!(got(slot.discard()), Got::Halted, "the halt latches");
+    assert_eq!(
+        got(slot.start(SeedLength::Words12, Mode::DiceOnly)),
+        Got::Halted
+    );
 }
 
 /// What two long calls gave when a discard or a wipe overtook the first and the second started
