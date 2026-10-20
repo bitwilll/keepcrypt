@@ -655,7 +655,10 @@
 #              nativeInterop right under src/, so appleMain, nativeMain, the per-target sets
 #              (iosArm64Main, iosSimulatorArm64Main), androidDeviceTest, Android's main and test,
 #              and a file right under src/ are refused; in every other module no KMP source-set
-#              name (one that ends in Main or Test but androidTest, or nativeInterop).
+#              name (one that ends in Main or Test but androidTest, or nativeInterop); and no src/
+#              below mobile/android/ that is not a module's own (each module is one directory
+#              under mobile/android/, so a nested module's sources, include(":ui:words") at
+#              mobile/android/ui/words/, and the root project's, mobile/android/src/, are refused).
 #   KtIos      (rules 1, 5, 8 and 9 in Kotlin/Native) in iosMain and iosTest right under any
 #              module's src/, on top of every Kt rule: Apple's storage (NSUserDefaults,
 #              NSFileManager, NSFileHandle, writeToFile, NSKeyedArchiver, SecItemAdd, CoreData,
@@ -2373,7 +2376,10 @@ EOF
     # FLAG_SECURE and Activity rules; every other file, build files included, gets every rule. The
     # module is the one path segment after mobile/android/, matched as a literal: a pattern's *
     # would also match /, so .../src/main/kotlin/x/src/test/ or .../src/commonMain/kotlin/x/src/
-    # commonTest/ would pass as a test source set although Gradle compiles it into the app.
+    # commonTest/ would pass as a test source set although Gradle compiles it into the app. A
+    # module one level deeper (include(":ui:words"), mobile/android/ui/words/) would have no rule
+    # here that reads its source sets by module, iosMain's names included, so KtSourceSet refuses
+    # any src/ below mobile/android/ but a module's own, and the root project's src/.
     case $rel in
       mobile/android/*)
         ktmod=${rel#mobile/android/}
@@ -2385,8 +2391,8 @@ EOF
           mobile/android/capture-control/*) ktscope=capture ;;
           *) ktscope=main ;;
         esac
-        # KtSourceSet: the source sets a module may hold (kt_source_set_refused), a path rule
-        # reported without a line.
+        # KtSourceSet: the source sets a module may hold (kt_source_set_refused), and no src/
+        # but a module's own, a path rule reported without a line.
         case $rel in
           "mobile/android/$ktmod/src/"*)
             ktset=${rel#"mobile/android/$ktmod/src/"}
@@ -2399,6 +2405,10 @@ EOF
               fi
               hits=$((hits + 1))
             fi
+            ;;
+          mobile/android/src/* | mobile/android/*/src/*)
+            echo "KtSourceSet: $rel: a src/ that is not a module's own (each module is one directory under mobile/android/, and the root project holds no sources)"
+            hits=$((hits + 1))
             ;;
         esac
         # KtIos: the iOS names in iosMain and iosTest; the C-boundary and M6-only names everywhere,

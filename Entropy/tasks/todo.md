@@ -12201,6 +12201,12 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
     :core-ffi KMP, deletes that one case (`core-ffi:main` in `kt_source_set_refused`).
   - Proof (M5 commit 8q): :core-ffi is KMP with Native.kt in commonMain, so the `core-ffi:main` case and its two comment
     mentions are gone; the new `ktsourceset-kmp-main-in-core-ffi` (core-ffi/src/main) fails as :screens' main does.
+  - Proof (M5 commit 8p-b, review): a module one level deeper (`include(":ui:words")`, mobile/android/ui/words/) had
+    no source-set or iOS check, since the module is the first path segment; KtSourceSet now refuses any src/ below
+    mobile/android/ that is not a module's own, and the root project's src/. `ktsourceset-nested-module-ios-main`,
+    `-apple-main`, `-in-kmp-module` (screens/words/src/commonMain) and `ktsourceset-root-project-src` fail; the
+    review's tree (NSUserDefaults and NSLog in ui/words/src/iosMain, clean before) gives two KtSourceSet hits.
+    `--selftest` 1302 passed, 0 failed under sh and /bin/dash; the gate on the tree clean.
 - [x] Scopes (banned-api-check.sh:2043-2051). `commonTest`, `androidHostTest` and `iosTest` join `test`, by the same literal module-segment match. Every other allowed source set stays `main`. The fixture scope-copy logic (around :2358-2390) moves with them.
   - Proof: fixtures. A `runCatching` in `screens/src/commonTest/` passes; the same code under `screens/src/commonMain/`, or in a nested `.../commonMain/kotlin/x/src/commonTest/` path, fails.
   - Proof (M5 commit 8p): the test scope is src/test, src/androidTest, src/commonTest, src/androidHostTest and src/iosTest
