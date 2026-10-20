@@ -1,7 +1,8 @@
 #!/bin/sh
 # Banned-API grep gate: CLAUDE.md security rules 1, 3, 5 and 9 (plan: tasks/todo.md, M0; the Shell
-# category and the hash ban: M3 group 13; the Kotlin, Android and FFI categories: M5 group 3), and
-# the release-artifact scan for rules 1 and 10 (tasks/todo.md, M1 group 11).
+# category and the hash ban: M3 group 13; the Kotlin, Android and FFI categories: M5 group 3; the
+# Kotlin Multiplatform, iPhone and bridge rules: M5's re-plan for Compose Multiplatform, "Gate
+# changes"), and the release-artifact scan for rules 1 and 10 (tasks/todo.md, M1 group 11).
 #
 #   scripts/banned-api-check.sh             scan the repo this script lives in
 #   scripts/banned-api-check.sh DIR         scan DIR as if it were the repo root
@@ -36,13 +37,17 @@
 #   scripts/banned-api-check.sh --selftest  every fixture in scripts/testdata/banned-api/ must trip the
 #                                           gate for its category; every clean-* fixture must pass; the
 #                                           Kotlin hit fixtures whose rule a scope skips must pass
-#                                           when copied into that scope; the Build and KtBinary
-#                                           rules' cases, scratch git repositories built here,
-#                                           must trip or pass as their names say; the
+#                                           when copied into that scope (the KMP test sets
+#                                           included); the Build, KtBinary and KtRoot rules'
+#                                           cases, scratch git repositories built here, and the FFI
+#                                           cases that need two crates must trip or pass as their
+#                                           names say; the
 #                                           artifact fixtures in scripts/testdata/artifact/ must give
 #                                           exactly their pinned hits (needs the pinned toolchain); the
 #                                           workflow fixtures in scripts/testdata/workflows/ must trip
-#                                           or pass the workflow check as their names say; the
+#                                           or pass the workflow check as their names say, and so
+#                                           must the bootstrap exception's cases, on copies of this
+#                                           script with a stand-in list; the
 #                                           image lists' built-in cases must be refused before any
 #                                           host tool runs; the OS configuration fixtures in
 #                                           scripts/testdata/os-config/ must pass or fail as their
@@ -124,7 +129,13 @@
 #   - no way back to the Android build's bootstrap (KtSdk's kt_bootstrap, tasks/todo.md, M5 group
 #     4): kc.bootstrap, --write-locks, --update-locks, --write-verification-metadata or its -M,
 #     LockMode.DEFAULT or LENIENT, dependency verification (or -F) set to anything but strict, or
-#     the build-script calls that turn locking or verification off, comments included;
+#     the build-script calls that turn locking or verification off, comments included, but on the
+#     one line per workflow that the reviewed, temporary exception names (kt_bootstrap_exception:
+#     entropy-android.yml and entropy-ios.yml only, each line once; empty but during the
+#     re-plan's second bootstrap, M5-13 and Q67; a list of any other shape is exit 2);
+#   - none of KtSdk's Kotlin/Native refusals (kt_kmp_refused: CocoaPods, Swift packages,
+#     kotlin.native.home, downloadFromMaven=false, xcodeCompatibility.nowarn, the device-test
+#     builder, KONAN_DATA_DIR), so no workflow points the build at another toolchain;
 #   - the canary property kc.canary (any letter case, comments included) only as the canary
 #     step's one Gradle command line, whole: sh scripts/android-gradle.sh
 #     --dependency-verification strict --offline -Pkc.canary=true :app:assembleShippingRelease
@@ -345,8 +356,10 @@
 #              "    jax.random as r," or "    random \", and a line starting "    random import" or
 #              "    jax.random import" after "from \"), C rand(), rand_r(), random(), drand48, C++
 #              mt19937, *_random_engine, random_device, minstd_rand, Rust rand:: and rand_core::,
-#              Kotlin/Swift .random( and .shuffled(, and randomUUID (UUID.randomUUID; tasks/todo.md,
-#              M5 group 3). Rule 1 allows one source of OS randomness, so
+#              Kotlin/Swift .random( and .shuffled(, randomUUID (UUID.randomUUID; tasks/todo.md,
+#              M5 group 3), and Kotlin's kotlin.uuid package and Uuid.random or Uuid::random (the M5
+#              re-plan: they read the OS outside the pool, on Android and iPhone alike). Rule 1
+#              allows one source of OS randomness, so
 #              every file except core/src/source.rs and core/src/source/ is also barred from the OS
 #              RNG itself: /dev/urandom, /dev/random, getentropy, CCRandomGenerateBytes and
 #              BCryptGenRandom. /dev/hwrng passes (pi/app reads it raw for the health tests).
@@ -404,8 +417,9 @@
 #              (docs/pi-firmware.md, "Game randomness").
 #              std's OS-seeded hashing (tasks/todo.md, M3 group 13): HashMap, HashSet, RandomState,
 #              DefaultHasher, hash_one or BuildHasherDefault, as words, in any .rs file under
-#              core/src, ffi/src or pi/app/src (the shipped crates; their tests use BTreeSet and
-#              BTreeMap). The artifact scan cannot see it: std reads the OS for the hash keys.
+#              core/src, ffi/src, ffi/guard/src, ffi/jni/src, ffi/capi/src or pi/app/src (the
+#              shipped crates; their tests use BTreeSet and BTreeMap). The artifact scan cannot see
+#              it: std reads the OS for the hash keys.
 #              core/src/lib.rs must hold the exact line #![forbid(unsafe_code)], and so must
 #              pi/app/src/lib.rs and pi/app/src/main.rs whenever pi/app exists (a missing line is
 #              reported at line 1).
@@ -486,31 +500,36 @@
 #              delays); and BufReader appears nowhere in pi/app (a buffered reader would hold a copy
 #              of hwrng samples or stick bytes). std::net is the Network category's, which already
 #              bans it in pi/app as everywhere outside registry/.
-#   Build      no tracked file under mobile/**/build/ or mobile/**/.gradle/ (tasks/todo.md, M5
-#              group 2): Gradle's output and its per-project cache never enter git, so a committed
-#              one is a hit, "Build: <file>: <detail>" with no line. The tracked files come from
-#              git ls-files, never from the scan list: list() keeps no build/ skip, since CI's gates
-#              runs on a fresh checkout, where a skip could only hide committed files, and an
-#              ignored local build tree is not a hit. A tree that is no git work tree (a copy, the
-#              selftest's scratch trees) has no tracked file, so the rule is silent there; git
-#              missing from PATH is exit 2. Gradle's own build.gradle.kts files, buildSrc/ and
-#              gradle/ (the version catalog and the wrapper) are not output directories and pass.
+#   Build      no tracked file under mobile/**/build/, mobile/**/.gradle/ or mobile/**/.konan/
+#              (tasks/todo.md, M5 group 2; the re-plan's lead decision M5-28): Gradle's output, its
+#              per-project cache and Kotlin/Native's project-local data directory never enter git,
+#              so a committed one is a hit, "Build: <file>: <detail>" with no line. The tracked
+#              files come from git ls-files, never from the scan list: list() keeps no build/ skip,
+#              since CI's gates runs on a fresh checkout, where a skip could only hide committed
+#              files, and an ignored local build tree is not a hit. A tree that is no git work tree
+#              (a copy, the selftest's scratch trees) has no tracked file, so the rule is silent
+#              there; git missing from PATH is exit 2. Gradle's own build.gradle.kts files,
+#              buildSrc/ and gradle/ (the version catalog and the wrapper) are not output
+#              directories and pass.
 #              The index is read with ls-files -s -z: -z names a file whole where plain ls-files
 #              would quote it (a non-ASCII byte, a double quote, a backslash), which would defeat
 #              the match, and -s shows the mode, so a gitlink (mode 160000, a submodule) anywhere
 #              under mobile/ is a hit of its own: ls-files cannot list a submodule's files, so
 #              this rule could not clear them.
-#   Kotlin and Android (tasks/todo.md, M5 group 3; Q55), on every scanned file under
-#              mobile/android (Kotlin, Java, XML, Gradle files, lockfiles), by scope: src/test
-#              and src/androidTest right under a module's directory (mobile/android/<module>/,
-#              exactly those source sets: src/withTestRegistry/ is a flavour's and ships, and a
-#              src/test/ directory deeper down, under src/main/kotlin/ say, is compiled into the
-#              app and is shipping code) skip KtIntent, KtStorage, KtDevice, KtFailOpen's catch
-#              list and KtInput's Activity rule; mobile/android/capture-control (the CI-only
-#              positive control, never shipped) skips only the FLAG_SECURE rules (KtWindow's
-#              securePolicy and flag checks) and the Activity rule; every other file gets every
-#              rule. The named files below are the app's (mobile/android/app/src/main/.../NAME,
-#              at any depth under main/) unless secure-ui's is named.
+#   Kotlin and Android (tasks/todo.md, M5 group 3; Q55; the re-plan's "Gate changes"), on every
+#              scanned file under mobile/android (Kotlin, Java, XML, Gradle files, lockfiles, the
+#              cinterop .def), by scope: the test source sets right under a module's directory
+#              (mobile/android/<module>/), src/test, src/androidTest, src/commonTest,
+#              src/androidHostTest and src/iosTest (exactly those: src/withTestRegistry/ is a
+#              flavour's and ships, and a src/test/ or src/commonTest/ directory deeper down, under
+#              src/main/kotlin/ or src/commonMain/kotlin/ say, is compiled into the app and is
+#              shipping code) skip KtIntent, KtStorage, KtDevice, KtFailOpen's catch list and
+#              KtInput's Activity rule; mobile/android/capture-control (the CI-only positive
+#              control, never shipped) skips only the FLAG_SECURE rules (KtWindow's securePolicy
+#              and flag checks) and the Activity rule; every other file (commonMain, androidMain
+#              and iosMain included) gets every rule. The named files below are the app's
+#              (mobile/android/app/src/main/.../NAME, at any depth under main/) unless secure-ui's
+#              or :screens' is named.
 #   KtLog      Log (android.util.Log, Log.v/d/i/w/e/wtf( ), println( and print(, System.out,
 #              System.err, printStackTrace, Timber, java.util.logging, slf4j, and a $ template in a
 #              string on a line that calls error(, check(, require(, checkNotNull( or
@@ -523,10 +542,12 @@
 #              supervisorScope as words, and recover, recoverCatching and fold as calls, in every
 #              scope;
 #              and, outside the test source sets, the catch list: every catch (and Flow's
-#              .catch { }) is a hit but catch (x: KcHalt) in CeremonyViewModel.kt, catch (x:
-#              IOException) in files/Documents.kt and catch (x: CameraAccessException) in
-#              camera/GoAheadScanner.kt, so Throwable, Exception, RuntimeException and Error,
-#              any catch in :core-ffi and a KcHalt caught elsewhere all hit.
+#              .catch { }) is a hit but catch (x: KcHalt) in :screens' commonMain CeremonyModel.kt
+#              (mobile/android/screens/src/commonMain/.../CeremonyModel.kt; the re-plan's shared
+#              model replaced the app's CeremonyViewModel.kt), catch (x: IOException) in
+#              files/Documents.kt and catch (x: CameraAccessException) in camera/GoAheadScanner.kt,
+#              so Throwable, Exception, RuntimeException and Error, any catch in :core-ffi
+#              (androidMain and iosMain included) and a KcHalt caught elsewhere all hit.
 #   KtWindow   Toast, Snackbar, Notification, Dialog(, AlertDialog, DialogFragment, Popup(,
 #              PopupWindow, ListPopupWindow, PopupMenu, DropdownMenu, ModalBottomSheet, Spinner,
 #              AutoCompleteTextView, tooltips, WindowManager's addView and
@@ -559,13 +580,14 @@
 #              LocalUriHandler, openUri, LinkAnnotation, and the activity-result API
 #              (ActivityResultContract(s), registerForActivityResult,
 #              rememberLauncherForActivityResult) but a launcher of
-#              ActivityResultContracts.RequestPermission() on one line; in GoOfflineScreen.kt
-#              also startActivity(Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS)), whole on one
-#              line.
+#              ActivityResultContracts.RequestPermission() on one line; in AirplaneSettingsIntent.kt
+#              (the Android end of the airplane-settings seam, lead decision M5-20) also
+#              startActivity(Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS)), whole on one line.
 #   KtDevice   outside the test source sets: the camera (Camera, Camera* classes, camera2,
 #              androidx.camera) only in camera/GoAheadScanner.kt, sensors (Sensor*) only in
-#              DeviceEntropyScreen.kt, and Settings.Global (and Settings.Secure and
-#              Settings.System) only in secure-ui's OfflineMonitor.kt.
+#              SensorMotionSource.kt (the Android end of the motion-source seam, M5-20), and
+#              Settings.Global (and Settings.Secure and Settings.System) only in secure-ui's
+#              OfflineMonitor.kt.
 #   KtSdk      in build files and lockfiles (*.gradle.kts, *.gradle, gradle.properties,
 #              *.versions.toml, *.lockfile), any letter case: firebase, crashlytics,
 #              com.google.android.gms, play-services, mlkit, sentry, bugsnag, acra, appcenter,
@@ -594,13 +616,27 @@
 #              canary library's projectDir line in the settings file as the guard block's third
 #              line, after include(":canary-lib") (kt_canary). Whenever mobile/android exists,
 #              mobile/android/build.gradle.kts must hold the lines lockAllConfigurations() and
-#              lockMode.set(LockMode.STRICT) (a missing one is reported at line 1).
+#              lockMode.set(LockMode.STRICT) (a missing one is reported at line 1). In build
+#              files but lockfiles, the Kotlin Multiplatform and Kotlin/Native DSL by allow-list
+#              (kt_kmp; the re-plan's "New file types and build lines"): a line naming a word of
+#              kt_kmp_ere (a kotlin { block, a Kotlin target or per-target source set, the
+#              cinterop, binary, linker, compiler, test-run and device settings, osVersionMin, the
+#              Android target's builders, CocoaPods, Swift packages, XCFrameworks, Xcode settings,
+#              the kotlin.native., kotlin.mpp., kotlin.apple. and konan. properties), comments
+#              included, passes only as one of kt_kmp_lines exactly (indentation and trailing
+#              blanks aside) or as the simulator's device line; and CocoaPods, Swift packages,
+#              kotlin.native.home, downloadFromMaven=false, xcodeCompatibility.nowarn,
+#              withDeviceTestBuilder and KONAN_DATA_DIR hit whatever the list says, there and in
+#              scripts/android-gradle.sh (and Workflow, in the workflows).
 #   KtBinary   a tracked file (or link) under mobile/ with the extension jar, aar, so, dex, class,
 #              apk, aab, jks or keystore, or any other code or archive extension the scan list
-#              skips (zip, gz, xz, bz2, zst, tar, ipa, dylib, a, rlib, o, car), any letter case,
-#              read from git ls-files as the Build rule reads it, "KtBinary: <file>: <detail>":
-#              the scan never reads those files, so none may be tracked where a build could use
-#              it. Images, fonts, sound and PDF stay allowed.
+#              skips (zip, gz, xz, bz2, zst, tar, ipa, dylib, a, rlib, o, car), or a Kotlin/Native
+#              klib, any letter case, or under a directory named *.framework or *.xcframework, read
+#              from git ls-files as the Build rule reads it, "KtBinary: <file>: <detail>": the scan
+#              never reads those files, so none may be tracked where a build could use it. Images,
+#              fonts, sound and PDF stay allowed. And any tracked regular file under mobile/ whose
+#              first four bytes (from the index's blob) are a Mach-O magic number, thin or fat,
+#              either byte order, whatever its name (an iPhone library named .png is still one).
 #   KtManifest in every AndroidManifest.xml under mobile/android: android.permission.INTERNET,
 #              ACCESS_NETWORK_STATE and ACCESS_WIFI_STATE (a tools:node="remove" on them hits too:
 #              no network permission is ever stripped), allowBackup="true",
@@ -612,18 +648,57 @@
 #              in any file: the instrumentation status key kc_ci_throwaway_passphrase (the CI
 #              throwaway seed's backup passphrase, tasks/todo.md M5 group 18) outside
 #              mobile/android/app/src/androidTest/ and scripts/android-age-check.py.
-#   FFI        in .rs files under ffi/ (tasks/todo.md, M5 groups 3 and 7; Q53): catch_unwind
-#              outside every comment and string or char literal (so ffi/clippy.toml's ban, a doc
-#              line and a string are no call site; a use line is one, so the one call is written
-#              as a path) anywhere but ffi/jni/src/lib.rs, and each one after its first there; an
-#              export (no_mangle, export_name, or an extern fn with any ABI string or none, outside
-#              comments and literals) anywhere but that file; and once that file exports a
-#              function, its one catch_unwind is required (a missing one is reported at line 1). Session::new (the Shell rule's
-#              shapes, comments counting) anywhere under ffi/ but ffi/src/ceremony.rs, each one
-#              after its first there, and none there once the file exists (reported at line 1).
-#              The identifiers thread and JoinHandle anywhere, comments included: a joined
-#              thread would turn a panic into a value, and the shared clippy.toml cannot ban
-#              thread spawning (core/tests/panic_wipe.rs joins one).
+#   KtSourceSet
+#              (the re-plan's lead decisions M5-19 and M5-20; "KtSourceSet: <file>: <detail>", a
+#              path rule): in the KMP modules (kt_kmp_modules: core-ffi and screens) only
+#              commonMain, commonTest, androidMain, androidHostTest, iosMain, iosTest and
+#              nativeInterop right under src/, so appleMain, nativeMain, the per-target sets
+#              (iosArm64Main, iosSimulatorArm64Main), androidDeviceTest, Android's main and test,
+#              and a file right under src/ are refused (core-ffi's src/main, with the placeholder
+#              Native.kt, until commit 8q makes :core-ffi KMP); in every other module no KMP
+#              source-set name (one that ends in Main or Test but androidTest, or nativeInterop).
+#   KtIos      (rules 1, 5, 8 and 9 in Kotlin/Native) in iosMain and iosTest right under any
+#              module's src/, on top of every Kt rule: Apple's storage (NSUserDefaults,
+#              NSFileManager, NSFileHandle, writeToFile, NSKeyedArchiver, SecItemAdd, CoreData,
+#              NSUbiquitousKeyValueStore, CloudKit), posix files and logging (fopen, fwrite, a call
+#              of open, the printf family, syslog), other apps (openURL,
+#              UIDocumentInteractionController), windows (UIAlertController, a UIWindow
+#              constructor, UIMenu), input (UITextView, becomeFirstResponder), logging (NSLog,
+#              os_log, AccessibilityDebugLogger), randomness and identifiers (platform.posix.rand,
+#              the words random and srand, NSUUID) and the network's C names (nw_connection,
+#              nw_listener, nw_browser, nw_endpoint, nw_parameters, CFStream, CFSocket,
+#              getaddrinfo, a call of socket); and in every file under mobile/android:
+#              staticCFunction, setUnhandledExceptionHook and nw_path_*, and usePinned or addressOf
+#              anywhere but :core-ffi's iosMain Native.ios.kt. UIActivityViewController,
+#              UIPasteboard, UNUserNotificationCenter, UITextField, drand48, arc4random,
+#              SecRandomCopyBytes, URLSession, NWConnection and CFNetwork are other categories'
+#              everywhere.
+#   KtRoot     (lead decisions M5-19 and M5-25; "KtRoot: <file>: <detail>"): a .kt or .kts file
+#              under mobile/ outside mobile/android/, and any tracked file under mobile/ios/ (read
+#              from git ls-files as the Build rule reads it), which stays empty until M6 brings the
+#              Swift and Xcode rules.
+#   KtCinterop (the re-plan's C bridge): mobile/android/core-ffi/src/nativeInterop/cinterop/
+#              keepcrypt.def holds exactly the lines headers = keepcrypt.h, headerFilter =
+#              keepcrypt.h and package = com.keepcrypt.native, each once, and no other (no ---
+#              section, second header, staticLibraries, libraryPaths, linkerOpts or compilerOpts;
+#              a missing line is reported at line 1); any other .def under mobile/android is a hit
+#              of its own.
+#   FFI        in .rs files under ffi/ (tasks/todo.md, M5 groups 3 and 7; Q53; Q66's split into
+#              keepcrypt-guard, keepcrypt-jni and keepcrypt-capi): catch_unwind outside every
+#              comment and string or char literal (so ffi/clippy.toml's ban, a doc line and a string
+#              are no call site; a use line is one, so the one call is written as a path) anywhere
+#              but ffi/guard/src/lib.rs, and each one after its first there; an export (no_mangle,
+#              export_name, or an extern fn with any ABI string or none, outside comments and
+#              literals) anywhere but ffi/jni/src/lib.rs and ffi/capi/src/lib.rs; the JNI names (a
+#              Java_ function, JNI_OnLoad, JNIEnv, jni_sys) outside comments and literals anywhere
+#              but ffi/jni/, and in ffi/jni/src/lib.rs an extern fn whose ABI is not "system"; and
+#              once either boundary file exports a function, the one catch_unwind in
+#              ffi/guard/src/lib.rs is required (a missing one is reported at the boundary file's
+#              line 1). Session::new (the Shell rule's shapes, comments counting) anywhere under
+#              ffi/ but ffi/src/ceremony.rs, each one after its first there, and none there once the
+#              file exists (reported at line 1). The identifiers thread and JoinHandle anywhere,
+#              comments included: a joined thread would turn a panic into a value, and the shared
+#              clippy.toml cannot ban thread spawning (core/tests/panic_wipe.rs joins one).
 #
 # Fail-closed noise, not bypasses (rename or spell it out instead): a named format argument called
 # path that rustfmt wraps onto its own line ("        path = \"seed.age\",") is an Include hit in
@@ -647,13 +722,17 @@
 # use std::thread; passes (write those). Under ffi/, a comment that says thread is an FFI hit
 # (write "the caller's own call"), and so is one that names Session::new outside ceremony.rs.
 # Under mobile/android, UI text in XML is scanned like code: write camera, sensor, room and
-# notification in lower case there ("Camera", "Sensor", "Room" and "Notification" hit), and a
-# word such as Toast or Spinner hits in any text. A collection's fold( is a KtFailOpen hit like
-# Result's (write the loop), and a local named attributes (val attributes = ...) is a KtWindow
-# hit (rename it). A catch of a qualified type (java.io.IOException) in Documents.kt is a hit
-# (import it), and so is a DialogProperties(securePolicy = ...) wrapped over lines (keep the
-# call on one line); a removal of a manifest component is written on one line,
-# tools:node="remove" with the tag.
+# notification in lower case there ("Camera", "Sensor", "Room" and "Notification" hit), and a word
+# such as Toast or Spinner hits in any text. A collection's fold( is a KtFailOpen hit like Result's
+# (write the loop), and a local named attributes (val attributes = ...) is a KtWindow hit (rename
+# it). In a build file, a comment that names a Kotlin target, framework(, binaries, a konan.
+# property or another word of the KMP DSL is a KtSdk hit (write "the two iPhone targets"); in
+# iosMain and iosTest the word random (a comment's too) and any name holding printf are KtIos hits;
+# and anywhere, prose that names Kotlin's uuid package by its dotted name is an RNG hit (write
+# "Kotlin's uuid package"). A catch of a qualified type (java.io.IOException) in Documents.kt is a
+# hit (import it), and so is a DialogProperties(securePolicy = ...) wrapped over lines (keep the
+# call on one line); a removal of a manifest component is written on one line, tools:node="remove"
+# with the tag.
 #
 # Portable on purpose: POSIX sh, POSIX ERE (no \b \s \< \>, no -P -w), POSIX sed (BRE, in
 # selectable() and textselection(); ERE with -E, which BSD and GNU sed share, in threads_by_path())
@@ -696,8 +775,9 @@ usage: scripts/banned-api-check.sh [--selftest | DIR | --artifact TARGET FILE...
               that import (see the script header)
   --workflows check every DIR/entropy-*.yml and .yaml workflow's hardening: read-only permissions, three
               actions at their approved SHAs, no secrets, no fork-trusting trigger, no expression
-              in a run step, no Android bootstrap switch, the canary property only in the canary
-              step's Gradle command
+              in a run step, no Android bootstrap switch but the reviewed exception's lines, the
+              canary property only in the canary step's Gradle command, no Kotlin/Native
+              toolchain override
   --image-lists
               unpack the Pi image IMG (an MBR, a FAT32 boot partition, a SquashFS root) with the
               build's host tools and print its partition table, SHA-256s, boot and root file lists,
@@ -732,27 +812,32 @@ usage: scripts/banned-api-check.sh [--selftest | DIR | --artifact TARGET FILE...
 Hits: RNG APIs (and the OS RNG read outside core/src/source), network APIs, Python network imports
 and hard-coded http URLs (outside registry/), clipboard, copy and share APIs and Python clipboard
 modules, tools and calls, getrandom in a .rs file outside core/src/source, std's OS-seeded hashing
-in core/src, ffi/src or pi/app/src, a core/src/lib.rs (and pi/app's lib.rs and main.rs) without
-#![forbid(unsafe_code)], in Rust under core/, ffi/ or pi/app/ a discarded result (_ =, an _name
-binding, drop or forget of a call), clippy as a cfg predicate and /dev/stdout, /dev/stderr or
-/dev/tty, include! (by any path or alias) or a path attribute in any .rs file, a C #include of a
-file with a binary extension, the shells' paths to core: a session, pool input or clock named
-in the games, game_random named outside core and the games, a second Session::new in pi/app, and
-a release probe that does not call game_random; and in pi/app the firmware's device rules: a
-path literal outside device/paths.rs or off its list, a file API outside device/, a file created
-outside device/usb.rs or any truncating, appending, renaming or directory API, rppal or nix
-outside device/, MNT_FORCE, MNT_DETACH outside device/usb.rs, a process, a thread or BufReader;
-and a tracked file (git ls-files) under mobile/**/build/ or mobile/**/.gradle/, or a submodule
-under mobile/. Under mobile/android, by scope (src/test and src/androidTest, :capture-control,
-the rest): logging and runtime-built messages, fail-open Kotlin and catches outside the three
-allowed, dialogs, popups and other windows, text fields and activities but SecureActivity,
-storage, intents, the camera, sensors and system settings outside their files, SDKs, other
-repositories, local build inputs and the bootstrap's switches in build files (and
-android-gradle.sh), strict locking missing from the root build file, and the manifest's network permissions, backup, debug and components; a
-tracked binary under mobile/; the CI passphrase key outside its
-two files; and under ffi/ a second catch_unwind or one outside ffi/jni/src/lib.rs, a second
-Session::new or one outside ffi/src/ceremony.rs, and thread or JoinHandle. A directory symlink
-is refused. Exit 0 clean, 1 hits, 2 usage or read error.
+in core/src, ffi/src, ffi/guard/src, ffi/jni/src, ffi/capi/src or pi/app/src, a core/src/lib.rs
+(and pi/app's lib.rs and main.rs) without #![forbid(unsafe_code)], in Rust under core/, ffi/ or
+pi/app/ a discarded result (_ =, an _name binding, drop or forget of a call), clippy as a cfg
+predicate and /dev/stdout, /dev/stderr or /dev/tty, include! (by any path or alias) or a path
+attribute in any .rs file, a C #include of a file with a binary extension, the shells' paths to
+core: a session, pool input or clock named in the games, game_random named outside core and the
+games, a second Session::new in pi/app, and a release probe that does not call game_random; and in
+pi/app the firmware's device rules: a path literal outside device/paths.rs or off its list, a file
+API outside device/, a file created outside device/usb.rs or any truncating, appending, renaming or
+directory API, rppal or nix outside device/, MNT_FORCE, MNT_DETACH outside device/usb.rs, a
+process, a thread or BufReader; and a tracked file (git ls-files) under mobile/**/build/,
+mobile/**/.gradle/ or mobile/**/.konan/, or a submodule under mobile/. Under mobile/android, by
+scope (the test source sets, :capture-control, the rest): logging and runtime-built messages,
+fail-open Kotlin and catches outside the three allowed, dialogs, popups and other windows, text
+fields and activities but SecureActivity, storage, intents, the camera, sensors and system settings
+outside their files, SDKs, other repositories, local build inputs and the bootstrap's switches in
+build files (and android-gradle.sh), strict locking missing from the root build file, and the
+manifest's network permissions, backup, debug and components; a Kotlin Multiplatform source set
+outside the allow list, the iOS names in iosMain and iosTest, C callbacks, pinned memory outside
+Native.ios.kt, Kotlin/Native DSL lines outside the allow list and toolchain overrides, and a
+cinterop definition other than the one exact .def; Kotlin outside mobile/android and a tracked file
+under mobile/ios; a tracked binary (a klib, a framework, any Mach-O file among them) under mobile/;
+the CI passphrase key outside its two files; and under ffi/ a second catch_unwind or one outside
+ffi/guard/src/lib.rs, an export outside the two boundary lib.rs files, a JNI name outside ffi/jni/
+or a C-ABI export in its lib.rs, a second Session::new or one outside ffi/src/ceremony.rs, and
+thread or JoinHandle. A directory symlink is refused. Exit 0 clean, 1 hits, 2 usage or read error.
 EOF
 }
 
@@ -780,7 +865,9 @@ pyrandmod="${dotted}random([.][A-Za-z0-9_]+)*"
 # jax.random" and "from numpy import(array, random)" (the comma pattern), "from numpy import
 # (random, array)" (random first inside the parenthesis), "from random import x" and "from
 # jax.random import x" (the from pattern, any dotted path with a random component). Anchored on
-# the import, so randomize, randomart and a random word in a string pass.
+# the import, so randomize, randomart and a random word in a string pass. Kotlin's kotlin.uuid
+# package (no default import reaches it) and Uuid.random or Uuid::random draw from the OS outside
+# the pool, on Android and in Kotlin/Native alike (tasks/todo.md, M5 re-plan, "Gate changes").
 rng() {
   grep -n -a -E \
     -e 'Math[.]random' \
@@ -819,6 +906,8 @@ rng() {
     -e "${L}rand[[:space:]]*::" \
     -e "${L}rand_core[[:space:]]*::" \
     -e 'randomUUID' \
+    -e 'kotlin[.]uuid' \
+    -e "${L}Uuid[[:space:]]*(::|[.])[[:space:]]*random" \
     -- "$1"
 }
 
@@ -1062,7 +1151,8 @@ getrandom_use() {
   grep -n -a -E -e 'getrandom' -- "$1"
 }
 
-# Rule 1, for .rs files under core/src, ffi/src and pi/app/src (tasks/todo.md, M3 group 13): std's
+# Rule 1, for .rs files under core/src, ffi/src (and the boundary crates' ffi/guard/src, ffi/jni/src
+# and ffi/capi/src) and pi/app/src (tasks/todo.md, M3 group 13): std's
 # HashMap and HashSet default to RandomState, whose keys std reads from the OS, a second OS read
 # outside core/src/source; DefaultHasher, hash_one and BuildHasherDefault reach the same hashing
 # without the collections. As words, so a name such as hash_one_record passes.
@@ -1464,14 +1554,16 @@ ktfailopen() {
     -- "$1"
 }
 
-# KtFailOpen's catch list, outside src/test and src/androidTest: every catch is a hit, Flow's
-# .catch { } operator too, except the three the plan names, each in its own file and mapped to a
-# refusal on its screen: catch (x: KcHalt) in CeremonyViewModel.kt, catch (x: IOException) in
-# files/Documents.kt and catch (x: CameraAccessException) in camera/GoAheadScanner.kt. So a catch
-# of Throwable, Exception, RuntimeException or Error, any catch in :core-ffi and a KcHalt caught
-# anywhere else are hits. The allowed shape is the bare type name alone in the parentheses, on the
-# catch's own line: a qualified name (java.io.IOException), two catches on one line with one of
-# another type, and Java's catch (IOException e) hit.
+# KtFailOpen's catch list, outside the test source sets: every catch is a hit, Flow's .catch { }
+# operator too, except the three the plan names, each in its own file and mapped to a refusal on its
+# screen: catch (x: KcHalt) in :screens' commonMain CeremonyModel.kt (the re-plan's shared model,
+# which replaced the app's CeremonyViewModel.kt), catch (x: IOException) in the app's
+# files/Documents.kt and catch (x: CameraAccessException) in the app's camera/GoAheadScanner.kt. So
+# a catch of Throwable, Exception, RuntimeException or Error, any catch in :core-ffi (androidMain
+# and iosMain included) and a KcHalt caught anywhere else are hits. The allowed shape is the bare
+# type name alone in the parentheses, on the catch's own line: a qualified name
+# (java.io.IOException), two catches on one line with one of another type, and Java's catch
+# (IOException e) hit.
 kt_catch() {
   grep -n -a -E -e "${L}catch[[:space:]]*[({]" -- "$1"
 }
@@ -1566,7 +1658,7 @@ kt_activity() {
   kept_hits "$kt_activity_ere" -e 's/(^|[^A-Za-z0-9_])SecureActivity([^A-Za-z0-9_]|$)/\1\2/g'
 }
 
-# KtStorage (rule 8: nothing is persisted), outside src/test and src/androidTest: preferences,
+# KtStorage (rule 8: nothing is persisted), outside the test source sets: preferences,
 # DataStore (also androidx.datastore in a build file), app-private files and their directories,
 # java.io.File's constructor, external storage, MediaStore, Room, SQLite, temp files, saved state
 # (rememberSaveable, SavedStateHandle) and persisted URI grants; and the other ways to an app
@@ -1604,13 +1696,13 @@ ktstorage() {
     -- "$1"
 }
 
-# KtStorage, outside src/test, src/androidTest and app's files/Documents.kt: the document streams
+# KtStorage, outside the test source sets and app's files/Documents.kt: the document streams
 # (the backup's one "rwt" write and the picked .age and .kcr reads live in Documents.kt alone).
 kt_open_stream() {
   grep -n -a -E -e 'open(Output|Input)Stream|openFileDescriptor' -- "$1"
 }
 
-# KtIntent (no share sheet, no link, no other app), outside src/test, src/androidTest and app's
+# KtIntent (no share sheet, no link, no other app), outside the test source sets and app's
 # files/Documents.kt: Intent( and Intent's factory calls (Intent.parseUri, Intent.makeMainActivity:
 # a lower-case name after "Intent."; an upper-case constant only ever goes into an Intent(, which
 # hits), every start of an activity (startActivity, startActivityForResult, startActivities,
@@ -1620,10 +1712,11 @@ kt_open_stream() {
 # ActivityResultContract classes, registerForActivityResult, rememberLauncherForActivityResult),
 # whose document, content and camera contracts reach other apps with no Intent( in our code. One
 # launcher shape passes everywhere, on one line: (remember|register)...ForActivityResult(
-# ActivityResultContracts.RequestPermission()), the scan screen's CAMERA prompt, which the
-# system's permission controller answers. In app's GoOfflineScreen.kt the one call
-# startActivity(Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS)) passes too, written whole on one
-# line, so no other intent can be started there (kt_intent_airplane).
+# ActivityResultContracts.RequestPermission()), the scan screen's CAMERA prompt, which the system's
+# permission controller answers. In app's AirplaneSettingsIntent.kt (the Android end of the
+# airplane-settings seam, M5-20; the Go offline screen itself is shared code in :screens) the one
+# call startActivity(Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS)) passes too, written whole on
+# one line, so no other intent can be started there (kt_intent_airplane).
 ktintent_ere="(^|[^A-Za-z0-9_])Intent[[:space:]]*([(]|[.][[:space:]]*[a-z])|startActivit|startIntentSender|start[A-Za-z]*Service|bind[A-Za-z]*Service|send[A-Za-z]*Broadcast|PendingIntent|registerReceiver|ShareCompat|createChooser|ACTION_VIEW|LocalUriHandler|openUri|LinkAnnotation|ActivityResultContract|(register|rememberLauncher)ForActivityResult"
 kt_permission_launcher='s/(register|rememberLauncher)ForActivityResult[[:space:]]*[(][[:space:]]*ActivityResultContracts[[:space:]]*[.][[:space:]]*RequestPermission[[:space:]]*[(][[:space:]]*[)][[:space:]]*[)]//g'
 ktintent() {
@@ -1638,12 +1731,13 @@ kt_intent_airplane() {
     -e 's/(^|[^A-Za-z0-9_])startActivity[[:space:]]*[(][[:space:]]*Intent[[:space:]]*[(][[:space:]]*(android[.]provider[.])?Settings[[:space:]]*[.][[:space:]]*ACTION_AIRPLANE_MODE_SETTINGS[[:space:]]*[)][[:space:]]*[)]/\1/g'
 }
 
-# KtDevice, outside src/test and src/androidTest: the camera (Camera, Camera* classes such as
-# CameraManager and CameraAccessException, camera2, CameraX) only in app's camera/GoAheadScanner.kt;
-# sensors (Sensor, SensorManager, SensorEvent...) only in app's DeviceEntropyScreen.kt; and the
+# KtDevice, outside the test source sets: the camera (Camera, Camera* classes such as CameraManager
+# and CameraAccessException, camera2, CameraX) only in app's camera/GoAheadScanner.kt; sensors
+# (Sensor, SensorManager, SensorEvent...) only in app's SensorMotionSource.kt (the Android end of
+# the motion-source seam, M5-20; the device-entropy screen is shared code in :screens); and the
 # system settings tables (Settings.Global, and Settings.Secure and Settings.System, which hold the
-# same device state) only in secure-ui's OfflineMonitor.kt. Manifest.permission.CAMERA is upper
-# case and passes.
+# same device state) only in secure-ui's OfflineMonitor.kt. Manifest.permission.CAMERA is upper case
+# and passes.
 kt_camera() {
   grep -n -a -E -e "${L}Camera([A-Z][A-Za-z0-9_]*)?$R" -e '[.]camera2' -e 'androidx[.]camera' -- "$1"
 }
@@ -1719,7 +1813,8 @@ kt_repositories() {
 # neither a star-imported LENIENT nor a lockfile moved elsewhere passes). A -M or -F of another
 # program in a workflow is a hit too: spell its long option. M5 expects no dependency change after
 # commit 6 (lead decision M5-13): one stops the work for the lead's re-plan, because regenerating the
-# lockfiles and metadata needs a reviewed, temporary exception to this rule.
+# lockfiles and metadata needs a reviewed, temporary exception to this rule, kt_bootstrap_exception
+# below (the Compose Multiplatform re-plan's second bootstrap, Q67).
 kt_bootstrap() {
   a=$(grep -n -a -i -E \
     -e 'kc[.]bootstrap' \
@@ -1747,6 +1842,114 @@ kt_bootstrap() {
   t=$(printf '%s\n%s\n' "$a" "$b" | sed '/^$/d' | sort -t : -k 1,1n -u)
   [ -n "$t" ] || return 1
   printf '%s\n' "$t"
+}
+
+# The reviewed, temporary exception to kt_bootstrap that lead decision M5-13 reserved, for the
+# Compose Multiplatform re-plan's second bootstrap (tasks/todo.md, M5 re-plan, "Dependency
+# bootstrap"; Q67), in Workflow mode only: build files, lockfiles and scripts/android-gradle.sh
+# never get one. Each line names a workflow, entropy-android.yml or entropy-ios.yml, each at most
+# once, and after one space the one line of that workflow (any indentation, then exactly this text)
+# whose kt_bootstrap hits pass, the first time it occurs: a second copy of the line, any other line
+# and any other workflow still hit. Any other shape of the list is exit 2
+# (kt_bootstrap_exception_check). Empty: no exception. Commit 8q (the re-plan's 8o) fills it with
+# the two workflows' lock-writing Gradle lines and a dated note naming Q67; commit 8r (its 8p)
+# empties it with the switch gone, and M5-13's stop holds again.
+kt_bootstrap_exception=
+
+kt_bootstrap_exception_check() {
+  printf '%s\n' "$kt_bootstrap_exception" | awk '
+    $0 == "" { next }
+    {
+      f = $0
+      sub(/ .*/, "", f)
+      rest = substr($0, length(f) + 2)
+      if ((f != "entropy-android.yml" && f != "entropy-ios.yml") || !index($0, " ") || rest == "" ||
+        rest ~ /^[[:space:]]/ || seen[f]++) bad = 1
+    }
+    END { exit bad }'
+}
+
+# kt_bootstrap_allowed WORKFLOW: kt_bootstrap's hits in WORKFLOW ($b, "<line>:<text>" lines) but
+# the first whose text, its indentation dropped, is the exception's line for that workflow. The line
+# goes through the environment, so no awk escape processing touches a backslash in it.
+kt_bootstrap_allowed() {
+  bx=$(printf '%s\n' "$kt_bootstrap_exception" | awk -v f="${1##*/}" 'index($0, f " ") == 1 { print substr($0, length(f) + 2) }')
+  if [ -z "$bx" ] || [ -z "$b" ]; then
+    printf '%s\n' "$b"
+    return
+  fi
+  printf '%s\n' "$b" | KC_BOOTSTRAP_LINE=$bx awk '
+    { t = $0; sub(/^[0-9]+:[ ]*/, "", t) }
+    !seen && t == ENVIRON["KC_BOOTSTRAP_LINE"] { seen = 1; next }
+    { print }'
+}
+
+# KtSdk (tasks/todo.md, M5 re-plan, "New file types and build lines"; lead decisions M5-22, M5-23
+# and M5-28), in build files but lockfiles (whose configuration names spell every target): the
+# Kotlin Multiplatform and Kotlin/Native DSL by allow-list. A line that names any word of
+# kt_kmp_ere (a kotlin { block; any Kotlin target or per-target source set; the cinterop
+# definition, header, include, compiler, linker and extra options; the binary kinds, framework
+# export and binary options; free compiler arguments; test runs and devices; osVersionMin; the
+# Android target's builders; CocoaPods, Swift packages, Swift export, XCFrameworks and Xcode
+# settings; the kotlin.native., kotlin.mpp., kotlin.apple. and konan. properties, KONAN_DATA_DIR
+# and konan.properties overrides), comments included, passes only when the line, its indentation
+# and trailing blanks dropped, is one of kt_kmp_lines exactly, or the simulator test run's device
+# line testRuns["test"].deviceId = "iPhone <letters, digits, spaces, dots, dashes, brackets>". So
+# no other target, no Rust library linked or packed into a klib by another route, no cinterop
+# definition, header or include path from outside the scan, and no toolchain switch enters the
+# build unseen; the cinterop block takes its .def from the default place, which KtCinterop checks.
+# The names of kt_kmp_refused_ere (CocoaPods, Swift packages, kotlin.native.home,
+# downloadFromMaven=false, xcodeCompatibility.nowarn, the device-test builder and KONAN_DATA_DIR)
+# hit whatever kt_kmp_lines says, and in scripts/android-gradle.sh and every workflow too
+# (kt_kmp_refused). The lines a probe settles come later, one each, in the commit that has the
+# probe fact (8q): the osVersionMin switch and any named kotlin.native., kotlin.mpp. or
+# kotlin.apple. property; until then each is a hit.
+kt_kmp_ere='[^A-Za-z0-9_](kotlin[[:space:]]*[{]|(ios|macos|watchos|tvos|linux|mingw|androidNative|wasm)[A-Z0-9][A-Za-z0-9_]*|(jvm|js|headers?|export|framework|executable|staticLib|sharedLib)[[:space:]]*[({])'
+kt_kmp_ere="$kt_kmp_ere|[^A-Za-z0-9_](cinterops?|definitionFile|defFile|compilerOpts|linkerOpts|includeDirs|extraOpts|packageName|binaries|isStatic|transitiveExport|embedBitcode|binaryOptions?|freeCompilerArgs|testRuns|deviceId|osVersionMin|minVersion|withHostTestBuilder|withDeviceTestBuilder|withJava|androidTarget|androidLibrary)[^A-Za-z0-9_]"
+kt_kmp_ere="$kt_kmp_ere|cocoapods|swiftPM|swiftExport|[Xx][Cc][Ff]ramework|xcodeCompatibility|KONAN_DATA_DIR|[Kk]onan[.]|override-konan|kotlin[.](native|mpp|apple)[.]"
+kt_kmp_refused_ere='cocoapods|swiftPMDependencies|kotlin[.]native[.]home|downloadFromMaven[[:space:]]*=[[:space:]]*false|xcodeCompatibility[.]nowarn|withDeviceTestBuilder|KONAN_DATA_DIR'
+kt_kmp_lines='kotlin {
+withHostTestBuilder {}
+withHostTestBuilder {
+iosArm64()
+iosSimulatorArm64()
+iosArm64 {
+iosSimulatorArm64 {
+iosMain.dependencies {
+iosTest.dependencies {
+compilations.getByName("main").cinterops.create("keepcrypt") {
+compilerOpts("-I$rootDir/../../ffi/capi/include")
+binaries.framework {
+isStatic = true
+binaries.getTest("DEBUG").linkerOpts("$rootDir/../../target/ios-test/aarch64-apple-ios/release/libkeepcrypt_capi.a")
+binaries.getTest("DEBUG").linkerOpts("$rootDir/../../target/ios-test/aarch64-apple-ios-sim/release/libkeepcrypt_capi.a")
+konan.data.dir=.konan'
+kt_kmp() {
+  [ -f "$1" ] && [ -r "$1" ] || return 2
+  t=$(KC_KMP_LINES=$kt_kmp_lines awk -v ere="$kt_kmp_ere" -v refused="$kt_kmp_refused_ere" '
+    BEGIN {
+      n = split(ENVIRON["KC_KMP_LINES"], a, "\n")
+      for (k = 1; k <= n; k++) if (a[k] != "") ok[a[k]] = 1
+      device = "testRuns[\"test\"].deviceId = \"iPhone "
+    }
+    {
+      l = " " $0 " "
+      if (l !~ ere && l !~ refused) next
+      t = $0
+      sub(/^[[:space:]]+/, "", t)
+      sub(/[[:space:]]+$/, "", t)
+      if (l !~ refused) {
+        if (t in ok) next
+        if (index(t, device) == 1 && length(t) > length(device) && substr(t, length(t)) == "\"" &&
+          substr(t, length(device) + 1, length(t) - length(device) - 1) ~ /^[A-Za-z0-9 .()-]+$/) next
+      }
+      print NR ":" $0
+    }' "$1") || return 2
+  [ -n "$t" ] || return 1
+  printf '%s\n' "$t"
+}
+kt_kmp_refused() {
+  grep -n -a -E -e "$kt_kmp_refused_ere" -- "$1"
 }
 
 # KtSdk, in build files but lockfiles and in scripts/android-gradle.sh (and Workflow, in the
@@ -1873,13 +2076,116 @@ kt_test_channel() {
   grep -n -a -E -e 'kc_ci_throwaway_passphrase' -- "$1"
 }
 
-# --- FFI (tasks/todo.md, M5 groups 3 and 7; Q53), .rs files under ffi/ -------------------------------
+# --- Kotlin Multiplatform and the iPhone target (tasks/todo.md, M5 re-plan, "Gate changes", "The
+# iOS C-ABI bridge"; Q64-Q72) -----------------------------------------------------------------
+
+# KtSourceSet (lead decisions M5-19 and M5-20): the KMP modules, the only ones whose src/ holds
+# Kotlin Multiplatform source sets, and the source sets allowed there (the C bridge's cinterop
+# definition sits in nativeInterop). Any other directory or file right under such a module's src/ is
+# refused: appleMain, nativeMain and the per-target sets (iosArm64Main, iosSimulatorArm64Main) would
+# compile iPhone code outside iosMain's rules, androidDeviceTest is a device test outside :app's
+# androidTest, and Android's main and test sets have no place in a KMP module. Every other module is
+# Android-only, and a KMP source-set name under its src/ (any name that ends in Main or Test but
+# androidTest, and nativeInterop) is refused, so no Kotlin escapes the iOS rules by its directory
+# name. :core-ffi still holds the placeholder Native.kt in src/main, the one transitional exception:
+# commit 8q makes :core-ffi KMP, moves Native into commonMain and deletes the core-ffi:main case
+# below.
+kt_kmp_modules='core-ffi screens'
+kt_kmp_sets='commonMain commonTest androidMain androidHostTest iosMain iosTest nativeInterop'
+kt_kmp_module() {
+  case " $kt_kmp_modules " in *" $1 "*) return 0 ;; esac
+  return 1
+}
+# kt_source_set_refused MODULE SET: exit 0 when SET (the first path segment under MODULE's src/) is
+# refused there.
+kt_source_set_refused() {
+  if kt_kmp_module "$1"; then
+    case " $kt_kmp_sets " in *" $2 "*) return 1 ;; esac
+    [ "$1:$2" = core-ffi:main ] && return 1
+    return 0
+  fi
+  case $2 in
+    androidTest) return 1 ;;
+    *Main | *Test | nativeInterop) return 0 ;;
+  esac
+  return 1
+}
+
+# KtIos (rules 1, 5, 8 and 9 in Kotlin/Native), in iosMain and iosTest right under any module's
+# src/, on top of every Kt rule: Apple's storage (NSUserDefaults, NSFileManager, NSFileHandle,
+# writeToFile, NSKeyedArchiver, SecItemAdd, CoreData, NSUbiquitousKeyValueStore, CloudKit); posix
+# files and logging (fopen, fwrite, a call of open, the printf family, syslog); other apps (openURL,
+# UIDocumentInteractionController); windows (UIAlertController, a UIWindow constructor, UIMenu);
+# input (UITextView, becomeFirstResponder); logging (NSLog, os_log, AccessibilityDebugLogger);
+# randomness and identifiers (platform.posix.rand, the words random and srand, NSUUID); and the
+# network's C names (nw_connection, nw_listener, nw_browser, nw_endpoint, nw_parameters, CFStream,
+# CFSocket, getaddrinfo, a call of socket). Other categories already refuse, everywhere,
+# UIActivityViewController and UIPasteboard (Clipboard), UNUserNotificationCenter (KtWindow's
+# Notification), UITextField (KtInput), drand48, arc4random and SecRandomCopyBytes (RNG), and
+# URLSession, NWConnection and CFNetwork (Network).
+kt_ios() {
+  grep -n -a -E \
+    -e 'NSUserDefaults|NSFileManager|NSFileHandle|writeToFile|NSKeyedArchiver|SecItemAdd|CoreData' \
+    -e 'NSUbiquitousKeyValueStore|CloudKit' \
+    -e "fopen|fwrite|printf|syslog|${L}open[[:space:]]*[(]" \
+    -e 'openURL|UIDocumentInteractionController' \
+    -e "UIAlertController|${L}UIWindow[[:space:]]*[(]|UIMenu|UITextView|becomeFirstResponder" \
+    -e "NSLog|${L}os_log|AccessibilityDebugLogger" \
+    -e "platform[.]posix[.]rand|${L}(random|srand)$R|NSUUID" \
+    -e "nw_(connection|listener|browser|endpoint|parameters)|CFStream|CFSocket|getaddrinfo" \
+    -e "${L}socket[[:space:]]*[(]" \
+    -- "$1"
+}
+
+# KtIos, in every file under mobile/android, any source set: no callback from C into Kotlin
+# (staticCFunction; kc_call makes none), no process-wide exception hook in M5
+# (setUnhandledExceptionHook: M6 brings it with its wipe), no network path monitor (nw_path_*: the
+# offline file is M6's); and pinned memory (usePinned, addressOf) only in :core-ffi's iosMain
+# Native.ios.kt, the actual over kc_call (kt_pinned).
+kt_native() {
+  grep -n -a -E -e 'staticCFunction|setUnhandledExceptionHook|nw_path_' -- "$1"
+}
+kt_pinned() {
+  grep -n -a -E -e "${L}(usePinned|addressOf)$R" -- "$1"
+}
+
+# KtCinterop (the bridge's cinterop rule): the one definition file,
+# mobile/android/core-ffi/src/nativeInterop/cinterop/keepcrypt.def, holds the lines
+# headers = keepcrypt.h, headerFilter = keepcrypt.h and package = com.keepcrypt.native, each once,
+# and no other line, a blank one included: no --- section of C code, no second header, no
+# staticLibraries, libraryPaths, linkerOpts or compilerOpts. So no Rust library is packed into a
+# klib or the framework, and the header's include path comes from the Gradle block alone
+# (kt_kmp_lines). A missing line is reported at line 1. Any other .def file under mobile/android is
+# a hit of its own (in scan()).
+kt_def() {
+  [ -f "$1" ] && [ -r "$1" ] || return 2
+  awk '
+    BEGIN {
+      want[1] = "headers = keepcrypt.h"
+      want[2] = "headerFilter = keepcrypt.h"
+      want[3] = "package = com.keepcrypt.native"
+    }
+    {
+      for (k = 1; k <= 3; k++) if ($0 == want[k] && !seen[k]) { seen[k] = 1; next }
+      print NR ":" $0
+      found = 1
+    }
+    END {
+      for (k = 1; k <= 3; k++) if (!seen[k]) { print "1:missing the line " want[k]; found = 1 }
+      exit !found
+    }' "$1"
+}
+
+# --- FFI (tasks/todo.md, M5 groups 3 and 7; Q53; Q66 and the re-plan's "The iOS C-ABI bridge"),
+# .rs files under ffi/ ---------------------------------------------------------------------------
 
 # One catch, one place: catch_unwind outside every comment and literal (rust_code_match, so a doc
 # line, a string and ffi/clippy.toml's ban entry are no site; a use line is, so the one site is a
-# path call such as std::panic::catch_unwind(...)), anywhere under ffi/ but ffi/jni/src/lib.rs,
-# and each one after the first in that file. Once that file declares an export (ffi_export_ere),
-# its one site is required (checked after the scan).
+# path call such as std::panic::catch_unwind(...)), anywhere under ffi/ but ffi/guard/src/lib.rs
+# (keepcrypt-guard's guarded(), which both boundaries call), and each one after the first in that
+# file. Once a boundary file, ffi/jni/src/lib.rs or ffi/capi/src/lib.rs, declares an export
+# (ffi_export_ere), the one site in ffi/guard/src/lib.rs is required (checked after the scan, and
+# reported at the boundary file's line 1).
 ffi_catch_unwind() {
   rust_code_match '[^A-Za-z0-9_]catch_unwind[^A-Za-z0-9_]' "$1"
 }
@@ -1891,20 +2197,40 @@ ffi_catch_unwind_again() {
   printf '%s\n' "$t"
 }
 
-# Every export sits beside the one catch: outside every comment and literal, no_mangle and
-# export_name (bare or inside unsafe(...)) and an extern fn, with an ABI string ("system", "C",
-# "C-unwind", any: rust_code_match leaves it as "") or without one (which is "C"), are hits under
-# ffi/ anywhere but ffi/jni/src/lib.rs. An extern "C" and an extern "system" function share an
-# ABI on Android, and RegisterNatives can bind a native method to a function that is not
-# exported by name, so each form is one: in another file it would run with no catch_unwind.
+# Every export sits in a boundary crate's lib.rs, over guarded(): outside every comment and
+# literal, no_mangle and export_name (bare or inside unsafe(...)) and an extern fn, with an ABI
+# string ("system", "C", "C-unwind", any: rust_code_match leaves it as "") or without one (which is
+# "C"), are hits under ffi/ anywhere but ffi/jni/src/lib.rs and ffi/capi/src/lib.rs. An extern "C"
+# and an extern "system" function share an ABI on Android and iOS, and RegisterNatives can bind a
+# native method to a function that is not exported by name, so each form is one: in another file
+# it would run outside the reviewed boundary.
 ffi_export_ere='[^A-Za-z0-9_](no_mangle|export_name|extern[[:space:]]*("")?[[:space:]]*fn)[^A-Za-z0-9_]'
 ffi_export() {
   rust_code_match "$ffi_export_ere" "$1"
 }
 
+# JNI exports only in keepcrypt-jni and C exports only in keepcrypt-capi, so neither platform's
+# library carries the other's surface. The JNI names (a Java_ function, JNI_OnLoad, JNIEnv, the
+# jni_sys crate), outside every comment and literal, are hits under ffi/ anywhere but ffi/jni/
+# (ffi_jni_names). In ffi/jni/src/lib.rs every extern fn names JNI's "system" ABI: an extern "C" fn
+# there, or an extern fn with no ABI string, is a hit (ffi_jni_abi: rust_code_match finds the code,
+# and the line as written names the ABI, so a comment on that line naming another extern fn hits
+# too).
+ffi_jni_names() {
+  rust_code_match '[^A-Za-z0-9_](Java_[A-Za-z0-9_]*|JNI_OnLoad|JNIEnv|jni_sys)[^A-Za-z0-9_]' "$1"
+}
+ffi_jni_abi() {
+  t=$(rust_code_match '[^A-Za-z0-9_]extern[[:space:]]*("")?[[:space:]]*fn[^A-Za-z0-9_]' "$1")
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  kept_hits 'extern[[:space:]]*("[^"]*")?[[:space:]]*fn([^A-Za-z0-9_]|$)' \
+    -e 's/extern[[:space:]]*"system"[[:space:]]*fn([^A-Za-z0-9_]|$)/ /g'
+}
+
 # The other way to turn a panic into a value, a joined thread, cannot be banned in the shared
 # clippy.toml (core/tests/panic_wipe.rs joins one), so the identifiers thread and JoinHandle are
-# refused anywhere under ffi/, comments included (threads and thread_local are other words).
+# refused anywhere under ffi/ (the four crates, ffi/guard, ffi/jni and ffi/capi included), comments
+# included (threads and thread_local are other words). M5-8 narrows it to the crates' src/ in
+# Stage C, before commit 10.
 ffi_threads() {
   grep -n -a -E -e "${L}(thread|JoinHandle)$R" -- "$1"
 }
@@ -1985,7 +2311,11 @@ EOF
       core/src/source.rs | core/src/source/*) ;;
       *.rs) report Rule1 getrandom_use "$rel" ;;
     esac
-    case $rel in core/src/*.rs | ffi/src/*.rs | pi/app/src/*.rs) report Rule1 hashing "$rel" ;; esac
+    case $rel in
+      core/src/*.rs | ffi/src/*.rs | ffi/guard/src/*.rs | ffi/jni/src/*.rs | ffi/capi/src/*.rs | pi/app/src/*.rs)
+        report Rule1 hashing "$rel"
+        ;;
+    esac
     # Shell: the games' code, in either module layout; game_random outside core's allowed files and
     # the games; Session::new under pi/app/src, where only its first in app.rs passes.
     case $rel in pi/app/src/games.rs | pi/app/src/games/*) report Shell games_names "$rel" ;; esac
@@ -2033,21 +2363,58 @@ EOF
         esac
         ;;
     esac
-    # Kotlin and Android: every file under mobile/android, by scope. src/test and src/androidTest
-    # right under a module's directory (exactly those source sets: src/withTestRegistry/ ships)
-    # skip KtIntent, KtStorage, KtDevice, KtFailOpen's catch list and KtInput's Activity rule;
-    # :capture-control skips only the FLAG_SECURE and Activity rules; every other file, build
-    # files included, gets every rule. The module is the one path segment after mobile/android/,
-    # matched as a literal: a pattern's * would also match /, so .../src/main/kotlin/x/src/test/
-    # would pass as a test source set although Gradle compiles it into the app.
+    # Kotlin and Android: every file under mobile/android, by scope. The test source sets right
+    # under a module's directory, src/test, src/androidTest, src/commonTest, src/androidHostTest and
+    # src/iosTest (exactly those: src/withTestRegistry/ ships), skip KtIntent, KtStorage, KtDevice,
+    # KtFailOpen's catch list and KtInput's Activity rule; :capture-control skips only the
+    # FLAG_SECURE and Activity rules; every other file, build files included, gets every rule. The
+    # module is the one path segment after mobile/android/, matched as a literal: a pattern's *
+    # would also match /, so .../src/main/kotlin/x/src/test/ or .../src/commonMain/kotlin/x/src/
+    # commonTest/ would pass as a test source set although Gradle compiles it into the app.
     case $rel in
       mobile/android/*)
         ktmod=${rel#mobile/android/}
         ktmod=${ktmod%%/*}
         case $rel in
-          "mobile/android/$ktmod/src/test/"* | "mobile/android/$ktmod/src/androidTest/"*) ktscope=test ;;
+          "mobile/android/$ktmod/src/test/"* | "mobile/android/$ktmod/src/androidTest/"* | \
+            "mobile/android/$ktmod/src/commonTest/"* | "mobile/android/$ktmod/src/androidHostTest/"* | \
+            "mobile/android/$ktmod/src/iosTest/"*) ktscope=test ;;
           mobile/android/capture-control/*) ktscope=capture ;;
           *) ktscope=main ;;
+        esac
+        # KtSourceSet: the source sets a module may hold (kt_source_set_refused), a path rule
+        # reported without a line.
+        case $rel in
+          "mobile/android/$ktmod/src/"*)
+            ktset=${rel#"mobile/android/$ktmod/src/"}
+            ktset=${ktset%%/*}
+            if kt_source_set_refused "$ktmod" "$ktset"; then
+              if kt_kmp_module "$ktmod"; then
+                echo "KtSourceSet: $rel: src/$ktset in a KMP module (allowed: $kt_kmp_sets)"
+              else
+                echo "KtSourceSet: $rel: the KMP source set src/$ktset in an Android-only module"
+              fi
+              hits=$((hits + 1))
+            fi
+            ;;
+        esac
+        # KtIos: the iOS names in iosMain and iosTest; the C-boundary and M6-only names everywhere,
+        # pinned memory only in :core-ffi's iosMain Native.ios.kt.
+        case $rel in
+          "mobile/android/$ktmod/src/iosMain/"* | "mobile/android/$ktmod/src/iosTest/"*) report KtIos kt_ios "$rel" ;;
+        esac
+        report KtIos kt_native "$rel"
+        case $rel in
+          mobile/android/core-ffi/src/iosMain/*/Native.ios.kt) ;;
+          *) report KtIos kt_pinned "$rel" ;;
+        esac
+        # KtCinterop: the one cinterop definition, exact; no other .def file.
+        case $rel in
+          mobile/android/core-ffi/src/nativeInterop/cinterop/keepcrypt.def) report KtCinterop kt_def "$rel" ;;
+          *.[Dd][Ee][Ff])
+            echo "KtCinterop: $rel: a cinterop definition other than mobile/android/core-ffi/src/nativeInterop/cinterop/keepcrypt.def"
+            hits=$((hits + 1))
+            ;;
         esac
         # The verification metadata lists the build's own artifacts (the Android Gradle plugin's
         # slf4j among them), never code; the shipped classpath is the lockfiles' and the expected list's.
@@ -2068,7 +2435,7 @@ EOF
         fi
         if [ "$ktscope" != test ]; then
           case $rel in
-            mobile/android/app/src/main/*/CeremonyViewModel.kt) report KtFailOpen kt_catch_kchalt "$rel" ;;
+            mobile/android/screens/src/commonMain/*/CeremonyModel.kt) report KtFailOpen kt_catch_kchalt "$rel" ;;
             mobile/android/app/src/main/*/files/Documents.kt) report KtFailOpen kt_catch_ioexception "$rel" ;;
             mobile/android/app/src/main/*/camera/GoAheadScanner.kt) report KtFailOpen kt_catch_camera "$rel" ;;
             *) report KtFailOpen kt_catch "$rel" ;;
@@ -2080,7 +2447,7 @@ EOF
           esac
           case $rel in
             mobile/android/app/src/main/*/files/Documents.kt) ;;
-            mobile/android/app/src/main/*/GoOfflineScreen.kt) report KtIntent kt_intent_airplane "$rel" ;;
+            mobile/android/app/src/main/*/AirplaneSettingsIntent.kt) report KtIntent kt_intent_airplane "$rel" ;;
             *) report KtIntent ktintent "$rel" ;;
           esac
           case $rel in
@@ -2088,7 +2455,7 @@ EOF
             *) report KtDevice kt_camera "$rel" ;;
           esac
           case $rel in
-            mobile/android/app/src/main/*/DeviceEntropyScreen.kt) ;;
+            mobile/android/app/src/main/*/SensorMotionSource.kt) ;;
             *) report KtDevice kt_sensor "$rel" ;;
           esac
           case $rel in
@@ -2100,8 +2467,9 @@ EOF
           *.gradle.kts | *.gradle | */gradle.properties | *.versions.toml | *.lockfile)
             report KtSdk kt_sdk "$rel"
             report KtSdk kt_source_sets "$rel"
-            # Not in lockfiles, whose generated header names Gradle's own --write-locks.
-            case $rel in *.lockfile) ;; *) report KtSdk kt_bootstrap "$rel" ;; esac
+            # Not in lockfiles, whose generated header names Gradle's own --write-locks and whose
+            # configuration names spell every Kotlin target.
+            case $rel in *.lockfile) ;; *) report KtSdk kt_bootstrap "$rel"; report KtSdk kt_kmp "$rel" ;; esac
             case $rel in
               *.lockfile) ;;
               mobile/android/settings.gradle.kts) report KtSdk kt_canary_settings "$rel" ;;
@@ -2123,19 +2491,38 @@ EOF
         esac
         ;;
     esac
-    case $rel in scripts/android-gradle.sh) report KtSdk kt_bootstrap "$rel"; report KtSdk kt_canary_other "$rel" ;; esac
+    case $rel in
+      scripts/android-gradle.sh)
+        report KtSdk kt_bootstrap "$rel"
+        report KtSdk kt_canary_other "$rel"
+        report KtSdk kt_kmp_refused "$rel"
+        ;;
+    esac
+    # KtRoot (lead decisions M5-19 and M5-25): Kotlin lives under mobile/android, the one Gradle
+    # root, and nowhere else under mobile/.
+    case $rel in
+      mobile/android/*) ;;
+      mobile/*.[Kk][Tt] | mobile/*.[Kk][Tt][Ss])
+        echo "KtRoot: $rel: Kotlin outside mobile/android/, the one Gradle root (lead decision M5-19)"
+        hits=$((hits + 1))
+        ;;
+    esac
     case $rel in
       mobile/android/app/src/androidTest/* | scripts/android-age-check.py) ;;
       *) report KtTestChannel kt_test_channel "$rel" ;;
     esac
-    # FFI: one catch_unwind, in ffi/jni/src/lib.rs, beside every export; one Session::new, in
+    # FFI: one catch_unwind, in ffi/guard/src/lib.rs; exports only in the two boundary lib.rs
+    # files, JNI names only under ffi/jni/ and only the JNI ABI in its lib.rs; one Session::new, in
     # ffi/src/ceremony.rs (comments count, as under pi/app/src); no thread or JoinHandle.
     case $rel in
       ffi/*.rs)
         case $rel in
-          ffi/jni/src/lib.rs) report FFI ffi_catch_unwind_again "$rel" ;;
+          ffi/guard/src/lib.rs) report FFI ffi_catch_unwind_again "$rel"; report FFI ffi_export "$rel" ;;
+          ffi/jni/src/lib.rs | ffi/capi/src/lib.rs) report FFI ffi_catch_unwind "$rel" ;;
           *) report FFI ffi_catch_unwind "$rel"; report FFI ffi_export "$rel" ;;
         esac
+        case $rel in ffi/jni/src/lib.rs) report FFI ffi_jni_abi "$rel" ;; esac
+        case $rel in ffi/jni/*) ;; *) report FFI ffi_jni_names "$rel" ;; esac
         case $rel in
           ffi/src/ceremony.rs) report FFI session_new_again "$rel" ;;
           *) report FFI session_new "$rel" ;;
@@ -2159,19 +2546,21 @@ EOF
     echo 'Shell: core/examples/release_probe.rs:1: missing a call to game_random outside a comment'
     hits=$((hits + 1))
   fi
-  # FFI: the one Session::new is required once ffi/src/ceremony.rs exists, and the one catch_unwind
-  # once ffi/jni/src/lib.rs exports a function (an export without the catch aborts on a panic
-  # before any destructor runs, so the session would not be wiped). An unreadable file was
-  # already exit 2 in the loop.
+  # FFI: the one Session::new is required once ffi/src/ceremony.rs exists, and the one catch_unwind,
+  # in ffi/guard/src/lib.rs, once ffi/jni/src/lib.rs or ffi/capi/src/lib.rs exports a function (an
+  # export without the catch aborts on a panic before any destructor runs, so the session would not
+  # be wiped). An unreadable file was already exit 2 in the loop.
   if [ -f ffi/src/ceremony.rs ] && ! session_new ffi/src/ceremony.rs >/dev/null; then
     echo 'FFI: ffi/src/ceremony.rs:1: missing the one Session::new under ffi/'
     hits=$((hits + 1))
   fi
-  if [ -f ffi/jni/src/lib.rs ] && ffi_export ffi/jni/src/lib.rs >/dev/null &&
-    ! ffi_catch_unwind ffi/jni/src/lib.rs >/dev/null; then
-    echo 'FFI: ffi/jni/src/lib.rs:1: missing the one catch_unwind call site, which every JNI export needs'
-    hits=$((hits + 1))
-  fi
+  for f in ffi/jni/src/lib.rs ffi/capi/src/lib.rs; do
+    if [ -f "$f" ] && ffi_export "$f" >/dev/null &&
+      ! { [ -f ffi/guard/src/lib.rs ] && ffi_catch_unwind ffi/guard/src/lib.rs >/dev/null; }; then
+      echo "FFI: $f:1: missing the one catch_unwind call site in ffi/guard/src/lib.rs, which every export needs"
+      hits=$((hits + 1))
+    fi
+  done
   # KtSdk: once mobile/android exists, its root build file locks every configuration strictly
   # (group 4), each of the two lines whole on a line of its own, so a commented-out one is not
   # one. Without them Gradle resolves with no lock state, and the classpath allow-list, which reads
@@ -2183,8 +2572,9 @@ EOF
     echo "KtSdk: $kroot:1: missing the lines lockAllConfigurations() and lockMode.set(LockMode.STRICT)"
     hits=$((hits + 1))
   fi
-  # Build: no tracked file under mobile/**/build/ or mobile/**/.gradle/, read from git's index
-  # (see the header). Outside a work tree nothing is tracked; without git nothing can be listed.
+  # Build: no tracked file under mobile/**/build/, mobile/**/.gradle/ or mobile/**/.konan/, read
+  # from git's index (see the header). Outside a work tree nothing is tracked; without git nothing
+  # can be listed.
   command -v git >/dev/null 2>&1 || {
     echo 'banned-api-check: git is not on PATH, so the tracked files under mobile/ cannot be listed' >&2
     exit 2
@@ -2196,28 +2586,42 @@ EOF
     # pipeline into tr would hide.
     tab=$(printf '\t')
     index=$(mktemp "${TMPDIR:-/tmp}/banned-api-index.XXXXXX") || exit 2
-    trap 'rm -f "$index"' EXIT
+    blob=
+    trap 'rm -f "$index" ${blob:+"$blob"}' EXIT
     trap 'exit 2' HUP INT TERM
+    blob=$(mktemp "${TMPDIR:-/tmp}/banned-api-blob.XXXXXX") || exit 2
     git ls-files -s -z -- mobile >"$index" || exit 2
     tracked=$(tr '\0' '\n' <"$index") || exit 2
-    built=$(printf '%s\n' "$tracked" | grep -E "^160000 |${tab}mobile/(.*/)?(build|[.]gradle)/")
+    built=$(printf '%s\n' "$tracked" | grep -E "^160000 |${tab}mobile/(.*/)?(build|[.]gradle|[.]konan)/")
     [ $? -le 1 ] || exit 2
     while IFS= read -r e; do
       [ -n "$e" ] || continue
       f=${e#*"$tab"}
       case $e in
         160000\ *) echo "Build: $f: a submodule under mobile/ (git ls-files cannot list its files, so this rule cannot clear them)" ;;
-        *) echo "Build: $f: a tracked file under mobile/**/build/ or mobile/**/.gradle/ (build output never enters git)" ;;
+        *) echo "Build: $f: a tracked file under mobile/**/build/, mobile/**/.gradle/ or mobile/**/.konan/ (build output and toolchains never enter git)" ;;
       esac
       hits=$((hits + 1))
     done <<EOF
 $built
 EOF
+    # KtRoot (lead decision M5-25): mobile/ios/ stays empty in M5, so any tracked file under it is a
+    # hit, until M6's first gate commit brings the Swift and Xcode rules.
+    ios=$(printf '%s\n' "$tracked" | grep -E "${tab}mobile/ios/")
+    [ $? -le 1 ] || exit 2
+    while IFS= read -r e; do
+      [ -n "$e" ] || continue
+      echo "KtRoot: ${e#*"$tab"}: a tracked file under mobile/ios/, which stays empty in M5 (lead decision M5-25)"
+      hits=$((hits + 1))
+    done <<EOF
+$ios
+EOF
     # KtBinary: a tracked file (or link; not a submodule, the Build rule's) under mobile/ with a
-    # binary extension, in any letter case: the plan's nine, and every other code or archive
-    # extension of $binext (whose files the scan never reads). The scan list skips such files by
+    # binary extension, in any letter case: the plan's nine, every other code or archive extension
+    # of $binext (whose files the scan never reads) and a Kotlin/Native klib, or under a directory
+    # named *.framework or *.xcframework (an iPhone bundle). The scan list skips such files by
     # extension, so they are read from the index too.
-    binaries=$(printf '%s\n' "$tracked" | grep -i -E "^1[02][0-7]{4} [^$tab]*${tab}mobile/.*[.](jar|aar|so|dex|class|apk|aab|jks|keystore|zip|gz|xz|bz2|zst|tar|ipa|dylib|a|rlib|o|car)\$")
+    binaries=$(printf '%s\n' "$tracked" | grep -i -E "^1[02][0-7]{4} [^$tab]*${tab}mobile/(.*[.](jar|aar|so|dex|class|apk|aab|jks|keystore|zip|gz|xz|bz2|zst|tar|ipa|dylib|a|rlib|o|car|klib)\$|(.*/)?[^/]*[.](framework|xcframework)/)")
     [ $? -le 1 ] || exit 2
     while IFS= read -r e; do
       [ -n "$e" ] || continue
@@ -2225,6 +2629,27 @@ EOF
       hits=$((hits + 1))
     done <<EOF
 $binaries
+EOF
+    # KtBinary: a Mach-O file, thin or fat, either byte order (an iPhone library, executable or
+    # object), whatever its name, by its first four bytes. The bytes come from the index's blob,
+    # what a commit holds, for every tracked regular file under mobile/ (links and submodules are
+    # paths, not files). A fat file's cafebabe is also a Java class file's magic, refused either
+    # way.
+    while IFS= read -r e; do
+      case $e in 100644\ * | 100755\ *) ;; *) continue ;; esac
+      obj=${e#* }
+      obj=${obj%% *}
+      git cat-file blob "$obj" >"$blob" || exit 2
+      magic=$(od -A n -t x1 -N 4 "$blob") || exit 2
+      magic=$(printf '%s' "$magic" | tr -d ' \t\n')
+      case $magic in
+        feedface | feedfacf | cefaedfe | cffaedfe | cafebabe | bebafeca | cafebabf | bfbafeca)
+          echo "KtBinary: ${e#*"$tab"}: a Mach-O file under mobile/ (magic $magic), whatever its name"
+          hits=$((hits + 1))
+          ;;
+      esac
+    done <<EOF
+$tracked
 EOF
   fi
   if [ "$hits" -ne 0 ]; then
@@ -2257,11 +2682,12 @@ fresh() {
 # WANT=error needs exit 2 and output containing FILE (if given, the expected message), any other
 # WANT needs exit 1 and exactly one hit "<WANT>: <FILE>:<line>: <text>", where <text> is line
 # <line> of FILE as it stands (the messages for a missing line or call, "missing ...", are the
-# exception), or a whole-file hit "<WANT>: <FILE>: <detail>" with no line (the Build rule).
+# exception), or a whole-file hit "<WANT>: <FILE>: <detail>" with no line (the Build, KtSourceSet
+# and KtRoot rules). The gate run is $gate, this script unless a case sets another copy.
 expect() {
-  out=$(sh "$self" "$2" 2>&1)
+  out=$(sh "${gate:-$self}" "$2" 2>&1)
   rc=$?
-  cats='^(RNG|Network|Clipboard|Rule1|FailOpen|Include|Shell|Device|Build|KtLog|KtFailOpen|KtWindow|KtInput|KtStorage|KtIntent|KtDevice|KtSdk|KtBinary|KtManifest|KtTestChannel|FFI): '
+  cats='^(RNG|Network|Clipboard|Rule1|FailOpen|Include|Shell|Device|Build|KtLog|KtFailOpen|KtWindow|KtInput|KtStorage|KtIntent|KtDevice|KtSdk|KtBinary|KtManifest|KtTestChannel|KtSourceSet|KtIos|KtRoot|KtCinterop|FFI): '
   hit=$(printf '%s\n' "$out" | grep -E "$cats")
   count=$(printf '%s\n' "$out" | grep -c -E "$cats")
   ok=no
@@ -2301,8 +2727,7 @@ selftest() {
   pass=0
   fail=0
   seen=
-  kseen=
-  kcapture=
+  gate=
   for fx in "$here/testdata/banned-api"/*/; do
     [ -d "$fx" ] || continue
     fx=${fx%/}
@@ -2326,6 +2751,10 @@ selftest() {
       ktsdk-*) want=KtSdk ;;
       ktmanifest-*) want=KtManifest ;;
       kttestchannel-*) want=KtTestChannel ;;
+      ktsourceset-*) want=KtSourceSet ;;
+      ktios-*) want=KtIos ;;
+      ktroot-*) want=KtRoot ;;
+      ktcinterop-*) want=KtCinterop ;;
       ffi-*) want=FFI ;;
       clean-*) want=clean ;;
       *) fail=$((fail + 1)); printf 'FAIL %s: unknown prefix\n' "$name"; continue ;;
@@ -2355,49 +2784,64 @@ selftest() {
       mkdir -p "$d/pi/sim/src" && cp "$fx/$file" "$d/pi/sim/src/" || exit 2
       expect "$name in pi/sim/" "$d" clean
     fi
-    # The Kotlin scopes: a hit fixture under a module's src/main/ whose rule src/test and
-    # src/androidTest skip (KtIntent, KtStorage, KtDevice, the catch list, the Activity rule), or
-    # that :capture-control skips (the FLAG_SECURE and Activity rules), is copied there too, each
-    # under its own directory, and the three trees are scanned once each after this loop.
+    # The Kotlin scopes: a hit fixture in a shipping source set (src/main of a module, or
+    # commonMain, androidMain or iosMain) whose rule the test source sets skip (KtIntent, KtStorage,
+    # KtDevice, the catch list, the Activity rule) is copied into its module's test source sets
+    # (src/test and src/androidTest of an Android-only module, commonTest, androidHostTest and
+    # iosTest of a KMP module) and, from an Android-only module, into :screens' three as well; one
+    # that :capture-control skips (the FLAG_SECURE and Activity rules) is copied there. Each copy
+    # sits under its own directory, and the six trees are scanned once each after this loop. iosTest
+    # takes no copy whose text the iOS names refuse (kt_ios): those names hit there by design.
     case $file in
-      mobile/android/*/src/main/*)
+      mobile/android/*/src/*)
         kmod=${file#mobile/android/}
-        kmod=${kmod%%/src/main/*}
-        krest=${file#mobile/android/*/src/main/}
-        case $want:$name in
-          KtIntent:* | KtStorage:* | KtDevice:* | KtFailOpen:ktfailopen-catch-* | KtInput:ktinput-activity-*)
-            for kset in test androidTest; do
-              kto=$tmp/scope-$kset/mobile/android/$kmod/src/$kset/$name/$krest
+        kmod=${kmod%%/*}
+        ksrc=${file#mobile/android/"$kmod"/src/}
+        kset=${ksrc%%/*}
+        krest=${ksrc#*/}
+        case $kset in main | commonMain | androidMain | iosMain) ;; *) kset= ;; esac
+        if [ -n "$kset" ]; then
+          case $want:$name in
+            KtIntent:* | KtStorage:* | KtDevice:* | KtFailOpen:ktfailopen-catch-* | KtInput:ktinput-activity-*)
+              if kt_kmp_module "$kmod"; then
+                ktests="$kmod:commonTest $kmod:androidHostTest $kmod:iosTest"
+              else
+                ktests="$kmod:test $kmod:androidTest screens:commonTest screens:androidHostTest screens:iosTest"
+              fi
+              for kt in $ktests; do
+                if [ "${kt#*:}" = iosTest ] && kt_ios "$fx/$file" >/dev/null; then
+                  continue
+                fi
+                kto=$tmp/scope-${kt#*:}/mobile/android/${kt%%:*}/src/${kt#*:}/$name/$krest
+                mkdir -p "${kto%/*}" && cp "$fx/$file" "$kto" || exit 2
+              done
+              ;;
+          esac
+          case $want:$name in
+            KtWindow:ktwindow-secure-* | KtInput:ktinput-activity-*)
+              kto=$tmp/scope-capture/mobile/android/capture-control/src/main/$name/$krest
               mkdir -p "${kto%/*}" && cp "$fx/$file" "$kto" || exit 2
-            done
-            kseen="$kseen $name"
-            ;;
-        esac
-        case $want:$name in
-          KtWindow:ktwindow-secure-* | KtInput:ktinput-activity-*)
-            kto=$tmp/scope-capture/mobile/android/capture-control/src/main/$name/$krest
-            mkdir -p "${kto%/*}" && cp "$fx/$file" "$kto" || exit 2
-            kcapture="$kcapture $name"
-            ;;
-        esac
+              ;;
+          esac
+        fi
         ;;
     esac
   done
   # The copies above, one tree per scope: each must be clean, so no copied hit fires there. Each
   # tree must hold copies, or a rename of the fixtures would leave the exemptions untested.
-  for kset in test androidTest capture; do
-    case $kset in
-      capture) klist=$kcapture ;;
-      *) klist=$kseen ;;
-    esac
-    if [ -z "$klist" ]; then
+  for kset in test androidTest commonTest androidHostTest iosTest capture; do
+    kn=0
+    if [ -d "$tmp/scope-$kset" ]; then
+      kn=$(find "$tmp/scope-$kset" -type f | wc -l | tr -d ' ') || exit 2
+    fi
+    if [ "$kn" -eq 0 ]; then
       fail=$((fail + 1))
       echo "FAIL no fixture copied to the $kset scope"
       continue
     fi
     fresh
     cp -R "$tmp/scope-$kset/." "$d/" || exit 2
-    expect "clean-kt-$kset-scope-copies ($(printf '%s\n' $klist | wc -l | tr -d ' ') fixtures)" "$d" clean
+    expect "clean-kt-$kset-scope-copies ($kn fixtures)" "$d" clean
   done
   # The device test-file exception needs the test file and its parent, so these cases are built
   # here (a fixture holds one file): fs::write in device/usb/tests.rs passes only when usb.rs (or
@@ -2501,7 +2945,8 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   rm -r "$d/mobile" || exit 2
   expect 'clean-no-mobile-android' "$d" clean
   # The Build rule reads git's index, so its cases are scratch repositories made here (a fixture
-  # directory is none): a tracked file under mobile/**/build/ or mobile/**/.gradle/ is a hit (git
+  # directory is none): a tracked file under mobile/**/build/, mobile/**/.gradle/ or
+  # mobile/**/.konan/ (Kotlin/Native's data directory, M5-28) is a hit (git
   # add -f, so a global excludes file cannot keep it out), also under a name that plain ls-files
   # would print quoted (a non-ASCII byte, written in octal to keep this file ASCII, and a double
   # quote); the same file untracked is not; a submodule (a gitlink entry written with
@@ -2511,8 +2956,9 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   # outside a work tree. The presence check below needs Build recorded here, as no fixture
   # directory does it.
   for case in 'app-build:mobile/android/app/build/x.kt' 'dot-gradle:mobile/android/.gradle/config.properties' \
-    'mobile-build:mobile/build/x.kt' "non-ascii-name:mobile/android/app/build/$(printf '\303\251').kt" \
-    'double-quote-name:mobile/android/app/build/a"b.kt'; do
+    'mobile-build:mobile/build/x.txt' "non-ascii-name:mobile/android/app/build/$(printf '\303\251').kt" \
+    'double-quote-name:mobile/android/app/build/a"b.kt' \
+    'dot-konan:mobile/android/.konan/dependencies/llvm-21-aarch64-macos-essentials-97/bin/clang'; do
     x=${case#*:}
     fresh
     git init -q "$d" || exit 2
@@ -2542,18 +2988,23 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   git -C "$d" add -f -- mobile || exit 2
   expect 'clean-build-gradle-files-tracked' "$d" clean
   # KtBinary reads the index too, so its cases are scratch repositories as well: a tracked file
-  # under mobile/ with each code or archive extension (one in upper case, one under mobile/ios/,
-  # one a symlink) is a hit; the same file untracked, a tracked image and font, and a tracked jar
-  # outside mobile/ (which the scan skips by extension) are not.
+  # under mobile/ with each code or archive extension (one in upper case, some outside
+  # mobile/android, one a symlink) or under a *.framework or *.xcframework directory is a hit, and
+  # so is a Mach-O file by its magic whatever its name (each of the four kinds below once, one of
+  # them named as an image); the same file untracked, a tracked image (a real PNG's magic among
+  # them) and font, and a tracked jar outside mobile/ (which the scan skips by extension) are not.
   for case in 'jar:mobile/android/app/libs/x.jar' 'aar:mobile/android/app/libs/x.aar' \
     'so:mobile/android/app/src/main/jniLibs/x86_64/libx.so' 'dex:mobile/android/app/classes.dex' \
     'class:mobile/android/core-ffi/Native.class' 'apk:mobile/android/app/app-shipping-release.apk' \
     'aab:mobile/android/app/app.aab' 'jks:mobile/android/release.jks' 'keystore:mobile/android/debug.keystore' \
-    'upper-case-jar:mobile/android/app/libs/X.JAR' 'ios-so:mobile/ios/libx.so' \
+    'upper-case-jar:mobile/android/app/libs/X.JAR' 'shared-so:mobile/shared/libx.so' \
     'zip:mobile/android/app/libs/evil.zip' 'gz:mobile/android/app/libs/x.tar.gz' 'xz:mobile/android/app/libs/x.xz' \
     'bz2:mobile/android/app/libs/x.bz2' 'zst:mobile/android/app/libs/x.zst' 'tar:mobile/android/app/libs/x.tar' \
-    'ipa:mobile/ios/KeepCrypt.ipa' 'dylib:mobile/ios/libkc.dylib' 'a:mobile/android/app/libs/libkc.a' \
-    'rlib:mobile/android/app/libs/libkc.rlib' 'o:mobile/android/app/libs/kc.o' 'car:mobile/ios/Assets.car'; do
+    'ipa:mobile/shared/KeepCrypt.ipa' 'dylib:mobile/shared/libkc.dylib' 'a:mobile/android/app/libs/libkc.a' \
+    'rlib:mobile/android/app/libs/libkc.rlib' 'o:mobile/android/app/libs/kc.o' 'car:mobile/shared/Assets.car' \
+    'klib:mobile/android/core-ffi/libs/keepcrypt.klib' 'upper-case-klib:mobile/android/screens/libs/X.KLIB' \
+    'framework:mobile/android/screens/Screens.framework/Info.plist' \
+    'xcframework:mobile/shared/KeepCrypt.xcframework/ios-arm64/Info.plist'; do
     x=${case#*:}
     fresh
     git init -q "$d" || exit 2
@@ -2566,6 +3017,21 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   mkdir -p "$d/mobile/android/app/libs" && ln -s ../../../../core/x.jar "$d/mobile/android/app/libs/x.jar" || exit 2
   git -C "$d" add -f -- mobile || exit 2
   expect 'ktbinary-tracked-symlink' "$d" KtBinary mobile/android/app/libs/x.jar
+  # The magic numbers in octal: cffaedfe (64-bit, little-endian), feedfacf (64-bit, big-endian),
+  # cefaedfe (32-bit, little-endian) and cafebabe (fat).
+  for case in 'macho-64-no-extension:\317\372\355\376:mobile/android/app/libs/libkc' \
+    'macho-64-big-endian-as-text:\376\355\372\317:mobile/android/core-ffi/notes.txt' \
+    'macho-32-outside-android:\316\372\355\376:mobile/shared/kc' \
+    'macho-fat-as-png:\312\376\272\276:mobile/android/app/src/main/res/drawable/icon.png'; do
+    x=${case##*:}
+    m=${case#*:}
+    m=${m%%:*}
+    fresh
+    git init -q "$d" || exit 2
+    mkdir -p "$d/${x%/*}" && printf "${m}kc.gate.canary\\n" >"$d/$x" || exit 2
+    git -C "$d" add -f -- "$x" || exit 2
+    expect "ktbinary-tracked-${case%%:*}" "$d" KtBinary "$x"
+  done
   seen="$seen KtBinary"
   fresh
   git init -q "$d" || exit 2
@@ -2573,12 +3039,54 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
     "$d/mobile/android/app/src/main/res/font" "$d/tools" || exit 2
   echo 'kc.gate.canary=true' >"$d/mobile/android/app/libs/x.jar" || exit 2
   echo 'kc.gate.canary=true' >"$d/mobile/android/app/src/main/res/drawable/icon.png" || exit 2
+  printf '\211PNG\r\n\032\n' >"$d/mobile/android/app/src/main/res/drawable/seal.png" || exit 2
   echo 'kc.gate.canary=true' >"$d/mobile/android/app/src/main/res/font/braille.ttf" || exit 2
   echo 'kc.gate.canary=true' >"$d/tools/x.jar" || exit 2
   git -C "$d" add -f -- mobile/android/app/src tools || exit 2
   expect 'clean-ktbinary-untracked-image-outside-mobile' "$d" clean
+  # KtRoot's mobile/ios rule reads the index too (lead decision M5-25): any tracked file under
+  # mobile/ios/ is a hit, a Swift file, a plist and an Xcode project alike; the same file untracked
+  # is not.
+  for case in 'ios-swift:mobile/ios/KeepCrypt/SecureHostViewController.swift' \
+    'ios-plist:mobile/ios/KeepCrypt/Info.plist' 'ios-xcode-project:mobile/ios/KeepCrypt.xcodeproj/project.pbxproj'; do
+    x=${case#*:}
+    fresh
+    git init -q "$d" || exit 2
+    mkdir -p "$d/${x%/*}" && echo 'kc.gate.canary=true' >"$d/$x" || exit 2
+    git -C "$d" add -f -- "$x" || exit 2
+    expect "ktroot-tracked-${case%%:*}" "$d" KtRoot "$x"
+  done
+  fresh
+  git init -q "$d" || exit 2
+  mkdir -p "$d/mobile/ios/KeepCrypt" && echo 'kc.gate.canary=true' >"$d/mobile/ios/KeepCrypt/App.swift" || exit 2
+  expect 'clean-ktroot-untracked-under-mobile-ios' "$d" clean
+  # The FFI cases that need keepcrypt-guard beside a boundary crate (a fixture holds one file): with
+  # the one catch in ffi/guard/src/lib.rs, an extern "C" fn or an extern fn with no ABI string in
+  # ffi/jni/src/lib.rs is a hit of its own (JNI's ABI is "system"), and a guard file without the
+  # catch leaves a boundary's export with none.
+  guard='pub fn guarded(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>> {
+    match std::panic::catch_unwind(|| keepcrypt_ffi::dispatch(op, input)) {
+        Ok(out) => out,
+        Err(payload) => halt(payload),
+    }
+}'
+  for case in 'jni-extern-c:pub extern "C" fn Java_com_keepcrypt_entropy_ffi_Native_call() -> u8 {' \
+    'jni-extern-no-abi:pub extern fn JNI_OnLoad() -> i32 {'; do
+    fresh
+    mkdir -p "$d/ffi/guard/src" "$d/ffi/jni/src" || exit 2
+    printf '%s\n' "$guard" >"$d/ffi/guard/src/lib.rs" || exit 2
+    printf '%s\n' '#[unsafe(no_mangle)]' "${case#*:}" '    keepcrypt_guard::status()' '}' >"$d/ffi/jni/src/lib.rs" || exit 2
+    expect "ffi-${case%%:*}-beside-the-guard" "$d" FFI ffi/jni/src/lib.rs
+  done
+  fresh
+  mkdir -p "$d/ffi/guard/src" "$d/ffi/capi/src" || exit 2
+  echo 'pub fn guarded(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>> { keepcrypt_ffi::dispatch(op, input) }' \
+    >"$d/ffi/guard/src/lib.rs" || exit 2
+  printf '%s\n' '#[unsafe(no_mangle)]' 'pub extern "C" fn kc_max_out() -> usize {' '    keepcrypt_ffi::MAX_OUT' '}' \
+    >"$d/ffi/capi/src/lib.rs" || exit 2
+  expect 'ffi-capi-export-beside-a-guard-without-catch-unwind' "$d" FFI ffi/capi/src/lib.rs
   for want in RNG Network Clipboard Rule1 FailOpen Include Shell Device Build KtLog KtFailOpen KtWindow KtInput KtStorage \
-    KtIntent KtDevice KtSdk KtBinary KtManifest KtTestChannel FFI clean; do
+    KtIntent KtDevice KtSdk KtBinary KtManifest KtTestChannel KtSourceSet KtIos KtRoot KtCinterop FFI clean; do
     case "$seen " in *" $want "*) ;; *) fail=$((fail + 1)); echo "FAIL no $want fixture" ;; esac
   done
   artifact_selftest
@@ -2919,9 +3427,12 @@ workflow_check() {
   [ $? -le 1 ] || return 2
   b=$(kt_bootstrap "$wf")
   [ $? -le 1 ] || return 2
+  b=$(kt_bootstrap_allowed "$wf") || return 2
   k=$(kt_canary_workflow "$wf")
   [ $? -le 1 ] || return 2
-  t=$(printf '%s\n%s\n%s\n%s\n%s\n' "$t" "$u" "$g" "$b" "$k" | sed '/^$/d' | sort -t : -k 1,1n -s)
+  r=$(kt_kmp_refused "$wf")
+  [ $? -le 1 ] || return 2
+  t=$(printf '%s\n%s\n%s\n%s\n%s\n%s\n' "$t" "$u" "$g" "$b" "$k" "$r" | sed '/^$/d' | sort -t : -k 1,1n -s)
   [ -n "$t" ] || return 1
   printf '%s\n' "$t"
 }
@@ -2929,6 +3440,10 @@ workflow_check() {
 workflows() {
   dir=${1%/}
   [ -d "$dir" ] || { printf 'banned-api-check: --workflows: %s is not a directory\n' "$1" >&2; exit 2; }
+  kt_bootstrap_exception_check || {
+    echo 'banned-api-check: --workflows: kt_bootstrap_exception holds a line that does not name entropy-android.yml or entropy-ios.yml (each once) and, after one space, a workflow line' >&2
+    exit 2
+  }
   hits=0
   n=0
   for wf in "$dir"/entropy-*.yml "$dir"/entropy-*.yaml; do
@@ -2955,7 +3470,7 @@ EOF
     echo "banned-api-check --workflows $dir: $hits hit(s) in $n workflow(s)"
     exit 1
   fi
-  echo "banned-api-check --workflows $dir: clean, $n workflow(s): read-only permissions, pinned actions, no secrets, no fork-trusting trigger, no expression in a run step, no bootstrap switch, the canary property only in the canary step's Gradle command"
+  echo "banned-api-check --workflows $dir: clean, $n workflow(s): read-only permissions, pinned actions, no secrets, no fork-trusting trigger, no expression in a run step, no bootstrap switch (but the reviewed exception's lines), the canary property only in the canary step's Gradle command, no Kotlin/Native toolchain override"
   exit 0
 }
 
@@ -3926,7 +4441,7 @@ CONFIG_HW_RANDOM_CANARY=y'
 # DIR/<file>): exit 1 and exactly one "Workflow: DIR/<file>:<line>: <text>" line, where <text> is
 # line <line> of the file as it stands, or a "missing ..." message.
 wexpect() {
-  out=$(sh "$self" --workflows "$2" 2>&1)
+  out=$(sh "${gate:-$self}" --workflows "$2" 2>&1)
   rc=$?
   hit=$(printf '%s\n' "$out" | grep -E '^Workflow: ')
   count=$(printf '%s\n' "$out" | grep -c -E '^Workflow: ')
@@ -3990,6 +4505,60 @@ workflows_selftest() {
   : >"$d/other.yml" || exit 2
   wexpect 'workflow-error-no-entropy-yml' "$d" error
   wexpect 'workflow-error-missing-dir' "$tmp/absent" error
+  # The bootstrap exception (kt_bootstrap_exception, empty in this script): copies of the script
+  # with a stand-in list (bxcopy) must pass the named line in the named workflow once, and refuse it
+  # anywhere else, a second time, with anything added, and in a build script; a list of any other
+  # shape is exit 2; this script, with the empty list, refuses the line.
+  bxline='sh scripts/android-gradle.sh --write-locks --write-verification-metadata sha256 :core-ffi:dependencies'
+  wfhead='permissions:
+  contents: read
+jobs:
+  a:
+    runs-on: ubuntu-24.04
+    steps:'
+  # bxdir NAME FILE LINE...: a directory holding FILE, a hardened workflow whose steps run each LINE.
+  bxdir() {
+    bxd=$tmp/bx-$1
+    mkdir -p "$bxd" || exit 2
+    bxf=$2
+    shift 2
+    { printf '%s\n' "$wfhead"; for l in "$@"; do printf '      - run: |\n          %s\n' "$l"; done; } >"$bxd/$bxf" || exit 2
+  }
+  # bxcopy LIST: $gate becomes a copy of this script whose kt_bootstrap_exception is LIST.
+  bxcopy() {
+    gate=$tmp/bootstrap-exception.sh
+    KC_BOOTSTRAP_LIST=$1 awk -v q="'" '
+      $0 == "kt_bootstrap_exception=" { print "kt_bootstrap_exception=" q ENVIRON["KC_BOOTSTRAP_LIST"] q; n++; next }
+      { print }
+      END { exit n != 1 }' "$self" >"$gate" || exit 2
+  }
+  bxdir allowed entropy-android.yml "$bxline"
+  wexpect 'workflow-bootstrap-line-without-an-exception' "$bxd" entropy-android.yml
+  bxcopy "entropy-android.yml $bxline"
+  wexpect 'clean-bootstrap-exception-line' "$bxd" clean
+  bxdir other-workflow entropy-ci.yml "$bxline"
+  wexpect 'workflow-bootstrap-exception-line-in-another-workflow' "$bxd" entropy-ci.yml
+  bxdir twice entropy-android.yml "$bxline" "$bxline"
+  wexpect 'workflow-bootstrap-exception-line-twice' "$bxd" entropy-android.yml
+  bxdir other-line entropy-android.yml "$bxline :app:dependencies"
+  wexpect 'workflow-bootstrap-exception-line-with-more' "$bxd" entropy-android.yml
+  bxdir update-locks entropy-android.yml 'sh scripts/android-gradle.sh --update-locks org.jetbrains.compose.ui:ui'
+  wexpect 'workflow-bootstrap-exception-other-line' "$bxd" entropy-android.yml
+  bxdir both entropy-android.yml "$bxline"
+  printf '%s\n      - run: |\n          %s\n' "$wfhead" "$bxline :screens:dependencies" >"$bxd/entropy-ios.yml" || exit 2
+  bxcopy "entropy-android.yml $bxline
+entropy-ios.yml $bxline :screens:dependencies"
+  wexpect 'clean-bootstrap-exception-both-workflows' "$bxd" clean
+  fresh
+  mkdir -p "$d/scripts" && printf '%s\n' "$bxline" >"$d/scripts/android-gradle.sh" || exit 2
+  expect 'ktsdk-bootstrap-exception-line-in-android-gradle-sh' "$d" KtSdk scripts/android-gradle.sh
+  for case in "another-workflow:entropy-ci.yml $bxline" 'no-line:entropy-android.yml' \
+    "indented-line:entropy-android.yml   $bxline" "android-twice:entropy-android.yml $bxline
+entropy-android.yml $bxline :app:dependencies"; do
+    bxcopy "${case#*:}"
+    wexpect "workflow-error-bootstrap-exception-${case%%:*}" "$tmp/bx-allowed" error
+  done
+  gate=
 }
 
 # --- Image lists selftest ------------------------------------------------------------------------

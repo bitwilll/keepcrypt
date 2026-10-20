@@ -12141,6 +12141,15 @@ int32_t kc_call(uint32_t op, const uint8_t *in, size_t in_len, uint8_t *out, siz
   - Proof: the test is green, and a planted extra `#[no_mangle]` export fails it.
 - [ ] One catch. The gate's FFI rule allows `catch_unwind` only in `ffi/guard/src/lib.rs`, and `#[no_mangle]`/`extern "C"`/JNI exports only in `ffi/jni/src/lib.rs` and `ffi/capi/src/lib.rs`. Unsafe code is allowed only in the `keepcrypt-jni` and `keepcrypt-capi` crates, `ffi/capi/tests/` included. M5-8's `thread`/`JoinHandle` ban covers `ffi/src/`, `ffi/guard/src/`, `ffi/jni/src/` and `ffi/capi/src/`.
   - Proof: fixtures for each placement. In the canaries, core's, ffi's, jni's and capi's clippy.toml are identical and guard's differs by exactly the one line (canaries.sh:485-494 grows). check-path-deps pins seven members (canaries.sh:380-390).
+  - Proof (M5 commit 8p, partial: the gate's rule; the clippy.toml and member pins come with the crates at commit 9, and
+    M5-8 narrows the thread ban to the crates' src/ in Stage C, before commit 10): catch_unwind only in
+    ffi/guard/src/lib.rs, once (`ffi-catch-unwind-in-jni-lib`, `-in-capi-lib`, `-in-guard-other-file`, the
+    `-second-in-guard-lib` pair, `-use-line`); exports only in ffi/jni/src/lib.rs and ffi/capi/src/lib.rs
+    (`ffi-export-in-guard-lib`, `-in-capi-other-file`); JNI names only under ffi/jni/ (`ffi-jni-names-in-capi`,
+    `-onload-in-guard`, `-function-name-in-safe-layer`) and only the "system" ABI in its lib.rs (two cases beside a
+    guard); a boundary export needs guard's one catch, reported at the boundary file (`ffi-capi-export-*`,
+    `ffi-jni-*-without-catch-unwind`); thread, Rule1's hashing and FailOpen cover the new crates; `clean-ffi` holds a
+    guard, a jni and a capi lib.
 - [ ] cinterop: `keepcrypt.def` holds exactly `headers = keepcrypt.h`, `headerFilter = keepcrypt.h` and `package = com.keepcrypt.native`.
   - It has no `staticLibraries`, `libraryPaths` or `linkerOpts`, so no Rust code is packed into a klib or the framework.
   - `compilerOpts -I` comes from the Gradle cinterop block and points only at `ffi/capi/include/`.
@@ -12148,6 +12157,9 @@ int32_t kc_call(uint32_t op, const uint8_t *in, size_t in_len, uint8_t *out, siz
   - The release framework links no Rust in M5. In M6 the app link adds the plain `target/ios/...` library, and `--ios-app` scans the result.
 
   Proof: the gate's `.def` rule refuses a fixture with a `---` section, a second header, `staticLibraries`, `libraryPaths`, `linkerOpts`, or an include path outside that directory. The Gradle rule allows exactly the two test `linkerOpts` lines naming `target/ios-test/`.
+  Proof (M5 commit 8p, partial: the gate's side; the .def and the Gradle block are 8q's and 14's): the `ktcinterop-def-*`
+  fixtures and `ktsdk-kmp-linker-opts-plain-library`, `-in-framework`, `-compiler-opts-elsewhere`, `-include-dirs`,
+  `-definition-file` fail; `clean-kt-kmp-build-files` passes the two test lines and the one -I.
 
 **The iOS capture layer** (M6 under Q65 (a); recorded now so the shared code leaves room for it)
 
@@ -12172,18 +12184,43 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
 | Files the system writes (rule 8) | M6 diffs the app container after a simulator ceremony: no file holds secret material, and the app-switcher snapshot shows the cover (Q71) | M6 check |
 
 **Gate changes (commit 8n, before any Kotlin moves; like commit 4)**
-- [ ] Source-set allow list. In the KMP modules (`core-ffi`, `screens`) the only source-set directories allowed under `src/` are `commonMain`, `commonTest`, `androidMain`, `androidHostTest`, `iosMain`, `iosTest` and `nativeInterop`. Any other directory under `src/` in those modules is refused, including `appleMain`, `nativeMain`, `iosArm64Main`, `iosSimulatorArm64Main` and `androidDeviceTest`. KMP source-set names under `src/` of any Android-only module are refused too, so no Kotlin escapes the iOS rules by its directory name.
+- [x] Source-set allow list. In the KMP modules (`core-ffi`, `screens`) the only source-set directories allowed under `src/` are `commonMain`, `commonTest`, `androidMain`, `androidHostTest`, `iosMain`, `iosTest` and `nativeInterop`. Any other directory under `src/` in those modules is refused, including `appleMain`, `nativeMain`, `iosArm64Main`, `iosSimulatorArm64Main` and `androidDeviceTest`. KMP source-set names under `src/` of any Android-only module are refused too, so no Kotlin escapes the iOS rules by its directory name.
   - Proof: one failing fixture per refused name, and passing fixtures for the allowed ones.
-- [ ] Scopes (banned-api-check.sh:2043-2051). `commonTest`, `androidHostTest` and `iosTest` join `test`, by the same literal module-segment match. Every other allowed source set stays `main`. The fixture scope-copy logic (around :2358-2390) moves with them.
+  - Proof (M5 commit 8p, the re-plan's 8n): new category KtSourceSet, a path rule (`kt_kmp_modules` core-ffi and
+    screens, `kt_kmp_sets`). `--selftest` passes its 20 hit fixtures: in a KMP module appleMain, appleTest,
+    nativeMain, iosArm64Main, iosSimulatorArm64Main, androidDeviceTest, jvmMain, :screens' main and test, :core-ffi's
+    androidTest and test, and a file right under src/; in an Android-only module commonMain, commonTest, androidMain,
+    androidHostTest, iosMain, iosTest, appleMain and nativeInterop. `clean-kt-kmp-source-sets` passes the seven sets in
+    both modules, a nested src/iosMain inside commonMain, and the app's main, test, androidTest and flavour sets.
+    :core-ffi keeps src/main for today's placeholder Native.kt (the gate is clean on the tree); commit 8q, which makes
+    :core-ffi KMP, deletes that one case (`core-ffi:main` in `kt_source_set_refused`).
+- [x] Scopes (banned-api-check.sh:2043-2051). `commonTest`, `androidHostTest` and `iosTest` join `test`, by the same literal module-segment match. Every other allowed source set stays `main`. The fixture scope-copy logic (around :2358-2390) moves with them.
   - Proof: fixtures. A `runCatching` in `screens/src/commonTest/` passes; the same code under `screens/src/commonMain/`, or in a nested `.../commonMain/kotlin/x/src/commonTest/` path, fails.
-- [ ] Named files (:2065-2095, header :504-513):
+  - Proof (M5 commit 8p): the test scope is src/test, src/androidTest, src/commonTest, src/androidHostTest and src/iosTest
+    right under a module. A `runCatching` cannot pass in any scope (KtFailOpen refuses it everywhere,
+    `ktfailopen-test-run-catching`), so the proof uses a catch: `clean-kt-kmp-test-scopes` passes catches, a File( and
+    a document stream in the three KMP test sets of both modules; `ktfailopen-catch-kmp-common-main` and
+    `ktfailopen-catch-kmp-nested-common-test` fail. The scope copies now fill six trees, all clean: src/test and
+    src/androidTest 107 fixtures each, commonTest and androidHostTest 118, iosTest 115 (three whose text the iOS names
+    refuse stay out), capture-control 24.
+- [x] Named files (:2065-2095, header :504-513):
   - `CeremonyViewModel.kt` becomes `screens/src/commonMain/**/CeremonyModel.kt`, the only `KcHalt` catch;
   - the airplane-settings `Intent` and the `SensorManager` exceptions move to their `:app` files;
   - `Documents.kt`, `GoAheadScanner.kt`, `SecureActivity.kt` and `OfflineMonitor.kt` are unchanged;
   - KtFailOpen's "any catch in `:core-ffi`" now covers `androidMain` and `iosMain` too.
 
   Proof: each moved exception has a passing fixture at the new path and a failing one at the old.
-- [ ] `iosMain`/`iosTest` Kotlin gets these iOS names on top of every Kt rule:
+  Proof (M5 commit 8p): the KcHalt catch is allowed only in mobile/android/screens/src/commonMain/**/CeremonyModel.kt,
+  the airplane-settings intent only in the app's AirplaneSettingsIntent.kt and the sensors only in the app's
+  SensorMotionSource.kt (file names chosen here for M5-20's two seam ends; commits 15-16 use them).
+  `clean-kt-shipping-allowed` passes at the new paths; the old paths fail
+  (`ktfailopen-catch-main-kchalt-in-old-ceremony-view-model`, `ktintent-main-airplane-in-old-go-offline-screen`,
+  `ktdevice-main-sensor-in-old-device-entropy-screen`), and so do the wrong modules and sets
+  (`ktfailopen-catch-kmp-ceremony-model-in-android-main`, `ktfailopen-catch-main-ceremony-model-in-app`,
+  `ktintent-kmp-airplane-settings-in-screens`, `ktdevice-kmp-sensor-source-in-screens`). The go-offline and view-model
+  fixtures moved to the new files (`ktintent-main-airplane-settings-*`, `ktfailopen-catch-kmp-ceremony-model-*`), the
+  :core-ffi ones to commonMain and androidMain; `ktfailopen-catch-core-ffi-android-main` and `-ios-main` fail.
+- [x] `iosMain`/`iosTest` Kotlin gets these iOS names on top of every Kt rule:
   - storage: `NSUserDefaults`, `NSFileManager`, `NSFileHandle`, `writeToFile`, `NSKeyedArchiver`, `SecItemAdd`, CoreData, `NSUbiquitousKeyValueStore`, CloudKit;
   - posix file and log calls: `fopen`, `fwrite`, `open(`, `printf`, `syslog`;
   - intents: `openURL`, `UIActivityViewController`, `UIDocumentInteractionController`;
@@ -12199,8 +12236,22 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
   New for every Kotlin source, Android included: `kotlin.uuid` / `Uuid.random` (it reaches the OS random source outside the pool).
 
   Proof: one failing fixture per name. `nw_path_*` is refused everywhere in M5 (the offline file is M6's). The gate passes on today's tree with the `kotlin.uuid` ban in place.
-- [ ] Kotlin outside the root: any `.kt`/`.kts` under `mobile/` outside `mobile/android/` is refused. Any tracked file under `mobile/ios/` is refused in M5 (M5-25).
+  Proof (M5 commit 8p): new category KtIos, 47 hit fixtures in :core-ffi's and :screens' iosMain and one in iosTest,
+  one per name (`fprintf` for the printf family; a `::random` reference for the word random, since an `import
+  platform.posix.random` is already RNG's Python-import shape). UIActivityViewController, UNUserNotificationCenter,
+  UITextField and drand48 were already Clipboard, KtWindow, KtInput and RNG hits everywhere, so a second rule would
+  double the hit: one iosMain fixture each shows the existing category. The boundary rules apply to every file under
+  mobile/android: staticCFunction (iosMain and commonMain), usePinned outside Native.ios.kt (iosMain, and a commonMain
+  file of that name), addressOf in :screens, setUnhandledExceptionHook, nw_path_* (iosMain and the app).
+  `clean-kt-ios` passes (Native.ios.kt's pinning, near misses, the word random in commonMain). RNG:
+  `rng-kotlin-uuid-import`, `rng-kotlin-uuid-random-reference`. The gate on today's tree: clean, 284 files.
+- [x] Kotlin outside the root: any `.kt`/`.kts` under `mobile/` outside `mobile/android/` is refused. Any tracked file under `mobile/ios/` is refused in M5 (M5-25).
   - Proof: fixtures `mobile/shared/x.kt` and `mobile/ios/x.swift` fail under those rule names.
+  - Proof (M5 commit 8p): new category KtRoot. `ktroot-kotlin-in-mobile-shared` (mobile/shared/src/commonMain/kotlin/X.kt),
+    `ktroot-kts-in-mobile` and `ktroot-kotlin-in-mobile-ios` fail; tracked files under mobile/ios/, read from git's
+    index in scratch repositories, fail (`ktroot-tracked-ios-swift`, `-ios-plist`, `-ios-xcode-project`) and an
+    untracked one passes. The four KtBinary cases that used mobile/ios/ moved to mobile/shared/, and
+    `build-tracked-mobile-build` names x.txt, so each still gives its one hit.
 - [ ] New file types and build lines:
   - the `.def` rule (bridge section above);
   - KtSdk allow-lists exactly the KMP DSL lines the build needs: `kotlin {`, `android {` inside `kotlin {}`, `withHostTestBuilder {`, `iosArm64`, `iosSimulatorArm64`, `cinterops`, `binaries.framework`, `isStatic = true`, the two test `linkerOpts` lines, the `osVersionMin` line, the simulator `device` line, `konan.data.dir`, and named `kotlin.native.*`/`kotlin.mpp.*`/`kotlin.apple.*` properties. A fixture checks that `android {` inside `kotlin {}` does not collide with the existing Android-block rules;
@@ -12208,8 +12259,37 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
   - KtBinary also refuses Mach-O files by magic number, and `*.framework/`, `*.xcframework/`, `*.klib` and `*.a` paths.
 
   Proof: a fixture per item; the canary library still builds only under `kc.canary`.
-- [ ] Canaries cover the new scopes, the source-set allow list, the iOS rules, the `.def` rule and the refusals; `want_checks` is updated.
+  Proof (M5 commit 8p, partial: the canary library's CI build is the lead's; the osVersionMin line and any named
+  kotlin.native./kotlin.mpp./kotlin.apple. property are probe facts that 8q adds to `kt_kmp_lines`, one each, so until
+  then each is a hit): new category KtCinterop, 10 fixtures (a --- section, a second header, staticLibraries,
+  libraryPaths, linkerOpts, compilerOpts, a blank line, a line twice, a missing line, another .def). KtSdk's `kt_kmp`,
+  28 fixtures (the six refusals, KONAN_DATA_DIR, an unnamed kotlin.mpp property, konan.data.dir elsewhere, iosX64,
+  macosArm64, jvm(), androidTarget(), a per-target source set, both targets on one line, `kotlin {` on one line,
+  definitionFile, includeDirs, compilerOpts elsewhere, extraOpts, headers(, linkerOpts on the plain library and in the
+  framework, freeCompilerArgs, sharedLib, export(, another device shape, XCFramework), two in android-gradle.sh and
+  three workflows (`kt_kmp_refused`). `clean-kt-kmp-build-files` passes a whole :core-ffi and :screens KMP build
+  (`android {` inside `kotlin {` with `withHostTestBuilder`, both targets, the cinterop block with its -I, the two test
+  linkerOpts lines, the device line, `binaries.framework` with `isStatic = true`), gradle.properties'
+  `konan.data.dir=.konan` and a lockfile. KtBinary: klib, an upper-case KLIB, a *.framework/ and a *.xcframework/
+  path, and four Mach-O magics (no extension, named .txt, outside mobile/android, named .png) fail in scratch
+  repositories; a real PNG passes. Build refuses a tracked mobile/**/.konan/ (`build-tracked-dot-konan`). The kt_canary
+  rules and the canary library are untouched.
+- [x] Canaries cover the new scopes, the source-set allow list, the iOS rules, the `.def` rule and the refusals; `want_checks` is updated.
   - Proof: `scripts/canaries.sh` green with the new count. Each new canary fails when its rule line is removed (shown once, under Review).
+  - Proof (M5 commit 8p): `want_checks` 74 -> 76. `kmp-ios-rules`: nine planted hits on the real tree's copy (appleMain
+    in :screens, NSUserDefaults in :core-ffi's iosMain, a catch in :screens' commonMain with the same file passing in
+    commonTest, a .def with linkerOpts, a cocoapods block in the app's build file, Kotlin's uuid package, Kotlin in
+    mobile/shared, a catch_unwind in ffi/capi, an export in ffi/guard), each planted file removed afterwards.
+    `workflow-bootstrap`: a lock-writing Gradle line planted in entropy-android.yml, one hit whatever the exception list
+    holds. `kotlin-ffi-rules` keeps its five hits. `canaries.sh`: PASS: all 76 checks ran (323 s on this Mac at load 4-5, base 298 s). With one rule line of the gate
+    removed or changed at a time, on a scratch copy, `kmp-ios-rules` fails for each of nine (the KtSourceSet check
+    off, the iOS names off, commonMain taken as a test set, the .def check off, `kt_kmp` off, the uuid pattern dropped,
+    KtRoot's Kotlin rule off, catch_unwind allowed in ffi/capi, exports allowed in ffi/guard) and `workflow-bootstrap`
+    for the tenth (the bootstrap hits dropped in Workflow mode), while the other M5 canaries stay green.
+    `--selftest` 1297 passed, 0 failed under sh and /bin/dash (1116 before; two fixtures that a C-ABI export in jni
+    would now double, `ffi-jni-extern-c-` and `-no-abi-without-catch-unwind`, gave way to capi fixtures and two cases
+    beside a guard). Wall times on this Mac, load 4-5, before and after: gate 21 s and 21 s, `--selftest` 351 s and
+    443 s, canaries 298 s and 323 s.
 
 **Build checks**
 - [ ] `--apk`, `--selftest-apk`, the dex reference scan and the expected manifests keep their code. `expected/shipping-runtime-classpath.txt` gains the wrapper modules and the version changes Q67 names (savedstate 1.4.0 and any others the lockfile shows). The dex scan's `Lcom/keepcrypt/` prefix now covers `:screens` and `:core-ffi` classes automatically.
@@ -12237,6 +12317,12 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
 - [ ] 8o declares the two plugins, the three Compose Multiplatform libraries and `kotlin-test` (tests only), with `apply false` at the root (M5-7's pattern).
   - It switches both workflows to bootstrap mode once, with a dated note in `libs.versions.toml`'s header and in `kt_bootstrap`'s comment naming Q67 and this re-plan. No other switch, file or workflow changes the bootstrap rule.
   - Proof: the diff; the gate refuses the bootstrap switch outside the two named workflow lines (fixture).
+  - Proof (M5 commit 8p, partial: the mechanism, empty; 8q fills it): `kt_bootstrap_exception` in
+    banned-api-check.sh, Workflow mode only; each line names entropy-android.yml or entropy-ios.yml (each once) and
+    one exact workflow line, which passes the first time; any other shape is exit 2. `--selftest`, on copies of the
+    script with a stand-in list: the line passes in the named workflow (and in both); it fails in entropy-ci.yml, a
+    second time, with more on it, as another lock line, in android-gradle.sh, and with the empty list; four malformed
+    lists exit 2.
 - [ ] Two hosts write the locks:
   - the Linux Android job writes locks and metadata for the Android and common configurations;
   - the macOS job writes them for the iOS ones, `kotlin-native-prebuilt-2.4.20-macos-aarch64` and `kotlin-klib-commonizer-embeddable`;

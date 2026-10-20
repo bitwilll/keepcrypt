@@ -1078,7 +1078,7 @@ device_canary device-grouped-process-use pi/app/src/app.rs \
     'use std::process::{Command, Stdio}; // gate canary (temp copy only): the module by any path'
 
 # The Kotlin, Android and FFI categories on the real tree (tasks/todo.md, M5 group 3): one line per
-# FFI rule appended to the copy's ffi/src/lib.rs (a catch_unwind outside ffi/jni/src/lib.rs, a
+# FFI rule appended to the copy's ffi/src/lib.rs (a catch_unwind outside ffi/guard/src/lib.rs, a
 # thread, core's constructor outside ffi/src/ceremony.rs), and a Kotlin file and a manifest in a
 # module made up for the canary under the copy's mobile/android, must fail
 # scripts/banned-api-check.sh with exactly those five hits. So a dropped FFI rule, a narrowed
@@ -1108,6 +1108,81 @@ rm -r "$tmp/mobile/android/kc-gate-canary" || exit 1
 for dir in "$tmp/mobile/android" "$tmp/mobile"; do
     [ -e "$root/${dir#"$tmp/"}" ] || rmdir "$dir" || exit 1
 done
+
+# The Kotlin Multiplatform, iPhone and bridge rules on the real tree (tasks/todo.md, M5 re-plan for
+# Compose Multiplatform, "Gate changes"): one planted file or line per rule in the copy must fail
+# scripts/banned-api-check.sh with exactly these nine hits: a source set outside the allow list in
+# :screens (appleMain), an iOS storage name in :core-ffi's iosMain, a catch in :screens' commonMain
+# (the same file in its commonTest must pass, so the test scope covers the KMP test sets and no
+# more), a cinterop definition with a linker option, a CocoaPods block in the app's build file, an
+# import of Kotlin's uuid package in the app, Kotlin under mobile/ outside mobile/android, a
+# catch_unwind in keepcrypt-capi and an export in keepcrypt-guard. So a dropped rule, a widened
+# allow list or a scope that takes commonMain for a test set turns CI red. Each planted file has a
+# name the real tree does not use, and unplant removes it; the edited files are restored.
+# unplant PATH...: removes each PATH (relative to the copy), then each parent directory the real
+# tree does not have, while it is empty (a parent that another planted path still fills goes with
+# that one).
+unplant() {
+    for p in "$@"; do
+        rm -r "${tmp:?}/$p" || exit 1
+        while case $p in */*) true ;; *) false ;; esac; do
+            p=${p%/*}
+            [ -e "$root/$p" ] && break
+            rmdir "$tmp/$p" 2>/dev/null || break
+        done
+    done
+}
+name=kmp-ios-rules
+ka=mobile/android
+kdef=$ka/core-ffi/src/nativeInterop/cinterop/keepcrypt.def
+kplanted="$ka/screens/src/appleMain/kotlin/KcGateCanary.kt $ka/core-ffi/src/iosMain/kotlin/KcGateCanary.ios.kt
+$ka/screens/src/commonMain/kotlin/KcGateCanaryScope.kt $ka/screens/src/commonTest/kotlin/KcGateCanaryScope.kt
+$ka/app/src/main/kotlin/KcGateCanaryUuid.kt mobile/shared/KcGateCanary.kt ffi/capi/src/kc_gate_canary.rs
+ffi/guard/src/kc_gate_canary.rs"
+for p in $kplanted $kdef; do
+    mkdir -p "$tmp/${p%/*}" || exit 1
+done
+echo 'package com.keepcrypt.canary' > "$tmp/$ka/screens/src/appleMain/kotlin/KcGateCanary.kt" || exit 1
+echo 'import platform.Foundation.NSUserDefaults // gate canary (temp copy only)' \
+    > "$tmp/$ka/core-ffi/src/iosMain/kotlin/KcGateCanary.ios.kt" || exit 1
+for set in commonMain commonTest; do
+    echo 'fun kcGateCanary(): Int = try { f() } catch (e: Exception) { 0 }' \
+        > "$tmp/$ka/screens/src/$set/kotlin/KcGateCanaryScope.kt" || exit 1
+done
+if [ -f "$root/$kdef" ]; then
+    cp "$root/$kdef" "$tmp/$kdef" || exit 1
+else
+    printf '%s\n' 'headers = keepcrypt.h' 'headerFilter = keepcrypt.h' 'package = com.keepcrypt.native' > "$tmp/$kdef" || exit 1
+fi
+echo 'linkerOpts = -lkeepcrypt_capi' >> "$tmp/$kdef" || exit 1
+echo 'kotlin { cocoapods { } } // gate canary (temp copy only)' >> "$tmp/$ka/app/build.gradle.kts" || exit 1
+# Spelt in two parts, so this file holds no such import of its own (RNG applies to every file).
+printf 'import kotlin.%s.Uuid // gate canary (temp copy only)\n' uuid > "$tmp/$ka/app/src/main/kotlin/KcGateCanaryUuid.kt" || exit 1
+echo 'package com.keepcrypt.canary' > "$tmp/mobile/shared/KcGateCanary.kt" || exit 1
+echo 'pub fn kc_gate_canary() -> bool { std::panic::catch_unwind(|| ()).is_ok() }' > "$tmp/ffi/capi/src/kc_gate_canary.rs" || exit 1
+echo '#[unsafe(no_mangle)] pub extern "C" fn kc_gate_canary() {}' > "$tmp/ffi/guard/src/kc_gate_canary.rs" || exit 1
+expect_failure "$name" sh "$root/scripts/banned-api-check.sh" "$tmp"
+need "KtSourceSet: $ka/screens/src/appleMain/kotlin/KcGateCanary.kt: "
+need "KtIos: $ka/core-ffi/src/iosMain/kotlin/KcGateCanary.ios.kt:1: "
+need "KtFailOpen: $ka/screens/src/commonMain/kotlin/KcGateCanaryScope.kt:1: "
+never "$ka/screens/src/commonTest/"
+need "KtCinterop: $kdef:"
+need "linkerOpts = -lkeepcrypt_capi"
+need "KtSdk: $ka/app/build.gradle.kts:"
+need "kotlin { cocoapods { } }"
+need "RNG: $ka/app/src/main/kotlin/KcGateCanaryUuid.kt:1: "
+need "KtRoot: mobile/shared/KcGateCanary.kt: "
+need "FFI: ffi/capi/src/kc_gate_canary.rs:1: "
+need "FFI: ffi/guard/src/kc_gate_canary.rs:1: "
+need "banned-api-check: 9 hit(s) in "
+verdict
+cp "$root/$ka/app/build.gradle.kts" "$tmp/$ka/app/build.gradle.kts" || exit 1
+if [ -f "$root/$kdef" ]; then
+    cp "$root/$kdef" "$tmp/$kdef" || exit 1
+    unplant $kplanted
+else
+    unplant $kplanted $kdef
+fi
 
 # The workflow hardening check (tasks/todo.md, M4 group 11; Q38 (d)): a copy of the real
 # entropy-ci.yml with every rule broken once (the top-level token widened to write, which also
@@ -1146,6 +1221,25 @@ need 'run: echo "${{ github.head_ref }}"'
 need 'TOKEN: ${{ secrets.GITHUB_TOKEN }}'
 need 'git diff --quiet "$base" ${{ github.event.pull_request.head.sha }}'
 need "7 hit(s) in 1 workflow(s)"
+verdict
+
+# The bootstrap rule on the real Android workflow (tasks/todo.md, M5 group 4; lead decision M5-13;
+# the re-plan's "Dependency bootstrap", Q67): a lock-writing Gradle line planted in a copy of
+# entropy-android.yml must fail scripts/banned-api-check.sh --workflows with exactly that one hit,
+# whatever kt_bootstrap_exception holds (an exception names one exact line, never this one), so a
+# widened exception or a dropped rule turns CI red, during the second bootstrap and after it.
+name=workflow-bootstrap
+wfb="$work/workflows-bootstrap"
+mkdir "$wfb" || exit 1
+cp "$root/../.github/workflows/entropy-android.yml" "$wfb/entropy-android.yml" || exit 1
+cat >> "$wfb/entropy-android.yml" <<'EOF'
+      # Gate canary (scripts/canaries.sh, temp copy only): the lock-writing switch back on.
+      - run: sh scripts/android-gradle.sh --write-locks --write-verification-metadata sha256 help
+EOF
+expect_failure "$name" sh "$root/scripts/banned-api-check.sh" --workflows "$wfb"
+need "Workflow: $wfb/entropy-android.yml:"
+need "- run: sh scripts/android-gradle.sh --write-locks --write-verification-metadata sha256 help"
+need "1 hit(s) in 1 workflow(s)"
 verdict
 
 # The OS configuration check (tasks/todo.md, M4 groups 11 and 13; commit 17a): a temp copy of
@@ -1280,7 +1374,7 @@ cp "$root/core/examples/release_probe.rs" "$tmp/core/examples/release_probe.rs" 
 
 # The number of checks above, pinned, so a canary that is deleted, or skipped by a broken branch,
 # turns CI red too. A real change to the canaries updates this pin in the same reviewed change.
-want_checks=74
+want_checks=76
 if [ "$checks" -ne "$want_checks" ]; then
     echo "FAIL: $checks checks ran; scripts/canaries.sh pins $want_checks"
     status=1

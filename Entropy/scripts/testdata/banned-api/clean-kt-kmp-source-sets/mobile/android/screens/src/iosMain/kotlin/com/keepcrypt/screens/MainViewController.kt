@@ -1,0 +1,1 @@
+fun MainViewController() = ComposeUIViewController { App() }
