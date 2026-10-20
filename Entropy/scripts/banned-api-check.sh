@@ -3529,6 +3529,27 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
     expect "ffi-${case%%:*}-beside-the-guard" "$d" FFI ffi/jni/src/lib.rs
     atline=
   done
+  # A bare extern fn after an extern "system" one is a hit at its extern's line, on one line or
+  # split over two, in the real lib.rs's order (JNI_OnLoad first): the first's ABI string does not
+  # carry over, as each extern is settled by its own next token (a gate whose bare-extern branch
+  # read the last string seen gave these trees no hit, and every other case passed).
+  for split in no yes; do
+    if [ "$split" = yes ]; then
+      bare=$(printf '%s\n' 'pub extern' 'fn Java_com_keepcrypt_entropy_ffi_Native_call() -> u8 {')
+      name=jni-extern-no-abi-split-over-lines-after-a-system-one
+    else
+      bare='pub extern fn Java_com_keepcrypt_entropy_ffi_Native_call() -> u8 {'
+      name=jni-extern-no-abi-after-a-system-one
+    fi
+    fresh
+    mkdir -p "$d/ffi/guard/src" "$d/ffi/jni/src" || exit 2
+    printf '%s\n' "$guard" >"$d/ffi/guard/src/lib.rs" || exit 2
+    printf '%s\n' '#[unsafe(no_mangle)]' 'pub extern "system" fn JNI_OnLoad() -> i32 {' '    JNI_VERSION_1_6' '}' \
+      '#[unsafe(no_mangle)]' "$bare" '    keepcrypt_guard::guarded(0, Vec::new())[0]' '}' >"$d/ffi/jni/src/lib.rs" || exit 2
+    atline=6
+    expect "ffi-$name-beside-the-guard" "$d" FFI ffi/jni/src/lib.rs
+    atline=
+  done
   fresh
   mkdir -p "$d/ffi/guard/src" "$d/ffi/jni/src" || exit 2
   printf '%s\n' "$guard" >"$d/ffi/guard/src/lib.rs" || exit 2
