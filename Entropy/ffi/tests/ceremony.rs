@@ -2098,7 +2098,8 @@ fn ffi_wire_helpers_match_their_vectors() {
 
 // A dice-only ceremony over the wire (todo.md, M5 group 9), byte for byte, on gate seeds
 // dice-50-words12 and dice-99-words24: the device leg's progress (none in dice-only mode) and no C;
-// the dice counts; the seal card from kcr.json's T and Seal ID with braille.json's braille; the
+// the dice counts after the first roll, where the rolls and the minimum differ, and after the last;
+// the seal card from kcr.json's T and Seal ID with braille.json's braille; the
 // check QR; refused codes 2 and 1, then the go-ahead result; every word page from braille.json, 24
 // words on device 1 of 2 and 2 of 2; the read-back; the summary; the registration QR with
 // kcr.json's code; and the watch-only export with and without a BIP39 passphrase, an empty one
@@ -2118,7 +2119,12 @@ fn ffi_wire_dice_ceremony() {
         assert!(wired(&slot, wire::COMMITMENT, &[]).is_empty(), "no C");
         assert_eq!(slot.dispatch(wire::START_DICE, &[])[..], [wire::OK]);
         let faces = rolls(name);
-        for &face in &faces {
+        assert_eq!(slot.dispatch(wire::PUSH_ROLL, &[faces[0]])[..], [wire::OK]);
+        let mut first = 1u16.to_be_bytes().to_vec();
+        first.extend(minimum.to_be_bytes());
+        first.extend(2_585u32.to_be_bytes());
+        assert_eq!(wired(&slot, wire::DICE_PROGRESS, &[])[..], first[..]);
+        for &face in &faces[1..] {
             assert_eq!(slot.dispatch(wire::PUSH_ROLL, &[face])[..], [wire::OK]);
         }
         let rolled = u16::try_from(faces.len()).expect("rolls");
