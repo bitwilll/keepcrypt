@@ -703,21 +703,22 @@
 #              keepcrypt-guard and keepcrypt-jni, M5-32; keepcrypt-capi is M6's after Q73):
 #              catch_unwind outside every comment and string or char literal (so ffi/clippy.toml's
 #              ban, a doc line and a string are no call site) anywhere but ffi/guard/src/lib.rs,
-#              and there every one but the path call std::panic::catch_unwind( in the body of fn
-#              guarded, once (so a use line naming it, a rename, a re-export, a wrapper and a second
-#              call are hits); an export (no_mangle, export_name, or an extern fn with any ABI
-#              string or none, outside comments and literals) anywhere but ffi/jni/src/lib.rs, and
-#              there an export whose own body does not call keepcrypt_guard::guarded( (JNI_OnLoad
-#              aside) or that has no body; the JNI names (a Java_ function, JNI_OnLoad, JNIEnv,
-#              jni_sys) outside comments and literals anywhere but ffi/jni/, and in
-#              ffi/jni/src/lib.rs an extern fn whose ABI is not "system"; and once
-#              ffi/jni/src/lib.rs exports a function, the one catch_unwind call in fn guarded is
-#              required (a missing one is reported at ffi/jni/src/lib.rs:1). Session::new (the
-#              Shell rule's shapes, comments counting) anywhere under ffi/ but ffi/src/ceremony.rs,
-#              each one after its first there, and none there once the file exists (reported at
-#              line 1). The identifiers thread and JoinHandle anywhere, comments included: a joined
-#              thread would turn a panic into a value, and the shared clippy.toml cannot ban thread
-#              spawning (core/tests/panic_wipe.rs joins one).
+#              and there every one but the path call std::panic::catch_unwind( in the body of the
+#              crate root's fn guarded, once (so a use line naming it, a rename, a re-export, a
+#              wrapper, a fn guarded in a mod, an impl or another fn, a macro_rules definition and a
+#              second call are hits); an export (no_mangle, export_name, or an extern fn with any
+#              ABI string or none, outside comments and literals) anywhere but ffi/jni/src/lib.rs,
+#              and there an export whose own body does not call keepcrypt_guard::guarded( (the
+#              crate root's no_mangle JNI_OnLoad aside) or that has no body, and macro_rules; the
+#              JNI names (a Java_ function, JNI_OnLoad, JNIEnv, jni_sys) outside comments and
+#              literals anywhere but ffi/jni/, and in ffi/jni/src/lib.rs an extern fn whose ABI is
+#              not "system"; and once ffi/jni/src/lib.rs exports a function, the one catch_unwind
+#              call in fn guarded is required (a missing one is reported at ffi/jni/src/lib.rs:1).
+#              Session::new (the Shell rule's shapes, comments counting) anywhere under ffi/ but
+#              ffi/src/ceremony.rs, each one after its first there, and none there once the file
+#              exists (reported at line 1). The identifiers thread and JoinHandle anywhere, comments
+#              included: a joined thread would turn a panic into a value, and the shared clippy.toml
+#              cannot ban thread spawning (core/tests/panic_wipe.rs joins one).
 #
 # Fail-closed noise, not bypasses (rename or spell it out instead): a named format argument called
 # path that rustfmt wraps onto its own line ("        path = \"seed.age\",") is an Include hit in
@@ -854,11 +855,11 @@ pinned memory, Kotlin Multiplatform DSL lines outside the allow list (no iPhone 
 Kotlin/Native settings, and a cinterop definition other than the one exact .def; Kotlin outside
 mobile/android and a tracked file under mobile/ios; a tracked binary (a klib, a framework, any
 Mach-O, ELF, ar or zip file among them) under mobile/; the CI passphrase key outside its two files;
-and under ffi/ a catch_unwind but the one std::panic::catch_unwind call in fn guarded in
-ffi/guard/src/lib.rs, an export outside ffi/jni/src/lib.rs or one there that does not call
-keepcrypt_guard::guarded, a JNI name outside ffi/jni/ or a C-ABI export in its lib.rs, a second
-Session::new or one outside ffi/src/ceremony.rs, and thread or JoinHandle. A directory symlink is
-refused. Exit 0 clean, 1 hits, 2 usage or read error.
+and under ffi/ a catch_unwind but the one std::panic::catch_unwind call in the crate root's fn
+guarded in ffi/guard/src/lib.rs, an export outside ffi/jni/src/lib.rs or one there that does not
+call keepcrypt_guard::guarded, macro_rules there, a JNI name outside ffi/jni/ or a C-ABI export in
+its lib.rs, a second Session::new or one outside ffi/src/ceremony.rs, and thread or JoinHandle. A
+directory symlink is refused. Exit 0 clean, 1 hits, 2 usage or read error.
 EOF
 }
 
@@ -2224,14 +2225,16 @@ kt_def() {
 # One catch, one place, tied to every export: catch_unwind outside every comment and literal
 # (rust_code_match, so a doc line, a string and ffi/clippy.toml's ban entry are no site) anywhere
 # under ffi/ but ffi/guard/src/lib.rs. There every catch_unwind but one is a hit (ffi_guard_catch):
-# the one is the path call std::panic::catch_unwind( written in the body of fn guarded, which every
-# export calls (ffi_export_scan). So a use line naming it (pub or not, alone or in a group), a
-# rename with as, a shorter path (panic::catch_unwind), a leading ::, a turbofish, the function
-# taken as a value, a second call, and a call in any other function or in a macro are each a hit:
-# an alias or wrapper exported by keepcrypt-guard would let the boundary catch and continue (rule
-# 3) with no catch_unwind of its own. Once ffi/jni/src/lib.rs declares an export (ffi_export_ere),
-# that one call is required (ffi_guard_site, checked after the scan and reported at
-# ffi/jni/src/lib.rs:1).
+# the one is the path call std::panic::catch_unwind( written in the body of the crate root's fn
+# guarded, the function every export calls as keepcrypt_guard::guarded (ffi_export_scan). So a use
+# line naming it (pub or not, alone or in a group), a rename with as, a shorter path
+# (panic::catch_unwind), a leading ::, a turbofish, the function taken as a value, a second call,
+# and a call in any other function, in a macro_rules definition (inside fn guarded too) or in a fn
+# guarded that is not the crate root's (one in a mod or an impl, or nested in another fn) are each
+# a hit: an alias or wrapper exported by keepcrypt-guard would let the boundary catch and continue
+# (rule 3) with no catch_unwind of its own. Once ffi/jni/src/lib.rs declares an export
+# (ffi_export_ere), that one call is required (ffi_guard_site, checked after the scan and reported
+# at ffi/jni/src/lib.rs:1).
 ffi_catch_unwind() {
   rust_code_match '[^A-Za-z0-9_]catch_unwind[^A-Za-z0-9_]' "$1"
 }
@@ -2239,7 +2242,10 @@ ffi_catch_unwind() {
 # the one call above, each line once; MODE site prints the one call's line. A fn's body is found by
 # its braces from rust_tokens' tokens; a { or ; inside the signature's parentheses or a type's
 # brackets neither opens nor ends it, and a body that a const generic's braces in the signature
-# cut short leaves the call outside fn guarded, which fails closed.
+# cut short leaves the call outside fn guarded, which fails closed. The crate root's fn guarded is
+# the one whose body opens at brace depth 0 with no fn body open (a mod, impl, trait or block
+# around it adds a brace); a macro_rules definition runs from macro_rules to the close of its first
+# bracket, whichever kind.
 ffi_guard_scan() {
   [ -f "$2" ] && [ -r "$2" ] || return 2
   awk -v mode="$1" -v sq="'" "$rust_lex$rust_tokens"'
@@ -2249,12 +2255,19 @@ ffi_guard_scan() {
       found = 1
     }
     # tok(t): a catch_unwind is settled by the token after it; a fn name followed by its { opens a
-    # body named after it on the stack, closed by the } that brings the depth back.
+    # body named after it on the stack, closed by the } that brings the depth back; mrd is the
+    # bracket depth inside a macro_rules definition, 0 outside one.
     function tok(t) {
       if (cu) {
         cu = 0
-        if (path && t == "(" && top > 0 && name[top] == "guarded" && !site) site = cl
+        if (path && t == "(" && top == 1 && at[1] == 0 && name[1] == "guarded" && !mrd && !site) site = cl
         else out(cl)
+      }
+      if (t == "macro_rules") {
+        mr = 1
+      } else if (mr && (t == "{" || t == "(" || t == "[")) {
+        mr = 0
+        if (!mrd) mrd = pd + bd + 1
       }
       if (t == "catch_unwind") {
         cu = 1
@@ -2281,6 +2294,7 @@ ffi_guard_scan() {
       } else if (t == ";" && pd == 0) {
         pend = 0
       }
+      if (mrd && pd + bd < mrd) mrd = 0
       p5 = p4
       p4 = p3
       p3 = p2
@@ -2319,10 +2333,15 @@ ffi_guard_site() {
 # keepcrypt_guard::guarded(, written as that path (a leading :: or a longer path does not count), so
 # a panic under it halts and wipes instead of aborting the process before any destructor runs; a
 # helper that calls it does not count for the export. JNI_OnLoad alone is exempt: it runs at
-# System.loadLibrary, before any session exists, and returns the JNI version. A hit is reported at
-# the function's fn line, and an export with no body (a no_mangle static, an extern fn type) at its
-# own line, so it is a hit too; an extern fn type in a helper's signature makes the helper one,
-# which fails closed.
+# System.loadLibrary, before any session exists, and returns the JNI version. The exemption is for
+# the real one only, the crate root's fn JNI_OnLoad marked no_mangle and not export_name, so a fn
+# of that name in a mod, an impl or another fn, one exported under another name (a Java_ symbol)
+# and an extern fn of that name that RegisterNatives could bind are each held to the tie. A hit is
+# reported at the function's fn line, and an export with no body (a no_mangle static, an extern fn
+# type) at its own line, so it is a hit too; an extern fn type in a helper's signature makes the
+# helper one, which fails closed. macro_rules is a hit of its own there: an export a macro writes
+# has its name and body only at the macro's call sites, out of the scan's sight, so every export
+# is written out in the file.
 ffi_export_ere='[^A-Za-z0-9_](no_mangle|export_name|extern[[:space:]]*("")?[[:space:]]*fn)[^A-Za-z0-9_]'
 ffi_export() {
   rust_code_match "$ffi_export_ere" "$1"
@@ -2336,12 +2355,16 @@ ffi_export_scan() {
       found = 1
     }
     # tok(t): an export marker waits for its fn name and its { (or a ;), which opens the export
-    # body on the stack; a keepcrypt_guard::guarded( marks the innermost open export body.
+    # body on the stack; a keepcrypt_guard::guarded( marks the innermost open export body. nm and
+    # ex record a no_mangle and an export_name among the markers of the pending export.
     function tok(t) {
       if (t == "(" && p1 == "guarded" && p2 == "::" && p3 == "keepcrypt_guard" && p4 != "::" && top > 0) ok[top] = 1
+      if (t == "macro_rules") out(NR)
       if (t == "no_mangle" || t == "export_name" || (t == "fn" && (p1 == "extern" || (p1 == "\"\"" && p2 == "extern")))) {
         if (!want) wl = NR
         want = 1
+        if (t == "no_mangle") nm = 1
+        if (t == "export_name") ex = 1
       } else if (want && p1 == "fn" && t ~ /^[A-Za-z_]/) {
         wl = NR
         wname = t
@@ -2354,9 +2377,10 @@ ffi_export_scan() {
           top++
           at[top] = bd
           ln[top] = wl
-          ok[top] = wname == "JNI_OnLoad"
+          ok[top] = wname == "JNI_OnLoad" && nm && !ex && bd == 0
           want = 0
           wname = ""
+          nm = ex = 0
         }
         bd++
       } else if (t == "}") {
@@ -2369,6 +2393,7 @@ ffi_export_scan() {
         out(wl)
         want = 0
         wname = ""
+        nm = ex = 0
       }
       p4 = p3
       p3 = p2
@@ -3332,18 +3357,38 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   printf '%s\n' '#[unsafe(no_mangle)]' 'pub extern "system" fn Java_com_keepcrypt_entropy_ffi_Native_call(op: jint) -> u8 {' \
     '    keepcrypt_guard::guarded(op as u32, &[])[0]' '}' >"$d/ffi/jni/src/lib.rs" || exit 2
   expect 'ffi-jni-export-beside-a-guard-without-catch-unwind' "$d" FFI ffi/jni/src/lib.rs
+  # A fn guarded in a mod is not the crate root's, which every export calls: its catch is a hit of
+  # its own, and the export beside it still finds no catch in the crate root's guarded.
+  fresh
+  mkdir -p "$d/ffi/guard/src" "$d/ffi/jni/src" || exit 2
+  printf '%s\n' 'pub fn guarded(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>> {' '    keepcrypt_ffi::dispatch(op, input)' '}' \
+    'mod probe {' '    fn guarded() -> bool {' '        std::panic::catch_unwind(|| ()).is_ok()' '    }' '}' \
+    >"$d/ffi/guard/src/lib.rs" || exit 2
+  printf '%s\n' '#[unsafe(no_mangle)]' 'pub extern "system" fn Java_com_keepcrypt_entropy_ffi_Native_call(op: jint) -> u8 {' \
+    '    keepcrypt_guard::guarded(op as u32, &[])[0]' '}' >"$d/ffi/jni/src/lib.rs" || exit 2
+  also='FFI: ffi/guard/src/lib.rs:6:         std::panic::catch_unwind(|| ()).is_ok()'
+  expect 'ffi-jni-export-beside-a-guard-whose-catch-is-in-a-mod' "$d" FFI ffi/jni/src/lib.rs
+  also=
   # The tie between each export and the catch (ffi_export_scan): beside that guard, an export in
   # ffi/jni/src/lib.rs whose own body does not call keepcrypt_guard::guarded( is a hit at its fn
   # line, at the line the case names: one that calls the safe layer directly, the second of two
   # exports when the first calls guarded, one that calls it through a use line or through a helper,
-  # one that names it only in a comment and a string, an export_name function and an extern
-  # "system" fn bound by RegisterNatives; a no_mangle static, with no body, at its attribute line.
-  # Exports that each call it (in a block, with an array in the signature), JNI_OnLoad and a helper
-  # that does not are clean.
+  # one that names it only in a comment and a string, one that calls a local mod keepcrypt_guard
+  # through crate::, an export_name function and an extern "system" fn bound by RegisterNatives; a
+  # no_mangle static, with no body, at its attribute line, alone or before an export that calls
+  # guarded. A fn named JNI_OnLoad that is not the real one is held to the tie: exported as the
+  # Java_ symbol (by export_name alone, or on Android through cfg_attr beside a no_mangle), in a mod
+  # (bare, with no_mangle, or exported as the Java_ symbol beside the real one) or with no
+  # no_mangle, which RegisterNatives could bind. macro_rules is a hit at its line, as an export a
+  # macro writes is out of the scan's sight. Exports that each call it (in a block, with an array
+  # in the signature), the crate root's no_mangle JNI_OnLoad and a helper that does not are clean.
   call='pub extern "system" fn Java_com_keepcrypt_entropy_ffi_Native_call(env: *mut JNIEnv, op: jint, input: jbyteArray) -> jbyteArray {'
   direct='    to_java(env, keepcrypt_ffi::dispatch(op as u32, &from_java(env, input)))'
   for case in safe-layer-directly:2 second-export:6 imported-guarded:3 guarded-in-a-helper:2 \
-    guarded-in-a-comment-and-a-string:2 export-name:2 registered-native:1 no-mangle-static:1; do
+    guarded-in-a-comment-and-a-string:2 guarded-of-a-local-mod:7 export-name:2 registered-native:1 \
+    no-mangle-static:1 no-mangle-static-before-an-export:1 onload-exported-as-java:2 \
+    onload-exported-as-java-on-android:3 onload-in-a-mod:2 onload-no-mangle-in-a-mod:3 \
+    onload-in-a-mod-as-java-with-the-real-one:3 onload-without-no-mangle:1 macro-written-exports:1; do
     case ${case%%:*} in
       safe-layer-directly) jni=$(printf '%s\n' '#[unsafe(no_mangle)]' "$call" "$direct" '}') ;;
       second-export)
@@ -3372,7 +3417,51 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
         jni=$(printf '%s\n' 'pub extern "system" fn native_call(env: *mut JNIEnv, op: jint, input: jbyteArray) -> jbyteArray {' \
           "$direct" '}')
         ;;
+      guarded-of-a-local-mod)
+        jni=$(printf '%s\n' 'mod keepcrypt_guard {' '    pub fn guarded(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>> {' \
+          '        keepcrypt_ffi::dispatch(op, input)' '    }' '}' '#[unsafe(no_mangle)]' "$call" \
+          '    to_java(env, crate::keepcrypt_guard::guarded(op as u32, &from_java(env, input)))' '}')
+        ;;
       no-mangle-static) jni=$(printf '%s\n' '#[unsafe(no_mangle)]' 'pub static KC_ABI_VERSION: u32 = 1;') ;;
+      no-mangle-static-before-an-export)
+        jni=$(printf '%s\n' '#[unsafe(no_mangle)]' 'pub static KC_ABI_VERSION: u32 = 1;' '#[unsafe(no_mangle)]' "$call" \
+          '    to_java(env, keepcrypt_guard::guarded(op as u32, &from_java(env, input)))' '}')
+        ;;
+      onload-exported-as-java)
+        jni=$(printf '%s\n' '#[unsafe(export_name = "Java_com_keepcrypt_entropy_ffi_Native_call")]' \
+          'pub extern "system" fn JNI_OnLoad(env: *mut JNIEnv, op: jint, input: jbyteArray) -> jbyteArray {' "$direct" '}')
+        ;;
+      onload-exported-as-java-on-android)
+        jni=$(printf '%s\n' '#[cfg_attr(target_os = "android", unsafe(export_name = "Java_com_keepcrypt_entropy_ffi_Native_call"))]' \
+          '#[cfg_attr(not(target_os = "android"), unsafe(no_mangle))]' \
+          'pub extern "system" fn JNI_OnLoad(env: *mut JNIEnv, op: jint, input: jbyteArray) -> jbyteArray {' "$direct" '}')
+        ;;
+      onload-in-a-mod)
+        jni=$(printf '%s\n' 'mod natives {' \
+          '    pub extern "system" fn JNI_OnLoad(env: *mut JNIEnv, op: jint, input: jbyteArray) -> jbyteArray {' \
+          "    $direct" '    }' '}')
+        ;;
+      onload-no-mangle-in-a-mod)
+        jni=$(printf '%s\n' 'mod natives {' '    #[unsafe(no_mangle)]' \
+          '    pub extern "system" fn JNI_OnLoad(env: *mut JNIEnv, op: jint, input: jbyteArray) -> jbyteArray {' \
+          "    $direct" '    }' '}')
+        ;;
+      onload-in-a-mod-as-java-with-the-real-one)
+        jni=$(printf '%s\n' 'mod m {' '    #[unsafe(export_name = "Java_com_keepcrypt_entropy_ffi_Native_call")]' \
+          '    pub extern "system" fn JNI_OnLoad(env: *mut JNIEnv, op: jint, input: jbyteArray) -> jbyteArray {' \
+          "    $direct" '    }' '}' '#[unsafe(no_mangle)]' \
+          'pub unsafe extern "system" fn JNI_OnLoad(vm: *mut JavaVM, reserved: *mut c_void) -> jint {' '    JNI_VERSION_1_6' '}')
+        ;;
+      onload-without-no-mangle)
+        jni=$(printf '%s\n' 'pub extern "system" fn JNI_OnLoad(env: *mut JNIEnv, op: jint, input: jbyteArray) -> jbyteArray {' \
+          "$direct" '}')
+        ;;
+      macro-written-exports)
+        jni=$(printf '%s\n' 'macro_rules! export {' '    ($n:ident, $body:block) => {' '        #[unsafe(no_mangle)]' \
+          '        pub extern "system" fn $n(env: *mut JNIEnv) -> u8 $body' '    }' '}' \
+          'export! { Java_com_keepcrypt_entropy_ffi_Native_call, { keepcrypt_guard::guarded(0, &[])[0] } }' \
+          'export!(Java_com_keepcrypt_entropy_ffi_Native_wipe, { keepcrypt_ffi::dispatch(OP_WIPE, &[])[0] });')
+        ;;
     esac
     fresh
     mkdir -p "$d/ffi/guard/src" "$d/ffi/jni/src" || exit 2

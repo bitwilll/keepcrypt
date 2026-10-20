@@ -12182,7 +12182,11 @@ int32_t kc_call(uint32_t op, const uint8_t *in, size_t in_len, uint8_t *out, siz
     `ffi-jni-*-without-catch-unwind`); thread, Rule1's hashing and FailOpen cover the new crates; `clean-ffi` holds a
     guard, a jni and a capi lib.
   - Moved to M6 by Q73 (8w): keepcrypt-capi, so the workspace has six members (M5-32); guard's one catch and jni's
-    exports stay. The gate's FFI rule is unchanged.
+    exports stay. Amended by 8p-d and 8p-e (review): ffi/capi/src/lib.rs is no export site in M5, and the shapes
+    commit 12 meets are these. Exports only in ffi/jni/src/lib.rs, which holds no macro_rules, and each export's own
+    body calls `keepcrypt_guard::guarded(` by that path; only the crate root's `#[unsafe(no_mangle)]` JNI_OnLoad, with
+    no export_name, is exempt. The one catch is the path call `std::panic::catch_unwind(` in the body of the crate
+    root's `fn guarded` in ffi/guard/src/lib.rs (not a fn in a mod, an impl or another fn, nor a macro_rules body).
   - Proof (M5 commit 8p-d, review; the B2r findings that the split no longer tied an export to the catch and that an
     alias of the one catch could cross crates): the gate's FFI rule is the guard/jni split alone (M5-32): an export
     is allowed only in ffi/jni/src/lib.rs (ffi/capi/src/lib.rs is no boundary in M5), and there each export's own
@@ -12212,6 +12216,25 @@ int32_t kc_call(uint32_t op, const uint8_t *in, size_t in_len, uint8_t *out, siz
     Kt fixtures and the seven magic cases. `canaries.sh` PASS: all 76 checks ran; the gate on the tree clean (285
     files); fmt, both clippy commands, `cargo test --workspace --locked` (21 suites, 445 passed, 3 ignored) and the
     test-sources run (17 suites, 269 passed, 1 ignored) unchanged.
+  - Proof (M5 commit 8p-e, review; the B2q findings): the site took any fn named guarded, so a catch-and-return
+    `guarded` in a mod (`keepcrypt_guard::raw::guarded`), an impl (`Recover::guarded`) or nested in a public wrapper
+    left keepcrypt-guard, and one in a mod satisfied the required site while the crate root's guarded held no catch.
+    The site is now the crate root's fn guarded only (its body opens at brace depth 0), outside any macro_rules
+    definition. The tie exempted any fn named JNI_OnLoad, so one in a mod or exported as the Java_ symbol could call
+    the safe layer while the .so still exported just Native_call and JNI_OnLoad; now only the crate root's no_mangle
+    JNI_OnLoad without export_name is exempt. A macro_rules export in ffi/jni/src/lib.rs left later exports unchecked;
+    macro_rules is now a hit there. The review's trees (tA, tA2, tB, tB2, P1-P6), clean before, each give their hits.
+    Fixtures: `ffi-catch-unwind-in-guard-submodule-guarded`, `-impl-method-guarded`, `-nested-fn-guarded`,
+    `-macro-inside-guarded`, `-paren-macro-inside-guarded`. Built cases: `ffi-jni-export-beside-a-guard-whose-catch-
+    is-in-a-mod` (its catch's hit and the missing site), and nine `ffi-jni-*-beside-the-guard` pinned by atline
+    (`-guarded-of-a-local-mod` and `-no-mangle-static-before-an-export`, for the two untested 8p-d branches; six
+    `-onload-*` shapes; `-macro-written-exports`). `ffi-jni-extern-system-without-catch-unwind` held a JNI_OnLoad
+    without no_mangle, now a tie hit too, so it holds an extern "system" fn that calls guarded and still gives only
+    the missing site. Mutants, one per gate copy, each failing exactly the cases named: the old site rule 4, site
+    depth unchecked 3, macro_rules unchecked 2, a macro's ( and [ unread 1; the old exemption 6, and with no_mangle,
+    export_name or depth unchecked 1 each; no macro_rules hit 1; the `p4 != "::"` and `;` branches 1 each (22 in
+    all). `--selftest` 1388 passed, 0 failed under sh and /bin/dash (1373 before: +5 fixtures, +10 built cases).
+    `canaries.sh` PASS: all 76 checks ran; the gate on the tree clean (285 files).
 - [ ] cinterop: `keepcrypt.def` holds exactly `headers = keepcrypt.h`, `headerFilter = keepcrypt.h` and `package = com.keepcrypt.native`.
   - It has no `staticLibraries`, `libraryPaths` or `linkerOpts`, so no Rust code is packed into a klib or the framework.
   - `compilerOpts -I` comes from the Gradle cinterop block and points only at `ffi/capi/include/`.
