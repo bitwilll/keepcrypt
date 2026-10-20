@@ -1784,10 +1784,6 @@ fn ffi_dispatch_status_ops() {
         (wire::START, &[13, 2][..]),
         (wire::START, &[12, 3][..]),
         (wire::START, &[12, 2, 0][..]),
-        (wire::ADD_EXTRA, &[3, 1][..]),
-        (wire::ADD_EXTRA, &[][..]),
-        (wire::PUSH_ROLL, &[][..]),
-        (wire::COMMIT, &[0][..]),
         (wire::COMMIT, &[][..]),
     ] {
         let slot = Slot::new();
@@ -2486,115 +2482,280 @@ fn ffi_wire_readback_and_backup() {
     assert_eq!(slot.holds().stage, StageKind::Ready, "the words stay");
 }
 
+/// Ready with every insert read back: a stage that offers every word and export op.
+fn read_back(slot: &Slot) {
+    drive(slot, StageKind::Ready);
+    read_back_all(slot);
+}
+
 /// Ready, every insert read back and the passphrase generated: a stage that offers every word,
 /// export and backup op.
 fn ready_to_export(slot: &Slot) {
-    drive(slot, StageKind::Ready);
-    read_back_all(slot);
+    read_back(slot);
     done(slot.generate_backup_passphrase());
 }
 
+/// The passphrase's confirm passed: a stage that offers the encrypted backup.
+fn confirmed(slot: &Slot) {
+    ready_to_export(slot);
+    let right = right_picks(slot, &passphrase(slot));
+    assert!(done(slot.confirm_backup(right)), "the confirm passes");
+}
+
+/// All of dice-50-words12's rolls in: a stage whose `finish` makes the seed.
+fn rolled(slot: &Slot) {
+    drive(slot, StageKind::Rolling);
+    for face in rolls("dice-50-words12") {
+        done(slot.push_roll(face));
+    }
+}
+
+/// A Mixed ceremony on the OS source, read back: a stage that offers D. A throwaway seed.
+fn mixed_read_back(slot: &Slot) {
+    done(slot.start(SeedLength::Words12, Mode::Mixed));
+    done(slot.commit());
+    done(slot.start_dice());
+    for face in rolls("dice-50-words12") {
+        done(slot.push_roll(face));
+    }
+    done(slot.finish());
+    done(slot.skip_check());
+    read_back_all(slot);
+}
+
+/// with-dice-50 loaded and a check open on dice-50-words12: a stage that offers the check against
+/// the snapshot (the test-registry build alone loads one).
+fn snapshot_checking(slot: &Slot) {
+    done(slot.load_snapshot(&snapshot("with-dice-50"), M5_DAY));
+    checking(slot, "dice-50-words12");
+}
+
 // Malformed inputs halt (wire.rs): an input that is not its op's exact layout (a length, a value
-// outside its range, a text that is not UTF-8, entries that run past the input), in a stage that
-// offers the op so that only the input halts, empties the slot and latches; so does an op the table
-// does not hold.
+// outside its range, a text that is not UTF-8, entries that run past the input, a byte after a
+// status-only op's empty input) empties the slot and latches; so does an op the table does not
+// hold. Each op's inputs run in a stage that offers it, which its well-formed input proves on a
+// fresh slot there (an OK or a refusal, never a halt), so only the input halts. The check against
+// the snapshot needs a loaded one, which only the test-registry build can load.
 #[test]
 fn ffi_wire_malformed_inputs_halt() {
-    type Case = (fn(&Slot), u32, &'static [u8]);
-    let cases: [Case; 36] = [
+    type Op = (fn(&Slot), u32, Vec<u8>, Vec<Vec<u8>>);
+    let byte = || vec![vec![0]];
+    // Eight entries of four letters that each name a word, and an empty file: refused, after them.
+    let entries: Vec<u8> = (0..8).flat_map(|_| text_field("aban")).collect();
+    let mut ops: Vec<Op> = vec![
+        (|_| {}, wire::SELF_TEST, vec![], byte()),
+        (
+            |_| {},
+            wire::START,
+            vec![12, 2],
+            vec![vec![], vec![12], vec![12, 2, 0], vec![13, 2], vec![12, 3]],
+        ),
+        (
+            |s| drive(s, StageKind::Collecting),
+            wire::ADD_EXTRA,
+            vec![1, 9, 9],
+            vec![vec![], vec![0], vec![3, 1]],
+        ),
         (
             |s| drive(s, StageKind::Collecting),
             wire::DEVICE_PROGRESS,
-            &[0],
+            vec![],
+            byte(),
         ),
-        (|s| drive(s, StageKind::Committed), wire::COMMITMENT, &[0]),
-        (|s| drive(s, StageKind::Rolling), wire::DICE_PROGRESS, &[0]),
-        (|s| drive(s, StageKind::Sealed), wire::SEAL, &[0]),
-        (|s| drive(s, StageKind::Checking), wire::CHECK_REQUEST, &[0]),
+        (
+            |s| drive(s, StageKind::Collecting),
+            wire::COMMIT,
+            vec![],
+            byte(),
+        ),
+        (
+            |s| drive(s, StageKind::Committed),
+            wire::COMMITMENT,
+            vec![],
+            byte(),
+        ),
+        (
+            |s| drive(s, StageKind::Committed),
+            wire::START_DICE,
+            vec![],
+            byte(),
+        ),
+        (
+            |s| drive(s, StageKind::Rolling),
+            wire::PUSH_ROLL,
+            vec![6],
+            vec![vec![], vec![6, 6]],
+        ),
+        (
+            |s| drive(s, StageKind::Rolling),
+            wire::UNDO_ROLL,
+            vec![],
+            byte(),
+        ),
+        (
+            |s| drive(s, StageKind::Rolling),
+            wire::DICE_PROGRESS,
+            vec![],
+            byte(),
+        ),
+        (rolled, wire::FINISH, vec![], byte()),
+        (|s| drive(s, StageKind::Sealed), wire::SEAL, vec![], byte()),
+        (
+            |s| drive(s, StageKind::Sealed),
+            wire::SKIP_CHECK,
+            vec![],
+            byte(),
+        ),
+        (
+            |s| drive(s, StageKind::Sealed),
+            wire::START_CHECK,
+            vec![],
+            byte(),
+        ),
+        (
+            |s| drive(s, StageKind::Checking),
+            wire::CHECK_REQUEST,
+            vec![],
+            byte(),
+        ),
         (
             |s| drive(s, StageKind::Checking),
             wire::REVEAL_CODE,
-            &[0xff],
-        ),
-        (
-            |s| drive(s, StageKind::Checking),
-            wire::REVEAL_SNAPSHOT,
-            &[1, 52, 37],
-        ),
-        (
-            |s| drive(s, StageKind::Checking),
-            wire::REVEAL_SNAPSHOT,
-            &[1, 52, 37, 125, 0],
+            b"0000-0000".to_vec(),
+            vec![vec![0xff]],
         ),
         (
             |s| drive(s, StageKind::Checking),
             wire::REVEAL_PROOF,
-            &[1, 52, 37],
+            dated(VECTOR_DAY, b"not a ur"),
+            vec![vec![1, 52, 37], dated(VECTOR_DAY, &[0xff])],
         ),
         (
             |s| drive(s, StageKind::Checking),
-            wire::REVEAL_PROOF,
-            &[1, 52, 37, 125, 0xff],
+            wire::MATCH_FOUND,
+            vec![],
+            byte(),
         ),
         (
             |s| drive(s, StageKind::Checking),
+            wire::CANNOT_CHECK,
+            vec![],
+            byte(),
+        ),
+        (
+            |s| drive(s, StageKind::Restart),
             wire::COLLISION_REPORT,
-            &[0],
+            vec![],
+            byte(),
         ),
-        (ready_to_export, wire::WORD_PAGE, &[]),
-        (ready_to_export, wire::WORD_PAGE, &[1, 1]),
-        (ready_to_export, wire::CHECK_READBACK, &[]),
+        (
+            |s| drive(s, StageKind::Ready),
+            wire::WORD_PAGE,
+            vec![1],
+            vec![vec![], vec![1, 1]],
+        ),
+        (
+            |s| drive(s, StageKind::Ready),
+            wire::CHECK_READBACK,
+            vec![1, b'a', b'b', b'c'],
+            vec![vec![], vec![1, 0xff, b'a', b'b']],
+        ),
+        (
+            |s| drive(s, StageKind::Ready),
+            wire::SUMMARY,
+            vec![],
+            byte(),
+        ),
+        (|s| drive(s, StageKind::Ready), wire::END, vec![], byte()),
+        (read_back, wire::GENERATE_BACKUP_PASSPHRASE, vec![], byte()),
+        (
+            read_back,
+            wire::WATCH_ONLY,
+            vec![0],
+            vec![vec![], vec![0, 0], vec![2], vec![1, 0xff]],
+        ),
+        (read_back, wire::REGISTRATION, vec![], byte()),
         (
             ready_to_export,
-            wire::CHECK_READBACK,
-            &[1, 0xff, b'a', b'b'],
+            wire::BACKUP_PASSPHRASE_PAGE,
+            vec![0],
+            vec![vec![], vec![0, 0]],
         ),
-        (ready_to_export, wire::SUMMARY, &[0]),
-        (ready_to_export, wire::BACKUP_PASSPHRASE_PAGE, &[]),
-        (ready_to_export, wire::BACKUP_PASSPHRASE_PAGE, &[0, 0]),
-        (ready_to_export, wire::BACKUP_CHALLENGE, &[0]),
-        (ready_to_export, wire::CONFIRM_BACKUP, &[0]),
-        (ready_to_export, wire::CONFIRM_BACKUP, &[0, 0, 0]),
-        (ready_to_export, wire::ENCRYPT_BACKUP, &[0]),
-        (ready_to_export, wire::WATCH_ONLY, &[]),
-        (ready_to_export, wire::WATCH_ONLY, &[0, 0]),
-        (ready_to_export, wire::WATCH_ONLY, &[2]),
-        (ready_to_export, wire::WATCH_ONLY, &[1, 0xff]),
-        (ready_to_export, wire::REGISTRATION, &[0]),
-        (ready_to_export, wire::REVEAL_DEVICE_LEG, &[0]),
-        (|_| {}, wire::LOAD_SNAPSHOT, &[1, 52, 37]),
-        (|_| {}, wire::OPEN_BACKUP, &[]),
-        // Seven entries, and no eighth.
+        (ready_to_export, wire::BACKUP_CHALLENGE, vec![], byte()),
+        (
+            ready_to_export,
+            wire::CONFIRM_BACKUP,
+            vec![0, 0],
+            vec![vec![0], vec![0, 0, 0]],
+        ),
+        (confirmed, wire::ENCRYPT_BACKUP, vec![], byte()),
+        (mixed_read_back, wire::REVEAL_DEVICE_LEG, vec![], byte()),
+        (|_| {}, wire::DISCARD, vec![], byte()),
+        (|_| {}, wire::WIPE_ALL, vec![], byte()),
+        (
+            |_| {},
+            wire::LOAD_SNAPSHOT,
+            dated(VECTOR_DAY, &[]),
+            vec![vec![1, 52, 37]],
+        ),
         (
             |_| {},
             wire::OPEN_BACKUP,
-            &[1, 97, 1, 97, 1, 97, 1, 97, 1, 97, 1, 97, 1, 97],
+            entries.clone(),
+            vec![
+                vec![],
+                // Seven entries, and no eighth.
+                entries[..35].to_vec(),
+                // An entry longer than the input.
+                vec![200, 97],
+                // Eight entries, the first not UTF-8.
+                [&[4, 0xff, 98, 97, 110][..], &entries[5..]].concat(),
+            ],
         ),
-        // An entry longer than the input.
-        (|_| {}, wire::OPEN_BACKUP, &[200, 97]),
-        // Eight entries, the first not UTF-8.
-        (
-            |_| {},
-            wire::OPEN_BACKUP,
-            &[1, 0xff, 1, 97, 1, 97, 1, 97, 1, 97, 1, 97, 1, 97, 1, 97],
-        ),
-        (|_| {}, 0, &[]),
-        (|_| {}, 39, &[]),
-        (|_| {}, u32::MAX, &[]),
     ];
-    for (setup, op, input) in cases {
+    if registry_key_is_test() {
+        ops.push((
+            snapshot_checking,
+            wire::REVEAL_SNAPSHOT,
+            M5_DAY.to_be_bytes().to_vec(),
+            vec![vec![1, 52, 37], dated(M5_DAY, &[0])],
+        ));
+    }
+    let mut covered: Vec<u32> = ops.iter().map(|&(_, op, _, _)| op).collect();
+    covered.sort_unstable();
+    let mut every: Vec<u32> = (1..=38).filter(|&op| op != wire::VERIFY_BACKUP).collect();
+    if !registry_key_is_test() {
+        every.retain(|&op| op != wire::REVEAL_SNAPSHOT);
+    }
+    // Every op but VERIFY_BACKUP, whose input is the file whatever it holds, each once.
+    assert_eq!(covered, every);
+    for (setup, op, good, bad) in ops {
         let slot = Slot::new();
         setup(&slot);
-        assert_eq!(
-            slot.dispatch(op, input)[..],
-            [wire::HALTED],
-            "op {op}, input {input:?}"
+        let reply = slot.dispatch(op, &good);
+        assert!(
+            matches!(reply.first(), Some(&(wire::OK | wire::REFUSED))),
+            "op {op}: its well-formed input is offered here"
         );
-        assert_eq!(slot.holds(), HALTED, "op {op}, input {input:?}");
-        assert_eq!(
-            slot.dispatch(wire::WIPE_ALL, &[])[..],
-            [wire::HALTED],
-            "op {op}: the halt latches"
-        );
+        for input in bad {
+            let slot = Slot::new();
+            setup(&slot);
+            assert_eq!(
+                slot.dispatch(op, &input)[..],
+                [wire::HALTED],
+                "op {op}, input {input:?}"
+            );
+            assert_eq!(slot.holds(), HALTED, "op {op}, input {input:?}");
+            assert_eq!(
+                slot.dispatch(wire::WIPE_ALL, &[])[..],
+                [wire::HALTED],
+                "op {op}: the halt latches"
+            );
+        }
+    }
+    for op in [0, 39, u32::MAX] {
+        let slot = Slot::new();
+        assert_eq!(slot.dispatch(op, &[])[..], [wire::HALTED], "op {op}");
+        assert_eq!(slot.holds(), HALTED, "op {op}");
     }
 }
