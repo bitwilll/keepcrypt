@@ -11,8 +11,10 @@
 # kotlin-test below. The owner's Q73 then dropped the iPhone target from M5, so the shared modules
 # declare the Android target only (lead decision M5-31), and no iPhone library or toolchain. The
 # Android workflow regenerates the lockfiles and the verification metadata once more, under the
-# gate's kt_bootstrap_exception (commit 8w); commit 8x commits the reviewed files, turns the
-# exception off and puts M5-13's stop back. kotlin-test brings kotlin-test-junit 2.4.20 on the JVM.
+# gate's kt_bootstrap_exception (commit 8w); commit 8x commits that run's files, turns the
+# exception off and puts M5-13's stop back, and their review against Google's Maven and Maven
+# Central, which pins the new signers, needs a fetch of its own (a later commit). kotlin-test brings
+# kotlin-test-junit 2.4.20 on the JVM.
 # These were published by 2026-09-22, before the 14-day cutoff of 2026-10-06.
 
 [versions]

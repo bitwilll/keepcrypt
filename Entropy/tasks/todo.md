@@ -12453,7 +12453,18 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
     against the unchanged expected manifests and native-library list.
   - Proof (M5 commit 8x, partial; the green Android job is the lead's): the list from run 39404714671's lockfile, 120
     modules: the 29 wrapper modules added, and androidx.savedstate's five modules 1.3.2 -> 1.4.0, the one non-wrapper
-    version change (named under 8x's line in "Re-cut after Q73"); `classpath` compares it before Gradle again.
+    version change on the shipping classpath (named under 8x's line in "Re-cut after Q73"); `classpath` compares it
+    before Gradle again. Corrected at 8x-e: this said "the one non-wrapper version change" without that scope. The
+    lockfiles show other version changes off the shipping classpath, which neither the plan nor 8x named and which Q67
+    sends to the owner by name before they are committed: on :screens' own runtime, host-test runtime and lint
+    classpaths, activity and activity-ktx 1.7.0 and core and core-ktx 1.16.0 (the app resolves 1.13.0 and 1.18.0, as
+    before); on its metadata
+    configurations, androidx lifecycle 2.11.0 (2.9.4 elsewhere), navigationevent 1.1.1 (1.0.0) and atomicfu 0.28.0
+    (0.22.0), with new modules there (lifecycle-viewmodel-compose 2.11.0, kotlinx-browser 0.5.0, ui-backhandler 1.12.1,
+    Compose's annotation-internal and collection-internal 1.10.0, the JetBrains lifecycle-viewmodel and
+    -viewmodel-savedstate 2.9.6 and navigationevent-compose 1.1.0); and Kotlin's scripting compiler plugin
+    (kotlin-scripting-common, -jvm, -compiler-embeddable and -compiler-impl-embeddable 2.4.20) on :core-ffi's and
+    :screens' kotlinCompilerPluginClasspath configurations (the 8x review; the owner's answer is the lead's to record).
 - [ ] iOS link facts in M5 (commit 8q, again at 14):
   - `linkReleaseFrameworkIosArm64` builds a static framework from `:screens`. It holds Kotlin, Compose and skiko but no Rust. CI records its size and its archive-level `llvm-nm -u` list. That list over-reports, because nothing is dead-stripped, and is used only as the superset for the stop rule below.
   - The compared list comes from linked binaries: the `iosSimulatorArm64` and `iosArm64` test executables, which link the `target/ios-test/` library from 14 on. CI records their `llvm-nm -u -m` imports and linked libraries, and compares the `iosArm64` imports with `expected/ios-test-imports.txt` (M5-27).
@@ -12513,7 +12524,9 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
   Moved to M6 by Q73 (8w): the macOS host and the merge script; 8w's Android run writes every lockfile and the
   metadata alone, and 8x reviews and commits them.
   Proof (M5 commit 8x, partial; the strict run is the lead's): run 39404714671's five lockfiles and metadata are
-  committed unchanged, and the Android job builds strictly on them.
+  committed unchanged, and the Android job is set to build strictly on them. Corrected at 8x-e: this said the job
+  builds strictly on them, but no strict run has happened: the job stops at its dependency review, before any Gradle
+  call, until the review's fetch pins the new signers (8x's proof under "Re-cut after Q73").
 - [ ] `android-deps-review.py` is extended:
   - it reads `.klib` files and the Kotlin/Native `.tar.gz` (Central, `.asc`);
   - new signers (JetBrains Compose, skiko, Kotlin/Native) are trusted on first use as under M5-12 and added to the M7 audit list;
@@ -13008,7 +13021,8 @@ at 8v-c: this line and 10922d6's body said "from :51", but the guard/ line enter
   shipping runtime classpath goes from 91 to 120 modules by exactly the 29 JetBrains wrapper modules
   (org.jetbrains.compose.{animation,foundation,runtime,ui}:*:1.12.1, 24; org.jetbrains.androidx.lifecycle:*:2.9.6, 3;
   org.jetbrains.androidx.savedstate:*:1.3.6, 2) and androidx.savedstate's five modules 1.3.2 -> 1.4.0 (Q67, [C3]), the
-  one non-wrapper version change; nothing else. Q67's iPhone-only artifacts reach no APK:
+  one non-wrapper version change on it; nothing else on it (corrected at 8x-e: the lockfiles' version changes off the
+  shipping classpath are listed under the classpath item's 8x proof). Q67's iPhone-only artifacts reach no APK:
   org.jetbrains.skiko:skiko:0.150.1 and org.jetbrains.compose.ui:ui-uikit:1.12.1 are pinned only as `.module` and
   `-metadata.jar`, on :screens' metadataCompileClasspath and its *ResolvableDependenciesMetadata and
   all(Test)SourceSetsCompileDependenciesMetadata configurations, for the shared code's metadata compilation;

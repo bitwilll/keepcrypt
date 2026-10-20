@@ -1914,7 +1914,8 @@ kt_bootstrap() {
 # bootstrap Gradle lines of entropy-android.yml and of the iPhone workflow. The owner's answer to
 # Q73 of 2026-10-20 ("Drop iPhone from M5") removed the iPhone workflow, so commit 8w keeps the
 # Android line alone, and the Android job writes the lock state and metadata once more without the
-# iPhone's configurations. Emptied at commit 8x, which commits the reviewed files, so M5-13's stop
+# iPhone's configurations. Emptied at commit 8x, which commits that run's files (their review
+# against Google's Maven and Maven Central needs a fetch, a later commit's), so M5-13's stop
 # holds again: scripts/canaries.sh pins the list empty (workflow-bootstrap-exception-empty: its one
 # assignment, and the value a --workflows run holds, which the clean line states) and plants that
 # former line in the real workflow, where it must hit, so a list filled again turns CI red until a
