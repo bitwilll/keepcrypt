@@ -12373,7 +12373,7 @@ From now on, `xcrun simctl`, `xcodebuild`, `xcrun devicectl`, Instruments and th
   - The only `expect`/`actual` is `Native`, so the iPhone target compiles in M5 with no iOS seam code and no stub that pretends to work.
 - M5-21: one dispatch call per boundary.
   - `keepcrypt-ffi` gains `dispatch(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>>` over the safe calls. Op numbers and every layout are defined once in `wire.rs`, and Kotlin has one `Native.call(op, input)`.
-  - Android exports `Java_com_keepcrypt_entropy_ffi_Native_call` and `JNI_OnLoad` only, so group 12's symbol check narrows from `Java_com_keepcrypt_entropy_ffi_Native_*` to exactly those two.
+  - Android exports `Java_com_keepcrypt_entropy_ffi_Native_call` and `JNI_OnLoad` only, so group 12's symbol check narrows from `Java_com_keepcrypt_entropy_ffi_Native_*` to exactly those two (amended by M5-40: and secp256k1-sys 0.10.1's four C functions, by exact name).
   - Q53's design (free functions, no handle, a status byte first, decoded once in `Wire.kt`) is unchanged. Only the number of exports drops.
 - M5-22: the `org.jetbrains.compose` Gradle plugin is not applied. The libraries are declared by direct coordinates. There is no material3 (alpha only), no resources library and no navigation library.
 - M5-23: Kotlin targets `iosArm64` and `iosSimulatorArm64` only, declared on every host and never conditionally, so a lockfile does not depend on the host that wrote it.
@@ -12411,7 +12411,7 @@ From now on, `xcrun simctl`, `xcodebuild`, `xcrun devicectl`, Instruments and th
 ```kotlin
 // :core-ffi commonMain
 internal expect object Native { fun call(op: Int, input: ByteArray): ByteArray }
-// androidMain: actual over `private external fun call(op: Int, input: ByteArray): ByteArray` (keepcrypt-jni)
+// androidMain: the actual is the JNI method itself, `actual external fun call(...)` after System.loadLibrary (M5-41)
 // iosMain:     actual over kc_call: input and a kc_max_out()-sized output pinned (usePinned/addressOf),
 //              the returned length copied out, the output buffer filled with 0 before return;
 //              a negative return raises KcHalt
@@ -13300,6 +13300,25 @@ they differ. Nothing in the Android plan is weakened.
 - M5-39 (2026-10-21): the `Restart` stage of commit 10d is confirmed as the Pi has it (pi/app/src/app.rs:864-873 and
   :961-975): Match found, Cannot check and a collision found by a go-ahead all lead to it; only start, and
   collision_report when a report is kept, are offered there; collision_report is offered nowhere else.
+- M5-40 (2026-10-21): libkeepcrypt.so exports, besides our two (`JNI_OnLoad`, `Java_com_keepcrypt_entropy_ffi_Native_call`),
+  the four `#[no_mangle]` C functions secp256k1-sys 0.10.1 defines (`rustsecp256k1_v0_10_0_context_create`,
+  `_context_destroy`, `_default_error_callback_fn`, `_default_illegal_callback_fn`, its src/lib.rs:880, 919, 956 and
+  984). They hold no secret and no app code calls them through the table, so they are allowed by exact name rather than
+  hidden by a linker version script (a build-flag change the plan does not need). Commit 13's CI step allows exactly
+  those four beside our two, so any other export, ours or a dependency's, or a secp256k1-sys version change fails it;
+  M5-21's sentence, group 6's static check and group 12's symbol line read accordingly.
+- M5-41 (2026-10-21): the Android `actual` is the JNI method itself: `internal actual object Native { init {
+  System.loadLibrary("keepcrypt") } actual external fun call(op: Int, input: ByteArray): ByteArray }` (the VM passes
+  the object as the second argument, which the Rust export takes as its unused `_class`). Commit 14's JVM tests also
+  send a negative op and an oversize array through `Native.call` and expect the halt, so the fail-closed branches of
+  `Native_call` that the host tests reach only through 12g's private trait seam run once over a real VM.
+
+**Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
+attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the
+app's window; every screencap, takeScreenshot, recents and saved-state check in the same leg was black, and the second
+attempt passed with no Android change. The cause is not known. 13b (9491fdd) makes the checker print each lit frame's
+pixel count, box and brightest colour. Until the cause is found and fixed, a repeat is a defect to diagnose from those
+lines, never a rerun to green, and the M5 gate report names this item.
 
 **Out-of-plan download (commit 8q), recorded.** While writing 8q, the implementing agent fetched six small files from
 download.jetbrains.com onto this Mac (into the session scratchpad, not the repo): the `.asc` and `.sha256` of each of the three
