@@ -131,6 +131,22 @@ def lit_pixels(frame, fmt, width, region):
     return count
 
 
+def lit_detail(frame, fmt, width, region):
+    """The lit pixels inside region: their count, bounding box (left, top, right, bottom, inclusive) and the
+    brightest one's colour (by its largest channel), so a failing frame says where and what it showed."""
+    left, top, right, bottom = region
+    count, box, brightest = 0, None, (0, 0, 0)
+    for y in range(top, bottom):
+        reds, greens, blues = channels(frame, fmt, width, y, left, right)
+        for x, p in enumerate(zip(reds, greens, blues), start=left):
+            if max(p) > BLACK_MAX:
+                count += 1
+                box = (x, y, x, y) if box is None else (min(box[0], x), min(box[1], y), max(box[2], x), max(box[3], y))
+                if max(p) > max(brightest):
+                    brightest = p
+    return count, box, brightest
+
+
 def known_pixels(frame, fmt, width, height):
     """How many pixels have the known colour, and the sum of their rows."""
     count = rows = 0
@@ -248,6 +264,10 @@ def record(args, recorder=None, should_stop=None, grace=STOP_GRACE):
         if args.expect == "black":
             if lit_pixels(frame, args.format, width, region):
                 state["lit_frames"] += 1
+                if state["lit_frames"] <= 5:
+                    count, box, rgb = lit_detail(frame, args.format, width, region)
+                    say("lit frame %d of the stream: %d pixel(s) in the app's window, columns %d-%d, rows %d-%d, "
+                        "brightest #%02x%02x%02x" % ((index, count, box[0], box[2], box[1], box[3]) + tuple(rgb)))
         else:
             count, rows = known_pixels(frame, args.format, width, height)
             if count > state["best"]:
@@ -410,6 +430,10 @@ def selftest():
               lit_pixels(alpha_only, fmt, w, region) == 0)
         inside = frame_of(fmt, w, h, {(3, 2): (40, 0, 0)})
         check("%s a lit pixel inside the region counts" % fmt, lit_pixels(inside, fmt, w, region) == 1)
+        two = frame_of(fmt, w, h, {(2, 1): (40, 0, 0), (5, 3): (0, 0, 200), (0, 0): (255, 255, 255)})
+        count, box, rgb = lit_detail(two, fmt, w, region)
+        check("%s a lit frame's detail: its count, box and brightest pixel inside the region" % fmt,
+              (count, box) == (2, (2, 1, 5, 3)) and max(rgb) > 128 and rgb[2] == max(rgb))
         for name, colour in (("green", (0, 40, 0)), ("blue", (0, 0, 40))):
             only = frame_of(fmt, w, h, {(3, 2): colour})
             check("%s a pixel lit in %s alone counts" % (fmt, name), lit_pixels(only, fmt, w, region) == 1)
