@@ -11782,16 +11782,55 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
 **12. Rust CI (required checks, no new names)**
 - [ ] The three Android cross legs: the NDK is `$ANDROID_SDK_ROOT/ndk/30.0.16248370`; if absent, `sdkmanager --install
   "ndk;30.0.16248370"` installs it; its `source.properties` is printed and checked (no fallback to another NDK);
-  `cargo build --release --locked -p keepcrypt-jni --lib` per target, and again with `--features
-  keepcrypt-core/test-registry --target-dir target/ffi-test-registry`; the shipping `libkeepcrypt.so` joins the release
-  scan (getrandom imported, no marker, no test key, no RNG symbol, symbol table kept); the test-registry one shows
-  exactly its registry marker and the test key; `llvm-readelf -lW` shows `0x4000` on every LOAD segment for arm64 and
-  x86_64 (armeabi-v7a stays 4 KB, which Play allows); `llvm-nm -D` lists only `JNI_OnLoad` and
+  `cargo build --release --locked -p keepcrypt-jni --lib` per target, and again with `-p keepcrypt-jni -p keepcrypt-core
+  --features keepcrypt-core/test-registry --target-dir target/ffi-test-registry`; the shipping `libkeepcrypt.so` joins
+  the release scan (getrandom imported, no marker, no test key, no RNG symbol, symbol table kept); the test-registry one
+  shows exactly its registry marker and the test key; `llvm-readelf -lW` shows `0x4000` on every LOAD segment for arm64
+  and x86_64 (armeabi-v7a stays 4 KB, which Play allows); `llvm-nm -D` lists only `JNI_OnLoad` and
   `Java_com_keepcrypt_entropy_ffi_Native_*` among our defined symbols. The image's NDK list is printed for Review.
   Proof: a green run with both scans, the alignment and symbol lines; a planted 4 KB link flag turns the check red
   (recorded once under Review).
+  Corrected at commit 13 (commit 9's finding under M5-35): the test-registry build named `--features
+  keepcrypt-core/test-registry` with `-p keepcrypt-jni` alone, which cargo refuses ("the package 'keepcrypt-jni' does
+  not contain this feature"), because keepcrypt-jni has no keepcrypt-core edge; `-p keepcrypt-core` beside it names the
+  feature.
+  Proof (M5 commit 13, partial: the green run, both scans, the alignment and symbol lines and the image's NDK list
+  come from CI, which the lead pushes and reads; nothing NDK runs on this Mac): entropy-ci.yml's three Android legs
+  list keepcrypt-core, keepcrypt-ffi, keepcrypt-guard and keepcrypt-jni (so the target clippy covers the FFI crates);
+  their compiler step lists `$ANDROID_SDK_ROOT/ndk`, installs `ndk;30.0.16248370` with sdkmanager only when that
+  directory is absent, prints its source.properties, fails unless `Pkg.Revision = 30.0.16248370`, needs the API 31
+  clang, llvm-ar, llvm-nm and llvm-readelf there, and never reads ANDROID_NDK_HOME but to print it. Then the two
+  builds above; the release scan takes the shipping `libkeepcrypt.so` beside core's rlib and probe, printing its
+  getrandom import first; the test-registry one must give exit 1 with exactly its registry marker and the test key (2
+  hits); and both pass NDK r30's `llvm-readelf -lW` (every LOAD segment's alignment exactly 0x4000 on arm64 and
+  x86_64; armeabi-v7a's printed, not judged) and `llvm-nm -D --defined-only`, read as M5-21 narrows it: the defined
+  symbols other than secp256k1-sys 0.10.1's own four `#[no_mangle]` exports (`rustsecp256k1_v0_10_0_context_create`,
+  `_context_destroy`, `_default_error_callback_fn`, `_default_illegal_callback_fn`) must be exactly `JNI_OnLoad` and
+  `Java_com_keepcrypt_entropy_ffi_Native_call`. Checked here: `--workflows` clean on the three workflows (sh and dash),
+  and the workflow loads with `ruby -ryaml` (cross: 16 steps). `cargo tree -e normal,build --target T` for the three
+  Android targets: the test-registry build's packages and features equal the shipping build's but keepcrypt-core's
+  `test-registry`. The steps' scripts, taken from the loaded YAML and run under `bash -eo pipefail`: the NDK step on
+  stub SDK trees passes with r30 present, with r30 or the whole ndk/ directory absent and sdkmanager installing it,
+  and fails with sdkmanager installing nothing, a wrong Pkg.Revision, no source.properties, no llvm-readelf and no
+  ANDROID_SDK_ROOT; the alignment and exports step on canned tool output passes arm64 and x86_64 at 0x4000, armeabi-v7a
+  at 0x1000, a versioned name and no secp256k1-sys export, and fails one 0x1000 segment, 0x10000 segments, no LOAD
+  segment, an extra export, a missing JNI_OnLoad, a second Native_ export, an unknown rustsecp256k1_ export, an empty
+  list and a target with no rule. Host stand-ins (aarch64-apple-darwin, the same two cargo commands): the scan step
+  passes on core's rlib, the probe and the shipping dylib (`_getentropy` imported by all 2 linked files) and the
+  test-registry step on the test-registry dylib (Marker KC_TEST_REGISTRY_DO_NOT_SHIP and TestKey, "2 hit(s) in 1
+  file(s)"); with the two dylibs swapped each step fails; both dylibs export exactly `_JNI_OnLoad`,
+  `_Java_com_keepcrypt_entropy_ffi_Native_call` and secp256k1-sys's four.
 - [ ] `test` adds `cargo test -p keepcrypt-ffi -p keepcrypt-jni --locked --features keepcrypt-core/test-registry`.
   Proof: `test`'s time against main's.
+  Proof (M5 commit 13, partial: `test`'s time in CI against main's is the lead's): with `-p keepcrypt-guard` (the
+  re-plan's commit 13), the job runs `cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni --locked` and the
+  same with `--features keepcrypt-core/test-registry`, after the pi-sim run. keepcrypt-ffi's core edge lets cargo take
+  the feature with these three selected (with keepcrypt-guard and keepcrypt-jni alone: "none of the selected packages
+  contains this feature"), so no `-p keepcrypt-core` is added, which would bring core's dev-dependencies and tests in.
+  Each gives keepcrypt-ffi 11 unit and 28 integration tests, keepcrypt-guard 2 and keepcrypt-jni 3, all passed. On
+  this Mac, in a fresh target dir after the job's earlier test builds (workspace, test-sources, pi-sim registry): the
+  plain run 2 s (nothing compiled), the registry run 7 s (3 crates compiled); with `-p keepcrypt-core` it would take 43
+  s more (24 crates compiled, core's tests run).
 
 **13. `:core-ffi` and the Rust libraries in the APK (commit 14)**
 - [ ] `Native.kt` (`internal object Native`, `System.loadLibrary("keepcrypt")`, the `external fun`s), `Wire.kt`

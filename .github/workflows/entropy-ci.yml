@@ -175,6 +175,14 @@ jobs:
       - run: cargo test --workspace --locked
       - run: cargo test -p keepcrypt-core --locked --features test-sources
       - run: cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry
+      # M5 (tasks/todo.md, group 12): the FFI's three crates alone, their features unified among
+      # themselves as in the phone library's build, not across the workspace; then with
+      # test-registry, so the tests that branch on registry_key_is_test() run their registry half.
+      # keepcrypt-ffi depends on keepcrypt-core, so cargo takes the feature with these three
+      # selected (on keepcrypt-jni alone it refuses it, lead decision M5-35), and no -p
+      # keepcrypt-core is needed, which would add core's dev-dependencies and tests.
+      - run: cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni --locked
+      - run: cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni --locked --features keepcrypt-core/test-registry
       # --target keeps the cfg off build scripts: cargo applies a target's rustflags to host
       # artifacts only when no --target is given.
       - name: Build the test-registry simulator for release (x86_64 Linux, its own target dir)
@@ -493,7 +501,14 @@ jobs:
     # keepcrypt-pi binary with the stand-in gcc below and scans it with the rest: it must import
     # getrandom, keep its symbol table, and hold no marker, test key, std random-key path or other
     # RNG symbol. The shipped binary comes from the image workflow's Buildroot toolchain; this one
-    # is scanned, never run. The app libraries for the phones are M5 and M6. Every step checks the
+    # is scanned, never run. M5 (tasks/todo.md, group 12; Q55): the three Android legs link with
+    # NDK r30 (30.0.16248370, the NDK the app's build pins), never the image's default, and build
+    # the phone library, keepcrypt-jni's libkeepcrypt.so, twice: the shipping one (default
+    # features) joins the scan above, and must import getrandom and keep its symbol table; the
+    # test-registry one, in its own target dir, must show exactly its registry marker and the
+    # test key. Both must have 16 KB pages on arm64 and x86_64 and export exactly our two
+    # symbols, JNI_OnLoad and Java_com_keepcrypt_entropy_ffi_Native_call (lead decision M5-21),
+    # beside secp256k1-sys's own four. The iPhone's library is M6 (Q73). Every step checks the
     # changes job (see the header).
     name: cross (${{ matrix.target }})
     needs: changes
@@ -507,19 +522,20 @@ jobs:
           - target: arm-unknown-linux-gnueabihf
             os: ubuntu-24.04
             crates: keepcrypt-core keepcrypt-pi
-          # Android, minSdk 31 (docs/mobile-apps.md), with the image's default NDK.
+          # Android, minSdk 31 (docs/mobile-apps.md), with NDK r30; the FFI's three crates, so
+          # keepcrypt-jni's library is built and checked below.
           - target: aarch64-linux-android
             os: ubuntu-24.04
             ndk_clang: aarch64-linux-android31-clang
-            crates: keepcrypt-core keepcrypt-ffi
+            crates: keepcrypt-core keepcrypt-ffi keepcrypt-guard keepcrypt-jni
           - target: armv7-linux-androideabi
             os: ubuntu-24.04
             ndk_clang: armv7a-linux-androideabi31-clang
-            crates: keepcrypt-core keepcrypt-ffi
+            crates: keepcrypt-core keepcrypt-ffi keepcrypt-guard keepcrypt-jni
           - target: x86_64-linux-android
             os: ubuntu-24.04
             ndk_clang: x86_64-linux-android31-clang
-            crates: keepcrypt-core keepcrypt-ffi
+            crates: keepcrypt-core keepcrypt-ffi keepcrypt-guard keepcrypt-jni
           # iPhone and its simulator, with the image's default Xcode.
           - target: aarch64-apple-ios
             os: macos-26
@@ -568,19 +584,46 @@ jobs:
             echo "CFLAGS_arm_unknown_linux_gnueabihf=-march=armv6zk -mfpu=vfp -mfloat-abi=hard -marm"
             echo "CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER=arm-linux-gnueabihf-gcc"
           } >> "$GITHUB_ENV"
-      - name: C compiler and linker for Android (NDK clang, API 31)
+      # M5 (tasks/todo.md, group 12; Q55): NDK r30 at its exact revision under the SDK root, the
+      # NDK mobile/android's build pins (ndkVersion). The image's NDKs are listed for Review. If an
+      # image update has dropped r30, sdkmanager installs that revision (the image's SDK licences
+      # are accepted, Q54; a licence prompt gets no answer, so nothing is installed and the check
+      # that follows fails). Its source.properties is printed and must name that revision: no
+      # other NDK is ever used, the image's default (ANDROID_NDK_HOME) included. Its llvm-readelf
+      # and llvm-nm check the phone library below.
+      - name: C compiler and linker for Android (NDK r30 clang, API 31)
         if: needs.changes.outputs.entropy == 'true' && matrix.ndk_clang != ''
         env:
           NDK_CLANG: ${{ matrix.ndk_clang }}
+          KC_NDK: 30.0.16248370
         run: |
-          # ANDROID_NDK_HOME is the image's default NDK.
-          bin="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          fail() { echo "FAIL: NDK $KC_NDK: $1" >&2; exit 1; }
+          sdk=${ANDROID_SDK_ROOT:-}
+          [ -n "$sdk" ] && [ -d "$sdk" ] || fail "no Android SDK (ANDROID_SDK_ROOT)"
+          echo "ANDROID_SDK_ROOT: $sdk"
+          echo "== the image's NDKs ($sdk/ndk)"
+          if [ -d "$sdk/ndk" ]; then ls "$sdk/ndk"; else echo "none: no $sdk/ndk"; fi
+          echo "ANDROID_NDK_HOME (the image's default NDK, not used): ${ANDROID_NDK_HOME:-}"
+          ndk=$sdk/ndk/$KC_NDK
+          if [ ! -e "$ndk" ]; then
+            echo "NDK $KC_NDK is not on the image: sdkmanager --install \"ndk;$KC_NDK\""
+            "$sdk/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$KC_NDK" < /dev/null
+          fi
+          props=$ndk/source.properties
+          [ -f "$props" ] || fail "no $props"
+          cat "$props"
+          grep -q "^Pkg[.]Revision = $KC_NDK\$" "$props" || fail "$props is not NDK $KC_NDK"
+          bin=$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin
+          for tool in "$NDK_CLANG" llvm-ar llvm-nm llvm-readelf; do
+            [ -x "$bin/$tool" ] || fail "no $tool in $bin"
+          done
           "$bin/$NDK_CLANG" --version
           t=${TARGET//-/_}
           {
             echo "CC_$t=$bin/$NDK_CLANG"
             echo "AR_$t=$bin/llvm-ar"
             echo "CARGO_TARGET_${t^^}_LINKER=$bin/$NDK_CLANG"
+            echo "KC_NDK_BIN=$bin"
           } >> "$GITHUB_ENV"
       # Q8: getrandom's default Linux and Android backend looks getrandom up with dlsym and falls
       # back to /dev/urandom; linux_getrandom calls libc's getrandom and nothing else, so the scan
@@ -616,6 +659,20 @@ jobs:
       - name: Build pi/app's release binary (default features)
         if: needs.changes.outputs.entropy == 'true' && contains(format(' {0} ', matrix.crates), ' keepcrypt-pi ')
         run: cargo build --release --locked -p keepcrypt-pi --bin keepcrypt-pi --target "$TARGET"
+      # M5 (tasks/todo.md, group 12): the phone library, keepcrypt-jni's cdylib libkeepcrypt.so, as
+      # the shipping APK carries it (default features); the scan step scans it on the same
+      # condition (keepcrypt-jni among the crates).
+      - name: Build libkeepcrypt.so (release, default features)
+        if: needs.changes.outputs.entropy == 'true' && contains(format(' {0} ', matrix.crates), ' keepcrypt-jni ')
+        run: cargo build --release --locked -p keepcrypt-jni --lib --target "$TARGET"
+      # The test-registry APK's library: test-registry switched on from the command line with -p,
+      # never in a manifest. keepcrypt-jni has no keepcrypt-core edge (lead decision M5-35), so
+      # cargo refuses the feature on -p keepcrypt-jni alone; -p keepcrypt-core names it, and the
+      # build's one keepcrypt-core, which keepcrypt-jni reaches through keepcrypt-guard and
+      # keepcrypt-ffi, has it. Its own target dir, so no shipping build file is reused.
+      - name: Build the test-registry libkeepcrypt.so (its own target dir)
+        if: needs.changes.outputs.entropy == 'true' && contains(format(' {0} ', matrix.crates), ' keepcrypt-jni ')
+        run: cargo build --release --locked -p keepcrypt-jni -p keepcrypt-core --lib --features keepcrypt-core/test-registry --target "$TARGET" --target-dir target/ffi-test-registry
       - name: Scan the release artifacts (markers, test key, RNG symbols, the OS import)
         if: needs.changes.outputs.entropy == 'true'
         env:
@@ -624,17 +681,90 @@ jobs:
           rlib="target/$TARGET/release/libkeepcrypt_core.rlib"
           probe="target/$TARGET/release/examples/release_probe"
           pi="target/$TARGET/release/keepcrypt-pi"
+          so="target/$TARGET/release/libkeepcrypt.so"
           files=("$rlib" "$probe")
           case " $CRATES " in
             *" keepcrypt-pi "*) files+=("target/$TARGET/release/libkeepcrypt_pi.rlib" "$pi") ;;
+          esac
+          case " $CRATES " in
+            *" keepcrypt-jni "*) files+=("$so") ;;
           esac
           for f in "${files[@]}"; do
             size=$(wc -c < "$f")
             echo "$f: $((size)) bytes"
           done
-          # The binary's OS import as llvm-nm prints it, for Review (tasks/todo.md, M4 group 12);
-          # the scan requires it (OSImport) and refuses a stripped file (Format).
+          # The binary's OS import as llvm-nm prints it, for Review (tasks/todo.md, M4 group 12),
+          # and the phone library's (M5 group 12); the scan requires it (OSImport) and refuses a
+          # stripped file (Format).
           case " $CRATES " in
             *" keepcrypt-pi "*) "$(rustc --print target-libdir)/../bin/llvm-nm" -u "$pi" | grep -E '(^| )getrandom(@|$)' ;;
           esac
+          case " $CRATES " in
+            *" keepcrypt-jni "*) "$(rustc --print target-libdir)/../bin/llvm-nm" -u "$so" | grep -E '(^| )getrandom(@|$)' ;;
+          esac
           scripts/banned-api-check.sh --artifact "$TARGET" "${files[@]}"
+      # The test-registry library (M5 group 12; rule 10), as the test job scans the test-registry
+      # simulator: the scan must exit 1 with exactly two hits, its registry marker and the test
+      # key, so no stub marker, no RNG symbol, no stripped file and the OS import there.
+      - name: Scan the test-registry libkeepcrypt.so (exactly its registry marker and the test key)
+        if: needs.changes.outputs.entropy == 'true' && contains(format(' {0} ', matrix.crates), ' keepcrypt-jni ')
+        run: |
+          so="target/ffi-test-registry/$TARGET/release/libkeepcrypt.so"
+          size=$(wc -c < "$so")
+          echo "$so: $((size)) bytes"
+          rc=0
+          out=$(scripts/banned-api-check.sh --artifact "$TARGET" "$so" 2>&1) || rc=$?
+          printf '%s\n' "$out"
+          fail() { echo "FAIL: the test-registry libkeepcrypt.so's scan: $1" >&2; exit 1; }
+          [ "$rc" -eq 1 ] || fail "exit $rc, not 1"
+          # Each hit is one line, so two distinct hit lines and the count of 2 are all of them.
+          for want in "Marker: $so: KC_TEST_REGISTRY_DO_NOT_SHIP" \
+            "TestKey: $so: the test registry public key " \
+            "banned-api-check --artifact $TARGET: 2 hit(s) in 1 file(s)"; do
+            case $out in *"$want"*) ;; *) fail "no line holds \"$want\"" ;; esac
+          done
+          case $out in *KC_TEST_SOURCE_DO_NOT_SHIP*) fail "the stub marker" ;; esac
+      # Both libraries, read with NDK r30's tools (M5 group 12). 16 KB pages, which Play requires of
+      # every 64-bit library from 2027-02-01 (NDK r28 on links them so): llvm-readelf -lW must show
+      # an alignment of 0x4000 on every LOAD segment on arm64 and x86_64. armeabi-v7a keeps 4 KB
+      # pages, which Play allows, so its segments are printed, not judged. The exports (lead
+      # decision M5-21): llvm-nm -D's defined symbols are printed, and ours among them must be
+      # exactly JNI_OnLoad and Java_com_keepcrypt_entropy_ffi_Native_call. The only others allowed
+      # are secp256k1-sys's own #[no_mangle] functions (0.10.1: its context allocator pair and its
+      # two default callbacks), which a cdylib exports with ours; any other defined symbol fails.
+      - name: libkeepcrypt.so's LOAD alignment and exports (both builds)
+        if: needs.changes.outputs.entropy == 'true' && contains(format(' {0} ', matrix.crates), ' keepcrypt-jni ')
+        run: |
+          fail() { echo "FAIL: $1" >&2; exit 1; }
+          case $TARGET in
+            aarch64-linux-android | x86_64-linux-android) page=0x4000 ;;
+            armv7-linux-androideabi) page= ;;
+            *) fail "no page-size rule for $TARGET" ;;
+          esac
+          ours='JNI_OnLoad Java_com_keepcrypt_entropy_ffi_Native_call'
+          secp='rustsecp256k1_v0_10_0_context_create rustsecp256k1_v0_10_0_context_destroy'
+          secp="$secp rustsecp256k1_v0_10_0_default_error_callback_fn rustsecp256k1_v0_10_0_default_illegal_callback_fn"
+          want=$(printf '%s\n' $ours | LC_ALL=C sort)
+          for so in "target/$TARGET/release/libkeepcrypt.so" "target/ffi-test-registry/$TARGET/release/libkeepcrypt.so"; do
+            echo "== $so: llvm-readelf -lW, the LOAD segments"
+            loads=$("$KC_NDK_BIN/llvm-readelf" -lW "$so" | awk '$1 == "LOAD"')
+            [ -n "$loads" ] || fail "$so: no LOAD segment"
+            printf '%s\n' "$loads"
+            if [ -n "$page" ]; then
+              # The alignment is a LOAD line's last field (the flags before it may hold spaces).
+              bad=$(printf '%s\n' "$loads" | awk -v page="$page" '$NF != page')
+              [ -z "$bad" ] || fail "$so: a LOAD segment is not aligned to $page (16 KB pages)"
+              echo "every LOAD segment aligned to $page"
+            else
+              echo "armeabi-v7a: 4 KB pages, printed, not judged"
+            fi
+            echo "== $so: llvm-nm -D --defined-only"
+            "$KC_NDK_BIN/llvm-nm" -D --defined-only "$so" > "$RUNNER_TEMP/exports"
+            cat "$RUNNER_TEMP/exports"
+            # The name is each line's last field, without a version suffix.
+            got=$(awk -v secp="$secp" '
+              BEGIN { n = split(secp, s, " "); for (i = 1; i <= n; i++) theirs[s[i]] = 1 }
+              { name = $NF; sub(/@.*/, "", name); if (!(name in theirs)) print name }' "$RUNNER_TEMP/exports" | LC_ALL=C sort -u)
+            [ "$got" = "$want" ] || fail "$so: our defined symbols are not exactly JNI_OnLoad and Java_com_keepcrypt_entropy_ffi_Native_call: $(printf '%s ' $got)"
+            echo "our exports: exactly $(printf '%s ' $want)(secp256k1-sys's: $(grep -c -E ' rustsecp256k1_v0_10_0_' "$RUNNER_TEMP/exports" || :) of its four)"
+          done
