@@ -12790,6 +12790,16 @@ is refused in M5.
   the iPhone reuses them. Q71's iPhone-residual sentence applies if it does.
 - MA:21, :23, :24: the iOS cells say "chosen in M6 (Q73)".
 
+Proof (M5 commit 8v, 10922d6): `git diff --name-only HEAD~1 HEAD` lists docs/build-plan.md and docs/mobile-apps.md
+only, and `grep -c capi docs/*.md` is 0 for every file; `vectorgen.py --selftest` 13/13 and `verify.py selftest` 8/8 on
+Python 3.12 and 3.9; `banned-api-check.sh` clean (286 files) and `--selftest` 1304 passed, 0 failed; fmt, both clippy
+commands, `cargo test --workspace --locked` (21 suites, 445 passed, 3 ignored) and the test-sources run (17 suites, 269
+passed, 1 ignored) unchanged. Every edit above landed, on lines 80bc278 changed, and nothing else in docs/. Read as: M6's
+deliverables cell starts "Screens and binding ..." (the row's Milestone cell already says "iPhone app"); ffi/guard/'s
+tree line says "under the JNI boundary" (it said "under both boundaries"); the Bindings row says "the boundary over it";
+MA:17's residual sentence opens "If the iPhone reuses the shared screens". The citations here stay 057130d's; against
+it, BP lines from :51 now sit 1 lower (BP:298/299 are now :299/300), MA unchanged.
+
 **Commit order, Stage B2 from here** (replaces 8r-8t)
 - 8u. tasks/todo.md: Q73 and this re-cut; the six signature and hash files read on this Mac for 8q recorded as an
   out-of-plan download (no code, nothing run; the signature facts were later reproduced by CI's run).
