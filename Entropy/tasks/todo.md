@@ -12216,6 +12216,11 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
     `ktfailopen-catch-kmp-nested-common-test` fail. The scope copies now fill six trees, all clean: src/test and
     src/androidTest 107 fixtures each, commonTest and androidHostTest 118, iosTest 115 (three whose text the iOS names
     refuse stay out), capture-control 24.
+  - Proof (M5 commit 8p-c, review): no build file points a source set at a test set's directory, so no test-scoped
+    file compiles into a shipping set: srcDir or srcDirs naming src/test, src/androidTest, src/commonTest,
+    src/androidHostTest or src/iosTest is a KtSdk hit (`ktsdk-kmp-src-dir-common-test`, `ktsdk-app-src-dir-test`);
+    the review's tree (commonMain { kotlin.srcDir("src/commonTest/kotlin") } and a swallowed catch round
+    rememberSaveable there, clean before) gives that one hit.
 - [x] Named files (:2065-2095, header :504-513):
   - `CeremonyViewModel.kt` becomes `screens/src/commonMain/**/CeremonyModel.kt`, the only `KcHalt` catch;
   - the airplane-settings `Intent` and the `SensorManager` exceptions move to their `:app` files;

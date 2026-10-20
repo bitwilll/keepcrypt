@@ -599,7 +599,9 @@
 #              classpath(; a repositories block in any build file but
 #              mobile/android/settings.gradle.kts; and any srcDir, srcDirs, setSrcDirs,
 #              directories, srcFile or setSrcFile but srcDir("src/...") or srcDirs("src/...")
-#              with one plain path under the module's src/ (no .., no $, no build path). In build
+#              with one plain path under the module's src/ (no .., no $, no build path) that is
+#              not a test source set's (src/test, src/androidTest, src/commonTest,
+#              src/androidHostTest or src/iosTest, which skip the shipping rules). In build
 #              files but lockfiles (whose generated header names --write-locks), in
 #              scripts/android-gradle.sh and in every workflow (Workflow mode), the bootstrap
 #              (group 4): kc.bootstrap, --write-locks, --update-locks,
@@ -1777,7 +1779,10 @@ kt_sdk() {
 # KtSdk, in build files: a source set pointed anywhere but a plain path under the module's own
 # src/. Every srcDir, srcDirs, setSrcDirs, directories (AGP's newer source-set API), srcFile and
 # setSrcFile is a hit but srcDir("src/...") or srcDirs("src/...") with one literal path of
-# letters, digits, _, - and / (so no .., no $ and no build output). A build path
+# letters, digits, _, - and / (so no .., no $ and no build output) whose first directory is not
+# a test source set's (test, androidTest, commonTest, androidHostTest or iosTest): their files
+# skip KtFailOpen's catch list, KtStorage, KtIntent, KtDevice and the Activity rule, so
+# commonMain { kotlin.srcDir("src/commonTest/kotlin") } would ship them unchecked. A build path
 # (build/rust, layout.buildDirectory) would compile or package what a script left there, another
 # manifest (manifest.srcFile) would escape KtManifest, and ../capture-control's sources would be
 # built into :app with that module's exemptions; the plan builds none of these (tasks/todo.md, M5
@@ -1787,6 +1792,7 @@ kt_source_sets() {
   t=$(grep -n -a -E -e "${L}(srcDirs?|setSrcDirs|directories|srcFile|setSrcFile)$R" -- "$1")
   case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
   kept_hits "(^|[^A-Za-z0-9_])(srcDirs?|setSrcDirs|directories|srcFile|setSrcFile)([^A-Za-z0-9_]|$)" \
+    -e 's#(srcDirs?[[:space:]]*[(][[:space:]]*")(src/(test|androidTest|commonTest|androidHostTest|iosTest)[/"])#\1!\2#g' \
     -e 's#(^|[^A-Za-z0-9_])srcDirs?[[:space:]]*[(][[:space:]]*"src/[A-Za-z0-9_/-]*"[[:space:]]*[)]#\1#g'
 }
 
