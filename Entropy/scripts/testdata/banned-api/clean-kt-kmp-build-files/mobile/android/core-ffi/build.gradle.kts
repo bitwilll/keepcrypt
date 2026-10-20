@@ -1,4 +1,4 @@
-// :core-ffi, Kotlin Multiplatform: the gate's clean case of the re-plan's KMP build lines (tasks/todo.md, M5).
+// :core-ffi, Kotlin Multiplatform: the gate's clean case of the KMP build lines, the Android target alone (tasks/todo.md, M5, Q73).
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -12,22 +12,12 @@ kotlin {
         minSdk = libs.versions.android.min.sdk.get().toInt()
         withHostTestBuilder {}
     }
-    iosArm64 {
-        compilations.getByName("main").cinterops.create("keepcrypt") {
-            compilerOpts("-I$rootDir/../../ffi/capi/include")
-        }
-        binaries.getTest("DEBUG").linkerOpts("$rootDir/../../target/ios-test/aarch64-apple-ios/release/libkeepcrypt_capi.a")
-    }
-    iosSimulatorArm64 {
-        compilations.getByName("main").cinterops.create("keepcrypt") {
-            compilerOpts("-I$rootDir/../../ffi/capi/include")
-        }
-        binaries.getTest("DEBUG").linkerOpts("$rootDir/../../target/ios-test/aarch64-apple-ios-sim/release/libkeepcrypt_capi.a")
-        testRuns["test"].deviceId = "iPhone 16 Pro"
-    }
     sourceSets {
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+        }
+        getByName("androidHostTest").dependencies {
+            implementation(libs.junit)
         }
     }
 }

@@ -6,16 +6,14 @@
 # days before it was pinned here (2026-10-17).
 #
 # The one such exception (2026-10-20, Q67; the Compose Multiplatform re-plan, "Dependency
-# bootstrap"): the owner's Q64 added the shared screens, so commit 8q declares the two Kotlin
-# Multiplatform plugins, Compose Multiplatform's runtime, foundation and ui and kotlin-test below,
-# and the Android and iOS workflows regenerate the lockfiles and the verification metadata once,
-# each on its own host, under the gate's kt_bootstrap_exception. Commit 8r commits the reviewed,
-# merged files, turns the exception off and puts M5-13's stop back. The Kotlin Gradle plugin
-# resolves two approved build tools of its own at its version, 2.4.20, with no line here: the klib
-# commonizer (kotlin-klib-commonizer-embeddable) and the Kotlin/Native compiler
-# (kotlin-native-prebuilt), whose three toolchain archives scripts/konan-deps.sh fetches and
-# verifies (Q68). kotlin-test brings kotlin-test-junit 2.4.20 on the JVM. These were published by
-# 2026-09-22, before the 14-day cutoff of 2026-10-06.
+# bootstrap"; the re-cut after Q73): the owner's Q64 added the shared screens, so commit 8q declares
+# the two Kotlin Multiplatform plugins, Compose Multiplatform's runtime, foundation and ui and
+# kotlin-test below. The owner's Q73 then dropped the iPhone target from M5, so the shared modules
+# declare the Android target only (lead decision M5-31), and no iPhone library or toolchain. The
+# Android workflow regenerates the lockfiles and the verification metadata once more, under the
+# gate's kt_bootstrap_exception (commit 8w); commit 8x commits the reviewed files, turns the
+# exception off and puts M5-13's stop back. kotlin-test brings kotlin-test-junit 2.4.20 on the JVM.
+# These were published by 2026-09-22, before the 14-day cutoff of 2026-10-06.
 
 [versions]
 # The Android Gradle plugin 9.3.3 (2026-09-17), com.android.application, com.android.library and

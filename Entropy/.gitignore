@@ -13,9 +13,6 @@ mobile/android/**/jniLibs/
 # Gradle's per-project cache, and the Android SDK path of one machine.
 .gradle/
 local.properties
-# Kotlin/Native's data directory (lead decision M5-28): the compiler, its toolchain archives and
-# what it extracts from them. The gate's Build rule refuses a tracked file under mobile/**/.konan/.
-mobile/android/.konan/
 # Built packages: every APK and AAB comes from CI (rule 10, as target/ above).
 *.apk
 *.aab

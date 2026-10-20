@@ -1110,13 +1110,15 @@ for dir in "$tmp/mobile/android" "$tmp/mobile"; do
 done
 
 # The Kotlin Multiplatform, iPhone and bridge rules on the real tree (tasks/todo.md, M5 re-plan for
-# Compose Multiplatform, "Gate changes"): one planted file or line per rule in the copy must fail
-# scripts/banned-api-check.sh with exactly these nine hits: a source set outside the allow list in
-# :screens (appleMain), an iOS storage name in :core-ffi's iosMain, a catch in :screens' commonMain
-# (the same file in its commonTest must pass, so the test scope covers the KMP test sets and no
-# more), a cinterop definition with a linker option, a CocoaPods block in the app's build file, an
-# import of Kotlin's uuid package in the app, Kotlin under mobile/ outside mobile/android, a
-# catch_unwind in keepcrypt-capi and an export in keepcrypt-guard. So a dropped rule, a widened
+# Compose Multiplatform, "Gate changes"; the re-cut after Q73): one planted file or line per rule in
+# the copy must fail scripts/banned-api-check.sh with exactly these twelve hits: a source set
+# outside the allow list in :screens (appleMain), an iOS storage name in :core-ffi's iosMain (with
+# KtSourceSet's hit for that set, which M5 refuses), a catch in :screens' commonMain (the same file
+# in its commonTest must pass, so the test scope covers the KMP test sets and no more), a cinterop
+# definition with a linker option (with KtSourceSet's hit for nativeInterop), an iPhone target in
+# :core-ffi's build file (commit 8q's own line, refused in M5), a CocoaPods block in the app's build
+# file, an import of Kotlin's uuid package in the app, Kotlin under mobile/ outside mobile/android,
+# a catch_unwind in keepcrypt-capi and an export in keepcrypt-guard. So a dropped rule, a widened
 # allow list or a scope that takes commonMain for a test set turns CI red. Each planted file has a
 # name the real tree does not use, and unplant removes it; the edited files are restored.
 # unplant PATH...: removes each PATH (relative to the copy), then each parent directory the real
@@ -1156,6 +1158,8 @@ else
 fi
 echo 'linkerOpts = -lkeepcrypt_capi' >> "$tmp/$kdef" || exit 1
 echo 'kotlin { cocoapods { } } // gate canary (temp copy only)' >> "$tmp/$ka/app/build.gradle.kts" || exit 1
+# The line exactly as commit 8q's allow list held it, so only a list without it refuses it.
+echo '    iosArm64()' >> "$tmp/$ka/core-ffi/build.gradle.kts" || exit 1
 # Spelt in two parts, so this file holds no such import of its own (RNG applies to every file).
 printf 'import kotlin.%s.Uuid // gate canary (temp copy only)\n' uuid > "$tmp/$ka/app/src/main/kotlin/KcGateCanaryUuid.kt" || exit 1
 echo 'package com.keepcrypt.canary' > "$tmp/mobile/shared/KcGateCanary.kt" || exit 1
@@ -1164,19 +1168,24 @@ echo '#[unsafe(no_mangle)] pub extern "C" fn kc_gate_canary() {}' > "$tmp/ffi/gu
 expect_failure "$name" sh "$root/scripts/banned-api-check.sh" "$tmp"
 need "KtSourceSet: $ka/screens/src/appleMain/kotlin/KcGateCanary.kt: "
 need "KtIos: $ka/core-ffi/src/iosMain/kotlin/KcGateCanary.ios.kt:1: "
+need "KtSourceSet: $ka/core-ffi/src/iosMain/kotlin/KcGateCanary.ios.kt: "
 need "KtFailOpen: $ka/screens/src/commonMain/kotlin/KcGateCanaryScope.kt:1: "
 never "$ka/screens/src/commonTest/"
 need "KtCinterop: $kdef:"
 need "linkerOpts = -lkeepcrypt_capi"
+need "KtSourceSet: $kdef: "
+need "KtSdk: $ka/core-ffi/build.gradle.kts:"
+need "    iosArm64()"
 need "KtSdk: $ka/app/build.gradle.kts:"
 need "kotlin { cocoapods { } }"
 need "RNG: $ka/app/src/main/kotlin/KcGateCanaryUuid.kt:1: "
 need "KtRoot: mobile/shared/KcGateCanary.kt: "
 need "FFI: ffi/capi/src/kc_gate_canary.rs:1: "
 need "FFI: ffi/guard/src/kc_gate_canary.rs:1: "
-need "banned-api-check: 9 hit(s) in "
+need "banned-api-check: 12 hit(s) in "
 verdict
 cp "$root/$ka/app/build.gradle.kts" "$tmp/$ka/app/build.gradle.kts" || exit 1
+cp "$root/$ka/core-ffi/build.gradle.kts" "$tmp/$ka/core-ffi/build.gradle.kts" || exit 1
 if [ -f "$root/$kdef" ]; then
     cp "$root/$kdef" "$tmp/$kdef" || exit 1
     unplant $kplanted

@@ -1,4 +1,4 @@
-// :screens, Kotlin Multiplatform: every screen, written once (the gate's clean case, tasks/todo.md, M5).
+// :screens, Kotlin Multiplatform: every screen, written once, built for Android (the gate's clean case, tasks/todo.md, M5).
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -14,14 +14,6 @@ kotlin {
         withHostTestBuilder {
         }
     }
-    iosArm64 {
-        binaries.framework {
-            baseName = "KeepCryptScreens"
-            isStatic = true
-        }
-        binaries.getTest("DEBUG").linkerOpts("$rootDir/../../target/ios-test/aarch64-apple-ios/release/libkeepcrypt_capi.a")
-    }
-    iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
             implementation(project(":core-ffi"))
@@ -29,9 +21,8 @@ kotlin {
             implementation(libs.compose.foundation)
             implementation(libs.compose.ui)
         }
-        iosMain.dependencies {
-        }
-        iosTest.dependencies {
+        commonTest.dependencies {
+            implementation(libs.kotlin.test)
         }
     }
 }

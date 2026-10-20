@@ -39,21 +39,17 @@
 # recordings through scripts/android-frames.py (raw frames streamed and checked in memory, none
 # kept).
 #
-# Bootstrap mode (commit 8q, 2026-10-20; Entropy/tasks/todo.md, M5 re-plan for Compose
-# Multiplatform, "Dependency bootstrap"; Q67): the owner approved the shared Compose Multiplatform
-# screens and their libraries, so the lockfiles and the verification metadata are regenerated once,
+# Bootstrap mode (commits 8q and 8w, 2026-10-20; Entropy/tasks/todo.md, M5 re-plan for Compose
+# Multiplatform, "Dependency bootstrap", and "Re-cut after Q73"; Q67, Q73): the owner approved the
+# shared Compose Multiplatform screens and their libraries, then dropped the iPhone target from M5,
+# so the lockfiles and the verification metadata are regenerated for the Android target alone,
 # under the reviewed, temporary exception to the gate's bootstrap rule that lead decision M5-13
 # reserved (banned-api-check.sh's kt_bootstrap_exception names this workflow's one lock-writing
-# Gradle line). This job writes the lock state and metadata of the Android and common
-# configurations, entropy-ios.yml those of the iPhone ones; both upload what they wrote, and
-# commit 8r merges, reviews and commits the files, puts the strict build back and removes the
-# exception. Until then this job builds once in that mode: the shipping classpath list is
-# regenerated from the new lockfile and printed as a diff, not compared, and the review of the
-# committed pins (scripts/android-deps-review.sh), whose files this run replaces, waits for the
-# merged files of commit 8r. Kotlin/Native's data directory (mobile/android/.konan) starts empty
-# and download.jetbrains.com and its CDN host are blocked before the build, so a Kotlin/Native
-# download this host turns out to need fails the build instead of happening unseen; "probe:" lines
-# say what the build resolved of Kotlin/Native here. The APK checks and the emulators run as before.
+# Gradle line). This job writes and uploads them, and commit 8x reviews and commits the files, puts
+# the strict build back and removes the exception. Until then this job builds once in that mode:
+# the shipping classpath list is regenerated from the new lockfile and printed as a diff, not
+# compared, and the review of the committed pins (scripts/android-deps-review.sh), whose files this
+# run replaces, waits for the files of commit 8x. The APK checks and the emulators run as before.
 #
 # Not one of the 14 required checks (Q55), so path filters are safe, as in entropy-pi-image.yml:
 # a skipped run never leaves a required check pending. The rule instead (Q38 (b)): no PR that
@@ -211,12 +207,12 @@ jobs:
           gpg --version | head -n 1
           python3 --version
           python3 -I scripts/android-deps-review.py --selftest
-      # In bootstrap mode (commit 8q) the two checks of the committed pins that run here before any
-      # Gradle run, MA:126's classpath compare (scripts/android-deps-review.py classpath) and the
-      # review of every artifact of the verification metadata against its repository
+      # In bootstrap mode (commits 8q and 8w) the two checks of the committed pins that run here
+      # before any Gradle run, MA:126's classpath compare (scripts/android-deps-review.py classpath)
+      # and the review of every artifact of the verification metadata against its repository
       # (scripts/android-deps-review.sh), are left out: the bootstrap build replaces those files, so
-      # neither check would say anything about this build. Commit 8r runs both again, before the
-      # first Gradle run, on the merged files it commits.
+      # neither check would say anything about this build. Commit 8x runs both again, before the
+      # first Gradle run, on the files it commits.
       # The Gradle distribution from the cache (M5 "Budgets"), keyed on the version and SHA-256
       # pinned in scripts/android-gradle.sh, which checks the zip against that pin on every run, a
       # restored one included, and removes it before any of it runs when the bytes differ. Only the
@@ -238,36 +234,14 @@ jobs:
           key: ${{ runner.os }}-${{ runner.arch }}-${{ env.KC_GRADLE_KEY }}
       - name: Gradle (scripts/android-gradle.sh --version)
         run: sh scripts/android-gradle.sh --dependency-verification strict --version
-      # Kotlin/Native's data directory starts empty (lead decision M5-28; never cached), and the
-      # hosts Kotlin/Native's own fetcher downloads from, download.jetbrains.com and its CDN host,
-      # resolve to an unroutable address from here on (the re-plan's "Kotlin/Native toolchain
-      # archives", step 3), so a fetch it tries fails the build instead of happening unseen. Gradle's
-      # own repositories are not affected. A connection that still succeeds fails the step.
-      - name: Kotlin/Native data directory emptied; its download hosts blocked
-        run: |
-          fail() { echo "FAIL: host block: $1" >&2; exit 1; }
-          rm -rf mobile/android/.konan
-          [ ! -e mobile/android/.konan ] || fail "mobile/android/.konan is still there"
-          if [ -e "$HOME/.konan" ]; then echo "probe: linux: ~/.konan before the build: present"; else echo "probe: linux: ~/.konan before the build: absent"; fi
-          for h in download.jetbrains.com download-cdn.jetbrains.com; do
-            printf '0.0.0.0 %s\n:: %s\n' "$h" "$h" | sudo tee -a /etc/hosts > /dev/null
-          done
-          tail -n 4 /etc/hosts
-          for h in download.jetbrains.com download-cdn.jetbrains.com; do
-            getent ahosts "$h" || :
-            if curl --silent --show-error --max-time 20 --output /dev/null "https://$h/kotlin/native/"; then
-              fail "https://$h/ still answers"
-            fi
-            echo "https://$h/ is blocked"
-          done
-      # The bootstrap build (the reviewed, temporary exception, Q67; its Gradle line is the one that
-      # banned-api-check.sh's kt_bootstrap_exception names for this workflow): buildEnvironment,
-      # every module's dependencies report (so every configuration gets its lock state, the shared
-      # modules' iPhone ones too, which entropy-ios.yml writes as well), the five APKs and the JVM
-      # tests, in one Gradle run that writes every module's gradle.lockfile and adds the SHA-256 of
-      # every file it fetches to gradle/verification-metadata.xml. Lock state is written, not
-      # checked, and no checksum is checked while the metadata is written. The whole log is kept for
-      # the artifact. A Gradle failure fails the step.
+      # The bootstrap build (the reviewed, temporary exception, Q67 and Q73; its Gradle line is the
+      # one that banned-api-check.sh's kt_bootstrap_exception names for this workflow):
+      # buildEnvironment, every module's dependencies report (so every configuration gets its lock
+      # state), the five APKs and the JVM tests, in one Gradle run that writes every module's
+      # gradle.lockfile and adds the SHA-256 of every file it fetches to
+      # gradle/verification-metadata.xml. Lock state is written, not checked, and no checksum is
+      # checked while the metadata is written. The whole log is kept for the artifact. A Gradle
+      # failure fails the step.
       - name: Bootstrap build (lockfiles and verification metadata written, Q67)
         run: |
           out=mobile/android/build/kc-bootstrap
@@ -283,34 +257,18 @@ jobs:
             echo "FAIL: the bootstrap build failed (above)" >&2
             exit 1
           fi
-      # The probe's Linux facts (the re-plan's "Unverified until the probe", 8o-8q): what this host
-      # resolved of Kotlin/Native (the compiler bundle and the klib commonizer, in the lockfiles and
-      # the metadata) and extracted into its data directory, whether ~/.konan was touched, and the
-      # shipping classpath's delta: the list is regenerated from the new lockfile into
+      # The probe's classpath fact (the re-plan's "Unverified until the probe"): the shipping
+      # classpath's delta. The list is regenerated from the new lockfile into
       # mobile/android/expected/shipping-runtime-classpath.txt for the artifact and printed as a
-      # diff against the committed one, not judged (commit 8r names every non-wrapper change).
-      - name: Probe facts (Kotlin/Native on Linux; the shipping classpath regenerated, not compared)
+      # diff against the committed one, not judged (commit 8x names every non-wrapper change).
+      - name: Probe facts (the shipping classpath regenerated, not compared)
         run: |
-          echo "probe: linux: Kotlin/Native and the klib commonizer in the regenerated lockfiles:"
-          grep -h -E 'kotlin-native-prebuilt|kotlin-klib-commonizer' mobile/android/*/gradle.lockfile | sed 's/^/probe:   /' || echo "probe:   none"
-          echo "probe: linux: the same in the verification metadata:"
-          grep -E -A 3 '<component group="org[.]jetbrains[.]kotlin" name="(kotlin-native-prebuilt|kotlin-klib-commonizer[^"]*)"' \
-            mobile/android/gradle/verification-metadata.xml | sed 's/^/probe:   /' || echo "probe:   none"
-          if [ -e mobile/android/.konan ]; then
-            echo "probe: linux: mobile/android/.konan after the build:"
-            (cd mobile/android/.konan && find . -maxdepth 2 | sort) | sed 's/^/probe:   /'
-          else
-            echo "probe: linux: mobile/android/.konan after the build: absent (nothing of Kotlin/Native extracted here)"
-          fi
-          if [ -e "$HOME/.konan" ]; then echo "probe: linux: ~/.konan after the build: present"; else echo "probe: linux: ~/.konan after the build: absent"; fi
-          echo "probe: linux: Kotlin/Native in the Gradle log:"
-          grep -n -i -e 'kotlin/native' -e 'konan' mobile/android/build/kc-bootstrap/gradle.log | sed 's/^/probe:   /' || echo "probe:   none"
           python3 -I scripts/android-deps-review.py classpath --write
           echo "probe: linux: the shipping runtime classpath against the committed list (- committed, + regenerated):"
           git diff --no-color --unified=0 -- mobile/android/expected/shipping-runtime-classpath.txt | grep -E '^[-+][^-+]' | sed 's/^/probe:   /' || echo "probe:   unchanged"
-      # The files commit 8r merges, reviews and commits (kept 14 days): every module's
-      # gradle.lockfile, the verification metadata, the regenerated classpath list, and the
-      # bootstrap build's log with its buildEnvironment and dependencies reports.
+      # The files commit 8x reviews and commits (kept 14 days): every module's gradle.lockfile, the
+      # verification metadata, the regenerated classpath list, and the bootstrap build's log with its
+      # buildEnvironment and dependencies reports.
       - name: Upload the bootstrap files (lockfiles, verification metadata, classpath list, log)
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

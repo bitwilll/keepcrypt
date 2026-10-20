@@ -10,13 +10,10 @@
 # so what runs is always the checked bytes. Gradle runs with --no-daemon (nothing stays behind)
 # and --no-scan (no build scan is ever published), and with its own user home under KC_GRADLE_HOME
 # instead of ~/.gradle, so no init script, gradle.properties or cache of another build on the
-# machine applies. The downloaded zip is kept there too and checked again on every run. Gradle
-# starts in the project directory, so a relative path in its gradle.properties (Kotlin/Native's
-# data directory, .konan, lead decision M5-28) means the project's whether a plugin reads it against
-# the project or against the working directory.
+# machine applies. The downloaded zip is kept there too and checked again on every run.
 #
-# Usage: scripts/android-gradle.sh GRADLE-ARGUMENT...   (from any directory; Gradle runs in the
-#        project directory, so the arguments are tasks and options as usual, with no file paths)
+# Usage: scripts/android-gradle.sh GRADLE-ARGUMENT...   (from any directory; the project
+#        directory is passed to Gradle, so the arguments are tasks and options as usual)
 # KC_GRADLE_HOME: where the zip and Gradle's user home live (default: $HOME/.keepcrypt-gradle; an
 #        absolute path outside the repo).
 # Needs curl, unzip and sha256sum or shasum, and a JDK 17 in JAVA_HOME (Gradle 9 and AGP 9 run on
@@ -77,10 +74,6 @@ if ! unzip -q "$zip" -d "$dist"; then
 fi
 GRADLE_USER_HOME=$home/user-home
 export GRADLE_USER_HOME
-if ! cd "$project"; then
-    rm -rf "$dist"
-    fail "cannot change to $project"
-fi
 "$dist/gradle-$version/bin/gradle" --no-daemon --no-scan --project-dir "$project" "$@"
 status=$?
 rm -rf "$dist"

@@ -38,9 +38,9 @@ dependencyResolutionManagement {
 
 rootProject.name = "keepcrypt-android"
 
-// MA:24's four modules, :screens holding the screens both phones share (the re-plan for Compose
-// Multiplatform), and the CI-only positive control of the capture tests (group 6), which :app never
-// depends on.
+// MA:24's four modules, :screens holding the shared screens (the re-plan for Compose Multiplatform;
+// built for Android only in M5, Q73), and the CI-only positive control of the capture tests (group
+// 6), which :app never depends on.
 include(":core-ffi", ":screens", ":secure-ui", ":app", ":capture-control")
 
 // The canary build only (tasks/todo.md, M5 group 5): the Gradle property the if below reads, set to

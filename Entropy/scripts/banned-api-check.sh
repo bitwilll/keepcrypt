@@ -130,12 +130,15 @@
 #     4): kc.bootstrap, --write-locks, --update-locks, --write-verification-metadata or its -M,
 #     LockMode.DEFAULT or LENIENT, dependency verification (or -F) set to anything but strict, or
 #     the build-script calls that turn locking or verification off, comments included, but on the
-#     one line per workflow that the reviewed, temporary exception names (kt_bootstrap_exception:
-#     entropy-android.yml and entropy-ios.yml only, each line once; empty but during the
-#     re-plan's second bootstrap, M5-13 and Q67; a list of any other shape is exit 2);
-#   - none of KtSdk's Kotlin/Native refusals (kt_kmp_refused: CocoaPods, Swift packages,
-#     kotlin.native.home, downloadFromMaven=false, xcodeCompatibility.nowarn, the device-test
-#     builder, KONAN_DATA_DIR), so no workflow points the build at another toolchain;
+#     one line that the reviewed, temporary exception names (kt_bootstrap_exception:
+#     entropy-android.yml only, its line once; empty but during the re-plan's second bootstrap,
+#     M5-13, Q67 and Q73; a list of any other shape is exit 2);
+#   - none of KtSdk's Kotlin/Native refusals (kt_kmp_refused, any letter case, comments included:
+#     CocoaPods, Swift packages, xcodeCompatibility.nowarn, the device-test builder,
+#     downloadFromMaven with any value, any kotlin.native., kotlin.apple. or kotlin.mpp. name and
+#     any name holding konan, KONAN_DATA_DIR among them, as a -P or -D option, an environment
+#     variable or anything else), so no workflow sets a Kotlin/Native or Kotlin Multiplatform
+#     property (M5 builds no Kotlin/Native, Q73);
 #   - the canary property kc.canary (any letter case, comments included) only as the canary
 #     step's one Gradle command line, whole: sh scripts/android-gradle.sh
 #     --dependency-verification strict --offline -Pkc.canary=true :app:assembleShippingRelease
@@ -516,20 +519,20 @@
 #              the match, and -s shows the mode, so a gitlink (mode 160000, a submodule) anywhere
 #              under mobile/ is a hit of its own: ls-files cannot list a submodule's files, so
 #              this rule could not clear them.
-#   Kotlin and Android (tasks/todo.md, M5 group 3; Q55; the re-plan's "Gate changes"), on every
-#              scanned file under mobile/android (Kotlin, Java, XML, Gradle files, lockfiles, the
-#              cinterop .def), by scope: the test source sets right under a module's directory
-#              (mobile/android/<module>/), src/test, src/androidTest, src/commonTest,
-#              src/androidHostTest and src/iosTest (exactly those: src/withTestRegistry/ is a
+#   Kotlin and Android (tasks/todo.md, M5 group 3; Q55; the re-plan's "Gate changes"; the re-cut
+#              after Q73), on every scanned file under mobile/android (Kotlin, Java, XML, Gradle
+#              files, lockfiles, a cinterop .def), by scope: the test source sets right under a
+#              module's directory (mobile/android/<module>/), src/test, src/androidTest,
+#              src/commonTest and src/androidHostTest (exactly those: src/withTestRegistry/ is a
 #              flavour's and ships, and a src/test/ or src/commonTest/ directory deeper down, under
 #              src/main/kotlin/ or src/commonMain/kotlin/ say, is compiled into the app and is
 #              shipping code) skip KtIntent, KtStorage, KtDevice, KtFailOpen's catch list and
 #              KtInput's Activity rule; mobile/android/capture-control (the CI-only positive
 #              control, never shipped) skips only the FLAG_SECURE rules (KtWindow's securePolicy
-#              and flag checks) and the Activity rule; every other file (commonMain, androidMain
-#              and iosMain included) gets every rule. The named files below are the app's
-#              (mobile/android/app/src/main/.../NAME, at any depth under main/) unless secure-ui's
-#              or :screens' is named.
+#              and flag checks) and the Activity rule; every other file (commonMain, androidMain,
+#              and iosMain and iosTest, which KtSourceSet refuses in M5, included) gets every rule.
+#              The named files below are the app's (mobile/android/app/src/main/.../NAME, at any
+#              depth under main/) unless secure-ui's or :screens' is named.
 #   KtLog      Log (android.util.Log, Log.v/d/i/w/e/wtf( ), println( and print(, System.out,
 #              System.err, printStackTrace, Timber, java.util.logging, slf4j, and a $ template in a
 #              string on a line that calls error(, check(, require(, checkNotNull( or
@@ -600,8 +603,8 @@
 #              mobile/android/settings.gradle.kts; and any srcDir, srcDirs, setSrcDirs,
 #              directories, srcFile or setSrcFile but srcDir("src/...") or srcDirs("src/...")
 #              with one plain path under the module's src/ (no .., no $, no build path) that is
-#              not a test source set's (src/test, src/androidTest, src/commonTest,
-#              src/androidHostTest or src/iosTest, which skip the shipping rules). In build
+#              not a test source set's (src/test, src/androidTest, src/commonTest or
+#              src/androidHostTest, which skip the shipping rules). In build
 #              files but lockfiles (whose generated header names --write-locks), in
 #              scripts/android-gradle.sh and in every workflow (Workflow mode), the bootstrap
 #              (group 4): kc.bootstrap, --write-locks, --update-locks,
@@ -619,17 +622,21 @@
 #              line, after include(":canary-lib") (kt_canary). Whenever mobile/android exists,
 #              mobile/android/build.gradle.kts must hold the lines lockAllConfigurations() and
 #              lockMode.set(LockMode.STRICT) (a missing one is reported at line 1). In build
-#              files but lockfiles, the Kotlin Multiplatform and Kotlin/Native DSL by allow-list
-#              (kt_kmp; the re-plan's "New file types and build lines"): a line naming a word of
-#              kt_kmp_ere (a kotlin { block, a Kotlin target or per-target source set, the
-#              cinterop, binary, linker, compiler, test-run and device settings, osVersionMin, the
-#              Android target's builders, CocoaPods, Swift packages, XCFrameworks, Xcode settings,
-#              the kotlin.native., kotlin.mpp., kotlin.apple. and konan. properties), comments
+#              files but lockfiles, the Kotlin Multiplatform DSL by allow-list (kt_kmp; the
+#              re-plan's "New file types and build lines", for the Android target alone after Q73):
+#              a line naming a word of kt_kmp_ere (a kotlin { block, a Kotlin target or per-target
+#              source set, the cinterop, binary, linker, compiler, test-run and device settings,
+#              osVersionMin, the Android target's builders, CocoaPods, Swift packages,
+#              XCFrameworks, Xcode settings) or a kotlin.mpp. property in any letter case, comments
 #              included, passes only as one of kt_kmp_lines exactly (indentation and trailing
-#              blanks aside) or as the simulator's device line; and CocoaPods, Swift packages,
-#              kotlin.native.home, downloadFromMaven=false, xcodeCompatibility.nowarn,
-#              withDeviceTestBuilder and KONAN_DATA_DIR hit whatever the list says, there and in
-#              scripts/android-gradle.sh (and Workflow, in the workflows).
+#              blanks aside): kotlin {, withHostTestBuilder {} and withHostTestBuilder {, so an
+#              iPhone target, an iosMain or iosTest block, a cinterop block, a framework, a linker
+#              or compiler option, a simulator device and osVersionMin are each a hit in M5; and,
+#              in any letter case, CocoaPods, Swift packages, xcodeCompatibility.nowarn,
+#              withDeviceTestBuilder, downloadFromMaven with any value, any kotlin.native. or
+#              kotlin.apple. name and any name holding konan (konan.data.dir, KONAN_DATA_DIR) hit
+#              whatever the list says, there and in scripts/android-gradle.sh (and Workflow, in the
+#              workflows), where a kotlin.mpp. name hits too (kt_kmp_refused).
 #   KtBinary   a tracked file (or link) under mobile/ with the extension jar, aar, so, dex, class,
 #              apk, aab, jks or keystore, or any other code or archive extension the scan list
 #              skips (zip, gz, xz, bz2, zst, tar, ipa, dylib, a, rlib, o, car), or a Kotlin/Native
@@ -653,14 +660,15 @@
 #   KtSourceSet
 #              (the re-plan's lead decisions M5-19 and M5-20; "KtSourceSet: <file>: <detail>", a
 #              path rule): in the KMP modules (kt_kmp_modules: core-ffi and screens) only
-#              commonMain, commonTest, androidMain, androidHostTest, iosMain, iosTest and
-#              nativeInterop right under src/, so appleMain, nativeMain, the per-target sets
-#              (iosArm64Main, iosSimulatorArm64Main), androidDeviceTest, Android's main and test,
-#              and a file right under src/ are refused; in every other module no KMP source-set
-#              name (one that ends in Main or Test but androidTest, or nativeInterop); and no src/
-#              below mobile/android/ that is not a module's own (each module is one directory
-#              under mobile/android/, so a nested module's sources, include(":ui:words") at
-#              mobile/android/ui/words/, and the root project's, mobile/android/src/, are refused).
+#              commonMain, commonTest, androidMain and androidHostTest right under src/ (M5 builds
+#              the Android target alone, Q73), so iosMain, iosTest, nativeInterop, appleMain,
+#              nativeMain, the per-target sets (iosArm64Main, iosSimulatorArm64Main),
+#              androidDeviceTest, Android's main and test, and a file right under src/ are
+#              refused; in every other module no KMP source-set name (one that ends in Main or
+#              Test but androidTest, or nativeInterop); and no src/ below mobile/android/ that is
+#              not a module's own (each module is one directory under mobile/android/, so a nested
+#              module's sources, include(":ui:words") at mobile/android/ui/words/, and the root
+#              project's, mobile/android/src/, are refused).
 #   KtIos      (rules 1, 5, 8 and 9 in Kotlin/Native) in iosMain and iosTest right under any
 #              module's src/, on top of every Kt rule: Apple's storage (NSUserDefaults,
 #              NSFileManager, NSFileHandle, writeToFile, NSKeyedArchiver, SecItemAdd, CoreData,
@@ -672,11 +680,12 @@
 #              the words random and srand, NSUUID) and the network's C names (nw_connection,
 #              nw_listener, nw_browser, nw_endpoint, nw_parameters, CFStream, CFSocket,
 #              getaddrinfo, a call of socket); and in every file under mobile/android:
-#              staticCFunction, setUnhandledExceptionHook and nw_path_*, and usePinned or addressOf
-#              anywhere but :core-ffi's iosMain Native.ios.kt. UIActivityViewController,
-#              UIPasteboard, UNUserNotificationCenter, UITextField, drand48, arc4random,
-#              SecRandomCopyBytes, URLSession, NWConnection and CFNetwork are other categories'
-#              everywhere.
+#              staticCFunction, setUnhandledExceptionHook and nw_path_*, and usePinned and
+#              addressOf (only an iPhone actual over a C bridge would pin memory, and M5 has none,
+#              Q73). UIActivityViewController, UIPasteboard, UNUserNotificationCenter, UITextField,
+#              drand48, arc4random, SecRandomCopyBytes, URLSession, NWConnection and CFNetwork are
+#              other categories' everywhere. KtSourceSet refuses iosMain and iosTest themselves in
+#              M5, so a KtIos hit there comes with one of its.
 #   KtRoot     (lead decisions M5-19 and M5-25; "KtRoot: <file>: <detail>"): a .kt or .kts file
 #              under mobile/ outside mobile/android/, and any tracked file under mobile/ios/ (read
 #              from git ls-files as the Build rule reads it), which stays empty until M6 brings the
@@ -686,7 +695,8 @@
 #              keepcrypt.h and package = com.keepcrypt.native, each once, and no other (no ---
 #              section, second header, staticLibraries, libraryPaths, linkerOpts or compilerOpts;
 #              a missing line is reported at line 1); any other .def under mobile/android is a hit
-#              of its own.
+#              of its own. KtSourceSet refuses nativeInterop itself in M5 (Q73), so even that one
+#              definition is a hit there.
 #   FFI        in .rs files under ffi/ (tasks/todo.md, M5 groups 3 and 7; Q53; Q66's split into
 #              keepcrypt-guard, keepcrypt-jni and keepcrypt-capi): catch_unwind outside every
 #              comment and string or char literal (so ffi/clippy.toml's ban, a doc line and a string
@@ -729,8 +739,8 @@
 # notification in lower case there ("Camera", "Sensor", "Room" and "Notification" hit), and a word
 # such as Toast or Spinner hits in any text. A collection's fold( is a KtFailOpen hit like Result's
 # (write the loop), and a local named attributes (val attributes = ...) is a KtWindow hit (rename
-# it). In a build file, a comment that names a Kotlin target, framework(, binaries, a konan.
-# property or another word of the KMP DSL is a KtSdk hit (write "the two iPhone targets"); in
+# it). In a build file, a comment that names a Kotlin target, framework(, binaries, a name holding
+# konan or another word of the KMP DSL is a KtSdk hit (write "the two iPhone targets"); in
 # iosMain and iosTest the word random (a comment's too) and any name holding printf are KtIos hits;
 # and anywhere, prose that names Kotlin's uuid package by its dotted name is an RNG hit (write
 # "Kotlin's uuid package"). A catch of a qualified type (java.io.IOException) in Documents.kt is a
@@ -779,9 +789,9 @@ usage: scripts/banned-api-check.sh [--selftest | DIR | --artifact TARGET FILE...
               that import (see the script header)
   --workflows check every DIR/entropy-*.yml and .yaml workflow's hardening: read-only permissions, three
               actions at their approved SHAs, no secrets, no fork-trusting trigger, no expression
-              in a run step, no Android bootstrap switch but the reviewed exception's lines, the
-              canary property only in the canary step's Gradle command, no Kotlin/Native
-              toolchain override
+              in a run step, no Android bootstrap switch but the reviewed exception's line, the
+              canary property only in the canary step's Gradle command, no Kotlin/Native or
+              Kotlin Multiplatform setting
   --image-lists
               unpack the Pi image IMG (an MBR, a FAT32 boot partition, a SquashFS root) with the
               build's host tools and print its partition table, SHA-256s, boot and root file lists,
@@ -834,14 +844,15 @@ fields and activities but SecureActivity, storage, intents, the camera, sensors 
 outside their files, SDKs, other repositories, local build inputs and the bootstrap's switches in
 build files (and android-gradle.sh), strict locking missing from the root build file, and the
 manifest's network permissions, backup, debug and components; a Kotlin Multiplatform source set
-outside the allow list, the iOS names in iosMain and iosTest, C callbacks, pinned memory outside
-Native.ios.kt, Kotlin/Native DSL lines outside the allow list and toolchain overrides, and a
-cinterop definition other than the one exact .def; Kotlin outside mobile/android and a tracked file
-under mobile/ios; a tracked binary (a klib, a framework, any Mach-O file among them) under mobile/;
-the CI passphrase key outside its two files; and under ffi/ a second catch_unwind or one outside
-ffi/guard/src/lib.rs, an export outside the two boundary lib.rs files, a JNI name outside ffi/jni/
-or a C-ABI export in its lib.rs, a second Session::new or one outside ffi/src/ceremony.rs, and
-thread or JoinHandle. A directory symlink is refused. Exit 0 clean, 1 hits, 2 usage or read error.
+outside the allow list (no iPhone set in M5), the iOS names in iosMain and iosTest, C callbacks,
+pinned memory, Kotlin Multiplatform DSL lines outside the allow list (no iPhone target in M5) and
+Kotlin/Native settings, and a cinterop definition other than the one exact .def; Kotlin outside
+mobile/android and a tracked file under mobile/ios; a tracked binary (a klib, a framework, any
+Mach-O file among them) under mobile/; the CI passphrase key outside its two files; and under ffi/ a
+second catch_unwind or one outside ffi/guard/src/lib.rs, an export outside the two boundary lib.rs
+files, a JNI name outside ffi/jni/ or a C-ABI export in its lib.rs, a second Session::new or one
+outside ffi/src/ceremony.rs, and thread or JoinHandle. A directory symlink is refused. Exit 0 clean,
+1 hits, 2 usage or read error.
 EOF
 }
 
@@ -1780,7 +1791,7 @@ kt_sdk() {
 # src/. Every srcDir, srcDirs, setSrcDirs, directories (AGP's newer source-set API), srcFile and
 # setSrcFile is a hit but srcDir("src/...") or srcDirs("src/...") with one literal path of
 # letters, digits, _, - and / (so no .., no $ and no build output) whose first directory is not
-# a test source set's (test, androidTest, commonTest, androidHostTest or iosTest): their files
+# a test source set's (test, androidTest, commonTest or androidHostTest): their files
 # skip KtFailOpen's catch list, KtStorage, KtIntent, KtDevice and the Activity rule, so
 # commonMain { kotlin.srcDir("src/commonTest/kotlin") } would ship them unchecked. A build path
 # (build/rust, layout.buildDirectory) would compile or package what a script left there, another
@@ -1792,7 +1803,7 @@ kt_source_sets() {
   t=$(grep -n -a -E -e "${L}(srcDirs?|setSrcDirs|directories|srcFile|setSrcFile)$R" -- "$1")
   case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
   kept_hits "(^|[^A-Za-z0-9_])(srcDirs?|setSrcDirs|directories|srcFile|setSrcFile)([^A-Za-z0-9_]|$)" \
-    -e 's#(srcDirs?[[:space:]]*[(][[:space:]]*")(src/(test|androidTest|commonTest|androidHostTest|iosTest)[/"])#\1!\2#g' \
+    -e 's#(srcDirs?[[:space:]]*[(][[:space:]]*")(src/(test|androidTest|commonTest|androidHostTest)[/"])#\1!\2#g' \
     -e 's#(^|[^A-Za-z0-9_])srcDirs?[[:space:]]*[(][[:space:]]*"src/[A-Za-z0-9_/-]*"[[:space:]]*[)]#\1#g'
 }
 
@@ -1854,22 +1865,21 @@ kt_bootstrap() {
 
 # The reviewed, temporary exception to kt_bootstrap that lead decision M5-13 reserved, for the
 # Compose Multiplatform re-plan's second bootstrap (tasks/todo.md, M5 re-plan, "Dependency
-# bootstrap"; Q67), in Workflow mode only: build files, lockfiles and scripts/android-gradle.sh
-# never get one. Each line names a workflow, entropy-android.yml or entropy-ios.yml, each at most
-# once, and after one space the one line of that workflow (any indentation, then exactly this text)
-# whose kt_bootstrap hits pass, the first time it occurs: a second copy of the line, any other line
-# and any other workflow still hit. Any other shape of the list is exit 2
-# (kt_bootstrap_exception_check). Empty: no exception.
+# bootstrap"; Q67; the re-cut after Q73), in Workflow mode only: build files, lockfiles and
+# scripts/android-gradle.sh never get one. The list holds at most one line: it names the Android
+# workflow, entropy-android.yml, and after one space the one line of that workflow (any
+# indentation, then exactly this text) whose kt_bootstrap hits pass, the first time it occurs: a
+# second copy of the line, any other line and any other workflow still hit. Any other shape of the
+# list is exit 2 (kt_bootstrap_exception_check). Empty: no exception.
 #
 # Filled at commit 8q (2026-10-20; the re-plan's 8o), under the owner's answer to Q67 of
-# 2026-10-20 ("approve all as recommended": the one reviewed, temporary exception, run on Linux and
-# on macOS, merged and reviewed as one, strict mode back on in the next commit): the bootstrap
-# Gradle line of entropy-android.yml, whose Linux run writes the lock state and metadata of the
-# Android and common configurations, and that of entropy-ios.yml, whose macOS run writes the
-# iPhone ones. Commit 8r (the re-plan's 8p) commits the reviewed, merged files and empties the
-# list with both lines gone, and M5-13's stop holds again.
-kt_bootstrap_exception='entropy-android.yml if ! sh scripts/android-gradle.sh --write-locks --write-verification-metadata sha256 \
-entropy-ios.yml if ! sh scripts/android-gradle.sh --write-locks --write-verification-metadata sha256 \'
+# 2026-10-20 ("approve all as recommended": the one reviewed, temporary exception), with the
+# bootstrap Gradle lines of entropy-android.yml and of the iPhone workflow. The owner's answer to
+# Q73 of 2026-10-20 ("Drop iPhone from M5") removed the iPhone workflow, so commit 8w keeps the
+# Android line alone, and the Android job writes the lock state and metadata once more without the
+# iPhone's configurations. Commit 8x commits the reviewed files and empties the list, and M5-13's
+# stop holds again.
+kt_bootstrap_exception='entropy-android.yml if ! sh scripts/android-gradle.sh --write-locks --write-verification-metadata sha256 \'
 
 kt_bootstrap_exception_check() {
   printf '%s\n' "$kt_bootstrap_exception" | awk '
@@ -1878,8 +1888,8 @@ kt_bootstrap_exception_check() {
       f = $0
       sub(/ .*/, "", f)
       rest = substr($0, length(f) + 2)
-      if ((f != "entropy-android.yml" && f != "entropy-ios.yml") || !index($0, " ") || rest == "" ||
-        rest ~ /^[[:space:]]/ || seen[f]++) bad = 1
+      if (f != "entropy-android.yml" || !index($0, " ") || rest == "" || rest ~ /^[[:space:]]/ ||
+        seen[f]++) bad = 1
     }
     END { exit bad }'
 }
@@ -1899,72 +1909,58 @@ kt_bootstrap_allowed() {
     { print }'
 }
 
-# KtSdk (tasks/todo.md, M5 re-plan, "New file types and build lines"; lead decisions M5-22, M5-23
-# and M5-28), in build files but lockfiles (whose configuration names spell every target): the
-# Kotlin Multiplatform and Kotlin/Native DSL by allow-list. A line that names any word of
-# kt_kmp_ere (a kotlin { block; any Kotlin target or per-target source set; the cinterop
-# definition, header, include, compiler, linker and extra options; the binary kinds, framework
-# export and binary options; free compiler arguments; test runs and devices; osVersionMin; the
-# Android target's builders; CocoaPods, Swift packages, Swift export, XCFrameworks and Xcode
-# settings; the kotlin.native., kotlin.mpp., kotlin.apple. and konan. properties, KONAN_DATA_DIR
-# and konan.properties overrides), comments included, passes only when the line, its indentation
-# and trailing blanks dropped, is one of kt_kmp_lines exactly, or the simulator test run's device
-# line testRuns["test"].deviceId = "iPhone <letters, digits, spaces, dots, dashes, brackets>". So
-# no other target, no Rust library linked or packed into a klib by another route, no cinterop
-# definition, header or include path from outside the scan, and no toolchain switch enters the
-# build unseen; the cinterop block takes its .def from the default place, which KtCinterop checks.
-# The names of kt_kmp_refused_ere (CocoaPods, Swift packages, kotlin.native.home,
-# downloadFromMaven=false, xcodeCompatibility.nowarn, the device-test builder and KONAN_DATA_DIR)
-# hit whatever kt_kmp_lines says, and in scripts/android-gradle.sh and every workflow too
-# (kt_kmp_refused). The lines a probe settles come later, one each, in the commit that has the
-# probe fact (8q): the osVersionMin switch and any named kotlin.native., kotlin.mpp. or
-# kotlin.apple. property; until then each is a hit.
+# KtSdk (tasks/todo.md, M5 re-plan, "New file types and build lines"; lead decisions M5-22 and
+# M5-31; the re-cut after Q73), in build files but lockfiles (whose configuration names spell every
+# target): the Kotlin Multiplatform DSL by allow-list, for the Android target alone. A line that
+# names any word of kt_kmp_ere (a kotlin { block; any Kotlin target or per-target source set; the
+# cinterop definition, header, include, compiler, linker and extra options; the binary kinds,
+# framework export and binary options; free compiler arguments; test runs and devices;
+# osVersionMin; the Android target's builders; CocoaPods, Swift packages, Swift export,
+# XCFrameworks and Xcode settings) or a kotlin.mpp. property in any letter case
+# (kt_kmp_mpp_ere), comments included, passes only when the line, its indentation and trailing
+# blanks dropped, is one of kt_kmp_lines exactly. The Android build needs three: kotlin {,
+# withHostTestBuilder {} and its block form. Commit 8q's iPhone lines are gone with Q73 (the two
+# targets and their blocks, the iosMain and iosTest dependency blocks, the cinterop block and its
+# include path, the framework and isStatic, the test executables' linker lines, the simulator's
+# device line and the data directory's property), so each of them, and any other target, is a hit
+# in M5, and no kotlin.mpp. property is allowed. The names of kt_kmp_refused_ere hit whatever
+# kt_kmp_lines says, in any letter case and with any value: CocoaPods, Swift packages,
+# xcodeCompatibility.nowarn, the device-test builder, downloadFromMaven, any kotlin.native. or
+# kotlin.apple. name and any name holding konan (konan.data.dir, KONAN_DATA_DIR,
+# override-konan-properties): M5 builds no Kotlin/Native, so no setting of it has a place.
+# scripts/android-gradle.sh and every workflow (kt_kmp_refused) have no allow-list, so there a
+# kotlin.mpp. name hits too: a -P or -D option, an environment variable and a comment alike.
 kt_kmp_ere='[^A-Za-z0-9_](kotlin[[:space:]]*[{]|(ios|macos|watchos|tvos|linux|mingw|androidNative|wasm)[A-Z0-9][A-Za-z0-9_]*|(jvm|js|headers?|export|framework|executable|staticLib|sharedLib)[[:space:]]*[({])'
 kt_kmp_ere="$kt_kmp_ere|[^A-Za-z0-9_](cinterops?|definitionFile|defFile|compilerOpts|linkerOpts|includeDirs|extraOpts|packageName|binaries|isStatic|transitiveExport|embedBitcode|binaryOptions?|freeCompilerArgs|testRuns|deviceId|osVersionMin|minVersion|withHostTestBuilder|withDeviceTestBuilder|withJava|androidTarget|androidLibrary)[^A-Za-z0-9_]"
-kt_kmp_ere="$kt_kmp_ere|cocoapods|swiftPM|swiftExport|[Xx][Cc][Ff]ramework|xcodeCompatibility|KONAN_DATA_DIR|[Kk]onan[.]|override-konan|kotlin[.](native|mpp|apple)[.]"
-kt_kmp_refused_ere='cocoapods|swiftPMDependencies|kotlin[.]native[.]home|downloadFromMaven[[:space:]]*=[[:space:]]*false|xcodeCompatibility[.]nowarn|withDeviceTestBuilder|KONAN_DATA_DIR'
+kt_kmp_ere="$kt_kmp_ere|cocoapods|swiftPM|swiftExport|[Xx][Cc][Ff]ramework|xcodeCompatibility"
+# Matched in lower case, so any letter case.
+kt_kmp_mpp_ere='kotlin[.]mpp[.]'
+kt_kmp_refused_ere='cocoapods|swiftpmdependencies|xcodecompatibility[.]nowarn|withdevicetestbuilder|downloadfrommaven|kotlin[.](native|apple)[.]|konan'
 kt_kmp_lines='kotlin {
 withHostTestBuilder {}
-withHostTestBuilder {
-iosArm64()
-iosSimulatorArm64()
-iosArm64 {
-iosSimulatorArm64 {
-iosMain.dependencies {
-iosTest.dependencies {
-compilations.getByName("main").cinterops.create("keepcrypt") {
-compilerOpts("-I$rootDir/../../ffi/capi/include")
-binaries.framework {
-isStatic = true
-binaries.getTest("DEBUG").linkerOpts("$rootDir/../../target/ios-test/aarch64-apple-ios/release/libkeepcrypt_capi.a")
-binaries.getTest("DEBUG").linkerOpts("$rootDir/../../target/ios-test/aarch64-apple-ios-sim/release/libkeepcrypt_capi.a")
-konan.data.dir=.konan'
+withHostTestBuilder {'
 kt_kmp() {
   [ -f "$1" ] && [ -r "$1" ] || return 2
-  t=$(KC_KMP_LINES=$kt_kmp_lines awk -v ere="$kt_kmp_ere" -v refused="$kt_kmp_refused_ere" '
+  t=$(KC_KMP_LINES=$kt_kmp_lines awk -v ere="$kt_kmp_ere" -v mpp="$kt_kmp_mpp_ere" -v refused="$kt_kmp_refused_ere" '
     BEGIN {
       n = split(ENVIRON["KC_KMP_LINES"], a, "\n")
       for (k = 1; k <= n; k++) if (a[k] != "") ok[a[k]] = 1
-      device = "testRuns[\"test\"].deviceId = \"iPhone "
     }
     {
       l = " " $0 " "
-      if (l !~ ere && l !~ refused) next
+      lo = tolower(l)
+      if (l !~ ere && lo !~ mpp && lo !~ refused) next
       t = $0
       sub(/^[[:space:]]+/, "", t)
       sub(/[[:space:]]+$/, "", t)
-      if (l !~ refused) {
-        if (t in ok) next
-        if (index(t, device) == 1 && length(t) > length(device) && substr(t, length(t)) == "\"" &&
-          substr(t, length(device) + 1, length(t) - length(device) - 1) ~ /^[A-Za-z0-9 .()-]+$/) next
-      }
+      if (lo !~ refused && (t in ok)) next
       print NR ":" $0
     }' "$1") || return 2
   [ -n "$t" ] || return 1
   printf '%s\n' "$t"
 }
 kt_kmp_refused() {
-  grep -n -a -E -e "$kt_kmp_refused_ere" -- "$1"
+  grep -n -a -i -E -e "$kt_kmp_refused_ere|$kt_kmp_mpp_ere" -- "$1"
 }
 
 # KtSdk, in build files but lockfiles and in scripts/android-gradle.sh (and Workflow, in the
@@ -2092,19 +2088,20 @@ kt_test_channel() {
 }
 
 # --- Kotlin Multiplatform and the iPhone target (tasks/todo.md, M5 re-plan, "Gate changes", "The
-# iOS C-ABI bridge"; Q64-Q72) -----------------------------------------------------------------
+# iOS C-ABI bridge"; Q64-Q72; the re-cut after Q73) --------------------------------------------
 
-# KtSourceSet (lead decisions M5-19 and M5-20): the KMP modules, the only ones whose src/ holds
-# Kotlin Multiplatform source sets, and the source sets allowed there (the C bridge's cinterop
-# definition sits in nativeInterop). Any other directory or file right under such a module's src/ is
-# refused: appleMain, nativeMain and the per-target sets (iosArm64Main, iosSimulatorArm64Main) would
-# compile iPhone code outside iosMain's rules, androidDeviceTest is a device test outside :app's
-# androidTest, and Android's main and test sets have no place in a KMP module. Every other module is
-# Android-only, and a KMP source-set name under its src/ (any name that ends in Main or Test but
-# androidTest, and nativeInterop) is refused, so no Kotlin escapes the iOS rules by its directory
-# name.
+# KtSourceSet (lead decisions M5-19, M5-20 and M5-31): the KMP modules, the only ones whose src/
+# holds Kotlin Multiplatform source sets, and the source sets allowed there: the Android target's
+# and the common ones, since M5 builds no iPhone target (Q73). Any other directory or file right
+# under such a module's src/ is refused: iosMain and iosTest (iPhone code, with KtIos's names on
+# top), nativeInterop (a C bridge's cinterop definition, with KtCinterop's lines on top), appleMain,
+# nativeMain and the per-target sets (iosArm64Main, iosSimulatorArm64Main), androidDeviceTest (a
+# device test outside :app's androidTest), and Android's main and test sets, which have no place
+# in a KMP module. Every other module is Android-only, and a KMP source-set name under its src/
+# (any name that ends in Main or Test but androidTest, and nativeInterop) is refused, so no Kotlin
+# escapes these rules by its directory name.
 kt_kmp_modules='core-ffi screens'
-kt_kmp_sets='commonMain commonTest androidMain androidHostTest iosMain iosTest nativeInterop'
+kt_kmp_sets='commonMain commonTest androidMain androidHostTest'
 kt_kmp_module() {
   case " $kt_kmp_modules " in *" $1 "*) return 0 ;; esac
   return 1
@@ -2150,10 +2147,9 @@ kt_ios() {
 }
 
 # KtIos, in every file under mobile/android, any source set: no callback from C into Kotlin
-# (staticCFunction; kc_call makes none), no process-wide exception hook in M5
-# (setUnhandledExceptionHook: M6 brings it with its wipe), no network path monitor (nw_path_*: the
-# offline file is M6's); and pinned memory (usePinned, addressOf) only in :core-ffi's iosMain
-# Native.ios.kt, the actual over kc_call (kt_pinned).
+# (staticCFunction), no process-wide exception hook in M5 (setUnhandledExceptionHook), no network
+# path monitor (nw_path_*); and no pinned memory (usePinned, addressOf: kt_pinned), which only an
+# iPhone actual over a C bridge would need, and M5 has none (Q73).
 kt_native() {
   grep -n -a -E -e 'staticCFunction|setUnhandledExceptionHook|nw_path_' -- "$1"
 }
@@ -2376,8 +2372,8 @@ EOF
         ;;
     esac
     # Kotlin and Android: every file under mobile/android, by scope. The test source sets right
-    # under a module's directory, src/test, src/androidTest, src/commonTest, src/androidHostTest and
-    # src/iosTest (exactly those: src/withTestRegistry/ ships), skip KtIntent, KtStorage, KtDevice,
+    # under a module's directory, src/test, src/androidTest, src/commonTest and src/androidHostTest
+    # (exactly those: src/withTestRegistry/ ships), skip KtIntent, KtStorage, KtDevice,
     # KtFailOpen's catch list and KtInput's Activity rule; :capture-control skips only the
     # FLAG_SECURE and Activity rules; every other file, build files included, gets every rule. The
     # module is the one path segment after mobile/android/, matched as a literal: a pattern's *
@@ -2392,8 +2388,7 @@ EOF
         ktmod=${ktmod%%/*}
         case $rel in
           "mobile/android/$ktmod/src/test/"* | "mobile/android/$ktmod/src/androidTest/"* | \
-            "mobile/android/$ktmod/src/commonTest/"* | "mobile/android/$ktmod/src/androidHostTest/"* | \
-            "mobile/android/$ktmod/src/iosTest/"*) ktscope=test ;;
+            "mobile/android/$ktmod/src/commonTest/"* | "mobile/android/$ktmod/src/androidHostTest/"*) ktscope=test ;;
           mobile/android/capture-control/*) ktscope=capture ;;
           *) ktscope=main ;;
         esac
@@ -2417,16 +2412,13 @@ EOF
             hits=$((hits + 1))
             ;;
         esac
-        # KtIos: the iOS names in iosMain and iosTest; the C-boundary and M6-only names everywhere,
-        # pinned memory only in :core-ffi's iosMain Native.ios.kt.
+        # KtIos: the iOS names in iosMain and iosTest; the C-boundary and M6-only names, and pinned
+        # memory, everywhere.
         case $rel in
           "mobile/android/$ktmod/src/iosMain/"* | "mobile/android/$ktmod/src/iosTest/"*) report KtIos kt_ios "$rel" ;;
         esac
         report KtIos kt_native "$rel"
-        case $rel in
-          mobile/android/core-ffi/src/iosMain/*/Native.ios.kt) ;;
-          *) report KtIos kt_pinned "$rel" ;;
-        esac
+        report KtIos kt_pinned "$rel"
         # KtCinterop: the one cinterop definition, exact; no other .def file.
         case $rel in
           mobile/android/core-ffi/src/nativeInterop/cinterop/keepcrypt.def) report KtCinterop kt_def "$rel" ;;
@@ -2702,10 +2694,21 @@ fresh() {
 # WANT needs exit 1 and exactly one hit "<WANT>: <FILE>:<line>: <text>", where <text> is line
 # <line> of FILE as it stands (the messages for a missing line or call, "missing ...", are the
 # exception), or a whole-file hit "<WANT>: <FILE>: <detail>" with no line (the Build, KtSourceSet
-# and KtRoot rules). The gate run is $gate, this script unless a case sets another copy.
+# and KtRoot rules). The gate run is $gate, this script unless a case sets another copy. When $also
+# is set (one whole output line), the output must hold that line too, which is not counted: a
+# fixture in an iPhone source set hits its own rule and KtSourceSet, which refuses the set in M5
+# (Q73).
 expect() {
   out=$(sh "${gate:-$self}" "$2" 2>&1)
   rc=$?
+  alsook=yes
+  if [ -n "${also:-}" ]; then
+    if printf '%s\n' "$out" | grep -q -x -F -e "$also"; then
+      out=$(printf '%s\n' "$out" | grep -v -x -F -e "$also")
+    else
+      alsook=no
+    fi
+  fi
   cats='^(RNG|Network|Clipboard|Rule1|FailOpen|Include|Shell|Device|Build|KtLog|KtFailOpen|KtWindow|KtInput|KtStorage|KtIntent|KtDevice|KtSdk|KtBinary|KtManifest|KtTestChannel|KtSourceSet|KtIos|KtRoot|KtCinterop|FFI): '
   hit=$(printf '%s\n' "$out" | grep -E "$cats")
   count=$(printf '%s\n' "$out" | grep -c -E "$cats")
@@ -2728,12 +2731,13 @@ expect() {
       "$3: $4: "*) ok=yes ;;
     esac
   fi
+  [ "$alsook" = yes ] || ok=no
   if [ "$ok" = yes ]; then
     pass=$((pass + 1))
-    printf 'PASS %s -> %s\n' "$1" "${hit:-clean}"
+    printf 'PASS %s -> %s\n' "$1" "${hit:-clean}${also:+ (and $also)}"
   else
     fail=$((fail + 1))
-    printf 'FAIL %s: wanted %s %s, got exit %s:\n' "$1" "$3" "${4:-}" "$rc"
+    printf 'FAIL %s: wanted %s %s%s, got exit %s:\n' "$1" "$3" "${4:-}" "${also:+ and the line $also}" "$rc"
     printf '%s\n' "$out" | sed 's/^/    /'
   fi
 }
@@ -2747,6 +2751,7 @@ selftest() {
   fail=0
   seen=
   gate=
+  also=
   for fx in "$here/testdata/banned-api"/*/; do
     [ -d "$fx" ] || continue
     fx=${fx%/}
@@ -2788,9 +2793,29 @@ selftest() {
       esac
       file=${file#./}
     fi
+    # A hit fixture of another rule in an iPhone source set of a KMP module (iosMain, iosTest,
+    # nativeInterop) also gives KtSourceSet's hit for its file: M5 refuses those sets (Q73), and
+    # the rules for what they hold (KtIos, KtCinterop and the rest) still fire.
+    case $want:$file in
+      KtSourceSet:*) ;;
+      *:mobile/android/*/src/*)
+        kmod=${file#mobile/android/}
+        kmod=${kmod%%/*}
+        kset=${file#mobile/android/"$kmod"/src/}
+        kset=${kset%%/*}
+        case $kset in
+          iosMain | iosTest | nativeInterop)
+            if kt_kmp_module "$kmod"; then
+              also="KtSourceSet: $file: src/$kset in a KMP module (allowed: $kt_kmp_sets)"
+            fi
+            ;;
+        esac
+        ;;
+    esac
     fresh
     cp -R "$fx/." "$d/" || exit 2
     expect "$name" "$d" "$want" "$file"
+    also=
     if [ "$want" = Network ]; then
       fresh
       mkdir -p "$d/registry" && cp -R "$fx/." "$d/registry/" || exit 2
@@ -2806,11 +2831,10 @@ selftest() {
     # The Kotlin scopes: a hit fixture in a shipping source set (src/main of a module, or
     # commonMain, androidMain or iosMain) whose rule the test source sets skip (KtIntent, KtStorage,
     # KtDevice, the catch list, the Activity rule) is copied into its module's test source sets
-    # (src/test and src/androidTest of an Android-only module, commonTest, androidHostTest and
-    # iosTest of a KMP module) and, from an Android-only module, into :screens' three as well; one
-    # that :capture-control skips (the FLAG_SECURE and Activity rules) is copied there. Each copy
-    # sits under its own directory, and the six trees are scanned once each after this loop. iosTest
-    # takes no copy whose text the iOS names refuse (kt_ios): those names hit there by design.
+    # (src/test and src/androidTest of an Android-only module, commonTest and androidHostTest of a
+    # KMP module) and, from an Android-only module, into :screens' two as well; one that
+    # :capture-control skips (the FLAG_SECURE and Activity rules) is copied there. Each copy sits
+    # under its own directory, and the five trees are scanned once each after this loop.
     case $file in
       mobile/android/*/src/*)
         kmod=${file#mobile/android/}
@@ -2823,14 +2847,11 @@ selftest() {
           case $want:$name in
             KtIntent:* | KtStorage:* | KtDevice:* | KtFailOpen:ktfailopen-catch-* | KtInput:ktinput-activity-*)
               if kt_kmp_module "$kmod"; then
-                ktests="$kmod:commonTest $kmod:androidHostTest $kmod:iosTest"
+                ktests="$kmod:commonTest $kmod:androidHostTest"
               else
-                ktests="$kmod:test $kmod:androidTest screens:commonTest screens:androidHostTest screens:iosTest"
+                ktests="$kmod:test $kmod:androidTest screens:commonTest screens:androidHostTest"
               fi
               for kt in $ktests; do
-                if [ "${kt#*:}" = iosTest ] && kt_ios "$fx/$file" >/dev/null; then
-                  continue
-                fi
                 kto=$tmp/scope-${kt#*:}/mobile/android/${kt%%:*}/src/${kt#*:}/$name/$krest
                 mkdir -p "${kto%/*}" && cp "$fx/$file" "$kto" || exit 2
               done
@@ -2848,7 +2869,7 @@ selftest() {
   done
   # The copies above, one tree per scope: each must be clean, so no copied hit fires there. Each
   # tree must hold copies, or a rename of the fixtures would leave the exemptions untested.
-  for kset in test androidTest commonTest androidHostTest iosTest capture; do
+  for kset in test androidTest commonTest androidHostTest capture; do
     kn=0
     if [ -d "$tmp/scope-$kset" ]; then
       kn=$(find "$tmp/scope-$kset" -type f | wc -l | tr -d ' ') || exit 2
@@ -2963,6 +2984,27 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   fresh
   rm -r "$d/mobile" || exit 2
   expect 'clean-no-mobile-android' "$d" clean
+  # The iPhone lines commit 8q's kt_kmp allowed (kt_kmp_lines' and the simulator's device line),
+  # and an osVersionMin switch, which its plan would have added later, are refused in M5 (Q73):
+  # each, alone in :core-ffi's build file, is one KtSdk hit, and so is the data directory's
+  # property alone in gradle.properties.
+  for case in 'ios-arm64-target:iosArm64()' 'ios-simulator-arm64-target:iosSimulatorArm64()' \
+    'ios-arm64-block:iosArm64 {' 'ios-simulator-arm64-block:iosSimulatorArm64 {' \
+    'ios-main-dependencies:iosMain.dependencies {' 'ios-test-dependencies:iosTest.dependencies {' \
+    'cinterop-block:compilations.getByName("main").cinterops.create("keepcrypt") {' \
+    'cinterop-include:compilerOpts("-I$rootDir/../../ffi/capi/include")' \
+    'framework:binaries.framework {' 'framework-static:isStatic = true' \
+    'test-linker-opts-device:binaries.getTest("DEBUG").linkerOpts("$rootDir/../../target/ios-test/aarch64-apple-ios/release/libkeepcrypt_capi.a")' \
+    'test-linker-opts-simulator:binaries.getTest("DEBUG").linkerOpts("$rootDir/../../target/ios-test/aarch64-apple-ios-sim/release/libkeepcrypt_capi.a")' \
+    'simulator-device:testRuns["test"].deviceId = "iPhone 16 Pro"' 'os-version-min:binaryOption("osVersionMin", "17.0")'; do
+    fresh
+    mkdir -p "$d/mobile/android/core-ffi" || exit 2
+    printf '    %s\n' "${case#*:}" >"$d/mobile/android/core-ffi/build.gradle.kts" || exit 2
+    expect "ktsdk-kmp-8q-line-${case%%:*}" "$d" KtSdk mobile/android/core-ffi/build.gradle.kts
+  done
+  fresh
+  echo 'konan.data.dir=.konan' >"$d/mobile/android/gradle.properties" || exit 2
+  expect 'ktsdk-kmp-8q-line-konan-data-dir' "$d" KtSdk mobile/android/gradle.properties
   # The Build rule reads git's index, so its cases are scratch repositories made here (a fixture
   # directory is none): a tracked file under mobile/**/build/, mobile/**/.gradle/ or
   # mobile/**/.konan/ (Kotlin/Native's data directory, M5-28) is a hit (git
@@ -3460,7 +3502,7 @@ workflows() {
   dir=${1%/}
   [ -d "$dir" ] || { printf 'banned-api-check: --workflows: %s is not a directory\n' "$1" >&2; exit 2; }
   kt_bootstrap_exception_check || {
-    echo 'banned-api-check: --workflows: kt_bootstrap_exception holds a line that does not name entropy-android.yml or entropy-ios.yml (each once) and, after one space, a workflow line' >&2
+    echo 'banned-api-check: --workflows: kt_bootstrap_exception holds a line that does not name entropy-android.yml (once) and, after one space, a workflow line' >&2
     exit 2
   }
   hits=0
@@ -3489,7 +3531,7 @@ EOF
     echo "banned-api-check --workflows $dir: $hits hit(s) in $n workflow(s)"
     exit 1
   fi
-  echo "banned-api-check --workflows $dir: clean, $n workflow(s): read-only permissions, pinned actions, no secrets, no fork-trusting trigger, no expression in a run step, no bootstrap switch (but the reviewed exception's lines), the canary property only in the canary step's Gradle command, no Kotlin/Native toolchain override"
+  echo "banned-api-check --workflows $dir: clean, $n workflow(s): read-only permissions, pinned actions, no secrets, no fork-trusting trigger, no expression in a run step, no bootstrap switch (but the reviewed exception's line), the canary property only in the canary step's Gradle command, no Kotlin/Native or Kotlin Multiplatform setting"
   exit 0
 }
 
@@ -4525,9 +4567,10 @@ workflows_selftest() {
   wexpect 'workflow-error-no-entropy-yml' "$d" error
   wexpect 'workflow-error-missing-dir' "$tmp/absent" error
   # The bootstrap exception (kt_bootstrap_exception): copies of the script with a stand-in list
-  # (bxcopy) must pass the named line in the named workflow once, and refuse it anywhere else, a
-  # second time, with anything added, and in a build script; a list of any other shape is exit 2;
-  # this script, whose list names neither line, refuses the line.
+  # (bxcopy) must pass the named line in the Android workflow once, and refuse it anywhere else, a
+  # second time, with anything added, and in a build script; a list of any other shape, one that
+  # names the iPhone workflow (gone with Q73) among them, is exit 2; this script, whose list does
+  # not name the line, refuses it.
   bxline='sh scripts/android-gradle.sh --write-locks --write-verification-metadata sha256 :core-ffi:dependencies'
   wfhead='permissions:
   contents: read
@@ -4572,17 +4615,13 @@ jobs:
   wexpect 'workflow-bootstrap-exception-line-with-more' "$bxd" entropy-android.yml
   bxdir update-locks entropy-android.yml 'sh scripts/android-gradle.sh --update-locks org.jetbrains.compose.ui:ui'
   wexpect 'workflow-bootstrap-exception-other-line' "$bxd" entropy-android.yml
-  bxdir both entropy-android.yml "$bxline"
-  printf '%s\n      - run: |\n          %s\n' "$wfhead" "$bxline :screens:dependencies" >"$bxd/entropy-ios.yml" || exit 2
-  bxcopy "entropy-android.yml $bxline
-entropy-ios.yml $bxline :screens:dependencies"
-  wexpect 'clean-bootstrap-exception-both-workflows' "$bxd" clean
   fresh
   mkdir -p "$d/scripts" && printf '%s\n' "$bxline" >"$d/scripts/android-gradle.sh" || exit 2
   expect 'ktsdk-bootstrap-exception-line-in-android-gradle-sh' "$d" KtSdk scripts/android-gradle.sh
-  for case in "another-workflow:entropy-ci.yml $bxline" 'no-line:entropy-android.yml' \
-    "indented-line:entropy-android.yml   $bxline" "android-twice:entropy-android.yml $bxline
-entropy-android.yml $bxline :app:dependencies"; do
+  for case in "another-workflow:entropy-ci.yml $bxline" "ios-workflow:entropy-ios.yml $bxline" \
+    'no-line:entropy-android.yml' "indented-line:entropy-android.yml   $bxline" "android-twice:entropy-android.yml $bxline
+entropy-android.yml $bxline :app:dependencies" "android-and-ios:entropy-android.yml $bxline
+entropy-ios.yml $bxline :screens:dependencies"; do
     bxcopy "${case#*:}"
     wexpect "workflow-error-bootstrap-exception-${case%%:*}" "$tmp/bx-allowed" error
   done
