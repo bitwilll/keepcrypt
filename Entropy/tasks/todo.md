@@ -1762,6 +1762,31 @@ Nothing else on your Mac or in the repo changed. From now on, no simulator, `xco
       Q69's iPhone CI job and Q70's rule sentence move to M6; Q67's iPhone-only artifacts are not used in M5. The re-cut is
       "Re-cut after Q73 (2026-10-20)" under M5.
 
+### Raised during M5 commit 8x (Q74, decided 2026-10-20)
+74. **Version changes in the Android lockfiles beyond savedstate** (Q67: "Any other version change the lockfile shows comes
+    back to you by name before it is committed"; critique item H6)
+    8x committed the lockfiles of the Android bootstrap run 39404714671 (at 1ae0df6) on the branch, not pushed. Beside
+    the approved savedstate 1.3.2 -> 1.4.0 and the Compose Multiplatform wrapper modules, every other version change sits
+    only in the shared `:screens` module; the app resolves its own pinned versions, so none reaches an APK:
+    - `:screens`' own Android test build (androidRuntimeClasspath, androidHostTestRuntimeClasspath and its lint
+      classpaths): androidx.core and core-ktx 1.16.0 and androidx.activity and activity-ktx 1.7.0, older than the app's
+      1.18.0 and 1.13.0;
+    - compile-time metadata for the shared code only (metadataCompileClasspath and the *DependenciesMetadata
+      configurations): androidx.lifecycle 2.11.0 (lifecycle-common, -runtime, -runtime-compose, -viewmodel,
+      -viewmodel-compose, -viewmodel-savedstate), androidx.navigationevent and navigationevent-compose 1.1.1,
+      org.jetbrains.androidx.navigationevent:navigationevent-compose 1.1.0, org.jetbrains.kotlinx:atomicfu 0.28.0,
+      org.jetbrains.kotlinx:kotlinx-browser 0.5.0, org.jetbrains.compose.ui:ui-backhandler 1.12.1, and skiko 0.150.1 and
+      ui-uikit 1.12.1 as `.module` plus `-metadata.jar`;
+    - Kotlin build tooling in `:core-ffi` and `:screens`: kotlin-scripting-common, -compiler-embeddable,
+      -compiler-impl-embeddable and -jvm 2.4.20 (with kotlin-test, kotlin-test-junit and the klib commonizer 2.4.20,
+      which Q67 named).
+    Options put to the owner: approve as listed and run the dependency review as commit 6 did (recommended), pin
+    `:screens`' test build onto the app's versions with one more bootstrap round, or stop and discuss.
+    - Answered 2026-10-20: "Approve as listed". The review then runs as commit 6's did: the artifacts' published
+      `.sha256`, `.sha1` and `.asc` files and Central artifacts' bytes from Google's Maven and Maven Central, and the
+      new signers' keys from keyserver.ubuntu.com or keys.openpgp.org, fetched into a mirror outside the repo; each new
+      signer is trusted on first use (M5-12) and goes on the M7 audit list, and the 61 committed keys stay unchanged.
+
 ## M0: Repo bootstrap
 
 ### Decisions built into this plan (override any of them)
@@ -13085,6 +13110,20 @@ at 8v-c: this line and 10922d6's body said "from :51", but the guard/ line enter
   fails it with both reasons. On copies, dropping either step, commenting out the compare or putting a Gradle call
   before them each fails the check. `canaries.sh` PASS: all 79 checks ran (want_checks 77 -> 79; 327 s); the gate on
   the tree clean (286 files). Tried with macOS's awk only; CI's gates job runs it with Ubuntu's.
+  Proof (M5 commit 8x-g, the lead's, after Q74's answer): `sh scripts/android-deps-review.sh --write-keys MIRROR` on a
+  copy of the tree at 2d21174 (the mirror a fresh folder in the session scratchpad, outside the repo; 4 rounds: 1809,
+  402, 353 and 20 files from dl.google.com, repo.maven.apache.org and the two key servers) wrote 62 keys and 62 trusted
+  keys (89 group scopes). Against the committed files: the 61 keys are byte for byte unchanged (the keyring's diff only
+  adds 25 lines); one new signer, 20723A6399BC060154283B37CFAE163B64AC9189 "JetBrains Compose Team
+  <compose@jetbrains.com>" (subkey D4C90186D3F8B03981FE715B57CE36BB68F1BC57), trusted for org.jetbrains.androidx.lifecycle,
+  .navigationevent and .savedstate, org.jetbrains.compose.animation, .annotation-internal, .collection-internal,
+  .foundation, .runtime and .ui, and org.jetbrains.skiko; the Kotlin Release key 2FBA29D0... (already trusted for
+  org.jetbrains.kotlin and .android) also signs org.jetbrains.kotlin.multiplatform. The new signer is trust on first use
+  (M5-12) and joins the M7 audit list. The two files are committed as written. Then `sh scripts/android-deps-review.sh
+  MIRROR -- --skip-pgp` on that copy: 923 artifacts: 358 Google's Maven (SHA-256 matched), 551 Maven Central (SHA-1
+  matched, PGP not checked here: no gpg on this Mac), 14 accepted by name (M5-11's list, unchanged), 0 failed; 62
+  trusted keys, 89 group scopes; shipping runtime classpath 120 modules, licences Apache-2.0 120; exit 3 (incomplete
+  without PGP). The signature checks and the strict build run in CI.
 
 **Stages C-F** run as "Commit order from Stage C on" plans them, without the iPhone work: commit 9 creates ffi, ffi/guard
 and ffi/jni (six members); 12b is not built; 13 builds and scans the Android `.so` only (the existing macos-26 release scan
