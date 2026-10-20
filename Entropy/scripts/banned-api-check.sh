@@ -644,8 +644,10 @@
 #              from git ls-files as the Build rule reads it, "KtBinary: <file>: <detail>": the scan
 #              never reads those files, so none may be tracked where a build could use it. Images,
 #              fonts, sound and PDF stay allowed. And any tracked regular file under mobile/ whose
-#              first four bytes (from the index's blob) are a Mach-O magic number, thin or fat,
-#              either byte order, whatever its name (an iPhone library named .png is still one).
+#              first four bytes (from the index's blob) are the magic number of a Mach-O file (thin
+#              or fat, either byte order), an ELF file, an ar archive (a static library or an rlib)
+#              or a zip archive (a jar, aar, apk, aab, ipa or klib), whatever its name: a library,
+#              executable, object or package named .png is still one.
 #   KtManifest in every AndroidManifest.xml under mobile/android: android.permission.INTERNET,
 #              ACCESS_NETWORK_STATE and ACCESS_WIFI_STATE (a tools:node="remove" on them hits too:
 #              no network permission is ever stripped), allowBackup="true",
@@ -698,21 +700,24 @@
 #              of its own. KtSourceSet refuses nativeInterop itself in M5 (Q73), so even that one
 #              definition is a hit there.
 #   FFI        in .rs files under ffi/ (tasks/todo.md, M5 groups 3 and 7; Q53; Q66's split into
-#              keepcrypt-guard, keepcrypt-jni and keepcrypt-capi): catch_unwind outside every
-#              comment and string or char literal (so ffi/clippy.toml's ban, a doc line and a string
-#              are no call site; a use line is one, so the one call is written as a path) anywhere
-#              but ffi/guard/src/lib.rs, and each one after its first there; an export (no_mangle,
-#              export_name, or an extern fn with any ABI string or none, outside comments and
-#              literals) anywhere but ffi/jni/src/lib.rs and ffi/capi/src/lib.rs; the JNI names (a
-#              Java_ function, JNI_OnLoad, JNIEnv, jni_sys) outside comments and literals anywhere
-#              but ffi/jni/, and in ffi/jni/src/lib.rs an extern fn whose ABI is not "system"; and
-#              once either boundary file exports a function, the one catch_unwind in
-#              ffi/guard/src/lib.rs is required (a missing one is reported at the boundary file's
-#              line 1). Session::new (the Shell rule's shapes, comments counting) anywhere under
-#              ffi/ but ffi/src/ceremony.rs, each one after its first there, and none there once the
-#              file exists (reported at line 1). The identifiers thread and JoinHandle anywhere,
-#              comments included: a joined thread would turn a panic into a value, and the shared
-#              clippy.toml cannot ban thread spawning (core/tests/panic_wipe.rs joins one).
+#              keepcrypt-guard and keepcrypt-jni, M5-32; keepcrypt-capi is M6's after Q73):
+#              catch_unwind outside every comment and string or char literal (so ffi/clippy.toml's
+#              ban, a doc line and a string are no call site) anywhere but ffi/guard/src/lib.rs,
+#              and there every one but the path call std::panic::catch_unwind( in the body of fn
+#              guarded, once (so a use line naming it, a rename, a re-export, a wrapper and a second
+#              call are hits); an export (no_mangle, export_name, or an extern fn with any ABI
+#              string or none, outside comments and literals) anywhere but ffi/jni/src/lib.rs, and
+#              there an export whose own body does not call keepcrypt_guard::guarded( (JNI_OnLoad
+#              aside) or that has no body; the JNI names (a Java_ function, JNI_OnLoad, JNIEnv,
+#              jni_sys) outside comments and literals anywhere but ffi/jni/, and in
+#              ffi/jni/src/lib.rs an extern fn whose ABI is not "system"; and once
+#              ffi/jni/src/lib.rs exports a function, the one catch_unwind call in fn guarded is
+#              required (a missing one is reported at ffi/jni/src/lib.rs:1). Session::new (the
+#              Shell rule's shapes, comments counting) anywhere under ffi/ but ffi/src/ceremony.rs,
+#              each one after its first there, and none there once the file exists (reported at
+#              line 1). The identifiers thread and JoinHandle anywhere, comments included: a joined
+#              thread would turn a panic into a value, and the shared clippy.toml cannot ban thread
+#              spawning (core/tests/panic_wipe.rs joins one).
 #
 # Fail-closed noise, not bypasses (rename or spell it out instead): a named format argument called
 # path that rustfmt wraps onto its own line ("        path = \"seed.age\",") is an Include hit in
@@ -848,11 +853,12 @@ outside the allow list (no iPhone set in M5), the iOS names in iosMain and iosTe
 pinned memory, Kotlin Multiplatform DSL lines outside the allow list (no iPhone target in M5) and
 Kotlin/Native settings, and a cinterop definition other than the one exact .def; Kotlin outside
 mobile/android and a tracked file under mobile/ios; a tracked binary (a klib, a framework, any
-Mach-O file among them) under mobile/; the CI passphrase key outside its two files; and under ffi/ a
-second catch_unwind or one outside ffi/guard/src/lib.rs, an export outside the two boundary lib.rs
-files, a JNI name outside ffi/jni/ or a C-ABI export in its lib.rs, a second Session::new or one
-outside ffi/src/ceremony.rs, and thread or JoinHandle. A directory symlink is refused. Exit 0 clean,
-1 hits, 2 usage or read error.
+Mach-O, ELF, ar or zip file among them) under mobile/; the CI passphrase key outside its two files;
+and under ffi/ a catch_unwind but the one std::panic::catch_unwind call in fn guarded in
+ffi/guard/src/lib.rs, an export outside ffi/jni/src/lib.rs or one there that does not call
+keepcrypt_guard::guarded, a JNI name outside ffi/jni/ or a C-ABI export in its lib.rs, a second
+Session::new or one outside ffi/src/ceremony.rs, and thread or JoinHandle. A directory symlink is
+refused. Exit 0 clean, 1 hits, 2 usage or read error.
 EOF
 }
 
@@ -1210,23 +1216,12 @@ session_new_again() {
   printf '%s\n' "$t"
 }
 
-# rust_code_match ERE FILE: prints "<line>:<text>" for each line of the Rust file FILE whose code,
-# with every comment and the contents of every string and char literal removed, matches ERE, and
-# exits 0 hit, 1 none, 2 unreadable (the grep checks' codes). The awk pass reads the file byte by
-# byte, as Rust's lexer does, so a doc line, a commented-out call, a call after // or inside a
-# block comment (nested and over lines as Rust's are), and a name inside a string do not count,
-# and a // or /* inside a literal starts no comment: reading one as a comment would drop the
-# code after it, and with it a banned call (a "/*" before a catch_unwind hid it). A string
-# literal ("..." with backslash escapes, also b"..." and c"...", and raw r"...", r#"..."# and
-# br#"..."#, over as many lines as it takes) is left as "" at its close, so extern "system"
-# reads extern "". A ' starts a char or byte literal only when one is there ('x', a character
-# of up to four bytes, '"', or an escape such as '\'' or '\u{1F600}'), and is a lifetime or a
-# label otherwise. The code is matched with a space before and after it, so ERE names a word
-# boundary as [^A-Za-z0-9_] on both sides, with no ^ or $ inside a group (awk dialects differ
-# there); the line printed is the line as it stands, comments included.
-rust_code_match() {
-  [ -f "$2" ] && [ -r "$2" ] || return 2
-  awk -v ere="$1" -v sq="'" '
+# rust_lex: awk functions, run with -v sq="'". lex() sets code to the line $0 with every comment
+# removed and the contents of every string and char literal emptied, as rust_code_match below
+# describes; depth (a block comment's nesting) and instr, israw and raw (an open string) carry over
+# lines. rust_tokens' tokens() then feeds code to the program's own tok(t), one token at a time and
+# in order over lines: a word, ::, "" (a string, emptied) or any other character but a blank.
+rust_lex='
     # charlen(line, i): the length of the char or byte literal whose opening quote is at i, or 0
     # for a lifetime or a label: an escape runs to the next quote after the escaped character; a
     # double quote, or one to four bytes holding no quote, backslash or double quote, is closed by
@@ -1244,7 +1239,7 @@ rust_code_match() {
       }
       return 0
     }
-    {
+    function lex(    line, n, i, c, two, rest, prev, len) {
       code = ""
       line = $0
       n = length(line)
@@ -1302,6 +1297,45 @@ rust_code_match() {
           }
         }
       }
+    }'
+rust_tokens='
+    function tokens(    s, t) {
+      s = code
+      while (s != "") {
+        if (match(s, /^[[:space:]]+/)) {
+          s = substr(s, RLENGTH + 1)
+          continue
+        }
+        if (match(s, /^[A-Za-z_][A-Za-z0-9_]*/) || match(s, /^::/) || match(s, /^""/)) {
+          t = substr(s, 1, RLENGTH)
+        } else {
+          t = substr(s, 1, 1)
+        }
+        s = substr(s, length(t) + 1)
+        tok(t)
+      }
+    }'
+
+# rust_code_match ERE FILE: prints "<line>:<text>" for each line of the Rust file FILE whose code,
+# with every comment and the contents of every string and char literal removed, matches ERE, and
+# exits 0 hit, 1 none, 2 unreadable (the grep checks' codes). The awk pass reads the file byte by
+# byte, as Rust's lexer does, so a doc line, a commented-out call, a call after // or inside a
+# block comment (nested and over lines as Rust's are), and a name inside a string do not count,
+# and a // or /* inside a literal starts no comment: reading one as a comment would drop the
+# code after it, and with it a banned call (a "/*" before a catch_unwind hid it). A string
+# literal ("..." with backslash escapes, also b"..." and c"...", and raw r"...", r#"..."# and
+# br#"..."#, over as many lines as it takes) is left as "" at its close, so extern "system"
+# reads extern "". A ' starts a char or byte literal only when one is there ('x', a character
+# of up to four bytes, '"', or an escape such as '\'' or '\u{1F600}'), and is a lifetime or a
+# label otherwise. The code is matched with a space before and after it, so ERE names a word
+# boundary as [^A-Za-z0-9_] on both sides, with no ^ or $ inside a group (awk dialects differ
+# there); the line printed is the line as it stands, comments included. The lexer is rust_lex,
+# which the FFI rules' scans (ffi_guard_scan, ffi_export_scan) share.
+rust_code_match() {
+  [ -f "$2" ] && [ -r "$2" ] || return 2
+  awk -v ere="$1" -v sq="'" "$rust_lex"'
+    {
+      lex()
       if ((" " code " ") ~ ere) {
         print NR ":" $0
         found = 1
@@ -2184,41 +2218,176 @@ kt_def() {
     }' "$1"
 }
 
-# --- FFI (tasks/todo.md, M5 groups 3 and 7; Q53; Q66 and the re-plan's "The iOS C-ABI bridge"),
-# .rs files under ffi/ ---------------------------------------------------------------------------
+# --- FFI (tasks/todo.md, M5 groups 3 and 7; Q53; Q66's keepcrypt-guard and, after Q73, M5-32: the
+# guard and the JNI boundary, keepcrypt-capi being M6's), .rs files under ffi/ ----------------------
 
-# One catch, one place: catch_unwind outside every comment and literal (rust_code_match, so a doc
-# line, a string and ffi/clippy.toml's ban entry are no site; a use line is, so the one site is a
-# path call such as std::panic::catch_unwind(...)), anywhere under ffi/ but ffi/guard/src/lib.rs
-# (keepcrypt-guard's guarded(), which both boundaries call), and each one after the first in that
-# file. Once a boundary file, ffi/jni/src/lib.rs or ffi/capi/src/lib.rs, declares an export
-# (ffi_export_ere), the one site in ffi/guard/src/lib.rs is required (checked after the scan, and
-# reported at the boundary file's line 1).
+# One catch, one place, tied to every export: catch_unwind outside every comment and literal
+# (rust_code_match, so a doc line, a string and ffi/clippy.toml's ban entry are no site) anywhere
+# under ffi/ but ffi/guard/src/lib.rs. There every catch_unwind but one is a hit (ffi_guard_catch):
+# the one is the path call std::panic::catch_unwind( written in the body of fn guarded, which every
+# export calls (ffi_export_scan). So a use line naming it (pub or not, alone or in a group), a
+# rename with as, a shorter path (panic::catch_unwind), a leading ::, a turbofish, the function
+# taken as a value, a second call, and a call in any other function or in a macro are each a hit:
+# an alias or wrapper exported by keepcrypt-guard would let the boundary catch and continue (rule
+# 3) with no catch_unwind of its own. Once ffi/jni/src/lib.rs declares an export (ffi_export_ere),
+# that one call is required (ffi_guard_site, checked after the scan and reported at
+# ffi/jni/src/lib.rs:1).
 ffi_catch_unwind() {
   rust_code_match '[^A-Za-z0-9_]catch_unwind[^A-Za-z0-9_]' "$1"
 }
-ffi_catch_unwind_again() {
-  t=$(ffi_catch_unwind "$1")
-  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
-  t=$(printf '%s\n' "$t" | sed 1d) || return 2
-  [ -n "$t" ] || return 1
-  printf '%s\n' "$t"
+# ffi_guard_scan MODE FILE: MODE bad prints each line of FILE that holds a catch_unwind other than
+# the one call above, each line once; MODE site prints the one call's line. A fn's body is found by
+# its braces from rust_tokens' tokens; a { or ; inside the signature's parentheses or a type's
+# brackets neither opens nor ends it, and a body that a const generic's braces in the signature
+# cut short leaves the call outside fn guarded, which fails closed.
+ffi_guard_scan() {
+  [ -f "$2" ] && [ -r "$2" ] || return 2
+  awk -v mode="$1" -v sq="'" "$rust_lex$rust_tokens"'
+    function out(l) {
+      if (mode == "bad" && !(l in done)) print l ":" src[l]
+      done[l] = 1
+      found = 1
+    }
+    # tok(t): a catch_unwind is settled by the token after it; a fn name followed by its { opens a
+    # body named after it on the stack, closed by the } that brings the depth back.
+    function tok(t) {
+      if (cu) {
+        cu = 0
+        if (path && t == "(" && top > 0 && name[top] == "guarded" && !site) site = cl
+        else out(cl)
+      }
+      if (t == "catch_unwind") {
+        cu = 1
+        cl = NR
+        path = p1 == "::" && p2 == "panic" && p3 == "::" && p4 == "std" && p5 != "::"
+      } else if (p1 == "fn" && t ~ /^[A-Za-z_]/) {
+        pend = 1
+        pname = t
+      } else if (t == "(" || t == "[") {
+        pd++
+      } else if (t == ")" || t == "]") {
+        pd--
+      } else if (t == "{") {
+        if (pend && pd == 0) {
+          top++
+          name[top] = pname
+          at[top] = bd
+          pend = 0
+        }
+        bd++
+      } else if (t == "}") {
+        bd--
+        if (top > 0 && bd == at[top]) top--
+      } else if (t == ";" && pd == 0) {
+        pend = 0
+      }
+      p5 = p4
+      p4 = p3
+      p3 = p2
+      p2 = p1
+      p1 = t
+    }
+    {
+      src[NR] = $0
+      lex()
+      tokens()
+    }
+    END {
+      if (cu) out(cl)
+      if (mode == "site") {
+        if (site) print site ":" src[site]
+        exit !site
+      }
+      exit !found
+    }' "$2"
+}
+ffi_guard_catch() {
+  ffi_guard_scan bad "$1"
+}
+ffi_guard_site() {
+  ffi_guard_scan site "$1"
 }
 
-# Every export sits in a boundary crate's lib.rs, over guarded(): outside every comment and
-# literal, no_mangle and export_name (bare or inside unsafe(...)) and an extern fn, with an ABI
-# string ("system", "C", "C-unwind", any: rust_code_match leaves it as "") or without one (which is
-# "C"), are hits under ffi/ anywhere but ffi/jni/src/lib.rs and ffi/capi/src/lib.rs. An extern "C"
-# and an extern "system" function share an ABI on Android and iOS, and RegisterNatives can bind a
-# native method to a function that is not exported by name, so each form is one: in another file
-# it would run outside the reviewed boundary.
+# Every export sits in ffi/jni/src/lib.rs and calls guarded(): outside every comment and literal,
+# no_mangle and export_name (bare or inside unsafe(...)) and an extern fn, with an ABI string
+# ("system", "C", "C-unwind", any: rust_code_match leaves it as "") or without one (which is "C"),
+# are hits under ffi/ anywhere but ffi/jni/src/lib.rs (ffi_export). An extern "C" and an extern
+# "system" function share an ABI on Android, and RegisterNatives can bind a native method to a
+# function that is not exported by name, so each form is one: in another file it would run outside
+# the reviewed boundary. keepcrypt-capi is M6's (Q73, M5-32), so ffi/capi/src/lib.rs is no boundary
+# in M5. In ffi/jni/src/lib.rs (ffi_export_scan) each export's own body calls
+# keepcrypt_guard::guarded(, written as that path (a leading :: or a longer path does not count), so
+# a panic under it halts and wipes instead of aborting the process before any destructor runs; a
+# helper that calls it does not count for the export. JNI_OnLoad alone is exempt: it runs at
+# System.loadLibrary, before any session exists, and returns the JNI version. A hit is reported at
+# the function's fn line, and an export with no body (a no_mangle static, an extern fn type) at its
+# own line, so it is a hit too; an extern fn type in a helper's signature makes the helper one,
+# which fails closed.
 ffi_export_ere='[^A-Za-z0-9_](no_mangle|export_name|extern[[:space:]]*("")?[[:space:]]*fn)[^A-Za-z0-9_]'
 ffi_export() {
   rust_code_match "$ffi_export_ere" "$1"
 }
+ffi_export_scan() {
+  [ -f "$1" ] && [ -r "$1" ] || return 2
+  awk -v sq="'" "$rust_lex$rust_tokens"'
+    function out(l) {
+      if (!(l in done)) print l ":" src[l]
+      done[l] = 1
+      found = 1
+    }
+    # tok(t): an export marker waits for its fn name and its { (or a ;), which opens the export
+    # body on the stack; a keepcrypt_guard::guarded( marks the innermost open export body.
+    function tok(t) {
+      if (t == "(" && p1 == "guarded" && p2 == "::" && p3 == "keepcrypt_guard" && p4 != "::" && top > 0) ok[top] = 1
+      if (t == "no_mangle" || t == "export_name" || (t == "fn" && (p1 == "extern" || (p1 == "\"\"" && p2 == "extern")))) {
+        if (!want) wl = NR
+        want = 1
+      } else if (want && p1 == "fn" && t ~ /^[A-Za-z_]/) {
+        wl = NR
+        wname = t
+      } else if (t == "(" || t == "[") {
+        pd++
+      } else if (t == ")" || t == "]") {
+        pd--
+      } else if (t == "{") {
+        if (want && pd == 0) {
+          top++
+          at[top] = bd
+          ln[top] = wl
+          ok[top] = wname == "JNI_OnLoad"
+          want = 0
+          wname = ""
+        }
+        bd++
+      } else if (t == "}") {
+        bd--
+        if (top > 0 && bd == at[top]) {
+          if (!ok[top]) out(ln[top])
+          top--
+        }
+      } else if (t == ";" && want && pd == 0) {
+        out(wl)
+        want = 0
+        wname = ""
+      }
+      p4 = p3
+      p3 = p2
+      p2 = p1
+      p1 = t
+    }
+    {
+      src[NR] = $0
+      lex()
+      tokens()
+    }
+    END {
+      if (want) out(wl)
+      for (; top > 0; top--) if (!ok[top]) out(ln[top])
+      exit !found
+    }' "$1"
+}
 
-# JNI exports only in keepcrypt-jni and C exports only in keepcrypt-capi, so neither platform's
-# library carries the other's surface. The JNI names (a Java_ function, JNI_OnLoad, JNIEnv, the
+# The JNI surface only in keepcrypt-jni: the JNI names (a Java_ function, JNI_OnLoad, JNIEnv, the
 # jni_sys crate), outside every comment and literal, are hits under ffi/ anywhere but ffi/jni/
 # (ffi_jni_names). In ffi/jni/src/lib.rs every extern fn names JNI's "system" ABI: an extern "C" fn
 # there, or an extern fn with no ABI string, is a hit (ffi_jni_abi: rust_code_match finds the code,
@@ -2522,14 +2691,15 @@ EOF
       mobile/android/app/src/androidTest/* | scripts/android-age-check.py) ;;
       *) report KtTestChannel kt_test_channel "$rel" ;;
     esac
-    # FFI: one catch_unwind, in ffi/guard/src/lib.rs; exports only in the two boundary lib.rs
-    # files, JNI names only under ffi/jni/ and only the JNI ABI in its lib.rs; one Session::new, in
-    # ffi/src/ceremony.rs (comments count, as under pi/app/src); no thread or JoinHandle.
+    # FFI: one catch_unwind, the path call in fn guarded in ffi/guard/src/lib.rs; exports only in
+    # ffi/jni/src/lib.rs, each calling keepcrypt_guard::guarded, JNI names only under ffi/jni/ and
+    # only the JNI ABI in its lib.rs; one Session::new, in ffi/src/ceremony.rs (comments count, as
+    # under pi/app/src); no thread or JoinHandle.
     case $rel in
       ffi/*.rs)
         case $rel in
-          ffi/guard/src/lib.rs) report FFI ffi_catch_unwind_again "$rel"; report FFI ffi_export "$rel" ;;
-          ffi/jni/src/lib.rs | ffi/capi/src/lib.rs) report FFI ffi_catch_unwind "$rel" ;;
+          ffi/guard/src/lib.rs) report FFI ffi_guard_catch "$rel"; report FFI ffi_export "$rel" ;;
+          ffi/jni/src/lib.rs) report FFI ffi_catch_unwind "$rel"; report FFI ffi_export_scan "$rel" ;;
           *) report FFI ffi_catch_unwind "$rel"; report FFI ffi_export "$rel" ;;
         esac
         case $rel in ffi/jni/src/lib.rs) report FFI ffi_jni_abi "$rel" ;; esac
@@ -2558,20 +2728,18 @@ EOF
     hits=$((hits + 1))
   fi
   # FFI: the one Session::new is required once ffi/src/ceremony.rs exists, and the one catch_unwind,
-  # in ffi/guard/src/lib.rs, once ffi/jni/src/lib.rs or ffi/capi/src/lib.rs exports a function (an
-  # export without the catch aborts on a panic before any destructor runs, so the session would not
-  # be wiped). An unreadable file was already exit 2 in the loop.
+  # the path call in fn guarded in ffi/guard/src/lib.rs, once ffi/jni/src/lib.rs exports a function
+  # (an export without the catch aborts on a panic before any destructor runs, so the session would
+  # not be wiped). An unreadable file was already exit 2 in the loop.
   if [ -f ffi/src/ceremony.rs ] && ! session_new ffi/src/ceremony.rs >/dev/null; then
     echo 'FFI: ffi/src/ceremony.rs:1: missing the one Session::new under ffi/'
     hits=$((hits + 1))
   fi
-  for f in ffi/jni/src/lib.rs ffi/capi/src/lib.rs; do
-    if [ -f "$f" ] && ffi_export "$f" >/dev/null &&
-      ! { [ -f ffi/guard/src/lib.rs ] && ffi_catch_unwind ffi/guard/src/lib.rs >/dev/null; }; then
-      echo "FFI: $f:1: missing the one catch_unwind call site in ffi/guard/src/lib.rs, which every export needs"
-      hits=$((hits + 1))
-    fi
-  done
+  if [ -f ffi/jni/src/lib.rs ] && ffi_export ffi/jni/src/lib.rs >/dev/null &&
+    ! { [ -f ffi/guard/src/lib.rs ] && ffi_guard_site ffi/guard/src/lib.rs >/dev/null; }; then
+    echo 'FFI: ffi/jni/src/lib.rs:1: missing the one catch_unwind call site, std::panic::catch_unwind( in fn guarded in ffi/guard/src/lib.rs, which every export needs'
+    hits=$((hits + 1))
+  fi
   # KtSdk: once mobile/android exists, its root build file locks every configuration strictly
   # (group 4), each of the two lines whole on a line of its own, so a commented-out one is not
   # one. Without them Gradle resolves with no lock state, and the classpath allow-list, which reads
@@ -2641,11 +2809,13 @@ EOF
     done <<EOF
 $binaries
 EOF
-    # KtBinary: a Mach-O file, thin or fat, either byte order (an iPhone library, executable or
-    # object), whatever its name, by its first four bytes. The bytes come from the index's blob,
-    # what a commit holds, for every tracked regular file under mobile/ (links and submodules are
-    # paths, not files). A fat file's cafebabe is also a Java class file's magic, refused either
-    # way.
+    # KtBinary: a compiled or packed file whatever its name, by its first four bytes: a Mach-O
+    # file, thin or fat, either byte order (an iPhone library, executable or object); an ELF file
+    # (an Android .so, executable or object); an ar archive, !<arch> (a static library or an
+    # rlib); or a zip archive, PK\003\004 (a jar, aar, apk, aab, ipa or klib). The bytes come from
+    # the index's blob, what a commit holds, for every tracked regular file under mobile/ (links
+    # and submodules are paths, not files). A fat file's cafebabe is also a Java class file's
+    # magic, refused either way.
     while IFS= read -r e; do
       case $e in 100644\ * | 100755\ *) ;; *) continue ;; esac
       obj=${e#* }
@@ -2654,11 +2824,14 @@ EOF
       magic=$(od -A n -t x1 -N 4 "$blob") || exit 2
       magic=$(printf '%s' "$magic" | tr -d ' \t\n')
       case $magic in
-        feedface | feedfacf | cefaedfe | cffaedfe | cafebabe | bebafeca | cafebabf | bfbafeca)
-          echo "KtBinary: ${e#*"$tab"}: a Mach-O file under mobile/ (magic $magic), whatever its name"
-          hits=$((hits + 1))
-          ;;
+        feedface | feedfacf | cefaedfe | cffaedfe | cafebabe | bebafeca | cafebabf | bfbafeca) kind='a Mach-O file' ;;
+        7f454c46) kind='an ELF file' ;;
+        213c6172) kind='an ar archive' ;;
+        504b0304) kind='a zip archive' ;;
+        *) continue ;;
       esac
+      echo "KtBinary: ${e#*"$tab"}: $kind under mobile/ (magic $magic), whatever its name"
+      hits=$((hits + 1))
     done <<EOF
 $tracked
 EOF
@@ -2697,7 +2870,8 @@ fresh() {
 # and KtRoot rules). The gate run is $gate, this script unless a case sets another copy. When $also
 # is set (one whole output line), the output must hold that line too, which is not counted: a
 # fixture in an iPhone source set hits its own rule and KtSourceSet, which refuses the set in M5
-# (Q73).
+# (Q73). When $atline is set, the one hit must be at that line of FILE (a case with more than one
+# candidate line, such as the second of two exports).
 expect() {
   out=$(sh "${gate:-$self}" "$2" 2>&1)
   rc=$?
@@ -2727,6 +2901,7 @@ expect() {
           'missing '*) ok=yes ;;
           *) [ "${at#*: }" = "$(sed -n "${at%%:*}p" "$2/$4")" ] && ok=yes ;;
         esac
+        [ -z "${atline:-}" ] || [ "${at%%:*}" = "$atline" ] || ok=no
         ;;
       "$3: $4: "*) ok=yes ;;
     esac
@@ -2737,7 +2912,7 @@ expect() {
     printf 'PASS %s -> %s\n' "$1" "${hit:-clean}${also:+ (and $also)}"
   else
     fail=$((fail + 1))
-    printf 'FAIL %s: wanted %s %s%s, got exit %s:\n' "$1" "$3" "${4:-}" "${also:+ and the line $also}" "$rc"
+    printf 'FAIL %s: wanted %s %s%s%s, got exit %s:\n' "$1" "$3" "${4:-}" "${atline:+:$atline}" "${also:+ and the line $also}" "$rc"
     printf '%s\n' "$out" | sed 's/^/    /'
   fi
 }
@@ -2752,6 +2927,7 @@ selftest() {
   seen=
   gate=
   also=
+  atline=
   for fx in "$here/testdata/banned-api"/*/; do
     [ -d "$fx" ] || continue
     fx=${fx%/}
@@ -3051,9 +3227,9 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   # KtBinary reads the index too, so its cases are scratch repositories as well: a tracked file
   # under mobile/ with each code or archive extension (one in upper case, some outside
   # mobile/android, one a symlink) or under a *.framework or *.xcframework directory is a hit, and
-  # so is a Mach-O file by its magic whatever its name (each of the four kinds below once, one of
-  # them named as an image); the same file untracked, a tracked image (a real PNG's magic among
-  # them) and font, and a tracked jar outside mobile/ (which the scan skips by extension) are not.
+  # so is a Mach-O, ELF, ar or zip file by its magic whatever its name (each magic below once, some
+  # named as an image); the same file untracked, a tracked image (a real PNG's magic among them)
+  # and font, and a tracked jar outside mobile/ (which the scan skips by extension) are not.
   for case in 'jar:mobile/android/app/libs/x.jar' 'aar:mobile/android/app/libs/x.aar' \
     'so:mobile/android/app/src/main/jniLibs/x86_64/libx.so' 'dex:mobile/android/app/classes.dex' \
     'class:mobile/android/core-ffi/Native.class' 'apk:mobile/android/app/app-shipping-release.apk' \
@@ -3078,12 +3254,22 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   mkdir -p "$d/mobile/android/app/libs" && ln -s ../../../../core/x.jar "$d/mobile/android/app/libs/x.jar" || exit 2
   git -C "$d" add -f -- mobile || exit 2
   expect 'ktbinary-tracked-symlink' "$d" KtBinary mobile/android/app/libs/x.jar
-  # The magic numbers in octal: cffaedfe (64-bit, little-endian), feedfacf (64-bit, big-endian),
-  # cefaedfe (32-bit, little-endian) and cafebabe (fat).
+  # The magic numbers in octal: Mach-O's cffaedfe (64-bit, little-endian), feedfacf (64-bit,
+  # big-endian), cefaedfe (32-bit, little-endian), feedface (32-bit, big-endian), cafebabe and its
+  # reverse bebafeca (fat), and cafebabf and its reverse bfbafeca (fat, 64-bit); ELF's 7f454c46; an
+  # ar archive's !<arch> (a static library or an rlib); and a zip archive's PK\003\004 (a klib,
+  # jar, aar or apk).
   for case in 'macho-64-no-extension:\317\372\355\376:mobile/android/app/libs/libkc' \
     'macho-64-big-endian-as-text:\376\355\372\317:mobile/android/core-ffi/notes.txt' \
     'macho-32-outside-android:\316\372\355\376:mobile/shared/kc' \
-    'macho-fat-as-png:\312\376\272\276:mobile/android/app/src/main/res/drawable/icon.png'; do
+    'macho-32-big-endian:\376\355\372\316:mobile/android/app/libs/kc32' \
+    'macho-fat-as-png:\312\376\272\276:mobile/android/app/src/main/res/drawable/icon.png' \
+    'macho-fat-reversed:\276\272\376\312:mobile/android/app/libs/kc-fat' \
+    'macho-fat-64:\312\376\272\277:mobile/android/app/libs/kc-fat64' \
+    'macho-fat-64-reversed:\277\272\376\312:mobile/shared/kc-fat64' \
+    'elf-as-png:\177ELF:mobile/android/app/src/main/res/drawable/libkeepcrypt.png' \
+    'ar-as-png:!<arch>\n:mobile/android/app/src/main/res/drawable/libkc-static.png' \
+    'zip-as-png:PK\003\004:mobile/android/app/src/main/res/drawable/keepcrypt-klib.png'; do
     x=${case##*:}
     m=${case#*:}
     m=${m%%:*}
@@ -3121,10 +3307,10 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   git init -q "$d" || exit 2
   mkdir -p "$d/mobile/ios/KeepCrypt" && echo 'kc.gate.canary=true' >"$d/mobile/ios/KeepCrypt/App.swift" || exit 2
   expect 'clean-ktroot-untracked-under-mobile-ios' "$d" clean
-  # The FFI cases that need keepcrypt-guard beside a boundary crate (a fixture holds one file): with
-  # the one catch in ffi/guard/src/lib.rs, an extern "C" fn or an extern fn with no ABI string in
-  # ffi/jni/src/lib.rs is a hit of its own (JNI's ABI is "system"), and a guard file without the
-  # catch leaves a boundary's export with none.
+  # The FFI cases that need keepcrypt-guard beside the JNI boundary (a fixture holds one file): with
+  # the one catch in fn guarded in ffi/guard/src/lib.rs, an extern "C" fn or an extern fn with no
+  # ABI string in ffi/jni/src/lib.rs is a hit of its own (JNI's ABI is "system"), and a guard file
+  # without the catch leaves the boundary's export with none.
   guard='pub fn guarded(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>> {
     match std::panic::catch_unwind(|| keepcrypt_ffi::dispatch(op, input)) {
         Ok(out) => out,
@@ -3136,16 +3322,90 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
     fresh
     mkdir -p "$d/ffi/guard/src" "$d/ffi/jni/src" || exit 2
     printf '%s\n' "$guard" >"$d/ffi/guard/src/lib.rs" || exit 2
-    printf '%s\n' '#[unsafe(no_mangle)]' "${case#*:}" '    keepcrypt_guard::status()' '}' >"$d/ffi/jni/src/lib.rs" || exit 2
+    printf '%s\n' '#[unsafe(no_mangle)]' "${case#*:}" '    keepcrypt_guard::guarded(0, &[])[0]' '}' >"$d/ffi/jni/src/lib.rs" || exit 2
     expect "ffi-${case%%:*}-beside-the-guard" "$d" FFI ffi/jni/src/lib.rs
   done
   fresh
-  mkdir -p "$d/ffi/guard/src" "$d/ffi/capi/src" || exit 2
+  mkdir -p "$d/ffi/guard/src" "$d/ffi/jni/src" || exit 2
   echo 'pub fn guarded(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>> { keepcrypt_ffi::dispatch(op, input) }' \
     >"$d/ffi/guard/src/lib.rs" || exit 2
-  printf '%s\n' '#[unsafe(no_mangle)]' 'pub extern "C" fn kc_max_out() -> usize {' '    keepcrypt_ffi::MAX_OUT' '}' \
-    >"$d/ffi/capi/src/lib.rs" || exit 2
-  expect 'ffi-capi-export-beside-a-guard-without-catch-unwind' "$d" FFI ffi/capi/src/lib.rs
+  printf '%s\n' '#[unsafe(no_mangle)]' 'pub extern "system" fn Java_com_keepcrypt_entropy_ffi_Native_call(op: jint) -> u8 {' \
+    '    keepcrypt_guard::guarded(op as u32, &[])[0]' '}' >"$d/ffi/jni/src/lib.rs" || exit 2
+  expect 'ffi-jni-export-beside-a-guard-without-catch-unwind' "$d" FFI ffi/jni/src/lib.rs
+  # The tie between each export and the catch (ffi_export_scan): beside that guard, an export in
+  # ffi/jni/src/lib.rs whose own body does not call keepcrypt_guard::guarded( is a hit at its fn
+  # line, at the line the case names: one that calls the safe layer directly, the second of two
+  # exports when the first calls guarded, one that calls it through a use line or through a helper,
+  # one that names it only in a comment and a string, an export_name function and an extern
+  # "system" fn bound by RegisterNatives; a no_mangle static, with no body, at its attribute line.
+  # Exports that each call it (in a block, with an array in the signature), JNI_OnLoad and a helper
+  # that does not are clean.
+  call='pub extern "system" fn Java_com_keepcrypt_entropy_ffi_Native_call(env: *mut JNIEnv, op: jint, input: jbyteArray) -> jbyteArray {'
+  direct='    to_java(env, keepcrypt_ffi::dispatch(op as u32, &from_java(env, input)))'
+  for case in safe-layer-directly:2 second-export:6 imported-guarded:3 guarded-in-a-helper:2 \
+    guarded-in-a-comment-and-a-string:2 export-name:2 registered-native:1 no-mangle-static:1; do
+    case ${case%%:*} in
+      safe-layer-directly) jni=$(printf '%s\n' '#[unsafe(no_mangle)]' "$call" "$direct" '}') ;;
+      second-export)
+        jni=$(printf '%s\n' '#[unsafe(no_mangle)]' "$call" \
+          '    to_java(env, keepcrypt_guard::guarded(op as u32, &from_java(env, input)))' '}' '#[unsafe(no_mangle)]' \
+          'pub extern "system" fn Java_com_keepcrypt_entropy_ffi_Native_wipe(env: *mut JNIEnv) -> jbyteArray {' \
+          '    to_java(env, keepcrypt_ffi::dispatch(OP_WIPE, &[]))' '}')
+        ;;
+      imported-guarded)
+        jni=$(printf '%s\n' 'use keepcrypt_guard::guarded;' '#[unsafe(no_mangle)]' "$call" \
+          '    to_java(env, guarded(op as u32, &from_java(env, input)))' '}')
+        ;;
+      guarded-in-a-helper)
+        jni=$(printf '%s\n' '#[unsafe(no_mangle)]' "$call" '    to_java(env, run(op, &from_java(env, input)))' '}' \
+          'fn run(op: jint, input: &[u8]) -> Zeroizing<Vec<u8>> {' '    keepcrypt_guard::guarded(op as u32, input)' '}')
+        ;;
+      guarded-in-a-comment-and-a-string)
+        jni=$(printf '%s\n' '#[unsafe(no_mangle)]' "$call" '    // keepcrypt_guard::guarded(op as u32, input) comes later.' \
+          '    let note = "keepcrypt_guard::guarded(";' "$direct" '}')
+        ;;
+      export-name)
+        jni=$(printf '%s\n' '#[unsafe(export_name = "Java_com_keepcrypt_entropy_ffi_Native_call")]' \
+          'pub fn call(env: *mut JNIEnv, op: jint, input: jbyteArray) -> jbyteArray {' "$direct" '}')
+        ;;
+      registered-native)
+        jni=$(printf '%s\n' 'pub extern "system" fn native_call(env: *mut JNIEnv, op: jint, input: jbyteArray) -> jbyteArray {' \
+          "$direct" '}')
+        ;;
+      no-mangle-static) jni=$(printf '%s\n' '#[unsafe(no_mangle)]' 'pub static KC_ABI_VERSION: u32 = 1;') ;;
+    esac
+    fresh
+    mkdir -p "$d/ffi/guard/src" "$d/ffi/jni/src" || exit 2
+    printf '%s\n' "$guard" >"$d/ffi/guard/src/lib.rs" || exit 2
+    printf '%s\n' "$jni" >"$d/ffi/jni/src/lib.rs" || exit 2
+    atline=${case#*:}
+    expect "ffi-jni-${case%%:*}-beside-the-guard" "$d" FFI ffi/jni/src/lib.rs
+    atline=
+  done
+  fresh
+  mkdir -p "$d/ffi/guard/src" "$d/ffi/jni/src" || exit 2
+  printf '%s\n' "$guard" >"$d/ffi/guard/src/lib.rs" || exit 2
+  printf '%s\n' '#[unsafe(no_mangle)]' "$call" '    let input = from_java(env, input);' \
+    '    to_java(env, keepcrypt_guard::guarded(op as u32, &input))' '}' '#[unsafe(no_mangle)]' \
+    'pub extern "system" fn Java_com_keepcrypt_entropy_ffi_Native_probe(env: *mut JNIEnv, tag: [u8; 4]) -> jbyteArray {' \
+    '    let out = { keepcrypt_guard::guarded(OP_PROBE, &tag) };' '    to_java(env, out)' '}' '#[unsafe(no_mangle)]' \
+    'pub unsafe extern "system" fn JNI_OnLoad(vm: *mut JavaVM, reserved: *mut c_void) -> jint {' '    JNI_VERSION_1_6' '}' \
+    'fn from_java(env: *mut JNIEnv, input: jbyteArray) -> Zeroizing<Vec<u8>> {' '    read_capped(env, input, MAX_IN)' '}' \
+    >"$d/ffi/jni/src/lib.rs" || exit 2
+  expect 'clean-ffi-jni-exports-each-calling-guarded' "$d" clean
+  # The alias crossing crates: a guard that re-exports catch_unwind under another name is a hit at
+  # that line although the boundary beside it, whose export calls guarded, names no catch_unwind
+  # when it catches and continues through the alias.
+  fresh
+  mkdir -p "$d/ffi/guard/src" "$d/ffi/jni/src" || exit 2
+  printf '%s\n' 'pub use std::panic::catch_unwind as recover;' "$guard" >"$d/ffi/guard/src/lib.rs" || exit 2
+  printf '%s\n' '#[unsafe(no_mangle)]' "$call" \
+    '    match keepcrypt_guard::recover(|| keepcrypt_guard::guarded(op as u32, &from_java(env, input))) {' \
+    '        Ok(out) => to_java(env, out),' '        Err(payload) => empty(env, payload),' '    }' '}' \
+    >"$d/ffi/jni/src/lib.rs" || exit 2
+  atline=1
+  expect 'ffi-catch-unwind-reexport-beside-a-jni-export' "$d" FFI ffi/guard/src/lib.rs
+  atline=
   for want in RNG Network Clipboard Rule1 FailOpen Include Shell Device Build KtLog KtFailOpen KtWindow KtInput KtStorage \
     KtIntent KtDevice KtSdk KtBinary KtManifest KtTestChannel KtSourceSet KtIos KtRoot KtCinterop FFI clean; do
     case "$seen " in *" $want "*) ;; *) fail=$((fail + 1)); echo "FAIL no $want fixture" ;; esac

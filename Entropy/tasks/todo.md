@@ -12183,6 +12183,35 @@ int32_t kc_call(uint32_t op, const uint8_t *in, size_t in_len, uint8_t *out, siz
     guard, a jni and a capi lib.
   - Moved to M6 by Q73 (8w): keepcrypt-capi, so the workspace has six members (M5-32); guard's one catch and jni's
     exports stay. The gate's FFI rule is unchanged.
+  - Proof (M5 commit 8p-d, review; the B2r findings that the split no longer tied an export to the catch and that an
+    alias of the one catch could cross crates): the gate's FFI rule is the guard/jni split alone (M5-32): an export
+    is allowed only in ffi/jni/src/lib.rs (ffi/capi/src/lib.rs is no boundary in M5), and there each export's own
+    body calls `keepcrypt_guard::guarded(` (ffi_export_scan; JNI_OnLoad exempt, as it runs before any session
+    exists; an export with no body is a hit); in ffi/guard/src/lib.rs every catch_unwind but the path call
+    `std::panic::catch_unwind(` in the body of fn guarded, once, is a hit (ffi_guard_scan: a use line naming it,
+    pub or not, a rename, a re-export, a shorter path, the function as a value, a wrapper fn, a macro, a second call),
+    and that call is what a jni export requires. The review's trees, clean before: an export calling
+    keepcrypt_ffi::dispatch beside a guard holding the catch gives one hit at its fn line; `pub use
+    std::panic::catch_unwind as recover;` a hit at that line (with the export and the missing catch, as that tree
+    has no other); a wrapper fn holding the catch a hit at that call (with the missing catch, as guarded holds
+    none). Built cases: eight `ffi-jni-*-beside-the-guard`
+    (the safe layer called directly, the second of two exports, guarded through a use line or a helper, guarded only
+    in a comment and a string, an export_name fn, a RegisterNatives extern "system" fn, a no_mangle static), each
+    pinned to its line by expect's new `atline`; `clean-ffi-jni-exports-each-calling-guarded`;
+    `ffi-catch-unwind-reexport-beside-a-jni-export`. Fixtures: `ffi-catch-unwind-use-rename`, `-pub-use-reexport`,
+    `-use-group-line`, `-in-guard-wrapper-fn`, `-in-guard-macro`, `-short-path-in-guard`, `-as-value-in-guard`,
+    `-second-in-guarded`; the three capi export fixtures are `ffi-export-*-in-capi-lib`, the capi built case is
+    `ffi-jni-export-beside-a-guard-without-catch-unwind`, and clean-ffi holds no capi. On gate copies, the path
+    form off (any catch_unwind in guarded counts) fails `-as-value-in-guard` and `-short-path-in-guard`, and the fn
+    guarded condition off fails `-in-guard-wrapper-fn` and `-in-guard-macro`. `--selftest` 1371 passed, 0 failed under
+    sh and /bin/dash (1344 before: +8 guard fixtures, +2 Kt fixtures, +7 KtBinary magic cases, +8 tie cases, the clean
+    case and the re-export case; the capi fixtures renamed, none dropped). On one gate copy with HEAD's guard rule, the
+    export scan off, the KcHalt exemption on any module's commonMain, a lower-case .def check, four Mach-O magics and
+    the ELF, ar and zip magics dropped, exactly 23 cases fail: `-use-rename`, `-short-path-in-guard`,
+    `-as-value-in-guard`, `-in-guard-wrapper-fn`, `-in-guard-macro`, the re-export case, the eight tie cases, the two
+    Kt fixtures and the seven magic cases. `canaries.sh` PASS: all 76 checks ran; the gate on the tree clean (285
+    files); fmt, both clippy commands, `cargo test --workspace --locked` (21 suites, 445 passed, 3 ignored) and the
+    test-sources run (17 suites, 269 passed, 1 ignored) unchanged.
 - [ ] cinterop: `keepcrypt.def` holds exactly `headers = keepcrypt.h`, `headerFilter = keepcrypt.h` and `package = com.keepcrypt.native`.
   - It has no `staticLibraries`, `libraryPaths` or `linkerOpts`, so no Rust code is packed into a klib or the framework.
   - `compilerOpts -I` comes from the Gradle cinterop block and points only at `ffi/capi/include/`.
@@ -12271,6 +12300,9 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
   `ktintent-kmp-airplane-settings-in-screens`, `ktdevice-kmp-sensor-source-in-screens`). The go-offline and view-model
   fixtures moved to the new files (`ktintent-main-airplane-settings-*`, `ktfailopen-catch-kmp-ceremony-model-*`), the
   :core-ffi ones to commonMain and androidMain; `ktfailopen-catch-core-ffi-android-main` and `-ios-main` fail.
+  Proof (M5 commit 8p-d, review): `ktfailopen-catch-kmp-ceremony-model-in-core-ffi` (a KcHalt catch in :core-ffi's
+  commonMain CeremonyModel.kt) fails, so a KcHalt exemption widened from :screens to any module's commonMain, which
+  passed `--selftest` before, now fails it (the runs are under the One catch item's 8p-d proof).
 - [x] `iosMain`/`iosTest` Kotlin gets these iOS names on top of every Kt rule:
   - storage: `NSUserDefaults`, `NSFileManager`, `NSFileHandle`, `writeToFile`, `NSKeyedArchiver`, `SecItemAdd`, CoreData, `NSUbiquitousKeyValueStore`, CloudKit;
   - posix file and log calls: `fopen`, `fwrite`, `open(`, `printf`, `syslog`;
@@ -12298,6 +12330,9 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
   `rng-kotlin-uuid-import`, `rng-kotlin-uuid-random-reference`. The gate on today's tree: clean, 284 files.
   Moved to M6 by Q73 (8w): the `usePinned`/`addressOf` exemption for `Native.ios.kt`, so pinned memory is a hit
   everywhere in M5. The iOS names stay as refusals.
+  Proof (M5 commit 8p-d, review): the B2r finding that the Native.ios.kt exemption could widen to any module
+  untested no longer holds: 8w removed the exemption, kt_pinned runs on every file under mobile/android, and
+  `ktios-use-pinned-in-native-ios` fails, so no exemption is left to widen.
 - [x] Kotlin outside the root: any `.kt`/`.kts` under `mobile/` outside `mobile/android/` is refused. Any tracked file under `mobile/ios/` is refused in M5 (M5-25).
   - Proof: fixtures `mobile/shared/x.kt` and `mobile/ios/x.swift` fail under those rule names.
   - Proof (M5 commit 8p): new category KtRoot. `ktroot-kotlin-in-mobile-shared` (mobile/shared/src/commonMain/kotlin/X.kt),
@@ -12338,6 +12373,16 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
   Moved to M6 by Q73 (8w): the iPhone lines `kt_kmp` allowed (both targets and their blocks, the iosMain and iosTest
   blocks, the cinterop block and its -I, the framework and isStatic, the two test linkerOpts lines, the device line
   and konan.data.dir); M5's list is `kotlin {` and `withHostTestBuilder` alone, and no line joins it.
+  Proof (M5 commit 8p-d, review): `ktcinterop-def-upper-case` (core-ffi's nativeInterop/cinterop/keepcrypt.DEF) fails
+  as KtCinterop beside KtSourceSet's hit, so a .def check narrowed to lower case is caught. KtBinary's magic check
+  also refuses ELF (7f454c46), ar (!<arch>) and zip (PK\003\004) files under mobile/ whatever their names, so a
+  renamed .so, static library, rlib, jar, aar, apk or klib is a hit, as the header now says (it claimed that for an
+  iPhone library, which the Mach-O check alone did not cover for a static library or a klib); the built cases plant
+  all eight Mach-O magics and those three (`ktbinary-tracked-macho-32-big-endian`, `-macho-fat-reversed`,
+  `-macho-fat-64`, `-macho-fat-64-reversed`, `-elf-as-png`, `-ar-as-png`, `-zip-as-png`). The simulator device line,
+  whose charset the review widened, left the allow list at 8w, and any device line is a hit
+  (`ktsdk-kmp-8q-line-simulator-device`), so nothing is left to widen. The runs are under the One catch item's 8p-d
+  proof.
 - [x] Canaries cover the new scopes, the source-set allow list, the iOS rules, the `.def` rule and the refusals; `want_checks` is updated.
   - Proof: `scripts/canaries.sh` green with the new count. Each new canary fails when its rule line is removed (shown once, under Review).
   - Proof (M5 commit 8p): `want_checks` 74 -> 76. `kmp-ios-rules`: nine planted hits on the real tree's copy (appleMain
