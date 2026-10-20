@@ -1383,7 +1383,8 @@ fn right_picks(slot: &Slot, passphrase: &[String]) -> [u8; 2] {
 }
 
 // The backup round trip (todo.md, M5 group 11; the gate's "backup round trip passes"): the
-// generated passphrase, page by page, and its 2-of-4 confirm (a wrong pick keeps the display copy);
+// generated passphrase, page by page, and its 2-of-4 confirm (a wrong pick keeps the display copy;
+// a second passphrase halts before the confirm and after it, which would void the paper copy);
 // `encrypt_backup`, then `verify_backup` of the saved bytes (a changed byte is refused and the words
 // stay); verify.py's own reader opens it, `keepcrypt-android 0.0.0` with the summary's fingerprint;
 // and "Check a backup" with first-four entries: an entry that names no word is refused before
@@ -1418,6 +1419,20 @@ fn ffi_backup_round_trip() {
         4,
         "the copy stays"
     );
+    assert!(done(slot.confirm_backup(right)));
+    assert_eq!(slot.holds().stage, StageKind::Ready);
+    assert_eq!(
+        got(slot.generate_backup_passphrase()),
+        Got::Halted,
+        "a second one after the confirm halts"
+    );
+
+    let slot = Slot::new();
+    sealed(&slot, name);
+    done(slot.skip_check());
+    read_back_all(&slot);
+    done(slot.generate_backup_passphrase());
+    let right = right_picks(&slot, &passphrase(&slot));
     assert!(done(slot.confirm_backup(right)));
     assert_eq!(
         got(slot.backup_passphrase_page(0)),
