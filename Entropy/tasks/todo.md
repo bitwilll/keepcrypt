@@ -11466,7 +11466,7 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   Proof: run ID; which ABIs ran translated, under Review; any ABI that did not run is named in the gate report and Q56.
 
 **7. Rust dependency and lint changes (Q53; rule 11)**
-- [ ] New member `ffi/jni` (`keepcrypt-jni`): `[lib] name = "keepcrypt"`, `crate-type = ["cdylib"]`; dependencies
+- [x] New member `ffi/jni` (`keepcrypt-jni`): `[lib] name = "keepcrypt"`, `crate-type = ["cdylib"]`; dependencies
   `keepcrypt-ffi`, `keepcrypt-core` (featureless, commented as pi/sim's is), `jni-sys = { version = "=0.3.0",
   default-features = false }`, `zeroize`. `keepcrypt-ffi`: `#![forbid(unsafe_code)]`, `zeroize` and
   `qrcodegen-no-heap` (new edges to locked crates, core's and pi/app's specs), dev-dependency `sha2` (locked; the tests'
@@ -11476,11 +11476,29 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   Proof: `git diff Cargo.lock` adds exactly jni-sys 0.3.0 (checksum equal to crates.io's), keepcrypt-jni and the new
   edges; `cargo tree -p keepcrypt-jni -e normal,build --target aarch64-linux-android` holds no rand, log or network crate
   and no getrandom edge but core's; `cargo build -p keepcrypt-jni` writes `libkeepcrypt.dylib` on the Mac.
-- [ ] ffi/jni/clippy.toml = core's minus the `catch_unwind` entry, with a comment naming Q53. deny.toml gains an exact
+  Proof (M5 commit 9, as the re-plan (Q66 (a)), M5-32 and M5-35 amend it: the new members are ffi/guard and ffi/jni, and
+  keepcrypt-jni depends on keepcrypt-guard and jni-sys alone): `git diff Cargo.lock` adds exactly jni-sys 0.3.0
+  (checksum 8eaf4bc02d17cbdd7ff4c7438cafcdf7fb9a4613313ad11b4f8fefe7d3fa0130, the crates.io index record's `cksum` and
+  the downloaded `.crate`'s SHA-256), keepcrypt-guard (-> keepcrypt-ffi), keepcrypt-jni (-> jni-sys, keepcrypt-guard)
+  and keepcrypt-ffi's edges to qrcodegen-no-heap, sha2 (dev) and zeroize: 24 lines added, none removed. `cargo tree
+  --locked -p keepcrypt-jni -e normal,build --target T` for aarch64-linux-android, armv7-linux-androideabi and
+  x86_64-linux-android (68, 67 and 69 packages): no rand, log or network crate, and `-i getrandom` gives keepcrypt-core
+  alone, through keepcrypt-ffi and keepcrypt-guard. `cargo check` for those targets cannot run on this Mac
+  (secp256k1-sys's build script needs the NDK's clang; Q56), so CI's cross legs check them once commit 13 lists the FFI
+  crates there. `cargo build -p keepcrypt-jni --locked` writes target/debug/libkeepcrypt.dylib, and the release dylib's
+  `llvm-nm -g --defined-only` lists no symbol. The shared clippy block (now in five crates) and the release profiles
+  (core and the three FFI crates) are pinned by the canaries, the six members by check-path-deps.
+- [x] ffi/jni/clippy.toml = core's minus the `catch_unwind` entry, with a comment naming Q53. deny.toml gains an exact
   `[[bans.features]]` entry for jni-sys (none). supply-chain: a safe-to-deploy exemption for jni-sys 0.3.0 with a review
   note (read from the downloaded `.crate`, SHA-256 equal to Cargo.lock's: declarations only, no code that runs, no
   print, no build script), downloaded only after Q53's yes.
   Proof: `cargo deny --locked check`, `cargo audit`, `cargo vet --locked` pass; the review note under "New dependencies".
+  Proof (M5 commit 9; per the re-plan the one-line difference is ffi/guard/clippy.toml's, and ffi/jni/clippy.toml is
+  core's byte for byte): ffi/guard/clippy.toml is core/clippy.toml without its catch_unwind line, and the shared header
+  all five copies carry names Q53 and Q66 for it; deny.toml's `[[bans.features]]` gains jni-sys (exact, none);
+  supply-chain/config.toml gains the safe-to-deploy exemption for jni-sys 0.3.0, its note summing up the review note
+  under "New dependencies". `cargo deny --locked check`: advisories, bans, licenses, sources ok (exit 0); `cargo audit`:
+  exit 0, 110 crates scanned; `cargo vet --locked`: Vetting Succeeded (18 fully audited, 86 exempted).
 - [ ] canaries.sh: core, ffi and pi/app clippy.toml stay identical; ffi/jni's differs from core's by exactly the
   `catch_unwind` line (a canary that removes another line from it fails); the lint-table pins add the two clippy lints
   and keepcrypt-ffi's forbid; the profile pin adds both FFI crates; the deny pins add the jni-sys entry; a canary
@@ -11489,6 +11507,20 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   error; the getrandom graph pin is unchanged; the `[features]` probe covers both crates. `want_checks` and CLAUDE.md's
   count move together (group 19).
   Proof: canaries N/N locally and in `gates`, each new canary named in its output.
+  Proof (M5 commit 9, partial: the `gates` run at the pushed head is the lead's; as the re-plan, M5-32 and M5-35 amend
+  it): `scripts/canaries.sh` PASS, all 88 checks ran (want_checks 79 -> 88; 334 s on this Mac, 327 s at
+  8x-d). New: core/clippy.toml and ffi/jni/clippy.toml identical; ffi/guard/clippy.toml core's without its
+  catch_unwind line (static), and `guard-clippy-another-line` (the stdout line removed too) fails that check;
+  `real-keepcrypt-ffi-unsafe-code` and `real-keepcrypt-guard-unsafe-code` (an unsafe block with its SAFETY: line in
+  lib.rs gives "usage of an `unsafe` block" at the crate's `#![forbid(unsafe_code)]`; with that line gone the note
+  reads "-F unsafe-code" and the canary fails); `real-keepcrypt-ffi-catch-unwind` (clippy's disallowed method, -F);
+  `path-member-capi` (ffi/capi listed as a member: check-path-deps names keepcrypt-capi); keepcrypt-jni's direct
+  dependencies exactly keepcrypt-guard and jni-sys (static, from `cargo metadata --no-deps`), and `jni-safe-layer-edge`
+  (a keepcrypt-ffi edge) fails it. Grown in place: the lint-table pins (the two clippy lints in all five crates,
+  unsafe_code forbid in ffi and ffi/guard), the deny pins (jni-sys), the profile pin and `release-profile`
+  (keepcrypt-jni's table dropped), the `[features]` probe in all three FFI crates, `path-member` and
+  `path-member-listed` with six members (their fixtures and source-replacement's gain guard and jni stand-ins); the
+  getrandom graph pin unchanged. CLAUDE.md's count (73, main's) moves at commit 22 (group 19).
 
 **8. The FFI's safe layer (`ffi/src/ceremony.rs`)**
 - [ ] The slot as in References. Every call locks, takes the stage with `mem::replace(.., Stage::Idle)`, calls the
@@ -11774,6 +11806,24 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
 
 - **New workspace member:** keepcrypt-jni (ours). **New edges to locked crates:** keepcrypt-ffi -> zeroize,
   qrcodegen-no-heap 1.8.1 (pi/app's, already exempted); keepcrypt-jni -> zeroize, keepcrypt-core; dev: sha2.
+  Amended at commit 9 (M5-32, M5-35): the new members are keepcrypt-guard and keepcrypt-jni; the new edges are
+  keepcrypt-ffi -> zeroize and qrcodegen-no-heap (dev: sha2), keepcrypt-guard -> keepcrypt-ffi, and keepcrypt-jni ->
+  keepcrypt-guard and jni-sys only.
+- **Review note, jni-sys 0.3.0 (M5 commit 9, read from the downloaded `.crate` in the session scratchpad):** the
+  `.crate`'s SHA-256, 8eaf4bc02d17cbdd7ff4c7438cafcdf7fb9a4613313ad11b4f8fefe7d3fa0130, equals Cargo.lock's checksum and
+  the crates.io index record's `cksum` (which lists no dependency, no feature and no `links`). The archive holds
+  Cargo.toml (no `build` key, an empty `[dependencies]`, licence "MIT/Apache-2.0"), Cargo.toml.orig, README.md, the two
+  licences, CI files and one source file, src/lib.rs (1,515 lines); no build.rs. src/lib.rs is declarations only:
+  `#![allow(non_snake_case, non_camel_case_types)]`, `use std::os::raw::{c_void, c_char}`, type aliases (`jint`,
+  `jbyteArray`, `JNIEnv`, `JavaVM` and the rest), consts (`JNI_OK`, `JNI_VERSION_1_6` and the rest), the enum
+  `jobjectRefType`, the union `jvalue`, and `#[repr(C)]` structs, chiefly `JNINativeInterface_` and
+  `JNIInvokeInterface_`, whose fields are `Option<unsafe extern "system" fn ..>` pointers (31 of them `extern "C"`, each
+  a C-variadic `Call*`/`NewObject` entry). The only function bodies are eight `Clone` impls that return `*self` (plus
+  derived `Copy`, and `Clone` derived on the enum). One `extern "system"` block declares `JNI_GetDefaultJavaVMInitArgs`,
+  `JNI_CreateJavaVM` and `JNI_GetCreatedJavaVMs` with no `#[link]` attribute, so nothing links unless a caller names
+  them, and keepcrypt-jni never does. No code runs, nothing prints, no static, macro or `unsafe` block, and nothing
+  reads the OS random source. Exempted safe-to-deploy in supply-chain/config.toml with this note's summary (no audit on
+  record).
 - **Not added:** UniFFI (0.32.2: fastrand, a second getrandom dependent, MPL-2.0; 0.29.1: about 13 crates, MPL-2.0, a
   45-crate bindgen with `log`, JNA); jni 0.22.4 (`log`); jni-sys 0.4.0 / 0.4.1 / 0.3.1 (jni-sys-macros, a proc macro,
   for the same declarations); cargo-ndk 4.1.2 (a linker wrapper we do not need); rqrr 0.11.0 (a crate tree in the
@@ -12260,6 +12310,19 @@ int32_t kc_call(uint32_t op, const uint8_t *in, size_t in_len, uint8_t *out, siz
     export_name or depth unchecked 1 each; no macro_rules hit 1; the `p4 != "::"` and `;` branches 1 each (22 in
     all). `--selftest` 1388 passed, 0 failed under sh and /bin/dash (1373 before: +5 fixtures, +10 built cases).
     `canaries.sh` PASS: all 76 checks ran; the gate on the tree clean (285 files).
+  - Proof (M5 commit 9, partial: M5-8's narrowing of the thread ban to the crates' src/ comes before commit 10): with
+    the crates in, the canaries hold core's, ffi's and jni's clippy.toml identical and guard's core's minus the one
+    line, and check-path-deps pins six members (a member at ffi/capi fails, `path-member-capi`). Q73's export rule
+    already had no ffi/capi allowance after 8p-d; new fixtures pin the shapes it lacked:
+    `ffi-export-extern-c-in-capi-lib` (no no_mangle), `-no-mangle-static-in-capi-lib`, `-no-mangle-in-safe-layer-lib`
+    (a Rust-ABI fn) and `-in-capi-tests`. M5-35's macro rule: `ffi-macro-rules-in-safe-layer`, `-in-guard-lib`,
+    `ffi-macro-export-in-safe-layer-lib` (the attribute alone), `-in-guard-other-file` (in a cfg_attr) and
+    `clean-ffi-macros-outside-shipped-src` (macros in ffi/tests and ffi/guard/tests, the words in a comment and a
+    string); the three guard-macro fixtures are built cases now, each with its macro_rules line as the second hit (on a
+    gate copy whose site rule ignores macro_rules, the two inside guarded lose their catch's hit, as before). On gate
+    copies, macro_export dropped from the rule clears both macro_export fixtures, and ffi/guard/src dropped from its
+    paths clears both guard ones. `--selftest` 1405 passed, 0 failed under sh and /bin/dash (1396 before: -3 fixtures,
+    +3 built cases, +9 fixtures); the gate on the tree clean (292 files).
 - [ ] cinterop: `keepcrypt.def` holds exactly `headers = keepcrypt.h`, `headerFilter = keepcrypt.h` and `package = com.keepcrypt.native`.
   - It has no `staticLibraries`, `libraryPaths` or `linkerOpts`, so no Rust code is packed into a klib or the framework.
   - `compilerOpts -I` comes from the Gradle cinterop block and points only at `ffi/capi/include/`.
@@ -12952,6 +13015,17 @@ they differ. Nothing in the Android plan is weakened.
   8y (79c75de), because the Pi image run 39404714666 at 1ae0df6 failed leg a's scan the same way (CONFIG_RUSTC_VERSION
   109900 vs 109901; image 4b13c095 in both legs). M5-1's merge of main after M4b lands takes the same change from both
   sides.
+- M5-35 (2026-10-20): the structural tie, from the B2q fix's concern under M5-32. keepcrypt-jni's `[dependencies]` are
+  exactly keepcrypt-guard and jni-sys =0.3.0, with no keepcrypt-ffi or keepcrypt-core edge (group 7 listed both, and
+  zeroize), so the JNI crate can reach the safe layer only through `keepcrypt_guard::guarded`; keepcrypt-guard depends
+  on keepcrypt-ffi. A canaries static check pins keepcrypt-jni's direct dependencies, of every kind and target, as
+  cargo metadata reads them, and a canary that adds a keepcrypt-ffi edge to it fails. The gate refuses `macro_rules`
+  and `#[macro_export]` in ffi/src/ and ffi/guard/src/ too (8p-e already refuses `macro_rules` in ffi/jni/src/lib.rs),
+  so no export can be written by a macro from another ffi crate. What this changes for later commits: with no direct
+  core edge, `-p keepcrypt-jni --features keepcrypt-core/test-registry` is refused ("does not contain this feature"),
+  so group 12's test-registry build names core beside it (`-p keepcrypt-jni -p keepcrypt-core --features
+  keepcrypt-core/test-registry`, which resolves core with the feature; checked with cargo tree at commit 9); and
+  keepcrypt-jni's wiping buffers come through keepcrypt-guard's API, which re-exports nothing of keepcrypt-ffi.
 
 **Out-of-plan download (commit 8q), recorded.** While writing 8q, the implementing agent fetched six small files from
 download.jetbrains.com onto this Mac (into the session scratchpad, not the repo): the `.asc` and `.sha256` of each of the three

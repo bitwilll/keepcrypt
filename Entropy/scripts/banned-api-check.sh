@@ -713,8 +713,11 @@
 #              crate root's no_mangle JNI_OnLoad aside) or that has no body, and macro_rules; the
 #              JNI names (a Java_ function, JNI_OnLoad, JNIEnv, jni_sys) outside comments and
 #              literals anywhere but ffi/jni/, and in ffi/jni/src/lib.rs an extern fn whose ABI is
-#              not "system"; and once ffi/jni/src/lib.rs exports a function, the one catch_unwind
-#              call in fn guarded is required (a missing one is reported at ffi/jni/src/lib.rs:1).
+#              not "system"; macro_rules and macro_export outside comments and literals in any file
+#              under ffi/src/ and ffi/guard/src/ (lead decision M5-35), so no macro from the crates
+#              under the boundary writes an export; and once ffi/jni/src/lib.rs exports a function,
+#              the one catch_unwind call in fn guarded is required (a missing one is reported at
+#              ffi/jni/src/lib.rs:1).
 #              Session::new (the Shell rule's shapes, comments counting) anywhere under ffi/ but
 #              ffi/src/ceremony.rs, each one after its first there, and none there once the file
 #              exists (reported at line 1). The identifiers thread and JoinHandle anywhere, comments
@@ -859,9 +862,10 @@ mobile/android and a tracked file under mobile/ios; a tracked binary (a klib, a 
 Mach-O, ELF, ar, zip, dex, keystore or compressed file among them) under mobile/; the CI passphrase
 key outside its two files; and under ffi/ a catch_unwind but the one std::panic::catch_unwind call
 in the crate root's fn guarded in ffi/guard/src/lib.rs, an export outside ffi/jni/src/lib.rs or one
-there that does not call keepcrypt_guard::guarded, macro_rules there, a JNI name outside ffi/jni/
-or a C-ABI export in its lib.rs, a second Session::new or one outside ffi/src/ceremony.rs, and
-thread or JoinHandle. A directory symlink is refused. Exit 0 clean, 1 hits, 2 usage or read error.
+there that does not call keepcrypt_guard::guarded, macro_rules there or macro_rules and
+macro_export in ffi/src and ffi/guard/src, a JNI name outside ffi/jni/ or a C-ABI export in its
+lib.rs, a second Session::new or one outside ffi/src/ceremony.rs, and thread or JoinHandle. A
+directory symlink is refused. Exit 0 clean, 1 hits, 2 usage or read error.
 EOF
 }
 
@@ -2434,6 +2438,16 @@ ffi_jni_abi() {
     -e 's/extern[[:space:]]*"system"[[:space:]]*fn([^A-Za-z0-9_]|$)/ /g'
 }
 
+# No export written by a macro from the crates under the boundary (lead decision M5-35): macro_rules
+# and macro_export, outside every comment and literal, are hits in any .rs file under ffi/src/ and
+# ffi/guard/src/ (ffi_macros), as ffi/jni/src/lib.rs's macro_rules is (ffi_export_scan). A macro
+# that keepcrypt-ffi or keepcrypt-guard exported and keepcrypt-jni called would split an export's
+# tokens between two crates, which the export scan, reading ffi/jni/src/lib.rs alone, cannot see
+# whole; so every export stays written out in that file. Their tests may define macros.
+ffi_macros() {
+  rust_code_match '[^A-Za-z0-9_](macro_rules|macro_export)[^A-Za-z0-9_]' "$1"
+}
+
 # The other way to turn a panic into a value, a joined thread, cannot be banned in the shared
 # clippy.toml (core/tests/panic_wipe.rs joins one), so the identifiers thread and JoinHandle are
 # refused anywhere under ffi/ (the four crates, ffi/guard, ffi/jni and ffi/capi included), comments
@@ -2724,8 +2738,9 @@ EOF
     esac
     # FFI: one catch_unwind, the path call in fn guarded in ffi/guard/src/lib.rs; exports only in
     # ffi/jni/src/lib.rs, each calling keepcrypt_guard::guarded, JNI names only under ffi/jni/ and
-    # only the JNI ABI in its lib.rs; one Session::new, in ffi/src/ceremony.rs (comments count, as
-    # under pi/app/src); no thread or JoinHandle.
+    # only the JNI ABI in its lib.rs; no macro_rules or macro_export in ffi/src or ffi/guard/src;
+    # one Session::new, in ffi/src/ceremony.rs (comments count, as under pi/app/src); no thread or
+    # JoinHandle.
     case $rel in
       ffi/*.rs)
         case $rel in
@@ -2735,6 +2750,7 @@ EOF
         esac
         case $rel in ffi/jni/src/lib.rs) report FFI ffi_jni_abi "$rel" ;; esac
         case $rel in ffi/jni/*) ;; *) report FFI ffi_jni_names "$rel" ;; esac
+        case $rel in ffi/src/*.rs | ffi/guard/src/*.rs) report FFI ffi_macros "$rel" ;; esac
         case $rel in
           ffi/src/ceremony.rs) report FFI session_new_again "$rel" ;;
           *) report FFI session_new "$rel" ;;
@@ -3522,6 +3538,38 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   atline=1
   expect 'ffi-catch-unwind-reexport-beside-a-jni-export' "$d" FFI ffi/guard/src/lib.rs
   atline=
+  # A catch_unwind in a macro_rules definition in ffi/guard/src/lib.rs is a hit at its line, the
+  # definition beside fn guarded or inside it, with its body in braces or in parentheses: the one
+  # catch is the path call written in guarded's own body. The definition's line is a hit too
+  # (ffi_macros, lead decision M5-35), so these trees are built here, each with that second line.
+  for gcase in in-guard-macro:1:3 in-guard-macro-inside-guarded:3:5 in-guard-paren-macro-inside-guarded:2:3; do
+    case ${gcase%%:*} in
+      in-guard-macro)
+        g=$(printf '%s\n' 'macro_rules! recover {' '    ($f:expr) => {' '        std::panic::catch_unwind($f)' '    };' '}' \
+          'pub fn guarded(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>> {')
+        ;;
+      in-guard-macro-inside-guarded)
+        g=$(printf '%s\n' '// A macro defined inside guarded would carry the catch out of it.' \
+          'pub fn guarded(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>> {' '    macro_rules! recover {' '        ($f:expr) => {' \
+          '            std::panic::catch_unwind($f)' '        };' '    }')
+        ;;
+      in-guard-paren-macro-inside-guarded)
+        g=$(printf '%s\n' 'pub fn guarded(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>> {' '    macro_rules! recover (' \
+          '        ($f:expr) => ( std::panic::catch_unwind($f) )' '    );')
+        ;;
+    esac
+    g=$(printf '%s\n' "$g" '    match recover!(|| keepcrypt_ffi::dispatch(op, input)) {' '        Ok(out) => out,' \
+      '        Err(payload) => halt(payload),' '    }' '}')
+    fresh
+    mkdir -p "$d/ffi/guard/src" || exit 2
+    printf '%s\n' "$g" >"$d/ffi/guard/src/lib.rs" || exit 2
+    gm=${gcase#*:}
+    also="FFI: ffi/guard/src/lib.rs:${gm%%:*}: $(sed -n "${gm%%:*}p" "$d/ffi/guard/src/lib.rs")"
+    atline=${gm#*:}
+    expect "ffi-catch-unwind-${gcase%%:*}" "$d" FFI ffi/guard/src/lib.rs
+    also=
+    atline=
+  done
   for want in RNG Network Clipboard Rule1 FailOpen Include Shell Device Build KtLog KtFailOpen KtWindow KtInput KtStorage \
     KtIntent KtDevice KtSdk KtBinary KtManifest KtTestChannel KtSourceSet KtIos KtRoot KtCinterop FFI clean; do
     case "$seen " in *" $want "*) ;; *) fail=$((fail + 1)); echo "FAIL no $want fixture" ;; esac
