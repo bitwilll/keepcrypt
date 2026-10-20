@@ -1,7 +1,8 @@
-//! Test support for keepcrypt-ffi's integration tests (tasks/todo.md, M5 group 11): vectors/ read
-//! by a small JSON reader, since the crate's one dev-dependency is sha2 (M5 group 7); the go-ahead
-//! QR text of a kcr.json proof, which kcr.json holds as KCP1 bytes only; and the mock checker's
-//! go-ahead code. `ffi_test_helpers_match_their_vectors` checks each against vectors/ first.
+//! Test support for keepcrypt-ffi's integration tests (tasks/todo.md, M5 groups 9 and 11):
+//! vectors/ read by a small JSON reader, since the crate's one dev-dependency is sha2 (M5 group 7);
+//! the go-ahead QR text of a kcr.json proof, which kcr.json holds as KCP1 bytes only; and the mock
+//! checker's go-ahead code. `ffi_test_helpers_match_their_vectors` checks each against vectors/
+//! first.
 
 use std::sync::OnceLock;
 
@@ -271,10 +272,22 @@ pub fn braille() -> &'static Json {
     BRAILLE.get_or_init(|| Json::parse(include_str!("../../../vectors/braille.json")))
 }
 
-/// vectors/watchonly.json: the Bytewords list, and the CRC-32, CBOR and UR vectors.
+/// vectors/watchonly.json: the Bytewords list, the CRC-32, CBOR and UR vectors, and the wallets.
 pub fn watchonly() -> &'static Json {
     static WATCHONLY: OnceLock<Json> = OnceLock::new();
     WATCHONLY.get_or_init(|| Json::parse(include_str!("../../../vectors/watchonly.json")))
+}
+
+/// vectors/seal.json: the seal vectors, each with its card's grid, colour and Seal ID braille.
+pub fn seal() -> &'static Json {
+    static SEAL: OnceLock<Json> = OnceLock::new();
+    SEAL.get_or_init(|| Json::parse(include_str!("../../../vectors/seal.json")))
+}
+
+/// vectors/backup.json: the age files, at work factor 10, and their passphrases.
+pub fn backup() -> &'static Json {
+    static BACKUP: OnceLock<Json> = OnceLock::new();
+    BACKUP.get_or_init(|| Json::parse(include_str!("../../../vectors/backup.json")))
 }
 
 /// CRC-32/ISO-HDLC (reflected polynomial 0xedb88320), as a UR carries it.

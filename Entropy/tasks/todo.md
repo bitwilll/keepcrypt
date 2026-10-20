@@ -11607,9 +11607,36 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   (OK, REFUSED, DISCARDED, HALTED), `dispatch(op, input)` (M5-21) and `halt`, and the op table of the 16 calls whose
   reply is the status alone; any other op, or an input that is not its exact layout, halts. `ffi_dispatch_status_ops`
   runs a dice-only ceremony to a Stop and its restart through it, and nine malformed calls each halt.
+  Proof (M5 commit 11, partial: Kotlin's copy of the tables is pinned in Stage D, commit 14): wire.rs documents each
+  layout once (the status, the fields, the seal card, the word page, the QR matrix, the registry header, the summary
+  and the go-ahead result in its module comment; each op's input and reply at its number) and holds the op table,
+  1-38, one op per safe call but `hold`; every reply is measured, then written into a buffer of exactly that size, and
+  text lengths (`u8::try_from`), a registry count (`u32::try_from`), a QR side and every sum are checked, so a reply
+  that does not fit halts. `the_status_and_refusal_code_tables_are_pinned` pins the status bytes and the 42 refusal
+  codes by name (1-3, 16-19, 32-45, 48-59, 64-72), `a_halting_error_has_no_code` gives every halting error none, and
+  `the_op_table_is_pinned` pins 1-38. Byte for byte through `dispatch`: `ffi_wire_dice_ceremony` (the seal card from
+  kcr.json's T and Seal ID with braille.json's braille, braille.json's word pages for 12 and 24 words, device 1 of 2
+  and 2 of 2, the progress, read-back and summary, codes 1, 2 and 18), `ffi_wire_check_a_backup` (backup.json's
+  abandon-12 and zoo-24 at work factor 10: watchonly.json's fingerprints 73c5da0a and 244c267a, seal.json's vector 1
+  card field for field, the word pages, codes 72 and 16), `ffi_wire_registry` (kcr.json's headers: with-dice-50 Stale,
+  its collision, clear-empty-bucket Current; code 19 in the release build, 32, 50 and 3 with the test registry),
+  `ffi_wire_readback_and_backup` (the four verdicts with braille.json's dots, the passphrase pages, the confirm, the
+  file and its verification), `ffi_wire_mixed_commitment_and_device_leg` (C and D, and C = SHA-256("KCE/v1/commit"
+  || D)) and `ffi_wire_malformed_inputs_halt` (36 malformed inputs or unknown ops, each in a stage that offers the
+  op). On copies, a changed refusal code, face field order, grid row order, freshness byte, verdict code or
+  fingerprint each fail a test. `cargo test -p keepcrypt-ffi --locked`, plain and with `--features
+  keepcrypt-core/test-registry`: 37 passed each (11 unit, 26 in ffi/tests/ceremony.rs), 2.4 s and 4.4 s.
 - [ ] QR codes (check request, account, descriptor, registration, collision report, re-check without n) encoded with
   qrcodegen-no-heap at pi/app's settings (pi/app/src/ui/qr.rs), working buffers wiped.
   Proof: the JVM test decodes every matrix with ZXing and gets core's QR text (group 13).
+  Proof (M5 commit 11, partial: the ZXing decode is commit 14's): qr.rs encodes the six codes (the descriptors on two
+  lines) with qrcodegen-no-heap at pi/app's settings (versions 1-11, low error correction boosted, the encoder's mode
+  and mask) and copies the modules out row by row into a matrix wiped on drop; both working buffers are wiped after
+  every code, on success and on error (`both_buffers_are_zero_after_a_code_and_after_an_error`). Every matrix an op
+  returns equals qrcodegen-no-heap's own output for the same text, at the versions and levels pi/app's tests measured:
+  the check request 6 L, the registration and collision report 4 M, the re-check 5 L, the account 8 L, the descriptors
+  11 L (`ffi_wire_dice_ceremony`, `ffi_wire_registry`, `ffi_wire_check_a_backup`). On copies, the bit order, medium
+  error correction, no boost, a version cap of 10 and a missing wipe each fail a test.
 
 **10. The JNI boundary (`ffi/jni/src/lib.rs`, the only unsafe code)**
 - [ ] About 35 `#[unsafe(no_mangle)] pub extern "system" fn Java_com_keepcrypt_entropy_ffi_Native_<name>` exports

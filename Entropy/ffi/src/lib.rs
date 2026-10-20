@@ -3,11 +3,13 @@
 //! Android boundary over that (tasks/todo.md, M5 groups 7-9).
 //!
 //! The phone's one ceremony and every call on it are in `ceremony`; the op table and the reply's
-//! bytes, and `dispatch` and `halt`, the two entries keepcrypt-guard calls, are in `wire`. This file
-//! holds the module list and those two re-exports only.
+//! bytes, and `dispatch` and `halt`, the two entries keepcrypt-guard calls, are in `wire`; the QR
+//! codes the replies carry are encoded in `qr`. This file holds the module list and those two
+//! re-exports only.
 #![forbid(unsafe_code)]
 
 pub mod ceremony;
+mod qr;
 pub mod wire;
 
 pub use wire::{dispatch, halt};

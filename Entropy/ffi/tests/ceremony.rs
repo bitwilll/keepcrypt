@@ -1,13 +1,14 @@
-//! The safe layer's ceremony through its public calls (tasks/todo.md, M5 groups 8 and 11), in the
-//! release configuration (`cargo test -p keepcrypt-ffi`) and the registry configuration (`cargo test
-//! -p keepcrypt-ffi --features keepcrypt-core/test-registry`); the tests that need the test key
-//! branch on `registry_key_is_test()`, as pi/sim's do.
+//! The safe layer's ceremony through its public calls and through the wire's bytes (tasks/todo.md,
+//! M5 groups 8, 9 and 11), in the release configuration (`cargo test -p keepcrypt-ffi`) and the
+//! registry configuration (`cargo test -p keepcrypt-ffi --features keepcrypt-core/test-registry`);
+//! the tests that need the test key branch on `registry_key_is_test()`, as pi/sim's do.
 //!
 //! Each test builds its own `Slot`, never the phone's `FFI`. Test data comes from vectors/ only
-//! (rule 12): kcr.json's public dice-only gate seeds, snapshots and proofs, braille.json and
-//! watchonly.json. The one ceremony on the OS source (the verify.py tie) is a throwaway seed, held
-//! in memory and never printed. Assertion messages are fixed or name public values only: `Reply`'s
-//! `Debug` names its variant alone.
+//! (rule 12): kcr.json's public dice-only gate seeds, snapshots and proofs, braille.json, seal.json,
+//! watchonly.json and backup.json's public test files. The ceremonies on the OS source (the verify.py
+//! tie, C and D, the backup passphrases) are throwaway seeds, held in memory and never printed.
+//! Assertion messages are fixed or name public values only: `Reply`'s `Debug` names its variant
+//! alone.
 
 mod common;
 
@@ -19,12 +20,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use common::{Json, braille, cbor_bytes, crc32, go_ahead, kcr, proof_ur, ur, watchonly};
 use keepcrypt_core::{
     BackupError, CheckError, CoreError, ExtraSource, FaceVerdict, Freshness, Mode, RegistryDate,
-    SeedLength, SnapshotError, UrError, registry_key_is_test,
+    SeedLength, SnapshotError, UrError, WatchOnlyExport, registry_key_is_test,
 };
 use keepcrypt_ffi::ceremony::{
     Holds, Readback, Refusal, Registry, Reply, Revealed, Slot, StageKind,
 };
 use keepcrypt_ffi::wire;
+use qrcodegen_no_heap::{QrCode, QrCodeEcc, Version};
+use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
 /// kcr.json's `today`: its snapshots and proofs are dated 2026-03-01.
@@ -1410,9 +1413,10 @@ fn is_ok(verdict: &FaceVerdict) -> bool {
     matches!(verdict, FaceVerdict::Ok)
 }
 
-// The dispatcher (the re-plan's M5-21): this commit's table, the calls whose reply is the status
-// byte alone, on a dice-only run to a Stop and its restart; an op the table does not hold, an input
-// that is not its layout and a call in the wrong stage each halt, and the halt latches.
+// The dispatcher (the re-plan's M5-21): the calls whose reply is the status byte alone, on a
+// dice-only run to a Stop and its restart; an op the table does not hold, an input that is not its
+// layout and a call in the wrong stage each halt, and the halt latches. The other ops' layouts are
+// the ffi_wire tests below.
 #[test]
 fn ffi_dispatch_status_ops() {
     let slot = Slot::new();
@@ -1455,6 +1459,804 @@ fn ffi_dispatch_status_ops() {
             slot.dispatch(wire::WIPE_ALL, &[])[..],
             [wire::HALTED],
             "op {op}"
+        );
+    }
+}
+
+/// The registry's origin in every QR's text until M9 (core's seal module).
+const ORIGIN: &str = "https://registry.invalid";
+
+/// The go-ahead result of a typed code that reveals (wire.rs): clear, with no registry header.
+const CLEAR: [u8; 2] = [0, 0];
+
+/// A dispatched call's `OK` reply, without its status byte; another status fails the test, naming
+/// the op and that byte alone.
+fn wired(slot: &Slot, op: u32, input: &[u8]) -> Zeroizing<Vec<u8>> {
+    let reply = slot.dispatch(op, input);
+    assert_eq!(reply.first(), Some(&wire::OK), "op {op}");
+    Zeroizing::new(reply[1..].to_vec())
+}
+
+/// A text field (wire.rs): its length in one byte, then its bytes.
+fn text_field(text: &str) -> Vec<u8> {
+    let mut field = vec![u8::try_from(text.len()).expect("a text")];
+    field.extend_from_slice(text.as_bytes());
+    field
+}
+
+/// `day` (YYYYMMDD) as an input's date, then `rest`.
+fn dated(day: u32, rest: &[u8]) -> Vec<u8> {
+    let mut input = day.to_be_bytes().to_vec();
+    input.extend_from_slice(rest);
+    input
+}
+
+/// `text`'s QR matrix (wire.rs's layout) from qrcodegen-no-heap's own output at pi/app's settings
+/// (pi/app/src/ui/qr.rs): versions 1-11, low error correction boosted, the encoder's mask.
+fn qr_matrix(text: &str) -> Vec<u8> {
+    let len = Version::new(11).buffer_len();
+    let (mut temp, mut out) = (vec![0; len], vec![0; len]);
+    let qr = QrCode::encode_text(
+        text,
+        &mut temp,
+        &mut out,
+        QrCodeEcc::Low,
+        Version::MIN,
+        Version::new(11),
+        None,
+        true,
+    )
+    .expect("fits version 11");
+    let side = usize::try_from(qr.size()).expect("21-61");
+    let mut bits = vec![0u8; (side * side).div_ceil(8)];
+    for y in 0..side {
+        for x in 0..side {
+            let module = (i32::try_from(x).expect("x"), i32::try_from(y).expect("y"));
+            if qr.get_module(module.0, module.1) {
+                let i = y * side + x;
+                bits[i / 8] |= 0x80 >> (i % 8);
+            }
+        }
+    }
+    let mut matrix = vec![u8::try_from(side).expect("21-61")];
+    matrix.extend(bits);
+    matrix
+}
+
+/// A QR matrix's version and error correction level, from its side and its format modules (0, 8)
+/// and (1, 8) as pi/app's tests read them: L is 01, M 00, Q 11 and H 10 once the format mask's 1
+/// and 0 there are undone.
+fn version_and_level(matrix: &[u8]) -> (u8, char) {
+    let side = usize::from(matrix[0]);
+    let dark = |x: usize, y: usize| {
+        let i = y * side + x;
+        matrix[1 + i / 8] & (0x80 >> (i % 8)) != 0
+    };
+    let level = match (!dark(0, 8), dark(1, 8)) {
+        (false, true) => 'L',
+        (false, false) => 'M',
+        (true, true) => 'Q',
+        (true, false) => 'H',
+    };
+    ((matrix[0] - 17) / 4, level)
+}
+
+/// braille.json's text rule over its cells (UEB grade 1): a number sign opens each run of digits,
+/// digit d is letter "jabcdefghi"[d]'s cell, a letter a-j right after a digit takes the grade 1
+/// indicator first, and a letter, a space or a hyphen ends the run.
+fn braille_text(text: &str) -> String {
+    let cells = braille().get("cells");
+    let letter = |c: char| {
+        cells
+            .get("letters")
+            .list()
+            .iter()
+            .find(|cell| cell.get("letter").text().starts_with(c))
+            .expect("a letter's cell")
+            .get("cell")
+            .text()
+            .to_owned()
+    };
+    let sign = |name: &str| cells.get("signs").named(name).get("cell").text().to_owned();
+    let mut out = String::new();
+    let mut digits = false;
+    for c in text.chars() {
+        match c {
+            '0'..='9' => {
+                if !digits {
+                    out.push_str(&sign("number_sign"));
+                    digits = true;
+                }
+                let d = usize::from(u8::try_from(c).expect("ASCII") - b'0');
+                out.push_str(&letter(char::from(b"jabcdefghi"[d])));
+            }
+            ' ' | '-' => {
+                digits = false;
+                out.push_str(&sign(if c == ' ' { "space" } else { "hyphen" }));
+            }
+            _ => {
+                if digits && ('a'..='j').contains(&c) {
+                    out.push_str(&sign("grade1_indicator"));
+                }
+                digits = false;
+                out.push_str(&letter(c));
+            }
+        }
+    }
+    out
+}
+
+/// The seal card's grid (wire.rs) from T by seal.json's spec: the 32 bits of T[1..5], most
+/// significant first, fill columns 0-3 row by row and column 7 - c mirrors c; row r is byte r and
+/// column c its bit 7 - c.
+fn grid_rows(tag: &[u8]) -> [u8; 8] {
+    let bits = u32::from_be_bytes([tag[1], tag[2], tag[3], tag[4]]);
+    std::array::from_fn(|row| {
+        let left = u8::try_from((bits >> (28 - 4 * row)) & 0xf).expect("4 bits");
+        let right = (0..4).fold(0, |right, c| right | (((left >> c) & 1) << (3 - c)));
+        (left << 4) | right
+    })
+}
+
+/// The seal card (wire.rs) of a seal with tag T and `seal_id`: the grid from T, T[0] mod 8, the
+/// Seal ID and its braille by braille.json's text rule, lowercase.
+fn seal_card(tag: &[u8], seal_id: &str) -> Vec<u8> {
+    let mut card = grid_rows(tag).to_vec();
+    card.push(tag[0] % 8);
+    card.extend_from_slice(seal_id.as_bytes());
+    card.extend(text_field(&braille_text(&seal_id.to_ascii_lowercase())));
+    card
+}
+
+/// seal.json's vector for `mnemonic`.
+fn seal_vector(mnemonic: &str) -> &'static Json {
+    let vectors = common::seal().get("vectors").list();
+    let found: Vec<&Json> = vectors
+        .iter()
+        .filter(|vector| vector.get("mnemonic").text() == mnemonic)
+        .collect();
+    assert_eq!(found.len(), 1, "one seal vector");
+    found[0]
+}
+
+/// seal.json's own card of a vector, field by field: its grid rows ('#' filled), colour index,
+/// Seal ID and Seal ID braille.
+fn seal_json_card(vector: &Json) -> Vec<u8> {
+    let mut card: Vec<u8> = vector
+        .get("grid")
+        .list()
+        .iter()
+        .map(|row| {
+            row.text()
+                .chars()
+                .fold(0, |byte, c| (byte << 1) | u8::from(c == '#'))
+        })
+        .collect();
+    card.push(u8::try_from(vector.get("colour_index").number()).expect("0-7"));
+    card.extend_from_slice(vector.get("seal_id").text().as_bytes());
+    card.extend(text_field(vector.get("seal_id_braille").text()));
+    card
+}
+
+/// A face's letter in braille.json, as the word page's byte: ASCII, 0 for none.
+fn ascii(letter: Option<char>) -> u8 {
+    match letter {
+        Some(letter) => u8::try_from(letter).expect("ASCII"),
+        None => 0,
+    }
+}
+
+/// Insert `position`'s word page (wire.rs) of `word` in a `count`-word phrase, from braille.json:
+/// its device, devices and sequence, its SeedBook number, and faces 1-5 with their dots, the
+/// lighter face and the mirror partners.
+fn word_page(word: &str, position: u8, count: u8) -> Vec<u8> {
+    let positions =
+        braille()
+            .get("positions")
+            .get(if count == 24 { "words_24" } else { "words_12" });
+    let at = &positions.list()[usize::from(position - 1)];
+    let entry = braille()
+        .get("words")
+        .list()
+        .iter()
+        .find(|entry| entry.get("word").text() == word)
+        .expect("a BIP39 word");
+    let byte = |json: &Json| u8::try_from(json.number()).expect("a byte");
+    let mut page = vec![
+        position,
+        count,
+        byte(at.get("device")),
+        byte(at.get("devices")),
+        byte(at.get("sequence")),
+    ];
+    let number = u16::try_from(entry.get("number").number()).expect("1-2048");
+    page.extend_from_slice(&number.to_be_bytes());
+    page.extend(text_field(word));
+    let first = |json: &Json| {
+        json.text_or_null()
+            .map(|text| text.chars().next().expect("a letter"))
+    };
+    let lighter = entry.get("lighter_face");
+    for face in 0..5 {
+        let letter = first(&entry.get("faces").list()[face]);
+        let dots = match letter {
+            Some(letter) => dots_of(letter),
+            None => 0,
+        };
+        let lighter_here =
+            !lighter.is_null() && lighter.number() == u64::try_from(face + 1).expect("1-5");
+        let mirror = first(&entry.get("mirror_partners").list()[face]);
+        page.extend([ascii(letter), dots, u8::from(lighter_here), ascii(mirror)]);
+    }
+    page
+}
+
+/// A registry header (wire.rs) of kcr.json's `expect`, as `header` gives it.
+fn header_field(registry: Registry) -> Vec<u8> {
+    let mut field = registry.number.to_be_bytes().to_vec();
+    field.extend(registry.date.yyyymmdd().to_be_bytes());
+    field.extend(
+        u32::try_from(registry.count)
+            .expect("a count")
+            .to_be_bytes(),
+    );
+    field.push(match registry.freshness {
+        Freshness::Current => 0,
+        Freshness::Stale => 1,
+        Freshness::Future => 2,
+    });
+    field
+}
+
+/// The watch-only reply (wire.rs) of `export`: its summary, its passphrase flag, and the matrices
+/// of its account QR text and of its two descriptors on two lines.
+fn watch_only_reply(export: &WatchOnlyExport) -> Vec<u8> {
+    let mut reply = export.fingerprint().to_vec();
+    reply.extend(text_field(export.first_address()));
+    reply.push(u8::from(export.passphrase_used()));
+    let account = qr_matrix(export.qr_text());
+    let descriptors = qr_matrix(&format!(
+        "{}\n{}",
+        export.receive_descriptor(),
+        export.change_descriptor()
+    ));
+    // pi/app's measured codes for these payloads: version 8 at L, and version 11 at L.
+    assert_eq!(version_and_level(&account), (8, 'L'));
+    assert_eq!(version_and_level(&descriptors), (11, 'L'));
+    reply.extend(account);
+    reply.extend(descriptors);
+    reply
+}
+
+// The wire tests' own helpers first, each against vectors/: braille.json's text cases and
+// seal.json's Seal ID braille; seal.json's grids and colours from T, and its vectors' whole cards;
+// and the QR helper at the versions and levels pi/app's tests measured for the check, register and
+// re-check URLs of seal.json's vector 1 and its go-ahead nonce.
+#[test]
+fn ffi_wire_helpers_match_their_vectors() {
+    for case in braille().get("text").list() {
+        assert_eq!(
+            braille_text(case.get("text").text()),
+            case.get("cells").text()
+        );
+    }
+    for vector in common::seal().get("vectors").list() {
+        let id = vector.get("seal_id").text();
+        let tag = vector.get("seal_tag_hex").hex();
+        assert_eq!(
+            braille_text(&id.to_ascii_lowercase()),
+            vector.get("seal_id_braille").text()
+        );
+        assert_eq!(seal_card(&tag, id), seal_json_card(vector), "{id}");
+    }
+    let vector = &common::seal().get("vectors").list()[0];
+    let tag = vector.get("seal_tag_hex").text();
+    let nonce = vector.get("go_ahead").get("nonce_hex").text();
+    let code = vector.get("seal_code_hashed").text();
+    for (url, measured) in [
+        (format!("{ORIGIN}/check#t={tag}&n={nonce}"), (6, 'L')),
+        (format!("{ORIGIN}/register#c={code}"), (4, 'M')),
+        (format!("{ORIGIN}/check#t={tag}"), (5, 'L')),
+    ] {
+        assert_eq!(version_and_level(&qr_matrix(&url)), measured, "{url}");
+    }
+}
+
+// A dice-only ceremony over the wire (todo.md, M5 group 9), byte for byte, on gate seeds
+// dice-50-words12 and dice-99-words24: the device leg's progress (none in dice-only mode) and no C;
+// the dice counts; the seal card from kcr.json's T and Seal ID with braille.json's braille; the
+// check QR; refused codes 2 and 1, then the go-ahead result; every word page from braille.json, 24
+// words on device 1 of 2 and 2 of 2; the read-back; the summary; the registration QR with
+// kcr.json's code; and the watch-only export with and without a BIP39 passphrase, an empty one
+// refused (18). Each QR matrix is qrcodegen-no-heap's own for the same text, at the version and
+// level pi/app's tests measured for its payload.
+#[test]
+fn ffi_wire_dice_ceremony() {
+    for name in ["dice-50-words12", "dice-99-words24"] {
+        let (count, minimum): (u8, u16) = match length(name) {
+            SeedLength::Words24 => (24, 99),
+            SeedLength::Words12 => (12, 50),
+        };
+        let slot = Slot::new();
+        assert_eq!(slot.dispatch(wire::START, &[count, 2])[..], [wire::OK]);
+        assert_eq!(wired(&slot, wire::DEVICE_PROGRESS, &[])[..], [0; 16]);
+        assert_eq!(slot.dispatch(wire::COMMIT, &[])[..], [wire::OK]);
+        assert!(wired(&slot, wire::COMMITMENT, &[]).is_empty(), "no C");
+        assert_eq!(slot.dispatch(wire::START_DICE, &[])[..], [wire::OK]);
+        let faces = rolls(name);
+        for &face in &faces {
+            assert_eq!(slot.dispatch(wire::PUSH_ROLL, &[face])[..], [wire::OK]);
+        }
+        let rolled = u16::try_from(faces.len()).expect("rolls");
+        let mut progress = rolled.to_be_bytes().to_vec();
+        progress.extend(minimum.to_be_bytes());
+        progress.extend((u32::from(rolled) * 2_585).to_be_bytes());
+        assert_eq!(wired(&slot, wire::DICE_PROGRESS, &[])[..], progress[..]);
+        assert_eq!(slot.dispatch(wire::FINISH, &[])[..], [wire::OK]);
+
+        let tag = seed(name, "seal_tag_hex");
+        let card = seal_card(&common::hex(&tag), &seed(name, "seal_id"));
+        assert_eq!(wired(&slot, wire::SEAL, &[])[..], card[..], "{name}");
+        assert_eq!(slot.dispatch(wire::START_CHECK, &[])[..], [wire::OK]);
+        assert_eq!(wired(&slot, wire::SEAL, &[])[..], card[..], "checking");
+        let url = done(slot.check_request());
+        assert!(url.starts_with(&format!("{ORIGIN}/check#t={tag}&n=")));
+        let check = wired(&slot, wire::CHECK_REQUEST, &[]);
+        assert_eq!(check[..], qr_matrix(&url)[..]);
+        assert_eq!(version_and_level(&check), (6, 'L'));
+        assert_eq!(
+            slot.dispatch(wire::REVEAL_CODE, b"ZZZZ-ZZZZ")[..],
+            [wire::REFUSED, 2]
+        );
+        assert_eq!(
+            slot.dispatch(wire::REVEAL_CODE, b"0000")[..],
+            [wire::REFUSED, 1]
+        );
+        assert_eq!(
+            wired(&slot, wire::REVEAL_CODE, go_ahead(&url).as_bytes())[..],
+            CLEAR
+        );
+
+        let mnemonic = seed(name, "mnemonic");
+        for (position, word) in (1..=count).zip(mnemonic.split(' ')) {
+            assert_eq!(
+                wired(&slot, wire::WORD_PAGE, &[position])[..],
+                word_page(word, position, count)[..],
+                "{name} insert {position}"
+            );
+        }
+        for (position, word) in (1..=count).zip(mnemonic.split(' ')) {
+            let mut input = vec![position];
+            input.extend(word.bytes().take(4));
+            assert_eq!(
+                wired(&slot, wire::CHECK_READBACK, &input)[..],
+                [0, u8::from(position == count)],
+                "{name} insert {position}"
+            );
+        }
+        let summary = done(slot.summary());
+        let mut expect = summary.fingerprint().to_vec();
+        expect.extend(text_field(summary.first_address()));
+        assert_eq!(wired(&slot, wire::SUMMARY, &[])[..], expect[..]);
+        let registration = wired(&slot, wire::REGISTRATION, &[]);
+        let code = seed(name, "seal_code_hashed");
+        assert_eq!(
+            registration[..],
+            qr_matrix(&format!("{ORIGIN}/register#c={code}"))[..]
+        );
+        assert_eq!(version_and_level(&registration), (4, 'M'));
+
+        let export = done(slot.watch_only(None));
+        assert_eq!(
+            (export.fingerprint(), export.first_address()),
+            (summary.fingerprint(), summary.first_address())
+        );
+        assert_eq!(
+            wired(&slot, wire::WATCH_ONLY, &[0])[..],
+            watch_only_reply(&export)[..]
+        );
+        let other = done(slot.watch_only(Some("TREZOR")));
+        assert!(other.passphrase_used() && other.fingerprint() != summary.fingerprint());
+        assert_eq!(
+            wired(&slot, wire::WATCH_ONLY, b"\x01TREZOR")[..],
+            watch_only_reply(&other)[..]
+        );
+        assert_eq!(
+            slot.dispatch(wire::WATCH_ONLY, &[1])[..],
+            [wire::REFUSED, 18]
+        );
+        assert_eq!(slot.dispatch(wire::END, &[])[..], [wire::OK]);
+        assert_eq!(slot.holds(), HOME);
+    }
+}
+
+// Mixed mode on the OS source over the wire (todo.md, M5 group 9): a phone's 256 of 256 credited
+// bits; C and D, 32 bytes each, the safe layer's own, with C = SHA-256("KCE/v1/commit" || D)
+// (CLAUDE.md's domain constants). A throwaway seed: compared in memory, under fixed messages.
+#[test]
+fn ffi_wire_mixed_commitment_and_device_leg() {
+    let slot = Slot::new();
+    assert_eq!(slot.dispatch(wire::START, &[12, 1])[..], [wire::OK]);
+    let mut progress = 256u64.to_be_bytes().to_vec();
+    progress.extend(256u64.to_be_bytes());
+    assert_eq!(wired(&slot, wire::DEVICE_PROGRESS, &[])[..], progress[..]);
+    assert_eq!(slot.dispatch(wire::COMMIT, &[])[..], [wire::OK]);
+    let c = wired(&slot, wire::COMMITMENT, &[]);
+    let shown = done(slot.commitment()).expect("C in Mixed mode");
+    assert!(c[..] == shown[..], "C: its 32 bytes");
+    done(slot.start_dice());
+    for face in rolls("dice-50-words12") {
+        done(slot.push_roll(face));
+    }
+    done(slot.finish());
+    done(slot.skip_check());
+    read_back_all(&slot);
+    let d = wired(&slot, wire::REVEAL_DEVICE_LEG, &[]);
+    let revealed = done(slot.reveal_device_leg());
+    assert!(d[..] == revealed[..], "D: its 32 bytes");
+    let recomputed = Sha256::new()
+        .chain_update(b"KCE/v1/commit")
+        .chain_update(&d[..])
+        .finalize();
+    assert!(
+        recomputed[..] == c[..],
+        "C = SHA-256(\"KCE/v1/commit\" || D)"
+    );
+}
+
+// "Check a backup" over the wire (todo.md, M5 group 9): backup.json's abandon-12 and zoo-24 files
+// (work factor 10), opened with their passphrases' first four letters, give watchonly.json's
+// fingerprints, the backup's seal card (abandon-12's is seal.json's vector 1, field for field) and
+// its re-check QR, and word pages from braille.json, zoo-24's 24 on two devices. An entry that
+// names no word is refused before scrypt (72), swapped entries after it (16); Done ends it.
+#[test]
+fn ffi_wire_check_a_backup() {
+    for (name, wallet, count) in [
+        ("abandon-12-binary", "abandon", 12),
+        ("zoo-24", "zoo-24", 24),
+    ] {
+        let age = common::backup().get("age_files").named(name);
+        let file = if age.has("file_hex") {
+            age.get("file_hex").hex()
+        } else {
+            age.get("file").text().as_bytes().to_vec()
+        };
+        let words: Vec<&str> = age.get("passphrase").text().split(' ').collect();
+        let input = |entries: &[&str]| {
+            let mut input: Vec<u8> = entries
+                .iter()
+                .flat_map(|word| text_field(&word.chars().take(4).collect::<String>()))
+                .collect();
+            input.extend_from_slice(&file);
+            input
+        };
+        let slot = Slot::new();
+        let mut unknown = words.clone();
+        unknown[3] = "zzzz";
+        assert_eq!(
+            slot.dispatch(wire::OPEN_BACKUP, &input(&unknown))[..],
+            [wire::REFUSED, 72]
+        );
+        let mut swapped = words.clone();
+        swapped.swap(0, 1);
+        assert_eq!(
+            slot.dispatch(wire::OPEN_BACKUP, &input(&swapped))[..],
+            [wire::REFUSED, 16]
+        );
+        assert_eq!(slot.holds(), HOME);
+
+        let plaintext = common::backup()
+            .get("plaintexts")
+            .named(age.get("plaintext").text());
+        let mnemonic = plaintext.get("mnemonic").text();
+        let first_four: Vec<String> = words.iter().map(|w| w.chars().take(4).collect()).collect();
+        let typed: Vec<&str> = first_four.iter().map(String::as_str).collect();
+        let seal = done(Slot::new().open_backup(&file, &typed)).seal;
+        let tag = seal.tag().to_hex();
+        let card = seal_card(seal.tag().as_bytes(), seal.seal_id());
+        if count == 12 {
+            let vector = seal_vector(mnemonic);
+            assert_eq!(tag, vector.get("seal_tag_hex").text());
+            assert_eq!(card, seal_json_card(vector), "seal.json's card");
+        }
+        let recheck = qr_matrix(&format!("{ORIGIN}/check#t={tag}"));
+        assert_eq!(version_and_level(&recheck), (5, 'L'));
+        let fingerprint = watchonly().get("wallets").named(wallet).get("fingerprint");
+        assert_eq!(plaintext.get("fingerprint").text(), fingerprint.text());
+        let mut expect = fingerprint.hex();
+        expect.extend(card);
+        expect.extend(recheck);
+        assert_eq!(
+            wired(&slot, wire::OPEN_BACKUP, &input(&words))[..],
+            expect[..],
+            "{name}"
+        );
+        for (position, word) in (1..=count).zip(mnemonic.split(' ')) {
+            assert_eq!(
+                wired(&slot, wire::WORD_PAGE, &[position])[..],
+                word_page(word, position, count)[..],
+                "{name} insert {position}"
+            );
+        }
+        assert_eq!(slot.dispatch(wire::END, &[])[..], [wire::OK]);
+        assert_eq!(slot.holds(), HOME, "Done");
+    }
+}
+
+// The registry over the wire (todo.md, M5 group 9). In either build, Match found keeps the report,
+// whose QR carries dice-50-words12's code from kcr.json. A release build refuses a snapshot and a
+// proof for want of a key (19). The test registry gives kcr.json's headers byte for byte: a loaded
+// snapshot, Stale at an M5 date, and the collision it finds, with the report's QR again; a proof's
+// clear, Current at its own date. A file too short is 32, text that is no UR 50, and a proof for
+// another bucket 3.
+#[test]
+fn ffi_wire_registry() {
+    let report = qr_matrix(&format!(
+        "{ORIGIN}/register#c={}",
+        seed("dice-50-words12", "seal_code_hashed")
+    ));
+    assert_eq!(version_and_level(&report), (4, 'M'));
+    let slot = Slot::new();
+    checking(&slot, "dice-50-words12");
+    assert_eq!(slot.dispatch(wire::MATCH_FOUND, &[])[..], [wire::OK]);
+    assert_eq!(wired(&slot, wire::COLLISION_REPORT, &[])[..], report[..]);
+    let clear = proof_ur("clear-empty-bucket");
+    let with_dice_50 = snapshot("with-dice-50");
+    if !registry_key_is_test() {
+        let slot = Slot::new();
+        assert_eq!(
+            slot.dispatch(wire::LOAD_SNAPSHOT, &dated(M5_DAY, &with_dice_50))[..],
+            [wire::REFUSED, 19]
+        );
+        checking(&slot, "dice-99-words12");
+        assert_eq!(
+            slot.dispatch(wire::REVEAL_PROOF, &dated(M5_DAY, clear.as_bytes()))[..],
+            [wire::REFUSED, 19]
+        );
+        return;
+    }
+    let slot = Slot::new();
+    assert_eq!(
+        slot.dispatch(wire::LOAD_SNAPSHOT, &dated(M5_DAY, &with_dice_50[..10]))[..],
+        [wire::REFUSED, 32]
+    );
+    let stale = header_field(header("snapshots", "with-dice-50", Freshness::Stale));
+    assert_eq!(
+        wired(&slot, wire::LOAD_SNAPSHOT, &dated(M5_DAY, &with_dice_50))[..],
+        stale[..]
+    );
+    checking(&slot, "dice-50-words12");
+    let mut collision = vec![1, 1];
+    collision.extend(&stale);
+    assert_eq!(
+        wired(&slot, wire::REVEAL_SNAPSHOT, &M5_DAY.to_be_bytes())[..],
+        collision[..]
+    );
+    assert_eq!(wired(&slot, wire::COLLISION_REPORT, &[])[..], report[..]);
+
+    let slot = Slot::new();
+    checking(&slot, "dice-50-words12");
+    assert_eq!(
+        slot.dispatch(wire::REVEAL_PROOF, &dated(VECTOR_DAY, b"not a ur"))[..],
+        [wire::REFUSED, 50]
+    );
+    assert_eq!(
+        slot.dispatch(wire::REVEAL_PROOF, &dated(VECTOR_DAY, clear.as_bytes()))[..],
+        [wire::REFUSED, 3]
+    );
+    let slot = Slot::new();
+    checking(&slot, "dice-99-words12");
+    let mut revealed = vec![0, 1];
+    revealed.extend(header_field(header(
+        "proofs",
+        "clear-empty-bucket",
+        Freshness::Current,
+    )));
+    assert_eq!(
+        wired(
+            &slot,
+            wire::REVEAL_PROOF,
+            &dated(VECTOR_DAY, clear.as_bytes())
+        )[..],
+        revealed[..]
+    );
+}
+
+// The read-back and the backup over the wire (todo.md, M5 group 9; BP:327), on dice-99-words12:
+// each mismatch's verdicts byte for byte (a mirror misread, a letter on a blank face, a missed
+// letter, a wrong letter with braille.json's missing and extra dots); then the passphrase's pages
+// and confirm questions as the safe layer gives them, a wrong and a right confirm, the encrypted
+// file under its name, verified, and a changed byte refused. The passphrase is a throwaway's:
+// compared under fixed messages.
+#[test]
+fn ffi_wire_readback_and_backup() {
+    let name = "dice-99-words12";
+    let mnemonic = seed(name, "mnemonic");
+    let words: Vec<&str> = mnemonic.split(' ').collect();
+    let at = |word: &str| {
+        let index = words
+            .iter()
+            .position(|w| *w == word)
+            .expect("a word of the seed");
+        u8::try_from(index + 1).expect("1-12")
+    };
+    let slot = Slot::new();
+    sealed(&slot, name);
+    done(slot.skip_check());
+    let (a, b) = (dots_of('a'), dots_of('b'));
+    let ok = [0, 0, 0];
+    for (word, typed, faces) in [
+        ("various", "vawi", [ok, ok, [1, 0, 0], ok]),
+        ("day", "days", [ok, ok, ok, [2, 0, 0]]),
+        ("various", "var", [ok, ok, ok, [3, 0, 0]]),
+        ("various", "vbri", [ok, [4, a & !b, b & !a], ok, ok]),
+    ] {
+        let mut input = vec![at(word)];
+        input.extend_from_slice(typed.as_bytes());
+        let mut expect = vec![1];
+        expect.extend(faces.concat());
+        assert_eq!(
+            wired(&slot, wire::CHECK_READBACK, &input)[..],
+            expect[..],
+            "{typed} for {word}"
+        );
+    }
+    read_back_all(&slot);
+
+    assert_eq!(
+        slot.dispatch(wire::GENERATE_BACKUP_PASSPHRASE, &[])[..],
+        [wire::OK]
+    );
+    for page in 0..2 {
+        let shown = done(slot.backup_passphrase_page(page));
+        let field = Zeroizing::new(text_field(&shown));
+        assert!(
+            wired(&slot, wire::BACKUP_PASSPHRASE_PAGE, &[page])[..] == field[..],
+            "the passphrase page, a text"
+        );
+    }
+    let passphrase = passphrase(&slot);
+    let challenge = done(slot.backup_challenge());
+    let mut expect = Zeroizing::new(Vec::new());
+    for question in challenge.questions() {
+        expect.push(question.position());
+        for choice in question.choices() {
+            expect.extend(text_field(choice));
+        }
+    }
+    assert!(
+        wired(&slot, wire::BACKUP_CHALLENGE, &[])[..] == expect[..],
+        "the confirm questions"
+    );
+    let right = right_picks(&slot, &passphrase);
+    let wrong = [(right[0] + 1) % 4, right[1]];
+    assert_eq!(wired(&slot, wire::CONFIRM_BACKUP, &wrong)[..], [0]);
+    assert_eq!(wired(&slot, wire::CONFIRM_BACKUP, &right)[..], [1]);
+    let file = wired(&slot, wire::ENCRYPT_BACKUP, &[]);
+    let name_len = usize::from(file[0]);
+    let file_name = std::str::from_utf8(&file[1..=name_len]).expect("ASCII");
+    assert!(file_name.starts_with("keepcrypt-backup-") && file_name.ends_with(".age"));
+    let saved = &file[1 + name_len..];
+    assert_eq!(slot.dispatch(wire::VERIFY_BACKUP, saved)[..], [wire::OK]);
+    let mut changed = saved.to_vec();
+    let middle = changed.len() / 2;
+    changed[middle] ^= 0x01;
+    assert!(matches!(
+        slot.dispatch(wire::VERIFY_BACKUP, &changed)[..],
+        [wire::REFUSED, 16 | 64..=72]
+    ));
+    assert_eq!(slot.holds().stage, StageKind::Ready, "the words stay");
+}
+
+/// Ready, every insert read back and the passphrase generated: a stage that offers every word,
+/// export and backup op.
+fn ready_to_export(slot: &Slot) {
+    drive(slot, StageKind::Ready);
+    read_back_all(slot);
+    done(slot.generate_backup_passphrase());
+}
+
+// Malformed inputs halt (wire.rs): an input that is not its op's exact layout (a length, a value
+// outside its range, a text that is not UTF-8, entries that run past the input), in a stage that
+// offers the op so that only the input halts, empties the slot and latches; so does an op the table
+// does not hold.
+#[test]
+fn ffi_wire_malformed_inputs_halt() {
+    type Case = (fn(&Slot), u32, &'static [u8]);
+    let cases: [Case; 36] = [
+        (
+            |s| drive(s, StageKind::Collecting),
+            wire::DEVICE_PROGRESS,
+            &[0],
+        ),
+        (|s| drive(s, StageKind::Committed), wire::COMMITMENT, &[0]),
+        (|s| drive(s, StageKind::Rolling), wire::DICE_PROGRESS, &[0]),
+        (|s| drive(s, StageKind::Sealed), wire::SEAL, &[0]),
+        (|s| drive(s, StageKind::Checking), wire::CHECK_REQUEST, &[0]),
+        (
+            |s| drive(s, StageKind::Checking),
+            wire::REVEAL_CODE,
+            &[0xff],
+        ),
+        (
+            |s| drive(s, StageKind::Checking),
+            wire::REVEAL_SNAPSHOT,
+            &[1, 52, 37],
+        ),
+        (
+            |s| drive(s, StageKind::Checking),
+            wire::REVEAL_SNAPSHOT,
+            &[1, 52, 37, 125, 0],
+        ),
+        (
+            |s| drive(s, StageKind::Checking),
+            wire::REVEAL_PROOF,
+            &[1, 52, 37],
+        ),
+        (
+            |s| drive(s, StageKind::Checking),
+            wire::REVEAL_PROOF,
+            &[1, 52, 37, 125, 0xff],
+        ),
+        (
+            |s| drive(s, StageKind::Checking),
+            wire::COLLISION_REPORT,
+            &[0],
+        ),
+        (ready_to_export, wire::WORD_PAGE, &[]),
+        (ready_to_export, wire::WORD_PAGE, &[1, 1]),
+        (ready_to_export, wire::CHECK_READBACK, &[]),
+        (
+            ready_to_export,
+            wire::CHECK_READBACK,
+            &[1, 0xff, b'a', b'b'],
+        ),
+        (ready_to_export, wire::SUMMARY, &[0]),
+        (ready_to_export, wire::BACKUP_PASSPHRASE_PAGE, &[]),
+        (ready_to_export, wire::BACKUP_PASSPHRASE_PAGE, &[0, 0]),
+        (ready_to_export, wire::BACKUP_CHALLENGE, &[0]),
+        (ready_to_export, wire::CONFIRM_BACKUP, &[0]),
+        (ready_to_export, wire::CONFIRM_BACKUP, &[0, 0, 0]),
+        (ready_to_export, wire::ENCRYPT_BACKUP, &[0]),
+        (ready_to_export, wire::WATCH_ONLY, &[]),
+        (ready_to_export, wire::WATCH_ONLY, &[0, 0]),
+        (ready_to_export, wire::WATCH_ONLY, &[2]),
+        (ready_to_export, wire::WATCH_ONLY, &[1, 0xff]),
+        (ready_to_export, wire::REGISTRATION, &[0]),
+        (ready_to_export, wire::REVEAL_DEVICE_LEG, &[0]),
+        (|_| {}, wire::LOAD_SNAPSHOT, &[1, 52, 37]),
+        (|_| {}, wire::OPEN_BACKUP, &[]),
+        // Seven entries, and no eighth.
+        (
+            |_| {},
+            wire::OPEN_BACKUP,
+            &[1, 97, 1, 97, 1, 97, 1, 97, 1, 97, 1, 97, 1, 97],
+        ),
+        // An entry longer than the input.
+        (|_| {}, wire::OPEN_BACKUP, &[200, 97]),
+        // Eight entries, the first not UTF-8.
+        (
+            |_| {},
+            wire::OPEN_BACKUP,
+            &[1, 0xff, 1, 97, 1, 97, 1, 97, 1, 97, 1, 97, 1, 97, 1, 97],
+        ),
+        (|_| {}, 0, &[]),
+        (|_| {}, 39, &[]),
+        (|_| {}, u32::MAX, &[]),
+    ];
+    for (setup, op, input) in cases {
+        let slot = Slot::new();
+        setup(&slot);
+        assert_eq!(
+            slot.dispatch(op, input)[..],
+            [wire::HALTED],
+            "op {op}, input {input:?}"
+        );
+        assert_eq!(slot.holds(), HALTED, "op {op}, input {input:?}");
+        assert_eq!(
+            slot.dispatch(wire::WIPE_ALL, &[])[..],
+            [wire::HALTED],
+            "op {op}: the halt latches"
         );
     }
 }

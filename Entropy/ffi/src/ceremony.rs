@@ -181,8 +181,9 @@ enum Fail {
     Halt,
 }
 
-/// A call that halts: a core error that is no refusal, or the shell's bug.
-struct Halt;
+/// A call that halts: a core error that is no refusal, or the shell's bug; wire.rs's and qr.rs's
+/// too, for an input or a reply that is not its layout.
+pub(crate) struct Halt;
 
 impl From<Halt> for Fail {
     fn from(_: Halt) -> Self {
