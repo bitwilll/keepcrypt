@@ -175,7 +175,8 @@ fn read_back_all(slot: &Slot) {
     }
 }
 
-/// Up to `to`, on gate seed dice-50-words12 (12 words, dice only): from `start` on.
+/// Up to `to`, on gate seed dice-50-words12 (12 words, dice only): from `start` on. `Restart` is
+/// after Match found.
 fn drive(slot: &Slot, to: StageKind) {
     if to == StageKind::Idle {
         return;
@@ -199,6 +200,10 @@ fn drive(slot: &Slot, to: StageKind) {
     match to {
         StageKind::Sealed => {}
         StageKind::Checking => done(slot.start_check()),
+        StageKind::Restart => {
+            done(slot.start_check());
+            done(slot.match_found());
+        }
         StageKind::Ready => done(slot.skip_check()),
         other => panic!("no drive to {other:?}"),
     }
@@ -227,16 +232,15 @@ type Verdicts = [fn(&FaceVerdict) -> bool; 4];
 
 /// Every call but `discard`, `wipe_all` and `holds`, which every stage offers. A stage offers a
 /// call even where a precondition of the call's own (enough rolls, the read-back, the passphrase)
-/// makes it halt; `reveal_snapshot` needs a loaded snapshot and `collision_report` a collision's
-/// `Wiped`, which no driven stage holds.
+/// makes it halt; `reveal_snapshot` needs a loaded snapshot, which no driven stage holds.
 fn calls() -> [Call; 37] {
-    use StageKind::{Checking, Collecting, Committed, Idle, Ready, Rolling, Sealed};
+    use StageKind::{Checking, Collecting, Committed, Idle, Ready, Restart, Rolling, Sealed};
     [
         ("self_test", |s| got(s.self_test()), &[Idle]),
         (
             "start",
             |s| got(s.start(SeedLength::Words12, Mode::DiceOnly)),
-            &[Idle],
+            &[Idle, Restart],
         ),
         ("hold", |s| got(s.hold(|| ())), &[Idle]),
         (
@@ -283,7 +287,11 @@ fn calls() -> [Call; 37] {
         ),
         ("match_found", |s| got(s.match_found()), &[Checking]),
         ("cannot_check", |s| got(s.cannot_check()), &[Checking]),
-        ("collision_report", |s| got(s.collision_report()), &[]),
+        (
+            "collision_report",
+            |s| got(s.collision_report()),
+            &[Restart],
+        ),
         ("word_page", |s| got(s.word_page(1)), &[Ready]),
         (
             "check_readback",
@@ -321,7 +329,8 @@ fn calls() -> [Call; 37] {
 }
 
 // Each stage's refused calls (todo.md, M5 group 8): a call in a stage that does not offer it is
-// the shell's bug and halts, and the halt empties the slot. Each case gets a fresh slot.
+// the shell's bug and halts, and the halt empties the slot. Each case gets a fresh slot. After
+// Match found only the restart and the collision's report are offered: home's other calls halt.
 #[test]
 fn ffi_a_call_in_a_stage_that_does_not_offer_it_halts() {
     let stages = [
@@ -332,6 +341,7 @@ fn ffi_a_call_in_a_stage_that_does_not_offer_it_halts() {
         StageKind::Sealed,
         StageKind::Checking,
         StageKind::Ready,
+        StageKind::Restart,
     ];
     let mut refused = 0;
     for stage in stages {
@@ -347,8 +357,8 @@ fn ffi_a_call_in_a_stage_that_does_not_offer_it_halts() {
             refused += 1;
         }
     }
-    // 37 calls in 7 stages, less the 36 pairs where a stage offers its call.
-    assert_eq!(refused, 223);
+    // 37 calls in 8 stages, less the 38 pairs where a stage offers its call.
+    assert_eq!(refused, 258);
 }
 
 // And the calls each stage offers that change nothing keep it (the rest are the flows below).
@@ -426,6 +436,7 @@ fn ffi_every_exit_path_empties_the_slot() {
     drive(&slot, StageKind::Checking);
     done(slot.match_found());
     let kept = Holds {
+        stage: StageKind::Restart,
         kept: true,
         report: true,
         ..HOME
@@ -439,11 +450,35 @@ fn ffi_every_exit_path_empties_the_slot() {
             .url()
             .ends_with(&report.grouped_code().replace('-', ""))
     );
+    // The idle wipe after it leaves home, the `Wiped` kept: home's calls again, and no report.
+    done(slot.discard());
+    assert_eq!(
+        slot.holds(),
+        Holds {
+            stage: StageKind::Idle,
+            ..kept
+        },
+        "a discard after Match found"
+    );
+    done(slot.hold(|| ()));
+    assert_eq!(
+        got(slot.collision_report()),
+        Got::Halted,
+        "no report at home"
+    );
 
     let slot = Slot::new();
     drive(&slot, StageKind::Checking);
     done(slot.cannot_check());
-    assert_eq!(slot.holds(), Holds { kept: true, ..HOME }, "Cannot check");
+    assert_eq!(
+        slot.holds(),
+        Holds {
+            stage: StageKind::Restart,
+            kept: true,
+            ..HOME
+        },
+        "Cannot check"
+    );
 
     // Halts by error: a face core refuses, too few rolls, a position outside the seed, an export
     // before the read-back. The first comes after a Stop, so a kept `Wiped` goes with it.
@@ -500,7 +535,14 @@ fn ffi_99_after_cannot_check_in_the_restart_after_a_collision() {
     done(slot.match_found());
     checking(&slot, "dice-99-words12");
     done(slot.cannot_check());
-    assert_eq!(slot.holds(), Holds { kept: true, ..HOME });
+    assert_eq!(
+        slot.holds(),
+        Holds {
+            stage: StageKind::Restart,
+            kept: true,
+            ..HOME
+        }
+    );
     assert_eq!(next_minimum(&slot), 99);
 }
 
@@ -702,10 +744,12 @@ fn overtaken_call(slot: &Slot, between: fn(&Slot) -> Got) -> Overtaken {
 // second long call has started since and holds the slot `Busy` again, and the second gives its own.
 #[test]
 fn ffi_discard_during_call() {
+    // At home with a kept `Wiped`: Match found, then the idle wipe.
     let stopped = || {
         let slot = Slot::new();
         checking(&slot, "dice-50-words12");
         done(slot.match_found());
+        done(slot.discard());
         slot
     };
 
@@ -1028,6 +1072,7 @@ fn ffi_drill_12() {
     assert_eq!(
         slot.holds(),
         Holds {
+            stage: StageKind::Restart,
             kept: true,
             report: true,
             snapshot: true,
@@ -1129,6 +1174,7 @@ fn ffi_proof_paths() {
     assert_eq!(
         slot.holds(),
         Holds {
+            stage: StageKind::Restart,
             kept: true,
             report: true,
             ..HOME

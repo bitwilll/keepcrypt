@@ -16,10 +16,13 @@
 //!   drops everything held and latches `Halted`, which every later call returns. Only the process's
 //!   end leaves it.
 //! - **The kept `Wiped`** (Q26; todo.md:1404-1406): Match found and Cannot check keep it, a
-//!   collision replaces it, and only Skip or a passed check drops it. `new_session` is the one
-//!   place a session starts: from the kept `Wiped` while there is one, so a pending 99-roll minimum
-//!   carries over, else core's constructor on `Platform::Phone` (app.rs:387-399). A discard keeps
-//!   it, with a loaded snapshot; `wipe_all` (the crash path) and a halt drop them too.
+//!   collision replaces it, and only Skip or a passed check drops it. After any of those three the
+//!   slot is at `Restart`, where only the restart is offered, the collision's report before it, as
+//!   the Pi goes from Collision through its QR to the restart and from Cannot check straight to it
+//!   (app.rs:864-873, :961-975). `new_session` is the one place a session starts: from the kept
+//!   `Wiped` while there is one, so a pending 99-roll minimum carries over, else core's constructor
+//!   on `Platform::Phone` (app.rs:387-399). A discard keeps it, with a loaded snapshot, and goes
+//!   home; `wipe_all` (the crash path) and a halt drop them too.
 //! - **Long calls** (`long`): the start and its known-answer suite, `finish`, the backup's scrypt
 //!   (encrypt, verify and open), snapshot and proof verification and the self-test take what they
 //!   need out of the slot under the lock, leave `Busy` and the generation, release the lock, run,
@@ -82,7 +85,7 @@ struct Held {
 
 /// The session in its typestate (app.rs:79), and the backup passphrase's display copy with it.
 enum Stage {
-    /// No session: before the first, after a check discarded one, a discard, Finish and a wipe.
+    /// No session: before the first, after a discard, Finish and a wipe.
     Idle,
     Collecting(Session<Collecting>),
     Committed(Session<Committed>),
@@ -91,6 +94,9 @@ enum Stage {
     Checking(Session<Checking>),
     /// The words, the read-back and the exports.
     Ready(Steps),
+    /// A check ended without the words (Match found, Cannot check or a collision): no session, and
+    /// the `Wiped` is kept. Only the restart follows, the collision's report before it.
+    Restart,
     /// A long call runs with the lock released: only a discard, `wipe_all` or a halt may come.
     Busy,
     /// After a halt: nothing is held, and every call returns `Halted`.
@@ -126,6 +132,7 @@ pub enum StageKind {
     Sealed,
     Checking,
     Ready,
+    Restart,
     Busy,
     Halted,
 }
@@ -514,6 +521,7 @@ impl Stage {
             Stage::Sealed(_) => StageKind::Sealed,
             Stage::Checking(_) => StageKind::Checking,
             Stage::Ready(_) => StageKind::Ready,
+            Stage::Restart => StageKind::Restart,
             Stage::Busy => StageKind::Busy,
             Stage::Halted => StageKind::Halted,
         }
@@ -537,6 +545,14 @@ impl Held {
             Ok(())
         } else {
             Err(Fail::Halt)
+        }
+    }
+
+    /// A start: offered at home, and at `Restart` after a check that ended without the words.
+    fn startable(&mut self) -> Result<(), Fail> {
+        match self.stage {
+            Stage::Restart => Ok(()),
+            _ => self.home(),
         }
     }
 
@@ -609,7 +625,7 @@ impl Held {
 
     /// What a check's go-ahead gave: the words, which end the kept `Wiped` (Q26); the check back,
     /// with the same nonce, and core's reason for a go-ahead that did not verify; or a collision,
-    /// whose `Wiped` replaces the kept one.
+    /// whose `Wiped` replaces the kept one, at `Restart`.
     fn judge(
         &mut self,
         revealed: Result<Session<Ready>, Rejected>,
@@ -626,6 +642,7 @@ impl Held {
                 Err(Fail::Refused(Refusal::Code(error)))
             }
             Err(Rejected::Collision(wiped)) => {
+                self.stage = Stage::Restart;
                 self.kept = Some(Arc::new(wiped));
                 Ok(Revealed::Collision(registry))
             }
@@ -794,11 +811,12 @@ impl Slot {
         )
     }
 
-    /// New seed or Dice-only seed, and every restart (`new_session`), at home. A failure halts.
+    /// New seed or Dice-only seed at home, and every restart (`new_session`), at home or at
+    /// `Restart`. A failure halts.
     pub fn start(&self, len: SeedLength, mode: Mode) -> Reply<()> {
         self.long(
             |held| {
-                held.home()?;
+                held.startable()?;
                 Ok(held.kept.clone())
             },
             |kept| new_session(kept.as_deref(), len, mode).map_err(|_| Halt),
@@ -1014,7 +1032,7 @@ impl Slot {
     }
 
     /// "Match found": the seed is wiped unseen, and the `Wiped` (the report, the 99-roll minimum)
-    /// replaces the kept one. Only a start follows.
+    /// replaces the kept one, at `Restart`: only a start follows, the report's QR before it.
     pub fn match_found(&self) -> Reply<()> {
         self.stop_check(Discard::Collision)
     }
@@ -1030,16 +1048,18 @@ impl Slot {
                 return Err(Fail::Halt);
             };
             held.kept = Some(Arc::new(session.discard(why)));
+            held.stage = Stage::Restart;
             Ok(())
         })
     }
 
-    /// The collision-report QR of the kept `Wiped`, after a collision, before the restart.
+    /// The collision-report QR of the kept `Wiped`, after a collision, before the restart
+    /// (`Restart`).
     pub fn collision_report(&self) -> Reply<Report> {
         self.call(|held| {
             let report = held.kept.as_deref().and_then(Wiped::collision_report);
             match (&held.stage, report) {
-                (Stage::Idle, Some(report)) => Ok(Report::of(report)),
+                (Stage::Restart, Some(report)) => Ok(Report::of(report)),
                 _ => Err(Fail::Halt),
             }
         })

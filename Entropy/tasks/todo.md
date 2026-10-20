@@ -11571,6 +11571,15 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   dropping it fails `ffi_99_after_an_idle_wipe_following_a_stop` (and three others). Read as: after Match found and
   Cannot check the session is gone and the next one is `start`'s; home's other calls (a snapshot, a backup check)
   stay offered, as the Pi's Home is after its idle wipe.
+  Proof (M5 commit 10d; the review's finding: the reading above left home's other calls offered after Match found and
+  Cannot check, which the item does not): the stage `Restart` follows Match found, Cannot check and a collision a
+  go-ahead finds, as the Pi goes from Collision through its QR to the restart and from Cannot check straight to it
+  (app.rs:864-873, :961-975). There only `start` and, with a report, `collision_report` are offered (a discard and a
+  wipe as everywhere); a discard leaves home with the `Wiped` kept, where home's calls are offered again and the
+  report is not. `ffi_a_call_in_a_stage_that_does_not_offer_it_halts` drives `Restart` too (258 cases; self_test,
+  hold, load_snapshot and open_backup halt there); `ffi_every_exit_path_empties_the_slot`, `ffi_drill_12` and
+  `ffi_proof_paths` see `Restart` after each of the three. On copies, Match found and Cannot check leaving `Idle`
+  fail four tests, and a collision leaving `Idle` three (test-registry build). Both builds: 38 passed each.
 - [x] Discard during a long call: a test holds a long call at a barrier, discards from another thread, releases it: the
   result is dropped (a drop-observing value proves it), the call returns "discarded", the slot is Idle and the next
   `start` works; the same with `wipe_all`; a non-discard call while `Busy` halts.
