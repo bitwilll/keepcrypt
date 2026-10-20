@@ -796,7 +796,8 @@ usage: scripts/banned-api-check.sh [--selftest | DIR | --artifact TARGET FILE...
               that import (see the script header)
   --workflows check every DIR/entropy-*.yml and .yaml workflow's hardening: read-only permissions, three
               actions at their approved SHAs, no secrets, no fork-trusting trigger, no expression
-              in a run step, no Android bootstrap switch but the reviewed exception's line, the
+              in a run step, no Android bootstrap switch but the line a reviewed exception names
+              (the clean line says whether kt_bootstrap_exception holds one, and which), the
               canary property only in the canary step's Gradle command, no Kotlin/Native or
               Kotlin Multiplatform setting
   --image-lists
@@ -1914,9 +1915,10 @@ kt_bootstrap() {
 # Q73 of 2026-10-20 ("Drop iPhone from M5") removed the iPhone workflow, so commit 8w keeps the
 # Android line alone, and the Android job writes the lock state and metadata once more without the
 # iPhone's configurations. Emptied at commit 8x, which commits the reviewed files, so M5-13's stop
-# holds again: scripts/canaries.sh pins the list empty (workflow-bootstrap-exception-empty) and
-# plants that former line in the real workflow, where it must hit, so a list filled again turns CI
-# red until a re-plan changes those checks too.
+# holds again: scripts/canaries.sh pins the list empty (workflow-bootstrap-exception-empty: its one
+# assignment, and the value a --workflows run holds, which the clean line states) and plants that
+# former line in the real workflow, where it must hit, so a list filled again turns CI red until a
+# re-plan changes those checks too.
 kt_bootstrap_exception=''
 
 kt_bootstrap_exception_check() {
@@ -3904,7 +3906,13 @@ EOF
     echo "banned-api-check --workflows $dir: $hits hit(s) in $n workflow(s)"
     exit 1
   fi
-  echo "banned-api-check --workflows $dir: clean, $n workflow(s): read-only permissions, pinned actions, no secrets, no fork-trusting trigger, no expression in a run step, no bootstrap switch (but the reviewed exception's line), the canary property only in the canary step's Gradle command, no Kotlin/Native or Kotlin Multiplatform setting"
+  # The exception as this run holds it, whatever assigned it, so the line says what was granted.
+  if [ -n "$(printf '%s\n' "$kt_bootstrap_exception" | sed '/^$/d')" ]; then
+    bxstate="no bootstrap switch but the reviewed exception's line (kt_bootstrap_exception: $kt_bootstrap_exception)"
+  else
+    bxstate='no bootstrap switch and no bootstrap exception'
+  fi
+  printf '%s\n' "banned-api-check --workflows $dir: clean, $n workflow(s): read-only permissions, pinned actions, no secrets, no fork-trusting trigger, no expression in a run step, $bxstate, the canary property only in the canary step's Gradle command, no Kotlin/Native or Kotlin Multiplatform setting"
   exit 0
 }
 
@@ -4870,10 +4878,10 @@ CONFIG_HW_RANDOM_CANARY=y'
 
 # --- Workflow selftest ---------------------------------------------------------------------------
 
-# wexpect NAME DIR WANT: run the workflow check on DIR in a new process. WANT=clean needs exit 0
-# and no hit; WANT=error needs exit 2; any other WANT is the one file the hit must name (as
-# DIR/<file>): exit 1 and exactly one "Workflow: DIR/<file>:<line>: <text>" line, where <text> is
-# line <line> of the file as it stands, or a "missing ..." message.
+# wexpect NAME DIR WANT [TEXT]: run the workflow check on DIR in a new process. WANT=clean needs
+# exit 0, no hit and TEXT (when given) in the output; WANT=error needs exit 2; any other WANT is the
+# one file the hit must name (as DIR/<file>): exit 1 and exactly one "Workflow: DIR/<file>:<line>:
+# <text>" line, where <text> is line <line> of the file as it stands, or a "missing ..." message.
 wexpect() {
   out=$(sh "${gate:-$self}" --workflows "$2" 2>&1)
   rc=$?
@@ -4882,6 +4890,7 @@ wexpect() {
   ok=no
   if [ "$3" = clean ]; then
     [ "$rc" -eq 0 ] && [ "$count" -eq 0 ] && ok=yes
+    case $out in *"${4-}"*) ;; *) ok=no ;; esac
   elif [ "$3" = error ]; then
     [ "$rc" -eq 2 ] && ok=yes && hit="exit 2: ${out##*$nl}"
   elif [ "$rc" -eq 1 ] && [ "$count" -eq 1 ]; then
@@ -4943,7 +4952,7 @@ workflows_selftest() {
   # (bxcopy) must pass the named line in the Android workflow once, and refuse it anywhere else, a
   # second time, with anything added, and in a build script; a list of any other shape, one that
   # names the iPhone workflow (gone with Q73) among them, is exit 2; this script, whose list does
-  # not name the line, refuses it.
+  # not name the line, refuses it. The clean line names the exception, or says there is none.
   bxline='sh scripts/android-gradle.sh --write-locks --write-verification-metadata sha256 :core-ffi:dependencies'
   wfhead='permissions:
   contents: read
@@ -4979,7 +4988,12 @@ jobs:
   bxdir allowed entropy-android.yml "$bxline"
   wexpect 'workflow-bootstrap-line-without-an-exception' "$bxd" entropy-android.yml
   bxcopy "entropy-android.yml $bxline"
-  wexpect 'clean-bootstrap-exception-line' "$bxd" clean
+  wexpect 'clean-bootstrap-exception-line' "$bxd" clean \
+    "no bootstrap switch but the reviewed exception's line (kt_bootstrap_exception: entropy-android.yml $bxline),"
+  bxcopy ''
+  bxdir strict entropy-android.yml 'sh scripts/android-gradle.sh --dependency-verification strict help'
+  wexpect 'clean-bootstrap-exception-empty' "$bxd" clean 'no bootstrap switch and no bootstrap exception,'
+  bxcopy "entropy-android.yml $bxline"
   bxdir other-workflow entropy-ci.yml "$bxline"
   wexpect 'workflow-bootstrap-exception-line-in-another-workflow' "$bxd" entropy-ci.yml
   bxdir twice entropy-android.yml "$bxline" "$bxline"

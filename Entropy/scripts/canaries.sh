@@ -1263,7 +1263,10 @@ verdict
 # The exception list itself (lead decision M5-13): empty since commit 8x, so the gate grants no
 # lock-writing line in any workflow. The one assignment of kt_bootstrap_exception in
 # scripts/banned-api-check.sh must be exactly kt_bootstrap_exception='' (no other assignment, at any
-# indentation); a reviewed re-plan that fills it again changes this check with it.
+# indentation); and since a list can be filled by forms no spelling check sees (a := default, a
+# second command on a line, a condition), the value too: the gate's clean line on the real
+# workflows, which states the list it holds, must say there is no exception. A reviewed re-plan
+# that fills it again changes this check with it.
 bootstrap_exception_empty() {
     gate="$root/scripts/banned-api-check.sh"
     set_lines=$(grep -n -E '^[[:space:]]*((export|readonly|local)[[:space:]]+)?kt_bootstrap_exception=' "$gate")
@@ -1273,6 +1276,15 @@ bootstrap_exception_empty() {
         echo "kt_bootstrap_exception is not assigned exactly once, as kt_bootstrap_exception='' (above)"
         return 1
     fi
+    wf_out=$(sh "$gate" --workflows "$root/../.github/workflows" 2>&1)
+    case $wf_out in
+        *": clean, "*"no bootstrap switch and no bootstrap exception,"*) ;;
+        *)
+            printf '%s\n' "$wf_out"
+            echo "the gate's --workflows on the real workflows does not say \"no bootstrap exception\" (above)"
+            return 1
+            ;;
+    esac
 }
 static_check workflow-bootstrap-exception-empty bootstrap_exception_empty
 

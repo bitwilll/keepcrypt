@@ -12542,6 +12542,18 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
     this Mac); `--selftest` 1395 passed, 0 failed under sh and /bin/dash (unchanged); the gate on the tree clean (286
     files: :screens' lockfile joins); fmt, both clippy commands, `cargo test --workspace --locked` (21 suites, 445
     passed, 3 ignored) and the test-sources run (17 suites, 269 passed, 1 ignored) unchanged.
+  - Proof (M5 commit 8x-c, the 8x review): 8x's static check read the list's spelling only, so on gate copies a list
+    filled again by `: "${kt_bootstrap_exception:=...}"`, by `true; kt_bootstrap_exception=...` or by an `&&` or `if`
+    form passed it and the `workflow-bootstrap` canary, and a lock-writing line it named scanned clean. `--workflows`'
+    clean line now states the list as the run holds it ("no bootstrap switch and no bootstrap exception", or the
+    reviewed exception's line, named), and `workflow-bootstrap-exception-empty` also runs the gate on the real
+    workflows and needs the former: on those four copies it fails ("does not say \"no bootstrap exception\""), and on a
+    second plain assignment it fails as before. `--selftest` checks both forms of the clean line (wexpect's optional
+    TEXT): `clean-bootstrap-exception-line` needs the stand-in list named, and the new `clean-bootstrap-exception-empty`
+    (a copy with the list '') needs "no bootstrap exception"; on a copy whose line always says "no bootstrap
+    exception", the first no longer holds. `--selftest` 1396 passed, 0 failed under sh and /bin/dash (1395 + 1);
+    `canaries.sh` PASS: all 77 checks ran; `--workflows` clean on the three workflows ("no bootstrap exception"); the
+    gate on the tree clean (286 files).
 - [ ] Kotlin/Native toolchain archives (Q68), in the order below:
   1. `scripts/konan-deps.sh` (in `android-gradle.sh`'s pattern) fetches exactly the three archives from their full URLs (LLVM under `resources/llvm/21-aarch64-macos/`). It checks each against a SHA-256 pinned in the script and checks its `.asc` with `gpg --verify` against a keyring holding only a pinned JetBrains key fingerprint. It places the archives in `mobile/android/.konan/cache/`, where the fetcher extracts them without downloading.
   2. `.konan/dependencies/` is empty at the start of every run, so no restored or planted extracted tree is trusted. `.konan/` is never restored from a cache.
