@@ -1745,6 +1745,23 @@ Nothing else on your Mac or in the repo changed. From now on, no simulator, `xco
 
     Otherwise: name any edit to change or hold. Held edits leave the docs saying "SwiftUI" and "Swift binding: chosen in M6" while the code says otherwise, and CLAUDE.md asks me to stop when docs and code disagree.
 
+### Raised by CI during M5 Stage B2 (Q73, decided 2026-10-20)
+73. **Two of the iPhone toolchain archives fail their signature check** (Q65, Q68; BP:298-299)
+    The first `Entropy iOS` run (39380758809, at eb28924) fetched the three Kotlin/Native archives Q68 approved and checked
+    each `.asc` against the Kotlin Release key (2FBA29D0..., signing subkey 6F538074...). `llvm-21-aarch64-macos-essentials-97`
+    passed: a good signature made 2026-04-20, SHA-256 62fd78f0...408a, equal to its published `.sha256`.
+    `lldb-4-macos` and `libffi-3.3-1-macos-arm64` failed: gpg reports `BADSIG` for both (signatures made 2024-07-03, by the
+    same subkey). Their published `.sha256` files hold one and the same value, 6c97f0a4...3d45, for two different archives,
+    so JetBrains' published hashes and signatures for those two do not describe the archives served. `konan-deps.sh` refused
+    all three and placed nothing, as designed.
+    Options put to the owner: pin the two by SHA-256 with cross-checks (recommended), pause the iPhone target until
+    JetBrains publishes correct signatures, or drop the iPhone target from M5.
+    - Answered 2026-10-20: "Drop iPhone from M5". M5 ships the Android app only. The screens stay in the Compose
+      Multiplatform modules, built for Android only, and the iPhone question (shared screens over a C bridge, or native
+      screens) reopens when M6 starts. Q65's iPhone compile and simulator tests, Q66's `keepcrypt-capi`, Q68's fetch,
+      Q69's iPhone CI job and Q70's rule sentence move to M6; Q67's iPhone-only artifacts are not used in M5. The re-cut is
+      "Re-cut after Q73 (2026-10-20)" under M5.
+
 ## M0: Repo bootstrap
 
 ### Decisions built into this plan (override any of them)
@@ -11985,6 +12002,9 @@ Each finding of the critique round and where it is resolved; none is rejected ou
 
 ### Re-plan for Compose Multiplatform (Q64, 2026-10-20)
 
+Amended by Q73 (2026-10-20): M5 ships the Android app only; "Re-cut after Q73 (2026-10-20)", before Review, wins
+wherever the two differ.
+
 Numbering note (2026-10-20, corrected at commit 8o-b): commits 8k and 8l went to emulator fixes (the app-window owner
 line) before this re-plan landed, so the re-plan's planned 8k and 8k-b were written as 8m and 8n. Commits 8l-b to 8l-f
 then went to further emulator fixes, so the re-plan's planned 8l, 8n, 8o, 8p, 8q and 8r are written as 8o, 8p, 8q, 8r,
@@ -12715,6 +12735,76 @@ No edits: design.md, pi-firmware.md, seal-watchonly-braille.md. CLAUDE.md rule 9
 - **L11 accepted.** The simulator device is pinned and recorded as a probe fact.
 - **L12 accepted.** All the names are added, and `kotlin.uuid` is banned for all Kotlin, Android included.
 - **Also corrected (found while revising):** the runner's default JDK is 21, so JDK 17 comes from `$JAVA_HOME_17_arm64`.
+
+### Re-cut after Q73 (2026-10-20)
+
+The owner dropped the iPhone target from M5 (Q73). This section amends "Re-plan for Compose Multiplatform" and wins wherever
+they differ. Nothing in the Android plan is weakened.
+
+**M5 lead decisions, after Q73**
+- M5-31 (2026-10-20): `:core-ffi` and `:screens` stay Kotlin Multiplatform modules with the Android target only. The
+  screens stay in `commonMain` and the platform seams stay `commonMain` interfaces (M5-20), so M6 can reuse them or not;
+  no Kotlin moves back. Declaring no Apple target drops Kotlin/Native from the build.
+- M5-32 (2026-10-20): `keepcrypt-guard` stays (Q66 (a)): it keeps the one `catch_unwind` out of the crate with the unsafe
+  code, and the gate (8p) and docs (8o) already hold that split. The workspace has six members: core, ffi, ffi/guard,
+  ffi/jni, pi/app, pi/sim.
+- M5-33 (2026-10-20): M5-23 and M5-25 to M5-29 are withdrawn for M5 and come back with the M6 plan if M6 builds the shared
+  screens for iPhone. `mobile/ios/` stays empty and the gate keeps refusing files under it (M5-25's rule stays).
+
+**Out-of-plan download (commit 8q), recorded.** While writing 8q, the implementing agent fetched six small files from
+download.jetbrains.com onto this Mac (into the session scratchpad, not the repo): the `.asc` and `.sha256` of each of the three
+archives, 659 or fewer bytes each. No archive, no code; nothing was run. No plan step named that fetch, so it broke the
+"no downloads except what the plan names" rule; the B2r review found it. Those files are where Q73's equal `.sha256` values
+were first seen; CI's run 39380758809 reproduced the signature results on its own fetch. From Stage C on, the implementers'
+instructions forbid any fetch for research, HEAD requests included.
+
+**Moves to M6** (as planned in the re-plan, to be re-planned with the M6 question)
+- the `iosArm64`/`iosSimulatorArm64` targets, `kotlin-native-prebuilt`, skiko, the klib commonizer and the other
+  iPhone-only Q67 artifacts;
+- `scripts/konan-deps.sh`, `konan.data.dir`, the `.konan/` handling and the download-host block (Q68), with Q73's
+  signature facts above;
+- `entropy-ios.yml` (Q69);
+- `keepcrypt-capi`, `include/keepcrypt.h`, the cinterop `.def` and `scripts/ios-rust.sh` (Q66, commit 12b);
+- the framework link and import scan (planned 8s) and the rule 1/5/9 sentence after the first iPhone build (Q70, planned
+  8t);
+- the per-class `iosSimulatorArm64Test` runs (M5-29) and the iOS accessibility probe at commit 16 (Q65); the Android accessibility
+  work (TalkBack, `isSensitiveData`) stays as the M5 plan has it.
+
+**Kept in M5's gate.** The 8p rules that refuse iPhone sources (KtIos, KtCinterop, the Mach-O and klib refusals, the
+source-set allow list) stay as refusals. The KMP allow list loses the iPhone-only shapes (the Apple target blocks, the
+cinterop block, the test-executable linker line, the simulator device line), so a build file that declares an Apple target
+is refused in M5.
+
+**Doc edits (Q73; the owner's answer decides their content, and they only record it)**
+- BP:35: the bindings are the three hand-written crates `keepcrypt-ffi`, `keepcrypt-guard` and `keepcrypt-jni`; the
+  iPhone boundary and screens are chosen when M6 starts; the picture's "UniFFI" and "SwiftUI" labels predate M5.
+- BP:37: one boundary crate per platform: `keepcrypt-jni` for Android, over `keepcrypt-guard`; the iPhone boundary is
+  chosen in M6.
+- BP:49-50 and BP:55-57: the tree loses `ffi/capi/`; `mobile/ios/` holds the iPhone app (M6).
+- BP:76-77: the iOS row says its screens and binding are chosen in M6 (iOS 17+ stays); the Bindings row loses
+  `keepcrypt-capi`.
+- BP:298-299: M5 is "Compose Multiplatform screens (the Android target), over the FFI (JNI), capture protection, backup via
+  file picker" with its original gate; M6 is "the iPhone app: screens and binding chosen when M6 starts (Q73), capture
+  handling, backup via document picker", needing M1 and M2, and M5 if it reuses the shared screens.
+- MA:17: the screens are written with Compose Multiplatform in shared modules, built for Android in M5; M6 decides whether
+  the iPhone reuses them. Q71's iPhone-residual sentence applies if it does.
+- MA:21, :23, :24: the iOS cells say "chosen in M6 (Q73)".
+
+**Commit order, Stage B2 from here** (replaces 8r-8t)
+- 8u. tasks/todo.md: Q73 and this re-cut; the six signature and hash files read on this Mac for 8q recorded as an
+  out-of-plan download (no code, nothing run; the signature facts were later reproduced by CI's run).
+- 8v. docs: the Q73 edits above, alone.
+- 8w. mobile/android, scripts, .github: the Apple targets and the iPhone-only artifacts removed from the build;
+  `entropy-ios.yml`, `konan-deps.sh`, `konan.data.dir` and the `.konan` and host-block steps removed; the KMP allow list
+  without the iPhone shapes, with fixtures; the Android workflow still in bootstrap mode, so the lockfiles are written again.
+- 8x. mobile/android, scripts: the lockfiles and verification metadata from 8w's Android bootstrap run, reviewed by
+  `android-deps-review`; strict mode on and the bootstrap switch removed (the gate's bootstrap canary proves it); the
+  expected classpath updated with every version change named; the Android job, emulators included, green again.
+
+**Stages C-F** run as "Commit order from Stage C on" plans them, without the iPhone work: commit 9 creates ffi, ffi/guard
+and ffi/jni (six members); 12b is not built; 13 builds and scans the Android `.so` only (the existing macos-26 release scan
+of core is unchanged); 14 has `android-rust.sh` and the Android `actual` only, with `commonTest` on the JVM; Stage E runs no
+simulator tests; Stage F's CLAUDE.md Commands gain no iPhone script, and the gate report says M5 proves nothing on iPhone.
 
 ## Review
 _Added after completion, with pasted proof for every ticked item._
