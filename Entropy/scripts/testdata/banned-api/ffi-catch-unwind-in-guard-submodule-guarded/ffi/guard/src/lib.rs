@@ -1,7 +1,7 @@
-// A fn guarded in a mod is not the crate root's: keepcrypt_guard::raw::guarded would hand the panic
-// back as a value, so the boundary could catch and continue.
-pub mod raw {
-    pub fn guarded<R>(f: impl FnOnce() -> R + UnwindSafe) -> Result<R, Box<dyn Any + Send>> {
+// A fn guarded in a mod is not the crate root's: exported as keepcrypt_guard::raw::guarded, it would
+// hand the panic back as a value, so the boundary could catch and continue.
+mod raw {
+    fn guarded<R>(f: impl FnOnce() -> R + UnwindSafe) -> Result<R, Box<dyn Any + Send>> {
         std::panic::catch_unwind(f)
     }
 }

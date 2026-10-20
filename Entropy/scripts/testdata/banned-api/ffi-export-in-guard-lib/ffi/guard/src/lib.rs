@@ -1,1 +1,1 @@
-#[unsafe(no_mangle)] pub extern "C" fn kc_guard_status() -> u8 { 0 }
+#[unsafe(no_mangle)] extern "C" fn kc_guard_status() -> u8 { 0 }

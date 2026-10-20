@@ -717,8 +717,12 @@
 #              "system"; macro_rules and macro_export outside comments and literals in any file
 #              under ffi/src/, ffi/guard/src/ and ffi/jni/src/ (lead decision M5-35; lib.rs's
 #              through the export scan), so no macro writes an export out of the export scan's
-#              sight; and once ffi/jni/src/lib.rs exports a function, the one catch_unwind call in
-#              fn guarded is required (a missing one is reported at ffi/jni/src/lib.rs:1).
+#              sight; pub outside comments and literals in any file under ffi/guard/src/ but the
+#              crate root's one line "pub fn guarded(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>> {"
+#              (M5-35), so keepcrypt-guard re-exports nothing of keepcrypt-ffi and keepcrypt-jni
+#              reaches the safe layer through guarded alone; and once ffi/jni/src/lib.rs exports a
+#              function, the one catch_unwind call in fn guarded is required (a missing one is
+#              reported at ffi/jni/src/lib.rs:1).
 #              Session::new (the Shell rule's shapes, comments counting) anywhere under ffi/ but
 #              ffi/src/ceremony.rs, each one after its first there, and none there once the file
 #              exists (reported at line 1). The identifiers thread and JoinHandle anywhere but in
@@ -866,9 +870,10 @@ Mach-O, ELF, ar, zip, dex, keystore or compressed file among them) under mobile/
 key outside its two files; and under ffi/ a catch_unwind but the one std::panic::catch_unwind call
 in the crate root's fn guarded in ffi/guard/src/lib.rs, an export outside ffi/jni/src/lib.rs or one
 there that does not call keepcrypt_guard::guarded, macro_rules there or macro_rules and
-macro_export in ffi/src, ffi/guard/src and ffi/jni/src, a JNI name outside ffi/jni/ or a C-ABI export in its
-lib.rs, a second Session::new or one outside ffi/src/ceremony.rs, and thread or JoinHandle outside
-ffi/tests/. A directory symlink is refused. Exit 0 clean, 1 hits, 2 usage or read error.
+macro_export in ffi/src, ffi/guard/src and ffi/jni/src, a pub in ffi/guard/src but fn guarded's
+one line, a JNI name outside ffi/jni/ or a C-ABI export in its lib.rs, a second Session::new or one
+outside ffi/src/ceremony.rs, and thread or JoinHandle outside ffi/tests/. A directory symlink is
+refused. Exit 0 clean, 1 hits, 2 usage or read error.
 EOF
 }
 
@@ -2458,6 +2463,33 @@ ffi_macros() {
   rust_code_match '[^A-Za-z0-9_](macro_rules|macro_export)[^A-Za-z0-9_]' "$1"
 }
 
+# keepcrypt-guard's surface is fn guarded alone (lead decision M5-35): keepcrypt-jni depends on
+# keepcrypt-guard and jni-sys only, so what keepcrypt-guard makes public is all of the safe layer the
+# boundary can reach, and a re-export (pub use keepcrypt_ffi as ffi;), a pub mod or a second pub fn
+# would let an export run it outside the catch, where a panic aborts before any destructor wipes
+# the session. So every pub (pub(crate) and the other restricted forms too), outside every comment
+# and literal, in any .rs file under ffi/guard/src/ is a hit (ffi_guard_pub), but the crate root's
+# one line ffi_guard_pub_line, exactly as written there and once: its signature is pinned with it,
+# so no other return type hands the boundary a way in. A pub split over lines is a hit at its pub.
+ffi_guard_pub_line='pub fn guarded(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>> {'
+ffi_guard_pub() {
+  [ -f "$1" ] && [ -r "$1" ] || return 2
+  case $1 in ffi/guard/src/lib.rs) groot=1 ;; *) groot=0 ;; esac
+  GUARD_PUB_LINE=$ffi_guard_pub_line awk -v ere='[^A-Za-z0-9_]pub[^A-Za-z0-9_]' -v sq="'" -v groot="$groot" "$rust_lex"'
+    {
+      lex()
+      if ((" " code " ") ~ ere) {
+        if (groot && !seen && $0 == ENVIRON["GUARD_PUB_LINE"]) {
+          seen = 1
+        } else {
+          print NR ":" $0
+          found = 1
+        }
+      }
+    }
+    END { exit !found }' "$1"
+}
+
 # The other way to turn a panic into a value, a joined thread, cannot be banned in the shared
 # clippy.toml (core/tests/panic_wipe.rs joins one), so the identifiers thread and JoinHandle are
 # refused anywhere under ffi/ (ffi/guard, ffi/jni and ffi/capi included), comments included
@@ -2751,8 +2783,9 @@ EOF
     # FFI: one catch_unwind, the path call in fn guarded in ffi/guard/src/lib.rs; exports only in
     # ffi/jni/src/lib.rs, each calling keepcrypt_guard::guarded, JNI names only under ffi/jni/ and
     # only the JNI ABI in its lib.rs; no macro_rules or macro_export in ffi/src, ffi/guard/src or
-    # ffi/jni/src; one Session::new, in ffi/src/ceremony.rs (comments count, as under pi/app/src);
-    # no thread or JoinHandle outside ffi/tests/ (M5-8).
+    # ffi/jni/src; no pub in ffi/guard/src but fn guarded's line; one Session::new, in
+    # ffi/src/ceremony.rs (comments count, as under pi/app/src); no thread or JoinHandle outside
+    # ffi/tests/ (M5-8).
     case $rel in
       ffi/*.rs)
         case $rel in
@@ -2766,6 +2799,7 @@ EOF
           ffi/jni/src/lib.rs) ;;
           ffi/src/*.rs | ffi/guard/src/*.rs | ffi/jni/src/*.rs) report FFI ffi_macros "$rel" ;;
         esac
+        case $rel in ffi/guard/src/*.rs) report FFI ffi_guard_pub "$rel" ;; esac
         case $rel in
           ffi/src/ceremony.rs) report FFI session_new_again "$rel" ;;
           *) report FFI session_new "$rel" ;;
@@ -2942,17 +2976,18 @@ fresh() {
 # <line> of FILE as it stands (the messages for a missing line or call, "missing ...", are the
 # exception), or a whole-file hit "<WANT>: <FILE>: <detail>" with no line (the Build, KtSourceSet
 # and KtRoot rules). The gate run is $gate, this script unless a case sets another copy. When $also
-# is set (one whole output line), the output must hold that line too, which is not counted: a
-# fixture in an iPhone source set hits its own rule and KtSourceSet, which refuses the set in M5
-# (Q73). When $atline is set, the one hit must be at that line of FILE (a case with more than one
-# candidate line, such as the second of two exports).
+# is set (one whole output line), the output must hold that line too, which is not counted (once:
+# a line two rules report is in the output twice): a fixture in an iPhone source set hits its own
+# rule and KtSourceSet, which refuses the set in M5 (Q73). When $atline is set, the one hit must be
+# at that line of FILE (a case with more than one candidate line, such as the second of two
+# exports).
 expect() {
   out=$(sh "${gate:-$self}" "$2" 2>&1)
   rc=$?
   alsook=yes
   if [ -n "${also:-}" ]; then
     if printf '%s\n' "$out" | grep -q -x -F -e "$also"; then
-      out=$(printf '%s\n' "$out" | grep -v -x -F -e "$also")
+      out=$(printf '%s\n' "$out" | ALSO=$also awk '!gone && $0 == ENVIRON["ALSO"] { gone = 1; next } { print }')
     else
       alsook=no
     fi
@@ -3410,7 +3445,7 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   done
   fresh
   mkdir -p "$d/ffi/guard/src" "$d/ffi/jni/src" || exit 2
-  echo 'pub fn guarded(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>> { keepcrypt_ffi::dispatch(op, input) }' \
+  printf '%s\n' 'pub fn guarded(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>> {' '    keepcrypt_ffi::dispatch(op, input)' '}' \
     >"$d/ffi/guard/src/lib.rs" || exit 2
   printf '%s\n' '#[unsafe(no_mangle)]' 'pub extern "system" fn Java_com_keepcrypt_entropy_ffi_Native_call(op: jint) -> u8 {' \
     '    keepcrypt_guard::guarded(op as u32, &[])[0]' '}' >"$d/ffi/jni/src/lib.rs" || exit 2
@@ -3584,7 +3619,8 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   done
   # The alias crossing crates: a guard that re-exports catch_unwind under another name is a hit at
   # that line although the boundary beside it, whose export calls guarded, names no catch_unwind
-  # when it catches and continues through the alias.
+  # when it catches and continues through the alias. The line is a pub in ffi/guard/src too
+  # (ffi_guard_pub), so it is reported twice.
   fresh
   mkdir -p "$d/ffi/guard/src" "$d/ffi/jni/src" || exit 2
   printf '%s\n' 'pub use std::panic::catch_unwind as recover;' "$guard" >"$d/ffi/guard/src/lib.rs" || exit 2
@@ -3593,7 +3629,9 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
     '        Ok(out) => to_java(env, out),' '        Err(payload) => empty(env, payload),' '    }' '}' \
     >"$d/ffi/jni/src/lib.rs" || exit 2
   atline=1
+  also='FFI: ffi/guard/src/lib.rs:1: pub use std::panic::catch_unwind as recover;'
   expect 'ffi-catch-unwind-reexport-beside-a-jni-export' "$d" FFI ffi/guard/src/lib.rs
+  also=
   atline=
   # A catch_unwind in a macro_rules definition in ffi/guard/src/lib.rs is a hit at its line, the
   # definition beside fn guarded or inside it, with its body in braces or in parentheses: the one

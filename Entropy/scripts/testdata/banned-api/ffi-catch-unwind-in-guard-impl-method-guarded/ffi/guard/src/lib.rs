@@ -1,7 +1,7 @@
 // A method named guarded is not the crate root's fn guarded: Recover::guarded returns the panic.
-pub struct Recover;
+struct Recover;
 impl Recover {
-    pub fn guarded<R>(f: impl FnOnce() -> R + UnwindSafe) -> Result<R, Box<dyn Any + Send>> {
+    fn guarded<R>(f: impl FnOnce() -> R + UnwindSafe) -> Result<R, Box<dyn Any + Send>> {
         std::panic::catch_unwind(f)
     }
 }

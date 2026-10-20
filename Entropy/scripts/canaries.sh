@@ -1385,7 +1385,7 @@ echo '    iosArm64()' >> "$tmp/$ka/core-ffi/build.gradle.kts" || exit 1
 printf 'import kotlin.%s.Uuid // gate canary (temp copy only)\n' uuid > "$tmp/$ka/app/src/main/kotlin/KcGateCanaryUuid.kt" || exit 1
 echo 'package com.keepcrypt.canary' > "$tmp/mobile/shared/KcGateCanary.kt" || exit 1
 echo 'pub fn kc_gate_canary() -> bool { std::panic::catch_unwind(|| ()).is_ok() }' > "$tmp/ffi/capi/src/kc_gate_canary.rs" || exit 1
-echo '#[unsafe(no_mangle)] pub extern "C" fn kc_gate_canary() {}' > "$tmp/ffi/guard/src/kc_gate_canary.rs" || exit 1
+echo '#[unsafe(no_mangle)] extern "C" fn kc_gate_canary() {}' > "$tmp/ffi/guard/src/kc_gate_canary.rs" || exit 1
 expect_failure "$name" sh "$root/scripts/banned-api-check.sh" "$tmp"
 need "KtSourceSet: $ka/screens/src/appleMain/kotlin/KcGateCanary.kt: "
 need "KtIos: $ka/core-ffi/src/iosMain/kotlin/KcGateCanary.ios.kt:1: "
