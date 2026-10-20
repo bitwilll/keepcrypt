@@ -7,13 +7,11 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
-# The safe layer it runs (tasks/todo.md, M5 re-plan, Q66 (a)), and zeroize, already locked through
-# core, for guarded's wiping buffers: the input it takes from the boundary and the reply it returns
-# (tasks/todo.md, M5 lead decision M5-35); core's version. Adding one needs owner approval and a
-# cargo-vet entry.
+# The safe layer it runs (tasks/todo.md, M5 re-plan, Q66 (a)), whose re-export of zeroize's
+# Zeroizing names guarded's wiping buffers; no crates.io crate (tasks/todo.md, M5 "New
+# dependencies"). Adding one needs owner approval and a cargo-vet entry.
 [dependencies]
 keepcrypt-ffi.workspace = true
-zeroize = "1.9.0"
 
 [lints.rust]
 # scripts/canaries.sh pins this table and [lints.clippy] below exactly, per crate.

@@ -15,9 +15,9 @@
 
 use std::sync::Once;
 
+use keepcrypt_ffi::Zeroizing;
 #[cfg(not(test))]
 use keepcrypt_ffi::dispatch;
-use zeroize::Zeroizing;
 
 /// The silent panic hook, set once.
 static QUIET: Once = Once::new();

@@ -4,8 +4,10 @@
 //!
 //! The phone's one ceremony and every call on it are in `ceremony`; the op table and the reply's
 //! bytes, and `dispatch` and `halt`, the two entries keepcrypt-guard calls, are in `wire`; the QR
-//! codes the replies carry are encoded in `qr`. This file holds the module list and those two
-//! re-exports only.
+//! codes the replies carry are encoded in `qr`. This file holds the module list and the re-exports
+//! only: those two entries, and zeroize's `Zeroizing`, their replies' type, which keepcrypt-guard
+//! names through this crate with no zeroize edge of its own (tasks/todo.md, M5 "New
+//! dependencies").
 #![forbid(unsafe_code)]
 
 pub mod ceremony;
@@ -13,3 +15,4 @@ mod qr;
 pub mod wire;
 
 pub use wire::{dispatch, halt};
+pub use zeroize::Zeroizing;
