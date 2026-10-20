@@ -11580,6 +11580,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   hold, load_snapshot and open_backup halt there); `ffi_every_exit_path_empties_the_slot`, `ffi_drill_12` and
   `ffi_proof_paths` see `Restart` after each of the three. On copies, Match found and Cannot check leaving `Idle`
   fail four tests, and a collision leaving `Idle` three (test-registry build). Both builds: 38 passed each.
+  Proof (M5 commit 10e; the review's finding: no test had a halt or `wipe_all` drop a checked backup or a snapshot):
+  `ffi_every_exit_path_empties_the_slot` opens backup.json's abandon-12-binary and, in the test-registry build, loads
+  with-dice-50, then halts by an op the table does not hold, halts by insert 13 of 12, or wipes: `Halted` or home,
+  holding nothing, each time. On copies, `Held::halt` or `wipe_all` keeping the backup fails it in both builds, and
+  keeping the snapshot fails it in the test-registry build. Both builds: 38 passed each.
 - [x] Discard during a long call: a test holds a long call at a barrier, discards from another thread, releases it: the
   result is dropped (a drop-observing value proves it), the call returns "discarded", the slot is Idle and the next
   `start` works; the same with `wipe_all`; a non-discard call while `Busy` halts.

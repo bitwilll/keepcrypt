@@ -227,6 +227,8 @@ fn checking(slot: &Slot, name: &str) {
 type Call = (&'static str, fn(&Slot) -> Got, &'static [StageKind]);
 /// A named case: a call on a slot, or a run up to one.
 type Case = (&'static str, fn(&Slot) -> Got);
+/// A named way out of a slot, and what the slot holds after it.
+type Exit = (&'static str, fn(&Slot) -> Got, Holds);
 /// What a read-back should say of faces 1-4.
 type Verdicts = [fn(&FaceVerdict) -> bool; 4];
 
@@ -406,11 +408,27 @@ fn ffi_queries_keep_their_stage() {
     assert_eq!(slot.holds().stage, StageKind::Checking);
 }
 
+/// "Check a backup" opened at home: backup.json's abandon-12-binary file (work factor 10), with its
+/// passphrase's first four letters.
+fn open_abandon_12(slot: &Slot) {
+    let age = common::backup().get("age_files").named("abandon-12-binary");
+    let first_four: Vec<String> = age
+        .get("passphrase")
+        .text()
+        .split(' ')
+        .map(|word| word.chars().take(4).collect())
+        .collect();
+    let entries: Vec<&str> = first_four.iter().map(String::as_str).collect();
+    done(slot.open_backup(&age.get("file_hex").hex(), &entries));
+}
+
 // Every exit path empties the slot (todo.md, M5 group 11; MA:127): Finish, a discard in every
 // stage, Match found and Cannot check (a `Wiped` stays, which holds no seed), and a halt by error,
 // which drops the kept `Wiped` too. A halt by panic is keepcrypt-guard's test (M5 commit 12); a
 // poisoned lock is ffi_a_poisoned_lock_halts, and a discard during a long call
-// ffi_discard_during_call.
+// ffi_discard_during_call. With "Check a backup" open and, in the test-registry build, a snapshot
+// loaded, a halt (an op the table does not hold, an insert past the backup's words) and a wipe
+// drop both (todo.md, M5 group 8).
 #[test]
 fn ffi_every_exit_path_empties_the_slot() {
     let slot = Slot::new();
@@ -512,6 +530,47 @@ fn ffi_every_exit_path_empties_the_slot() {
             got(slot.start(SeedLength::Words12, Mode::DiceOnly)),
             Got::Halted,
             "{what}"
+        );
+    }
+
+    let exits: [Exit; 3] = [
+        (
+            "an op the table does not hold",
+            |slot| match slot.dispatch(999, &[])[..] {
+                [wire::HALTED] => Got::Halted,
+                _ => Got::Done,
+            },
+            HALTED,
+        ),
+        ("insert 13 of 12", |slot| got(slot.word_page(13)), HALTED),
+        ("a wipe", |slot| got(slot.wipe_all()), HOME),
+    ];
+    let loaded = registry_key_is_test();
+    for (what, exit, after) in exits {
+        let slot = Slot::new();
+        if loaded {
+            done(slot.load_snapshot(&snapshot("with-dice-50"), M5_DAY));
+        }
+        open_abandon_12(&slot);
+        assert_eq!(
+            slot.holds(),
+            Holds {
+                snapshot: loaded,
+                backup: true,
+                ..HOME
+            },
+            "{what}"
+        );
+        let want = if after == HOME {
+            Got::Done
+        } else {
+            Got::Halted
+        };
+        assert_eq!(exit(&slot), want, "{what}");
+        assert_eq!(
+            slot.holds(),
+            after,
+            "{what}: the backup and the snapshot go"
         );
     }
 }
