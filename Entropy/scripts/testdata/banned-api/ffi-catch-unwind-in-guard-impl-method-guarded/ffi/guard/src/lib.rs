@@ -5,8 +5,8 @@ impl Recover {
         std::panic::catch_unwind(f)
     }
 }
-pub fn guarded(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>> {
-    match Recover::guarded(|| keepcrypt_ffi::dispatch(op, input)) {
+pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {
+    match Recover::guarded(|| keepcrypt_ffi::dispatch(op, &input)) {
         Ok(out) => out,
         Err(payload) => halt(payload),
     }

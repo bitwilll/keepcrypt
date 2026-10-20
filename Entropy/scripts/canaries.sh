@@ -292,6 +292,46 @@ need "-F clippy::disallowed-methods"
 need "could not compile \`keepcrypt-ffi\` (lib) due to 1 previous error"
 verdict
 
+# keepcrypt-jni, the one crate with unsafe code (tasks/todo.md, M5 groups 7 and 10): an unsafe block
+# with no SAFETY: comment, and one with two unsafe operations, each appended to the copy's real
+# ffi/jni/src/lib.rs, must fail clippy as CI runs it, with its own lint and nothing else, so neither
+# lint can be relaxed in that crate unseen (a crate-level #![expect], or the line dropped from its
+# [lints.clippy], which the static check below also pins).
+# jni_lint NAME TEXT...: appends stdin to the copy's ffi/jni/src/lib.rs, runs clippy on
+# keepcrypt-jni, restores the file, and needs every TEXT and exactly one error in that file.
+jni_lint() {
+    name=$1
+    shift
+    cat "$root/ffi/jni/src/lib.rs" - > "$tmp/ffi/jni/src/lib.rs" || exit 1
+    expect_failure "$name" cargo clippy --color never --manifest-path "$tmp/Cargo.toml" \
+        -p keepcrypt-jni --lib --locked --target-dir "$root/target/canary-real" -- -D warnings
+    cp "$root/ffi/jni/src/lib.rs" "$tmp/ffi/jni/src/lib.rs" || exit 1
+    for text in "$@"; do
+        need "$text"
+    done
+    need "--> ffi/jni/src/lib.rs:"
+    need "could not compile \`keepcrypt-jni\` (lib) due to 1 previous error"
+    verdict
+}
+jni_lint real-keepcrypt-jni-undocumented-unsafe-block "unsafe block missing a safety comment" \
+    "#undocumented_unsafe_blocks" "-D clippy::undocumented-unsafe-blocks" <<'EOF'
+
+/// Gate canary (scripts/canaries.sh, temp copy only): an unsafe block with no SAFETY: comment.
+pub fn kc_gate_canary(byte: &u8) -> u8 {
+    unsafe { core::ptr::read(byte) }
+}
+EOF
+jni_lint real-keepcrypt-jni-two-unsafe-ops \
+    "this \`unsafe\` block contains 2 unsafe operations, expected only one" \
+    "#multiple_unsafe_ops_per_block" "-D clippy::multiple-unsafe-ops-per-block" <<'EOF'
+
+/// Gate canary (scripts/canaries.sh, temp copy only): two unsafe operations in one block.
+pub fn kc_gate_canary(byte: &u8) -> u8 {
+    // SAFETY: gate canary; a reference is valid for reads.
+    unsafe { core::ptr::read(byte) ^ core::ptr::read(byte) }
+}
+EOF
+
 # Verifier agreement, core's side (tasks/todo.md, M2 groups 6 and 8): one value core must compare,
 # changed in the copy's vectors/agreement.json, must fail core's agreement test, naming that case
 # and that field, while the other 8 tests pass. The value is the first hex digit of the first
@@ -1406,6 +1446,22 @@ for dir in "$tmp/mobile/android" "$tmp/mobile"; do
     [ -e "$root/${dir#"$tmp/"}" ] || rmdir "$dir" || exit 1
 done
 
+# The tie between keepcrypt-jni's export and the one catch, on the real tree (tasks/todo.md, M5
+# commit 12): the copy's real ffi/jni/src/lib.rs with the export's keepcrypt_guard::guarded call
+# replaced by a direct call of the safe layer must fail scripts/banned-api-check.sh with exactly one
+# hit, at the export's fn line, so the export scan still reads the real export as one and ties it
+# to the catch. (Were the call's text to change, the copy would match the real file, the gate would
+# pass, and this canary would fail as one whose gate did not fire.)
+name=jni-export-tie
+sed 's/keepcrypt_guard::guarded(op, input)/keepcrypt_ffi::dispatch(op, \&input)/' "$root/ffi/jni/src/lib.rs" \
+    > "$tmp/ffi/jni/src/lib.rs" || exit 1
+expect_failure "$name" sh "$root/scripts/banned-api-check.sh" "$tmp"
+need "FFI: ffi/jni/src/lib.rs:"
+need "pub unsafe extern \"system\" fn Java_com_keepcrypt_entropy_ffi_Native_call("
+need "banned-api-check: 1 hit(s) in "
+verdict
+cp "$root/ffi/jni/src/lib.rs" "$tmp/ffi/jni/src/lib.rs" || exit 1
+
 # The Kotlin Multiplatform, iPhone and bridge rules on the real tree (tasks/todo.md, M5 re-plan for
 # Compose Multiplatform, "Gate changes"; the re-cut after Q73): one planted file or line per rule in
 # the copy must fail scripts/banned-api-check.sh with exactly these twelve hits: a source set
@@ -1760,7 +1816,7 @@ cp "$root/core/examples/release_probe.rs" "$tmp/core/examples/release_probe.rs" 
 
 # The number of checks above, pinned, so a canary that is deleted, or skipped by a broken branch,
 # turns CI red too. A real change to the canaries updates this pin in the same reviewed change.
-want_checks=90
+want_checks=93
 if [ "$checks" -ne "$want_checks" ]; then
     echo "FAIL: $checks checks ran; scripts/canaries.sh pins $want_checks"
     status=1

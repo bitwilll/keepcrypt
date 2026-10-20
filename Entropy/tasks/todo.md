@@ -11679,12 +11679,43 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   `Zeroizing<Vec<u8>>` under a size cap (lengths via `TryFrom`, no `as` on lengths) and return a new array; every JNI
   call that can raise is followed by `ExceptionCheck`, and a pending exception halts. Nothing calls `Throw`.
   Proof: clippy clean on the host and the five phone targets; a review note lists every unsafe block.
-- [ ] `guarded(f)` is the one `catch_unwind`, a safe generic function tested on the host with a panicking closure.
+  Proof (M5 commit 12, partial: clippy for the three Android targets cannot run on this Mac, where secp256k1-sys's build
+  script finds no NDK clang (Q56), so CI's cross legs run it once commit 13 lists the FFI crates; the iPhone targets
+  are M6's): as M5-21, M5-32 and M5-35 amend it, ffi/jni/src/lib.rs exports `JNI_OnLoad` (the crate root's
+  `#[unsafe(no_mangle)]` fn, no export_name, returning JNI_VERSION_1_6, nothing else) and
+  `Java_com_keepcrypt_entropy_ffi_Native_call` alone, whose body calls `keepcrypt_guard::guarded` once. It reads the
+  input array under a cap of 75,497,598 bytes (Load registry snapshot's date and a snapshot of 2^22 entries) into a
+  Vec of exactly its length, which guarded takes and wraps before any copy, and copies the reply, guarded's wiping
+  buffer, once into a new byte[] (NewByteArray, SetByteArrayRegion). Every JNI call is followed by ExceptionCheck; a
+  negative op, a null or oversize array, a function missing from the table or a pending exception halts the slot
+  through guarded with op 0, which the table does not hold, and a reply that cannot reach Java gives null; nothing
+  calls Throw. The op and lengths cross by TryFrom (`op_of`, `input_len`, `java_len`, tested on the host by
+  `the_input_cap_is_a_full_snapshot_and_its_date`, `a_negative_op_fails` and `a_length_past_a_java_array_fails`).
+  The commit body lists the eight unsafe blocks, one operation and a SAFETY: comment each. Both clippy commands are
+  clean on the host, and the canaries `real-keepcrypt-jni-undocumented-unsafe-block` and
+  `real-keepcrypt-jni-two-unsafe-ops` show both lints firing in keepcrypt-jni. The release dylib's `llvm-nm -g
+  --defined-only` lists `_JNI_OnLoad`, `_Java_com_keepcrypt_entropy_ffi_Native_call` and secp256k1-sys's own four
+  `rustsecp256k1_v0_10_0_*` exports (context_create, context_destroy and the two default callbacks).
+- [x] `guarded(f)` is the one `catch_unwind`, a safe generic function tested on the host with a panicking closure.
   Proof: a test panics inside a Ready call: a drop-observing value moved out with the session is dropped, `Held` is
   `Halted`, every later call halts, and nothing reaches stdout or stderr.
+  Proof (M5 commit 12, by M5-38's route; as the re-plan and M5-35 amend it, `guarded(op, input: Vec<u8>)` runs
+  keepcrypt_ffi::dispatch, not a closure): keepcrypt-guard's guarded wraps the input in `Zeroizing`, sets a silent
+  panic hook once (`std::sync::Once`), runs dispatch under the one `std::panic::catch_unwind` and on a panic returns
+  `keepcrypt_ffi::halt()`'s status, the payload dropped unread. Under `cfg(test)` alone it calls a private test
+  dispatcher that forwards every op to keepcrypt_ffi::dispatch but a planted one, a Ready call (the first word page)
+  whose reply a drop observer holds in its frame when it panics. `scenario_a_panic_inside_a_ready_call` drives the
+  real slot to Ready through guarded on dice-50-words12's rolls (12 words, dice only, Skip); the planted call gives
+  the halt status, the observer has dropped a word page, the slot holds nothing at `Halted`, and ops 0-39 and a start
+  each give the halt status. It runs in a child process that
+  `a_panic_inside_a_ready_call_halts_drops_what_it_held_and_prints_nothing` starts with stdout and stderr captured:
+  it passes, stderr is empty and stdout holds only the harness's lines. On copies, no hook (the panic's message
+  reaches stderr), no catch, the observer forgotten before the panic, and a catch that returns the halt status without
+  halting each fail it. `cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni --locked`, plain and with
+  `--features keepcrypt-core/test-registry`: 11 + 28 + 2 + 3 passed each.
 
 **11. FFI tests (host; `cargo test -p keepcrypt-ffi -p keepcrypt-jni`, plain and with `--features keepcrypt-core/test-registry`)**
-- [ ] Every exit path empties the slot: Finish, discard (each Public and Protected stage), Match found, Cannot check,
+- [x] Every exit path empties the slot: Finish, discard (each Public and Protected stage), Match found, Cannot check,
   halt by error, halt by panic, poisoned lock, discard during a long call. Core's own WipeProbe tests prove a dropped
   session is zeroized; these prove the FFI drops it (MA:127). Neither crate declares a `[features]` table
   (canaries.sh:798-809 covers both).
@@ -11697,6 +11728,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   Proof (M5 commit 10c, ada7ef3, partial: a halt by panic is commit 12's, M5-38): `ffi_a_poisoned_lock_halts` holds a
   long call whose result panics on drop, discards, then releases it; the lock is poisoned, the next call halts, the kept
   `Wiped` is dropped and the halt latches. A copy whose lock skips the halt fails the test.
+  Proof (M5 commit 12, the last exit path): a halt by panic is keepcrypt-guard's
+  `a_panic_inside_a_ready_call_halts_drops_what_it_held_and_prints_nothing` (group 10's second item), so with 10's and
+  10c's tests every exit path listed is tested; no FFI crate declares `[features]` (the canaries' probe). Plain and
+  with `--features keepcrypt-core/test-registry`: keepcrypt-ffi 11 unit and 28 integration tests, keepcrypt-guard 2,
+  keepcrypt-jni 3, all passed.
 - [x] Vectors: each gate seed through `start`, dice and `finish` gives kcr.json's seal code, Seal ID and T, and after a
   typed go-ahead code computed from the check request (lessons 2) the mnemonic and braille.
   Proof: `ffi_dice_vectors`.
@@ -12479,6 +12515,23 @@ int32_t kc_call(uint32_t op, const uint8_t *in, size_t in_len, uint8_t *out, siz
     exempting every crate's tests/ (`ffi/*/tests/*`) clears the guard, jni and src/tests fixtures, and no exemption
     hits the clean one. `--selftest` 1409 passed, 0 failed under sh and /bin/dash (1405 + 4 hit fixtures); the gate on
     the tree clean (292 files).
+  - Proof (M5 commit 12, partial: the clippy.toml and member pins are commit 9's, and the `gates` run is the lead's):
+    the real exports meet the rule, the gate clean on the tree (297 files). The pinned guarded line is now `pub fn
+    guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {` (the boundary hands the input over, M5-35; it names no
+    dispatcher, so M5-38 changes nothing else in the rule), in the rule, its header and every fixture and built case
+    that holds it, whose guard bodies pass `&input` and whose exports pass a Vec. The canary `jni-export-tie` replaces
+    the real export's `keepcrypt_guard::guarded(op, input)` with `keepcrypt_ffi::dispatch(op, &input)` in a copy of the
+    tree and needs exactly one hit, at the export's fn line. The C1 residual is closed: ffi_jni_abi read lines, so
+    `pub extern "C"` on one line and `fn Java_...` on the next, a bare `pub extern` split the same way, and
+    `pub extern /* ... */ "C" fn` each passed it (a gate copy with HEAD's ffi_jni_abi gives those trees no hit); it reads
+    the file as rust_tokens' tokens over lines now, rust_lex keeping each string's text, and an extern followed by fn,
+    or by one string and fn, is a hit at the extern's line unless the text is exactly system. Built cases
+    `ffi-jni-extern-c-split-over-lines-beside-the-guard`, `ffi-jni-extern-no-abi-split-over-lines-beside-the-guard`
+    and `ffi-jni-extern-c-after-a-comment-beside-the-guard`, each at line 2, and
+    `clean-ffi-jni-extern-system-split-over-lines` ("system" over three lines, after a comment, and extern "C" fn in a
+    comment and a string). `--selftest` 1426 passed, 0 failed under sh and /bin/dash (1422 before: +4 built cases);
+    `canaries.sh` PASS, all 93 checks ran (want_checks 90 -> 93: `real-keepcrypt-jni-undocumented-unsafe-block`,
+    `real-keepcrypt-jni-two-unsafe-ops`, `jni-export-tie`).
 - [ ] cinterop: `keepcrypt.def` holds exactly `headers = keepcrypt.h`, `headerFilter = keepcrypt.h` and `package = com.keepcrypt.native`.
   - It has no `staticLibraries`, `libraryPaths` or `linkerOpts`, so no Rust code is packed into a klib or the framework.
   - `compilerOpts -I` comes from the Gradle cinterop block and points only at `ffi/capi/include/`.

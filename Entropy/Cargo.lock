@@ -496,6 +496,7 @@ name = "keepcrypt-guard"
 version = "0.0.0"
 dependencies = [
  "keepcrypt-ffi",
+ "zeroize",
 ]
 
 [[package]]

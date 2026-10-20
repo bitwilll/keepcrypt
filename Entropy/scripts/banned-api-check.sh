@@ -714,15 +714,16 @@
 #              no body, an extern that $ or ) follows (a macro's ABI), and macro_rules; the JNI
 #              names (a Java_ function, JNI_OnLoad, JNIEnv, jni_sys) outside comments and literals
 #              anywhere but ffi/jni/, and in ffi/jni/src/lib.rs an extern fn whose ABI is not
-#              "system"; macro_rules and macro_export outside comments and literals in any file
-#              under ffi/src/, ffi/guard/src/ and ffi/jni/src/ (lead decision M5-35; lib.rs's
-#              through the export scan), so no macro writes an export out of the export scan's
-#              sight; pub outside comments and literals in any file under ffi/guard/src/ but the
-#              crate root's one line "pub fn guarded(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>> {"
-#              (M5-35), so keepcrypt-guard re-exports nothing of keepcrypt-ffi and keepcrypt-jni
-#              reaches the safe layer through guarded alone; and once ffi/jni/src/lib.rs exports a
-#              function, the one catch_unwind call in fn guarded is required (a missing one is
-#              reported at ffi/jni/src/lib.rs:1).
+#              "system", its words read over lines and comments; macro_rules and macro_export
+#              outside comments and literals in any file under ffi/src/, ffi/guard/src/ and
+#              ffi/jni/src/ (lead decision M5-35; lib.rs's through the export scan), so no macro
+#              writes an export out of the export scan's sight; pub outside comments and literals
+#              in any file under ffi/guard/src/ but the crate root's one line
+#              "pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {" (M5-35), so
+#              keepcrypt-guard re-exports nothing of keepcrypt-ffi and keepcrypt-jni reaches the
+#              safe layer through guarded alone; and once ffi/jni/src/lib.rs exports a function,
+#              the one catch_unwind call in fn guarded is required (a missing one is reported at
+#              ffi/jni/src/lib.rs:1).
 #              Session::new (the Shell rule's shapes, comments counting) anywhere under ffi/ but
 #              ffi/src/ceremony.rs, each one after its first there, and none there once the file
 #              exists (reported at line 1). The identifiers thread and JoinHandle anywhere but in
@@ -1234,8 +1235,11 @@ session_new_again() {
 # rust_lex: awk functions, run with -v sq="'". lex() sets code to the line $0 with every comment
 # removed and the contents of every string and char literal emptied, as rust_code_match below
 # describes; depth (a block comment's nesting) and instr, israw and raw (an open string) carry over
-# lines. rust_tokens' tokens() then feeds code to the program's own tok(t), one token at a time and
-# in order over lines: a word, ::, "" (a string, emptied) or any other character but a blank.
+# lines. It also keeps each string's text as written (escapes unread, a line break as \n) in
+# lits[1..nlits], in the order the strings close on the line, and lit holds an open one's text
+# over lines; only ffi_jni_abi reads them. rust_tokens' tokens() then feeds code to the program's
+# own tok(t), one token at a time and in order over lines: a word, ::, "" (a string, emptied; the
+# k-th "" of a line is lits[k]) or any other character but a blank.
 rust_lex='
     # charlen(line, i): the length of the char or byte literal whose opening quote is at i, or 0
     # for a lifetime or a label: an escape runs to the next quote after the escaped character; a
@@ -1256,6 +1260,7 @@ rust_lex='
     }
     function lex(    line, n, i, c, two, rest, prev, len) {
       code = ""
+      nlits = 0
       line = $0
       n = length(line)
       i = 1
@@ -1275,12 +1280,15 @@ rust_lex='
           }
         } else if (instr) {
           if (!israw && c == "\\") {
+            lit = lit substr(line, i, 2)
             i += 2
           } else if (c == "\"" && substr(line, i + 1, length(raw)) == raw) {
             instr = 0
             code = code "\"\""
+            lits[++nlits] = lit
             i += 1 + length(raw)
           } else {
+            lit = lit c
             i++
           }
         } else {
@@ -1296,10 +1304,12 @@ rust_lex='
             instr = 1
             israw = 0
             raw = ""
+            lit = ""
             i++
           } else if (prev !~ /[A-Za-z0-9_]/ && match(rest, /^[bc]?r#*"/)) {
             instr = 1
             israw = 1
+            lit = ""
             raw = substr(rest, 1, RLENGTH - 1)
             sub(/^[bc]?r/, "", raw)
             i += RLENGTH
@@ -1312,6 +1322,7 @@ rust_lex='
           }
         }
       }
+      if (instr) lit = lit "\n"
     }'
 rust_tokens='
     function tokens(    s, t) {
@@ -2437,18 +2448,47 @@ ffi_export_scan() {
 
 # The JNI surface only in keepcrypt-jni: the JNI names (a Java_ function, JNI_OnLoad, JNIEnv, the
 # jni_sys crate), outside every comment and literal, are hits under ffi/ anywhere but ffi/jni/
-# (ffi_jni_names). In ffi/jni/src/lib.rs every extern fn names JNI's "system" ABI: an extern "C" fn
-# there, or an extern fn with no ABI string, is a hit (ffi_jni_abi: rust_code_match finds the code,
-# and the line as written names the ABI, so a comment on that line naming another extern fn hits
-# too).
+# (ffi_jni_names). In ffi/jni/src/lib.rs every extern fn names JNI's "system" ABI (ffi_jni_abi): the
+# file is read as tokens over lines (rust_tokens), as the compiler reads a signature, so an extern
+# followed by fn, or by one string and then fn, is an extern fn wherever its lines break and
+# whatever comments sit between its words, and it is a hit at the extern's line unless that
+# string's text is exactly system. So an extern "C" fn, an extern fn with no ABI string (which is
+# "C"), and either one split over lines (pub extern "C" on one line, fn Java_... on the next) are
+# hits; an escape in the string fails closed. An extern block or extern crate is no extern fn.
 ffi_jni_names() {
   rust_code_match '[^A-Za-z0-9_](Java_[A-Za-z0-9_]*|JNI_OnLoad|JNIEnv|jni_sys)[^A-Za-z0-9_]' "$1"
 }
 ffi_jni_abi() {
-  t=$(rust_code_match '[^A-Za-z0-9_]extern[[:space:]]*("")?[[:space:]]*fn[^A-Za-z0-9_]' "$1")
-  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
-  kept_hits 'extern[[:space:]]*("[^"]*")?[[:space:]]*fn([^A-Za-z0-9_]|$)' \
-    -e 's/extern[[:space:]]*"system"[[:space:]]*fn([^A-Za-z0-9_]|$)/ /g'
+  [ -f "$1" ] && [ -r "$1" ] || return 2
+  awk -v sq="'" "$rust_lex$rust_tokens"'
+    # tok(t): st is 1 right after an extern, whose line is el, and 2 after its string, whose text
+    # is abi; the next token settles it, fn making an extern fn. si counts the strings of the
+    # line, so lits[si] is the text of the "" token just read.
+    function tok(t) {
+      if (t == "\"\"") si++
+      if (st == 1 && t == "\"\"") {
+        st = 2
+        abi = lits[si]
+        return
+      }
+      if (st && t == "fn" && (st == 1 || abi != "system")) {
+        if (!(el in done)) print el ":" src[el]
+        done[el] = 1
+        found = 1
+      }
+      st = 0
+      if (t == "extern") {
+        st = 1
+        el = NR
+      }
+    }
+    {
+      src[NR] = $0
+      si = 0
+      lex()
+      tokens()
+    }
+    END { exit !found }' "$1"
 }
 
 # No export written by a macro (lead decision M5-35): macro_rules and macro_export, outside every
@@ -2471,7 +2511,7 @@ ffi_macros() {
 # and literal, in any .rs file under ffi/guard/src/ is a hit (ffi_guard_pub), but the crate root's
 # one line ffi_guard_pub_line, exactly as written there and once: its signature is pinned with it,
 # so no other return type hands the boundary a way in. A pub split over lines is a hit at its pub.
-ffi_guard_pub_line='pub fn guarded(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>> {'
+ffi_guard_pub_line='pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {'
 ffi_guard_pub() {
   [ -f "$1" ] && [ -r "$1" ] || return 2
   case $1 in ffi/guard/src/lib.rs) groot=1 ;; *) groot=0 ;; esac
@@ -3429,8 +3469,8 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   # the one catch in fn guarded in ffi/guard/src/lib.rs, an extern "C" fn or an extern fn with no
   # ABI string in ffi/jni/src/lib.rs is a hit of its own (JNI's ABI is "system"), and a guard file
   # without the catch leaves the boundary's export with none.
-  guard='pub fn guarded(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>> {
-    match std::panic::catch_unwind(|| keepcrypt_ffi::dispatch(op, input)) {
+  guard='pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {
+    match std::panic::catch_unwind(|| keepcrypt_ffi::dispatch(op, &input)) {
         Ok(out) => out,
         Err(payload) => halt(payload),
     }
@@ -3440,25 +3480,50 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
     fresh
     mkdir -p "$d/ffi/guard/src" "$d/ffi/jni/src" || exit 2
     printf '%s\n' "$guard" >"$d/ffi/guard/src/lib.rs" || exit 2
-    printf '%s\n' '#[unsafe(no_mangle)]' "${case#*:}" '    keepcrypt_guard::guarded(0, &[])[0]' '}' >"$d/ffi/jni/src/lib.rs" || exit 2
+    printf '%s\n' '#[unsafe(no_mangle)]' "${case#*:}" '    keepcrypt_guard::guarded(0, Vec::new())[0]' '}' >"$d/ffi/jni/src/lib.rs" || exit 2
     expect "ffi-${case%%:*}-beside-the-guard" "$d" FFI ffi/jni/src/lib.rs
+  done
+  # The ABI is read as the compiler reads the signature (ffi_jni_abi), not line by line: an
+  # extern "C" or a bare extern on one line and its fn on the next, or a comment between extern and
+  # its ABI string, is a hit at the extern's line (a line-based check passed all three); the same
+  # splits with "system", and extern "C" fn named in a comment or a string, are clean.
+  for case in 'jni-extern-c-split-over-lines:pub extern "C":fn Java_com_keepcrypt_entropy_ffi_Native_call() -> u8 {' \
+    'jni-extern-no-abi-split-over-lines:pub extern:fn Java_com_keepcrypt_entropy_ffi_Native_call() -> u8 {' \
+    'jni-extern-c-after-a-comment:pub extern /* the VM calls it */ "C" fn Java_com_keepcrypt_entropy_ffi_Native_call():    -> u8 {'; do
+    abi=${case#*:}
+    fresh
+    mkdir -p "$d/ffi/guard/src" "$d/ffi/jni/src" || exit 2
+    printf '%s\n' "$guard" >"$d/ffi/guard/src/lib.rs" || exit 2
+    printf '%s\n' '#[unsafe(no_mangle)]' "${abi%%:*}" "${abi#*:}" '    keepcrypt_guard::guarded(0, Vec::new())[0]' '}' \
+      >"$d/ffi/jni/src/lib.rs" || exit 2
+    atline=2
+    expect "ffi-${case%%:*}-beside-the-guard" "$d" FFI ffi/jni/src/lib.rs
+    atline=
   done
   fresh
   mkdir -p "$d/ffi/guard/src" "$d/ffi/jni/src" || exit 2
-  printf '%s\n' 'pub fn guarded(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>> {' '    keepcrypt_ffi::dispatch(op, input)' '}' \
+  printf '%s\n' "$guard" >"$d/ffi/guard/src/lib.rs" || exit 2
+  printf '%s\n' '#[unsafe(no_mangle)]' 'pub unsafe extern' '    "system"' '    fn Java_com_keepcrypt_entropy_ffi_Native_call() -> u8 {' \
+    '    let note = "not extern \"C\" fn"; // nor an extern "C" fn' '    keepcrypt_guard::guarded(0, Vec::new())[0]' '}' \
+    '#[unsafe(no_mangle)]' 'pub extern /* JNI'"'"'s ABI */ "system" fn JNI_OnLoad() -> i32 {' '    JNI_VERSION_1_6' '}' \
+    >"$d/ffi/jni/src/lib.rs" || exit 2
+  expect 'clean-ffi-jni-extern-system-split-over-lines' "$d" clean
+  fresh
+  mkdir -p "$d/ffi/guard/src" "$d/ffi/jni/src" || exit 2
+  printf '%s\n' 'pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {' '    keepcrypt_ffi::dispatch(op, &input)' '}' \
     >"$d/ffi/guard/src/lib.rs" || exit 2
   printf '%s\n' '#[unsafe(no_mangle)]' 'pub extern "system" fn Java_com_keepcrypt_entropy_ffi_Native_call(op: jint) -> u8 {' \
-    '    keepcrypt_guard::guarded(op as u32, &[])[0]' '}' >"$d/ffi/jni/src/lib.rs" || exit 2
+    '    keepcrypt_guard::guarded(op as u32, Vec::new())[0]' '}' >"$d/ffi/jni/src/lib.rs" || exit 2
   expect 'ffi-jni-export-beside-a-guard-without-catch-unwind' "$d" FFI ffi/jni/src/lib.rs
   # A fn guarded in a mod is not the crate root's, which every export calls: its catch is a hit of
   # its own, and the export beside it still finds no catch in the crate root's guarded.
   fresh
   mkdir -p "$d/ffi/guard/src" "$d/ffi/jni/src" || exit 2
-  printf '%s\n' 'pub fn guarded(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>> {' '    keepcrypt_ffi::dispatch(op, input)' '}' \
+  printf '%s\n' 'pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {' '    keepcrypt_ffi::dispatch(op, &input)' '}' \
     'mod probe {' '    fn guarded() -> bool {' '        std::panic::catch_unwind(|| ()).is_ok()' '    }' '}' \
     >"$d/ffi/guard/src/lib.rs" || exit 2
   printf '%s\n' '#[unsafe(no_mangle)]' 'pub extern "system" fn Java_com_keepcrypt_entropy_ffi_Native_call(op: jint) -> u8 {' \
-    '    keepcrypt_guard::guarded(op as u32, &[])[0]' '}' >"$d/ffi/jni/src/lib.rs" || exit 2
+    '    keepcrypt_guard::guarded(op as u32, Vec::new())[0]' '}' >"$d/ffi/jni/src/lib.rs" || exit 2
   also='FFI: ffi/guard/src/lib.rs:6:         std::panic::catch_unwind(|| ()).is_ok()'
   expect 'ffi-jni-export-beside-a-guard-whose-catch-is-in-a-mod' "$d" FFI ffi/jni/src/lib.rs
   also=
@@ -3486,17 +3551,17 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
       safe-layer-directly) jni=$(printf '%s\n' '#[unsafe(no_mangle)]' "$call" "$direct" '}') ;;
       second-export)
         jni=$(printf '%s\n' '#[unsafe(no_mangle)]' "$call" \
-          '    to_java(env, keepcrypt_guard::guarded(op as u32, &from_java(env, input)))' '}' '#[unsafe(no_mangle)]' \
+          '    to_java(env, keepcrypt_guard::guarded(op as u32, from_java(env, input)))' '}' '#[unsafe(no_mangle)]' \
           'pub extern "system" fn Java_com_keepcrypt_entropy_ffi_Native_wipe(env: *mut JNIEnv) -> jbyteArray {' \
           '    to_java(env, keepcrypt_ffi::dispatch(OP_WIPE, &[]))' '}')
         ;;
       imported-guarded)
         jni=$(printf '%s\n' 'use keepcrypt_guard::guarded;' '#[unsafe(no_mangle)]' "$call" \
-          '    to_java(env, guarded(op as u32, &from_java(env, input)))' '}')
+          '    to_java(env, guarded(op as u32, from_java(env, input)))' '}')
         ;;
       guarded-in-a-helper)
-        jni=$(printf '%s\n' '#[unsafe(no_mangle)]' "$call" '    to_java(env, run(op, &from_java(env, input)))' '}' \
-          'fn run(op: jint, input: &[u8]) -> Zeroizing<Vec<u8>> {' '    keepcrypt_guard::guarded(op as u32, input)' '}')
+        jni=$(printf '%s\n' '#[unsafe(no_mangle)]' "$call" '    to_java(env, run(op, from_java(env, input)))' '}' \
+          'fn run(op: jint, input: Vec<u8>) -> Zeroizing<Vec<u8>> {' '    keepcrypt_guard::guarded(op as u32, input)' '}')
         ;;
       guarded-in-a-comment-and-a-string)
         jni=$(printf '%s\n' '#[unsafe(no_mangle)]' "$call" '    // keepcrypt_guard::guarded(op as u32, input) comes later.' \
@@ -3511,14 +3576,14 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
           "$direct" '}')
         ;;
       guarded-of-a-local-mod)
-        jni=$(printf '%s\n' 'mod keepcrypt_guard {' '    pub fn guarded(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>> {' \
-          '        keepcrypt_ffi::dispatch(op, input)' '    }' '}' '#[unsafe(no_mangle)]' "$call" \
-          '    to_java(env, crate::keepcrypt_guard::guarded(op as u32, &from_java(env, input)))' '}')
+        jni=$(printf '%s\n' 'mod keepcrypt_guard {' '    pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {' \
+          '        keepcrypt_ffi::dispatch(op, &input)' '    }' '}' '#[unsafe(no_mangle)]' "$call" \
+          '    to_java(env, crate::keepcrypt_guard::guarded(op as u32, from_java(env, input)))' '}')
         ;;
       no-mangle-static) jni=$(printf '%s\n' '#[unsafe(no_mangle)]' 'pub static KC_ABI_VERSION: u32 = 1;') ;;
       no-mangle-static-before-an-export)
         jni=$(printf '%s\n' '#[unsafe(no_mangle)]' 'pub static KC_ABI_VERSION: u32 = 1;' '#[unsafe(no_mangle)]' "$call" \
-          '    to_java(env, keepcrypt_guard::guarded(op as u32, &from_java(env, input)))' '}')
+          '    to_java(env, keepcrypt_guard::guarded(op as u32, from_java(env, input)))' '}')
         ;;
       onload-exported-as-java)
         jni=$(printf '%s\n' '#[unsafe(export_name = "Java_com_keepcrypt_entropy_ffi_Native_call")]' \
@@ -3552,7 +3617,7 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
       macro-written-exports)
         jni=$(printf '%s\n' 'macro_rules! export {' '    ($n:ident, $body:block) => {' '        #[unsafe(no_mangle)]' \
           '        pub extern "system" fn $n(env: *mut JNIEnv) -> u8 $body' '    }' '}' \
-          'export! { Java_com_keepcrypt_entropy_ffi_Native_call, { keepcrypt_guard::guarded(0, &[])[0] } }' \
+          'export! { Java_com_keepcrypt_entropy_ffi_Native_call, { keepcrypt_guard::guarded(0, Vec::new())[0] } }' \
           'export!(Java_com_keepcrypt_entropy_ffi_Native_wipe, { keepcrypt_ffi::dispatch(OP_WIPE, &[])[0] });')
         ;;
     esac
@@ -3568,11 +3633,11 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   mkdir -p "$d/ffi/guard/src" "$d/ffi/jni/src" || exit 2
   printf '%s\n' "$guard" >"$d/ffi/guard/src/lib.rs" || exit 2
   printf '%s\n' '#[unsafe(no_mangle)]' "$call" '    let input = from_java(env, input);' \
-    '    to_java(env, keepcrypt_guard::guarded(op as u32, &input))' '}' '#[unsafe(no_mangle)]' \
+    '    to_java(env, keepcrypt_guard::guarded(op as u32, input))' '}' '#[unsafe(no_mangle)]' \
     'pub extern "system" fn Java_com_keepcrypt_entropy_ffi_Native_probe(env: *mut JNIEnv, tag: [u8; 4]) -> jbyteArray {' \
-    '    let out = { keepcrypt_guard::guarded(OP_PROBE, &tag) };' '    to_java(env, out)' '}' '#[unsafe(no_mangle)]' \
+    '    let out = { keepcrypt_guard::guarded(OP_PROBE, tag.to_vec()) };' '    to_java(env, out)' '}' '#[unsafe(no_mangle)]' \
     'pub unsafe extern "system" fn JNI_OnLoad(vm: *mut JavaVM, reserved: *mut c_void) -> jint {' '    JNI_VERSION_1_6' '}' \
-    'fn from_java(env: *mut JNIEnv, input: jbyteArray) -> Zeroizing<Vec<u8>> {' '    read_capped(env, input, MAX_IN)' '}' \
+    'fn from_java(env: *mut JNIEnv, input: jbyteArray) -> Vec<u8> {' '    read_capped(env, input, MAX_IN)' '}' \
     >"$d/ffi/jni/src/lib.rs" || exit 2
   expect 'clean-ffi-jni-exports-each-calling-guarded' "$d" clean
   # A macro in another of keepcrypt-jni's files (lead decision M5-35): beside that guard and lib.rs's
@@ -3604,7 +3669,7 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
     printf '%s\n' "$guard" >"$d/ffi/guard/src/lib.rs" || exit 2
     printf '%s\n' "$glue" >"$d/ffi/jni/src/glue.rs" || exit 2
     printf '%s\n' '#[macro_use]' 'mod glue;' "$mcall" '#[unsafe(no_mangle)]' "$call" \
-      '    to_java(env, keepcrypt_guard::guarded(op as u32, &from_java(env, input)))' '}' "$onload" \
+      '    to_java(env, keepcrypt_guard::guarded(op as u32, from_java(env, input)))' '}' "$onload" \
       >"$d/ffi/jni/src/lib.rs" || exit 2
     mat=${mcase#*:}
     mfile=ffi/jni/src/${mat%%:*}
@@ -3625,7 +3690,7 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   mkdir -p "$d/ffi/guard/src" "$d/ffi/jni/src" || exit 2
   printf '%s\n' 'pub use std::panic::catch_unwind as recover;' "$guard" >"$d/ffi/guard/src/lib.rs" || exit 2
   printf '%s\n' '#[unsafe(no_mangle)]' "$call" \
-    '    match keepcrypt_guard::recover(|| keepcrypt_guard::guarded(op as u32, &from_java(env, input))) {' \
+    '    match keepcrypt_guard::recover(|| keepcrypt_guard::guarded(op as u32, from_java(env, input))) {' \
     '        Ok(out) => to_java(env, out),' '        Err(payload) => empty(env, payload),' '    }' '}' \
     >"$d/ffi/jni/src/lib.rs" || exit 2
   atline=1
@@ -3641,19 +3706,19 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
     case ${gcase%%:*} in
       in-guard-macro)
         g=$(printf '%s\n' 'macro_rules! recover {' '    ($f:expr) => {' '        std::panic::catch_unwind($f)' '    };' '}' \
-          'pub fn guarded(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>> {')
+          'pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {')
         ;;
       in-guard-macro-inside-guarded)
         g=$(printf '%s\n' '// A macro defined inside guarded would carry the catch out of it.' \
-          'pub fn guarded(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>> {' '    macro_rules! recover {' '        ($f:expr) => {' \
+          'pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {' '    macro_rules! recover {' '        ($f:expr) => {' \
           '            std::panic::catch_unwind($f)' '        };' '    }')
         ;;
       in-guard-paren-macro-inside-guarded)
-        g=$(printf '%s\n' 'pub fn guarded(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>> {' '    macro_rules! recover (' \
+        g=$(printf '%s\n' 'pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {' '    macro_rules! recover (' \
           '        ($f:expr) => ( std::panic::catch_unwind($f) )' '    );')
         ;;
     esac
-    g=$(printf '%s\n' "$g" '    match recover!(|| keepcrypt_ffi::dispatch(op, input)) {' '        Ok(out) => out,' \
+    g=$(printf '%s\n' "$g" '    match recover!(|| keepcrypt_ffi::dispatch(op, &input)) {' '        Ok(out) => out,' \
       '        Err(payload) => halt(payload),' '    }' '}')
     fresh
     mkdir -p "$d/ffi/guard/src" || exit 2
