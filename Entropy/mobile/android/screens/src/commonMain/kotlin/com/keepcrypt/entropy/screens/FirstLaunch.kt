@@ -28,7 +28,7 @@ import androidx.compose.ui.unit.sp
  * screens follow it (commits 14 and 16). With testRegistry, the TEST REGISTRY strip is on top
  * (Q60). The scroll position lives in plain memory, never in saved state. Written once in :screens'
  * common code (the re-plan for Compose Multiplatform), it is drawn by the app and the capture
- * control on Android and compiled for iPhone as well.
+ * control on Android; whether the iPhone reuses it is M6's question (Q73).
  */
 @Composable
 fun FirstLaunch(testRegistry: Boolean) {
