@@ -645,9 +645,10 @@
 #              never reads those files, so none may be tracked where a build could use it. Images,
 #              fonts, sound and PDF stay allowed. And any tracked regular file under mobile/ whose
 #              first four bytes (from the index's blob) are the magic number of a Mach-O file (thin
-#              or fat, either byte order), an ELF file, an ar archive (a static library or an rlib)
-#              or a zip archive (a jar, aar, apk, aab, ipa or klib), whatever its name: a library,
-#              executable, object or package named .png is still one.
+#              or fat, either byte order), an ELF file, an ar archive (a static library or an rlib),
+#              a zip archive (a jar, aar, apk, aab, ipa or klib), a dex file, a JKS or JCEKS
+#              keystore, or a gzip, xz, zstd or bzip2 stream, whatever its name: a library,
+#              executable, object, package, bytecode, key store or archive named .png is still one.
 #   KtManifest in every AndroidManifest.xml under mobile/android: android.permission.INTERNET,
 #              ACCESS_NETWORK_STATE and ACCESS_WIFI_STATE (a tools:node="remove" on them hits too:
 #              no network permission is ever stripped), allowBackup="true",
@@ -854,12 +855,12 @@ outside the allow list (no iPhone set in M5), the iOS names in iosMain and iosTe
 pinned memory, Kotlin Multiplatform DSL lines outside the allow list (no iPhone target in M5) and
 Kotlin/Native settings, and a cinterop definition other than the one exact .def; Kotlin outside
 mobile/android and a tracked file under mobile/ios; a tracked binary (a klib, a framework, any
-Mach-O, ELF, ar or zip file among them) under mobile/; the CI passphrase key outside its two files;
-and under ffi/ a catch_unwind but the one std::panic::catch_unwind call in the crate root's fn
-guarded in ffi/guard/src/lib.rs, an export outside ffi/jni/src/lib.rs or one there that does not
-call keepcrypt_guard::guarded, macro_rules there, a JNI name outside ffi/jni/ or a C-ABI export in
-its lib.rs, a second Session::new or one outside ffi/src/ceremony.rs, and thread or JoinHandle. A
-directory symlink is refused. Exit 0 clean, 1 hits, 2 usage or read error.
+Mach-O, ELF, ar, zip, dex, keystore or compressed file among them) under mobile/; the CI passphrase
+key outside its two files; and under ffi/ a catch_unwind but the one std::panic::catch_unwind call
+in the crate root's fn guarded in ffi/guard/src/lib.rs, an export outside ffi/jni/src/lib.rs or one
+there that does not call keepcrypt_guard::guarded, macro_rules there, a JNI name outside ffi/jni/
+or a C-ABI export in its lib.rs, a second Session::new or one outside ffi/src/ceremony.rs, and
+thread or JoinHandle. A directory symlink is refused. Exit 0 clean, 1 hits, 2 usage or read error.
 EOF
 }
 
@@ -2837,10 +2838,16 @@ EOF
     # KtBinary: a compiled or packed file whatever its name, by its first four bytes: a Mach-O
     # file, thin or fat, either byte order (an iPhone library, executable or object); an ELF file
     # (an Android .so, executable or object); an ar archive, !<arch> (a static library or an
-    # rlib); or a zip archive, PK\003\004 (a jar, aar, apk, aab, ipa or klib). The bytes come from
-    # the index's blob, what a commit holds, for every tracked regular file under mobile/ (links
-    # and submodules are paths, not files). A fat file's cafebabe is also a Java class file's
-    # magic, refused either way.
+    # rlib); a zip archive, PK\003\004 (a jar, aar, apk, aab, ipa or klib); a dex file, dex\n
+    # (Android bytecode, packed into an APK unchanged from src/main/assets or res/raw); a JKS or
+    # JCEKS keystore, feedfeed or cececece (a signing key); or a gzip (1f8b08), xz (fd377a58),
+    # zstd (28b52ffd) or bzip2 (BZh and its block-size digit) stream. So each format of the
+    # extension list above that opens with a fixed magic is refused under any name; a tar archive
+    # (its ustar mark is at byte 257) and a PKCS#12 keystore (a plain DER sequence, as any
+    # certificate is) open with none, and are refused by their extension only. The bytes come
+    # from the index's blob, what a commit holds, for every tracked regular file under mobile/
+    # (links and submodules are paths, not files). A fat file's cafebabe is also a Java class
+    # file's magic, refused either way.
     while IFS= read -r e; do
       case $e in 100644\ * | 100755\ *) ;; *) continue ;; esac
       obj=${e#* }
@@ -2853,6 +2860,12 @@ EOF
         7f454c46) kind='an ELF file' ;;
         213c6172) kind='an ar archive' ;;
         504b0304) kind='a zip archive' ;;
+        6465780a) kind='a dex file' ;;
+        feedfeed | cececece) kind='a Java keystore' ;;
+        1f8b08*) kind='a gzip stream' ;;
+        fd377a58) kind='an xz stream' ;;
+        28b52ffd) kind='a zstd stream' ;;
+        425a683[1-9]) kind='a bzip2 stream' ;;
         *) continue ;;
       esac
       echo "KtBinary: ${e#*"$tab"}: $kind under mobile/ (magic $magic), whatever its name"
@@ -3252,9 +3265,10 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   # KtBinary reads the index too, so its cases are scratch repositories as well: a tracked file
   # under mobile/ with each code or archive extension (one in upper case, some outside
   # mobile/android, one a symlink) or under a *.framework or *.xcframework directory is a hit, and
-  # so is a Mach-O, ELF, ar or zip file by its magic whatever its name (each magic below once, some
-  # named as an image); the same file untracked, a tracked image (a real PNG's magic among them)
-  # and font, and a tracked jar outside mobile/ (which the scan skips by extension) are not.
+  # so is a Mach-O, ELF, ar, zip, dex, keystore or compressed file by its magic whatever its name
+  # (each magic below once, some named as an image); the same file untracked, a tracked image (a
+  # real PNG's magic among them) and font, and a tracked jar outside mobile/ (which the scan skips
+  # by extension) are not.
   for case in 'jar:mobile/android/app/libs/x.jar' 'aar:mobile/android/app/libs/x.aar' \
     'so:mobile/android/app/src/main/jniLibs/x86_64/libx.so' 'dex:mobile/android/app/classes.dex' \
     'class:mobile/android/core-ffi/Native.class' 'apk:mobile/android/app/app-shipping-release.apk' \
@@ -3282,8 +3296,9 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   # The magic numbers in octal: Mach-O's cffaedfe (64-bit, little-endian), feedfacf (64-bit,
   # big-endian), cefaedfe (32-bit, little-endian), feedface (32-bit, big-endian), cafebabe and its
   # reverse bebafeca (fat), and cafebabf and its reverse bfbafeca (fat, 64-bit); ELF's 7f454c46; an
-  # ar archive's !<arch> (a static library or an rlib); and a zip archive's PK\003\004 (a klib,
-  # jar, aar or apk).
+  # ar archive's !<arch> (a static library or an rlib); a zip archive's PK\003\004 (a klib, jar,
+  # aar or apk); a dex file's dex\n035\0; a JKS keystore's feedfeed and a JCEKS one's cececece;
+  # and the gzip (1f8b08), xz (fd377a58), zstd (28b52ffd) and bzip2 (BZh9) streams' first bytes.
   for case in 'macho-64-no-extension:\317\372\355\376:mobile/android/app/libs/libkc' \
     'macho-64-big-endian-as-text:\376\355\372\317:mobile/android/core-ffi/notes.txt' \
     'macho-32-outside-android:\316\372\355\376:mobile/shared/kc' \
@@ -3294,7 +3309,14 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
     'macho-fat-64-reversed:\277\272\376\312:mobile/shared/kc-fat64' \
     'elf-as-png:\177ELF:mobile/android/app/src/main/res/drawable/libkeepcrypt.png' \
     'ar-as-png:!<arch>\n:mobile/android/app/src/main/res/drawable/libkc-static.png' \
-    'zip-as-png:PK\003\004:mobile/android/app/src/main/res/drawable/keepcrypt-klib.png'; do
+    'zip-as-png:PK\003\004:mobile/android/app/src/main/res/drawable/keepcrypt-klib.png' \
+    'dex-as-png:dex\n035\000:mobile/android/app/src/main/res/drawable/classes.png' \
+    'jks-as-png:\376\355\376\355:mobile/android/app/src/main/res/drawable/release-key.png' \
+    'jceks-as-png:\316\316\316\316:mobile/android/app/src/main/res/drawable/upload-key.png' \
+    'gz-as-png:\037\213\010:mobile/android/app/src/main/res/drawable/pack.png' \
+    'xz-as-png:\3757zXZ\000:mobile/android/app/src/main/assets/pack.png' \
+    'zstd-as-png:(\265/\375:mobile/android/app/src/main/res/raw/pack.png' \
+    'bzip2-as-png:BZh9:mobile/android/app/src/main/res/drawable/pack-bz2.png'; do
     x=${case##*:}
     m=${case#*:}
     m=${m%%:*}

@@ -12412,6 +12412,16 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
   kotlin.apple. name with neither word, and each scans clean on that copy. `ktsdk-kmp-konan-property-upper-case`'s
   value is upper case too (`KONAN.DATA.DIR=.KONAN`), so it alone scans clean on a copy whose build-file refusal is
   case-sensitive. `--selftest` 1373 passed, 0 failed under sh and /bin/dash (1371 before: +2 fixtures).
+  Proof (M5 commit 8p-f, review): KtBinary's magic check knew Mach-O, ELF, ar and zip only, so the review's scratch
+  repository with a dex file (Android bytecode, which src/main/assets or res/raw packs into the APK unchanged), a JKS
+  keystore and a gzip archive tracked under res/drawable as .png files scanned clean, though the extension rule refuses
+  .dex, .jks, .keystore and .gz. The check now also refuses dex (dex\n), JKS (feedfeed), JCEKS (cececece), gzip
+  (1f8b08), xz (fd377a58), zstd (28b52ffd) and bzip2 (BZh1-9), each format of the extension list that opens with a
+  fixed magic; a tar archive (ustar at byte 257) and a PKCS#12 keystore (a plain DER sequence) have none and stay
+  refused by extension only. That tree gives its three hits; built cases `ktbinary-tracked-dex-as-png`,
+  `-jks-as-png`, `-jceks-as-png`, `-gz-as-png`, `-xz-as-png`, `-zstd-as-png`, `-bzip2-as-png`, and a gate copy without
+  the seven patterns fails exactly those seven. `--selftest` 1395 passed, 0 failed under sh and /bin/dash (1388
+  before: +7 built cases); `canaries.sh` PASS, all 76 checks ran; the gate on the tree clean (285 files).
 - [x] Canaries cover the new scopes, the source-set allow list, the iOS rules, the `.def` rule and the refusals; `want_checks` is updated.
   - Proof: `scripts/canaries.sh` green with the new count. Each new canary fails when its rule line is removed (shown once, under Review).
   - Proof (M5 commit 8p): `want_checks` 74 -> 76. `kmp-ios-rules`: nine planted hits on the real tree's copy (appleMain
