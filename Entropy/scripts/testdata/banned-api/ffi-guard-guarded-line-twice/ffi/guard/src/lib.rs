@@ -1,4 +1,5 @@
 pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {
+    let input = Zeroizing::new(input);
     keepcrypt_ffi::dispatch(op, &input)
 }
 mod again {

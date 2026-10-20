@@ -6,6 +6,7 @@ fn recover<F: FnOnce() -> R + UnwindSafe, R>(f: F) -> Result<R, Box<dyn Any + Se
     guarded(f)
 }
 pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {
+    let input = Zeroizing::new(input);
     match recover(|| keepcrypt_ffi::dispatch(op, &input)) {
         Ok(out) => out,
         Err(payload) => halt(payload),

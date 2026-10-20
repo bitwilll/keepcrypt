@@ -4,6 +4,7 @@ use keepcrypt_ffi::dispatch;
 const NOTE: &str = "pub use keepcrypt_ffi as ffi;";
 /// The one public item.
 pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {
+    let input = Zeroizing::new(input);
     match std::panic::catch_unwind(|| dispatch(op, &input)) {
         Ok(out) => out,
         Err(payload) => halt(payload),

@@ -721,7 +721,10 @@
 #              in any file under ffi/guard/src/ but the crate root's one line
 #              "pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {" (M5-35), so
 #              keepcrypt-guard re-exports nothing of keepcrypt-ffi and keepcrypt-jni reaches the
-#              safe layer through guarded alone; and once ffi/jni/src/lib.rs exports a function,
+#              safe layer through guarded alone, and any line after it there but exactly
+#              "    let input = Zeroizing::new(input);", so guarded wipes the input it takes (a
+#              missing one is reported at the pinned line); and once ffi/jni/src/lib.rs exports a
+#              function,
 #              the one catch_unwind call in fn guarded is required (a missing one is reported at
 #              ffi/jni/src/lib.rs:1).
 #              Session::new (the Shell rule's shapes, comments counting) anywhere under ffi/ but
@@ -872,7 +875,7 @@ key outside its two files; and under ffi/ a catch_unwind but the one std::panic:
 in the crate root's fn guarded in ffi/guard/src/lib.rs, an export outside ffi/jni/src/lib.rs or one
 there that does not call keepcrypt_guard::guarded, macro_rules there or macro_rules and
 macro_export in ffi/src, ffi/guard/src and ffi/jni/src, a pub in ffi/guard/src but fn guarded's
-one line, a JNI name outside ffi/jni/ or a C-ABI export in its lib.rs, a second Session::new or one
+one line, a first statement of guarded other than the input's Zeroizing wrap, a JNI name outside ffi/jni/ or a C-ABI export in its lib.rs, a second Session::new or one
 outside ffi/src/ceremony.rs, and thread or JoinHandle outside ffi/tests/. A directory symlink is
 refused. Exit 0 clean, 1 hits, 2 usage or read error.
 EOF
@@ -2511,23 +2514,48 @@ ffi_macros() {
 # and literal, in any .rs file under ffi/guard/src/ is a hit (ffi_guard_pub), but the crate root's
 # one line ffi_guard_pub_line, exactly as written there and once: its signature is pinned with it,
 # so no other return type hands the boundary a way in. A pub split over lines is a hit at its pub.
+# The line after it is guarded's first statement, which must be exactly ffi_guard_wrap_line, or it
+# is a hit (and a file that ends at the pinned line is one there, "missing ..."): the input the
+# boundary hands over can be secret (dice faces, extra entropy, the backup passphrase's words), and
+# no test can see whether it is wiped. With it first, every later use of input is the wrapped one,
+# so a deleted wrap, one moved after the hook or the catch, or a body that dispatches on the raw Vec
+# (which still compiles, a Vec deref-ing to a slice) is a hit.
 ffi_guard_pub_line='pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {'
+ffi_guard_wrap_line='    let input = Zeroizing::new(input);'
 ffi_guard_pub() {
   [ -f "$1" ] && [ -r "$1" ] || return 2
   case $1 in ffi/guard/src/lib.rs) groot=1 ;; *) groot=0 ;; esac
-  GUARD_PUB_LINE=$ffi_guard_pub_line awk -v ere='[^A-Za-z0-9_]pub[^A-Za-z0-9_]' -v sq="'" -v groot="$groot" "$rust_lex"'
+  GUARD_PUB_LINE=$ffi_guard_pub_line GUARD_WRAP_LINE=$ffi_guard_wrap_line \
+    awk -v ere='[^A-Za-z0-9_]pub[^A-Za-z0-9_]' -v sq="'" -v groot="$groot" "$rust_lex"'
+    function out(l, text) {
+      if (!(l in done)) print l ":" text
+      done[l] = 1
+      found = 1
+    }
+    # wrap: the number of the pinned line, until the line after it is read.
     {
       lex()
+      if (wrap) {
+        if ($0 != ENVIRON["GUARD_WRAP_LINE"]) out(NR, $0)
+        wrap = 0
+      }
       if ((" " code " ") ~ ere) {
         if (groot && !seen && $0 == ENVIRON["GUARD_PUB_LINE"]) {
           seen = 1
+          wrap = NR
         } else {
-          print NR ":" $0
-          found = 1
+          out(NR, $0)
         }
       }
     }
-    END { exit !found }' "$1"
+    END {
+      if (wrap) {
+        w = ENVIRON["GUARD_WRAP_LINE"]
+        sub(/^ +/, "", w)
+        out(wrap, "missing the first statement of guarded on the next line, " w)
+      }
+      exit !found
+    }' "$1"
 }
 
 # The other way to turn a panic into a value, a joined thread, cannot be banned in the shared
@@ -3470,6 +3498,7 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   # ABI string in ffi/jni/src/lib.rs is a hit of its own (JNI's ABI is "system"), and a guard file
   # without the catch leaves the boundary's export with none.
   guard='pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {
+    let input = Zeroizing::new(input);
     match std::panic::catch_unwind(|| keepcrypt_ffi::dispatch(op, &input)) {
         Ok(out) => out,
         Err(payload) => halt(payload),
@@ -3510,7 +3539,8 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   expect 'clean-ffi-jni-extern-system-split-over-lines' "$d" clean
   fresh
   mkdir -p "$d/ffi/guard/src" "$d/ffi/jni/src" || exit 2
-  printf '%s\n' 'pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {' '    keepcrypt_ffi::dispatch(op, &input)' '}' \
+  printf '%s\n' 'pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {' '    let input = Zeroizing::new(input);' \
+    '    keepcrypt_ffi::dispatch(op, &input)' '}' \
     >"$d/ffi/guard/src/lib.rs" || exit 2
   printf '%s\n' '#[unsafe(no_mangle)]' 'pub extern "system" fn Java_com_keepcrypt_entropy_ffi_Native_call(op: jint) -> u8 {' \
     '    keepcrypt_guard::guarded(op as u32, Vec::new())[0]' '}' >"$d/ffi/jni/src/lib.rs" || exit 2
@@ -3519,12 +3549,13 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   # its own, and the export beside it still finds no catch in the crate root's guarded.
   fresh
   mkdir -p "$d/ffi/guard/src" "$d/ffi/jni/src" || exit 2
-  printf '%s\n' 'pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {' '    keepcrypt_ffi::dispatch(op, &input)' '}' \
+  printf '%s\n' 'pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {' '    let input = Zeroizing::new(input);' \
+    '    keepcrypt_ffi::dispatch(op, &input)' '}' \
     'mod probe {' '    fn guarded() -> bool {' '        std::panic::catch_unwind(|| ()).is_ok()' '    }' '}' \
     >"$d/ffi/guard/src/lib.rs" || exit 2
   printf '%s\n' '#[unsafe(no_mangle)]' 'pub extern "system" fn Java_com_keepcrypt_entropy_ffi_Native_call(op: jint) -> u8 {' \
     '    keepcrypt_guard::guarded(op as u32, Vec::new())[0]' '}' >"$d/ffi/jni/src/lib.rs" || exit 2
-  also='FFI: ffi/guard/src/lib.rs:6:         std::panic::catch_unwind(|| ()).is_ok()'
+  also='FFI: ffi/guard/src/lib.rs:7:         std::panic::catch_unwind(|| ()).is_ok()'
   expect 'ffi-jni-export-beside-a-guard-whose-catch-is-in-a-mod' "$d" FFI ffi/jni/src/lib.rs
   also=
   # The tie between each export and the catch (ffi_export_scan): beside that guard, an export in
@@ -3702,19 +3733,21 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   # definition beside fn guarded or inside it, with its body in braces or in parentheses: the one
   # catch is the path call written in guarded's own body. The definition's line is a hit too
   # (ffi_macros, lead decision M5-35), so these trees are built here, each with that second line.
-  for gcase in in-guard-macro:1:3 in-guard-macro-inside-guarded:3:5 in-guard-paren-macro-inside-guarded:2:3; do
+  for gcase in in-guard-macro:1:3 in-guard-macro-inside-guarded:4:6 in-guard-paren-macro-inside-guarded:3:4; do
     case ${gcase%%:*} in
       in-guard-macro)
         g=$(printf '%s\n' 'macro_rules! recover {' '    ($f:expr) => {' '        std::panic::catch_unwind($f)' '    };' '}' \
-          'pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {')
+          'pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {' '    let input = Zeroizing::new(input);')
         ;;
       in-guard-macro-inside-guarded)
         g=$(printf '%s\n' '// A macro defined inside guarded would carry the catch out of it.' \
-          'pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {' '    macro_rules! recover {' '        ($f:expr) => {' \
+          'pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {' '    let input = Zeroizing::new(input);' \
+          '    macro_rules! recover {' '        ($f:expr) => {' \
           '            std::panic::catch_unwind($f)' '        };' '    }')
         ;;
       in-guard-paren-macro-inside-guarded)
-        g=$(printf '%s\n' 'pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {' '    macro_rules! recover (' \
+        g=$(printf '%s\n' 'pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {' '    let input = Zeroizing::new(input);' \
+          '    macro_rules! recover (' \
           '        ($f:expr) => ( std::panic::catch_unwind($f) )' '    );')
         ;;
     esac
