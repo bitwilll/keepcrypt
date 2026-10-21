@@ -129,17 +129,23 @@ internal class Rig(scope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined
 
     val screen: Screen get() = model.state.value.screen
 
-    /** The app's first start, through its self-test to the first screen. */
+    /** The app's first start: First launch, the first screen, before any core call (lead decision M5-50). */
     fun startUp(): Rig {
         model.appReturned()
+        return this
+    }
+
+    /** Through the start and First launch's Continue, which runs the start-up self-test (its long call run), to Go offline. */
+    fun toGoOffline(): Rig {
+        startUp()
+        model.firstLaunchDone()
         worker.run()
         return this
     }
 
-    /** Through the start-up, First launch and Go offline (the fake starts offline) to Home. */
+    /** Through the start-up self-test and Go offline (the fake starts offline) to Home. */
     fun toHome(): Rig {
-        startUp()
-        model.firstLaunchDone()
+        toGoOffline()
         model.startOffline()
         return this
     }

@@ -17,10 +17,11 @@ import kotlin.test.fail
 /**
  * Every CeremonyModel transition the screens from the start to the dice add (tasks/todo.md, M5 group
  * 15), over the real slot through Core and the host library, long calls held on the test's worker:
- * First launch to Go offline to Home to Length; a new seed through Device entropy and Commitment to the
- * dice, and a dice-only seed straight to the dice; the dice pad, Confirm, Undo, the minimum and the
- * 256 cap; each face picked on the pad reaching core as picked (dice-50-words12's rolls give its Seal
- * ID); Back where nothing is lost and nowhere else; the offline gate; no touch or motion sample
+ * First launch, the start-up self-test its Continue runs (lead decision M5-50), Go offline, Home and
+ * Length; a new seed through Device entropy and Commitment to the dice, and a dice-only seed straight
+ * to the dice; the dice pad, Confirm, Undo, the minimum and the 256 cap; each face picked on the pad
+ * reaching core as picked (dice-50-words12's rolls give its Seal ID); Back where nothing is lost and
+ * nowhere else (the self-test's screen included); the offline gate; no touch or motion sample
  * reaching core off Device entropy (that they reach it there is TouchReachesCoreTest's and
  * MotionReachesCoreTest's, each in a JVM of its own); and C's hex groups and the dice line, as the Pi
  * writes them. Whether the slot holds a session, and in which stage, is read from the slot itself: the
@@ -50,10 +51,14 @@ class StartScreensTest {
     private fun rolls(rig: Rig): Int? = rig.model.state.value.dice?.rolls
 
     @Test
-    fun theStartGoesFromFirstLaunchThroughGoOfflineToHomeAndLength() {
+    fun theStartGoesFromFirstLaunchThroughTheSelfTestAndGoOfflineToHomeAndLength() {
         val rig = Rig().startUp()
         assertEquals(Screen.FirstLaunch, rig.screen)
+        assertEquals(0, rig.worker.waiting, "no call before First launch's Continue")
         rig.model.firstLaunchDone()
+        assertEquals(Screen.SelfTest, rig.screen, "Continue runs the start-up self-test behind its screen")
+        assertEquals(1, rig.worker.waiting)
+        rig.worker.run()
         assertEquals(Screen.GoOffline, rig.screen)
         assertTrue(rig.model.state.value.airplaneMode)
         assertTrue(rig.model.state.value.wifiOff)
@@ -68,6 +73,7 @@ class StartScreensTest {
         rig.model.startOffline()
         rig.model.chooseMode(Mode.DiceOnly)
         assertEquals(Screen.Length, rig.screen)
+        assertEquals(0, rig.worker.waiting, "and runs no self-test")
     }
 
     @Test
@@ -181,14 +187,19 @@ class StartScreensTest {
     fun backGoesBackOnlyWhereNothingIsLost() {
         val rig = Rig()
         rig.model.back()
-        assertEquals(Screen.SelfTest, rig.screen)
+        assertEquals(Screen.FirstLaunch, rig.screen)
         rig.startUp()
         rig.model.back()
         assertEquals(Screen.FirstLaunch, rig.screen, "nothing before First launch")
         rig.model.firstLaunchDone()
         rig.model.back()
+        assertEquals(Screen.SelfTest, rig.screen, "nothing leaves the self-test but its reply")
+        rig.worker.run()
+        rig.model.back()
         assertEquals(Screen.FirstLaunch, rig.screen, "Go offline back to First launch")
         rig.model.firstLaunchDone()
+        assertEquals(Screen.GoOffline, rig.screen, "the self-test passed, so Continue goes on at once")
+        assertEquals(0, rig.worker.waiting, "with no second self-test")
         rig.model.startOffline()
         rig.model.back()
         assertEquals(Screen.GoOffline, rig.screen, "Home back to Go offline")
@@ -226,8 +237,7 @@ class StartScreensTest {
     fun startStaysOffUntilAirplaneModeIsOnAndWifiOff() {
         val rig = Rig()
         rig.offline.offline = false
-        rig.startUp()
-        rig.model.firstLaunchDone()
+        rig.toGoOffline()
         assertEquals(Screen.GoOffline, rig.screen)
         assertFalse(rig.model.state.value.offline)
         rig.model.startOffline()
@@ -254,6 +264,7 @@ class StartScreensTest {
         assertEquals(Screen.FirstLaunch, rig.screen, "First launch needs no offline")
         rig.offline.set(true)
         rig.model.firstLaunchDone()
+        rig.worker.run()
         rig.model.startOffline()
         rig.offline.set(false)
         assertEquals(Screen.GoOffline, rig.screen, "Home needs the phone offline")

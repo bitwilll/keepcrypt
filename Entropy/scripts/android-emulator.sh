@@ -33,13 +33,17 @@
 #      recents, so that its thumbnail is not beside the app's in CaptureTest's recents view.
 #   4. For each app APK (shipping, then test registry): CaptureTest, through android-instrument.sh
 #      (every screen drawn and then black in screencap and takeScreenshot, SECURE on every window,
-#      the recents thumbnail, disable_secure_windows, the empty saved-state Bundle, data-sensitive
-#      nodes). Its report gives the app window's region, which the frame checker reads.
+#      the recents thumbnail, disable_secure_windows, the empty saved-state Bundle, the cover's TEST
+#      REGISTRY strip in that APK alone, data-sensitive nodes). Its report gives the app window's
+#      region, which the frame checker reads.
 #      A test class that fails is reported at once and fails the leg at its end: every class runs,
 #      so one run gives both the control's result and the app's.
-#   4a. FlowTest on the shipping app (M5 group 15): the screens from the start to the dice driven
-#      through UI Automator, a new seed and a dice-only seed to their minimums, the 256-roll cap, Back,
-#      Start disabled online, the airplane-mode settings button, and Wi-Fi on during the dice.
+#   4a. PhoneMotionTest, then FlowTest, on the shipping app (M5 group 15): PhoneMotion on the
+#      emulator's own sensors (lead decision M5-51: an accelerometer sample within 5 s, and a gyroscope
+#      one where the image lists a gyroscope, in its layout, and none after stop); then the screens from
+#      the start to the dice driven through UI Automator, a new seed and a dice-only seed to their
+#      minimums, the 256-roll cap, Back, Start disabled online, the airplane-mode settings button, and
+#      Wi-Fi on during the dice.
 #   4b. LifecycleTest on the shipping app (M5 group 14): the app left during a backup's scrypt and
 #      during its start-up self-test, and Wi-Fi turned on during a start, each discarding the session
 #      with no ANR.
@@ -58,10 +62,11 @@
 # On the 16 KB-page image (API 16k; M5 group 6, the ARM and 16 KB leg, from commit 14) steps 2-6 are
 # not run. After step 1: getconf PAGE_SIZE must be 16384; the shipping APK is installed (the
 # package manager's primaryCpuAbi must be x86_64) with its test APK, and NativeTest runs through
-# android-instrument.sh: the app's own start (System.loadLibrary, JNI_OnLoad, the self-test through
-# the bridge, then its first screen), the self-test called again and dice-50-words12's Seal ID
-# through the bridge. Then, for arm64-v8a and armeabi-v7a, each only if ro.product.cpu.abilist lists
-# it (the image's ARM translation, a probe fact): the APK installed again with adb install --abi ABI
+# android-instrument.sh: the app's own start to First launch, whose Continue loads the library
+# (System.loadLibrary, JNI_OnLoad) and runs the self-test through the bridge, then Go offline (lead
+# decision M5-50), the self-test called again and dice-50-words12's Seal ID through the bridge.
+# Then, for arm64-v8a and armeabi-v7a, each only if ro.product.cpu.abilist lists it (the image's ARM
+# translation, a probe fact): the APK installed again with adb install --abi ABI
 # (primaryCpuAbi must then be ABI) and NativeTest again, so the ARM library loads, binds and runs
 # translated. An ABI the list lacks is printed as a probe line, for the gate report and Q56: a
 # translated run proves loading, symbol binding, JNI_OnLoad and the self-test, never native ARM
@@ -77,10 +82,10 @@
 # scripts/android-emulator.sh --selftest runs whole legs of this script, with the real frame checker,
 # on stand-ins written to a temporary directory: an adb, an emulator, a screenrecord that writes a raw
 # frame of the screen at its start and on each change of it until SIGINT, and an instrument runner. A
-# leg where everything passes exits 0, having run FlowTest, LifecycleTest and then the killed CrashTest
-# on the shipping app as its last three instrumented runs (a case of its own); a failing ControlTest,
-# CaptureTest, FlowTest, LifecycleTest and CrashTest each exit 1 at the
-# leg's end, after the later checks ran; capture-control still in recents after pm clear, a
+# leg where everything passes exits 0, having run PhoneMotionTest, and FlowTest, LifecycleTest and then
+# the killed CrashTest on the shipping app as its last three instrumented runs (a case of its own); a
+# failing ControlTest, CaptureTest, PhoneMotionTest, FlowTest, LifecycleTest and CrashTest each exit 1
+# at the leg's end, after the later checks ran; capture-control still in recents after pm clear, a
 # recording that ends before it is stopped, the app's window lit in the first-frame stream, and the
 # same with that stream carrying no frame after the curtain (only the second stream sees it) each
 # exit 1. On the 16 KB-page image: a leg with arm64-v8a listed passes, running NativeTest with the app
@@ -252,6 +257,7 @@ EOF
   leg pass
   leg control-test-fails KC_FAILCLASS=ControlTest
   leg capture-test-fails KC_FAILCLASS=CaptureTest
+  leg motion-test-fails KC_FAILCLASS=PhoneMotionTest
   leg flow-test-fails KC_FAILCLASS=FlowTest
   leg lifecycle-test-fails KC_FAILCLASS=LifecycleTest
   leg crash-test-fails KC_FAILCLASS=CrashTest
@@ -266,6 +272,7 @@ EOF
   wait
   expect pass 0 "pass: api=31 control (a) raw frames" "pass: api=31 first frame (shipping): every frame black" \
     "pass: api=31 first frame (shipping, its first screen up)" "pass: api=31 first frame (registry, its first screen up)" \
+    "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.PhoneMotionTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest" \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
@@ -280,6 +287,12 @@ EOF
     failed=$((failed + 1))
     echo "FAIL pass: the leg's last three instrumented runs are $order"
   fi
+  expect motion-test-fails 1 \
+    "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest" \
+    "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest" \
+    "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
+    "pass: api=31 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.PhoneMotionTest) (each reported above)"
   expect flow-test-fails 1 \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest" \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
@@ -631,7 +644,9 @@ display_registry=$(sed -n 's/^kc: display=//p' "$work/instrument.log" | tail -n 
 [ -n "$region_shipping" ] && [ -n "$display_shipping" ] && [ -n "$region_registry" ] && [ -n "$display_registry" ] ||
   fail "CaptureTest reported no window region"
 
-# 4a. The screens from the start to the dice, driven through UI Automator (group 15).
+# 4a. PhoneMotion on the emulator's own sensors (M5-51), then the screens from the start to the dice,
+# driven through UI Automator (group 15).
+instrument com.keepcrypt.entropy com.keepcrypt.entropy.PhoneMotionTest
 instrument com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest
 # 4b. Discards during "Working...": the app left during a backup's scrypt and its start-up self-test,
 # Wi-Fi turned on during a start.

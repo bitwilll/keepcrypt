@@ -179,9 +179,9 @@ class FlowTest {
             shellText("cmd connectivity airplane-mode disable")
             shellText("cmd wifi set-wifi-enabled enabled")
             val activity = launch()
-            on(activity, Screen.FirstLaunch, START_SECONDS)
+            on(activity, Screen.FirstLaunch)
             tap("first_launch_continue")
-            on(activity, Screen.GoOffline)
+            on(activity, Screen.GoOffline, START_SECONDS)
             await("the app reads the phone online", 30) { !onMain { activity.model.state.value.offline } }
             awaitText("airplane_mode", "Airplane mode: off")
             awaitText("wifi", "Wi-Fi: on")
@@ -215,12 +215,15 @@ class FlowTest {
         }
     }
 
-    /** A new MainActivity through its self-test, First launch and Go offline's Start (the phone offline) to Home. */
+    /**
+     * A new MainActivity through First launch, the start-up self-test its Continue runs (lead decision
+     * M5-50) and Go offline's Start (the phone offline) to Home.
+     */
     private fun toHome(): MainActivity {
         val activity = launch()
-        on(activity, Screen.FirstLaunch, START_SECONDS)
+        on(activity, Screen.FirstLaunch)
         tap("first_launch_continue")
-        on(activity, Screen.GoOffline)
+        on(activity, Screen.GoOffline, START_SECONDS)
         await("the app reads the phone offline", 30) { onMain { activity.model.state.value.offline } }
         tap("start")
         on(activity, Screen.Home)

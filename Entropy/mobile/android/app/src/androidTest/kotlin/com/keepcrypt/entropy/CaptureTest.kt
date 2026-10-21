@@ -35,11 +35,13 @@ import com.keepcrypt.entropy.ffi.KcHalt
 import com.keepcrypt.entropy.ffi.Mode
 import com.keepcrypt.entropy.ffi.Reply
 import com.keepcrypt.entropy.ffi.Words
+import com.keepcrypt.entropy.screens.Overlay
 import com.keepcrypt.entropy.screens.Screen
 import com.keepcrypt.entropy.screens.screenId
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -62,26 +64,33 @@ class CaptureTest {
     /** Holds the long call that keeps "Working..." up for its captures; released after them. */
     private val working = CountDownLatch(1)
 
-    /** The one activity the every-screen pass walks, from the self-test's screen to the stop screen. */
+    /** The one activity the every-screen pass walks, from First launch to the stop screen. */
     private var walk: MainActivity? = null
 
     /**
      * Brings screen up in the walk's one activity, from the screen before it in Screen's order (the
-     * ceremony's), through the model's entry points as the screens call them. The when is exhaustive:
-     * a new screen without a way here fails to compile, and one out of order finds the model on
-     * another screen, which ignores the press, so its drawn-screen proof times out. The self-test's
-     * screen and "Working..." are long calls held on the worker, as the model makes every long call
-     * (the real start-up self-test is over before a capture could start); the stop screen is the halt
-     * status as Core throws it, so this process's slot stays live for the tests after it (the model's
-     * own tests halt a real one). Home on needs the phone offline, which the pass sees to.
+     * ceremony's, lead decision M5-50), through the model's entry points as the screens call them. The
+     * when is exhaustive: a new screen without a way here fails to compile, and one out of order finds
+     * the model on another screen, which ignores the press, so its drawn-screen proof times out. The
+     * self-test's screen and "Working..." are long calls held on the worker, as the model makes every
+     * long call (the real start-up self-test is over before a capture could start): the held one goes
+     * back to First launch when let go, whose Continue then runs the real self-test to Go offline. The
+     * stop screen is the halt status as Core throws it, so this process's slot stays live for the tests
+     * after it (the model's own tests halt a real one). Home on needs the phone offline, which the pass
+     * sees to.
      */
     private fun show(screen: Screen): MainActivity {
-        val activity = if (screen == Screen.SelfTest) started().also { walk = it } else checkNotNull(walk)
+        val activity = if (screen == Screen.FirstLaunch) started().also { walk = it } else checkNotNull(walk)
         val model = activity.model
         when (screen) {
+            Screen.FirstLaunch -> {}
             Screen.SelfTest -> onMain { model.work({ selfTest.await(); Reply.Done(Unit) }, busy = Screen.SelfTest) {} }
-            Screen.FirstLaunch -> selfTest.countDown()
-            Screen.GoOffline -> onMain { model.firstLaunchDone() }
+            Screen.GoOffline -> {
+                selfTest.countDown()
+                waitUntil("First launch again, after the held call") { onMain { activity.shownScreen } == Screen.FirstLaunch }
+                onMain { model.firstLaunchDone() }
+                waitUntil("the start-up self-test passed", START_SECONDS) { onMain { activity.shownScreen } == Screen.GoOffline }
+            }
             Screen.Home -> onMain { model.startOffline() }
             Screen.Length -> onMain { model.chooseMode(Mode.Mixed) }
             Screen.DeviceEntropy -> onMain { model.chooseLength(Words.Twelve) }
@@ -97,10 +106,10 @@ class CaptureTest {
         return activity
     }
 
-    /** A new MainActivity past its start-up self-test, on its first screen. */
+    /** A new MainActivity on its first screen, First launch, which shows before any core call. */
     private fun started(): MainActivity {
         val activity = launch()
-        waitUntil("the start-up self-test passed") { onMain { activity.shownScreen } == Screen.FirstLaunch }
+        waitUntil("the first screen") { onMain { activity.shownScreen } == Screen.FirstLaunch }
         return activity
     }
 
@@ -179,6 +188,56 @@ class CaptureTest {
         pass("recents: the thumbnail shows none of the app's content")
         finish(activity)
     }
+
+    /**
+     * The privacy cover carries the TEST REGISTRY strip in the test-registry APK, as every screen does,
+     * and nothing shows one in the shipping APK (Q60, lead decision M5-51). The app is left from its
+     * drawn first screen (Home) and brought back (am start, the task to the front, as LifecycleTest
+     * returns), so the cover is up; UI Automator then finds the cover by its resource id and, inside
+     * it, the strip, or no strip anywhere in the shipping APK. The idle warning draws its strip
+     * through the same overlay composable, but no emulator test reaches it (nine minutes without
+     * input while a session is held).
+     */
+    @Test
+    fun theCoverCarriesTheStripOnlyInTheTestRegistryApk() {
+        val registry = pkg == REGISTRY_PACKAGE
+        val activity = launch()
+        proveDrawn(activity, Screen.FirstLaunch)
+        val device = UiDevice.getInstance(Capture.instrumentation)
+        device.pressHome()
+        waitUntil("the app left") { stage(activity) == Stage.STOPPED }
+        shellText("am start -n $pkg/com.keepcrypt.entropy.MainActivity")
+        waitUntil("back in the app, covered") {
+            stage(activity) == Stage.RESUMED && onMain { activity.model.state.value.overlay } == Overlay.Cover
+        }
+        proveDrawn(activity, Screen.FirstLaunch)
+        val cover = device.wait(Until.findObject(By.res("cover")), 10_000) ?: throw AssertionError("the cover is not on screen")
+        // The cover's tap merges its content into one node: the strip is the cover's when UI Automator
+        // finds it under that node, or when the node's own text (its merged label) is the strip's.
+        val under = cover.hasObject(By.res(STRIP))
+        val label = (cover.text ?: "").contains(STRIP_TEXT)
+        val anywhere = device.hasObject(By.res(STRIP)) || device.hasObject(By.text(STRIP_TEXT))
+        probe(
+            "cover (${if (registry) "test-registry" else "shipping"} APK): the strip under it: $under; its text names the strip: " +
+                "$label; a strip on screen: $anywhere",
+        )
+        if (registry) {
+            assertTrue("the cover lacks the TEST REGISTRY strip in the test-registry APK", under || label)
+        } else {
+            assertFalse("a TEST REGISTRY strip on screen in the shipping APK", anywhere || label)
+        }
+        cover.click()
+        waitUntil("the cover taken away") { onMain { activity.model.state.value.overlay } == null }
+        if (registry) {
+            pass("the cover carries the TEST REGISTRY strip in the test-registry APK")
+        } else {
+            pass("no TEST REGISTRY strip on the cover or the screen under it in the shipping APK")
+        }
+        finish(activity)
+    }
+
+    private fun stage(activity: MainActivity): Stage =
+        onMain { ActivityLifecycleMonitorRegistry.getInstance().getLifecycleStageOf(activity) }
 
     /**
      * Positive control (c), API 36 only, where the platform reads the setting (Android 15 added it):
@@ -340,7 +399,17 @@ class CaptureTest {
     }
 
     private companion object {
+        /** The start-up self-test's time limit (a translated library is slower; NativeTest's). */
+        const val START_SECONDS = 120
+
         const val SENSITIVE_NODE = "kc_probe_data_sensitive"
+
+        /** The test-registry APK's package (the withTestRegistry flavour's applicationId). */
+        const val REGISTRY_PACKAGE = "com.keepcrypt.entropy.testregistry"
+
+        /** The TEST REGISTRY strip's resource id and text (Kit.kt's TestRegistryStrip). */
+        const val STRIP = "test_registry_strip"
+        const val STRIP_TEXT = "TEST REGISTRY"
 
         /** What dumpsys says (on stderr) for a service the image does not run. */
         const val NO_SERVICE = "Can't find service"

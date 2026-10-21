@@ -12056,6 +12056,12 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   run so far (API 31: 886 and 972 ms; API 36: 293 and 858 ms), so the emulator half of "leave during the start-up
   self-test" is not met (M5-47); the item stays open, and the gate report names it if it stays so. UiState's public
   values from commit 16 on are M5-49.
+  Proof (M5 commit 16j, partial: not yet run in CI): with M5-50's order, LifecycleTest's start-up case presses First
+  launch's Continue through the model and Home at once; once the self-test's reply is in, the screen left behind names
+  the case (First launch: the leave discarded the self-test, "during"; Go offline: "after"), and back in the app the
+  cover is taken away and, after a discard, Continue runs the self-test again: Go offline, the slot empty, no ANR. The
+  JVM proof is now leavingDuringTheStartUpSelfTestReturnsToFirstLaunchWhoseContinueRunsItAgain (renamed from
+  leavingDuringTheStartUpSelfTestRunsItAgainOnTheNextReturn, M5-47's name).
 - [x] The crash path: an `Application` subclass sets its handler (replacing the platform's) to `Native.wipeAll()` then
   `Process.killProcess`; the stop screen's "Close app" calls `finishAndRemoveTask()` and ends the process.
   Proof: a JVM test of the handler's order with a fake; on the emulator an androidTest-only trigger throws on the main
@@ -12164,6 +12170,32 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   seed, 24 words: straight to the dice, the dice-only line, the minimum (99), and no 257th roll"; Start disabled
   online); CaptureTest's every-screen pass, LifecycleTest and CrashTest green on both; the 16 KB leg green. The item
   stays open until Done (17) and Home's other entries (20, 21) land (M5-48), and 16j reorders the start (M5-50).
+  Proof (M5 commit 16j, partial: the Kotlin compiles and the JVM and emulator tests run only in CI): the start follows
+  MA:170-172 (M5-50). First launch is the model's first state and the first screen of every start, with no core call
+  before its Continue (a return no longer runs the self-test); Continue runs the start-up self-test as a long call
+  behind the Self-test screen, then Go offline (any reply but Done halts, as before), and once it has passed Continue
+  goes to Go offline at once (First launch again by Back). A discard that hits the self-test returns to First launch
+  (no notice; under the cover while away), whose Continue runs it again; after it, a discard's start screen is Go
+  offline, as in commit 16. Screen's order is First launch, Self-test, Go offline and on, and CaptureTest's
+  every-screen walk follows it (the held self-test screen from First launch, then Continue's real self-test to Go
+  offline). JVM: the Rig's startUp ends on First launch and toGoOffline runs Continue's self-test; CeremonyModelTest
+  (24: firstLaunchComesFirstAndItsContinueRunsTheSelfTestBeforeGoOffline; going online on First launch and during the
+  self-test discards nothing; leaving during it returns to First launch, covered, where a return runs nothing and
+  Continue runs it again; core's own discarded reply and a call reaching core after the discard now start from Home),
+  StartScreensTest (12: the start through the Self-test screen, Back doing nothing there, Continue after Back with no
+  second self-test) and NoCoreCallBeforeContinueTest (1, its own JVM: the slot halted first; the start, a tick, Back, a
+  leave and a return, going online and offline and ten idle minutes leave First launch with nothing on the worker,
+  and only Continue's self-test meets the halt). Emulator: NativeTest presses Continue through the model and gives Go
+  offline 120 s (the library loads, JNI_OnLoad and the self-test through the bridge; the stop screen fails it at
+  once); FlowTest taps Continue and gives Go offline the self-test's 120 s; LifecycleTest's scrypt and Wi-Fi cases pass
+  the start-up first, its start-up case is Continue, then Home at once (the pass line says "during" or "after",
+  M5-47), and its onCleared case and CrashTest wait for First launch drawn only; ControlTest is unchanged (it waits for
+  First launch drawn). MA:13's sentence and the capture control's First launch are unchanged. M5-51: the cover and the
+  idle warning draw the TEST REGISTRY strip in that build, and CaptureTest checks the cover in both APKs;
+  PhoneMotionTest runs PhoneMotion on the emulator's sensors (M5-51's 16j line). Gate clean on the tree (348 files),
+  `--selftest` 1431 passed, 0 failed, and `canaries.sh` PASS, all 93 checks ran; android-emulator.sh --selftest 17
+  passed, 0 failed under sh and /bin/dash (16 before: motion-test-fails); Rust untouched (fmt, both clippy commands,
+  the workspace tests, the test-sources run and the FFI tests plain and with test-registry all pass).
 
 **16. Screens: the collision check** (MA:175-176; swb:112-152)
 - [ ] The prompt ("Check now (recommended)" / "Skip", Skip confirmed on its own screen). With a loaded snapshot the check
@@ -13660,10 +13692,31 @@ they differ. Nothing in the Android plan is weakened.
   PF:87), which put a screen before MA:13's "first screen"; 16j reorders it. The plan's boot rule ("the self-test
   before Home") holds either way, and a discard that hits the self-test returns to First launch, whose Continue runs
   it again.
+  Proof (M5 commit 16j, partial: the Kotlin compiles and the JVM and emulator tests run only in CI): CeremonyModel
+  starts on First launch and a return no longer runs the self-test; Continue (firstLaunchDone) runs it behind the
+  Self-test screen, then Go offline, and once it has passed goes to Go offline at once (Back from Go offline); a
+  discard during it returns to First launch (no notice, under the cover while away), whose Continue runs it again;
+  after it, a discard's start screen is Go offline. NoCoreCallBeforeContinueTest proves no core call before Continue
+  (the slot halted first); CeremonyModelTest and StartScreensTest follow the order; every emulator test waits for what
+  it means (group 15's 16j line). The Pi's boot order (PF:87) is unchanged.
 - M5-51 (2026-10-21): Q60's "a strip on every screen" covers the privacy cover and the idle-warning overlay too: in the
   test-registry build both draw the TEST REGISTRY strip (16j). PhoneMotion (the sensor seam's Android end) gets an
   emulator check in 16j: started on the emulator it delivers at least one accelerometer sample within 5 s, and none
   after stop (a gyroscope sample too where the image lists one; a probe line says which). E1 review.
+  Proof (M5 commit 16j, partial: the Kotlin compiles and the emulator tests run only in CI): the cover and the idle
+  warning are one overlay composable (Screens.kt's OverlayScreen, the whole window taking the tap) that draws the
+  strip inside the system bars' insets when the build's testRegistry flag is set. CaptureTest's
+  theCoverCarriesTheStripOnlyInTheTestRegistryApk (both APKs, API 31 and 36) leaves the app from First launch (Home)
+  and returns (am start), then requires the strip inside the cover in the test-registry APK and no strip on screen in
+  the shipping APK; no test reaches the idle warning (nine minutes without input while a session is held), which
+  draws its strip through the same composable. PhoneMotionTest (scripts/android-emulator.sh step 4a, before FlowTest,
+  shipping app, API 31 and 36): a probe line names the image's motion sensors and every sensor it lists; with the
+  app in front and the test's own listener on the same sensors, PhoneMotion reports an accelerometer sample within
+  5 s, and a gyroscope one where listed; every sample is 24 bytes (type 4, timestamp 8, three values' bits 4 each,
+  big-endian) of a listed type, and for each sensor at least one sample is, field by field, an event the own listener
+  received; none comes in the second after stop while the own listener still receives events. Estimated cost (not yet
+  measured): about 15 s a leg for PhoneMotionTest and about 5 s an APK for the cover check, so about a minute on
+  run 39611275051's 22.2 (M5-52's re-measure comes from the first CI run).
 - M5-52 (2026-10-21): commit 16 adds FlowTest and a ten-screen CaptureTest walk per leg; run 39611275051 at e38a095
   took the Android job 1331 s (22.2 min: Rust libraries 245 s, Gradle build 185 s, API 31 219 s, API 36 245 s, 16 KB
   113 s), 89% of M5-44's 25. By M5-30's rule (the measured run plus 25%) the budget is 28 minutes (16i-b). Each later

@@ -3,14 +3,14 @@ package com.keepcrypt.entropy.screens
 import androidx.compose.runtime.Composable
 
 /**
- * The first screen, shown on every start once the self-test has passed (docs/mobile-apps.md, "Role
- * and honest limits" and step 1; tasks/todo.md, M5 group 15): what the app does, what no app can
- * stop, that the Pi is the device for life savings, and that every M5 build is a 0.0.0 development
- * build. Nothing records that it was read (rule 8), so it shows again on the next start. Its Continue
- * leads to Go offline; the capture control draws it without one (onContinue null). With testRegistry,
- * the TEST REGISTRY strip is on top (Q60). Written once in :screens' common code (the re-plan for
- * Compose Multiplatform), it is drawn by the app and the capture control on Android; whether the
- * iPhone reuses it is M6's question (Q73).
+ * The first screen, shown on every start before any core call (docs/mobile-apps.md, "Role and honest
+ * limits" and steps 1-3; tasks/todo.md, M5 group 15; lead decision M5-50): what the app does, what no
+ * app can stop, that the Pi is the device for life savings, and that every M5 build is a 0.0.0
+ * development build. Nothing records that it was read (rule 8), so it shows again on the next start.
+ * Its Continue runs the start-up self-test, then Go offline; the capture control draws it without one
+ * (onContinue null). With testRegistry, the TEST REGISTRY strip is on top (Q60). Written once in
+ * :screens' common code (the re-plan for Compose Multiplatform), it is drawn by the app and the
+ * capture control on Android; whether the iPhone reuses it is M6's question (Q73).
  */
 @Composable
 fun FirstLaunch(testRegistry: Boolean, onContinue: (() -> Unit)? = null) {

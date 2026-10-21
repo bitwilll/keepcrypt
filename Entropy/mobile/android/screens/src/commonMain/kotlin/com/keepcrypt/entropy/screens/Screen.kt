@@ -4,18 +4,18 @@ package com.keepcrypt.entropy.screens
  * Every screen the app draws (tasks/todo.md, M5 groups 6, 14 and 15). The capture harness proves each
  * one drawn and then black in every capture; screenId's when is exhaustive, so a screen added here
  * without an id fails to compile, and so does one without its class in isProtected. The order is the
- * ceremony's (CaptureTest walks it in this order in one activity): the self-test every start runs,
- * First launch, Go offline, Home, Length, Device entropy (Mixed only), Commitment (Mixed only) and
- * Dice (commit 16); then the "Working..." screen every other long call shows, and the stop screen a
- * halt ends on. The collision check, the words and the rest come with commits 17-21. In :screens'
- * common code, beside the screens themselves.
+ * ceremony's (CaptureTest walks it in this order in one activity): First launch, the first screen of
+ * every start, the self-test its Continue runs (lead decision M5-50), Go offline, Home, Length, Device
+ * entropy (Mixed only), Commitment (Mixed only) and Dice (commit 16); then the "Working..." screen
+ * every other long call shows, and the stop screen a halt ends on. The collision check, the words and
+ * the rest come with commits 17-21. In :screens' common code, beside the screens themselves.
  */
-enum class Screen { SelfTest, FirstLaunch, GoOffline, Home, Length, DeviceEntropy, Commitment, Dice, Working, Stop }
+enum class Screen { FirstLaunch, SelfTest, GoOffline, Home, Length, DeviceEntropy, Commitment, Dice, Working, Stop }
 
 /** The screen's id, the capture harness's name for it (and the test tag of its root). */
 fun screenId(screen: Screen): String = when (screen) {
-    Screen.SelfTest -> "self_test"
     Screen.FirstLaunch -> "first_launch"
+    Screen.SelfTest -> "self_test"
     Screen.GoOffline -> "go_offline"
     Screen.Home -> "home"
     Screen.Length -> "length"
@@ -34,7 +34,7 @@ fun screenId(screen: Screen): String = when (screen) {
  * D and the QR codes that carry a secret come with commits 19-21.
  */
 fun isProtected(screen: Screen): Boolean = when (screen) {
-    Screen.SelfTest, Screen.FirstLaunch, Screen.GoOffline, Screen.Home, Screen.Length, Screen.DeviceEntropy,
+    Screen.FirstLaunch, Screen.SelfTest, Screen.GoOffline, Screen.Home, Screen.Length, Screen.DeviceEntropy,
     Screen.Commitment, Screen.Dice, Screen.Working, Screen.Stop -> false
 }
 

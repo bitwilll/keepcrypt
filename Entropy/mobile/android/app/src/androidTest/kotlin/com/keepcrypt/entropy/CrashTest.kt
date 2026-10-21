@@ -7,6 +7,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.keepcrypt.entropy.Capture.launch
 import com.keepcrypt.entropy.Capture.onMain
 import com.keepcrypt.entropy.Capture.probe
+import com.keepcrypt.entropy.Capture.waitUntil
 import com.keepcrypt.entropy.ffi.Core
 import com.keepcrypt.entropy.ffi.Mode
 import com.keepcrypt.entropy.ffi.Reply
@@ -33,12 +34,10 @@ import org.junit.runner.RunWith
 class CrashTest {
     @Test
     fun anUncaughtExceptionWipesAndEndsTheProcessSilently() {
+        // The app up on First launch, where the model has made no core call and runs none, so the
+        // session started here is the slot's only use (lead decision M5-50).
         val activity = launch()
-        val end = SystemClock.elapsedRealtime() + START_MS
-        while (onMain { activity.shownScreen } != Screen.FirstLaunch) {
-            if (SystemClock.elapsedRealtime() > end) fail("no first screen within 120 s")
-            SystemClock.sleep(100)
-        }
+        waitUntil("the first screen, First launch") { onMain { activity.shownScreen } == Screen.FirstLaunch }
         assertTrue("start", Core.start(Words.Twelve, Mode.DiceOnly) is Reply.Done)
         probe("crash test: a session started; an exception is thrown on the main thread next")
         Handler(Looper.getMainLooper()).post { throw IllegalStateException("KeepCrypt crash test") }
@@ -47,9 +46,6 @@ class CrashTest {
     }
 
     private companion object {
-        /** NativeTest's limit for the start-up self-test. */
-        const val START_MS = 120_000L
-
         /** How long the process gets to end. */
         const val WAIT_MS = 30_000L
     }

@@ -34,14 +34,15 @@ import org.junit.runner.RunWith
 /**
  * Discards during "Working..." on the phone (tasks/todo.md, M5 group 14), run by
  * scripts/android-instrument.sh on the shipping app: the app is left during a backup's scrypt and
- * during the start-up self-test, and Wi-Fi comes on during a start. In each the main thread never
- * waits (the script's judge finds no not-responding window) and the session is gone: afterwards the
- * slot is at home, where only an empty slot takes the self-test (a session there would make that call
- * halt), and the screen is the start screen, Go offline (group 15), saying why where the plan says so.
- * And the ViewModel's end, when the activity finishes, empties the slot (CeremonyHolder's
+ * during the start-up self-test (which First launch's Continue runs, lead decision M5-50), and Wi-Fi
+ * comes on during a start. In each the main thread never waits (the script's judge finds no
+ * not-responding window) and the session is gone: afterwards the slot is at home, where only an empty
+ * slot takes the self-test (a session there would make that call halt), and the screen is the start
+ * screen, Go offline once the start-up self-test has passed (group 15), saying why where the plan says
+ * so. And the ViewModel's end, when the activity finishes, empties the slot (CeremonyHolder's
  * onCleared calls wipeAll). The ceremony is vectors/kcr.json's public gate seed dice-50-words12,
  * driven through Core on this thread while the model runs nothing, as NativeTest drives it; the long
- * calls go through the model, as its screens make them.
+ * calls, First launch's Continue among them, go through the model, as its screens make them.
  */
 @RunWith(AndroidJUnit4::class)
 class LifecycleTest {
@@ -55,7 +56,7 @@ class LifecycleTest {
     @Test
     fun leavingDuringABackupsScryptDiscardsTheSession() {
         val activity = launch()
-        await("the first screen", START_SECONDS) { onMain { activity.shownScreen } == Screen.FirstLaunch }
+        selfTested(activity)
         readyToEncrypt()
         val encrypted = AtomicBoolean(false)
         val begun = SystemClock.elapsedRealtime()
@@ -75,44 +76,48 @@ class LifecycleTest {
     }
 
     /**
-     * The app is started from the shell and left at once, so the leave comes during its start-up
-     * self-test or just after it, and the screen it leaves behind says which: the self-test's screen
-     * when the leave discarded the self-test (it shows until a return runs the self-test again), the
-     * first screen when the self-test had passed. Either way, back in the app, the self-test has passed
-     * and the slot is empty. The pass line names the case: only "during" is the discard during the
-     * self-test on the phone (the JVM test leavingDuringTheStartUpSelfTestRunsItAgainOnTheNextReturn
-     * holds that path on every run).
+     * First launch's Continue (through the model, as its button calls it) runs the start-up self-test,
+     * and the app is left at once (Home), so the leave comes during the self-test or just after it
+     * passed, and the screen it leaves behind once the self-test's reply is in says which: First launch
+     * when the leave discarded the self-test (its Continue runs it again), Go offline when the
+     * self-test had passed. Back in the app (am start, the task to the front), the cover is taken away
+     * and, after a discard, Continue runs the self-test again; either way it has passed, Go offline
+     * shows and the slot is empty. The pass line names the case: only "during" is the discard during
+     * the self-test on the phone (lead decision M5-47; the JVM test
+     * leavingDuringTheStartUpSelfTestReturnsToFirstLaunchWhoseContinueRunsItAgain holds that path on
+     * every run).
      */
     @Test
     fun leavingDuringTheStartUpSelfTestLeavesNoSession() {
         val component = Capture.instrumentation.targetContext.packageName + "/com.keepcrypt.entropy.MainActivity"
+        val activity = launch()
+        await("the first screen, First launch", 10) { onMain { activity.shownScreen } == Screen.FirstLaunch }
         val begun = SystemClock.elapsedRealtime()
-        shellText("am start -n " + component)
+        onMain { activity.model.firstLaunchDone() }
         device.pressHome()
-        var found: MainActivity? = null
-        await("the app's activity, left", 30) {
-            found = onMain {
-                ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.STOPPED)
-                    .filterIsInstance<MainActivity>().firstOrNull()
-            }
-            found != null
-        }
-        val activity = found!!
+        await("the activity stopped", 30) { stage(activity) == Stage.STOPPED }
+        val left = SystemClock.elapsedRealtime() - begun
+        await("the self-test's reply", START_SECONDS) { onMain { activity.model.state.value.screen } != Screen.SelfTest }
         val away = onMain { activity.model.state.value.screen }
-        val during = away == Screen.SelfTest
+        val during = away == Screen.FirstLaunch
         probe(
-            "start-up self-test: the app was left ${SystemClock.elapsedRealtime() - begun} ms after its start; " +
-                "away it shows ${screenId(away)} (self_test: the self-test had not passed)",
+            "start-up self-test: the app was left $left ms after First launch's Continue; away it shows " +
+                "${screenId(away)} (first_launch: the leave discarded the self-test)",
         )
+        assertTrue("the screen left behind is neither First launch nor Go offline: " + screenId(away), during || away == Screen.GoOffline)
         shellText("am start -n " + component)
-        await("the first screen after the return", START_SECONDS) {
-            onMain { activity.shownScreen } == Screen.FirstLaunch && stage(activity) == Stage.RESUMED
-        }
+        await("back in the app", 30) { stage(activity) == Stage.RESUMED }
+        onMain { activity.model.dismissOverlay() }
+        if (during) onMain { activity.model.firstLaunchDone() }
+        await("Go offline: the start-up self-test passed", START_SECONDS) { onMain { activity.shownScreen } == Screen.GoOffline }
         assertTrue("the slot is not at home", Core.selfTest() is Reply.Done)
         if (during) {
-            pass("left during the start-up self-test: discarded, run again on the return and passed; the slot is empty; no ANR")
+            pass(
+                "left during the start-up self-test: discarded, First launch again, whose Continue ran it again and it passed; " +
+                    "the slot is empty; no ANR",
+            )
         } else {
-            pass("left after the start-up self-test passed (not during it, this run): back, the slot is empty; no ANR")
+            pass("left after the start-up self-test passed (not during it, this run): back on Go offline, the slot is empty; no ANR")
         }
         finish(activity)
     }
@@ -125,7 +130,8 @@ class LifecycleTest {
     @Test
     fun finishingTheActivityEmptiesTheSlot() {
         val activity = launch()
-        await("the first screen", START_SECONDS) { onMain { activity.shownScreen } == Screen.FirstLaunch }
+        // First launch: the model has made no core call and runs none (lead decision M5-50).
+        await("the first screen, First launch", 10) { onMain { activity.shownScreen } == Screen.FirstLaunch }
         done(Core.start(Words.Twelve, Mode.DiceOnly))
         finish(activity)
         assertTrue("the slot is not at home: onCleared did not wipe it", Core.selfTest() is Reply.Done)
@@ -143,7 +149,7 @@ class LifecycleTest {
     fun wifiComingOnDuringAStartDiscardsIt() {
         Capture.whileOffline {
             val activity = launch()
-            await("the first screen", START_SECONDS) { onMain { activity.shownScreen } == Screen.FirstLaunch }
+            selfTested(activity)
             probe("offline: airplane_mode_on=${settings("airplane_mode_on")}, wifi_on=${settings("wifi_on")}")
             await("the app reads airplane mode on and Wi-Fi off", 30) { onMain { activity.model.state.value.offline } }
             val entered = CountDownLatch(1)
@@ -168,6 +174,17 @@ class LifecycleTest {
             pass("Wi-Fi on during a start: discarded at once, the late start discarded again, the session gone, no ANR")
             finish(activity)
         }
+    }
+
+    /**
+     * First launch, then its Continue (through the model, as its button calls it), which runs the
+     * start-up self-test, to Go offline: past the start-up, a discard's start screen is Go offline and
+     * going online discards (lead decision M5-50).
+     */
+    private fun selfTested(activity: MainActivity) {
+        await("the first screen, First launch", 10) { onMain { activity.shownScreen } == Screen.FirstLaunch }
+        onMain { activity.model.firstLaunchDone() }
+        await("Go offline: the start-up self-test passed", START_SECONDS) { onMain { activity.shownScreen } == Screen.GoOffline }
     }
 
     /**

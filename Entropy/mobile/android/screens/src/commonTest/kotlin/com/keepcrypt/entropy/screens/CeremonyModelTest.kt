@@ -23,9 +23,11 @@ import kotlinx.coroutines.cancel
  * Core and the host library, with the long calls held on the test's worker so the test acts while
  * "Working..." shows; the screens' own transitions (group 15) are StartScreensTest's. Whether the slot
  * holds a session is read from the slot itself: the dice counts are offered only while one is
- * rolling, and the self-test only at home, empty (each other call halts). A discard's start screen is
- * Go offline. Each test leaves the slot at home (wipeAll after it). A halt of the real slot latches it
- * for the process, so that test is CeremonyModelHaltTest, in a JVM of its own.
+ * rolling, and the self-test only at home, empty (each other call halts). First launch is the first
+ * screen and its Continue runs the start-up self-test (lead decision M5-50); a discard's start screen
+ * is Go offline once that has passed, First launch before. Each test leaves the slot at home (wipeAll
+ * after it). A halt of the real slot latches it for the process, so that test is CeremonyModelHaltTest,
+ * in a JVM of its own (and NoCoreCallBeforeContinueTest, which halts it first).
  */
 class CeremonyModelTest {
     @AfterTest
@@ -52,19 +54,22 @@ class CeremonyModelTest {
     }
 
     @Test
-    fun theStartUpSelfTestRunsBehindItsScreenThenTheFirstScreenShows() {
+    fun firstLaunchComesFirstAndItsContinueRunsTheSelfTestBeforeGoOffline() {
         val rig = Rig()
-        assertEquals(Screen.SelfTest, rig.screen)
-        assertEquals(0, rig.worker.waiting, "nothing runs before the app's first start")
+        assertEquals(Screen.FirstLaunch, rig.screen)
         rig.model.appReturned()
+        assertEquals(Screen.FirstLaunch, rig.screen, "First launch is the first screen of every start")
+        assertEquals(0, rig.worker.waiting, "no long call before First launch's Continue")
+        assertTrue(rig.model.state.value.offline, "the offline monitor is read on the start")
+        rig.model.firstLaunchDone()
         assertEquals(Screen.SelfTest, rig.screen)
         assertEquals(1, rig.worker.waiting, "the self-test, a long call")
-        assertTrue(rig.model.state.value.offline, "the offline monitor is read on the start")
         rig.worker.run()
-        assertEquals(Screen.FirstLaunch, rig.screen)
+        assertEquals(Screen.GoOffline, rig.screen)
         assertNull(rig.model.state.value.notice)
         assertNull(rig.model.state.value.overlay)
         assertTrue(rig.model.testRegistry)
+        assertNoSession("a self-test holds no session")
     }
 
     @Test
@@ -129,7 +134,7 @@ class CeremonyModelTest {
 
     @Test
     fun coresOwnDiscardedReplyReturnsTheUiToItsStartScreen() {
-        val rig = Rig().startUp()
+        val rig = Rig().toHome()
         // Discarded with no discard of the model's: the start screen, with no reason to give.
         rig.model.work<Unit>({ Reply.Discarded }) { fail("a discarded call gives no value") }
         rig.worker.run()
@@ -139,7 +144,7 @@ class CeremonyModelTest {
 
     @Test
     fun aCallThatReachedCoreAfterTheDiscardHasWhatItMadeDiscardedAgain() {
-        val rig = Rig().startUp()
+        val rig = Rig().toHome()
         var made = false
         // The app is left after the worker's look at the flag and before core takes the call: core
         // starts a session at home, which the model discards again on the worker.
@@ -194,9 +199,13 @@ class CeremonyModelTest {
         val rig = Rig()
         rig.model.appReturned()
         rig.offline.set(false)
+        assertEquals(Screen.FirstLaunch, rig.screen, "First launch needs no offline")
+        rig.model.firstLaunchDone()
+        rig.offline.set(true)
+        rig.offline.set(false)
         assertEquals(Screen.SelfTest, rig.screen)
         rig.worker.run()
-        assertEquals(Screen.FirstLaunch, rig.screen, "the self-test's reply was kept")
+        assertEquals(Screen.GoOffline, rig.screen, "the self-test's reply was kept")
         assertEquals(1, rig.worker.ran, "one self-test: going online before it passed discarded nothing")
         assertNull(rig.model.state.value.notice)
         assertFalse(rig.model.state.value.offline)
@@ -250,17 +259,26 @@ class CeremonyModelTest {
     }
 
     @Test
-    fun leavingDuringTheStartUpSelfTestRunsItAgainOnTheNextReturn() {
-        val rig = Rig()
-        rig.model.appReturned()
+    fun leavingDuringTheStartUpSelfTestReturnsToFirstLaunchWhoseContinueRunsItAgain() {
+        val rig = Rig().startUp()
+        rig.model.firstLaunchDone()
+        assertEquals(Screen.SelfTest, rig.screen)
         rig.model.appLeft()
         rig.worker.run()
-        assertEquals(Screen.SelfTest, rig.screen, "the self-test's reply was discarded, so it has not passed")
-        assertEquals(0, rig.worker.waiting, "nothing runs while the app is away")
+        val away = rig.model.state.value
+        assertEquals(Screen.FirstLaunch, away.screen, "the self-test's reply was discarded, so it has not passed")
+        assertEquals(Overlay.Cover, away.overlay, "away from the app the cover stays up")
+        assertNull(away.notice, "no session was held, so there is nothing to say")
         rig.model.appReturned()
+        assertEquals(0, rig.worker.waiting, "a return runs nothing: First launch's Continue does")
+        assertEquals(Screen.FirstLaunch, rig.screen)
+        rig.model.firstLaunchDone()
+        assertEquals(0, rig.worker.waiting, "the cover takes the press")
+        rig.model.dismissOverlay()
+        rig.model.firstLaunchDone()
         assertEquals(1, rig.worker.waiting, "the self-test again")
         rig.worker.run()
-        assertEquals(Screen.FirstLaunch, rig.screen)
+        assertEquals(Screen.GoOffline, rig.screen)
         assertNoSession("a self-test holds no session")
     }
 

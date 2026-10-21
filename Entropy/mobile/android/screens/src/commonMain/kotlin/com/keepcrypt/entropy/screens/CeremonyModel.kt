@@ -91,13 +91,15 @@ data class UiState(
  * - Leaving the app during a long call or on a Protected screen, and going online after the start-up
  *   (away from the app too: the offline monitor reports until the model's end), call core's discard
  *   at once, even during a long call; the call's discarded reply then returns the UI to its start
- *   screen, Go offline. On a Public screen leaving puts the privacy cover up, and 60 s away wipes.
+ *   screen (toStart). On a Public screen leaving puts the privacy cover up, and 60 s away wipes.
  * - The timers (Timers) cover, warn and wipe on each tick.
- * - Until the start-up self-test passes (core's known-answer tests, a long call, run again on the next
- *   return after a discard), nothing else is offered. Then, on every start: First launch, Go offline
- *   (its Start only offline), Home, Length, and the ceremony, which needs airplane mode on and Wi-Fi
- *   off on every screen from Home on (Q57): Device entropy and Commitment in Mixed mode only, then
- *   Dice. System Back goes back only where nothing is lost (back).
+ * - On every start First launch shows first, before any core call (lead decision M5-50); its Continue
+ *   runs the start-up self-test (core's known-answer tests, a long call behind its own screen; any
+ *   reply but Done halts), then Go offline (its Start only offline), Home, Length, and the ceremony,
+ *   which needs airplane mode on and Wi-Fi off on every screen from Home on (Q57): Device entropy and
+ *   Commitment in Mixed mode only, then Dice. A discard that hits the self-test returns to First
+ *   launch, whose Continue runs it again; once it has passed, a discard's start screen is Go offline.
+ *   System Back goes back only where nothing is lost (back).
  */
 class CeremonyModel(
     private val scope: CoroutineScope,
@@ -108,7 +110,7 @@ class CeremonyModel(
     val testRegistry: Boolean,
 ) {
     private val timers = Timers(clock)
-    private val mutable = MutableStateFlow(UiState(Screen.SelfTest))
+    private val mutable = MutableStateFlow(UiState(Screen.FirstLaunch))
 
     /** What the screens draw. */
     val state: StateFlow<UiState> get() = mutable
@@ -119,7 +121,7 @@ class CeremonyModel(
      */
     val dicePick: PadEntry = dicePadEntry()
 
-    /** The start-up self-test has passed. */
+    /** The start-up self-test (First launch's Continue) has passed. */
     private var started = false
 
     /** The app is in the foreground (between its return and its leaving; a picker it opened included). */
@@ -132,7 +134,7 @@ class CeremonyModel(
     private var running: Pending? = null
 
     /** The state the running long call was started from (screen, page, public values); its screen stands in for it. */
-    private var from = UiState(Screen.SelfTest)
+    private var from = UiState(Screen.FirstLaunch)
 
     /** The ceremony's mode: Home's choice (New seed is Mixed), kept by start for its screens. */
     private var mode = Mode.Mixed
@@ -150,7 +152,8 @@ class CeremonyModel(
      * The app's activity started. A configuration change, or a picker the app opened, never left the
      * app. Otherwise the background rule comes first (60 s away wipes before anything shows), then the
      * offline monitor reads the state again (a change it could not report away, with the process
-     * frozen say, wipes here), and the start-up self-test runs if it has not passed.
+     * frozen say, wipes here). It never runs the start-up self-test: First launch's Continue does
+     * (firstLaunchDone).
      */
     fun appReturned() {
         if (stopped()) return
@@ -162,7 +165,6 @@ class CeremonyModel(
         timers.returned()
         foreground = true
         offlineMonitor.start(this::offlineChanged)
-        if (!started && running == null) selfTest()
     }
 
     /**
@@ -270,9 +272,13 @@ class CeremonyModel(
         if (pressOn(screen)) show(previous)
     }
 
-    /** First launch's Continue: Go offline. */
+    /**
+     * First launch's Continue: the start-up self-test behind its own screen, then Go offline (MA:170-172).
+     * Once it has passed (First launch again by Back from Go offline), Go offline at once.
+     */
     fun firstLaunchDone() {
-        if (pressOn(Screen.FirstLaunch)) show(Screen.GoOffline)
+        if (!pressOn(Screen.FirstLaunch)) return
+        if (started) show(Screen.GoOffline) else selfTest()
     }
 
     /** Go offline's Start: Home, only offline (online its button is disabled, and a press does nothing). */
@@ -452,11 +458,14 @@ class CeremonyModel(
         return if (call { Core.discard() } == null) null else Reply.Discarded
     }
 
-    /** The start-up self-test: core's known-answer suite, a long call behind its own screen; any reply but Done halts. */
+    /**
+     * The start-up self-test, from First launch's Continue: core's known-answer suite, a long call behind
+     * its own screen, then Go offline; any reply but Done halts.
+     */
     private fun selfTest() {
         work({ Core.selfTest() }, busy = Screen.SelfTest) {
             started = true
-            show(Screen.FirstLaunch)
+            show(Screen.GoOffline)
         }
     }
 
@@ -481,13 +490,13 @@ class CeremonyModel(
     }
 
     /**
-     * The start screen after a discard: until the start-up self-test has passed, its screen again and,
-     * in the foreground, the self-test again; then Go offline, saying why the session went.
+     * The start screen after a discard: until the start-up self-test has passed (a discard that hit it),
+     * First launch, whose Continue runs it again, with nothing to say (no session was held); then Go
+     * offline, saying why the session went.
      */
     private fun toStart(notice: Notice?) {
         if (!started) {
-            show(Screen.SelfTest)
-            if (foreground) selfTest()
+            show(Screen.FirstLaunch)
             return
         }
         show(Screen.GoOffline, notice = notice)

@@ -7,6 +7,7 @@ import com.keepcrypt.entropy.Capture.launch
 import com.keepcrypt.entropy.Capture.onMain
 import com.keepcrypt.entropy.Capture.pass
 import com.keepcrypt.entropy.Capture.probe
+import com.keepcrypt.entropy.Capture.waitUntil
 import com.keepcrypt.entropy.ffi.Core
 import com.keepcrypt.entropy.ffi.Mode
 import com.keepcrypt.entropy.ffi.Reply
@@ -21,12 +22,13 @@ import org.junit.runner.RunWith
 /**
  * The native library in the app's own process (tasks/todo.md, M5 group 6, the ARM and 16 KB leg):
  * scripts/android-emulator.sh runs it on the 16 KB-page image once for x86_64 and once for each ARM
- * ABI the image translates (the APK installed with adb install --abi). The app's own start loads
- * libkeepcrypt.so (System.loadLibrary, JNI_OnLoad) and passes the self-test through the bridge
- * before its first screen shows; then the self-test is called again, and a dice-only ceremony
- * (start, commit, start_dice, dice-50-words12's rolls, finish, as Vectors.kt's sealed runs it) gives
- * its Seal ID through the bridge. The rolls and the Seal ID are vectors/kcr.json's public gate seed
- * (the JVM tests read the same values from that file).
+ * ABI the image translates (the APK installed with adb install --abi). The app's own start shows
+ * First launch with no core call; its Continue, pressed through the model as the button calls it
+ * (lead decision M5-50), loads libkeepcrypt.so (System.loadLibrary, JNI_OnLoad) and passes the
+ * self-test through the bridge, and Go offline shows; then the self-test is called again, and a
+ * dice-only ceremony (start, commit, start_dice, dice-50-words12's rolls, finish, as Vectors.kt's
+ * sealed runs it) gives its Seal ID through the bridge. The rolls and the Seal ID are
+ * vectors/kcr.json's public gate seed (the JVM tests read the same values from that file).
  */
 @RunWith(AndroidJUnit4::class)
 class NativeTest {
@@ -34,9 +36,12 @@ class NativeTest {
     fun theLibraryLoadsPassesTheSelfTestAndGivesTheDice50Vector() {
         probe("native library directory: " + Capture.instrumentation.targetContext.applicationInfo.nativeLibraryDir)
         val activity = launch()
+        waitUntil("the first screen, First launch") { onMain { activity.shownScreen } == Screen.FirstLaunch }
+        onMain { activity.model.firstLaunchDone() }
         val end = SystemClock.elapsedRealtime() + START_MS
-        while (onMain { activity.shownScreen } != Screen.FirstLaunch) {
-            if (SystemClock.elapsedRealtime() > end) fail("no first screen within 120 s: the start-up self-test did not pass")
+        while (onMain { activity.shownScreen } != Screen.GoOffline) {
+            if (onMain { activity.shownScreen } == Screen.Stop) fail("the start-up self-test halted: the stop screen")
+            if (SystemClock.elapsedRealtime() > end) fail("no Go offline within 120 s of Continue: the start-up self-test did not pass")
             SystemClock.sleep(100)
         }
         finish(activity)

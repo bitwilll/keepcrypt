@@ -396,8 +396,9 @@ internal object Capture {
         return result as T
     }
 
-    fun waitUntil(what: String, condition: () -> Boolean) {
-        val end = SystemClock.elapsedRealtime() + 10_000
+    /** Waits up to seconds (10 unless given) for condition, checked every 100 ms. */
+    fun waitUntil(what: String, seconds: Int = 10, condition: () -> Boolean) {
+        val end = SystemClock.elapsedRealtime() + seconds * 1_000L
         while (!condition()) {
             if (SystemClock.elapsedRealtime() > end) fail("timed out: " + what)
             SystemClock.sleep(100)

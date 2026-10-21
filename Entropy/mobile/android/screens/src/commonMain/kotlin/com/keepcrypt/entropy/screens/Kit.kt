@@ -156,7 +156,7 @@ fun NoticeBar(text: String) {
     )
 }
 
-/** The strip on every screen of the test-registry APK (Q60): never a real ceremony. */
+/** The strip on every screen and overlay of the test-registry APK (Q60, lead decision M5-51): never a real ceremony. */
 @Composable
 fun TestRegistryStrip() {
     BasicText(
