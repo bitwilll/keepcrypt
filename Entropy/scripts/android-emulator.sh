@@ -75,7 +75,7 @@
 # on stand-ins written to a temporary directory: an adb, an emulator, a screenrecord that writes a raw
 # frame of the screen at its start and on each change of it until SIGINT, and an instrument runner. A
 # leg where everything passes exits 0, having run LifecycleTest and then the killed CrashTest on the
-# shipping app; a failing ControlTest, CaptureTest, LifecycleTest and CrashTest each exit 1 at the
+# shipping app as its last two instrumented runs (a case of its own); a failing ControlTest, CaptureTest, LifecycleTest and CrashTest each exit 1 at the
 # leg's end, after the later checks ran; capture-control still in recents after pm clear, a
 # recording that ends before it is stopped, the app's window lit in the first-frame stream, and the
 # same with that stream carrying no frame after the curtain (only the second stream sees it) each
@@ -264,6 +264,16 @@ EOF
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest" \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
     "emulator: api=31: every check passed"
+  # Steps 4b and 4c: the pass leg's last two instrumented runs are LifecycleTest and then the killed
+  # CrashTest, so no run comes after the crash test.
+  order=$(sed -n 's/^instrument stub: \([^ ]*\) \([^ ]*\) .*/\1 \2/p' "$st/pass/out" | tail -n 2 | tr '\n' ' ')
+  if [ "$order" = "com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest " ]; then
+    passed=$((passed + 1))
+    echo "PASS pass: LifecycleTest, then the killed CrashTest, last"
+  else
+    failed=$((failed + 1))
+    echo "FAIL pass: the leg's last two instrumented runs are $order"
+  fi
   expect lifecycle-test-fails 1 \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
     "pass: api=31 first frame (registry, its first screen up)" \

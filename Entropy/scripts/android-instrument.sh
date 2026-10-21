@@ -34,9 +34,10 @@
 # running after 20 s, a crash and a not-responding window, a crash-buffer line naming one of our
 # packages and a new data_app_crash entry each fail (exit 1); an unreadable dropbox and too few
 # arguments exit 2. For a killed: test: a run whose process ends during its one test (shortMsg) passes,
-# and so does one where the runner also reports that test failed; a run that passes, one with no test
-# started and one that ends without a shortMsg fail, and so do a crash window, a crash-buffer line
-# naming one of our packages and a new data_app_crash entry after it.
+# and so does one where the runner also reports that test failed; a run that passes, one whose test
+# passes before the shortMsg, one with no test started and one that ends without a shortMsg fail, and
+# so do a crash window, a crash-buffer line naming one of our packages and a new data_app_crash entry
+# after it.
 # Exit 0 when every case behaves, 1 otherwise. It takes about 25 s (the 20 s wait).
 set -u
 unset CDPATH
@@ -84,8 +85,9 @@ raw() {
 
 # killed_raw TAIL: am instrument -r output for a run of CrashTest whose process ends during its one
 # test: crashed (its start, then the activity manager's shortMsg), reported (the same with the runner's
-# failure report of the test before it), passed (the test passes and the run ends as usual), nostart
-# (the shortMsg alone) or noshort (the start, then INSTRUMENTATION_CODE: 0 and no shortMsg).
+# failure report of the test before it), passed (the test passes and the run ends as usual),
+# passedshort (the test passes, then the shortMsg), nostart (the shortMsg alone) or noshort (the
+# start, then INSTRUMENTATION_CODE: 0 and no shortMsg).
 killed_raw() {
   c=com.keepcrypt.entropy.CrashTest
   if [ "$1" != nostart ]; then
@@ -101,11 +103,13 @@ killed_raw() {
       printf 'INSTRUMENTATION_STATUS: stack=java.lang.IllegalStateException: KeepCrypt crash test\n'
       printf 'INSTRUMENTATION_STATUS: test=anUncaughtException\nINSTRUMENTATION_STATUS_CODE: -2\n'
       ;;
-    passed)
+    passed | passedshort)
       printf 'INSTRUMENTATION_STATUS: class=%s\nINSTRUMENTATION_STATUS: current=1\n' "$c"
       printf 'INSTRUMENTATION_STATUS: test=anUncaughtException\nINSTRUMENTATION_STATUS_CODE: 0\n'
-      printf 'INSTRUMENTATION_RESULT: stream=\n\nOK (1 test)\n\n\nINSTRUMENTATION_CODE: -1\n'
-      return
+      if [ "$1" = passed ]; then
+        printf 'INSTRUMENTATION_RESULT: stream=\n\nOK (1 test)\n\n\nINSTRUMENTATION_CODE: -1\n'
+        return
+      fi
       ;;
     noshort)
       printf 'INSTRUMENTATION_CODE: 0\n'
@@ -252,6 +256,9 @@ EOF
   fresh
   killed_raw passed > "$st/c/raw"
   expect "a killed test that passes" 1 "1 started, 1 passed: $killed"
+  fresh
+  killed_raw passedshort > "$st/c/raw"
+  expect "a killed test that passes before its process ends" 1 "1 started, 1 passed: $killed"
   fresh
   killed_raw nostart > "$st/c/raw"
   expect "a killed test that never starts" 1 "0 started, 0 passed: $killed"
