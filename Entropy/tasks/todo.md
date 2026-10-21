@@ -12235,10 +12235,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   your checker showed"; a loaded snapshot's number, date, count and its Stale or Future warning on both), and the
   collision-report QR, the first Protected screen (isProtected; the privacy gate, its button "I'm alone, show the
   report"; leaving the app on it discards, Q57 (b)). The result before the words has no action until commit 19 brings
-  them. Pads.kt's keys now share their row's width (at most 40 dp), since a row of eight is 368 dp, wider than a
-  360 dp phone, which hid the go-ahead pad's last column. CeremonyModel: the dice's Done (M5-48); Check now starts the
-  check and, with a loaded snapshot, runs core's check against it on the worker behind "Working..." on the new UtcDate
-  seam's date (:app's UtcToday, java.time's date in UTC), else shows the seal card; a refused typed code returns to the
+  them. Pads.kt's keys now share their row's width (at most 40 dp), since a row of eight is 368 dp, wider than the
+  312 dp a 360 dp phone leaves inside the kit's margins (17d), which hid the go-ahead pad's last column.
+  CeremonyModel: the dice's Done (M5-48); Check now starts the check and, with a loaded snapshot, runs core's check
+  against it on the worker behind "Working..." on the new UtcDate seam's date (:app's UtcToday, java.time's date in
+  UTC), else shows the seal card; a refused typed code returns to the
   code entry with the check, its nonce and (by Back) the actions kept, the code wiped; Match found to the collision
   result, its report and "Add fresh entropy", Cannot check to "Start again", each core's start from the kept Wiped with
   the session's length and mode; Back on each confirm screen and the code entry (the confirm's button and the system
@@ -12257,10 +12258,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   current-day-30, stale-day-31 and future-day-1 give Current, Stale and Future and their warnings on kcr.json's date;
   the result texts and the code as
   shown. Emulator (scripts/android-emulator.sh step 4a, after FlowTest, API 31 and 36): CheckTest (shipping APK: Done
-  at 50, Skip, Match found and Cannot check confirmed and Back there, the drawn check QR read in-process with ZXing, a
-  wrong code typed on the pad refused with the same check QR and actions, then the code computed from that QR's T and
-  nonce, SHA-256 over "KCE/v1/go" || T || n, first 40 bits in Crockford base32, typed on the pad: "No collision for
-  seal YVM9CPP3, as of the date your checker showed.") and SnapshotDrillTest (test-registry APK: with-dice-50 loaded
+  at 50, Skip, Match found and Cannot check confirmed and Back there, the drawn check QR read in-process with ZXing,
+  every key of the pad whole on screen and Delete taking a typed symbol back (17d), a wrong code typed on the pad
+  refused with the same check QR and actions, then the code computed from that QR's T and nonce, SHA-256 over
+  "KCE/v1/go" || T || n, first 40 bits in Crockford base32, typed on the pad: "No collision for seal YVM9CPP3, as of
+  the date your checker showed.") and SnapshotDrillTest (test-registry APK: with-dice-50 loaded
   through Core and handed to the model; Check now runs on its own: the collision, its snapshot line and Stale warning,
   before any words; the privacy gate, the report QR read back as dice-50-words12's registration text, Add fresh
   entropy: "0 / 99 rolls, 0.0 bits"). CaptureTest's every-screen pass walks the nine new screens in both APKs (the

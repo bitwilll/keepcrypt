@@ -170,9 +170,10 @@ fun AsciiPad(entry: PadEntry, page: Int, changed: () -> Unit) {
 
 /**
  * keys in rows of columns, in their order. Each row is the width it is given and each key a square of
- * at most KEY_DP: a row of eight (the go-ahead code's) is 368 dp at full size, wider than a 360 dp
- * phone, so every column takes an equal share of the row and a key shrinks to its share where that is
- * smaller; a short last row keeps the columns of the rows above it.
+ * at most KEY_DP: at full size a row of eight (the go-ahead code's) is 368 dp and a row of seven (the
+ * letter pad's) 322 dp, wider than the 312 dp a 360 dp phone leaves inside the kit's 24 dp margins, so
+ * every column takes an equal share of the row and a key shrinks to its share where that is smaller; a
+ * short last row keeps the columns of the rows above it.
  */
 @Composable
 private fun KeyGrid(keys: String, columns: Int, enabled: Boolean, sensitive: Boolean, press: (Char) -> Unit) {

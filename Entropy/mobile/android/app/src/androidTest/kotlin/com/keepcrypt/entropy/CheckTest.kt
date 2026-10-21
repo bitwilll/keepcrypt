@@ -17,7 +17,9 @@ import com.keepcrypt.entropy.Ui.tap
 import com.keepcrypt.entropy.Ui.text
 import com.keepcrypt.entropy.Ui.toHome
 import com.keepcrypt.entropy.screens.CODE_REFUSED
+import com.keepcrypt.entropy.screens.CROCKFORD_KEYS
 import com.keepcrypt.entropy.screens.Screen
+import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -27,12 +29,13 @@ import org.junit.runner.RunWith
 /**
  * The collision check without a snapshot on the phone (tasks/todo.md, M5 group 16), run by
  * scripts/android-instrument.sh on the shipping app in the API 31 and 36 legs, through UI Automator as
- * FlowTest is (Ui): a dice-only seed of vectors/kcr.json's public gate seed dice-50-words12, the dice's
- * Done at the minimum, the check prompt with its Seal ID, Skip confirmed on its own screen and Back
- * there, Check now's seal card, Match found's and Cannot check's confirms and Back, then the go-ahead
- * code: the check QR the screen drew is read in-process (Checker; captures of the app are black), a
- * wrong code typed on the Crockford pad is refused and the check, its nonce and the actions stay, and
- * the code a checker builds from that QR's T and nonce, typed on the pad, passes the check.
+ * FlowTest is (Ui): a dice-only seed of vectors/kcr.json's public gate seed dice-50-words12, the
+ * dice's Done at the minimum, the check prompt with its Seal ID, Skip confirmed on its own screen and
+ * Back there, Check now's seal card, Match found's and Cannot check's confirms and Back, then the
+ * go-ahead code: the check QR the screen drew is read in-process (Checker; captures of the app are
+ * black), every key of the Crockford pad is whole on screen and Delete takes a typed symbol back, a
+ * wrong code typed on the pad is refused and the check, its nonce and the actions stay, and the code a
+ * checker builds from that QR's T and nonce, typed on the pad, passes the check.
  */
 @RunWith(AndroidJUnit4::class)
 class CheckTest {
@@ -102,6 +105,24 @@ class CheckTest {
             tap("type_code")
             on(activity, Screen.CodeEntry)
             assertFalse("Done with no symbol", enabled("code_done"))
+            assertFalse("Delete with no symbol", enabled("code_delete"))
+            // Every key of the pad is whole on screen: a square inside the display. Before commit 17 a row of
+            // eight 46 dp keys was wider than the 312 dp the screen's margins leave, which hid the last column
+            // (7, F, Q and Z).
+            for (symbol in CROCKFORD_KEYS) {
+                val bounds = find("key_$symbol").visibleBounds
+                assertTrue(
+                    "key $symbol is not whole on screen: $bounds, the display ${device.displayWidth} px wide",
+                    bounds.left >= 0 && bounds.right <= device.displayWidth && bounds.width() > 0 &&
+                        abs(bounds.width() - bounds.height()) <= 1,
+                )
+            }
+            // A key of that column types, and Delete takes it back.
+            tap("key_Z")
+            awaitText("code", "Z___-____")
+            tap("code_delete")
+            awaitText("code", "____-____")
+            assertFalse("Delete with no symbol left", enabled("code_delete"))
             type(wrong)
             tap("code_done")
             awaitText("code_refused", CODE_REFUSED)
