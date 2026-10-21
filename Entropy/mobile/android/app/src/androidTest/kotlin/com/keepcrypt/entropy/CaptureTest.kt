@@ -31,6 +31,8 @@ import com.keepcrypt.entropy.Capture.shell
 import com.keepcrypt.entropy.Capture.shellText
 import com.keepcrypt.entropy.Capture.waitUntil
 import com.keepcrypt.entropy.Capture.windows
+import com.keepcrypt.entropy.ffi.KcHalt
+import com.keepcrypt.entropy.ffi.Reply
 import com.keepcrypt.entropy.screens.Screen
 import com.keepcrypt.entropy.screens.screenId
 import java.util.concurrent.CountDownLatch
@@ -52,16 +54,38 @@ import org.junit.runner.RunWith
 class CaptureTest {
     private val pkg get() = Capture.instrumentation.targetContext.packageName
 
-    /** Brings screen up. The when is exhaustive: a new screen without a way here fails to compile. */
+    /** Holds the long call that keeps "Working..." up for its captures; released after them. */
+    private val working = CountDownLatch(1)
+
+    /**
+     * Brings screen up. The when is exhaustive: a new screen without a way here fails to compile.
+     * "Working..." is a long call held on the worker, as the model makes every long call; the stop
+     * screen is the halt status as Core throws it, so this process's slot stays live for the tests
+     * after it (the model's own tests halt a real one).
+     */
     private fun show(screen: Screen): MainActivity = when (screen) {
         Screen.FirstLaunch -> launch()
+        Screen.Working -> started().also { activity ->
+            onMain { activity.model.work({ working.await(); Reply.Done(Unit) }) {} }
+        }
+        Screen.Stop -> started().also { activity ->
+            onMain { activity.model.work<Unit>({ throw KcHalt() }) {} }
+        }
+    }
+
+    /** A new MainActivity past its start-up self-test, on its first screen. */
+    private fun started(): MainActivity {
+        val activity = launch()
+        waitUntil("the start-up self-test passed") { onMain { activity.shownScreen } == Screen.FirstLaunch }
+        return activity
     }
 
     /**
      * For every screen id: drawn, then black over the app's window in the shell's screencap and in
-     * UiAutomation.takeScreenshot(), FLAG_SECURE in the window's own flags, and SECURE on every window
-     * of the package in dumpsys window windows, found by its owner line too (the owner line is shown
-     * to be read on this image: some window is found by it).
+     * UiAutomation.takeScreenshot(), FLAG_SECURE in the window's own flags, the root view opted out of
+     * content capture (read back in-process, group 14), and SECURE on every window of the package in
+     * dumpsys window windows, found by its owner line too (the owner line is shown to be read on this
+     * image: some window is found by it).
      */
     @Test
     fun everyScreenIsDrawnAndThenBlackInEveryCapture() {
@@ -79,20 +103,26 @@ class CaptureTest {
             val capLit = Capture.litOrRefused(cap, region)
             val shotLit = Capture.litOrRefused(shot, region)
             val flagged = onMain { activity.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0 }
+            val contentCapture = onMain { activity.window.decorView.importantForContentCapture }
             val found = windows(pkg)
             probe("screencap -p: ${Capture.described(cap)}; takeScreenshot(): ${Capture.described(shot)}")
             probe("${screenId(screen)}: $capLit lit pixels in screencap, $shotLit in takeScreenshot over the app's window $region")
             assertEquals("lit pixels in screencap over the app's window", 0, capLit)
             assertEquals("lit pixels in takeScreenshot over the app's window", 0, shotLit)
             assertTrue("the window's flags lack FLAG_SECURE", flagged)
+            assertEquals(
+                "the root view does not opt out of content capture",
+                View.IMPORTANT_FOR_CONTENT_CAPTURE_NO_EXCLUDE_DESCENDANTS, contentCapture,
+            )
             assertTrue("dumpsys window windows lists no window of the app", found.isNotEmpty())
             assertTrue("no window's owner line names the app: windows are found by title alone", found.any { it.byOwner })
             probe("windows of the app: " + found.joinToString("; ") { "${it.title} (by owner ${it.byOwner}, SECURE ${it.secure})" })
             for (w in found) assertTrue("a window without SECURE: " + w.title, w.secure)
             pass(
                 "${screenId(screen)}: drawn, then screencap and takeScreenshot black over the app's window; " +
-                    "SECURE on all ${found.size} of its windows",
+                    "SECURE on all ${found.size} of its windows; no content capture",
             )
+            if (screen == Screen.Working) working.countDown()
             finish(activity)
         }
     }
@@ -209,6 +239,24 @@ class CaptureTest {
         probe("empty saved-state Bundle: the activity was recreated from it and drew its first screen again, secure; nothing crashed")
         pass("the empty saved-state Bundle: recreated, drawn, black")
         finish(again)
+    }
+
+    /**
+     * No content capture of the app (group 14, SecureActivity): with its first screen drawn, `dumpsys
+     * content_capture` names the package on no line (where the image runs no capture service, as the
+     * probe found on API 31, the dump has nothing to name it in). The root's own flag is read back in
+     * everyScreenIsDrawnAndThenBlackInEveryCapture.
+     */
+    @Test
+    fun contentCaptureHasNothingOfTheApp() {
+        val activity = launch()
+        proveDrawn(activity, Screen.FirstLaunch)
+        val dump = shellText("dumpsys content_capture").lines()
+        val naming = dump.filter { it.contains(pkg) }
+        probe("dumpsys content_capture: ${dump.size} lines, ${naming.size} naming the app: " + naming.joinToString(" | ") { it.trim() })
+        assertTrue("dumpsys content_capture names the app", naming.isEmpty())
+        pass("content capture: no line of dumpsys content_capture names the app")
+        finish(activity)
     }
 
     /**

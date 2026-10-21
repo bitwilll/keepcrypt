@@ -3,9 +3,8 @@
 // Multiplatform's runtime, foundation and ui (by coordinates, no Material, no navigation, lead
 // decision M5-22). :app and :capture-control draw them. M5 declares the Android target only (lead
 // decision M5-31); the screens and the platform seams stay in the common code, so M6 can reuse them
-// for iPhone or not. The screen ids, the ceremony model, the timers, pads and drawings and the
-// platform seams (lead decision M5-20) follow with the commits that need them; FirstLaunch and
-// Screen are here from commit 8q.
+// for iPhone or not. FirstLaunch and Screen are here from commit 8q; the ceremony model, the timers,
+// the pads, the drawing helpers and the clock and offline seams (lead decision M5-20) from commit 15.
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -31,4 +30,14 @@ kotlin {
             implementation(libs.kotlin.test)
         }
     }
+}
+
+// The JVM tests (group 14): the common tests, run as the Android target's host tests, one test class
+// per JVM, since CeremonyModelTest and CeremonyModelHaltTest drive the process's one slot through
+// Core over the host library that scripts/android-rust.sh withTestRegistry builds (it never ships),
+// and a halt latches that slot for good.
+val entropy = rootDir.resolve("../..").canonicalPath
+tasks.withType<Test>().configureEach {
+    forkEvery = 1
+    systemProperty("java.library.path", "$entropy/target/ffi-test-registry/x86_64-unknown-linux-gnu/release")
 }

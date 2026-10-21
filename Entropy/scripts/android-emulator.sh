@@ -37,6 +37,13 @@
 #      nodes). Its report gives the app window's region, which the frame checker reads.
 #      A test class that fails is reported at once and fails the leg at its end: every class runs,
 #      so one run gives both the control's result and the app's.
+#   4b. LifecycleTest on the shipping app (M5 group 14): the app left during a backup's scrypt and
+#      during its start-up self-test, and Wi-Fi turned on during a start, each discarding the session
+#      with no ANR.
+#   4c. CrashTest on the shipping app (group 14), as killed:com.keepcrypt.entropy.CrashTest: an
+#      exception thrown on the main thread must end the process through the app's own handler, judged
+#      from the shell. It is the last instrumented run of the leg, since the crash buffer and DropBox
+#      it is judged on are the device's, read whole by every later judge.
 #   5. Control (a) in raw frames: capture-control's black curtain, a recording, the control's first
 #      screen: some frame must show its known pixels (android-frames.py --expect visible).
 #   6. The first frame, for each app APK: the curtain, the app force-stopped, a recording from under
@@ -67,8 +74,9 @@
 # scripts/android-emulator.sh --selftest runs whole legs of this script, with the real frame checker,
 # on stand-ins written to a temporary directory: an adb, an emulator, a screenrecord that writes a raw
 # frame of the screen at its start and on each change of it until SIGINT, and an instrument runner. A
-# leg where everything passes exits 0; a failing ControlTest and a failing CaptureTest each exit 1 at
-# the leg's end, after the later checks ran; capture-control still in recents after pm clear, a
+# leg where everything passes exits 0, having run LifecycleTest and then the killed CrashTest on the
+# shipping app; a failing ControlTest, CaptureTest, LifecycleTest and CrashTest each exit 1 at the
+# leg's end, after the later checks ran; capture-control still in recents after pm clear, a
 # recording that ends before it is stopped, the app's window lit in the first-frame stream, and the
 # same with that stream carrying no frame after the curtain (only the second stream sees it) each
 # exit 1. On the 16 KB-page image: a leg with arm64-v8a listed passes, running NativeTest with the app
@@ -240,6 +248,8 @@ EOF
   leg pass
   leg control-test-fails KC_FAILCLASS=ControlTest
   leg capture-test-fails KC_FAILCLASS=CaptureTest
+  leg lifecycle-test-fails KC_FAILCLASS=LifecycleTest
+  leg crash-test-fails KC_FAILCLASS=CrashTest
   leg control-in-recents KC_RECENTS=1
   leg recording-ends-early KC_REC_END=1
   leg app-window-lit KC_APP_SCREEN=lit
@@ -251,7 +261,16 @@ EOF
   wait
   expect pass 0 "pass: api=31 control (a) raw frames" "pass: api=31 first frame (shipping): every frame black" \
     "pass: api=31 first frame (shipping, its first screen up)" "pass: api=31 first frame (registry, its first screen up)" \
+    "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest" \
+    "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
     "emulator: api=31: every check passed"
+  expect lifecycle-test-fails 1 \
+    "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
+    "pass: api=31 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.LifecycleTest) (each reported above)"
+  expect crash-test-fails 1 \
+    "pass: api=31 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (killed:com.keepcrypt.entropy.CrashTest) (each reported above)"
   expect control-test-fails 1 \
     "instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.ControlTest) (the leg goes on" \
     "instrument stub: com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.CaptureTest" \
@@ -590,6 +609,13 @@ region_registry=$(sed -n 's/^kc: region=//p' "$work/instrument.log" | tail -n 1)
 display_registry=$(sed -n 's/^kc: display=//p' "$work/instrument.log" | tail -n 1)
 [ -n "$region_shipping" ] && [ -n "$display_shipping" ] && [ -n "$region_registry" ] && [ -n "$display_registry" ] ||
   fail "CaptureTest reported no window region"
+
+# 4b. Discards during "Working...": the app left during a backup's scrypt and its start-up self-test,
+# Wi-Fi turned on during a start.
+instrument com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest
+# 4c. The crash path, the last instrumented run: the crash test's process ends during the test, by
+# the app's own handler, and the judge reads the device's whole crash buffer and DropBox.
+instrument com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest
 
 # wait_for FILE TEXT SECONDS PID: until FILE holds TEXT; 1 when PID exits first or time runs out.
 wait_for() {

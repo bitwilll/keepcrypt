@@ -13,6 +13,7 @@ application debuggable=false
 application extractNativeLibs=false
 application fullBackupContent=false
 application label=set
+application name=com.keepcrypt.entropy.KeepCryptApp
 application theme=set
 application usesCleartextTraffic=false
 activity com.keepcrypt.entropy.MainActivity exported=true

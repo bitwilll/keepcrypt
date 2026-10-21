@@ -22,6 +22,7 @@ N: android=http://schemas.android.com/apk/res/android (line=12)
       E: application (line=30)
         A: http://schemas.android.com/apk/res/android:theme(0x01010000)=@0x7f090007
         A: http://schemas.android.com/apk/res/android:label(0x01010001)=@0x7f080003
+        A: http://schemas.android.com/apk/res/android:name(0x01010003)="com.keepcrypt.entropy.KeepCryptApp" (Raw: "com.keepcrypt.entropy.KeepCryptApp")
         A: http://schemas.android.com/apk/res/android:allowBackup(0x01010280)=false
         A: http://schemas.android.com/apk/res/android:extractNativeLibs(0x010104ea)=false
         A: http://schemas.android.com/apk/res/android:fullBackupContent(0x010104eb)=false

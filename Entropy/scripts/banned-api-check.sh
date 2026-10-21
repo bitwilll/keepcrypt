@@ -347,14 +347,15 @@
 # DEF:<name> (defined) and NEEDED:<library> words the stub llvm-nm and llvm-readobj list, and
 # NOSYMTAB when it has no .symtab). The base
 # case is aapt2's three dumps of the shipping APK (scripts/testdata/apk/, from the Android run
-# 39062895784), a stand-in merger report that removes the androidx.startup provider, the run's
+# 39062895784; the xmltree dump has since gained the application's class, KeepCryptApp, M5 commit
+# 15), a stand-in merger report that removes the androidx.startup provider, the run's
 # signer and a stub APK laid out as the real one; it must pass against the committed
 # mobile/android/expected/manifest-shipping.txt (the control). Each case changes one thing and must
 # give exactly that one hit: INTERNET, ACCESS_NETWORK_STATE, ACCESS_WIFI_STATE, a provider, a
 # receiver, a service, allowBackup true, debuggable, fullBackupContent true, usesCleartextTraffic
 # true, dataExtractionRules unset, an extra exported activity, an exported activity-alias and a
 # <queries> element (each against its own summary, so that only the hard rule can fail it), a
-# summary that differs from the expected one, a changed appComponentFactory, an added Application
+# summary that differs from the expected one, a changed appComponentFactory, another Application
 # class and an added activity attribute (each against the committed summary), INTERNET in the
 # merger report; an unlisted .so, a 4 KB-aligned and a 0x6000-aligned 64-bit .so, a 64-bit .so with
 # no LOAD segment, another SHA-256, a listed .so missing, an x86 .so, a .so for another machine, a
@@ -7097,7 +7098,8 @@ STUB
   sed 's/^targetSdk 36$/targetSdk 35/' "$committed" >"$c/expected/manifest-shipping.txt" || exit 2
   acase apk-manifest-summary-differs "Manifest: $c/expected/manifest-shipping.txt: differs from the APK's manifest summary"
   # Every attribute of the application and of each component is in the summary: a library that
-  # swaps the class instantiating every component, adds an Application class or moves the
+  # swaps the class instantiating every component, puts its own Application class in place of
+  # KeepCryptApp (a second name attribute, which the dump's reader takes last) or moves the
   # activity to another process changes it, against the committed expected one.
   anew app-component-factory
   sed 's/"androidx[.]core[.]app[.]CoreComponentFactory"/"com.example.Factory"/' "$b/xmltree.txt" >"$c/xmltree.txt" || exit 2

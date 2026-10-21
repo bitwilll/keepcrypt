@@ -8,19 +8,23 @@
 # Usage: scripts/android-instrument.sh ADB SERIAL API TEST_PACKAGE TARGET_PACKAGE TEST...
 #   ADB the job's own adb; SERIAL the emulator (emulator-5554); API its API level, for the printed
 #   lines; TEST_PACKAGE the instrumented-test APK's package (TARGET_PACKAGE.test); TARGET_PACKAGE the
-#   app it instruments; each TEST a class, or CLASS#METHOD.
+#   app it instruments; each TEST a class, or CLASS#METHOD, or either with the prefix killed: for a
+#   test that ends its own process (the crash test, M5 group 14).
 #
 # Each run is `am instrument -w -r -e class TEST TEST_PACKAGE/androidx.test.runner.AndroidJUnitRunner`.
 # It passes only when its raw output holds a test start for every test and as many passes, no
 # failure, error, ignored test or assumption failure, the runner's final INSTRUMENTATION_CODE: -1 and
-# no INSTRUMENTATION_FAILED, INSTRUMENTATION_ABORTED or shortMsg (a crashed process). Then it is judged
-# from the shell, as the crash test is: TARGET_PACKAGE's process is gone, no crash or not-responding
-# window exists, `logcat -b crash` holds no line naming com.keepcrypt.entropy (any of our packages:
-# only the count is printed, never the lines) and `dumpsys dropbox` shows no new data_app_crash entry.
+# no INSTRUMENTATION_FAILED, INSTRUMENTATION_ABORTED or shortMsg (a crashed process). A killed: run
+# passes only when the process ended during it instead: a test started, none passed, and the activity
+# manager's shortMsg says the process went. Then every run is judged from the shell, the crash test's
+# too: TARGET_PACKAGE's process is gone, no crash or not-responding window exists, `logcat -b crash`
+# holds no line naming com.keepcrypt.entropy (any of our packages: only the count is printed, never the
+# lines) and `dumpsys dropbox` shows no new data_app_crash entry.
 # The tests' own status values (status code 2) are printed as they come: kc_probe as "probe: api=API
 # VALUE" (the platform probe's facts), kc_pass as "pass: api=API VALUE" and every other kc_ key as
 # "kc: KEY=VALUE" (the window region the frame checker needs). The whole raw output is printed when a
-# run fails (the tests use gate seeds only). Prints "instrument: api=API PASS TEST (N tests)" per run.
+# run fails (the tests use gate seeds only). Prints "instrument: api=API PASS TEST (N tests)" per run
+# ("PASS TEST (killed during the test ...)" for a killed: one).
 # Exit: 0 every run passed; 1 a run failed; 2 bad usage or an adb that cannot reach the emulator.
 #
 # scripts/android-instrument.sh --selftest runs this script on a stand-in adb (written to a temporary
@@ -29,7 +33,11 @@
 # INSTRUMENTATION_FAILED and _ABORTED, no final INSTRUMENTATION_CODE: -1, no test, a process still
 # running after 20 s, a crash and a not-responding window, a crash-buffer line naming one of our
 # packages and a new data_app_crash entry each fail (exit 1); an unreadable dropbox and too few
-# arguments exit 2. Exit 0 when every case behaves, 1 otherwise. It takes about 25 s (the 20 s wait).
+# arguments exit 2. For a killed: test: a run whose process ends during its one test (shortMsg) passes,
+# and so does one where the runner also reports that test failed; a run that passes, one with no test
+# started and one that ends without a shortMsg fail, and so do a crash window, a crash-buffer line
+# naming one of our packages and a new data_app_crash entry after it.
+# Exit 0 when every case behaves, 1 otherwise. It takes about 25 s (the 20 s wait).
 set -u
 unset CDPATH
 
@@ -74,6 +82,39 @@ raw() {
   esac
 }
 
+# killed_raw TAIL: am instrument -r output for a run of CrashTest whose process ends during its one
+# test: crashed (its start, then the activity manager's shortMsg), reported (the same with the runner's
+# failure report of the test before it), passed (the test passes and the run ends as usual), nostart
+# (the shortMsg alone) or noshort (the start, then INSTRUMENTATION_CODE: 0 and no shortMsg).
+killed_raw() {
+  c=com.keepcrypt.entropy.CrashTest
+  if [ "$1" != nostart ]; then
+    printf 'INSTRUMENTATION_STATUS: class=%s\nINSTRUMENTATION_STATUS: current=1\n' "$c"
+    printf 'INSTRUMENTATION_STATUS: id=AndroidJUnitRunner\nINSTRUMENTATION_STATUS: numtests=1\n'
+    printf 'INSTRUMENTATION_STATUS: stream=\nINSTRUMENTATION_STATUS: test=anUncaughtException\n'
+    printf 'INSTRUMENTATION_STATUS_CODE: 1\n'
+    printf 'INSTRUMENTATION_STATUS: kc_probe=crash test: a session started\nINSTRUMENTATION_STATUS_CODE: 2\n'
+  fi
+  case $1 in
+    reported)
+      printf 'INSTRUMENTATION_STATUS: class=%s\nINSTRUMENTATION_STATUS: current=1\n' "$c"
+      printf 'INSTRUMENTATION_STATUS: stack=java.lang.IllegalStateException: KeepCrypt crash test\n'
+      printf 'INSTRUMENTATION_STATUS: test=anUncaughtException\nINSTRUMENTATION_STATUS_CODE: -2\n'
+      ;;
+    passed)
+      printf 'INSTRUMENTATION_STATUS: class=%s\nINSTRUMENTATION_STATUS: current=1\n' "$c"
+      printf 'INSTRUMENTATION_STATUS: test=anUncaughtException\nINSTRUMENTATION_STATUS_CODE: 0\n'
+      printf 'INSTRUMENTATION_RESULT: stream=\n\nOK (1 test)\n\n\nINSTRUMENTATION_CODE: -1\n'
+      return
+      ;;
+    noshort)
+      printf 'INSTRUMENTATION_CODE: 0\n'
+      return
+      ;;
+  esac
+  printf 'INSTRUMENTATION_RESULT: shortMsg=Process crashed.\nINSTRUMENTATION_CODE: 0\n'
+}
+
 # selftest: the cases listed in the header, each on a fresh case directory the stand-in adb reads.
 selftest() {
   self=$(cd "$(dirname "$0")" && pwd)/$(basename "$0") || exit 2
@@ -94,7 +135,8 @@ case "$*" in
       cat "$KC_STUB/dropbox"
     fi
     ;;
-  'am instrument -w -r -e class com.keepcrypt.entropy.CaptureTest com.keepcrypt.entropy.test/androidx.test.runner.AndroidJUnitRunner')
+  'am instrument -w -r -e class com.keepcrypt.entropy.CaptureTest com.keepcrypt.entropy.test/androidx.test.runner.AndroidJUnitRunner' | \
+    'am instrument -w -r -e class com.keepcrypt.entropy.CrashTest com.keepcrypt.entropy.test/androidx.test.runner.AndroidJUnitRunner')
     cat "$KC_STUB/raw" ;;
   'pidof com.keepcrypt.entropy')
     # alive holds how many more times the process is still running, or "always".
@@ -121,13 +163,15 @@ EOF
     printf 'WINDOW MANAGER WINDOWS (dumpsys window windows)\n  Window #0 Window{a1 u0 com.android.launcher3/com.android.launcher3.uioverlay.QuickstepLauncher}:\n' > "$st/c/windows"
     printf -- '--------- beginning of crash\nE AndroidRuntime: Process: com.example.other, PID: 1001\n' > "$st/c/crash"
   }
-  # expect NAME EXIT TEXT...: the script on the stand-in adb exits EXIT and prints every TEXT.
+  # expect NAME EXIT TEXT...: the script on the stand-in adb, on the test in $test, exits EXIT and
+  # prints every TEXT.
+  test=com.keepcrypt.entropy.CaptureTest
   expect() {
     name=$1
     want=$2
     shift 2
     KC_STUB=$st/c sh "$self" "$st/adb" emulator-5554 31 com.keepcrypt.entropy.test com.keepcrypt.entropy \
-      com.keepcrypt.entropy.CaptureTest > "$st/out" 2>&1
+      "$test" > "$st/out" 2>&1
     got=$?
     ok=yes
     [ "$got" -eq "$want" ] || ok=no
@@ -195,6 +239,38 @@ EOF
   fresh
   : > "$st/c/dropbox-fails"
   expect "an unreadable dropbox" 2 "dumpsys dropbox cannot be read"
+  # A test that ends its own process (killed:).
+  test=killed:com.keepcrypt.entropy.CrashTest
+  killed='the process did not end during the test'
+  fresh
+  killed_raw crashed > "$st/c/raw"
+  expect "a killed test whose process ends during it" 0 "probe: api=31 crash test: a session started" \
+    "instrument: api=31 PASS com.keepcrypt.entropy.CrashTest (killed during the test, as it must be;"
+  fresh
+  killed_raw reported > "$st/c/raw"
+  expect "a killed test the runner reports failed as its process ends" 0 "instrument: api=31 PASS com.keepcrypt.entropy.CrashTest (killed"
+  fresh
+  killed_raw passed > "$st/c/raw"
+  expect "a killed test that passes" 1 "1 started, 1 passed: $killed"
+  fresh
+  killed_raw nostart > "$st/c/raw"
+  expect "a killed test that never starts" 1 "0 started, 0 passed: $killed"
+  fresh
+  killed_raw noshort > "$st/c/raw"
+  expect "a killed test with no shortMsg" 1 "1 started, 0 passed: $killed"
+  fresh
+  killed_raw crashed > "$st/c/raw"
+  echo '  Window #1 Window{b2 u0 Application Error: com.keepcrypt.entropy}:' >> "$st/c/windows"
+  expect "a killed test with a crash window" 1 "a crash or not-responding window is open"
+  fresh
+  killed_raw crashed > "$st/c/raw"
+  printf 'E AndroidRuntime: FATAL EXCEPTION: main\nE AndroidRuntime: Process: com.keepcrypt.entropy, PID: 4242\n' >> "$st/c/crash"
+  expect "a killed test with a crash-buffer line naming our package" 1 "logcat -b crash holds 1 line(s) naming com.keepcrypt.entropy"
+  fresh
+  killed_raw crashed > "$st/c/raw"
+  { cat "$st/c/dropbox"; echo '2026-10-19 10:01:00 data_app_crash (text, 950 bytes)'; } > "$st/c/dropbox-after"
+  expect "a killed test with a new data_app_crash entry" 1 "dumpsys dropbox gained 1 data_app_crash entries"
+  test=com.keepcrypt.entropy.CaptureTest
   sh "$self" "$st/adb" emulator-5554 31 > "$st/out" 2>&1
   if [ "$?" -eq 2 ] && grep -q -e '^usage: ' "$st/out"; then
     passed=$((passed + 1))
@@ -240,6 +316,14 @@ app_crashes() {
 }
 
 for t in "$@"; do
+  # killed:TEST, a test that ends its own process (the crash test).
+  killed=
+  case $t in
+    killed:*)
+      killed=yes
+      t=${t#killed:}
+      ;;
+  esac
   before=$(app_crashes) || { echo "instrument: api=$api: dumpsys dropbox cannot be read" >&2; exit 2; }
   dev shell am instrument -w -r -e class "$t" "$testpkg/androidx.test.runner.AndroidJUnitRunner" > "$tmp/raw" 2>&1
   rc=$?
@@ -264,7 +348,13 @@ for t in "$@"; do
   rest=${rest#* }
   bad=${rest%% *}
   finished=${rest#* }
-  if [ "$started" -lt 1 ] || [ "$passed" -ne "$started" ] || [ "$bad" -ne 0 ] || [ "$finished" -ne 1 ]; then
+  if [ -n "$killed" ]; then
+    # The process went during the test: a start, no pass, and the activity manager's shortMsg.
+    if [ "$started" -lt 1 ] || [ "$passed" -ne 0 ] || ! grep -q -e '^INSTRUMENTATION_RESULT: shortMsg=' "$tmp/out"; then
+      cat "$tmp/out"
+      fail "$t: $started started, $passed passed: the process did not end during the test (adb exit $rc)"
+    fi
+  elif [ "$started" -lt 1 ] || [ "$passed" -ne "$started" ] || [ "$bad" -ne 0 ] || [ "$finished" -ne 1 ]; then
     cat "$tmp/out"
     fail "$t: $started started, $passed passed, $bad failed, errored, ignored or aborted (adb exit $rc)"
   fi
@@ -284,5 +374,9 @@ for t in "$@"; do
   [ "$n" -eq 0 ] || fail "$t: logcat -b crash holds $n line(s) naming com.keepcrypt.entropy"
   after=$(app_crashes) || fail "$t: dumpsys dropbox cannot be read"
   [ "$after" -eq "$before" ] || fail "$t: dumpsys dropbox gained $((after - before)) data_app_crash entries"
-  echo "instrument: api=$api PASS $t ($passed tests; process gone, no crash window, crash buffer and dropbox clean)"
+  if [ -n "$killed" ]; then
+    echo "instrument: api=$api PASS $t (killed during the test, as it must be; process gone, no crash window, crash buffer and dropbox clean)"
+  else
+    echo "instrument: api=$api PASS $t ($passed tests; process gone, no crash window, crash buffer and dropbox clean)"
+  fi
 done

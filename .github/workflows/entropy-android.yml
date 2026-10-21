@@ -270,22 +270,23 @@ jobs:
         run: |
           sh scripts/android-rust.sh shipping
           sh scripts/android-rust.sh withTestRegistry
-      # The strict build (group 4): the APKs and the JVM tests, in one Gradle run (:core-ffi's host
-      # tests named as well, so a test task the lifecycle task left out fails the build instead of
-      # passing it). A configuration whose resolution differs from its lockfile, and a file whose
-      # SHA-256 is not the metadata's, fail it. A Gradle failure fails the step.
+      # The strict build (group 4): the APKs and the JVM tests, in one Gradle run (the host tests of
+      # the two shared modules, :core-ffi and :screens, named as well, so a test task the lifecycle
+      # task left out fails the build instead of passing it). A configuration whose resolution
+      # differs from its lockfile, and a file whose SHA-256 is not the metadata's, fail it. A Gradle
+      # failure fails the step.
       - name: Build (strict locking and dependency verification)
         run: |
           sh scripts/android-gradle.sh --dependency-verification strict \
             :app:assembleShippingRelease :app:assembleWithTestRegistryRelease \
             :app:assembleShippingReleaseAndroidTest :app:assembleWithTestRegistryReleaseAndroidTest \
             :capture-control:assembleRelease \
-            :core-ffi:testAndroidHostTest test
-      # The JVM tests' counts per class (M5 group 13): every test class of :core-ffi's common and host
-      # tests and of :app's unit tests (each file that holds @Test is one class, named as its file)
-      # must have its JUnit report in every one of its module's test result directories, with at
-      # least one test and no failure, error or skipped test; a missing class fails, so no test
-      # passes by not running.
+            :core-ffi:testAndroidHostTest :screens:testAndroidHostTest test
+      # The JVM tests' counts per class (M5 groups 13 and 14): every test class of :core-ffi's and
+      # :screens' common and host tests and of :app's and :secure-ui's unit tests (each file that
+      # holds @Test is one class, named as its file) must have its JUnit report in every one of its
+      # module's test result directories, with at least one test and no failure, error or skipped
+      # test; a missing class fails, so no test passes by not running.
       - name: JVM test results (a report for every test class)
         run: |
           python3 -I - <<'PY'
@@ -295,7 +296,8 @@ jobs:
           import xml.etree.ElementTree as ET
 
           failed = []
-          for module, sets in (("core-ffi", ("commonTest", "androidHostTest")), ("app", ("test",))):
+          for module, sets in (("core-ffi", ("commonTest", "androidHostTest")), ("screens", ("commonTest", "androidHostTest")),
+                               ("app", ("test",)), ("secure-ui", ("test",))):
               want = []
               for source in sets:
                   for path in sorted(glob.glob("mobile/android/%s/src/%s/**/*.kt" % (module, source), recursive=True)):

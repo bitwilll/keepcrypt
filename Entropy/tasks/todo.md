@@ -11935,24 +11935,84 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   `isChangingConfigurations`.
   Proof: the emulator capture and lifecycle tests (group 6); the content-capture flag read back in-process, and
   `dumpsys content_capture` shows no view events for the package where the probe found a service.
+  Proof (M5 commit 15, partial: the Kotlin compiles and the emulator runs only in CI): SecureActivity calls
+  onAppReturned on every start and onAppLeft on every stop but a configuration change's (`isChangingConfigurations`),
+  registers the recording callback on 35+ (onRecordingChanged, from addScreenRecordingCallback's state and each report)
+  and marks the root accessibility-data sensitive on 34+; MainActivity hands the three to the ceremony model.
+  CaptureTest's every-screen pass (now First launch, "Working..." and the stop screen) reads the root's
+  IMPORTANT_FOR_CONTENT_CAPTURE_NO_EXCLUDE_DESCENDANTS back in-process, and contentCaptureHasNothingOfTheApp requires
+  that no line of `dumpsys content_capture` names the package (with the matching lines as a probe line); its
+  recreate() case is the configuration change, which the model does not take for a return.
 - [ ] `OfflineMonitor` (a `ContentObserver` on `AIRPLANE_MODE_ON` and `WIFI_ON`, read again on every start; no receiver,
   no permission); `Timers` (30 s cover, 9-minute warning, 10-minute idle wipe, 60 s background, the picker rule) on an
   injected monotonic clock; the `Protected` wrapper (privacy gate, cover, recording redaction).
   Proof: JVM tests of `Timers` with a fake clock for every rule and boundary (59 s keeps, 60 s wipes).
+  Proof (M5 commit 15, partial: the JVM tests run only in CI): secure-ui's OfflineMonitor.kt holds SystemOffline (a
+  ContentObserver on the two settings' URIs, on the main looper; start registers it and reports the state read afresh,
+  stop unregisters it; no receiver, no permission) and the rule isOffline (airplane mode 1 and WIFI_ON 0 or 3; any
+  other value or a missing setting is online), with OfflineRuleTest (2 tests); :app's CeremonyHolder passes it to the
+  model as the common OfflineMonitor seam (M5-20), which the model starts on every return and stops on leaving.
+  `Timers` in :screens' commonMain on the MonotonicClock seam (SystemClock.elapsedRealtime() on the phone), with
+  TimersTest (7 tests: the cover at 30 s on Protected screens only, the warning at 9 minutes and the idle wipe at 10
+  with a session, the idle wipe on a Protected screen with none, input restarting the idle time, 59.999 s away keeping
+  and 60 s wiping, a return within 60 s, and the picker rule: no background time, its time counted under the idle
+  rule). The `Protected` wrapper (Screens.kt) shows the privacy gate before a Protected screen entered from a Public
+  one and a placeholder while a recording is reported; the cover and the warning are Screens' overlays over every
+  screen, each removed by the tap on it, which reaches nothing under it. Every screen is Public until commit 19.
 - [ ] `CeremonyViewModel` owns the slot's use: UI state holds screen ids, page indices and `Secret` references only;
   long calls run on `Dispatchers.Default` behind a "Working..." screen that ignores input; a lifecycle or offline
   discard during "Working..." calls `discard()` at once and the call's "discarded" status returns the UI to its start
   screen; `onCleared` calls `wipeAll()`.
   Proof: JVM tests for every transition, including a press during "Working..."; emulator tests that leave the app during
   a backup's scrypt and during the start-up self-test, and turn Wi-Fi on during `start`: no ANR, the session is gone.
+  Proof (M5 commit 15, partial: the JVM and emulator tests run only in CI): as the re-plan amends it, this is
+  :screens' `CeremonyModel` (commonMain), held by :app's CeremonyHolder (an AndroidViewModel: Dispatchers.Default for
+  long calls, the main thread's scope, the clock, the offline seam and the flavour's testRegistry flag, M5-20; its
+  onCleared cancels the scope and calls wipeAll). UiState holds the screen id, the page index and flags (gate,
+  overlay, recording, offline, the wipe's notice). Every core call goes through CeremonyModel.call, the only catch of
+  KcHalt; a long call (`work`) runs on the worker behind "Working...", where input, ticks and the overlay taps go
+  nowhere; a discard (leaving the app on a Protected screen or during "Working...", going online after the start-up,
+  a timer's wipe) calls Core.discard at once, and the call's reply, discarded (or a call skipped because it had not
+  reached core, or one that reached core after the discard, whose session is discarded again) returns the UI to the
+  start screen, saying why; the start-up self-test is the first long call, run again on the next return after a
+  discard. CeremonyModelTest (17 tests, over the real slot through the host library, long calls held on the test's
+  worker: the start-up, a press during "Working...", leaving during a long call, a discarded reply, a call reaching
+  core after the discard, going online during a long call and before the self-test passes, leaving during the
+  self-test, leaving a Public screen and the 60 s wipe, a return within 60 s, the warning and the idle wipe, the picker,
+  a refusal, the halt status, the recording flag, wipeAll and a configuration change) and CeremonyModelHaltTest (a
+  second long call halts the real slot; nothing leaves the stop screen; wipeAll on the halted slot ends quietly).
+  LifecycleTest on the emulator (scripts/android-emulator.sh step 4b, shipping app): Home during a backup's scrypt
+  (dice-50-words12 driven through Core to the encryption; the times printed), Home during the start-up self-test
+  (started from the shell and left at once; the self-test passed after the return), and Wi-Fi on during a start held on
+  the worker (airplane mode on and Wi-Fi off first, put back after): each ends with no ANR (the script's judge) and the
+  slot at home (Core.selfTest() Done).
 - [ ] The crash path: an `Application` subclass sets its handler (replacing the platform's) to `Native.wipeAll()` then
   `Process.killProcess`; the stop screen's "Close app" calls `finishAndRemoveTask()` and ends the process.
   Proof: a JVM test of the handler's order with a fake; on the emulator an androidTest-only trigger throws on the main
   thread, judged from the shell as in group 6 (process gone, no dialog, empty crash buffer, no DropBox entry).
+  Proof (M5 commit 15, partial: the JVM and emulator tests run only in CI): KeepCryptApp (the manifest's Application,
+  so both expected manifest summaries gain `application name=com.keepcrypt.entropy.KeepCryptApp`, as does --apk's
+  selftest dump: --selftest-apk 88 passed, 0 failed) sets CrashHandler as the default handler: Core.wipeAll(), then
+  Process.killProcess in a finally, nothing logged or shown; CrashHandlerTest (2 tests: the order, and the end when
+  the wipe throws KcHalt). The stop screen's "Close app" is MainActivity's finishAndRemoveTask() then
+  Process.killProcess. CrashTest (the androidTest-only trigger: a session started, then a throw on the main thread) runs
+  last in each emulator leg as `killed:com.keepcrypt.entropy.CrashTest`, a new android-instrument.sh form: the run
+  must end with the process gone during the test (a start, no pass, the activity manager's shortMsg), then the usual
+  judge (process gone, no crash or not-responding window, no crash-buffer line naming our packages, no new
+  data_app_crash); `android-instrument.sh --selftest` 28 passed, 0 failed (20 before) and `android-emulator.sh
+  --selftest` 14 passed, 0 failed (12 before), under sh and /bin/dash.
 - [ ] The pads: `DicePad`, `LetterPad` (a-z), `CrockfordPad` (32 symbols), `AsciiPad` (0x20-0x7E, up to 100 characters),
   each writing into a `Secret`, keys in a fixed order, nothing about a key press in semantics on Protected screens.
   Drawing: `QrMatrix`, `SealCard` (the 8x8 Okabe-Ito grid at 240 dp with Seal ID and braille, swb:84-90), braille faces.
   Proof: JVM tests per pad and drawing helper.
+  Proof (M5 commit 15, partial: the JVM tests run only in CI): :screens' Pads.kt: DICE_KEYS, LETTER_KEYS,
+  CROCKFORD_KEYS and ASCII_KEYS (three pages of 32, 32 and 31) in their fixed order; PadEntry keeps what a pad typed
+  as ASCII bytes it zeroes (delete, take, wipe), never a String, and hands it over as a Secret of exactly its length
+  (the pick of the dice pad 1, the letter pad 4, the go-ahead code 8, the BIP39 passphrase 100); on the Protected pads
+  (letters, ASCII) a key's semantics are its role alone. Drawing.kt: QrLayout (whole-pixel modules inside the 4-module
+  quiet zone) under QrCode, the seal card (OKABE_ITO, the #F7F7F7 tile and #333333 outline of the Pi, 240 dp, the Seal
+  ID and its braille) and braille cells and faces (dot d at bit d - 1, raised filled and flat as rings, the dot
+  numbers, "leave blank" and "mirror", face 5 lighter). PadsTest (5 tests) and DrawingTest (5 tests).
 
 **15. Screens: start to dice** (MA:166-174; PF:83-89)
 - [ ] First launch (MA:13's limits, the development-build line, "use the Pi for life savings"; every start), Self-test
@@ -12525,6 +12585,10 @@ internal expect object Native { fun call(op: Int, input: ByteArray): ByteArray }
 
   Proof: group 14's tests, now in `commonTest`, pass on the JVM and on the simulator, including "59 s keeps, 60 s wipes" on the fake clock.
   Moved to M6 by Q73 (8w): the simulator run; the JVM run stays.
+  Proof (M5 commit 15, partial: the JVM run is CI's): as group 14's items; :screens' commonTest (TimersTest,
+  CeremonyModelTest, CeremonyModelHaltTest, PadsTest, DrawingTest) runs as `:screens:testAndroidHostTest`, one class
+  per JVM against the host library (screens/build.gradle.kts), and the Android job builds it and requires each class's
+  report, :secure-ui's too.
 
 **The iOS C-ABI bridge** (Q66 (a))
 

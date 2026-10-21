@@ -4,9 +4,11 @@
      permissions for the capture protection, HIDE_OVERLAY_WINDOWS (Android 12) and
      DETECT_SCREEN_RECORDING (Android 15); CAMERA comes with the go-ahead scanner (commit 18).
      Nothing is backed up (allowBackup, fullBackupContent and the data extraction rules) and no
-     cleartext traffic is allowed. One exported activity, the launcher. The one removal is the
-     androidx.startup provider, which would run library initializers at start; profileinstaller,
-     the one that writes files, is excluded from every configuration (build.gradle.kts). -->
+     cleartext traffic is allowed. The Application class is the app's own, KeepCryptApp, whose
+     uncaught-exception handler is the crash path (group 14). One exported activity, the launcher.
+     The one removal is the androidx.startup provider, which would run library initializers at
+     start; profileinstaller, the one that writes files, is excluded from every configuration
+     (build.gradle.kts). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
@@ -14,6 +16,7 @@
     <uses-permission android:name="android.permission.DETECT_SCREEN_RECORDING" />
 
     <application
+        android:name=".KeepCryptApp"
         android:allowBackup="false"
         android:fullBackupContent="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
