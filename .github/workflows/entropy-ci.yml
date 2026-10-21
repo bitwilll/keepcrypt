@@ -306,7 +306,11 @@ jobs:
     # required and forbidden lists with one hwrng driver, and BusyBox's config with init and mount
     # alone; the APK check's self-test (M5 group 5, --selftest-apk; no Android SDK: stub tools and
     # stub APKs): its refusals, and the manifest, native-library, marker, dex-reference, alignment
-    # and signer rules each firing exactly once on its case; the verifier self-test (13 checks:
+    # and signer rules each firing exactly once on its case; the Android Rust library script's
+    # self-test (M5 group 4, scripts/android-rust.sh --selftest; no NDK: stand-in tools, cargo and
+    # scan): both flavours' builds and copies, and each of its checks failing on its case (an import
+    # the API 31 stubs lack, a scan outcome, a copy with other bytes, a failing sha256sum); the
+    # verifier self-test (13 checks:
     # every vectors/ file regenerated or recomputed,
     # Coldcard's hash-pinned scripts re-run behind rolls.json and on agreement.json's dice-only
     # subset, and lone copies of the shipped verify.py under an audit hook, piped and in a
@@ -337,6 +341,7 @@ jobs:
       - run: scripts/banned-api-check.sh --workflows ../.github/workflows
       - run: scripts/banned-api-check.sh --os-config pi/os
       - run: scripts/banned-api-check.sh --selftest-apk
+      - run: sh scripts/android-rust.sh --selftest
       - run: python3 -I tools/verify/vectorgen.py --selftest
       - run: python3 -I pi/os/rootfs-prefix.py --selftest
       - run: sh pi/os/kconfig.sh --selftest
