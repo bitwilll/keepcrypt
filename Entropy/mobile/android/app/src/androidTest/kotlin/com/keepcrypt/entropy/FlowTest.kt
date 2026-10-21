@@ -261,11 +261,15 @@ class FlowTest {
     /**
      * Taps the control tag once it is on screen (find's 10 s), through a selector UI Automator resolves at
      * the click: a UiObject2 found just before Compose redraws the screen goes stale and its click throws
-     * (run 39646201443: StaleObjectException on New seed right after Back returned to Home).
+     * (run 39646201443: StaleObjectException on New seed right after Back returned to Home). The click's
+     * boolean says only whether an accessibility event followed it in time, which Compose's clicks do not
+     * always send (run 39649809912: false on taps that moved the screen on), so it is not read; every tap
+     * here is followed by a check of the screen it leads to, which is the proof it landed, and a control
+     * gone at the click throws UiObjectNotFoundException.
      */
     private fun tap(tag: String) {
         find(tag)
-        assertTrue("the tap on $tag did not land", device.findObject(UiSelector().resourceId(tag)).click())
+        device.findObject(UiSelector().resourceId(tag)).click()
         device.waitForIdle()
     }
 
