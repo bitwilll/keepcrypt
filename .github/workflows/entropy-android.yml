@@ -445,7 +445,8 @@ jobs:
       # it must be refused by --apk: exit 1, with the INTERNET, the provider and the DexRef hit (the
       # dex reference scan's positive control on the real dexdump). A pass fails the job, and so does
       # any other exit. The checked APKs are already in $RUNNER_TEMP/apks; the canary only overwrites
-      # Gradle's outputs and is never uploaded or installed.
+      # Gradle's outputs and is never uploaded or installed. Its libkeepcrypt.so is packaged without
+      # keepDebugSymbols (app/build.gradle.kts), for the probe step after this one.
       - name: Canary build refused by --apk
         run: |
           fail() { echo "FAIL: canary: $1" >&2; exit 1; }
@@ -468,6 +469,24 @@ jobs:
           grep -q -e '^DexRef: classes[0-9]*[.]dex: Lcom/keepcrypt/canary/Canary; references Ljava/util/Random;$' \
             "$RUNNER_TEMP/canary.log" || fail "no DexRef hit for com.keepcrypt.canary.Canary"
           echo "the canary APK was refused, with the INTERNET, provider and DexRef hits"
+      # The platform probe's strip fact (M5 group 0, from commit 14): the canary APK packages
+      # libkeepcrypt.so without keepDebugSymbols, so its copies show whether AGP strips the library
+      # when nothing keeps its symbols. Listed, not judged: each ABI's copy against android-rust.sh's
+      # in the shipping jniLibs, both sizes and the copy's .symtab sections (llvm-readelf).
+      - name: Build facts (AGP's strip of libkeepcrypt.so without keepDebugSymbols, from the canary APK)
+        run: |
+          readelf=$ANDROID_HOME/ndk/$KC_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf
+          dir=$(mktemp -d)
+          unzip -q "$RUNNER_TEMP/canary.apk" 'lib/*/libkeepcrypt.so' -d "$dir"
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            built=mobile/android/app/src/shipping/jniLibs/$abi/libkeepcrypt.so
+            packed=$dir/lib/$abi/libkeepcrypt.so
+            if cmp -s "$built" "$packed"; then how="android-rust.sh's bytes, unchanged"; else how="changed"; fi
+            symtab=$("$readelf" -SW "$packed" | grep -c -e ' [.]symtab ' || :)
+            sizes="$(($(wc -c < "$built"))) bytes built, $(($(wc -c < "$packed"))) packaged"
+            echo "probe: AGP without keepDebugSymbols: lib/$abi/libkeepcrypt.so $how ($sizes, $symtab .symtab section(s))"
+          done
+          rm -rf "$dir"
       # The uploads (M5 group 6), before the emulators and kept 14 days: the shipping and
       # test-registry APKs signed and checked above, the test-registry one named NOT-FOR-RELEASE
       # (built only in CI, never released; Q60); the owner's P4 files (M5 group 13, lead decision

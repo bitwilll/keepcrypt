@@ -75,6 +75,7 @@ android {
     // libkeepcrypt.so is packaged as scripts/android-rust.sh built and scanned it, symbol table and
     // all: banned-api-check.sh --apk requires the APK's copy to be those bytes, and the release
     // artifact scan refuses a stripped library. Any other library is stripped with the pinned NDK.
+    // Only the canary build drops this line (the end of this file).
     packaging {
         jniLibs {
             keepDebugSymbols += "**/libkeepcrypt.so"
@@ -141,8 +142,17 @@ dependencies {
 // The canary build only (tasks/todo.md, M5 group 5): with the property the if below reads set to
 // true (settings.gradle.kts) the app also takes the canary library, whose manifest asks for INTERNET
 // and declares a provider, so that the Android workflow can prove scripts/banned-api-check.sh --apk
-// refuses such an APK.
+// refuses such an APK. Its libkeepcrypt.so is packaged without keepDebugSymbols too, so the workflow
+// can list group 0's probe fact from it: whether AGP strips the library when nothing keeps its
+// symbols. The canary APK is never uploaded or installed.
 if (providers.gradleProperty("kc.canary").orNull == "true") {
+    android {
+        packaging {
+            jniLibs {
+                keepDebugSymbols -= "**/libkeepcrypt.so"
+            }
+        }
+    }
     dependencies {
         implementation(project(":canary-lib"))
     }
