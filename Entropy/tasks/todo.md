@@ -11942,8 +11942,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   accessibility-data sensitive on 34+; MainActivity hands the four to the ceremony model. CaptureTest's every-screen
   pass (now First launch, "Working..." and the stop screen) reads the root's
   IMPORTANT_FOR_CONTENT_CAPTURE_NO_EXCLUDE_DESCENDANTS back in-process, and contentCaptureHasNothingOfTheApp requires
-  that no line of `dumpsys content_capture` names the package (with the matching lines as a probe line); its recreate()
-  case is the configuration change, which the model does not take for a return.
+  that no line of `dumpsys content_capture` names the package (with the matching lines as a probe line) and says
+  whether the content_capture service answers the dump: it prints a pass line only where one does, and on an image
+  without one (API 31's probe found none) a probe line that it proved nothing there (15h). Its recreate() case is the
+  configuration change: the recreated activity must have the same ceremony model with no cover up and no notice, so a
+  stop taken for leaving the app fails it (15h).
 - [ ] `OfflineMonitor` (a `ContentObserver` on `AIRPLANE_MODE_ON` and `WIFI_ON`, read again on every start; no receiver,
   no permission); `Timers` (30 s cover, 9-minute warning, 10-minute idle wipe, 60 s background, the picker rule) on an
   injected monotonic clock; the `Protected` wrapper (privacy gate, cover, recording redaction).

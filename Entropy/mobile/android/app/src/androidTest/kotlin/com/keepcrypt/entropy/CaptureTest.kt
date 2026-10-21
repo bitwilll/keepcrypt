@@ -216,7 +216,10 @@ class CaptureTest {
     /**
      * The empty saved-state Bundle crashes nothing: the activity is recreated from what it saved
      * (SecureActivity clears it, and passes null on), draws its first screen again with FLAG_SECURE,
-     * and stays black. A crash would also fail android-instrument.sh's judge.
+     * and stays black. A crash would also fail android-instrument.sh's judge. The recreation is a
+     * configuration change, which is no leaving of the app (group 14): the new activity has the same
+     * ceremony model (the ViewModel outlived the change), and that model took no stop for a leave, so
+     * no cover is up and nothing was wiped.
      */
     @Test
     fun anEmptySavedStateBundleCrashesNothing() {
@@ -236,26 +239,42 @@ class CaptureTest {
         val flagged = onMain { again.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0 }
         assertTrue("the recreated window lacks FLAG_SECURE", flagged)
         assertEquals("lit pixels in screencap after the recreation", 0, Capture.litOrRefused(Capture.screencapOrRefused(), region(again)))
+        assertTrue("the recreated activity has another ceremony model", onMain { again.model === first.model })
+        val state = onMain { again.model.state.value }
+        assertEquals("the configuration change was taken for leaving the app (a cover is up)", null, state.overlay)
+        assertEquals("the configuration change wiped the session", null, state.notice)
         probe("empty saved-state Bundle: the activity was recreated from it and drew its first screen again, secure; nothing crashed")
-        pass("the empty saved-state Bundle: recreated, drawn, black")
+        pass("the empty saved-state Bundle: recreated, drawn, black; the same model, no leaving taken, nothing wiped")
         finish(again)
     }
 
     /**
      * No content capture of the app (group 14, SecureActivity): with its first screen drawn, `dumpsys
-     * content_capture` names the package on no line (where the image runs no capture service, as the
-     * probe found on API 31, the dump has nothing to name it in). The root's own flag is read back in
+     * content_capture` names the package on no line. The plan asks this only where the image runs a
+     * capture service: where it runs none (as the probe found on API 31), the dump is empty or says
+     * dumpsys can't find the service, and has nothing to name the app in, so the test passes with a
+     * probe line saying it proved nothing here and no pass line. The root's own flag is read back in
      * everyScreenIsDrawnAndThenBlackInEveryCapture.
      */
     @Test
     fun contentCaptureHasNothingOfTheApp() {
         val activity = launch()
         proveDrawn(activity, Screen.FirstLaunch)
-        val dump = shellText("dumpsys content_capture").lines()
+        val (out, err) = Capture.shellWithErrors("dumpsys content_capture")
+        val dump = String(out, Charsets.UTF_8).lines().filter { it.isNotBlank() }
+        val absent = String(err, Charsets.UTF_8).contains(NO_SERVICE) || dump.any { it.contains(NO_SERVICE) }
+        val service = dump.isNotEmpty() && !absent
         val naming = dump.filter { it.contains(pkg) }
-        probe("dumpsys content_capture: ${dump.size} lines, ${naming.size} naming the app: " + naming.joinToString(" | ") { it.trim() })
+        probe(
+            "dumpsys content_capture: the service ${if (service) "answers" else "is absent"}; ${dump.size} lines, " +
+                "${naming.size} naming the app: " + naming.joinToString(" | ") { it.trim() },
+        )
         assertTrue("dumpsys content_capture names the app", naming.isEmpty())
-        pass("content capture: no line of dumpsys content_capture names the app")
+        if (service) {
+            pass("content capture: the service answers and no line of dumpsys content_capture names the app")
+        } else {
+            probe("content capture: no content_capture service on this image, so nothing names the app: not proven here")
+        }
         finish(activity)
     }
 
@@ -294,5 +313,8 @@ class CaptureTest {
 
     private companion object {
         const val SENSITIVE_NODE = "kc_probe_data_sensitive"
+
+        /** What dumpsys says (on stderr) for a service the image does not run. */
+        const val NO_SERVICE = "Can't find service"
     }
 }
