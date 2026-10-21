@@ -276,7 +276,7 @@ fun CollisionResult(state: UiState, testRegistry: Boolean, onShowReport: () -> U
  */
 @Composable
 fun CollisionReport(state: UiState, testRegistry: Boolean, passGate: () -> Unit, onAddFreshEntropy: () -> Unit) {
-    Protected(state, testRegistry, passGate, gateAction = "I'm alone, show the report") {
+    Protected(state, testRegistry, passGate) {
         KitScreen(
             screenId(Screen.CollisionReport),
             testRegistry,

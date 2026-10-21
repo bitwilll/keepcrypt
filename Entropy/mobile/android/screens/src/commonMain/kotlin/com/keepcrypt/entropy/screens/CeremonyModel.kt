@@ -309,7 +309,7 @@ class CeremonyModel(
         mutable.value = mutable.value.copy(overlay = null)
     }
 
-    /** The privacy gate's button ("I'm alone, show words", or the report's): the Protected screen behind it shows. */
+    /** The privacy gate's "I'm alone, show words": the Protected screen behind it shows. */
     fun passGate() {
         if (busy()) return
         timers.input()

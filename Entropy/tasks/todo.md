@@ -12233,10 +12233,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   "Cannot check"), the code entry on Pads.kt's CrockfordPad (the code in two groups, Delete, Done at 8 symbols, Back),
   the collision result and the result before the words in swb:150-152's wording (the typed code's "as of the date
   your checker showed"; a loaded snapshot's number, date, count and its Stale or Future warning on both), and the
-  collision-report QR, the first Protected screen (isProtected; the privacy gate, its button "I'm alone, show the
-  report"; leaving the app on it discards, Q57 (b)). The result before the words has no action until commit 19 brings
-  them. Pads.kt's keys now share their row's width (at most 40 dp), since a row of eight is 368 dp, wider than the
-  312 dp a 360 dp phone leaves inside the kit's margins (17d), which hid the go-ahead pad's last column.
+  collision-report QR, the first Protected screen (isProtected; the privacy gate, its button MA:34's "I'm alone, show
+  words" for every Protected screen, 17e; leaving the app on it discards, Q57 (b)). The result before the words has no
+  action until commit 19 brings them. Pads.kt's keys now share their row's width (at most 40 dp), since a row of eight
+  is 368 dp, wider than the 312 dp a 360 dp phone leaves inside the kit's margins (17d), which hid the go-ahead pad's
+  last column.
   CeremonyModel: the dice's Done (M5-48); Check now starts the check and, with a loaded snapshot, runs core's check
   against it on the worker behind "Working..." on the new UtcDate seam's date (:app's UtcToday, java.time's date in
   UTC), else shows the seal card; a refused typed code returns to the

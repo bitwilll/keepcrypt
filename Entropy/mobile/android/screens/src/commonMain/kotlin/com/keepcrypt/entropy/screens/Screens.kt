@@ -115,20 +115,12 @@ fun Screens(model: CeremonyModel, airplaneSettings: AirplaneSettings, onClose: (
  * Protected screen's content shows only past the privacy gate, and never while a recording of the
  * screen is reported (a redacted placeholder instead, the second layer under FLAG_SECURE). The gate and
  * the placeholder each fill the screen, so each carries the TEST REGISTRY strip in that build (Q60).
- * Its 30 s cover is the timers', drawn over every screen by Screens. gateAction is the gate's button,
- * "I'm alone, show words" (docs/mobile-apps.md, step 10) unless the screen behind it shows something
- * else (the collision report).
+ * Its 30 s cover is the timers', drawn over every screen by Screens.
  */
 @Composable
-fun Protected(
-    state: UiState,
-    testRegistry: Boolean,
-    passGate: () -> Unit,
-    gateAction: String = "I'm alone, show words",
-    content: @Composable () -> Unit,
-) {
+fun Protected(state: UiState, testRegistry: Boolean, passGate: () -> Unit, content: @Composable () -> Unit) {
     when {
-        state.gate -> PrivacyGate(testRegistry, gateAction, passGate)
+        state.gate -> PrivacyGate(testRegistry, passGate)
         state.recording -> Redacted(testRegistry)
         else -> content()
     }
@@ -168,10 +160,13 @@ fun Stop(testRegistry: Boolean, onClose: () -> Unit) {
     }
 }
 
-/** The privacy gate before a Protected screen (docs/mobile-apps.md, step 10; docs/pi-firmware.md's gate), passed by action. */
+/**
+ * The privacy gate before a Protected screen (docs/mobile-apps.md, "Session lifetime" and step 10;
+ * docs/pi-firmware.md's gate): every Protected screen is entered through "I'm alone, show words".
+ */
 @Composable
-fun PrivacyGate(testRegistry: Boolean, action: String, pass: () -> Unit) {
-    KitScreen("privacy_gate", testRegistry, actions = { KitButton(action, "pass_gate", onClick = pass) }) {
+fun PrivacyGate(testRegistry: Boolean, pass: () -> Unit) {
+    KitScreen("privacy_gate", testRegistry, actions = { KitButton("I'm alone, show words", "pass_gate", onClick = pass) }) {
         KitText("The next screen shows a secret. No person or camera may see it.")
     }
 }
