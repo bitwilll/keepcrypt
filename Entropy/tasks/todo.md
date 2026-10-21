@@ -12156,6 +12156,14 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   killed CrashTest). CaptureTest's every-screen pass walks one activity through all ten screens with the phone offline.
   The gate is clean on the tree (343 files), `--selftest` 1431 passed, 0 failed, and `canaries.sh` PASS, all 93 checks
   ran.
+  Proof (CI, run 39611275051 at e38a095, 1331 s; every class compiled and passed on the first CI run): StartScreensTest
+  12, CeremonyModelTest 24, CeremonyModelBusyScreenTest 1, TouchReachesCoreTest 1, MotionReachesCoreTest 1 (with
+  TimersTest 8, PadsTest 5, DrawingTest 5, the halt and refusal classes) and OfflineRuleTest 3; FlowTest 3 tests passed
+  on API 31 and API 36 ("new seed, 12 words: Back from Length, Device entropy, C in 16 groups, the dice's pick, confirm,
+  undo and minimum (50 / 50 rolls, 129.2 bits); Wi-Fi on during the dice wiped it, back to Go offline"; "dice-only
+  seed, 24 words: straight to the dice, the dice-only line, the minimum (99), and no 257th roll"; Start disabled
+  online); CaptureTest's every-screen pass, LifecycleTest and CrashTest green on both; the 16 KB leg green. The item
+  stays open until Done (17) and Home's other entries (20, 21) land (M5-48), and 16j reorders the start (M5-50).
 
 **16. Screens: the collision check** (MA:175-176; swb:112-152)
 - [ ] The prompt ("Check now (recommended)" / "Skip", Skip confirmed on its own screen). With a loaded snapshot the check
@@ -13656,6 +13664,10 @@ they differ. Nothing in the Android plan is weakened.
   test-registry build both draw the TEST REGISTRY strip (16j). PhoneMotion (the sensor seam's Android end) gets an
   emulator check in 16j: started on the emulator it delivers at least one accelerometer sample within 5 s, and none
   after stop (a gyroscope sample too where the image lists one; a probe line says which). E1 review.
+- M5-52 (2026-10-21): commit 16 adds FlowTest and a ten-screen CaptureTest walk per leg; run 39611275051 at e38a095
+  took the Android job 1331 s (22.2 min: Rust libraries 245 s, Gradle build 185 s, API 31 219 s, API 36 245 s, 16 KB
+  113 s), 89% of M5-44's 25. By M5-30's rule (the measured run plus 25%) the budget is 28 minutes (16i-b). Each later
+  commit that adds emulator tests re-measures it the same way.
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the
