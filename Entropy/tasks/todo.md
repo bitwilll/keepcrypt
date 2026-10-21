@@ -12015,12 +12015,14 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   Proof: JVM tests per pad and drawing helper.
   Proof (M5 commit 15, partial: the JVM tests run only in CI): :screens' Pads.kt: DICE_KEYS, LETTER_KEYS,
   CROCKFORD_KEYS and ASCII_KEYS (three pages of 32, 32 and 31) in their fixed order; PadEntry keeps what a pad typed
-  as ASCII bytes it zeroes (delete, take, wipe), never a String, and hands it over as a Secret of exactly its length
-  (the pick of the dice pad 1, the letter pad 4, the go-ahead code 8, the BIP39 passphrase 100); on the Protected pads
-  (letters, ASCII) a key's semantics are its role alone. Drawing.kt: QrLayout (whole-pixel modules inside the 4-module
-  quiet zone) under QrCode, the seal card (OKABE_ITO, the #F7F7F7 tile and #333333 outline of the Pi, 240 dp, the Seal
-  ID and its braille) and braille cells and faces (dot d at bit d - 1, raised filled and flat as rings, the dot
-  numbers, "leave blank" and "mirror", face 5 lighter). PadsTest (5 tests) and DrawingTest (5 tests).
+  as ASCII bytes it zeroes (delete, take, wipe; PadsTest reads every byte past the typed ones through PadEntry's
+  internal zeroPastLength, 15g), never a String, and hands it over as a Secret of exactly its length (the pick of the
+  dice pad 1, the letter pad 4, the go-ahead code 8, the BIP39 passphrase 100); on the Protected pads (letters, ASCII)
+  Key sets a key's semantics to its role alone (clearAndSetSemantics), drawn UI that no JVM test reads: not proven
+  here, it is left to the emulator with the Protected screens (commit 19). Drawing.kt: QrLayout (whole-pixel modules
+  inside the 4-module quiet zone) under QrCode, the seal card (OKABE_ITO, the #F7F7F7 tile and #333333 outline of the
+  Pi, 240 dp, the Seal ID and its braille) and braille cells and faces (dot d at bit d - 1, raised filled and flat as
+  rings, the dot numbers, "leave blank" and "mirror", face 5 lighter). PadsTest (5 tests) and DrawingTest (5 tests).
 
 **15. Screens: start to dice** (MA:166-174; PF:83-89)
 - [ ] First launch (MA:13's limits, the development-build line, "use the Pi for life savings"; every start), Self-test

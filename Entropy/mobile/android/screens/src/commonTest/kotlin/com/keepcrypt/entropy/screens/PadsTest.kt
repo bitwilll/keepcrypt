@@ -8,8 +8,8 @@ import kotlin.test.assertTrue
 
 /**
  * The pads (tasks/todo.md, M5 group 14): each one's keys in their fixed order, its capacity, and its
- * entry, which holds only its own keys, zeroes what it drops and hands over a Secret of exactly what
- * was typed.
+ * entry, which holds only its own keys, zeroes what it drops (read through its internal check) and
+ * hands over a Secret of exactly what was typed.
  */
 class PadsTest {
     /** The entry's bytes as text, through its Secret (and the Secret wiped after). */
@@ -96,14 +96,17 @@ class PadsTest {
         for (key in "abou") letters.type(key)
         letters.delete()
         assertEquals(3, letters.length)
+        assertTrue(letters.zeroPastLength(), "the deleted key's byte is zeroed")
         assertFailsWith<IllegalStateException> { letters.keyAt(3) }
         assertEquals("abo", taken(letters))
         assertEquals(0, letters.length, "taking the entry empties it")
+        assertTrue(letters.zeroPastLength(), "taking the entry zeroes it")
         letters.delete()
         assertEquals(0, letters.length)
         for (key in "zoo") letters.type(key)
         letters.wipe()
         assertEquals(0, letters.length)
+        assertTrue(letters.zeroPastLength(), "the wipe zeroes every byte")
         assertEquals("", taken(letters))
         assertEquals("PadEntry", letters.toString())
     }

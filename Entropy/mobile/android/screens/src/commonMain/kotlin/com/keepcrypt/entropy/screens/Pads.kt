@@ -112,6 +112,9 @@ class PadEntry(val keys: String, val capacity: Int) {
         length = 0
     }
 
+    /** Every byte past what is typed is zero (rule 5): PadsTest's check of delete, take and wipe. */
+    internal fun zeroPastLength(): Boolean = (length until capacity).all { bytes[it] == 0.toByte() }
+
     override fun toString(): String = "PadEntry"
 }
 
