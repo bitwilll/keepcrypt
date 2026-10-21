@@ -34,7 +34,14 @@ class QrRoundTripTest {
         done(Core.wipeAll())
     }
 
-    /** matrix's text: drawn with a four-module quiet zone, four pixels a module, and read by ZXing. */
+    /**
+     * matrix's text: drawn with a four-module quiet zone, four pixels a module, and read by ZXing as a
+     * pure barcode (PURE_BARCODE: the modules are read where the drawing put them, not searched for as
+     * in a camera frame). Run 39551811852 read every version 5-11 matrix through ZXing's finder-pattern
+     * detector but not the version 4, level H registration and collision-report codes, which are well
+     * formed (each equals qrcodegen-no-heap's own output, ffi/tests/ceremony.rs); this test checks the
+     * text a matrix holds, and the scanner's camera path is GoAheadPngTest's and the emulator's.
+     */
     private fun read(matrix: QrMatrix): String {
         val scale = 4
         val size = (matrix.side + 8) * scale
@@ -51,6 +58,7 @@ class QrRoundTripTest {
         val hints = mapOf(
             DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE),
             DecodeHintType.CHARACTER_SET to "UTF-8",
+            DecodeHintType.PURE_BARCODE to true,
         )
         val text = QRCodeReader().decode(BinaryBitmap(HybridBinarizer(source)), hints).text
         matrix.wipe()
