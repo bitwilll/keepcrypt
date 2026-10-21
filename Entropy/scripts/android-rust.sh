@@ -81,9 +81,13 @@ jni=$root/mobile/android/app/src/$flavour/jniLibs
 work=$(mktemp -d "${TMPDIR:-/tmp}/kc-android-rust.XXXXXX") || exit 2
 trap 'rm -rf "$work"' EXIT
 
+# sha256_of FILE: FILE's SHA-256 into $sha, 64 lowercase hex digits. Called outside any command
+# substitution, so a sha256sum that fails or prints anything else refuses (exit 2): no check below
+# compares an empty hash.
 sha256_of() {
-  out=$(sha256sum "$1") || exit 2
-  printf '%s\n' "${out%% *}"
+  sha=$(sha256sum "$1") || refuse "sha256sum cannot hash $1"
+  sha=${sha%% *}
+  printf '%s\n' "$sha" | grep -q -x -E '[0-9a-f]{64}' || refuse "sha256sum gave no SHA-256 for $1"
 }
 
 # names FILE: the dynamic symbol names llvm-nm prints for FILE with the further options given before
@@ -151,15 +155,18 @@ for abi in arm64-v8a armeabi-v7a x86_64; do
   done
   LC_ALL=C sort -u "$work/defined" -o "$work/defined"
   names "$so" -u > "$work/undefined"
-  missing=$(LC_ALL=C comm -23 "$work/undefined" "$work/defined")
+  missing=$(LC_ALL=C comm -23 "$work/undefined" "$work/defined") || refuse "comm cannot compare the symbol lists"
   [ -z "$missing" ] || fail "$so: undefined symbols that NDK r30's API 31 stubs ($api) do not define: $(printf '%s ' $missing)"
   echo "$so: all $(wc -l < "$work/undefined" | tr -d ' ') undefined dynamic symbols are defined in $api's libc.so, libm.so and libdl.so"
-  echo "$so: $(wc -c < "$so" | tr -d ' ') bytes, SHA-256 $(sha256_of "$so")"
+  sha256_of "$so"
+  built=$sha
+  echo "$so: $(wc -c < "$so" | tr -d ' ') bytes, SHA-256 $built"
   "$bin/llvm-readelf" -lW "$so" | awk '$1 == "LOAD"'
   "$bin/llvm-readelf" -dW "$so" | grep -F -e '(NEEDED)' || :
   mkdir -p "$jni/$abi" || exit 2
   cp "$so" "$jni/$abi/libkeepcrypt.so" || exit 2
-  [ "$(sha256_of "$jni/$abi/libkeepcrypt.so")" = "$(sha256_of "$so")" ] || fail "the copy in $jni/$abi differs from $so"
+  sha256_of "$jni/$abi/libkeepcrypt.so"
+  [ "$sha" = "$built" ] || fail "the copy in $jni/$abi differs from $so"
   echo "copied to $jni/$abi/libkeepcrypt.so"
 done
 
@@ -170,6 +177,7 @@ if [ "$flavour" = withTestRegistry ]; then
   so=$tdir/$host/release/libkeepcrypt.so
   [ -f "$so" ] || fail "no $so after the build"
   scan "$host" "$so"
-  echo "$so: $(wc -c < "$so" | tr -d ' ') bytes, SHA-256 $(sha256_of "$so")"
+  sha256_of "$so"
+  echo "$so: $(wc -c < "$so" | tr -d ' ') bytes, SHA-256 $sha"
 fi
 echo "android-rust: $flavour: built, scanned and copied into $jni"
