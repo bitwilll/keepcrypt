@@ -13386,6 +13386,18 @@ they differ. Nothing in the Android plan is weakened.
   checked against both. Every reader of kcr.json's proofs that prefers `ur` (core's `kcr` and `kcr_release` tests and
   `seal::proof`'s, the FFI's no-key test, vectorgen's check) now verifies these two through their QR text, with the
   same pinned outcome.
+  Amended 2026-10-21 (after the D1 review): the P4 PNGs carry each `ur` text upper case, so ZXing writes an
+  alphanumeric QR, smaller than the lower-case byte-mode one and easier for a phone to read from a computer screen; core
+  accepts either case (kcr.json's `ur-uppercase` case), and RegistryTest's
+  `theUpperCaseGoAheadQrTextsRevealAndCatchAlike` reveals and catches with the upper-case texts too.
+- M5-43 (2026-10-21): M5-20's rule (platform seams are `commonMain` interfaces passed in at the entry point) covers
+  shipping code. Common Kotlin has no file I/O, so the JVM tests read `vectors/` through a test-only `expect fun
+  entropyFile` in `commonTest` with its `actual` in `androidHostTest` (commit 14); if M6 adds an Apple target to
+  `commonTest`, it adds that target's `actual`.
+- M5-44 (2026-10-21): commit 14 adds the Rust builds (three ABIs, two flavours and the host library), the forked JVM
+  tests and the 16 KB-page leg to the Android job, which M5-30's 15 minutes cannot hold. The job has 60 minutes for its
+  first full run at commit 14; the lead then sets its budget to that run's time plus 25% (M5-30's rule) in the next
+  bookkeeping commit. Group 6's path list gains `Entropy/Cargo.toml` (14c).
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the

@@ -74,6 +74,20 @@ class RegistryTest {
         assertHeader("proofs", "collision-dice-50", Freshness.Current, caught.registry)
     }
 
+    /** The same two texts upper case, as the P4 PNGs carry them (alphanumeric QRs, M5-42 as amended), reveal alike. */
+    @Test
+    fun theUpperCaseGoAheadQrTextsRevealAndCatchAlike() {
+        sealed("dice-99-words12")
+        done(Core.startCheck())
+        assertIs<Revealed.Clear>(done(Core.revealProof(M5_DAY, proofUr("clear-empty-bucket").uppercase())))
+        assertEquals(seed("dice-99-words12", "mnemonic").split(" "), words())
+        done(Core.end())
+
+        sealed("dice-50-words12")
+        done(Core.startCheck())
+        assertIs<Revealed.Collision>(done(Core.revealProof(VECTOR_DAY, proofUr("collision-dice-50").uppercase())))
+    }
+
     @Test
     fun aWrongOrMalformedTypedCodeIsRefusedAndTheCheckStays() {
         sealed("dice-50-words12")

@@ -20,9 +20,10 @@ import org.junit.Test
  * rendered by ZXing's writer (tests only) as a PNG the owner's phone scans from a computer screen,
  * goahead-<name>.png, written to the directory kc.p4 names (app/build/p4/, which the Android
  * workflow uploads with the P4 files), then read back from those bytes and decoded by the scanner's
- * own decode function, which must give the text again. The text is the ur field unchanged, the text
- * :core-ffi's RegistryTest reveals with, so the code the owner's phone scans holds what core is
- * proven to verify.
+ * own decode function, which must give the text again. The text is the ur field upper case (M5-42 as
+ * amended: an alphanumeric QR, smaller than the lower-case byte-mode one and easier to scan from a
+ * screen), which :core-ffi's RegistryTest reveals with too, so the code the owner's phone scans holds
+ * what core is proven to verify.
  */
 class GoAheadPngTest {
     private val entropy = File(checkNotNull(System.getProperty("kc.entropy")) { "app/build.gradle.kts sets kc.entropy" })
@@ -33,8 +34,8 @@ class GoAheadPngTest {
         val kcr = File(entropy, "vectors/kcr.json").readText(Charsets.US_ASCII)
         assertTrue("the P4 directory", out.isDirectory || out.mkdirs())
         for (name in listOf("clear-empty-bucket", "collision-dice-50")) {
-            val ur = proofUr(kcr, name)
-            assertTrue(ur.startsWith("ur:keepcrypt-proof/"))
+            val ur = proofUr(kcr, name).uppercase()
+            assertTrue(ur.startsWith("UR:KEEPCRYPT-PROOF/"))
             val png = File(out, "goahead-$name.png")
             png.writeBytes(render(ur))
             val image = readPng(png.readBytes())
