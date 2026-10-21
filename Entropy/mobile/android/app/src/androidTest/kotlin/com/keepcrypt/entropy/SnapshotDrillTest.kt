@@ -10,6 +10,7 @@ import com.keepcrypt.entropy.Ui.awaitText
 import com.keepcrypt.entropy.Ui.find
 import com.keepcrypt.entropy.Ui.on
 import com.keepcrypt.entropy.Ui.roll
+import com.keepcrypt.entropy.Ui.shown
 import com.keepcrypt.entropy.Ui.tap
 import com.keepcrypt.entropy.Ui.toHome
 import com.keepcrypt.entropy.ffi.Core
@@ -21,6 +22,7 @@ import com.keepcrypt.entropy.screens.Screen
 import java.time.LocalDate
 import java.time.ZoneOffset
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -32,10 +34,12 @@ import org.junit.runner.RunWith
  * signed by the test registry key that only this APK trusts, is loaded through Core and handed to the
  * model, as commit 21's Load registry snapshot will (lead decision M5-48: no Home entry before its
  * screen). Then a dice-only seed of the public gate seed dice-50-words12, whose seal the snapshot holds:
- * the dice's Done, Check now, and the check runs on its own: the collision result, with the snapshot's
- * number, date and its Stale warning (the snapshot is dated 2026-03-01), before any words; the privacy
- * gate, the collision-report QR (read in-process: the destroyed seed's registration text), and "Add
- * fresh entropy", whose dice need 99 rolls.
+ * the dice's Done, Check now, and the check runs on its own, a short call with no busy screen (lead
+ * decision M5-54): the collision result at once, with the snapshot's number, date and its Stale warning
+ * (the snapshot is dated 2026-03-01) and the destroyed seed's Seal ID drawn under them (lead decision
+ * M5-55: the owner's P4 compares it there), before any words; the privacy gate, the collision-report QR
+ * (read in-process: the destroyed seed's registration text), and "Add fresh entropy", whose dice need
+ * 99 rolls.
  */
 @RunWith(AndroidJUnit4::class)
 class SnapshotDrillTest {
@@ -61,12 +65,12 @@ class SnapshotDrillTest {
             awaitText("dice_count", "50 / 50 rolls, 129.2 bits")
             tap("dice_done")
             on(activity, Screen.CheckPrompt, START_SECONDS)
-            assertEquals(DICE_50_SEAL_ID, onMain { activity.model.state.value.seal?.sealId })
             tap("check_now")
-            on(activity, Screen.Collision, START_SECONDS)
+            on(activity, Screen.Collision)
             awaitText("collision_text", COLLISION_FOUND)
             awaitText("snapshot_line", "Snapshot No. 4, dated 2026-03-01, 7 entries.")
             awaitText("snapshot_warning", STALE_WARNING)
+            assertNotNull("the collision result does not draw dice-50-words12's Seal ID", shown(Screen.Collision, DICE_50_SEAL_ID))
             done(Core.collisionReport(), "the report: the slot waits at the restart, the words never made available").wipe()
             tap("show_report")
             find("privacy_gate")
@@ -81,7 +85,8 @@ class SnapshotDrillTest {
             awaitText("dice_count", "0 / 99 rolls, 0.0 bits")
             pass(
                 "the snapshot drill: with-dice-50 loaded, dice-50-words12's check ran on its own: the collision, its " +
-                    "snapshot line and Stale warning, before any words; the report QR behind the gate; Add fresh entropy: 0 / 99",
+                    "snapshot line and Stale warning and its Seal ID $DICE_50_SEAL_ID, before any words; the report QR behind " +
+                    "the gate; Add fresh entropy: 0 / 99",
             )
             finish(activity)
         }

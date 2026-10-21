@@ -12327,6 +12327,34 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   code refused with the same check QR, the code from the drawn check QR's T and nonce typed on the pad: the check
   passed"), with every other class on both APIs and the 16 KB leg; Entropy CI 39678040331 and the Pi image
   39678040302 green. The item stays open for "Scan go-ahead QR" (commit 18) and M5-54/M5-55's changes (17h).
+  Proof (M5 commit 17h, partial: the Kotlin compiles and the JVM and emulator tests run only in CI; M5-54 and M5-55),
+  what changed from commit 17's lines. The prompt's seal card is removed: the prompt draws swb's question and text,
+  "Check now (recommended)" and "Skip" only, as the Pi's CheckPrompt (pi/app/src/screens.rs), and its UiState holds no
+  seal (nor do Skip's confirm and Skip's result, whose text names none); Check now takes the seal from core (offered
+  while checking), so the Seal ID shows from Check now on: on the seal card (unchanged), on the check result, whose
+  text names it, and on the collision result, whose seal is added: Drawing.kt's SealCardImage (grid, Seal ID, braille)
+  under its text and snapshot lines, after a loaded snapshot's check or Match found (the seal kept from its confirm).
+  The snapshot check is a short call: with a loaded snapshot, Check now calls Core.revealSnapshot on the main thread
+  (the FFI runs it under its lock, never as a long call), not through `work`, so no busy screen comes before its
+  result and no discard can land between the worker's look at its flag and the call. CeremonyModel's KDoc (the
+  class's, work's and onWorker's) names the long calls whose discard always ends on the start screen, start and the
+  self-test (core offers them at home), and the two that halt the slot when a discard reaches core between that look
+  and the call, finish and encryptBackup (fail closed: the stop screen; M5-54's residual); Core.kt's KDoc no longer
+  counts the snapshot check among the long calls. CheckScreensTest (12 tests; two renamed,
+  doneFinishesAtTheMinimumBehindWorkingThenThePromptHoldsNoSeal and
+  aLoadedSnapshotsCheckIsAShortCallThatFindsTheCollisionAtOnceBeforeAnyWords): the prompt's state, Skip's confirm's
+  and Skip's result's hold no seal; the seal card's, the collision result's (by Match found and by the snapshot) and
+  the check result's hold dice-50-words12's; the automatic-check cases (the collision and each freshness warning)
+  leave nothing on the held worker and show their result at once after Check now. Emulator: Ui.kt's new shown finds a
+  screen's text, scrolling KitScreen's text column (its one scrollable node) in slow half-column swipes where the text
+  lies out of view; CheckTest requires the prompt fully drawn (its heading, question and text, Check now and Skip on
+  screen) with no text equal to the seed's Seal ID, its text column scanned to its end, and the Seal ID drawn on the
+  seal card, scrolled into view; SnapshotDrillTest requires the collision result at once after Check now and
+  dice-50-words12's Seal ID drawn on it; CaptureTest's walk follows with no change in its code (the prompt and the
+  collision result through the same entry points, the latter now drawing its seal). Estimated cost (not yet measured):
+  a few seconds a leg for the scrolls. Gate clean on the tree (356 files), `--selftest` 1439 passed, 0 failed; Rust
+  untouched (fmt, both clippy commands, the workspace tests, the test-sources run and the FFI tests plain and with
+  test-registry all pass).
 - [ ] The scanner (Camera2 + ZXing, commit 18): CAMERA asked on this screen only; `ImageReader` YUV_420_888 frames
   reduced to luminance on a background thread and never stored; text over 4,296 characters dropped (swb:144); the first
   decoded text goes to the same `onGoAheadText` the tests call; proof results show their date and any warning before

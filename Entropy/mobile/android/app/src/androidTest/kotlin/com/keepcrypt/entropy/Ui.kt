@@ -4,6 +4,7 @@ import android.os.SystemClock
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import androidx.test.uiautomator.By
+import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.UiSelector
@@ -29,6 +30,12 @@ internal object Ui {
 
     /** How long a press that must do nothing gets to land. */
     private const val SETTLE_MS = 500L
+
+    /** At most this many of shown's scrolls, each about half a text column: more than any screen here holds. */
+    private const val SCROLLS = 8
+
+    /** shown's swipe speed in pixels a second: slow, so the column stops about where the swipe lifts. */
+    private const val SCROLL_SPEED = 1_000
 
     val device: UiDevice get() = UiDevice.getInstance(Capture.instrumentation)
 
@@ -97,6 +104,28 @@ internal object Ui {
     fun awaitText(tag: String, text: String) {
         val shown = device.wait(Until.hasObject(By.res(tag).text(text)), 10_000)
         assertTrue(tag + " does not show " + text + " (it shows " + text(tag) + ")", shown == true)
+    }
+
+    /**
+     * The node of screen (its root found by its id, find's 10 s) whose text is text, its text column
+     * scrolled down where the text lies out of view below, since UI Automator sees only what is
+     * scrolled into view; null when no node shows it, the column scanned from where it stood to its
+     * end. KitScreen's text column is the screen's one scrollable node, and only once its text is
+     * taller than the room it has: with none, the whole screen is in view at once. Each scroll is a
+     * slow swipe over about half the column (UiObject2.scroll at SCROLL_SPEED), so no fling carries a
+     * line past unseen; the scroll's boolean is not read, since UI Automator works it out from scroll
+     * events, so the column is scrolled SCROLLS times at most. The root is found afresh each time, as a
+     * redraw may replace its node.
+     */
+    fun shown(screen: Screen, text: String): UiObject2? {
+        repeat(SCROLLS) {
+            val root = find(screenId(screen))
+            root.findObject(By.text(text))?.let { return it }
+            val column = root.findObject(By.scrollable(true)) ?: return null
+            column.scroll(Direction.DOWN, 0.5f, SCROLL_SPEED)
+            device.waitForIdle()
+        }
+        return find(screenId(screen)).findObject(By.text(text))
     }
 
     fun stage(activity: MainActivity): Stage =

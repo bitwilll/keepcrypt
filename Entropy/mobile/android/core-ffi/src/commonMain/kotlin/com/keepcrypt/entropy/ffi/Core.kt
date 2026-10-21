@@ -192,9 +192,9 @@ class OpenedBackup internal constructor(val fingerprint: ByteArray, val seal: Se
  * building its input (a copy that is zeroed once the call returns), making the one Native.call and
  * decoding its reply with Wire's layouts (the reply's bytes zeroed once decoded). A halt status is
  * KcHalt, thrown; an argument out of its range or a reply that is not its layout halts the slot
- * first (halt). There is no catch here. Long calls (start, finish, the backup's scrypt, snapshot
- * and proof checks, the self-test) run on the caller's thread: the screens call them off the main
- * thread (group 14).
+ * first (halt). There is no catch here. Long calls (start, finish, the backup's scrypt, a snapshot's
+ * load and a proof's check, the self-test) run on the caller's thread: the screens call them off the
+ * main thread (group 14). The check against a loaded snapshot is a short call (lead decision M5-54).
  */
 object Core {
     private val EMPTY = ByteArray(0)

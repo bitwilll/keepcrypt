@@ -17,24 +17,25 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
- * Every CeremonyModel transition of the collision check (tasks/todo.md, M5 group 16; lead decision
- * M5-48), over the real slot through Core and the host library, long calls held on the test's worker:
- * the dice's Done at the minimum (finish behind "Working...", then the prompt with the seal card);
- * Skip, Match found and Cannot check each confirmed on its own screen, and Back there keeping the
- * check; Check now's seal card and its check QR; a wrong typed code refused with the check, its nonce
- * and the actions kept; Match found to the collision result (Back doing nothing there), the report QR
- * behind the privacy gate and "Add fresh entropy" at 99 rolls; Cannot check to "Start again" at the
- * normal minimum, and at 99 when the session was itself the restart after a collision; leaving the app
- * on the report (the first Protected screen) discarding at once; the model's end (wipeAll) wiping the
- * typed code and the QR codes on show; and with a loaded snapshot the automatic check, its collision
- * before any words and each freshness warning on vectors/kcr.json's own date. The seed is kcr.json's
- * public gate seed dice-50-words12 (the snapshot with-dice-50 holds its seal; the others do not), its
- * rolls picked on the pad as the dice screen does. The right typed code needs the check QR read, which
- * the emulator's CheckTest does with ZXing. Where the slot is, is read from the slot itself: the seal
- * is offered once sealed, the check QR only while checking, a word page once the words are available,
- * the collision report only at the restart after a collision, and the self-test only at home (each
- * other call halts, which would fail every later check). Each test leaves the slot at home (wipeAll
- * after it).
+ * Every CeremonyModel transition of the collision check (tasks/todo.md, M5 group 16; lead decisions
+ * M5-48, M5-54 and M5-55), over the real slot through Core and the host library, long calls held on the
+ * test's worker: the dice's Done at the minimum (finish behind "Working...", then the prompt, whose
+ * state holds no seal); Skip, Match found and Cannot check each confirmed on its own screen, and Back
+ * there keeping the check; Check now's seal card with its seal and check QR; a wrong typed code refused
+ * with the check, its nonce and the actions kept; Match found to the collision result with the
+ * destroyed seed's seal (Back doing nothing there), the report QR behind the privacy gate and "Add
+ * fresh entropy" at 99 rolls; Cannot check to "Start again" at the normal minimum, and at 99 when the
+ * session was itself the restart after a collision; leaving the app on the report (the first Protected
+ * screen) discarding at once; the model's end (wipeAll) wiping the typed code and the QR codes on show;
+ * and with a loaded snapshot the automatic check, a short call with nothing on the worker, its result
+ * at once after Check now with the seal: its collision before any words, and each freshness warning on
+ * vectors/kcr.json's own date. The seed is kcr.json's public gate seed dice-50-words12 (the snapshot
+ * with-dice-50 holds its seal; the others do not), its rolls picked on the pad as the dice screen does.
+ * The right typed code needs the check QR read, which the emulator's CheckTest does with ZXing. Where
+ * the slot is, is read from the slot itself: the seal is offered once sealed, the check QR only while
+ * checking, a word page once the words are available, the collision report only at the restart after a
+ * collision, and the self-test only at home (each other call halts, which would fail every later
+ * check). Each test leaves the slot at home (wipeAll after it).
  */
 class CheckScreensTest {
     @AfterTest
@@ -106,7 +107,7 @@ class CheckScreensTest {
     }
 
     @Test
-    fun doneFinishesAtTheMinimumBehindWorkingThenThePromptShowsTheSealCard() {
+    fun doneFinishesAtTheMinimumBehindWorkingThenThePromptHoldsNoSeal() {
         val rig = Rig().toHome().begin(Mode.DiceOnly, Words.Twelve)
         for (face in DICE_50_ROLLS.dropLast(1)) {
             rig.model.dicePick.replace(face)
@@ -124,9 +125,9 @@ class CheckScreensTest {
         assertEquals(1, rig.worker.waiting)
         rig.worker.run()
         assertEquals(Screen.CheckPrompt, rig.screen)
-        val seal = assertNotNull(rig.model.state.value.seal, "the prompt shows the seal card")
+        assertNull(rig.model.state.value.seal, "the prompt shows no seal: the Seal ID shows from Check now on (M5-55)")
+        val seal = done(Core.seal(), "the seal, once sealed")
         assertEquals(DICE_50_SEAL_ID, seal.sealId, "the rolls picked on the pad made dice-50-words12's seed")
-        assertEquals(DICE_50_SEAL_ID, done(Core.seal(), "the seal, once sealed").sealId)
         assertNull(rig.model.state.value.dice, "the counts leave with the dice screen")
         // A press left over from the dice does nothing.
         rig.model.diceDone()
@@ -139,15 +140,17 @@ class CheckScreensTest {
         val rig = sealed(Rig().toHome())
         rig.model.skip()
         assertEquals(Screen.SkipConfirm, rig.screen)
+        assertNull(rig.model.state.value.seal, "Skip's confirm shows no seal")
         rig.model.back()
         assertEquals(Screen.CheckPrompt, rig.screen, "Back on Skip's confirm (its button or the system's)")
-        assertEquals(DICE_50_SEAL_ID, rig.model.state.value.seal?.sealId, "the prompt keeps its seal card")
-        assertEquals(DICE_50_SEAL_ID, done(Core.seal(), "the seal").sealId)
+        assertNull(rig.model.state.value.seal, "the prompt shows no seal")
+        assertEquals(DICE_50_SEAL_ID, done(Core.seal(), "the seal, still sealed").sealId)
         rig.model.skip()
         rig.model.skipConfirmed()
         val state = rig.model.state.value
         assertEquals(Screen.CheckResult, state.screen)
         assertTrue(state.skipped, "the result says the check was skipped")
+        assertNull(state.seal, "Skip's result names no seal: the Seal ID shows from Check now on")
         assertNull(state.registry)
         assertWordsAvailable("Skip made the words available")
         rig.model.back()
@@ -160,7 +163,7 @@ class CheckScreensTest {
         val rig = atSealCard()
         assertEquals(0, rig.worker.waiting, "no long call without a snapshot")
         val state = rig.model.state.value
-        assertEquals(DICE_50_SEAL_ID, state.seal?.sealId)
+        assertEquals(DICE_50_SEAL_ID, state.seal?.sealId, "the seal card shows the seal, from Check now on")
         val request = assertNotNull(state.checkRequest, "the check QR")
         val core = done(Core.checkRequest(), "the check request, while checking")
         assertTrue(sameModules(request, core), "the card shows core's check request")
@@ -237,6 +240,7 @@ class CheckScreensTest {
         rig.model.matchFoundConfirmed()
         val collision = rig.model.state.value
         assertEquals(Screen.Collision, collision.screen)
+        assertEquals(DICE_50_SEAL_ID, collision.seal?.sealId, "the collision result draws the destroyed seed's seal")
         assertNull(collision.registry, "Match found, no snapshot")
         assertNull(collision.checkRequest)
         assertTrue(blank(request), "the check QR is wiped when the check ends")
@@ -335,17 +339,18 @@ class CheckScreensTest {
     }
 
     @Test
-    fun aLoadedSnapshotsCheckRunsOnTheWorkerAndFindsTheCollisionBeforeAnyWords() {
+    fun aLoadedSnapshotsCheckIsAShortCallThatFindsTheCollisionAtOnceBeforeAnyWords() {
         val rig = Rig().toHome()
         val header = done(Core.loadSnapshot(rig.date.today(), kcrSnapshot("with-dice-50")), "with-dice-50 loads")
         rig.model.snapshotLoaded(header)
         sealed(rig)
+        val ran = rig.worker.ran
         rig.model.checkNow()
-        assertEquals(Screen.Working, rig.screen, "the check runs on its own, on the worker")
-        assertEquals(1, rig.worker.waiting)
-        rig.worker.run()
+        assertEquals(0, rig.worker.waiting, "nothing on the worker: the check is a short call on the main thread (M5-54)")
+        assertEquals(ran, rig.worker.ran)
         val state = rig.model.state.value
-        assertEquals(Screen.Collision, state.screen, "the collision, before any words")
+        assertEquals(Screen.Collision, state.screen, "the collision at once after Check now, before any words")
+        assertEquals(DICE_50_SEAL_ID, state.seal?.sealId, "the collision result draws the destroyed seed's seal")
         val registry = assertNotNull(state.registry, "the result shows the snapshot")
         assertEquals("Snapshot No. 4, dated 2026-03-01, 7 entries.", snapshotLine(registry))
         assertEquals(Freshness.Current, registry.freshness, "on kcr.json's own date")
@@ -366,16 +371,16 @@ class CheckScreensTest {
             rig.model.snapshotLoaded(done(Core.loadSnapshot(rig.date.today(), kcrSnapshot(name)), name + " loads"))
             sealed(rig)
             rig.model.checkNow()
-            rig.worker.run()
+            assertEquals(0, rig.worker.waiting, name + ": nothing on the worker (M5-54)")
             val state = rig.model.state.value
-            assertEquals(Screen.CheckResult, state.screen, name + " does not hold the seal")
+            assertEquals(Screen.CheckResult, state.screen, name + " does not hold the seal: the result at once after Check now")
             assertFalse(state.skipped)
             val registry = assertNotNull(state.registry, name)
             assertEquals(freshness, registry.freshness, name)
             assertEquals(warning, freshnessWarning(registry.freshness), name)
             assertEquals(
                 "No collision for seal " + DICE_50_SEAL_ID + " as of " + registryDate(registry.date) + ".",
-                clearText(assertNotNull(state.seal).sealId, registry),
+                clearText(assertNotNull(state.seal, name + ": the result names the Seal ID").sealId, registry),
                 name,
             )
             assertWordsAvailable(name + "'s go-ahead made the words available")

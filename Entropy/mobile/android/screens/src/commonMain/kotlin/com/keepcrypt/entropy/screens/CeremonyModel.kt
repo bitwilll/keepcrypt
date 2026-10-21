@@ -79,7 +79,11 @@ data class UiState(
     val diceOnly: Boolean = false,
     /** C on the commitment screen, as 16 groups of 4 hex digits (public). */
     val commitment: String? = null,
-    /** The seal card (public): on the check prompt and the check's screens, and its Seal ID on the result. */
+    /**
+     * The seal card (public), from Check now on and never on the prompt (lead decision M5-55): on the
+     * seal card and the check's screens after it, drawn on the collision result (the destroyed seed's),
+     * and its Seal ID named by the check result's text.
+     */
     val seal: SealCard? = null,
     /**
      * The seal card's check QR (T and the check's nonce, public), from Check now until the check ends:
@@ -114,7 +118,11 @@ data class UiState(
  * - Leaving the app during a long call or on a Protected screen, and going online after the start-up
  *   (away from the app too: the offline monitor reports until the model's end), call core's discard
  *   at once, even during a long call; the call's discarded reply then returns the UI to its start
- *   screen (toStart). On a Public screen leaving puts the privacy cover up, and 60 s away wipes.
+ *   screen (toStart). That start screen is certain for the long calls core offers at home, start and
+ *   the self-test; finish and encryptBackup (the backup's, commit 20), which it does not offer there,
+ *   halt the slot instead when a discard reaches core between the worker's look at the discard flag
+ *   and the call (fail closed: the stop screen; lead decision M5-54's residual, work). On a Public
+ *   screen leaving puts the privacy cover up, and 60 s away wipes.
  * - The timers (Timers) cover, warn and wipe on each tick.
  * - On every start First launch shows first, before any core call (lead decision M5-50); its Continue
  *   runs the start-up self-test (core's known-answer tests, a long call behind its own screen; any
@@ -124,14 +132,16 @@ data class UiState(
  *   launch, whose Continue runs it again; once it has passed, a discard's start screen is Go offline.
  *   System Back goes back only where nothing is lost (back).
  * - The dice's Done makes the seed, and the collision check follows (group 16; docs/mobile-apps.md,
- *   step 9; docs/seal-watchonly-braille.md, "Checking the seal"): the prompt, whose Skip is confirmed
- *   on its own screen; Check now, which with a loaded snapshot runs the check on the worker at once,
- *   and otherwise shows the seal card with its check QR and the checker's answers, the typed go-ahead
- *   code, Match found and Cannot check (each one-way choice confirmed on its own screen). A wrong code
- *   is refused and the check stays, with its nonce. Match found wipes the seed unseen, then the
- *   collision-report QR (Protected) and "Add fresh entropy"; Cannot check wipes it and starts again.
- *   Both restarts are core's start from the kept Wiped, with the destroyed session's length and mode,
- *   so core sets the minimum (99 rolls after a collision).
+ *   step 9; docs/seal-watchonly-braille.md, "Checking the seal"): the prompt, which shows no seal
+ *   (the Seal ID shows from Check now on, lead decision M5-55) and whose Skip is confirmed on its own
+ *   screen; Check now, which with a loaded snapshot runs the check against it at once (a short call
+ *   on the main thread, lead decision M5-54), and otherwise shows the seal card with its check QR and
+ *   the checker's answers, the typed go-ahead code, Match found and Cannot check (each one-way choice
+ *   confirmed on its own screen). A wrong code is refused and the check stays, with its nonce. The
+ *   check result names the Seal ID, and the collision result draws the destroyed seed's seal. Match
+ *   found wipes the seed unseen, then the collision-report QR (Protected) and "Add fresh entropy";
+ *   Cannot check wipes it and starts again. Both restarts are core's start from the kept Wiped, with
+ *   the destroyed session's length and mode, so core sets the minimum (99 rolls after a collision).
  */
 class CeremonyModel(
     private val scope: CoroutineScope,
@@ -400,16 +410,13 @@ class CeremonyModel(
     /**
      * The dice screen's Done, once the minimum is met (below it its button is disabled, and a press
      * does nothing; core would halt): core makes the seed (finish, a long call behind "Working..."),
-     * then the check prompt with the seal card (lead decision M5-48).
+     * then the check prompt, which shows no seal (lead decisions M5-48 and M5-55).
      */
     fun diceDone() {
         if (!pressOn(Screen.Dice)) return
         val dice = mutable.value.dice ?: return
         if (dice.rolls < dice.minimum) return
-        work({ Core.finish() }) {
-            val seal = done { Core.seal() } ?: return@work
-            show(Screen.CheckPrompt, seal = seal.value)
-        }
+        work({ Core.finish() }) { show(Screen.CheckPrompt) }
     }
 
     /**
@@ -424,31 +431,36 @@ class CeremonyModel(
 
     /**
      * The prompt's "Check now (recommended)": the check starts (core draws its nonce), and from here
-     * only a verified go-ahead reaches the words. With a loaded snapshot the check runs against it at
-     * once, on the worker behind "Working...", on today's UTC date (the result warns of a Stale or
-     * Future snapshot); otherwise the seal card shows, with the check QR.
+     * only a verified go-ahead reaches the words; the seal, which the prompt never shows, shows from
+     * here on (lead decision M5-55). With a loaded snapshot the check runs against it at once, on
+     * today's UTC date (the result warns of a Stale or Future snapshot), as a short call on the main
+     * thread, since the FFI runs it under its lock as one (it only looks the seal up in the loaded
+     * snapshot): no busy screen comes before its result, and no discard can land between a look at a
+     * discard flag and the call (lead decision M5-54). Otherwise the seal card shows, with the check QR.
      */
     fun checkNow() {
-        val seal = mutable.value.seal
         if (!pressOn(Screen.CheckPrompt) || !short { Core.startCheck() }) return
+        val seal = done { Core.seal() } ?: return
         if (snapshot != null) {
-            val today = date.today()
-            work({ Core.revealSnapshot(today) }) { revealed -> ended(revealed, seal) }
+            val revealed = done { Core.revealSnapshot(date.today()) } ?: return
+            ended(revealed.value, seal.value)
             return
         }
         val request = done { Core.checkRequest() } ?: return
-        show(Screen.SealCard, seal = seal, checkRequest = request.value)
+        show(Screen.SealCard, seal = seal.value, checkRequest = request.value)
     }
 
     /** The prompt's Skip: its confirm screen, since Skip is offered only before a check starts (rule 6). */
     fun skip() {
-        if (pressOn(Screen.CheckPrompt)) show(Screen.SkipConfirm, seal = mutable.value.seal)
+        if (pressOn(Screen.CheckPrompt)) show(Screen.SkipConfirm)
     }
 
-    /** Skip's confirm: the words with no check, and a result that says the seal can be checked later. */
+    /**
+     * Skip's confirm: the words with no check, and a result that says the seal can be checked later
+     * (it names no seal: the Seal ID shows from Check now on, lead decision M5-55).
+     */
     fun skipConfirmed() {
-        val seal = mutable.value.seal
-        if (pressOn(Screen.SkipConfirm) && short { Core.skipCheck() }) show(Screen.CheckResult, seal = seal, skipped = true)
+        if (pressOn(Screen.SkipConfirm) && short { Core.skipCheck() }) show(Screen.CheckResult, skipped = true)
     }
 
     /** The seal card's "Type go-ahead code": the code entry, its pad empty. */
@@ -485,9 +497,13 @@ class CeremonyModel(
         }
     }
 
-    /** Match found's confirm, "Destroy this seed": the seed is wiped unseen, then the collision result. */
+    /**
+     * Match found's confirm, "Destroy this seed": the seed is wiped unseen, then the collision result,
+     * which draws its seal (the confirm screen's, kept from the seal card).
+     */
     fun matchFoundConfirmed() {
-        if (pressOn(Screen.MatchFoundConfirm) && short { Core.matchFound() }) show(Screen.Collision)
+        val seal = mutable.value.seal
+        if (pressOn(Screen.MatchFoundConfirm) && short { Core.matchFound() }) show(Screen.Collision, seal = seal)
     }
 
     /**
@@ -581,12 +597,17 @@ class CeremonyModel(
      * main thread and may enter the next screen; if it enters none, the screen the call was started
      * from comes back as it was. A refusal goes back to that screen and to refused (by default a halt:
      * a refusal from a call that refuses nothing is the shell's bug). A discard while it runs has called
-     * core's discard at once, so the call returns discarded, or is never made if it had not reached core
-     * yet; a call that reached core after the discard (a start or the self-test, which core offers at home)
-     * has what it made discarded again on the worker (onWorker). Either way the start screen follows.
-     * A halt is the stop screen. One long call at a time: a second is the shell's bug, and halts, as
-     * does a busy screen that takes input. The busy screen keeps the QR codes of the screen it stands
-     * for (drawing none), so that screen comes back with them whole; the next other screen wipes them.
+     * core's discard at once, so the call returns discarded, or is never made when the worker sees the
+     * discard first; either way the start screen follows. A discard that lands between the worker's
+     * look at the flag and the call reaches core before the call does (onWorker), and what follows
+     * depends on the call (lead decision M5-54): a start or the self-test, which core offers at home,
+     * runs, what it made is discarded again on the worker, and the start screen follows; finish and
+     * encryptBackup (the backup's, commit 20), which core does not offer at home, halt the slot (fail
+     * closed: the stop screen instead of the start screen, in a window of microseconds; M5-54's
+     * residual). A halt is the stop screen. One long call at a time: a second is the shell's bug, and
+     * halts, as does a busy screen that takes input. The busy screen keeps the QR codes of the screen it
+     * stands for (drawing none), so that screen comes back with them whole; the next other screen wipes
+     * them.
      */
     fun <T> work(
         core: () -> Reply<T>,
@@ -625,12 +646,16 @@ class CeremonyModel(
     }
 
     /**
-     * A long call's part on the worker. A discard that came first means no call at all. A call that
-     * reached core after a discard (or after wipeAll) has what it made discarded again here, on the
-     * worker, before its reply goes back: a cancelled scope (the holder's end, which cancels it before
-     * wipeAll) drops the reply on the main thread but cannot skip this. A discard that came after this
-     * look found the call done in core, so its own core discard took what the call made. Null is the
-     * halt status.
+     * A long call's part on the worker, which looks at the discard flag before the call and again after
+     * it. A discard (or wipeAll) before the first look means no call at all. One between the first look
+     * and the call reaches core first (lead decision M5-54): a start or the self-test, which core offers
+     * at home, then runs, and the second look finds the flag, so what it made is discarded again here,
+     * on the worker, before its reply goes back (a cancelled scope, the holder's end, which cancels it
+     * before wipeAll, drops the reply on the main thread but cannot skip this); finish and encryptBackup,
+     * which core does not offer at home, halt the slot there, and their reply is the halt status (M5-54's
+     * residual: the stop screen, fail closed). A discard during the call makes core return discarded,
+     * and one after the second look found the call done in core, so its own core discard took what the
+     * call made. Null is the halt status.
      */
     private fun <T> onWorker(pending: Pending, core: () -> Reply<T>): Reply<T>? {
         if (pending.discarded) return Reply.Discarded
@@ -714,14 +739,14 @@ class CeremonyModel(
 
     /**
      * Where a go-ahead led (docs/seal-watchonly-braille.md, "Results"): the words are available, and
-     * the result says against what (a loaded snapshot's header, or the checker's typed code); or the
-     * seed was wiped unseen, and the collision result follows. The slot is Ready or at its restart, both
-     * held under the timers.
+     * the result names the Seal ID and says against what (a loaded snapshot's header, or the checker's
+     * typed code); or the seed was wiped unseen, and the collision result follows, drawing the destroyed
+     * seed's seal (lead decision M5-55). The slot is Ready or at its restart, both held under the timers.
      */
     private fun ended(revealed: Revealed, seal: SealCard?) {
         when (revealed) {
             is Revealed.Clear -> show(Screen.CheckResult, seal = seal, registry = revealed.registry)
-            is Revealed.Collision -> show(Screen.Collision, registry = revealed.registry)
+            is Revealed.Collision -> show(Screen.Collision, seal = seal, registry = revealed.registry)
         }
     }
 

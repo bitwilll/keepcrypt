@@ -109,12 +109,14 @@ fun codeShown(code: PadEntry): String = buildString(code.capacity + 1) {
 }
 
 /**
- * The check prompt (swb's prompt), right after the dice and before any word: the question and why,
- * this seed's seal card (its Seal ID to compare before the check, as the owner's drills do), and "Check
- * now (recommended)" and "Skip".
+ * The check prompt (swb's prompt, and the Pi's CheckPrompt in pi/app's screens.rs), right after the
+ * dice and before any word: the question and why, and "Check now (recommended)" and "Skip" only. It
+ * draws no seal card (lead decision M5-55): the Seal ID's first four characters are the bucket a
+ * registry lookup takes, so a seal shown beside Skip would let a Stop be read and then skipped past,
+ * which swb's "Go-ahead before reveal" rules out. The Seal ID shows from Check now on.
  */
 @Composable
-fun CheckPrompt(state: UiState, testRegistry: Boolean, onCheckNow: () -> Unit, onSkip: () -> Unit) {
+fun CheckPrompt(testRegistry: Boolean, onCheckNow: () -> Unit, onSkip: () -> Unit) {
     KitScreen(
         screenId(Screen.CheckPrompt),
         testRegistry,
@@ -126,11 +128,6 @@ fun CheckPrompt(state: UiState, testRegistry: Boolean, onCheckNow: () -> Unit, o
         Heading("Check for collisions")
         KitText(CHECK_QUESTION)
         KitText(CHECK_PROMPT, KitType.small)
-        val seal = state.seal
-        if (seal != null) {
-            Gap(16)
-            Centred { SealCardImage(seal) }
-        }
     }
 }
 
@@ -250,8 +247,10 @@ fun CannotCheckConfirm(testRegistry: Boolean, onStartAgain: () -> Unit, onBack: 
 
 /**
  * The collision result (swb's "Results", Stop): the seed was wiped unseen, by the loaded snapshot's
- * check (its number, date and any warning shown) or by Match found; swb's suggestion of a report and a
- * verification run; then the report QR, behind the privacy gate.
+ * check (its number, date and any warning shown) or by Match found; under that text the destroyed
+ * seed's seal (public: the grid, the Seal ID the owner's drills compare here, and its braille; lead
+ * decision M5-55); swb's suggestion of a report and a verification run; then the report QR, behind the
+ * privacy gate.
  */
 @Composable
 fun CollisionResult(state: UiState, testRegistry: Boolean, onShowReport: () -> Unit) {
@@ -263,6 +262,12 @@ fun CollisionResult(state: UiState, testRegistry: Boolean, onShowReport: () -> U
         Heading("Collision")
         KitText(COLLISION_FOUND, tag = "collision_text")
         RegistryLines(state.registry)
+        val seal = state.seal
+        if (seal != null) {
+            Gap(16)
+            Centred { SealCardImage(seal) }
+            Gap(16)
+        }
         KitText(COLLISION_SUSPECT, KitType.small)
         KitText("Next: the collision report QR, then fresh entropy with at least 99 rolls.", KitType.small)
     }

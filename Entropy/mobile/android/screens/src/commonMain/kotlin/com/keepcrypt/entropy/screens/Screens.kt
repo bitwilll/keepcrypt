@@ -78,7 +78,7 @@ fun Screens(model: CeremonyModel, airplaneSettings: AirplaneSettings, onClose: (
                     onUndo = model::undoRoll,
                     onDone = model::diceDone,
                 )
-                Screen.CheckPrompt -> CheckPrompt(state, registry, onCheckNow = model::checkNow, onSkip = model::skip)
+                Screen.CheckPrompt -> CheckPrompt(registry, onCheckNow = model::checkNow, onSkip = model::skip)
                 Screen.SkipConfirm -> SkipConfirm(registry, onSkip = model::skipConfirmed, onBack = model::back)
                 Screen.SealCard -> SealCardScreen(
                     state,
