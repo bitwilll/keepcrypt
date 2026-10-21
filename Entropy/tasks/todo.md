@@ -11298,6 +11298,18 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   Proof (M5 commit 4c, the lead, from CI): review fixes 4b (7f878f7 .. bee6877) took `--selftest` to 1065 passed, 0 failed
   (sh and dash), the gate to 263 files, canaries 74/74. Entropy CI 39062895694 at bee6877: 14 of 14 green, `gates (banned
   APIs, verifier, canaries)` 10 min 41 s, within the approved 12 minutes (M4b measured 10 min 08 s).
+  Proof (M5 commit 17f, review fix): the catch list allowed its three types by bare name only, so `import kotlin.Throwable
+  as KcHalt` in CeremonyModel.kt left its catch a catch-all with the gate clean (reproduced on a copy of 5eb5688).
+  Outside the test source sets, a file with an allowed catch must now hold its type's own import line exactly (`import
+  com.keepcrypt.entropy.ffi.KcHalt`, `import java.io.IOException`, `import
+  android.hardware.camera2.CameraAccessException`), or its first allowed catch hits ("missing import ..."); and
+  kt_alias hits an alias or cast to one of the three names (backticks too), a typealias of one or one whose name is on
+  the next line, and an import that ends in "as". Eight new hit fixtures, each also copied into the test scopes and
+  clean there: the missing import in CeremonyModel.kt, Documents.kt and GoAheadScanner.kt, the import alias, "as" on
+  the next line, an import ending in "as", the typealias and a typealias name on the next line;
+  clean-kt-shipping-allowed and ktfailopen-catch-kmp-ceremony-model-second-catch gain their import lines. `--selftest`
+  1439 passed, 0 failed (1431 before), the same under /bin/dash; the gate clean on the tree (356 files) under sh and
+  dash; canaries.sh PASS, all 93 checks ran.
 - [x] The Shell rule for `game_random` is unchanged in M5 (its ffi and Kotlin fixtures stay hits until M5b).
   Proof: those fixtures still trip.
   Proof (M5 commit 4): `game_random_use` and its path list untouched (only the release probe's comment stripping moved
