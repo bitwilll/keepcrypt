@@ -11410,6 +11410,15 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   and used), backup, cleartext traffic and debugging off, extractNativeLibs false, one exported launcher activity,
   the two androidx.window uses-library entries and the startup provider's removal (whose merger-report form is a
   stand-in until the first run with the report: that run did not print it).
+  Proof (M5 commit 18, partial: both APKs' `--apk` runs are CI's): the manifest gains exactly `<uses-permission
+  android:name="android.permission.CAMERA" />` and `<uses-feature android:name="android.hardware.camera"
+  android:required="false" />`, after DETECT_SCREEN_RECORDING; both expected summaries gain `uses-permission
+  android.permission.CAMERA` (sorted before DETECT_SCREEN_RECORDING) and `uses-feature android.hardware.camera
+  required=false` (after the uses-library lines, as the summary format sorts the manifest's other elements); no
+  INTERNET or other permission (rule 9). `--selftest-apk`'s fixtures (scripts/testdata/apk/: CAMERA in all three
+  dumps, the feature in xmltree, each where the merged manifest puts it, the later xmltree line numbers moved on by
+  four; added by hand, not from a run) reduce to the committed manifest-shipping.txt again: 88 passed, 0 failed under
+  sh and /bin/dash (with the old xmltree the control fails, and 55 cases with it).
 - [ ] `banned-api-check.sh --apk VARIANT APK EXPECTED_DIR` (the image scan's shape): `aapt2 dump permissions`, `dump
   badging` and `dump xmltree AndroidManifest.xml` reduced to one summary (package, SDKs, every permission, every
   component with exported flag, application flags, `<queries>`, `uses-library`), compared exactly with
@@ -12342,6 +12351,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   code refused with the same check QR, the code from the drawn check QR's T and nonce typed on the pad: the check
   passed"), with every other class on both APIs and the 16 KB leg; Entropy CI 39678040331 and the Pi image
   39678040302 green. The item stays open for "Scan go-ahead QR" (commit 18) and M5-54/M5-55's changes (17h).
+  Proof (M5 commit 18, partial: CI's): the seal card draws "Scan go-ahead QR" first among its actions, the scan screen
+  behind it (the scanner item's lines).
   Proof (M5 commit 17h, partial: the Kotlin compiles and the JVM and emulator tests run only in CI; M5-54 and M5-55),
   what changed from commit 17's lines. The prompt's seal card is removed: the prompt draws swb's question and text,
   "Check now (recommended)" and "Skip" only, as the Pi's CheckPrompt (pi/app/src/screens.rs), and its UiState holds no
@@ -12378,6 +12389,67 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   both UR PNGs, with row and pixel strides that differ from the width and each rotation; emulator tests feed both UR
   texts to `onGoAheadText`; CAMERA not granted before the scan screen (`dumpsys package`); the owner's P0b right after
   commit 18, and P4.
+  Proof (M5 commit 18, partial: the Kotlin compiles and the JVM and emulator tests run only in CI; P0b and P4 are the
+  owner's): the seam is `:screens`' commonMain QrScanner (Seams.kt: start(found, stopped), stop; ScanStop Refused,
+  Missing or Failed), M5-20's "QR scanner", a screens' seam MainActivity passes to Screens. The scan screen
+  (CheckScreens.kt's ScanScreen; Screen.Scan, id `scan`, Public, needs offline, Back to the seal card) opens from the
+  seal card's new first action, "Scan go-ahead QR" (`scan_qr`); it draws no preview, so nothing the camera sees is
+  drawn and FLAG_SECURE is unchanged, and its text says how to aim (about 20-40 cm, the whole code in view). Its
+  scanner runs while it shows uncovered and has not stopped (a DisposableEffect: started as the screen opens,
+  stopped under the cover or the idle warning and when the screen leaves, and by MainActivity's onAppLeft at once,
+  since Compose recomposes nothing while the activity is stopped); "Type go-ahead code" and Back stay, and its line
+  says why a scan stopped: the camera refused (the typed code stays), missing, failed, a text core refused, or no
+  registry key in this build (the shipping APK: "This build trusts no registry key yet"). :app's
+  camera/GoAheadScanner.kt is the Android end: CAMERA asked through MainActivity's prompt each time the scan screen
+  starts a scan, a phone without a camera included (the launcher registered in onCreate, whole on one line, its
+  contract imported with its package: an import line naming the contracts' class is a KtIntent hit); then, on the
+  scanner's HandlerThread, the back camera or else the first with YUV_420_888 frames (none, or no camera feature:
+  Missing) at its largest YUV_420_888 size up to 1920x1080 by area, with continuous autofocus where offered, into an
+  ImageReader of two images, whose latest frame (acquireLatestImage) is reduced to luminance by its row and pixel
+  strides (reduceLuminance, any pixel stride), handed back at once and decoded (goAheadText: POSSIBLE_FORMATS
+  QR_CODE and TRY_HARDER, no PURE_BARCODE; ZXing's ReaderException, the file's one catch of it, drops a frame whose
+  luminance decodeGoAhead has already zeroed, M5-53, and a text over 4,296 characters is dropped, swb:144); the first
+  text ends the scan and goes once to the model's onGoAheadText. Every Camera2 call runs on that thread behind the
+  scan's own stop flag, with its release queued there after any call, so none reaches a closed device, session or
+  reader; CameraAccessException, the file's one catch of it, ends the scan as Failed; a device or session that arrives
+  after the end is closed at once; no frame, luminance or text is logged or kept (the luminance zeroed after each
+  frame and at the end). CeremonyModel: scanQr; typeCode from the scan screen too; onGoAheadText (Core.revealProof
+  on today's UTC date, a long call behind "Working..." as the FFI runs it; a refusal returns to the scan screen with
+  the refusal, the seal and the same check QR); scanStopped (said on the scan screen alone, the first stop). UiState's
+  proof flag tells a proof's header from a loaded snapshot's (M5-55): both result screens draw proofLine, "Proof from
+  snapshot No. N, dated D: K entries in this seal's bucket." ("1 entry" when K is 1), never the snapshot's total of
+  seals, then the freshness warning, before the words; a snapshot's result keeps its snapshot line. revealProof
+  joins finish and encryptBackup in M5-54's residual (core does not offer it at home, so a discard that lands
+  between the worker's look at its flag and the call halts the slot: the stop screen), named in CeremonyModel's
+  KDoc. JVM: :app's GoAheadFrameTest (3 tests) runs reduceLuminance and goAheadText on canned YUV_420_888 Y planes of
+  both P4 PNGs (P4Png, which GoAheadPngTest now shares, renders and reads them as before) set in a wider white
+  frame, at each of the four rotations, with pixel stride 1 (64 bytes of padding a row) and 2 (7), the buffer exactly
+  as long as the strides need and every byte that is no pixel filled: the luminance back byte for byte, the UR
+  text decoded, the luminance zeroed; a frame with no code gives none; a 4,297-digit numeric QR, which ZXing reads,
+  is dropped, and a 4,296-digit one kept. :screens' ScanScreensTest (7 tests): the scan screen keeps the seal and the
+  same check QR, and Back and its Type go-ahead code leave it with no core call; a stop is said there alone, the first
+  one, and a new scan screen scans again; clear-empty-bucket's text (upper case) passes dice-99-words12's check behind
+  Working, its header the proof's (No. 2, 2026-03-01, 0 entries; Stale with its warning on a day in M5), the words
+  available; collision-dice-50's gives the collision result (1 entry, the seal), the report and 0 / 99; "not a ur" and
+  clear-empty-bucket for dice-50-words12 are refused (NotUr, WrongBucket) back on the scan screen with the same check,
+  which collision-dice-50's text then answers; a text off the scan screen does nothing; a loaded snapshot's result
+  is no proof; each of the scan screen's lines. Emulator: CaptureTest's walk (both APKs, API 31 and 36) adds the scan
+  screen after the seal card: dumpsys package shows CAMERA requested and not granted, no permission-controller window
+  is up there or on any screen of the walk, the scan screen opens and the system's prompt shows
+  (permission_deny_button within 10 s, a pass line), "Don't allow" is pressed, the refusal reaches the scan screen,
+  CAMERA is still not granted, and the screen is captured black. CheckTest requires the seal card's four actions,
+  Scan go-ahead QR among them. SnapshotDrillTest (test-registry APK) gains two tests: CAMERA granted by `pm grant`
+  (dumpsys package reads it back), the scan screen reaches its no-camera line (the AVD has none), then the text goes
+  to onGoAheadText: clear-empty-bucket's, "No collision for seal 9FHYMCQA as of 2026-03-01.", "Proof from snapshot
+  No. 2, dated 2026-03-01: 0 entries in this seal's bucket." and the Stale warning, the words available; and
+  collision-dice-50's, the collision text, "Proof from snapshot No. 4, dated 2026-03-01: 1 entry in this seal's
+  bucket.", the Stale warning and YVM9CPP3 drawn, the report behind the gate and 0 / 99 (P4's first and third
+  steps). Estimated cost (not yet measured): about a minute a leg (two more ceremonies in SnapshotDrillTest, one
+  more screen and its prompt in each CaptureTest walk), so about 2 minutes on run 39678040247's 29.0, within M5-57's
+  37. Gate clean on the tree (359 files) under sh and dash, `--selftest` 1444 passed, 0 failed (unchanged; sh and
+  /bin/dash), `--selftest-apk` 88 passed, 0 failed, and `canaries.sh` PASS, all 93 checks ran; Rust untouched (fmt,
+  both clippy commands, the workspace tests, the test-sources run and the FFI tests plain and with test-registry all
+  pass).
 
 **17. Screens: words to finish** (MA:177-184; PF:90-99; swb:276-290)
 - [ ] The privacy gate, then Words (one insert per page: position, word, SeedBook number, five faces with blanks,

@@ -26,10 +26,13 @@ internal class FakeClock : MonotonicClock {
 
 /**
  * The UTC date the model reads: vectors/kcr.json's own (2026-03-01, read when first asked), the date its
- * snapshots' freshness is pinned against, so the check's tests read each freshness on a fixed date.
+ * snapshots' freshness is pinned against, so the check's tests read each freshness on a fixed date; or
+ * the day a test sets (YYYYMMDD), a later one where a freshness warning is the point.
  */
 internal class FakeDate : UtcDate {
-    override fun today(): Int = kcrToday()
+    var day: Int? = null
+
+    override fun today(): Int = day ?: kcrToday()
 }
 
 /** A worker that keeps each long call until run, in order. */

@@ -36,12 +36,14 @@ import org.junit.runner.RunWith
  * scripts/android-instrument.sh on the shipping app in the API 31 and 36 legs, through UI Automator as
  * FlowTest is (Ui): a dice-only seed of vectors/kcr.json's public gate seed dice-50-words12, the
  * dice's Done at the minimum, the check prompt all on screen with no Seal ID (lead decision M5-55),
- * Skip confirmed on its own screen and Back there, Check now's seal card with the Seal ID drawn,
- * Match found's and Cannot check's confirms and Back, then the go-ahead code: the check QR the screen
- * drew is read in-process (Checker; captures of the app are black), a code through every column and
- * row of the Crockford pad types and Delete takes it back, a wrong code typed on the pad is refused and
- * the check, its nonce and the actions stay, and the code a checker builds from that QR's T and nonce,
- * typed on the pad, passes the check.
+ * Skip confirmed on its own screen and Back there, Check now's seal card with the Seal ID drawn and its
+ * four actions, "Scan go-ahead QR" among them (drawn, not pressed: the shipping app's camera prompt is
+ * CaptureTest's, and a scanned go-ahead QR SnapshotDrillTest's, since only the test-registry app trusts
+ * the test key), Match found's and Cannot check's confirms and Back, then the go-ahead code: the check
+ * QR the screen drew is read in-process (Checker; captures of the app are black), a code through every
+ * column and row of the Crockford pad types and Delete takes it back, a wrong code typed on the pad is
+ * refused and the check, its nonce and the actions stay, and the code a checker builds from that QR's T
+ * and nonce, typed on the pad, passes the check.
  */
 @RunWith(AndroidJUnit4::class)
 class CheckTest {
@@ -141,7 +143,7 @@ class CheckTest {
             tap("back")
             on(activity, Screen.SealCard)
             assertEquals("the check request changed after the wrong code", first, drawnRequest(activity))
-            for (action in listOf("type_code", "match_found", "cannot_check")) find(action)
+            for (action in listOf("scan_qr", "type_code", "match_found", "cannot_check")) find(action)
             // The code the checker builds from the drawn QR, typed on the pad.
             tap("type_code")
             on(activity, Screen.CodeEntry)
@@ -155,7 +157,8 @@ class CheckTest {
             )
             pass(
                 "the check without a snapshot: Done at 50 rolls, the prompt with no Seal ID, Skip, the seal card's Seal ID " +
-                    "$DICE_50_SEAL_ID, Match found and Cannot check confirmed on their own screens and Back there, a wrong code " +
+                    "$DICE_50_SEAL_ID and its four actions (Scan go-ahead QR drawn), Match found and Cannot check confirmed on " +
+                    "their own screens and Back there, a wrong code " +
                     "refused with the same check QR, the code from the drawn check QR's T and nonce typed on the pad: the check passed",
             )
             finish(activity)

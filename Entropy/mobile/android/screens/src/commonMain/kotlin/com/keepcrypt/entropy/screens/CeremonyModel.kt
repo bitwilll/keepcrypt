@@ -55,10 +55,10 @@ enum class Notice {
 /**
  * What the screens draw (tasks/todo.md, M5 groups 14, 15 and 16; lead decision M5-49): the screen's
  * id and page index, flags about it, and the public values a screen shows (the dice counts, C, the
- * seal card, the check QR, a snapshot's header), never a secret but through a Secret reference: the
- * QR codes are QrMatrix, whose bits a Secret holds, and the model wipes each one when no screen holds
- * it any more (the collision report's carries the destroyed seed's seal code). The words and the
- * rest (commits 19-21) hold theirs the same way.
+ * seal card, the check QR, a snapshot's or proof's header, why a scan stopped), never a secret but
+ * through a Secret reference: the QR codes are QrMatrix, whose bits a Secret holds, and the model
+ * wipes each one when no screen holds it any more (the collision report's carries the destroyed
+ * seed's seal code). The words and the rest (commits 19-21) hold theirs the same way.
  */
 data class UiState(
     val screen: Screen,
@@ -92,12 +92,28 @@ data class UiState(
     val checkRequest: QrMatrix? = null,
     /** The collision-report QR (Protected: the destroyed seed's seal code), wiped when its screen leaves. */
     val report: QrMatrix? = null,
-    /** The loaded snapshot's header (its number, date, count and freshness) when the check ran against it. */
+    /**
+     * The header the check ran against: the loaded snapshot's (its number, date, count of seals and
+     * freshness), or a scanned go-ahead QR's proof's (proof).
+     */
     val registry: RegistryHeader? = null,
+    /**
+     * The registry header is a scanned go-ahead QR's proof, not a loaded snapshot's (lead decision
+     * M5-55): its count is the entries in this seal's bucket, which the result says, never a snapshot's
+     * total of seals.
+     */
+    val proof: Boolean = false,
     /** The words came by Skip, with no check: the result says the seal can be checked later. */
     val skipped: Boolean = false,
     /** The typed go-ahead code was refused: the code entry says so, and the check, its nonce and actions stay. */
     val codeRefused: Boolean = false,
+    /** The scan screen's scanner stopped without a code (the camera refused, missing or failed): it says why and scans no more. */
+    val scanStop: ScanStop? = null,
+    /**
+     * Core refused the scanned QR's text (no registry key in this build, no go-ahead QR, another seal's
+     * bucket): the scan screen says so and scans no more, and the check, its nonce and actions stay.
+     */
+    val scanRefusal: Refusal? = null,
 ) {
     /** Offline (Q57): airplane mode on and Wi-Fi off. */
     val offline: Boolean get() = airplaneMode && wifiOff
@@ -119,10 +135,11 @@ data class UiState(
  *   (away from the app too: the offline monitor reports until the model's end), call core's discard
  *   at once, even during a long call; the call's discarded reply then returns the UI to its start
  *   screen (toStart). That start screen is certain for the long calls core offers at home, start and
- *   the self-test; finish and encryptBackup (the backup's, commit 20), which it does not offer there,
- *   halt the slot instead when a discard reaches core between the worker's look at the discard flag
- *   and the call (fail closed: the stop screen; lead decision M5-54's residual, work). On a Public
- *   screen leaving puts the privacy cover up, and 60 s away wipes.
+ *   the self-test; finish, revealProof (the scanned go-ahead QR's check, commit 18) and encryptBackup
+ *   (the backup's, commit 20), which it does not offer there, halt the slot instead when a discard
+ *   reaches core between the worker's look at the discard flag and the call (fail closed: the stop
+ *   screen; lead decision M5-54's residual, work). On a Public screen leaving puts the privacy cover
+ *   up, and 60 s away wipes.
  * - The timers (Timers) cover, warn and wipe on each tick.
  * - On every start First launch shows first, before any core call (lead decision M5-50); its Continue
  *   runs the start-up self-test (core's known-answer tests, a long call behind its own screen; any
@@ -136,12 +153,15 @@ data class UiState(
  *   (the Seal ID shows from Check now on, lead decision M5-55) and whose Skip is confirmed on its own
  *   screen; Check now, which with a loaded snapshot runs the check against it at once (a short call
  *   on the main thread, lead decision M5-54), and otherwise shows the seal card with its check QR and
- *   the checker's answers, the typed go-ahead code, Match found and Cannot check (each one-way choice
- *   confirmed on its own screen). A wrong code is refused and the check stays, with its nonce. The
- *   check result names the Seal ID, and the collision result draws the destroyed seed's seal. Match
- *   found wipes the seed unseen, then the collision-report QR (Protected) and "Add fresh entropy";
- *   Cannot check wipes it and starts again. Both restarts are core's start from the kept Wiped, with
- *   the destroyed session's length and mode, so core sets the minimum (99 rolls after a collision).
+ *   the checker's answers, the scanned go-ahead QR (the scan screen, commit 18: its text is checked on
+ *   the worker behind "Working..."), the typed go-ahead code, Match found and Cannot check (each one-way
+ *   choice confirmed on its own screen). A wrong code, or a scanned QR core does not accept, is
+ *   refused and the check stays, with its nonce. The check result names the Seal ID, and the
+ *   collision result draws the destroyed seed's seal; after a scanned QR both say how many entries
+ *   the seal's bucket holds, never a snapshot's total (lead decision M5-55). Match found wipes the seed
+ *   unseen, then the collision-report QR (Protected) and "Add fresh entropy"; Cannot check wipes it and
+ *   starts again. Both restarts are core's start from the kept Wiped, with the destroyed session's
+ *   length and mode, so core sets the minimum (99 rolls after a collision).
  */
 class CeremonyModel(
     private val scope: CoroutineScope,
@@ -327,12 +347,12 @@ class CeremonyModel(
     }
 
     /**
-     * The system Back (the platform's), and the Back button of the code entry and of each one-way
-     * choice's confirm screen: back to the screen before only where nothing is lost, as the Pi's KEY1
-     * and KEY2 (Length to Home, Home to Go offline, Go offline to First launch; Skip's confirm to the
-     * check prompt; Match found's and Cannot check's confirms and the code entry to the seal card, with
-     * the same check and nonce and no core call, the typed code wiped); anywhere else it does nothing,
-     * so it never ends a session, leaves a check or a long call, or leaves the app.
+     * The system Back (the platform's), and the Back button of the scan screen, the code entry and each
+     * one-way choice's confirm screen: back to the screen before only where nothing is lost, as the Pi's
+     * KEY1 and KEY2 (Length to Home, Home to Go offline, Go offline to First launch; Skip's confirm to
+     * the check prompt; the scan screen, Match found's and Cannot check's confirms and the code entry to
+     * the seal card, with the same check and nonce and no core call, the typed code wiped); anywhere
+     * else it does nothing, so it never ends a session, leaves a check or a long call, or leaves the app.
      */
     fun back() {
         val current = mutable.value
@@ -463,9 +483,47 @@ class CeremonyModel(
         if (pressOn(Screen.SkipConfirm) && short { Core.skipCheck() }) show(Screen.CheckResult, skipped = true)
     }
 
-    /** The seal card's "Type go-ahead code": the code entry, its pad empty. */
+    /**
+     * The seal card's "Scan go-ahead QR": the scan screen, with the same check and nonce. Its scanner
+     * (the platform's) asks for the camera as the screen opens and hands its first text to
+     * onGoAheadText; a stop without a code comes to scanStopped.
+     */
+    fun scanQr() {
+        if (pressOn(Screen.SealCard)) showInCheck(Screen.Scan)
+    }
+
+    /** The seal card's or the scan screen's "Type go-ahead code": the code entry, its pad empty. */
     fun typeCode() {
-        if (pressOn(Screen.SealCard)) showInCheck(Screen.CodeEntry)
+        if (pressOn(Screen.SealCard) || pressOn(Screen.Scan)) showInCheck(Screen.CodeEntry)
+    }
+
+    /**
+     * The scan screen's text: the first QR code its scanner read (the emulator tests, whose emulators
+     * have no camera, hand the drill's texts in here, as the scanner would; a text over 4,296
+     * characters never comes, the scanner drops it, swb:144). Core checks it as this check's go-ahead
+     * QR on today's UTC date, a long call behind "Working..." (the proof's known-answer tests, its
+     * signature and Merkle path), then judges it: the words are available, or the seed is wiped unseen
+     * on a collision, and the result shows the proof's snapshot date, the entries in this seal's bucket
+     * and any freshness warning (lead decision M5-55). A text core refuses (no registry key in this
+     * build, no go-ahead QR, another seal's bucket) returns to the scan screen, which says so and scans
+     * no more; the check, its nonce, "Type go-ahead code" and Back stay.
+     */
+    fun onGoAheadText(text: String) {
+        if (!pressOn(Screen.Scan)) return
+        val seal = mutable.value.seal
+        work({ Core.revealProof(date.today(), text) }, refused = { showInCheck(Screen.Scan, scanRefusal = it) }) {
+            ended(it, seal, proof = true)
+        }
+    }
+
+    /**
+     * The scan screen's scanner stopped without a code (the camera refused, missing or failed): the
+     * screen says why and scans no more; anywhere else, or after a stop already said, nothing.
+     */
+    fun scanStopped(why: ScanStop) {
+        val current = mutable.value
+        if (busy() || current.screen != Screen.Scan || current.scanStop != null) return
+        mutable.value = current.copy(scanStop = why)
     }
 
     /** The seal card's "Match found": its confirm screen. */
@@ -601,13 +659,13 @@ class CeremonyModel(
      * discard first; either way the start screen follows. A discard that lands between the worker's
      * look at the flag and the call reaches core before the call does (onWorker), and what follows
      * depends on the call (lead decision M5-54): a start or the self-test, which core offers at home,
-     * runs, what it made is discarded again on the worker, and the start screen follows; finish and
-     * encryptBackup (the backup's, commit 20), which core does not offer at home, halt the slot (fail
-     * closed: the stop screen instead of the start screen, in a window of microseconds; M5-54's
-     * residual). A halt is the stop screen. One long call at a time: a second is the shell's bug, and
-     * halts, as does a busy screen that takes input. The busy screen keeps the QR codes of the screen it
-     * stands for (drawing none), so that screen comes back with them whole; the next other screen wipes
-     * them.
+     * runs, what it made is discarded again on the worker, and the start screen follows; finish,
+     * revealProof (the scanned go-ahead QR's check) and encryptBackup (the backup's, commit 20), which
+     * core does not offer at home, halt the slot (fail closed: the stop screen instead of the start
+     * screen, in a window of microseconds; M5-54's residual). A halt is the stop screen. One long call
+     * at a time: a second is the shell's bug, and halts, as does a busy screen that takes input. The
+     * busy screen keeps the QR codes of the screen it stands for (drawing none), so that screen comes
+     * back with them whole; the next other screen wipes them.
      */
     fun <T> work(
         core: () -> Reply<T>,
@@ -651,11 +709,11 @@ class CeremonyModel(
      * and the call reaches core first (lead decision M5-54): a start or the self-test, which core offers
      * at home, then runs, and the second look finds the flag, so what it made is discarded again here,
      * on the worker, before its reply goes back (a cancelled scope, the holder's end, which cancels it
-     * before wipeAll, drops the reply on the main thread but cannot skip this); finish and encryptBackup,
-     * which core does not offer at home, halt the slot there, and their reply is the halt status (M5-54's
-     * residual: the stop screen, fail closed). A discard during the call makes core return discarded,
-     * and one after the second look found the call done in core, so its own core discard took what the
-     * call made. Null is the halt status.
+     * before wipeAll, drops the reply on the main thread but cannot skip this); finish, revealProof and
+     * encryptBackup, which core does not offer at home, halt the slot there, and their reply is the halt
+     * status (M5-54's residual: the stop screen, fail closed). A discard during the call makes core
+     * return discarded, and one after the second look found the call done in core, so its own core
+     * discard took what the call made. Null is the halt status.
      */
     private fun <T> onWorker(pending: Pending, core: () -> Reply<T>): Reply<T>? {
         if (pending.discarded) return Reply.Discarded
@@ -720,8 +778,11 @@ class CeremonyModel(
             checkRequest = previous.checkRequest,
             report = previous.report,
             registry = previous.registry,
+            proof = previous.proof,
             skipped = previous.skipped,
             codeRefused = previous.codeRefused,
+            scanStop = previous.scanStop,
+            scanRefusal = previous.scanRefusal,
         )
     }
 
@@ -732,21 +793,28 @@ class CeremonyModel(
     }
 
     /** One of the check's screens after the seal card, with the seal card and its check QR (the same check and nonce). */
-    private fun showInCheck(screen: Screen, codeRefused: Boolean = false) {
+    private fun showInCheck(screen: Screen, codeRefused: Boolean = false, scanRefusal: Refusal? = null) {
         val current = mutable.value
-        show(screen, seal = current.seal, checkRequest = current.checkRequest, codeRefused = codeRefused)
+        show(
+            screen,
+            seal = current.seal,
+            checkRequest = current.checkRequest,
+            codeRefused = codeRefused,
+            scanRefusal = scanRefusal,
+        )
     }
 
     /**
      * Where a go-ahead led (docs/seal-watchonly-braille.md, "Results"): the words are available, and
-     * the result names the Seal ID and says against what (a loaded snapshot's header, or the checker's
-     * typed code); or the seed was wiped unseen, and the collision result follows, drawing the destroyed
-     * seed's seal (lead decision M5-55). The slot is Ready or at its restart, both held under the timers.
+     * the result names the Seal ID and says against what (a loaded snapshot's header, a scanned go-ahead
+     * QR's proof's, or the checker's typed code); or the seed was wiped unseen, and the collision result
+     * follows, drawing the destroyed seed's seal (lead decision M5-55). proof says the header is a
+     * proof's. The slot is Ready or at its restart, both held under the timers.
      */
-    private fun ended(revealed: Revealed, seal: SealCard?) {
+    private fun ended(revealed: Revealed, seal: SealCard?, proof: Boolean = false) {
         when (revealed) {
-            is Revealed.Clear -> show(Screen.CheckResult, seal = seal, registry = revealed.registry)
-            is Revealed.Collision -> show(Screen.Collision, seal = seal, registry = revealed.registry)
+            is Revealed.Clear -> show(Screen.CheckResult, seal = seal, registry = revealed.registry, proof = proof)
+            is Revealed.Collision -> show(Screen.Collision, seal = seal, registry = revealed.registry, proof = proof)
         }
     }
 
@@ -765,8 +833,11 @@ class CeremonyModel(
         checkRequest: QrMatrix? = null,
         report: QrMatrix? = null,
         registry: RegistryHeader? = null,
+        proof: Boolean = false,
         skipped: Boolean = false,
         codeRefused: Boolean = false,
+        scanStop: ScanStop? = null,
+        scanRefusal: Refusal? = null,
     ) {
         val current = mutable.value
         val leaving = if (isWorking(current.screen)) from.screen else current.screen
@@ -787,8 +858,11 @@ class CeremonyModel(
                 checkRequest = checkRequest,
                 report = report,
                 registry = registry,
+                proof = proof,
                 skipped = skipped,
                 codeRefused = codeRefused,
+                scanStop = scanStop,
+                scanRefusal = scanRefusal,
             ),
         )
     }
@@ -859,7 +933,7 @@ class CeremonyModel(
         Screen.Home -> Screen.GoOffline
         Screen.Length -> Screen.Home
         Screen.SkipConfirm -> Screen.CheckPrompt
-        Screen.CodeEntry, Screen.MatchFoundConfirm, Screen.CannotCheckConfirm -> Screen.SealCard
+        Screen.Scan, Screen.CodeEntry, Screen.MatchFoundConfirm, Screen.CannotCheckConfirm -> Screen.SealCard
         Screen.SelfTest, Screen.FirstLaunch, Screen.DeviceEntropy, Screen.Commitment, Screen.Dice, Screen.CheckPrompt,
         Screen.SealCard, Screen.Collision, Screen.CollisionReport, Screen.CheckResult, Screen.Working, Screen.Stop -> null
     }
@@ -868,8 +942,8 @@ class CeremonyModel(
     private fun needsOffline(screen: Screen): Boolean = when (screen) {
         Screen.SelfTest, Screen.FirstLaunch, Screen.GoOffline, Screen.Working, Screen.Stop -> false
         Screen.Home, Screen.Length, Screen.DeviceEntropy, Screen.Commitment, Screen.Dice, Screen.CheckPrompt,
-        Screen.SkipConfirm, Screen.SealCard, Screen.CodeEntry, Screen.MatchFoundConfirm, Screen.CannotCheckConfirm,
-        Screen.Collision, Screen.CollisionReport, Screen.CheckResult -> true
+        Screen.SkipConfirm, Screen.SealCard, Screen.Scan, Screen.CodeEntry, Screen.MatchFoundConfirm,
+        Screen.CannotCheckConfirm, Screen.Collision, Screen.CollisionReport, Screen.CheckResult -> true
     }
 
     /** The slot is collecting and Device entropy shows: extras go into the pool (until the commitment). */

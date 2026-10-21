@@ -348,7 +348,8 @@
 # NOSYMTAB when it has no .symtab). The base
 # case is aapt2's three dumps of the shipping APK (scripts/testdata/apk/, from the Android run
 # 39062895784; the xmltree dump has since gained the application's class, KeepCryptApp, M5 commit
-# 15), a stand-in merger report that removes the androidx.startup provider, the run's
+# 15, and all three CAMERA, the xmltree dump with the camera feature not required, M5 commit 18), a
+# stand-in merger report that removes the androidx.startup provider, the run's
 # signer and a stub APK laid out as the real one; it must pass against the committed
 # mobile/android/expected/manifest-shipping.txt (the control). Each case changes one thing and must
 # give exactly that one hit: INTERNET, ACCESS_NETWORK_STATE, ACCESS_WIFI_STATE, a provider, a

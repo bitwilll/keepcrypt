@@ -13,12 +13,14 @@ import android.view.ViewTreeObserver
 import android.view.WindowInsets
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
+import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import com.keepcrypt.entropy.screens.Screen
 import com.keepcrypt.entropy.screens.screenId
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.regex.Pattern
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -387,6 +389,32 @@ internal object Capture {
 
     /** A global setting as the shell reads it. */
     fun globalSetting(name: String): String = shellText("settings get global " + name)
+
+    /** The system's permission prompt: the permission controller's window (AOSP's on these images, Google's elsewhere). */
+    val PERMISSION_PROMPT: BySelector = By.pkg(Pattern.compile("com[.](google[.])?android[.]permissioncontroller"))
+
+    /** The permission prompt's "Don't allow". */
+    val PROMPT_DENY: BySelector = By.res(Pattern.compile("com[.](google[.])?android[.]permissioncontroller:id/permission_deny_button"))
+
+    /**
+     * What dumpsys package says of one of pkg's permissions, read in pkg's own block ("Package [pkg]"
+     * to the next package or section): whether it is among the requested permissions, whether a line
+     * grants it ("PERMISSION: granted=true", a runtime permission's state line), and those state lines.
+     */
+    class PermissionFacts(val requested: Boolean, val granted: Boolean, val state: String)
+
+    fun permission(pkg: String, permission: String): PermissionFacts {
+        val lines = shellText("dumpsys package " + pkg).lines()
+        val start = lines.indexOfFirst { it.trim().startsWith("Package [" + pkg + "]") }
+        if (start < 0) throw AssertionError("dumpsys package lists no block for " + pkg)
+        val block = lines.drop(start + 1)
+            .takeWhile { !it.trim().startsWith("Package [") && (it.isBlank() || it[0].isWhitespace()) }
+            .map { it.trim() }
+        val requested = block.any { it == permission || it.startsWith(permission + ",") || it.startsWith(permission + " ") }
+        val state = block.filter { it.startsWith(permission + ": granted=") }
+        val granted = state.any { it.startsWith(permission + ": granted=true") }
+        return PermissionFacts(requested, granted, state.joinToString(" | ").ifEmpty { "no state line" })
+    }
 
     /** block's value, computed on the main thread. */
     @Suppress("UNCHECKED_CAST")

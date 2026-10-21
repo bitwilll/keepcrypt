@@ -4,11 +4,12 @@ import kotlin.test.assertEquals
 
 /**
  * The registry vectors the collision check's tests take (tasks/todo.md, M5 group 16; rule 12: vectors/
- * only): vectors/kcr.json's date and its snapshots by name, read through the platform's test code as
- * :core-ffi's tests read the vectors (lead decision M5-43): on the JVM, androidHostTest's actual of
- * entropyFile, under the directory screens/build.gradle.kts names in kc.entropy. vectorgen.py writes
- * kcr.json with each snapshot's name followed by its kcr_hex (a proof's name by its kcp1_hex instead),
- * so the two are read as that pair, each exactly once, with no JSON reader of this module's own.
+ * only): vectors/kcr.json's date, its snapshots by name and its two proofs' go-ahead QR texts, read
+ * through the platform's test code as :core-ffi's tests read the vectors (lead decision M5-43): on the
+ * JVM, androidHostTest's actual of entropyFile, under the directory screens/build.gradle.kts names in
+ * kc.entropy. vectorgen.py writes kcr.json with each snapshot's name followed by its kcr_hex, and a
+ * proof's name by its kcp1_hex and then, for the two P4 proofs (lead decision M5-42), its ur, so each is
+ * read as that run of fields, exactly once, with no JSON reader of this module's own.
  */
 internal expect fun entropyFile(path: String): String
 
@@ -30,3 +31,9 @@ internal fun kcrSnapshot(name: String): ByteArray {
     assertEquals(0, hex.length % 2, "an even number of hex digits")
     return ByteArray(hex.length / 2) { i -> hex.substring(2 * i, 2 * i + 2).toInt(16).toByte() }
 }
+
+/** The go-ahead QR text of kcr.json's proof named name (its ur field, lower case; lead decision M5-42). */
+internal fun kcrProofUr(name: String): String = kcrField(
+    "\"name\": \"" + Regex.escape(name) + "\",\\s*\"kcp1_hex\": \"[0-9a-f]*\",\\s*\"ur\": \"([a-z0-9:/-]*)\"",
+    "the proof " + name + " with its ur",
+)

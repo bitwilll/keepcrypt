@@ -26,13 +26,19 @@ import com.keepcrypt.entropy.ffi.Mode
  * when over the model's state, so no back stack reaches a saved-state Bundle. Every tap first reaches
  * the model (input, the idle timer; touched, which Device entropy mixes in); the cover and the warning
  * lie over the screen and take the tap that removes them, so it reaches nothing under them.
- * airplaneSettings is Go offline's button (the platform's seam); onShown reports each screen once it
- * is composed (the capture harness's drawn-screen proof); onClose is the stop screen's "Close app",
- * which ends the process (the platform's). The system Back is the platform's too, and goes to the
- * model's back.
+ * airplaneSettings is Go offline's button and scanner the scan screen's go-ahead QR scanner (the
+ * platform's seams); onShown reports each screen once it is composed (the capture harness's
+ * drawn-screen proof); onClose is the stop screen's "Close app", which ends the process (the
+ * platform's). The system Back is the platform's too, and goes to the model's back.
  */
 @Composable
-fun Screens(model: CeremonyModel, airplaneSettings: AirplaneSettings, onClose: () -> Unit, onShown: (Screen) -> Unit) {
+fun Screens(
+    model: CeremonyModel,
+    airplaneSettings: AirplaneSettings,
+    scanner: QrScanner,
+    onClose: () -> Unit,
+    onShown: (Screen) -> Unit,
+) {
     val state by model.state.collectAsState()
     val registry = model.testRegistry
     Box(
@@ -83,9 +89,19 @@ fun Screens(model: CeremonyModel, airplaneSettings: AirplaneSettings, onClose: (
                 Screen.SealCard -> SealCardScreen(
                     state,
                     registry,
+                    onScan = model::scanQr,
                     onTypeCode = model::typeCode,
                     onMatchFound = model::matchFound,
                     onCannotCheck = model::cannotCheck,
+                )
+                Screen.Scan -> ScanScreen(
+                    state,
+                    scanner,
+                    registry,
+                    onText = model::onGoAheadText,
+                    onStopped = model::scanStopped,
+                    onTypeCode = model::typeCode,
+                    onBack = model::back,
                 )
                 Screen.CodeEntry -> CodeEntry(state, model.goAheadCode, registry, onDone = model::codeDone, onBack = model::back)
                 Screen.MatchFoundConfirm -> MatchFoundConfirm(registry, onDestroy = model::matchFoundConfirmed, onBack = model::back)

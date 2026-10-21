@@ -7,11 +7,11 @@ package com.keepcrypt.entropy.screens
  * the one walk CaptureTest takes through them in one activity: First launch, the first screen of
  * every start, the self-test its Continue runs (lead decision M5-50), Go offline, Home, Length, Device
  * entropy (Mixed only), Commitment (Mixed only) and Dice (commit 16); the collision check (commit 17):
- * the check prompt, Skip's confirm, the seal card, the code entry, Match found's and Cannot check's
- * confirms, the collision result, the collision-report QR and, after the restart it leads to, the
- * result before the words; then the "Working..." screen every other long call shows, and the stop
- * screen a halt ends on. The words and the rest come with commits 19-21. In :screens' common code,
- * beside the screens themselves.
+ * the check prompt, Skip's confirm, the seal card, the scan screen (commit 18), the code entry, Match
+ * found's and Cannot check's confirms, the collision result, the collision-report QR and, after the
+ * restart it leads to, the result before the words; then the "Working..." screen every other long call
+ * shows, and the stop screen a halt ends on. The words and the rest come with commits 19-21. In
+ * :screens' common code, beside the screens themselves.
  */
 enum class Screen {
     FirstLaunch,
@@ -25,6 +25,7 @@ enum class Screen {
     CheckPrompt,
     SkipConfirm,
     SealCard,
+    Scan,
     CodeEntry,
     MatchFoundConfirm,
     CannotCheckConfirm,
@@ -48,6 +49,7 @@ fun screenId(screen: Screen): String = when (screen) {
     Screen.CheckPrompt -> "check_prompt"
     Screen.SkipConfirm -> "skip_confirm"
     Screen.SealCard -> "seal_card"
+    Screen.Scan -> "scan"
     Screen.CodeEntry -> "code_entry"
     Screen.MatchFoundConfirm -> "match_found_confirm"
     Screen.CannotCheckConfirm -> "cannot_check_confirm"
@@ -63,16 +65,16 @@ fun screenId(screen: Screen): String = when (screen) {
  * by Q57): it shows a secret, so it is entered through the privacy gate from a Public one, covered
  * after 30 s without input, and leaving the app on it discards the session at once. The first is the
  * collision-report QR (it carries the destroyed seed's seal code); every other screen so far is
- * Public, the dice screen, C and the seal card's check QR (T and a nonce) included (the Pi's list); the
- * words, the read-back, the passphrases, D and the other QR codes that carry a secret come with
- * commits 19-21.
+ * Public, the dice screen, C and the seal card's check QR (T and a nonce) included (the Pi's list), and
+ * the scan screen, which draws nothing the camera sees; the words, the read-back, the passphrases, D
+ * and the other QR codes that carry a secret come with commits 19-21.
  */
 fun isProtected(screen: Screen): Boolean = when (screen) {
     Screen.CollisionReport -> true
     Screen.FirstLaunch, Screen.SelfTest, Screen.GoOffline, Screen.Home, Screen.Length, Screen.DeviceEntropy,
-    Screen.Commitment, Screen.Dice, Screen.CheckPrompt, Screen.SkipConfirm, Screen.SealCard, Screen.CodeEntry,
-    Screen.MatchFoundConfirm, Screen.CannotCheckConfirm, Screen.Collision, Screen.CheckResult, Screen.Working,
-    Screen.Stop -> false
+    Screen.Commitment, Screen.Dice, Screen.CheckPrompt, Screen.SkipConfirm, Screen.SealCard, Screen.Scan,
+    Screen.CodeEntry, Screen.MatchFoundConfirm, Screen.CannotCheckConfirm, Screen.Collision, Screen.CheckResult,
+    Screen.Working, Screen.Stop -> false
 }
 
 /**

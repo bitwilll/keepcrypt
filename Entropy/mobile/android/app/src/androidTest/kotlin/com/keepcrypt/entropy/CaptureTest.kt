@@ -14,6 +14,8 @@ import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import com.keepcrypt.entropy.Capture.KNOWN_MIN
 import com.keepcrypt.entropy.Capture.KNOWN_MIN_RECENTS
+import com.keepcrypt.entropy.Capture.PERMISSION_PROMPT
+import com.keepcrypt.entropy.Capture.PROMPT_DENY
 import com.keepcrypt.entropy.Capture.SETTLE_MS
 import com.keepcrypt.entropy.Capture.display
 import com.keepcrypt.entropy.Capture.finish
@@ -37,6 +39,7 @@ import com.keepcrypt.entropy.ffi.Reply
 import com.keepcrypt.entropy.ffi.Words
 import com.keepcrypt.entropy.screens.DICE_KEYS
 import com.keepcrypt.entropy.screens.Overlay
+import com.keepcrypt.entropy.screens.ScanStop
 import com.keepcrypt.entropy.screens.Screen
 import com.keepcrypt.entropy.screens.screenId
 import java.util.concurrent.CountDownLatch
@@ -68,6 +71,8 @@ class CaptureTest {
     /** The one activity the every-screen pass walks, from First launch to the stop screen. */
     private var walk: MainActivity? = null
 
+    private val device: UiDevice get() = UiDevice.getInstance(Capture.instrumentation)
+
     /**
      * Brings screen up in the walk's one activity, from the screen before it in Screen's order (the
      * ceremony's, lead decision M5-50, its collision check in the order one walk reaches its screens),
@@ -78,9 +83,13 @@ class CaptureTest {
      * over before a capture could start): the held one goes back to First launch when let go, whose
      * Continue then runs the real self-test to Go offline. The dice's Done and the restart are the real
      * long calls, waited for. The collision-report QR, the one Protected screen, is shown past its privacy
-     * gate, so the capture is of the QR itself. The stop screen is the halt status as Core throws it, so
-     * this process's slot stays live for the tests after it (the model's own tests halt a real one). Home
-     * on needs the phone offline, which the pass sees to.
+     * gate, so the capture is of the QR itself. The scan screen asks for the camera as it opens, and the
+     * walk is the first of this APK's tests to open it: dumpsys package shows CAMERA requested and not
+     * granted, no permission prompt is up, then the scan screen opens and the system's prompt shows over
+     * the app, another package's window, which the walk answers "Don't allow" before the capture (the
+     * scan screen then says the camera was refused, and its "Type go-ahead code" leads on). The stop
+     * screen is the halt status as Core throws it, so this process's slot stays live for the tests after
+     * it (the model's own tests halt a real one). Home on needs the phone offline, which the pass sees to.
      */
     private fun show(screen: Screen): MainActivity {
         val activity = if (screen == Screen.FirstLaunch) started().also { walk = it } else checkNotNull(walk)
@@ -105,6 +114,7 @@ class CaptureTest {
                 model.back()
                 model.checkNow()
             }
+            Screen.Scan -> askedOnTheScanScreen(activity)
             Screen.CodeEntry -> onMain { model.typeCode() }
             Screen.MatchFoundConfirm -> onMain {
                 model.back()
@@ -147,6 +157,32 @@ class CaptureTest {
         return activity
     }
 
+    /**
+     * From the seal card, the scan screen and its camera prompt (M5 group 16): CAMERA requested and not
+     * granted before it (dumpsys package) and no prompt up; once it opens, the system's prompt, whose
+     * "Don't allow" the walk presses, the refusal reaching the scan screen, and CAMERA still not granted.
+     */
+    private fun askedOnTheScanScreen(activity: MainActivity) {
+        val before = Capture.permission(pkg, CAMERA)
+        probe(
+            "CAMERA before the scan screen (dumpsys package): requested ${before.requested}, granted ${before.granted}; " +
+                before.state,
+        )
+        assertTrue("CAMERA is not among the app's requested permissions", before.requested)
+        assertFalse("CAMERA is granted before the scan screen", before.granted)
+        assertFalse("a permission prompt is up before the scan screen", device.hasObject(PERMISSION_PROMPT))
+        onMain { activity.model.scanQr() }
+        val deny = device.wait(Until.findObject(PROMPT_DENY), 10_000)
+            ?: throw AssertionError("no camera prompt (the permission controller's Don't allow) when the scan screen opened")
+        pass(
+            "the camera prompt showed as the scan screen opened and on no screen before it; CAMERA requested and not " +
+                "granted before it (dumpsys package)",
+        )
+        deny.click()
+        waitUntil("the prompt's refusal on the scan screen") { onMain { activity.model.state.value.scanStop } == ScanStop.Refused }
+        assertFalse("CAMERA granted after Don't allow", Capture.permission(pkg, CAMERA).granted)
+    }
+
     /** On the dice, rolls faces through the model's pick and confirm, then Done, and waits for the check prompt (the real finish). */
     private fun finishDice(activity: MainActivity, rolls: Int) {
         onMain {
@@ -168,7 +204,8 @@ class CaptureTest {
 
     /**
      * For every screen id, in one activity walked through the ceremony with the phone offline (groups
-     * 15 and 16): drawn, then black over the app's window in the shell's screencap and in
+     * 15 and 16): drawn, with no permission prompt over it (the scan screen's is answered first, and
+     * none comes before it), then black over the app's window in the shell's screencap and in
      * UiAutomation.takeScreenshot(), FLAG_SECURE in the window's own flags, the root view opted out of
      * content capture (read back in-process, group 14), and SECURE on every window of the package in
      * dumpsys window windows, found by its owner line too (the owner line is shown to be read on this
@@ -183,6 +220,7 @@ class CaptureTest {
         for (screen in Screen.entries) {
             val activity = show(screen)
             proveDrawn(activity, screen)
+            assertFalse("a permission prompt over " + screenId(screen), device.hasObject(PERMISSION_PROMPT))
             val region = region(activity)
             val display = display(activity)
             report("kc_region", "${region.left},${region.top},${region.right},${region.bottom}")
@@ -461,6 +499,9 @@ class CaptureTest {
 
         /** The test-registry APK's package (the withTestRegistry flavour's applicationId). */
         const val REGISTRY_PACKAGE = "com.keepcrypt.entropy.testregistry"
+
+        /** The permission the scan screen asks for. */
+        const val CAMERA = "android.permission.CAMERA"
 
         /** The TEST REGISTRY strip's resource id and text (Kit.kt's TestRegistryStrip). */
         const val STRIP = "test_registry_strip"
