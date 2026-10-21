@@ -11311,6 +11311,21 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   clean-kt-shipping-allowed and ktfailopen-catch-kmp-ceremony-model-second-catch gain their import lines. `--selftest`
   1439 passed, 0 failed (1431 before), the same under /bin/dash; the gate clean on the tree (356 files) under sh and
   dash; canaries.sh PASS, all 93 checks ran.
+  Proof (M5 commit 18a, M5-53): the catch list gains `catch (<name>: ReaderException)`, by its bare name, in the app's
+  camera/GoAheadScanner.kt only, beside CameraAccessException, under 17f's rules: the file must hold `import
+  com.google.zxing.ReaderException` exactly, or its first ReaderException catch hits ("missing import ..."), and
+  kt_alias counts ReaderException among the allowed names. kt_catch_allowing now takes the file, then a type and import
+  pair per allowed catch, so the scanner's two catches pass together and each needs its own import. Five new hit
+  fixtures, one hit each, each also copied into the test scopes and clean there (src/test and src/androidTest 117
+  copies each, commonTest and androidHostTest 132, from 112 and 127): the catch with its import in Documents.kt; in the
+  scanner, `catch (e: NotFoundException)` beside both import lines, `catch (e: Exception)` beside ReaderException's,
+  the catch under `import com.google.zxing.*` (not its own line) and `import kotlin.Throwable as ReaderException`;
+  clean-kt-shipping-allowed's scanner gains the import and a one-line catch. By hand, on the selftest's base tree, five
+  mutants of the gate each fail one of these fixtures: the scanner's ReaderException pair dropped (the clean fixture
+  hits), ReaderException dropped from kt_alias, the import check kept for the first pair only, ReaderException also
+  allowed in Documents.kt, and any `*Exception` allowed in the scanner. `--selftest` 1444 passed, 0 failed (1439
+  before), the same under /bin/dash; the gate clean on the tree (356 files) under sh and dash; canaries.sh PASS, all
+  93 checks ran.
 - [x] The Shell rule for `game_random` is unchanged in M5 (its ffi and Kotlin fixtures stay hits until M5b).
   Proof: those fixtures still trip.
   Proof (M5 commit 4): `game_random_use` and its path list untouched (only the release probe's comment stripping moved

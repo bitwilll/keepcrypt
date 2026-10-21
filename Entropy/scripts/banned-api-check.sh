@@ -578,16 +578,19 @@
 #              .catch { }) is a hit but catch (x: KcHalt) in :screens' commonMain CeremonyModel.kt
 #              (mobile/android/screens/src/commonMain/.../CeremonyModel.kt; the re-plan's shared
 #              model replaced the app's CeremonyViewModel.kt), catch (x: IOException) in
-#              files/Documents.kt and catch (x: CameraAccessException) in camera/GoAheadScanner.kt,
-#              so Throwable, Exception, RuntimeException and Error, any catch in :core-ffi
+#              files/Documents.kt, and catch (x: CameraAccessException) and catch (x:
+#              ReaderException) (ZXing's "no code in this frame", M5-53) in
+#              camera/GoAheadScanner.kt, so Throwable, Exception, RuntimeException and Error,
+#              ReaderException's subclasses (NotFoundException), any catch in :core-ffi
 #              (androidMain and iosMain included) and a KcHalt caught elsewhere all hit; a file
 #              with an allowed catch must hold its type's own import line, exactly (import
 #              com.keepcrypt.entropy.ffi.KcHalt, import java.io.IOException, import
-#              android.hardware.camera2.CameraAccessException), or the catch hits, "missing ...";
-#              and an alias or cast to one of those three names ("as KcHalt", an import alias
-#              included), a typealias of one, a typealias whose name is on a later line and an
-#              import that ends in "as" all hit, so no other type (Throwable, say) stands behind
-#              an allowed catch's bare name.
+#              android.hardware.camera2.CameraAccessException, import
+#              com.google.zxing.ReaderException), or the catch hits, "missing ..."; and an alias
+#              or cast to one of those four names ("as KcHalt", an import alias included), a
+#              typealias of one, a typealias whose name is on a later line and an import that
+#              ends in "as" all hit, so no other type (Throwable, say) stands behind an allowed
+#              catch's bare name.
 #   KtWindow   Toast, Snackbar, Notification, Dialog(, AlertDialog, DialogFragment, Popup(,
 #              PopupWindow, ListPopupWindow, PopupMenu, DropdownMenu, ModalBottomSheet, Spinner,
 #              AutoCompleteTextView, tooltips, WindowManager's addView and
@@ -902,7 +905,7 @@ directory API, rppal or nix outside device/, MNT_FORCE, MNT_DETACH outside devic
 process, a thread or BufReader; and a tracked file (git ls-files) under mobile/**/build/,
 mobile/**/.gradle/ or mobile/**/.konan/, or a submodule under mobile/. Under mobile/android, by
 scope (the test source sets, :capture-control, the rest): logging and runtime-built messages,
-fail-open Kotlin and catches outside the three allowed, dialogs, popups and other windows, text
+fail-open Kotlin and catches outside the four allowed, dialogs, popups and other windows, text
 fields and activities but SecureActivity, storage, intents, the camera, sensors and system settings
 outside their files, SDKs, other repositories, local build inputs and the bootstrap's switches in
 build files (and android-gradle.sh), strict locking missing from the root build file, and the
@@ -1674,55 +1677,66 @@ ktfailopen() {
 }
 
 # KtFailOpen's catch list, outside the test source sets: every catch is a hit, Flow's .catch { }
-# operator too, except the three the plan names, each in its own file and mapped to a refusal on its
-# screen: catch (x: KcHalt) in :screens' commonMain CeremonyModel.kt (the re-plan's shared model,
-# which replaced the app's CeremonyViewModel.kt), catch (x: IOException) in the app's
-# files/Documents.kt and catch (x: CameraAccessException) in the app's camera/GoAheadScanner.kt. So
-# a catch of Throwable, Exception, RuntimeException or Error, any catch in :core-ffi (androidMain
-# and iosMain included) and a KcHalt caught anywhere else are hits. The allowed shape is the bare
-# type name alone in the parentheses, on the catch's own line: a qualified name
-# (java.io.IOException), two catches on one line with one of another type, and Java's catch
-# (IOException e) hit. The bare name must be the real type: kt_catch_allowing TYPE IMPORT FILE also
-# needs FILE to hold the line "import IMPORT" exactly when it has an allowed catch, or its first one
-# hits ("missing import ..."), and kt_alias keeps every other way to bind the name out of the tree.
+# operator too, except the four the plan names, each in one named file: catch (x: KcHalt) in :screens'
+# commonMain CeremonyModel.kt (the re-plan's shared model, which replaced the app's
+# CeremonyViewModel.kt), catch (x: IOException) in the app's files/Documents.kt and catch (x:
+# CameraAccessException) in the app's camera/GoAheadScanner.kt, each mapped to a refusal on its
+# screen, and catch (x: ReaderException) in the same scanner file, ZXing's "no code in this frame",
+# which drops the frame and reads the next (M5-53). So a catch of Throwable, Exception,
+# RuntimeException, Error or a ReaderException subclass (NotFoundException), any catch in
+# :core-ffi (androidMain and iosMain included) and a KcHalt caught anywhere else are hits. The
+# allowed shape is the bare type name alone in the parentheses, on the catch's own line: a qualified
+# name (java.io.IOException), two catches on one line with one of another type, and Java's catch
+# (IOException e) hit. The bare name must be the real type: kt_catch_allowing FILE TYPE IMPORT
+# [TYPE IMPORT]... also needs FILE to hold the line "import IMPORT" exactly when it has an allowed
+# catch of TYPE, or its first one hits ("missing import ..."), and kt_alias keeps every other way
+# to bind the name out of the tree.
 kt_catch() {
   grep -n -a -E -e "${L}catch[[:space:]]*[({]" -- "$1"
 }
 kt_catch_allowing() {
-  t=$(grep -n -a -E -e "${L}catch[[:space:]]*[({]" -- "$3")
+  f=$1
+  shift
+  t=$(grep -n -a -E -e "${L}catch[[:space:]]*[({]" -- "$f")
   case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
-  allowed="(^|[^A-Za-z0-9_])catch[[:space:]]*[(][[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*:[[:space:]]*$1[[:space:]]*[)]"
+  allowed="(^|[^A-Za-z0-9_])catch[[:space:]]*[(][[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*:[[:space:]]*"
+  names=
   missing=
-  first=$(printf '%s\n' "$t" | grep -a -E -e "$allowed" | sed -n '1s/:.*//p')
-  if [ -n "$first" ] && ! grep -q -a -x -F -e "import $2" -- "$3"; then
-    missing="$first:missing import $2 for its catch of $1"
-  fi
-  kept=$(kept_hits "(^|[^A-Za-z0-9_])catch[[:space:]]*[({]" -e "s/$allowed/\\1/g")
+  while [ "$#" -ge 2 ]; do
+    first=$(printf '%s\n' "$t" | grep -a -E -e "$allowed$1[[:space:]]*[)]" | sed -n '1s/:.*//p')
+    if [ -n "$first" ] && ! grep -q -a -x -F -e "import $2" -- "$f"; then
+      missing="$missing${missing:+$nl}$first:missing import $2 for its catch of $1"
+    fi
+    names="$names${names:+|}$1"
+    shift 2
+  done
+  kept=$(kept_hits "(^|[^A-Za-z0-9_])catch[[:space:]]*[({]" -e "s/$allowed($names)[[:space:]]*[)]/\\1/g")
   case $? in 0 | 1) ;; *) return 2 ;; esac
   [ -n "$kept$missing" ] || return 1
   [ -z "$kept" ] || printf '%s\n' "$kept"
   [ -z "$missing" ] || printf '%s\n' "$missing"
 }
 kt_catch_kchalt() {
-  kt_catch_allowing KcHalt com.keepcrypt.entropy.ffi.KcHalt "$1"
+  kt_catch_allowing "$1" KcHalt com.keepcrypt.entropy.ffi.KcHalt
 }
 kt_catch_ioexception() {
-  kt_catch_allowing IOException java.io.IOException "$1"
+  kt_catch_allowing "$1" IOException java.io.IOException
 }
 kt_catch_camera() {
-  kt_catch_allowing CameraAccessException android.hardware.camera2.CameraAccessException "$1"
+  kt_catch_allowing "$1" CameraAccessException android.hardware.camera2.CameraAccessException \
+    ReaderException com.google.zxing.ReaderException
 }
 
 # KtFailOpen's names, where the catch list applies (outside the test source sets): it allows KcHalt,
-# IOException and CameraAccessException by their bare names, so nothing may bind one of those names
-# to another type: an alias or cast to one ("as KcHalt", which an import alias on one line or with
-# "as" at the start of the next line has), a typealias of one or a typealias whose name is on a later
-# line (Kotlin allows a line break there), and an import that ends in "as", whose alias is on the
-# next line. A name in backticks is the same name.
+# IOException, CameraAccessException and ReaderException by their bare names, so nothing may bind
+# one of those names to another type: an alias or cast to one ("as KcHalt", which an import alias on
+# one line or with "as" at the start of the next line has), a typealias of one or a typealias whose
+# name is on a later line (Kotlin allows a line break there), and an import that ends in "as", whose
+# alias is on the next line. A name in backticks is the same name.
 kt_alias() {
   grep -n -a -E \
-    -e "${L}as[[:space:]]+\`?(KcHalt|IOException|CameraAccessException)$R" \
-    -e "${L}typealias[[:space:]]*(\`?(KcHalt|IOException|CameraAccessException)$R|$)" \
+    -e "${L}as[[:space:]]+\`?(KcHalt|IOException|CameraAccessException|ReaderException)$R" \
+    -e "${L}typealias[[:space:]]*(\`?(KcHalt|IOException|CameraAccessException|ReaderException)$R|$)" \
     -e "${L}import[[:space:]].*[[:space:]]as[[:space:]]*$" \
     -- "$1"
 }
