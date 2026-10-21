@@ -22,11 +22,12 @@ import org.junit.runner.RunWith
  * session in the slot, an exception thrown on the main thread reaches the app's handler (KeepCryptApp),
  * which wipes the slot and kills the process, so this test never ends by itself. It is judged from the
  * shell (scripts/android-instrument.sh, as killed:com.keepcrypt.entropy.CrashTest): the process ended
- * during the test and is gone, no crash or not-responding window opened, logcat's crash buffer names
- * none of our packages and DropBox gained no data_app_crash entry. The exception's text is fixed.
+ * during the test and is gone, no crash or not-responding window opened, DropBox gained no
+ * data_app_crash entry, and logcat's crash buffer holds exactly one crash of our packages, this one:
+ * Android's own pre-handler, which apps cannot replace, logs it before the app's handler runs (Q75, an
+ * accepted residual), so the judge requires the exception's fixed text and nothing else of ours.
  * scripts/android-emulator.sh runs it last of the API 31 and 36 legs' instrumented tests (the 16
- * KB-page leg runs NativeTest alone). The crash-buffer check is expected to fail while the owner's
- * question on the platform's pre-handler is open (tasks/todo.md, group 14's crash-path proof).
+ * KB-page leg runs NativeTest alone).
  */
 @RunWith(AndroidJUnit4::class)
 class CrashTest {

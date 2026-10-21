@@ -18,8 +18,13 @@
 # passes only when the process ended during it instead: a test started, none passed, and the activity
 # manager's shortMsg says the process went. Then every run is judged from the shell, the crash test's
 # too: TARGET_PACKAGE's process is gone, no crash or not-responding window exists, `logcat -b crash`
-# holds no line naming com.keepcrypt.entropy (any of our packages: only the count is printed, never the
-# lines) and `dumpsys dropbox` shows no new data_app_crash entry.
+# holds no line naming com.keepcrypt.entropy (any of our packages: only counts are printed, never the
+# lines) and `dumpsys dropbox` shows no new data_app_crash entry. After a killed: run the crash buffer
+# must instead hold exactly one crash of our packages, the trigger's: Android's own uncaught-exception
+# pre-handler, which apps cannot replace, logs it before the app's handler wipes and ends the process
+# (Q75, an accepted residual). Its AndroidRuntime block ("FATAL EXCEPTION:", then "Process:" naming one
+# of our packages) must have the trigger's exception line, no "Caused by:" or "Suppressed:", and no
+# line outside it may name our packages.
 # The tests' own status values (status code 2) are printed as they come: kc_probe as "probe: api=API
 # VALUE" (the platform probe's facts), kc_pass as "pass: api=API VALUE" and every other kc_ key as
 # "kc: KEY=VALUE" (the window region the frame checker needs). The whole raw output is printed when a
@@ -33,11 +38,12 @@
 # INSTRUMENTATION_FAILED and _ABORTED, no final INSTRUMENTATION_CODE: -1, no test, a process still
 # running after 20 s, a crash and a not-responding window, a crash-buffer line naming one of our
 # packages and a new data_app_crash entry each fail (exit 1); an unreadable dropbox and too few
-# arguments exit 2. For a killed: test: a run whose process ends during its one test (shortMsg) passes,
-# and so does one where the runner also reports that test failed; a run that passes, one whose test
-# passes before the shortMsg, one with no test started and one that ends without a shortMsg fail, and
-# so do a crash window, a crash-buffer line naming one of our packages and a new data_app_crash entry
-# after it.
+# arguments exit 2. For a killed: test: a run whose process ends during its one test (shortMsg), with
+# the trigger's crash in the crash buffer, passes, and so does one where the runner also reports that
+# test failed; a run that passes, one whose test passes before the shortMsg, one with no test started
+# and one that ends without a shortMsg fail, and so do, after it, a crash window, no crash of ours, two,
+# one with another exception, one with no exception line, one with a Caused by, a line naming our
+# packages outside the crash, and a new data_app_crash entry.
 # Exit 0 when every case behaves, 1 otherwise. It takes about 25 s (the 20 s wait).
 set -u
 unset CDPATH
@@ -192,6 +198,19 @@ EOF
     fi
   }
   bad='failed, errored, ignored or aborted'
+  # trigger_crash [EXCEPTION]: the pre-handler's AndroidRuntime block for the crash test's process,
+  # with the trigger's exception line or EXCEPTION, appended to the crash buffer.
+  trigger_crash() {
+    pre='10-21 10:24:33.144  4242  4242 E AndroidRuntime: '
+    {
+      printf '%sFATAL EXCEPTION: main\n' "$pre"
+      printf '%sProcess: com.keepcrypt.entropy, PID: 4242\n' "$pre"
+      printf '%s%s\n' "$pre" "${1:-java.lang.IllegalStateException: KeepCrypt crash test}"
+      printf '%s\tat com.keepcrypt.entropy.CrashTest.anUncaughtException$lambda$0(CrashTest.kt:43)\n' "$pre"
+      printf '%s\tat android.os.Handler.handleCallback(Handler.java:959)\n' "$pre"
+      printf '%s\tat android.os.Looper.loop(Looper.java:317)\n' "$pre"
+    } >> "$st/c/crash"
+  }
 
   fresh
   expect "a passing class" 0 "probe: api=31 first-launch: 0 lit pixels" "pass: api=31 first-launch: drawn, then black" \
@@ -248,10 +267,13 @@ EOF
   killed='the process did not end during the test'
   fresh
   killed_raw crashed > "$st/c/raw"
+  trigger_crash
   expect "a killed test whose process ends during it" 0 "probe: api=31 crash test: a session started" \
-    "instrument: api=31 PASS com.keepcrypt.entropy.CrashTest (killed during the test, as it must be;"
+    "instrument: api=31 PASS com.keepcrypt.entropy.CrashTest (killed during the test, as it must be;" \
+    "the crash buffer holds only the trigger's crash (Q75)"
   fresh
   killed_raw reported > "$st/c/raw"
+  trigger_crash
   expect "a killed test the runner reports failed as its process ends" 0 "instrument: api=31 PASS com.keepcrypt.entropy.CrashTest (killed"
   fresh
   killed_raw passed > "$st/c/raw"
@@ -267,14 +289,40 @@ EOF
   expect "a killed test with no shortMsg" 1 "1 started, 0 passed: $killed"
   fresh
   killed_raw crashed > "$st/c/raw"
+  trigger_crash
   echo '  Window #1 Window{b2 u0 Application Error: com.keepcrypt.entropy}:' >> "$st/c/windows"
   expect "a killed test with a crash window" 1 "a crash or not-responding window is open"
   fresh
   killed_raw crashed > "$st/c/raw"
-  printf 'E AndroidRuntime: FATAL EXCEPTION: main\nE AndroidRuntime: Process: com.keepcrypt.entropy, PID: 4242\n' >> "$st/c/crash"
-  expect "a killed test with a crash-buffer line naming our package" 1 "logcat -b crash holds 1 line(s) naming com.keepcrypt.entropy"
+  expect "a killed test with no crash of ours in the crash buffer" 1 \
+    "logcat -b crash holds 0 crash(es) of our packages (exactly one, the trigger's, is allowed)"
   fresh
   killed_raw crashed > "$st/c/raw"
+  trigger_crash
+  trigger_crash
+  expect "a killed test with two crashes of ours" 1 "logcat -b crash holds 2 crash(es) of our packages"
+  fresh
+  killed_raw crashed > "$st/c/raw"
+  trigger_crash 'java.lang.IllegalArgumentException: not the trigger'
+  expect "a killed test whose crash is another exception" 1 "logcat -b crash: our crash is not the trigger's exception"
+  fresh
+  killed_raw crashed > "$st/c/raw"
+  printf 'E AndroidRuntime: FATAL EXCEPTION: main\nE AndroidRuntime: Process: com.keepcrypt.entropy, PID: 4242\n' >> "$st/c/crash"
+  expect "a killed test whose crash has no exception line" 1 "logcat -b crash: our crash is not the trigger's exception"
+  fresh
+  killed_raw crashed > "$st/c/raw"
+  trigger_crash
+  echo '10-21 10:24:33.144  4242  4242 E AndroidRuntime: Caused by: java.lang.RuntimeException: inner' >> "$st/c/crash"
+  expect "a killed test whose crash has a Caused by" 1 "logcat -b crash: our crash holds 1 other exception(s) (Caused by or Suppressed)"
+  fresh
+  killed_raw crashed > "$st/c/raw"
+  trigger_crash
+  echo '10-21 10:24:33.150   612   640 W SomeTag: com.keepcrypt.entropy after the crash' >> "$st/c/crash"
+  expect "a killed test with a line naming our package outside its crash" 1 \
+    "logcat -b crash holds 1 line(s) naming com.keepcrypt.entropy outside the trigger's crash"
+  fresh
+  killed_raw crashed > "$st/c/raw"
+  trigger_crash
   { cat "$st/c/dropbox"; echo '2026-10-19 10:01:00 data_app_crash (text, 950 bytes)'; } > "$st/c/dropbox-after"
   expect "a killed test with a new data_app_crash entry" 1 "dumpsys dropbox gained 1 data_app_crash entries"
   test=com.keepcrypt.entropy.CaptureTest
@@ -314,6 +362,42 @@ dev() { "$adb" -s "$serial" "$@"; }
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/kc-instrument.XXXXXX") || exit 2
 trap 'rm -rf "$tmp"' EXIT
+
+# The crash test's exception line (CrashTest.kt's fixed text), the one crash of ours a killed: run's
+# crash buffer holds (Q75).
+trigger='java.lang.IllegalStateException: KeepCrypt crash test'
+
+# crash_counts: five counts from logcat -b crash in $tmp/crash: the lines naming com.keepcrypt.entropy;
+# the AndroidRuntime crash blocks of our processes ("FATAL EXCEPTION:", then "Process:" naming one of
+# our packages, then the lines with the same tag); of those, the ones whose exception line is missing or
+# not the trigger's; the "Caused by:" and "Suppressed:" lines in them; and the lines naming our packages
+# outside them.
+crash_counts() {
+  awk -v trigger="$trigger" '
+    function end_block() { if (ours && !exc) badexc++; inblock = 0; ours = 0; want = "" }
+    {
+      line = $0
+      sub(/\r$/, "", line)
+      at = index(line, " AndroidRuntime: ")
+      msg = at ? substr(line, at + 17) : ""
+      if (!at) end_block()
+      else if (index(msg, "FATAL EXCEPTION: ") == 1) { end_block(); inblock = 1; want = "process" }
+      else if (inblock && want == "process") {
+        want = ""
+        if (index(msg, "Process: ") == 1 && index(msg, "com.keepcrypt.entropy") > 0) { ours = 1; exc = 0; blocks++; want = "exception" }
+      } else if (ours && want == "exception") {
+        want = ""
+        exc = 1
+        if (msg != trigger) badexc++
+      } else if (ours && (msg ~ /^Caused by: / || msg ~ /^[ \t]*Suppressed: /)) other++
+      if (index(line, "com.keepcrypt.entropy") > 0) {
+        named++
+        if (!ours) stray++
+      }
+    }
+    END { end_block(); printf "%d %d %d %d %d\n", named, blocks, badexc, other, stray }
+  ' "$tmp/crash"
+}
 
 # app_crashes: the number of data_app_crash entries dumpsys dropbox lists; non-zero when unreadable.
 app_crashes() {
@@ -377,12 +461,22 @@ for t in "$@"; do
     fail "$t: a crash or not-responding window is open"
   fi
   dev shell logcat -b crash -d > "$tmp/crash" 2>&1 || fail "$t: logcat -b crash failed"
-  n=$(grep -c -e 'com[.]keepcrypt[.]entropy' "$tmp/crash")
-  [ "$n" -eq 0 ] || fail "$t: logcat -b crash holds $n line(s) naming com.keepcrypt.entropy"
+  read -r named blocks badexc other stray <<EOF
+$(crash_counts)
+EOF
+  if [ -n "$killed" ]; then
+    # Q75: Android's own pre-handler logged the trigger's exception before the app's handler ran.
+    [ "$blocks" -eq 1 ] || fail "$t: logcat -b crash holds $blocks crash(es) of our packages (exactly one, the trigger's, is allowed)"
+    [ "$badexc" -eq 0 ] || fail "$t: logcat -b crash: our crash is not the trigger's exception"
+    [ "$other" -eq 0 ] || fail "$t: logcat -b crash: our crash holds $other other exception(s) (Caused by or Suppressed)"
+    [ "$stray" -eq 0 ] || fail "$t: logcat -b crash holds $stray line(s) naming com.keepcrypt.entropy outside the trigger's crash"
+  else
+    [ "$named" -eq 0 ] || fail "$t: logcat -b crash holds $named line(s) naming com.keepcrypt.entropy"
+  fi
   after=$(app_crashes) || fail "$t: dumpsys dropbox cannot be read"
   [ "$after" -eq "$before" ] || fail "$t: dumpsys dropbox gained $((after - before)) data_app_crash entries"
   if [ -n "$killed" ]; then
-    echo "instrument: api=$api PASS $t (killed during the test, as it must be; process gone, no crash window, crash buffer and dropbox clean)"
+    echo "instrument: api=$api PASS $t (killed during the test, as it must be; process gone, no crash window, the crash buffer holds only the trigger's crash (Q75), dropbox clean)"
   else
     echo "instrument: api=$api PASS $t ($passed tests; process gone, no crash window, crash buffer and dropbox clean)"
   fi

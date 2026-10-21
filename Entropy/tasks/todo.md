@@ -1787,7 +1787,7 @@ Nothing else on your Mac or in the repo changed. From now on, no simulator, `xco
       new signers' keys from keyserver.ubuntu.com or keys.openpgp.org, fetched into a mirror outside the repo; each new
       signer is trusted on first use (M5-12) and goes on the M7 audit list, and the 61 committed keys stay unchanged.
 
-### Raised by CI during M5 commit 15 (Q75, open)
+### Raised by CI during M5 commit 15 (Q75, decided 2026-10-21)
 75. **Two things Android does that the docs say do not happen** (MA:36, MA's "Session lifetime"; Q57 (b), (c); Q58)
     - (a) The crash log. Android's own start-up code installs an uncaught-exception logger that apps cannot replace.
       It runs before KeepCrypt's handler and writes "FATAL EXCEPTION", the process name and the exception's type,
@@ -1814,6 +1814,11 @@ Nothing else on your Mac or in the repo changed. From now on, no simulator, `xco
       background or, if Android froze it, when it is next opened, before anything shows".
       Otherwise: leaving the app on any screen while a session is held discards at once, with no 60-second grace.
       That is simpler and stronger, but a glance at a notification or a call during the dice loses the rolls.
+    - Answered 2026-10-21: (a) "Accept as residual"; (b) "Accept as residual". Commit 15m makes the two MA edits as
+      recommended (MA:36 and "Session lifetime"; MA:17's list, which is about secrets leaving memory, is unchanged),
+      amends the plan's halts paragraph, its timers line, group 14's crash proof and the critique line, and gives
+      CrashTest's run the recommended judge in scripts/android-instrument.sh. Both residuals go on the M7 audit list
+      beside Q58's.
 
 ## M0: Repo bootstrap
 
@@ -11062,13 +11067,15 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   displays).
 - **Protected screens, gate, cover, timers** (Q57): the Pi's list and timers (PF:120-127); "I'm alone, show words"
   before the words (MA:177); leaving the app on a Protected screen discards at once; elsewhere a cover and a wipe after
-  60 s in the background; a picker or permission prompt the app opened counts as foreground time under the 10-minute
-  rule. A loaded snapshot and a kept `Wiped` survive these wipes and end with the process.
+  60 s in the background (or, if Android froze the app, at its next start, before anything shows: Q75's residual); a
+  picker or permission prompt the app opened counts as foreground time under the 10-minute rule. A loaded snapshot
+  and a kept `Wiped` survive these wipes and end with the process.
 - **Halts and crashes** (Q57): the Pi's rule. The stop screen holds nothing, and its only action ends the process. An
   unexpected Kotlin exception goes to the app's own uncaught-exception handler, which replaces the platform default:
-  it calls `Native.wipeAll()` then `Process.killProcess`, logs nothing and shows nothing. The platform's crash path
-  (which logs the message to logcat and DropBox and shows a dialog) never runs; the proof is an empty crash buffer and
-  no DropBox entry for the package. No message in app code is built from runtime values. A native abort (a panic
+  it calls `Native.wipeAll()` then `Process.killProcess`, logs nothing itself and shows nothing. The platform's crash
+  report and dialog (DropBox and the activity manager) never happen; Android's own pre-handler, which apps cannot
+  replace, still writes the exception's type, message and stack to the in-memory crash buffer first (Q75, an accepted
+  residual). The proof is no DropBox entry for the package and a crash buffer holding only the trigger's exception. No message in app code is built from runtime values. A native abort (a panic
   inside a destructor, allocation failure, stack overflow) still writes a tombstone: an accepted residual (Q58).
 - **Snapshots:** as MA:176 and swb:121 say, the check runs automatically with a loaded snapshot. Loading shows the
   snapshot's number, date, entry count and freshness, with a Stale or Future warning (swb:120's 30-day rule); the result
@@ -12045,6 +12052,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   `Process.killProcess`; the stop screen's "Close app" calls `finishAndRemoveTask()` and ends the process.
   Proof: a JVM test of the handler's order with a fake; on the emulator an androidTest-only trigger throws on the main
   thread, judged from the shell as in group 6 (process gone, no dialog, empty crash buffer, no DropBox entry).
+  Amended by Q75 (2026-10-21): after the trigger the crash buffer holds exactly its crash and nothing else of ours
+  (Android's pre-handler logs it before the app's handler runs).
   Proof (M5 commit 15, partial: the JVM and emulator tests run only in CI): KeepCryptApp (the manifest's Application,
   so both expected manifest summaries gain `application name=com.keepcrypt.entropy.KeepCryptApp`, as does --apk's
   selftest dump: --selftest-apk 88 passed, 0 failed) sets CrashHandler as the default handler: Core.wipeAll(), then
@@ -12067,6 +12076,14 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   Proof (CI, run 39582638947 at 78f5720): CrashHandlerTest 2 tests in each flavour, 0 failures. On API 31 CrashTest failed as the review
   predicted: "logcat -b crash holds 3 line(s) naming com.keepcrypt.entropy" (the process gone, no crash window, no new
   data_app_crash). Raised as Q75; the judge stays as planned until the owner answers.
+  Proof (M5 commit 15m, after Q75's answer; the emulator run is CI's): android-instrument.sh judges a killed: run's
+  crash buffer by its AndroidRuntime blocks: exactly one crash of our packages, its exception line the trigger's
+  (`java.lang.IllegalStateException: KeepCrypt crash test`), no "Caused by:" or "Suppressed:" in it, and no line naming
+  our packages outside it; every other run keeps the empty-buffer rule. Only counts are printed. `--selftest` 34 passed,
+  0 failed under sh and /bin/dash (5 new killed cases: no crash of ours, two, another exception, a Caused by, a line
+  outside the crash; the old FATAL-and-Process case now fails as "not the trigger's exception"); six mutants of the
+  new judge (one block allowed as at least one, the Caused-by, stray, exception-text and missing-exception checks
+  dropped, the killed branch skipped) each fail it.
 - [x] The pads: `DicePad`, `LetterPad` (a-z), `CrockfordPad` (32 symbols), `AsciiPad` (0x20-0x7E, up to 100 characters),
   each writing into a `Secret`, keys in a fixed order, nothing about a key press in semantics on Protected screens.
   Drawing: `QrMatrix`, `SealCard` (the 8x8 Okabe-Ito grid at 240 dp with Seal ID and braille, swb:84-90), braille faces.
@@ -12436,7 +12453,9 @@ Each finding of the critique round and where it is resolved; none is rejected ou
 - The `age -d` passphrase channel was undefined (raised twice): accepted. An androidTest-only status key piped into the
   pty driver, never logged, with a gate rule pinning where it appears (groups 3, 18).
 - Tombstones, vendor swap and the contradictory crash-path text: accepted. One crash design (replaced handler, nothing
-  logged, crash buffer and DropBox checked); tombstones and swap are in Q58 as residuals.
+  logged, crash buffer and DropBox checked); tombstones and swap are in Q58 as residuals. (Q75, 2026-10-21: Android's
+  pre-handler still logs the exception to the crash buffer, an accepted residual; the check now requires only the
+  trigger's crash there.)
 - Content capture was not addressed: accepted. A root opt-out flag and an emulator check (finding 10; group 14).
 - The 16 KB check missed graphics-path: accepted. Every 64-bit `.so` in the APK is checked (group 5).
 - No overflow checks in ffi: accepted, for both FFI crates, with the canary profile pin (group 7).

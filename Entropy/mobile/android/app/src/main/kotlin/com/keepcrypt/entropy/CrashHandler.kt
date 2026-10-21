@@ -8,9 +8,8 @@ package com.keepcrypt.entropy
  * shows nothing and never reads the exception. The process ends even when the wipe throws (a halted
  * slot answers the wipe with KcHalt). Its two steps are passed in, so a JVM test can check their order
  * with fakes; KeepCryptApp passes Core.wipeAll and Process.killProcess. The platform's own
- * uncaught-exception pre-handler, which apps cannot replace, still writes the exception to logcat's
- * crash buffer before this handler runs (tasks/todo.md, group 14's crash-path proof: the owner's
- * question).
+ * uncaught-exception pre-handler, which apps cannot replace, still writes the exception's type, message
+ * and stack to logcat's crash buffer before this handler runs (Q75, an accepted residual).
  */
 internal class CrashHandler(private val wipe: () -> Unit, private val end: () -> Unit) : Thread.UncaughtExceptionHandler {
     override fun uncaughtException(thread: Thread, exception: Throwable) {
