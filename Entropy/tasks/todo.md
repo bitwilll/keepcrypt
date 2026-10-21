@@ -12114,28 +12114,30 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   holds the UI kit (Kit.kt: colours, type scale, KitScreen, whose text scrolls above actions that never scroll away,
   headings, text, buttons whose text is their TalkBack label with the button role and the disabled state, the notice
   line and the TEST REGISTRY strip; the one-way confirm screen comes with its screens in commit 17, 16d), which First
-  launch (now with Continue), "Working...", the stop screen and the privacy gate use too, and StartScreens.kt:
-  Self-test (commit 15's start-up self-test, the first long call on every start, now behind its own screen; First
-  launch follows it), Go offline (the airplane-mode and Wi-Fi states apart, the offline seam now reporting both; Start
-  enabled only offline; "Open airplane-mode settings" through the new AirplaneSettings seam, :app's AirplaneSettingsIntent.kt), Home (New seed,
-  Dice-only seed; Check a backup, Load registry snapshot and About come with commits 20 and 21), Length (12 words, the
-  default, or 24), Device entropy (Mixed only: MA's sentence; each touch's uptime and the clock's nanoseconds, and the
-  new MotionSource seam's samples, :app's SensorMotionSource.kt on the accelerometer and gyroscope at SENSOR_DELAY_GAME
-  with no permission, go to add_extra while it shows, zeroed after each call), Commitment (C as the Pi's hex_groups,
-  four rows of four groups) and Dice (the pad's pick in the model's PadEntry, Confirm and Undo, the Pi's count-and-bits
-  line, the minimum and 256 lines, the Pi's dice-only line; Done comes with commit 17). CeremonyModel: a discard's
-  start screen is Go offline; a dice-only start commits and opens the dice itself; going online on a screen from Home
-  on discards any session or long call and returns to Go offline (with no notice when nothing was held); the system
-  Back (MainActivity's callback, always enabled) goes Length to Home, Home to Go offline and Go offline to First launch,
-  and does nothing anywhere else. StartScreensTest (11 tests) covers each transition (Back where nothing is lost and
-  nowhere else, Dice-only skipping two screens, the offline gate, the pad, the 256 cap, the extras); CeremonyModelTest
-  (23) follows the new start screen, OfflineRuleTest gains the two states (3). FlowTest (3 tests: New seed of 12 words
-  to 50 rolls with Back and Wi-Fi on during the dice; Dice-only of 24 words to 99 and 256; Start disabled online, the
-  settings button, Wi-Fi on at Home) runs on the shipping app in the API 31 and 36 legs before LifecycleTest
-  (scripts/android-emulator.sh step 4a; `--selftest` 16 passed, 0 failed under sh and /bin/dash, 15 before: the
-  flow-test-fails case, and the pass leg's last three runs are FlowTest, LifecycleTest and the killed CrashTest).
-  CaptureTest's every-screen pass walks one activity through all ten screens with the phone offline. The gate is clean
-  on the tree (343 files), `--selftest` 1431 passed, 0 failed, and `canaries.sh` PASS, all 93 checks ran.
+  launch (now with Continue), "Working...", the stop screen and the privacy gate use too, and StartScreens.kt: Self-test
+  (commit 15's start-up self-test, the first long call on every start, now behind its own screen; First launch follows
+  it), Go offline (the airplane-mode and Wi-Fi states apart, the offline seam now reporting both; Start enabled only
+  offline; "Open airplane-mode settings" through the new AirplaneSettings seam, :app's AirplaneSettingsIntent.kt), Home
+  (New seed, Dice-only seed; Check a backup, Load registry snapshot and About come with commits 20 and 21), Length (12
+  words, the default, or 24), Device entropy (Mixed only: MA's sentence; each touch's uptime and the clock's
+  nanoseconds, and the new MotionSource seam's samples, :app's SensorMotionSource.kt on the accelerometer and gyroscope
+  at SENSOR_DELAY_GAME with no permission, go to add_extra while it shows, zeroed after each call), Commitment (C as the
+  Pi's hex_groups, four rows of four groups) and Dice (the pad's pick in the model's PadEntry, Confirm and Undo, the
+  Pi's count-and-bits line, the minimum and 256 lines, the Pi's dice-only line; Done comes with commit 17).
+  CeremonyModel: a discard's start screen is Go offline; a dice-only start commits and opens the dice itself; going
+  online on a screen from Home on discards any session or long call and returns to Go offline (with no notice when
+  nothing was held); the system Back (MainActivity's callback, always enabled) goes Length to Home, Home to Go offline
+  and Go offline to First launch, and does nothing anywhere else. StartScreensTest (12 tests) covers each transition
+  (Back where nothing is lost and nowhere else, Dice-only skipping two screens, the offline gate, the pad, the 256 cap,
+  the extras) and the pad's faces reaching core as picked (dice-50-words12's rolls through the pad and Confirm,
+  finished, give its Seal ID, 16e); CeremonyModelTest (23) follows the new start screen, OfflineRuleTest gains the two
+  states (3). FlowTest (3 tests: New seed of 12 words to 50 rolls with Back and Wi-Fi on during the dice; Dice-only of
+  24 words to 99 and 256; Start disabled online, the settings button, Wi-Fi on at Home) runs on the shipping app in the
+  API 31 and 36 legs before LifecycleTest (scripts/android-emulator.sh step 4a; `--selftest` 16 passed, 0 failed under
+  sh and /bin/dash, 15 before: the flow-test-fails case, and the pass leg's last three runs are FlowTest, LifecycleTest
+  and the killed CrashTest). CaptureTest's every-screen pass walks one activity through all ten screens with the phone
+  offline. The gate is clean on the tree (343 files), `--selftest` 1431 passed, 0 failed, and `canaries.sh` PASS, all 93
+  checks ran.
 
 **16. Screens: the collision check** (MA:175-176; swb:112-152)
 - [ ] The prompt ("Check now (recommended)" / "Skip", Skip confirmed on its own screen). With a loaded snapshot the check

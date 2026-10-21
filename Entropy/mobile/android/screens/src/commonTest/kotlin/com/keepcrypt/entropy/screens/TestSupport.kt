@@ -152,7 +152,10 @@ internal class Rig(scope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined
         return this
     }
 
-    /** n rolls through the dice pad and Confirm, the faces of a public gate seed's pattern (vectors/kcr.json's 123456...). */
+    /**
+     * n rolls through the dice pad and Confirm, the faces 1 to 6 in turn from 1 on each call, so two calls
+     * are no vector's rolls (StartScreensTest pushes dice-50-words12's own rolls where the faces matter).
+     */
     fun roll(n: Int) {
         repeat(n) { index ->
             model.dicePick.replace(DICE_KEYS[index % DICE_KEYS.length])

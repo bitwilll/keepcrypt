@@ -19,7 +19,8 @@ import kotlin.test.fail
  * 15), over the real slot through Core and the host library, long calls held on the test's worker:
  * First launch to Go offline to Home to Length; a new seed through Device entropy and Commitment to the
  * dice, and a dice-only seed straight to the dice; the dice pad, Confirm, Undo, the minimum and the
- * 256 cap; Back where nothing is lost and nowhere else; the offline gate; touches and motion into the
+ * 256 cap; each face picked on the pad reaching core as picked (dice-50-words12's rolls give its Seal
+ * ID); Back where nothing is lost and nowhere else; the offline gate; touches and motion into the
  * pool only on Device entropy; and C's hex groups and the dice line, as the Pi writes them. Whether
  * the slot holds a session, and in which stage, is read from the slot itself: the device leg's
  * progress is offered only while collecting, C only once committed, the dice counts only while rolling
@@ -139,6 +140,25 @@ class StartScreensTest {
         assertEquals("50 / 50 rolls, 129.2 bits", diceText(dice.rolls, dice.minimum, dice.millibits))
         assertTrue(dice.rolls >= dice.minimum, "the minimum is reached")
         assertRolling("still rolling: Done comes with commit 17")
+    }
+
+    @Test
+    fun theFacesPickedOnThePadAreTheRollsCoreTakes() {
+        // vectors/kcr.json's public gate seed dice-50-words12, dice-only: its rolls picked on the pad and
+        // confirmed one by one, then finished as commit 17's Done will, give its Seal ID only if every
+        // face reached core as the face picked (a face mapped wrongly is still a face 1-6, which core takes).
+        val rig = Rig().toHome().begin(Mode.DiceOnly, Words.Twelve)
+        for (face in DICE_50_ROLLS) {
+            assertTrue(rig.model.dicePick.replace(face))
+            rig.model.confirmRoll()
+        }
+        assertEquals(DICE_50_ROLLS.length, rolls(rig))
+        assertTrue(Core.finish() is Reply.Done, "finish")
+        val sealId = when (val seal = Core.seal()) {
+            is Reply.Done -> seal.value.sealId
+            else -> fail("the seal is offered once sealed")
+        }
+        assertEquals(DICE_50_SEAL_ID, sealId, "the rolls core took are not the faces picked")
     }
 
     @Test
@@ -302,5 +322,11 @@ class StartScreensTest {
         assertEquals("0 / 50 rolls, 0.0 bits", diceText(0, 50, 0))
         assertEquals("99 / 99 rolls, 255.9 bits", diceText(99, 99, 99 * 2_585L))
         assertEquals("256 / 99 rolls, 661.7 bits", diceText(256, 99, 256 * 2_585L))
+    }
+
+    private companion object {
+        /** vectors/kcr.json's dice-50-words12: 50 rolls, 123456 repeated, and its Seal ID (NativeTest's too). */
+        const val DICE_50_ROLLS = "12345612345612345612345612345612345612345612345612"
+        const val DICE_50_SEAL_ID = "YVM9CPP3"
     }
 }

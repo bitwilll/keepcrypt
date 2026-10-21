@@ -35,8 +35,9 @@ import org.junit.runner.RunWith
  * Public screens' controls by their resource ids (Compose test tags, group 6) as a user would, and
  * reads what they show from the accessibility tree; the many rolls a minimum takes go through the
  * model's dice pick and confirmRoll, the entry points the pad and Confirm call (group 6, "Driving"),
- * with a few by tap around them. No seed is made (the dice screen's Done comes with commit 17), and
- * the rolls follow vectors/kcr.json's public gate seeds' patterns. Each test puts the phone's
+ * with a few by tap around them. No seed is made (the dice screen's Done comes with commit 17). The
+ * rolls are vectors/kcr.json's public gate seeds' (the new seed's 50 dice-50-words12's, mixed with the
+ * phone's D; the dice-only seed's first 99 dice-99-words24's). Each test puts the phone's
  * airplane-mode and Wi-Fi settings back as they were.
  */
 @RunWith(AndroidJUnit4::class)
@@ -89,8 +90,8 @@ class FlowTest {
             roll(activity, 49, DICE_50_ROLLS)
             awaitText("dice_count", "49 / 50 rolls, 126.6 bits")
             assertFalse("the minimum is not reached at 49 rolls", device.hasObject(By.res("dice_minimum")))
-            tap("key_6")
-            awaitText("dice_pick", "6")
+            tap("key_2")
+            awaitText("dice_pick", "2")
             tap("confirm")
             awaitText("dice_count", "50 / 50 rolls, 129.2 bits")
             find("dice_minimum")
