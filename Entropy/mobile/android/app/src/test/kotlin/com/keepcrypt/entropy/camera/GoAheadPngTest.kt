@@ -20,9 +20,9 @@ import org.junit.Test
  * rendered by ZXing's writer (tests only) as a PNG the owner's phone scans from a computer screen,
  * goahead-<name>.png, written to the directory kc.p4 names (app/build/p4/, which the Android
  * workflow uploads with the P4 files), then read back from those bytes and decoded by the scanner's
- * own decode function, which must give the text again. The text is the UR in upper case, which
- * a QR code holds in its alphanumeric mode (a smaller code than the lower case's byte mode); core
- * reads either case (kcr.json's ur-uppercase).
+ * own decode function, which must give the text again. The text is the ur field unchanged, the text
+ * :core-ffi's RegistryTest reveals with, so the code the owner's phone scans holds what core is
+ * proven to verify.
  */
 class GoAheadPngTest {
     private val entropy = File(checkNotNull(System.getProperty("kc.entropy")) { "app/build.gradle.kts sets kc.entropy" })
@@ -35,13 +35,10 @@ class GoAheadPngTest {
         for (name in listOf("clear-empty-bucket", "collision-dice-50")) {
             val ur = proofUr(kcr, name)
             assertTrue(ur.startsWith("ur:keepcrypt-proof/"))
-            val text = ur.uppercase()
             val png = File(out, "goahead-$name.png")
-            png.writeBytes(render(text))
+            png.writeBytes(render(ur))
             val image = readPng(png.readBytes())
-            val scanned = decodeGoAhead(image.luminance, image.width, image.height)
-            assertEquals(text, scanned)
-            assertEquals(ur, scanned.lowercase())
+            assertEquals(ur, decodeGoAhead(image.luminance, image.width, image.height))
         }
     }
 
