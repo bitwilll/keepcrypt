@@ -22,18 +22,19 @@ import kotlin.test.fail
  * the dice's Done at the minimum (finish behind "Working...", then the prompt with the seal card);
  * Skip, Match found and Cannot check each confirmed on its own screen, and Back there keeping the
  * check; Check now's seal card and its check QR; a wrong typed code refused with the check, its nonce
- * and the actions kept; Match found to the collision result, the report QR behind the privacy gate and
- * "Add fresh entropy" at 99 rolls; Cannot check to "Start again" at the normal minimum, and at 99 when
- * the session was itself the restart after a collision; leaving the app on the report (the first
- * Protected screen) discarding at once; the model's end (wipeAll) wiping the typed code and the QR
- * codes on show; and with a loaded snapshot the automatic check, its collision before any words and
- * each freshness warning on vectors/kcr.json's own date. The seed is kcr.json's public gate seed
- * dice-50-words12 (the snapshot with-dice-50 holds its seal; the others do not), its rolls picked on
- * the pad as the dice screen does. The right typed code needs the check QR read, which the emulator's
- * CheckTest does with ZXing. Where the slot is, is read from the slot itself: the seal is offered once
- * sealed, the check QR only while checking, a word page once the words are available, the collision
- * report only at the restart after a collision, and the self-test only at home (each other call halts,
- * which would fail every later check). Each test leaves the slot at home (wipeAll after it).
+ * and the actions kept; Match found to the collision result (Back doing nothing there), the report QR
+ * behind the privacy gate and "Add fresh entropy" at 99 rolls; Cannot check to "Start again" at the
+ * normal minimum, and at 99 when the session was itself the restart after a collision; leaving the app
+ * on the report (the first Protected screen) discarding at once; the model's end (wipeAll) wiping the
+ * typed code and the QR codes on show; and with a loaded snapshot the automatic check, its collision
+ * before any words and each freshness warning on vectors/kcr.json's own date. The seed is kcr.json's
+ * public gate seed dice-50-words12 (the snapshot with-dice-50 holds its seal; the others do not), its
+ * rolls picked on the pad as the dice screen does. The right typed code needs the check QR read, which
+ * the emulator's CheckTest does with ZXing. Where the slot is, is read from the slot itself: the seal
+ * is offered once sealed, the check QR only while checking, a word page once the words are available,
+ * the collision report only at the restart after a collision, and the self-test only at home (each
+ * other call halts, which would fail every later check). Each test leaves the slot at home (wipeAll
+ * after it).
  */
 class CheckScreensTest {
     @AfterTest
@@ -239,6 +240,8 @@ class CheckScreensTest {
         assertNull(collision.registry, "Match found, no snapshot")
         assertNull(collision.checkRequest)
         assertTrue(blank(request), "the check QR is wiped when the check ends")
+        rig.model.back()
+        assertEquals(Screen.Collision, rig.screen, "Back does nothing on the collision result")
         done(Core.collisionReport(), "the report, at the restart after a collision").wipe()
         rig.model.showReport()
         val gated = rig.model.state.value

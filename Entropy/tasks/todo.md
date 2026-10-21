@@ -12249,12 +12249,13 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   entropyFile, M5-43's pattern): Done at the minimum and not below it, then the prompt with dice-50-words12's Seal ID;
   Skip confirmed, Back on its confirm; the seal card's check QR equal to core's; a wrong code refused with the same
   check QR in core and on screen and the actions kept; Back on each confirm screen and the code entry, no core call;
-  Match found to the collision result, the report behind its gate (Add fresh entropy reaching nothing there) and Add
-  fresh entropy at 0 / 99, the report then wiped; Cannot check to Start again at 0 / 50, and at 0 / 99 when it was the
-  restart after a collision; leaving on the report discarding at once, the next seed still at 99; wipeAll on the code
-  entry wiping the typed code and the check QR, and past the report's gate the report (17b); with with-dice-50
-  loaded the check on the worker finds the collision, no words made available; current-day-30, stale-day-31 and
-  future-day-1 give Current, Stale and Future and their warnings on kcr.json's date; the result texts and the code as
+  Match found to the collision result (Back doing nothing there, 17c), the report behind its gate (Add fresh entropy
+  reaching nothing there) and Add fresh entropy at 0 / 99, the report then wiped; Cannot check to Start again at
+  0 / 50, and at 0 / 99 when it was the restart after a collision; leaving on the report discarding at once, the next
+  seed still at 99; wipeAll on the code entry wiping the typed code and the check QR, and past the report's gate the
+  report (17b); with with-dice-50 loaded the check on the worker finds the collision, no words made available;
+  current-day-30, stale-day-31 and future-day-1 give Current, Stale and Future and their warnings on kcr.json's date;
+  the result texts and the code as
   shown. Emulator (scripts/android-emulator.sh step 4a, after FlowTest, API 31 and 36): CheckTest (shipping APK: Done
   at 50, Skip, Match found and Cannot check confirmed and Back there, the drawn check QR read in-process with ZXing, a
   wrong code typed on the pad refused with the same check QR and actions, then the code computed from that QR's T and
