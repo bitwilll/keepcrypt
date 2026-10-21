@@ -145,20 +145,20 @@ class PhoneMotionTest {
         // The unregistration, read where dumpsys lists both connections by name while PhoneMotion runs.
         val phoneMotion = connectionName(motion)
         val mine = connectionName(listener)
-        val listed = phoneMotion != mine && phoneMotion in running && mine in running
+        val byName = phoneMotion != mine && phoneMotion in running && mine in running
         probe(
             "dumpsys sensorservice: while PhoneMotion ran it listed PhoneMotion's connection ($phoneMotion): " +
                 "${phoneMotion in running}, the test's own ($mine): ${mine in running}; after stop PhoneMotion's: " +
                 "${phoneMotion in stopped}, the test's own: ${mine in stopped}",
         )
-        if (listed) {
+        if (byName) {
             assertTrue("the test's own connection is not listed after stop, so PhoneMotion's absence proves nothing", mine in stopped)
             assertFalse("PhoneMotion's sensor connection is still listed after stop: it never unregistered", phoneMotion in stopped)
         } else {
             probe("dumpsys sensorservice does not list both connections by name on this image: the unregistration is not proven here")
         }
         val gyro = if (gyroscope != null) " and a gyroscope sample" else " (no gyroscope listed)"
-        val unregistered = if (listed) "; unregistered (its connection listed while it ran, gone after stop)" else ""
+        val unregistered = if (byName) "; unregistered (its connection listed while it ran, gone after stop)" else ""
         pass(
             "PhoneMotion: an accelerometer sample within 5 s" + gyro + ", each 24 bytes (type, timestamp, value bits, " +
                 "big-endian) and matching the test's own events; none after stop" + unregistered,
