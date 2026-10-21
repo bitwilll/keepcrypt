@@ -107,7 +107,7 @@ class CeremonyModel(
     /** The screen the running long call was started from, which "Working..." stands in for. */
     private var from = Screen.Working
 
-    /** A long call's flag, set on the main thread by a discard and read on the worker before core is called. */
+    /** A long call's flag, set on the main thread by a discard and read on the worker before and after core's call. */
     private class Pending {
         @Volatile
         var discarded = false
@@ -260,9 +260,9 @@ class CeremonyModel(
      * and to refused (by default a halt: a refusal from a call that refuses nothing is the shell's bug).
      * A discard while it runs has called core's discard at once, so the call returns discarded, or is
      * never made if it had not reached core yet; a call that reached core after the discard (a start or
-     * the self-test, which core offers at home) has what it made discarded again. Either way the start
-     * screen follows. A halt is the stop screen. One long call at a time: a second is the shell's bug,
-     * and halts.
+     * the self-test, which core offers at home) has what it made discarded again on the worker
+     * (onWorker). Either way the start screen follows. A halt is the stop screen. One long call at a
+     * time: a second is the shell's bug, and halts.
      */
     fun <T> work(core: () -> Reply<T>, refused: (Refusal) -> Unit = { halt() }, done: (T) -> Unit) {
         if (running != null || stopped()) {
@@ -274,20 +274,12 @@ class CeremonyModel(
         from = mutable.value.screen
         show(Screen.Working)
         scope.launch {
-            val reply = withContext(worker) {
-                if (pending.discarded) Reply.Discarded else call(core)
-            }
+            val reply = withContext(worker) { onWorker(pending, core) }
             if (running === pending) running = null
             if (stopped()) return@launch
             when {
                 reply == null -> halted()
-                pending.discarded -> {
-                    if (reply !is Reply.Discarded && call { Core.discard() } == null) {
-                        halted()
-                    } else {
-                        toStart(pending.notice)
-                    }
-                }
+                pending.discarded -> toStart(pending.notice)
                 else -> when (reply) {
                     is Reply.Done -> {
                         done(reply.value)
@@ -301,6 +293,21 @@ class CeremonyModel(
                 }
             }
         }
+    }
+
+    /**
+     * A long call's part on the worker. A discard that came first means no call at all. A call that
+     * reached core after a discard (or after wipeAll) has what it made discarded again here, on the
+     * worker, before its reply goes back: a cancelled scope (the holder's end, which cancels it before
+     * wipeAll) drops the reply on the main thread but cannot skip this. A discard that came after this
+     * look found the call done in core, so its own core discard took what the call made. Null is the
+     * halt status.
+     */
+    private fun <T> onWorker(pending: Pending, core: () -> Reply<T>): Reply<T>? {
+        if (pending.discarded) return Reply.Discarded
+        val reply = call(core) ?: return null
+        if (reply is Reply.Discarded || !pending.discarded) return reply
+        return if (call { Core.discard() } == null) null else Reply.Discarded
     }
 
     /** The start-up self-test: core's known-answer suite, a long call; any reply but Done halts. */

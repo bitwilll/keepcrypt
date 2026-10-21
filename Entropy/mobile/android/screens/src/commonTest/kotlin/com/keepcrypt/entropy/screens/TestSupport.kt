@@ -62,12 +62,12 @@ internal class FakeOffline : OfflineMonitor {
     }
 }
 
-/** A model over fakes, and the fakes. */
-internal class Rig {
+/** A model over fakes, and the fakes; scope is the model's main scope (unconfined, unless a test cancels its own). */
+internal class Rig(scope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined)) {
     val clock = FakeClock()
     val worker = HeldWorker()
     val offline = FakeOffline()
-    val model = CeremonyModel(CoroutineScope(Dispatchers.Unconfined), worker, clock, offline, testRegistry = true)
+    val model = CeremonyModel(scope, worker, clock, offline, testRegistry = true)
 
     val screen: Screen get() = model.state.value.screen
 

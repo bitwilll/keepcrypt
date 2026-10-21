@@ -11977,20 +11977,21 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   KcHalt; a long call (`work`) runs on the worker behind "Working...", where input, ticks and the overlay taps go
   nowhere; a discard (leaving the app on a Protected screen or during "Working...", going online after the start-up,
   a timer's wipe) calls Core.discard at once, and the call's reply, discarded (or a call skipped because it had not
-  reached core, or one that reached core after the discard, whose session is discarded again) returns the UI to the
-  start screen, saying why; the start-up self-test is the first long call, run again on the next return after a
-  discard. CeremonyModelTest (21 tests, over the real slot through the host library, long calls held on the test's
-  worker: the start-up, a press during "Working...", leaving during a long call, a discarded reply, a call reaching
-  core after the discard, going online during a long call and before the self-test passes, going online with a session
-  held, away from the app and a return while online (15d), leaving during the self-test, leaving a Public screen and the
-  60 s wipe, a return within 60 s, the warning and the idle wipe, the picker, a picker opened that no stop followed
-  (15c), a refusal, the halt status, the recording flag, wipeAll and a configuration change) and CeremonyModelHaltTest
-  (a second long call halts the real slot; nothing leaves the stop screen; wipeAll on the halted slot ends quietly).
-  LifecycleTest on the emulator (scripts/android-emulator.sh step 4b, shipping app): Home during a backup's scrypt
-  (dice-50-words12 driven through Core to the encryption; the times printed), Home during the start-up self-test
-  (started from the shell and left at once; the self-test passed after the return), and Wi-Fi on during a start held on
-  the worker (airplane mode on and Wi-Fi off first, put back after): each ends with no ANR (the script's judge) and the
-  slot at home (Core.selfTest() Done).
+  reached core, or one that reached core after the discard, whose session is discarded again on the worker, so the
+  holder's cancelled scope cannot skip it, 15e) returns the UI to the start screen, saying why; the start-up self-test
+  is the first long call, run again on the next return after a discard. CeremonyModelTest (22 tests, over the real slot
+  through the host library, long calls held on the test's worker: the start-up, a press during "Working...", leaving
+  during a long call, a discarded reply, a call reaching core after the discard and one reaching it after wipeAll with
+  its scope cancelled (15e), going online during a long call and before the self-test passes, going online with a
+  session held, away from the app and a return while online (15d), leaving during the self-test, leaving a Public screen
+  and the 60 s wipe, a return within 60 s, the warning and the idle wipe, the picker, a picker opened that no stop
+  followed (15c), a refusal, the halt status, the recording flag, wipeAll and a configuration change) and
+  CeremonyModelHaltTest (a second long call halts the real slot; nothing leaves the stop screen; wipeAll on the halted
+  slot ends quietly). LifecycleTest on the emulator (scripts/android-emulator.sh step 4b, shipping app): Home during a
+  backup's scrypt (dice-50-words12 driven through Core to the encryption; the times printed), Home during the start-up
+  self-test (started from the shell and left at once; the self-test passed after the return), and Wi-Fi on during a
+  start held on the worker (airplane mode on and Wi-Fi off first, put back after): each ends with no ANR (the script's
+  judge) and the slot at home (Core.selfTest() Done).
 - [ ] The crash path: an `Application` subclass sets its handler (replacing the platform's) to `Native.wipeAll()` then
   `Process.killProcess`; the stop screen's "Close app" calls `finishAndRemoveTask()` and ends the process.
   Proof: a JVM test of the handler's order with a fake; on the emulator an androidTest-only trigger throws on the main

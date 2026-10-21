@@ -13,6 +13,10 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.fail
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 
 /**
  * Every CeremonyModel transition (tasks/todo.md, M5 group 14), over the real slot through Core and the
@@ -125,7 +129,7 @@ class CeremonyModelTest {
         val rig = Rig().startUp()
         var made = false
         // The app is left after the worker's look at the flag and before core takes the call: core
-        // starts a session at home, which the model discards again when the reply comes.
+        // starts a session at home, which the model discards again on the worker.
         rig.model.work({
             rig.model.appLeft()
             Core.start(Words.Twelve, Mode.DiceOnly)
@@ -135,6 +139,24 @@ class CeremonyModelTest {
         assertEquals(Screen.FirstLaunch, rig.screen)
         assertEquals(Notice.Left, rig.model.state.value.notice)
         assertNoSession("the late start's session was discarded again")
+    }
+
+    @Test
+    fun aCallThatReachedCoreAfterWipeAllIsDiscardedThoughItsScopeIsCancelled() {
+        val scope = CoroutineScope(Job() + Dispatchers.Unconfined)
+        val rig = Rig(scope).startUp()
+        var made = false
+        // The holder's end (onCleared: the scope cancelled, then wipeAll) after the worker's look at
+        // the flag and before core takes the call: core starts a session at home, and the cancelled
+        // scope drops the reply, so only the worker can discard what the start made.
+        rig.model.work({
+            scope.cancel()
+            rig.model.wipeAll()
+            Core.start(Words.Twelve, Mode.DiceOnly)
+        }) { made = true }
+        rig.worker.run()
+        assertFalse(made, "a start after wipeAll is no ceremony")
+        assertNoSession("the late start's session was discarded on the worker")
     }
 
     @Test
