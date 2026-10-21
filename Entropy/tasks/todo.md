@@ -11237,7 +11237,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   - **KtFailOpen:** `runCatching`, `getOrNull`, `getOrElse`, `getOrDefault`, `onFailure`, a catch of `Throwable`,
     `Exception`, `RuntimeException` or `Error`; any `catch` in `:core-ffi`. `KcHalt` is caught only in
     `CeremonyViewModel.call`; Documents.kt may catch `IOException` and the scanner `CameraAccessException`, each mapped
-    to a refusal on its screen.
+    to a refusal on its screen. The scanner may also catch `ReaderException`, ZXing's "no code in this frame", which
+    drops the frame and reads the next (M5-53).
   - **KtWindow:** Toast, Snackbar, Notification, `Dialog(`, `AlertDialog`, `DialogFragment`, `Popup(`, `PopupWindow`,
     `ListPopupWindow`, `PopupMenu`, `DropdownMenu`, `ModalBottomSheet`, Spinner, `AutoCompleteTextView`, tooltips,
     `WindowManager.addView`, `TYPE_APPLICATION_OVERLAY`; any `DialogProperties(`/`PopupProperties(` without
@@ -12024,10 +12025,16 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   Proof (CI, run 39582638947 at 78f5720): TimersTest 8 tests and OfflineRuleTest 2 tests, 0 failures; on API 31 LifecycleTest's Wi-Fi case
   saw the monitor's report (airplane_mode_on=1 with wifi_on=2 is online) and the start was discarded at once. The
   wrapper's gate is drawn over the first Protected screens in commit 19, whose emulator tests show it.
+  Amended 2026-10-22 (the lead, from commit 17's review): commit 17 brings the first Protected screen, the
+  collision-report QR, with its privacy gate drawn and passed on the emulators (SnapshotDrillTest and CaptureTest's
+  walk); commit 19 brings the words and the other Protected screens.
 - [ ] `CeremonyViewModel` owns the slot's use: UI state holds screen ids, page indices and `Secret` references only;
   long calls run on `Dispatchers.Default` behind a "Working..." screen that ignores input; a lifecycle or offline
   discard during "Working..." calls `discard()` at once and the call's "discarded" status returns the UI to its start
   screen; `onCleared` calls `wipeAll()`.
+  Amended 2026-10-22 (M5-54): Done's `finish` is the one long call core does not offer at home; a discard that
+  reaches core in the moment between the worker's check and the call halts the slot (the stop screen, fail closed)
+  instead of returning to the start screen. The snapshot check is a short call on the main thread.
   Proof: JVM tests for every transition, including a press during "Working..."; emulator tests that leave the app during
   a backup's scrypt and during the start-up self-test, and turn Wi-Fi on during `start`: no ANR, the session is gone.
   Proof (M5 commit 15, partial: the JVM and emulator tests run only in CI): as the re-plan amends it, this is
@@ -12078,6 +12085,13 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   failed once on API 31 with UI Automator's StaleObjectException (New seed tapped right after Back returned to Home,
   the node replaced by Compose's redraw between the find and the click); every other class green on both APIs and the
   16 KB leg. 16q: FlowTest's tap clicks through a selector resolved at the click.
+  Run 39649809912 at 65f9e4e (16q): every FlowTest case failed on its first tap, since 16q also asserted
+  UiObject.click()'s boolean, which is false on Compose taps that move the screen on; 16r (d7c108b) drops it, and the
+  screen check after each tap is the proof.
+  Proof (CI, run 39653116940 at d7c108b, 1262 s): LifecycleTest 4 passed on API 31 and API 36 with no ANR; the
+  scrypt case left during the scrypt on its first attempt on both (API 31: left after 665 ms, reply after 1068 ms;
+  API 36: 666 and 1268 ms); the start-up case (16j and 16k: Continue, the Self-test screen, then Home) came after the
+  self-test on both (592 and 586 ms after Continue), so the emulator half is still unmet (M5-47).
   Proof (M5 commit 16j, partial: not yet run in CI): with M5-50's order, LifecycleTest's start-up case presses First
   launch's Continue through the model and Home at once; once the self-test's reply is in, the screen left behind names
   the case (First launch: the leave discarded the self-test, "during"; Go offline: "after"), and back in the app the
@@ -12223,6 +12237,10 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   `--selftest` 1431 passed, 0 failed, and `canaries.sh` PASS, all 93 checks ran; android-emulator.sh --selftest 17
   passed, 0 failed under sh and /bin/dash (16 before: motion-test-fails); Rust untouched (fmt, both clippy commands,
   the workspace tests, the test-sources run and the FFI tests plain and with test-registry all pass).
+  Proof (CI, run 39653116940 at d7c108b, 1262 s of 28 minutes): every JVM class passed; on API 31 and API 36 every
+  emulator class passed under M5-50's order (NativeTest, ControlTest, CaptureTest in both APKs with the cover's
+  strip check, PhoneMotionTest, FlowTest 3, LifecycleTest 4 and the killed CrashTest), and the 16 KB leg's NativeTest.
+  The item stays open until Done (17) and Home's other entries (20, 21) land (M5-48).
   Proof (M5 commit 17, partial: Home's other entries are commits 20 and 21, M5-48): the dice screen's Done, disabled
   below the minimum, makes the seed (finish behind "Working...") and opens the check prompt (group 16's commit-17
   line); the counts and their limit lines now come above the dice's notes, so FlowTest's minimum and cap lines stay in
@@ -12384,8 +12402,9 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   `dice-99-words12`'s words after the Stale warning, with the Seal ID checked first; CI feeds the same UR through the
   decoder (canned YUV frames) and `onGoAheadText`.
   Proof: P0b and P4, run ID.
-- [ ] **Gate: a Stop wipes them.** `collision-dice-50`'s QR and the `with-dice-50` snapshot each end in "Match found" with
-  no words page, the collision-report QR and a restart at 99 (`ffi_drill_12`, emulator, P4).
+- [ ] **Gate: a Stop wipes them.** `collision-dice-50`'s QR and the `with-dice-50` snapshot each end in the collision
+  result ("Collision found. This seed is not unique and has been destroyed.", M5-55) with no words page, the
+  collision-report QR and a restart at 99 (`ffi_drill_12`, emulator, P4).
   Proof: test names, run ID, P4.
 - [ ] **Boot path and native libraries:** the ARM and 16 KB leg green; which ABIs ran (natively or translated) recorded;
   any ABI CI could not run named in the gate report.
@@ -12545,9 +12564,10 @@ never-funded throwaway seed.
 
 **P0b. Scanner smoke test (early, from commit 18's run; about 10 minutes)**
 - [ ] Install that run's test-registry APK (its strip reads TEST REGISTRY); airplane mode on, Wi-Fi off. Dice-only, 12
-  words, the 50 rolls `123456` repeated; before Check now, the Seal ID on the seal card equals `dice-50-words12`'s from
-  the lead (if not, a typing slip: start again). Check now; scan `goahead-collision-dice-50.png` on the computer screen:
-  "Match found", no words. Send pass or fail only. Uninstall the APK.
+  words, the 50 rolls `123456` repeated; Check now; the Seal ID on the seal card equals `dice-50-words12`'s from the
+  lead (if not, a typing slip: Cannot check, then Start again). Scan go-ahead QR (allow the camera); scan
+  `goahead-collision-dice-50.png` on the computer screen: "Collision found. This seed is not unique and has been
+  destroyed.", no words. Send pass or fail only. Uninstall the APK.
 
 **P1. Capture (shipping APK)**
 - [ ] On the dice screen, a words page and the backup passphrase: a hardware screenshot is blocked or black; a Quick
@@ -12575,18 +12595,19 @@ never-funded throwaway seed.
 - [ ] Delete the backup file and destroy the paper.
 - [ ] In a later throwaway session, turning Wi-Fi on wipes it; leaving the app on a words page wipes it.
 
-**P4. The test registry** (a loaded snapshot or a pending 99-roll minimum lasts until the app's process ends). Before every
-scan or snapshot check, compare the seal card's Seal ID with the lead's value from `p4-seal-ids.txt`; if it differs, it
-was a typing slip: start again.
+**P4. The test registry** (a loaded snapshot or a pending 99-roll minimum lasts until the app's process ends). At every
+check, compare the Seal ID with the lead's value from `p4-seal-ids.txt`: on the seal card before a scan, or on the
+result screen when a loaded snapshot answers; if it differs, it was a typing slip: start again.
 - [ ] Uninstall the shipping APK; install the test-registry APK; airplane mode on, Wi-Fi off. Dice-only, 12 words, the 99
-  rolls `654321` repeated; Seal ID check; Check now; scan `goahead-clear-empty-bucket.png` on the computer screen: Stale
-  warning, then the words, which match kcr.json's `dice-99-words12`. Leave the app from that words page; on return the
-  session is gone.
+  rolls `654321` repeated; Check now; Seal ID check; Scan go-ahead QR; scan `goahead-clear-empty-bucket.png` on the
+  computer screen: Stale warning, then the words, which match kcr.json's `dice-99-words12`. Leave the app from that
+  words page; on return the session is gone.
 - [ ] Load `with-dice-50.kcr` (number, date, count and the Stale warning shown). Dice-only, 12 words, 50 rolls `123456`
-  repeated; Seal ID check; the check runs on its own: "Match found" with no words, the collision-report QR, "Add fresh
-  entropy" shows 0 / 99.
-- [ ] Force-stop the app and open it again. The same 50 rolls; Seal ID check; Check now; scan
-  `goahead-collision-dice-50.png`: "Match found", no words, 0 / 99.
+  repeated; Check now: the check runs on its own, "Collision found. This seed is not unique and has been destroyed."
+  with no words; Seal ID check on that screen; the collision-report QR, "Add fresh entropy" shows 0 / 99.
+- [ ] Force-stop the app and open it again. The same 50 rolls; Check now; Seal ID check; Scan go-ahead QR; scan
+  `goahead-collision-dice-50.png`: "Collision found. This seed is not unique and has been destroyed.", no words;
+  after the report, "Add fresh entropy" shows 0 / 99.
 - [ ] Uninstall the test-registry APK.
 
 **P5. Second device (optional for the gate)**
@@ -12766,7 +12787,7 @@ From now on, `xcrun simctl`, `xcodebuild`, `xcrun devicectl`, Instruments and th
   - About 130 path references name it: banned-api-check.sh 87, android-deps-review.py 12, entropy-android.yml 17, canaries.sh 7, android-gradle.sh 2, plus `.gitignore`, the canary library and two deps-review fixtures.
   - The KMP template layout would rewrite all of them for no security gain. BP:55-57's tree says what the directories hold (Q72).
 - M5-20: the platform seams are Kotlin interfaces in `commonMain`, implemented in each platform's code and passed in at its entry point.
-  - The seams: documents, QR scanner, offline monitor, motion source, airplane-settings opener, monotonic clock, and the build's `testRegistry` flag (a KMP library has no flavours, so `:app` passes it in from `BuildConfig`).
+  - The seams: documents, QR scanner, offline monitor, motion source, airplane-settings opener, monotonic clock, and the build's `testRegistry` flag (a KMP library has no flavours, so `:app` passes it in from `BuildConfig`). M5-56 adds the UTC date.
   - The only `expect`/`actual` is `Native`, so the iPhone target compiles in M5 with no iOS seam code and no stub that pretends to work.
 - M5-21: one dispatch call per boundary.
   - `keepcrypt-ffi` gains `dispatch(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>>` over the safe calls. Op numbers and every layout are defined once in `wire.rs`, and Kotlin has one `Native.call(op, input)`.
@@ -13786,6 +13807,8 @@ they differ. Nothing in the Android plan is weakened.
   after it, a discard's start screen is Go offline. NoCoreCallBeforeContinueTest proves no core call before Continue
   (the slot halted first); CeremonyModelTest and StartScreensTest follow the order; every emulator test waits for what
   it means (group 15's 16j line). The Pi's boot order (PF:87) is unchanged.
+  Proof (CI, run 39653116940 at d7c108b): the JVM tests named and every emulator test passed on API 31 and API 36
+  under this order (group 15's CI line); the start-up leave came after the self-test on both (M5-47).
 - M5-51 (2026-10-21): Q60's "a strip on every screen" covers the privacy cover and the idle-warning overlay too: in the
   test-registry build both draw the TEST REGISTRY strip (16j). PhoneMotion (the sensor seam's Android end) gets an
   emulator check in 16j: started on the emulator it delivers at least one accelerometer sample within 5 s, and none
@@ -13820,10 +13843,42 @@ they differ. Nothing in the Android plan is weakened.
   Where both connections are listed while it runs, after stop the test's own must be listed and PhoneMotion's
   not, and the pass line adds "unregistered"; on an image whose dump lists them otherwise, a probe line says the
   unregistration is not proven there.
+  Proof (CI, run 39653116940 at d7c108b): PhoneMotionTest passed on API 31 and API 36 with "unregistered" on both
+  (both dumps listed the two connections by name), and CaptureTest's cover check passed in both APKs on both.
 - M5-52 (2026-10-21): commit 16 adds FlowTest and a ten-screen CaptureTest walk per leg; run 39611275051 at e38a095
   took the Android job 1331 s (22.2 min: Rust libraries 245 s, Gradle build 185 s, API 31 219 s, API 36 245 s, 16 KB
   113 s), 89% of M5-44's 25. By M5-30's rule (the measured run plus 25%) the budget is 28 minutes (16i-b). Each later
   commit that adds emulator tests re-measures it the same way.
+  Re-measured with 16j's emulator tests in: run 39653116940 at d7c108b took 1262 s (21.0 minutes), within 28.
+- M5-53 (2026-10-22): ZXing core reports "no QR code in this frame" by throwing: every QR decode call declares
+  NotFoundException, ChecksumException and FormatException, all ReaderException (read from core-3.5.4.jar's class
+  files). Almost every camera frame holds no code, so group 3's catch list could not admit any ZXing scanner, which
+  the plan missed. The list gains exactly `catch (<name>: ReaderException)` by its bare name, in
+  camera/GoAheadScanner.kt only, with its own import line (`import com.google.zxing.ReaderException`) as 17f
+  requires of every allowed catch, and an alias, cast or typealias of the name a hit (17f's kt_alias). The catch
+  drops a frame whose buffer is already zeroed and reads the next. Rule 3 holds: the catch is around no entropy,
+  health test or known-answer test, and a frame without a code is not a failure. Hit fixtures: the catch in any
+  other file, `NotFoundException` or `Exception` in the scanner's file, and the catch without its import line; a
+  clean fixture for the allowed form (commit 18a).
+- M5-54 (2026-10-22): commit 17 adds two calls core does not offer at home, Done's `finish` and the snapshot check
+  (`revealSnapshot`). The worker checks the discard flag and then calls core, so a discard (a leave, Wi-Fi on, a
+  timer) that lands between the two reaches core with the slot Idle, and the call halts it: the stop screen instead
+  of the start screen (review of commit 17). It fails closed and the window is microseconds. The snapshot check
+  becomes a short call on the main thread, as the FFI already runs it (it only looks up the loaded snapshot), so
+  group 16's "on the FFI thread" is replaced. `finish` keeps its window as a fail-closed residual: CeremonyModel's
+  KDoc names it, and group 14's item is amended (commit 17g).
+- M5-55 (2026-10-22): the check prompt shows no seal card. Commit 17 drew it there, Seal ID included, beside Skip;
+  the Seal ID's first four characters are the 20-bit bucket the registry lookup takes, so a user could read a Stop
+  and then Skip past it, which swb:130 rules out ("Skip is offered only before the check starts, so nobody can read
+  a Stop on the website and then skip past it"), and the Pi's prompt draws no seal (MA:178, "the same prompt and
+  seal card as the Pi"). The Seal ID shows from Check now on: on the seal card, and on both result screens (the
+  collision result and the check result). P0b and P4 compare it there, and quote the collision screen's text,
+  "Collision found. This seed is not unique and has been destroyed." ("Match found" is only the typed path's
+  button). A scanned proof's result line says "K entries in this seal's bucket", never the loaded snapshot's total
+  (commits 17g and 18).
+- M5-56 (2026-10-22): commit 17 adds a platform seam M5-20 does not list: `UtcDate` (Seams.kt), whose Android end is
+  :app's UtcToday (today's date in UTC). Only snapshot and proof freshness read it (Stale, Future), never a timer,
+  which stays on MonotonicClock.
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the
