@@ -7,6 +7,7 @@ import androidx.test.runner.lifecycle.Stage
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
+import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.Until
 import com.keepcrypt.entropy.Capture.finish
 import com.keepcrypt.entropy.Capture.launch
@@ -257,8 +258,14 @@ class FlowTest {
     private fun find(tag: String): UiObject2 =
         device.wait(Until.findObject(By.res(tag)), 10_000) ?: throw AssertionError("not on screen: " + tag)
 
+    /**
+     * Taps the control tag once it is on screen (find's 10 s), through a selector UI Automator resolves at
+     * the click: a UiObject2 found just before Compose redraws the screen goes stale and its click throws
+     * (run 39646201443: StaleObjectException on New seed right after Back returned to Home).
+     */
     private fun tap(tag: String) {
-        find(tag).click()
+        find(tag)
+        assertTrue("the tap on $tag did not land", device.findObject(UiSelector().resourceId(tag)).click())
         device.waitForIdle()
     }
 

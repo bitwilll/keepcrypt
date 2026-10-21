@@ -12061,6 +12061,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   after 0.87 to 1.54 s). 16p gives the case up to three attempts on a fresh activity and session: an attempt whose
   reply came first is a probe line and proves nothing; an attempt that left during the scrypt is judged in full; three
   misses fail it. API 36's start-up leave in that run came after the self-test again (1545 ms after Continue).
+  Run 39646201443 at 484c482 (16p): the scrypt case left during the scrypt on its first attempt on both APIs (API 31:
+  left after 689 ms, reply after 1102 ms; API 36: 720 and 923 ms), LifecycleTest 4 green on both. FlowTest's new seed
+  failed once on API 31 with UI Automator's StaleObjectException (New seed tapped right after Back returned to Home,
+  the node replaced by Compose's redraw between the find and the click); every other class green on both APIs and the
+  16 KB leg. 16q: FlowTest's tap clicks through a selector resolved at the click.
   Proof (M5 commit 16j, partial: not yet run in CI): with M5-50's order, LifecycleTest's start-up case presses First
   launch's Continue through the model and Home at once; once the self-test's reply is in, the screen left behind names
   the case (First launch: the leave discarded the self-test, "during"; Go offline: "after"), and back in the app the
