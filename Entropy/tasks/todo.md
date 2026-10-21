@@ -12137,9 +12137,10 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   slot committed behind the model, and the sample is zeroed, 16g), OfflineRuleTest gains the two states (3). :app's
   PhoneMotion (SensorMotionSource.kt: the two sensors' registration, unregistration and sample layout) has no test;
   every model test uses a fake motion source. Confirm reads the face from the pick with no copy of its bytes (16f).
-  FlowTest (3 tests: New seed of 12 words to 50 rolls with Back and Wi-Fi on during the dice; Dice-only of 24 words to
-  99 and 256; Start disabled online, the settings button, Wi-Fi on at Home) runs on the shipping app in the API 31 and
-  36 legs before LifecycleTest (scripts/android-emulator.sh step 4a; `--selftest` 16 passed, 0 failed under sh and
+  FlowTest (3 tests: New seed of 12 words to 50 rolls with Back and Wi-Fi on during the dice, which has no dice-only
+  line, and then Go offline showing airplane mode on and Wi-Fi on with Start disabled (16h); Dice-only of 24 words to 99
+  and 256; Start disabled online, the settings button, Wi-Fi on at Home) runs on the shipping app in the API 31 and 36
+  legs before LifecycleTest (scripts/android-emulator.sh step 4a; `--selftest` 16 passed, 0 failed under sh and
   /bin/dash, 15 before: the flow-test-fails case, and the pass leg's last three runs are FlowTest, LifecycleTest and the
   killed CrashTest). CaptureTest's every-screen pass walks one activity through all ten screens with the phone offline.
   The gate is clean on the tree (343 files), `--selftest` 1431 passed, 0 failed, and `canaries.sh` PASS, all 93 checks

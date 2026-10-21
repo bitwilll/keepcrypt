@@ -47,9 +47,10 @@ class FlowTest {
     /**
      * New seed, 12 words: Home to Length and Back to Home (nothing is lost there), Length's 12 words,
      * Device entropy with MA's sentence (taps on it are touches for the pool) where Back does nothing,
-     * Commitment's C as 16 groups of 4 hex digits, then the dice: Confirm and Undo off at first, a face
-     * tapped and confirmed, undone, Back doing nothing, and on to the minimum, 50 rolls. Then Wi-Fi comes
-     * on during the dice: the session is wiped and Go offline says why.
+     * Commitment's C as 16 groups of 4 hex digits, then the dice, with no dice-only line: Confirm and Undo
+     * off at first, a face tapped and confirmed, undone, Back doing nothing, and on to the minimum, 50
+     * rolls. Then Wi-Fi comes on during the dice, airplane mode staying on: the session is wiped, Go
+     * offline says why and shows the two states apart (airplane mode on, Wi-Fi on), and Start is disabled.
      */
     @Test
     fun aNewSeedOfTwelveWordsReachesTheDiceMinimumAndWifiOnWipesIt() {
@@ -74,6 +75,7 @@ class FlowTest {
             tap("continue")
             on(activity, Screen.Dice)
             assertEquals("0 / 50 rolls, 0.0 bits", text("dice_count"))
+            assertFalse("the dice-only line in a new seed", device.hasObject(By.res("dice_only")))
             assertFalse("Confirm with no face picked", enabled("confirm"))
             assertFalse("Undo with no roll", enabled("undo"))
             tap("key_3")
@@ -99,10 +101,15 @@ class FlowTest {
             on(activity, Screen.GoOffline, 30)
             assertEquals(Notice.Offline, onMain { activity.model.state.value.notice })
             assertEquals("The session was wiped: the phone went online.", text("notice"))
+            // The one mixed state the flows reach (airplane_mode_on 1, wifi_on 2): each state on its own line.
+            awaitText("airplane_mode", "Airplane mode: on")
+            awaitText("wifi", "Wi-Fi: on")
+            assertFalse("Start with Wi-Fi on inside airplane mode", enabled("start"))
             assertTrue("the slot is not at home: the session was not wiped", Core.selfTest() is Reply.Done)
             pass(
                 "new seed, 12 words: Back from Length, Device entropy, C in 16 groups, the dice's pick, confirm, " +
-                    "undo and minimum (50 / 50 rolls, 129.2 bits); Wi-Fi on during the dice wiped it, back to Go offline",
+                    "undo and minimum (50 / 50 rolls, 129.2 bits); Wi-Fi on during the dice wiped it, back to Go offline " +
+                    "(airplane mode on, Wi-Fi on, Start disabled)",
             )
             finish(activity)
         }
