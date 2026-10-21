@@ -77,13 +77,15 @@ class LifecycleTest {
 
     /**
      * First launch's Continue (through the model, as its button calls it) runs the start-up self-test,
-     * and the app is left at once (Home), so the leave comes during the self-test or just after it
-     * passed, and the screen it leaves behind once the self-test's reply is in says which: First launch
-     * when the leave discarded the self-test (its Continue runs it again), Go offline when the
-     * self-test had passed. Back in the app (am start, the task to the front), the cover is taken away
-     * and, after a discard, Continue runs the self-test again; either way it has passed, Go offline
-     * shows and the slot is empty. The pass line names the case: only "during" is the discard during
-     * the self-test on the phone (lead decision M5-47; the JVM test
+     * read back as the Self-test screen in the same main-thread step (the self-test's reply comes back
+     * through the model's scope only after that step), so the press is seen to take and First launch
+     * afterwards can only be a discard's. The app is left at once (Home), so the leave comes during the
+     * self-test or just after it passed, and the screen it leaves behind once the self-test's reply is
+     * in says which: First launch when the leave discarded the self-test (its Continue runs it again),
+     * Go offline when the self-test had passed. Back in the app (am start, the task to the front), the
+     * cover is taken away and, after a discard, Continue runs the self-test again; either way it has
+     * passed, Go offline shows and the slot is empty. The pass line names the case: only "during" is
+     * the discard during the self-test on the phone (lead decision M5-47; the JVM test
      * leavingDuringTheStartUpSelfTestReturnsToFirstLaunchWhoseContinueRunsItAgain holds that path on
      * every run).
      */
@@ -93,7 +95,11 @@ class LifecycleTest {
         val activity = launch()
         await("the first screen, First launch", 10) { onMain { activity.shownScreen } == Screen.FirstLaunch }
         val begun = SystemClock.elapsedRealtime()
-        onMain { activity.model.firstLaunchDone() }
+        val pressed = onMain {
+            activity.model.firstLaunchDone()
+            activity.model.state.value.screen
+        }
+        assertEquals("First launch's Continue did not start the self-test", Screen.SelfTest, pressed)
         device.pressHome()
         await("the activity stopped", 30) { stage(activity) == Stage.STOPPED }
         val left = SystemClock.elapsedRealtime() - begun

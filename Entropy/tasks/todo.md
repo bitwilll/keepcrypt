@@ -12062,6 +12062,10 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   cover is taken away and, after a discard, Continue runs the self-test again: Go offline, the slot empty, no ANR. The
   JVM proof is now leavingDuringTheStartUpSelfTestReturnsToFirstLaunchWhoseContinueRunsItAgain (renamed from
   leavingDuringTheStartUpSelfTestRunsItAgainOnTheNextReturn, M5-47's name).
+  Proof (M5 commit 16k, review fix, partial: not yet run in CI): the start-up case presses Continue and reads the
+  model's screen in one main-thread step and requires the Self-test screen there (the self-test's reply comes back
+  through the model's scope only after that step), so a press that did not take fails at once instead of leaving
+  First launch to read as "during"; First launch after the reply is then a discard's only.
 - [x] The crash path: an `Application` subclass sets its handler (replacing the platform's) to `Native.wipeAll()` then
   `Process.killProcess`; the stop screen's "Close app" calls `finishAndRemoveTask()` and ends the process.
   Proof: a JVM test of the handler's order with a fake; on the emulator an androidTest-only trigger throws on the main
