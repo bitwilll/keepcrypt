@@ -34,9 +34,10 @@ private const val HEX_DIGITS = "0123456789abcdef"
 
 /**
  * C as the commitment screen shows it (the Pi's ui/hex.rs): 32 bytes as 16 groups of 4 lower-case hex
- * digits, a space between the groups of a row and a line feed between the four rows. verify.py drops
- * the spaces and line feeds and takes the 64 digits. C is public; D (commit 21) is not, and is never
- * made into a String.
+ * digits, a space between the groups of a row and a line feed between the four rows. verify.py reads C
+ * back as typed (parse_hex32): it drops spaces, tabs and hyphens and takes exactly 64 hex digits, and
+ * refuses a line feed, so the four rows are only how the screen lays C out; the user types them as
+ * groups on one line. C is public; D (commit 21) is not, and is never made into a String.
  */
 fun hexGroups(bytes: ByteArray): String {
     check(bytes.size == 32)
