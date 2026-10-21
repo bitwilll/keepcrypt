@@ -603,6 +603,7 @@ jobs:
       # root by sdkmanager --licenses, answering yes; then the four packages (nothing to fetch on a
       # cache hit), and their installed revisions checked against the key's.
       - name: Emulator install (sdkmanager, the SDK licence accepted, Q54)
+        id: emulator-install
         run: |
           fail() { echo "FAIL: emulator install: $1" >&2; exit 1; }
           sdk=$HOME/kc-sdk
@@ -640,10 +641,14 @@ jobs:
       # The three emulator legs, one after another, on the APKs signed and checked above (group 6;
       # the header of scripts/android-emulator.sh lists what each runs): the capture harness on API
       # 31 and 36, then the ARM and 16 KB leg on the 16 KB-page image (its page size, and NativeTest
-      # for x86_64 and each ARM ABI the image lists).
+      # for x86_64 and each ARM ABI the image lists). Each leg runs whenever the install passed, even
+      # after an earlier leg failed, so one red leg never hides the others' evidence; the job still
+      # fails on any red leg.
       - name: Emulator API 31 (system-images;android-31;default;x86_64)
         run: sh scripts/android-emulator.sh 31 "$HOME/kc-sdk" "$ANDROID_HOME/platform-tools/adb" "$RUNNER_TEMP/apks" "$RUNNER_TEMP/emulator-31"
       - name: Emulator API 36 (system-images;android-36;default;x86_64)
+        if: ${{ !cancelled() && steps.emulator-install.outcome == 'success' }}
         run: sh scripts/android-emulator.sh 36 "$HOME/kc-sdk" "$ANDROID_HOME/platform-tools/adb" "$RUNNER_TEMP/apks" "$RUNNER_TEMP/emulator-36"
       - name: Emulator 16 KB pages (system-images;android-36;google_apis_ps16k;x86_64)
+        if: ${{ !cancelled() && steps.emulator-install.outcome == 'success' }}
         run: sh scripts/android-emulator.sh 16k "$HOME/kc-sdk" "$ANDROID_HOME/platform-tools/adb" "$RUNNER_TEMP/apks" "$RUNNER_TEMP/emulator-16k"

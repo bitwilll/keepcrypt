@@ -1787,6 +1787,34 @@ Nothing else on your Mac or in the repo changed. From now on, no simulator, `xco
       new signers' keys from keyserver.ubuntu.com or keys.openpgp.org, fetched into a mirror outside the repo; each new
       signer is trusted on first use (M5-12) and goes on the M7 audit list, and the 61 committed keys stay unchanged.
 
+### Raised by CI during M5 commit 15 (Q75, open)
+75. **Two things Android does that the docs say do not happen** (MA:36, MA's "Session lifetime"; Q57 (b), (c); Q58)
+    - (a) The crash log. Android's own start-up code installs an uncaught-exception logger that apps cannot replace.
+      It runs before KeepCrypt's handler and writes "FATAL EXCEPTION", the process name and the exception's type,
+      message and stack (KeepCrypt's class and method names) to the phone's crash log. CI run 39582638947 at 78f5720
+      shows it on API 31: CrashTest found 3 crash-log lines naming the app. Our handler still runs next: the wipe,
+      then the process ends, with no crash dialog and no saved crash report (DropBox), as the same run shows. The crash
+      log is a ring buffer in memory, read over USB debugging, by the system or in a bug report the user makes. App
+      code builds no message from runtime values, and secrets are never Java strings except the text on screen.
+      Recommended: accept it as a residual beside Q58. MA:36 says the process ends "with no dialog and no crash report;
+      Android's own crash log in memory still records the exception's type and stack (Q75)"; the plan's halts
+      paragraph, group 14's proof and the critique line follow; CrashTest's judge for that run becomes: process gone,
+      no crash window, no new data_app_crash, and every crash-log line naming the app belongs to the trigger's
+      exception (its fixed message present, no other exception).
+      Otherwise: a catch around the main thread's message loop that wipes and ends the process (never continues).
+      It keeps main-thread exceptions out of the log, but it runs the message loop inside itself, which Android does
+      not document, and it needs a one-site exception to the gate's fail-open rule.
+    - (b) Background apps can be frozen. Android 14 and later freeze apps sitting in the background, for example
+      after the user opens other apps. A frozen app's 60-second timer cannot run, so after leaving on a Public screen
+      the session stays in the app's memory past 60 seconds, until the user comes back or Android ends the process.
+      On the return the 60-second check runs before anything is drawn (the cover is already up), and going online
+      while frozen is caught on the return the same way. No emulator test can show it: the test runner keeps its
+      app unfrozen.
+      Recommended: accept it as a residual; MA's "Session lifetime" says the app "wipes after 60 seconds in the
+      background or, if Android froze it, when it is next opened, before anything shows".
+      Otherwise: leaving the app on any screen while a session is held discards at once, with no 60-second grace.
+      That is simpler and stronger, but a glance at a notification or a call during the dice loses the rolls.
+
 ## M0: Repo bootstrap
 
 ### Decisions built into this plan (override any of them)
@@ -11947,7 +11975,12 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   without one (API 31's probe found none) a probe line that it proved nothing there (15h). Its recreate() case is the
   configuration change: the recreated activity must have the same ceremony model with no cover up and no notice, so a
   stop taken for leaving the app fails it (15h).
-- [ ] `OfflineMonitor` (a `ContentObserver` on `AIRPLANE_MODE_ON` and `WIFI_ON`, read again on every start; no receiver,
+  Proof (CI, run 39582638947 at 78f5720; API 31 only): CaptureTest 6 tests passed in both flavours: First launch, "Working..." and the
+  stop screen drawn, then screencap and takeScreenshot black over the app's window, SECURE on its one window, the
+  content-capture flag read back; the recreate() case kept the same model with no leaving taken; `dumpsys
+  content_capture`: the service is absent on API 31, so not proven there (M5-47). The API 36 leg did not run (the job
+  stopped at the red API 31 leg; 15l lets each leg run).
+- [x] `OfflineMonitor` (a `ContentObserver` on `AIRPLANE_MODE_ON` and `WIFI_ON`, read again on every start; no receiver,
   no permission); `Timers` (30 s cover, 9-minute warning, 10-minute idle wipe, 60 s background, the picker rule) on an
   injected monotonic clock; the `Protected` wrapper (privacy gate, cover, recording redaction).
   Proof: JVM tests of `Timers` with a fake clock for every rule and boundary (59 s keeps, 60 s wipes).
@@ -11966,6 +11999,9 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   gate before a Protected screen entered from a Public one and a placeholder while a recording is reported; the cover
   and the warning are Screens' overlays over every screen, each removed by the tap on it, which reaches nothing under
   it. Every screen is Public until commit 19.
+  Proof (CI, run 39582638947 at 78f5720): TimersTest 8 tests and OfflineRuleTest 2 tests, 0 failures; on API 31 LifecycleTest's Wi-Fi case
+  saw the monitor's report (airplane_mode_on=1 with wifi_on=2 is online) and the start was discarded at once. The
+  wrapper's gate is drawn over the first Protected screens in commit 19, whose emulator tests show it.
 - [ ] `CeremonyViewModel` owns the slot's use: UI state holds screen ids, page indices and `Secret` references only;
   long calls run on `Dispatchers.Default` behind a "Working..." screen that ignores input; a lifecycle or offline
   discard during "Working..." calls `discard()` at once and the call's "discarded" status returns the UI to its start
@@ -12000,6 +12036,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   (airplane mode on and Wi-Fi off first, put back after): each ends with no ANR (the script's judge) and the slot at
   home (Core.selfTest() Done). And finishing the activity after a start through Core leaves the slot at home: the
   ViewModel's onCleared ran wipeAll (15i).
+  Proof (CI, run 39582638947 at 78f5720; API 31 only): CeremonyModelTest 23, CeremonyModelHaltTest 1 and CeremonyModelRefusalTest 1, 0
+  failures. LifecycleTest 4 tests passed on API 31 with no ANR: Home during the backup's scrypt (left after 786 ms,
+  the reply back after 1097 ms, discarded), Wi-Fi on during a held start (discarded at once, the late start discarded
+  again), the activity finished (onCleared emptied the slot), and the start-up leave came after the self-test passed
+  (886 ms), so not the emulator half on this leg (M5-47). The API 36 leg did not run.
 - [ ] The crash path: an `Application` subclass sets its handler (replacing the platform's) to `Native.wipeAll()` then
   `Process.killProcess`; the stop screen's "Close app" calls `finishAndRemoveTask()` and ends the process.
   Proof: a JVM test of the handler's order with a fake; on the emulator an androidTest-only trigger throws on the main
@@ -12023,7 +12064,10 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   (AOSP as recalled; no fetch here, the CI run will show it). So the judge's "no crash-buffer line naming our packages",
   the plan's "empty crash buffer" and MA:36's "nothing logged" cannot hold as written for an exception that ends a
   thread, as CrashTest's throw on the main looper does; the judge stays as planned until the owner answers.
-- [ ] The pads: `DicePad`, `LetterPad` (a-z), `CrockfordPad` (32 symbols), `AsciiPad` (0x20-0x7E, up to 100 characters),
+  Proof (CI, run 39582638947 at 78f5720): CrashHandlerTest 2 tests in each flavour, 0 failures. On API 31 CrashTest failed as the review
+  predicted: "logcat -b crash holds 3 line(s) naming com.keepcrypt.entropy" (the process gone, no crash window, no new
+  data_app_crash). Raised as Q75; the judge stays as planned until the owner answers.
+- [x] The pads: `DicePad`, `LetterPad` (a-z), `CrockfordPad` (32 symbols), `AsciiPad` (0x20-0x7E, up to 100 characters),
   each writing into a `Secret`, keys in a fixed order, nothing about a key press in semantics on Protected screens.
   Drawing: `QrMatrix`, `SealCard` (the 8x8 Okabe-Ito grid at 240 dp with Seal ID and braille, swb:84-90), braille faces.
   Proof: JVM tests per pad and drawing helper.
@@ -12037,6 +12081,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   inside the 4-module quiet zone) under QrCode, the seal card (OKABE_ITO, the #F7F7F7 tile and #333333 outline of the
   Pi, 240 dp, the Seal ID and its braille) and braille cells and faces (dot d at bit d - 1, raised filled and flat as
   rings, the dot numbers, "leave blank" and "mirror", face 5 lighter). PadsTest (5 tests) and DrawingTest (5 tests).
+  Proof (CI, run 39582638947 at 78f5720): PadsTest 5 tests and DrawingTest 5 tests, 0 failures, each class on its own JVM over the host
+  library. The Protected pads' semantics are commit 19's emulator proof (M5-46).
 
 **15. Screens: start to dice** (MA:166-174; PF:83-89)
 - [ ] First launch (MA:13's limits, the development-build line, "use the Pi for life savings"; every start), Self-test
@@ -12613,6 +12659,9 @@ internal expect object Native { fun call(op: Int, input: ByteArray): ByteArray }
   CeremonyModelTest, CeremonyModelHaltTest, CeremonyModelRefusalTest (15f), PadsTest, DrawingTest) runs as
   `:screens:testAndroidHostTest`, one class per JVM against the host library (screens/build.gradle.kts), and the Android
   job builds it and requires each class's report, :secure-ui's too.
+  Proof (CI, run 39582638947 at 78f5720): all six classes reported and passed (TimersTest 8, CeremonyModelTest 23,
+  CeremonyModelHaltTest 1, CeremonyModelRefusalTest 1, PadsTest 5, DrawingTest 5), with :secure-ui's OfflineRuleTest 2;
+  the holder's one extra call, runTimers, is M5-45.
 
 **The iOS C-ABI bridge** (Q66 (a))
 
@@ -13510,6 +13559,19 @@ they differ. Nothing in the Android plan is weakened.
   bookkeeping commit. Group 6's path list gains `Entropy/Cargo.toml` (14c).
   Measured: run 39554267960 at 89cf334 took the job 1178 s (19.6 min) with cold emulator caches; plus 25% is
   24.5, so the budget is 25 minutes (`timeout-minutes: 25`, commit 14n).
+- M5-45 (2026-10-21): the `:app` holder (CeremonyHolder) starts `model.runTimers()` in its own scope as well as
+  holding the model; the re-plan's "only holds the model" is read as "owns no ceremony logic". Moving the loop into the
+  model would make the JVM tests' Unconfined scope tick from another thread, and a test dispatcher needs
+  kotlinx-coroutines-test, a dependency M5 does not add. M6's holder makes the same one call (commit 15 review).
+- M5-46 (2026-10-21): the Protected pads' accessibility semantics (each key gives only its role) are proven by commit
+  19's emulator tests with the Protected screens, not by group 14's JVM tests: no JVM test can read a drawn Compose
+  tree without a UI test library M5 does not add. PadEntry's zeroing is proven on the JVM (15g).
+- M5-47 (2026-10-21): LifecycleTest's start-up case passes whether Home lands during the self-test or after it (its
+  pass line says which). The emulator half of group 14's "leave during the start-up self-test" counts only if at least
+  one API leg's pass line says "during"; the JVM test `leavingDuringTheStartUpSelfTestRunsItAgainOnTheNextReturn` is
+  the deterministic proof. If both legs say "after", the gate report names it. The content-capture check proves
+  something only on an image whose content_capture service answers (group 14 already says "where the probe found a
+  service"); on others its probe line says so and the Review counts it as not proven there.
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the
@@ -13517,6 +13579,14 @@ app's window; every screencap, takeScreenshot, recents and saved-state check in 
 attempt passed with no Android change. The cause is not known. 13b (9491fdd) makes the checker print each lit frame's
 pixel count, box and brightest colour. Until the cause is found and fixed, a repeat is a defect to diagnose from those
 lines, never a rerun to green, and the M5 gate report names this item.
+
+**Open item (2026-10-21): intermittent recents failures on API 36.** The Android run 39556542012 (at 8c9eca8, which
+changed only the workflow's timeout and todo.md) failed on API 36 while the same tests passed at 89cf334: ControlTest's
+`theRecentsThumbnailShowsTheControlsScreen` (the leg's first recents key after boot: no overview_panel within 10 s,
+focus still on the capture control), and CaptureTest's `theRecentsThumbnailIsThePlaceholder` in both flavours (recents
+opened and the thumbnail was clean, then `finish(activity)` after Home did not destroy the activity within 10 s). The
+API 31 leg passed. The cause is not known. As with the lit frame, a repeat is diagnosed, not rerun to green, and the M5
+gate report names this item.
 
 **Out-of-plan download (commit 8q), recorded.** While writing 8q, the implementing agent fetched six small files from
 download.jetbrains.com onto this Mac (into the session scratchpad, not the repo): the `.asc` and `.sha256` of each of the three
