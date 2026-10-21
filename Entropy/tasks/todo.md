@@ -12113,11 +12113,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   Proof (M5 commit 16, partial: the Kotlin compiles and the JVM and emulator tests run only in CI): :screens' commonMain
   holds the UI kit (Kit.kt: colours, type scale, KitScreen, whose text scrolls above actions that never scroll away,
   headings, text, buttons whose text is their TalkBack label with the button role and the disabled state, the notice
-  line, the TEST REGISTRY strip and OneWayConfirm, commit 17's confirm screen), which First launch (now with Continue),
-  "Working...", the stop screen and the privacy gate use too, and StartScreens.kt: Self-test (commit 15's start-up
-  self-test, the first long call on every start, now behind its own screen; First launch follows it), Go offline (the
-  airplane-mode and Wi-Fi states apart, the offline seam now reporting both; Start enabled only offline; "Open
-  airplane-mode settings" through the new AirplaneSettings seam, :app's AirplaneSettingsIntent.kt), Home (New seed,
+  line and the TEST REGISTRY strip; the one-way confirm screen comes with its screens in commit 17, 16d), which First
+  launch (now with Continue), "Working...", the stop screen and the privacy gate use too, and StartScreens.kt:
+  Self-test (commit 15's start-up self-test, the first long call on every start, now behind its own screen; First
+  launch follows it), Go offline (the airplane-mode and Wi-Fi states apart, the offline seam now reporting both; Start
+  enabled only offline; "Open airplane-mode settings" through the new AirplaneSettings seam, :app's AirplaneSettingsIntent.kt), Home (New seed,
   Dice-only seed; Check a backup, Load registry snapshot and About come with commits 20 and 21), Length (12 words, the
   default, or 24), Device entropy (Mixed only: MA's sentence; each touch's uptime and the clock's nanoseconds, and the
   new MotionSource seam's samples, :app's SensorMotionSource.kt on the accelerometer and gyroscope at SENSOR_DELAY_GAME

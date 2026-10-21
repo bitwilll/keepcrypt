@@ -30,8 +30,9 @@ import androidx.compose.ui.unit.sp
 
 // The UI kit (tasks/todo.md, M5 group 15): the theme, the type scale and the components every screen
 // draws with, so each later screen looks and reads like the first ones. White on black, as the Pi's
-// panel; large type; every control a full-width button whose text is its TalkBack label, with the
-// button role and, when disabled, the disabled state; every screen one column with its screen id as
+// panel; large type; every control a framed button whose text is its TalkBack label, with the button
+// role and, when disabled, the disabled state, full width except a pad's keys (Pads.kt) and buttons
+// that share a row (the dice screen's Undo and Confirm); every screen one column with its screen id as
 // its test tag (UI Automator's resource id, group 6), its text scrolling above its actions, under the
 // TEST REGISTRY strip in that build (Q60). No Material, no theme library (lead decision M5-22): plain
 // foundation.
@@ -126,8 +127,9 @@ fun Gap(size: Int) {
 }
 
 /**
- * A button: full width, framed, its text the TalkBack label, with the button role. A disabled one is
- * grey, takes no tap, and TalkBack says it is disabled.
+ * A button: framed, full width unless modifier says otherwise (two sharing a row), its text the
+ * TalkBack label, with the button role. A disabled one is grey, takes no tap, and TalkBack says it is
+ * disabled.
  */
 @Composable
 fun KitButton(text: String, tag: String, enabled: Boolean = true, modifier: Modifier = Modifier.fillMaxWidth(), onClick: () -> Unit) {
@@ -166,32 +168,4 @@ fun TestRegistryStrip() {
             .testTag("test_registry_strip"),
         style = TextStyle(color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold),
     )
-}
-
-/**
- * The one-way-choice confirm screen (docs/pi-firmware.md, "Confirmations": Skip, Match found and
- * Cannot check each take one, from commit 17): the question, what cannot be undone, the one action
- * that does it, and Back, which keeps everything; the system Back does the same (the model's back).
- */
-@Composable
-fun OneWayConfirm(
-    tag: String,
-    testRegistry: Boolean,
-    question: String,
-    consequence: String,
-    action: String,
-    onAction: () -> Unit,
-    onBack: () -> Unit,
-) {
-    KitScreen(
-        tag,
-        testRegistry,
-        actions = {
-            KitButton(action, "confirm_action", onClick = onAction)
-            KitButton("Back", "back", onClick = onBack)
-        },
-    ) {
-        Heading(question)
-        KitText(consequence)
-    }
 }
