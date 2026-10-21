@@ -125,6 +125,16 @@ class CeremonyModelTest {
     }
 
     @Test
+    fun coresOwnDiscardedReplyReturnsTheUiToItsStartScreen() {
+        val rig = Rig().startUp()
+        // Discarded with no discard of the model's: the start screen, with no reason to give.
+        rig.model.work<Unit>({ Reply.Discarded }) { fail("a discarded call gives no value") }
+        rig.worker.run()
+        assertEquals(Screen.FirstLaunch, rig.screen)
+        assertNull(rig.model.state.value.notice)
+    }
+
+    @Test
     fun aCallThatReachedCoreAfterTheDiscardHasWhatItMadeDiscardedAgain() {
         val rig = Rig().startUp()
         var made = false
@@ -183,6 +193,7 @@ class CeremonyModelTest {
         assertEquals(Screen.Working, rig.screen)
         rig.worker.run()
         assertEquals(Screen.FirstLaunch, rig.screen, "the self-test's reply was kept")
+        assertEquals(1, rig.worker.ran, "one self-test: going online before it passed discarded nothing")
         assertNull(rig.model.state.value.notice)
         assertFalse(rig.model.state.value.offline)
         rig.offline.set(true)
@@ -359,10 +370,12 @@ class CeremonyModelTest {
     @Test
     fun aHaltEndsOnTheStopScreenWhichNothingLeaves() {
         val rig = Rig().startUp()
+        rig.model.recordingChanged(true)
         // The halt status as Core throws it (this slot is left live: CeremonyModelHaltTest halts a real one).
         rig.model.work<Unit>({ throw KcHalt() }) { fail("a halted call gives no value") }
         rig.worker.run()
         assertEquals(Screen.Stop, rig.screen)
+        assertTrue(rig.model.state.value.recording, "the stop screen keeps the recording flag")
         rig.model.appLeft()
         rig.model.appReturned()
         rig.offline.set(false)

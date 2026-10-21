@@ -27,13 +27,20 @@ internal class HeldWorker : CoroutineDispatcher() {
     /** How many long calls wait. */
     val waiting: Int get() = held.size
 
+    /** How many long calls it has run. */
+    var ran = 0
+        private set
+
     override fun dispatch(context: CoroutineContext, block: Runnable) {
         held.addLast(block)
     }
 
     /** Runs every long call waiting, and what each one's reply leads to. */
     fun run() {
-        while (held.isNotEmpty()) held.removeFirst().run()
+        while (held.isNotEmpty()) {
+            held.removeFirst().run()
+            ran += 1
+        }
     }
 }
 
