@@ -87,14 +87,15 @@ fun Screens(model: CeremonyModel, airplaneSettings: AirplaneSettings, onClose: (
 /**
  * The Protected wrapper (tasks/todo.md, M5 group 14; docs/mobile-apps.md, "Rules for Claude Code"): a
  * Protected screen's content shows only past the privacy gate, and never while a recording of the
- * screen is reported (a redacted placeholder instead, the second layer under FLAG_SECURE). Its 30 s
- * cover is the timers', drawn over every screen by Screens.
+ * screen is reported (a redacted placeholder instead, the second layer under FLAG_SECURE). The gate and
+ * the placeholder each fill the screen, so each carries the TEST REGISTRY strip in that build (Q60).
+ * Its 30 s cover is the timers', drawn over every screen by Screens.
  */
 @Composable
-fun Protected(state: UiState, passGate: () -> Unit, content: @Composable () -> Unit) {
+fun Protected(state: UiState, testRegistry: Boolean, passGate: () -> Unit, content: @Composable () -> Unit) {
     when {
-        state.gate -> PrivacyGate(passGate)
-        state.recording -> Redacted()
+        state.gate -> PrivacyGate(testRegistry, passGate)
+        state.recording -> Redacted(testRegistry)
         else -> content()
     }
 }
@@ -135,21 +136,26 @@ fun Stop(testRegistry: Boolean, onClose: () -> Unit) {
 
 /** The privacy gate before a Protected screen (docs/mobile-apps.md, step 10; docs/pi-firmware.md's gate). */
 @Composable
-fun PrivacyGate(pass: () -> Unit) {
-    KitScreen("privacy_gate", testRegistry = false, actions = { KitButton("I'm alone, show words", "pass_gate", onClick = pass) }) {
+fun PrivacyGate(testRegistry: Boolean, pass: () -> Unit) {
+    KitScreen("privacy_gate", testRegistry, actions = { KitButton("I'm alone, show words", "pass_gate", onClick = pass) }) {
         KitText("The next screen shows a secret. No person or camera may see it.")
     }
 }
 
-/** What a Protected screen shows while a recording of the screen is reported. */
+/** What a Protected screen shows while a recording of the screen is reported, under the TEST REGISTRY strip in that build. */
 @Composable
-private fun Redacted() {
-    Box(Modifier.fillMaxSize().background(KitColors.background).testTag("redacted"), contentAlignment = Alignment.Center) {
-        BasicText(
-            "Hidden while the screen is recorded. Stop the recording to go on.",
-            Modifier.padding(24.dp),
-            style = KitType.body.copy(fontSize = KitType.button.fontSize),
-        )
+private fun Redacted(testRegistry: Boolean) {
+    Column(Modifier.fillMaxSize().background(KitColors.background).testTag("redacted")) {
+        if (testRegistry) {
+            TestRegistryStrip()
+        }
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            BasicText(
+                "Hidden while the screen is recorded. Stop the recording to go on.",
+                Modifier.padding(24.dp),
+                style = KitType.body.copy(fontSize = KitType.button.fontSize),
+            )
+        }
     }
 }
 
