@@ -368,8 +368,10 @@ object Core {
 
     /**
      * op with input (zeroed after the call), and its reply: the status byte, then for OK the op's
-     * layout, read whole (the reply's bytes zeroed once decoded); a refusal is its code, a discard
-     * the status alone. The halt status throws KcHalt; anything else halts the slot.
+     * layout, read whole (the reply's bytes zeroed once decoded; a layout that does not fit, at any
+     * field or at the end, zeroes them and every value already decoded from them, then halts); a
+     * refusal is its code, a discard the status alone. The halt status throws KcHalt; anything else
+     * halts the slot.
      */
     private fun <T> call(op: Int, input: ByteArray, layout: (Reader) -> T): Reply<T> {
         val reply = Native.call(op, input)

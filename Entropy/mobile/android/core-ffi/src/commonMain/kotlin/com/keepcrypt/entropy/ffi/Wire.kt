@@ -143,12 +143,17 @@ enum class Refusal(val code: Int, val group: RefusalGroup) {
  * A reply's body, read field by field from at, as wire.rs's fields are laid out: integers big-endian,
  * a flag one byte 0 or 1, a text its length in one byte and then its bytes, a file the rest. Reading
  * past the end, a flag that is neither, or bytes left unread at the end halts, after the reply's
- * bytes are zeroed.
+ * bytes and every copy already taken from them are zeroed, so a value decoded before the reply
+ * proved malformed (a word page, a confirm choice, a QR matrix) leaves no secret behind (rule 5).
  */
 internal class Reader(private val reply: ByteArray, private var at: Int) {
-    /** The reply is not its layout: zeroed, and the slot halted. */
+    /** Every array bytes() has copied out of the reply; the Secrets and matrices decoded hold them. */
+    private val copies = ArrayList<ByteArray>()
+
+    /** The reply is not its layout: zeroed with every copy taken from it, and the slot halted. */
     fun malformed(): Nothing {
         reply.fill(0)
+        for (copy in copies) copy.fill(0)
         Core.halt()
     }
 
@@ -182,10 +187,17 @@ internal class Reader(private val reply: ByteArray, private var at: Int) {
         return value
     }
 
-    /** The next length bytes, copied out. */
+    /** The byte offset bytes ahead, left unread. */
+    fun peek(offset: Int): Int {
+        if (offset < 0 || offset >= reply.size - at) malformed()
+        return reply[at + offset].toInt() and 0xFF
+    }
+
+    /** The next length bytes, copied out (and kept in copies). */
     fun bytes(length: Int): ByteArray {
         if (length < 0 || length > reply.size - at) malformed()
         val out = reply.copyOfRange(at, at + length)
+        copies.add(out)
         at += length
         return out
     }
@@ -247,10 +259,7 @@ internal fun Reader.qrMatrix(): QrMatrix {
     val modules = side * side
     val bits = bytes((modules + 7) / 8)
     val spare = bits.size * 8 - modules
-    if (spare > 0 && (bits[bits.size - 1].toInt() and ((1 shl spare) - 1)) != 0) {
-        bits.fill(0)
-        malformed()
-    }
+    if (spare > 0 && (bits[bits.size - 1].toInt() and ((1 shl spare) - 1)) != 0) malformed()
     return QrMatrix(side, Secret(bits))
 }
 
@@ -277,21 +286,12 @@ internal fun Reader.revealed(): Revealed {
     }
 }
 
-/** A word page, kept whole in a Secret: its fields are read from it on demand. */
-internal fun Reader.wordPage(): WordPage {
-    val fixed = bytes(7)
-    val word = text()
-    val faces = bytes(20)
-    val page = ByteArray(fixed.size + 1 + word.size + faces.size)
-    fixed.copyInto(page, 0)
-    page[fixed.size] = word.size.toByte()
-    word.copyInto(page, fixed.size + 1)
-    faces.copyInto(page, fixed.size + 1 + word.size)
-    fixed.fill(0)
-    word.fill(0)
-    faces.fill(0)
-    return WordPage(Secret(page))
-}
+/**
+ * A word page, kept whole in a Secret: its seven fixed bytes, the word as a text (its length, then
+ * its letters) and the 20 bytes of faces 1-5 lie in the reply as WordPage reads them, so the page is
+ * one copy of that span, whose length the word's length byte gives.
+ */
+internal fun Reader.wordPage(): WordPage = WordPage(Secret(bytes(7 + 1 + peek(7) + 20)))
 
 internal fun Reader.readback(): Readback = when (byte()) {
     0 -> Readback.Match(flag())
