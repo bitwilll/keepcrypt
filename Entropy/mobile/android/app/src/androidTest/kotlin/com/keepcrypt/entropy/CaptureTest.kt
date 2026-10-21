@@ -194,9 +194,11 @@ class CaptureTest {
      * and nothing shows one in the shipping APK (Q60, lead decision M5-51). The app is left from its
      * drawn first screen (Home) and brought back (am start, the task to the front, as LifecycleTest
      * returns), so the cover is up; UI Automator then finds the cover by its resource id and, inside
-     * it, the strip, or no strip anywhere in the shipping APK. The idle warning draws its strip
-     * through the same overlay composable, but no emulator test reaches it (nine minutes without
-     * input while a session is held).
+     * it, the strip, or no strip anywhere in the shipping APK. The idle warning comes from the same
+     * call (Screens.kt's OverlayScreen), strip included, so this holds for its strip too; only its
+     * text is its own, and no emulator test reaches it (nine minutes without input while a session is
+     * held). Where the strip lies against the system bars is not read here: UI Automator gives only
+     * visible bounds, cut to the window as accessibility reports it.
      */
     @Test
     fun theCoverCarriesTheStripOnlyInTheTestRegistryApk() {

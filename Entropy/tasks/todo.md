@@ -13721,6 +13721,14 @@ they differ. Nothing in the Android plan is weakened.
   received; none comes in the second after stop while the own listener still receives events. Estimated cost (not yet
   measured): about 15 s a leg for PhoneMotionTest and about 5 s an APK for the cover check, so about a minute on
   run 39611275051's 22.2 (M5-52's re-measure comes from the first CI run).
+  Proof (M5 commit 16l, review fix, partial: the Kotlin compiles and the emulator tests run only in CI): the cover
+  and the idle warning are one call (Screens.kt's OverlayScreen(overlay, testRegistry, dismiss)), so the strip's
+  flag and the insets padding are one code path for both, and CaptureTest's cover check (the strip in the
+  test-registry APK, none in the shipping APK) holds for the warning's strip too; only the warning's text is its
+  own, and no test reaches it. No test proves that the strip lies inside the system bars' insets (OverlayScreen's
+  safeDrawingPadding, which matters on API 36, whose window is edge to edge): UI Automator gives only visible
+  bounds, cut to the window as accessibility reports it, and reading the drawn tree's positions needs a UI test
+  library M5 does not add (M5-46).
 - M5-52 (2026-10-21): commit 16 adds FlowTest and a ten-screen CaptureTest walk per leg; run 39611275051 at e38a095
   took the Android job 1331 s (22.2 min: Rust libraries 245 s, Gradle build 185 s, API 31 219 s, API 36 245 s, 16 KB
   113 s), 89% of M5-44's 25. By M5-30's rule (the measured run plus 25%) the budget is 28 minutes (16i-b). Each later

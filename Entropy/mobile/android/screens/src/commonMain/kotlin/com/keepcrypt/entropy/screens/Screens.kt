@@ -75,10 +75,9 @@ fun Screens(model: CeremonyModel, airplaneSettings: AirplaneSettings, onClose: (
                 Screen.Stop -> Stop(registry, onClose = onClose)
             }
         }
-        when (state.overlay) {
-            Overlay.Cover -> Cover(registry) { model.dismissOverlay() }
-            Overlay.Warning -> IdleWarning(registry) { model.dismissOverlay() }
-            null -> {}
+        val overlay = state.overlay
+        if (overlay != null) {
+            OverlayScreen(overlay, registry) { model.dismissOverlay() }
         }
         SideEffect { onShown(state.screen) }
     }
@@ -159,40 +158,34 @@ private fun Redacted(testRegistry: Boolean) {
     }
 }
 
-/** The privacy cover: it hides the screen, and the tap on it only takes it away. */
-@Composable
-private fun Cover(testRegistry: Boolean, dismiss: () -> Unit) {
-    OverlayScreen("cover", testRegistry, dismiss) {
-        BasicText("Tap to show the screen again", style = KitType.body.copy(fontSize = KitType.button.fontSize))
-    }
-}
-
-/** The warning a minute before the idle wipe; the tap on it keeps everything. */
-@Composable
-private fun IdleWarning(testRegistry: Boolean, dismiss: () -> Unit) {
-    OverlayScreen("idle_warning", testRegistry, dismiss) {
-        BasicText(
-            "No input for 9 minutes. The session is wiped in one minute: tap to keep it.",
-            Modifier.padding(24.dp),
-            style = KitType.body.copy(color = KitColors.warning, fontSize = KitType.button.fontSize),
-        )
-    }
-}
-
 /**
- * An overlay, the cover or the warning: it fills the window over the screen and takes the tap that
- * removes it (anywhere on it, so the tap reaches nothing under it), with its text centred inside the
- * system bars' insets under the TEST REGISTRY strip in that build, as every screen has it (Q60, lead
- * decision M5-51).
+ * An overlay over the screen: the privacy cover (it hides the screen, and the tap on it only takes it
+ * away) or the warning a minute before the idle wipe (the tap on it keeps everything). It fills the
+ * window and takes the tap that removes it (anywhere on it, so the tap reaches nothing under it), with
+ * its text centred inside the system bars' insets under the TEST REGISTRY strip in that build, as every
+ * screen has it (Q60, lead decision M5-51). Both come from this one call, so the strip and the insets
+ * are the same code for each and CaptureTest's check of the cover's strip holds for the warning's; only
+ * the text is the overlay's own.
  */
 @Composable
-private fun OverlayScreen(tag: String, testRegistry: Boolean, dismiss: () -> Unit, content: @Composable () -> Unit) {
+private fun OverlayScreen(overlay: Overlay, testRegistry: Boolean, dismiss: () -> Unit) {
+    val tag = when (overlay) {
+        Overlay.Cover -> "cover"
+        Overlay.Warning -> "idle_warning"
+    }
     Column(Modifier.fillMaxSize().background(KitColors.background).clickable(onClick = dismiss).testTag(tag).safeDrawingPadding()) {
         if (testRegistry) {
             TestRegistryStrip()
         }
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            content()
+            when (overlay) {
+                Overlay.Cover -> BasicText("Tap to show the screen again", style = KitType.body.copy(fontSize = KitType.button.fontSize))
+                Overlay.Warning -> BasicText(
+                    "No input for 9 minutes. The session is wiped in one minute: tap to keep it.",
+                    Modifier.padding(24.dp),
+                    style = KitType.body.copy(color = KitColors.warning, fontSize = KitType.button.fontSize),
+                )
+            }
         }
     }
 }
