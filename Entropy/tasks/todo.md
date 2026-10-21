@@ -12156,7 +12156,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   long call behind a screen that takes input halts the real slot, 16f), TouchReachesCoreTest and MotionReachesCoreTest
   (1 each, their own JVMs: on Device entropy a touch and a motion sample reach core's add_extra, seen as its halt on a
   slot committed behind the model, and the sample is zeroed, 16g), OfflineRuleTest gains the two states (3). :app's
-  PhoneMotion (SensorMotionSource.kt: the two sensors' registration, unregistration and sample layout) has no test;
+  PhoneMotion (SensorMotionSource.kt: the two sensors' registration, unregistration and sample layout) had no test
+  here; PhoneMotionTest covers it from 16j (16m adds the unregistration where dumpsys lists connections by name), and
   every model test uses a fake motion source. Confirm reads the face from the pick with no copy of its bytes (16f).
   FlowTest (3 tests: New seed of 12 words to 50 rolls with Back and Wi-Fi on during the dice, which has no dice-only
   line, and then Go offline showing airplane mode on and Wi-Fi on with Start disabled (16h); Dice-only of 24 words to 99
@@ -13683,6 +13684,10 @@ they differ. Nothing in the Android plan is weakened.
   the deterministic proof. If both legs say "after", the gate report names it. The content-capture check proves
   something only on an image whose content_capture service answers (group 14 already says "where the probe found a
   service"); on others its probe line says so and the Review counts it as not proven there.
+  Amended 2026-10-21 (16j): under M5-50 that JVM test is renamed
+  `leavingDuringTheStartUpSelfTestReturnsToFirstLaunchWhoseContinueRunsItAgain` (a leave during the self-test returns
+  to First launch, whose Continue runs it again), and LifecycleTest's start-up case is Continue then Home at once,
+  "during" requiring the Self-test screen right after the press (16k).
 - M5-48 (2026-10-21): group 15 lands across commits: commit 16 has the screens from the start to the dice; Dice's Done
   (finish behind "Working...", then the check prompt) comes with commit 17's check screens; Home gains Check a backup
   in commit 20 and Load registry snapshot and About in commit 21, so no button exists before its screen. MA:173's
