@@ -11936,13 +11936,14 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   Proof: the emulator capture and lifecycle tests (group 6); the content-capture flag read back in-process, and
   `dumpsys content_capture` shows no view events for the package where the probe found a service.
   Proof (M5 commit 15, partial: the Kotlin compiles and the emulator runs only in CI): SecureActivity calls
-  onAppReturned on every start and onAppLeft on every stop but a configuration change's (`isChangingConfigurations`),
-  registers the recording callback on 35+ (onRecordingChanged, from addScreenRecordingCallback's state and each report)
-  and marks the root accessibility-data sensitive on 34+; MainActivity hands the three to the ceremony model.
-  CaptureTest's every-screen pass (now First launch, "Working..." and the stop screen) reads the root's
+  onAppReturned on every start, onAppResumed on every resume (which ends the picker rule's exemption, 15c) and
+  onAppLeft on every stop but a configuration change's (`isChangingConfigurations`), registers the recording callback on
+  35+ (onRecordingChanged, from addScreenRecordingCallback's state and each report) and marks the root
+  accessibility-data sensitive on 34+; MainActivity hands the four to the ceremony model. CaptureTest's every-screen
+  pass (now First launch, "Working..." and the stop screen) reads the root's
   IMPORTANT_FOR_CONTENT_CAPTURE_NO_EXCLUDE_DESCENDANTS back in-process, and contentCaptureHasNothingOfTheApp requires
-  that no line of `dumpsys content_capture` names the package (with the matching lines as a probe line); its
-  recreate() case is the configuration change, which the model does not take for a return.
+  that no line of `dumpsys content_capture` names the package (with the matching lines as a probe line); its recreate()
+  case is the configuration change, which the model does not take for a return.
 - [ ] `OfflineMonitor` (a `ContentObserver` on `AIRPLANE_MODE_ON` and `WIFI_ON`, read again on every start; no receiver,
   no permission); `Timers` (30 s cover, 9-minute warning, 10-minute idle wipe, 60 s background, the picker rule) on an
   injected monotonic clock; the `Protected` wrapper (privacy gate, cover, recording redaction).
@@ -11953,12 +11954,14 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   other value or a missing setting is online), with OfflineRuleTest (2 tests); :app's CeremonyHolder passes it to the
   model as the common OfflineMonitor seam (M5-20), which the model starts on every return and stops on leaving.
   `Timers` in :screens' commonMain on the MonotonicClock seam (SystemClock.elapsedRealtime() on the phone), with
-  TimersTest (7 tests: the cover at 30 s on Protected screens only, the warning at 9 minutes and the idle wipe at 10
+  TimersTest (8 tests: the cover at 30 s on Protected screens only, the warning at 9 minutes and the idle wipe at 10
   with a session, the idle wipe on a Protected screen with none, input restarting the idle time, 59.999 s away keeping
   and 60 s wiping, a return within 60 s, and the picker rule: no background time, its time counted under the idle
-  rule). The `Protected` wrapper (Screens.kt) shows the privacy gate before a Protected screen entered from a Public
-  one and a placeholder while a recording is reported; the cover and the warning are Screens' overlays over every
-  screen, each removed by the tap on it, which reaches nothing under it. Every screen is Public until commit 19.
+  rule, and its exemption ended by the activity's next resume when no stop followed, so a permission prompt, which
+  only pauses the activity, leaves no exemption behind, 15c). The `Protected` wrapper (Screens.kt) shows the privacy
+  gate before a Protected screen entered from a Public one and a placeholder while a recording is reported; the cover
+  and the warning are Screens' overlays over every screen, each removed by the tap on it, which reaches nothing under
+  it. Every screen is Public until commit 19.
 - [ ] `CeremonyViewModel` owns the slot's use: UI state holds screen ids, page indices and `Secret` references only;
   long calls run on `Dispatchers.Default` behind a "Working..." screen that ignores input; a lifecycle or offline
   discard during "Working..." calls `discard()` at once and the call's "discarded" status returns the UI to its start
@@ -11975,17 +11978,17 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   a timer's wipe) calls Core.discard at once, and the call's reply, discarded (or a call skipped because it had not
   reached core, or one that reached core after the discard, whose session is discarded again) returns the UI to the
   start screen, saying why; the start-up self-test is the first long call, run again on the next return after a
-  discard. CeremonyModelTest (17 tests, over the real slot through the host library, long calls held on the test's
+  discard. CeremonyModelTest (18 tests, over the real slot through the host library, long calls held on the test's
   worker: the start-up, a press during "Working...", leaving during a long call, a discarded reply, a call reaching
   core after the discard, going online during a long call and before the self-test passes, leaving during the
   self-test, leaving a Public screen and the 60 s wipe, a return within 60 s, the warning and the idle wipe, the picker,
-  a refusal, the halt status, the recording flag, wipeAll and a configuration change) and CeremonyModelHaltTest (a
-  second long call halts the real slot; nothing leaves the stop screen; wipeAll on the halted slot ends quietly).
-  LifecycleTest on the emulator (scripts/android-emulator.sh step 4b, shipping app): Home during a backup's scrypt
-  (dice-50-words12 driven through Core to the encryption; the times printed), Home during the start-up self-test
-  (started from the shell and left at once; the self-test passed after the return), and Wi-Fi on during a start held on
-  the worker (airplane mode on and Wi-Fi off first, put back after): each ends with no ANR (the script's judge) and the
-  slot at home (Core.selfTest() Done).
+  a picker opened that no stop followed (15c), a refusal, the halt status, the recording flag, wipeAll and a
+  configuration change) and CeremonyModelHaltTest (a second long call halts the real slot; nothing leaves the stop
+  screen; wipeAll on the halted slot ends quietly). LifecycleTest on the emulator (scripts/android-emulator.sh step 4b,
+  shipping app): Home during a backup's scrypt (dice-50-words12 driven through Core to the encryption; the times
+  printed), Home during the start-up self-test (started from the shell and left at once; the self-test passed after the
+  return), and Wi-Fi on during a start held on the worker (airplane mode on and Wi-Fi off first, put back after): each
+  ends with no ANR (the script's judge) and the slot at home (Core.selfTest() Done).
 - [ ] The crash path: an `Application` subclass sets its handler (replacing the platform's) to `Native.wipeAll()` then
   `Process.killProcess`; the stop screen's "Close app" calls `finishAndRemoveTask()` and ends the process.
   Proof: a JVM test of the handler's order with a fake; on the emulator an androidTest-only trigger throws on the main

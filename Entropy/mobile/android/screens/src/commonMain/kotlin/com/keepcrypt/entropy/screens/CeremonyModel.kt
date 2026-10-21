@@ -135,9 +135,9 @@ class CeremonyModel(
 
     /**
      * The app's activity stopped, not for a configuration change (SecureActivity's report), and not for
-     * a picker or prompt the app opened (the picker rule). During a long call and on a Protected screen
-     * the session is discarded at once; on a Public screen the privacy cover goes up and the background
-     * time starts.
+     * a picker the app opened (the picker rule). During a long call and on a Protected screen the
+     * session is discarded at once; on a Public screen the privacy cover goes up and the background time
+     * starts.
      */
     fun appLeft() {
         if (stopped() || !foreground) return
@@ -168,9 +168,20 @@ class CeremonyModel(
         mutable.value = mutable.value.copy(recording = visible)
     }
 
-    /** The app opens a picker or a permission prompt next: its stop is no leaving (the picker rule). */
+    /**
+     * The app opens a picker next, an activity over its own: its stop is no leaving (the picker rule),
+     * until the activity's next resume. A permission prompt only pauses the activity and needs none.
+     */
     fun pickerOpened() {
         timers.pickerOpened()
+    }
+
+    /**
+     * The app's activity resumed (SecureActivity's report): the picker rule's exemption ends, so a
+     * pickerOpened that no stop followed never makes a later leaving look like a picker.
+     */
+    fun appResumed() {
+        timers.resumed()
     }
 
     /**

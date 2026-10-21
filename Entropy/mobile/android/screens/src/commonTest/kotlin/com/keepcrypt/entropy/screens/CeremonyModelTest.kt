@@ -265,6 +265,20 @@ class CeremonyModelTest {
     }
 
     @Test
+    fun aPickerOpenedThatNoStopFollowedEndsAtTheNextResume() {
+        val rig = withSession()
+        // A permission prompt only pauses the activity: pickerOpened, then a resume and no stop.
+        rig.model.pickerOpened()
+        rig.model.appResumed()
+        rig.model.work({ Core.commit() }) { fail("a discarded call gives no value") }
+        rig.model.appLeft()
+        assertNoSession("the next stop was leaving: the discard came at once")
+        rig.worker.run()
+        assertEquals(Screen.FirstLaunch, rig.screen)
+        assertEquals(Notice.Left, rig.model.state.value.notice)
+    }
+
+    @Test
     fun aRefusalReturnsToItsScreen() {
         val rig = Rig().startUp()
         var refusal: Refusal? = null

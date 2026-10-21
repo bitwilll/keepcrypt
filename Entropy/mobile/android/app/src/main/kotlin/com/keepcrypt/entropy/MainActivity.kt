@@ -48,6 +48,10 @@ class MainActivity : SecureActivity() {
         model.appReturned()
     }
 
+    override fun onAppResumed() {
+        model.appResumed()
+    }
+
     override fun onAppLeft() {
         model.appLeft()
     }

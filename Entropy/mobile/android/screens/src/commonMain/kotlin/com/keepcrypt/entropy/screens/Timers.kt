@@ -26,8 +26,11 @@ enum class TimerStep {
  *   nothing held (as on the Pi, whose collision-report QR shows the kept seal code).
  * - Background wipe: 60 s after the app was left on a Public screen, while a session is held (leaving a
  *   Protected screen discards at once: the model's rule, not a timer's).
- * - The picker rule: a picker or permission prompt the app opened stops the app without leaving it.
- *   That time counts as foreground time under the idle rules, and the background time never starts.
+ * - The picker rule: a picker the app opened (an activity over its own) stops the app without leaving
+ *   it. That time counts as foreground time under the idle rules, and the background time never
+ *   starts. The exemption ends at the activity's next resume, so it never outlasts the picker: a
+ *   pickerOpened that no stop followed makes no later stop look like one. A permission prompt only
+ *   pauses the activity, so it needs no exemption and its time is foreground time anyway.
  *
  * A boundary belongs to the later step: 59.999 s away keeps the session, 60 s wipes it.
  */
@@ -37,7 +40,7 @@ class Timers(private val clock: MonotonicClock) {
     /** When the app was left, while it is away; null in the foreground, a picker the app opened included. */
     private var leftAt: Long? = null
 
-    /** A picker or permission prompt the app opened is up (or about to be). */
+    /** A picker the app opened is up (or about to be), until the activity's next resume. */
     private var picker = false
 
     /** A tap, or any input, in the foreground: the idle time starts again. */
@@ -45,14 +48,14 @@ class Timers(private val clock: MonotonicClock) {
         lastInput = clock.nowMillis()
     }
 
-    /** The app is about to open a picker or a permission prompt: its stop will be no leaving. */
+    /** The app is about to open a picker, an activity over its own: the stop that follows is no leaving. */
     fun pickerOpened() {
         picker = true
     }
 
     /**
      * The app's activity stopped, not for a configuration change: true when that is leaving the app,
-     * and the background time starts; false while a picker or prompt the app opened is up.
+     * and the background time starts; false while a picker the app opened is up.
      */
     fun left(): Boolean {
         if (picker) return false
@@ -63,6 +66,14 @@ class Timers(private val clock: MonotonicClock) {
     /** The app is back (its activity started): the background time ends, and so does a picker. */
     fun returned() {
         leftAt = null
+        picker = false
+    }
+
+    /**
+     * The app's activity resumed: a picker it opened is over, or never stopped the app (a prompt, or a
+     * picker that did not open), so the next stop is leaving again.
+     */
+    fun resumed() {
         picker = false
     }
 

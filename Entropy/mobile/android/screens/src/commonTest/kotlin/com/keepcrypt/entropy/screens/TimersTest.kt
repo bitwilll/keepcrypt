@@ -9,7 +9,8 @@ import kotlin.test.assertTrue
 /**
  * Every timer rule and boundary on a fake clock (tasks/todo.md, M5 group 14): the cover at 30 s on a
  * Protected screen, the warning at 9 minutes and the idle wipe at 10 while a session is held, the
- * background wipe at 60 s away (59 s keeps, 60 s wipes), and the picker rule.
+ * background wipe at 60 s away (59 s keeps, 60 s wipes), and the picker rule, whose exemption ends at
+ * the activity's next resume.
  */
 class TimersTest {
     private val clock = FakeClock()
@@ -101,5 +102,15 @@ class TimersTest {
         timers.input()
         assertTrue(timers.left())
         assertEquals(TimerStep.BackgroundWipe, at(760_000, onProtected = false, holdsSecrets = true))
+    }
+
+    @Test
+    fun aPickerOpenedThatNoStopFollowedEndsAtTheNextResume() {
+        // A permission prompt only pauses the activity: no stop, then a resume.
+        timers.pickerOpened()
+        timers.resumed()
+        assertTrue(timers.left(), "the next stop is leaving again")
+        assertNull(at(59_999, onProtected = false, holdsSecrets = true))
+        assertEquals(TimerStep.BackgroundWipe, at(60_000, onProtected = false, holdsSecrets = true))
     }
 }
