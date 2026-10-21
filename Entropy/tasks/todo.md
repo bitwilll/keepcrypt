@@ -12007,14 +12007,22 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   Proof (M5 commit 15, partial: the JVM and emulator tests run only in CI): KeepCryptApp (the manifest's Application,
   so both expected manifest summaries gain `application name=com.keepcrypt.entropy.KeepCryptApp`, as does --apk's
   selftest dump: --selftest-apk 88 passed, 0 failed) sets CrashHandler as the default handler: Core.wipeAll(), then
-  Process.killProcess in a finally, nothing logged or shown; CrashHandlerTest (2 tests: the order, and the end when
-  the wipe throws KcHalt). The stop screen's "Close app" is MainActivity's finishAndRemoveTask() then
-  Process.killProcess. CrashTest (the androidTest-only trigger: a session started, then a throw on the main thread) runs
-  last in each emulator leg as `killed:com.keepcrypt.entropy.CrashTest`, a new android-instrument.sh form: the run
-  must end with the process gone during the test (a start, no pass, the activity manager's shortMsg), then the usual
-  judge (process gone, no crash or not-responding window, no crash-buffer line naming our packages, no new
-  data_app_crash); `android-instrument.sh --selftest` 28 passed, 0 failed (20 before) and `android-emulator.sh
-  --selftest` 14 passed, 0 failed (12 before), under sh and /bin/dash.
+  Process.killProcess in a finally; the handler itself logs and shows nothing, but the process still logs (below);
+  CrashHandlerTest (2 tests: the order, and the end when the wipe throws KcHalt). The stop screen's "Close app" is
+  MainActivity's finishAndRemoveTask() then Process.killProcess. CrashTest (the androidTest-only trigger: a session
+  started, then a throw on the main thread) runs last in the API 31 and API 36 legs (the 16 KB-page leg runs NativeTest
+  alone) as `killed:com.keepcrypt.entropy.CrashTest`, a new android-instrument.sh form: the run must end with the
+  process gone during the test (a start, no pass, the activity manager's shortMsg), then the usual judge (process gone,
+  no crash or not-responding window, no crash-buffer line naming our packages, no new data_app_crash);
+  `android-instrument.sh --selftest` 29 passed, 0 failed (20 before; 15b added a killed case whose test passes before
+  the shortMsg) and `android-emulator.sh --selftest` 15 passed, 0 failed (12 before; 15b checks that LifecycleTest and
+  then the killed CrashTest are the leg's last two runs), under sh and /bin/dash. Expected to fail on the emulator, an
+  open question for the owner (review of commit 15): Android's RuntimeInit installs an uncaught-exception pre-handler
+  (LoggingHandler) that apps cannot replace; Thread.dispatchUncaughtException calls it before the default handler, and
+  it writes "FATAL EXCEPTION: main", "Process: com.keepcrypt.entropy, PID: n" and the stack trace to the crash buffer
+  (AOSP as recalled; no fetch here, the CI run will show it). So the judge's "no crash-buffer line naming our packages",
+  the plan's "empty crash buffer" and MA:36's "nothing logged" cannot hold as written for an exception that ends a
+  thread, as CrashTest's throw on the main looper does; the judge stays as planned until the owner answers.
 - [ ] The pads: `DicePad`, `LetterPad` (a-z), `CrockfordPad` (32 symbols), `AsciiPad` (0x20-0x7E, up to 100 characters),
   each writing into a `Secret`, keys in a fixed order, nothing about a key press in semantics on Protected screens.
   Drawing: `QrMatrix`, `SealCard` (the 8x8 Okabe-Ito grid at 240 dp with Seal ID and braille, swb:84-90), braille faces.

@@ -24,7 +24,9 @@ import org.junit.runner.RunWith
  * shell (scripts/android-instrument.sh, as killed:com.keepcrypt.entropy.CrashTest): the process ended
  * during the test and is gone, no crash or not-responding window opened, logcat's crash buffer names
  * none of our packages and DropBox gained no data_app_crash entry. The exception's text is fixed.
- * scripts/android-emulator.sh runs it last of a leg's instrumented tests.
+ * scripts/android-emulator.sh runs it last of the API 31 and 36 legs' instrumented tests (the 16
+ * KB-page leg runs NativeTest alone). The crash-buffer check is expected to fail while the owner's
+ * question on the platform's pre-handler is open (tasks/todo.md, group 14's crash-path proof).
  */
 @RunWith(AndroidJUnit4::class)
 class CrashTest {
