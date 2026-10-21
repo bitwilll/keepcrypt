@@ -91,7 +91,7 @@ class CeremonyModelTest {
         rig.model.work({ Core.commit() }) { fail("a discarded call gives no value") }
         rig.model.appLeft()
         assertEquals(Screen.Working, rig.screen, "Working stays until the call's reply")
-        assertFalse(rig.offline.started, "the offline monitor stops on leaving")
+        assertTrue(rig.offline.started, "the offline monitor still reports while the app is away")
         // Core's discard came at once, before the call's turn on the worker.
         assertNoSession("the discard came at once")
         rig.worker.run()
@@ -166,6 +166,50 @@ class CeremonyModelTest {
         rig.offline.set(true)
         rig.offline.set(false)
         assertNull(rig.model.state.value.notice, "nothing held, nothing to wipe")
+    }
+
+    @Test
+    fun goingOnlineWhileASessionIsHeldDiscardsItAtOnce() {
+        val rig = withSession()
+        rig.offline.set(false)
+        val state = rig.model.state.value
+        assertEquals(Screen.FirstLaunch, state.screen)
+        assertEquals(Notice.Offline, state.notice)
+        assertNull(state.overlay)
+        assertNoSession("going online discarded the session")
+        // The model holds nothing now: 9 minutes on, no warning comes.
+        rig.offline.set(true)
+        rig.clock.now = Timers.WARN_MILLIS
+        rig.model.tick()
+        assertNull(rig.model.state.value.overlay, "no session, so no idle warning")
+    }
+
+    @Test
+    fun goingOnlineWhileTheAppIsAwayDiscardsTheSessionAtOnce() {
+        val rig = withSession()
+        rig.model.appLeft()
+        assertSessionHeld("leaving a Public screen keeps the session")
+        rig.offline.set(false)
+        val state = rig.model.state.value
+        assertEquals(Screen.FirstLaunch, state.screen)
+        assertEquals(Notice.Offline, state.notice)
+        assertEquals(Overlay.Cover, state.overlay, "away from the app the cover stays up")
+        assertNoSession("going online away from the app discarded the session")
+    }
+
+    @Test
+    fun aReturnWhileOnlineDiscardsTheSession() {
+        val rig = withSession()
+        rig.model.appLeft()
+        // Online with no report while away (a frozen process gets none): the return reads it afresh.
+        rig.offline.offline = false
+        rig.clock.now = 30_000
+        rig.model.appReturned()
+        val state = rig.model.state.value
+        assertEquals(Screen.FirstLaunch, state.screen)
+        assertEquals(Notice.Offline, state.notice)
+        assertFalse(state.offline)
+        assertNoSession("the return read the phone online and discarded the session")
     }
 
     @Test
@@ -327,6 +371,7 @@ class CeremonyModelTest {
         val rig = withSession()
         rig.model.wipeAll()
         assertNoSession("wipeAll emptied it")
+        assertFalse(rig.offline.started, "the offline monitor stops at the model's end")
     }
 
     @Test

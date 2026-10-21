@@ -71,9 +71,10 @@ data class UiState(
  * - Every core call goes through call, the app's only catch of KcHalt: a halt ends on the stop screen,
  *   which no input leaves; only its "Close app" does, which ends the process.
  * - A long call runs on the worker behind "Working...", which takes no input (work).
- * - Leaving the app during a long call or on a Protected screen, and going online after the start-up,
- *   call core's discard at once, even during a long call; the call's discarded reply then returns the
- *   UI to its start screen. On a Public screen leaving puts the privacy cover up, and 60 s away wipes.
+ * - Leaving the app during a long call or on a Protected screen, and going online after the start-up
+ *   (away from the app too: the offline monitor reports until the model's end), call core's discard
+ *   at once, even during a long call; the call's discarded reply then returns the UI to its start
+ *   screen. On a Public screen leaving puts the privacy cover up, and 60 s away wipes.
  * - The timers (Timers) cover, warn and wipe on each tick.
  * - Until the start-up self-test passes (core's known-answer tests, a long call, run again on the next
  *   return after a discard), nothing else is offered.
@@ -118,7 +119,8 @@ class CeremonyModel(
     /**
      * The app's activity started. A configuration change, or a picker the app opened, never left the
      * app. Otherwise the background rule comes first (60 s away wipes before anything shows), then the
-     * offline monitor reads the state again, and the start-up self-test runs if it has not passed.
+     * offline monitor reads the state again (a change it could not report away, with the process
+     * frozen say, wipes here), and the start-up self-test runs if it has not passed.
      */
     fun appReturned() {
         if (stopped()) return
@@ -143,7 +145,6 @@ class CeremonyModel(
         if (stopped() || !foreground) return
         if (!timers.left()) return
         foreground = false
-        offlineMonitor.stop()
         val screen = mutable.value.screen
         if (screen == Screen.Working || isProtected(screen)) {
             discard(Notice.Left)
@@ -153,8 +154,8 @@ class CeremonyModel(
     }
 
     /**
-     * The offline monitor's report (Q57). After the start-up, going online while a session is held or
-     * a long call runs discards at once, and the start screen says why.
+     * The offline monitor's report (Q57), in the foreground or away. After the start-up, going online
+     * while a session is held or a long call runs discards at once, and the start screen says why.
      */
     fun offlineChanged(offline: Boolean) {
         if (stopped()) return
@@ -234,13 +235,14 @@ class CeremonyModel(
 
     /**
      * The platform's end of the model (the ViewModel's onCleared): everything the slot holds goes, the
-     * kept Wiped and a loaded snapshot too, and a long call running drops its result. A halted slot
-     * holds nothing already.
+     * kept Wiped and a loaded snapshot too, a long call running drops its result, and the offline
+     * monitor stops. A halted slot holds nothing already.
      */
     fun wipeAll() {
         running?.discarded = true
         session = false
         call { Core.wipeAll() }
+        offlineMonitor.stop()
     }
 
     /**

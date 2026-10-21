@@ -11952,7 +11952,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   ContentObserver on the two settings' URIs, on the main looper; start registers it and reports the state read afresh,
   stop unregisters it; no receiver, no permission) and the rule isOffline (airplane mode 1 and WIFI_ON 0 or 3; any
   other value or a missing setting is online), with OfflineRuleTest (2 tests); :app's CeremonyHolder passes it to the
-  model as the common OfflineMonitor seam (M5-20), which the model starts on every return and stops on leaving.
+  model as the common OfflineMonitor seam (M5-20), which the model starts on every return (the state read afresh)
+  and stops only at its end, wipeAll, so it reports while the app is away too (15d).
   `Timers` in :screens' commonMain on the MonotonicClock seam (SystemClock.elapsedRealtime() on the phone), with
   TimersTest (8 tests: the cover at 30 s on Protected screens only, the warning at 9 minutes and the idle wipe at 10
   with a session, the idle wipe on a Protected screen with none, input restarting the idle time, 59.999 s away keeping
@@ -11978,17 +11979,18 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   a timer's wipe) calls Core.discard at once, and the call's reply, discarded (or a call skipped because it had not
   reached core, or one that reached core after the discard, whose session is discarded again) returns the UI to the
   start screen, saying why; the start-up self-test is the first long call, run again on the next return after a
-  discard. CeremonyModelTest (18 tests, over the real slot through the host library, long calls held on the test's
+  discard. CeremonyModelTest (21 tests, over the real slot through the host library, long calls held on the test's
   worker: the start-up, a press during "Working...", leaving during a long call, a discarded reply, a call reaching
-  core after the discard, going online during a long call and before the self-test passes, leaving during the
-  self-test, leaving a Public screen and the 60 s wipe, a return within 60 s, the warning and the idle wipe, the picker,
-  a picker opened that no stop followed (15c), a refusal, the halt status, the recording flag, wipeAll and a
-  configuration change) and CeremonyModelHaltTest (a second long call halts the real slot; nothing leaves the stop
-  screen; wipeAll on the halted slot ends quietly). LifecycleTest on the emulator (scripts/android-emulator.sh step 4b,
-  shipping app): Home during a backup's scrypt (dice-50-words12 driven through Core to the encryption; the times
-  printed), Home during the start-up self-test (started from the shell and left at once; the self-test passed after the
-  return), and Wi-Fi on during a start held on the worker (airplane mode on and Wi-Fi off first, put back after): each
-  ends with no ANR (the script's judge) and the slot at home (Core.selfTest() Done).
+  core after the discard, going online during a long call and before the self-test passes, going online with a session
+  held, away from the app and a return while online (15d), leaving during the self-test, leaving a Public screen and the
+  60 s wipe, a return within 60 s, the warning and the idle wipe, the picker, a picker opened that no stop followed
+  (15c), a refusal, the halt status, the recording flag, wipeAll and a configuration change) and CeremonyModelHaltTest
+  (a second long call halts the real slot; nothing leaves the stop screen; wipeAll on the halted slot ends quietly).
+  LifecycleTest on the emulator (scripts/android-emulator.sh step 4b, shipping app): Home during a backup's scrypt
+  (dice-50-words12 driven through Core to the encryption; the times printed), Home during the start-up self-test
+  (started from the shell and left at once; the self-test passed after the return), and Wi-Fi on during a start held on
+  the worker (airplane mode on and Wi-Fi off first, put back after): each ends with no ANR (the script's judge) and the
+  slot at home (Core.selfTest() Done).
 - [ ] The crash path: an `Application` subclass sets its handler (replacing the platform's) to `Native.wipeAll()` then
   `Process.killProcess`; the stop screen's "Close app" calls `finishAndRemoveTask()` and ends the process.
   Proof: a JVM test of the handler's order with a fake; on the emulator an androidTest-only trigger throws on the main

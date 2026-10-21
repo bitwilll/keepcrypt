@@ -17,9 +17,10 @@ fun interface MonotonicClock {
 
 /**
  * The offline monitor (Q57: airplane mode on and Wi-Fi off). start reports the state at once and then
- * each change, on the main thread, until stop. The model starts it on every return to the app and stops
- * it on leaving, so the state is read afresh each time. On Android it is secure-ui's SystemOffline,
- * over the system's airplane-mode and Wi-Fi settings.
+ * each change, on the main thread, until stop; a second start reads the state afresh. The model starts
+ * it on every return to the app and stops it only at its end (wipeAll), so going online while the app
+ * is away discards at once too. On Android it is secure-ui's SystemOffline, over the system's
+ * airplane-mode and Wi-Fi settings.
  */
 interface OfflineMonitor {
     fun start(report: (offline: Boolean) -> Unit)
