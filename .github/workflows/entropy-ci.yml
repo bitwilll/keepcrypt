@@ -345,10 +345,6 @@ jobs:
           rustup toolchain install
           rustc --version
           cargo --version
-      # After the toolchain: the artifact fixtures need rustc, the aarch64-linux-android,
-      # aarch64-apple-ios and arm-unknown-linux-gnueabihf targets, and llvm-nm and llvm-ar from
-      # llvm-tools-preview.
-      - run: scripts/banned-api-check.sh --selftest
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: tools
         with:
@@ -364,7 +360,29 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
           key: ${{ runner.os }}-${{ runner.arch }}-gates-${{ hashFiles('Entropy/rust-toolchain.toml', 'Entropy/Cargo.lock') }}
-      - run: scripts/canaries.sh
+      # After the toolchain and the caches, the gate's self-test and the canaries run side by side,
+      # each into its own log, which the step then prints; it fails if either fails. Neither reads
+      # the other's output, and run one after the other they took 614 s of the job's 12-minute
+      # budget (run 39518485129). The self-test's artifact fixtures need rustc, the
+      # aarch64-linux-android, aarch64-apple-ios and arm-unknown-linux-gnueabihf targets, and llvm-nm
+      # and llvm-ar from llvm-tools-preview.
+      - name: The gate's self-test and the canaries, side by side
+        run: |
+          scripts/banned-api-check.sh --selftest > "$RUNNER_TEMP/selftest.log" 2>&1 &
+          selftest_pid=$!
+          canaries=0
+          scripts/canaries.sh > "$RUNNER_TEMP/canaries.log" 2>&1 || canaries=$?
+          selftest=0
+          wait "$selftest_pid" || selftest=$?
+          echo "::group::scripts/banned-api-check.sh --selftest (exit $selftest)"
+          cat "$RUNNER_TEMP/selftest.log"
+          echo "::endgroup::"
+          echo "::group::scripts/canaries.sh (exit $canaries)"
+          cat "$RUNNER_TEMP/canaries.log"
+          echo "::endgroup::"
+          tail -n 1 "$RUNNER_TEMP/selftest.log"
+          tail -n 1 "$RUNNER_TEMP/canaries.log"
+          [ "$selftest" -eq 0 ] && [ "$canaries" -eq 0 ]
 
   verifier-py39:
     # verify.py promises Python 3.9+, the stock /usr/bin/python3 an offline Mac user has; the
