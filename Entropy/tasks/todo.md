@@ -12032,9 +12032,10 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   long calls run on `Dispatchers.Default` behind a "Working..." screen that ignores input; a lifecycle or offline
   discard during "Working..." calls `discard()` at once and the call's "discarded" status returns the UI to its start
   screen; `onCleared` calls `wipeAll()`.
-  Amended 2026-10-22 (M5-54): Done's `finish` is the one long call core does not offer at home; a discard that
-  reaches core in the moment between the worker's check and the call halts the slot (the stop screen, fail closed)
-  instead of returning to the start screen. The snapshot check is a short call on the main thread.
+  Amended 2026-10-22 (M5-54): a long call core does not offer at home (Done's `finish`, and the backup's encryption,
+  which LifecycleTest drives and commit 20 brings) halts the slot when a discard reaches core in the moment between the
+  worker's check and the call (the stop screen, fail closed) instead of returning to the start screen. The snapshot
+  check is a short call on the main thread.
   Proof: JVM tests for every transition, including a press during "Working..."; emulator tests that leave the app during
   a backup's scrypt and during the start-up self-test, and turn Wi-Fi on during `start`: no ANR, the session is gone.
   Proof (M5 commit 15, partial: the JVM and emulator tests run only in CI): as the re-plan amends it, this is
@@ -13865,8 +13866,9 @@ they differ. Nothing in the Android plan is weakened.
   timer) that lands between the two reaches core with the slot Idle, and the call halts it: the stop screen instead
   of the start screen (review of commit 17). It fails closed and the window is microseconds. The snapshot check
   becomes a short call on the main thread, as the FFI already runs it (it only looks up the loaded snapshot), so
-  group 16's "on the FFI thread" is replaced. `finish` keeps its window as a fail-closed residual: CeremonyModel's
-  KDoc names it, and group 14's item is amended (commit 17g).
+  group 16's "on the FFI thread" is replaced. `finish` keeps its window as a fail-closed residual, as does the
+  backup's encryption (`encryptBackup`, the same kind of call: LifecycleTest drives it, and commit 20 brings it):
+  CeremonyModel's KDoc names both (commit 17h), and group 14's item is amended (17g).
 - M5-55 (2026-10-22): the check prompt shows no seal card. Commit 17 drew it there, Seal ID included, beside Skip;
   the Seal ID's first four characters are the 20-bit bucket the registry lookup takes, so a user could read a Stop
   and then Skip past it, which swb:130 rules out ("Skip is offered only before the check starts, so nobody can read
@@ -13875,7 +13877,7 @@ they differ. Nothing in the Android plan is weakened.
   collision result and the check result). P0b and P4 compare it there, and quote the collision screen's text,
   "Collision found. This seed is not unique and has been destroyed." ("Match found" is only the typed path's
   button). A scanned proof's result line says "K entries in this seal's bucket", never the loaded snapshot's total
-  (commits 17g and 18).
+  (commits 17h and 18).
 - M5-56 (2026-10-22): commit 17 adds a platform seam M5-20 does not list: `UtcDate` (Seams.kt), whose Android end is
   :app's UtcToday (today's date in UTC). Only snapshot and proof freshness read it (Stale, Future), never a timer,
   which stays on MonotonicClock.
