@@ -50,7 +50,9 @@
 #
 # Not one of the 14 required checks (Q55), so path filters are safe, as in entropy-pi-image.yml:
 # a skipped run never leaves a required check pending. The rule instead (Q38 (b)): no PR that
-# touches these paths merges without a green run of this workflow on its final head.
+# touches these paths merges without a green run of this workflow on its final head. They name
+# every input of the APKs, the Rust library's too: Entropy/Cargo.toml holds the release profile
+# libkeepcrypt.so is built with (panic = "unwind", the FFI crates' overflow checks).
 #
 # Hardening, as in entropy-ci.yml, whose gates job checks this file too (banned-api-check.sh
 # --workflows): read-only token and no secret; only actions/checkout, actions/cache and
@@ -70,6 +72,7 @@ on:
       - 'Entropy/mobile/**'
       - 'Entropy/ffi/**'
       - 'Entropy/core/**'
+      - 'Entropy/Cargo.toml'
       - 'Entropy/Cargo.lock'
       - 'Entropy/rust-toolchain.toml'
       - 'Entropy/vectors/**'
@@ -85,6 +88,7 @@ on:
       - 'Entropy/mobile/**'
       - 'Entropy/ffi/**'
       - 'Entropy/core/**'
+      - 'Entropy/Cargo.toml'
       - 'Entropy/Cargo.lock'
       - 'Entropy/rust-toolchain.toml'
       - 'Entropy/vectors/**'
