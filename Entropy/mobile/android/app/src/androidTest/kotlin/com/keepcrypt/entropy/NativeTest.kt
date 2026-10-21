@@ -23,9 +23,10 @@ import org.junit.runner.RunWith
  * scripts/android-emulator.sh runs it on the 16 KB-page image once for x86_64 and once for each ARM
  * ABI the image translates (the APK installed with adb install --abi). The app's own start loads
  * libkeepcrypt.so (System.loadLibrary, JNI_OnLoad) and passes the self-test through the bridge
- * before its first screen shows; then the self-test is called again, and dice-50-words12's rolls
- * give its Seal ID through the bridge. The rolls and the Seal ID are vectors/kcr.json's public gate
- * seed (the JVM tests read the same values from that file).
+ * before its first screen shows; then the self-test is called again, and a dice-only ceremony
+ * (start, commit, start_dice, dice-50-words12's rolls, finish, as Vectors.kt's sealed runs it) gives
+ * its Seal ID through the bridge. The rolls and the Seal ID are vectors/kcr.json's public gate seed
+ * (the JVM tests read the same values from that file).
  */
 @RunWith(AndroidJUnit4::class)
 class NativeTest {
@@ -41,6 +42,10 @@ class NativeTest {
         finish(activity)
         assertTrue("self_test", Core.selfTest() is Reply.Done)
         assertTrue("start", Core.start(Words.Twelve, Mode.DiceOnly) is Reply.Done)
+        assertTrue("commit", Core.commit() is Reply.Done)
+        val commitment = Core.commitment()
+        assertTrue("no C in dice-only mode", commitment is Reply.Done && commitment.value == null)
+        assertTrue("start_dice", Core.startDice() is Reply.Done)
         for (roll in DICE_50_ROLLS) {
             assertTrue("a roll", Core.pushRoll(roll - '0') is Reply.Done)
         }
