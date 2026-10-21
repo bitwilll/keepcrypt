@@ -11314,7 +11314,7 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   (3 rounds, 2092 files): 768 artifacts: 300 Google's Maven (SHA-256 matched), 454 Maven Central (SHA-1 matched, PGP
   not checked), 14 accepted by name (M5-11), 0 failed; 61 trusted keys, 78 group scopes; shipping runtime classpath
   91 modules, equal to the expected list; licences Apache-2.0 91; exit 3 (incomplete without PGP).
-- [ ] `scripts/android-rust.sh <flavour>` (from commit 14) builds the three ABIs with group 12's flags into
+- [x] `scripts/android-rust.sh <flavour>` (from commit 14) builds the three ABIs with group 12's flags into
   `app/build/rust/<flavour>/<abi>/` and the host library (x86_64-unknown-linux-gnu) for JVM tests; Gradle fails if a
   flavour's library is missing.
   Proof: the APK listing (group 5).
@@ -11329,6 +11329,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   NDK, cargo and gate trees in the session scratchpad, under sh and /bin/dash: both flavours pass and set exactly
   CC_, AR_, the linker and the RUSTFLAGS cfg for each target alone; an undefined symbol the stubs lack, a test-registry
   scan that comes back clean, a bad flavour, no argument and no SDK each fail (exit 1, 1, 2, 2, 2).
+  Proof (CI, run 39554267960 at 89cf334, 1178 s): `android-rust.sh` built both flavours' arm64-v8a, armeabi-v7a and x86_64 libkeepcrypt.so and the host
+  library; each shipping .so's artifact scan is clean, each test-registry .so shows exactly its marker and the test
+  key, and every undefined dynamic symbol (49, 44 and 48) is defined in NDK r30's API 31 stubs; the copies sit in
+  app/src/<flavour>/jniLibs/<abi>/ (M5-9) and both APKs carry them (`--apk` clean, each stored library byte-equal to
+  its scanned copy). Shipping SHA-256: arm64-v8a cebe1571..., armeabi-v7a 257b59d1..., x86_64 df5dfe7c....
 
 **5. The manifest, the APK check and the APK scan (gate item 2; matrix "Symbol and stub-marker scan")**
 - [ ] `app/src/main/AndroidManifest.xml`: `HIDE_OVERLAY_WINDOWS`, `DETECT_SCREEN_RECORDING`, and from commit 18 `CAMERA`
@@ -11481,7 +11486,7 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   Proof (M5 commit 8l-f): run 39337431167: API 31 shipping 14 + 1 frames, registry 13 + 1; API 36 shipping 16 + 1, registry
   18 + 1; every frame black over the app's window, each launch COLD, with control (a)'s raw frames passing first in
   the same leg.
-- [ ] **ARM and 16 KB leg** (from commit 14): on the 16 KB-page image, `getconf PAGE_SIZE` is 16384, the x86_64 APK
+- [x] **ARM and 16 KB leg** (from commit 14): on the 16 KB-page image, `getconf PAGE_SIZE` is 16384, the x86_64 APK
   installs, launches to Home and passes the self-test. If the image lists arm64-v8a (and armeabi-v7a) in its ABI list,
   the APK is installed again with `--abi arm64-v8a` (then `armeabi-v7a`) and a small instrumented class runs
   `JNI_OnLoad`, `self_test` and the `dice-50-words12` vector through `Native`. Statically, for every ABI: the `.so`
@@ -11497,6 +11502,13 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   follow) and NativeTest again; an unlisted ABI is a probe line for the gate report and Q56. Its `--selftest` 12
   passed, 0 failed under sh and /bin/dash (8 before: +4 16 KB legs: arm64 listed passes, page size 4096, NativeTest
   failing, primaryCpuAbi not following `--abi`).
+  Proof (CI, run 39554267960 at 89cf334, 1178 s): system-images;android-36;google_apis_ps16k;x86_64 (revision 7): `getconf PAGE_SIZE` 16384,
+  `ro.product.cpu.abilist` x86_64,arm64-v8a. NativeTest passed installed as x86_64 (primaryCpuAbi x86_64) and again
+  with `--abi arm64-v8a` (primaryCpuAbi arm64-v8a, run translated): JNI_OnLoad, the start-up self-test, self_test
+  again and dice-50-words12's Seal ID YVM9CPP3 through the bridge; process gone, no crash window, crash buffer and
+  DropBox clean. armeabi-v7a is not in the image's ABI list, so it did not run here: the gate report and Q56 name it.
+  Statically, `--apk` holds every ABI's exports to ours plus secp256k1-sys's four (M5-40) and DT_NEEDED to libc,
+  libm and libdl.
 
 **7. Rust dependency and lint changes (Q53; rule 11)**
 - [x] New member `ffi/jni` (`keepcrypt-jni`): `[lib] name = "keepcrypt"`, `crate-type = ["cdylib"]`; dependencies
@@ -11871,7 +11883,7 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   s more (24 crates compiled, core's tests run).
 
 **13. `:core-ffi` and the Rust libraries in the APK (commit 14)**
-- [ ] `Native.kt` (`internal object Native`, `System.loadLibrary("keepcrypt")`, the `external fun`s), `Wire.kt`
+- [x] `Native.kt` (`internal object Native`, `System.loadLibrary("keepcrypt")`, the `external fun`s), `Wire.kt`
   (decoders), `Secret` (a byte-array holder with `wipe()` and no content `toString`), `Core.kt` (typed calls, sealed
   results, `KcHalt` on the halt status, no `catch`). The skeleton's static first screen becomes the real self-test.
   Proof: the JVM tests below; the ARM and 16 KB leg (group 6).
@@ -11885,7 +11897,9 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   every word page, passphrase page, confirm choice, D and QR matrix is held in one. MainActivity runs the self-test
   through `Core` once per process on `Dispatchers.Default` before its first screen; any reply but Done halts.
   The gate is clean on the tree (316 files).
-- [ ] JVM tests against the host library: group 11's vectors again through Kotlin; every QR matrix decoded with ZXing
+  Proof (CI, run 39554267960 at 89cf334, 1178 s): :core-ffi compiles with Native (the JNI method itself, M5-41), Wire, Core and Secret, and the APKs
+  start with the real self-test (NativeTest on the 16 KB leg; the emulator legs on API 31 and 36 green).
+- [x] JVM tests against the host library: group 11's vectors again through Kotlin; every QR matrix decoded with ZXing
   equals core's QR text; a call in the wrong stage halts and every later call does too (forked JVM per class). An `:app`
   JVM test renders `clear-empty-bucket`'s and `collision-dice-50`'s UR text as PNGs (ZXing's writer, tests only) and
   reads them back with the scanner's own decode function; a Python standard-library step writes `with-dice-50.kcr` and
@@ -11909,6 +11923,12 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   and p4-seal-ids.txt (dice-50-words12 YVM9CPP3, dice-99-words12 9FHYMCQA) from kcr.json with Python's standard library,
   uploaded with the PNGs and SHA256SUMS (the step's Python run here on 3.12 and 3.9: the two files 248 and 230 bytes,
   starting KCR1).
+  Proof (CI, run 39554267960 at 89cf334, 1178 s): a JUnit report for every class, all passing: testAndroidHostTest DiceVectorsTest 2, NegativeOpHaltTest
+  1, OversizeInputHaltTest 1, RegistryTest 4, WireMalformedTest 1, WireTablesTest 3, WireTest 9, WrongStageHaltTest 1,
+  QrRoundTripTest 5 (27, forked per class; QrRoundTripTest reads as a pure barcode since 14m); GoAheadPngTest 2 in
+  each flavour. The P4 artifact (android-apks, kept to 2026-11-04): both APKs, goahead-clear-empty-bucket.png,
+  goahead-collision-dice-50.png (upper case, M5-42 as amended), with-dice-50.kcr, stale-day-31.kcr, p4-seal-ids.txt
+  (dice-50-words12 YVM9CPP3, dice-99-words12 9FHYMCQA) and SHA256SUMS.
 
 **14. `:secure-ui` and `CeremonyViewModel`**
 - [ ] SecureActivity (from commit 5) as in "Built into this plan", `onStop` reporting "app left" only when not
@@ -12476,7 +12496,7 @@ internal expect object Native { fun call(op: Int, input: ByteArray): ByteArray }
 //              a negative return raises KcHalt
 ```
 
-- [ ] `Wire.kt`, `Core.kt` (`KcHalt`, no `catch`), `Secret` (a byte-array holder with `wipe()` and no content `toString`) and `Native`'s `expect` go in `:core-ffi` `commonMain`. The two `actual`s are the only platform code in `:core-ffi`. Today's placeholder `Native.kt` (8 lines) and `Screen.kt` (14 lines) move first, in commit 8o.
+- [x] `Wire.kt`, `Core.kt` (`KcHalt`, no `catch`), `Secret` (a byte-array holder with `wipe()` and no content `toString`) and `Native`'s `expect` go in `:core-ffi` `commonMain`. The two `actual`s are the only platform code in `:core-ffi`. Today's placeholder `Native.kt` (8 lines) and `Screen.kt` (14 lines) move first, in commit 8o.
   - Proof: `commonTest` passes as `:core-ffi:androidHostTest` and as the per-class `:core-ffi:iosSimulatorArm64Test` runs, with the same class list and the same count in every class (both logs). The gate's `usePinned`/`addressOf` rule fires on a fixture outside `Native.ios.kt`.
   - Proof (M5 commit 8q, partial: the moves; the expect object, its actuals, Wire, Core and Secret come with commits
     10-14): the placeholder Native.kt is in core-ffi/src/commonMain (its comment names the two actuals to come);
@@ -12487,13 +12507,15 @@ internal expect object Native { fun call(op: Int, input: ByteArray): ByteArray }
     run stay (M5-31), and the `usePinned`/`addressOf` rule now fires in `Native.ios.kt` too.
   - Proof (M5 commit 14, partial: the JVM run is CI's): the expect object, its Android actual, Wire, Core and Secret
     are in `:core-ffi` as group 13's commit-14 proof says, and `commonTest` runs as androidHostTest, one class per JVM.
-- [ ] Group 11's vectors, group 13's wrong-stage halt and the wire decoders run in `commonTest`. The same Kotlin tests then pass over JNI on the JVM and over the C ABI on the simulator, each class in its own process. The ZXing round trips stay JVM-only in `:core-ffi` `androidHostTest`, and the canned-frame scanner test stays in `:app`.
+  Proof (CI, run 39554267960 at 89cf334, 1178 s): as group 13's first item; the Android `actual` is the only platform code in :core-ffi.
+- [x] Group 11's vectors, group 13's wrong-stage halt and the wire decoders run in `commonTest`. The same Kotlin tests then pass over JNI on the JVM and over the C ABI on the simulator, each class in its own process. The ZXing round trips stay JVM-only in `:core-ffi` `androidHostTest`, and the canned-frame scanner test stays in `:app`.
   - Proof: the per-class counts in both jobs' logs. A planted wrong status byte fails both. A class that halts on purpose does not change the next class's result.
   - Moved to M6 by Q73 (8w): the runs over the C ABI on the simulator; the JVM runs over JNI stay.
   - Proof (M5 commit 14, partial: the per-class counts are CI's): group 11's vectors (DiceVectorsTest, RegistryTest),
     the wrong-stage halt (WrongStageHaltTest) and the wire decoders (WireTest, WireMalformedTest, WireTablesTest) are in
     `commonTest`; the ZXing round trips (QrRoundTripTest) in `androidHostTest`. The vector files are read through a
     test-only `expect fun entropyFile`, whose JVM actual reads under kc.entropy.
+  Proof (CI, run 39554267960 at 89cf334, 1178 s): the JVM half, as group 13's JVM item (per-class counts above); the simulator half moved to M6.
 - [ ] `CeremonyModel` and `Timers` in `:screens` `commonMain` own the slot's use exactly as group 14 says of `CeremonyViewModel`:
   - they hold screen ids, page indices and `Secret` references only;
   - long calls run on `Dispatchers.Default` behind "Working...";
@@ -13398,6 +13420,8 @@ they differ. Nothing in the Android plan is weakened.
   tests and the 16 KB-page leg to the Android job, which M5-30's 15 minutes cannot hold. The job has 60 minutes for its
   first full run at commit 14; the lead then sets its budget to that run's time plus 25% (M5-30's rule) in the next
   bookkeeping commit. Group 6's path list gains `Entropy/Cargo.toml` (14c).
+  Measured: run 39554267960 at 89cf334 took the job 1178 s (19.6 min) with cold emulator caches; plus 25% is
+  24.5, so the budget is 25 minutes (`timeout-minutes: 25`, commit 14n).
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the

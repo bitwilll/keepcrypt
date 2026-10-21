@@ -125,10 +125,10 @@ jobs:
     runs-on: ubuntu-24.04
     # The 90-minute ceiling (tasks/todo.md, M5 "Budgets") until the first green run with the
     # emulators is measured; the lead then sets the job's budget to that time plus 25%.
-    # The measured budget (M5-30): run 39337431167 at 8l-d, cold caches, 12 min; plus 25% is 15. Commit
-    # 14 adds the Rust builds, the JVM tests and the 16 KB-page leg, so for its first full run the job
-    # has 60 minutes (lead decision M5-44); the lead then sets the budget to that run's time plus 25%.
-    timeout-minutes: 60
+    # The measured budget (M5-30, M5-44): run 39554267960 at 89cf334, with commit 14's Rust builds, JVM
+    # tests and 16 KB-page leg and cold emulator caches, 19.6 min; plus 25% is 25. A slower run stops
+    # here and the lead re-plans; a commit that adds legs or tests re-measures it.
+    timeout-minutes: 25
     env:
       # The SDK pieces the build uses (mobile/android/gradle/libs.versions.toml), checked below.
       KC_BUILD_TOOLS: 36.0.0
