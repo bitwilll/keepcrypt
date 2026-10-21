@@ -147,13 +147,13 @@ class StartScreensTest {
         val dice = assertNotNull(rig.model.state.value.dice)
         assertEquals("50 / 50 rolls, 129.2 bits", diceText(dice.rolls, dice.minimum, dice.millibits))
         assertTrue(dice.rolls >= dice.minimum, "the minimum is reached")
-        assertRolling("still rolling: Done comes with commit 17")
+        assertRolling("still rolling: only Done makes the seed (CheckScreensTest)")
     }
 
     @Test
     fun theFacesPickedOnThePadAreTheRollsCoreTakes() {
         // vectors/kcr.json's public gate seed dice-50-words12, dice-only: its rolls picked on the pad and
-        // confirmed one by one, then finished as commit 17's Done will, give its Seal ID only if every
+        // confirmed one by one, then finished as the dice's Done does, give its Seal ID only if every
         // face reached core as the face picked (a face mapped wrongly is still a face 1-6, which core takes).
         val rig = Rig().toHome().begin(Mode.DiceOnly, Words.Twelve)
         for (face in DICE_50_ROLLS) {

@@ -8,12 +8,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Runnable
 
-// Test support for :screens' common tests (tasks/todo.md, M5 groups 14 and 15). The model's tests run
-// it on the test's own thread: its main scope is unconfined, so a long call's reply is handled at once,
-// and its worker holds each long call until the test runs it, so the test can act while "Working..."
-// shows. The clock, the offline monitor and the motion source are fakes the test moves. The tests that
-// reach the slot do so through Core over the host library, one test class per JVM
-// (screens/build.gradle.kts), since a halt latches the process's slot for good.
+// Test support for :screens' common tests (tasks/todo.md, M5 groups 14-16). The model's tests run it on
+// the test's own thread: its main scope is unconfined, so a long call's reply is handled at once, and
+// its worker holds each long call until the test runs it, so the test can act while "Working..."
+// shows. The clock, the offline monitor and the motion source are fakes the test moves; the UTC date is
+// vectors/kcr.json's. The tests that reach the slot do so through Core over the host library, one test
+// class per JVM (screens/build.gradle.kts), since a halt latches the process's slot for good.
 
 /** A clock the test sets. */
 internal class FakeClock : MonotonicClock {
@@ -22,6 +22,14 @@ internal class FakeClock : MonotonicClock {
     override fun nowMillis(): Long = now
 
     override fun nowNanos(): Long = now * 1_000_000
+}
+
+/**
+ * The UTC date the model reads: vectors/kcr.json's own (2026-03-01, read when first asked), the date its
+ * snapshots' freshness is pinned against, so the check's tests read each freshness on a fixed date.
+ */
+internal class FakeDate : UtcDate {
+    override fun today(): Int = kcrToday()
 }
 
 /** A worker that keeps each long call until run, in order. */
@@ -122,10 +130,11 @@ internal class FakeMotion : MotionSource {
 /** A model over fakes, and the fakes; scope is the model's main scope (unconfined, unless a test cancels its own). */
 internal class Rig(scope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined)) {
     val clock = FakeClock()
+    val date = FakeDate()
     val worker = HeldWorker()
     val offline = FakeOffline()
     val motion = FakeMotion()
-    val model = CeremonyModel(scope, worker, clock, offline, motion, testRegistry = true)
+    val model = CeremonyModel(scope, worker, clock, date, offline, motion, testRegistry = true)
 
     val screen: Screen get() = model.state.value.screen
 

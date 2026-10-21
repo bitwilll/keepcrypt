@@ -3,9 +3,9 @@ package com.keepcrypt.entropy.screens
 // The platform seams (lead decision M5-20): Kotlin interfaces in the common code, each implemented in
 // the platform's code and passed in at its entry point (on Android, :app's CeremonyHolder for the
 // model's, and MainActivity for the screens'). Commit 15 brought the clock and the offline monitor;
-// commit 16 the motion source and the airplane-settings opener; the documents and scanner seams
-// follow with their screens. The build's testRegistry flag is the model's constructor argument, a
-// Boolean that :app takes from its flavour.
+// commit 16 the motion source and the airplane-settings opener; commit 17 the UTC date; the documents
+// and scanner seams follow with their screens. The build's testRegistry flag is the model's
+// constructor argument, a Boolean that :app takes from its flavour.
 
 /**
  * A monotonic clock, the one every timer reads (lessons.md, time rules per target): on Android
@@ -17,6 +17,16 @@ interface MonotonicClock {
     fun nowMillis(): Long
 
     fun nowNanos(): Long
+}
+
+/**
+ * Today's date in UTC, as the number YYYYMMDD (lessons.md, time rules per target: phones read the UTC
+ * date, and registry snapshot dates are UTC): the date core judges a loaded snapshot's freshness
+ * against (Stale from day 31, Future after today), which the check's result warns of; never a timer.
+ * On Android :app's UtcToday, java.time's date in UTC; in the JVM tests a fixed date.
+ */
+fun interface UtcDate {
+    fun today(): Int
 }
 
 /**

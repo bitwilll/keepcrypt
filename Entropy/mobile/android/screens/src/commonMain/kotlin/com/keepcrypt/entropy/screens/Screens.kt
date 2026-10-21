@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.keepcrypt.entropy.ffi.Mode
 
 /**
- * The app's screens over its ceremony model (tasks/todo.md, M5 groups 6, 14 and 15): the screen is a
+ * The app's screens over its ceremony model (tasks/todo.md, M5 groups 6 and 14-16): the screen is a
  * when over the model's state, so no back stack reaches a saved-state Bundle. Every tap first reaches
  * the model (input, the idle timer; touched, which Device entropy mixes in); the cover and the warning
  * lie over the screen and take the tap that removes them, so it reaches nothing under them.
@@ -70,7 +70,34 @@ fun Screens(model: CeremonyModel, airplaneSettings: AirplaneSettings, onClose: (
                 Screen.Length -> Length(registry, onWords = model::chooseLength)
                 Screen.DeviceEntropy -> DeviceEntropy(registry, onContinue = model::deviceEntropyDone)
                 Screen.Commitment -> Commitment(state, registry, onContinue = model::commitmentDone)
-                Screen.Dice -> Dice(state, model.dicePick, registry, onConfirm = model::confirmRoll, onUndo = model::undoRoll)
+                Screen.Dice -> Dice(
+                    state,
+                    model.dicePick,
+                    registry,
+                    onConfirm = model::confirmRoll,
+                    onUndo = model::undoRoll,
+                    onDone = model::diceDone,
+                )
+                Screen.CheckPrompt -> CheckPrompt(state, registry, onCheckNow = model::checkNow, onSkip = model::skip)
+                Screen.SkipConfirm -> SkipConfirm(registry, onSkip = model::skipConfirmed, onBack = model::back)
+                Screen.SealCard -> SealCardScreen(
+                    state,
+                    registry,
+                    onTypeCode = model::typeCode,
+                    onMatchFound = model::matchFound,
+                    onCannotCheck = model::cannotCheck,
+                )
+                Screen.CodeEntry -> CodeEntry(state, model.goAheadCode, registry, onDone = model::codeDone, onBack = model::back)
+                Screen.MatchFoundConfirm -> MatchFoundConfirm(registry, onDestroy = model::matchFoundConfirmed, onBack = model::back)
+                Screen.CannotCheckConfirm -> CannotCheckConfirm(registry, onStartAgain = model::cannotCheckConfirmed, onBack = model::back)
+                Screen.Collision -> CollisionResult(state, registry, onShowReport = model::showReport)
+                Screen.CollisionReport -> CollisionReport(
+                    state,
+                    registry,
+                    passGate = model::passGate,
+                    onAddFreshEntropy = model::addFreshEntropy,
+                )
+                Screen.CheckResult -> CheckResult(state, registry)
                 Screen.Working -> Working(registry)
                 Screen.Stop -> Stop(registry, onClose = onClose)
             }
@@ -88,12 +115,20 @@ fun Screens(model: CeremonyModel, airplaneSettings: AirplaneSettings, onClose: (
  * Protected screen's content shows only past the privacy gate, and never while a recording of the
  * screen is reported (a redacted placeholder instead, the second layer under FLAG_SECURE). The gate and
  * the placeholder each fill the screen, so each carries the TEST REGISTRY strip in that build (Q60).
- * Its 30 s cover is the timers', drawn over every screen by Screens.
+ * Its 30 s cover is the timers', drawn over every screen by Screens. gateAction is the gate's button,
+ * "I'm alone, show words" (docs/mobile-apps.md, step 10) unless the screen behind it shows something
+ * else (the collision report).
  */
 @Composable
-fun Protected(state: UiState, testRegistry: Boolean, passGate: () -> Unit, content: @Composable () -> Unit) {
+fun Protected(
+    state: UiState,
+    testRegistry: Boolean,
+    passGate: () -> Unit,
+    gateAction: String = "I'm alone, show words",
+    content: @Composable () -> Unit,
+) {
     when {
-        state.gate -> PrivacyGate(testRegistry, passGate)
+        state.gate -> PrivacyGate(testRegistry, gateAction, passGate)
         state.recording -> Redacted(testRegistry)
         else -> content()
     }
@@ -133,10 +168,10 @@ fun Stop(testRegistry: Boolean, onClose: () -> Unit) {
     }
 }
 
-/** The privacy gate before a Protected screen (docs/mobile-apps.md, step 10; docs/pi-firmware.md's gate). */
+/** The privacy gate before a Protected screen (docs/mobile-apps.md, step 10; docs/pi-firmware.md's gate), passed by action. */
 @Composable
-fun PrivacyGate(testRegistry: Boolean, pass: () -> Unit) {
-    KitScreen("privacy_gate", testRegistry, actions = { KitButton("I'm alone, show words", "pass_gate", onClick = pass) }) {
+fun PrivacyGate(testRegistry: Boolean, action: String, pass: () -> Unit) {
+    KitScreen("privacy_gate", testRegistry, actions = { KitButton(action, "pass_gate", onClick = pass) }) {
         KitText("The next screen shows a secret. No person or camera may see it.")
     }
 }

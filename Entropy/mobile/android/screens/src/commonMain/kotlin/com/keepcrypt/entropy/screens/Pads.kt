@@ -5,8 +5,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -164,27 +168,44 @@ fun AsciiPad(entry: PadEntry, page: Int, changed: () -> Unit) {
     }
 }
 
-/** keys in rows of columns, in their order. */
+/**
+ * keys in rows of columns, in their order. Each row is the width it is given and each key a square of
+ * at most KEY_DP: a row of eight (the go-ahead code's) is 368 dp at full size, wider than a 360 dp
+ * phone, so every column takes an equal share of the row and a key shrinks to its share where that is
+ * smaller; a short last row keeps the columns of the rows above it.
+ */
 @Composable
 private fun KeyGrid(keys: String, columns: Int, enabled: Boolean, sensitive: Boolean, press: (Char) -> Unit) {
     Column {
         for (start in keys.indices step columns) {
-            Row {
-                for (index in start until minOf(start + columns, keys.length)) {
-                    val key = keys[index]
-                    Key(keyLabel(key), enabled, sensitive) { press(key) }
+            Row(Modifier.fillMaxWidth()) {
+                for (index in start until start + columns) {
+                    if (index < keys.length) {
+                        val key = keys[index]
+                        Key(keyLabel(key), enabled, sensitive) { press(key) }
+                    } else {
+                        Spacer(Modifier.weight(1f, fill = false))
+                    }
                 }
             }
         }
     }
 }
 
+/** A key's side at most: its side wherever its row has room for it. */
+private const val KEY_DP = 40
+
 /** A key's label: the space key says so. */
 fun keyLabel(key: Char): String = if (key == ' ') "space" else key.toString()
 
 @Composable
-private fun Key(label: String, enabled: Boolean, sensitive: Boolean, press: () -> Unit) {
-    val framed = Modifier.padding(3.dp).size(40.dp).border(1.dp, if (enabled) Color.White else Color.Gray)
+private fun RowScope.Key(label: String, enabled: Boolean, sensitive: Boolean, press: () -> Unit) {
+    val framed = Modifier
+        .weight(1f, fill = false)
+        .padding(3.dp)
+        .widthIn(max = KEY_DP.dp)
+        .aspectRatio(1f)
+        .border(1.dp, if (enabled) Color.White else Color.Gray)
     // Sensitive: the key's semantics are its role alone, so its press says nothing about the key. A
     // Public key (the dice and the go-ahead code) has its label as its TalkBack label, the button role
     // and a test tag, key_ and its label, for UI Automator (group 15's flow tests).

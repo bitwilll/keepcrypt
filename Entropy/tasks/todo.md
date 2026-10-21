@@ -12211,6 +12211,10 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   `--selftest` 1431 passed, 0 failed, and `canaries.sh` PASS, all 93 checks ran; android-emulator.sh --selftest 17
   passed, 0 failed under sh and /bin/dash (16 before: motion-test-fails); Rust untouched (fmt, both clippy commands,
   the workspace tests, the test-sources run and the FFI tests plain and with test-registry all pass).
+  Proof (M5 commit 17, partial: Home's other entries are commits 20 and 21, M5-48): the dice screen's Done, disabled
+  below the minimum, makes the seed (finish behind "Working...") and opens the check prompt (group 16's commit-17
+  line); the counts and their limit lines now come above the dice's notes, so FlowTest's minimum and cap lines stay in
+  view under the taller actions.
 
 **16. Screens: the collision check** (MA:175-176; swb:112-152)
 - [ ] The prompt ("Check now (recommended)" / "Skip", Skip confirmed on its own screen). With a loaded snapshot the check
@@ -12221,6 +12225,53 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   at 99. Cannot check: wiped, "Start again" likewise. Results use swb:150-152's wording.
   Proof: emulator tests in the shipping APK (typed code computed from the drawn check request; a wrong code keeps the
   check) and the test-registry APK (snapshot drill: Match found before any words page, then "0 / 99").
+  Proof (M5 commit 17, partial: the Kotlin compiles and the JVM and emulator tests run only in CI; "Scan go-ahead QR"
+  is commit 18's, so it is not drawn yet, M5-48): :screens' CheckScreens.kt draws the prompt in swb's words with this
+  seed's seal card under them (the Seal ID that P0b and P4 compare before Check now), Skip's, Match found's ("Destroy
+  this seed") and Cannot check's ("Start again") confirms on Kit.kt's OneWayConfirm (back from 16d), the seal card
+  (the seal at 240 dp with its Seal ID and braille, the check QR at 240 dp, "Type go-ahead code", "Match found",
+  "Cannot check"), the code entry on Pads.kt's CrockfordPad (the code in two groups, Delete, Done at 8 symbols, Back),
+  the collision result and the result before the words in swb:150-152's wording (the typed code's "as of the date
+  your checker showed"; a loaded snapshot's number, date, count and its Stale or Future warning on both), and the
+  collision-report QR, the first Protected screen (isProtected; the privacy gate, its button "I'm alone, show the
+  report"; leaving the app on it discards, Q57 (b)). The result before the words has no action until commit 19 brings
+  them. Pads.kt's keys now share their row's width (at most 40 dp), since a row of eight is 368 dp, wider than a
+  360 dp phone, which hid the go-ahead pad's last column. CeremonyModel: the dice's Done (M5-48); Check now starts the
+  check and, with a loaded snapshot, runs core's check against it on the worker behind "Working..." on the new UtcDate
+  seam's date (:app's UtcToday, java.time's date in UTC), else shows the seal card; a refused typed code returns to the
+  code entry with the check, its nonce and (by Back) the actions kept, the code wiped; Match found to the collision
+  result, its report and "Add fresh entropy", Cannot check to "Start again", each core's start from the kept Wiped with
+  the session's length and mode; Back on each confirm screen and the code entry (the confirm's button and the system
+  Back are the model's back); the slot's restart is held like a session (timers, going online), so a discard takes it
+  home with the Wiped kept; snapshotLoaded is a snapshot's way into the model, which only the tests use, after their
+  own Core.loadSnapshot, until commit 21's Home entry (M5-48); the check QR and the report are wiped once no screen
+  holds them. CheckScreensTest (11 tests, its own JVM; kcr.json's date and snapshots through a new androidHostTest
+  entropyFile, M5-43's pattern): Done at the minimum and not below it, then the prompt with dice-50-words12's Seal ID;
+  Skip confirmed, Back on its confirm; the seal card's check QR equal to core's; a wrong code refused with the same
+  check QR in core and on screen and the actions kept; Back on each confirm screen and the code entry, no core call;
+  Match found to the collision result, the report behind its gate (Add fresh entropy reaching nothing there) and Add
+  fresh entropy at 0 / 99, the report then wiped; Cannot check to Start again at 0 / 50, and at 0 / 99 when it was the
+  restart after a collision; leaving on the report discarding at once, the next seed still at 99; with with-dice-50
+  loaded the check on the worker finds the collision, no words made available; current-day-30, stale-day-31 and
+  future-day-1 give Current, Stale and Future and their warnings on kcr.json's date; the result texts and the code as
+  shown. Emulator (scripts/android-emulator.sh step 4a, after FlowTest, API 31 and 36): CheckTest (shipping APK: Done
+  at 50, Skip, Match found and Cannot check confirmed and Back there, the drawn check QR read in-process with ZXing, a
+  wrong code typed on the pad refused with the same check QR and actions, then the code computed from that QR's T and
+  nonce, SHA-256 over "KCE/v1/go" || T || n, first 40 bits in Crockford base32, typed on the pad: "No collision for
+  seal YVM9CPP3, as of the date your checker showed.") and SnapshotDrillTest (test-registry APK: with-dice-50 loaded
+  through Core and handed to the model; Check now runs on its own: the collision, its snapshot line and Stale warning,
+  before any words; the privacy gate, the report QR read back as dice-50-words12's registration text, Add fresh
+  entropy: "0 / 99 rolls, 0.0 bits"). CaptureTest's every-screen pass walks the nine new screens in both APKs (the
+  report past its gate; the walk's second ceremony, Add fresh entropy's, skips to the result). FlowTest's helpers moved
+  to Ui.kt, shared with the two new classes (the tap as 16q and 16r left it: a selector resolved at the click, its
+  boolean not read, each tap followed by a check of the screen it leads to; CheckTest's code by the shown code).
+  android-emulator.sh --selftest 19 passed, 0 failed under sh and /bin/dash (17 before: check-test-fails,
+  snapshot-drill-fails; the pass leg's last five runs are FlowTest, CheckTest, SnapshotDrillTest, LifecycleTest and
+  the killed CrashTest). Estimated cost (not yet measured): about 2 minutes a leg (CaptureTest's nine more screens in
+  both APKs, CheckTest's taps, SnapshotDrillTest), so about 4 on run 39611275051's 22.2 plus 16j's estimated minute,
+  near M5-52's 28. Gate clean on the tree (356 files), `--selftest` 1431 passed, 0 failed, and `canaries.sh` PASS, all
+  93 checks ran; Rust untouched (fmt, both clippy commands, the workspace tests, the test-sources run and the FFI
+  tests plain and with test-registry all pass).
 - [ ] The scanner (Camera2 + ZXing, commit 18): CAMERA asked on this screen only; `ImageReader` YUV_420_888 frames
   reduced to luminance on a background thread and never stored; text over 4,296 characters dropped (swb:144); the first
   decoded text goes to the same `onGoAheadText` the tests call; proof results show their date and any warning before

@@ -38,12 +38,17 @@
 #      region, which the frame checker reads.
 #      A test class that fails is reported at once and fails the leg at its end: every class runs,
 #      so one run gives both the control's result and the app's.
-#   4a. PhoneMotionTest, then FlowTest, on the shipping app (M5 group 15): PhoneMotion on the
-#      emulator's own sensors (lead decision M5-51: an accelerometer sample within 5 s, and a gyroscope
-#      one where the image lists a gyroscope, in its layout, and none after stop); then the screens from
-#      the start to the dice driven through UI Automator, a new seed and a dice-only seed to their
-#      minimums, the 256-roll cap, Back, Start disabled online, the airplane-mode settings button, and
-#      Wi-Fi on during the dice.
+#   4a. PhoneMotionTest, FlowTest and CheckTest on the shipping app, then SnapshotDrillTest on the
+#      test-registry app (M5 groups 15 and 16): PhoneMotion on the emulator's own sensors (lead decision
+#      M5-51: an accelerometer sample within 5 s, and a gyroscope one where the image lists a gyroscope,
+#      in its layout, and none after stop); then the screens from the start to the dice driven through
+#      UI Automator, a new seed and a dice-only seed to their minimums, the 256-roll cap, Back, Start
+#      disabled online, the airplane-mode settings button, and Wi-Fi on during the dice; then the
+#      collision check without a snapshot (the dice's Done, Skip, Match found and Cannot check confirmed
+#      and Back there, a wrong go-ahead code refused with the check kept, and the code computed from the
+#      drawn check QR typed on the Crockford pad); then, in the test-registry app, a snapshot loaded
+#      through core and the check that runs on its own: the collision before any words, the report QR
+#      behind the privacy gate, and "Add fresh entropy" at 99 rolls.
 #   4b. LifecycleTest on the shipping app (M5 group 14): the app left during a backup's scrypt and
 #      during its start-up self-test, and Wi-Fi turned on during a start, each discarding the session
 #      with no ANR.
@@ -82,10 +87,11 @@
 # scripts/android-emulator.sh --selftest runs whole legs of this script, with the real frame checker,
 # on stand-ins written to a temporary directory: an adb, an emulator, a screenrecord that writes a raw
 # frame of the screen at its start and on each change of it until SIGINT, and an instrument runner. A
-# leg where everything passes exits 0, having run PhoneMotionTest, and FlowTest, LifecycleTest and then
-# the killed CrashTest on the shipping app as its last three instrumented runs (a case of its own); a
-# failing ControlTest, CaptureTest, PhoneMotionTest, FlowTest, LifecycleTest and CrashTest each exit 1
-# at the leg's end, after the later checks ran; capture-control still in recents after pm clear, a
+# leg where everything passes exits 0, having run PhoneMotionTest, and FlowTest and CheckTest on the
+# shipping app, SnapshotDrillTest on the test-registry app, and LifecycleTest and then the killed
+# CrashTest on the shipping app as its last five instrumented runs (a case of its own); a failing
+# ControlTest, CaptureTest, PhoneMotionTest, FlowTest, CheckTest, SnapshotDrillTest, LifecycleTest and
+# CrashTest each exit 1 at the leg's end, after the later checks ran; capture-control still in recents after pm clear, a
 # recording that ends before it is stopped, the app's window lit in the first-frame stream, and the
 # same with that stream carrying no frame after the curtain (only the second stream sees it) each
 # exit 1. On the 16 KB-page image: a leg with arm64-v8a listed passes, running NativeTest with the app
@@ -259,6 +265,8 @@ EOF
   leg capture-test-fails KC_FAILCLASS=CaptureTest
   leg motion-test-fails KC_FAILCLASS=PhoneMotionTest
   leg flow-test-fails KC_FAILCLASS=FlowTest
+  leg check-test-fails KC_FAILCLASS=CheckTest
+  leg snapshot-drill-fails KC_FAILCLASS=SnapshotDrillTest
   leg lifecycle-test-fails KC_FAILCLASS=LifecycleTest
   leg crash-test-fails KC_FAILCLASS=CrashTest
   leg control-in-recents KC_RECENTS=1
@@ -274,18 +282,21 @@ EOF
     "pass: api=31 first frame (shipping, its first screen up)" "pass: api=31 first frame (registry, its first screen up)" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.PhoneMotionTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest" \
+    "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.CheckTest" \
+    "instrument stub: com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest" \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
     "emulator: api=31: every check passed"
-  # Steps 4a-4c: the pass leg's last three instrumented runs are FlowTest, LifecycleTest and then the
-  # killed CrashTest, so no run comes after the crash test.
-  order=$(sed -n 's/^instrument stub: \([^ ]*\) \([^ ]*\) .*/\1 \2/p' "$st/pass/out" | tail -n 3 | tr '\n' ' ')
-  if [ "$order" = "com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest " ]; then
+  # Steps 4a-4c: the pass leg's last five instrumented runs are FlowTest, CheckTest, SnapshotDrillTest
+  # (on the test-registry app), LifecycleTest and then the killed CrashTest, so no run comes after the
+  # crash test.
+  order=$(sed -n 's/^instrument stub: \([^ ]*\) \([^ ]*\) .*/\1 \2/p' "$st/pass/out" | tail -n 5 | tr '\n' ' ')
+  if [ "$order" = "com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest com.keepcrypt.entropy com.keepcrypt.entropy.CheckTest com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest " ]; then
     passed=$((passed + 1))
-    echo "PASS pass: FlowTest, LifecycleTest, then the killed CrashTest, last"
+    echo "PASS pass: FlowTest, CheckTest, SnapshotDrillTest (test registry), LifecycleTest, then the killed CrashTest, last"
   else
     failed=$((failed + 1))
-    echo "FAIL pass: the leg's last three instrumented runs are $order"
+    echo "FAIL pass: the leg's last five instrumented runs are $order"
   fi
   expect motion-test-fails 1 \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest" \
@@ -294,10 +305,22 @@ EOF
     "pass: api=31 first frame (registry, its first screen up)" \
     "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.PhoneMotionTest) (each reported above)"
   expect flow-test-fails 1 \
+    "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.CheckTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest" \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
     "pass: api=31 first frame (registry, its first screen up)" \
     "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.FlowTest) (each reported above)"
+  expect check-test-fails 1 \
+    "instrument stub: com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest" \
+    "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest" \
+    "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
+    "pass: api=31 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.CheckTest) (each reported above)"
+  expect snapshot-drill-fails 1 \
+    "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest" \
+    "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
+    "pass: api=31 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy.testregistry (com.keepcrypt.entropy.SnapshotDrillTest) (each reported above)"
   expect lifecycle-test-fails 1 \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
     "pass: api=31 first frame (registry, its first screen up)" \
@@ -645,9 +668,13 @@ display_registry=$(sed -n 's/^kc: display=//p' "$work/instrument.log" | tail -n 
   fail "CaptureTest reported no window region"
 
 # 4a. PhoneMotion on the emulator's own sensors (M5-51), then the screens from the start to the dice,
-# driven through UI Automator (group 15).
+# driven through UI Automator (group 15), then the collision check (group 16): without a snapshot on the
+# shipping app, and with one, loaded through core, on the test-registry app (the only one that trusts
+# the test registry key).
 instrument com.keepcrypt.entropy com.keepcrypt.entropy.PhoneMotionTest
 instrument com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest
+instrument com.keepcrypt.entropy com.keepcrypt.entropy.CheckTest
+instrument com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest
 # 4b. Discards during "Working...": the app left during a backup's scrypt and its start-up self-test,
 # Wi-Fi turned on during a start.
 instrument com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest

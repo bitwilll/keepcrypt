@@ -20,8 +20,9 @@ import com.keepcrypt.entropy.ffi.Words
 // wherever mobile-apps.md says nothing else): Self-test, Go offline, Home, Length, Device entropy,
 // Commitment and Dice; First launch is FirstLaunch.kt. Each is Public, drawn with the UI kit, and
 // hands its presses to the ceremony model, which ignores a press its screen no longer shows. Home's
-// Check a backup (commit 20), Load registry snapshot and About (commit 21) come with their screens, and
-// the dice screen's Done with the collision check (commit 17), so no control here leads nowhere.
+// Check a backup (commit 20), Load registry snapshot and About (commit 21) come with their screens, so
+// no control here leads nowhere; the dice screen's Done leads to the collision check (CheckScreens.kt,
+// commit 17).
 
 /** The one sentence that explains the default mode (docs/mobile-apps.md, "Entropy sources on phones"). */
 const val SAFE_IF_EITHER = "Your seed is safe if either your phone or your dice are honest."
@@ -174,11 +175,12 @@ fun Commitment(state: UiState, testRegistry: Boolean, onContinue: () -> Unit) {
  * Dice (docs/mobile-apps.md, step 8; the Pi's step 6): the 1 to 6 pad picks a face, Confirm pushes it
  * (disabled with no face picked and at 256 rolls, where the pad is disabled too), Undo takes the last
  * roll back; the screen shows the count and the bits, never the roll history, and says when the
- * minimum is reached (Done comes with the collision check, commit 17). The pick lives in the model's
- * PadEntry, not in Compose state: version only redraws the pick when the pad changes it.
+ * minimum is reached, from when Done (disabled below it) makes the seed and opens the collision check.
+ * The pick lives in the model's PadEntry, not in Compose state: version only redraws the pick when the
+ * pad changes it.
  */
 @Composable
-fun Dice(state: UiState, pick: PadEntry, testRegistry: Boolean, onConfirm: () -> Unit, onUndo: () -> Unit) {
+fun Dice(state: UiState, pick: PadEntry, testRegistry: Boolean, onConfirm: () -> Unit, onUndo: () -> Unit, onDone: () -> Unit) {
     val dice = state.dice ?: return
     var version by remember { mutableIntStateOf(0) }
     val open = dice.rolls < MAX_ROLLS
@@ -207,17 +209,20 @@ fun Dice(state: UiState, pick: PadEntry, testRegistry: Boolean, onConfirm: () ->
                     )
                 }
             }
+            KitButton("Done", "dice_done", enabled = dice.rolls >= dice.minimum, onClick = onDone)
         },
     ) {
         Heading("Dice")
+        // The counts and their limits first, the notes under them: Done made the actions taller, and
+        // what is scrolled out of view is not on screen to read.
         KitText(diceText(dice.rolls, dice.minimum, dice.millibits), tag = "dice_count")
-        KitText("Roll a die, tap its face, then Confirm. Earlier rolls are never shown.", KitType.small)
         if (dice.rolls >= dice.minimum) {
-            KitText("Minimum reached: more rolls are allowed, up to 256.", tag = "dice_minimum")
+            KitText("Minimum reached: Done makes the seed, or roll more, up to 256.", tag = "dice_minimum")
         }
         if (!open) {
             KitText("256 rolls: the most a seed takes.", tag = "dice_cap")
         }
+        KitText("Roll a die, tap its face, then Confirm. Earlier rolls are never shown.", KitType.small)
         if (state.diceOnly) {
             KitText(DICE_ONLY, KitType.small, tag = "dice_only")
         }

@@ -169,3 +169,32 @@ fun TestRegistryStrip() {
         style = TextStyle(color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold),
     )
 }
+
+/**
+ * The one-way-choice confirm screen (docs/pi-firmware.md, "Confirmations": Skip, Match found and Cannot
+ * check each take one): the question, what cannot be undone, the one action that does it, and Back,
+ * which keeps everything and returns to the screen that offered the choice. The system Back does the
+ * same: both are the model's back, which goes back from each confirm screen.
+ */
+@Composable
+fun OneWayConfirm(
+    tag: String,
+    testRegistry: Boolean,
+    question: String,
+    consequence: String,
+    action: String,
+    onAction: () -> Unit,
+    onBack: () -> Unit,
+) {
+    KitScreen(
+        tag,
+        testRegistry,
+        actions = {
+            KitButton(action, "confirm_action", onClick = onAction)
+            KitButton("Back", "back", onClick = onBack)
+        },
+    ) {
+        Heading(question)
+        KitText(consequence)
+    }
+}

@@ -35,6 +35,7 @@ import com.keepcrypt.entropy.ffi.KcHalt
 import com.keepcrypt.entropy.ffi.Mode
 import com.keepcrypt.entropy.ffi.Reply
 import com.keepcrypt.entropy.ffi.Words
+import com.keepcrypt.entropy.screens.DICE_KEYS
 import com.keepcrypt.entropy.screens.Overlay
 import com.keepcrypt.entropy.screens.Screen
 import com.keepcrypt.entropy.screens.screenId
@@ -69,15 +70,17 @@ class CaptureTest {
 
     /**
      * Brings screen up in the walk's one activity, from the screen before it in Screen's order (the
-     * ceremony's, lead decision M5-50), through the model's entry points as the screens call them. The
-     * when is exhaustive: a new screen without a way here fails to compile, and one out of order finds
-     * the model on another screen, which ignores the press, so its drawn-screen proof times out. The
-     * self-test's screen and "Working..." are long calls held on the worker, as the model makes every
-     * long call (the real start-up self-test is over before a capture could start): the held one goes
-     * back to First launch when let go, whose Continue then runs the real self-test to Go offline. The
-     * stop screen is the halt status as Core throws it, so this process's slot stays live for the tests
-     * after it (the model's own tests halt a real one). Home on needs the phone offline, which the pass
-     * sees to.
+     * ceremony's, lead decision M5-50, its collision check in the order one walk reaches its screens),
+     * through the model's entry points as the screens call them. The when is exhaustive: a new screen
+     * without a way here fails to compile, and one out of order finds the model on another screen, which
+     * ignores the press, so its drawn-screen proof times out. The self-test's screen and "Working..." are
+     * long calls held on the worker, as the model makes every long call (the real start-up self-test is
+     * over before a capture could start): the held one goes back to First launch when let go, whose
+     * Continue then runs the real self-test to Go offline. The dice's Done and the restart are the real
+     * long calls, waited for. The collision-report QR, the one Protected screen, is shown past its privacy
+     * gate, so the capture is of the QR itself. The stop screen is the halt status as Core throws it, so
+     * this process's slot stays live for the tests after it (the model's own tests halt a real one). Home
+     * on needs the phone offline, which the pass sees to.
      */
     private fun show(screen: Screen): MainActivity {
         val activity = if (screen == Screen.FirstLaunch) started().also { walk = it } else checkNotNull(walk)
@@ -96,14 +99,64 @@ class CaptureTest {
             Screen.DeviceEntropy -> onMain { model.chooseLength(Words.Twelve) }
             Screen.Commitment -> onMain { model.deviceEntropyDone() }
             Screen.Dice -> onMain { model.commitmentDone() }
+            Screen.CheckPrompt -> finishDice(activity, 50)
+            Screen.SkipConfirm -> onMain { model.skip() }
+            Screen.SealCard -> onMain {
+                model.back()
+                model.checkNow()
+            }
+            Screen.CodeEntry -> onMain { model.typeCode() }
+            Screen.MatchFoundConfirm -> onMain {
+                model.back()
+                model.matchFound()
+            }
+            Screen.CannotCheckConfirm -> onMain {
+                model.back()
+                model.cannotCheck()
+            }
+            Screen.Collision -> onMain {
+                model.back()
+                model.matchFound()
+                model.matchFoundConfirmed()
+            }
+            Screen.CollisionReport -> {
+                onMain { model.showReport() }
+                waitUntil("the report's privacy gate") { onMain { activity.shownScreen == Screen.CollisionReport && model.state.value.gate } }
+                onMain { model.passGate() }
+            }
+            Screen.CheckResult -> {
+                onMain { model.addFreshEntropy() }
+                waitUntil("Add fresh entropy's new ceremony", START_SECONDS) { onMain { activity.shownScreen } == Screen.DeviceEntropy }
+                onMain {
+                    model.deviceEntropyDone()
+                    model.commitmentDone()
+                }
+                finishDice(activity, 99)
+                onMain {
+                    model.skip()
+                    model.skipConfirmed()
+                }
+            }
             Screen.Working -> onMain { model.work({ working.await(); Reply.Done(Unit) }) {} }
             Screen.Stop -> {
                 working.countDown()
-                waitUntil("the dice again, after the held call") { onMain { activity.shownScreen } == Screen.Dice }
+                waitUntil("the result again, after the held call") { onMain { activity.shownScreen } == Screen.CheckResult }
                 onMain { model.work<Unit>({ throw KcHalt() }) {} }
             }
         }
         return activity
+    }
+
+    /** On the dice, rolls faces through the model's pick and confirm, then Done, and waits for the check prompt (the real finish). */
+    private fun finishDice(activity: MainActivity, rolls: Int) {
+        onMain {
+            for (index in 0 until rolls) {
+                activity.model.dicePick.replace(DICE_KEYS[index % DICE_KEYS.length])
+                activity.model.confirmRoll()
+            }
+            activity.model.diceDone()
+        }
+        waitUntil("the check prompt after the dice's Done", START_SECONDS) { onMain { activity.shownScreen } == Screen.CheckPrompt }
     }
 
     /** A new MainActivity on its first screen, First launch, which shows before any core call. */
@@ -114,8 +167,8 @@ class CaptureTest {
     }
 
     /**
-     * For every screen id, in one activity walked through the ceremony with the phone offline (group
-     * 15): drawn, then black over the app's window in the shell's screencap and in
+     * For every screen id, in one activity walked through the ceremony with the phone offline (groups
+     * 15 and 16): drawn, then black over the app's window in the shell's screencap and in
      * UiAutomation.takeScreenshot(), FLAG_SECURE in the window's own flags, the root view opted out of
      * content capture (read back in-process, group 14), and SECURE on every window of the package in
      * dumpsys window windows, found by its owner line too (the owner line is shown to be read on this

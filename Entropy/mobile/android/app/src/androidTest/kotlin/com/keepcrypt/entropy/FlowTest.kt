@@ -1,20 +1,27 @@
 package com.keepcrypt.entropy
 
-import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.UiObject2
-import androidx.test.uiautomator.UiSelector
-import androidx.test.uiautomator.Until
 import com.keepcrypt.entropy.Capture.finish
 import com.keepcrypt.entropy.Capture.launch
 import com.keepcrypt.entropy.Capture.onMain
 import com.keepcrypt.entropy.Capture.pass
 import com.keepcrypt.entropy.Capture.probe
 import com.keepcrypt.entropy.Capture.shellText
+import com.keepcrypt.entropy.Ui.START_SECONDS
+import com.keepcrypt.entropy.Ui.await
+import com.keepcrypt.entropy.Ui.awaitText
+import com.keepcrypt.entropy.Ui.enabled
+import com.keepcrypt.entropy.Ui.find
+import com.keepcrypt.entropy.Ui.on
+import com.keepcrypt.entropy.Ui.roll
+import com.keepcrypt.entropy.Ui.stage
+import com.keepcrypt.entropy.Ui.stays
+import com.keepcrypt.entropy.Ui.tap
+import com.keepcrypt.entropy.Ui.text
+import com.keepcrypt.entropy.Ui.toHome
 import com.keepcrypt.entropy.ffi.Core
 import com.keepcrypt.entropy.ffi.Reply
 import com.keepcrypt.entropy.screens.DICE_ONLY
@@ -22,11 +29,9 @@ import com.keepcrypt.entropy.screens.MAX_ROLLS
 import com.keepcrypt.entropy.screens.Notice
 import com.keepcrypt.entropy.screens.SAFE_IF_EITHER
 import com.keepcrypt.entropy.screens.Screen
-import com.keepcrypt.entropy.screens.screenId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -36,7 +41,8 @@ import org.junit.runner.RunWith
  * Public screens' controls by their resource ids (Compose test tags, group 6) as a user would, and
  * reads what they show from the accessibility tree; the many rolls a minimum takes go through the
  * model's dice pick and confirmRoll, the entry points the pad and Confirm call (group 6, "Driving"),
- * with a few by tap around them. No seed is made (the dice screen's Done comes with commit 17). The
+ * with a few by tap around them (Ui, shared with CheckTest and SnapshotDrillTest). No seed is made
+ * here (the dice screen's Done and the collision check are CheckTest's and SnapshotDrillTest's). The
  * rolls are vectors/kcr.json's public gate seeds' (the new seed's 50 dice-50-words12's, mixed with the
  * phone's D; the dice-only seed's first 99 dice-99-words24's). Each test puts the phone's
  * airplane-mode and Wi-Fi settings back as they were.
@@ -216,92 +222,7 @@ class FlowTest {
         }
     }
 
-    /**
-     * A new MainActivity through First launch, the start-up self-test its Continue runs (lead decision
-     * M5-50) and Go offline's Start (the phone offline) to Home.
-     */
-    private fun toHome(): MainActivity {
-        val activity = launch()
-        on(activity, Screen.FirstLaunch)
-        tap("first_launch_continue")
-        on(activity, Screen.GoOffline, START_SECONDS)
-        await("the app reads the phone offline", 30) { onMain { activity.model.state.value.offline } }
-        tap("start")
-        on(activity, Screen.Home)
-        return activity
-    }
-
-    /** count rolls through the model's dice pick and confirmRoll, as the pad and Confirm call them, faces in pattern's order. */
-    private fun roll(activity: MainActivity, count: Int, pattern: String) {
-        onMain {
-            for (index in 0 until count) {
-                activity.model.dicePick.replace(pattern[index % pattern.length])
-                activity.model.confirmRoll()
-            }
-        }
-    }
-
-    /** Waits up to seconds for the activity to show screen, then for the screen to settle. */
-    private fun on(activity: MainActivity, screen: Screen, seconds: Int = 10) {
-        await("the app shows " + screenId(screen), seconds) { onMain { activity.shownScreen } == screen }
-        device.waitForIdle()
-    }
-
-    /** After a press that must do nothing: a moment for it to land, then the same screen. */
-    private fun stays(activity: MainActivity, screen: Screen, what: String) {
-        device.waitForIdle()
-        SystemClock.sleep(SETTLE_MS)
-        assertEquals(what + " left the screen", screen, onMain { activity.shownScreen })
-    }
-
-    /** The control or text with resource id tag, waited for up to 10 s. */
-    private fun find(tag: String): UiObject2 =
-        device.wait(Until.findObject(By.res(tag)), 10_000) ?: throw AssertionError("not on screen: " + tag)
-
-    /**
-     * Taps the control tag once it is on screen (find's 10 s), through a selector UI Automator resolves at
-     * the click: a UiObject2 found just before Compose redraws the screen goes stale and its click throws
-     * (run 39646201443: StaleObjectException on New seed right after Back returned to Home). The click's
-     * boolean says only whether an accessibility event followed it in time, which Compose's clicks do not
-     * always send (run 39649809912: false on taps that moved the screen on), so it is not read; every tap
-     * here is followed by a check of the screen it leads to, which is the proof it landed, and a control
-     * gone at the click throws UiObjectNotFoundException.
-     */
-    private fun tap(tag: String) {
-        find(tag)
-        device.findObject(UiSelector().resourceId(tag)).click()
-        device.waitForIdle()
-    }
-
-    private fun text(tag: String): String = find(tag).text
-
-    private fun enabled(tag: String): Boolean = find(tag).isEnabled
-
-    /** Waits up to 10 s for the node tag to show text. */
-    private fun awaitText(tag: String, text: String) {
-        val shown = device.wait(Until.hasObject(By.res(tag).text(text)), 10_000)
-        assertTrue(tag + " does not show " + text + " (it shows " + text(tag) + ")", shown == true)
-    }
-
-    private fun stage(activity: MainActivity): Stage =
-        onMain { ActivityLifecycleMonitorRegistry.getInstance().getLifecycleStageOf(activity) }
-
-    /** Waits up to seconds for condition, checked every 100 ms. */
-    private fun await(what: String, seconds: Int, condition: () -> Boolean) {
-        val end = SystemClock.elapsedRealtime() + seconds * 1_000L
-        while (!condition()) {
-            if (SystemClock.elapsedRealtime() > end) fail("timed out: " + what)
-            SystemClock.sleep(100)
-        }
-    }
-
     private companion object {
-        /** The start-up self-test's and a start's time limit (a translated library is slower; NativeTest's). */
-        const val START_SECONDS = 120
-
-        /** How long a press that must do nothing gets to land. */
-        const val SETTLE_MS = 500L
-
         /** vectors/kcr.json's dice-50-words12: 123456 repeated. */
         const val DICE_50_ROLLS = "123456"
 
