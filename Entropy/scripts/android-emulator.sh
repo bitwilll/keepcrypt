@@ -71,9 +71,10 @@
 # the leg's end, after the later checks ran; capture-control still in recents after pm clear, a
 # recording that ends before it is stopped, the app's window lit in the first-frame stream, and the
 # same with that stream carrying no frame after the curtain (only the second stream sees it) each
-# exit 1. On the 16 KB-page image: a leg with arm64-v8a listed passes, running NativeTest for x86_64
-# and arm64-v8a and naming armeabi-v7a as not listed; a page size of 4096, a failing NativeTest and
-# an install whose primaryCpuAbi stays x86_64 under --abi each exit 1. Too few arguments exit 2.
+# exit 1. On the 16 KB-page image: a leg with arm64-v8a listed passes, running NativeTest with the app
+# installed for x86_64 and again for arm64-v8a (the stand-in runner names the ABI of each run) and
+# naming armeabi-v7a as not listed; a page size of 4096, a failing NativeTest and an install whose
+# primaryCpuAbi stays x86_64 under --abi each exit 1. Too few arguments exit 2.
 # Exit 0 when every case behaves, 1 otherwise. The legs run at once; it takes about a minute.
 set -u
 unset CDPATH
@@ -88,9 +89,9 @@ selftest() {
   cp "$self/android-frames.py" "$st/scripts/android-frames.py" || exit 2
   cat > "$st/scripts/android-instrument.sh" <<'EOF' || exit 2
 #!/bin/sh
-# The selftest's stand-in instrument runner: CaptureTest reports the window's region; the class
-# named in KC_FAILCLASS fails.
-echo "instrument stub: $5 $6"
+# The selftest's stand-in instrument runner: it names the package, the class and the ABI the app was
+# last installed for; CaptureTest reports the window's region; the class named in KC_FAILCLASS fails.
+echo "instrument stub: $5 $6 abi=$(cat "$KC_STUB/abi" 2>/dev/null)"
 case $6 in *.CaptureTest) printf 'kc: region=0,48,720,1184
 kc: display=720x1280
 ' ;; esac
@@ -268,8 +269,9 @@ EOF
     "FAIL: emulator: api=31: shipping: a raw frame with the app's first screen up shows its window"
   expect 16k-pass 0 "probe: api=16k ro.product.cpu.abilist=x86_64,arm64-v8a; getconf PAGE_SIZE=16384" \
     "probe: api=16k app installed (x86_64): primaryCpuAbi=x86_64" \
-    "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.NativeTest" \
+    "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.NativeTest abi=x86_64" \
     "probe: api=16k app installed (arm64-v8a): primaryCpuAbi=arm64-v8a" \
+    "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.NativeTest abi=arm64-v8a" \
     "pass: api=16k native library: x86_64, arm64-v8a" \
     "probe: api=16k armeabi-v7a: not in ro.product.cpu.abilist (x86_64,arm64-v8a): not run here" \
     "emulator: api=16k: every check passed"
