@@ -1,8 +1,9 @@
 // :secure-ui (tasks/todo.md, M5 groups 4 and 14; MA:24; the re-plan for Compose Multiplatform):
 // Android only, SecureActivity, the base of the app's one activity, with its theme and backup
-// rules, and later the offline and capture monitors, with JVM tests. What both apps draw lives in
-// :screens (the first screen from commit 8q; later the Protected wrapper, timers, pads and the QR,
-// seal and braille drawing), which :capture-control draws without SecureActivity.
+// rules and, from commit 15, its reports of the app's comings and goings and of screen recordings,
+// and the offline monitor (OfflineMonitor.kt) with its JVM test. What both apps draw lives in
+// :screens (the first screen from commit 8q; the Protected wrapper, timers, pads and the QR, seal
+// and braille drawing helpers from commit 15), which :capture-control draws without SecureActivity.
 
 plugins {
     alias(libs.plugins.android.library)
