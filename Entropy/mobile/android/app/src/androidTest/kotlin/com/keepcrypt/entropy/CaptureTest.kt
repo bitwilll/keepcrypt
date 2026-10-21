@@ -32,7 +32,9 @@ import com.keepcrypt.entropy.Capture.shellText
 import com.keepcrypt.entropy.Capture.waitUntil
 import com.keepcrypt.entropy.Capture.windows
 import com.keepcrypt.entropy.ffi.KcHalt
+import com.keepcrypt.entropy.ffi.Mode
 import com.keepcrypt.entropy.ffi.Reply
+import com.keepcrypt.entropy.ffi.Words
 import com.keepcrypt.entropy.screens.Screen
 import com.keepcrypt.entropy.screens.screenId
 import java.util.concurrent.CountDownLatch
@@ -54,23 +56,45 @@ import org.junit.runner.RunWith
 class CaptureTest {
     private val pkg get() = Capture.instrumentation.targetContext.packageName
 
+    /** Holds the long call that keeps the self-test's screen up for its captures; released after them. */
+    private val selfTest = CountDownLatch(1)
+
     /** Holds the long call that keeps "Working..." up for its captures; released after them. */
     private val working = CountDownLatch(1)
 
+    /** The one activity the every-screen pass walks, from the self-test's screen to the stop screen. */
+    private var walk: MainActivity? = null
+
     /**
-     * Brings screen up. The when is exhaustive: a new screen without a way here fails to compile.
-     * "Working..." is a long call held on the worker, as the model makes every long call; the stop
-     * screen is the halt status as Core throws it, so this process's slot stays live for the tests
-     * after it (the model's own tests halt a real one).
+     * Brings screen up in the walk's one activity, from the screen before it in Screen's order (the
+     * ceremony's), through the model's entry points as the screens call them. The when is exhaustive:
+     * a new screen without a way here fails to compile, and one out of order finds the model on
+     * another screen, which ignores the press, so its drawn-screen proof times out. The self-test's
+     * screen and "Working..." are long calls held on the worker, as the model makes every long call
+     * (the real start-up self-test is over before a capture could start); the stop screen is the halt
+     * status as Core throws it, so this process's slot stays live for the tests after it (the model's
+     * own tests halt a real one). Home on needs the phone offline, which the pass sees to.
      */
-    private fun show(screen: Screen): MainActivity = when (screen) {
-        Screen.FirstLaunch -> launch()
-        Screen.Working -> started().also { activity ->
-            onMain { activity.model.work({ working.await(); Reply.Done(Unit) }) {} }
+    private fun show(screen: Screen): MainActivity {
+        val activity = if (screen == Screen.SelfTest) started().also { walk = it } else checkNotNull(walk)
+        val model = activity.model
+        when (screen) {
+            Screen.SelfTest -> onMain { model.work({ selfTest.await(); Reply.Done(Unit) }, busy = Screen.SelfTest) {} }
+            Screen.FirstLaunch -> selfTest.countDown()
+            Screen.GoOffline -> onMain { model.firstLaunchDone() }
+            Screen.Home -> onMain { model.startOffline() }
+            Screen.Length -> onMain { model.chooseMode(Mode.Mixed) }
+            Screen.DeviceEntropy -> onMain { model.chooseLength(Words.Twelve) }
+            Screen.Commitment -> onMain { model.deviceEntropyDone() }
+            Screen.Dice -> onMain { model.commitmentDone() }
+            Screen.Working -> onMain { model.work({ working.await(); Reply.Done(Unit) }) {} }
+            Screen.Stop -> {
+                working.countDown()
+                waitUntil("the dice again, after the held call") { onMain { activity.shownScreen } == Screen.Dice }
+                onMain { model.work<Unit>({ throw KcHalt() }) {} }
+            }
         }
-        Screen.Stop -> started().also { activity ->
-            onMain { activity.model.work<Unit>({ throw KcHalt() }) {} }
-        }
+        return activity
     }
 
     /** A new MainActivity past its start-up self-test, on its first screen. */
@@ -81,7 +105,8 @@ class CaptureTest {
     }
 
     /**
-     * For every screen id: drawn, then black over the app's window in the shell's screencap and in
+     * For every screen id, in one activity walked through the ceremony with the phone offline (group
+     * 15): drawn, then black over the app's window in the shell's screencap and in
      * UiAutomation.takeScreenshot(), FLAG_SECURE in the window's own flags, the root view opted out of
      * content capture (read back in-process, group 14), and SECURE on every window of the package in
      * dumpsys window windows, found by its owner line too (the owner line is shown to be read on this
@@ -89,6 +114,10 @@ class CaptureTest {
      */
     @Test
     fun everyScreenIsDrawnAndThenBlackInEveryCapture() {
+        Capture.whileOffline { walkEveryScreen() }
+    }
+
+    private fun walkEveryScreen() {
         for (screen in Screen.entries) {
             val activity = show(screen)
             proveDrawn(activity, screen)
@@ -122,9 +151,8 @@ class CaptureTest {
                 "${screenId(screen)}: drawn, then screencap and takeScreenshot black over the app's window; " +
                     "SECURE on all ${found.size} of its windows; no content capture",
             )
-            if (screen == Screen.Working) working.countDown()
-            finish(activity)
         }
+        finish(checkNotNull(walk))
     }
 
     /**

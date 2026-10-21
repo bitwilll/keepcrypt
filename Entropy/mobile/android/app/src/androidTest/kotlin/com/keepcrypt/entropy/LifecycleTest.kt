@@ -37,7 +37,8 @@ import org.junit.runner.RunWith
  * during the start-up self-test, and Wi-Fi comes on during a start. In each the main thread never
  * waits (the script's judge finds no not-responding window) and the session is gone: afterwards the
  * slot is at home, where only an empty slot takes the self-test (a session there would make that call
- * halt). And the ViewModel's end, when the activity finishes, empties the slot (CeremonyHolder's
+ * halt), and the screen is the start screen, Go offline (group 15), saying why where the plan says so.
+ * And the ViewModel's end, when the activity finishes, empties the slot (CeremonyHolder's
  * onCleared calls wipeAll). The ceremony is vectors/kcr.json's public gate seed dice-50-words12,
  * driven through Core on this thread while the model runs nothing, as NativeTest drives it; the long
  * calls go through the model, as its screens make them.
@@ -66,7 +67,7 @@ class LifecycleTest {
         val back = SystemClock.elapsedRealtime() - begun
         probe("backup scrypt: the app was left after $left ms; the reply came back after $back ms")
         assertFalse("the scrypt ended before the app was left, so no discard came during it", encrypted.get())
-        assertEquals(Screen.FirstLaunch, onMain { activity.model.state.value.screen })
+        assertEquals(Screen.GoOffline, onMain { activity.model.state.value.screen })
         assertEquals(Notice.Left, onMain { activity.model.state.value.notice })
         assertTrue("the slot is not at home: the session was not discarded", Core.selfTest() is Reply.Done)
         pass("left during a backup's scrypt: discarded at once, the reply discarded, the session gone, no ANR")
@@ -75,12 +76,12 @@ class LifecycleTest {
 
     /**
      * The app is started from the shell and left at once, so the leave comes during its start-up
-     * self-test or just after it, and the screen it leaves behind says which: "Working..." when the
-     * leave discarded the self-test (it shows until a return runs the self-test again), the first screen
-     * when the self-test had passed. Either way, back in the app, the self-test has passed and the slot
-     * is empty. The pass line names the case: only "during" is the discard during the self-test on the
-     * phone (the JVM test leavingDuringTheStartUpSelfTestRunsItAgainOnTheNextReturn holds that path on
-     * every run).
+     * self-test or just after it, and the screen it leaves behind says which: the self-test's screen
+     * when the leave discarded the self-test (it shows until a return runs the self-test again), the
+     * first screen when the self-test had passed. Either way, back in the app, the self-test has passed
+     * and the slot is empty. The pass line names the case: only "during" is the discard during the
+     * self-test on the phone (the JVM test leavingDuringTheStartUpSelfTestRunsItAgainOnTheNextReturn
+     * holds that path on every run).
      */
     @Test
     fun leavingDuringTheStartUpSelfTestLeavesNoSession() {
@@ -98,10 +99,10 @@ class LifecycleTest {
         }
         val activity = found!!
         val away = onMain { activity.model.state.value.screen }
-        val during = away == Screen.Working
+        val during = away == Screen.SelfTest
         probe(
             "start-up self-test: the app was left ${SystemClock.elapsedRealtime() - begun} ms after its start; " +
-                "away it shows ${screenId(away)} (working: the self-test had not passed)",
+                "away it shows ${screenId(away)} (self_test: the self-test had not passed)",
         )
         shellText("am start -n " + component)
         await("the first screen after the return", START_SECONDS) {
@@ -132,19 +133,15 @@ class LifecycleTest {
     }
 
     /**
-     * Airplane mode on and Wi-Fi off, then Wi-Fi on while a start waits on the worker: the offline
-     * monitor's report discards at once; the start, let go after that, reaches core after the discard,
-     * and the model discards what it made again (a start takes well under the time Wi-Fi takes to come
-     * on, so the call is held for the switch). The phone's settings are put back after it.
+     * Airplane mode on and Wi-Fi off (Capture.whileOffline), then Wi-Fi on while a start waits on the
+     * worker: the offline monitor's report discards at once; the start, let go after that, reaches core
+     * after the discard, and the model discards what it made again (a start takes well under the time
+     * Wi-Fi takes to come on, so the call is held for the switch). The phone's settings are put back
+     * after it.
      */
     @Test
     fun wifiComingOnDuringAStartDiscardsIt() {
-        val airplane = shellText("settings get global airplane_mode_on")
-        val wifi = shellText("settings get global wifi_on")
-        probe("before the test: airplane_mode_on=$airplane, wifi_on=$wifi")
-        try {
-            shellText("cmd connectivity airplane-mode enable")
-            shellText("cmd wifi set-wifi-enabled disabled")
+        Capture.whileOffline {
             val activity = launch()
             await("the first screen", START_SECONDS) { onMain { activity.shownScreen } == Screen.FirstLaunch }
             probe("offline: airplane_mode_on=${settings("airplane_mode_on")}, wifi_on=${settings("wifi_on")}")
@@ -164,15 +161,12 @@ class LifecycleTest {
             await("the app reads Wi-Fi on", 30) { !onMain { activity.model.state.value.offline } }
             probe("online: airplane_mode_on=${settings("airplane_mode_on")}, wifi_on=${settings("wifi_on")}")
             release.countDown()
-            await("the start screen", 30) { onMain { activity.model.state.value.screen } == Screen.FirstLaunch }
+            await("the start screen", 30) { onMain { activity.model.state.value.screen } == Screen.GoOffline }
             assertFalse("the start's session was kept", kept.get())
             assertEquals(Notice.Offline, onMain { activity.model.state.value.notice })
             assertTrue("the slot is not at home: the session was not discarded", Core.selfTest() is Reply.Done)
             pass("Wi-Fi on during a start: discarded at once, the late start discarded again, the session gone, no ANR")
             finish(activity)
-        } finally {
-            shellText("cmd connectivity airplane-mode " + (if (airplane == "1") "enable" else "disable"))
-            shellText("cmd wifi set-wifi-enabled " + (if (wifi == "0" || wifi == "3") "disabled" else "enabled"))
         }
     }
 
@@ -233,7 +227,7 @@ class LifecycleTest {
     private fun stage(activity: Activity): Stage =
         onMain { ActivityLifecycleMonitorRegistry.getInstance().getLifecycleStageOf(activity) }
 
-    private fun settings(name: String): String = shellText("settings get global " + name)
+    private fun settings(name: String): String = Capture.globalSetting(name)
 
     /** Waits up to seconds for condition, checked every 100 ms. */
     private fun await(what: String, seconds: Int, condition: () -> Boolean) {

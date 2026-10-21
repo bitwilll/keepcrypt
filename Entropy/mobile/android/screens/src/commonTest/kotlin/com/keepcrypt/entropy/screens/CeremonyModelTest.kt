@@ -19,12 +19,13 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 
 /**
- * Every CeremonyModel transition (tasks/todo.md, M5 group 14), over the real slot through Core and the
- * host library, with the long calls held on the test's worker so the test acts while "Working..."
- * shows. Whether the slot holds a session is read from the slot itself: the device leg's progress is
- * offered only while one is collecting, and the self-test only at home, empty (each other call halts).
- * Each test leaves the slot at home (wipeAll after it). A halt of the real slot latches it for the
- * process, so that test is CeremonyModelHaltTest, in a JVM of its own.
+ * Every CeremonyModel transition of commit 15 (tasks/todo.md, M5 group 14), over the real slot through
+ * Core and the host library, with the long calls held on the test's worker so the test acts while
+ * "Working..." shows; the screens' own transitions (group 15) are StartScreensTest's. Whether the slot
+ * holds a session is read from the slot itself: the dice counts are offered only while one is
+ * rolling, and the self-test only at home, empty (each other call halts). A discard's start screen is
+ * Go offline. Each test leaves the slot at home (wipeAll after it). A halt of the real slot latches it
+ * for the process, so that test is CeremonyModelHaltTest, in a JVM of its own.
  */
 class CeremonyModelTest {
     @AfterTest
@@ -32,9 +33,9 @@ class CeremonyModelTest {
         assertTrue(Core.wipeAll() is Reply.Done)
     }
 
-    /** The slot holds a session, collecting. */
+    /** The slot holds a session, rolling. */
     private fun assertSessionHeld(message: String) {
-        assertTrue(Core.deviceProgress() is Reply.Done, message)
+        assertTrue(Core.diceProgress() is Reply.Done, message)
     }
 
     /** The slot is at home and empty: no session. */
@@ -42,23 +43,21 @@ class CeremonyModelTest {
         assertTrue(Core.selfTest() is Reply.Done, message)
     }
 
-    /** A model through its start-up, with a session started by its own long call. */
+    /** A model at Home, with a dice-only session started from Length by its own long call: the dice. */
     private fun withSession(): Rig {
-        val rig = Rig().startUp()
-        rig.model.start(Words.Twelve, Mode.DiceOnly)
-        rig.worker.run()
-        assertEquals(Screen.FirstLaunch, rig.screen, "a long call that enters no screen returns to its own")
+        val rig = Rig().toHome().begin(Mode.DiceOnly, Words.Twelve)
+        assertEquals(Screen.Dice, rig.screen, "a dice-only start opens the dice")
         assertSessionHeld("the start's session")
         return rig
     }
 
     @Test
-    fun theStartUpSelfTestRunsBehindWorkingThenTheFirstScreenShows() {
+    fun theStartUpSelfTestRunsBehindItsScreenThenTheFirstScreenShows() {
         val rig = Rig()
-        assertEquals(Screen.Working, rig.screen)
+        assertEquals(Screen.SelfTest, rig.screen)
         assertEquals(0, rig.worker.waiting, "nothing runs before the app's first start")
         rig.model.appReturned()
-        assertEquals(Screen.Working, rig.screen)
+        assertEquals(Screen.SelfTest, rig.screen)
         assertEquals(1, rig.worker.waiting, "the self-test, a long call")
         assertTrue(rig.model.state.value.offline, "the offline monitor is read on the start")
         rig.worker.run()
@@ -71,18 +70,22 @@ class CeremonyModelTest {
     @Test
     fun aPressDuringWorkingGoesNowhere() {
         val rig = withSession()
-        rig.model.work({ Core.commit() }) {}
+        rig.model.work({ Core.undoRoll() }) {}
         assertEquals(Screen.Working, rig.screen)
         assertEquals(1, rig.worker.waiting)
         rig.clock.now = Timers.WIPE_MILLIS
         rig.model.input()
         rig.model.dismissOverlay()
         rig.model.passGate()
+        rig.model.back()
+        rig.model.dicePick.replace('2')
+        rig.model.confirmRoll()
         rig.model.tick()
         assertEquals(Screen.Working, rig.screen, "nothing leaves Working but its reply")
         assertNull(rig.model.state.value.overlay)
         rig.worker.run()
-        assertEquals(Screen.FirstLaunch, rig.screen)
+        assertEquals(Screen.Dice, rig.screen, "a long call that enters no screen returns to its own")
+        assertEquals(0, rig.model.state.value.dice?.rolls, "the confirm during Working pushed nothing")
         // The presses reached no timer: 10 minutes after the last input, the idle wipe comes.
         rig.model.tick()
         assertEquals(Notice.Idle, rig.model.state.value.notice)
@@ -101,7 +104,7 @@ class CeremonyModelTest {
         rig.worker.run()
         // The commit was never made (at home it would have halted the slot); the start screen says why.
         val state = rig.model.state.value
-        assertEquals(Screen.FirstLaunch, state.screen)
+        assertEquals(Screen.GoOffline, state.screen)
         assertEquals(Notice.Left, state.notice)
         assertEquals(Overlay.Cover, state.overlay, "away from the app the cover stays up")
         assertNoSession("no call halted the slot")
@@ -117,7 +120,7 @@ class CeremonyModelTest {
         }) { fail("a discarded call gives no value") }
         rig.worker.run()
         val state = rig.model.state.value
-        assertEquals(Screen.FirstLaunch, state.screen)
+        assertEquals(Screen.GoOffline, state.screen)
         assertEquals(Notice.Offline, state.notice)
         assertFalse(state.offline)
         assertNull(state.overlay)
@@ -130,7 +133,7 @@ class CeremonyModelTest {
         // Discarded with no discard of the model's: the start screen, with no reason to give.
         rig.model.work<Unit>({ Reply.Discarded }) { fail("a discarded call gives no value") }
         rig.worker.run()
-        assertEquals(Screen.FirstLaunch, rig.screen)
+        assertEquals(Screen.GoOffline, rig.screen)
         assertNull(rig.model.state.value.notice)
     }
 
@@ -146,7 +149,7 @@ class CeremonyModelTest {
         }) { made = true }
         rig.worker.run()
         assertFalse(made, "a start after the discard is no ceremony")
-        assertEquals(Screen.FirstLaunch, rig.screen)
+        assertEquals(Screen.GoOffline, rig.screen)
         assertEquals(Notice.Left, rig.model.state.value.notice)
         assertNoSession("the late start's session was discarded again")
     }
@@ -171,12 +174,13 @@ class CeremonyModelTest {
 
     @Test
     fun goingOnlineDuringALongCallDiscardsIt() {
-        val rig = Rig().startUp()
-        rig.model.start(Words.Twelve, Mode.DiceOnly)
+        val rig = Rig().toHome()
+        rig.model.chooseMode(Mode.DiceOnly)
+        rig.model.chooseLength(Words.Twelve)
         rig.offline.set(false)
         assertEquals(Screen.Working, rig.screen)
         rig.worker.run()
-        assertEquals(Screen.FirstLaunch, rig.screen)
+        assertEquals(Screen.GoOffline, rig.screen)
         assertEquals(Notice.Offline, rig.model.state.value.notice)
         assertNoSession("the start was never made")
         // With no session the timers have nothing to wipe.
@@ -190,7 +194,7 @@ class CeremonyModelTest {
         val rig = Rig()
         rig.model.appReturned()
         rig.offline.set(false)
-        assertEquals(Screen.Working, rig.screen)
+        assertEquals(Screen.SelfTest, rig.screen)
         rig.worker.run()
         assertEquals(Screen.FirstLaunch, rig.screen, "the self-test's reply was kept")
         assertEquals(1, rig.worker.ran, "one self-test: going online before it passed discarded nothing")
@@ -206,7 +210,7 @@ class CeremonyModelTest {
         val rig = withSession()
         rig.offline.set(false)
         val state = rig.model.state.value
-        assertEquals(Screen.FirstLaunch, state.screen)
+        assertEquals(Screen.GoOffline, state.screen)
         assertEquals(Notice.Offline, state.notice)
         assertNull(state.overlay)
         assertNoSession("going online discarded the session")
@@ -224,7 +228,7 @@ class CeremonyModelTest {
         assertSessionHeld("leaving a Public screen keeps the session")
         rig.offline.set(false)
         val state = rig.model.state.value
-        assertEquals(Screen.FirstLaunch, state.screen)
+        assertEquals(Screen.GoOffline, state.screen)
         assertEquals(Notice.Offline, state.notice)
         assertEquals(Overlay.Cover, state.overlay, "away from the app the cover stays up")
         assertNoSession("going online away from the app discarded the session")
@@ -239,7 +243,7 @@ class CeremonyModelTest {
         rig.clock.now = 30_000
         rig.model.appReturned()
         val state = rig.model.state.value
-        assertEquals(Screen.FirstLaunch, state.screen)
+        assertEquals(Screen.GoOffline, state.screen)
         assertEquals(Notice.Offline, state.notice)
         assertFalse(state.offline)
         assertNoSession("the return read the phone online and discarded the session")
@@ -251,7 +255,7 @@ class CeremonyModelTest {
         rig.model.appReturned()
         rig.model.appLeft()
         rig.worker.run()
-        assertEquals(Screen.Working, rig.screen, "the self-test's reply was discarded, so it has not passed")
+        assertEquals(Screen.SelfTest, rig.screen, "the self-test's reply was discarded, so it has not passed")
         assertEquals(0, rig.worker.waiting, "nothing runs while the app is away")
         rig.model.appReturned()
         assertEquals(1, rig.worker.waiting, "the self-test again")
@@ -265,7 +269,7 @@ class CeremonyModelTest {
         val rig = withSession()
         rig.clock.now = 1_000
         rig.model.appLeft()
-        assertEquals(Screen.FirstLaunch, rig.screen)
+        assertEquals(Screen.Dice, rig.screen)
         assertEquals(Overlay.Cover, rig.model.state.value.overlay)
         assertNull(rig.model.state.value.notice)
         assertSessionHeld("leaving a Public screen keeps the session")
@@ -351,7 +355,7 @@ class CeremonyModelTest {
         rig.model.appLeft()
         assertNoSession("the next stop was leaving: the discard came at once")
         rig.worker.run()
-        assertEquals(Screen.FirstLaunch, rig.screen)
+        assertEquals(Screen.GoOffline, rig.screen)
         assertEquals(Notice.Left, rig.model.state.value.notice)
     }
 
@@ -381,6 +385,8 @@ class CeremonyModelTest {
         rig.offline.set(false)
         rig.model.input()
         rig.model.dismissOverlay()
+        rig.model.back()
+        rig.model.touched(1)
         rig.clock.now = 10 * Timers.WIPE_MILLIS
         rig.model.tick()
         assertEquals(Screen.Stop, rig.screen)

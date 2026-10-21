@@ -18,13 +18,21 @@ import kotlinx.coroutines.launch
  * layout): it outlives a configuration change but never the activity's finish, and keeps nothing in
  * saved state. Its end (onCleared) wipes everything the slot holds. It gives the model the phone's seam
  * ends (lead decision M5-20): the main thread's scope, Dispatchers.Default for long calls,
- * SystemClock.elapsedRealtime() for every timer, secure-ui's offline monitor and the flavour's
- * testRegistry flag; and it runs the model's timers in that scope.
+ * SystemClock.elapsedRealtime() for every timer, secure-ui's offline monitor, the phone's motion
+ * (PhoneMotion, the accelerometer and gyroscope for Device entropy) and the flavour's testRegistry
+ * flag; and it runs the model's timers in that scope.
  */
 class CeremonyHolder(application: Application) : AndroidViewModel(application) {
     private val scope = CoroutineScope(Job() + Dispatchers.Main.immediate)
 
-    val model = CeremonyModel(scope, Dispatchers.Default, ElapsedRealtime, Offline(SystemOffline(application)), TEST_REGISTRY)
+    val model = CeremonyModel(
+        scope,
+        Dispatchers.Default,
+        ElapsedRealtime,
+        Offline(SystemOffline(application)),
+        PhoneMotion(application),
+        TEST_REGISTRY,
+    )
 
     init {
         scope.launch { model.runTimers() }
@@ -39,11 +47,13 @@ class CeremonyHolder(application: Application) : AndroidViewModel(application) {
 /** The phone's monotonic clock: it counts deep sleep and never follows the wall clock. */
 private object ElapsedRealtime : MonotonicClock {
     override fun nowMillis(): Long = SystemClock.elapsedRealtime()
+
+    override fun nowNanos(): Long = SystemClock.elapsedRealtimeNanos()
 }
 
 /** secure-ui's offline monitor as the model's seam. */
 private class Offline(private val system: SystemOffline) : OfflineMonitor {
-    override fun start(report: (offline: Boolean) -> Unit) {
+    override fun start(report: (airplaneMode: Boolean, wifiOff: Boolean) -> Unit) {
         system.start(report)
     }
 

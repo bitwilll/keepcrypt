@@ -2,6 +2,7 @@ package com.keepcrypt.entropy
 
 import android.os.Bundle
 import android.os.Process
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -15,11 +16,14 @@ import com.keepcrypt.entropy.screens.Screens
 import com.keepcrypt.entropy.secure.SecureActivity
 
 /**
- * The app's one activity (tasks/todo.md, M5 groups 4, 13 and 14), under SecureActivity's protection:
- * the shared screens over the ceremony model, which CeremonyHolder keeps across configuration
- * changes. Each start runs the real self-test through the bridge first (the model's start-up, behind
- * "Working..."); the app's comings and goings and the recording reports go to the model. Compose
- * test tags are exposed as resource ids, so UI Automator finds Public screens by id (group 6).
+ * The app's one activity (tasks/todo.md, M5 groups 4, 13, 14 and 15), under SecureActivity's
+ * protection: the shared screens over the ceremony model, which CeremonyHolder keeps across
+ * configuration changes. Each start runs the real self-test through the bridge first (the model's
+ * start-up, behind the self-test's screen); the app's comings and goings and the recording reports go
+ * to the model, and so does the system Back, always (the model goes back only where nothing is lost,
+ * and otherwise does nothing, so Back never leaves a ceremony or the app). Go offline's button opens
+ * the airplane-mode settings through AirplaneModeSettings. Compose test tags are exposed as resource
+ * ids, so UI Automator finds Public screens by id (group 6).
  */
 class MainActivity : SecureActivity() {
     /**
@@ -37,9 +41,18 @@ class MainActivity : SecureActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         model = ViewModelProvider(this)[CeremonyHolder::class.java].model
+        onBackPressedDispatcher.addCallback(
+            this,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    model.back()
+                }
+            },
+        )
+        val airplaneSettings = AirplaneModeSettings(this)
         setContent {
             Box(Modifier.semantics { testTagsAsResourceId = true }) {
-                Screens(model, onClose = this@MainActivity::closeApp, onShown = { shownScreen = it })
+                Screens(model, airplaneSettings, onClose = this@MainActivity::closeApp, onShown = { shownScreen = it })
             }
         }
     }

@@ -24,7 +24,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 
 /**
- * The capture harness's tools (tasks/todo.md, M5 group 6), shared by CaptureTest and ControlTest.
+ * The capture harness's tools (tasks/todo.md, M5 group 6), shared by CaptureTest and ControlTest, and
+ * by the other instrumented tests (the launch, the shell, the waits and the offline block).
  * Every capture is the shell's (UiAutomation.executeShellCommand and executeShellCommandRwe run as the
  * shell user, which lacks CAPTURE_BLACKOUT_CONTENT, as adb does; no root) or
  * UiAutomation.takeScreenshot(), read into memory and never written to a file. Values go back to
@@ -358,6 +359,34 @@ internal object Capture {
     /** dumpsys window's focus lines, for the record. */
     private fun focus(): String =
         shellText("dumpsys window").lines().filter { it.contains("mCurrentFocus=") }.joinToString("; ") { it.trim() }
+
+    /**
+     * block's value, run with the phone offline as Q57 wants it (airplane mode on, then Wi-Fi off,
+     * switched through the shell's cmd as the system's own toggles switch them, and read back from
+     * the settings before block runs); then both settings are put back as they were, whatever block
+     * did with them (LifecycleTest, CaptureTest and FlowTest, group 15).
+     */
+    fun <T> whileOffline(block: () -> T): T {
+        val airplane = shellText("settings get global airplane_mode_on")
+        val wifi = shellText("settings get global wifi_on")
+        probe("before the offline block: airplane_mode_on=$airplane, wifi_on=$wifi")
+        return try {
+            shellText("cmd connectivity airplane-mode enable")
+            shellText("cmd wifi set-wifi-enabled disabled")
+            val end = SystemClock.elapsedRealtime() + 30_000
+            while (!(globalSetting("airplane_mode_on") == "1" && globalSetting("wifi_on") in listOf("0", "3"))) {
+                if (SystemClock.elapsedRealtime() > end) fail("timed out: the phone going offline")
+                SystemClock.sleep(100)
+            }
+            block()
+        } finally {
+            shellText("cmd connectivity airplane-mode " + (if (airplane == "1") "enable" else "disable"))
+            shellText("cmd wifi set-wifi-enabled " + (if (wifi == "0" || wifi == "3") "disabled" else "enabled"))
+        }
+    }
+
+    /** A global setting as the shell reads it. */
+    fun globalSetting(name: String): String = shellText("settings get global " + name)
 
     /** block's value, computed on the main thread. */
     @Suppress("UNCHECKED_CAST")

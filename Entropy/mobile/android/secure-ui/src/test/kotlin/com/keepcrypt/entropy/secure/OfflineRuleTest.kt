@@ -27,4 +27,14 @@ class OfflineRuleTest {
         assertFalse(isOffline(1, -1))
         assertFalse(isOffline(1, 4))
     }
+
+    /** Go offline shows the two states apart (group 15): each part of the rule on its own setting. */
+    @Test
+    fun eachStateIsReadApart() {
+        assertTrue(isAirplaneModeOn(1))
+        for (value in listOf(-1, 0, 2)) assertFalse("airplane mode $value", isAirplaneModeOn(value))
+        assertTrue(isWifiOff(0))
+        assertTrue(isWifiOff(3))
+        for (value in listOf(-1, 1, 2, 4)) assertFalse("Wi-Fi $value", isWifiOff(value))
+    }
 }

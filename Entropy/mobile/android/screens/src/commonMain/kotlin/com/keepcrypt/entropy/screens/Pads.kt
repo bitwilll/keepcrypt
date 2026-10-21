@@ -12,9 +12,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -183,8 +185,14 @@ fun keyLabel(key: Char): String = if (key == ' ') "space" else key.toString()
 @Composable
 private fun Key(label: String, enabled: Boolean, sensitive: Boolean, press: () -> Unit) {
     val framed = Modifier.padding(3.dp).size(40.dp).border(1.dp, if (enabled) Color.White else Color.Gray)
-    // Sensitive: the key's semantics are its role alone, so its press says nothing about the key.
-    val described = if (sensitive) framed.clearAndSetSemantics { role = Role.Button } else framed
+    // Sensitive: the key's semantics are its role alone, so its press says nothing about the key. A
+    // Public key (the dice and the go-ahead code) has its label as its TalkBack label, the button role
+    // and a test tag, key_ and its label, for UI Automator (group 15's flow tests).
+    val described = if (sensitive) {
+        framed.clearAndSetSemantics { role = Role.Button }
+    } else {
+        framed.semantics { role = Role.Button }.testTag("key_$label")
+    }
     Box(described.clickable(enabled = enabled, onClick = press), contentAlignment = Alignment.Center) {
         BasicText(label, style = TextStyle(color = if (enabled) Color.White else Color.Gray, fontSize = 18.sp))
     }
