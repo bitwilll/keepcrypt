@@ -3,6 +3,7 @@ package com.keepcrypt.entropy.ffi
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -33,6 +34,16 @@ internal class Body {
  * its layout halts, which WireMalformedTest proves in a process of its own.
  */
 class WireTest {
+    /** Core's status byte, before any layout: the replies WireMalformedTest's cases each break. */
+    @Test
+    fun aReplyIsItsStatusByteThenItsLayout() {
+        assertEquals(5, done(Core.decode(byteArrayOf(0, 5)) { it.byte() }))
+        done(Core.decode(byteArrayOf(0)) { })
+        assertEquals(Refusal.WrongCode, refused(Core.decode(byteArrayOf(1, 2)) { }))
+        assertIs<Reply.Discarded>(Core.decode(byteArrayOf(2)) { })
+        assertFailsWith<KcHalt> { Core.decode(byteArrayOf(3)) { } }
+    }
+
     @Test
     fun theSealCardIsSealJsonsVector1() {
         val vector = vector("seal.json")["vectors"].list[0]
