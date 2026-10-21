@@ -26,11 +26,12 @@
 #   scripts/banned-api-check.sh --os-config OS_DIR
 #                                           the text-only checks of the image's configuration in
 #                                           OS_DIR (pi/os; see "OS configuration mode" below)
-#   scripts/banned-api-check.sh --apk VARIANT APK EXPECTED_DIR MERGER_REPORT CERT_SHA256
+#   scripts/banned-api-check.sh --apk VARIANT APK EXPECTED_DIR MERGER_REPORT CERT_SHA256 JNILIBS_DIR
 #                                           check and scan a signed Android APK against the reviewed
 #                                           files in EXPECTED_DIR (mobile/android/expected), its
-#                                           manifest-merger report and the run's signing certificate
-#                                           (see "APK mode" below)
+#                                           manifest-merger report, the run's signing certificate and
+#                                           the libraries scripts/android-rust.sh built and scanned
+#                                           into JNILIBS_DIR (see "APK mode" below)
 #   scripts/banned-api-check.sh --selftest-apk
 #                                           the APK check's refusals and rules on stub tools and stub
 #                                           APKs, with no Android SDK (see "APK selftest mode" below)
@@ -259,14 +260,17 @@
 # it must refuse. VARIANT is one of :app's flavours, shipping or withTestRegistry; APK the signed
 # APK; EXPECTED_DIR mobile/android/expected; MERGER_REPORT the Android Gradle plugin's
 # manifest-merger report of that variant's release build; CERT_SHA256 the SHA-256 of the run's
-# throwaway signing certificate (64 lowercase hex digits). aapt2, dexdump, zipalign and apksigner
-# (the build-tools) and llvm-nm (the NDK's) come from PATH, and python3 -I reads the APK with its
-# zipfile module (the Python half, apk_py below). Prints the APK's SHA-256 and its manifest
-# summary, then "<Category>: <name>: <detail>" per hit and a one-line count; exit 0 clean, 1 hits,
-# 2 anything that cannot be read or run. Nothing passes vacuously: a bad argument, a missing or
-# empty expected file or report, a tool missing from PATH or failing, a dump or report line the
-# parsers cannot read, a malformed native-libs.txt line, and dex files in which dexdump lists no
-# com.keepcrypt class are each exit 2.
+# throwaway signing certificate (64 lowercase hex digits); JNILIBS_DIR the variant's
+# mobile/android/app/src/VARIANT/jniLibs, where scripts/android-rust.sh copied the libkeepcrypt.so
+# it built and scanned for each ABI (M5 commit 14, lead decision M5-9). aapt2, dexdump, zipalign and
+# apksigner (the build-tools) and llvm-nm and llvm-readobj (the NDK's) come from PATH, and python3 -I
+# reads the APK with its zipfile module (the Python half, apk_py below). Prints the APK's SHA-256
+# and its manifest summary, then "<Category>: <name>: <detail>" per hit and a one-line count; exit
+# 0 clean, 1 hits, 2 anything that cannot be read or run. Nothing passes vacuously: a bad argument,
+# a missing or empty expected file or report, a missing JNILIBS_DIR or scanned copy, a tool missing
+# from PATH or failing, a dump or report line the parsers cannot read, a malformed native-libs.txt
+# line or one that does not list libkeepcrypt.so for each ABI, and dex files in which dexdump lists
+# no com.keepcrypt class are each exit 2.
 # The manifest summary, defined here once, one fact per line: from aapt2 dump badging, package
 # NAME, versionName V, minSdk N and targetSdk N; from dump permissions, permission NAME (declared)
 # and uses-permission NAME (used; with maxSdkVersion=N when set), sorted, and any line of another
@@ -295,19 +299,35 @@
 #              hit naming them). And every line of MERGER_REPORT that names INTERNET: no network
 #              permission is ever stripped.
 #   NativeLib  every entry under lib/ is lib/<abi>/<name>.so for one of MA:23's three ABIs
-#              (arm64-v8a, armeabi-v7a, x86_64; lead decision M5-10); no libkeepcrypt.so at all
-#              (before M5 commit 14, which brings the Rust libraries); every other one an ELF,
-#              listed by ABI, name and SHA-256 in EXPECTED_DIR/native-libs.txt ("<abi> <name>
-#              <sha256>" lines: graphics-path's), of its ABI's ELF class and machine, and, when
-#              64-bit, with every LOAD segment aligned to a multiple of 0x4000 (16 KB pages); every
-#              listed one is in the APK; and no ELF anywhere else in it.
-#   Format, Symbol
-#              every native library that passed NativeLib goes through the image scan's elf_check
-#              (llvm-nm -D: dynamic symbols listed, no banned RNG import, no rand-crate or
-#              getrandom-fallback symbol).
+#              (arm64-v8a, armeabi-v7a, x86_64; lead decision M5-10), an ELF, listed in
+#              EXPECTED_DIR/native-libs.txt, of its ABI's ELF class and machine, and, when 64-bit,
+#              with every LOAD segment aligned to a multiple of 0x4000 (16 KB pages); every listed
+#              one is in the APK; and no ELF anywhere else in it. native-libs.txt lists a third
+#              party's library by "<abi> <name> <sha256>" (graphics-path's), whose SHA-256 the
+#              entry must have, and ours by "<abi> libkeepcrypt.so android-rust.sh", for each of
+#              the three ABIs: that entry must be stored (extractNativeLibs=false) and hold exactly
+#              the bytes of JNILIBS_DIR/<abi>/libkeepcrypt.so, so the library the APK ships is the
+#              one android-rust.sh's release-artifact scan passed. Each libkeepcrypt.so also
+#              exports, by llvm-nm -D --defined-only, exactly JNI_OnLoad and
+#              Java_com_keepcrypt_entropy_ffi_Native_call beside secp256k1-sys 0.10.1's own four
+#              (lead decisions M5-21 and M5-40, as entropy-ci.yml's cross legs check them), and
+#              needs libc.so, with at most libm.so and libdl.so beside it (DT_NEEDED, llvm-readobj
+#              --needed-libs). In the test-registry APK each must hold its registry marker and the
+#              test key (a NativeLib hit for each one missing: the library is not that build's).
+#   Format, Symbol, StdRandom, OSImport
+#              every libkeepcrypt.so goes through the whole release-artifact scan for its ABI's
+#              target, as the cross legs scan the cargo output (artifact_file: a .symtab, no RNG
+#              symbol, no std random-key path, the getrandom import), and every other native
+#              library that passed NativeLib through the image scan's elf_check (llvm-nm -D:
+#              dynamic symbols listed, no banned RNG import, no rand-crate or getrandom-fallback
+#              symbol).
 #   Marker, TestKey
 #              the three markers and the test key in the APK's own bytes (its stored entries, the
 #              zip comment) and in every entry, decompressed: dex files, resources, libraries.
+#              libkeepcrypt.so is searched once, as the library, under the artifact scan (its
+#              stored bytes are blanked in the APK's own), where the test-registry APK's must hold
+#              exactly its registry marker and the test key, which are then no hit, and the
+#              shipping APK's neither.
 #   DexRef     dexdump -d of every .dex entry: in each class whose descriptor starts
 #              Lcom/keepcrypt/, any line naming java.util.Random, the kotlin.random or
 #              java.util.random package, ThreadLocalRandom, SplittableRandom,
@@ -321,9 +341,11 @@
 #              certificate SHA-256 is CERT_SHA256.
 #
 # APK selftest mode (tasks/todo.md, M5 group 5): CI's gates job runs it with no Android SDK, only
-# sh, python3's standard library and stub aapt2, dexdump, zipalign, apksigner and llvm-nm, which
-# print canned output (a stub dex file holds the text dexdump would print for it; a stub library is
-# an ELF header with its LOAD segments and the NM:<name> words the stub llvm-nm lists). The base
+# sh, python3's standard library and stub aapt2, dexdump, zipalign, apksigner, llvm-nm and
+# llvm-readobj, which print canned output (a stub dex file holds the text dexdump would print for
+# it; a stub library is an ELF header with its LOAD segments and the NM:<name> (undefined),
+# DEF:<name> (defined) and NEEDED:<library> words the stub llvm-nm and llvm-readobj list, and
+# NOSYMTAB when it has no .symtab). The base
 # case is aapt2's three dumps of the shipping APK (scripts/testdata/apk/, from the Android run
 # 39062895784), a stand-in merger report that removes the androidx.startup provider, the run's
 # signer and a stub APK laid out as the real one; it must pass against the committed
@@ -335,16 +357,23 @@
 # summary that differs from the expected one, a changed appComponentFactory, an added Application
 # class and an added activity attribute (each against the committed summary), INTERNET in the
 # merger report; an unlisted .so, a 4 KB-aligned and a 0x6000-aligned 64-bit .so, a 64-bit .so with
-# no LOAD segment, another SHA-256, a listed .so missing, libkeepcrypt.so, an x86 .so, a .so for
-# another machine, a .so that is not an ELF, a truncated one, one in a subdirectory of lib/<abi>/,
-# an ELF outside lib/, a .so importing rand; a marker in a dex file, the test key in
-# resources.arsc, a marker in the zip comment, a reference from a com.keepcrypt class to each name
-# of dex_banned (a library class's passes in the base case); zipalign failing, another signer, a
-# second signer beside the run's and apksigner failing (the stub dexdump, zipalign and apksigner
-# refuse to run without --apk's exact arguments). Its refusals must exit 2: bad usage, a bad VARIANT or CERT_SHA256, a missing
-# expected directory, expected file, report or APK, no aapt2 on PATH, a malformed native-libs.txt
-# line and no com.keepcrypt class. Prints PASS or FAIL per case and a count; exit 0 all passed, 1
-# not.
+# no LOAD segment, another SHA-256, a listed .so missing, an x86 .so, a .so for another machine, a
+# .so that is not an ELF, a truncated one, one in a subdirectory of lib/<abi>/, an ELF outside lib/,
+# a .so importing rand; a libkeepcrypt.so (the base case has one per ABI, with its scanned copy in
+# the case's jnilibs/) that is not the scanned copy's bytes, missing for an ABI, compressed, 4 KB
+# aligned on 64-bit, stripped, importing rand, without the getrandom import, with an extra export,
+# without JNI_OnLoad, with another secp256k1-sys export, needing liblog.so, not needing libc.so,
+# and in the shipping APK holding the registry marker or the test key; in the test-registry APK,
+# whose clean control has both in each library, a library without its marker, without the test
+# key or with the stub marker, the marker in the zip comment and the test key in resources.arsc; a
+# marker in a dex file, the test key in resources.arsc, a marker in the zip comment, a reference
+# from a com.keepcrypt class to each name of dex_banned (a library class's passes in the base case);
+# zipalign failing, another signer, a second signer beside the run's and apksigner failing (the stub
+# dexdump, zipalign and apksigner refuse to run without --apk's exact arguments). Its refusals must
+# exit 2: bad usage, a bad VARIANT or CERT_SHA256, a missing expected directory, JNILIBS_DIR,
+# expected file, report or APK, no aapt2 on PATH, a malformed native-libs.txt line, one listing
+# libkeepcrypt.so by a SHA-256 or not for every ABI, a missing scanned copy and no com.keepcrypt
+# class. Prints PASS or FAIL per case and a count; exit 0 all passed, 1 not.
 #
 # Categories (main patterns; the full lists are in the check functions below; comments count
 # everywhere but where a rule says otherwise):
@@ -802,7 +831,8 @@ usage() {
 usage: scripts/banned-api-check.sh [--selftest | DIR | --artifact TARGET FILE... | --workflows DIR |
                                    --image-lists IMG KCONFIG | --image IMG EXPECTED_DIR KCONFIG BIN_SHA256 |
                                    --selftest-image IMG KCONFIG | --os-config OS_DIR |
-                                   --apk VARIANT APK EXPECTED_DIR MERGER_REPORT CERT_SHA256 | --selftest-apk]
+                                   --apk VARIANT APK EXPECTED_DIR MERGER_REPORT CERT_SHA256 JNILIBS_DIR |
+                                   --selftest-apk]
   (none)      scan the repo this script lives in
   DIR         scan DIR as if it were the repo root
   --artifact  scan release artifacts built for TARGET: test markers, the test registry key, RNG
@@ -837,9 +867,12 @@ usage: scripts/banned-api-check.sh [--selftest | DIR | --artifact TARGET FILE...
               summary equals EXPECTED_DIR's manifest-VARIANT.txt (mobile/android/expected) with no
               network permission, provider, receiver, service or <queries>, backup and debugging off
               and one exported activity; MERGER_REPORT names no INTERNET; its native libraries are
-              native-libs.txt's, through elf_check, 64-bit ones 16 KB aligned; no other ELF; no
-              marker or test key; no banned RNG reference from a com.keepcrypt class; zipalign; and
-              CERT_SHA256 the one signer (build-tools and the NDK's llvm-nm on PATH)
+              native-libs.txt's, 64-bit ones 16 KB aligned, libkeepcrypt.so the bytes android-rust.sh
+              scanned into JNILIBS_DIR, under the artifact rules, exporting our two symbols and
+              needing libc, libm and libdl alone, the others through elf_check; no other ELF; no
+              marker or test key but the test-registry library's own; no banned RNG reference from
+              a com.keepcrypt class; zipalign; and CERT_SHA256 the one signer (build-tools and the
+              NDK's llvm-nm and llvm-readobj on PATH)
   --selftest-apk
               the APK check's refusals and rules on stub tools and stub APKs (sh and python3 only)
   --selftest  run the fixtures in scripts/testdata/banned-api/, scripts/testdata/artifact/,
@@ -1861,7 +1894,9 @@ kt_sdk() {
 # manifest (manifest.srcFile) would escape KtManifest, and ../capture-control's sources would be
 # built into :app with that module's exemptions; the plan builds none of these (tasks/todo.md, M5
 # group 3: "srcDir( or srcDirs( naming a build path", here by allow-list so that no spelling
-# passes). How commit 14's libkeepcrypt.so reaches the APK is still to be decided (group 4).
+# passes). libkeepcrypt.so reaches the APK through Gradle's default native-library source set,
+# src/<flavour>/jniLibs, which scripts/android-rust.sh fills (lead decision M5-9), so no srcDir line
+# is needed for it.
 kt_source_sets() {
   t=$(grep -n -a -E -e "${L}(srcDirs?|setSrcDirs|directories|srcFile|setSrcFile)$R" -- "$1")
   case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
@@ -6055,12 +6090,14 @@ Format: $mf: not an ELF, Mach-O or ar file, so its symbols cannot be checked" "$
 # with Python's zipfile"), the program fed to python3 -I on its standard input, standard library
 # only (a here-document inside $(...) would trip bash 3.2's parser, macOS's sh). manifest BADGING
 # PERMISSIONS XMLTREE REPORT OUT APK writes the manifest summary to OUT (see "APK mode" in the
-# header) and prints the manifest's hard-rule hits; scan APK NATIVE_LIST DIR TESTKEY MARKER...
-# byte-searches the APK and every entry, judges every lib/ entry against NATIVE_LIST, writes each
-# dex file and each native library that passed into DIR, and prints them; zip and elf build
-# --selftest-apk's stub APKs and shared objects. Lines out: "HIT<tab>CATEGORY<tab>NAME<tab>DETAIL" per hit, and from
-# scan "SO<tab>FILE<tab>ENTRY", "DEX<tab>FILE<tab>ENTRY" and "COUNT<tab>ENTRIES<tab>LIBRARIES".
-# Anything it cannot read or parse is exit 2, never a pass.
+# header) and prints the manifest's hard-rule hits; scan APK NATIVE_LIST DIR TESTKEY JNILIBS_DIR
+# MARKER... byte-searches the APK (but libkeepcrypt.so's stored bytes) and every entry (but
+# libkeepcrypt.so, which the artifact rules search in the shell), judges every lib/ entry against
+# NATIVE_LIST and each libkeepcrypt.so against JNILIBS_DIR's copy, writes each dex file and each
+# native library that passed into DIR, and prints them; zip and elf build --selftest-apk's stub APKs
+# and shared objects. Lines out: "HIT<tab>CATEGORY<tab>NAME<tab>DETAIL" per hit, and from scan
+# "SO<tab>FILE<tab>ENTRY", "KC<tab>FILE<tab>ENTRY" (a libkeepcrypt.so), "DEX<tab>FILE<tab>ENTRY" and
+# "COUNT<tab>ENTRIES<tab>LIBRARIES". Anything it cannot read or parse is exit 2, never a pass.
 apk_py() {
   python3 -I - "$@" <<'APK_PY'
 import hashlib
@@ -6074,6 +6111,10 @@ ANDROID = "http://schemas.android.com/apk/res/android"
 # (EM_ARM 40, EM_X86_64 62, EM_AARCH64 183) of each; the 64-bit ones need 16 KB pages.
 ABIS = {"arm64-v8a": (2, 183), "armeabi-v7a": (1, 40), "x86_64": (2, 62)}
 PAGE = 0x4000
+# Our library (M5 commit 14), which native-libs.txt lists for each ABI by this word, not a SHA-256:
+# its bytes must be those of scripts/android-rust.sh's scanned copy in JNILIBS_DIR.
+KEEPCRYPT = "libkeepcrypt.so"
+OURS = "android-rust.sh"
 NETWORK = ("android.permission.INTERNET", "android.permission.ACCESS_NETWORK_STATE",
            "android.permission.ACCESS_WIFI_STATE")
 # The application flags the summary always lists, each with the value the hard rules require
@@ -6285,16 +6326,21 @@ def elf_facts(data):
     return cls, machine, aligns
 
 
-def scan(apk, native_list, outdir, testkey, *markers):
+def scan(apk, native_list, outdir, testkey, jnilibs, *markers):
     key = bytes.fromhex(testkey)
     want = {}
     for n, line in enumerate(text(native_list).splitlines(), 1):
         w = line.split(" ")
         if len(w) != 3 or w[0] not in ABIS or not re.match(r"lib[A-Za-z0-9_.+-]+[.]so$", w[1]) \
-                or not re.match(r"[0-9a-f]{64}$", w[2]) or (w[0], w[1]) in want:
-            error('%s line %d is not "<abi> <name>.so <sha256>" for one of MA:23\'s three ABIs, once: %s'
-                  % (native_list, n, line))
+                or not re.match(r"[0-9a-f]{64}$|%s$" % OURS, w[2]) or (w[1] == KEEPCRYPT) != (w[2] == OURS) \
+                or (w[0], w[1]) in want:
+            error('%s line %d is not "<abi> <name>.so <sha256>", or "<abi> %s %s", for one of MA:23\'s three ABIs, '
+                  'once: %s' % (native_list, n, KEEPCRYPT, OURS, line))
         want[(w[0], w[1])] = w[2]
+    ours = sorted(abi for abi, so in want if so == KEEPCRYPT)
+    if ours != sorted(ABIS):
+        error("%s lists %s %s for %s, not for each of MA:23's three ABIs"
+              % (native_list, KEEPCRYPT, OURS, ", ".join(ours) or "no ABI"))
 
     def bytescan(data, name):
         for m in markers:
@@ -6303,14 +6349,26 @@ def scan(apk, native_list, outdir, testkey, *markers):
         if key in data:
             hit("TestKey", name, "the test registry public key " + testkey)
 
-    with open(apk, "rb") as f:
-        bytescan(f.read(), apk)
-    seen, entries, libs = set(), 0, 0
     try:
         z = zipfile.ZipFile(apk)
         infos = z.infolist()
     except (zipfile.BadZipFile, OSError) as e:
         error("%s is not a zip file Python can read: %s" % (apk, e))
+    # The APK's own bytes, with each stored libkeepcrypt.so's bytes blanked: the shell searches that
+    # library under the artifact rules, where the test-registry one must hold its marker and key.
+    with open(apk, "rb") as f:
+        raw = bytearray(f.read())
+    for info in infos:
+        parts = info.filename.split("/")
+        if len(parts) == 3 and parts[0] == "lib" and parts[2] == KEEPCRYPT and info.compress_type == zipfile.ZIP_STORED:
+            head = raw[info.header_offset:info.header_offset + 30]
+            if len(head) != 30 or head[:4] != b"PK\x03\x04":
+                error("%s: no local file header for %s at offset %d" % (apk, info.filename, info.header_offset))
+            name_len, extra_len = struct.unpack("<HH", bytes(head[26:30]))
+            start = info.header_offset + 30 + name_len + extra_len
+            raw[start:start + info.compress_size] = bytes(info.compress_size)
+    bytescan(bytes(raw), apk)
+    seen, entries, libs = set(), 0, 0
     for i, info in enumerate(infos):
         if info.filename.endswith("/"):
             continue
@@ -6320,7 +6378,9 @@ def scan(apk, native_list, outdir, testkey, *markers):
             data = z.read(info)
         except (zipfile.BadZipFile, OSError, RuntimeError, NotImplementedError) as e:
             error("cannot read %s from %s: %s" % (name, apk, e))
-        bytescan(data, name)
+        parts = name.split("/")
+        if not (len(parts) == 3 and parts[0] == "lib" and parts[2] == KEEPCRYPT):
+            bytescan(data, name)
         elf = data[:4] == b"\x7fELF"
         if name.endswith(".dex"):
             path = "%s/dex-%d" % (outdir, i)
@@ -6340,9 +6400,6 @@ def scan(apk, native_list, outdir, testkey, *markers):
         if abi not in ABIS:
             hit("NativeLib", name, "an ABI outside MA:23's three (arm64-v8a, armeabi-v7a, x86_64)")
             continue
-        if so == "libkeepcrypt.so":
-            hit("NativeLib", name, "libkeepcrypt.so, which no APK carries before M5 commit 14")
-            continue
         if not elf:
             hit("NativeLib", name, "not an ELF file")
             continue
@@ -6351,7 +6408,21 @@ def scan(apk, native_list, outdir, testkey, *markers):
         if (abi, so) not in want:
             hit("NativeLib", name, "not in native-libs.txt (SHA-256 %s)" % sha)
             continue
-        if sha != want[(abi, so)]:
+        if so == KEEPCRYPT:
+            built = "%s/%s/%s" % (jnilibs, abi, KEEPCRYPT)
+            try:
+                with open(built, "rb") as f:
+                    scanned = hashlib.sha256(f.read()).hexdigest()
+            except OSError as e:
+                error("cannot read %s, the scanned output of scripts/android-rust.sh: %s" % (built, e))
+            if sha != scanned:
+                hit("NativeLib", name, "SHA-256 %s, not that of %s (%s), the library scripts/android-rust.sh "
+                    "built and scanned" % (sha, built, scanned))
+                continue
+            if info.compress_type != zipfile.ZIP_STORED:
+                hit("NativeLib", name, "compressed in the APK, not stored as extractNativeLibs=false needs")
+                continue
+        elif sha != want[(abi, so)]:
             hit("NativeLib", name, "SHA-256 %s, not native-libs.txt's %s" % (sha, want[(abi, so)]))
             continue
         facts = elf_facts(data)
@@ -6369,27 +6440,31 @@ def scan(apk, native_list, outdir, testkey, *markers):
         path = "%s/so-%d" % (outdir, i)
         with open(path, "wb") as f:
             f.write(data)
-        print("SO\t%s\t%s" % (path, name))
+        print("%s\t%s\t%s" % ("KC" if so == KEEPCRYPT else "SO", path, name))
     for abi, so in sorted(set(want) - seen):
         hit("NativeLib", "lib/%s/%s" % (abi, so), "in native-libs.txt but not in the APK")
     print("COUNT\t%d\t%d" % (entries, libs))
 
 
 def stub_zip(out, comment, *entries):
-    """The selftest's stub APKs: NAME=FILE entries, a .so stored as the real APK stores it, the rest
-    deflated (so a marker in an entry is not also in the zip's raw bytes)."""
+    """The selftest's stub APKs: NAME=FILE entries, a .so stored as the real APK stores it (but from a
+    FILE named *.deflate), the rest deflated (so a marker in an entry is not also in the zip's raw
+    bytes)."""
     with zipfile.ZipFile(out, "w") as z:
         z.comment = comment.encode()
         for e in entries:
             name, path = e.split("=", 1)
             with open(path, "rb") as f:
-                z.writestr(name, f.read(), zipfile.ZIP_STORED if name.endswith(".so") else zipfile.ZIP_DEFLATED)
+                stored = name.endswith(".so") and not path.endswith(".deflate")
+                z.writestr(name, f.read(), zipfile.ZIP_STORED if stored else zipfile.ZIP_DEFLATED)
 
 
 def stub_elf(out, abi, align, *symbols):
     """The selftest's stub shared objects: an ELF header and two PT_LOAD segments aligned to ALIGN (hex)
-    for ABI, or with ALIGN none two PT_PHDR segments and no LOAD one, then each symbol as "NM:<name>",
-    which the stub llvm-nm lists."""
+    for ABI, or with ALIGN none two PT_PHDR segments and no LOAD one, then each symbol as "NM:<name>"
+    (an undefined symbol), which the stub llvm-nm lists; a word that already holds a colon is written
+    as it is: DEF:<name> (a defined symbol), NEEDED:<library> (a DT_NEEDED entry, which the stub
+    llvm-readobj lists) and NOSYMTAB (no .symtab, for the stub llvm-readobj)."""
     cls, machine = ABIS[abi]
     ptype, align = (6, PAGE) if align == "none" else (1, int(align, 16))
     if cls == 2:
@@ -6399,7 +6474,7 @@ def stub_elf(out, abi, align, *symbols):
         head = b"\x7fELF\x01\x01\x01" + bytes(9) + struct.pack("<HHIIIIIHHHHHH", 3, machine, 1, 0, 52, 0, 0, 52, 32, 2, 0, 0, 0)
         phs = b"".join(struct.pack("<IIIIIIII", ptype, 0, 0, 0, 0, 0, 5, align) for _ in range(2))
     with open(out, "wb") as f:
-        f.write(head + phs + "".join(" NM:" + s for s in symbols).encode() + b"\n")
+        f.write(head + phs + "".join(" " + (s if ":" in s or s == "NOSYMTAB" else "NM:" + s) for s in symbols).encode() + b"\n")
 
 
 {"manifest": manifest, "scan": scan, "zip": stub_zip, "elf": stub_elf}[sys.argv[1]](*sys.argv[2:])
@@ -6437,13 +6512,15 @@ apk_tool() {
 }
 
 # apk_lines FILE: the Python half's lines in FILE: a hit is counted, a native library goes through
-# the image scan's elf_check, a dex file through dex_scan, and the counts are kept.
+# the image scan's elf_check (libkeepcrypt.so through kc_lib), a dex file through dex_scan, and the
+# counts are kept.
 apk_lines() {
   tab=$(printf '\t')
   while IFS=$tab read -r kind a b c; do
     case $kind in
       HIT) ahit "$a" "$b" "$c" ;;
       SO) elf_check "$a" "$b" ;;
+      KC) kc_lib "$a" "$b" ;;
       DEX) dex_scan "$a" "$b" ;;
       COUNT) entries=$a libs=$b ;;
       *) apkfail "the Python half printed an unknown line: $kind" ;;
@@ -6485,28 +6562,94 @@ dex_scan() {
   done <"$aw/dexrefs"
 }
 
-# apk_scan VARIANT APK EXPECTED_DIR MERGER_REPORT CERT_SHA256: the APK check and scan (see "APK
-# mode" in the header). Every argument and input file is checked, and every tool found, before
-# the APK is read.
+# kc_ours and kc_secp: libkeepcrypt.so's exports (lead decisions M5-21 and M5-40), as
+# entropy-ci.yml's cross legs check them: exactly our two, and beside them only secp256k1-sys
+# 0.10.1's own four #[no_mangle] functions. kc_needed: the only libraries it may need.
+kc_ours='JNI_OnLoad Java_com_keepcrypt_entropy_ffi_Native_call'
+kc_secp='rustsecp256k1_v0_10_0_context_create rustsecp256k1_v0_10_0_context_destroy rustsecp256k1_v0_10_0_default_error_callback_fn rustsecp256k1_v0_10_0_default_illegal_callback_fn'
+kc_needed='libc.so libdl.so libm.so'
+
+# kc_lib FILE NAME: libkeepcrypt.so, which the Python half has matched to android-rust.sh's scanned
+# copy and judged for its ABI and 16 KB pages: the whole release-artifact scan for its target, as
+# the cross legs scan it (artifact_file: Marker, TestKey, Format with a .symtab, Symbol, StdRandom,
+# OSImport), in which the test-registry APK's library must show its registry marker and the test
+# key and nothing else, and the shipping APK's nothing; its exports (kc_ours, kc_secp); and its
+# DT_NEEDED libraries, libc.so with at most libm.so and libdl.so (llvm-readobj --needed-libs).
+kc_lib() {
+  kf=$1
+  kname=$2
+  case $kname in
+    lib/arm64-v8a/*) artifact_rules aarch64-linux-android ;;
+    lib/armeabi-v7a/*) artifact_rules armv7-linux-androideabi ;;
+    lib/x86_64/*) artifact_rules x86_64-linux-android ;;
+    *) apkfail "kc_lib: no target for $kname" ;;
+  esac
+  khits=$hits
+  artifact_file "$kf" "$kname" >"$aw/kc-scan" || :
+  hits=$khits
+  kmarker="Marker: $kname: KC_TEST_REGISTRY_DO_NOT_SHIP"
+  kkey="TestKey: $kname: the test registry public key $testkey"
+  if [ "$variant" = withTestRegistry ]; then
+    grep -q -x -F -e "$kmarker" "$aw/kc-scan" ||
+      ahit NativeLib "$kname" 'no KC_TEST_REGISTRY_DO_NOT_SHIP: not the test-registry build of the library'
+    grep -q -x -F -e "$kkey" "$aw/kc-scan" ||
+      ahit NativeLib "$kname" 'no test registry key: not the test-registry build of the library'
+    grep -v -x -F -e "$kmarker" -e "$kkey" "$aw/kc-scan" >"$aw/kc-rest"
+    [ $? -le 1 ] || exit 2
+  else
+    cp "$aw/kc-scan" "$aw/kc-rest" || exit 2
+  fi
+  while IFS= read -r kline; do
+    printf '%s\n' "$kline"
+    hits=$((hits + 1))
+  done <"$aw/kc-rest"
+  symbols "$kf" "$aw/kc-defined" -D --defined-only
+  kgot=$(awk -v secp="$kc_secp" '
+    BEGIN { n = split(secp, s, " "); for (i = 1; i <= n; i++) theirs[s[i]] = 1 }
+    !($0 in theirs)' "$aw/kc-defined" | LC_ALL=C sort -u | paste -s -d ' ' -)
+  kwant=$(printf '%s\n' $kc_ours | LC_ALL=C sort | paste -s -d ' ' -)
+  [ "$kgot" = "$kwant" ] ||
+    ahit NativeLib "$kname" "defines ${kgot:-no symbol} beside secp256k1-sys's four, not exactly $kwant"
+  "$bin/llvm-readobj" --needed-libs "$kf" >"$aw/kc-needed" 2>"$aw/log" || {
+    sed 's/^/    /' "$aw/log" >&2
+    apkfail "llvm-readobj --needed-libs cannot read $kname"
+  }
+  awk '/^NeededLibraries \[/ { on = 1; next } on && /^\]/ { on = 0 } on { gsub(/^[ \t]+|[ \t]+$/, ""); if ($0 != "") print }' \
+    "$aw/kc-needed" | LC_ALL=C sort >"$aw/kc-libs" || exit 2
+  grep -q -x -F -e libc.so "$aw/kc-libs" || ahit NativeLib "$kname" 'no DT_NEEDED libc.so'
+  while IFS= read -r klib; do
+    case " $kc_needed " in
+      *" $klib "*) ;;
+      *) ahit NativeLib "$kname" "DT_NEEDED $klib: not libc.so, libm.so or libdl.so" ;;
+    esac
+  done <"$aw/kc-libs"
+  kclean=$((kclean + 1))
+}
+
+# apk_scan VARIANT APK EXPECTED_DIR MERGER_REPORT CERT_SHA256 JNILIBS_DIR: the APK check and scan
+# (see "APK mode" in the header). Every argument and input file is checked, and every tool found,
+# before the APK is read.
 apk_scan() {
   variant=$1
   apk=$2
   exp=${3%/}
   report=$4
   cert=$5
+  jnilibs=${6%/}
   case $variant in
     shipping | withTestRegistry) ;;
     *) apkfail "VARIANT is shipping or withTestRegistry, not $variant" ;;
   esac
   printf '%s\n' "$cert" | grep -q -x -E '[0-9a-f]{64}' || apkfail "CERT_SHA256 is not 64 lowercase hex digits: $cert"
   [ -d "$exp" ] || apkfail "EXPECTED_DIR $3 is not a directory"
+  [ -d "$jnilibs" ] || apkfail "JNILIBS_DIR $6 is not a directory"
   readable "$exp/manifest-$variant.txt" --apk
   readable "$exp/native-libs.txt" --apk
   readable "$report" --apk
   [ -f "$apk" ] && [ -r "$apk" ] || apkfail "cannot read $apk"
-  for tool in python3 aapt2 dexdump zipalign apksigner llvm-nm; do
+  for tool in python3 aapt2 dexdump zipalign apksigner llvm-nm llvm-readobj; do
     command -v "$tool" >/dev/null 2>&1 ||
-      apkfail "no $tool on PATH (aapt2, dexdump, zipalign and apksigner from the build-tools, llvm-nm from the NDK)"
+      apkfail "no $tool on PATH (aapt2, dexdump, zipalign and apksigner from the build-tools, llvm-nm and llvm-readobj from the NDK)"
   done
   nm=$(command -v llvm-nm)
   bin=${nm%/*}
@@ -6523,6 +6666,9 @@ apk_scan() {
   classes=0
   entries=0
   libs=0
+  kclean=0
+  linked=0
+  archives=0
   echo "== banned-api-check --apk $variant $apk"
   echo "sha256 $(sha256 "$apk")"
   # 1. The manifest: aapt2's three dumps and the merger report reduced to the summary, which
@@ -6548,7 +6694,7 @@ apk_scan() {
   done <"$aw/internet"
   # 2. The APK's bytes and entries, the native libraries (each through elf_check) and the dex
   # files (each through dex_scan).
-  apk_py scan "$apk" "$exp/native-libs.txt" "$aw" "$testkey" $markers >"$aw/scan" || exit 2
+  apk_py scan "$apk" "$exp/native-libs.txt" "$aw" "$testkey" "$jnilibs" $markers >"$aw/scan" || exit 2
   apk_lines "$aw/scan"
   [ "$classes" -gt 0 ] ||
     apkfail "dexdump listed no com.keepcrypt class in the APK's $ndex dex file(s), so the reference scan read none of KeepCrypt's code"
@@ -6569,14 +6715,19 @@ apk_scan() {
     echo "banned-api-check --apk $variant $apk: $hits hit(s)"
     exit 1
   fi
-  echo "banned-api-check --apk $variant $apk: clean: the manifest summary equals $exp/manifest-$variant.txt, with no network permission, provider, receiver, service or <queries>, backup, cleartext traffic and debugging off and one exported activity, and the merger report names no INTERNET; $libs native libraries exactly as $exp/native-libs.txt lists them, no libkeepcrypt (before M5 commit 14), each through elf_check and every 64-bit one 16 KB aligned, and no other ELF; no marker or test key in the APK or any of its $entries entries; $classes com.keepcrypt classes in $ndex dex files with no banned RNG reference; zipalign -c -P 16 -v 4 passes; signed by the run's throwaway key alone ($cert)"
+  if [ "$variant" = withTestRegistry ]; then
+    kwhat="the test-registry build: its registry marker and the test key and no other hit"
+  else
+    kwhat="no hit"
+  fi
+  echo "banned-api-check --apk $variant $apk: clean: the manifest summary equals $exp/manifest-$variant.txt, with no network permission, provider, receiver, service or <queries>, backup, cleartext traffic and debugging off and one exported activity, and the merger report names no INTERNET; $libs native libraries exactly as $exp/native-libs.txt lists them, every 64-bit one 16 KB aligned, and no other ELF; $kclean libkeepcrypt.so, each the bytes of $jnilibs's scanned copy, under the release-artifact scan with $kwhat, exporting exactly our two symbols beside secp256k1-sys's four and needing only libc.so, libm.so and libdl.so; the other libraries through elf_check; no marker or test key in the APK or any other entry; $classes com.keepcrypt classes in $ndex dex files with no banned RNG reference; zipalign -c -P 16 -v 4 passes; signed by the run's throwaway key alone ($cert)"
   exit 0
 }
 
 # --- APK selftest mode ---------------------------------------------------------------------------
 
 # The hit categories of the APK check, for its selftest.
-acats='^(Manifest|NativeLib|Format|Symbol|Marker|TestKey|DexRef|Zipalign|Signature): '
+acats='^(Manifest|NativeLib|Format|Symbol|StdRandom|OSImport|Marker|TestKey|DexRef|Zipalign|Signature): '
 
 # axexpect NAME TEXT ARG...: --apk ARG... in a new process, with the stub tools reading $c first on
 # PATH, must exit 2 with TEXT in its output.
@@ -6617,11 +6768,17 @@ abuild() {
   apk_py zip "$c/app.apk" "$(cat "$c/comment")" "$@" || exit 2
 }
 
-# alist: $c/expected/native-libs.txt from every lib/<abi>/<name>.so entry of $c/entries.
+# alist: $c/expected/native-libs.txt from every lib/<abi>/<name>.so entry of $c/entries, each
+# libkeepcrypt.so as android-rust.sh's.
 alist() {
   : >"$c/expected/native-libs.txt" || exit 2
   while IFS= read -r e; do
     case ${e%%=*} in
+      lib/*/libkeepcrypt.so)
+        n=${e%%=*}
+        n=${n#lib/}
+        printf '%s libkeepcrypt.so android-rust.sh\n' "${n%%/*}" >>"$c/expected/native-libs.txt" || exit 2
+        ;;
       lib/*/*.so)
         n=${e%%=*}
         n=${n#lib/}
@@ -6645,12 +6802,53 @@ aappend() {
   printf '%s\n' "$@" >>"$af" || exit 2
 }
 
-# acase NAME WANT-HIT: $c's APK built, then --apk shipping on it in a new process, with the stub
-# tools reading $c, must exit 1 with exactly one hit, which starts with WANT-HIT; with WANT-HIT
-# empty (the control), exit 0 with no hit.
+# akc ABI WORD...: $c's libkeepcrypt.so for ABI rebuilt as a stub with the base case's words, then
+# each WORD given (a symbol, DEF:, NEEDED: or NOSYMTAB; -WORD drops that base word), and its copy in
+# $c/jnilibs made the same, so only what the case changes differs from the base.
+akc() {
+  kabi=$1
+  shift
+  kwords=$akc_base
+  for w; do
+    case $w in
+      -*) kwords=$(printf '%s\n' $kwords | grep -v -x -F -e "${w#-}" | paste -s -d ' ' -) ;;
+      *) kwords="$kwords $w" ;;
+    esac
+  done
+  case $kabi in arm64-v8a | x86_64) kalign=4000 ;; *) kalign=1000 ;; esac
+  # $kwords unquoted: its words hold no space.
+  apk_py elf "$c/files/kc-$kabi.so" "$kabi" "$kalign" $kwords || exit 2
+  akc_copy "$kabi"
+}
+
+# akc_copy ABI: $c/jnilibs/ABI/libkeepcrypt.so made a copy of $c's stub for ABI.
+akc_copy() {
+  mkdir -p "$c/jnilibs/$1" && cp "$c/files/kc-$1.so" "$c/jnilibs/$1/libkeepcrypt.so" || exit 2
+}
+
+# akc_registry ABI [marker|key]...: the registry marker and the test key's bytes (both, or the
+# ones named) appended to $c's libkeepcrypt.so for ABI and its copy, as a test-registry build holds
+# them.
+akc_registry() {
+  kabi=$1
+  shift
+  [ $# -gt 0 ] || set -- marker key
+  for w; do
+    case $w in
+      marker) printf ' KC_TEST_REGISTRY_DO_NOT_SHIP\n' >>"$c/files/kc-$kabi.so" || exit 2 ;;
+      key) write_testkey "$c/kc-key" && cat "$c/kc-key" >>"$c/files/kc-$kabi.so" || exit 2 ;;
+    esac
+  done
+  akc_copy "$kabi"
+}
+
+# acase NAME WANT-HIT: $c's APK built, then --apk on it in a new process (VARIANT $avariant, or
+# shipping, with $c/jnilibs as JNILIBS_DIR), with the stub tools reading $c, must exit 1 with exactly
+# one hit, which starts with WANT-HIT; with WANT-HIT empty (the control), exit 0 with no hit.
 acase() {
   abuild
-  aout=$(KC_STUB=$c PATH=$st/bin:$PATH sh "$self" --apk shipping "$c/app.apk" "$c/expected" "$c/report.txt" "$acert" 2>&1)
+  aout=$(KC_STUB=$c PATH=$st/bin:$PATH sh "$self" --apk "${avariant:-shipping}" "$c/app.apk" "$c/expected" "$c/report.txt" \
+    "$acert" "$c/jnilibs" 2>&1)
   rc=$?
   got=$(printf '%s\n' "$aout" | grep -E "$acats")
   count=$(printf '%s\n' "$aout" | grep -c -E "$acats")
@@ -6690,8 +6888,11 @@ apk_selftest() {
   # dex file is the text dexdump would print for it; without -d the real one prints no code, so the
   # stub refuses); zipalign -c -P 16 -v 4 passes unless $KC_STUB/zipalign-fails exists; apksigner
   # verify --print-certs prints $KC_STUB/apksigner.txt, or fails if $KC_STUB/apksigner-fails
-  # exists; llvm-nm lists the NM:<name> words in its file. zipalign and apksigner refuse other
-  # arguments, as dexdump does without -d, so --apk cannot drop one unseen.
+  # exists; llvm-nm lists the NM:<name> words in its file with -u (undefined symbols), the
+  # DEF:<name> words with --defined-only, and both otherwise; llvm-readobj --section-headers lists a
+  # .symtab unless the file holds NOSYMTAB, and --needed-libs lists its NEEDED:<library> words.
+  # zipalign and apksigner refuse other arguments, as dexdump does without -d, so --apk cannot drop
+  # one unseen.
   mkdir "$st/bin" || exit 2
   cat >"$st/bin/aapt2" <<'STUB'
 #!/bin/sh
@@ -6732,14 +6933,35 @@ STUB
   cat >"$st/bin/llvm-nm" <<'STUB'
 #!/bin/sh
 for f; do :; done
-grep -a -o 'NM:[A-Za-z0-9_]*' "$f" | sed 's/^NM://'
+case " $* " in
+  *" -u "*) w=NM ;;
+  *" --defined-only "*) w=DEF ;;
+  *) w='NM|DEF' ;;
+esac
+grep -a -o -E "($w):[A-Za-z0-9_]*" "$f" | sed 's/^[A-Z]*://'
 STUB
-  chmod +x "$st/bin/aapt2" "$st/bin/dexdump" "$st/bin/zipalign" "$st/bin/apksigner" "$st/bin/llvm-nm" || exit 2
+  cat >"$st/bin/llvm-readobj" <<'STUB'
+#!/bin/sh
+[ $# -eq 2 ] || { echo "stub llvm-readobj: wants OPTION FILE, got: $*" >&2; exit 1; }
+case $1 in
+  --section-headers) grep -q -a -e NOSYMTAB "$2" || printf 'Section {\n  Index: 1\n  Name: .symtab (1)\n}\n' ;;
+  --needed-libs)
+    printf 'File: %s\nNeededLibraries [\n' "$2"
+    grep -a -o -E 'NEEDED:[A-Za-z0-9_.+-]*' "$2" | sed 's/^NEEDED:/  /'
+    echo ']'
+    ;;
+  *) echo "stub llvm-readobj: $*" >&2; exit 1 ;;
+esac
+STUB
+  chmod +x "$st/bin/aapt2" "$st/bin/dexdump" "$st/bin/zipalign" "$st/bin/apksigner" "$st/bin/llvm-nm" \
+    "$st/bin/llvm-readobj" || exit 2
   # The base case: aapt2's dumps of the shipping APK and a stand-in merger report
   # (scripts/testdata/apk/), the run's signer, and a stub APK as the real one is laid out: the
   # manifest, two dex files (a library class that names kotlin.random, which passes, and
-  # KeepCrypt's classes), resources and graphics-path's three libraries (the 32-bit one 4 KB
-  # aligned, which only 64-bit libraries may not be).
+  # KeepCrypt's classes), resources, graphics-path's three libraries and libkeepcrypt.so for each
+  # ABI (each 32-bit one 4 KB aligned, which only 64-bit libraries may not be), the latter importing
+  # getrandom, exporting our two symbols and secp256k1-sys's four and needing libc.so, libm.so and
+  # libdl.so, with its scanned copy in jnilibs/<abi>/.
   b=$st/base
   mkdir -p "$b/files" "$b/expected" || exit 2
   cp "$td/badging.txt" "$td/permissions.txt" "$td/xmltree.txt" "$b/" && cp "$td/merger-report.txt" "$b/report.txt" || exit 2
@@ -6759,31 +6981,39 @@ STUB
   apk_py elf "$b/files/arm64.so" arm64-v8a 4000 memcpy __cxa_finalize &&
     apk_py elf "$b/files/arm.so" armeabi-v7a 1000 memcpy __cxa_finalize &&
     apk_py elf "$b/files/x64.so" x86_64 4000 memcpy __cxa_finalize || exit 2
+  akc_base="getrandom memcpy DEF:JNI_OnLoad DEF:Java_com_keepcrypt_entropy_ffi_Native_call $(printf 'DEF:%s ' $kc_secp)"
+  akc_base="$akc_base NEEDED:libc.so NEEDED:libm.so NEEDED:libdl.so"
+  c=$b
+  for kabi in arm64-v8a armeabi-v7a x86_64; do
+    akc "$kabi"
+  done
   aappend "$b/entries" AndroidManifest.xml=files/AndroidManifest.xml classes.dex=files/classes.dex \
     classes2.dex=files/classes2.dex resources.arsc=files/resources.arsc \
     lib/arm64-v8a/libandroidx.graphics.path.so=files/arm64.so lib/armeabi-v7a/libandroidx.graphics.path.so=files/arm.so \
-    lib/x86_64/libandroidx.graphics.path.so=files/x64.so
-  c=$b
+    lib/x86_64/libandroidx.graphics.path.so=files/x64.so lib/arm64-v8a/libkeepcrypt.so=files/kc-arm64-v8a.so \
+    lib/armeabi-v7a/libkeepcrypt.so=files/kc-armeabi-v7a.so lib/x86_64/libkeepcrypt.so=files/kc-x86_64.so
   alist
   cp "$committed" "$b/expected/manifest-shipping.txt" || exit 2
   # Refusals, before any tool runs or the APK is read.
   e=$b/expected
-  axexpect apk-error-usage 'usage:' shipping "$b/app.apk" "$e" "$b/report.txt"
-  axexpect apk-error-variant 'VARIANT is shipping or withTestRegistry, not debug' debug "$b/app.apk" "$e" "$b/report.txt" "$acert"
-  axexpect apk-error-cert 'CERT_SHA256 is not 64 lowercase hex digits: CCCC' shipping "$b/app.apk" "$e" "$b/report.txt" CCCC
-  axexpect apk-error-missing-expected-dir "EXPECTED_DIR $st/absent is not a directory" shipping "$b/app.apk" "$st/absent" "$b/report.txt" "$acert"
-  axexpect apk-error-missing-expected-manifest "cannot read $e/manifest-withTestRegistry.txt, or it is empty" withTestRegistry "$b/app.apk" "$e" "$b/report.txt" "$acert"
-  axexpect apk-error-missing-report "cannot read $st/absent.txt, or it is empty" shipping "$b/app.apk" "$e" "$st/absent.txt" "$acert"
-  axexpect apk-error-missing-apk "cannot read $st/absent.apk" shipping "$st/absent.apk" "$e" "$b/report.txt" "$acert"
+  j=$b/jnilibs
+  axexpect apk-error-usage 'usage:' shipping "$b/app.apk" "$e" "$b/report.txt" "$acert"
+  axexpect apk-error-variant 'VARIANT is shipping or withTestRegistry, not debug' debug "$b/app.apk" "$e" "$b/report.txt" "$acert" "$j"
+  axexpect apk-error-cert 'CERT_SHA256 is not 64 lowercase hex digits: CCCC' shipping "$b/app.apk" "$e" "$b/report.txt" CCCC "$j"
+  axexpect apk-error-missing-expected-dir "EXPECTED_DIR $st/absent is not a directory" shipping "$b/app.apk" "$st/absent" "$b/report.txt" "$acert" "$j"
+  axexpect apk-error-missing-jnilibs-dir "JNILIBS_DIR $st/absent is not a directory" shipping "$b/app.apk" "$e" "$b/report.txt" "$acert" "$st/absent"
+  axexpect apk-error-missing-expected-manifest "cannot read $e/manifest-withTestRegistry.txt, or it is empty" withTestRegistry "$b/app.apk" "$e" "$b/report.txt" "$acert" "$j"
+  axexpect apk-error-missing-report "cannot read $st/absent.txt, or it is empty" shipping "$b/app.apk" "$e" "$st/absent.txt" "$acert" "$j"
+  axexpect apk-error-missing-apk "cannot read $st/absent.apk" shipping "$st/absent.apk" "$e" "$b/report.txt" "$acert" "$j"
   mkdir "$st/nobin" || exit 2
   for t in basename dirname grep python3; do
     ln -s "$(command -v "$t")" "$st/nobin/$t" || exit 2
   done
   shell=$(command -v sh) || exit 2
   touch "$b/app.apk" || exit 2
-  out=$(PATH=$st/nobin "$shell" "$self" --apk shipping "$b/app.apk" "$e" "$b/report.txt" "$acert" 2>&1)
+  out=$(PATH=$st/nobin "$shell" "$self" --apk shipping "$b/app.apk" "$e" "$b/report.txt" "$acert" "$j" 2>&1)
   rc=$?
-  want='banned-api-check: --apk: no aapt2 on PATH (aapt2, dexdump, zipalign and apksigner from the build-tools, llvm-nm from the NDK)'
+  want='banned-api-check: --apk: no aapt2 on PATH (aapt2, dexdump, zipalign and apksigner from the build-tools, llvm-nm and llvm-readobj from the NDK)'
   if [ "$rc" -eq 2 ] && [ "$out" = "$want" ]; then
     pass=$((pass + 1))
     printf 'PASS apk-error-no-aapt2 -> exit 2: %s\n' "$out"
@@ -6896,14 +7126,11 @@ STUB
   alist
   acase apk-4kb-aligned-64-bit-so 'NativeLib: lib/arm64-v8a/libandroidx.graphics.path.so: LOAD segments aligned to 0x1000, 0x1000, not 0x4000 on every one'
   anew listed-sha
-  sed 's/^\(x86_64 [^ ]*\) .*/\1 '"$(printf '%064d' 0)"'/' "$b/expected/native-libs.txt" >"$c/expected/native-libs.txt" || exit 2
+  sed 's/^\(x86_64 libandroidx[^ ]*\) .*/\1 '"$(printf '%064d' 0)"'/' "$b/expected/native-libs.txt" >"$c/expected/native-libs.txt" || exit 2
   acase apk-so-with-another-sha256 'NativeLib: lib/x86_64/libandroidx.graphics.path.so: SHA-256 '
   anew listed-missing
   aappend "$c/expected/native-libs.txt" "armeabi-v7a libgone.so $(printf '%064d' 0)"
   acase apk-listed-so-missing 'NativeLib: lib/armeabi-v7a/libgone.so: in native-libs.txt but not in the APK'
-  anew libkeepcrypt
-  aappend "$c/entries" lib/arm64-v8a/libkeepcrypt.so=files/arm64.so
-  acase apk-libkeepcrypt-before-commit-14 'NativeLib: lib/arm64-v8a/libkeepcrypt.so: libkeepcrypt.so, which no APK carries before M5 commit 14'
   anew abi-x86
   aappend "$c/entries" lib/x86/libandroidx.graphics.path.so=files/x64.so
   acase apk-so-for-x86 "NativeLib: lib/x86/libandroidx.graphics.path.so: an ABI outside MA:23's three"
@@ -6936,6 +7163,88 @@ STUB
   anew subdirectory
   aappend "$c/entries" lib/x86_64/sub/libx.so=files/x64.so
   acase apk-so-in-a-subdirectory 'NativeLib: lib/x86_64/sub/libx.so: a file under lib/ that is not lib/<abi>/<name>.so'
+  # libkeepcrypt.so (M5 commit 14): the scanned copy's bytes, stored, in every ABI, 16 KB pages on
+  # 64-bit, the release-artifact scan, our exports beside secp256k1-sys's four, and libc.so, libm.so
+  # and libdl.so alone.
+  anew kc-differs
+  printf 'x' >>"$c/jnilibs/x86_64/libkeepcrypt.so" || exit 2
+  acase apk-libkeepcrypt-not-the-scanned-copy "NativeLib: lib/x86_64/libkeepcrypt.so: SHA-256 $(sha256 "$b/files/kc-x86_64.so"), not that of $c/jnilibs/x86_64/libkeepcrypt.so"
+  anew kc-missing
+  grep -v -e '^lib/x86_64/libkeepcrypt[.]so=' "$b/entries" >"$c/entries" || exit 2
+  acase apk-libkeepcrypt-missing-for-an-abi 'NativeLib: lib/x86_64/libkeepcrypt.so: in native-libs.txt but not in the APK'
+  anew kc-compressed
+  cp "$c/files/kc-x86_64.so" "$c/files/kc-x86_64.so.deflate" || exit 2
+  sed 's#^lib/x86_64/libkeepcrypt[.]so=.*#lib/x86_64/libkeepcrypt.so=files/kc-x86_64.so.deflate#' "$b/entries" >"$c/entries" || exit 2
+  acase apk-libkeepcrypt-compressed 'NativeLib: lib/x86_64/libkeepcrypt.so: compressed in the APK'
+  anew kc-page-4k
+  apk_py elf "$c/files/kc-arm64-v8a.so" arm64-v8a 1000 $akc_base || exit 2
+  akc_copy arm64-v8a
+  acase apk-libkeepcrypt-4kb-aligned 'NativeLib: lib/arm64-v8a/libkeepcrypt.so: LOAD segments aligned to 0x1000, 0x1000, not 0x4000'
+  anew kc-stripped
+  akc x86_64 NOSYMTAB
+  acase apk-libkeepcrypt-stripped 'Format: lib/x86_64/libkeepcrypt.so: a stripped file with no symbol table'
+  anew kc-rand
+  akc arm64-v8a rand
+  acase apk-libkeepcrypt-importing-rand 'Symbol: lib/arm64-v8a/libkeepcrypt.so: undefined rand'
+  anew kc-no-getrandom
+  akc armeabi-v7a -getrandom
+  acase apk-libkeepcrypt-without-the-os-import 'OSImport: lib/armeabi-v7a/libkeepcrypt.so: no undefined getrandom'
+  anew kc-extra-export
+  akc x86_64 DEF:kc_extra
+  acase apk-libkeepcrypt-extra-export 'NativeLib: lib/x86_64/libkeepcrypt.so: defines JNI_OnLoad Java_com_keepcrypt_entropy_ffi_Native_call kc_extra beside'
+  anew kc-no-onload
+  akc x86_64 -DEF:JNI_OnLoad
+  acase apk-libkeepcrypt-without-jni-onload 'NativeLib: lib/x86_64/libkeepcrypt.so: defines Java_com_keepcrypt_entropy_ffi_Native_call beside'
+  anew kc-other-secp
+  akc arm64-v8a DEF:rustsecp256k1_v0_10_0_context_clone
+  acase apk-libkeepcrypt-another-secp256k1-export 'NativeLib: lib/arm64-v8a/libkeepcrypt.so: defines JNI_OnLoad Java_com_keepcrypt_entropy_ffi_Native_call rustsecp256k1_v0_10_0_context_clone beside'
+  anew kc-liblog
+  akc armeabi-v7a NEEDED:liblog.so
+  acase apk-libkeepcrypt-needs-liblog 'NativeLib: lib/armeabi-v7a/libkeepcrypt.so: DT_NEEDED liblog.so: not libc.so, libm.so or libdl.so'
+  anew kc-no-libc
+  akc x86_64 -NEEDED:libc.so
+  acase apk-libkeepcrypt-without-libc 'NativeLib: lib/x86_64/libkeepcrypt.so: no DT_NEEDED libc.so'
+  # The shipping APK's library holds no marker and no key; a stored library's bytes are searched
+  # once, as the library, not again in the APK's own bytes.
+  anew kc-shipping-marker
+  akc_registry arm64-v8a marker
+  acase apk-libkeepcrypt-registry-marker-in-shipping 'Marker: lib/arm64-v8a/libkeepcrypt.so: KC_TEST_REGISTRY_DO_NOT_SHIP'
+  anew kc-shipping-key
+  akc_registry x86_64 key
+  acase apk-libkeepcrypt-test-key-in-shipping "TestKey: lib/x86_64/libkeepcrypt.so: the test registry public key $testkey"
+  # The test-registry APK: each library must hold its registry marker and the test key, and nothing
+  # else may, inside it or anywhere in the APK.
+  avariant=withTestRegistry
+  anew registry
+  for kabi in arm64-v8a armeabi-v7a x86_64; do
+    akc_registry "$kabi"
+  done
+  cp "$c/expected/manifest-shipping.txt" "$c/expected/manifest-withTestRegistry.txt" || exit 2
+  cp -R "$c" "$st/registry-base" || exit 2
+  acase apk-registry-clean ''
+  anew2() {
+    c=$st/$1
+    cp -R "$st/registry-base" "$c" || exit 2
+  }
+  anew2 registry-no-marker
+  akc x86_64
+  akc_registry x86_64 key
+  acase apk-registry-library-without-its-marker 'NativeLib: lib/x86_64/libkeepcrypt.so: no KC_TEST_REGISTRY_DO_NOT_SHIP'
+  anew2 registry-no-key
+  akc armeabi-v7a
+  akc_registry armeabi-v7a marker
+  acase apk-registry-library-without-the-test-key 'NativeLib: lib/armeabi-v7a/libkeepcrypt.so: no test registry key'
+  anew2 registry-stub-marker
+  printf ' KC_TEST_SOURCE_DO_NOT_SHIP\n' >>"$c/files/kc-arm64-v8a.so" || exit 2
+  akc_copy arm64-v8a
+  acase apk-registry-library-with-the-stub-marker 'Marker: lib/arm64-v8a/libkeepcrypt.so: KC_TEST_SOURCE_DO_NOT_SHIP'
+  anew2 registry-comment
+  echo KC_TEST_REGISTRY_DO_NOT_SHIP >"$c/comment" || exit 2
+  acase apk-registry-marker-outside-the-library "Marker: $c/app.apk: KC_TEST_REGISTRY_DO_NOT_SHIP"
+  anew2 registry-key-in-resources
+  printf '%0256d\n' 0 >"$c/files/resources.arsc" && write_testkey "$c/key" && cat "$c/key" >>"$c/files/resources.arsc" || exit 2
+  acase apk-registry-test-key-in-resources "TestKey: resources.arsc: the test registry public key $testkey"
+  avariant=
   # The byte search and the dex reference scan.
   anew marker-dex
   aappend "$c/files/classes2.dex" '000200: 1a00 0400                              |0000: const-string v0, "KC_TEST_REGISTRY_DO_NOT_SHIP" // string@0004'
@@ -6973,11 +7282,29 @@ STUB
   anew no-keepcrypt
   sed '/^Class #1/,$d' "$b/files/classes.dex" >"$c/files/classes.dex" && : >"$c/files/classes2.dex" || exit 2
   abuild
-  axexpect apk-error-no-keepcrypt-class 'dexdump listed no com.keepcrypt class' shipping "$c/app.apk" "$c/expected" "$c/report.txt" "$acert"
+  axexpect apk-error-no-keepcrypt-class 'dexdump listed no com.keepcrypt class' shipping "$c/app.apk" "$c/expected" "$c/report.txt" "$acert" "$c/jnilibs"
   anew native-list
   echo 'x86 libandroidx.graphics.path.so abc' >"$c/expected/native-libs.txt" || exit 2
   abuild
-  axexpect apk-error-native-list-line "native-libs.txt line 1 is not" shipping "$c/app.apk" "$c/expected" "$c/report.txt" "$acert"
+  axexpect apk-error-native-list-line "native-libs.txt line 1 is not" shipping "$c/app.apk" "$c/expected" "$c/report.txt" "$acert" "$c/jnilibs"
+  # libkeepcrypt.so in native-libs.txt: by android-rust.sh's word for each ABI, never by a SHA-256;
+  # and the scanned copy it is compared with must be there.
+  anew native-list-libkeepcrypt-missing
+  grep -v -e '^x86_64 libkeepcrypt[.]so ' "$b/expected/native-libs.txt" >"$c/expected/native-libs.txt" || exit 2
+  abuild
+  axexpect apk-error-native-list-without-an-abi-libkeepcrypt "native-libs.txt lists libkeepcrypt.so android-rust.sh for arm64-v8a, armeabi-v7a, not for each" \
+    shipping "$c/app.apk" "$c/expected" "$c/report.txt" "$acert" "$c/jnilibs"
+  anew native-list-libkeepcrypt-sha
+  sed "s/^x86_64 libkeepcrypt[.]so .*/x86_64 libkeepcrypt.so $(sha256 "$b/files/kc-x86_64.so")/" "$b/expected/native-libs.txt" \
+    >"$c/expected/native-libs.txt" || exit 2
+  abuild
+  axexpect apk-error-native-list-libkeepcrypt-by-sha256 "is not \"<abi> <name>.so <sha256>\", or \"<abi> libkeepcrypt.so android-rust.sh\"" \
+    shipping "$c/app.apk" "$c/expected" "$c/report.txt" "$acert" "$c/jnilibs"
+  anew jnilibs-copy-missing
+  rm "$c/jnilibs/armeabi-v7a/libkeepcrypt.so" || exit 2
+  abuild
+  axexpect apk-error-scanned-copy-missing "cannot read $c/jnilibs/armeabi-v7a/libkeepcrypt.so, the scanned output of scripts/android-rust.sh" \
+    shipping "$c/app.apk" "$c/expected" "$c/report.txt" "$acert" "$c/jnilibs"
   # Alignment and the signature.
   anew zipalign
   touch "$c/zipalign-fails" || exit 2
@@ -7003,7 +7330,7 @@ case ${1-} in
   --image) shift; [ $# -eq 4 ] || { usage >&2; exit 2; }; image_scan "$1" "$2" "$3" "$4" ;;
   --selftest-image) shift; [ $# -eq 2 ] || { usage >&2; exit 2; }; selftest_image "$1" "$2" ;;
   --os-config) shift; [ $# -eq 1 ] || { usage >&2; exit 2; }; os_config "$1" ;;
-  --apk) shift; [ $# -eq 5 ] || { usage >&2; exit 2; }; apk_scan "$1" "$2" "$3" "$4" "$5" ;;
+  --apk) shift; [ $# -eq 6 ] || { usage >&2; exit 2; }; apk_scan "$1" "$2" "$3" "$4" "$5" "$6" ;;
   --selftest-apk) shift; [ $# -eq 0 ] || { usage >&2; exit 2; }; apk_selftest ;;
 esac
 

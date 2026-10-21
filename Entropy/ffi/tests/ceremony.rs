@@ -1012,6 +1012,17 @@ fn ffi_test_helpers_match_their_vectors() {
         let text = ur(case.get("type").text(), &case.get("cbor_hex").hex());
         assert_eq!(text, case.get("ur").text());
     }
+    // The phones' two go-ahead fixtures carry their QR text beside their bytes (M5-42): this
+    // encoder gives that text from the bytes.
+    let mut both = Vec::new();
+    for case in kcr().get("proofs").list() {
+        if case.has("kcp1_hex") && case.has("ur") {
+            let name = case.get("name").text();
+            assert_eq!(proof_ur(name), case.get("ur").text(), "{name}");
+            both.push(name);
+        }
+    }
+    assert_eq!(both, ["clear-empty-bucket", "collision-dice-50"]);
     assert_eq!(kcr().get("today").number(), u64::from(VECTOR_DAY));
     for case in kcr().get("seeds").list() {
         let url = format!(

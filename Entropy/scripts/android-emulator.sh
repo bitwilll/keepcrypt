@@ -1,11 +1,13 @@
 #!/bin/sh
 # One emulator leg of the Android workflow (tasks/todo.md, M5 group 6; Q55, Q56): boots a headless
 # x86_64 emulator of one API level, installs the APKs the job already built, signed and checked, runs
-# the capture harness on them, prints the platform probe's facts and shuts the emulator down. The
-# workflow runs it once per image, one after another, on the same signed bytes.
+# the capture harness on them (or, on the 16 KB-page image, the native-library leg below), prints
+# the platform probe's facts and shuts the emulator down. The workflow runs it once per image, one
+# after another, on the same signed bytes.
 #
 # Usage: scripts/android-emulator.sh API SDK_ROOT ADB APK_DIR WORK_DIR
-#   API      31 or 36: system-images;android-API;default;x86_64
+#   API      31 or 36: system-images;android-API;default;x86_64; or 16k:
+#            system-images;android-36;google_apis_ps16k;x86_64, the 16 KB-page image (group 6)
 #   SDK_ROOT the emulator's SDK root (sdkmanager --sdk_root), holding emulator/ and that image (the
 #            script adds the empty platforms/ and the platform-tools/ link the emulator looks for)
 #   ADB      the job's own adb (the runner's platform-tools)
@@ -43,6 +45,17 @@
 #      first frame is the curtain's and a stream may carry no frame after it (screenrecord writes one
 #      only when the display changes), so a second recording starts with the app's first screen up,
 #      whose first frame screenrecord composes at once: every frame black over the window too.
+# On the 16 KB-page image (API 16k; M5 group 6, the ARM and 16 KB leg, from commit 14) steps 2-6 are
+# not run. After step 1: getconf PAGE_SIZE must be 16384; the shipping APK is installed (the
+# package manager's primaryCpuAbi must be x86_64) with its test APK, and NativeTest runs through
+# android-instrument.sh: the app's own start (System.loadLibrary, JNI_OnLoad, the self-test through
+# the bridge, then its first screen), the self-test called again and dice-50-words12's Seal ID
+# through the bridge. Then, for arm64-v8a and armeabi-v7a, each only if ro.product.cpu.abilist lists
+# it (the image's ARM translation, a probe fact): the APK installed again with adb install --abi ABI
+# (primaryCpuAbi must then be ABI) and NativeTest again, so the ARM library loads, binds and runs
+# translated. An ABI the list lacks is printed as a probe line, for the gate report and Q56: a
+# translated run proves loading, symbol binding, JNI_OnLoad and the self-test, never native ARM
+# execution.
 # Every recording is one continuous raw-frame stream with no time limit (lead decision M5-17: in
 # raw-frames mode screenrecord ignores --time-limit and records until SIGINT): the checker starts
 # it, and when the scenario is done this script sends the checker SIGTERM, which stops screenrecord
@@ -58,8 +71,10 @@
 # the leg's end, after the later checks ran; capture-control still in recents after pm clear, a
 # recording that ends before it is stopped, the app's window lit in the first-frame stream, and the
 # same with that stream carrying no frame after the curtain (only the second stream sees it) each
-# exit 1; too few arguments exit 2. Exit 0 when every case behaves, 1 otherwise. The legs run at once;
-# it takes about a minute.
+# exit 1. On the 16 KB-page image: a leg with arm64-v8a listed passes, running NativeTest for x86_64
+# and arm64-v8a and naming armeabi-v7a as not listed; a page size of 4096, a failing NativeTest and
+# an install whose primaryCpuAbi stays x86_64 under --abi each exit 1. Too few arguments exit 2.
+# Exit 0 when every case behaves, 1 otherwise. The legs run at once; it takes about a minute.
 set -u
 unset CDPATH
 
@@ -106,7 +121,18 @@ case "$*" in
   'shell screenrecord '*) exec python3 -I "$(dirname "$0")/screenrecord.py" "$s" none ;;
   'exec-out screenrecord '*) exec python3 -I "$(dirname "$0")/screenrecord.py" "$s" stream ;;
   'shell pkill -INT -x screenrecord') kill -INT "$(cat "$s/recorder.pid")" ;;
-  'install '*) echo Success ;;
+  'install --abi '*)
+    [ -n "${KC_ABI_STUCK:-}" ] || echo "$3" > "$s/abi"
+    echo Success
+    ;;
+  'install '*)
+    case "$*" in *'/app-shipping-release.apk') echo x86_64 > "$s/abi" ;; esac
+    echo Success
+    ;;
+  'uninstall com.keepcrypt.entropy') echo Success ;;
+  'shell dumpsys package com.keepcrypt.entropy') printf '    primaryCpuAbi=%s\n' "$(cat "$s/abi")" ;;
+  'shell getconf PAGE_SIZE') echo "${KC_PAGE_SIZE:-4096}" ;;
+  'shell getprop ro.product.cpu.abilist') echo "${KC_ABILIST:-x86_64}" ;;
   'shell am start -W '*)
     for a; do c=$a; done
     case $c in
@@ -167,21 +193,23 @@ while not stopped:
     time.sleep(0.05)
 EOF
   chmod +x "$st/scripts/android-instrument.sh" "$st/emulator" "$st/adb" || exit 2
-  # leg NAME [VAR=VALUE...]: one whole leg on API 31 in the background, its case directory $st/NAME,
-  # with VAR=VALUE set for the stand-ins; its output in out and its exit status in rc.
+  # leg NAME [VAR=VALUE...]: one whole leg on API 31 (16k for a NAME that starts with 16k) in the
+  # background, its case directory $st/NAME, with VAR=VALUE set for the stand-ins; its output in out
+  # and its exit status in rc.
   leg() {
     c=$st/$1
+    case $1 in 16k*) lapi=16k limage=android-36/google_apis_ps16k/x86_64 ;; *) lapi=31 limage=android-31/default/x86_64 ;; esac
     shift
-    mkdir -p "$c/sdk/emulator" "$c/sdk/system-images/android-31/default/x86_64" "$c/apks" || exit 2
+    mkdir -p "$c/sdk/emulator" "$c/sdk/system-images/$limage" "$c/apks" || exit 2
     cp "$st/emulator" "$c/sdk/emulator/emulator" || exit 2
-    echo 'Pkg.Revision=1' > "$c/sdk/system-images/android-31/default/x86_64/source.properties" || exit 2
+    echo 'Pkg.Revision=1' > "$c/sdk/system-images/$limage/source.properties" || exit 2
     for f in app-shipping-release app-shipping-release-androidTest app-withTestRegistry-release \
       app-withTestRegistry-release-androidTest capture-control-release; do
       : > "$c/apks/$f.apk" || exit 2
     done
     echo black > "$c/screen" || exit 2
     {
-      env KC_STUB="$c" "$@" sh "$st/scripts/android-emulator.sh" 31 "$c/sdk" "$st/adb" "$c/apks" "$c/work"
+      env KC_STUB="$c" "$@" sh "$st/scripts/android-emulator.sh" "$lapi" "$c/sdk" "$st/adb" "$c/apks" "$c/work"
       echo $? > "$c/rc"
     } > "$c/out" 2>&1 &
   }
@@ -215,6 +243,10 @@ EOF
   leg recording-ends-early KC_REC_END=1
   leg app-window-lit KC_APP_SCREEN=lit
   leg app-window-lit-no-frame KC_APP_SCREEN=lit-unsent
+  leg 16k-pass KC_PAGE_SIZE=16384 KC_ABILIST=x86_64,arm64-v8a
+  leg 16k-page-4096 KC_ABILIST=x86_64,arm64-v8a
+  leg 16k-native-test-fails KC_PAGE_SIZE=16384 KC_FAILCLASS=NativeTest
+  leg 16k-abi-not-forced KC_PAGE_SIZE=16384 KC_ABILIST=x86_64,arm64-v8a KC_ABI_STUCK=1
   wait
   expect pass 0 "pass: api=31 control (a) raw frames" "pass: api=31 first frame (shipping): every frame black" \
     "pass: api=31 first frame (shipping, its first screen up)" "pass: api=31 first frame (registry, its first screen up)" \
@@ -234,6 +266,17 @@ EOF
   expect app-window-lit 1 "FAIL: emulator: api=31: shipping: a raw frame shows the app's window"
   expect app-window-lit-no-frame 1 "pass: api=31 first frame (shipping): every frame black" \
     "FAIL: emulator: api=31: shipping: a raw frame with the app's first screen up shows its window"
+  expect 16k-pass 0 "probe: api=16k ro.product.cpu.abilist=x86_64,arm64-v8a; getconf PAGE_SIZE=16384" \
+    "probe: api=16k app installed (x86_64): primaryCpuAbi=x86_64" \
+    "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.NativeTest" \
+    "probe: api=16k app installed (arm64-v8a): primaryCpuAbi=arm64-v8a" \
+    "pass: api=16k native library: x86_64, arm64-v8a" \
+    "probe: api=16k armeabi-v7a: not in ro.product.cpu.abilist (x86_64,arm64-v8a): not run here" \
+    "emulator: api=16k: every check passed"
+  expect 16k-page-4096 1 "FAIL: emulator: api=16k: getconf PAGE_SIZE is 4096, not 16384"
+  expect 16k-native-test-fails 1 \
+    "FAIL: emulator: api=16k: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.NativeTest) (each reported above)"
+  expect 16k-abi-not-forced 1 "FAIL: emulator: api=16k: the app's primaryCpuAbi is x86_64, not arm64-v8a"
   sh "$st/scripts/android-emulator.sh" 31 > "$st/out" 2>&1
   if [ "$?" -eq 2 ] && grep -q -e '^usage: ' "$st/out"; then
     passed=$((passed + 1))
@@ -260,11 +303,16 @@ sdk=$2
 adb=$3
 apks=$4
 work=$5
-case $api in 31 | 36) ;; *) echo "android-emulator: API must be 31 or 36" >&2; exit 2 ;; esac
+case $api in
+  31 | 36) level=$api tag=default ;;
+  16k) level=36 tag=google_apis_ps16k ;;
+  *) echo "android-emulator: API must be 31, 36 or 16k" >&2; exit 2 ;;
+esac
 
 here=$(cd "$(dirname "$0")" && pwd) || exit 2
 serial=emulator-5554
-image="system-images;android-$api;default;x86_64"
+image="system-images;android-$level;$tag;x86_64"
+sysdir=system-images/android-$level/$tag/x86_64
 avd=kc$api
 size=360x640
 cap=120
@@ -282,7 +330,7 @@ dev() { "$adb" -s "$serial" "$@"; }
 value() { dev shell "$@" 2>&1 | tr -d '\r' | tr '\n' ' ' | sed 's/ *$//'; }
 
 [ -x "$sdk/emulator/emulator" ] || fail "no emulator in $sdk"
-[ -d "$sdk/system-images/android-$api/default/x86_64" ] || fail "no $image in $sdk"
+[ -d "$sdk/$sysdir" ] || fail "no $image in $sdk"
 [ -x "$adb" ] || fail "no adb at $adb"
 for f in app-shipping-release app-shipping-release-androidTest app-withTestRegistry-release \
   app-withTestRegistry-release-androidTest capture-control-release; do
@@ -298,7 +346,7 @@ mkdir -p "$sdk/platforms" || exit 2
 cat > "$work/avd/$avd.ini" <<EOF || exit 2
 avd.ini.encoding=UTF-8
 path=$work/avd/$avd.avd
-target=android-$api
+target=android-$level
 EOF
 cat > "$work/avd/$avd.avd/config.ini" <<EOF || exit 2
 avd.ini.encoding=UTF-8
@@ -308,8 +356,8 @@ abi.type=x86_64
 hw.cpu.arch=x86_64
 hw.cpu.ncore=4
 hw.ramSize=4096
-image.sysdir.1=system-images/android-$api/default/x86_64/
-tag.id=default
+image.sysdir.1=$sysdir/
+tag.id=$tag
 hw.lcd.width=720
 hw.lcd.height=1280
 hw.lcd.density=320
@@ -373,7 +421,7 @@ boot() {
 }
 
 "$adb" start-server > /dev/null 2>&1 || fail "adb start-server failed"
-echo "== $image: $(sed -n 's/^Pkg[.]Revision=//p' "$sdk/system-images/android-$api/default/x86_64/source.properties")"
+echo "== $image: $(sed -n 's/^Pkg[.]Revision=//p' "$sdk/$sysdir/source.properties")"
 echo "== emulator: $("$sdk/emulator/emulator" -version 2>&1 | head -n 1)"
 if ! boot 1; then
   tail -n 40 "$work/emulator-1.log"
@@ -416,6 +464,25 @@ case $wake in
   *) fail "the display is not awake ($wake; $shown)" ;;
 esac
 
+# fail_later MESSAGE: a failure reported now that fails the leg at its end, so the checks after it
+# still run.
+failed=
+fail_later() {
+  echo "FAIL: emulator: api=$api: $1 (the leg goes on, and fails at its end)" >&2
+  failed="$failed; $1"
+}
+
+# instrument TARGET CLASS...: android-instrument.sh on TARGET's test APK, its output kept in
+# $work/instrument.log for the kc: lines.
+instrument() {
+  target=$1
+  shift
+  sh "$here/android-instrument.sh" "$adb" "$serial" "$api" "$target.test" "$target" "$@" > "$work/instrument.log" 2>&1
+  rc=$?
+  cat "$work/instrument.log"
+  [ "$rc" -eq 0 ] || fail_later "instrumented tests failed on $target ($*)"
+}
+
 # 1. The shell's facts.
 probe "build: $(value getprop ro.build.fingerprint); sdk $(value getprop ro.build.version.sdk); type $(value getprop ro.build.type); ro.debuggable=$(value getprop ro.debuggable)"
 probe "ro.product.cpu.abilist=$(value getprop ro.product.cpu.abilist); getconf PAGE_SIZE=$(value getconf PAGE_SIZE)"
@@ -431,6 +498,48 @@ dev shell dumpsys content_capture 2>&1 | tr -d '\r' | sed '/^[[:space:]]*$/d' | 
   probe "dumpsys content_capture: $line"
 done
 python3 -I "$here/android-frames.py" probe "$adb" "$serial" "$api" "$size" 720x1280 || say "the screenrecord probe stopped early"
+
+# The 16 KB-page image (M5 group 6, the ARM and 16 KB leg): the page size, then NativeTest on the
+# shipping APK for x86_64 and for each ARM ABI the image lists (translated), each install's ABI
+# read back from the package manager; steps 2-6 are the default images' (see the header).
+if [ "$api" = 16k ]; then
+  page=$(value getconf PAGE_SIZE)
+  [ "$page" = 16384 ] || fail "getconf PAGE_SIZE is $page, not 16384"
+  abis=$(value getprop ro.product.cpu.abilist)
+  app=com.keepcrypt.entropy
+  out=$(dev install "$apks/app-shipping-release-androidTest.apk" 2>&1)
+  case $out in *Success*) say "installed app-shipping-release-androidTest.apk" ;; *) echo "$out"; fail "adb install app-shipping-release-androidTest.apk failed" ;; esac
+  ran=
+  # native_on ABI [INSTALL-OPTION...]: the shipping APK installed afresh with the options given,
+  # its primaryCpuAbi ABI, then NativeTest in its process.
+  native_on() {
+    want=$1
+    shift
+    dev uninstall "$app" > /dev/null 2>&1
+    out=$(dev install "$@" "$apks/app-shipping-release.apk" 2>&1)
+    case $out in *Success*) ;; *) echo "$out"; fail "adb install $* app-shipping-release.apk failed" ;; esac
+    got=$(value dumpsys package "$app" | tr ' ' '\n' | sed -n 's/^primaryCpuAbi=//p' | head -n 1)
+    probe "app installed ($want): primaryCpuAbi=$got"
+    if [ "$got" != "$want" ]; then
+      fail_later "the app's primaryCpuAbi is $got, not $want"
+      return
+    fi
+    before=$failed
+    instrument "$app" com.keepcrypt.entropy.NativeTest
+    [ "$failed" != "$before" ] || ran="$ran, $want"
+  }
+  native_on x86_64
+  for abi in arm64-v8a armeabi-v7a; do
+    case ",$abis," in
+      *",$abi,"*) native_on "$abi" --abi "$abi" ;;
+      *) probe "$abi: not in ro.product.cpu.abilist ($abis): not run here (the gate report and Q56 name it)" ;;
+    esac
+  done
+  [ -z "$failed" ] || fail "${failed#; } (each reported above)"
+  echo "pass: api=$api native library: ${ran#, } (page size $page): JNI_OnLoad, the self-test and dice-50-words12's Seal ID through the bridge"
+  say "every check passed"
+  exit 0
+fi
 
 for f in app-shipping-release app-withTestRegistry-release capture-control-release \
   app-shipping-release-androidTest app-withTestRegistry-release-androidTest; do
@@ -460,25 +569,6 @@ shell_screencap "capture-control's first screen"
 start_activity com.keepcrypt.entropy/com.keepcrypt.entropy.MainActivity
 sleep 2
 shell_screencap "the shipping app's first screen"
-
-# fail_later MESSAGE: a failure reported now that fails the leg at its end, so the checks after it
-# still run.
-failed=
-fail_later() {
-  echo "FAIL: emulator: api=$api: $1 (the leg goes on, and fails at its end)" >&2
-  failed="$failed; $1"
-}
-
-# instrument TARGET CLASS...: android-instrument.sh on TARGET's test APK, its output kept in
-# $work/instrument.log for the kc: lines.
-instrument() {
-  target=$1
-  shift
-  sh "$here/android-instrument.sh" "$adb" "$serial" "$api" "$target.test" "$target" "$@" > "$work/instrument.log" 2>&1
-  rc=$?
-  cat "$work/instrument.log"
-  [ "$rc" -eq 0 ] || fail_later "instrumented tests failed on $target ($*)"
-}
 
 # 3. Control (a) in screencap, takeScreenshot, dumpsys and recents, first; then capture-control's
 # tasks leave recents with its (empty) data.
