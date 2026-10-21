@@ -16,6 +16,7 @@ import com.keepcrypt.entropy.Capture.probe
 import com.keepcrypt.entropy.Capture.waitUntil
 import com.keepcrypt.entropy.screens.Screen
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -35,7 +36,14 @@ import org.junit.runner.RunWith
  *   each), big-endian, 24 bytes, with its type one of the two sensors'; and for each sensor at least
  *   one sample, read back in that layout, is an event the test's own listener received: the same
  *   type, the same timestamp and the same bits in every value;
- * - after stop no sample arrives for a second, while the test's own listener still receives events.
+ * - after stop no sample arrives for a second, while the test's own listener still receives events;
+ * - and PhoneMotion unregistered, not only stopped reporting (stop drops its receiver before it
+ *   unregisters, so the missing late samples cannot show it): Android opens a listener's sensor
+ *   connection under the listener's class name (its enclosing class's for an anonymous one), and
+ *   dumpsys sensorservice starts each connection's line with that name and " | ". Where it lists both
+ *   PhoneMotion's connection and the test's own while PhoneMotion runs, after stop it lists the
+ *   test's own and not PhoneMotion's; where it does not, a probe line says the unregistration is not
+ *   proven on that image, and the pass line does not claim it.
  */
 @RunWith(AndroidJUnit4::class)
 class PhoneMotionTest {
@@ -93,6 +101,7 @@ class PhoneMotionTest {
             SystemClock.sleep(50)
         }
         SystemClock.sleep(MORE_MS)
+        val running = connections()
         val kept = onMain {
             motion.stop()
             ArrayList(samples)
@@ -101,6 +110,7 @@ class PhoneMotionTest {
         SystemClock.sleep(AFTER_STOP_MS)
         val late = onMain { samples.size } - kept.size
         val ownAfterStop = onMain { own.size } - ownAtStop
+        val stopped = connections()
         sensors.unregisterListener(listener)
         val events = onMain { HashMap(own) }
         finish(activity)
@@ -131,12 +141,42 @@ class PhoneMotionTest {
         }
         assertEquals("a sample arrived after stop", 0, late)
         assertTrue("the sensors sent no event in the second after stop, so no sample there proves nothing", ownAfterStop > 0)
+
+        // The unregistration, read where dumpsys lists both connections by name while PhoneMotion runs.
+        val phoneMotion = connectionName(motion)
+        val mine = connectionName(listener)
+        val listed = phoneMotion != mine && phoneMotion in running && mine in running
+        probe(
+            "dumpsys sensorservice: while PhoneMotion ran it listed PhoneMotion's connection ($phoneMotion): " +
+                "${phoneMotion in running}, the test's own ($mine): ${mine in running}; after stop PhoneMotion's: " +
+                "${phoneMotion in stopped}, the test's own: ${mine in stopped}",
+        )
+        if (listed) {
+            assertTrue("the test's own connection is not listed after stop, so PhoneMotion's absence proves nothing", mine in stopped)
+            assertFalse("PhoneMotion's sensor connection is still listed after stop: it never unregistered", phoneMotion in stopped)
+        } else {
+            probe("dumpsys sensorservice does not list both connections by name on this image: the unregistration is not proven here")
+        }
         val gyro = if (gyroscope != null) " and a gyroscope sample" else " (no gyroscope listed)"
+        val unregistered = if (listed) "; unregistered (its connection listed while it ran, gone after stop)" else ""
         pass(
             "PhoneMotion: an accelerometer sample within 5 s" + gyro + ", each 24 bytes (type, timestamp, value bits, " +
-                "big-endian) and matching the test's own events; none after stop",
+                "big-endian) and matching the test's own events; none after stop" + unregistered,
         )
     }
+
+    /**
+     * The name Android opens listener's sensor connection under, as SystemSensorManager makes it: the
+     * name of its enclosing class where it has one (an anonymous or nested listener), else its own.
+     */
+    private fun connectionName(listener: Any): String = (listener.javaClass.enclosingClass ?: listener.javaClass).name
+
+    /**
+     * The names that start lines of dumpsys sensorservice with " | " after them: every sensor
+     * connection's name (a sensor's own line under its connection gives its handle there instead).
+     */
+    private fun connections(): Set<String> =
+        Capture.shellText("dumpsys sensorservice").lines().mapNotNull { CONNECTION.find(it)?.groupValues?.get(1) }.toSet()
 
     /** The size bytes of bytes from at, big-endian. */
     private fun bigEndian(bytes: ByteArray, at: Int, size: Int): Long {
@@ -160,5 +200,8 @@ class PhoneMotionTest {
 
         /** How long the test waits for a late sample after stop. */
         const val AFTER_STOP_MS = 1_000L
+
+        /** A line of dumpsys sensorservice that starts with a name and " | ", the name captured. */
+        val CONNECTION = Regex("""^\s*(\S+) \| """)
     }
 }

@@ -13729,6 +13729,14 @@ they differ. Nothing in the Android plan is weakened.
   safeDrawingPadding, which matters on API 36, whose window is edge to edge): UI Automator gives only visible
   bounds, cut to the window as accessibility reports it, and reading the drawn tree's positions needs a UI test
   library M5 does not add (M5-46).
+  Proof (M5 commit 16m, review fix, partial: the emulator test runs only in CI): "none after stop" did not show
+  that PhoneMotion unregisters, since stop drops its receiver first (a stop without unregisterListener passed).
+  PhoneMotionTest now reads dumpsys sensorservice while PhoneMotion runs and again after the second after stop,
+  with the test's own listener still on: Android names a sensor connection after its listener's class (the
+  enclosing class for an anonymous one), and the dump starts each connection's line with that name and " | ".
+  Where both connections are listed while it runs, after stop the test's own must be listed and PhoneMotion's
+  not, and the pass line adds "unregistered"; on an image whose dump lists them otherwise, a probe line says the
+  unregistration is not proven there.
 - M5-52 (2026-10-21): commit 16 adds FlowTest and a ten-screen CaptureTest walk per leg; run 39611275051 at e38a095
   took the Android job 1331 s (22.2 min: Rust libraries 245 s, Gradle build 185 s, API 31 219 s, API 36 245 s, 16 KB
   113 s), 89% of M5-44's 25. By M5-30's rule (the measured run plus 25%) the budget is 28 minutes (16i-b). Each later
