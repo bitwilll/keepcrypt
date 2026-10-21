@@ -12245,13 +12245,14 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   Back are the model's back); the slot's restart is held like a session (timers, going online), so a discard takes it
   home with the Wiped kept; snapshotLoaded is a snapshot's way into the model, which only the tests use, after their
   own Core.loadSnapshot, until commit 21's Home entry (M5-48); the check QR and the report are wiped once no screen
-  holds them. CheckScreensTest (11 tests, its own JVM; kcr.json's date and snapshots through a new androidHostTest
+  holds them. CheckScreensTest (12 tests, its own JVM; kcr.json's date and snapshots through a new androidHostTest
   entropyFile, M5-43's pattern): Done at the minimum and not below it, then the prompt with dice-50-words12's Seal ID;
   Skip confirmed, Back on its confirm; the seal card's check QR equal to core's; a wrong code refused with the same
   check QR in core and on screen and the actions kept; Back on each confirm screen and the code entry, no core call;
   Match found to the collision result, the report behind its gate (Add fresh entropy reaching nothing there) and Add
   fresh entropy at 0 / 99, the report then wiped; Cannot check to Start again at 0 / 50, and at 0 / 99 when it was the
-  restart after a collision; leaving on the report discarding at once, the next seed still at 99; with with-dice-50
+  restart after a collision; leaving on the report discarding at once, the next seed still at 99; wipeAll on the code
+  entry wiping the typed code and the check QR, and past the report's gate the report (17b); with with-dice-50
   loaded the check on the worker finds the collision, no words made available; current-day-30, stale-day-31 and
   future-day-1 give Current, Stale and Future and their warnings on kcr.json's date; the result texts and the code as
   shown. Emulator (scripts/android-emulator.sh step 4a, after FlowTest, API 31 and 36): CheckTest (shipping APK: Done

@@ -25,15 +25,15 @@ import kotlin.test.fail
  * and the actions kept; Match found to the collision result, the report QR behind the privacy gate and
  * "Add fresh entropy" at 99 rolls; Cannot check to "Start again" at the normal minimum, and at 99 when
  * the session was itself the restart after a collision; leaving the app on the report (the first
- * Protected screen) discarding at once; and with a loaded snapshot the automatic check, its collision
- * before any words and each freshness warning on vectors/kcr.json's own date. The seed is kcr.json's
- * public gate seed dice-50-words12 (the snapshot with-dice-50 holds its seal; the others do not), its
- * rolls picked on the pad as the dice screen does. The right typed code needs the check QR read, which
- * the emulator's CheckTest does with ZXing. Where the slot is, is read from the slot itself: the seal
- * is offered once sealed, the check QR only while checking, a word page once the words are available,
- * the collision report only at the restart after a collision, and the self-test only at home (each
- * other call halts, which would fail every later check). Each test leaves the slot at home (wipeAll
- * after it).
+ * Protected screen) discarding at once; the model's end (wipeAll) wiping the typed code and the QR
+ * codes on show; and with a loaded snapshot the automatic check, its collision before any words and
+ * each freshness warning on vectors/kcr.json's own date. The seed is kcr.json's public gate seed
+ * dice-50-words12 (the snapshot with-dice-50 holds its seal; the others do not), its rolls picked on
+ * the pad as the dice screen does. The right typed code needs the check QR read, which the emulator's
+ * CheckTest does with ZXing. Where the slot is, is read from the slot itself: the seal is offered once
+ * sealed, the check QR only while checking, a word page once the words are available, the collision
+ * report only at the restart after a collision, and the self-test only at home (each other call halts,
+ * which would fail every later check). Each test leaves the slot at home (wipeAll after it).
  */
 class CheckScreensTest {
     @AfterTest
@@ -307,6 +307,28 @@ class CheckScreensTest {
         rig.model.startOffline()
         rig.begin(Mode.DiceOnly, Words.Twelve)
         assertEquals("0 / 99 rolls, 0.0 bits", diceLine(rig), "the kept Wiped outlived the discard")
+    }
+
+    @Test
+    fun wipeAllWipesTheTypedCodeAndTheQrCodesOnShow() {
+        // The holder's end on the code entry, with symbols typed: the typed code and the check QR it holds.
+        val rig = atSealCard()
+        val request = assertNotNull(rig.model.state.value.checkRequest)
+        rig.model.typeCode()
+        for (key in "PBJ") assertTrue(rig.model.goAheadCode.type(key))
+        rig.model.wipeAll()
+        assertEquals(0, rig.model.goAheadCode.length, "wipeAll wipes the typed go-ahead code")
+        assertTrue(rig.model.goAheadCode.zeroPastLength(), "and zeroes its bytes")
+        assertTrue(blank(request), "wipeAll wipes the check QR on show")
+        assertNoSession("wipeAll emptied the slot")
+        // And past the report's gate: the collision-report QR, which carries the destroyed seed's seal code.
+        val second = atSealCard()
+        toReport(second)
+        second.model.passGate()
+        val report = assertNotNull(second.model.state.value.report)
+        second.model.wipeAll()
+        assertTrue(blank(report), "wipeAll wipes the collision-report QR on show")
+        assertNoSession("wipeAll emptied the slot at its restart")
     }
 
     @Test
