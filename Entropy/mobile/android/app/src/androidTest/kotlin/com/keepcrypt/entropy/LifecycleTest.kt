@@ -37,9 +37,10 @@ import org.junit.runner.RunWith
  * during the start-up self-test, and Wi-Fi comes on during a start. In each the main thread never
  * waits (the script's judge finds no not-responding window) and the session is gone: afterwards the
  * slot is at home, where only an empty slot takes the self-test (a session there would make that call
- * halt). The ceremony is vectors/kcr.json's public gate seed dice-50-words12, driven through Core on
- * this thread while the model runs nothing, as NativeTest drives it; the long calls go through the
- * model, as its screens make them.
+ * halt). And the ViewModel's end, when the activity finishes, empties the slot (CeremonyHolder's
+ * onCleared calls wipeAll). The ceremony is vectors/kcr.json's public gate seed dice-50-words12,
+ * driven through Core on this thread while the model runs nothing, as NativeTest drives it; the long
+ * calls go through the model, as its screens make them.
  */
 @RunWith(AndroidJUnit4::class)
 class LifecycleTest {
@@ -74,8 +75,12 @@ class LifecycleTest {
 
     /**
      * The app is started from the shell and left at once, so the leave comes during its start-up
-     * self-test or just after it: either way, back in the app, the self-test has passed (run again if
-     * the leave discarded it) and the slot is empty.
+     * self-test or just after it, and the screen it leaves behind says which: "Working..." when the
+     * leave discarded the self-test (it shows until a return runs the self-test again), the first screen
+     * when the self-test had passed. Either way, back in the app, the self-test has passed and the slot
+     * is empty. The pass line names the case: only "during" is the discard during the self-test on the
+     * phone (the JVM test leavingDuringTheStartUpSelfTestRunsItAgainOnTheNextReturn holds that path on
+     * every run).
      */
     @Test
     fun leavingDuringTheStartUpSelfTestLeavesNoSession() {
@@ -93,6 +98,7 @@ class LifecycleTest {
         }
         val activity = found!!
         val away = onMain { activity.model.state.value.screen }
+        val during = away == Screen.Working
         probe(
             "start-up self-test: the app was left ${SystemClock.elapsedRealtime() - begun} ms after its start; " +
                 "away it shows ${screenId(away)} (working: the self-test had not passed)",
@@ -102,8 +108,27 @@ class LifecycleTest {
             onMain { activity.shownScreen } == Screen.FirstLaunch && stage(activity) == Stage.RESUMED
         }
         assertTrue("the slot is not at home", Core.selfTest() is Reply.Done)
-        pass("left during the start-up: back, the self-test passed and the slot is empty; no ANR")
+        if (during) {
+            pass("left during the start-up self-test: discarded, run again on the return and passed; the slot is empty; no ANR")
+        } else {
+            pass("left after the start-up self-test passed (not during it, this run): back, the slot is empty; no ANR")
+        }
         finish(activity)
+    }
+
+    /**
+     * The ViewModel's end: a session started through Core, then the activity finished (no configuration
+     * change, so its ViewModel is cleared and CeremonyHolder's onCleared calls wipeAll); once the
+     * activity is destroyed the slot is at home and empty.
+     */
+    @Test
+    fun finishingTheActivityEmptiesTheSlot() {
+        val activity = launch()
+        await("the first screen", START_SECONDS) { onMain { activity.shownScreen } == Screen.FirstLaunch }
+        done(Core.start(Words.Twelve, Mode.DiceOnly))
+        finish(activity)
+        assertTrue("the slot is not at home: onCleared did not wipe it", Core.selfTest() is Reply.Done)
+        pass("the activity finished: the ViewModel's onCleared emptied the slot")
     }
 
     /**

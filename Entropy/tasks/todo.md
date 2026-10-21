@@ -11993,10 +11993,13 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   second long call halts the real slot; nothing leaves the stop screen; wipeAll on the halted slot ends quietly) and
   CeremonyModelRefusalTest (a refusal from a long call with no refused handler halts the real slot, 15f). LifecycleTest
   on the emulator (scripts/android-emulator.sh step 4b, shipping app): Home during a backup's scrypt (dice-50-words12
-  driven through Core to the encryption; the times printed), Home during the start-up self-test (started from the shell
-  and left at once; the self-test passed after the return), and Wi-Fi on during a start held on the worker (airplane
-  mode on and Wi-Fi off first, put back after): each ends with no ANR (the script's judge) and the slot at home
-  (Core.selfTest() Done).
+  driven through Core to the encryption; the times printed), Home at the start-up (started from the shell
+  and left at once; the leave may come during the self-test or after it passed, and the pass line says which: only
+  "during" is the emulator's half of the during-self-test proof, whose discard is then followed by a second self-test
+  on the return, while the JVM test holds that path on every run, 15i), and Wi-Fi on during a start held on the worker
+  (airplane mode on and Wi-Fi off first, put back after): each ends with no ANR (the script's judge) and the slot at
+  home (Core.selfTest() Done). And finishing the activity after a start through Core leaves the slot at home: the
+  ViewModel's onCleared ran wipeAll (15i).
 - [ ] The crash path: an `Application` subclass sets its handler (replacing the platform's) to `Native.wipeAll()` then
   `Process.killProcess`; the stop screen's "Close app" calls `finishAndRemoveTask()` and ends the process.
   Proof: a JVM test of the handler's order with a fake; on the emulator an androidTest-only trigger throws on the main
