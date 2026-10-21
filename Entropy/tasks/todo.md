@@ -12322,6 +12322,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   column, the rows in turn ("09JV-4DPZ"), and Delete takes all eight back; a column with no width would send its tap
   to the key drawn over it, and the code shown would differ. The drawn key size itself stays unproven by the emulator
   tests (M5-46's limit: no UI test library).
+  Proof (CI, run 39678040247 at 32dc6a8, 1739 s): CheckTest passed on API 31 and API 36 ("Done at 50 rolls, the
+  prompt's Seal ID YVM9CPP3, Skip, Match found and Cannot check confirmed on their own screens and Back there, a wrong
+  code refused with the same check QR, the code from the drawn check QR's T and nonce typed on the pad: the check
+  passed"), with every other class on both APIs and the 16 KB leg; Entropy CI 39678040331 and the Pi image
+  39678040302 green. The item stays open for "Scan go-ahead QR" (commit 18) and M5-54/M5-55's changes (17h).
 - [ ] The scanner (Camera2 + ZXing, commit 18): CAMERA asked on this screen only; `ImageReader` YUV_420_888 frames
   reduced to luminance on a background thread and never stored; text over 4,296 characters dropped (swb:144); the first
   decoded text goes to the same `onGoAheadText` the tests call; proof results show their date and any warning before
@@ -13900,6 +13905,9 @@ they differ. Nothing in the Android plan is weakened.
   Rust and 16 KB steps ran 79 s and 28 s slower, so part of the rise is the runner). M5-52's 28 cancelled the job
   just after its last leg. By M5-30's rule (the measured run plus 25%) the budget is 36 minutes (17g-c); the next
   green run re-measures it, and commit 18's scanner tests re-measure it again.
+  Re-measured: run 39678040247 at 32dc6a8, the first whole run with commit 17's tests, took 1739 s (29.0 minutes:
+  Rust libraries 171 s, Gradle build 157 s, API 31 508 s, API 36 531 s, 16 KB 83 s); plus 25% is 37 minutes (17g-d).
+  The gates job of that commit's Entropy CI run (39678040331) took 639 s of its 720.
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the
