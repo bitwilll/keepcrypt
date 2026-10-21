@@ -49,30 +49,42 @@ class LifecycleTest {
     private val device: UiDevice get() = UiDevice.getInstance(Capture.instrumentation)
 
     /**
-     * The scrypt at log2 N = 18 runs for a second or so, and leaving the app (Home) reaches the activity
-     * within a few hundred milliseconds of the press, so the discard comes while core runs it; a reply
-     * that came back with the file first fails the test, with the times printed.
+     * The scrypt at log2 N = 18 runs for about a second, and leaving the app (Home) reaches the activity's
+     * onStop 0.6 to 1.1 s after the press on the CI emulators, so the two race (runs 39582638947 to
+     * 39642302623: the scrypt's reply came back after 0.9 to 1.5 s). An attempt whose reply came back
+     * first never reached the discard during the scrypt and proves nothing: it is printed as a probe
+     * line, the activity is finished (onCleared wipes the slot), and the case runs again on a fresh
+     * activity and session, up to SCRYPT_ATTEMPTS times. An attempt that left during the scrypt is judged
+     * in full; none in SCRYPT_ATTEMPTS fails the test.
      */
     @Test
     fun leavingDuringABackupsScryptDiscardsTheSession() {
-        val activity = launch()
-        selfTested(activity)
-        readyToEncrypt()
-        val encrypted = AtomicBoolean(false)
-        val begun = SystemClock.elapsedRealtime()
-        onMain { activity.model.work({ Core.encryptBackup() }) { encrypted.set(true) } }
-        device.pressHome()
-        await("the activity stopped", 30) { stage(activity) == Stage.STOPPED }
-        val left = SystemClock.elapsedRealtime() - begun
-        await("the long call's reply", 60) { onMain { activity.model.state.value.screen } != Screen.Working }
-        val back = SystemClock.elapsedRealtime() - begun
-        probe("backup scrypt: the app was left after $left ms; the reply came back after $back ms")
-        assertFalse("the scrypt ended before the app was left, so no discard came during it", encrypted.get())
-        assertEquals(Screen.GoOffline, onMain { activity.model.state.value.screen })
-        assertEquals(Notice.Left, onMain { activity.model.state.value.notice })
-        assertTrue("the slot is not at home: the session was not discarded", Core.selfTest() is Reply.Done)
-        pass("left during a backup's scrypt: discarded at once, the reply discarded, the session gone, no ANR")
-        finish(activity)
+        for (attempt in 1..SCRYPT_ATTEMPTS) {
+            val activity = launch()
+            selfTested(activity)
+            readyToEncrypt()
+            val encrypted = AtomicBoolean(false)
+            val begun = SystemClock.elapsedRealtime()
+            onMain { activity.model.work({ Core.encryptBackup() }) { encrypted.set(true) } }
+            device.pressHome()
+            await("the activity stopped", 30) { stage(activity) == Stage.STOPPED }
+            val left = SystemClock.elapsedRealtime() - begun
+            await("the long call's reply", 60) { onMain { activity.model.state.value.screen } != Screen.Working }
+            val back = SystemClock.elapsedRealtime() - begun
+            probe("backup scrypt, attempt $attempt: the app was left after $left ms; the reply came back after $back ms")
+            if (encrypted.get()) {
+                probe("backup scrypt, attempt $attempt: the scrypt ended before the app was left, so no discard came during it; again")
+                finish(activity)
+                continue
+            }
+            assertEquals(Screen.GoOffline, onMain { activity.model.state.value.screen })
+            assertEquals(Notice.Left, onMain { activity.model.state.value.notice })
+            assertTrue("the slot is not at home: the session was not discarded", Core.selfTest() is Reply.Done)
+            pass("left during a backup's scrypt (attempt $attempt): discarded at once, the reply discarded, the session gone, no ANR")
+            finish(activity)
+            return
+        }
+        fail("the scrypt ended before the app was left in all $SCRYPT_ATTEMPTS attempts, so no discard came during it")
     }
 
     /**
@@ -270,5 +282,8 @@ class LifecycleTest {
 
         /** The space between the backup passphrase's words. */
         const val SPACE: Byte = 0x20
+
+        /** How many times the scrypt case may miss its window before it fails. */
+        const val SCRYPT_ATTEMPTS = 3
     }
 }

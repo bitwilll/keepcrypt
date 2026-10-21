@@ -12056,6 +12056,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   run so far (API 31: 886 and 972 ms; API 36: 293 and 858 ms), so the emulator half of "leave during the start-up
   self-test" is not met (M5-47); the item stays open, and the gate report names it if it stays so. UiState's public
   values from commit 16 on are M5-49.
+  Run 39642302623 at 345de33 (16o): API 36's scrypt case failed on its race, "the app was left after 1140 ms; the reply
+  came back after 1140 ms" (over four runs the leave reached onStop after 0.64 to 1.14 s and the scrypt's reply came
+  after 0.87 to 1.54 s). 16p gives the case up to three attempts on a fresh activity and session: an attempt whose
+  reply came first is a probe line and proves nothing; an attempt that left during the scrypt is judged in full; three
+  misses fail it. API 36's start-up leave in that run came after the self-test again (1545 ms after Continue).
   Proof (M5 commit 16j, partial: not yet run in CI): with M5-50's order, LifecycleTest's start-up case presses First
   launch's Continue through the model and Home at once; once the self-test's reply is in, the screen left behind names
   the case (First launch: the leave discarded the self-test, "during"; Go offline: "after"), and back in the app the
