@@ -12129,17 +12129,21 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   nothing was held); the system Back (MainActivity's callback, always enabled) goes Length to Home, Home to Go offline
   and Go offline to First launch, and does nothing anywhere else. StartScreensTest (12 tests) covers each transition
   (Back where nothing is lost and nowhere else, Dice-only skipping two screens, the offline gate, the pad, the 256 cap,
-  the extras) and the pad's faces reaching core as picked (dice-50-words12's rolls through the pad and Confirm,
-  finished, give its Seal ID, 16e); CeremonyModelTest (24) follows the new start screen and has wipeAll wipe the dice
-  pad's pick and stop the motion source (16f), CeremonyModelBusyScreenTest (1, its own JVM: a long call behind a screen
-  that takes input halts the real slot, 16f), OfflineRuleTest gains the two states (3). Confirm reads the face from the
-  pick with no copy of its bytes (16f). FlowTest (3 tests: New seed of 12 words to 50 rolls with Back and Wi-Fi on
-  during the dice; Dice-only of 24 words to 99 and 256; Start disabled online, the settings button, Wi-Fi on at Home)
-  runs on the shipping app in the API 31 and 36 legs before LifecycleTest (scripts/android-emulator.sh step 4a;
-  `--selftest` 16 passed, 0 failed under sh and /bin/dash, 15 before: the flow-test-fails case, and the pass leg's last
-  three runs are FlowTest, LifecycleTest and the killed CrashTest). CaptureTest's every-screen pass walks one activity
-  through all ten screens with the phone offline. The gate is clean on the tree (343 files), `--selftest` 1431 passed, 0
-  failed, and `canaries.sh` PASS, all 93 checks ran.
+  no extra reaching core off Device entropy) and the pad's faces reaching core as picked (dice-50-words12's rolls
+  through the pad and Confirm, finished, give its Seal ID, 16e); CeremonyModelTest (24) follows the new start screen and
+  has wipeAll wipe the dice pad's pick and stop the motion source (16f), CeremonyModelBusyScreenTest (1, its own JVM: a
+  long call behind a screen that takes input halts the real slot, 16f), TouchReachesCoreTest and MotionReachesCoreTest
+  (1 each, their own JVMs: on Device entropy a touch and a motion sample reach core's add_extra, seen as its halt on a
+  slot committed behind the model, and the sample is zeroed, 16g), OfflineRuleTest gains the two states (3). :app's
+  PhoneMotion (SensorMotionSource.kt: the two sensors' registration, unregistration and sample layout) has no test;
+  every model test uses a fake motion source. Confirm reads the face from the pick with no copy of its bytes (16f).
+  FlowTest (3 tests: New seed of 12 words to 50 rolls with Back and Wi-Fi on during the dice; Dice-only of 24 words to
+  99 and 256; Start disabled online, the settings button, Wi-Fi on at Home) runs on the shipping app in the API 31 and
+  36 legs before LifecycleTest (scripts/android-emulator.sh step 4a; `--selftest` 16 passed, 0 failed under sh and
+  /bin/dash, 15 before: the flow-test-fails case, and the pass leg's last three runs are FlowTest, LifecycleTest and the
+  killed CrashTest). CaptureTest's every-screen pass walks one activity through all ten screens with the phone offline.
+  The gate is clean on the tree (343 files), `--selftest` 1431 passed, 0 failed, and `canaries.sh` PASS, all 93 checks
+  ran.
 
 **16. Screens: the collision check** (MA:175-176; swb:112-152)
 - [ ] The prompt ("Check now (recommended)" / "Skip", Skip confirmed on its own screen). With a loaded snapshot the check

@@ -20,11 +20,13 @@ import kotlin.test.fail
  * First launch to Go offline to Home to Length; a new seed through Device entropy and Commitment to the
  * dice, and a dice-only seed straight to the dice; the dice pad, Confirm, Undo, the minimum and the
  * 256 cap; each face picked on the pad reaching core as picked (dice-50-words12's rolls give its Seal
- * ID); Back where nothing is lost and nowhere else; the offline gate; touches and motion into the
- * pool only on Device entropy; and C's hex groups and the dice line, as the Pi writes them. Whether
- * the slot holds a session, and in which stage, is read from the slot itself: the device leg's
- * progress is offered only while collecting, C only once committed, the dice counts only while rolling
- * and the self-test only at home, empty (each other call halts, which would fail every later check).
+ * ID); Back where nothing is lost and nowhere else; the offline gate; no touch or motion sample
+ * reaching core off Device entropy (that they reach it there is TouchReachesCoreTest's and
+ * MotionReachesCoreTest's, each in a JVM of its own); and C's hex groups and the dice line, as the Pi
+ * writes them. Whether the slot holds a session, and in which stage, is read from the slot itself: the
+ * device leg's progress is offered only while collecting, C only once committed, the dice counts only
+ * while rolling and the self-test only at home, empty (each other call halts, which would fail every
+ * later check).
  * Each test leaves the slot at home (wipeAll after it).
  */
 class StartScreensTest {
@@ -282,7 +284,7 @@ class StartScreensTest {
     }
 
     @Test
-    fun touchesAndMotionReachThePoolOnlyOnDeviceEntropy() {
+    fun noTouchOrMotionSampleReachesCoreOffDeviceEntropy() {
         val rig = Rig().toHome()
         rig.model.chooseMode(Mode.Mixed)
         // No session yet: a touch goes nowhere (core's add_extra at home would halt the slot).
@@ -294,7 +296,7 @@ class StartScreensTest {
         val sample = ByteArray(20) { 7 }
         assertTrue(rig.motion.sample(sample))
         assertTrue(sample.all { it == 0.toByte() }, "the sample is zeroed once core has it")
-        assertCollecting("both extras went into the collecting session")
+        assertCollecting("the extras on Device entropy left the slot collecting")
         rig.model.deviceEntropyDone()
         assertEquals(Screen.Commitment, rig.screen)
         val late = ByteArray(20) { 9 }
