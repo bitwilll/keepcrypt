@@ -11966,7 +11966,7 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   (dice-50-words12 YVM9CPP3, dice-99-words12 9FHYMCQA) and SHA256SUMS.
 
 **14. `:secure-ui` and `CeremonyViewModel`**
-- [ ] SecureActivity (from commit 5) as in "Built into this plan", `onStop` reporting "app left" only when not
+- [x] SecureActivity (from commit 5) as in "Built into this plan", `onStop` reporting "app left" only when not
   `isChangingConfigurations`.
   Proof: the emulator capture and lifecycle tests (group 6); the content-capture flag read back in-process, and
   `dumpsys content_capture` shows no view events for the package where the probe found a service.
@@ -11987,6 +11987,9 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   content-capture flag read back; the recreate() case kept the same model with no leaving taken; `dumpsys
   content_capture`: the service is absent on API 31, so not proven there (M5-47). The API 36 leg did not run (the job
   stopped at the red API 31 leg; 15l lets each leg run).
+  Proof (CI, run 39587437349 at 1d49e0a, 1098 s; and run 39585551227 at c078566): CaptureTest 6 tests passed in both flavours on API 31 and
+  API 36, the recents thumbnail clean on both; `dumpsys content_capture` answers "Can't find service" on both images,
+  so the end-to-end content-capture check is proven on neither (M5-47); the in-process flag is read back on both.
 - [x] `OfflineMonitor` (a `ContentObserver` on `AIRPLANE_MODE_ON` and `WIFI_ON`, read again on every start; no receiver,
   no permission); `Timers` (30 s cover, 9-minute warning, 10-minute idle wipe, 60 s background, the picker rule) on an
   injected monotonic clock; the `Protected` wrapper (privacy gate, cover, recording redaction).
@@ -12048,7 +12051,12 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   the reply back after 1097 ms, discarded), Wi-Fi on during a held start (discarded at once, the late start discarded
   again), the activity finished (onCleared emptied the slot), and the start-up leave came after the self-test passed
   (886 ms), so not the emulator half on this leg (M5-47). The API 36 leg did not run.
-- [ ] The crash path: an `Application` subclass sets its handler (replacing the platform's) to `Native.wipeAll()` then
+  Proof (CI, run 39587437349 at 1d49e0a; and run 39585551227): LifecycleTest 4 tests passed on API 31 and API 36 with no ANR (the scrypt
+  leave, the held start under Wi-Fi, onCleared's wipe). The start-up leave came after the self-test passed on every
+  run so far (API 31: 886 and 972 ms; API 36: 293 and 858 ms), so the emulator half of "leave during the start-up
+  self-test" is not met (M5-47); the item stays open, and the gate report names it if it stays so. UiState's public
+  values from commit 16 on are M5-49.
+- [x] The crash path: an `Application` subclass sets its handler (replacing the platform's) to `Native.wipeAll()` then
   `Process.killProcess`; the stop screen's "Close app" calls `finishAndRemoveTask()` and ends the process.
   Proof: a JVM test of the handler's order with a fake; on the emulator an androidTest-only trigger throws on the main
   thread, judged from the shell as in group 6 (process gone, no dialog, empty crash buffer, no DropBox entry).
@@ -12084,6 +12092,9 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   outside the crash; the old FATAL-and-Process case now fails as "not the trigger's exception"); six mutants of the
   new judge (one block allowed as at least one, the Caused-by, stray, exception-text and missing-exception checks
   dropped, the killed branch skipped) each fail it.
+  Proof (CI, run 39587437349 at 1d49e0a): `instrument: api=31 PASS com.keepcrypt.entropy.CrashTest (killed during the test, as it must be;
+  process gone, no crash window, the crash buffer holds only the trigger's crash (Q75), dropbox clean)`, and the same
+  line for api=36; CrashHandlerTest 2 in each flavour.
 - [x] The pads: `DicePad`, `LetterPad` (a-z), `CrockfordPad` (32 symbols), `AsciiPad` (0x20-0x7E, up to 100 characters),
   each writing into a `Secret`, keys in a fixed order, nothing about a key press in semantics on Protected screens.
   Drawing: `QrMatrix`, `SealCard` (the 8x8 Okabe-Ito grid at 240 dp with Seal ID and braille, swb:84-90), braille faces.
@@ -12700,7 +12711,7 @@ internal expect object Native { fun call(op: Int, input: ByteArray): ByteArray }
     `commonTest`; the ZXing round trips (QrRoundTripTest) in `androidHostTest`. The vector files are read through a
     test-only `expect fun entropyFile`, whose JVM actual reads under kc.entropy.
   Proof (CI, run 39554267960 at 89cf334, 1178 s): the JVM half, as group 13's JVM item (per-class counts above); the simulator half moved to M6.
-- [ ] `CeremonyModel` and `Timers` in `:screens` `commonMain` own the slot's use exactly as group 14 says of `CeremonyViewModel`:
+- [x] `CeremonyModel` and `Timers` in `:screens` `commonMain` own the slot's use exactly as group 14 says of `CeremonyViewModel`:
   - they hold screen ids, page indices and `Secret` references only;
   - long calls run on `Dispatchers.Default` behind "Working...";
   - a discard during "Working..." calls `discard()` at once;
@@ -12716,6 +12727,8 @@ internal expect object Native { fun call(op: Int, input: ByteArray): ByteArray }
   Proof (CI, run 39582638947 at 78f5720): all six classes reported and passed (TimersTest 8, CeremonyModelTest 23,
   CeremonyModelHaltTest 1, CeremonyModelRefusalTest 1, PadsTest 5, DrawingTest 5), with :secure-ui's OfflineRuleTest 2;
   the holder's one extra call, runTimers, is M5-45.
+  Proof (CI, run 39587437349 at 1d49e0a): the same classes green again at 15m; "screen ids, page indices and Secret references only" is read
+  as M5-49 says.
 
 **The iOS C-ABI bridge** (Q66 (a))
 
@@ -13626,6 +13639,23 @@ they differ. Nothing in the Android plan is weakened.
   the deterministic proof. If both legs say "after", the gate report names it. The content-capture check proves
   something only on an image whose content_capture service answers (group 14 already says "where the probe found a
   service"); on others its probe line says so and the Review counts it as not proven there.
+- M5-48 (2026-10-21): group 15 lands across commits: commit 16 has the screens from the start to the dice; Dice's Done
+  (finish behind "Working...", then the check prompt) comes with commit 17's check screens; Home gains Check a backup
+  in commit 20 and Load registry snapshot and About in commit 21, so no button exists before its screen. MA:173's
+  "Verify another device's ceremony" is M5b's (Q61). Group 15's item stays open until those commits land (E1 review).
+- M5-49 (2026-10-21): "UI state holds screen ids, page indices and `Secret` references only" (group 14 and the
+  re-plan) is read as: no secret except through a `Secret` reference; public values the screen shows (C as hex
+  groups, the dice count and bits) and flags (dice-only, overlay, notice) may sit in UiState. C is public by design
+  (it is the commitment the user writes down). Commit 16's UiState is within this reading (E1 review).
+- M5-50 (2026-10-21): the start order follows MA:170-172 and group 15: First launch on every start, its Continue runs
+  the self-test behind the Self-test screen, then Go offline. Commit 16 ran the self-test first (the Pi's order,
+  PF:87), which put a screen before MA:13's "first screen"; 16j reorders it. The plan's boot rule ("the self-test
+  before Home") holds either way, and a discard that hits the self-test returns to First launch, whose Continue runs
+  it again.
+- M5-51 (2026-10-21): Q60's "a strip on every screen" covers the privacy cover and the idle-warning overlay too: in the
+  test-registry build both draw the TEST REGISTRY strip (16j). PhoneMotion (the sensor seam's Android end) gets an
+  emulator check in 16j: started on the emulator it delivers at least one accelerometer sample within 5 s, and none
+  after stop (a gyroscope sample too where the image lists one; a probe line says which). E1 review.
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the
