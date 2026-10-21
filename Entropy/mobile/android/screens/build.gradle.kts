@@ -33,10 +33,10 @@ kotlin {
 }
 
 // The JVM tests (group 14): the common tests, run as the Android target's host tests, one test class
-// per JVM, since the model's tests (CeremonyModelTest, CeremonyModelHaltTest and
-// CeremonyModelRefusalTest) drive the process's one slot through Core over the host library that
-// scripts/android-rust.sh withTestRegistry builds (it never ships), and a halt latches that slot for
-// good.
+// per JVM, since the model's tests (CeremonyModelTest, StartScreensTest, and each class whose one test
+// halts the slot, such as CeremonyModelHaltTest) drive the process's one slot through Core over the
+// host library that scripts/android-rust.sh withTestRegistry builds (it never ships), and a halt
+// latches that slot for good.
 val entropy = rootDir.resolve("../..").canonicalPath
 tasks.withType<Test>().configureEach {
     forkEvery = 1

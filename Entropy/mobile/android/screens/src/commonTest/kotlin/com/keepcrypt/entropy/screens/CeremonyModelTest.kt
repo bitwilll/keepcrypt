@@ -410,9 +410,22 @@ class CeremonyModelTest {
     @Test
     fun wipeAllEmptiesTheSlot() {
         val rig = withSession()
+        assertTrue(rig.model.dicePick.replace('4'))
         rig.model.wipeAll()
         assertNoSession("wipeAll emptied it")
+        assertEquals(0, rig.model.dicePick.length, "wipeAll wipes the dice pad's pick")
+        assertTrue(rig.model.dicePick.zeroPastLength(), "and zeroes its byte")
         assertFalse(rig.offline.started, "the offline monitor stops at the model's end")
+    }
+
+    @Test
+    fun wipeAllOnDeviceEntropyStopsTheMotionSource() {
+        val rig = Rig().toHome().begin(Mode.Mixed, Words.Twelve)
+        assertEquals(Screen.DeviceEntropy, rig.screen)
+        assertTrue(rig.motion.running)
+        rig.model.wipeAll()
+        assertFalse(rig.motion.running, "the motion source stops at the model's end, whatever the screen")
+        assertNoSession("wipeAll emptied it")
     }
 
     @Test

@@ -314,15 +314,15 @@ class CeremonyModel(
 
     /**
      * The dice screen's confirm: the face picked on the pad is pushed to core and the pick is wiped. It
-     * does nothing with no face picked or at 256 rolls, where its button is disabled.
+     * does nothing with no face picked or at 256 rolls, where its button is disabled. The face is read
+     * from the pick as a number, with no copy of the pick's bytes, so the pick's wipe leaves none (rule 5).
      */
     fun confirmRoll() {
         if (!pressOn(Screen.Dice)) return
         val dice = mutable.value.dice ?: return
         if (dicePick.length != 1 || dice.rolls >= MAX_ROLLS) return
-        val pick = dicePick.take()
-        val face = pick[0].toInt() - '0'.code
-        pick.wipe()
+        val face = dicePick.keyAt(0) - '0'
+        dicePick.wipe()
         if (short { Core.pushRoll(face) }) showDice()
     }
 
