@@ -19,7 +19,6 @@ import com.keepcrypt.entropy.Ui.toHome
 import com.keepcrypt.entropy.screens.CODE_REFUSED
 import com.keepcrypt.entropy.screens.CROCKFORD_KEYS
 import com.keepcrypt.entropy.screens.Screen
-import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -33,7 +32,7 @@ import org.junit.runner.RunWith
  * dice's Done at the minimum, the check prompt with its Seal ID, Skip confirmed on its own screen and
  * Back there, Check now's seal card, Match found's and Cannot check's confirms and Back, then the
  * go-ahead code: the check QR the screen drew is read in-process (Checker; captures of the app are
- * black), every key of the Crockford pad is whole on screen and Delete takes a typed symbol back, a
+ * black), a code through every column and row of the Crockford pad types and Delete takes it back, a
  * wrong code typed on the pad is refused and the check, its nonce and the actions stay, and the code a
  * checker builds from that QR's T and nonce, typed on the pad, passes the check.
  */
@@ -106,21 +105,17 @@ class CheckTest {
             on(activity, Screen.CodeEntry)
             assertFalse("Done with no symbol", enabled("code_done"))
             assertFalse("Delete with no symbol", enabled("code_delete"))
-            // Every key of the pad is whole on screen: a square inside the display. Before commit 17 a row of
-            // eight 46 dp keys was wider than the 312 dp the screen's margins leave, which hid the last column
-            // (7, F, Q and Z).
-            for (symbol in CROCKFORD_KEYS) {
-                val bounds = find("key_$symbol").visibleBounds
-                assertTrue(
-                    "key $symbol is not whole on screen: $bounds, the display ${device.displayWidth} px wide",
-                    bounds.left >= 0 && bounds.right <= device.displayWidth && bounds.width() > 0 &&
-                        abs(bounds.width() - bounds.height()) <= 1,
-                )
-            }
-            // A key of that column types, and Delete takes it back.
-            tap("key_Z")
-            awaitText("code", "Z___-____")
-            tap("code_delete")
+            // Every column and every row of the pad types: one key from each column, the rows in turn (0, 9,
+            // J, V, 4, D, P, Z). Before commit 17 a row of eight 46 dp keys was wider than the 312 dp the
+            // screen's margins leave, which left the last columns no width, so a tap there reached the key
+            // drawn over it. A key's bounds cannot show this: UI Automator gives a Compose key its touch
+            // target, at least 48 dp and cut by the targets drawn after it (run 39673248591: key 7, the one
+            // with no neighbour to its right, 96 x 78 px), never the drawn square. Delete takes it all back.
+            val rows = CROCKFORD_KEYS.length / CODE_SYMBOLS
+            val diagonal = (0 until CODE_SYMBOLS).map { column -> CROCKFORD_KEYS[(column % rows) * CODE_SYMBOLS + column] }
+                .joinToString("")
+            type(diagonal)
+            repeat(CODE_SYMBOLS) { tap("code_delete") }
             awaitText("code", "____-____")
             assertFalse("Delete with no symbol left", enabled("code_delete"))
             type(wrong)
@@ -157,5 +152,8 @@ class CheckTest {
         const val DICE_50_ROLLS = "123456"
         const val DICE_50_SEAL_ID = "YVM9CPP3"
         const val DICE_50_TAG = "f6e8965ac3e420f9061e7c1a7e9d829d9c7e8c17e433f4eed4094a5da599a256"
+
+        /** The go-ahead code's symbols, as many as the Crockford pad has columns (crockfordPadEntry, CrockfordPad). */
+        const val CODE_SYMBOLS = 8
     }
 }

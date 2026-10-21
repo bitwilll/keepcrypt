@@ -12308,6 +12308,20 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   near M5-52's 28. Gate clean on the tree (356 files), `--selftest` 1431 passed, 0 failed, and `canaries.sh` PASS, all
   93 checks ran; Rust untouched (fmt, both clippy commands, the workspace tests, the test-sources run and the FFI
   tests plain and with test-registry all pass).
+  Run 39673248591 at 9955e2a (commit 17's first CI run): the Kotlin compiled and every JVM class passed (26 reports,
+  110 tests: CheckScreensTest 12, CeremonyModelTest 24, StartScreensTest 12 and the rest); on API 31 and API 36
+  CaptureTest (both APKs, the nine new screens black and SECURE), SnapshotDrillTest ("with-dice-50 loaded,
+  dice-50-words12's check ran on its own: the collision, its snapshot line and Stale warning, before any words; the
+  report QR behind the gate; Add fresh entropy: 0 / 99"), FlowTest, PhoneMotionTest, LifecycleTest and the killed
+  CrashTest passed, and the 16 KB leg's NativeTest. CheckTest failed on both APIs at 17d's check, "key 7 is not whole on
+  screen: Rect(585, 673 - 681, 751)": UI Automator gives a Compose key its touch target (at least 48 dp, cut by the
+  targets drawn after it), not the drawn square, so the rightmost column (no neighbour to its right) is 96 x 78 px
+  while the others are cut to the 39 dp column pitch; the keys were drawn as designed. The job reached 28.1 minutes
+  and M5-52's 28 cancelled it just after its last leg (M5-57).
+  Proof (M5 commit 17g-c, the lead's, partial: the emulator test runs only in CI): CheckTest types one key from each
+  column, the rows in turn ("09JV-4DPZ"), and Delete takes all eight back; a column with no width would send its tap
+  to the key drawn over it, and the code shown would differ. The drawn key size itself stays unproven by the emulator
+  tests (M5-46's limit: no UI test library).
 - [ ] The scanner (Camera2 + ZXing, commit 18): CAMERA asked on this screen only; `ImageReader` YUV_420_888 frames
   reduced to luminance on a background thread and never stored; text over 4,296 characters dropped (swb:144); the first
   decoded text goes to the same `onGoAheadText` the tests call; proof results show their date and any warning before
@@ -13881,6 +13895,11 @@ they differ. Nothing in the Android plan is weakened.
 - M5-56 (2026-10-22): commit 17 adds a platform seam M5-20 does not list: `UtcDate` (Seams.kt), whose Android end is
   :app's UtcToday (today's date in UTC). Only snapshot and proof freshness read it (Stale, Future), never a timer,
   which stays on MonotonicClock.
+- M5-57 (2026-10-22): commit 17's first CI run (39673248591 at 9955e2a) reached 28.1 minutes: Rust libraries 236 s,
+  Gradle build 209 s, API 31 413 s, API 36 449 s, 16 KB 109 s (d7c108b's run: 157, 138, 292, 309 and 81; the unchanged
+  Rust and 16 KB steps ran 79 s and 28 s slower, so part of the rise is the runner). M5-52's 28 cancelled the job
+  just after its last leg. By M5-30's rule (the measured run plus 25%) the budget is 36 minutes (17g-c); the next
+  green run re-measures it, and commit 18's scanner tests re-measure it again.
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the
