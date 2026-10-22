@@ -587,11 +587,13 @@
 #              with an allowed catch must hold its type's own import line, exactly (import
 #              com.keepcrypt.entropy.ffi.KcHalt, import java.io.IOException, import
 #              android.hardware.camera2.CameraAccessException, import
-#              com.google.zxing.ReaderException), or the catch hits, "missing ..."; and an alias
-#              or cast to one of those four names ("as KcHalt", an import alias included), a
-#              typealias of one, a typealias whose name is on a later line and an import that
-#              ends in "as" all hit, so no other type (Throwable, say) stands behind an allowed
-#              catch's bare name.
+#              com.google.zxing.ReaderException), in its import header (its leading blank, //
+#              comment, package and import lines, so never inside a block comment), or the catch
+#              hits, "missing ..."; and an alias or cast to one of those four names ("as KcHalt",
+#              an import alias included), an "as" followed by a comment, a typealias of one, a
+#              typealias with a comment or a line break after it and an import that ends in "as"
+#              all hit, so no other type (Throwable, say) stands behind an allowed catch's bare
+#              name.
 #   KtWindow   Toast, Snackbar, Notification, Dialog(, AlertDialog, DialogFragment, Popup(,
 #              PopupWindow, ListPopupWindow, PopupMenu, DropdownMenu, ModalBottomSheet, Spinner,
 #              AutoCompleteTextView, tooltips, WindowManager's addView and
@@ -1689,23 +1691,30 @@ ktfailopen() {
 # allowed shape is the bare type name alone in the parentheses, on the catch's own line: a qualified
 # name (java.io.IOException), two catches on one line with one of another type, and Java's catch
 # (IOException e) hit. The bare name must be the real type: kt_catch_allowing FILE TYPE IMPORT
-# [TYPE IMPORT]... also needs FILE to hold the line "import IMPORT" exactly when it has an allowed
-# catch of TYPE, or its first one hits ("missing import ..."), and kt_alias keeps every other way
-# to bind the name out of the tree.
+# [TYPE IMPORT]... also needs FILE's import header (kt_header) to hold the line "import IMPORT"
+# exactly when FILE has an allowed catch of TYPE, or its first one hits ("missing import ..."), and
+# kt_alias keeps every other way to bind the name out of the tree.
 kt_catch() {
   grep -n -a -E -e "${L}catch[[:space:]]*[({]" -- "$1"
 }
+# A Kotlin file's import header: its leading lines that are blank, a // comment, a package line or
+# an import line of a plain dotted name (with .* or an alias, or neither), up to its first other
+# line. A block comment or a string opens on none of them, so an import line here is an import, and
+# one inside /* */ (or a raw string) further down is not. A file annotation or a block comment
+# before the imports ends the header there, and the allowed catch then fails closed, "missing ...".
+kt_header='^[[:space:]]*($|//)|^(package|import)[[:space:]]+[A-Za-z_][A-Za-z0-9_.]*([.][*]|[[:space:]]+as[[:space:]]+[A-Za-z_][A-Za-z0-9_]*)?[[:space:]]*$'
 kt_catch_allowing() {
   f=$1
   shift
   t=$(grep -n -a -E -e "${L}catch[[:space:]]*[({]" -- "$f")
   case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  header=$(sed -n -E -e "\\%$kt_header%!q" -e p <"$f") || return 2
   allowed="(^|[^A-Za-z0-9_])catch[[:space:]]*[(][[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*:[[:space:]]*"
   names=
   missing=
   while [ "$#" -ge 2 ]; do
     first=$(printf '%s\n' "$t" | grep -a -E -e "$allowed$1[[:space:]]*[)]" | sed -n '1s/:.*//p')
-    if [ -n "$first" ] && ! grep -q -a -x -F -e "import $2" -- "$f"; then
+    if [ -n "$first" ] && ! printf '%s\n' "$header" | grep -q -a -x -F -e "import $2"; then
       missing="$missing${missing:+$nl}$first:missing import $2 for its catch of $1"
     fi
     names="$names${names:+|}$1"
@@ -1731,13 +1740,14 @@ kt_catch_camera() {
 # KtFailOpen's names, where the catch list applies (outside the test source sets): it allows KcHalt,
 # IOException, CameraAccessException and ReaderException by their bare names, so nothing may bind
 # one of those names to another type: an alias or cast to one ("as KcHalt", which an import alias on
-# one line or with "as" at the start of the next line has), a typealias of one or a typealias whose
-# name is on a later line (Kotlin allows a line break there), and an import that ends in "as", whose
-# alias is on the next line. A name in backticks is the same name.
+# one line or with "as" at the start of the next line has), an "as" followed by a comment (its name
+# comes after it), a typealias of one, a typealias with anything but a plain name after it (a
+# comment, or a line break: Kotlin allows either there), and an import that ends in "as", whose
+# alias is on the next line. A name in backticks is the same name, and needs no space before it.
 kt_alias() {
   grep -n -a -E \
-    -e "${L}as[[:space:]]+\`?(KcHalt|IOException|CameraAccessException|ReaderException)$R" \
-    -e "${L}typealias[[:space:]]*(\`?(KcHalt|IOException|CameraAccessException|ReaderException)$R|$)" \
+    -e "${L}as(([[:space:]]*\`|[[:space:]]+)(KcHalt|IOException|CameraAccessException|ReaderException)$R|[[:space:]]*/[*/])" \
+    -e "${L}typealias(([[:space:]]*\`|[[:space:]]+)(KcHalt|IOException|CameraAccessException|ReaderException)$R|[[:space:]]*$|[[:space:]]*[^[:space:]A-Za-z0-9_\`])" \
     -e "${L}import[[:space:]].*[[:space:]]as[[:space:]]*$" \
     -- "$1"
 }

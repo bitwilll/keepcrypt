@@ -11326,6 +11326,23 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   allowed in Documents.kt, and any `*Exception` allowed in the scanner. `--selftest` 1444 passed, 0 failed (1439
   before), the same under /bin/dash; the gate clean on the tree (356 files) under sh and dash; canaries.sh PASS, all
   93 checks ran.
+  Proof (M5 commit 17i, review fix): the import check matched its line anywhere in the file, a line inside `/*` `*/`
+  included, and kt_alias's typealias pattern missed a comment before the name, so with the scanner's `import
+  com.google.zxing.ReaderException` wrapped in a block comment and `internal typealias /* the frame */ ReaderException
+  = Throwable` in its package, its catch caught Throwable and the gate was clean (reproduced on a copy of f018fc2; the
+  same for KcHalt in CeremonyModel.kt). The import line now counts only in the file's import header (kt_header: its
+  leading lines that are blank, a `//` comment, the package line or a plain import line, on none of which a block
+  comment or string can open), and kt_alias also hits a typealias with anything but a plain name after it (a comment
+  or a line break), an `as` followed by a comment, and a backticked name with no space after `as` or typealias. Seven
+  new hit fixtures, one hit each, each also copied into the test scopes and clean there (src/test and src/androidTest
+  121 copies each, commonTest and androidHostTest 139, from 117 and 132): the import inside a block comment in the
+  scanner and in CeremonyModel.kt, inside a raw string in Documents.kt, `internal typealias /* the frame */
+  ReaderException = Throwable`, `typealias /* a halt */ KcHalt = Throwable`, `import kotlin.Throwable as /* frame */
+  ReaderException` and an alias written ``as`KcHalt` `` with no space. By hand, three mutants of the gate each fail
+  only their own fixtures: the import looked for in the whole file (the three import fixtures), 17f's typealias
+  pattern (the two typealias fixtures) and 17f's `as` pattern (the two alias fixtures). `--selftest` 1451 passed, 0
+  failed (1444 before), the same under /bin/dash; the gate clean on the tree (359 files) under sh and dash, and two
+  hits on the reproduction's copy; canaries.sh PASS, all 93 checks ran.
 - [x] The Shell rule for `game_random` is unchanged in M5 (its ffi and Kotlin fixtures stay hits until M5b).
   Proof: those fixtures still trip.
   Proof (M5 commit 4): `game_random_use` and its path list untouched (only the release probe's comment stripping moved
