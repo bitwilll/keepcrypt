@@ -4,3 +4,4 @@ package com.keepcrypt.entropy
 import java.lang.Thread.UncaughtExceptionHandler as QuietHandler
 
 internal class CrashHandler(private val wipe: () -> Unit, private val end: () -> Unit) : Thread.UncaughtExceptionHandler {
+    override fun uncaughtException(thread: Thread, exception: Throwable) {

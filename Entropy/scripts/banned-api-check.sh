@@ -599,15 +599,20 @@
 #              name. The catch list also covers the uncaught-exception handlers, a catch-all no
 #              catch shows (M5-58): setUncaughtExceptionHandler, setDefaultUncaughtExceptionHandler
 #              and UncaughtExceptionHandler as words, and uncaughtExceptionHandler (Kotlin's
-#              property for a thread's getter and setter), so a call, a method reference, a
-#              property assignment, an import, an alias and a typealias of one all hit, but for
-#              two lines, once each and each exactly, its indentation aside: the line
+#              property for a thread's getter and setter), and the other ways a thread's failure
+#              stops short of the default handler, ThreadGroup (a thread with no handler of its
+#              own hands its failures to its group), getUncaughtExceptionHandler (the getter a
+#              Thread subclass can override) and uncaughtException (the method every handler
+#              implements) as words, so a call, a method reference, a property assignment, an
+#              override, an import, an alias and a typealias of one all hit, but for two places,
+#              once each and each exactly, its indentation aside: the line
 #              Thread.setDefaultUncaughtExceptionHandler( in the app's KeepCryptApp.kt, with the
 #              line after it CrashHandler(wipe = { Core.wipeAll() }, end = {
 #              Process.killProcess(Process.myPid()) }), (the call that installs CrashHandler; any
 #              other line there is a hit, "missing ..." at the file's end), and CrashHandler's
-#              one-line class header, with Thread.UncaughtExceptionHandler its only supertype, in
-#              the app's CrashHandler.kt; any other mention in either file hits.
+#              one-line class header, with Thread.UncaughtExceptionHandler its only supertype, with
+#              the line after it override fun uncaughtException(thread: Thread, exception:
+#              Throwable) {, in the app's CrashHandler.kt; any other mention in either file hits.
 #   KtWindow   Toast, Snackbar, Notification, Dialog(, AlertDialog, DialogFragment, Popup(,
 #              PopupWindow, ListPopupWindow, PopupMenu, DropdownMenu, ModalBottomSheet, Spinner,
 #              AutoCompleteTextView, tooltips, WindowManager's addView and
@@ -1783,17 +1788,23 @@ kt_alias() {
 # setDefaultUncaughtExceptionHandler and UncaughtExceptionHandler hit as words, with or without
 # Thread. (a call, a method reference, an import, an alias or a typealias of one), and so does
 # uncaughtExceptionHandler, the property Kotlin makes of a thread's getter and setter (its
-# assignment is the setter's call; a read hits too). Two lines are allowed, once each, each in its
-# named file and each exactly as written there, its indentation aside (as ffi_guard_pub pins
-# guarded's line): KeepCryptApp.kt's Thread.setDefaultUncaughtExceptionHandler( alone on its line,
-# with its argument pinned on the line after it, so the handler it installs is CrashHandler with the
-# app's own wipe and end (a wrapper that passes any handler on, null and a wipe that does nothing all
+# assignment is the setter's call; a read hits too). So do the other ways a thread's failure stops
+# short of the default handler, as words: ThreadGroup, the JDK's other handler (a thread with no
+# handler of its own hands its failures to its group, a subclass of which can drop them),
+# getUncaughtExceptionHandler (a Thread subclass can override the getter the JVM asks for its
+# handler) and uncaughtException (the method every handler implements, so an override of it hits
+# whatever its class's supertype is called). Two places are allowed, once each, each in its named
+# file and each exactly as written there, its indentation aside (as ffi_guard_pub pins guarded's
+# line): KeepCryptApp.kt's Thread.setDefaultUncaughtExceptionHandler( alone on its line, with its
+# argument pinned on the line after it, so the handler it installs is CrashHandler with the app's
+# own wipe and end (a wrapper that passes any handler on, null and a wipe that does nothing all
 # hit), and CrashHandler.kt's one-line class header, with Thread.UncaughtExceptionHandler its only
-# supertype. kt_handler_allowing FILE LINE...: FILE's hit lines, but the first line that is the
-# first LINE passes, and each line after it must be the next LINE in turn or it is a hit, its own
-# text (a file that ends first is one at its last line, "missing ..."). A second such line, or one
-# with anything more on it, hits.
-kt_handler_names="${L}(set(Default)?UncaughtExceptionHandler|[Uu]ncaughtExceptionHandler)$R"
+# supertype, with its override of uncaughtException pinned on the line after it.
+# kt_handler_allowing FILE LINE...: FILE's hit lines, but the first line that is the first LINE
+# passes, and each line after it must be the next LINE in turn or it is a hit, its own text (a file
+# that ends first is one at its last line, "missing ..."). A second such line, or one with anything
+# more on it, hits.
+kt_handler_names="${L}(set(Default)?UncaughtExceptionHandler|getUncaughtExceptionHandler|[Uu]ncaughtExceptionHandler|uncaughtException|ThreadGroup)$R"
 kt_handler() {
   grep -n -a -E -e "$kt_handler_names" -- "$1"
 }
@@ -1843,7 +1854,8 @@ kt_handler_app() {
 }
 kt_handler_crash() {
   kt_handler_allowing "$1" \
-    'internal class CrashHandler(private val wipe: () -> Unit, private val end: () -> Unit) : Thread.UncaughtExceptionHandler {'
+    'internal class CrashHandler(private val wipe: () -> Unit, private val end: () -> Unit) : Thread.UncaughtExceptionHandler {' \
+    'override fun uncaughtException(thread: Thread, exception: Throwable) {'
 }
 
 # KtWindow (Q57: no dialogs, popups, menus, sheets, toasts, notifications or tooltips, so the app

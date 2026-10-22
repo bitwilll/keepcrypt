@@ -11421,6 +11421,25 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   (clean-kt-shipping-allowed and 18e's second call); 18e's gate passes the argument and last-line fixtures.
   `--selftest` 1477 passed, 0 failed (1472 before), the same under /bin/dash; the gate clean on the tree (359 files)
   under sh and dash, and one hit on the reproduction's copy; canaries.sh PASS, all 93 checks ran.
+  Proof (M5 commit 18g, review fix): a thread's failure had two more ways to stop short of CrashHandler that named
+  none of M5-58's three words. A thread with no handler of its own hands its failures to its ThreadGroup, itself a
+  handler, so `object : ThreadGroup("go-ahead scanner") { override fun uncaughtException(t: Thread, e: Throwable) {} }`
+  with the scanner's HandlerThread made in it, and a Thread subclass's `override fun getUncaughtExceptionHandler()`
+  (the getter the JVM asks) in MainActivity.kt, left the gate clean (reproduced on a copy of bce1b48). `ThreadGroup`,
+  `getUncaughtExceptionHandler` and `uncaughtException` (the method every handler implements, so an override of it
+  hits whatever its class's supertype is called) now hit as words with the others, outside the test source sets, and
+  CrashHandler.kt's one override, `override fun uncaughtException(thread: Thread, exception: Throwable) {`, is pinned
+  on the line after its header as 18f pins KeepCryptApp.kt's argument; the tree names none of the three elsewhere
+  outside its test source sets. Four new hit fixtures, one hit each, each also copied into the test scopes and clean
+  there (src/test and src/androidTest 150 copies each, commonTest and androidHostTest 169, from 146 and 165): a
+  ThreadGroup subclass in the scanner, the getter's override in MainActivity.kt, an override of `uncaughtException` in
+  CeremonyHolder.kt, and CrashHandler.kt's header followed by an override that drops every failure;
+  clean-kt-shipping-allowed's CrashHandler.kt, the alias fixture and the header-twice fixture gain the pinned override
+  after the header. By hand, four mutants of the gate each fail only their own fixtures: each of the three words
+  dropped (its fixture) and the override line not pinned (clean-kt-shipping-allowed, the alias and the header twice);
+  18f's gate leaves all four new fixtures clean. `--selftest` 1481 passed, 0 failed (1477 before), the same under
+  /bin/dash; the gate clean on the tree (359 files) under sh and dash, and three hits on the reproduction's copy;
+  canaries.sh PASS, all 93 checks ran.
 - [x] The Shell rule for `game_random` is unchanged in M5 (its ffi and Kotlin fixtures stay hits until M5b).
   Proof: those fixtures still trip.
   Proof (M5 commit 4): `game_random_use` and its path list untouched (only the release probe's comment stripping moved
