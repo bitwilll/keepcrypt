@@ -11362,6 +11362,19 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   that rule's fixture. `--selftest` 1461 passed, 0 failed (1451 before), the same under /bin/dash; the gate clean on
   the tree (359 files) under sh and dash, and three hits on the reproduction's copy; canaries.sh PASS, all 93 checks
   ran.
+  Proof (M5 commit 18b, review fix): KtIntent allowed the CAMERA launcher but hit every line naming
+  ActivityResultContracts, its import line too, so the launcher could not be written with a normal import and commit
+  18's MainActivity imported the package with `.*` (reproduced: the explicit import line is a KtIntent hit at
+  f018fc2). KtIntent (ktintent and kt_intent_airplane) now also allows exactly the line `import
+  androidx.activity.result.contract.ActivityResultContracts`; an alias or a nested class's import still names the
+  class and hits, and every other contract still has to be named where it is used. clean-kt-shipping-allowed's
+  Screens.kt and AirplaneSettingsIntent.kt gain the line; two new hit fixtures, one hit each and clean in the test
+  scopes: the import `as Contracts` and the import of `ActivityResultContracts.GetContent`. By hand, three mutants of
+  the gate each fail a fixture: the line not allowed in ktintent (Screens.kt hits), nor in kt_intent_airplane
+  (AirplaneSettingsIntent.kt hits), and the line matched without its end (both new fixtures pass). MainActivity
+  imports the class by that line again (its compile is CI's). `--selftest` 1463 passed, 0 failed (1461 before), the
+  same under /bin/dash; the gate clean on the tree (359 files) under sh and dash; canaries.sh PASS, all 93 checks
+  ran.
 - [x] The Shell rule for `game_random` is unchanged in M5 (its ffi and Kotlin fixtures stay hits until M5b).
   Proof: those fixtures still trip.
   Proof (M5 commit 4): `game_random_use` and its path list untouched (only the release probe's comment stripping moved
@@ -12486,6 +12499,9 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   /bin/dash), `--selftest-apk` 88 passed, 0 failed, and `canaries.sh` PASS, all 93 checks ran; Rust untouched (fmt,
   both clippy commands, the workspace tests, the test-sources run and the FFI tests plain and with test-registry all
   pass).
+  Proof (M5 commit 18b, review fix, partial: the Kotlin compiles only in CI): MainActivity imports the launcher's
+  contracts by `import androidx.activity.result.contract.ActivityResultContracts`, which KtIntent now allows (group
+  3's 18b line), in place of commit 18's import of their package.
 
 **17. Screens: words to finish** (MA:177-184; PF:90-99; swb:276-290)
 - [ ] The privacy gate, then Words (one insert per page: position, word, SeedBook number, five faces with blanks,

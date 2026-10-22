@@ -1,4 +1,5 @@
 // Near misses: other APIs whose names hold a banned word.
+import androidx.activity.result.contract.ActivityResultContracts
 val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 val permission = Manifest.permission.CAMERA
 val shape = layoutBlueprint(page)

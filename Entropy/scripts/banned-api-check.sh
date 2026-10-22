@@ -629,7 +629,8 @@
 #              LocalUriHandler, openUri, LinkAnnotation, and the activity-result API
 #              (ActivityResultContract(s), registerForActivityResult,
 #              rememberLauncherForActivityResult) but a launcher of
-#              ActivityResultContracts.RequestPermission() on one line; in AirplaneSettingsIntent.kt
+#              ActivityResultContracts.RequestPermission() on one line and the line import
+#              androidx.activity.result.contract.ActivityResultContracts; in AirplaneSettingsIntent.kt
 #              (the Android end of the airplane-settings seam, lead decision M5-20) also
 #              startActivity(Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS)), whole on one line.
 #   KtDevice   outside the test source sets: the camera (Camera, Camera* classes, camera2,
@@ -1894,21 +1895,25 @@ kt_open_stream() {
 # whose document, content and camera contracts reach other apps with no Intent( in our code. One
 # launcher shape passes everywhere, on one line: (remember|register)...ForActivityResult(
 # ActivityResultContracts.RequestPermission()), the scan screen's CAMERA prompt, which the system's
-# permission controller answers. In app's AirplaneSettingsIntent.kt (the Android end of the
-# airplane-settings seam, M5-20; the Go offline screen itself is shared code in :screens) the one
-# call startActivity(Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS)) passes too, written whole on
-# one line, so no other intent can be started there (kt_intent_airplane).
+# permission controller answers, and so does its class's own import line, exactly "import
+# androidx.activity.result.contract.ActivityResultContracts" (an alias, or a nested class's import,
+# hits), which lets no other contract in: each still has to be named. In app's
+# AirplaneSettingsIntent.kt (the Android end of the airplane-settings seam, M5-20; the Go offline
+# screen itself is shared code in :screens) the one call
+# startActivity(Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS)) passes too, written whole on one
+# line, so no other intent can be started there (kt_intent_airplane).
 ktintent_ere="(^|[^A-Za-z0-9_])Intent[[:space:]]*([(]|[.][[:space:]]*[a-z])|startActivit|startIntentSender|start[A-Za-z]*Service|bind[A-Za-z]*Service|send[A-Za-z]*Broadcast|PendingIntent|registerReceiver|ShareCompat|createChooser|ACTION_VIEW|LocalUriHandler|openUri|LinkAnnotation|ActivityResultContract|(register|rememberLauncher)ForActivityResult"
 kt_permission_launcher='s/(register|rememberLauncher)ForActivityResult[[:space:]]*[(][[:space:]]*ActivityResultContracts[[:space:]]*[.][[:space:]]*RequestPermission[[:space:]]*[(][[:space:]]*[)][[:space:]]*[)]//g'
+kt_permission_import='s/^([0-9]+:)import androidx[.]activity[.]result[.]contract[.]ActivityResultContracts$/\1/'
 ktintent() {
   t=$(grep -n -a -E -e "$ktintent_ere" -- "$1")
   case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
-  kept_hits "$ktintent_ere" -e "$kt_permission_launcher"
+  kept_hits "$ktintent_ere" -e "$kt_permission_launcher" -e "$kt_permission_import"
 }
 kt_intent_airplane() {
   t=$(grep -n -a -E -e "$ktintent_ere" -- "$1")
   case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
-  kept_hits "$ktintent_ere" -e "$kt_permission_launcher" \
+  kept_hits "$ktintent_ere" -e "$kt_permission_launcher" -e "$kt_permission_import" \
     -e 's/(^|[^A-Za-z0-9_])startActivity[[:space:]]*[(][[:space:]]*Intent[[:space:]]*[(][[:space:]]*(android[.]provider[.])?Settings[[:space:]]*[.][[:space:]]*ACTION_AIRPLANE_MODE_SETTINGS[[:space:]]*[)][[:space:]]*[)]/\1/g'
 }
 

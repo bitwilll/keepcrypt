@@ -4,7 +4,7 @@ import android.os.Bundle
 import android.os.Process
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.*
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -27,10 +27,10 @@ import com.keepcrypt.entropy.secure.SecureActivity
  * nothing, so Back never leaves a ceremony or the app). Go offline's button opens the airplane-mode
  * settings through AirplaneModeSettings. The scan screen's scanner is GoAheadScanner, whose CAMERA
  * prompt is registered here, in onCreate, before the activity starts, as the activity-result API
- * requires: the one launcher the gate allows (KtIntent), written whole on one line, its contract
- * imported with its package, since the gate refuses any other line that names the contracts' class;
- * leaving the app stops a scan at once (group 16). Compose test tags are exposed as resource ids, so
- * UI Automator finds Public screens by id (group 6).
+ * requires: the one launcher the gate allows (KtIntent), written whole on one line, beside the one
+ * import line of its contracts' class that the gate allows; leaving the app stops a scan at once
+ * (group 16). Compose test tags are exposed as resource ids, so UI Automator finds Public screens by
+ * id (group 6).
  */
 class MainActivity : SecureActivity() {
     /**
