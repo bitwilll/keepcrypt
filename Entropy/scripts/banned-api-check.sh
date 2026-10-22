@@ -596,7 +596,15 @@
 #              an import alias included), an "as" followed by a comment, a typealias of one, a
 #              typealias with a comment or a line break after it and an import that ends in "as"
 #              all hit, so no other type (Throwable, say) stands behind an allowed catch's bare
-#              name.
+#              name. The catch list also covers the uncaught-exception handlers, a catch-all no
+#              catch shows (M5-58): setUncaughtExceptionHandler, setDefaultUncaughtExceptionHandler
+#              and UncaughtExceptionHandler as words, and uncaughtExceptionHandler (Kotlin's
+#              property for a thread's getter and setter), so a call, a method reference, a
+#              property assignment, an import, an alias and a typealias of one all hit, but for
+#              two mentions, once each: Thread.setDefaultUncaughtExceptionHandler( in the app's
+#              KeepCryptApp.kt (the call that installs CrashHandler) and
+#              Thread.UncaughtExceptionHandler as the only supertype of the one-line class header
+#              of CrashHandler in the app's CrashHandler.kt; any other mention in either file hits.
 #   KtWindow   Toast, Snackbar, Notification, Dialog(, AlertDialog, DialogFragment, Popup(,
 #              PopupWindow, ListPopupWindow, PopupMenu, DropdownMenu, ModalBottomSheet, Spinner,
 #              AutoCompleteTextView, tooltips, WindowManager's addView and
@@ -1638,10 +1646,10 @@ threads_by_path() {
 # --- Kotlin and Android (tasks/todo.md, M5 group 3; Q55) ------------------------------------------
 
 # The named files' directories: each named file (camera/GoAheadScanner.kt, files/Documents.kt,
-# AirplaneSettingsIntent.kt and SensorMotionSource.kt in the app, SecureActivity.kt and
-# OfflineMonitor.kt in secure-ui, CeremonyModel.kt in :screens) is one path, its module's package
-# directory and its name, so a file of the same name anywhere else, deeper under src/main/ (a
-# src/test/ there included) or in another package, gets every rule.
+# AirplaneSettingsIntent.kt, SensorMotionSource.kt, KeepCryptApp.kt and CrashHandler.kt in the app,
+# SecureActivity.kt and OfflineMonitor.kt in secure-ui, CeremonyModel.kt in :screens) is one path,
+# its module's package directory and its name, so a file of the same name anywhere else, deeper
+# under src/main/ (a src/test/ there included) or in another package, gets every rule.
 kt_app=mobile/android/app/src/main/kotlin/com/keepcrypt/entropy
 kt_secure_ui=mobile/android/secure-ui/src/main/kotlin/com/keepcrypt/entropy/secure
 kt_screens=mobile/android/screens/src/commonMain/kotlin/com/keepcrypt/entropy/screens
@@ -1763,6 +1771,44 @@ kt_alias() {
     -e "${L}typealias(([[:space:]]*\`|[[:space:]]+)(KcHalt|IOException|CameraAccessException|ReaderException)$R|[[:space:]]*$|[[:space:]]*[^[:space:]A-Za-z0-9_\`])" \
     -e "${L}import[[:space:]].*[[:space:]]as[[:space:]]*$" \
     -- "$1"
+}
+
+# KtFailOpen's handlers (M5-58), with the catch list (outside the test source sets): an
+# uncaught-exception handler is a catch-all no catch shows, so a handler on a thread of the app's
+# own (the scanner's HandlerThread) or a second default handler would keep a failure from
+# CrashHandler, which wipes the slot and ends the process. setUncaughtExceptionHandler,
+# setDefaultUncaughtExceptionHandler and UncaughtExceptionHandler hit as words, with or without
+# Thread. (a call, a method reference, an import, an alias or a typealias of one), and so does
+# uncaughtExceptionHandler, the property Kotlin makes of a thread's getter and setter (its
+# assignment is the setter's call; a read hits too). Two mentions are allowed, once each, each in
+# its named file: KeepCryptApp.kt's Thread.setDefaultUncaughtExceptionHandler( (the call that
+# installs CrashHandler; its argument is not read) and CrashHandler.kt's
+# Thread.UncaughtExceptionHandler as the only supertype of its class header, on one line (class
+# CrashHandler(...) : Thread.UncaughtExceptionHandler {). kt_handler_allowing FILE ERE
+# REPLACEMENT applies sed's s/ERE/REPLACEMENT/ to the first of FILE's hit lines whose text
+# matches ERE, so the allowed form goes and the line still hits if another mention is left on
+# it; every other line hits.
+kt_handler_names="${L}(set(Default)?UncaughtExceptionHandler|[Uu]ncaughtExceptionHandler)$R"
+kt_handler() {
+  grep -n -a -E -e "$kt_handler_names" -- "$1"
+}
+kt_handler_allowing() {
+  t=$(kt_handler "$1")
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  first=$(printf '%s\n' "$t" | grep -a -E -e "^[0-9]+:$2" | sed -n '1s/:.*//p')
+  if [ -z "$first" ]; then
+    printf '%s\n' "$t"
+    return 0
+  fi
+  kept_hits "$kt_handler_names" -e "s/^$first:$2/$3/"
+}
+kt_handler_app() {
+  kt_handler_allowing "$1" '((.*[^A-Za-z0-9_])?)Thread[.]setDefaultUncaughtExceptionHandler[(]' '\1'
+}
+kt_handler_crash() {
+  kt_handler_allowing "$1" \
+    "([[:space:]]*(internal[[:space:]]+)?class[[:space:]]+CrashHandler[(].*[)][[:space:]]*:[[:space:]]*)Thread[.]UncaughtExceptionHandler([[:space:]]*[{][[:space:]]*)\$" \
+    '\1\3'
 }
 
 # KtWindow (Q57: no dialogs, popups, menus, sheets, toasts, notifications or tooltips, so the app
@@ -2888,6 +2934,11 @@ EOF
             *) report KtFailOpen kt_catch "$rel" ;;
           esac
           report KtFailOpen kt_alias "$rel"
+          case $rel in
+            "$kt_app/KeepCryptApp.kt") report KtFailOpen kt_handler_app "$rel" ;;
+            "$kt_app/CrashHandler.kt") report KtFailOpen kt_handler_crash "$rel" ;;
+            *) report KtFailOpen kt_handler "$rel" ;;
+          esac
           report KtStorage ktstorage "$rel"
           case $rel in
             "$kt_app/files/Documents.kt") ;;

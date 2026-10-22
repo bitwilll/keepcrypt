@@ -11375,6 +11375,31 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   imports the class by that line again (its compile is CI's). `--selftest` 1463 passed, 0 failed (1461 before), the
   same under /bin/dash; the gate clean on the tree (359 files) under sh and dash; canaries.sh PASS, all 93 checks
   ran.
+  Proof (M5 commit 18e, M5-58): an uncaught-exception handler is a catch-all no `catch` shows, and KtFailOpen did not
+  see one: `started.setUncaughtExceptionHandler { _, _ -> }` on the scanner's HandlerThread and a second
+  `Thread.setDefaultUncaughtExceptionHandler { _, _ -> }` in MainActivity.kt left the gate clean (reproduced on a copy
+  of 1a63e0f). Outside the test source sets the catch list now also hits `setUncaughtExceptionHandler`,
+  `setDefaultUncaughtExceptionHandler` and `UncaughtExceptionHandler` as words, with or without `Thread.` (a call, a
+  method reference, an import, an alias or a typealias), and `uncaughtExceptionHandler`, Kotlin's property for a
+  thread's getter and setter (its assignment is the setter's call), but for two mentions, once each, each at its
+  exact path: `Thread.setDefaultUncaughtExceptionHandler(` in the app's KeepCryptApp.kt and
+  `Thread.UncaughtExceptionHandler` as the only supertype of CrashHandler's one-line class header in the app's
+  CrashHandler.kt; any other mention in either file hits. An alias or typealias names the word, so it hits by the
+  word, and kt_alias is unchanged. Nine new hit fixtures, one hit each, each also copied into the test scopes and
+  clean there (src/test and src/androidTest 141 copies each, commonTest and androidHostTest 160, from 132 and 151):
+  `thread.setUncaughtExceptionHandler { _, _ -> }` and `thread.uncaughtExceptionHandler = quiet` in the scanner, a
+  second `Thread.setDefaultUncaughtExceptionHandler(` in MainActivity.kt, a handler class (`:
+  Thread.UncaughtExceptionHandler`) in CeremonyHolder.kt, a second call of the allowed form in KeepCryptApp.kt,
+  `Thread::setDefaultUncaughtExceptionHandler` in KeepCryptApp.kt, an import alias of the name in CrashHandler.kt, and
+  KeepCryptApp.kt's call and CrashHandler.kt's header each in a file of the same name in another package;
+  clean-kt-shipping-allowed gains KeepCryptApp.kt's call and CrashHandler.kt's header in their real forms. By hand,
+  seven mutants of the gate each fail only their own fixtures: the rule dropped (all nine), the allowance applied to
+  every line (the second call), the two files matched by name at any path (the two other-package fixtures),
+  CrashHandler.kt exempt whole (the alias), the property name dropped (the property), the call matched by `.` or
+  `::` without its `(` (the method reference) and the instance setter dropped (the scanner's handler). `--selftest`
+  1472 passed, 0 failed (1463 before), the same under /bin/dash; the gate clean on the tree (359 files) under sh and
+  dash, and two hits on the reproduction's copy; canaries.sh PASS, all 93 checks ran (no canary added: the
+  kmp-ios-rules canary's catch already plants KtFailOpen's catch list on the real tree).
 - [x] The Shell rule for `game_random` is unchanged in M5 (its ffi and Kotlin fixtures stay hits until M5b).
   Proof: those fixtures still trip.
   Proof (M5 commit 4): `game_random_use` and its path list untouched (only the release probe's comment stripping moved
