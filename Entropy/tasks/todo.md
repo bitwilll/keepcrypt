@@ -1820,6 +1820,21 @@ Nothing else on your Mac or in the repo changed. From now on, no simulator, `xco
       CrashTest's run the recommended judge in scripts/android-instrument.sh. Both residuals go on the M7 audit list
       beside Q58's.
 
+### Raised by the owner during M5 (Q76, decided 2026-10-22)
+76. **The Android SDK on the owner's Mac** (Q56: nothing was installed here; tasks/lessons.md, 2026-10-20)
+    The owner installed Android Studio and the Android SDK on the Mac and asked (2026-10-22) to "use it to refine and
+    make the app functions and experience better and all the functionality available with end to end unit and edge
+    case test with userflow working without bugs". Asked: which downloads may the local build make, each checked
+    against what the repo pins? (a) gradle-9.7.1-bin.zip from services.gradle.org, through scripts/android-gradle.sh
+    (its pinned SHA-256); (b) the build's Maven dependencies, each checked by the committed verification metadata;
+    (c) NDK 30.0.16248370 for macOS (android-ndk-r30-darwin.zip, 974,984,488 bytes, SHA-1
+    c060be96767eefbb8e0a27796d6f43115fc1a0c4, from dl.google.com's repository2-3.xml, the source Android's SDK manager
+    reads), so the Android Rust libraries build on the Mac too, which needs a macOS path in scripts/android-rust.sh.
+    - Answered 2026-10-22: "Also NDK r30 (~1 GB)": (a), (b) and (c). The owner's "use it" is the lessons rule's yes for
+      the Android SDK's tools on the Mac (Gradle, adb, the emulator); Xcode's tools still need their own yes. Q56 stands
+      for the gate: every Proof still cites a CI run, and a local run is reported as local. Tests run on the project's
+      own AVD, never on the owner's Medium_Phone.
+
 ## M0: Repo bootstrap
 
 ### Decisions built into this plan (override any of them)
@@ -11513,7 +11528,7 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   its scanned copy). Shipping SHA-256: arm64-v8a cebe1571..., armeabi-v7a 257b59d1..., x86_64 df5dfe7c....
 
 **5. The manifest, the APK check and the APK scan (gate item 2; matrix "Symbol and stub-marker scan")**
-- [ ] `app/src/main/AndroidManifest.xml`: `HIDE_OVERLAY_WINDOWS`, `DETECT_SCREEN_RECORDING`, and from commit 18 `CAMERA`
+- [x] `app/src/main/AndroidManifest.xml`: `HIDE_OVERLAY_WINDOWS`, `DETECT_SCREEN_RECORDING`, and from commit 18 `CAMERA`
   (with `uses-feature camera required="false"`); `allowBackup="false"`, `fullBackupContent="false"`,
   `dataExtractionRules` excluding everything, `usesCleartextTraffic="false"`; one exported launcher activity; the
   removals named in "Built into this plan".
@@ -11533,6 +11548,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   dumps, the feature in xmltree, each where the merged manifest puts it, the later xmltree line numbers moved on by
   four; added by hand, not from a run) reduce to the committed manifest-shipping.txt again: 88 passed, 0 failed under
   sh and /bin/dash (with the old xmltree the control fails, and 55 cases with it).
+  Proof (CI, run 39744137391 at 1a63e0f): both APKs' `--apk` checks are clean against the expected summaries with
+  CAMERA and the camera feature (not required) in them, and no INTERNET or other permission; the canary APK is refused.
 - [ ] `banned-api-check.sh --apk VARIANT APK EXPECTED_DIR` (the image scan's shape): `aapt2 dump permissions`, `dump
   badging` and `dump xmltree AndroidManifest.xml` reduced to one summary (package, SDKs, every permission, every
   component with exported flag, application flags, `<queries>`, `uses-library`), compared exactly with
@@ -12386,7 +12403,7 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   view under the taller actions.
 
 **16. Screens: the collision check** (MA:175-176; swb:112-152)
-- [ ] The prompt ("Check now (recommended)" / "Skip", Skip confirmed on its own screen). With a loaded snapshot the check
+- [x] The prompt ("Check now (recommended)" / "Skip", Skip confirmed on its own screen). With a loaded snapshot the check
   runs automatically on the FFI thread and its result screen shows the snapshot's number, date and any warning.
   Amended 2026-10-22 (M5-54): the check against a loaded snapshot is a short call on the main thread (17h); M5-55
   takes the seal card off the prompt and shows the Seal ID from Check now on.
@@ -12497,6 +12514,14 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   test-registry all pass).
   Proof (M5 commit 18, partial: CI's): the seal card draws "Scan go-ahead QR" first among its actions, the scan screen
   behind it (the scanner item's lines).
+  Proof (CI, run 39744137391 at 1a63e0f, 17h and 18 in): CheckScreensTest 12 tests passed; on API 31 and API 36
+  CheckTest passed ("Done at 50 rolls, the prompt with no Seal ID, Skip, the seal card's Seal ID YVM9CPP3 and its four
+  actions (Scan go-ahead QR drawn), Match found and Cannot check confirmed on their own screens and Back there, a wrong
+  code refused with the same check QR, the code from the drawn check QR's T and nonce typed on the pad: the check
+  passed"), SnapshotDrillTest's drill passed ("with-dice-50 loaded, dice-50-words12's check ran on its own: the
+  collision, its snapshot line and Stale warning and its Seal ID YVM9CPP3, before any words; the report QR behind the
+  gate; Add fresh entropy: 0 / 99"), and CaptureTest's walk drew every check screen black and SECURE in both APKs.
+  The words after a passed check are group 17's (commit 19).
 - [ ] The scanner (Camera2 + ZXing, commit 18): CAMERA asked on this screen only; `ImageReader` YUV_420_888 frames
   reduced to luminance on a background thread and never stored; text over 4,296 characters dropped (swb:144); the first
   decoded text goes to the same `onGoAheadText` the tests call; proof results show their date and any warning before
@@ -12569,6 +12594,14 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   Proof (M5 commit 18b, review fix, partial: the Kotlin compiles only in CI): MainActivity imports the launcher's
   contracts by `import androidx.activity.result.contract.ActivityResultContracts`, which KtIntent now allows (group
   3's 18b line), in place of commit 18's import of their package.
+  Proof (CI, run 39744137391 at 1a63e0f, 1850 s): GoAheadFrameTest 3 tests and GoAheadPngTest 2 in both flavours'
+  unit tests and ScanScreensTest 7 passed; on API 31 and API 36 "the camera prompt showed as the scan screen opened
+  and on no screen before it; CAMERA requested and not granted before it (dumpsys package)", the scan screen black
+  and SECURE, "the scanned clear-empty-bucket QR: dice-99-words12's check passed (9FHYMCQA, as of 2026-03-01), 0
+  entries in this seal's bucket, the Stale warning, the words available" and "the scanned collision-dice-50 QR: the
+  collision before any words, 1 entry in this seal's bucket, the Stale warning and its Seal ID YVM9CPP3; the report
+  behind the gate; Add fresh entropy: 0 / 99". The real Camera2 path is the owner's P0b (issued 2026-10-22 from this
+  run) and P4; the item stays open for them.
 
 **17. Screens: words to finish** (MA:177-184; PF:90-99; swb:276-290)
 - [ ] The privacy gate, then Words (one insert per page: position, word, SeedBook number, five faces with blanks,
@@ -12817,6 +12850,9 @@ never-funded throwaway seed.
   file manager only while installing).
 
 **P0b. Scanner smoke test (early, from commit 18's run; about 10 minutes)**
+Issued 2026-10-22 from run 39744137391 at 1a63e0f: artifact android-apks (kept until 2026-11-05), the test-registry APK
+SHA-256 8983977bd0fb4fb6ac125cfc3bc99112ea9451b4f47f715386113471dea5a328, goahead-collision-dice-50.png
+3dc26b8f577ed7d2890418fea68b44de34c8d3874b399362428a1b22213a4777, dice-50-words12's Seal ID YVM9CPP3.
 - [ ] Install that run's test-registry APK (its strip reads TEST REGISTRY); airplane mode on, Wi-Fi off. Dice-only, 12
   words, the 50 rolls `123456` repeated; Check now; the Seal ID on the seal card equals `dice-50-words12`'s from the
   lead (if not, a typing slip: Cannot check, then Start again). Scan go-ahead QR and allow the camera when asked.
@@ -14152,6 +14188,9 @@ they differ. Nothing in the Android plan is weakened.
   Re-measured: run 39678040247 at 32dc6a8, the first whole run with commit 17's tests, took 1739 s (29.0 minutes:
   Rust libraries 171 s, Gradle build 157 s, API 31 508 s, API 36 531 s, 16 KB 83 s); plus 25% is 37 minutes (17g-d).
   The gates job of that commit's Entropy CI run (39678040331) took 639 s of its 720.
+  Re-measured with commit 18's tests: run 39744137391 at 1a63e0f took 1850 s (30.8 minutes: Rust libraries 161 s,
+  Gradle build 143 s, API 31 581 s, API 36 604 s, 16 KB 80 s); plus 25% is 39 minutes (18i). The gates job of that
+  commit's Entropy CI run (39744137380) took 659 s of its 720, with 1463 selftest cases.
 - M5-58 (2026-10-22): an uncaught-exception handler is a catch-all no `catch` shows, and KtFailOpen did not see one:
   `Thread.setUncaughtExceptionHandler` on the scanner's own HandlerThread, or a second
   `Thread.setDefaultUncaughtExceptionHandler`, left the gate clean (commit 18's review, reproduced). Commit 18 adds
@@ -14167,7 +14206,18 @@ they differ. Nothing in the Android plan is weakened.
   `scanning`), when the scan screen goes (its DisposableEffect) and when the activity ends (shutDown). P0b gains the
   owner's check with Android's camera indicator (Android 12 and later) on a real camera, and the M5 gate report names
   the gap. Emulated-camera AVDs are not taken in M5: they change the legs' no-camera facts and SnapshotDrillTest's
-  expectation, and add time to M5-57's budget.
+  expectation, and add time to M5-57's budget. (Q76 adds a local-only check of the real Camera2 path on the project's
+  own AVD, Stage L's L2; CI is unchanged.)
+- M5-60 (2026-10-22): 18e's review found more catch-alls that show no `catch` and that KtFailOpen did not see: an
+  ExecutorService or CompletableFuture task whose failure waits in a future nobody reads, coroutines' `async` whose
+  Deferred is never awaited (KtFailOpen already bans SupervisorJob and supervisorScope for the same reason), and a
+  `return` inside `finally`, which drops the exception in flight. The shipping code uses none of them. KtFailOpen
+  hits `ExecutorService`, `Executors`, `CompletableFuture`, `FutureTask`, `ForkJoinPool`, `async` and `Deferred` as
+  words outside the test source sets; java.util.concurrent.Executor, which GoAheadScanner.kt hands to Camera2 and
+  which posts to the scanner's own HandlerThread (so a failure reaches CrashHandler), stays allowed there by its exact
+  import line. A `return`, `break` or `continue` inside `finally` hits where the gate finds it reliably; what it cannot
+  find without a parser is recorded as a residual (commit 18h). M5-58's rule itself is completed by 18f (exact allowed
+  lines, each once), 18g (ThreadGroup, getUncaughtExceptionHandler, uncaughtException) and 18h (the allowances' fixtures).
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the
@@ -14368,6 +14418,51 @@ at 8v-c: this line and 10922d6's body said "from :51", but the guard/ line enter
 and ffi/jni (six members); 12b is not built; 13 builds and scans the Android `.so` only (the existing macos-26 release scan
 of core is unchanged); 14 has `android-rust.sh` and the Android `actual` only, with `commonTest` on the JVM; Stage E runs no
 simulator tests; Stage F's CLAUDE.md Commands gain no iPhone script, and the gate report says M5 proves nothing on iPhone.
+
+### Local toolchain and the end-to-end pass (Q76, 2026-10-22)
+The owner's request (Q76) adds local builds and a local emulator to the loop, finishes the app's functions (commits 19-21
+as planned) and adds an end-to-end pass. CI stays the gate. Scope stays M5's and the docs': "better" here means every
+screen the docs describe working end to end without bugs, every path and edge case tested, and UX defects within the
+docs fixed; a change the docs do not allow becomes a question for the owner and lands only after the answer.
+
+**Stage L: the local loop** (before commit 19)
+- [ ] L1. scripts/android-rust.sh also builds on a macOS arm64 host, with the NDK's darwin prebuilt, for local
+  development only: the CI legs, scans and checks are unchanged, and a library built on the Mac never ships (CI's APKs
+  are the artifacts). Its selftest covers both hosts. The JVM tests' host library is the build host's own
+  (x86_64-unknown-linux-gnu in CI, aarch64-apple-darwin on the Mac).
+  Proof: android-rust.sh's two flavours on the Mac; scripts/android-gradle.sh's build of both APKs and every JVM test
+  task locally, with the same test counts as CI at that commit; --apk clean on the local APKs; CI unchanged at the commit.
+- [ ] L2. scripts/android-local.sh: on the project's own AVD kc37 (API 37, the installed google_apis_playstore arm64-v8a
+  image; the owner's Medium_Phone is never touched), boot it, install both APKs and their test APKs, and run every
+  instrumented class through android-instrument.sh's judge in android-emulator.sh's order; it names each check a user
+  build cannot make (no adb root) and skips none silently. kc37's virtual-scene back camera lets the real Camera2 path
+  run locally (CI's AVDs have none, M5-59): a local check scans a go-ahead QR placed in the virtual scene and reads
+  `dumpsys media.camera` for the app's camera client while the scan screen shows and after Home and Back. Local only.
+  Proof: each class's local result on kc37, and the local scan check's (or why it cannot run).
+
+**Stages E3 and E4** run commits 19, 20 and 21 as planned, each built and tested locally before it is committed.
+
+**Stage U: the end-to-end pass** (after commit 21, before Stage F)
+- [ ] U1. User journeys: one emulator test per journey from First launch to Finish, through the UI only: mixed and
+  dice-only, 12 and 24 words; the check by a typed code, a scanned proof (fed to onGoAheadText in CI, the real camera
+  locally), a loaded snapshot, and Skip; Match found and a scanned collision to Add fresh entropy at 99; Cannot check to
+  Start again; the words, read-back and summary; the backup saved and checked; watch-only; register; reveal D; About;
+  stop. Each journey's pass line names its path.
+- [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
+  every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
+  every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,
+  leaving the slot empty and the app at First launch; the idle warning and wipe (a fake clock on the JVM, one emulator
+  run); the camera refused, revoked while scanning and absent; every read-back misread (each mirror pair, a wrong
+  insert); a wrong backup passphrase, a damaged .age file and a file that is not one; a stale, future, wrong-key or
+  damaged snapshot; a go-ahead QR too long, of another type, in mixed case or from another check; the 99-roll minimum
+  through every restart path.
+- [ ] U3. A UX audit of every screen against the docs and the Pi: wording, order, what each button and Back do, what
+  TalkBack reads on Public screens, the layout on a 360 dp phone and a large one, text sizes. A defect within the docs is
+  fixed with a test; a change the docs do not allow becomes a question for the owner.
+- [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists them.
+  Proof: CI at each stage's head; local runs reported as local.
+- Budget: the Android job's 39 minutes cannot hold U1-U2's emulator tests on two API legs. Stage U measures them and the
+  lead re-plans by M5-30's rule or splits the legs into jobs (the Android workflow has no required check names).
 
 ## Review
 _Added after completion, with pasted proof for every ticked item._
