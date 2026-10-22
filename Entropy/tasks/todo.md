@@ -12105,10 +12105,10 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   long calls run on `Dispatchers.Default` behind a "Working..." screen that ignores input; a lifecycle or offline
   discard during "Working..." calls `discard()` at once and the call's "discarded" status returns the UI to its start
   screen; `onCleared` calls `wipeAll()`.
-  Amended 2026-10-22 (M5-54): a long call core does not offer at home (Done's `finish`, and the backup's encryption,
-  which LifecycleTest drives and commit 20 brings) halts the slot when a discard reaches core in the moment between the
-  worker's check and the call (the stop screen, fail closed) instead of returning to the start screen. The snapshot
-  check is a short call on the main thread.
+  Amended 2026-10-22 (M5-54): a long call core does not offer at home (Done's `finish`, a scanned go-ahead QR's
+  `revealProof` from commit 18, and the backup's encryption, which LifecycleTest drives and commit 20 brings) halts the
+  slot when a discard reaches core in the moment between the worker's check and the call (the stop screen, fail
+  closed) instead of returning to the start screen. The snapshot check is a short call on the main thread.
   Proof: JVM tests for every transition, including a press during "Working..."; emulator tests that leave the app during
   a backup's scrypt and during the start-up self-test, and turn Wi-Fi on during `start`: no ANR, the session is gone.
   Proof (M5 commit 15, partial: the JVM and emulator tests run only in CI): as the re-plan amends it, this is
@@ -12323,6 +12323,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
 **16. Screens: the collision check** (MA:175-176; swb:112-152)
 - [ ] The prompt ("Check now (recommended)" / "Skip", Skip confirmed on its own screen). With a loaded snapshot the check
   runs automatically on the FFI thread and its result screen shows the snapshot's number, date and any warning.
+  Amended 2026-10-22 (M5-54): the check against a loaded snapshot is a short call on the main thread (17h); M5-55
+  takes the seal card off the prompt and shows the Seal ID from Check now on.
   Otherwise the seal card (seal at 240 dp, Seal ID with braille, the check QR) and "Scan go-ahead QR", "Type go-ahead
   code", "Match found", "Cannot check" (each one-way choice confirmed). A wrong typed code is refused and the check,
   nonce and actions stay. Match found: wiped unseen, the collision-report QR (Protected), "Add fresh entropy" restarts
@@ -12752,9 +12754,14 @@ never-funded throwaway seed.
 **P0b. Scanner smoke test (early, from commit 18's run; about 10 minutes)**
 - [ ] Install that run's test-registry APK (its strip reads TEST REGISTRY); airplane mode on, Wi-Fi off. Dice-only, 12
   words, the 50 rolls `123456` repeated; Check now; the Seal ID on the seal card equals `dice-50-words12`'s from the
-  lead (if not, a typing slip: Cannot check, then Start again). Scan go-ahead QR (allow the camera); scan
-  `goahead-collision-dice-50.png` on the computer screen: "Collision found. This seed is not unique and has been
-  destroyed.", no words. Send pass or fail only. Uninstall the APK.
+  lead (if not, a typing slip: Cannot check, then Start again). Scan go-ahead QR and allow the camera when asked.
+- [ ] The camera indicator (Android 12 and later: a green dot or camera icon at the top right) is on while the scan
+  screen shows (M5-59). Press Home: it goes off within a few seconds. Open the app again within a minute: the cover is
+  up and the indicator off; tap the cover: the indicator comes back. Press Back to the seal card: it goes off. If the
+  phone shows no indicator, skip this item and say so.
+- [ ] Scan go-ahead QR again; scan `goahead-collision-dice-50.png` on the computer screen: "Collision found. This seed
+  is not unique and has been destroyed.", no words, and the indicator goes off. Send pass or fail only (on a fail,
+  which item). Uninstall the APK.
 
 **P1. Capture (shipping APK)**
 - [ ] On the dice screen, a words page and the backup passphrase: a hardware screenshot is blocked or black; a Quick
@@ -14055,6 +14062,11 @@ they differ. Nothing in the Android plan is weakened.
   group 16's "on the FFI thread" is replaced. `finish` keeps its window as a fail-closed residual, as does the
   backup's encryption (`encryptBackup`, the same kind of call: LifecycleTest drives it, and commit 20 brings it):
   CeremonyModel's KDoc names both (commit 17h), and group 14's item is amended (17g).
+  Amended 2026-10-22 (18d, from commit 18's review): a scanned go-ahead QR's check (`revealProof`, commit 18) is a
+  long call of the same kind (ffi's reveal_proof takes only a Checking slot), so its window is the same fail-closed
+  residual; CeremonyModel's KDoc names all three. Making the FFI answer Discarded for a long call that meets an Idle
+  slot after a discard would close all three, and is not taken in M5: it changes the FFI's stage rule
+  (`ffi_a_call_in_a_stage_that_does_not_offer_it_halts`) for a window of microseconds that fails closed.
 - M5-55 (2026-10-22): the check prompt shows no seal card. Commit 17 drew it there, Seal ID included, beside Skip;
   the Seal ID's first four characters are the 20-bit bucket the registry lookup takes, so a user could read a Stop
   and then Skip past it, which swb:130 rules out ("Skip is offered only before the check starts, so nobody can read
@@ -14075,6 +14087,22 @@ they differ. Nothing in the Android plan is weakened.
   Re-measured: run 39678040247 at 32dc6a8, the first whole run with commit 17's tests, took 1739 s (29.0 minutes:
   Rust libraries 171 s, Gradle build 157 s, API 31 508 s, API 36 531 s, 16 KB 83 s); plus 25% is 37 minutes (17g-d).
   The gates job of that commit's Entropy CI run (39678040331) took 639 s of its 720.
+- M5-58 (2026-10-22): an uncaught-exception handler is a catch-all no `catch` shows, and KtFailOpen did not see one:
+  `Thread.setUncaughtExceptionHandler` on the scanner's own HandlerThread, or a second
+  `Thread.setDefaultUncaughtExceptionHandler`, left the gate clean (commit 18's review, reproduced). Commit 18 adds
+  the app's first thread of its own, whose failures fail closed only because they reach CrashHandler (wipe, then end
+  the process). KtFailOpen gains a hit for `setUncaughtExceptionHandler`, `setDefaultUncaughtExceptionHandler` and
+  `UncaughtExceptionHandler` outside the test source sets, except KeepCryptApp.kt's one
+  `Thread.setDefaultUncaughtExceptionHandler(` call and CrashHandler.kt's class header, each at its exact path
+  (18a-b's named files), with hit fixtures for a handler on another thread, a second default handler, a handler
+  class elsewhere and an alias of the name (commit 18e).
+- M5-59 (2026-10-22): no automated test stops a running scan: the CI emulators have no camera (hw.camera.back=none),
+  so the scan screen there reaches its no-camera line, and a test hook into MainActivity's scanner would be shipping
+  code. The scan stops when the app is left (MainActivity.onAppLeft and the cover, which ends ScanScreen's
+  `scanning`), when the scan screen goes (its DisposableEffect) and when the activity ends (shutDown). P0b gains the
+  owner's check with Android's camera indicator (Android 12 and later) on a real camera, and the M5 gate report names
+  the gap. Emulated-camera AVDs are not taken in M5: they change the legs' no-camera facts and SnapshotDrillTest's
+  expectation, and add time to M5-57's budget.
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the
