@@ -12400,8 +12400,6 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   code refused with the same check QR, the code from the drawn check QR's T and nonce typed on the pad: the check
   passed"), with every other class on both APIs and the 16 KB leg; Entropy CI 39678040331 and the Pi image
   39678040302 green. The item stays open for "Scan go-ahead QR" (commit 18) and M5-54/M5-55's changes (17h).
-  Proof (M5 commit 18, partial: CI's): the seal card draws "Scan go-ahead QR" first among its actions, the scan screen
-  behind it (the scanner item's lines).
   Proof (M5 commit 17h, partial: the Kotlin compiles and the JVM and emulator tests run only in CI; M5-54 and M5-55),
   what changed from commit 17's lines. The prompt's seal card is removed: the prompt draws swb's question and text,
   "Check now (recommended)" and "Skip" only, as the Pi's CheckPrompt (pi/app/src/screens.rs), and its UiState holds no
@@ -12430,6 +12428,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   a few seconds a leg for the scrolls. Gate clean on the tree (356 files), `--selftest` 1439 passed, 0 failed; Rust
   untouched (fmt, both clippy commands, the workspace tests, the test-sources run and the FFI tests plain and with
   test-registry all pass).
+  Proof (M5 commit 18, partial: CI's): the seal card draws "Scan go-ahead QR" first among its actions, the scan screen
+  behind it (the scanner item's lines).
 - [ ] The scanner (Camera2 + ZXing, commit 18): CAMERA asked on this screen only; `ImageReader` YUV_420_888 frames
   reduced to luminance on a background thread and never stored; text over 4,296 characters dropped (swb:144); the first
   decoded text goes to the same `onGoAheadText` the tests call; proof results show their date and any warning before
