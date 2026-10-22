@@ -11343,6 +11343,25 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   pattern (the two typealias fixtures) and 17f's `as` pattern (the two alias fixtures). `--selftest` 1451 passed, 0
   failed (1444 before), the same under /bin/dash; the gate clean on the tree (359 files) under sh and dash, and two
   hits on the reproduction's copy; canaries.sh PASS, all 93 checks ran.
+  Proof (M5 commit 18a-b, review fix): each named file was matched as mobile/android/<module>/src/<set>/*/NAME, whose
+  `*` also matches `/`, so a ReaderException catch in app/.../entropy/words/camera/GoAheadScanner.kt and the camera in
+  app/.../entropy/x/src/test/camera/GoAheadScanner.kt passed (reproduced on a copy of f018fc2), against M5-53's "in
+  camera/GoAheadScanner.kt only". Each named file is now one path: the app's
+  `mobile/android/app/src/main/kotlin/com/keepcrypt/entropy/` (camera/GoAheadScanner.kt, files/Documents.kt,
+  AirplaneSettingsIntent.kt, SensorMotionSource.kt), secure-ui's `.../secure-ui/src/main/kotlin/com/keepcrypt/entropy/
+  secure/` (SecureActivity.kt, OfflineMonitor.kt) and :screens' `.../screens/src/commonMain/kotlin/com/keepcrypt/
+  entropy/screens/CeremonyModel.kt`, the packages the real files have (Documents.kt's is commit 20's). The fixtures
+  that stand for a named file moved to its path (35 files, from com/keepcrypt/app, secureui and screens, and
+  clean-near-misses' kotlin/app). Ten new hit fixtures, one per named-file rule, one hit each, each also copied into
+  the test scopes and clean there (src/test and src/androidTest 130 copies each, commonTest and androidHostTest 149,
+  capture-control 25): a KcHalt catch in screens/old/CeremonyModel.kt, an IOException catch, a document stream and an
+  Intent( in backup/files/Documents.kt, a ReaderException catch in words/camera/GoAheadScanner.kt, the camera in
+  x/src/test/camera/GoAheadScanner.kt, the airplane-settings call in settings/AirplaneSettingsIntent.kt, a sensor in
+  motion/SensorMotionSource.kt, Settings.Global in secure/net/OfflineMonitor.kt and an Activity subclass in
+  secure/old/SecureActivity.kt. By hand, ten mutants of the gate, each one rule's old `*` pattern, each fail only
+  that rule's fixture. `--selftest` 1461 passed, 0 failed (1451 before), the same under /bin/dash; the gate clean on
+  the tree (359 files) under sh and dash, and three hits on the reproduction's copy; canaries.sh PASS, all 93 checks
+  ran.
 - [x] The Shell rule for `game_random` is unchanged in M5 (its ffi and Kotlin fixtures stay hits until M5b).
   Proof: those fixtures still trip.
   Proof (M5 commit 4): `game_random_use` and its path list untouched (only the release probe's comment stripping moved

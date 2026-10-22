@@ -562,8 +562,11 @@
 #              control, never shipped) skips only the FLAG_SECURE rules (KtWindow's securePolicy
 #              and flag checks) and the Activity rule; every other file (commonMain, androidMain,
 #              and iosMain and iosTest, which KtSourceSet refuses in M5, included) gets every rule.
-#              The named files below are the app's (mobile/android/app/src/main/.../NAME, at any
-#              depth under main/) unless secure-ui's or :screens' is named.
+#              Each named file below is one path, the app's
+#              (mobile/android/app/src/main/kotlin/com/keepcrypt/entropy/NAME) unless secure-ui's
+#              (.../secure-ui/src/main/kotlin/com/keepcrypt/entropy/secure/NAME) or :screens'
+#              (.../screens/src/commonMain/kotlin/com/keepcrypt/entropy/screens/NAME) is named; a
+#              file of the same name anywhere else gets every rule.
 #   KtLog      Log (android.util.Log, Log.v/d/i/w/e/wtf( ), println( and print(, System.out,
 #              System.err, printStackTrace, Timber, java.util.logging, slf4j, and a $ template in a
 #              string on a line that calls error(, check(, require(, checkNotNull( or
@@ -1632,6 +1635,15 @@ threads_by_path() {
 }
 
 # --- Kotlin and Android (tasks/todo.md, M5 group 3; Q55) ------------------------------------------
+
+# The named files' directories: each named file (camera/GoAheadScanner.kt, files/Documents.kt,
+# AirplaneSettingsIntent.kt and SensorMotionSource.kt in the app, SecureActivity.kt and
+# OfflineMonitor.kt in secure-ui, CeremonyModel.kt in :screens) is one path, its module's package
+# directory and its name, so a file of the same name anywhere else, deeper under src/main/ (a
+# src/test/ there included) or in another package, gets every rule.
+kt_app=mobile/android/app/src/main/kotlin/com/keepcrypt/entropy
+kt_secure_ui=mobile/android/secure-ui/src/main/kotlin/com/keepcrypt/entropy/secure
+kt_screens=mobile/android/screens/src/commonMain/kotlin/com/keepcrypt/entropy/screens
 
 # kept_hits ERE SED-ARGUMENT...: the lines of $t (grep -n output) that still match ERE (which holds
 # no %) after sed's deletions, given as the remaining arguments, each line printed as it was (sed's
@@ -2859,38 +2871,38 @@ EOF
         report KtInput ktinput "$rel"
         if [ "$ktscope" = main ]; then
           case $rel in
-            mobile/android/secure-ui/src/main/*/SecureActivity.kt) ;;
+            "$kt_secure_ui/SecureActivity.kt") ;;
             *) report KtInput kt_activity "$rel" ;;
           esac
         fi
         if [ "$ktscope" != test ]; then
           case $rel in
-            mobile/android/screens/src/commonMain/*/CeremonyModel.kt) report KtFailOpen kt_catch_kchalt "$rel" ;;
-            mobile/android/app/src/main/*/files/Documents.kt) report KtFailOpen kt_catch_ioexception "$rel" ;;
-            mobile/android/app/src/main/*/camera/GoAheadScanner.kt) report KtFailOpen kt_catch_camera "$rel" ;;
+            "$kt_screens/CeremonyModel.kt") report KtFailOpen kt_catch_kchalt "$rel" ;;
+            "$kt_app/files/Documents.kt") report KtFailOpen kt_catch_ioexception "$rel" ;;
+            "$kt_app/camera/GoAheadScanner.kt") report KtFailOpen kt_catch_camera "$rel" ;;
             *) report KtFailOpen kt_catch "$rel" ;;
           esac
           report KtFailOpen kt_alias "$rel"
           report KtStorage ktstorage "$rel"
           case $rel in
-            mobile/android/app/src/main/*/files/Documents.kt) ;;
+            "$kt_app/files/Documents.kt") ;;
             *) report KtStorage kt_open_stream "$rel" ;;
           esac
           case $rel in
-            mobile/android/app/src/main/*/files/Documents.kt) ;;
-            mobile/android/app/src/main/*/AirplaneSettingsIntent.kt) report KtIntent kt_intent_airplane "$rel" ;;
+            "$kt_app/files/Documents.kt") ;;
+            "$kt_app/AirplaneSettingsIntent.kt") report KtIntent kt_intent_airplane "$rel" ;;
             *) report KtIntent ktintent "$rel" ;;
           esac
           case $rel in
-            mobile/android/app/src/main/*/camera/GoAheadScanner.kt) ;;
+            "$kt_app/camera/GoAheadScanner.kt") ;;
             *) report KtDevice kt_camera "$rel" ;;
           esac
           case $rel in
-            mobile/android/app/src/main/*/SensorMotionSource.kt) ;;
+            "$kt_app/SensorMotionSource.kt") ;;
             *) report KtDevice kt_sensor "$rel" ;;
           esac
           case $rel in
-            mobile/android/secure-ui/src/main/*/OfflineMonitor.kt) ;;
+            "$kt_secure_ui/OfflineMonitor.kt") ;;
             *) report KtDevice kt_settings "$rel" ;;
           esac
         fi
