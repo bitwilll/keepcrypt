@@ -11400,6 +11400,27 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   1472 passed, 0 failed (1463 before), the same under /bin/dash; the gate clean on the tree (359 files) under sh and
   dash, and two hits on the reproduction's copy; canaries.sh PASS, all 93 checks ran (no canary added: the
   kmp-ios-rules canary's catch already plants KtFailOpen's catch list on the real tree).
+  Proof (M5 commit 18f, review fix): 18e allowed KeepCryptApp.kt's `Thread.setDefaultUncaughtExceptionHandler(`
+  wherever it stood on its line and whatever its argument, and CrashHandler.kt's header by a pattern whose `.*` could
+  take in a whole other class, so `Thread.setDefaultUncaughtExceptionHandler(null)` or a CrashHandler whose wipe does
+  nothing in KeepCryptApp.kt, `internal fun install(handler: CrashHandler) =
+  Thread.setDefaultUncaughtExceptionHandler(handler)` there called from MainActivity.kt with a wipe that does nothing,
+  and a CrashHandler.kt line declaring CrashHandler and then a second handler class each left the gate clean
+  (reproduced on a copy of bce1b48); no fixture tested the allowances' shape (a gate mutant that dropped the allowed
+  line whole, and four that loosened the header's pattern, passed every fixture). Each allowed line is now exact, its
+  indentation aside, and allowed once, as ffi_guard_pub pins guarded's line: KeepCryptApp.kt's
+  `Thread.setDefaultUncaughtExceptionHandler(` alone on its line, with the line after it pinned to `CrashHandler(wipe
+  = { Core.wipeAll() }, end = { Process.killProcess(Process.myPid()) }),` (any other line there is a hit, and a file
+  that ends first is one, "missing ..."), and CrashHandler.kt's one-line class header. Five new hit fixtures, one hit
+  each, each also copied into the test scopes and clean there (src/test and src/androidTest 146 copies each,
+  commonTest and androidHostTest 165, from 141 and 160): a CrashHandler whose wipe does nothing, the call after
+  another call on its line, the call as the file's last line, the header twice and the header with a body on its
+  line. By hand, five mutants of the gate each fail only their own fixtures: the argument line not pinned (the
+  argument and the last line), a line allowed by containing the text (the two with more on the line), every exact
+  line allowed (the header twice), no check at the file's end (the last line) and the indentation kept
+  (clean-kt-shipping-allowed and 18e's second call); 18e's gate passes the argument and last-line fixtures.
+  `--selftest` 1477 passed, 0 failed (1472 before), the same under /bin/dash; the gate clean on the tree (359 files)
+  under sh and dash, and one hit on the reproduction's copy; canaries.sh PASS, all 93 checks ran.
 - [x] The Shell rule for `game_random` is unchanged in M5 (its ffi and Kotlin fixtures stay hits until M5b).
   Proof: those fixtures still trip.
   Proof (M5 commit 4): `game_random_use` and its path list untouched (only the release probe's comment stripping moved

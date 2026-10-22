@@ -601,10 +601,13 @@
 #              and UncaughtExceptionHandler as words, and uncaughtExceptionHandler (Kotlin's
 #              property for a thread's getter and setter), so a call, a method reference, a
 #              property assignment, an import, an alias and a typealias of one all hit, but for
-#              two mentions, once each: Thread.setDefaultUncaughtExceptionHandler( in the app's
-#              KeepCryptApp.kt (the call that installs CrashHandler) and
-#              Thread.UncaughtExceptionHandler as the only supertype of the one-line class header
-#              of CrashHandler in the app's CrashHandler.kt; any other mention in either file hits.
+#              two lines, once each and each exactly, its indentation aside: the line
+#              Thread.setDefaultUncaughtExceptionHandler( in the app's KeepCryptApp.kt, with the
+#              line after it CrashHandler(wipe = { Core.wipeAll() }, end = {
+#              Process.killProcess(Process.myPid()) }), (the call that installs CrashHandler; any
+#              other line there is a hit, "missing ..." at the file's end), and CrashHandler's
+#              one-line class header, with Thread.UncaughtExceptionHandler its only supertype, in
+#              the app's CrashHandler.kt; any other mention in either file hits.
 #   KtWindow   Toast, Snackbar, Notification, Dialog(, AlertDialog, DialogFragment, Popup(,
 #              PopupWindow, ListPopupWindow, PopupMenu, DropdownMenu, ModalBottomSheet, Spinner,
 #              AutoCompleteTextView, tooltips, WindowManager's addView and
@@ -1780,35 +1783,67 @@ kt_alias() {
 # setDefaultUncaughtExceptionHandler and UncaughtExceptionHandler hit as words, with or without
 # Thread. (a call, a method reference, an import, an alias or a typealias of one), and so does
 # uncaughtExceptionHandler, the property Kotlin makes of a thread's getter and setter (its
-# assignment is the setter's call; a read hits too). Two mentions are allowed, once each, each in
-# its named file: KeepCryptApp.kt's Thread.setDefaultUncaughtExceptionHandler( (the call that
-# installs CrashHandler; its argument is not read) and CrashHandler.kt's
-# Thread.UncaughtExceptionHandler as the only supertype of its class header, on one line (class
-# CrashHandler(...) : Thread.UncaughtExceptionHandler {). kt_handler_allowing FILE ERE
-# REPLACEMENT applies sed's s/ERE/REPLACEMENT/ to the first of FILE's hit lines whose text
-# matches ERE, so the allowed form goes and the line still hits if another mention is left on
-# it; every other line hits.
+# assignment is the setter's call; a read hits too). Two lines are allowed, once each, each in its
+# named file and each exactly as written there, its indentation aside (as ffi_guard_pub pins
+# guarded's line): KeepCryptApp.kt's Thread.setDefaultUncaughtExceptionHandler( alone on its line,
+# with its argument pinned on the line after it, so the handler it installs is CrashHandler with the
+# app's own wipe and end (a wrapper that passes any handler on, null and a wipe that does nothing all
+# hit), and CrashHandler.kt's one-line class header, with Thread.UncaughtExceptionHandler its only
+# supertype. kt_handler_allowing FILE LINE...: FILE's hit lines, but the first line that is the
+# first LINE passes, and each line after it must be the next LINE in turn or it is a hit, its own
+# text (a file that ends first is one at its last line, "missing ..."). A second such line, or one
+# with anything more on it, hits.
 kt_handler_names="${L}(set(Default)?UncaughtExceptionHandler|[Uu]ncaughtExceptionHandler)$R"
 kt_handler() {
   grep -n -a -E -e "$kt_handler_names" -- "$1"
 }
 kt_handler_allowing() {
-  t=$(kt_handler "$1")
+  f=$1
+  shift
+  t=$(kt_handler "$f")
   case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
-  first=$(printf '%s\n' "$t" | grep -a -E -e "^[0-9]+:$2" | sed -n '1s/:.*//p')
-  if [ -z "$first" ]; then
-    printf '%s\n' "$t"
-    return 0
-  fi
-  kept_hits "$kt_handler_names" -e "s/^$first:$2/$3/"
+  # The hits come in on the standard input, the file after them; k counts the LINEs matched so far
+  # while the lines after the first are pinned.
+  printf '%s\n' "$t" | KC_HANDLER_LINES=$(printf '%s\n' "$@") awk '
+    function out(l, text) {
+      print l ":" text
+      found = 1
+    }
+    BEGIN { n = split(ENVIRON["KC_HANDLER_LINES"], want, "\n") }
+    NR == FNR {
+      l = $0
+      sub(/:.*/, "", l)
+      hit[l] = 1
+      next
+    }
+    {
+      line = $0
+      sub(/^[ \t]+/, "", line)
+    }
+    k {
+      k++
+      if (line != want[k]) out(FNR, $0)
+      if (k == n) k = 0
+      next
+    }
+    !seen && line == want[1] {
+      seen = 1
+      if (n > 1) k = 1
+      next
+    }
+    FNR in hit { out(FNR, $0) }
+    END {
+      if (k) out(FNR, "missing the line after it, " want[k + 1])
+      exit !found
+    }' - "$f"
 }
 kt_handler_app() {
-  kt_handler_allowing "$1" '((.*[^A-Za-z0-9_])?)Thread[.]setDefaultUncaughtExceptionHandler[(]' '\1'
+  kt_handler_allowing "$1" 'Thread.setDefaultUncaughtExceptionHandler(' \
+    'CrashHandler(wipe = { Core.wipeAll() }, end = { Process.killProcess(Process.myPid()) }),'
 }
 kt_handler_crash() {
   kt_handler_allowing "$1" \
-    "([[:space:]]*(internal[[:space:]]+)?class[[:space:]]+CrashHandler[(].*[)][[:space:]]*:[[:space:]]*)Thread[.]UncaughtExceptionHandler([[:space:]]*[{][[:space:]]*)\$" \
-    '\1\3'
+    'internal class CrashHandler(private val wipe: () -> Unit, private val end: () -> Unit) : Thread.UncaughtExceptionHandler {'
 }
 
 # KtWindow (Q57: no dialogs, popups, menus, sheets, toasts, notifications or tooltips, so the app
