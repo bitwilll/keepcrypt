@@ -11531,6 +11531,14 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   CrashHandler cases and scope trees on the KtFailOpen and clean fixtures, each fail only their own fixture, and
   each passes every case without the new fixtures. `--selftest` 1516 passed, 0 failed, the same under /bin/dash; the
   gate clean on the tree (356 files) under sh and dash.
+  Proof (M5 commit 18l, review fix): the scanner's Executor needs `import java.util.concurrent.Executor` as a whole
+  line of its import header (grep -x), but no fixture told that line from a header line that only holds its text:
+  with -x dropped the gate still passed every case. A new hit fixture, clean under c4eef81's gate: the scanner's
+  header with `// import java.util.concurrent.Executor` (a line comment, which the header takes) and its Executor,
+  one hit ("missing ..." at the comment's Executor). Also in the test scopes and clean there (178 and 205 copies).
+  By hand, that substring mutant, run through the selftest's fixture loop, CrashHandler cases and scope trees on the
+  KtFailOpen and clean fixtures, fails only the new fixture, and passes every case without it. `--selftest` 1517
+  passed, 0 failed, the same under /bin/dash; the gate clean on the tree (356 files) under sh and dash.
 - [x] The Shell rule for `game_random` is unchanged in M5 (its ffi and Kotlin fixtures stay hits until M5b).
   Proof: those fixtures still trip.
   Proof (M5 commit 4): `game_random_use` and its path list untouched (only the release probe's comment stripping moved
