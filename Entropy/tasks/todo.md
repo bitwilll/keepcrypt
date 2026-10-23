@@ -11519,6 +11519,18 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   add about 5% (25 s), and 18e-18h together about 7.5% (39 s); the gate on the tree took 29-30 s against 27 s for
   c4eef81's on its export (355 files: the tree less four local __pycache__ files). The gates job took 659 s of its 720 (Q31 (f)) at 1463 cases (run 39744137380, at 1a63e0f); if its
   self-test grows as it does here, the next run may come near 690-710 s; CI measures it.
+  Proof (M5 commit 18k, review fix): three arms of 18h's `finally` rule had no fixture, so a gate without any one of
+  them still passed every case and gave no hit on its planted file: a tab or a carriage return as the blank between
+  `finally` and its `{`, and a `//` comment there (18h's comment-before-brace fixture has `/*`). Three new hit
+  fixtures, one hit each, each clean under c4eef81's gate: a tab before the `{` (:secure-ui), a file with CRLF line
+  ends whose `{` is on the line after `finally` (:screens; the repo has no .gitattributes, so git keeps its bytes)
+  and `finally // the frame` with its `{` on the next line (the hit at the finally's line). Each is also in the test
+  scopes and clean there (src/test and src/androidTest 177 copies each, commonTest and androidHostTest 204, from 175
+  and 201). By hand, three mutants of the block reader (the tab, the carriage return and the `//` comment each
+  dropped from what may stand between `finally` and its `{`), each run through the selftest's fixture loop,
+  CrashHandler cases and scope trees on the KtFailOpen and clean fixtures, each fail only their own fixture, and
+  each passes every case without the new fixtures. `--selftest` 1516 passed, 0 failed, the same under /bin/dash; the
+  gate clean on the tree (356 files) under sh and dash.
 - [x] The Shell rule for `game_random` is unchanged in M5 (its ffi and Kotlin fixtures stay hits until M5b).
   Proof: those fixtures still trip.
   Proof (M5 commit 4): `game_random_use` and its path list untouched (only the release probe's comment stripping moved
