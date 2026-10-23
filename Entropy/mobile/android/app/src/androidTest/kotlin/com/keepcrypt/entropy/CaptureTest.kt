@@ -160,7 +160,8 @@ class CaptureTest {
     /**
      * From the seal card, the scan screen and its camera prompt (M5 group 16): CAMERA requested and not
      * granted before it (dumpsys package) and no prompt up; once it opens, the system's prompt, whose
-     * "Don't allow" the walk presses, the refusal reaching the scan screen, and CAMERA still not granted.
+     * "Don't allow" the walk presses once (Capture.denyPrompt, which waits for the prompt to go), then
+     * the refusal reaching the scan screen, and CAMERA still not granted.
      */
     private fun askedOnTheScanScreen(activity: MainActivity) {
         val before = Capture.permission(pkg, CAMERA)
@@ -178,8 +179,8 @@ class CaptureTest {
             "the camera prompt showed as the scan screen opened and on no screen before it; CAMERA requested and not " +
                 "granted before it (dumpsys package)",
         )
-        deny.click()
-        waitUntil("the prompt's refusal on the scan screen") { onMain { activity.model.state.value.scanStop } == ScanStop.Refused }
+        Capture.denyPrompt(device, deny)
+        waitUntil("the prompt went but no refusal reached the scan screen") { onMain { activity.model.state.value.scanStop } == ScanStop.Refused }
         assertFalse("CAMERA granted after Don't allow", Capture.permission(pkg, CAMERA).granted)
     }
 

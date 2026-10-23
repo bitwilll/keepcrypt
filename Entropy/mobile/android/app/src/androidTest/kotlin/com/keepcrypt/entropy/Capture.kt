@@ -11,10 +11,12 @@ import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.view.ViewTreeObserver
 import android.view.WindowInsets
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import com.keepcrypt.entropy.screens.Screen
 import com.keepcrypt.entropy.screens.screenId
@@ -395,6 +397,25 @@ internal object Capture {
 
     /** The permission prompt's "Don't allow". */
     val PROMPT_DENY: BySelector = By.res(Pattern.compile("com[.](google[.])?android[.]permissioncontroller:id/permission_deny_button"))
+
+    /**
+     * Presses the permission prompt's "Don't allow" (deny, found by PROMPT_DENY) once, then waits up to
+     * 10 s for the prompt to go. The press is the button's accessibility click, as TalkBack presses
+     * it, not a touch at its centre: the permission controller's prompt (GrantPermissionsActivity, read
+     * in kc37's aml_370546220) drops every touch until its enter animation has completed, which nothing
+     * outside its process reports, and it shows its window empty, then its request, so its buttons'
+     * first bounds lie where the empty window stood (kc37: 401 px lower, off the screen). A touch on a
+     * button found after UI Automator's idle wait can still come too soon on a slow emulator, and the
+     * prompt then stays up with no answer (run 39783747240, API 36: no refusal reached the scan screen).
+     * The click goes to the button's own click handler, which answers as soon as the button is shown,
+     * since the prompt shows it only with its request. A press the button does not take, or a prompt
+     * still up, fails here, so a refusal that never comes after the prompt went is the app's.
+     */
+    fun denyPrompt(device: UiDevice, deny: UiObject2) {
+        val pressed = deny.accessibilityNodeInfo.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        assertTrue("the prompt's Don't allow did not take the press", pressed)
+        assertTrue("the prompt stayed up after Don't allow", device.wait(Until.gone(PERMISSION_PROMPT), 10_000) == true)
+    }
 
     /**
      * What dumpsys package says of one of pkg's permissions, read in pkg's own block ("Package [pkg]"

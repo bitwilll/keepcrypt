@@ -12666,6 +12666,49 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   collision before any words, 1 entry in this seal's bucket, the Stale warning and its Seal ID YVM9CPP3; the report
   behind the gate; Add fresh entropy: 0 / 99". The real Camera2 path is the owner's P0b (issued 2026-10-22 from this
   run) and P4; the item stays open for them.
+  Proof (M5 commit 18j, partial: CI's API 36 leg proves the fix at the next push; every result here is local, kc37,
+  Q76): run 39783747240 at efc0575 (18i changed no code) failed on API 36 in the shipping APK's walk, after its pass
+  line "the camera prompt showed as the scan screen opened ...", with "timed out: the prompt's refusal on the scan
+  screen" (CaptureTest.kt:182) and no logcat kept. The half that failed is the press, not the app: the touch on "Don't
+  allow" did not reach the prompt. kc37's permission controller (com.google.android.permissioncontroller
+  aml_370546220, the API 37 Play Store image's Mainline build, read from its dex with build-tools' dexdump) sets its
+  content GONE in GrantPermissionsActivity.onCreate and VISIBLE only in showNextRequest, after updateUi, so its window
+  comes up empty and then grows to the request (the deny button's first bounds, seen by a poll with no idle wait, were
+  Rect(98, 1297 - 622, 1393), 401 px below their place Rect(98, 896 - 622, 992) and off the 1280 px screen); and its
+  dispatchTouchEvent drops every touch until onEnterAnimationComplete (only a restored activity starts with it set),
+  which neither dumpsys activity (activities, top) nor dumpsys window shows. UI Automator finds the button after 500 ms
+  with no accessibility event (UiDevice.getWindowRoots waits for idle), then touches the centre it reads, so on a
+  slower emulator a touch can come while the prompt still drops it or before it has moved: the prompt stays up with no
+  answer and no refusal comes, which is CI's failure. CI's API 36 default image runs AOSP's
+  com.android.permissioncontroller, built from the same module's source a release earlier, without Google's overlay
+  (the same activity and button ids, which PROMPT_DENY matches in both packages); whether that build has the touch
+  guard is not checked here (no API 36 image locally), and its software-rendered x86_64 emulator is far slower than
+  kc37's native arm64. A loop of the scan step (a temporary instrumented test, not committed: one walk to the seal
+  card, then each round CAMERA reset by `pm revoke` and `pm clear-permission-flags PKG android.permission.CAMERA
+  user-set user-fixed`, both allowed on the user build and silent, USER_SET gone each time, and for a cold prompt
+  `am force-stop` of the controller, also allowed; nothing was refused): efc0575's click failed in 0 of 65 rounds (20
+  warm, 20 cold, 20 cold with 8 busy loops in the guest, 5 traced with the bounds unchanged for 3 s after the find),
+  since on kc37 logcat's Finish Transition for the prompt always came before UI Automator found it; touches at the
+  button's first appearance left the prompt up in 3 of 50 rounds (1 of 10 warm, 2 of 20 warm with 12 busy loops, 0 of
+  20 cold with 12), each at the off-screen first bounds. In each of the 223 rounds whose prompt answered at once, the
+  refusal reached the scan screen. Fix (androidTest only, no app change): Capture.denyPrompt presses "Don't allow" once
+  by the button's accessibility click (ACTION_CLICK, as TalkBack presses it), which reaches its click handler with no
+  touch guard and needs no bounds, fails at once if the button does not take it ("the prompt's Don't allow did not
+  take the press"), then waits up to 10 s for the prompt to go ("the prompt stayed up after Don't allow"); only then
+  does CaptureTest wait its 10 s for the refusal ("the prompt went but no refusal reached the scan screen"). No second
+  press and no longer timeout. The earliest press (at the button's first appearance, 12 busy loops) was refused in 20
+  of 20 rounds, one at the off-screen bounds; with the fix the loop passed 90 of 90 (30 warm, 30 cold, 30 cold with 12
+  busy loops). No other instrumented test answers a system prompt: SnapshotDrillTest grants CAMERA by `pm grant`, so
+  none shows, and FlowTest leaves the airplane-mode settings with Back. Cost: about 0.5 s more a walk (the prompt's
+  gone wait is UI Automator's idle wait), so about 1 s an API leg and none on the 16 KB leg; efc0575's job was 262 s
+  slower than 1a63e0f's, 192 s of it in steps no test touches (Rust libraries +106 s, Gradle build +57 s, 16 KB +29 s),
+  so the runner, and API 31 +27 s and API 36 +32 s with the same tests. At this commit: android-local.sh exit 0 in
+  814 s (L1's aapt2 override; the nine runs passed in android-emulator.sh's order, CaptureTest 6 and 6 with control
+  (c) named and left out, the Camera2 client checks passed and the PNG decode not made, as at L2); the JVM tests rerun
+  (:core-ffi 27 in 9 classes, :screens 79 in 13, :app 7 in 3 for each flavour, :secure-ui 3 in 1, none failed); gate
+  clean on the tree (356 files) under sh and dash, `--selftest` 1513 passed, 0 failed; Rust untouched (fmt, both
+  clippy commands, the workspace tests 499 passed, the test-sources run 269 and the FFI tests plain and with
+  test-registry 54 each).
 
 **17. Screens: words to finish** (MA:177-184; PF:90-99; swb:276-290)
 - [ ] The privacy gate, then Words (one insert per page: position, word, SeedBook number, five faces with blanks,
