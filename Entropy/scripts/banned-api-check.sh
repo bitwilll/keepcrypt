@@ -52,11 +52,30 @@
 #                                           image lists' built-in cases must be refused before any
 #                                           host tool runs; the OS configuration fixtures in
 #                                           scripts/testdata/os-config/ must pass or fail as their
-#                                           names say; and the image scan's built-in cases must be
-#                                           refused, or, on a stub image, give exactly their one hit
+#                                           names say; the shard option's malformed and
+#                                           out-of-range values must be refused; and the image
+#                                           scan's built-in cases must be refused, or, on a stub
+#                                           image, give exactly their one hit
+#   scripts/banned-api-check.sh --selftest --shard K/N
+#                                           the same cases, those of shard K of N alone (see
+#                                           "Selftest shards" below)
 #
 # Prints "<category>: <file>:<line>: <text>" per hit, then a summary. Exit 0 clean, 1 hits,
 # 2 usage or read error: a file that cannot be read fails the gate, it is never skipped.
+#
+# Selftest shards (tasks/todo.md, M5-63: CI's gates job runs the selftest as two shards side by
+# side). --selftest --shard K/N walks the whole case list in its fixed order and runs case c
+# (counted from 1) only when (c - 1) mod N is K - 1, so neighbouring cases go to different
+# shards and every kind of case falls into every shard: the fixtures, the scope trees' scans, the
+# cases built here and the other modes' cases. A case is skipped only at its judged run, so what
+# comes before that is still made in every shard: each case's scratch tree (and an image stub
+# case's lists), the scope trees' copies, the artifact objects and the image stub, which the
+# shard's own cases need too. Before its summary a sharded run prints "selftest: shard K/N: OWN
+# of WHOLE cases", OWN the cases it judged (passed and failed) and WHOLE the cases in the list;
+# the shards of one tree split one list when each prints the same WHOLE and their OWN add up to
+# it. K and N are decimal numbers from 1 to 9999 with no leading zero, K at most N; any other
+# value, a missing one or a further argument is exit 2 before any case runs. Without the option
+# every case runs, and the output is as before.
 #
 # Artifact mode (docs/build-plan.md "Security rules enforced in CI", rows "One RNG path in shipped
 # binaries" and "Test stubs never ship"; tasks/todo.md, M1 Q3, Q8 and group 11; M4 group 12). Prints
@@ -891,7 +910,7 @@ self=$here/$(basename "$0")
 
 usage() {
   cat <<'EOF'
-usage: scripts/banned-api-check.sh [--selftest | DIR | --artifact TARGET FILE... | --workflows DIR |
+usage: scripts/banned-api-check.sh [--selftest [--shard K/N] | DIR | --artifact TARGET FILE... | --workflows DIR |
                                    --image-lists IMG KCONFIG | --image IMG EXPECTED_DIR KCONFIG BIN_SHA256 |
                                    --selftest-image IMG KCONFIG | --os-config OS_DIR |
                                    --apk VARIANT APK EXPECTED_DIR MERGER_REPORT CERT_SHA256 JNILIBS_DIR |
@@ -940,7 +959,9 @@ usage: scripts/banned-api-check.sh [--selftest | DIR | --artifact TARGET FILE...
               the APK check's refusals and rules on stub tools and stub APKs (sh and python3 only)
   --selftest  run the fixtures in scripts/testdata/banned-api/, scripts/testdata/artifact/,
               scripts/testdata/workflows/ and scripts/testdata/os-config/, the image lists' built-in
-              cases and the image scan's, on a stub image
+              cases and the image scan's, on a stub image; with --shard K/N (K and N from 1 to 9999,
+              K at most N), only case c of the list where (c - 1) mod N is K - 1, and a line
+              counting them beside the whole list
 Hits: RNG APIs (and the OS RNG read outside core/src/source), network APIs, Python network imports
 and hard-coded http URLs (outside registry/), clipboard, copy and share APIs and Python clipboard
 modules, tools and calls, getrandom in a .rs file outside core/src/source, std's OS-seeded hashing
@@ -3525,6 +3546,46 @@ fresh() {
     >"$d/mobile/android/build.gradle.kts" || exit 2
 }
 
+# The selftest's shard, K of N (--selftest --shard K/N; without the option, one shard of one,
+# which runs every case), and the cases counted so far in the list's fixed order (see "Selftest
+# shards" above).
+sharded=no
+shard_k=1
+shard_n=1
+ordinal=0
+
+# shard K/N: this run's shard, or exit 2 for anything but K/N with K and N decimal numbers from 1 to
+# 9999 with no leading zero and K at most N.
+shard() {
+  shard_k=${1%%/*}
+  shard_n=${1#*/}
+  ok=no
+  if [ "$shard_k/$shard_n" = "$1" ]; then
+    ok=yes
+    for x in "$shard_k" "$shard_n"; do
+      case $x in [1-9] | [1-9][0-9] | [1-9][0-9][0-9] | [1-9][0-9][0-9][0-9]) ;; *) ok=no ;; esac
+    done
+  fi
+  if [ "$ok" = no ]; then
+    printf 'banned-api-check: --selftest --shard: %s is not K/N, two numbers from 1 to 9999 with no leading zero\n' "$1" >&2
+    exit 2
+  fi
+  if [ "$shard_k" -gt "$shard_n" ]; then
+    printf 'banned-api-check: --selftest --shard: %s names shard %s of %s, past the last\n' "$1" "$shard_k" "$shard_n" >&2
+    exit 2
+  fi
+  sharded=yes
+}
+
+# mine: counts the selftest's next case and is true when the case is this shard's to run: case c
+# (from 1) is shard ((c - 1) mod N) + 1's, so without the option every case is. Each case helper
+# (expect, wexpect, aexpect, ixexpect, oexpect, sicase) and each case judged inline asks it first
+# and does nothing more when it is false.
+mine() {
+  ordinal=$((ordinal + 1))
+  [ $(((ordinal - 1) % shard_n + 1)) -eq "$shard_k" ]
+}
+
 # expect NAME DIR WANT [FILE]: scan DIR in a new process. WANT=clean needs exit 0 and no hit,
 # WANT=error needs exit 2 and output containing FILE (if given, the expected message), any other
 # WANT needs exit 1 and exactly one hit "<WANT>: <FILE>:<line>: <text>", where <text> is line
@@ -3538,6 +3599,7 @@ fresh() {
 # be at that line of FILE (a case with more than one candidate line, such as the second of two
 # exports).
 expect() {
+  mine || return 0
   out=$(sh "${gate:-$self}" "$2" 2>&1)
   rc=$?
   alsook=yes
@@ -4369,11 +4431,46 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
     KtIntent KtDevice KtSdk KtBinary KtManifest KtTestChannel KtSourceSet KtIos KtRoot KtCinterop FFI clean; do
     case "$seen " in *" $want "*) ;; *) fail=$((fail + 1)); echo "FAIL no $want fixture" ;; esac
   done
+  # The shard option (M5-63): a shard past the last, a malformed value, a missing one, a further
+  # argument and the option out of place are each exit 2 with their refusal. Each run's TMPDIR is
+  # a file, so a gate that took one would stop at selftest's mktemp (exit 2, but without the
+  # refusal) rather than run a selftest of its own.
+  : >"$tmp/not-a-directory" || exit 2
+  for case in 'past-the-last|--selftest --shard 3/2|3/2 names shard 3 of 2, past the last' \
+    'two-of-one|--selftest --shard 2/1|2/1 names shard 2 of 1, past the last' \
+    'no-slash|--selftest --shard 2|2 is not K/N' 'zero|--selftest --shard 0/2|0/2 is not K/N' \
+    'leading-zero|--selftest --shard 1/02|1/02 is not K/N' 'letter|--selftest --shard a/2|a/2 is not K/N' \
+    'three-numbers|--selftest --shard 1/2/2|1/2/2 is not K/N' 'slash-alone|--selftest --shard /|/ is not K/N' \
+    'five-digits|--selftest --shard 1/10000|1/10000 is not K/N' 'no-value|--selftest --shard|usage:' \
+    'further-argument|--selftest --shard 1/2 1/2|usage:' 'option-first|--shard 1/2 --selftest|usage:' \
+    'equals-sign|--selftest --shard=1/2|usage:'; do
+    mine || continue
+    sname=selftest-shard-error-${case%%|*}
+    rest=${case#*|}
+    swant=${rest#*|}
+    # The arguments, split on purpose.
+    set -- ${rest%%|*}
+    out=$(TMPDIR=$tmp/not-a-directory sh "$self" "$@" 2>&1)
+    rc=$?
+    ok=no
+    if [ "$rc" -eq 2 ]; then
+      case $out in *"$swant"*) ok=yes ;; esac
+    fi
+    if [ "$ok" = yes ]; then
+      pass=$((pass + 1))
+      printf 'PASS %s -> exit 2: %s\n' "$sname" "${out%%$nl*}"
+    else
+      fail=$((fail + 1))
+      printf 'FAIL %s: wanted exit 2 with "%s", got exit %s:\n' "$sname" "$swant" "$rc"
+      printf '%s\n' "$out" | sed 's/^/    /'
+    fi
+  done
   artifact_selftest
   workflows_selftest
   image_lists_selftest
   os_config_selftest
   image_selftest
+  [ "$sharded" = no ] || echo "selftest: shard $shard_k/$shard_n: $((pass + fail)) of $ordinal cases"
   echo "selftest: $pass passed, $fail failed"
   [ "$fail" -eq 0 ] || exit 1
   exit 0
@@ -5523,6 +5620,7 @@ si_lists() {
 # new process, must exit 1 with exactly one hit, which starts with WANT-HIT; with WANT-HIT empty
 # (a control), exit 0 with no hit.
 sicase() {
+  mine || return 0
   sout=$(sh "$self" --image "$3" "$4" "$5" "$6" 2>&1)
   rc=$?
   got=$(printf '%s\n' "$sout" | grep -E "$icats")
@@ -5727,6 +5825,7 @@ CONFIG_HW_RANDOM_CANARY=y'
 # one file the hit must name (as DIR/<file>): exit 1 and exactly one "Workflow: DIR/<file>:<line>:
 # <text>" line, where <text> is line <line> of the file as it stands, or a "missing ..." message.
 wexpect() {
+  mine || return 0
   out=$(sh "${gate:-$self}" --workflows "$2" 2>&1)
   rc=$?
   hit=$(printf '%s\n' "$out" | grep -E '^Workflow: ')
@@ -5868,6 +5967,7 @@ iexpect() {
 }
 
 ixexpect() {
+  mine || return 0
   imd=$1
   iname=$2
   want=$3
@@ -5940,16 +6040,18 @@ image_lists_selftest() {
     ln -s "$(command -v "$t")" "$a/bin/$t" || exit 2
   done
   shell=$(command -v sh) || exit 2
-  out=$(PATH=$a/bin "$shell" "$self" --image-lists "$a/tools.img" "$k" 2>&1)
-  rc=$?
-  want="$a/tools.img: no mcopy on PATH (the build's host tools are in KC_WORK/out/host/bin)"
-  if [ "$rc" -eq 2 ] && [ "$out" = "banned-api-check: --image-lists: $want" ]; then
-    pass=$((pass + 1))
-    printf 'PASS image-lists-layout-with-magic-needs-the-host-tools -> exit 2: %s\n' "$out"
-  else
-    fail=$((fail + 1))
-    printf 'FAIL image-lists-layout-with-magic-needs-the-host-tools: wanted exit 2 with "%s", got exit %s:\n' "$want" "$rc"
-    printf '%s\n' "$out" | sed 's/^/    /'
+  if mine; then
+    out=$(PATH=$a/bin "$shell" "$self" --image-lists "$a/tools.img" "$k" 2>&1)
+    rc=$?
+    want="$a/tools.img: no mcopy on PATH (the build's host tools are in KC_WORK/out/host/bin)"
+    if [ "$rc" -eq 2 ] && [ "$out" = "banned-api-check: --image-lists: $want" ]; then
+      pass=$((pass + 1))
+      printf 'PASS image-lists-layout-with-magic-needs-the-host-tools -> exit 2: %s\n' "$out"
+    else
+      fail=$((fail + 1))
+      printf 'FAIL image-lists-layout-with-magic-needs-the-host-tools: wanted exit 2 with "%s", got exit %s:\n' "$want" "$rc"
+      printf '%s\n' "$out" | sed 's/^/    /'
+    fi
   fi
   dd if="$a/layout.img" of="$a/short.img" bs=100 count=1 2>/dev/null || exit 2
   iexpect 'image-lists-shorter-than-mbr' "$a/short.img: 100 bytes, shorter than an MBR (512)" "$a/short.img" "$k"
@@ -6038,17 +6140,19 @@ w __gmon_start__
 == kernel config (KCONFIG)
 CONFIG_HW_RANDOM_BCM2835=y
 banned-api-check --image-lists $img: listed, not scanned"
-  out=$(PATH="$st/bin:$PATH" sh "$self" --image-lists "$img" "$k" 2>&1)
-  rc=$?
-  if [ "$rc" -eq 0 ] && [ "$out" = "$want" ]; then
-    pass=$((pass + 1))
-    echo 'PASS image-lists-stub-tools-listing -> exit 0: the expected listing'
-  else
-    fail=$((fail + 1))
-    printf 'FAIL image-lists-stub-tools-listing: wanted exit 0 and the expected listing, got exit %s:\n' "$rc"
-    printf '%s\n' "$out" >"$st/got"
-    printf '%s\n' "$want" >"$st/want"
-    diff "$st/want" "$st/got" | sed 's/^/    /'
+  if mine; then
+    out=$(PATH="$st/bin:$PATH" sh "$self" --image-lists "$img" "$k" 2>&1)
+    rc=$?
+    if [ "$rc" -eq 0 ] && [ "$out" = "$want" ]; then
+      pass=$((pass + 1))
+      echo 'PASS image-lists-stub-tools-listing -> exit 0: the expected listing'
+    else
+      fail=$((fail + 1))
+      printf 'FAIL image-lists-stub-tools-listing: wanted exit 0 and the expected listing, got exit %s:\n' "$rc"
+      printf '%s\n' "$out" >"$st/got"
+      printf '%s\n' "$want" >"$st/want"
+      diff "$st/want" "$st/got" | sed 's/^/    /'
+    fi
   fi
   echo '-rw-r--r-- 0/0 5 squashfs-root/etc/no-date' >>"$st/lln" || exit 2
   opath=$PATH
@@ -6065,6 +6169,7 @@ banned-api-check --image-lists $img: listed, not scanned"
 # no hit, WANT=error exit 2 with TEXT in the output, any other WANT exit 1 and exactly one hit, of
 # category WANT.
 oexpect() {
+  mine || return 0
   out=$(sh "$self" --os-config "$2" 2>&1)
   rc=$?
   ocats='^(Inittab|Fstab|Cmdline|ConfigTxt|Kconfig|BusyBox): '
@@ -6199,6 +6304,7 @@ image_selftest() {
   done
   shell=$(command -v sh) || exit 2
   for m in --image --selftest-image; do
+    mine || continue
     case $m in
       --image) out=$(PATH=$a/bin "$shell" "$self" --image "$a/tools.img" "$a/expected" "$k" "$zero" 2>&1) ;;
       *) out=$(PATH=$a/bin "$shell" "$self" --selftest-image "$a/tools.img" "$k" 2>&1) ;;
@@ -6437,6 +6543,7 @@ EOF
 # code must be WANT-EXIT, and the hit lines, sorted, exactly WANT-HITS (newline-separated, sorted;
 # empty for none). For WANT-EXIT 2, WANT-HITS is a text the output must contain instead.
 aexpect() {
+  mine || return 0
   aname=$1
   want_rc=$2
   want=$3
@@ -6468,7 +6575,9 @@ artifact_selftest() {
   a=$tmp/artifact
   mkdir -p "$a" || exit 2
   # The pinned key is kcr.json's test registry key.
-  if sed -n '/"test_registry": {/,/}/p' "$here/../vectors/kcr.json" | grep -q -F -e "\"public_key_hex\": \"$testkey\""; then
+  if ! mine; then
+    :
+  elif sed -n '/"test_registry": {/,/}/p' "$here/../vectors/kcr.json" | grep -q -F -e "\"public_key_hex\": \"$testkey\""; then
     pass=$((pass + 1))
     echo 'PASS artifact-test-key-is-kcr-json-test-registry-key'
   else
@@ -6479,7 +6588,9 @@ artifact_selftest() {
   # that block). A block this cannot read gives an empty list, which fails.
   deny_rng=$(sed -n '/^ *# Rule 1:/,/^ *#/p' "$repo/deny.toml" | sed -n 's/^ *"\([A-Za-z0-9_-]*\)",$/\1/p' | sort | tr '\n' ' ')
   scan_rng=$(printf '%s\n' $rng_crate_names | sort | tr '\n' ' ')
-  if [ -n "$deny_rng" ] && [ "$deny_rng" = "$scan_rng" ]; then
+  if ! mine; then
+    :
+  elif [ -n "$deny_rng" ] && [ "$deny_rng" = "$scan_rng" ]; then
     pass=$((pass + 1))
     echo "PASS artifact-rng-crates-are-deny-toml-rule-1 ($(printf '%s\n' $rng_crate_names | wc -l | tr -d ' ') names)"
   else
@@ -7890,6 +8001,11 @@ case $# in
       -*) usage >&2; exit 2 ;;
       *) [ -d "$1" ] || { usage >&2; exit 2; }; scan "$1" ;;
     esac
+    ;;
+  3)
+    [ "$1" = --selftest ] && [ "$2" = --shard ] || { usage >&2; exit 2; }
+    shard "$3"
+    selftest
     ;;
   *) usage >&2; exit 2 ;;
 esac

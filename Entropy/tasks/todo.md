@@ -14466,6 +14466,13 @@ they differ. Nothing in the Android plan is weakened.
   its shard and prints its own count and the whole list's count. The step fails unless both shards report the same
   whole-list count, their counts add up to it, and every case passes. The rules and cases are unchanged. Locally, the
   shards' counts add up to the unsharded count (commit L4).
+  As built (L4, 2026-10-23): shard K of N judges case c of the one list, in its fixed order, when (c - 1) mod N is
+  K - 1, so neighbouring cases go to different shards and every kind of case falls into both (the fixtures, the
+  scope trees' scans, the built cases and the other modes'). A case is skipped only at its judged run, so what comes
+  before it is made in both shards (each case's scratch tree, the scope trees' copies, the artifact objects, the image
+  stub): 36 s of each shard's walk on the Mac. The cases are unchanged but for the option's own 13 refusals (1569 at
+  L4). Locally (sh, 1569 cases): the whole self-test 541 s alone; the shards 349 s and 347 s beside canaries.sh's
+  462 s, so on the Mac the step's long pole is now canaries.sh.
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the
@@ -14822,6 +14829,29 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
 - [ ] L4. The gates job's self-test in two shards beside the canaries (M5-63).
   Proof: the shards' counts add up to the whole list's, locally and in CI; the gates job's time in that run, under 12
   minutes.
+  Proof (M5 commit L4, partial: local, Q76; CI runs the gates job at the next push, which proves the counts there and
+  the job's time): `scripts/banned-api-check.sh --selftest --shard K/N` (K and N from 1 to 9999, no leading zero, K at
+  most N) judges case c only when (c - 1) mod N is K - 1: each case helper (expect, wexpect, aexpect, ixexpect, oexpect,
+  sicase) and each case judged inline asks `mine` first. Before its summary a sharded run prints `selftest: shard K/N:
+  OWN of WHOLE cases`, OWN its passed and failed cases. Without the option the log is f798695's line for line, temporary
+  and export paths aside, but for the option's 13 new cases after the built ones (1556 to 1569). On a fresh export of
+  the tree, under sh: the whole self-test alone, "selftest: 1569 passed, 0 failed" in 541 s (f798695: 1556 in 545 s);
+  the gates step's three side by side, as it runs them: "selftest: shard 1/2: 785 of 1569 cases" in 349 s and "selftest:
+  shard 2/2: 784 of 1569 cases" in 347 s, 0 failed each, and canaries.sh "PASS: all 93 checks ran" in 462 s, so the
+  three in 462 s. Under dash: the whole alone, 1569 passed in 542 s (its log equal to sh's), and the two shards side by
+  side 785 and 784 in 323 s and 321 s (their logs equal to sh's). 785 + 784 = 1569 each time, and shard 1's cases are
+  the whole log's odd cases and shard 2's its even ones, each in order. One case alone (`--shard 1312/9999`, the
+  past-the-last refusal) takes 36 s, the walk's setup every shard makes. The option's 13 cases: a shard past the last
+  (3/2, 2/1), a malformed value (2, 0/2, 1/02, a/2, 1/2/2, /, 1/10000), no value, a further argument, the option before
+  --selftest and `--shard=1/2` each exit 2 with its refusal, each run with TMPDIR a file, so a gate that took one stops
+  at mktemp instead of running a selftest of its own. Two mutants: the range check dropped fails case 1312, run alone
+  ("got exit 2" from mktemp, without the refusal); the artifact test-key case judged outside `mine` passes both shards
+  (785 and 785 of 1568) and the step's count check refuses them. The step's count check (its awk, run on macOS awk; CI's
+  is mawk) passes the two sh logs, and refuses them swapped, two whole counts that differ, counts that do not add up, a
+  count line missing or twice, a count line with more after it, and an empty log; the step itself, on stub shards and
+  canaries, fails when any of the three fails or the counts do not add up. The gate's `--workflows ../.github/workflows`
+  clean under sh and dash (3 workflows), and the gate clean on the export (357 files) under sh and dash. The 14 required
+  check names and the steps before the gate's first run are unchanged.
 
 **Stages E3 and E4** run commits 19, 20 and 21 as planned, each built and tested locally before it is committed.
 

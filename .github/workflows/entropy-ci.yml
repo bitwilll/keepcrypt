@@ -365,29 +365,57 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
           key: ${{ runner.os }}-${{ runner.arch }}-gates-${{ hashFiles('Entropy/rust-toolchain.toml', 'Entropy/Cargo.lock') }}
-      # After the toolchain and the caches, the gate's self-test and the canaries run side by side,
-      # each into its own log, which the step then prints; it fails if either fails. Neither reads
-      # the other's output, and run one after the other they took 614 s of the job's 12-minute
-      # budget (run 39518485129). The self-test's artifact fixtures need rustc, the
-      # aarch64-linux-android, aarch64-apple-ios and arm-unknown-linux-gnueabihf targets, and llvm-nm
-      # and llvm-ar from llvm-tools-preview.
+      # After the toolchain and the caches, the gate's self-test, as two shards, and the canaries run
+      # side by side, each into its own log, which the step then prints. None reads another's output
+      # (run one after the other, the self-test and the canaries took 614 s of the job's 12-minute
+      # budget, run 39518485129). The self-test was the job's long pole and grows with every rule
+      # (M5-63): whole, beside the canaries, this step took 555 s of the job's 649 at 1481 cases (run
+      # 39783747232). Each shard runs every other case of the one list (banned-api-check.sh,
+      # "Selftest shards"). On the owner's Mac at 1569 cases, the whole self-test took 541 s alone,
+      # and this step's three 462 s side by side: the shards 349 s and 347 s, the canaries 462 s.
+      # The step fails if any of the three fails, and unless each shard prints one count line, both
+      # for the same whole list, and their own counts add up to it, so no case runs twice or is left
+      # out. The self-test's artifact fixtures need rustc, the aarch64-linux-android,
+      # aarch64-apple-ios and arm-unknown-linux-gnueabihf targets, and llvm-nm and llvm-ar from
+      # llvm-tools-preview.
       - name: The gate's self-test and the canaries, side by side
         run: |
-          scripts/banned-api-check.sh --selftest > "$RUNNER_TEMP/selftest.log" 2>&1 &
-          selftest_pid=$!
+          scripts/banned-api-check.sh --selftest --shard 1/2 > "$RUNNER_TEMP/selftest-1.log" 2>&1 &
+          shard1_pid=$!
+          scripts/banned-api-check.sh --selftest --shard 2/2 > "$RUNNER_TEMP/selftest-2.log" 2>&1 &
+          shard2_pid=$!
           canaries=0
           scripts/canaries.sh > "$RUNNER_TEMP/canaries.log" 2>&1 || canaries=$?
-          selftest=0
-          wait "$selftest_pid" || selftest=$?
-          echo "::group::scripts/banned-api-check.sh --selftest (exit $selftest)"
-          cat "$RUNNER_TEMP/selftest.log"
+          shard1=0
+          wait "$shard1_pid" || shard1=$?
+          shard2=0
+          wait "$shard2_pid" || shard2=$?
+          echo "::group::scripts/banned-api-check.sh --selftest --shard 1/2 (exit $shard1)"
+          cat "$RUNNER_TEMP/selftest-1.log"
+          echo "::endgroup::"
+          echo "::group::scripts/banned-api-check.sh --selftest --shard 2/2 (exit $shard2)"
+          cat "$RUNNER_TEMP/selftest-2.log"
           echo "::endgroup::"
           echo "::group::scripts/canaries.sh (exit $canaries)"
           cat "$RUNNER_TEMP/canaries.log"
           echo "::endgroup::"
-          tail -n 1 "$RUNNER_TEMP/selftest.log"
+          tail -n 2 "$RUNNER_TEMP/selftest-1.log"
+          tail -n 2 "$RUNNER_TEMP/selftest-2.log"
           tail -n 1 "$RUNNER_TEMP/canaries.log"
-          [ "$selftest" -eq 0 ] && [ "$canaries" -eq 0 ]
+          # Shard K's one "selftest: shard K/2: OWN of WHOLE cases" line, in its own log.
+          counts=0
+          awk '
+            FNR == 1 { f++ }
+            $0 ~ "^selftest: shard " f "/2: [0-9]+ of [0-9]+ cases$" { n[f]++; own[f] = $4 + 0; whole[f] = $6 + 0 }
+            END {
+              if (f == 2 && n[1] == 1 && n[2] == 1 && whole[1] > 0 && whole[1] == whole[2] && own[1] + own[2] == whole[1]) {
+                printf "the shards split one list: %d and %d of its %d cases\n", own[1], own[2], whole[1]
+              } else {
+                print "the shards do not split one list: each needs one count line, both for the same whole list, and their own counts must add up to it"
+                exit 1
+              }
+            }' "$RUNNER_TEMP/selftest-1.log" "$RUNNER_TEMP/selftest-2.log" || counts=$?
+          [ "$shard1" -eq 0 ] && [ "$shard2" -eq 0 ] && [ "$canaries" -eq 0 ] && [ "$counts" -eq 0 ]
 
   verifier-py39:
     # verify.py promises Python 3.9+, the stock /usr/bin/python3 an offline Mac user has; the
