@@ -11539,6 +11539,66 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   By hand, that substring mutant, run through the selftest's fixture loop, CrashHandler cases and scope trees on the
   KtFailOpen and clean fixtures, fails only the new fixture, and passes every case without it. `--selftest` 1517
   passed, 0 failed, the same under /bin/dash; the gate clean on the tree (356 files) under sh and dash.
+  Proof (M5 commit 18o, M5-60 as amended 2026-10-23, (b) and (c)): (b) outside the test source sets KtFailOpen's task
+  rule (kt_tasks, and kt_tasks_scanner in the app's camera/GoAheadScanner.kt) also hits every mention of
+  java.util.concurrent or kotlinx.coroutines (kt_packages) but the import lines the shipping code has today, each a
+  whole line, exactly: `import kotlinx.coroutines.X` for X each of CoroutineDispatcher, CoroutineScope, Dispatchers,
+  Job, cancel, delay, flow.MutableStateFlow, flow.StateFlow, launch and withContext in any file, and `import
+  java.util.concurrent.Executor` in the scanner alone. git ls-files of */src/main/*.kt, */src/commonMain/*.kt and
+  */src/androidMain/*.kt names either package on exactly those lines: CeremonyHolder.kt's five, CeremonyModel.kt's
+  seven and the scanner's Executor (kotlin.concurrent.Volatile there and in CeremonyModel.kt is the standard library's
+  package, another name); no other tracked file under mobile/android outside the test sets names either (the
+  lockfiles' and the verification metadata's kotlinx-coroutines artifacts are hyphenated). The word list is unchanged.
+  A mention is read as Kotlin reads a qualified name, fail closed: from the word java or kotlinx past blanks (a space,
+  a tab, a form feed, a carriage return), backticks and line breaks, each dot and then each part, a hit at the line of
+  its first word, and a // or /* comment after a part or a dot of a name not yet complete is a hit there; so a
+  qualified name spaced out, in backticks or split over lines, and a package line, hit. Comments and strings follow
+  the other word rules' handling of Kotlin text (ktfailopen's and kt_tasks' words): they are read as text, so a
+  mention in either hits. A line that both the words and the packages find (the Executor import outside the scanner)
+  is reported once. (c) any .java file under mobile/android, in any letter case and in every scope (the test sets,
+  :capture-control and paths outside src/ included), is a KtSourceSet hit, a whole-file one ("a Java source (...)").
+  KtSourceSet, not a rule of its own: it is the gate's path rule for what may hold sources under mobile/android,
+  reported without a line, and the selftest already pairs a refused path's KtSourceSet line with another rule's hit
+  (its also line), so the eleven Java fixtures of RNG, Network, Clipboard, KtFailOpen and KtInput keep testing those
+  rules' Java forms, each now with that line too; a rule of its own would need a new category in the hit format, the
+  selftest's prefix map and its seen list, and that pairing again. The two of those eleven that the scopes copied
+  (ktfailopen-catch-main-java, ktinput-activity-main-java-extends) are no longer copied, as Java is a hit in every
+  scope; their rules' exemptions keep their Kotlin copies. clean-near-misses' src/test Backup.java is Backup.kt (the
+  same two near misses in Kotlin), and rng-threadlocalrandom's line is a call of ThreadLocalRandom.current() instead
+  of its import, which is now a KtFailOpen hit too. 30 new cases, each clean under 994894f's gate: 25 KtFailOpen hit
+  fixtures, one hit each, each also copied into the test scopes and clean there (src/test and src/androidTest 190
+  copies each, commonTest and androidHostTest 228, from 178 and 205; :capture-control's 24, from 25): an unlisted
+  import from each package (TimeUnit, runBlocking), a star import of each, an alias of an allowed name, two imports on
+  one line ending in an allowed one, a qualified call into each (CountDownLatch, GlobalScope.launch),
+  ThreadPoolExecutor, ScheduledThreadPoolExecutor in the scanner beside its Executor line, ScheduledExecutorService,
+  ForkJoinTask's fork, kotlinx.coroutines.future's future, Flow's retry and retryWhen, a package line, a mention in a
+  KDoc comment, and a qualified name with spaces around its dots, a tab, a form feed, a carriage return or a line
+  break before a dot, in backticks, and with a block or a line comment among its parts;
+  clean-kt-shipping-package-imports, the scanner with all eleven lines and CeremonyModel.kt with the ten (beside
+  kotlin.concurrent.Volatile and a Manager::class.java); and four KtSourceSet hit fixtures, one hit each: a .java
+  whose Math's random and catch of Throwable are backslash-u escapes (no text rule sees them), one in plain letters in
+  :app's src/test, one outside src/ (app/libs/) and one named .JAVA. By hand, 23 mutants of the gate, each run through
+  the selftest's fixture loop, CrashHandler cases and scope trees on the KtFailOpen, KtSourceSet and clean fixtures,
+  the eleven Java fixtures and the KtWindow and KtInput ones the scopes copy (227 fixtures, 240 cases, all passed by
+  the unmutated gate; no other fixture names either package in a shipping set or is a .java file), each fail only
+  their own cases: java dropped (its 11 fixtures), kotlinx dropped (its 14), the package arm dropped (all 25); the
+  space, the tab, the form feed, the carriage return and the backtick each not skipped, a line break ending a name,
+  and /* and // each no hit (one fixture each); an allowed line taken by its start (the alias), by its end (the two
+  imports) and by its text (both); the ten lines allowed in the scanner only (clean-kt-shipping-package-imports); the
+  scanner's lines without Executor's (the two clean fixtures that hold it, fork-join-pool-in-scanner and
+  ScheduledThreadPoolExecutor's); a line reported twice (executor-in-other-scanner and 18l's line-comment fixture);
+  and for Java, the rule dropped (its four, and the eleven others' also lines), lower case only (.JAVA), the test
+  scopes skipped (src/test's) and src/ only (libs/). Two mutants pass every case, as no file can tell them from the
+  gate: Executor's line allowed outside the scanner too (the word Executor still hits there), and 18l's header check
+  by its text (the comment line is now a mention that hits, so 18l's fixture still gives one hit). `--selftest` 1547
+  passed, 0 failed (1517 before), the same under /bin/dash; the gate clean on a fresh export of the tree (356 files)
+  under sh and dash; canaries.sh PASS, all 93 checks ran, on a fresh clone. Local wall time of `--selftest` under sh
+  on the owner's Mac, each run alone: 618 s and 665 s at 1547 cases, and 559 s for 994894f's gate and fixtures (1517
+  cases) on a fresh export of it between them (M5-63 had 575 s for those). The 30 cases are 2% more, and a gate run on
+  one fixture's tree took 354 ms against 352 ms for 994894f's (20 runs each), so the rest of the 10 to 19% is not that
+  cost and these runs do not settle it (the Mac's Spotlight indexing and Finder were busy after the second). The gates
+  job took 649 to 659 s of its 720 at 1463 to 1481 cases (M5-63), so at this commit it may exceed 12 minutes until
+  L4's shards land; CI measures it.
 - [x] The Shell rule for `game_random` is unchanged in M5 (its ffi and Kotlin fixtures stay hits until M5b).
   Proof: those fixtures still trip.
   Proof (M5 commit 4): `game_random_use` and its path list untouched (only the release probe's comment stripping moved

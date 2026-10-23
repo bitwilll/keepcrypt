@@ -617,11 +617,20 @@
 #              waits where nobody need read it, ExecutorService, Executors, CompletableFuture,
 #              FutureTask, ForkJoinPool and coroutines' async and Deferred as words, and Executor
 #              but in the app's camera/GoAheadScanner.kt, whose import header must then hold the
-#              exact line import java.util.concurrent.Executor ("missing ..."); and a return, break
-#              or continue inside a finally block, which drops the exception in flight, read fail
-#              closed without a parser: a quote (" or '), a backtick or a comment in the block,
-#              or a comment between finally and its {, where a brace could be text, hits at its
-#              line, and a file that ends inside the block hits at its finally ("missing ...").
+#              exact line import java.util.concurrent.Executor ("missing ..."); any mention of
+#              java.util.concurrent or kotlinx.coroutines but the import lines the shipping code
+#              has today, each a whole line, exactly: import kotlinx.coroutines.X for X each of
+#              CoroutineDispatcher, CoroutineScope, Dispatchers, Job, cancel, delay,
+#              flow.MutableStateFlow, flow.StateFlow, launch and withContext in any file, and
+#              import java.util.concurrent.Executor in the scanner alone, so another import, a star
+#              import, an alias, two imports on one line, a qualified name in code (with blanks,
+#              backticks or line breaks around its dots, or a comment among its parts, a hit
+#              too) and a package line all hit, a mention in a comment or a string too (M5-60
+#              (b)); and a return, break or continue inside a finally block, which drops the
+#              exception in flight, read fail closed without a parser: a quote (" or '), a
+#              backtick or a comment in the block, or a comment between finally and its {, where a
+#              brace could be text, hits at its line, and a file that ends inside the block hits
+#              at its finally ("missing ...").
 #   KtWindow   Toast, Snackbar, Notification, Dialog(, AlertDialog, DialogFragment, Popup(,
 #              PopupWindow, ListPopupWindow, PopupMenu, DropdownMenu, ModalBottomSheet, Spinner,
 #              AutoCompleteTextView, tooltips, WindowManager's addView and
@@ -743,7 +752,10 @@
 #              Test but androidTest, or nativeInterop); and no src/ below mobile/android/ that is
 #              not a module's own (each module is one directory under mobile/android/, so a nested
 #              module's sources, include(":ui:words") at mobile/android/ui/words/, and the root
-#              project's, mobile/android/src/, are refused).
+#              project's, mobile/android/src/, are refused); and no Java source anywhere under
+#              mobile/android, a .java file in any letter case, in every scope (lead decision M5-60
+#              (c): Java reads backslash-u escapes as the characters they name, so a .java file's
+#              text can hide every rule's word, and the app has no Java).
 #   KtIos      (rules 1, 5, 8 and 9 in Kotlin/Native) in iosMain and iosTest right under any
 #              module's src/, on top of every Kt rule: Apple's storage (NSUserDefaults,
 #              NSFileManager, NSFileHandle, writeToFile, NSKeyedArchiver, SecItemAdd, CoreData,
@@ -942,9 +954,9 @@ fields and activities but SecureActivity, storage, intents, the camera, sensors 
 outside their files, SDKs, other repositories, local build inputs and the bootstrap's switches in
 build files (and android-gradle.sh), strict locking missing from the root build file, and the
 manifest's network permissions, backup, debug and components; a Kotlin Multiplatform source set
-outside the allow list (no iPhone set in M5), the iOS names in iosMain and iosTest, C callbacks,
-pinned memory, Kotlin Multiplatform DSL lines outside the allow list (no iPhone target in M5) and
-Kotlin/Native settings, and a cinterop definition other than the one exact .def; Kotlin outside
+outside the allow list (no iPhone set in M5), a Java source, the iOS names in iosMain and iosTest,
+C callbacks, pinned memory, Kotlin Multiplatform DSL lines outside the allow list (no iPhone target
+in M5) and Kotlin/Native settings, and a cinterop definition other than the one exact .def; Kotlin outside
 mobile/android and a tracked file under mobile/ios; a tracked binary (a klib, a framework, any
 Mach-O, ELF, ar, zip, dex, keystore or compressed file among them) under mobile/; the CI passphrase
 key outside its two files; and under ffi/ a catch_unwind but the one std::panic::catch_unwind call
@@ -1877,23 +1889,143 @@ kt_handler_crash() {
 # CrashHandler. There the bare name must be the JDK's interface: the file's import header
 # (kt_header) must hold the line import java.util.concurrent.Executor exactly, or its first
 # Executor hits ("missing import ..."), as an allowed catch's type must.
+# A word list cannot be complete (ThreadPoolExecutor, ScheduledThreadPoolExecutor,
+# ScheduledExecutorService, ForkJoinTask's fork, kotlinx.coroutines.future's future and Flow's
+# retry and retryWhen all passed it), so the two packages that hold such tasks, java.util.concurrent
+# and kotlinx.coroutines, are allowed only by the import lines the shipping code has today, each a
+# whole line, exactly (M5-60 (b)): kt_coroutines_lines in any file, and import
+# java.util.concurrent.Executor in the scanner alone (elsewhere its Executor is a hit too). Any
+# other mention of either package is a hit (kt_packages): another import, a star import, an alias,
+# two imports on one line (the second after a ";"), a qualified name in code, a package line. A new
+# name from either package needs a lead decision that says why it cannot hold a failure. A line
+# that both the words and the packages find is reported once.
 kt_task_names='ExecutorService|Executors|CompletableFuture|FutureTask|ForkJoinPool|async|Deferred'
+kt_coroutines_lines='import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext'
 kt_tasks() {
-  grep -n -a -E -e "${L}(Executor|$kt_task_names)$R" -- "$1"
+  t=$(grep -n -a -E -e "${L}(Executor|$kt_task_names)$R" -- "$1")
+  case $? in 0 | 1) ;; *) return 2 ;; esac
+  kt_tasks_and_packages "$1" "$kt_coroutines_lines"
 }
 kt_tasks_scanner() {
   t=$(grep -n -a -E -e "${L}($kt_task_names)$R" -- "$1")
   case $? in 0 | 1) ;; *) return 2 ;; esac
   first=$(grep -n -a -E -e "${L}Executor$R" -- "$1" | sed -n '1s/:.*//p') || return 2
-  missing=
   if [ -n "$first" ]; then
     header=$(sed -n -E -e "\\%$kt_header%!q" -e p <"$1") || return 2
     printf '%s\n' "$header" | grep -q -a -x -F -e 'import java.util.concurrent.Executor' ||
-      missing="$first:missing import java.util.concurrent.Executor for its Executor"
+      t="$t${t:+$nl}$first:missing import java.util.concurrent.Executor for its Executor"
   fi
-  [ -n "$t$missing" ] || return 1
+  kt_tasks_and_packages "$1" "$kt_coroutines_lines${nl}import java.util.concurrent.Executor"
+}
+# kt_tasks_and_packages FILE LINES: $t (FILE's task hits, as grep -n prints them), then each line
+# kt_packages FILE LINES finds that $t does not hold.
+kt_tasks_and_packages() {
+  p=$(kt_packages "$1" "$2")
+  case $? in 0 | 1) ;; *) return 2 ;; esac
+  if [ -n "$t" ] && [ -n "$p" ]; then
+    p=$(printf '%s\n' "$p" | KC_TASK_HITS=$t awk '
+      BEGIN {
+        n = split(ENVIRON["KC_TASK_HITS"], h, "\n")
+        for (k = 1; k <= n; k++) {
+          sub(/:.*/, "", h[k])
+          seen[h[k]] = 1
+        }
+      }
+      {
+        l = $0
+        sub(/:.*/, "", l)
+        if (!(l in seen)) print
+      }') || return 2
+  fi
+  [ -n "$t$p" ] || return 1
   [ -z "$t" ] || printf '%s\n' "$t"
-  [ -z "$missing" ] || printf '%s\n' "$missing"
+  [ -z "$p" ] || printf '%s\n' "$p"
+}
+
+# kt_packages FILE LINES: the lines of FILE where a mention of java.util.concurrent or
+# kotlinx.coroutines starts, but a line that is one of LINES (one per line) exactly. A mention is
+# read as Kotlin reads a qualified name, and fail closed: from the word java or kotlinx (a whole
+# word, so javax and kotlin, the standard library's kotlin.concurrent and kotlin.coroutines among
+# its packages, are other names), past blanks (a space, a tab, a form feed or a carriage return),
+# backticks (`kotlinx`.coroutines is the same name) and line breaks, each dot and then each part
+# in turn, so a name spaced out or split over lines (Kotlin takes a line break before a dot) is
+# still one, at the line of its first word. A comment (// or /*) after any part or dot of a name
+# not yet complete is a hit there too, as Kotlin skips it and the rest of the name could follow:
+# so the word java or kotlinx right before a comment is a hit (Foo::class.java and, after blank
+# lines, a // comment). Comments and strings are otherwise read as text, as the other word rules
+# read Kotlin (ktfailopen, kt_tasks), so a mention in either hits.
+kt_packages() {
+  grep -q -a -E -e "${L}(java|kotlinx)$R" -- "$1"
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  KC_PACKAGE_LINES=$2 awk '
+    function out(l) {
+      if (!(l in done)) print l ":" src[l]
+      done[l] = 1
+      found = 1
+    }
+    BEGIN {
+      n = split(ENVIRON["KC_PACKAGE_LINES"], a, "\n")
+      for (k = 1; k <= n; k++) if (a[k] != "") allowed[a[k]] = 1
+    }
+    # state: 0 outside a name, 1 after a part of one (the next is part[k] of parts; sl, the line
+    # of its first word), 2 after the dot that follows a part.
+    {
+      src[NR] = $0
+      if ($0 in allowed) {
+        state = 0
+        next
+      }
+      line = $0
+      len = length(line)
+      i = 1
+      while (i <= len) {
+        c = substr(line, i, 1)
+        if (c ~ /[A-Za-z0-9_]/) {
+          match(substr(line, i), /^[A-Za-z0-9_]+/)
+          w = substr(line, i, RLENGTH)
+          i += RLENGTH
+          if (state == 2 && w == part[k]) {
+            if (k == parts) {
+              out(sl)
+              state = 0
+            } else {
+              k++
+              state = 1
+            }
+          } else if (w == "java" || w == "kotlinx") {
+            if (w == "java") parts = split("util concurrent", part, " ")
+            else parts = split("coroutines", part, " ")
+            k = 1
+            state = 1
+            sl = NR
+          } else {
+            state = 0
+          }
+        } else if (c == " " || c == "\t" || c == "\f" || c == "\r" || c == "`") {
+          i++
+        } else if (state == 1 && c == ".") {
+          state = 2
+          i++
+        } else if (state && c == "/" && (substr(line, i + 1, 1) == "/" || substr(line, i + 1, 1) == "*")) {
+          out(sl)
+          state = 0
+          i += 2
+        } else {
+          state = 0
+          i++
+        }
+      }
+    }
+    END { exit !found }' "$1"
 }
 
 # KtFailOpen's finally blocks (M5-60), with the catch list (outside the test source sets): a return,
@@ -2503,6 +2635,13 @@ kt_source_set_refused() {
   esac
   return 1
 }
+# KtSourceSet also refuses any Java source under mobile/android, a .java file in any letter case,
+# test source sets, :capture-control and paths outside src/ included (M5-60 (c)): Java turns each
+# backslash-u escape into its character before it reads the code, so a .java file can spell every
+# word of the text rules in escapes the gate cannot see, and the app has no Java. Its hit is the
+# path's, as for a refused source set, so a hit fixture of another rule in a .java file gives this
+# line too (the selftest's also line).
+kt_java_refused="a Java source (Java reads backslash-u escapes as the characters they name, so its text can hide any rule's word; the app has no Java, lead decision M5-60)"
 
 # KtIos (rules 1, 5, 8 and 9 in Kotlin/Native), in iosMain and iosTest right under any module's
 # src/, on top of every Kt rule: Apple's storage (NSUserDefaults, NSFileManager, NSFileHandle,
@@ -3055,6 +3194,13 @@ EOF
             hits=$((hits + 1))
             ;;
         esac
+        # KtSourceSet: no Java source, in any scope (kt_java_refused).
+        case $rel in
+          *.[Jj][Aa][Vv][Aa])
+            echo "KtSourceSet: $rel: $kt_java_refused"
+            hits=$((hits + 1))
+            ;;
+        esac
         # KtIos: the iOS names in iosMain and iosTest; the C-boundary and M6-only names, and pinned
         # memory, everywhere.
         case $rel in
@@ -3374,8 +3520,9 @@ fresh() {
 # and KtRoot rules). The gate run is $gate, this script unless a case sets another copy. When $also
 # is set (one whole output line), the output must hold that line too, which is not counted (once:
 # a line two rules report is in the output twice): a fixture in an iPhone source set hits its own
-# rule and KtSourceSet, which refuses the set in M5 (Q73). When $atline is set, the one hit must be
-# at that line of FILE (a case with more than one candidate line, such as the second of two
+# rule and KtSourceSet, which refuses the set in M5 (Q73), and so does one in a .java file under
+# mobile/android, which KtSourceSet refuses too (M5-60 (c)). When $atline is set, the one hit must
+# be at that line of FILE (a case with more than one candidate line, such as the second of two
 # exports).
 expect() {
   out=$(sh "${gate:-$self}" "$2" 2>&1)
@@ -3476,9 +3623,12 @@ selftest() {
     fi
     # A hit fixture of another rule in an iPhone source set of a KMP module (iosMain, iosTest,
     # nativeInterop) also gives KtSourceSet's hit for its file: M5 refuses those sets (Q73), and
-    # the rules for what they hold (KtIos, KtCinterop and the rest) still fire.
+    # the rules for what they hold (KtIos, KtCinterop and the rest) still fire. So does one in a
+    # .java file under mobile/android, which KtSourceSet refuses in every scope (M5-60 (c)), so the
+    # Java forms of the other rules stay tested (no fixture is both).
     case $want:$file in
       KtSourceSet:*) ;;
+      *:mobile/android/*.[Jj][Aa][Vv][Aa]) also="KtSourceSet: $file: $kt_java_refused" ;;
       *:mobile/android/*/src/*)
         kmod=${file#mobile/android/}
         kmod=${kmod%%/*}
@@ -3515,8 +3665,11 @@ selftest() {
     # (src/test and src/androidTest of an Android-only module, commonTest and androidHostTest of a
     # KMP module) and, from an Android-only module, into :screens' two as well; one that
     # :capture-control skips (the FLAG_SECURE and Activity rules) is copied there. Each copy sits
-    # under its own directory, and the five trees are scanned once each after this loop.
+    # under its own directory, and the five trees are scanned once each after this loop. A .java
+    # fixture is not copied: KtSourceSet refuses Java in every scope, and each rule's exemption
+    # there is tested by its Kotlin fixtures.
     case $file in
+      *.[Jj][Aa][Vv][Aa]) ;;
       mobile/android/*/src/*)
         kmod=${file#mobile/android/}
         kmod=${kmod%%/*}
