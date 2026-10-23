@@ -613,6 +613,15 @@
 #              one-line class header, with Thread.UncaughtExceptionHandler its only supertype, with
 #              the line after it override fun uncaughtException(thread: Thread, exception:
 #              Throwable) {, in the app's CrashHandler.kt; any other mention in either file hits.
+#              It also covers the other catch-alls no catch shows (M5-60): a task whose failure
+#              waits where nobody need read it, ExecutorService, Executors, CompletableFuture,
+#              FutureTask, ForkJoinPool and coroutines' async and Deferred as words, and Executor
+#              but in the app's camera/GoAheadScanner.kt, whose import header must then hold the
+#              exact line import java.util.concurrent.Executor ("missing ..."); and a return, break
+#              or continue inside a finally block, which drops the exception in flight, read fail
+#              closed without a parser: a quote (" or '), a backtick or a comment in the block,
+#              or a comment between finally and its {, where a brace could be text, hits at its
+#              line, and a file that ends inside the block hits at its finally ("missing ...").
 #   KtWindow   Toast, Snackbar, Notification, Dialog(, AlertDialog, DialogFragment, Popup(,
 #              PopupWindow, ListPopupWindow, PopupMenu, DropdownMenu, ModalBottomSheet, Spinner,
 #              AutoCompleteTextView, tooltips, WindowManager's addView and
@@ -1858,6 +1867,111 @@ kt_handler_crash() {
     'override fun uncaughtException(thread: Thread, exception: Throwable) {'
 }
 
+# KtFailOpen's tasks (M5-60), with the catch list (outside the test source sets): a task handed to
+# an executor service or a fork-join pool, or run as a future, keeps its failure in a future nobody
+# need read, and a coroutine's async keeps its failure in its Deferred until awaited (SupervisorJob
+# and supervisorScope hit for the same reason), so none of them reaches CrashHandler.
+# ExecutorService, Executors, CompletableFuture, FutureTask, ForkJoinPool, async and Deferred hit as
+# words, and so does Executor, but in the app's camera/GoAheadScanner.kt, which hands Camera2 an
+# Executor that posts each callback to the scanner's own HandlerThread, whose failures reach
+# CrashHandler. There the bare name must be the JDK's interface: the file's import header
+# (kt_header) must hold the line import java.util.concurrent.Executor exactly, or its first
+# Executor hits ("missing import ..."), as an allowed catch's type must.
+kt_task_names='ExecutorService|Executors|CompletableFuture|FutureTask|ForkJoinPool|async|Deferred'
+kt_tasks() {
+  grep -n -a -E -e "${L}(Executor|$kt_task_names)$R" -- "$1"
+}
+kt_tasks_scanner() {
+  t=$(grep -n -a -E -e "${L}($kt_task_names)$R" -- "$1")
+  case $? in 0 | 1) ;; *) return 2 ;; esac
+  first=$(grep -n -a -E -e "${L}Executor$R" -- "$1" | sed -n '1s/:.*//p') || return 2
+  missing=
+  if [ -n "$first" ]; then
+    header=$(sed -n -E -e "\\%$kt_header%!q" -e p <"$1") || return 2
+    printf '%s\n' "$header" | grep -q -a -x -F -e 'import java.util.concurrent.Executor' ||
+      missing="$first:missing import java.util.concurrent.Executor for its Executor"
+  fi
+  [ -n "$t$missing" ] || return 1
+  [ -z "$t" ] || printf '%s\n' "$t"
+  [ -z "$missing" ] || printf '%s\n' "$missing"
+}
+
+# KtFailOpen's finally blocks (M5-60), with the catch list (outside the test source sets): a return,
+# break or continue inside a finally block leaves it with the exception in flight dropped. Each
+# block is read without a parser, fail closed: from the word finally, past blanks (a space, a tab, a
+# form feed, which Kotlin's lexer also skips, and a carriage return) and line breaks, to its { and on
+# to the } that brings the count of braces back, a return, break or continue as a word hits (a
+# labelled one too, and one that leaves only a loop or a lambda inside the block), and so does a
+# quote (" or '), a backtick or a comment (// or /*) in the block, or a comment between finally and
+# its {, where a brace could be text the count must not see: the block is read no further. A file
+# that ends inside a block hits at its finally ("missing ..."). A finally followed by anything else
+# is no block (a word in prose, or a name: finally is a soft keyword).
+kt_finally() {
+  grep -q -a -E -e "${L}finally$R" -- "$1"
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  awk -v sq="'" '
+    function out(l) {
+      if (!(l in done)) print l ":" src[l]
+      done[l] = 1
+      found = 1
+    }
+    # state: 0 outside a block, 1 after a finally (fl, its line), 2 in its block, depth braces deep.
+    {
+      src[NR] = $0
+      line = $0
+      n = length(line)
+      i = 1
+      while (i <= n) {
+        c = substr(line, i, 1)
+        if (state == 0) {
+          # the next finally, as a word (the characters on either side of it read in the line)
+          k = index(substr(line, i), "finally")
+          if (!k) break
+          j = i + k - 1
+          i = j + 7
+          if ((j == 1 || substr(line, j - 1, 1) !~ /[A-Za-z0-9_]/) && substr(line, i, 1) !~ /[A-Za-z0-9_]/) {
+            state = 1
+            fl = NR
+          }
+        } else if (state == 1) {
+          if (c == " " || c == "\t" || c == "\f" || c == "\r") {
+            i++
+          } else if (c == "{") {
+            state = 2
+            depth = 1
+            i++
+          } else if (c == "/" && (substr(line, i + 1, 1) == "/" || substr(line, i + 1, 1) == "*")) {
+            out(NR)
+            state = 0
+            break
+          } else {
+            state = 0
+          }
+        } else if (c == "\"" || c == sq || c == "`" || (c == "/" && (substr(line, i + 1, 1) == "/" || substr(line, i + 1, 1) == "*"))) {
+          out(NR)
+          state = 0
+          break
+        } else if (c ~ /[A-Za-z0-9_]/) {
+          match(substr(line, i), /^[A-Za-z0-9_]+/)
+          w = substr(line, i, RLENGTH)
+          if (w == "return" || w == "break" || w == "continue") out(NR)
+          i += RLENGTH
+        } else {
+          if (c == "{") depth++
+          if (c == "}" && --depth == 0) state = 0
+          i++
+        }
+      }
+    }
+    END {
+      if (state == 2) {
+        print fl ":missing the } that ends its finally block"
+        found = 1
+      }
+      exit !found
+    }' "$1"
+}
+
 # KtWindow (Q57: no dialogs, popups, menus, sheets, toasts, notifications or tooltips, so the app
 # has one window), every scope: those APIs by name (Dialog( and Popup( as constructor names, so
 # DialogProperties( is left to the next check), Spinner and AutoCompleteTextView (their lists are
@@ -2986,6 +3100,11 @@ EOF
             "$kt_app/CrashHandler.kt") report KtFailOpen kt_handler_crash "$rel" ;;
             *) report KtFailOpen kt_handler "$rel" ;;
           esac
+          case $rel in
+            "$kt_app/camera/GoAheadScanner.kt") report KtFailOpen kt_tasks_scanner "$rel" ;;
+            *) report KtFailOpen kt_tasks "$rel" ;;
+          esac
+          report KtFailOpen kt_finally "$rel"
           report KtStorage ktstorage "$rel"
           case $rel in
             "$kt_app/files/Documents.kt") ;;
@@ -3428,6 +3547,62 @@ selftest() {
         fi
         ;;
     esac
+  done
+  # CrashHandler.kt's header (kt_handler_crash) is allowed once and exactly, with its override
+  # pinned on the line after it, and that override is itself a hit wherever no allowed header comes
+  # before it. So a header the allowance must refuse, written with its override, is two hits, and a
+  # gate that took the header gives none; a fixture of one file and one hit cannot tell such a gate
+  # from this one, since there the refused header alone still gives one hit ("missing ..." at its
+  # line, or the next line's), which is how 18g's pinned override left the header-with-body and
+  # header-twice fixtures. These trees are built here, each a refused header and its override: the
+  # one hit counted is the header's (atline), the override's the extra line (also). The class named
+  # otherwise, a second supertype, the header over two lines, the header with a body after its {
+  # (a second mention on the allowed line, which a header matched by its start took), a second class
+  # after ";" on its line (18e's pattern took that line, the override then the second class's), a
+  # second class before it on its line with no ";" (which a header matched by its end took), and the
+  # header again after the allowed one (once only). Each also goes in the test scopes' trees below,
+  # clean there.
+  kt_hdr='internal class CrashHandler(private val wipe: () -> Unit, private val end: () -> Unit) : Thread.UncaughtExceptionHandler {'
+  kt_ovr='    override fun uncaughtException(thread: Thread, exception: Throwable) {'
+  for case in other-class:1 second-supertype:1 over-two-lines:2 body-on-its-line:1 second-class-after-semicolon:1 \
+    second-class-before-it:1 twice:6; do
+    name=ktfailopen-catch-handler-crash-header-${case%%:*}
+    case ${case%%:*} in
+      other-class)
+        kt_body='internal class QuietHandler(private val wipe: () -> Unit, private val end: () -> Unit) : Thread.UncaughtExceptionHandler {'
+        ;;
+      second-supertype)
+        kt_body='internal class CrashHandler(private val wipe: () -> Unit, private val end: () -> Unit) : Thread.UncaughtExceptionHandler, Runnable {'
+        ;;
+      over-two-lines)
+        kt_body=$(printf '%s\n' 'internal class CrashHandler(private val wipe: () -> Unit, private val end: () -> Unit) :' \
+          '    Thread.UncaughtExceptionHandler {')
+        ;;
+      body-on-its-line)
+        kt_body="$kt_hdr override fun uncaughtException(thread: Thread, exception: Throwable) {} }"
+        ;;
+      second-class-after-semicolon)
+        kt_body='internal class CrashHandler(private val wipe: () -> Unit, private val end: () -> Unit) : Runnable by Runnable(wipe); private class QuietHandler() : Thread.UncaughtExceptionHandler {'
+        ;;
+      second-class-before-it)
+        kt_body="private class QuietHandler : Thread.UncaughtExceptionHandler { override fun uncaughtException(thread: Thread, exception: Throwable) {} } $kt_hdr"
+        ;;
+      twice)
+        kt_body=$(printf '%s\n' "$kt_hdr" "$kt_ovr" '        wipe()' '    }' '}' "$kt_hdr")
+        ;;
+    esac
+    fresh
+    mkdir -p "$d/$kt_app" || exit 2
+    printf '%s\n' "$kt_body" "$kt_ovr" >"$d/$kt_app/CrashHandler.kt" || exit 2
+    atline=${case#*:}
+    also="KtFailOpen: $kt_app/CrashHandler.kt:$((atline + 1)): $kt_ovr"
+    expect "$name" "$d" KtFailOpen "$kt_app/CrashHandler.kt"
+    also=
+    atline=
+    for kt in app:test app:androidTest screens:commonTest screens:androidHostTest; do
+      kto=$tmp/scope-${kt#*:}/mobile/android/${kt%%:*}/src/${kt#*:}/$name/kotlin/com/keepcrypt/entropy/CrashHandler.kt
+      mkdir -p "${kto%/*}" && cp "$d/$kt_app/CrashHandler.kt" "$kto" || exit 2
+    done
   done
   # The copies above, one tree per scope: each must be clean, so no copied hit fires there. Each
   # tree must hold copies, or a rename of the fixtures would leave the exemptions untested.

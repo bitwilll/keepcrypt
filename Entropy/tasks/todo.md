@@ -11253,7 +11253,15 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
     `Exception`, `RuntimeException` or `Error`; any `catch` in `:core-ffi`. `KcHalt` is caught only in
     `CeremonyViewModel.call`; Documents.kt may catch `IOException` and the scanner `CameraAccessException`, each mapped
     to a refusal on its screen. The scanner may also catch `ReaderException`, ZXing's "no code in this frame", which
-    drops the frame and reads the next (M5-53).
+    drops the frame and reads the next (M5-53). Outside the test source sets, the catch-alls no `catch` shows hit too:
+    an uncaught-exception handler (`setUncaughtExceptionHandler`, `setDefaultUncaughtExceptionHandler`,
+    `UncaughtExceptionHandler`, `uncaughtExceptionHandler`, `ThreadGroup`, `getUncaughtExceptionHandler`,
+    `uncaughtException`), but KeepCryptApp.kt's one call that installs CrashHandler and CrashHandler.kt's one-line
+    class header with its override, each exact and once (M5-58); a task whose failure waits where nobody need read it
+    (`ExecutorService`, `Executors`, `CompletableFuture`, `FutureTask`, `ForkJoinPool`, `async`, `Deferred`, and
+    `Executor` but in the scanner, with its import line), and a `return`, `break` or `continue` inside a `finally`
+    block, which drops the exception in flight, read fail closed without a parser (a string, a character, a backtick
+    name or a comment in the block hits too) (M5-60).
   - **KtWindow:** Toast, Snackbar, Notification, `Dialog(`, `AlertDialog`, `DialogFragment`, `Popup(`, `PopupWindow`,
     `ListPopupWindow`, `PopupMenu`, `DropdownMenu`, `ModalBottomSheet`, Spinner, `AutoCompleteTextView`, tooltips,
     `WindowManager.addView`, `TYPE_APPLICATION_OVERLAY`; any `DialogProperties(`/`PopupProperties(` without
@@ -11455,6 +11463,62 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   18f's gate leaves all four new fixtures clean. `--selftest` 1481 passed, 0 failed (1477 before), the same under
   /bin/dash; the gate clean on the tree (359 files) under sh and dash, and three hits on the reproduction's copy;
   canaries.sh PASS, all 93 checks ran.
+  Proof (M5 commit 18h, review fix, M5-60): the findings of 18e's review that 18f and 18g left open, and M5-60. 18g's
+  pinned override is itself a hit wherever no allowed header comes before it, so under a gate that takes a refused
+  CrashHandler.kt header the header-with-body and header-twice fixtures still gave one hit ("missing ..." at the
+  header), which expect() accepts: at c4eef81 a gate that allows every exact line (the once-only limit dropped) failed
+  no fixture, and one that allows a line starting with, ending with or containing the allowed text failed only
+  two-on-the-line (rerun here on c4eef81's KtFailOpen and clean fixtures). CrashHandler.kt's header cases are now
+  built in the selftest, each a refused header with its override on the next line, two hits: the header's the one
+  counted (atline), the override's the extra line (also); a gate that takes the header gives none. Seven cases, each
+  also put in the test scopes' trees and clean there: the class named otherwise, a second supertype, the header over
+  two lines, the header with a body after its `{` (a second mention on the allowed line), a second class after `;` on
+  its line (which 18e's pattern took), a second class before it on its line with no `;`, and the header again after
+  the allowed one. 18f's exact line already refuses each, so no gate change was needed for them, and the gate
+  comment's and 18e's "the only supertype of CrashHandler's one-line header" and "any other mention in either file
+  hits" hold. Three new hit fixtures: KeepCryptApp.kt's call on `QuietThread.` (the `Thread.` boundary), its argument
+  line `Thread.getDefaultUncaughtExceptionHandler() ?: CrashHandler(...),` (a second mention on a pinned line;
+  `getDefaultUncaughtExceptionHandler` is no word of the rule, and the pin catches it) and a default handler in
+  :capture-control's src/main (the rule's reach there, written anew). M5-60: outside the test source sets KtFailOpen
+  hits `ExecutorService`, `Executors`, `CompletableFuture`, `FutureTask`, `ForkJoinPool`, `async` and `Deferred` as
+  words, and `Executor` but in the app's camera/GoAheadScanner.kt, whose import header must hold `import
+  java.util.concurrent.Executor` exactly ("missing ..."; M5-60 allows Executor there only, so it hits elsewhere); and
+  a `return`, `break` or `continue` inside a `finally` block, read without a parser and fail closed: the block's `{`
+  found past blanks (a form feed among them, which Kotlin's lexer skips) and line breaks, its braces counted, a quote,
+  a backtick or a comment in the block, or a comment between `finally` and its `{` (where a brace could be text), a
+  hit at its line, and a file that ends inside a block a hit at its `finally`. So the gate finds every such word in a
+  block, and nothing is left to a residual; the cost is that a shipping `finally` block may hold no string,
+  character, backtick name or comment, and a `break` or `continue` of a loop inside the block (or a lambda's return
+  there) hits too. The tree's three shipping `finally` blocks (CrashHandler.kt's and the scanner's two) pass. 22 new
+  hit fixtures for M5-60, one hit each, each clean under c4eef81's gate: one per word (FutureTask in
+  :capture-control, ForkJoinPool in the scanner beside Executor's import line), Executor in MainActivity.kt and in a
+  file of the scanner's name in another package, the scanner's Executor without its import line and with it in a
+  block comment; a return after a nested block in the scanner, a break in :capture-control, a continue whose `{` is
+  on the next line, a form feed between `finally` and its `{`, a string, a character, a backtick name, a line comment
+  and a block comment in the block, a comment before the `{` and a file that ends inside a block. Each new case is
+  also in the test scopes and clean there (src/test and src/androidTest 175 copies each, commonTest and androidHostTest
+  201, from 150 and 169). ktfailopen-main-supervisor-scope's line takes `launch` for `async`, now a hit of its own;
+  clean-kt-shipping-allowed's scanner gains the import line and its Executor. By hand, 38 mutants of the gate, each
+  run through the selftest's fixture loop, CrashHandler cases and scope trees on the KtFailOpen and clean fixtures,
+  each fail only their own cases: for the handlers, CrashHandler.kt's header read with any class name, with a
+  trailing supertype, as its supertype line alone, by its start, by 18e's pattern and by its end, the once-only limit
+  dropped, letters before KeepCryptApp.kt's `Thread.` ignored, a pinned line matched by its end and the rule skipped
+  in :capture-control (one case each), and an allowed line matched by its start in both files (two-on-the-line and
+  the body case); for the tasks, each word dropped (its fixture; Executor's, both Executor fixtures outside the
+  scanner), every word allowed in the scanner (ForkJoinPool's), the scanner matched by name (the other package's),
+  the import check dropped (both import fixtures), the import looked for in the whole file (the block comment's) and
+  the words skipped in :capture-control (FutureTask's); for `finally`, each word dropped (return's also fails the form
+  feed's, whose block holds a return), the block ended at its first `}` (the return's), the `{` looked for on the line
+  of `finally` only (the continue's), each of the quote, character, backtick, line-comment and block-comment checks
+  dropped, a comment before the `{` read as no block, the end-of-file check dropped, the form feed read as no blank
+  and the rule skipped in :capture-control (one fixture each). `--selftest` 1513 passed, 0 failed (1481 before), the
+  same under /bin/dash; the gate clean on the tree (359 files) under sh and dash; canaries.sh PASS, all 93 checks
+  ran. Local wall time of `--selftest` under sh on the owner's Mac, each tree's run alone: 552 s and 553 s here, 527 s
+  for c4eef81's gate and fixtures (1481 cases) run right after the first, and 514 s for 1a63e0f's (1463 cases, the
+  last gates job's) before the second. So 18h's 32 cases, their scope copies and the two rules' cost per scanned file
+  add about 5% (25 s), and 18e-18h together about 7.5% (39 s); the gate on the tree took 29-30 s against 27 s for
+  c4eef81's on its export (355 files: the tree less four local __pycache__ files). The gates job took 659 s of its 720 (Q31 (f)) at 1463 cases (run 39744137380, at 1a63e0f); if its
+  self-test grows as it does here, the next run may come near 690-710 s; CI measures it.
 - [x] The Shell rule for `game_random` is unchanged in M5 (its ffi and Kotlin fixtures stay hits until M5b).
   Proof: those fixtures still trip.
   Proof (M5 commit 4): `game_random_use` and its path list untouched (only the release probe's comment stripping moved

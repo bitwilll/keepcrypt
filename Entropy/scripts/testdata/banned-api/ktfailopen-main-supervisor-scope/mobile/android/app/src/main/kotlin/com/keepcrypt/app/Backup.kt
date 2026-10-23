@@ -1,1 +1,1 @@
-supervisorScope { async { encrypt() } }
+supervisorScope { launch { encrypt() } }
