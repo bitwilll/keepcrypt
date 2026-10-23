@@ -406,10 +406,13 @@ internal object Capture {
      * outside its process reports, and it shows its window empty, then its request, so its buttons'
      * first bounds lie where the empty window stood (kc37: 401 px lower, off the screen). A touch on a
      * button found after UI Automator's idle wait can still come too soon on a slow emulator, and the
-     * prompt then stays up with no answer (run 39783747240, API 36: no refusal reached the scan screen).
+     * prompt then stays up with no answer: most likely run 39783747240's failure (API 36: no refusal
+     * reached the scan screen), but inferred, not reproduced (kc37 never lost the old touch), with no
+     * logcat kept, AOSP's API 36 controller not read and an app-side loss of the refusal not ruled out.
      * The click goes to the button's own click handler, which answers as soon as the button is shown,
      * since the prompt shows it only with its request. A press the button does not take, or a prompt
-     * still up, fails here, so a refusal that never comes after the prompt went is the app's.
+     * still up, fails here, so a refusal that never comes after the prompt went is the app's, and a
+     * repeat of that failure names its half.
      */
     fun denyPrompt(device: UiDevice, deny: UiObject2) {
         val pressed = deny.accessibilityNodeInfo.performAction(AccessibilityNodeInfo.ACTION_CLICK)

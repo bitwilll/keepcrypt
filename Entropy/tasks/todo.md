@@ -12689,9 +12689,13 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   Proof (M5 commit 18j, partial: CI's API 36 leg proves the fix at the next push; every result here is local, kc37,
   Q76): run 39783747240 at efc0575 (18i changed no code) failed on API 36 in the shipping APK's walk, after its pass
   line "the camera prompt showed as the scan screen opened ...", with "timed out: the prompt's refusal on the scan
-  screen" (CaptureTest.kt:182) and no logcat kept. The half that failed is the press, not the app: the touch on "Don't
-  allow" did not reach the prompt. kc37's permission controller (com.google.android.permissioncontroller
-  aml_370546220, the API 37 Play Store image's Mainline build, read from its dex with build-tools' dexdump) sets its
+  screen" (CaptureTest.kt:182) and no logcat kept. The half that failed was most likely the press, not the app: the
+  touch on "Don't allow" did not reach the prompt. That is inferred, not reproduced (efc0575's click failed in none of
+  the loop's 65 rounds below, at kc37's speed), and an app-side loss of the refusal after the prompt answered (the
+  activity recreated while the prompt is up, say) is not ruled out: only CI's API 36 leg can tell, and the new
+  messages name the half (wording corrected in 18m, review fix). kc37's permission controller
+  (com.google.android.permissioncontroller aml_370546220, the API 37 Play Store image's Mainline build, read from its
+  dex with build-tools' dexdump) sets its
   content GONE in GrantPermissionsActivity.onCreate and VISIBLE only in showNextRequest, after updateUi, so its window
   comes up empty and then grows to the request (the deny button's first bounds, seen by a poll with no idle wait, were
   Rect(98, 1297 - 622, 1393), 401 px below their place Rect(98, 896 - 622, 992) and off the 1280 px screen); and its
@@ -12699,7 +12703,7 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   which neither dumpsys activity (activities, top) nor dumpsys window shows. UI Automator finds the button after 500 ms
   with no accessibility event (UiDevice.getWindowRoots waits for idle), then touches the centre it reads, so on a
   slower emulator a touch can come while the prompt still drops it or before it has moved: the prompt stays up with no
-  answer and no refusal comes, which is CI's failure. CI's API 36 default image runs AOSP's
+  answer and no refusal comes, which would give CI's failure. CI's API 36 default image runs AOSP's
   com.android.permissioncontroller, built from the same module's source a release earlier, without Google's overlay
   (the same activity and button ids, which PROMPT_DENY matches in both packages); whether that build has the touch
   guard is not checked here (no API 36 image locally), and its software-rendered x86_64 emulator is far slower than
@@ -12729,6 +12733,12 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   clean on the tree (356 files) under sh and dash, `--selftest` 1513 passed, 0 failed; Rust untouched (fmt, both
   clippy commands, the workspace tests 499 passed, the test-sources run 269 and the FFI tests plain and with
   test-registry 54 each).
+  Proof (M5 commit 18m, review fix, partial: local, Q76; wording only, no code changed): 18j's Proof above and
+  Capture.denyPrompt's KDoc stated the press as CI's failure, which was inferred; both now say most likely, and name
+  what is unverified. At this commit: android-local.sh exit 0 in 816 s (L1's aapt2 override; the nine runs passed in
+  android-emulator.sh's order, CaptureTest 6 and 6 with control (c) named and left out); every JVM test task rerun
+  with --rerun (:core-ffi 27 in 9 classes, :screens 79 in 13, :app 7 in 3 for each flavour, :secure-ui 3 in 1, none
+  failed).
 
 **17. Screens: words to finish** (MA:177-184; PF:90-99; swb:276-290)
 - [ ] The privacy gate, then Words (one insert per page: position, word, SeedBook number, five faces with blanks,
