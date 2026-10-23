@@ -1,0 +1,25 @@
+package com.keepcrypt.entropy
+versionName 0.0.0
+minSdk 31
+targetSdk 36
+permission com.keepcrypt.entropy.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+uses-permission android.permission.CAMERA
+uses-permission android.permission.DETECT_SCREEN_RECORDING
+uses-permission android.permission.HIDE_OVERLAY_WINDOWS
+uses-permission com.keepcrypt.entropy.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+application allowBackup=false
+application appComponentFactory=androidx.core.app.CoreComponentFactory
+application dataExtractionRules=set
+application debuggable=false
+application extractNativeLibs=false
+application fullBackupContent=false
+application label=set
+application name=com.keepcrypt.entropy.KeepCryptApp
+application theme=set
+application usesCleartextTraffic=false
+activity com.keepcrypt.entropy.MainActivity exported=true
+activity com.keepcrypt.entropy.MainActivity intent-filter action:android.intent.action.MAIN category:android.intent.category.LAUNCHER
+uses-library androidx.window.extensions required=false
+uses-library androidx.window.sidecar required=false
+uses-feature android.hardware.camera required=false
+removed provider#androidx.startup.InitializationProvider

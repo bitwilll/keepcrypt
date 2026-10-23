@@ -283,7 +283,7 @@ This is standard UEB grade 1 for digits next to letters. Letters are lowercase, 
 
 **Inside the encrypted backup.** The plaintext includes a `braille:` line per word: the two-digit position, then the whole word in cells (every letter, not only five), so a blind user who decrypts it with `age` can read it on a refreshable braille display.
 
-**Accessibility.** On phones, words can be read through VoiceOver or TalkBack on a refreshable braille display; speech output is allowed only with headphones and an on-screen warning. Android's sensitive-data flag still lets genuine accessibility tools read the words. Driving a USB braille display from the Pi is a later option.
+**Accessibility.** On phones, words can be read through VoiceOver or TalkBack on a refreshable braille display; speech output comes with an on-screen warning to use headphones, since no app can tell where TalkBack or VoiceOver speaks. Android's sensitive-data flag still lets genuine accessibility tools read the words. Driving a USB braille display from the Pi is a later option.
 
 **Tests and cross-checks.** The core's `braille` module produces faces, blanks, SeedBook numbers and mirror flags for all 2,048 words (`vectors/braille.json`). Checked for this spec: the SeedBook's 25 section counts (total 2,048), its page ranges 001–098, and the sample numbers ABANDON 0001, ACT 0020, METAL 1121, WIRE 2018 and ZOO 2048 all match the official list. Before release, a braille reader proofreads punched sample inserts against the SeedBook.
 

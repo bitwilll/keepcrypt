@@ -1,4 +1,4 @@
-# cargo-deny 0.20 policy for the device workspace (core, ffi, pi/app, pi/sim).
+# cargo-deny 0.20 policy for the device workspace (core, ffi, ffi/guard, ffi/jni, pi/app, pi/sim).
 # Run: cargo deny --locked check. scripts/canaries.sh proves on every CI run that the bans fire
 # for a normal, dev-only, target-only and feature-gated dependency (rand family, network, logging),
 # and for rand added to the real keepcrypt-core; that a git dependency fails [sources]; and that
@@ -86,9 +86,10 @@ deny = [
     "env_logger",
 ]
 
-# The Pi hardware crates resolve with exactly these features in every build (tasks/todo.md, M4
-# group 2; Q36 (a)). all-features = true above reaches only our own crates' features, so these
-# entries are what keep a dependency's optional features off, whichever manifest asks for one.
+# The Pi hardware crates and jni-sys resolve with exactly these features in every build
+# (tasks/todo.md, M4 group 2; Q36 (a); M5 group 7). all-features = true above reaches only our own
+# crates' features, so these entries are what keep a dependency's optional features off, whichever
+# manifest asks for one.
 [[bans.features]]
 # rppal is archived: its author archived the repository on 2025-07-01, so 0.22.1 is its last
 # release (Q36 (b)). No features, so embedded-hal, hal and the rest stay off.
@@ -102,6 +103,13 @@ allow = []
 crate = "nix"
 exact = true
 allow = ["fs", "mman", "mount", "time", "uio"]
+
+[[bans.features]]
+# jni-sys, keepcrypt-jni's declarations of jni.h (tasks/todo.md, M5 group 7; Q53): 0.3.0 has no
+# features, and none may appear.
+crate = "jni-sys"
+exact = true
+allow = []
 
 [sources]
 # crates.io only. Coldcard's weak-entropy bug came in through a git submodule.

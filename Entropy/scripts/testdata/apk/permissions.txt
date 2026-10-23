@@ -1,0 +1,6 @@
+package: com.keepcrypt.entropy
+uses-permission: name='android.permission.HIDE_OVERLAY_WINDOWS'
+uses-permission: name='android.permission.DETECT_SCREEN_RECORDING'
+uses-permission: name='android.permission.CAMERA'
+permission: com.keepcrypt.entropy.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+uses-permission: name='com.keepcrypt.entropy.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'

@@ -49,7 +49,8 @@ nix = { version = "=0.31.3", default-features = false, features = ["fs", "mman",
 unused_must_use = "forbid"
 
 [lints.clippy]
-# Keep this block identical in core, ffi and pi/app (pi/sim is a desktop dev tool).
+# Keep this block identical in core, ffi, ffi/guard, ffi/jni and pi/app (pi/sim is a desktop dev
+# tool).
 # Fail closed (rule 3): the clippy.toml ban cannot be switched off in code; #[allow], #[expect]
 # and #![allow(clippy::all)] fail with E0453. An exception is a reviewed change to this line.
 disallowed_methods = "forbid"
@@ -62,3 +63,7 @@ allow_attributes_without_reason = "deny"
 print_stdout = "forbid"
 print_stderr = "forbid"
 dbg_macro = "forbid"
+# keepcrypt-jni holds the workspace's only unsafe code (tasks/todo.md, M5 group 7): every unsafe
+# block holds one operation and a SAFETY: comment. Nothing to check where unsafe_code is forbidden.
+undocumented_unsafe_blocks = "deny"
+multiple_unsafe_ops_per_block = "deny"

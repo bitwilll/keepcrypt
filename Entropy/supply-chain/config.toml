@@ -200,6 +200,11 @@ criteria = "safe-to-run"
 version = "1.0.18"
 criteria = "safe-to-run"
 
+[[exemptions.jni-sys]]
+version = "0.3.0"
+criteria = "safe-to-deploy"
+notes = "jni.h's types and function table for keepcrypt-jni, the Android boundary (tasks/todo.md, M5 group 7; Q53), published 2017-07-21. Reviewed for M5 commit 9 from the downloaded .crate, whose SHA-256 equals the lock's checksum: no build script, dependency or feature, and one source file, src/lib.rs. It is declarations only: type aliases, consts, an enum, a union and #[repr(C)] structs of extern fn pointers (JNI's function table, 31 of them its C-variadic calls), whose only function bodies are Clone impls that copy *self, and one extern block in the system ABI declaring JNI's three invocation functions without a #[link] attribute, which nothing calls. No code runs, nothing prints and nothing reads the OS random source. No audit on record."
+
 [[exemptions.libc]]
 version = "0.2.189"
 criteria = "safe-to-deploy"

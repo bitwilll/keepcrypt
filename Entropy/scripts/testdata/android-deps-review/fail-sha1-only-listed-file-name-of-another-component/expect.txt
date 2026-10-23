@@ -1,0 +1,2 @@
+1
+org.example:kxml2:2.3.0 kxml2-2.3.0.pom (Maven Central): Maven Central publishes no .asc signature (its SHA-256 equals the metadata's, its SHA-1 equals the published .sha1)

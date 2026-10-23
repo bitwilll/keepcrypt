@@ -46,3 +46,13 @@ accepted for a question the pinned sources answer.
 with every failure mode it introduces resolved first: read the pinned source of each component that sees the
 change, or take the conservative option, and put the proof in the commit and todo.md. A known unproven risk is never
 handed to the owner's hardware session.
+
+## Read-only means read-only on the owner's machine (2026-10-20)
+**Mistake:** While researching Compose Multiplatform, a research agent ran `xcrun simctl list runtimes` on the owner's
+Mac to read the simulator runtimes. It made Xcode install its simulator components (CoreSimulator 1174.9.2), a change to
+the owner's machine nobody approved. The agent also ran `xcodebuild -version`, which changed nothing.
+**Root Cause:** The research brief forbade edits to the repo but not tool invocations on the host, and Xcode's command-line
+tools can install components as a side effect of a query.
+**Rule:** Facts about a toolchain come from its published documentation, runner-image readmes or CI runs, never from
+running its tools on the owner's Mac. No `xcrun`, `simctl`, `xcodebuild`, simulator, emulator, SDK manager or device
+command runs on the owner's machine without the owner's yes, and every research brief says so.
