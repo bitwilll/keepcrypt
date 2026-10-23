@@ -27,8 +27,11 @@
 # graphics and no audio, as CI's legs run theirs. It writes only under ~/.android/avd/kc37.avd and the
 # run's temporary directory, which is its HOME (its console token, its settings and its update check's
 # time land there) and holds a copy of adb's key pair, so that the user build trusts the running adb
-# server; the directory is removed at the end. The image's own services reach the network while the
-# guest is online, as on any phone; nothing of ours does.
+# server; the directory is removed at the end. The network: the emulator itself contacts
+# dl.google.com as it starts, for its update check (a newer emulator, asked with a user id it makes
+# in its HOME) and its feature flags; with a new HOME each run, no earlier check is kept, so each
+# run's first boot does both (the second finds the first's check in the same HOME). The image's own
+# services reach the network while the guest is online, as on any phone. Nothing else of ours does.
 #
 # In order:
 #   1. kc37 booted with no camera (-camera-back none: the CI legs' no-camera facts, M5-59, which

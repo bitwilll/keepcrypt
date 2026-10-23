@@ -14654,6 +14654,17 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   decode, and the test-registry app's scan screen still scanning with no camera client, exit 1 each), and two
   mutants (the scan screen's going not failed, the client check dropped) each fail only their own case; 0 failed
   under sh and dash.
+  Proof (M5 commit L2d, review fix, partial: local, Q76): the header said nothing of ours reaches the network, but
+  the emulator itself does as it starts. In this review's run, watched only from outside (its HOME's files, and lsof
+  with no name lookups, once a second at the first boot and every 0.1 s at the second, which caught no connection
+  beyond localhost before the guest was up, so the requests themselves were not seen): within 3 s of the first
+  boot's start the emulator wrote emu-last-feature-flags.protobuf (5,010 bytes, not the SDK's bundled 23,491-byte
+  emu-original-feature-flags.protobuf), userid (a new 36-character id) and emu-update-last-check.ini (that boot's
+  time). Its binary names https://dl.google.com/android/repository/repository2-3.xml with
+  ?tool=emulator&uid=...&os=... and https://dl.google.com/dl/android/studio/metadata/emulator-feature-flags.protobuf,
+  and no option in its help names either (-no-metrics, already set, covers usage statistics). The second boot, in
+  the same HOME, rewrote neither file, so a run does this once, not at each boot. Q76 approved downloads (a)-(c),
+  not these; whether they may stay is the lead's and the owner's question, and nothing changed here but the header.
 
 **Stages E3 and E4** run commits 19, 20 and 21 as planned, each built and tested locally before it is committed.
 
