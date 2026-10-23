@@ -3867,6 +3867,46 @@ selftest() {
       mkdir -p "${kto%/*}" && cp "$d/$kt_app/CeremonyHolder.kt" "$kto" || exit 2
     done
   done
+  # A package mention is a hit at the line of its first word (kt_packages), so a name split over
+  # lines is reported where java or kotlinx stands, not where the name completes; and the task words'
+  # hits and the packages' on other lines of one file are both reported (kt_tasks_and_packages drops
+  # only a line both find). No fixture pins either, as expect() takes a hit at any line whose text it
+  # shows, so these are built here: :screens' Timers.kt with kotlinx at line 2 and .coroutines on line
+  # 3 is a hit at line 2 (atline), and the app's CeremonyHolder.kt with an ExecutorService at line 2
+  # and a qualified name of kotlinx.coroutines at line 3 is the word's hit (also) and the package's
+  # (atline). Each also goes in the test scopes' trees below, clean there.
+  for case in line-break-before-dot beside-a-task-word; do
+    name=ktfailopen-catch-package-$case
+    case $case in
+      line-break-before-dot)
+        kt_dir=$kt_screens
+        kt_file=Timers.kt
+        kt_body=$(printf '%s\n' '// A qualified name over two lines: Kotlin takes a line break before a dot.' 'kotlinx' \
+          '.coroutines.GlobalScope.launch { model.finish() }')
+        atline=2
+        ktests='screens:commonTest screens:androidHostTest'
+        ;;
+      beside-a-task-word)
+        kt_dir=$kt_app
+        kt_file=CeremonyHolder.kt
+        kt_body=$(printf '%s\n' '// A task word and a package mention on two lines of one file: each is its own hit.' \
+          'private val pool: ExecutorService = pool()' 'private val done = kotlinx.coroutines.GlobalScope.launch { model.finish() }')
+        atline=3
+        also="KtFailOpen: $kt_app/CeremonyHolder.kt:2: private val pool: ExecutorService = pool()"
+        ktests='app:test app:androidTest screens:commonTest screens:androidHostTest'
+        ;;
+    esac
+    fresh
+    mkdir -p "$d/$kt_dir" || exit 2
+    printf '%s\n' "$kt_body" >"$d/$kt_dir/$kt_file" || exit 2
+    expect "$name" "$d" KtFailOpen "$kt_dir/$kt_file"
+    also=
+    atline=
+    for kt in $ktests; do
+      kto=$tmp/scope-${kt#*:}/mobile/android/${kt%%:*}/src/${kt#*:}/$name/${kt_dir#mobile/android/*/src/*/}/$kt_file
+      mkdir -p "${kto%/*}" && cp "$d/$kt_dir/$kt_file" "$kto" || exit 2
+    done
+  done
   # The copies above, one tree per scope: each must be clean, so no copied hit fires there. Each
   # tree must hold copies, or a rename of the fixtures would leave the exemptions untested.
   for kset in test androidTest commonTest androidHostTest capture; do

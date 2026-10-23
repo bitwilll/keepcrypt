@@ -11612,6 +11612,19 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   `--selftest --shard K/4` for K 1 to 4, side by side: 393, 393, 393 and 392 of 1571 cases, 0 failed, under sh and
   under /bin/dash (1569 before); the gate clean on a fresh export (356 files) under sh and dash; canaries.sh PASS,
   all 93 checks ran, on the export.
+  Proof (M5 commit 18q, review fix, partial: local, Q76): two things 18o's comment states had no case, as expect()
+  takes a hit at any line whose text it shows: a package mention is a hit at the line of its first word, and the
+  task words' hits and the packages' on other lines of one file are both reported. A gate reporting a split name
+  where it completes (`out(NR)` for `out(sl)`) and one dropping every package line of a file with a task-word hit
+  each passed every case. Both are now built cases: ktfailopen-catch-package-line-break-before-dot (the fixture of
+  that name, removed) is a hit at line 2, where kotlinx stands (atline), and ktfailopen-catch-package-beside-a-task-
+  word, the app's CeremonyHolder.kt with an ExecutorService at line 2 and a qualified name of kotlinx.coroutines at
+  line 3, is both hits (the word's as also, the package's at line 3), each also in the test scopes and clean there
+  (src/test and src/androidTest 193 copies each, commonTest and androidHostTest 231). By hand, each of those two
+  mutants of the gate, run on each case alone (`--selftest --shard 1165/9999` and `1166/9999`, the two cases'
+  places in the list), fails only its own case, and the unmutated gate passes both. `--selftest --shard K/4` for K 1
+  to 4, side by side: 393 of 1572 cases each, 0 failed, under sh and under /bin/dash (1571 before: one fixture
+  less, two built cases more); the gate clean on a fresh export (356 files) under sh and dash.
 - [x] The Shell rule for `game_random` is unchanged in M5 (its ffi and Kotlin fixtures stay hits until M5b).
   Proof: those fixtures still trip.
   Proof (M5 commit 4): `game_random_use` and its path list untouched (only the release probe's comment stripping moved
