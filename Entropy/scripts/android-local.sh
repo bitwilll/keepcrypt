@@ -41,17 +41,23 @@
 #      the image's answer to adb root is printed; no check is skipped silently. After it, each
 #      instrumented run's result in android-emulator.sh's order, read from its own instrument lines;
 #      a run with no result, or a result out of that order, fails.
-#   2. kc37 booted again with its virtual-scene camera: the Camera2 check (M5-59; CI's AVDs have no
-#      camera). The shipping app, CAMERA granted from the shell (pm grant) and the phone offline, is
-#      driven through the UI from the shell (uiautomator dump for each screen's test tags, input tap)
-#      to a dice-only 12-word seed of 50 rolls, Check now and Scan go-ahead QR. Its camera client must
-#      be listed among dumpsys media.camera's active clients while the scan screen shows, be gone
-#      within 10 s of Home, be listed again once the app is back and its cover tapped, and be gone
-#      within 10 s of Back, which returns to the seal card. Then goahead-collision-dice-50.png on the
-#      virtual scene's wall (the console's virtualscene-image) and the SDK's Walk_to_image_room macro,
-#      which turns the camera to it: the test-registry app, driven the same way to dice-50-words12's
-#      seed (123456 repeated, so the proof's seal), scans for up to 60 s. The collision result passes;
-#      no result, or no PNG, is printed as a check not made, never a pass.
+#   2. kc37 booted again with its virtual-scene camera. First NativeTest, which android-emulator.sh
+#      runs on CI's 16 KB-page image only (translated there; --booted runs the default images'
+#      steps): the shipping APK and its test APK installed, the package manager's primaryCpuAbi
+#      arm64-v8a (kc37's own ABI, so the library runs natively), then the class through
+#      android-instrument.sh's judge. It runs on this boot, since on the first CrashTest, the leg's
+#      last run, leaves its crash in the crash buffer that every later judge reads whole. Then the
+#      Camera2 check (M5-59; CI's AVDs have no camera). The shipping app, CAMERA granted from the
+#      shell (pm grant) and the phone offline, is driven through the UI from the shell (uiautomator
+#      dump for each screen's test tags, input tap) to a dice-only 12-word seed of 50 rolls, Check now
+#      and Scan go-ahead QR. Its camera client must be listed among dumpsys media.camera's active
+#      clients while the scan screen shows, be gone within 10 s of Home, be listed again once the app
+#      is back and its cover tapped, and be gone within 10 s of Back, which returns to the seal card.
+#      Then goahead-collision-dice-50.png on the virtual scene's wall (the console's
+#      virtualscene-image) and the SDK's Walk_to_image_room macro, which turns the camera to it: the
+#      test-registry app, driven the same way to dice-50-words12's seed (123456 repeated, so the
+#      proof's seal), scans for up to 60 s. The collision result passes; no result, or no PNG, is
+#      printed as a check not made, never a pass.
 # The emulator is shut down after each phase and on every exit.
 # Prints android-emulator.sh's lines and "local:" lines, with "pass: local ..." for each local check
 # that passed. Exit 0 when every check made passed, 1 when one failed, 2 bad usage or a missing tool.
@@ -65,12 +71,14 @@
 # on port 5580 with no snapshot (first with no camera, then the virtual scene) with its HOME and
 # ANDROID_AVD_HOME set, named CaptureTest's control (c) as not made on the user build and left it out
 # of both CaptureTest runs, run the nine instrumented runs in android-emulator.sh's order and listed
-# their results, passed the camera client's four checks and decoded the PNG. Each of these is its own
-# case: no decode (the check named as not made, exit 0); no PNG (the same); a debuggable build (no
-# test left out); kc37 already this script's (kept, exit 0); a failing class (exit 1, the camera check
-# still run and the emulator stopped); kc37 with other files (exit 1, nothing booted or changed); a
-# device already on the port (exit 1); no camera client while the scan screen shows, and one still
-# listed after Home (exit 1 each); and too many arguments (exit 2).
+# their results, run NativeTest on the second boot with the app's primaryCpuAbi arm64-v8a, passed the
+# camera client's four checks and decoded the PNG. Each of these is its own case: no decode (the
+# check named as not made, exit 0); no PNG (the same); a debuggable build (no test left out); kc37
+# already this script's (kept, exit 0); a failing class (exit 1, the camera check still run and the
+# emulator stopped); NativeTest failing, and the app installed for another ABI, which runs no
+# NativeTest (exit 1 each, the camera check still run); kc37 with other files (exit 1, nothing
+# booted or changed); a device already on the port (exit 1); no camera client while the scan screen
+# shows, and one still listed after Home (exit 1 each); and too many arguments (exit 2).
 # Exit 0 when every case behaves, 1 otherwise. The cases run at once; it takes about two minutes.
 set -u
 unset CDPATH
@@ -173,6 +181,7 @@ case "$*" in
   'shell dumpsys window') printf '  mCurrentFocus=Window{b2 u0 %s/com.keepcrypt.entropy.MainActivity}\n' "$(cat "$s/front" 2>/dev/null)" ;;
   'shell pm grant '*' android.permission.CAMERA') echo "$4" >> "$s/granted" ;;
   'shell dumpsys package '*)
+    echo "    primaryCpuAbi=${KC_ABI:-arm64-v8a}"
     grep -q -x -F -e "$4" "$s/granted" 2>/dev/null && echo '      android.permission.CAMERA: granted=true, flags=[ USER_SET ]'
     ;;
   'shell am start -W '*)
@@ -335,6 +344,8 @@ CONFIG
   run debuggable KC_DEBUGGABLE=1 KC_DECODE=1
   run avd-kept KC_DECODE=1
   run flow-test-fails KC_FAILCLASS=FlowTest KC_DECODE=1
+  run native-test-fails KC_FAILCLASS=NativeTest KC_DECODE=1
+  run native-abi KC_ABI=x86_64 KC_DECODE=1
   run avd-other
   run port-taken KC_PORT_TAKEN=1
   run no-client KC_NO_CLIENT=1
@@ -374,16 +385,18 @@ CONFIG
     check "$1" "$ok" "kc37.ini and kc37.avd/config.ini as avdmanager writes them"
   }
   left=com.keepcrypt.entropy.CaptureTest-disableSecureWindowsShowsTheScreenOnlyWhileSet
-  # runs NAME CAPTURE: case NAME's instrumented runs, in order, CaptureTest run as CAPTURE.
+  # runs NAME CAPTURE: case NAME's instrumented runs, in order, CaptureTest run as CAPTURE, then
+  # NativeTest on the second boot.
   runs() {
     got=$(sed -n 's/^instrument stub: //p' "$st/$1/out" | tr '\n' ' ')
     want="com.keepcrypt.entropy com.keepcrypt.entropy.ControlTest com.keepcrypt.entropy $2 com.keepcrypt.entropy.testregistry $2"
     want="$want com.keepcrypt.entropy com.keepcrypt.entropy.PhoneMotionTest com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest"
     want="$want com.keepcrypt.entropy com.keepcrypt.entropy.CheckTest com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest"
     want="$want com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest "
+    want="${want}com.keepcrypt.entropy com.keepcrypt.entropy.NativeTest "
     ok=yes
     [ "$got" = "$want" ] || { ok=no; echo "  got: $got"; }
-    check "$1" "$ok" "the nine instrumented runs in android-emulator.sh's order"
+    check "$1" "$ok" "the nine instrumented runs in android-emulator.sh's order, then NativeTest"
   }
   # boots NAME: case NAME booted twice on port 5580 with no snapshot, first with no camera and then
   # the virtual scene, with its own HOME holding adb's key and the AVD home under the case's HOME.
@@ -418,6 +431,8 @@ CONFIG
     "local: no adb root on kc37: adb root says: adbd cannot run as root in production builds" \
     "instrument stub: com.keepcrypt.entropy $left" "emulator: api=37: every check passed" \
     "local: run 9 of 9, com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest: instrument: api=37 PASS com.keepcrypt.entropy.CrashTest" \
+    "local: NativeTest: com.keepcrypt.entropy installed with primaryCpuAbi=arm64-v8a" \
+    "pass: local native library: NativeTest on kc37's arm64-v8a, natively" \
     "$camera_passes" "pass: local camera: gone from dumpsys media.camera within 10 s of Home" \
     "pass: local camera: listed again with the app back and its cover tapped" \
     "pass: local camera: gone within 10 s of Back, on the seal card" \
@@ -443,6 +458,15 @@ CONFIG
   expect flow-test-fails 1 "local: run 5 of 9, com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest: FAIL: instrument: api=37: com.keepcrypt.entropy.FlowTest" \
     "$camera_passes" "FAIL: local: the leg on kc37 failed (each failure reported above)"
   stopped flow-test-fails
+  expect native-test-fails 1 "FAIL: instrument: api=37: com.keepcrypt.entropy.NativeTest: stand-in failure" \
+    "$camera_passes" "FAIL: local: NativeTest failed on kc37 (reported above)"
+  expect native-abi 1 "local: NativeTest: com.keepcrypt.entropy installed with primaryCpuAbi=x86_64" "$camera_passes" \
+    "FAIL: local: NativeTest: com.keepcrypt.entropy's primaryCpuAbi is x86_64, not arm64-v8a"
+  if grep -q -F -e 'instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.NativeTest' "$st/native-abi/out"; then
+    check native-abi no "no NativeTest run for another ABI"
+  else
+    check native-abi yes "no NativeTest run for another ABI"
+  fi
   expect avd-other 1 "-hw.ramSize=4096" "+hw.ramSize=2048" \
     "FAIL: local: kc37 is there, but its files are not this script's (the differences above); nothing was booted or changed"
   if [ ! -e "$st/avd-other/boots" ] && grep -q -x -F -e 'hw.ramSize=2048' "$st/avd-other/home/.android/avd/kc37.avd/config.ini"; then
@@ -707,7 +731,7 @@ if ! awk '
 fi
 stop_emulator
 
-# 2. The Camera2 check on kc37's virtual-scene camera (M5-59).
+# 2. NativeTest, then the Camera2 check on kc37's virtual-scene camera (M5-59).
 boot "the Camera2 check, the virtual scene" virtualscene
 dev shell input keyevent 82 > /dev/null 2>&1
 dev shell wm dismiss-keyguard > /dev/null 2>&1
@@ -784,12 +808,22 @@ client() {
     sleep 1
   done
 }
-for f in app-shipping-release app-withTestRegistry-release; do
+for f in app-shipping-release app-shipping-release-androidTest app-withTestRegistry-release; do
   case $(dev install "$apks/$f.apk" 2>&1) in
-    *Success*) say "camera: installed $f.apk" ;;
-    *) fail_later "camera: adb install $f.apk failed" ;;
+    *Success*) say "installed $f.apk" ;;
+    *) fail_later "adb install $f.apk failed" ;;
   esac
 done
+# NativeTest: the library in the shipping app's own process, run natively on kc37's arm64-v8a.
+abi=$(value dumpsys package "$shipping" | tr ' ' '\n' | sed -n 's/^primaryCpuAbi=//p' | head -n 1)
+say "NativeTest: $shipping installed with primaryCpuAbi=$abi"
+if [ "$abi" != arm64-v8a ]; then
+  fail_later "NativeTest: $shipping's primaryCpuAbi is $abi, not arm64-v8a"
+elif ! sh "$here/android-instrument.sh" "$adb" "$serial" "$api" "$shipping.test" "$shipping" com.keepcrypt.entropy.NativeTest; then
+  fail_later "NativeTest failed on $avd (reported above)"
+else
+  echo "pass: local native library: NativeTest on $avd's arm64-v8a, natively: JNI_OnLoad, the self-test and dice-50-words12's Seal ID through the bridge"
+fi
 p=$shipping
 if ! to_scan "$p"; then
   fail_later "camera: $p did not reach the scan screen"

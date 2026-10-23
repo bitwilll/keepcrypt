@@ -14628,6 +14628,17 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   as the strict build still stops on aapt2's osx jar. --selftest: android-local.sh 22 passed (and three mutants
   each failed it), android-emulator.sh 25 (20 before), android-instrument.sh 39 (34 before), 0 failed under sh and
   dash.
+  Proof (M5 commit L2b, review fix, partial: local, Q76): NativeTest, which android-emulator.sh runs on CI's 16 KB
+  leg only and --booted never, was neither run nor named. It now runs at the start of the second boot, before the
+  Camera2 check (on the first, CrashTest's crash stays in the crash buffer that every later judge reads whole): the
+  shipping APK and its test APK installed, primaryCpuAbi read back and required to be arm64-v8a (kc37's own ABI, so
+  the library runs natively, where CI's 16 KB leg runs it translated), then android-instrument.sh's judge. On kc37
+  (one run with L2c's change too, exit 0 in 816 s): "primaryCpuAbi=arm64-v8a", the library in .../lib/arm64,
+  "instrument: api=37 PASS com.keepcrypt.entropy.NativeTest (1 tests; process gone, no crash window, crash buffer and
+  dropbox clean)" with dice-50-words12's Seal ID YVM9CPP3, after the nine runs passed as before. --selftest:
+  android-local.sh 25 passed (22 before: NativeTest failing, and the app installed for another ABI with no NativeTest
+  run, exit 1 each with the camera check still run), and three mutants (NativeTest not run, the ABI check dropped,
+  its failure not failing the run) each fail it; 0 failed under sh and dash.
 
 **Stages E3 and E4** run commits 19, 20 and 21 as planned, each built and tested locally before it is committed.
 
