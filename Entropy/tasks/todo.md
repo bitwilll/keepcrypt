@@ -14328,6 +14328,10 @@ they differ. Nothing in the Android plan is weakened.
   Re-measured with commit 18's tests: run 39744137391 at 1a63e0f took 1850 s (30.8 minutes: Rust libraries 161 s,
   Gradle build 143 s, API 31 581 s, API 36 604 s, 16 KB 80 s); plus 25% is 39 minutes (18i). The gates job of that
   commit's Entropy CI run (39744137380) took 659 s of its 720, with 1463 selftest cases.
+  Re-measured: run 39783747240 at efc0575 (18i: todo.md and the timeout only; it failed on API 36, 18j, with every
+  leg run to its end) took 2112 s (35.2 minutes: Rust libraries 267 s, Gradle build 200 s, API 31 608 s, API 36 636
+  s, 16 KB 109 s) with no new test, so the rise from 1850 s is the runner's; plus 25% is 44 minutes (18n). The gates
+  job of that commit's Entropy CI run (39783747232) took 649 s of its 720, with 1481 selftest cases.
 - M5-58 (2026-10-22): an uncaught-exception handler is a catch-all no `catch` shows, and KtFailOpen did not see one:
   `Thread.setUncaughtExceptionHandler` on the scanner's own HandlerThread, or a second
   `Thread.setDefaultUncaughtExceptionHandler`, left the gate clean (commit 18's review, reproduced). Commit 18 adds
@@ -14355,6 +14359,53 @@ they differ. Nothing in the Android plan is weakened.
   import line. A `return`, `break` or `continue` inside `finally` hits where the gate finds it reliably; what it cannot
   find without a parser is recorded as a residual (commit 18h). M5-58's rule itself is completed by 18f (exact allowed
   lines, each once), 18g (ThreadGroup, getUncaughtExceptionHandler, uncaughtException) and 18h (the allowances' fixtures).
+  Amended 2026-10-23 (Stage L's review of 18h): (a) 18h reads the finally rule fail closed instead of leaving a
+  residual: a shipping `finally` block may hold no string, character, backtick name or comment, and a loop's `break`
+  or `continue` or a lambda's `return` inside one hits too. The shipping code's three finally blocks pass, and this
+  replaces "recorded as a residual" above. (b) A word list cannot be complete: ThreadPoolExecutor,
+  ScheduledThreadPoolExecutor, ScheduledExecutorService, ForkJoinTask's `fork()`, kotlinx.coroutines.future's
+  `future { }` and Flow's `retry` and `retryWhen` all passed it (reproduced on HEAD). So outside the test source sets
+  KtFailOpen also allows `java.util.concurrent` and `kotlinx.coroutines` only by the import lines the shipping code
+  has today, each exactly: `import java.util.concurrent.Executor` in GoAheadScanner.kt only (as above), and
+  kotlinx.coroutines' CoroutineDispatcher, CoroutineScope, Dispatchers, Job, cancel, delay, flow.MutableStateFlow,
+  flow.StateFlow, launch and withContext. Any other mention of either package hits: another import, a star import,
+  an alias, a qualified name. The word list stays. A new name from either package needs a lead decision that says why
+  it cannot hold a failure. (c) Java turns `\uXXXX` escapes into characters before it reads the code, so a `.java`
+  file can hide every text rule's word from the gate (reproduced). The app has no Java source, and any `.java` file
+  under mobile/android hits (commit 18o).
+- M5-61 (2026-10-23): AGP fetches aapt2, its resource compiler, for the build machine's OS. The verification metadata
+  pinned only the Linux jar, so Q76's strict local build stopped on `aapt2-9.3.3-15703166-osx.jar` (L1). It is the
+  Mac's build of a component the metadata already pins (com.android.tools.build:aapt2:9.3.3-15703166), with no new
+  component, version or lockfile line, so it is not the dependency change M5-13 stops for. Q76 (b) covers its
+  download: Gradle fetched it and refused it, and none of its code ran. The metadata gains its SHA-256,
+  1e35bc2ce18c3aae840be2a29659ce50d6043e907a44d98ee1cf375d044fa29c (4,463,202 bytes; Gradle's cache names it by its
+  SHA-1, d279d1b68498cf41b88ca6cccc7c5f642cddb290). The Android workflow's dependency review checks that against
+  Google's published .sha256 at the next run, and the Mac builds with it only after that run passes. CI never
+  resolves it, and no APK holds it (18n).
+- M5-62 (2026-10-23): Stage L's review found four defects in the local loop itself, each fixed or decided here
+  (commit L3). (a) The gate's file list and canaries.sh's tree copies read the ignored Gradle outputs that a local
+  build leaves (mobile/android/.gradle, mobile/android/build and each module's build/). Those held 1,874 hits in
+  generated reports, so both fail in a working tree that has built; CI's fresh checkout has none. Both leave out
+  exactly those directories. The Build rule still refuses any tracked file there (git ls-files), so the skip hides
+  nothing tracked. (b) Each android-local.sh run's first boot lets the emulator fetch its update list and feature
+  flags from dl.google.com (L2d). While a leg turns Wi-Fi on, the Play image's services can also reach Google. None of
+  these is among Q76's downloads. The run's emulator HOME is seeded so the emulator skips both fetches, and the guest
+  gets no route to the internet while the legs run. The app's offline rule reads Settings.Global (airplane mode, Wi-Fi
+  on), not a reached server (OfflineMonitor.kt), so every offline test still means what it says. Whatever cannot be
+  cut is named in the script's header and the Proof. (c) LifecycleTest's leave during a backup's scrypt races a scrypt
+  that takes about 0.5 s on kc37's native arm64 (about 1 s on CI's emulators), and in one local run it lost all three
+  attempts. The leave is made certain to fall inside the scrypt, for example by sending the activity to the
+  background at once instead of through Home's slower path. The judge stays the same (M5-47), with no more attempts
+  and no longer waits. (d) The Camera2 decode of goahead-collision-dice-50.png, a version-24 code at about 3 px a
+  module on kc37's virtual scene, stays unmet. No new test asset is added for it; the decode stays P0b's and P4's, on a
+  real camera.
+- M5-63 (2026-10-23): the gates job's self-test is its long pole, and it grows with every rule: locally 514 s at 1463
+  cases (1a63e0f) and 575 s at 1517 (Stage L's head). The job took 649 to 659 s of Q31 (f)'s 12 minutes at 1463 to
+  1481 cases, so commits 19-21's fixtures would push it past 12 minutes. Before that happens, the self-test runs in
+  two shards beside the canaries (the runner has four cores). `--selftest` gains a shard option that runs the cases in
+  its shard and prints its own count and the whole list's count. The step fails unless both shards report the same
+  whole-list count, their counts add up to it, and every case passes. The rules and cases are unchanged. Locally, the
+  shards' counts add up to the unsharded count (commit L4).
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the
@@ -14666,6 +14717,15 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   the same HOME, rewrote neither file, so a run does this once, not at each boot. Q76 approved downloads (a)-(c),
   not these; whether they may stay is the lead's and the owner's question, and nothing changed here but the header.
 
+- [ ] L3. The local loop's own defects (M5-62): the gate and canaries.sh leave out only the ignored Gradle outputs; the
+  emulator's own fetches and the guest's route to the internet are cut where they can be, and anything left is named;
+  LifecycleTest's leave falls inside the scrypt on a fast host every time.
+  Proof: the gate and canaries.sh clean in a working tree that has built; a local run with each connection to Google cut
+  or named; LifecycleTest's scrypt case 20 times on kc37 with no failure, and CI's legs green.
+- [ ] L4. The gates job's self-test in two shards beside the canaries (M5-63).
+  Proof: the shards' counts add up to the whole list's, locally and in CI; the gates job's time in that run, under 12
+  minutes.
+
 **Stages E3 and E4** run commits 19, 20 and 21 as planned, each built and tested locally before it is committed.
 
 **Stage U: the end-to-end pass** (after commit 21, before Stage F)
@@ -14687,7 +14747,7 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   fixed with a test; a change the docs do not allow becomes a question for the owner.
 - [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists them.
   Proof: CI at each stage's head; local runs reported as local.
-- Budget: the Android job's 39 minutes cannot hold U1-U2's emulator tests on two API legs. Stage U measures them and the
+- Budget: the Android job's 44 minutes (M5-57) cannot hold U1-U2's emulator tests on two API legs. Stage U measures them and the
   lead re-plans by M5-30's rule or splits the legs into jobs (the Android workflow has no required check names).
 
 ## Review
