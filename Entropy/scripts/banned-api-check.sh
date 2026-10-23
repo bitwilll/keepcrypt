@@ -893,7 +893,10 @@
 # Every other file is read as text (grep -a), whatever bytes it holds. grep -I used to skip any file
 # with a NUL byte near its start, so one NUL in a comment hid a whole source file, and BSD and GNU
 # grep differ on how far they look for one. Skipping goes by file extension instead, matched in any
-# case (grep -i: under LC_ALL=C both greps fold ASCII letters only).
+# case (grep -i: under LC_ALL=C both greps fold ASCII letters only). The rules that read lines with
+# awk instead (KtFailOpen's package mentions and finally blocks) read each file with its NUL bytes
+# dropped (kt_text): the Mac's awk ends a line at a NUL, so a NUL in a comment or a string would
+# hide the rest of its line from them.
 #
 # The patterns match API shapes (rand::, rand_core::, rand(), Math.random), not crate names:
 # "rand_core" in a string or comment passes, because cargo-deny bans the crate itself.
@@ -1991,11 +1994,12 @@ kt_tasks_and_packages() {
 # not yet complete is a hit there too, as Kotlin skips it and the rest of the name could follow:
 # so the word java or kotlinx right before a comment is a hit (Foo::class.java and, after blank
 # lines, a // comment). Comments and strings are otherwise read as text, as the other word rules
-# read Kotlin (ktfailopen, kt_tasks), so a mention in either hits.
+# read Kotlin (ktfailopen, kt_tasks), so a mention in either hits. FILE is read through kt_text.
 kt_packages() {
   grep -q -a -E -e "${L}(java|kotlinx)$R" -- "$1"
   case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
-  KC_PACKAGE_LINES=$2 awk '
+  ktext=$(kt_text "$1") || return 2
+  printf '%s\n' "$ktext" | KC_PACKAGE_LINES=$2 awk '
     function out(l) {
       if (!(l in done)) print l ":" src[l]
       done[l] = 1
@@ -2054,7 +2058,16 @@ kt_packages() {
         }
       }
     }
-    END { exit !found }' "$1"
+    END { exit !found }'
+}
+
+# kt_text FILE: FILE's text with its NUL bytes dropped, for the rules that read its lines with awk
+# (kt_packages, kt_finally). The Mac's awk (BWK, version 20200816) ends a line at a NUL, so a NUL in
+# a comment or a string would hide the rest of its line from them; dropped, every awk reads each
+# line whole, and the line is the one every other rule's hit prints (sh and dash drop a NUL from a
+# command's output).
+kt_text() {
+  tr -d '\0' <"$1"
 }
 
 # KtFailOpen's finally blocks (M5-60), with the catch list (outside the test source sets): a return,
@@ -2066,11 +2079,12 @@ kt_packages() {
 # quote (" or '), a backtick or a comment (// or /*) in the block, or a comment between finally and
 # its {, where a brace could be text the count must not see: the block is read no further. A file
 # that ends inside a block hits at its finally ("missing ..."). A finally followed by anything else
-# is no block (a word in prose, or a name: finally is a soft keyword).
+# is no block (a word in prose, or a name: finally is a soft keyword). FILE is read through kt_text.
 kt_finally() {
   grep -q -a -E -e "${L}finally$R" -- "$1"
   case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
-  awk -v sq="'" '
+  ktext=$(kt_text "$1") || return 2
+  printf '%s\n' "$ktext" | awk -v sq="'" '
     function out(l) {
       if (!(l in done)) print l ":" src[l]
       done[l] = 1
@@ -2130,7 +2144,7 @@ kt_finally() {
         found = 1
       }
       exit !found
-    }' "$1"
+    }'
 }
 
 # KtWindow (Q57: no dialogs, popups, menus, sheets, toasts, notifications or tooltips, so the app
@@ -3830,6 +3844,27 @@ selftest() {
     for kt in app:test app:androidTest screens:commonTest screens:androidHostTest; do
       kto=$tmp/scope-${kt#*:}/mobile/android/${kt%%:*}/src/${kt#*:}/$name/kotlin/com/keepcrypt/entropy/CrashHandler.kt
       mkdir -p "${kto%/*}" && cp "$d/$kt_app/CrashHandler.kt" "$kto" || exit 2
+    done
+  done
+  # A NUL byte earlier on a line ended it for the Mac's awk, so KtFailOpen's package arm and finally
+  # rule read no further (kt_text): a NUL in a block comment before a qualified name of
+  # kotlinx.coroutines, and one in a string before a finally block's return, each on one line of the
+  # app's CeremonyHolder.kt, are a hit at that line. Each was clean on the Mac before kt_text; they
+  # are built here, as a fixture in git would hold the byte where no diff shows it. Each also goes in
+  # the test scopes' trees below, clean there.
+  for case in package:'/* \000 */ kotlinx.coroutines.GlobalScope.launch { model.finish() }' \
+    finally:'internal fun drop(work: () -> Unit) { val gap = "\000"; try { work() } finally { return } }'; do
+    name=ktfailopen-catch-${case%%:*}-after-a-nul
+    fresh
+    mkdir -p "$d/$kt_app" || exit 2
+    { echo '// The line below holds a NUL byte, at which the Mac'"'"'s awk ended it.' && printf "${case#*:}\\n"; } \
+      >"$d/$kt_app/CeremonyHolder.kt" || exit 2
+    atline=2
+    expect "$name" "$d" KtFailOpen "$kt_app/CeremonyHolder.kt"
+    atline=
+    for kt in app:test app:androidTest screens:commonTest screens:androidHostTest; do
+      kto=$tmp/scope-${kt#*:}/mobile/android/${kt%%:*}/src/${kt#*:}/$name/kotlin/com/keepcrypt/entropy/CeremonyHolder.kt
+      mkdir -p "${kto%/*}" && cp "$d/$kt_app/CeremonyHolder.kt" "$kto" || exit 2
     done
   done
   # The copies above, one tree per scope: each must be clean, so no copied hit fires there. Each

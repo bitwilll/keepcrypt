@@ -11599,6 +11599,19 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   cost and these runs do not settle it (the Mac's Spotlight indexing and Finder were busy after the second). The gates
   job took 649 to 659 s of its 720 at 1463 to 1481 cases (M5-63), so at this commit it may exceed 12 minutes until
   L4's shards land; CI measures it.
+  Proof (M5 commit 18p, review fix, partial: local, Q76; CI's mawk runs the new cases at the next push): the Mac's
+  awk (BWK, version 20200816) ends a line at a NUL byte, so a NUL in a comment or a string hid the rest of its line
+  from the two rules that read lines with awk: 18o's package arm (a qualified name of kotlinx.coroutines after `/*
+  NUL */` on one line of the app's CeremonyHolder.kt) and 18h's finally rule (a return in a finally block after a
+  string holding a NUL on its line), each tree clean under c0cb3d6's gate under sh and dash on the Mac (by hand).
+  Both now read the file through kt_text, `tr -d '\0'`, so every awk reads each line whole and the line is the one
+  every other rule's hit prints (sh and dash drop a NUL from a command's output). Two built cases (a fixture in git
+  would hold the byte where no diff shows it), ktfailopen-catch-package-after-a-nul and
+  ktfailopen-catch-finally-after-a-nul, one hit each at line 2 (atline), each also in the test scopes and clean
+  there (src/test and src/androidTest 192 copies each, commonTest and androidHostTest 230, from 190 and 228).
+  `--selftest --shard K/4` for K 1 to 4, side by side: 393, 393, 393 and 392 of 1571 cases, 0 failed, under sh and
+  under /bin/dash (1569 before); the gate clean on a fresh export (356 files) under sh and dash; canaries.sh PASS,
+  all 93 checks ran, on the export.
 - [x] The Shell rule for `game_random` is unchanged in M5 (its ffi and Kotlin fixtures stay hits until M5b).
   Proof: those fixtures still trip.
   Proof (M5 commit 4): `game_random_use` and its path list untouched (only the release probe's comment stripping moved
