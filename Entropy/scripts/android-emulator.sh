@@ -14,6 +14,12 @@
 #   APK_DIR  the signed APKs: app-shipping-release, app-withTestRegistry-release, their -androidTest
 #            APKs and capture-control-release (.apk)
 #   WORK_DIR a new directory for the AVD and the emulator's log (never the APKs or any capture)
+# Or: scripts/android-emulator.sh --booted API SERIAL ADB APK_DIR WORK_DIR [CLASS-TEST[-TEST...]...]
+#   the same steps from the keyguard on, on an emulator already up at SERIAL, with no AVD written and
+#   nothing booted or shut down: scripts/android-local.sh's kc37 (M5 Stage L, Q76; never a CI step).
+#   API (digits alone) only names the printed lines, and the default images' steps run, never 16k's.
+#   Each CLASS-TEST... runs that class without those tests (android-instrument.sh's form), for a check
+#   the caller names as one the device cannot make; one that no run here holds fails the leg.
 #
 # The emulator: a hand-written AVD (720x1280 at 320 dpi, 4 cores, 4 GB, no camera, no audio, no
 # snapshot, data wiped), no window, SwiftShader graphics, KVM. A boot that does not complete within
@@ -97,7 +103,10 @@
 # exit 1. On the 16 KB-page image: a leg with arm64-v8a listed passes, running NativeTest with the app
 # installed for x86_64 and again for arm64-v8a (the stand-in runner names the ABI of each run) and
 # naming armeabi-v7a as not listed; a page size of 4096, a failing NativeTest and an install whose
-# primaryCpuAbi stays x86_64 under --abi each exit 1. Too few arguments exit 2.
+# primaryCpuAbi stays x86_64 under --abi each exit 1. With --booted (API 37, no SDK): a leg naming
+# CaptureTest's control (c) passes with both CaptureTest runs given that test to leave out, the same
+# last five runs, no AVD written and no emulator started; one naming a class no run holds exits 1.
+# Too few arguments, --booted on 16k and a --booted class with no test exit 2.
 # Exit 0 when every case behaves, 1 otherwise. The legs run at once; it takes about a minute.
 set -u
 unset CDPATH
@@ -112,13 +121,14 @@ selftest() {
   cp "$self/android-frames.py" "$st/scripts/android-frames.py" || exit 2
   cat > "$st/scripts/android-instrument.sh" <<'EOF' || exit 2
 #!/bin/sh
-# The selftest's stand-in instrument runner: it names the package, the class and the ABI the app was
-# last installed for; CaptureTest reports the window's region; the class named in KC_FAILCLASS fails.
+# The selftest's stand-in instrument runner: it names the package, the class (with any tests it is to
+# leave out) and the ABI the app was last installed for; CaptureTest reports the window's region; the
+# class named in KC_FAILCLASS fails.
 echo "instrument stub: $5 $6 abi=$(cat "$KC_STUB/abi" 2>/dev/null)"
-case $6 in *.CaptureTest) printf 'kc: region=0,48,720,1184
+case ${6%%-*} in *.CaptureTest) printf 'kc: region=0,48,720,1184
 kc: display=720x1280
 ' ;; esac
-case $6 in *."${KC_FAILCLASS:-none}") exit 1 ;; esac
+case ${6%%-*} in *."${KC_FAILCLASS:-none}") exit 1 ;; esac
 exit 0
 EOF
   cat > "$st/emulator" <<'EOF' || exit 2
@@ -217,23 +227,38 @@ while not stopped:
     time.sleep(0.05)
 EOF
   chmod +x "$st/scripts/android-instrument.sh" "$st/emulator" "$st/adb" || exit 2
-  # leg NAME [VAR=VALUE...]: one whole leg on API 31 (16k for a NAME that starts with 16k) in the
-  # background, its case directory $st/NAME, with VAR=VALUE set for the stand-ins; its output in out
-  # and its exit status in rc.
-  leg() {
+  # case_dir NAME: the case directory $st/NAME, c, with the five stand-in APKs and a black screen.
+  case_dir() {
     c=$st/$1
-    case $1 in 16k*) lapi=16k limage=android-36/google_apis_ps16k/x86_64 ;; *) lapi=31 limage=android-31/default/x86_64 ;; esac
-    shift
-    mkdir -p "$c/sdk/emulator" "$c/sdk/system-images/$limage" "$c/apks" || exit 2
-    cp "$st/emulator" "$c/sdk/emulator/emulator" || exit 2
-    echo 'Pkg.Revision=1' > "$c/sdk/system-images/$limage/source.properties" || exit 2
+    mkdir -p "$c/apks" || exit 2
     for f in app-shipping-release app-shipping-release-androidTest app-withTestRegistry-release \
       app-withTestRegistry-release-androidTest capture-control-release; do
       : > "$c/apks/$f.apk" || exit 2
     done
     echo black > "$c/screen" || exit 2
+  }
+  # leg NAME [VAR=VALUE...]: one whole leg on API 31 (16k for a NAME that starts with 16k) in the
+  # background, its case directory $st/NAME, with VAR=VALUE set for the stand-ins; its output in out
+  # and its exit status in rc.
+  leg() {
+    case_dir "$1"
+    case $1 in 16k*) lapi=16k limage=android-36/google_apis_ps16k/x86_64 ;; *) lapi=31 limage=android-31/default/x86_64 ;; esac
+    shift
+    mkdir -p "$c/sdk/emulator" "$c/sdk/system-images/$limage" || exit 2
+    cp "$st/emulator" "$c/sdk/emulator/emulator" || exit 2
+    echo 'Pkg.Revision=1' > "$c/sdk/system-images/$limage/source.properties" || exit 2
     {
       env KC_STUB="$c" "$@" sh "$st/scripts/android-emulator.sh" "$lapi" "$c/sdk" "$st/adb" "$c/apks" "$c/work"
+      echo $? > "$c/rc"
+    } > "$c/out" 2>&1 &
+  }
+  # booted NAME CLASS-TEST...: a leg through --booted 37 emulator-5554 on the stand-in adb, with no SDK
+  # and no emulator started, in the background as leg's.
+  booted() {
+    case_dir "$1"
+    shift
+    {
+      env KC_STUB="$c" sh "$st/scripts/android-emulator.sh" --booted 37 emulator-5554 "$st/adb" "$c/apks" "$c/work" "$@"
       echo $? > "$c/rc"
     } > "$c/out" 2>&1 &
   }
@@ -277,6 +302,8 @@ EOF
   leg 16k-page-4096 KC_ABILIST=x86_64,arm64-v8a
   leg 16k-native-test-fails KC_PAGE_SIZE=16384 KC_FAILCLASS=NativeTest
   leg 16k-abi-not-forced KC_PAGE_SIZE=16384 KC_ABILIST=x86_64,arm64-v8a KC_ABI_STUCK=1
+  booted booted-pass com.keepcrypt.entropy.CaptureTest-disableSecureWindowsShowsTheScreenOnlyWhileSet
+  booted booted-class-unheld com.keepcrypt.entropy.NoSuchTest-aTest
   wait
   expect pass 0 "pass: api=31 control (a) raw frames" "pass: api=31 first frame (shipping): every frame black" \
     "pass: api=31 first frame (shipping, its first screen up)" "pass: api=31 first frame (registry, its first screen up)" \
@@ -287,17 +314,20 @@ EOF
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest" \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
     "emulator: api=31: every check passed"
-  # Steps 4a-4c: the pass leg's last five instrumented runs are FlowTest, CheckTest, SnapshotDrillTest
+  # Steps 4a-4c: the leg NAME's last five instrumented runs are FlowTest, CheckTest, SnapshotDrillTest
   # (on the test-registry app), LifecycleTest and then the killed CrashTest, so no run comes after the
   # crash test.
-  order=$(sed -n 's/^instrument stub: \([^ ]*\) \([^ ]*\) .*/\1 \2/p' "$st/pass/out" | tail -n 5 | tr '\n' ' ')
-  if [ "$order" = "com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest com.keepcrypt.entropy com.keepcrypt.entropy.CheckTest com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest " ]; then
-    passed=$((passed + 1))
-    echo "PASS pass: FlowTest, CheckTest, SnapshotDrillTest (test registry), LifecycleTest, then the killed CrashTest, last"
-  else
-    failed=$((failed + 1))
-    echo "FAIL pass: the leg's last five instrumented runs are $order"
-  fi
+  last_five() {
+    order=$(sed -n 's/^instrument stub: \([^ ]*\) \([^ ]*\) .*/\1 \2/p' "$st/$1/out" | tail -n 5 | tr '\n' ' ')
+    if [ "$order" = "com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest com.keepcrypt.entropy com.keepcrypt.entropy.CheckTest com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest " ]; then
+      passed=$((passed + 1))
+      echo "PASS $1: FlowTest, CheckTest, SnapshotDrillTest (test registry), LifecycleTest, then the killed CrashTest, last"
+    else
+      failed=$((failed + 1))
+      echo "FAIL $1: the leg's last five instrumented runs are $order"
+    fi
+  }
+  last_five pass
   expect motion-test-fails 1 \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest" \
@@ -355,14 +385,42 @@ EOF
   expect 16k-native-test-fails 1 \
     "FAIL: emulator: api=16k: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.NativeTest) (each reported above)"
   expect 16k-abi-not-forced 1 "FAIL: emulator: api=16k: the app's primaryCpuAbi is x86_64, not arm64-v8a"
-  sh "$st/scripts/android-emulator.sh" 31 > "$st/out" 2>&1
-  if [ "$?" -eq 2 ] && grep -q -e '^usage: ' "$st/out"; then
+  # --booted: the steps alone, both CaptureTest runs without the test named, and no AVD or emulator.
+  left=com.keepcrypt.entropy.CaptureTest-disableSecureWindowsShowsTheScreenOnlyWhileSet
+  expect booted-pass 0 "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.ControlTest" \
+    "instrument stub: com.keepcrypt.entropy $left" "instrument stub: com.keepcrypt.entropy.testregistry $left" \
+    "pass: api=37 control (a) raw frames" "pass: api=37 first frame (registry, its first screen up)" \
+    "emulator: api=37: every check passed"
+  last_five booted-pass
+  if [ ! -e "$st/booted-pass/work/avd" ] && [ ! -e "$st/booted-pass/emulator.pid" ]; then
     passed=$((passed + 1))
-    echo "PASS too few arguments"
+    echo "PASS booted-pass: no AVD written, no emulator started"
   else
     failed=$((failed + 1))
-    echo "FAIL too few arguments"
+    echo "FAIL booted-pass: an AVD was written or an emulator started"
   fi
+  expect booted-class-unheld 1 "pass: api=37 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=37: --booted named com.keepcrypt.entropy.NoSuchTest to run without aTest, and no instrumented run here is that class (each reported above)"
+  # refused NAME TEXT ARG...: the script on ARG... exits 2 with a line that starts with TEXT, running no leg.
+  refused() {
+    name=$1
+    text=$2
+    shift 2
+    sh "$st/scripts/android-emulator.sh" "$@" > "$st/out" 2>&1
+    if [ "$?" -eq 2 ] && grep -q -e "^$text" "$st/out"; then
+      passed=$((passed + 1))
+      echo "PASS $name"
+    else
+      failed=$((failed + 1))
+      echo "FAIL $name"
+      sed 's/^/  | /' "$st/out"
+    fi
+  }
+  refused "too few arguments" 'usage: ' 31
+  refused "--booted on 16k" 'android-emulator: --booted needs an API level of digits alone' \
+    --booted 16k emulator-5554 "$st/adb" "$st/pass/apks" "$st/out-booted"
+  refused "--booted with a class and no test" 'android-emulator: not a CLASS-TEST' \
+    --booted 37 emulator-5554 "$st/adb" "$st/pass/apks" "$st/out-booted" com.keepcrypt.entropy.CaptureTest
   echo "android-emulator selftest: $passed passed, $failed failed"
   [ "$failed" -eq 0 ]
 }
@@ -372,8 +430,13 @@ if [ $# -eq 1 ] && [ "$1" = --selftest ]; then
   exit
 fi
 
-if [ $# -ne 5 ]; then
+booted=
+if [ $# -ge 6 ] && [ "$1" = --booted ]; then
+  booted=yes
+  shift
+elif [ $# -ne 5 ]; then
   echo "usage: scripts/android-emulator.sh API SDK_ROOT ADB APK_DIR WORK_DIR" >&2
+  echo "       scripts/android-emulator.sh --booted API SERIAL ADB APK_DIR WORK_DIR [CLASS-TEST[-TEST...]...]" >&2
   exit 2
 fi
 api=$1
@@ -381,17 +444,37 @@ sdk=$2
 adb=$3
 apks=$4
 work=$5
-case $api in
-  31 | 36) level=$api tag=default ;;
-  16k) level=36 tag=google_apis_ps16k ;;
-  *) echo "android-emulator: API must be 31, 36 or 16k" >&2; exit 2 ;;
-esac
+shift 5
+serial=emulator-5554
+without=
+used=
+if [ -n "$booted" ]; then
+  # SERIAL in SDK_ROOT's place; API only names the printed lines; each CLASS-TEST... a class whose
+  # run leaves those tests out.
+  serial=$sdk
+  sdk=
+  case $api in
+    '' | *[!0-9]*) echo "android-emulator: --booted needs an API level of digits alone" >&2; exit 2 ;;
+  esac
+  for w; do
+    case $w in
+      *[!A-Za-z0-9_.-]* | -* | *- | *--*) echo "android-emulator: not a CLASS-TEST[-TEST...]: $w" >&2; exit 2 ;;
+      ?*-?*) without="$without $w" ;;
+      *) echo "android-emulator: not a CLASS-TEST[-TEST...]: $w" >&2; exit 2 ;;
+    esac
+  done
+else
+  case $api in
+    31 | 36) level=$api tag=default ;;
+    16k) level=36 tag=google_apis_ps16k ;;
+    *) echo "android-emulator: API must be 31, 36 or 16k" >&2; exit 2 ;;
+  esac
+  image="system-images;android-$level;$tag;x86_64"
+  sysdir=system-images/android-$level/$tag/x86_64
+  avd=kc$api
+fi
 
 here=$(cd "$(dirname "$0")" && pwd) || exit 2
-serial=emulator-5554
-image="system-images;android-$level;$tag;x86_64"
-sysdir=system-images/android-$level/$tag/x86_64
-avd=kc$api
 size=360x640
 cap=120
 control=com.keepcrypt.entropy.capturecontrol
@@ -407,49 +490,12 @@ dev() { "$adb" -s "$serial" "$@"; }
 # value CMD...: a device command's output on one line, carriage returns dropped.
 value() { dev shell "$@" 2>&1 | tr -d '\r' | tr '\n' ' ' | sed 's/ *$//'; }
 
-[ -x "$sdk/emulator/emulator" ] || fail "no emulator in $sdk"
-[ -d "$sdk/$sysdir" ] || fail "no $image in $sdk"
 [ -x "$adb" ] || fail "no adb at $adb"
 for f in app-shipping-release app-shipping-release-androidTest app-withTestRegistry-release \
   app-withTestRegistry-release-androidTest capture-control-release; do
   [ -f "$apks/$f.apk" ] || fail "no $apks/$f.apk"
 done
-mkdir -p "$work/avd/$avd.avd" || exit 2
-# The emulator takes SDK_ROOT for an SDK only when it has a platforms and a platform-tools directory:
-# an empty one, and the runner's platform-tools (ADB's own directory) linked in.
-mkdir -p "$sdk/platforms" || exit 2
-[ -e "$sdk/platform-tools" ] || ln -s "$(dirname "$adb")" "$sdk/platform-tools" || exit 2
-
-# The AVD, written by hand (no avdmanager): image.sysdir.1 is relative to SDK_ROOT.
-cat > "$work/avd/$avd.ini" <<EOF || exit 2
-avd.ini.encoding=UTF-8
-path=$work/avd/$avd.avd
-target=android-$level
-EOF
-cat > "$work/avd/$avd.avd/config.ini" <<EOF || exit 2
-avd.ini.encoding=UTF-8
-AvdId=$avd
-avd.ini.displayname=$avd
-abi.type=x86_64
-hw.cpu.arch=x86_64
-hw.cpu.ncore=4
-hw.ramSize=4096
-image.sysdir.1=$sysdir/
-tag.id=$tag
-hw.lcd.width=720
-hw.lcd.height=1280
-hw.lcd.density=320
-hw.keyboard=yes
-hw.gpu.enabled=yes
-hw.gpu.mode=swiftshader_indirect
-hw.camera.back=none
-hw.camera.front=none
-hw.audioInput=no
-hw.audioOutput=no
-disk.dataPartition.size=6G
-fastboot.forceColdBoot=yes
-showDeviceFrame=no
-EOF
+mkdir -p "$work" || exit 2
 
 emu_pid=
 stop_emulator() {
@@ -468,12 +514,6 @@ stop_emulator() {
   emu_pid=
 }
 trap stop_emulator EXIT
-
-options="-avd $avd -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader_indirect"
-options="$options -camera-back none -camera-front none -port 5554"
-if "$sdk/emulator/emulator" -help 2>&1 | grep -q -e '-no-metrics'; then
-  options="$options -no-metrics"
-fi
 
 # boot N: start the emulator (attempt N) and wait up to 600 s for sys.boot_completed; 1 on failure.
 boot() {
@@ -499,15 +539,63 @@ boot() {
 }
 
 "$adb" start-server > /dev/null 2>&1 || fail "adb start-server failed"
-echo "== $image: $(sed -n 's/^Pkg[.]Revision=//p' "$sdk/$sysdir/source.properties")"
-echo "== emulator: $("$sdk/emulator/emulator" -version 2>&1 | head -n 1)"
-if ! boot 1; then
-  tail -n 40 "$work/emulator-1.log"
-  stop_emulator
-  echo "re-run: api=$api emulator boot attempt 2 (the plan allows one re-run of a boot failure, never of a test)"
-  if ! boot 2; then
-    tail -n 40 "$work/emulator-2.log"
-    fail "the emulator did not boot in two attempts"
+# The leg's own AVD and boot; with --booted the emulator is already up, and nothing here runs.
+if [ -z "$booted" ]; then
+  [ -x "$sdk/emulator/emulator" ] || fail "no emulator in $sdk"
+  [ -d "$sdk/$sysdir" ] || fail "no $image in $sdk"
+  mkdir -p "$work/avd/$avd.avd" || exit 2
+  # The emulator takes SDK_ROOT for an SDK only when it has a platforms and a platform-tools directory:
+  # an empty one, and the runner's platform-tools (ADB's own directory) linked in.
+  mkdir -p "$sdk/platforms" || exit 2
+  [ -e "$sdk/platform-tools" ] || ln -s "$(dirname "$adb")" "$sdk/platform-tools" || exit 2
+
+  # The AVD, written by hand (no avdmanager): image.sysdir.1 is relative to SDK_ROOT.
+  cat > "$work/avd/$avd.ini" <<EOF || exit 2
+avd.ini.encoding=UTF-8
+path=$work/avd/$avd.avd
+target=android-$level
+EOF
+  cat > "$work/avd/$avd.avd/config.ini" <<EOF || exit 2
+avd.ini.encoding=UTF-8
+AvdId=$avd
+avd.ini.displayname=$avd
+abi.type=x86_64
+hw.cpu.arch=x86_64
+hw.cpu.ncore=4
+hw.ramSize=4096
+image.sysdir.1=$sysdir/
+tag.id=$tag
+hw.lcd.width=720
+hw.lcd.height=1280
+hw.lcd.density=320
+hw.keyboard=yes
+hw.gpu.enabled=yes
+hw.gpu.mode=swiftshader_indirect
+hw.camera.back=none
+hw.camera.front=none
+hw.audioInput=no
+hw.audioOutput=no
+disk.dataPartition.size=6G
+fastboot.forceColdBoot=yes
+showDeviceFrame=no
+EOF
+
+  options="-avd $avd -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader_indirect"
+  options="$options -camera-back none -camera-front none -port 5554"
+  if "$sdk/emulator/emulator" -help 2>&1 | grep -q -e '-no-metrics'; then
+    options="$options -no-metrics"
+  fi
+
+  echo "== $image: $(sed -n 's/^Pkg[.]Revision=//p' "$sdk/$sysdir/source.properties")"
+  echo "== emulator: $("$sdk/emulator/emulator" -version 2>&1 | head -n 1)"
+  if ! boot 1; then
+    tail -n 40 "$work/emulator-1.log"
+    stop_emulator
+    echo "re-run: api=$api emulator boot attempt 2 (the plan allows one re-run of a boot failure, never of a test)"
+    if ! boot 2; then
+      tail -n 40 "$work/emulator-2.log"
+      fail "the emulator did not boot in two attempts"
+    fi
   fi
 fi
 
@@ -551,11 +639,19 @@ fail_later() {
 }
 
 # instrument TARGET CLASS...: android-instrument.sh on TARGET's test APK, its output kept in
-# $work/instrument.log for the kc: lines.
+# $work/instrument.log for the kc: lines; a class --booted named runs without the tests it named.
 instrument() {
   target=$1
   shift
-  sh "$here/android-instrument.sh" "$adb" "$serial" "$api" "$target.test" "$target" "$@" > "$work/instrument.log" 2>&1
+  tests=
+  for t; do
+    for w in $without; do
+      case $w in "$t"-*) t=$w used="$used $w" ;; esac
+    done
+    tests="$tests $t"
+  done
+  # $tests unquoted: class and test names hold no space.
+  sh "$here/android-instrument.sh" "$adb" "$serial" "$api" "$target.test" "$target" $tests > "$work/instrument.log" 2>&1
   rc=$?
   cat "$work/instrument.log"
   [ "$rc" -eq 0 ] || fail_later "instrumented tests failed on $target ($*)"
@@ -681,6 +777,13 @@ instrument com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest
 # 4c. The crash path, the last instrumented run: the crash test's process ends during the test, by
 # the app's own handler, and the judge reads the device's whole crash buffer and DropBox.
 instrument com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest
+# A class --booted named that no run holds left nothing out, and never passes for one that did.
+for w in $without; do
+  case " $used " in
+    *" $w "*) ;;
+    *) fail_later "--booted named ${w%%-*} to run without ${w#*-}, and no instrumented run here is that class" ;;
+  esac
+done
 
 # wait_for FILE TEXT SECONDS PID: until FILE holds TEXT; 1 when PID exits first or time runs out.
 wait_for() {

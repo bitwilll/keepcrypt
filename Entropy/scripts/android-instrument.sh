@@ -9,10 +9,13 @@
 #   ADB the job's own adb; SERIAL the emulator (emulator-5554); API its API level, for the printed
 #   lines; TEST_PACKAGE the instrumented-test APK's package (TARGET_PACKAGE.test); TARGET_PACKAGE the
 #   app it instruments; each TEST a class, or CLASS#METHOD, or either with the prefix killed: for a
-#   test that ends its own process (the crash test, M5 group 14).
+#   test that ends its own process (the crash test, M5 group 14); or CLASS-METHOD[-METHOD...], the
+#   class without those tests (am instrument's notClass), for a check the device cannot make, which
+#   the caller names (scripts/android-local.sh on a user build; CI's legs never leave one out). Its
+#   PASS line names each test left out, and a run that starts one of them fails.
 #
-# Each run is `am instrument -w -r -e class TEST TEST_PACKAGE/androidx.test.runner.AndroidJUnitRunner`.
-# It passes only when its raw output holds a test start for every test and as many passes, no
+# Each run is `am instrument -w -r -e class TEST TEST_PACKAGE/androidx.test.runner.AndroidJUnitRunner`
+# (with `-e notClass CLASS#METHOD,...` after the class for a CLASS-METHOD... TEST). It passes only when its raw output holds a test start for every test and as many passes, no
 # failure, error, ignored test or assumption failure, the runner's final INSTRUMENTATION_CODE: -1 and
 # no INSTRUMENTATION_FAILED, INSTRUMENTATION_ABORTED or shortMsg (a crashed process). A killed: run
 # passes only when the process ended during it instead: a test started, none passed, and the activity
@@ -38,7 +41,9 @@
 # INSTRUMENTATION_FAILED and _ABORTED, no final INSTRUMENTATION_CODE: -1, no test, a process still
 # running after 20 s, a crash and a not-responding window, a crash-buffer line naming one of our
 # packages and a new data_app_crash entry each fail (exit 1); an unreadable dropbox and too few
-# arguments exit 2. For a killed: test: a run whose process ends during its one test (shortMsg), with
+# arguments exit 2. A class without one of its tests, and without two, passes with its notClass
+# filter on the command line and the tests named in its PASS line; one whose run starts a test it was
+# to leave out fails. For a killed: test: a run whose process ends during its one test (shortMsg), with
 # the trigger's crash in the crash buffer, passes, and so does one where the runner also reports that
 # test failed; a run that passes, one whose test passes before the shortMsg, one with no test started
 # and one that ends without a shortMsg fail, and so do, after it, a crash window, no crash of ours, two,
@@ -147,6 +152,9 @@ case "$*" in
     ;;
   'am instrument -w -r -e class com.keepcrypt.entropy.CaptureTest com.keepcrypt.entropy.test/androidx.test.runner.AndroidJUnitRunner' | \
     'am instrument -w -r -e class com.keepcrypt.entropy.CrashTest com.keepcrypt.entropy.test/androidx.test.runner.AndroidJUnitRunner')
+    cat "$KC_STUB/raw" ;;
+  'am instrument -w -r -e class com.keepcrypt.entropy.CaptureTest -e notClass '*' com.keepcrypt.entropy.test/androidx.test.runner.AndroidJUnitRunner')
+    echo "$*" > "$KC_STUB/command"
     cat "$KC_STUB/raw" ;;
   'pidof com.keepcrypt.entropy')
     # alive holds how many more times the process is still running, or "always".
@@ -262,6 +270,30 @@ EOF
   fresh
   : > "$st/c/dropbox-fails"
   expect "an unreadable dropbox" 2 "dumpsys dropbox cannot be read"
+  # A class without some of its tests (CLASS-METHOD...), and the notClass filter the stand-in adb was given.
+  cls=com.keepcrypt.entropy.CaptureTest
+  # filtered NAME FILTER: the stand-in adb's am instrument command line held the notClass filter FILTER.
+  filtered() {
+    want="am instrument -w -r -e class $cls -e notClass $2 com.keepcrypt.entropy.test/androidx.test.runner.AndroidJUnitRunner"
+    if [ "$(cat "$st/c/command" 2>/dev/null)" = "$want" ]; then
+      passed=$((passed + 1))
+      echo "PASS $1: the command line"
+    else
+      failed=$((failed + 1))
+      echo "FAIL $1: the command line is '$(cat "$st/c/command" 2>/dev/null)', not '$want'"
+    fi
+  }
+  fresh
+  test=$cls-test3
+  expect "a class without one of its tests" 0 "instrument: api=31 PASS $cls (2 tests, without test3; process gone"
+  filtered "a class without one of its tests" "$cls#test3"
+  fresh
+  test=$cls-test3-test4
+  expect "a class without two of its tests" 0 "instrument: api=31 PASS $cls (2 tests, without test3 test4; process gone"
+  filtered "a class without two of its tests" "$cls#test3,$cls#test4"
+  fresh
+  test=$cls-test2
+  expect "a run that starts a test it was to leave out" 1 "the run started test2, which it was to leave out"
   # A test that ends its own process (killed:).
   test=killed:com.keepcrypt.entropy.CrashTest
   killed='the process did not end during the test'
@@ -415,8 +447,22 @@ for t in "$@"; do
       t=${t#killed:}
       ;;
   esac
+  # CLASS-METHOD[-METHOD...]: the class without those tests.
+  without=
+  case $t in
+    *-*)
+      without=$(printf '%s\n' "${t#*-}" | tr '-' ' ')
+      t=${t%%-*}
+      ;;
+  esac
+  filter=
+  for m in $without; do
+    filter="$filter,$t#$m"
+  done
+  [ -z "$filter" ] || filter="-e notClass ${filter#,}"
   before=$(app_crashes) || { echo "instrument: api=$api: dumpsys dropbox cannot be read" >&2; exit 2; }
-  dev shell am instrument -w -r -e class "$t" "$testpkg/androidx.test.runner.AndroidJUnitRunner" > "$tmp/raw" 2>&1
+  # $filter unquoted: its words, the option and the class's own names, hold no space.
+  dev shell am instrument -w -r -e class "$t" $filter "$testpkg/androidx.test.runner.AndroidJUnitRunner" > "$tmp/raw" 2>&1
   rc=$?
   tr -d '\r' < "$tmp/raw" > "$tmp/out"
   sed -n 's/^INSTRUMENTATION_STATUS: kc_probe=/probe: api='"$api"' /p' "$tmp/out"
@@ -449,6 +495,14 @@ for t in "$@"; do
     cat "$tmp/out"
     fail "$t: $started started, $passed passed, $bad failed, errored, ignored or aborted (adb exit $rc)"
   fi
+  for m in $without; do
+    if grep -q -x -F -e "INSTRUMENTATION_STATUS: test=$m" "$tmp/out"; then
+      cat "$tmp/out"
+      fail "$t: the run started $m, which it was to leave out"
+    fi
+  done
+  left=
+  [ -z "$without" ] || left=", without $without"
   # The judge from the shell. am instrument stops the target when the run ends; allow it 20 s.
   i=0
   while dev shell pidof "$target" > /dev/null 2>&1; do
@@ -476,8 +530,8 @@ EOF
   after=$(app_crashes) || fail "$t: dumpsys dropbox cannot be read"
   [ "$after" -eq "$before" ] || fail "$t: dumpsys dropbox gained $((after - before)) data_app_crash entries"
   if [ -n "$killed" ]; then
-    echo "instrument: api=$api PASS $t (killed during the test, as it must be; process gone, no crash window, the crash buffer holds only the trigger's crash (Q75), dropbox clean)"
+    echo "instrument: api=$api PASS $t (killed during the test, as it must be$left; process gone, no crash window, the crash buffer holds only the trigger's crash (Q75), dropbox clean)"
   else
-    echo "instrument: api=$api PASS $t ($passed tests; process gone, no crash window, crash buffer and dropbox clean)"
+    echo "instrument: api=$api PASS $t ($passed tests$left; process gone, no crash window, crash buffer and dropbox clean)"
   fi
 done

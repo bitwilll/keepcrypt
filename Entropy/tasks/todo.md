@@ -14523,6 +14523,38 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   run locally (CI's AVDs have none, M5-59): a local check scans a go-ahead QR placed in the virtual scene and reads
   `dumpsys media.camera` for the app's camera client while the scan screen shows and after Home and Back. Local only.
   Proof: each class's local result on kc37, and the local scan check's (or why it cannot run).
+  Proof (M5 commit L2, partial: local, Q76; CI runs android-emulator.sh's and android-instrument.sh's selftests at
+  this commit): android-local.sh made kc37 (~/.android/avd/kc37.ini and kc37.avd/config.ini as avdmanager writes
+  them: the installed android-37.0 google_apis_playstore arm64-v8a image, CI's 720x1280 at 320 dpi, 4 cores, 4 GB,
+  hw.camera.back=virtualscene), then kept it as its own on the next run, and booted it twice a run on console port
+  5580 with -no-snapshot -wipe-data (12 to 14 s each): first with -camera-back none, the CI legs' no-camera facts
+  (with the virtual scene, SnapshotDrillTest's two scanned proofs fail on a scan screen that finds a camera), for a
+  CI leg's steps 1-6 through android-emulator.sh's new --booted mode, then with the virtual scene for the Camera2
+  check. kc37 is a user build (ro.build.type=user, ro.debuggable=0; adb root says "adbd cannot run as root in
+  production builds", which no check needs), and one check is named on every run and left out of both CaptureTest
+  runs through android-instrument.sh's new CLASS-TEST form (`-e notClass`): control (c),
+  disableSecureWindowsShowsTheScreenOnlyWhileSet (with disable_secure_windows=1 the app's captures stayed black, "the
+  setting is read: false"; CI's API 36 leg makes it). settings, screenrecord's raw frames, dumpsys (dropbox,
+  content_capture, media.camera), logcat -b crash, pm clear and pm grant all worked on the user build. The whole run
+  at this commit (13 min 28 s, exit 0), each class in android-emulator.sh's order: ControlTest 2 tests, CaptureTest
+  6 and 6 (shipping, test registry), PhoneMotionTest 1, FlowTest 3, CheckTest 1, SnapshotDrillTest 3, LifecycleTest
+  4, CrashTest killed during its test as it must be; control (a) in raw frames and the four first-frame recordings
+  passed. LifecycleTest's leavingDuringABackupsScryptDiscardsTheSession races the scrypt as its KDoc says, and the
+  native arm64 scrypt is faster than CI's: it won at its third attempt here (left after 472 ms), lost all three in
+  the run before (each reply 9 to 12 ms after the leave, which came at 410 to 566 ms) and won at the first in three
+  runs of it alone (left after 643 to 825 ms). Camera2 (M5-59): the shipping app's camera client is listed among dumpsys
+  media.camera's active clients while the scan screen shows, gone within 10 s of Home, listed again once the app is
+  back and its cover tapped, and gone within 10 s of Back, on the seal card (the camera service's log: CONNECT and
+  DISCONNECT twice). The virtual scene holds goahead-collision-dice-50.png on its wall, and the SDK's
+  Walk_to_image_room macro turns the camera to it (the system camera's preview shows it about 380 of 720 px wide, a
+  chair back over its lower edge), but the scanner decoded nothing in 60 s (90 s in an exploratory run), so the
+  run names that check as not made; `-camera-back imagefile:` gave the app no camera at all. The emulator wrote
+  only under kc37.avd and the run's temporary directory (its HOME, with adb's key pair copied in), nothing under
+  ~/.android but kc37's files. The APKs came from the script's own build with L1's diagnostic
+  (ORG_GRADLE_PROJECT_android.aapt2FromMavenOverride naming build-tools 36.0.0's aapt2, strict verification on),
+  as the strict build still stops on aapt2's osx jar. --selftest: android-local.sh 22 passed (and three mutants
+  each failed it), android-emulator.sh 25 (20 before), android-instrument.sh 39 (34 before), 0 failed under sh and
+  dash.
 
 **Stages E3 and E4** run commits 19, 20 and 21 as planned, each built and tested locally before it is committed.
 
