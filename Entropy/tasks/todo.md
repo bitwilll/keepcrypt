@@ -14782,6 +14782,43 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   LifecycleTest's leave falls inside the scrypt on a fast host every time.
   Proof: the gate and canaries.sh clean in a working tree that has built; a local run with each connection to Google cut
   or named; LifecycleTest's scrypt case 20 times on kc37 with no failure, and CI's legs green.
+  Proof (M5 commit L3, partial: local, Q76; CI runs the legs, the gate and the canaries at the next push): (a) the
+  gate's list() and canaries.sh's four tree copies (one copy_tree now) leave out the directories mobile/android/.gradle,
+  mobile/android/build and every build/ one level under mobile/android (each module's, with no list to keep beside
+  settings.gradle.kts), and nothing else: a build/ deeper down is read, and a file or link of those names too. In this
+  working tree after the run's local Gradle build, the gate was clean in 34 s, 360 files scanned (before, 1,891 hits in
+  3,775 files in 6 min 13 s, every one in those directories), and canaries.sh passed all 93 checks (rc 0, 7 min 13 s).
+  --selftest 1556 passed, 0 failed under sh and dash (1547 before): a file KtLog would hit, under .gradle/, the root
+  build/ and capture-control's build/, is the Build hit alone when tracked and clean when untracked; under a deeper
+  build/ and a module's .gradle/ it is the KtLog hit; a link named build to a directory is exit 2. Three gate mutants
+  each fail only their own cases: no skip (the six tracked and untracked cases), a skip at any depth (the deeper
+  build/), and links skipped too (the link). (b) A watched run with a new emulator HOME (lsof -n -P on the emulator's
+  and netsim's processes every 0.05 s) showed what the emulator writes: emu-update-last-check.ini, the one line
+  `_version.3D37.2.12.0.26coreVersion.3Dqemu2.25202.12.0 = <time>`, and emu-last-feature-flags.protobuf, the fetched
+  EmulatorFeaturePatterns, whose field 1, last_download_time, is the fetch's own record (the descriptor in
+  libandroid-emu-protos.dylib); qemu-system-aarch64 connected to 172.217.26.14:443 twice within 3 s of the start.
+  Seeded with that line and the SDK's bundled text-format flags alone, the update check stopped (no userid made) but
+  the flags were fetched again (the file replaced by 5,010 fetched bytes); with a last_download_time line before the
+  bundled flags, neither (both files unchanged, no socket beyond the loopback). The guest's Wi-Fi goes through netsim ("Successfully initialized netsim WiFi"), which
+  -wifi-user-mode-options does not reach: with it set, netsimd made 117 connections past the loopback within seven
+  minutes of boot, to 29 of Google's addresses (443, 5228, 80) and to 10.0.2.3-6 and fec0::3 on 853. With -network-user-mode-options restrict=on and netsim's access point given a WPA
+  passphrase the guest does not hold: `cmd wifi status` "Wifi is enabled", "Wifi is not connected", wifi_on 0 and 1
+  under cmd wifi, the mobile network up on eth0 (10.0.2.15) with nothing routed beyond the emulator. The whole
+  android-local.sh run (its own strict build, no aapt2 override: BUILD SUCCESSFUL; then both boots; exit 0 in 809 s):
+  every class passed as at L2c (FlowTest 3 and LifecycleTest 4, their Wi-Fi cases among them), NativeTest natively,
+  the camera client's four checks, the decode not met as before, and both seeds as written after each boot; its watch's
+  7,231 samples through both boots (about ten a second) held 136,897 socket lines, all on the loopback (adb, the
+  console, netsim's gRPC), none beyond it. Nothing found that cannot be cut, and the header says so. --selftest:
+  android-local.sh 29 passed (27 before: the seeds checked at each boot, and an emulator that changes its seeded update
+  check, exit 1, named after each boot), three mutants (no seed, no check after the boots, no restrict=on) each fail
+  it; 0 failed under sh and dash; android-emulator.sh 25 passed. (c) LifecycleTest's scrypt case leaves by
+  moveTaskToBack in the main-thread step that starts the call, instead of Home (UI Automator's press waits for the UI to
+  go idle first); the judge, the three attempts and the timeouts are unchanged. On kc37, in the whole run: left after
+  106 ms, the reply after 510 ms, at the first attempt. 20 runs of the case alone (each its own am instrument through
+  android-instrument.sh's judge, on one boot made as android-local.sh makes it, nothing beyond the loopback in its
+  watch): 20 passed, each at its first attempt, left after 102 to 122 ms and the reply back after 505 to 718 ms (L2's
+  Home: left after 410 to 825 ms, and the scrypt won all three attempts in one run). JVM tests, rerun on the Mac:
+  :core-ffi 27 in 9 classes, :screens 79 in 13, :app 7 in 3 for each flavour, :secure-ui 3 in 1, no failure.
 - [ ] L4. The gates job's self-test in two shards beside the canaries (M5-63).
   Proof: the shards' counts add up to the whole list's, locally and in CI; the gates job's time in that run, under 12
   minutes.

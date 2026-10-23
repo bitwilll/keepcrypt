@@ -538,11 +538,18 @@
 #              (tasks/todo.md, M5 group 2; the re-plan's lead decision M5-28): Gradle's output, its
 #              per-project cache and Kotlin/Native's project-local data directory never enter git,
 #              so a committed one is a hit, "Build: <file>: <detail>" with no line. The tracked
-#              files come from git ls-files, never from the scan list: list() keeps no build/ skip,
-#              since CI's gates runs on a fresh checkout, where a skip could only hide committed
-#              files, and an ignored local build tree is not a hit. A tree that is no git work tree
-#              (a copy, the selftest's scratch trees) has no tracked file, so the rule is silent
-#              there; git missing from PATH is exit 2. Gradle's own build.gradle.kts files,
+#              files come from git ls-files, never from the scan list, so list() can leave out the
+#              ignored output Q76's local builds leave, and does (lead decision M5-62 (a)):
+#              mobile/android/.gradle/, mobile/android/build/ and every build/ one level under
+#              mobile/android (each module's, with no list to keep beside settings.gradle.kts),
+#              exactly those directories; a build/ deeper down (a package directory, say) is
+#              scanned, and so is a file or a link of one of those names (a link to a directory
+#              refused, as anywhere). In a working tree that has built, their generated reports
+#              held 1,874 hits (M5-62), and CI's fresh checkout has none of them. The skip hides
+#              nothing tracked: this rule refuses every tracked file there, so only an untracked
+#              one goes unread, and no untracked file is in CI's tree. A tree that is no git
+#              work tree (a copy, the selftest's scratch trees) has no tracked file, so the rule is
+#              silent there; git missing from PATH is exit 2. Gradle's own build.gradle.kts files,
 #              buildSrc/ and gradle/ (the version catalog and the wrapper) are not output
 #              directories and pass.
 #              The index is read with ls-files -s -z: -z names a file whole where plain ls-files
@@ -856,8 +863,9 @@
 # Portable on purpose: POSIX sh, POSIX ERE (no \b \s \< \>, no -P -w), POSIX sed (BRE, in
 # selectable() and textselection(); ERE with -E, which BSD and GNU sed share, in threads_by_path())
 # and LC_ALL=C, so BSD grep and sed (macOS) and GNU grep and sed (ubuntu CI) agree.
-# Not scanned: .git/ target/ docs/ tasks/ CLAUDE.md scripts/testdata/, this script, and files with
-# a binary extension (the list at $binext below).
+# Not scanned: .git/ target/ docs/ tasks/ CLAUDE.md scripts/testdata/, this script, files with a
+# binary extension (the list at $binext below), and the ignored Gradle output a local build leaves,
+# mobile/android/.gradle/, mobile/android/build/ and mobile/android/*/build/ (see Build).
 #
 # Symlinks: a file symlink is scanned under its link name. A directory symlink fails the gate
 # (exit 2, naming the link): its target may be outside the repo or under an excluded path, where
@@ -3042,9 +3050,14 @@ EOF
 }
 
 # list [FIND-TESTS]: paths to scan, one per line. Symlinks count, so a linked file is checked under
-# its link name, and scan() refuses a link to a directory.
+# its link name, and scan() refuses a link to a directory. A local Gradle build's ignored output is
+# left out (the header's Build), as directories only, so a file or a link of that name is listed:
+# find's -path lets * match a /, so a build/ one level under mobile/android is one that matches the
+# first pattern but not the second.
 list() {
-  find . \( -path ./.git -o -path ./target -o -path ./docs -o -path ./tasks -o -path ./scripts/testdata \) -prune \
+  find . \( -path ./.git -o -path ./target -o -path ./docs -o -path ./tasks -o -path ./scripts/testdata \
+    -o -type d \( -path ./mobile/android/.gradle -o -path ./mobile/android/build \
+    -o -path './mobile/android/*/build' ! -path './mobile/android/*/*/build' \) \) -prune \
     -o \( -type f -o -type l \) ! -path ./CLAUDE.md ! -path ./scripts/banned-api-check.sh ${1+"$@"} -print
 }
 
@@ -3929,6 +3942,37 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   git init -q "$d" || exit 2
   mkdir -p "$d/mobile/android/app/build" && echo 'kc.gate.canary=true' >"$d/mobile/android/app/build/x.kt" || exit 2
   expect 'clean-build-untracked' "$d" clean
+  # list()'s skip of a local build's ignored output (M5-62 (a)): a file that KtLog would hit, under
+  # mobile/android/.gradle/, mobile/android/build/ or a module's build/, is the Build hit alone when
+  # tracked (the rule still sees it, and the scan did not read it) and clean when untracked (not
+  # read); the same file under a build/ deeper down or a module's .gradle/ is read, and a link named
+  # build to a directory is refused, so only those directories are skipped.
+  for case in 'dot-gradle:mobile/android/.gradle/9.7.1/x.kt' 'root-build:mobile/android/build/x.kt' \
+    'module-build:mobile/android/capture-control/build/x.kt'; do
+    x=${case#*:}
+    for tracked in yes no; do
+      fresh
+      git init -q "$d" || exit 2
+      mkdir -p "$d/${x%/*}" && echo 'android.util.Log.d("kc", "gate canary")' >"$d/$x" || exit 2
+      if [ "$tracked" = yes ]; then
+        git -C "$d" add -f -- "$x" || exit 2
+        expect "build-tracked-unread-${case%%:*}" "$d" Build "$x"
+      else
+        expect "clean-build-untracked-unread-${case%%:*}" "$d" clean
+      fi
+    done
+  done
+  for case in 'deeper-build:mobile/android/app/src/main/kotlin/build/x.kt' 'module-dot-gradle:mobile/android/app/.gradle/x.kt'; do
+    x=${case#*:}
+    fresh
+    git init -q "$d" || exit 2
+    mkdir -p "$d/${x%/*}" && echo 'android.util.Log.d("kc", "gate canary")' >"$d/$x" || exit 2
+    expect "ktlog-build-skip-reads-${case%%:*}" "$d" KtLog "$x"
+  done
+  fresh
+  git init -q "$d" || exit 2
+  mkdir -p "$d/mobile/android/app/src" && ln -s src "$d/mobile/android/app/build" || exit 2
+  expect 'error-build-skip-link-named-build' "$d" error 'mobile/android/app/build is a symlink to a directory'
   fresh
   git init -q "$d" || exit 2
   mkdir -p "$d/mobile/android/app" "$d/mobile/android/buildSrc" "$d/mobile/android/gradle/wrapper" || exit 2

@@ -81,6 +81,32 @@ static_check() {
         status=1
     fi
 }
+# copy_tree SRC DEST: DEST made, then each entry of the directory SRC (dot entries included) copied
+# into it by cp -RP, but target/ and .git/ at the top and the ignored output a local Gradle build
+# leaves (lead decision M5-62 (a)): the directories mobile/android/.gradle/, mobile/android/build/
+# and every build/ one level under mobile/android, exactly what scripts/banned-api-check.sh's list()
+# leaves out of its scan, so no copy holds a local build's output (CI's fresh checkout has none). The
+# directories above them, mobile/, mobile/android/ and each one in it, are walked (a call of
+# copy_tree each, the last step of its loop's turn) instead of copied whole; in a case pattern * also
+# matches a /, so mobile/android/*/* is the walk's floor: copied whole, never walked.
+copy_tree() {
+    mkdir "$2" || exit 1
+    for copy_e in "$1"/* "$1"/.[!.]* "$1"/..?*; do
+        [ -e "$copy_e" ] || continue
+        copy_rel=${copy_e#"$root"/}
+        case $copy_rel in
+            target | .git) continue ;;
+        esac
+        if [ -d "$copy_e" ] && [ ! -L "$copy_e" ]; then
+            case $copy_rel in
+                mobile/android/.gradle | mobile/android/build | mobile/android/*/build) continue ;;
+                mobile/android/*/*) ;;
+                mobile | mobile/android | mobile/android/*) copy_tree "$copy_e" "$2/${copy_e##*/}"; continue ;;
+            esac
+        fi
+        cp -RP "$copy_e" "$2/" || exit 1
+    done
+}
 
 # deny.toml: one crate whose graph needs every property of the policy to hold.
 expect_failure "deny-banned" cargo deny --color never \
@@ -114,16 +140,10 @@ verdict
 
 # The real crates: a fallback added to each one's lib.rs must fail clippy as CI runs it. This
 # catches the lint being switched off in that crate (Cargo.toml [lints], a crate-level allow),
-# which the standalone canary above cannot see. The copy leaves out target/ and .git/.
+# which the standalone canary above cannot see. The copy (copy_tree) leaves out target/, .git/ and a
+# local build's Gradle output.
 tmp="$work/repo"
-mkdir "$tmp" || exit 1
-for f in "$root"/* "$root"/.[!.]* "$root"/..?*; do
-    [ -e "$f" ] || continue
-    case ${f##*/} in
-        target | .git) continue ;;
-    esac
-    cp -RP "$f" "$tmp/" || exit 1
-done
+copy_tree "$root" "$tmp"
 for lib in core/src/lib.rs ffi/src/lib.rs pi/app/src/lib.rs; do
     case $lib in
         core/*) pkg=keepcrypt-core ;;
@@ -426,14 +446,7 @@ fi
 # (fetched for every target by real-deny-bans above).
 name=deny-nix-feature
 feat="$work/features"
-mkdir "$feat" || exit 1
-for f in "$root"/* "$root"/.[!.]* "$root"/..?*; do
-    [ -e "$f" ] || continue
-    case ${f##*/} in
-        target | .git) continue ;;
-    esac
-    cp -RP "$f" "$feat/" || exit 1
-done
+copy_tree "$root" "$feat"
 cat >> "$feat/pi/sim/Cargo.toml" <<'EOF'
 
 # Gate canary (scripts/canaries.sh, temp copy only): a nix feature beyond deny.toml's list.
@@ -977,14 +990,7 @@ verdict
 # scripts/check-path-deps.sh as a member outside the pinned six.
 name=path-member-capi
 mem="$work/members"
-mkdir "$mem" || exit 1
-for f in "$root"/* "$root"/.[!.]* "$root"/..?*; do
-    [ -e "$f" ] || continue
-    case ${f##*/} in
-        target | .git) continue ;;
-    esac
-    cp -RP "$f" "$mem/" || exit 1
-done
+copy_tree "$root" "$mem"
 mkdir -p "$mem/ffi/capi/src" || exit 1
 cat > "$mem/ffi/capi/Cargo.toml" <<'EOF'
 # Gate canary (scripts/canaries.sh, temp copy only): the iPhone boundary as a member in M5.
@@ -1247,14 +1253,7 @@ static_check "graph: no serde in core's normal or build graph; getrandom's only 
 # a macOS host), which --target all would pass. Each is already in Cargo.lock, so the copy's
 # lockfile updates offline.
 graph="$work/graph"
-mkdir "$graph" || exit 1
-for f in "$root"/* "$root"/.[!.]* "$root"/..?*; do
-    [ -e "$f" ] || continue
-    case ${f##*/} in
-        target | .git) continue ;;
-    esac
-    cp -RP "$f" "$graph/" || exit 1
-done
+copy_tree "$root" "$graph"
 replace "$graph/core/Cargo.toml" 'ed25519-dalek = { version = "3.0.0", default-features = false }' \
     'ed25519-dalek = { version = "3.0.0", default-features = false, features = ["legacy_compatibility"] }'
 replace "$graph/core/Cargo.toml" 'poly1305 = { version = "0.9.1", default-features = false, features = ["zeroize"] }' \

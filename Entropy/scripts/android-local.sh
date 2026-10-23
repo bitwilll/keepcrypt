@@ -25,13 +25,28 @@
 # its own console port, 5580 (serial emulator-5580; a device already there stops the run), with
 # -no-snapshot (no snapshot saved) and -wipe-data (a fresh data partition each boot), SwiftShader
 # graphics and no audio, as CI's legs run theirs. It writes only under ~/.android/avd/kc37.avd and the
-# run's temporary directory, which is its HOME (its console token, its settings and its update check's
-# time land there) and holds a copy of adb's key pair, so that the user build trusts the running adb
-# server; the directory is removed at the end. The network: the emulator itself contacts
-# dl.google.com as it starts, for its update check (a newer emulator, asked with a user id it makes
-# in its HOME) and its feature flags; with a new HOME each run, no earlier check is kept, so each
-# run's first boot does both (the second finds the first's check in the same HOME). The image's own
-# services reach the network while the guest is online, as on any phone. Nothing else of ours does.
+# run's temporary directory, which is its HOME (its console token and its settings land there) and
+# holds a copy of adb's key pair, so that the user build trusts the running adb server; the directory
+# is removed at the end.
+# The network (lead decision M5-62 (b)): the emulator and the guest reach nothing beyond the Mac
+# (the build's own downloads are Q76's, through android-gradle.sh). Left alone, the emulator itself
+# contacts dl.google.com as each run's first boot starts, for its update check (a newer emulator,
+# asked with a user id it makes in its HOME) and its feature flags, as a run with a new HOME showed.
+# So before the first boot the run seeds both records in that HOME, in the format the emulator
+# writes them, with the run's time: emu-update-last-check.ini, one line naming this emulator's
+# version (emulator -version) and its core, "qemu2 2.12.0", with the check's time; and
+# emu-last-feature-flags.protobuf, the flags last fetched, here a last_download_time line before the
+# SDK's own bundled set (emulator/lib/emu-original-feature-flags.protobuf, text format, which the
+# emulator reads when it has fetched none). So seeded, it makes neither fetch. After each boot both
+# must be as written, or the run fails: a change is a fetch (a new emulator version names another
+# line). The guest gets no route out: its mobile data goes through the emulator's user-mode network
+# with restrict=on (-network-user-mode-options), which still answers DHCP but routes nothing beyond
+# the emulator, and its Wi-Fi through the access point of the run's own netsim, given a WPA
+# passphrase the guest does not hold (-netsim-args --wifi-password=...), so Wi-Fi still turns on and
+# scans (Settings.Global wifi_on, which the app's offline rule reads: OfflineMonitor.kt) but never
+# joins. The emulator's crash reports are off (-crash-report-mode disabled). What is left: nothing
+# found. A whole run's watch (lsof on the emulator's and netsim's processes, about ten times a
+# second) saw sockets on the loopback alone (adb, the console, netsim's gRPC), none beyond it.
 #
 # In order:
 #   1. kc37 booted with no camera (-camera-back none: the CI legs' no-camera facts, M5-59, which
@@ -71,24 +86,28 @@
 # one failed, 2 bad usage or a missing tool.
 #
 # scripts/android-local.sh --selftest runs whole runs of this script, with the real
-# android-emulator.sh, on stand-ins written to a temporary directory: an SDK whose emulator records
-# its arguments and environment and runs until adb's emu kill, an adb that answers the leg's commands
-# and simulates the app's screens for the Camera2 check (the camera client listed while the scan
-# screen scans), an instrument runner that names each run and passes it, and a frame checker that
-# passes. A run where everything passes exits 0, having written kc37's two files exactly, booted twice
-# on port 5580 with no snapshot (first with no camera, then the virtual scene) with its HOME and
-# ANDROID_AVD_HOME set, named CaptureTest's control (c) as not made on the user build and left it out
-# of both CaptureTest runs, run the nine instrumented runs in android-emulator.sh's order and listed
-# their results, run NativeTest on the second boot with the app's primaryCpuAbi arm64-v8a, passed the
-# camera client's four checks and decoded the PNG. Each of these is its own case: no decode (the
-# decode named as not met, exit 0); no PNG (named as not made, exit 0); a debuggable build (no test
-# left out); kc37 already this script's (kept, exit 0); a failing class (exit 1, the camera check
-# still run and the emulator stopped); NativeTest failing, and the app installed for another ABI,
-# which runs no NativeTest (exit 1 each, the camera check still run); kc37 with other files (exit 1,
-# nothing booted or changed); a device already on the port (exit 1); no camera client while the
-# scan screen shows, and one still listed after Home (exit 1 each); the scan screen gone after a
-# decode without the collision result, and the test-registry app's scan screen still scanning with
-# no camera client (exit 1 each); and too many arguments (exit 2).
+# android-emulator.sh, on stand-ins written to a temporary directory: an SDK whose emulator names
+# its version, or records its arguments, its environment and its HOME's two seeded records and runs
+# until adb's emu kill, an adb that answers the leg's commands and simulates the app's screens for
+# the Camera2 check (the camera client listed while the scan screen scans), an instrument runner
+# that names each run and passes it, and a frame checker that passes. A run where everything passes
+# exits 0, having written kc37's two files exactly, booted twice on port 5580 with no snapshot
+# (first with no camera, then the virtual scene), no crash reports and the guest's two networks
+# given no route out, with its HOME and ANDROID_AVD_HOME set, seeded the update check's line for the
+# emulator's version and the SDK's bundled flags in that HOME with the run's time before each boot,
+# named CaptureTest's control (c) as not made on the user build and left it out of both CaptureTest
+# runs, run the nine instrumented runs in android-emulator.sh's order and listed their results, run
+# NativeTest on the second boot with the app's primaryCpuAbi arm64-v8a, passed the camera client's
+# four checks and decoded the PNG. Each of these is its own case: no decode (the decode named as not
+# met, exit 0); no PNG (named as not made, exit 0); a debuggable build (no test left out); kc37
+# already this script's (kept, exit 0); a failing class (exit 1, the camera check still run and the
+# emulator stopped); NativeTest failing, and the app installed for another ABI, which runs no
+# NativeTest (exit 1 each, the camera check still run); kc37 with other files (exit 1, nothing
+# booted or changed); a device already on the port (exit 1); no camera client while the scan screen
+# shows, and one still listed after Home (exit 1 each); the scan screen gone after a decode without
+# the collision result, and the test-registry app's scan screen still scanning with no camera client
+# (exit 1 each); an emulator that changes its seeded update check, as a fetch would (exit 1, named
+# after each boot, the camera check still run); and too many arguments (exit 2).
 # Exit 0 when every case behaves, 1 otherwise. The cases run at once; it takes about two minutes.
 set -u
 unset CDPATH
@@ -128,11 +147,20 @@ print("android-frames: PASS %s: stand-in" % expect)
 EOF
   cat > "$st/emulator" <<'EOF' || exit 2
 #!/bin/sh
-# The selftest's stand-in emulator: it records its arguments, the environment it was given and
-# whether adb's key is in its HOME, then runs until adb's emu kill.
+# The selftest's stand-in emulator: it names its version, or it records its arguments, the
+# environment it was given, whether adb's key is in its HOME and the two seeded records there (the
+# update check's line, the flags' first line, and whether the rest is the SDK's bundled flags), then
+# runs until adb's emu kill; under KC_FETCH it first adds a line to the update check's record, as a
+# fetch would.
+case $1 in -version) echo 'Android emulator version 37.2.12.0 (build_id 16428233) (CL:N/A)'; exit 0 ;; esac
 key=no
 [ -f "$HOME/.android/adbkey" ] && [ -f "$HOME/.android/adbkey.pub" ] && key=yes
 echo "$* | HOME=$HOME | ANDROID_AVD_HOME=$ANDROID_AVD_HOME | adbkey=$key" >> "$KC_STUB/boots"
+flags=$HOME/.android/emu-last-feature-flags.protobuf
+bundled=no
+tail -n +2 "$flags" 2>/dev/null | cmp -s - "$ANDROID_HOME/emulator/lib/emu-original-feature-flags.protobuf" && bundled=yes
+echo "$(cat "$HOME/.android/emu-update-last-check.ini" 2>/dev/null) | $(head -n 1 "$flags" 2>/dev/null) | bundled=$bundled" >> "$KC_STUB/seeds"
+[ -z "${KC_FETCH:-}" ] || echo '_version.3D37.2.13.0.26coreVersion.3Dqemu2.25202.12.0 = 1' >> "$HOME/.android/emu-update-last-check.ini"
 echo $$ > "$KC_STUB/emulator.pid"
 exec sleep 300
 EOF
@@ -279,8 +307,10 @@ EOF
   prepare() {
     c=$st/$1
     image=$c/sdk/system-images/android-37.0/google_apis_playstore/arm64-v8a
-    mkdir -p "$c/sdk/emulator/resources/macros" "$c/sdk/platform-tools" "$image" "$c/home/.android" "$c/apks" "$c/tmp" || exit 2
+    mkdir -p "$c/sdk/emulator/resources/macros" "$c/sdk/emulator/lib" "$c/sdk/platform-tools" "$image" "$c/home/.android" \
+      "$c/apks" "$c/tmp" || exit 2
     cp "$st/emulator" "$c/sdk/emulator/emulator" || exit 2
+    printf '# stand-in bundled flags\npattern {\n}\n' > "$c/sdk/emulator/lib/emu-original-feature-flags.protobuf" || exit 2
     cp "$st/adb" "$c/sdk/platform-tools/adb" || exit 2
     echo 'Pkg.Revision=7' > "$image/source.properties" || exit 2
     : > "$c/sdk/emulator/resources/macros/Walk_to_image_room" || exit 2
@@ -347,6 +377,7 @@ CONFIG
   done
   sed 's/^hw.ramSize=4096$/hw.ramSize=2048/' "$st/avd-other/home/.android/avd/kc37.avd/config.ini" > "$st/config.ini" &&
     mv "$st/config.ini" "$st/avd-other/home/.android/avd/kc37.avd/config.ini" || exit 2
+  started=$(date +%s)
   run pass KC_DECODE=1
   run no-decode
   prepare no-png
@@ -363,6 +394,7 @@ CONFIG
   run camera-stuck KC_CAMERA_STUCK=1
   run scan-left KC_DECODE=1 KC_AFTER=launcher
   run scan-no-client KC_NO_REGISTRY_CLIENT=1
+  run fetched KC_FETCH=1 KC_DECODE=1
   wait
   passed=0
   failed=0
@@ -412,7 +444,8 @@ CONFIG
     check "$1" "$ok" "the nine instrumented runs in android-emulator.sh's order, then NativeTest"
   }
   # boots NAME: case NAME booted twice on port 5580 with no snapshot, first with no camera and then
-  # the virtual scene, with its own HOME holding adb's key and the AVD home under the case's HOME.
+  # the virtual scene, with no crash reports and the guest's two networks given no route out, with its
+  # own HOME holding adb's key and the AVD home under the case's HOME.
   boots() {
     ok=yes
     [ "$(wc -l < "$st/$1/boots" | tr -d ' ')" = 2 ] || ok=no
@@ -420,14 +453,35 @@ CONFIG
       line=$(sed -n "${n}p" "$st/$1/boots")
       case $n in 1) camera=none ;; 2) camera=virtualscene ;; esac
       case $line in
-        "-avd kc37 -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader_indirect -camera-back $camera -camera-front none -port 5580 -no-metrics | HOME="*) ;;
+        "-avd kc37 -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader_indirect -camera-back $camera -camera-front none -port 5580 -no-metrics -crash-report-mode disabled -network-user-mode-options restrict=on -netsim-args --wifi-password=kc37-no-route-out | HOME="*) ;;
         *) ok=no ;;
       esac
       case $line in *" | HOME=$st/$1/tmp/kc-local."*"/home | "*) ;; *) ok=no ;; esac
       case $line in *" | ANDROID_AVD_HOME=$st/$1/home/.android/avd | adbkey=yes") ;; *) ok=no ;; esac
     done
     [ "$ok" = yes ] || sed 's/^/  boot: /' "$st/$1/boots"
-    check "$1" "$ok" "two boots, no camera and then the virtual scene, port 5580, no snapshot, its own HOME"
+    check "$1" "$ok" "two boots, no camera and then the virtual scene, port 5580, no snapshot, no route out, its own HOME"
+  }
+  # seeded NAME: at each of case NAME's two boots its HOME held the update check's line for the
+  # stand-in's version and the SDK's bundled flags after a last_download_time line, both at one time,
+  # the run's (from the selftest's start to now).
+  seeded() {
+    ok=yes
+    [ "$(wc -l < "$st/$1/seeds" | tr -d ' ')" = 2 ] || ok=no
+    while IFS= read -r line; do
+      case $line in
+        "_version.3D37.2.12.0.26coreVersion.3Dqemu2.25202.12.0 = "*" | last_download_time: "*" | bundled=yes") ;;
+        *) ok=no ;;
+      esac
+      at=${line#*= }
+      at=${at%% |*}
+      flagsat=${line#*last_download_time: }
+      flagsat=${flagsat%% |*}
+      case $at in '' | *[!0-9]*) at=0 ;; esac
+      [ "$at" = "$flagsat" ] && [ "$at" -ge "$started" ] && [ "$at" -le "$(date +%s)" ] || ok=no
+    done < "$st/$1/seeds"
+    [ "$ok" = yes ] || sed 's/^/  seeds: /' "$st/$1/seeds"
+    check "$1" "$ok" "the update check and the feature flags seeded with the run's time before each boot"
   }
   # stopped NAME: case NAME left no stand-in emulator running.
   stopped() {
@@ -454,6 +508,7 @@ CONFIG
   avd pass
   runs pass "$left"
   boots pass
+  seeded pass
   stopped pass
   expect no-decode 0 "$camera_passes" \
     "local: not met on kc37: the decode of goahead-collision-dice-50.png: the scanner scanned for 60 s with its camera client listed and decoded nothing" \
@@ -501,6 +556,9 @@ CONFIG
     "FAIL: local: camera: com.keepcrypt.entropy.testregistry's scan screen went without the collision result"
   expect scan-no-client 1 "$camera_passes" \
     "FAIL: local: camera: com.keepcrypt.entropy.testregistry's scan screen still scans after 60 s, but its camera client is not listed in dumpsys media.camera"
+  expect fetched 1 "$camera_passes" \
+    "FAIL: local: the emulator changed its seeded emu-update-last-check.ini (the leg's boot): it made its own fetch from dl.google.com" \
+    "FAIL: local: the emulator changed its seeded emu-update-last-check.ini (the Camera2 check's boot): it made its own fetch from dl.google.com"
   sh "$st/scripts/android-local.sh" one two > "$st/out" 2>&1
   if [ "$?" -eq 2 ] && grep -q -e '^usage: ' "$st/out"; then
     check "too many arguments" yes
@@ -680,16 +738,38 @@ if "$adb" devices 2>&1 | tr -d '\r' | grep -q -e "^$serial[[:space:]]"; then
 fi
 (umask 077 && mkdir -p "$tmp/home/.android" && cp "$HOME/.android/adbkey" "$HOME/.android/adbkey.pub" "$tmp/home/.android/") ||
   exit 2
+# The emulator's own two fetches, seeded with the run's time (see the header), and a copy of each kept
+# for seeds_kept.
+version=$("$emulator" -version 2> /dev/null | sed -n '1s/^Android emulator version \([0-9][0-9.]*\) .*/\1/p')
+[ -n "$version" ] || refuse "emulator -version names no version"
+bundled=$sdk/emulator/lib/emu-original-feature-flags.protobuf
+[ -f "$bundled" ] || refuse "no $bundled"
+now=$(date +%s)
+mkdir "$tmp/seed" || exit 2
+printf '_version.3D%s.26coreVersion.3Dqemu2.25202.12.0 = %s\n' "$version" "$now" > "$tmp/seed/emu-update-last-check.ini" || exit 2
+{ printf 'last_download_time: %s\n' "$now" && cat "$bundled"; } > "$tmp/seed/emu-last-feature-flags.protobuf" || exit 2
+cp "$tmp/seed/emu-update-last-check.ini" "$tmp/seed/emu-last-feature-flags.protobuf" "$tmp/home/.android/" || exit 2
+say "the emulator's update check and feature flags seeded in its HOME at $now (emulator $version), so it fetches neither"
+# seeds_kept WHAT: after a boot, both seeds as they were written; a change is the emulator's own fetch.
+seeds_kept() {
+  for f in emu-update-last-check.ini emu-last-feature-flags.protobuf; do
+    cmp -s "$tmp/seed/$f" "$tmp/home/.android/$f" ||
+      fail_later "the emulator changed its seeded $f ($1): it made its own fetch from dl.google.com"
+  done
+}
 
 # boot WHAT CAMERA: kc37 headless with that back camera, until sys.boot_completed (600 s at most).
 boot() {
   log=$tmp/emulator-$1.log
-  say "booting $avd ($1): emulator -avd $avd -no-window -no-snapshot -wipe-data -camera-back $2 -port $port"
-  # The emulator's own files go to HOME/.android, here the run's temporary directory.
+  say "booting $avd ($1): emulator -avd $avd -no-window -no-snapshot -wipe-data -camera-back $2 -port $port, the guest with no route out"
+  # The emulator's own files go to HOME/.android, here the run's temporary directory; netsim's, and
+  # so its own instance, to TMPDIR. The guest's two networks route nothing beyond the emulator (see
+  # the header).
   (cd "$tmp/run" && exec env HOME="$tmp/home" TMPDIR="$tmp/run" ANDROID_EMULATOR_HOME="$tmp/home/.android" \
     ANDROID_USER_HOME="$tmp/home/.android" ANDROID_SDK_ROOT="$sdk" ANDROID_HOME="$sdk" ANDROID_AVD_HOME="$avds" \
     "$emulator" -avd "$avd" -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader_indirect \
-    -camera-back "$2" -camera-front none -port "$port" -no-metrics) > "$log" 2>&1 &
+    -camera-back "$2" -camera-front none -port "$port" -no-metrics -crash-report-mode disabled \
+    -network-user-mode-options restrict=on -netsim-args --wifi-password=kc37-no-route-out) > "$log" 2>&1 &
   emu_pid=$!
   start=$(date +%s)
   until [ "$(dev shell getprop sys.boot_completed 2> /dev/null | tr -d '\r')" = 1 ]; do
@@ -748,6 +828,7 @@ if ! awk '
   fail_later "the leg's results do not give each of android-emulator.sh's $(wc -l < "$tmp/runs" | tr -d ' ') instrumented runs one result, in its order"
 fi
 stop_emulator
+seeds_kept "the leg's boot"
 
 # 2. NativeTest, then the Camera2 check on kc37's virtual-scene camera (M5-59).
 boot "the Camera2 check, the virtual scene" virtualscene
@@ -916,6 +997,7 @@ else
   fi
 fi
 stop_emulator
+seeds_kept "the Camera2 check's boot"
 
 [ -z "$failed" ] || fail "${failed#; }"
 say "every check made on $avd passed (each check not made or not met is named above)"

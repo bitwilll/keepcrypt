@@ -49,13 +49,21 @@ class LifecycleTest {
     private val device: UiDevice get() = UiDevice.getInstance(Capture.instrumentation)
 
     /**
-     * The scrypt at log2 N = 18 runs for about a second, and leaving the app (Home) reaches the activity's
-     * onStop 0.6 to 1.1 s after the press on the CI emulators, so the two race (runs 39582638947 to
-     * 39642302623: the scrypt's reply came back after 0.9 to 1.5 s). An attempt whose reply came back
-     * first never reached the discard during the scrypt and proves nothing: it is printed as a probe
-     * line, the activity is finished (onCleared wipes the slot), and the case runs again on a fresh
-     * activity and session, up to SCRYPT_ATTEMPTS times. An attempt that left during the scrypt is judged
-     * in full; none in SCRYPT_ATTEMPTS fails the test.
+     * The scrypt at log2 N = 18 runs for about a second on the CI emulators (runs 39582638947 to
+     * 39642302623: the reply came back after 0.9 to 1.5 s) and about 0.5 s on kc37's native arm64
+     * (Q76's local loop). Home reached the activity's onStop 0.6 to 1.1 s after the press on CI,
+     * since UI Automator's press waits for the UI to go idle before it sends the key, so the two
+     * raced, and on kc37 the scrypt won all three attempts of one run (lead decision M5-62 (c)).
+     * So the leave is the activity sending its own task to the back (moveTaskToBack) in the same
+     * main-thread step that starts the call, which is by then on its way to the worker (the
+     * model's scope is Dispatchers.Main.immediate): the launcher comes to the front, and
+     * SecureActivity's onStop reports the leave, as after Home. The judge is unchanged (M5-47):
+     * the leave counts only if it fell during the scrypt, its reply discarded, with the session
+     * gone. An attempt whose reply came back first never reached the discard during the scrypt and
+     * proves nothing: it is printed as a probe line, the activity is finished (onCleared wipes the
+     * slot), and the case runs again on a fresh activity and session, up to SCRYPT_ATTEMPTS times.
+     * An attempt that left during the scrypt is judged in full; none in SCRYPT_ATTEMPTS fails the
+     * test.
      */
     @Test
     fun leavingDuringABackupsScryptDiscardsTheSession() {
@@ -65,8 +73,11 @@ class LifecycleTest {
             readyToEncrypt()
             val encrypted = AtomicBoolean(false)
             val begun = SystemClock.elapsedRealtime()
-            onMain { activity.model.work({ Core.encryptBackup() }) { encrypted.set(true) } }
-            device.pressHome()
+            val moved = onMain {
+                activity.model.work({ Core.encryptBackup() }) { encrypted.set(true) }
+                activity.moveTaskToBack(true)
+            }
+            assertTrue("moveTaskToBack did not send the app's task to the back", moved)
             await("the activity stopped", 30) { stage(activity) == Stage.STOPPED }
             val left = SystemClock.elapsedRealtime() - begun
             await("the long call's reply", 60) { onMain { activity.model.state.value.screen } != Screen.Working }
