@@ -56,11 +56,16 @@
 #      Then goahead-collision-dice-50.png on the virtual scene's wall (the console's
 #      virtualscene-image) and the SDK's Walk_to_image_room macro, which turns the camera to it: the
 #      test-registry app, driven the same way to dice-50-words12's seed (123456 repeated, so the
-#      proof's seal), scans for up to 60 s. The collision result passes; no result, or no PNG, is
-#      printed as a check not made, never a pass.
+#      proof's seal), scans for up to 60 s. The collision result passes; the scan screen gone without
+#      it, another line on it, or no camera client listed while it still scans, fails. A scan screen
+#      still scanning after 60 s with its camera client listed decoded nothing: that decode is
+#      printed as not met, with what this script cannot see (whether the scene shows the code so
+#      that it can be read), and no PNG as a check not made; neither is a pass, and neither fails
+#      the run.
 # The emulator is shut down after each phase and on every exit.
 # Prints android-emulator.sh's lines and "local:" lines, with "pass: local ..." for each local check
-# that passed. Exit 0 when every check made passed, 1 when one failed, 2 bad usage or a missing tool.
+# that passed. Exit 0 when every check made passed (a decode not met fails nothing, as above), 1 when
+# one failed, 2 bad usage or a missing tool.
 #
 # scripts/android-local.sh --selftest runs whole runs of this script, with the real
 # android-emulator.sh, on stand-ins written to a temporary directory: an SDK whose emulator records
@@ -73,12 +78,14 @@
 # of both CaptureTest runs, run the nine instrumented runs in android-emulator.sh's order and listed
 # their results, run NativeTest on the second boot with the app's primaryCpuAbi arm64-v8a, passed the
 # camera client's four checks and decoded the PNG. Each of these is its own case: no decode (the
-# check named as not made, exit 0); no PNG (the same); a debuggable build (no test left out); kc37
-# already this script's (kept, exit 0); a failing class (exit 1, the camera check still run and the
-# emulator stopped); NativeTest failing, and the app installed for another ABI, which runs no
-# NativeTest (exit 1 each, the camera check still run); kc37 with other files (exit 1, nothing
-# booted or changed); a device already on the port (exit 1); no camera client while the scan screen
-# shows, and one still listed after Home (exit 1 each); and too many arguments (exit 2).
+# decode named as not met, exit 0); no PNG (named as not made, exit 0); a debuggable build (no test
+# left out); kc37 already this script's (kept, exit 0); a failing class (exit 1, the camera check
+# still run and the emulator stopped); NativeTest failing, and the app installed for another ABI,
+# which runs no NativeTest (exit 1 each, the camera check still run); kc37 with other files (exit 1,
+# nothing booted or changed); a device already on the port (exit 1); no camera client while the
+# scan screen shows, and one still listed after Home (exit 1 each); the scan screen gone after a
+# decode without the collision result, and the test-registry app's scan screen still scanning with
+# no camera client (exit 1 each); and too many arguments (exit 2).
 # Exit 0 when every case behaves, 1 otherwise. The cases run at once; it takes about two minutes.
 set -u
 unset CDPATH
@@ -149,7 +156,8 @@ screen() { cat "$s/ui" 2>/dev/null || echo launcher; }
 # once the scan screen has been drawn.
 scanning() {
   echo scan > "$s/ui"
-  [ -n "${KC_NO_CLIENT:-}" ] || echo on > "$s/camera"
+  [ -n "${KC_NO_CLIENT:-}" ] || { [ -n "${KC_NO_REGISTRY_CLIENT:-}" ] && [ "$(cat "$s/pkg")" = com.keepcrypt.entropy.testregistry ]; } ||
+    echo on > "$s/camera"
   if [ -n "${KC_DECODE:-}" ] && [ -f "$s/walked" ] && [ -f "$s/poster" ] && [ "$(cat "$s/pkg")" = com.keepcrypt.entropy.testregistry ]; then
     : > "$s/decode"
   fi
@@ -218,7 +226,7 @@ case "$*" in
         printf '<node text="Looking for the go-ahead QR..." resource-id="scan_line" bounds="[0,800][720,820]" />'
         if [ -f "$s/decode" ]; then
           rm "$s/decode"
-          echo collision > "$s/ui"
+          echo "${KC_AFTER:-collision}" > "$s/ui"
           echo off > "$s/camera"
         fi
         ;;
@@ -350,6 +358,8 @@ CONFIG
   run port-taken KC_PORT_TAKEN=1
   run no-client KC_NO_CLIENT=1
   run camera-stuck KC_CAMERA_STUCK=1
+  run scan-left KC_DECODE=1 KC_AFTER=launcher
+  run scan-no-client KC_NO_REGISTRY_CLIENT=1
   wait
   passed=0
   failed=0
@@ -442,8 +452,9 @@ CONFIG
   runs pass "$left"
   boots pass
   stopped pass
-  expect no-decode 0 "$camera_passes" "local: not made on kc37: the scanner decoded nothing in 60 s" \
-    "local: every check made on kc37 passed"
+  expect no-decode 0 "$camera_passes" \
+    "local: not met on kc37: the decode of goahead-collision-dice-50.png: the scanner scanned for 60 s with its camera client listed and decoded nothing" \
+    "local: every check made on kc37 passed (each check not made or not met is named above)"
   expect no-png 0 "local: not made on kc37: the scan of goahead-collision-dice-50.png: no such file in" \
     "local: every check made on kc37 passed"
   expect debuggable 0 "local: every check made on kc37 passed"
@@ -483,6 +494,10 @@ CONFIG
   expect no-client 1 "FAIL: local: camera: com.keepcrypt.entropy's camera client is not listed in dumpsys media.camera within 10 s of the scan screen"
   stopped no-client
   expect camera-stuck 1 "$camera_passes" "FAIL: local: camera: com.keepcrypt.entropy's camera client is still listed 10 s after Home"
+  expect scan-left 1 "$camera_passes" "local: camera: no collision_text on screen within 10 s" \
+    "FAIL: local: camera: com.keepcrypt.entropy.testregistry's scan screen went without the collision result"
+  expect scan-no-client 1 "$camera_passes" \
+    "FAIL: local: camera: com.keepcrypt.entropy.testregistry's scan screen still scans after 60 s, but its camera client is not listed in dumpsys media.camera"
   sh "$st/scripts/android-local.sh" one two > "$st/out" 2>&1
   if [ "$?" -eq 2 ] && grep -q -e '^usage: ' "$st/out"; then
     check "too many arguments" yes
@@ -869,30 +884,35 @@ else
   if ! to_scan "$p"; then
     fail_later "camera: $p did not reach the scan screen"
   else
-    # Until the collision result, the scan screen with another line than its scanning one, or 60 s.
+    # While the scan screen shows its scanning line, for up to 60 s.
     start=$(date +%s)
-    while :; do
-      dump
-      [ -z "$(node collision_text)" ] || break
-      [ -z "$(node scan)" ] || [ "$(text scan_line)" = 'Looking for the go-ahead QR...' ] || break
-      [ $(($(date +%s) - start)) -lt 60 ] || break
+    while dump && [ -n "$(node scan)" ] && [ "$(text scan_line)" = 'Looking for the go-ahead QR...' ] &&
+      [ $(($(date +%s) - start)) -lt 60 ]; do
       sleep 2
     done
-    if [ -n "$(node collision_text)" ]; then
+    if [ -n "$(node scan)" ]; then
+      # Still the scan screen: another line than its scanning one fails, and so does a scan with no
+      # camera client listed; one still scanning with its client listed decoded nothing.
+      if [ "$(text scan_line)" != 'Looking for the go-ahead QR...' ]; then
+        fail_later "camera: the scan of $png ended on '$(text scan_line)', not the collision result"
+      elif ! listed "$p"; then
+        fail_later "camera: $p's scan screen still scans after 60 s, but its camera client is not listed in dumpsys media.camera"
+      else
+        say "not met on $avd: the decode of $png: the scanner scanned for 60 s with its camera client listed and decoded nothing from the virtual scene's wall (whether the scene shows the code so that it can be read is not checked here); the owner's phone scans it (P4)"
+      fi
+    elif ! await collision_text 10; then
+      fail_later "camera: $p's scan screen went without the collision result"
+    else
       case $(text collision_text) in
         'Collision found. This seed is not unique and has been destroyed.')
           echo "pass: local camera: the scanner decoded $png from the virtual scene's wall: the collision result"
           ;;
         *) fail_later "camera: $p's collision result reads '$(text collision_text)'" ;;
       esac
-    elif [ -n "$(node scan)" ] && [ "$(text scan_line)" != 'Looking for the go-ahead QR...' ]; then
-      fail_later "camera: the scan of $png ended on '$(text scan_line)', not the collision result"
-    else
-      say "not made on $avd: the scanner decoded nothing in 60 s from $png on the virtual scene's wall; the owner's phone scans it (P4)"
     fi
   fi
 fi
 stop_emulator
 
 [ -z "$failed" ] || fail "${failed#; }"
-say "every check made on $avd passed (each check not made is named above)"
+say "every check made on $avd passed (each check not made or not met is named above)"

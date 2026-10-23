@@ -14639,6 +14639,21 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   android-local.sh 25 passed (22 before: NativeTest failing, and the app installed for another ABI with no NativeTest
   run, exit 1 each with the camera check still run), and three mutants (NativeTest not run, the ABI check dropped,
   its failure not failing the run) each fail it; 0 failed under sh and dash.
+  Proof (M5 commit L2c, review fix, partial: local, Q76): the scan check printed "not made" and exited 0 whenever
+  no collision result came in 60 s, so the app leaving the scan screen (a crash, say, which phase 2 reads no crash
+  buffer for) passed as "the scanner decoded nothing". Now the scan waits while the scan screen shows its scanning
+  line, for up to 60 s: the collision result passes; the scan screen gone without it (10 s more for the result),
+  another line on it, or no camera client listed while it still scans, fails; and a scan screen still scanning
+  after 60 s with its client listed is printed as not met, naming what the script cannot see, and does not fail the
+  run. So L2's decode is unmet, not "not made": on kc37 (exit 0 in 816 s, with L2b) "not met on kc37: the decode of
+  goahead-collision-dice-50.png: the scanner scanned for 60 s with its camera client listed and decoded nothing from
+  the virtual scene's wall", as at L2. The suspected cause is the scene: the PNG is a version-24 code (113 modules
+  of 8 px, a 4-module quiet zone, 968 px), which the system camera's preview shows about 380 of 720 px wide, so
+  about 3 px a module there, with a chair back over its lower edge. The item stays open on the decode, for P4 or a
+  scene the script can check. --selftest: android-local.sh 27 passed (25 before: the scan screen gone after a
+  decode, and the test-registry app's scan screen still scanning with no camera client, exit 1 each), and two
+  mutants (the scan screen's going not failed, the client check dropped) each fail only their own case; 0 failed
+  under sh and dash.
 
 **Stages E3 and E4** run commits 19, 20 and 21 as planned, each built and tested locally before it is committed.
 
