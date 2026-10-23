@@ -31,12 +31,25 @@ kotlin {
 
 // The JVM tests (group 13): the common tests and androidHostTest's ZXing round trips, run as the
 // Android target's host tests against the host library that scripts/android-rust.sh withTestRegistry
-// builds (x86_64-unknown-linux-gnu with keepcrypt-core's test-registry feature; it never ships), one
-// test class per JVM, since a halt latches the process's slot for good. kc.entropy names Entropy/,
-// whose vectors/ and ffi/src/wire.rs the tests read.
+// builds for the build host's own target (with keepcrypt-core's test-registry feature; it never
+// ships): x86_64-unknown-linux-gnu in CI, aarch64-apple-darwin on the owner's Mac for local runs
+// (Q76), chosen from os.name and os.arch, and on any other host the test tasks fail. One test class
+// per JVM, since a halt latches the process's slot for good. kc.entropy names Entropy/, whose
+// vectors/ and ffi/src/wire.rs the tests read.
 val entropy = rootDir.resolve("../..").canonicalPath
+val hostTarget = when (System.getProperty("os.name") + " " + System.getProperty("os.arch")) {
+    "Linux amd64" -> "x86_64-unknown-linux-gnu"
+    "Mac OS X aarch64" -> "aarch64-apple-darwin"
+    else -> null
+}
 tasks.withType<Test>().configureEach {
     forkEvery = 1
-    systemProperty("java.library.path", "$entropy/target/ffi-test-registry/x86_64-unknown-linux-gnu/release")
     systemProperty("kc.entropy", entropy)
+    if (hostTarget != null) {
+        systemProperty("java.library.path", "$entropy/target/ffi-test-registry/$hostTarget/release")
+    } else {
+        doFirst {
+            throw GradleException("the JVM tests run on a Linux x86_64 or macOS arm64 host only, the hosts scripts/android-rust.sh builds their library for")
+        }
+    }
 }

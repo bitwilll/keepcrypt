@@ -16,9 +16,13 @@
 #                     -p (never in a manifest; keepcrypt-jni has no keepcrypt-core edge, lead decision
 #                     M5-35), in its own target dir, target/ffi-test-registry: the test-registry APK's
 #                     library. The scan must give exactly its registry marker and the test key. Then
-#                     the same build for the host, x86_64-unknown-linux-gnu, with the same cfg, in the
-#                     same target dir: the library :core-ffi's JVM tests load (java.library.path,
-#                     core-ffi/build.gradle.kts), scanned the same way. It never ships.
+#                     the same build for the build host's own target, in the same target dir: the
+#                     library the JVM tests of :core-ffi and :screens load (java.library.path,
+#                     core-ffi/build.gradle.kts and screens/build.gradle.kts), scanned the same way:
+#                     x86_64-unknown-linux-gnu's libkeepcrypt.so with the same cfg on Linux, and
+#                     aarch64-apple-darwin's libkeepcrypt.dylib on the Mac, without it (getrandom
+#                     has no fallback on macOS, where linux_getrandom does not build, and the scan
+#                     requires macOS's OS import, _getentropy). It never ships.
 #
 # For each Android library, after its scan: every undefined dynamic symbol must be defined in NDK
 # r30's API 31 stub libraries for its ABI (the sysroot's libc.so, libm.so and libdl.so), so the
@@ -27,27 +31,37 @@
 # the exports, DT_NEEDED and 16 KB pages of the packaged copy). The flavour's jniLibs directory is
 # emptied first, so no library of an earlier build stays behind.
 #
-# Needs a Linux x86_64 host (the NDK's linux-x86_64 prebuilt; CI only: nothing is installed on the
-# owner's Mac, Q56), ANDROID_HOME holding ndk/30.0.16248370 (its source.properties is checked, and
-# no other NDK is used), and cargo and rustc of the pinned toolchain (rust-toolchain.toml, with its
-# Android targets; the script runs them from the repo root, so rustup picks that toolchain).
+# Needs a Linux x86_64 host (CI: the NDK's linux-x86_64 prebuilt, sha256sum) or, for local
+# development only, a macOS arm64 host (the owner's Mac, Q76: the NDK's darwin-x86_64 prebuilt,
+# whose tools are universal binaries, and macOS's shasum -a 256); any other host is refused. Every
+# check runs the same on both. A library built on the Mac never ships: the APKs CI builds from its
+# own run of this script are the artifacts. Also ANDROID_HOME holding ndk/30.0.16248370 (its
+# source.properties is checked, and no other NDK is used), and cargo and rustc of the pinned
+# toolchain (rust-toolchain.toml, with its Android targets; the script runs them from the repo
+# root, so rustup picks that toolchain).
 # Exit 0 built, scanned and copied; 1 a scan or check failed; 2 bad usage or a missing tool or NDK.
 #
 # scripts/android-rust.sh --selftest runs this script, a fresh copy for each case, on stand-ins
 # written to a temporary directory (no NDK, cargo build or scan is real): a release-artifact scan
-# that finds a test-registry library's marker and key and nothing in any other; an NDK r30 tree whose
-# clangs and llvm-ar do nothing, whose llvm-nm reads a library's undefined symbols from the file
-# beside it and each API 31 stub's defined ones from its own, and whose llvm-readelf prints a LOAD
-# segment and libc.so; a cargo that writes a stand-in library where cargo would and prints its
-# arguments and the C compiler, archiver, linker and rustflags it was given; and a uname that says
-# Linux x86_64. Both flavours pass, each with those settings per target as the cross legs set them,
-# a copy in jniLibs of each ABI's library, a stale library there removed, and for withTestRegistry
-# its own target dir and the host library. Each of these exits 1: an undefined symbol the API 31
-# stubs lack, a shipping scan with a hit, a test-registry scan that is clean or has a third hit, a
-# failing cargo build, a library cargo did not write, a copy into jniLibs with other bytes. Each of
-# these exits 2: a sha256sum that fails or prints no SHA-256, no ANDROID_HOME, no NDK r30, another
-# NDK at its path, a missing NDK tool, a host that is not Linux x86_64, another flavour and no
-# argument. Exit 0 when every case behaves, 1 otherwise.
+# that finds a test-registry library's marker and key and nothing in any other; an NDK r30 tree, with
+# the linux-x86_64 or the darwin-x86_64 prebuilt, whose clangs and llvm-ar do nothing, whose llvm-nm
+# reads a library's undefined symbols from the file beside it and each API 31 stub's defined ones
+# from its own, and whose llvm-readelf prints a LOAD segment and libc.so; a cargo that writes a
+# stand-in library where cargo would (libkeepcrypt.dylib for a macOS target) and prints its
+# arguments and the C compiler, archiver, linker and rustflags it was given; a uname that says
+# Linux x86_64, or what the case sets; and for the macOS cases a shasum that gives -a 256 FILE's
+# SHA-256 from the machine's own tool and a sha256sum that always fails. On each host, Linux x86_64
+# and macOS arm64 (with its own prebuilt and shasum), both flavours pass, each with those settings
+# per target as the cross legs set them, a copy in jniLibs of each ABI's library, a stale library
+# there removed, and for withTestRegistry its own target dir and the host's own library
+# (x86_64-unknown-linux-gnu's libkeepcrypt.so with the cfg, aarch64-apple-darwin's
+# libkeepcrypt.dylib without it). Each of these exits 1: an undefined symbol the API 31 stubs lack
+# (on both hosts), a shipping scan with a hit, a test-registry scan that is clean or has a third
+# hit, a failing cargo build, a library cargo did not write, a copy into jniLibs with other bytes (on
+# both hosts). Each of these exits 2: a sha256sum (on Linux) or shasum (on macOS) that fails or
+# prints no SHA-256, no ANDROID_HOME, no NDK r30, another NDK at its path, a missing NDK tool, an NDK
+# with only the other host's prebuilt (on both hosts), a host that is neither (macOS x86_64, Linux
+# aarch64), another flavour and no argument. Exit 0 when every case behaves, 1 otherwise.
 set -u
 unset CDPATH
 
@@ -64,9 +78,17 @@ refuse() {
 selftest() {
   self=$(cd "$(dirname "$0")" && pwd) || exit 2
   realcp=$(command -v cp) || exit 2
+  # The machine's own SHA-256 tool, for built() and the macOS cases' stand-in shasum.
+  if realsha=$(command -v sha256sum); then
+    :
+  elif realsha=$(command -v shasum); then
+    realsha="$realsha -a 256"
+  else
+    exit 2
+  fi
   st=$(mktemp -d "${TMPDIR:-/tmp}/kc-android-rust-selftest.XXXXXX") || exit 2
   trap 'rm -rf "$st"' EXIT
-  mkdir "$st/bin" "$st/sha-fails" "$st/sha-junk" "$st/cp-other" || exit 2
+  mkdir "$st/bin" "$st/mac" "$st/sha-fails" "$st/sha-junk" "$st/cp-other" || exit 2
   cp "$self/$(basename "$0")" "$st/android-rust.sh" || exit 2
   cat > "$st/banned-api-check.sh" <<'EOF' || exit 2
 #!/bin/sh
@@ -96,10 +118,10 @@ exit 1
 EOF
   cat > "$st/bin/cargo" <<'EOF' || exit 2
 #!/bin/sh
-# The selftest's stand-in cargo: a build writes a stand-in libkeepcrypt.so where cargo would, its
-# undefined symbols (KC_UNDEF) in libkeepcrypt.so.undef beside it, and prints its arguments and the
-# C compiler, archiver, linker and rustflags it was given. KC_CARGO=fails fails the build;
-# KC_CARGO=nolib writes nothing.
+# The selftest's stand-in cargo: a build writes a stand-in libkeepcrypt.so (libkeepcrypt.dylib for
+# a macOS target) where cargo would, its undefined symbols (KC_UNDEF) in a file of the same name
+# and .undef beside it, and prints its arguments and the C compiler, archiver, linker and rustflags
+# it was given. KC_CARGO=fails fails the build; KC_CARGO=nolib writes nothing.
 echo "cargo stand-in: $* | $(env | grep -E '^(CC_|AR_|CARGO_TARGET_|RUSTFLAGS=)' | LC_ALL=C sort | tr '\n' ' ')"
 [ "${KC_CARGO:-}" != fails ] || exit 101
 t=
@@ -109,28 +131,40 @@ while [ $# -gt 0 ]; do
   shift
 done
 [ "${KC_CARGO:-}" != nolib ] || exit 0
+case $t in *-apple-darwin) lib=libkeepcrypt.dylib ;; *) lib=libkeepcrypt.so ;; esac
 mkdir -p "$d/$t/release" || exit 1
-echo "stand-in libkeepcrypt.so for $t in $d" > "$d/$t/release/libkeepcrypt.so"
-printf '%s\n' ${KC_UNDEF:-getrandom memcpy} > "$d/$t/release/libkeepcrypt.so.undef"
+echo "stand-in $lib for $t in $d" > "$d/$t/release/$lib"
+printf '%s\n' ${KC_UNDEF:-getrandom memcpy} > "$d/$t/release/$lib.undef"
 EOF
   cat > "$st/bin/uname" <<'EOF' || exit 2
 #!/bin/sh
-# The selftest's stand-in uname: Linux (or KC_UNAME_S) on x86_64.
-case $1 in -s) echo "${KC_UNAME_S:-Linux}" ;; -m) echo x86_64 ;; *) exit 1 ;; esac
+# The selftest's stand-in uname: Linux (or KC_UNAME_S) on x86_64 (or KC_UNAME_M).
+case $1 in -s) echo "${KC_UNAME_S:-Linux}" ;; -m) echo "${KC_UNAME_M:-x86_64}" ;; *) exit 1 ;; esac
 EOF
+  # The macOS cases' hash tools: shasum -a 256 FILE gives FILE's SHA-256 from the machine's own
+  # tool, any other use of it fails, and so does sha256sum, which is Linux's.
+  cat > "$st/mac/shasum" <<EOF || exit 2
+#!/bin/sh
+[ \$# -eq 3 ] && [ "\$1" = -a ] && [ "\$2" = 256 ] || exit 1
+exec $realsha "\$3"
+EOF
+  printf '#!/bin/sh\nexit 1\n' > "$st/mac/sha256sum" || exit 2
   printf '#!/bin/sh\nexit 1\n' > "$st/sha-fails/sha256sum" || exit 2
+  printf '#!/bin/sh\nexit 1\n' > "$st/sha-fails/shasum" || exit 2
   printf '#!/bin/sh\necho "no-hash  $1"\n' > "$st/sha-junk/sha256sum" || exit 2
+  printf '#!/bin/sh\necho "no-hash  $3"\n' > "$st/sha-junk/shasum" || exit 2
   cat > "$st/cp-other/cp" <<EOF || exit 2
 #!/bin/sh
 # A cp that writes other bytes into jniLibs; any other copy is the real cp's.
 case \$2 in */jniLibs/*) echo other > "\$2"; exit 0 ;; esac
 exec "$realcp" "\$@"
 EOF
-  # ndk SDK REVISION [TOOL]: SDK/ndk/30.0.16248370 holding NDK REVISION's source.properties and the
+  # ndk SDK REVISION PREBUILT [TOOL]: SDK/ndk/30.0.16248370 holding NDK REVISION's
+  # source.properties and, under the host prebuilt PREBUILT (linux-x86_64 or darwin-x86_64), the
   # stand-in tools and API 31 stubs, TOOL left out.
   ndk() {
     n=$1/ndk/30.0.16248370
-    b=$n/toolchains/llvm/prebuilt/linux-x86_64/bin
+    b=$n/toolchains/llvm/prebuilt/$3/bin
     mkdir -p "$b" || exit 2
     printf 'Pkg.Desc = Android NDK\nPkg.Revision = %s\n' "$2" > "$n/source.properties" || exit 2
     for tool in llvm-ar aarch64-linux-android31-clang armv7a-linux-androideabi31-clang x86_64-linux-android31-clang; do
@@ -155,19 +189,20 @@ case $1 in
 esac
 EOF
     chmod +x "$b"/* || exit 2
-    [ $# -lt 3 ] || rm "$b/$3" || exit 2
+    [ $# -lt 4 ] || rm "$b/$4" || exit 2
     for triple in aarch64-linux-android arm-linux-androideabi x86_64-linux-android; do
-      api=$n/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/$triple/31
+      api=$n/toolchains/llvm/prebuilt/$3/sysroot/usr/lib/$triple/31
       mkdir -p "$api" || exit 2
       : > "$api/libc.so" && : > "$api/libm.so" && : > "$api/libdl.so" || exit 2
       printf 'getrandom@LIBC\nmemcpy@@LIBC\n' > "$api/libc.so.defined" || exit 2
     done
   }
-  ndk "$st/sdk" 30.0.16248370
-  ndk "$st/sdk-wrong" 30.0.16248371
-  ndk "$st/sdk-notool" 30.0.16248370 llvm-nm
+  ndk "$st/sdk" 30.0.16248370 linux-x86_64
+  ndk "$st/sdk-mac" 30.0.16248370 darwin-x86_64
+  ndk "$st/sdk-wrong" 30.0.16248371 linux-x86_64
+  ndk "$st/sdk-notool" 30.0.16248370 linux-x86_64 llvm-nm
   mkdir -p "$st/sdk-other/ndk/29.0.14206865" || exit 2
-  chmod +x "$st/bin"/* "$st/sha-fails/sha256sum" "$st/sha-junk/sha256sum" "$st/cp-other/cp" || exit 2
+  chmod +x "$st/bin"/* "$st/mac"/* "$st/sha-fails"/* "$st/sha-junk"/* "$st/cp-other/cp" || exit 2
   # run NAME ARG [VAR=VALUE...]: android-rust.sh ARG (none for "") on a fresh copy of the repo's
   # two scripts in $st/NAME/repo, with ANDROID_HOME the stand-in SDK and the stand-ins first on PATH
   # unless a VAR=VALUE sets them; its output in out and its exit status in rc. Then each of the
@@ -192,6 +227,14 @@ EOF
         echo "selftest: $abi copy equals" >> "$c/out"
       fi
     done
+  }
+  # run_mac NAME ARG [VAR=VALUE...]: run on a macOS arm64 host, with the darwin-x86_64 stand-in SDK
+  # and the macOS hash tools, unless a VAR=VALUE sets them.
+  run_mac() {
+    m=$1
+    marg=$2
+    shift 2
+    run "$m" "$marg" KC_UNAME_S=Darwin KC_UNAME_M=arm64 "ANDROID_HOME=$st/sdk-mac" "PATH=$st/mac:$st/bin:$PATH" "$@"
   }
   passed=0
   failed=0
@@ -219,12 +262,13 @@ EOF
       sed 's/^/  | /' "$st/$name/out"
     fi
   }
-  # built TDIR TARGET: the line android-rust.sh prints for the stand-in library cargo wrote for
-  # TARGET in TDIR, its size and SHA-256 computed here.
+  # built TDIR TARGET [LIB]: the line android-rust.sh prints for the stand-in library LIB
+  # (libkeepcrypt.so by default) cargo wrote for TARGET in TDIR, its size and SHA-256 computed here.
   built() {
-    printf 'stand-in libkeepcrypt.so for %s in %s\n' "$2" "$1" > "$st/lib" || exit 2
-    h=$(sha256sum "$st/lib") || exit 2
-    echo "$1/$2/release/libkeepcrypt.so: $(wc -c < "$st/lib" | tr -d ' ') bytes, SHA-256 ${h%% *}"
+    lib=${3:-libkeepcrypt.so}
+    printf 'stand-in %s for %s in %s\n' "$lib" "$2" "$1" > "$st/lib" || exit 2
+    h=$($realsha "$st/lib") || exit 2
+    echo "$1/$2/release/$lib: $(wc -c < "$st/lib" | tr -d ' ') bytes, SHA-256 ${h%% *}"
   }
   run shipping-passes shipping
   run test-registry-passes withTestRegistry
@@ -241,20 +285,33 @@ EOF
   run no-ndk-r30 shipping "ANDROID_HOME=$st/sdk-other"
   run another-ndk-at-r30s-path shipping "ANDROID_HOME=$st/sdk-wrong"
   run ndk-tool-missing shipping "ANDROID_HOME=$st/sdk-notool"
-  run not-linux shipping KC_UNAME_S=Darwin
+  run linux-with-only-the-darwin-prebuilt shipping "ANDROID_HOME=$st/sdk-mac"
+  run_mac macos-shipping-passes shipping
+  run_mac macos-test-registry-passes withTestRegistry
+  run_mac macos-undefined-symbol-the-stubs-lack shipping "KC_UNDEF=getrandom memcpy preadv2"
+  run_mac macos-copy-with-other-bytes shipping "PATH=$st/cp-other:$st/mac:$st/bin:$PATH"
+  run_mac macos-shasum-fails shipping "PATH=$st/sha-fails:$st/bin:$PATH"
+  run_mac macos-shasum-prints-no-hash shipping "PATH=$st/sha-junk:$st/bin:$PATH"
+  run_mac macos-with-only-the-linux-prebuilt shipping "ANDROID_HOME=$st/sdk"
+  run_mac another-host-macos-x86_64 shipping KC_UNAME_M=x86_64
+  run another-host-linux-aarch64 shipping KC_UNAME_M=aarch64
   run another-flavour release
   run no-argument ""
   cfg='getrandom_backend="linux_getrandom"'
   b=$st/sdk/ndk/30.0.16248370/toolchains/llvm/prebuilt/linux-x86_64/bin
+  bm=$st/sdk-mac/ndk/30.0.16248370/toolchains/llvm/prebuilt/darwin-x86_64/bin
+  sl=$st/sdk/ndk/30.0.16248370/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib
+  slm=$st/sdk-mac/ndk/30.0.16248370/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/lib
   reg="-p keepcrypt-jni -p keepcrypt-core --features keepcrypt-core/test-registry"
   expect shipping-passes 0 \
     "cargo stand-in: build --release --locked -p keepcrypt-jni --lib --target aarch64-linux-android --target-dir target | AR_aarch64_linux_android=$b/llvm-ar CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$b/aarch64-linux-android31-clang CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS=--cfg $cfg CC_aarch64_linux_android=$b/aarch64-linux-android31-clang " \
     "cargo stand-in: build --release --locked -p keepcrypt-jni --lib --target armv7-linux-androideabi --target-dir target | AR_armv7_linux_androideabi=$b/llvm-ar CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER=$b/armv7a-linux-androideabi31-clang CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_RUSTFLAGS=--cfg $cfg CC_armv7_linux_androideabi=$b/armv7a-linux-androideabi31-clang " \
     "cargo stand-in: build --release --locked -p keepcrypt-jni --lib --target x86_64-linux-android --target-dir target | AR_x86_64_linux_android=$b/llvm-ar CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER=$b/x86_64-linux-android31-clang CARGO_TARGET_X86_64_LINUX_ANDROID_RUSTFLAGS=--cfg $cfg CC_x86_64_linux_android=$b/x86_64-linux-android31-clang " \
-    "target/armv7-linux-androideabi/release/libkeepcrypt.so: all 2 undefined dynamic symbols are defined in" \
+    "target/armv7-linux-androideabi/release/libkeepcrypt.so: all 2 undefined dynamic symbols are defined in $sl/arm-linux-androideabi/31's" \
     "$(built target aarch64-linux-android)" "$(built target armv7-linux-androideabi)" "$(built target x86_64-linux-android)" \
     "selftest: arm64-v8a copy equals" "selftest: armeabi-v7a copy equals" "selftest: x86_64 copy equals" \
-    "android-rust: shipping: built, scanned and copied into" "!selftest: a stale library stayed" "!x86_64-unknown-linux-gnu"
+    "android-rust: shipping: built, scanned and copied into" "!selftest: a stale library stayed" "!x86_64-unknown-linux-gnu" \
+    "!darwin"
   expect test-registry-passes 0 \
     "cargo stand-in: build --release --locked $reg --lib --target aarch64-linux-android --target-dir target/ffi-test-registry | AR_aarch64_linux_android=$b/llvm-ar " \
     "cargo stand-in: build --release --locked $reg --lib --target armv7-linux-androideabi --target-dir target/ffi-test-registry | AR_armv7_linux_androideabi=$b/llvm-ar " \
@@ -263,9 +320,9 @@ EOF
     "banned-api-check --artifact x86_64-unknown-linux-gnu: 2 hit(s) in 1 file(s)" \
     "$(built target/ffi-test-registry aarch64-linux-android)" "$(built target/ffi-test-registry x86_64-unknown-linux-gnu)" \
     "selftest: arm64-v8a copy equals" "selftest: armeabi-v7a copy equals" "selftest: x86_64 copy equals" \
-    "android-rust: withTestRegistry: built, scanned and copied into" "!selftest: a stale library stayed"
+    "android-rust: withTestRegistry: built, scanned and copied into" "!selftest: a stale library stayed" "!darwin"
   expect undefined-symbol-the-stubs-lack 1 \
-    "FAIL: android-rust: target/aarch64-linux-android/release/libkeepcrypt.so: undefined symbols that NDK r30's API 31 stubs" \
+    "FAIL: android-rust: target/aarch64-linux-android/release/libkeepcrypt.so: undefined symbols that NDK r30's API 31 stubs ($sl/aarch64-linux-android/31)" \
     "do not define: preadv2" "!copied to"
   expect shipping-scan-with-a-hit 1 \
     "FAIL: android-rust: target/aarch64-linux-android/release/libkeepcrypt.so: the release-artifact scan exited 1, not 0"
@@ -285,7 +342,43 @@ EOF
   expect no-ndk-r30 2 "android-rust: no NDK 30.0.16248370"
   expect another-ndk-at-r30s-path 2 "source.properties is not NDK 30.0.16248370"
   expect ndk-tool-missing 2 "android-rust: no llvm-nm in "
-  expect not-linux 2 "android-rust: a Linux x86_64 host only"
+  expect linux-with-only-the-darwin-prebuilt 2 \
+    "android-rust: no llvm-ar in $st/sdk-mac/ndk/30.0.16248370/toolchains/llvm/prebuilt/linux-x86_64/bin"
+  expect macos-shipping-passes 0 \
+    "cargo stand-in: build --release --locked -p keepcrypt-jni --lib --target aarch64-linux-android --target-dir target | AR_aarch64_linux_android=$bm/llvm-ar CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$bm/aarch64-linux-android31-clang CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS=--cfg $cfg CC_aarch64_linux_android=$bm/aarch64-linux-android31-clang " \
+    "cargo stand-in: build --release --locked -p keepcrypt-jni --lib --target armv7-linux-androideabi --target-dir target | AR_armv7_linux_androideabi=$bm/llvm-ar CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER=$bm/armv7a-linux-androideabi31-clang CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_RUSTFLAGS=--cfg $cfg CC_armv7_linux_androideabi=$bm/armv7a-linux-androideabi31-clang " \
+    "cargo stand-in: build --release --locked -p keepcrypt-jni --lib --target x86_64-linux-android --target-dir target | AR_x86_64_linux_android=$bm/llvm-ar CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER=$bm/x86_64-linux-android31-clang CARGO_TARGET_X86_64_LINUX_ANDROID_RUSTFLAGS=--cfg $cfg CC_x86_64_linux_android=$bm/x86_64-linux-android31-clang " \
+    "target/armv7-linux-androideabi/release/libkeepcrypt.so: all 2 undefined dynamic symbols are defined in $slm/arm-linux-androideabi/31's" \
+    "$(built target aarch64-linux-android)" "$(built target armv7-linux-androideabi)" "$(built target x86_64-linux-android)" \
+    "selftest: arm64-v8a copy equals" "selftest: armeabi-v7a copy equals" "selftest: x86_64 copy equals" \
+    "android-rust: shipping: built, scanned and copied into" "!selftest: a stale library stayed" "!aarch64-apple-darwin" \
+    "!linux-x86_64"
+  expect macos-test-registry-passes 0 \
+    "cargo stand-in: build --release --locked $reg --lib --target aarch64-linux-android --target-dir target/ffi-test-registry | AR_aarch64_linux_android=$bm/llvm-ar " \
+    "cargo stand-in: build --release --locked $reg --lib --target armv7-linux-androideabi --target-dir target/ffi-test-registry | AR_armv7_linux_androideabi=$bm/llvm-ar " \
+    "cargo stand-in: build --release --locked $reg --lib --target x86_64-linux-android --target-dir target/ffi-test-registry | AR_x86_64_linux_android=$bm/llvm-ar " \
+    "cargo stand-in: build --release --locked $reg --lib --target aarch64-apple-darwin --target-dir target/ffi-test-registry | " \
+    "!CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTFLAGS" \
+    "banned-api-check --artifact aarch64-apple-darwin: 2 hit(s) in 1 file(s)" \
+    "$(built target/ffi-test-registry aarch64-linux-android)" \
+    "$(built target/ffi-test-registry aarch64-apple-darwin libkeepcrypt.dylib)" \
+    "selftest: arm64-v8a copy equals" "selftest: armeabi-v7a copy equals" "selftest: x86_64 copy equals" \
+    "android-rust: withTestRegistry: built, scanned and copied into" "!selftest: a stale library stayed" \
+    "!x86_64-unknown-linux-gnu" "!linux-x86_64"
+  expect macos-undefined-symbol-the-stubs-lack 1 \
+    "FAIL: android-rust: target/aarch64-linux-android/release/libkeepcrypt.so: undefined symbols that NDK r30's API 31 stubs ($slm/aarch64-linux-android/31)" \
+    "do not define: preadv2" "!copied to"
+  expect macos-copy-with-other-bytes 1 \
+    "/macos-copy-with-other-bytes/repo/mobile/android/app/src/shipping/jniLibs/arm64-v8a differs from target/aarch64-linux-android/release/libkeepcrypt.so" \
+    "FAIL: android-rust: the copy in "
+  expect macos-shasum-fails 2 "android-rust: shasum -a 256 cannot hash target/aarch64-linux-android/release/libkeepcrypt.so" \
+    "!copied to"
+  expect macos-shasum-prints-no-hash 2 \
+    "android-rust: shasum -a 256 gave no SHA-256 for target/aarch64-linux-android/release/libkeepcrypt.so" "!copied to"
+  expect macos-with-only-the-linux-prebuilt 2 \
+    "android-rust: no llvm-ar in $st/sdk/ndk/30.0.16248370/toolchains/llvm/prebuilt/darwin-x86_64/bin"
+  expect another-host-macos-x86_64 2 "android-rust: a Linux x86_64 host (CI) or a macOS arm64 host (local development) only"
+  expect another-host-linux-aarch64 2 "android-rust: a Linux x86_64 host (CI) or a macOS arm64 host (local development) only"
   expect another-flavour 2 "android-rust: the flavour is shipping or withTestRegistry, not release"
   expect no-argument 2 "android-rust: usage: scripts/android-rust.sh shipping | withTestRegistry"
   echo "android-rust selftest: $passed passed, $failed failed"
@@ -315,15 +408,21 @@ ndk_version=30.0.16248370
 here=$(cd "$(dirname "$0")" && pwd) || exit 2
 root=$(cd "$here/.." && pwd) || exit 2
 cd "$root" || exit 2
-[ "$(uname -s)-$(uname -m)" = Linux-x86_64 ] || refuse "a Linux x86_64 host only (the NDK's linux-x86_64 prebuilt; CI)"
+# The build host: CI's Linux x86_64, or the owner's macOS arm64 for local development (Q76). The NDK
+# prebuilt, the SHA-256 tool and the JVM tests' host library (its target and file name) follow it.
+case $(uname -s)-$(uname -m) in
+  Linux-x86_64) prebuilt=linux-x86_64 sha256=sha256sum host=x86_64-unknown-linux-gnu hostlib=libkeepcrypt.so ;;
+  Darwin-arm64) prebuilt=darwin-x86_64 sha256='shasum -a 256' host=aarch64-apple-darwin hostlib=libkeepcrypt.dylib ;;
+  *) refuse "a Linux x86_64 host (CI) or a macOS arm64 host (local development) only" ;;
+esac
 sdk=${ANDROID_HOME:-}
 [ -n "$sdk" ] && [ -d "$sdk" ] || refuse "no Android SDK (ANDROID_HOME)"
 ndk=$sdk/ndk/$ndk_version
 props=$ndk/source.properties
 [ -f "$props" ] || refuse "no NDK $ndk_version ($props)"
 grep -q "^Pkg[.]Revision = $ndk_version\$" "$props" || refuse "$props is not NDK $ndk_version"
-bin=$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin
-stubs=$ndk/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib
+bin=$ndk/toolchains/llvm/prebuilt/$prebuilt/bin
+stubs=$ndk/toolchains/llvm/prebuilt/$prebuilt/sysroot/usr/lib
 for tool in llvm-ar llvm-nm llvm-readelf aarch64-linux-android31-clang armv7a-linux-androideabi31-clang \
   x86_64-linux-android31-clang; do
   [ -x "$bin/$tool" ] || refuse "no $tool in $bin"
@@ -334,13 +433,14 @@ jni=$root/mobile/android/app/src/$flavour/jniLibs
 work=$(mktemp -d "${TMPDIR:-/tmp}/kc-android-rust.XXXXXX") || exit 2
 trap 'rm -rf "$work"' EXIT
 
-# sha256_of FILE: FILE's SHA-256 into $sha, 64 lowercase hex digits. Called outside any command
-# substitution, so a sha256sum that fails or prints anything else refuses (exit 2): no check below
-# compares an empty hash.
+# sha256_of FILE: FILE's SHA-256 into $sha, 64 lowercase hex digits, from the host's tool ($sha256).
+# Called outside any command substitution, so a tool that fails or prints anything else refuses
+# (exit 2): no check below compares an empty hash.
 sha256_of() {
-  sha=$(sha256sum "$1") || refuse "sha256sum cannot hash $1"
+  # $sha256 unquoted: on macOS it is shasum and its option.
+  sha=$($sha256 "$1") || refuse "$sha256 cannot hash $1"
   sha=${sha%% *}
-  printf '%s\n' "$sha" | grep -q -x -E '[0-9a-f]{64}' || refuse "sha256sum gave no SHA-256 for $1"
+  printf '%s\n' "$sha" | grep -q -x -E '[0-9a-f]{64}' || refuse "$sha256 gave no SHA-256 for $1"
 }
 
 # names FILE: the dynamic symbol names llvm-nm prints for FILE with the further options given before
@@ -371,12 +471,18 @@ scan() {
   esac
 }
 
-# build TARGET: the flavour's cargo build for TARGET, with the getrandom cfg for TARGET alone; the
-# C compiler, archiver and linker for an Android TARGET come from the caller's environment.
+# build TARGET: the flavour's cargo build for TARGET, with the getrandom cfg for TARGET alone when it
+# is a Linux or Android target (Q8; getrandom has no fallback on macOS, where linux_getrandom does
+# not build); the C compiler, archiver and linker for an Android TARGET come from the caller's
+# environment.
 build() {
   tu=$(printf '%s' "$1" | tr 'a-z-' 'A-Z_')
-  # $features unquoted: its words hold no space.
-  env "CARGO_TARGET_${tu}_RUSTFLAGS=$cfg" \
+  case $1 in
+    *-linux-*) flags="CARGO_TARGET_${tu}_RUSTFLAGS=$cfg" ;;
+    *) flags= ;;
+  esac
+  # $features unquoted: its words hold no space. No assignment at all without the cfg.
+  env ${flags:+"$flags"} \
     cargo build --release --locked -p keepcrypt-jni $features --lib --target "$1" --target-dir "$tdir" ||
     fail "cargo build for $1 failed"
 }
@@ -424,10 +530,9 @@ for abi in arm64-v8a armeabi-v7a x86_64; do
 done
 
 if [ "$flavour" = withTestRegistry ]; then
-  host=x86_64-unknown-linux-gnu
   echo "== the JVM tests' host library ($host, test registry)"
   build "$host"
-  so=$tdir/$host/release/libkeepcrypt.so
+  so=$tdir/$host/release/$hostlib
   [ -f "$so" ] || fail "no $so after the build"
   scan "$host" "$so"
   sha256_of "$so"

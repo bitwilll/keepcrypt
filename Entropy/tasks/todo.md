@@ -14496,6 +14496,26 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   (x86_64-unknown-linux-gnu in CI, aarch64-apple-darwin on the Mac).
   Proof: android-rust.sh's two flavours on the Mac; scripts/android-gradle.sh's build of both APKs and every JVM test
   task locally, with the same test counts as CI at that commit; --apk clean on the local APKs; CI unchanged at the commit.
+  Proof (M5 commit L1, partial: local, Q76; CI proves the Linux path at this commit): android-rust.sh takes the host
+  from uname: Linux x86_64 keeps the linux-x86_64 prebuilt, sha256sum and x86_64-unknown-linux-gnu's libkeepcrypt.so
+  with the getrandom cfg; macOS arm64 takes NDK r30's darwin-x86_64 prebuilt (universal binaries), `shasum -a 256` and
+  aarch64-apple-darwin's libkeepcrypt.dylib without the cfg (getrandom has no fallback on macOS, where linux_getrandom
+  does not build; the scan requires _getentropy); any other host exits 2. :core-ffi's and :screens' test tasks point
+  java.library.path at `target/ffi-test-registry/<the host's triple>/release`, chosen from os.name and os.arch, and fail
+  with a message on any other host (both failed so with `-Dos.arch=x86_64`). On the Mac: `shipping` built the three
+  ABIs, each scan clean and every undefined symbol in the API 31 stubs (49, 44 and 48, as in CI); `withTestRegistry`
+  the three and the host dylib, each scan exactly the registry marker and the test key (so the dylib imports
+  _getentropy). `--selftest` 27 passed, 0 failed (18 before; the macOS host's cases beside Linux's, and macOS x86_64 and
+  Linux aarch64 refused), under sh and dash. The strict Gradle build stops on the Mac: AGP fetches aapt2 for the build
+  host's OS, and gradle/verification-metadata.xml pins only aapt2-9.3.3-15703166-linux.jar, so
+  aapt2-9.3.3-15703166-osx.jar (4,463,202 bytes, SHA-256 1e35bc2ce18c3aae840be2a29659ce50d6043e907a44d98ee1cf375d044fa29c,
+  not yet checked against Google's Maven) fails strict verification, :core-ffi's host tests included; the local build
+  of the APKs and the JVM tests waits for the lead's decision on that entry. A local diagnostic only (strict
+  verification still on, the SDK's build-tools 36.0.0 aapt2 named by `-Pandroid.aapt2FromMavenOverride`, so not CI's
+  build): both APKs and the other three built; every JVM test class ran, each with its count of @Test methods at
+  1a63e0f (mobile/'s sources are unchanged since) and no failure (:core-ffi 27 in 9 classes, :screens 79 in 13, :app 7
+  in 3 for each flavour, :secure-ui 3 in 1); and `--apk` was clean on both APKs, signed with a throwaway key (keytool,
+  apksigner), with the build-tools and NDK r30's darwin LLVM on PATH (16 KB pages and exports judged there).
 - [ ] L2. scripts/android-local.sh: on the project's own AVD kc37 (API 37, the installed google_apis_playstore arm64-v8a
   image; the owner's Medium_Phone is never touched), boot it, install both APKs and their test APKs, and run every
   instrumented class through android-instrument.sh's judge in android-emulator.sh's order; it names each check a user
