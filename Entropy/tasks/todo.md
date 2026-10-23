@@ -14626,7 +14626,7 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   ~/.android but kc37's files. The APKs came from the script's own build with L1's diagnostic
   (ORG_GRADLE_PROJECT_android.aapt2FromMavenOverride naming build-tools 36.0.0's aapt2, strict verification on),
   as the strict build still stops on aapt2's osx jar. --selftest: android-local.sh 22 passed (and three mutants
-  each failed it), android-emulator.sh 25 (20 before), android-instrument.sh 39 (34 before), 0 failed under sh and
+  each failed it), android-emulator.sh 25 (19 before), android-instrument.sh 39 (34 before), 0 failed under sh and
   dash.
   Proof (M5 commit L2b, review fix, partial: local, Q76): NativeTest, which android-emulator.sh runs on CI's 16 KB
   leg only and --booted never, was neither run nor named. It now runs at the start of the second boot, before the
