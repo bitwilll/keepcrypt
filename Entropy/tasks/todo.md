@@ -11261,7 +11261,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
     (`ExecutorService`, `Executors`, `CompletableFuture`, `FutureTask`, `ForkJoinPool`, `async`, `Deferred`, and
     `Executor` but in the scanner, with its import line), and a `return`, `break` or `continue` inside a `finally`
     block, which drops the exception in flight, read fail closed without a parser (a string, a character, a backtick
-    name or a comment in the block hits too) (M5-60).
+    name or a comment in the block hits too) (M5-60). There too, `java.util.concurrent` and `kotlinx.coroutines` are
+    allowed only by the import lines the shipping code has today, each a whole line, exactly: the ten `import
+    kotlinx.coroutines.X` lines M5-60 (b) lists, in any file, and `import java.util.concurrent.Executor` in the
+    scanner alone; any other mention of either package (another import, a star import, an alias, a qualified name,
+    a package line, a comment or a string) hits (M5-60 (b), commit 18o).
   - **KtWindow:** Toast, Snackbar, Notification, `Dialog(`, `AlertDialog`, `DialogFragment`, `Popup(`, `PopupWindow`,
     `ListPopupWindow`, `PopupMenu`, `DropdownMenu`, `ModalBottomSheet`, Spinner, `AutoCompleteTextView`, tooltips,
     `WindowManager.addView`, `TYPE_APPLICATION_OVERLAY`; any `DialogProperties(`/`PopupProperties(` without
@@ -13585,6 +13589,9 @@ The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false
     `--selftest` 1302 passed, 0 failed under sh and /bin/dash; the gate on the tree clean.
   - Moved to M6 by Q73 (8w): `iosMain`, `iosTest` and `nativeInterop` leave the allow list, so each is a KtSourceSet
     hit in M5.
+  - Amended by M5-60 (c) (commit 18o): KtSourceSet also refuses any `.java` file under mobile/android, in any letter
+    case and every scope (the test source sets, :capture-control and paths outside src/ included), as Java reads
+    backslash-u escapes as the characters they name, so a Java source could hide every text rule's word.
 - [x] Scopes (banned-api-check.sh:2043-2051). `commonTest`, `androidHostTest` and `iosTest` join `test`, by the same literal module-segment match. Every other allowed source set stays `main`. The fixture scope-copy logic (around :2358-2390) moves with them.
   - Proof: fixtures. A `runCatching` in `screens/src/commonTest/` passes; the same code under `screens/src/commonMain/`, or in a nested `.../commonMain/kotlin/x/src/commonTest/` path, fails.
   - Proof (M5 commit 8p): the test scope is src/test, src/androidTest, src/commonTest, src/androidHostTest and src/iosTest
