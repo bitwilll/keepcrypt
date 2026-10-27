@@ -3218,6 +3218,14 @@ list() {
 # fails loud, never quiet).
 gradle_out='^[.]/mobile/android/([.]gradle|build|(app|capture-control|core-ffi|screens|secure-ui)/build)/'
 
+# build_rule_cleanup: the Build rule's temporary files, removed by the scan's EXIT trap. A function
+# rather than the trap's own text, since bash 5 numbers a trap's text from line 1 and bash 3.2 does
+# not, while a function's lines are its lines in this file under both, so banned-api-faults.sh's
+# traced run finds this rm where the text holds it (lead decision M5-66).
+build_rule_cleanup() {
+  rm -f "$index" ${blob:+"$blob"}
+}
+
 scan() {
   cd "$1" || exit 2
   fail_closed
@@ -3603,7 +3611,7 @@ EOF
     on="git's index of mobile/"
     index=$(mktemp "${TMPDIR:-/tmp}/banned-api-index.XXXXXX") || exit 2
     blob=
-    trap 'rm -f "$index" ${blob:+"$blob"}' EXIT
+    trap 'build_rule_cleanup' EXIT
     trap 'exit 2' HUP INT TERM
     blob=$(mktemp "${TMPDIR:-/tmp}/banned-api-blob.XXXXXX") || exit 2
     listed=$(git ls-files -s -z -- mobile >"$index") || exit 2

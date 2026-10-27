@@ -15095,7 +15095,12 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   the working tree (361 files) under sh and dash; `--workflows ../.github/workflows` clean (3 workflows) under sh and
   dash; canaries.sh PASS, all 94 checks ran (1278 s, beside the indexing). CI: Entropy CI's lint job runs `sh
   scripts/banned-api-faults.sh` as its first step after checkout (the gates job took 688 s of its 720 at 6a6a34f);
-  L7 puts canaries.sh in supply-chain. The 14 required check names are unchanged.
+  L7 puts canaries.sh in supply-chain. The 14 required check names are unchanged. CI's first run (Entropy CI
+  40567427675, at d8598e9) stopped the check before any fault run, as it should: "scan rm: the gate holds 1 (lines
+  3606), the tree reached 0" and "rm: reached at lines 1". Ubuntu's bash 5 numbers an EXIT trap's text from line 1,
+  where macOS's bash 3.2 keeps the script's line, so the Build rule's trap now calls build_rule_cleanup, whose rm
+  is at its line under both (M5 commit 18u; locally the same 142 places, 426 runs passed, 185 s under sh and 175 s
+  under /bin/dash).
 - [ ] L7. canaries.sh moves out of the gates job into one existing required job with time to spare (M5-67, commit
   L7). The gates job keeps the gate's runs and the two self-test shards with their count check. Proof: both jobs' times
   in CI, each under 12 minutes, with the 14 required check names unchanged.
