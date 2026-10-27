@@ -14919,6 +14919,13 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   and the case fetched-flags expects exit 1, the camera check still run, and the change named after the leg's boot and
   after the Camera2 check's. That mutant fails it alone (29 passed, 1 failed). android-local.sh --selftest: 30
   passed, 0 failed under sh and /bin/dash (131 s each); the gate clean on the built working tree (360 files).
+  Proof (M5 commit L3f, review fix, partial: local, Q76): the update check's seed read from emulator -version, and the
+  refusal of an emulator that names none, had no case, as the stand-in named 37.2.12.0, kc37's own version. The
+  stand-in now names KC_VERSION's version, or none under KC_NO_VERSION: the case version (37.2.99.0) expects exit 0,
+  the run's seed line naming that version and that version's line in both boots' seeds, and no-version expects exit 2
+  with "emulator -version names no version" and nothing booted. A version written in (`version=37.2.12.0`) fails four
+  checks, version's two and no-version's two, and the refusal dropped fails no-version's two. android-local.sh
+  --selftest: 34 passed, 0 failed under sh and /bin/dash (131 s each); the gate clean on the built working tree (360 files).
 - [ ] L4. The gates job's self-test in two shards beside the canaries (M5-63).
   Proof: the shards' counts add up to the whole list's, locally and in CI; the gates job's time in that run, under 12
   minutes.

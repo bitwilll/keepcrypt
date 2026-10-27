@@ -108,7 +108,8 @@
 # the collision result, and the test-registry app's scan screen still scanning with no camera client
 # (exit 1 each); an emulator that changes its seeded update check, and one that changes its seeded
 # feature flags, as each fetch would (exit 1 each, named after each boot, the camera check still
-# run); and too many arguments (exit 2).
+# run); an emulator of another version (that version in the update check's seed, exit 0), and one
+# whose -version names none (exit 2, nothing booted); and too many arguments (exit 2).
 # Exit 0 when every case behaves, 1 otherwise. The cases run at once; it takes about two minutes.
 set -u
 unset CDPATH
@@ -148,12 +149,18 @@ print("android-frames: PASS %s: stand-in" % expect)
 EOF
   cat > "$st/emulator" <<'EOF' || exit 2
 #!/bin/sh
-# The selftest's stand-in emulator: it names its version, or it records its arguments, the
-# environment it was given, whether adb's key is in its HOME and the two seeded records there (the
-# update check's line, the flags' first line, and whether the rest is the SDK's bundled flags), then
-# runs until adb's emu kill; under KC_FETCH it first adds a line to the update check's record, and
-# under KC_FETCH_FLAGS it replaces the flags' record, as each fetch would.
-case $1 in -version) echo 'Android emulator version 37.2.12.0 (build_id 16428233) (CL:N/A)'; exit 0 ;; esac
+# The selftest's stand-in emulator: it names its version (KC_VERSION's, or none under
+# KC_NO_VERSION), or it records its arguments, the environment it was given, whether adb's key is in
+# its HOME and the two seeded records there (the update check's line, the flags' first line, and
+# whether the rest is the SDK's bundled flags), then runs until adb's emu kill; under KC_FETCH it
+# first adds a line to the update check's record, and under KC_FETCH_FLAGS it replaces the flags'
+# record, as each fetch would.
+case $1 in
+  -version)
+    [ -n "${KC_NO_VERSION:-}" ] || echo "Android emulator version ${KC_VERSION:-37.2.12.0} (build_id 16428233) (CL:N/A)"
+    exit 0
+    ;;
+esac
 key=no
 [ -f "$HOME/.android/adbkey" ] && [ -f "$HOME/.android/adbkey.pub" ] && key=yes
 echo "$* | HOME=$HOME | ANDROID_AVD_HOME=$ANDROID_AVD_HOME | adbkey=$key" >> "$KC_STUB/boots"
@@ -398,6 +405,8 @@ CONFIG
   run scan-no-client KC_NO_REGISTRY_CLIENT=1
   run fetched KC_FETCH=1 KC_DECODE=1
   run fetched-flags KC_FETCH_FLAGS=1 KC_DECODE=1
+  run version KC_VERSION=37.2.99.0 KC_DECODE=1
+  run no-version KC_NO_VERSION=1
   wait
   passed=0
   failed=0
@@ -465,15 +474,15 @@ CONFIG
     [ "$ok" = yes ] || sed 's/^/  boot: /' "$st/$1/boots"
     check "$1" "$ok" "two boots, no camera and then the virtual scene, port 5580, no snapshot, no route out, its own HOME"
   }
-  # seeded NAME: at each of case NAME's two boots its HOME held the update check's line for the
-  # stand-in's version and the SDK's bundled flags after a last_download_time line, both at one time,
-  # the run's (from the selftest's start to now).
+  # seeded NAME [VERSION]: at each of case NAME's two boots its HOME held the update check's line for
+  # the stand-in's version (VERSION, by default 37.2.12.0) and the SDK's bundled flags after a
+  # last_download_time line, both at one time, the run's (from the selftest's start to now).
   seeded() {
     ok=yes
     [ "$(wc -l < "$st/$1/seeds" | tr -d ' ')" = 2 ] || ok=no
     while IFS= read -r line; do
       case $line in
-        "_version.3D37.2.12.0.26coreVersion.3Dqemu2.25202.12.0 = "*" | last_download_time: "*" | bundled=yes") ;;
+        "_version.3D${2:-37.2.12.0}.26coreVersion.3Dqemu2.25202.12.0 = "*" | last_download_time: "*" | bundled=yes") ;;
         *) ok=no ;;
       esac
       at=${line#*= }
@@ -565,6 +574,14 @@ CONFIG
   expect fetched-flags 1 "$camera_passes" \
     "FAIL: local: the emulator changed its seeded emu-last-feature-flags.protobuf (the leg's boot): it made its own fetch from dl.google.com" \
     "FAIL: local: the emulator changed its seeded emu-last-feature-flags.protobuf (the Camera2 check's boot): it made its own fetch from dl.google.com"
+  expect version 0 "(emulator 37.2.99.0), so it fetches neither" "local: every check made on kc37 passed"
+  seeded version 37.2.99.0
+  expect no-version 2 "local: emulator -version names no version"
+  if [ ! -e "$st/no-version/boots" ]; then
+    check no-version yes "nothing booted"
+  else
+    check no-version no "nothing booted"
+  fi
   sh "$st/scripts/android-local.sh" one two > "$st/out" 2>&1
   if [ "$?" -eq 2 ] && grep -q -e '^usage: ' "$st/out"; then
     check "too many arguments" yes
