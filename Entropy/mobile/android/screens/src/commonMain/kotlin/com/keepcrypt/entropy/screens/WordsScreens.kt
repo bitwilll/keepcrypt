@@ -93,6 +93,12 @@ const val SEEDBOOK_RULES = "The SeedBook is a public reference: never write the 
     "copy with the wallet. Work one word at a time, in order, alone and offline; rehearse on a spare insert first. " +
     "Never use a computer-driven embosser or printer for a real seed."
 
+/**
+ * swb's warning for speech ("Accessibility"; Q57 (e)): TalkBack reads the words, on a braille display or
+ * aloud, and no app can tell where it speaks, so the privacy gate before the words says to use headphones.
+ */
+const val HEADPHONES_WARNING = "If a screen reader speaks the words, use headphones: no app can tell where it speaks."
+
 /** number as width decimal digits, zero first (the Pi's push_number). */
 private fun digits(number: Int, width: Int): String = number.toString().padStart(width, '0')
 

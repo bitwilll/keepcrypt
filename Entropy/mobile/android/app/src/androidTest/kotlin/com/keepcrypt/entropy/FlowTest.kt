@@ -33,6 +33,7 @@ import com.keepcrypt.entropy.ffi.WordPage
 import com.keepcrypt.entropy.screens.CHECKLIST
 import com.keepcrypt.entropy.screens.DICE_KEYS
 import com.keepcrypt.entropy.screens.DICE_ONLY
+import com.keepcrypt.entropy.screens.HEADPHONES_WARNING
 import com.keepcrypt.entropy.screens.INSERTS_PER_DEVICE
 import com.keepcrypt.entropy.screens.LETTER_KEYS
 import com.keepcrypt.entropy.screens.MAX_ROLLS
@@ -350,6 +351,7 @@ class FlowTest {
         find("privacy_gate")
         assertTrue("the words showed before the privacy gate", onMain { activity.model.state.value.gate })
         awaitText("seedbook_rules", SEEDBOOK_RULES)
+        awaitText("headphones_warning", HEADPHONES_WARNING)
         device.pressBack()
         stays(activity, Screen.Words, "Back on the words' privacy gate")
         assertTrue("Back took the privacy gate away", onMain { activity.model.state.value.gate })

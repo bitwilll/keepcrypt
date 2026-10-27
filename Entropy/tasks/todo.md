@@ -12939,6 +12939,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   nodes (7 on screen)" (7 and 7 in the other run, the ceremony's random first word), the overview 4 (4), the entry
   1 (1), the mismatch 4 (4); CaptureTest 6 and 6 passed. Not run: a mutant with one node's secret() dropped (another
   emulator run); the lines above show each text found on screen, so such a node is found without the tag.
+  Proof (M5 commit 19f, review fix, partial: local, Q76; CI's API 31 and 36 legs at the next push): swb:286 (Q57 (e))
+  puts an on-screen warning to use headphones beside speech output, and TalkBack reads the words (secret() keeps them
+  readable to accessibility tools). The privacy gate before the words, the first time and after the device swap,
+  now shows it under the SeedBook rules (tag headphones_warning): "If a screen reader speaks the words, use
+  headphones: no app can tell where it speaks." FlowTest reads it there (awaitText) and passed, 5 tests, on kc37.
 
 **18. Screens: backup, Check a backup, watch-only, register, reveal D, snapshots, About, stop** (MA:146-162)
 - [ ] Backup: the 8-word passphrase (Protected), its 2-of-4 confirm, Save (`CreateDocument`, core's suggested name,
