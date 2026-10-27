@@ -84,8 +84,10 @@ static_check() {
 # copy_tree SRC DEST: DEST made, then each entry of the directory SRC (dot entries included) copied
 # into it by cp -RP, but target/ and .git/ at the top and the ignored output a local Gradle build
 # leaves (lead decision M5-62 (a)): the directories mobile/android/.gradle/, mobile/android/build/
-# and every build/ one level under mobile/android, exactly what scripts/banned-api-check.sh's list()
-# leaves out of its scan, so no copy holds a local build's output (CI's fresh checkout has none). The
+# and each module's build/ (app, capture-control, core-ffi, screens and secure-ui), exactly what
+# scripts/banned-api-check.sh's scan leaves out in a git work tree (its gradle_out), so no copy
+# holds a local build's output (CI's fresh checkout has none). A copy is no work tree, so the gate
+# run on one (the Device, Kotlin and FFI canaries below) would read every file of that output. The
 # directories above them, mobile/, mobile/android/ and each one in it, are walked (a call of
 # copy_tree each, the last step of its loop's turn) instead of copied whole; in a case pattern * also
 # matches a /, so mobile/android/*/* is the walk's floor: copied whole, never walked.
@@ -99,7 +101,9 @@ copy_tree() {
         esac
         if [ -d "$copy_e" ] && [ ! -L "$copy_e" ]; then
             case $copy_rel in
-                mobile/android/.gradle | mobile/android/build | mobile/android/*/build) continue ;;
+                mobile/android/.gradle | mobile/android/build | mobile/android/app/build | \
+                    mobile/android/capture-control/build | mobile/android/core-ffi/build | \
+                    mobile/android/screens/build | mobile/android/secure-ui/build) continue ;;
                 mobile/android/*/*) ;;
                 mobile | mobile/android | mobile/android/*) copy_tree "$copy_e" "$2/${copy_e##*/}"; continue ;;
             esac

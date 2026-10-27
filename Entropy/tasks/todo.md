@@ -14871,6 +14871,26 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   watch): 20 passed, each at its first attempt, left after 102 to 122 ms and the reply back after 505 to 718 ms (L2's
   Home: left after 410 to 825 ms, and the scrypt won all three attempts in one run). JVM tests, rerun on the Mac:
   :core-ffi 27 in 9 classes, :screens 79 in 13, :app 7 in 3 for each flavour, :secure-ui 3 in 1, no failure.
+  Proof (M5 commit L3b, review fix, partial: local, Q76; CI's checkout holds none of these directories): the skip is
+  now M5-62 (a)'s as worded, and only where its premise holds. L3's prune reached every build/ one level under
+  mobile/android, gradle/'s and expected/'s too (a KtLog line in each, untracked in a git work tree, went unread), and
+  applied in every tree, so in a git archive export a source committed under app/build/ went unread
+  (`java.util.Random()` in app/build/generated/source/x/Gen.kt: clean under 70efc1e's gate, the RNG hit here). list()
+  is again as it was before L3; scan() drops the paths gradle_out matches, mobile/android/.gradle/,
+  mobile/android/build/ and the build/ of app, capture-control, core-ffi, screens and secure-ui (the five modules
+  settings.gradle.kts includes), only when git rev-parse finds a work tree, the test the Build rule now shares
+  ($work_tree); elsewhere every file is read. canaries.sh's copy_tree names the same five. Nine selftest cases more
+  (1572 to 1581): the other four modules' untracked build/ files unread, gradle/'s and expected/'s build/ read, and
+  outside a work tree a file under .gradle/, the root build/ and capture-control's build/ read. Four gate mutants,
+  each run on the whole selftest in eight shards, fail only their own cases: L3's pattern (the gradle/ and expected/
+  cases), the skip outside a work tree too (the three outside cases), capture-control's build/ alone (the other four
+  modules') and no skip (the ten unread cases); the second, run beside the first, also failed
+  clean-kt-commonTest-scope-copies once (a Shell hit with no line), which passed alone on that mutant and on this
+  commit. `--selftest --shard K/8` side by side: 1581 cases, 0 failed, under sh (144 s) and /bin/dash (141 s), their
+  PASS lines equal; the gate clean on the built working tree, 360 files (31 s under sh, 28 s under dash), and on a
+  fresh export, 356 files; canaries.sh in the built working tree with CARGO_NET_OFFLINE=true passed every check but
+  deny-git-source, which offline mode stops from checking out its file:// repository (92 of 93 ran), and on a fresh
+  export, run as CI runs it, PASS, all 93 checks ran.
 - [ ] L4. The gates job's self-test in two shards beside the canaries (M5-63).
   Proof: the shards' counts add up to the whole list's, locally and in CI; the gates job's time in that run, under 12
   minutes.
