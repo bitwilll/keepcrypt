@@ -14498,6 +14498,11 @@ they differ. Nothing in the Android plan is weakened.
   and no longer waits. (d) The Camera2 decode of goahead-collision-dice-50.png, a version-24 code at about 3 px a
   module on kc37's virtual scene, stays unmet. No new test asset is added for it; the decode stays P0b's and P4's, on a
   real camera.
+  Amended 2026-10-27 (commit L3b, Lc's review): (a)'s claim that the skip hides nothing tracked holds only where git's
+  index says what is tracked. So the gate leaves those directories out only inside a git work tree, and an export or a
+  tarball is read whole. The leave-out names mobile/android/.gradle, mobile/android/build and the build/ of the five
+  modules settings.gradle.kts includes, and nothing else. A sixth module's build output is read until it is named, so
+  it fails the gate loudly and never hides anything.
 - M5-63 (2026-10-23): the gates job's self-test is its long pole, and it grows with every rule: locally 514 s at 1463
   cases (1a63e0f) and 575 s at 1517 (Stage L's head). The job took 649 to 659 s of Q31 (f)'s 12 minutes at 1463 to
   1481 cases, so commits 19-21's fixtures would push it past 12 minutes. Before that happens, the self-test runs in
@@ -14505,6 +14510,13 @@ they differ. Nothing in the Android plan is weakened.
   its shard and prints its own count and the whole list's count. The step fails unless both shards report the same
   whole-list count, their counts add up to it, and every case passes. The rules and cases are unchanged. Locally, the
   shards' counts add up to the unsharded count (commit L4).
+  As built (L4, 2026-10-23): shard K of N judges case c of the one list, in its fixed order, when (c - 1) mod N is
+  K - 1, so neighbouring cases go to different shards and every kind of case falls into both (the fixtures, the
+  scope trees' scans, the built cases and the other modes'). A case is skipped only at its judged run, so what comes
+  before it is made in both shards (each case's scratch tree, the scope trees' copies, the artifact objects, the image
+  stub): 36 s of each shard's walk on the Mac. The cases are unchanged but for the option's own 13 refusals (1569 at
+  L4). Locally (sh, 1569 cases): the whole self-test 541 s alone; the shards 349 s and 347 s beside canaries.sh's
+  462 s, so on the Mac the step's long pole is now canaries.sh.
 - M5-64 (2026-10-27): RUSTSEC-2026-0385 (published about 2026-10-23) reports that ctutils before 0.4.4 could compile
   its `Choice` mask generation, and its `u128` comparisons on 32-bit targets, to branches on secret values: a timing
   side channel. ctutils is RustCrypto's constant-time helper under digest (so sha2, hmac, hkdf, pbkdf2 and scrypt) and
@@ -14517,13 +14529,22 @@ they differ. Nothing in the Android plan is weakened.
   test-sources (269 passed), cargo vet --locked, and the offline cargo deny and cargo audit pass. CI's online deny and
   audit prove the advisory cleared. The Pi image and the Android libraries rebuild from the new lock in CI; no hash is
   pinned for either.
-  As built (L4, 2026-10-23): shard K of N judges case c of the one list, in its fixed order, when (c - 1) mod N is
-  K - 1, so neighbouring cases go to different shards and every kind of case falls into both (the fixtures, the
-  scope trees' scans, the built cases and the other modes'). A case is skipped only at its judged run, so what comes
-  before it is made in both shards (each case's scratch tree, the scope trees' copies, the artifact objects, the image
-  stub): 36 s of each shard's walk on the Mac. The cases are unchanged but for the option's own 13 refusals (1569 at
-  L4). Locally (sh, 1569 cases): the whole self-test 541 s alone; the shards 349 s and 347 s beside canaries.sh's
-  462 s, so on the Mac the step's long pole is now canaries.sh.
+- M5-65 (2026-10-27): M5-60 (b)'s reason, that a word list cannot be complete, holds as well for the standard
+  library's kotlin.coroutines, which is always on the compile classpath. Its startCoroutine and createCoroutine take a
+  completion Continuation whose resumeWith can ignore the failure it is handed, a catch-all with no catch, and a
+  shipping file doing that passed the gate clean (Lc's review, three findings). The shipping code uses nothing from
+  kotlin.coroutines, and commonTest's TestSupport.kt is in a test set. So KtFailOpen's package arm takes
+  kotlin.coroutines and its subpackages, with no allowed import line. A name from it needs a lead decision that says
+  why it cannot hold a failure, as in (b). kotlinx.coroutines keeps (b)'s ten lines (commit 18s).
+- M5-66 (2026-10-27): with two mutant self-tests side by side (16 or more shards), Lc's fix agent saw one case report a
+  Shell hit with no line number (`MainActivity.kt:: `). The case passed alone. That failure was closed, but it shows
+  that a rule's helper can fail and the scan still go on. Rule 3 holds for the gate itself: a tool the gate runs that
+  cannot start, exits with an error or is killed must stop the gate with exit 2, naming what failed. It must never
+  give "clean", and never a hit with no line. Commit 18t finds that empty line number's cause and fixes it. It adds a
+  fault check: a PATH shim makes each external tool the gate runs fail, in each of those three ways, at every place in
+  the script that runs it, on a small tree that reaches every rule. No such run may print "clean". The check runs in CI
+  in a job with time to spare, since the gates job took 701 s of its 720 at 4940ede (run 40442191525, before L4's
+  shards). It takes at most 5 minutes there, and the 14 required check names are unchanged.
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the
@@ -14961,6 +14982,15 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   scans 356; the 357 first given most likely counted the ignored tools/verify/__pycache__/verify.cpython-312.pyc that
   canaries.sh's run leaves in its tree) under sh and dash. The 14 required check names and the steps before the gate's
   first run are unchanged.
+- [ ] L5. KtFailOpen's package arm takes the standard library's kotlin.coroutines and its subpackages, with no allowed
+  import line (M5-65, commit 18s): hit fixtures for an import, a star import, a qualified call (startCoroutine with a
+  completion that drops its Result) and an intrinsics name, each clean in the test scopes; a near-miss fixture
+  showing that kotlinx.coroutines' allowed lines and words such as `kotlinx` and `coroutines` alone do not hit as
+  kotlin.coroutines.
+- [ ] L6. The gate fails closed when a tool it runs fails (M5-66, commit 18t): the empty-line-number Shell hit's
+  cause found and fixed, and the fault check (each external tool failing to start, exiting with an error and killed,
+  at every place the script runs it, on a small tree that reaches every rule) in CI in at most 5 minutes, with no run
+  printing "clean". The 14 required check names are unchanged.
 
 **Stages E3 and E4** run commits 19, 20 and 21 as planned, each built and tested locally before it is committed.
 
