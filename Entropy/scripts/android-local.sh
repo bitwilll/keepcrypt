@@ -106,8 +106,9 @@
 # booted or changed); a device already on the port (exit 1); no camera client while the scan screen
 # shows, and one still listed after Home (exit 1 each); the scan screen gone after a decode without
 # the collision result, and the test-registry app's scan screen still scanning with no camera client
-# (exit 1 each); an emulator that changes its seeded update check, as a fetch would (exit 1, named
-# after each boot, the camera check still run); and too many arguments (exit 2).
+# (exit 1 each); an emulator that changes its seeded update check, and one that changes its seeded
+# feature flags, as each fetch would (exit 1 each, named after each boot, the camera check still
+# run); and too many arguments (exit 2).
 # Exit 0 when every case behaves, 1 otherwise. The cases run at once; it takes about two minutes.
 set -u
 unset CDPATH
@@ -150,8 +151,8 @@ EOF
 # The selftest's stand-in emulator: it names its version, or it records its arguments, the
 # environment it was given, whether adb's key is in its HOME and the two seeded records there (the
 # update check's line, the flags' first line, and whether the rest is the SDK's bundled flags), then
-# runs until adb's emu kill; under KC_FETCH it first adds a line to the update check's record, as a
-# fetch would.
+# runs until adb's emu kill; under KC_FETCH it first adds a line to the update check's record, and
+# under KC_FETCH_FLAGS it replaces the flags' record, as each fetch would.
 case $1 in -version) echo 'Android emulator version 37.2.12.0 (build_id 16428233) (CL:N/A)'; exit 0 ;; esac
 key=no
 [ -f "$HOME/.android/adbkey" ] && [ -f "$HOME/.android/adbkey.pub" ] && key=yes
@@ -161,6 +162,7 @@ bundled=no
 tail -n +2 "$flags" 2>/dev/null | cmp -s - "$ANDROID_HOME/emulator/lib/emu-original-feature-flags.protobuf" && bundled=yes
 echo "$(cat "$HOME/.android/emu-update-last-check.ini" 2>/dev/null) | $(head -n 1 "$flags" 2>/dev/null) | bundled=$bundled" >> "$KC_STUB/seeds"
 [ -z "${KC_FETCH:-}" ] || echo '_version.3D37.2.13.0.26coreVersion.3Dqemu2.25202.12.0 = 1' >> "$HOME/.android/emu-update-last-check.ini"
+[ -z "${KC_FETCH_FLAGS:-}" ] || echo 'stand-in fetched flags' > "$flags"
 echo $$ > "$KC_STUB/emulator.pid"
 exec sleep 300
 EOF
@@ -395,6 +397,7 @@ CONFIG
   run scan-left KC_DECODE=1 KC_AFTER=launcher
   run scan-no-client KC_NO_REGISTRY_CLIENT=1
   run fetched KC_FETCH=1 KC_DECODE=1
+  run fetched-flags KC_FETCH_FLAGS=1 KC_DECODE=1
   wait
   passed=0
   failed=0
@@ -559,6 +562,9 @@ CONFIG
   expect fetched 1 "$camera_passes" \
     "FAIL: local: the emulator changed its seeded emu-update-last-check.ini (the leg's boot): it made its own fetch from dl.google.com" \
     "FAIL: local: the emulator changed its seeded emu-update-last-check.ini (the Camera2 check's boot): it made its own fetch from dl.google.com"
+  expect fetched-flags 1 "$camera_passes" \
+    "FAIL: local: the emulator changed its seeded emu-last-feature-flags.protobuf (the leg's boot): it made its own fetch from dl.google.com" \
+    "FAIL: local: the emulator changed its seeded emu-last-feature-flags.protobuf (the Camera2 check's boot): it made its own fetch from dl.google.com"
   sh "$st/scripts/android-local.sh" one two > "$st/out" 2>&1
   if [ "$?" -eq 2 ] && grep -q -e '^usage: ' "$st/out"; then
     check "too many arguments" yes

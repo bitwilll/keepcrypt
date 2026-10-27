@@ -14912,6 +14912,13 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   leave-out that also takes files of those names, and one that leaves out mobile/. canaries.sh PASS, all 94 checks
   ran, in the built working tree (448 s) and on a fresh export (469 s, the two side by side); the gate clean on the
   built working tree (360 files) and on the export (356) under sh and dash.
+  Proof (M5 commit L3e, review fix, partial: local, Q76): seeds_kept's check of the seeded
+  emu-last-feature-flags.protobuf had no case, as the stand-in's one fetch (KC_FETCH) changed only the update check's
+  record: a seeds_kept reading that record alone passed all 29. Under KC_FETCH_FLAGS the stand-in emulator now
+  replaces the flags' record, as the flags' fetch does (L3's watched run: the file replaced by 5,010 fetched bytes),
+  and the case fetched-flags expects exit 1, the camera check still run, and the change named after the leg's boot and
+  after the Camera2 check's. That mutant fails it alone (29 passed, 1 failed). android-local.sh --selftest: 30
+  passed, 0 failed under sh and /bin/dash (131 s each); the gate clean on the built working tree (360 files).
 - [ ] L4. The gates job's self-test in two shards beside the canaries (M5-63).
   Proof: the shards' counts add up to the whole list's, locally and in CI; the gates job's time in that run, under 12
   minutes.
