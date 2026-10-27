@@ -7,6 +7,8 @@ import com.keepcrypt.entropy.Capture.finish
 import com.keepcrypt.entropy.Capture.onMain
 import com.keepcrypt.entropy.Capture.pass
 import com.keepcrypt.entropy.Ui.START_SECONDS
+import com.keepcrypt.entropy.Ui.assertPublicPadLabelled
+import com.keepcrypt.entropy.Ui.await
 import com.keepcrypt.entropy.Ui.awaitText
 import com.keepcrypt.entropy.Ui.device
 import com.keepcrypt.entropy.Ui.enabled
@@ -43,7 +45,9 @@ import org.junit.runner.RunWith
  * QR the screen drew is read in-process (Checker; captures of the app are black), a code through every
  * column and row of the Crockford pad types and Delete takes it back, a wrong code typed on the pad is
  * refused and the check, its nonce and the actions stay, and the code a checker builds from that QR's T
- * and nonce, typed on the pad, passes the check.
+ * and nonce, typed on the pad, passes the check; the pad's 32 keys keep their labels (lead decision
+ * M5-46: a Public pad), and the result's Show words leads through the privacy gate to the first insert
+ * (group 17; the words themselves are FlowTest's).
  */
 @RunWith(AndroidJUnit4::class)
 class CheckTest {
@@ -122,6 +126,7 @@ class CheckTest {
             on(activity, Screen.CodeEntry)
             assertFalse("Done with no symbol", enabled("code_done"))
             assertFalse("Delete with no symbol", enabled("code_delete"))
+            assertPublicPadLabelled("the go-ahead code's pad", CROCKFORD_KEYS)
             // Every column and every row of the pad types: one key from each column, the rows in turn (0, 9,
             // J, V, 4, D, P, Z). Before commit 17 a row of eight 46 dp keys was wider than the 312 dp the
             // screen's margins leave, which left the last columns no width, so a tap there reached the key
@@ -155,11 +160,20 @@ class CheckTest {
                 "No collision for seal $DICE_50_SEAL_ID, as of the date your checker showed.",
                 text("check_result_text"),
             )
+            tap("show_words")
+            find("privacy_gate")
+            assertTrue("the words showed before the privacy gate", onMain { activity.model.state.value.gate })
+            tap("pass_gate")
+            await("past the gate", 10) { !onMain { activity.model.state.value.gate } }
+            on(activity, Screen.Words)
+            val atFirst = onMain { activity.model.state.value.insert?.let { it.position == 1 && it.count == 12 } }
+            assertTrue("the words do not start at insert 1 of 12", atFirst == true)
             pass(
                 "the check without a snapshot: Done at 50 rolls, the prompt with no Seal ID, Skip, the seal card's Seal ID " +
                     "$DICE_50_SEAL_ID and its four actions (Scan go-ahead QR drawn), Match found and Cannot check confirmed on " +
                     "their own screens and Back there, a wrong code " +
-                    "refused with the same check QR, the code from the drawn check QR's T and nonce typed on the pad: the check passed",
+                    "refused with the same check QR, the code from the drawn check QR's T and nonce typed on the pad: the check " +
+                    "passed; the pad's 32 keys labelled (M5-46); Show words through the gate to insert 1 of 12",
             )
             finish(activity)
         }

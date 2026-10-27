@@ -128,6 +128,25 @@ internal object Ui {
         return find(screenId(screen)).findObject(By.text(text))
     }
 
+    /** UI Automator's class name for a node with the button role (Compose's Role.Button). */
+    const val BUTTON = "android.widget.Button"
+
+    /**
+     * A Public pad keeps its labels (lead decision M5-46's other half; Pads.kt): each of keys is found by
+     * its resource id, key_ and the key, clickable, with its key as the text of the node its label draws
+     * inside it, which TalkBack reads with the key. Its class name is not read: on kc37 (local) a Public
+     * key, whose label is a node under it, reports android.view.View, not BUTTON, which a Protected key
+     * (its semantics cleared, so with no node under it) reports.
+     */
+    fun assertPublicPadLabelled(what: String, keys: String) {
+        for (key in keys) {
+            val node = find("key_$key")
+            val label = node.text == key.toString() || node.hasObject(By.text(key.toString()))
+            assertTrue(what + ": key " + key + " shows no label " + key + " (its text: " + node.text + ")", label)
+            assertTrue(what + ": key " + key + " is not clickable", node.isClickable)
+        }
+    }
+
     fun stage(activity: MainActivity): Stage =
         onMain { ActivityLifecycleMonitorRegistry.getInstance().getLifecycleStageOf(activity) }
 

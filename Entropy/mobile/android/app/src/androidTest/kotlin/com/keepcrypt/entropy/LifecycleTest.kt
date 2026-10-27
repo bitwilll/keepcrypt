@@ -19,6 +19,7 @@ import com.keepcrypt.entropy.ffi.Reply
 import com.keepcrypt.entropy.ffi.Secret
 import com.keepcrypt.entropy.ffi.Words
 import com.keepcrypt.entropy.screens.Notice
+import com.keepcrypt.entropy.screens.Overlay
 import com.keepcrypt.entropy.screens.Screen
 import com.keepcrypt.entropy.screens.screenId
 import java.util.concurrent.CountDownLatch
@@ -32,17 +33,19 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Discards during "Working..." on the phone (tasks/todo.md, M5 group 14), run by
- * scripts/android-instrument.sh on the shipping app: the app is left during a backup's scrypt and
- * during the start-up self-test (which First launch's Continue runs, lead decision M5-50), and Wi-Fi
- * comes on during a start. In each the main thread never waits (the script's judge finds no
- * not-responding window) and the session is gone: afterwards the slot is at home, where only an empty
- * slot takes the self-test (a session there would make that call halt), and the screen is the start
- * screen, Go offline once the start-up self-test has passed (group 15), saying why where the plan says
- * so. And the ViewModel's end, when the activity finishes, empties the slot (CeremonyHolder's
- * onCleared calls wipeAll). The ceremony is vectors/kcr.json's public gate seed dice-50-words12,
- * driven through Core on this thread while the model runs nothing, as NativeTest drives it; the long
- * calls, First launch's Continue among them, go through the model, as its screens make them.
+ * Discards on the phone (tasks/todo.md, M5 groups 14 and 17), run by scripts/android-instrument.sh on
+ * the shipping app: the app is left during a backup's scrypt and during the start-up self-test (which
+ * First launch's Continue runs, lead decision M5-50), and Wi-Fi comes on during a start; the app is
+ * left on a words page (a Protected screen: discarded at once), and on the dice (a Public screen: 50 s
+ * away keeps the session and 70 s wipes it, through the real 60 s rule on the phone's clock). In each
+ * the main thread never waits (the script's judge finds no not-responding window) and a discarded
+ * session is gone: afterwards the slot is at home, where only an empty slot takes the self-test (a
+ * session there would make that call halt), and the screen is the start screen, Go offline once the
+ * start-up self-test has passed (group 15), saying why where the plan says so. And the ViewModel's
+ * end, when the activity finishes, empties the slot (CeremonyHolder's onCleared calls wipeAll). The
+ * ceremonies are vectors/kcr.json's public gate seed dice-50-words12, driven through Core on this
+ * thread while the model runs nothing, as NativeTest drives it, or through the model's entry points
+ * as its screens call them; the long calls, First launch's Continue among them, go through the model.
  */
 @RunWith(AndroidJUnit4::class)
 class LifecycleTest {
@@ -206,6 +209,118 @@ class LifecycleTest {
     }
 
     /**
+     * A words page (group 17), a Protected screen: dice-50-words12 through the model's entry points, as
+     * its screens call them, to Skip's result, Show words and the privacy gate, and insert 2's page. Home:
+     * by the time the activity has stopped, the session is discarded (its stop is the discard: no timer
+     * runs for a Protected screen), the page on show wiped, the start screen saying why, the slot at home.
+     */
+    @Test
+    fun leavingTheAppOnAWordsPageDiscardsTheSessionAtOnce() {
+        Capture.whileOffline {
+            val activity = launch()
+            selfTested(activity)
+            await("the app reads airplane mode on and Wi-Fi off", 30) { onMain { activity.model.state.value.offline } }
+            toDice(activity)
+            onMain {
+                for (roll in DICE_50_ROLLS) {
+                    activity.model.dicePick.replace(roll)
+                    activity.model.confirmRoll()
+                }
+                activity.model.diceDone()
+            }
+            await("the check prompt", START_SECONDS) { onMain { activity.model.state.value.screen } == Screen.CheckPrompt }
+            val page = onMain {
+                activity.model.skip()
+                activity.model.skipConfirmed()
+                activity.model.showWords()
+                activity.model.passGate()
+                activity.model.nextPage()
+                activity.model.state.value.let { if (it.screen == Screen.Words && it.page == 1) it.insert else null }
+            } ?: throw AssertionError("not on insert 2's page")
+            val begun = SystemClock.elapsedRealtime()
+            device.pressHome()
+            await("the activity stopped", 30) { stage(activity) == Stage.STOPPED }
+            val away = onMain { activity.model.state.value }
+            val after = SystemClock.elapsedRealtime() - begun
+            probe("words page: Home pressed; the stop seen after $after ms, the screen then ${screenId(away.screen)}")
+            assertEquals("leaving the words did not discard at once", Screen.GoOffline, away.screen)
+            assertEquals(Notice.Left, away.notice)
+            assertEquals(Overlay.Cover, away.overlay)
+            assertTrue("the page on show was not wiped", onMain { page.position == 0 && page.word().size == 0 })
+            assertTrue("the slot is not at home: the session was not discarded", Core.selfTest() is Reply.Done)
+            pass("left on a words page: discarded at once (by the stop), the page wiped, the session gone, no ANR")
+            finish(activity)
+        }
+    }
+
+    /**
+     * The dice (group 15), a Public screen: dice-50-words12's first ten rolls, then Home. Away 50 s (the
+     * phone's real clock), the session is held and back in the app it is there under the privacy cover,
+     * the same ten rolls; the cover tapped away, Home again: 70 s away wipes it (the 60 s rule: while away
+     * if the timers run, else on the return, before anything shows; Q75), and back in the app Go offline
+     * says why, the slot at home.
+     */
+    @Test
+    fun fiftySecondsAwayFromTheDiceKeepTheSessionAndSeventyWipeIt() {
+        Capture.whileOffline {
+            val component = Capture.instrumentation.targetContext.packageName + "/com.keepcrypt.entropy.MainActivity"
+            val activity = launch()
+            selfTested(activity)
+            await("the app reads airplane mode on and Wi-Fi off", 30) { onMain { activity.model.state.value.offline } }
+            toDice(activity)
+            onMain {
+                for (roll in DICE_50_ROLLS.take(ROLLS_AWAY)) {
+                    activity.model.dicePick.replace(roll)
+                    activity.model.confirmRoll()
+                }
+            }
+            device.pressHome()
+            await("the activity stopped", 30) { stage(activity) == Stage.STOPPED }
+            val left = SystemClock.elapsedRealtime()
+            SystemClock.sleep(KEPT_MS)
+            val held = onMain { activity.model.state.value }
+            assertEquals("50 s away wiped the session", Screen.Dice, held.screen)
+            assertEquals(Overlay.Cover, held.overlay)
+            shellText("am start -n " + component)
+            await("back in the app", 30) { stage(activity) == Stage.RESUMED }
+            val back = SystemClock.elapsedRealtime() - left
+            assertTrue("the return came after the 60 s rule's time ($back ms), so it proves nothing", back < BACKGROUND_MS)
+            val kept = onMain { activity.model.state.value }
+            assertEquals("the return after 50 s wiped the session", Screen.Dice, kept.screen)
+            assertEquals(null, kept.notice)
+            assertEquals(Overlay.Cover, kept.overlay)
+            assertEquals("the rolls", ROLLS_AWAY, done(Core.diceProgress()).rolls)
+            probe("dice: back after $back ms away, the session held under the cover")
+            onMain { activity.model.dismissOverlay() }
+            device.pressHome()
+            await("the activity stopped", 30) { stage(activity) == Stage.STOPPED }
+            val leftAgain = SystemClock.elapsedRealtime()
+            SystemClock.sleep(WIPED_MS)
+            val whileAway = onMain { activity.model.state.value.screen }
+            shellText("am start -n " + component)
+            await("back in the app", 30) { stage(activity) == Stage.RESUMED }
+            val again = SystemClock.elapsedRealtime() - leftAgain
+            val wiped = onMain { activity.model.state.value }
+            probe("dice: back after $again ms away; away at 70 s the app showed ${screenId(whileAway)} (go_offline: the timers wiped it while away)")
+            assertEquals("70 s away did not wipe the session", Screen.GoOffline, wiped.screen)
+            assertEquals(Notice.Background, wiped.notice)
+            assertTrue("the slot is not at home: the session was not wiped", Core.selfTest() is Reply.Done)
+            pass("dice: 50 s away kept the session (back after $back ms), 70 s away wiped it (Go offline, the Background notice)")
+            finish(activity)
+        }
+    }
+
+    /** From Go offline, offline: Start, Dice-only seed, 12 words (the start's long call), through the model as the buttons call it, to the dice. */
+    private fun toDice(activity: MainActivity) {
+        onMain {
+            activity.model.startOffline()
+            activity.model.chooseMode(Mode.DiceOnly)
+            activity.model.chooseLength(Words.Twelve)
+        }
+        await("the dice", START_SECONDS) { onMain { activity.model.state.value.screen } == Screen.Dice }
+    }
+
+    /**
      * First launch, then its Continue (through the model, as its button calls it), which runs the
      * start-up self-test, to Go offline: past the start-up, a discard's start screen is Go offline and
      * going online discards (lead decision M5-50).
@@ -296,5 +411,13 @@ class LifecycleTest {
 
         /** How many times the scrypt case may miss its window before it fails. */
         const val SCRYPT_ATTEMPTS = 3
+
+        /** The rolls on the dice before the app is left there. */
+        const val ROLLS_AWAY = 10
+
+        /** The 60 s rule (Timers.BACKGROUND_MILLIS), 50 s away that keep the session and 70 s that wipe it. */
+        const val BACKGROUND_MS = 60_000L
+        const val KEPT_MS = 50_000L
+        const val WIPED_MS = 70_000L
     }
 }

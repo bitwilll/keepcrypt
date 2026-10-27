@@ -12493,6 +12493,14 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   rings, the dot numbers, "leave blank" and "mirror", face 5 lighter). PadsTest (5 tests) and DrawingTest (5 tests).
   Proof (CI, run 39582638947 at 78f5720): PadsTest 5 tests and DrawingTest 5 tests, 0 failures, each class on its own JVM over the host
   library. The Protected pads' semantics are commit 19's emulator proof (M5-46).
+  Proof (M5 commit 19b, M5-46, partial: local, kc37, Q76; CI's API 31 and 36 legs prove it at the next push): FlowTest's
+  read-back entry (the letter pad, the one Protected pad commit 19 draws; the ASCII pad's screen is commit 21's) holds
+  exactly 26 nodes with the button role (android.widget.Button) and no text, content description or resource id, and no
+  node there with a single letter as its text or a key_ resource id; tapping them by their place types the letters
+  tapped (the pad's entry read in-process, compared and never printed), so they are its keys in its order. The Public
+  pads keep their labels: each of the dice pad's six keys (FlowTest) and the go-ahead code's 32 (CheckTest) is found by
+  its resource id key_ and the key, clickable, with the key as the text of the label drawn inside it. Unlike a Protected
+  key, a Public key reports the class android.view.View on kc37, not the button's: its label is a node under it.
 
 **15. Screens: start to dice** (MA:166-174; PF:83-89)
 - [ ] First launch (MA:13's limits, the development-build line, "use the Pi for life savings"; every start), Self-test
@@ -12702,6 +12710,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   collision, its snapshot line and Stale warning and its Seal ID YVM9CPP3, before any words; the report QR behind the
   gate; Add fresh entropy: 0 / 99"), and CaptureTest's walk drew every check screen black and SECURE in both APKs.
   The words after a passed check are group 17's (commit 19).
+  Proof (M5 commit 19a, partial: local, Q76): the check result's Show words leads on to them, through the privacy
+  gate (group 17's commit-19 line).
 - [ ] The scanner (Camera2 + ZXing, commit 18): CAMERA asked on this screen only; `ImageReader` YUV_420_888 frames
   reduced to luminance on a background thread and never stored; text over 4,296 characters dropped (swb:144); the first
   decoded text goes to the same `onGoAheadText` the tests call; proof results show their date and any warning before
@@ -12843,6 +12853,69 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   address), Finish (the SeedBook checklist and safety copy, then `end()` and Home).
   Proof: emulator flow tests; in-process, the words shown equal the gate seed's mnemonic; an e/i misread is named;
   leaving the app on a words page discards at once; 70 s in the background on dice wipes and 50 s does not.
+  Proof (M5 commit 19, 19a and 19b, partial: the emulator results here are local, kc37, Q76; CI's API 31 and 36 legs
+  prove them at the next push): :screens' WordsScreens.kt draws the screens on the UI kit in the Pi's wording
+  (pi/app's screens/ready.rs and app/ready.rs) and CeremonyModel moves between them. The check result's Show words
+  (after a typed code, a scanned proof or a loaded snapshot, and after Skip; M5-48's dead end ends) leads through the
+  privacy gate, MA:34's "I'm alone, show words", which before the words also gives swb:290's SeedBook safety rules (the
+  Pi's gate), to the words: one insert a page ("Insert 01 · device 1 of 1", the word large with its letters past the
+  fourth lighter, "SeedBook 0001", Drawing.kt's five braille faces, each now a fifth of the row through BrailleFace's new
+  modifier, blank faces "leave blank", mirror letters "mirror", face 5 lighter, and face 6's engraved number), each page
+  core's word page; Previous, Next and Overview (four words a page, Insert view back), the system Back as Previous; a
+  24-word seed's pages, core's device 1 of 2 and 2 of 2, pass the Public device swap (the Pi's) before word 13 in either
+  view, so the gate comes again, and none paging back. The last insert starts the read-back: each insert's first four
+  letters on Pads.kt's LetterPad (it has no blank key, so Done after three letters is a blank fourth face, as the Pi's
+  entry_done allows), compared by core (checkReadback); a match shows the whole word and Next, a mismatch names the
+  insert ("Insert 01 does not match · device 1 of 1") and each of faces 1-4 in the Pi's lines ("Face 2: mirror
+  misread" for an e/i, d/f, h/j or r/w read as its partner, "should be blank", "should have a letter", "wrong letter:
+  missing 1 4, extra 2"), with "Read it again" and "Show the insert" (its page, whose one way on is back to its
+  read-back). Once core says every insert matched: the read-back's end, the wallet summary (fingerprint and first
+  receive address, Public as the Pi's, Q29), the checklist (swb:288's six lines, the 24-word line, the safety rules) and
+  Finish: core's end(), then Home with no session. Protected (Screen.kt's isProtected): the words, the overview, the
+  read-back entry and its mismatch, each drawn inside Screens.kt's Protected wrapper (the gate, the recording
+  placeholder); the 30 s cover and the discard on leaving the app are the timers' and appLeft's, as for every Protected
+  screen. UI state holds the pages and verdicts by their Secret-backed objects only (M5-49): Readback.Mismatch now keeps
+  its 12 verdict bytes in a Secret read on demand, as WordPage does, since with the letters read they give the word's
+  own; the model wipes every page and verdict a state held when the next does not hold it, the typed letters when the
+  entry goes, and all of them in wipeAll. Every node that shows a secret (the word, its SeedBook number, the faces, the
+  overview lines, the letters typed, the verdicts) is marked sensitive and tagged "secret" (Kit.kt's secret()), which
+  Compose gives Android 14+ as accessibility-data sensitive (MA:74; group 4's word nodes). No new seam: the screens are
+  commonMain, and :app's MainActivity and :secure-ui are unchanged.
+  JVM (19a): WordsScreensTest (9 tests) and ReadbackScreensTest (8) over the real slot, each page and overview line equal
+  to vectors/kcr.json's gate seed's word and to braille.json's insert of it (SeedBook number, each face's letter, dots,
+  lighter flag and mirror partner), compared and never printed: the gate (no press behind it takes) from Skip's result,
+  a scanned proof's and a loaded snapshot's; each page, the page left wiped; Back on each new screen (the page before
+  on the words and the overview, nothing elsewhere); the swap both ways and none paging back; the read-back's match on
+  every insert, Done below three letters doing nothing, the e/i mirror misread named on its face, a wrong letter's
+  missing and extra dots, a missed fourth letter, the insert reviewed and read again; the summary equal to core's;
+  Finish to Home with the slot empty and the next seed at 50 rolls; the 30 s cover, the recording flag, leaving and going
+  online on each Protected screen discarding at once with its page, letters or verdicts wiped, the 60 s rule on the
+  Public screens after the read-back, and wipeAll. WireTest and WireMalformedTest for the Secret-backed Mismatch (a
+  verdict past 4 and a short mismatch halt; one read before a bad end is zeroed). Seven mutants (no page wipe, no verdict
+  wipe, no letters wipe, the words Public, no swap, Done below three letters, no verdict check) each fail a test.
+  Emulator (local, kc37): CaptureTest's walk (19a) runs a 24-word ceremony and draws the eight new screens in both APKs,
+  each drawn, then black in screencap and takeScreenshot, SECURE and opted out of content capture, and on API 34+ every
+  node tagged secret on screen data sensitive as UiAutomation reads it ("words: all 8 of its secret nodes on screen are
+  data sensitive (API 37)"; a Public screen has none; before Android 14 a probe line). FlowTest (19b, 5 tests) gains the
+  words flows: dice-50-words12 by Skip, through the gate (its SeedBook rules shown, Back doing nothing there), the 12
+  insert pages paged by Next and Back, each equal in-process to the vector's word, the overview's three pages, then the
+  read-back with an e/i misread typed on the letter pad, named a mirror misread on its face, the insert reviewed, read
+  again on the pad, the rest read back, the summary (core's), the checklist and Finish to Home with the slot empty;
+  and dice-99-words24 by Skip, words 1-12 on device 1 of 2 and 13-24 on device 2 of 2, the device swap and the gate
+  before word 13, none paging back, the overview's swap, the read-back naming each insert's device and the checklist's
+  24-word line. LifecycleTest (19b, 6 tests): Home on insert 2's page discards at once (the stop seen 264 ms after the
+  press, Go offline with the Left notice, the page wiped, the slot at home); on the dice, 50 s away keeps the session
+  (back after 50131 ms, under the cover, the same ten rolls in core) and 70 s away wipes it (back after 70124 ms: Go
+  offline with the Background notice, the slot at home; the timers had wiped it while away), through the real 60 s
+  rule on the phone's clock. CheckTest (19b): the go-ahead code's 32 keys labelled, and the typed code's result leads
+  through the gate to insert 1 of 12. android-local.sh exit 0 in 1142 s (839 s at 19a, 816 s at 18m), every class
+  passed in android-emulator.sh's order, CaptureTest 6 and 6 with control (c) named and left out; every JVM test task
+  rerun (:core-ffi 27 in 9 classes, :screens 96 in 15, :app 7 in 3 for each flavour, :secure-ui 3 in 1, none failed).
+  Cost (estimated, not yet measured in CI): on kc37 one leg's classes grew 23 s with 19a (CaptureTest's eight screens
+  in each APK and its 24-word ceremony) and 303 s with 19b (FlowTest's two flows, LifecycleTest's two cases with their
+  50 s and 70 s waits, CheckTest's gate), so about 5.5 minutes a leg; CI's software-rendered x86_64 legs run slower,
+  so the two API legs likely add 11 minutes or more to run 40488587222's 2084 s (34.7 minutes), past M5-57's 44: the
+  job's budget needs M5-30's re-measure at the next push.
 
 **18. Screens: backup, Check a backup, watch-only, register, reveal D, snapshots, About, stop** (MA:146-162)
 - [ ] Backup: the 8-word passphrase (Protected), its 2-of-4 confirm, Save (`CreateDocument`, core's suggested name,
