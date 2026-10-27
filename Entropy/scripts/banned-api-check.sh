@@ -61,7 +61,9 @@
 #                                           "Selftest shards" below)
 #
 # Prints "<category>: <file>:<line>: <text>" per hit, then a summary. Exit 0 clean, 1 hits,
-# 2 usage or read error: a file that cannot be read fails the gate, it is never skipped.
+# 2 usage or read error: a file that cannot be read fails the gate, it is never skipped, and so
+# does a tool the scan runs that cannot start, fails or is killed, naming itself (see "The tools
+# the gate runs fail closed" below).
 #
 # Selftest shards (tasks/todo.md, M5-63: CI's gates job runs the selftest as two shards side by
 # side). --selftest --shard K/N walks the whole case list in its fixed order and runs case c
@@ -914,8 +916,79 @@ export LC_ALL
 nl='
 '
 
-here=$(cd "$(dirname "$0")" && pwd -P) || exit 2
-self=$here/$(basename "$0")
+# --- The tools the gate runs fail closed (tasks/todo.md, lead decision M5-66) --------------------
+#
+# A tool that cannot start (exit 126 or 127), exits with an error or is killed stops the gate with
+# exit 2 and names itself, how it failed and what the gate was reading ($on), never "clean" and
+# never a hit with no line. sh has no pipefail, so the scan runs no pipeline with two tools in it:
+# each tool's output is a command substitution's, its status read there, and fed on with printf, a
+# builtin, so a pipeline's status is its one tool's, and a command substitution's is its last
+# command's. scripts/banned-api-faults.sh makes each tool fail at each place that runs it, in each
+# of those ways.
+#
+# And the scan's own shell starts no tool as a command of its own, only in a command substitution
+# (report(), found()), which banned-api-faults.sh also checks in the text. That was the M5-66 hit
+# with no line: macOS's /bin/sh, bash 3.2, keeps the finished job of a command its shell ran itself
+# until that shell runs another one of its own. The scan ran git rev-parse so once, before its loop,
+# and then only command substitutions, so git's finished job stayed in its job table for the whole
+# scan. Each command substitution's shell starts with a copy of that table, and when the first tool
+# it starts itself gets git's pid again (under load the pid space wraps in seconds, and a scan of a
+# large tree takes far longer), that shell takes the old entry for its tool: it does not wait for
+# the tool and reads exit 0, whatever the tool and git exited. A check's grep that matched nothing
+# (exit 1) so gave report() exit 0 and no line, which it printed as the hit "Shell:
+# ...MainActivity.kt:: ". No tool failed; the shell misread one. Every other shell of the scan
+# lives far less than a wrap of the pid space, so no tool it starts can get the pid of a command it
+# or its parent ran before. dash, CI's sh, does not do this. report() also refuses what the
+# misreading gave: a check's exit 0 with no hit, and a hit without its line number.
+#
+# tool_status TOOL STATUS [NONE]: STATUS is TOOL's nonzero exit status. It is returned when it is
+# NONE (grep's and the gate's awk programs' 1, "no line"); otherwise TOOL's failure is named, with
+# $on, and the shell exits 2.
+tool_status() {
+  [ "$2" != "${3-}" ] || return "$2"
+  case $2 in
+    126 | 127) how='could not start' ;;
+    129 | 1[3-8][0-9] | 19[0-2]) how="was killed by signal $(($2 - 128))" ;;
+    *) how='failed' ;;
+  esac
+  printf 'banned-api-check: %s %s (exit %s)%s\n' "$1" "$how" "$2" "${on:+ on $on}" >&2
+  exit 2
+}
+
+# fail_closed: from here on, each tool the scan runs is a function of its name that runs the tool
+# (command bypasses the function) and passes its status through tool_status. Only the scan calls
+# it; the other modes read their tools' statuses as they always have.
+fail_closed() {
+  awk() { command awk "$@" || tool_status awk "$?" 1; }
+  find() { command find "$@" || tool_status find "$?"; }
+  git() { command git "$@" || tool_status git "$?"; }
+  grep() { command grep "$@" || tool_status grep "$?" 1; }
+  mktemp() { command mktemp "$@" || tool_status mktemp "$?"; }
+  od() { command od "$@" || tool_status od "$?"; }
+  rm() { command rm "$@" || tool_status rm "$?"; }
+  sed() { command sed "$@" || tool_status sed "$?"; }
+  sort() { command sort "$@" || tool_status sort "$?"; }
+  tr() { command tr "$@" || tool_status tr "$?"; }
+}
+
+# found CHECK ARG...: true when CHECK ARG... exits 0, false when it exits 1 (a check of the gate's
+# or grep -q), run in a command substitution so the scan's shell starts no tool itself. Any other
+# status stops the gate with exit 2.
+found() {
+  r=$("$@" >/dev/null; echo "$?")
+  case $r in
+    0) return 0 ;;
+    1) return 1 ;;
+  esac
+  printf 'banned-api-check: %s exited %s%s\n' "$1" "${r:-before its status was read}" "${on:+ on $on}" >&2
+  exit 2
+}
+
+on=$0
+dir=$(dirname "$0") || tool_status dirname "$?"
+here=$(cd "$dir" && pwd -P) || exit 2
+base=$(basename "$0") || tool_status basename "$?"
+self=$here/$base
 
 usage() {
   cat <<'EOF'
@@ -1638,16 +1711,18 @@ device_write_api_in_tests() {
 
 # tests_rs_declared FILE, FILE being pi/app/src/device/**/tests.rs: true if its parent module file
 # (X.rs or X/mod.rs for X/tests.rs) declares it with "#[cfg(test)]" on the line right before
-# "mod tests;", so the file is compiled for cargo test alone. A missing or unreadable parent, or
-# a blank line or another attribute between the two, means no exception (fail closed).
+# "mod tests;", so the file is compiled for cargo test alone. A missing parent, or a blank line or
+# another attribute between the two, means no exception (fail closed); an unreadable one stops the
+# gate (awk's failure, M5-66).
 tests_rs_declared() {
   x=${1%/tests.rs}
   for parent in "$x.rs" "$x/mod.rs"; do
     [ -f "$parent" ] || continue
+    on=$parent
     if awk '
       prev ~ /^[[:space:]]*#\[cfg\(test\)\][[:space:]]*$/ && $0 ~ /^[[:space:]]*mod tests;[[:space:]]*$/ { found = 1 }
       { prev = $0 }
-      END { exit !found }' "$parent" 2>/dev/null; then
+      END { exit !found }' "$parent"; then
       return 0
     fi
   done
@@ -1801,10 +1876,14 @@ kt_catch_allowing() {
   names=
   missing=
   while [ "$#" -ge 2 ]; do
-    first=$(printf '%s\n' "$t" | grep -a -E -e "$allowed$1[[:space:]]*[)]" | sed -n '1s/:.*//p')
-    if [ -n "$first" ] && ! printf '%s\n' "$header" | grep -q -a -x -F -e "import $2"; then
-      missing="$missing${missing:+$nl}$first:missing import $2 for its catch of $1"
-    fi
+    # The first allowed catch's line, and the header's import line, read in the shell.
+    first=$(printf '%s\n' "$t" | grep -a -E -e "$allowed$1[[:space:]]*[)]")
+    [ $? -le 1 ] || return 2
+    first=${first%%:*}
+    case $nl$header$nl in
+      *"${nl}import $2$nl"*) ;;
+      *) [ -z "$first" ] || missing="$missing${missing:+$nl}$first:missing import $2 for its catch of $1" ;;
+    esac
     names="$names${names:+|}$1"
     shift 2
   done
@@ -1960,11 +2039,15 @@ kt_tasks() {
 kt_tasks_scanner() {
   t=$(grep -n -a -E -e "${L}($kt_task_names)$R" -- "$1")
   case $? in 0 | 1) ;; *) return 2 ;; esac
-  first=$(grep -n -a -E -e "${L}Executor$R" -- "$1" | sed -n '1s/:.*//p') || return 2
+  first=$(grep -n -a -E -e "${L}Executor$R" -- "$1")
+  [ $? -le 1 ] || return 2
+  first=${first%%:*}
   if [ -n "$first" ]; then
     header=$(sed -n -E -e "\\%$kt_header%!q" -e p <"$1") || return 2
-    printf '%s\n' "$header" | grep -q -a -x -F -e 'import java.util.concurrent.Executor' ||
-      t="$t${t:+$nl}$first:missing import java.util.concurrent.Executor for its Executor"
+    case $nl$header$nl in
+      *"${nl}import java.util.concurrent.Executor$nl"*) ;;
+      *) t="$t${t:+$nl}$first:missing import java.util.concurrent.Executor for its Executor" ;;
+    esac
   fi
   kt_tasks_and_packages "$1" "$kt_coroutines_lines${nl}import java.util.concurrent.Executor"
 }
@@ -2426,8 +2509,8 @@ kt_bootstrap() {
     1) b= ;;
     *) return 2 ;;
   esac
-  t=$(printf '%s\n%s\n' "$a" "$b" | sed '/^$/d' | sort -t : -k 1,1n -u)
-  [ -n "$t" ] || return 1
+  [ -n "$a$b" ] || return 1
+  t=$(printf '%s\n' "$a${a:+${b:+$nl}}$b" | sort -t : -k 1,1n -u) || return 2
   printf '%s\n' "$t"
 }
 
@@ -3081,15 +3164,37 @@ ffi_threads() {
   grep -n -a -E -e "${L}(thread|JoinHandle)$R" -- "$1"
 }
 
-# report CATEGORY CHECK FILE: print and count each hit of CHECK in FILE.
+# report CATEGORY CHECK FILE: print and count each hit of CHECK in FILE. CHECK exits 0 with its hits,
+# each "<line>:<text>", or 1 with nothing; anything else (a tool of it that failed, or a check that
+# exits 0 with no hit, a line without its number, or 1 with output, the M5-66 hit with no line)
+# stops the gate with exit 2, naming CHECK and FILE.
 report() {
+  on=$3
   out=$("$2" "$3")
-  case $? in
-    0) ;;
-    1) return ;;
-    *) printf 'banned-api-check: cannot read %s\n' "$3" >&2; exit 2 ;;
+  rc=$?
+  case $rc:$out in
+    1:) return ;;
+    0:?*) ;;
+    *)
+      case $rc:$out in
+        0:) rc='0 and no hit' ;;
+        1:*) rc='1 and output' ;;
+      esac
+      printf 'banned-api-check: %s exited %s on %s\n' "$2" "$rc" "$3" >&2
+      exit 2
+      ;;
   esac
   while IFS= read -r line; do
+    case $line in
+      *:*) num=${line%%:*} ;;
+      *) num= ;;
+    esac
+    case $num in
+      '' | *[!0-9]*)
+        printf 'banned-api-check: %s exited 0 on %s with a line that is not "<line>:<text>": %s\n' "$2" "$3" "$line" >&2
+        exit 2
+        ;;
+    esac
     printf '%s: %s:%s: %s\n' "$1" "$3" "${line%%:*}" "${line#*:}"
     hits=$((hits + 1))
   done <<EOF
@@ -3115,6 +3220,8 @@ gradle_out='^[.]/mobile/android/([.]gradle|build|(app|capture-control|core-ffi|s
 
 scan() {
   cd "$1" || exit 2
+  fail_closed
+  on='the scanned tree'
   # A newline in a name would split it in the list and leave it unscanned: refuse instead.
   odd=$(list -name "*$nl*") || exit 2
   if [ -n "$odd" ]; then
@@ -3124,13 +3231,26 @@ scan() {
   all=$(list) || exit 2
   # In a git work tree the Build rule refuses every tracked file in the ignored Gradle output, so the
   # scan leaves that output out; outside one (no index) every file is scanned (the header's Build).
-  work_tree=no
-  if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    work_tree=yes
+  # git exits 128 outside a work tree; any other failure is the gate's (tool_status). Without git
+  # the Build rule's tracked files cannot be listed. git runs in a command substitution: run here
+  # as a command of its own, its finished job was what bash 3.2 later took for a check's grep
+  # (see "The tools the gate runs fail closed").
+  command -v git >/dev/null 2>&1 || {
+    echo 'banned-api-check: git is not on PATH, so the tracked files under mobile/ cannot be listed' >&2
+    exit 2
+  }
+  wt=$(command git rev-parse --is-inside-work-tree 2>/dev/null)
+  rc=$?
+  case $rc in
+    0) work_tree=yes ;;
+    128) work_tree=no ;;
+    *) tool_status git "$rc" ;;
+  esac
+  if [ "$work_tree" = yes ]; then
     all=$(printf '%s\n' "$all" | grep -v -E -e "$gradle_out")
     [ $? -le 1 ] || exit 2
   fi
-  all=$(printf '%s\n' "$all" | sort)
+  all=$(printf '%s\n' "$all" | sort) || exit 2
   # find lists only files and symlinks, so a directory here is a symlink to one. Its target may be
   # outside the repo or under an excluded path and would never be scanned: refuse it.
   while IFS= read -r f; do
@@ -3211,7 +3331,7 @@ EOF
         esac
         case $rel in
           pi/app/src/device/tests.rs | pi/app/src/device/*/tests.rs)
-            if tests_rs_declared "$rel"; then
+            if found tests_rs_declared "$rel"; then
               report Device device_write_api_in_tests "$rel"
             else
               report Device device_write_api "$rel"
@@ -3426,15 +3546,19 @@ EOF
 $files
 EOF
   # The unsafe-code ban in core's lib.rs, and in pi/app's lib.rs and main.rs once pi/app exists.
+  # These checks and the Build rule's run each tool through found() or in a command substitution,
+  # so the scan's shell starts none itself (see "The tools the gate runs fail closed").
   forbid=core/src/lib.rs
   [ -e pi/app ] && forbid="$forbid pi/app/src/lib.rs pi/app/src/main.rs"
   for f in $forbid; do
-    if ! { [ -f "$f" ] && grep -q -a -x -F -e '#![forbid(unsafe_code)]' "$f"; }; then
+    on=$f
+    if ! { [ -f "$f" ] && found grep -q -a -x -F -e '#![forbid(unsafe_code)]' "$f"; }; then
       echo "Rule1: $f:1: missing the line #![forbid(unsafe_code)]"
       hits=$((hits + 1))
     fi
   done
-  if [ -e core ] && ! probe_calls_game_random; then
+  on=core/examples/release_probe.rs
+  if [ -e core ] && ! found probe_calls_game_random; then
     echo 'Shell: core/examples/release_probe.rs:1: missing a call to game_random outside a comment'
     hits=$((hits + 1))
   fi
@@ -3442,12 +3566,14 @@ EOF
   # the path call in fn guarded in ffi/guard/src/lib.rs, once ffi/jni/src/lib.rs exports a function
   # (an export without the catch aborts on a panic before any destructor runs, so the session would
   # not be wiped). An unreadable file was already exit 2 in the loop.
-  if [ -f ffi/src/ceremony.rs ] && ! session_new ffi/src/ceremony.rs >/dev/null; then
+  on=ffi/src/ceremony.rs
+  if [ -f ffi/src/ceremony.rs ] && ! found session_new ffi/src/ceremony.rs; then
     echo 'FFI: ffi/src/ceremony.rs:1: missing the one Session::new under ffi/'
     hits=$((hits + 1))
   fi
-  if [ -f ffi/jni/src/lib.rs ] && ffi_export ffi/jni/src/lib.rs >/dev/null &&
-    ! { [ -f ffi/guard/src/lib.rs ] && ffi_guard_site ffi/guard/src/lib.rs >/dev/null; }; then
+  on=ffi/jni/src/lib.rs
+  if [ -f ffi/jni/src/lib.rs ] && found ffi_export ffi/jni/src/lib.rs &&
+    ! { [ -f ffi/guard/src/lib.rs ] && on=ffi/guard/src/lib.rs && found ffi_guard_site ffi/guard/src/lib.rs; }; then
     echo 'FFI: ffi/jni/src/lib.rs:1: missing the one catch_unwind call site, std::panic::catch_unwind( in fn guarded in ffi/guard/src/lib.rs, which every export needs'
     hits=$((hits + 1))
   fi
@@ -3456,32 +3582,31 @@ EOF
   # one. Without them Gradle resolves with no lock state, and the classpath allow-list, which reads
   # the lockfile, would no longer be what the build resolves.
   kroot=mobile/android/build.gradle.kts
+  on=$kroot
   if [ -e mobile/android ] && ! { [ -f "$kroot" ] &&
-    grep -q -a -x -E -e '[[:space:]]*lockAllConfigurations[(][)][[:space:]]*' "$kroot" &&
-    grep -q -a -x -E -e '[[:space:]]*lockMode[.]set[(]LockMode[.]STRICT[)][[:space:]]*' "$kroot"; }; then
+    found grep -q -a -x -E -e '[[:space:]]*lockAllConfigurations[(][)][[:space:]]*' "$kroot" &&
+    found grep -q -a -x -E -e '[[:space:]]*lockMode[.]set[(]LockMode[.]STRICT[)][[:space:]]*' "$kroot"; }; then
     echo "KtSdk: $kroot:1: missing the lines lockAllConfigurations() and lockMode.set(LockMode.STRICT)"
     hits=$((hits + 1))
   fi
   # Build: no tracked file under mobile/**/build/, mobile/**/.gradle/ or mobile/**/.konan/, read
   # from git's index (see the header). Outside a work tree nothing is tracked; without git nothing
-  # can be listed. The test is the scan's own ($work_tree), so the scan left the Gradle output out
-  # exactly where this rule reads the index.
-  command -v git >/dev/null 2>&1 || {
-    echo 'banned-api-check: git is not on PATH, so the tracked files under mobile/ cannot be listed' >&2
-    exit 2
-  }
+  # can be listed (checked before the scan). The test is the scan's own ($work_tree), so the scan
+  # left the Gradle output out exactly where this rule reads the index.
   if [ "$work_tree" = yes ]; then
     # One entry per line, "<mode> <object> <stage><tab><path>": -z keeps a name whole that plain
     # ls-files would print quoted, and the newline check above already refused a newline in a
     # name. The listing goes through a file so that ls-files' own exit status is read, which a
-    # pipeline into tr would hide.
+    # pipeline into tr would hide; ls-files and cat-file write their files from a command
+    # substitution, which prints nothing.
     tab=$(printf '\t')
+    on="git's index of mobile/"
     index=$(mktemp "${TMPDIR:-/tmp}/banned-api-index.XXXXXX") || exit 2
     blob=
     trap 'rm -f "$index" ${blob:+"$blob"}' EXIT
     trap 'exit 2' HUP INT TERM
     blob=$(mktemp "${TMPDIR:-/tmp}/banned-api-blob.XXXXXX") || exit 2
-    git ls-files -s -z -- mobile >"$index" || exit 2
+    listed=$(git ls-files -s -z -- mobile >"$index") || exit 2
     tracked=$(tr '\0' '\n' <"$index") || exit 2
     built=$(printf '%s\n' "$tracked" | grep -E "^160000 |${tab}mobile/(.*/)?(build|[.]gradle|[.]konan)/")
     [ $? -le 1 ] || exit 2
@@ -3538,9 +3663,10 @@ EOF
       case $e in 100644\ * | 100755\ *) ;; *) continue ;; esac
       obj=${e#* }
       obj=${obj%% *}
-      git cat-file blob "$obj" >"$blob" || exit 2
+      on="${e#*"$tab"} (blob $obj)"
+      listed=$(git cat-file blob "$obj" >"$blob") || exit 2
       magic=$(od -A n -t x1 -N 4 "$blob") || exit 2
-      magic=$(printf '%s' "$magic" | tr -d ' \t\n')
+      magic=$(printf '%s' "$magic" | tr -d ' \t\n') || exit 2
       case $magic in
         feedface | feedfacf | cefaedfe | cffaedfe | cafebabe | bebafeca | cafebabf | bfbafeca) kind='a Mach-O file' ;;
         7f454c46) kind='an ELF file' ;;

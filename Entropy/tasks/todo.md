@@ -15048,6 +15048,54 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   cause found and fixed, and the fault check (each external tool failing to start, exiting with an error and killed,
   at every place the script runs it, on a small tree that reaches every rule) in CI in at most 5 minutes, with no run
   printing "clean". The 14 required check names are unchanged.
+  Proof (M5 commit 18t, M5-66, partial: local, Q76; CI runs the fault check at the next push, and judges its 5
+  minutes): the cause. No tool failed; the shell misread one. macOS's /bin/sh, bash 3.2.57, keeps the finished job of
+  a command its own shell ran until that shell runs another, and a command substitution's shell starts with a copy of
+  it. scan() ran `git rev-parse` once as a command of its own and then only command substitutions, so a tool in one
+  that got git's pid again (under load the pid space wraps in seconds) was taken for git's old job, not waited for,
+  and read as exit 0: a check whose grep matched nothing gave report() exit 0 and no line, printed as a hit with no
+  line number. Reproduced on this Mac by 18t's agents (2026-10-27; from their transcripts, their logs lost with the
+  reboot's /private/tmp): a bash 3.2 probe that runs one command and then only command substitutions read exit 0 for
+  a tool that exits 1 once that tool reused the command's pid (about 49,400 loops), and read 1 with that first command
+  in a command substitution; and 32 scans side by side for 300 s of the 241-file commonTest copy tree: at 30c53f3, 6 of
+  224 runs printed a hit with no line (KtWindow, KtLog, RNG, Network, KtFailOpen, "...CeremonyHolder.kt:: "), exit 1;
+  with report()'s new refusal alone the same 6 of 224 stopped with exit 2 naming the check and file ("clipboard
+  exited 0 and no hit on ...Backup.kt"); with the fix, 0 of 192 while the pids wrapped 18 times in 299 s. The fix:
+  `git rev-parse` runs in a command substitution (128: not a work tree; any other status is git's failure); the
+  scan's shell and the top level start no tool as a command of their own (found() runs a check in a command
+  substitution), which the fault check reads from the gate's text; and report() refuses a check's exit 0 with no hit,
+  its exit 1 with output, and a hit whose line has no number. Fail closed: in the scan each of awk, find, git, grep,
+  mktemp, od, rm, sed, sort and tr is a function (fail_closed) that passes the tool's status through tool_status,
+  which names the tool, how it failed (could not start for 126 and 127, killed by signal N for 129 to 192, failed)
+  and what the gate was reading, and exits 2; grep's and the gate's awk programs' 1 stays "no line"; dirname and
+  basename are checked where the top level runs them. sh has no pipefail, so no pipeline in the scan holds two tools:
+  each tool's output is a command substitution's, read there and fed on with printf (kt_catch_allowing,
+  kt_tasks_scanner and kt_bootstrap so rewritten, and the header's import lines matched with case). The fault check,
+  scripts/banned-api-faults.sh, is a script of its own, so the gate carries no test hook and the check runs apart from
+  the self-test: its tree is the gate's skeleton and 29 fixture files (33 files, the fewest that still reach every
+  place; one new fixture, ktfailopen-catch-task-fork-join-pool-qualified-in-scanner, a task and a package mention on
+  one line, so kt_tasks_scanner reaches kt_tasks_and_packages' awk); the gate runs with only the shims on PATH, so a
+  tool they do not wrap fails the baseline; a bash -x trace whose PS4 exports LINENO and BASH_LINENO[0] maps each call
+  to its place (tool, line and caller), its calls equal a plain run's under sh, and its places equal those read from
+  the gate's text, each helper reached from every caller: 142 places at 113 lines, of 12 tools (awk 23, basename 1,
+  dirname 1, find 2, git 3, grep 84, mktemp 2, od 1, rm 1, sed 18, sort 2, tr 4). Each place fails in each of three
+  ways (126 or 127, exit 2 with nothing, SIGKILL after half its output): 426 runs, 426 passed (each exit 2, its fault
+  fired, a line naming the tool, the way and what was read, no "clean", no hit with no line), in 182 s under sh and
+  171 s under /bin/dash on this Mac (4 runs at once, beside Spotlight's indexing after a reboot). Mutants (the
+  lead's sample, each one status check removed from a copy, the fault check run at its lines): sort's `|| exit 2` in
+  the scan's file list (2 of its 3 runs fail), tr's in the index read (3 of 3), od's in the blob read (3 of 3),
+  kt_tasks_scanner's `[ $? -le 1 ] || return 2` after its Executor grep (3 of 3), and the find function's tool_status
+  (6 of 6, at both callers of list()): the check exits 1 each time. The self-test: `--selftest --shard 1/2` and `2/2`
+  side by side under sh and under /bin/dash, "shard 1/2: 796 of 1591 cases" and "shard 2/2: 795 of 1591 cases", 0
+  failed each, 796 + 795 = 1591 distinct cases (1590 at 2536ff7, and the new fixture), dash's logs equal to sh's with
+  the temporary folders' names masked; against 30c53f3's self-test, every case's output is the same but the four test
+  scopes' copies (one more fixture each) and error-unreadable-file, which now ends "banned-api-check: grep failed
+  (exit 2) on dangling.kt" and "banned-api-check: rng exited 2 on dangling.kt" where it said "cannot read
+  dangling.kt" (still exit 2: report() names the check and its status, the tool's line before it); the gate clean on
+  the working tree (361 files) under sh and dash; `--workflows ../.github/workflows` clean (3 workflows) under sh and
+  dash; canaries.sh PASS, all 94 checks ran (1278 s, beside the indexing). CI: Entropy CI's lint job runs `sh
+  scripts/banned-api-faults.sh` as its first step after checkout (the gates job took 688 s of its 720 at 6a6a34f);
+  L7 puts canaries.sh in supply-chain. The 14 required check names are unchanged.
 - [ ] L7. canaries.sh moves out of the gates job into one existing required job with time to spare (M5-67, commit
   L7). The gates job keeps the gate's runs and the two self-test shards with their count check. Proof: both jobs' times
   in CI, each under 12 minutes, with the 14 required check names unchanged.

@@ -101,7 +101,13 @@ jobs:
     # fallback and discard methods (rule 3); their shared [lints] forbid switching that off and
     # deny print and dbg (rule 5). Clippy runs twice: with default features, the release
     # configuration, and with all features, so the test-sources stubs and the test-registry code
-    # (rule 10) meet the same lints.
+    # (rule 10) meet the same lints. First, on the bare checkout, the grep gate's fault check
+    # (tasks/todo.md, lead decision M5-66): each tool the gate's scan runs fails at every place
+    # that runs it, unable to start, exiting 2 with nothing, and killed partway, and every such run
+    # must stop the gate with exit 2, naming the tool, how it failed and what it read. It needs only
+    # sh, bash, git and the gate's own tools, and runs here because the gates job has no time to
+    # spare (688 s of its 720 at 6a6a34f, run 40455117393). When the canaries leave that job, they
+    # go to another one than this (M5-67).
     name: lint (fmt, clippy)
     needs: changes
     if: needs.changes.outputs.entropy == 'true'
@@ -111,6 +117,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - run: sh scripts/banned-api-faults.sh
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
