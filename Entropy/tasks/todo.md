@@ -12930,6 +12930,15 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   had already emptied the pad, and no test saw the copy). Locally: the strict Gradle build of both APKs and every JVM
   test task, :screens 98 in 15, :app 7 in 3 for each flavour (the other tasks up to date), none failed; on kc37,
   android-local.sh on the tree of 19d to 19f, exit 0 in 1142 s, every class passed in android-emulator.sh's order.
+  Proof (M5 commit 19e, review fix, partial: local, Q76; CI's API 31 and 36 legs at the next push): on each screen that
+  draws secrets, CaptureTest's walk reads them from the model in-process (the word, its SeedBook number and each
+  face's letter and label; the overview's lines; the faces typed; the four verdicts), and every node UiAutomation
+  finds with one of those exact texts must carry the secret tag, which secret() gives with the data-sensitive mark,
+  with some such node found; the texts are never printed. So a secret drawn without secret() fails, however many
+  other nodes carry it. On kc37 (API 37), in each APK: "words: each of its 6 secret texts is drawn only by secret
+  nodes (7 on screen)" (7 and 7 in the other run, the ceremony's random first word), the overview 4 (4), the entry
+  1 (1), the mismatch 4 (4); CaptureTest 6 and 6 passed. Not run: a mutant with one node's secret() dropped (another
+  emulator run); the lines above show each text found on screen, so such a node is found without the tag.
 
 **18. Screens: backup, Check a backup, watch-only, register, reveal D, snapshots, About, stop** (MA:146-162)
 - [ ] Backup: the 8-word passphrase (Protected), its 2-of-4 confirm, Save (`CreateDocument`, core's suggested name,

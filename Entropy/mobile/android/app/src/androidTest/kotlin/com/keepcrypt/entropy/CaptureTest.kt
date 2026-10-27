@@ -44,8 +44,13 @@ import com.keepcrypt.entropy.screens.Overlay
 import com.keepcrypt.entropy.screens.SECRET_TAG
 import com.keepcrypt.entropy.screens.ScanStop
 import com.keepcrypt.entropy.screens.Screen
+import com.keepcrypt.entropy.screens.faceLabel
 import com.keepcrypt.entropy.screens.isProtected
+import com.keepcrypt.entropy.screens.overviewLine
 import com.keepcrypt.entropy.screens.screenId
+import com.keepcrypt.entropy.screens.seedbookText
+import com.keepcrypt.entropy.screens.typedFaces
+import com.keepcrypt.entropy.screens.verdictLine
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
@@ -297,7 +302,7 @@ class CaptureTest {
             assertTrue("no window's owner line names the app: windows are found by title alone", found.any { it.byOwner })
             probe("windows of the app: " + found.joinToString("; ") { "${it.title} (by owner ${it.byOwner}, SECURE ${it.secure})" })
             for (w in found) assertTrue("a window without SECURE: " + w.title, w.secure)
-            assertSecretsMarked(screen)
+            assertSecretsMarked(screen, activity.model)
             pass(
                 "${screenId(screen)}: drawn, then screencap and takeScreenshot black over the app's window; " +
                     "SECURE on all ${found.size} of its windows; no content capture",
@@ -310,16 +315,20 @@ class CaptureTest {
      * The secret text a screen draws is marked accessibility-data sensitive (docs/mobile-apps.md, "Rules
      * for Claude Code"; group 6's probe, where it applies): every node tagged SECRET_TAG (Kit.kt's secret(),
      * which every node that shows a secret takes) must be data sensitive as UiAutomation reads it on
-     * Android 14+, the screens that show the words or their letters must hold such nodes on screen, and a
-     * Public screen none. Before Android 14 a probe line says the mark does not exist there.
+     * Android 14+, the screens that show the words or their letters must hold such nodes on screen, every
+     * node there whose text is one of the screen's secrets must be one of them (assertSecretTextsTagged),
+     * and a Public screen holds none. Before Android 14 a probe line says the mark does not exist there.
      */
-    private fun assertSecretsMarked(screen: Screen) {
+    private fun assertSecretsMarked(screen: Screen, model: CeremonyModel) {
         val secrets = device.findObjects(By.res(SECRET_TAG))
         if (!isProtected(screen)) {
             assertTrue("a secret's node on the Public screen " + screenId(screen), secrets.isEmpty())
             return
         }
-        if (screen in SECRET_SCREENS) assertTrue("no secret's node on " + screenId(screen), secrets.isNotEmpty())
+        if (screen in SECRET_SCREENS) {
+            assertTrue("no secret's node on " + screenId(screen), secrets.isNotEmpty())
+            assertSecretTextsTagged(screen, model)
+        }
         if (secrets.isEmpty()) return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             probe("${screenId(screen)}: ${secrets.size} secret nodes; no data-sensitive mark before Android 14 (API ${Build.VERSION.SDK_INT})")
@@ -328,6 +337,62 @@ class CaptureTest {
         val unmarked = secrets.count { !it.accessibilityNodeInfo.isAccessibilityDataSensitive }
         assertEquals("secret nodes not marked data sensitive on " + screenId(screen), 0, unmarked)
         pass("${screenId(screen)}: all ${secrets.size} of its secret nodes on screen are data sensitive (API ${Build.VERSION.SDK_INT})")
+    }
+
+    /**
+     * Each secret the screen shows, as the model holds it in-process (secretTexts), is drawn only by nodes
+     * tagged SECRET_TAG: every node UiAutomation finds with that exact text carries the tag, which secret()
+     * gives with the data-sensitive mark, so a secret drawn without secret() fails here however many other
+     * nodes on the screen carry it. Some node shows one of them, so the check is not empty. The texts are
+     * compared in-process and never printed.
+     */
+    private fun assertSecretTextsTagged(screen: Screen, model: CeremonyModel) {
+        val texts = onMain { secretTexts(screen, model) }
+        var shown = 0
+        for (text in texts) {
+            val nodes = device.findObjects(By.text(text))
+            shown += nodes.size
+            assertTrue(
+                "a node on " + screenId(screen) + " shows a secret without the secret tag (its text is not printed)",
+                nodes.all { it.resourceName == SECRET_TAG },
+            )
+        }
+        assertTrue("no node on " + screenId(screen) + " shows any of its " + texts.size + " secret texts", shown > 0)
+        pass("${screenId(screen)}: each of its ${texts.size} secret texts is drawn only by secret nodes ($shown on screen)")
+    }
+
+    /**
+     * The secret texts screen draws, from the model's state, as the screens draw them: on the words the
+     * word, its SeedBook number and each face's letter and label (a blank face's letter is no text); on
+     * the overview its lines; on the read-back entry the faces typed; on the mismatch the four verdicts.
+     * The word's copy is wiped once read. Main thread only.
+     */
+    private fun secretTexts(screen: Screen, model: CeremonyModel): Set<String> {
+        val state = model.state.value
+        return when (screen) {
+            Screen.Words -> {
+                val insert = checkNotNull(state.insert)
+                val bytes = insert.word()
+                val word = buildString { for (index in 0 until bytes.size) append(Char(bytes[index].toInt() and 0xFF)) }
+                bytes.wipe()
+                buildSet {
+                    add(word)
+                    add(seedbookText(insert.seedbook))
+                    for (n in 1..5) {
+                        val face = insert.face(n)
+                        face.letter?.let { add(it.toString()) }
+                        faceLabel(face.isBlank, face.mirrorPartner != null).takeIf { it.isNotEmpty() }?.let { add(it) }
+                    }
+                }
+            }
+            Screen.WordsOverview -> checkNotNull(state.overview).map { overviewLine(it) }.toSet()
+            Screen.ReadbackEntry -> setOf(typedFaces(model.readbackLetters))
+            Screen.ReadbackMismatch -> {
+                val mismatch = checkNotNull(state.mismatch)
+                (1..4).map { verdictLine(it, mismatch.face(it)) }.toSet()
+            }
+            else -> emptySet()
+        }
     }
 
     /**
