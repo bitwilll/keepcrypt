@@ -14545,6 +14545,16 @@ they differ. Nothing in the Android plan is weakened.
   the script that runs it, on a small tree that reaches every rule. No such run may print "clean". The check runs in CI
   in a job with time to spare, since the gates job took 701 s of its 720 at 4940ede (run 40442191525, before L4's
   shards). It takes at most 5 minutes there, and the 14 required check names are unchanged.
+- M5-67 (2026-10-27): L4's shards did not buy the gates job its headroom. At 6a6a34f (run 40455117393) the job took
+  688 s of its 720 and its side-by-side step 597 s, against 701 s unsharded at 4940ede (run 40442191525). On the
+  runner's four cores the two shards and canaries.sh's cargo builds contend for the same CPUs, and canaries.sh alone is
+  now the step's long pole (locally 462 s, beside shards of 349 s). Commits 18s, 18t and 19 add cases, so the job would
+  pass 12 minutes soon. canaries.sh moves out of the gates job into one existing required job with time to spare: lint
+  (28 to 74 s) or supply-chain (32 to 41 s), not the job 18t's fault check uses. That job gets whatever setup the
+  canaries need, copied from the gates job (the pinned toolchain, its targets and components, the caches, cargo-deny),
+  so the canaries stay a required check under the same 14 names. The gates job keeps the gate's runs and the two
+  shards side by side with their count check. Both jobs' times are measured at the next push, and each stays under 12
+  minutes (commit L7).
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the
@@ -14753,7 +14763,7 @@ screen the docs describe working end to end without bugs, every path and edge ca
 docs fixed; a change the docs do not allow becomes a question for the owner and lands only after the answer.
 
 **Stage L: the local loop** (before commit 19)
-- [ ] L1. scripts/android-rust.sh also builds on a macOS arm64 host, with the NDK's darwin prebuilt, for local
+- [x] L1. scripts/android-rust.sh also builds on a macOS arm64 host, with the NDK's darwin prebuilt, for local
   development only: the CI legs, scans and checks are unchanged, and a library built on the Mac never ships (CI's APKs
   are the artifacts). Its selftest covers both hosts. The JVM tests' host library is the build host's own
   (x86_64-unknown-linux-gnu in CI, aarch64-apple-darwin on the Mac).
@@ -14779,7 +14789,10 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   1a63e0f (mobile/'s sources are unchanged since) and no failure (:core-ffi 27 in 9 classes, :screens 79 in 13, :app 7
   in 3 for each flavour, :secure-ui 3 in 1); and `--apk` was clean on both APKs, signed with a throwaway key (keytool,
   apksigner), with the build-tools and NDK r30's darwin LLVM on PATH (16 KB pages and exports judged there).
-- [ ] L2. scripts/android-local.sh: on the project's own AVD kc37 (API 37, the installed google_apis_playstore arm64-v8a
+  Proof (CI, the lead's, 2026-10-27): the Linux path is green at 994894f (Entropy Android run 39953907557) and at
+  6a6a34f (run 40455117323, its android job 2125 s), every leg. On the Mac, Lc's suite built both flavours at 0fab64d
+  (local).
+- [x] L2. scripts/android-local.sh: on the project's own AVD kc37 (API 37, the installed google_apis_playstore arm64-v8a
   image; the owner's Medium_Phone is never touched), boot it, install both APKs and their test APKs, and run every
   instrumented class through android-instrument.sh's judge in android-emulator.sh's order; it names each check a user
   build cannot make (no adb root) and skips none silently. kc37's virtual-scene back camera lets the real Camera2 path
@@ -14856,7 +14869,11 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   the same HOME, rewrote neither file, so a run does this once, not at each boot. Q76 approved downloads (a)-(c),
   not these; whether they may stay is the lead's and the owner's question, and nothing changed here but the header.
 
-- [ ] L3. The local loop's own defects (M5-62): the gate and canaries.sh leave out only the ignored Gradle outputs; the
+  Proof (the lead's, 2026-10-27): a local runner, so its proof is local. Lc's suite ran android-local.sh on kc37 at
+  0fab64d, exit 0 in 802 s, and its --selftest passed 34 cases under sh and dash (local). CI runs android-emulator.sh's
+  and android-instrument.sh's self-tests (25 and 39 passed at 6a6a34f, run 40455117323). android-local.sh's own
+  self-test runs only on the Mac.
+- [x] L3. The local loop's own defects (M5-62): the gate and canaries.sh leave out only the ignored Gradle outputs; the
   emulator's own fetches and the guest's route to the internet are cut where they can be, and anything left is named;
   LifecycleTest's leave falls inside the scrypt on a fast host every time.
   Proof: the gate and canaries.sh clean in a working tree that has built; a local run with each connection to Google cut
@@ -14954,7 +14971,10 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   checks, version's two and no-version's two, and the refusal dropped fails no-version's two. android-local.sh
   --selftest: 34 passed, 0 failed under sh and /bin/dash (131 s each); the gate clean on the built working tree (360
   files).
-- [ ] L4. The gates job's self-test in two shards beside the canaries (M5-63).
+  Proof (CI, the lead's, 2026-10-27): at 6a6a34f every leg passed. Entropy Android run 40455117323 (API 31, API 36 and
+  the 16 KB leg, LifecycleTest's scrypt case among them; 2125 s) and Entropy CI run 40455117393 (the gate, both
+  self-test shards, and canaries.sh's "PASS: all 94 checks ran" on CI's fresh checkout).
+- [x] L4. The gates job's self-test in two shards beside the canaries (M5-63).
   Proof: the shards' counts add up to the whole list's, locally and in CI; the gates job's time in that run, under 12
   minutes.
   Proof (M5 commit L4, partial: local, Q76; CI runs the gates job at the next push, which proves the counts there and
@@ -14982,6 +15002,9 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   scans 356; the 357 first given most likely counted the ignored tools/verify/__pycache__/verify.cpython-312.pyc that
   canaries.sh's run leaves in its tree) under sh and dash. The 14 required check names and the steps before the gate's
   first run are unchanged.
+  Proof (CI, the lead's, 2026-10-27): Entropy CI run 40455117393 at 6a6a34f printed "the shards split one list: 792
+  and 792 of its 1584 cases". Its side-by-side step took 597 s and its gates job 688 s of the 720. That is under Q31
+  (f)'s 12 minutes, but only 13 s under the unsharded job at 4940ede (701 s, run 40442191525): see M5-67 and L7.
 - [ ] L5. KtFailOpen's package arm takes the standard library's kotlin.coroutines and its subpackages, with no allowed
   import line (M5-65, commit 18s): hit fixtures for an import, a star import, a qualified call (startCoroutine with a
   completion that drops its Result) and an intrinsics name, each clean in the test scopes; a near-miss fixture
@@ -15025,6 +15048,9 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   cause found and fixed, and the fault check (each external tool failing to start, exiting with an error and killed,
   at every place the script runs it, on a small tree that reaches every rule) in CI in at most 5 minutes, with no run
   printing "clean". The 14 required check names are unchanged.
+- [ ] L7. canaries.sh moves out of the gates job into one existing required job with time to spare (M5-67, commit
+  L7). The gates job keeps the gate's runs and the two self-test shards with their count check. Proof: both jobs' times
+  in CI, each under 12 minutes, with the 14 required check names unchanged.
 
 **Stages E3 and E4** run commits 19, 20 and 21 as planned, each built and tested locally before it is committed.
 
