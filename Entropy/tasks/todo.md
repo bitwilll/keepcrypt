@@ -14957,8 +14957,10 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   is mawk) passes the two sh logs, and refuses them swapped, two whole counts that differ, counts that do not add up, a
   count line missing or twice, a count line with more after it, and an empty log; the step itself, on stub shards and
   canaries, fails when any of the three fails or the counts do not add up. The gate's `--workflows ../.github/workflows`
-  clean under sh and dash (3 workflows), and the gate clean on the export (357 files) under sh and dash. The 14 required
-  check names and the steps before the gate's first run are unchanged.
+  clean under sh and dash (3 workflows), and the gate clean on the export (356 files, L4b: a fresh export of c0cb3d6
+  scans 356; the 357 first given most likely counted the ignored tools/verify/__pycache__/verify.cpython-312.pyc that
+  canaries.sh's run leaves in its tree) under sh and dash. The 14 required check names and the steps before the gate's
+  first run are unchanged.
 
 **Stages E3 and E4** run commits 19, 20 and 21 as planned, each built and tested locally before it is committed.
 
