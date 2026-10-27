@@ -654,11 +654,14 @@
 #              import, an alias, two imports on one line, a qualified name in code (with blanks,
 #              backticks or line breaks around its dots, or a comment among its parts, a hit
 #              too) and a package line all hit, a mention in a comment or a string too (M5-60
-#              (b)); and a return, break or continue inside a finally block, which drops the
-#              exception in flight, read fail closed without a parser: a quote (" or '), a
-#              backtick or a comment in the block, or a comment between finally and its {, where a
-#              brace could be text, hits at its line, and a file that ends inside the block hits
-#              at its finally ("missing ...").
+#              (b)); any mention of the standard library's kotlin.coroutines or a subpackage of it
+#              (intrinsics, cancellation or any other), read the same way, with no allowed line,
+#              as its startCoroutine and createCoroutine take a completion that can ignore the
+#              failure it is handed (M5-65); and a return, break or continue inside a finally
+#              block, which drops the exception in flight, read fail closed without a parser: a
+#              quote (" or '), a backtick or a comment in the block, or a comment between finally
+#              and its {, where a brace could be text, hits at its line, and a file that ends
+#              inside the block hits at its finally ("missing ...").
 #   KtWindow   Toast, Snackbar, Notification, Dialog(, AlertDialog, DialogFragment, Popup(,
 #              PopupWindow, ListPopupWindow, PopupMenu, DropdownMenu, ModalBottomSheet, Spinner,
 #              AutoCompleteTextView, tooltips, WindowManager's addView and
@@ -1931,9 +1934,13 @@ kt_handler_crash() {
 # whole line, exactly (M5-60 (b)): kt_coroutines_lines in any file, and import
 # java.util.concurrent.Executor in the scanner alone (elsewhere its Executor is a hit too). Any
 # other mention of either package is a hit (kt_packages): another import, a star import, an alias,
-# two imports on one line (the second after a ";"), a qualified name in code, a package line. A new
-# name from either package needs a lead decision that says why it cannot hold a failure. A line
-# that both the words and the packages find is reported once.
+# two imports on one line (the second after a ";"), a qualified name in code, a package line. The
+# standard library's kotlin.coroutines, always on the compile classpath, is read the same way with
+# no allowed line, every subpackage with it (intrinsics, cancellation and any other) (M5-65): its
+# startCoroutine and createCoroutine take a completion whose resumeWith can ignore the failure it
+# is handed, a catch-all with no catch, and the shipping code names nothing from it. A new name
+# from any of the three packages needs a lead decision that says why it cannot hold a failure. A
+# line that both the words and the packages find is reported once.
 kt_task_names='ExecutorService|Executors|CompletableFuture|FutureTask|ForkJoinPool|async|Deferred'
 kt_coroutines_lines='import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -1986,20 +1993,23 @@ kt_tasks_and_packages() {
   [ -z "$p" ] || printf '%s\n' "$p"
 }
 
-# kt_packages FILE LINES: the lines of FILE where a mention of java.util.concurrent or
-# kotlinx.coroutines starts, but a line that is one of LINES (one per line) exactly. A mention is
-# read as Kotlin reads a qualified name, and fail closed: from the word java or kotlinx (a whole
-# word, so javax and kotlin, the standard library's kotlin.concurrent and kotlin.coroutines among
-# its packages, are other names), past blanks (a space, a tab, a form feed or a carriage return),
-# backticks (`kotlinx`.coroutines is the same name) and line breaks, each dot and then each part
-# in turn, so a name spaced out or split over lines (Kotlin takes a line break before a dot) is
-# still one, at the line of its first word. A comment (// or /*) after any part or dot of a name
-# not yet complete is a hit there too, as Kotlin skips it and the rest of the name could follow:
-# so the word java or kotlinx right before a comment is a hit (Foo::class.java and, after blank
-# lines, a // comment). Comments and strings are otherwise read as text, as the other word rules
-# read Kotlin (ktfailopen, kt_tasks), so a mention in either hits. FILE is read through kt_text.
+# kt_packages FILE LINES: the lines of FILE where a mention of java.util.concurrent,
+# kotlinx.coroutines or the standard library's kotlin.coroutines starts, but a line that is one of
+# LINES (one per line) exactly (none names kotlin.coroutines: M5-65 allows no line of it). A
+# mention is read as Kotlin reads a qualified name, and fail closed: from the word java, kotlinx or
+# kotlin (a whole word, so javax, a name such as kotlinCoroutinesNote and the standard library's
+# other packages, kotlin.concurrent and kotlin.collections among them, are other names), past
+# blanks (a space, a tab, a form feed or a carriage return), backticks (`kotlinx`.coroutines is the
+# same name) and line breaks, each dot and then each part in turn, so a name spaced out or split
+# over lines (Kotlin takes a line break before a dot) is still one, at the line of its first word;
+# a subpackage (kotlin.coroutines.intrinsics) is a mention of its package. A comment (// or /*)
+# after any part or dot of a name not yet complete is a hit there too, as Kotlin skips it and the
+# rest of the name could follow: so the word java, kotlinx or kotlin right before a comment is a
+# hit (Foo::class.java and, after blank lines, a // comment). Comments and strings are otherwise
+# read as text, as the other word rules read Kotlin (ktfailopen, kt_tasks), so a mention in either
+# hits. FILE is read through kt_text.
 kt_packages() {
-  grep -q -a -E -e "${L}(java|kotlinx)$R" -- "$1"
+  grep -q -a -E -e "${L}(java|kotlinx|kotlin)$R" -- "$1"
   case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
   ktext=$(kt_text "$1") || return 2
   printf '%s\n' "$ktext" | KC_PACKAGE_LINES=$2 awk '
@@ -2037,7 +2047,7 @@ kt_packages() {
               k++
               state = 1
             }
-          } else if (w == "java" || w == "kotlinx") {
+          } else if (w == "java" || w == "kotlinx" || w == "kotlin") {
             if (w == "java") parts = split("util concurrent", part, " ")
             else parts = split("coroutines", part, " ")
             k = 1

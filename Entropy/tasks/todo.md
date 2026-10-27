@@ -14987,6 +14987,40 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   completion that drops its Result) and an intrinsics name, each clean in the test scopes; a near-miss fixture
   showing that kotlinx.coroutines' allowed lines and words such as `kotlinx` and `coroutines` alone do not hit as
   kotlin.coroutines.
+  Proof (M5 commit 18s, M5-65, partial: local, Q76; CI runs the new cases at the next push): outside the test source
+  sets KtFailOpen's package arm (kt_packages, as 18o-18q left it) also hits every mention of the standard library's
+  kotlin.coroutines, with no allowed line: from the word kotlin, read as 18o reads java.util.concurrent and
+  kotlinx.coroutines (blanks, backticks, line breaks and comments around each dot, a hit at the line of its first
+  word), so kotlin.coroutines.intrinsics, kotlin.coroutines.cancellation and any other subpackage is a mention of it.
+  kotlinx.coroutines keeps M5-60 (b)'s ten lines and the scanner its Executor line; no other rule, scope or allowance
+  changes. git ls-files of mobile/android/*/src/main/*, */src/commonMain/* and */src/androidMain/* (32 files) names
+  kotlin.coroutines nowhere: the word kotlin stands only in GoAheadScanner.kt's and CeremonyModel.kt's `import
+  kotlin.concurrent.Volatile`, and coroutines only on the ten allowed import lines (twelve in all); nor does any
+  tracked file under mobile/android outside the test sets (55 files), and commonTest's TestSupport.kt, which imports
+  kotlin.coroutines.CoroutineContext, is in a test set. Six new fixtures, each clean under 6a6a34f's gate on
+  the selftest's skeleton under sh and dash (by hand): five KtFailOpen hit fixtures, one hit each, each also copied
+  into the test scopes and clean there (src/test and src/androidTest 195 copies each, commonTest and androidHostTest
+  236, from 193 and 231): an import (Continuation, in the app's CeremonyHolder.kt), a star import (:screens'
+  Screens.kt), a qualified call (startCoroutine with the completion `kotlin.coroutines.Continuation(
+  kotlin.coroutines.EmptyCoroutineContext) {}`, which ignores the Result it is handed, in the app's MainActivity.kt),
+  an intrinsics name (`import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn`, :screens'
+  Timers.kt) and kotlin.coroutines.cancellation.CancellationException (thrown, :core-ffi's commonMain Core.kt); and
+  clean-kt-kotlin-coroutines-near-misses, :screens' Seams.kt with the ten allowed kotlinx.coroutines lines, the words
+  kotlinx, coroutines and kotlin alone (in a comment and a string), the identifier kotlinCoroutinesNote,
+  kotlin.collections (an import and a qualified call) and `import kotlin.concurrent.Volatile`. By hand, four mutants
+  of the gate, each through the whole self-test (`--shard K/4` for K 1 to 4, side by side, under sh): the word kotlin
+  dropped from the arm's awk fails exactly the five hit fixtures (1585 passed, 5 failed), and so does kotlin dropped
+  from kt_packages' first grep, which no other fixture can tell (none of the five names java or kotlinx); the arm on
+  import lines only fails exactly the qualified call and CancellationException (1588 passed, 2 failed); and the arm
+  taking any name under kotlin (kotlin.X) fails the near-miss and 20 others (clean-kt-shipping-package-imports'
+  Volatile, the clean build files' and the KtSdk fixtures' kotlin.X lines, and the fixtures that name kotlin.Throwable,
+  kotlin.io, kotlin.random and kotlin.uuid). On a fresh export of the tree: `--selftest` 1590 passed, 0 failed (1584
+  at 6a6a34f) under sh in 684 s; `--selftest --shard 1/2` and `2/2`, side by side with it and with dash's two: "shard
+  1/2: 795 of 1590 cases" and "shard 2/2: 795 of 1590 cases", 0 failed each, under sh and under /bin/dash, 795 + 795 =
+  1590, the dash logs equal to sh's and shard 1's cases the whole log's odd ones, shard 2's its even ones; the gate
+  clean on the export (356 files) and on the built working tree (360) under sh and dash; `--workflows
+  ../.github/workflows` clean (3 workflows) under sh and dash; canaries.sh PASS, all 94 checks ran, on the export
+  (448 s).
 - [ ] L6. The gate fails closed when a tool it runs fails (M5-66, commit 18t): the empty-line-number Shell hit's
   cause found and fixed, and the fault check (each external tool failing to start, exiting with an error and killed,
   at every place the script runs it, on a small tree that reaches every rule) in CI in at most 5 minutes, with no run
