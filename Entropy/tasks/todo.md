@@ -15104,6 +15104,31 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
 - [ ] L7. canaries.sh moves out of the gates job into one existing required job with time to spare (M5-67, commit
   L7). The gates job keeps the gate's runs and the two self-test shards with their count check. Proof: both jobs' times
   in CI, each under 12 minutes, with the 14 required check names unchanged.
+  Proof (M5 commit L7, M5-67, partial: local, Q76; CI measures both jobs' times at the next push): canaries.sh moves
+  to supply-chain (deny, audit, vet), since lint runs 18t's fault check (`sh scripts/banned-api-faults.sh`, its first
+  step after checkout, about 3 minutes on this Mac). supply-chain already set up all that canaries.sh reads, so it
+  gains the step alone: gates' own toolchain step (`rustup toolchain install`, rust-toolchain.toml's components and
+  targets; the canaries use clippy and llvm-tools-preview's llvm-nm), cargo-deny 0.20.2 on PATH from its tools cache
+  (with cargo-audit and cargo-vet), and the registry cache of gates' two paths under its own key; python3 3.12, git
+  and a C compiler are the runner's. `- run: scripts/canaries.sh` is its last step, after vet; its output is the
+  step's log, which ends with its count line. The gates job's self-test step keeps the two shards side by side and
+  their count check, with canaries.sh's run, group, tail line and exit test removed, its comment giving M5-67's reason
+  and numbers; cargo-deny's tools cache, install and PATH line and the registry cache leave the gates job, since only
+  canaries.sh used them (the self-test uses rustc, its targets and llvm-tools-preview). The gate's first run and every
+  step before it, the job ids and the 14 required check names are unchanged; the only actions are checkout and cache at
+  their pinned SHAs (cache 10 uses to 8). Locally: `--workflows ../.github/workflows` clean (3 workflows) under sh and
+  dash. The step's script, cut from the workflow and run under `bash --noprofile --norc -eo pipefail` (macOS's bash
+  3.2; CI's is bash 5) on stub shards, 15 cases: it passes when both shards pass with counts that add up ("the shards
+  split one list: 796 and 795 of its 1591 cases"), and fails when shard 1 or 2 exits 1, shard 1 exits 2, shard 2 is
+  killed (137) or both fail, and when the counts fall short or over, the whole counts differ, the shards are swapped, a
+  count line is missing, twice or has more after it, the logs are empty or it is 0 of 0; no case runs the tree's stub
+  canaries.sh. Mutants of the step: shard 1's exit test dropped passes 2 cases, shard 2's 2 and the count test 9, and
+  83361f0's step fails all 15 (it runs canaries.sh). On a fresh export: the step on the real shards, 377 s alone on
+  this Mac, "796 of 1591" and "795 of 1591", 0 failed each; then supply-chain's order: check-path-deps.sh clean, `cargo
+  audit --no-fetch` and `cargo vet --locked` clean, none of them changing the tree, and canaries.sh PASS, all 94 checks
+  ran (462 s); `cargo deny --locked --offline check` clean after it (a first try with a wrong flag ran nothing). fmt,
+  both clippy runs, `cargo test --workspace --locked` (499 passed, 3 ignored) and `-p keepcrypt-core --features
+  test-sources` (269 passed, 1 ignored), and the gate clean on the working tree (361 files) under sh and dash.
 
 **Stages E3 and E4** run commits 19, 20 and 21 as planned, each built and tested locally before it is committed.
 
