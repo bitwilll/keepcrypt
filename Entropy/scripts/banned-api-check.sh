@@ -4100,9 +4100,10 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   # build/, is the Build hit alone when tracked (the rule still sees it, and the scan did not read
   # it) and clean when untracked (not read), in each of the five modules; the same file under
   # another first-level directory's build/ (gradle/'s, expected/'s), a build/ deeper down or a
-  # module's .gradle/ is read, and a link named build to a directory is refused. Outside a work tree
-  # (no index, so no Build rule) the file under each of the three kinds is read, so only those
-  # directories are skipped, and only where git's index holds what is tracked.
+  # module's .gradle/ is read, and so is a tracked regular file named like one of those directories
+  # (the Build rule's own match needs a / after the name); a link named build to a directory is
+  # refused. Outside a work tree (no index, so no Build rule) the file under each of the three kinds
+  # is read, so only those directories are skipped, and only where git's index holds what is tracked.
   for case in 'dot-gradle:mobile/android/.gradle/9.7.1/x.kt' 'root-build:mobile/android/build/x.kt' \
     'module-build:mobile/android/capture-control/build/x.kt'; do
     x=${case#*:}
@@ -4134,6 +4135,15 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
     git init -q "$d" || exit 2
     mkdir -p "$d/${x%/*}" && echo 'android.util.Log.d("kc", "gate canary")' >"$d/$x" || exit 2
     expect "ktlog-build-skip-reads-${case%%:*}" "$d" KtLog "$x"
+  done
+  for case in 'module-build-file:mobile/android/app/build' 'root-build-file:mobile/android/build' \
+    'dot-gradle-file:mobile/android/.gradle'; do
+    x=${case#*:}
+    fresh
+    git init -q "$d" || exit 2
+    mkdir -p "$d/${x%/*}" && echo 'android.util.Log.d("kc", "gate canary")' >"$d/$x" || exit 2
+    git -C "$d" add -f -- "$x" || exit 2
+    expect "ktlog-build-skip-reads-tracked-${case%%:*}" "$d" KtLog "$x"
   done
   fresh
   git init -q "$d" || exit 2

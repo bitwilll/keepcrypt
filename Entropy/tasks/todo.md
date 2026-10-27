@@ -14891,6 +14891,15 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   fresh export, 356 files; canaries.sh in the built working tree with CARGO_NET_OFFLINE=true passed every check but
   deny-git-source, which offline mode stops from checking out its file:// repository (92 of 93 ran), and on a fresh
   export, run as CI runs it, PASS, all 93 checks ran.
+  Proof (M5 commit L3c, review fix, partial: local, Q76): a regular file named like one of the skipped directories
+  had no case (L3's covered a file under each and a link named build), so a skip that also took such a file, L3's
+  prune without its -type d, passed every case and hid a tracked file from every rule (the Build rule refuses only a
+  file under such a directory). Three built cases, a tracked regular file mobile/android/app/build,
+  mobile/android/build and mobile/android/.gradle holding a KtLog line, each that KtLog hit. Two gate mutants, each
+  run on the whole selftest in eight shards: one that also drops a regular file of those names from the scan fails
+  these three cases alone, and gradle_out ending in `(/|$)` for `/` fails them and the link case. `--selftest --shard
+  K/8` side by side: 1584 cases, 0 failed, under sh (146 s) and /bin/dash (149 s); the gate clean on the built working
+  tree (360 files) and on a fresh export (356 files) under sh and dash.
 - [ ] L4. The gates job's self-test in two shards beside the canaries (M5-63).
   Proof: the shards' counts add up to the whole list's, locally and in CI; the gates job's time in that run, under 12
   minutes.
