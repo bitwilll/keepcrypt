@@ -15202,6 +15202,24 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   where macOS's bash 3.2 keeps the script's line, so the Build rule's trap now calls build_rule_cleanup, whose rm
   is at its line under both (M5 commit 18u; locally the same 142 places, 426 runs passed, 185 s under sh and 175 s
   under /bin/dash).
+  Proof (M5 commit 18v, review fix, M5-66, partial: local, Q76; CI runs the fault check at the next push): the review
+  of 6a6a34f..1d21ec8 found that 18t made only the scan fail closed, while CI's gates job also runs --workflows: with
+  write permissions, an unpinned action and a secret in a run step added to a copy of the workflows, a sed failing
+  at workflow_check's '/^$/d' made the mode print clean with exit 0 (reproduced, sh and dash). --workflows now calls
+  fail_closed; workflow_check reads the uses: lines and then drops the approved actions in two command
+  substitutions, joins the rules' hits in the shell and runs one sort; kt_bootstrap_allowed runs both its awks
+  whatever the exception holds; the exception check's own refusal (its awk's 1) is told from a tool's failure; the
+  clean line reads the exception with case. banned-api-faults.sh runs the gate in modes, MODE:ROOT:WANT: the scan of
+  its tree, and --workflows on workflow-dependency-verification-lenient's file, whose kt_bootstrap hit kept_hits
+  also reads (16 places: awk 5, basename 1, dirname 1, grep 6, sed 1, sort 2). A traced call's function is the
+  traced run's FUNCNAME, numbered by each function's first line through the PS4 (KF_NAME, env), not the function
+  whose lines hold LINENO: bash 3.2 gave workflow_check's awk, inside a command substitution that spans 43 lines,
+  LINENO 5098, a line of workflows(). Locally: the fault check 474 runs (the scan's 142 places and the workflows'
+  16, three ways each), 474 passed, in 188 s under sh and 175 s under /bin/dash; two mutants fail it (no fail_closed
+  in workflows(): 42 of the workflows' 48 runs fail; the uses: lines' two-grep pipeline back: 6 fail); the
+  reproduction gives its 4 hits again; the selftest's shards "796 of 1591" and "795 of 1591", 0 failed; the gate
+  clean on the working tree (365 files) and --workflows ../.github/workflows clean (3 workflows) under sh and dash;
+  canaries.sh PASS, all 94 checks ran (445 s).
 - [ ] L7. canaries.sh moves out of the gates job into one existing required job with time to spare (M5-67, commit
   L7). The gates job keeps the gate's runs and the two self-test shards with their count check. Proof: both jobs' times
   in CI, each under 12 minutes, with the 14 required check names unchanged.

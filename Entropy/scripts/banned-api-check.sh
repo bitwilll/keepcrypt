@@ -920,11 +920,11 @@ nl='
 #
 # A tool that cannot start (exit 126 or 127), exits with an error or is killed stops the gate with
 # exit 2 and names itself, how it failed and what the gate was reading ($on), never "clean" and
-# never a hit with no line. sh has no pipefail, so the scan runs no pipeline with two tools in it:
-# each tool's output is a command substitution's, its status read there, and fed on with printf, a
-# builtin, so a pipeline's status is its one tool's, and a command substitution's is its last
-# command's. scripts/banned-api-faults.sh makes each tool fail at each place that runs it, in each
-# of those ways.
+# never a hit with no line. sh has no pipefail, so the scan, and each mode that calls fail_closed
+# (below), runs no pipeline with two tools in it: each tool's output is a command substitution's,
+# its status read there, and fed on with printf, a builtin, so a pipeline's status is its one
+# tool's, and a command substitution's is its last command's. scripts/banned-api-faults.sh makes
+# each tool fail at each place that runs it, in each of those ways, in each of those modes.
 #
 # And the scan's own shell starts no tool as a command of its own, only in a command substitution
 # (report(), found()), which banned-api-faults.sh also checks in the text. That was the M5-66 hit
@@ -955,9 +955,9 @@ tool_status() {
   exit 2
 }
 
-# fail_closed: from here on, each tool the scan runs is a function of its name that runs the tool
-# (command bypasses the function) and passes its status through tool_status. Only the scan calls
-# it; the other modes read their tools' statuses as they always have.
+# fail_closed: from here on, each tool the gate runs is a function of its name that runs the tool
+# (command bypasses the function) and passes its status through tool_status. The scan and
+# --workflows call it first; the other modes read their tools' statuses as they always have.
 fail_closed() {
   awk() { command awk "$@" || tool_status awk "$?" 1; }
   find() { command find "$@" || tool_status find "$?"; }
@@ -2550,17 +2550,16 @@ kt_bootstrap_exception_check() {
 }
 
 # kt_bootstrap_allowed WORKFLOW: kt_bootstrap's hits in WORKFLOW ($b, "<line>:<text>" lines) but
-# the first whose text, its indentation dropped, is the exception's line for that workflow. The line
-# goes through the environment, so no awk escape processing touches a backslash in it.
+# the first whose text, its indentation dropped, is the exception's line for that workflow (none
+# passes when the list names no line for it). The line goes through the environment, so no awk
+# escape processing touches a backslash in it. Both awks run whatever the list holds, each with its
+# status read, so the fault check (scripts/banned-api-faults.sh) reaches both.
 kt_bootstrap_allowed() {
-  bx=$(printf '%s\n' "$kt_bootstrap_exception" | awk -v f="${1##*/}" 'index($0, f " ") == 1 { print substr($0, length(f) + 2) }')
-  if [ -z "$bx" ] || [ -z "$b" ]; then
-    printf '%s\n' "$b"
-    return
-  fi
+  bx=$(printf '%s\n' "$kt_bootstrap_exception" | awk -v f="${1##*/}" 'index($0, f " ") == 1 { print substr($0, length(f) + 2) }') ||
+    return 2
   printf '%s\n' "$b" | KC_BOOTSTRAP_LINE=$bx awk '
     { t = $0; sub(/^[0-9]+:[ ]*/, "", t) }
-    !seen && t == ENVIRON["KC_BOOTSTRAP_LINE"] { seen = 1; next }
+    ENVIRON["KC_BOOTSTRAP_LINE"] != "" && !seen && t == ENVIRON["KC_BOOTSTRAP_LINE"] { seen = 1; next }
     { print }'
 }
 
@@ -5054,8 +5053,11 @@ workflow_check() {
     }
     END { if (!top_ok) print "1:missing a top-level permissions block that holds contents: read" }
   ' "$wf") || return 2
-  u=$(grep -n -a -E -e '^[[:space:]]*(- )?uses:' -- "$wf" |
-    grep -v -E -e "^[0-9]+:[[:space:]]*(- )?uses:[[:space:]]*($approved_actions)[[:space:]]*(#.*)?\$")
+  # Each tool's output in a command substitution of its own (the uses: lines, then those but the
+  # approved actions), as in the scan: see "The tools the gate runs fail closed".
+  u=$(grep -n -a -E -e '^[[:space:]]*(- )?uses:' -- "$wf")
+  [ $? -le 1 ] || return 2
+  u=$(printf '%s\n' "$u" | grep -v -E -e "^[0-9]+:[[:space:]]*(- )?uses:[[:space:]]*($approved_actions)[[:space:]]*(#.*)?\$")
   [ $? -le 1 ] || return 2
   g=$(grep -n -a -E -e "${L}secrets$R" -e "${L}github[[:space:]]*[.[][[:space:]]*['\"]?token$R" \
     -e "${L}(pull_request_target|workflow_run)$R" -- "$wf")
@@ -5067,23 +5069,37 @@ workflow_check() {
   [ $? -le 1 ] || return 2
   r=$(kt_kmp_refused "$wf")
   [ $? -le 1 ] || return 2
-  t=$(printf '%s\n%s\n%s\n%s\n%s\n%s\n' "$t" "$u" "$g" "$b" "$k" "$r" | sed '/^$/d' | sort -t : -k 1,1n -s)
-  [ -n "$t" ] || return 1
+  # The rules' hits joined in the shell, the empty ones left out, then sorted by line.
+  all=
+  for x in "$t" "$u" "$g" "$b" "$k" "$r"; do
+    [ -z "$x" ] || all=$all${all:+$nl}$x
+  done
+  [ -n "$all" ] || return 1
+  t=$(printf '%s\n' "$all" | sort -t : -k 1,1n -s) || return 2
   printf '%s\n' "$t"
 }
 
 workflows() {
+  fail_closed
   dir=${1%/}
   [ -d "$dir" ] || { printf 'banned-api-check: --workflows: %s is not a directory\n' "$1" >&2; exit 2; }
-  kt_bootstrap_exception_check || {
-    echo 'banned-api-check: --workflows: kt_bootstrap_exception holds a line that does not name entropy-android.yml (once) and, after one space, a workflow line' >&2
-    exit 2
-  }
+  # The check's awk exits 1 for a list of another shape; any other failure tool_status has named.
+  on='kt_bootstrap_exception'
+  kt_bootstrap_exception_check
+  case $? in
+    0) ;;
+    1)
+      echo 'banned-api-check: --workflows: kt_bootstrap_exception holds a line that does not name entropy-android.yml (once) and, after one space, a workflow line' >&2
+      exit 2
+      ;;
+    *) exit 2 ;;
+  esac
   hits=0
   n=0
   for wf in "$dir"/entropy-*.yml "$dir"/entropy-*.yaml; do
     [ -e "$wf" ] || continue
     n=$((n + 1))
+    on=$wf
     out=$(workflow_check "$wf")
     case $? in
       0) ;;
@@ -5105,12 +5121,12 @@ EOF
     echo "banned-api-check --workflows $dir: $hits hit(s) in $n workflow(s)"
     exit 1
   fi
-  # The exception as this run holds it, whatever assigned it, so the line says what was granted.
-  if [ -n "$(printf '%s\n' "$kt_bootstrap_exception" | sed '/^$/d')" ]; then
-    bxstate="no bootstrap switch but the reviewed exception's line (kt_bootstrap_exception: $kt_bootstrap_exception)"
-  else
-    bxstate='no bootstrap switch and no bootstrap exception'
-  fi
+  # The exception as this run holds it, whatever assigned it, so the line says what was granted: a
+  # list with any character but a newline names a line.
+  case $kt_bootstrap_exception in
+    *[!"$nl"]*) bxstate="no bootstrap switch but the reviewed exception's line (kt_bootstrap_exception: $kt_bootstrap_exception)" ;;
+    *) bxstate='no bootstrap switch and no bootstrap exception' ;;
+  esac
   printf '%s\n' "banned-api-check --workflows $dir: clean, $n workflow(s): read-only permissions, pinned actions, no secrets, no fork-trusting trigger, no expression in a run step, $bxstate, the canary property only in the canary step's Gradle command, no Kotlin/Native or Kotlin Multiplatform setting"
   exit 0
 }
