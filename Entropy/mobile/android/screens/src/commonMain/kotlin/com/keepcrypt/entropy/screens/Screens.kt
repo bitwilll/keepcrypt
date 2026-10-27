@@ -113,7 +113,44 @@ fun Screens(
                     passGate = model::passGate,
                     onAddFreshEntropy = model::addFreshEntropy,
                 )
-                Screen.CheckResult -> CheckResult(state, registry)
+                Screen.CheckResult -> CheckResult(state, registry, onShowWords = model::showWords)
+                Screen.Words -> WordsInsert(
+                    state,
+                    registry,
+                    passGate = model::passGate,
+                    onPrevious = model::previousPage,
+                    onNext = model::nextPage,
+                    onOverview = model::toOverview,
+                    onReadback = model::startReadback,
+                    onBackToReadback = model::backToReadback,
+                )
+                Screen.WordsOverview -> WordsOverview(
+                    state,
+                    registry,
+                    passGate = model::passGate,
+                    onPrevious = model::previousPage,
+                    onNext = model::nextPage,
+                    onInsertView = model::toInsertView,
+                )
+                Screen.DeviceSwap -> DeviceSwap(registry, onContinue = model::swapDone)
+                Screen.ReadbackEntry -> ReadbackEntry(
+                    state,
+                    model.readbackLetters,
+                    registry,
+                    passGate = model::passGate,
+                    onDone = model::readbackTyped,
+                    onNext = model::readbackNext,
+                )
+                Screen.ReadbackMismatch -> ReadbackMismatch(
+                    state,
+                    registry,
+                    passGate = model::passGate,
+                    onAgain = model::readbackAgain,
+                    onShowInsert = model::reviewInsert,
+                )
+                Screen.ReadbackDone -> ReadbackDone(registry, onNext = model::showSummary)
+                Screen.Wallet -> WalletSummary(state, registry, onNext = model::summaryDone)
+                Screen.Checklist -> Checklist(state, registry, onFinish = model::finishCeremony)
                 Screen.Working -> Working(registry)
                 Screen.Stop -> Stop(registry, onClose = onClose)
             }
@@ -131,12 +168,13 @@ fun Screens(
  * Protected screen's content shows only past the privacy gate, and never while a recording of the
  * screen is reported (a redacted placeholder instead, the second layer under FLAG_SECURE). The gate and
  * the placeholder each fill the screen, so each carries the TEST REGISTRY strip in that build (Q60).
- * Its 30 s cover is the timers', drawn over every screen by Screens.
+ * Its 30 s cover is the timers', drawn over every screen by Screens. The gate before the words (insert
+ * view or overview) also gives the SeedBook's safety rules, as the Pi's does.
  */
 @Composable
 fun Protected(state: UiState, testRegistry: Boolean, passGate: () -> Unit, content: @Composable () -> Unit) {
     when {
-        state.gate -> PrivacyGate(testRegistry, passGate)
+        state.gate -> PrivacyGate(testRegistry, passGate, words = state.screen == Screen.Words || state.screen == Screen.WordsOverview)
         state.recording -> Redacted(testRegistry)
         else -> content()
     }
@@ -178,12 +216,17 @@ fun Stop(testRegistry: Boolean, onClose: () -> Unit) {
 
 /**
  * The privacy gate before a Protected screen (docs/mobile-apps.md, "Session lifetime" and step 10;
- * docs/pi-firmware.md's gate): every Protected screen is entered through "I'm alone, show words".
+ * docs/pi-firmware.md's gate): every Protected screen is entered through "I'm alone, show words". Before
+ * the words it also gives the SeedBook's safety rules (swb's "enforced in the copy on screen"; the Pi's
+ * gate before words-insert).
  */
 @Composable
-fun PrivacyGate(testRegistry: Boolean, pass: () -> Unit) {
+fun PrivacyGate(testRegistry: Boolean, pass: () -> Unit, words: Boolean = false) {
     KitScreen("privacy_gate", testRegistry, actions = { KitButton("I'm alone, show words", "pass_gate", onClick = pass) }) {
         KitText("The next screen shows a secret. No person or camera may see it.")
+        if (words) {
+            KitText(SEEDBOOK_RULES, KitType.small, tag = "seedbook_rules")
+        }
     }
 }
 

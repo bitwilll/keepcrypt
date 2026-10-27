@@ -1,6 +1,7 @@
 package com.keepcrypt.entropy.screens
 
 import com.keepcrypt.entropy.ffi.Mode
+import com.keepcrypt.entropy.ffi.WordPage
 import com.keepcrypt.entropy.ffi.Words
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CoroutineDispatcher
@@ -180,4 +181,40 @@ internal class Rig(scope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined
             model.confirmRoll()
         }
     }
+
+    /**
+     * From Home: a dice-only seed of vectors/kcr.json's dice gate seed named seed (its rolls picked on the
+     * pad and confirmed), the dice's Done (finish, its long call run), then Skip and its confirm: Skip's
+     * result, from where Show words leads to that seed's words (WordsScreensTest, ReadbackScreensTest).
+     */
+    fun toSkippedResult(seed: String): Rig {
+        begin(Mode.DiceOnly, if (kcrWords(seed).size == 24) Words.TwentyFour else Words.Twelve)
+        for (face in kcrRolls(seed)) {
+            model.dicePick.replace(face)
+            model.confirmRoll()
+        }
+        model.diceDone()
+        worker.run()
+        model.skip()
+        model.skipConfirmed()
+        return this
+    }
+
+    /** Skip's result's Show words, then the privacy gate's "I'm alone, show words": insert 1's page. */
+    fun toWords(): Rig {
+        model.showWords()
+        model.passGate()
+        return this
+    }
 }
+
+/** Whether insert's word is word: compared byte by byte, its copy wiped, nothing printed (the words are public vectors, never logged). */
+internal fun sameWord(insert: WordPage, word: String): Boolean {
+    val bytes = insert.word()
+    val same = bytes.size == word.length && word.indices.all { bytes[it] == word[it].code.toByte() }
+    bytes.wipe()
+    return same
+}
+
+/** Whether insert's page was wiped: its Secret zeroed, so its position, count and word length read 0. */
+internal fun wiped(insert: WordPage): Boolean = insert.position == 0 && insert.count == 0 && insert.word().size == 0

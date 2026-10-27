@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.isSensitiveData
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -119,6 +120,18 @@ fun KitText(text: String, style: TextStyle = KitType.body, tag: String? = null) 
     val modifier = Modifier.padding(vertical = 6.dp)
     BasicText(text, if (tag == null) modifier else modifier.testTag(tag), style = style)
 }
+
+/** The test tag (UI Automator's resource id) of every node that shows a secret: the capture harness reads each one's mark. */
+const val SECRET_TAG = "secret"
+
+/**
+ * A node that shows a secret on a Protected screen (the words, their SeedBook numbers and faces, the
+ * read-back's letters and verdicts): marked sensitive, which Android 14+ gives its accessibility node
+ * as accessibility-data sensitive (docs/mobile-apps.md, "Rules for Claude Code"), so only accessibility
+ * tools read it, TalkBack and its braille displays among them; SecureActivity marks the root so too.
+ * Its test tag is SECRET_TAG, which names no secret.
+ */
+fun Modifier.secret(): Modifier = semantics { isSensitiveData = true }.testTag(SECRET_TAG)
 
 /** Space between a screen's parts, size dp high. */
 @Composable

@@ -6,12 +6,15 @@ import com.keepcrypt.entropy.ffi.Extra
 import com.keepcrypt.entropy.ffi.KcHalt
 import com.keepcrypt.entropy.ffi.Mode
 import com.keepcrypt.entropy.ffi.QrMatrix
+import com.keepcrypt.entropy.ffi.Readback
 import com.keepcrypt.entropy.ffi.Refusal
 import com.keepcrypt.entropy.ffi.RefusalGroup
 import com.keepcrypt.entropy.ffi.RegistryHeader
 import com.keepcrypt.entropy.ffi.Reply
 import com.keepcrypt.entropy.ffi.Revealed
 import com.keepcrypt.entropy.ffi.SealCard
+import com.keepcrypt.entropy.ffi.Summary
+import com.keepcrypt.entropy.ffi.WordPage
 import com.keepcrypt.entropy.ffi.Words
 import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CoroutineDispatcher
@@ -53,12 +56,13 @@ enum class Notice {
 }
 
 /**
- * What the screens draw (tasks/todo.md, M5 groups 14, 15 and 16; lead decision M5-49): the screen's
- * id and page index, flags about it, and the public values a screen shows (the dice counts, C, the
- * seal card, the check QR, a snapshot's or proof's header, why a scan stopped), never a secret but
- * through a Secret reference: the QR codes are QrMatrix, whose bits a Secret holds, and the model
- * wipes each one when no screen holds it any more (the collision report's carries the destroyed
- * seed's seal code). The words and the rest (commits 19-21) hold theirs the same way.
+ * What the screens draw (tasks/todo.md, M5 groups 14-17; lead decision M5-49): the screen's id and
+ * page index, flags about it, and the public values a screen shows (the dice counts, C, the seal card,
+ * the check QR, a snapshot's or proof's header, why a scan stopped, the wallet summary), never a secret
+ * but through a Secret reference: the QR codes are QrMatrix, the words WordPage and a read-back's
+ * verdicts Readback.Mismatch, each holding its bytes in a Secret, and the model wipes each one when no
+ * screen holds it any more (the collision report's carries the destroyed seed's seal code). The backup
+ * and the other exports (commits 20 and 21) hold theirs the same way.
  */
 data class UiState(
     val screen: Screen,
@@ -114,6 +118,27 @@ data class UiState(
      * bucket): the scan screen says so and scans no more, and the check, its nonce and actions stay.
      */
     val scanRefusal: Refusal? = null,
+    /**
+     * The insert on show (a WordPage, whose bytes a Secret holds): the words page's, page + 1, and the
+     * read-back's (its entry, its match and its mismatch), from which they name its position and device.
+     */
+    val insert: WordPage? = null,
+    /** The overview's four inserts, page's (words 4 x page + 1 to 4 x page + 4). */
+    val overview: List<WordPage>? = null,
+    /** The words page shows a read-back mismatch's insert: its one way on is back to that insert's read-back. */
+    val reviewing: Boolean = false,
+    /** The device swap's way on: the words page or the overview (swapTo) at page, the first of device 2 of 2. */
+    val swapTo: Screen? = null,
+    /** The read-back entry's insert matched: the screen shows the whole word, and Next. */
+    val matched: Boolean = false,
+    /** With matched: every insert has now matched, so Next leads to the read-back's end. */
+    val complete: Boolean = false,
+    /** The read-back mismatch's verdicts, face by face (held in a Secret), wiped when its screen leaves. */
+    val mismatch: Readback.Mismatch? = null,
+    /** The wallet summary (public, as the Pi's, Q29): the fingerprint and the first receive address. */
+    val summary: Summary? = null,
+    /** The seed has 24 words, on two devices (device 1 of 2 holds words 1-12), which the checklist says. */
+    val twoDevices: Boolean = false,
 ) {
     /** Offline (Q57): airplane mode on and Wi-Fi off. */
     val offline: Boolean get() = airplaneMode && wifiOff
@@ -162,6 +187,17 @@ data class UiState(
  *   unseen, then the collision-report QR (Protected) and "Add fresh entropy"; Cannot check wipes it and
  *   starts again. Both restarts are core's start from the kept Wiped, with the destroyed session's
  *   length and mode, so core sets the minimum (99 rolls after a collision).
+ * - The words and the end of the ceremony (group 17; docs/mobile-apps.md, steps 10-12 and 17; the Pi's
+ *   steps 8-10 and 15): the check result's "Show words" leads through the privacy gate ("I'm alone,
+ *   show words", with the SeedBook's safety rules) to the words, one insert a page in insert view (its
+ *   position, device, word, SeedBook number and faces 1-6, each page core's word page) and four a page
+ *   in the overview, paged back and on; a 24-word seed's pages pass the device swap (Public, so the
+ *   gate comes again) before word 13. The last insert starts the read-back: the first four letters of
+ *   each insert in turn, typed on the letter pad and compared by core, a match showing the whole word
+ *   and a mismatch each face's verdict (a mirror-pair misread named as one), from where the insert can
+ *   be shown again or read again; once every insert has matched, the read-back's end, the wallet
+ *   summary and the checklist, whose Finish ends the session in core (end) and returns Home. Every
+ *   page's word pages and verdicts are wiped when it goes, and the typed letters when the entry goes.
  */
 class CeremonyModel(
     private val scope: CoroutineScope,
@@ -190,6 +226,13 @@ class CeremonyModel(
      * code entry leaves.
      */
     val goAheadCode: PadEntry = crockfordPadEntry()
+
+    /**
+     * The read-back's letters as the entry's letter pad types them (a Protected screen: rule 5, a
+     * PadEntry, never a String): readbackTyped hands them to core, which wipes them, and they are wiped
+     * when the read-back entry leaves.
+     */
+    val readbackLetters: PadEntry = letterPadEntry()
 
     /** The start-up self-test (First launch's Continue) has passed. */
     private var started = false
@@ -351,11 +394,16 @@ class CeremonyModel(
      * one-way choice's confirm screen: back to the screen before only where nothing is lost, as the Pi's
      * KEY1 and KEY2 (Length to Home, Home to Go offline, Go offline to First launch; Skip's confirm to
      * the check prompt; the scan screen, Match found's and Cannot check's confirms and the code entry to
-     * the seal card, with the same check and nonce and no core call, the typed code wiped); anywhere
-     * else it does nothing, so it never ends a session, leaves a check or a long call, or leaves the app.
+     * the seal card, with the same check and nonce and no core call, the typed code wiped; on the words
+     * and their overview the page before, as their Previous); anywhere else it does nothing, so it never
+     * ends a session, leaves a check, the read-back or a long call, or leaves the app.
      */
     fun back() {
         val current = mutable.value
+        if (current.screen == Screen.Words || current.screen == Screen.WordsOverview) {
+            previousPage()
+            return
+        }
         val previous = backTo(current.screen) ?: return
         if (pressOn(current.screen)) show(previous, seal = current.seal, checkRequest = current.checkRequest)
     }
@@ -585,6 +633,179 @@ class CeremonyModel(
         if (pressOn(Screen.CollisionReport)) start(words, mode)
     }
 
+    /**
+     * The check result's "Show words" (a verified go-ahead's, or Skip's): the first insert, through the
+     * privacy gate, since the result is Public.
+     */
+    fun showWords() {
+        if (pressOn(Screen.CheckResult)) showInsert(0)
+    }
+
+    /**
+     * Next on the words (insert view) and the overview: the next page, while there is one; on a 24-word
+     * seed, past word 12, the device swap first (the Pi's), then that view's next page. Nothing while a
+     * mismatch's insert is reviewed, whose one way on is back to its read-back.
+     */
+    fun nextPage() {
+        val current = mutable.value
+        when (current.screen) {
+            Screen.Words -> {
+                val insert = current.insert ?: return
+                val next = current.page + 1
+                if (!pressOn(Screen.Words) || current.reviewing || next >= insert.count) return
+                if (next == INSERTS_PER_DEVICE && insert.count > INSERTS_PER_DEVICE) {
+                    show(Screen.DeviceSwap, page = next, swapTo = Screen.Words)
+                } else {
+                    showInsert(next)
+                }
+            }
+            Screen.WordsOverview -> {
+                val first = current.overview?.firstOrNull() ?: return
+                val next = current.page + 1
+                if (!pressOn(Screen.WordsOverview) || next * OVERVIEW_WORDS >= first.count) return
+                if (next * OVERVIEW_WORDS == INSERTS_PER_DEVICE && first.count > INSERTS_PER_DEVICE) {
+                    show(Screen.DeviceSwap, page = next, swapTo = Screen.WordsOverview)
+                } else {
+                    showOverview(next)
+                }
+            }
+            else -> {}
+        }
+    }
+
+    /**
+     * Previous on the words and the overview (and the system Back there): the page before, with no
+     * device swap (every page names its device); nothing on the first page or while a mismatch's
+     * insert is reviewed.
+     */
+    fun previousPage() {
+        val current = mutable.value
+        when (current.screen) {
+            Screen.Words -> if (pressOn(Screen.Words) && !current.reviewing && current.page > 0) showInsert(current.page - 1)
+            Screen.WordsOverview -> if (pressOn(Screen.WordsOverview) && current.page > 0) showOverview(current.page - 1)
+            else -> {}
+        }
+    }
+
+    /** The words' "Overview": the overview's page that holds this insert (four words a page, for the paper copy). */
+    fun toOverview() {
+        val current = mutable.value
+        if (pressOn(Screen.Words) && !current.reviewing) showOverview(current.page / OVERVIEW_WORDS)
+    }
+
+    /** The overview's "Insert view": the first insert of its page. */
+    fun toInsertView() {
+        val current = mutable.value
+        if (pressOn(Screen.WordsOverview)) showInsert(current.page * OVERVIEW_WORDS)
+    }
+
+    /**
+     * The device swap's Continue, once device 1 of 2 is closed and put away: the page it leads to,
+     * device 2 of 2's first, through the privacy gate again, since the swap is Public.
+     */
+    fun swapDone() {
+        val current = mutable.value
+        if (!pressOn(Screen.DeviceSwap)) return
+        when (current.swapTo) {
+            Screen.Words -> showInsert(current.page)
+            Screen.WordsOverview -> showOverview(current.page)
+            else -> halt()
+        }
+    }
+
+    /**
+     * The last insert's "Start the read-back" (docs/seal-watchonly-braille.md, "Read-back from the
+     * metal": mandatory, before the session ends): insert 1's read-back entry, its letter pad empty.
+     */
+    fun startReadback() {
+        val current = mutable.value
+        val insert = current.insert ?: return
+        if (pressOn(Screen.Words) && !current.reviewing && current.page + 1 == insert.count) showReadback(1)
+    }
+
+    /**
+     * The read-back entry's Done, with three or four letters typed (three for a blank fourth face; below
+     * that, and after a match, it does nothing): core compares them with the insert's first four
+     * letters. A match shows the whole word; a mismatch shows each face's verdict. The letters are
+     * handed over as a Secret and wiped once core has them.
+     */
+    fun readbackTyped() {
+        val current = mutable.value
+        val insert = current.insert ?: return
+        if (!pressOn(Screen.ReadbackEntry) || current.matched || readbackLetters.length < READBACK_MIN_LETTERS) return
+        val letters = readbackLetters.take()
+        val reply = call { Core.checkReadback(insert.position, letters) }
+        letters.wipe()
+        if (reply !is Reply.Done) {
+            settle(reply)
+            return
+        }
+        when (val readback = reply.value) {
+            is Readback.Match ->
+                show(Screen.ReadbackEntry, page = current.page, insert = insert, matched = true, complete = readback.complete)
+            is Readback.Mismatch -> show(Screen.ReadbackMismatch, page = current.page, insert = insert, mismatch = readback)
+        }
+    }
+
+    /**
+     * Next after a match: the next insert's read-back, or once every insert has matched (core says so)
+     * the read-back's end. A match on the last insert that core does not call complete is the shell's
+     * bug, and halts.
+     */
+    fun readbackNext() {
+        val current = mutable.value
+        val insert = current.insert ?: return
+        if (!pressOn(Screen.ReadbackEntry) || !current.matched) return
+        when {
+            current.complete -> show(Screen.ReadbackDone)
+            insert.position < insert.count -> showReadback(insert.position + 1)
+            else -> halt()
+        }
+    }
+
+    /** The mismatch's "Read it again": the same insert's entry, its letter pad empty, the verdicts wiped. */
+    fun readbackAgain() {
+        val current = mutable.value
+        if (pressOn(Screen.ReadbackMismatch)) show(Screen.ReadbackEntry, page = current.page, insert = current.insert)
+    }
+
+    /**
+     * The mismatch's "Show the insert" (the Pi's KEY1 there): the insert in insert view, its faces to
+     * compare with the metal face by face, the verdicts wiped; its one way on is back to its read-back.
+     */
+    fun reviewInsert() {
+        val current = mutable.value
+        if (pressOn(Screen.ReadbackMismatch)) show(Screen.Words, page = current.page, insert = current.insert, reviewing = true)
+    }
+
+    /** The reviewed insert's "Back to the read-back": that insert's entry, its letter pad empty. */
+    fun backToReadback() {
+        val current = mutable.value
+        if (pressOn(Screen.Words) && current.reviewing) show(Screen.ReadbackEntry, page = current.page, insert = current.insert)
+    }
+
+    /** The read-back's end, Next: the wallet summary, core's (public: the fingerprint and the first receive address). */
+    fun showSummary() {
+        if (!pressOn(Screen.ReadbackDone)) return
+        val summary = done { Core.summary() } ?: return
+        show(Screen.Wallet, summary = summary.value)
+    }
+
+    /** The wallet summary's Next: the checklist (the backup and the other exports come between with commits 20 and 21). */
+    fun summaryDone() {
+        if (pressOn(Screen.Wallet)) show(Screen.Checklist)
+    }
+
+    /**
+     * The checklist's Finish (docs/mobile-apps.md, step 17): core ends the session (end: the words go),
+     * and Home follows, with no session held; a loaded snapshot stays, as on the Pi.
+     */
+    fun finishCeremony() {
+        if (!pressOn(Screen.Checklist) || !short { Core.end() }) return
+        session = false
+        show(Screen.Home)
+    }
+
     /** The timers' step now: the platform calls it each second (runTimers), and every return to the app does. */
     fun tick() {
         if (busy()) return
@@ -613,8 +834,8 @@ class CeremonyModel(
     /**
      * The platform's end of the model (the ViewModel's onCleared): everything the slot holds goes, the
      * kept Wiped and a loaded snapshot too, a long call running drops its result, the pads' entries and
-     * the QR codes on show are wiped, and the motion source and the offline monitor stop. A halted slot
-     * holds nothing already.
+     * the QR codes, word pages and verdicts on show are wiped, and the motion source and the offline
+     * monitor stop. A halted slot holds nothing already.
      */
     fun wipeAll() {
         running?.discarded = true
@@ -623,9 +844,13 @@ class CeremonyModel(
         call { Core.wipeAll() }
         dicePick.wipe()
         goAheadCode.wipe()
+        readbackLetters.wipe()
         val current = mutable.value
         current.checkRequest?.wipe()
         current.report?.wipe()
+        current.insert?.wipe()
+        for (insert in current.overview.orEmpty()) insert.wipe()
+        current.mismatch?.wipe()
         motion.stop()
         offlineMonitor.stop()
     }
@@ -664,8 +889,8 @@ class CeremonyModel(
      * core does not offer at home, halt the slot (fail closed: the stop screen instead of the start
      * screen, in a window of microseconds; M5-54's residual). A halt is the stop screen. One long call
      * at a time: a second is the shell's bug, and halts, as does a busy screen that takes input. The
-     * busy screen keeps the QR codes of the screen it stands for (drawing none), so that screen comes
-     * back with them whole; the next other screen wipes them.
+     * busy screen keeps the QR codes, word pages and verdicts of the screen it stands for (drawing
+     * none), so that screen comes back with them whole; the next other screen wipes them.
      */
     fun <T> work(
         core: () -> Reply<T>,
@@ -680,7 +905,7 @@ class CeremonyModel(
         val pending = Pending()
         running = pending
         from = mutable.value
-        show(busy, checkRequest = from.checkRequest, report = from.report)
+        show(busy, checkRequest = from.checkRequest, report = from.report, insert = from.insert, overview = from.overview, mismatch = from.mismatch)
         scope.launch {
             val reply = withContext(worker) { onWorker(pending, core) }
             if (running === pending) running = null
@@ -783,6 +1008,14 @@ class CeremonyModel(
             codeRefused = previous.codeRefused,
             scanStop = previous.scanStop,
             scanRefusal = previous.scanRefusal,
+            insert = previous.insert,
+            overview = previous.overview,
+            reviewing = previous.reviewing,
+            swapTo = previous.swapTo,
+            matched = previous.matched,
+            complete = previous.complete,
+            mismatch = previous.mismatch,
+            summary = previous.summary,
         )
     }
 
@@ -790,6 +1023,36 @@ class CeremonyModel(
     private fun showDice() {
         val progress = done { Core.diceProgress() } ?: return
         show(Screen.Dice, dice = progress.value)
+    }
+
+    /** The words in insert view at index (0-based): core's word page of insert index + 1. */
+    private fun showInsert(index: Int) {
+        val insert = done { Core.wordPage(index + 1) } ?: return
+        show(Screen.Words, page = index, insert = insert.value)
+    }
+
+    /**
+     * The overview's page (0-based): core's word pages of its four inserts. A halt partway leaves the
+     * pages already read wiped, since no state holds them.
+     */
+    private fun showOverview(page: Int) {
+        val inserts = ArrayList<WordPage>(OVERVIEW_WORDS)
+        for (position in page * OVERVIEW_WORDS + 1..page * OVERVIEW_WORDS + OVERVIEW_WORDS) {
+            val insert = done { Core.wordPage(position) }
+            if (insert == null) {
+                for (read in inserts) read.wipe()
+                return
+            }
+            inserts.add(insert.value)
+        }
+        show(Screen.WordsOverview, page = page, overview = inserts)
+    }
+
+    /** The read-back entry of insert position (1-based), its letter pad empty, with core's word page for its header and match. */
+    private fun showReadback(position: Int) {
+        val insert = done { Core.wordPage(position) } ?: return
+        readbackLetters.wipe()
+        show(Screen.ReadbackEntry, page = position - 1, insert = insert.value)
     }
 
     /** One of the check's screens after the seal card, with the seal card and its check QR (the same check and nonce). */
@@ -838,6 +1101,14 @@ class CeremonyModel(
         codeRefused: Boolean = false,
         scanStop: ScanStop? = null,
         scanRefusal: Refusal? = null,
+        insert: WordPage? = null,
+        overview: List<WordPage>? = null,
+        reviewing: Boolean = false,
+        swapTo: Screen? = null,
+        matched: Boolean = false,
+        complete: Boolean = false,
+        mismatch: Readback.Mismatch? = null,
+        summary: Summary? = null,
     ) {
         val current = mutable.value
         val leaving = if (isWorking(current.screen)) from.screen else current.screen
@@ -863,15 +1134,25 @@ class CeremonyModel(
                 codeRefused = codeRefused,
                 scanStop = scanStop,
                 scanRefusal = scanRefusal,
+                insert = insert,
+                overview = overview,
+                reviewing = reviewing,
+                swapTo = swapTo,
+                matched = matched,
+                complete = complete,
+                mismatch = mismatch,
+                summary = summary,
+                twoDevices = words == Words.TwentyFour,
             ),
         )
     }
 
     /**
      * The next state, and what a screen holds while it shows: the motion source runs only on Device
-     * entropy; the dice pad's pick is wiped when the dice screen leaves, and the typed go-ahead code
-     * when the code entry does; a QR code the state held and the next one does not is wiped (rule 5:
-     * the collision report's carries a seal code).
+     * entropy; the dice pad's pick is wiped when the dice screen leaves, the typed go-ahead code when
+     * the code entry does, and the read-back's letters when its entry does; a QR code, word page or
+     * read-back verdicts the state held and the next one does not are wiped (rule 5: the collision
+     * report's carries a seal code, and the words and verdicts are the seed's).
      */
     private fun enter(next: UiState) {
         val previous = mutable.value
@@ -879,16 +1160,27 @@ class CeremonyModel(
         mutable.value = next
         wipeLeaving(previous.checkRequest, next)
         wipeLeaving(previous.report, next)
+        wipeLeaving(previous.insert, next)
+        for (insert in previous.overview.orEmpty()) wipeLeaving(insert, next)
+        val mismatch = previous.mismatch
+        if (mismatch != null && mismatch !== next.mismatch) mismatch.wipe()
         if (next.screen == before) return
         if (before == Screen.DeviceEntropy) motion.stop()
         if (before == Screen.Dice) dicePick.wipe()
         if (before == Screen.CodeEntry) goAheadCode.wipe()
+        if (before == Screen.ReadbackEntry) readbackLetters.wipe()
         if (next.screen == Screen.DeviceEntropy) motion.start(this::motionSample)
     }
 
     /** Wipes matrix unless next holds it. */
     private fun wipeLeaving(matrix: QrMatrix?, next: UiState) {
         if (matrix != null && matrix !== next.checkRequest && matrix !== next.report) matrix.wipe()
+    }
+
+    /** Wipes insert unless next holds it, on its words page, its read-back or its overview. */
+    private fun wipeLeaving(insert: WordPage?, next: UiState) {
+        if (insert == null || insert === next.insert || next.overview.orEmpty().any { it === insert }) return
+        insert.wipe()
     }
 
     /** The shell's own bug, failed closed: the slot halts, and the stop screen follows. */
@@ -926,7 +1218,8 @@ class CeremonyModel(
 
     /**
      * Where Back goes from screen: only where nothing is lost, before any session, and in the check
-     * from a confirm screen or the code entry to the screen that offered it; null elsewhere.
+     * from a confirm screen or the code entry to the screen that offered it; null elsewhere (the words'
+     * and the overview's page before is back's own).
      */
     private fun backTo(screen: Screen): Screen? = when (screen) {
         Screen.GoOffline -> Screen.FirstLaunch
@@ -935,7 +1228,9 @@ class CeremonyModel(
         Screen.SkipConfirm -> Screen.CheckPrompt
         Screen.Scan, Screen.CodeEntry, Screen.MatchFoundConfirm, Screen.CannotCheckConfirm -> Screen.SealCard
         Screen.SelfTest, Screen.FirstLaunch, Screen.DeviceEntropy, Screen.Commitment, Screen.Dice, Screen.CheckPrompt,
-        Screen.SealCard, Screen.Collision, Screen.CollisionReport, Screen.CheckResult, Screen.Working, Screen.Stop -> null
+        Screen.SealCard, Screen.Collision, Screen.CollisionReport, Screen.CheckResult, Screen.Words, Screen.WordsOverview,
+        Screen.DeviceSwap, Screen.ReadbackEntry, Screen.ReadbackMismatch, Screen.ReadbackDone, Screen.Wallet,
+        Screen.Checklist, Screen.Working, Screen.Stop -> null
     }
 
     /** Whether screen needs airplane mode on and Wi-Fi off (Q57): every screen from Home on. */
@@ -943,7 +1238,9 @@ class CeremonyModel(
         Screen.SelfTest, Screen.FirstLaunch, Screen.GoOffline, Screen.Working, Screen.Stop -> false
         Screen.Home, Screen.Length, Screen.DeviceEntropy, Screen.Commitment, Screen.Dice, Screen.CheckPrompt,
         Screen.SkipConfirm, Screen.SealCard, Screen.Scan, Screen.CodeEntry, Screen.MatchFoundConfirm,
-        Screen.CannotCheckConfirm, Screen.Collision, Screen.CollisionReport, Screen.CheckResult -> true
+        Screen.CannotCheckConfirm, Screen.Collision, Screen.CollisionReport, Screen.CheckResult, Screen.Words,
+        Screen.WordsOverview, Screen.DeviceSwap, Screen.ReadbackEntry, Screen.ReadbackMismatch, Screen.ReadbackDone,
+        Screen.Wallet, Screen.Checklist -> true
     }
 
     /** The slot is collecting and Device entropy shows: extras go into the pool (until the commitment). */

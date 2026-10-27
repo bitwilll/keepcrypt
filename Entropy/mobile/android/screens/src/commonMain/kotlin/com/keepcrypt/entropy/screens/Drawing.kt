@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -186,14 +187,20 @@ private val LIGHTER = Color(0xFF9E9E9E)
 
 /**
  * One face of an insert (docs/seal-watchonly-braille.md, "Braille backup"): its letter, its six dots with
- * their numbers (1-3 left, 4-5-6 right), and under them "leave blank" or "mirror"; face 5 lighter.
+ * their numbers (1-3 left, 4-5-6 right), and under them "leave blank" or "mirror"; face 5 lighter. The
+ * letter and the label are the word's, so each is marked secret (Kit.kt). modifier sizes it (a share
+ * of the insert's row of five, where the label wraps; a 40 dp cell and its numbers take 62 dp).
  */
 @Composable
-fun BrailleFace(face: Face) {
+fun BrailleFace(face: Face, modifier: Modifier = Modifier) {
     val colour = if (face.isLighter) LIGHTER else Color.White
     val label = faceLabel(face.isBlank, face.mirrorPartner != null)
-    Column(Modifier.background(Color.Black).padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        BasicText(face.letter?.toString() ?: " ", style = TextStyle(color = colour, fontSize = 24.sp, fontWeight = FontWeight.Bold))
+    Column(modifier.background(Color.Black).padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        BasicText(
+            face.letter?.toString() ?: " ",
+            Modifier.secret(),
+            style = TextStyle(color = colour, fontSize = 24.sp, fontWeight = FontWeight.Bold),
+        )
         Row(verticalAlignment = Alignment.CenterVertically) {
             DotNumbers(1, colour)
             Canvas(Modifier.size(40.dp, 60.dp)) {
@@ -201,7 +208,7 @@ fun BrailleFace(face: Face) {
             }
             DotNumbers(4, colour)
         }
-        BasicText(label, style = TextStyle(color = colour, fontSize = 14.sp))
+        BasicText(label, Modifier.secret(), style = TextStyle(color = colour, fontSize = 14.sp, textAlign = TextAlign.Center))
     }
 }
 

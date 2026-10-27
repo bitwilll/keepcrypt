@@ -37,10 +37,14 @@ import com.keepcrypt.entropy.ffi.KcHalt
 import com.keepcrypt.entropy.ffi.Mode
 import com.keepcrypt.entropy.ffi.Reply
 import com.keepcrypt.entropy.ffi.Words
+import com.keepcrypt.entropy.screens.CeremonyModel
 import com.keepcrypt.entropy.screens.DICE_KEYS
+import com.keepcrypt.entropy.screens.INSERTS_PER_DEVICE
 import com.keepcrypt.entropy.screens.Overlay
+import com.keepcrypt.entropy.screens.SECRET_TAG
 import com.keepcrypt.entropy.screens.ScanStop
 import com.keepcrypt.entropy.screens.Screen
+import com.keepcrypt.entropy.screens.isProtected
 import com.keepcrypt.entropy.screens.screenId
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -82,8 +86,14 @@ class CaptureTest {
      * long calls held on the worker, as the model makes every long call (the real start-up self-test is
      * over before a capture could start): the held one goes back to First launch when let go, whose
      * Continue then runs the real self-test to Go offline. The dice's Done and the restart are the real
-     * long calls, waited for. The collision-report QR, the one Protected screen, is shown past its privacy
-     * gate, so the capture is of the QR itself. The scan screen asks for the camera as it opens, and the
+     * long calls, waited for. The ceremony is a 24-word one (99 rolls, and the restart's the same), so the
+     * words' pages pass the device swap. Each Protected screen (the collision-report QR, the words, their
+     * overview, the read-back entry and its mismatch) is shown past its privacy gate, so the capture is of
+     * the screen itself: the words from Skip's result, the overview from word 1, the swap after the
+     * overview's third page, the entry from the last insert, its mismatch from letters no word begins
+     * with ("zzzz"), and the read-back's end after every insert read back in-process from the page on
+     * show (its word's copy wiped), then the wallet summary and the checklist, from which "Working..."
+     * is held. The scan screen asks for the camera as it opens, and the
      * walk is the first of this APK's tests to open it: dumpsys package shows CAMERA requested and not
      * granted, no permission prompt is up, then the scan screen opens and the system's prompt shows over
      * the app, another package's window, which the walk answers "Don't allow" before the capture (the
@@ -105,10 +115,10 @@ class CaptureTest {
             }
             Screen.Home -> onMain { model.startOffline() }
             Screen.Length -> onMain { model.chooseMode(Mode.Mixed) }
-            Screen.DeviceEntropy -> onMain { model.chooseLength(Words.Twelve) }
+            Screen.DeviceEntropy -> onMain { model.chooseLength(Words.TwentyFour) }
             Screen.Commitment -> onMain { model.deviceEntropyDone() }
             Screen.Dice -> onMain { model.commitmentDone() }
-            Screen.CheckPrompt -> finishDice(activity, 50)
+            Screen.CheckPrompt -> finishDice(activity, 99)
             Screen.SkipConfirm -> onMain { model.skip() }
             Screen.SealCard -> onMain {
                 model.back()
@@ -147,10 +157,34 @@ class CaptureTest {
                     model.skipConfirmed()
                 }
             }
+            Screen.Words -> {
+                onMain { model.showWords() }
+                waitUntil("the words' privacy gate") { onMain { activity.shownScreen == Screen.Words && model.state.value.gate } }
+                onMain { model.passGate() }
+            }
+            Screen.WordsOverview -> onMain { model.toOverview() }
+            Screen.DeviceSwap -> onMain { repeat(3) { model.nextPage() } }
+            Screen.ReadbackEntry -> onMain {
+                model.swapDone()
+                model.passGate()
+                model.toInsertView()
+                repeat(INSERTS_PER_DEVICE - 1) { model.nextPage() }
+                model.startReadback()
+            }
+            Screen.ReadbackMismatch -> onMain {
+                for (letter in "zzzz") model.readbackLetters.type(letter)
+                model.readbackTyped()
+            }
+            Screen.ReadbackDone -> onMain {
+                model.readbackAgain()
+                repeat(2 * INSERTS_PER_DEVICE) { readBackShown(model) }
+            }
+            Screen.Wallet -> onMain { model.showSummary() }
+            Screen.Checklist -> onMain { model.summaryDone() }
             Screen.Working -> onMain { model.work({ working.await(); Reply.Done(Unit) }) {} }
             Screen.Stop -> {
                 working.countDown()
-                waitUntil("the result again, after the held call") { onMain { activity.shownScreen } == Screen.CheckResult }
+                waitUntil("the checklist again, after the held call") { onMain { activity.shownScreen } == Screen.Checklist }
                 onMain { model.work<Unit>({ throw KcHalt() }) {} }
             }
         }
@@ -184,6 +218,20 @@ class CaptureTest {
         assertFalse("CAMERA granted after Don't allow", Capture.permission(pkg, CAMERA).granted)
     }
 
+    /**
+     * On the read-back entry, the insert on show read back in-process: its word's first four letters (a
+     * three-letter word's three), read from the page the state holds into the model's letter pad through
+     * a copy that is wiped at once, then Done and Next. Main thread only.
+     */
+    private fun readBackShown(model: CeremonyModel) {
+        val insert = checkNotNull(model.state.value.insert)
+        val word = insert.word()
+        for (index in 0 until minOf(4, word.size)) model.readbackLetters.type(Char(word[index].toInt()))
+        word.wipe()
+        model.readbackTyped()
+        model.readbackNext()
+    }
+
     /** On the dice, rolls faces through the model's pick and confirm, then Done, and waits for the check prompt (the real finish). */
     private fun finishDice(activity: MainActivity, rolls: Int) {
         onMain {
@@ -205,12 +253,13 @@ class CaptureTest {
 
     /**
      * For every screen id, in one activity walked through the ceremony with the phone offline (groups
-     * 15 and 16): drawn, with no permission prompt over it (the scan screen's is answered first, and
-     * none comes before it), then black over the app's window in the shell's screencap and in
+     * 15-17): drawn, with no permission prompt over it (the scan screen's is answered first, and none
+     * comes before it), then black over the app's window in the shell's screencap and in
      * UiAutomation.takeScreenshot(), FLAG_SECURE in the window's own flags, the root view opted out of
-     * content capture (read back in-process, group 14), and SECURE on every window of the package in
+     * content capture (read back in-process, group 14), SECURE on every window of the package in
      * dumpsys window windows, found by its owner line too (the owner line is shown to be read on this
-     * image: some window is found by it).
+     * image: some window is found by it), and its secret text marked data sensitive where Android has
+     * the mark (assertSecretsMarked).
      */
     @Test
     fun everyScreenIsDrawnAndThenBlackInEveryCapture() {
@@ -248,12 +297,37 @@ class CaptureTest {
             assertTrue("no window's owner line names the app: windows are found by title alone", found.any { it.byOwner })
             probe("windows of the app: " + found.joinToString("; ") { "${it.title} (by owner ${it.byOwner}, SECURE ${it.secure})" })
             for (w in found) assertTrue("a window without SECURE: " + w.title, w.secure)
+            assertSecretsMarked(screen)
             pass(
                 "${screenId(screen)}: drawn, then screencap and takeScreenshot black over the app's window; " +
                     "SECURE on all ${found.size} of its windows; no content capture",
             )
         }
         finish(checkNotNull(walk))
+    }
+
+    /**
+     * The secret text a screen draws is marked accessibility-data sensitive (docs/mobile-apps.md, "Rules
+     * for Claude Code"; group 6's probe, where it applies): every node tagged SECRET_TAG (Kit.kt's secret(),
+     * which every node that shows a secret takes) must be data sensitive as UiAutomation reads it on
+     * Android 14+, the screens that show the words or their letters must hold such nodes on screen, and a
+     * Public screen none. Before Android 14 a probe line says the mark does not exist there.
+     */
+    private fun assertSecretsMarked(screen: Screen) {
+        val secrets = device.findObjects(By.res(SECRET_TAG))
+        if (!isProtected(screen)) {
+            assertTrue("a secret's node on the Public screen " + screenId(screen), secrets.isEmpty())
+            return
+        }
+        if (screen in SECRET_SCREENS) assertTrue("no secret's node on " + screenId(screen), secrets.isNotEmpty())
+        if (secrets.isEmpty()) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            probe("${screenId(screen)}: ${secrets.size} secret nodes; no data-sensitive mark before Android 14 (API ${Build.VERSION.SDK_INT})")
+            return
+        }
+        val unmarked = secrets.count { !it.accessibilityNodeInfo.isAccessibilityDataSensitive }
+        assertEquals("secret nodes not marked data sensitive on " + screenId(screen), 0, unmarked)
+        pass("${screenId(screen)}: all ${secrets.size} of its secret nodes on screen are data sensitive (API ${Build.VERSION.SDK_INT})")
     }
 
     /**
@@ -510,5 +584,8 @@ class CaptureTest {
 
         /** What dumpsys says (on stderr) for a service the image does not run. */
         const val NO_SERVICE = "Can't find service"
+
+        /** The Protected screens that draw secret text: the words, the overview, the read-back's letters and its verdicts. */
+        val SECRET_SCREENS = setOf(Screen.Words, Screen.WordsOverview, Screen.ReadbackEntry, Screen.ReadbackMismatch)
     }
 }

@@ -9,9 +9,12 @@ package com.keepcrypt.entropy.screens
  * entropy (Mixed only), Commitment (Mixed only) and Dice (commit 16); the collision check (commit 17):
  * the check prompt, Skip's confirm, the seal card, the scan screen (commit 18), the code entry, Match
  * found's and Cannot check's confirms, the collision result, the collision-report QR and, after the
- * restart it leads to, the result before the words; then the "Working..." screen every other long call
- * shows, and the stop screen a halt ends on. The words and the rest come with commits 19-21. In
- * :screens' common code, beside the screens themselves.
+ * restart it leads to, the result before the words; the words to the end of the ceremony (commit 19):
+ * the words in insert view, their overview, the device swap a 24-word seed's pages pass, the read-back
+ * entry and its mismatch, the read-back's end, the wallet summary and the checklist Finish ends; then
+ * the "Working..." screen every other long call shows, and the stop screen a halt ends on. The backup
+ * and the other exports come with commits 20 and 21. In :screens' common code, beside the screens
+ * themselves.
  */
 enum class Screen {
     FirstLaunch,
@@ -32,6 +35,14 @@ enum class Screen {
     Collision,
     CollisionReport,
     CheckResult,
+    Words,
+    WordsOverview,
+    DeviceSwap,
+    ReadbackEntry,
+    ReadbackMismatch,
+    ReadbackDone,
+    Wallet,
+    Checklist,
     Working,
     Stop,
 }
@@ -56,6 +67,14 @@ fun screenId(screen: Screen): String = when (screen) {
     Screen.Collision -> "collision"
     Screen.CollisionReport -> "collision_report"
     Screen.CheckResult -> "check_result"
+    Screen.Words -> "words"
+    Screen.WordsOverview -> "words_overview"
+    Screen.DeviceSwap -> "device_swap"
+    Screen.ReadbackEntry -> "readback_entry"
+    Screen.ReadbackMismatch -> "readback_mismatch"
+    Screen.ReadbackDone -> "readback_done"
+    Screen.Wallet -> "wallet"
+    Screen.Checklist -> "checklist"
     Screen.Working -> "working"
     Screen.Stop -> "stop"
 }
@@ -63,18 +82,20 @@ fun screenId(screen: Screen): String = when (screen) {
 /**
  * Whether screen is Protected (docs/pi-firmware.md, "Protected screens and idle", adopted for the phone
  * by Q57): it shows a secret, so it is entered through the privacy gate from a Public one, covered
- * after 30 s without input, and leaving the app on it discards the session at once. The first is the
- * collision-report QR (it carries the destroyed seed's seal code); every other screen so far is
- * Public, the dice screen, C and the seal card's check QR (T and a nonce) included (the Pi's list), and
- * the scan screen, which draws nothing the camera sees; the words, the read-back, the passphrases, D
- * and the other QR codes that carry a secret come with commits 19-21.
+ * after 30 s without input, and leaving the app on it discards the session at once. They are the
+ * collision-report QR (it carries the destroyed seed's seal code), the words in insert view and
+ * overview, and the read-back entry and mismatch screens (commit 19); every other screen so far is
+ * Public, the dice screen, C and the seal card's check QR (T and a nonce) included, and the device
+ * swap, the read-back's end, the wallet summary and the checklist (the Pi's list), and the scan
+ * screen, which draws nothing the camera sees; the passphrases, D and the other QR codes that carry
+ * a secret come with commits 20 and 21.
  */
 fun isProtected(screen: Screen): Boolean = when (screen) {
-    Screen.CollisionReport -> true
+    Screen.CollisionReport, Screen.Words, Screen.WordsOverview, Screen.ReadbackEntry, Screen.ReadbackMismatch -> true
     Screen.FirstLaunch, Screen.SelfTest, Screen.GoOffline, Screen.Home, Screen.Length, Screen.DeviceEntropy,
     Screen.Commitment, Screen.Dice, Screen.CheckPrompt, Screen.SkipConfirm, Screen.SealCard, Screen.Scan,
     Screen.CodeEntry, Screen.MatchFoundConfirm, Screen.CannotCheckConfirm, Screen.Collision, Screen.CheckResult,
-    Screen.Working, Screen.Stop -> false
+    Screen.DeviceSwap, Screen.ReadbackDone, Screen.Wallet, Screen.Checklist, Screen.Working, Screen.Stop -> false
 }
 
 /**

@@ -140,7 +140,7 @@ class Face internal constructor(
     override fun toString(): String = "Face"
 }
 
-/** A face's read-back verdict. */
+/** A face's read-back verdict, in wire.rs's order (its code is its ordinal). */
 enum class Verdict { Ok, MirrorMisread, ShouldBeBlank, ShouldHaveLetter, WrongLetter }
 
 /** One face of a mismatch: its verdict, and a wrong letter's missing and extra dots. */
@@ -150,7 +150,26 @@ class FaceVerdict internal constructor(val verdict: Verdict, val missingDots: In
 sealed interface Readback {
     class Match internal constructor(val complete: Boolean) : Readback
 
-    class Mismatch internal constructor(val faces: List<FaceVerdict>) : Readback
+    /**
+     * A mismatch: core's verdicts on faces 1-4, which with the letters read give the word's own (a
+     * wrong letter's missing and extra dots are its letter's), so they are kept whole in a Secret and
+     * read from it on demand, as WordPage is (M5-49). wipe() when its screen leaves; a wiped one reads
+     * every face Ok.
+     */
+    class Mismatch internal constructor(private val verdicts: Secret) : Readback {
+        /** Face n's (1-4) verdict. */
+        fun face(n: Int): FaceVerdict {
+            require(n in 1..4) { "faces 1-4" }
+            val at = 3 * (n - 1)
+            return FaceVerdict(Verdict.entries[verdicts.u8(at)], verdicts.u8(at + 1), verdicts.u8(at + 2))
+        }
+
+        fun wipe() {
+            verdicts.wipe()
+        }
+
+        override fun toString(): String = "Mismatch"
+    }
 }
 
 /** The wallet summary: the fingerprint (4 bytes) and the first receive address. Public values. */

@@ -26,9 +26,9 @@ import com.keepcrypt.entropy.ffi.RegistryHeader
 // word; the Pi's wording, pi/app's screens.rs, wherever those say nothing else): the prompt, Skip's
 // confirm, the seal card with its check QR and the checker's answers, the scan screen (commit 18), the
 // code entry on the Crockford pad, Match found's and Cannot check's confirms, the collision result and
-// its report QR (the first Protected screen), and the result before the words. Each hands its presses
-// to the ceremony model, which ignores a press its screen no longer shows. The result's way on to the
-// words comes with them (commit 19), so no control here leads nowhere (lead decision M5-48).
+// its report QR (the first Protected screen), and the result before the words, whose "Show words" leads
+// on to them (WordsScreens.kt, commit 19). Each hands its presses to the ceremony model, which ignores a
+// press its screen no longer shows.
 
 /** The prompt's question (swb's prompt, the same words on the Pi and the phones). */
 const val CHECK_QUESTION = "Check for collisions before you see your words?"
@@ -408,15 +408,21 @@ fun CollisionReport(state: UiState, testRegistry: Boolean, passGate: () -> Unit,
  * The result before the words (swb's "Results"): Go ahead, verified against the loaded snapshot (its
  * number, date and any warning shown before the privacy gate), by a scanned go-ahead QR (its snapshot's
  * number and date, the entries in this seal's bucket and any warning, as before the gate) or by the
- * typed code; or Skip's note. Its way on, the privacy gate and the words, comes with them (commit 19).
+ * typed code; or Skip's note. "Show words" leads on, through the privacy gate (the Pi's check-clear:
+ * "Next: the words, on a private screen").
  */
 @Composable
-fun CheckResult(state: UiState, testRegistry: Boolean) {
-    KitScreen(screenId(Screen.CheckResult), testRegistry) {
+fun CheckResult(state: UiState, testRegistry: Boolean, onShowWords: () -> Unit) {
+    KitScreen(
+        screenId(Screen.CheckResult),
+        testRegistry,
+        actions = { KitButton("Show words", "show_words", onClick = onShowWords) },
+    ) {
         Heading(if (state.skipped) "Check skipped" else "Check passed")
         val text = if (state.skipped) SKIPPED else clearText(state.seal?.sealId.orEmpty(), state.registry)
         KitText(text, tag = "check_result_text")
         RegistryLines(state.registry, state.proof)
+        KitText("Next: the words, on a private screen.", KitType.small)
     }
 }
 

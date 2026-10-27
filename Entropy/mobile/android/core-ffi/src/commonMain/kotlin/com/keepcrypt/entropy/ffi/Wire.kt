@@ -293,22 +293,19 @@ internal fun Reader.revealed(): Revealed {
  */
 internal fun Reader.wordPage(): WordPage = WordPage(Secret(bytes(7 + 1 + peek(7) + 20)))
 
+/**
+ * A read-back result: a match and its flag, or a mismatch, whose faces 1-4 (three bytes each: the
+ * verdict 0-4, a wrong letter's missing and extra dots) are one copy of their 12 bytes, kept whole in a
+ * Secret, each verdict checked before the copy is taken.
+ */
 internal fun Reader.readback(): Readback = when (byte()) {
     0 -> Readback.Match(flag())
-    1 -> Readback.Mismatch(
-        List(4) {
-            val verdict = when (byte()) {
-                0 -> Verdict.Ok
-                1 -> Verdict.MirrorMisread
-                2 -> Verdict.ShouldBeBlank
-                3 -> Verdict.ShouldHaveLetter
-                4 -> Verdict.WrongLetter
-                else -> malformed()
-            }
-            val missing = byte()
-            FaceVerdict(verdict, missing, byte())
-        },
-    )
+    1 -> {
+        for (face in 0 until 4) {
+            if (peek(3 * face) >= Verdict.entries.size) malformed()
+        }
+        Readback.Mismatch(Secret(bytes(12)))
+    }
     else -> malformed()
 }
 

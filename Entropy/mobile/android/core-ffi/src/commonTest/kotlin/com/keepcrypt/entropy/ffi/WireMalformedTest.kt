@@ -9,12 +9,13 @@ import kotlin.test.assertTrue
 /**
  * A reply that is not its layout halts (tasks/todo.md, M5 group 13; rule 3): read past its end, a
  * flag that is neither 0 nor 1, a byte left unread, a QR side no version has, a freshness byte past
- * 2, a refusal code the table does not hold; and Core.decode's own status checks: no status byte,
- * a refusal with no code or a byte after it, a discard with a byte after it, a status wire.rs does
- * not define. Each halts the slot (an op the table does not hold) and throws KcHalt, and the halt
- * latches: every later call halts too. What a decode copied out before the reply proved malformed
- * is zeroed with it (rule 5): a word page read whole before a byte left unread, a confirm choice
- * before a read past the end. Its own process (forkEvery), since the slot stays halted.
+ * 2, a read-back verdict past 4 or a mismatch too short for its four faces, a refusal code the table
+ * does not hold; and Core.decode's own status checks: no status byte, a refusal with no code or a
+ * byte after it, a discard with a byte after it, a status wire.rs does not define. Each halts the slot
+ * (an op the table does not hold) and throws KcHalt, and the halt latches: every later call halts
+ * too. What a decode copied out before the reply proved malformed is zeroed with it (rule 5): a word
+ * page and a mismatch's verdicts read whole before a byte left unread, a confirm choice before a read
+ * past the end. Its own process (forkEvery), since the slot stays halted.
  */
 class WireMalformedTest {
     @Test
@@ -35,6 +36,15 @@ class WireMalformedTest {
         assertEquals(listOf(1, 12, 1, 7), listOf(page.position, page.count, page.seedbook, page.word().size))
         assertFailsWith<KcHalt> { pageReader.end() }
         assertEquals(listOf(0, 0, 0, 0), listOf(page.position, page.count, page.seedbook, page.word().size), "the page zeroed")
+        // A mismatch's verdicts: a code past 4 on any face, or too few bytes, halts before the copy; one
+        // read whole before a byte left unread is zeroed with the reply.
+        assertFailsWith<KcHalt> { Body().byte(1).raw(ByteArray(9)).byte(5).byte(0).byte(0).reader().readback() }
+        assertFailsWith<KcHalt> { Body().byte(1).raw(ByteArray(11)).reader().readback() }
+        val mismatchReader = Body().byte(1).byte(4).byte(1).byte(2).raw(ByteArray(9)).byte(0).reader()
+        val mismatch = mismatchReader.readback() as Readback.Mismatch
+        assertEquals(listOf(Verdict.WrongLetter, Verdict.Ok), listOf(mismatch.face(1).verdict, mismatch.face(2).verdict))
+        assertFailsWith<KcHalt> { mismatchReader.end() }
+        assertEquals(listOf(Verdict.Ok, 0, 0), mismatch.face(1).let { listOf(it.verdict, it.missingDots, it.extraDots) }, "the verdicts zeroed")
         val choiceReader = Body().text("fly").byte(4).reader()
         val choice = choiceReader.secretText()
         assertEquals("fly", asciiOf(choice))

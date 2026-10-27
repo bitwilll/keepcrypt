@@ -157,10 +157,14 @@ class WireTest {
             .byte(4).byte(1).byte(2).reader()
         val mismatch = assertIs<Readback.Mismatch>(reader.readback())
         reader.end()
-        assertEquals(listOf(Verdict.Ok, Verdict.MirrorMisread, Verdict.ShouldBeBlank, Verdict.WrongLetter), mismatch.faces.map { it.verdict })
-        assertEquals(1, mismatch.faces[3].missingDots)
-        assertEquals(2, mismatch.faces[3].extraDots)
-        assertEquals(Verdict.ShouldHaveLetter, Body().byte(1).byte(3).byte(0).byte(0).raw(ByteArray(9)).reader().readback().let { (it as Readback.Mismatch).faces[0].verdict })
+        assertEquals(listOf(Verdict.Ok, Verdict.MirrorMisread, Verdict.ShouldBeBlank, Verdict.WrongLetter), (1..4).map { mismatch.face(it).verdict })
+        assertEquals(1, mismatch.face(4).missingDots)
+        assertEquals(2, mismatch.face(4).extraDots)
+        assertEquals("Mismatch", mismatch.toString(), "no verdict in its text")
+        // The verdicts live in the mismatch's Secret, read on demand: once wiped, every face reads Ok with no dots.
+        mismatch.wipe()
+        assertTrue((1..4).all { mismatch.face(it).verdict == Verdict.Ok && mismatch.face(it).missingDots == 0 && mismatch.face(it).extraDots == 0 })
+        assertEquals(Verdict.ShouldHaveLetter, Body().byte(1).byte(3).byte(0).byte(0).raw(ByteArray(9)).reader().readback().let { (it as Readback.Mismatch).face(1).verdict })
     }
 
     @Test
