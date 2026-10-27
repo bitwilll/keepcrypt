@@ -12923,6 +12923,13 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   96 tests now each fail one of these (the missing and extra dots swapped, the dots numbered backwards, should be blank
   drawn as should have a letter, the typed letters shown in reverse). Locally: the strict Gradle build of both APKs and
   every JVM test task, :screens 97 in 15 (the other tasks up to date), none failed.
+  Proof (M5 commit 19d, review fix, partial: local, Q76): PadEntry.handOver hands the keys typed to a call as take's
+  Secret and wipes it once the call returns, and the read-back's Done hands its letters to Core.checkReadback through
+  it. PadsTest's new test sees the handed Secret's four bytes zero after the call and the pad empty and zeroed; with
+  handOver's wipe deleted it fails, where the same wipe deleted from readbackTyped passed every test at 19b (take()
+  had already emptied the pad, and no test saw the copy). Locally: the strict Gradle build of both APKs and every JVM
+  test task, :screens 98 in 15, :app 7 in 3 for each flavour (the other tasks up to date), none failed; on kc37,
+  android-local.sh on the tree of 19d to 19f, exit 0 in 1142 s, every class passed in android-emulator.sh's order.
 
 **18. Screens: backup, Check a backup, watch-only, register, reveal D, snapshots, About, stop** (MA:146-162)
 - [ ] Backup: the 8-word passphrase (Protected), its 2-of-4 confirm, Save (`CreateDocument`, core's suggested name,

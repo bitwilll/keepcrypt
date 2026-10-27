@@ -127,7 +127,7 @@ class ReadbackScreensTest {
             assertTrue(matched.matched, what + " matched")
             assertSame(shown, matched.insert, what + ": the match shows the same insert's whole word")
             assertTrue(sameWord(shown, words[index]), what + " is not the vector's word")
-            assertEquals(0, rig.model.readbackLetters.length, what + ": the letters were handed to core and wiped")
+            assertEquals(0, rig.model.readbackLetters.length, what + ": the letters were handed to core, the entry emptied (their copy's wipe is PadsTest's)")
             assertTrue(rig.model.readbackLetters.zeroPastLength())
             assertEquals(index + 1 == words.size, matched.complete, what + ": core says every insert matched only at the last")
             type(rig, "abc")

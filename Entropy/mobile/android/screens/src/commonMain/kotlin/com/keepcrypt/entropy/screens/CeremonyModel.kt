@@ -727,15 +727,13 @@ class CeremonyModel(
      * The read-back entry's Done, with three or four letters typed (three for a blank fourth face; below
      * that, and after a match, it does nothing): core compares them with the insert's first four
      * letters. A match shows the whole word; a mismatch shows each face's verdict. The letters are
-     * handed over as a Secret and wiped once core has them.
+     * handed over as a Secret and wiped once core has them (PadEntry.handOver).
      */
     fun readbackTyped() {
         val current = mutable.value
         val insert = current.insert ?: return
         if (!pressOn(Screen.ReadbackEntry) || current.matched || readbackLetters.length < READBACK_MIN_LETTERS) return
-        val letters = readbackLetters.take()
-        val reply = call { Core.checkReadback(insert.position, letters) }
-        letters.wipe()
+        val reply = readbackLetters.handOver { letters -> call { Core.checkReadback(insert.position, letters) } }
         if (reply !is Reply.Done) {
             settle(reply)
             return

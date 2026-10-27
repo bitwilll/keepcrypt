@@ -112,6 +112,17 @@ class PadEntry(val keys: String, val capacity: Int) {
         return secret
     }
 
+    /**
+     * The entry handed to use as take's Secret, which is wiped once use returns, so no copy of the keys
+     * typed outlives the call it was made for (rule 5); this entry is wiped. use's result is returned.
+     */
+    fun <T> handOver(use: (Secret) -> T): T {
+        val secret = take()
+        val result = use(secret)
+        secret.wipe()
+        return result
+    }
+
     /** Zeroes every byte; nothing is typed. */
     fun wipe() {
         bytes.fill(0)

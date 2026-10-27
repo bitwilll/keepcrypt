@@ -1,15 +1,17 @@
 package com.keepcrypt.entropy.screens
 
+import com.keepcrypt.entropy.ffi.Secret
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
  * The pads (tasks/todo.md, M5 group 14): each one's keys in their fixed order, its capacity, and its
  * entry, which holds only its own keys, zeroes what it drops (read through its internal check) and
- * hands over a Secret of exactly what was typed.
+ * hands over a Secret of exactly what was typed, wiped once the call it was handed to returns.
  */
 class PadsTest {
     /** The entry's bytes as text, through its Secret (and the Secret wiped after). */
@@ -109,5 +111,23 @@ class PadsTest {
         assertTrue(letters.zeroPastLength(), "the wipe zeroes every byte")
         assertEquals("", taken(letters))
         assertEquals("PadEntry", letters.toString())
+    }
+
+    @Test
+    fun aHandedOverEntryIsWipedOnceTheCallReturns() {
+        val letters = letterPadEntry()
+        for (key in "abou") letters.type(key)
+        var handed: Secret? = null
+        val seen = letters.handOver { secret ->
+            handed = secret
+            assertEquals(0, letters.length, "the entry is emptied before the call")
+            buildString { for (index in 0 until secret.size) append(Char(secret[index].toInt())) }
+        }
+        assertEquals("abou", seen, "the call is handed exactly what was typed")
+        val secret = assertNotNull(handed)
+        assertEquals(4, secret.size)
+        assertTrue((0 until secret.size).all { secret[it] == 0.toByte() }, "the handed Secret is wiped once the call returns")
+        assertEquals(0, letters.length)
+        assertTrue(letters.zeroPastLength(), "and the entry is zeroed")
     }
 }
