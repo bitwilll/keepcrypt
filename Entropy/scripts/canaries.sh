@@ -111,6 +111,47 @@ copy_tree() {
         cp -RP "$copy_e" "$2/" || exit 1
     done
 }
+# copy_tree's leave-out, on trees made here, since CI's checkout holds no Gradle output for the
+# copies below to show: one file in each directory it leaves out (target/ and .git/ too) and in each
+# near miss it copies (gradle/'s and expected/'s build/, a build/ deeper down, a module's .gradle/,
+# mobile/'s own build/), and, in a second tree (one path cannot be both), a file named like each of
+# three of those directories and a link named like a fourth. Each copy must hold exactly the files
+# and links listed here. It sets root, copy_tree's base, to each tree it makes: static_check runs it
+# in a command substitution, so the repo's root is untouched after it.
+copy_tree_leaves_out() {
+    for copy_case in dirs names; do
+        root=$work/copy-tree-$copy_case
+        case $copy_case in
+            dirs)
+                copy_made='target/x .git/x x.txt mobile/android/.gradle/x mobile/android/build/x mobile/android/app/build/x
+                    mobile/android/capture-control/build/x mobile/android/core-ffi/build/x mobile/android/screens/build/x
+                    mobile/android/secure-ui/build/x mobile/android/gradle/build/x mobile/android/expected/build/x
+                    mobile/android/app/src/main/kotlin/build/x mobile/android/app/.gradle/x mobile/build/x'
+                copy_want=$(printf '%s\n' ./mobile/android/app/.gradle/x ./mobile/android/app/src/main/kotlin/build/x \
+                    ./mobile/android/expected/build/x ./mobile/android/gradle/build/x ./mobile/build/x ./x.txt)
+                ;;
+            names)
+                copy_made='mobile/android/.gradle mobile/android/build mobile/android/app/build'
+                copy_want=$(printf '%s\n' ./mobile/android/.gradle ./mobile/android/app/build ./mobile/android/build \
+                    ./mobile/android/core-ffi/build)
+                ;;
+        esac
+        for p in $copy_made; do
+            mkdir -p "$root/$(dirname "$p")" && echo x > "$root/$p" || return 1
+        done
+        if [ "$copy_case" = names ]; then
+            mkdir -p "$root/mobile/android/core-ffi/src" && ln -s src "$root/mobile/android/core-ffi/build" || return 1
+        fi
+        copy_tree "$root" "$root.copy"
+        copy_got=$(cd "$root.copy" && find . -type f -o -type l | LC_ALL=C sort) || return 1
+        if [ "$copy_got" != "$copy_want" ]; then
+            printf 'copy_tree copied, from the %s tree:\n%s\ninstead of:\n%s\n' "$copy_case" "$copy_got" "$copy_want"
+            return 1
+        fi
+    done
+}
+static_check "copy_tree leaves out exactly target/, .git/, mobile/android/.gradle/, mobile/android/build/ and each module's build/" \
+    copy_tree_leaves_out
 
 # deny.toml: one crate whose graph needs every property of the policy to hold.
 expect_failure "deny-banned" cargo deny --color never \
@@ -1819,7 +1860,7 @@ cp "$root/core/examples/release_probe.rs" "$tmp/core/examples/release_probe.rs" 
 
 # The number of checks above, pinned, so a canary that is deleted, or skipped by a broken branch,
 # turns CI red too. A real change to the canaries updates this pin in the same reviewed change.
-want_checks=93
+want_checks=94
 if [ "$checks" -ne "$want_checks" ]; then
     echo "FAIL: $checks checks ran; scripts/canaries.sh pins $want_checks"
     status=1

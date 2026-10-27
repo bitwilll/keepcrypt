@@ -14900,6 +14900,18 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   these three cases alone, and gradle_out ending in `(/|$)` for `/` fails them and the link case. `--selftest --shard
   K/8` side by side: 1584 cases, 0 failed, under sh (146 s) and /bin/dash (149 s); the gate clean on the built working
   tree (360 files) and on a fresh export (356 files) under sh and dash.
+  Proof (M5 commit L3d, review fix, partial: local, Q76; CI runs it at the next push): what copy_tree leaves out had
+  no check, as CI's checkout holds no Gradle output, and at L3 the gate's own prune hid any output a copy held from
+  the gate canaries run on it: the loop L3 replaced, which copies everything, or one that leaves out all of mobile/,
+  passed all 93. Since L3b the gate reads a copy (no work tree) whole, so that output would fail them in a built tree.
+  A static check runs copy_tree on two trees it makes in $work: one with a file in each directory it leaves out
+  (target/ and .git/ too) and in each near miss it copies (gradle/'s and expected/'s build/, a build/ deeper down, a
+  module's .gradle/, mobile/'s own build/), one with files named like three of those directories and a link named
+  like a fourth; each copy must hold exactly the files and links listed. Run alone (its two functions, under sh and
+  /bin/dash) it passes, and four copy_tree mutants each fail it: the old loop, L3's mobile/android/*/build, a
+  leave-out that also takes files of those names, and one that leaves out mobile/. canaries.sh PASS, all 94 checks
+  ran, in the built working tree (448 s) and on a fresh export (469 s, the two side by side); the gate clean on the
+  built working tree (360 files) and on the export (356) under sh and dash.
 - [ ] L4. The gates job's self-test in two shards beside the canaries (M5-63).
   Proof: the shards' counts add up to the whole list's, locally and in CI; the gates job's time in that run, under 12
   minutes.
