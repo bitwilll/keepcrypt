@@ -14499,6 +14499,18 @@ they differ. Nothing in the Android plan is weakened.
   its shard and prints its own count and the whole list's count. The step fails unless both shards report the same
   whole-list count, their counts add up to it, and every case passes. The rules and cases are unchanged. Locally, the
   shards' counts add up to the unsharded count (commit L4).
+- M5-64 (2026-10-27): RUSTSEC-2026-0385 (published about 2026-10-23) reports that ctutils before 0.4.4 could compile
+  its `Choice` mask generation, and its `u128` comparisons on 32-bit targets, to branches on secret values: a timing
+  side channel. ctutils is RustCrypto's constant-time helper under digest (so sha2, hmac, hkdf, pbkdf2 and scrypt) and
+  curve25519-dalek. Entropy CI's supply-chain job failed on it at 994894f (run 39953907423), while every other job
+  passed. The owner chose (2026-10-27) "Update to 0.4.4 now", waiving the 14-day wait for this one security fix:
+  ctutils 0.4.2 to 0.4.4 in Cargo.lock only (`cargo update -p ctutils --precise 0.4.4`, which fetched the index and
+  the crate from crates.io; 0.4.4's release date was not looked up). Its dependencies are unchanged (cmov, the same
+  version), and its cargo vet exemption moves to 0.4.4. Had it brought a new crate or another version change, the work
+  would have stopped for the owner. Locally, both clippy runs, cargo test --workspace (499 passed), core with
+  test-sources (269 passed), cargo vet --locked, and the offline cargo deny and cargo audit pass. CI's online deny and
+  audit prove the advisory cleared. The Pi image and the Android libraries rebuild from the new lock in CI; no hash is
+  pinned for either.
   As built (L4, 2026-10-23): shard K of N judges case c of the one list, in its fixed order, when (c - 1) mod N is
   K - 1, so neighbouring cases go to different shards and every kind of case falls into both (the fixtures, the
   scope trees' scans, the built cases and the other modes'). A case is skipped only at its judged run, so what comes
