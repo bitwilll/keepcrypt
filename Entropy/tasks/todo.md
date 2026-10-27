@@ -11239,6 +11239,12 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   submodule cases, `[.]?gradle` fails the gradle/ clean case, the Build block deleted gives "FAIL no Build fixture".
   The same 707/0 under /bin/dash; the gate on the tree clean, 241 files, under both shells; no `banned-api-index.*`
   left in TMPDIR.
+  Amended by M5-62 (a) (commits L3 and L3b): in a git work tree the gate's scan leaves out the ignored output a local
+  Gradle build leaves, mobile/android/.gradle/, mobile/android/build/ and each module's build/ (app, capture-control,
+  core-ffi, screens and secure-ui), where Q76's local builds left 1,874 hits. The Build rule above still refuses every
+  tracked file there (git ls-files), so the skip hides nothing tracked; a file or a link of one of those names, and
+  any other build/, is read, and so is every file of a tree that is no work tree (an export, a copy). L3 made the skip
+  a prune in list(); L3b moved it to scan(), so list() is again as this item left it.
 
 **3. Kotlin and Android gate rules (Q55; before any Kotlin lands)**
 - [x] New categories, each with hit and clean fixtures under `scripts/testdata/banned-api/`, covering `mobile/android/**`
@@ -14925,7 +14931,8 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   the run's seed line naming that version and that version's line in both boots' seeds, and no-version expects exit 2
   with "emulator -version names no version" and nothing booted. A version written in (`version=37.2.12.0`) fails four
   checks, version's two and no-version's two, and the refusal dropped fails no-version's two. android-local.sh
-  --selftest: 34 passed, 0 failed under sh and /bin/dash (131 s each); the gate clean on the built working tree (360 files).
+  --selftest: 34 passed, 0 failed under sh and /bin/dash (131 s each); the gate clean on the built working tree (360
+  files).
 - [ ] L4. The gates job's self-test in two shards beside the canaries (M5-63).
   Proof: the shards' counts add up to the whole list's, locally and in CI; the gates job's time in that run, under 12
   minutes.
