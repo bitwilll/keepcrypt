@@ -21,17 +21,19 @@ import kotlin.test.fail
  * The CeremonyModel transitions of the read-back, the summary and Finish (tasks/todo.md, M5 group 17;
  * docs/mobile-apps.md, steps 11, 12 and 17; docs/seal-watchonly-braille.md, "Read-back from the
  * metal", mandatory, and "Before you walk away"), over the real slot through Core and the host library:
- * the last insert's "Start the read-back", insert 1's entry with no gate (Protected to Protected); Done
- * only at three or four letters, the letters handed to core and wiped; a match showing the whole word
- * and Next the next insert, every insert in turn, then the read-back's end once core says every insert
- * has matched; an e/i misread named a mirror misread on its face, the insert shown again (its one way
- * on back to its read-back) and read again; a wrong letter's missing and extra dots and a missed fourth
- * letter named face by face; Back doing nothing on the read-back, its end, the summary and the
+ * the last insert's "Start the read-back", insert 1's entry with no gate (Protected to Protected); the
+ * faces typed shown in order; Done only at three or four letters, the letters handed to core and wiped;
+ * a match showing the whole word and Next the next insert, every insert in turn, then the read-back's
+ * end once core says every insert has matched; an e/i misread named a mirror misread on its face, the
+ * insert shown again (its one way on back to its read-back) and read again; a wrong letter's missing
+ * and extra dots (its line written out for one pair), a missed fourth letter and a letter on a blank
+ * fourth face named face by face; Back doing nothing on the read-back, its end, the summary and the
  * checklist; the wallet summary core's; the checklist for 12 and 24 words, and Finish ending the session
  * in core and returning Home with the slot empty; leaving the app on the entry or the mismatch
  * discarding at once with the letters, the page and the verdicts wiped, the Public screens after it
- * covered and wiped after 60 s away; and wipeAll. The seed is vectors/kcr.json's dice-50-words12 (its
- * words, public vectors, compared and never printed). Each test leaves the slot at home.
+ * covered and wiped after 60 s away; and wipeAll. The seeds are vectors/kcr.json's dice-50-words12 and,
+ * for 24 words, dice-99-words24 (their words, public vectors, compared and never printed). Each test
+ * leaves the slot at home.
  */
 class ReadbackScreensTest {
     @AfterTest
@@ -118,7 +120,7 @@ class ReadbackScreensTest {
             rig.model.readbackLetters.wipe()
             type(rig, words[index].take(4))
             val faces = typedFaces(rig.model.readbackLetters)
-            assertTrue(faces.length == 4 && faces.count { it == '-' } == 4 - words[index].take(4).length, what + ": the faces typed, a dash for each to come")
+            assertTrue(faces == words[index].take(4).padEnd(4, '-'), what + ": the faces typed, in order, then a dash for each to come")
             rig.model.readbackTyped()
             val matched = rig.model.state.value
             assertEquals(Screen.ReadbackEntry, matched.screen, what)
@@ -226,6 +228,15 @@ class ReadbackScreensTest {
         assertTrue(line.startsWith("Face 1: wrong letter: missing ") && line.contains(", extra "))
         assertTrue((2..4).all { mismatch.face(it).verdict == Verdict.Ok })
         rig.model.readbackAgain()
+        // The line written out for one pair, so the dots' order and which list is which are the
+        // test's, not dotsText's: the gate seed's u (dots 1 3 6) read as q (dots 1 2 3 4 5) lacks dot 6
+        // and has 2, 4 and 5 too many.
+        assertTrue(words[0].startsWith("u"), "the line below is written for the gate seed's first letter")
+        type(rig, "q" + words[0].substring(1, 4))
+        rig.model.readbackTyped()
+        val q = assertNotNull(rig.model.state.value.mismatch)
+        assertEquals("Face 1: wrong letter: missing 6, extra 2 4 5", verdictLine(1, q.face(1)))
+        rig.model.readbackAgain()
         // Three letters of a word of four or more: the fourth face should have a letter.
         assertTrue(words[0].length >= 4)
         type(rig, words[0].take(3))
@@ -234,6 +245,31 @@ class ReadbackScreensTest {
         assertEquals(Verdict.ShouldHaveLetter, missed.face(4).verdict)
         assertEquals("Face 4: should have a letter", verdictLine(4, missed.face(4)))
         assertTrue((1..3).all { missed.face(it).verdict == Verdict.Ok })
+    }
+
+    @Test
+    fun aLetterTypedOnABlankFourthFaceIsNamedShouldBeBlank() {
+        val rig = Rig().toHome().toSkippedResult(DICE_99_24).toWords()
+        val words24 = kcrWords(DICE_99_24)
+        repeat(INSERTS_PER_DEVICE) { rig.model.nextPage() }
+        rig.model.swapDone()
+        rig.model.passGate()
+        repeat(words24.size - INSERTS_PER_DEVICE - 1) { rig.model.nextPage() }
+        rig.model.startReadback()
+        val index = words24.indexOfFirst { it.length == 3 }
+        assertTrue(index >= 0, "the 24-word gate seed has a three-letter word, whose fourth face is blank")
+        for (before in 0 until index) {
+            type(rig, words24[before].take(4))
+            rig.model.readbackTyped()
+            assertTrue(rig.model.state.value.matched)
+            rig.model.readbackNext()
+        }
+        type(rig, words24[index] + "a")
+        rig.model.readbackTyped()
+        val mismatch = assertNotNull(rig.model.state.value.mismatch)
+        assertEquals(Verdict.ShouldBeBlank, mismatch.face(4).verdict)
+        assertEquals("Face 4: should be blank", verdictLine(4, mismatch.face(4)))
+        assertTrue((1..3).all { mismatch.face(it).verdict == Verdict.Ok })
     }
 
     @Test

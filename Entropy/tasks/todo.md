@@ -12916,6 +12916,13 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   50 s and 70 s waits, CheckTest's gate), so about 5.5 minutes a leg; CI's software-rendered x86_64 legs run slower,
   so the two API legs likely add 11 minutes or more to run 40488587222's 2084 s (34.7 minutes), past M5-57's 44: the
   job's budget needs M5-30's re-measure at the next push.
+  Proof (M5 commit 19c, review fix, partial: local, Q76): ReadbackScreensTest (9 tests) writes one wrong letter's line
+  out, the gate seed's u (dots 1 3 6) read as q (1 2 3 4 5): "Face 1: wrong letter: missing 6, extra 2 4 5"; a fourth
+  letter typed on dice-99-words24's first three-letter word gives "Face 4: should be blank", faces 1-3 ok; and each
+  insert's typed faces equal its letters in order, then a dash for each face to come. Four mutants that passed 19a's
+  96 tests now each fail one of these (the missing and extra dots swapped, the dots numbered backwards, should be blank
+  drawn as should have a letter, the typed letters shown in reverse). Locally: the strict Gradle build of both APKs and
+  every JVM test task, :screens 97 in 15 (the other tasks up to date), none failed.
 
 **18. Screens: backup, Check a backup, watch-only, register, reveal D, snapshots, About, stop** (MA:146-162)
 - [ ] Backup: the 8-word passphrase (Protected), its 2-of-4 confirm, Save (`CreateDocument`, core's suggested name,
