@@ -15240,6 +15240,25 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   0d3c903's under sh and dash; the selftest's shards "796 of 1591" and "795 of 1591", 0 failed, under sh and under
   /bin/dash; the gate clean on the working tree (365 files) and --workflows clean (3 workflows) under sh and dash;
   canaries.sh PASS, all 94 checks ran (434 s).
+  Proof (M5 commit 18x, review fix, M5-66, partial: local, Q76; CI runs the fault check at the next push, and the Pi
+  image workflow the image modes): --os-config, --image-lists, --image and --apk call fail_closed too (cmp joins its
+  tools, its 1 "they differ"), so every mode but the selftests now does. --os-config: the inittab check reads cmp's
+  status (a failure was an Inittab hit, now exit 2), BusyBox's allowed list is joined in the shell, each check sets
+  what it reads ($on), the temporary directory goes in os_config_cleanup. --image: its two file lists ran find into
+  sort, so a find that failed partway left the image's files after it unread, and now run find, then sort; an ELF's
+  magic is joined in the shell; the simulator's symbol is grep's own output, with its status read, and its byte
+  string goes through bytes_found. --apk: kc_lib's export and DT_NEEDED lists run awk, then sort, joined in the shell
+  (joined) instead of through paste; the signers' sed has its status read. banned-api-faults.sh's os-config mode: the
+  clean fixture with osconfig-fstab-proc-read-write's file over it, one Fstab hit (13 places: awk 6, basename 1, cmp
+  3, dirname 1, mktemp 1, rm 1). Not in the fault check: --image-lists, --image and --apk, whose inputs need a built
+  Pi image with Buildroot's host tools, or the build tools and an APK, which the lint job lacks. Locally: 582 runs,
+  582 passed, in 189 s under sh and 191 s under /bin/dash; two mutants fail it (no fail_closed in os_config(): 33
+  runs; cmp's status not read again: 3); the selftest's shards "796 of 1591" and "795 of 1591", 0 failed, under sh
+  and /bin/dash (their stub image scans and image lists among them); --selftest-apk 88 passed under sh and dash (88
+  at 18w); --apk on the shipping APK built at 19f and signed with a throwaway key (build-tools 36.0.0, NDK r30's
+  LLVM) clean, its output equal to 18v's gate's under sh and dash; the gate clean on the working tree (365 files),
+  --workflows (3 workflows) and --os-config pi/os clean under sh and dash; canaries.sh PASS, all 94 checks ran
+  (441 s).
 - [ ] L7. canaries.sh moves out of the gates job into one existing required job with time to spare (M5-67, commit
   L7). The gates job keeps the gate's runs and the two self-test shards with their count check. Proof: both jobs' times
   in CI, each under 12 minutes, with the 14 required check names unchanged.

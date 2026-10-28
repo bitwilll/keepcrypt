@@ -62,8 +62,8 @@
 #
 # Prints "<category>: <file>:<line>: <text>" per hit, then a summary. Exit 0 clean, 1 hits,
 # 2 usage or read error: a file that cannot be read fails the gate, it is never skipped, and so
-# does a tool the scan, --workflows or --artifact runs that cannot start, fails or is killed,
-# naming itself (see "The tools the gate runs fail closed" below).
+# does a tool that the scan, or any other mode but the selftests, runs that cannot start, fails or
+# is killed, naming itself (see "The tools the gate runs fail closed" below).
 #
 # Selftest shards (tasks/todo.md, M5-63: CI's gates job runs the selftest as two shards side by
 # side). --selftest --shard K/N walks the whole case list in its fixed order and runs case c
@@ -956,11 +956,13 @@ tool_status() {
 }
 
 # fail_closed: from here on, each tool the gate runs is a function of its name that runs the tool
-# (command bypasses the function) and passes its status through tool_status. The scan,
-# --workflows and --artifact call it first; the other modes read their tools' statuses as they
-# always have.
+# (command bypasses the function) and passes its status through tool_status. The scan and each
+# other mode that reads files for hits (--workflows, --artifact, --os-config, --image-lists,
+# --image and --apk) call it first; the selftests, which run the gate in new processes and judge
+# their outcomes, do not. cmp's 1 is "they differ", as grep's is "no line".
 fail_closed() {
   awk() { command awk "$@" || tool_status awk "$?" 1; }
+  cmp() { command cmp "$@" || tool_status cmp "$?" 1; }
   find() { command find "$@" || tool_status find "$?"; }
   git() { command git "$@" || tool_status git "$?"; }
   grep() { command grep "$@" || tool_status grep "$?" 1; }
@@ -4748,6 +4750,26 @@ markers='KC_TEST_SOURCE_DO_NOT_SHIP KC_TEST_REGISTRY_DO_NOT_SHIP KC_SIMULATOR_DO
 rng_crate_names='rand rand_core rand_chacha rand_xoshiro rand_xorshift rand_pcg rand_hc rand_isaac
 fastrand oorandom nanorand tinyrand turborand'
 
+# joined TEXT: TEXT's lines joined by single spaces, in the shell (what paste -s -d ' ' - printed).
+joined() {
+  jr=
+  jt=$1
+  while [ -n "$jt" ]; do
+    case $jt in
+      *"$nl"*)
+        jl=${jt%%"$nl"*}
+        jt=${jt#*"$nl"}
+        ;;
+      *)
+        jl=$jt
+        jt=
+        ;;
+    esac
+    jr=$jr${jr:+ }$jl
+  done
+  printf '%s' "$jr"
+}
+
 # indented FILE: FILE's lines on stderr, each after four spaces (a tool's own error output), read
 # in the shell, so an error path runs no tool of its own.
 indented() {
@@ -5384,6 +5406,7 @@ image_imports() {
 # image_lists IMG KCONFIG: unpack IMG and print its lists, under "== " headings (see "Image lists
 # mode").
 image_lists() {
+  fail_closed
   kconfig=$2
   [ -f "$kconfig" ] && [ -r "$kconfig" ] || { printf 'banned-api-check: --image-lists: cannot read %s\n' "$kconfig" >&2; exit 2; }
   image_unpack "$1"
@@ -5469,6 +5492,7 @@ show_diff() {
 # line, as pi/os/kconfig.sh refuses it), or a fragment with no line of either kind, is exit 2.
 fragment_lists() {
   readable "$1" "$4"
+  on=$1
   : >"$2" && : >"$3" || exit 2
   bad=$(awk -v req="$2" -v forb="$3" '
     /^CONFIG_[A-Za-z0-9_]+=y$/ { sub(/=y$/, ""); print > req; next }
@@ -5490,6 +5514,7 @@ fragment_lists() {
 # WORK/forbidden for kconfig_check.
 lists_match() {
   fragment_lists "$2" "$3/required" "$3/forbidden" "$4"
+  on=$1
   cmp -s "$3/required" "$1/kconfig-required" ||
     ahit Kconfig "$1/kconfig-required" "does not equal the CONFIG_X=y lines of $2, one symbol per line in its order"
   cmp -s "$3/forbidden" "$1/kconfig-forbidden" ||
@@ -5501,6 +5526,7 @@ lists_match() {
 # =y, no symbol of FORBIDDEN at y or m, and CONFIG_HW_RANDOM_BCM2835=y the only CONFIG_HW_RANDOM_*
 # driver set.
 kconfig_check() {
+  on=$2
   kout=$(awk -v req="$3" -v forb="$4" '
     BEGIN {
       while ((getline s < req) > 0) { need[s] = 1; order[n++] = s }
@@ -5532,14 +5558,21 @@ $kout
 EOF
 }
 
-# inittab_check FILE NAME: FILE is exactly Q35's three lines.
+# inittab_check FILE NAME: FILE is exactly Q35's three lines (cmp's 1 is a hit; any other failure
+# stops the gate).
 inittab_check() {
   if [ -h "$1" ]; then
     ahit Inittab "$2" 'is a symlink, not a file'
   elif [ ! -f "$1" ]; then
     ahit Inittab "$2" 'is missing'
-  elif ! printf '%s\n' "$inittab_lines" | cmp -s - "$1"; then
-    ahit Inittab "$2" "is not exactly the three lines ::sysinit:/bin/mount -a, ::wait:/usr/bin/keepcrypt-pi and ::once:/usr/bin/keepcrypt-pi --stopped (Q35)"
+  else
+    on=$2
+    printf '%s\n' "$inittab_lines" | cmp -s - "$1"
+    case $? in
+      0) ;;
+      1) ahit Inittab "$2" "is not exactly the three lines ::sysinit:/bin/mount -a, ::wait:/usr/bin/keepcrypt-pi and ::once:/usr/bin/keepcrypt-pi --stopped (Q35)" ;;
+      *) exit 2 ;;
+    esac
   fi
 }
 
@@ -5550,6 +5583,7 @@ inittab_check() {
 # no line of another filesystem type (and at least one line; comments and blank lines are
 # skipped).
 fstab_check() {
+  on=$2
   fout=$(awk '
     /^[[:space:]]*(#|$)/ { next }
     {
@@ -5575,6 +5609,7 @@ fstab_check() {
 # a word's quotes before it reads param=value, so "console=x" is console=x; the board file has
 # none and needs none), and the words ro, panic=0 and init_on_free=1.
 cmdline_check() {
+  on=$2
   cout=$(awk '
     {
       if (index($0, "\"")) print NR ": a double quote (the kernel reads \"console=x\" as console=x)"
@@ -5597,6 +5632,7 @@ cmdline_check() {
 # them; start_x=1 selects start_x.elf and fixup_x.dat, start_debug=1 start_db.elf and
 # fixup_db.dat, as start_file and a gpu_mem of 16 select other files; comments are skipped).
 config_txt_check() {
+  on=$2
   cout=$(awk '
     /^[[:space:]]*(#|$)/ { next }
     /^enable_uart=1[[:space:]]*$/ { print NR ": " $0 }
@@ -5623,7 +5659,8 @@ config_txt_check() {
 # busybox_check FILE NAME: every $busybox_required symbol at =y, and no CONFIG_X=y line whose
 # symbol is outside $busybox_allowed.
 busybox_check() {
-  bout=$(awk -v req="$busybox_required" -v allow="$(printf '%s' "$busybox_allowed" | tr '\n' ' ')" '
+  on=$2
+  bout=$(awk -v req="$busybox_required" -v allow="$(joined "$busybox_allowed")" '
     BEGIN {
       nr = split(req, r, " ")
       na = split(allow, a, " ")
@@ -5642,8 +5679,15 @@ busybox_check() {
 
 # --- OS configuration mode -----------------------------------------------------------------------
 
+# os_config_cleanup: --os-config's temporary directory, removed by its EXIT trap (a function, as
+# artifact_cleanup is).
+os_config_cleanup() {
+  rm -rf "$otmp"
+}
+
 # os_config OS_DIR: the text-only checks of pi/os (see "OS configuration mode" in the header).
 os_config() {
+  fail_closed
   os=${1%/}
   [ -d "$os" ] || { printf 'banned-api-check: --os-config: %s is not a directory\n' "$1" >&2; exit 2; }
   board=$os/board/pizero
@@ -5657,8 +5701,9 @@ os_config() {
     "$exp/kconfig-required" "$exp/kconfig-forbidden"; do
     readable "$f" --os-config
   done
+  on="--os-config's temporary directory"
   otmp=$(mktemp -d "${TMPDIR:-/tmp}/banned-api-os-config.XXXXXX") || exit 2
-  trap 'rm -rf "$otmp"' EXIT
+  trap 'os_config_cleanup' EXIT
   trap 'exit 2' HUP INT TERM
   hits=0
   inittab_check "$board/rootfs-overlay/etc/inittab" "$board/rootfs-overlay/etc/inittab"
@@ -5773,6 +5818,7 @@ elf_check() {
 # against (pi/os/board/pizero's cmdline.txt, config.txt and linux.fragment, found from this
 # script's path).
 image_scan() {
+  fail_closed
   imode=--image
   img=$1
   exp=${2%/}
@@ -5830,20 +5876,26 @@ image_scan() {
   # the root), every file of partition 1 (the VideoCore start.elf and zImage among them) and
   # every file of the root but keepcrypt-pi, which artifact_file searches below. Every ELF file
   # of the root other than keepcrypt-pi gets elf_check; a symlink is listed, not read.
+  # Each file list from find, then sorted, one tool after the other (a find that fails must not
+  # leave a short list).
   byte_scan "$img" "$img"
-  (cd "$iw/boot" && find . -type f -print) | sort >"$iw/boot.files" || exit 2
+  (cd "$iw/boot" && find . -type f -print) >"$iw/boot.found" || exit 2
+  sort "$iw/boot.found" >"$iw/boot.files" || exit 2
   while IFS= read -r p; do
     [ -n "$p" ] || continue
     byte_scan "$iw/boot/${p#./}" "partition-1:/${p#./}"
   done <"$iw/boot.files"
-  (cd "$iw/root" && find . -type f -print) | sort >"$iw/root.files" || exit 2
+  (cd "$iw/root" && find . -type f -print) >"$iw/root.found" || exit 2
+  sort "$iw/root.found" >"$iw/root.files" || exit 2
   elfs=0
   while IFS= read -r p; do
     [ -n "$p" ] || continue
     rel=/${p#./}
     [ "$rel" = /usr/bin/keepcrypt-pi ] && continue
     byte_scan "$iw/root$rel" "$rel"
-    magic=$(od -An -N4 -tx1 "$iw/root$rel" | tr -d ' \n')
+    od4=$(od -An -N4 -tx1 "$iw/root$rel") || exit 2
+    magic=
+    for ob in $od4; do magic=$magic$ob; done
     if [ "$magic" = 7f454c46 ]; then
       elfs=$((elfs + 1))
       elf_check "$iw/root$rel" "$rel"
@@ -5854,11 +5906,13 @@ image_scan() {
   # crate as a symbol or as bytes (one hit), and the SHA-256 given.
   sim=
   if artifact_file "$kp" /usr/bin/keepcrypt-pi; then
-    sim=$(grep -E -e 'keepcrypt_pi_sim' "$iw/all" | head -n 1)
+    sim=$(grep -E -e 'keepcrypt_pi_sim' "$iw/all")
+    [ $? -le 1 ] || exit 2
+    sim=${sim%%"$nl"*}
   fi
   if [ -n "$sim" ]; then
     ahit Binary /usr/bin/keepcrypt-pi "names the simulator crate: symbol $sim"
-  elif grep -q -F -e "$(hexbytes keepcrypt_pi_sim)" "$iw/dump"; then
+  elif bytes_found "$(hexbytes keepcrypt_pi_sim)"; then
     ahit Binary /usr/bin/keepcrypt-pi 'names the simulator crate: byte string keepcrypt_pi_sim'
   fi
   got_sha=$(sha256 "$kp") || exit 2
@@ -7597,10 +7651,14 @@ kc_lib() {
     hits=$((hits + 1))
   done <"$aw/kc-rest"
   symbols "$kf" "$aw/kc-defined" -D --defined-only
-  kgot=$(awk -v secp="$kc_secp" '
+  # awk, then sort, each with its status read, and the lines joined in the shell.
+  awk -v secp="$kc_secp" '
     BEGIN { n = split(secp, s, " "); for (i = 1; i <= n; i++) theirs[s[i]] = 1 }
-    !($0 in theirs)' "$aw/kc-defined" | LC_ALL=C sort -u | paste -s -d ' ' -)
-  kwant=$(printf '%s\n' $kc_ours | LC_ALL=C sort | paste -s -d ' ' -)
+    !($0 in theirs)' "$aw/kc-defined" >"$aw/kc-ours" || exit 2
+  kgot=$(sort -u "$aw/kc-ours") || exit 2
+  kgot=$(joined "$kgot")
+  kwant=$(printf '%s\n' $kc_ours | sort) || exit 2
+  kwant=$(joined "$kwant")
   [ "$kgot" = "$kwant" ] ||
     ahit NativeLib "$kname" "defines ${kgot:-no symbol} beside secp256k1-sys's four, not exactly $kwant"
   "$bin/llvm-readobj" --needed-libs "$kf" >"$aw/kc-needed" 2>"$aw/log" || {
@@ -7608,7 +7666,8 @@ kc_lib() {
     apkfail "llvm-readobj --needed-libs cannot read $kname"
   }
   awk '/^NeededLibraries \[/ { on = 1; next } on && /^\]/ { on = 0 } on { gsub(/^[ \t]+|[ \t]+$/, ""); if ($0 != "") print }' \
-    "$aw/kc-needed" | LC_ALL=C sort >"$aw/kc-libs" || exit 2
+    "$aw/kc-needed" >"$aw/kc-needed-list" || exit 2
+  sort "$aw/kc-needed-list" >"$aw/kc-libs" || exit 2
   grep -q -x -F -e libc.so "$aw/kc-libs" || ahit NativeLib "$kname" 'no DT_NEEDED libc.so'
   while IFS= read -r klib; do
     case " $kc_needed " in
@@ -7623,6 +7682,7 @@ kc_lib() {
 # (see "APK mode" in the header). Every argument and input file is checked, and every tool found,
 # before the APK is read.
 apk_scan() {
+  fail_closed
   variant=$1
   apk=$2
   exp=${3%/}
@@ -7700,9 +7760,9 @@ apk_scan() {
     ahit Signature "$apk" 'apksigner verify fails (its output is on stderr)'
     sed 's/^/    /' "$aw/apksigner" >&2
   else
-    signers=$(sed -n 's/^Signer #[0-9][0-9]* certificate SHA-256 digest: //p' "$aw/apksigner")
+    signers=$(sed -n 's/^Signer #[0-9][0-9]* certificate SHA-256 digest: //p' "$aw/apksigner") || exit 2
     [ "$signers" = "$cert" ] ||
-      ahit Signature "$apk" "signed by $(printf '%s\n' "${signers:-no certificate}" | paste -s -d ' ' -), not by the run's throwaway key $cert alone"
+      ahit Signature "$apk" "signed by $(joined "${signers:-no certificate}"), not by the run's throwaway key $cert alone"
   fi
   if [ "$hits" -ne 0 ]; then
     echo "banned-api-check --apk $variant $apk: $hits hit(s)"

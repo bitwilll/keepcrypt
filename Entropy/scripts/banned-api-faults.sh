@@ -9,11 +9,14 @@
 #                                            runs at those lines of the gate only (a mutant's run)
 #
 # The modes ($modes below), each run as CI runs it: the scan of a tree, --workflows on a directory
-# of workflows, and --artifact on an object built with the pinned toolchain (so this check needs
-# it: rustc, llvm-tools-preview and the arm-unknown-linux-gnueabihf target). Each mode's places are
-# those of the gate's text that its function reaches; the top level's are every mode's. The
-# toolchain's llvm-nm and llvm-readobj, which the gate runs by their paths in the toolchain, are
-# out of a PATH shim's reach: the gate reads their statuses itself, and they are not faulted here.
+# of workflows, --artifact on an object built with the pinned toolchain (so this check needs it:
+# rustc, llvm-tools-preview and the arm-unknown-linux-gnueabihf target) and --os-config on a copy of
+# the os-config fixtures. Each mode's places are those of the gate's text that its function
+# reaches; the top level's are every mode's. The toolchain's llvm-nm and llvm-readobj, which the
+# gate runs by their paths in the toolchain, are out of a PATH shim's reach: the gate reads their
+# statuses itself, and they are not faulted here. Nor are --image-lists, --image and --apk, which
+# call fail_closed too: their inputs need a built Pi image with Buildroot's host tools (mtools,
+# unsquashfs), or the Android build tools and a built APK, and this check runs where neither is.
 #
 # A script of its own, not a mode of the gate: it runs the gate as CI does, sh on a tree, with a
 # PATH that holds nothing but its shims, so the gate carries no test hook and a tool the shims do
@@ -28,7 +31,8 @@
 # this script too, so it names no fixture whose name holds a word a rule refuses. The workflows:
 # the workflow fixtures' files $workflow_fixtures names, each copied as entropy-N.yml into one
 # directory, chosen as the tree's files were. The artifact: the artifact selftest's std-passengers
-# object, built as the gate's selftest builds it, and one of its marker files.
+# object, built as the gate's selftest builds it, and one of its marker files. The OS configuration:
+# the os-config fixture clean-pizero with osconfig-fstab-proc-read-write's one file over it.
 #
 # The shims: $work/bin holds one script per tool in $tools, and the gate runs with PATH=$work/bin
 # alone. Each shim counts its calls (one counter per tool, in the run's own directory: the gate
@@ -93,7 +97,7 @@ done
 
 # The tools the gate runs in the modes below (each one a function in the gate's fail_closed, but
 # dirname and basename, which its top level runs and checks itself).
-tools='awk basename dirname find git grep mktemp od rm rustc sed sort tr'
+tools='awk basename cmp dirname find git grep mktemp od rm rustc sed sort tr'
 # The fixtures' files in the tree, FIXTURE/PATH: the fewest that reach every place in the gate's
 # text and every caller of a helper, found by dropping each file in turn from a tree of whole
 # fixtures while the checks below still passed (2026-10-27). The app's, the firmware's and the
@@ -139,7 +143,7 @@ workflow_fixtures='workflow-dependency-verification-lenient/entropy-android.yml'
 # reach holds MODE's places, and WANT is the exit status of a run with no fault. Each input has a
 # hit, so each rule's second tool runs, and no run prints a clean line before its EXIT trap's rm,
 # whose fault then turns exit 1 into exit 2.
-modes='scan:scan:1 workflows:workflows:1 artifact:artifact:1'
+modes='scan:scan:1 workflows:workflows:1 artifact:artifact:1 os-config:os_config:1'
 
 # The shells: sh runs the gate as CI does, bash traces it.
 shell=$(command -v sh) || fail 'no sh on PATH'
@@ -255,16 +259,24 @@ mkdir "$adir" || fail 'mkdir failed'
   fail 'rustc could not build the artifact (the pinned toolchain, with its arm-unknown-linux-gnueabihf target)'
 }
 
+# --- The OS configuration -----------------------------------------------------------------------
+# The clean fixture with one hit fixture's file over it, as the os-config selftest builds a case: a
+# proc line that carries rw, one Fstab hit. Every rule runs whatever the files hold.
+osdir=$work/os-config
+mkdir "$osdir" && cp -R "$here/testdata/os-config/clean-pizero/." "$osdir/" &&
+  cp -R "$here/testdata/os-config/osconfig-fstab-proc-read-write/." "$osdir/" ||
+  fail 'cannot copy the os-config fixtures'
+
 # --- Runs of the gate ---------------------------------------------------------------------------
 # run DIR MODE [SHELL...] : the gate in MODE (scan: the scan of $tree; workflows: --workflows
-# $wfdir; artifact: --artifact on $adir's object and a marker file) under SHELL (sh unless given),
-# its standard input empty, with PATH $rbin, the fault $fault ("TOOL CALL") in the way $way and the
-# shims' log $log (no fault, no log when empty), its state in DIR (made here: the shims' counters,
-# and TMPDIR, so the gate's temporary files, a killed mktemp's too, go with it), its stdout and
-# stderr in DIR/out and DIR/err and its exit status in rc. The caller sets rbin, fault, way and log
-# as plain assignments, never as a prefix to run: macOS's sh, bash 3.2, keeps a prefix to a
-# function call set and exported after the call, so one run's log would reach every run after it.
-# PS4 is the traced run's (below); sh without -x reads none of it.
+# $wfdir; artifact: --artifact on $adir's object and a marker file; os-config: --os-config $osdir)
+# under SHELL (sh unless given), its standard input empty, with PATH $rbin, the fault $fault ("TOOL
+# CALL") in the way $way and the shims' log $log (no fault, no log when empty), its state in DIR
+# (made here: the shims' counters, and TMPDIR, so the gate's temporary files, a killed mktemp's
+# too, go with it), its stdout and stderr in DIR/out and DIR/err and its exit status in rc. The
+# caller sets rbin, fault, way and log as plain assignments, never as a prefix to run: macOS's sh,
+# bash 3.2, keeps a prefix to a function call set and exported after the call, so one run's log
+# would reach every run after it. PS4 is the traced run's (below); sh without -x reads none of it.
 run() {
   rdir=$1
   rmode=$2
@@ -281,6 +293,7 @@ run() {
       set -- "$@" "$gate" --artifact arm-unknown-linux-gnueabihf "$adir/std-passengers.o" \
         "$here/testdata/artifact/marker-source.txt"
       ;;
+    os-config) set -- "$@" "$gate" --os-config "$osdir" ;;
     *) fail "no mode $rmode" ;;
   esac
   PATH=$rbin KC_FAULT_DIR=$rdir TMPDIR=$rdir KC_FAULT=$fault KC_FAULT_WAY=$way KC_FAULT_LOG=$log \
@@ -637,6 +650,7 @@ for m in $modes; do
     scan) input="$nfiles files in the tree" ;;
     workflows) input="$nworkflows workflow(s)" ;;
     artifact) input='1 object and 1 marker file' ;;
+    os-config) input='1 OS configuration' ;;
   esac
   {
     echo "banned-api-faults: $mode: places by tool: $pertool"
