@@ -348,6 +348,9 @@ class CeremonyModel(
     /** Check a backup's entries typed so far, each a word's first four letters (or three) in a Secret, wiped with the entry. */
     private val entries = ArrayList<Secret>(PASSPHRASE_WORDS)
 
+    /** The entries held now, a copy of the list (never drawn): the tests' look at their wiping, as PadEntry's zeroPastLength is. */
+    internal val entriesHeld: List<Secret> get() = entries.toList()
+
     /** Check a backup's opened backup, while the slot holds it (from its opening until Done, a discard, a halt or wipeAll). */
     private var checked: OpenedBackup? = null
 

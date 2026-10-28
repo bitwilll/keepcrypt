@@ -13163,6 +13163,15 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   Go offline to its words: none marked as a checked backup's, the backup's Done doing nothing on the last insert, and
   the read-back starting there; both mutants now fail it. :screens 136 in 19 classes, :core-ffi 31 in 11, :app 7 in 3
   for each flavour, :secure-ui 3 in 1, none failed, with the strict build of the five APKs.
+  Proof (M5 commit 20f, review fix, partial: local, Q76): 20a's Proof counts wipeAll among BackupScreensTest's and
+  CheckBackupScreensTest's cases, but only the save screen's file was tested: a mutant without any one of wipeAll's
+  wipes of the passphrase's page, the confirm's choices, the letter pad, Check a backup's entries, its file or its
+  opened backup passed all of :screens' tests. BackupScreensTest's new wipeAll test (the passphrase's page; the confirm
+  with two letters typed: its choices and the pad) and CheckBackupScreensTest's (the entry after three words and a
+  letter: the entries, read through the model's internal entriesHeld, a copy of the list as PadEntry's
+  zeroPastLength is the tests' look at the pad, the file and the pad; the result: the re-check QR) now fail each of
+  those six mutants. :screens 138 in 19 classes, :core-ffi 31 in 11, :app 7 in 3 for each flavour, :secure-ui 3 in 1,
+  none failed, with the strict build of the five APKs.
 - [ ] The CI `age -d` hand-off: for the CI throwaway seed only, the androidTest reads the backup passphrase from the
   in-process `Secret` and sends it as the instrumentation status value `kc_ci_throwaway_passphrase`. The workflow pipes
   `am instrument -r`'s output straight into `scripts/android-age-check.py`, which takes the value, feeds it to age 1.1.1

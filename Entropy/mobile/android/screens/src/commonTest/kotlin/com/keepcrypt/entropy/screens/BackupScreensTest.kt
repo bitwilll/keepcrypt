@@ -347,6 +347,28 @@ class BackupScreensTest {
     }
 
     @Test
+    fun wipeAllWipesThePassphrasesPageTheConfirmsChoicesAndTheLettersTyped() {
+        val rig = atSummary()
+        rig.model.summaryDone()
+        rig.model.makeBackup()
+        rig.model.passGate()
+        val page = assertNotNull(rig.model.state.value.passphrase)
+        rig.model.wipeAll()
+        assertTrue(zeroed(ByteArray(page.size) { page[it] }), "wipeAll wiped the passphrase's page")
+        assertNoSession("wipeAll left a session")
+
+        val again = atSummary()
+        val passphrase = again.toConfirm()
+        val challenge = assertNotNull(again.model.state.value.challenge)
+        for (letter in passphrase[challenge.questions[0].position - 1].take(2)) again.model.backupLetters.type(letter)
+        again.model.wipeAll()
+        assertTrue(challenge.questions.all { q -> q.choices.all { c -> (0 until c.size).all { c[it] == 0.toByte() } } }, "wipeAll wiped the choices")
+        assertEquals(0, again.model.backupLetters.length, "wipeAll wiped the letters typed")
+        assertTrue(again.model.backupLetters.zeroPastLength())
+        assertNoSession("wipeAll left a session")
+    }
+
+    @Test
     fun wipeAllOnTheSaveScreenZeroesTheFile() {
         val (rig, _) = atSave()
         val place = FakePlace(writes = false)

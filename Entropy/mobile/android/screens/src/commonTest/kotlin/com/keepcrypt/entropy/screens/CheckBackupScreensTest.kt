@@ -29,8 +29,8 @@ import kotlin.test.assertTrue
  * back to the result; the re-check QR and Back; Done ending it in core; Back from the entry Home with
  * the file zeroed; leaving the entry discarding at once, and the result under the 60 s rule and the
  * offline rule as a session is; a checked backup so discarded leaving the next ceremony's words their
- * own, with their read-back; a late answer from the picker doing nothing. Each test leaves the slot at
- * home.
+ * own, with their read-back; a late answer from the picker doing nothing; and wipeAll on the entry (its
+ * entries, file and letters) and on the result (the re-check QR). Each test leaves the slot at home.
  */
 class CheckBackupScreensTest {
     @AfterTest
@@ -352,6 +352,29 @@ class CheckBackupScreensTest {
         assertEquals(Screen.ReadbackEntry, rig.screen, "after " + discard + ", the ceremony's read-back does not start")
         rig.model.appLeft()
         assertNoSession("leaving the read-back left the ceremony in core")
+    }
+
+    @Test
+    fun wipeAllWipesTheEntryItsEntriesAndItsFileAndTheCheckedBackupsRecheckQr() {
+        val (rig, file) = picked()
+        rig.model.passGate()
+        type(rig, firstFours(saved.passphrase).take(3))
+        rig.model.backupLetters.type('a')
+        val entries = rig.model.entriesHeld
+        assertEquals(3, entries.size)
+        rig.model.wipeAll()
+        assertTrue(entries.all { entry -> (0 until entry.size).all { entry[it] == 0.toByte() } }, "wipeAll wiped the entries typed")
+        assertTrue(rig.model.entriesHeld.isEmpty(), "wipeAll dropped the entries")
+        assertTrue(zeroed(file.given), "wipeAll zeroed the file read")
+        assertEquals(0, rig.model.backupLetters.length, "wipeAll wiped the letters typed")
+        assertTrue(rig.model.backupLetters.zeroPastLength())
+        assertNoSession("wipeAll left something in core")
+
+        val result = atResult()
+        val recheck = assertNotNull(result.model.state.value.opened).recheck
+        result.model.wipeAll()
+        assertTrue((0 until recheck.side).none { x -> (0 until recheck.side).any { y -> recheck.isDark(x, y) } }, "wipeAll wiped the re-check QR")
+        assertNoSession("wipeAll left the checked backup in core")
     }
 
     @Test
