@@ -89,12 +89,11 @@
 #      the default images' userdebug builds allow; a root shell is required), the app's data
 #      directories are listed whole (/data/user/0/PKG, /data/user_de/0/PKG and PKG's data, media and
 #      obb under /data/media/0/Android): every entry that is not a directory is a file the app wrote,
-#      and none may be there but two shader caches the platform's renderer writes into the app's code
-#      cache (code_cache/com.android.skia.shaders_cache, HWUI's, and
-#      code_cache/com.android.opengl.shaders_cache, EGL's), allowed by their file names before any
-#      listing was seen; whether they are rule 8's files the operating system keeps about an app is not
-#      settled (tasks/todo.md, 21b's Proof). The app's runtime profiles, compiled code and package
-#      records live outside these directories. The listing ends with a line of its own, so one cut short
+#      and any one fails the leg, its path printed (paths only). No file is allowed by its name (lead
+#      decision M5-70 (d): the app's own storage stays empty), the shader caches the platform's
+#      renderer may write into the app's code cache included; one that a CI listing shows goes to the
+#      owner as a rule 8 question before any allowance. The app's runtime profiles, compiled code and
+#      package records live outside these directories. The listing ends with a line of its own, so one cut short
 #      fails too. The positive control follows: a file planted as root in /data/user/0/PKG must be the same listing's one new
 #      hit (the listing before and that file), and is then removed. On a user build (--booted on kc37: ro.debuggable=0) adb root is refused, so
 #      the listing is printed as not made there, CI's API 31 and 36 legs making it; on the CI images a
@@ -131,10 +130,10 @@
 # still in recents after pm clear, a recording that ends before it is stopped, raw frames that never
 # show the control's words page, the app's window lit in the first-frame stream, and the same with that
 # stream carrying no frame after the curtain (only the second stream sees it) each exit 1. Step 7: the
-# leg that passes finds no INTERNET in either app's package block and nothing in their data directories
-# but a stand-in shader cache, with the planted file the control's one hit; a package block that names
-# INTERNET, a file the app wrote, a planted file the listing misses, a listing cut short and a CI image
-# that gives no root shell each exit 1.
+# leg that passes finds no INTERNET in either app's package block and nothing in their data directories,
+# with the planted file the control's one hit; a package block that names INTERNET, a stand-in of each of
+# the renderer's two shader caches (both paths named), a file the app wrote, a planted file the listing
+# misses, a listing cut short and a CI image that gives no root shell each exit 1.
 # On the 16 KB-page image: a leg with arm64-v8a listed passes, running NativeTest with the app
 # installed for x86_64 and again for arm64-v8a (the stand-in runner names the ABI of each run) and
 # naming armeabi-v7a as not listed; a page size of 4096, a failing NativeTest and an install whose
@@ -181,9 +180,9 @@ EOF
 # The control's words page shows the known colour, as its first screen does, unless KC_WORDS_SCREEN
 # names another screen; KC_SCREENCAP_EMPTY makes the shell's screencap give nothing. Step 7: a
 # debuggable build (KC_DEBUGGABLE, 1 by default) gives a root shell; each app's package block
-# requests CAMERA (and INTERNET under KC_INTERNET); its data directories hold a shader cache (and a file
-# it wrote under KC_APP_FILE), and a file planted there is listed (but under KC_PLANT_LOST); the
-# listing is cut short under KC_LIST_SHORT.
+# requests CAMERA (and INTERNET under KC_INTERNET); its data directories hold nothing but HWUI's and
+# EGL's shader caches under KC_SHADER_CACHE and a file it wrote under KC_APP_FILE, and a file planted
+# there is listed (but under KC_PLANT_LOST); the listing is cut short under KC_LIST_SHORT.
 s=$KC_STUB
 [ "$*" = start-server ] && exit 0
 [ "$1" = -s ] && [ "$2" = emulator-5554 ] || { echo "stub adb: unexpected: $*" >&2; exit 1; }
@@ -219,7 +218,7 @@ case "$*" in
   'shell id -u') if [ "${KC_DEBUGGABLE:-1}" = 1 ]; then echo 0; else echo 2000; fi ;;
   'shell for d in /data/user/0/'*)
     p=$(printf '%s\n' "$2" | sed -n 's|^for d in /data/user/0/\([^ ]*\) .*|\1|p')
-    printf '/data/user/0/%s/code_cache/com.android.skia.shaders_cache\n' "$p"
+    [ -z "${KC_SHADER_CACHE:-}" ] || printf '/data/user/0/%s/code_cache/com.android.%s.shaders_cache\n' "$p" skia "$p" opengl
     [ -z "${KC_APP_FILE:-}" ] || printf '/data/user/0/%s/files/kc-stand-in\n' "$p"
     [ -n "${KC_PLANT_LOST:-}" ] || cat "$s/planted-$p" 2>/dev/null
     [ -n "${KC_LIST_SHORT:-}" ] || echo kc-listed
@@ -371,6 +370,7 @@ EOF
   leg app-window-lit KC_APP_SCREEN=lit
   leg app-window-lit-no-frame KC_APP_SCREEN=lit-unsent
   leg internet KC_INTERNET=1
+  leg shader-cache KC_SHADER_CACHE=1
   leg app-wrote-a-file KC_APP_FILE=1
   leg planted-not-listed KC_PLANT_LOST=1
   leg listing-cut-short KC_LIST_SHORT=1
@@ -484,6 +484,11 @@ EOF
     "FAIL: emulator: api=31: shipping: a raw frame with the app's first screen up shows its window"
   expect internet 1 "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry): no file in its data directories" \
     "FAIL: emulator: api=31: dumpsys package com.keepcrypt.entropy: the app requests or holds INTERNET; dumpsys package com.keepcrypt.entropy.testregistry: the app requests or holds INTERNET (each reported above)"
+  # The renderer's shader caches are files the app wrote like any other (M5-70 (d)): no name is allowed.
+  expect shader-cache 1 \
+    "pass: api=31 nothing persisted (com.keepcrypt.entropy), positive control: a file planted as root in its data directory is the listing's one new hit" \
+    "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control: a file planted as root in its data directory is the listing's one new hit" \
+    "FAIL: emulator: api=31: nothing persisted (com.keepcrypt.entropy): its data directories hold a file it wrote: /data/user/0/com.keepcrypt.entropy/code_cache/com.android.skia.shaders_cache /data/user/0/com.keepcrypt.entropy/code_cache/com.android.opengl.shaders_cache; nothing persisted (com.keepcrypt.entropy.testregistry): its data directories hold a file it wrote: /data/user/0/com.keepcrypt.entropy.testregistry/code_cache/com.android.skia.shaders_cache /data/user/0/com.keepcrypt.entropy.testregistry/code_cache/com.android.opengl.shaders_cache (each reported above)"
   expect app-wrote-a-file 1 \
     "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control: a file planted as root in its data directory is the listing's one new hit" \
     "FAIL: emulator: api=31: nothing persisted (com.keepcrypt.entropy): its data directories hold a file it wrote: /data/user/0/com.keepcrypt.entropy/files/kc-stand-in; nothing persisted (com.keepcrypt.entropy.testregistry): its data directories hold a file it wrote: /data/user/0/com.keepcrypt.entropy.testregistry/files/kc-stand-in (each reported above)"
@@ -1041,8 +1046,8 @@ done
 app_files() {
   dev shell "for d in /data/user/0/$1 /data/user_de/0/$1 /data/media/0/Android/data/$1 /data/media/0/Android/media/$1 /data/media/0/Android/obb/$1; do if [ -d \$d ]; then find \$d ! -type d; fi; done; echo kc-listed" 2>&1 | tr -d '\r'
 }
-# written PKG: the files app_files lists that PKG wrote, one a line: all but the two shader caches in its
-# code cache (see the header); a listing whose last line is not kc-listed (cut short, or a
+# written PKG: the files app_files lists that PKG wrote, one a line: every one, none allowed by its name
+# (see the header); a listing whose last line is not kc-listed (cut short, or a
 # shell that failed) gives one line saying so instead.
 written() {
   listed=$(app_files "$1")
@@ -1050,8 +1055,7 @@ written() {
     echo "(the listing did not run to its end)"
     return
   fi
-  printf '%s\n' "$listed" | sed '$d' | grep -v -x -e "/data/user/0/$1/code_cache/com[.]android[.]skia[.]shaders_cache" \
-    -e "/data/user/0/$1/code_cache/com[.]android[.]opengl[.]shaders_cache"
+  printf '%s\n' "$listed" | sed '$d'
 }
 debuggable=$(value getprop ro.debuggable)
 if [ "$debuggable" != 1 ] && [ -n "$booted" ]; then
@@ -1079,7 +1083,7 @@ else
       if [ -n "$found" ]; then
         fail_later "nothing persisted ($pkg): its data directories hold a file it wrote: $(printf '%s' "$found" | tr '\n' ' ')"
       else
-        echo "pass: api=$api nothing persisted ($pkg): no file in its data directories (/data/user/0, /data/user_de/0, /data/media/0/Android's data, media and obb) but the system's compiled shaders"
+        echo "pass: api=$api nothing persisted ($pkg): no file in its data directories (/data/user/0, /data/user_de/0, /data/media/0/Android's data, media and obb)"
       fi
       planted=/data/user/0/$pkg/kc-planted-file
       dev shell "echo kc-planted > $planted" > /dev/null 2>&1

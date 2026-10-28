@@ -13319,8 +13319,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   (code_cache/com.android.skia.shaders_cache, HWUI's, and code_cache/com.android.opengl.shaders_cache, EGL's), allowed
   by their file names before any listing was seen. They lie in the app's own storage, so whether they are among rule
   8's files the operating system keeps about an app (Q59 (a)) is not settled: no lead decision or owner answer names
-  them (21f, from the E4 review). The runtime profiles, compiled code and package records live outside these
-  directories. The listing is
+  them (21f, from the E4 review); 21g removes both allowances (M5-70 (d)). The runtime profiles, compiled code and
+  package records live outside these directories. The listing is
   printed as a probe line (paths only). The positive control (Q59 (a)): a file planted as root in /data/user/0/PKG
   must be the same listing's one new hit, and is then removed. On a user build (--booted on kc37, ro.debuggable=0) the
   listing is printed as not made, CI's legs making it; android-local.sh's header and its adb-root line say so.
@@ -13354,6 +13354,22 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   the test's probe and pass lines) for the withheld line alone; a mutant that writes the run regardless fails those
   three. android-age-check.py --selftest 18 passed, 0 failed; android-instrument.sh --selftest 43 passed under sh and
   dash (its header says so).
+  Proof (M5 commit 21g, lead decision M5-70 (d), partial: local, Q76; the root listing runs only in CI's API 31 and 36
+  legs, at the next push): step 7's nothing-persisted listing no longer allows the two shader caches 21b allowed by
+  their file names (code_cache/com.android.skia.shaders_cache and code_cache/com.android.opengl.shaders_cache), which
+  no listing has shown and no owner answer names. Rule 8 keeps the app's own storage empty, so every entry the listing
+  finds in the app's data directories is a file the app wrote and fails the leg, its paths printed in the leg's FAIL
+  line and the listing's probe line (paths only: no contents, no sizes); the pass line no longer says "but the
+  system's compiled shaders". If CI ever shows those files, an allowance needs an owner answer first: the lead brings
+  their paths and sizes to the owner as a rule 8 question (M5-70 (d)). Selftests: android-emulator.sh 35 passed, 0
+  failed, under sh and dash (34 before): its stand-in adb lists both shader caches only in the new shader-cache case,
+  which exits 1 naming both paths for each app (its positive control passing in both), the passing leg finds nothing,
+  and every other case keeps its result; mutants that keep the skia allowance, the opengl allowance or both (21b's
+  listing) each fail that case alone (34 passed, 1 failed). android-local.sh --selftest 34 passed, 0 failed, under sh
+  and dash (its stand-in lists no shader cache, so its debuggable case's listing as root passes as before). kc37's
+  user build names the listing as not made, so no local emulator run exercises the change. The gate is clean on the
+  working tree (382 files) and --workflows on the three workflows, its --selftest 1611 passed, 0 failed (595 s), and
+  canaries.sh PASS, all 94 checks ran (428 s).
 
 **19. Gate evidence and Commands**
 - [ ] CLAUDE.md Commands gains the ffi test-registry line, `--apk` and `--selftest-apk`, the android scripts (CI-only
