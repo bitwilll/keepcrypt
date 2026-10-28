@@ -1,6 +1,7 @@
 package com.keepcrypt.entropy.screens
 
 import com.keepcrypt.entropy.ffi.Core
+import com.keepcrypt.entropy.ffi.Question
 import com.keepcrypt.entropy.ffi.Refusal
 import com.keepcrypt.entropy.ffi.RefusalGroup
 import com.keepcrypt.entropy.ffi.Reply
@@ -19,8 +20,8 @@ import kotlin.test.assertTrue
  * library, for vectors/kcr.json's dice-50-words12 read back to its wallet summary: the summary's Next to
  * the offer, whose Skip goes on to the watch-only offer (commit 21); "Make an encrypted backup" generating the passphrase, its
  * two pages of four behind the privacy gate, paged and their copies wiped; the confirm on the letter pad,
- * each answer matched to one of core's four choices by its first four letters, a wrong one (no choice, or
- * the wrong choice) showing the passphrase again with the same questions, both right encrypting the
+ * each answer matched to one of core's four choices by its first four letters, a wrong one (no choice, three
+ * letters of a longer word, or the wrong choice) showing the passphrase again with the same questions, both right encrypting the
  * backup behind "Working..." to the save screen with core's suggested name; Save opening the
  * create-document picker under the picker rule, the place written once, read back at most one byte past
  * core's limit and verified by core before "Backup verified", whose Next is the watch-only offer, the bytes
@@ -172,6 +173,17 @@ class BackupScreensTest {
         val passphrase = rig.toConfirm()
         val challenge = assertNotNull(rig.model.state.value.challenge)
         val positions = challenge.questions.map { it.position }
+        // Three letters of a choice of four or more (no three-letter choice spelled so) are no choice: a word of four
+        // or more is matched by its first four letters alone, so the answer is wrong at once (on the first question
+        // with such a choice; the first is answered right to reach the second).
+        val at = challenge.questions.indexOfFirst { longerChoice(it) != null }
+        if (at == 1) rig.answer(passphrase[challenge.questions[0].position - 1])
+        for (letter in checkNotNull(longerChoice(challenge.questions[at])).take(3)) rig.model.backupLetters.type(letter)
+        rig.model.confirmTyped()
+        assertEquals(Screen.BackupPassphrase, rig.screen, "three letters of a longer word are no choice")
+        assertTrue(rig.model.state.value.wrongConfirm)
+        rig.model.nextPage()
+        rig.model.passphraseWritten()
         // An answer that is none of the four choices: wrong at once, with no call to core.
         rig.answer("zzzz")
         val again = rig.model.state.value
@@ -411,6 +423,12 @@ class BackupScreensTest {
                 }
             }
         }
+    }
+
+    /** A choice of question of four letters or more whose first three are no three-letter choice, or null (never printed). */
+    private fun longerChoice(question: Question): String? {
+        val choices = question.choices.map { choiceText(it) }
+        return choices.firstOrNull { choice -> choice.length >= 4 && choices.none { it == choice.take(3) } }
     }
 
     private companion object {

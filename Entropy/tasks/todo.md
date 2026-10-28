@@ -13172,6 +13172,12 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   zeroPastLength is the tests' look at the pad, the file and the pad; the result: the re-check QR) now fail each of
   those six mutants. :screens 138 in 19 classes, :core-ffi 31 in 11, :app 7 in 3 for each flavour, :secure-ui 3 in 1,
   none failed, with the strict build of the five APKs.
+  Proof (M5 commit 20g, review fix, partial: local, Q76): no test pinned the confirm's match rule (a word's first four
+  letters, a three-letter word's three): a mutant that took any first three or more letters as a choice passed every
+  test. BackupScreensTest's wrong-answer test now first types three letters of a choice of four or more letters (no
+  three-letter choice spelled so, on the first question that has one), which must show the passphrase again with its
+  wrong-answer note; the mutant fails it. :screens 138 in 19 classes, :core-ffi 31 in 11, :app 7 in 3 for each
+  flavour, :secure-ui 3 in 1, none failed, with the strict build of the five APKs.
 - [ ] The CI `age -d` hand-off: for the CI throwaway seed only, the androidTest reads the backup passphrase from the
   in-process `Secret` and sends it as the instrumentation status value `kc_ci_throwaway_passphrase`. The workflow pipes
   `am instrument -r`'s output straight into `scripts/android-age-check.py`, which takes the value, feeds it to age 1.1.1
