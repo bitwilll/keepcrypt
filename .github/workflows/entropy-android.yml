@@ -46,7 +46,9 @@
 # instrument per class, judged from the shell), the positive controls and the first-frame
 # recordings through scripts/android-frames.py (raw frames streamed and checked in memory, none
 # kept). On the 16 KB-page image the leg checks the page size and runs NativeTest on the shipping APK
-# for x86_64 and for each ARM ABI the image translates.
+# for x86_64 and for each ARM ABI the image translates. The shell's screencap of capture-control's two
+# screens (its first screen and a gate seed's words page) is kept on the API 31 and 36 legs and
+# uploaded after them, the owner's screen review of the positive control (M5-68 (f)).
 #
 # Not one of the 14 required checks (Q55), so path filters are safe, as in entropy-pi-image.yml:
 # a skipped run never leaves a required check pending. The rule instead (Q38 (b)): no PR that
@@ -498,7 +500,7 @@ jobs:
       # dice-99-words12's Seal IDs from kcr.json (Python's standard library), all public test values;
       # and SHA256SUMS with every file's SHA-256, also printed here, which the owner's P0 compares
       # with each download. Nothing else: the throwaway key, the test APKs, capture-control's and the
-      # canary stay on the runner. The positive-control captures join with the words page (commit 19).
+      # canary stay on the runner. The positive control's captures go up after the emulator legs (the last step).
       - name: Stage the uploads (both APKs, NOT-FOR-RELEASE, the P4 files, SHA256SUMS)
         run: |
           up=$RUNNER_TEMP/upload
@@ -653,3 +655,20 @@ jobs:
       - name: Emulator 16 KB pages (system-images;android-36;google_apis_ps16k;x86_64)
         if: ${{ !cancelled() && steps.emulator-install.outcome == 'success' }}
         run: sh scripts/android-emulator.sh 16k "$HOME/kc-sdk" "$ANDROID_HOME/platform-tools/adb" "$RUNNER_TEMP/apks" "$RUNNER_TEMP/emulator-16k"
+      # The positive control's captures (M5 group 6, control (a); lead decision M5-68 (f)), the owner's
+      # screen review, kept 14 days: the shell's screencap of each of capture-control's two screens
+      # that scripts/android-emulator.sh kept on the API 31 and 36 legs (WORK_DIR/captures/), its first
+      # screen and dice-99-words12's first words page, drawn by the app's own words composable with no
+      # FLAG_SECURE. Gate-seed vectors only (kcr.json's public seeds), never Reveal D, and never a
+      # capture of the app, which no step writes. After a failed leg too, so a leg that kept its
+      # captures still has them reviewed; a run with neither leg's fails here.
+      - name: Upload the positive control's captures (API 31 and 36)
+        if: ${{ !cancelled() && steps.emulator-install.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-control-captures
+          path: |
+            ${{ runner.temp }}/emulator-31/captures/
+            ${{ runner.temp }}/emulator-36/captures/
+          retention-days: 14
+          if-no-files-found: error

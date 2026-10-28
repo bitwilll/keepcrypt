@@ -33,10 +33,11 @@ import com.keepcrypt.entropy.Capture.shell
 import com.keepcrypt.entropy.Capture.shellText
 import com.keepcrypt.entropy.Capture.waitUntil
 import com.keepcrypt.entropy.Capture.windows
+import com.keepcrypt.entropy.Capture.wordOf
+import com.keepcrypt.entropy.Capture.wordsPageSecrets
 import com.keepcrypt.entropy.ffi.KcHalt
 import com.keepcrypt.entropy.ffi.Mode
 import com.keepcrypt.entropy.ffi.Reply
-import com.keepcrypt.entropy.ffi.WordPage
 import com.keepcrypt.entropy.ffi.Words
 import com.keepcrypt.entropy.screens.CeremonyModel
 import com.keepcrypt.entropy.screens.DICE_KEYS
@@ -45,7 +46,6 @@ import com.keepcrypt.entropy.screens.Overlay
 import com.keepcrypt.entropy.screens.SECRET_TAG
 import com.keepcrypt.entropy.screens.ScanStop
 import com.keepcrypt.entropy.screens.Screen
-import com.keepcrypt.entropy.screens.faceLabel
 import com.keepcrypt.entropy.screens.isProtected
 import com.keepcrypt.entropy.screens.overviewLine
 import com.keepcrypt.entropy.screens.screenId
@@ -430,17 +430,7 @@ class CaptureTest {
         return when (screen) {
             Screen.Words -> {
                 val insert = checkNotNull(state.insert)
-                val seedbook = seedbookText(insert.seedbook)
-                val drawn = buildSet {
-                    add(wordOf(insert))
-                    add(seedbook)
-                    for (n in 1..5) {
-                        val face = insert.face(n)
-                        face.letter?.let { add(it.toString()) }
-                        faceLabel(face.isBlank, face.mirrorPartner != null).takeIf { it.isNotEmpty() }?.let { add(it) }
-                    }
-                }
-                ScreenSecrets(drawn, setOf(seedbook))
+                ScreenSecrets(wordsPageSecrets(insert), setOf(seedbookText(insert.seedbook)))
             }
             Screen.WordsOverview -> checkNotNull(state.overview).map { overviewLine(it) }.toSet().let { ScreenSecrets(it, it) }
             Screen.ReadbackEntry -> if (state.matched) {
@@ -455,14 +445,6 @@ class CaptureTest {
             }
             else -> ScreenSecrets(emptySet(), emptySet())
         }
-    }
-
-    /** insert's word as a String, as the screens draw it, its copy wiped once read. */
-    private fun wordOf(insert: WordPage): String {
-        val bytes = insert.word()
-        val word = buildString { for (index in 0 until bytes.size) append(Char(bytes[index].toInt() and 0xFF)) }
-        bytes.wipe()
-        return word
     }
 
     /**

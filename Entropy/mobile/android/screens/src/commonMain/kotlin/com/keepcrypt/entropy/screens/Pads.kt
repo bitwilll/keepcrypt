@@ -113,14 +113,18 @@ class PadEntry(val keys: String, val capacity: Int) {
     }
 
     /**
-     * The entry handed to use as take's Secret, which is wiped once use returns, so no copy of the keys
-     * typed outlives the call it was made for (rule 5); this entry is wiped. use's result is returned.
+     * The entry handed to use as take's Secret, which is wiped once use returns or throws (a finally:
+     * the model's call catches KcHalt alone, so anything else use throws still passes through here),
+     * so no copy of the keys typed outlives the call it was made for (rule 5); this entry is wiped.
+     * use's result is returned, and what it throws goes on, unchanged.
      */
     fun <T> handOver(use: (Secret) -> T): T {
         val secret = take()
-        val result = use(secret)
-        secret.wipe()
-        return result
+        try {
+            return use(secret)
+        } finally {
+            secret.wipe()
+        }
     }
 
     /** Zeroes every byte; nothing is typed. */

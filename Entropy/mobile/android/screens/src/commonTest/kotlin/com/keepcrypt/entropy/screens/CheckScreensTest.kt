@@ -192,7 +192,7 @@ class CheckScreensTest {
         val refused = rig.model.state.value
         assertEquals(Screen.CodeEntry, refused.screen, "a wrong code returns to its screen")
         assertTrue(refused.codeRefused, "the code entry says it was refused")
-        assertEquals(0, rig.model.goAheadCode.length, "the refused code is gone")
+        assertEquals(0, rig.model.goAheadCode.length, "the refused code was handed to core, the entry emptied (its copy's wipe is PadsTest's)")
         assertTrue(rig.model.goAheadCode.zeroPastLength(), "and its bytes zeroed")
         val core = done(Core.checkRequest(), "the check, still open")
         assertTrue(sameModules(request, core), "the same check and nonce in core")

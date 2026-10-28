@@ -19,8 +19,11 @@ import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
+import com.keepcrypt.entropy.ffi.WordPage
 import com.keepcrypt.entropy.screens.Screen
+import com.keepcrypt.entropy.screens.faceLabel
 import com.keepcrypt.entropy.screens.screenId
+import com.keepcrypt.entropy.screens.seedbookText
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
@@ -39,8 +42,17 @@ import org.junit.Assert.fail
  * region for the frame checker.
  */
 internal object Capture {
-    /** capture-control's package: the positive control, the same first screen with no FLAG_SECURE. */
+    /**
+     * capture-control's package: the positive control, the same first screen (ControlActivity) and a
+     * gate seed's words page (WordsActivity), each with no FLAG_SECURE.
+     */
     const val CONTROL_PACKAGE = "com.keepcrypt.entropy.capturecontrol"
+
+    /** capture-control's first screen, the app's First launch. */
+    const val CONTROL_FIRST_LAUNCH = "ControlActivity"
+
+    /** capture-control's words page: dice-99-words12's first, drawn by the app's words composable. */
+    const val CONTROL_WORDS = "WordsActivity"
 
     /** A pixel is black when no channel is above this (the frame checker's limit too). */
     private const val BLACK_MAX = 16
@@ -331,10 +343,11 @@ internal object Capture {
 
     /**
      * A node of the app's windows as UiAutomation reads it: its text, its resource name (a Compose test
-     * tag), whether it is marked accessibility-data sensitive (Android 14+; false before) and whether it
-     * lies on screen. No data class: its text is never part of a printed value.
+     * tag), whether it is marked accessibility-data sensitive (Android 14+; false before), whether it
+     * lies on screen and its bounds there, in the display's pixels. No data class: its text is never
+     * part of a printed value.
      */
-    class NodeFacts(val text: String?, val resourceName: String?, val dataSensitive: Boolean, val visible: Boolean)
+    class NodeFacts(val text: String?, val resourceName: String?, val dataSensitive: Boolean, val visible: Boolean, val bounds: Rect)
 
     /**
      * Every node of pkg's windows, read down from each window's root (UiDevice.getWindowRoots) child by
@@ -349,7 +362,9 @@ internal object Capture {
         val marked = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
         fun read(node: AccessibilityNodeInfo) {
             val sensitive = marked && node.isAccessibilityDataSensitive
-            found.add(NodeFacts(node.text?.toString(), node.viewIdResourceName, sensitive, node.isVisibleToUser))
+            val bounds = Rect()
+            node.getBoundsInScreen(bounds)
+            found.add(NodeFacts(node.text?.toString(), node.viewIdResourceName, sensitive, node.isVisibleToUser, bounds))
             for (index in 0 until node.childCount) {
                 read(node.getChild(index) ?: throw AssertionError("a node's child could not be read, so the walk would miss it"))
             }
@@ -360,9 +375,37 @@ internal object Capture {
         return found
     }
 
-    /** Starts capture-control's first screen from the shell (am start -W) and lets it draw. */
-    fun startControl() {
-        val out = shellText("am start -W -n " + CONTROL_PACKAGE + "/" + CONTROL_PACKAGE + ".ControlActivity")
+    /**
+     * The secret texts a words page draws for insert, as WordsScreens.kt draws them: the word, its
+     * SeedBook number, and each face's letter and label (a blank face's letter and an empty label are
+     * no text). For in-process comparisons alone (CaptureTest's walk, ControlTest's words page): never
+     * printed. The word's copy is wiped once read.
+     */
+    fun wordsPageSecrets(insert: WordPage): Set<String> = buildSet {
+        add(wordOf(insert))
+        add(seedbookText(insert.seedbook))
+        for (n in 1..5) {
+            val face = insert.face(n)
+            face.letter?.let { add(it.toString()) }
+            faceLabel(face.isBlank, face.mirrorPartner != null).takeIf { it.isNotEmpty() }?.let { add(it) }
+        }
+    }
+
+    /** insert's word as a String, as the screens draw it, its copy wiped once read. */
+    fun wordOf(insert: WordPage): String {
+        val bytes = insert.word()
+        val word = buildString { for (index in 0 until bytes.size) append(Char(bytes[index].toInt() and 0xFF)) }
+        bytes.wipe()
+        return word
+    }
+
+    /**
+     * Starts one of capture-control's screens (its first screen unless activity names another) from the
+     * shell (am start -W) and lets it draw. Its activities share a task, so the task is cleared first
+     * (--activity-clear-task): the one named is then the task's only activity, and the one on screen.
+     */
+    fun startControl(activity: String = CONTROL_FIRST_LAUNCH) {
+        val out = shellText("am start -W --activity-clear-task -n " + CONTROL_PACKAGE + "/" + CONTROL_PACKAGE + "." + activity)
         assertTrue("am start of the capture control did not report Status: ok", out.lines().contains("Status: ok"))
         SystemClock.sleep(2 * SETTLE_MS)
     }

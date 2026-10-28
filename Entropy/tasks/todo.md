@@ -11858,6 +11858,34 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   screen in screencap (4,555 and 4,597 known-colour pixels), takeScreenshot (the same), recents (1,572 and 1,391) and raw
   frames (815 and 817 in one frame), its window without SECURE; (b) every app capture follows the drawn-screen proof;
   (c) API 36: unset, then 1 shows the app's screen in both captures (4,597 known-colour pixels), then black again.
+  Proof (M5 commit 19h, lead decision M5-68 (f), partial: local, Q76; CI's API 31 and 36 legs and the upload at the
+  next push): (a) on the words page. capture-control's new WordsActivity draws dice-99-words12's first words page with
+  the app's own WordsInsert (past its gate, test tags as resource ids as MainActivity has them) and no FLAG_SECURE,
+  under the TEST REGISTRY strip as the test-registry APK draws it, since the strip's yellow is the known colour
+  android-frames.py's --expect visible counts (unchanged). The control has no native library, so it makes the page as
+  a WordPage (its constructor now public, for the control) in wire.rs's layout from vectors/braille.json's entry for the
+  seed's first word (its SeedBook number, the cells of faces 1-5, face 5 lighter, faces 3 and 4 mirror letters).
+  ControlTest's new theSameCapturesShowTheControlsWordsPage makes core's own first page for the seed's 99 rolls through
+  Core (dice-only, its check skipped, the slot wiped after) and requires the control's secret nodes, read in-process with no
+  selector (Capture.nodes, now with each node's bounds), to draw exactly that page's secret texts (Capture's
+  wordsPageSecrets, which CaptureTest's walk now shares), and its header and face 6 line to be core's; none is printed.
+  The same screencap and takeScreenshot must then show the known colour and lit pixels inside every node that draws one
+  of those texts, and its window no SECURE. Capture.startControl clears the control's task first
+  (--activity-clear-task), so the screen named is the one shown. android-emulator.sh records the words page's raw
+  frames over the curtain after the first screen's, and its step 2 keeps the shell's screencap of both control screens
+  as WORK_DIR/captures/control-apiAPI-first-launch.png and -words.png (gate seeds only, never Reveal D, never the app;
+  an empty one fails the leg), which the workflow's new last step uploads with the approved upload-artifact action at
+  its pinned SHA (android-control-captures, 14 days, after a failed leg too); the APK upload stays before the legs. On
+  kc37 (API 37), android-local.sh on this tree: "capture control's words page: 49877 known-colour pixels in screencap,
+  49877 in takeScreenshot; 9 nodes draw its secret texts, 0 and 0 of them unlit; 1 window(s), 0 with SECURE",
+  ControlTest 3 tests passed (the first screen's 4,597 known-colour pixels as before); the raw frames "control (a) raw
+  frames, words page: 8 frames; the most known-colour pixels in one frame 12356" (the first screen's 818 in 7); the kept
+  PNGs 103,964 and 74,175 bytes, the words page as the app draws it (viewed: the word with its letters past the fourth
+  lighter, its SeedBook number, the five faces' cells and the two mirror labels); exit 0 in 1163 s, every class passed
+  in android-emulator.sh's order. android-emulator.sh --selftest 28 passed, 0 failed under sh and dash (25 before: the
+  two kept screencaps, raw frames that never show the words page, an empty screencap), and three mutants each fail it
+  (no words raw-frame check, an empty capture passed, the words page not kept); android-local.sh --selftest 34 passed
+  on the new leg; `--workflows` clean.
 - [x] **First frame** (lessons 4): raw frames, one continuous stream from under the curtain before a cold launch,
   through the launch to Home and a few seconds more, then stopped, and a second stream started with that screen up (its
   first frame is composed at once, so a frame is recorded with the app's screen up; M5-17), show nothing but black in
@@ -12975,6 +13003,16 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   readable to accessibility tools). The privacy gate before the words, the first time and after the device swap,
   now shows it under the SeedBook rules (tag headphones_warning): "If a screen reader speaks the words, use
   headphones: no app can tell where it speaks." FlowTest reads it there (awaitText) and passed, 5 tests, on kc37.
+  Proof (M5 commit 19h, lead decision M5-68 (f), partial: local, Q76): PadEntry.handOver wipes the handed Secret in a
+  finally, so a throw from the call other than KcHalt (which the model's call catches inside it) still wipes it and
+  goes on unchanged; PadsTest's new aHandedOverEntryIsWipedWhenTheCallThrows (a go-ahead code's pad, a call that
+  throws) sees the Secret's 8 bytes zero, the same throw caught and the pad empty and zeroed, and with the finally
+  undone it fails ("the handed Secret is wiped though the call threw"). codeDone (commit 18's go-ahead code entry) now
+  hands its code to Core.revealCode through handOver, as the read-back's Done does (19d); no test can see the copy it
+  hands to core, so CheckScreensTest's refused-code assertion says it checks the pad emptied, the copy's wipe being
+  PadsTest's. Locally: the strict Gradle build of both APKs, their test APKs and capture-control's, and every JVM test
+  task rerun (:core-ffi 27 in 9 classes, :screens 99 in 15, :app 7 in 3 for each flavour, :secure-ui 3 in 1, none
+  failed).
 
 **18. Screens: backup, Check a backup, watch-only, register, reveal D, snapshots, About, stop** (MA:146-162)
 - [ ] Backup: the 8-word passphrase (Protected), its 2-of-4 confirm, Save (`CreateDocument`, core's suggested name,

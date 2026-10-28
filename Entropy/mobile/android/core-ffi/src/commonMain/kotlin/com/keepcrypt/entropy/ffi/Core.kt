@@ -98,9 +98,12 @@ sealed interface Revealed {
 /**
  * One insert's page (Q58: one page at a time), kept whole in a Secret and read from it on demand:
  * the position, the count, the device and devices ("device 1 of 2"), the sequence on face 6, the
- * SeedBook number, the word and faces 1-5. wipe() when the page leaves.
+ * SeedBook number, the word and faces 1-5. wipe() when the page leaves. The app's pages come from
+ * Core.wordPage alone, whose reply's layout Reader checks; the constructor is public for the capture
+ * control (CI only, never released), which draws a gate seed's page from vectors/ with the app's own
+ * words composable and has no native library (tasks/todo.md, M5 group 6; lead decision M5-68 (f)).
  */
-class WordPage internal constructor(private val page: Secret) {
+class WordPage(private val page: Secret) {
     val position: Int get() = page.u8(0)
     val count: Int get() = page.u8(1)
     val device: Int get() = page.u8(2)

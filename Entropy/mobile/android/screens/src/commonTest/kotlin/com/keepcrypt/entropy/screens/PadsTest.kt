@@ -11,7 +11,7 @@ import kotlin.test.assertTrue
 /**
  * The pads (tasks/todo.md, M5 group 14): each one's keys in their fixed order, its capacity, and its
  * entry, which holds only its own keys, zeroes what it drops (read through its internal check) and
- * hands over a Secret of exactly what was typed, wiped once the call it was handed to returns.
+ * hands over a Secret of exactly what was typed, wiped once the call it was handed to returns or throws.
  */
 class PadsTest {
     /** The entry's bytes as text, through its Secret (and the Secret wiped after). */
@@ -129,5 +129,29 @@ class PadsTest {
         assertTrue((0 until secret.size).all { secret[it] == 0.toByte() }, "the handed Secret is wiped once the call returns")
         assertEquals(0, letters.length)
         assertTrue(letters.zeroPastLength(), "and the entry is zeroed")
+    }
+
+    /**
+     * A call that throws (anything but KcHalt, which the model's call catches inside it, passes through
+     * handOver): the handed Secret is wiped all the same, and the throw goes on unchanged.
+     */
+    @Test
+    fun aHandedOverEntryIsWipedWhenTheCallThrows() {
+        val code = crockfordPadEntry()
+        for (key in "0123ABCD") assertTrue(code.type(key))
+        val thrown = IllegalStateException("the call failed")
+        var handed: Secret? = null
+        val caught = assertFailsWith<IllegalStateException> {
+            code.handOver<Unit> { secret ->
+                handed = secret
+                assertEquals(8, secret.size, "the call is handed all 8 symbols")
+                throw thrown
+            }
+        }
+        assertTrue(caught === thrown, "the call's own throw goes on, unchanged")
+        val secret = assertNotNull(handed)
+        assertTrue((0 until secret.size).all { secret[it] == 0.toByte() }, "the handed Secret is wiped though the call threw")
+        assertEquals(0, code.length)
+        assertTrue(code.zeroPastLength(), "and the entry is zeroed")
     }
 }

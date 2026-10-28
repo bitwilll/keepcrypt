@@ -13,7 +13,9 @@
 #   ADB      the job's own adb (the runner's platform-tools)
 #   APK_DIR  the signed APKs: app-shipping-release, app-withTestRegistry-release, their -androidTest
 #            APKs and capture-control-release (.apk)
-#   WORK_DIR a new directory for the AVD and the emulator's log (never the APKs or any capture)
+#   WORK_DIR a new directory for the AVD, the emulator's log and, in captures/, the shell's screencap
+#            of each of capture-control's two screens (step 2), which the workflow uploads: never the
+#            APKs, and never a capture of the app
 # Or: scripts/android-emulator.sh --booted API SERIAL ADB APK_DIR WORK_DIR [CLASS-TEST[-TEST...]...]
 #   the same steps from the keyguard on, on an emulator already up at SERIAL, with no AVD written and
 #   nothing booted or shut down: scripts/android-local.sh's kc37 (M5 Stage L, Q76; never a CI step).
@@ -32,11 +34,17 @@
 #      AIRPLANE_MODE_ON, disable_secure_windows, whether logcat -b crash and dumpsys dropbox can be
 #      read, what dumpsys content_capture shows, and screenrecord's raw-frame facts
 #      (android-frames.py probe).
-#   2. Once the APKs are installed, the shell's own screencap (adb exec-out) with capture-control's
-#      first screen in front, then with the shipping app's: its exit, byte count and stderr only.
-#   3. ControlTest (positive control (a) in screencap, takeScreenshot, dumpsys and recents), once,
-#      first; then capture-control's data is cleared (pm clear), which also takes its tasks out of
-#      recents, so that its thumbnail is not beside the app's in CaptureTest's recents view.
+#   2. Once the APKs are installed, the shell's own screencap (adb exec-out) with each of
+#      capture-control's two screens in front, its first screen and dice-99-words12's first words
+#      page (a public gate seed, drawn by the app's words composable), then with the shipping app's:
+#      its exit, byte count and stderr. The control's two PNGs are kept as
+#      WORK_DIR/captures/control-apiAPI-first-launch.png and -words.png, the owner's screen review of
+#      the control (M5 group 6; lead decision M5-68 (f)), which the workflow uploads; an empty one fails
+#      the leg at its end. The app's goes straight into wc and is never written anywhere.
+#   3. ControlTest (positive control (a) in screencap, takeScreenshot, dumpsys and recents, on the
+#      control's first screen and its words page), once, first; then capture-control's data is
+#      cleared (pm clear), which also takes its tasks out of recents, so that its thumbnail is not
+#      beside the app's in CaptureTest's recents view.
 #   4. For each app APK (shipping, then test registry): CaptureTest, through android-instrument.sh
 #      (every screen drawn and then black in screencap and takeScreenshot, SECURE on every window,
 #      the recents thumbnail, disable_secure_windows, the empty saved-state Bundle, the cover's TEST
@@ -63,7 +71,8 @@
 #      from the shell. It is the last instrumented run of the leg, since the crash buffer and DropBox
 #      it is judged on are the device's, read whole by every later judge.
 #   5. Control (a) in raw frames: capture-control's black curtain, a recording, the control's first
-#      screen: some frame must show its known pixels (android-frames.py --expect visible).
+#      screen: some frame must show its known pixels (android-frames.py --expect visible); then the
+#      same with its words page, whose known pixels are its TEST REGISTRY strip's.
 #   6. The first frame, for each app APK: the curtain, the app force-stopped, a recording from under
 #      the curtain through its cold launch (am start -W, which must report COLD) to its first screen
 #      and 3 s more: every frame black over the app's window (android-frames.py --expect black). Its
@@ -95,12 +104,14 @@
 # frame of the screen at its start and on each change of it until SIGINT, and an instrument runner. A
 # leg where everything passes exits 0, having run PhoneMotionTest, and FlowTest and CheckTest on the
 # shipping app, SnapshotDrillTest on the test-registry app, and LifecycleTest and then the killed
-# CrashTest on the shipping app as its last five instrumented runs (a case of its own); a failing
-# ControlTest, CaptureTest, PhoneMotionTest, FlowTest, CheckTest, SnapshotDrillTest, LifecycleTest and
-# CrashTest each exit 1 at the leg's end, after the later checks ran; capture-control still in recents after pm clear, a
-# recording that ends before it is stopped, the app's window lit in the first-frame stream, and the
-# same with that stream carrying no frame after the curtain (only the second stream sees it) each
-# exit 1. On the 16 KB-page image: a leg with arm64-v8a listed passes, running NativeTest with the app
+# CrashTest on the shipping app as its last five instrumented runs (a case of its own), and kept the
+# control's two screencaps (a case of its own); a failing ControlTest, CaptureTest, PhoneMotionTest,
+# FlowTest, CheckTest, SnapshotDrillTest, LifecycleTest and CrashTest each exit 1 at the leg's end,
+# after the later checks ran, and so does an empty screencap of the control's screens; capture-control
+# still in recents after pm clear, a recording that ends before it is stopped, raw frames that never
+# show the control's words page, the app's window lit in the first-frame stream, and the same with that
+# stream carrying no frame after the curtain (only the second stream sees it) each exit 1.
+# On the 16 KB-page image: a leg with arm64-v8a listed passes, running NativeTest with the app
 # installed for x86_64 and again for arm64-v8a (the stand-in runner names the ABI of each run) and
 # naming armeabi-v7a as not listed; a page size of 4096, a failing NativeTest and an install whose
 # primaryCpuAbi stays x86_64 under --abi each exit 1. With --booted (API 37, no SDK): a leg naming
@@ -142,6 +153,8 @@ EOF
 #!/bin/sh
 # The selftest's stand-in adb: -s emulator-5554 COMMAND, answered from and into the case directory
 # $KC_STUB (screen: what the display shows; front: the package whose MainActivity was started last).
+# The control's words page shows the known colour, as its first screen does, unless KC_WORDS_SCREEN
+# names another screen; KC_SCREENCAP_EMPTY makes the shell's screencap give nothing.
 s=$KC_STUB
 [ "$*" = start-server ] && exit 0
 [ "$1" = -s ] && [ "$2" = emulator-5554 ] || { echo "stub adb: unexpected: $*" >&2; exit 1; }
@@ -151,7 +164,7 @@ case "$*" in
   'shell getprop sys.boot_completed') echo 1 ;;
   'shell dumpsys power') echo '  mWakefulness=Awake' ;;
   'shell dumpsys display') echo '  mScreenState=ON' ;;
-  'exec-out screencap -p') printf 'stand-in png' ;;
+  'exec-out screencap -p') [ -n "${KC_SCREENCAP_EMPTY:-}" ] || printf 'stand-in png' ;;
   'shell screenrecord '*) exec python3 -I "$(dirname "$0")/screenrecord.py" "$s" none ;;
   'exec-out screenrecord '*) exec python3 -I "$(dirname "$0")/screenrecord.py" "$s" stream ;;
   'shell pkill -INT -x screenrecord') kill -INT "$(cat "$s/recorder.pid")" ;;
@@ -172,6 +185,7 @@ case "$*" in
     case $c in
       *.CurtainActivity) echo black > "$s/screen" ;;
       *.ControlActivity) echo control > "$s/screen" ;;
+      *.WordsActivity) echo "${KC_WORDS_SCREEN:-control}" > "$s/screen" ;;
       *.MainActivity) echo "${KC_APP_SCREEN:-black}" > "$s/screen"; echo "${c%%/*}" > "$s/front" ;;
     esac
     printf 'Status: ok
@@ -296,6 +310,8 @@ EOF
   leg crash-test-fails KC_FAILCLASS=CrashTest
   leg control-in-recents KC_RECENTS=1
   leg recording-ends-early KC_REC_END=1
+  leg words-page-not-shown KC_WORDS_SCREEN=black
+  leg screencap-empty KC_SCREENCAP_EMPTY=1
   leg app-window-lit KC_APP_SCREEN=lit
   leg app-window-lit-no-frame KC_APP_SCREEN=lit-unsent
   leg 16k-pass KC_PAGE_SIZE=16384 KC_ABILIST=x86_64,arm64-v8a
@@ -305,7 +321,10 @@ EOF
   booted booted-pass com.keepcrypt.entropy.CaptureTest-disableSecureWindowsShowsTheScreenOnlyWhileSet
   booted booted-class-unheld com.keepcrypt.entropy.NoSuchTest-aTest
   wait
-  expect pass 0 "pass: api=31 control (a) raw frames" "pass: api=31 first frame (shipping): every frame black" \
+  expect pass 0 "pass: api=31 control (a) raw frames:" "pass: api=31 control (a) raw frames, words page:" \
+    "probe: api=31 adb exec-out screencap -p (capture-control's first screen), kept as control-api31-first-launch.png: exit 0, 12 bytes" \
+    "probe: api=31 adb exec-out screencap -p (capture-control's words page), kept as control-api31-words.png: exit 0, 12 bytes" \
+    "pass: api=31 first frame (shipping): every frame black" \
     "pass: api=31 first frame (shipping, its first screen up)" "pass: api=31 first frame (registry, its first screen up)" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.PhoneMotionTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest" \
@@ -328,6 +347,16 @@ EOF
     fi
   }
   last_five pass
+  # Step 2: the control's two screencaps kept for the upload, and nothing else in captures/.
+  kept=$(cd "$st/pass/work/captures" 2> /dev/null && ls | tr '\n' ' ')
+  if [ "$kept" = "control-api31-first-launch.png control-api31-words.png " ] &&
+    [ "$(cat "$st/pass/work/captures/control-api31-words.png")" = 'stand-in png' ]; then
+    passed=$((passed + 1))
+    echo "PASS pass: the control's two screencaps kept in captures/"
+  else
+    failed=$((failed + 1))
+    echo "FAIL pass: captures/ holds $kept"
+  fi
   expect motion-test-fails 1 \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest" \
@@ -370,6 +399,10 @@ EOF
     "pass: api=31 first frame (registry, its first screen up)" \
     "FAIL: emulator: api=31: capture-control is still in recents after pm clear (each reported above)"
   expect recording-ends-early 1 "before it was stopped" "FAIL: emulator: api=31: control"
+  expect words-page-not-shown 1 "pass: api=31 control (a) raw frames:" \
+    "FAIL: emulator: api=31: control (a): the raw frames do not show the capture control's words page"
+  expect screencap-empty 1 "pass: api=31 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=31: the shell's screencap of capture-control's first screen failed or is empty; the shell's screencap of capture-control's words page failed or is empty (each reported above)"
   expect app-window-lit 1 "FAIL: emulator: api=31: shipping: a raw frame shows the app's window"
   expect app-window-lit-no-frame 1 "pass: api=31 first frame (shipping): every frame black" \
     "FAIL: emulator: api=31: shipping: a raw frame with the app's first screen up shows its window"
@@ -389,7 +422,8 @@ EOF
   left=com.keepcrypt.entropy.CaptureTest-disableSecureWindowsShowsTheScreenOnlyWhileSet
   expect booted-pass 0 "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.ControlTest" \
     "instrument stub: com.keepcrypt.entropy $left" "instrument stub: com.keepcrypt.entropy.testregistry $left" \
-    "pass: api=37 control (a) raw frames" "pass: api=37 first frame (registry, its first screen up)" \
+    "pass: api=37 control (a) raw frames:" "pass: api=37 control (a) raw frames, words page:" \
+    "kept as control-api37-words.png: exit 0, 12 bytes" "pass: api=37 first frame (registry, its first screen up)" \
     "emulator: api=37: every check passed"
   last_five booted-pass
   if [ ! -e "$st/booted-pass/work/avd" ] && [ ! -e "$st/booted-pass/emulator.pid" ]; then
@@ -735,11 +769,29 @@ start_activity() {
   grep -q -e '^Status: ok' "$work/start.txt" || fail "am start $c did not report Status: ok"
 }
 
-# 2. The shell's own screencap with each app in front. Run 39290401362: with the launcher in front
-# it held 319,321 bytes while the instrumentation's screencap held none.
+# keep_capture WHAT NAME: shell_screencap's probe line for capture-control's WHAT on screen, but its
+# PNG kept as captures/control-apiAPI-NAME.png in WORK_DIR, the owner's screen review of the control,
+# which the workflow uploads (M5 group 6; lead decision M5-68 (f)): the control's screens alone, gate
+# seeds, never Reveal D and never a capture of the app. A failed or empty one fails the leg at its end.
+keep_capture() {
+  kept=$work/captures/control-api$api-$2.png
+  mkdir -p "$work/captures" || exit 2
+  dev exec-out screencap -p > "$kept" 2> "$work/screencap.err"
+  rc=$?
+  bytes=$(($(wc -c < "$kept")))
+  probe "adb exec-out screencap -p ($1), kept as $(basename "$kept"): exit $rc, $bytes bytes, stderr: $(tr -d '\r' < "$work/screencap.err" | tr '\n' ' ')"
+  [ "$rc" -eq 0 ] && [ "$bytes" -gt 0 ] || fail_later "the shell's screencap of $1 failed or is empty"
+}
+
+# 2. The shell's own screencap with each app in front, capture-control's two screens kept. Run
+# 39290401362: with the launcher in front it held 319,321 bytes while the instrumentation's screencap
+# held none. The words page shares the control's task, which is cleared first, so it alone is shown.
 start_activity "$control/$control.ControlActivity"
 sleep 2
-shell_screencap "capture-control's first screen"
+keep_capture "capture-control's first screen" first-launch
+start_activity "$control/$control.WordsActivity" --activity-clear-task
+sleep 2
+keep_capture "capture-control's words page" words
 start_activity com.keepcrypt.entropy/com.keepcrypt.entropy.MainActivity
 sleep 2
 shell_screencap "the shipping app's first screen"
@@ -826,13 +878,21 @@ stop_recording() {
   return "$rc"
 }
 
-# 5. Control (a) in raw frames, the same pipeline as the first-frame recordings below.
+# 5. Control (a) in raw frames, the same pipeline as the first-frame recordings below: capture-control's
+# first screen, then its words page (dice-99-words12's first, its known pixels the TEST REGISTRY
+# strip's), each over the curtain.
 curtain
 start_recording control --expect visible
 start_activity "$control/$control.ControlActivity"
 sleep 3
 stop_recording control || fail "control (a): the raw frames do not show the capture-control's screen"
 echo "pass: api=$api control (a) raw frames: $(sed -n 's/^android-frames: PASS visible: //p' "$frames")"
+curtain
+start_recording control-words --expect visible
+start_activity "$control/$control.WordsActivity"
+sleep 3
+stop_recording control-words || fail "control (a): the raw frames do not show the capture control's words page"
+echo "pass: api=$api control (a) raw frames, words page: $(sed -n 's/^android-frames: PASS visible: //p' "$frames")"
 
 # first_frame NAME PACKAGE REGION DISPLAY: step 6 for one app.
 first_frame() {

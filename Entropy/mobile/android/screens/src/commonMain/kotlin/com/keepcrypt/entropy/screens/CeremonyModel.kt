@@ -588,14 +588,12 @@ class CeremonyModel(
      * The code entry's Done, with all 8 symbols typed: core verifies the code against this check's T
      * and nonce. A verified one reveals the words; one that does not verify is refused, and the code
      * entry says so with the check, its nonce and the seal card's actions kept (its Back), the typed
-     * code wiped. The code is handed over as a Secret and wiped once core has it.
+     * code wiped. The code is handed over as a Secret and wiped once core has it (PadEntry.handOver).
      */
     fun codeDone() {
         if (!pressOn(Screen.CodeEntry) || !goAheadCode.isFull) return
         val seal = mutable.value.seal
-        val code = goAheadCode.take()
-        val reply = call { Core.revealCode(code) }
-        code.wipe()
+        val reply = goAheadCode.handOver { code -> call { Core.revealCode(code) } }
         when {
             reply is Reply.Done -> ended(reply.value, seal)
             reply is Reply.Refused && reply.refusal.group == RefusalGroup.Code -> showInCheck(Screen.CodeEntry, codeRefused = true)
