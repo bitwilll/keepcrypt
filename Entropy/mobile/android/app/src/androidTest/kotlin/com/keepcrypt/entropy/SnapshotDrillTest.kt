@@ -163,7 +163,10 @@ class SnapshotDrillTest {
         await("past the gate", 10) { !onMain { activity.model.state.value.gate } }
         on(activity, Screen.CollisionReport)
         val report = onMain { activity.model.state.value.report } ?: throw AssertionError("no collision-report QR")
-        assertEquals(Checker.ORIGIN + "/register#c=" + DICE_50_SEAL_CODE, Checker.read(report))
+        assertTrue(
+            "the collision-report QR is not dice-50-words12's register text (neither is printed)",
+            Checker.read(report) == Checker.ORIGIN + "/register#c=" + DICE_50_SEAL_CODE,
+        )
         tap("add_fresh_entropy")
         on(activity, Screen.Dice, START_SECONDS)
         awaitText("dice_count", "0 / 99 rolls, 0.0 bits")

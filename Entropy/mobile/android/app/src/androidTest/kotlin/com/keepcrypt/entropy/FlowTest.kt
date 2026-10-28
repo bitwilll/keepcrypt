@@ -486,7 +486,10 @@ class FlowTest {
             tap("pass_gate")
             await("past the registration QR's gate", 10) { onMain { activity.model.state.value.let { it.screen == Screen.RegisterQr && !it.gate } } }
             val registration = onMain { activity.model.state.value.registration } ?: throw AssertionError("no registration QR")
-            assertEquals(Checker.ORIGIN + "/register#c=" + DICE_50_SEAL_CODE, Checker.read(registration))
+            assertTrue(
+                "the registration QR is not dice-50-words12's register text (neither is printed)",
+                Checker.read(registration) == Checker.ORIGIN + "/register#c=" + DICE_50_SEAL_CODE,
+            )
             tap("registration_done")
             on(activity, Screen.Checklist)
             assertTrue("the registration QR was not wiped as the checklist came", blank(registration))

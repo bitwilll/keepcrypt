@@ -13209,6 +13209,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   run of 19i's line) BackupTest (Check a backup's read, the saved file's read-back), CheckTest (the shipping app's
   refusal after the read) and SnapshotDrillTest (the drill's snapshot through the picker) passed. The read still runs
   on the main thread, where picked() reads before the worker's call; moving it is not taken here.
+  Proof (M5 commit 21e, review fix, partial: local, Q76): FlowTest's dice-only registration QR and SnapshotDrillTest's
+  collision-report QR, Protected for the seal code they carry, were compared with assertEquals, which prints both sides
+  when they differ, where 21a's mixed-seed test compares the same QR in-process with a message that prints neither.
+  Both now compare so (assertTrue, the message naming the vector, never its text). On kc37 (local, the run of 19i's
+  line) FlowTest 7 and SnapshotDrillTest 3 passed.
 - [ ] The CI `age -d` hand-off: for the CI throwaway seed only, the androidTest reads the backup passphrase from the
   in-process `Secret` and sends it as the instrumentation status value `kc_ci_throwaway_passphrase`. The workflow pipes
   `am instrument -r`'s output straight into `scripts/android-age-check.py`, which takes the value, feeds it to age 1.1.1
