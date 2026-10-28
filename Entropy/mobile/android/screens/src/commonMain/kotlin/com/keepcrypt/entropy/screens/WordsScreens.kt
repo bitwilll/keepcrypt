@@ -29,8 +29,9 @@ import com.keepcrypt.entropy.ffi.WordPage
 // ceremony model, which ignores a press its screen no longer shows. Their secret text (the words, the
 // SeedBook numbers and faces, the letters typed and the verdicts) is drawn from the word pages and
 // verdicts the state holds in Secrets, each node marked secret (Kit.kt), and a String of it exists
-// only for the text on screen (Q58). The backup and the other exports (commits 20 and 21) come
-// between the summary and the checklist.
+// only for the text on screen (Q58). The encrypted backup (BackupScreens.kt, commit 20) and the other
+// exports (commit 21) come between the summary and the checklist, and Check a backup shows a checked
+// backup's words on the insert view and overview here.
 
 /** The insert view shows one insert a page, the overview four (the Pi's). */
 const val OVERVIEW_WORDS = 4
@@ -198,7 +199,9 @@ private fun InsertWord(insert: WordPage) {
  * faces: the dots numbered, blank faces "leave blank", mirror-pair letters "mirror", face 5 lighter)
  * and face 6, the sequence number engraved on it. Previous and Next page through the inserts (the
  * system Back is Previous), Overview shows four words a page, and the last insert starts the
- * read-back. A mismatch's insert, shown from its read-back, offers only the way back to it.
+ * read-back. A mismatch's insert, shown from its read-back, offers only the way back to it. A checked
+ * backup's words (Check a backup, opened in the state) have no read-back: their last insert's Done
+ * returns to the backup's result (the Pi's).
  */
 @Composable
 fun WordsInsert(
@@ -210,6 +213,7 @@ fun WordsInsert(
     onOverview: () -> Unit,
     onReadback: () -> Unit,
     onBackToReadback: () -> Unit,
+    onBackupDone: () -> Unit,
 ) {
     Protected(state, testRegistry, passGate) {
         val insert = state.insert
@@ -227,7 +231,9 @@ fun WordsInsert(
                             KitButton("Next", "next", enabled = !last, modifier = Modifier.weight(1f).padding(start = 6.dp), onClick = onNext)
                         }
                         KitButton("Overview", "overview", onClick = onOverview)
-                        if (last) {
+                        if (last && state.opened != null) {
+                            KitButton("Done", "backup_words_done", onClick = onBackupDone)
+                        } else if (last) {
                             KitButton("Start the read-back", "start_readback", onClick = onReadback)
                         }
                     }

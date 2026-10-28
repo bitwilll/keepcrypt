@@ -12,6 +12,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.lifecycle.ViewModelProvider
 import com.keepcrypt.entropy.camera.GoAheadScanner
+import com.keepcrypt.entropy.files.Documents
 import com.keepcrypt.entropy.screens.CeremonyModel
 import com.keepcrypt.entropy.screens.Screen
 import com.keepcrypt.entropy.screens.Screens
@@ -29,8 +30,10 @@ import com.keepcrypt.entropy.secure.SecureActivity
  * prompt is registered here, in onCreate, before the activity starts, as the activity-result API
  * requires: the one launcher the gate allows (KtIntent), written whole on one line, beside the one
  * import line of its contracts' class that the gate allows; leaving the app stops a scan at once
- * (group 16). Compose test tags are exposed as resource ids, so UI Automator finds Public screens by
- * id (group 6).
+ * (group 16). The backup's and Check a backup's document pickers are Documents (files/Documents.kt,
+ * group 18), made here in onCreate too, whose constructor registers their two launchers there, where the
+ * gate allows the document contracts; their answers go to the model. Compose test tags are exposed as
+ * resource ids, so UI Automator finds Public screens by id (group 6).
  */
 class MainActivity : SecureActivity() {
     /**
@@ -62,9 +65,10 @@ class MainActivity : SecureActivity() {
         val airplaneSettings = AirplaneModeSettings(this)
         scanner = GoAheadScanner(this)
         scanner.permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { scanner.answered(it) }
+        val documents = Documents(this, model::backupPlaced, model::backupPicked)
         setContent {
             Box(Modifier.semantics { testTagsAsResourceId = true }) {
-                Screens(model, airplaneSettings, scanner, onClose = this@MainActivity::closeApp, onShown = { shownScreen = it })
+                Screens(model, airplaneSettings, scanner, documents, onClose = this@MainActivity::closeApp, onShown = { shownScreen = it })
             }
         }
     }

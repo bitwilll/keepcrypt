@@ -41,13 +41,19 @@ import com.keepcrypt.entropy.ffi.Reply
 import com.keepcrypt.entropy.ffi.Words
 import com.keepcrypt.entropy.screens.CeremonyModel
 import com.keepcrypt.entropy.screens.DICE_KEYS
+import com.keepcrypt.entropy.screens.DocumentPickers
+import com.keepcrypt.entropy.screens.DocumentPlace
 import com.keepcrypt.entropy.screens.INSERTS_PER_DEVICE
 import com.keepcrypt.entropy.screens.Overlay
+import com.keepcrypt.entropy.screens.PASSPHRASE_WORDS
+import com.keepcrypt.entropy.screens.PickedFile
 import com.keepcrypt.entropy.screens.SECRET_TAG
 import com.keepcrypt.entropy.screens.ScanStop
 import com.keepcrypt.entropy.screens.Screen
+import com.keepcrypt.entropy.screens.choiceText
 import com.keepcrypt.entropy.screens.isProtected
 import com.keepcrypt.entropy.screens.overviewLine
+import com.keepcrypt.entropy.screens.passphraseLines
 import com.keepcrypt.entropy.screens.screenId
 import com.keepcrypt.entropy.screens.seedbookText
 import com.keepcrypt.entropy.screens.typedFaces
@@ -81,6 +87,15 @@ class CaptureTest {
     /** The one activity the every-screen pass walks, from First launch to the stop screen. */
     private var walk: MainActivity? = null
 
+    /**
+     * The walk's backup passphrase, its words as the passphrase's pages showed them, read in-process from
+     * the state's Secrets (compared and typed, never printed, never in a selector), zeroed after the walk.
+     */
+    private val passphrase = ArrayList<ByteArray>(PASSPHRASE_WORDS)
+
+    /** The walk's backup file, as the save screen's place took it (in memory: the walk saves to no provider), for Check a backup. */
+    private var savedBackup: ByteArray? = null
+
     private val device: UiDevice get() = UiDevice.getInstance(Capture.instrumentation)
 
     /**
@@ -99,7 +114,15 @@ class CaptureTest {
      * overview's third page, the entry from the last insert, its mismatch from letters no word begins
      * with ("zzzz"), and the read-back's end after every insert read back in-process from the page on
      * show (its word's copy wiped), the first from the entry the walk left matched (matchedEntry), then
-     * the wallet summary and the checklist, from which "Working..." is held. The scan screen asks for
+     * the wallet summary; the encrypted backup (group 18): its offer, the passphrase past its privacy
+     * gate (its pages read in-process), its confirm (each answer typed on the model's letter pad), the
+     * save screen once core has encrypted (the encryption's real long call, waited for), and also with a
+     * failed write (failedSave), then "Backup verified" after a place in memory took the file and core
+     * verified it (the real long call); the checklist, whose Finish leads Home, and Check a backup on the
+     * saved file handed to the model as the picker would (the system's pickers are BackupTest's): its
+     * entry past its gate, its result once core opened the file with the passphrase typed in-process
+     * (the real long call), and the re-check QR; then the checked backup's words past their gate
+     * (checkedWords), from which "Working..." is held. The scan screen asks for
      * the camera as it opens, and the
      * walk is the first of this APK's tests to open it: dumpsys package shows CAMERA requested and not
      * granted, no permission prompt is up, then the scan screen opens and the system's prompt shows over
@@ -190,15 +213,152 @@ class CaptureTest {
                 }
             }
             Screen.Wallet -> onMain { model.showSummary() }
-            Screen.Checklist -> onMain { model.summaryDone() }
+            Screen.BackupOffer -> onMain { model.summaryDone() }
+            Screen.BackupPassphrase -> {
+                onMain { model.makeBackup() }
+                waitUntil("the passphrase's privacy gate") { onMain { activity.shownScreen == Screen.BackupPassphrase && model.state.value.gate } }
+                onMain {
+                    model.passGate()
+                    readPassphrasePage(model)
+                }
+            }
+            Screen.BackupConfirm -> onMain {
+                model.nextPage()
+                readPassphrasePage(model)
+                model.passphraseWritten()
+            }
+            Screen.BackupSave -> {
+                onMain {
+                    answer(model)
+                    answer(model)
+                }
+                waitUntil("the save screen, after the encryption", START_SECONDS) { onMain { activity.shownScreen } == Screen.BackupSave }
+            }
+            Screen.BackupVerified -> {
+                onMain {
+                    model.saveBackup(NoPickers)
+                    model.backupPlaced(InMemory())
+                }
+                waitUntil("Backup verified, after core verified the file", START_SECONDS) { onMain { activity.shownScreen } == Screen.BackupVerified }
+            }
+            Screen.Checklist -> onMain { model.backupVerifiedDone() }
+            Screen.BackupCheckEntry -> {
+                onMain {
+                    model.finishCeremony()
+                    model.checkBackup(NoPickers)
+                    model.backupPicked(Picked(checkNotNull(savedBackup)))
+                }
+                waitUntil("the entry's privacy gate") { onMain { activity.shownScreen == Screen.BackupCheckEntry && model.state.value.gate } }
+                onMain { model.passGate() }
+            }
+            Screen.BackupCheckResult -> {
+                onMain {
+                    for (word in passphrase) {
+                        for (index in 0 until minOf(4, word.size)) model.backupLetters.type(Char(word[index].toInt()))
+                        model.entryTyped()
+                    }
+                }
+                waitUntil("the result, after core opened the backup", START_SECONDS) { onMain { activity.shownScreen } == Screen.BackupCheckResult }
+            }
+            Screen.BackupRecheck -> onMain { model.showRecheck() }
             Screen.Working -> onMain { model.work({ working.await(); Reply.Done(Unit) }) {} }
             Screen.Stop -> {
                 working.countDown()
-                waitUntil("the checklist again, after the held call") { onMain { activity.shownScreen } == Screen.Checklist }
+                waitUntil("the checked backup's words again, after the held call") { onMain { activity.shownScreen } == Screen.Words }
                 onMain { model.work<Unit>({ throw KcHalt() }) {} }
             }
         }
         return activity
+    }
+
+    /** The passphrase's page on show read into passphrase, its words copied from the state's Secret (never a String). Main thread only. */
+    private fun readPassphrasePage(model: CeremonyModel) {
+        val text = checkNotNull(model.state.value.passphrase)
+        var start = 0
+        for (index in 0..text.size) {
+            if (index == text.size || text[index] == SPACE) {
+                passphrase.add(ByteArray(index - start) { text[start + it] })
+                start = index + 1
+            }
+        }
+    }
+
+    /** The confirm's question on show answered on the model's letter pad: its word's first four letters (or three), then Done. Main thread only. */
+    private fun answer(model: CeremonyModel) {
+        val state = model.state.value
+        val word = passphrase[checkNotNull(state.challenge).questions[state.page].position - 1]
+        for (index in 0 until minOf(4, word.size)) model.backupLetters.type(Char(word[index].toInt()))
+        model.confirmTyped()
+    }
+
+    /**
+     * The save screen once more, with a failed write: a place whose write fails, so the screen names
+     * that step and offers Save again (the session stays). The walk checks it as it checks each screen,
+     * before "Backup verified".
+     */
+    private fun failedSave(): MainActivity {
+        val activity = checkNotNull(walk)
+        val failed = onMain {
+            activity.model.saveBackup(NoPickers)
+            activity.model.backupPlaced(FailingPlace)
+            activity.model.state.value.let { it.screen == Screen.BackupSave && it.saveFailure != null }
+        }
+        assertTrue("the save screen does not name the failed write", failed)
+        return activity
+    }
+
+    /**
+     * The checked backup's words, from the re-check QR: its Back to the result, "Show the words" and the
+     * privacy gate, so insert 1 of the backup's words shows (opened in the state). The walk checks it as
+     * it checks each screen, before "Working..." is held from it.
+     */
+    private fun checkedWords(): MainActivity {
+        val activity = checkNotNull(walk)
+        onMain {
+            activity.model.back()
+            activity.model.showBackupWords()
+        }
+        waitUntil("the checked backup's words' privacy gate") {
+            onMain { activity.shownScreen == Screen.Words && activity.model.state.value.gate }
+        }
+        val shown = onMain {
+            activity.model.passGate()
+            activity.model.state.value.let { it.screen == Screen.Words && it.opened != null && !it.gate }
+        }
+        assertTrue("the checked backup's words are not on show", shown)
+        return activity
+    }
+
+    /** The walk's pickers: the model opens nothing, and the walk hands it the place and the file as the pickers would. */
+    private object NoPickers : DocumentPickers {
+        override fun create(name: String) {}
+
+        override fun open() {}
+    }
+
+    /** The save screen's place, in memory: it keeps what it is given for Check a backup, and reads it back. */
+    private inner class InMemory : DocumentPlace {
+        override fun write(bytes: ByteArray): Boolean {
+            savedBackup = bytes.copyOf()
+            return true
+        }
+
+        override fun readBack(limit: Int): ByteArray? = savedBackup?.copyOf()
+    }
+
+    /** A place whose write fails. */
+    private object FailingPlace : DocumentPlace {
+        override fun write(bytes: ByteArray): Boolean = false
+
+        override fun readBack(limit: Int): ByteArray? = null
+    }
+
+    /** The walk's saved backup as the open-document picker gives a file: core's kind of name and its size. */
+    private class Picked(private val bytes: ByteArray) : PickedFile {
+        override val name: String = "keepcrypt-backup-00000000.age"
+        override val size: Long = bytes.size.toLong()
+
+        override fun read(limit: Int): ByteArray = bytes.copyOf()
     }
 
     /**
@@ -284,8 +444,9 @@ class CaptureTest {
      * content capture (read back in-process, group 14), SECURE on every window of the package in
      * dumpsys window windows, found by its owner line too (the owner line is shown to be read on this
      * image: some window is found by it), and its secret text marked data sensitive where Android has
-     * the mark (assertSecretsMarked); the read-back entry also in its matched state (matchedEntry). After
-     * the walk the log holds none of its secret lines (assertNoSecretInTheLog).
+     * the mark (assertSecretsMarked); the read-back entry also in its matched state (matchedEntry), the
+     * save screen also with a failed write (failedSave) and the words also as a checked backup's
+     * (checkedWords). After the walk the log holds none of its secret lines (assertNoSecretInTheLog).
      */
     @Test
     fun everyScreenIsDrawnAndThenBlackInEveryCapture() {
@@ -307,9 +468,17 @@ class CaptureTest {
             if (screen == Screen.ReadbackDone) {
                 checkScreen(Screen.ReadbackEntry, matchedEntry(), screenId(Screen.ReadbackEntry) + " (matched)", lines)
             }
+            if (screen == Screen.BackupVerified) {
+                checkScreen(Screen.BackupSave, failedSave(), screenId(Screen.BackupSave) + " (a failed write)", lines)
+            }
+            if (screen == Screen.Working) {
+                checkScreen(Screen.Words, checkedWords(), screenId(Screen.Words) + " (a checked backup's)", lines)
+            }
             checkScreen(screen, show(screen), screenId(screen), lines)
         }
         finish(checkNotNull(walk))
+        for (word in passphrase) word.fill(0)
+        savedBackup?.fill(0)
         assertNoSecretInTheLog(mark, lines)
     }
 
@@ -423,7 +592,9 @@ class CaptureTest {
      * The secret texts screen draws, from the model's state, as the screens draw them: on the words the
      * word, its SeedBook number and each face's letter and label (a blank face's letter is no text); on
      * the overview its lines; on the read-back entry the faces typed, or once it matched the word; on the
-     * mismatch the four verdicts. The word's copy is wiped once read. Main thread only.
+     * mismatch the four verdicts; on the backup passphrase its page's lines ("1 ostrich"); on the confirm
+     * its question's four choices and the letters typed; on Check a backup's entry the letters typed. The
+     * word's copy is wiped once read. Main thread only.
      */
     private fun secretTexts(screen: Screen, model: CeremonyModel): ScreenSecrets {
         val state = model.state.value
@@ -442,6 +613,16 @@ class CaptureTest {
             Screen.ReadbackMismatch -> {
                 val mismatch = checkNotNull(state.mismatch)
                 (1..4).map { verdictLine(it, mismatch.face(it)) }.toSet().let { ScreenSecrets(it, it) }
+            }
+            Screen.BackupPassphrase -> passphraseLines(state.page, checkNotNull(state.passphrase)).toSet().let { ScreenSecrets(it, it) }
+            Screen.BackupConfirm -> {
+                val question = checkNotNull(state.challenge).questions[state.page]
+                val faces = typedFaces(model.backupLetters)
+                ScreenSecrets(question.choices.map { choiceText(it) }.toSet() + faces, if (model.backupLetters.length > 0) setOf(faces) else emptySet())
+            }
+            Screen.BackupCheckEntry -> {
+                val faces = typedFaces(model.backupLetters)
+                ScreenSecrets(setOf(faces), if (model.backupLetters.length > 0) setOf(faces) else emptySet())
             }
             else -> ScreenSecrets(emptySet(), emptySet())
         }
@@ -722,7 +903,16 @@ class CaptureTest {
         /** What dumpsys says (on stderr) for a service the image does not run. */
         const val NO_SERVICE = "Can't find service"
 
-        /** The Protected screens that draw secret text: the words, the overview, the read-back's letters and its verdicts. */
-        val SECRET_SCREENS = setOf(Screen.Words, Screen.WordsOverview, Screen.ReadbackEntry, Screen.ReadbackMismatch)
+        /**
+         * The Protected screens that draw secret text: the words, the overview, the read-back's letters and
+         * its verdicts, the backup passphrase, its confirm's choices and letters, and Check a backup's letters.
+         */
+        val SECRET_SCREENS = setOf(
+            Screen.Words, Screen.WordsOverview, Screen.ReadbackEntry, Screen.ReadbackMismatch, Screen.BackupPassphrase,
+            Screen.BackupConfirm, Screen.BackupCheckEntry,
+        )
+
+        /** The space between the passphrase's words on a page. */
+        const val SPACE: Byte = 0x20
     }
 }

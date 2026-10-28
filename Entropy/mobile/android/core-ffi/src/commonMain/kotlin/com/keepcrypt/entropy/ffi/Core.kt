@@ -190,8 +190,17 @@ class Challenge internal constructor(val questions: List<Question>) {
 /** A confirm question: the word's position (1-8) and its four choices. */
 class Question internal constructor(val position: Int, val choices: List<Secret>)
 
-/** The encrypted backup: its suggested name and its bytes. */
-class BackupFile internal constructor(val name: String, val bytes: ByteArray)
+/**
+ * The encrypted backup, made in memory (rule 8: no plaintext ever reaches a file): core's suggested name
+ * and the age file's bytes, ciphertext only. wipe() zeroes the bytes once the backup step is over.
+ */
+class BackupFile internal constructor(val name: String, val bytes: ByteArray) {
+    fun wipe() {
+        bytes.fill(0)
+    }
+
+    override fun toString(): String = "BackupFile"
+}
 
 /** The watch-only export: its summary, whether a BIP39 passphrase was used, and its two QR codes. */
 class WatchOnly internal constructor(
@@ -206,8 +215,15 @@ class WatchOnly internal constructor(
     }
 }
 
-/** "Check a backup": the backup's fingerprint, seal card and re-check QR. */
-class OpenedBackup internal constructor(val fingerprint: ByteArray, val seal: SealCard, val recheck: QrMatrix)
+/**
+ * "Check a backup": the backup's fingerprint, seal card and re-check QR (T alone, no nonce), public
+ * values; its words stay in the slot, one page at a time. wipe() when the checked backup goes.
+ */
+class OpenedBackup internal constructor(val fingerprint: ByteArray, val seal: SealCard, val recheck: QrMatrix) {
+    fun wipe() {
+        recheck.wipe()
+    }
+}
 
 /**
  * The typed calls over the bridge (tasks/todo.md, M5 group 13; Q53): one per op of wire.rs, each
@@ -220,6 +236,22 @@ class OpenedBackup internal constructor(val fingerprint: ByteArray, val seal: Se
  */
 object Core {
     private val EMPTY = ByteArray(0)
+
+    /**
+     * A backup file's name ends so: core's FILE_NAME_SUFFIX (core/src/backup.rs), which ends every name
+     * it suggests ("keepcrypt-backup-" and 8 lower-case hex digits). Check a backup opens no file whose
+     * name does not, in any letter case, as the Pi lists its stick's (pi/app's hal.rs). BackupFileTest
+     * pins it against core's source.
+     */
+    const val BACKUP_SUFFIX = ".age"
+
+    /**
+     * The largest backup file core reads: age's 8 KiB, core's MAX_FILE_BYTES (core/src/backup/age.rs),
+     * past which it refuses a file as Backup(TooLarge). Check a backup reads no file its provider sizes
+     * larger, each read stops one byte past it, and so does the saved backup's read-back. BackupFileTest
+     * pins it against core's source.
+     */
+    const val BACKUP_MAX_BYTES = 8 * 1024
 
     /** Halts the slot (an op the table does not hold) and throws KcHalt: the shell's way to fail
      * closed on a call or reply it cannot make sense of. */

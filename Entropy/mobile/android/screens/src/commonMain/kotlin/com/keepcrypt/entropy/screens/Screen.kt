@@ -11,10 +11,12 @@ package com.keepcrypt.entropy.screens
  * found's and Cannot check's confirms, the collision result, the collision-report QR and, after the
  * restart it leads to, the result before the words; the words to the end of the ceremony (commit 19):
  * the words in insert view, their overview, the device swap a 24-word seed's pages pass, the read-back
- * entry and its mismatch, the read-back's end, the wallet summary and the checklist Finish ends; then
- * the "Working..." screen every other long call shows, and the stop screen a halt ends on. The backup
- * and the other exports come with commits 20 and 21. In :screens' common code, beside the screens
- * themselves.
+ * entry and its mismatch, the read-back's end, the wallet summary, the encrypted backup (commit 20:
+ * its offer, the passphrase, its confirm, the save and "Backup verified") and the checklist Finish
+ * ends; Home's Check a backup (commit 20): the passphrase's entry, its result and the re-check QR (its
+ * words are the words' screens); then the "Working..." screen every other long call shows, and the
+ * stop screen a halt ends on. The other exports come with commit 21. In :screens' common code, beside
+ * the screens themselves.
  */
 enum class Screen {
     FirstLaunch,
@@ -42,7 +44,15 @@ enum class Screen {
     ReadbackMismatch,
     ReadbackDone,
     Wallet,
+    BackupOffer,
+    BackupPassphrase,
+    BackupConfirm,
+    BackupSave,
+    BackupVerified,
     Checklist,
+    BackupCheckEntry,
+    BackupCheckResult,
+    BackupRecheck,
     Working,
     Stop,
 }
@@ -74,7 +84,15 @@ fun screenId(screen: Screen): String = when (screen) {
     Screen.ReadbackMismatch -> "readback_mismatch"
     Screen.ReadbackDone -> "readback_done"
     Screen.Wallet -> "wallet"
+    Screen.BackupOffer -> "backup_offer"
+    Screen.BackupPassphrase -> "backup_passphrase"
+    Screen.BackupConfirm -> "backup_confirm"
+    Screen.BackupSave -> "backup_save"
+    Screen.BackupVerified -> "backup_verified"
     Screen.Checklist -> "checklist"
+    Screen.BackupCheckEntry -> "backup_check_entry"
+    Screen.BackupCheckResult -> "backup_check_result"
+    Screen.BackupRecheck -> "backup_recheck"
     Screen.Working -> "working"
     Screen.Stop -> "stop"
 }
@@ -84,18 +102,22 @@ fun screenId(screen: Screen): String = when (screen) {
  * by Q57): it shows a secret, so it is entered through the privacy gate from a Public one, covered
  * after 30 s without input, and leaving the app on it discards the session at once. They are the
  * collision-report QR (it carries the destroyed seed's seal code), the words in insert view and
- * overview, and the read-back entry and mismatch screens (commit 19); every other screen so far is
- * Public, the dice screen, C and the seal card's check QR (T and a nonce) included, and the device
- * swap, the read-back's end, the wallet summary and the checklist (the Pi's list), and the scan
- * screen, which draws nothing the camera sees; the passphrases, D and the other QR codes that carry
- * a secret come with commits 20 and 21.
+ * overview, the read-back entry and mismatch screens (commit 19), and the backup passphrase, its
+ * confirm and Check a backup's passphrase entry (commit 20); every other screen so far is Public, the
+ * dice screen, C and the seal card's check QR (T and a nonce) included, and the device swap, the
+ * read-back's end, the wallet summary, the backup's offer, save and "Backup verified", the checklist,
+ * Check a backup's result and its re-check QR (T alone; the Pi's list), and the scan screen, which
+ * draws nothing the camera sees; the BIP39 passphrase, D and the other QR codes that carry a secret
+ * come with commit 21.
  */
 fun isProtected(screen: Screen): Boolean = when (screen) {
-    Screen.CollisionReport, Screen.Words, Screen.WordsOverview, Screen.ReadbackEntry, Screen.ReadbackMismatch -> true
+    Screen.CollisionReport, Screen.Words, Screen.WordsOverview, Screen.ReadbackEntry, Screen.ReadbackMismatch,
+    Screen.BackupPassphrase, Screen.BackupConfirm, Screen.BackupCheckEntry -> true
     Screen.FirstLaunch, Screen.SelfTest, Screen.GoOffline, Screen.Home, Screen.Length, Screen.DeviceEntropy,
     Screen.Commitment, Screen.Dice, Screen.CheckPrompt, Screen.SkipConfirm, Screen.SealCard, Screen.Scan,
     Screen.CodeEntry, Screen.MatchFoundConfirm, Screen.CannotCheckConfirm, Screen.Collision, Screen.CheckResult,
-    Screen.DeviceSwap, Screen.ReadbackDone, Screen.Wallet, Screen.Checklist, Screen.Working, Screen.Stop -> false
+    Screen.DeviceSwap, Screen.ReadbackDone, Screen.Wallet, Screen.BackupOffer, Screen.BackupSave, Screen.BackupVerified,
+    Screen.Checklist, Screen.BackupCheckResult, Screen.BackupRecheck, Screen.Working, Screen.Stop -> false
 }
 
 /**

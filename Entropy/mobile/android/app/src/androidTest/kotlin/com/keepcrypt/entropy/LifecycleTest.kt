@@ -14,9 +14,7 @@ import com.keepcrypt.entropy.Capture.probe
 import com.keepcrypt.entropy.Capture.shellText
 import com.keepcrypt.entropy.ffi.Core
 import com.keepcrypt.entropy.ffi.Mode
-import com.keepcrypt.entropy.ffi.Readback
 import com.keepcrypt.entropy.ffi.Reply
-import com.keepcrypt.entropy.ffi.Secret
 import com.keepcrypt.entropy.ffi.Words
 import com.keepcrypt.entropy.screens.Notice
 import com.keepcrypt.entropy.screens.Overlay
@@ -60,45 +58,50 @@ class LifecycleTest {
      * So the leave is the activity sending its own task to the back (moveTaskToBack) in the same
      * main-thread step that starts the call, which is by then on its way to the worker (the
      * model's scope is Dispatchers.Main.immediate): the launcher comes to the front, and
-     * SecureActivity's onStop reports the leave, as after Home. The judge is unchanged (M5-47):
+     * SecureActivity's onStop reports the leave, as after Home. The call is the real backup
+     * screen's (group 18): dice-50-words12 through the model's entry points, as its screens call
+     * them, to the backup's confirm, whose second answer's Done (confirmTyped) has core check both
+     * answers and then starts the encryption behind "Working...". The judge is unchanged (M5-47):
      * the leave counts only if it fell during the scrypt, its reply discarded, with the session
-     * gone. An attempt whose reply came back first never reached the discard during the scrypt and
-     * proves nothing: it is printed as a probe line, the activity is finished (onCleared wipes the
-     * slot), and the case runs again on a fresh activity and session, up to SCRYPT_ATTEMPTS times.
-     * An attempt that left during the scrypt is judged in full; none in SCRYPT_ATTEMPTS fails the
-     * test.
+     * gone. An attempt whose reply came back first (the save screen) never reached the discard
+     * during the scrypt and proves nothing: it is printed as a probe line, the activity is finished
+     * (onCleared wipes the slot), and the case runs again on a fresh activity and session, up to
+     * SCRYPT_ATTEMPTS times. An attempt that left during the scrypt is judged in full; none in
+     * SCRYPT_ATTEMPTS fails the test.
      */
     @Test
     fun leavingDuringABackupsScryptDiscardsTheSession() {
-        for (attempt in 1..SCRYPT_ATTEMPTS) {
-            val activity = launch()
-            selfTested(activity)
-            readyToEncrypt()
-            val encrypted = AtomicBoolean(false)
-            val begun = SystemClock.elapsedRealtime()
-            val moved = onMain {
-                activity.model.work({ Core.encryptBackup() }) { encrypted.set(true) }
-                activity.moveTaskToBack(true)
-            }
-            assertTrue("moveTaskToBack did not send the app's task to the back", moved)
-            await("the activity stopped", 30) { stage(activity) == Stage.STOPPED }
-            val left = SystemClock.elapsedRealtime() - begun
-            await("the long call's reply", 60) { onMain { activity.model.state.value.screen } != Screen.Working }
-            val back = SystemClock.elapsedRealtime() - begun
-            probe("backup scrypt, attempt $attempt: the app was left after $left ms; the reply came back after $back ms")
-            if (encrypted.get()) {
-                probe("backup scrypt, attempt $attempt: the scrypt ended before the app was left, so no discard came during it; again")
+        Capture.whileOffline {
+            for (attempt in 1..SCRYPT_ATTEMPTS) {
+                val activity = launch()
+                selfTested(activity)
+                await("the app reads airplane mode on and Wi-Fi off", 30) { onMain { activity.model.state.value.offline } }
+                toTheLastAnswer(activity)
+                val begun = SystemClock.elapsedRealtime()
+                val moved = onMain {
+                    activity.model.confirmTyped()
+                    activity.moveTaskToBack(true)
+                }
+                assertTrue("moveTaskToBack did not send the app's task to the back", moved)
+                await("the activity stopped", 30) { stage(activity) == Stage.STOPPED }
+                val left = SystemClock.elapsedRealtime() - begun
+                await("the long call's reply", 60) { onMain { activity.model.state.value.screen } != Screen.Working }
+                val back = SystemClock.elapsedRealtime() - begun
+                probe("backup scrypt, attempt $attempt: the app was left after $left ms; the reply came back after $back ms")
+                if (onMain { activity.model.state.value.screen } == Screen.BackupSave) {
+                    probe("backup scrypt, attempt $attempt: the scrypt ended before the app was left, so no discard came during it; again")
+                    finish(activity)
+                    continue
+                }
+                assertEquals(Screen.GoOffline, onMain { activity.model.state.value.screen })
+                assertEquals(Notice.Left, onMain { activity.model.state.value.notice })
+                assertTrue("the slot is not at home: the session was not discarded", Core.selfTest() is Reply.Done)
+                pass("left during a backup's scrypt (attempt $attempt): discarded at once, the reply discarded, the session gone, no ANR")
                 finish(activity)
-                continue
+                return@whileOffline
             }
-            assertEquals(Screen.GoOffline, onMain { activity.model.state.value.screen })
-            assertEquals(Notice.Left, onMain { activity.model.state.value.notice })
-            assertTrue("the slot is not at home: the session was not discarded", Core.selfTest() is Reply.Done)
-            pass("left during a backup's scrypt (attempt $attempt): discarded at once, the reply discarded, the session gone, no ANR")
-            finish(activity)
-            return
+            fail("the scrypt ended before the app was left in all $SCRYPT_ATTEMPTS attempts, so no discard came during it")
         }
-        fail("the scrypt ended before the app was left in all $SCRYPT_ATTEMPTS attempts, so no discard came during it")
     }
 
     /**
@@ -332,52 +335,70 @@ class LifecycleTest {
     }
 
     /**
-     * dice-50-words12 through Core to the backup's encryption: the dice-only ceremony, Skip, the
-     * read-back of every insert (its first four letters, read from its page), and the backup
-     * passphrase generated and confirmed (each question's choice found among the passphrase's pages).
+     * dice-50-words12 through the model's entry points, as its screens call them, to the backup's confirm
+     * with its second answer typed and its Done not yet pressed: from Go offline the dice-only ceremony,
+     * Skip, the words to the last insert past their privacy gate, the read-back of every insert (its first
+     * four letters, read in-process from the page the state holds), the summary, the offer's "Make an
+     * encrypted backup", the passphrase past its gate (its two pages read in-process from the state's
+     * Secrets), "I wrote it down", the first answer and its Done, and the second answer's letters on the
+     * model's letter pad. The passphrase's copies are zeroed once typed.
      */
-    private fun readyToEncrypt() {
-        done(Core.start(Words.Twelve, Mode.DiceOnly))
-        done(Core.commit())
-        done(Core.startDice())
-        for (roll in DICE_50_ROLLS) done(Core.pushRoll(roll - '0'))
-        done(Core.finish())
-        done(Core.skipCheck())
-        for (position in 1..12) {
-            val page = done(Core.wordPage(position))
-            val word = page.word()
-            page.wipe()
-            val letters = Secret(ByteArray(minOf(4, word.size)) { word[it] })
-            word.wipe()
-            val readback = done(Core.checkReadback(position, letters))
-            letters.wipe()
-            assertTrue("an insert did not read back", readback is Readback.Match)
+    private fun toTheLastAnswer(activity: MainActivity) {
+        toDice(activity)
+        val ready = onMain {
+            val model = activity.model
+            for (roll in DICE_50_ROLLS) {
+                model.dicePick.replace(roll)
+                model.confirmRoll()
+            }
+            model.diceDone()
+            model.state.value.screen == Screen.Working
         }
-        done(Core.generateBackupPassphrase())
-        val words = ArrayList<ByteArray>()
-        for (page in 0..1) {
-            val text = done(Core.backupPassphrasePage(page))
-            var start = 0
-            for (at in 0..text.size) {
-                if (at == text.size || text[at] == SPACE) {
-                    words.add(ByteArray(at - start) { text[start + it] })
-                    start = at + 1
+        assertTrue("the dice's Done did not start the seed", ready)
+        await("the check prompt", START_SECONDS) { onMain { activity.model.state.value.screen } == Screen.CheckPrompt }
+        val confirm = onMain {
+            val model = activity.model
+            model.skip()
+            model.skipConfirmed()
+            model.showWords()
+            model.passGate()
+            repeat(11) { model.nextPage() }
+            model.startReadback()
+            repeat(12) {
+                val word = checkNotNull(model.state.value.insert).word()
+                for (index in 0 until minOf(4, word.size)) model.readbackLetters.type(Char(word[index].toInt()))
+                word.wipe()
+                model.readbackTyped()
+                model.readbackNext()
+            }
+            model.showSummary()
+            model.summaryDone()
+            model.makeBackup()
+            model.passGate()
+            val words = ArrayList<ByteArray>()
+            for (page in 0..1) {
+                if (page == 1) model.nextPage()
+                val text = checkNotNull(model.state.value.passphrase)
+                var start = 0
+                for (at in 0..text.size) {
+                    if (at == text.size || text[at] == SPACE) {
+                        words.add(ByteArray(at - start) { text[start + it] })
+                        start = at + 1
+                    }
                 }
             }
-            text.wipe()
+            model.passphraseWritten()
+            for (question in 0..1) {
+                val state = model.state.value
+                val word = words[checkNotNull(state.challenge).questions[state.page].position - 1]
+                for (index in 0 until minOf(4, word.size)) model.backupLetters.type(Char(word[index].toInt()))
+                if (question == 0) model.confirmTyped()
+            }
+            for (word in words) word.fill(0)
+            model.state.value.let { it.screen == Screen.BackupConfirm && it.page == 1 && words.size == 8 }
         }
-        assertEquals("eight passphrase words", 8, words.size)
-        val challenge = done(Core.backupChallenge())
-        val picks = challenge.questions.map { question ->
-            question.choices.indexOfFirst { choice -> same(choice, words[question.position - 1]) }
-        }
-        challenge.wipe()
-        for (word in words) word.fill(0)
-        assertTrue("the backup passphrase's confirm failed", done(Core.confirmBackup(picks[0], picks[1])))
+        assertTrue("the ceremony did not reach the backup's second question with eight passphrase words", confirm)
     }
-
-    private fun same(choice: Secret, word: ByteArray): Boolean =
-        choice.size == word.size && word.indices.all { choice[it] == word[it] }
 
     /** reply's value; any other reply fails the test. */
     private fun <T> done(reply: Reply<T>): T = when (reply) {

@@ -382,7 +382,8 @@ class FlowTest {
      * mirror partner: the mismatch names that face a mirror misread; Show the insert, whose one way on is
      * back to the read-back; the insert typed on the pad correctly: a match, the whole word shown; the rest
      * read back; the read-back's end, the wallet summary (core's fingerprint and first address), the
-     * checklist and Finish: Home, with the slot empty.
+     * encrypted backup's offer and its Skip (BackupTest saves one), the checklist and Finish: Home, with
+     * the slot empty.
      */
     @Test
     fun aDiceOnlySeedsWordsReadBackOnTheLetterPadToTheSummaryAndFinishHome() {
@@ -455,6 +456,8 @@ class FlowTest {
             awaitText("fingerprint", fingerprintHex(summary.fingerprint))
             awaitText("first_address", summary.firstAddress)
             tap("summary_next")
+            on(activity, Screen.BackupOffer)
+            tap("skip_backup")
             on(activity, Screen.Checklist)
             assertTrue("the checklist does not show its first item", shown(Screen.Checklist, CHECKLIST[0]) != null)
             assertFalse("a 12-word seed's checklist names two devices", device.hasObject(By.res("two_devices")))
@@ -524,6 +527,8 @@ class FlowTest {
             tap("show_summary")
             on(activity, Screen.Wallet)
             tap("summary_next")
+            on(activity, Screen.BackupOffer)
+            tap("skip_backup")
             on(activity, Screen.Checklist)
             assertTrue("the checklist does not say which device holds words 1-12", shown(Screen.Checklist, TWO_DEVICES) != null)
             tap("finish")

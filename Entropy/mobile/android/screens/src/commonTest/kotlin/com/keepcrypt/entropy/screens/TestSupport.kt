@@ -206,7 +206,139 @@ internal class Rig(scope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined
         model.passGate()
         return this
     }
+
+    /**
+     * From Home: the 12-word dice-only seed named seed to Skip's result (toSkippedResult), its words paged to
+     * the last insert, every insert read back (its first four letters, a three-letter word's three), the
+     * read-back's end and the wallet summary (BackupScreensTest, CheckBackupScreensTest).
+     */
+    fun toSummary(seed: String): Rig {
+        val words = kcrWords(seed)
+        check(words.size == INSERTS_PER_DEVICE)
+        toSkippedResult(seed).toWords()
+        repeat(words.size - 1) { model.nextPage() }
+        model.startReadback()
+        for (word in words) {
+            for (letter in word.take(4)) model.readbackLetters.type(letter)
+            model.readbackTyped()
+            model.readbackNext()
+        }
+        model.showSummary()
+        return this
+    }
+
+    /** The backup passphrase's words on the page on show, read in-process from its Secret (compared, never printed). */
+    fun passphraseWords(): List<String> {
+        val state = model.state.value
+        val text = checkNotNull(state.passphrase) { "no passphrase page on show" }
+        return passphraseLines(state.page, text).map { it.substringAfter(' ') }
+    }
+
+    /**
+     * From the wallet summary: the offer's "Make an encrypted backup", the privacy gate, the passphrase's
+     * two pages read in-process, then "I wrote it down"; the eight words, in order.
+     */
+    fun toConfirm(): List<String> {
+        model.summaryDone()
+        model.makeBackup()
+        model.passGate()
+        val words = passphraseWords().toMutableList()
+        model.nextPage()
+        words.addAll(passphraseWords())
+        model.passphraseWritten()
+        return words
+    }
+
+    /** On the confirm, the answer to the question on show typed on the letter pad: word's first four letters (a three-letter word's three), then Done. */
+    fun answer(word: String) {
+        for (letter in word.take(4)) model.backupLetters.type(letter)
+        model.confirmTyped()
+    }
+
+    /** On the confirm, both questions answered from passphrase (its words in order), and the encryption's long call run: the save screen. */
+    fun confirm(passphrase: List<String>) {
+        repeat(2) {
+            val state = model.state.value
+            val question = checkNotNull(state.challenge).questions[state.page]
+            answer(passphrase[question.position - 1])
+        }
+        worker.run()
+    }
 }
+
+/** The document pickers' fake: what the model asked of them, nothing opened. */
+internal class FakePickers : DocumentPickers {
+    val created = ArrayList<String>()
+    var opens = 0
+
+    override fun create(name: String) {
+        created.add(name)
+    }
+
+    override fun open() {
+        opens += 1
+    }
+}
+
+/**
+ * A place the create-document picker gave, in memory: its write fails when told to, and its read-back
+ * gives what was written (or what readBack makes of it, or null for a read that fails). It keeps the
+ * array the model handed to write, and the one it handed back, so the tests see both zeroed.
+ */
+internal class FakePlace(
+    private val writes: Boolean = true,
+    private val reads: (ByteArray) -> ByteArray? = { it },
+) : DocumentPlace {
+    var writeCalls = 0
+    var readCalls = 0
+    var readLimit = -1
+
+    /** The model's own array, as handed to write. */
+    var handed: ByteArray? = null
+
+    /** What was written, copied as it came. */
+    var saved: ByteArray? = null
+
+    /** The array readBack gave the model. */
+    var given: ByteArray? = null
+
+    override fun write(bytes: ByteArray): Boolean {
+        writeCalls += 1
+        handed = bytes
+        if (!writes) return false
+        saved = bytes.copyOf()
+        return true
+    }
+
+    override fun readBack(limit: Int): ByteArray? {
+        readCalls += 1
+        readLimit = limit
+        val file = saved ?: return null
+        val back = reads(file.copyOf())
+        given = back
+        return back
+    }
+}
+
+/** A file the open-document picker gave, in memory: its name, its size and bytes (null for a read that fails); it counts its reads. */
+internal class FakeFile(override val name: String?, override val size: Long?, private val bytes: ByteArray?) : PickedFile {
+    var reads = 0
+    var readLimit = -1
+
+    /** The array read gave the model. */
+    var given: ByteArray? = null
+
+    override fun read(limit: Int): ByteArray? {
+        reads += 1
+        readLimit = limit
+        val copy = bytes?.copyOf()
+        given = copy
+        return copy
+    }
+}
+
+/** Whether every byte of bytes is zero. */
+internal fun zeroed(bytes: ByteArray?): Boolean = bytes != null && bytes.all { it == 0.toByte() }
 
 /** Whether insert's word is word: compared byte by byte, its copy wiped, nothing printed (the words are public vectors, never logged). */
 internal fun sameWord(insert: WordPage, word: String): Boolean {

@@ -26,16 +26,18 @@ import com.keepcrypt.entropy.ffi.Mode
  * when over the model's state, so no back stack reaches a saved-state Bundle. Every tap first reaches
  * the model (input, the idle timer; touched, which Device entropy mixes in); the cover and the warning
  * lie over the screen and take the tap that removes them, so it reaches nothing under them.
- * airplaneSettings is Go offline's button and scanner the scan screen's go-ahead QR scanner (the
- * platform's seams); onShown reports each screen once it is composed (the capture harness's
- * drawn-screen proof); onClose is the stop screen's "Close app", which ends the process (the
- * platform's). The system Back is the platform's too, and goes to the model's back.
+ * airplaneSettings is Go offline's button, scanner the scan screen's go-ahead QR scanner and documents
+ * the backup's and Check a backup's document pickers (the platform's seams, which the save screen's
+ * Save and Home's Check a backup hand to the model); onShown reports each screen once it is composed
+ * (the capture harness's drawn-screen proof); onClose is the stop screen's "Close app", which ends the
+ * process (the platform's). The system Back is the platform's too, and goes to the model's back.
  */
 @Composable
 fun Screens(
     model: CeremonyModel,
     airplaneSettings: AirplaneSettings,
     scanner: QrScanner,
+    documents: DocumentPickers,
     onClose: () -> Unit,
     onShown: (Screen) -> Unit,
 ) {
@@ -69,9 +71,11 @@ fun Screens(
                 Screen.FirstLaunch -> FirstLaunch(registry, onContinue = model::firstLaunchDone)
                 Screen.GoOffline -> GoOffline(state, registry, onSettings = airplaneSettings::open, onStart = model::startOffline)
                 Screen.Home -> Home(
+                    state,
                     registry,
                     onNewSeed = { model.chooseMode(Mode.Mixed) },
                     onDiceOnly = { model.chooseMode(Mode.DiceOnly) },
+                    onCheckBackup = { model.checkBackup(documents) },
                 )
                 Screen.Length -> Length(registry, onWords = model::chooseLength)
                 Screen.DeviceEntropy -> DeviceEntropy(registry, onContinue = model::deviceEntropyDone)
@@ -123,6 +127,7 @@ fun Screens(
                     onOverview = model::toOverview,
                     onReadback = model::startReadback,
                     onBackToReadback = model::backToReadback,
+                    onBackupDone = model::backupWordsDone,
                 )
                 Screen.WordsOverview -> WordsOverview(
                     state,
@@ -150,7 +155,35 @@ fun Screens(
                 )
                 Screen.ReadbackDone -> ReadbackDone(registry, onNext = model::showSummary)
                 Screen.Wallet -> WalletSummary(state, registry, onNext = model::summaryDone)
+                Screen.BackupOffer -> BackupOffer(registry, onMake = model::makeBackup, onSkip = model::skipBackup)
+                Screen.BackupPassphrase -> BackupPassphrase(
+                    state,
+                    registry,
+                    passGate = model::passGate,
+                    onPrevious = model::previousPage,
+                    onNext = model::nextPage,
+                    onConfirm = model::passphraseWritten,
+                )
+                Screen.BackupConfirm -> BackupConfirm(state, model.backupLetters, registry, passGate = model::passGate, onDone = model::confirmTyped)
+                Screen.BackupSave -> BackupSave(state, registry, onSave = { model.saveBackup(documents) }, onSkip = model::skipBackup)
+                Screen.BackupVerified -> BackupVerified(registry, onNext = model::backupVerifiedDone)
                 Screen.Checklist -> Checklist(state, registry, onFinish = model::finishCeremony)
+                Screen.BackupCheckEntry -> BackupCheckEntry(
+                    state,
+                    model.backupLetters,
+                    registry,
+                    passGate = model::passGate,
+                    onDone = model::entryTyped,
+                    onBack = model::back,
+                )
+                Screen.BackupCheckResult -> BackupCheckResult(
+                    state,
+                    registry,
+                    onShowWords = model::showBackupWords,
+                    onRecheck = model::showRecheck,
+                    onDone = model::closeBackup,
+                )
+                Screen.BackupRecheck -> BackupRecheck(state, registry, onBack = model::back)
                 Screen.Working -> Working(registry)
                 Screen.Stop -> Stop(registry, onClose = onClose)
             }

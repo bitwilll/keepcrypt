@@ -12466,6 +12466,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   model's screen in one main-thread step and requires the Self-test screen there (the self-test's reply comes back
   through the model's scope only after that step), so a press that did not take fails at once instead of leaving
   First launch to read as "during"; First launch after the reply is then a discard's only.
+  Proof (M5 commit 20a, partial: local, kc37, Q76; CI's legs at the next push): LifecycleTest's scrypt case now leaves
+  the app during the real backup screen's encryption: dice-50-words12 through the model's entry points to the confirm's
+  second answer, whose Done (confirmTyped) has core check both answers and starts encryptBackup behind "Working...",
+  the task sent to the back in the same main-thread step. On kc37 the leave came 107 ms after the press and the reply,
+  discarded, 512 ms after it, on the first attempt: Go offline with Notice.Left, the slot at home, no ANR.
 - [x] The crash path: an `Application` subclass sets its handler (replacing the platform's) to `Native.wipeAll()` then
   `Process.killProcess`; the stop screen's "Close app" calls `finishAndRemoveTask()` and ends the process.
   Proof: a JVM test of the handler's order with a fake; on the emulator an androidTest-only trigger throws on the main
@@ -12617,6 +12622,9 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   below the minimum, makes the seed (finish behind "Working...") and opens the check prompt (group 16's commit-17
   line); the counts and their limit lines now come above the dice's notes, so FlowTest's minimum and cap lines stay in
   view under the taller actions.
+  Proof (M5 commit 20a, M5-48, partial: local, kc37, Q76): Home now offers Check a backup (group 18's screens) under New
+  seed and Dice-only seed, and says on Home why a file it was given was not opened; Load registry snapshot and About
+  come with commit 21.
 
 **16. Screens: the collision check** (MA:175-176; swb:112-152)
 - [x] The prompt ("Check now (recommended)" / "Skip", Skip confirmed on its own screen). With a loaded snapshot the check
@@ -13023,6 +13031,53 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   (once): the registration QR. Reveal D (Mixed only): warning, then 16x4 hex. Load registry snapshot: `.kcr` by name
   and size, verified on the FFI thread, shown with number, date, count and any warning. About: version, flavour, source
   address as plain text. Stop: red, fixed text, "Close app".
+  Proof (M5 commit 20a, the backup and Check a backup, partial: local, kc37, Q76; CI's API 31 and 36 legs prove them at
+  the next push; the system's pickers through DocumentsUI and the hand-off are 20b's; watch-only, register, reveal D,
+  snapshots, About and stop are commit 21's): :screens' BackupScreens.kt draws the screens on the UI kit in the Pi's
+  wording (pi/app's screens/ready.rs and screens/usb.rs) and CeremonyModel moves between them. The summary's Next offers
+  the backup before the checklist, as the Pi's step 11 does ("Encrypted backup"; the paper words stay the primary
+  backup, MA:151), and its Skip goes to the checklist. "Make an encrypted backup" generates core's 8-word passphrase
+  once and shows it behind the privacy gate (Protected), two pages of four ("1 ostrich", the Pi's), each page core's
+  Secret, wiped when it goes; the second page's "I wrote it down" asks core's two questions of four choices
+  (Protected), each answered with the word's first four letters on the letter pad (a three-letter word's three), so no
+  choice is a button that names its word: the letters, handed over and wiped, are matched in-process to the choice
+  they begin, and the two picks go to core (confirmBackup); an answer that is no choice, or a wrong one, shows the
+  passphrase again from its first page with the Pi's "Not that word" line, the questions the same. Both right: core
+  encrypts in memory (encryptBackup behind "Working...") and the save screen (Public) shows core's suggested name,
+  MA:156's cloud-folder line and Save, which opens the system's create-document picker under the picker rule
+  (ActivityResultContracts.CreateDocument, core's name as its title; files/Documents.kt, the gate's one file for the
+  document streams, the document contracts and the IOException catch, its two launchers registered from
+  MainActivity's onCreate, as the CAMERA prompt is): the place it gives takes one openOutputStream(uri, "rwt") write of
+  core's bytes, is read back with openInputStream (at most one byte past core's 8 KiB, Core.BACKUP_MAX_BYTES, pinned
+  against core/src/backup/age.rs) and is verified by core (verifyBackup behind "Working...") before "Backup verified";
+  a write, a read-back or a verify that fails names its step ("Backup not saved: writing the file failed.", "...:
+  reading the file back failed.", "...: the file read back does not verify (core's text)."), with Save again and Skip,
+  the session kept. The file's bytes are ciphertext, kept out of the UI state and zeroed once the save screen and its
+  calls are over (rule 8: no plaintext reaches a file). Home gains Check a backup (M5-48): the open-document picker
+  (OpenDocument, any type); a file is refused before any byte is read unless its name ends in .age (any letter case, as
+  the Pi lists them; Core.BACKUP_SUFFIX, pinned against core/src/backup.rs) and its provider sizes it within core's
+  limit, and after the read when the read fails or runs past the limit (its bytes zeroed), Home saying why; then the
+  passphrase's entry (Protected, through the gate): the 8 words' first fours on the letter pad, each taken as a Secret,
+  and core opens the file with them (openBackup behind "Working..."); a wrong passphrase, an entry that names no word
+  or a file that does not read returns to word 1, emptied, with core's text (verbatim, from core/src/error.rs's
+  #[error] attributes, which BackupScreensTest pins) and the file kept, as the Pi's; Back goes Home, the file zeroed.
+  Its result (Public): "Backup OK", the fingerprint and the Seal ID; "Show the words" through the privacy gate on the
+  words' own screens (insert view and overview), whose last insert's Done returns to the result (no read-back, the
+  Pi's); "Re-check QR" (T alone, Public) and Back; Done ends it in core (end) and returns Home. The checked backup is
+  held under the timers and the offline rule as a session is (leaving its entry discards at once; 60 s away from its
+  result, or going online, wipes it). CeremonyModel's KDoc names verifyBackup beside encryptBackup in M5-54's residual.
+  JVM tests (local): BackupScreensTest 12 and CheckBackupScreensTest 9, over the real slot and the host library (each
+  transition above, the picker rule, a late place or file doing nothing, the file and the bytes read back zeroed, no
+  word of the seed or the passphrase in the saved file, a discard during the encryption, wipeAll), BackupFileTest 2 in
+  :core-ffi, ReadbackScreensTest 9 (the summary's Next now the offer, which the 60 s rule covers too); :core-ffi 29 in
+  10 classes, :screens 120 in 17, :app 7 in 3 for each flavour, :secure-ui 3 in 1, none failed; a mutant that lets a
+  file one byte past the limit through fails CheckBackupScreensTest. On kc37 (local, android-local.sh exit 0 in
+  1197 s, every class passed): CaptureTest's walk, in both APKs, drew each new screen and found it black in every
+  capture with SECURE on every window: the offer, the passphrase (its 4 secret lines, each drawn only by secret nodes,
+  data sensitive on API 37), the confirm (5: its choices and the letters typed), the save screen and the same with a
+  failed write, "Backup verified", Check a backup's entry (1), its result and its re-check QR, and a checked backup's
+  words (7), the saved file handed to the model in memory as a picker would; the log after the walk held none of its
+  13 secret lines. FlowTest 5 (the offer and its Skip on the way to the checklist) and LifecycleTest 6 passed.
 - [ ] The CI `age -d` hand-off: for the CI throwaway seed only, the androidTest reads the backup passphrase from the
   in-process `Secret` and sends it as the instrumentation status value `kc_ci_throwaway_passphrase`. The workflow pipes
   `am instrument -r`'s output straight into `scripts/android-age-check.py`, which takes the value, feeds it to age 1.1.1

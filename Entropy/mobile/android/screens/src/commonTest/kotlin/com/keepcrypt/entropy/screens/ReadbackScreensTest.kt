@@ -28,7 +28,8 @@ import kotlin.test.fail
  * insert shown again (its one way on back to its read-back) and read again; a wrong letter's missing
  * and extra dots (its line written out for one pair), a missed fourth letter and a letter on a blank
  * fourth face named face by face; Back doing nothing on the read-back, its end, the summary and the
- * checklist; the wallet summary core's; the checklist for 12 and 24 words, and Finish ending the session
+ * checklist; the wallet summary core's, its Next the encrypted backup's offer (commit 20), whose Skip
+ * leads to the checklist; the checklist for 12 and 24 words, and Finish ending the session
  * in core and returning Home with the slot empty; leaving the app on the entry or the mismatch
  * discarding at once with the letters, the page and the verdicts wiped, the Public screens after it
  * covered and wiped after 60 s away; and wipeAll. The seeds are vectors/kcr.json's dice-50-words12 and,
@@ -293,6 +294,8 @@ class ReadbackScreensTest {
         rig.model.back()
         assertSame(wallet, rig.model.state.value, "Back does nothing on the summary")
         rig.model.summaryDone()
+        assertEquals(Screen.BackupOffer, rig.screen, "the summary's Next offers the encrypted backup (commit 20)")
+        rig.model.skipBackup()
         val checklist = rig.model.state.value
         assertEquals(Screen.Checklist, checklist.screen)
         assertFalse(isProtected(Screen.Checklist))
@@ -334,6 +337,8 @@ class ReadbackScreensTest {
         assertEquals(Screen.ReadbackDone, rig.screen)
         rig.model.showSummary()
         rig.model.summaryDone()
+        rig.model.skipBackup()
+        assertEquals(Screen.Checklist, rig.screen)
         assertTrue(rig.model.state.value.twoDevices, "the checklist names device 1 of 2's words")
         rig.model.finishCeremony()
         assertEquals(Screen.Home, rig.screen)
@@ -376,7 +381,7 @@ class ReadbackScreensTest {
         val rig = atLastInsert()
         rig.model.startReadback()
         for (index in words.indices) readBack(rig, index)
-        for (screen in listOf(Screen.ReadbackDone, Screen.Wallet, Screen.Checklist)) {
+        for (screen in listOf(Screen.ReadbackDone, Screen.Wallet, Screen.BackupOffer, Screen.Checklist)) {
             assertEquals(screen, rig.screen)
             rig.model.appLeft()
             assertEquals(screen, rig.screen, screenId(screen) + ": leaving a Public screen keeps the session")
@@ -388,6 +393,7 @@ class ReadbackScreensTest {
             when (screen) {
                 Screen.ReadbackDone -> rig.model.showSummary()
                 Screen.Wallet -> rig.model.summaryDone()
+                Screen.BackupOffer -> rig.model.skipBackup()
                 else -> {}
             }
         }

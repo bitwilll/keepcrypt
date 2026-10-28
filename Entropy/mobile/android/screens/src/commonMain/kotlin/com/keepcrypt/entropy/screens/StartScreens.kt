@@ -20,9 +20,9 @@ import com.keepcrypt.entropy.ffi.Words
 // wherever mobile-apps.md says nothing else): Self-test, Go offline, Home, Length, Device entropy,
 // Commitment and Dice; First launch is FirstLaunch.kt. Each is Public, drawn with the UI kit, and
 // hands its presses to the ceremony model, which ignores a press its screen no longer shows. Home's
-// Check a backup (commit 20), Load registry snapshot and About (commit 21) come with their screens, so
-// no control here leads nowhere; the dice screen's Done leads to the collision check (CheckScreens.kt,
-// commit 17).
+// Check a backup came with its screens (commit 20, BackupScreens.kt); Load registry snapshot and About
+// (commit 21) come with theirs, so no control here leads nowhere; the dice screen's Done leads to the
+// collision check (CheckScreens.kt, commit 17).
 
 /** The one sentence that explains the default mode (docs/mobile-apps.md, "Entropy sources on phones"). */
 const val SAFE_IF_EITHER = "Your seed is safe if either your phone or your dice are honest."
@@ -100,18 +100,26 @@ fun GoOffline(state: UiState, testRegistry: Boolean, onSettings: () -> Unit, onS
     }
 }
 
-/** Home (docs/mobile-apps.md, step 4): New seed and Dice-only seed. */
+/**
+ * Home (docs/mobile-apps.md, step 4): New seed, Dice-only seed and Check a backup (lead decision M5-48),
+ * and why the file Check a backup was given was not opened, when it was not.
+ */
 @Composable
-fun Home(testRegistry: Boolean, onNewSeed: () -> Unit, onDiceOnly: () -> Unit) {
+fun Home(state: UiState, testRegistry: Boolean, onNewSeed: () -> Unit, onDiceOnly: () -> Unit, onCheckBackup: () -> Unit) {
     KitScreen(
         screenId(Screen.Home),
         testRegistry,
         actions = {
             KitButton("New seed", "new_seed", onClick = onNewSeed)
             KitButton("Dice-only seed", "dice_only_seed", onClick = onDiceOnly)
+            KitButton("Check a backup", "check_backup", onClick = onCheckBackup)
         },
     ) {
         KitText("KeepCrypt", KitType.title)
+        val refusal = state.fileRefusal
+        if (refusal != null) {
+            KitText(fileRefusalText(refusal), KitType.body.copy(color = KitColors.warning), tag = "file_refusal")
+        }
         Gap(16)
         KitText("New seed mixes your dice with this phone's own randomness. Dice-only seed uses your rolls alone, as a Coldcard does.", KitType.small)
     }

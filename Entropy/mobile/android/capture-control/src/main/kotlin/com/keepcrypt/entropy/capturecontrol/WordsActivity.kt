@@ -40,6 +40,7 @@ class WordsActivity : ComponentActivity() {
                     onOverview = {},
                     onReadback = {},
                     onBackToReadback = {},
+                    onBackupDone = {},
                 )
             }
         }

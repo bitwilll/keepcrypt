@@ -1,10 +1,13 @@
 package com.keepcrypt.entropy.screens
 
+import com.keepcrypt.entropy.ffi.BackupFile
+import com.keepcrypt.entropy.ffi.Challenge
 import com.keepcrypt.entropy.ffi.Core
 import com.keepcrypt.entropy.ffi.DiceProgress
 import com.keepcrypt.entropy.ffi.Extra
 import com.keepcrypt.entropy.ffi.KcHalt
 import com.keepcrypt.entropy.ffi.Mode
+import com.keepcrypt.entropy.ffi.OpenedBackup
 import com.keepcrypt.entropy.ffi.QrMatrix
 import com.keepcrypt.entropy.ffi.Readback
 import com.keepcrypt.entropy.ffi.Refusal
@@ -13,6 +16,7 @@ import com.keepcrypt.entropy.ffi.RegistryHeader
 import com.keepcrypt.entropy.ffi.Reply
 import com.keepcrypt.entropy.ffi.Revealed
 import com.keepcrypt.entropy.ffi.SealCard
+import com.keepcrypt.entropy.ffi.Secret
 import com.keepcrypt.entropy.ffi.Summary
 import com.keepcrypt.entropy.ffi.WordPage
 import com.keepcrypt.entropy.ffi.Words
@@ -62,7 +66,9 @@ enum class Notice {
  * but through a Secret reference: the QR codes are QrMatrix, the words WordPage and a read-back's
  * verdicts Readback.Mismatch, each holding its bytes in a Secret, and the model wipes each one when no
  * screen holds it any more (the collision report's carries the destroyed seed's seal code). The backup
- * and the other exports (commits 20 and 21) hold theirs the same way.
+ * (commit 20) holds its passphrase's page and its confirm's choices so, each a Secret; its file is
+ * ciphertext, which the model keeps out of the state, and Check a backup's opened backup holds public
+ * values only (its words stay in the slot). The other exports (commit 21) hold theirs the same way.
  */
 data class UiState(
     val screen: Screen,
@@ -139,6 +145,25 @@ data class UiState(
     val summary: Summary? = null,
     /** The seed has 24 words, on two devices (device 1 of 2 holds words 1-12), which the checklist says. */
     val twoDevices: Boolean = false,
+    /** The backup passphrase's page on show (core's four words, held in a Secret), wiped when its screen leaves. */
+    val passphrase: Secret? = null,
+    /** The confirm found a wrong word: the passphrase shows again from its first page, saying so; the questions stay. */
+    val wrongConfirm: Boolean = false,
+    /** The confirm's two questions of four choices (each choice a Secret), page the one on show; wiped when the confirm leaves. */
+    val challenge: Challenge? = null,
+    /** The encrypted backup's suggested name on the save screen (public: "keepcrypt-backup-" and 8 random hex digits). */
+    val backupName: String? = null,
+    /** Why the last save failed, naming its step: the save screen says so, and the session stays. */
+    val saveFailure: SaveFailure? = null,
+    /** Why Check a backup opened no file (its name, its size or its read): Home says so. */
+    val fileRefusal: FileRefusal? = null,
+    /** Core refused the passphrase typed, or the file, on Check a backup's entry, which says so with core's text. */
+    val entryRefusal: Refusal? = null,
+    /**
+     * Check a backup's opened backup (public: its fingerprint, seal card and re-check QR), on its result, its
+     * re-check QR and its words, whose last insert then leads back to the result instead of to a read-back.
+     */
+    val opened: OpenedBackup? = null,
 ) {
     /** Offline (Q57): airplane mode on and Wi-Fi off. */
     val offline: Boolean get() = airplaneMode && wifiOff
@@ -159,12 +184,12 @@ data class UiState(
  * - Leaving the app during a long call or on a Protected screen, and going online after the start-up
  *   (away from the app too: the offline monitor reports until the model's end), call core's discard
  *   at once, even during a long call; the call's discarded reply then returns the UI to its start
- *   screen (toStart). That start screen is certain for the long calls core offers at home, start and
- *   the self-test; finish, revealProof (the scanned go-ahead QR's check, commit 18) and encryptBackup
- *   (the backup's, commit 20), which it does not offer there, halt the slot instead when a discard
- *   reaches core between the worker's look at the discard flag and the call (fail closed: the stop
- *   screen; lead decision M5-54's residual, work). On a Public screen leaving puts the privacy cover
- *   up, and 60 s away wipes.
+ *   screen (toStart). That start screen is certain for the long calls core offers at home, start, the
+ *   self-test and Check a backup's openBackup; finish, revealProof (the scanned go-ahead QR's check,
+ *   commit 18), and the backup's encryptBackup and verifyBackup (commit 20), which it does not offer
+ *   there, halt the slot instead when a discard reaches core between the worker's look at the discard
+ *   flag and the call (fail closed: the stop screen; lead decision M5-54's residual, work). On a Public
+ *   screen leaving puts the privacy cover up, and 60 s away wipes.
  * - The timers (Timers) cover, warn and wipe on each tick.
  * - On every start First launch shows first, before any core call (lead decision M5-50); its Continue
  *   runs the start-up self-test (core's known-answer tests, a long call behind its own screen; any
@@ -196,8 +221,31 @@ data class UiState(
  *   each insert in turn, typed on the letter pad and compared by core, a match showing the whole word
  *   and a mismatch each face's verdict (a mirror-pair misread named as one), from where the insert can
  *   be shown again or read again; once every insert has matched, the read-back's end, the wallet
- *   summary and the checklist, whose Finish ends the session in core (end) and returns Home. Every
- *   page's word pages and verdicts are wiped when it goes, and the typed letters when the entry goes.
+ *   summary, the encrypted backup's offer and the checklist, whose Finish ends the session in core
+ *   (end) and returns Home. Every page's word pages and verdicts are wiped when it goes, and the typed
+ *   letters when the entry goes.
+ * - The encrypted backup (group 18; docs/mobile-apps.md, "Encrypted backup only" and step 13; the Pi's
+ *   step 11, after the summary and before Finish): its offer, then core's 8-word passphrase, generated
+ *   once, two pages of four (Protected, through the privacy gate), and its confirm, two questions of
+ *   four choices, each answered with the word's first four letters on the letter pad (a three-letter
+ *   word's three), matched to a choice in-process and the two picks handed to core; a wrong one shows
+ *   the passphrase again, the questions the same. Core then encrypts in memory (a long call: scrypt),
+ *   and the save screen offers the system's create-document picker with core's suggested name (the
+ *   platform's DocumentPickers, the picker rule first). The place it gives takes one write of core's
+ *   bytes, the file is read back and core verifies it (a long call) before "Backup verified"; a write,
+ *   a read-back or a verify that fails names its step on the save screen, which offers Save again and
+ *   Skip, and the session stays. The file's bytes are ciphertext, kept out of the state and zeroed when
+ *   the save screen and its calls are over.
+ * - Check a backup (Home's, lead decision M5-48; docs/mobile-apps.md, "Checking a backup"): the system's
+ *   open-document picker; the file it gives is refused unless its name ends in .age and its provider
+ *   sizes it within core's limit, both before any byte is read, and the read stops one byte past the
+ *   limit. Then the passphrase's entry (Protected, through the gate): the first four letters of each of
+ *   the 8 words on the letter pad, each entry taken as a Secret, and core opens the file with them (a
+ *   long call: scrypt); a refusal returns to the entry, emptied, with core's text. Its result is Public:
+ *   "Backup OK", the fingerprint and the Seal ID; the words, through the privacy gate on the words'
+ *   screens, whose last insert leads back; the re-check QR; and Done, which ends it in core (end). The
+ *   slot holds the checked backup under the timers and the offline rule as it holds a session: a
+ *   discard, a timer's wipe or going online takes it, and Home follows only through Done.
  */
 class CeremonyModel(
     private val scope: CoroutineScope,
@@ -234,6 +282,28 @@ class CeremonyModel(
      */
     val readbackLetters: PadEntry = letterPadEntry()
 
+    /**
+     * The backup's letters as the letter pad types them on its Protected screens (rule 5: a PadEntry):
+     * the confirm's answer, which confirmTyped matches to a choice in-process, and Check a backup's entry
+     * of each word, which entryTyped takes as a Secret; wiped when either screen leaves.
+     */
+    val backupLetters: PadEntry = letterPadEntry()
+
+    /** The encrypted backup core made in memory (ciphertext, never in the state), from its encryption until the save screen and its calls are over. */
+    private var backupFile: BackupFile? = null
+
+    /** The confirm's first answer, a choice's index (0-3), until the second is typed; -1 for none. */
+    private var firstPick = -1
+
+    /** The file Check a backup read (its bytes, at most core's limit), while its passphrase's entry and its call last. */
+    private var checkFile: ByteArray? = null
+
+    /** Check a backup's entries typed so far, each a word's first four letters (or three) in a Secret, wiped with the entry. */
+    private val entries = ArrayList<Secret>(PASSPHRASE_WORDS)
+
+    /** Check a backup's opened backup, while the slot holds it (from its opening until Done, a discard, a halt or wipeAll). */
+    private var checked: OpenedBackup? = null
+
     /** The start-up self-test (First launch's Continue) has passed. */
     private var started = false
 
@@ -242,9 +312,10 @@ class CeremonyModel(
 
     /**
      * The slot holds a session, or waits at its restart after a check that ended without the words
-     * (Match found, Cannot check or a collision, with the kept Wiped and, after a collision, its report):
-     * from a start until a discard, a wipe or a halt. The timers and going online treat both alike, and
-     * a discard takes the slot home either way, keeping the Wiped (the 99-roll minimum stays).
+     * (Match found, Cannot check or a collision, with the kept Wiped and, after a collision, its report),
+     * or holds Check a backup's checked backup: from a start (or the backup's opening) until a discard, a
+     * wipe or a halt. The timers and going online treat all three alike, and a discard takes the slot
+     * home either way, keeping the Wiped (the 99-roll minimum stays).
      */
     private var session = false
 
@@ -394,18 +465,20 @@ class CeremonyModel(
      * one-way choice's confirm screen: back to the screen before only where nothing is lost, as the Pi's
      * KEY1 and KEY2 (Length to Home, Home to Go offline, Go offline to First launch; Skip's confirm to
      * the check prompt; the scan screen, Match found's and Cannot check's confirms and the code entry to
-     * the seal card, with the same check and nonce and no core call, the typed code wiped; on the words
-     * and their overview the page before, as their Previous); anywhere else it does nothing, so it never
-     * ends a session, leaves a check, the read-back or a long call, or leaves the app.
+     * the seal card, with the same check and nonce and no core call, the typed code wiped; on the words,
+     * their overview and the backup passphrase the page before, as their Previous; Check a backup's
+     * entry to Home, the file read and the letters typed wiped, as the Pi's KEY2 there, and its re-check
+     * QR to its result); anywhere else it does nothing, so it never ends a session, leaves a check, the
+     * read-back, the backup or a long call, or leaves the app.
      */
     fun back() {
         val current = mutable.value
-        if (current.screen == Screen.Words || current.screen == Screen.WordsOverview) {
+        if (current.screen == Screen.Words || current.screen == Screen.WordsOverview || current.screen == Screen.BackupPassphrase) {
             previousPage()
             return
         }
         val previous = backTo(current.screen) ?: return
-        if (pressOn(current.screen)) show(previous, seal = current.seal, checkRequest = current.checkRequest)
+        if (pressOn(current.screen)) show(previous, seal = current.seal, checkRequest = current.checkRequest, opened = current.opened)
     }
 
     /**
@@ -642,7 +715,8 @@ class CeremonyModel(
     /**
      * Next on the words (insert view) and the overview: the next page, while there is one; on a 24-word
      * seed, past word 12, the device swap first (the Pi's), then that view's next page. Nothing while a
-     * mismatch's insert is reviewed, whose one way on is back to its read-back.
+     * mismatch's insert is reviewed, whose one way on is back to its read-back. On the backup passphrase:
+     * its second page.
      */
     fun nextPage() {
         val current = mutable.value
@@ -652,7 +726,7 @@ class CeremonyModel(
                 val next = current.page + 1
                 if (!pressOn(Screen.Words) || current.reviewing || next >= insert.count) return
                 if (next == INSERTS_PER_DEVICE && insert.count > INSERTS_PER_DEVICE) {
-                    show(Screen.DeviceSwap, page = next, swapTo = Screen.Words)
+                    show(Screen.DeviceSwap, page = next, swapTo = Screen.Words, opened = current.opened)
                 } else {
                     showInsert(next)
                 }
@@ -662,25 +736,27 @@ class CeremonyModel(
                 val next = current.page + 1
                 if (!pressOn(Screen.WordsOverview) || next * OVERVIEW_WORDS >= first.count) return
                 if (next * OVERVIEW_WORDS == INSERTS_PER_DEVICE && first.count > INSERTS_PER_DEVICE) {
-                    show(Screen.DeviceSwap, page = next, swapTo = Screen.WordsOverview)
+                    show(Screen.DeviceSwap, page = next, swapTo = Screen.WordsOverview, opened = current.opened)
                 } else {
                     showOverview(next)
                 }
             }
+            Screen.BackupPassphrase -> if (pressOn(Screen.BackupPassphrase) && current.page == 0) showPassphrase(1)
             else -> {}
         }
     }
 
     /**
-     * Previous on the words and the overview (and the system Back there): the page before, with no
-     * device swap (every page names its device); nothing on the first page or while a mismatch's
-     * insert is reviewed.
+     * Previous on the words, the overview and the backup passphrase (and the system Back there): the
+     * page before, with no device swap (every page names its device); nothing on the first page or while
+     * a mismatch's insert is reviewed.
      */
     fun previousPage() {
         val current = mutable.value
         when (current.screen) {
             Screen.Words -> if (pressOn(Screen.Words) && !current.reviewing && current.page > 0) showInsert(current.page - 1)
             Screen.WordsOverview -> if (pressOn(Screen.WordsOverview) && current.page > 0) showOverview(current.page - 1)
+            Screen.BackupPassphrase -> if (pressOn(Screen.BackupPassphrase) && current.page > 0) showPassphrase(current.page - 1)
             else -> {}
         }
     }
@@ -713,12 +789,13 @@ class CeremonyModel(
 
     /**
      * The last insert's "Start the read-back" (docs/seal-watchonly-braille.md, "Read-back from the
-     * metal": mandatory, before the session ends): insert 1's read-back entry, its letter pad empty.
+     * metal": mandatory, before the session ends): insert 1's read-back entry, its letter pad empty. A
+     * checked backup's words have none (the Pi's).
      */
     fun startReadback() {
         val current = mutable.value
         val insert = current.insert ?: return
-        if (pressOn(Screen.Words) && !current.reviewing && current.page + 1 == insert.count) showReadback(1)
+        if (pressOn(Screen.Words) && !current.reviewing && current.opened == null && current.page + 1 == insert.count) showReadback(1)
     }
 
     /**
@@ -787,9 +864,131 @@ class CeremonyModel(
         show(Screen.Wallet, summary = summary.value)
     }
 
-    /** The wallet summary's Next: the checklist (the backup and the other exports come between with commits 20 and 21). */
+    /** The wallet summary's Next: the encrypted backup's offer (the other exports come between it and the checklist with commit 21). */
     fun summaryDone() {
-        if (pressOn(Screen.Wallet)) show(Screen.Checklist)
+        if (pressOn(Screen.Wallet)) show(Screen.BackupOffer)
+    }
+
+    /**
+     * The offer's "Make an encrypted backup": core generates the 8-word passphrase (once; the offer shows
+     * only before it), then its first page, through the privacy gate (Protected).
+     */
+    fun makeBackup() {
+        if (pressOn(Screen.BackupOffer) && short { Core.generateBackupPassphrase() }) showPassphrase(0)
+    }
+
+    /**
+     * Skip, on the offer or on the save screen (where a save failed, or before one): the checklist, with no
+     * backup; the encrypted file, if core made one, is zeroed as the save screen goes.
+     */
+    fun skipBackup() {
+        if (pressOn(Screen.BackupOffer) || pressOn(Screen.BackupSave)) show(Screen.Checklist)
+    }
+
+    /** The passphrase's second page, "I wrote it down": the confirm's first question, its letter pad empty. */
+    fun passphraseWritten() {
+        if (!pressOn(Screen.BackupPassphrase) || mutable.value.page != 1) return
+        val challenge = done { Core.backupChallenge() } ?: return
+        firstPick = -1
+        backupLetters.wipe()
+        show(Screen.BackupConfirm, challenge = challenge.value)
+    }
+
+    /**
+     * The confirm's Done, with three or four letters typed (below that it does nothing): the letters,
+     * handed over as a Secret and wiped once read (PadEntry.handOver), are matched in-process to the
+     * question's choice whose first four letters (all of a three-letter word's) they are. None matching
+     * is a wrong answer at once, as no choice can then be right; the first question's pick waits for the
+     * second's, and the two go to core (confirmBackup). Both right: core drops its display copy of the
+     * passphrase and encrypts the backup in memory (encryptBackup, a long call behind "Working...": scrypt
+     * at log2 N = 18), then the save screen with core's suggested name. Wrong: the passphrase again from
+     * its first page, saying so, the questions the same (the Pi's backup-confirm-wrong).
+     */
+    fun confirmTyped() {
+        val current = mutable.value
+        val questions = current.challenge?.questions ?: return
+        if (current.page !in questions.indices) return
+        val question = questions[current.page]
+        if (!pressOn(Screen.BackupConfirm) || backupLetters.length < READBACK_MIN_LETTERS) return
+        val pick = backupLetters.handOver { letters -> question.choices.indexOfFirst { begins(it, letters) } }
+        if (pick < 0) {
+            wrongConfirm()
+            return
+        }
+        if (current.page == 0) {
+            firstPick = pick
+            show(Screen.BackupConfirm, page = 1, challenge = current.challenge)
+            return
+        }
+        val first = firstPick
+        firstPick = -1
+        val right = done { Core.confirmBackup(first, pick) } ?: return
+        if (!right.value) {
+            wrongConfirm()
+            return
+        }
+        work({ Core.encryptBackup() }) { file ->
+            backupFile = file
+            show(Screen.BackupSave, backupName = file.name)
+        }
+    }
+
+    /**
+     * The save screen's Save (or Save again): the system's create-document picker, its suggested name
+     * core's, opened over the app after the picker rule's exemption (pickerOpened); the place it gives
+     * comes to backupPlaced.
+     */
+    fun saveBackup(pickers: DocumentPickers) {
+        val file = backupFile ?: return
+        if (!pressOn(Screen.BackupSave)) return
+        pickerOpened()
+        pickers.create(file.name)
+    }
+
+    /**
+     * The create-document picker's answer, while the save screen shows (a late answer, after a discard
+     * say, does nothing): none, and the save screen stays; a place, and core's bytes go there in one
+     * write, then the file there is read back (at most one byte past core's limit) and core verifies it
+     * against this session (verifyBackup, a long call behind "Working...": scrypt) before "Backup
+     * verified". A write or a read-back that fails, or a verify that refuses (core's text), returns to
+     * the save screen naming that step; the session stays, and so does the encrypted file, for Save
+     * again. The bytes read back are zeroed once core has them.
+     */
+    fun backupPlaced(place: DocumentPlace?) {
+        val file = backupFile ?: return
+        if (busy() || mutable.value.screen != Screen.BackupSave) return
+        timers.input()
+        if (place == null) return
+        if (!place.write(file.bytes)) {
+            show(Screen.BackupSave, backupName = file.name, saveFailure = SaveFailure(SaveStep.Write))
+            return
+        }
+        val read = place.readBack(Core.BACKUP_MAX_BYTES)
+        if (read == null) {
+            show(Screen.BackupSave, backupName = file.name, saveFailure = SaveFailure(SaveStep.ReadBack))
+            return
+        }
+        work(
+            {
+                try {
+                    Core.verifyBackup(read)
+                } finally {
+                    read.fill(0)
+                }
+            },
+            refused = { refusal ->
+                if (isBackupRefusal(refusal)) {
+                    show(Screen.BackupSave, backupName = file.name, saveFailure = SaveFailure(SaveStep.Verify, refusal))
+                } else {
+                    halt()
+                }
+            },
+        ) { show(Screen.BackupVerified) }
+    }
+
+    /** "Backup verified"'s Next: the checklist (the other exports come between with commit 21). */
+    fun backupVerifiedDone() {
+        if (pressOn(Screen.BackupVerified)) show(Screen.Checklist)
     }
 
     /**
@@ -799,6 +998,118 @@ class CeremonyModel(
     fun finishCeremony() {
         if (!pressOn(Screen.Checklist) || !short { Core.end() }) return
         session = false
+        show(Screen.Home)
+    }
+
+    /**
+     * Home's Check a backup (lead decision M5-48): the system's open-document picker, opened over the app
+     * after the picker rule's exemption (pickerOpened); the file it gives comes to backupPicked.
+     */
+    fun checkBackup(pickers: DocumentPickers) {
+        if (!pressOn(Screen.Home)) return
+        pickerOpened()
+        pickers.open()
+    }
+
+    /**
+     * The open-document picker's answer, while Home shows (a late answer does nothing): none, and Home
+     * stays; a file, refused unless its name ends in .age (any letter case, as the Pi lists them) and its
+     * provider reports a size within core's limit, both before any byte is read, then read, which stops
+     * one byte past the limit (a provider that sized it wrongly is refused too). A refused file is never
+     * read, or its bytes are zeroed, and Home says why. A file that passes goes to the passphrase's entry,
+     * word 1 of 8, through the privacy gate (Protected), its bytes kept for core.
+     */
+    fun backupPicked(file: PickedFile?) {
+        if (busy() || mutable.value.screen != Screen.Home) return
+        timers.input()
+        if (file == null) return
+        val size = file.size
+        val refusal = when {
+            file.name?.endsWith(Core.BACKUP_SUFFIX, ignoreCase = true) != true -> FileRefusal.NotAge
+            size == null -> FileRefusal.NoSize
+            size < 0 || size > Core.BACKUP_MAX_BYTES -> FileRefusal.TooLarge
+            else -> null
+        }
+        if (refusal != null) {
+            show(Screen.Home, fileRefusal = refusal)
+            return
+        }
+        val bytes = file.read(Core.BACKUP_MAX_BYTES)
+        if (bytes == null || bytes.size > Core.BACKUP_MAX_BYTES) {
+            bytes?.fill(0)
+            show(Screen.Home, fileRefusal = if (bytes == null) FileRefusal.Unreadable else FileRefusal.TooLarge)
+            return
+        }
+        checkFile = bytes
+        dropEntries()
+        backupLetters.wipe()
+        show(Screen.BackupCheckEntry)
+    }
+
+    /**
+     * The entry's Done, with three or four letters typed (below that it does nothing): the entry is taken
+     * as a Secret (the pad emptied), and the next word's entry follows; after the eighth, core opens the
+     * file with the eight (openBackup, a long call behind "Working...": scrypt), and the entries are
+     * wiped once it returns. Opened: the slot holds the checked backup, and the result shows "Backup OK".
+     * Refused (an entry that names no word, a wrong passphrase, a file that does not read): the entry
+     * again from word 1, emptied, with core's text, and the file kept for another try, as the Pi's.
+     */
+    fun entryTyped() {
+        val file = checkFile ?: return
+        if (!pressOn(Screen.BackupCheckEntry) || backupLetters.length < READBACK_MIN_LETTERS) return
+        entries.add(backupLetters.take())
+        if (entries.size < PASSPHRASE_WORDS) {
+            show(Screen.BackupCheckEntry, page = entries.size)
+            return
+        }
+        val typed = entries.toList()
+        work(
+            {
+                try {
+                    Core.openBackup(typed, file)
+                } finally {
+                    for (entry in typed) entry.wipe()
+                }
+            },
+            refused = { refusal ->
+                if (isBackupRefusal(refusal)) {
+                    dropEntries()
+                    show(Screen.BackupCheckEntry, entryRefusal = refusal)
+                } else {
+                    halt()
+                }
+            },
+        ) { opened ->
+            checked = opened
+            session = true
+            show(Screen.BackupCheckResult, opened = opened)
+        }
+    }
+
+    /** The result's "Show the words": the checked backup's first insert, through the privacy gate (the result is Public). */
+    fun showBackupWords() {
+        if (pressOn(Screen.BackupCheckResult)) showInsert(0)
+    }
+
+    /** The checked backup's last insert's Done (the Pi's Press there): back to the result, with no read-back. */
+    fun backupWordsDone() {
+        val current = mutable.value
+        val insert = current.insert ?: return
+        if (pressOn(Screen.Words) && current.opened != null && current.page + 1 == insert.count) {
+            show(Screen.BackupCheckResult, opened = checked)
+        }
+    }
+
+    /** The result's "Re-check QR": the seal's T alone, with no nonce (Public). */
+    fun showRecheck() {
+        if (pressOn(Screen.BackupCheckResult)) show(Screen.BackupRecheck, opened = checked)
+    }
+
+    /** The result's Done (the Pi's): core drops the checked backup and its words (end), and Home follows. */
+    fun closeBackup() {
+        if (!pressOn(Screen.BackupCheckResult) || !short { Core.end() }) return
+        session = false
+        dropChecked()
         show(Screen.Home)
     }
 
@@ -829,8 +1140,9 @@ class CeremonyModel(
 
     /**
      * The platform's end of the model (the ViewModel's onCleared): everything the slot holds goes, the
-     * kept Wiped and a loaded snapshot too, a long call running drops its result, the pads' entries and
-     * the QR codes, word pages and verdicts on show are wiped, and the motion source and the offline
+     * kept Wiped and a loaded snapshot too, a long call running drops its result, the pads' entries, the
+     * QR codes, word pages, verdicts, passphrase page and confirm choices on show, the backup's file and
+     * Check a backup's file, entries and opened backup are wiped, and the motion source and the offline
      * monitor stop. A halted slot holds nothing already.
      */
     fun wipeAll() {
@@ -841,12 +1153,19 @@ class CeremonyModel(
         dicePick.wipe()
         goAheadCode.wipe()
         readbackLetters.wipe()
+        backupLetters.wipe()
         val current = mutable.value
         current.checkRequest?.wipe()
         current.report?.wipe()
         current.insert?.wipe()
         for (insert in current.overview.orEmpty()) insert.wipe()
         current.mismatch?.wipe()
+        current.passphrase?.wipe()
+        current.challenge?.wipe()
+        dropBackupFile()
+        dropCheckFile()
+        dropEntries()
+        dropChecked()
         motion.stop()
         offlineMonitor.stop()
     }
@@ -881,12 +1200,14 @@ class CeremonyModel(
      * look at the flag and the call reaches core before the call does (onWorker), and what follows
      * depends on the call (lead decision M5-54): a start or the self-test, which core offers at home,
      * runs, what it made is discarded again on the worker, and the start screen follows; finish,
-     * revealProof (the scanned go-ahead QR's check) and encryptBackup (the backup's, commit 20), which
-     * core does not offer at home, halt the slot (fail closed: the stop screen instead of the start
-     * screen, in a window of microseconds; M5-54's residual). A halt is the stop screen. One long call
+     * revealProof (the scanned go-ahead QR's check), encryptBackup and verifyBackup (the backup's,
+     * commit 20), which core does not offer at home, halt the slot (fail closed: the stop screen instead
+     * of the start screen, in a window of microseconds; M5-54's residual); Check a backup's openBackup,
+     * which core offers at home, runs as a start does. A halt is the stop screen. One long call
      * at a time: a second is the shell's bug, and halts, as does a busy screen that takes input. The
-     * busy screen keeps the QR codes, word pages and verdicts of the screen it stands for (drawing
-     * none), so that screen comes back with them whole; the next other screen wipes them.
+     * busy screen keeps the QR codes, word pages, verdicts, passphrase page, confirm choices and opened
+     * backup of the screen it stands for (drawing none), so that screen comes back with them whole; the
+     * next other screen wipes them.
      */
     fun <T> work(
         core: () -> Reply<T>,
@@ -901,7 +1222,17 @@ class CeremonyModel(
         val pending = Pending()
         running = pending
         from = mutable.value
-        show(busy, checkRequest = from.checkRequest, report = from.report, insert = from.insert, overview = from.overview, mismatch = from.mismatch)
+        show(
+            busy,
+            checkRequest = from.checkRequest,
+            report = from.report,
+            insert = from.insert,
+            overview = from.overview,
+            mismatch = from.mismatch,
+            passphrase = from.passphrase,
+            challenge = from.challenge,
+            opened = from.opened,
+        )
         scope.launch {
             val reply = withContext(worker) { onWorker(pending, core) }
             if (running === pending) running = null
@@ -927,12 +1258,12 @@ class CeremonyModel(
     /**
      * A long call's part on the worker, which looks at the discard flag before the call and again after
      * it. A discard (or wipeAll) before the first look means no call at all. One between the first look
-     * and the call reaches core first (lead decision M5-54): a start or the self-test, which core offers
-     * at home, then runs, and the second look finds the flag, so what it made is discarded again here,
-     * on the worker, before its reply goes back (a cancelled scope, the holder's end, which cancels it
-     * before wipeAll, drops the reply on the main thread but cannot skip this); finish, revealProof and
-     * encryptBackup, which core does not offer at home, halt the slot there, and their reply is the halt
-     * status (M5-54's residual: the stop screen, fail closed). A discard during the call makes core
+     * and the call reaches core first (lead decision M5-54): a start, the self-test or Check a backup's
+     * openBackup, which core offers at home, then runs, and the second look finds the flag, so what it
+     * made is discarded again here, on the worker, before its reply goes back (a cancelled scope, the
+     * holder's end, which cancels it before wipeAll, drops the reply on the main thread but cannot skip
+     * this); finish, revealProof, encryptBackup and verifyBackup, which core does not offer at home, halt
+     * the slot there, and their reply is the halt status (M5-54's residual: the stop screen, fail closed). A discard during the call makes core
      * return discarded, and one after the second look found the call done in core, so its own core
      * discard took what the call made. Null is the halt status.
      */
@@ -956,9 +1287,9 @@ class CeremonyModel(
 
     /**
      * Leaving the app, going online or a timer's wipe (Q57): core's discard, at once, even during a long
-     * call. The stage and a checked backup go; the kept Wiped and a loaded snapshot stay. With a long
-     * call running, its screen stays until its reply, then the start screen; otherwise the start
-     * screen now, saying why.
+     * call. The stage and a checked backup go (its opened backup here too); the kept Wiped and a loaded
+     * snapshot stay. With a long call running, its screen stays until its reply, then the start screen;
+     * otherwise the start screen now, saying why.
      */
     private fun discard(notice: Notice) {
         val pending = running
@@ -967,6 +1298,7 @@ class CeremonyModel(
             pending.notice = notice
         }
         session = false
+        dropChecked()
         if (call { Core.discard() } == null) {
             halted()
             return
@@ -1012,6 +1344,14 @@ class CeremonyModel(
             complete = previous.complete,
             mismatch = previous.mismatch,
             summary = previous.summary,
+            passphrase = previous.passphrase,
+            wrongConfirm = previous.wrongConfirm,
+            challenge = previous.challenge,
+            backupName = previous.backupName,
+            saveFailure = previous.saveFailure,
+            fileRefusal = previous.fileRefusal,
+            entryRefusal = previous.entryRefusal,
+            opened = previous.opened,
         )
     }
 
@@ -1021,10 +1361,13 @@ class CeremonyModel(
         show(Screen.Dice, dice = progress.value)
     }
 
-    /** The words in insert view at index (0-based): core's word page of insert index + 1. */
+    /**
+     * The words in insert view at index (0-based): core's word page of insert index + 1, the ceremony's or,
+     * at home, the checked backup's (opened then marks them so).
+     */
     private fun showInsert(index: Int) {
         val insert = done { Core.wordPage(index + 1) } ?: return
-        show(Screen.Words, page = index, insert = insert.value)
+        show(Screen.Words, page = index, insert = insert.value, opened = checked)
     }
 
     /**
@@ -1041,7 +1384,7 @@ class CeremonyModel(
             }
             inserts.add(insert.value)
         }
-        show(Screen.WordsOverview, page = page, overview = inserts)
+        show(Screen.WordsOverview, page = page, overview = inserts, opened = checked)
     }
 
     /** The read-back entry of insert position (1-based), its letter pad empty, with core's word page for its header and match. */
@@ -1049,6 +1392,54 @@ class CeremonyModel(
         val insert = done { Core.wordPage(position) } ?: return
         readbackLetters.wipe()
         show(Screen.ReadbackEntry, page = position - 1, insert = insert.value)
+    }
+
+    /**
+     * The backup passphrase's page (0 or 1), core's four words in a Secret, through the privacy gate from
+     * a Public screen; wrong after a wrong confirm, which the first page says.
+     */
+    private fun showPassphrase(page: Int, wrong: Boolean = false) {
+        val text = done { Core.backupPassphrasePage(page) } ?: return
+        show(Screen.BackupPassphrase, page = page, passphrase = text.value, wrongConfirm = wrong)
+    }
+
+    /** A wrong confirm: the first pick forgotten, the passphrase again from its first page, saying so. */
+    private fun wrongConfirm() {
+        firstPick = -1
+        showPassphrase(0, wrong = true)
+    }
+
+    /**
+     * Whether letters are word's first four letters, or all of a three-letter word's (core's
+     * TypedBackupPassphrase::from_first_four, which completes them): compared byte by byte, nothing copied.
+     */
+    private fun begins(word: Secret, letters: Secret): Boolean {
+        val length = minOf(word.size, 4)
+        return letters.size == length && (0 until length).all { word[it] == letters[it] }
+    }
+
+    /** The backup's encrypted file, zeroed and dropped. */
+    private fun dropBackupFile() {
+        backupFile?.wipe()
+        backupFile = null
+    }
+
+    /** Check a backup's file, zeroed and dropped. */
+    private fun dropCheckFile() {
+        checkFile?.fill(0)
+        checkFile = null
+    }
+
+    /** Check a backup's entries typed, each wiped, and none left. */
+    private fun dropEntries() {
+        for (entry in entries) entry.wipe()
+        entries.clear()
+    }
+
+    /** Check a backup's opened backup, its re-check QR wiped, once the slot no longer holds the backup. */
+    private fun dropChecked() {
+        checked?.wipe()
+        checked = null
     }
 
     /** One of the check's screens after the seal card, with the seal card and its check QR (the same check and nonce). */
@@ -1105,6 +1496,14 @@ class CeremonyModel(
         complete: Boolean = false,
         mismatch: Readback.Mismatch? = null,
         summary: Summary? = null,
+        passphrase: Secret? = null,
+        wrongConfirm: Boolean = false,
+        challenge: Challenge? = null,
+        backupName: String? = null,
+        saveFailure: SaveFailure? = null,
+        fileRefusal: FileRefusal? = null,
+        entryRefusal: Refusal? = null,
+        opened: OpenedBackup? = null,
     ) {
         val current = mutable.value
         val leaving = if (isWorking(current.screen)) from.screen else current.screen
@@ -1139,6 +1538,14 @@ class CeremonyModel(
                 mismatch = mismatch,
                 summary = summary,
                 twoDevices = words == Words.TwentyFour,
+                passphrase = passphrase,
+                wrongConfirm = wrongConfirm,
+                challenge = challenge,
+                backupName = backupName,
+                saveFailure = saveFailure,
+                fileRefusal = fileRefusal,
+                entryRefusal = entryRefusal,
+                opened = opened,
             ),
         )
     }
@@ -1146,9 +1553,12 @@ class CeremonyModel(
     /**
      * The next state, and what a screen holds while it shows: the motion source runs only on Device
      * entropy; the dice pad's pick is wiped when the dice screen leaves, the typed go-ahead code when
-     * the code entry does, and the read-back's letters when its entry does; a QR code, word page or
-     * read-back verdicts the state held and the next one does not are wiped (rule 5: the collision
-     * report's carries a seal code, and the words and verdicts are the seed's).
+     * the code entry does, the read-back's letters when its entry does, and the backup's letters when
+     * its confirm or Check a backup's entry does; a QR code, word page, read-back verdicts, passphrase
+     * page or confirm choices the state held and the next one does not are wiped (rule 5: the collision
+     * report's carries a seal code, the words and verdicts are the seed's, and the passphrase opens its
+     * backup). The backup's encrypted file is zeroed once neither the save screen nor a long call shows,
+     * and Check a backup's file and entries once neither its entry nor a long call does.
      */
     private fun enter(next: UiState) {
         val previous = mutable.value
@@ -1160,11 +1570,21 @@ class CeremonyModel(
         for (insert in previous.overview.orEmpty()) wipeLeaving(insert, next)
         val mismatch = previous.mismatch
         if (mismatch != null && mismatch !== next.mismatch) mismatch.wipe()
+        val passphrase = previous.passphrase
+        if (passphrase != null && passphrase !== next.passphrase) passphrase.wipe()
+        val challenge = previous.challenge
+        if (challenge != null && challenge !== next.challenge) challenge.wipe()
+        if (!isWorking(next.screen) && next.screen != Screen.BackupSave) dropBackupFile()
+        if (!isWorking(next.screen) && next.screen != Screen.BackupCheckEntry) {
+            dropCheckFile()
+            dropEntries()
+        }
         if (next.screen == before) return
         if (before == Screen.DeviceEntropy) motion.stop()
         if (before == Screen.Dice) dicePick.wipe()
         if (before == Screen.CodeEntry) goAheadCode.wipe()
         if (before == Screen.ReadbackEntry) readbackLetters.wipe()
+        if (before == Screen.BackupConfirm || before == Screen.BackupCheckEntry) backupLetters.wipe()
         if (next.screen == Screen.DeviceEntropy) motion.start(this::motionSample)
     }
 
@@ -1192,6 +1612,7 @@ class CeremonyModel(
     private fun halted() {
         running?.discarded = true
         session = false
+        dropChecked()
         enter(UiState(Screen.Stop, recording = mutable.value.recording))
     }
 
@@ -1213,9 +1634,10 @@ class CeremonyModel(
     }
 
     /**
-     * Where Back goes from screen: only where nothing is lost, before any session, and in the check
-     * from a confirm screen or the code entry to the screen that offered it; null elsewhere (the words'
-     * and the overview's page before is back's own).
+     * Where Back goes from screen: only where nothing is lost, before any session, in the check from a
+     * confirm screen or the code entry to the screen that offered it, and in Check a backup from its
+     * entry Home and from its re-check QR to its result; null elsewhere (the words', the overview's and
+     * the backup passphrase's page before is back's own).
      */
     private fun backTo(screen: Screen): Screen? = when (screen) {
         Screen.GoOffline -> Screen.FirstLaunch
@@ -1223,20 +1645,24 @@ class CeremonyModel(
         Screen.Length -> Screen.Home
         Screen.SkipConfirm -> Screen.CheckPrompt
         Screen.Scan, Screen.CodeEntry, Screen.MatchFoundConfirm, Screen.CannotCheckConfirm -> Screen.SealCard
+        Screen.BackupCheckEntry -> Screen.Home
+        Screen.BackupRecheck -> Screen.BackupCheckResult
         Screen.SelfTest, Screen.FirstLaunch, Screen.DeviceEntropy, Screen.Commitment, Screen.Dice, Screen.CheckPrompt,
         Screen.SealCard, Screen.Collision, Screen.CollisionReport, Screen.CheckResult, Screen.Words, Screen.WordsOverview,
         Screen.DeviceSwap, Screen.ReadbackEntry, Screen.ReadbackMismatch, Screen.ReadbackDone, Screen.Wallet,
-        Screen.Checklist, Screen.Working, Screen.Stop -> null
+        Screen.BackupOffer, Screen.BackupPassphrase, Screen.BackupConfirm, Screen.BackupSave, Screen.BackupVerified,
+        Screen.Checklist, Screen.BackupCheckResult, Screen.Working, Screen.Stop -> null
     }
 
-    /** Whether screen needs airplane mode on and Wi-Fi off (Q57): every screen from Home on. */
+    /** Whether screen needs airplane mode on and Wi-Fi off (Q57): every screen from Home on, Check a backup's too. */
     private fun needsOffline(screen: Screen): Boolean = when (screen) {
         Screen.SelfTest, Screen.FirstLaunch, Screen.GoOffline, Screen.Working, Screen.Stop -> false
         Screen.Home, Screen.Length, Screen.DeviceEntropy, Screen.Commitment, Screen.Dice, Screen.CheckPrompt,
         Screen.SkipConfirm, Screen.SealCard, Screen.Scan, Screen.CodeEntry, Screen.MatchFoundConfirm,
         Screen.CannotCheckConfirm, Screen.Collision, Screen.CollisionReport, Screen.CheckResult, Screen.Words,
         Screen.WordsOverview, Screen.DeviceSwap, Screen.ReadbackEntry, Screen.ReadbackMismatch, Screen.ReadbackDone,
-        Screen.Wallet, Screen.Checklist -> true
+        Screen.Wallet, Screen.BackupOffer, Screen.BackupPassphrase, Screen.BackupConfirm, Screen.BackupSave,
+        Screen.BackupVerified, Screen.Checklist, Screen.BackupCheckEntry, Screen.BackupCheckResult, Screen.BackupRecheck -> true
     }
 
     /** The slot is collecting and Device entropy shows: extras go into the pool (until the commitment). */
