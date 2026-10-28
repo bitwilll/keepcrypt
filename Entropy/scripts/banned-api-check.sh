@@ -3278,10 +3278,12 @@ scan() {
   # Outside a work tree git exits 128 and says "not a git repository". git exits 128 too for a work
   # tree it cannot read (a repositoryformatversion it does not know, an owner it does not trust),
   # and says "not a git repository" too where the .git it finds is one it cannot read (a corrupt or
-  # missing HEAD, no refs/ or objects/, a .git file whose gitdir is gone), looking on above it. So
-  # there is no work tree only where git says so and no .git entry is here or in a directory above
-  # (git_entry); anything else, like any other failure, is the gate's (tool_status, after git's own
-  # words), never a scan without the Build rule. Without git the Build rule's tracked files cannot
+  # missing HEAD, no refs/ or objects/, a .git file whose gitdir is gone), looking on above it; for
+  # the last, newer git (CI's 2.55) says "gitfile does not point to a valid repository" instead. So
+  # there is no work tree only where git says "not a git repository" and no .git entry is here or in
+  # a directory above (git_entry), and any exit 128 with a .git entry names that entry; anything
+  # else, like any other failure, is the gate's (tool_status, after git's own words), never a scan
+  # without the Build rule. Without git the Build rule's tracked files cannot
   # be listed. git runs in a command substitution: run here as a command of its own, its finished
   # job was what bash 3.2 later took for a check's grep (see "The tools the gate runs fail closed").
   command -v git >/dev/null 2>&1 || {
@@ -3294,9 +3296,9 @@ scan() {
   dotgit=
   case $rc:$wt in
     0:*) work_tree=yes ;;
-    128:*'not a git repository'*)
+    128:*)
       git_entry
-      [ -n "$dotgit" ] || work_tree=no
+      case $wt in *'not a git repository'*) [ -n "$dotgit" ] || work_tree=no ;; esac
       ;;
   esac
   if [ -z "$work_tree" ]; then
