@@ -11934,7 +11934,7 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   commit 9 it plants it in lib.rs); a canary plants `std::panic::catch_unwind` in keepcrypt-ffi and expects clippy's
   error; the getrandom graph pin is unchanged; the `[features]` probe covers both crates. `want_checks` and CLAUDE.md's
   count move together (group 19).
-  Proof: canaries N/N locally and in `gates`, each new canary named in its output.
+  Proof: canaries N/N locally and in `gates` (in supply-chain since L7, M5-67), each new canary named in its output.
   Proof (M5 commit 9, partial: the `gates` run at the pushed head is the lead's; as the re-plan, M5-32 and M5-35 amend
   it): `scripts/canaries.sh` PASS, all 88 checks ran (want_checks 79 -> 88; 334 s on this Mac, 327 s at
   8x-d). New: core/clippy.toml and ffi/jni/clippy.toml identical; ffi/guard/clippy.toml core's without its
@@ -13158,7 +13158,11 @@ PR is a draft from commit 1. Review fixes are listed as N.b entries under the co
 17. The collision check without the camera (group 16).
 18. The camera scanner and its canned-frame test; CAMERA in the manifest and expected summaries (group 16). The owner's
     P0b is issued from this commit's run.
-19. Privacy gate, words, read-back, summary, finish (group 17).
+19. Privacy gate, words, read-back, summary, finish (group 17). As built (M5-68 (b)): 19a, the screens, the model and
+    their JVM tests; 19b, the emulator flows; review fixes 19c-19f.
+19g. CaptureTest's secret-mark check with no secret in a selector, so none reaches a log (M5-68 (e)).
+L8. The gate's fail-closed corners from E3's last review (M5-68 (d)).
+19h. Group 6's positive control (a) on the words page; PadEntry.handOver's finally and codeDone through it (M5-68 (f)).
 20. Backup, Check a backup, the `age -d` hand-off (group 18).
 21. Watch-only, register, reveal D, snapshots, About, stop; the nothing-persisted listing (group 18).
 
@@ -14656,6 +14660,27 @@ they differ. Nothing in the Android plan is weakened.
   so the canaries stay a required check under the same 14 names. The gates job keeps the gate's runs and the two
   shards side by side with their count check. Both jobs' times are measured at the next push, and each stays under 12
   minutes (commit L7).
+- M5-68 (2026-10-28): (a) Three agents for commit 18t each died before committing (a session restart, a dropped API
+  connection, the Mac's reboot), losing hours each time. The lead finished 18t from the tree they left, re-ran its
+  checks and committed it; CI's first run then failed the fault check on bash 5's numbering of an EXIT trap's text,
+  which the lead's 18u fixed. (b) A long commit is committed in steps, each a coherent piece with every check it can
+  affect green and its body naming the steps to come; its review fixes take the letters after its last step. Commit
+  19 so landed as 19a and 19b, its review fixes as 19c-19f. (c) M5-66 covers every mode CI runs, not the scan alone,
+  so every mode but the selftests runs its tools fail closed (18v-18x). The fault check faults the scan, --workflows,
+  --artifact and --os-config. --image-lists, --image and --apk need a built Pi image or an APK, which the lint job
+  lacks, so their selftests' stub images and APKs and CI's real runs cover them. llvm-nm and llvm-readobj run by the
+  toolchain's path, out of a shim's reach, and the gate reads their statuses itself. (d) Commit L8 closes what E3's
+  last review (of the fix commits) found in the gate; item L8 lists it. (e) Commit 19g: CaptureTest's check of the
+  secret marks (399e3c8) put each secret text in a UI Automator selector, which UI Automator logs at debug level, so
+  the walk's words, SeedBook numbers and overview lines reached the emulator's logcat (rule 5). That log was never kept:
+  CI reads only the crash buffer and uploads only the APKs and the P4 files, and both emulators run with no snapshot
+  and wiped data. Still no secret may reach a log: the check collects nodes with a selector that holds no secret and
+  compares their text in-process, each secret text must be found at least once, and the walk also visits the
+  read-back entry after a word matches, where the word is drawn. (f) Commit 19h: group 6's positive control (a) on the
+  words page, which commit 8 deferred to commit 19 and 19 did not bring: the capture-control APK draws dice-99-words12's
+  first words page with the same composables and no FLAG_SECURE, the same captures find its known pixels on API 31
+  and 36, and the control captures are uploaded as the owner's screen review; and PadEntry.handOver wipes in a
+  finally, with codeDone handing its letters to core through it as the read-back does (19d).
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the
@@ -14973,7 +14998,8 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   Proof (the lead's, 2026-10-27): a local runner, so its proof is local. Lc's suite ran android-local.sh on kc37 at
   0fab64d, exit 0 in 802 s, and its --selftest passed 34 cases under sh and dash (local). CI runs android-emulator.sh's
   and android-instrument.sh's self-tests (25 and 39 passed at 6a6a34f, run 40455117323). android-local.sh's own
-  self-test runs only on the Mac.
+  self-test runs only on the Mac. The decode that L2c's Proof leaves open is M5-62 (d)'s: it stays P0b's and P4's, on
+  a real camera, and L2's own Proof asks for the local scan check's result, which is that "not met".
 - [x] L3. The local loop's own defects (M5-62): the gate and canaries.sh leave out only the ignored Gradle outputs; the
   emulator's own fetches and the guest's route to the internet are cut where they can be, and anything left is named;
   LifecycleTest's leave falls inside the scrypt on a fast host every time.
@@ -15106,7 +15132,7 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   Proof (CI, the lead's, 2026-10-27): Entropy CI run 40455117393 at 6a6a34f printed "the shards split one list: 792
   and 792 of its 1584 cases". Its side-by-side step took 597 s and its gates job 688 s of the 720. That is under Q31
   (f)'s 12 minutes, but only 13 s under the unsharded job at 4940ede (701 s, run 40442191525): see M5-67 and L7.
-- [ ] L5. KtFailOpen's package arm takes the standard library's kotlin.coroutines and its subpackages, with no allowed
+- [x] L5. KtFailOpen's package arm takes the standard library's kotlin.coroutines and its subpackages, with no allowed
   import line (M5-65, commit 18s): hit fixtures for an import, a star import, a qualified call (startCoroutine with a
   completion that drops its Result) and an intrinsics name, each clean in the test scopes; a near-miss fixture
   showing that kotlinx.coroutines' allowed lines and words such as `kotlinx` and `coroutines` alone do not hit as
@@ -15145,6 +15171,9 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   clean on the export (356 files) and on the built working tree (360) under sh and dash; `--workflows
   ../.github/workflows` clean (3 workflows) under sh and dash; canaries.sh PASS, all 94 checks ran, on the export
   (448 s).
+  Proof (CI, the lead's, 2026-10-28): Entropy CI 40488587210 at 30c53f3 (18s in): the gates job's self-test, "the
+  shards split one list: 795 and 795 of its 1590 cases", 0 failed each; and 40622104962 at 44d4469, 798 and 798 of
+  1596, 0 failed each.
 - [ ] L6. The gate fails closed when a tool it runs fails (M5-66, commit 18t): the empty-line-number Shell hit's
   cause found and fixed, and the fault check (each external tool failing to start, exiting with an error and killed,
   at every place the script runs it, on a small tree that reaches every rule) in CI in at most 5 minutes, with no run
@@ -15279,7 +15308,13 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   fourth fail with that mutant, and the second with exit 1's output accepted. Locally: the shards "798 of 1596" and
   "798 of 1596", 0 failed, under sh and /bin/dash; the fault check 582 runs, 582 passed, under sh and /bin/dash; the
   gate clean on the working tree (365 files) under sh and dash; canaries.sh PASS, all 94 checks ran (436 s).
-- [ ] L7. canaries.sh moves out of the gates job into one existing required job with time to spare (M5-67, commit
+  Proof (CI, the lead's, 2026-10-28, partial until L8): Entropy CI 40572516372 at 83361f0 green, the lint job 151 s
+  with the scan's fault check; and 40622104962 at 44d4469 (18v-18z in): the lint job's fault check step, "582 runs (3
+  ways): 582 passed, 0 failed, in 110 s", over the scan's 142 places (12 tools), --workflows' 16, --artifact's 23 and
+  --os-config's 13; the lint job 146 s with the toolchain installed first; the 14 required check names unchanged. The
+  Pi image run 40622104933 at 44d4469 ran --image-lists, --selftest-image and --image fail closed for the first time,
+  green. L6 stays open until L8 closes the corners E3's last review found (M5-68 (d)).
+- [x] L7. canaries.sh moves out of the gates job into one existing required job with time to spare (M5-67, commit
   L7). The gates job keeps the gate's runs and the two self-test shards with their count check. Proof: both jobs' times
   in CI, each under 12 minutes, with the 14 required check names unchanged.
   Proof (M5 commit L7, M5-67, partial: local, Q76; CI measures both jobs' times at the next push): canaries.sh moves
@@ -15307,6 +15342,17 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   ran (462 s); `cargo deny --locked --offline check` clean after it (a first try with a wrong flag ran nothing). fmt,
   both clippy runs, `cargo test --workspace --locked` (499 passed, 3 ignored) and `-p keepcrypt-core --features
   test-sources` (269 passed, 1 ignored), and the gate clean on the working tree (361 files) under sh and dash.
+  Proof (CI, the lead's, 2026-10-28): Entropy CI 40622104962 at 44d4469: gates 250 s (688 s at 6a6a34f), its
+  self-test step 160 s ("the shards split one list: 798 and 798 of its 1596 cases"); supply-chain 419 s, canaries.sh
+  384 s of it ("PASS: all 94 checks ran"); lint 146 s; each under 12 minutes, the 14 required check names unchanged.
+- [ ] L8. The gate's fail-closed corners that E3's last review found (M5-68 (d), commit L8): every mode prints its
+  summary only after its cleanup, so a cleanup that fails never follows "clean"; git's "not a git repository" means
+  no work tree only when no .git entry exists in the scanned root or above it, so a corrupt or missing HEAD stops the
+  gate; --image-lists reads its lists' statuses; the header names the four modes the fault check faults and how
+  image_unpack's two pipelines fail closed (by content); artifact_rules' loop variable stops reusing apk_lines' c; the
+  canary library's build output under scripts/testdata/android-canary-lib/build/ is ignored. Proof: selftest cases (a
+  corrupt and a missing HEAD; a failing cleanup with no hit in each mode that cleans up), the fault check, locally and
+  in CI; then L6 is ticked.
 
 **Stages E3 and E4** run commits 19, 20 and 21 as planned, each built and tested locally before it is committed.
 
