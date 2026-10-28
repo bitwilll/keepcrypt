@@ -36,6 +36,7 @@ import com.keepcrypt.entropy.Capture.windows
 import com.keepcrypt.entropy.ffi.KcHalt
 import com.keepcrypt.entropy.ffi.Mode
 import com.keepcrypt.entropy.ffi.Reply
+import com.keepcrypt.entropy.ffi.WordPage
 import com.keepcrypt.entropy.ffi.Words
 import com.keepcrypt.entropy.screens.CeremonyModel
 import com.keepcrypt.entropy.screens.DICE_KEYS
@@ -97,8 +98,9 @@ class CaptureTest {
      * the screen itself: the words from Skip's result, the overview from word 1, the swap after the
      * overview's third page, the entry from the last insert, its mismatch from letters no word begins
      * with ("zzzz"), and the read-back's end after every insert read back in-process from the page on
-     * show (its word's copy wiped), then the wallet summary and the checklist, from which "Working..."
-     * is held. The scan screen asks for the camera as it opens, and the
+     * show (its word's copy wiped), the first from the entry the walk left matched (matchedEntry), then
+     * the wallet summary and the checklist, from which "Working..." is held. The scan screen asks for
+     * the camera as it opens, and the
      * walk is the first of this APK's tests to open it: dumpsys package shows CAMERA requested and not
      * granted, no permission prompt is up, then the scan screen opens and the system's prompt shows over
      * the app, another package's window, which the walk answers "Don't allow" before the capture (the
@@ -181,8 +183,11 @@ class CaptureTest {
                 model.readbackTyped()
             }
             Screen.ReadbackDone -> onMain {
-                model.readbackAgain()
-                repeat(2 * INSERTS_PER_DEVICE) { readBackShown(model) }
+                model.readbackNext()
+                repeat(2 * INSERTS_PER_DEVICE - 1) {
+                    readBackShown(model)
+                    model.readbackNext()
+                }
             }
             Screen.Wallet -> onMain { model.showSummary() }
             Screen.Checklist -> onMain { model.summaryDone() }
@@ -226,7 +231,7 @@ class CaptureTest {
     /**
      * On the read-back entry, the insert on show read back in-process: its word's first four letters (a
      * three-letter word's three), read from the page the state holds into the model's letter pad through
-     * a copy that is wiped at once, then Done and Next. Main thread only.
+     * a copy that is wiped at once, then Done, which leaves the entry matched. Main thread only.
      */
     private fun readBackShown(model: CeremonyModel) {
         val insert = checkNotNull(model.state.value.insert)
@@ -234,7 +239,22 @@ class CaptureTest {
         for (index in 0 until minOf(4, word.size)) model.readbackLetters.type(Char(word[index].toInt()))
         word.wipe()
         model.readbackTyped()
-        model.readbackNext()
+    }
+
+    /**
+     * The read-back entry once more, from the mismatch: Read it again, then the insert read back
+     * (readBackShown), so the entry shows its match, where ReadbackEntry draws the whole word
+     * (InsertWord). The walk checks it as it checks each screen, before the read-back's end.
+     */
+    private fun matchedEntry(): MainActivity {
+        val activity = checkNotNull(walk)
+        val matched = onMain {
+            activity.model.readbackAgain()
+            readBackShown(activity.model)
+            activity.model.state.value.let { it.screen == Screen.ReadbackEntry && it.matched }
+        }
+        assertTrue("the read-back entry did not match the insert read back", matched)
+        return activity
     }
 
     /** On the dice, rolls faces through the model's pick and confirm, then Done, and waits for the check prompt (the real finish). */
@@ -264,7 +284,8 @@ class CaptureTest {
      * content capture (read back in-process, group 14), SECURE on every window of the package in
      * dumpsys window windows, found by its owner line too (the owner line is shown to be read on this
      * image: some window is found by it), and its secret text marked data sensitive where Android has
-     * the mark (assertSecretsMarked).
+     * the mark (assertSecretsMarked); the read-back entry also in its matched state (matchedEntry). After
+     * the walk the log holds none of its secret lines (assertNoSecretInTheLog).
      */
     @Test
     fun everyScreenIsDrawnAndThenBlackInEveryCapture() {
@@ -272,127 +293,196 @@ class CaptureTest {
     }
 
     private fun walkEveryScreen() {
+        val lines = HashSet<String>()
+        var mark = ""
         for (screen in Screen.entries) {
-            val activity = show(screen)
-            proveDrawn(activity, screen)
-            assertFalse("a permission prompt over " + screenId(screen), device.hasObject(PERMISSION_PROMPT))
-            val region = region(activity)
-            val display = display(activity)
-            report("kc_region", "${region.left},${region.top},${region.right},${region.bottom}")
-            report("kc_display", "${display.width()}x${display.height()}")
-            val cap = Capture.screencapOrRefused()
-            val shot = Capture.screenshotOrRefused()
-            if (cap != null) Capture.assertCaptureSize(cap, display, "screencap")
-            if (shot != null) Capture.assertCaptureSize(shot, display, "takeScreenshot")
-            val capLit = Capture.litOrRefused(cap, region)
-            val shotLit = Capture.litOrRefused(shot, region)
-            val flagged = onMain { activity.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0 }
-            val contentCapture = onMain { activity.window.decorView.importantForContentCapture }
-            val found = windows(pkg)
-            probe("screencap -p: ${Capture.described(cap)}; takeScreenshot(): ${Capture.described(shot)}")
-            probe("${screenId(screen)}: $capLit lit pixels in screencap, $shotLit in takeScreenshot over the app's window $region")
-            assertEquals("lit pixels in screencap over the app's window", 0, capLit)
-            assertEquals("lit pixels in takeScreenshot over the app's window", 0, shotLit)
-            assertTrue("the window's flags lack FLAG_SECURE", flagged)
-            assertEquals(
-                "the root view does not opt out of content capture",
-                View.IMPORTANT_FOR_CONTENT_CAPTURE_NO_EXCLUDE_DESCENDANTS, contentCapture,
-            )
-            assertTrue("dumpsys window windows lists no window of the app", found.isNotEmpty())
-            assertTrue("no window's owner line names the app: windows are found by title alone", found.any { it.byOwner })
-            probe("windows of the app: " + found.joinToString("; ") { "${it.title} (by owner ${it.byOwner}, SECURE ${it.secure})" })
-            for (w in found) assertTrue("a window without SECURE: " + w.title, w.secure)
-            assertSecretsMarked(screen, activity.model)
-            pass(
-                "${screenId(screen)}: drawn, then screencap and takeScreenshot black over the app's window; " +
-                    "SECURE on all ${found.size} of its windows; no content capture",
-            )
+            // From the words on, the walk holds secret texts. As they come, a line of the walk's own goes
+            // to the log, through the shell's log, to the main buffer, where UI Automator's lines go too: a
+            // log that still holds it after the walk has dropped nothing written since, so the search after
+            // the walk reads every line written while the walk held a secret.
+            if (screen == Screen.Words) {
+                mark = "kc_capture_walk_" + SystemClock.elapsedRealtimeNanos()
+                shell("log -t KcCaptureTest " + mark)
+            }
+            if (screen == Screen.ReadbackDone) {
+                checkScreen(Screen.ReadbackEntry, matchedEntry(), screenId(Screen.ReadbackEntry) + " (matched)", lines)
+            }
+            checkScreen(screen, show(screen), screenId(screen), lines)
         }
         finish(checkNotNull(walk))
+        assertNoSecretInTheLog(mark, lines)
+    }
+
+    /** One screen of the walk, named name in its lines, its secret lines added to lines (see walkEveryScreen). */
+    private fun checkScreen(screen: Screen, activity: MainActivity, name: String, lines: MutableSet<String>) {
+        proveDrawn(activity, screen)
+        assertFalse("a permission prompt over " + name, device.hasObject(PERMISSION_PROMPT))
+        val region = region(activity)
+        val display = display(activity)
+        report("kc_region", "${region.left},${region.top},${region.right},${region.bottom}")
+        report("kc_display", "${display.width()}x${display.height()}")
+        val cap = Capture.screencapOrRefused()
+        val shot = Capture.screenshotOrRefused()
+        if (cap != null) Capture.assertCaptureSize(cap, display, "screencap")
+        if (shot != null) Capture.assertCaptureSize(shot, display, "takeScreenshot")
+        val capLit = Capture.litOrRefused(cap, region)
+        val shotLit = Capture.litOrRefused(shot, region)
+        val flagged = onMain { activity.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0 }
+        val contentCapture = onMain { activity.window.decorView.importantForContentCapture }
+        val found = windows(pkg)
+        probe("screencap -p: ${Capture.described(cap)}; takeScreenshot(): ${Capture.described(shot)}")
+        probe("$name: $capLit lit pixels in screencap, $shotLit in takeScreenshot over the app's window $region")
+        assertEquals("lit pixels in screencap over the app's window", 0, capLit)
+        assertEquals("lit pixels in takeScreenshot over the app's window", 0, shotLit)
+        assertTrue("the window's flags lack FLAG_SECURE", flagged)
+        assertEquals(
+            "the root view does not opt out of content capture",
+            View.IMPORTANT_FOR_CONTENT_CAPTURE_NO_EXCLUDE_DESCENDANTS, contentCapture,
+        )
+        assertTrue("dumpsys window windows lists no window of the app", found.isNotEmpty())
+        assertTrue("no window's owner line names the app: windows are found by title alone", found.any { it.byOwner })
+        probe("windows of the app: " + found.joinToString("; ") { "${it.title} (by owner ${it.byOwner}, SECURE ${it.secure})" })
+        for (w in found) assertTrue("a window without SECURE: " + w.title, w.secure)
+        assertSecretsMarked(screen, activity.model, name, lines)
+        pass(
+            "$name: drawn, then screencap and takeScreenshot black over the app's window; " +
+                "SECURE on all ${found.size} of its windows; no content capture",
+        )
     }
 
     /**
      * The secret text a screen draws is marked accessibility-data sensitive (docs/mobile-apps.md, "Rules
      * for Claude Code"; group 6's probe, where it applies): every node tagged SECRET_TAG (Kit.kt's secret(),
      * which every node that shows a secret takes) must be data sensitive as UiAutomation reads it on
-     * Android 14+, the screens that show the words or their letters must hold such nodes on screen, every
-     * node there whose text is one of the screen's secrets must be one of them (assertSecretTextsTagged),
-     * and a Public screen holds none. Before Android 14 a probe line says the mark does not exist there.
+     * Android 14+, the screens that show the words or their letters must hold such nodes, every node
+     * there whose text is one of the screen's secrets must be one of them and each secret must be drawn
+     * (assertSecretTextsTagged), and a Public screen holds none. Before Android 14 a probe line says the
+     * mark does not exist there. The nodes are the app's windows' every node, read in-process
+     * (Capture.nodes), so no selector holds a secret.
      */
-    private fun assertSecretsMarked(screen: Screen, model: CeremonyModel) {
-        val secrets = device.findObjects(By.res(SECRET_TAG))
+    private fun assertSecretsMarked(screen: Screen, model: CeremonyModel, name: String, lines: MutableSet<String>) {
+        val nodes = Capture.nodes(pkg)
+        val secrets = nodes.filter { it.resourceName == SECRET_TAG }
         if (!isProtected(screen)) {
-            assertTrue("a secret's node on the Public screen " + screenId(screen), secrets.isEmpty())
+            assertTrue("a secret's node on the Public screen " + name, secrets.isEmpty())
             return
         }
         if (screen in SECRET_SCREENS) {
-            assertTrue("no secret's node on " + screenId(screen), secrets.isNotEmpty())
-            assertSecretTextsTagged(screen, model)
+            assertTrue("no secret's node on " + name, secrets.isNotEmpty())
+            assertSecretTextsTagged(screen, model, nodes, name, lines)
         }
         if (secrets.isEmpty()) return
+        val away = secrets.count { !it.visible }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            probe("${screenId(screen)}: ${secrets.size} secret nodes; no data-sensitive mark before Android 14 (API ${Build.VERSION.SDK_INT})")
+            probe("$name: ${secrets.size} secret nodes ($away off screen); no data-sensitive mark before Android 14 (API ${Build.VERSION.SDK_INT})")
             return
         }
-        val unmarked = secrets.count { !it.accessibilityNodeInfo.isAccessibilityDataSensitive }
-        assertEquals("secret nodes not marked data sensitive on " + screenId(screen), 0, unmarked)
-        pass("${screenId(screen)}: all ${secrets.size} of its secret nodes on screen are data sensitive (API ${Build.VERSION.SDK_INT})")
+        val unmarked = secrets.count { !it.dataSensitive }
+        assertEquals("secret nodes not marked data sensitive on " + name, 0, unmarked)
+        pass("$name: all ${secrets.size} of its secret nodes ($away off screen) are data sensitive (API ${Build.VERSION.SDK_INT})")
     }
 
     /**
-     * Each secret the screen shows, as the model holds it in-process (secretTexts), is drawn only by nodes
-     * tagged SECRET_TAG: every node UiAutomation finds with that exact text carries the tag, which secret()
-     * gives with the data-sensitive mark, so a secret drawn without secret() fails here however many other
-     * nodes on the screen carry it. Some node shows one of them, so the check is not empty. The texts are
-     * compared in-process and never printed.
+     * Each secret the screen shows, as the model holds it in-process (secretTexts), is drawn, and only by
+     * nodes tagged SECRET_TAG: every one of the screen's nodes whose text is a secret carries the tag,
+     * which secret() gives with the data-sensitive mark, so a secret drawn without secret() fails here
+     * however many other nodes carry it; and each secret is some node's text, so none is left unchecked.
+     * The texts are compared in-process and never printed; the screen's secret lines join lines, for the
+     * search of the log after the walk.
      */
-    private fun assertSecretTextsTagged(screen: Screen, model: CeremonyModel) {
-        val texts = onMain { secretTexts(screen, model) }
-        var shown = 0
-        for (text in texts) {
-            val nodes = device.findObjects(By.text(text))
-            shown += nodes.size
-            assertTrue(
-                "a node on " + screenId(screen) + " shows a secret without the secret tag (its text is not printed)",
-                nodes.all { it.resourceName == SECRET_TAG },
-            )
-        }
-        assertTrue("no node on " + screenId(screen) + " shows any of its " + texts.size + " secret texts", shown > 0)
-        pass("${screenId(screen)}: each of its ${texts.size} secret texts is drawn only by secret nodes ($shown on screen)")
+    private fun assertSecretTextsTagged(
+        screen: Screen,
+        model: CeremonyModel,
+        nodes: List<Capture.NodeFacts>,
+        name: String,
+        lines: MutableSet<String>,
+    ) {
+        val secrets = onMain { secretTexts(screen, model) }
+        val texts = secrets.drawn
+        assertTrue("no secret text for " + name, texts.isNotEmpty())
+        val drawing = nodes.filter { it.text != null && it.text in texts }
+        assertTrue(
+            "a node on " + name + " shows a secret without the secret tag (its text is not printed)",
+            drawing.all { it.resourceName == SECRET_TAG },
+        )
+        val drawn = texts.count { text -> drawing.any { it.text == text } }
+        assertTrue("only " + drawn + " of the " + texts.size + " secret texts of " + name + " are drawn (none is printed)", drawn == texts.size)
+        lines.addAll(secrets.lines)
+        pass("$name: each of its ${texts.size} secret texts is drawn, and only by secret nodes (${drawing.size} nodes)")
     }
+
+    /**
+     * A screen's secret texts: drawn, every one it draws; lines, those of them the log is searched for
+     * after the walk, the SeedBook number's line ("SeedBook 0123") and the whole lines (an overview line,
+     * a verdict, the faces typed once a letter is typed), which no line the system writes can hold by
+     * chance, as it can a word or a letter.
+     */
+    private class ScreenSecrets(val drawn: Set<String>, val lines: Set<String>)
 
     /**
      * The secret texts screen draws, from the model's state, as the screens draw them: on the words the
      * word, its SeedBook number and each face's letter and label (a blank face's letter is no text); on
-     * the overview its lines; on the read-back entry the faces typed; on the mismatch the four verdicts.
-     * The word's copy is wiped once read. Main thread only.
+     * the overview its lines; on the read-back entry the faces typed, or once it matched the word; on the
+     * mismatch the four verdicts. The word's copy is wiped once read. Main thread only.
      */
-    private fun secretTexts(screen: Screen, model: CeremonyModel): Set<String> {
+    private fun secretTexts(screen: Screen, model: CeremonyModel): ScreenSecrets {
         val state = model.state.value
         return when (screen) {
             Screen.Words -> {
                 val insert = checkNotNull(state.insert)
-                val bytes = insert.word()
-                val word = buildString { for (index in 0 until bytes.size) append(Char(bytes[index].toInt() and 0xFF)) }
-                bytes.wipe()
-                buildSet {
-                    add(word)
-                    add(seedbookText(insert.seedbook))
+                val seedbook = seedbookText(insert.seedbook)
+                val drawn = buildSet {
+                    add(wordOf(insert))
+                    add(seedbook)
                     for (n in 1..5) {
                         val face = insert.face(n)
                         face.letter?.let { add(it.toString()) }
                         faceLabel(face.isBlank, face.mirrorPartner != null).takeIf { it.isNotEmpty() }?.let { add(it) }
                     }
                 }
+                ScreenSecrets(drawn, setOf(seedbook))
             }
-            Screen.WordsOverview -> checkNotNull(state.overview).map { overviewLine(it) }.toSet()
-            Screen.ReadbackEntry -> setOf(typedFaces(model.readbackLetters))
+            Screen.WordsOverview -> checkNotNull(state.overview).map { overviewLine(it) }.toSet().let { ScreenSecrets(it, it) }
+            Screen.ReadbackEntry -> if (state.matched) {
+                ScreenSecrets(setOf(wordOf(checkNotNull(state.insert))), emptySet())
+            } else {
+                val faces = typedFaces(model.readbackLetters)
+                ScreenSecrets(setOf(faces), if (model.readbackLetters.length > 0) setOf(faces) else emptySet())
+            }
             Screen.ReadbackMismatch -> {
                 val mismatch = checkNotNull(state.mismatch)
-                (1..4).map { verdictLine(it, mismatch.face(it)) }.toSet()
+                (1..4).map { verdictLine(it, mismatch.face(it)) }.toSet().let { ScreenSecrets(it, it) }
             }
-            else -> emptySet()
+            else -> ScreenSecrets(emptySet(), emptySet())
         }
+    }
+
+    /** insert's word as a String, as the screens draw it, its copy wiped once read. */
+    private fun wordOf(insert: WordPage): String {
+        val bytes = insert.word()
+        val word = buildString { for (index in 0 until bytes.size) append(Char(bytes[index].toInt() and 0xFF)) }
+        bytes.wipe()
+        return word
+    }
+
+    /**
+     * After the walk, the log holds none of its secret lines (rule 5; lead decision M5-68 (e)): logcat -d
+     * (its default buffers, main, system and crash), read into memory through the shell and never
+     * written to a file, still holds mark, the line the walk wrote as the words came, so the main
+     * buffer, where this process's lines go, UI Automator's among them, dropped nothing written since;
+     * and it holds no line of lines, which the walk's secret screens drew. Only counts and the buffers'
+     * sizes (logcat -g) are printed.
+     */
+    private fun assertNoSecretInTheLog(mark: String, lines: Set<String>) {
+        assertTrue("the walk held no secret line to search the log for", mark.isNotEmpty() && lines.isNotEmpty())
+        probe("logcat -g: " + shellText("logcat -g").lines().joinToString(" | ") { it.trim() })
+        val log = String(shell("logcat -d"), Charsets.UTF_8)
+        val at = log.indexOf(mark)
+        assertTrue("the log no longer holds the line the walk wrote as the words came, so it cannot be searched whole", at >= 0)
+        probe("logcat -d: ${log.length} characters, ${log.length - at} of them from the line the walk wrote as the words came")
+        val held = lines.count { log.contains(it) }
+        assertTrue("the log holds " + held + " of the walk's " + lines.size + " secret lines (neither is printed)", held == 0)
+        pass("the log after the walk (logcat -d, ${log.length} characters, the walk's own line still held) holds none of its ${lines.size} secret lines")
     }
 
     /**

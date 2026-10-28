@@ -12939,6 +12939,37 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   nodes (7 on screen)" (7 and 7 in the other run, the ceremony's random first word), the overview 4 (4), the entry
   1 (1), the mismatch 4 (4); CaptureTest 6 and 6 passed. Not run: a mutant with one node's secret() dropped (another
   emulator run); the lines above show each text found on screen, so such a node is found without the tag.
+  Proof (M5 commit 19g, lead decision M5-68 (e), partial: local, Q76; CI's API 31 and 36 legs at the next push): 19e
+  handed each secret text to By.text, and UI Automator 2.4.0 logs every selector at debug level (UiDevice.findObjects'
+  "Retrieving nodes with selector: %s", BySelector's TEXT='...'), so the walk's secrets reached logcat. Now no
+  selector on a secret screen holds one: Capture.nodes reads every node of the app's windows down from
+  UiDevice.getWindowRoots in-process (off-screen ones too, which UI Automator's searches skip), and the walk compares
+  their texts with the screen's secret texts there. Every node drawing one must carry the secret tag, every secret
+  text must be drawn (19e checked only a total above 0), the data-sensitive check reads the same nodes, and the walk
+  also checks the read-back entry once it matched, where InsertWord draws the whole word. As the words come the walk
+  writes a line of its own to the log (the shell's log); right after the walk it reads `logcat -d` into memory
+  through UiAutomation.executeShellCommand, which must still hold that line (the main buffer dropped nothing since)
+  and none of the walk's secret lines, matched whole: the words page's "SeedBook NNNN", the overview's four lines
+  and the mismatch's four verdicts, 9 in all. A word, a letter or a face label alone is not searched for, since
+  system lines hold common English words. Neither side is printed, only counts. On kc37 (API 37), android-local.sh on
+  this tree (but a doc comment's wrap): exit 0 in 1151 s, every class passed in android-emulator.sh's order,
+  CaptureTest 6 and 6; in the shipping and test-registry APKs "words: each of its 7 (8) secret texts is drawn, and
+  only by secret nodes (8 (9) nodes)", the overview 4 (4), the entry 1 (1), the mismatch 4 (4), the matched entry
+  1 (1), no secret node off screen; "the log after the walk ... holds none of its 9 secret lines", with 113,330
+  (60,049) characters of logcat -d from the walk's line on (logcat -g: main 2 MiB). A mutant build on this tree,
+  each mutant in one APK: the words page's SeedBook number drawn without secret() in the test-registry APK failed
+  "a node on words shows a secret without the secret tag"; that SeedBook line passed to By.text in the shipping
+  APK's walk failed "the log holds 1 of the walk's 9 secret lines". No run's output holds a "SeedBook NNNN" string.
+  The search of every test source: FlowTest named the e/i face's verdict line to By.text (Ui.shown), now found
+  among the secret nodes in-process (drawsSecret); FlowTest and CheckTest pressed dice faces by their key ids
+  (tap("key_3")) and awaited the pick by its text (awaitText), so rolls went into selectors and, on a failure, the
+  messages: now Ui.pressFace (the pad's keys found by a pattern naming none, the face's picked in-process and pressed
+  by its accessibility click, since UI Automator also logs a click's point, which names a key on the fixed grid) and
+  Ui.awaitPick (the pick waited for by a face pattern, then compared in-process), and the pick's two assertEquals are
+  assertTrue; FlowTest's pass line no longer names the misread insert and face; StartScreensTest compared a Mixed
+  ceremony's C with assertEquals, which prints both on a failure, now assertTrue. Locally also: the strict Gradle
+  build of both APKs and every JVM test task (:core-ffi 27 in 9, :screens 98 in 15, :app 7 in 3 for each flavour,
+  :secure-ui 3 in 1, none failed).
   Proof (M5 commit 19f, review fix, partial: local, Q76; CI's API 31 and 36 legs at the next push): swb:286 (Q57 (e))
   puts an on-screen warning to use headphones beside speech output, and TalkBack reads the words (secret() keeps them
   readable to accessibility tools). The privacy gate before the words, the first time and after the device swap,

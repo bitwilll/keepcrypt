@@ -1,6 +1,7 @@
 package com.keepcrypt.entropy
 
 import android.os.SystemClock
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import androidx.test.uiautomator.By
@@ -13,6 +14,7 @@ import com.keepcrypt.entropy.Capture.launch
 import com.keepcrypt.entropy.Capture.onMain
 import com.keepcrypt.entropy.screens.Screen
 import com.keepcrypt.entropy.screens.screenId
+import java.util.regex.Pattern
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -99,6 +101,37 @@ internal object Ui {
     fun text(tag: String): String = find(tag).text
 
     fun enabled(tag: String): Boolean = find(tag).isEnabled
+
+    /**
+     * Presses the dice pad's key for face, as a tap on it picks the face, without naming the face to UI
+     * Automator, which logs the selector of every search and the point of every click (on the pad's fixed
+     * grid, a point names its key): a face picked is a roll once confirmed, and no roll goes into a log
+     * (lead decision M5-68 (e)). The pad's keys are found by a pattern that names none of them, the face's
+     * picked by its resource id in-process, and pressed by its accessibility click, as TalkBack presses it.
+     */
+    fun pressFace(face: Char) {
+        find(screenId(Screen.Dice))
+        val key = device.findObjects(By.res(DICE_KEY)).singleOrNull { it.resourceName == "key_" + face }
+            ?: throw AssertionError("the dice pad has no single key for the face pressed (it is not printed)")
+        assertTrue("the dice pad's key did not take the press", key.accessibilityNodeInfo.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+        device.waitForIdle()
+    }
+
+    /**
+     * Waits up to 10 s for the dice screen's pick, empty before the press, to show a face, by a pattern
+     * that names none (the pick's node is drawn anew as it changes, so it is waited for as UI Automator
+     * resolves it, never read from a node found before), then compares that face with face in-process:
+     * a roll goes into no selector or message.
+     */
+    fun awaitPick(face: Char) {
+        val shown = device.wait(Until.findObject(By.res("dice_pick").text(A_FACE)), 10_000)
+            ?: throw AssertionError("the dice screen's pick shows no face after the press")
+        assertTrue("the dice screen's pick is not the face pressed (neither is printed)", shown.text == face.toString())
+    }
+
+    /** The dice pad's keys' resource ids, key_ and a face, and a face as the pick shows it: patterns that name no face. */
+    private val DICE_KEY: Pattern = Pattern.compile("key_[1-6]")
+    private val A_FACE: Pattern = Pattern.compile("[1-6]")
 
     /** Waits up to 10 s for the node tag to show text. */
     fun awaitText(tag: String, text: String) {

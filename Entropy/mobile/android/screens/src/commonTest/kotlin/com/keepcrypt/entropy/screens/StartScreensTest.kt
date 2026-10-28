@@ -94,7 +94,7 @@ class StartScreensTest {
             is Reply.Done -> assertNotNull(reply.value, "Mixed mode has C")
             else -> fail("C is offered once committed")
         }
-        assertEquals(hexGroups(c), shown, "the screen shows core's C")
+        assertTrue(hexGroups(c) == shown, "the screen shows core's C (compared, never printed)")
         val rows = shown.split('\n')
         assertEquals(4, rows.size, "four rows")
         for (row in rows) assertTrue(Regex("^[0-9a-f]{4}( [0-9a-f]{4}){3}$").matches(row), "four groups of four hex digits")

@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Rect
+import android.os.Build
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
@@ -325,6 +326,37 @@ internal object Capture {
         }
         close()
         for (w in found) if (!w.secure) probe("window block of " + w.title + ": " + (blocks[w.title] ?: emptyList()).joinToString(" | "))
+        return found
+    }
+
+    /**
+     * A node of the app's windows as UiAutomation reads it: its text, its resource name (a Compose test
+     * tag), whether it is marked accessibility-data sensitive (Android 14+; false before) and whether it
+     * lies on screen. No data class: its text is never part of a printed value.
+     */
+    class NodeFacts(val text: String?, val resourceName: String?, val dataSensitive: Boolean, val visible: Boolean)
+
+    /**
+     * Every node of pkg's windows, read down from each window's root (UiDevice.getWindowRoots) child by
+     * child in this process, so no text on the screen is handed to UI Automator, which logs the selector
+     * of every search at debug level, its text included (UiDevice.findObjects: "Retrieving nodes with
+     * selector: %s"; By.text's prints TEXT='...'; lead decision M5-68 (e)): the caller compares the texts
+     * in-process. A node off screen is read too (UI Automator's own searches pass over one), and a child
+     * that cannot be read fails the walk, which would otherwise miss what it draws.
+     */
+    fun nodes(pkg: String): List<NodeFacts> {
+        val found = ArrayList<NodeFacts>()
+        val marked = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+        fun read(node: AccessibilityNodeInfo) {
+            val sensitive = marked && node.isAccessibilityDataSensitive
+            found.add(NodeFacts(node.text?.toString(), node.viewIdResourceName, sensitive, node.isVisibleToUser))
+            for (index in 0 until node.childCount) {
+                read(node.getChild(index) ?: throw AssertionError("a node's child could not be read, so the walk would miss it"))
+            }
+        }
+        val roots = UiDevice.getInstance(instrumentation).windowRoots.filter { it.packageName?.toString() == pkg }
+        assertTrue("no window of the app to read its nodes from", roots.isNotEmpty())
+        for (root in roots) read(root)
         return found
     }
 

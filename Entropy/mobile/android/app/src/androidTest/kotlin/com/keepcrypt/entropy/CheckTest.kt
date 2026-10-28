@@ -9,11 +9,13 @@ import com.keepcrypt.entropy.Capture.pass
 import com.keepcrypt.entropy.Ui.START_SECONDS
 import com.keepcrypt.entropy.Ui.assertPublicPadLabelled
 import com.keepcrypt.entropy.Ui.await
+import com.keepcrypt.entropy.Ui.awaitPick
 import com.keepcrypt.entropy.Ui.awaitText
 import com.keepcrypt.entropy.Ui.device
 import com.keepcrypt.entropy.Ui.enabled
 import com.keepcrypt.entropy.Ui.find
 import com.keepcrypt.entropy.Ui.on
+import com.keepcrypt.entropy.Ui.pressFace
 import com.keepcrypt.entropy.Ui.roll
 import com.keepcrypt.entropy.Ui.shown
 import com.keepcrypt.entropy.Ui.stays
@@ -75,8 +77,8 @@ class CheckTest {
             roll(activity, 49, DICE_50_ROLLS)
             awaitText("dice_count", "49 / 50 rolls, 126.6 bits")
             assertFalse("Done below the minimum", enabled("dice_done"))
-            tap("key_2")
-            awaitText("dice_pick", "2")
+            pressFace('2')
+            awaitPick('2')
             tap("confirm")
             awaitText("dice_count", "50 / 50 rolls, 129.2 bits")
             assertTrue("Done at the minimum", enabled("dice_done"))

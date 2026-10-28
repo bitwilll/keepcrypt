@@ -15,10 +15,12 @@ import com.keepcrypt.entropy.Ui.BUTTON
 import com.keepcrypt.entropy.Ui.START_SECONDS
 import com.keepcrypt.entropy.Ui.assertPublicPadLabelled
 import com.keepcrypt.entropy.Ui.await
+import com.keepcrypt.entropy.Ui.awaitPick
 import com.keepcrypt.entropy.Ui.awaitText
 import com.keepcrypt.entropy.Ui.enabled
 import com.keepcrypt.entropy.Ui.find
 import com.keepcrypt.entropy.Ui.on
+import com.keepcrypt.entropy.Ui.pressFace
 import com.keepcrypt.entropy.Ui.roll
 import com.keepcrypt.entropy.Ui.shown
 import com.keepcrypt.entropy.Ui.stage
@@ -40,6 +42,7 @@ import com.keepcrypt.entropy.screens.MAX_ROLLS
 import com.keepcrypt.entropy.screens.Notice
 import com.keepcrypt.entropy.screens.OVERVIEW_WORDS
 import com.keepcrypt.entropy.screens.SAFE_IF_EITHER
+import com.keepcrypt.entropy.screens.SECRET_TAG
 import com.keepcrypt.entropy.screens.SEEDBOOK_RULES
 import com.keepcrypt.entropy.screens.SKIPPED
 import com.keepcrypt.entropy.screens.Screen
@@ -76,9 +79,10 @@ class FlowTest {
      * New seed, 12 words: Home to Length and Back to Home (nothing is lost there), Length's 12 words,
      * Device entropy with MA's sentence (taps on it are touches for the pool) where Back does nothing,
      * Commitment's C as 16 groups of 4 hex digits, then the dice, with no dice-only line: Confirm and Undo
-     * off at first, a face tapped and confirmed, undone, Back doing nothing, and on to the minimum, 50
-     * rolls. Then Wi-Fi comes on during the dice, airplane mode staying on: the session is wiped, Go
-     * offline says why and shows the two states apart (airplane mode on, Wi-Fi on), and Start is disabled.
+     * off at first, a face pressed on the pad (Ui.pressFace) and confirmed, undone, Back doing nothing,
+     * and on to the minimum, 50 rolls. Then Wi-Fi comes on during the dice, airplane mode staying on: the
+     * session is wiped, Go offline says why and shows the two states apart (airplane mode on, Wi-Fi on),
+     * and Start is disabled.
      */
     @Test
     fun aNewSeedOfTwelveWordsReachesTheDiceMinimumAndWifiOnWipesIt() {
@@ -106,12 +110,12 @@ class FlowTest {
             assertFalse("the dice-only line in a new seed", device.hasObject(By.res("dice_only")))
             assertFalse("Confirm with no face picked", enabled("confirm"))
             assertFalse("Undo with no roll", enabled("undo"))
-            tap("key_3")
-            awaitText("dice_pick", "3")
+            pressFace('3')
+            awaitPick('3')
             assertTrue("Confirm with a face picked", enabled("confirm"))
             tap("confirm")
             awaitText("dice_count", "1 / 50 rolls, 2.5 bits")
-            assertEquals("the pick goes with the confirm", "-", text("dice_pick"))
+            assertTrue("the pick goes with the confirm", text("dice_pick") == "-")
             tap("undo")
             awaitText("dice_count", "0 / 50 rolls, 0.0 bits")
             device.pressBack()
@@ -120,8 +124,8 @@ class FlowTest {
             roll(activity, 49, DICE_50_ROLLS)
             awaitText("dice_count", "49 / 50 rolls, 126.6 bits")
             assertFalse("the minimum is not reached at 49 rolls", device.hasObject(By.res("dice_minimum")))
-            tap("key_2")
-            awaitText("dice_pick", "2")
+            pressFace('2')
+            awaitPick('2')
             tap("confirm")
             awaitText("dice_count", "50 / 50 rolls, 129.2 bits")
             find("dice_minimum")
@@ -162,22 +166,22 @@ class FlowTest {
             roll(activity, 98, DICE_99_ROLLS)
             awaitText("dice_count", "98 / 99 rolls, 253.3 bits")
             assertFalse("the minimum is not reached at 98 rolls", device.hasObject(By.res("dice_minimum")))
-            tap("key_4")
-            awaitText("dice_pick", "4")
+            pressFace('4')
+            awaitPick('4')
             tap("confirm")
             awaitText("dice_count", "99 / 99 rolls, 255.9 bits")
             find("dice_minimum")
             roll(activity, MAX_ROLLS - 100, DICE_99_ROLLS)
             awaitText("dice_count", "255 / 99 rolls, 659.1 bits")
-            tap("key_5")
-            awaitText("dice_pick", "5")
+            pressFace('5')
+            awaitPick('5')
             tap("confirm")
             awaitText("dice_count", "256 / 99 rolls, 661.7 bits")
             find("dice_cap")
             assertFalse("Confirm at 256 rolls", enabled("confirm"))
             assertFalse("the pad at 256 rolls", enabled("key_1"))
             tap("key_1")
-            assertEquals("a disabled key picks nothing", "-", text("dice_pick"))
+            assertTrue("a disabled key picks nothing", text("dice_pick") == "-")
             onMain {
                 activity.model.dicePick.replace('1')
                 activity.model.confirmRoll()
@@ -275,6 +279,13 @@ class FlowTest {
         val first = page * OVERVIEW_WORDS + 1
         awaitText("overview_header", "Words " + two(first) + "-" + two(first + 3) + DOT + "device " + device + " of " + devices)
     }
+
+    /**
+     * Whether a node of the app's tagged secret draws text, read in-process (Capture.nodes): a secret's
+     * text goes into no UI Automator selector, which UI Automator logs (lead decision M5-68 (e)).
+     */
+    private fun drawsSecret(text: String): Boolean =
+        Capture.nodes(Capture.instrumentation.targetContext.packageName).any { it.resourceName == SECRET_TAG && it.text == text }
 
     /** Whether insert's word is word, byte by byte, its copy wiped (the words are public vectors, never printed). */
     private fun sameWord(insert: WordPage, word: String): Boolean {
@@ -415,7 +426,7 @@ class FlowTest {
             tap("letters_done")
             on(activity, Screen.ReadbackMismatch)
             awaitText("mismatch_header", "Insert " + two(misread + 1) + " does not match" + DOT + "device 1 of 1")
-            assertTrue("the mismatch does not name the e/i face a mirror misread", shown(Screen.ReadbackMismatch, "Face $face: mirror misread") != null)
+            assertTrue("the mismatch does not name the e/i face a mirror misread", drawsSecret("Face " + face + ": mirror misread"))
             val named = onMain {
                 val mismatch = checkNotNull(activity.model.state.value.mismatch)
                 (1..4).all { (it == face) == (mismatch.face(it).verdict == Verdict.MirrorMisread) }
@@ -453,9 +464,9 @@ class FlowTest {
             pass(
                 "dice-50-words12's words: the gate with the SeedBook rules, 12 insert pages equal to the vector's words " +
                     "(in-process), Back and the overview's three pages; the letter pad's 26 keys with the button role alone " +
-                    "and the dice pad's six labelled (M5-46); an e/i misread on insert ${misread + 1} named a mirror misread " +
-                    "on face $face, the insert reviewed and read again on the pad; 12 inserts read back, the summary, the " +
-                    "checklist, Finish: Home with the slot empty",
+                    "and the dice pad's six labelled (M5-46); an e/i misread named a mirror misread on its face, the " +
+                    "insert reviewed and read again on the pad; 12 inserts read back, the summary, the checklist, Finish: " +
+                    "Home with the slot empty",
             )
             finish(activity)
         }
