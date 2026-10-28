@@ -13194,6 +13194,21 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   watchonly.json's passphrase typed and finds the pad empty and zeroed; the mutant fails it. :screens 138 in 19
   classes, :core-ffi 31 in 11, :app 7 in 3 for each flavour, :secure-ui 3 in 1, none failed, with the strict build of
   the five APKs.
+  Proof (M5 commit 21d, review fix, partial: local, Q76): a picked file was read into a buffer of core's limit and one
+  byte whatever its provider reported, so every Load registry snapshot allocated about 72 MiB on the main thread for a
+  .kcr of 250 bytes, and a full one held two such arrays at once: on a phone with a small heap an OutOfMemoryError,
+  which the crash handler turns into a wipe and the process's end. Documents.kt's readUpTo now starts from a buffer
+  one byte past the size the provider reports (the saved backup's read-back, which has none, keeps core's 8 KiB and
+  one) and doubles it, up to the limit and its one byte, only when the file runs past that size; every buffer it
+  leaves is zeroed, and what the model accepts is unchanged. ReadUpToTest (4, in both flavours' :app tests) reads
+  through a stream that records each buffer: a 250-byte file so sized takes one buffer of 251 bytes; one longer than
+  reported grows from there and is read whole; one shorter, or of no size, is read whole; the read stops one byte past
+  the limit whatever the size says (none, -1, 0, 100, the limit, past it), with no larger buffer; every buffer is zero
+  afterwards. With the old allocation three of the four fail. :app 11 in 4 classes for each flavour, :screens 138 in
+  19, :core-ffi 31 in 11, :secure-ui 3 in 1, none failed, with the strict build of the five APKs; on kc37 (local, the
+  run of 19i's line) BackupTest (Check a backup's read, the saved file's read-back), CheckTest (the shipping app's
+  refusal after the read) and SnapshotDrillTest (the drill's snapshot through the picker) passed. The read still runs
+  on the main thread, where picked() reads before the worker's call; moving it is not taken here.
 - [ ] The CI `age -d` hand-off: for the CI throwaway seed only, the androidTest reads the backup passphrase from the
   in-process `Secret` and sends it as the instrumentation status value `kc_ci_throwaway_passphrase`. The workflow pipes
   `am instrument -r`'s output straight into `scripts/android-age-check.py`, which takes the value, feeds it to age 1.1.1

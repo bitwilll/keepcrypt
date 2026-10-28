@@ -30,7 +30,8 @@ import java.io.InputStream
  *   file read back with openInputStream, at most one byte past core's limit.
  * - A picked file: its name and size as its provider reports them (OpenableColumns, read from the
  *   provider's own row with no byte of the file read), and its bytes only when the model asks, at
- *   most one byte past core's limit.
+ *   most one byte past core's limit, read into a buffer sized from the size its provider reports, so a
+ *   small snapshot takes a small buffer however large core's limit for one is.
  * - An IOException from a stream (the provider failed, or the file is gone) is a failed write or read,
  *   which the model names on its screen; nothing else is caught, so any other failure reaches the
  *   app's crash handler, which wipes and ends the process (fail closed).
@@ -98,7 +99,7 @@ private class Picked(
     override val name: String?,
     override val size: Long?,
 ) : PickedFile {
-    override fun read(limit: Int): ByteArray? = readAtMost(resolver, uri, limit)
+    override fun read(limit: Int): ByteArray? = readAtMost(resolver, uri, limit, size)
 }
 
 /** The picked file uri, with the name and size its provider reports (null where it reports none), no byte of it read. */
@@ -116,22 +117,35 @@ private fun pickedFile(resolver: ContentResolver, uri: Uri): PickedFile {
     return Picked(resolver, uri, name, size)
 }
 
-/** The file at uri, at most limit + 1 bytes (one past limit says it is larger), or null when it could not be read. */
-private fun readAtMost(resolver: ContentResolver, uri: Uri, limit: Int): ByteArray? {
+/**
+ * The file at uri, at most limit + 1 bytes (one past limit says it is larger), or null when it could not be read;
+ * size is what its provider reports (null where it reports none, as for the backup's read-back).
+ */
+private fun readAtMost(resolver: ContentResolver, uri: Uri, limit: Int, size: Long? = null): ByteArray? {
     try {
         val input = resolver.openInputStream(uri) ?: return null
-        return input.use { readUpTo(it, limit + 1) }
+        return input.use { readUpTo(it, limit + 1, size) }
     } catch (e: IOException) {
         return null
     }
 }
 
-/** Up to most bytes of input, until its end; the buffer read into is zeroed once copied. */
-private fun readUpTo(input: InputStream, most: Int): ByteArray {
-    val buffer = ByteArray(most)
+/**
+ * Up to most bytes of input, until its end. The buffer read into is first one byte past size, the file's size as
+ * its provider reports it (most where it reports none, or one of most or more), so a file takes a buffer of its
+ * own size, not most; it grows, doubled up to most, only when the file runs past it (a provider that sized it
+ * wrongly). Each buffer is zeroed once copied.
+ */
+internal fun readUpTo(input: InputStream, most: Int, size: Long?): ByteArray {
+    var buffer = ByteArray(if (size == null || size < 0 || size >= most) most else size.toInt() + 1)
     var count = 0
     while (count < most) {
-        val read = input.read(buffer, count, most - count)
+        if (count == buffer.size) {
+            val grown = buffer.copyOf(minOf(most.toLong(), 2L * buffer.size).toInt())
+            buffer.fill(0)
+            buffer = grown
+        }
+        val read = input.read(buffer, count, buffer.size - count)
         if (read < 0) break
         count += read
     }
