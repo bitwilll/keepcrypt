@@ -51,13 +51,16 @@
 # In order:
 #   1. kc37 booted with no camera (-camera-back none: the CI legs' no-camera facts, M5-59, which
 #      SnapshotDrillTest's scan screen expects), then android-emulator.sh --booted on it: a CI leg's
-#      steps 1-6 (the probes, the shell's screencaps, ControlTest with the capture control, CaptureTest
+#      steps 1-7 (the probes, the shell's screencaps, ControlTest with the capture control, CaptureTest
 #      in both APKs, PhoneMotionTest, FlowTest, CheckTest, BackupTest (its age -d hand-off with the Mac's
 #      age on PATH, Homebrew's), SnapshotDrillTest, LifecycleTest and CrashTest
-#      last, each through android-instrument.sh's judge, then the raw-frame control and the first
-#      frames). Before it, every check the user build cannot make is printed as "not made on kc37"
-#      with the reason and left out of its class's run (android-instrument.sh's CLASS-TEST form), and
-#      the image's answer to adb root is printed; no check is skipped silently. After it, each
+#      last, each through android-instrument.sh's judge, then the raw-frame control, the first
+#      frames and step 7: each app's dumpsys package with no INTERNET, and the nothing-persisted
+#      listing of the apps' data directories, which needs adb root, so android-emulator.sh names it as
+#      not made on the user build and CI's legs make it). Before it, every check the user build cannot
+#      make is printed as "not made on kc37" with the reason and left out of its class's run
+#      (android-instrument.sh's CLASS-TEST form), and the image's answer to adb root is printed; no
+#      check is skipped silently. After it, each
 #      instrumented run's result in android-emulator.sh's order, read from its own instrument lines;
 #      a run with no result, or a result out of that order, fails.
 #   2. kc37 booted again with its virtual-scene camera. First NativeTest, which android-emulator.sh
@@ -96,11 +99,12 @@
 # (first with no camera, then the virtual scene), no crash reports and the guest's two networks
 # given no route out, with its HOME and ANDROID_AVD_HOME set, seeded the update check's line for the
 # emulator's version and the SDK's bundled flags in that HOME with the run's time before each boot,
-# named CaptureTest's control (c) as not made on the user build and left it out of both CaptureTest
-# runs, run the ten instrumented runs in android-emulator.sh's order and listed their results, run
+# named CaptureTest's control (c) and the leg's nothing-persisted listing as not made on the user build
+# and left the control out of both CaptureTest runs, run the ten instrumented runs in android-emulator.sh's order and listed their results, run
 # NativeTest on the second boot with the app's primaryCpuAbi arm64-v8a, passed the camera client's
 # four checks and decoded the PNG. Each of these is its own case: no decode (the decode named as not
-# met, exit 0); no PNG (named as not made, exit 0); a debuggable build (no test left out); kc37
+# met, exit 0); no PNG (named as not made, exit 0); a debuggable build (no test left out, and the
+# leg's nothing-persisted listing made as root); kc37
 # already this script's (kept, exit 0); a failing class (exit 1, the camera check still run and the
 # emulator stopped); NativeTest failing, and the app installed for another ABI, which runs no
 # NativeTest (exit 1 each, the camera check still run); kc37 with other files (exit 1, nothing
@@ -180,7 +184,9 @@ EOF
 # The selftest's stand-in adb: -s emulator-5580 COMMAND, answered from and into the case directory
 # $KC_STUB. For the Camera2 check it keeps the app's screen (ui), the app in front (pkg), the dice's
 # count (rolls) and the camera (on while the scan screen scans), and draws each screen's test tags,
-# tag number i at y 100 + 30i, so a tap's y names its tag.
+# tag number i at y 100 + 30i, so a tap's y names its tag. The leg's step 7: each app's package block
+# requests CAMERA; a debuggable build (KC_DEBUGGABLE=1) gives a root shell, whose listing of an app's
+# data directories holds a file planted there and nothing else.
 s=$KC_STUB
 tags='first_launch_continue start dice_only_seed words_12 key_1 key_2 key_3 key_4 key_5 key_6 confirm dice_done check_now scan_qr cover'
 case "$*" in
@@ -215,7 +221,23 @@ node() {
   printf '<node text="%s" resource-id="%s" enabled="true" bounds="[0,%d][720,%d]" />' "$2" "$1" "$y" $((y + 20))
 }
 case "$*" in
-  'root') echo 'adbd cannot run as root in production builds' ;;
+  'root') if [ "${KC_DEBUGGABLE:-0}" = 1 ]; then echo 'restarting adbd as root'; else echo 'adbd cannot run as root in production builds'; fi ;;
+  'wait-for-device') ;;
+  'shell id -u') if [ "${KC_DEBUGGABLE:-0}" = 1 ]; then echo 0; else echo 2000; fi ;;
+  'shell for d in /data/user/0/'*)
+    p=$(printf '%s\n' "$2" | sed -n 's|^for d in /data/user/0/\([^ ]*\) .*|\1|p')
+    cat "$s/planted-$p" 2>/dev/null
+    echo kc-listed
+    ;;
+  'shell echo kc-planted > /data/user/0/'*)
+    f=${2##*> }
+    p=${f#/data/user/0/}
+    echo "$f" > "$s/planted-${p%%/*}"
+    ;;
+  'shell rm -f /data/user/0/'*)
+    p=${4#/data/user/0/}
+    rm -f "$s/planted-${p%%/*}"
+    ;;
   'emu kill') kill "$(cat "$s/emulator.pid")" ;;
   'emu automation play '*) : > "$s/walked"; echo OK ;;
   'emu virtualscene-image wall '*) : > "$s/poster"; echo OK ;;
@@ -231,7 +253,9 @@ case "$*" in
   'shell dumpsys window') printf '  mCurrentFocus=Window{b2 u0 %s/com.keepcrypt.entropy.MainActivity}\n' "$(cat "$s/front" 2>/dev/null)" ;;
   'shell pm grant '*' android.permission.CAMERA') echo "$4" >> "$s/granted" ;;
   'shell dumpsys package '*)
+    printf 'Packages:\n  Package [%s] (1a2b3c4):\n' "$4"
     echo "    primaryCpuAbi=${KC_ABI:-arm64-v8a}"
+    printf '    requested permissions:\n      android.permission.CAMERA\n    runtime permissions:\n'
     grep -q -x -F -e "$4" "$s/granted" 2>/dev/null && echo '      android.permission.CAMERA: granted=true, flags=[ USER_SET ]'
     ;;
   'shell am start -W '*)
@@ -512,6 +536,8 @@ CONFIG
     "local: not made on kc37 (ro.debuggable=0): com.keepcrypt.entropy.CaptureTest#disableSecureWindowsShowsTheScreenOnlyWhileSet" \
     "local: no adb root on kc37: adb root says: adbd cannot run as root in production builds" \
     "instrument stub: com.keepcrypt.entropy $left" "emulator: api=37: every check passed" \
+    "pass: api=37 dumpsys package com.keepcrypt.entropy.testregistry: no INTERNET" \
+    "emulator: api=37: not made here (ro.debuggable=0, a user build: adb root refused): the nothing-persisted listing" \
     "local: run 10 of 10, com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest: instrument: api=37 PASS com.keepcrypt.entropy.CrashTest" \
     "local: run 7 of 10, com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest: instrument: api=37 PASS com.keepcrypt.entropy.BackupTest" \
     "local: NativeTest: com.keepcrypt.entropy installed with primaryCpuAbi=arm64-v8a" \
@@ -531,7 +557,8 @@ CONFIG
     "local: every check made on kc37 passed (each check not made or not met is named above)"
   expect no-png 0 "local: not made on kc37: the scan of goahead-collision-dice-50.png: no such file in" \
     "local: every check made on kc37 passed"
-  expect debuggable 0 "local: every check made on kc37 passed"
+  expect debuggable 0 "local: every check made on kc37 passed" \
+    "pass: api=37 nothing persisted (com.keepcrypt.entropy.testregistry), positive control: a file planted as root"
   runs debuggable com.keepcrypt.entropy.CaptureTest
   if grep -q -e '^local: not made on kc37 (ro.debuggable' -e '^local: no adb root' "$st/debuggable/out"; then
     check debuggable no "no test left out and no adb root asked on a debuggable build"
@@ -820,7 +847,7 @@ debuggable=$(value getprop ro.debuggable)
 say "$avd: ro.build.type=$(value getprop ro.build.type), ro.debuggable=$debuggable"
 without=
 if [ "$debuggable" != 1 ]; then
-  say "no adb root on $avd: adb root says: $(dev root 2>&1 | tr -d '\r' | head -n 1) (no check here needs root)"
+  say "no adb root on $avd: adb root says: $(dev root 2>&1 | tr -d '\r' | head -n 1) (the leg's nothing-persisted listing needs it: android-emulator.sh names it as not made)"
   while read -r left why; do
     [ -n "$left" ] || continue
     say "not made on $avd (ro.debuggable=$debuggable): ${left%%-*}#${left#*-}: $why"

@@ -13203,6 +13203,34 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   loads. On kc37 (local, android-local.sh exit 0 in 1257 s, 60 s more than at 20a): every class passed, BackupTest 1
   test with the hand-off; the strict build of the five APKs and every JVM test task rerun (:core-ffi 29 in 10 classes,
   :screens 120 in 17, :app 7 in 3 for each flavour, :secure-ui 3 in 1, none failed).
+  Proof (M5 commit 21b, the nothing-persisted listing and dumpsys package, partial: local, Q76; the root listing runs
+  only in CI's API 31 and 36 legs, whose default images are userdebug builds, at the next push; the snapshot through
+  the picker in both APKs is 21a's, under the first item): android-emulator.sh's new step 7, after the suite and the
+  first frames. Each app APK's own block of dumpsys package (its "Package [PKG]" line to the next package or section,
+  as CaptureTest's Capture.permission reads it) must name the CAMERA it requests, so its permissions are read, and no
+  INTERNET. Then adb root (a root shell, id -u 0, waited for up to 20 s while adbd restarts; one that does not come
+  fails a CI leg) and, for each app, a listing as root of every entry that is not a directory under /data/user/0/PKG,
+  /data/user_de/0/PKG and PKG's data, media and obb under /data/media/0/Android, ending with a line of its own, so a
+  listing cut short fails: each entry is a file the app wrote, and none may be there but the operating system's
+  compiled shaders, which its renderer keeps in the app's code cache (code_cache/com.android.skia.shaders_cache,
+  HWUI's, and code_cache/com.android.opengl.shaders_cache, EGL's: rule 8's files the operating system keeps about an
+  app; the runtime profiles, compiled code and package records live outside these directories). The listing is
+  printed as a probe line (paths only). The positive control (Q59 (a)): a file planted as root in /data/user/0/PKG
+  must be the same listing's one new hit, and is then removed. On a user build (--booted on kc37, ro.debuggable=0) the
+  listing is printed as not made, CI's legs making it; android-local.sh's header and its adb-root line say so.
+  Selftests: android-emulator.sh 34 passed, 0 failed (29 before: INTERNET in a package block, a file the app wrote, a
+  planted file the listing misses, a listing cut short and a CI image with no root shell each exit 1; the passing leg
+  finds a stand-in shader cache and nothing else, and the --booted leg names the listing as not made) and
+  android-local.sh 34 (its debuggable case now makes the listing as root on its stand-in), each under sh and dash;
+  mutants that never match INTERNET, skip the listing's end line or take the planted file for the listing each fail
+  android-emulator.sh's. On kc37 (local, android-local.sh exit 0 in 1469 s, the run of 21a's line): "dumpsys package
+  com.keepcrypt.entropy: no INTERNET (its block names the CAMERA it requests, so its permissions are read)", the same
+  for com.keepcrypt.entropy.testregistry, and "not made here (ro.debuggable=0, a user build: adb root refused): the
+  nothing-persisted listing of the apps' data directories, which CI's API 31 and 36 legs make". The two shader caches
+  are allowed by HWUI's and EGL's own file names, not from a listing seen: CI's first run shows what the default
+  images keep there, and any other entry fails its leg.
+  The gate is clean on the working tree (381 files) and --workflows on the three workflows, its --selftest 1611
+  passed, 0 failed (703 s), and canaries.sh PASS, all 94 checks ran (472 s).
 
 **19. Gate evidence and Commands**
 - [ ] CLAUDE.md Commands gains the ffi test-registry line, `--apk` and `--selftest-apk`, the android scripts (CI-only

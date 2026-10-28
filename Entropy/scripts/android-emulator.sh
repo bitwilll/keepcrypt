@@ -83,7 +83,22 @@
 #      first frame is the curtain's and a stream may carry no frame after it (screenrecord writes one
 #      only when the display changes), so a second recording starts with the app's first screen up,
 #      whose first frame screenrecord composes at once: every frame black over the window too.
-# On the 16 KB-page image (API 16k; M5 group 6, the ARM and 16 KB leg, from commit 14) steps 2-6 are
+#   7. Nothing persisted (rule 8; M5 group 18; Q59 (a)), after the suite. For each app APK, its own
+#      block of dumpsys package (from its "Package [PKG]" line, as CaptureTest reads it) must name the
+#      CAMERA it requests, so its permissions are read, and no INTERNET. Then, as root (adb root, which
+#      the default images' userdebug builds allow; a root shell is required), the app's data
+#      directories are listed whole (/data/user/0/PKG, /data/user_de/0/PKG and PKG's data, media and
+#      obb under /data/media/0/Android): every entry that is not a directory is a file the app wrote,
+#      and none may be there but the operating system's own compiled shaders, which its renderer keeps
+#      in the app's code cache (code_cache/com.android.skia.shaders_cache, HWUI's, and
+#      code_cache/com.android.opengl.shaders_cache, EGL's: rule 8's files the operating system keeps
+#      about an app; its runtime profiles, compiled code and package records live outside these
+#      directories). The listing ends with a line of its own, so one cut short fails too. The positive
+#      control follows: a file planted as root in /data/user/0/PKG must be the same listing's one new
+#      hit (the listing before and that file), and is then removed. On a user build (--booted on kc37: ro.debuggable=0) adb root is refused, so
+#      the listing is printed as not made there, CI's API 31 and 36 legs making it; on the CI images a
+#      root shell that does not come fails the leg.
+# On the 16 KB-page image (API 16k; M5 group 6, the ARM and 16 KB leg, from commit 14) steps 2-7 are
 # not run. After step 1: getconf PAGE_SIZE must be 16384; the shipping APK is installed (the
 # package manager's primaryCpuAbi must be x86_64) with its test APK, and NativeTest runs through
 # android-instrument.sh: the app's own start to First launch, whose Continue loads the library
@@ -114,13 +129,18 @@
 # after the later checks ran, and so does an empty screencap of the control's screens; capture-control
 # still in recents after pm clear, a recording that ends before it is stopped, raw frames that never
 # show the control's words page, the app's window lit in the first-frame stream, and the same with that
-# stream carrying no frame after the curtain (only the second stream sees it) each exit 1.
+# stream carrying no frame after the curtain (only the second stream sees it) each exit 1. Step 7: the
+# leg that passes finds no INTERNET in either app's package block and nothing in their data directories
+# but a stand-in shader cache, with the planted file the control's one hit; a package block that names
+# INTERNET, a file the app wrote, a planted file the listing misses, a listing cut short and a CI image
+# that gives no root shell each exit 1.
 # On the 16 KB-page image: a leg with arm64-v8a listed passes, running NativeTest with the app
 # installed for x86_64 and again for arm64-v8a (the stand-in runner names the ABI of each run) and
 # naming armeabi-v7a as not listed; a page size of 4096, a failing NativeTest and an install whose
 # primaryCpuAbi stays x86_64 under --abi each exit 1. With --booted (API 37, no SDK): a leg naming
 # CaptureTest's control (c) passes with both CaptureTest runs given that test to leave out, the same
-# last five runs, no AVD written and no emulator started; one naming a class no run holds exits 1.
+# last five runs, the nothing-persisted listing named as not made on its user build, no AVD written and
+# no emulator started; one naming a class no run holds exits 1.
 # Too few arguments, --booted on 16k and a --booted class with no test exit 2.
 # Exit 0 when every case behaves, 1 otherwise. The legs run at once; it takes about a minute.
 set -u
@@ -158,7 +178,11 @@ EOF
 # The selftest's stand-in adb: -s emulator-5554 COMMAND, answered from and into the case directory
 # $KC_STUB (screen: what the display shows; front: the package whose MainActivity was started last).
 # The control's words page shows the known colour, as its first screen does, unless KC_WORDS_SCREEN
-# names another screen; KC_SCREENCAP_EMPTY makes the shell's screencap give nothing.
+# names another screen; KC_SCREENCAP_EMPTY makes the shell's screencap give nothing. Step 7: a
+# debuggable build (KC_DEBUGGABLE, 1 by default) gives a root shell; each app's package block
+# requests CAMERA (and INTERNET under KC_INTERNET); its data directories hold a shader cache (and a file
+# it wrote under KC_APP_FILE), and a file planted there is listed (but under KC_PLANT_LOST); the
+# listing is cut short under KC_LIST_SHORT.
 s=$KC_STUB
 [ "$*" = start-server ] && exit 0
 [ "$1" = -s ] && [ "$2" = emulator-5554 ] || { echo "stub adb: unexpected: $*" >&2; exit 1; }
@@ -181,7 +205,33 @@ case "$*" in
     echo Success
     ;;
   'uninstall com.keepcrypt.entropy') echo Success ;;
-  'shell dumpsys package com.keepcrypt.entropy') printf '    primaryCpuAbi=%s\n' "$(cat "$s/abi")" ;;
+  'shell dumpsys package com.keepcrypt.entropy' | 'shell dumpsys package com.keepcrypt.entropy.testregistry')
+    printf 'Packages:\n  Package [%s] (1a2b3c4):\n    primaryCpuAbi=%s\n    requested permissions:\n' "$4" "$(cat "$s/abi" 2>/dev/null)"
+    printf '      android.permission.CAMERA\n'
+    [ -z "${KC_INTERNET:-}" ] || printf '      android.permission.INTERNET\n'
+    printf '    runtime permissions:\n      android.permission.CAMERA: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED ]\n\n'
+    printf 'Queries:\n  system apps queryable: false\n'
+    ;;
+  'shell getprop ro.debuggable') echo "${KC_DEBUGGABLE:-1}" ;;
+  'root') if [ "${KC_DEBUGGABLE:-1}" = 1 ]; then echo 'restarting adbd as root'; else echo 'adbd cannot run as root in production builds'; fi ;;
+  'wait-for-device') ;;
+  'shell id -u') if [ "${KC_DEBUGGABLE:-1}" = 1 ]; then echo 0; else echo 2000; fi ;;
+  'shell for d in /data/user/0/'*)
+    p=$(printf '%s\n' "$2" | sed -n 's|^for d in /data/user/0/\([^ ]*\) .*|\1|p')
+    printf '/data/user/0/%s/code_cache/com.android.skia.shaders_cache\n' "$p"
+    [ -z "${KC_APP_FILE:-}" ] || printf '/data/user/0/%s/files/kc-stand-in\n' "$p"
+    [ -n "${KC_PLANT_LOST:-}" ] || cat "$s/planted-$p" 2>/dev/null
+    [ -n "${KC_LIST_SHORT:-}" ] || echo kc-listed
+    ;;
+  'shell echo kc-planted > /data/user/0/'*)
+    f=${2##*> }
+    p=${f#/data/user/0/}
+    echo "$f" > "$s/planted-${p%%/*}"
+    ;;
+  'shell rm -f /data/user/0/'*)
+    p=${4#/data/user/0/}
+    rm -f "$s/planted-${p%%/*}"
+    ;;
   'shell getconf PAGE_SIZE') echo "${KC_PAGE_SIZE:-4096}" ;;
   'shell getprop ro.product.cpu.abilist') echo "${KC_ABILIST:-x86_64}" ;;
   'shell am start -W '*)
@@ -276,7 +326,7 @@ EOF
     case_dir "$1"
     shift
     {
-      env KC_STUB="$c" sh "$st/scripts/android-emulator.sh" --booted 37 emulator-5554 "$st/adb" "$c/apks" "$c/work" "$@"
+      env KC_STUB="$c" KC_DEBUGGABLE=0 sh "$st/scripts/android-emulator.sh" --booted 37 emulator-5554 "$st/adb" "$c/apks" "$c/work" "$@"
       echo $? > "$c/rc"
     } > "$c/out" 2>&1 &
   }
@@ -319,6 +369,11 @@ EOF
   leg screencap-empty KC_SCREENCAP_EMPTY=1
   leg app-window-lit KC_APP_SCREEN=lit
   leg app-window-lit-no-frame KC_APP_SCREEN=lit-unsent
+  leg internet KC_INTERNET=1
+  leg app-wrote-a-file KC_APP_FILE=1
+  leg planted-not-listed KC_PLANT_LOST=1
+  leg listing-cut-short KC_LIST_SHORT=1
+  leg no-root KC_DEBUGGABLE=0
   leg 16k-pass KC_PAGE_SIZE=16384 KC_ABILIST=x86_64,arm64-v8a
   leg 16k-page-4096 KC_ABILIST=x86_64,arm64-v8a
   leg 16k-native-test-fails KC_PAGE_SIZE=16384 KC_FAILCLASS=NativeTest
@@ -338,6 +393,13 @@ EOF
     "instrument stub: com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest" \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
+    "pass: api=31 dumpsys package com.keepcrypt.entropy: no INTERNET" \
+    "pass: api=31 dumpsys package com.keepcrypt.entropy.testregistry: no INTERNET" \
+    "probe: api=31 adb root: restarting adbd as root; id -u: 0" \
+    "pass: api=31 nothing persisted (com.keepcrypt.entropy): no file in its data directories" \
+    "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry): no file in its data directories" \
+    "pass: api=31 nothing persisted (com.keepcrypt.entropy), positive control: a file planted as root in its data directory is the listing's one new hit" \
+    "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
     "emulator: api=31: every check passed"
   # Steps 4a-4c: the leg NAME's last five instrumented runs are CheckTest, the age: BackupTest,
   # SnapshotDrillTest (on the test-registry app), LifecycleTest and then the killed CrashTest, so no run
@@ -419,6 +481,17 @@ EOF
   expect app-window-lit 1 "FAIL: emulator: api=31: shipping: a raw frame shows the app's window"
   expect app-window-lit-no-frame 1 "pass: api=31 first frame (shipping): every frame black" \
     "FAIL: emulator: api=31: shipping: a raw frame with the app's first screen up shows its window"
+  expect internet 1 "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry): no file in its data directories" \
+    "FAIL: emulator: api=31: dumpsys package com.keepcrypt.entropy: the app requests or holds INTERNET; dumpsys package com.keepcrypt.entropy.testregistry: the app requests or holds INTERNET (each reported above)"
+  expect app-wrote-a-file 1 \
+    "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control: a file planted as root in its data directory is the listing's one new hit" \
+    "FAIL: emulator: api=31: nothing persisted (com.keepcrypt.entropy): its data directories hold a file it wrote: /data/user/0/com.keepcrypt.entropy/files/kc-stand-in; nothing persisted (com.keepcrypt.entropy.testregistry): its data directories hold a file it wrote: /data/user/0/com.keepcrypt.entropy.testregistry/files/kc-stand-in (each reported above)"
+  expect planted-not-listed 1 "pass: api=31 nothing persisted (com.keepcrypt.entropy): no file in its data directories" \
+    "FAIL: emulator: api=31: nothing persisted (com.keepcrypt.entropy), positive control: the listing found '' where the file planted as root, /data/user/0/com.keepcrypt.entropy/kc-planted-file, is its one new hit"
+  expect listing-cut-short 1 \
+    "FAIL: emulator: api=31: nothing persisted (com.keepcrypt.entropy): its data directories hold a file it wrote: (the listing did not run to its end)"
+  expect no-root 1 "probe: api=31 adb root: adbd cannot run as root in production builds; id -u: 2000" \
+    "FAIL: emulator: api=31: no root shell (ro.debuggable=0), so the nothing-persisted listing of the apps' data directories cannot run (each reported above)"
   expect 16k-pass 0 "probe: api=16k ro.product.cpu.abilist=x86_64,arm64-v8a; getconf PAGE_SIZE=16384" \
     "probe: api=16k app installed (x86_64): primaryCpuAbi=x86_64" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.NativeTest abi=x86_64" \
@@ -437,6 +510,8 @@ EOF
     "instrument stub: com.keepcrypt.entropy $left" "instrument stub: com.keepcrypt.entropy.testregistry $left" \
     "pass: api=37 control (a) raw frames:" "pass: api=37 control (a) raw frames, words page:" \
     "kept as control-api37-words.png: exit 0, 12 bytes" "pass: api=37 first frame (registry, its first screen up)" \
+    "pass: api=37 dumpsys package com.keepcrypt.entropy: no INTERNET" \
+    "emulator: api=37: not made here (ro.debuggable=0, a user build: adb root refused): the nothing-persisted listing of the apps' data directories, which CI's API 31 and 36 legs make" \
     "emulator: api=37: every check passed"
   last_five booted-pass
   if [ ! -e "$st/booted-pass/work/avd" ] && [ ! -e "$st/booted-pass/emulator.pid" ]; then
@@ -937,6 +1012,87 @@ first_frame() {
 first_frame shipping com.keepcrypt.entropy "$region_shipping" "$display_shipping"
 first_frame registry com.keepcrypt.entropy.testregistry "$region_registry" "$display_registry"
 probe "starting window: black (the raw frames from before each cold launch to the first screen show nothing but black in the app's window)"
+
+# 7. Nothing persisted (rule 8; M5 group 18; Q59 (a)), after the suite: no INTERNET in either app's
+# package block, then as root no file in either app's data directories, with a planted file the
+# positive control (see the header).
+# package_block PKG: PKG's own block of dumpsys package, its "Package [PKG]" line to the next package
+# or section (a line that is neither blank nor indented), each line trimmed.
+package_block() {
+  dev shell dumpsys package "$1" 2>&1 | tr -d '\r' | awk -v head="Package [$1]" '
+    { line = $0; sub(/^[ \t]+/, "", line) }
+    inside && (index(line, "Package [") == 1 || ($0 != "" && $0 !~ /^[ \t]/)) { exit }
+    inside { print line }
+    index(line, head) == 1 { inside = 1 }'
+}
+for pkg in com.keepcrypt.entropy com.keepcrypt.entropy.testregistry; do
+  block=$(package_block "$pkg")
+  if ! printf '%s\n' "$block" | grep -q -E -e '^android[.]permission[.]CAMERA([:,]|$)'; then
+    fail_later "dumpsys package $pkg: its block names no CAMERA, so its permissions were not read"
+  elif printf '%s\n' "$block" | grep -q -e 'android[.]permission[.]INTERNET'; then
+    fail_later "dumpsys package $pkg: the app requests or holds INTERNET"
+  else
+    echo "pass: api=$api dumpsys package $pkg: no INTERNET (its block names the CAMERA it requests, so its permissions are read)"
+  fi
+done
+# app_files PKG: as root, every entry under PKG's data directories that is not a directory, its path a
+# line, then the line kc-listed.
+app_files() {
+  dev shell "for d in /data/user/0/$1 /data/user_de/0/$1 /data/media/0/Android/data/$1 /data/media/0/Android/media/$1 /data/media/0/Android/obb/$1; do if [ -d \$d ]; then find \$d ! -type d; fi; done; echo kc-listed" 2>&1 | tr -d '\r'
+}
+# written PKG: the files app_files lists that PKG wrote, one a line: all but the operating system's own
+# compiled shaders in its code cache; a listing whose last line is not kc-listed (cut short, or a
+# shell that failed) gives one line saying so instead.
+written() {
+  listed=$(app_files "$1")
+  if [ "$(printf '%s\n' "$listed" | tail -n 1)" != kc-listed ]; then
+    echo "(the listing did not run to its end)"
+    return
+  fi
+  printf '%s\n' "$listed" | sed '$d' | grep -v -x -e "/data/user/0/$1/code_cache/com[.]android[.]skia[.]shaders_cache" \
+    -e "/data/user/0/$1/code_cache/com[.]android[.]opengl[.]shaders_cache"
+}
+debuggable=$(value getprop ro.debuggable)
+if [ "$debuggable" != 1 ] && [ -n "$booted" ]; then
+  say "not made here (ro.debuggable=$debuggable, a user build: adb root refused): the nothing-persisted listing of the apps' data directories, which CI's API 31 and 36 legs make"
+else
+  rooted=$(dev root 2>&1 | tr -d '\r' | tr '\n' ' ' | sed 's/ *$//')
+  dev wait-for-device > /dev/null 2>&1
+  uid=$(value id -u)
+  i=0
+  # adbd restarts as root: a moment before its shell is root (none on an image that refused it).
+  while [ "$uid" != 0 ] && [ "$i" -lt 20 ]; do
+    case $rooted in *"cannot run as root"*) break ;; esac
+    i=$((i + 1))
+    sleep 1
+    dev wait-for-device > /dev/null 2>&1
+    uid=$(value id -u)
+  done
+  probe "adb root: $rooted; id -u: $uid"
+  if [ "$uid" != 0 ]; then
+    fail_later "no root shell (ro.debuggable=$debuggable), so the nothing-persisted listing of the apps' data directories cannot run"
+  else
+    for pkg in com.keepcrypt.entropy com.keepcrypt.entropy.testregistry; do
+      probe "nothing persisted ($pkg): listed as root: $(app_files "$pkg" | sed '$d' | tr '\n' ' ')"
+      found=$(written "$pkg")
+      if [ -n "$found" ]; then
+        fail_later "nothing persisted ($pkg): its data directories hold a file it wrote: $(printf '%s' "$found" | tr '\n' ' ')"
+      else
+        echo "pass: api=$api nothing persisted ($pkg): no file in its data directories (/data/user/0, /data/user_de/0, /data/media/0/Android's data, media and obb) but the system's compiled shaders"
+      fi
+      planted=/data/user/0/$pkg/kc-planted-file
+      dev shell "echo kc-planted > $planted" > /dev/null 2>&1
+      control=$(written "$pkg")
+      dev shell rm -f "$planted" > /dev/null 2>&1
+      # The control: the same listing, now the one before and the planted file, in any order.
+      if [ "$(printf '%s\n' "$control" | sort)" = "$(printf '%s\n%s\n' "$found" "$planted" | sed '/^$/d' | sort)" ]; then
+        echo "pass: api=$api nothing persisted ($pkg), positive control: a file planted as root in its data directory is the listing's one new hit (then removed)"
+      else
+        fail_later "nothing persisted ($pkg), positive control: the listing found '$(printf '%s' "$control" | tr '\n' ' ')' where the file planted as root, $planted, is its one new hit"
+      fi
+    done
+  fi
+fi
 
 [ -z "$failed" ] || fail "${failed#; } (each reported above)"
 say "every check passed"
