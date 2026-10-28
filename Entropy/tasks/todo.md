@@ -11793,7 +11793,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   `NOT-FOR-RELEASE`), then the emulators one after another on those bytes: `default;x86_64` API 31, `default;x86_64`
   API 36, and from commit 14 one 16 KB-page image (`google_apis_ps16k;x86_64` API 36, or the probe's choice). KVM udev
   rule; `sdkmanager --install` with the SDK licence accepted (Q54); headless AVDs; images cached by revision.
-  `--workflows` passes on it.
+  `--workflows` passes on it. (As built, M5-70 (e): the positive-control captures upload in their own last step, after
+  the API 31 and 36 legs that make them, since commit 19h.)
   Proof: the green run with each step's time; emulator and image revisions printed.
   Proof (M5 commit 8, partial; the run and its times are the lead's, from CI): the job's last steps are the frame
   checker's selftest, the KVM udev rule, the revisions `sdkmanager --list` offers (the cache key), actions/cache of
@@ -13566,14 +13567,15 @@ SHA-256 8983977bd0fb4fb6ac125cfc3bc99112ea9451b4f47f715386113471dea5a328, goahea
 - [ ] "I'm alone, show words"; copy the words. Read back from paper with one deliberate e/i misread first (it must be
   named), then correctly.
 - [ ] Backup: write the 8-word passphrase on paper; confirm it; save to Downloads ("Backup verified").
+- [ ] Show the watch-only QRs, answering No to the BIP39 passphrase question: Sparrow scans the account QR, and its
+  first receive address equals the wallet summary's; Bitcoin Core imports the descriptor (H4's steps) with the same
+  first address. (The app offers these once, after the backup and before D: M5-70 (e).)
+- [ ] Skip the registration, or show its QR once.
 - [ ] Reveal D; write it on paper.
-- [ ] Go to P3 now, before Finish.
+- [ ] Finish.
 
-**P3. Watch-only (same throwaway seed)**
-- [ ] Sparrow scans the account QR; its first receive address equals the wallet summary's. Bitcoin Core imports the
-  descriptor (H4's steps) with the same first address.
-- [ ] Finish. From Home, Check a backup with the saved file and the passphrase: "Backup OK", the same fingerprint and Seal
-  ID.
+**P3. After the ceremony (same throwaway seed)**
+- [ ] From Home, Check a backup with the saved file and the passphrase: "Backup OK", the same fingerprint and Seal ID.
 - [ ] On the offline computer, `python3 -I tools/verify/verify.py mixed --words 12` with C, D and the rolls from paper
   exits 0 with the same words and Seal ID.
 - [ ] Delete the backup file and destroy the paper.
@@ -14860,6 +14862,9 @@ they differ. Nothing in the Android plan is weakened.
   residual; CeremonyModel's KDoc names all three. Making the FFI answer Discarded for a long call that meets an Idle
   slot after a discard would close all three, and is not taken in M5: it changes the FFI's stage rule
   (`ffi_a_call_in_a_stage_that_does_not_offer_it_halts`) for a window of microseconds that fails closed.
+  Amended 2026-10-28 (M5-70 (c), from E4's review): commit 20a's backup check (`verifyBackup`, run as a model long
+  call after the save) is a fourth call of the same kind, with the same fail-closed residual; CeremonyModel's KDoc
+  names all four (finish, revealProof, encryptBackup, verifyBackup).
 - M5-55 (2026-10-22): the check prompt shows no seal card. Commit 17 drew it there, Seal ID included, beside Skip;
   the Seal ID's first four characters are the 20-bit bucket the registry lookup takes, so a user could read a Stop
   and then Skip past it, which swb:130 rules out ("Skip is offered only before the check starts, so nobody can read
@@ -15038,6 +15043,30 @@ they differ. Nothing in the Android plan is weakened.
   stage E4's head, and the lead then sets its budget to that run plus 25% (M5-30). Stage U adds journeys and edge
   cases to these legs, so before Stage U the lead weighs running the legs as parallel jobs against the longer budget,
   from that measurement.
+- M5-70 (2026-10-28), after stage E4: (a) L8's dangling-.git-file case failed in CI (Entropy CI 40681107808 at
+  e5109bc): Ubuntu's git 2.55 says "gitfile does not point to a valid repository" where macOS's says "not a git
+  repository", so the gate stopped with git's failure but not the case's line. Commit L8b names the .git entry for any
+  exit 128 that finds one, the same under every git. (b) M5-69's measuring run (Entropy Android 40681107802, at
+  e5109bc) took 53.4 minutes with every leg run to its end (API 31 1230 s, API 36 1226 s, 16 KB 81 s; two legs failed
+  on tests, (h)). By M5-30 one job would need 67 minutes, and Stage U adds journeys. The Android workflow is not among
+  the 14 required checks, so commit L9 runs the legs as parallel jobs: one build job builds, signs and uploads once,
+  and hands the APKs to the leg jobs (API 31 with the 16 KB leg, and API 36) through actions/cache keyed by the run
+  (download-artifact is not an approved action), each leg checking the bytes against the build's SHA256SUMS before it
+  installs them, so every leg still tests the bytes the run uploads. Each job's budget is its measured time plus 25%
+  (M5-30), measured at L9's first push under the 90-minute ceiling. (c) M5-54 names verifyBackup (amended there). (d)
+  Rule 8 says the app's own storage stays empty. 21b's nothing-persisted listing allows two shader caches the platform's
+  renderer writes into the app's code_cache, which no listing has shown and no owner answer names, so commit 21g allows
+  nothing there; if CI's listing shows them, the lead brings the paths and sizes to the owner as a rule 8 question
+  before any allowance. (e) P2 and P3 follow the app's order (the watch-only export after the backup and before D,
+  offered once), and group 6's upload order is as built (19h). (f) The age hand-off's search (20b-20d: the run's whole
+  output for the passphrase, either page and two of its screen's lines; single words outside fixed prose lines, the
+  public name and fingerprint and am instrument's result lines) stands for the plan's grep of the job log for the
+  passphrase's first word. (g) Commit 19j moves CaptureTest's control (c) to the words page, as group 6's (c) says (API
+  36; the local user build cannot make it), and commit 20h reads a picked file on the worker, not in the activity's
+  result callback, so a slow provider or a full-size snapshot cannot hold the main thread. (h) The measuring run's
+  failures (FlowTest on API 31: a stale node in Ui.enabled in the watch-only flow, and About not shown in time;
+  CaptureTest on API 36, test-registry APK: "only 4 of the 5 secret texts of backup_confirm are drawn") came before
+  E4's fix commits; whatever CI at the next head still shows is fixed at its root in stage E5.
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the
@@ -15758,6 +15787,15 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   --workflows ../.github/workflows clean (3 workflows) under sh and dash; canaries.sh PASS, all 94 checks
   ran (444 s); fmt, both clippy runs, `cargo test --workspace --locked` (499 passed, 3 ignored) and `-p keepcrypt-core
   --features test-sources` (269 passed, 1 ignored).
+  Proof (M5 commit L8b, the lead's, M5-70 (a), partial: local; CI at the next push): Entropy CI 40681107808 at e5109bc
+  failed error-build-work-tree-dangling-git-file: Ubuntu's git 2.55 says "fatal: gitfile does not point to a valid
+  repository" for a .git file whose gitdir is gone, so the gate stopped with "git failed (exit 128)" and not the
+  case's line naming the .git entry. Now any exit 128 that finds a .git entry here or above names it, and only "not a
+  git repository" with no .git entry is no work tree. Locally, with a git shim on PATH that gives git 2.55's words for
+  that case: the self-test at 3442f7f fails exactly that case (804 + 806 of 1611 passed, 1 failed), and with L8b
+  passes 806 + 805 = 1611. In the clone at L8b: `--selftest --shard K/8` for K 1-8, 202, 202, 202, 201, 201, 201, 201
+  and 201 of 1611 cases, 0 failed; the gate clean (382 files) under sh and dash; `--workflows` clean; the fault check
+  582 runs, 582 passed, in 190 s; canaries.sh PASS, all 94 checks ran (1276 s).
 
 **Stages E3 and E4** run commits 19, 20 and 21 as planned, each built and tested locally before it is committed.
 
