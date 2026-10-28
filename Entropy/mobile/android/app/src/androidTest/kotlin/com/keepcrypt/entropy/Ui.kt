@@ -1,6 +1,8 @@
 package com.keepcrypt.entropy
 
 import android.os.SystemClock
+import android.view.InputDevice
+import android.view.MotionEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
@@ -132,6 +134,33 @@ internal object Ui {
     /** The dice pad's keys' resource ids, key_ and a face, and a face as the pick shows it: patterns that name no face. */
     private val DICE_KEY: Pattern = Pattern.compile("key_[1-6]")
     private val A_FACE: Pattern = Pattern.compile("[1-6]")
+
+    /**
+     * Taps key, a Protected pad's key, as a finger does: a touch down and up at the middle of its visible
+     * bounds, injected through UiAutomation, never UiObject2.click, which logs the point it taps at debug
+     * level ("Clicking on (x, y).") with no isLoggable guard, and on the pad's fixed grid a point names its
+     * key: a letter typed goes into no log (lead decision M5-68 (e)). A Protected key's semantics are its
+     * role alone (Pads.kt's clearAndSetSemantics drops the clickable's click action too), so a touch is its
+     * press, as pressFace's accessibility click is a Public key's; nothing here logs the point.
+     */
+    fun touch(key: UiObject2) {
+        val bounds = key.visibleBounds
+        val down = SystemClock.uptimeMillis()
+        inject(MotionEvent.ACTION_DOWN, down, down, bounds.exactCenterX(), bounds.exactCenterY())
+        inject(MotionEvent.ACTION_UP, down, SystemClock.uptimeMillis(), bounds.exactCenterX(), bounds.exactCenterY())
+        device.waitForIdle()
+    }
+
+    /** One touch-screen event at (x, y), injected through UiAutomation and handled before this returns. */
+    private fun inject(action: Int, downTime: Long, eventTime: Long, x: Float, y: Float) {
+        val event = MotionEvent.obtain(downTime, eventTime, action, x, y, 0)
+        event.source = InputDevice.SOURCE_TOUCHSCREEN
+        try {
+            assertTrue("a touch on the pad was not injected", Capture.instrumentation.uiAutomation.injectInputEvent(event, true))
+        } finally {
+            event.recycle()
+        }
+    }
 
     /** Waits up to 10 s for the node tag to show text. */
     fun awaitText(tag: String, text: String) {

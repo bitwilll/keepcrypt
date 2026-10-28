@@ -28,6 +28,7 @@ import com.keepcrypt.entropy.Ui.stays
 import com.keepcrypt.entropy.Ui.tap
 import com.keepcrypt.entropy.Ui.text
 import com.keepcrypt.entropy.Ui.toHome
+import com.keepcrypt.entropy.Ui.touch
 import com.keepcrypt.entropy.ffi.Core
 import com.keepcrypt.entropy.ffi.QrMatrix
 import com.keepcrypt.entropy.ffi.Reply
@@ -327,10 +328,14 @@ class FlowTest {
         return keys
     }
 
-    /** Types letters on the read-back entry's letter pad, a tap on each key, and checks in-process that the pad holds them (compared, never printed). */
+    /**
+     * Types letters on the read-back entry's letter pad, a touch on each key (Ui.touch, which logs no point:
+     * a click's logged point would name the letter on the pad's fixed grid), and checks in-process that the
+     * pad holds them (compared, never printed).
+     */
     private fun typeOnPad(activity: MainActivity, letters: String) {
         for (letter in letters) {
-            letterKeys()[LETTER_KEYS.indexOf(letter)].click()
+            touch(letterKeys()[LETTER_KEYS.indexOf(letter)])
         }
         device.waitForIdle()
         val held = onMain {

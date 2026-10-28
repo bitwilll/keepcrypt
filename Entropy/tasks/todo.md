@@ -13028,6 +13028,17 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   failed).
 
 **18. Screens: backup, Check a backup, watch-only, register, reveal D, snapshots, About, stop** (MA:146-162)
+  Proof (M5 commit 19i, review fix, lead decision M5-68 (e), partial: local, Q76; CI's API 31 and 36 legs at the next
+  push): FlowTest typed the read-back's letters with UiObject2.click, which in UI Automator 2.4.0 logs "Clicking on
+  (x, y)." at debug level with no isLoggable guard (its bytecode, read with JBR's javap), and on the letter pad's fixed
+  grid of seven columns a point names its letter: eight letters a run reached logcat, a dice-50-words12 word's first
+  four with an e/i swapped and then as they are. A Protected key has no click action to press instead (Pads.kt's
+  clearAndSetSemantics drops the clickable's: Compose 1.12.1's LayoutNode starts the configuration afresh at a
+  clearing node), so Ui.touch now taps a key as a finger does, a touch down and up at its middle injected through
+  UiAutomation, which logs no point. On kc37 (local; android-local.sh exit 0 in 1450 s on the tree of 19i, 21d and
+  21e, every class passed in android-emulator.sh's order, NativeTest too): FlowTest 7 passed, its read-back typing the
+  misread letters and the right ones through the touches, the pad read in-process. No logcat search covers FlowTest's
+  run (CaptureTest's covers its own walk), so that nothing logs the touches rests on the code read, not a log searched.
 - [ ] Backup: the 8-word passphrase (Protected), its 2-of-4 confirm, Save (`CreateDocument`, core's suggested name,
   one `"rwt"` write, MA:156's cloud-folder line), read back with `openInputStream` and `verify_backup` before "Backup
   verified"; a failure names the step. Check a backup: `OpenDocument`, name `.age` and size within core's limit before
