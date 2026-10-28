@@ -13163,9 +13163,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   shared Picker (moved out of BackupTest) now clicks through selectors resolved at the click: the first local run
   failed CheckTest's and SnapshotDrillTest's picker tests on a StaleObjectException from the roots drawer's node, found
   just before DocumentsUI redrew its Recent view. Estimated CI cost: the local leg grew by 212 s (CaptureTest's
-  twelve screens in both APKs, FlowTest's two tests, CheckTest's one, the drill's picker, step 7); CI's two slower x86
-  legs might add 5 to 7 minutes to the 1896 s of run 40572516408, about 37 to 39 of M5-57's 44, to be measured at the
-  next push.
+  twelve screens in both APKs, FlowTest's two tests, CheckTest's one, the drill's picker, step 7), on top of 20a's
+  34 s and 20b's 60 s since 19h's 1163 s. The estimate first written here, 5 to 7 minutes on run 40572516408's 1896 s
+  (about 37 to 39 of M5-57's 44), started from a run without commit 19's tests and is withdrawn (21f): by M5-69, run
+  40624645994 at f06a5ab, with them, already reached M5-57's 44 minutes (API 31 967 s, API 36 958 s), and commits 20
+  and 21 add to that. The run at stage E4's head measures the job under M5-69's 90-minute ceiling.
   Proof (M5 commit 20e, review fix, partial: local, Q76): no test saw a checked backup outlive its discard. A mutant
   without discard's dropChecked, and one whose last-insert Done goes to the result without asking for a checked backup,
   each passed all 135 :screens tests, and either left the next ceremony's last insert offering the backup's Done instead
@@ -13273,10 +13275,13 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   INTERNET. Then adb root (a root shell, id -u 0, waited for up to 20 s while adbd restarts; one that does not come
   fails a CI leg) and, for each app, a listing as root of every entry that is not a directory under /data/user/0/PKG,
   /data/user_de/0/PKG and PKG's data, media and obb under /data/media/0/Android, ending with a line of its own, so a
-  listing cut short fails: each entry is a file the app wrote, and none may be there but the operating system's
-  compiled shaders, which its renderer keeps in the app's code cache (code_cache/com.android.skia.shaders_cache,
-  HWUI's, and code_cache/com.android.opengl.shaders_cache, EGL's: rule 8's files the operating system keeps about an
-  app; the runtime profiles, compiled code and package records live outside these directories). The listing is
+  listing cut short fails: each entry is a file the app wrote, and none may be there but two shader caches the
+  platform's renderer writes into the app's code cache from the app's own process
+  (code_cache/com.android.skia.shaders_cache, HWUI's, and code_cache/com.android.opengl.shaders_cache, EGL's), allowed
+  by their file names before any listing was seen. They lie in the app's own storage, so whether they are among rule
+  8's files the operating system keeps about an app (Q59 (a)) is not settled: no lead decision or owner answer names
+  them (21f, from the E4 review). The runtime profiles, compiled code and package records live outside these
+  directories. The listing is
   printed as a probe line (paths only). The positive control (Q59 (a)): a file planted as root in /data/user/0/PKG
   must be the same listing's one new hit, and is then removed. On a user build (--booted on kc37, ro.debuggable=0) the
   listing is printed as not made, CI's legs making it; android-local.sh's header and its adb-root line say so.

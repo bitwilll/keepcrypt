@@ -89,12 +89,13 @@
 #      the default images' userdebug builds allow; a root shell is required), the app's data
 #      directories are listed whole (/data/user/0/PKG, /data/user_de/0/PKG and PKG's data, media and
 #      obb under /data/media/0/Android): every entry that is not a directory is a file the app wrote,
-#      and none may be there but the operating system's own compiled shaders, which its renderer keeps
-#      in the app's code cache (code_cache/com.android.skia.shaders_cache, HWUI's, and
-#      code_cache/com.android.opengl.shaders_cache, EGL's: rule 8's files the operating system keeps
-#      about an app; its runtime profiles, compiled code and package records live outside these
-#      directories). The listing ends with a line of its own, so one cut short fails too. The positive
-#      control follows: a file planted as root in /data/user/0/PKG must be the same listing's one new
+#      and none may be there but two shader caches the platform's renderer writes into the app's code
+#      cache (code_cache/com.android.skia.shaders_cache, HWUI's, and
+#      code_cache/com.android.opengl.shaders_cache, EGL's), allowed by their file names before any
+#      listing was seen; whether they are rule 8's files the operating system keeps about an app is not
+#      settled (tasks/todo.md, 21b's Proof). The app's runtime profiles, compiled code and package
+#      records live outside these directories. The listing ends with a line of its own, so one cut short
+#      fails too. The positive control follows: a file planted as root in /data/user/0/PKG must be the same listing's one new
 #      hit (the listing before and that file), and is then removed. On a user build (--booted on kc37: ro.debuggable=0) adb root is refused, so
 #      the listing is printed as not made there, CI's API 31 and 36 legs making it; on the CI images a
 #      root shell that does not come fails the leg.
@@ -1040,8 +1041,8 @@ done
 app_files() {
   dev shell "for d in /data/user/0/$1 /data/user_de/0/$1 /data/media/0/Android/data/$1 /data/media/0/Android/media/$1 /data/media/0/Android/obb/$1; do if [ -d \$d ]; then find \$d ! -type d; fi; done; echo kc-listed" 2>&1 | tr -d '\r'
 }
-# written PKG: the files app_files lists that PKG wrote, one a line: all but the operating system's own
-# compiled shaders in its code cache; a listing whose last line is not kc-listed (cut short, or a
+# written PKG: the files app_files lists that PKG wrote, one a line: all but the two shader caches in its
+# code cache (see the header); a listing whose last line is not kc-listed (cut short, or a
 # shell that failed) gives one line saying so instead.
 written() {
   listed=$(app_files "$1")
