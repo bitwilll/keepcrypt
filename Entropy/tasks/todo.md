@@ -15259,6 +15259,16 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   LLVM) clean, its output equal to 18v's gate's under sh and dash; the gate clean on the working tree (365 files),
   --workflows (3 workflows) and --os-config pi/os clean under sh and dash; canaries.sh PASS, all 94 checks ran
   (441 s).
+  Proof (M5 commit 18y, review fix, partial: local, Q76): git rev-parse --is-inside-work-tree exits 128 for any fatal
+  error, and the scan read every 128 as no work tree, so in a repository whose repositoryformatversion git does not
+  know the Build rule was skipped and the gate said "clean, 6 files scanned" over a tracked
+  mobile/android/app/build/out/classes.txt (reproduced). The scan now takes 128 for no work tree only with git's "not a
+  git repository" (LC_ALL=C), and stops on any other failure, git's words first: "banned-api-check: git failed (exit
+  128) on the scanned tree" there, under sh and dash; a copy of the tree with no .git is scanned whole (6 files). New
+  selftest case error-build-work-tree-git-cannot-read (exit 2). Locally: the shards "796 of 1592" and "796 of 1592",
+  0 failed, under sh and /bin/dash; the fault check 582 runs, 582 passed (the git place's three ways among them),
+  under sh and /bin/dash; the gate clean on the working tree (365 files) under sh and dash; canaries.sh PASS, all 94
+  checks ran (436 s).
 - [ ] L7. canaries.sh moves out of the gates job into one existing required job with time to spare (M5-67, commit
   L7). The gates job keeps the gate's runs and the two self-test shards with their count check. Proof: both jobs' times
   in CI, each under 12 minutes, with the 14 required check names unchanged.

@@ -572,7 +572,10 @@
 #              untracked file is in CI's tree. A tree that is no git work tree (an export, a copy,
 #              the selftest's scratch trees) has no index, so this rule is silent there and the
 #              scan leaves nothing out: every file is read, those directories' too, as nothing
-#              there tells a committed file from an ignored one. git missing from PATH is exit 2.
+#              there tells a committed file from an ignored one. git missing from PATH is exit 2,
+#              and so is a work tree git cannot read (git's exit 128 without "not a git
+#              repository": a repositoryformatversion it does not know, a corrupt HEAD), which
+#              must never pass for no work tree.
 #              Gradle's own build.gradle.kts files, buildSrc/ and gradle/ (the version catalog and
 #              the wrapper) are not output directories and pass.
 #              The index is read with ls-files -s -z: -z names a file whole where plain ls-files
@@ -3242,20 +3245,25 @@ scan() {
   all=$(list) || exit 2
   # In a git work tree the Build rule refuses every tracked file in the ignored Gradle output, so the
   # scan leaves that output out; outside one (no index) every file is scanned (the header's Build).
-  # git exits 128 outside a work tree; any other failure is the gate's (tool_status). Without git
-  # the Build rule's tracked files cannot be listed. git runs in a command substitution: run here
-  # as a command of its own, its finished job was what bash 3.2 later took for a check's grep
-  # (see "The tools the gate runs fail closed").
+  # Outside a work tree git exits 128 and says "not a git repository". git exits 128 too for a work
+  # tree it cannot read (a repositoryformatversion it does not know, a corrupt HEAD, an owner it
+  # does not trust), and that, like any other failure, is the gate's (tool_status, after git's own
+  # words), never a scan without the Build rule. Without git the Build rule's tracked files cannot
+  # be listed. git runs in a command substitution: run here as a command of its own, its finished
+  # job was what bash 3.2 later took for a check's grep (see "The tools the gate runs fail closed").
   command -v git >/dev/null 2>&1 || {
     echo 'banned-api-check: git is not on PATH, so the tracked files under mobile/ cannot be listed' >&2
     exit 2
   }
-  wt=$(command git rev-parse --is-inside-work-tree 2>/dev/null)
+  wt=$(command git rev-parse --is-inside-work-tree 2>&1)
   rc=$?
-  case $rc in
-    0) work_tree=yes ;;
-    128) work_tree=no ;;
-    *) tool_status git "$rc" ;;
+  case $rc:$wt in
+    0:*) work_tree=yes ;;
+    128:*'not a git repository'*) work_tree=no ;;
+    *)
+      printf 'banned-api-check: git rev-parse --is-inside-work-tree: %s\n' "$wt" >&2
+      tool_status git "$rc"
+      ;;
   esac
   if [ "$work_tree" = yes ]; then
     all=$(printf '%s\n' "$all" | grep -v -E -e "$gradle_out")
@@ -4242,6 +4250,13 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   git init -q "$d" || exit 2
   mkdir -p "$d/mobile/android/app/build" && echo 'kc.gate.canary=true' >"$d/mobile/android/app/build/x.kt" || exit 2
   expect 'clean-build-untracked' "$d" clean
+  # A work tree git cannot read (here a repositoryformatversion it does not know, git's exit 128
+  # without "not a git repository") stops the gate, so the tracked file there is never left unread.
+  fresh
+  git init -q "$d" || exit 2
+  mkdir -p "$d/mobile/android/app/build" && echo 'kc.gate.canary=true' >"$d/mobile/android/app/build/x.kt" || exit 2
+  git -C "$d" add -f -- mobile/android/app/build/x.kt && git -C "$d" config core.repositoryformatversion 99 || exit 2
+  expect 'error-build-work-tree-git-cannot-read' "$d" error 'banned-api-check: git failed (exit 128) on the scanned tree'
   # The scan's skip of a local build's ignored output (M5-62 (a), gradle_out): in a git work tree, a
   # file that KtLog would hit, under mobile/android/.gradle/, mobile/android/build/ or a module's
   # build/, is the Build hit alone when tracked (the rule still sees it, and the scan did not read
