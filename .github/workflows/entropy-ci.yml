@@ -101,12 +101,13 @@ jobs:
     # fallback and discard methods (rule 3); their shared [lints] forbid switching that off and
     # deny print and dbg (rule 5). Clippy runs twice: with default features, the release
     # configuration, and with all features, so the test-sources stubs and the test-registry code
-    # (rule 10) meet the same lints. First, on the bare checkout, the grep gate's fault check
-    # (tasks/todo.md, lead decision M5-66): each tool the gate's scan runs fails at every place
-    # that runs it, unable to start, exiting 2 with nothing, and killed partway, and every such run
-    # must stop the gate with exit 2, naming the tool, how it failed and what it read. It needs only
-    # sh, bash, git and the gate's own tools, and runs here because the gates job has no time to
-    # spare (688 s of its 720 at 6a6a34f, run 40455117393). The canaries left that job for
+    # (rule 10) meet the same lints. Before them, the grep gate's fault check (tasks/todo.md, lead
+    # decision M5-66): each tool the gate runs, in each mode the check runs it in, fails at every
+    # place that runs it, unable to start, exiting 2 with nothing, and killed partway, and every
+    # such run must stop the gate with exit 2, naming the tool, how it failed and what it read. It
+    # needs sh, bash, git, the gate's own tools and, for --artifact's object, the pinned toolchain
+    # (so it runs after the toolchain's install), and runs here because the gates job has no time
+    # to spare (688 s of its 720 at 6a6a34f, run 40455117393). The canaries left that job for
     # supply-chain, not this one (M5-67).
     name: lint (fmt, clippy)
     needs: changes
@@ -117,7 +118,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: sh scripts/banned-api-faults.sh
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -130,6 +130,7 @@ jobs:
           rustup toolchain install
           rustc --version
           cargo --version
+      - run: sh scripts/banned-api-faults.sh
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings

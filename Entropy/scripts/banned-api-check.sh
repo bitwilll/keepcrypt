@@ -62,8 +62,8 @@
 #
 # Prints "<category>: <file>:<line>: <text>" per hit, then a summary. Exit 0 clean, 1 hits,
 # 2 usage or read error: a file that cannot be read fails the gate, it is never skipped, and so
-# does a tool the scan runs that cannot start, fails or is killed, naming itself (see "The tools
-# the gate runs fail closed" below).
+# does a tool the scan, --workflows or --artifact runs that cannot start, fails or is killed,
+# naming itself (see "The tools the gate runs fail closed" below).
 #
 # Selftest shards (tasks/todo.md, M5-63: CI's gates job runs the selftest as two shards side by
 # side). --selftest --shard K/N walks the whole case list in its fixed order and runs case c
@@ -956,8 +956,9 @@ tool_status() {
 }
 
 # fail_closed: from here on, each tool the gate runs is a function of its name that runs the tool
-# (command bypasses the function) and passes its status through tool_status. The scan and
-# --workflows call it first; the other modes read their tools' statuses as they always have.
+# (command bypasses the function) and passes its status through tool_status. The scan,
+# --workflows and --artifact call it first; the other modes read their tools' statuses as they
+# always have.
 fail_closed() {
   awk() { command awk "$@" || tool_status awk "$?" 1; }
   find() { command find "$@" || tool_status find "$?"; }
@@ -966,6 +967,7 @@ fail_closed() {
   mktemp() { command mktemp "$@" || tool_status mktemp "$?"; }
   od() { command od "$@" || tool_status od "$?"; }
   rm() { command rm "$@" || tool_status rm "$?"; }
+  rustc() { command rustc "$@" || tool_status rustc "$?"; }
   sed() { command sed "$@" || tool_status sed "$?"; }
   sort() { command sort "$@" || tool_status sort "$?"; }
   tr() { command tr "$@" || tool_status tr "$?"; }
@@ -4746,22 +4748,33 @@ markers='KC_TEST_SOURCE_DO_NOT_SHIP KC_TEST_REGISTRY_DO_NOT_SHIP KC_SIMULATOR_DO
 rng_crate_names='rand rand_core rand_chacha rand_xoshiro rand_xorshift rand_pcg rand_hc rand_isaac
 fastrand oorandom nanorand tinyrand turborand'
 
-# dump FILE: FILE's bytes as " xx xx ..." on one line (od -v writes every byte; tr joins the lines
-# and squeezes the spaces BSD and GNU od lay out differently). Any byte value is two hex digits,
-# so a fixed-string search for " 4b 43 ..." can only match whole bytes, in order.
-dump() {
-  od -An -v -tx1 "$1" | tr -s ' \n' '  '
+# indented FILE: FILE's lines on stderr, each after four spaces (a tool's own error output), read
+# in the shell, so an error path runs no tool of its own.
+indented() {
+  while IFS= read -r il || [ -n "$il" ]; do
+    printf '    %s\n' "$il"
+  done <"$1" >&2
 }
 
 # toolchain_bin: the bin/ of the pinned toolchain's llvm-tools-preview (rust-toolchain.toml), found
-# through rustc run from the repo root, so rustup picks the pinned toolchain.
+# through rustc run from the repo root, so rustup picks the pinned toolchain. The host is read from
+# rustc -vV's "host: " line in the shell, so no pipeline hides rustc's status.
 toolchain_bin() {
+  on='the pinned toolchain'
   repo=$(cd "$here/.." && pwd -P) || exit 2
   sysroot=$(cd "$repo" && rustc --print sysroot) || {
     echo 'banned-api-check: rustc --print sysroot failed (is the pinned toolchain installed?)' >&2
     exit 2
   }
-  host=$(cd "$repo" && rustc -vV | sed -n 's/^host: //p')
+  vv=$(cd "$repo" && rustc -vV) || { echo 'banned-api-check: rustc -vV failed' >&2; exit 2; }
+  vv=$nl$vv
+  case $vv in
+    *"${nl}host: "*)
+      host=${vv#*"${nl}host: "}
+      host=${host%%"$nl"*}
+      ;;
+    *) host= ;;
+  esac
   [ -n "$host" ] || { echo 'banned-api-check: rustc -vV names no host' >&2; exit 2; }
   bin=$sysroot/lib/rustlib/$host/bin
   [ -x "$bin/llvm-nm" ] || {
@@ -4778,17 +4791,19 @@ ahit() {
 
 # symbols FILE OUT [LLVM-NM OPTION...]: the symbol names llvm-nm prints for FILE, one per line,
 # without an archive's member headers ("lib.rmeta:") and blank lines, and without ELF version
-# suffixes ("getrandom@GLIBC_2.25"). llvm-nm failing on FILE is an error.
+# suffixes ("getrandom@GLIBC_2.25"). llvm-nm failing on FILE is an error; sed and sort run one
+# after the other, each with its status read.
 symbols() {
   sf=$1
   sout=$2
   shift 2
   if ! "$bin/llvm-nm" -j "$@" "$sf" >"$atmp/nm" 2>"$atmp/nm-err"; then
     printf 'banned-api-check: llvm-nm cannot read %s:\n' "$sf" >&2
-    sed 's/^/    /' "$atmp/nm-err" >&2
+    indented "$atmp/nm-err"
     exit 2
   fi
-  sed -e '/^$/d' -e '/:$/d' -e 's/@.*$//' "$atmp/nm" | sort -u >"$sout" || exit 2
+  sed -e '/^$/d' -e '/:$/d' -e 's/@.*$//' "$atmp/nm" >"$atmp/nm-names" || exit 2
+  sort -u "$atmp/nm-names" >"$sout" || exit 2
 }
 
 # from_list CATEGORY FILE PREFIX LIST: one hit per line of LIST.
@@ -4814,7 +4829,10 @@ artifact_rules() {
   esac
   # libc's draws and seeders, with glibc's reentrant _r forms (the Pi links glibc).
   undefined_rng="^$p(rand|random|srand|srandom|rand_r|random_r|srandom_r|([A-Za-z0-9_]*rand48|seed48|lcong48|initstate|setstate)(_r)?|arc4random[A-Za-z0-9_]*|SecRandomCopyBytes$extra)\$"
-  rng_crates="(^|[^A-Za-z0-9_])($(printf '%s\n' $rng_crate_names | tr '\n' '|' | sed 's/|$//'))::"
+  # The crates' names as one alternation, and the key's bytes below, are built in the shell.
+  alt=
+  for c in $rng_crate_names; do alt=$alt${alt:+|}$c; done
+  rng_crates="(^|[^A-Za-z0-9_])($alt)::"
   fallback='(^|[^A-Za-z0-9_])getrandom::backends::(use_file|linux_android_with_fallback)::'
   std_random='hashmap_random_keys|RandomState|std::sys::random|3std3sys6random'
   # std's passengers on the Pi target (tasks/todo.md, M4 group 12, Q52): on
@@ -4836,24 +4854,51 @@ std::sys::random::linux::getrandom::GRND_INSECURE_AVAILABLE (.0)'
   if [ -n "$std_passengers" ]; then
     printf '%s\n' "$std_passengers" >"$atmp/passengers" || exit 2
   fi
-  keybytes=$(printf '%s\n' "$testkey" | sed 's/../ &/g')
+  keybytes=
+  kx=$testkey
+  while [ -n "$kx" ]; do
+    keybytes="$keybytes ${kx%"${kx#??}"}"
+    kx=${kx#??}
+  done
 }
 
-# hexbytes TEXT: TEXT's bytes as dump() lays them out, for a fixed-string search of a dump.
+# hexbytes TEXT: TEXT's bytes as byte_scan lays a file's out, " 4b 43 ...", for a fixed-string
+# search of its dump: printf gives each character's code (its argument after a quote), so no tool
+# runs.
 hexbytes() {
-  printf '%s' "$1" | od -An -v -tx1 | tr -s ' \n' '  ' | sed 's/ $//'
+  hx=$1
+  while [ -n "$hx" ]; do
+    printf ' %02x' "'${hx%"${hx#?}"}"
+    hx=${hx#?}
+  done
+}
+
+# bytes_found HEX: true when $atmp/dump holds the bytes HEX lays out (as hexbytes does), false when
+# not. grep's own failure stops the gate (tool_status) in every mode that runs this, whether or not
+# the mode calls fail_closed.
+bytes_found() {
+  command grep -q -F -e "$1" "$atmp/dump"
+  bf=$?
+  [ "$bf" -le 1 ] || tool_status grep "$bf"
+  return "$bf"
 }
 
 # byte_scan FILE NAME: FILE's bytes into $atmp/dump, then the Marker and TestKey rules on them,
-# reported under NAME (the image scan names a file by its path inside the image).
+# reported under NAME (the image scan names a file by its path inside the image). The dump is
+# " xx xx ..." on one line: od -v writes every byte, then tr joins its lines and squeezes the
+# spaces BSD and GNU od lay out differently, the two one after the other, each with its status
+# read. Any byte value is two hex digits, so a fixed-string search for " 4b 43 ..." can only match
+# whole bytes, in order.
 byte_scan() {
-  dump "$1" >"$atmp/dump" || { printf 'banned-api-check: cannot read %s\n' "$2" >&2; exit 2; }
+  on=$2
+  od -An -v -tx1 "$1" >"$atmp/od" || { printf 'banned-api-check: cannot read %s\n' "$2" >&2; exit 2; }
+  tr -s ' \n' '  ' <"$atmp/od" >"$atmp/dump" || exit 2
   for m in $markers; do
-    if grep -q -F -e "$(hexbytes "$m")" "$atmp/dump"; then
+    if bytes_found "$(hexbytes "$m")"; then
       ahit Marker "$2" "$m"
     fi
   done
-  if grep -q -F -e "$keybytes" "$atmp/dump"; then
+  if bytes_found "$keybytes"; then
     ahit TestKey "$2" "the test registry public key $testkey"
   fi
 }
@@ -4870,14 +4915,18 @@ artifact_file() {
     exit 2
   fi
   byte_scan "$f" "$aname"
+  on=$aname
   # The device files std's random-key fallback reads, as bytes in any file (the symbol half of
   # the StdRandom rule follows the symbol rules below).
   for path in /dev/urandom /dev/random; do
-    if grep -q -F -e "$(hexbytes "$path")" "$atmp/dump"; then
+    if bytes_found "$(hexbytes "$path")"; then
       ahit StdRandom "$aname" "byte string $path"
     fi
   done
-  magic=$(od -An -N8 -tx1 "$f" | tr -d ' \n')
+  # The first eight bytes as hex, joined in the shell.
+  od8=$(od -An -N8 -tx1 "$f") || exit 2
+  magic=
+  for ob in $od8; do magic=$magic$ob; done
   case $magic in
     213c617263683e0a) kind=archive ;;
     213c7468696e3e0a)
@@ -4900,7 +4949,10 @@ artifact_file() {
     stripped=no
     case $magic in
       7f454c46*)
-        "$bin/llvm-readobj" --section-headers "$f" >"$atmp/sections" 2>/dev/null || exit 2
+        "$bin/llvm-readobj" --section-headers "$f" >"$atmp/sections" 2>/dev/null || {
+          printf 'banned-api-check: llvm-readobj cannot read %s\n' "$aname" >&2
+          exit 2
+        }
         grep -q -F -e 'Name: .symtab' "$atmp/sections" || stripped=yes
         ;;
     esac
@@ -4926,11 +4978,13 @@ artifact_file() {
   # std's passengers (Q52, see std_passengers above): in an object or linked file only, a hit
   # that is exactly one of the names, and that llvm-nm types d on every line that names it
   # (-P prints "name type value size"; a name followed by any other type, or by more text, is
-  # kept), is dropped. awk tells the files apart by name, so no pattern file is ever empty.
+  # kept), is dropped. awk tells the files apart by name, so no pattern file is ever empty. The
+  # hits left are $atmp/kept's, read in place.
+  stdhits=$atmp/hits
   if [ -n "$std_passengers" ] && [ "$kind" = object ] && [ -s "$atmp/hits" ]; then
     if ! "$bin/llvm-nm" -C -P --defined-only "$f" >"$atmp/defined" 2>"$atmp/nm-err"; then
       printf 'banned-api-check: llvm-nm cannot read %s:\n' "$aname" >&2
-      sed 's/^/    /' "$atmp/nm-err" >&2
+      indented "$atmp/nm-err"
       exit 2
     fi
     awk '
@@ -4946,9 +5000,9 @@ artifact_file() {
       }
       !(($0 in typed_d) && !($0 in other))
     ' "$atmp/passengers" "$atmp/defined" "$atmp/hits" >"$atmp/kept" || exit 2
-    mv "$atmp/kept" "$atmp/hits" || exit 2
+    stdhits=$atmp/kept
   fi
-  from_list StdRandom "$aname" 'symbol ' "$atmp/hits"
+  from_list StdRandom "$aname" 'symbol ' "$stdhits"
   if [ "$kind" = archive ]; then
     archives=$((archives + 1))
   else
@@ -4959,13 +5013,21 @@ artifact_file() {
   return 0
 }
 
+# artifact_cleanup: the artifact scan's temporary directory, removed by its EXIT trap: a function,
+# as build_rule_cleanup is, so the rm is at its own line under every bash.
+artifact_cleanup() {
+  rm -rf "$atmp"
+}
+
 artifact() {
+  fail_closed
   target=$1
   shift
   [ $# -ge 1 ] || { usage >&2; exit 2; }
   toolchain_bin
+  on="the artifact scan's temporary directory"
   atmp=$(mktemp -d "${TMPDIR:-/tmp}/banned-api-artifact.XXXXXX") || exit 2
-  trap 'rm -rf "$atmp"' EXIT
+  trap 'artifact_cleanup' EXIT
   trap 'exit 2' HUP INT TERM
   artifact_rules "$target"
   hits=0

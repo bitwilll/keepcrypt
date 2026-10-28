@@ -15220,6 +15220,26 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   reproduction gives its 4 hits again; the selftest's shards "796 of 1591" and "795 of 1591", 0 failed; the gate
   clean on the working tree (365 files) and --workflows ../.github/workflows clean (3 workflows) under sh and dash;
   canaries.sh PASS, all 94 checks ran (445 s).
+  Proof (M5 commit 18w, review fix, M5-66, partial: local, Q76; CI runs the fault check at the next push): --artifact,
+  rule 10's scan in CI's cross and test jobs, read a failing tool as no hit: with od killed while it dumped an object
+  holding KC_TEST_SOURCE_DO_NOT_SHIP, the mode printed "clean, ... no marker" and exit 0 (reproduced, sh and dash).
+  --artifact now calls fail_closed, which wraps rustc too; byte_scan writes od's output, then tr's, each status read;
+  bytes_found reads grep's status itself, so the byte search fails closed in --image and --apk as well; hexbytes, the
+  test key's bytes and the crates' alternation are built in the shell; symbols runs sed, then sort; the magic bytes
+  and rustc -vV's host line are read in the shell; the passengers' hits are read where awk wrote them (no mv); an
+  error path prints its tool's output with a shell loop (indented); the temporary directory goes in
+  artifact_cleanup, as the Build rule's does; llvm-readobj's failure names it. banned-api-faults.sh's artifact mode:
+  the artifact selftest's std-passengers object built for arm-unknown-linux-gnueabihf (an ELF reaching every place,
+  the passengers' awk among them) and marker-source.txt after it as the run's hit (23 places: awk 1, basename 1,
+  dirname 1, grep 9, mktemp 1, od 2, rm 1, rustc 2, sed 2, sort 2, tr 1); the toolchain's llvm-nm and llvm-readobj
+  run by their paths, out of a shim's reach, their statuses read by the gate. Entropy CI's lint job runs the check
+  after its toolchain install. Locally: 543 runs, 543 passed, in 211 s under sh and 191 s under /bin/dash; three
+  mutants fail it (od piped into tr again: 3 runs; no fail_closed in artifact(): 54; sed piped into sort again: 6);
+  the reproduction stops with exit 2, "od was killed by signal 9 (exit 137) on .../m.o"; --artifact's output on the
+  aarch64-apple-darwin rlibs and probe, the aarch64-linux-android libkeepcrypt.so and the reproduction's object equal
+  0d3c903's under sh and dash; the selftest's shards "796 of 1591" and "795 of 1591", 0 failed, under sh and under
+  /bin/dash; the gate clean on the working tree (365 files) and --workflows clean (3 workflows) under sh and dash;
+  canaries.sh PASS, all 94 checks ran (434 s).
 - [ ] L7. canaries.sh moves out of the gates job into one existing required job with time to spare (M5-67, commit
   L7). The gates job keeps the gate's runs and the two self-test shards with their count check. Proof: both jobs' times
   in CI, each under 12 minutes, with the 14 required check names unchanged.
