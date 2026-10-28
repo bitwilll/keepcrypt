@@ -13217,6 +13217,44 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   when they differ, where 21a's mixed-seed test compares the same QR in-process with a message that prints neither.
   Both now compare so (assertTrue, the message naming the vector, never its text). On kc37 (local, the run of 19i's
   line) FlowTest 7 and SnapshotDrillTest 3 passed.
+  Proof (M5 commit 21h, lead decision M5-70 (h), partial: local, kc37, Q76; CI's API 31 and 36 legs at the next push):
+  Entropy Android run 40681107802 at e5109bc failed three tests that pass on kc37, each read at this head. kc37's own
+  window has no navigation bar, so its app window (0,48 to 720,1280) is 48 dp taller than one above a 48 dp bar (0,48
+  to 720,1184, the region android-instrument.sh's selftest gives its API 31 leg; CI's own kc_region lines are the
+  lead's to read); `wm size 720x1184` gives kc37 that window, and two of the three failed there. (a) The watch-only
+  flow, API 31: StaleObjectException at UiObject2.isEnabled <- Ui.enabled. The BIP39 entry draws its passphrase, keys
+  and buttons in one block keyed on the page of keys, so each page replaces Delete, and UI Automator reads a node it
+  found only after an idle wait, asking the app for it again. On kc37 Delete found before Next keys and read after it
+  threw the same exception at UiObject2.getAccessibilityNodeInfo <- isEnabled; four runs of the test passed at
+  720x1184, so CI's timing alone made the search meet the old Delete. Ui.fresh now runs a read again while a node it
+  found has been replaced, finding it afresh at each try, and fails after 10 s (a stale node never passes): Ui.text,
+  Ui.enabled and the new Ui.read, pressFace, awaitPick, touch (given the way to find its key), shown (now a Boolean,
+  so no node leaves it; CheckTest and SnapshotDrillTest assert on it so) and assertPublicPadLabelled, and FlowTest's
+  letterKeys, asciiKeys and About's source address. (b) About, API 31: "timed out: the app shows about" after the
+  second tap on Home's About, which followed Back from About. Home's About had the tag about, the About screen's id,
+  which its root carries, and Ui.on waited only for the app's report of the screen (set as it is composed), while UI
+  Automator reads the app through the accessibility cache, which the app's events bring up to date later. At 720x1184
+  the test failed so in 6 of 13 runs (10 of them with a diagnostic, since removed, making the second tap's find and
+  click itself): UI Automator's log shows the selector matched a View of bounds (0, 48 - 720, 1184), the About root,
+  gone from the window, and clicked at (360, 616), between Home's New seed and Dice-only seed, so the model stayed on
+  Home; passing runs matched the Button at (48, 1045 - 672, 1156) and clicked at (360, 1100). Home's About now has the
+  tag show_about (no other tag in :screens is one of the 48 screen ids), and Ui.on also waits up to 10 s for UI
+  Automator to see the screen's root by its id, or the privacy gate while the model holds it up (BackupTest's Check a
+  backup entry): 14 of 14 runs passed at 720x1184, every About and Back click at (360, 1100). (c) CaptureTest, API 36,
+  test-registry APK: "only 4 of the 5 secret texts of backup_confirm are drawn". At 720x1184 the test-registry walk
+  failed with the same line: the confirm's text column ended at 521 px under the TEST REGISTRY strip, the third choice
+  cut there and the fourth below it, and Compose leaves a node scrolled out of view out of the accessibility tree (a
+  diagnostic since removed, which printed no text, found choices 1-3 and the letters typed drawn and choice 4 not). On
+  a phone of that size the user saw three of the four choices with nothing to say the text scrolls, so the screen was
+  wrong, not the check: the four choices now go two a row, each still its own secret node. At 720x1184 both APKs'
+  walks pass ("backup_confirm: each of its 5 secret texts is drawn, and only by secret nodes (5 nodes)"), the
+  test-registry walk at font scale 1.15 too; FlowTest 7, CheckTest 2 and SnapshotDrillTest 3 passed there. Only CI's
+  API 31 and 36 images can confirm their own timing and fonts, and that API 36's default image lays the confirm out as
+  kc37 does at 720x1184. At kc37's own 720x1280 (local, android-local.sh exit 0 in 1464 s, on this tree but for two
+  comment rewordings made after its build): every class passed in android-emulator.sh's order, NativeTest too, both
+  APKs' walks with backup_confirm's 5 secret texts drawn and BackupTest's age -d hand-off; then on the final tree the
+  strict Gradle build of the five APKs and every JVM test task (:core-ffi 31 in 11 classes, :screens 138 in 19, :app
+  11 in 4 for each flavour, :secure-ui 3 in 1, none failed).
 - [ ] The CI `age -d` hand-off: for the CI throwaway seed only, the androidTest reads the backup passphrase from the
   in-process `Secret` and sends it as the instrumentation status value `kc_ci_throwaway_passphrase`. The workflow pipes
   `am instrument -r`'s output straight into `scripts/android-age-check.py`, which takes the value, feeds it to age 1.1.1

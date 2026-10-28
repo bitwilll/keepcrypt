@@ -24,7 +24,6 @@ import com.keepcrypt.entropy.screens.STALE_WARNING
 import com.keepcrypt.entropy.screens.ScanStop
 import com.keepcrypt.entropy.screens.Screen
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -93,7 +92,7 @@ class SnapshotDrillTest {
             awaitText("collision_text", COLLISION_FOUND)
             awaitText("proof_line", "Proof from snapshot No. 4, dated 2026-03-01: 1 entry in this seal's bucket.")
             awaitText("snapshot_warning", STALE_WARNING)
-            assertNotNull("the collision result does not draw dice-50-words12's Seal ID", shown(Screen.Collision, DICE_50_SEAL_ID))
+            assertTrue("the collision result does not draw dice-50-words12's Seal ID", shown(Screen.Collision, DICE_50_SEAL_ID))
             done(Core.collisionReport(), "the report: the slot waits at the restart, the words never made available").wipe()
             tap("show_report")
             find("privacy_gate")
@@ -154,7 +153,7 @@ class SnapshotDrillTest {
         awaitText("collision_text", COLLISION_FOUND)
         awaitText("snapshot_line", "Snapshot No. 4, dated 2026-03-01, 7 entries.")
         awaitText("snapshot_warning", STALE_WARNING)
-        assertNotNull("the collision result does not draw dice-50-words12's Seal ID", shown(Screen.Collision, DICE_50_SEAL_ID))
+        assertTrue("the collision result does not draw dice-50-words12's Seal ID", shown(Screen.Collision, DICE_50_SEAL_ID))
         done(Core.collisionReport(), "the report: the slot waits at the restart, the words never made available").wipe()
         tap("show_report")
         find("privacy_gate")
@@ -207,7 +206,7 @@ class SnapshotDrillTest {
         on(activity, Screen.CheckPrompt, START_SECONDS)
         tap("check_now")
         on(activity, Screen.SealCard)
-        assertNotNull("the seal card does not draw the seed's Seal ID", shown(Screen.SealCard, sealId))
+        assertTrue("the seal card does not draw the seed's Seal ID", shown(Screen.SealCard, sealId))
         tap("scan_qr")
         on(activity, Screen.Scan)
         awaitText("scan_line", SCAN_MISSING)

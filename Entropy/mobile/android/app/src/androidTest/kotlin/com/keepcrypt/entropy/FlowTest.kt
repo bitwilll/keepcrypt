@@ -19,8 +19,10 @@ import com.keepcrypt.entropy.Ui.awaitPick
 import com.keepcrypt.entropy.Ui.awaitText
 import com.keepcrypt.entropy.Ui.enabled
 import com.keepcrypt.entropy.Ui.find
+import com.keepcrypt.entropy.Ui.fresh
 import com.keepcrypt.entropy.Ui.on
 import com.keepcrypt.entropy.Ui.pressFace
+import com.keepcrypt.entropy.Ui.read
 import com.keepcrypt.entropy.Ui.roll
 import com.keepcrypt.entropy.Ui.shown
 import com.keepcrypt.entropy.Ui.stage
@@ -314,9 +316,9 @@ class FlowTest {
      * button role and no text, description or resource id, which must be its 26, in the pad's order; and
      * no node there has a single letter or a Public key's id (key_ and a letter), so nothing names a key.
      * Found afresh for each key, since a key typed redraws the pad (CheckTest's taps resolve their
-     * selector at the click for the same reason).
+     * selector at the click for the same reason), and again when a redraw replaced a node read (fresh).
      */
-    private fun letterKeys(): List<UiObject2> {
+    private fun letterKeys(): List<UiObject2> = fresh("the letter pad's keys") {
         device.waitForIdle()
         val root = find(screenId(Screen.ReadbackEntry))
         val keys = root.findObjects(By.clazz(BUTTON)).filter {
@@ -325,17 +327,18 @@ class FlowTest {
         assertEquals("the letter pad's keys, each with its button role alone", LETTER_KEYS.length, keys.size)
         assertFalse("a node on the read-back entry names a letter", root.hasObject(By.text(Pattern.compile("[a-z]"))))
         assertFalse("a key on the read-back entry has a Public key's id", root.hasObject(By.res(Pattern.compile("key_.*"))))
-        return keys
+        keys
     }
 
     /**
      * Types letters on the read-back entry's letter pad, a touch on each key (Ui.touch, which logs no point:
-     * a click's logged point would name the letter on the pad's fixed grid), and checks in-process that the
-     * pad holds them (compared, never printed).
+     * a click's logged point would name the letter on the pad's fixed grid, and which finds the keys
+     * again if a redraw replaced the one to touch), and checks in-process that the pad holds them
+     * (compared, never printed).
      */
     private fun typeOnPad(activity: MainActivity, letters: String) {
         for (letter in letters) {
-            touch(letterKeys()[LETTER_KEYS.indexOf(letter)])
+            touch { letterKeys()[LETTER_KEYS.indexOf(letter)] }
         }
         device.waitForIdle()
         val held = onMain {
@@ -493,7 +496,7 @@ class FlowTest {
             tap("registration_done")
             on(activity, Screen.Checklist)
             assertTrue("the registration QR was not wiped as the checklist came", blank(registration))
-            assertTrue("the checklist does not show its first item", shown(Screen.Checklist, CHECKLIST[0]) != null)
+            assertTrue("the checklist does not show its first item", shown(Screen.Checklist, CHECKLIST[0]))
             assertFalse("a 12-word seed's checklist names two devices", device.hasObject(By.res("two_devices")))
             tap("finish")
             on(activity, Screen.Home)
@@ -568,7 +571,7 @@ class FlowTest {
             on(activity, Screen.RegisterOffer)
             tap("skip_registration")
             on(activity, Screen.Checklist)
-            assertTrue("the checklist does not say which device holds words 1-12", shown(Screen.Checklist, TWO_DEVICES) != null)
+            assertTrue("the checklist does not say which device holds words 1-12", shown(Screen.Checklist, TWO_DEVICES))
             tap("finish")
             on(activity, Screen.Home)
             assertTrue("the slot is not at home: Finish did not end the session", Core.selfTest() is Reply.Done)
@@ -771,7 +774,7 @@ class FlowTest {
     fun homesAboutShowsTheVersionTheFlavourAndTheSourceAsPlainTextAndBackReturnsHome() {
         Capture.whileOffline {
             val activity = toHome()
-            tap("about")
+            tap("show_about")
             on(activity, Screen.About)
             val context = Capture.instrumentation.targetContext
             val version = context.packageManager.getPackageInfo(context.packageName, 0).versionName
@@ -779,10 +782,10 @@ class FlowTest {
             assertEquals("About's version is not the package's", APP_VERSION, version)
             awaitText("about_flavour", flavourText(false))
             awaitText("about_source", SOURCE_ADDRESS)
-            assertFalse("the source address is a link", find("about_source").isClickable)
+            assertFalse("the source address is a link", read("about_source") { it.isClickable })
             device.pressBack()
             on(activity, Screen.Home)
-            tap("about")
+            tap("show_about")
             on(activity, Screen.About)
             tap("back")
             on(activity, Screen.Home)
@@ -795,9 +798,9 @@ class FlowTest {
      * The ASCII pad's keys on the BIP39 passphrase's entry (lead decision M5-46: a Protected pad): the
      * screen's nodes with the button role and no text, description or resource id, which must be count, the
      * page's keys; and no node there has a text of one character or a Public key's id (key_ and a key), so
-     * nothing names a key.
+     * nothing names a key. Read again when a redraw replaced a node read (fresh).
      */
-    private fun asciiKeys(count: Int): List<UiObject2> {
+    private fun asciiKeys(count: Int) = fresh("the ASCII pad's keys") {
         device.waitForIdle()
         val root = find(screenId(Screen.Bip39Entry))
         val keys = root.findObjects(By.clazz(BUTTON)).filter {
@@ -806,7 +809,6 @@ class FlowTest {
         assertEquals("the ASCII pad's keys on its page, each with its button role alone", count, keys.size)
         assertFalse("a node on the BIP39 entry names a key", root.hasObject(By.text(Pattern.compile("."))))
         assertFalse("a key on the BIP39 entry has a Public key's id", root.hasObject(By.res(Pattern.compile("key_.*"))))
-        return keys
     }
 
     /** Whether a QR code's matrix was wiped: no dark module left. */

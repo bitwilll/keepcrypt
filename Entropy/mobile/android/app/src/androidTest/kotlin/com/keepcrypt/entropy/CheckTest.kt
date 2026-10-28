@@ -31,7 +31,6 @@ import com.keepcrypt.entropy.screens.SNAPSHOT_NO_REGISTRY_KEY
 import com.keepcrypt.entropy.screens.Screen
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -96,7 +95,7 @@ class CheckTest {
             }
             find("check_now")
             find("skip")
-            assertNull("the check prompt draws the seed's Seal ID", shown(Screen.CheckPrompt, DICE_50_SEAL_ID))
+            assertFalse("the check prompt draws the seed's Seal ID", shown(Screen.CheckPrompt, DICE_50_SEAL_ID))
             device.pressBack()
             stays(activity, Screen.CheckPrompt, "Back on the check prompt")
             // Skip, confirmed on its own screen, whose Back (its button, then the system's) keeps the prompt.
@@ -111,7 +110,7 @@ class CheckTest {
             tap("check_now")
             on(activity, Screen.SealCard)
             // From Check now on the Seal ID shows: on the seal card, under its grid, scrolled into view.
-            assertNotNull("the seal card does not draw the seed's Seal ID", shown(Screen.SealCard, DICE_50_SEAL_ID))
+            assertTrue("the seal card does not draw the seed's Seal ID", shown(Screen.SealCard, DICE_50_SEAL_ID))
             val first = drawnRequest(activity)
             val (tag, nonce) = Checker.request(first)
             assertEquals("the check QR's T is not dice-50-words12's seal tag", DICE_50_TAG, tag)

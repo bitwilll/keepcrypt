@@ -108,7 +108,8 @@ fun GoOffline(state: UiState, testRegistry: Boolean, onSettings: () -> Unit, onS
  * Home (docs/mobile-apps.md, step 4): New seed, Dice-only seed, Check a backup, Load registry snapshot and
  * About (lead decision M5-48; "Verify another device's ceremony" is M5b's, Q61); why the file Check a
  * backup or Load registry snapshot was given was not opened, when it was not; and the registry snapshot
- * loaded, or that none is (the Pi's Home line).
+ * loaded, or that none is (the Pi's Home line). About's tag is show_about, not the About screen's id
+ * (about), which its root carries: a screen's id is found as that screen's root alone (group 6).
  */
 @Composable
 fun Home(
@@ -128,7 +129,7 @@ fun Home(
             KitButton("Dice-only seed", "dice_only_seed", onClick = onDiceOnly)
             KitButton("Check a backup", "check_backup", onClick = onCheckBackup)
             KitButton("Load registry snapshot", "load_snapshot", onClick = onLoadSnapshot)
-            KitButton("About", "about", onClick = onAbout)
+            KitButton("About", "show_about", onClick = onAbout)
         },
     ) {
         KitText("KeepCrypt", KitType.title)
