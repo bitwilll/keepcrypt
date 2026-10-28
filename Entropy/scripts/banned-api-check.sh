@@ -4147,6 +4147,24 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   fresh
   ln -s nowhere "$d/dangling.kt" || exit 2
   expect 'error-unreadable-file' "$d" error
+  # report()'s own refusals (lead decision M5-66), on copies of this script whose check rng is a
+  # stand-in, defined again just before the dispatcher: a check's exit 0 with no hit (what bash 3.2
+  # read for a grep that matched nothing), its exit 1 with output, and a hit line with no line
+  # number each stop the gate with exit 2, naming the check and the file, never a hit with no line.
+  for case in 'exit-0-no-hit|rng() { return 0; }|rng exited 0 and no hit on ' \
+    'exit-1-output|rng() { echo x; return 1; }|rng exited 1 and output on ' \
+    'line-without-number|rng() { echo nonumber; }|rng exited 0 on core/examples/release_probe.rs with a line that is not "<line>:<text>": nonumber' \
+    'line-with-empty-number|rng() { echo ":x"; }|rng exited 0 on core/examples/release_probe.rs with a line that is not "<line>:<text>": :x'; do
+    gate=$tmp/report-stand-in.sh
+    rest=${case#*|}
+    KC_STAND_IN=${rest%%|*} awk '
+      !done && $0 == "case ${1-} in" { print ENVIRON["KC_STAND_IN"]; done = 1 }
+      { print }
+      END { exit !done }' "$self" >"$gate" || exit 2
+    fresh
+    expect "error-report-${case%%|*}" "$d" error "banned-api-check: ${rest#*|}"
+  done
+  gate=
   # Symlinks stay out of git fixtures (a fixture holds one regular file), so they are made here.
   # A linked file is scanned under its link name, even when its target sits in excluded docs/.
   fresh

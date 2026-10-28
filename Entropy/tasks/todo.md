@@ -15269,6 +15269,16 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   0 failed, under sh and /bin/dash; the fault check 582 runs, 582 passed (the git place's three ways among them),
   under sh and /bin/dash; the gate clean on the working tree (365 files) under sh and dash; canaries.sh PASS, all 94
   checks ran (436 s).
+  Proof (M5 commit 18z, review fix, M5-66, partial: local, Q76): report()'s refusals (a check's exit 0 with no hit, its
+  exit 1 with output, a hit line without its number) had no test: the fault check's three ways all stop the gate in
+  tool_status first, and with exit 0 and no output accepted and the number check gone the fault check passed 426 of
+  426 and the selftest 1591 of 1591. Four built cases run copies of the gate whose rng check is redefined just
+  before the dispatcher: error-report-exit-0-no-hit, error-report-exit-1-output, error-report-line-without-number
+  and error-report-line-with-empty-number, each wanting exit 2 and report()'s message, "rng exited 0 and no hit on
+  core/examples/release_probe.rs" and so on. Run alone (--shard 1192/9999 to 1195/9999), the first, third and
+  fourth fail with that mutant, and the second with exit 1's output accepted. Locally: the shards "798 of 1596" and
+  "798 of 1596", 0 failed, under sh and /bin/dash; the fault check 582 runs, 582 passed, under sh and /bin/dash; the
+  gate clean on the working tree (365 files) under sh and dash; canaries.sh PASS, all 94 checks ran (436 s).
 - [ ] L7. canaries.sh moves out of the gates job into one existing required job with time to spare (M5-67, commit
   L7). The gates job keeps the gate's runs and the two self-test shards with their count check. Proof: both jobs' times
   in CI, each under 12 minutes, with the 14 required check names unchanged.
