@@ -14948,6 +14948,12 @@ they differ. Nothing in the Android plan is weakened.
   first words page with the same composables and no FLAG_SECURE, the same captures find its known pixels on API 31
   and 36, and the control captures are uploaded as the owner's screen review; and PadEntry.handOver wipes in a
   finally, with codeDone handing its letters to core through it as the read-back does (19d).
+- M5-69 (2026-10-28): M5-57's 44 minutes cancelled run 40624645994 (f06a5ab, commit 19's tests in) 17 s after its
+  last leg had passed: API 31 967 s and API 36 958 s, against 608 s and 636 s at efc0575 (16 KB 93 s), so commit 19
+  added about six minutes a leg and should have re-measured. The job runs with the 90-minute ceiling for the run at
+  stage E4's head, and the lead then sets its budget to that run plus 25% (M5-30). Stage U adds journeys and edge
+  cases to these legs, so before Stage U the lead weighs running the legs as parallel jobs against the longer budget,
+  from that measurement.
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the

@@ -136,11 +136,12 @@ jobs:
     runs-on: ubuntu-24.04
     # The 90-minute ceiling (tasks/todo.md, M5 "Budgets") until the first green run with the
     # emulators is measured; the lead then sets the job's budget to that time plus 25%.
-    # The measured budget (M5-30, M5-44, M5-52, M5-57): run 39783747240 at efc0575, the slowest whole
-    # run yet (every leg ran to its end), 35.2 min with commit 18's tests and no new one, so the rise
-    # is the runner's; plus 25% is 44. A slower run stops here and the lead re-plans; a commit that
-    # adds legs or tests re-measures it.
-    timeout-minutes: 44
+    # The measured budget (M5-30, M5-44, M5-52, M5-57): run 39783747240 at efc0575, 35.2 min with
+    # commit 18's tests; plus 25% was 44. Commit 19's tests took run 40624645994 (f06a5ab) past it
+    # 17 s after its last leg (API 31 967 s, API 36 958 s), so the ceiling is back for the run at
+    # stage E4's head, which re-measures it (M5-69). A slower run stops here and the lead re-plans;
+    # a commit that adds legs or tests re-measures it.
+    timeout-minutes: 90
     env:
       # The SDK pieces the build uses (mobile/android/gradle/libs.versions.toml), checked below.
       KC_BUILD_TOOLS: 36.0.0
