@@ -570,12 +570,15 @@
 #              and CI's fresh checkout has none of them. The skip hides nothing tracked: this rule
 #              refuses every tracked file there, so only an untracked one goes unread, and no
 #              untracked file is in CI's tree. A tree that is no git work tree (an export, a copy,
-#              the selftest's scratch trees) has no index, so this rule is silent there and the
-#              scan leaves nothing out: every file is read, those directories' too, as nothing
-#              there tells a committed file from an ignored one. git missing from PATH is exit 2,
-#              and so is a work tree git cannot read (git's exit 128 without "not a git
-#              repository": a repositoryformatversion it does not know, a corrupt HEAD), which
-#              must never pass for no work tree.
+#              the selftest's scratch trees: no .git entry in it or in any directory above it) has
+#              no index, so this rule is silent there and the scan leaves nothing out: every file
+#              is read, those directories' too, as nothing there tells a committed file from an
+#              ignored one. git missing from PATH is exit 2, and so is a work tree git cannot
+#              read, which must never pass for no work tree: git's exit 128 without "not a git
+#              repository" (a repositoryformatversion it does not know, an owner it does not
+#              trust), and with it where a .git entry, a file or a directory, is in the scanned
+#              tree or a directory above it (a corrupt or missing HEAD, no refs/ or objects/, a
+#              .git file whose gitdir is gone; lead decision M5-68 (d)).
 #              Gradle's own build.gradle.kts files, buildSrc/ and gradle/ (the version catalog and
 #              the wrapper) are not output directories and pass.
 #              The index is read with ls-files -s -z: -z names a file whole where plain ls-files
@@ -924,10 +927,23 @@ nl='
 # A tool that cannot start (exit 126 or 127), exits with an error or is killed stops the gate with
 # exit 2 and names itself, how it failed and what the gate was reading ($on), never "clean" and
 # never a hit with no line. sh has no pipefail, so the scan, and each mode that calls fail_closed
-# (below), runs no pipeline with two tools in it: each tool's output is a command substitution's,
-# its status read there, and fed on with printf, a builtin, so a pipeline's status is its one
-# tool's, and a command substitution's is its last command's. scripts/banned-api-faults.sh makes
-# each tool fail at each place that runs it, in each of those ways, in each of those modes.
+# (below), runs no pipeline with two tools in it where a failing tool could pass a file unread:
+# each tool's output is a command substitution's, its status read there, and fed on with printf, a
+# builtin, so a pipeline's status is its one tool's, and a command substitution's is its last
+# command's. Four pipelines hold two tools. image_unpack's dd | od | awk and dd | od | tr fail
+# closed by their content: the MBR must read 512 bytes (awk counts them) and partition 2 must start
+# with the SquashFS magic, so a tool that fails there leaves the bytes short or wrong and the image
+# is refused (exit 2). show_diff's diff | sed and --apk's grep | sed of zipalign's lines print a
+# hit's detail on stderr after the hit is counted, so a tool that fails there loses lines of that
+# detail, never the hit. scripts/banned-api-faults.sh makes each tool fail at each place that runs
+# it, in each of those ways, in four modes: the scan, --workflows, --artifact and --os-config.
+# --image-lists, --image and --apk need a built Pi image with Buildroot's host tools, or the
+# Android build tools and an APK, which its job lacks, so their selftests' stub images and APKs and
+# CI's real runs cover them (lead decision M5-68 (c)).
+#
+# Each mode that makes temporary files removes them before its summary line, its EXIT trap cleared
+# first: a failing rm then stops it with exit 2 before it prints a result, never after "clean"
+# (lead decision M5-68 (d)). The trap removes them on the error paths.
 #
 # And the scan's own shell starts no tool as a command of its own, only in a command substitution
 # (report(), found()), which banned-api-faults.sh also checks in the text. That was the M5-66 hit
@@ -3224,12 +3240,26 @@ list() {
 # fails loud, never quiet).
 gradle_out='^[.]/mobile/android/([.]gradle|build|(app|capture-control|core-ffi|screens|secure-ui)/build)/'
 
-# build_rule_cleanup: the Build rule's temporary files, removed by the scan's EXIT trap. A function
-# rather than the trap's own text, since bash 5 numbers a trap's text from line 1 and bash 3.2 does
-# not, while a function's lines are its lines in this file under both, so banned-api-faults.sh's
-# traced run finds this rm where the text holds it (lead decision M5-66).
+# build_rule_cleanup: the Build rule's temporary files, removed before the scan's summary line and
+# by its EXIT trap on the error paths. A function rather than the trap's own text, since bash 5
+# numbers a trap's text from line 1 and bash 3.2 does not, while a function's lines are its lines
+# in this file under both, so banned-api-faults.sh's traced run finds this rm where the text holds
+# it (lead decision M5-66).
 build_rule_cleanup() {
+  on="the Build rule's temporary files"
   rm -f "$index" ${blob:+"$blob"}
+}
+
+# git_entry: $dotgit, the first .git entry (a file, a directory or a link, dangling or not) in the
+# current directory, by its physical path, or in a directory above it; empty when there is none.
+# The shell's own tests, so no tool runs.
+git_entry() {
+  dotgit=$(pwd -P) || exit 2
+  while [ ! -e "$dotgit/.git" ] && [ ! -h "$dotgit/.git" ]; do
+    [ -n "$dotgit" ] || return 0
+    dotgit=${dotgit%/*}
+  done
+  dotgit="$dotgit/.git"
 }
 
 scan() {
@@ -3246,8 +3276,11 @@ scan() {
   # In a git work tree the Build rule refuses every tracked file in the ignored Gradle output, so the
   # scan leaves that output out; outside one (no index) every file is scanned (the header's Build).
   # Outside a work tree git exits 128 and says "not a git repository". git exits 128 too for a work
-  # tree it cannot read (a repositoryformatversion it does not know, a corrupt HEAD, an owner it
-  # does not trust), and that, like any other failure, is the gate's (tool_status, after git's own
+  # tree it cannot read (a repositoryformatversion it does not know, an owner it does not trust),
+  # and says "not a git repository" too where the .git it finds is one it cannot read (a corrupt or
+  # missing HEAD, no refs/ or objects/, a .git file whose gitdir is gone), looking on above it. So
+  # there is no work tree only where git says so and no .git entry is here or in a directory above
+  # (git_entry); anything else, like any other failure, is the gate's (tool_status, after git's own
   # words), never a scan without the Build rule. Without git the Build rule's tracked files cannot
   # be listed. git runs in a command substitution: run here as a command of its own, its finished
   # job was what bash 3.2 later took for a check's grep (see "The tools the gate runs fail closed").
@@ -3257,14 +3290,21 @@ scan() {
   }
   wt=$(command git rev-parse --is-inside-work-tree 2>&1)
   rc=$?
+  work_tree=
+  dotgit=
   case $rc:$wt in
     0:*) work_tree=yes ;;
-    128:*'not a git repository'*) work_tree=no ;;
-    *)
-      printf 'banned-api-check: git rev-parse --is-inside-work-tree: %s\n' "$wt" >&2
-      tool_status git "$rc"
+    128:*'not a git repository'*)
+      git_entry
+      [ -n "$dotgit" ] || work_tree=no
       ;;
   esac
+  if [ -z "$work_tree" ]; then
+    printf 'banned-api-check: git rev-parse --is-inside-work-tree: %s\n' "$wt" >&2
+    [ -z "$dotgit" ] ||
+      printf 'banned-api-check: %s exists, so the scanned tree is in a repository git cannot read\n' "$dotgit" >&2
+    tool_status git "$rc"
+  fi
   if [ "$work_tree" = yes ]; then
     all=$(printf '%s\n' "$all" | grep -v -E -e "$gradle_out")
     [ $? -le 1 ] || exit 2
@@ -3704,6 +3744,10 @@ EOF
     done <<EOF
 $tracked
 EOF
+    # The temporary files go before the summary line (see "The tools the gate runs fail closed"),
+    # in a command substitution, which prints nothing, as the scan's own shell runs no tool.
+    trap - EXIT
+    cleaned=$(build_rule_cleanup) || exit 2
   fi
   if [ "$hits" -ne 0 ]; then
     echo "banned-api-check: $hits hit(s) in $n files scanned ($skipped binary by extension, not scanned)"
@@ -3829,10 +3873,43 @@ expect() {
   fi
 }
 
+# rm_fails DIR: $rmfail, DIR/bin, holding a stand-in rm that exits 1 and prints nothing, for
+# cleanup_case; DIR holds each case's TMPDIR.
+rm_fails() {
+  rmfail=$1/bin
+  mkdir -p "$rmfail" && printf '%s\n' '#!/bin/sh' 'exit 1' >"$rmfail/rm" && chmod +x "$rmfail/rm" || exit 2
+}
+
+# cleanup_case NAME TEXT ARG...: the gate with ARG... in a new process, on an input with no hit,
+# with $rmfail first on PATH and a TMPDIR of its own (where the files the failing rm left stay): the
+# mode's one rm, its cleanup, must stop it with exit 2 and TEXT ("banned-api-check: rm failed
+# (exit 1) on ...") as its last line, and no summary line (clean, listed or its hits) before it
+# (lead decision M5-68 (d)).
+cleanup_case() {
+  mine || return 0
+  cname=$1
+  cwant=$2
+  shift 2
+  ctmp=${rmfail%/bin}/$cname
+  mkdir "$ctmp" || exit 2
+  out=$(TMPDIR=$ctmp PATH=$rmfail:$PATH sh "$self" "$@" 2>&1)
+  rc=$?
+  csummary=$(printf '%s\n' "$out" | grep -c -E '^banned-api-check( --[a-z-]+ [^:]*)?: (clean|listed|[0-9]+ hit)')
+  if [ "$rc" -eq 2 ] && [ "${out##*$nl}" = "$cwant" ] && [ "$csummary" -eq 0 ]; then
+    pass=$((pass + 1))
+    printf 'PASS %s -> exit 2: %s\n' "$cname" "$cwant"
+  else
+    fail=$((fail + 1))
+    printf 'FAIL %s: wanted exit 2 with the last line "%s" and no summary line, got exit %s:\n' "$cname" "$cwant" "$rc"
+    printf '%s\n' "$out" | sed 's/^/    /'
+  fi
+}
+
 selftest() {
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/banned-api.XXXXXX") || exit 2
   trap 'rm -rf "$tmp"' EXIT
   trap 'exit 2' HUP INT TERM
+  rm_fails "$tmp/rm-fails"
   i=0
   pass=0
   fail=0
@@ -4137,9 +4214,10 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   echo '    let _unused = getrandom::fill(buf);' >"$d/core/src/source.rs" || exit 2
   expect 'failopen-probe-named-binding' "$d" FailOpen core/src/source.rs
   # Cases kept out of git: it cannot hold .git/ or (ignored) target/, and Claude Code would read a
-  # nested CLAUDE.md as instructions.
+  # nested CLAUDE.md as instructions. The .git/ is a repository's (git init), as a .git git cannot
+  # read stops the scan (lead decision M5-68 (d)).
   fresh
-  mkdir -p "$d/.git" "$d/target" || exit 2
+  git init -q "$d" && mkdir -p "$d/target" || exit 2
   for x in .git/x.kt target/x.kt CLAUDE.md; do
     echo 'Math.random()' >"$d/$x" || exit 2
   done
@@ -4275,6 +4353,34 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   mkdir -p "$d/mobile/android/app/build" && echo 'kc.gate.canary=true' >"$d/mobile/android/app/build/x.kt" || exit 2
   git -C "$d" add -f -- mobile/android/app/build/x.kt && git -C "$d" config core.repositoryformatversion 99 || exit 2
   expect 'error-build-work-tree-git-cannot-read' "$d" error 'banned-api-check: git failed (exit 128) on the scanned tree'
+  # git says "not a git repository" too where the .git it finds is one it cannot read, and looks
+  # on above it: a corrupt or a missing HEAD, a .git file whose gitdir is gone, and a corrupt HEAD
+  # in a directory above the scanned tree stop the gate as above, naming the .git entry, so the
+  # tracked file is never read without the Build rule (lead decision M5-68 (d)).
+  for case in corrupt-head missing-head dangling-git-file corrupt-head-above-the-scanned-tree; do
+    fresh
+    mkdir -p "$d/mobile/android/app/build" && echo 'kc.gate.canary=true' >"$d/mobile/android/app/build/x.kt" || exit 2
+    case $case in
+      dangling-git-file) echo "gitdir: $tmp/gone/.git" >"$d/.git" || exit 2 ;;
+      *) git init -q "$d" && git -C "$d" add -f -- mobile/android/app/build/x.kt || exit 2 ;;
+    esac
+    case $case in
+      corrupt-head*) echo 'garbage' >"$d/.git/HEAD" || exit 2 ;;
+      missing-head) rm "$d/.git/HEAD" || exit 2 ;;
+    esac
+    gd=$(cd "$d" && pwd -P) || exit 2
+    sd=$d
+    case $case in
+      *-above-the-scanned-tree) sd=$d/inner && mkdir "$sd" && cp -R "$d/core" "$d/pi" "$d/mobile" "$sd/" || exit 2 ;;
+    esac
+    expect "error-build-work-tree-$case" "$sd" error \
+      "banned-api-check: $gd/.git exists, so the scanned tree is in a repository git cannot read"
+  done
+  # The scan's one rm, the Build rule's cleanup, failing in a work tree with no hit (lead decision
+  # M5-68 (d)).
+  fresh
+  git init -q "$d" || exit 2
+  cleanup_case 'error-cleanup-fails-scan' "banned-api-check: rm failed (exit 1) on the Build rule's temporary files" "$d"
   # The scan's skip of a local build's ignored output (M5-62 (a), gradle_out): in a git work tree, a
   # file that KtLog would hit, under mobile/android/.gradle/, mobile/android/build/ or a module's
   # build/, is the Build hit alone when tracked (the rule still sees it, and the scan did not read
@@ -4884,9 +4990,10 @@ artifact_rules() {
   esac
   # libc's draws and seeders, with glibc's reentrant _r forms (the Pi links glibc).
   undefined_rng="^$p(rand|random|srand|srandom|rand_r|random_r|srandom_r|([A-Za-z0-9_]*rand48|seed48|lcong48|initstate|setstate)(_r)?|arc4random[A-Za-z0-9_]*|SecRandomCopyBytes$extra)\$"
-  # The crates' names as one alternation, and the key's bytes below, are built in the shell.
+  # The crates' names as one alternation, and the key's bytes below, are built in the shell. The
+  # loop's variable is no name a caller reads: kc_lib runs this inside apk_lines' read loop.
   alt=
-  for c in $rng_crate_names; do alt=$alt${alt:+|}$c; done
+  for rname in $rng_crate_names; do alt=$alt${alt:+|}$rname; done
   rng_crates="(^|[^A-Za-z0-9_])($alt)::"
   fallback='(^|[^A-Za-z0-9_])getrandom::backends::(use_file|linux_android_with_fallback)::'
   std_random='hashmap_random_keys|RandomState|std::sys::random|3std3sys6random'
@@ -5068,9 +5175,11 @@ artifact_file() {
   return 0
 }
 
-# artifact_cleanup: the artifact scan's temporary directory, removed by its EXIT trap: a function,
-# as build_rule_cleanup is, so the rm is at its own line under every bash.
+# artifact_cleanup: the artifact scan's temporary directory, removed before its summary line and by
+# its EXIT trap on the error paths: a function, as build_rule_cleanup is, so the rm is at its own
+# line under every bash.
 artifact_cleanup() {
+  on="the artifact scan's temporary directory"
   rm -rf "$atmp"
 }
 
@@ -5093,6 +5202,8 @@ artifact() {
     n=$((n + 1))
     artifact_file "$f" || :
   done
+  trap - EXIT
+  artifact_cleanup
   if [ "$hits" -ne 0 ]; then
     echo "banned-api-check --artifact $target: $hits hit(s) in $n file(s)"
     exit 1
@@ -5436,6 +5547,19 @@ image_imports() {
   sort -u "$iw/imports.unsorted" >"$iw/imports.list" || exit 2
 }
 
+# image_listed FILE: FILE printed by cat, whose failure stops the listing (tool_status, exit 2).
+image_listed() {
+  on=$1
+  cat "$1" || tool_status cat "$?"
+}
+
+# image_cleanup: the image modes' temporary directory ($iw), removed before their summary line as
+# image_unpack's EXIT trap removes it on the error paths.
+image_cleanup() {
+  on="the image's temporary directory"
+  rm -rf "$iw"
+}
+
 # image_lists IMG KCONFIG: unpack IMG and print its lists, under "== " headings (see "Image lists
 # mode").
 image_lists() {
@@ -5461,15 +5585,17 @@ image_lists() {
   echo "sha256 partition-2 $h_p2"
   echo "sha256 keepcrypt-pi $h_kp"
   echo '== boot files (partition 1, FAT: path, type)'
-  cat "$iw/boot.list"
+  image_listed "$iw/boot.list"
   echo '== boot mdir -a (partition 1)'
-  cat "$iw/mdir"
+  image_listed "$iw/mdir"
   echo '== root files (partition 2, SquashFS: path, mode, link target)'
-  cat "$iw/root.list"
+  image_listed "$iw/root.list"
   echo '== keepcrypt-pi imports (/usr/bin/keepcrypt-pi, llvm-nm -D -u: type, symbol)'
-  cat "$iw/imports.list"
+  image_listed "$iw/imports.list"
   echo '== kernel config (KCONFIG)'
-  cat "$kconfig" || exit 2
+  image_listed "$kconfig"
+  trap - EXIT
+  image_cleanup
   echo "banned-api-check --image-lists $img: listed, not scanned"
   exit 0
 }
@@ -5712,9 +5838,10 @@ busybox_check() {
 
 # --- OS configuration mode -----------------------------------------------------------------------
 
-# os_config_cleanup: --os-config's temporary directory, removed by its EXIT trap (a function, as
-# artifact_cleanup is).
+# os_config_cleanup: --os-config's temporary directory, removed before its summary line and by its
+# EXIT trap on the error paths (a function, as artifact_cleanup is).
 os_config_cleanup() {
+  on="--os-config's temporary directory"
   rm -rf "$otmp"
 }
 
@@ -5746,6 +5873,8 @@ os_config() {
   lists_match "$exp" "$board/linux.fragment" "$otmp" --os-config
   kconfig_check "$exp/linux.config" "$exp/linux.config" "$otmp/required" "$otmp/forbidden"
   busybox_check "$board/busybox.config" "$board/busybox.config"
+  trap - EXIT
+  os_config_cleanup
   if [ "$hits" -ne 0 ]; then
     echo "banned-api-check --os-config $os: $hits hit(s)"
     exit 1
@@ -5950,6 +6079,8 @@ image_scan() {
   fi
   got_sha=$(sha256 "$kp") || exit 2
   [ "$got_sha" = "$want_sha" ] || ahit Binary /usr/bin/keepcrypt-pi "SHA-256 $got_sha, not BIN_SHA256 $want_sha"
+  trap - EXIT
+  image_cleanup
   if [ "$hits" -ne 0 ]; then
     echo "banned-api-check --image $img: $hits hit(s)"
     exit 1
@@ -6577,6 +6708,38 @@ banned-api-check --image-lists $img: listed, not scanned"
       diff "$st/want" "$st/got" | sed 's/^/    /'
     fi
   fi
+  opath=$PATH
+  PATH=$st/bin:$PATH
+  cleanup_case 'image-lists-stub-tools-cleanup-fails' "banned-api-check: rm failed (exit 1) on the image's temporary directory" \
+    --image-lists "$img" "$k"
+  # Each list printed by a cat that fails, the stand-in cat first on PATH failing on that file
+  # alone: exit 2, its last line naming cat and the list, and no "listed" line (lead decision
+  # M5-68 (d)).
+  realcat=$(command -v cat) || exit 2
+  mkdir "$st/catfail" || exit 2
+  printf '%s\n' '#!/bin/sh' 'case $1 in */"$KC_CAT_FAILS") exit 1 ;; esac' "exec '$realcat' \"\$@\"" >"$st/catfail/cat" &&
+    chmod +x "$st/catfail/cat" || exit 2
+  for f in boot.list mdir root.list imports.list linux.config; do
+    mine || continue
+    out=$(KC_CAT_FAILS=$f PATH="$st/catfail:$PATH" sh "$self" --image-lists "$img" "$k" 2>&1)
+    rc=$?
+    last=${out##*$nl}
+    ok=no
+    if [ "$rc" -eq 2 ]; then
+      case $last in "banned-api-check: cat failed (exit 1) on "*/"$f") ok=yes ;; esac
+      case $out in *': listed, not scanned'*) ok=no ;; esac
+    fi
+    if [ "$ok" = yes ]; then
+      pass=$((pass + 1))
+      printf 'PASS image-lists-stub-tools-cat-fails-on-%s -> exit 2: %s\n' "$f" "$last"
+    else
+      fail=$((fail + 1))
+      printf 'FAIL image-lists-stub-tools-cat-fails-on-%s: wanted exit 2, cat failing on %s last and no listed line, got exit %s:\n' \
+        "$f" "$f" "$rc"
+      printf '%s\n' "$out" | sed 's/^/    /'
+    fi
+  done
+  PATH=$opath
   echo '-rw-r--r-- 0/0 5 squashfs-root/etc/no-date' >>"$st/lln" || exit 2
   opath=$PATH
   PATH=$st/bin:$PATH
@@ -6664,6 +6827,8 @@ os_config_selftest() {
   for want in clean Inittab Fstab Cmdline ConfigTxt Kconfig BusyBox; do
     case "$oseen " in *" $want "*) ;; *) fail=$((fail + 1)); echo "FAIL no $want os-config fixture" ;; esac
   done
+  cleanup_case 'osconfig-error-cleanup-fails' "banned-api-check: rm failed (exit 1) on --os-config's temporary directory" \
+    --os-config "$tmp/os-config/clean-pizero"
   d=$tmp/os-config/errors
   rm -rf "$d" && mkdir -p "$d" && cp -R "$clean/." "$d/" || exit 2
   mv "$d/expected" "$d/expected.away" || exit 2
@@ -6825,6 +6990,8 @@ EOF
   PATH=$st/bin:$PATH
   stub_tree clean
   stub_case clean ''
+  cleanup_case 'image-stub-cleanup-fails' "banned-api-check: rm failed (exit 1) on the image's temporary directory" \
+    --image "$img" "$tree/expected" "$kc" "$sha"
   # The lists.
   stub_tree boot-list
   sha=$(si_lists "$img" "$tree/expected" "$kc") || exit 2
@@ -7040,6 +7207,8 @@ artifact_selftest() {
     done
     o=$a/$t
     aexpect "artifact-$t-clean-object" 0 '' "$t" "$o-clean.o"
+    cleanup_case "artifact-$t-cleanup-fails" "banned-api-check: rm failed (exit 1) on the artifact scan's temporary directory" \
+      --artifact "$t" "$o-clean.o"
     aexpect "artifact-$t-arc4random-import" 1 "Symbol: $o-arc4random.o: undefined ${p}arc4random" "$t" "$o-arc4random.o"
     aexpect "artifact-$t-missing-os-import" 1 \
       "OSImport: $o-no-os-import.o: no undefined $import, the OS import on $t" "$t" "$o-no-os-import.o"
@@ -7797,6 +7966,11 @@ apk_scan() {
     [ "$signers" = "$cert" ] ||
       ahit Signature "$apk" "signed by $(joined "${signers:-no certificate}"), not by the run's throwaway key $cert alone"
   fi
+  # The temporary directory goes before the summary line, as the EXIT trap removes it on the error
+  # paths (see "The tools the gate runs fail closed").
+  trap - EXIT
+  on="the APK scan's temporary directory"
+  rm -rf "$aw"
   if [ "$hits" -ne 0 ]; then
     echo "banned-api-check --apk $variant $apk: $hits hit(s)"
     exit 1
@@ -7961,6 +8135,7 @@ apk_selftest() {
   st=$(mktemp -d "${TMPDIR:-/tmp}/banned-api-selftest-apk.XXXXXX") || exit 2
   trap 'rm -rf "$st"' EXIT
   trap 'exit 2' HUP INT TERM
+  rm_fails "$st/rm-fails"
   td=$here/testdata/apk
   committed=$here/../mobile/android/expected/manifest-shipping.txt
   for f in "$td/badging.txt" "$td/permissions.txt" "$td/xmltree.txt" "$td/merger-report.txt" "$committed"; do
@@ -8113,6 +8288,14 @@ STUB
   # the committed mobile/android/expected/manifest-shipping.txt.
   anew clean
   acase apk-clean ''
+  KC_STUB=$c
+  export KC_STUB
+  opath=$PATH
+  PATH=$st/bin:$PATH
+  cleanup_case apk-error-cleanup-fails "banned-api-check: rm failed (exit 1) on the APK scan's temporary directory" \
+    --apk shipping "$c/app.apk" "$c/expected" "$c/report.txt" "$acert" "$c/jnilibs"
+  PATH=$opath
+  unset KC_STUB
   # The manifest's hard rules, each with the case's own summary as the expected one, so that only
   # the rule can fail it; then the comparison itself.
   anew internet

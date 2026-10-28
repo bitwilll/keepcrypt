@@ -15384,6 +15384,54 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   canary library's build output under scripts/testdata/android-canary-lib/build/ is ignored. Proof: selftest cases (a
   corrupt and a missing HEAD; a failing cleanup with no hit in each mode that cleans up), the fault check, locally and
   in CI; then L6 is ticked.
+  Proof (M5 commit L8, M5-68 (d), partial: local, Q76; CI runs the fault check, the shards and --selftest-apk at
+  the next push, and the Pi image workflow --image-lists and --image): (1) every mode that makes temporary files
+  clears its EXIT trap and removes them before its summary line, the trap kept for the error paths: the scan (the
+  Build rule's build_rule_cleanup, in a command substitution, as the scan's shell starts no tool), --artifact and
+  --os-config, and --image-lists, --image and --apk too, whose trap's rm -rf followed "clean" (or "listed") the same
+  way (image_cleanup; apk_scan's own rm). Each cleanup sets $on to what it removes: with a failing rm on PATH, 44d4469's
+  scan of a work tree printed "clean, 5 files scanned", then "rm failed (exit 1) on git's index of mobile/", exit 2
+  (reproduced); now that rm line alone. New cases (cleanup_case: a stand-in rm first on PATH that exits 1, a TMPDIR of
+  their own; exit 2, "banned-api-check: rm failed (exit 1) on <what the cleanup removes>" last, no summary line):
+  error-cleanup-fails-scan, artifact-aarch64-linux-android-cleanup-fails, artifact-aarch64-apple-ios-cleanup-fails,
+  osconfig-error-cleanup-fails, image-lists-stub-tools-cleanup-fails, image-stub-cleanup-fails and, in
+  --selftest-apk, apk-error-cleanup-fails. Each fails with its mutant (that mode's own cleanup removed, the trap's
+  left: the clean or listed line, then the rm line, exit 2), run alone with --shard N/9999 on a scratch export
+  (--selftest-apk whole: 88 passed, 1 failed). banned-api-faults.sh no longer counts a trap's commands as a caller
+  (they run only on an error path), so each cleanup function's one caller is its mode's line; with the scan's,
+  --artifact's or --os-config's own cleanup removed the check stops before its runs ("build_rule_cleanup: called from
+  0 places in the text, reached from 1", and so on), and with trap strings read as callers again it stops on the
+  final gate ("called from 2 places in the text, reached from 1"). (2) git's "not a git repository" is no work tree
+  only when no .git entry (a file, a directory or a link, dangling or not) is in the scanned root or any directory
+  above it (git_entry, the shell's tests on the physical path); otherwise git's words, "banned-api-check: <dir>/.git
+  exists, so the scanned tree is in a repository git cannot read" and "git failed (exit 128) on the scanned tree",
+  exit 2. Reproduced: a tracked mobile/android/app/build/out/classes.txt with HEAD overwritten with garbage, and with
+  HEAD deleted: 44d4469's gate (a829000's rule) "clean, 6 files scanned", exit 0, under sh and dash; this gate exit 2
+  under both. New cases error-build-work-tree-corrupt-head, -missing-head, -dangling-git-file (a .git file whose
+  gitdir is gone) and -corrupt-head-above-the-scanned-tree, each failing with a829000's rule back (clean, exit 0).
+  clean-git-target-claude-md's tree held a .git/ that was no repository, which now stops the scan, so its .git/ is a
+  repository's (git init): still clean, .git/ still never read. (3) --image-lists prints each list with cat's status
+  read (image_listed: "banned-api-check: cat failed (exit 1) on <list>", exit 2; the kernel config's `|| exit 2` gave
+  cat's words alone). Five cases, image-lists-stub-tools-cat-fails-on-boot.list, -mdir, -root.list, -imports.list and
+  -linux.config (a stand-in cat first on PATH failing on that file alone): exit 2, that line last, no "listed" line;
+  with the statuses unread all five exit 0 with the whole listing. (4) The header names the four modes the fault check
+  faults, says --image-lists, --image and --apk are covered by their selftests and CI's real runs (M5-68 (c)), and
+  names the four two-tool pipelines left: image_unpack's dd | od | awk and dd | od | tr, which fail closed by their
+  content (the MBR must read 512 bytes, partition 2 must start with the SquashFS magic), and show_diff's diff | sed and
+  --apk's grep | sed of zipalign's lines, which print a counted hit's detail; and that each mode removes its temporary
+  files before its summary line. The header's Build and scan()'s comment say what "not a git repository" covers. (5)
+  artifact_rules' loop variable is rname (kc_lib runs artifact_rules inside apk_lines' read loop, whose c holds a
+  hit's detail). (6) Entropy/.gitignore ignores scripts/testdata/android-canary-lib/build/ (git check-ignore names the
+  line for a file there; the library's three tracked files stay unignored). Locally: the shards "806 of 1611" and "805
+  of 1611", 0 failed, under sh and /bin/dash (1596 cases and the 15 new ones); against 44d4469's shards on a fresh
+  export every other case's output is the same but clean-git-target-claude-md's setup (above) and
+  workflow-error-no-entropy-yml's scratch directory number, 1344 for 1339 (five more scratch trees before it); dash's
+  output equal to sh's with the temporary names masked; --selftest-apk 89 passed (88 and the new one) under sh and
+  dash; the fault check 582 runs, 582 passed, in 192 s under sh and 191 s under /bin/dash, its places unchanged (the
+  scan's 142, --workflows' 16, --artifact's 23, --os-config's 13); the gate clean on the working tree (365 files) and
+  --workflows ../.github/workflows clean (3 workflows) under sh and dash; canaries.sh PASS, all 94 checks
+  ran (444 s); fmt, both clippy runs, `cargo test --workspace --locked` (499 passed, 3 ignored) and `-p keepcrypt-core
+  --features test-sources` (269 passed, 1 ignored).
 
 **Stages E3 and E4** run commits 19, 20 and 21 as planned, each built and tested locally before it is committed.
 

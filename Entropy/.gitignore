@@ -9,6 +9,10 @@ target/
 # Build) and any tracked .so or ELF under mobile/ (KtBinary), so an ignore here hides nothing from CI.
 mobile/android/**/build/
 mobile/android/**/jniLibs/
+# The canary library's build output: CI's canary build (-Pkc.canary=true) adds
+# scripts/testdata/android-canary-lib to the Android build (mobile/android/settings.gradle.kts),
+# and Gradle writes its build/ there. The gate never scans scripts/testdata/.
+scripts/testdata/android-canary-lib/build/
 # Gradle's per-project cache, and the Android SDK path of one machine.
 .gradle/
 local.properties

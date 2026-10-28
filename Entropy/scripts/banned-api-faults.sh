@@ -61,10 +61,13 @@
 # here-documents, in the gate's top level or in a function that the mode's function can reach (any
 # function whose name its code holds, and so on); for each function and tool the traced run must
 # have reached as many lines as the text holds, and each function that holds a place from as many
-# callers as the text gives it, or the mode's input misses one. The text check that the scan's own
-# shell starts no tool as a command of its own (FG, below) is the scan's alone: the other modes'
-# shells live seconds, far less than a wrap of the pid space (the gate's "The tools the gate runs
-# fail closed").
+# callers as the text gives it, or the mode's input misses one. A trap's commands count for the
+# reach but are no caller: each mode clears its EXIT trap and runs its cleanup itself before its
+# summary line, so the trap runs only on an error path, which no run with no fault takes (the
+# gate's "The tools the gate runs fail closed", lead decision M5-68 (d)). The text check that the
+# scan's own shell starts no tool as a command of its own (FG, below) is the scan's alone: the
+# other modes' shells live seconds, far less than a wrap of the pid space (the gate's "The tools
+# the gate runs fail closed").
 #
 # The runs: one per mode, place and way, four at once, each under sh with the shims. Each must
 # exit 2, with the fault fired, a line that names the tool, the way it failed and what the gate
@@ -141,8 +144,7 @@ ktfailopen-catch-task-fork-join-pool-qualified-in-scanner/mobile/android/app/src
 workflow_fixtures='workflow-dependency-verification-lenient/entropy-android.yml'
 # The modes, "MODE:ROOT:WANT": run() gives MODE's arguments, ROOT is the gate's function whose
 # reach holds MODE's places, and WANT is the exit status of a run with no fault. Each input has a
-# hit, so each rule's second tool runs, and no run prints a clean line before its EXIT trap's rm,
-# whose fault then turns exit 1 into exit 2.
+# hit, so each rule's second tool runs.
 modes='scan:scan:1 workflows:workflows:1 artifact:artifact:1 os-config:os_config:1'
 
 # The shells: sh runs the gate as CI does, bash traces it.
@@ -477,12 +479,15 @@ static_places() {
       for (k = 1; k <= nfn; k++) print "FN", fnline[k]
       # The callers of each reached function as BASH_LINENO[0] gives them: every line that calls it
       # as a command of its own, the one line in report for all the checks report runs, and the one
-      # in found for those found runs: "CALLS FUNCTION N".
+      # in found for those found runs: "CALLS FUNCTION N". The commands of a trap (bare) are no
+      # caller: each mode clears its EXIT trap before it runs its cleanup itself, so the trap runs
+      # only on an error path, which no run with no fault takes ("The tools the gate runs fail
+      # closed" in the gate).
       for (l = 1; l <= NR; l++) {
         if (l >= runner_first && l <= runner_last) continue
         o = (l in owner) ? owner[l] : "-"
         if (!(o in reach) && !(o == "-" && l < dispatch)) continue
-        s = codes[l]
+        s = bare[l]
         pos = 0
         while (match(s, /[A-Za-z_][A-Za-z0-9_]*/)) {
           w = substr(s, RSTART, RLENGTH)
@@ -490,10 +495,10 @@ static_places() {
           pos += RSTART + RLENGTH - 1
           s = substr(s, RSTART + RLENGTH)
           if (!(w in first) || (at == 1 && fn[l] == w)) continue
-          before = substr(codes[l], 1, at - 1)
+          before = substr(bare[l], 1, at - 1)
           if (before ~ /(^|[ \t;(|&])report[ \t]+[A-Za-z0-9]+[ \t]+$/) by = "report"
           else if (before ~ /(^|[ \t;(|&!])found[ \t]+$/) by = "found"
-          else if (cmd(codes[l], at)) by = l
+          else if (cmd(bare[l], at)) by = l
           else continue
           if (!((w, by) in caller)) { caller[w, by] = 1; ncaller[w]++ }
         }
