@@ -29,15 +29,20 @@ key only under mobile/android/app/src/androidTest/ and in this file.
       the eight lines the passphrase screen draws ("3 word", a page's four in one node, which a log
       would show together; one alone a log can hold by chance, a number and a common word); and the
       run's output (the job log's share of this run) must hold none of its words as a word, outside the
-      status keys and the test's kc_probe and kc_pass lines, whose prose is the test's own fixed text
-      with public values.
+      status keys, the test's kc_probe and kc_pass lines, whose prose is the test's own fixed text
+      with public values, the name's and the fingerprint's values when well formed (public; their hex
+      digits can spell a list word, add, face or fee, and the name ends in age) and am instrument's own
+      result lines ("Time: 9.8", "OK (1 test)": test is a list word too), which would fail a run by
+      chance on a passphrase that holds one of those words (about 0.8% of runs).
       Prints one line, "age-check: pass (...)" or "age-check: fail: ...", with counts and versions
       only, never a value. Exit 0 pass, 1 fail, 2 bad usage or no age binary.
   scripts/android-age-check.py --selftest [--age AGE]
       Runs this script on stand-ins in a temporary directory: an adb that serves a backup written by
       tools/verify's age writer at work factor 18 and a logcat, and the real age. A run that holds the
       three values passes, with RAW holding no passphrase line and no output a passphrase word, and so
-      does one whose logcat holds one of the screen's lines; no passphrase value, two, one that is not
+      do one whose logcat holds one of the screen's lines and one whose passphrase holds age, test and
+      face, list words the run's fixed frame holds (the name's .age and hex digits, am instrument's
+      "OK (1 test)"); no passphrase value, two, one that is not
       8 list words, a name that is not core's (no adb call for those three or that), a wrong passphrase,
       another fingerprint, a backup another app wrote, no file on the emulator, the passphrase and two of
       the screen's lines in logcat, a page and a word of it in the run's output each fail; and bad usage
@@ -70,6 +75,11 @@ FINGERPRINT = re.compile(r"[0-9a-f]{8}")
 DOWNLOADS = "/sdcard/Download/"
 # The test's own prose, its probe and pass lines, which the word search leaves out.
 PROSE_KEYS = ("kc_probe", "kc_pass")
+# The public values the word search leaves out when well formed: their hex digits can spell a list word (add,
+# face, fee), and the name ends in .age.
+PUBLIC = {NAME_KEY: NAME, FINGERPRINT_KEY: FINGERPRINT}
+# am instrument's own fixed result lines, which the word search leaves out (test is a list word).
+RUNNER_LINE = re.compile(r"Time: [0-9.,]+|OK \([0-9]+ tests?\)")
 ADB_TIMEOUT_SECONDS = 120
 
 
@@ -125,15 +135,17 @@ def drawn_lines(words):
 
 def prose_free(stripped):
     """The run's output for the word search: the status lines' values with their keys removed, and every other
-    line as it is, the test's kc_probe and kc_pass lines left out."""
+    line as it is, the test's kc_probe and kc_pass lines, the name's and the fingerprint's values when well
+    formed and am instrument's own result lines left out."""
     lines = []
     for line in stripped.splitlines():
         if line.startswith(STATUS):
             key, _, value = line[len(STATUS):].partition("=")
-            if key in PROSE_KEYS:
+            public = PUBLIC.get(key)
+            if key in PROSE_KEYS or public is not None and public.fullmatch(value):
                 continue
             lines.append(value)
-        else:
+        elif not RUNNER_LINE.fullmatch(line):
             lines.append(line)
     return "\n".join(lines)
 
@@ -256,6 +268,9 @@ else:
 # The selftest's passphrase: words of the list that none of this script's messages holds.
 SELF_WORDS = ["zebra", "yellow", "youth", "wrist", "wreck", "worth", "wolf", "zoo"]
 SELF_NAME = "keepcrypt-backup-0a1b2c3d.age"
+# A passphrase whose first three words stand as words in the run's fixed frame, and a name whose hex spells one.
+FRAME_WORDS = ["age", "test", "face", "zebra", "yellow", "youth", "wrist", "wreck"]
+FRAME_NAME = "keepcrypt-backup-0face123.age"
 SELF_MNEMONIC = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
 
 
@@ -294,12 +309,12 @@ def selftest(args):
     words = SELF_MNEMONIC.split(" ")
     fingerprint = verify.backup_fingerprint(words)
 
-    def backup(app):
+    def backup(app, passphrase=SELF_WORDS):
         plaintext = verify.backup_plaintext(words, fingerprint, app, (0, 0, 0)).encode("utf-8")
-        return verify.age_armor(verify.age_encrypt(" ".join(SELF_WORDS).encode("ascii"), os.urandom(16), os.urandom(16),
+        return verify.age_armor(verify.age_encrypt(" ".join(passphrase).encode("ascii"), os.urandom(16), os.urandom(16),
                                                    os.urandom(16), verify.BACKUP_WORK_FACTOR, plaintext))
 
-    android, pi = backup("android"), backup("pi")
+    android, pi, framed = backup("android"), backup("pi"), backup("android", FRAME_WORDS)
     passed, failed = 0, 0
     with tempfile.TemporaryDirectory() as tmp:
         st = Path(tmp)
@@ -307,12 +322,14 @@ def selftest(args):
         adb.write_text(STUB_ADB, encoding="ascii")
         adb.chmod(0o755)
 
-        def case(label, want, texts, run_text, file=android, log="I ActivityManager: Start proc 4242\n", calls=None):
+        def case(label, want, texts, run_text, file=android, log="I ActivityManager: Start proc 4242\n", calls=None,
+                 name=SELF_NAME, passphrase=SELF_WORDS, quiet=SELF_WORDS):
+            """quiet: the passphrase's words the checker's output must not hold (its own lines hold age and test)."""
             nonlocal passed, failed
             directory = st / label
             (directory / "device").mkdir(parents=True)
             if file is not None:
-                (directory / "device" / SELF_NAME).write_bytes(file)
+                (directory / "device" / name).write_bytes(file)
             (directory / "logcat").write_text(log, encoding="utf-8")
             (directory / "calls").write_text("", encoding="ascii")
             raw_path = directory / "raw"
@@ -325,9 +342,9 @@ def selftest(args):
             if done.returncode != want:
                 problems.append("exit %d, wanted %d" % (done.returncode, want))
             problems += ["no %r" % text for text in texts if text not in out]
-            if word_hits(out, SELF_WORDS):
+            if word_hits(out, quiet):
                 problems.append("the output holds a passphrase word")
-            if want != 2 and (PASSPHRASE_KEY in stripped or " ".join(SELF_WORDS[:4]) in stripped):
+            if want != 2 and (PASSPHRASE_KEY in stripped or " ".join(passphrase[:4]) in stripped):
                 problems.append("RAW holds the passphrase's line")
             if calls is not None and (directory / "calls").read_text(encoding="ascii").strip() != calls:
                 problems.append("adb calls: %r" % (directory / "calls").read_text(encoding="ascii"))
@@ -344,6 +361,11 @@ def selftest(args):
         case("pass", 0, ["age-check: pass (", "refused a wrong passphrase", "by keepcrypt-android 0.0.0"],
              self_run("pass", fingerprint=good, extra="INSTRUMENTATION_STATUS: kc_pass=a %s strip, then the file\n"
                       "INSTRUMENTATION_STATUS_CODE: 2" % SELF_WORDS[1]))
+        # A passphrase of list words the run's fixed frame holds: age (the name's .age), test (am instrument's
+        # "OK (1 test)") and face (the name's hex digits), none of them a leak; the checker's own line holds age and test.
+        case("frame-words", 0, ["age-check: pass ("],
+             self_run("frame", passphrase=[" ".join(FRAME_WORDS)], names=(FRAME_NAME,), fingerprint=good), file=framed,
+             name=FRAME_NAME, passphrase=FRAME_WORDS, quiet=FRAME_WORDS[2:])
         case("no-passphrase", 1, ["0 passphrase values"], self_run("none", passphrase=[], fingerprint=good), calls="")
         case("two-passphrases", 1, ["2 passphrase values"],
              self_run("two", passphrase=[" ".join(SELF_WORDS)] * 2, fingerprint=good), calls="")

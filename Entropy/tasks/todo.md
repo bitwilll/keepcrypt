@@ -13187,8 +13187,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   keepcrypt-android 0.0.0 with the reported fingerprint (tools/verify's reader recomputes it from the words), and a
   fresh wrong passphrase refused by age. logcat -d of every buffer (about 14 MB) and the run's output hold neither the
   passphrase nor a page of it (core's four words) nor two of its screen's eight lines, and the run's output, the job
-  log's share of this run, none of its words as a word outside the test's own fixed prose (kc_probe and kc_pass): the
-  grep of the job log for the passphrase's words, made by the one process that knows them; "age-check: pass
+  log's share of this run, none of its words as a word outside the test's own fixed prose (kc_probe and kc_pass; 20c
+  also leaves out the public name and fingerprint and am instrument's result lines): the plan's grep of the job log,
+  narrowed to the one part of it that can hold this passphrase (no other class, process or step knows it) and made by
+  the one process that knows it, a word alone searched for outside those lines only (the E4 review asks the lead to
+  judge whether that meets the Proof); "age-check: pass
   (v1.3.2)". CaptureTest's search of the log after its walk now reads only what was written from its own mark on
   (nothing earlier can hold the walk's secrets) and, since one "3 word" line can sit in a log by chance (a number and a
   common word: 20b's first local run failed so, on a passphrase line found in logcat), fails on two or more lines of a
@@ -13231,6 +13234,13 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   images keep there, and any other entry fails its leg.
   The gate is clean on the working tree (381 files) and --workflows on the three workflows, its --selftest 1611
   passed, 0 failed (703 s), and canaries.sh PASS, all 94 checks ran (472 s).
+  Proof (M5 commit 20c, review fix, partial: local, Q76): the hand-off's word search failed a clean run by chance on a
+  passphrase holding age (the name's .age), test (am instrument's "OK (1 test)") or a list word the name's or the
+  fingerprint's hex digits spell (add, dad, face, fee): 404 of 50,000 random runs of the selftest's frame (0.81%), each
+  API leg a draw. It now leaves out the name's and the fingerprint's values when they match their patterns (public, and
+  checked by them) and am instrument's "Time:" and "OK (N tests)" lines: 0 of 200,000. The selftest's new frame-words
+  case (a passphrase of age, test and face, a name whose hex spells face) passes, and fails on the old search;
+  android-age-check.py --selftest 17 passed, 0 failed (python3 3.12, Homebrew's age v1.3.2).
 
 **19. Gate evidence and Commands**
 - [ ] CLAUDE.md Commands gains the ffi test-registry line, `--apk` and `--selftest-apk`, the android scripts (CI-only
