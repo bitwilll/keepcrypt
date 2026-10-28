@@ -5,8 +5,9 @@ package com.keepcrypt.entropy.screens
 // model's, and MainActivity for the screens'). Commit 15 brought the clock and the offline monitor;
 // commit 16 the motion source and the airplane-settings opener; commit 17 the UTC date; commit 18 the
 // QR scanner, a screens' seam; commit 20 the document pickers, a screens' seam the model's entry
-// points take, with the places and files they hand back. The build's testRegistry flag is the
-// model's constructor argument, a Boolean that :app takes from its flavour.
+// points take, with the places and files they hand back, and commit 21 their snapshot picker. The
+// build's testRegistry flag is the model's constructor argument, a Boolean that :app takes from its
+// flavour.
 
 /**
  * A monotonic clock, the one every timer reads (lessons.md, time rules per target): on Android
@@ -89,23 +90,27 @@ interface QrScanner {
 enum class ScanStop { Refused, Missing, Failed }
 
 /**
- * The system's document pickers (docs/mobile-apps.md, "Encrypted backup only"; rule 8: the one file the
- * app writes is the backup, and the only files it reads are .age backups and .kcr snapshots), a screens'
- * seam that the model's entry points take (saveBackup, checkBackup), which call pickerOpened first: each
- * opens an activity over the app's own (the picker rule). create opens the create-document picker with
- * core's suggested name, and the place picked goes to the model's backupPlaced, null when the picker was
- * left with none; open opens the open-document picker for a file of any type (the model checks the name
- * itself), and the file picked goes to backupPicked, null for none, each on the main thread. Neither
- * keeps a place or a file, or asks to keep access to one. On Android it is :app's Documents
- * (files/Documents.kt, the one file where the gate allows the document streams, the activity-result
- * API's document contracts and a catch of IOException), whose launchers MainActivity's onCreate
- * registers, as it does the scanner's CAMERA prompt; the emulator tests drive the system's pickers, and
- * the JVM tests hand the model places and files of their own.
+ * The system's document pickers (docs/mobile-apps.md, "Encrypted backup only" and "Reading a snapshot";
+ * rule 8: the one file the app writes is the backup, and the only files it reads are .age backups and
+ * .kcr snapshots), a screens' seam that the model's entry points take (saveBackup, checkBackup,
+ * loadSnapshot), which call pickerOpened first: each opens an activity over the app's own (the picker
+ * rule). create opens the create-document picker with core's suggested name, and the place picked goes
+ * to the model's backupPlaced, null when the picker was left with none; open opens the open-document
+ * picker for a file of any type (the model checks the name itself), and the file picked goes to
+ * backupPicked, null for none; openSnapshot opens it the same way for Load registry snapshot, and the
+ * file picked goes to snapshotPicked; each answer on the main thread. None keeps a place or a file, or
+ * asks to keep access to one. On Android it is :app's Documents (files/Documents.kt, the one file where
+ * the gate allows the document streams, the activity-result API's document contracts and a catch of
+ * IOException), whose launchers MainActivity's onCreate registers, as it does the scanner's CAMERA
+ * prompt; the emulator tests drive the system's pickers, and the JVM tests hand the model places and
+ * files of their own.
  */
 interface DocumentPickers {
     fun create(name: String)
 
     fun open()
+
+    fun openSnapshot()
 }
 
 /** The place the create-document picker gave the backup: one write there, then the file there read back. */

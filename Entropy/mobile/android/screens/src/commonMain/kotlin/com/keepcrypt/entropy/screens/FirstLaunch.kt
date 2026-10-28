@@ -29,7 +29,7 @@ fun FirstLaunch(testRegistry: Boolean, onContinue: (() -> Unit)? = null) {
 private fun FirstLaunchText() {
     KitText("KeepCrypt", KitType.title)
     Gap(16)
-    KitText("0.0.0 development build: do not use for real funds.", KitType.body.copy(color = KitColors.warning))
+    KitText(DEVELOPMENT_BUILD, KitType.body.copy(color = KitColors.warning))
     KitText(
         "KeepCrypt makes a Bitcoin seed offline, from dice you roll and, unless you choose dice " +
             "only, this phone's own randomness.",

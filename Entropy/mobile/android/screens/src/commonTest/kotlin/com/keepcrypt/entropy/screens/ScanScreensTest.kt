@@ -211,8 +211,7 @@ class ScanScreensTest {
 
     @Test
     fun aLoadedSnapshotsResultIsNoProof() {
-        val rig = Rig().toHome()
-        rig.model.snapshotLoaded(done(Core.loadSnapshot(rig.date.today(), kcrSnapshot("with-dice-50")), "with-dice-50 loads"))
+        val rig = Rig().toHome().loadSnapshot("with-dice-50")
         checkedNowWithTheSnapshot(rig)
         val state = rig.model.state.value
         assertEquals(Screen.Collision, state.screen)

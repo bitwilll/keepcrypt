@@ -32,7 +32,7 @@ import com.keepcrypt.entropy.ffi.Secret
 // ignores a press its screen no longer shows. Their secret text (the passphrase's words and the letters
 // typed) is drawn from the Secrets the state holds and the pad's entry, each node marked secret
 // (Kit.kt), and a String of it exists only for the text on screen (Q58). The watch-only export,
-// registration and D come between "Backup verified" and the checklist with commit 21.
+// registration and D come between "Backup verified" and the checklist (ExportScreens.kt, commit 21).
 
 /** The backup passphrase's words: two pages of four (pi-firmware.md, USB step 1). */
 const val PASSPHRASE_WORDS = 8
@@ -85,8 +85,11 @@ enum class SaveStep { Write, ReadBack, Verify }
 /** A failed save: its step, and for Verify core's refusal of the file read back. */
 class SaveFailure(val step: SaveStep, val refusal: Refusal? = null)
 
-/** Why Check a backup opened no file: its name, its size (unknown, or past core's limit), or a read that failed. */
-enum class FileRefusal { NotAge, NoSize, TooLarge, Unreadable }
+/**
+ * Why Check a backup or Load registry snapshot opened no file: its name (not .age, or not .kcr), its size
+ * (unknown, or past core's limit for a backup or a snapshot), or a read that failed.
+ */
+enum class FileRefusal { NotAge, NotKcr, NoSize, TooLarge, SnapshotTooLarge, Unreadable }
 
 /**
  * Core's text for a refusal the backup screens show (core/src/error.rs's Display, verbatim, as the Pi
@@ -121,11 +124,13 @@ fun saveFailureText(failure: SaveFailure): String = when (failure.step) {
         failure.refusal?.let { backupRefusalText(it) }.orEmpty() + ")."
 }
 
-/** Home's line when Check a backup opened no file. */
+/** Home's line when Check a backup or Load registry snapshot opened no file. */
 fun fileRefusalText(refusal: FileRefusal): String = when (refusal) {
     FileRefusal.NotAge -> "That file was not opened: a KeepCrypt backup's name ends in " + Core.BACKUP_SUFFIX + "."
+    FileRefusal.NotKcr -> "That file was not opened: a registry snapshot's name ends in " + Core.SNAPSHOT_SUFFIX + "."
     FileRefusal.NoSize -> "That file was not opened: its size is not known, so it is not read."
     FileRefusal.TooLarge -> "That file was not opened: it is larger than a backup can be (8 KiB)."
+    FileRefusal.SnapshotTooLarge -> "That file was not opened: it is larger than a registry snapshot can be (75.5 MB)."
     FileRefusal.Unreadable -> "That file could not be read."
 }
 

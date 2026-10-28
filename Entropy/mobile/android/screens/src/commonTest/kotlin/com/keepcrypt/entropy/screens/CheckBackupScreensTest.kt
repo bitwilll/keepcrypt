@@ -326,6 +326,7 @@ class CheckBackupScreensTest {
             rig.worker.run()
             assertEquals(Screen.BackupVerified, rig.screen)
             rig.model.backupVerifiedDone()
+            rig.skipExports()
             rig.model.finishCeremony()
             Saved(assertNotNull(place.saved), passphrase, fingerprint)
         }

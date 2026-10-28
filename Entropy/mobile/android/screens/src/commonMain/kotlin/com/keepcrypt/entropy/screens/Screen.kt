@@ -12,11 +12,13 @@ package com.keepcrypt.entropy.screens
  * restart it leads to, the result before the words; the words to the end of the ceremony (commit 19):
  * the words in insert view, their overview, the device swap a 24-word seed's pages pass, the read-back
  * entry and its mismatch, the read-back's end, the wallet summary, the encrypted backup (commit 20:
- * its offer, the passphrase, its confirm, the save and "Backup verified") and the checklist Finish
- * ends; Home's Check a backup (commit 20): the passphrase's entry, its result and the re-check QR (its
- * words are the words' screens); then the "Working..." screen every other long call shows, and the
- * stop screen a halt ends on. The other exports come with commit 21. In :screens' common code, beside
- * the screens themselves.
+ * its offer, the passphrase, its confirm, the save and "Backup verified"), the watch-only export
+ * (commit 21: its offer, the BIP39 passphrase's question and its entry on the ASCII pad, the watch-only
+ * summary, the account QR and the descriptor QR), the registration (its offer and its QR), D (Mixed
+ * only: its offer and D) and the checklist Finish ends; Home's Check a backup (commit 20): the
+ * passphrase's entry, its result and the re-check QR (its words are the words' screens); Home's Load
+ * registry snapshot's result and About (commit 21); then the "Working..." screen every other long call
+ * shows, and the stop screen a halt ends on. In :screens' common code, beside the screens themselves.
  */
 enum class Screen {
     FirstLaunch,
@@ -49,10 +51,22 @@ enum class Screen {
     BackupConfirm,
     BackupSave,
     BackupVerified,
+    WatchOffer,
+    Bip39Ask,
+    Bip39Entry,
+    WatchSummary,
+    WatchAccountQr,
+    WatchDescriptorQr,
+    RegisterOffer,
+    RegisterQr,
+    RevealDOffer,
+    RevealD,
     Checklist,
     BackupCheckEntry,
     BackupCheckResult,
     BackupRecheck,
+    Snapshot,
+    About,
     Working,
     Stop,
 }
@@ -89,10 +103,22 @@ fun screenId(screen: Screen): String = when (screen) {
     Screen.BackupConfirm -> "backup_confirm"
     Screen.BackupSave -> "backup_save"
     Screen.BackupVerified -> "backup_verified"
+    Screen.WatchOffer -> "watch_offer"
+    Screen.Bip39Ask -> "bip39_ask"
+    Screen.Bip39Entry -> "bip39_entry"
+    Screen.WatchSummary -> "watch_summary"
+    Screen.WatchAccountQr -> "watch_account_qr"
+    Screen.WatchDescriptorQr -> "watch_descriptor_qr"
+    Screen.RegisterOffer -> "register_offer"
+    Screen.RegisterQr -> "register_qr"
+    Screen.RevealDOffer -> "reveal_d_offer"
+    Screen.RevealD -> "reveal_d"
     Screen.Checklist -> "checklist"
     Screen.BackupCheckEntry -> "backup_check_entry"
     Screen.BackupCheckResult -> "backup_check_result"
     Screen.BackupRecheck -> "backup_recheck"
+    Screen.Snapshot -> "snapshot"
+    Screen.About -> "about"
     Screen.Working -> "working"
     Screen.Stop -> "stop"
 }
@@ -102,22 +128,26 @@ fun screenId(screen: Screen): String = when (screen) {
  * by Q57): it shows a secret, so it is entered through the privacy gate from a Public one, covered
  * after 30 s without input, and leaving the app on it discards the session at once. They are the
  * collision-report QR (it carries the destroyed seed's seal code), the words in insert view and
- * overview, the read-back entry and mismatch screens (commit 19), and the backup passphrase, its
- * confirm and Check a backup's passphrase entry (commit 20); every other screen so far is Public, the
- * dice screen, C and the seal card's check QR (T and a nonce) included, and the device swap, the
- * read-back's end, the wallet summary, the backup's offer, save and "Backup verified", the checklist,
- * Check a backup's result and its re-check QR (T alone; the Pi's list), and the scan screen, which
- * draws nothing the camera sees; the BIP39 passphrase, D and the other QR codes that carry a secret
- * come with commit 21.
+ * overview, the read-back entry and mismatch screens (commit 19), the backup passphrase, its
+ * confirm and Check a backup's passphrase entry (commit 20), and the BIP39 passphrase's entry, the
+ * account and descriptor QRs (each carries the xpub), the registration QR (the seal code) and D (commit
+ * 21; the Pi's list); every other screen is Public, the dice screen, C and the seal card's check QR (T
+ * and a nonce) included, and the device swap, the read-back's end, the wallet summary, the backup's
+ * offer, save and "Backup verified", the watch-only offer, the BIP39 question and the watch-only
+ * summary (Q29), the registration's and D's offers, the checklist, Check a backup's result and its
+ * re-check QR (T alone; the Pi's list), the scan screen, which draws nothing the camera sees, Load
+ * registry snapshot's result and About.
  */
 fun isProtected(screen: Screen): Boolean = when (screen) {
     Screen.CollisionReport, Screen.Words, Screen.WordsOverview, Screen.ReadbackEntry, Screen.ReadbackMismatch,
-    Screen.BackupPassphrase, Screen.BackupConfirm, Screen.BackupCheckEntry -> true
+    Screen.BackupPassphrase, Screen.BackupConfirm, Screen.Bip39Entry, Screen.WatchAccountQr, Screen.WatchDescriptorQr,
+    Screen.RegisterQr, Screen.RevealD, Screen.BackupCheckEntry -> true
     Screen.FirstLaunch, Screen.SelfTest, Screen.GoOffline, Screen.Home, Screen.Length, Screen.DeviceEntropy,
     Screen.Commitment, Screen.Dice, Screen.CheckPrompt, Screen.SkipConfirm, Screen.SealCard, Screen.Scan,
     Screen.CodeEntry, Screen.MatchFoundConfirm, Screen.CannotCheckConfirm, Screen.Collision, Screen.CheckResult,
     Screen.DeviceSwap, Screen.ReadbackDone, Screen.Wallet, Screen.BackupOffer, Screen.BackupSave, Screen.BackupVerified,
-    Screen.Checklist, Screen.BackupCheckResult, Screen.BackupRecheck, Screen.Working, Screen.Stop -> false
+    Screen.WatchOffer, Screen.Bip39Ask, Screen.WatchSummary, Screen.RegisterOffer, Screen.RevealDOffer, Screen.Checklist,
+    Screen.BackupCheckResult, Screen.BackupRecheck, Screen.Snapshot, Screen.About, Screen.Working, Screen.Stop -> false
 }
 
 /**

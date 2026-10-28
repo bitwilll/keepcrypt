@@ -12625,6 +12625,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   Proof (M5 commit 20a, M5-48, partial: local, kc37, Q76): Home now offers Check a backup (group 18's screens) under New
   seed and Dice-only seed, and says on Home why a file it was given was not opened; Load registry snapshot and About
   come with commit 21.
+  Proof (M5 commit 21a, M5-48, partial: local, kc37, Q76): Home now offers every entry the plan names, each with its
+  screens (New seed, Dice-only seed, Check a backup, Load registry snapshot and About; "Verify another device's
+  ceremony" is M5b's, Q61), and names the snapshot loaded or that none is. CaptureTest walks Home and the two new
+  screens in both APKs, FlowTest taps About, and CheckTest and SnapshotDrillTest Load registry snapshot through
+  DocumentsUI (group 18's 21a line). CI's legs at the next push close the item.
 
 **16. Screens: the collision check** (MA:175-176; swb:112-152)
 - [x] The prompt ("Check now (recommended)" / "Skip", Skip confirmed on its own screen). With a loaded snapshot the check
@@ -13078,6 +13083,78 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   failed write, "Backup verified", Check a backup's entry (1), its result and its re-check QR, and a checked backup's
   words (7), the saved file handed to the model in memory as a picker would; the log after the walk held none of its
   13 secret lines. FlowTest 5 (the offer and its Skip on the way to the checklist) and LifecycleTest 6 passed.
+  Proof (M5 commit 21a, watch-only, register, reveal D, snapshots, About and stop, partial: local, kc37, Q76; CI's API
+  31 and 36 legs prove them at the next push; the nothing-persisted listing and dumpsys package are 21b's): :screens'
+  ExportScreens.kt draws the exports after the backup on the UI kit in the Pi's wording (pi/app's screens/ready.rs and
+  app/ready.rs) and HomeScreens.kt Load registry snapshot's result and About (screens.rs, screens/usb.rs), and
+  CeremonyModel moves between them. "Backup verified"'s Next and the backup's Skip now lead to the watch-only offer
+  (the Pi's step 12; Public), whose Skip goes to the registration's offer. "Show watch-only QRs" asks the BIP39
+  question first (swb); "No BIP39 passphrase" makes core's export (watchOnly, a short call); "I use a passphrase"
+  opens its entry (Protected, through the privacy gate) on Pads.kt's AsciiPad: three pages of printable ASCII (Next
+  keys, Previous keys), up to 100 characters, the passphrase drawn as typed with a middle dot for a space in one
+  secret node (the Pi's), Delete, Done once one is typed, and Back (the system Back too) to the question with the
+  passphrase wiped (the Pi's KEY2); Done hands it to core as a Secret through PadEntry.handOver, wiped once core has
+  it. The watch-only summary (Public, Q29): the exported wallet's fingerprint and first receive address, the xpub's
+  warning and, for a passphrase's wallet, the Pi's line to compare that address in Sparrow or Core, not the wallet
+  summary's; then the account QR for Sparrow and the descriptor QR for Bitcoin Core (Protected: each carries the
+  xpub), Next, Previous and the system Back between them, Done wiping both. The registration's offer (Public: register
+  once, never from a restored seed) and its QR (Protected: the seal code), once a ceremony; then in Mixed mode alone
+  D's offer, whose text is its warning (the Pi's: D plus the rolls recreates the seed), and D (Protected) laid out as
+  C's 16 groups of 4 hex (deviceLegText over its Secret, a String only for the text on screen, Q58), wiped as the
+  checklist comes; a dice-only seed goes from the registration straight to the checklist (core halts a D call
+  there). Home now offers Load registry snapshot and About and names the snapshot loaded (the Pi's Home line). Load
+  registry snapshot: the open-document picker (Documents.kt's third launcher, answering the model's snapshotPicked); a
+  file is refused before any byte is read unless its name ends in .kcr (any letter case; Core.SNAPSHOT_SUFFIX, pinned
+  against pi/app's hal.rs) and its provider sizes it within core's limit (Core.SNAPSHOT_MAX_BYTES, 122 + 18 x 2^22 =
+  75,497,594, pinned against keepcrypt-jni's MAX_INPUT less the date's 4 bytes, so no file let through halts the slot
+  by its size), and after a read that fails or runs past it, Home saying why (Check a backup's checks, now the model's
+  one picked(), unchanged for backups); core verifies it on the worker behind "Working..." (loadSnapshot), its bytes
+  zeroed once core has them; its result (Public) shows "Snapshot loaded" with its number, date and count and any Stale
+  or Future warning, or "Snapshot not loaded" with core's text (core/src/error.rs's, pinned) or, in a build with no
+  registry key, "This build trusts no registry key yet, so it cannot load a registry snapshot."; Done and Back return
+  Home. A verified header is the model's (snapshotLoaded, now private, so the tests load through the picker's path
+  too) and Check now runs the check against it on its own; a refused load keeps the one loaded before, in the slot
+  and the model. About (Public): the version (APP_VERSION, 0.0.0, pinned against app/build.gradle.kts's versionName),
+  First launch's development-build line (now one constant), the flavour and its registry key, the source address
+  https://github.com/bitwilll/keepcrypt as plain text, the licence and the security address; Back returns Home. Stop:
+  unchanged (Screens.kt's red stop screen, fixed text and "Close app", since commit 16), which CaptureTest walks. JVM
+  tests (local): ExportScreensTest 7 and HomeScreensTest 8 over the real slot and the host library (each new
+  transition, the gate before each Protected export, Back where it goes and where it does nothing, the QRs core's own,
+  D's SHA-256 under "KCE/v1/commit" equal to the C the commitment screen showed (a test-only sha256 whose JVM actual is
+  java.security's, as entropyFile is M5-43's), the name and the size refused before any byte is read, a provider that
+  sized it wrongly, the bytes zeroed, the Stale warning on a later date, a changed signature refused with core's text
+  and the snapshot before kept (the check then finds the collision with it), a discard during the load, About's
+  version, going online on About, every refusal text core's) and SnapshotFileTest 2 in :core-ffi; BackupScreensTest,
+  CheckBackupScreensTest, ReadbackScreensTest, CheckScreensTest, ScanScreensTest and WordsScreensTest follow the new
+  order (the exports skipped to the checklist; their snapshots loaded through the picker's path); :core-ffi 31 in 11
+  classes, :screens 135 in 19, :app 7 in 3 for each flavour, :secure-ui 3 in 1, none failed; a mutant that lets a
+  .kcr sized one byte past the limit through fails HomeScreensTest, and one that offers D to a dice-only seed fails
+  ExportScreensTest. On kc37 (local, android-local.sh exit 0 in 1469 s, 212 s more than at 20b, with 21b's step 7 in
+  the tree): every class passed. CaptureTest's walk, in both APKs, drew each of the twelve new screens and found it
+  black in every capture with SECURE on every window: the watch-only offer, the BIP39 question, its entry (its
+  passphrase one secret node, data sensitive on API 37), the watch-only summary, the account and descriptor QRs, the
+  registration's offer and QR, D's offer and D (one secret node), Load registry snapshot's result (with-dice-50 handed
+  to the model as the picker would: loaded in the test-registry APK, refused in the shipping APK) and About; the log
+  after the walk held none of its 15 secret lines. FlowTest 7: a new seed's exports (the BIP39 entry behind the gate,
+  the ASCII pad's three pages of keys each with its button role alone and no node naming a key, the passphrase typed
+  in-process and Delete and Done tapped; its wallet's summary with another fingerprint; the account QR, a
+  crypto-account UR, and the descriptor QR, two descriptors under that fingerprint, each read in-process equal to
+  core's own export of that passphrase's wallet, then wiped; the registration QR equal to core's; D behind the gate,
+  drawn by a secret node, its SHA-256 under KCE/v1/commit the C the commitment screen showed); About (version 0.0.0,
+  the package's versionName; the shipping flavour; the source address, not clickable; Back and the system Back:
+  Home); and the dice-only finish now through the watch-only offer to the registration QR (dice-50-words12's
+  registration text, its seal code kcr.json's) and straight to the checklist, no D offer. CheckTest 2: with-dice-50
+  put in Downloads by the shell (tee) and picked through DocumentsUI in the shipping app is refused, "This build trusts
+  no registry key yet, so it cannot load a registry snapshot.", nothing loaded, Back: Home naming none.
+  SnapshotDrillTest 3: the drill's snapshot now loads through Home's Load registry snapshot and DocumentsUI in the
+  test-registry app (No. 4, dated 2026-03-01, 7 entries, the Stale warning; Home names it), then dice-50-words12's
+  check finds the collision before any words. BackupTest 1 (through the export offers) and LifecycleTest 6 passed. The
+  shared Picker (moved out of BackupTest) now clicks through selectors resolved at the click: the first local run
+  failed CheckTest's and SnapshotDrillTest's picker tests on a StaleObjectException from the roots drawer's node, found
+  just before DocumentsUI redrew its Recent view. Estimated CI cost: the local leg grew by 212 s (CaptureTest's
+  twelve screens in both APKs, FlowTest's two tests, CheckTest's one, the drill's picker, step 7); CI's two slower x86
+  legs might add 5 to 7 minutes to the 1896 s of run 40572516408, about 37 to 39 of M5-57's 44, to be measured at the
+  next push.
 - [ ] The CI `age -d` hand-off: for the CI throwaway seed only, the androidTest reads the backup passphrase from the
   in-process `Secret` and sends it as the instrumentation status value `kc_ci_throwaway_passphrase`. The workflow pipes
   `am instrument -r`'s output straight into `scripts/android-age-check.py`, which takes the value, feeds it to age 1.1.1

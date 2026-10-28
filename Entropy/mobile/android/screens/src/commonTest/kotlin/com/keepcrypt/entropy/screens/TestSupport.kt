@@ -264,12 +264,68 @@ internal class Rig(scope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined
         }
         worker.run()
     }
+
+    /** From the watch-only offer, every export skipped (the watch-only export, the registration and, in Mixed mode, D): the checklist. */
+    fun skipExports() {
+        model.skipWatchOnly()
+        model.skipRegistration()
+        if (screen == Screen.RevealDOffer) model.skipDeviceLeg()
+        check(screen == Screen.Checklist) { "the exports skipped did not lead to the checklist" }
+    }
+
+    /**
+     * From Home: Load registry snapshot with kcr.json's snapshot named name, picked as the open-document
+     * picker gives a file (its name ending in .kcr, its size), core's load on the worker run, then the
+     * result's Done: Home, with the snapshot loaded (the check's and the words' tests).
+     */
+    fun loadSnapshot(name: String): Rig {
+        val bytes = kcrSnapshot(name)
+        model.loadSnapshot(FakePickers())
+        model.snapshotPicked(FakeFile(name + ".kcr", bytes.size.toLong(), bytes))
+        worker.run()
+        check(screen == Screen.Snapshot && model.state.value.loaded != null) { "the snapshot did not load" }
+        model.snapshotDone()
+        check(screen == Screen.Home) { "the snapshot's result did not return Home" }
+        return this
+    }
+
+    /**
+     * From Home: a new seed (Mixed) of 12 words, Device entropy's Continue (the commitment), C read from
+     * the commitment screen, 50 rolls, the dice's Done (finish, its long call run), Skip and its confirm,
+     * the words read back from the pages the state holds (each copy wiped at once), the read-back's end and
+     * the wallet summary (ExportScreensTest). C, as the commitment screen showed it (public).
+     */
+    fun toMixedSummary(): String {
+        begin(Mode.Mixed, Words.Twelve)
+        model.deviceEntropyDone()
+        val commitment = checkNotNull(model.state.value.commitment) { "no C on the commitment screen" }
+        model.commitmentDone()
+        roll(50)
+        model.diceDone()
+        worker.run()
+        model.skip()
+        model.skipConfirmed()
+        toWords()
+        repeat(INSERTS_PER_DEVICE - 1) { model.nextPage() }
+        model.startReadback()
+        repeat(INSERTS_PER_DEVICE) {
+            val word = checkNotNull(model.state.value.insert).word()
+            for (index in 0 until minOf(4, word.size)) model.readbackLetters.type(Char(word[index].toInt()))
+            word.wipe()
+            model.readbackTyped()
+            model.readbackNext()
+        }
+        model.showSummary()
+        check(screen == Screen.Wallet) { "the mixed seed did not reach its wallet summary" }
+        return commitment
+    }
 }
 
 /** The document pickers' fake: what the model asked of them, nothing opened. */
 internal class FakePickers : DocumentPickers {
     val created = ArrayList<String>()
     var opens = 0
+    var snapshotOpens = 0
 
     override fun create(name: String) {
         created.add(name)
@@ -277,6 +333,10 @@ internal class FakePickers : DocumentPickers {
 
     override fun open() {
         opens += 1
+    }
+
+    override fun openSnapshot() {
+        snapshotOpens += 1
     }
 }
 

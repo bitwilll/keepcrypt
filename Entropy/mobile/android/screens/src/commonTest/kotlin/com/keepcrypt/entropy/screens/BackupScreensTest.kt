@@ -17,14 +17,14 @@ import kotlin.test.assertTrue
  * The CeremonyModel transitions of the encrypted backup (tasks/todo.md, M5 group 18; docs/mobile-apps.md,
  * "Encrypted backup only" and step 13; the Pi's step 11), over the real slot through Core and the host
  * library, for vectors/kcr.json's dice-50-words12 read back to its wallet summary: the summary's Next to
- * the offer, whose Skip goes to the checklist; "Make an encrypted backup" generating the passphrase, its
+ * the offer, whose Skip goes on to the watch-only offer (commit 21); "Make an encrypted backup" generating the passphrase, its
  * two pages of four behind the privacy gate, paged and their copies wiped; the confirm on the letter pad,
  * each answer matched to one of core's four choices by its first four letters, a wrong one (no choice, or
  * the wrong choice) showing the passphrase again with the same questions, both right encrypting the
  * backup behind "Working..." to the save screen with core's suggested name; Save opening the
  * create-document picker under the picker rule, the place written once, read back at most one byte past
- * core's limit and verified by core before "Backup verified", the bytes read back and the file zeroed
- * afterwards, and no word of the seed in the file; a failed write, read-back or verify naming its step,
+ * core's limit and verified by core before "Backup verified", whose Next is the watch-only offer, the bytes
+ * read back and the file zeroed afterwards, and no word of the seed in the file; a failed write, read-back or verify naming its step,
  * the session kept, and Save again; a cancelled picker; leaving the app on the passphrase or the confirm
  * discarding at once with their Secrets wiped, going online on the save screen discarding and zeroing
  * the file, a late place doing nothing; a discard during the encryption; and wipeAll. The passphrase is
@@ -57,7 +57,7 @@ class BackupScreensTest {
     }
 
     @Test
-    fun theSummaryLeadsToTheOfferWhoseSkipGoesToTheChecklistWithNoPassphrase() {
+    fun theSummaryLeadsToTheOfferWhoseSkipGoesToTheWatchOnlyOfferWithNoPassphrase() {
         val rig = atSummary()
         rig.model.summaryDone()
         val offer = rig.model.state.value
@@ -67,9 +67,10 @@ class BackupScreensTest {
         rig.model.back()
         assertSame(offer, rig.model.state.value, "Back does nothing on the offer")
         rig.model.skipBackup()
-        assertEquals(Screen.Checklist, rig.screen)
+        assertEquals(Screen.WatchOffer, rig.screen, "Skip goes on to the other exports (the Pi's step 12)")
         // No passphrase was generated: core still offers its generation (a second would halt).
         assertTrue(Core.generateBackupPassphrase() is Reply.Done)
+        rig.skipExports()
         rig.model.finishCeremony()
         assertEquals(Screen.Home, rig.screen)
         assertNoSession("Finish after Skip ended the session")
@@ -224,8 +225,9 @@ class BackupScreensTest {
         assertTrue(text.startsWith("-----BEGIN AGE ENCRYPTED FILE-----") || text.startsWith("age-encryption.org/v1"), "an age file")
         assertTrue((kcrWords(DICE_50) + passphrase).none { text.contains(it) }, "no word of the seed or the passphrase in the file")
         rig.model.backupVerifiedDone()
-        assertEquals(Screen.Checklist, rig.screen)
+        assertEquals(Screen.WatchOffer, rig.screen, "Backup verified's Next is the watch-only offer")
         assertTrue(zeroed(place.handed), "the encrypted file was zeroed once the save was over")
+        rig.skipExports()
         rig.model.finishCeremony()
         assertEquals(Screen.Home, rig.screen)
         assertNoSession("Finish after the backup ended the session")
@@ -269,16 +271,16 @@ class BackupScreensTest {
     }
 
     @Test
-    fun skipOnTheSaveScreenGoesToTheChecklistAndZeroesTheFile() {
+    fun skipOnTheSaveScreenGoesToTheWatchOnlyOfferAndZeroesTheFile() {
         val (rig, _) = atSave()
         val place = FakePlace(writes = false)
         rig.model.saveBackup(FakePickers())
         rig.model.backupPlaced(place)
         rig.model.skipBackup()
-        assertEquals(Screen.Checklist, rig.screen)
+        assertEquals(Screen.WatchOffer, rig.screen)
         assertTrue(zeroed(place.handed), "the encrypted file was zeroed")
         rig.model.backupPlaced(FakePlace())
-        assertEquals(Screen.Checklist, rig.screen, "a late place does nothing")
+        assertEquals(Screen.WatchOffer, rig.screen, "a late place does nothing")
     }
 
     @Test

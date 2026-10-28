@@ -296,6 +296,7 @@ class ReadbackScreensTest {
         rig.model.summaryDone()
         assertEquals(Screen.BackupOffer, rig.screen, "the summary's Next offers the encrypted backup (commit 20)")
         rig.model.skipBackup()
+        rig.skipExports()
         val checklist = rig.model.state.value
         assertEquals(Screen.Checklist, checklist.screen)
         assertFalse(isProtected(Screen.Checklist))
@@ -338,6 +339,7 @@ class ReadbackScreensTest {
         rig.model.showSummary()
         rig.model.summaryDone()
         rig.model.skipBackup()
+        rig.skipExports()
         assertEquals(Screen.Checklist, rig.screen)
         assertTrue(rig.model.state.value.twoDevices, "the checklist names device 1 of 2's words")
         rig.model.finishCeremony()
@@ -381,7 +383,9 @@ class ReadbackScreensTest {
         val rig = atLastInsert()
         rig.model.startReadback()
         for (index in words.indices) readBack(rig, index)
-        for (screen in listOf(Screen.ReadbackDone, Screen.Wallet, Screen.BackupOffer, Screen.Checklist)) {
+        for (screen in listOf(
+            Screen.ReadbackDone, Screen.Wallet, Screen.BackupOffer, Screen.WatchOffer, Screen.RegisterOffer, Screen.Checklist,
+        )) {
             assertEquals(screen, rig.screen)
             rig.model.appLeft()
             assertEquals(screen, rig.screen, screenId(screen) + ": leaving a Public screen keeps the session")
@@ -394,6 +398,8 @@ class ReadbackScreensTest {
                 Screen.ReadbackDone -> rig.model.showSummary()
                 Screen.Wallet -> rig.model.summaryDone()
                 Screen.BackupOffer -> rig.model.skipBackup()
+                Screen.WatchOffer -> rig.model.skipWatchOnly()
+                Screen.RegisterOffer -> rig.model.skipRegistration()
                 else -> {}
             }
         }

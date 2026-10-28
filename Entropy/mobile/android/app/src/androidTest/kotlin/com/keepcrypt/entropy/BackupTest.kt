@@ -3,7 +3,6 @@ package com.keepcrypt.entropy
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import com.keepcrypt.entropy.Capture.finish
 import com.keepcrypt.entropy.Capture.onMain
@@ -53,7 +52,8 @@ import org.junit.runner.RunWith
  * Secret: the one place it leaves this process, the key the gate's KtTestChannel rule allows only here
  * and in the checker), the name and the summary's fingerprint, both public; age -d decrypts the file
  * in the job after this run. A copy of the backup named .txt is refused by its name on Home, before any
- * byte is read (CheckBackupScreensTest proves the order on the JVM); Check a backup opens the saved
+ * byte is read (CheckBackupScreensTest proves the order on the JVM); the watch-only export and the
+ * registration are skipped on the way to the checklist (FlowTest takes them); Check a backup opens the saved
  * file through the picker: a wrong passphrase is refused with core's text, the right one gives "Backup
  * OK" with the summary's fingerprint and the seed's Seal ID, the words through the privacy gate are the
  * vector's (compared in-process, never printed), the re-check QR shows, and Done returns Home with the
@@ -88,15 +88,15 @@ class BackupTest {
             assertTrue("the save screen does not show core's suggested name", NAME.matcher(name).matches())
             assertEquals(CLOUD_FOLDER, text("cloud_folder"))
             tap("save_backup")
-            val creator = picker()
-            val title = device.wait(Until.findObject(By.pkg(PICKER).res("android:id/title")), 10_000)
-                ?: throw AssertionError("the picker shows no name field (its facts are the probe line before this)").also { probe(pickerFacts("create")) }
-            probe("the create-document picker: package $creator, its name field ${title.text}; " + pickerFacts("create"))
+            val creator = Picker.opened()
+            val title = device.wait(Until.findObject(By.pkg(Picker.PACKAGE).res("android:id/title")), 10_000)
+                ?: throw AssertionError("the picker shows no name field (its facts are the probe line before this)").also { probe(Picker.facts("create")) }
+            probe("the create-document picker: package $creator, its name field ${title.text}; " + Picker.facts("create"))
             assertEquals("the picker's name is not core's suggested one", name, title.text)
-            toDownloads("create")
-            val save = device.findObject(By.pkg(PICKER).res("android:id/button1"))
-                ?: device.findObject(By.pkg(PICKER).clickable(true).text(Pattern.compile("(?i)save")))
-                ?: throw AssertionError("the picker has no Save (its facts are the probe line before this)").also { probe(pickerFacts("create")) }
+            Picker.toDownloads("create")
+            val save = device.findObject(By.pkg(Picker.PACKAGE).res("android:id/button1"))
+                ?: device.findObject(By.pkg(Picker.PACKAGE).clickable(true).text(Pattern.compile("(?i)save")))
+                ?: throw AssertionError("the picker has no Save (its facts are the probe line before this)").also { probe(Picker.facts("create")) }
             save.click()
             on(activity, Screen.BackupVerified, START_SECONDS)
             val listed = shellText("ls -l " + DOWNLOADS + name)
@@ -106,6 +106,10 @@ class BackupTest {
             report("kc_backup_name", name)
             report("kc_backup_fingerprint", fingerprint)
             tap("backup_next")
+            on(activity, Screen.WatchOffer)
+            tap("skip_watch_only")
+            on(activity, Screen.RegisterOffer)
+            tap("skip_registration")
             on(activity, Screen.Checklist)
             tap("finish")
             on(activity, Screen.Home)
@@ -114,13 +118,13 @@ class BackupTest {
             // A copy of the backup named .txt: refused by its name, before any byte is read.
             shellText("cp " + DOWNLOADS + name + " " + DOWNLOADS + RENAMED)
             tap("check_backup")
-            pickInPicker(RENAMED)
+            Picker.pick(RENAMED)
             on(activity, Screen.Home)
             awaitText("file_refusal", fileRefusalText(FileRefusal.NotAge))
             assertEquals(FileRefusal.NotAge, onMain { activity.model.state.value.fileRefusal })
 
             tap("check_backup")
-            pickInPicker(name)
+            Picker.pick(name)
             on(activity, Screen.BackupCheckEntry)
             find("privacy_gate")
             tap("pass_gate")
@@ -249,59 +253,6 @@ class BackupTest {
         return same
     }
 
-    /** The system's file picker's package, once its window is up (DocumentsUI: AOSP's on the default images, Google's on Play images). */
-    private fun picker(): String {
-        val shown = device.wait(Until.findObject(By.pkg(PICKER)), 20_000) ?: throw AssertionError("the system's file picker did not open")
-        device.waitForIdle()
-        return shown.applicationPackage
-    }
-
-    /**
-     * The picker's visible texts and controls, for a probe line: its texts (its own labels and the files
-     * it lists, none secret: the backup's name is public) and its resource ids, shortened.
-     */
-    private fun pickerFacts(mode: String): String {
-        val nodes = device.findObjects(By.pkg(PICKER))
-        val ids = nodes.mapNotNull { it.resourceName }.distinct().joinToString(",")
-        val texts = nodes.mapNotNull { it.text }.filter { it.isNotBlank() }.distinct().joinToString(" | ")
-        val facts = "picker ($mode): texts $texts; ids $ids"
-        return if (facts.length > FACTS) facts.substring(0, FACTS) else facts
-    }
-
-    /**
-     * The picker in Downloads: where its title or breadcrumb already names it, nothing; otherwise the
-     * roots drawer (its navigation button) and the Downloads root.
-     */
-    private fun toDownloads(mode: String) {
-        if (device.hasObject(By.pkg(PICKER).text(DOWNLOADS_ROOT))) return
-        val drawer = device.findObject(By.pkg(PICKER).desc(DRAWER))
-            ?: throw AssertionError("the picker is not in Downloads and has no roots drawer (its facts are the probe line before this)")
-                .also { probe(pickerFacts(mode)) }
-        drawer.click()
-        val root = device.wait(Until.findObject(By.pkg(PICKER).text(DOWNLOADS_ROOT)), 10_000)
-            ?: throw AssertionError("the picker's roots list no Downloads (its facts are the probe line before this)").also { probe(pickerFacts(mode)) }
-        root.click()
-        device.waitForIdle()
-        probe("the picker ($mode) went to Downloads through its roots drawer")
-    }
-
-    /** In the open-document picker, the file named fileName in Downloads (or where it opened, if it lists it there), picked. */
-    private fun pickInPicker(fileName: String) {
-        val opener = picker()
-        var item: UiObject2? = device.wait(Until.findObject(By.pkg(PICKER).text(fileName)), 5_000)
-        if (item == null) {
-            toDownloads("open")
-            item = device.wait(Until.findObject(By.pkg(PICKER).text(fileName)), 10_000)
-        }
-        if (item == null) {
-            probe(pickerFacts("open"))
-            throw AssertionError("the picker does not list the file to open (its facts are the probe line before this)")
-        }
-        probe("the open-document picker: package $opener")
-        item.click()
-        assertTrue("the picker stayed up", device.wait(Until.gone(By.pkg(PICKER)), 10_000) == true)
-    }
-
     private companion object {
         /** The instrumentation status key of the CI age -d hand-off (tasks/todo.md, M5 group 18): the throwaway seed's backup passphrase. */
         const val HAND_OFF = "kc_ci_throwaway_passphrase"
@@ -318,22 +269,10 @@ class BackupTest {
         val NAME: Pattern = Pattern.compile("keepcrypt-backup-[0-9a-f]{8}[.]age")
 
         /** Where the picker's Downloads root keeps its files, as the shell reads them. */
-        const val DOWNLOADS = "/sdcard/Download/"
+        const val DOWNLOADS = Picker.DOWNLOADS
 
         /** The .txt copy of the backup that Check a backup must refuse by its name. */
         const val RENAMED = "keepcrypt-backup-copy.txt"
-
-        /** The system's file picker: AOSP's DocumentsUI or Google's. */
-        val PICKER: Pattern = Pattern.compile("com[.](google[.])?android[.]documentsui")
-
-        /** The Downloads root's label in the picker. */
-        val DOWNLOADS_ROOT: Pattern = Pattern.compile("Downloads?")
-
-        /** The picker's roots drawer button (its content description). */
-        val DRAWER: Pattern = Pattern.compile("(?i)(show roots|open navigation drawer|navigate up)")
-
-        /** A probe line's longest picker facts. */
-        const val FACTS = 900
 
         /** The space between the passphrase's words on a page. */
         const val SPACE: Byte = 0x20

@@ -15,13 +15,14 @@ import java.io.InputStream
  * The document pickers' Android end (tasks/todo.md, M5 group 18 and "Built into this plan", Nothing
  * persisted; docs/mobile-apps.md, "Encrypted backup only"; rule 8), the one file where the gate allows
  * the document streams, the activity-result API's document contracts and a catch of IOException
- * (M5-53's list, groups 3 and 18). Its two launchers, the system's create-document picker
+ * (M5-53's list, groups 3 and 18). Its three launchers, the system's create-document picker
  * (ActivityResultContracts.CreateDocument, core's suggested name as its title) and its open-document
- * picker (ActivityResultContracts.OpenDocument, any type: the model checks the name), are registered
- * when MainActivity's onCreate makes this, before the activity starts, as the activity-result API
- * requires and as its CAMERA prompt is; their answers go straight to the ceremony model (placed and
- * picked: its backupPlaced and backupPicked), which survives a configuration change, so an answer that
- * comes to a recreated activity still reaches it. Neither keeps a place or a file, or asks to keep
+ * picker twice (ActivityResultContracts.OpenDocument, any type: the model checks the name), once for
+ * Check a backup and once for Load registry snapshot, are registered when MainActivity's onCreate makes
+ * this, before the activity starts, as the activity-result API requires and as its CAMERA prompt is;
+ * their answers go straight to the ceremony model (placed, picked and snapshot: its backupPlaced,
+ * backupPicked and snapshotPicked), which survives a configuration change, so an answer that comes to a
+ * recreated activity still reaches it. Neither keeps a place or a file, or asks to keep
  * access to one past the answer (no persisted URI permission).
  *
  * - The backup's place: one openOutputStream(uri, "rwt"), so the file is truncated first, and one
@@ -38,6 +39,7 @@ class Documents(
     activity: ComponentActivity,
     placed: (DocumentPlace?) -> Unit,
     picked: (PickedFile?) -> Unit,
+    snapshot: (PickedFile?) -> Unit,
 ) : DocumentPickers {
     private val resolver: ContentResolver = activity.contentResolver
 
@@ -49,6 +51,10 @@ class Documents(
         picked(if (uri == null) null else pickedFile(resolver, uri))
     }
 
+    private val snapshotOpener = activity.registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        snapshot(if (uri == null) null else pickedFile(resolver, uri))
+    }
+
     override fun create(name: String) {
         creator.launch(name)
     }
@@ -57,11 +63,15 @@ class Documents(
         opener.launch(arrayOf(ANY_TYPE))
     }
 
+    override fun openSnapshot() {
+        snapshotOpener.launch(arrayOf(ANY_TYPE))
+    }
+
     private companion object {
         /** An age file has no MIME type of its own, so the backup is a plain binary file and keeps its .age name. */
         const val AGE_TYPE = "application/octet-stream"
 
-        /** The open-document picker lists every file: a .txt picked is refused by the model, by name. */
+        /** The open-document picker lists every file: a .txt picked is refused by the model, by name (a .kcr has no MIME type of its own either). */
         const val ANY_TYPE = "*/*"
     }
 }

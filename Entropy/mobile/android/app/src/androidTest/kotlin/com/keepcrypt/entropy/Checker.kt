@@ -80,6 +80,23 @@ internal object Checker {
     /** code as the code entry shows it, in the checker's two groups of four. */
     fun grouped(code: String): String = code.substring(0, 4) + "-" + code.substring(4)
 
+    /**
+     * vectors/kcr.json's snapshot with-dice-50 (its kcr_hex): No. 4, dated 2026-03-01, 7 entries,
+     * dice-50-words12's tag among them, signed by the test registry key, which the snapshot tests put in
+     * Downloads as WITH_DICE_50_FILE for the picker (SnapshotDrillTest, CheckTest) and CaptureTest's walk
+     * hands the model as the picker would. The JVM tests read the same bytes from that file
+     * (CheckScreensTest, RegistryTest), and GoAheadPngTest writes them as the P4 drill's with-dice-50.kcr.
+     */
+    const val WITH_DICE_50_KCR =
+        "4b43523100010000000000000004013525cd00000000000000073cd2a5fdd97d7455b6ae2c8b38f77a215a9ca209237f4948" +
+            "5b12f007183e178540a30ab1ed5068055f67dca3f05f55bbbe0d671d2bc0127c79bf7e24c374c12566afadc472842fc708888e" +
+            "95715e2ac14d5ca32b18323ecbbabcdc16c1e4c001000003b6fc1f9b5fffc1c56c263ba53600012b8103c8dd64611df5c8c28b" +
+            "8fbf864bffff2b81090b7fd157945acf1ff22896eb67000280000a639f49af784c7a85ebd0bd4e88000380000d8506a789e8fb" +
+            "58a21cca8fec260001f6e8965ac3e420f9061e7c1a7e9d829d0001fffff018c5294cb896e60c612c7ea7be0007"
+
+    /** The name the snapshot tests give with-dice-50 in Downloads (kcr.json's name; the P4 drill's file). */
+    const val WITH_DICE_50_FILE = "with-dice-50.kcr"
+
     /** Hex digits' bytes. */
     fun bytes(hex: String): ByteArray {
         assertEquals("an even number of hex digits", 0, hex.length % 2)

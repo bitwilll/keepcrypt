@@ -50,7 +50,9 @@ import com.keepcrypt.entropy.screens.PickedFile
 import com.keepcrypt.entropy.screens.SECRET_TAG
 import com.keepcrypt.entropy.screens.ScanStop
 import com.keepcrypt.entropy.screens.Screen
+import com.keepcrypt.entropy.screens.bip39Shown
 import com.keepcrypt.entropy.screens.choiceText
+import com.keepcrypt.entropy.screens.deviceLegText
 import com.keepcrypt.entropy.screens.isProtected
 import com.keepcrypt.entropy.screens.overviewLine
 import com.keepcrypt.entropy.screens.passphraseLines
@@ -122,11 +124,19 @@ class CaptureTest {
      * gate (its pages read in-process), its confirm (each answer typed on the model's letter pad), the
      * save screen once core has encrypted (the encryption's real long call, waited for), and also with a
      * failed write (failedSave), then "Backup verified" after a place in memory took the file and core
-     * verified it (the real long call); the checklist, whose Finish leads Home, and Check a backup on the
-     * saved file handed to the model as the picker would (the system's pickers are BackupTest's): its
-     * entry past its gate, its result once core opened the file with the passphrase typed in-process
-     * (the real long call), and the re-check QR; then the checked backup's words past their gate
-     * (checkedWords), from which "Working..." is held. The scan screen asks for
+     * verified it (the real long call); the exports (group 18): the watch-only offer, the BIP39 question,
+     * its entry past its gate with the walk's passphrase typed in-process before the gate is passed (so
+     * the entry draws it), the watch-only summary core's export gives, the account QR past its gate and the
+     * descriptor QR, the registration's offer and its QR past its gate, D's offer (the walk's seed is
+     * mixed) and D past its gate; the checklist, whose Finish leads Home, and Check a backup on the saved
+     * file handed to the model as the picker would (the system's pickers are BackupTest's): its entry past
+     * its gate, its result once core opened the file with the passphrase typed in-process (the real long
+     * call), and the re-check QR; then the checked backup's words past their gate (checkedWords), paged to
+     * their last insert, whose Done returns to the result, and its Done Home; Load registry snapshot's
+     * result once core has judged vectors/kcr.json's with-dice-50, handed to the model as the picker would
+     * (the real long call: loaded in the test-registry APK, refused in the shipping APK, which trusts no
+     * registry key; the picker is SnapshotDrillTest's and CheckTest's); and About, from which "Working..."
+     * is held. The scan screen asks for
      * the camera as it opens, and the
      * walk is the first of this APK's tests to open it: dumpsys package shows CAMERA requested and not
      * granted, no permission prompt is up, then the scan screen opens and the system's prompt shows over
@@ -245,7 +255,24 @@ class CaptureTest {
                 }
                 waitUntil("Backup verified, after core verified the file", START_SECONDS) { onMain { activity.shownScreen } == Screen.BackupVerified }
             }
-            Screen.Checklist -> onMain { model.backupVerifiedDone() }
+            Screen.WatchOffer -> onMain { model.backupVerifiedDone() }
+            Screen.Bip39Ask -> onMain { model.showWatchOnly() }
+            Screen.Bip39Entry -> {
+                onMain { model.withBip39Passphrase() }
+                waitUntil("the BIP39 entry's privacy gate") { onMain { activity.shownScreen == Screen.Bip39Entry && model.state.value.gate } }
+                onMain {
+                    for (key in WALK_PASSPHRASE) model.bip39Letters.type(key)
+                    model.passGate()
+                }
+            }
+            Screen.WatchSummary -> onMain { model.bip39Typed() }
+            Screen.WatchAccountQr -> passedTo(activity, Screen.WatchAccountQr) { model.watchSummaryDone() }
+            Screen.WatchDescriptorQr -> onMain { model.nextPage() }
+            Screen.RegisterOffer -> onMain { model.watchDone() }
+            Screen.RegisterQr -> passedTo(activity, Screen.RegisterQr) { model.showRegistration() }
+            Screen.RevealDOffer -> onMain { model.registrationDone() }
+            Screen.RevealD -> passedTo(activity, Screen.RevealD) { model.showDeviceLeg() }
+            Screen.Checklist -> onMain { model.deviceLegDone() }
             Screen.BackupCheckEntry -> {
                 onMain {
                     model.finishCeremony()
@@ -265,14 +292,46 @@ class CaptureTest {
                 waitUntil("the result, after core opened the backup", START_SECONDS) { onMain { activity.shownScreen } == Screen.BackupCheckResult }
             }
             Screen.BackupRecheck -> onMain { model.showRecheck() }
+            Screen.Snapshot -> {
+                onMain {
+                    repeat(INSERTS_PER_DEVICE - 1) { model.nextPage() }
+                    model.nextPage()
+                    model.swapDone()
+                    model.passGate()
+                    repeat(INSERTS_PER_DEVICE - 1) { model.nextPage() }
+                    model.backupWordsDone()
+                    model.closeBackup()
+                    model.loadSnapshot(NoPickers)
+                    model.snapshotPicked(PickedSnapshot)
+                }
+                waitUntil("Load registry snapshot's result, after core judged the file", START_SECONDS) {
+                    onMain { activity.shownScreen } == Screen.Snapshot
+                }
+                val judged = onMain { activity.model.state.value.let { if (pkg == REGISTRY_PACKAGE) it.loaded != null else it.snapshotRefusal != null } }
+                assertTrue("the snapshot was not loaded in the test-registry APK, or not refused in the shipping APK", judged)
+            }
+            Screen.About -> onMain {
+                model.snapshotDone()
+                model.about()
+            }
             Screen.Working -> onMain { model.work({ working.await(); Reply.Done(Unit) }) {} }
             Screen.Stop -> {
                 working.countDown()
-                waitUntil("the checked backup's words again, after the held call") { onMain { activity.shownScreen } == Screen.Words }
+                waitUntil("About again, after the held call") { onMain { activity.shownScreen } == Screen.About }
                 onMain { model.work<Unit>({ throw KcHalt() }) {} }
             }
         }
         return activity
+    }
+
+    /**
+     * A Protected screen past its privacy gate: open (on the main thread) leads from the screen before to
+     * screen, which shows its gate first; once it does, the gate is passed.
+     */
+    private fun passedTo(activity: MainActivity, screen: Screen, open: () -> Unit) {
+        onMain { open() }
+        waitUntil(screenId(screen) + "'s privacy gate") { onMain { activity.shownScreen == screen && activity.model.state.value.gate } }
+        onMain { activity.model.passGate() }
     }
 
     /** The passphrase's page on show read into passphrase, its words copied from the state's Secret (never a String). Main thread only. */
@@ -314,7 +373,7 @@ class CaptureTest {
     /**
      * The checked backup's words, from the re-check QR: its Back to the result, "Show the words" and the
      * privacy gate, so insert 1 of the backup's words shows (opened in the state). The walk checks it as
-     * it checks each screen, before "Working..." is held from it.
+     * it checks each screen, before Load registry snapshot's result.
      */
     private fun checkedWords(): MainActivity {
         val activity = checkNotNull(walk)
@@ -333,11 +392,22 @@ class CaptureTest {
         return activity
     }
 
-    /** The walk's pickers: the model opens nothing, and the walk hands it the place and the file as the pickers would. */
+    /** The walk's pickers: the model opens nothing, and the walk hands it the place and the files as the pickers would. */
     private object NoPickers : DocumentPickers {
         override fun create(name: String) {}
 
         override fun open() {}
+
+        override fun openSnapshot() {}
+    }
+
+    /** vectors/kcr.json's with-dice-50 as the open-document picker gives a file: its name and its size. */
+    private object PickedSnapshot : PickedFile {
+        private val bytes = Checker.bytes(Checker.WITH_DICE_50_KCR)
+        override val name: String = Checker.WITH_DICE_50_FILE
+        override val size: Long = bytes.size.toLong()
+
+        override fun read(limit: Int): ByteArray = bytes.copyOf()
     }
 
     /** The save screen's place, in memory: it keeps what it is given for Check a backup, and reads it back. */
@@ -475,7 +545,7 @@ class CaptureTest {
             if (screen == Screen.BackupVerified) {
                 checkScreen(Screen.BackupSave, failedSave(), screenId(Screen.BackupSave) + " (a failed write)", lines)
             }
-            if (screen == Screen.Working) {
+            if (screen == Screen.Snapshot) {
                 checkScreen(Screen.Words, checkedWords(), screenId(Screen.Words) + " (a checked backup's)", lines)
             }
             checkScreen(screen, show(screen), screenId(screen), lines)
@@ -600,7 +670,9 @@ class CaptureTest {
      * word, its SeedBook number and each face's letter and label (a blank face's letter is no text); on
      * the overview its lines; on the read-back entry the faces typed, or once it matched the word; on the
      * mismatch the four verdicts; on the backup passphrase its page, four lines ("1 ostrich") in one text; on the confirm
-     * its question's four choices and the letters typed; on Check a backup's entry the letters typed. The
+     * its question's four choices and the letters typed; on the BIP39 passphrase's entry the passphrase as
+     * shown (a space a middle dot), searched for in the log as shown and as typed; on D its four rows of
+     * hex groups in one text, each row searched for; on Check a backup's entry the letters typed. The
      * word's copy is wiped once read. Main thread only.
      */
     private fun secretTexts(screen: Screen, model: CeremonyModel): ScreenSecrets {
@@ -629,6 +701,14 @@ class CaptureTest {
                 val question = checkNotNull(state.challenge).questions[state.page]
                 val faces = typedFaces(model.backupLetters)
                 ScreenSecrets(question.choices.map { choiceText(it) }.toSet() + faces, if (model.backupLetters.length > 0) setOf(faces) else emptySet())
+            }
+            Screen.Bip39Entry -> {
+                val shown = bip39Shown(model.bip39Letters)
+                ScreenSecrets(setOf(shown), if (model.bip39Letters.length > 0) setOf(shown, WALK_PASSPHRASE) else emptySet())
+            }
+            Screen.RevealD -> {
+                val shown = deviceLegText(checkNotNull(state.deviceLeg))
+                ScreenSecrets(setOf(shown), shown.split("\n").toSet())
             }
             Screen.BackupCheckEntry -> {
                 val faces = typedFaces(model.backupLetters)
@@ -925,12 +1005,16 @@ class CaptureTest {
 
         /**
          * The Protected screens that draw secret text: the words, the overview, the read-back's letters and
-         * its verdicts, the backup passphrase, its confirm's choices and letters, and Check a backup's letters.
+         * its verdicts, the backup passphrase, its confirm's choices and letters, the BIP39 passphrase typed,
+         * D and Check a backup's letters (the other Protected screens draw QR codes, which hold no text).
          */
         val SECRET_SCREENS = setOf(
             Screen.Words, Screen.WordsOverview, Screen.ReadbackEntry, Screen.ReadbackMismatch, Screen.BackupPassphrase,
-            Screen.BackupConfirm, Screen.BackupCheckEntry,
+            Screen.BackupConfirm, Screen.Bip39Entry, Screen.RevealD, Screen.BackupCheckEntry,
         )
+
+        /** The walk's BIP39 passphrase, made up for the walk (no wallet's): typed in-process, never printed or put in a selector. */
+        const val WALK_PASSPHRASE = "Kc walk 1!"
 
         /** The space between the passphrase's words on a page. */
         const val SPACE: Byte = 0x20

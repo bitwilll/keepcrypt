@@ -20,9 +20,9 @@ import com.keepcrypt.entropy.ffi.Words
 // wherever mobile-apps.md says nothing else): Self-test, Go offline, Home, Length, Device entropy,
 // Commitment and Dice; First launch is FirstLaunch.kt. Each is Public, drawn with the UI kit, and
 // hands its presses to the ceremony model, which ignores a press its screen no longer shows. Home's
-// Check a backup came with its screens (commit 20, BackupScreens.kt); Load registry snapshot and About
-// (commit 21) come with theirs, so no control here leads nowhere; the dice screen's Done leads to the
-// collision check (CheckScreens.kt, commit 17).
+// Check a backup came with its screens (commit 20, BackupScreens.kt), and Load registry snapshot and
+// About with theirs (commit 21, HomeScreens.kt), so no control here leads nowhere (lead decision M5-48);
+// the dice screen's Done leads to the collision check (CheckScreens.kt, commit 17).
 
 /** The one sentence that explains the default mode (docs/mobile-apps.md, "Entropy sources on phones"). */
 const val SAFE_IF_EITHER = "Your seed is safe if either your phone or your dice are honest."
@@ -38,18 +38,22 @@ private const val HEX_DIGITS = "0123456789abcdef"
  * digits, a space between the groups of a row and a line feed between the four rows. verify.py reads C
  * back as typed (parse_hex32): it drops spaces, tabs and hyphens and takes exactly 64 hex digits, and
  * refuses a line feed, so the four rows are only how the screen lays C out; the user types them as
- * groups on one line. C is public; D (commit 21) is not, and is never made into a String.
+ * groups on one line. C is public; D is not, and its screen lays it out the same way from its Secret
+ * (ExportScreens.kt's deviceLegText, commit 21), a String only for the text on screen (Q58).
  */
-fun hexGroups(bytes: ByteArray): String {
-    check(bytes.size == 32)
+fun hexGroups(bytes: ByteArray): String = hexGroupsOf(bytes.size) { bytes[it] }
+
+/** 32 bytes, read through byteAt one at a time, laid out as hexGroups lays out C. */
+internal fun hexGroupsOf(size: Int, byteAt: (Int) -> Byte): String {
+    check(size == 32)
     return buildString(79) {
-        for (index in bytes.indices) {
+        for (index in 0 until size) {
             if (index > 0 && index % 8 == 0) {
                 append('\n')
             } else if (index > 0 && index % 2 == 0) {
                 append(' ')
             }
-            val byte = bytes[index].toInt() and 0xFF
+            val byte = byteAt(index).toInt() and 0xFF
             append(HEX_DIGITS[byte shr 4])
             append(HEX_DIGITS[byte and 0x0F])
         }
@@ -101,11 +105,21 @@ fun GoOffline(state: UiState, testRegistry: Boolean, onSettings: () -> Unit, onS
 }
 
 /**
- * Home (docs/mobile-apps.md, step 4): New seed, Dice-only seed and Check a backup (lead decision M5-48),
- * and why the file Check a backup was given was not opened, when it was not.
+ * Home (docs/mobile-apps.md, step 4): New seed, Dice-only seed, Check a backup, Load registry snapshot and
+ * About (lead decision M5-48; "Verify another device's ceremony" is M5b's, Q61); why the file Check a
+ * backup or Load registry snapshot was given was not opened, when it was not; and the registry snapshot
+ * loaded, or that none is (the Pi's Home line).
  */
 @Composable
-fun Home(state: UiState, testRegistry: Boolean, onNewSeed: () -> Unit, onDiceOnly: () -> Unit, onCheckBackup: () -> Unit) {
+fun Home(
+    state: UiState,
+    testRegistry: Boolean,
+    onNewSeed: () -> Unit,
+    onDiceOnly: () -> Unit,
+    onCheckBackup: () -> Unit,
+    onLoadSnapshot: () -> Unit,
+    onAbout: () -> Unit,
+) {
     KitScreen(
         screenId(Screen.Home),
         testRegistry,
@@ -113,6 +127,8 @@ fun Home(state: UiState, testRegistry: Boolean, onNewSeed: () -> Unit, onDiceOnl
             KitButton("New seed", "new_seed", onClick = onNewSeed)
             KitButton("Dice-only seed", "dice_only_seed", onClick = onDiceOnly)
             KitButton("Check a backup", "check_backup", onClick = onCheckBackup)
+            KitButton("Load registry snapshot", "load_snapshot", onClick = onLoadSnapshot)
+            KitButton("About", "about", onClick = onAbout)
         },
     ) {
         KitText("KeepCrypt", KitType.title)
@@ -122,6 +138,7 @@ fun Home(state: UiState, testRegistry: Boolean, onNewSeed: () -> Unit, onDiceOnl
         }
         Gap(16)
         KitText("New seed mixes your dice with this phone's own randomness. Dice-only seed uses your rolls alone, as a Coldcard does.", KitType.small)
+        KitText(homeSnapshotLine(state.loaded), KitType.small, tag = "home_snapshot")
     }
 }
 

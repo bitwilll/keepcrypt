@@ -22,10 +22,12 @@ import com.keepcrypt.entropy.Ui.stays
 import com.keepcrypt.entropy.Ui.tap
 import com.keepcrypt.entropy.Ui.text
 import com.keepcrypt.entropy.Ui.toHome
+import com.keepcrypt.entropy.ffi.Refusal
 import com.keepcrypt.entropy.screens.CHECK_PROMPT
 import com.keepcrypt.entropy.screens.CHECK_QUESTION
 import com.keepcrypt.entropy.screens.CODE_REFUSED
 import com.keepcrypt.entropy.screens.CROCKFORD_KEYS
+import com.keepcrypt.entropy.screens.SNAPSHOT_NO_REGISTRY_KEY
 import com.keepcrypt.entropy.screens.Screen
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -49,7 +51,10 @@ import org.junit.runner.RunWith
  * refused and the check, its nonce and the actions stay, and the code a checker builds from that QR's T
  * and nonce, typed on the pad, passes the check; the pad's 32 keys keep their labels (lead decision
  * M5-46: a Public pad), and the result's Show words leads through the privacy gate to the first insert
- * (group 17; the words themselves are FlowTest's).
+ * (group 17; the words themselves are FlowTest's). Home's Load registry snapshot (group 18): the shipping
+ * app trusts no registry key yet, so vectors/kcr.json's with-dice-50, picked from Downloads through the
+ * system's picker, is refused with that line, nothing loaded, and Back returns Home, which names none
+ * (SnapshotDrillTest loads it in the test-registry app).
  */
 @RunWith(AndroidJUnit4::class)
 class CheckTest {
@@ -178,6 +183,34 @@ class CheckTest {
                     "passed; the pad's 32 keys labelled (M5-46); Show words through the gate to insert 1 of 12",
             )
             finish(activity)
+        }
+    }
+
+    @Test
+    fun aSnapshotPickedOnHomeIsRefusedInTheShippingAppWhichTrustsNoRegistryKeyYet() {
+        Capture.whileOffline {
+            Picker.putInDownloads(Checker.WITH_DICE_50_FILE, Checker.bytes(Checker.WITH_DICE_50_KCR))
+            try {
+                val activity = toHome()
+                awaitText("home_snapshot", "No registry snapshot loaded")
+                tap("load_snapshot")
+                Picker.pick(Checker.WITH_DICE_50_FILE)
+                on(activity, Screen.Snapshot, START_SECONDS)
+                awaitText("snapshot_result", "Snapshot not loaded")
+                awaitText("snapshot_refusal", SNAPSHOT_NO_REGISTRY_KEY)
+                assertEquals(Refusal.NoRegistryKey, onMain { activity.model.state.value.snapshotRefusal })
+                assertNull("the shipping app loaded a snapshot", onMain { activity.model.state.value.loaded })
+                device.pressBack()
+                on(activity, Screen.Home)
+                awaitText("home_snapshot", "No registry snapshot loaded")
+                pass(
+                    "Load registry snapshot in the shipping app: with-dice-50.kcr picked from Downloads through DocumentsUI, " +
+                        "refused: \"" + SNAPSHOT_NO_REGISTRY_KEY + "\"; nothing loaded; Back: Home, no snapshot named",
+                )
+                finish(activity)
+            } finally {
+                Picker.removeFromDownloads(Checker.WITH_DICE_50_FILE)
+            }
         }
     }
 

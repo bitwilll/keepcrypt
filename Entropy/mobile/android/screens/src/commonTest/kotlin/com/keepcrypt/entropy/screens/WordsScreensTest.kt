@@ -13,7 +13,6 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
-import kotlin.test.fail
 
 /**
  * The CeremonyModel transitions of the words (tasks/todo.md, M5 group 17; docs/mobile-apps.md, step
@@ -32,11 +31,6 @@ class WordsScreensTest {
     @AfterTest
     fun emptyTheSlot() {
         assertTrue(Core.wipeAll() is Reply.Done)
-    }
-
-    private fun <T> done(reply: Reply<T>, what: String): T = when (reply) {
-        is Reply.Done -> reply.value
-        else -> fail(what + " was not done")
     }
 
     /** The slot is at home and empty: no session, nothing waiting at a restart. */
@@ -270,8 +264,7 @@ class WordsScreensTest {
         assertPage(scanned, kcrWords(DICE_99_12), 0, 1, 1)
         assertTrue(Core.wipeAll() is Reply.Done)
         // A loaded snapshot without the seal: current-day-30, against dice-50-words12.
-        val loaded = Rig().toHome()
-        loaded.model.snapshotLoaded(done(Core.loadSnapshot(loaded.date.today(), kcrSnapshot("current-day-30")), "current-day-30 loads"))
+        val loaded = Rig().toHome().loadSnapshot("current-day-30")
         loaded.begin(Mode.DiceOnly, Words.Twelve)
         for (face in kcrRolls(DICE_50)) {
             loaded.model.dicePick.replace(face)

@@ -18,6 +18,7 @@ import com.keepcrypt.entropy.ffi.Revealed
 import com.keepcrypt.entropy.ffi.SealCard
 import com.keepcrypt.entropy.ffi.Secret
 import com.keepcrypt.entropy.ffi.Summary
+import com.keepcrypt.entropy.ffi.WatchOnly
 import com.keepcrypt.entropy.ffi.WordPage
 import com.keepcrypt.entropy.ffi.Words
 import kotlin.concurrent.Volatile
@@ -60,15 +61,17 @@ enum class Notice {
 }
 
 /**
- * What the screens draw (tasks/todo.md, M5 groups 14-17; lead decision M5-49): the screen's id and
+ * What the screens draw (tasks/todo.md, M5 groups 14-18; lead decision M5-49): the screen's id and
  * page index, flags about it, and the public values a screen shows (the dice counts, C, the seal card,
- * the check QR, a snapshot's or proof's header, why a scan stopped, the wallet summary), never a secret
- * but through a Secret reference: the QR codes are QrMatrix, the words WordPage and a read-back's
- * verdicts Readback.Mismatch, each holding its bytes in a Secret, and the model wipes each one when no
- * screen holds it any more (the collision report's carries the destroyed seed's seal code). The backup
- * (commit 20) holds its passphrase's page and its confirm's choices so, each a Secret; its file is
- * ciphertext, which the model keeps out of the state, and Check a backup's opened backup holds public
- * values only (its words stay in the slot). The other exports (commit 21) hold theirs the same way.
+ * the check QR, a snapshot's or proof's header, why a scan stopped, the wallet summary, the loaded
+ * snapshot's header), never a secret but through a Secret reference: the QR codes are QrMatrix, the
+ * words WordPage and a read-back's verdicts Readback.Mismatch, each holding its bytes in a Secret, and
+ * the model wipes each one when no screen holds it any more (the collision report's carries the
+ * destroyed seed's seal code). The backup (commit 20) holds its passphrase's page and its confirm's
+ * choices so, each a Secret; its file is ciphertext, which the model keeps out of the state, and Check
+ * a backup's opened backup holds public values only (its words stay in the slot). The other exports
+ * (commit 21) hold theirs the same way: the watch-only export's QRs (the xpub) and the registration QR
+ * (the seal code) are QrMatrix, and D a Secret.
  */
 data class UiState(
     val screen: Screen,
@@ -164,6 +167,19 @@ data class UiState(
      * re-check QR and its words, whose last insert then leads back to the result instead of to a read-back.
      */
     val opened: OpenedBackup? = null,
+    /**
+     * The watch-only export (its summary, public, Q29, and its account and descriptor QRs, each carrying
+     * the xpub in a Secret), on the watch-only summary and its two QR screens; wiped when they go.
+     */
+    val watch: WatchOnly? = null,
+    /** The registration QR (Protected: this seed's seal code), wiped when its screen leaves. */
+    val registration: QrMatrix? = null,
+    /** D on its screen (Protected: D and the rolls recreate the seed), in a Secret, wiped when the screen leaves. */
+    val deviceLeg: Secret? = null,
+    /** The loaded registry snapshot's header (public), which Home and Load registry snapshot's result name; the model's own, on every screen. */
+    val loaded: RegistryHeader? = null,
+    /** Core refused the snapshot picked (no registry key in this build, or a file that does not verify): the result says so. */
+    val snapshotRefusal: Refusal? = null,
 ) {
     /** Offline (Q57): airplane mode on and Wi-Fi off. */
     val offline: Boolean get() = airplaneMode && wifiOff
@@ -185,7 +201,7 @@ data class UiState(
  *   (away from the app too: the offline monitor reports until the model's end), call core's discard
  *   at once, even during a long call; the call's discarded reply then returns the UI to its start
  *   screen (toStart). That start screen is certain for the long calls core offers at home, start, the
- *   self-test and Check a backup's openBackup; finish, revealProof (the scanned go-ahead QR's check,
+ *   self-test, Check a backup's openBackup and Load registry snapshot's loadSnapshot; finish, revealProof (the scanned go-ahead QR's check,
  *   commit 18), and the backup's encryptBackup and verifyBackup (commit 20), which it does not offer
  *   there, halt the slot instead when a discard reaches core between the worker's look at the discard
  *   flag and the call (fail closed: the stop screen; lead decision M5-54's residual, work). On a Public
@@ -221,9 +237,9 @@ data class UiState(
  *   each insert in turn, typed on the letter pad and compared by core, a match showing the whole word
  *   and a mismatch each face's verdict (a mirror-pair misread named as one), from where the insert can
  *   be shown again or read again; once every insert has matched, the read-back's end, the wallet
- *   summary, the encrypted backup's offer and the checklist, whose Finish ends the session in core
- *   (end) and returns Home. Every page's word pages and verdicts are wiped when it goes, and the typed
- *   letters when the entry goes.
+ *   summary, the encrypted backup's offer, the other exports and the checklist, whose Finish ends the
+ *   session in core (end) and returns Home. Every page's word pages and verdicts are wiped when it goes,
+ *   and the typed letters when the entry goes.
  * - The encrypted backup (group 18; docs/mobile-apps.md, "Encrypted backup only" and step 13; the Pi's
  *   step 11, after the summary and before Finish): its offer, then core's 8-word passphrase, generated
  *   once, two pages of four (Protected, through the privacy gate), and its confirm, two questions of
@@ -236,6 +252,17 @@ data class UiState(
  *   a read-back or a verify that fails names its step on the save screen, which offers Save again and
  *   Skip, and the session stays. The file's bytes are ciphertext, kept out of the state and zeroed when
  *   the save screen and its calls are over.
+ * - The other exports (group 18; docs/mobile-apps.md, steps 14-16; docs/seal-watchonly-braille.md,
+ *   "Watch-only export" and "Registering a new seal"; the Pi's steps 12-14, after the backup, its
+ *   verified file or its Skip): each its offer (Public) and Skip. The watch-only export asks first
+ *   whether a BIP39 passphrase is used; with one, its entry on the ASCII pad (Protected, through the
+ *   privacy gate), handed to core as a Secret and wiped; then core's export (a short call) and its
+ *   summary (Public, Q29: the fingerprint and the first receive address of that wallet, which says so
+ *   for a passphrase's), the account QR for Sparrow and the descriptor QR for Bitcoin Core (Protected:
+ *   each carries the xpub), paged back and on, the export wiped when they go. Then the registration's
+ *   offer, which says to register once, and its QR (Protected: the seal code), once; then in Mixed mode
+ *   alone D's offer, whose text is its warning, and D as 16 groups of 4 hex digits (Protected), wiped when
+ *   it goes; a dice-only seed has no D, so the registration leads straight to the checklist.
  * - Check a backup (Home's, lead decision M5-48; docs/mobile-apps.md, "Checking a backup"): the system's
  *   open-document picker; the file it gives is refused unless its name ends in .age and its provider
  *   sizes it within core's limit, both before any byte is read, and the read stops one byte past the
@@ -246,6 +273,19 @@ data class UiState(
  *   screens, whose last insert leads back; the re-check QR; and Done, which ends it in core (end). The
  *   slot holds the checked backup under the timers and the offline rule as it holds a session: a
  *   discard, a timer's wipe or going online takes it, and Home follows only through Done.
+ * - Load registry snapshot (Home's, lead decision M5-48; docs/mobile-apps.md, "Reading a snapshot"): the
+ *   system's open-document picker; the file it gives is refused unless its name ends in .kcr and its
+ *   provider sizes it within core's limit, both before any byte is read, and the read stops one byte
+ *   past the limit, as Check a backup's. Core verifies it on the worker (a long call) against this
+ *   build's registry key, and its result (Public) shows its number, date, count and any freshness
+ *   warning, or why core refused it (the shipping APK trusts no registry key yet). A verified snapshot
+ *   is the model's (snapshotLoaded): Check now then runs the check against it on its own, and Home names
+ *   it. It outlives sessions and discards, as the slot's does. A discard that lands after core loaded it
+ *   but before the worker's second look (lead decision M5-54's window) leaves it in the slot but not
+ *   here: Check now then shows the seal card, so the check goes to the checker, which fails toward
+ *   asking, never toward the words.
+ * - About (Home's): the version (every M5 build is a 0.0.0 development build), this build's flavour and
+ *   the source address, as plain text; Back returns Home.
  */
 class CeremonyModel(
     private val scope: CoroutineScope,
@@ -288,6 +328,13 @@ class CeremonyModel(
      * of each word, which entryTyped takes as a Secret; wiped when either screen leaves.
      */
     val backupLetters: PadEntry = letterPadEntry()
+
+    /**
+     * The BIP39 passphrase as its entry's ASCII pad types it (a Protected screen: rule 5, a PadEntry, up to
+     * 100 printable ASCII characters): bip39Typed hands it to core as a Secret, and it is wiped when the
+     * entry leaves.
+     */
+    val bip39Letters: PadEntry = asciiPadEntry()
 
     /** The encrypted backup core made in memory (ciphertext, never in the state), from its encryption until the save screen and its calls are over. */
     private var backupFile: BackupFile? = null
@@ -466,16 +513,21 @@ class CeremonyModel(
      * KEY1 and KEY2 (Length to Home, Home to Go offline, Go offline to First launch; Skip's confirm to
      * the check prompt; the scan screen, Match found's and Cannot check's confirms and the code entry to
      * the seal card, with the same check and nonce and no core call, the typed code wiped; on the words,
-     * their overview and the backup passphrase the page before, as their Previous; Check a backup's
-     * entry to Home, the file read and the letters typed wiped, as the Pi's KEY2 there, and its re-check
-     * QR to its result); anywhere else it does nothing, so it never ends a session, leaves a check, the
-     * read-back, the backup or a long call, or leaves the app.
+     * their overview and the backup passphrase the page before, as their Previous, and on the descriptor
+     * QR the account QR; the BIP39 passphrase's entry to its question, the passphrase typed wiped, as
+     * the Pi's KEY2 there; Check a backup's entry to Home, the file read and the letters typed wiped, as
+     * the Pi's KEY2 there, and its re-check QR to its result; Load registry snapshot's result and About
+     * to Home); anywhere else it does nothing, so it never ends a session, leaves a check, the read-back,
+     * the backup, an export or a long call, or leaves the app.
      */
     fun back() {
         val current = mutable.value
-        if (current.screen == Screen.Words || current.screen == Screen.WordsOverview || current.screen == Screen.BackupPassphrase) {
-            previousPage()
-            return
+        when (current.screen) {
+            Screen.Words, Screen.WordsOverview, Screen.BackupPassphrase, Screen.WatchDescriptorQr -> {
+                previousPage()
+                return
+            }
+            else -> {}
         }
         val previous = backTo(current.screen) ?: return
         if (pressOn(current.screen)) show(previous, seal = current.seal, checkRequest = current.checkRequest, opened = current.opened)
@@ -558,16 +610,6 @@ class CeremonyModel(
         val dice = mutable.value.dice ?: return
         if (dice.rolls < dice.minimum) return
         work({ Core.finish() }) { show(Screen.CheckPrompt) }
-    }
-
-    /**
-     * Load registry snapshot's result: the slot holds the snapshot core verified (Core.loadSnapshot),
-     * whose header this is, so Check now runs the check against it on its own (docs/mobile-apps.md,
-     * step 9). Commit 21's Load registry snapshot screen calls it after its load (lead decision M5-48);
-     * until then only the tests do, after their own Core.loadSnapshot in the test-registry APK.
-     */
-    fun snapshotLoaded(header: RegistryHeader) {
-        if (!stopped()) snapshot = header
     }
 
     /**
@@ -716,7 +758,7 @@ class CeremonyModel(
      * Next on the words (insert view) and the overview: the next page, while there is one; on a 24-word
      * seed, past word 12, the device swap first (the Pi's), then that view's next page. Nothing while a
      * mismatch's insert is reviewed, whose one way on is back to its read-back. On the backup passphrase:
-     * its second page.
+     * its second page; on the account QR, the descriptor QR.
      */
     fun nextPage() {
         val current = mutable.value
@@ -742,14 +784,15 @@ class CeremonyModel(
                 }
             }
             Screen.BackupPassphrase -> if (pressOn(Screen.BackupPassphrase) && current.page == 0) showPassphrase(1)
+            Screen.WatchAccountQr -> if (pressOn(Screen.WatchAccountQr)) show(Screen.WatchDescriptorQr, watch = current.watch)
             else -> {}
         }
     }
 
     /**
-     * Previous on the words, the overview and the backup passphrase (and the system Back there): the
-     * page before, with no device swap (every page names its device); nothing on the first page or while
-     * a mismatch's insert is reviewed.
+     * Previous on the words, the overview, the backup passphrase and the descriptor QR (and the system Back
+     * there): the page before (the account QR before the descriptor QR), with no device swap (every page
+     * names its device); nothing on the first page or while a mismatch's insert is reviewed.
      */
     fun previousPage() {
         val current = mutable.value
@@ -757,6 +800,7 @@ class CeremonyModel(
             Screen.Words -> if (pressOn(Screen.Words) && !current.reviewing && current.page > 0) showInsert(current.page - 1)
             Screen.WordsOverview -> if (pressOn(Screen.WordsOverview) && current.page > 0) showOverview(current.page - 1)
             Screen.BackupPassphrase -> if (pressOn(Screen.BackupPassphrase) && current.page > 0) showPassphrase(current.page - 1)
+            Screen.WatchDescriptorQr -> if (pressOn(Screen.WatchDescriptorQr)) show(Screen.WatchAccountQr, watch = current.watch)
             else -> {}
         }
     }
@@ -864,7 +908,7 @@ class CeremonyModel(
         show(Screen.Wallet, summary = summary.value)
     }
 
-    /** The wallet summary's Next: the encrypted backup's offer (the other exports come between it and the checklist with commit 21). */
+    /** The wallet summary's Next: the encrypted backup's offer, the first of the exports before the checklist (the Pi's step 11). */
     fun summaryDone() {
         if (pressOn(Screen.Wallet)) show(Screen.BackupOffer)
     }
@@ -878,11 +922,11 @@ class CeremonyModel(
     }
 
     /**
-     * Skip, on the offer or on the save screen (where a save failed, or before one): the checklist, with no
-     * backup; the encrypted file, if core made one, is zeroed as the save screen goes.
+     * Skip, on the offer or on the save screen (where a save failed, or before one): the watch-only offer,
+     * with no backup (the Pi's); the encrypted file, if core made one, is zeroed as the save screen goes.
      */
     fun skipBackup() {
-        if (pressOn(Screen.BackupOffer) || pressOn(Screen.BackupSave)) show(Screen.Checklist)
+        if (pressOn(Screen.BackupOffer) || pressOn(Screen.BackupSave)) show(Screen.WatchOffer)
     }
 
     /** The passphrase's second page, "I wrote it down": the confirm's first question, its letter pad empty. */
@@ -986,9 +1030,106 @@ class CeremonyModel(
         ) { show(Screen.BackupVerified) }
     }
 
-    /** "Backup verified"'s Next: the checklist (the other exports come between with commit 21). */
+    /** "Backup verified"'s Next: the watch-only offer (the Pi's step 12). */
     fun backupVerifiedDone() {
-        if (pressOn(Screen.BackupVerified)) show(Screen.Checklist)
+        if (pressOn(Screen.BackupVerified)) show(Screen.WatchOffer)
+    }
+
+    /**
+     * The watch-only offer's "Show watch-only QRs" (docs/mobile-apps.md, step 14; the Pi's step 12): the
+     * BIP39 passphrase's question, asked before the export (swb, "Watch-only export": with a passphrase,
+     * the export is that passphrase's wallet).
+     */
+    fun showWatchOnly() {
+        if (pressOn(Screen.WatchOffer)) show(Screen.Bip39Ask)
+    }
+
+    /** The watch-only offer's Skip: the registration's offer, with no export. */
+    fun skipWatchOnly() {
+        if (pressOn(Screen.WatchOffer)) show(Screen.RegisterOffer)
+    }
+
+    /** The question's "No BIP39 passphrase": core's export of this seed (a short call), then its summary. */
+    fun noBip39Passphrase() {
+        if (!pressOn(Screen.Bip39Ask)) return
+        val export = done { Core.watchOnly(null) } ?: return
+        show(Screen.WatchSummary, watch = export.value)
+    }
+
+    /** The question's "I use a passphrase": its entry, the ASCII pad empty, through the privacy gate (Protected). */
+    fun withBip39Passphrase() {
+        if (!pressOn(Screen.Bip39Ask)) return
+        bip39Letters.wipe()
+        show(Screen.Bip39Entry)
+    }
+
+    /**
+     * The BIP39 passphrase's Done, with at least one character typed (with none it does nothing: core
+     * refuses an empty passphrase, and "No BIP39 passphrase" is the way to leave it out): the passphrase,
+     * handed over as a Secret and wiped once core has it (PadEntry.handOver), makes core's export of that
+     * passphrase's wallet (a short call), then its summary, which says it is that wallet's.
+     */
+    fun bip39Typed() {
+        if (!pressOn(Screen.Bip39Entry) || bip39Letters.length == 0) return
+        val reply = bip39Letters.handOver { passphrase -> call { Core.watchOnly(passphrase) } }
+        if (reply !is Reply.Done) {
+            settle(reply)
+            return
+        }
+        show(Screen.WatchSummary, watch = reply.value)
+    }
+
+    /** The watch-only summary's Next: the account QR for Sparrow, through the privacy gate (Protected: the xpub). */
+    fun watchSummaryDone() {
+        val current = mutable.value
+        if (pressOn(Screen.WatchSummary)) show(Screen.WatchAccountQr, watch = current.watch)
+    }
+
+    /** The descriptor QR's Done: the registration's offer; the export goes, its QRs wiped (they carry the xpub). */
+    fun watchDone() {
+        if (pressOn(Screen.WatchDescriptorQr)) show(Screen.RegisterOffer)
+    }
+
+    /**
+     * The registration's offer's "Show registration QR" (docs/seal-watchonly-braille.md, "Registering a
+     * new seal"; the Pi's step 13): core's QR of this seed's seal code, through the privacy gate
+     * (Protected); the offer comes once in a ceremony, and says to register once, never from a restore.
+     */
+    fun showRegistration() {
+        if (!pressOn(Screen.RegisterOffer)) return
+        val registration = done { Core.registration() } ?: return
+        show(Screen.RegisterQr, registration = registration.value)
+    }
+
+    /** The registration's offer's Skip: D's offer in Mixed mode, else the checklist (the Pi's after_register). */
+    fun skipRegistration() {
+        if (pressOn(Screen.RegisterOffer)) afterRegistration()
+    }
+
+    /** The registration QR's Done: as Skip, the QR wiped. */
+    fun registrationDone() {
+        if (pressOn(Screen.RegisterQr)) afterRegistration()
+    }
+
+    /**
+     * D's offer's "Show D" (docs/mobile-apps.md, step 16; the Pi's step 14), offered in Mixed mode alone,
+     * where D exists (core halts the call in dice-only mode): core's D, in a Secret, through the privacy
+     * gate (Protected), as 16 groups of 4 hex digits for verify.py on an offline computer.
+     */
+    fun showDeviceLeg() {
+        if (!pressOn(Screen.RevealDOffer)) return
+        val leg = done { Core.revealDeviceLeg() } ?: return
+        show(Screen.RevealD, deviceLeg = leg.value)
+    }
+
+    /** D's offer's Skip: the checklist. */
+    fun skipDeviceLeg() {
+        if (pressOn(Screen.RevealDOffer)) show(Screen.Checklist)
+    }
+
+    /** D's Done: the checklist, D wiped. */
+    fun deviceLegDone() {
+        if (pressOn(Screen.RevealD)) show(Screen.Checklist)
     }
 
     /**
@@ -1016,30 +1157,11 @@ class CeremonyModel(
      * stays; a file, refused unless its name ends in .age (any letter case, as the Pi lists them) and its
      * provider reports a size within core's limit, both before any byte is read, then read, which stops
      * one byte past the limit (a provider that sized it wrongly is refused too). A refused file is never
-     * read, or its bytes are zeroed, and Home says why. A file that passes goes to the passphrase's entry,
-     * word 1 of 8, through the privacy gate (Protected), its bytes kept for core.
+     * read, or its bytes are zeroed, and Home says why (picked). A file that passes goes to the
+     * passphrase's entry, word 1 of 8, through the privacy gate (Protected), its bytes kept for core.
      */
     fun backupPicked(file: PickedFile?) {
-        if (busy() || mutable.value.screen != Screen.Home) return
-        timers.input()
-        if (file == null) return
-        val size = file.size
-        val refusal = when {
-            file.name?.endsWith(Core.BACKUP_SUFFIX, ignoreCase = true) != true -> FileRefusal.NotAge
-            size == null -> FileRefusal.NoSize
-            size < 0 || size > Core.BACKUP_MAX_BYTES -> FileRefusal.TooLarge
-            else -> null
-        }
-        if (refusal != null) {
-            show(Screen.Home, fileRefusal = refusal)
-            return
-        }
-        val bytes = file.read(Core.BACKUP_MAX_BYTES)
-        if (bytes == null || bytes.size > Core.BACKUP_MAX_BYTES) {
-            bytes?.fill(0)
-            show(Screen.Home, fileRefusal = if (bytes == null) FileRefusal.Unreadable else FileRefusal.TooLarge)
-            return
-        }
+        val bytes = picked(file, Core.BACKUP_SUFFIX, Core.BACKUP_MAX_BYTES, FileRefusal.NotAge, FileRefusal.TooLarge) ?: return
         checkFile = bytes
         dropEntries()
         backupLetters.wipe()
@@ -1113,6 +1235,56 @@ class CeremonyModel(
         show(Screen.Home)
     }
 
+    /**
+     * Home's Load registry snapshot (lead decision M5-48; docs/mobile-apps.md, "Reading a snapshot"): the
+     * system's open-document picker, opened over the app after the picker rule's exemption (pickerOpened);
+     * the file it gives comes to snapshotPicked.
+     */
+    fun loadSnapshot(pickers: DocumentPickers) {
+        if (!pressOn(Screen.Home)) return
+        pickerOpened()
+        pickers.openSnapshot()
+    }
+
+    /**
+     * The open-document picker's answer for Load registry snapshot, while Home shows (a late answer does
+     * nothing): none, and Home stays; a file, refused unless its name ends in .kcr (any letter case, as the
+     * Pi lists them) and its provider reports a size within core's limit, both before any byte is read,
+     * then read, which stops one byte past the limit, as Check a backup's (picked). Core verifies it on the
+     * worker behind "Working..." (loadSnapshot, a long call: the signature, the entries and the bucket
+     * roots), on today's UTC date, and its bytes are zeroed once core has them. Verified, the slot holds
+     * the snapshot and its header is the model's (snapshotLoaded): the result shows its number, date and
+     * count and any freshness warning, and Check now runs the check against it on its own. Refused (no
+     * registry key in this build, as the shipping APK until M9; a file that does not verify), the result
+     * says why, and a snapshot loaded before stays, in the slot and here.
+     */
+    fun snapshotPicked(file: PickedFile?) {
+        val bytes = picked(file, Core.SNAPSHOT_SUFFIX, Core.SNAPSHOT_MAX_BYTES, FileRefusal.NotKcr, FileRefusal.SnapshotTooLarge) ?: return
+        work(
+            {
+                try {
+                    Core.loadSnapshot(date.today(), bytes)
+                } finally {
+                    bytes.fill(0)
+                }
+            },
+            refused = { refusal -> if (isSnapshotRefusal(refusal)) show(Screen.Snapshot, snapshotRefusal = refusal) else halt() },
+        ) { header ->
+            snapshotLoaded(header)
+            show(Screen.Snapshot)
+        }
+    }
+
+    /** Load registry snapshot's result's Done: Home, which names the snapshot loaded. */
+    fun snapshotDone() {
+        if (pressOn(Screen.Snapshot)) show(Screen.Home)
+    }
+
+    /** Home's About: the version, this build's flavour and the source address (its Back returns Home). */
+    fun about() {
+        if (pressOn(Screen.Home)) show(Screen.About)
+    }
+
     /** The timers' step now: the platform calls it each second (runTimers), and every return to the app does. */
     fun tick() {
         if (busy()) return
@@ -1141,9 +1313,9 @@ class CeremonyModel(
     /**
      * The platform's end of the model (the ViewModel's onCleared): everything the slot holds goes, the
      * kept Wiped and a loaded snapshot too, a long call running drops its result, the pads' entries, the
-     * QR codes, word pages, verdicts, passphrase page and confirm choices on show, the backup's file and
-     * Check a backup's file, entries and opened backup are wiped, and the motion source and the offline
-     * monitor stop. A halted slot holds nothing already.
+     * QR codes, word pages, verdicts, passphrase page, confirm choices, watch-only export and D on show,
+     * the backup's file and Check a backup's file, entries and opened backup are wiped, and the motion
+     * source and the offline monitor stop. A halted slot holds nothing already.
      */
     fun wipeAll() {
         running?.discarded = true
@@ -1154,6 +1326,7 @@ class CeremonyModel(
         goAheadCode.wipe()
         readbackLetters.wipe()
         backupLetters.wipe()
+        bip39Letters.wipe()
         val current = mutable.value
         current.checkRequest?.wipe()
         current.report?.wipe()
@@ -1162,6 +1335,9 @@ class CeremonyModel(
         current.mismatch?.wipe()
         current.passphrase?.wipe()
         current.challenge?.wipe()
+        current.watch?.wipe()
+        current.registration?.wipe()
+        current.deviceLeg?.wipe()
         dropBackupFile()
         dropCheckFile()
         dropEntries()
@@ -1202,12 +1378,12 @@ class CeremonyModel(
      * runs, what it made is discarded again on the worker, and the start screen follows; finish,
      * revealProof (the scanned go-ahead QR's check), encryptBackup and verifyBackup (the backup's,
      * commit 20), which core does not offer at home, halt the slot (fail closed: the stop screen instead
-     * of the start screen, in a window of microseconds; M5-54's residual); Check a backup's openBackup,
-     * which core offers at home, runs as a start does. A halt is the stop screen. One long call
+     * of the start screen, in a window of microseconds; M5-54's residual); Check a backup's openBackup
+     * and Load registry snapshot's loadSnapshot, which core offers at home, run as a start does. A halt is the stop screen. One long call
      * at a time: a second is the shell's bug, and halts, as does a busy screen that takes input. The
-     * busy screen keeps the QR codes, word pages, verdicts, passphrase page, confirm choices and opened
-     * backup of the screen it stands for (drawing none), so that screen comes back with them whole; the
-     * next other screen wipes them.
+     * busy screen keeps the QR codes, word pages, verdicts, passphrase page, confirm choices, opened
+     * backup, watch-only export and D of the screen it stands for (drawing none), so that screen comes
+     * back with them whole; the next other screen wipes them.
      */
     fun <T> work(
         core: () -> Reply<T>,
@@ -1232,6 +1408,9 @@ class CeremonyModel(
             passphrase = from.passphrase,
             challenge = from.challenge,
             opened = from.opened,
+            watch = from.watch,
+            registration = from.registration,
+            deviceLeg = from.deviceLeg,
         )
         scope.launch {
             val reply = withContext(worker) { onWorker(pending, core) }
@@ -1258,8 +1437,8 @@ class CeremonyModel(
     /**
      * A long call's part on the worker, which looks at the discard flag before the call and again after
      * it. A discard (or wipeAll) before the first look means no call at all. One between the first look
-     * and the call reaches core first (lead decision M5-54): a start, the self-test or Check a backup's
-     * openBackup, which core offers at home, then runs, and the second look finds the flag, so what it
+     * and the call reaches core first (lead decision M5-54): a start, the self-test, Check a backup's
+     * openBackup or Load registry snapshot's loadSnapshot, which core offers at home, then runs, and the second look finds the flag, so what it
      * made is discarded again here, on the worker, before its reply goes back (a cancelled scope, the
      * holder's end, which cancels it before wipeAll, drops the reply on the main thread but cannot skip
      * this); finish, revealProof, encryptBackup and verifyBackup, which core does not offer at home, halt
@@ -1352,6 +1531,10 @@ class CeremonyModel(
             fileRefusal = previous.fileRefusal,
             entryRefusal = previous.entryRefusal,
             opened = previous.opened,
+            watch = previous.watch,
+            registration = previous.registration,
+            deviceLeg = previous.deviceLeg,
+            snapshotRefusal = previous.snapshotRefusal,
         )
     }
 
@@ -1442,6 +1625,53 @@ class CeremonyModel(
         checked = null
     }
 
+    /**
+     * A file the open-document picker gave, while Home shows (a late answer, after a discard say, gives
+     * null and does nothing): none, and Home stays; a file refused unless its name ends in suffix (any
+     * letter case, as the Pi lists its stick's) and its provider reports a size within limit, both before
+     * any byte is read (notNamed or tooLarge, and an unknown size), then read, which stops one byte past
+     * limit (a provider that sized it wrongly is refused too, tooLarge, as is a read that fails). A refused
+     * file is never read, or its bytes are zeroed, and Home says why; null then. The bytes read otherwise,
+     * for their caller to zero.
+     */
+    private fun picked(file: PickedFile?, suffix: String, limit: Int, notNamed: FileRefusal, tooLarge: FileRefusal): ByteArray? {
+        if (busy() || mutable.value.screen != Screen.Home) return null
+        timers.input()
+        if (file == null) return null
+        val size = file.size
+        val refusal = when {
+            file.name?.endsWith(suffix, ignoreCase = true) != true -> notNamed
+            size == null -> FileRefusal.NoSize
+            size < 0 || size > limit -> tooLarge
+            else -> null
+        }
+        if (refusal != null) {
+            show(Screen.Home, fileRefusal = refusal)
+            return null
+        }
+        val bytes = file.read(limit)
+        if (bytes == null || bytes.size > limit) {
+            bytes?.fill(0)
+            show(Screen.Home, fileRefusal = if (bytes == null) FileRefusal.Unreadable else tooLarge)
+            return null
+        }
+        return bytes
+    }
+
+    /**
+     * Load registry snapshot's verified header: the slot holds that snapshot, so Check now runs the check
+     * against it on its own (docs/mobile-apps.md, step 9) and Home names it, until wipeAll (it outlives
+     * sessions and discards, as the slot's does).
+     */
+    private fun snapshotLoaded(header: RegistryHeader) {
+        snapshot = header
+    }
+
+    /** After the registration (its QR or its Skip): D's offer in Mixed mode, where D exists, else the checklist (the Pi's after_register). */
+    private fun afterRegistration() {
+        show(if (mode == Mode.Mixed) Screen.RevealDOffer else Screen.Checklist)
+    }
+
     /** One of the check's screens after the seal card, with the seal card and its check QR (the same check and nonce). */
     private fun showInCheck(screen: Screen, codeRefused: Boolean = false, scanRefusal: Refusal? = null) {
         val current = mutable.value
@@ -1504,6 +1734,10 @@ class CeremonyModel(
         fileRefusal: FileRefusal? = null,
         entryRefusal: Refusal? = null,
         opened: OpenedBackup? = null,
+        watch: WatchOnly? = null,
+        registration: QrMatrix? = null,
+        deviceLeg: Secret? = null,
+        snapshotRefusal: Refusal? = null,
     ) {
         val current = mutable.value
         val leaving = if (isWorking(current.screen)) from.screen else current.screen
@@ -1546,6 +1780,11 @@ class CeremonyModel(
                 fileRefusal = fileRefusal,
                 entryRefusal = entryRefusal,
                 opened = opened,
+                watch = watch,
+                registration = registration,
+                deviceLeg = deviceLeg,
+                loaded = snapshot,
+                snapshotRefusal = snapshotRefusal,
             ),
         )
     }
@@ -1554,10 +1793,11 @@ class CeremonyModel(
      * The next state, and what a screen holds while it shows: the motion source runs only on Device
      * entropy; the dice pad's pick is wiped when the dice screen leaves, the typed go-ahead code when
      * the code entry does, the read-back's letters when its entry does, and the backup's letters when
-     * its confirm or Check a backup's entry does; a QR code, word page, read-back verdicts, passphrase
-     * page or confirm choices the state held and the next one does not are wiped (rule 5: the collision
-     * report's carries a seal code, the words and verdicts are the seed's, and the passphrase opens its
-     * backup). The backup's encrypted file is zeroed once neither the save screen nor a long call shows,
+     * its confirm or Check a backup's entry does, and the BIP39 passphrase when its entry does; a QR code,
+     * word page, read-back verdicts, passphrase page, confirm choices, watch-only export or D the state
+     * held and the next one does not are wiped (rule 5: the collision report's and the registration's
+     * carry a seal code, the watch-only QRs the xpub, the words and verdicts are the seed's, the
+     * passphrase opens its backup, and D and the rolls recreate the seed). The backup's encrypted file is zeroed once neither the save screen nor a long call shows,
      * and Check a backup's file and entries once neither its entry nor a long call does.
      */
     private fun enter(next: UiState) {
@@ -1574,6 +1814,12 @@ class CeremonyModel(
         if (passphrase != null && passphrase !== next.passphrase) passphrase.wipe()
         val challenge = previous.challenge
         if (challenge != null && challenge !== next.challenge) challenge.wipe()
+        val watch = previous.watch
+        if (watch != null && watch !== next.watch) watch.wipe()
+        val registration = previous.registration
+        if (registration != null && registration !== next.registration) registration.wipe()
+        val leg = previous.deviceLeg
+        if (leg != null && leg !== next.deviceLeg) leg.wipe()
         if (!isWorking(next.screen) && next.screen != Screen.BackupSave) dropBackupFile()
         if (!isWorking(next.screen) && next.screen != Screen.BackupCheckEntry) {
             dropCheckFile()
@@ -1585,6 +1831,7 @@ class CeremonyModel(
         if (before == Screen.CodeEntry) goAheadCode.wipe()
         if (before == Screen.ReadbackEntry) readbackLetters.wipe()
         if (before == Screen.BackupConfirm || before == Screen.BackupCheckEntry) backupLetters.wipe()
+        if (before == Screen.Bip39Entry) bip39Letters.wipe()
         if (next.screen == Screen.DeviceEntropy) motion.start(this::motionSample)
     }
 
@@ -1635,9 +1882,10 @@ class CeremonyModel(
 
     /**
      * Where Back goes from screen: only where nothing is lost, before any session, in the check from a
-     * confirm screen or the code entry to the screen that offered it, and in Check a backup from its
-     * entry Home and from its re-check QR to its result; null elsewhere (the words', the overview's and
-     * the backup passphrase's page before is back's own).
+     * confirm screen or the code entry to the screen that offered it, from the BIP39 passphrase's entry to
+     * its question, in Check a backup from its entry Home and from its re-check QR to its result, and from
+     * Load registry snapshot's result and About Home; null elsewhere (the words', the overview's, the
+     * backup passphrase's and the descriptor QR's page before is back's own).
      */
     private fun backTo(screen: Screen): Screen? = when (screen) {
         Screen.GoOffline -> Screen.FirstLaunch
@@ -1645,16 +1893,19 @@ class CeremonyModel(
         Screen.Length -> Screen.Home
         Screen.SkipConfirm -> Screen.CheckPrompt
         Screen.Scan, Screen.CodeEntry, Screen.MatchFoundConfirm, Screen.CannotCheckConfirm -> Screen.SealCard
-        Screen.BackupCheckEntry -> Screen.Home
+        Screen.Bip39Entry -> Screen.Bip39Ask
+        Screen.BackupCheckEntry, Screen.Snapshot, Screen.About -> Screen.Home
         Screen.BackupRecheck -> Screen.BackupCheckResult
         Screen.SelfTest, Screen.FirstLaunch, Screen.DeviceEntropy, Screen.Commitment, Screen.Dice, Screen.CheckPrompt,
         Screen.SealCard, Screen.Collision, Screen.CollisionReport, Screen.CheckResult, Screen.Words, Screen.WordsOverview,
         Screen.DeviceSwap, Screen.ReadbackEntry, Screen.ReadbackMismatch, Screen.ReadbackDone, Screen.Wallet,
         Screen.BackupOffer, Screen.BackupPassphrase, Screen.BackupConfirm, Screen.BackupSave, Screen.BackupVerified,
-        Screen.Checklist, Screen.BackupCheckResult, Screen.Working, Screen.Stop -> null
+        Screen.WatchOffer, Screen.Bip39Ask, Screen.WatchSummary, Screen.WatchAccountQr, Screen.WatchDescriptorQr,
+        Screen.RegisterOffer, Screen.RegisterQr, Screen.RevealDOffer, Screen.RevealD, Screen.Checklist,
+        Screen.BackupCheckResult, Screen.Working, Screen.Stop -> null
     }
 
-    /** Whether screen needs airplane mode on and Wi-Fi off (Q57): every screen from Home on, Check a backup's too. */
+    /** Whether screen needs airplane mode on and Wi-Fi off (Q57): every screen from Home on, Check a backup's, Load registry snapshot's and About too. */
     private fun needsOffline(screen: Screen): Boolean = when (screen) {
         Screen.SelfTest, Screen.FirstLaunch, Screen.GoOffline, Screen.Working, Screen.Stop -> false
         Screen.Home, Screen.Length, Screen.DeviceEntropy, Screen.Commitment, Screen.Dice, Screen.CheckPrompt,
@@ -1662,7 +1913,10 @@ class CeremonyModel(
         Screen.CannotCheckConfirm, Screen.Collision, Screen.CollisionReport, Screen.CheckResult, Screen.Words,
         Screen.WordsOverview, Screen.DeviceSwap, Screen.ReadbackEntry, Screen.ReadbackMismatch, Screen.ReadbackDone,
         Screen.Wallet, Screen.BackupOffer, Screen.BackupPassphrase, Screen.BackupConfirm, Screen.BackupSave,
-        Screen.BackupVerified, Screen.Checklist, Screen.BackupCheckEntry, Screen.BackupCheckResult, Screen.BackupRecheck -> true
+        Screen.BackupVerified, Screen.WatchOffer, Screen.Bip39Ask, Screen.Bip39Entry, Screen.WatchSummary,
+        Screen.WatchAccountQr, Screen.WatchDescriptorQr, Screen.RegisterOffer, Screen.RegisterQr, Screen.RevealDOffer,
+        Screen.RevealD, Screen.Checklist, Screen.BackupCheckEntry, Screen.BackupCheckResult, Screen.BackupRecheck,
+        Screen.Snapshot, Screen.About -> true
     }
 
     /** The slot is collecting and Device entropy shows: extras go into the pool (until the commitment). */

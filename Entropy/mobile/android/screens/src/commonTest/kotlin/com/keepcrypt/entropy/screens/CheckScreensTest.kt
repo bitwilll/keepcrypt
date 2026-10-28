@@ -340,9 +340,7 @@ class CheckScreensTest {
 
     @Test
     fun aLoadedSnapshotsCheckIsAShortCallThatFindsTheCollisionAtOnceBeforeAnyWords() {
-        val rig = Rig().toHome()
-        val header = done(Core.loadSnapshot(rig.date.today(), kcrSnapshot("with-dice-50")), "with-dice-50 loads")
-        rig.model.snapshotLoaded(header)
+        val rig = Rig().toHome().loadSnapshot("with-dice-50")
         sealed(rig)
         val ran = rig.worker.ran
         rig.model.checkNow()
@@ -367,8 +365,7 @@ class CheckScreensTest {
         )
         for ((name, freshness, warning) in cases) {
             assertTrue(Core.wipeAll() is Reply.Done)
-            val rig = Rig().toHome()
-            rig.model.snapshotLoaded(done(Core.loadSnapshot(rig.date.today(), kcrSnapshot(name)), name + " loads"))
+            val rig = Rig().toHome().loadSnapshot(name)
             sealed(rig)
             rig.model.checkNow()
             assertEquals(0, rig.worker.waiting, name + ": nothing on the worker (M5-54)")

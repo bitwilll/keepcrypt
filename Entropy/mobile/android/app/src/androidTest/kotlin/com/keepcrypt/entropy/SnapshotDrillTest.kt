@@ -23,8 +23,6 @@ import com.keepcrypt.entropy.screens.SCAN_MISSING
 import com.keepcrypt.entropy.screens.STALE_WARNING
 import com.keepcrypt.entropy.screens.ScanStop
 import com.keepcrypt.entropy.screens.Screen
-import java.time.LocalDate
-import java.time.ZoneOffset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -49,8 +47,10 @@ import org.junit.runner.RunWith
  * seed's Seal ID drawn, before any words, then the report behind the privacy gate and 99 rolls.
  *
  * The duplicate-seed drill with a loaded snapshot (P4's second step): vectors/kcr.json's snapshot
- * with-dice-50, signed by the test registry key, is loaded through Core and handed to the model, as
- * commit 21's Load registry snapshot will (lead decision M5-48: no Home entry before its screen).
+ * with-dice-50, signed by the test registry key, put in Downloads by the shell, is loaded through Home's
+ * Load registry snapshot (lead decision M5-48): the system's open-document picker (DocumentsUI) gives it,
+ * core verifies it behind "Working...", and its result shows its number, date and count and its Stale
+ * warning (the snapshot is dated 2026-03-01), its header handed to the model; Done, and Home names it.
  * Then a dice-only seed of the public gate seed dice-50-words12, whose seal the snapshot holds:
  * the dice's Done, Check now, and the check runs on its own, a short call with no busy screen (lead
  * decision M5-54): the collision result at once, with the snapshot's number, date and its Stale warning
@@ -112,52 +112,68 @@ class SnapshotDrillTest {
     }
 
     @Test
-    fun aLoadedSnapshotsCheckFindsTheCollisionBeforeAnyWordsAndFreshEntropyNeeds99Rolls() {
+    fun aSnapshotLoadedThroughThePickerFindsTheCollisionBeforeAnyWordsAndFreshEntropyNeeds99Rolls() {
         Capture.whileOffline {
-            val activity = toHome()
-            val today = LocalDate.now(ZoneOffset.UTC).let { it.year * 10_000 + it.monthValue * 100 + it.dayOfMonth }
-            val header = when (val loaded = Core.loadSnapshot(today, Checker.bytes(WITH_DICE_50_KCR))) {
-                is Reply.Done -> loaded.value
-                is Reply.Refused, Reply.Discarded -> throw AssertionError("with-dice-50.kcr did not load in the test-registry APK")
+            Picker.putInDownloads(Checker.WITH_DICE_50_FILE, Checker.bytes(Checker.WITH_DICE_50_KCR))
+            try {
+                drillWithTheSnapshotPicked()
+            } finally {
+                Picker.removeFromDownloads(Checker.WITH_DICE_50_FILE)
             }
-            assertEquals(4UL, header.number)
-            assertEquals(20260301, header.date)
-            assertEquals(7L, header.count)
-            assertEquals("a snapshot dated 2026-03-01 is Stale on the emulator's date", Freshness.Stale, header.freshness)
-            onMain { activity.model.snapshotLoaded(header) }
-            tap("dice_only_seed")
-            on(activity, Screen.Length)
-            tap("words_12")
-            on(activity, Screen.Dice, START_SECONDS)
-            roll(activity, 50, DICE_50_ROLLS)
-            awaitText("dice_count", "50 / 50 rolls, 129.2 bits")
-            tap("dice_done")
-            on(activity, Screen.CheckPrompt, START_SECONDS)
-            tap("check_now")
-            on(activity, Screen.Collision)
-            awaitText("collision_text", COLLISION_FOUND)
-            awaitText("snapshot_line", "Snapshot No. 4, dated 2026-03-01, 7 entries.")
-            awaitText("snapshot_warning", STALE_WARNING)
-            assertNotNull("the collision result does not draw dice-50-words12's Seal ID", shown(Screen.Collision, DICE_50_SEAL_ID))
-            done(Core.collisionReport(), "the report: the slot waits at the restart, the words never made available").wipe()
-            tap("show_report")
-            find("privacy_gate")
-            assertTrue("the report showed before the privacy gate", onMain { activity.model.state.value.gate })
-            tap("pass_gate")
-            await("past the gate", 10) { !onMain { activity.model.state.value.gate } }
-            on(activity, Screen.CollisionReport)
-            val report = onMain { activity.model.state.value.report } ?: throw AssertionError("no collision-report QR")
-            assertEquals(Checker.ORIGIN + "/register#c=" + DICE_50_SEAL_CODE, Checker.read(report))
-            tap("add_fresh_entropy")
-            on(activity, Screen.Dice, START_SECONDS)
-            awaitText("dice_count", "0 / 99 rolls, 0.0 bits")
-            pass(
-                "the snapshot drill: with-dice-50 loaded, dice-50-words12's check ran on its own: the collision, its " +
-                    "snapshot line and Stale warning and its Seal ID $DICE_50_SEAL_ID, before any words; the report QR behind " +
-                    "the gate; Add fresh entropy: 0 / 99",
-            )
-            finish(activity)
         }
+    }
+
+    /** The drill of aSnapshotLoadedThroughThePicker...: the snapshot picked from Downloads on Home, then the check that runs on its own. */
+    private fun drillWithTheSnapshotPicked() {
+        val activity = toHome()
+        awaitText("home_snapshot", "No registry snapshot loaded")
+        tap("load_snapshot")
+        Picker.pick(Checker.WITH_DICE_50_FILE)
+        on(activity, Screen.Snapshot, START_SECONDS)
+        awaitText("snapshot_result", "Snapshot loaded")
+        awaitText("snapshot_line", "Snapshot No. 4, dated 2026-03-01, 7 entries.")
+        awaitText("snapshot_warning", STALE_WARNING)
+        val header = onMain { activity.model.state.value.loaded } ?: throw AssertionError("the model holds no snapshot after its load")
+        assertEquals(4UL, header.number)
+        assertEquals(20260301, header.date)
+        assertEquals(7L, header.count)
+        assertEquals("a snapshot dated 2026-03-01 is Stale on the emulator's date", Freshness.Stale, header.freshness)
+        tap("snapshot_done")
+        on(activity, Screen.Home)
+        awaitText("home_snapshot", "Snapshot No. 4, dated 2026-03-01")
+        tap("dice_only_seed")
+        on(activity, Screen.Length)
+        tap("words_12")
+        on(activity, Screen.Dice, START_SECONDS)
+        roll(activity, 50, DICE_50_ROLLS)
+        awaitText("dice_count", "50 / 50 rolls, 129.2 bits")
+        tap("dice_done")
+        on(activity, Screen.CheckPrompt, START_SECONDS)
+        tap("check_now")
+        on(activity, Screen.Collision)
+        awaitText("collision_text", COLLISION_FOUND)
+        awaitText("snapshot_line", "Snapshot No. 4, dated 2026-03-01, 7 entries.")
+        awaitText("snapshot_warning", STALE_WARNING)
+        assertNotNull("the collision result does not draw dice-50-words12's Seal ID", shown(Screen.Collision, DICE_50_SEAL_ID))
+        done(Core.collisionReport(), "the report: the slot waits at the restart, the words never made available").wipe()
+        tap("show_report")
+        find("privacy_gate")
+        assertTrue("the report showed before the privacy gate", onMain { activity.model.state.value.gate })
+        tap("pass_gate")
+        await("past the gate", 10) { !onMain { activity.model.state.value.gate } }
+        on(activity, Screen.CollisionReport)
+        val report = onMain { activity.model.state.value.report } ?: throw AssertionError("no collision-report QR")
+        assertEquals(Checker.ORIGIN + "/register#c=" + DICE_50_SEAL_CODE, Checker.read(report))
+        tap("add_fresh_entropy")
+        on(activity, Screen.Dice, START_SECONDS)
+        awaitText("dice_count", "0 / 99 rolls, 0.0 bits")
+        pass(
+            "the snapshot drill: with-dice-50 picked from Downloads through DocumentsUI and loaded (No. 4, dated " +
+                "2026-03-01, 7 entries, the Stale warning), Home naming it; dice-50-words12's check ran on its own: the " +
+                "collision, its snapshot line and Stale warning and its Seal ID $DICE_50_SEAL_ID, before any words; the " +
+                "report QR behind the gate; Add fresh entropy: 0 / 99",
+        )
+        finish(activity)
     }
 
     /**
@@ -261,18 +277,5 @@ class SnapshotDrillTest {
                 "tonloahwfdihghgwfpmeetbdtprksfwdwimosespmtlwprdldykcpaynyrpcwkbaaftjzkpaoplgaaetapfsrctidlecwfgprbne" +
                 "oetaapkzspyrkfdiyrpambafrcxisbkmsnsmwtylfvtvlbzlkdlfrlgasgwmdmkadimoevywnjnjzhdmhltjnvdknhtfslajzatf" +
                 "xzclovdoxoy"
-
-        /**
-         * vectors/kcr.json's snapshot with-dice-50 (its kcr_hex): No. 4, dated 2026-03-01, 7 entries,
-         * dice-50-words12's tag among them, signed by the test registry key. The JVM tests read the same
-         * bytes from that file (CheckScreensTest, RegistryTest), and GoAheadPngTest writes them as the P4
-         * drill's with-dice-50.kcr.
-         */
-        const val WITH_DICE_50_KCR =
-            "4b43523100010000000000000004013525cd00000000000000073cd2a5fdd97d7455b6ae2c8b38f77a215a9ca209237f4948" +
-                "5b12f007183e178540a30ab1ed5068055f67dca3f05f55bbbe0d671d2bc0127c79bf7e24c374c12566afadc472842fc708888e" +
-                "95715e2ac14d5ca32b18323ecbbabcdc16c1e4c001000003b6fc1f9b5fffc1c56c263ba53600012b8103c8dd64611df5c8c28b" +
-                "8fbf864bffff2b81090b7fd157945acf1ff22896eb67000280000a639f49af784c7a85ebd0bd4e88000380000d8506a789e8fb" +
-                "58a21cca8fec260001f6e8965ac3e420f9061e7c1a7e9d829d0001fffff018c5294cb896e60c612c7ea7be0007"
     }
 }

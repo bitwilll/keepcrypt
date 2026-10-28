@@ -253,6 +253,22 @@ object Core {
      */
     const val BACKUP_MAX_BYTES = 8 * 1024
 
+    /**
+     * A registry snapshot's name ends so (rule 8: the only files the app reads are .age backups and .kcr
+     * snapshots): Load registry snapshot opens no file whose name does not, in any letter case, as the Pi
+     * lists its stick's (pi/app's hal.rs). SnapshotFileTest pins it against the Pi's source.
+     */
+    const val SNAPSHOT_SUFFIX = ".kcr"
+
+    /**
+     * The largest snapshot core reads: its signed header, 122 bytes, and 2^22 entries of 18 bytes
+     * (docs/seal-watchonly-braille.md, "Snapshot format"), the file keepcrypt-jni's MAX_INPUT takes
+     * after the date's 4 bytes, past which a call halts. Load registry snapshot reads no file its
+     * provider sizes larger, and its read stops one byte past it. SnapshotFileTest pins it against
+     * ffi/jni/src/lib.rs.
+     */
+    const val SNAPSHOT_MAX_BYTES = 122 + 18 * (1 shl 22)
+
     /** Halts the slot (an op the table does not hold) and throws KcHalt: the shell's way to fail
      * closed on a call or reply it cannot make sense of. */
     fun halt(): Nothing {

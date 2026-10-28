@@ -29,9 +29,13 @@ import com.keepcrypt.entropy.Ui.tap
 import com.keepcrypt.entropy.Ui.text
 import com.keepcrypt.entropy.Ui.toHome
 import com.keepcrypt.entropy.ffi.Core
+import com.keepcrypt.entropy.ffi.QrMatrix
 import com.keepcrypt.entropy.ffi.Reply
+import com.keepcrypt.entropy.ffi.Secret
 import com.keepcrypt.entropy.ffi.Verdict
 import com.keepcrypt.entropy.ffi.WordPage
+import com.keepcrypt.entropy.screens.APP_VERSION
+import com.keepcrypt.entropy.screens.ASCII_PAGES
 import com.keepcrypt.entropy.screens.CHECKLIST
 import com.keepcrypt.entropy.screens.DICE_KEYS
 import com.keepcrypt.entropy.screens.DICE_ONLY
@@ -41,14 +45,22 @@ import com.keepcrypt.entropy.screens.LETTER_KEYS
 import com.keepcrypt.entropy.screens.MAX_ROLLS
 import com.keepcrypt.entropy.screens.Notice
 import com.keepcrypt.entropy.screens.OVERVIEW_WORDS
+import com.keepcrypt.entropy.screens.PASSPHRASE_WALLET
+import com.keepcrypt.entropy.screens.REVEAL_D
 import com.keepcrypt.entropy.screens.SAFE_IF_EITHER
 import com.keepcrypt.entropy.screens.SECRET_TAG
 import com.keepcrypt.entropy.screens.SEEDBOOK_RULES
 import com.keepcrypt.entropy.screens.SKIPPED
+import com.keepcrypt.entropy.screens.SOURCE_ADDRESS
 import com.keepcrypt.entropy.screens.Screen
 import com.keepcrypt.entropy.screens.TWO_DEVICES
+import com.keepcrypt.entropy.screens.asciiPage
+import com.keepcrypt.entropy.screens.deviceLegText
 import com.keepcrypt.entropy.screens.fingerprintHex
+import com.keepcrypt.entropy.screens.flavourText
+import com.keepcrypt.entropy.screens.hexGroups
 import com.keepcrypt.entropy.screens.screenId
+import java.security.MessageDigest
 import java.util.regex.Pattern
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -57,9 +69,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * The flows on the phone (tasks/todo.md, M5 groups 15 and 17), run by scripts/android-instrument.sh on
- * the shipping app in the API 31 and 36 legs: the screens from the start to the dice, and the words to
- * the end of the ceremony. UI Automator taps the controls by their resource ids (Compose test tags,
+ * The flows on the phone (tasks/todo.md, M5 groups 15, 17 and 18), run by scripts/android-instrument.sh
+ * on the shipping app in the API 31 and 36 legs: the screens from the start to the dice, the words to
+ * the end of the ceremony, the exports after the backup (the watch-only export with a BIP39 passphrase,
+ * the registration and D) and Home's About. UI Automator taps the controls by their resource ids (Compose test tags,
  * group 6) as a user would, and reads what they show from the accessibility tree; the many rolls a
  * minimum takes go through the model's dice pick and confirmRoll, the entry points the pad and Confirm
  * call (group 6, "Driving"), with a few by tap around them (Ui, shared with CheckTest and
@@ -382,8 +395,10 @@ class FlowTest {
      * mirror partner: the mismatch names that face a mirror misread; Show the insert, whose one way on is
      * back to the read-back; the insert typed on the pad correctly: a match, the whole word shown; the rest
      * read back; the read-back's end, the wallet summary (core's fingerprint and first address), the
-     * encrypted backup's offer and its Skip (BackupTest saves one), the checklist and Finish: Home, with
-     * the slot empty.
+     * encrypted backup's offer and its Skip (BackupTest saves one), the watch-only offer and its Skip, the
+     * registration QR behind the privacy gate (read in-process: the seed's registration text, its seal code
+     * kcr.json's), its Next leading straight to the checklist (a dice-only seed has no D), and Finish: Home,
+     * with the slot empty.
      */
     @Test
     fun aDiceOnlySeedsWordsReadBackOnTheLetterPadToTheSummaryAndFinishHome() {
@@ -458,7 +473,18 @@ class FlowTest {
             tap("summary_next")
             on(activity, Screen.BackupOffer)
             tap("skip_backup")
+            on(activity, Screen.WatchOffer)
+            tap("skip_watch_only")
+            on(activity, Screen.RegisterOffer)
+            tap("show_registration")
+            find("privacy_gate")
+            tap("pass_gate")
+            await("past the registration QR's gate", 10) { onMain { activity.model.state.value.let { it.screen == Screen.RegisterQr && !it.gate } } }
+            val registration = onMain { activity.model.state.value.registration } ?: throw AssertionError("no registration QR")
+            assertEquals(Checker.ORIGIN + "/register#c=" + DICE_50_SEAL_CODE, Checker.read(registration))
+            tap("registration_done")
             on(activity, Screen.Checklist)
+            assertTrue("the registration QR was not wiped as the checklist came", blank(registration))
             assertTrue("the checklist does not show its first item", shown(Screen.Checklist, CHECKLIST[0]) != null)
             assertFalse("a 12-word seed's checklist names two devices", device.hasObject(By.res("two_devices")))
             tap("finish")
@@ -468,8 +494,8 @@ class FlowTest {
                 "dice-50-words12's words: the gate with the SeedBook rules, 12 insert pages equal to the vector's words " +
                     "(in-process), Back and the overview's three pages; the letter pad's 26 keys with the button role alone " +
                     "and the dice pad's six labelled (M5-46); an e/i misread named a mirror misread on its face, the " +
-                    "insert reviewed and read again on the pad; 12 inserts read back, the summary, the checklist, Finish: " +
-                    "Home with the slot empty",
+                    "insert reviewed and read again on the pad; 12 inserts read back, the summary, the registration QR " +
+                    "(its seal code kcr.json's) and no D offer for a dice-only seed, the checklist, Finish: Home with the slot empty",
             )
             finish(activity)
         }
@@ -529,6 +555,10 @@ class FlowTest {
             tap("summary_next")
             on(activity, Screen.BackupOffer)
             tap("skip_backup")
+            on(activity, Screen.WatchOffer)
+            tap("skip_watch_only")
+            on(activity, Screen.RegisterOffer)
+            tap("skip_registration")
             on(activity, Screen.Checklist)
             assertTrue("the checklist does not say which device holds words 1-12", shown(Screen.Checklist, TWO_DEVICES) != null)
             tap("finish")
@@ -543,9 +573,249 @@ class FlowTest {
         }
     }
 
+    /**
+     * The exports (group 18; docs/mobile-apps.md, steps 14-16; docs/seal-watchonly-braille.md, "Watch-only
+     * export" and "Registering a new seal") of a new seed, 12 words, mixed with the phone's D: its start
+     * tapped to the dice, C read from the commitment screen (public), 50 rolls, Done, then Skip, the words and
+     * their read-back through the model's entry points (each insert read from the page the state holds, its
+     * copy wiped at once), the summary, the backup's offer skipped; the watch-only offer, the BIP39 question
+     * and "I use a passphrase": its entry behind the privacy gate, the ASCII pad's three pages of keys each
+     * with its button role alone (lead decision M5-46) and no node naming a key, paged by Next keys and
+     * Previous keys, the passphrase typed into the model's PadEntry, as the pad types it (no passphrase goes
+     * into a selector or a click's point, lead decision M5-68 (e)), the keys paged on and back so the entry
+     * redraws with it, Delete taking a character back, and Done: the summary says it is that passphrase's wallet, another fingerprint than the
+     * wallet summary's; the account QR behind the gate and the descriptor QR, each read in-process equal to
+     * core's own (Core.watchOnly with the same passphrase), the account a crypto-account UR and the
+     * descriptors two lines under the summary's fingerprint, Back between them, Done wiping them; the
+     * registration QR behind the gate, core's, a register text with a 26-symbol seal code; D's offer (Mixed
+     * mode) with its warning, D behind the gate, drawn by a secret node, whose SHA-256 under "KCE/v1/commit"
+     * is the C the commitment screen showed; Next wiping it, the checklist and Finish: Home. Every export's
+     * text is compared in-process only and never printed.
+     */
+    @Test
+    fun aNewSeedsExportsTheWatchOnlyQrsOfAPassphrasesWalletTheRegistrationAndD() {
+        Capture.whileOffline {
+            val activity = toHome()
+            tap("new_seed")
+            on(activity, Screen.Length)
+            tap("words_12")
+            on(activity, Screen.DeviceEntropy, START_SECONDS)
+            tap("continue")
+            on(activity, Screen.Commitment)
+            val c = onMain { activity.model.state.value.commitment } ?: throw AssertionError("no C on the commitment screen")
+            tap("continue")
+            on(activity, Screen.Dice)
+            roll(activity, 50, DICE_50_ROLLS)
+            awaitText("dice_count", "50 / 50 rolls, 129.2 bits")
+            tap("dice_done")
+            on(activity, Screen.CheckPrompt, START_SECONDS)
+            onMain {
+                val model = activity.model
+                model.skip()
+                model.skipConfirmed()
+                model.showWords()
+                model.passGate()
+                repeat(INSERTS_PER_DEVICE - 1) { model.nextPage() }
+                model.startReadback()
+                repeat(INSERTS_PER_DEVICE) {
+                    val word = checkNotNull(model.state.value.insert).word()
+                    for (index in 0 until minOf(4, word.size)) model.readbackLetters.type(Char(word[index].toInt()))
+                    word.wipe()
+                    model.readbackTyped()
+                    model.readbackNext()
+                }
+                model.showSummary()
+            }
+            on(activity, Screen.Wallet)
+            val wallet = onMain { checkNotNull(activity.model.state.value.summary) }
+            tap("summary_next")
+            on(activity, Screen.BackupOffer)
+            tap("skip_backup")
+            on(activity, Screen.WatchOffer)
+            tap("show_watch_only")
+            on(activity, Screen.Bip39Ask)
+            tap("with_bip39_passphrase")
+            find("privacy_gate")
+            tap("pass_gate")
+            await("past the BIP39 entry's gate", 10) { onMain { activity.model.state.value.let { it.screen == Screen.Bip39Entry && !it.gate } } }
+            on(activity, Screen.Bip39Entry)
+            for (page in 0 until ASCII_PAGES) {
+                awaitText("keys_page", "Keys, page " + (page + 1) + " of " + ASCII_PAGES)
+                asciiKeys(asciiPage(page).length)
+                if (page + 1 < ASCII_PAGES) tap("keys_next")
+            }
+            assertFalse("Next keys on the last page", enabled("keys_next"))
+            repeat(ASCII_PAGES - 1) { tap("keys_previous") }
+            awaitText("keys_page", "Keys, page 1 of " + ASCII_PAGES)
+            assertFalse("Done with nothing typed", enabled("bip39_done"))
+            val typed = onMain {
+                val letters = activity.model.bip39Letters
+                for (key in PASSPHRASE + "!") letters.type(key)
+                letters.length
+            }
+            assertEquals(PASSPHRASE.length + 1, typed)
+            // Typed in-process, so the entry has not redrawn: a page of keys on and back redraws it, as a key's press would.
+            tap("keys_next")
+            tap("keys_previous")
+            assertTrue("Delete is not enabled with the passphrase typed", enabled("bip39_delete"))
+            tap("bip39_delete")
+            val held = onMain {
+                val letters = activity.model.bip39Letters
+                letters.length == PASSPHRASE.length && PASSPHRASE.indices.all { letters.keyAt(it) == PASSPHRASE[it] }
+            }
+            assertTrue("Delete did not take the last character back (none is printed)", held)
+            tap("bip39_done")
+            on(activity, Screen.WatchSummary)
+            assertEquals(0, onMain { activity.model.bip39Letters.length })
+            awaitText("passphrase_wallet", PASSPHRASE_WALLET)
+            val watch = onMain { activity.model.state.value.watch } ?: throw AssertionError("no watch-only export")
+            assertTrue("the export is not the passphrase's wallet", watch.passphraseUsed)
+            assertFalse("the passphrase's wallet has the seed's own fingerprint", watch.summary.fingerprint.contentEquals(wallet.fingerprint))
+            val fingerprint = fingerprintHex(watch.summary.fingerprint)
+            awaitText("watch_fingerprint", fingerprint)
+            awaitText("watch_first_address", watch.summary.firstAddress)
+            val core = when (val made = Core.watchOnly(Secret(PASSPHRASE.encodeToByteArray()))) {
+                is Reply.Done -> made.value
+                is Reply.Refused, Reply.Discarded -> throw AssertionError("core made no export of the passphrase's wallet")
+            }
+            tap("watch_summary_next")
+            find("privacy_gate")
+            tap("pass_gate")
+            await("past the account QR's gate", 10) { onMain { activity.model.state.value.let { it.screen == Screen.WatchAccountQr && !it.gate } } }
+            on(activity, Screen.WatchAccountQr)
+            val account = Checker.read(watch.account)
+            assertTrue("the account QR drawn is not core's (neither is printed)", account == Checker.read(core.account))
+            assertTrue("the account QR is not a crypto-account UR (it is not printed)", account.startsWith("UR:CRYPTO-ACCOUNT/"))
+            tap("watch_next")
+            on(activity, Screen.WatchDescriptorQr)
+            val descriptors = Checker.read(watch.descriptors)
+            assertTrue("the descriptor QR drawn is not core's (neither is printed)", descriptors == Checker.read(core.descriptors))
+            val lines = descriptors.split("\n")
+            val origin = "wpkh([" + fingerprint + "/84h/0h/0h]xpub"
+            assertTrue(
+                "the descriptor QR is not the receive and change descriptors under the summary's fingerprint (it is not printed)",
+                lines.size == 2 && lines.all { it.startsWith(origin) } && lines[0].contains("/0/*)#") && lines[1].contains("/1/*)#"),
+            )
+            core.wipe()
+            device.pressBack()
+            on(activity, Screen.WatchAccountQr)
+            tap("watch_next")
+            on(activity, Screen.WatchDescriptorQr)
+            tap("watch_done")
+            on(activity, Screen.RegisterOffer)
+            assertTrue("the export's QRs were not wiped as the registration's offer came", blank(watch.account) && blank(watch.descriptors))
+            tap("show_registration")
+            find("privacy_gate")
+            tap("pass_gate")
+            await("past the registration QR's gate", 10) { onMain { activity.model.state.value.let { it.screen == Screen.RegisterQr && !it.gate } } }
+            val registration = onMain { activity.model.state.value.registration } ?: throw AssertionError("no registration QR")
+            val text = Checker.read(registration)
+            val ours = when (val made = Core.registration()) {
+                is Reply.Done -> made.value
+                is Reply.Refused, Reply.Discarded -> throw AssertionError("core made no registration QR")
+            }
+            assertTrue("the registration QR drawn is not core's (neither is printed)", text == Checker.read(ours))
+            ours.wipe()
+            assertTrue("the registration QR is not a register text with a seal code (it is not printed)", REGISTER.matches(text))
+            tap("registration_done")
+            on(activity, Screen.RevealDOffer)
+            awaitText("reveal_d_warning", REVEAL_D)
+            tap("show_d")
+            find("privacy_gate")
+            tap("pass_gate")
+            await("past D's gate", 10) { onMain { activity.model.state.value.let { it.screen == Screen.RevealD && !it.gate } } }
+            on(activity, Screen.RevealD)
+            val (shownD, commits) = onMain {
+                val leg = checkNotNull(activity.model.state.value.deviceLeg)
+                val digest = MessageDigest.getInstance("SHA-256")
+                digest.update("KCE/v1/commit".toByteArray(Charsets.US_ASCII))
+                val d = ByteArray(leg.size) { leg[it] }
+                digest.update(d)
+                d.fill(0)
+                Pair(deviceLegText(leg), hexGroups(digest.digest()) == c)
+            }
+            assertTrue("D is not drawn by a secret node (it is not printed)", drawsSecret(shownD))
+            assertTrue("SHA-256(\"KCE/v1/commit\" || D) is not the C the commitment screen showed (neither is printed)", commits)
+            val leg = onMain { checkNotNull(activity.model.state.value.deviceLeg) }
+            tap("d_done")
+            on(activity, Screen.Checklist)
+            assertTrue("D was not wiped as the checklist came", (0 until leg.size).all { leg[it] == 0.toByte() })
+            tap("finish")
+            on(activity, Screen.Home)
+            assertTrue("the slot is not at home: Finish did not end the session", Core.selfTest() is Reply.Done)
+            pass(
+                "a new seed's exports: the BIP39 passphrase's entry behind the gate, the ASCII pad's three pages of keys with " +
+                    "their role alone, Delete; its wallet's summary (another fingerprint); the account QR (a crypto-account " +
+                    "UR) and the descriptor QR (two descriptors under its fingerprint) equal to core's, in-process, then " +
+                    "wiped; the registration QR, core's; D behind the gate, SHA-256 under KCE/v1/commit equal to C; the " +
+                    "checklist, Finish: Home",
+            )
+            finish(activity)
+        }
+    }
+
+    /**
+     * Home's About (docs/mobile-apps.md, step 4): the version, the package's own versionName, this build's
+     * flavour (the shipping app) and the source address, a plain text no tap opens; the system Back and its
+     * Back button each return Home.
+     */
+    @Test
+    fun homesAboutShowsTheVersionTheFlavourAndTheSourceAsPlainTextAndBackReturnsHome() {
+        Capture.whileOffline {
+            val activity = toHome()
+            tap("about")
+            on(activity, Screen.About)
+            val context = Capture.instrumentation.targetContext
+            val version = context.packageManager.getPackageInfo(context.packageName, 0).versionName
+            awaitText("about_version", "Version " + version)
+            assertEquals("About's version is not the package's", APP_VERSION, version)
+            awaitText("about_flavour", flavourText(false))
+            awaitText("about_source", SOURCE_ADDRESS)
+            assertFalse("the source address is a link", find("about_source").isClickable)
+            device.pressBack()
+            on(activity, Screen.Home)
+            tap("about")
+            on(activity, Screen.About)
+            tap("back")
+            on(activity, Screen.Home)
+            pass("About: version $version, the shipping app's flavour, the source address as plain text; Back and the system Back: Home")
+            finish(activity)
+        }
+    }
+
+    /**
+     * The ASCII pad's keys on the BIP39 passphrase's entry (lead decision M5-46: a Protected pad): the
+     * screen's nodes with the button role and no text, description or resource id, which must be count, the
+     * page's keys; and no node there has a text of one character or a Public key's id (key_ and a key), so
+     * nothing names a key.
+     */
+    private fun asciiKeys(count: Int): List<UiObject2> {
+        device.waitForIdle()
+        val root = find(screenId(Screen.Bip39Entry))
+        val keys = root.findObjects(By.clazz(BUTTON)).filter {
+            it.text.isNullOrEmpty() && it.contentDescription.isNullOrEmpty() && it.resourceName.isNullOrEmpty()
+        }
+        assertEquals("the ASCII pad's keys on its page, each with its button role alone", count, keys.size)
+        assertFalse("a node on the BIP39 entry names a key", root.hasObject(By.text(Pattern.compile("."))))
+        assertFalse("a key on the BIP39 entry has a Public key's id", root.hasObject(By.res(Pattern.compile("key_.*"))))
+        return keys
+    }
+
+    /** Whether a QR code's matrix was wiped: no dark module left. */
+    private fun blank(matrix: QrMatrix): Boolean = (0 until matrix.side).all { y -> (0 until matrix.side).none { x -> matrix.isDark(x, y) } }
+
     private companion object {
         /** vectors/kcr.json's dice-50-words12: 123456 repeated. */
         const val DICE_50_ROLLS = "123456"
+
+        /** vectors/kcr.json's dice-50-words12's seal code, as its registration text carries it (a public gate-seed vector). */
+        const val DICE_50_SEAL_CODE = "B98KT954NNYSS6APNPZWCYY0VA"
+
+        /** A BIP39 passphrase of watchonly.json's (abandon-trezor's), typed in-process and never printed or put in a selector. */
+        const val PASSPHRASE = "TREZOR"
+
+        /** The registration QR's text: the registry's register page and 26 Crockford symbols, the seal code. */
+        val REGISTER = Regex("^" + Regex.escape(Checker.ORIGIN) + "/register#c=[0-9A-HJKMNP-TV-Z]{26}$")
 
         /** vectors/kcr.json's dice-99-words12 and dice-99-words24: 654321 repeated. */
         const val DICE_99_ROLLS = "654321"
