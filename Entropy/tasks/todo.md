@@ -11887,6 +11887,29 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   two kept screencaps, raw frames that never show the words page, an empty screencap), and three mutants each fail it
   (no words raw-frame check, an empty capture passed, the words page not kept); android-local.sh --selftest 34 passed
   on the new leg; `--workflows` clean.
+  Proof (M5 commit 19j, lead decision M5-70 (g), partial: local, kc37, Q76; CI's API 36 leg at the next push): (c) on
+  the words page. CaptureTest.disableSecureWindowsShowsTheScreenOnlyWhileSet ran on First launch since commit 8; it
+  now asserts disable_secure_windows unset or 0 first (API 36), then, with the phone offline, takes a new activity to
+  vectors/kcr.json's dice-99-words12, control (a)'s page, through the model's entry points along FlowTest's route
+  (Dice-only seed, 12 words, the vector's 99 rolls, Done, Skip and its confirm, Show words, the privacy gate), its first
+  page checked in-process to be the vector's first of 12 (a dice-only seed has no D: Reveal D is never on show). With
+  the setting at 1 the words must still be on show past their gate with no cover or placeholder, the app's secret
+  nodes (read in-process with no selector) must draw exactly the page's secret texts, each on screen, and both
+  captures must be images that show the page as ControlTest judges control (a)'s: lit pixels over the app's window,
+  lit pixels inside every node of the words, and, in the test-registry APK, the known colour, the TEST REGISTRY
+  strip's yellow (the only place the words page draws it: the shipping APK's page draws none, so there the words' own
+  pixels carry the judge); back as it was, black over the app's window in both captures. API 31 keeps the probe: the
+  same steps, only the black-again check asserted. No word, letter or SeedBook number goes into a selector, a message
+  or a line. The captures stay in memory; the owner's screen review is control (a)'s kept screencaps (19h), so
+  android-emulator.sh is unchanged. kc37 is a user build, where Android reads the setting only on a debuggable build,
+  so the control is CI's: android-local.sh names it and leaves it out of both CaptureTest runs, as before. On kc37
+  (local, android-local.sh on this tree, exit 0 in 1456 s): the strict Gradle build of the five APKs, both flavours'
+  androidTest Kotlin compiled with no warning; every class passed in android-emulator.sh's order (ControlTest 3,
+  CaptureTest 6 and 6 without control (c), PhoneMotionTest 1, FlowTest 7, CheckTest 2, BackupTest 1 with its age -d
+  hand-off, SnapshotDrillTest 3, LifecycleTest 6, CrashTest killed as it must be, NativeTest 1, and the Camera2
+  check's four camera-client checks, its decode of the virtual scene's PNG not met and named, as android-local.sh allows);
+  every JVM test task rerun (`--rerun`): :core-ffi 31 in 11 classes, :screens 142 in 19, :app 11 in 4 for each flavour,
+  :secure-ui 3 in 1, none failed.
 - [x] **First frame** (lessons 4): raw frames, one continuous stream from under the curtain before a cold launch,
   through the launch to Home and a few seconds more, then stopped, and a second stream started with that screen up (its
   first frame is composed at once, so a frame is recorded with the app's screen up; M5-17), show nothing but black in

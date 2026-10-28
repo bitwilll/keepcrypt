@@ -1,5 +1,7 @@
 package com.keepcrypt.entropy
 
+import android.graphics.Bitmap
+import android.graphics.Rect
 import android.os.Build
 import android.os.SystemClock
 import android.view.View
@@ -491,16 +493,58 @@ class CaptureTest {
         return activity
     }
 
-    /** On the dice, rolls faces through the model's pick and confirm, then Done, and waits for the check prompt (the real finish). */
-    private fun finishDice(activity: MainActivity, rolls: Int) {
+    /**
+     * On the dice, rolls faces (the pad's six in order, unless faces names others, repeated) through the
+     * model's pick and confirm, then Done, and waits for the check prompt (the real finish).
+     */
+    private fun finishDice(activity: MainActivity, rolls: Int, faces: String = DICE_KEYS) {
         onMain {
             for (index in 0 until rolls) {
-                activity.model.dicePick.replace(DICE_KEYS[index % DICE_KEYS.length])
+                activity.model.dicePick.replace(faces[index % faces.length])
                 activity.model.confirmRoll()
             }
             activity.model.diceDone()
         }
         waitUntil("the check prompt after the dice's Done", START_SECONDS) { onMain { activity.shownScreen } == Screen.CheckPrompt }
+    }
+
+    /**
+     * A new MainActivity on vectors/kcr.json's dice-99-words12, a gate seed, at its first words page past
+     * the privacy gate, reached as FlowTest reaches a dice-only seed's words (Home's Dice-only seed, 12
+     * words, the vector's 99 rolls, Done, Skip and its confirm, Show words and the gate), through the
+     * model's entry points as the screens call them: First launch's Continue runs the real self-test, and
+     * Go offline's Start needs the phone offline, which the caller sees to. The page on show is checked
+     * in-process to be the vector's first of 12 (its word compared, never printed). A dice-only seed has
+     * no D, so Reveal D is never reached.
+     */
+    private fun gateSeedsWords(): MainActivity {
+        val activity = started()
+        val model = activity.model
+        onMain { model.firstLaunchDone() }
+        waitUntil("the start-up self-test passed", START_SECONDS) { onMain { activity.shownScreen } == Screen.GoOffline }
+        waitUntil("the app reads the phone offline", 30) { onMain { model.state.value.offline } }
+        onMain {
+            model.startOffline()
+            model.chooseMode(Mode.DiceOnly)
+            model.chooseLength(Words.Twelve)
+        }
+        waitUntil("the dice, after the start", START_SECONDS) { onMain { activity.shownScreen } == Screen.Dice }
+        finishDice(activity, GATE_SEED_ROLLS, GATE_SEED_FACES)
+        onMain {
+            model.skip()
+            model.skipConfirmed()
+            model.showWords()
+        }
+        waitUntil("the words' privacy gate") { onMain { activity.shownScreen == Screen.Words && model.state.value.gate } }
+        val first = onMain {
+            model.passGate()
+            val state = model.state.value
+            val insert = state.insert
+            state.screen == Screen.Words && !state.gate && insert != null && insert.position == 1 &&
+                insert.count == GATE_SEED_WORDS && wordOf(insert) == GATE_SEED_FIRST_WORD
+        }
+        assertTrue("the words on show are not dice-99-words12's first page (no word is printed)", first)
+        return activity
     }
 
     /** A new MainActivity on its first screen, First launch, which shows before any core call. */
@@ -827,64 +871,114 @@ class CaptureTest {
 
     /**
      * Positive control (c), API 36 only, where the platform reads the setting (Android 15 added it):
-     * disable_secure_windows is unset or 0 first; set to 1, the app's own captures (screencap and
-     * takeScreenshot) show its screen, both its known colour and lit pixels over the region the
-     * black assertions read, so litPixels and region are shown to see a screen that is drawn; back
-     * as it was, black again. On API 31 the same steps run as a probe of whether the setting is read
-     * there, and only the black-again check is asserted.
+     * disable_secure_windows is unset or 0 first; then the words page of a gate seed, dice-99-words12's
+     * first (gateSeedsWords; the page control (a) draws), is on show; set to 1, the app's own captures
+     * (screencap and takeScreenshot) show that page, judged as ControlTest judges control (a)'s: lit
+     * pixels over the region the black assertions read, so litPixels and region are shown to see a
+     * screen that is drawn, and inside every node that draws one of the page's secret texts (read
+     * in-process with no selector, compared with the page the state holds and never printed), so the
+     * words' own drawing is in each capture, and the known colour where the page draws it, under the
+     * TEST REGISTRY strip (the shipping APK's words page draws none); back as it was, black again. On API
+     * 31 the same steps run as a probe of whether the setting is read there, and only the black-again
+     * check is asserted.
      */
     @Test
     fun disableSecureWindowsShowsTheScreenOnlyWhileSet() {
         val enforced = Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA
+        val strip = pkg == REGISTRY_PACKAGE
         val before = shellText("settings get secure disable_secure_windows")
         probe("disable_secure_windows: $before before the test; ro.debuggable=${shellText("getprop ro.debuggable")}")
         if (enforced) assertTrue("disable_secure_windows is set before the test", before == "null" || before == "0")
-        val activity = launch()
-        proveDrawn(activity, Screen.FirstLaunch)
-        val region = region(activity)
-        val shown = try {
-            shell("settings put secure disable_secure_windows 1")
-            SystemClock.sleep(2 * SETTLE_MS)
-            proveDrawn(activity, Screen.FirstLaunch)
-            // Where the platform reads the setting (enforced), the captures must be images; on API 31
-            // a refusal is recorded as showing nothing.
-            val cap = if (enforced) screencap() else Capture.screencapOrRefused()
-            val shot = if (enforced) screenshot() else Capture.screenshotOrRefused()
-            intArrayOf(
-                Capture.knownOrRefused(cap), Capture.knownOrRefused(shot),
-                Capture.litOrRefused(cap, region), Capture.litOrRefused(shot, region),
+        Capture.whileOffline {
+            val activity = gateSeedsWords()
+            proveDrawn(activity, Screen.Words)
+            val region = region(activity)
+            val (cap, shot, nodes) = try {
+                shell("settings put secure disable_secure_windows 1")
+                SystemClock.sleep(2 * SETTLE_MS)
+                proveDrawn(activity, Screen.Words)
+                val words = wordsOnShow(activity)
+                // Where the platform reads the setting (enforced), the captures must be images; on API 31
+                // a refusal is recorded as showing nothing.
+                val screencapImage = if (enforced) screencap() else Capture.screencapOrRefused()
+                val screenshotImage = if (enforced) screenshot() else Capture.screenshotOrRefused()
+                Triple(shown(screencapImage, region, words), shown(screenshotImage, region, words), words.size)
+            } finally {
+                if (before == "null") shell("settings delete secure disable_secure_windows")
+                else shell("settings put secure disable_secure_windows " + before)
+            }
+            val read = listOf(cap, shot).all { (!strip || it.known >= KNOWN_MIN) && it.lit > 0 && it.unlit == 0 }
+            probe(
+                "disable_secure_windows=1, the words page: the app's own captures show ${cap.known} known-colour pixels in screencap, " +
+                    "${shot.known} in takeScreenshot (${if (strip) "under the TEST REGISTRY strip" else "the shipping APK's page draws none"}); " +
+                    "${cap.lit} and ${shot.lit} lit pixels over the app's window $region; $nodes nodes draw its secret texts, " +
+                    "${cap.unlit} and ${shot.unlit} of them unlit (the setting is read: $read)",
             )
-        } finally {
-            if (before == "null") shell("settings delete secure disable_secure_windows")
-            else shell("settings put secure disable_secure_windows " + before)
+            if (enforced) {
+                if (strip) {
+                    assertTrue("disable_secure_windows=1: screencap does not show the words page's known colour", cap.known >= KNOWN_MIN)
+                    assertTrue("disable_secure_windows=1: takeScreenshot does not show the words page's known colour", shot.known >= KNOWN_MIN)
+                }
+                assertTrue("disable_secure_windows=1: no lit pixel in screencap over the app's window", cap.lit > 0)
+                assertTrue("disable_secure_windows=1: no lit pixel in takeScreenshot over the app's window", shot.lit > 0)
+                assertTrue("disable_secure_windows=1: screencap has a node of the words with no lit pixel", cap.unlit == 0)
+                assertTrue("disable_secure_windows=1: takeScreenshot has a node of the words with no lit pixel", shot.unlit == 0)
+            }
+            SystemClock.sleep(2 * SETTLE_MS)
+            proveDrawn(activity, Screen.Words)
+            assertEquals("lit pixels in screencap after the setting went back", 0, Capture.litOrRefused(Capture.screencapOrRefused(), region))
+            assertEquals(
+                "lit pixels in takeScreenshot after the setting went back", 0,
+                Capture.litOrRefused(Capture.screenshotOrRefused(), region),
+            )
+            assertEquals("disable_secure_windows was not put back", before, shellText("settings get secure disable_secure_windows"))
+            if (enforced) {
+                pass(
+                    "control (c): disable_secure_windows unset, then 1 shows dice-99-words12's first words page in screencap and " +
+                        "takeScreenshot, lit in each of its $nodes nodes of the words, then black again",
+                )
+            } else {
+                pass("disable_secure_windows probe done on the words page; black again after it")
+            }
+            finish(activity)
         }
-        val (capKnown, shotKnown, capLit, shotLit) = shown
-        val read = capKnown >= KNOWN_MIN && shotKnown >= KNOWN_MIN && capLit > 0 && shotLit > 0
-        probe(
-            "disable_secure_windows=1: the app's own captures show $capKnown known-colour pixels in screencap, " +
-                "$shotKnown in takeScreenshot; $capLit and $shotLit lit pixels over the app's window $region (the setting is read: $read)",
-        )
-        if (enforced) {
-            assertTrue("disable_secure_windows=1: screencap does not show the app's screen", capKnown >= KNOWN_MIN)
-            assertTrue("disable_secure_windows=1: takeScreenshot does not show the app's screen", shotKnown >= KNOWN_MIN)
-            assertTrue("disable_secure_windows=1: no lit pixel in screencap over the app's window", capLit > 0)
-            assertTrue("disable_secure_windows=1: no lit pixel in takeScreenshot over the app's window", shotLit > 0)
-        }
-        SystemClock.sleep(2 * SETTLE_MS)
-        proveDrawn(activity, Screen.FirstLaunch)
-        assertEquals("lit pixels in screencap after the setting went back", 0, Capture.litOrRefused(Capture.screencapOrRefused(), region))
-        assertEquals(
-            "lit pixels in takeScreenshot after the setting went back", 0,
-            Capture.litOrRefused(Capture.screenshotOrRefused(), region),
-        )
-        assertEquals("disable_secure_windows was not put back", before, shellText("settings get secure disable_secure_windows"))
-        if (enforced) {
-            pass("control (c): disable_secure_windows unset, then 1 shows the screen in screencap and takeScreenshot, then black again")
-        } else {
-            pass("disable_secure_windows probe done; black again after it")
-        }
-        finish(activity)
     }
+
+    /**
+     * The nodes that draw the words page's secret texts, as ControlTest finds control (a)'s: the app's
+     * nodes tagged SECRET_TAG with text (read in-process, Capture.nodes, no selector), whose texts must be
+     * exactly those of the page the state holds (wordsPageSecrets), each on screen, the page still the
+     * words past their gate with no cover or placeholder over it. Compared, never printed.
+     */
+    private fun wordsOnShow(activity: MainActivity): List<Capture.NodeFacts> {
+        val secrets = onMain {
+            val state = activity.model.state.value
+            val insert = state.insert
+            if (state.screen == Screen.Words && !state.gate && state.overlay == null && !state.recording && insert != null) {
+                wordsPageSecrets(insert)
+            } else {
+                null
+            }
+        }
+        assertTrue("the words page is not on show past its gate (a cover or the placeholder over it)", secrets != null)
+        val words = Capture.nodes(pkg).filter { it.resourceName == SECRET_TAG && !it.text.isNullOrBlank() }
+        assertTrue("the words page's nodes do not draw its page's secret texts (none is printed)", words.map { it.text }.toSet() == secrets)
+        assertTrue("a node drawing a secret text lies off screen", words.all { it.visible })
+        return words
+    }
+
+    /**
+     * One capture of the words page with the setting at 1: its known-colour pixels, its lit pixels over
+     * the app's window and how many of the nodes of the words have none inside their bounds.
+     */
+    private class Shown(val known: Int, val lit: Int, val unlit: Int)
+
+    /** What a capture that may have been refused shows of the words page (Shown): a refusal shows nothing, every node unlit. */
+    private fun shown(image: Bitmap?, region: Rect, words: List<Capture.NodeFacts>): Shown = Shown(
+        Capture.knownOrRefused(image),
+        Capture.litOrRefused(image, region),
+        if (image == null) words.size else words.count { Capture.litPixels(image, it.bounds) == 0 },
+    )
 
     /**
      * The empty saved-state Bundle crashes nothing: the activity is recreated from what it saved
@@ -1012,6 +1106,15 @@ class CaptureTest {
             Screen.Words, Screen.WordsOverview, Screen.ReadbackEntry, Screen.ReadbackMismatch, Screen.BackupPassphrase,
             Screen.BackupConfirm, Screen.Bip39Entry, Screen.RevealD, Screen.BackupCheckEntry,
         )
+
+        /**
+         * vectors/kcr.json's dice-99-words12, control (c)'s gate seed (control (a)'s page): 99 rolls of
+         * 654321 repeated, 12 words, and its mnemonic's first word, compared in-process and never printed.
+         */
+        const val GATE_SEED_FACES = "654321"
+        const val GATE_SEED_ROLLS = 99
+        const val GATE_SEED_WORDS = 12
+        const val GATE_SEED_FIRST_WORD = "various"
 
         /** The walk's BIP39 passphrase, made up for the walk (no wallet's): typed in-process, never printed or put in a selector. */
         const val WALK_PASSPHRASE = "Kc walk 1!"
