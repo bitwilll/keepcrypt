@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.keepcrypt.entropy.ffi.Core
 import com.keepcrypt.entropy.ffi.Refusal
 import com.keepcrypt.entropy.ffi.RefusalGroup
@@ -149,6 +150,9 @@ fun passphraseLines(page: Int, text: Secret): List<String> {
     return lines
 }
 
+/** The page on show as the screen draws it: its four lines in one text, one line feed apart (the Pi's one Protected text). */
+fun passphraseText(page: Int, text: Secret): String = passphraseLines(page, text).joinToString("\n")
+
 /** A confirm choice (a word of core's) as the text on screen. */
 fun choiceText(choice: Secret): String = drawn(choice, 0, choice.size)
 
@@ -177,9 +181,10 @@ fun BackupOffer(testRegistry: Boolean, onMake: () -> Unit, onSkip: () -> Unit) {
 
 /**
  * The backup passphrase (pi-firmware.md, USB step 1; the Pi's backup-passphrase), a Protected screen
- * behind the privacy gate: core's 8 words, four a page, each after its number; Previous and Next page
- * (the system Back is Previous), and the second page's "I wrote it down" goes on to the confirm. After a
- * wrong confirm it shows again from its first page, saying so.
+ * behind the privacy gate: core's 8 words, four a page, each after its number, the page's four lines one
+ * secret node, as the Pi draws them in one Protected text; Previous and Next page (the system Back is
+ * Previous), and the second page's "I wrote it down" goes on to the confirm. After a wrong confirm it
+ * shows again from its first page, saying so.
  */
 @Composable
 fun BackupPassphrase(
@@ -214,9 +219,7 @@ fun BackupPassphrase(
                 KitText(PASSPHRASE_NOTE, KitType.small)
                 val first = state.page * PASSPHRASE_PAGE_WORDS + 1
                 KitText("Words " + first + "-" + (first + PASSPHRASE_PAGE_WORDS - 1) + " of " + PASSPHRASE_WORDS, KitType.small, tag = "passphrase_page")
-                for (line in passphraseLines(state.page, text)) {
-                    BasicText(line, Modifier.padding(vertical = 6.dp).secret(), style = KitType.hex)
-                }
+                BasicText(passphraseText(state.page, text), Modifier.padding(vertical = 6.dp).secret(), style = KitType.hex.copy(lineHeight = 36.sp))
             }
         }
     }

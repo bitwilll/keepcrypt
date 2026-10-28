@@ -46,7 +46,12 @@
 # instrument per class, judged from the shell), the positive controls and the first-frame
 # recordings through scripts/android-frames.py (raw frames streamed and checked in memory, none
 # kept). On the 16 KB-page image the leg checks the page size and runs NativeTest on the shipping APK
-# for x86_64 and for each ARM ABI the image translates. The shell's screencap of capture-control's two
+# for x86_64 and for each ARM ABI the image translates. In the API 31 and 36 legs the backup's test
+# (M5 group 18) saves the CI throwaway seed's backup to the emulator's Downloads and its run's output
+# goes straight from am instrument into scripts/android-age-check.py, the age -d hand-off: Ubuntu's age
+# 1.1.1, installed and asserted before the legs as entropy-ci.yml installs it, decrypts the file through
+# scripts/age-interop.py's pty driver with the passphrase the test reported, which never reaches the
+# log, a file or logcat. The shell's screencap of capture-control's two
 # screens (its first screen and a gate seed's words page) is kept on the API 31 and 36 legs and
 # uploaded after them, the owner's screen review of the positive control (M5-68 (f)).
 #
@@ -80,6 +85,8 @@ on:
       - 'Entropy/vectors/**'
       - 'Entropy/scripts/banned-api-check.sh'
       - 'Entropy/scripts/android-*'
+      - 'Entropy/scripts/age-interop.py'
+      - 'Entropy/tools/verify/**'
       - 'Entropy/scripts/testdata/android-deps-review/**'
       - 'Entropy/scripts/testdata/android-canary-lib/**'
       - 'Entropy/deny.toml'
@@ -96,6 +103,8 @@ on:
       - 'Entropy/vectors/**'
       - 'Entropy/scripts/banned-api-check.sh'
       - 'Entropy/scripts/android-*'
+      - 'Entropy/scripts/age-interop.py'
+      - 'Entropy/tools/verify/**'
       - 'Entropy/scripts/testdata/android-deps-review/**'
       - 'Entropy/scripts/testdata/android-canary-lib/**'
       - 'Entropy/deny.toml'
@@ -641,6 +650,20 @@ jobs:
           "$sdk/emulator/emulator" -version | head -n 1
           "$sdk/emulator/emulator" -accel-check
           "$ANDROID_HOME/platform-tools/adb" version
+      # The CI age -d hand-off (M5 group 18): Ubuntu's age, version asserted as entropy-ci.yml asserts it
+      # (M1 Q1), for the API 31 and 36 legs, where android-instrument.sh's age: form pipes the backup
+      # test's run straight into scripts/android-age-check.py; its selftest first, on stand-ins and this age.
+      - name: Ubuntu's age, version asserted, and the age -d hand-off's selftest
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends age
+          v=$(dpkg-query -W -f='${Version}' age)
+          echo "age package $v; age --version: $(age --version)"
+          if [ "$v" != "1.1.1-1ubuntu0.24.04.3" ]; then
+            echo "FAIL: expected age 1.1.1-1ubuntu0.24.04.3 (tasks/todo.md, M1 Q1); re-decide the pin" >&2
+            exit 1
+          fi
+          python3 -I scripts/android-age-check.py --selftest
       # The three emulator legs, one after another, on the APKs signed and checked above (group 6;
       # the header of scripts/android-emulator.sh lists what each runs): the capture harness on API
       # 31 and 36, then the ARM and 16 KB leg on the 16 KB-page image (its page size, and NativeTest

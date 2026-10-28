@@ -54,6 +54,7 @@ import com.keepcrypt.entropy.screens.choiceText
 import com.keepcrypt.entropy.screens.isProtected
 import com.keepcrypt.entropy.screens.overviewLine
 import com.keepcrypt.entropy.screens.passphraseLines
+import com.keepcrypt.entropy.screens.passphraseText
 import com.keepcrypt.entropy.screens.screenId
 import com.keepcrypt.entropy.screens.seedbookText
 import com.keepcrypt.entropy.screens.typedFaces
@@ -95,6 +96,9 @@ class CaptureTest {
 
     /** The walk's backup file, as the save screen's place took it (in memory: the walk saves to no provider), for Check a backup. */
     private var savedBackup: ByteArray? = null
+
+    /** The walk's passphrase pages, each its four lines as drawn ("1 ostrich"), for the search of the log after the walk. */
+    private val pages = ArrayList<Set<String>>()
 
     private val device: UiDevice get() = UiDevice.getInstance(Capture.instrumentation)
 
@@ -556,8 +560,8 @@ class CaptureTest {
      * nodes tagged SECRET_TAG: every one of the screen's nodes whose text is a secret carries the tag,
      * which secret() gives with the data-sensitive mark, so a secret drawn without secret() fails here
      * however many other nodes carry it; and each secret is some node's text, so none is left unchecked.
-     * The texts are compared in-process and never printed; the screen's secret lines join lines, for the
-     * search of the log after the walk.
+     * The texts are compared in-process and never printed; the screen's secret lines join lines, and a
+     * passphrase page's lines pages, for the search of the log after the walk.
      */
     private fun assertSecretTextsTagged(
         screen: Screen,
@@ -577,6 +581,7 @@ class CaptureTest {
         val drawn = texts.count { text -> drawing.any { it.text == text } }
         assertTrue("only " + drawn + " of the " + texts.size + " secret texts of " + name + " are drawn (none is printed)", drawn == texts.size)
         lines.addAll(secrets.lines)
+        if (secrets.page.isNotEmpty()) pages.add(secrets.page)
         pass("$name: each of its ${texts.size} secret texts is drawn, and only by secret nodes (${drawing.size} nodes)")
     }
 
@@ -584,15 +589,17 @@ class CaptureTest {
      * A screen's secret texts: drawn, every one it draws; lines, those of them the log is searched for
      * after the walk, the SeedBook number's line ("SeedBook 0123") and the whole lines (an overview line,
      * a verdict, the faces typed once a letter is typed), which no line the system writes can hold by
-     * chance, as it can a word or a letter.
+     * chance, as it can a word or a letter; page, a passphrase page's four lines ("1 ostrich"), which
+     * its one node draws one line feed apart: one such line the system can write by chance (a number and
+     * a common word), so the search fails on two or more of a page's lines, as a logged page would show.
      */
-    private class ScreenSecrets(val drawn: Set<String>, val lines: Set<String>)
+    private class ScreenSecrets(val drawn: Set<String>, val lines: Set<String>, val page: Set<String> = emptySet())
 
     /**
      * The secret texts screen draws, from the model's state, as the screens draw them: on the words the
      * word, its SeedBook number and each face's letter and label (a blank face's letter is no text); on
      * the overview its lines; on the read-back entry the faces typed, or once it matched the word; on the
-     * mismatch the four verdicts; on the backup passphrase its page's lines ("1 ostrich"); on the confirm
+     * mismatch the four verdicts; on the backup passphrase its page, four lines ("1 ostrich") in one text; on the confirm
      * its question's four choices and the letters typed; on Check a backup's entry the letters typed. The
      * word's copy is wiped once read. Main thread only.
      */
@@ -614,7 +621,10 @@ class CaptureTest {
                 val mismatch = checkNotNull(state.mismatch)
                 (1..4).map { verdictLine(it, mismatch.face(it)) }.toSet().let { ScreenSecrets(it, it) }
             }
-            Screen.BackupPassphrase -> passphraseLines(state.page, checkNotNull(state.passphrase)).toSet().let { ScreenSecrets(it, it) }
+            Screen.BackupPassphrase -> {
+                val text = checkNotNull(state.passphrase)
+                ScreenSecrets(setOf(passphraseText(state.page, text)), emptySet(), passphraseLines(state.page, text).toSet())
+            }
             Screen.BackupConfirm -> {
                 val question = checkNotNull(state.challenge).questions[state.page]
                 val faces = typedFaces(model.backupLetters)
@@ -633,19 +643,29 @@ class CaptureTest {
      * (its default buffers, main, system and crash), read into memory through the shell and never
      * written to a file, still holds mark, the line the walk wrote as the words came, so the main
      * buffer, where this process's lines go, UI Automator's among them, dropped nothing written since;
-     * and it holds no line of lines, which the walk's secret screens drew. Only counts and the buffers'
-     * sizes (logcat -g) are printed.
+     * and from mark on (the walk drew no secret before it, so nothing before it can be one of them) it
+     * holds no line of lines, which the walk's secret screens drew, and no two lines of any of its
+     * passphrase pages. Only counts and the buffers' sizes (logcat -g) are printed.
      */
     private fun assertNoSecretInTheLog(mark: String, lines: Set<String>) {
-        assertTrue("the walk held no secret line to search the log for", mark.isNotEmpty() && lines.isNotEmpty())
+        assertTrue("the walk held no secret line to search the log for", mark.isNotEmpty() && lines.isNotEmpty() && pages.isNotEmpty())
         probe("logcat -g: " + shellText("logcat -g").lines().joinToString(" | ") { it.trim() })
         val log = String(shell("logcat -d"), Charsets.UTF_8)
         val at = log.indexOf(mark)
         assertTrue("the log no longer holds the line the walk wrote as the words came, so it cannot be searched whole", at >= 0)
-        probe("logcat -d: ${log.length} characters, ${log.length - at} of them from the line the walk wrote as the words came")
-        val held = lines.count { log.contains(it) }
-        assertTrue("the log holds " + held + " of the walk's " + lines.size + " secret lines (neither is printed)", held == 0)
-        pass("the log after the walk (logcat -d, ${log.length} characters, the walk's own line still held) holds none of its ${lines.size} secret lines")
+        val since = log.substring(at)
+        probe("logcat -d: ${log.length} characters, ${since.length} of them from the line the walk wrote as the words came")
+        val held = lines.count { since.contains(it) }
+        val shown = pages.count { page -> page.count { since.contains(it) } >= 2 }
+        assertTrue(
+            "the log holds " + held + " of the walk's " + lines.size + " secret lines and two or more lines of " + shown + " of its " +
+                pages.size + " passphrase pages (none is printed)",
+            held == 0 && shown == 0,
+        )
+        pass(
+            "the log after the walk (logcat -d, ${since.length} of its ${log.length} characters from the walk's own line) holds none of " +
+                "its ${lines.size} secret lines and no two lines of its ${pages.size} passphrase page(s)",
+        )
     }
 
     /**

@@ -52,7 +52,8 @@
 #   1. kc37 booted with no camera (-camera-back none: the CI legs' no-camera facts, M5-59, which
 #      SnapshotDrillTest's scan screen expects), then android-emulator.sh --booted on it: a CI leg's
 #      steps 1-6 (the probes, the shell's screencaps, ControlTest with the capture control, CaptureTest
-#      in both APKs, PhoneMotionTest, FlowTest, CheckTest, SnapshotDrillTest, LifecycleTest and CrashTest
+#      in both APKs, PhoneMotionTest, FlowTest, CheckTest, BackupTest (its age -d hand-off with the Mac's
+#      age on PATH, Homebrew's), SnapshotDrillTest, LifecycleTest and CrashTest
 #      last, each through android-instrument.sh's judge, then the raw-frame control and the first
 #      frames). Before it, every check the user build cannot make is printed as "not made on kc37"
 #      with the reason and left out of its class's run (android-instrument.sh's CLASS-TEST form), and
@@ -96,7 +97,7 @@
 # given no route out, with its HOME and ANDROID_AVD_HOME set, seeded the update check's line for the
 # emulator's version and the SDK's bundled flags in that HOME with the run's time before each boot,
 # named CaptureTest's control (c) as not made on the user build and left it out of both CaptureTest
-# runs, run the nine instrumented runs in android-emulator.sh's order and listed their results, run
+# runs, run the ten instrumented runs in android-emulator.sh's order and listed their results, run
 # NativeTest on the second boot with the app's primaryCpuAbi arm64-v8a, passed the camera client's
 # four checks and decoded the PNG. Each of these is its own case: no decode (the decode named as not
 # met, exit 0); no PNG (named as not made, exit 0); a debuggable build (no test left out); kc37
@@ -128,6 +129,7 @@ selftest() {
 # window's region), and fails the class named in KC_FAILCLASS, as the real judge prints its results.
 echo "instrument stub: $5 $6"
 t=${6#killed:}
+t=${t#age:}
 t=${t%%-*}
 case $t in *.CaptureTest) printf 'kc: region=0,48,720,1184\nkc: display=720x1280\n' ;; esac
 case $t in *."${KC_FAILCLASS:-none}") echo "FAIL: instrument: api=$3: $t: stand-in failure" >&2; exit 1 ;; esac
@@ -448,12 +450,13 @@ CONFIG
     got=$(sed -n 's/^instrument stub: //p' "$st/$1/out" | tr '\n' ' ')
     want="com.keepcrypt.entropy com.keepcrypt.entropy.ControlTest com.keepcrypt.entropy $2 com.keepcrypt.entropy.testregistry $2"
     want="$want com.keepcrypt.entropy com.keepcrypt.entropy.PhoneMotionTest com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest"
-    want="$want com.keepcrypt.entropy com.keepcrypt.entropy.CheckTest com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest"
+    want="$want com.keepcrypt.entropy com.keepcrypt.entropy.CheckTest com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest"
+    want="$want com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest"
     want="$want com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest "
     want="${want}com.keepcrypt.entropy com.keepcrypt.entropy.NativeTest "
     ok=yes
     [ "$got" = "$want" ] || { ok=no; echo "  got: $got"; }
-    check "$1" "$ok" "the nine instrumented runs in android-emulator.sh's order, then NativeTest"
+    check "$1" "$ok" "the ten instrumented runs in android-emulator.sh's order, then NativeTest"
   }
   # boots NAME: case NAME booted twice on port 5580 with no snapshot, first with no camera and then
   # the virtual scene, with no crash reports and the guest's two networks given no route out, with its
@@ -509,7 +512,8 @@ CONFIG
     "local: not made on kc37 (ro.debuggable=0): com.keepcrypt.entropy.CaptureTest#disableSecureWindowsShowsTheScreenOnlyWhileSet" \
     "local: no adb root on kc37: adb root says: adbd cannot run as root in production builds" \
     "instrument stub: com.keepcrypt.entropy $left" "emulator: api=37: every check passed" \
-    "local: run 9 of 9, com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest: instrument: api=37 PASS com.keepcrypt.entropy.CrashTest" \
+    "local: run 10 of 10, com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest: instrument: api=37 PASS com.keepcrypt.entropy.CrashTest" \
+    "local: run 7 of 10, com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest: instrument: api=37 PASS com.keepcrypt.entropy.BackupTest" \
     "local: NativeTest: com.keepcrypt.entropy installed with primaryCpuAbi=arm64-v8a" \
     "pass: local native library: NativeTest on kc37's arm64-v8a, natively" \
     "$camera_passes" "pass: local camera: gone from dumpsys media.camera within 10 s of Home" \
@@ -536,7 +540,7 @@ CONFIG
   fi
   expect avd-kept 0 "local: the AVD kc37 is this script's" "local: every check made on kc37 passed"
   avd avd-kept
-  expect flow-test-fails 1 "local: run 5 of 9, com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest: FAIL: instrument: api=37: com.keepcrypt.entropy.FlowTest" \
+  expect flow-test-fails 1 "local: run 5 of 10, com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest: FAIL: instrument: api=37: com.keepcrypt.entropy.FlowTest" \
     "$camera_passes" "FAIL: local: the leg on kc37 failed (each failure reported above)"
   stopped flow-test-fails
   expect native-test-fails 1 "FAIL: instrument: api=37: com.keepcrypt.entropy.NativeTest: stand-in failure" \
@@ -842,7 +846,7 @@ if ! awk '
     for (i = 1; i <= n; i++) {
       split(run[i], f, " ")
       class = f[2]
-      sub(/^killed:/, "", class)
+      sub(/^(killed|age):/, "", class)
       if (i > m || index(result[i], " " class " ") == 0 && index(result[i], " " class ":") == 0) { bad = 1; result[i] = "no result" }
       printf "local: run %d of %d, %s: %s\n", i, n, run[i], result[i]
     }

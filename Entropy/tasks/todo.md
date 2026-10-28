@@ -13088,6 +13088,44 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   the snapshot loads in the test-registry APK and is refused in the shipping APK; a root listing of the app's data
   directories after the suite holds no file the app wrote, with a planted-file positive control (Q59 (a)); `dumpsys
   package` shows no INTERNET; a grep of the job log for the passphrase's first word returns nothing.
+  Proof (M5 commit 20b, partial: local, kc37, Q76, with Homebrew's age v1.3.2 where CI has Ubuntu's 1.1.1; CI's API 31
+  and 36 legs prove it at the next push; the snapshot, the root listing and dumpsys package are commit 21's):
+  BackupTest (the shipping app, android-emulator.sh's step 4a after CheckTest) takes dice-50-words12, the CI throwaway
+  seed, through the model's entry points to its summary, taps the offer, "Make an encrypted backup", the privacy gate,
+  the save screen and the results through UI Automator by their resource ids, and goes through the Protected screens
+  by the model's entry points, so no secret enters a selector, a click's point or a message (M5-68 (e)); the
+  passphrase is read in-process from the screen's Secrets. The system's create-document picker (DocumentsUI: on kc37
+  com.google.android.documentsui, which opened in Downloads) showed core's suggested name in its name field
+  (android:id/title) and saved through android:id/button1, then "Backup verified", the file in /sdcard/Download/ (946
+  bytes). The test then reports kc_ci_throwaway_passphrase from the in-process Secret, with the file's name and the
+  summary's fingerprint (public). A .txt copy of the backup (the shell's cp) picked in the open-document picker is
+  refused by its name on Home ("That file was not opened: a KeepCrypt backup's name ends in .age."), so before any byte
+  is read (CheckBackupScreensTest proves that order on the JVM); Check a backup through the picker: a wrong passphrase
+  is refused with core's text, then "Backup OK" with the summary's fingerprint and Seal ID YVM9CPP3, the 12 words
+  through the gate equal to the vector's (in-process), the re-check QR and its Back, Done: Home with the slot empty.
+  The hand-off: android-instrument.sh's new age: form pipes am instrument -r's output straight into
+  scripts/android-age-check.py, which takes the value out of the stream (keeping it in its memory alone), writes the
+  rest for the usual judge (so a failing run's printed output holds no value), reads the file through adb exec-out,
+  and has age -d decrypt it through age-interop.py's pty driver: a KeepCrypt backup v1 of 12 words by
+  keepcrypt-android 0.0.0 with the reported fingerprint (tools/verify's reader recomputes it from the words), and a
+  fresh wrong passphrase refused by age. logcat -d of every buffer (about 14 MB) and the run's output hold neither the
+  passphrase nor a page of it (core's four words) nor two of its screen's eight lines, and the run's output, the job
+  log's share of this run, none of its words as a word outside the test's own fixed prose (kc_probe and kc_pass): the
+  grep of the job log for the passphrase's words, made by the one process that knows them; "age-check: pass
+  (v1.3.2)". CaptureTest's search of the log after its walk now reads only what was written from its own mark on
+  (nothing earlier can hold the walk's secrets) and, since one "3 word" line can sit in a log by chance (a number and a
+  common word: 20b's first local run failed so, on a passphrase line found in logcat), fails on two or more lines of a
+  passphrase page; the passphrase screen draws each page as one secret node of four lines, as the Pi draws one
+  Protected text, so a logged page shows them together. Selftests: android-age-check.py 16 (python3 3.12 with
+  Homebrew's age; /usr/bin/python3 3.9's hashlib has no scrypt, which only the selftest's writer needs, and it exits
+  2 there, as age-interop.py does), android-instrument.sh 43 (the age: form's three cases on a stand-in checker),
+  android-emulator.sh 29 and android-local.sh 34, each under sh and dash; mutants that drop the checker's exit from the
+  judge, or bypass the checker, fail android-instrument.sh's, and one that keeps the passphrase's line fails the
+  checker's. The workflow installs Ubuntu's age (1.1.1-1ubuntu0.24.04.3, asserted as entropy-ci.yml asserts it) and runs
+  the hand-off's selftest before the legs; its paths add scripts/age-interop.py and tools/verify/**, which the hand-off
+  loads. On kc37 (local, android-local.sh exit 0 in 1257 s, 60 s more than at 20a): every class passed, BackupTest 1
+  test with the hand-off; the strict build of the five APKs and every JVM test task rerun (:core-ffi 29 in 10 classes,
+  :screens 120 in 17, :app 7 in 3 for each flavour, :secure-ui 3 in 1, none failed).
 
 **19. Gate evidence and Commands**
 - [ ] CLAUDE.md Commands gains the ffi test-registry line, `--apk` and `--selftest-apk`, the android scripts (CI-only
