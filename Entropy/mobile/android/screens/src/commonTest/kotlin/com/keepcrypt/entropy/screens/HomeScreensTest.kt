@@ -23,13 +23,16 @@ import kotlin.test.assertTrue
  * test-registry build's, which trusts the test key): Load registry snapshot opening the open-document
  * picker under the picker rule; a file refused before any byte is read unless its name ends in .kcr (any
  * letter case) and its provider sizes it within core's limit, and after a read that fails or runs past
- * the limit (its bytes zeroed), Home saying why; kcr.json's with-dice-50 verified on the worker behind
- * "Working...", its bytes zeroed, its result showing its number, date and count, Current on kcr.json's
- * date and Stale with its warning on a later one, then Home naming it; a snapshot that does not verify
- * refused with core's text, the one loaded before kept; a discard during the load; About's version (the
- * app's versionName), flavour and source address, Back to Home, and going online there; and the refusal
- * texts, core's own (core/src/error.rs) but the phone's line for a build with no registry key. Each test
- * leaves the slot at home.
+ * the limit (its bytes zeroed), Home saying why; the read on the worker behind "Working..." (lead
+ * decision M5-70 (g)): a slow read holding no input and no second file, a leave or going online during
+ * it zeroing what it read with nothing sent to core, and a file longer or shorter than its provider
+ * reports read whole; kcr.json's with-dice-50 verified on the worker behind "Working...", its bytes
+ * zeroed, its result showing its number, date and count, Current on kcr.json's date and Stale with its
+ * warning on a later one, then Home naming it; a snapshot that does not verify refused with core's text,
+ * the one loaded before kept; a discard during the load; About's version (the app's versionName), flavour
+ * and source address, Back to Home, and going online there; and the refusal texts, core's own
+ * (core/src/error.rs) but the phone's line for a build with no registry key. Each test leaves the slot at
+ * home.
  */
 class HomeScreensTest {
     @AfterTest
@@ -76,10 +79,14 @@ class HomeScreensTest {
             assertEquals(Screen.Home, rig.screen)
             assertEquals(refusal, rig.model.state.value.fileRefusal, refusal.name)
             assertEquals(0, file.reads, refusal.name + ": no byte of the file was read")
+            assertEquals(0, rig.worker.waiting, refusal.name + ": no read waits on the worker")
         }
         assertTrue(fileRefusalText(FileRefusal.NotKcr).endsWith(" ends in .kcr."))
+        val ran = rig.worker.ran
         val unreadable = FakeFile("with-dice-50.kcr", bytes.size.toLong(), null)
         rig.model.snapshotPicked(unreadable)
+        rig.worker.run()
+        assertEquals(Screen.Home, rig.screen)
         assertEquals(FileRefusal.Unreadable, rig.model.state.value.fileRefusal)
         assertEquals(Core.SNAPSHOT_MAX_BYTES, unreadable.readLimit, "the read stops one byte past core's limit")
         val sizedWrongly = object : PickedFile {
@@ -90,10 +97,82 @@ class HomeScreensTest {
             override fun read(limit: Int): ByteArray = ByteArray(limit + 1) { 1 }.also { given = it }
         }
         rig.model.snapshotPicked(sizedWrongly)
+        rig.worker.run()
         assertEquals(FileRefusal.SnapshotTooLarge, rig.model.state.value.fileRefusal, "a provider that sized it wrongly is refused too")
         assertTrue(zeroed(sizedWrongly.given), "the bytes read past the limit were zeroed")
-        assertEquals(0, rig.worker.waiting, "nothing reached core")
+        assertEquals(ran + 2, rig.worker.ran, "the two reads ran on the worker, and nothing reached core")
         assertNull(rig.model.state.value.loaded)
+    }
+
+    /**
+     * A picked snapshot is read on the worker behind "Working...", never on the main thread (lead decision
+     * M5-70 (g)): while a slow read lasts, Home's choices and a second file do nothing; a leave or going
+     * online during it zeroes what it read, sends nothing to core and ends on the start screen saying why,
+     * as any long call's discard does.
+     */
+    @Test
+    fun theReadRunsOnTheWorkerAndADiscardDuringItZeroesWhatItReadAndSendsNothingToCore() {
+        val bytes = kcrSnapshot(WITH_DICE_50)
+        val rig = Rig().toHome()
+        var during: Screen? = null
+        val slow = FakeFile(WITH_DICE_50 + ".kcr", bytes.size.toLong(), bytes) { during = rig.screen }
+        rig.model.snapshotPicked(slow)
+        assertEquals(Screen.Working, rig.screen, "the file is read behind Working...")
+        assertEquals(0, slow.reads, "the main thread returned before any byte was read")
+        assertEquals(1, rig.worker.waiting, "the read waits on the worker")
+        rig.model.about()
+        rig.model.back()
+        val second = kcrFile(WITH_DICE_50)
+        rig.model.snapshotPicked(second)
+        assertEquals(Screen.Working, rig.screen, "Home's choices do nothing while the read runs")
+        assertEquals(0, second.reads, "a second file picked while the read runs is never read")
+        rig.worker.runNext()
+        assertEquals(Screen.Working, during, "the read ran while Working... showed")
+        assertEquals(1, slow.reads)
+        assertEquals(Screen.Working, rig.screen, "core's load follows the read behind Working...")
+        assertEquals(1, rig.worker.waiting, "on the worker")
+        rig.worker.run()
+        assertEquals(Screen.Snapshot, rig.screen)
+        assertNotNull(rig.model.state.value.loaded)
+        assertTrue(zeroed(slow.given))
+
+        val discards = listOf(
+            Notice.Left to { away: Rig -> away.model.appLeft() },
+            Notice.Offline to { away: Rig -> away.offline.set(false) },
+        )
+        for ((notice, discard) in discards) {
+            val away = Rig().toHome()
+            val ran = away.worker.ran
+            val file = FakeFile(WITH_DICE_50 + ".kcr", bytes.size.toLong(), bytes) { discard(away) }
+            away.model.snapshotPicked(file)
+            away.worker.run()
+            assertEquals(1, file.reads, notice.name)
+            assertTrue(zeroed(file.given), notice.name + ": what the read gave was zeroed")
+            assertEquals(ran + 1, away.worker.ran, notice.name + ": the read alone ran, so nothing reached core")
+            assertEquals(Screen.GoOffline, away.screen, notice.name)
+            assertEquals(notice, away.model.state.value.notice)
+            assertNull(away.model.state.value.loaded, notice.name + ": nothing was loaded")
+        }
+    }
+
+    /**
+     * A file its provider sized wrongly but within core's limit (longer than reported, or shorter) is read
+     * whole on the worker, so the snapshot loads; the read's buffer itself is Documents.kt's (ReadUpToTest).
+     */
+    @Test
+    fun aFileLongerOrShorterThanItsProviderReportsIsReadWholeAndLoads() {
+        val bytes = kcrSnapshot(WITH_DICE_50)
+        val rig = Rig().toHome()
+        for ((what, size) in listOf("longer than reported" to 10L, "shorter than reported" to bytes.size + 1000L)) {
+            val file = FakeFile(WITH_DICE_50 + ".kcr", size, bytes)
+            rig.model.snapshotPicked(file)
+            rig.worker.run()
+            assertEquals(Screen.Snapshot, rig.screen, what)
+            assertNull(rig.model.state.value.snapshotRefusal, what)
+            assertEquals(7L, assertNotNull(rig.model.state.value.loaded, what).count, what)
+            assertTrue(zeroed(file.given), what + ": the bytes were zeroed once core had them")
+            rig.model.snapshotDone()
+        }
     }
 
     @Test
@@ -102,9 +181,13 @@ class HomeScreensTest {
         val bytes = kcrSnapshot(WITH_DICE_50)
         val upper = FakeFile(WITH_DICE_50 + ".KCR", bytes.size.toLong(), bytes)
         rig.model.snapshotPicked(upper)
+        assertEquals(Screen.Working, rig.screen, "the file is read behind Working...")
+        assertEquals(0, upper.reads, "on the worker")
+        rig.worker.runNext()
         assertEquals(1, upper.reads, "a name ending in .KCR, any letter case, as the Pi lists them")
         assertEquals(Screen.Working, rig.screen, "core verifies it behind Working...")
         assertEquals(1, rig.worker.waiting, "on the worker")
+        assertFalse(zeroed(upper.given), "the bytes read wait for core")
         rig.worker.run()
         val result = rig.model.state.value
         assertEquals(Screen.Snapshot, result.screen)
@@ -166,8 +249,11 @@ class HomeScreensTest {
     fun aDiscardDuringTheLoadReturnsToTheStartScreenAndALateFileDoesNothing() {
         val rig = Rig().toHome()
         rig.model.appReturned()
-        rig.model.snapshotPicked(kcrFile(WITH_DICE_50))
+        val file = kcrFile(WITH_DICE_50)
+        rig.model.snapshotPicked(file)
+        rig.worker.runNext()
         assertEquals(Screen.Working, rig.screen)
+        assertEquals(1, rig.worker.waiting, "the read done, core's load waits")
         rig.model.appLeft()
         rig.worker.run()
         assertEquals(Screen.GoOffline, rig.screen)

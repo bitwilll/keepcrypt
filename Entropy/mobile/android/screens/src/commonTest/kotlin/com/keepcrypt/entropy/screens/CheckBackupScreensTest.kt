@@ -21,7 +21,10 @@ import kotlin.test.assertTrue
  * passphrase read from the screen in-process, compared and never printed): Home's Check a backup opening
  * the open-document picker under the picker rule; a file refused before any byte is read when its name
  * does not end in .age or its provider gives no size or one past core's limit, and after the read when
- * the read fails or runs past the limit (its bytes zeroed); the passphrase's entry behind the privacy
+ * the read fails or runs past the limit (its bytes zeroed); the read on the worker behind "Working..."
+ * (lead decision M5-70 (g)): a slow read holding no input and no second file, a leave or going online
+ * during it zeroing what it read with no entry shown, and a file longer or shorter than its provider
+ * reports read whole and opened; the passphrase's entry behind the privacy
  * gate, eight first-fours on the letter pad, then core's opening behind "Working...": "Backup OK" with
  * the ceremony's fingerprint and the seed's Seal ID; a wrong passphrase, an entry that names no word and
  * a file that does not read refused with core's text, the entry emptied from word 1 and the file kept;
@@ -47,12 +50,20 @@ class CheckBackupScreensTest {
 
     private val saved: Saved get() = shared
 
-    /** A new model at Home, Check a backup's picker opened, and the saved backup picked under its name. */
-    private fun picked(name: String = "keepcrypt-backup-0123abcd.age", bytes: ByteArray = saved.file): Pair<Rig, FakeFile> {
-        val file = FakeFile(name, bytes.size.toLong(), bytes)
+    /**
+     * A new model at Home, Check a backup's picker opened, and the saved backup picked under its name (its
+     * provider reporting size), its read on the worker run.
+     */
+    private fun picked(
+        name: String = "keepcrypt-backup-0123abcd.age",
+        bytes: ByteArray = saved.file,
+        size: Long = bytes.size.toLong(),
+    ): Pair<Rig, FakeFile> {
+        val file = FakeFile(name, size, bytes)
         val rig = Rig().toHome()
         rig.model.checkBackup(FakePickers())
         rig.model.backupPicked(file)
+        rig.worker.run()
         return rig to file
     }
 
@@ -113,21 +124,92 @@ class CheckBackupScreensTest {
             assertEquals(Screen.Home, home.screen, file.name.toString())
             assertEquals(refusal, home.fileRefusal, file.name.toString())
             assertEquals(0, file.reads, "no byte of a refused file is read: " + file.name)
+            assertEquals(0, rig.worker.waiting, "no read waits on the worker: " + file.name)
         }
         assertEquals("That file was not opened: a KeepCrypt backup's name ends in .age.", fileRefusalText(FileRefusal.NotAge))
         // A provider that sized it within the limit and then gave more: refused, its bytes zeroed.
         val liar = FakeFile("keepcrypt-backup-0123abcd.age", 100L, ByteArray(Core.BACKUP_MAX_BYTES + 1) { 1 })
         rig.model.backupPicked(liar)
+        rig.worker.run()
         assertEquals(FileRefusal.TooLarge, rig.model.state.value.fileRefusal)
         assertEquals(1, liar.reads)
         assertEquals(Core.BACKUP_MAX_BYTES, liar.readLimit)
         assertTrue(zeroed(liar.given), "the bytes past the limit were zeroed")
         val unreadable = FakeFile("keepcrypt-backup-0123abcd.AGE", 100L, null)
         rig.model.backupPicked(unreadable)
+        rig.worker.run()
         assertEquals(FileRefusal.Unreadable, rig.model.state.value.fileRefusal, "an upper-case .AGE passes the name, then a read that fails")
         assertEquals(Screen.Home, rig.screen)
         rig.model.chooseMode(Mode.Mixed)
         assertEquals(Screen.Length, rig.screen, "Home's other choices stay")
+    }
+
+    /**
+     * A picked backup is read on the worker behind "Working...", never on the main thread (lead decision
+     * M5-70 (g)): while a slow read lasts, Home's choices and a second file do nothing; a leave or going
+     * online during it (the picker over and the app back, as on the phone) zeroes what it read, shows no
+     * entry and ends on the start screen saying why, as any long call's discard does.
+     */
+    @Test
+    fun theReadRunsOnTheWorkerAndADiscardDuringItZeroesWhatItReadAndShowsNoEntry() {
+        val bytes = saved.file
+        val rig = Rig().toHome()
+        var during: Screen? = null
+        val slow = FakeFile(NAME, bytes.size.toLong(), bytes) { during = rig.screen }
+        rig.model.checkBackup(FakePickers())
+        rig.model.backupPicked(slow)
+        assertEquals(Screen.Working, rig.screen, "the file is read behind Working...")
+        assertEquals(0, slow.reads, "the main thread returned before any byte was read")
+        assertEquals(1, rig.worker.waiting, "the read waits on the worker")
+        rig.model.chooseMode(Mode.Mixed)
+        val second = FakeFile(NAME, bytes.size.toLong(), bytes)
+        rig.model.backupPicked(second)
+        assertEquals(Screen.Working, rig.screen, "Home's choices do nothing while the read runs")
+        assertEquals(0, second.reads, "a second file picked while the read runs is never read")
+        rig.worker.run()
+        assertEquals(Screen.Working, during, "the read ran while Working... showed")
+        assertEquals(1, slow.reads)
+        assertEquals(Screen.BackupCheckEntry, rig.screen)
+        assertTrue(rig.model.state.value.gate, "the entry shows through the privacy gate")
+        assertFalse(zeroed(slow.given), "the bytes read are kept for core")
+
+        val discards = listOf(
+            Notice.Left to { away: Rig -> away.model.appLeft() },
+            Notice.Offline to { away: Rig -> away.offline.set(false) },
+        )
+        for ((notice, discard) in discards) {
+            val away = Rig().toHome()
+            val file = FakeFile(NAME, bytes.size.toLong(), bytes) { discard(away) }
+            away.model.checkBackup(FakePickers())
+            away.model.appLeft()
+            away.model.appReturned()
+            away.model.backupPicked(file)
+            away.worker.run()
+            assertEquals(1, file.reads, notice.name)
+            assertTrue(zeroed(file.given), notice.name + ": what the read gave was zeroed")
+            assertEquals(Screen.GoOffline, away.screen, notice.name + ": no entry, the start screen")
+            assertEquals(notice, away.model.state.value.notice)
+            assertNoSession(notice.name + ": a discard during the read left something in core")
+        }
+    }
+
+    /**
+     * A file its provider sized wrongly but within core's limit (longer than reported, or shorter) is read
+     * whole on the worker, so it opens; the read's buffer itself is Documents.kt's (ReadUpToTest).
+     */
+    @Test
+    fun aFileLongerOrShorterThanItsProviderReportsIsReadWholeAndOpens() {
+        for ((what, size) in listOf("longer than reported" to 10L, "shorter than reported" to saved.file.size + 1000L)) {
+            val (rig, file) = picked(size = size)
+            assertEquals(Screen.BackupCheckEntry, rig.screen, what)
+            rig.model.passGate()
+            type(rig, firstFours(saved.passphrase))
+            rig.worker.run()
+            assertEquals(Screen.BackupCheckResult, rig.screen, what)
+            assertEquals(DICE_50_SEAL_ID, assertNotNull(rig.model.state.value.opened, what).seal.sealId, what)
+            assertTrue(zeroed(file.given), what + ": the file read was zeroed once the entry was over")
+            rig.model.closeBackup()
+        }
     }
 
     @Test
@@ -390,6 +472,9 @@ class CheckBackupScreensTest {
 
     private companion object {
         const val DICE_50 = "dice-50-words12"
+
+        /** A backup's name as core suggests them. */
+        const val NAME = "keepcrypt-backup-0123abcd.age"
 
         /** kcr.json's dice-50-words12's Seal ID (a public gate-seed vector). */
         const val DICE_50_SEAL_ID = "YVM9CPP3"

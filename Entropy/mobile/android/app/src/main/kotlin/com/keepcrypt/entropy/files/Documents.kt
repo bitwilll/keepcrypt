@@ -29,9 +29,10 @@ import java.io.InputStream
  *   write of core's bytes (ciphertext, made in memory: no plaintext ever reaches a file); then the
  *   file read back with openInputStream, at most one byte past core's limit.
  * - A picked file: its name and size as its provider reports them (OpenableColumns, read from the
- *   provider's own row with no byte of the file read), and its bytes only when the model asks, at
- *   most one byte past core's limit, read into a buffer sized from the size its provider reports, so a
- *   small snapshot takes a small buffer however large core's limit for one is.
+ *   provider's own row with no byte of the file read), and its bytes only when the model asks, on its
+ *   worker (a long call, never on the main thread: lead decision M5-70 (g)), at most one byte past
+ *   core's limit, read into a buffer sized from the size its provider reports, so a small snapshot
+ *   takes a small buffer however large core's limit for one is.
  * - An IOException from a stream (the provider failed, or the file is gone) is a failed write or read,
  *   which the model names on its screen; nothing else is caught, so any other failure reaches the
  *   app's crash handler, which wipes and ends the process (fail closed).
@@ -92,7 +93,7 @@ private class Place(private val resolver: ContentResolver, private val uri: Uri)
     override fun readBack(limit: Int): ByteArray? = readAtMost(resolver, uri, limit)
 }
 
-/** The open-document picker's file: its provider's name and size, and its bytes on request. */
+/** The open-document picker's file: its provider's name and size, and its bytes on request, on the model's worker. */
 private class Picked(
     private val resolver: ContentResolver,
     private val uri: Uri,

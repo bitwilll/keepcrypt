@@ -196,12 +196,13 @@ data class UiState(
  * - Every core call goes through call, the app's only catch of KcHalt: a halt ends on the stop screen,
  *   which no input leaves; only its "Close app" does, which ends the process.
  * - A long call runs on the worker behind "Working..." (the start-up self-test behind its own
- *   screen), which takes no input (work).
+ *   screen), which takes no input (work); so does a picked file's read (lead decision M5-70 (g)).
  * - Leaving the app during a long call or on a Protected screen, and going online after the start-up
  *   (away from the app too: the offline monitor reports until the model's end), call core's discard
  *   at once, even during a long call; the call's discarded reply then returns the UI to its start
  *   screen (toStart). That start screen is certain for the long calls core offers at home, start, the
- *   self-test, Check a backup's openBackup and Load registry snapshot's loadSnapshot; finish, revealProof (the scanned go-ahead QR's check,
+ *   self-test, Check a backup's openBackup and Load registry snapshot's loadSnapshot, and for a picked
+ *   file's read, which makes no core call; finish, revealProof (the scanned go-ahead QR's check,
  *   commit 18), and the backup's encryptBackup and verifyBackup (commit 20), which it does not offer
  *   there, halt the slot instead when a discard reaches core between the worker's look at the discard
  *   flag and the call (fail closed: the stop screen; lead decision M5-54's residual, work). On a Public
@@ -265,8 +266,10 @@ data class UiState(
  *   it goes; a dice-only seed has no D, so the registration leads straight to the checklist.
  * - Check a backup (Home's, lead decision M5-48; docs/mobile-apps.md, "Checking a backup"): the system's
  *   open-document picker; the file it gives is refused unless its name ends in .age and its provider
- *   sizes it within core's limit, both before any byte is read, and the read stops one byte past the
- *   limit. Then the passphrase's entry (Protected, through the gate): the first four letters of each of
+ *   sizes it within core's limit, both before any byte is read; then it is read on the worker behind
+ *   "Working..." (a slow provider never holds the main thread), the read stopping one byte past the
+ *   limit, and its bytes are held in a Secret, wiped once the entry and its call are over. Then the
+ *   passphrase's entry (Protected, through the gate): the first four letters of each of
  *   the 8 words on the letter pad, each entry taken as a Secret, and core opens the file with them (a
  *   long call: scrypt); a refusal returns to the entry, emptied, with core's text. Its result is Public:
  *   "Backup OK", the fingerprint and the Seal ID; the words, through the privacy gate on the words'
@@ -275,8 +278,10 @@ data class UiState(
  *   discard, a timer's wipe or going online takes it, and Home follows only through Done.
  * - Load registry snapshot (Home's, lead decision M5-48; docs/mobile-apps.md, "Reading a snapshot"): the
  *   system's open-document picker; the file it gives is refused unless its name ends in .kcr and its
- *   provider sizes it within core's limit, both before any byte is read, and the read stops one byte
- *   past the limit, as Check a backup's. Core verifies it on the worker (a long call) against this
+ *   provider sizes it within core's limit, both before any byte is read; then it is read on the worker
+ *   behind "Working...", the read stopping one byte past the limit, as Check a backup's (so neither a
+ *   slow provider nor a full-size snapshot, about 72 MiB, holds the main thread). Core verifies it on
+ *   the worker (a second long call, which the read's reply starts) against this
  *   build's registry key, and its result (Public) shows its number, date, count and any freshness
  *   warning, or why core refused it (the shipping APK trusts no registry key yet). A verified snapshot
  *   is the model's (snapshotLoaded): Check now then runs the check against it on its own, and Home names
@@ -342,8 +347,8 @@ class CeremonyModel(
     /** The confirm's first answer, a choice's index (0-3), until the second is typed; -1 for none. */
     private var firstPick = -1
 
-    /** The file Check a backup read (its bytes, at most core's limit), while its passphrase's entry and its call last. */
-    private var checkFile: ByteArray? = null
+    /** The file Check a backup read (its bytes, at most core's limit, in a Secret), while its passphrase's entry and its call last. */
+    private var checkFile: Secret? = null
 
     /** Check a backup's entries typed so far, each a word's first four letters (or three) in a Secret, wiped with the entry. */
     private val entries = ArrayList<Secret>(PASSPHRASE_WORDS)
@@ -1158,17 +1163,20 @@ class CeremonyModel(
     /**
      * The open-document picker's answer, while Home shows (a late answer does nothing): none, and Home
      * stays; a file, refused unless its name ends in .age (any letter case, as the Pi lists them) and its
-     * provider reports a size within core's limit, both before any byte is read, then read, which stops
-     * one byte past the limit (a provider that sized it wrongly is refused too). A refused file is never
-     * read, or its bytes are zeroed, and Home says why (picked). A file that passes goes to the
-     * passphrase's entry, word 1 of 8, through the privacy gate (Protected), its bytes kept for core.
+     * provider reports a size within core's limit, both before any byte is read, then read on the worker
+     * behind "Working...", which stops one byte past the limit (a provider that sized it wrongly is
+     * refused too). A refused file is never read, or its bytes are zeroed, and Home says why; a discard
+     * during the read zeroes them, and the start screen follows (picked). A file that passes goes to the
+     * passphrase's entry, word 1 of 8, through the privacy gate (Protected), its bytes kept for core in a
+     * Secret.
      */
     fun backupPicked(file: PickedFile?) {
-        val bytes = picked(file, Core.BACKUP_SUFFIX, Core.BACKUP_MAX_BYTES, FileRefusal.NotAge, FileRefusal.TooLarge) ?: return
-        checkFile = bytes
-        dropEntries()
-        backupLetters.wipe()
-        show(Screen.BackupCheckEntry)
+        picked(file, Core.BACKUP_SUFFIX, Core.BACKUP_MAX_BYTES, FileRefusal.NotAge, FileRefusal.TooLarge) { bytes ->
+            checkFile = Secret(bytes)
+            dropEntries()
+            backupLetters.wipe()
+            show(Screen.BackupCheckEntry)
+        }
     }
 
     /**
@@ -1253,28 +1261,30 @@ class CeremonyModel(
      * The open-document picker's answer for Load registry snapshot, while Home shows (a late answer does
      * nothing): none, and Home stays; a file, refused unless its name ends in .kcr (any letter case, as the
      * Pi lists them) and its provider reports a size within core's limit, both before any byte is read,
-     * then read, which stops one byte past the limit, as Check a backup's (picked). Core verifies it on the
-     * worker behind "Working..." (loadSnapshot, a long call: the signature, the entries and the bucket
-     * roots), on today's UTC date, and its bytes are zeroed once core has them. Verified, the slot holds
-     * the snapshot and its header is the model's (snapshotLoaded): the result shows its number, date and
-     * count and any freshness warning, and Check now runs the check against it on its own. Refused (no
-     * registry key in this build, as the shipping APK until M9; a file that does not verify), the result
-     * says why, and a snapshot loaded before stays, in the slot and here.
+     * then read on the worker behind "Working...", which stops one byte past the limit, as Check a
+     * backup's (picked). The read's reply starts core's verification on the worker, "Working..." still
+     * showing (loadSnapshot, a long call: the signature, the entries and the bucket roots), on today's UTC
+     * date, and its bytes are zeroed once core has them. Verified, the slot holds the snapshot and its
+     * header is the model's (snapshotLoaded): the result shows its number, date and count and any
+     * freshness warning, and Check now runs the check against it on its own. Refused (no registry key in
+     * this build, as the shipping APK until M9; a file that does not verify), the result says why, and a
+     * snapshot loaded before stays, in the slot and here.
      */
     fun snapshotPicked(file: PickedFile?) {
-        val bytes = picked(file, Core.SNAPSHOT_SUFFIX, Core.SNAPSHOT_MAX_BYTES, FileRefusal.NotKcr, FileRefusal.SnapshotTooLarge) ?: return
-        work(
-            {
-                try {
-                    Core.loadSnapshot(date.today(), bytes)
-                } finally {
-                    bytes.fill(0)
-                }
-            },
-            refused = { refusal -> if (isSnapshotRefusal(refusal)) show(Screen.Snapshot, snapshotRefusal = refusal) else halt() },
-        ) { header ->
-            snapshotLoaded(header)
-            show(Screen.Snapshot)
+        picked(file, Core.SNAPSHOT_SUFFIX, Core.SNAPSHOT_MAX_BYTES, FileRefusal.NotKcr, FileRefusal.SnapshotTooLarge) { bytes ->
+            work(
+                {
+                    try {
+                        Core.loadSnapshot(date.today(), bytes)
+                    } finally {
+                        bytes.fill(0)
+                    }
+                },
+                refused = { refusal -> if (isSnapshotRefusal(refusal)) show(Screen.Snapshot, snapshotRefusal = refusal) else halt() },
+            ) { header ->
+                snapshotLoaded(header)
+                show(Screen.Snapshot)
+            }
         }
     }
 
@@ -1386,12 +1396,16 @@ class CeremonyModel(
      * at a time: a second is the shell's bug, and halts, as does a busy screen that takes input. The
      * busy screen keeps the QR codes, word pages, verdicts, passphrase page, confirm choices, opened
      * backup, watch-only export and D of the screen it stands for (drawing none), so that screen comes
-     * back with them whole; the next other screen wipes them.
+     * back with them whole; the next other screen wipes them. done may start the next long call (Load
+     * registry snapshot's load, from its read's): the busy screen then stays, standing for the same
+     * screen. A value a discard or a halt drops goes to dropped, on whichever thread drops it (a picked
+     * file's read gives its bytes there to be zeroed).
      */
     fun <T> work(
         core: () -> Reply<T>,
         busy: Screen = Screen.Working,
         refused: (Refusal) -> Unit = { halt() },
+        dropped: (T) -> Unit = {},
         done: (T) -> Unit,
     ) {
         if (running != null || stopped() || !isWorking(busy)) {
@@ -1400,7 +1414,7 @@ class CeremonyModel(
         }
         val pending = Pending()
         running = pending
-        from = mutable.value
+        if (!isWorking(mutable.value.screen)) from = mutable.value
         show(
             busy,
             checkRequest = from.checkRequest,
@@ -1416,8 +1430,9 @@ class CeremonyModel(
             deviceLeg = from.deviceLeg,
         )
         scope.launch {
-            val reply = withContext(worker) { onWorker(pending, core) }
+            val reply = withContext(worker) { onWorker(pending, core, dropped) }
             if (running === pending) running = null
+            if (reply is Reply.Done && (stopped() || pending.discarded)) dropped(reply.value)
             if (stopped()) return@launch
             when {
                 reply == null -> halted()
@@ -1425,7 +1440,7 @@ class CeremonyModel(
                 else -> when (reply) {
                     is Reply.Done -> {
                         done(reply.value)
-                        if (mutable.value.screen == busy) showFrom()
+                        if (running == null && mutable.value.screen == busy) showFrom()
                     }
                     is Reply.Refused -> {
                         showFrom()
@@ -1447,12 +1462,15 @@ class CeremonyModel(
      * this); finish, revealProof, encryptBackup and verifyBackup, which core does not offer at home, halt
      * the slot there, and their reply is the halt status (M5-54's residual: the stop screen, fail closed). A discard during the call makes core
      * return discarded, and one after the second look found the call done in core, so its own core
-     * discard took what the call made. Null is the halt status.
+     * discard took what the call made. A discard during a picked file's read, which makes no core call,
+     * is found by the second look, as one after a call core offers at home. A value the second look
+     * drops goes to dropped here, on the worker. Null is the halt status.
      */
-    private fun <T> onWorker(pending: Pending, core: () -> Reply<T>): Reply<T>? {
+    private fun <T> onWorker(pending: Pending, core: () -> Reply<T>, dropped: (T) -> Unit): Reply<T>? {
         if (pending.discarded) return Reply.Discarded
         val reply = call(core) ?: return null
         if (reply is Reply.Discarded || !pending.discarded) return reply
+        if (reply is Reply.Done) dropped(reply.value)
         return if (call { Core.discard() } == null) null else Reply.Discarded
     }
 
@@ -1610,9 +1628,9 @@ class CeremonyModel(
         backupFile = null
     }
 
-    /** Check a backup's file, zeroed and dropped. */
+    /** Check a backup's file, wiped and dropped. */
     private fun dropCheckFile() {
-        checkFile?.fill(0)
+        checkFile?.wipe()
         checkFile = null
     }
 
@@ -1629,18 +1647,21 @@ class CeremonyModel(
     }
 
     /**
-     * A file the open-document picker gave, while Home shows (a late answer, after a discard say, gives
-     * null and does nothing): none, and Home stays; a file refused unless its name ends in suffix (any
-     * letter case, as the Pi lists its stick's) and its provider reports a size within limit, both before
-     * any byte is read (notNamed or tooLarge, and an unknown size), then read, which stops one byte past
-     * limit (a provider that sized it wrongly is refused too, tooLarge, as is a read that fails). A refused
-     * file is never read, or its bytes are zeroed, and Home says why; null then. The bytes read otherwise,
-     * for their caller to zero.
+     * A file the open-document picker gave, while Home shows (a late answer, after a discard say, does
+     * nothing): none, and Home stays; a file refused unless its name ends in suffix (any letter case, as
+     * the Pi lists its stick's) and its provider reports a size within limit, both on the main thread
+     * before any byte is read (notNamed or tooLarge, and an unknown size), then read on the worker behind
+     * "Working..." (a long call: a slow provider or a full-size snapshot never holds the main thread,
+     * lead decision M5-70 (g)), which stops one byte past limit (a provider that sized it wrongly is
+     * refused too, tooLarge, as is a read that fails). A refused file is never read, or its bytes are
+     * zeroed, and Home says why. A discard during the read (a leave or going online: the timers wait
+     * while it runs) zeroes what it read, and the start screen follows, as after any long call. The bytes
+     * of a file that passes go to passed, on the main thread, for it to zero.
      */
-    private fun picked(file: PickedFile?, suffix: String, limit: Int, notNamed: FileRefusal, tooLarge: FileRefusal): ByteArray? {
-        if (busy() || mutable.value.screen != Screen.Home) return null
+    private fun picked(file: PickedFile?, suffix: String, limit: Int, notNamed: FileRefusal, tooLarge: FileRefusal, passed: (ByteArray) -> Unit) {
+        if (busy() || mutable.value.screen != Screen.Home) return
         timers.input()
-        if (file == null) return null
+        if (file == null) return
         val size = file.size
         val refusal = when {
             file.name?.endsWith(suffix, ignoreCase = true) != true -> notNamed
@@ -1650,15 +1671,16 @@ class CeremonyModel(
         }
         if (refusal != null) {
             show(Screen.Home, fileRefusal = refusal)
-            return null
+            return
         }
-        val bytes = file.read(limit)
-        if (bytes == null || bytes.size > limit) {
-            bytes?.fill(0)
-            show(Screen.Home, fileRefusal = if (bytes == null) FileRefusal.Unreadable else tooLarge)
-            return null
+        work({ Reply.Done(file.read(limit)) }, dropped = { bytes -> bytes?.fill(0) }) { bytes ->
+            if (bytes == null || bytes.size > limit) {
+                bytes?.fill(0)
+                show(Screen.Home, fileRefusal = if (bytes == null) FileRefusal.Unreadable else tooLarge)
+            } else {
+                passed(bytes)
+            }
         }
-        return bytes
     }
 
     /**

@@ -116,7 +116,7 @@ class QrRoundTripTest {
     fun checkABackupsReCheckQrCarriesSealJsonsT() {
         val age = vector("backup.json")["age_files"].named("abandon-12-binary")
         val entries = age["passphrase"].text.split(" ").map { secretOf(it.take(4)) }
-        val opened = done(Core.openBackup(entries, age["file_hex"].hex()))
+        val opened = done(Core.openBackup(entries, Secret(age["file_hex"].hex())))
         val vector = vector("seal.json")["vectors"].list[0]
         assertContentEquals(vector("watchonly.json")["wallets"].named("abandon")["fingerprint"].hex(), opened.fingerprint)
         assertEquals(vector["seal_id"].text, opened.seal.sealId)

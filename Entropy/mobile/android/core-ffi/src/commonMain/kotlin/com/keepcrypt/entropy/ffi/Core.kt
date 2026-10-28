@@ -395,8 +395,8 @@ object Core {
         return call(Wire.LOAD_SNAPSHOT, input) { it.registry() }
     }
 
-    /** Check a backup: the eight entries (each a word or its first four letters) and the file. */
-    fun openBackup(entries: List<Secret>, file: ByteArray): Reply<OpenedBackup> {
+    /** Check a backup: the eight entries (each a word or its first four letters) and the file, which the model holds in a Secret. */
+    fun openBackup(entries: List<Secret>, file: Secret): Reply<OpenedBackup> {
         if (entries.size != 8) halt()
         var size = file.size
         for (entry in entries) {

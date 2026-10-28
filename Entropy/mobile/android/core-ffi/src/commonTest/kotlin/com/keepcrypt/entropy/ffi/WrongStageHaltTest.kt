@@ -54,7 +54,7 @@ class WrongStageHaltTest {
             { Core.registration() },
             { Core.revealDeviceLeg() },
             { Core.loadSnapshot(today, byteArrayOf(1)) },
-            { Core.openBackup(List(8) { secretOf("aban") }, byteArrayOf(1)) },
+            { Core.openBackup(List(8) { secretOf("aban") }, Secret(byteArrayOf(1))) },
         )
         assertTrue(every.size == 38, "one call per op")
         for (call in every) assertFailsWith<KcHalt> { call() }

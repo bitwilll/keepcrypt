@@ -13255,6 +13255,41 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   APKs' walks with backup_confirm's 5 secret texts drawn and BackupTest's age -d hand-off; then on the final tree the
   strict Gradle build of the five APKs and every JVM test task (:core-ffi 31 in 11 classes, :screens 138 in 19, :app
   11 in 4 for each flavour, :secure-ui 3 in 1, none failed).
+  Proof (M5 commit 20h, lead decision M5-70 (g), partial: local, kc37, Q76; CI's API 31 and 36 legs at the next push):
+  the model's picked(), which Check a backup and Load registry snapshot share, read the file in the activity's result
+  callback on the main thread (21d's residual), so a slow provider or a full-size snapshot (about 72 MiB) held it. The
+  name and size checks still come first, on the main thread, before any byte is read; the read is then a long call
+  through work(): "Working..." shows and takes no input, the worker calls PickedFile.read (Documents.kt's readUpTo,
+  4944c84's buffer one byte past the reported size, unchanged, and Documents.kt still the one file with the
+  IOException catch, M5-53), and its reply on the main thread refuses a failed read or one past the limit (its bytes
+  zeroed, Home saying why) or hands the bytes on. Check a backup's go to the entry in a Secret (Core.openBackup now
+  takes the file as one, as it takes the entries), wiped when the entry and its call are over as before; Load registry
+  snapshot's go to core's load, a second long call that the read's reply starts, "Working..." staying (work lets a done
+  start the next call, whose busy screen stands for the same screen). A discard during the read (a leave or going
+  online; the timers wait while a long call runs, so none fires then) is found by the worker's second look: what the
+  read gave is zeroed (work's new dropped, called with a Done value a discard or a halt drops, by the worker's second
+  look or on the main thread), nothing goes to core (the snapshot's load never starts) and the start screen follows
+  with its notice, where M5-54 ends the other long calls. Documents.kt and Seams.kt say the read runs on the worker.
+  JVM tests (local): HomeScreensTest 10 (8 before) and CheckBackupScreensTest 13 (11 before), each with a test of the
+  read on the worker (a slow read: Working shows while it reads, the main thread returned before any byte was read,
+  Home's choices and a second file do nothing; a leave and going online during it: its bytes zeroed, the start screen
+  with Left or Offline, nothing loaded and the read alone run, or no entry and nothing in the slot) and one of a file
+  longer (10 reported) or shorter (1000 bytes more reported) than its provider reports, read whole and loaded or
+  opened; the existing tests step the worker (HeldWorker.runNext: the read, then the load, its bytes not zeroed until
+  core has them, and a discard during the load). :screens 142 in 19 classes, :core-ffi 31 in 11, :app 11 in 4 for each
+  flavour, :secure-ui 3 in 1, none failed. Four mutants each fail the new tests: the read made on the main thread again
+  (3 tests), no zeroing on a discard (2), the worker's second look not zeroing (2), and work showing Home again while
+  the load runs (its done-started-a-call guard removed: 3). Not tested: a discard after the worker's second look and before the main thread's
+  reply (the tests' unconfined scope answers at once). On kc37 (local, android-local.sh exit 0 in 1475 s, which built
+  the five APKs with the strict Gradle build and ran every JVM test task above): every class passed in
+  android-emulator.sh's order, NativeTest too, among them CaptureTest's walk in both APKs (Check a backup's entry and
+  Load registry snapshot's result, each file handed to the model as a picker would), CheckTest 2 (the shipping app's
+  refusal of with-dice-50 picked through DocumentsUI), BackupTest 1 (Check a backup through DocumentsUI, its age -d
+  hand-off passed) and SnapshotDrillTest 3 (the drill's snapshot loaded through the picker); the gate clean (382
+  files). No Rust changed: cargo fmt --all --check and both clippy commands clean, cargo test --workspace --locked 499
+  passed in 25 suites (3 ignored) and the test-sources run 269 in 17 (1 ignored), none failed. The implementing agent
+  died with the Claude app's restart at 03:42 during the gate's selftest; the lead reviewed its tree, reran
+  banned-api-check.sh --selftest (1611 passed, 0 failed) and committed it (M5-68 (b)).
 - [ ] The CI `age -d` hand-off: for the CI throwaway seed only, the androidTest reads the backup passphrase from the
   in-process `Secret` and sends it as the instrumentation status value `kc_ci_throwaway_passphrase`. The workflow pipes
   `am instrument -r`'s output straight into `scripts/android-age-check.py`, which takes the value, feeds it to age 1.1.1

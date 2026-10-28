@@ -53,10 +53,13 @@ internal class HeldWorker : CoroutineDispatcher() {
 
     /** Runs every long call waiting, and what each one's reply leads to. */
     fun run() {
-        while (held.isNotEmpty()) {
-            held.removeFirst().run()
-            ran += 1
-        }
+        while (held.isNotEmpty()) runNext()
+    }
+
+    /** Runs the first long call waiting, and what its reply leads to (a long call its reply starts then waits). */
+    fun runNext() {
+        held.removeFirst().run()
+        ran += 1
     }
 }
 
@@ -275,8 +278,8 @@ internal class Rig(scope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined
 
     /**
      * From Home: Load registry snapshot with kcr.json's snapshot named name, picked as the open-document
-     * picker gives a file (its name ending in .kcr, its size), core's load on the worker run, then the
-     * result's Done: Home, with the snapshot loaded (the check's and the words' tests).
+     * picker gives a file (its name ending in .kcr, its size), its read and core's load on the worker run,
+     * then the result's Done: Home, with the snapshot loaded (the check's and the words' tests).
      */
     fun loadSnapshot(name: String): Rig {
         val bytes = kcrSnapshot(name)
@@ -380,8 +383,17 @@ internal class FakePlace(
     }
 }
 
-/** A file the open-document picker gave, in memory: its name, its size and bytes (null for a read that fails); it counts its reads. */
-internal class FakeFile(override val name: String?, override val size: Long?, private val bytes: ByteArray?) : PickedFile {
+/**
+ * A file the open-document picker gave, in memory: its name, its size and bytes (null for a read that
+ * fails); it counts its reads, and while it reads (on the model's worker) runs reading, which stands for
+ * what happens on the main thread while a slow provider's read lasts.
+ */
+internal class FakeFile(
+    override val name: String?,
+    override val size: Long?,
+    private val bytes: ByteArray?,
+    private val reading: () -> Unit = {},
+) : PickedFile {
     var reads = 0
     var readLimit = -1
 
@@ -391,6 +403,7 @@ internal class FakeFile(override val name: String?, override val size: Long?, pr
     override fun read(limit: Int): ByteArray? {
         reads += 1
         readLimit = limit
+        reading()
         val copy = bytes?.copyOf()
         given = copy
         return copy

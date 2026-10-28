@@ -124,12 +124,13 @@ interface DocumentPlace {
 
 /**
  * A file the open-document picker gave: its name and size as its provider reports them (null where it
- * reports none), and its bytes, which the model reads only once the name and size pass.
+ * reports none), and its bytes, which the model reads only once the name and size pass, on its worker
+ * behind "Working..." (a long call: a slow provider may hold read, never the main thread).
  */
 interface PickedFile {
     val name: String?
     val size: Long?
 
-    /** The file's bytes, at most limit + 1 (one past limit says it is larger), or null when it could not be read. */
+    /** The file's bytes, at most limit + 1 (one past limit says it is larger), or null when it could not be read; called on the model's worker. */
     fun read(limit: Int): ByteArray?
 }
