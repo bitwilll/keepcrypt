@@ -13241,6 +13241,16 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   checked by them) and am instrument's "Time:" and "OK (N tests)" lines: 0 of 200,000. The selftest's new frame-words
   case (a passphrase of age, test and face, a name whose hex spells face) passes, and fails on the old search;
   android-age-check.py --selftest 17 passed, 0 failed (python3 3.12, Homebrew's age v1.3.2).
+  Proof (M5 commit 20d, review fix, partial: local, Q76): the checker wrote RAW, the run without its passphrase line,
+  before any search, so a run whose output also showed the passphrase (a page in a failing assertion's stack, say)
+  failed but left that text in RAW, which android-instrument.sh prints whole when a run fails. The run's output is now
+  searched first, every line of it (the whole passphrase, a page or two of its screen's lines; a word alone outside the
+  lines 20c names), and when it shows a value the test reported, RAW holds one line saying the run was withheld, and the
+  check fails once the values' form is checked, with no adb call. The selftest checks every RAW for the passphrase, its
+  pages, two of its lines and its words, and the page, word and new lines-in-the-run cases (two of the screen's lines in
+  the test's probe and pass lines) for the withheld line alone; a mutant that writes the run regardless fails those
+  three. android-age-check.py --selftest 18 passed, 0 failed; android-instrument.sh --selftest 43 passed under sh and
+  dash (its header says so).
 
 **19. Gate evidence and Commands**
 - [ ] CLAUDE.md Commands gains the ffi test-registry line, `--apk` and `--selftest-apk`, the android scripts (CI-only

@@ -29,7 +29,9 @@
 # file or the log first: the checker takes the backup passphrase's status value out of it, keeps it in
 # its memory alone, decrypts the saved backup with age -d and writes the run without that value to the
 # file this script then judges as any run's (so a failing run prints the raw output with no value in
-# it); the run passes only when the checker passes too, and its one line is printed. After a killed:
+# it; a run whose output shows the passphrase elsewhere is written as one line saying it was withheld,
+# which fails the judge too); the run passes only when the checker passes too, and its one line is
+# printed. After a killed:
 # run the crash buffer must instead hold exactly one crash of our packages, the trigger's: Android's
 # own uncaught-exception
 # pre-handler, which apps cannot replace, logs it before the app's handler wipes and ends the process

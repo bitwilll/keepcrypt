@@ -13,8 +13,10 @@ key only under mobile/android/app/src/androidTest/ and in this file.
       Reads the whole run from stdin. Writes it to RAW (mode 0600) without the passphrase's line, for
       android-instrument.sh's usual judge, which prints parts of RAW to the job log and all of it when the
       run fails, so the value never reaches the job log or a file; it is held in this process's memory
-      alone, never in an argument, the environment or a file. Then, unless the run holds exactly one of
-      each value, well formed (the passphrase 8 words of the BIP39 English list, the name core's
+      alone, never in an argument, the environment or a file. When the rest of the run shows a passphrase
+      value it reported (the run's output search below), RAW holds instead one line saying the run was
+      withheld, and the check fails once the values' form is checked. Then, unless the run holds exactly
+      one of each value, well formed (the passphrase 8 words of the BIP39 English list, the name core's
       keepcrypt-backup- and 8 lower-case hex digits and .age, the fingerprint 8 lower-case hex digits), it
       fails with no adb call. It reads the file from the emulator (ADB -s SERIAL exec-out cat
       /sdcard/Download/NAME, at most core's 8 KiB), and has the age CLI (AGE, default: age on PATH; CI:
@@ -23,9 +25,10 @@ key only under mobile/android/app/src/androidTest/ and in this file.
       v1 (tools/verify's reader: words, braille, the fingerprint recomputed from the words) written by
       keepcrypt-android, with the fingerprint the test reported; and a fresh wrong passphrase must be
       refused by age. The ciphertext and the plaintext (the throwaway gate seed's words, public vectors)
-      go only to a private temporary directory, removed at the end. Last, the value's reach: logcat -d of
-      every buffer (ADB -s SERIAL logcat -d -b all, read into memory) and the run's output must hold
-      neither the passphrase whole, nor either page of four words as core gives them, nor two or more of
+      go only to a private temporary directory, removed at the end. The value's reach: logcat -d of
+      every buffer (ADB -s SERIAL logcat -d -b all, read into memory, last) and the run's output (first,
+      every line of it, the test's own included) must hold neither the passphrase whole, nor either page
+      of four words as core gives them, nor two or more of
       the eight lines the passphrase screen draws ("3 word", a page's four in one node, which a log
       would show together; one alone a log can hold by chance, a number and a common word); and the
       run's output (the job log's share of this run) must hold none of its words as a word, outside the
@@ -45,7 +48,9 @@ key only under mobile/android/app/src/androidTest/ and in this file.
       "OK (1 test)"); no passphrase value, two, one that is not
       8 list words, a name that is not core's (no adb call for those three or that), a wrong passphrase,
       another fingerprint, a backup another app wrote, no file on the emulator, the passphrase and two of
-      the screen's lines in logcat, a page and a word of it in the run's output each fail; and bad usage
+      the screen's lines in logcat, a page, a word and two of the screen's lines (in the test's own probe
+      and pass lines) in the run's output each fail, with no adb call and RAW the one withheld line, and
+      no RAW holds the passphrase whole, a page, two of its screen's lines or a word of it; and bad usage
       exits 2. Exit 0 when every case behaves, 1 otherwise. It needs age and
       hashlib.scrypt; it takes about half a minute.
 """
@@ -81,6 +86,9 @@ PUBLIC = {NAME_KEY: NAME, FINGERPRINT_KEY: FINGERPRINT}
 # am instrument's own fixed result lines, which the word search leaves out (test is a list word).
 RUNNER_LINE = re.compile(r"Time: [0-9.,]+|OK \([0-9]+ tests?\)")
 ADB_TIMEOUT_SECONDS = 120
+# RAW in place of the run when the run's output shows the passphrase: android-instrument.sh prints RAW to the job log.
+WITHHELD = ("age-check: this run's output is withheld from the job log, since it shows the backup passphrase (the "
+            "age-check line says how)\n")
 
 
 def load(name, path):
@@ -124,8 +132,8 @@ def one(values, what):
 
 
 def needles(words):
-    """What would show the passphrase alone: whole, and each page of four as core gives it."""
-    return [" ".join(words), " ".join(words[:4]), " ".join(words[4:])]
+    """What would show the passphrase alone: whole, and each page of four as core gives it (none empty)."""
+    return [needle for needle in (" ".join(words), " ".join(words[:4]), " ".join(words[4:])) if needle]
 
 
 def drawn_lines(words):
@@ -155,6 +163,34 @@ def word_hits(text, words):
     return sum(len(re.findall(r"(?<![A-Za-z])" + re.escape(word) + r"(?![A-Za-z])", text)) for word in words)
 
 
+def shown(text, words, where):
+    """Why text shows the passphrase of words, or None: whole or a page of it, or two of its screen's lines."""
+    whole = sum(text.count(needle) for needle in needles(words))
+    if whole:
+        return "%s holds the passphrase or a page of it %d time(s)" % (where, whole)
+    lines = sum(1 for line in drawn_lines(words) if line in text)
+    if lines >= 2:
+        return "%s holds %d of the 8 lines the passphrase screen draws" % (where, lines)
+    return None
+
+
+def output_leak(stripped, values):
+    """Why the run's output, its passphrase lines taken out, shows a passphrase value it reported, or None: shown
+    anywhere in it, or a word of it standing alone outside the test's prose, the public values and am instrument's
+    result lines (prose_free)."""
+    for value in values:
+        words = [word for word in value.split(" ") if word]
+        if not words:
+            continue
+        problem = shown(stripped, words, "the run's output")
+        if problem is not None:
+            return problem
+        loose = word_hits(prose_free(stripped), words)
+        if loose:
+            return "the run's output holds a word of the passphrase %d time(s), outside the test's own prose" % loose
+    return None
+
+
 def adb_bytes(adb, serial, args):
     run = subprocess.run([adb, "-s", serial] + args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                          timeout=ADB_TIMEOUT_SECONDS)
@@ -164,11 +200,13 @@ def adb_bytes(adb, serial, args):
 
 
 def check(raw, raw_path, adb, serial, age, interop, verify):
-    """The hand-off's checks; returns the pass line, or raises Fail. RAW is written first, whatever follows."""
+    """The hand-off's checks; returns the pass line, or raises Fail. RAW is written first, whatever follows: the
+    run without its passphrase lines, or WITHHELD when the rest of it shows a passphrase value it reported."""
     stripped, passphrases, names, fingerprints = split_run(raw)
+    leak = output_leak(stripped, passphrases)
     descriptor = os.open(raw_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as out:
-        out.write(stripped)
+        out.write(stripped if leak is None else WITHHELD)
     value = one(passphrases, "passphrase")
     name = one(names, "backup name")
     fingerprint = one(fingerprints, "fingerprint")
@@ -179,6 +217,8 @@ def check(raw, raw_path, adb, serial, age, interop, verify):
         raise Fail("the backup name is not core's (keepcrypt-backup-, 8 hex digits, .age)")
     if not FINGERPRINT.fullmatch(fingerprint):
         raise Fail("the fingerprint is not 8 lower-case hex digits")
+    if leak is not None:
+        raise Fail(leak)
     data = adb_bytes(adb, serial, ["exec-out", "cat", DOWNLOADS + name])
     if not 0 < len(data) <= verify.BACKUP_MAX_FILE_BYTES:
         raise Fail("the file read from the emulator holds %d bytes, not 1 to %d" % (len(data), verify.BACKUP_MAX_FILE_BYTES))
@@ -204,16 +244,9 @@ def check(raw, raw_path, adb, serial, age, interop, verify):
     if backup_fingerprint.hex() != fingerprint:
         raise Fail("the backup's fingerprint is not the one the test reported")
     log = adb_bytes(adb, serial, ["logcat", "-d", "-b", "all"]).decode("utf-8", "replace")
-    for text, where in ((log, "logcat -d"), (stripped, "the run's output")):
-        whole = sum(text.count(needle) for needle in needles(words))
-        if whole:
-            raise Fail("%s holds the passphrase or a page of it %d time(s)" % (where, whole))
-        lines = sum(1 for line in drawn_lines(words) if line in text)
-        if lines >= 2:
-            raise Fail("%s holds %d of the 8 lines the passphrase screen draws" % (where, lines))
-    loose = word_hits(prose_free(stripped), words)
-    if loose:
-        raise Fail("the run's output holds a word of the passphrase %d time(s), outside the test's own prose" % loose)
+    problem = shown(log, words, "logcat -d")
+    if problem is not None:
+        raise Fail(problem)
     return ("age-check: pass (%s): age -d through the pty decrypted the backup (%d bytes) to a KeepCrypt backup v1 of "
             "%d words by keepcrypt-android %d.%d.%d with the fingerprint the test reported, and refused a wrong "
             "passphrase; neither logcat -d (%d characters) nor the run's output (%d lines) holds the passphrase, a "
@@ -323,8 +356,9 @@ def selftest(args):
         adb.chmod(0o755)
 
         def case(label, want, texts, run_text, file=android, log="I ActivityManager: Start proc 4242\n", calls=None,
-                 name=SELF_NAME, passphrase=SELF_WORDS, quiet=SELF_WORDS):
-            """quiet: the passphrase's words the checker's output must not hold (its own lines hold age and test)."""
+                 name=SELF_NAME, passphrase=SELF_WORDS, quiet=SELF_WORDS, withheld=False):
+            """quiet: the passphrase's words the checker's output must not hold (its own lines hold age and test);
+            withheld: RAW must be the one line that says the run's output was withheld."""
             nonlocal passed, failed
             directory = st / label
             (directory / "device").mkdir(parents=True)
@@ -344,8 +378,10 @@ def selftest(args):
             problems += ["no %r" % text for text in texts if text not in out]
             if word_hits(out, quiet):
                 problems.append("the output holds a passphrase word")
-            if want != 2 and (PASSPHRASE_KEY in stripped or " ".join(passphrase[:4]) in stripped):
-                problems.append("RAW holds the passphrase's line")
+            if want != 2 and (PASSPHRASE_KEY in stripped or output_leak(stripped, [" ".join(passphrase)]) is not None):
+                problems.append("RAW holds the passphrase's line, the passphrase, a page or a word of it")
+            if withheld and stripped != WITHHELD:
+                problems.append("RAW is not the line that says the run's output was withheld")
             if calls is not None and (directory / "calls").read_text(encoding="ascii").strip() != calls:
                 problems.append("adb calls: %r" % (directory / "calls").read_text(encoding="ascii"))
             if problems:
@@ -388,9 +424,13 @@ def selftest(args):
              log="I Something: retry 3 %s later\n" % SELF_WORDS[2])
         case("page-in-the-run", 1, ["the run's output holds the passphrase or a page"],
              self_run("page", fingerprint=good, extra="INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: %s"
-                      % " ".join(SELF_WORDS[4:])))
+                      % " ".join(SELF_WORDS[4:])), withheld=True, calls="")
         case("word-in-the-run", 1, ["holds a word of the passphrase"],
-             self_run("word", fingerprint=good, extra="INSTRUMENTATION_STATUS: stack=expected:<%s>" % SELF_WORDS[0]))
+             self_run("word", fingerprint=good, extra="INSTRUMENTATION_STATUS: stack=expected:<%s>" % SELF_WORDS[0]),
+             withheld=True, calls="")
+        case("lines-in-the-run", 1, ["the run's output holds 2 of the 8 lines"],
+             self_run("lines", fingerprint=good, extra="INSTRUMENTATION_STATUS: kc_probe=1 %s\nINSTRUMENTATION_STATUS: "
+                      "kc_pass=2 %s" % (SELF_WORDS[0], SELF_WORDS[1])), withheld=True, calls="")
         usage = subprocess.run([sys.executable, "-I", str(Path(__file__).resolve()), "--raw"], capture_output=True, timeout=60)
         if usage.returncode == 2:
             passed += 1
