@@ -27,8 +27,9 @@ import kotlin.test.fail
  * nothing, and its export that passphrase's wallet's, core's; the registration QR behind the gate, core's,
  * once, then D's offer in Mixed mode; D behind the gate, 16 groups of 4 hex digits whose SHA-256 under
  * "KCE/v1/commit" is the C the commitment screen showed, wiped as the checklist comes; leaving the app on
- * each Protected export discarding at once with what it showed wiped; and wipeAll. The exports' values
- * are compared in-process and never printed. Each test leaves the slot at home.
+ * each Protected export discarding at once with what it showed wiped; and wipeAll (the BIP39 passphrase
+ * typed too). The exports' values are compared in-process and never printed. Each test leaves the slot at
+ * home.
  */
 class ExportScreensTest {
     @AfterTest
@@ -291,6 +292,16 @@ class ExportScreensTest {
 
     @Test
     fun wipeAllWipesTheExportOnShowTheRegistrationAndD() {
+        val entry = atWatchOffer()
+        entry.model.showWatchOnly()
+        entry.model.withBip39Passphrase()
+        entry.model.passGate()
+        for (key in PASSPHRASE) entry.model.bip39Letters.type(key)
+        entry.model.wipeAll()
+        assertEquals(0, entry.model.bip39Letters.length, "wipeAll wiped the BIP39 passphrase typed")
+        assertTrue(entry.model.bip39Letters.zeroPastLength())
+        assertNoSession("wipeAll left a session")
+
         val rig = atWatchOffer()
         rig.model.showWatchOnly()
         rig.model.noBip39Passphrase()

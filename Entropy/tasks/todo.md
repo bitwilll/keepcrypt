@@ -13178,6 +13178,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   three-letter choice spelled so, on the first question that has one), which must show the passphrase again with its
   wrong-answer note; the mutant fails it. :screens 138 in 19 classes, :core-ffi 31 in 11, :app 7 in 3 for each
   flavour, :secure-ui 3 in 1, none failed, with the strict build of the five APKs.
+  Proof (M5 commit 21c, review fix, partial: local, Q76): a mutant without wipeAll's wipe of the ASCII pad (the BIP39
+  passphrase typed, 21a) passed every test. ExportScreensTest's wipeAll test now calls it on the BIP39 entry with
+  watchonly.json's passphrase typed and finds the pad empty and zeroed; the mutant fails it. :screens 138 in 19
+  classes, :core-ffi 31 in 11, :app 7 in 3 for each flavour, :secure-ui 3 in 1, none failed, with the strict build of
+  the five APKs.
 - [ ] The CI `age -d` hand-off: for the CI throwaway seed only, the androidTest reads the backup passphrase from the
   in-process `Secret` and sends it as the instrumentation status value `kc_ci_throwaway_passphrase`. The workflow pipes
   `am instrument -r`'s output straight into `scripts/android-age-check.py`, which takes the value, feeds it to age 1.1.1
