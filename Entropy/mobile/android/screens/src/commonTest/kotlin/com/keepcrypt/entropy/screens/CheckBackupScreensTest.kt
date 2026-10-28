@@ -28,8 +28,9 @@ import kotlin.test.assertTrue
  * the backup's words through the gate equal to the seed's, with no read-back, the last insert's Done
  * back to the result; the re-check QR and Back; Done ending it in core; Back from the entry Home with
  * the file zeroed; leaving the entry discarding at once, and the result under the 60 s rule and the
- * offline rule as a session is; a late answer from the picker doing nothing. Each test leaves the slot
- * at home.
+ * offline rule as a session is; a checked backup so discarded leaving the next ceremony's words their
+ * own, with their read-back; a late answer from the picker doing nothing. Each test leaves the slot at
+ * home.
  */
 class CheckBackupScreensTest {
     @AfterTest
@@ -292,6 +293,65 @@ class CheckBackupScreensTest {
         assertEquals(Screen.GoOffline, online.screen)
         assertEquals(Notice.Offline, online.model.state.value.notice)
         assertNoSession("going online left the checked backup in core")
+    }
+
+    /**
+     * A checked backup discarded on its result (60 s away, going online) or on its words (leaving them) leaves
+     * nothing of it in the model: the next ceremony's words, from Go offline's Start, are its own (no opened
+     * backup marks them), the backup's Done does nothing on its last insert, and its read-back starts there, so
+     * the mandatory read-back is not skipped.
+     */
+    @Test
+    fun aDiscardedCheckedBackupLeavesTheNextCeremonysWordsTheirOwnWithTheirReadback() {
+        val away = atResult()
+        away.model.appReturned()
+        away.model.appLeft()
+        away.clock.now += Timers.BACKGROUND_MILLIS
+        away.model.tick()
+        assertEquals(Screen.GoOffline, away.screen)
+        away.model.appReturned()
+        away.model.dismissOverlay()
+        assertTheNextCeremonysWordsAreTheirOwn(away, "60 s away")
+
+        val online = atResult()
+        online.model.appReturned()
+        online.offline.set(false)
+        assertEquals(Screen.GoOffline, online.screen)
+        online.offline.set(true)
+        assertTheNextCeremonysWordsAreTheirOwn(online, "going online")
+
+        val left = atResult()
+        left.model.appReturned()
+        left.model.showBackupWords()
+        left.model.passGate()
+        assertNotNull(left.model.state.value.opened)
+        left.model.appLeft()
+        assertEquals(Screen.GoOffline, left.screen)
+        assertEquals(Notice.Left, left.model.state.value.notice)
+        left.model.appReturned()
+        left.model.dismissOverlay()
+        assertTheNextCeremonysWordsAreTheirOwn(left, "leaving the backup's words")
+    }
+
+    /**
+     * After a discard, from Go offline: Start, dice-50-words12 by Skip to its words, which no checked backup marks,
+     * to the last insert's read-back, then a leave, which discards it (the next model's start finds the slot at home).
+     */
+    private fun assertTheNextCeremonysWordsAreTheirOwn(rig: Rig, discard: String) {
+        rig.model.startOffline()
+        assertEquals(Screen.Home, rig.screen, discard)
+        rig.toSkippedResult(DICE_50).toWords()
+        assertNull(rig.model.state.value.opened, "after " + discard + ", the ceremony's words are marked as a checked backup's")
+        repeat(INSERTS_PER_DEVICE - 1) { rig.model.nextPage() }
+        val last = rig.model.state.value
+        assertEquals(Screen.Words, last.screen)
+        assertNull(last.opened, "after " + discard + ", the ceremony's last insert is marked as a checked backup's")
+        rig.model.backupWordsDone()
+        assertSame(last, rig.model.state.value, "the backup's Done on a ceremony's last insert, after " + discard)
+        rig.model.startReadback()
+        assertEquals(Screen.ReadbackEntry, rig.screen, "after " + discard + ", the ceremony's read-back does not start")
+        rig.model.appLeft()
+        assertNoSession("leaving the read-back left the ceremony in core")
     }
 
     @Test

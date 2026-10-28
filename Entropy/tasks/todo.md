@@ -13155,6 +13155,14 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   twelve screens in both APKs, FlowTest's two tests, CheckTest's one, the drill's picker, step 7); CI's two slower x86
   legs might add 5 to 7 minutes to the 1896 s of run 40572516408, about 37 to 39 of M5-57's 44, to be measured at the
   next push.
+  Proof (M5 commit 20e, review fix, partial: local, Q76): no test saw a checked backup outlive its discard. A mutant
+  without discard's dropChecked, and one whose last-insert Done goes to the result without asking for a checked backup,
+  each passed all 135 :screens tests, and either left the next ceremony's last insert offering the backup's Done instead
+  of its read-back (the mandatory metal read-back skipped). CheckBackupScreensTest's new test discards a checked backup
+  three ways (60 s away from its result, going online there, leaving its words) and each time takes a new ceremony from
+  Go offline to its words: none marked as a checked backup's, the backup's Done doing nothing on the last insert, and
+  the read-back starting there; both mutants now fail it. :screens 136 in 19 classes, :core-ffi 31 in 11, :app 7 in 3
+  for each flavour, :secure-ui 3 in 1, none failed, with the strict build of the five APKs.
 - [ ] The CI `age -d` hand-off: for the CI throwaway seed only, the androidTest reads the backup passphrase from the
   in-process `Secret` and sends it as the instrumentation status value `kc_ci_throwaway_passphrase`. The workflow pipes
   `am instrument -r`'s output straight into `scripts/android-age-check.py`, which takes the value, feeds it to age 1.1.1
