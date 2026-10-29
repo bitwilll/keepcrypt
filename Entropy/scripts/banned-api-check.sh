@@ -136,7 +136,11 @@
 #   - every "uses:" one of actions/checkout, actions/cache or actions/upload-artifact, pinned to
 #     the one commit SHA approved for it (checkout v7.0.1, cache v6.1.0, upload-artifact v7.0.1,
 #     Q38 (c); pi/os/pins.txt): a tag, a branch, a short SHA, another SHA (another release, or a
-#     fork's commit, which GitHub serves under the action's name) or any other action is a hit;
+#     fork's commit, which GitHub serves under the action's name) or any other action is a hit.
+#     The action is compared in one spelling only, "uses: <action>@<sha>" at the line's start or
+#     after "- ", with nothing after it but a comment; uses as a key in any other spelling is a
+#     hit whatever it names: after a dash of any width, quoted, with a space before its colon,
+#     inside a flow mapping, as an explicit key ("? uses") or with its value on a later line;
 #   - no secrets as a word anywhere (secrets.X, secrets[X], toJSON(secrets), and prose: write "a
 #     secret") and no github.token (the same token as secrets.GITHUB_TOKEN), also as
 #     github['token'];
@@ -5233,9 +5237,11 @@ approved_actions="$approved_actions|actions/upload-artifact@043fb46d1a93c77aae65
 # 1). A permissions value on the key's own line (write-all, read-all, { contents: read }) is read
 # there. A block key (run, permissions) may follow a dash of any width and may be quoted; a run
 # key inside a flow mapping ({run: ..., or , run: ...) is read for "${{" on its line. Keys inside
-# a run block are script text, not YAML. The other rules are plain greps over every line: uses:
-# not one of the three actions at its approved SHA ($approved_actions), the word secrets,
-# github.token (also github['token']), pull_request_target, workflow_run.
+# a run block are script text, not YAML. The other rules are plain greps over every line: uses
+# as a key (the word, quoted or not, then any spaces and a colon, or after "? ") on a line that
+# is not "uses:" and one of the three actions at its approved SHA ($approved_actions), at the
+# line's start or after "- ", the word secrets, github.token (also github['token']),
+# pull_request_target, workflow_run.
 workflow_check() {
   wf=$1
   [ -f "$wf" ] && [ -r "$wf" ] || return 2
@@ -5283,9 +5289,10 @@ workflow_check() {
     }
     END { if (!top_ok) print "1:missing a top-level permissions block that holds contents: read" }
   ' "$wf") || return 2
-  # Each tool's output in a command substitution of its own (the uses: lines, then those but the
-  # approved actions), as in the scan: see "The tools the gate runs fail closed".
-  u=$(grep -n -a -E -e '^[[:space:]]*(- )?uses:' -- "$wf")
+  # Each tool's output in a command substitution of its own (the uses keys' lines, then those but
+  # the approved actions), as in the scan: see "The tools the gate runs fail closed".
+  u=$(grep -n -a -E -e '(^|[^[:alnum:]_.-])["'\'']?uses["'\'']?[[:space:]]*:' \
+    -e '^[[:space:]]*(-[[:space:]]+)?[?][[:space:]]+["'\'']?uses["'\'']?([[:space:]]|$)' -- "$wf")
   [ $? -le 1 ] || return 2
   u=$(printf '%s\n' "$u" | grep -v -E -e "^[0-9]+:[[:space:]]*(- )?uses:[[:space:]]*($approved_actions)[[:space:]]*(#.*)?\$")
   [ $? -le 1 ] || return 2

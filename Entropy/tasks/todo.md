@@ -11841,6 +11841,20 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   keepcrypt-core --features test-sources` (269 passed, 1 ignored) and `-p keepcrypt-ffi -p keepcrypt-jni`, plain and
   with `--features keepcrypt-core/test-registry` (50 passed each). Only CI shows the entry crossing jobs, the
   output's form, the job names and the times.
+  Proof (M5 commit L9b, review fix, partial: local; CI's gates job at the next push): `--workflows`' rule that only
+  the three approved actions at their SHAs appear read a step's action only on lines matching `^[[:space:]]*(- )?uses:`,
+  so a `uses` key spelled any other way YAML allows passed an unapproved action as clean (the E5 review, older than
+  L9, whose Proof said the rules hold: they did for the spellings the workflows use). The rule now finds `uses` as a
+  key in any spelling (the word, quoted or not, then any spaces and a colon, anywhere on a line, or after `? `) and
+  compares the action in one spelling only, `uses:` and an approved action at its SHA, at the line's start or after
+  `- `, with nothing after it but a comment; uses so found in any other spelling is a hit whatever it names. Seven
+  fixtures, each a step `uses`-ing actions/download-artifact under upload-artifact's approved SHA, which Ruby's YAML
+  parser reads as that step's action: workflow-uses-wide-dash (`-   uses:`), -quoted-key (`"uses":`),
+  -single-quoted-key, -space-before-colon (`uses :`), -flow-mapping (`{name: fetch, uses: ...}`), -explicit-key
+  (`? uses`, its value on the next line) and -value-on-next-line; under L9's gate the first six were clean (the last
+  already hit), and each gives exactly one hit now. Locally: `--selftest` 1620 passed, 0 failed (1613 and the
+  seven); `--workflows ../.github/workflows` clean (3 workflows); the gate clean; canaries.sh PASS, all 94 checks
+  ran.
 - [x] **Instrumentation:** `scripts/android-instrument.sh` runs `am instrument -w -r -e class ...` once per test class,
   and once per test that halts or kills the process, so a latched `Halted` slot or a dead process never fails the next
   test. The crash test is judged from the shell: the process is gone, no crash dialog window exists, `logcat -b crash`
