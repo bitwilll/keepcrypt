@@ -5,8 +5,9 @@
 # the signed APKs to the leg jobs through actions/cache, under a key that names this run and its
 # attempt. Before it installs anything, each leg job checks every file it was handed against the
 # build job's SHA256SUMS, which reaches it as the build job's output, not through the cache; the
-# build job has checked that the shipped two are the bytes it uploaded. So the hashes printed for the
-# owner are the ones tested, and no fourth action is needed (download-artifact is not approved).
+# build job has checked that the shipped two are the bytes it uploaded (both sides are
+# scripts/android-handoff.sh, commit L9c). So the hashes printed for the owner are the ones tested,
+# and no fourth action is needed (download-artifact is not approved).
 #
 # From commit 6 (M5 group 4) the build is strict: every module's committed gradle.lockfile and
 # mobile/android/gradle/verification-metadata.xml must hold what Gradle resolves and downloads
@@ -582,6 +583,13 @@ jobs:
       # window lit in the first-frame stream, and lit with no frame after the curtain).
       - name: Emulator leg selftest (scripts/android-emulator.sh --selftest)
         run: sh scripts/android-emulator.sh --selftest
+      # The hand-off's own cases (no runner, commit L9c): both of its sides on stand-in APKs, a passing
+      # hand-off and each way a side must fail (an APK missing, an entry that is no plain file and a
+      # shipped APK that is not the one uploaded fail the build's; a file more, hidden or missing, a
+      # directory, a changed byte, a line twice, a malformed or empty line, no output and no directory
+      # fail the leg's).
+      - name: Hand-off selftest (scripts/android-handoff.sh --selftest)
+        run: sh scripts/android-handoff.sh --selftest
       # The hand-off to the leg jobs (lead decision M5-70 (b)), this job's last steps, so nothing
       # changes the files once their SHA-256 is taken: $RUNNER_TEMP/apks as the signing step left it,
       # the five signed APKs android-emulator.sh installs and whatever else apksigner wrote beside them
@@ -589,26 +597,13 @@ jobs:
       # it, and the legs read every script from their own checkout of this commit. Every file's
       # SHA-256 is printed and becomes this job's output sha256sums, the leg jobs' SHA256SUMS; the
       # shipped two must first have the SHA-256 the uploaded SHA256SUMS gives them, so the bytes each
-      # leg checks are the bytes this run uploaded.
+      # leg checks are the bytes this run uploaded (scripts/android-handoff.sh --sums, whose cases the
+      # selftest above ran).
       - name: The hand-off's SHA256SUMS (every file of the signed APKs' directory, this job's output)
         id: handoff
         run: |
-          fail() { echo "FAIL: hand-off: $1" >&2; exit 1; }
-          apks=$RUNNER_TEMP/apks
           sums=$RUNNER_TEMP/apks-SHA256SUMS
-          for f in app-shipping-release app-shipping-release-androidTest app-withTestRegistry-release \
-            app-withTestRegistry-release-androidTest capture-control-release; do
-            [ -f "$apks/$f.apk" ] || fail "no $apks/$f.apk"
-          done
-          (cd "$apks" && sha256sum -- *) > "$sums"
-          cat "$sums"
-          for pair in app-shipping-release.apk:app-shipping-release.apk \
-            app-withTestRegistry-release.apk:app-withTestRegistry-release-NOT-FOR-RELEASE.apk; do
-            have=$(awk -v n="${pair%%:*}" '$2 == n { print $1 }' "$sums")
-            up=$(awk -v n="${pair#*:}" '$2 == n { print $1 }' "$RUNNER_TEMP/upload/SHA256SUMS")
-            [ -n "$have" ] && [ "$have" = "$up" ] || fail "$apks/${pair%%:*} is not the uploaded ${pair#*:} (SHA256SUMS)"
-          done
-          echo "hand-off: $(($(wc -l < "$sums"))) files, $(($(cat -- "$apks"/* | wc -c))) bytes"
+          sh scripts/android-handoff.sh --sums "$RUNNER_TEMP/apks" "$RUNNER_TEMP/upload/SHA256SUMS" "$sums"
           {
             echo 'sha256sums<<KC_SHA256SUMS_END'
             cat "$sums"
@@ -682,30 +677,12 @@ jobs:
       # Before anything is installed: the build job's SHA256SUMS (its output, which reaches this job
       # apart from the cache) must be well formed, a SHA-256, two spaces and a plain file name per
       # line; the files handed over must be exactly the files it lists, none missing and none more;
-      # and each must have its SHA-256 (sha256sum --check --strict). Any failure fails the job.
+      # and each must have its SHA-256 (sha256sum --check --strict): scripts/android-handoff.sh
+      # --check, whose cases the build job's selftest ran. Any failure fails the job.
       - name: Check the signed APKs against the build job's SHA256SUMS
         env:
           KC_SHA256SUMS: ${{ needs.build.outputs.sha256sums }}
-        run: |
-          fail() { echo "FAIL: hand-off: $1" >&2; exit 1; }
-          apks=$RUNNER_TEMP/apks
-          sums=$RUNNER_TEMP/apks-SHA256SUMS
-          [ -n "$KC_SHA256SUMS" ] || fail "the build job's output holds no SHA256SUMS"
-          printf '%s\n' "${KC_SHA256SUMS%$'\n'}" > "$sums"
-          echo "== the build job's SHA256SUMS"
-          cat "$sums"
-          [ -d "$apks" ] || fail "no $apks: this run's cache entry was not restored"
-          rc=0
-          grep -q -v -E -e '^[0-9a-f]{64}  [A-Za-z0-9][A-Za-z0-9._-]*$' "$sums" || rc=$?
-          [ "$rc" -eq 1 ] || fail "a line of the build job's SHA256SUMS is not a SHA-256, two spaces and a file name (grep exit $rc)"
-          listed=$(cut -c 67- "$sums" | LC_ALL=C sort)
-          found=$(cd "$apks" && find . -mindepth 1 -printf '%P\n' | LC_ALL=C sort)
-          if [ "$listed" != "$found" ]; then
-            diff <(printf '%s\n' "$listed") <(printf '%s\n' "$found") || :
-            fail "the files handed over (>) are not the files the build job's SHA256SUMS lists (<)"
-          fi
-          (cd "$apks" && sha256sum --check --strict "$sums") || fail "a file handed over does not have the build job's SHA-256"
-          echo "hand-off: the $(($(wc -l < "$sums"))) files handed over have the build job's SHA-256"
+        run: sh scripts/android-handoff.sh --check "$RUNNER_TEMP/apks"
       # KVM for the emulators: the udev rule GitHub documents for its Linux runners.
       - name: KVM (udev rule)
         run: |

@@ -11855,6 +11855,22 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   already hit), and each gives exactly one hit now. Locally: `--selftest` 1620 passed, 0 failed (1613 and the
   seven); `--workflows ../.github/workflows` clean (3 workflows); the gate clean; canaries.sh PASS, all 94 checks
   ran.
+  Proof (M5 commit L9c, review fix, partial: local; CI's build and leg jobs at the next push): L9's two hand-off
+  scripts lived only in the workflow's run steps, and nothing in the repo ran their fail paths (the E5 review: CI
+  runs only the pass path). They are now scripts/android-handoff.sh, `--sums APKS UPLOADED OUT` (the build job's
+  handoff step, which still writes OUT to `$GITHUB_OUTPUT` itself) and `--check APKS` (each leg job's check, on
+  `KC_SHA256SUMS` through `env:` as before), with the same checks and lines; the build side also refuses an entry
+  that is no plain file by name (before, sha256sum's failure on a directory failed the step). Its `--selftest` (20
+  cases) runs both sides on stand-in APKs with their .idsig files: the build side passes with ten lines, and fails
+  with an APK missing, a directory, an upload whose SHA256SUMS gives a shipped APK another SHA-256 or does not list
+  it; the leg side passes, with one newline more too, and fails with a file more, a hidden file, a directory, a file
+  missing, a changed byte, a line twice, a name with a path, upper-case hex, an empty line, no output and no
+  directory; a call with too few arguments exits 2. The build job runs it beside the other selftests, before the
+  hand-off's two steps, which stay its last. Locally: 20 passed, 0 failed under sh, /bin/dash and bash (macOS's own
+  sha256sum; CI's is GNU's); copies without the file-set comparison (5 cases fail), the line-format check (3), the
+  uploaded SHA-256's compare (2) or the trailing newline's strip (1) each fail it (`--strict` stays: the format check
+  refuses every line it would). `--workflows ../.github/workflows` clean (3 workflows); Ruby's YAML parser reads the
+  file (build 29 steps, emulators 12).
 - [x] **Instrumentation:** `scripts/android-instrument.sh` runs `am instrument -w -r -e class ...` once per test class,
   and once per test that halts or kills the process, so a latched `Halted` slot or a dead process never fails the next
   test. The crash test is judged from the shell: the process is gone, no crash dialog window exists, `logcat -b crash`
