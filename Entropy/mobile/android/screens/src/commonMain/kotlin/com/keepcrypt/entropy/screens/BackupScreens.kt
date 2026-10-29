@@ -274,15 +274,24 @@ fun BackupConfirm(state: UiState, letters: PadEntry, testRegistry: Boolean, pass
 
 /**
  * The letters typed and the letter pad, Delete and Done (at three or four letters), as the read-back
- * entry has them (WordsScreens.kt): the confirm's and Check a backup's entry. changed redraws them.
+ * entry has them (WordsScreens.kt): the confirm's and Check a backup's entry. Delete takes the last
+ * letter, or onDelete's (Check a backup's, which also reopens the word before), enabled while
+ * canDelete. changed redraws them.
  */
 @Composable
-private fun LetterEntry(letters: PadEntry, done: String, onDone: () -> Unit, changed: () -> Unit) {
+private fun LetterEntry(
+    letters: PadEntry,
+    done: String,
+    onDone: () -> Unit,
+    canDelete: Boolean = letters.length > 0,
+    onDelete: () -> Unit = letters::delete,
+    changed: () -> Unit,
+) {
     BasicText(typedFaces(letters), Modifier.padding(vertical = 6.dp).secret(), style = KitType.large.copy(fontFamily = FontFamily.Monospace))
     LetterPad(letters, changed)
     Row {
-        KitButton("Delete", "letters_delete", enabled = letters.length > 0, modifier = Modifier.weight(1f).padding(end = 6.dp)) {
-            letters.delete()
+        KitButton("Delete", "letters_delete", enabled = canDelete, modifier = Modifier.weight(1f).padding(end = 6.dp)) {
+            onDelete()
             changed()
         }
         KitButton("Done", done, enabled = letters.length >= READBACK_MIN_LETTERS, modifier = Modifier.weight(1f).padding(start = 6.dp)) {
@@ -339,8 +348,9 @@ fun BackupVerified(testRegistry: Boolean, onNext: () -> Unit) {
  * Check a backup's passphrase entry (docs/mobile-apps.md, "Checking a backup"; the Pi's
  * backup-check-entry, Q32 (b)), a Protected screen behind the privacy gate: word page + 1 of 8, each
  * its first four letters on the letter pad, or a whole three-letter word; after the eighth core opens
- * the file. A refusal shows core's text with the instruction under it, the entry emptied from word 1;
- * Back goes Home, wiping the file read and the letters typed.
+ * the file. Delete on word N > 1's empty pad reopens word N - 1 (the model's entryDelete). A refusal
+ * shows core's text with the instruction under it, the entry emptied from word 1; Back goes Home,
+ * wiping the file read and the letters typed.
  */
 @Composable
 fun BackupCheckEntry(
@@ -349,6 +359,7 @@ fun BackupCheckEntry(
     testRegistry: Boolean,
     passGate: () -> Unit,
     onDone: () -> Unit,
+    onDelete: () -> Unit,
     onBack: () -> Unit,
 ) {
     Protected(state, testRegistry, passGate) {
@@ -358,7 +369,13 @@ fun BackupCheckEntry(
             testRegistry,
             actions = {
                 key(version) {
-                    LetterEntry(letters, done = "entry_done", onDone = onDone) { version += 1 }
+                    LetterEntry(
+                        letters,
+                        done = "entry_done",
+                        onDone = onDone,
+                        canDelete = letters.length > 0 || state.page > 0,
+                        onDelete = onDelete,
+                    ) { version += 1 }
                 }
                 KitButton("Back", "back", onClick = onBack)
             },

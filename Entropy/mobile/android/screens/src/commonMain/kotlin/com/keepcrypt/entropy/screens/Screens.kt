@@ -200,6 +200,7 @@ fun Screens(
                     registry,
                     passGate = model::passGate,
                     onDone = model::entryTyped,
+                    onDelete = model::entryDelete,
                     onBack = model::back,
                 )
                 Screen.BackupCheckResult -> BackupCheckResult(

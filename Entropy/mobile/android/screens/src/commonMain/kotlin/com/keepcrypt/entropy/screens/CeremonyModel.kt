@@ -1269,6 +1269,26 @@ class CeremonyModel(
         }
     }
 
+    /**
+     * The entry's Delete, as the Pi's KEY1 on its one entry buffer (pi/app/src/app.rs, typing): the last
+     * letter typed; on word N > 1's empty pad, entry N - 1 again, its letters back in the pad minus its
+     * last one, and its Secret wiped, so no copy of it outlives it. On word 1's empty pad it does nothing.
+     */
+    fun entryDelete() {
+        if (!pressOn(Screen.BackupCheckEntry)) return
+        if (backupLetters.length > 0) {
+            backupLetters.delete()
+            return
+        }
+        val last = entries.removeLastOrNull() ?: return
+        try {
+            for (index in 0 until last.size - 1) backupLetters.type(Char(last[index].toInt() and 0xFF))
+        } finally {
+            last.wipe()
+        }
+        show(Screen.BackupCheckEntry, page = entries.size)
+    }
+
     /** The result's "Show the words": the checked backup's first insert, through the privacy gate (the result is Public). */
     fun showBackupWords() {
         if (pressOn(Screen.BackupCheckResult)) showInsert(0)

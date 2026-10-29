@@ -13756,6 +13756,20 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   tag about again it fails, naming both lines. The confirm's two-a-row layout has no JVM check: its proof stays CI's
   API 36 leg, CaptureTest in the test-registry APK ("each of its 5 secret texts is drawn"). Locally: :screens 147 in
   21 classes, none failed (with 19k's tree, which differs only in an androidTest file).
+  Proof (M5 commit U3c, Stage U-2, partial: local, kc37, Q76; CI's legs at the next push): on Check a backup's entry
+  Delete on word N > 1's empty pad did nothing (its button was disabled with no letter typed), where the Pi's KEY1 pops
+  its one entry buffer back into the word before (app.rs, typing, :1110-1112; usb.rs offers KEY1 while anything is
+  typed). CeremonyModel's `entryDelete` takes the pad's last letter, or on an empty pad past word 1 takes entry N-1
+  back off the list, types its letters but its last into the pad and wipes its Secret in a finally; on word 1's empty
+  pad it does nothing. The entry's Delete goes through it, enabled while letters are typed or a word is taken (the
+  confirm keeps the pad's own delete). CheckBackupScreensTest: word 1's Done then Delete shows word 1 again with one
+  letter fewer, in order (compared in-process), the taken Secret zeroed and none held; Delete on word 1's empty pad
+  leaves the state the same; word 4 mistyped, reopened from word 5's empty pad, emptied and typed again, opens the
+  backup. With the reopening removed both fail (word 1 again expected; word 4 again expected). Locally: the strict
+  Gradle build of the five APKs with every JVM test task (:screens 156 in 22 classes, :app 11 for each flavour, none
+  failed); android-local.sh --part journeys (FlowTest 7, CheckTest 2, BackupTest 1 with its age -d hand-off) and
+  --part capture (ControlTest 3, CaptureTest 6 in each APK, its walk through the entry, PhoneMotionTest 1,
+  NativeTest 1; the Camera2 check's decode not met, as android-local.sh allows) on kc37, exit 0 each.
 - [ ] The CI `age -d` hand-off: for the CI throwaway seed only, the androidTest reads the backup passphrase from the
   in-process `Secret` and sends it as the instrumentation status value `kc_ci_throwaway_passphrase`. The workflow pipes
   `am instrument -r`'s output straight into `scripts/android-age-check.py`, which takes the value, feeds it to age 1.1.1

@@ -437,6 +437,57 @@ class CheckBackupScreensTest {
         assertNoSession("Done left the checked backup in core")
     }
 
+    /**
+     * Delete on the entry, as the Pi's KEY1 on its one entry buffer: the last letter typed; on word N > 1's
+     * empty pad, entry N - 1 again, its letters back in the pad minus its last one and its taken Secret
+     * zeroed; on word 1's empty pad, nothing.
+     */
+    @Test
+    fun deleteOnAnEmptyPadReopensTheWordBeforeWithItsLastLetterGone() {
+        val (rig, _) = picked()
+        rig.model.passGate()
+        val first = firstFours(saved.passphrase)[0]
+        val empty = rig.model.state.value
+        rig.model.entryDelete()
+        assertSame(empty, rig.model.state.value, "Delete on word 1's empty pad does nothing")
+        assertEquals(0, rig.model.backupLetters.length)
+        type(rig, listOf(first))
+        assertEquals(1, rig.model.state.value.page, "word 2 of 8")
+        val taken = rig.model.entriesHeld.single()
+        rig.model.entryDelete()
+        assertEquals(Screen.BackupCheckEntry, rig.screen)
+        assertEquals(0, rig.model.state.value.page, "word 1 again")
+        assertTrue(rig.model.entriesHeld.isEmpty(), "the reopened entry is no longer held")
+        assertTrue((0 until taken.size).all { taken[it] == 0.toByte() }, "the taken entry was wiped")
+        val letters = rig.model.backupLetters
+        assertEquals(first.length - 1, letters.length, "word 1's letters but its last are back in the pad")
+        assertTrue((0 until letters.length).all { letters.keyAt(it) == first[it] }, "the pad holds word 1's letters in their order")
+        rig.model.entryDelete()
+        assertEquals(first.length - 2, letters.length, "with letters typed Delete takes the last one")
+        assertTrue(letters.zeroPastLength())
+        assertEquals(0, rig.model.state.value.page)
+    }
+
+    @Test
+    fun anEntryCorrectedByDeleteOnAnEmptyPadStillOpensTheBackup() {
+        val (rig, _) = picked()
+        rig.model.passGate()
+        val right = firstFours(saved.passphrase)
+        type(rig, right.take(3))
+        // Word 4 mistyped and taken, then reopened from word 5's empty pad, emptied and typed again.
+        type(rig, listOf(if (right[3] == "zzzz") "yyyy" else "zzzz"))
+        assertEquals(4, rig.model.state.value.page)
+        rig.model.entryDelete()
+        assertEquals(3, rig.model.state.value.page, "word 4 again")
+        while (rig.model.backupLetters.length > 0) rig.model.entryDelete()
+        assertEquals(3, rig.model.state.value.page, "emptying word 4's pad stays on word 4")
+        type(rig, right.drop(3))
+        assertEquals(Screen.Working, rig.screen)
+        rig.worker.run()
+        assertEquals(Screen.BackupCheckResult, rig.screen, "the corrected entry opens the backup")
+        rig.model.closeBackup()
+    }
+
     @Test
     fun backFromTheEntryGoesHomeWithTheFileZeroedAndTheLettersWiped() {
         val (rig, file) = picked()
