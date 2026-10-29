@@ -38,9 +38,9 @@ import kotlinx.coroutines.launch
  * a session, a checked backup or Check a backup's file and entries (CeremonyModel.held), the window keeps the screen
  * on (lead decision M5-72 (b)): a screen timeout stops the activity, which is leaving the app, and would discard a
  * words page while its insert is punched. The flag is the decor view's keepScreenOn, which its window's
- * FLAG_KEEP_SCREEN_ON follows (the gate refuses any call that takes a window flag off), set and cleared from that
- * state as it changes, never by a timer. Compose test tags are exposed as resource ids, so UI Automator finds
- * Public screens by id (group 6).
+ * FLAG_KEEP_SCREEN_ON follows, set and cleared as that state changes, never by a timer (KtWindow refuses a call that
+ * clears window flags, one that replaces them but SecureActivity's own and a new layout, so keepScreenOn is the way to
+ * clear it here). Compose test tags are exposed as resource ids, so UI Automator finds Public screens by id (group 6).
  */
 class MainActivity : SecureActivity() {
     /**

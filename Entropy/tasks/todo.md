@@ -12761,7 +12761,9 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   its insert was punched (PF:125, "slow punching or scanning is never cut short"; MA:34). CeremonyModel gains `held`,
   a StateFlow of holds() that the setters of `session` and `checkFile` keep, so it changes only with what is held,
   never by a timer; MainActivity collects it in its lifecycle scope into the decor view's keepScreenOn, which the
-  window's FLAG_KEEP_SCREEN_ON follows (KtWindow refuses any call that takes a window flag off). The 30 s cover and
+  window's FLAG_KEEP_SCREEN_ON follows (KtWindow refuses clearFlags, every setFlags but SecureActivity's and a new
+  layout, any of which could turn FLAG_SECURE off, so keepScreenOn is the way here to clear the flag; wording
+  corrected by U3m2). The 30 s cover and
   the 10-minute wipe are unchanged. JVM: CeremonyModelTest's theHeldStateFollowsASessionFromItsStartToFinishsEnd
   (nothing held on First launch, the self-test, Go offline or Home; held from the start's reply through the dice, the
   seed's long call, Skip's result, the words, the read-back and the exports to the checklist; nothing after Finish)
@@ -12779,8 +12781,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   but was:<GoOffline>", its probe "the screen go_offline, the activity STOPPED, the display off; mWakefulness=Asleep;
   mStayOn=false; mMinimumScreenOffTimeoutConfig=10000; mScreenOffTimeoutSetting=10000", every later run of the part
   passing; with it, "the screen words, the activity RESUMED, the display on; mWakefulness=Awake; mStayOn=false;
-  SCREEN_BRIGHT_WAKE_LOCK 'WindowManager/displayId:0' ON_AFTER_RELEASE". CI's API 31 and 36 legs print the same probe
-  line. Local (JBR 25; CI's JDK 17): the strict Gradle build of the five APKs with every JVM test task rerun,
+  SCREEN_BRIGHT_WAKE_LOCK 'WindowManager/displayId:0' ON_AFTER_RELEASE". The test prints this probe line on CI's API
+  31 and 36 legs too (their values at the next push; wording corrected by U3m2). Local (JBR 25; CI's JDK 17): the strict Gradle build of the five APKs with every JVM test task rerun,
   :core-ffi 33 in 11 classes, :screens 154 in 21, :app 11 in 4 for each flavour, :secure-ui 3 in 1, none failed; kc37:
   `android-local.sh --part capture` exit 0 in 691 s (ControlTest 3, CaptureTest 6 and 6 without control (c),
   PhoneMotionTest 1, LifecycleTest 7, CrashTest killed as it must be; NativeTest 1; the Camera2 check's four
@@ -12789,6 +12791,20 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   to CeremonyModel came after the capture and journeys parts' builds, before the registry part's and the final build.
   fmt, both clippy runs, `cargo test --workspace --locked` 503 passed (3 ignored), the test-sources run 269 (1
   ignored); the gate clean (386 files), its selftest 1631 passed.
+  Proof (M5 commit U3m2, review fix, partial: local, kc37, Q76; CI's legs at the next push): MainActivity's comment
+  and U3m's Proof said the gate refuses any call that takes a window flag off, yet U3m's own `keepScreenOn = false`
+  takes FLAG_KEEP_SCREEN_ON off and passes it: KtWindow refuses only what could turn FLAG_SECURE off (clearFlags,
+  every setFlags but SecureActivity's, a new layout), and addFlags passes (the U-1 review). Both now say so, the
+  comment without naming those calls (the rule reads comments too), on as many lines as before; and U3m's Proof no
+  longer states the probe line of CI legs that have not run. Comment only, so the build's code is the same but for
+  the Compose compiler's source offsets: javap of MainActivity.class before and after differs only in its two
+  sourceInformation strings and four offsets (two integer constants, a startOffset and an endOffset), each shifted by
+  the comment's 97 more bytes, the strings' line numbers the same.
+  Local (JBR 25; CI's JDK 17): the strict Gradle build of the five APKs with every task rerun (270 executed): :core-ffi
+  34 in 12 classes, :screens 154 in 21, :app 11 in 4 for each flavour, :secure-ui 3 in 1, none failed; kc37:
+  `android-local.sh --part registry` exit 0 in 288 s (SnapshotDrillTest 3, LifecycleTest 7 with its screen-timeout
+  probe "the screen words, the activity RESUMED, the display on", CrashTest killed as it must be); the gate clean
+  (387 files) under sh and dash.
 - [ ] `CeremonyViewModel` owns the slot's use: UI state holds screen ids, page indices and `Secret` references only;
   long calls run on `Dispatchers.Default` behind a "Working..." screen that ignores input; a lifecycle or offline
   discard during "Working..." calls `discard()` at once and the call's "discarded" status returns the UI to its start
