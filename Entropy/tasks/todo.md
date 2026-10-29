@@ -11860,9 +11860,10 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   test-registry APK named `NOT-FOR-RELEASE`), then the hand-off: the signed APKs to the leg jobs through actions/cache
   under a key that names the run and its attempt, their SHA256SUMS as the build job's output. Then six leg jobs side by
   side, each after the build job, on those bytes: `default;x86_64` API 31 and API 36, each API's leg in three parts, one
-  a job (`android-emulator.sh --part`; M5-72 (h), commit U1a): capture (steps 1-3 and the positive controls, CaptureTest
-  on both APKs, PhoneMotionTest, LifecycleTest, CrashTest last, steps 5-6), journeys (FlowTest, CheckTest, BackupTest
-  with its age hand-off) and registry (SnapshotDrillTest), each part ending with step 7's nothing-persisted listing;
+  a job (`android-emulator.sh --part`; M5-72 (h), commits U1a and U1a2): capture (steps 1-3 and the positive controls,
+  CaptureTest on both APKs, PhoneMotionTest, steps 5-6), the shipping journeys (FlowTest, CheckTest, BackupTest with
+  its age hand-off) and registry, the test registry and the edges (SnapshotDrillTest, LifecycleTest, CrashTest last),
+  each part ending with step 7's nothing-persisted listing;
   and, from commit 14, one 16 KB-page image (`google_apis_ps16k;x86_64` API 36, or the probe's choice) in API 31's
   capture job. Each restores the run's entry (a miss fails) and checks every file against the build job's SHA256SUMS
   before it installs anything, and each capture job uploads its positive-control captures under its own name (M5-70
@@ -11983,6 +11984,21 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   both clippy runs, `cargo test --workspace --locked` (499 passed, 3 ignored), the test-sources run (269 passed, 1
   ignored) and `-p keepcrypt-ffi -p keepcrypt-jni`, plain and with the test registry (50 passed each). Only CI shows
   each job's time.
+  Proof (M5 commit U1a2, review fix, partial: local; CI's six leg jobs at the next push): Stage U's commit plan gives
+  each API three jobs, "capture, shipping journeys, and test registry and edges", and U1a put the edges, LifecycleTest
+  and CrashTest, in capture, with the third part SnapshotDrillTest alone (the U-1 review). They now run in the
+  registry part after SnapshotDrillTest, CrashTest still its last instrumented run, so the whole leg's order is
+  unchanged (capture's runs, then journeys', then registry's) and capture ends with PhoneMotionTest and steps 5-6;
+  the two registry jobs are "android emulators (API 31, test registry and edges)" and "(API 36, test registry and
+  edges)", the part's name `registry` as before (journeys stands for the shipping journeys likewise). By U1a's kc37
+  run, LifecycleTest's 126 s and CrashTest's run move from capture's 392 s leg to registry's 158 s one. Selftests: android-emulator.sh 49 passed, 0 failed under sh and dash (capture's order pinned as ControlTest,
+  CaptureTest on both apps, PhoneMotionTest; registry's as SnapshotDrillTest, LifecycleTest, the killed CrashTest;
+  capture's failing-class case now a failing CaptureTest, PhoneMotionTest still run after it, and registry's
+  failing SnapshotDrillTest followed by the killed CrashTest), and two mutants each fail it (the edges back in
+  capture: 3 failed; CrashTest before LifecycleTest: 3 failed); android-local.sh 44 passed under sh and dash
+  (`--part capture` four runs then NativeTest, `--part registry` three, "run 3 of 3" the killed CrashTest).
+  `--workflows ../.github/workflows` clean (3 workflows) under sh and dash; Ruby's YAML parser reads the six names
+  (build 29 steps, emulators 12).
 - [x] **Instrumentation:** `scripts/android-instrument.sh` runs `am instrument -w -r -e class ...` once per test class,
   and once per test that halts or kills the process, so a latched `Halted` slot or a dead process never fails the next
   test. The crash test is judged from the shell: the process is gone, no crash dialog window exists, `logcat -b crash`

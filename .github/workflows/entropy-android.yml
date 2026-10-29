@@ -41,10 +41,11 @@
 #
 # Then the emulators (M5 group 6, commit 8), on those signed bytes, in the six leg jobs at once:
 # system-images;android-31;default;x86_64 and system-images;android-36;default;x86_64, each API
-# level's leg in three parts, one a job (scripts/android-emulator.sh --part; commit U1a): capture
-# (the capture harness, its positive controls and first frames, PhoneMotionTest, LifecycleTest and
-# CrashTest), journeys (FlowTest, CheckTest and BackupTest) and registry (SnapshotDrillTest, the
-# test-registry app's); and, from commit 14, the 16 KB-page
+# level's leg in three parts, one a job (scripts/android-emulator.sh --part; commits U1a and U1a2):
+# capture (the capture harness, its positive controls and first frames, and PhoneMotionTest), the
+# shipping journeys (FlowTest, CheckTest and BackupTest) and registry, the test registry and the
+# edges (SnapshotDrillTest, the test-registry app's, then LifecycleTest and CrashTest); and, from
+# commit 14, the 16 KB-page
 # system-images;android-36;google_apis_ps16k;x86_64 (the ARM and 16 KB leg) after API 31's capture
 # part, in its job. Each leg job installs the emulator and the three images with sdkmanager into
 # their own SDK root ($HOME/kc-sdk; the runner's SDK is left as it is), with the SDK licence
@@ -655,7 +656,7 @@ jobs:
             legs: API 31, journeys
           - api: '31'
             part: registry
-            legs: API 31, registry
+            legs: API 31, test registry and edges
           - api: '36'
             part: capture
             legs: API 36, capture
@@ -664,7 +665,7 @@ jobs:
             legs: API 36, journeys
           - api: '36'
             part: registry
-            legs: API 36, registry
+            legs: API 36, test registry and edges
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

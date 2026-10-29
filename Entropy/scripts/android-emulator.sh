@@ -103,12 +103,13 @@
 #      the listing is printed as not made there, CI's API 31 and 36 legs making it; on the CI images a
 #      root shell that does not come fails the leg.
 # The parts (--part; M5 commit U1a, lead decision M5-72 (h)), each on its own boot, so that the
-# workflow runs them side by side, one a job:
-#   capture   steps 1-3, step 4's CaptureTest on both APKs, PhoneMotionTest, LifecycleTest, then
-#             CrashTest, its last instrumented run, and steps 5 and 6: the positive controls, the
-#             capture harness and the first frames;
+# workflow runs them side by side, one a job: capture, the shipping journeys, and the test registry
+# and the edges (Stage U's commit plan; commit U1a2):
+#   capture   steps 1-3, step 4's CaptureTest on both APKs, PhoneMotionTest, and steps 5 and 6: the
+#             positive controls, the capture harness and the first frames;
 #   journeys  FlowTest, CheckTest and BackupTest with its age -d hand-off, on the shipping app;
-#   registry  SnapshotDrillTest, the test-registry app's.
+#   registry  SnapshotDrillTest, the test-registry app's, then the edges on the shipping app,
+#             LifecycleTest and CrashTest, the part's last instrumented run.
 # Each installs the five APKs and ends with step 7, so every part's runs are followed by its listing.
 # With no --part the leg runs every part, as the steps above list them (step 7 once, at the end).
 # On the 16 KB-page image (API 16k; M5 group 6, the ARM and 16 KB leg, from commit 14) steps 2-7 are
@@ -137,9 +138,9 @@
 # leg where everything passes exits 0, having made every instrumented run in the steps' order, from
 # ControlTest to the killed CrashTest, last (a case of its own, the order pinned), and kept the
 # control's two screencaps (a case of its own). Each part alone passes too, its runs pinned in that
-# order (a case each): capture's ControlTest, CaptureTest on both apps, PhoneMotionTest, LifecycleTest
-# and the killed CrashTest, last; journeys' FlowTest, CheckTest and the age: BackupTest; registry's
-# SnapshotDrillTest; and the three parts' runs are together the whole leg's, each once, so a part that
+# order (a case each): capture's ControlTest, CaptureTest on both apps and PhoneMotionTest; journeys'
+# FlowTest, CheckTest and the age: BackupTest; registry's SnapshotDrillTest, LifecycleTest and the
+# killed CrashTest, last; and the three parts' runs are together the whole leg's, each once, so a part that
 # drops or adds a class fails. Every part ends with step 7's checks; journeys and registry print no
 # line of steps 1, 2, 5 and 6 and keep no capture; a failing class in each part exits 1 at the part's
 # end, after its later runs and step 7. A failing ControlTest, CaptureTest, PhoneMotionTest,
@@ -382,7 +383,7 @@ EOF
   leg capture --part capture
   leg journeys --part journeys
   leg registry --part registry
-  leg capture-lifecycle-test-fails --part capture KC_FAILCLASS=LifecycleTest
+  leg capture-capture-test-fails --part capture KC_FAILCLASS=CaptureTest
   leg journeys-flow-test-fails --part journeys KC_FAILCLASS=FlowTest
   leg registry-snapshot-drill-fails --part registry KC_FAILCLASS=SnapshotDrillTest
   leg control-test-fails KC_FAILCLASS=ControlTest
@@ -452,18 +453,18 @@ EOF
   }
   app=com.keepcrypt.entropy
   registry=com.keepcrypt.entropy.testregistry
-  # The steps' order, steps 3-4c (each part's runs in it, PhoneMotionTest's capture runs before the
-  # other parts' and LifecycleTest's after), the killed CrashTest last, so no run comes after it.
+  # The steps' order, steps 3-4c (each part's runs in it: capture's, journeys', then registry's, whose
+  # edges end it), the killed CrashTest last, so no run comes after it.
   order pass "ControlTest, CaptureTest on both apps, PhoneMotionTest, FlowTest, CheckTest, the age: BackupTest, SnapshotDrillTest (test registry), LifecycleTest, then the killed CrashTest, last" \
     "$app $app.ControlTest" "$app $app.CaptureTest" "$registry $app.CaptureTest" "$app $app.PhoneMotionTest" \
     "$app $app.FlowTest" "$app $app.CheckTest" "$app age:$app.BackupTest" "$registry $app.SnapshotDrillTest" \
     "$app $app.LifecycleTest" "$app killed:$app.CrashTest"
-  order capture "capture alone: ControlTest, CaptureTest on both apps, PhoneMotionTest, LifecycleTest, then the killed CrashTest, last" \
-    "$app $app.ControlTest" "$app $app.CaptureTest" "$registry $app.CaptureTest" "$app $app.PhoneMotionTest" \
-    "$app $app.LifecycleTest" "$app killed:$app.CrashTest"
+  order capture "capture alone: ControlTest, CaptureTest on both apps, then PhoneMotionTest" \
+    "$app $app.ControlTest" "$app $app.CaptureTest" "$registry $app.CaptureTest" "$app $app.PhoneMotionTest"
   order journeys "journeys alone: FlowTest, CheckTest, then the age: BackupTest" \
     "$app $app.FlowTest" "$app $app.CheckTest" "$app age:$app.BackupTest"
-  order registry "registry alone: SnapshotDrillTest (test registry)" "$registry $app.SnapshotDrillTest"
+  order registry "registry alone: SnapshotDrillTest (test registry), LifecycleTest, then the killed CrashTest, last" \
+    "$registry $app.SnapshotDrillTest" "$app $app.LifecycleTest" "$app killed:$app.CrashTest"
   # The parts split the leg: their runs together are the whole leg's, each once, whatever either list
   # above says (a class in no part's block runs in no part; one outside the blocks runs in each).
   if [ "$(for p in capture journeys registry; do runs "$p"; done | sort)" = "$(runs pass | sort)" ]; then
@@ -501,16 +502,17 @@ EOF
     fi
   done
   # A failing class in a part fails it at its end, after its later runs and step 7.
-  expect capture-lifecycle-test-fails 1 \
-    "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
+  expect capture-capture-test-fails 1 \
+    "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.PhoneMotionTest" \
     "pass: api=31 first frame (registry, its first screen up)" \
     "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
-    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.LifecycleTest) (each reported above)"
+    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.CaptureTest); instrumented tests failed on com.keepcrypt.entropy.testregistry (com.keepcrypt.entropy.CaptureTest) (each reported above)"
   expect journeys-flow-test-fails 1 \
     "instrument stub: com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest" \
     "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
     "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.FlowTest) (each reported above)"
   expect registry-snapshot-drill-fails 1 \
+    "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
     "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
     "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy.testregistry (com.keepcrypt.entropy.SnapshotDrillTest) (each reported above)"
   # Step 2: the control's two screencaps kept for the upload, and nothing else in captures/.
@@ -1053,11 +1055,9 @@ if in_part journeys; then
   instrument com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest
 fi
 # 4a, the registry part: the check with a snapshot, loaded through core, on the test-registry app (the
-# only one that trusts the test registry key).
+# only one that trusts the test registry key); then the edges, 4b and 4c, on the shipping app.
 if in_part registry; then
   instrument com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest
-fi
-if in_part capture; then
   # 4b. Discards during "Working...": the app left during a backup's scrypt and its start-up
   # self-test, Wi-Fi turned on during a start.
   instrument com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest

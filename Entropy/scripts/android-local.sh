@@ -122,11 +122,12 @@
 # (exit 1 each); an emulator that changes its seeded update check, and one that changes its seeded
 # feature flags, as each fetch would (exit 1 each, named after each boot, the camera check still
 # run); an emulator of another version (that version in the update check's seed, exit 0), and one
-# whose -version names none (exit 2, nothing booted). With --part: capture runs its six runs in
+# whose -version names none (exit 2, nothing booted). With --part: capture runs its four runs in
 # android-emulator.sh's order, naming and leaving out CaptureTest's control (c) as the whole run does,
 # then the second boot's NativeTest and camera checks (exit 0); journeys runs FlowTest, CheckTest and
-# the age: BackupTest, and registry SnapshotDrillTest, each listing its runs' results, on one boot,
-# naming no check of another part's class (exit 0 each). Too many arguments and an unknown part exit 2.
+# the age: BackupTest, and registry SnapshotDrillTest, LifecycleTest and the killed CrashTest, each
+# listing its runs' results, on one boot, naming no check of another part's class (exit 0 each). Too
+# many arguments and an unknown part exit 2.
 # Exit 0 when every case behaves, 1 otherwise. The cases run at once; it takes about two minutes.
 set -u
 unset CDPATH
@@ -635,32 +636,32 @@ CONFIG
   else
     check no-version no "nothing booted"
   fi
-  # --part: capture's six runs, CaptureTest's control (c) named and left out as in the whole run, then
-  # the second boot; journeys' three runs and registry's one, each on one boot, with no check of
+  # --part: capture's four runs, CaptureTest's control (c) named and left out as in the whole run, then
+  # the second boot; journeys' three runs and registry's three, each on one boot, with no check of
   # another part's class named.
   expect part-capture 0 "local: not made on kc37 (ro.debuggable=0): com.keepcrypt.entropy.CaptureTest#disableSecureWindowsShowsTheScreenOnlyWhileSet" \
     "emulator: api=37: part capture alone (--part capture)" \
-    "local: run 6 of 6, com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest: instrument: api=37 PASS com.keepcrypt.entropy.CrashTest" \
+    "local: run 4 of 4, com.keepcrypt.entropy com.keepcrypt.entropy.PhoneMotionTest: instrument: api=37 PASS com.keepcrypt.entropy.PhoneMotionTest" \
     "pass: local native library: NativeTest on kc37's arm64-v8a, natively" "$camera_passes" \
     "local: every check made on kc37 passed (each check not made or not met is named above)"
   got=$(sed -n 's/^instrument stub: //p' "$st/part-capture/out" | tr '\n' ' ')
   want="com.keepcrypt.entropy com.keepcrypt.entropy.ControlTest com.keepcrypt.entropy $left com.keepcrypt.entropy.testregistry $left"
-  want="$want com.keepcrypt.entropy com.keepcrypt.entropy.PhoneMotionTest com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest"
-  want="$want com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest com.keepcrypt.entropy com.keepcrypt.entropy.NativeTest "
+  want="$want com.keepcrypt.entropy com.keepcrypt.entropy.PhoneMotionTest com.keepcrypt.entropy com.keepcrypt.entropy.NativeTest "
   if [ "$got" = "$want" ]; then ok=yes; else ok=no; echo "  got: $got"; fi
-  check part-capture "$ok" "capture's six runs in android-emulator.sh's order, then NativeTest"
+  check part-capture "$ok" "capture's four runs in android-emulator.sh's order, then NativeTest"
   boots part-capture
   expect part-journeys 0 "emulator: api=37: part journeys alone (--part journeys)" \
     "local: run 1 of 3, com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest: instrument: api=37 PASS com.keepcrypt.entropy.FlowTest" \
     "local: run 3 of 3, com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest: instrument: api=37 PASS com.keepcrypt.entropy.BackupTest" \
     "emulator: api=37: every check passed" "local: every check made on kc37 passed (part journeys alone"
   expect part-registry 0 "emulator: api=37: part registry alone (--part registry)" \
-    "local: run 1 of 1, com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest: instrument: api=37 PASS com.keepcrypt.entropy.SnapshotDrillTest" \
+    "local: run 1 of 3, com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest: instrument: api=37 PASS com.keepcrypt.entropy.SnapshotDrillTest" \
+    "local: run 3 of 3, com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest: instrument: api=37 PASS com.keepcrypt.entropy.CrashTest" \
     "emulator: api=37: every check passed" "local: every check made on kc37 passed (part registry alone"
   for p in journeys registry; do
     case $p in
       journeys) want="com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest com.keepcrypt.entropy com.keepcrypt.entropy.CheckTest com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest " ;;
-      registry) want="com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest " ;;
+      registry) want="com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest " ;;
     esac
     got=$(sed -n 's/^instrument stub: //p' "$st/part-$p/out" | tr '\n' ' ')
     ok=yes
