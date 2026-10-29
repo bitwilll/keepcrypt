@@ -1,13 +1,17 @@
 # KeepCrypt-Entropy Android (Entropy/tasks/todo.md, M5 groups 4-6; Q54, Q55): the Android app,
-# Entropy/mobile/android, built once in one job. As the plan's commits land, the same job builds
-# the Rust libraries, checks and scans the APKs, signs them with a throwaway key and then runs the
-# emulators one after another on those same bytes, so the hashes printed for the owner are the
-# ones tested (no artifact passes between jobs, so no fourth action is needed).
+# Entropy/mobile/android, built once by one job and tested on emulators by two leg jobs that run
+# side by side after it (commit L9, lead decision M5-70 (b)). The build job builds the Rust
+# libraries, checks and scans the APKs, signs them with a throwaway key and uploads them, then hands
+# the signed APKs to the leg jobs through actions/cache, under a key that names this run and its
+# attempt. Before it installs anything, each leg job checks every file it was handed against the
+# build job's SHA256SUMS, which reaches it as the build job's output, not through the cache; the
+# build job has checked that the shipped two are the bytes it uploaded. So the hashes printed for the
+# owner are the ones tested, and no fourth action is needed (download-artifact is not approved).
 #
 # From commit 6 (M5 group 4) the build is strict: every module's committed gradle.lockfile and
 # mobile/android/gradle/verification-metadata.xml must hold what Gradle resolves and downloads
 # (strict lock mode in build.gradle.kts; --dependency-verification strict on every Gradle call
-# here), or the build fails. The job builds the shipping and test-registry APKs (the release build
+# here), or the build fails. The build job builds the shipping and test-registry APKs (the release build
 # type of :app's flavours shipping and withTestRegistry, neither debuggable, unsigned until the
 # signing step comes), :app's instrumented-test APK for each and :capture-control's APK, and runs
 # the JVM tests, one test class per JVM, each class's report then required. From commit 14 (M5
@@ -34,12 +38,13 @@
 # and the owner's P4 files (the two go-ahead PNGs, two .kcr snapshots and the two Seal IDs) with
 # their SHA-256, kept 14 days.
 #
-# Then the emulators (M5 group 6, commit 8), one after another on those signed bytes:
-# system-images;android-31;default;x86_64 and system-images;android-36;default;x86_64, and from commit
-# 14 the 16 KB-page system-images;android-36;google_apis_ps16k;x86_64 (the ARM and 16 KB leg),
-# installed with the emulator by sdkmanager into their own SDK root ($HOME/kc-sdk; the runner's SDK is
-# left as it is), with the SDK licence accepted (Q54), and cached by actions/cache under a key made
-# of the four revisions sdkmanager offers (the Gradle distribution is cached too, keyed on its pin). KVM comes
+# Then the emulators (M5 group 6, commit 8), on those signed bytes, in the two leg jobs at once:
+# system-images;android-31;default;x86_64 and then, from commit 14, the 16 KB-page
+# system-images;android-36;google_apis_ps16k;x86_64 (the ARM and 16 KB leg) in one, and
+# system-images;android-36;default;x86_64 in the other. Each leg job installs the emulator and the
+# three images with sdkmanager into their own SDK root ($HOME/kc-sdk; the runner's SDK is left as it
+# is), with the SDK licence accepted (Q54), cached by actions/cache under a key made of the four
+# revisions sdkmanager offers (the Gradle distribution is cached too, keyed on its pin). KVM comes
 # from a udev rule. scripts/android-emulator.sh runs each leg: a headless AVD, a boot that may be
 # re-run once (logged; a test failure is never re-run), the platform probe's facts as "probe:"
 # lines, the instrumented capture tests on both apps through scripts/android-instrument.sh (one am
@@ -53,7 +58,8 @@
 # scripts/age-interop.py's pty driver with the passphrase the test reported, which never reaches the
 # log, a file or logcat. The shell's screencap of capture-control's two
 # screens (its first screen and a gate seed's words page) is kept on the API 31 and 36 legs and
-# uploaded after them, the owner's screen review of the positive control (M5-68 (f)).
+# uploaded by each leg job after its legs, as android-control-captures-api31 and
+# android-control-captures-api36, the owner's screen review of the positive control (M5-68 (f)).
 #
 # Not one of the 14 required checks (Q55), so path filters are safe, as in entropy-pi-image.yml:
 # a skipped run never leaves a required check pending. The rule instead (Q38 (b)): no PR that
@@ -63,13 +69,14 @@
 #
 # Hardening, as in entropy-ci.yml, whose gates job checks this file too (banned-api-check.sh
 # --workflows): read-only token and no secret; only actions/checkout, actions/cache and
-# actions/upload-artifact, pinned by commit SHA; no event data inside run scripts (it reaches them
-# through env and with only). A cache written by a PR run is scoped to that PR, so main only
-# restores caches written on main. Gradle comes from scripts/android-gradle.sh (pinned SHA-256,
-# no wrapper jar), with only Google's Maven and Maven Central (mobile/android/settings.gradle.kts),
-# no JDK or SDK download, no daemon and no build scan. The job builds a PR's head commit, never
-# GitHub's merge commit, or the pushed, scheduled or dispatched commit, and prints the commit it
-# built.
+# actions/upload-artifact, pinned by commit SHA (the hand-off is actions/cache itself, no sub-action);
+# no event data inside run scripts (it reaches them through env and with only, as the build job's
+# output and the leg jobs' matrix values do). A cache written by a PR run is scoped to that PR, so
+# main only restores caches written on main. Gradle comes from scripts/android-gradle.sh (pinned
+# SHA-256, no wrapper jar), with only Google's Maven and Maven Central
+# (mobile/android/settings.gradle.kts), no JDK or SDK download, no daemon and no build scan. Every
+# job checks out a PR's head commit, never GitHub's merge commit, or the pushed, scheduled or
+# dispatched commit, and prints the commit it checked out.
 
 name: Entropy Android
 
@@ -131,21 +138,25 @@ defaults:
     working-directory: Entropy
 
 jobs:
-  android:
-    name: android (build, emulators)
+  build:
+    name: android build (APKs, checks, uploads, hand-off)
     runs-on: ubuntu-24.04
-    # The 90-minute ceiling (tasks/todo.md, M5 "Budgets") until the first green run with the
-    # emulators is measured; the lead then sets the job's budget to that time plus 25%.
-    # The measured budget (M5-30, M5-44, M5-52, M5-57): run 39783747240 at efc0575, 35.2 min with
-    # commit 18's tests; plus 25% was 44. Commit 19's tests took run 40624645994 (f06a5ab) past it
-    # 17 s after its last leg (API 31 967 s, API 36 958 s), so the ceiling is back for the run at
-    # stage E4's head, which re-measures it (M5-69). A slower run stops here and the lead re-plans;
-    # a commit that adds legs or tests re-measures it.
+    # The 90-minute ceiling (tasks/todo.md, M5 "Budgets") for this job's first run after the split
+    # (commit L9, lead decision M5-70 (b)); the lead then sets its budget to that run's measured time
+    # plus 25% (M5-30). Before the split one job built and ran every leg (M5-44, M5-52, M5-57, M5-69):
+    # 35.2 min at efc0575 (run 39783747240; 44 with 25%), past 44 with commit 19's tests (run
+    # 40624645994), 53.4 min at e5109bc (run 40681107802) and 58 min at d99e80b (run 40749608448, the
+    # Rust libraries 208 s and the APKs' build 206 s of it). A slower run stops here and the lead
+    # re-plans; a commit that adds steps or tests re-measures it.
     timeout-minutes: 90
     env:
       # The SDK pieces the build uses (mobile/android/gradle/libs.versions.toml), checked below.
       KC_BUILD_TOOLS: 36.0.0
       KC_NDK: 30.0.16248370
+    outputs:
+      # The hand-off's SHA256SUMS (its step, this job's last), which the leg jobs check their files
+      # against before they install anything.
+      sha256sums: ${{ steps.handoff.outputs.sha256sums }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -392,8 +403,8 @@ jobs:
           echo "KC_CERT_SHA256=$cert" >> "$GITHUB_ENV"
       # The five APKs signed with that key (apksigner from build-tools 36.0.0) into $RUNNER_TEMP/apks,
       # named as Gradle names them without "-unsigned": the shipping and test-registry release APKs,
-      # their instrumented-test APKs and capture-control's. The emulator steps (commit 8) install
-      # these bytes, the ones checked below.
+      # their instrumented-test APKs and capture-control's. The leg jobs install these bytes, the
+      # ones checked below, which reach them through the hand-off (this job's last steps).
       - name: Sign the APKs (apksigner, the throwaway key)
         run: |
           fail() { echo "FAIL: signing: $1" >&2; exit 1; }
@@ -509,8 +520,9 @@ jobs:
       # stale-day-31.kcr written from kcr.json's hex and p4-seal-ids.txt with dice-50-words12's and
       # dice-99-words12's Seal IDs from kcr.json (Python's standard library), all public test values;
       # and SHA256SUMS with every file's SHA-256, also printed here, which the owner's P0 compares
-      # with each download. Nothing else: the throwaway key, the test APKs, capture-control's and the
-      # canary stay on the runner. The positive control's captures go up after the emulator legs (the last step).
+      # with each download. Nothing else: the throwaway key and the canary stay on the runner, and
+      # the test APKs and capture-control's reach the leg jobs only through the hand-off (this run's
+      # cache entry), never as an artifact. Each leg job uploads its positive control's captures.
       - name: Stage the uploads (both APKs, NOT-FOR-RELEASE, the P4 files, SHA256SUMS)
         run: |
           up=$RUNNER_TEMP/upload
@@ -570,6 +582,130 @@ jobs:
       # window lit in the first-frame stream, and lit with no frame after the curtain).
       - name: Emulator leg selftest (scripts/android-emulator.sh --selftest)
         run: sh scripts/android-emulator.sh --selftest
+      # The hand-off to the leg jobs (lead decision M5-70 (b)), this job's last steps, so nothing
+      # changes the files once their SHA-256 is taken: $RUNNER_TEMP/apks as the signing step left it,
+      # the five signed APKs android-emulator.sh installs and whatever else apksigner wrote beside them
+      # (its .idsig v4 signature files), and nothing more: the throwaway key and the canary are not in
+      # it, and the legs read every script from their own checkout of this commit. Every file's
+      # SHA-256 is printed and becomes this job's output sha256sums, the leg jobs' SHA256SUMS; the
+      # shipped two must first have the SHA-256 the uploaded SHA256SUMS gives them, so the bytes each
+      # leg checks are the bytes this run uploaded.
+      - name: The hand-off's SHA256SUMS (every file of the signed APKs' directory, this job's output)
+        id: handoff
+        run: |
+          fail() { echo "FAIL: hand-off: $1" >&2; exit 1; }
+          apks=$RUNNER_TEMP/apks
+          sums=$RUNNER_TEMP/apks-SHA256SUMS
+          for f in app-shipping-release app-shipping-release-androidTest app-withTestRegistry-release \
+            app-withTestRegistry-release-androidTest capture-control-release; do
+            [ -f "$apks/$f.apk" ] || fail "no $apks/$f.apk"
+          done
+          (cd "$apks" && sha256sum -- *) > "$sums"
+          cat "$sums"
+          for pair in app-shipping-release.apk:app-shipping-release.apk \
+            app-withTestRegistry-release.apk:app-withTestRegistry-release-NOT-FOR-RELEASE.apk; do
+            have=$(awk -v n="${pair%%:*}" '$2 == n { print $1 }' "$sums")
+            up=$(awk -v n="${pair#*:}" '$2 == n { print $1 }' "$RUNNER_TEMP/upload/SHA256SUMS")
+            [ -n "$have" ] && [ "$have" = "$up" ] || fail "$apks/${pair%%:*} is not the uploaded ${pair#*:} (SHA256SUMS)"
+          done
+          echo "hand-off: $(($(wc -l < "$sums"))) files, $(($(cat -- "$apks"/* | wc -c))) bytes"
+          {
+            echo 'sha256sums<<KC_SHA256SUMS_END'
+            cat "$sums"
+            echo 'KC_SHA256SUMS_END'
+          } >> "$GITHUB_OUTPUT"
+      # The hand-off itself: actions/cache saves $RUNNER_TEMP/apks in its post step, at this job's
+      # end and only when every step passed, under a key that names this run and its attempt, so a
+      # leg restores this run's files or none. A leg job re-run on its own is a new attempt, finds no
+      # entry and fails: the whole run is re-run instead, as a failed test is never re-run alone. The
+      # key exists nowhere before this job saves it; lookup-only, so even if it did, this step would
+      # download nothing (and save nothing), and the legs' check would refuse that entry. The entry
+      # holds the APKs as built and signed, about 85 MB, and nothing else.
+      - name: Hand the signed APKs to the leg jobs (actions/cache, keyed on this run and attempt)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/apks/
+          key: ${{ runner.os }}-${{ runner.arch }}-android-apks-${{ github.run_id }}-${{ github.run_attempt }}
+          lookup-only: true
+
+  emulators:
+    name: android emulators (${{ matrix.legs }})
+    needs: build
+    runs-on: ubuntu-24.04
+    # The 90-minute ceiling (tasks/todo.md, M5 "Budgets") for each leg job's first run after the
+    # split (commit L9, lead decision M5-70 (b)); the lead then sets each job's budget to its measured
+    # time plus 25% (M5-30), a matrix value once the two differ. In the one job at d99e80b (run
+    # 40749608448) the emulator image cache took 123 s, API 31 1270 s, API 36 1241 s and the 16 KB leg
+    # 165 s, so the API 31 job is the longer. A slower run stops here and the lead re-plans; a commit
+    # that adds legs or tests re-measures it.
+    timeout-minutes: 90
+    strategy:
+      # Both leg jobs run to their end: a red leg never cancels the other job or hides its evidence.
+      fail-fast: false
+      matrix:
+        include:
+          - api: '31'
+            legs: API 31, then 16 KB pages
+          - api: '36'
+            legs: API 36
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      # The runner and the commit, as the build job prints them, and JDK 17 named for sdkmanager, as
+      # the build job names it: the legs use the runner's sdkmanager and adb, nothing else of its SDK.
+      - name: Leg facts (the runner, the commit, JDK 17, the runner's sdkmanager and adb)
+        run: |
+          fail() { echo "FAIL: leg facts: $1" >&2; exit 1; }
+          echo "commit: $(git rev-parse HEAD)"
+          echo "ImageOS: $ImageOS"
+          echo "ImageVersion: $ImageVersion"
+          df -h
+          [ -n "${JAVA_HOME_17_X64:-}" ] && [ -x "$JAVA_HOME_17_X64/bin/java" ] || fail "no JDK 17 (JAVA_HOME_17_X64)"
+          "$JAVA_HOME_17_X64/bin/java" -version 2>&1 | tee "$RUNNER_TEMP/java-version"
+          grep -q '^openjdk version "17[.]' "$RUNNER_TEMP/java-version" || fail "JAVA_HOME_17_X64 is not a JDK 17"
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          [ -n "${ANDROID_HOME:-}" ] && [ -d "$ANDROID_HOME" ] || fail "no Android SDK (ANDROID_HOME)"
+          echo "ANDROID_HOME: $ANDROID_HOME"
+          [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ] || fail "no sdkmanager"
+          [ -x "$ANDROID_HOME/platform-tools/adb" ] || fail "no adb"
+          "$ANDROID_HOME/platform-tools/adb" version
+      # This run's hand-off (the build job's last steps): the same path and key, and a miss fails the
+      # step; the check after it fails without the files too.
+      - name: The build job's signed APKs from the cache (this run and attempt; a miss fails)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/apks/
+          key: ${{ runner.os }}-${{ runner.arch }}-android-apks-${{ github.run_id }}-${{ github.run_attempt }}
+          fail-on-cache-miss: true
+      # Before anything is installed: the build job's SHA256SUMS (its output, which reaches this job
+      # apart from the cache) must be well formed, a SHA-256, two spaces and a plain file name per
+      # line; the files handed over must be exactly the files it lists, none missing and none more;
+      # and each must have its SHA-256 (sha256sum --check --strict). Any failure fails the job.
+      - name: Check the signed APKs against the build job's SHA256SUMS
+        env:
+          KC_SHA256SUMS: ${{ needs.build.outputs.sha256sums }}
+        run: |
+          fail() { echo "FAIL: hand-off: $1" >&2; exit 1; }
+          apks=$RUNNER_TEMP/apks
+          sums=$RUNNER_TEMP/apks-SHA256SUMS
+          [ -n "$KC_SHA256SUMS" ] || fail "the build job's output holds no SHA256SUMS"
+          printf '%s\n' "${KC_SHA256SUMS%$'\n'}" > "$sums"
+          echo "== the build job's SHA256SUMS"
+          cat "$sums"
+          [ -d "$apks" ] || fail "no $apks: this run's cache entry was not restored"
+          rc=0
+          grep -q -v -E -e '^[0-9a-f]{64}  [A-Za-z0-9][A-Za-z0-9._-]*$' "$sums" || rc=$?
+          [ "$rc" -eq 1 ] || fail "a line of the build job's SHA256SUMS is not a SHA-256, two spaces and a file name (grep exit $rc)"
+          listed=$(cut -c 67- "$sums" | LC_ALL=C sort)
+          found=$(cd "$apks" && find . -mindepth 1 -printf '%P\n' | LC_ALL=C sort)
+          if [ "$listed" != "$found" ]; then
+            diff <(printf '%s\n' "$listed") <(printf '%s\n' "$found") || :
+            fail "the files handed over (>) are not the files the build job's SHA256SUMS lists (<)"
+          fi
+          (cd "$apks" && sha256sum --check --strict "$sums") || fail "a file handed over does not have the build job's SHA-256"
+          echo "hand-off: the $(($(wc -l < "$sums"))) files handed over have the build job's SHA-256"
       # KVM for the emulators: the udev rule GitHub documents for its Linux runners.
       - name: KVM (udev rule)
         run: |
@@ -581,7 +717,8 @@ jobs:
           [ -r /dev/kvm ] && [ -w /dev/kvm ] || { echo "FAIL: /dev/kvm is not usable" >&2; exit 1; }
       # The emulator and the two system images come from sdkmanager, into their own SDK root. The
       # revisions it offers now make the cache key, so a new revision is a fresh download, and the
-      # install below must end with exactly these revisions.
+      # install below must end with exactly these revisions. Both leg jobs install all four packages
+      # under the one key, as the one job did, so they share one cache entry.
       - name: Emulator and system image revisions (sdkmanager --list)
         run: |
           fail() { echo "FAIL: emulator revisions: $1" >&2; exit 1; }
@@ -665,34 +802,33 @@ jobs:
             exit 1
           fi
           python3 -I scripts/android-age-check.py --selftest
-      # The three emulator legs, one after another, on the APKs signed and checked above (group 6;
-      # the header of scripts/android-emulator.sh lists what each runs): the capture harness on API
-      # 31 and 36, then the ARM and 16 KB leg on the 16 KB-page image (its page size, and NativeTest
-      # for x86_64 and each ARM ABI the image lists). Each leg runs whenever the install passed, even
-      # after an earlier leg failed, so one red leg never hides the others' evidence; the job still
-      # fails on any red leg.
-      - name: Emulator API 31 (system-images;android-31;default;x86_64)
-        run: sh scripts/android-emulator.sh 31 "$HOME/kc-sdk" "$ANDROID_HOME/platform-tools/adb" "$RUNNER_TEMP/apks" "$RUNNER_TEMP/emulator-31"
-      - name: Emulator API 36 (system-images;android-36;default;x86_64)
-        if: ${{ !cancelled() && steps.emulator-install.outcome == 'success' }}
-        run: sh scripts/android-emulator.sh 36 "$HOME/kc-sdk" "$ANDROID_HOME/platform-tools/adb" "$RUNNER_TEMP/apks" "$RUNNER_TEMP/emulator-36"
+      # The legs, on the build job's signed bytes as checked above (group 6; the header of
+      # scripts/android-emulator.sh lists what each runs): the capture harness on this job's API
+      # level, 31 or 36, then, in the API 31 job, the ARM and 16 KB leg on the 16 KB-page image (its
+      # page size, and NativeTest for x86_64 and each ARM ABI the image lists). The 16 KB leg runs
+      # whenever the install passed, even after the API 31 leg failed, so one red leg never hides the
+      # other's evidence; the job still fails on any red leg.
+      - name: Emulator API ${{ matrix.api }} (system-images;android-${{ matrix.api }};default;x86_64)
+        env:
+          KC_API: ${{ matrix.api }}
+        run: sh scripts/android-emulator.sh "$KC_API" "$HOME/kc-sdk" "$ANDROID_HOME/platform-tools/adb" "$RUNNER_TEMP/apks" "$RUNNER_TEMP/emulator-$KC_API"
       - name: Emulator 16 KB pages (system-images;android-36;google_apis_ps16k;x86_64)
-        if: ${{ !cancelled() && steps.emulator-install.outcome == 'success' }}
+        if: ${{ matrix.api == '31' && !cancelled() && steps.emulator-install.outcome == 'success' }}
         run: sh scripts/android-emulator.sh 16k "$HOME/kc-sdk" "$ANDROID_HOME/platform-tools/adb" "$RUNNER_TEMP/apks" "$RUNNER_TEMP/emulator-16k"
       # The positive control's captures (M5 group 6, control (a); lead decision M5-68 (f)), the owner's
-      # screen review, kept 14 days: the shell's screencap of each of capture-control's two screens
-      # that scripts/android-emulator.sh kept on the API 31 and 36 legs (WORK_DIR/captures/), its first
-      # screen and dice-99-words12's first words page, drawn by the app's own words composable with no
-      # FLAG_SECURE. Gate-seed vectors only (kcr.json's public seeds), never Reveal D, and never a
-      # capture of the app, which no step writes. After a failed leg too, so a leg that kept its
-      # captures still has them reviewed; a run with neither leg's fails here.
-      - name: Upload the positive control's captures (API 31 and 36)
+      # screen review, kept 14 days, each leg job's under its own name (android-control-captures-api31,
+      # android-control-captures-api36): the shell's screencap of each of capture-control's two
+      # screens that scripts/android-emulator.sh kept on this job's API 31 or 36 leg
+      # (WORK_DIR/captures/), its first screen and dice-99-words12's first words page, drawn by the
+      # app's own words composable with no FLAG_SECURE. Gate-seed vectors only (kcr.json's public
+      # seeds), never Reveal D, and never a capture of the app, which no step writes. After a failed
+      # leg too, so a leg that kept its captures still has them reviewed; a leg job without its
+      # captures fails here.
+      - name: Upload the positive control's captures (API ${{ matrix.api }})
         if: ${{ !cancelled() && steps.emulator-install.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: android-control-captures
-          path: |
-            ${{ runner.temp }}/emulator-31/captures/
-            ${{ runner.temp }}/emulator-36/captures/
+          name: android-control-captures-api${{ matrix.api }}
+          path: ${{ runner.temp }}/emulator-${{ matrix.api }}/captures/
           retention-days: 14
           if-no-files-found: error

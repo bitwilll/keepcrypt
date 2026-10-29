@@ -11787,14 +11787,18 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
 - [ ] `entropy-android.yml`: on PRs and pushes to main touching `Entropy/mobile/**`, `Entropy/ffi/**`, `Entropy/core/**`,
   `Entropy/Cargo.lock`, `Entropy/rust-toolchain.toml`, `Entropy/vectors/**`, the gate and android scripts and the
   workflow, plus weekly and dispatch; `contents: read`; only the three approved actions; no secrets; expressions only
-  through `env:`; `timeout-minutes` per the budget. One job, in order: Rust libraries, all APKs (shipping,
-  test-registry, the test APK, capture-control), JVM tests, the throwaway signing (the `--apk` checks verify the run's certificate), the `--apk` checks, the canary build,
-  the uploads (both APKs with SHA-256, the P4 files, the positive-control captures; the test-registry APK named
-  `NOT-FOR-RELEASE`), then the emulators one after another on those bytes: `default;x86_64` API 31, `default;x86_64`
-  API 36, and from commit 14 one 16 KB-page image (`google_apis_ps16k;x86_64` API 36, or the probe's choice). KVM udev
-  rule; `sdkmanager --install` with the SDK licence accepted (Q54); headless AVDs; images cached by revision.
-  `--workflows` passes on it. (As built, M5-70 (e): the positive-control captures upload in their own last step, after
-  the API 31 and 36 legs that make them, since commit 19h.)
+  through `env:`; `timeout-minutes` per the budget, for each job. A build job, in order: Rust libraries, all APKs
+  (shipping, test-registry, the test APK, capture-control), JVM tests, the throwaway signing (the `--apk` checks verify
+  the run's certificate), the `--apk` checks, the canary build, the uploads (both APKs with SHA-256, the P4 files; the
+  test-registry APK named `NOT-FOR-RELEASE`), then the hand-off: the signed APKs to the leg jobs through actions/cache
+  under a key that names the run and its attempt, their SHA256SUMS as the build job's output. Then two leg jobs side by
+  side, each after the build job, on those bytes: `default;x86_64` API 31 and then, from commit 14, one 16 KB-page
+  image (`google_apis_ps16k;x86_64` API 36, or the probe's choice); and `default;x86_64` API 36. Each restores the run's
+  entry (a miss fails) and checks every file against the build job's SHA256SUMS before it installs anything, and
+  uploads its positive-control captures under its own name (M5-70 (b), commit L9). KVM udev rule; `sdkmanager
+  --install` with the SDK licence accepted (Q54); headless AVDs; images cached by revision. `--workflows` passes on it.
+  (As built, M5-70 (e): the positive-control captures upload in their own last step, after the legs that make them,
+  since commit 19h; from L9 in each leg job.)
   Proof: the green run with each step's time; emulator and image revisions printed.
   Proof (M5 commit 8, partial; the run and its times are the lead's, from CI): the job's last steps are the frame
   checker's selftest, the KVM udev rule, the revisions `sdkmanager --list` offers (the cache key), actions/cache of
@@ -11806,6 +11810,37 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   cold caches (the selftests 1 min 22 s, emulator install 53 s, API 31 leg 2 min 26 s, API 36 leg 2 min 57 s);
   revisions printed (emulator 37.2.12, android-31 rev 5, android-36 rev 2); `timeout-minutes: 15` (8l-e), the measured
   budget (M5-30).
+  Proof (M5 commit L9, lead decision M5-70 (b), partial: local; CI's first run of the split and each job's time are the
+  lead's, at the next push): the one job is now `build`, "android build (APKs, checks, uploads, hand-off)", every step
+  the one job ran before the emulators, unchanged and in order, then the hand-off (28 steps); and `emulators`, a
+  matrix of two jobs with fail-fast off, each `needs: build`: "android emulators (API 31, then 16 KB pages)" and
+  "android emulators (API 36)" (12 steps; the 16 KB step runs in the API 31 job alone). The hand-off: the build job's
+  last two steps take every file of `$RUNNER_TEMP/apks` as the signing step leaves it (the five signed APKs and the
+  `.idsig` v4 file apksigner writes beside each, as build-tools 36.0.0's did locally), check that the shipped two have
+  the SHA-256 the uploaded SHA256SUMS gives them, and give every file's SHA-256 as the job output `sha256sums`; then
+  actions/cache at its pinned SHA, `lookup-only`, saves the directory in its post step, only when every step passed,
+  under `<os>-<arch>-android-apks-<run id>-<run attempt>` (about 85 MB by the local APKs' sizes). Each leg job
+  restores that key with `fail-on-cache-miss` and, before any install, requires the output (through `env:`) to be
+  lines of a SHA-256, two spaces and a plain file name, the restored files to be exactly those it lists, and
+  `sha256sum --check --strict` to pass; then KVM, the emulator images (one cache key for both jobs, all four
+  packages), the install, the age hand-off and android-emulator.sh on `$RUNNER_TEMP/apks`, as before, and its captures
+  go up as android-control-captures-api31 or -api36. Each job has `timeout-minutes: 90`, its comment naming M5-30's
+  rule. A leg job re-run alone is a new attempt and fails on the miss. The `--workflows` rules are unchanged: none
+  assumes one job (each reads the file line by line, and the canary line, once per file, stays in the build job).
+  Two fixtures pin what the split must not use, workflow-uses-cache-sub-action (actions/cache/restore at the approved
+  commit) and workflow-uses-download-artifact (upload-artifact's SHA under download-artifact's name): one hit each,
+  and each clean under a gate copy whose approved list admits them. Locally: `--workflows ../.github/workflows` clean
+  (3 workflows) under sh and dash; Ruby's YAML parser reads the file (2 jobs); copies with the output or a matrix
+  value as `${{ }}` in a run step, or with a cache sub-action, give one hit each; the two hand-off scripts, taken
+  from the YAML and run under bash -eo pipefail with a find shim for GNU's -printf, 18 cases passed (an upload that
+  differs and a missing APK fail the build's; an extra, hidden, missing or changed file, a directory, a duplicate,
+  malformed or empty line, no output, no entry and another run's files fail the leg's); the self-test shards 807 +
+  806 of 1613 cases (1611 and the two fixtures), 0 failed, under sh and /bin/dash; the gate clean (382 files) under
+  sh and dash; canaries.sh PASS, all 94 checks ran (443 s), its checks on the real workflow and on copies of it among them; fmt, both
+  clippy runs, `cargo test --workspace --locked` (499 passed, 3 ignored), `-p
+  keepcrypt-core --features test-sources` (269 passed, 1 ignored) and `-p keepcrypt-ffi -p keepcrypt-jni`, plain and
+  with `--features keepcrypt-core/test-registry` (50 passed each). Only CI shows the entry crossing jobs, the
+  output's form, the job names and the times.
 - [x] **Instrumentation:** `scripts/android-instrument.sh` runs `am instrument -w -r -e class ...` once per test class,
   and once per test that halts or kills the process, so a latched `Halted` slot or a dead process never fails the next
   test. The crash test is judged from the shell: the process is gone, no crash dialog window exists, `logcat -b crash`
