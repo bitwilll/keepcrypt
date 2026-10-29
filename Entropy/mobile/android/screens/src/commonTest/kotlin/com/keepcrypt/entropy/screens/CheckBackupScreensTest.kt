@@ -5,6 +5,7 @@ import com.keepcrypt.entropy.ffi.Mode
 import com.keepcrypt.entropy.ffi.Refusal
 import com.keepcrypt.entropy.ffi.RefusalGroup
 import com.keepcrypt.entropy.ffi.Reply
+import com.keepcrypt.entropy.ffi.Secret
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -35,9 +36,12 @@ import kotlinx.coroutines.cancel
  * the backup's words through the gate equal to the seed's, with no read-back, the last insert's Done
  * back to the result; the re-check QR and Back; Done ending it in core; Back from the entry Home with
  * the file zeroed; leaving the entry discarding at once, and the result under the 60 s rule and the
- * offline rule as a session is; a checked backup so discarded leaving the next ceremony's words their
- * own, with their read-back; a late answer from the picker doing nothing; and wipeAll on the entry (its
- * entries, file and letters) and on the result (the re-check QR). Each test leaves the slot at home.
+ * offline rule as a session is; the entry's file and entries held from the read's acceptance, as the
+ * Pi's BackupCheck stage holds them: the 9-minute warning, the 10-minute wipe and going online's discard,
+ * each wipe with its notice, and nothing held after Back, a discard or the result's Done; a checked
+ * backup so discarded leaving the next ceremony's words their own, with their read-back; a late answer
+ * from the picker doing nothing; and wipeAll on the entry (its entries, file and letters) and on the
+ * result (the re-check QR). Each test leaves the slot at home.
  */
 class CheckBackupScreensTest {
     @AfterTest
@@ -81,6 +85,33 @@ class CheckBackupScreensTest {
 
     /** The passphrase's eight entries, as the Pi takes them: each word's first four letters, a three-letter word's three. */
     private fun firstFours(words: List<String>): List<String> = words.map { it.take(4) }
+
+    /**
+     * The entry's file and entries wiped by a discard: the start screen, saying why (Go offline, as built;
+     * where a wipe lands while the phone is still offline is the owner's open Q81, and only this line names
+     * it), the file read and every entry zeroed, none held, the letters typed wiped and nothing in core.
+     */
+    private fun assertEntryWiped(rig: Rig, file: FakeFile, entries: List<Secret>, notice: Notice, what: String) {
+        assertEquals(Screen.GoOffline, rig.screen, what)
+        assertEquals(notice, rig.model.state.value.notice, what)
+        assertTrue(zeroed(file.given), what + ": the file read was zeroed")
+        assertTrue(entries.all { entry -> (0 until entry.size).all { entry[it] == 0.toByte() } }, what + ": the entries were wiped")
+        assertTrue(rig.model.entriesHeld.isEmpty(), what + ": the entries were dropped")
+        assertEquals(0, rig.model.backupLetters.length, what + ": the letters typed were wiped")
+        assertNoSession(what + " left something in core")
+    }
+
+    /** On Home, nothing held: 9 minutes without input bring no warning, and 10 no wipe. */
+    private fun assertNothingHeld(rig: Rig, what: String) {
+        assertEquals(Screen.Home, rig.screen, what)
+        rig.clock.now += Timers.WARN_MILLIS
+        rig.model.tick()
+        assertNull(rig.model.state.value.overlay, what + ": 9 minutes on Home warned")
+        rig.clock.now += Timers.WIPE_MILLIS - Timers.WARN_MILLIS
+        rig.model.tick()
+        assertEquals(Screen.Home, rig.screen, what + ": 10 minutes on Home wiped")
+        assertNull(rig.model.state.value.notice, what)
+    }
 
     /** A model at Check a backup's result, the saved backup opened with its passphrase. */
     private fun atResult(): Rig {
@@ -446,6 +477,65 @@ class CheckBackupScreensTest {
         assertEquals(Screen.GoOffline, online.screen)
         assertEquals(Notice.Offline, online.model.state.value.notice)
         assertNoSession("going online left the checked backup in core")
+    }
+
+    /**
+     * The entry's file and entries are held from the read's acceptance, as the Pi's BackupCheck stage holds
+     * them (docs/pi-firmware.md, "Protected screens and idle": the warning at 9 minutes and the wipe at 10
+     * "while a session or a checked backup is held"): 30 s covers the entry, 9 minutes warn (not the cover
+     * alone) and a tap on the warning keeps everything; 10 minutes more wipe the file and the entries, with
+     * the notice, and nothing is held after it.
+     */
+    @Test
+    fun theEntrysFileAndEntriesAreHeldUnderTheIdleWarningAndWipe() {
+        val (rig, file) = picked()
+        rig.model.passGate()
+        type(rig, firstFours(saved.passphrase).take(2))
+        val entries = rig.model.entriesHeld
+        rig.clock.now += Timers.COVER_MILLIS
+        rig.model.tick()
+        assertEquals(Overlay.Cover, rig.model.state.value.overlay, "30 s on the entry")
+        rig.clock.now += Timers.WARN_MILLIS - Timers.COVER_MILLIS
+        rig.model.tick()
+        assertEquals(Overlay.Warning, rig.model.state.value.overlay, "9 minutes on the entry")
+        rig.model.dismissOverlay()
+        assertEquals(Screen.BackupCheckEntry, rig.screen, "a tap on the warning keeps everything")
+        assertNull(rig.model.state.value.overlay)
+        assertFalse(zeroed(file.given), "a tap on the warning keeps the file read")
+        assertEquals(2, rig.model.entriesHeld.size, "a tap on the warning keeps the entries")
+        rig.clock.now += Timers.WIPE_MILLIS
+        rig.model.tick()
+        assertEntryWiped(rig, file, entries, Notice.Idle, "10 minutes on the entry")
+        rig.model.startOffline()
+        assertNothingHeld(rig, "after the idle wipe")
+    }
+
+    /** Going online on the entry discards at once, as for a session: the Offline notice, the file and the entries wiped. */
+    @Test
+    fun goingOnlineOnTheEntryWipesItsFileAndEntriesWithTheOfflineNotice() {
+        val (rig, file) = picked()
+        rig.model.passGate()
+        type(rig, firstFours(saved.passphrase).take(2))
+        val entries = rig.model.entriesHeld
+        rig.offline.set(false)
+        assertEntryWiped(rig, file, entries, Notice.Offline, "going online on the entry")
+        rig.offline.set(true)
+        rig.model.startOffline()
+        assertNothingHeld(rig, "after going online's discard")
+    }
+
+    /** Back from the entry Home, and the result's Done, leave nothing held under the timers. */
+    @Test
+    fun backFromTheEntryAndTheResultsDoneLeaveNothingHeld() {
+        val (rig, _) = picked()
+        rig.model.passGate()
+        type(rig, firstFours(saved.passphrase).take(1))
+        rig.model.back()
+        assertNothingHeld(rig, "after Back from the entry")
+
+        val result = atResult()
+        result.model.closeBackup()
+        assertNothingHeld(result, "after the result's Done")
     }
 
     /**

@@ -277,9 +277,12 @@ data class UiState(
  *   the 8 words on the letter pad, each entry taken as a Secret, and core opens the file with them (a
  *   long call: scrypt); a refusal returns to the entry, emptied, with core's text. Its result is Public:
  *   "Backup OK", the fingerprint and the Seal ID; the words, through the privacy gate on the words'
- *   screens, whose last insert leads back; the re-check QR; and Done, which ends it in core (end). The
- *   slot holds the checked backup under the timers and the offline rule as it holds a session: a
- *   discard, a timer's wipe or going online takes it, and Home follows only through Done.
+ *   screens, whose last insert leads back; the re-check QR; and Done, which ends it in core (end). From
+ *   the read's acceptance the file and the entries typed are held under the timers and the offline
+ *   rule as a session is (holds, as the Pi's BackupCheck stage holds them: docs/pi-firmware.md's
+ *   warning and wipe "while a session or a checked backup is held"), until Back to Home, a discard, a
+ *   halt, wipeAll or the opening; then the slot holds the checked backup under them as it holds a
+ *   session: a discard, a timer's wipe or going online takes it, and Home follows only through Done.
  * - Load registry snapshot (Home's, lead decision M5-48; docs/mobile-apps.md, "Reading a snapshot"): the
  *   system's open-document picker; the file it gives is refused unless its name ends in .kcr and its
  *   provider sizes it within core's limit, both before any byte is read; then it is read on the worker
@@ -380,8 +383,9 @@ class CeremonyModel(
      * The slot holds a session, or waits at its restart after a check that ended without the words
      * (Match found, Cannot check or a collision, with the kept Wiped and, after a collision, its report),
      * or holds Check a backup's checked backup: from a start (or the backup's opening) until a discard, a
-     * wipe or a halt. The timers and going online treat all three alike, and a discard takes the slot
-     * home either way, keeping the Wiped (the 99-roll minimum stays).
+     * wipe or a halt. The timers and going online treat all three alike, as they treat Check a backup's
+     * file and entries before the opening (holds); a discard takes the slot home either way, keeping the
+     * Wiped (the 99-roll minimum stays).
      */
     private var session = false
 
@@ -461,17 +465,17 @@ class CeremonyModel(
 
     /**
      * The offline monitor's report (Q57), in the foreground or away. After the start-up, going online
-     * while a session is held or a long call runs discards at once, and the start screen, Go offline,
-     * says why; on a screen past Go offline with nothing held, Go offline comes back, with nothing to
-     * say. Before the start-up self-test passes, and on First launch and Go offline, only the state
-     * changes.
+     * while a session or Check a backup's file is held (holds) or a long call runs discards at once, and
+     * the start screen, Go offline, says why; on a screen past Go offline with nothing held, Go offline
+     * comes back, with nothing to say. Before the start-up self-test passes, and on First launch and Go
+     * offline, only the state changes.
      */
     fun offlineChanged(airplaneMode: Boolean, wifiOff: Boolean) {
         if (stopped()) return
         val current = mutable.value.copy(airplaneMode = airplaneMode, wifiOff = wifiOff)
         mutable.value = current
         if (current.offline || !started) return
-        if (session || running != null) {
+        if (holds() || running != null) {
             discard(Notice.Offline)
         } else if (needsOffline(current.screen)) {
             show(Screen.GoOffline)
@@ -1188,7 +1192,7 @@ class CeremonyModel(
      * refused too). A refused file is never read, or its bytes are zeroed, and Home says why; a discard
      * during the read zeroes them, and the start screen follows (picked). A file that passes goes to the
      * passphrase's entry, word 1 of 8, through the privacy gate (Protected), its bytes kept for core in a
-     * Secret.
+     * Secret and, with the entries typed, held under the timers and the offline rule from here (holds).
      */
     fun backupPicked(file: PickedFile?) {
         picked(file, Core.BACKUP_SUFFIX, Core.BACKUP_MAX_BYTES, FileRefusal.NotAge, FileRefusal.TooLarge) { bytes ->
@@ -1318,7 +1322,7 @@ class CeremonyModel(
     fun tick() {
         if (busy()) return
         val current = mutable.value
-        when (timers.step(isProtected(current.screen), session)) {
+        when (timers.step(isProtected(current.screen), holds())) {
             TimerStep.BackgroundWipe -> discard(Notice.Background)
             TimerStep.IdleWipe -> discard(Notice.Idle)
             TimerStep.Warn -> {
@@ -1929,6 +1933,15 @@ class CeremonyModel(
 
     /** A long call runs, or the stop screen shows: input goes no further. */
     private fun busy(): Boolean = stopped() || isWorking(mutable.value.screen)
+
+    /**
+     * What the timers' warning and wipe and going online's discard apply to is held (docs/pi-firmware.md,
+     * "Protected screens and idle": "while a session or a checked backup is held"): a session, a restart
+     * or a checked backup (session), or Check a backup's file and entries before the opening (checkFile,
+     * from the read's acceptance until the entry and its call are over), as the Pi's BackupCheck stage
+     * holds them (holds_secrets).
+     */
+    private fun holds(): Boolean = session || checkFile != null
 
     /**
      * A press on screen's control reaches the model only while that screen shows, uncovered and past

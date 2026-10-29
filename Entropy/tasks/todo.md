@@ -12666,6 +12666,29 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   Amended 2026-10-22 (the lead, from commit 17's review): commit 17 brings the first Protected screen, the
   collision-report QR, with its privacy gate drawn and passed on the emulators (SnapshotDrillTest and CaptureTest's
   walk); commit 19 brings the words and the other Protected screens.
+  Proof (M5 commit U3b, Stage U-1, partial: local, kc37, Q76; CI's legs at the next push): PF:126-127 give the
+  warning at 9 minutes and the wipe at 10 "while a session or a checked backup is held", and the Pi's
+  `Stage::BackupCheck` holds Check a backup's file and entries before the backup opens (app.rs:97-102, under
+  `holds_secrets`, :523-527). The phone held neither: on the entry 9 minutes showed only the cover, and going online
+  showed Go offline with no notice and no core discard (its 10-minute wipe came only from the rule for a Protected
+  screen with nothing held). CeremonyModel's `holds()` (a session, or `checkFile`, which backupPicked's accepted read
+  sets and `enter` drops once neither the entry nor a long call shows) now feeds the timers' step and offlineChanged:
+  on the entry the 9-minute warning, the 10-minute wipe with the Idle notice, and going online's discard with the
+  Offline notice; nothing is held after Back to Home, a discard, a halt, wipeAll or the opening, whose checked backup
+  `session` holds as before. CheckBackupScreensTest's
+  theEntrysFileAndEntriesAreHeldUnderTheIdleWarningAndWipe (30 s the cover, 9 minutes the warning, a tap keeping the
+  file and entries, 10 minutes more the wipe with the file and both entries zeroed, nothing held after it),
+  goingOnlineOnTheEntryWipesItsFileAndEntriesWithTheOfflineNotice and backFromTheEntryAndTheResultsDoneLeaveNothingHeld;
+  before the fix the first two failed ("expected:<Warning> but was:<Cover>", "expected:<Offline> but was:<null>"). The
+  landing screen after a wipe (Go offline, as built; Q81 open) is named once, in the class's assertEntryWiped. Local
+  (JBR 25; CI's JDK 17): the strict Gradle build of the five APKs with every JVM test task, :core-ffi 33 in 11 classes,
+  :screens 151 in 21, :app 11 in 4 for each flavour, :secure-ui 3 in 1, none failed; kc37: `android-local.sh --part
+  journeys` exit 0 in 753 s (FlowTest 7, CheckTest 2, BackupTest 1 with its age -d hand-off), and `--part capture`
+  exit 0 in 663 s (ControlTest 3, CaptureTest 6 and 6 without control (c), its walk through backup_check_entry and
+  backup_check_result in both APKs; PhoneMotionTest 1, LifecycleTest 6, CrashTest killed as it must be; NativeTest 1;
+  the Camera2 check's four camera-client checks, its decode not met, as allowed). fmt, both clippy runs, `cargo test
+  --workspace --locked` 503 passed (3 ignored), the test-sources run 269 (1 ignored); the gate clean (385 files), its
+  selftest 1631 passed.
 - [ ] `CeremonyViewModel` owns the slot's use: UI state holds screen ids, page indices and `Secret` references only;
   long calls run on `Dispatchers.Default` behind a "Working..." screen that ignores input; a lifecycle or offline
   discard during "Working..." calls `discard()` at once and the call's "discarded" status returns the UI to its start
