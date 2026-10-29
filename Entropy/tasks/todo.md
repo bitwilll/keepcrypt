@@ -13378,6 +13378,22 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   passed in 25 suites (3 ignored) and the test-sources run 269 in 17 (1 ignored), none failed. The implementing agent
   died with the Claude app's restart at 03:42 during the gate's selftest; the lead reviewed its tree, reran
   banned-api-check.sh --selftest (1611 passed, 0 failed) and committed it (M5-68 (b)).
+  Proof (M5 commit 20i, review fix, partial: local, kc37, Q76): Load registry snapshot's bytes were zeroed only in the
+  finally of core's load, a lambda the worker never runs when a discard, a halt or wipeAll comes between the read's
+  reply and the worker's first look at the load (work makes no call then), so they were left as read (the E5 review:
+  HomeScreensTest's discard during the load, asserting them zeroed, failed). The bytes are a public .kcr, so this is
+  hygiene. The model now holds them while the load lasts (snapshotFile, as checkFile holds Check a backup's file) and
+  zeroes them when the next screen is no busy screen (the result, a refusal, the start screen after a discard, the
+  stop screen) and in wipeAll, whether or not core's call was made; the lambda's finally is gone. HomeScreensTest 11
+  (10 before): the discard during the load also asserts the bytes zeroed, and wipeAllDuringTheLoadZeroesTheBytesRead
+  calls wipeAll while the load waits on the worker; both fail against 20h's model and pass now. Locally, on this
+  commit's tree: the strict Gradle build of the five APKs and the JVM tests, :screens 143 in 19 classes, :app 11 in 4
+  for each flavour, none failed (:core-ffi 31 in 11 and :secure-ui 3 in 1 up to date, their inputs unchanged); the
+  gate clean. On kc37 (local, android-local.sh exit 0 in 1444 s on 19k's tree, the stage's last, which holds this
+  change): every class passed in android-emulator.sh's order (ControlTest 3, CaptureTest 6 and 6 without control (c),
+  PhoneMotionTest 1, FlowTest 7, CheckTest 2, BackupTest 1 with its age -d hand-off, SnapshotDrillTest 3,
+  LifecycleTest 6, CrashTest killed as it must be, NativeTest 1, and the Camera2 check's four camera-client checks,
+  its decode of the virtual scene's PNG not met and named, as android-local.sh allows).
 - [ ] The CI `age -d` hand-off: for the CI throwaway seed only, the androidTest reads the backup passphrase from the
   in-process `Secret` and sends it as the instrumentation status value `kc_ci_throwaway_passphrase`. The workflow pipes
   `am instrument -r`'s output straight into `scripts/android-age-check.py`, which takes the value, feeds it to age 1.1.1

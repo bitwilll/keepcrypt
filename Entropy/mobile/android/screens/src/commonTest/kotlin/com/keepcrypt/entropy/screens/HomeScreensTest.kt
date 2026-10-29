@@ -29,7 +29,8 @@ import kotlin.test.assertTrue
  * reports read whole; kcr.json's with-dice-50 verified on the worker behind "Working...", its bytes
  * zeroed, its result showing its number, date and count, Current on kcr.json's date and Stale with its
  * warning on a later one, then Home naming it; a snapshot that does not verify refused with core's text,
- * the one loaded before kept; a discard during the load; About's version (the app's versionName), flavour
+ * the one loaded before kept; a discard during the load and wipeAll while it waits, each zeroing the
+ * bytes read though core's load was never made; About's version (the app's versionName), flavour
  * and source address, Back to Home, and going online there; and the refusal texts, core's own
  * (core/src/error.rs) but the phone's line for a build with no registry key. Each test leaves the slot at
  * home.
@@ -259,11 +260,27 @@ class HomeScreensTest {
         assertEquals(Screen.GoOffline, rig.screen)
         assertEquals(Notice.Left, rig.model.state.value.notice)
         assertNull(rig.model.state.value.loaded, "a load discarded is not the model's")
+        assertTrue(zeroed(file.given), "the bytes read were zeroed, though the discard came before core's load was made")
         rig.model.appReturned()
         val late = kcrFile(WITH_DICE_50)
         rig.model.snapshotPicked(late)
         assertEquals(Screen.GoOffline, rig.screen, "a file after Home has gone does nothing")
         assertEquals(0, late.reads)
+    }
+
+    /** The holder's end (wipeAll) while core's load waits on the worker: the bytes read are zeroed at once, and the load is never made. */
+    @Test
+    fun wipeAllDuringTheLoadZeroesTheBytesRead() {
+        val rig = Rig().toHome()
+        val file = kcrFile(WITH_DICE_50)
+        rig.model.snapshotPicked(file)
+        rig.worker.runNext()
+        assertEquals(1, rig.worker.waiting, "the read done, core's load waits")
+        assertFalse(zeroed(file.given), "the bytes read wait for core")
+        rig.model.wipeAll()
+        assertTrue(zeroed(file.given), "wipeAll zeroed the bytes read")
+        rig.worker.run()
+        assertNull(rig.model.state.value.loaded, "a load after wipeAll is not the model's")
     }
 
     @Test

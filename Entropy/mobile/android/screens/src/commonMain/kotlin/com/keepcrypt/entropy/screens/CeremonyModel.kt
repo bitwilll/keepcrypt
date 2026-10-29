@@ -350,6 +350,13 @@ class CeremonyModel(
     /** The file Check a backup read (its bytes, at most core's limit, in a Secret), while its passphrase's entry and its call last. */
     private var checkFile: Secret? = null
 
+    /**
+     * The file Load registry snapshot read (its bytes, at most core's limit), while core's load of it
+     * lasts: zeroed once the load is over, by its result, a discard, a halt or wipeAll, including a load
+     * a discard or a halt left uncalled.
+     */
+    private var snapshotFile: ByteArray? = null
+
     /** Check a backup's entries typed so far, each a word's first four letters (or three) in a Secret, wiped with the entry. */
     private val entries = ArrayList<Secret>(PASSPHRASE_WORDS)
 
@@ -1264,22 +1271,18 @@ class CeremonyModel(
      * then read on the worker behind "Working...", which stops one byte past the limit, as Check a
      * backup's (picked). The read's reply starts core's verification on the worker, "Working..." still
      * showing (loadSnapshot, a long call: the signature, the entries and the bucket roots), on today's UTC
-     * date, and its bytes are zeroed once core has them. Verified, the slot holds the snapshot and its
-     * header is the model's (snapshotLoaded): the result shows its number, date and count and any
-     * freshness warning, and Check now runs the check against it on its own. Refused (no registry key in
-     * this build, as the shipping APK until M9; a file that does not verify), the result says why, and a
-     * snapshot loaded before stays, in the slot and here.
+     * date, the bytes held by the model until the load is over (snapshotFile): its result, a discard, a
+     * halt or wipeAll zeroes them, whether or not core's call was made. Verified, the slot holds the
+     * snapshot and its header is the model's (snapshotLoaded): the result shows its number, date and count
+     * and any freshness warning, and Check now runs the check against it on its own. Refused (no registry
+     * key in this build, as the shipping APK until M9; a file that does not verify), the result says why,
+     * and a snapshot loaded before stays, in the slot and here.
      */
     fun snapshotPicked(file: PickedFile?) {
         picked(file, Core.SNAPSHOT_SUFFIX, Core.SNAPSHOT_MAX_BYTES, FileRefusal.NotKcr, FileRefusal.SnapshotTooLarge) { bytes ->
+            snapshotFile = bytes
             work(
-                {
-                    try {
-                        Core.loadSnapshot(date.today(), bytes)
-                    } finally {
-                        bytes.fill(0)
-                    }
-                },
+                { Core.loadSnapshot(date.today(), bytes) },
                 refused = { refusal -> if (isSnapshotRefusal(refusal)) show(Screen.Snapshot, snapshotRefusal = refusal) else halt() },
             ) { header ->
                 snapshotLoaded(header)
@@ -1327,8 +1330,9 @@ class CeremonyModel(
      * The platform's end of the model (the ViewModel's onCleared): everything the slot holds goes, the
      * kept Wiped and a loaded snapshot too, a long call running drops its result, the pads' entries, the
      * QR codes, word pages, verdicts, passphrase page, confirm choices, watch-only export and D on show,
-     * the backup's file and Check a backup's file, entries and opened backup are wiped, and the motion
-     * source and the offline monitor stop. A halted slot holds nothing already.
+     * the backup's file, Check a backup's file, entries and opened backup and Load registry snapshot's
+     * file are wiped, and the motion source and the offline monitor stop. A halted slot holds nothing
+     * already.
      */
     fun wipeAll() {
         running?.discarded = true
@@ -1353,6 +1357,7 @@ class CeremonyModel(
         current.deviceLeg?.wipe()
         dropBackupFile()
         dropCheckFile()
+        dropSnapshotFile()
         dropEntries()
         dropChecked()
         motion.stop()
@@ -1634,6 +1639,12 @@ class CeremonyModel(
         checkFile = null
     }
 
+    /** Load registry snapshot's file, zeroed and dropped. */
+    private fun dropSnapshotFile() {
+        snapshotFile?.fill(0)
+        snapshotFile = null
+    }
+
     /** Check a backup's entries typed, each wiped, and none left. */
     private fun dropEntries() {
         for (entry in entries) entry.wipe()
@@ -1823,7 +1834,8 @@ class CeremonyModel(
      * held and the next one does not are wiped (rule 5: the collision report's and the registration's
      * carry a seal code, the watch-only QRs the xpub, the words and verdicts are the seed's, the
      * passphrase opens its backup, and D and the rolls recreate the seed). The backup's encrypted file is zeroed once neither the save screen nor a long call shows,
-     * and Check a backup's file and entries once neither its entry nor a long call does.
+     * Check a backup's file and entries once neither its entry nor a long call does, and Load registry
+     * snapshot's file once no long call does.
      */
     private fun enter(next: UiState) {
         val previous = mutable.value
@@ -1850,6 +1862,7 @@ class CeremonyModel(
             dropCheckFile()
             dropEntries()
         }
+        if (!isWorking(next.screen)) dropSnapshotFile()
         if (next.screen == before) return
         if (before == Screen.DeviceEntropy) motion.stop()
         if (before == Screen.Dice) dicePick.wipe()
