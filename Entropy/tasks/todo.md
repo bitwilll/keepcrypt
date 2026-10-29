@@ -13419,6 +13419,15 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   CheckTest 2, BackupTest 1 with its age -d hand-off, SnapshotDrillTest 3, LifecycleTest 6, CrashTest killed as it
   must be, NativeTest 1, and the Camera2 check's four camera-client checks, its decode of the virtual scene's PNG not
   met and named, as android-local.sh allows).
+  Proof (M5 commit 21i, review fix, partial: local): no JVM test caught a revert of 21h's two app changes (the E5
+  review: Home's About tagged about again, and the backup confirm one choice a line, :screens 142 passed), and nothing
+  held the rule Ui.tap and Home rely on, that no control's tag is a screen's id. ScreenIdsTest (androidHostTest, since
+  it lists the source tree under kc.entropy) requires each of the 48 screen ids to be written once in :screens'
+  commonMain sources, as its own entry of screenId's table in Screen.kt, so no tag, test tag or other literal there is
+  one (a tag built at run time, the pads' key_ tags, is not read, and none starts as a screen's id does). With About's
+  tag about again it fails, naming both lines. The confirm's two-a-row layout has no JVM check: its proof stays CI's
+  API 36 leg, CaptureTest in the test-registry APK ("each of its 5 secret texts is drawn"). Locally: :screens 147 in
+  21 classes, none failed (with 19k's tree, which differs only in an androidTest file).
 - [ ] The CI `age -d` hand-off: for the CI throwaway seed only, the androidTest reads the backup passphrase from the
   in-process `Secret` and sends it as the instrumentation status value `kc_ci_throwaway_passphrase`. The workflow pipes
   `am instrument -r`'s output straight into `scripts/android-age-check.py`, which takes the value, feeds it to age 1.1.1
