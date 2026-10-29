@@ -1835,6 +1835,66 @@ Nothing else on your Mac or in the repo changed. From now on, no simulator, `xco
       for the gate: every Proof still cites a CI run, and a local run is reported as local. Tests run on the project's
       own AVD, never on the owner's Medium_Phone.
 
+### Raised by Stage U's map (Q77-Q85, 2026-10-29)
+Stage U's read-only map (M5-72) audited every screen against the docs and the Pi. These nine need the owner: each
+changes a doc, overrides a lead decision or accepts a residual. Stages U-1 to U-5 go on meanwhile; U-6 waits for these.
+77. **Screen orientation** (Kit.kt:99-106; SecureActivity.kt:45, :80-83; the manifest sets neither)
+    Recommended: lock phones to portrait (android:screenOrientation="portrait"; Android 16 ignores it at sw600dp, where
+    the height suffices) and handle configuration changes in place (android:configChanges for orientation, screen size
+    and layout, density, font scale, ui mode, keyboard and navigation), so Compose redraws without a recreation and no
+    picker's or camera prompt's answer is lost. In landscape today the bottom actions squash the text column to 0 dp, so
+    the read-back loses which insert to read; and a recreation drops a pending picker answer, since nothing is saved.
+    Otherwise: landscape stays allowed; the actions move into the scrolling column once they pass a share of the window,
+    and the pickers' request codes survive a recreation; both with emulator tests.
+78. **Which system font scales every screen supports** (Drawing.kt:198-223; MA:31 and swb:286 name blind and
+    low-vision users; CI runs at 1.0)
+    Recommended: the full system range, 1.3 on API 31-33 and 2.0 on API 34+. At 1.15 the braille faces' dot numbers
+    4-6 clip; at 1.3 the test-registry backup confirm loses choices 3-4 from view and the seal card's check QR is never
+    wholly on screen; at 2.0 Home, the BIP39 entry and the code entry lose controls. Parts that grow move into the
+    scrolling column, and the capture walk runs at 1.3 on API 31 and 2.0 on API 36.
+    Otherwise: support up to 1.15 only, fixing the dot numbers and the confirm there, with a line in mobile-apps.md.
+79. **TalkBack on the Protected pads** (read-back, backup confirm, Check a backup's passphrase, the BIP39 passphrase;
+    Pads.kt:228-233; M5-46; swb:278)
+    Recommended: each Protected key carries its letter as text marked isSensitiveData (as the secret nodes are), keeping
+    its click action. Today each key carries only its role, which also strips its click and focus, so a TalkBack user
+    cannot do the mandatory read-back and cannot finish a ceremony. The letters typed are already read back in a
+    sensitive node after each press, so the keys expose no more; on API 31-33, which has no sensitive mark, this joins
+    the residual MA:74 accepts for the words.
+    Otherwise: keep role-only keys, and swb:286 says a phone ceremony cannot be finished with TalkBack.
+80. **Under the 30-second cover and the idle warning** (Screens.kt:50-61, :218-241)
+    Recommended: (a) the screen beneath is unreadable to accessibility services (its semantics cleared) while the cover
+    or the warning is up; today the words, D and the passphrases stay in the accessibility tree under a cover drawn on
+    top. (b) Accessibility reading counts as input (accessibility-focus events reset the idle clock); today only touches
+    do, so a braille-display reader who reads without touching is covered at 30 s and wiped at 10 minutes mid-reading.
+    Otherwise: the cover stays visual only and only touches count, said in mobile-apps.md's TalkBack line.
+81. **Where a wipe lands when the phone is still offline** (PF:127 "returns Home"; MA:34 adopts the Pi's rules;
+    group 15 and M5-50 land every discard on Go offline: CeremonyModel.kt:1529-1535)
+    Recommended: Home with the notice when the phone is still offline (idle, 60 s away, leaving a Protected screen), and
+    Go offline only when it went online, as PF:127 says.
+    Otherwise: Go offline after every discard, as built, and mobile-apps.md:34 says so.
+82. **Is the privacy gate a Public screen, as on the Pi?** (pi/app/src/screen.rs:289; CeremonyModel.kt:442-443, :1794)
+    Recommended: Public. Today the gate is a flag on the Protected screen behind it, so leaving the app on the gate
+    discards at once and the gate is covered after 30 s, though it shows no secret: a phone call on a 24-word seed's
+    second gate destroys the session. As Public, leaving keeps the session 60 s and there is no 30-second cover.
+    Otherwise: the gate stays part of the Protected screen, said in MA:34.
+83. **The headphones warning on every privacy gate** (Screens.kt:237, :288-291; swb:286 names only the words)
+    Recommended: on every gate. TalkBack also speaks the backup passphrase, D, the BIP39 passphrase and every letter
+    typed on a Protected pad, behind gates that carry no warning today. swb:286 gains the wider wording.
+    Otherwise: the words' gate only, as swb:286 reads.
+84. **API 31-33's accessibility residual and the shipping APK's resource ids** (SecureActivity.kt:50-52;
+    MainActivity.kt:70; MA:74)
+    Recommended: accept both as part of the API 31-33 residual MA:74 already accepts for the words, and say so in MA:74:
+    before Android 14 there is no data-sensitive mark, so an enabled accessibility service receives each dice key's
+    click and the pick's text (in dice-only mode, the seed), and the shipping APK turns test tags into resource ids that
+    name which nodes hold secrets (the capture tests read them).
+    Otherwise: minSdk 34, or the app refuses to start a ceremony while a non-tool accessibility service is enabled; and
+    shipping builds drop testTagsAsResourceId, the tests reading tags in-process.
+85. **A cue when a screen's text scrolls** (Kit.kt:103; 21h's off-screen confirm choice)
+    Recommended: a "More below" line, which TalkBack reads too, whenever the text column can scroll further. At 1.0 in
+    CI's window the seal card's check QR starts about 490 dp down, and the checklist, the collision result and the words
+    page run below the fold with no sign.
+    Otherwise: a rule naming what must be above the fold (the check QR, the confirm's choices), the rest allowed below.
+
 ## M0: Repo bootstrap
 
 ### Decisions built into this plan (override any of them)
@@ -11848,6 +11908,12 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   keepcrypt-core --features test-sources` (269 passed, 1 ignored) and `-p keepcrypt-ffi -p keepcrypt-jni`, plain and
   with `--features keepcrypt-core/test-registry` (50 passed each). Only CI shows the entry crossing jobs, the
   output's form, the job names and the times.
+  Proof (CI, the lead's, 2026-10-29): Entropy Android 40813152800 at e3c6c12, the split's first run: `build` 558 s,
+  its android-handoff.sh --selftest passing every case and the entry saved; both leg jobs restored the run's entry and
+  passed `android-handoff.sh --check` (10 files, the five APKs and their .idsig) before installing anything. "android
+  emulators (API 36)" green in 1416 s; "android emulators (API 31, then 16 KB pages)" 1469 s, every leg run to its end,
+  red only on the test-registry CaptureTest walk at readback_done (commit 21j). Budgets by M5-30 (M5-72 (g)): 12
+  minutes for `build`, 32 and 30 for the leg jobs (a matrix value).
   Proof (M5 commit L9b, review fix, partial: local; CI's gates job at the next push): `--workflows`' rule that only
   the three approved actions at their SHAs appear read a step's action only on lines matching `^[[:space:]]*(- )?uses:`,
   so a `uses` key spelled any other way YAML allows passed an unapproved action as clean (the E5 review, older than
@@ -11982,6 +12048,10 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   check's four camera-client checks, its decode of the virtual scene's PNG not met and named, as android-local.sh allows);
   every JVM test task rerun (`--rerun`): :core-ffi 31 in 11 classes, :screens 142 in 19, :app 11 in 4 for each flavour,
   :secure-ui 3 in 1, none failed.
+  Proof (CI, the lead's, 2026-10-29): control (c)'s first run, on API 36 in Entropy Android 40813152800 at e3c6c12:
+  the leg job green; in both APKs disable_secure_windows was unset, then 1 lit all 9 nodes of dice-99-words12's first
+  words page in screencap and takeScreenshot (the test-registry APK's with 49877 known-colour pixels under its strip),
+  then black again. API 31's probe ran.
   Proof (M5 commit 19k, review fix, partial: local, kc37, Q76): 19j's Proof says both flavours' androidTest Kotlin
   compiled with no warning, true only of an incremental compile: a clean one warned once per flavour,
   Capture.kt:319:38 "Unnecessary non-null assertion (!!) on a non-null receiver of type 'String'" (`title!!` after `if
@@ -13363,6 +13433,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   APKs' walks with backup_confirm's 5 secret texts drawn and BackupTest's age -d hand-off; then on the final tree the
   strict Gradle build of the five APKs and every JVM test task (:core-ffi 31 in 11 classes, :screens 138 in 19, :app
   11 in 4 for each flavour, :secure-ui 3 in 1, none failed).
+  Proof (CI, the lead's, 2026-10-29): Entropy Android 40813152800 at e3c6c12: on API 31, FlowTest (the watch-only flow
+  and About) passed; on API 36, both CaptureTest walks drew backup_confirm's five secret texts and passed.
   Proof (M5 commit 20h, lead decision M5-70 (g), partial: local, kc37, Q76; CI's API 31 and 36 legs at the next push):
   the model's picked(), which Check a backup and Load registry snapshot share, read the file in the activity's result
   callback on the main thread (21d's residual), so a slow provider or a full-size snapshot (about 72 MiB) held it. The
@@ -13563,6 +13635,9 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   user build names the listing as not made, so no local emulator run exercises the change. The gate is clean on the
   working tree (382 files) and --workflows on the three workflows, its --selftest 1611 passed, 0 failed (595 s), and
   canaries.sh PASS, all 94 checks ran (428 s).
+  Proof (CI, the lead's, 2026-10-29): the strict listing's first CI run (Entropy Android 40813152800 at e3c6c12): on
+  API 31 and API 36, for both apps, "no file in its data directories", each positive control's planted file the
+  listing's one new hit. Neither shader cache appeared, so M5-70 (d)'s rule 8 question does not arise.
 
 **19. Gate evidence and Commands**
 - [ ] CLAUDE.md Commands gains the ffi test-registry line, `--apk` and `--selftest-apk`, the android scripts (CI-only
@@ -15331,6 +15406,27 @@ they differ. Nothing in the Android plan is weakened.
   grep-based --workflows rule cannot see a key only a YAML parser decodes (an escape sequence in a quoted key, or a
   quoted key continued over a line). A parser would be a new dependency (rule 11), so commit L10 refuses those
   spellings instead.
+- M5-72 (2026-10-29), Stage U's map (a read-only workflow over U1-U3 at e3c6c12, its critic checking 16 of the maps'
+  coverage claims against the tests): (a) "Through the UI only" (U1) means every input a user makes goes through the
+  UI: Public pads by the accessibility click, Protected pads by injected touches (Ui.kt), never a model call; state is
+  read in-process only to observe it (C, the check QR, the words, the passphrase for the age hand-off), and a scanned
+  proof is fed to onGoAheadText, the camera's decode staying P0b's and P4's (M5-70). (b) Nothing keeps the screen on,
+  so a screen timeout stops the activity, which is leaving the app, and a words page is discarded while the user is
+  still punching metal: a defect against PF:125 ("slow punching or scanning is never cut short") and MA:34. Commit U3m
+  keeps the screen on (FLAG_KEEP_SCREEN_ON) while a session or a checked backup is held; the 30-second cover and the
+  10-minute wipe still apply. (c) Check a backup's registration count from a loaded snapshot is M9's, with snapshots in
+  shipping builds and re-checks (Q22); U3a's finding goes on M9's list. (d) The backup confirm stays a typed answer
+  (the first four letters on the letter pad, MA:154's "2 words are confirmed"), not the Pi's pick from four (PF:155),
+  so no choice's button names a word to an accessibility service (rule 5). (e) The pads keep the Pi's 8-column grids
+  (PF:112): their keys stay 33-39 dp on a 360 dp phone (WCAG 2.5.8's 24 dp met), and the dice keys fill their share of
+  the row (U3f). (f) If DoubleTapTest (U2i) shows a double tap passing a privacy gate or a one-way confirm unseen, the
+  fix is the phone's reading of PF:105 and PF:115: a new screen's controls ignore presses for 300 ms after its first
+  frame, in pressOn, with the test that failed. (g) Budgets by M5-30 from the split's first run (Entropy Android
+  40813152800): `build` 12 minutes, the leg jobs 32 (API 31 then 16 KB) and 30 (API 36); U1a's new jobs take the
+  90-minute ceiling for their measuring run. (h) Stage U runs as the commit plan under its items: stages U-1 to U-5 now,
+  U-6 after the owner answers Q77-Q85, each a stage of the M5 workflow (implement, three reviews, fixes, suite), CI at
+  each stage's head. (i) The test-registry capture walk's failure on API 31 at e3c6c12 ("a secret's node on the Public
+  screen readback_done", passing on API 36 and in the shipping APK) is fixed at its root first, as commit 21j.
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the
@@ -16095,6 +16191,31 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   fixed with a test; a change the docs do not allow becomes a question for the owner.
 - [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists them.
   Proof: CI at each stage's head; local runs reported as local.
+- **Stage U's commit plan** (M5-72 (h); each commit's test fails before its fix, U4):
+  - U-1, the base: 21j (the capture walk reads a screen's nodes only once UI Automator shows that screen, and a secret
+    node on a Public screen still fails; CI fix), L10, U1a (each API gets three leg jobs, capture, shipping journeys,
+    and test registry and edges, by `android-emulator.sh --part`), U3a (the stop screen names the halt's fixed reason
+    code), U3b (Check a backup's file and entries are held: the 9-minute warning and the online notice), U3m (the
+    screen kept on while a session or a checked backup is held, M5-72 (b)).
+  - U-2, flow and pad fixes before the journeys pin them: U3c (Delete on an empty pad reopens the word before, as the
+    Pi), U3d (the seal card's check QR on its own page, the braille dot numbers sized to their face), U3e (pad, Delete
+    and key-page presses through the model, so nothing acts under an overlay and every press is input), U3f (pads
+    redraw only what changed; the dice keys fill their share), U3g (live regions, pane titles, headings, QRs named by
+    kind and never by data), U2a (one activity: a second start reaches the running one).
+  - U-3, U2 on the JVM over one shared walk to all 48 screens: U2b (Back once and twice; assertDiscarded names the
+    landing screen once), U2c (one press opens one picker), U2d (configuration change and going online), U2e (leaving,
+    and M5-54's halting residuals), U2f (idle rules, and the 99-roll minimum through every restart), U2g (every refusal
+    table, every mirror pair, a wrong insert).
+  - U-4, U1's journeys to Finish through the UI only: U1b (Ui's tapped rolls, pads and codes; Match found to Add fresh
+    entropy, which calibrates the cost; the lead re-plans U1c-U1f from its run by M5-30), U1c (dice-only 12 and 24),
+    U1d (mixed 12 by a typed code; the shipping app's scanned go-ahead QR refused), U1e (Cannot check to Start again;
+    the backup made and checked by taps), U1f (the test registry: a loaded snapshot's automatic check at 24 words, a
+    scanned collision's restart to Finish), U1g (android-instrument.sh's gone: form; the stop journey to Close app).
+  - U-5, U2 on the device and U3's layout check: U2h (recreation), U2i (double taps), U2j (the process killed at a
+    stage), U2k (leaving, screen off, the activity destroyed while away, the back gesture), U2l (the camera denied twice;
+    one idle run on the real clock, API 36), U3h (the layout check in the walk at CI's window and a 412 dp phone; the
+    docs' texts pinned; KitColors).
+  - U-6, after the owner's answers: U2m (Q77), U3i (Q78, Q85), U3j (Q79, Q80), U3k (Q81, Q82, Q83), U3n (Q84).
 - Budget: the Android job's 44 minutes (M5-57) cannot hold U1-U2's emulator tests on two API legs. Stage U measures them and the
   lead re-plans by M5-30's rule or splits the legs into jobs (the Android workflow has no required check names). (L9 split
   them, M5-70 (b): each leg job's budget is its measured time plus 25%, re-measured when Stage U adds journeys.)

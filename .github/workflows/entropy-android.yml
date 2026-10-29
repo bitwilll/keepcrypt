@@ -142,14 +142,13 @@ jobs:
   build:
     name: android build (APKs, checks, uploads, hand-off)
     runs-on: ubuntu-24.04
-    # The 90-minute ceiling (tasks/todo.md, M5 "Budgets") for this job's first run after the split
-    # (commit L9, lead decision M5-70 (b)); the lead then sets its budget to that run's measured time
-    # plus 25% (M5-30). Before the split one job built and ran every leg (M5-44, M5-52, M5-57, M5-69):
-    # 35.2 min at efc0575 (run 39783747240; 44 with 25%), past 44 with commit 19's tests (run
-    # 40624645994), 53.4 min at e5109bc (run 40681107802) and 58 min at d99e80b (run 40749608448, the
-    # Rust libraries 208 s and the APKs' build 206 s of it). A slower run stops here and the lead
-    # re-plans; a commit that adds steps or tests re-measures it.
-    timeout-minutes: 90
+    # Budget (tasks/todo.md, M5 "Budgets"; M5-30, M5-70 (b), M5-72): the split's first run (run
+    # 40813152800 at e3c6c12) built in 558 s, so 12 minutes with 25%. Before the split one job built
+    # and ran every leg (M5-44, M5-52, M5-57, M5-69): 35.2 min at efc0575 (run 39783747240), past 44
+    # with commit 19's tests (run 40624645994), 53.4 min at e5109bc (run 40681107802) and 58 min at
+    # d99e80b (run 40749608448). A slower run stops here and the lead re-plans; a commit that adds
+    # steps or tests re-measures it.
+    timeout-minutes: 12
     env:
       # The SDK pieces the build uses (mobile/android/gradle/libs.versions.toml), checked below.
       KC_BUILD_TOOLS: 36.0.0
@@ -627,13 +626,12 @@ jobs:
     name: android emulators (${{ matrix.legs }})
     needs: build
     runs-on: ubuntu-24.04
-    # The 90-minute ceiling (tasks/todo.md, M5 "Budgets") for each leg job's first run after the
-    # split (commit L9, lead decision M5-70 (b)); the lead then sets each job's budget to its measured
-    # time plus 25% (M5-30), a matrix value once the two differ. In the one job at d99e80b (run
-    # 40749608448) the emulator image cache took 123 s, API 31 1270 s, API 36 1241 s and the 16 KB leg
-    # 165 s, so the API 31 job is the longer. A slower run stops here and the lead re-plans; a commit
-    # that adds legs or tests re-measures it.
-    timeout-minutes: 90
+    # Budget (tasks/todo.md, M5 "Budgets"; M5-30, M5-70 (b), M5-72), a matrix value: the split's
+    # first run (run 40813152800 at e3c6c12) took 1469 s for API 31 then the 16 KB leg (its capture
+    # walk stopped at a failure, so about 60 s more for a whole run) and 1416 s for API 36, so 32 and
+    # 30 minutes with 25%. A slower run stops here and the lead re-plans; a commit that adds legs or
+    # tests re-measures it.
+    timeout-minutes: ${{ matrix.timeout }}
     strategy:
       # Both leg jobs run to their end: a red leg never cancels the other job or hides its evidence.
       fail-fast: false
@@ -641,8 +639,10 @@ jobs:
         include:
           - api: '31'
             legs: API 31, then 16 KB pages
+            timeout: 32
           - api: '36'
             legs: API 36
+            timeout: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
