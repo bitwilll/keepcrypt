@@ -12326,6 +12326,17 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   and with `--features keepcrypt-core/test-registry`, 55 passed each; fmt, both clippy runs, `cargo test
   --workspace --locked` 504 passed (3 ignored), the test-sources run 269 (1 ignored); the gate clean (386 files)
   under sh and dash.
+  Proof (M5 commit U3a3, review fix, partial: local, JBR 25, CI's JDK 17 at the next push): U3a's "a halt status of
+  another length halts through Core.halt" had no test that told it apart: WireMalformedTest decodes `[3]` and
+  `[3, 6, 0]` only after its earlier cases halted the slot, so a decode that threw KcHalt without halting it passed
+  (the U-1 review's K5). HaltStatusLengthTest, a class of its own (forkEvery), decodes `[3]` on a live slot (its
+  self-test Done first): KcHalt, internal, and then the self-test halts, internal, and WIPE_ALL's status is the
+  internal halt's. With the size check gone from Core.decode's HALTED branch it fails ("the slot halted"), the other
+  33 passing. The other half of that claim, Core.halt's reason the slot's own when it "had halted before", stays
+  untested (K6): only a known-answer, entropy-source or health failure or a panic halts the slot with another
+  reason, and none can be raised through the host library. The strict Gradle build of the five APKs with every task
+  rerun (`--rerun-tasks`, 270 executed), after android-rust.sh for both flavours: :core-ffi 34 in 12 classes,
+  :screens 154 in 21, :app 11 in 4 for each flavour, :secure-ui 3 in 1, none failed.
 - [x] `start(len, mode)` per "One `Session::new`". `match_found()` = `discard(Collision)`, `cannot_check()` likewise,
   each keeping the `Wiped`; after them only `start` is offered. `discard()` (background, idle, offline, leaving a
   Protected screen) drops the stage and checked backup, keeps `kept` and `snapshot`; `end()` (Finish) drops the stage;
