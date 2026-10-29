@@ -261,10 +261,10 @@ internal object Capture {
     }
 
     /**
-     * A window of dumpsys window windows: its title, whether its flags (fl=) hold SECURE, and whether
-     * its owner line (package=) named the package.
+     * A window of dumpsys window windows: its title, whether its flags (fl=) hold SECURE, whether its
+     * owner line (package=) named the package, and whether its flags hold KEEP_SCREEN_ON (LifecycleTest).
      */
-    class WindowFacts(val title: String, val secure: Boolean, val byOwner: Boolean)
+    class WindowFacts(val title: String, val secure: Boolean, val byOwner: Boolean, val keepScreenOn: Boolean)
 
     /**
      * Every window of pkg that dumpsys window windows lists, each block starting at a header
@@ -295,11 +295,12 @@ internal object Capture {
         var titled = false
         var owned = false
         var secure = false
+        var keepScreenOn = false
         var flagsSeen = false
         var ownerSeen = false
         fun close() {
             val t = title
-            if (t != null && (titled || owned)) found.add(WindowFacts(t, secure, owned))
+            if (t != null && (titled || owned)) found.add(WindowFacts(t, secure, owned, keepScreenOn))
         }
         for (line in shellText("dumpsys window windows").lines()) {
             val h = header.find(line)
@@ -309,6 +310,7 @@ internal object Capture {
                 titled = ours.containsMatchIn(h.groupValues[1])
                 owned = false
                 secure = false
+                keepScreenOn = false
                 flagsSeen = false
                 ownerSeen = false
                 continue
@@ -333,7 +335,9 @@ internal object Capture {
             val f = flags.find(line)
             if (!flagsSeen && f != null) {
                 flagsSeen = true
-                secure = Regex("[A-Z_]+").findAll(f.groupValues[2]).any { it.value == "SECURE" }
+                val names = Regex("[A-Z_]+").findAll(f.groupValues[2]).map { it.value }.toList()
+                secure = "SECURE" in names
+                keepScreenOn = "KEEP_SCREEN_ON" in names
             }
         }
         close()

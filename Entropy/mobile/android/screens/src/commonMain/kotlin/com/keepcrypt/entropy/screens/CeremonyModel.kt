@@ -211,7 +211,8 @@ data class UiState(
  *   there, halt the slot instead when a discard reaches core between the worker's look at the discard
  *   flag and the call (fail closed: the stop screen; lead decision M5-54's residual, work). On a Public
  *   screen leaving puts the privacy cover up, and 60 s away wipes.
- * - The timers (Timers) cover, warn and wipe on each tick.
+ * - The timers (Timers) cover, warn and wipe on each tick. While what their warning and wipe apply to is
+ *   held (held), the phone keeps its screen on (lead decision M5-72 (b)).
  * - On every start First launch shows first, before any core call (lead decision M5-50); its Continue
  *   runs the start-up self-test (core's known-answer tests, a long call behind its own screen; any
  *   reply but Done halts), then Go offline (its Start only offline), Home, Length, and the ceremony,
@@ -310,9 +311,23 @@ class CeremonyModel(
 ) {
     private val timers = Timers(clock)
     private val mutable = MutableStateFlow(UiState(Screen.FirstLaunch))
+    private val mutableHeld = MutableStateFlow(false)
 
     /** What the screens draw. */
     val state: StateFlow<UiState> get() = mutable
+
+    /**
+     * Whether what the timers' warning and wipe apply to is held (holds): a session, a restart or a
+     * checked backup, or Check a backup's file and entries from the read's acceptance. While it is, the
+     * phone keeps its screen on (:app's MainActivity; lead decision M5-72 (b)), since a screen timeout
+     * stops the activity, which is leaving the app, and would discard a words page while its insert is
+     * punched (docs/pi-firmware.md: "slow punching or scanning is never cut short"). It changes only with
+     * what is held (the setters of session and checkFile), never by a timer of its own: nothing is held
+     * on First launch, Go offline or Home, nor after Finish's end, Check a backup's Done or Back, a
+     * discard (a timer's wipe among them), a halt or wipeAll; the 30 s cover and the 10-minute wipe stay
+     * the timers'.
+     */
+    val held: StateFlow<Boolean> get() = mutableHeld
 
     /**
      * The dice pad's pick (rule 5: a PadEntry, never a String): the dice screen's pad writes the face
@@ -354,8 +369,15 @@ class CeremonyModel(
     /** The confirm's first answer, a choice's index (0-3), until the second is typed; -1 for none. */
     private var firstPick = -1
 
-    /** The file Check a backup read (its bytes, at most core's limit, in a Secret), while its passphrase's entry and its call last. */
+    /**
+     * The file Check a backup read (its bytes, at most core's limit, in a Secret), while its passphrase's
+     * entry and its call last. held follows it.
+     */
     private var checkFile: Secret? = null
+        set(value) {
+            field = value
+            mutableHeld.value = holds()
+        }
 
     /**
      * The file Load registry snapshot read (its bytes, at most core's limit), while core's load of it
@@ -385,9 +407,13 @@ class CeremonyModel(
      * or holds Check a backup's checked backup: from a start (or the backup's opening) until a discard, a
      * wipe or a halt. The timers and going online treat all three alike, as they treat Check a backup's
      * file and entries before the opening (holds); a discard takes the slot home either way, keeping the
-     * Wiped (the 99-roll minimum stays).
+     * Wiped (the 99-roll minimum stays). held follows it.
      */
     private var session = false
+        set(value) {
+            field = value
+            mutableHeld.value = holds()
+        }
 
     /** The long call running, if any. */
     private var running: Pending? = null
@@ -1939,7 +1965,7 @@ class CeremonyModel(
      * "Protected screens and idle": "while a session or a checked backup is held"): a session, a restart
      * or a checked backup (session), or Check a backup's file and entries before the opening (checkFile,
      * from the read's acceptance until the entry and its call are over), as the Pi's BackupCheck stage
-     * holds them (holds_secrets).
+     * holds them (holds_secrets); held is its value, kept by the setters of both.
      */
     private fun holds(): Boolean = session || checkFile != null
 

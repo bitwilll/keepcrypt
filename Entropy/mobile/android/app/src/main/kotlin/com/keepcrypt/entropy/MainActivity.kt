@@ -11,12 +11,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import com.keepcrypt.entropy.camera.GoAheadScanner
 import com.keepcrypt.entropy.files.Documents
 import com.keepcrypt.entropy.screens.CeremonyModel
 import com.keepcrypt.entropy.screens.Screen
 import com.keepcrypt.entropy.screens.Screens
 import com.keepcrypt.entropy.secure.SecureActivity
+import kotlinx.coroutines.launch
 
 /**
  * The app's one activity (tasks/todo.md, M5 groups 4, 13, 14 and 15), under SecureActivity's
@@ -32,8 +34,13 @@ import com.keepcrypt.entropy.secure.SecureActivity
  * import line of its contracts' class that the gate allows; leaving the app stops a scan at once
  * (group 16). The backup's, Check a backup's and Load registry snapshot's document pickers are Documents
  * (files/Documents.kt, group 18), made here in onCreate too, whose constructor registers their three
- * launchers there, where the gate allows the document contracts; their answers go to the model. Compose test tags are exposed as
- * resource ids, so UI Automator finds Public screens by id (group 6).
+ * launchers there, where the gate allows the document contracts; their answers go to the model. While the model holds
+ * a session, a checked backup or Check a backup's file and entries (CeremonyModel.held), the window keeps the screen
+ * on (lead decision M5-72 (b)): a screen timeout stops the activity, which is leaving the app, and would discard a
+ * words page while its insert is punched. The flag is the decor view's keepScreenOn, which its window's
+ * FLAG_KEEP_SCREEN_ON follows (the gate refuses any call that takes a window flag off), set and cleared from that
+ * state as it changes, never by a timer. Compose test tags are exposed as resource ids, so UI Automator finds
+ * Public screens by id (group 6).
  */
 class MainActivity : SecureActivity() {
     /**
@@ -66,6 +73,7 @@ class MainActivity : SecureActivity() {
         scanner = GoAheadScanner(this)
         scanner.permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { scanner.answered(it) }
         val documents = Documents(this, model::backupPlaced, model::backupPicked, model::snapshotPicked)
+        lifecycleScope.launch { model.held.collect { window.decorView.keepScreenOn = it } }
         setContent {
             Box(Modifier.semantics { testTagsAsResourceId = true }) {
                 Screens(model, airplaneSettings, scanner, documents, onClose = this@MainActivity::closeApp, onShown = { shownScreen = it })

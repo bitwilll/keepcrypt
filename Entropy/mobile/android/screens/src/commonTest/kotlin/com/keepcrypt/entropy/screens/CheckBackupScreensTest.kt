@@ -38,7 +38,8 @@ import kotlinx.coroutines.cancel
  * the file zeroed; leaving the entry discarding at once, and the result under the 60 s rule and the
  * offline rule as a session is; the entry's file and entries held from the read's acceptance, as the
  * Pi's BackupCheck stage holds them: the 9-minute warning, the 10-minute wipe and going online's discard,
- * each wipe with its notice, and nothing held after Back, a discard or the result's Done; a checked
+ * each wipe with its notice, and nothing held after Back, a discard or the result's Done, as the held
+ * state the phone keeps its screen on by (lead decision M5-72 (b)) says too; a checked
  * backup so discarded leaving the next ceremony's words their own, with their read-back; a late answer
  * from the picker doing nothing; and wipeAll on the entry (its entries, file and letters) and on the
  * result (the re-check QR). Each test leaves the slot at home.
@@ -536,6 +537,58 @@ class CheckBackupScreensTest {
         val result = atResult()
         result.model.closeBackup()
         assertNothingHeld(result, "after the result's Done")
+    }
+
+    /**
+     * The held state the phone keeps its screen on by (lead decision M5-72 (b)) on Check a backup's way:
+     * nothing held on Home, with the picker open or while the picked file is read behind "Working...";
+     * held from the read's acceptance on the entry, through the opening's long call, on the result and on
+     * the backup's words; nothing held after the result's Done, Back from the entry, going online on the
+     * entry, or leaving the backup's words.
+     */
+    @Test
+    fun theHeldStateFollowsTheEntrysFileAndTheCheckedBackup() {
+        val rig = Rig().toHome()
+        assertFalse(rig.model.held.value, "Home")
+        rig.model.checkBackup(FakePickers())
+        assertFalse(rig.model.held.value, "the picker open")
+        rig.model.backupPicked(FakeFile("keepcrypt-backup-0123abcd.age", saved.file.size.toLong(), saved.file))
+        assertEquals(Screen.Working, rig.screen)
+        assertFalse(rig.model.held.value, "the picked file's read, before its acceptance")
+        rig.worker.run()
+        assertEquals(Screen.BackupCheckEntry, rig.screen)
+        assertTrue(rig.model.held.value, "the entry, from the read's acceptance")
+        rig.model.passGate()
+        type(rig, firstFours(saved.passphrase))
+        assertEquals(Screen.Working, rig.screen)
+        assertTrue(rig.model.held.value, "the opening's long call")
+        rig.worker.run()
+        assertEquals(Screen.BackupCheckResult, rig.screen)
+        assertTrue(rig.model.held.value, "the result: the checked backup")
+        rig.model.closeBackup()
+        assertEquals(Screen.Home, rig.screen)
+        assertFalse(rig.model.held.value, "the result's Done")
+
+        val (back, _) = picked()
+        back.model.passGate()
+        back.model.back()
+        assertEquals(Screen.Home, back.screen)
+        assertFalse(back.model.held.value, "Back from the entry")
+
+        val (online, _) = picked()
+        online.offline.set(false)
+        assertEquals(Notice.Offline, online.model.state.value.notice)
+        assertFalse(online.model.held.value, "going online on the entry")
+
+        val words = atResult()
+        words.model.appReturned()
+        words.model.showBackupWords()
+        words.model.passGate()
+        assertEquals(Screen.Words, words.screen)
+        assertTrue(words.model.held.value, "the checked backup's words")
+        words.model.appLeft()
+        assertEquals(Notice.Left, words.model.state.value.notice)
+        assertFalse(words.model.held.value, "leaving the checked backup's words")
     }
 
     /**

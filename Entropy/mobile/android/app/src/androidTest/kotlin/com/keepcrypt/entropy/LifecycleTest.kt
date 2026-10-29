@@ -1,6 +1,7 @@
 package com.keepcrypt.entropy
 
 import android.app.Activity
+import android.os.PowerManager
 import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
@@ -35,7 +36,9 @@ import org.junit.runner.RunWith
  * the shipping app: the app is left during a backup's scrypt and during the start-up self-test (which
  * First launch's Continue runs, lead decision M5-50), and Wi-Fi comes on during a start; the app is
  * left on a words page (a Protected screen: discarded at once), and on the dice (a Public screen: 50 s
- * away keeps the session and 70 s wipes it, through the real 60 s rule on the phone's clock). In each
+ * away keeps the session and 70 s wipes it, through the real 60 s rule on the phone's clock); and a words
+ * page outlasts the system's shortest screen timeout, its window keeping the screen on until Finish
+ * (lead decision M5-72 (b)). In each
  * the main thread never waits (the script's judge finds no not-responding window) and a discarded
  * session is gone: afterwards the slot is at home, where only an empty slot takes the self-test (a
  * session there would make that call halt), and the screen is the start screen, Go offline once the
@@ -313,6 +316,121 @@ class LifecycleTest {
         }
     }
 
+    /**
+     * A words page outlasts the system's screen timeout (lead decision M5-72 (b); docs/pi-firmware.md,
+     * "slow punching or scanning is never cut short"; docs/mobile-apps.md, "Session lifetime"): a screen
+     * that times out stops the activity, which is leaving the app, and a Protected screen is discarded
+     * at once, so while the model holds a session (CeremonyModel.held) the activity's window has
+     * FLAG_KEEP_SCREEN_ON, which the window manager turns into a screen wake lock while the window shows.
+     * dice-50-words12 through the model's entry points, as its screens call them, to Skip's result, Show
+     * words and the privacy gate. Then android-emulator.sh's `svc power stayon` is turned off
+     * (Settings.Global's stay_on_while_plugged_in, which it writes) and the system's screen_off_timeout
+     * set to its minimum, 10 s (config_minimumScreenOffTimeout, to which the power manager raises any
+     * shorter setting); both are read first and put back as they were in a finally block, the display
+     * woken if it slept, so no later test sees them. Insert 2's page (input for the model's idle time, so
+     * its 30 s cover is not due), then twice that timeout: the session is held on the same page,
+     * uncovered, with no notice, the activity resumed, the display still on, and the window has the flag
+     * (dumpsys window's fl=). Without the flag the display sleeps within the timeout, the activity stops
+     * and the session is discarded (Left). Then the read-back of every insert (its first four letters,
+     * read in-process from the page the state holds), the summary, the exports skipped and Finish: Home,
+     * nothing held, and the window no longer has the flag; the slot is at home. A probe line names, after
+     * the wait, the screen, the activity's stage, whether the display is on and the power manager's facts
+     * (its stay-on and timeout settings, the minimum, its wakefulness and its screen wake locks).
+     */
+    @Test
+    fun aWordsPageOutlastsTheScreenTimeoutAndFinishClearsTheKeepScreenOnFlag() {
+        Capture.whileOffline {
+            val activity = launch()
+            selfTested(activity)
+            await("the app reads airplane mode on and Wi-Fi off", 30) { onMain { activity.model.state.value.offline } }
+            toDice(activity)
+            onMain {
+                for (roll in DICE_50_ROLLS) {
+                    activity.model.dicePick.replace(roll)
+                    activity.model.confirmRoll()
+                }
+                activity.model.diceDone()
+            }
+            await("the check prompt", START_SECONDS) { onMain { activity.model.state.value.screen } == Screen.CheckPrompt }
+            val shown = onMain {
+                activity.model.skip()
+                activity.model.skipConfirmed()
+                activity.model.showWords()
+                activity.model.passGate()
+                activity.model.state.value.let { it.screen == Screen.Words && it.page == 0 && !it.gate }
+            }
+            assertTrue("not on insert 1's page past the privacy gate", shown)
+            val power = checkNotNull(Capture.instrumentation.targetContext.getSystemService(PowerManager::class.java))
+            val stayOn = shellText("settings get global stay_on_while_plugged_in")
+            val timeout = shellText("settings get system screen_off_timeout")
+            probe("before the screen timeout: stay_on_while_plugged_in=$stayOn, screen_off_timeout=$timeout")
+            try {
+                shellText("svc power stayon false")
+                shellText("settings put system screen_off_timeout $MIN_SCREEN_OFF_MS")
+                val set = "stay_on_while_plugged_in=${shellText("settings get global stay_on_while_plugged_in")}, " +
+                    "screen_off_timeout=${shellText("settings get system screen_off_timeout")}"
+                assertEquals("the settings did not take", "stay_on_while_plugged_in=0, screen_off_timeout=$MIN_SCREEN_OFF_MS", set)
+                val page = onMain {
+                    activity.model.nextPage()
+                    activity.model.state.value.let { if (it.screen == Screen.Words && it.page == 1) it.insert else null }
+                } ?: throw AssertionError("not on insert 2's page")
+                val begun = SystemClock.elapsedRealtime()
+                SystemClock.sleep(OUTLAST_MS)
+                val after = onMain { activity.model.state.value }
+                val lived = stage(activity)
+                probe(
+                    "words page, ${SystemClock.elapsedRealtime() - begun} ms past the timeout's start: the screen " +
+                        "${screenId(after.screen)}, the activity $lived, the display ${if (power.isInteractive) "on" else "off"}; " +
+                        powerFacts(),
+                )
+                assertEquals("the screen timeout discarded the session", Screen.Words, after.screen)
+                assertEquals(null, after.notice)
+                assertEquals("insert 2's page", 1, after.page)
+                assertEquals("the page is covered", null, after.overlay)
+                assertTrue("the session is not held", onMain { activity.model.held.value })
+                assertTrue("the page on show was wiped", onMain { page.position == 2 })
+                assertEquals("the activity is not resumed", Stage.RESUMED, lived)
+                assertTrue("the display slept on a words page", power.isInteractive)
+                await("the window has FLAG_KEEP_SCREEN_ON while the words show", 10) { keptOn() }
+            } finally {
+                restore("global", "stay_on_while_plugged_in", stayOn)
+                restore("system", "screen_off_timeout", timeout)
+                if (!power.isInteractive) {
+                    shellText("input keyevent KEYCODE_WAKEUP")
+                    shellText("wm dismiss-keyguard")
+                }
+            }
+            val home = onMain {
+                val model = activity.model
+                repeat(10) { model.nextPage() }
+                model.startReadback()
+                repeat(12) {
+                    val word = checkNotNull(model.state.value.insert).word()
+                    for (index in 0 until minOf(4, word.size)) model.readbackLetters.type(Char(word[index].toInt()))
+                    word.wipe()
+                    model.readbackTyped()
+                    model.readbackNext()
+                }
+                model.showSummary()
+                model.summaryDone()
+                model.skipBackup()
+                model.skipWatchOnly()
+                model.skipRegistration()
+                val checklist = model.state.value.screen == Screen.Checklist && model.held.value
+                model.finishCeremony()
+                checklist && model.state.value.screen == Screen.Home && !model.held.value
+            }
+            assertTrue("the read-back, the exports skipped and Finish did not end at Home with nothing held", home)
+            await("the window no longer has FLAG_KEEP_SCREEN_ON after Finish", 10) { !keptOn() }
+            assertTrue("the slot is not at home: Finish did not end the session", Core.selfTest() is Reply.Done)
+            pass(
+                "a words page outlasted the screen timeout ($MIN_SCREEN_OFF_MS ms, stay-on off) by its window's " +
+                    "FLAG_KEEP_SCREEN_ON, the session held; after Finish the window has no flag",
+            )
+            finish(activity)
+        }
+    }
+
     /** From Go offline, offline: Start, Dice-only seed, 12 words (the start's long call), through the model as the buttons call it, to the dice. */
     private fun toDice(activity: MainActivity) {
         onMain {
@@ -411,6 +529,33 @@ class LifecycleTest {
 
     private fun settings(name: String): String = Capture.globalSetting(name)
 
+    /** Whether one of the app's windows has FLAG_KEEP_SCREEN_ON in the flags dumpsys window lists (fl=). */
+    private fun keptOn(): Boolean {
+        val windows = Capture.windows(Capture.instrumentation.targetContext.packageName)
+        assertTrue("dumpsys window lists no window of the app", windows.isNotEmpty())
+        return windows.any { it.keepScreenOn }
+    }
+
+    /** A setting of namespace (global or system) put back to value as settings get read it ("null": none, so deleted). */
+    private fun restore(namespace: String, name: String, value: String) {
+        if (value == "null") shellText("settings delete $namespace $name") else shellText("settings put $namespace $name $value")
+    }
+
+    /**
+     * The power manager's facts the screen timeout turns on (dumpsys power): its stay-on and timeout
+     * settings, the timeout's minimum, its wakefulness and its screen wake locks (a window's
+     * FLAG_KEEP_SCREEN_ON is the window manager's), each line trimmed, in one line.
+     */
+    private fun powerFacts(): String {
+        val wanted = Regex(
+            "^(mStayOn=|mStayOnWhilePluggedInSetting=|mScreenOffTimeoutSetting=|mMinimumScreenOffTimeoutConfig=|mWakefulness=)",
+        )
+        return shellText("dumpsys power").lines().map { it.trim() }
+            .filter { wanted.containsMatchIn(it) || it.startsWith("SCREEN_BRIGHT_WAKE_LOCK") }
+            .distinct()
+            .joinToString("; ") { it.take(160) }
+    }
+
     /** Waits up to seconds for condition, checked every 100 ms. */
     private fun await(what: String, seconds: Int, condition: () -> Boolean) {
         val end = SystemClock.elapsedRealtime() + seconds * 1_000L
@@ -440,5 +585,13 @@ class LifecycleTest {
         const val BACKGROUND_MS = 60_000L
         const val KEPT_MS = 50_000L
         const val WIPED_MS = 70_000L
+
+        /**
+         * The shortest screen timeout the power manager honours (AOSP's config_minimumScreenOffTimeout, 10 s
+         * in the API 37 SDK's copy of the framework's config.xml), and twice it, which a words page must
+         * outlast while its 30 s cover is not yet due.
+         */
+        const val MIN_SCREEN_OFF_MS = 10_000
+        const val OUTLAST_MS = 2L * MIN_SCREEN_OFF_MS
     }
 }

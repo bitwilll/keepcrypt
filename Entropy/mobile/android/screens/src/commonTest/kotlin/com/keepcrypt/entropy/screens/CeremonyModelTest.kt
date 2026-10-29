@@ -26,8 +26,9 @@ import kotlinx.coroutines.cancel
  * holds a session is read from the slot itself: the dice counts are offered only while one is
  * rolling, and the self-test only at home, empty (each other call halts). First launch is the first
  * screen and its Continue runs the start-up self-test (lead decision M5-50); a discard's start screen
- * is Go offline once that has passed, First launch before. Each test leaves the slot at home (wipeAll
- * after it). A halt of the real slot latches it for the process, so that test is CeremonyModelHaltTest,
+ * is Go offline once that has passed, First launch before. The held state the phone keeps its screen on
+ * by (lead decision M5-72 (b)) follows a session from its start's reply to Finish's end, and each discard,
+ * a halt and wipeAll end it. Each test leaves the slot at home (wipeAll after it). A halt of the real slot latches it for the process, so that test is CeremonyModelHaltTest,
  * in a JVM of its own (and NoCoreCallBeforeContinueTest, which halts it first).
  */
 class CeremonyModelTest {
@@ -487,5 +488,149 @@ class CeremonyModelTest {
         assertEquals(1, rig.offline.starts)
         assertEquals(0, rig.worker.waiting)
         assertEquals(Screen.FirstLaunch, rig.screen)
+    }
+
+    /**
+     * The held state the phone keeps its screen on by (lead decision M5-72 (b)), from the app's start to
+     * Finish's end: nothing held on First launch, during the start-up self-test, on Go offline or on Home;
+     * held from the start's reply through the dice, the seed's long call, Skip's result, the words past
+     * the privacy gate, the read-back, the summary and the exports to the checklist; nothing held after
+     * Finish's end.
+     */
+    @Test
+    fun theHeldStateFollowsASessionFromItsStartToFinishsEnd() {
+        val rig = Rig()
+        assertFalse(rig.model.held.value, "the model made")
+        rig.startUp()
+        assertEquals(Screen.FirstLaunch, rig.screen)
+        assertFalse(rig.model.held.value, "First launch")
+        rig.model.firstLaunchDone()
+        assertEquals(Screen.SelfTest, rig.screen)
+        assertFalse(rig.model.held.value, "the start-up self-test")
+        rig.worker.run()
+        assertEquals(Screen.GoOffline, rig.screen)
+        assertFalse(rig.model.held.value, "Go offline")
+        rig.model.startOffline()
+        assertEquals(Screen.Home, rig.screen)
+        assertFalse(rig.model.held.value, "Home")
+        rig.begin(Mode.DiceOnly, Words.Twelve)
+        assertEquals(Screen.Dice, rig.screen)
+        assertTrue(rig.model.held.value, "the dice")
+        for (face in kcrRolls(DICE_50)) {
+            rig.model.dicePick.replace(face)
+            rig.model.confirmRoll()
+        }
+        rig.model.diceDone()
+        assertEquals(Screen.Working, rig.screen)
+        assertTrue(rig.model.held.value, "the seed's long call")
+        rig.worker.run()
+        rig.model.skip()
+        rig.model.skipConfirmed()
+        assertEquals(Screen.CheckResult, rig.screen)
+        assertTrue(rig.model.held.value, "Skip's result")
+        rig.toWords()
+        assertEquals(Screen.Words, rig.screen)
+        assertTrue(rig.model.held.value, "a words page, past the privacy gate")
+        val words = kcrWords(DICE_50)
+        repeat(words.size - 1) { rig.model.nextPage() }
+        rig.model.startReadback()
+        for (word in words) {
+            for (letter in word.take(4)) rig.model.readbackLetters.type(letter)
+            rig.model.readbackTyped()
+            rig.model.readbackNext()
+        }
+        assertEquals(Screen.ReadbackDone, rig.screen)
+        assertTrue(rig.model.held.value, "the read-back's end")
+        rig.model.showSummary()
+        rig.model.summaryDone()
+        rig.model.skipBackup()
+        rig.skipExports()
+        assertEquals(Screen.Checklist, rig.screen)
+        assertTrue(rig.model.held.value, "the checklist")
+        rig.model.finishCeremony()
+        assertEquals(Screen.Home, rig.screen)
+        assertFalse(rig.model.held.value, "Finish's end")
+        assertNoSession("Finish ended the session")
+    }
+
+    /**
+     * Each new session is held from its start's reply, not before, and the held state ends with what is
+     * held: going online, at once even during a long call (its screen stays until the reply), the idle
+     * wipe (10 minutes without input, the timers' discard; their 9-minute warning keeps it), 60 s away
+     * from a Public screen (held while away until then), leaving a Protected screen (a words page),
+     * wipeAll and a halt (the fake's, so the slot stays live). Each case is a new model, from Home.
+     */
+    @Test
+    fun eachDiscardWipeAllAndAHaltEndTheHeldState() {
+        fun started(): Rig {
+            val rig = Rig().toHome()
+            rig.model.chooseMode(Mode.DiceOnly)
+            rig.model.chooseLength(Words.Twelve)
+            assertEquals(Screen.Working, rig.screen)
+            assertFalse(rig.model.held.value, "the start's long call, before its reply")
+            rig.worker.run()
+            assertEquals(Screen.Dice, rig.screen)
+            assertTrue(rig.model.held.value, "the start's reply: the dice")
+            return rig
+        }
+
+        val online = started()
+        online.offline.set(false)
+        assertEquals(Notice.Offline, online.model.state.value.notice)
+        assertFalse(online.model.held.value, "going online")
+
+        val working = started()
+        working.model.work({ Core.undoRoll() }) {}
+        assertEquals(Screen.Working, working.screen)
+        assertTrue(working.model.held.value, "a long call keeps what is held")
+        working.offline.set(false)
+        assertEquals(Screen.Working, working.screen, "the long call's screen stays until its reply")
+        assertFalse(working.model.held.value, "going online during a long call, before its reply")
+        working.worker.run()
+        assertEquals(Notice.Offline, working.model.state.value.notice)
+        assertFalse(working.model.held.value, "the long call's discarded reply")
+
+        val idle = started()
+        idle.clock.now += Timers.WARN_MILLIS
+        idle.model.tick()
+        assertEquals(Overlay.Warning, idle.model.state.value.overlay)
+        assertTrue(idle.model.held.value, "the 9-minute warning keeps everything")
+        idle.clock.now += Timers.WIPE_MILLIS - Timers.WARN_MILLIS
+        idle.model.tick()
+        assertEquals(Notice.Idle, idle.model.state.value.notice)
+        assertFalse(idle.model.held.value, "the idle wipe")
+
+        val away = started()
+        away.model.appLeft()
+        assertEquals(Overlay.Cover, away.model.state.value.overlay)
+        assertTrue(away.model.held.value, "away from a Public screen, under 60 s")
+        away.clock.now += Timers.BACKGROUND_MILLIS
+        away.model.tick()
+        assertEquals(Notice.Background, away.model.state.value.notice)
+        assertFalse(away.model.held.value, "60 s away")
+
+        val words = Rig().toHome().toSkippedResult(DICE_50).toWords()
+        assertEquals(Screen.Words, words.screen)
+        assertTrue(words.model.held.value, "a words page")
+        words.model.appLeft()
+        assertEquals(Notice.Left, words.model.state.value.notice)
+        assertFalse(words.model.held.value, "leaving a words page")
+
+        val wiped = started()
+        wiped.model.wipeAll()
+        assertFalse(wiped.model.held.value, "wipeAll")
+        assertNoSession("wipeAll emptied the slot")
+
+        val halted = started()
+        halted.model.work<Unit>({ throw KcHalt(HaltReason.HealthTest) }) { fail("a halted call gives no value") }
+        assertTrue(halted.model.held.value, "a long call keeps what is held")
+        halted.worker.run()
+        assertEquals(Screen.Stop, halted.screen)
+        assertFalse(halted.model.held.value, "a halt")
+    }
+
+    private companion object {
+        /** vectors/kcr.json's dice gate seed of 50 rolls and 12 words. */
+        const val DICE_50 = "dice-50-words12"
     }
 }

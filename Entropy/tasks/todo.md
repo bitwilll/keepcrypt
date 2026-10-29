@@ -12689,6 +12689,39 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   the Camera2 check's four camera-client checks, its decode not met, as allowed). fmt, both clippy runs, `cargo test
   --workspace --locked` 503 passed (3 ignored), the test-sources run 269 (1 ignored); the gate clean (385 files), its
   selftest 1631 passed.
+  Proof (M5 commit U3m, Stage U-1, M5-72 (b), partial: local, kc37, Q76; CI's legs at the next push): nothing kept the
+  screen on, so a screen timeout stopped the activity, which is leaving the app, and a words page was discarded while
+  its insert was punched (PF:125, "slow punching or scanning is never cut short"; MA:34). CeremonyModel gains `held`,
+  a StateFlow of holds() that the setters of `session` and `checkFile` keep, so it changes only with what is held,
+  never by a timer; MainActivity collects it in its lifecycle scope into the decor view's keepScreenOn, which the
+  window's FLAG_KEEP_SCREEN_ON follows (KtWindow refuses any call that takes a window flag off). The 30 s cover and
+  the 10-minute wipe are unchanged. JVM: CeremonyModelTest's theHeldStateFollowsASessionFromItsStartToFinishsEnd
+  (nothing held on First launch, the self-test, Go offline or Home; held from the start's reply through the dice, the
+  seed's long call, Skip's result, the words, the read-back and the exports to the checklist; nothing after Finish)
+  and eachDiscardWipeAllAndAHaltEndTheHeldState (not before the start's reply; going online, also during a long call
+  before its reply, the idle wipe after its warning kept it, 60 s away from the dice, leaving a words page, wipeAll
+  and a halt each end it), and CheckBackupScreensTest's theHeldStateFollowsTheEntrysFileAndTheCheckedBackup (not on
+  Home, the picker or the file's read; held from the read's acceptance through the opening to the result and its
+  words; nothing after Done, Back, going online or leaving the words). Before the fix they do not compile (`held` is
+  new); with the fix in, a mutant of either setter that leaves `held` alone fails one of them (`checkFile`'s the Check
+  a backup test, `session`'s at "going online during a long call, before its reply"). Emulator: LifecycleTest's
+  aWordsPageOutlastsTheScreenTimeoutAndFinishClearsTheKeepScreenOnFlag turns `svc power stayon` off and sets
+  screen_off_timeout to 10000 (config_minimumScreenOffTimeout), both put back in its finally, then waits 20 s on
+  insert 2's page; after Finish, Home, nothing held and no KEEP_SCREEN_ON in the window's fl=. Without the fix (a
+  scratch MainActivity, never committed) it failed on kc37: "the screen timeout discarded the session expected:<Words>
+  but was:<GoOffline>", its probe "the screen go_offline, the activity STOPPED, the display off; mWakefulness=Asleep;
+  mStayOn=false; mMinimumScreenOffTimeoutConfig=10000; mScreenOffTimeoutSetting=10000", every later run of the part
+  passing; with it, "the screen words, the activity RESUMED, the display on; mWakefulness=Awake; mStayOn=false;
+  SCREEN_BRIGHT_WAKE_LOCK 'WindowManager/displayId:0' ON_AFTER_RELEASE". CI's API 31 and 36 legs print the same probe
+  line. Local (JBR 25; CI's JDK 17): the strict Gradle build of the five APKs with every JVM test task rerun,
+  :core-ffi 33 in 11 classes, :screens 154 in 21, :app 11 in 4 for each flavour, :secure-ui 3 in 1, none failed; kc37:
+  `android-local.sh --part capture` exit 0 in 691 s (ControlTest 3, CaptureTest 6 and 6 without control (c),
+  PhoneMotionTest 1, LifecycleTest 7, CrashTest killed as it must be; NativeTest 1; the Camera2 check's four
+  camera-client checks, its decode not met, as allowed), `--part journeys` exit 0 in 740 s (FlowTest 7, CheckTest 2,
+  BackupTest 1 with its age -d hand-off) and `--part registry` exit 0 in 187 s (SnapshotDrillTest 3); a KDoc-only edit
+  to CeremonyModel came after the capture and journeys parts' builds, before the registry part's and the final build.
+  fmt, both clippy runs, `cargo test --workspace --locked` 503 passed (3 ignored), the test-sources run 269 (1
+  ignored); the gate clean (386 files), its selftest 1631 passed.
 - [ ] `CeremonyViewModel` owns the slot's use: UI state holds screen ids, page indices and `Secret` references only;
   long calls run on `Dispatchers.Default` behind a "Working..." screen that ignores input; a lifecycle or offline
   discard during "Working..." calls `discard()` at once and the call's "discarded" status returns the UI to its start
