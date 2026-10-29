@@ -1,11 +1,11 @@
 # KeepCrypt-Entropy Android (Entropy/tasks/todo.md, M5 groups 4-6; Q54, Q55): the Android app,
-# Entropy/mobile/android, built once by one job and tested on emulators by two leg jobs that run
-# side by side after it (commit L9, lead decision M5-70 (b)). The build job builds the Rust
-# libraries, checks and scans the APKs, signs them with a throwaway key and uploads them, then hands
-# the signed APKs to the leg jobs through actions/cache, under a key that names this run and its
-# attempt. Before it installs anything, each leg job checks every file it was handed against the
-# build job's SHA256SUMS, which reaches it as the build job's output, not through the cache; the
-# build job has checked that the shipped two are the bytes it uploaded (both sides are
+# Entropy/mobile/android, built once by one job and tested on emulators by six leg jobs that run
+# side by side after it (commit L9, lead decision M5-70 (b); commit U1a, M5-72 (h)). The build job
+# builds the Rust libraries, checks and scans the APKs, signs them with a throwaway key and uploads
+# them, then hands the signed APKs to the leg jobs through actions/cache, under a key that names this
+# run and its attempt. Before it installs anything, each leg job checks every file it was handed
+# against the build job's SHA256SUMS, which reaches it as the build job's output, not through the
+# cache; the build job has checked that the shipped two are the bytes it uploaded (both sides are
 # scripts/android-handoff.sh, commit L9c). So the hashes printed for the owner are the ones tested,
 # and no fourth action is needed (download-artifact is not approved).
 #
@@ -39,28 +39,33 @@
 # and the owner's P4 files (the two go-ahead PNGs, two .kcr snapshots and the two Seal IDs) with
 # their SHA-256, kept 14 days.
 #
-# Then the emulators (M5 group 6, commit 8), on those signed bytes, in the two leg jobs at once:
-# system-images;android-31;default;x86_64 and then, from commit 14, the 16 KB-page
-# system-images;android-36;google_apis_ps16k;x86_64 (the ARM and 16 KB leg) in one, and
-# system-images;android-36;default;x86_64 in the other. Each leg job installs the emulator and the
-# three images with sdkmanager into their own SDK root ($HOME/kc-sdk; the runner's SDK is left as it
-# is), with the SDK licence accepted (Q54), cached by actions/cache under a key made of the four
-# revisions sdkmanager offers (the Gradle distribution is cached too, keyed on its pin). KVM comes
-# from a udev rule. scripts/android-emulator.sh runs each leg: a headless AVD, a boot that may be
-# re-run once (logged; a test failure is never re-run), the platform probe's facts as "probe:"
-# lines, the instrumented capture tests on both apps through scripts/android-instrument.sh (one am
-# instrument per class, judged from the shell), the positive controls and the first-frame
-# recordings through scripts/android-frames.py (raw frames streamed and checked in memory, none
-# kept). On the 16 KB-page image the leg checks the page size and runs NativeTest on the shipping APK
-# for x86_64 and for each ARM ABI the image translates. In the API 31 and 36 legs the backup's test
-# (M5 group 18) saves the CI throwaway seed's backup to the emulator's Downloads and its run's output
-# goes straight from am instrument into scripts/android-age-check.py, the age -d hand-off: Ubuntu's age
-# 1.1.1, installed and asserted before the legs as entropy-ci.yml installs it, decrypts the file through
-# scripts/age-interop.py's pty driver with the passphrase the test reported, which never reaches the
-# log, a file or logcat. The shell's screencap of capture-control's two
-# screens (its first screen and a gate seed's words page) is kept on the API 31 and 36 legs and
-# uploaded by each leg job after its legs, as android-control-captures-api31 and
-# android-control-captures-api36, the owner's screen review of the positive control (M5-68 (f)).
+# Then the emulators (M5 group 6, commit 8), on those signed bytes, in the six leg jobs at once:
+# system-images;android-31;default;x86_64 and system-images;android-36;default;x86_64, each API
+# level's leg in three parts, one a job (scripts/android-emulator.sh --part; commit U1a): capture
+# (the capture harness, its positive controls and first frames, PhoneMotionTest, LifecycleTest and
+# CrashTest), journeys (FlowTest, CheckTest and BackupTest) and registry (SnapshotDrillTest, the
+# test-registry app's); and, from commit 14, the 16 KB-page
+# system-images;android-36;google_apis_ps16k;x86_64 (the ARM and 16 KB leg) after API 31's capture
+# part, in its job. Each leg job installs the emulator and the three images with sdkmanager into
+# their own SDK root ($HOME/kc-sdk; the runner's SDK is left as it is), with the SDK licence
+# accepted (Q54), cached by actions/cache under a key made of the four revisions sdkmanager offers
+# (the Gradle distribution is cached too, keyed on its pin). KVM comes from a udev rule.
+# scripts/android-emulator.sh runs each part: a headless AVD, a boot that may be re-run once
+# (logged; a test failure is never re-run), the platform probe's facts as "probe:" lines, the
+# instrumented tests through scripts/android-instrument.sh (one am instrument per class, judged from
+# the shell), in the capture part the positive controls and the first-frame recordings through
+# scripts/android-frames.py (raw frames streamed and checked in memory, none kept), and in every
+# part the nothing-persisted listing at its end. On the 16 KB-page image the leg checks the page
+# size and runs NativeTest on the shipping APK for x86_64 and for each ARM ABI the image translates.
+# In the journeys jobs the backup's test (M5 group 18) saves the CI throwaway seed's backup to the
+# emulator's Downloads and its run's output goes straight from am instrument into
+# scripts/android-age-check.py, the age -d hand-off: Ubuntu's age 1.1.1, installed and asserted
+# before the leg as entropy-ci.yml installs it, decrypts the file through scripts/age-interop.py's
+# pty driver with the passphrase the test reported, which never reaches the log, a file or logcat.
+# The shell's screencap of capture-control's two screens (its first screen and a gate seed's words
+# page) is kept by API 31's and API 36's capture parts and uploaded by each capture job after its
+# legs, as android-control-captures-api31 and android-control-captures-api36, the owner's screen
+# review of the positive control (M5-68 (f)).
 #
 # Not one of the 14 required checks (Q55), so path filters are safe, as in entropy-pi-image.yml:
 # a skipped run never leaves a required check pending. The rule instead (Q38 (b)): no PR that
@@ -522,7 +527,7 @@ jobs:
       # and SHA256SUMS with every file's SHA-256, also printed here, which the owner's P0 compares
       # with each download. Nothing else: the throwaway key and the canary stay on the runner, and
       # the test APKs and capture-control's reach the leg jobs only through the hand-off (this run's
-      # cache entry), never as an artifact. Each leg job uploads its positive control's captures.
+      # cache entry), never as an artifact. Each capture job uploads its positive control's captures.
       - name: Stage the uploads (both APKs, NOT-FOR-RELEASE, the P4 files, SHA256SUMS)
         run: |
           up=$RUNNER_TEMP/upload
@@ -577,9 +582,11 @@ jobs:
         run: sh scripts/android-instrument.sh --selftest
       # The emulator leg's own cases (no emulator): whole legs of android-emulator.sh, with the real
       # frame checker, on a stand-in adb, emulator, screenrecord and instrument runner: a passing leg,
-      # and each way a leg must fail (a failing ControlTest or CaptureTest, at the leg's end; the
-      # control still in recents after pm clear; a recording that ends before its stop; the app's
-      # window lit in the first-frame stream, and lit with no frame after the curtain).
+      # each of its three parts passing alone with its own classes in its pinned order (the three
+      # together the leg's runs, each once), and each way a leg or a part must fail (a failing
+      # class, at its end; the control still in recents after pm clear; a recording that ends before
+      # its stop; the app's window lit in the first-frame stream, and lit with no frame after the
+      # curtain).
       - name: Emulator leg selftest (scripts/android-emulator.sh --selftest)
         run: sh scripts/android-emulator.sh --selftest
       # The hand-off's own cases (no runner, commit L9c): both of its sides on stand-in APKs, a passing
@@ -626,23 +633,38 @@ jobs:
     name: android emulators (${{ matrix.legs }})
     needs: build
     runs-on: ubuntu-24.04
-    # Budget (tasks/todo.md, M5 "Budgets"; M5-30, M5-70 (b), M5-72), a matrix value: the split's
-    # first run (run 40813152800 at e3c6c12) took 1469 s for API 31 then the 16 KB leg (its capture
-    # walk stopped at a failure, so about 60 s more for a whole run) and 1416 s for API 36, so 32 and
-    # 30 minutes with 25%. A slower run stops here and the lead re-plans; a commit that adds legs or
-    # tests re-measures it.
-    timeout-minutes: ${{ matrix.timeout }}
+    # Budget (tasks/todo.md, M5 "Budgets"; M5-30, M5-70 (b), M5-72 (g) and (h)): this is the six
+    # leg jobs' measuring run (commit U1a), so each has the 90-minute ceiling, and the lead then sets
+    # each job's budget to its measured time plus 25% (M5-30). Before U1a two leg jobs ran the whole
+    # legs: the split's first run (run 40813152800 at e3c6c12) took 1469 s for API 31 then the 16 KB
+    # leg and 1416 s for API 36 (32 and 30 minutes). A slower run stops here and the lead re-plans; a
+    # commit that adds legs or tests re-measures it.
+    timeout-minutes: 90
     strategy:
-      # Both leg jobs run to their end: a red leg never cancels the other job or hides its evidence.
+      # Every leg job runs to its end: a red leg never cancels another job or hides its evidence.
       fail-fast: false
       matrix:
+        # Each API level's leg as its three parts, one a job (scripts/android-emulator.sh --part,
+        # whose header lists what each runs), and the 16 KB leg in API 31's capture job.
         include:
           - api: '31'
-            legs: API 31, then 16 KB pages
-            timeout: 32
+            part: capture
+            legs: API 31, capture, then 16 KB pages
+          - api: '31'
+            part: journeys
+            legs: API 31, journeys
+          - api: '31'
+            part: registry
+            legs: API 31, registry
           - api: '36'
-            legs: API 36
-            timeout: 30
+            part: capture
+            legs: API 36, capture
+          - api: '36'
+            part: journeys
+            legs: API 36, journeys
+          - api: '36'
+            part: registry
+            legs: API 36, registry
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -694,8 +716,8 @@ jobs:
           [ -r /dev/kvm ] && [ -w /dev/kvm ] || { echo "FAIL: /dev/kvm is not usable" >&2; exit 1; }
       # The emulator and the two system images come from sdkmanager, into their own SDK root. The
       # revisions it offers now make the cache key, so a new revision is a fresh download, and the
-      # install below must end with exactly these revisions. Both leg jobs install all four packages
-      # under the one key, as the one job did, so they share one cache entry.
+      # install below must end with exactly these revisions. Every leg job installs all four packages
+      # under the one key, as the one job did, so all six share one cache entry.
       - name: Emulator and system image revisions (sdkmanager --list)
         run: |
           fail() { echo "FAIL: emulator revisions: $1" >&2; exit 1; }
@@ -766,9 +788,10 @@ jobs:
           "$sdk/emulator/emulator" -accel-check
           "$ANDROID_HOME/platform-tools/adb" version
       # The CI age -d hand-off (M5 group 18): Ubuntu's age, version asserted as entropy-ci.yml asserts it
-      # (M1 Q1), for the API 31 and 36 legs, where android-instrument.sh's age: form pipes the backup
+      # (M1 Q1), for the journeys jobs alone, where android-instrument.sh's age: form pipes the backup
       # test's run straight into scripts/android-age-check.py; its selftest first, on stand-ins and this age.
       - name: Ubuntu's age, version asserted, and the age -d hand-off's selftest
+        if: ${{ matrix.part == 'journeys' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends age
@@ -780,29 +803,32 @@ jobs:
           fi
           python3 -I scripts/android-age-check.py --selftest
       # The legs, on the build job's signed bytes as checked above (group 6; the header of
-      # scripts/android-emulator.sh lists what each runs): the capture harness on this job's API
-      # level, 31 or 36, then, in the API 31 job, the ARM and 16 KB leg on the 16 KB-page image (its
-      # page size, and NativeTest for x86_64 and each ARM ABI the image lists). The 16 KB leg runs
-      # whenever the install passed, even after the API 31 leg failed, so one red leg never hides the
-      # other's evidence; the job still fails on any red leg.
-      - name: Emulator API ${{ matrix.api }} (system-images;android-${{ matrix.api }};default;x86_64)
+      # scripts/android-emulator.sh lists what each part runs): this job's part of the leg on its API
+      # level, 31 or 36 (--part capture, journeys or registry, each on its own boot and ending with
+      # the nothing-persisted listing), then, in API 31's capture job, the ARM and 16 KB leg on the
+      # 16 KB-page image (its page size, and NativeTest for x86_64 and each ARM ABI the image lists).
+      # The 16 KB leg runs whenever the install passed, even after the capture part failed, so one red
+      # leg never hides the other's evidence; the job still fails on any red leg.
+      - name: Emulator API ${{ matrix.api }}, ${{ matrix.part }} (system-images;android-${{ matrix.api }};default;x86_64)
         env:
           KC_API: ${{ matrix.api }}
-        run: sh scripts/android-emulator.sh "$KC_API" "$HOME/kc-sdk" "$ANDROID_HOME/platform-tools/adb" "$RUNNER_TEMP/apks" "$RUNNER_TEMP/emulator-$KC_API"
+          KC_PART: ${{ matrix.part }}
+        run: sh scripts/android-emulator.sh --part "$KC_PART" "$KC_API" "$HOME/kc-sdk" "$ANDROID_HOME/platform-tools/adb" "$RUNNER_TEMP/apks" "$RUNNER_TEMP/emulator-$KC_API"
       - name: Emulator 16 KB pages (system-images;android-36;google_apis_ps16k;x86_64)
-        if: ${{ matrix.api == '31' && !cancelled() && steps.emulator-install.outcome == 'success' }}
+        if: ${{ matrix.api == '31' && matrix.part == 'capture' && !cancelled() && steps.emulator-install.outcome == 'success' }}
         run: sh scripts/android-emulator.sh 16k "$HOME/kc-sdk" "$ANDROID_HOME/platform-tools/adb" "$RUNNER_TEMP/apks" "$RUNNER_TEMP/emulator-16k"
       # The positive control's captures (M5 group 6, control (a); lead decision M5-68 (f)), the owner's
-      # screen review, kept 14 days, each leg job's under its own name (android-control-captures-api31,
-      # android-control-captures-api36): the shell's screencap of each of capture-control's two
-      # screens that scripts/android-emulator.sh kept on this job's API 31 or 36 leg
-      # (WORK_DIR/captures/), its first screen and dice-99-words12's first words page, drawn by the
-      # app's own words composable with no FLAG_SECURE. Gate-seed vectors only (kcr.json's public
-      # seeds), never Reveal D, and never a capture of the app, which no step writes. After a failed
-      # leg too, so a leg that kept its captures still has them reviewed; a leg job without its
-      # captures fails here.
+      # screen review, kept 14 days, each capture job's under its own name
+      # (android-control-captures-api31, android-control-captures-api36): the shell's screencap of each
+      # of capture-control's two screens that scripts/android-emulator.sh kept in this job's capture
+      # part of the API 31 or 36 leg (WORK_DIR/captures/), its first screen and dice-99-words12's first
+      # words page, drawn by the app's own words composable with no FLAG_SECURE. Gate-seed vectors only
+      # (kcr.json's public seeds), never Reveal D, and never a capture of the app, which no step
+      # writes. After a failed leg too, so a leg that kept its captures still has them reviewed; a
+      # capture job without its captures fails here. The journeys and registry parts keep none, so
+      # their jobs upload nothing.
       - name: Upload the positive control's captures (API ${{ matrix.api }})
-        if: ${{ !cancelled() && steps.emulator-install.outcome == 'success' }}
+        if: ${{ matrix.part == 'capture' && !cancelled() && steps.emulator-install.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: android-control-captures-api${{ matrix.api }}

@@ -11858,11 +11858,15 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   (shipping, test-registry, the test APK, capture-control), JVM tests, the throwaway signing (the `--apk` checks verify
   the run's certificate), the `--apk` checks, the canary build, the uploads (both APKs with SHA-256, the P4 files; the
   test-registry APK named `NOT-FOR-RELEASE`), then the hand-off: the signed APKs to the leg jobs through actions/cache
-  under a key that names the run and its attempt, their SHA256SUMS as the build job's output. Then two leg jobs side by
-  side, each after the build job, on those bytes: `default;x86_64` API 31 and then, from commit 14, one 16 KB-page
-  image (`google_apis_ps16k;x86_64` API 36, or the probe's choice); and `default;x86_64` API 36. Each restores the run's
-  entry (a miss fails) and checks every file against the build job's SHA256SUMS before it installs anything, and
-  uploads its positive-control captures under its own name (M5-70 (b), commit L9). KVM udev rule; `sdkmanager
+  under a key that names the run and its attempt, their SHA256SUMS as the build job's output. Then six leg jobs side by
+  side, each after the build job, on those bytes: `default;x86_64` API 31 and API 36, each API's leg in three parts, one
+  a job (`android-emulator.sh --part`; M5-72 (h), commit U1a): capture (steps 1-3 and the positive controls, CaptureTest
+  on both APKs, PhoneMotionTest, LifecycleTest, CrashTest last, steps 5-6), journeys (FlowTest, CheckTest, BackupTest
+  with its age hand-off) and registry (SnapshotDrillTest), each part ending with step 7's nothing-persisted listing;
+  and, from commit 14, one 16 KB-page image (`google_apis_ps16k;x86_64` API 36, or the probe's choice) in API 31's
+  capture job. Each restores the run's entry (a miss fails) and checks every file against the build job's SHA256SUMS
+  before it installs anything, and each capture job uploads its positive-control captures under its own name (M5-70
+  (b), commit L9; U1a). KVM udev rule; `sdkmanager
   --install` with the SDK licence accepted (Q54); headless AVDs; images cached by revision. `--workflows` passes on it.
   (As built, M5-70 (e): the positive-control captures upload in their own last step, after the legs that make them,
   since commit 19h; from L9 in each leg job.)
@@ -11944,6 +11948,41 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   uploaded SHA-256's compare (2) or the trailing newline's strip (1) each fail it (`--strict` stays: the format check
   refuses every line it would). `--workflows ../.github/workflows` clean (3 workflows); Ruby's YAML parser reads the
   file (build 29 steps, emulators 12).
+  Proof (M5 commit U1a, M5-72 (h), partial: local, kc37, Q76; CI's six leg jobs, their names and times at the next
+  push): `android-emulator.sh --part capture|journeys|registry` (before `--booted` too) runs one part of a leg on its
+  own boot: capture is steps 1-3 (ControlTest), CaptureTest on both APKs, PhoneMotionTest, LifecycleTest, CrashTest,
+  its last instrumented run, and steps 5-6; journeys FlowTest, CheckTest and the age: BackupTest; registry
+  SnapshotDrillTest. Every part installs the five APKs and ends with step 7. Each part's steps stand in `if in_part
+  PART` blocks in today's places, so with no `--part` the leg runs today's sequence, step 7 once, and
+  android-local.sh's default run is unchanged; an unknown part and `--part` on 16k exit 2. entropy-android.yml's
+  emulators matrix is six jobs, "android emulators (API 31, capture, then 16 KB pages)", "(API 31, journeys)", "(API
+  31, registry)" and API 36's three, each restoring the run's entry and passing `android-handoff.sh --check` before
+  any install as before, `timeout-minutes: 90` for this measuring run (its comment: the lead sets each job's budget to
+  its measured time plus 25%, M5-30), fail-fast off; the 16 KB step runs in API 31's capture job alone, the captures
+  go up from the two capture jobs alone (android-control-captures-api31 and -api36; the other parts keep none), and
+  Ubuntu's age is installed in the journeys jobs alone. `android-local.sh --part PART` runs that part on kc37's first
+  boot (its runs read from that part's blocks; a user-build refusal named only when the part runs its class), capture
+  with the second boot too (NativeTest, the 16 KB leg's class in CI, and the Camera2 check). Selftests:
+  android-emulator.sh 49 passed, 0 failed under sh and dash (35 before: the "last five runs" case is now the whole
+  leg's pinned order, and each part's order is pinned, CrashTest last in capture; the three parts' runs are together
+  the leg's, each once; each part ends with step 7's lines, journeys and registry with no line of steps 1, 2, 5 and 6
+  and no capture; a failing class in each part fails it at its end; an unknown part and `--part` on 16k), and eight
+  mutants each fail it (FlowTest outside the blocks, journeys' block misnamed, CrashTest before LifecycleTest,
+  SnapshotDrillTest in journeys too, step 7 in capture alone, step 5 in every part, `in_part` always true, a part
+  ending at its failing class); android-local.sh 44 passed (34 before: the three parts, an unknown part) under sh and
+  dash, and four mutants each fail it (every part's runs read, the second boot for every part, the refusals
+  unfiltered, `--part` not passed on); android-handoff.sh 20 passed under sh and dash. `--workflows
+  ../.github/workflows` clean (3 workflows) under sh and dash; Ruby's YAML parser reads the file (build 29 steps;
+  emulators 12, its matrix six entries). On kc37 (local, the strict build up to date): android-local.sh exit 0 in 1451
+  s, every class passed in the steps' order (ControlTest with step 2 25 s, CaptureTest 86 and 86, PhoneMotionTest 3,
+  FlowTest 422, CheckTest 194, BackupTest 69 with its age -d hand-off, SnapshotDrillTest 107, LifecycleTest 126,
+  CrashTest killed, steps 5-6 30 s, NativeTest and the Camera2 check's four camera-client checks, its decode not met
+  and named, as before); `--part capture` exit 0 in 659 s (its leg 392 s, then the second boot), `--part journeys`
+  exit 0 in 737 s and `--part registry` exit 0 in 158 s, each listing its own runs alone. The gate clean (385 files)
+  and its selftest (816 + 815 of 1631, 0 failed) under sh and dash; canaries.sh PASS, all 94 checks ran (441 s); fmt,
+  both clippy runs, `cargo test --workspace --locked` (499 passed, 3 ignored), the test-sources run (269 passed, 1
+  ignored) and `-p keepcrypt-ffi -p keepcrypt-jni`, plain and with the test registry (50 passed each). Only CI shows
+  each job's time.
 - [x] **Instrumentation:** `scripts/android-instrument.sh` runs `am instrument -w -r -e class ...` once per test class,
   and once per test that halts or kills the process, so a latched `Halted` slot or a dead process never fails the next
   test. The crash test is judged from the shell: the process is gone, no crash dialog window exists, `logcat -b crash`

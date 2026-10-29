@@ -1,11 +1,15 @@
 #!/bin/sh
-# One emulator leg of the Android workflow (tasks/todo.md, M5 group 6; Q55, Q56): boots a headless
-# x86_64 emulator of one API level, installs the APKs the job already built, signed and checked, runs
-# the capture harness on them (or, on the 16 KB-page image, the native-library leg below), prints
-# the platform probe's facts and shuts the emulator down. The workflow runs it once per image, one
-# after another, on the same signed bytes.
+# One emulator leg of the Android workflow (tasks/todo.md, M5 group 6; Q55, Q56), or one part of one
+# (--part, below): boots a headless x86_64 emulator of one API level, installs the APKs the build job
+# already built, signed and checked, runs the capture harness and the app's instrumented tests on
+# them (or, on the 16 KB-page image, the native-library leg below), prints the platform probe's facts
+# and shuts the emulator down. The workflow runs each API level's leg as its three parts, one a job
+# (M5 commit U1a, lead decision M5-72 (h)), and the 16 KB-page image after API 31's capture part in
+# that part's job, all on the same signed bytes.
 #
-# Usage: scripts/android-emulator.sh API SDK_ROOT ADB APK_DIR WORK_DIR
+# Usage: scripts/android-emulator.sh [--part PART] API SDK_ROOT ADB APK_DIR WORK_DIR
+#   PART     capture, journeys or registry: that part of the leg alone (below); with no --part,
+#            every part, in the steps' order. Not with 16k, which has no parts.
 #   API      31 or 36: system-images;android-API;default;x86_64; or 16k:
 #            system-images;android-36;google_apis_ps16k;x86_64, the 16 KB-page image (group 6)
 #   SDK_ROOT the emulator's SDK root (sdkmanager --sdk_root), holding emulator/ and that image (the
@@ -16,7 +20,7 @@
 #   WORK_DIR a new directory for the AVD, the emulator's log and, in captures/, the shell's screencap
 #            of each of capture-control's two screens (step 2), which the workflow uploads: never the
 #            APKs, and never a capture of the app
-# Or: scripts/android-emulator.sh --booted API SERIAL ADB APK_DIR WORK_DIR [CLASS-TEST[-TEST...]...]
+# Or: scripts/android-emulator.sh [--part PART] --booted API SERIAL ADB APK_DIR WORK_DIR [CLASS-TEST[-TEST...]...]
 #   the same steps from the keyguard on, on an emulator already up at SERIAL, with no AVD written and
 #   nothing booted or shut down: scripts/android-local.sh's kc37 (M5 Stage L, Q76; never a CI step).
 #   API (digits alone) only names the printed lines, and the default images' steps run, never 16k's.
@@ -98,6 +102,15 @@
 #      hit (the listing before and that file), and is then removed. On a user build (--booted on kc37: ro.debuggable=0) adb root is refused, so
 #      the listing is printed as not made there, CI's API 31 and 36 legs making it; on the CI images a
 #      root shell that does not come fails the leg.
+# The parts (--part; M5 commit U1a, lead decision M5-72 (h)), each on its own boot, so that the
+# workflow runs them side by side, one a job:
+#   capture   steps 1-3, step 4's CaptureTest on both APKs, PhoneMotionTest, LifecycleTest, then
+#             CrashTest, its last instrumented run, and steps 5 and 6: the positive controls, the
+#             capture harness and the first frames;
+#   journeys  FlowTest, CheckTest and BackupTest with its age -d hand-off, on the shipping app;
+#   registry  SnapshotDrillTest, the test-registry app's.
+# Each installs the five APKs and ends with step 7, so every part's runs are followed by its listing.
+# With no --part the leg runs every part, as the steps above list them (step 7 once, at the end).
 # On the 16 KB-page image (API 16k; M5 group 6, the ARM and 16 KB leg, from commit 14) steps 2-7 are
 # not run. After step 1: getconf PAGE_SIZE must be 16384; the shipping APK is installed (the
 # package manager's primaryCpuAbi must be x86_64) with its test APK, and NativeTest runs through
@@ -121,10 +134,15 @@
 # scripts/android-emulator.sh --selftest runs whole legs of this script, with the real frame checker,
 # on stand-ins written to a temporary directory: an adb, an emulator, a screenrecord that writes a raw
 # frame of the screen at its start and on each change of it until SIGINT, and an instrument runner. A
-# leg where everything passes exits 0, having run PhoneMotionTest, FlowTest, and CheckTest and the age:
-# BackupTest on the shipping app, SnapshotDrillTest on the test-registry app, and LifecycleTest and then
-# the killed CrashTest on the shipping app, the last five instrumented runs (a case of its own), and kept the
-# control's two screencaps (a case of its own); a failing ControlTest, CaptureTest, PhoneMotionTest,
+# leg where everything passes exits 0, having made every instrumented run in the steps' order, from
+# ControlTest to the killed CrashTest, last (a case of its own, the order pinned), and kept the
+# control's two screencaps (a case of its own). Each part alone passes too, its runs pinned in that
+# order (a case each): capture's ControlTest, CaptureTest on both apps, PhoneMotionTest, LifecycleTest
+# and the killed CrashTest, last; journeys' FlowTest, CheckTest and the age: BackupTest; registry's
+# SnapshotDrillTest; and the three parts' runs are together the whole leg's, each once, so a part that
+# drops or adds a class fails. Every part ends with step 7's checks; journeys and registry print no
+# line of steps 1, 2, 5 and 6 and keep no capture; a failing class in each part exits 1 at the part's
+# end, after its later runs and step 7. A failing ControlTest, CaptureTest, PhoneMotionTest,
 # FlowTest, CheckTest, BackupTest, SnapshotDrillTest, LifecycleTest and CrashTest each exit 1 at the leg's end,
 # after the later checks ran, and so does an empty screencap of the control's screens; capture-control
 # still in recents after pm clear, a recording that ends before it is stopped, raw frames that never
@@ -139,9 +157,10 @@
 # naming armeabi-v7a as not listed; a page size of 4096, a failing NativeTest and an install whose
 # primaryCpuAbi stays x86_64 under --abi each exit 1. With --booted (API 37, no SDK): a leg naming
 # CaptureTest's control (c) passes with both CaptureTest runs given that test to leave out, the same
-# last five runs, the nothing-persisted listing named as not made on its user build, no AVD written and
+# pinned order, the nothing-persisted listing named as not made on its user build, no AVD written and
 # no emulator started; one naming a class no run holds exits 1.
-# Too few arguments, --booted on 16k and a --booted class with no test exit 2.
+# Too few arguments, --booted on 16k, a --booted class with no test, an unknown part and --part on
+# 16k exit 2.
 # Exit 0 when every case behaves, 1 otherwise. The legs run at once; it takes about a minute.
 set -u
 unset CDPATH
@@ -305,18 +324,24 @@ EOF
     done
     echo black > "$c/screen" || exit 2
   }
-  # leg NAME [VAR=VALUE...]: one whole leg on API 31 (16k for a NAME that starts with 16k) in the
-  # background, its case directory $st/NAME, with VAR=VALUE set for the stand-ins; its output in out
-  # and its exit status in rc.
+  # leg NAME [--part PART] [VAR=VALUE...]: one whole leg on API 31 (16k for a NAME that starts with
+  # 16k), or its part PART, in the background, its case directory $st/NAME, with VAR=VALUE set for
+  # the stand-ins; its output in out and its exit status in rc.
   leg() {
     case_dir "$1"
     case $1 in 16k*) lapi=16k limage=android-36/google_apis_ps16k/x86_64 ;; *) lapi=31 limage=android-31/default/x86_64 ;; esac
     shift
+    lpart=
+    if [ "${1:-}" = --part ]; then
+      lpart="--part $2"
+      shift 2
+    fi
     mkdir -p "$c/sdk/emulator" "$c/sdk/system-images/$limage" || exit 2
     cp "$st/emulator" "$c/sdk/emulator/emulator" || exit 2
     echo 'Pkg.Revision=1' > "$c/sdk/system-images/$limage/source.properties" || exit 2
+    # $lpart unquoted: its words hold no space.
     {
-      env KC_STUB="$c" "$@" sh "$st/scripts/android-emulator.sh" "$lapi" "$c/sdk" "$st/adb" "$c/apks" "$c/work"
+      env KC_STUB="$c" "$@" sh "$st/scripts/android-emulator.sh" $lpart "$lapi" "$c/sdk" "$st/adb" "$c/apks" "$c/work"
       echo $? > "$c/rc"
     } > "$c/out" 2>&1 &
   }
@@ -354,6 +379,12 @@ EOF
   }
 
   leg pass
+  leg capture --part capture
+  leg journeys --part journeys
+  leg registry --part registry
+  leg capture-lifecycle-test-fails --part capture KC_FAILCLASS=LifecycleTest
+  leg journeys-flow-test-fails --part journeys KC_FAILCLASS=FlowTest
+  leg registry-snapshot-drill-fails --part registry KC_FAILCLASS=SnapshotDrillTest
   leg control-test-fails KC_FAILCLASS=ControlTest
   leg capture-test-fails KC_FAILCLASS=CaptureTest
   leg motion-test-fails KC_FAILCLASS=PhoneMotionTest
@@ -401,21 +432,87 @@ EOF
     "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry): no file in its data directories" \
     "pass: api=31 nothing persisted (com.keepcrypt.entropy), positive control: a file planted as root in its data directory is the listing's one new hit" \
     "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
+    "emulator: api=31: every part (capture, journeys and registry), in the steps' order" \
     "emulator: api=31: every check passed"
-  # Steps 4a-4c: the leg NAME's last five instrumented runs are CheckTest, the age: BackupTest,
-  # SnapshotDrillTest (on the test-registry app), LifecycleTest and then the killed CrashTest, so no run
-  # comes after the crash test.
-  last_five() {
-    order=$(sed -n 's/^instrument stub: \([^ ]*\) \([^ ]*\) .*/\1 \2/p' "$st/$1/out" | tail -n 5 | tr '\n' ' ')
-    if [ "$order" = "com.keepcrypt.entropy com.keepcrypt.entropy.CheckTest com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest " ]; then
+  # runs NAME: the leg NAME's instrumented runs, in order, "PACKAGE RUN" a line.
+  runs() { sed -n 's/^instrument stub: \([^ ]*\) \([^ ]*\) .*/\1 \2/p' "$st/$1/out"; }
+  # order NAME WHAT RUN...: the leg NAME's instrumented runs are exactly RUN..., in that order, each
+  # "PACKAGE RUN" (WHAT names them), so none dropped, added or moved.
+  order() {
+    name=$1
+    what=$2
+    shift 2
+    if [ "$(runs "$name")" = "$(printf '%s\n' "$@")" ]; then
       passed=$((passed + 1))
-      echo "PASS $1: CheckTest, the age: BackupTest, SnapshotDrillTest (test registry), LifecycleTest, then the killed CrashTest, last"
+      echo "PASS $name: $what"
     else
       failed=$((failed + 1))
-      echo "FAIL $1: the leg's last five instrumented runs are $order"
+      echo "FAIL $name: its instrumented runs are $(runs "$name" | tr '\n' ' ')"
     fi
   }
-  last_five pass
+  app=com.keepcrypt.entropy
+  registry=com.keepcrypt.entropy.testregistry
+  # The steps' order, steps 3-4c (each part's runs in it, PhoneMotionTest's capture runs before the
+  # other parts' and LifecycleTest's after), the killed CrashTest last, so no run comes after it.
+  order pass "ControlTest, CaptureTest on both apps, PhoneMotionTest, FlowTest, CheckTest, the age: BackupTest, SnapshotDrillTest (test registry), LifecycleTest, then the killed CrashTest, last" \
+    "$app $app.ControlTest" "$app $app.CaptureTest" "$registry $app.CaptureTest" "$app $app.PhoneMotionTest" \
+    "$app $app.FlowTest" "$app $app.CheckTest" "$app age:$app.BackupTest" "$registry $app.SnapshotDrillTest" \
+    "$app $app.LifecycleTest" "$app killed:$app.CrashTest"
+  order capture "capture alone: ControlTest, CaptureTest on both apps, PhoneMotionTest, LifecycleTest, then the killed CrashTest, last" \
+    "$app $app.ControlTest" "$app $app.CaptureTest" "$registry $app.CaptureTest" "$app $app.PhoneMotionTest" \
+    "$app $app.LifecycleTest" "$app killed:$app.CrashTest"
+  order journeys "journeys alone: FlowTest, CheckTest, then the age: BackupTest" \
+    "$app $app.FlowTest" "$app $app.CheckTest" "$app age:$app.BackupTest"
+  order registry "registry alone: SnapshotDrillTest (test registry)" "$registry $app.SnapshotDrillTest"
+  # The parts split the leg: their runs together are the whole leg's, each once, whatever either list
+  # above says (a class in no part's block runs in no part; one outside the blocks runs in each).
+  if [ "$(for p in capture journeys registry; do runs "$p"; done | sort)" = "$(runs pass | sort)" ]; then
+    passed=$((passed + 1))
+    echo "PASS capture, journeys and registry: together the whole leg's instrumented runs, each once"
+  else
+    failed=$((failed + 1))
+    echo "FAIL capture, journeys and registry: their runs are $(for p in capture journeys registry; do runs "$p"; done | tr '\n' ' '), the leg's $(runs pass | tr '\n' ' ')"
+  fi
+  # Every part: step 7 at its end; journeys and registry run none of steps 1, 2, 5 and 6, the capture
+  # part's, and keep no capture.
+  expect capture 0 "emulator: api=31: part capture alone (--part capture)" \
+    "probe: api=31 settings secure disable_secure_windows=" \
+    "kept as control-api31-words.png: exit 0, 12 bytes" "pass: api=31 control (a) raw frames, words page:" \
+    "pass: api=31 first frame (registry, its first screen up)" \
+    "pass: api=31 dumpsys package com.keepcrypt.entropy.testregistry: no INTERNET" \
+    "pass: api=31 nothing persisted (com.keepcrypt.entropy): no file in its data directories" \
+    "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
+    "emulator: api=31: every check passed"
+  for p in journeys registry; do
+    expect "$p" 0 "emulator: api=31: part $p alone (--part $p)" \
+      "pass: api=31 dumpsys package com.keepcrypt.entropy: no INTERNET" \
+      "pass: api=31 dumpsys package com.keepcrypt.entropy.testregistry: no INTERNET" \
+      "pass: api=31 nothing persisted (com.keepcrypt.entropy): no file in its data directories" \
+      "pass: api=31 nothing persisted (com.keepcrypt.entropy), positive control:" \
+      "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
+      "emulator: api=31: every check passed"
+    if grep -q -F -e "probe: api=31 settings secure" -e "(capture-control's" -e "control (a)" -e "first frame (" "$st/$p/out" ||
+      [ -e "$st/$p/work/captures" ]; then
+      failed=$((failed + 1))
+      echo "FAIL $p: it ran a step of steps 1, 2, 5 and 6 or kept a capture"
+    else
+      passed=$((passed + 1))
+      echo "PASS $p: none of steps 1, 2, 5 and 6 (the capture part's), no capture kept"
+    fi
+  done
+  # A failing class in a part fails it at its end, after its later runs and step 7.
+  expect capture-lifecycle-test-fails 1 \
+    "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
+    "pass: api=31 first frame (registry, its first screen up)" \
+    "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
+    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.LifecycleTest) (each reported above)"
+  expect journeys-flow-test-fails 1 \
+    "instrument stub: com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest" \
+    "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
+    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.FlowTest) (each reported above)"
+  expect registry-snapshot-drill-fails 1 \
+    "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
+    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy.testregistry (com.keepcrypt.entropy.SnapshotDrillTest) (each reported above)"
   # Step 2: the control's two screencaps kept for the upload, and nothing else in captures/.
   kept=$(cd "$st/pass/work/captures" 2> /dev/null && ls | tr '\n' ' ')
   if [ "$kept" = "control-api31-first-launch.png control-api31-words.png " ] &&
@@ -519,7 +616,10 @@ EOF
     "pass: api=37 dumpsys package com.keepcrypt.entropy: no INTERNET" \
     "emulator: api=37: not made here (ro.debuggable=0, a user build: adb root refused): the nothing-persisted listing of the apps' data directories, which CI's API 31 and 36 legs make" \
     "emulator: api=37: every check passed"
-  last_five booted-pass
+  order booted-pass "the steps' order, both CaptureTest runs without control (c), the killed CrashTest last" \
+    "$app $app.ControlTest" "$app $left" "$registry $left" "$app $app.PhoneMotionTest" \
+    "$app $app.FlowTest" "$app $app.CheckTest" "$app age:$app.BackupTest" "$registry $app.SnapshotDrillTest" \
+    "$app $app.LifecycleTest" "$app killed:$app.CrashTest"
   if [ ! -e "$st/booted-pass/work/avd" ] && [ ! -e "$st/booted-pass/emulator.pid" ]; then
     passed=$((passed + 1))
     echo "PASS booted-pass: no AVD written, no emulator started"
@@ -549,6 +649,10 @@ EOF
     --booted 16k emulator-5554 "$st/adb" "$st/pass/apks" "$st/out-booted"
   refused "--booted with a class and no test" 'android-emulator: not a CLASS-TEST' \
     --booted 37 emulator-5554 "$st/adb" "$st/pass/apks" "$st/out-booted" com.keepcrypt.entropy.CaptureTest
+  refused "an unknown part" 'android-emulator: --part must be capture, journeys or registry' \
+    --part edges 31 "$st/pass/sdk" "$st/adb" "$st/pass/apks" "$st/out-part"
+  refused "--part on 16k" 'android-emulator: --part names a part of the default images' \
+    --part capture 16k "$st/pass/sdk" "$st/adb" "$st/pass/apks" "$st/out-part"
   echo "android-emulator selftest: $passed passed, $failed failed"
   [ "$failed" -eq 0 ]
 }
@@ -558,13 +662,23 @@ if [ $# -eq 1 ] && [ "$1" = --selftest ]; then
   exit
 fi
 
+part=
+if [ $# -ge 2 ] && [ "$1" = --part ]; then
+  part=$2
+  shift 2
+  case $part in
+    capture | journeys | registry) ;;
+    *) echo "android-emulator: --part must be capture, journeys or registry" >&2; exit 2 ;;
+  esac
+fi
 booted=
 if [ $# -ge 6 ] && [ "$1" = --booted ]; then
   booted=yes
   shift
 elif [ $# -ne 5 ]; then
-  echo "usage: scripts/android-emulator.sh API SDK_ROOT ADB APK_DIR WORK_DIR" >&2
-  echo "       scripts/android-emulator.sh --booted API SERIAL ADB APK_DIR WORK_DIR [CLASS-TEST[-TEST...]...]" >&2
+  echo "usage: scripts/android-emulator.sh [--part PART] API SDK_ROOT ADB APK_DIR WORK_DIR" >&2
+  echo "       scripts/android-emulator.sh [--part PART] --booted API SERIAL ADB APK_DIR WORK_DIR [CLASS-TEST[-TEST...]...]" >&2
+  echo "       PART: capture, journeys or registry" >&2
   exit 2
 fi
 api=$1
@@ -597,6 +711,10 @@ else
     16k) level=36 tag=google_apis_ps16k ;;
     *) echo "android-emulator: API must be 31, 36 or 16k" >&2; exit 2 ;;
   esac
+  if [ "$api" = 16k ] && [ -n "$part" ]; then
+    echo "android-emulator: --part names a part of the default images' legs, and 16k's has none" >&2
+    exit 2
+  fi
   image="system-images;android-$level;$tag;x86_64"
   sysdir=system-images/android-$level/$tag/x86_64
   avd=kc$api
@@ -617,6 +735,9 @@ probe() { echo "probe: api=$api $1"; }
 dev() { "$adb" -s "$serial" "$@"; }
 # value CMD...: a device command's output on one line, carriage returns dropped.
 value() { dev shell "$@" 2>&1 | tr -d '\r' | tr '\n' ' ' | sed 's/ *$//'; }
+# in_part PART: this leg runs part PART (the header's parts): the one --part named, or with none
+# every part.
+in_part() { [ -z "$part" ] || [ "$part" = "$1" ]; }
 
 [ -x "$adb" ] || fail "no adb at $adb"
 for f in app-shipping-release app-shipping-release-androidTest app-withTestRegistry-release \
@@ -624,6 +745,11 @@ for f in app-shipping-release app-shipping-release-androidTest app-withTestRegis
   [ -f "$apks/$f.apk" ] || fail "no $apks/$f.apk"
 done
 mkdir -p "$work" || exit 2
+case $api:$part in
+  16k:) ;;
+  *:) say "every part (capture, journeys and registry), in the steps' order" ;;
+  *) say "part $part alone (--part $part)" ;;
+esac
 
 emu_pid=
 stop_emulator() {
@@ -785,21 +911,23 @@ instrument() {
   [ "$rc" -eq 0 ] || fail_later "instrumented tests failed on $target ($*)"
 }
 
-# 1. The shell's facts.
-probe "build: $(value getprop ro.build.fingerprint); sdk $(value getprop ro.build.version.sdk); type $(value getprop ro.build.type); ro.debuggable=$(value getprop ro.debuggable)"
-probe "ro.product.cpu.abilist=$(value getprop ro.product.cpu.abilist); getconf PAGE_SIZE=$(value getconf PAGE_SIZE)"
-probe "settings global wifi_on=$(value settings get global wifi_on); airplane_mode_on=$(value settings get global airplane_mode_on)"
-probe "settings secure disable_secure_windows=$(value settings get secure disable_secure_windows) (null: unset)"
-dev shell logcat -b crash -d > "$work/crash.txt" 2>&1
-rc=$?
-probe "logcat -b crash -d: exit $rc, $(wc -l < "$work/crash.txt") lines"
-dev shell dumpsys dropbox > "$work/dropbox.txt" 2>&1
-rc=$?
-probe "dumpsys dropbox: exit $rc, $(grep -c -e ' data_app_crash ' "$work/dropbox.txt") data_app_crash entries, $(wc -l < "$work/dropbox.txt") lines"
-dev shell dumpsys content_capture 2>&1 | tr -d '\r' | sed '/^[[:space:]]*$/d' | head -n 20 | while IFS= read -r line; do
-  probe "dumpsys content_capture: $line"
-done
-python3 -I "$here/android-frames.py" probe "$adb" "$serial" "$api" "$size" 720x1280 || say "the screenrecord probe stopped early"
+# 1. The shell's facts (the capture part's, and the 16 KB-page image's).
+if in_part capture; then
+  probe "build: $(value getprop ro.build.fingerprint); sdk $(value getprop ro.build.version.sdk); type $(value getprop ro.build.type); ro.debuggable=$(value getprop ro.debuggable)"
+  probe "ro.product.cpu.abilist=$(value getprop ro.product.cpu.abilist); getconf PAGE_SIZE=$(value getconf PAGE_SIZE)"
+  probe "settings global wifi_on=$(value settings get global wifi_on); airplane_mode_on=$(value settings get global airplane_mode_on)"
+  probe "settings secure disable_secure_windows=$(value settings get secure disable_secure_windows) (null: unset)"
+  dev shell logcat -b crash -d > "$work/crash.txt" 2>&1
+  rc=$?
+  probe "logcat -b crash -d: exit $rc, $(wc -l < "$work/crash.txt") lines"
+  dev shell dumpsys dropbox > "$work/dropbox.txt" 2>&1
+  rc=$?
+  probe "dumpsys dropbox: exit $rc, $(grep -c -e ' data_app_crash ' "$work/dropbox.txt") data_app_crash entries, $(wc -l < "$work/dropbox.txt") lines"
+  dev shell dumpsys content_capture 2>&1 | tr -d '\r' | sed '/^[[:space:]]*$/d' | head -n 20 | while IFS= read -r line; do
+    probe "dumpsys content_capture: $line"
+  done
+  python3 -I "$here/android-frames.py" probe "$adb" "$serial" "$api" "$size" 720x1280 || say "the screenrecord probe stopped early"
+fi
 
 # The 16 KB-page image (M5 group 6, the ARM and 16 KB leg): the page size, then NativeTest on the
 # shipping APK for x86_64 and for each ARM ABI the image lists (translated), each install's ABI
@@ -877,55 +1005,66 @@ keep_capture() {
   [ "$rc" -eq 0 ] && [ "$bytes" -gt 0 ] || fail_later "the shell's screencap of $1 failed or is empty"
 }
 
-# 2. The shell's own screencap with each app in front, capture-control's two screens kept. Run
-# 39290401362: with the launcher in front it held 319,321 bytes while the instrumentation's screencap
-# held none. The words page shares the control's task, which is cleared first, so it alone is shown.
-start_activity "$control/$control.ControlActivity"
-sleep 2
-keep_capture "capture-control's first screen" first-launch
-start_activity "$control/$control.WordsActivity" --activity-clear-task
-sleep 2
-keep_capture "capture-control's words page" words
-start_activity com.keepcrypt.entropy/com.keepcrypt.entropy.MainActivity
-sleep 2
-shell_screencap "the shipping app's first screen"
+# The capture part's steps 2-4 and PhoneMotionTest. Each instrumented run below stands in its part's
+# block, on a line of its own, as scripts/android-local.sh reads them.
+if in_part capture; then
+  # 2. The shell's own screencap with each app in front, capture-control's two screens kept. Run
+  # 39290401362: with the launcher in front it held 319,321 bytes while the instrumentation's screencap
+  # held none. The words page shares the control's task, which is cleared first, so it alone is shown.
+  start_activity "$control/$control.ControlActivity"
+  sleep 2
+  keep_capture "capture-control's first screen" first-launch
+  start_activity "$control/$control.WordsActivity" --activity-clear-task
+  sleep 2
+  keep_capture "capture-control's words page" words
+  start_activity com.keepcrypt.entropy/com.keepcrypt.entropy.MainActivity
+  sleep 2
+  shell_screencap "the shipping app's first screen"
 
-# 3. Control (a) in screencap, takeScreenshot, dumpsys and recents, first; then capture-control's
-# tasks leave recents with its (empty) data.
-instrument com.keepcrypt.entropy com.keepcrypt.entropy.ControlTest
-out=$(value pm clear "$control")
-[ "$out" = Success ] || fail "pm clear $control: $out"
-left=$(dev shell dumpsys activity recents 2>&1 | grep -c -e "$control")
-probe "recents after pm clear $control: $left lines name it"
-[ "$left" -eq 0 ] || fail_later "capture-control is still in recents after pm clear"
+  # 3. Control (a) in screencap, takeScreenshot, dumpsys and recents, first; then capture-control's
+  # tasks leave recents with its (empty) data.
+  instrument com.keepcrypt.entropy com.keepcrypt.entropy.ControlTest
+  out=$(value pm clear "$control")
+  [ "$out" = Success ] || fail "pm clear $control: $out"
+  left=$(dev shell dumpsys activity recents 2>&1 | grep -c -e "$control")
+  probe "recents after pm clear $control: $left lines name it"
+  [ "$left" -eq 0 ] || fail_later "capture-control is still in recents after pm clear"
 
-# 4. CaptureTest on each app; each reports its window's region in the display's pixels.
-instrument com.keepcrypt.entropy com.keepcrypt.entropy.CaptureTest
-region_shipping=$(sed -n 's/^kc: region=//p' "$work/instrument.log" | tail -n 1)
-display_shipping=$(sed -n 's/^kc: display=//p' "$work/instrument.log" | tail -n 1)
-instrument com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.CaptureTest
-region_registry=$(sed -n 's/^kc: region=//p' "$work/instrument.log" | tail -n 1)
-display_registry=$(sed -n 's/^kc: display=//p' "$work/instrument.log" | tail -n 1)
-[ -n "$region_shipping" ] && [ -n "$display_shipping" ] && [ -n "$region_registry" ] && [ -n "$display_registry" ] ||
-  fail "CaptureTest reported no window region"
+  # 4. CaptureTest on each app; each reports its window's region in the display's pixels.
+  instrument com.keepcrypt.entropy com.keepcrypt.entropy.CaptureTest
+  region_shipping=$(sed -n 's/^kc: region=//p' "$work/instrument.log" | tail -n 1)
+  display_shipping=$(sed -n 's/^kc: display=//p' "$work/instrument.log" | tail -n 1)
+  instrument com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.CaptureTest
+  region_registry=$(sed -n 's/^kc: region=//p' "$work/instrument.log" | tail -n 1)
+  display_registry=$(sed -n 's/^kc: display=//p' "$work/instrument.log" | tail -n 1)
+  [ -n "$region_shipping" ] && [ -n "$display_shipping" ] && [ -n "$region_registry" ] && [ -n "$display_registry" ] ||
+    fail "CaptureTest reported no window region"
 
-# 4a. PhoneMotion on the emulator's own sensors (M5-51), then the screens from the start to the dice,
-# driven through UI Automator (group 15), then the collision check (group 16) without a snapshot on the
-# shipping app, then the encrypted backup and Check a backup through the system's picker (group 18),
-# whose run's output goes straight to the CI age -d hand-off (android-instrument.sh's age: form), then
-# the check with a snapshot, loaded through core, on the test-registry app (the only one that trusts the
-# test registry key).
-instrument com.keepcrypt.entropy com.keepcrypt.entropy.PhoneMotionTest
-instrument com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest
-instrument com.keepcrypt.entropy com.keepcrypt.entropy.CheckTest
-instrument com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest
-instrument com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest
-# 4b. Discards during "Working...": the app left during a backup's scrypt and its start-up self-test,
-# Wi-Fi turned on during a start.
-instrument com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest
-# 4c. The crash path, the last instrumented run: the crash test's process ends during the test, by
-# the app's own handler, and the judge reads the device's whole crash buffer and DropBox.
-instrument com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest
+  # 4a. PhoneMotion on the emulator's own sensors (M5-51).
+  instrument com.keepcrypt.entropy com.keepcrypt.entropy.PhoneMotionTest
+fi
+# 4a, the journeys part: the screens from the start to the dice, driven through UI Automator (group
+# 15), then the collision check (group 16) without a snapshot on the shipping app, then the encrypted
+# backup and Check a backup through the system's picker (group 18), whose run's output goes straight
+# to the CI age -d hand-off (android-instrument.sh's age: form).
+if in_part journeys; then
+  instrument com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest
+  instrument com.keepcrypt.entropy com.keepcrypt.entropy.CheckTest
+  instrument com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest
+fi
+# 4a, the registry part: the check with a snapshot, loaded through core, on the test-registry app (the
+# only one that trusts the test registry key).
+if in_part registry; then
+  instrument com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest
+fi
+if in_part capture; then
+  # 4b. Discards during "Working...": the app left during a backup's scrypt and its start-up
+  # self-test, Wi-Fi turned on during a start.
+  instrument com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest
+  # 4c. The crash path, the last instrumented run: the crash test's process ends during the test, by
+  # the app's own handler, and the judge reads the device's whole crash buffer and DropBox.
+  instrument com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest
+fi
 # A class --booted named that no run holds left nothing out, and never passes for one that did.
 for w in $without; do
   case " $used " in
@@ -977,19 +1116,21 @@ stop_recording() {
 
 # 5. Control (a) in raw frames, the same pipeline as the first-frame recordings below: capture-control's
 # first screen, then its words page (dice-99-words12's first, its known pixels the TEST REGISTRY
-# strip's), each over the curtain.
-curtain
-start_recording control --expect visible
-start_activity "$control/$control.ControlActivity"
-sleep 3
-stop_recording control || fail "control (a): the raw frames do not show the capture-control's screen"
-echo "pass: api=$api control (a) raw frames: $(sed -n 's/^android-frames: PASS visible: //p' "$frames")"
-curtain
-start_recording control-words --expect visible
-start_activity "$control/$control.WordsActivity"
-sleep 3
-stop_recording control-words || fail "control (a): the raw frames do not show the capture control's words page"
-echo "pass: api=$api control (a) raw frames, words page: $(sed -n 's/^android-frames: PASS visible: //p' "$frames")"
+# strip's), each over the curtain. Steps 5 and 6 are the capture part's.
+if in_part capture; then
+  curtain
+  start_recording control --expect visible
+  start_activity "$control/$control.ControlActivity"
+  sleep 3
+  stop_recording control || fail "control (a): the raw frames do not show the capture-control's screen"
+  echo "pass: api=$api control (a) raw frames: $(sed -n 's/^android-frames: PASS visible: //p' "$frames")"
+  curtain
+  start_recording control-words --expect visible
+  start_activity "$control/$control.WordsActivity"
+  sleep 3
+  stop_recording control-words || fail "control (a): the raw frames do not show the capture control's words page"
+  echo "pass: api=$api control (a) raw frames, words page: $(sed -n 's/^android-frames: PASS visible: //p' "$frames")"
+fi
 
 # first_frame NAME PACKAGE REGION DISPLAY: step 6 for one app.
 first_frame() {
@@ -1015,13 +1156,15 @@ first_frame() {
 }
 
 # 6. The first frame.
-first_frame shipping com.keepcrypt.entropy "$region_shipping" "$display_shipping"
-first_frame registry com.keepcrypt.entropy.testregistry "$region_registry" "$display_registry"
-probe "starting window: black (the raw frames from before each cold launch to the first screen show nothing but black in the app's window)"
+if in_part capture; then
+  first_frame shipping com.keepcrypt.entropy "$region_shipping" "$display_shipping"
+  first_frame registry com.keepcrypt.entropy.testregistry "$region_registry" "$display_registry"
+  probe "starting window: black (the raw frames from before each cold launch to the first screen show nothing but black in the app's window)"
+fi
 
-# 7. Nothing persisted (rule 8; M5 group 18; Q59 (a)), after the suite: no INTERNET in either app's
-# package block, then as root no file in either app's data directories, with a planted file the
-# positive control (see the header).
+# 7. Nothing persisted (rule 8; M5 group 18; Q59 (a)), after the suite, at every part's end: no
+# INTERNET in either app's package block, then as root no file in either app's data directories, with
+# a planted file the positive control (see the header).
 # package_block PKG: PKG's own block of dumpsys package, its "Package [PKG]" line to the next package
 # or section (a line that is neither blank nor indented), each line trimmed.
 package_block() {

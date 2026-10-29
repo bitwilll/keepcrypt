@@ -1,7 +1,8 @@
 #!/bin/sh
-# The Android workflow's hand-off of the signed APKs from its build job to its two leg jobs
-# (tasks/todo.md, M5 group 6; lead decision M5-70 (b), commit L9): the checks each side makes, here
-# with their own cases (commit L9c) rather than in the workflow's run steps, where nothing tested them.
+# The Android workflow's hand-off of the signed APKs from its build job to its leg jobs, six since
+# commit U1a (tasks/todo.md, M5 group 6; lead decision M5-70 (b), commit L9): the checks each side
+# makes, here with their own cases (commit L9c) rather than in the workflow's run steps, where
+# nothing tested them.
 # The build job hands $RUNNER_TEMP/apks over through actions/cache and its SHA256SUMS as the job's
 # output, which reaches the legs apart from the cache; so each leg installs only the bytes the build
 # job hashed, and the build job hashed the shipped two only as the bytes it uploaded.

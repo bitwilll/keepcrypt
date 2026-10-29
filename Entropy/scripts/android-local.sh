@@ -7,7 +7,12 @@
 # 4 GB and the virtual-scene back camera. Any other AVD, the owner's Medium_Phone among them, is never
 # read or touched.
 #
-# Usage: scripts/android-local.sh [APK_DIR]
+# Usage: scripts/android-local.sh [--part PART] [APK_DIR]
+#   PART     capture, journeys or registry: one part of the leg (android-emulator.sh --part, as CI's
+#            leg jobs run it; M5 commit U1a), for a check of the classes a change touches. capture
+#            also runs the second boot below (NativeTest, which CI runs in API 31's capture job on
+#            the 16 KB-page image, and the Camera2 check); journeys and registry end after the leg.
+#            With no --part, the whole run below.
 #   APK_DIR  the five signed APKs android-emulator.sh installs (app-shipping-release,
 #            app-withTestRegistry-release, their -androidTest APKs and capture-control-release, .apk),
 #            with goahead-collision-dice-50.png beside them for the Camera2 check's scan (CI's
@@ -61,8 +66,10 @@
 #      make is printed as "not made on kc37" with the reason and left out of its class's run
 #      (android-instrument.sh's CLASS-TEST form), and the image's answer to adb root is printed; no
 #      check is skipped silently. After it, each
-#      instrumented run's result in android-emulator.sh's order, read from its own instrument lines;
-#      a run with no result, or a result out of that order, fails.
+#      instrumented run's result in android-emulator.sh's order, read from its own instrument lines
+#      (with --part, those in that part's blocks alone); a run with no result, or a result out of
+#      that order, fails. With --part the leg is that part (android-emulator.sh --part), and a check
+#      the user build cannot make is named only when the part runs its class.
 #   2. kc37 booted again with its virtual-scene camera. First NativeTest, which android-emulator.sh
 #      runs on CI's 16 KB-page image only (translated there; --booted runs the default images'
 #      steps): the shipping APK and its test APK installed, the package manager's primaryCpuAbi
@@ -84,6 +91,7 @@
 #      printed as not met, with what this script cannot see (whether the scene shows the code so
 #      that it can be read), and no PNG as a check not made; neither is a pass, and neither fails
 #      the run.
+#      This boot is the whole run's and the capture part's: --part journeys or registry ends after 1.
 # The emulator is shut down after each phase and on every exit.
 # Prints android-emulator.sh's lines and "local:" lines, with "pass: local ..." for each local check
 # that passed. Exit 0 when every check made passed (a decode not met fails nothing, as above), 1 when
@@ -114,7 +122,11 @@
 # (exit 1 each); an emulator that changes its seeded update check, and one that changes its seeded
 # feature flags, as each fetch would (exit 1 each, named after each boot, the camera check still
 # run); an emulator of another version (that version in the update check's seed, exit 0), and one
-# whose -version names none (exit 2, nothing booted); and too many arguments (exit 2).
+# whose -version names none (exit 2, nothing booted). With --part: capture runs its six runs in
+# android-emulator.sh's order, naming and leaving out CaptureTest's control (c) as the whole run does,
+# then the second boot's NativeTest and camera checks (exit 0); journeys runs FlowTest, CheckTest and
+# the age: BackupTest, and registry SnapshotDrillTest, each listing its runs' results, on one boot,
+# naming no check of another part's class (exit 0 each). Too many arguments and an unknown part exit 2.
 # Exit 0 when every case behaves, 1 otherwise. The cases run at once; it takes about two minutes.
 set -u
 unset CDPATH
@@ -357,13 +369,20 @@ EOF
     done
     : > "$c/apks/goahead-collision-dice-50.png" || exit 2
   }
-  # launch NAME [VAR=VALUE...]: one whole run on the prepared case NAME, in the background, with
-  # VAR=VALUE set for the stand-ins; its output in out and its exit status in rc.
+  # launch NAME [--part PART] [VAR=VALUE...]: one whole run (or its part PART) on the prepared case
+  # NAME, in the background, with VAR=VALUE set for the stand-ins; its output in out and its exit
+  # status in rc.
   launch() {
     c=$st/$1
     shift
+    lpart=
+    if [ "${1:-}" = --part ]; then
+      lpart="--part $2"
+      shift 2
+    fi
+    # $lpart unquoted: its words hold no space.
     {
-      env HOME="$c/home" ANDROID_HOME="$c/sdk" TMPDIR="$c/tmp" KC_STUB="$c" "$@" sh "$st/scripts/android-local.sh" "$c/apks"
+      env HOME="$c/home" ANDROID_HOME="$c/sdk" TMPDIR="$c/tmp" KC_STUB="$c" "$@" sh "$st/scripts/android-local.sh" $lpart "$c/apks"
       echo $? > "$c/rc"
     } > "$c/out" 2>&1 &
   }
@@ -433,6 +452,9 @@ CONFIG
   run fetched-flags KC_FETCH_FLAGS=1 KC_DECODE=1
   run version KC_VERSION=37.2.99.0 KC_DECODE=1
   run no-version KC_NO_VERSION=1
+  run part-capture --part capture KC_DECODE=1
+  run part-journeys --part journeys
+  run part-registry --part registry
   wait
   passed=0
   failed=0
@@ -613,6 +635,47 @@ CONFIG
   else
     check no-version no "nothing booted"
   fi
+  # --part: capture's six runs, CaptureTest's control (c) named and left out as in the whole run, then
+  # the second boot; journeys' three runs and registry's one, each on one boot, with no check of
+  # another part's class named.
+  expect part-capture 0 "local: not made on kc37 (ro.debuggable=0): com.keepcrypt.entropy.CaptureTest#disableSecureWindowsShowsTheScreenOnlyWhileSet" \
+    "emulator: api=37: part capture alone (--part capture)" \
+    "local: run 6 of 6, com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest: instrument: api=37 PASS com.keepcrypt.entropy.CrashTest" \
+    "pass: local native library: NativeTest on kc37's arm64-v8a, natively" "$camera_passes" \
+    "local: every check made on kc37 passed (each check not made or not met is named above)"
+  got=$(sed -n 's/^instrument stub: //p' "$st/part-capture/out" | tr '\n' ' ')
+  want="com.keepcrypt.entropy com.keepcrypt.entropy.ControlTest com.keepcrypt.entropy $left com.keepcrypt.entropy.testregistry $left"
+  want="$want com.keepcrypt.entropy com.keepcrypt.entropy.PhoneMotionTest com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest"
+  want="$want com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest com.keepcrypt.entropy com.keepcrypt.entropy.NativeTest "
+  if [ "$got" = "$want" ]; then ok=yes; else ok=no; echo "  got: $got"; fi
+  check part-capture "$ok" "capture's six runs in android-emulator.sh's order, then NativeTest"
+  boots part-capture
+  expect part-journeys 0 "emulator: api=37: part journeys alone (--part journeys)" \
+    "local: run 1 of 3, com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest: instrument: api=37 PASS com.keepcrypt.entropy.FlowTest" \
+    "local: run 3 of 3, com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest: instrument: api=37 PASS com.keepcrypt.entropy.BackupTest" \
+    "emulator: api=37: every check passed" "local: every check made on kc37 passed (part journeys alone"
+  expect part-registry 0 "emulator: api=37: part registry alone (--part registry)" \
+    "local: run 1 of 1, com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest: instrument: api=37 PASS com.keepcrypt.entropy.SnapshotDrillTest" \
+    "emulator: api=37: every check passed" "local: every check made on kc37 passed (part registry alone"
+  for p in journeys registry; do
+    case $p in
+      journeys) want="com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest com.keepcrypt.entropy com.keepcrypt.entropy.CheckTest com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest " ;;
+      registry) want="com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest " ;;
+    esac
+    got=$(sed -n 's/^instrument stub: //p' "$st/part-$p/out" | tr '\n' ' ')
+    ok=yes
+    [ "$got" = "$want" ] || { ok=no; echo "  got: $got"; }
+    [ "$(wc -l < "$st/part-$p/boots" | tr -d ' ')" = 1 ] && grep -q -e ' -camera-back none ' "$st/part-$p/boots" || ok=no
+    if grep -q -e '^local: not made on kc37 (ro.debuggable' -e '^pass: local camera' "$st/part-$p/out"; then ok=no; fi
+    check "part-$p" "$ok" "its runs alone in android-emulator.sh's order, on one boot with no camera, no other part's check named"
+    stopped "part-$p"
+  done
+  sh "$st/scripts/android-local.sh" --part edges > "$st/out" 2>&1
+  if [ "$?" -eq 2 ] && grep -q -e '^usage: ' "$st/out"; then
+    check "an unknown part" yes
+  else
+    check "an unknown part" no
+  fi
   sh "$st/scripts/android-local.sh" one two > "$st/out" 2>&1
   if [ "$?" -eq 2 ] && grep -q -e '^usage: ' "$st/out"; then
     check "too many arguments" yes
@@ -627,14 +690,24 @@ if [ $# -eq 1 ] && [ "$1" = --selftest ]; then
   selftest
   exit
 fi
+part=
+if [ $# -ge 2 ] && [ "$1" = --part ]; then
+  part=$2
+  shift 2
+fi
 case $# in
   0) apkdir= ;;
   1) apkdir=$1 ;;
   *) apkdir=-- ;;
 esac
+# An unknown part is bad usage too.
+case $part in
+  '' | capture | journeys | registry) ;;
+  *) apkdir=-- ;;
+esac
 case $apkdir in
   -*)
-    echo "usage: scripts/android-local.sh [APK_DIR]" >&2
+    echo "usage: scripts/android-local.sh [--part capture|journeys|registry] [APK_DIR]" >&2
     echo "       scripts/android-local.sh --selftest" >&2
     exit 2
     ;;
@@ -841,7 +914,15 @@ boot() {
   say "booted in $(($(date +%s) - start)) s ($1)"
 }
 
-# 1. The leg: android-emulator.sh --booted on kc37 with no camera.
+# 1. The leg: android-emulator.sh --booted on kc37 with no camera, or the part --part names.
+# Its instrumented runs, in android-emulator.sh's order, "TARGET RUN" a line: each of its instrument
+# lines in a part's block (from an "if in_part PART; then" line to a "fi" line, each at the line's
+# start), with --part those of that part's blocks alone.
+awk -v want="$part" '
+  /^if in_part [a-z]+; then$/ { block = $3; sub(/;$/, "", block); next }
+  /^fi$/ { block = ""; next }
+  block != "" && (want == "" || block == want) && /^  instrument [^ ]+ [^ ]+$/ { print $2, $3 }' \
+  "$here/android-emulator.sh" > "$tmp/runs" || exit 2
 boot "the leg, no camera" none
 debuggable=$(value getprop ro.debuggable)
 say "$avd: ro.build.type=$(value getprop ro.build.type), ro.debuggable=$debuggable"
@@ -850,20 +931,24 @@ if [ "$debuggable" != 1 ]; then
   say "no adb root on $avd: adb root says: $(dev root 2>&1 | tr -d '\r' | head -n 1) (the leg's nothing-persisted listing needs it: android-emulator.sh names it as not made)"
   while read -r left why; do
     [ -n "$left" ] || continue
+    # Only a check of a class this leg runs: another part's is not made here at all.
+    awk -v class="${left%%-*}" '{ sub(/^[a-z]+:/, "", $2) } $2 == class { held = 1 } END { exit !held }' "$tmp/runs" ||
+      continue
     say "not made on $avd (ro.debuggable=$debuggable): ${left%%-*}#${left#*-}: $why"
     without="$without $left"
   done <<EOF
 $(user_build_refusals)
 EOF
 fi
-# $without unquoted: CLASS-TEST words with no space.
+partopt=
+[ -z "$part" ] || partopt="--part $part"
+# $partopt and $without unquoted: words with no space (CLASS-TEST words for $without).
 {
-  sh "$here/android-emulator.sh" --booted "$api" "$serial" "$adb" "$apks" "$tmp/leg" $without
+  sh "$here/android-emulator.sh" $partopt --booted "$api" "$serial" "$adb" "$apks" "$tmp/leg" $without
   echo $? > "$tmp/leg.rc"
 } 2>&1 | tee "$tmp/leg.log"
 [ "$(cat "$tmp/leg.rc")" = 0 ] || fail_later "the leg on $avd failed (each failure reported above)"
 # Each instrumented run's result, in android-emulator.sh's order (its own instrument lines).
-sed -n 's/^instrument \([^ ]*\) \([^ ]*\)$/\1 \2/p' "$here/android-emulator.sh" > "$tmp/runs"
 grep -e "^instrument: api=$api PASS " -e "^FAIL: instrument: api=$api: " -e "^instrument: api=$api: " "$tmp/leg.log" > "$tmp/results"
 if ! awk '
   NR == FNR { run[++n] = $0; next }
@@ -883,6 +968,14 @@ if ! awk '
 fi
 stop_emulator
 seeds_kept "the leg's boot"
+# The second boot is the whole run's and the capture part's (see the header).
+case $part in
+  journeys | registry)
+    [ -z "$failed" ] || fail "${failed#; }"
+    say "every check made on $avd passed (part $part alone; each check not made is named above)"
+    exit 0
+    ;;
+esac
 
 # 2. NativeTest, then the Camera2 check on kc37's virtual-scene camera (M5-59).
 boot "the Camera2 check, the virtual scene" virtualscene
