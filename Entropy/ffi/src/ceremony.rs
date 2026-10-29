@@ -1707,4 +1707,57 @@ mod tests {
             Reply::Halted(HaltReason::Internal)
         ));
     }
+
+    // A long call's halt names its own reason (todo.md, M5 commit U3a2, the U-1 review): work that
+    // fails with each reason halts the slot with it, so the reply, a later call's halt status
+    // (wire.rs's code: PINNED_HALTS's, in ALL's order from 1) and a discard name it, as the
+    // start-up self-test, a start and Finish name their core error's kind
+    // (a_halting_error_names_its_kind). A halt that came while the work ran keeps its own reason,
+    // whether the work then gives its result or halts with another.
+    #[test]
+    fn a_long_calls_halt_names_its_reason() {
+        for (code, reason) in (1u8..).zip(HaltReason::ALL) {
+            let slot = Slot::new();
+            let made = slot.long(Held::home, |()| Err::<(), _>(reason), |_, ()| Ok(()));
+            assert!(
+                matches!(made, Reply::Halted(r) if r == reason),
+                "{reason:?}"
+            );
+            assert_eq!(
+                slot.dispatch(crate::wire::SELF_TEST, &[])[..],
+                [crate::wire::HALTED, code],
+                "{reason:?}"
+            );
+            assert!(
+                matches!(slot.discard(), Reply::Halted(r) if r == reason),
+                "{reason:?}"
+            );
+            let slot = Slot::new();
+            let made = slot.long(
+                Held::home,
+                |()| {
+                    slot.halt(reason);
+                    Ok(())
+                },
+                |_, ()| Ok(()),
+            );
+            assert!(
+                matches!(made, Reply::Halted(r) if r == reason),
+                "{reason:?} while the work ran"
+            );
+            let slot = Slot::new();
+            let made = slot.long(
+                Held::home,
+                |()| {
+                    slot.halt(reason);
+                    Err::<(), _>(HaltReason::Internal)
+                },
+                |_, ()| Ok(()),
+            );
+            assert!(
+                matches!(made, Reply::Halted(r) if r == reason),
+                "{reason:?} while the work ran, then an internal halt"
+            );
+        }
+    }
 }

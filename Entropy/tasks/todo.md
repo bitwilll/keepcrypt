@@ -12312,6 +12312,20 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   library's exports as before (JNI_OnLoad, Java_com_keepcrypt_entropy_ffi_Native_call and secp256k1-sys's four).
   fmt, both clippy runs, `cargo test --workspace --locked` 503 passed (3 ignored), the test-sources run 269 (1
   ignored); the gate clean (385 files), its selftest 1631 passed; canaries.sh PASS, all 94 checks ran.
+  Proof (M5 commit U3a2, review fix, partial: local; CI's test job at the next push): no test sent a long call's
+  halt through `Slot::long` with any reason but internal, so turning every long call's halt into internal (its
+  work's, or the one that came while the work ran) passed every FFI test (the U-1 review's mutants R8 and R16).
+  ceremony.rs's `a_long_calls_halt_names_its_reason` drives `Slot::long`'s work to `Err(reason)` for each of
+  `HaltReason::ALL`: the reply is `Halted(reason)`, a later dispatch's status `[HALTED, code]` with PINNED_HALTS's
+  code, and a discard `Halted(reason)`; and a halt that came while the work ran (`slot.halt(reason)` from inside it)
+  keeps its reason whether the work then gives its result or halts as internal. R8 (`Err(_) => ... Halt(Internal)`)
+  and R16 (`Stage::Halted(_) => Reply::Halted(Internal)`) each fail it. The call sites' `map_err(HaltReason::from)`
+  (the self-test, a start, Finish, the exports) stay unpinned: their non-internal errors, a known-answer test, the
+  entropy source, a health test and the export's self-check, come only from core's test-sources faults, which no
+  FFI call reaches, and push_roll's errors are internal either way. Locally: keepcrypt-ffi and keepcrypt-jni, plain
+  and with `--features keepcrypt-core/test-registry`, 55 passed each; fmt, both clippy runs, `cargo test
+  --workspace --locked` 504 passed (3 ignored), the test-sources run 269 (1 ignored); the gate clean (386 files)
+  under sh and dash.
 - [x] `start(len, mode)` per "One `Session::new`". `match_found()` = `discard(Collision)`, `cannot_check()` likewise,
   each keeping the `Wiped`; after them only `start` is offered. `discard()` (background, idle, offline, leaving a
   Protected screen) drops the stage and checked backup, keeps `kept` and `snapshot`; `end()` (Finish) drops the stage;
