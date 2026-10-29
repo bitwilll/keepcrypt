@@ -645,10 +645,12 @@ class CaptureTest {
      * there whose text is one of the screen's secrets must be one of them and each secret must be drawn
      * (assertSecretTextsTagged), and a Public screen holds none. Before Android 14 a probe line says the
      * mark does not exist there. The nodes are the app's windows' every node, read in-process
-     * (Capture.nodes), so no selector holds a secret.
+     * (Capture.nodes), so no selector holds a secret, from the first read whose roots are the screen's
+     * alone (Capture.nodesOf): a read that still shows the screen before is read again, never judged,
+     * and the read judged is judged once.
      */
     private fun assertSecretsMarked(screen: Screen, model: CeremonyModel, name: String, lines: MutableSet<String>) {
-        val nodes = Capture.nodes(pkg)
+        val nodes = Capture.nodesOf(pkg, screen)
         val secrets = nodes.filter { it.resourceName == SECRET_TAG }
         if (!isProtected(screen)) {
             assertTrue("a secret's node on the Public screen " + name, secrets.isEmpty())

@@ -11981,6 +11981,34 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   both APKs: "first_launch: drawn, then screencap and takeScreenshot black over the app's window; SECURE on all 1 of
   its windows" (on API 31 both captures are refused outright, M5-18), "recents: the thumbnail shows none of the app's
   content", and the raw-frame recordings black (13-18 frames each).
+  Proof (M5 commit 21j, lead decision M5-72 (i), CI fix, partial: local, kc37, Q76; CI's API 31 leg at the next push):
+  Entropy Android 40813152800 at e3c6c12 failed the test-registry walk on API 31 with "a secret's node on the Public
+  screen readback_done" (CaptureTest.kt:654), the same walk passing on API 36 in both APKs and in API 31's shipping APK.
+  ReadbackDone draws its heading, one line and Next from no state (WordsScreens.kt), so it can draw no secret; the walk
+  judged whatever tree UI Automator held, which it reads through the platform's accessibility cache. On kc37 at
+  `wm size 720x1184` (local, the test-registry APK, a diagnostic since removed that printed only root ids and counts):
+  the cache read alone, with no read of the app, still showed the screen before 5 s (about 200 reads) after the app
+  reported each new screen, at readback_done the matched read-back entry's root with its one secret node (2 walks; the
+  first screen has none before it, the scan screen was read through UI Automator to answer its prompt, and the failed
+  write keeps the save screen's root); the walk's own read, after the drawn proof and the captures, showed the screen
+  before once in 10 walks (cannot_check_confirm read as match_found_confirm, 1 of 510 checks), and readback_done's own
+  root alone, none of its 13 nodes secret, in all 13 walks. Handed to the walk's one read as readback_done's (a scratch
+  hook), that cached entry failed the walk with CI's line. The walk now reads a screen's nodes through Capture.nodesOf:
+  a read whose roots (the 48 screen ids and the privacy gate's) are not the screen's own alone is read again every 100
+  ms for up to 10 s, then fails naming them; the roots are all it looks at, and the read that shows the screen is
+  judged once, as strictly as before (a probe line names the roots a first read showed when it showed others). With
+  the same hook it judged readback_done's own tree at its second read, 104 ms on, and passed; a ReadbackDone drawing one
+  node through secret() still fails it with that line. On the final tree at 720x1184: 5 test-registry walks and 2
+  shipping walks passed; android-local.sh exit 0 in 1459 s, every class passed in android-emulator.sh's order
+  (ControlTest 3, CaptureTest 6 and 6 without control (c), PhoneMotionTest 1, FlowTest 7, CheckTest 2, BackupTest 1
+  with its age -d hand-off, SnapshotDrillTest 3, LifecycleTest 6, CrashTest killed as it must be, NativeTest 1, and the
+  Camera2 check's four camera-client checks, its decode of the virtual scene's PNG not met and named, as
+  android-local.sh allows); the strict Gradle build of the five APKs with every JVM test task rerun (:core-ffi 31 in
+  11 classes, :screens 147 in 21, :app 11 in 4 for each flavour, :secure-ui 3 in 1, none failed; JBR 25, CI's JDK
+  17); the gate clean (385 files), its selftest 1620 passed. No Rust changed: fmt and both clippy runs clean,
+  `cargo test --workspace --locked` 499 passed (3 ignored), the test-sources run 269 (1 ignored). Only CI's API 31
+  image can confirm that its read there was the read-back entry's cached tree, and that its tree shows each screen
+  within the 10 s.
 - [ ] **Positive controls (each missing control fails the job):** (a) the capture-control APK draws `dice-99-words12`'s
   first words page and a Public screen with the same composables and no FLAG_SECURE; the same screencap,
   `takeScreenshot()` and raw-frame calls must find its known pixels, on API 31 and 36. (b) The drawn-screen proof above,

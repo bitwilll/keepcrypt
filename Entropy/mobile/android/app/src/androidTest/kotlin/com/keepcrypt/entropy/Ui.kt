@@ -37,8 +37,8 @@ internal object Ui {
     /** How long a search waits for its node, and fresh tries again on a node a redraw replaced. */
     private const val FIND_MS = 10_000L
 
-    /** The privacy gate's root (Screens.kt's PrivacyGate), which a Protected screen shows first. */
-    private const val PRIVACY_GATE = "privacy_gate"
+    /** The privacy gate's root (Screens.kt's PrivacyGate), which a Protected screen shows first (Capture.nodesOf's too). */
+    const val PRIVACY_GATE = "privacy_gate"
 
     /** How long a press that must do nothing gets to land. */
     private const val SETTLE_MS = 500L

@@ -375,6 +375,48 @@ internal object Capture {
         return found
     }
 
+    /** Every screen's root, by its id (its screen id, as its test tag), and the privacy gate's, which a Protected screen shows first. */
+    private val ROOTS: Set<String> = Screen.entries.map { screenId(it) }.toSet() + Ui.PRIVACY_GATE
+
+    /**
+     * Every node of pkg's windows (nodes), from the first read whose roots are screen's alone: its root by
+     * its id and no other screen's, the privacy gate's included, read again every 100 ms while another
+     * shows, for up to 10 s, failing after. The activity reports a screen once it is composed, and UI
+     * Automator reads the app's nodes through the platform's accessibility cache, which a read of the app
+     * brings up to date: on kc37 (local) the cache read alone still showed the screen before at each of
+     * CaptureTest's walk's screens 5 s after the app reported the new one (at readback_done the matched
+     * read-back entry, its word's secret node in it), and nodes once showed the screen before after the
+     * walk's captures. That entry's nodes judged as readback_done's fail as run 40813152800 (API 31)
+     * failed: "a secret's node on the Public screen readback_done". Only the roots are looked at here,
+     * never a secret node: the caller judges the read that showed screen, once. A probe line names the
+     * roots the first read showed when it showed others (roots are screen ids, no secret).
+     */
+    fun nodesOf(pkg: String, screen: Screen): List<NodeFacts> {
+        val own = listOf(screenId(screen))
+        val start = SystemClock.elapsedRealtime()
+        var first: List<String>? = null
+        var reads = 0
+        while (true) {
+            val found = nodes(pkg)
+            val roots = found.mapNotNull { it.resourceName }.filter { it in ROOTS }
+            reads++
+            if (first == null) first = roots
+            if (roots == own) {
+                if (reads > 1) {
+                    probe(
+                        own.single() + ": UI Automator's tree first showed the roots $first; read $reads, " +
+                            "${SystemClock.elapsedRealtime() - start} ms on, showed its own root alone",
+                    )
+                }
+                return found
+            }
+            if (SystemClock.elapsedRealtime() - start > 10_000) {
+                fail("timed out: UI Automator's tree shows the roots $roots, not " + own.single() + "'s alone (first $first)")
+            }
+            SystemClock.sleep(100)
+        }
+    }
+
     /**
      * The secret texts a words page draws for insert, as WordsScreens.kt draws them: the word, its
      * SeedBook number, and each face's letter and label (a blank face's letter and an empty label are
