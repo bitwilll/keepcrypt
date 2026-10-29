@@ -16197,6 +16197,33 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   whatever key it spells, so no escape sequence or folded line can spell uses. Proof: selftest cases for "u\x73es",
   a double-quoted "us\ ending its line and continued with es", and a key with an escaped quote, each a hit; a run: block whose shell text holds
   backslashes and quotes stays clean; the three workflows clean under sh and dash; the fault check.
+  Proof (M5 commit L10, M5-71 (f), partial: local; CI's gates, lint and supply-chain jobs at the next push):
+  `--workflows`' greps read each key and value as written, so a quoted scalar that a YAML parser decodes (an escape,
+  or a line break inside its quotes) passed an unapproved action, a secret or an expression in a run step as clean.
+  workflow_check's second awk pass reads the quoted scalars a token at a time: outside a block scalar's text (the
+  lines after a `|` or `>` header that are blank or indented past the key it follows) and comments, a quoted scalar
+  that holds a backslash or a doubled single quote, or whose quote is still open at its line's end, is a hit. The
+  pass reads keys and values alike, wider than this item's "quoted key": telling a key from a value needs a parser,
+  and a value's escape spells secrets, github['token'] or `${{` in a run step past the other rules. Ten fixtures, each
+  clean under 6258879's gate, each read by Ruby's YAML parser (Psych) as the text it hides, give exactly one hit
+  each: workflow-uses-escape-in-quoted-key (`"u\x73es":`), workflow-uses-quoted-key-continued-over-a-line (`? "us\`,
+  then `es"`), workflow-uses-key-with-an-escaped-quote (`"uses\"":`, its following lines clean),
+  workflow-single-quoted-key-left-open (`? 'us`, then `es'`, which Ruby reads as "us es"),
+  workflow-uses-escape-in-quoted-key-after-an-empty-block (`- name: |`, then the key at name's column),
+  -in-a-flow-mapping and workflow-uses-escape-in-tagged-quoted-key (`!!str`), and three values:
+  workflow-expression-escaped-in-quoted-run-line (`run: "echo \x24{{ github.head_ref }}"`),
+  workflow-secrets-escaped-in-quoted-value and workflow-github-token-escaped-quote-in-value (`'${{ github[''token'']
+  }}'`). clean-run-block-shell-text stays clean: a run block and a path block holding backslashes, quotes of both
+  kinds left open, lines that start with a quote and a line that ends in a backslash, and a comment's and a plain
+  value's quotes. Twelve mutants of the pass (no block text, the block's key column taken from its dash, no comments,
+  a quote opened inside a plain scalar, no escape skipped, no '', no open-quote hit, no backslash hit, no flow
+  collections, no properties, no indicators, no colons) each fail at least one of these. Locally:
+  `--workflows ../.github/workflows` clean (3 workflows) under sh and dash; `--selftest --shard 1/2` and `2/2` side by
+  side "816 of 1631" and "815 of 1631", 0 failed (1620 and the eleven), and the whole self-test under /bin/dash 1631
+  passed; the fault check 585 runs, 585 passed (--workflows' places 16 to 17, the new awk), in 179 s under sh and
+  under dash; the gate clean (385 files) under sh and dash; canaries.sh PASS, all 94 checks ran (421 s); fmt, both
+  clippy runs, `cargo test --workspace --locked` (499 passed, 3 ignored) and `-p keepcrypt-core --features
+  test-sources` (269 passed, 1 ignored).
 
 **Stages E3 and E4** run commits 19, 20 and 21 as planned, each built and tested locally before it is committed.
 

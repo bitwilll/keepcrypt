@@ -168,7 +168,16 @@
 #   - the canary property kc.canary (any letter case, comments included) only as the canary
 #     step's one Gradle command line, whole: sh scripts/android-gradle.sh
 #     --dependency-verification strict --offline -Pkc.canary=true :app:assembleShippingRelease
-#     (kt_canary_workflow; tasks/todo.md, M5 group 5), and that line once.
+#     (kt_canary_workflow; tasks/todo.md, M5 group 5), and that line once;
+#   - no quoted key or value with an escape or over a line (lead decision M5-71 (f)): outside a
+#     block scalar's text and comments, a quoted scalar that holds a backslash or a doubled single
+#     quote (as "u\x73es", "uses\"" and '${{ github[''token''] }}' do), or whose quote is still
+#     open at its line's end (one continued over a line, as "us\ then es"), is a hit whatever it
+#     spells, key or value. So each quoted key and value is the text between its quotes, on one
+#     line, and no escape or folded line spells uses, run, permissions, secrets, github.token or
+#     "${{" past the rules above, with no YAML parser (a new dependency, rule 11). A block scalar's
+#     text is every line after its | or > header that is blank or indented past the key the header
+#     follows (or, with no key, past its dash, ? or :).
 #
 # Image lists mode (tasks/todo.md, M4 groups 14 and 15; Q38 (d)): the image workflow's "hash and
 # list" step prints with it what commit 16 commits to pi/os/expected/ for review and the image
@@ -1034,7 +1043,7 @@ usage: scripts/banned-api-check.sh [--selftest [--shard K/N] | DIR | --artifact 
               in a run step, no Android bootstrap switch but the line a reviewed exception names
               (the clean line says whether kt_bootstrap_exception holds one, and which), the
               canary property only in the canary step's Gradle command, no Kotlin/Native or
-              Kotlin Multiplatform setting
+              Kotlin Multiplatform setting, no quoted key or value with an escape or over a line
   --image-lists
               unpack the Pi image IMG (an MBR, a FAT32 boot partition, a SquashFS root) with the
               build's host tools and print its partition table, SHA-256s, boot and root file lists,
@@ -5241,7 +5250,9 @@ approved_actions="$approved_actions|actions/upload-artifact@043fb46d1a93c77aae65
 # as a key (the word, quoted or not, then any spaces and a colon, or after "? ") on a line that
 # is not "uses:" and one of the three actions at its approved SHA ($approved_actions), at the
 # line's start or after "- ", the word secrets, github.token (also github['token']),
-# pull_request_target, workflow_run.
+# pull_request_target, workflow_run. They read the text as written: a second awk pass makes a hit
+# of each line that holds a quoted scalar only a YAML parser reads as GitHub does (an escape, or a
+# quote still open at the line's end), outside a block scalar's text and comments.
 workflow_check() {
   wf=$1
   [ -f "$wf" ] && [ -r "$wf" ] || return 2
@@ -5289,6 +5300,89 @@ workflow_check() {
     }
     END { if (!top_ok) print "1:missing a top-level permissions block that holds contents: read" }
   ' "$wf") || return 2
+  # The quoted scalars (M5-71 (f)), read a token at a time. Outside a block scalar's text and
+  # comments, a quote where a node starts (in a plain scalar a quote is its text) opens a quoted
+  # scalar, which runs to its closing quote, over lines if need be: in double quotes a backslash
+  # escapes the next character, in single quotes '' is a quote. A backslash or a '' in it, or its
+  # quote still open at a line's end, makes that line a hit. A block scalar's header (| or >, its
+  # indicators, a comment) starts its text: the following lines that are blank or indented past
+  # the key the header follows, or with no key past its dash, ? or : (owner, bind). An anchor, tag
+  # or alias is one token. In a flow collection a plain scalar ends at a flow indicator or any
+  # colon.
+  q=$(awk '
+    function indent(s) { match(s, /^ */); return RLENGTH }
+    function plain_end(s, i, n,   c, d) {
+      for (; i <= n; i++) {
+        c = substr(s, i, 1)
+        d = substr(s, i + 1, 1)
+        if (c == ":" && (fd || d == "" || d ~ /[[:space:]]/)) return i
+        if (c == "#" && substr(s, i - 1, 1) ~ /[[:space:]]/) return i
+        if (fd && index(",[]{}", c)) return i
+      }
+      return i
+    }
+    {
+      line = $0
+      sub(/\r$/, "", line)
+      n = length(line)
+      if (inblk && (line ~ /^[[:space:]]*$/ || indent(line) > bind)) next
+      inblk = 0
+      hit = 0
+      owner = -1
+      node = -1
+      i = 1
+      while (i <= n) {
+        c = substr(line, i, 1)
+        d = substr(line, i + 1, 1)
+        if (quote != "") {
+          if (c == "\\") hit = 1
+          if (c == "\\" && quote == "\"") i++
+          else if (c == quote && d == quote && quote == "'\''") { hit = 1; i++ }
+          else if (c == quote) quote = ""
+          i++
+        } else if (c ~ /[[:space:]]/) {
+          i++
+        } else if (c == "#" && (i == 1 || substr(line, i - 1, 1) ~ /[[:space:]]/)) {
+          break
+        } else if (c == "\"" || c == "'\''") {
+          quote = c
+          node = i - 1
+          i++
+        } else if ((c == "-" || c == "?") && (d == "" || d ~ /[[:space:]]/)) {
+          owner = i - 1
+          node = -1
+          i++
+        } else if (c == ":") {
+          owner = (node >= 0) ? node : i - 1
+          node = -1
+          i++
+        } else if (c == "[" || c == "{") {
+          fd++
+          i++
+        } else if (c == "]" || c == "}") {
+          if (fd) fd--
+          i++
+        } else if (c == ",") {
+          i++
+        } else if (c == "&" || c == "!" || c == "*") {
+          if (c == "*") node = i - 1
+          for (i++; i <= n; i++) {
+            c = substr(line, i, 1)
+            if (c ~ /[[:space:]]/ || (fd && index(",[]{}", c))) break
+          }
+        } else if (!fd && substr(line, i) ~ /^[|>]([1-9][-+]?|[-+][1-9]?)?([[:space:]]+#.*)?[[:space:]]*$/) {
+          inblk = 1
+          bind = (owner >= 0) ? owner : i - 1
+          break
+        } else {
+          node = i - 1
+          i = plain_end(line, i + 1, n)
+        }
+      }
+      if (quote != "") hit = 1
+      if (hit) print NR ":" line
+    }
+  ' "$wf") || return 2
   # Each tool's output in a command substitution of its own (the uses keys' lines, then those but
   # the approved actions), as in the scan: see "The tools the gate runs fail closed".
   u=$(grep -n -a -E -e '(^|[^[:alnum:]_.-])["'\'']?uses["'\'']?[[:space:]]*:' \
@@ -5308,7 +5402,7 @@ workflow_check() {
   [ $? -le 1 ] || return 2
   # The rules' hits joined in the shell, the empty ones left out, then sorted by line.
   all=
-  for x in "$t" "$u" "$g" "$b" "$k" "$r"; do
+  for x in "$t" "$q" "$u" "$g" "$b" "$k" "$r"; do
     [ -z "$x" ] || all=$all${all:+$nl}$x
   done
   [ -n "$all" ] || return 1
@@ -5364,7 +5458,7 @@ EOF
     *[!"$nl"]*) bxstate="no bootstrap switch but the reviewed exception's line (kt_bootstrap_exception: $kt_bootstrap_exception)" ;;
     *) bxstate='no bootstrap switch and no bootstrap exception' ;;
   esac
-  printf '%s\n' "banned-api-check --workflows $dir: clean, $n workflow(s): read-only permissions, pinned actions, no secrets, no fork-trusting trigger, no expression in a run step, $bxstate, the canary property only in the canary step's Gradle command, no Kotlin/Native or Kotlin Multiplatform setting"
+  printf '%s\n' "banned-api-check --workflows $dir: clean, $n workflow(s): read-only permissions, pinned actions, no secrets, no fork-trusting trigger, no expression in a run step, $bxstate, the canary property only in the canary step's Gradle command, no Kotlin/Native or Kotlin Multiplatform setting, no quoted key or value with an escape or over a line"
   exit 0
 }
 
