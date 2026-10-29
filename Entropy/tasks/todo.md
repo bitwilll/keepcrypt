@@ -11999,6 +11999,16 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   (`--part capture` four runs then NativeTest, `--part registry` three, "run 3 of 3" the killed CrashTest).
   `--workflows ../.github/workflows` clean (3 workflows) under sh and dash; Ruby's YAML parser reads the six names
   (build 29 steps, emulators 12).
+  Proof (M5 commit U1a3, review fix, partial: local; CI's build job at the next push): nothing read the emulators
+  matrix, so a row dropped or renamed left every gate and selftest green while that part ran on that API level
+  nowhere (the U-1 review). android-emulator.sh's selftest, which the build job runs before any leg job, now reads
+  this checkout's entropy-android.yml: its emulators matrix rows must be exactly API 31 and 36 by capture, journeys
+  and registry, each once, and the emulators job's steps that follow the part must stand under their names with
+  their conditions, once each: the part's own step with none, Ubuntu's age on `matrix.part == 'journeys'`, the 16 KB
+  leg on API 31's capture and the captures' upload on capture (the last two also after a red leg, as written). 50
+  passed, 0 failed under sh and dash (49 and this case); seven mutants of the workflow each fail exactly this case:
+  API 36's registry row dropped, API 31's journeys part renamed, a row doubled, the 16 KB leg on API 36, the upload
+  unconditional, the age in the capture jobs, and a condition on the part's own step.
 - [x] **Instrumentation:** `scripts/android-instrument.sh` runs `am instrument -w -r -e class ...` once per test class,
   and once per test that halts or kills the process, so a latched `Halted` slot or a dead process never fails the next
   test. The crash test is judged from the shell: the process is gone, no crash dialog window exists, `logcat -b crash`

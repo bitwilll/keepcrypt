@@ -141,7 +141,10 @@
 # order (a case each): capture's ControlTest, CaptureTest on both apps and PhoneMotionTest; journeys'
 # FlowTest, CheckTest and the age: BackupTest; registry's SnapshotDrillTest, LifecycleTest and the
 # killed CrashTest, last; and the three parts' runs are together the whole leg's, each once, so a part that
-# drops or adds a class fails. Every part ends with step 7's checks; journeys and registry print no
+# drops or adds a class fails. The workflow's emulators matrix (.github/workflows/entropy-android.yml,
+# read from this checkout) is each part on API 31 and 36, one a job, and no other row, with the steps
+# that follow the part (its own, the age, the 16 KB leg, the captures' upload) under their names and
+# conditions (a case of its own: a row dropped would run its part on that level nowhere). Every part ends with step 7's checks; journeys and registry print no
 # line of steps 1, 2, 5 and 6 and keep no capture; a failing class in each part exits 1 at the part's
 # end, after its later runs and step 7. A failing ControlTest, CaptureTest, PhoneMotionTest,
 # FlowTest, CheckTest, BackupTest, SnapshotDrillTest, LifecycleTest and CrashTest each exit 1 at the leg's end,
@@ -473,6 +476,43 @@ EOF
   else
     failed=$((failed + 1))
     echo "FAIL capture, journeys and registry: their runs are $(for p in capture journeys registry; do runs "$p"; done | tr '\n' ' '), the leg's $(runs pass | tr '\n' ' ')"
+  fi
+  # The workflow runs the parts (M5 commit U1a3): entropy-android.yml's emulators matrix is each part
+  # on API 31 and on API 36, one a job, each once and no other row, so a row dropped, renamed or
+  # doubled, whose part would then run on that level nowhere, fails here (the build job runs this
+  # selftest before any leg job starts). The steps that follow the part run where it holds them: the
+  # part's own step in every job, Ubuntu's age in the journeys jobs, the 16 KB leg in API 31's capture
+  # job and the captures' upload in the capture jobs, each step's name and condition as written, once.
+  wfa=$self/../../.github/workflows/entropy-android.yml
+  rows=$(awk '
+    /^  [^ #]/ { job = $0 }
+    job == "  emulators:" && /^          - api: / { api = $3; gsub(/'\''/, "", api) }
+    job == "  emulators:" && /^            part: / { print api, $2 }' "$wfa" | sort)
+  want=$(for a in 31 36; do for p in capture journeys registry; do echo "$a $p"; done; done)
+  conds=$(awk '
+    function flush() { if (name != "") print name "|" cond; name = ""; cond = "" }
+    /^  [^ #]/ { flush(); job = $0; next }
+    job != "  emulators:" { next }
+    /^      - / { flush() }
+    /^      - name: |^        name: / { name = $0; sub(/^ *(- )?name: /, "", name) }
+    /^        if: / { cond = $0; sub(/^        if: /, "", cond) }
+    END { flush() }' "$wfa")
+  ok=yes
+  [ -n "$rows" ] && [ "$rows" = "$want" ] || ok=no
+  while IFS= read -r line; do
+    [ "$(printf '%s\n' "$conds" | grep -c -x -F -e "$line")" = 1 ] || ok=no
+  done <<'EOF'
+Emulator API ${{ matrix.api }}, ${{ matrix.part }} (system-images;android-${{ matrix.api }};default;x86_64)|
+Ubuntu's age, version asserted, and the age -d hand-off's selftest|${{ matrix.part == 'journeys' }}
+Emulator 16 KB pages (system-images;android-36;google_apis_ps16k;x86_64)|${{ matrix.api == '31' && matrix.part == 'capture' && !cancelled() && steps.emulator-install.outcome == 'success' }}
+Upload the positive control's captures (API ${{ matrix.api }})|${{ matrix.part == 'capture' && !cancelled() && steps.emulator-install.outcome == 'success' }}
+EOF
+  if [ "$ok" = yes ]; then
+    passed=$((passed + 1))
+    echo "PASS the workflow: each part on API 31 and 36, one a job, and the steps that follow the part"
+  else
+    failed=$((failed + 1))
+    echo "FAIL the workflow: its emulators matrix rows are $(printf '%s\n' "$rows" | tr '\n' ',') and its steps $(printf '%s\n' "$conds" | tr '\n' ' ')"
   fi
   # Every part: step 7 at its end; journeys and registry run none of steps 1, 2, 5 and 6, the capture
   # part's, and keep no capture.
