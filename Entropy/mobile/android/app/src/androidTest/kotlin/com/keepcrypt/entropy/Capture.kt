@@ -316,7 +316,7 @@ internal object Capture {
             if (title == null) continue
             val kept = line.trim()
             if (kept.startsWith("mOwnerUid=") || kept.startsWith("mSession=") || kept.startsWith("mAttrs=")) {
-                blocks.getOrPut(title!!) { ArrayList() }.add(kept.take(160))
+                blocks.getOrPut(title) { ArrayList() }.add(kept.take(160))
             }
             // The window's own owner line, WindowState.dump's "mOwnerUid=N showForAllUsers=B package=P ...".
             // Any other line can name the app too (run 39311080988 counted com.android.systemui.ImageWallpaper

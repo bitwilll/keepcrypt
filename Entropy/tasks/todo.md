@@ -11975,6 +11975,18 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   check's four camera-client checks, its decode of the virtual scene's PNG not met and named, as android-local.sh allows);
   every JVM test task rerun (`--rerun`): :core-ffi 31 in 11 classes, :screens 142 in 19, :app 11 in 4 for each flavour,
   :secure-ui 3 in 1, none failed.
+  Proof (M5 commit 19k, review fix, partial: local, kc37, Q76): 19j's Proof says both flavours' androidTest Kotlin
+  compiled with no warning, true only of an incremental compile: a clean one warned once per flavour,
+  Capture.kt:319:38 "Unnecessary non-null assertion (!!) on a non-null receiver of type 'String'" (`title!!` after `if
+  (title == null) continue`, from 19h; the E5 review), reproduced here with both androidTest compile tasks rerun on
+  19j's Capture.kt. The `!!` is gone: those two compiles rerun log no warning, and the clean strict build of the five
+  APKs with every JVM test task (`--rerun-tasks`, 270 tasks run) logs only :core-ffi's two expect/actual Beta notes
+  (Native.kt, Native.android.kt), with :core-ffi 31 in 11 classes, :screens 147 in 21, :app 11 in 4 for each flavour
+  and :secure-ui 3 in 1, none failed. On kc37 (local, android-local.sh on this tree, exit 0 in 1444 s): every class
+  passed in android-emulator.sh's order (ControlTest 3, CaptureTest 6 and 6 without control (c), PhoneMotionTest 1,
+  FlowTest 7, CheckTest 2, BackupTest 1 with its age -d hand-off, SnapshotDrillTest 3, LifecycleTest 6, CrashTest
+  killed as it must be, NativeTest 1, and the Camera2 check's four camera-client checks, its decode of the virtual
+  scene's PNG not met and named, as android-local.sh allows).
 - [x] **First frame** (lessons 4): raw frames, one continuous stream from under the curtain before a cold launch,
   through the launch to Home and a few seconds more, then stopped, and a second stream started with that screen up (its
   first frame is composed at once, so a frame is recorded with the app's screen up; M5-17), show nothing but black in
