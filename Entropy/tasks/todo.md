@@ -15663,6 +15663,14 @@ they differ. Nothing in the Android plan is weakened.
   U-6 after the owner answers Q77-Q85, each a stage of the M5 workflow (implement, three reviews, fixes, suite), CI at
   each stage's head. (i) The test-registry capture walk's failure on API 31 at e3c6c12 ("a secret's node on the Public
   screen readback_done", passing on API 36 and in the shipping APK) is fixed at its root first, as commit 21j.
+- M5-73 (2026-10-29), after stage U-1: (a) L10 refuses a quoted key or value holding a backslash, a doubled single
+  quote or a quote left open at its line's end, and L10b any byte in entropy-*.yml outside tab and printable ASCII
+  (a carriage return included, so CRLF workflows fail, as the canary-property rule already made them): both wider than
+  L10's item and M5-71 (f) said, both fail closed, accepted; the gate's line model is now "printable ASCII and tab,
+  split on LF". (b) U1a and U1a2 run each API's leg as three jobs, capture (with the 16 KB leg on API 31), journeys
+  and "test registry and edges" (part ids capture, journeys, registry); the Terms, CI and Budgets entries' L9 wording
+  reads as six leg jobs from U1a on, each budgeted by M5-30 after its measuring run. (c) The FFI's halted status
+  carries a reason code since U3a (the fixed codes pinned in wire.rs); the plan's FFI line reads so.
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the
