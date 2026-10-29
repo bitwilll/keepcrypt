@@ -12337,6 +12337,22 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   reason, and none can be raised through the host library. The strict Gradle build of the five APKs with every task
   rerun (`--rerun-tasks`, 270 executed), after android-rust.sh for both flavours: :core-ffi 34 in 12 classes,
   :screens 154 in 21, :app 11 in 4 for each flavour, :secure-ui 3 in 1, none failed.
+  Proof (M5 commit U3a4, review fix, partial: local, kc37, Q76; CI's capture jobs at the next push): no test read
+  the stop screen's drawn reason line, U3a's user-visible step (MA:36): CeremonyModelTest calls the pure stopLine,
+  and no emulator class read the node tagged halt_reason, so drawing stopLine(null), or no line, passed every test
+  (the U-1 review's K1 and K2); U3a's "draws its line" said more than its test showed. CaptureTest's walk now plants
+  a health test's KcHalt at the stop screen (it planted internal's, the line a halt with no reason draws too) and,
+  after the screen's checks, reads the screen's own nodes in-process (Capture.nodesOf; the line is fixed text): one
+  node tagged halt_reason, drawing "An entropy health test failed.". With K1 built in (Stop drawing stopLine(null)),
+  the shipping walk on kc37 failed: "the stop screen's reason line expected:<[An entropy health test failed.]> but
+  was:<[An internal check failed.]>" (K2, the line gone, fails the same assertion with no node; not run). Local (JBR
+  25; CI's JDK 17): the strict Gradle build of the five APKs with every task rerun (270 executed), no warning in the
+  androidTest Kotlin: :core-ffi 34 in 12 classes, :screens 154 in 21, :app 11 in 4 for each flavour, :secure-ui 3 in
+  1, none failed; kc37: `android-local.sh --part capture` exit 0 in 512 s (ControlTest 3, CaptureTest 6 and 6
+  without control (c), each walk's "stop: its one reason line names the walk's halt, a health test's", PhoneMotionTest
+  1; NativeTest 1; the Camera2 check's four camera-client checks, its decode not met, as allowed) and, the first
+  local run of U1a2's split, `--part registry` exit 0 in 286 s (SnapshotDrillTest 3, LifecycleTest 7, CrashTest
+  killed as it must be).
 - [x] `start(len, mode)` per "One `Session::new`". `match_found()` = `discard(Collision)`, `cannot_check()` likewise,
   each keeping the `Wiped`; after them only `start` is offered. `discard()` (background, idle, offline, leaving a
   Protected screen) drops the stage and checked backup, keeps `kept` and `snapshot`; `end()` (Finish) drops the stage;

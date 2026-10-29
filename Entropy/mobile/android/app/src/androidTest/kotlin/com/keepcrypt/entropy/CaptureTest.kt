@@ -145,8 +145,10 @@ class CaptureTest {
      * granted, no permission prompt is up, then the scan screen opens and the system's prompt shows over
      * the app, another package's window, which the walk answers "Don't allow" before the capture (the
      * scan screen then says the camera was refused, and its "Type go-ahead code" leads on). The stop
-     * screen is the halt status as Core throws it, so this process's slot stays live for the tests after
-     * it (the model's own tests halt a real one). Home on needs the phone offline, which the pass sees to.
+     * screen is a halt status as Core throws it, a health test's (STOP_REASON), so this process's slot
+     * stays live for the tests after it (the model's own tests halt a real one) and the screen's reason
+     * line is not the one a halt with no reason draws. Home on needs the phone offline, which the pass
+     * sees to.
      */
     private fun show(screen: Screen): MainActivity {
         val activity = if (screen == Screen.FirstLaunch) started().also { walk = it } else checkNotNull(walk)
@@ -321,7 +323,7 @@ class CaptureTest {
             Screen.Stop -> {
                 working.countDown()
                 waitUntil("About again, after the held call") { onMain { activity.shownScreen } == Screen.About }
-                onMain { model.work<Unit>({ throw KcHalt(HaltReason.Internal) }) {} }
+                onMain { model.work<Unit>({ throw KcHalt(STOP_REASON) }) {} }
             }
         }
         return activity
@@ -565,7 +567,8 @@ class CaptureTest {
      * image: some window is found by it), and its secret text marked data sensitive where Android has
      * the mark (assertSecretsMarked); the read-back entry also in its matched state (matchedEntry), the
      * save screen also with a failed write (failedSave) and the words also as a checked backup's
-     * (checkedWords). After the walk the log holds none of its secret lines (assertNoSecretInTheLog).
+     * (checkedWords), and the stop screen drawing its halt's reason line (assertStopNamesTheReason). After the
+     * walk the log holds none of its secret lines (assertNoSecretInTheLog).
      */
     @Test
     fun everyScreenIsDrawnAndThenBlackInEveryCapture() {
@@ -594,6 +597,7 @@ class CaptureTest {
                 checkScreen(Screen.Words, checkedWords(), screenId(Screen.Words) + " (a checked backup's)", lines)
             }
             checkScreen(screen, show(screen), screenId(screen), lines)
+            if (screen == Screen.Stop) assertStopNamesTheReason()
         }
         finish(checkNotNull(walk))
         for (word in passphrase) word.fill(0)
@@ -636,6 +640,17 @@ class CaptureTest {
             "$name: drawn, then screencap and takeScreenshot black over the app's window; " +
                 "SECURE on all ${found.size} of its windows; no content capture",
         )
+    }
+
+    /**
+     * The stop screen names the walk's halt (docs/mobile-apps.md:36; M5 commit U3a4): the screen's own
+     * nodes (Capture.nodesOf), read in-process, hold one node tagged HALT_REASON_TAG (Screens.kt's Stop),
+     * and it draws STOP_LINE, the fixed line for STOP_REASON. The line is fixed text, no secret.
+     */
+    private fun assertStopNamesTheReason() {
+        val reasons = Capture.nodesOf(pkg, Screen.Stop).filter { it.resourceName == HALT_REASON_TAG }.map { it.text }
+        assertEquals("the stop screen's reason line", listOf(STOP_LINE), reasons)
+        pass("stop: its one reason line names the walk's halt, a health test's")
     }
 
     /**
@@ -1099,6 +1114,16 @@ class CaptureTest {
 
         /** What dumpsys says (on stderr) for a service the image does not run. */
         const val NO_SERVICE = "Can't find service"
+
+        /**
+         * The walk's halt, a health test's, and its line on the stop screen (Screens.kt's stopLine), so the
+         * line drawn is not the one a halt with no reason, or an internal one, draws.
+         */
+        val STOP_REASON = HaltReason.HealthTest
+        const val STOP_LINE = "An entropy health test failed."
+
+        /** The stop screen's reason line's tag (Screens.kt's Stop). */
+        const val HALT_REASON_TAG = "halt_reason"
 
         /**
          * The Protected screens that draw secret text: the words, the overview, the read-back's letters and
