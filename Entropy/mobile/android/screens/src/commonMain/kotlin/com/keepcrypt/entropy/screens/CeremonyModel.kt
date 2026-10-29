@@ -1404,7 +1404,10 @@ class CeremonyModel(
      * back with them whole; the next other screen wipes them. done may start the next long call (Load
      * registry snapshot's load, from its read's): the busy screen then stays, standing for the same
      * screen. A value a discard or a halt drops goes to dropped, on whichever thread drops it (a picked
-     * file's read gives its bytes there to be zeroed).
+     * file's read gives its bytes there to be zeroed), and so does a Done value the worker gave back to a
+     * scope cancelled before the main thread took it (the holder's end, which cancels the scope before
+     * its wipeAll: the main thread's part then never runs, and the finally its cancellation passes
+     * through drops the value, on the main thread).
      */
     fun <T> work(
         core: () -> Reply<T>,
@@ -1435,7 +1438,13 @@ class CeremonyModel(
             deviceLeg = from.deviceLeg,
         )
         scope.launch {
-            val reply = withContext(worker) { onWorker(pending, core, dropped) }
+            var handed: Reply<T>? = null
+            val reply = try {
+                withContext(worker) { onWorker(pending, core, dropped).also { handed = it } }.also { handed = null }
+            } finally {
+                val lost = handed
+                if (lost is Reply.Done) dropped(lost.value)
+            }
             if (running === pending) running = null
             if (reply is Reply.Done && (stopped() || pending.discarded)) dropped(reply.value)
             if (stopped()) return@launch
@@ -1463,8 +1472,9 @@ class CeremonyModel(
      * and the call reaches core first (lead decision M5-54): a start, the self-test, Check a backup's
      * openBackup or Load registry snapshot's loadSnapshot, which core offers at home, then runs, and the second look finds the flag, so what it
      * made is discarded again here, on the worker, before its reply goes back (a cancelled scope, the
-     * holder's end, which cancels it before wipeAll, drops the reply on the main thread but cannot skip
-     * this); finish, revealProof, encryptBackup and verifyBackup, which core does not offer at home, halt
+     * holder's end, which cancels it before wipeAll, cannot skip this, and a Done value it gives back to
+     * that scope goes to dropped in work's finally, on the main thread); finish, revealProof,
+     * encryptBackup and verifyBackup, which core does not offer at home, halt
      * the slot there, and their reply is the halt status (M5-54's residual: the stop screen, fail closed). A discard during the call makes core
      * return discarded, and one after the second look found the call done in core, so its own core
      * discard took what the call made. A discard during a picked file's read, which makes no core call,

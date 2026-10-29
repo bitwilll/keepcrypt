@@ -10,9 +10,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Runnable
 
 // Test support for :screens' common tests (tasks/todo.md, M5 groups 14-16). The model's tests run it on
-// the test's own thread: its main scope is unconfined, so a long call's reply is handled at once, and
-// its worker holds each long call until the test runs it, so the test can act while "Working..."
-// shows. The clock, the offline monitor and the motion source are fakes the test moves; the UTC date is
+// the test's own thread: its main scope is unconfined, so a long call's reply is handled at once (or a
+// HeldMain's, which can keep it), and its worker holds each long call until the test runs it, so the
+// test can act while "Working..." shows. The clock, the offline monitor and the motion source are fakes the test moves; the UTC date is
 // vectors/kcr.json's. The tests that reach the slot do so through Core over the host library, one test
 // class per JVM (screens/build.gradle.kts), since a halt latches the process's slot for good.
 
@@ -60,6 +60,32 @@ internal class HeldWorker : CoroutineDispatcher() {
     fun runNext() {
         held.removeFirst().run()
         ran += 1
+    }
+}
+
+/**
+ * A main thread the test can hold: until held, it runs everything at once, as the unconfined scope does;
+ * once held, it keeps each continuation (a long call's start, its reply) until run, so the test can act
+ * between the worker's reply and the main thread's part of it.
+ */
+internal class HeldMain : CoroutineDispatcher() {
+    private val held = ArrayDeque<Runnable>()
+
+    /** Whether it keeps what is dispatched to it. */
+    var holding = false
+
+    /** How many continuations wait. */
+    val waiting: Int get() = held.size
+
+    override fun isDispatchNeeded(context: CoroutineContext): Boolean = holding
+
+    override fun dispatch(context: CoroutineContext, block: Runnable) {
+        held.addLast(block)
+    }
+
+    /** Runs every continuation waiting, and what each one dispatches here in turn. */
+    fun run() {
+        while (held.isNotEmpty()) held.removeFirst().run()
     }
 }
 
@@ -134,7 +160,7 @@ internal class FakeMotion : MotionSource {
     }
 }
 
-/** A model over fakes, and the fakes; scope is the model's main scope (unconfined, unless a test cancels its own). */
+/** A model over fakes, and the fakes; scope is the model's main scope (unconfined, unless a test gives its own: one it cancels, or a HeldMain's). */
 internal class Rig(scope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined)) {
     val clock = FakeClock()
     val date = FakeDate()

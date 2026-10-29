@@ -13394,6 +13394,31 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   PhoneMotionTest 1, FlowTest 7, CheckTest 2, BackupTest 1 with its age -d hand-off, SnapshotDrillTest 3,
   LifecycleTest 6, CrashTest killed as it must be, NativeTest 1, and the Camera2 check's four camera-client checks,
   its decode of the virtual scene's PNG not met and named, as android-local.sh allows).
+  Proof (M5 commit 20j, review fix, partial: local, kc37, Q76): (a) The holder's end (CeremonyHolder.onCleared: the
+  scope cancelled, then wipeAll) after the worker's second look at a picked file's read and before the main thread
+  took its reply left the read's bytes (an .age ciphertext, or a .kcr) unzeroed: withContext gives a cancelled scope
+  no result, so work's main-thread drop never ran, though work's KDoc said a dropped value goes to dropped on
+  whichever thread drops it (the E5 review, two reviewers; a held-main test failed at 20h). work now keeps the
+  worker's reply in a local until the main thread takes it, and a finally around the worker's call drops a Done value
+  still kept there, which only a cancellation leaves; it is a finally because KtFailOpen allows no catch there (rule
+  3: the gate refused a catch of CancellationException that rethrew). CeremonyHolder is unchanged. (b) That
+  main-thread drop, for a discard or a halt after the second look, was tested by nothing (20h's Proof: the tests'
+  unconfined scope answers at once). TestSupport's HeldMain is a main dispatcher a test can hold, so a test acts
+  between the worker's reply and the main thread's part: CheckBackupScreensTest's
+  aDiscardAfterTheWorkersSecondLookIsFoundOnTheMainThreadAndZeroesWhatItRead (a leave and going online: the bytes
+  zeroed, the start screen with its notice, nothing in core) and
+  theHoldersEndAfterTheWorkersSecondLookZeroesWhatItRead, and CheckBackupHaltTest, its own class since it halts (a
+  second long call after the second look: the bytes zeroed, the stop screen stays). Without the finally's drop the
+  holder's-end test fails; without the main-thread drop the discard and halt tests fail. The review's other surviving
+  mutant, work's `from` taken whatever screen shows, is equivalent for the one call a done starts (Load registry
+  snapshot's load, whose result and refusals each show a screen of their own), so nothing tests it. Locally, on this
+  commit's tree: the strict Gradle build of the five APKs and the JVM tests, :screens 146 in 20 classes, :app 11 in 4
+  for each flavour, none failed (:core-ffi and :secure-ui up to date); the gate clean. On kc37 (local,
+  android-local.sh exit 0 in 1444 s on 19k's tree, the stage's last, which holds this change): every class passed in
+  android-emulator.sh's order (ControlTest 3, CaptureTest 6 and 6 without control (c), PhoneMotionTest 1, FlowTest 7,
+  CheckTest 2, BackupTest 1 with its age -d hand-off, SnapshotDrillTest 3, LifecycleTest 6, CrashTest killed as it
+  must be, NativeTest 1, and the Camera2 check's four camera-client checks, its decode of the virtual scene's PNG not
+  met and named, as android-local.sh allows).
 - [ ] The CI `age -d` hand-off: for the CI throwaway seed only, the androidTest reads the backup passphrase from the
   in-process `Secret` and sends it as the instrumentation status value `kc_ci_throwaway_passphrase`. The workflow pipes
   `am instrument -r`'s output straight into `scripts/android-age-check.py`, which takes the value, feeds it to age 1.1.1

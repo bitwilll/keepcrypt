@@ -13,6 +13,9 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 
 /**
  * The CeremonyModel transitions of Check a backup (tasks/todo.md, M5 group 18; lead decision M5-48;
@@ -23,7 +26,8 @@ import kotlin.test.assertTrue
  * does not end in .age or its provider gives no size or one past core's limit, and after the read when
  * the read fails or runs past the limit (its bytes zeroed); the read on the worker behind "Working..."
  * (lead decision M5-70 (g)): a slow read holding no input and no second file, a leave or going online
- * during it zeroing what it read with no entry shown, and a file longer or shorter than its provider
+ * during it, or after it but before the main thread takes its reply, zeroing what it read with no entry
+ * shown, the holder's end in that gap zeroing it too, and a file longer or shorter than its provider
  * reports read whole and opened; the passphrase's entry behind the privacy
  * gate, eight first-fours on the letter pad, then core's opening behind "Working...": "Backup OK" with
  * the ceremony's fingerprint and the seed's Seal ID; a wrong passphrase, an entry that names no word and
@@ -191,6 +195,73 @@ class CheckBackupScreensTest {
             assertEquals(notice, away.model.state.value.notice)
             assertNoSession(notice.name + ": a discard during the read left something in core")
         }
+    }
+
+    /**
+     * A model at Home over a main thread the test holds, Check a backup's picker opened and closed (the
+     * app back, as on the phone), and file picked; its read made on the worker and its reply kept for the
+     * main thread, which has not run it.
+     */
+    private fun readReplyWaiting(main: HeldMain, scope: CoroutineScope, file: FakeFile): Rig {
+        val rig = Rig(scope).toHome()
+        rig.model.checkBackup(FakePickers())
+        rig.model.appLeft()
+        rig.model.appReturned()
+        main.holding = true
+        rig.model.backupPicked(file)
+        main.run()
+        assertEquals(1, rig.worker.waiting, "the read waits on the worker")
+        rig.worker.runNext()
+        assertEquals(1, file.reads)
+        assertEquals(1, main.waiting, "the read's reply waits for the main thread")
+        assertEquals(Screen.Working, rig.screen)
+        assertFalse(zeroed(file.given), "the bytes read wait for the main thread")
+        return rig
+    }
+
+    /**
+     * A leave or going online after the worker's second look found no discard, before the main thread
+     * takes the read's reply: the main thread finds the discard and zeroes what the read gave, shows no
+     * entry and ends on the start screen saying why (the main thread's drop, work).
+     */
+    @Test
+    fun aDiscardAfterTheWorkersSecondLookIsFoundOnTheMainThreadAndZeroesWhatItRead() {
+        val bytes = saved.file
+        val discards = listOf(
+            Notice.Left to { away: Rig -> away.model.appLeft() },
+            Notice.Offline to { away: Rig -> away.offline.set(false) },
+        )
+        for ((notice, discard) in discards) {
+            val main = HeldMain()
+            val file = FakeFile(NAME, bytes.size.toLong(), bytes)
+            val rig = readReplyWaiting(main, CoroutineScope(Job() + main), file)
+            discard(rig)
+            assertEquals(Screen.Working, rig.screen, notice.name + ": the reply is still to come")
+            main.run()
+            assertTrue(zeroed(file.given), notice.name + ": what the read gave was zeroed")
+            assertEquals(Screen.GoOffline, rig.screen, notice.name + ": no entry, the start screen")
+            assertEquals(notice, rig.model.state.value.notice)
+            assertNoSession(notice.name + ": a discard after the read left something in core")
+        }
+    }
+
+    /**
+     * The holder's end (CeremonyHolder.onCleared: the scope cancelled, then wipeAll) after the worker's
+     * second look, before the main thread takes the read's reply: the main thread's part is cancelled,
+     * and its cancellation zeroes what the read gave.
+     */
+    @Test
+    fun theHoldersEndAfterTheWorkersSecondLookZeroesWhatItRead() {
+        val bytes = saved.file
+        val main = HeldMain()
+        val scope = CoroutineScope(Job() + main)
+        val file = FakeFile(NAME, bytes.size.toLong(), bytes)
+        val rig = readReplyWaiting(main, scope, file)
+        scope.cancel()
+        rig.model.wipeAll()
+        main.run()
+        assertTrue(zeroed(file.given), "what the read gave was zeroed")
+        assertNoSession("the holder's end left something in core")
     }
 
     /**
