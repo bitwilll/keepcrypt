@@ -23,7 +23,7 @@ use keepcrypt_core::{
     SeedLength, SnapshotError, UrError, WatchOnlyExport, registry_key_is_test,
 };
 use keepcrypt_ffi::ceremony::{
-    Holds, Readback, Refusal, Registry, Reply, Revealed, Slot, StageKind,
+    HaltReason, Holds, Readback, Refusal, Registry, Reply, Revealed, Slot, StageKind,
 };
 use keepcrypt_ffi::wire;
 use qrcodegen_no_heap::{QrCode, QrCodeEcc, Version};
@@ -53,6 +53,8 @@ const HALTED: Holds = Holds {
     snapshot: false,
     backup: false,
 };
+/// The halt status of an internal halt: `HALTED`, then wire.rs's code 4 (its PINNED_HALTS).
+const HALTED_INTERNAL: [u8; 2] = [wire::HALTED, 4];
 
 /// A call's result, or the test fails naming the reply's variant (never a secret).
 fn done<T>(reply: Reply<T>) -> T {
@@ -62,7 +64,7 @@ fn done<T>(reply: Reply<T>) -> T {
     }
 }
 
-/// The reply's variant alone.
+/// The reply's variant alone (a halt's reason aside).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Got {
     Done,
@@ -76,7 +78,7 @@ fn got<T>(reply: Reply<T>) -> Got {
         Reply::Done(_) => Got::Done,
         Reply::Refused(refusal) => Got::Refused(refusal),
         Reply::Discarded => Got::Discarded,
-        Reply::Halted => Got::Halted,
+        Reply::Halted(_) => Got::Halted,
     }
 }
 
@@ -525,7 +527,10 @@ fn ffi_every_exit_path_empties_the_slot() {
         let slot = Slot::new();
         assert_eq!(halt(&slot), Got::Halted, "{what}");
         assert_eq!(slot.holds(), HALTED, "{what}");
-        assert_eq!(got(slot.discard()), Got::Halted, "{what}: the halt latches");
+        assert!(
+            matches!(slot.discard(), Reply::Halted(HaltReason::Internal)),
+            "{what}: the halt latches, as internal"
+        );
         assert_eq!(
             got(slot.start(SeedLength::Words12, Mode::DiceOnly)),
             Got::Halted,
@@ -537,7 +542,7 @@ fn ffi_every_exit_path_empties_the_slot() {
         (
             "an op the table does not hold",
             |slot| match slot.dispatch(999, &[])[..] {
-                [wire::HALTED] => Got::Halted,
+                [wire::HALTED, 4] => Got::Halted,
                 _ => Got::Done,
             },
             HALTED,
@@ -803,8 +808,9 @@ impl Drop for PanicsOnDrop {
 
 // A poisoned lock halts (todo.md, M5 group 8): a long call that a discard overtook drops its result
 // under the lock, and a panic in that drop poisons it, so the next call's lock finds the
-// PoisonError. It halts there: the kept `Wiped` goes and `Halted` latches, a discard and a start
-// included. The panic ends the call's own thread, as it would end the boundary's call.
+// PoisonError. It halts there, as a panic (M5 commit U3a): the kept `Wiped` goes and `Halted`
+// latches, a discard and a start included. The panic ends the call's own thread, as it would end
+// the boundary's call.
 #[test]
 fn ffi_a_poisoned_lock_halts() {
     let slot = Slot::new();
@@ -829,7 +835,10 @@ fn ffi_a_poisoned_lock_halts() {
     assert_eq!(discarded, Got::Done, "the discard overtook the call");
     assert!(panicked, "the result's drop panicked under the lock");
     assert_eq!(slot.holds(), HALTED, "the poisoned lock halted the slot");
-    assert_eq!(got(slot.discard()), Got::Halted, "the halt latches");
+    assert!(
+        matches!(slot.discard(), Reply::Halted(HaltReason::Panic)),
+        "the halt latches, as a panic"
+    );
     assert_eq!(
         got(slot.start(SeedLength::Words12, Mode::DiceOnly)),
         Got::Halted
@@ -1798,11 +1807,11 @@ fn ffi_dispatch_status_ops() {
         (wire::COMMIT, &[][..]),
     ] {
         let slot = Slot::new();
-        assert_eq!(slot.dispatch(op, input)[..], [wire::HALTED], "op {op}");
+        assert_eq!(slot.dispatch(op, input)[..], HALTED_INTERNAL, "op {op}");
         assert_eq!(slot.holds(), HALTED, "op {op}");
         assert_eq!(
             slot.dispatch(wire::WIPE_ALL, &[])[..],
-            [wire::HALTED],
+            HALTED_INTERNAL,
             "op {op}"
         );
     }
@@ -2759,20 +2768,20 @@ fn ffi_wire_malformed_inputs_halt() {
             setup(&slot);
             assert_eq!(
                 slot.dispatch(op, &input)[..],
-                [wire::HALTED],
+                HALTED_INTERNAL,
                 "op {op}, input {input:?}"
             );
             assert_eq!(slot.holds(), HALTED, "op {op}, input {input:?}");
             assert_eq!(
                 slot.dispatch(wire::WIPE_ALL, &[])[..],
-                [wire::HALTED],
+                HALTED_INTERNAL,
                 "op {op}: the halt latches"
             );
         }
     }
     for op in [0, 39, u32::MAX] {
         let slot = Slot::new();
-        assert_eq!(slot.dispatch(op, &[])[..], [wire::HALTED], "op {op}");
+        assert_eq!(slot.dispatch(op, &[])[..], HALTED_INTERNAL, "op {op}");
         assert_eq!(slot.holds(), HALTED, "op {op}");
     }
 }

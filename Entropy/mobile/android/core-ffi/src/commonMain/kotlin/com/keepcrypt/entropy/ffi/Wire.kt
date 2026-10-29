@@ -4,9 +4,10 @@ package com.keepcrypt.entropy.ffi
  * The bridge's bytes, decoded once (tasks/todo.md, M5 groups 9 and 13; the re-plan's M5-21): every
  * reply starts with its status byte, and an OK reply goes on in its op's layout, each defined once in
  * keepcrypt-ffi's wire.rs (its module comment and each op's doc). This file copies wire.rs's tables,
- * the status bytes, the op numbers and the refusal codes, and WireTablesTest pins each copy against
- * wire.rs's own source, its PINNED table among them. A reply that does not fit its layout is the
- * bridge's bug: the slot is halted (Core.halt) and KcHalt thrown, so it fails closed (rule 3).
+ * the status bytes, the op numbers, the refusal codes and the halt codes, and WireTablesTest pins each
+ * copy against wire.rs's own source, its PINNED and PINNED_HALTS tables among them. A reply that does
+ * not fit its layout is the bridge's bug: the slot is halted (Core.halt) and KcHalt thrown, so it fails
+ * closed (rule 3).
  */
 internal object Wire {
     /** The call gave its result. */
@@ -18,7 +19,7 @@ internal object Wire {
     /** A discard or a wipe came during a long call, whose result was dropped. */
     const val DISCARDED = 2
 
-    /** The slot halted, now or before. */
+    /** The slot halted, now or before. The code of the reason it latched follows (HaltReason). */
     const val HALTED = 3
 
     /** An op the table does not hold, on which the slot halts (keepcrypt-jni's HALT). */
@@ -135,6 +136,33 @@ enum class Refusal(val code: Int, val group: RefusalGroup) {
                 if (refusal.code == code) return refusal
             }
             Core.halt()
+        }
+    }
+}
+
+/**
+ * Why the slot halted (docs/mobile-apps.md, "When something fails (Android)"): the code byte after the
+ * halt status, as wire.rs's halt_code gives it, of the first halt, which the slot latches; the stop
+ * screen draws one fixed line for each. A fixed code, the kind of failure alone: nothing about the
+ * halted call's input or output reaches it. The names are wire.rs's HaltReason's, so WireTablesTest
+ * rebuilds wire.rs's PINNED_HALTS from them.
+ */
+enum class HaltReason(val code: Int) {
+    KnownAnswerTest(1),
+    EntropySource(2),
+    HealthTest(3),
+    Internal(4),
+    ExportSelfCheck(5),
+    Panic(6),
+    ;
+
+    internal companion object {
+        /** The reason whose code is code; a code the app does not know is internal. */
+        fun of(code: Int): HaltReason {
+            for (reason in entries) {
+                if (reason.code == code) return reason
+            }
+            return Internal
         }
     }
 }

@@ -1,6 +1,7 @@
 package com.keepcrypt.entropy.screens
 
 import com.keepcrypt.entropy.ffi.Core
+import com.keepcrypt.entropy.ffi.HaltReason
 import com.keepcrypt.entropy.ffi.KcHalt
 import com.keepcrypt.entropy.ffi.Mode
 import com.keepcrypt.entropy.ffi.Refusal
@@ -394,9 +395,10 @@ class CeremonyModelTest {
         val rig = Rig().startUp()
         rig.model.recordingChanged(true)
         // The halt status as Core throws it (this slot is left live: CeremonyModelHaltTest halts a real one).
-        rig.model.work<Unit>({ throw KcHalt() }) { fail("a halted call gives no value") }
+        rig.model.work<Unit>({ throw KcHalt(HaltReason.HealthTest) }) { fail("a halted call gives no value") }
         rig.worker.run()
         assertEquals(Screen.Stop, rig.screen)
+        assertEquals(HaltReason.HealthTest, rig.model.state.value.halt, "the stop screen keeps the halt's reason")
         assertTrue(rig.model.state.value.recording, "the stop screen keeps the recording flag")
         rig.model.appLeft()
         rig.model.appReturned()
@@ -408,8 +410,39 @@ class CeremonyModelTest {
         rig.clock.now = 10 * Timers.WIPE_MILLIS
         rig.model.tick()
         assertEquals(Screen.Stop, rig.screen)
+        assertEquals(HaltReason.HealthTest, rig.model.state.value.halt)
         assertNull(rig.model.state.value.overlay)
         assertNull(rig.model.state.value.notice)
+    }
+
+    /**
+     * The stop screen names why the slot halted (M5 commit U3a; docs/mobile-apps.md, "When something
+     * fails (Android)"): KcHalt's reason, as a long call's halt status carries it, reaches the model,
+     * whose stop screen keeps it, and its line is that reason's fixed text, one per reason, none
+     * another's; with no reason, internal's. The slot is left live (a fake throws).
+     */
+    @Test
+    fun theStopScreenNamesEachHaltsReasonInItsOwnFixedLine() {
+        val lines = mapOf(
+            HaltReason.KnownAnswerTest to "A known-answer test failed.",
+            HaltReason.EntropySource to "The entropy source failed.",
+            HaltReason.HealthTest to "An entropy health test failed.",
+            HaltReason.Internal to "An internal check failed.",
+            HaltReason.ExportSelfCheck to "The watch-only export failed its self-check.",
+            HaltReason.Panic to "The app's core stopped unexpectedly.",
+        )
+        assertEquals(HaltReason.entries.toSet(), lines.keys, "a line for every reason")
+        assertEquals(lines.size, lines.values.toSet().size, "no line twice")
+        for (reason in HaltReason.entries) {
+            val rig = Rig().startUp()
+            assertNull(rig.model.state.value.halt, "no reason before a halt")
+            rig.model.work<Unit>({ throw KcHalt(reason) }) { fail("a halted call gives no value") }
+            rig.worker.run()
+            assertEquals(Screen.Stop, rig.screen, reason.name)
+            assertEquals(reason, rig.model.state.value.halt, reason.name)
+            assertEquals(lines.getValue(reason), stopLine(rig.model.state.value.halt), reason.name)
+        }
+        assertEquals(lines.getValue(HaltReason.Internal), stopLine(null), "no reason: internal's line")
     }
 
     @Test

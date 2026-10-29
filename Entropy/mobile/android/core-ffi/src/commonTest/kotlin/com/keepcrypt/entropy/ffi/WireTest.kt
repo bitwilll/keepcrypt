@@ -41,7 +41,27 @@ class WireTest {
         done(Core.decode(byteArrayOf(0)) { })
         assertEquals(Refusal.WrongCode, refused(Core.decode(byteArrayOf(1, 2)) { }))
         assertIs<Reply.Discarded>(Core.decode(byteArrayOf(2)) { })
-        assertFailsWith<KcHalt> { Core.decode(byteArrayOf(3)) { } }
+        assertEquals(HaltReason.KnownAnswerTest, assertFailsWith<KcHalt> { Core.decode(byteArrayOf(3, 1)) { } }.reason)
+    }
+
+    /**
+     * The halt status's code (M5 commit U3a): every code wire.rs gives decodes to its reason, carried by
+     * KcHalt, and a code the app does not know (0, 7, 255) is internal. No call reaches the bridge: a
+     * halt status of two bytes throws without halting it again.
+     */
+    @Test
+    fun everyHaltCodeDecodesAndAnUnknownOneIsInternal() {
+        for (reason in HaltReason.entries) {
+            val halt = assertFailsWith<KcHalt> { Core.decode(byteArrayOf(3, reason.code.toByte())) { } }
+            assertEquals(reason, halt.reason)
+            assertEquals(reason, HaltReason.of(reason.code))
+        }
+        for (code in listOf(0, 7, 255)) {
+            val halt = assertFailsWith<KcHalt> { Core.decode(byteArrayOf(3, code.toByte())) { } }
+            assertEquals(HaltReason.Internal, halt.reason, "code " + code)
+            assertEquals(HaltReason.Internal, HaltReason.of(code), "code " + code)
+        }
+        assertEquals((1..6).toList(), HaltReason.entries.map { it.code })
     }
 
     @Test

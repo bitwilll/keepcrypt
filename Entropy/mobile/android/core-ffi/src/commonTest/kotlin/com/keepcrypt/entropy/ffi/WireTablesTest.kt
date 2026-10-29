@@ -7,9 +7,10 @@ import kotlin.test.assertSame
 /**
  * Wire.kt's copies of wire.rs's tables (tasks/todo.md, M5 group 9: "The status code table is pinned by
  * a Rust test and Kotlin's copy by a JVM test"), pinned against keepcrypt-ffi's own source,
- * ffi/src/wire.rs: the four status bytes, the op table (every pub const ...: u32, in order), and the
- * refusal codes against its PINNED table, name for name, code for code and in order, so a code
- * changed, swapped, added or dropped on either side fails here before it reaches a phone.
+ * ffi/src/wire.rs: the four status bytes, the op table (every pub const ...: u32, in order), the
+ * refusal codes against its PINNED table and the halt codes against its PINNED_HALTS (M5 commit U3a),
+ * name for name, code for code and in order, so a code changed, swapped, added or dropped on either
+ * side fails here before it reaches a phone.
  */
 class WireTablesTest {
     private val wire = entropyFile("ffi/src/wire.rs")
@@ -98,5 +99,18 @@ class WireTablesTest {
         assertEquals(count, pinned.size, "every entry of PINNED read")
         assertEquals(pinned, Refusal.entries.map { rustName(it) to it.code })
         for (refusal in Refusal.entries) assertSame(refusal, Refusal.of(refusal.code))
+    }
+
+    @Test
+    fun theHaltCodesAreWireRsPinnedHalts() {
+        val start = wire.indexOf("const PINNED_HALTS: [(&str, u8); ")
+        val end = wire.indexOf("];", start)
+        assertEquals(true, start >= 0 && end > start, "wire.rs's PINNED_HALTS table")
+        val pinned = Regex("\\(\"([A-Za-z]+)\", (\\d+)\\),").findAll(wire.substring(start, end))
+            .map { it.groupValues[1] to it.groupValues[2].toInt() }.toList()
+        val count = Regex("const PINNED_HALTS: \\[\\(&str, u8\\); (\\d+)\\]").find(wire)?.groupValues?.get(1)?.toInt()
+        assertEquals(count, pinned.size, "every entry of PINNED_HALTS read")
+        assertEquals(pinned, HaltReason.entries.map { it.name to it.code })
+        for (reason in HaltReason.entries) assertSame(reason, HaltReason.of(reason.code))
     }
 }

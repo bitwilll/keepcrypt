@@ -16,6 +16,7 @@
 use std::sync::Once;
 
 use keepcrypt_ffi::Zeroizing;
+use keepcrypt_ffi::ceremony::HaltReason;
 #[cfg(not(test))]
 use keepcrypt_ffi::dispatch;
 
@@ -23,13 +24,14 @@ use keepcrypt_ffi::dispatch;
 static QUIET: Once = Once::new();
 
 /// `op` with `input` on the phone's slot, and the reply's bytes (keepcrypt-ffi's wire.rs): the one
-/// call per boundary (M5-21). A panic in the call halts the slot and gives the halt status.
+/// call per boundary (M5-21). A panic in the call halts the slot as a panic and gives the halt
+/// status, which names the slot's first halt (a panic's, unless the call had halted it before).
 pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {
     let input = Zeroizing::new(input);
     QUIET.call_once(|| std::panic::set_hook(Box::new(|_| {})));
     match std::panic::catch_unwind(|| dispatch(op, &input)) {
         Ok(reply) => reply,
-        Err(_) => keepcrypt_ffi::halt(),
+        Err(_) => keepcrypt_ffi::halt(HaltReason::Panic),
     }
 }
 
@@ -87,6 +89,10 @@ mod tests {
     /// The scenarios' tests, by their full names.
     const READY: &str = "tests::scenario_a_panic_inside_a_ready_call";
     const FIRST: &str = "tests::scenario_a_panic_in_the_first_call";
+    /// wire.rs's halt codes (its PINNED_HALTS): the halt status of an internal halt, and of a
+    /// caught panic's.
+    const INTERNAL: [u8; 2] = [HALTED, 4];
+    const PANIC: [u8; 2] = [HALTED, 6];
 
     /// kcr.json's rolls of gate seed dice-50-words12, as faces (rule 12: vectors/ only).
     fn rolls() -> Vec<u8> {
@@ -111,8 +117,9 @@ mod tests {
     /// Group 10's second item and group 11's halt by panic, by M5-38's route: the real slot driven
     /// to Ready through keepcrypt-ffi's dispatch on gate seed dice-50-words12 (12 words, dice only,
     /// Skip), then the planted panic. The unwind drops the word page the call held, the catch
-    /// halts the slot, which holds nothing more, and every later call halts. It runs only in the
-    /// child process a test below starts, since the slot is the process's one.
+    /// halts the slot as a panic, which holds nothing more, and every later call halts with the
+    /// panic's code (M5 commit U3a), the shell's bug of an op the table does not hold included. It
+    /// runs only in the child process a test below starts, since the slot is the process's one.
     #[test]
     fn scenario_a_panic_inside_a_ready_call() {
         if env::var_os(CHILD).is_none() {
@@ -129,7 +136,7 @@ mod tests {
         assert_eq!(FFI.holds().stage, StageKind::Ready);
         assert!(!OBSERVED.load(Ordering::SeqCst), "nothing observed yet");
 
-        assert_eq!(call(PLANTED, &[]), [HALTED]);
+        assert_eq!(call(PLANTED, &[]), PANIC);
         assert!(
             OBSERVED.load(Ordering::SeqCst),
             "the unwind dropped the Ready call's word page"
@@ -144,23 +151,24 @@ mod tests {
         assert_eq!(FFI.holds(), halted);
         // Every op of the table, 1-38, and two it does not hold; then a start with its input.
         for op in 0..=39 {
-            assert_eq!(call(op, &[]), [HALTED], "op {op}");
+            assert_eq!(call(op, &[]), PANIC, "op {op}");
         }
-        assert_eq!(call(wire::START, &[12, 2]), [HALTED]);
+        assert_eq!(call(wire::START, &[12, 2]), PANIC);
         assert_eq!(FFI.holds(), halted);
     }
 
     /// The hook is set before the first catch: on a fresh slot the process's first call through
-    /// guarded is the planted one, whose page call gives no page at Idle, and it panics. The catch
-    /// gives the halt status with the slot Halted, and the test below sees nothing on stderr. It
-    /// runs only in the child process that test starts.
+    /// guarded is the planted one, whose page call gives no page at Idle (it halts the slot, as
+    /// internal), and it panics. The catch gives the halt status with the slot Halted, naming that
+    /// first halt (M5 commit U3a), and the test below sees nothing on stderr. It runs only in the
+    /// child process that test starts.
     #[test]
     fn scenario_a_panic_in_the_first_call() {
         if env::var_os(CHILD).is_none() {
             return;
         }
         assert_eq!(FFI.holds().stage, StageKind::Idle);
-        assert_eq!(call(PLANTED, &[]), [HALTED]);
+        assert_eq!(call(PLANTED, &[]), INTERNAL);
         assert!(!OBSERVED.load(Ordering::SeqCst), "no page at Idle");
         assert_eq!(FFI.holds().stage, StageKind::Halted);
     }

@@ -3,10 +3,11 @@ package com.keepcrypt.entropy.ffi
 /**
  * The halt status (tasks/todo.md, M5 "Built into this plan"; Q57): the slot has halted, now or
  * before, and has dropped everything it held. Only the stop screen follows, and the process's end.
- * An Error, so no ordinary catch takes it: the only catch of it in the app is CeremonyModel.call's
- * (the gate allows no other). Its text is fixed, never built from runtime values.
+ * reason is the slot's, its first halt's, which the stop screen names in fixed text. An Error, so no
+ * ordinary catch takes it: the only catch of it in the app is CeremonyModel.call's (the gate allows
+ * no other). Its text is fixed, never built from runtime values.
  */
-class KcHalt : Error("The session halted.")
+class KcHalt(val reason: HaltReason) : Error("The session halted.")
 
 /**
  * A call's result (Q53's status byte): Done with the op's reply, Refused with what the user or a file
@@ -270,10 +271,10 @@ object Core {
     const val SNAPSHOT_MAX_BYTES = 122 + 18 * (1 shl 22)
 
     /** Halts the slot (an op the table does not hold) and throws KcHalt: the shell's way to fail
-     * closed on a call or reply it cannot make sense of. */
+     * closed on a call or reply it cannot make sense of. Its reason is the slot's: internal, unless
+     * the slot had halted before, whose first reason it keeps. */
     fun halt(): Nothing {
-        Native.call(Wire.HALT, ByteArray(0))
-        throw KcHalt()
+        throw KcHalt(reasonOf(Native.call(Wire.HALT, ByteArray(0))))
     }
 
     fun selfTest(): Reply<Unit> = status(Wire.SELF_TEST, EMPTY)
@@ -447,9 +448,10 @@ object Core {
      * A reply as call reads it: the status byte, then for OK the op's layout, read whole (the
      * reply's bytes zeroed once decoded; a layout that does not fit, at any field or at the end,
      * zeroes them and every value already decoded from them, then halts); a refusal is its code, a
-     * discard the status alone. The halt status throws KcHalt; anything else (no status byte, a
-     * refusal or a discard of another length, a status wire.rs does not define) halts the slot.
-     * Internal so that WireMalformedTest can hand it replies the bridge never gives.
+     * discard the status alone. The halt status throws KcHalt with its reason's code (a code the app
+     * does not know is internal); anything else (no status byte, a refusal or a halt status with no
+     * code or a byte after it, a discard of another length, a status wire.rs does not define) halts
+     * the slot. Internal so that WireMalformedTest can hand it replies the bridge never gives.
      */
     internal fun <T> decode(reply: ByteArray, layout: (Reader) -> T): Reply<T> {
         if (reply.isEmpty()) halt()
@@ -469,8 +471,17 @@ object Core {
                 if (reply.size != 1) halt()
                 Reply.Discarded
             }
-            Wire.HALTED -> throw KcHalt()
+            Wire.HALTED -> {
+                if (reply.size != 2) halt()
+                throw KcHalt(reasonOf(reply))
+            }
             else -> halt()
         }
+    }
+
+    /** The reason a halt status of two bytes names (HaltReason.of); any other reply's is internal. */
+    private fun reasonOf(reply: ByteArray): HaltReason {
+        if (reply.size != 2 || reply[0].toInt() != Wire.HALTED) return HaltReason.Internal
+        return HaltReason.of(reply[1].toInt() and 0xFF)
     }
 }

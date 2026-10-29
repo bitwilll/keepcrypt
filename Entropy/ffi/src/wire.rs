@@ -4,7 +4,8 @@
 //! Native code never throws: a halt is a status like any other.
 //!
 //! - **Status.** `OK`, then the op's reply below (nothing, for a status-only op); `REFUSED`, then
-//!   one code byte (`refusal_code`'s table); `DISCARDED` or `HALTED` alone.
+//!   one code byte (`refusal_code`'s table); `DISCARDED` alone; `HALTED`, then one code byte, the
+//!   reason the slot latched at its first halt (`halt_code`'s table).
 //! - **Inputs** are read in place, never copied. An op the table does not hold, or an input that
 //!   is not its exact layout (a length, a value out of its range, a text that is not UTF-8), is
 //!   the shell's bug and halts (fail closed), as does a reply that does not fit its own layout.
@@ -41,8 +42,8 @@ use keepcrypt_core::{
 use zeroize::Zeroizing;
 
 use crate::ceremony::{
-    Challenge, DeviceProgress, DiceProgress, FFI, Halt, Opened, Readback, Refusal, Registry, Reply,
-    Revealed, Slot, Summary, WordPage,
+    Challenge, DeviceProgress, DiceProgress, FFI, Halt, HaltReason, Opened, Readback, Refusal,
+    Registry, Reply, Revealed, Slot, Summary, WordPage,
 };
 use crate::qr::{self, Matrix};
 
@@ -52,7 +53,8 @@ pub const OK: u8 = 0;
 pub const REFUSED: u8 = 1;
 /// A discard or a wipe came during a long call, whose result was dropped.
 pub const DISCARDED: u8 = 2;
-/// The slot halted, now or before: the stop screen, and the process's end.
+/// The slot halted, now or before: the stop screen, and the process's end. The code of the reason
+/// it latched follows.
 pub const HALTED: u8 = 3;
 
 /// The Seal ID's length: 8 Crockford characters.
@@ -157,27 +159,25 @@ pub fn dispatch(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>> {
     FFI.dispatch(op, input)
 }
 
-/// Halts the phone's slot, and the halt status: keepcrypt-guard's after a caught panic.
-pub fn halt() -> Zeroizing<Vec<u8>> {
-    FFI.halted()
+/// Halts the phone's slot for `reason`, and the halt status: keepcrypt-guard's after a caught
+/// panic.
+pub fn halt(reason: HaltReason) -> Zeroizing<Vec<u8>> {
+    FFI.halted(reason)
 }
 
 impl Slot {
-    /// `op` with `input` on this slot, and the reply's bytes. Whatever halts here halts the slot.
+    /// `op` with `input` on this slot, and the reply's bytes. Whatever halts here halts the slot,
+    /// as internal.
     pub fn dispatch(&self, op: u32, input: &[u8]) -> Zeroizing<Vec<u8>> {
         match self.reply(op, input) {
             Ok(reply) => reply,
-            Err(Halt) => self.halted(),
+            Err(Halt) => self.halted(HaltReason::Internal),
         }
     }
 
-    /// Halts this slot, and the halt status: `Slot::halt` gives `Halted` alone.
-    fn halted(&self) -> Zeroizing<Vec<u8>> {
-        match self.halt::<()>() {
-            Reply::Done(()) | Reply::Refused(_) | Reply::Discarded | Reply::Halted => {
-                Zeroizing::new(vec![HALTED])
-            }
-        }
+    /// Halts this slot for `reason`, and the halt status with the reason it latched.
+    fn halted(&self, reason: HaltReason) -> Zeroizing<Vec<u8>> {
+        halt_status(self.halt(reason))
     }
 
     /// `op`'s call on `input`, read in place, and its reply.
@@ -357,7 +357,8 @@ fn ok(layout: impl Fn(&mut Out) -> Result<(), Halt>) -> Result<Zeroizing<Vec<u8>
 }
 
 /// A call's reply: `OK` and its result as `layout` lays it out, a refusal and its code,
-/// `DISCARDED` or `HALTED`. The result is dropped (and so wiped) once it is written.
+/// `DISCARDED`, or `HALTED` and its reason's code. The result is dropped (and so wiped) once it is
+/// written.
 fn reply<T>(
     made: Reply<T>,
     layout: impl Fn(&mut Out, &T) -> Result<(), Halt>,
@@ -366,7 +367,27 @@ fn reply<T>(
         Reply::Done(made) => ok(|out| layout(out, &made)),
         Reply::Refused(refusal) => Ok(Zeroizing::new(vec![REFUSED, refusal_code(refusal)?])),
         Reply::Discarded => Ok(Zeroizing::new(vec![DISCARDED])),
-        Reply::Halted => Ok(Zeroizing::new(vec![HALTED])),
+        Reply::Halted(reason) => Ok(halt_status(reason)),
+    }
+}
+
+/// The halt status: `HALTED`, then the code of the reason the slot latched.
+fn halt_status(reason: HaltReason) -> Zeroizing<Vec<u8>> {
+    Zeroizing::new(vec![HALTED, halt_code(reason)])
+}
+
+/// The code byte after `HALTED`, one per reason (Kotlin's Wire.kt holds the same table, and draws
+/// the stop screen's fixed line for each): 1 a known-answer test, 2 the entropy source, 3 a health
+/// test, 4 internal, 5 the watch-only export's self-check, 6 a caught panic. A fixed code: nothing
+/// about the halted call's input or output reaches it.
+fn halt_code(reason: HaltReason) -> u8 {
+    match reason {
+        HaltReason::KnownAnswerTest => 1,
+        HaltReason::EntropySource => 2,
+        HaltReason::HealthTest => 3,
+        HaltReason::Internal => 4,
+        HaltReason::ExportSelfCheck => 5,
+        HaltReason::Panic => 6,
     }
 }
 
@@ -381,7 +402,7 @@ fn then<T, U>(made: Reply<T>, ready: impl FnOnce(T) -> Result<U, Halt>) -> Resul
         Reply::Done(made) => Reply::Done(ready(made)?),
         Reply::Refused(refusal) => Reply::Refused(refusal),
         Reply::Discarded => Reply::Discarded,
-        Reply::Halted => Reply::Halted,
+        Reply::Halted(reason) => Reply::Halted(reason),
     })
 }
 
@@ -795,6 +816,62 @@ mod tests {
                 "{error:?}"
             );
         }
+    }
+
+    /// The halt code table as Kotlin's Wire.kt copies it (M5 commit U3a): every reason by name, and
+    /// its code. A changed, swapped or reused code fails here before it reaches a phone.
+    const PINNED_HALTS: [(&str, u8); 6] = [
+        ("KnownAnswerTest", 1),
+        ("EntropySource", 2),
+        ("HealthTest", 3),
+        ("Internal", 4),
+        ("ExportSelfCheck", 5),
+        ("Panic", 6),
+    ];
+
+    // The halt status carries its reason's code (todo.md, M5 commit U3a): each reason's, pinned,
+    // none twice and none 0, so a missing byte is no reason.
+    #[test]
+    fn the_halt_code_table_is_pinned() {
+        let table: Vec<(String, u8)> = HaltReason::ALL
+            .iter()
+            .map(|&reason| (format!("{reason:?}"), halt_code(reason)))
+            .collect();
+        let pinned: Vec<(String, u8)> = PINNED_HALTS
+            .iter()
+            .map(|&(name, code)| (name.to_owned(), code))
+            .collect();
+        assert_eq!(table, pinned);
+        let mut codes: Vec<u8> = PINNED_HALTS.iter().map(|&(_, code)| code).collect();
+        codes.sort_unstable();
+        codes.dedup();
+        assert_eq!(codes.len(), PINNED_HALTS.len(), "no code twice");
+        assert!(!codes.contains(&0), "0 is no code");
+        for reason in HaltReason::ALL {
+            let status = status(Reply::Halted(reason));
+            assert!(
+                matches!(status.as_deref().map(Vec::as_slice), Ok(&[HALTED, code]) if code == halt_code(reason)),
+                "{reason:?}"
+            );
+        }
+    }
+
+    // The halt status names the first halt's reason (todo.md, M5 commit U3a): an op the table does
+    // not hold, an input that is not its layout and a call in a stage that does not offer it halt
+    // as internal, and a later halt's reason, a caught panic's, never replaces it; a panic's halt
+    // on a live slot gives its own.
+    #[test]
+    fn the_halt_status_names_the_first_halts_reason() {
+        for (op, input) in [(0, &[][..]), (START, &[13, 2][..]), (COMMIT, &[][..])] {
+            let slot = Slot::new();
+            assert_eq!(slot.dispatch(op, input)[..], [HALTED, 4], "op {op}");
+            assert_eq!(slot.halted(HaltReason::Panic)[..], [HALTED, 4], "op {op}");
+            assert_eq!(slot.dispatch(SELF_TEST, &[])[..], [HALTED, 4], "op {op}");
+        }
+        let slot = Slot::new();
+        assert_eq!(slot.halted(HaltReason::Panic)[..], [HALTED, 6]);
+        assert_eq!(slot.dispatch(0, &[])[..], [HALTED, 6]);
+        assert_eq!(slot.dispatch(WIPE_ALL, &[])[..], [HALTED, 6]);
     }
 
     // The op numbers (M5-21), pinned as Kotlin's Native.call will send them: 1-38, each once.

@@ -13,8 +13,8 @@
 //!   failed closed. A poisoned lock is matched and halts (`lock`).
 //! - **Halts and refusals** (`refused`, app.rs:235's table, tested against it): a refusal of what
 //!   the user or a file supplied leaves the stage as it was and returns core's fixed error; a halt
-//!   drops everything held and latches `Halted`, which every later call returns. Only the process's
-//!   end leaves it.
+//!   drops everything held and latches `Halted` with the first halt's reason (`HaltReason`, a fixed
+//!   code the stop screen names), which every later call returns. Only the process's end leaves it.
 //! - **The kept `Wiped`** (Q26; todo.md:1404-1406): Match found and Cannot check keep it, a
 //!   collision replaces it, and only Skip or a passed check drops it. After any of those three the
 //!   slot is at `Restart`, where only the restart is offered, the collision's report before it, as
@@ -99,8 +99,8 @@ enum Stage {
     Restart,
     /// A long call runs with the lock released: only a discard, `wipe_all` or a halt may come.
     Busy,
-    /// After a halt: nothing is held, and every call returns `Halted`.
-    Halted,
+    /// After a halt: nothing is held, and every call returns `Halted` with the first halt's reason.
+    Halted(HaltReason),
 }
 
 /// What the words' steps hold beside the session (app.rs's `Steps`).
@@ -150,24 +150,95 @@ pub struct Holds {
 }
 
 /// What a call gives back: its result; a refusal, with the stage as it was; `Discarded`, when a
-/// discard or wipe came during a long call; or `Halted`. Its `Debug` names the variant only.
+/// discard or wipe came during a long call; or `Halted`, with the reason the slot latched. Its
+/// `Debug` names the variant only.
 #[must_use]
 pub enum Reply<T> {
     Done(T),
     Refused(Refusal),
     Discarded,
-    Halted,
+    Halted(HaltReason),
 }
 
 impl<T> fmt::Debug for Reply<T> {
-    /// The variant and a refusal's fixed error; never a result, which may be secret.
+    /// The variant, a refusal's fixed error and a halt's fixed reason; never a result, which may be
+    /// secret.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Reply::Done(_) => f.write_str("Reply::Done"),
             Reply::Refused(refusal) => write!(f, "Reply::Refused({refusal:?})"),
             Reply::Discarded => f.write_str("Reply::Discarded"),
-            Reply::Halted => f.write_str("Reply::Halted"),
+            Reply::Halted(reason) => write!(f, "Reply::Halted({reason:?})"),
         }
+    }
+}
+
+/// Why a slot halted (docs/mobile-apps.md, "When something fails (Android)"; pi-firmware.md,
+/// "Finish and halts"): the stop screen names it in fixed text. A fixed code, the kind of failure
+/// alone: nothing about the halted call's input or output reaches it. The slot latches the first
+/// halt's, and wire.rs's `halt_code` gives each its byte.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HaltReason {
+    /// A known-answer test failed (core's `Kat`).
+    KnownAnswerTest,
+    /// The entropy source failed (core's `Source`).
+    EntropySource,
+    /// A health test failed (core's `Health`).
+    HealthTest,
+    /// Every other halt: core's other errors and the shell's bugs (a call in a stage that does not
+    /// offer it, an input or a reply that is not its layout).
+    Internal,
+    /// The watch-only export failed its self-check (core's `ExportSelfCheck`).
+    ExportSelfCheck,
+    /// A panic: keepcrypt-guard's catch, or a lock a panic poisoned.
+    Panic,
+}
+
+impl HaltReason {
+    /// Every reason, in the code table's order.
+    pub const ALL: [HaltReason; 6] = [
+        HaltReason::KnownAnswerTest,
+        HaltReason::EntropySource,
+        HaltReason::HealthTest,
+        HaltReason::Internal,
+        HaltReason::ExportSelfCheck,
+        HaltReason::Panic,
+    ];
+}
+
+impl From<CoreError> for HaltReason {
+    /// A core error's halt, by its kind alone: a known-answer test, the entropy source, a health
+    /// test and the export's self-check their own, every other error internal (a refusal included,
+    /// which halts only where a call that took the session meets it).
+    fn from(error: CoreError) -> Self {
+        match error {
+            CoreError::Kat(_) => HaltReason::KnownAnswerTest,
+            CoreError::Source(_) => HaltReason::EntropySource,
+            CoreError::Health(_) => HaltReason::HealthTest,
+            CoreError::ExportSelfCheck => HaltReason::ExportSelfCheck,
+            CoreError::QuotaUnmet
+            | CoreError::NotInThisMode
+            | CoreError::InvalidRoll
+            | CoreError::TooManyRolls
+            | CoreError::TooFewRolls
+            | CoreError::EmptyPassphrase
+            | CoreError::ReadbackIncomplete
+            | CoreError::NoBackupPassphrase
+            | CoreError::WrongPassphrase
+            | CoreError::ReadbackMismatch
+            | CoreError::NoRegistryKey
+            | CoreError::Snapshot(_)
+            | CoreError::Backup(_)
+            | CoreError::Braille(_)
+            | CoreError::Internal(_) => HaltReason::Internal,
+        }
+    }
+}
+
+impl From<Halt> for HaltReason {
+    /// The shell's bug, or an input or a reply that is not its layout: internal.
+    fn from(_: Halt) -> Self {
+        HaltReason::Internal
     }
 }
 
@@ -185,23 +256,29 @@ pub enum Refusal {
 /// Why a call ends without its result. Internal: the shell sees a `Reply`.
 enum Fail {
     Refused(Refusal),
-    Halt,
+    Halt(HaltReason),
 }
 
-/// A call that halts: a core error that is no refusal, or the shell's bug; wire.rs's and qr.rs's
-/// too, for an input or a reply that is not its layout.
+/// A call that halts as internal: the shell's bug; wire.rs's and qr.rs's too, for an input or a
+/// reply that is not its layout. A core error's halt is its `HaltReason`.
 pub(crate) struct Halt;
 
 impl From<Halt> for Fail {
-    fn from(_: Halt) -> Self {
-        Fail::Halt
+    fn from(halt: Halt) -> Self {
+        Fail::Halt(halt.into())
+    }
+}
+
+impl From<HaltReason> for Fail {
+    fn from(reason: HaltReason) -> Self {
+        Fail::Halt(reason)
     }
 }
 
 /// Sorts an error from a core call that took no session, as app.rs:235 does (Q25): a refusal of
-/// what the user or a file supplied, or a halt. Calls that take the session never come here: their
-/// every `Err` has wiped it, and halts.
-fn refused(error: CoreError) -> Result<Refusal, Halt> {
+/// what the user or a file supplied, or a halt, for its kind. Calls that take the session never
+/// come here: their every `Err` has wiped it, and halts.
+fn refused(error: CoreError) -> Result<Refusal, HaltReason> {
     match error {
         CoreError::WrongPassphrase
         | CoreError::ReadbackMismatch
@@ -221,7 +298,7 @@ fn refused(error: CoreError) -> Result<Refusal, Halt> {
         | CoreError::NoBackupPassphrase
         | CoreError::ExportSelfCheck
         | CoreError::Braille(_)
-        | CoreError::Internal(_) => Err(Halt),
+        | CoreError::Internal(_) => Err(error.into()),
     }
 }
 
@@ -523,7 +600,7 @@ impl Stage {
             Stage::Ready(_) => StageKind::Ready,
             Stage::Restart => StageKind::Restart,
             Stage::Busy => StageKind::Busy,
-            Stage::Halted => StageKind::Halted,
+            Stage::Halted(_) => StageKind::Halted,
         }
     }
 }
@@ -544,7 +621,7 @@ impl Held {
         if self.at_home() {
             Ok(())
         } else {
-            Err(Fail::Halt)
+            Err(Halt.into())
         }
     }
 
@@ -559,11 +636,8 @@ impl Held {
     /// `Halted` once halted; a call while a long call runs is the shell's bug, and halts.
     fn stopped<T>(&mut self) -> Option<Reply<T>> {
         match self.stage {
-            Stage::Halted => Some(Reply::Halted),
-            Stage::Busy => {
-                self.halt();
-                Some(Reply::Halted)
-            }
+            Stage::Halted(reason) => Some(Reply::Halted(reason)),
+            Stage::Busy => Some(Reply::Halted(self.halt(HaltReason::Internal))),
             _ => None,
         }
     }
@@ -573,20 +647,23 @@ impl Held {
         match made {
             Ok(made) => Reply::Done(made),
             Err(Fail::Refused(refusal)) => Reply::Refused(refusal),
-            Err(Fail::Halt) => {
-                self.halt();
-                Reply::Halted
-            }
+            Err(Fail::Halt(reason)) => Reply::Halted(self.halt(reason)),
         }
     }
 
-    /// Halts (Q25): everything held goes, and `Halted` stays. A long call running sees it when it
-    /// ends, before its generation.
-    fn halt(&mut self) {
-        self.stage = Stage::Halted;
+    /// Halts (Q25) for `reason`: everything held goes, and `Halted` stays with the first halt's
+    /// reason, which it gives back (`reason`, unless the slot had halted before). A long call
+    /// running sees it when it ends, before its generation.
+    fn halt(&mut self, reason: HaltReason) -> HaltReason {
+        let first = match self.stage {
+            Stage::Halted(first) => first,
+            _ => reason,
+        };
+        self.stage = Stage::Halted(first);
         self.kept = None;
         self.snapshot = None;
         self.backup = None;
+        first
     }
 
     /// A new generation, so a long call running drops its result; past 2^64 discards, a halt.
@@ -612,9 +689,9 @@ impl Held {
             generated,
         }) = self.take()
         else {
-            return Err(Fail::Halt);
+            return Err(Halt.into());
         };
-        let (session, made) = call(session).map_err(|_| Halt)?;
+        let (session, made) = call(session).map_err(HaltReason::from)?;
         self.stage = Stage::Ready(Steps {
             session,
             passphrase,
@@ -680,13 +757,13 @@ impl Slot {
     }
 
     /// The slot, locked. A poisoned lock (a panic while it was held) is matched, never unwrapped
-    /// with a fallback, and halts: the slot is `Halted` from then on.
+    /// with a fallback, and halts as a panic: the slot is `Halted` from then on.
     fn lock(&self) -> MutexGuard<'_, Held> {
         match self.held.lock() {
             Ok(held) => held,
             Err(poisoned) => {
                 let mut held = poisoned.into_inner();
-                held.halt();
+                held.halt(HaltReason::Panic);
                 held
             }
         }
@@ -706,11 +783,12 @@ impl Slot {
     /// lock, the slot is `Busy` while `work` runs with the lock released, and `put` puts its result
     /// back under the lock, unless a discard or a wipe started another generation meanwhile (the
     /// result is then dropped, which wipes it, and the reply is `Discarded`) or the slot halted.
-    /// `work` returns a refusal inside its result, for `put` to restore the stage first.
+    /// `work` returns a refusal inside its result, for `put` to restore the stage first, and halts
+    /// with its reason.
     fn long<T, R, O>(
         &self,
         take: impl FnOnce(&mut Held) -> Result<T, Fail>,
-        work: impl FnOnce(T) -> Result<R, Halt>,
+        work: impl FnOnce(T) -> Result<R, HaltReason>,
         put: impl FnOnce(&mut Held, R) -> Result<O, Fail>,
     ) -> Reply<O> {
         let (taken, generation) = {
@@ -729,10 +807,10 @@ impl Slot {
         let mut held = self.lock();
         let made = match done {
             Ok(made) => made,
-            Err(Halt) => return held.reply(Err(Fail::Halt)),
+            Err(reason) => return held.reply(Err(Fail::Halt(reason))),
         };
         match held.stage {
-            Stage::Halted => Reply::Halted,
+            Stage::Halted(reason) => Reply::Halted(reason),
             Stage::Busy if held.generation == generation => {
                 held.stage = Stage::Idle;
                 let put_back = put(&mut held, made);
@@ -758,12 +836,11 @@ impl Slot {
         }
     }
 
-    /// Halts the slot: keepcrypt-guard's after a caught panic, and the dispatcher's for an op or an
-    /// input it does not know.
-    pub fn halt<T>(&self) -> Reply<T> {
-        let mut held = self.lock();
-        held.halt();
-        Reply::Halted
+    /// Halts the slot for `reason` (keepcrypt-guard's after a caught panic, and the dispatcher's
+    /// for an op or an input it does not know), and the reason it latched: `reason`, unless the
+    /// slot had halted before, whose first reason stays.
+    pub fn halt(&self, reason: HaltReason) -> HaltReason {
+        self.lock().halt(reason)
     }
 
     /// Leaving the app, the idle wipe, going online or leaving a Protected screen (Q57): the stage
@@ -771,8 +848,8 @@ impl Slot {
     /// drops its result.
     pub fn discard(&self) -> Reply<()> {
         let mut held = self.lock();
-        if matches!(held.stage, Stage::Halted) {
-            return Reply::Halted;
+        if let Stage::Halted(reason) = held.stage {
+            return Reply::Halted(reason);
         }
         held.stage = Stage::Idle;
         held.backup = None;
@@ -784,8 +861,8 @@ impl Slot {
     /// snapshot too, and a long call running drops its result.
     pub fn wipe_all(&self) -> Reply<()> {
         let mut held = self.lock();
-        if matches!(held.stage, Stage::Halted) {
-            return Reply::Halted;
+        if let Stage::Halted(reason) = held.stage {
+            return Reply::Halted(reason);
         }
         held.stage = Stage::Idle;
         held.kept = None;
@@ -806,7 +883,7 @@ impl Slot {
     pub fn self_test(&self) -> Reply<()> {
         self.long(
             Held::home,
-            |()| self_test().map_err(|_| Halt),
+            |()| self_test().map_err(HaltReason::from),
             |_, ()| Ok(()),
         )
     }
@@ -819,7 +896,7 @@ impl Slot {
                 held.startable()?;
                 Ok(held.kept.clone())
             },
-            |kept| new_session(kept.as_deref(), len, mode).map_err(|_| Halt),
+            |kept| new_session(kept.as_deref(), len, mode).map_err(HaltReason::from),
             |held, session| {
                 held.stage = Stage::Collecting(session);
                 Ok(())
@@ -835,7 +912,7 @@ impl Slot {
                 session.add_extra(source, bytes);
                 Ok(())
             }
-            _ => Err(Fail::Halt),
+            _ => Err(Halt.into()),
         })
     }
 
@@ -846,7 +923,7 @@ impl Slot {
                 credited_bits: session.credited_bits(),
                 required_bits: session.required_bits(),
             }),
-            _ => Err(Fail::Halt),
+            _ => Err(Halt.into()),
         })
     }
 
@@ -854,9 +931,9 @@ impl Slot {
     pub fn commit(&self) -> Reply<()> {
         self.call(|held| {
             let Stage::Collecting(session) = held.take() else {
-                return Err(Fail::Halt);
+                return Err(Halt.into());
             };
-            held.stage = Stage::Committed(session.commit().map_err(|_| Halt)?);
+            held.stage = Stage::Committed(session.commit().map_err(HaltReason::from)?);
             Ok(())
         })
     }
@@ -865,7 +942,7 @@ impl Slot {
     pub fn commitment(&self) -> Reply<Option<[u8; 32]>> {
         self.call(|held| match &held.stage {
             Stage::Committed(session) => Ok(session.commitment()),
-            _ => Err(Fail::Halt),
+            _ => Err(Halt.into()),
         })
     }
 
@@ -873,7 +950,7 @@ impl Slot {
     pub fn start_dice(&self) -> Reply<()> {
         self.call(|held| {
             let Stage::Committed(session) = held.take() else {
-                return Err(Fail::Halt);
+                return Err(Halt.into());
             };
             held.stage = Stage::Rolling(session.start_dice());
             Ok(())
@@ -884,9 +961,9 @@ impl Slot {
     pub fn push_roll(&self, face: u8) -> Reply<()> {
         self.call(|held| {
             let Stage::Rolling(session) = held.take() else {
-                return Err(Fail::Halt);
+                return Err(Halt.into());
             };
-            held.stage = Stage::Rolling(session.push_roll(face).map_err(|_| Halt)?);
+            held.stage = Stage::Rolling(session.push_roll(face).map_err(HaltReason::from)?);
             Ok(())
         })
     }
@@ -898,7 +975,7 @@ impl Slot {
                 session.undo_roll();
                 Ok(())
             }
-            _ => Err(Fail::Halt),
+            _ => Err(Halt.into()),
         })
     }
 
@@ -910,7 +987,7 @@ impl Slot {
                 minimum: session.minimum_rolls(),
                 millibits: session.millibits(),
             }),
-            _ => Err(Fail::Halt),
+            _ => Err(Halt.into()),
         })
     }
 
@@ -919,9 +996,9 @@ impl Slot {
         self.long(
             |held| match held.take() {
                 Stage::Rolling(session) => Ok(session),
-                _ => Err(Fail::Halt),
+                _ => Err(Halt.into()),
             },
-            |session| session.finish().map_err(|_| Halt),
+            |session| session.finish().map_err(HaltReason::from),
             |held, sealed| {
                 held.stage = Stage::Sealed(sealed);
                 Ok(())
@@ -935,7 +1012,7 @@ impl Slot {
         self.call(|held| match &held.stage {
             Stage::Sealed(session) => Ok(session.seal().clone()),
             Stage::Checking(session) => Ok(session.seal().clone()),
-            _ => Err(Fail::Halt),
+            _ => Err(Halt.into()),
         })
     }
 
@@ -944,7 +1021,7 @@ impl Slot {
     pub fn skip_check(&self) -> Reply<()> {
         self.call(|held| {
             let Stage::Sealed(session) = held.take() else {
-                return Err(Fail::Halt);
+                return Err(Halt.into());
             };
             held.stage = Stage::Ready(Steps::new(session.skip_check()));
             held.kept = None;
@@ -957,9 +1034,9 @@ impl Slot {
     pub fn start_check(&self) -> Reply<()> {
         self.call(|held| {
             let Stage::Sealed(session) = held.take() else {
-                return Err(Fail::Halt);
+                return Err(Halt.into());
             };
-            held.stage = Stage::Checking(session.start_check().map_err(|_| Halt)?);
+            held.stage = Stage::Checking(session.start_check().map_err(HaltReason::from)?);
             Ok(())
         })
     }
@@ -968,7 +1045,7 @@ impl Slot {
     pub fn check_request(&self) -> Reply<String> {
         self.call(|held| match &held.stage {
             Stage::Checking(session) => Ok(session.check_request().url().to_owned()),
-            _ => Err(Fail::Halt),
+            _ => Err(Halt.into()),
         })
     }
 
@@ -977,7 +1054,7 @@ impl Slot {
     pub fn reveal_code(&self, code: &str) -> Reply<Revealed> {
         self.call(|held| {
             let Stage::Checking(session) = held.take() else {
-                return Err(Fail::Halt);
+                return Err(Halt.into());
             };
             held.judge(session.reveal(GoAhead::Code(code)), None)
         })
@@ -989,15 +1066,15 @@ impl Slot {
         self.call(|held| {
             let today = registry_date(today)?;
             let Stage::Checking(session) = held.take() else {
-                return Err(Fail::Halt);
+                return Err(Halt.into());
             };
             let Some(snapshot) = &held.snapshot else {
-                return Err(Fail::Halt);
+                return Err(Halt.into());
             };
             let registry = Registry::of_snapshot(snapshot, today);
             match session.reveal(GoAhead::Snapshot(snapshot)) {
                 // A snapshot holds the seal or it does not: core never asks it for a retry.
-                Err(Rejected::Retry(..)) => Err(Fail::Halt),
+                Err(Rejected::Retry(..)) => Err(Halt.into()),
                 revealed => held.judge(revealed, Some(registry)),
             }
         })
@@ -1010,7 +1087,7 @@ impl Slot {
             |held| {
                 let today = registry_date(today)?;
                 let Stage::Checking(session) = held.take() else {
-                    return Err(Fail::Halt);
+                    return Err(Halt.into());
                 };
                 Ok((session, today))
             },
@@ -1045,7 +1122,7 @@ impl Slot {
     fn stop_check(&self, why: Discard) -> Reply<()> {
         self.call(|held| {
             let Stage::Checking(session) = held.take() else {
-                return Err(Fail::Halt);
+                return Err(Halt.into());
             };
             held.kept = Some(Arc::new(session.discard(why)));
             held.stage = Stage::Restart;
@@ -1060,7 +1137,7 @@ impl Slot {
             let report = held.kept.as_deref().and_then(Wiped::collision_report);
             match (&held.stage, report) {
                 (Stage::Restart, Some(report)) => Ok(Report::of(report)),
-                _ => Err(Fail::Halt),
+                _ => Err(Halt.into()),
             }
         })
     }
@@ -1071,7 +1148,7 @@ impl Slot {
         self.call(|held| {
             let inserts = held.inserts()?;
             let count = u8::try_from(inserts.count()).map_err(|_| Halt)?;
-            let insert = inserts.insert(position).map_err(|_| Halt)?;
+            let insert = inserts.insert(position).map_err(HaltReason::from)?;
             Ok(WordPage::of(&insert, count))
         })
     }
@@ -1082,12 +1159,12 @@ impl Slot {
     pub fn check_readback(&self, position: u8, letters: &str) -> Reply<Readback> {
         self.call(|held| {
             let Stage::Ready(steps) = &mut held.stage else {
-                return Err(Fail::Halt);
+                return Err(Halt.into());
             };
             let result = steps
                 .session
                 .check_readback(position, letters)
-                .map_err(|_| Halt)?;
+                .map_err(HaltReason::from)?;
             Ok(match result {
                 ReadbackResult::Match => Readback::Match {
                     complete: steps.session.readback_complete(),
@@ -1104,7 +1181,7 @@ impl Slot {
                 fingerprint: steps.session.fingerprint(),
                 first_address: steps.session.first_address().to_owned(),
             }),
-            _ => Err(Fail::Halt),
+            _ => Err(Halt.into()),
         })
     }
 
@@ -1118,9 +1195,11 @@ impl Slot {
                 generated: false,
             }) = held.take()
             else {
-                return Err(Fail::Halt);
+                return Err(Halt.into());
             };
-            let (session, new) = session.generate_backup_passphrase().map_err(|_| Halt)?;
+            let (session, new) = session
+                .generate_backup_passphrase()
+                .map_err(HaltReason::from)?;
             held.stage = Stage::Ready(Steps {
                 session,
                 passphrase: Some(new),
@@ -1138,12 +1217,12 @@ impl Slot {
                 ..
             }) = &held.stage
             else {
-                return Err(Fail::Halt);
+                return Err(Halt.into());
             };
             let first = match page {
                 0 => 0,
                 1 => PASSPHRASE_PAGE_WORDS,
-                _ => return Err(Fail::Halt),
+                _ => return Err(Halt.into()),
             };
             // Sized once, so it never reallocates and leaves a copy behind.
             let mut text = Zeroizing::new(String::with_capacity(
@@ -1167,7 +1246,7 @@ impl Slot {
                 ..
             }) = &held.stage
             else {
-                return Err(Fail::Halt);
+                return Err(Halt.into());
             };
             Ok(Challenge {
                 questions: new
@@ -1187,15 +1266,15 @@ impl Slot {
     pub fn confirm_backup(&self, picks: [u8; 2]) -> Reply<bool> {
         self.call(|held| {
             let Stage::Ready(steps) = &mut held.stage else {
-                return Err(Fail::Halt);
+                return Err(Halt.into());
             };
             let Some(new) = &steps.passphrase else {
-                return Err(Fail::Halt);
+                return Err(Halt.into());
             };
             let mut right = true;
             for ((position, choices), pick) in new.challenge().questions().into_iter().zip(picks) {
                 let Some(&picked) = choices.get(usize::from(pick)) else {
-                    return Err(Fail::Halt);
+                    return Err(Halt.into());
                 };
                 let index = usize::from(position).checked_sub(1).ok_or(Halt)?;
                 right &= new.words().nth(index) == Some(picked);
@@ -1219,7 +1298,7 @@ impl Slot {
                         ..
                     },
                 ) => Ok(steps),
-                _ => Err(Fail::Halt),
+                _ => Err(Halt.into()),
             },
             |steps| {
                 let Steps {
@@ -1227,7 +1306,9 @@ impl Slot {
                     passphrase,
                     generated,
                 } = steps;
-                let (session, file) = session.encrypt_backup(&CREATED_BY).map_err(|_| Halt)?;
+                let (session, file) = session
+                    .encrypt_backup(&CREATED_BY)
+                    .map_err(HaltReason::from)?;
                 Ok((
                     Steps {
                         session,
@@ -1250,7 +1331,7 @@ impl Slot {
         self.long(
             |held| match held.take() {
                 Stage::Ready(steps) => Ok(steps),
-                _ => Err(Fail::Halt),
+                _ => Err(Halt.into()),
             },
             |steps| match steps.session.verify_backup(file) {
                 Ok(()) => Ok((steps, None)),
@@ -1271,7 +1352,7 @@ impl Slot {
     pub fn watch_only(&self, bip39_passphrase: Option<&str>) -> Reply<WatchOnlyExport> {
         self.call(|held| {
             if !matches!(held.stage, Stage::Ready(_)) {
-                return Err(Fail::Halt);
+                return Err(Halt.into());
             }
             let typed = match bip39_passphrase {
                 Some(text) => match Bip39Passphrase::new(text) {
@@ -1294,7 +1375,7 @@ impl Slot {
     pub fn reveal_device_leg(&self) -> Reply<Zeroizing<[u8; 32]>> {
         self.call(|held| {
             let Some(d) = held.export(Session::reveal_device_leg)? else {
-                return Err(Fail::Halt);
+                return Err(Halt.into());
             };
             let mut copy = Zeroizing::new([0u8; 32]);
             copy.copy_from_slice(d.expose_secret());
@@ -1313,7 +1394,7 @@ impl Slot {
                 held.backup = None;
                 Ok(())
             } else {
-                Err(Fail::Halt)
+                Err(Halt.into())
             }
         })
     }
@@ -1354,7 +1435,7 @@ impl Slot {
             },
             |typed| match decrypt_backup(file, &typed) {
                 Ok(backup) => {
-                    let seal = backup.seal().map_err(|_| Halt)?;
+                    let seal = backup.seal().map_err(HaltReason::from)?;
                     Ok(Ok((backup, seal)))
                 }
                 Err(error) => Ok(Err(refused(error)?)),
@@ -1505,7 +1586,7 @@ mod tests {
                     assert!(refusals.contains(&variant), "{variant} halts in app.rs");
                     assert_eq!(refusal, Refusal::Core(error));
                 }
-                Err(Halt) => assert!(halts.contains(&variant), "{variant} is refused in app.rs"),
+                Err(_) => assert!(halts.contains(&variant), "{variant} is refused in app.rs"),
             }
         }
         let mut app: Vec<&str> = refusals.iter().chain(&halts).copied().collect();
@@ -1538,20 +1619,92 @@ mod tests {
         assert_eq!(restart.seed_length(), SeedLength::Words24);
     }
 
-    // A halt latches: every later call, a discard and a wipe included, returns Halted. (A poisoned
-    // lock takes this same halt in `lock`: ffi/tests' ffi_a_poisoned_lock_halts poisons it with a
-    // panic under the lock.)
+    // A halt's reason is its kind's alone (todo.md, M5 commit U3a; docs/mobile-apps.md, "When
+    // something fails (Android)"): every core error that halts gives a known-answer test, the
+    // entropy source, a health test or the export's self-check its own reason and every other one
+    // internal, as does a refusal's error where a call that took the session meets it; and every
+    // reason but a panic's is some error's, each in ALL.
+    #[test]
+    fn a_halting_error_names_its_kind() {
+        let mut given = std::collections::BTreeSet::new();
+        for error in every_error() {
+            let kind = match name(error) {
+                "Kat" => HaltReason::KnownAnswerTest,
+                "Source" => HaltReason::EntropySource,
+                "Health" => HaltReason::HealthTest,
+                "ExportSelfCheck" => HaltReason::ExportSelfCheck,
+                _ => HaltReason::Internal,
+            };
+            assert_eq!(HaltReason::from(error), kind, "{}", name(error));
+            if let Err(reason) = refused(error) {
+                assert_eq!(reason, kind, "{}", name(error));
+            }
+            given.insert(format!("{kind:?}"));
+        }
+        given.insert(format!("{:?}", HaltReason::Panic));
+        let all: std::collections::BTreeSet<String> = HaltReason::ALL
+            .iter()
+            .map(|reason| format!("{reason:?}"))
+            .collect();
+        assert_eq!(given, all, "every reason is given, and each is in ALL");
+        assert_eq!(
+            HaltReason::from(Halt),
+            HaltReason::Internal,
+            "the shell's bug"
+        );
+    }
+
+    // A halt latches with the first halt's reason: every later call, a discard and a wipe
+    // included, returns Halted with it, and a later halt's reason never replaces it. (A poisoned
+    // lock takes this same halt in `lock`, as a panic: ffi/tests' ffi_a_poisoned_lock_halts
+    // poisons it with a panic under the lock.)
     #[test]
     fn a_halt_latches() {
         let slot = Slot::new();
-        assert!(matches!(slot.halt::<()>(), Reply::Halted));
+        assert_eq!(slot.halt(HaltReason::HealthTest), HaltReason::HealthTest);
         assert_eq!(slot.holds().stage, StageKind::Halted);
-        assert!(matches!(slot.discard(), Reply::Halted));
-        assert!(matches!(slot.wipe_all(), Reply::Halted));
+        assert_eq!(
+            slot.halt(HaltReason::Panic),
+            HaltReason::HealthTest,
+            "the first halt's reason stays"
+        );
+        assert!(matches!(
+            slot.discard(),
+            Reply::Halted(HaltReason::HealthTest)
+        ));
+        assert!(matches!(
+            slot.wipe_all(),
+            Reply::Halted(HaltReason::HealthTest)
+        ));
         assert!(matches!(
             slot.start(SeedLength::Words12, Mode::DiceOnly),
-            Reply::Halted
+            Reply::Halted(HaltReason::HealthTest)
         ));
         assert_eq!(slot.holds().stage, StageKind::Halted);
+    }
+
+    // The shell's bug halts as internal: a call in a stage that does not offer it, and a call
+    // while a long call runs (todo.md, M5 group 8). The internal reason stays through a later
+    // panic's halt.
+    #[test]
+    fn the_shells_bug_halts_as_internal() {
+        let slot = Slot::new();
+        assert!(matches!(slot.commit(), Reply::Halted(HaltReason::Internal)));
+        assert_eq!(slot.halt(HaltReason::Panic), HaltReason::Internal);
+        assert!(matches!(
+            slot.self_test(),
+            Reply::Halted(HaltReason::Internal)
+        ));
+        let slot = Slot::new();
+        let mut during = false;
+        let held = slot.hold(|| {
+            during = matches!(slot.dice_progress(), Reply::Halted(HaltReason::Internal));
+        });
+        assert!(during, "a call while a long call runs");
+        assert!(matches!(held, Reply::Halted(HaltReason::Internal)));
+        assert!(matches!(
+            slot.discard(),
+            Reply::Halted(HaltReason::Internal)
+        ));
     }
 }

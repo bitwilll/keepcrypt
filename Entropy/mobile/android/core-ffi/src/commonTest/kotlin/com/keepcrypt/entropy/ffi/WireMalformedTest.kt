@@ -11,9 +11,9 @@ import kotlin.test.assertTrue
  * flag that is neither 0 nor 1, a byte left unread, a QR side no version has, a freshness byte past
  * 2, a read-back verdict past 4 or a mismatch too short for its four faces, a refusal code the table
  * does not hold; and Core.decode's own status checks: no status byte, a refusal with no code or a
- * byte after it, a discard with a byte after it, a status wire.rs does not define. Each halts the slot
- * (an op the table does not hold) and throws KcHalt, and the halt latches: every later call halts
- * too. What a decode copied out before the reply proved malformed is zeroed with it (rule 5): a word
+ * byte after it, a discard with a byte after it, a halt status with no code or a byte after it, a
+ * status wire.rs does not define. Each halts the slot (an op the table does not hold) and throws KcHalt,
+ * and the halt latches, as internal (M5 commit U3a): every later call halts too, with that reason. What a decode copied out before the reply proved malformed is zeroed with it (rule 5): a word
  * page and a mismatch's verdicts read whole before a byte left unread, a confirm choice before a read
  * past the end. Its own process (forkEvery), since the slot stays halted.
  */
@@ -28,8 +28,9 @@ class WireMalformedTest {
         assertFailsWith<KcHalt> { Body().u64(1).u32(1).u32(1).byte(3).reader().registry() }
         assertFailsWith<KcHalt> { Body().raw(ByteArray(31)).reader().commitment() }
         assertFailsWith<KcHalt> { Refusal.of(4) }
-        for (reply in listOf(byteArrayOf(), byteArrayOf(1), byteArrayOf(1, 2, 0), byteArrayOf(2, 0), byteArrayOf(7))) {
-            assertFailsWith<KcHalt>(reply.contentToString()) { Core.decode(reply) { } }
+        for (reply in listOf(byteArrayOf(), byteArrayOf(1), byteArrayOf(1, 2, 0), byteArrayOf(2, 0), byteArrayOf(3), byteArrayOf(3, 6, 0), byteArrayOf(7))) {
+            val halt = assertFailsWith<KcHalt>(reply.contentToString()) { Core.decode(reply) { } }
+            assertEquals(HaltReason.Internal, halt.reason, reply.contentToString())
         }
         val pageReader = Body().byte(1).byte(12).byte(1).byte(1).byte(1).u16(1).text("abandon").raw(ByteArray(20)).byte(0).reader()
         val page = pageReader.wordPage()
@@ -50,8 +51,8 @@ class WireMalformedTest {
         assertEquals("fly", asciiOf(choice))
         assertFailsWith<KcHalt> { choiceReader.text() }
         assertTrue((0 until choice.size).all { choice[it] == 0.toByte() }, "the choice zeroed")
-        assertFailsWith<KcHalt> { Core.selfTest() }
+        assertEquals(HaltReason.Internal, assertFailsWith<KcHalt> { Core.selfTest() }.reason)
         assertFailsWith<KcHalt> { Core.wipeAll() }
-        assertContentEquals(byteArrayOf(Wire.HALTED.toByte()), Native.call(Wire.WIPE_ALL, ByteArray(0)))
+        assertContentEquals(byteArrayOf(Wire.HALTED.toByte(), HaltReason.Internal.code.toByte()), Native.call(Wire.WIPE_ALL, ByteArray(0)))
     }
 }

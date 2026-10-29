@@ -1,5 +1,6 @@
 package com.keepcrypt.entropy
 
+import com.keepcrypt.entropy.ffi.HaltReason
 import com.keepcrypt.entropy.ffi.KcHalt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -25,7 +26,7 @@ class CrashHandlerTest {
         val handler = CrashHandler(
             wipe = {
                 steps.add("wipe")
-                throw KcHalt()
+                throw KcHalt(HaltReason.Internal)
             },
             end = { steps.add("end") },
         )

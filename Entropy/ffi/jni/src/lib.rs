@@ -279,11 +279,11 @@ mod tests {
     use super::*;
 
     /// keepcrypt-ffi's wire.rs, which this crate cannot name (M5-35): Self test's op and Start's,
-    /// and the OK and halt statuses.
+    /// the OK status, and the halt status of an internal halt (HALTED, then its code 4).
     const SELF_TEST: u32 = 1;
     const START: u32 = 2;
     const OK: u8 = 0;
-    const HALTED: u8 = 3;
+    const HALTED_INTERNAL: [u8; 2] = [3, 4];
 
     /// The JNI calls a request makes, in order.
     const READ: [&str; 4] = [
@@ -562,9 +562,9 @@ mod tests {
 
     /// A call that cannot answer, on a fresh slot that Self test shows live: the export with no
     /// JNIEnv; the export over a VM whose table holds no function, so Jni's own missing-function
-    /// branches run; and a reply that cannot reach Java. Each gives null and halts the slot, so
-    /// every later call gives the halt status. It runs only in the child processes the test below
-    /// starts, since the slot is the process's one.
+    /// branches run; and a reply that cannot reach Java. Each gives null and halts the slot, as
+    /// internal, so every later call gives that halt status. It runs only in the child processes
+    /// the test below starts, since the slot is the process's one.
     #[test]
     fn case_on_a_fresh_slot() {
         let Some(case) = env::var_os(CHILD) else {
@@ -610,8 +610,8 @@ mod tests {
             _ => panic!("an unknown case"),
         };
         assert!(reply.is_null(), "null");
-        assert_eq!(guarded(SELF_TEST, &[]), [HALTED], "halted");
-        assert_eq!(guarded(START, &[12, 2]), [HALTED], "halted for good");
+        assert_eq!(guarded(SELF_TEST, &[]), HALTED_INTERNAL, "halted");
+        assert_eq!(guarded(START, &[12, 2]), HALTED_INTERNAL, "halted for good");
     }
 
     /// Runs each case above in a child process of its own, on its own fresh slot: each passes.

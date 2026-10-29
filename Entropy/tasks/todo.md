@@ -12256,6 +12256,36 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   `refused` from pi/app's source: each value is a refusal exactly when app.rs makes its variant one, and the two
   arms name every variant once. Moving `EmptyPassphrase` to the halt arm on a copy fails it; dropping it fails to
   compile (the exhaustive match).
+  Proof (M5 commit U3a, Stage U-1, partial: local, kc37, Q76; CI's legs at the next push): MA:36 and PF:132 say a
+  halt ends on a stop screen that names the failure in fixed text; the phone's named none. The slot's `Halted` now
+  latches the first halt's `HaltReason` (known-answer test, entropy source, health test, internal, export self-check,
+  panic): a core error's by its kind alone (`From<CoreError>`, an exhaustive match), the shell's bug (a call in a stage
+  that does not offer it, a call while `Busy`, an input or reply not its layout, an op the table does not hold,
+  keepcrypt-jni's halts) internal, keepcrypt-guard's caught panic and a lock a panic poisoned a panic; a later halt
+  never replaces it. The halt status is `HALTED` then its code (wire.rs's `halt_code`, 1-6, pinned as PINNED_HALTS);
+  Core.kt's KcHalt carries the reason (a code the app does not know internal; a halt status of another length halts
+  through Core.halt, whose reason is the slot's: internal unless it had halted before); CeremonyModel keeps the first
+  it meets in its Stop state, and the stop screen draws stopLine's one fixed line per reason under its title, built
+  from no data. keepcrypt-ffi's `a_halting_error_names_its_kind`, `a_halt_latches`, `the_shells_bug_halts_as_internal`,
+  `the_halt_code_table_is_pinned`, `the_halt_status_names_the_first_halts_reason`, `ffi_a_poisoned_lock_halts` (a
+  panic) and the halts list (internal); keepcrypt-guard's Ready scenario gives the panic's code to every later call,
+  its first-call scenario the internal halt its page call made first; keepcrypt-jni's cases the internal code. Plain
+  and with `--features keepcrypt-core/test-registry`: keepcrypt-ffi 15 unit and 28 integration, keepcrypt-guard 4,
+  keepcrypt-jni 11, all passed; four mutants (the last reason wins, a poisoned lock internal, the guard's halt
+  internal, `Source` internal) each fail them. JVM (local, JBR 25; CI's JDK 17): WireTest decodes every code and 0, 7
+  and 255 as internal, WireTablesTest pins HaltReason against PINNED_HALTS, WireMalformedTest (a halt status with no
+  code or a byte after it), NegativeOpHaltTest, OversizeInputHaltTest and WrongStageHaltTest see the internal code;
+  CeremonyModelTest's stop screen keeps each reason a long call's KcHalt carries and draws its line, one per reason
+  and none twice, and CeremonyModelHaltTest's shell halt is internal in the model and the slot; two mutants (decode
+  ignoring the code, the model keeping none) fail them. The strict Gradle build of the five APKs with every JVM test
+  task rerun: :core-ffi 33 in 11 classes, :screens 148 in 21, :app 11 in 4 for each flavour, :secure-ui 3 in 1, none
+  failed. kc37: `android-local.sh --part capture` exit 0 in 711 s (ControlTest 3, CaptureTest 6 and 6 without control
+  (c), its walk through the stop screen; PhoneMotionTest 1, LifecycleTest 6, CrashTest killed as it must be, its judge
+  unchanged; NativeTest 1; the Camera2 check's four camera-client checks, its decode not met, as allowed).
+  android-rust.sh, both flavours: the shipping scans clean, the test-registry scans their marker and key alone; every
+  library's exports as before (JNI_OnLoad, Java_com_keepcrypt_entropy_ffi_Native_call and secp256k1-sys's four).
+  fmt, both clippy runs, `cargo test --workspace --locked` 503 passed (3 ignored), the test-sources run 269 (1
+  ignored); the gate clean (385 files), its selftest 1631 passed; canaries.sh PASS, all 94 checks ran.
 - [x] `start(len, mode)` per "One `Session::new`". `match_found()` = `discard(Collision)`, `cannot_check()` likewise,
   each keeping the `Wiped`; after them only `start` is offered. `discard()` (background, idle, offline, leaving a
   Protected screen) drops the stage and checked backup, keeps `kept` and `snapshot`; `end()` (Finish) drops the stage;

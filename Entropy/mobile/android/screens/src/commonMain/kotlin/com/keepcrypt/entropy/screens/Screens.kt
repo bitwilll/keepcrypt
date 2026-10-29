@@ -19,6 +19,7 @@ import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import com.keepcrypt.entropy.ffi.HaltReason
 import com.keepcrypt.entropy.ffi.Mode
 
 /**
@@ -212,7 +213,7 @@ fun Screens(
                 Screen.Snapshot -> SnapshotResult(state, registry, onDone = model::snapshotDone)
                 Screen.About -> About(registry, onBack = model::back)
                 Screen.Working -> Working(registry)
-                Screen.Stop -> Stop(registry, onClose = onClose)
+                Screen.Stop -> Stop(state, registry, onClose = onClose)
             }
         }
         val overlay = state.overlay
@@ -254,11 +255,12 @@ fun Working(testRegistry: Boolean) {
 }
 
 /**
- * The stop screen (docs/mobile-apps.md, "When something fails (Android)"): red, fixed text, nothing
- * held, and one action, "Close app", which ends the process; the next start runs the self-test again.
+ * The stop screen (docs/mobile-apps.md, "When something fails (Android)"): red, fixed text naming the
+ * failure (stopLine, the halt's reason), nothing held, and one action, "Close app", which ends the
+ * process; the next start runs the self-test again.
  */
 @Composable
-fun Stop(testRegistry: Boolean, onClose: () -> Unit) {
+fun Stop(state: UiState, testRegistry: Boolean, onClose: () -> Unit) {
     KitScreen(
         screenId(Screen.Stop),
         testRegistry,
@@ -267,11 +269,26 @@ fun Stop(testRegistry: Boolean, onClose: () -> Unit) {
     ) {
         KitText("KeepCrypt stopped", KitType.title)
         Gap(16)
+        KitText(stopLine(state.halt), tag = "halt_reason")
         KitText(
             "Something failed, so everything the session held was wiped. Close the app; its next " +
                 "start runs the self-test again before any ceremony.",
         )
     }
+}
+
+/**
+ * The stop screen's line for why the slot halted (docs/mobile-apps.md:36, pi-firmware.md's "Finish and
+ * halts"): one fixed line per reason, built from no data and never from a message; with no reason,
+ * internal's.
+ */
+internal fun stopLine(reason: HaltReason?): String = when (reason) {
+    HaltReason.KnownAnswerTest -> "A known-answer test failed."
+    HaltReason.EntropySource -> "The entropy source failed."
+    HaltReason.HealthTest -> "An entropy health test failed."
+    HaltReason.ExportSelfCheck -> "The watch-only export failed its self-check."
+    HaltReason.Panic -> "The app's core stopped unexpectedly."
+    HaltReason.Internal, null -> "An internal check failed."
 }
 
 /**

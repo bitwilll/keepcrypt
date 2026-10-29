@@ -5,6 +5,7 @@ import com.keepcrypt.entropy.ffi.Challenge
 import com.keepcrypt.entropy.ffi.Core
 import com.keepcrypt.entropy.ffi.DiceProgress
 import com.keepcrypt.entropy.ffi.Extra
+import com.keepcrypt.entropy.ffi.HaltReason
 import com.keepcrypt.entropy.ffi.KcHalt
 import com.keepcrypt.entropy.ffi.Mode
 import com.keepcrypt.entropy.ffi.OpenedBackup
@@ -180,6 +181,8 @@ data class UiState(
     val loaded: RegistryHeader? = null,
     /** Core refused the snapshot picked (no registry key in this build, or a file that does not verify): the result says so. */
     val snapshotRefusal: Refusal? = null,
+    /** Why the slot halted (a fixed code, the first halt's), on the stop screen alone, which names it in fixed text. */
+    val halt: HaltReason? = null,
 ) {
     /** Offline (Q57): airplane mode on and Wi-Fi off. */
     val offline: Boolean get() = airplaneMode && wifiOff
@@ -194,7 +197,8 @@ data class UiState(
  * :app's CeremonyHolder holds it and calls wipeAll at its end. Every method runs on the main thread.
  *
  * - Every core call goes through call, the app's only catch of KcHalt: a halt ends on the stop screen,
- *   which no input leaves; only its "Close app" does, which ends the process.
+ *   which names the first halt's reason (KcHalt's) and which no input leaves; only its "Close app"
+ *   does, which ends the process.
  * - A long call runs on the worker behind "Working..." (the start-up self-test behind its own
  *   screen), which takes no input (work); so does a picked file's read (lead decision M5-70 (g)).
  * - Leaving the app during a long call or on a Protected screen, and going online after the start-up
@@ -399,6 +403,15 @@ class CeremonyModel(
      * and goes with wipeAll.
      */
     private var snapshot: RegistryHeader? = null
+
+    /**
+     * The first halt's reason the model met (KcHalt's, which is the slot's first halt's; the shell's own
+     * halt is the slot's too, internal unless the slot had halted before): set by call on whichever
+     * thread meets the halt, and read on the main thread by halted, for the stop screen. It never
+     * changes once set.
+     */
+    @Volatile
+    private var haltReason: HaltReason? = null
 
     /** A long call's flag, set on the main thread by a discard and read on the worker before and after core's call. */
     private class Pending {
@@ -1902,13 +1915,14 @@ class CeremonyModel(
 
     /**
      * After a halt the slot holds nothing and answers every call with the halt status: the stop screen,
-     * which only ends the process. A long call still running has its reply ignored.
+     * which only ends the process and names the first halt's reason. A long call still running has its
+     * reply ignored.
      */
     private fun halted() {
         running?.discarded = true
         session = false
         dropChecked()
-        enter(UiState(Screen.Stop, recording = mutable.value.recording))
+        enter(UiState(Screen.Stop, recording = mutable.value.recording, halt = haltReason))
     }
 
     private fun stopped(): Boolean = mutable.value.screen == Screen.Stop
@@ -2010,12 +2024,13 @@ class CeremonyModel(
     /**
      * Every core call the model makes, short or long, on whichever thread makes it: the app's only
      * catch of KcHalt (the gate allows no other). The halt status is null, for the caller to end on the
-     * stop screen on the main thread.
+     * stop screen on the main thread; the first halt's reason is kept for it (haltReason).
      */
     private fun <T> call(core: () -> Reply<T>): Reply<T>? {
         try {
             return core()
         } catch (halt: KcHalt) {
+            if (haltReason == null) haltReason = halt.reason
             return null
         }
     }

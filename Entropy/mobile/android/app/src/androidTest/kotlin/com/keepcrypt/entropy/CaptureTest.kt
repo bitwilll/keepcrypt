@@ -37,6 +37,7 @@ import com.keepcrypt.entropy.Capture.waitUntil
 import com.keepcrypt.entropy.Capture.windows
 import com.keepcrypt.entropy.Capture.wordOf
 import com.keepcrypt.entropy.Capture.wordsPageSecrets
+import com.keepcrypt.entropy.ffi.HaltReason
 import com.keepcrypt.entropy.ffi.KcHalt
 import com.keepcrypt.entropy.ffi.Mode
 import com.keepcrypt.entropy.ffi.Reply
@@ -320,7 +321,7 @@ class CaptureTest {
             Screen.Stop -> {
                 working.countDown()
                 waitUntil("About again, after the held call") { onMain { activity.shownScreen } == Screen.About }
-                onMain { model.work<Unit>({ throw KcHalt() }) {} }
+                onMain { model.work<Unit>({ throw KcHalt(HaltReason.Internal) }) {} }
             }
         }
         return activity
