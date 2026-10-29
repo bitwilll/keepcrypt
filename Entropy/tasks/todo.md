@@ -16349,6 +16349,31 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   under dash; the gate clean (385 files) under sh and dash; canaries.sh PASS, all 94 checks ran (421 s); fmt, both
   clippy runs, `cargo test --workspace --locked` (499 passed, 3 ignored) and `-p keepcrypt-core --features
   test-sources` (269 passed, 1 ignored).
+  Proof (M5 commit L10b, review fix, partial: local; CI's gates, lint and supply-chain jobs at the next push): every
+  `--workflows` rule read the lines that end at a newline, but a YAML parser also ends one at a carriage return, and
+  libyaml (GitHub's parser is a port of it) at a NEL, a line separator and a paragraph separator (U+0085, U+2028,
+  U+2029). So a key after one of them was a key to GitHub on a line the rules read as one: L10's quoted-scalar pass
+  read `- name: x`, a lone carriage return, then `"u\x73es": ...` as one plain scalar, and the first pass never saw a
+  `run:` or `permissions:` that did not start an awk line (the U-1 review; the run and permissions cases predate L10,
+  in L9b's first pass). workflow_check now makes a hit of each line that holds any byte but a tab or 0x20-0x7E
+  (grep under LC_ALL=C), a carriage return anywhere among them, before the passes read it; the three workflows hold
+  none, and a CRLF copy of them already failed the canary property's whole-line rule (one hit, at its line), so no
+  workflow with carriage returns passed before. Eight fixtures, each clean under 1d8d769's gate and, but the last,
+  each read by Ruby's YAML parser (Psych, libyaml) as the key it hides, give exactly one hit each:
+  workflow-uses-escape-after-a-carriage-return (`- name: fetch`, CR, `"u\x73es": actions/download-artifact@...`),
+  -after-a-carriage-return-in-a-comment (`- name: fetch # a comment`, CR, `- "u\x73es": ...`), -after-a-next-line,
+  -after-a-line-separator and -after-a-paragraph-separator (the same key after U+0085, U+2028 and U+2029),
+  workflow-expression-in-run-line-after-a-carriage-return (`run: echo "${{ github.head_ref }}"`),
+  workflow-permissions-write-all-after-a-carriage-return (`permissions: write-all` after `runs-on:`'s line) and
+  workflow-carriage-return-at-a-line-end (one CRLF line in a clean file). The reviewers' probes (a lone CR in a
+  comment before an escaped uses, a run expression, an escaped secrets and permissions: write-all; NEL and LS in their
+  place) give one hit each. canaries.sh's workflow-hardening copy also plants a run key after a carriage return and
+  needs it among eight hits. Four mutants of the rule each fail fixtures: it left out of the hits (8 of 8), a carriage
+  return allowed (5), only a carriage return refused (3), only the C0 controls and DEL refused (3). Locally:
+  `--workflows ../.github/workflows` clean (3 workflows, "printable ASCII alone") under sh and dash; `--selftest
+  --shard 1/2` and `2/2` "820 of 1639" and "819 of 1639", 0 failed, under sh and under /bin/dash; the fault check 588
+  runs, 588 passed (--workflows' places 17 to 18, the new grep), in 233 s; the gate clean (386 files) under sh and
+  dash; canaries.sh PASS, all 94 checks ran (459 s).
 
 **Stages E3 and E4** run commits 19, 20 and 21 as planned, each built and tested locally before it is committed.
 

@@ -177,7 +177,15 @@
 #     line, and no escape or folded line spells uses, run, permissions, secrets, github.token or
 #     "${{" past the rules above, with no YAML parser (a new dependency, rule 11). A block scalar's
 #     text is every line after its | or > header that is blank or indented past the key the header
-#     follows (or, with no key, past its dash, ? or :).
+#     follows (or, with no key, past its dash, ? or :);
+#   - printable ASCII alone (commit L10b): a line that holds any byte but a tab or 0x20-0x7E is a
+#     hit, a carriage return among them, at a line's end too. The rules above read the lines that
+#     end at a newline; a YAML parser also ends one at a carriage return, and libyaml (GitHub's
+#     parser is a port of it) at a NEL, a line separator and a paragraph separator (U+0085, U+2028,
+#     U+2029), so "- name: x", a carriage return, then "run: echo ${{ ... }}", "permissions:
+#     write-all" or an escaped quoted uses was a key to GitHub on a line these greps read as one.
+#     So every line the rules read is a line YAML reads. The workflows hold nothing else (a CRLF
+#     copy of them already failed the canary property's whole-line rule).
 #
 # Image lists mode (tasks/todo.md, M4 groups 14 and 15; Q38 (d)): the image workflow's "hash and
 # list" step prints with it what commit 16 commits to pi/os/expected/ for review and the image
@@ -1043,7 +1051,8 @@ usage: scripts/banned-api-check.sh [--selftest [--shard K/N] | DIR | --artifact 
               in a run step, no Android bootstrap switch but the line a reviewed exception names
               (the clean line says whether kt_bootstrap_exception holds one, and which), the
               canary property only in the canary step's Gradle command, no Kotlin/Native or
-              Kotlin Multiplatform setting, no quoted key or value with an escape or over a line
+              Kotlin Multiplatform setting, no quoted key or value with an escape or over a line,
+              and printable ASCII alone (a tab too; no carriage return)
   --image-lists
               unpack the Pi image IMG (an MBR, a FAT32 boot partition, a SquashFS root) with the
               build's host tools and print its partition table, SHA-256s, boot and root file lists,
@@ -5252,10 +5261,21 @@ approved_actions="$approved_actions|actions/upload-artifact@043fb46d1a93c77aae65
 # line's start or after "- ", the word secrets, github.token (also github['token']),
 # pull_request_target, workflow_run. They read the text as written: a second awk pass makes a hit
 # of each line that holds a quoted scalar only a YAML parser reads as GitHub does (an escape, or a
-# quote still open at the line's end), outside a block scalar's text and comments.
+# quote still open at the line's end), outside a block scalar's text and comments. And every rule
+# reads the lines a YAML parser reads: a line that holds a byte but a tab or 0x20-0x7E, a carriage
+# return among them, is a hit (the line model, below).
 workflow_check() {
   wf=$1
   [ -f "$wf" ] && [ -r "$wf" ] || return 2
+  # The line model (commit L10b): these rules read the lines that end at a newline, and a YAML
+  # parser also ends one at a carriage return, and libyaml (whose port GitHub's parser is) at a NEL
+  # (U+0085), a line separator (U+2028) and a paragraph separator (U+2029), so a key after one of
+  # them, on what the rules read as one line, is a key to GitHub alone. Each line that holds any
+  # byte but a tab or 0x20-0x7E (byte by byte, under LC_ALL=C) is a hit: a carriage return
+  # anywhere, before its newline too.
+  ascii=$(printf '[^\t -~]')
+  p=$(grep -n -a -e "$ascii" -- "$wf")
+  [ $? -le 1 ] || return 2
   t=$(awk '
     function indent(s) { match(s, /^ */); return RLENGTH }
     {
@@ -5402,7 +5422,7 @@ workflow_check() {
   [ $? -le 1 ] || return 2
   # The rules' hits joined in the shell, the empty ones left out, then sorted by line.
   all=
-  for x in "$t" "$q" "$u" "$g" "$b" "$k" "$r"; do
+  for x in "$p" "$t" "$q" "$u" "$g" "$b" "$k" "$r"; do
     [ -z "$x" ] || all=$all${all:+$nl}$x
   done
   [ -n "$all" ] || return 1
@@ -5458,7 +5478,7 @@ EOF
     *[!"$nl"]*) bxstate="no bootstrap switch but the reviewed exception's line (kt_bootstrap_exception: $kt_bootstrap_exception)" ;;
     *) bxstate='no bootstrap switch and no bootstrap exception' ;;
   esac
-  printf '%s\n' "banned-api-check --workflows $dir: clean, $n workflow(s): read-only permissions, pinned actions, no secrets, no fork-trusting trigger, no expression in a run step, $bxstate, the canary property only in the canary step's Gradle command, no Kotlin/Native or Kotlin Multiplatform setting, no quoted key or value with an escape or over a line"
+  printf '%s\n' "banned-api-check --workflows $dir: clean, $n workflow(s): read-only permissions, pinned actions, no secrets, no fork-trusting trigger, no expression in a run step, $bxstate, the canary property only in the canary step's Gradle command, no Kotlin/Native or Kotlin Multiplatform setting, no quoted key or value with an escape or over a line, printable ASCII alone"
   exit 0
 }
 

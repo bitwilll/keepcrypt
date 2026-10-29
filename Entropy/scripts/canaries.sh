@@ -1593,8 +1593,9 @@ fi
 # The workflow hardening check (tasks/todo.md, M4 group 11; Q38 (d)): a copy of the real
 # entropy-ci.yml with every rule broken once (the top-level token widened to write, which also
 # loses contents: read, and a job that runs on workflow_run, uses an action by tag, pastes an
-# expression into a run line and a run block, and reads a secret) must fail
-# scripts/banned-api-check.sh --workflows with those seven hits, and no other: the real file
+# expression into a run line and a run block, and reads a secret; and, from commit L10b, a step
+# whose run key follows a carriage return, which a YAML parser reads as a line of its own) must
+# fail scripts/banned-api-check.sh --workflows with those eight hits, and no other: the real file
 # is clean, as CI's gates job checks on every run.
 name=workflow-hardening
 wfd="$work/workflows"
@@ -1618,6 +1619,7 @@ cat >> "$wfc" <<'EOF'
         run: |
           git diff --quiet "$base" ${{ github.event.pull_request.head.sha }}
 EOF
+printf '      - name: canary\r        run: echo "${{ github.head_ref }}"\n' >> "$wfc" || exit 1
 expect_failure "$name" sh "$root/scripts/banned-api-check.sh" --workflows "$wfd"
 need "Workflow: $wfc:1: missing a top-level permissions block that holds contents: read"
 need "Workflow: $wfc:32:   contents: write"
@@ -1626,7 +1628,8 @@ need "uses: actions/checkout@v7"
 need 'run: echo "${{ github.head_ref }}"'
 need 'TOKEN: ${{ secrets.GITHUB_TOKEN }}'
 need 'git diff --quiet "$base" ${{ github.event.pull_request.head.sha }}'
-need "7 hit(s) in 1 workflow(s)"
+need "$(printf '      - name: canary\r        run: echo "${{ github.head_ref }}"')"
+need "8 hit(s) in 1 workflow(s)"
 verdict
 
 # The bootstrap rule on the real Android workflow (tasks/todo.md, M5 group 4; lead decision M5-13;
