@@ -11014,7 +11014,9 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   that draws the same composables without FLAG_SECURE, the capture tests' positive control. **Canary APK:** a build that
   must be refused.
 - **The Android workflow:** `.github/workflows/entropy-android.yml`, one non-required job `android (build, emulators)`
-  (Q55).
+  (Q55). Amended 2026-10-29 (M5-70 (b), M5-71 (a), commit L9): one non-required workflow of three jobs, `build`
+  ("android build (APKs, checks, uploads, hand-off)") and the two leg jobs "android emulators (API 31, then 16 KB
+  pages)" and "android emulators (API 36)".
 - **Protected / Public:** PF:122's list, adopted for the phone (Q57).
 - **Gate seeds:** kcr.json's public dice-only seeds and fixtures. No other seed is named in a test, a capture or a report.
 - **P0-P5:** the owner's phone checklists below.
@@ -11111,10 +11113,15 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   drops it) and check 16 KB alignment; `test` runs the FFI's test-registry tests; `gates` runs the new rules. The
   non-required Android workflow is one job: it builds, checks, scans and signs the APKs once, then boots the emulators
   one after another on those same bytes, so the SHA-256 printed for P0 is the one the emulators tested (no artifact
-  passes between jobs, so no fourth action). No M5 PR merges without its green run at the final head (Q38 (b)'s rule).
+  passes between jobs, so no fourth action). Amended 2026-10-29 (M5-70 (b), M5-71 (a), commit L9): the build job builds,
+  checks, scans and signs the APKs once and hands those files to two leg jobs side by side through the approved
+  actions/cache, keyed on the run and its attempt; each leg checks every file against the build job's SHA256SUMS (its
+  job output, which never passes through the cache) before it installs anything, so the emulators still test the
+  bytes P0's SHA-256 names, with no fourth action. No M5 PR merges without its green run at the final head (Q38 (b)'s rule).
 - **Budgets:** `gates` within the approved 12 minutes (Q31 (f); M4b measured 10 min 08 s), `test` within 6 minutes. The
   Android job's budget is set at commit 8 from its measured time plus 25%, with `timeout-minutes` at that budget and a
-  90-minute ceiling; system images, the emulator package and the Gradle distribution are cached with actions/cache keyed
+  90-minute ceiling (since L9, each of the three jobs' own budget by the same rule, M5-70 (b)); system images, the
+  emulator package and the Gradle distribution are cached with actions/cache keyed
   on their revisions. An emulator boot failure may be re-run once, and the re-run is logged under Review; a test
   failure is never re-run. Past any budget, the lead stops and re-plans.
 - **Evidence:** CI emulator runs for every gate item; the owner's P1-P4 on a phone; Review records only pass or fail,
@@ -13311,7 +13318,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   19, :core-ffi 31 in 11, :secure-ui 3 in 1, none failed, with the strict build of the five APKs; on kc37 (local, the
   run of 19i's line) BackupTest (Check a backup's read, the saved file's read-back), CheckTest (the shipping app's
   refusal after the read) and SnapshotDrillTest (the drill's snapshot through the picker) passed. The read still runs
-  on the main thread, where picked() reads before the worker's call; moving it is not taken here.
+  on the main thread, where picked() reads before the worker's call; moving it is not taken here (20h moves it to the
+  worker, M5-70 (g)).
   Proof (M5 commit 21e, review fix, partial: local, Q76): FlowTest's dice-only registration QR and SnapshotDrillTest's
   collision-report QR, Protected for the seal code they carry, were compared with assertEquals, which prints both sides
   when they differ, where 21a's mixed-seed test compares the same QR in-process with a message that prints neither.
@@ -13380,7 +13388,7 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   flavour, :secure-ui 3 in 1, none failed. Four mutants each fail the new tests: the read made on the main thread again
   (3 tests), no zeroing on a discard (2), the worker's second look not zeroing (2), and work showing Home again while
   the load runs (its done-started-a-call guard removed: 3). Not tested: a discard after the worker's second look and before the main thread's
-  reply (the tests' unconfined scope answers at once). On kc37 (local, android-local.sh exit 0 in 1475 s, which built
+  reply (the tests' unconfined scope answers at once; 20j tests it on a main dispatcher the test holds). On kc37 (local, android-local.sh exit 0 in 1475 s, which built
   the five APKs with the strict Gradle build and ran every JVM test task above): every class passed in
   android-emulator.sh's order, NativeTest too, among them CaptureTest's walk in both APKs (Check a backup's entry and
   Load registry snapshot's result, each file handed to the model as a picker would), CheckTest 2 (the shipping app's
@@ -13511,7 +13519,7 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   listing is printed as not made, CI's legs making it; android-local.sh's header and its adb-root line say so.
   Selftests: android-emulator.sh 34 passed, 0 failed (29 before: INTERNET in a package block, a file the app wrote, a
   planted file the listing misses, a listing cut short and a CI image with no root shell each exit 1; the passing leg
-  finds a stand-in shader cache and nothing else, and the --booted leg names the listing as not made) and
+  finds a stand-in shader cache and nothing else (until 21g, which fails that case), and the --booted leg names the listing as not made) and
   android-local.sh 34 (its debuggable case now makes the listing as root on its stand-in), each under sh and dash;
   mutants that never match INTERNET, skip the listing's end line or take the planted file for the listing each fail
   android-emulator.sh's. On kc37 (local, android-local.sh exit 0 in 1469 s, the run of 21a's line): "dumpsys package
@@ -15306,6 +15314,23 @@ they differ. Nothing in the Android plan is weakened.
   failures (FlowTest on API 31: a stale node in Ui.enabled in the watch-only flow, and About not shown in time;
   CaptureTest on API 36, test-registry APK: "only 4 of the 5 secret texts of backup_confirm are drawn") came before
   E4's fix commits; whatever CI at the next head still shows is fixed at its root in stage E5.
+- M5-71 (2026-10-29), after stage E5: (a) Q55's approved answer is "one new non-required job" that builds and checks
+  the APKs once and runs the emulators "on those same files", with no new actions and no secrets. L9 makes it one
+  non-required workflow of three jobs and keeps every guarantee Q55 names: one build, every leg checking the same bytes
+  by SHA-256 before it installs them, only the approved actions, no secrets, nothing required. The lead reads Q55's
+  "job" as that workflow and says so in the M5 report; if the owner answers otherwise, going back is L9's revert and a
+  single job with a 67-minute budget. (b) Scope accepted: 20h's Core.openBackup(entries, file: Secret), with Check a
+  backup's file held in a Secret and wiped as the entries are, and L9's two gate selftest fixtures
+  (workflow-uses-cache-sub-action, workflow-uses-download-artifact). (c) Control (c)'s captures are the app's own
+  captures of a Protected screen: judged in-process, never written to a file or uploaded (rule 5); the owner's screen
+  review stays control (a)'s two kept screencaps (19h). (d) A leg job re-run on its own is a new attempt, misses the
+  run's cache entry and fails: the whole run is re-run, as no failed test is re-run alone; a save that fails in the
+  build job fails the legs on the miss (closed). (e) Proof lines are historical: each says what its commit proved then.
+  A later commit that changes the behaviour says so in its own Proof, and an earlier Proof that names the changed
+  behaviour in the present tense gets a one-clause pointer (21b's, 21d's and 20h's, given 2026-10-29). (f) L9b's
+  grep-based --workflows rule cannot see a key only a YAML parser decodes (an escape sequence in a quoted key, or a
+  quoted key continued over a line). A parser would be a new dependency (rule 11), so commit L10 refuses those
+  spellings instead.
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the
@@ -15799,7 +15824,7 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   Proof (CI, the lead's, 2026-10-28): Entropy CI 40488587210 at 30c53f3 (18s in): the gates job's self-test, "the
   shards split one list: 795 and 795 of its 1590 cases", 0 failed each; and 40622104962 at 44d4469, 798 and 798 of
   1596, 0 failed each.
-- [ ] L6. The gate fails closed when a tool it runs fails (M5-66, commit 18t): the empty-line-number Shell hit's
+- [x] L6. The gate fails closed when a tool it runs fails (M5-66, commit 18t): the empty-line-number Shell hit's
   cause found and fixed, and the fault check (each external tool failing to start, exiting with an error and killed,
   at every place the script runs it, on a small tree that reaches every rule) in CI in at most 5 minutes, with no run
   printing "clean". The 14 required check names are unchanged.
@@ -15939,6 +15964,8 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   --os-config's 13; the lint job 146 s with the toolchain installed first; the 14 required check names unchanged. The
   Pi image run 40622104933 at 44d4469 ran --image-lists, --selftest-image and --image fail closed for the first time,
   green. L6 stays open until L8 closes the corners E3's last review found (M5-68 (d)).
+  Proof (CI, the lead's, 2026-10-29): L8 closed at d99e80b (Entropy CI 40749608383 green; L8's last Proof line), so
+  every mode the fault check faults fails closed in CI as locally.
 - [x] L7. canaries.sh moves out of the gates job into one existing required job with time to spare (M5-67, commit
   L7). The gates job keeps the gate's runs and the two self-test shards with their count check. Proof: both jobs' times
   in CI, each under 12 minutes, with the 14 required check names unchanged.
@@ -15970,7 +15997,7 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   Proof (CI, the lead's, 2026-10-28): Entropy CI 40622104962 at 44d4469: gates 250 s (688 s at 6a6a34f), its
   self-test step 160 s ("the shards split one list: 798 and 798 of its 1596 cases"); supply-chain 419 s, canaries.sh
   384 s of it ("PASS: all 94 checks ran"); lint 146 s; each under 12 minutes, the 14 required check names unchanged.
-- [ ] L8. The gate's fail-closed corners that E3's last review found (M5-68 (d), commit L8): every mode prints its
+- [x] L8. The gate's fail-closed corners that E3's last review found (M5-68 (d), commit L8): every mode prints its
   summary only after its cleanup, so a cleanup that fails never follows "clean"; git's "not a git repository" means
   no work tree only when no .git entry exists in the scanned root or above it, so a corrupt or missing HEAD stops the
   gate; --image-lists reads its lists' statuses; the header names the four modes the fault check faults and how
@@ -16035,6 +16062,17 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   passes 806 + 805 = 1611. In the clone at L8b: `--selftest --shard K/8` for K 1-8, 202, 202, 202, 201, 201, 201, 201
   and 201 of 1611 cases, 0 failed; the gate clean (382 files) under sh and dash; `--workflows` clean; the fault check
   582 runs, 582 passed, in 190 s; canaries.sh PASS, all 94 checks ran (1276 s).
+  Proof (CI, the lead's, 2026-10-29): Entropy CI 40749608383 at d99e80b (L8 and L8b in) green, all 14 required
+  checks under their names: the gates job (228 s) ran the two self-test shards, 806 + 805 of 1611 cases, 0 failed,
+  error-build-work-tree-dangling-git-file, -corrupt-head, -missing-head and
+  -corrupt-head-above-the-scanned-tree among them under Ubuntu's git 2.55, and --selftest-apk with
+  apk-error-cleanup-fails; the lint job's fault check "582 runs (3 ways): 582 passed, 0 failed, in 147 s"; the
+  supply-chain job's canaries.sh "all 94 checks ran" (587 s). The Pi image run 40749608381 at d99e80b green.
+- [ ] L10. --workflows refuses a mapping key it cannot read as written (M5-71 (f), commit L10): in entropy-*.yml,
+  outside a block scalar's text, a quoted key holding a backslash or a quote left open at its line's end is a hit,
+  whatever key it spells, so no escape sequence or folded line can spell uses. Proof: selftest cases for "u\x73es",
+  a double-quoted "us\ ending its line and continued with es", and a key with an escaped quote, each a hit; a run: block whose shell text holds
+  backslashes and quotes stays clean; the three workflows clean under sh and dash; the fault check.
 
 **Stages E3 and E4** run commits 19, 20 and 21 as planned, each built and tested locally before it is committed.
 
@@ -16058,7 +16096,8 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
 - [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists them.
   Proof: CI at each stage's head; local runs reported as local.
 - Budget: the Android job's 44 minutes (M5-57) cannot hold U1-U2's emulator tests on two API legs. Stage U measures them and the
-  lead re-plans by M5-30's rule or splits the legs into jobs (the Android workflow has no required check names).
+  lead re-plans by M5-30's rule or splits the legs into jobs (the Android workflow has no required check names). (L9 split
+  them, M5-70 (b): each leg job's budget is its measured time plus 25%, re-measured when Stage U adds journeys.)
 
 ## Review
 _Added after completion, with pasted proof for every ticked item._
