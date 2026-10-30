@@ -13019,6 +13019,13 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   another writes the length twice (0, then 1), so the simpler one stays. FlowTest's comment on the BIP39 entry's
   in-process typing says so. The dice keys' layout has no JVM check: CI's captures draw the dice screen. Locally: the
   strict Gradle build of the five APKs and :screens 161 in 22 classes, none failed.
+  Proof (M5 commit U3f2, CI fix, partial: local; CI's gates job at the next push): U3f's PadsTest called Compose's
+  Snapshot.sendApplyNotifications, and the gate's KtWindow rule refuses the word Notification in any Kotlin source
+  (Q57: no notifications), so scripts/banned-api-check.sh had three hits at b41fd45, pushed with cd8440b, whose gates
+  job fails on them; the lead's suite ran the gate after the push, not before each commit (M5-74 (a)). The test now
+  makes each change in Snapshot.withMutableSnapshot, whose apply hands its changed states to the apply observers; the
+  steps are the same, and with length a plain Int it fails ("reading the entry reads no snapshot state",
+  PadsTest.kt:176). The gate clean under sh and dash; PadsTest 8 passed.
 
 **15. Screens: start to dice** (MA:166-174; PF:83-89)
 - [ ] First launch (MA:13's limits, the development-build line, "use the Pi for life savings"; every start), Self-test

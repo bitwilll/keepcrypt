@@ -161,19 +161,19 @@ class PadsTest {
      * The screens no longer redraw an entry by a counter of their own (U3f): what reads it, its length
      * and keyAt, reads snapshot state, and every change an entry takes (a key, a dice face replacing
      * another, Delete, a take, a wipe) is applied as a change to that state, so Compose redraws its
-     * readers and nothing else.
+     * readers and nothing else. Each change is made in a mutable snapshot, whose apply hands its changed
+     * states to the apply observers, as the frame clock's apply does for the main thread's writes.
      */
     @Test
     fun whatReadsAnEntryIsSnapshotStateThatEachChangeNotifies() {
         val pick = dicePadEntry()
-        assertTrue(pick.type('3'))
+        Snapshot.withMutableSnapshot { assertTrue(pick.type('3')) }
         val read = HashSet<Any>()
         Snapshot.observe(readObserver = { read.add(it) }) {
             pick.length
             pick.keyAt(0)
         }
         assertTrue(read.isNotEmpty(), "reading the entry reads no snapshot state")
-        Snapshot.sendApplyNotifications()
         val applied = ArrayList<Set<Any>>()
         val observer = Snapshot.registerApplyObserver { changed, _ -> applied.add(changed) }
         try {
@@ -182,17 +182,12 @@ class PadsTest {
                 "Delete" to { pick.delete() },
                 "a key" to { assertTrue(pick.type('2')) },
                 "a take" to { pick.take().wipe() },
-                "a key, then a wipe" to {
-                    assertTrue(pick.type('6'))
-                    Snapshot.sendApplyNotifications()
-                    applied.clear()
-                    pick.wipe()
-                },
+                "a key" to { assertTrue(pick.type('6')) },
+                "a wipe" to { pick.wipe() },
             )
             for ((what, step) in steps) {
                 applied.clear()
-                step()
-                Snapshot.sendApplyNotifications()
+                Snapshot.withMutableSnapshot { step() }
                 assertTrue(applied.any { changed -> read.any { it in changed } }, what + " notified no reader of the entry")
             }
         } finally {
