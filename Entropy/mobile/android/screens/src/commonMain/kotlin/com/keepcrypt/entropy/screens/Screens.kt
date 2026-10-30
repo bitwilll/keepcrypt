@@ -87,6 +87,7 @@ fun Screens(
                     state,
                     model.dicePick,
                     registry,
+                    onKey = model::padKey,
                     onConfirm = model::confirmRoll,
                     onUndo = model::undoRoll,
                     onDone = model::diceDone,
@@ -111,7 +112,15 @@ fun Screens(
                     onTypeCode = model::typeCode,
                     onBack = model::back,
                 )
-                Screen.CodeEntry -> CodeEntry(state, model.goAheadCode, registry, onDone = model::codeDone, onBack = model::back)
+                Screen.CodeEntry -> CodeEntry(
+                    state,
+                    model.goAheadCode,
+                    registry,
+                    onKey = model::padKey,
+                    onDelete = model::padDelete,
+                    onDone = model::codeDone,
+                    onBack = model::back,
+                )
                 Screen.MatchFoundConfirm -> MatchFoundConfirm(registry, onDestroy = model::matchFoundConfirmed, onBack = model::back)
                 Screen.CannotCheckConfirm -> CannotCheckConfirm(registry, onStartAgain = model::cannotCheckConfirmed, onBack = model::back)
                 Screen.Collision -> CollisionResult(state, registry, onShowReport = model::showReport)
@@ -147,6 +156,8 @@ fun Screens(
                     model.readbackLetters,
                     registry,
                     passGate = model::passGate,
+                    onKey = model::padKey,
+                    onDelete = model::padDelete,
                     onDone = model::readbackTyped,
                     onNext = model::readbackNext,
                 )
@@ -168,7 +179,15 @@ fun Screens(
                     onNext = model::nextPage,
                     onConfirm = model::passphraseWritten,
                 )
-                Screen.BackupConfirm -> BackupConfirm(state, model.backupLetters, registry, passGate = model::passGate, onDone = model::confirmTyped)
+                Screen.BackupConfirm -> BackupConfirm(
+                    state,
+                    model.backupLetters,
+                    registry,
+                    passGate = model::passGate,
+                    onKey = model::padKey,
+                    onDelete = model::padDelete,
+                    onDone = model::confirmTyped,
+                )
                 Screen.BackupSave -> BackupSave(state, registry, onSave = { model.saveBackup(documents) }, onSkip = model::skipBackup)
                 Screen.BackupVerified -> BackupVerified(registry, onNext = model::backupVerifiedDone)
                 Screen.WatchOffer -> WatchOffer(registry, onShow = model::showWatchOnly, onSkip = model::skipWatchOnly)
@@ -178,6 +197,10 @@ fun Screens(
                     model.bip39Letters,
                     registry,
                     passGate = model::passGate,
+                    onKey = model::padKey,
+                    onPreviousKeys = model::previousPage,
+                    onNextKeys = model::nextPage,
+                    onDelete = model::padDelete,
                     onDone = model::bip39Typed,
                     onBack = model::back,
                 )
@@ -200,8 +223,9 @@ fun Screens(
                     model.backupLetters,
                     registry,
                     passGate = model::passGate,
+                    onKey = model::padKey,
+                    onDelete = model::padDelete,
                     onDone = model::entryTyped,
-                    onDelete = model::entryDelete,
                     onBack = model::back,
                 )
                 Screen.BackupCheckResult -> BackupCheckResult(

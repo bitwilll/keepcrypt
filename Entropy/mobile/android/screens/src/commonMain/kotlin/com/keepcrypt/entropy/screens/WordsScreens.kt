@@ -320,8 +320,9 @@ fun DeviceSwap(testRegistry: Boolean, onContinue: () -> Unit) {
  * Pi's readback-entry), a Protected screen: the insert to read back, its position and device, and the
  * faces typed so far on the letter pad (Pads.kt's LetterPad, whose keys say only their role), with no
  * suggestion; Delete, and Done at three or four letters. After a match the whole word shows, and Next
- * goes on. The letters live in the model's PadEntry, not in Compose state: version redraws them when the
- * pad, Delete or Done change them.
+ * goes on. The letters live in the model's PadEntry, not in Compose state: a letter's press goes to onKey
+ * and Delete to onDelete (the model's padKey and padDelete), and version redraws them when the pad,
+ * Delete or Done change them.
  */
 @Composable
 fun ReadbackEntry(
@@ -329,6 +330,8 @@ fun ReadbackEntry(
     letters: PadEntry,
     testRegistry: Boolean,
     passGate: () -> Unit,
+    onKey: (Char) -> Unit,
+    onDelete: () -> Unit,
     onDone: () -> Unit,
     onNext: () -> Unit,
 ) {
@@ -349,7 +352,10 @@ fun ReadbackEntry(
                                 Modifier.padding(vertical = 6.dp).secret(),
                                 style = KitType.large.copy(fontFamily = FontFamily.Monospace),
                             )
-                            LetterPad(letters) { version += 1 }
+                            LetterPad { letter ->
+                                onKey(letter)
+                                version += 1
+                            }
                             Row {
                                 KitButton(
                                     "Delete",
@@ -357,7 +363,7 @@ fun ReadbackEntry(
                                     enabled = letters.length > 0,
                                     modifier = Modifier.weight(1f).padding(end = 6.dp),
                                 ) {
-                                    letters.delete()
+                                    onDelete()
                                     version += 1
                                 }
                                 KitButton(

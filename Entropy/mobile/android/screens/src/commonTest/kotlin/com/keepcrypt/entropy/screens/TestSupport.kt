@@ -201,25 +201,26 @@ internal class Rig(scope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined
     }
 
     /**
-     * n rolls through the dice pad and Confirm, the faces 1 to 6 in turn from 1 on each call, so two calls
-     * are no vector's rolls (StartScreensTest pushes dice-50-words12's own rolls where the faces matter).
+     * n rolls through the dice pad's keys (the model's padKey) and Confirm, the faces 1 to 6 in turn from 1
+     * on each call, so two calls are no vector's rolls (StartScreensTest pushes dice-50-words12's own rolls
+     * where the faces matter).
      */
     fun roll(n: Int) {
         repeat(n) { index ->
-            model.dicePick.replace(DICE_KEYS[index % DICE_KEYS.length])
+            model.padKey(DICE_KEYS[index % DICE_KEYS.length])
             model.confirmRoll()
         }
     }
 
     /**
      * From Home: a dice-only seed of vectors/kcr.json's dice gate seed named seed (its rolls picked on the
-     * pad and confirmed), the dice's Done (finish, its long call run), then Skip and its confirm: Skip's
-     * result, from where Show words leads to that seed's words (WordsScreensTest, ReadbackScreensTest).
+     * pad's keys and confirmed), the dice's Done (finish, its long call run), then Skip and its confirm:
+     * Skip's result, from where Show words leads to that seed's words (WordsScreensTest, ReadbackScreensTest).
      */
     fun toSkippedResult(seed: String): Rig {
         begin(Mode.DiceOnly, if (kcrWords(seed).size == 24) Words.TwentyFour else Words.Twelve)
         for (face in kcrRolls(seed)) {
-            model.dicePick.replace(face)
+            model.padKey(face)
             model.confirmRoll()
         }
         model.diceDone()
@@ -238,8 +239,8 @@ internal class Rig(scope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined
 
     /**
      * From Home: the 12-word dice-only seed named seed to Skip's result (toSkippedResult), its words paged to
-     * the last insert, every insert read back (its first four letters, a three-letter word's three), the
-     * read-back's end and the wallet summary (BackupScreensTest, CheckBackupScreensTest).
+     * the last insert, every insert read back (its first four letters, a three-letter word's three, on the
+     * pad's keys), the read-back's end and the wallet summary (BackupScreensTest, CheckBackupScreensTest).
      */
     fun toSummary(seed: String): Rig {
         val words = kcrWords(seed)
@@ -248,7 +249,7 @@ internal class Rig(scope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined
         repeat(words.size - 1) { model.nextPage() }
         model.startReadback()
         for (word in words) {
-            for (letter in word.take(4)) model.readbackLetters.type(letter)
+            for (letter in word.take(4)) model.padKey(letter)
             model.readbackTyped()
             model.readbackNext()
         }

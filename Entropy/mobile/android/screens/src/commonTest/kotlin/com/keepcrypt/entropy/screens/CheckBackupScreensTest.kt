@@ -448,13 +448,13 @@ class CheckBackupScreensTest {
         rig.model.passGate()
         val first = firstFours(saved.passphrase)[0]
         val empty = rig.model.state.value
-        rig.model.entryDelete()
+        rig.model.padDelete()
         assertSame(empty, rig.model.state.value, "Delete on word 1's empty pad does nothing")
         assertEquals(0, rig.model.backupLetters.length)
         type(rig, listOf(first))
         assertEquals(1, rig.model.state.value.page, "word 2 of 8")
         val taken = rig.model.entriesHeld.single()
-        rig.model.entryDelete()
+        rig.model.padDelete()
         assertEquals(Screen.BackupCheckEntry, rig.screen)
         assertEquals(0, rig.model.state.value.page, "word 1 again")
         assertTrue(rig.model.entriesHeld.isEmpty(), "the reopened entry is no longer held")
@@ -462,7 +462,7 @@ class CheckBackupScreensTest {
         val letters = rig.model.backupLetters
         assertEquals(first.length - 1, letters.length, "word 1's letters but its last are back in the pad")
         assertTrue((0 until letters.length).all { letters.keyAt(it) == first[it] }, "the pad holds word 1's letters in their order")
-        rig.model.entryDelete()
+        rig.model.padDelete()
         assertEquals(first.length - 2, letters.length, "with letters typed Delete takes the last one")
         assertTrue(letters.zeroPastLength())
         assertEquals(0, rig.model.state.value.page)
@@ -477,9 +477,9 @@ class CheckBackupScreensTest {
         // Word 4 mistyped and taken, then reopened from word 5's empty pad, emptied and typed again.
         type(rig, listOf(if (right[3] == "zzzz") "yyyy" else "zzzz"))
         assertEquals(4, rig.model.state.value.page)
-        rig.model.entryDelete()
+        rig.model.padDelete()
         assertEquals(3, rig.model.state.value.page, "word 4 again")
-        while (rig.model.backupLetters.length > 0) rig.model.entryDelete()
+        while (rig.model.backupLetters.length > 0) rig.model.padDelete()
         assertEquals(3, rig.model.state.value.page, "emptying word 4's pad stays on word 4")
         type(rig, right.drop(3))
         assertEquals(Screen.Working, rig.screen)

@@ -12984,6 +12984,28 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   pads keep their labels: each of the dice pad's six keys (FlowTest) and the go-ahead code's 32 (CheckTest) is found by
   its resource id key_ and the key, clickable, with the key as the text of the label drawn inside it. Unlike a Protected
   key, a Public key reports the class android.view.View on kc37, not the button's: its label is a node under it.
+  Proof (M5 commit U3e, Stage U-2, partial: local, Q76's JVM run on a Linux host; CI's legs at the next push): each
+  pad's keys typed straight into their PadEntry from the composable, and Delete and the ASCII pad's page of keys were
+  the screen's own, so none went through pressOn: a key, Delete or Next keys left under the cover, the idle warning or
+  a privacy gate acted (an accessibility service's click reaches a node the overlay only draws over), a press from an
+  accessibility service was never input for the idle timer or the 30 s cover (the pointer handler sees touches alone),
+  and a leftover press could type into an entry its screen no longer showed. CeremonyModel gains padKey and padDelete,
+  which act on the showing screen's pad (padEntry: the dice pick below 256 rolls, the code, the read-back's letters
+  before a match, backupLetters on the confirm and Check a backup's entry, the BIP39 passphrase) only through pressOn;
+  the dice pad's face replaces the pick and it has no Delete; padDelete on Check a backup's entry is U3c's
+  entryDelete, folded in. The ASCII pad's page is the state's page on the BIP39 entry, moved by nextPage and
+  previousPage through pressOn, and a key off the page on show types nothing; it opens on page 1 each time. The pads
+  (Pads.kt) report a key to onKey and hold no entry. Rig's roll, toSkippedResult and toSummary now type through
+  padKey. PadPressTest (3 tests): on the dice, a face under the cover and under the warning picks nothing, a face
+  picked starts the idle time again and one under the warning is not input; on the BIP39 entry, a key and Next keys
+  behind the gate do nothing, a key from another page types nothing, Next keys stops at the last page, a key or Delete
+  or Previous keys under the cover does nothing, and a key starts the 30 s again; a letter on the words page or after
+  the read-back's match types nothing, and insert 2's entry types and deletes. A mutant of padKey without pressOn
+  fails two of them (PadPressTest.kt:41, a face under the cover picked; :69, a key behind the gate typed). Locally
+  (Linux x86_64, JDK 21, the Android SDK's platform 37, build-tools 36.0.0 and NDK r30; no emulator here, so CI's legs
+  are the device proof): android-rust.sh for both flavours, then the strict Gradle build of the five APKs with every
+  JVM test task: :screens 160 in 22 classes (PadPressTest 3, CheckBackupScreensTest 21), :core-ffi 34 in 12, :app 11
+  for each flavour, :secure-ui 3, none failed; the gate clean under sh and dash.
 
 **15. Screens: start to dice** (MA:166-174; PF:83-89)
 - [ ] First launch (MA:13's limits, the development-build line, "use the Pi for life savings"; every start), Self-test

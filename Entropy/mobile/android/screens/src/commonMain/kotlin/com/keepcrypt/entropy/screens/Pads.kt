@@ -27,8 +27,8 @@ import androidx.compose.ui.unit.sp
 import com.keepcrypt.entropy.ffi.Secret
 
 // The in-app pads (tasks/todo.md, M5 group 14; docs/mobile-apps.md, "Text entry"; Q57 (a)): the system
-// keyboard never opens. Each pad's keys come in a fixed order, and what it types goes into a PadEntry,
-// never a String, which hands it to Core as a Secret. On Protected screens (the letter pad's read-back
+// keyboard never opens. Each pad's keys come in a fixed order, and each press goes to the model (padKey,
+// U3e), which types it into a PadEntry, never a String, that hands it to Core as a Secret. On Protected screens (the letter pad's read-back
 // and backup-passphrase entry, the ASCII pad's BIP39 passphrase) a key's semantics hold its role alone:
 // nothing about which key was pressed reaches an accessibility event. The dice pad and the go-ahead
 // code's pad are on Public screens.
@@ -151,36 +151,34 @@ fun crockfordPadEntry(): PadEntry = PadEntry(CROCKFORD_KEYS, 8)
 /** A BIP39 passphrase: up to 100 printable ASCII characters. */
 fun asciiPadEntry(): PadEntry = PadEntry(ASCII_KEYS, ASCII_CAPACITY)
 
-/** The dice pad (a Public screen): a face replaces the pick. Disabled at 256 rolls by its screen. */
+/**
+ * The dice pad (a Public screen): a face's press goes to onKey, the model's padKey, which replaces the
+ * pick. Disabled at 256 rolls by its screen.
+ */
 @Composable
-fun DicePad(entry: PadEntry, enabled: Boolean, changed: () -> Unit) {
-    KeyGrid(DICE_KEYS, columns = 3, enabled = enabled, sensitive = false) { key ->
-        if (entry.replace(key)) changed()
-    }
+fun DicePad(enabled: Boolean, onKey: (Char) -> Unit) {
+    KeyGrid(DICE_KEYS, columns = 3, enabled = enabled, sensitive = false, press = onKey)
 }
 
-/** The letter pad (Protected screens). */
+/** The letter pad (Protected screens): a letter's press goes to onKey, the model's padKey. */
 @Composable
-fun LetterPad(entry: PadEntry, changed: () -> Unit) {
-    KeyGrid(LETTER_KEYS, columns = 7, enabled = true, sensitive = true) { key ->
-        if (entry.type(key)) changed()
-    }
+fun LetterPad(onKey: (Char) -> Unit) {
+    KeyGrid(LETTER_KEYS, columns = 7, enabled = true, sensitive = true, press = onKey)
 }
 
-/** The go-ahead code's pad (a Public screen: the code is no secret). */
+/** The go-ahead code's pad (a Public screen: the code is no secret): a symbol's press goes to onKey, the model's padKey. */
 @Composable
-fun CrockfordPad(entry: PadEntry, changed: () -> Unit) {
-    KeyGrid(CROCKFORD_KEYS, columns = 8, enabled = true, sensitive = false) { key ->
-        if (entry.type(key)) changed()
-    }
+fun CrockfordPad(onKey: (Char) -> Unit) {
+    KeyGrid(CROCKFORD_KEYS, columns = 8, enabled = true, sensitive = false, press = onKey)
 }
 
-/** The ASCII pad (a Protected screen), one page of its keys at a time; its screen keeps the page index. */
+/**
+ * The ASCII pad (a Protected screen), page (the model's) of its keys: a character's press goes to onKey,
+ * the model's padKey.
+ */
 @Composable
-fun AsciiPad(entry: PadEntry, page: Int, changed: () -> Unit) {
-    KeyGrid(asciiPage(page), columns = 8, enabled = true, sensitive = true) { key ->
-        if (entry.type(key)) changed()
-    }
+fun AsciiPad(page: Int, onKey: (Char) -> Unit) {
+    KeyGrid(asciiPage(page), columns = 8, enabled = true, sensitive = true, press = onKey)
 }
 
 /**

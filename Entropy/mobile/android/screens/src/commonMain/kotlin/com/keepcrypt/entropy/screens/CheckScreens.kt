@@ -302,11 +302,19 @@ fun ScanScreen(
  * The go-ahead code (the Pi's code entry, on the Crockford pad): the code as typed, in the checker's
  * two groups, Delete, Done once all 8 symbols are typed, and Back to the check QR with the same check
  * and nonce, the typed code wiped. A refused code says so here and is wiped; the check stays. The code
- * lives in the model's PadEntry, not in Compose state: version redraws it when the pad, Delete or Done
- * change it.
+ * lives in the model's PadEntry, not in Compose state: a symbol's press goes to onKey and Delete to
+ * onDelete (the model's padKey and padDelete), and version redraws it when the pad, Delete or Done change it.
  */
 @Composable
-fun CodeEntry(state: UiState, code: PadEntry, testRegistry: Boolean, onDone: () -> Unit, onBack: () -> Unit) {
+fun CodeEntry(
+    state: UiState,
+    code: PadEntry,
+    testRegistry: Boolean,
+    onKey: (Char) -> Unit,
+    onDelete: () -> Unit,
+    onDone: () -> Unit,
+    onBack: () -> Unit,
+) {
     var version by remember { mutableIntStateOf(0) }
     KitScreen(
         screenId(Screen.CodeEntry),
@@ -321,10 +329,13 @@ fun CodeEntry(state: UiState, code: PadEntry, testRegistry: Boolean, onDone: () 
                     Modifier.padding(vertical = 6.dp).testTag("code"),
                     style = KitType.large.copy(fontFamily = FontFamily.Monospace),
                 )
-                CrockfordPad(code) { version += 1 }
+                CrockfordPad { symbol ->
+                    onKey(symbol)
+                    version += 1
+                }
                 Row {
                     KitButton("Delete", "code_delete", enabled = code.length > 0, modifier = Modifier.weight(1f).padding(end = 6.dp)) {
-                        code.delete()
+                        onDelete()
                         version += 1
                     }
                     KitButton("Done", "code_done", enabled = code.isFull, modifier = Modifier.weight(1f).padding(start = 6.dp)) {

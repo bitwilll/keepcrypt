@@ -239,10 +239,19 @@ fun BackupPassphrase(
  * window (720x1280 at 320 dpi under a 24 dp status bar and a 48 dp navigation bar) under the TEST
  * REGISTRY strip: one a row, the fourth lay below the text column's end there, out of view and so out
  * of the accessibility tree (Entropy Android run 40681107802, API 36; kc37 at 720x1184, local). The
- * letters live in the model's PadEntry: version redraws them when the pad, Delete or Done change them.
+ * letters live in the model's PadEntry: a letter's press goes to onKey and Delete to onDelete (the
+ * model's padKey and padDelete), and version redraws them when the pad, Delete or Done change them.
  */
 @Composable
-fun BackupConfirm(state: UiState, letters: PadEntry, testRegistry: Boolean, passGate: () -> Unit, onDone: () -> Unit) {
+fun BackupConfirm(
+    state: UiState,
+    letters: PadEntry,
+    testRegistry: Boolean,
+    passGate: () -> Unit,
+    onKey: (Char) -> Unit,
+    onDelete: () -> Unit,
+    onDone: () -> Unit,
+) {
     Protected(state, testRegistry, passGate) {
         val questions = state.challenge?.questions.orEmpty()
         if (state.page in questions.indices) {
@@ -253,7 +262,7 @@ fun BackupConfirm(state: UiState, letters: PadEntry, testRegistry: Boolean, pass
                 testRegistry,
                 actions = {
                     key(version) {
-                        LetterEntry(letters, done = "confirm_done", onDone = onDone) { version += 1 }
+                        LetterEntry(letters, done = "confirm_done", onKey = onKey, onDelete = onDelete, onDone = onDone) { version += 1 }
                     }
                 },
             ) {
@@ -274,21 +283,25 @@ fun BackupConfirm(state: UiState, letters: PadEntry, testRegistry: Boolean, pass
 
 /**
  * The letters typed and the letter pad, Delete and Done (at three or four letters), as the read-back
- * entry has them (WordsScreens.kt): the confirm's and Check a backup's entry. Delete takes the last
- * letter, or onDelete's (Check a backup's, which also reopens the word before), enabled while
- * canDelete. changed redraws them.
+ * entry has them (WordsScreens.kt): the confirm's and Check a backup's entry. A letter's press goes to
+ * onKey and Delete to onDelete, the model's padKey and padDelete (on Check a backup's entry it also
+ * reopens the word before), Delete enabled while canDelete. changed redraws them.
  */
 @Composable
 private fun LetterEntry(
     letters: PadEntry,
     done: String,
+    onKey: (Char) -> Unit,
+    onDelete: () -> Unit,
     onDone: () -> Unit,
     canDelete: Boolean = letters.length > 0,
-    onDelete: () -> Unit = letters::delete,
     changed: () -> Unit,
 ) {
     BasicText(typedFaces(letters), Modifier.padding(vertical = 6.dp).secret(), style = KitType.large.copy(fontFamily = FontFamily.Monospace))
-    LetterPad(letters, changed)
+    LetterPad { letter ->
+        onKey(letter)
+        changed()
+    }
     Row {
         KitButton("Delete", "letters_delete", enabled = canDelete, modifier = Modifier.weight(1f).padding(end = 6.dp)) {
             onDelete()
@@ -348,7 +361,7 @@ fun BackupVerified(testRegistry: Boolean, onNext: () -> Unit) {
  * Check a backup's passphrase entry (docs/mobile-apps.md, "Checking a backup"; the Pi's
  * backup-check-entry, Q32 (b)), a Protected screen behind the privacy gate: word page + 1 of 8, each
  * its first four letters on the letter pad, or a whole three-letter word; after the eighth core opens
- * the file. Delete on word N > 1's empty pad reopens word N - 1 (the model's entryDelete). A refusal
+ * the file. Delete on word N > 1's empty pad reopens word N - 1 (the model's padDelete). A refusal
  * shows core's text with the instruction under it, the entry emptied from word 1; Back goes Home,
  * wiping the file read and the letters typed.
  */
@@ -358,8 +371,9 @@ fun BackupCheckEntry(
     letters: PadEntry,
     testRegistry: Boolean,
     passGate: () -> Unit,
-    onDone: () -> Unit,
+    onKey: (Char) -> Unit,
     onDelete: () -> Unit,
+    onDone: () -> Unit,
     onBack: () -> Unit,
 ) {
     Protected(state, testRegistry, passGate) {
@@ -372,9 +386,10 @@ fun BackupCheckEntry(
                     LetterEntry(
                         letters,
                         done = "entry_done",
+                        onKey = onKey,
+                        onDelete = onDelete,
                         onDone = onDone,
                         canDelete = letters.length > 0 || state.page > 0,
-                        onDelete = onDelete,
                     ) { version += 1 }
                 }
                 KitButton("Back", "back", onClick = onBack)

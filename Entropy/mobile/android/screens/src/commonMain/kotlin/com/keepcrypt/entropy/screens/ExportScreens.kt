@@ -136,34 +136,57 @@ fun Bip39Ask(testRegistry: Boolean, onNone: () -> Unit, onPassphrase: () -> Unit
 /**
  * The BIP39 passphrase's entry (the Pi's bip39-entry, Q32 (c)), a Protected screen behind the privacy
  * gate: the passphrase as typed (a space a middle dot), one secret node; the ASCII pad (Pads.kt's
- * AsciiPad, whose keys say only their role), one of its three pages of keys at a time, the page kept here
- * in plain memory; Delete, and Done once a character is typed; Back returns to the question, the
- * passphrase wiped (the Pi's KEY2). The passphrase lives in the model's PadEntry: version redraws it
- * when the pad, Delete or Done change it.
+ * AsciiPad, whose keys say only their role), one of its three pages of keys at a time, the page the
+ * model's (the state's page: Previous keys and Next keys are its previousPage and nextPage); Delete, and
+ * Done once a character is typed; Back returns to the question, the passphrase wiped (the Pi's KEY2). The
+ * passphrase lives in the model's PadEntry: a character's press goes to onKey and Delete to onDelete (the
+ * model's padKey and padDelete), and version redraws it when the pad, Delete or Done change it.
  */
 @Composable
-fun Bip39Entry(state: UiState, letters: PadEntry, testRegistry: Boolean, passGate: () -> Unit, onDone: () -> Unit, onBack: () -> Unit) {
+fun Bip39Entry(
+    state: UiState,
+    letters: PadEntry,
+    testRegistry: Boolean,
+    passGate: () -> Unit,
+    onKey: (Char) -> Unit,
+    onPreviousKeys: () -> Unit,
+    onNextKeys: () -> Unit,
+    onDelete: () -> Unit,
+    onDone: () -> Unit,
+    onBack: () -> Unit,
+) {
     Protected(state, testRegistry, passGate) {
         var version by remember { mutableIntStateOf(0) }
-        var keys by remember { mutableIntStateOf(0) }
+        val keys = state.page
         KitScreen(
             screenId(Screen.Bip39Entry),
             testRegistry,
             actions = {
                 key(version, keys) {
                     BasicText(bip39Shown(letters), Modifier.padding(vertical = 6.dp).secret(), style = KitType.hex)
-                    AsciiPad(letters, keys) { version += 1 }
+                    AsciiPad(keys) { character ->
+                        onKey(character)
+                        version += 1
+                    }
                     Row {
-                        KitButton("Previous keys", "keys_previous", enabled = keys > 0, modifier = Modifier.weight(1f).padding(end = 6.dp)) {
-                            keys -= 1
-                        }
-                        KitButton("Next keys", "keys_next", enabled = keys < ASCII_PAGES - 1, modifier = Modifier.weight(1f).padding(start = 6.dp)) {
-                            keys += 1
-                        }
+                        KitButton(
+                            "Previous keys",
+                            "keys_previous",
+                            enabled = keys > 0,
+                            modifier = Modifier.weight(1f).padding(end = 6.dp),
+                            onClick = onPreviousKeys,
+                        )
+                        KitButton(
+                            "Next keys",
+                            "keys_next",
+                            enabled = keys < ASCII_PAGES - 1,
+                            modifier = Modifier.weight(1f).padding(start = 6.dp),
+                            onClick = onNextKeys,
+                        )
                     }
                     Row {
                         KitButton("Delete", "bip39_delete", enabled = letters.length > 0, modifier = Modifier.weight(1f).padding(end = 6.dp)) {
-                            letters.delete()
+                            onDelete()
                             version += 1
                         }
                         KitButton("Done", "bip39_done", enabled = letters.length > 0, modifier = Modifier.weight(1f).padding(start = 6.dp)) {

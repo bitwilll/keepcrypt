@@ -202,11 +202,19 @@ fun Commitment(state: UiState, testRegistry: Boolean, onContinue: () -> Unit) {
  * (disabled with no face picked and at 256 rolls, where the pad is disabled too), Undo takes the last
  * roll back; the screen shows the count and the bits, never the roll history, and says when the
  * minimum is reached, from when Done (disabled below it) makes the seed and opens the collision check.
- * The pick lives in the model's PadEntry, not in Compose state: version only redraws the pick when the
- * pad changes it.
+ * The pick lives in the model's PadEntry, not in Compose state: a face's press goes to onKey (the model's
+ * padKey), and version only redraws the pick when the pad changes it.
  */
 @Composable
-fun Dice(state: UiState, pick: PadEntry, testRegistry: Boolean, onConfirm: () -> Unit, onUndo: () -> Unit, onDone: () -> Unit) {
+fun Dice(
+    state: UiState,
+    pick: PadEntry,
+    testRegistry: Boolean,
+    onKey: (Char) -> Unit,
+    onConfirm: () -> Unit,
+    onUndo: () -> Unit,
+    onDone: () -> Unit,
+) {
     val dice = state.dice ?: return
     var version by remember { mutableIntStateOf(0) }
     val open = dice.rolls < MAX_ROLLS
@@ -223,7 +231,10 @@ fun Dice(state: UiState, pick: PadEntry, testRegistry: Boolean, onConfirm: () ->
                         style = KitType.large,
                     )
                 }
-                DicePad(pick, enabled = open) { version += 1 }
+                DicePad(enabled = open) { face ->
+                    onKey(face)
+                    version += 1
+                }
                 Row {
                     KitButton("Undo", "undo", enabled = dice.rolls > 0, modifier = Modifier.weight(1f).padding(end = 6.dp), onClick = onUndo)
                     KitButton(

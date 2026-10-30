@@ -76,6 +76,10 @@ enum class Notice {
  */
 data class UiState(
     val screen: Screen,
+    /**
+     * The screen's page index: the words' or the overview's page, a read-back's insert, the backup
+     * passphrase's page or its confirm's question, Check a backup's word, the BIP39 entry's page of keys.
+     */
     val page: Int = 0,
     /** The privacy gate stands before this Protected screen ("I'm alone, show words"). */
     val gate: Boolean = false,
@@ -594,6 +598,67 @@ class CeremonyModel(
     }
 
     /**
+     * A key of the showing screen's pad (lead decision M5-72's U3e): the dice pad's face, which replaces
+     * the pick (none at 256 rolls, where the pad is disabled); the go-ahead code's symbol; the letter
+     * pad's letter on the read-back entry (none after a match), the backup's confirm and Check a backup's
+     * entry; the ASCII pad's character on the BIP39 passphrase's entry, from its page on show alone. Like
+     * every control's press it acts only through pressOn, so a key left under the cover, the warning or a
+     * privacy gate, or left over from a screen that has gone, types nothing, and every key typed is input
+     * for the idle timer, a touch's or an accessibility service's click alike. A key the pad does not show,
+     * or past a full entry, changes nothing.
+     */
+    fun padKey(key: Char) {
+        val current = mutable.value
+        val entry = padEntry(current) ?: return
+        if (!pressOn(current.screen)) return
+        if (current.screen == Screen.Bip39Entry && key !in asciiPage(current.page)) return
+        if (current.screen == Screen.Dice) entry.replace(key) else entry.type(key)
+    }
+
+    /**
+     * The Delete beside the showing screen's pad, through pressOn as padKey: the last key typed (the dice
+     * pad has none: a face replaces the pick). On Check a backup's entry, as the Pi's KEY1 on its one
+     * entry buffer (pi/app/src/app.rs, typing), word N > 1's empty pad takes entry N - 1 back, its letters
+     * in the pad minus its last one, and its Secret is wiped, so no copy of it outlives it; word 1's empty
+     * pad does nothing.
+     */
+    fun padDelete() {
+        val current = mutable.value
+        val entry = padEntry(current) ?: return
+        if (current.screen == Screen.Dice || !pressOn(current.screen)) return
+        if (entry.length > 0 || current.screen != Screen.BackupCheckEntry) {
+            entry.delete()
+            return
+        }
+        val last = entries.removeLastOrNull() ?: return
+        try {
+            for (index in 0 until last.size - 1) entry.type(Char(last[index].toInt() and 0xFF))
+        } finally {
+            last.wipe()
+        }
+        show(Screen.BackupCheckEntry, page = entries.size)
+    }
+
+    /**
+     * The pad the showing screen offers and the entry its keys type into, or null where none is offered:
+     * the dice pad below 256 rolls, the code entry's, the read-back entry's before its match, the confirm's
+     * and Check a backup's entry's (both backupLetters), and the BIP39 passphrase's entry's.
+     */
+    private fun padEntry(state: UiState): PadEntry? = when (state.screen) {
+        Screen.Dice -> if ((state.dice?.rolls ?: MAX_ROLLS) < MAX_ROLLS) dicePick else null
+        Screen.CodeEntry -> goAheadCode
+        Screen.ReadbackEntry -> if (state.matched) null else readbackLetters
+        Screen.BackupConfirm, Screen.BackupCheckEntry -> backupLetters
+        Screen.Bip39Entry -> bip39Letters
+        else -> null
+    }
+
+    /** The BIP39 passphrase's entry shows the ASCII pad's page of keys (the state's page there), the passphrase typed kept. */
+    private fun keysPage(page: Int) {
+        mutable.value = mutable.value.copy(page = page)
+    }
+
+    /**
      * First launch's Continue: the start-up self-test behind its own screen, then Go offline (MA:170-172).
      * Once it has passed (First launch again by Back from Go offline), Go offline at once.
      */
@@ -828,7 +893,8 @@ class CeremonyModel(
      * Next on the words (insert view) and the overview: the next page, while there is one; on a 24-word
      * seed, past word 12, the device swap first (the Pi's), then that view's next page. Nothing while a
      * mismatch's insert is reviewed, whose one way on is back to its read-back. On the backup passphrase:
-     * its second page; on the account QR, the descriptor QR.
+     * its second page; on the account QR, the descriptor QR; on the BIP39 passphrase's entry, its "Next
+     * keys": the ASCII pad's next page of keys, while there is one, the passphrase typed kept.
      */
     fun nextPage() {
         val current = mutable.value
@@ -855,6 +921,7 @@ class CeremonyModel(
             }
             Screen.BackupPassphrase -> if (pressOn(Screen.BackupPassphrase) && current.page == 0) showPassphrase(1)
             Screen.WatchAccountQr -> if (pressOn(Screen.WatchAccountQr)) show(Screen.WatchDescriptorQr, watch = current.watch)
+            Screen.Bip39Entry -> if (pressOn(Screen.Bip39Entry) && current.page < ASCII_PAGES - 1) keysPage(current.page + 1)
             else -> {}
         }
     }
@@ -862,7 +929,9 @@ class CeremonyModel(
     /**
      * Previous on the words, the overview, the backup passphrase and the descriptor QR (and the system Back
      * there): the page before (the account QR before the descriptor QR), with no device swap (every page
-     * names its device); nothing on the first page or while a mismatch's insert is reviewed.
+     * names its device); nothing on the first page or while a mismatch's insert is reviewed. On the BIP39
+     * passphrase's entry, its "Previous keys": the ASCII pad's page of keys before (the system Back there
+     * is back's: the question).
      */
     fun previousPage() {
         val current = mutable.value
@@ -871,6 +940,7 @@ class CeremonyModel(
             Screen.WordsOverview -> if (pressOn(Screen.WordsOverview) && current.page > 0) showOverview(current.page - 1)
             Screen.BackupPassphrase -> if (pressOn(Screen.BackupPassphrase) && current.page > 0) showPassphrase(current.page - 1)
             Screen.WatchDescriptorQr -> if (pressOn(Screen.WatchDescriptorQr)) show(Screen.WatchAccountQr, watch = current.watch)
+            Screen.Bip39Entry -> if (pressOn(Screen.Bip39Entry) && current.page > 0) keysPage(current.page - 1)
             else -> {}
         }
     }
@@ -1279,26 +1349,6 @@ class CeremonyModel(
             session = true
             show(Screen.BackupCheckResult, opened = opened)
         }
-    }
-
-    /**
-     * The entry's Delete, as the Pi's KEY1 on its one entry buffer (pi/app/src/app.rs, typing): the last
-     * letter typed; on word N > 1's empty pad, entry N - 1 again, its letters back in the pad minus its
-     * last one, and its Secret wiped, so no copy of it outlives it. On word 1's empty pad it does nothing.
-     */
-    fun entryDelete() {
-        if (!pressOn(Screen.BackupCheckEntry)) return
-        if (backupLetters.length > 0) {
-            backupLetters.delete()
-            return
-        }
-        val last = entries.removeLastOrNull() ?: return
-        try {
-            for (index in 0 until last.size - 1) backupLetters.type(Char(last[index].toInt() and 0xFF))
-        } finally {
-            last.wipe()
-        }
-        show(Screen.BackupCheckEntry, page = entries.size)
     }
 
     /** The result's "Show the words": the checked backup's first insert, through the privacy gate (the result is Public). */
