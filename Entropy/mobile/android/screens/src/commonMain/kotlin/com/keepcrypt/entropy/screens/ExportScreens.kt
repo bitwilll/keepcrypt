@@ -195,7 +195,7 @@ fun Bip39Entry(
             },
         ) {
             Heading("BIP39 passphrase")
-            KitText("Keys, page " + (keys + 1) + " of " + ASCII_PAGES, KitType.small, tag = "keys_page")
+            KitText("Keys, page " + (keys + 1) + " of " + ASCII_PAGES, KitType.small, tag = "keys_page", live = true)
             KitText(BIP39_HOW, KitType.small)
         }
     }

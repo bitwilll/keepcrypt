@@ -76,10 +76,10 @@ class CheckBackupScreensTest {
         return rig to file
     }
 
-    /** On the entry: entries typed one after another (each its letters on the pad, then Done). */
+    /** On the entry: entries typed one after another (each its letters pressed on the pad, then Done). */
     private fun type(rig: Rig, entries: List<String>) {
         for (entry in entries) {
-            for (letter in entry) rig.model.backupLetters.type(letter)
+            rig.press(entry)
             rig.model.entryTyped()
         }
     }
@@ -329,12 +329,11 @@ class CheckBackupScreensTest {
         for ((index, letters) in words.withIndex()) {
             assertEquals(index, rig.model.state.value.page, "word " + (index + 1) + " of 8")
             // Done does nothing below three letters.
-            rig.model.backupLetters.type(letters[0])
-            rig.model.backupLetters.type(letters[1])
+            rig.press(letters.take(2))
             rig.model.entryTyped()
             assertEquals(index, rig.model.state.value.page)
             rig.model.backupLetters.wipe()
-            for (letter in letters) rig.model.backupLetters.type(letter)
+            rig.press(letters)
             rig.model.entryTyped()
             assertEquals(0, rig.model.backupLetters.length, "each entry was taken and the pad emptied")
         }
@@ -448,13 +447,13 @@ class CheckBackupScreensTest {
         rig.model.passGate()
         val first = firstFours(saved.passphrase)[0]
         val empty = rig.model.state.value
-        rig.model.padDelete()
+        rig.pressDelete()
         assertSame(empty, rig.model.state.value, "Delete on word 1's empty pad does nothing")
         assertEquals(0, rig.model.backupLetters.length)
         type(rig, listOf(first))
         assertEquals(1, rig.model.state.value.page, "word 2 of 8")
         val taken = rig.model.entriesHeld.single()
-        rig.model.padDelete()
+        rig.pressDelete()
         assertEquals(Screen.BackupCheckEntry, rig.screen)
         assertEquals(0, rig.model.state.value.page, "word 1 again")
         assertTrue(rig.model.entriesHeld.isEmpty(), "the reopened entry is no longer held")
@@ -462,7 +461,7 @@ class CheckBackupScreensTest {
         val letters = rig.model.backupLetters
         assertEquals(first.length - 1, letters.length, "word 1's letters but its last are back in the pad")
         assertTrue((0 until letters.length).all { letters.keyAt(it) == first[it] }, "the pad holds word 1's letters in their order")
-        rig.model.padDelete()
+        rig.pressDelete()
         assertEquals(first.length - 2, letters.length, "with letters typed Delete takes the last one")
         assertTrue(letters.zeroPastLength())
         assertEquals(0, rig.model.state.value.page)
@@ -477,9 +476,9 @@ class CheckBackupScreensTest {
         // Word 4 mistyped and taken, then reopened from word 5's empty pad, emptied and typed again.
         type(rig, listOf(if (right[3] == "zzzz") "yyyy" else "zzzz"))
         assertEquals(4, rig.model.state.value.page)
-        rig.model.padDelete()
+        rig.pressDelete()
         assertEquals(3, rig.model.state.value.page, "word 4 again")
-        while (rig.model.backupLetters.length > 0) rig.model.padDelete()
+        while (rig.model.backupLetters.length > 0) rig.pressDelete()
         assertEquals(3, rig.model.state.value.page, "emptying word 4's pad stays on word 4")
         type(rig, right.drop(3))
         assertEquals(Screen.Working, rig.screen)
@@ -493,7 +492,7 @@ class CheckBackupScreensTest {
         val (rig, file) = picked()
         rig.model.passGate()
         type(rig, listOf(firstFours(saved.passphrase)[0]))
-        rig.model.backupLetters.type('a')
+        rig.press('a')
         rig.model.back()
         assertEquals(Screen.Home, rig.screen)
         assertTrue(zeroed(file.given), "the file read was zeroed")
@@ -706,7 +705,7 @@ class CheckBackupScreensTest {
         val (rig, file) = picked()
         rig.model.passGate()
         type(rig, firstFours(saved.passphrase).take(3))
-        rig.model.backupLetters.type('a')
+        rig.press('a')
         val entries = rig.model.entriesHeld
         assertEquals(3, entries.size)
         rig.model.wipeAll()

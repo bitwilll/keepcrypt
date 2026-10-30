@@ -315,8 +315,9 @@ class FlowTest {
      * The letter pad's keys on the read-back entry (lead decision M5-46): the screen's nodes with the
      * button role and no text, description or resource id, which must be its 26, in the pad's order; and
      * no node there has a single letter or a Public key's id (key_ and a letter), so nothing names a key.
-     * Found afresh for each key, since a key typed redraws the pad (CheckTest's taps resolve their
-     * selector at the click for the same reason), and again when a redraw replaced a node read (fresh).
+     * Found afresh for each key, since a key typed may recompose the actions around the pad (CheckTest's
+     * taps resolve their selector at the click for the same reason), and again when a redraw replaced a
+     * node read (fresh).
      */
     private fun letterKeys(): List<UiObject2> = fresh("the letter pad's keys") {
         device.waitForIdle()
@@ -593,8 +594,8 @@ class FlowTest {
      * and "I use a passphrase": its entry behind the privacy gate, the ASCII pad's three pages of keys each
      * with its button role alone (lead decision M5-46) and no node naming a key, paged by Next keys and
      * Previous keys, the passphrase typed into the model's PadEntry, as the pad types it (no passphrase goes
-     * into a selector or a click's point, lead decision M5-68 (e)), the keys paged on and back so the entry
-     * redraws with it, Delete taking a character back, and Done: the summary says it is that passphrase's wallet, another fingerprint than the
+     * into a selector or a click's point, lead decision M5-68 (e)), the keys paged on and back so a frame
+     * comes before Delete's state is read, Delete taking a character back, and Done: the summary says it is that passphrase's wallet, another fingerprint than the
      * wallet summary's; the account QR behind the gate and the descriptor QR, each read in-process equal to
      * core's own (Core.watchOnly with the same passphrase), the account a crypto-account UR and the
      * descriptors two lines under the summary's fingerprint, Back between them, Done wiping them; the

@@ -192,6 +192,21 @@ internal class Rig(scope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined
         return this
     }
 
+    /** A key pressed on the showing screen's pad, on its page, as its screens make the press (the model's padKey). */
+    fun press(key: Char) {
+        model.padKey(screen, model.state.value.page, key)
+    }
+
+    /** keys pressed in turn on the showing screen's pad (press). */
+    fun press(keys: String) {
+        for (key in keys) press(key)
+    }
+
+    /** The Delete beside the showing screen's pad, on its page (the model's padDelete). */
+    fun pressDelete() {
+        model.padDelete(screen, model.state.value.page)
+    }
+
     /** From Home through Length and the start (its long call run) to the ceremony's first screen. */
     fun begin(mode: Mode, words: Words): Rig {
         model.chooseMode(mode)
@@ -201,13 +216,13 @@ internal class Rig(scope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined
     }
 
     /**
-     * n rolls through the dice pad's keys (the model's padKey) and Confirm, the faces 1 to 6 in turn from 1
+     * n rolls through the dice pad's keys (press) and Confirm, the faces 1 to 6 in turn from 1
      * on each call, so two calls are no vector's rolls (StartScreensTest pushes dice-50-words12's own rolls
      * where the faces matter).
      */
     fun roll(n: Int) {
         repeat(n) { index ->
-            model.padKey(DICE_KEYS[index % DICE_KEYS.length])
+            press(DICE_KEYS[index % DICE_KEYS.length])
             model.confirmRoll()
         }
     }
@@ -220,7 +235,7 @@ internal class Rig(scope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined
     fun toSkippedResult(seed: String): Rig {
         begin(Mode.DiceOnly, if (kcrWords(seed).size == 24) Words.TwentyFour else Words.Twelve)
         for (face in kcrRolls(seed)) {
-            model.padKey(face)
+            press(face)
             model.confirmRoll()
         }
         model.diceDone()
@@ -249,7 +264,7 @@ internal class Rig(scope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined
         repeat(words.size - 1) { model.nextPage() }
         model.startReadback()
         for (word in words) {
-            for (letter in word.take(4)) model.padKey(letter)
+            press(word.take(4))
             model.readbackTyped()
             model.readbackNext()
         }
@@ -279,9 +294,9 @@ internal class Rig(scope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined
         return words
     }
 
-    /** On the confirm, the answer to the question on show typed on the letter pad: word's first four letters (a three-letter word's three), then Done. */
+    /** On the confirm, the answer to the question on show pressed on the letter pad: word's first four letters (a three-letter word's three), then Done. */
     fun answer(word: String) {
-        for (letter in word.take(4)) model.backupLetters.type(letter)
+        press(word.take(4))
         model.confirmTyped()
     }
 

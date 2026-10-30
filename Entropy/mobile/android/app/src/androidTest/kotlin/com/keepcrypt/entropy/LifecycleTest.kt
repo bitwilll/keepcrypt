@@ -434,8 +434,10 @@ class LifecycleTest {
     /**
      * One activity (Stage U's commit U2a): a second start of MainActivity, as another app's intent with
      * FLAG_ACTIVITY_NEW_TASK and FLAG_ACTIVITY_MULTIPLE_TASK (am start -W, which returns once the launch
-     * is done), reaches the running activity, since the manifest's launchMode is singleTask: no second
-     * MainActivity is created in any stage, the first one is resumed, and its model still holds the
+     * is done), reaches the running activity, since the manifest's launchMode is singleTask: once am
+     * says it delivered the intent to the running instance (its START_DELIVERED_TO_TOP line, so a start that
+     * failed or was never delivered cannot pass) no second MainActivity is in any stage (read before anything waits, so the standard launch
+     * mode fails on that line), then the first one is resumed, and its model still holds the
      * session on the dice with its rolls, uncovered and with no notice. With the standard launch mode
      * that intent made a new task with a second activity and a second ceremony model over the process's
      * one slot, and the first activity's stop covered its dice.
@@ -450,13 +452,17 @@ class LifecycleTest {
             toDice(activity)
             onMain {
                 for (roll in DICE_50_ROLLS.take(ROLLS_AWAY)) {
-                    activity.model.padKey(roll)
+                    activity.model.padKey(Screen.Dice, 0, roll)
                     activity.model.confirmRoll()
                 }
             }
             val started = shellText("am start -W -n $component -f $NEW_TASK_MULTIPLE_TASK")
             probe("second start: am start -W printed " + started.lines().map { it.trim() }.filter { it.isNotEmpty() }.joinToString(" | ").take(400))
-            await("the activity resumed", 30) { stage(activity) == Stage.RESUMED }
+            assertTrue("am start reported an error, so nothing was started", started.lines().none { it.trimStart().startsWith("Error") })
+            assertTrue(
+                "am start did not deliver the intent to the running instance (the singleTask path)",
+                started.lines().any { it.trim() == DELIVERED_TO_TOP },
+            )
             val others = onMain {
                 val registry = ActivityLifecycleMonitorRegistry.getInstance()
                 Stage.values().filter { it != Stage.DESTROYED }
@@ -464,10 +470,11 @@ class LifecycleTest {
                     .filter { it is MainActivity && it !== activity }
             }
             assertEquals("a second MainActivity was created", 0, others.size)
+            await("the activity resumed", 30) { stage(activity) == Stage.RESUMED }
             val held = onMain { activity.model.state.value }
             assertEquals("the second start left the dice", Screen.Dice, held.screen)
-            assertEquals(null, held.overlay)
-            assertEquals(null, held.notice)
+            assertEquals("the second start covered the dice", null, held.overlay)
+            assertEquals("the second start wiped the session", null, held.notice)
             assertTrue("the session is no longer held", onMain { activity.model.held.value })
             assertEquals("the rolls", ROLLS_AWAY, done(Core.diceProgress()).rolls)
             pass("a second start (NEW_TASK and MULTIPLE_TASK) reached the running activity: one MainActivity, its session on the dice")
@@ -627,6 +634,9 @@ class LifecycleTest {
 
         /** am start's -f for FLAG_ACTIVITY_NEW_TASK (0x10000000) with FLAG_ACTIVITY_MULTIPLE_TASK (0x08000000). */
         const val NEW_TASK_MULTIPLE_TASK = "0x18000000"
+
+        /** am start's line for an intent delivered to the running top-most instance (START_DELIVERED_TO_TOP). */
+        const val DELIVERED_TO_TOP = "Warning: Activity not started, intent has been delivered to currently running top-most instance."
 
         /** The 60 s rule (Timers.BACKGROUND_MILLIS), 50 s away that keep the session and 70 s that wipe it. */
         const val BACKGROUND_MS = 60_000L

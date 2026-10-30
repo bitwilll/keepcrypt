@@ -170,8 +170,8 @@ internal object Ui {
 
     /**
      * Waits up to 10 s for the dice screen's pick, empty before the press, to show a face, by a pattern
-     * that names none (the pick's node is drawn anew as it changes, so it is waited for as UI Automator
-     * resolves it and found again if it is replaced before its text is read, never read from a node found
+     * that names none (its text changes in place, so it is waited for as UI Automator resolves it, and it
+     * is found again if a recomposition replaced it before its text is read, never read from a node found
      * before), then compares that face with face in-process: a roll goes into no selector or message.
      */
     fun awaitPick(face: Char) {
@@ -194,7 +194,7 @@ internal object Ui {
      * grid a point names its key: a letter typed goes into no log (lead decision M5-68 (e)). A Protected
      * key's semantics are its role alone (Pads.kt's clearAndSetSemantics drops the clickable's click action
      * too), so a touch is its press, as pressFace's accessibility click is a Public key's; nothing here
-     * logs the point. The key is found again when a redraw replaced it before its bounds were read (fresh).
+     * logs the point. The key is found again when a recomposition replaced it before its bounds were read (fresh).
      */
     fun touch(key: () -> UiObject2) {
         val bounds = fresh("a key of the pad") { key().visibleBounds }

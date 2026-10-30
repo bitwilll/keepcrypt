@@ -601,31 +601,35 @@ class CeremonyModel(
      * A key of the showing screen's pad (lead decision M5-72's U3e): the dice pad's face, which replaces
      * the pick (none at 256 rolls, where the pad is disabled); the go-ahead code's symbol; the letter
      * pad's letter on the read-back entry (none after a match), the backup's confirm and Check a backup's
-     * entry; the ASCII pad's character on the BIP39 passphrase's entry, from its page on show alone. Like
-     * every control's press it acts only through pressOn, so a key left under the cover, the warning or a
-     * privacy gate, or left over from a screen that has gone, types nothing, and every key typed is input
-     * for the idle timer, a touch's or an accessibility service's click alike. A key the pad does not show,
-     * or past a full entry, changes nothing.
+     * entry; the ASCII pad's character on the BIP39 passphrase's entry, from its page on show alone. The
+     * press names the screen and page it was made on: like every control's press it acts only through
+     * pressOn on that screen, and only on that page, so a key left under the cover, the warning or a
+     * privacy gate, or left over from a screen or a page that has gone (the confirm's question before,
+     * Check a backup's word before, the read-back's insert before, the ASCII pad's page before), types
+     * nothing, and every key typed is input for the idle timer, a touch's or an accessibility service's
+     * click alike. A key the pad does not show, or past a full entry, changes nothing.
      */
-    fun padKey(key: Char) {
+    fun padKey(screen: Screen, page: Int, key: Char) {
         val current = mutable.value
+        if (current.page != page) return
         val entry = padEntry(current) ?: return
-        if (!pressOn(current.screen)) return
+        if (!pressOn(screen)) return
         if (current.screen == Screen.Bip39Entry && key !in asciiPage(current.page)) return
         if (current.screen == Screen.Dice) entry.replace(key) else entry.type(key)
     }
 
     /**
-     * The Delete beside the showing screen's pad, through pressOn as padKey: the last key typed (the dice
-     * pad has none: a face replaces the pick). On Check a backup's entry, as the Pi's KEY1 on its one
+     * The Delete beside the showing screen's pad, made on screen and page and acting only there through
+     * pressOn, as padKey: the last key typed (the dice pad has none: a face replaces the pick). On Check a backup's entry, as the Pi's KEY1 on its one
      * entry buffer (pi/app/src/app.rs, typing), word N > 1's empty pad takes entry N - 1 back, its letters
      * in the pad minus its last one, and its Secret is wiped, so no copy of it outlives it; word 1's empty
      * pad does nothing.
      */
-    fun padDelete() {
+    fun padDelete(screen: Screen, page: Int) {
         val current = mutable.value
+        if (current.page != page) return
         val entry = padEntry(current) ?: return
-        if (current.screen == Screen.Dice || !pressOn(current.screen)) return
+        if (current.screen == Screen.Dice || !pressOn(screen)) return
         if (entry.length > 0 || current.screen != Screen.BackupCheckEntry) {
             entry.delete()
             return

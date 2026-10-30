@@ -21,8 +21,8 @@ class ScreenTitlesTest {
         assertEquals(3, others.size)
         assertTrue(titles.none { it in others }, "a screen's title is the gate's, the cover's or the warning's")
         for (screen in Screen.entries) {
-            assertEquals(screenTitle(screen), paneTitle(UiState(screen)), screenId(screen))
-            assertEquals(PRIVACY_GATE_TITLE, paneTitle(UiState(screen, gate = true)), screenId(screen) + " behind a gate")
+            assertEquals(screenTitle(screen), paneTitleOf(UiState(screen)), screenId(screen))
+            assertEquals(PRIVACY_GATE_TITLE, paneTitleOf(UiState(screen, gate = true)), screenId(screen) + " behind a gate")
         }
     }
 

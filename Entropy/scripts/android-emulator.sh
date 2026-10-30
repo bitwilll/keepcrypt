@@ -483,12 +483,19 @@ EOF
   # selftest before any leg job starts). The steps that follow the part run where it holds them: the
   # part's own step in every job, Ubuntu's age in the journeys jobs, the 16 KB leg in API 31's capture
   # job and the captures' upload in the capture jobs, each step's name and condition as written, once.
+  # Each row carries its budget, a whole number of minutes (timeout:, which the job's timeout-minutes
+  # reads; M5-30), so a row without one cannot leave its job with an empty limit.
   wfa=$self/../../.github/workflows/entropy-android.yml
   rows=$(awk '
     /^  [^ #]/ { job = $0 }
     job == "  emulators:" && /^          - api: / { api = $3; gsub(/'\''/, "", api) }
     job == "  emulators:" && /^            part: / { print api, $2 }' "$wfa" | sort)
   want=$(for a in 31 36; do for p in capture journeys registry; do echo "$a $p"; done; done)
+  budgets=$(awk '
+    /^  [^ #]/ { job = $0 }
+    job == "  emulators:" && /^          - api: / { rows++ }
+    job == "  emulators:" && /^            timeout: [1-9][0-9]*$/ { timed++ }
+    END { print rows + 0, timed + 0 }' "$wfa")
   conds=$(awk '
     function flush() { if (name != "") print name "|" cond; name = ""; cond = "" }
     /^  [^ #]/ { flush(); job = $0; next }
@@ -499,6 +506,7 @@ EOF
     END { flush() }' "$wfa")
   ok=yes
   [ -n "$rows" ] && [ "$rows" = "$want" ] || ok=no
+  [ "$budgets" = "6 6" ] || ok=no
   while IFS= read -r line; do
     [ "$(printf '%s\n' "$conds" | grep -c -x -F -e "$line")" = 1 ] || ok=no
   done <<'EOF'
@@ -509,10 +517,10 @@ Upload the positive control's captures (API ${{ matrix.api }})|${{ matrix.part =
 EOF
   if [ "$ok" = yes ]; then
     passed=$((passed + 1))
-    echo "PASS the workflow: each part on API 31 and 36, one a job, and the steps that follow the part"
+    echo "PASS the workflow: each part on API 31 and 36, one a job, each with its budget, and the steps that follow the part"
   else
     failed=$((failed + 1))
-    echo "FAIL the workflow: its emulators matrix rows are $(printf '%s\n' "$rows" | tr '\n' ',') and its steps $(printf '%s\n' "$conds" | tr '\n' ' ')"
+    echo "FAIL the workflow: its emulators matrix rows are $(printf '%s\n' "$rows" | tr '\n' ','), rows and budgets $budgets, and its steps $(printf '%s\n' "$conds" | tr '\n' ' ')"
   fi
   # Every part: step 7 at its end; journeys and registry run none of steps 1, 2, 5 and 6, the capture
   # part's, and keep no capture.

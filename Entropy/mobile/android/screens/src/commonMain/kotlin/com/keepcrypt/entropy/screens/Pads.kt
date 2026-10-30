@@ -32,10 +32,10 @@ import com.keepcrypt.entropy.ffi.Secret
 
 // The in-app pads (tasks/todo.md, M5 group 14; docs/mobile-apps.md, "Text entry"; Q57 (a)): the system
 // keyboard never opens. Each pad's keys come in a fixed order, and each press goes to the model (padKey,
-// U3e), which types it into a PadEntry, never a String, that hands it to Core as a Secret. On Protected screens (the letter pad's read-back
-// and backup-passphrase entry, the ASCII pad's BIP39 passphrase) a key's semantics hold its role alone:
-// nothing about which key was pressed reaches an accessibility event. The dice pad and the go-ahead
-// code's pad are on Public screens.
+// U3e), which types it into a PadEntry, never a String, that hands it to Core as a Secret. On Protected
+// screens (the letter pad's read-back and backup-passphrase entry, the ASCII pad's BIP39 passphrase) a
+// key's semantics hold its role alone: nothing about which key was pressed reaches an accessibility
+// event. The dice pad and the go-ahead code's pad are on Public screens.
 
 /** The dice pad's keys: the faces 1 to 6. */
 const val DICE_KEYS = "123456"

@@ -11186,9 +11186,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   Android job's budget is set at commit 8 from its measured time plus 25%, with `timeout-minutes` at that budget and a
   90-minute ceiling (since L9, each of the three jobs' own budget by the same rule, M5-70 (b); from U1a each of the
   seven, M5-73 (b), set 2026-10-30 from run 40903211202: build 13 minutes, the leg jobs 12, 20, 10, 11, 20 and 11);
-  system images, the
-  emulator package and the Gradle distribution are cached with actions/cache keyed
-  on their revisions. An emulator boot failure may be re-run once, and the re-run is logged under Review; a test
+  system images, the emulator package and the Gradle distribution are cached with actions/cache keyed on their
+  revisions. An emulator boot failure may be re-run once, and the re-run is logged under Review; a test
   failure is never re-run. Past any budget, the lead stops and re-plans.
 - **Evidence:** CI emulator runs for every gate item; the owner's P1-P4 on a phone; Review records only pass or fail,
   "matched", versions, times, run IDs, hashes and Public values of gate seeds or of the throwaway seed.
@@ -11992,13 +11991,13 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   each job's time.
   Proof (CI, the lead's, 2026-10-30): Entropy Android 40903211202 at ab6773f, the six leg jobs' measuring run, each
   green under its name: "android emulators (API 31, capture, then 16 KB pages)" 535 s (ControlTest 3, CaptureTest 7 in
-  each APK, PhoneMotionTest 1, the frame checks, then the 16 KB leg's NativeTest in each APK), "(API 31, journeys)"
-  919 s (FlowTest 7, CheckTest 2, BackupTest 1 with its age -d hand-off), "(API 31, test registry and edges)" 448 s
-  (SnapshotDrillTest 3, LifecycleTest 7, CrashTest killed as it must be), and API 36's capture 503 s, journeys 952 s
-  and test registry and edges 497 s with the same classes but the 16 KB leg; each job "every check passed", each part
-  ending with the nothing-persisted listing (no file in either app's data directories, its planted control the
-  listing's one new hit); the build job 618 s. The budgets from it (M5-30): build 13 minutes, the leg jobs 12, 20, 10,
-  11, 20 and 11 (the workflow's matrix, 2026-10-30).
+  each APK, PhoneMotionTest 1, the frame checks, then the 16 KB leg's NativeTest on the shipping APK for x86_64 and
+  each ARM ABI the image lists), "(API 31, journeys)" 919 s (FlowTest 7, CheckTest 2, BackupTest 1 with its age -d
+  hand-off), "(API 31, test registry and edges)" 448 s (SnapshotDrillTest 3, LifecycleTest 7, CrashTest killed as it
+  must be), and API 36's capture 503 s, journeys 952 s and test registry and edges 497 s with the same classes but the
+  16 KB leg; each job "every check passed", each part ending with the nothing-persisted listing (no file in either
+  app's data directories, its planted control the listing's one new hit); the build job 618 s. The budgets from it
+  (M5-30): build 13 minutes, the leg jobs 12, 20, 10, 11, 20 and 11 (the workflow's matrix, 2026-10-30).
   Proof (M5 commit U1a2, review fix, partial: local; CI's six leg jobs at the next push): Stage U's commit plan gives
   each API three jobs, "capture, shipping journeys, and test registry and edges", and U1a put the edges, LifecycleTest
   and CrashTest, in capture, with the third part SnapshotDrillTest alone (the U-1 review). They now run in the
@@ -12016,7 +12015,12 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   (build 29 steps, emulators 12).
   Proof (CI, the lead's, 2026-10-30): Entropy Android 40903211202 at ab6773f: LifecycleTest and CrashTest ran in each
   API's third job after SnapshotDrillTest, and capture ended with PhoneMotionTest, as above; the build job's
-  android-emulator.sh --selftest passed with the workflow's matrix.
+  android-emulator.sh --selftest passed with the workflow's matrix (U1a3's check).
+  Proof (M5 commit U1a4, Stage U-2's review fix, partial: local; CI's build job at the next push): the selftest read
+  each emulators row's api and part but not its budget, so a row without timeout: would leave its job's
+  timeout-minutes empty unseen. It now counts the rows and the rows' whole-minute timeout: lines, which must both be
+  6. With one timeout: line removed from a copy of the workflow it fails ("rows and budgets 6 5"); android-emulator.sh
+  --selftest 50 passed on the real workflow.
   Proof (M5 commit U1a3, review fix, partial: local; CI's build job at the next push): nothing read the emulators
   matrix, so a row dropped or renamed left every gate and selftest green while that part ran on that API level
   nowhere (the U-1 review). android-emulator.sh's selftest, which the build job runs before any leg job, now reads
@@ -13026,6 +13030,23 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   makes each change in Snapshot.withMutableSnapshot, whose apply hands its changed states to the apply observers; the
   steps are the same, and with length a plain Int it fails ("reading the entry reads no snapshot state",
   PadsTest.kt:176). The gate clean under sh and dash; PadsTest 8 passed.
+  Proof (M5 commit U3e2, Stage U-2's review fix, partial: local; CI's legs at the next push): the reviews found that
+  padKey and padDelete passed pressOn the showing screen, so its screen check always held, and a press left over from
+  a page of the same screen typed into the next one: a letter queued as the confirm's Done moved to question 2, as
+  Check a backup's Done moved to word N + 1, or as the read-back's Next moved to the next insert (the same entry each
+  time); U3e's "left over from a screen that has gone" held only where the next screen had no pad. A key and a Delete
+  now name the screen and page they were made on (padKey(screen, page, key), padDelete(screen, page)): the page must
+  be the state's, and pressOn checks the screen; Screens.kt's lambdas pass the screen and the state's page. The JVM
+  tests press through Rig.press and Rig.pressDelete, the showing screen and page, as the screens do: the dice, the
+  read-back, the confirm's answers (Rig.answer), Check a backup's entries, the code and BackupScreensTest's partial
+  answers, so every pad is driven through padKey (a mutant mapping the confirm's pad to none now fails them).
+  PadPressTest (5): the after-match check asserts straight after the key, before any Delete; a key and a Delete made
+  on insert 1's entry do nothing on insert 2's, nor a key made on another screen; the code entry types and deletes and
+  does neither under the cover; the dice at 256 rolls pick nothing; Previous keys stops at page 1; a key and a Delete
+  made on the confirm's question 1 do nothing on question 2. Without the page check two fail (PadPressTest.kt:128 and
+  :173). FlowTest's and Ui.kt's comments on redraws read as U3f made them. The instrumented journeys still type
+  in-process in places; through the UI only is U1b's (M5-74 (c)). Locally: the strict Gradle build of the five APKs
+  and test APKs, :screens 165 in 23 classes, :core-ffi 34, :app 11 for each flavour, none failed; the gate clean.
 
 **15. Screens: start to dice** (MA:166-174; PF:83-89)
 - [ ] First launch (MA:13's limits, the development-build line, "use the Pi for life savings"; every start), Self-test
@@ -15784,6 +15805,23 @@ they differ. Nothing in the Android plan is weakened.
   and "test registry and edges" (part ids capture, journeys, registry); the Terms, CI and Budgets entries' L9 wording
   reads as six leg jobs from U1a on, each budgeted by M5-30 after its measuring run. (c) The FFI's halted status
   carries a reason code since U3a (the fixed codes pinned in wire.rs); the plan's FFI line reads so.
+- M5-74 (2026-10-30), Stage U-2 (U3e, U3f, U3g, U2a, their review fixes U3e2, U3f2, U3g2, U2a2 and U1a4, and the
+  bookkeeping of run 40903211202): (a) the lead pushed cd8440b before the local suite had run the gate, and U3f's
+  PadsTest named a word KtWindow refuses, so that head's gates job fails; U3f2 fixes it, and from here the gate runs
+  before every commit that adds Kotlin. (b) U2a's launchMode singleTask (chosen over singleInstance, whose pickers
+  would answer at once, and over a process-wide model, a larger change) stops a second activity for every start but
+  one with FLAG_ACTIVITY_CLEAR_TASK, which finishes the running activity first: its model's end wipes the slot, and a
+  self-test or session the new activity starts meanwhile is halted or wiped, so it fails closed; a guard that halts a
+  second CeremonyHolder is left out as a residual the M5 report names. (c) The reviews found the instrumented journeys
+  still typing into the model's pads in-process in places (FlowTest, CaptureTest, BackupTest, LifecycleTest, Ui.kt's
+  helpers); through the UI only is U1b's (Ui's tapped rolls, pads and codes, M5-72 (a)), so U-2 leaves them, and the
+  JVM tests press through padKey. (d) U3g's device check covers the screens' pane titles and the QR codes' names; the
+  gate's and overlays' titles, the headings and the live regions, and Compose's silence for a live region that first
+  appears, go to U3h's layout and TalkBack pass and to Q79-Q80, not decided here. (e) U3f keeps mutableIntStateOf:
+  neverEqualPolicy changed no test's result (a replaced face writes the length twice). (f) Local proof in this session
+  ran on a Linux x86_64 cloud host (JDK 21, the Android SDK's platform 37, build-tools 36.0.0 and NDK r30, Gradle's
+  downloads through Q76's paths, with Maven Central rate-limiting and retried), with no emulator: the JVM tests, the
+  strict builds, --apk on throwaway-signed APKs and the selftests are local; every device claim is CI's.
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the
@@ -16615,6 +16653,17 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   the device proof is CI's): the strict build of the APKs and test APKs; both release APKs, signed with a local
   throwaway key, pass --apk against the new expected summaries; --selftest-apk 89 passed; android-emulator.sh
   --selftest 50 and android-instrument.sh --selftest 43 passed.
+  Proof (M5 commit U2a2, Stage U-2's review fix, partial: local, no emulator; CI's test registry and edges jobs at the
+  next push): the reviews found that the test printed am start's output and checked none of it, so a start that failed
+  or was never delivered passed, and that under the standard launch mode it would have failed on its wait for the
+  resumed stage, not on the second activity. It now requires no Error line and am's START_DELIVERED_TO_TOP line
+  ("Warning: Activity not started, intent has been delivered to currently running top-most instance."), then reads the
+  activities in every stage before anything waits, so the standard mode fails on "a second MainActivity was created";
+  the null checks name what they mean. That failure is reasoned, not run (no emulator here). The manifest's and
+  MainActivity's comments now say what singleTask does not stop: FLAG_ACTIVITY_CLEAR_TASK finishes the running
+  activity, whose model's end wipes the slot, and starts a new one (fail closed, M5-74 (b)); and that a start while a
+  picker, the camera prompt or the airplane-mode settings is up closes it (nothing picked, nothing granted, back to Go
+  offline). Locally: the strict build of the APKs and test APKs.
 - [ ] U3. A UX audit of every screen against the docs and the Pi: wording, order, what each button and Back do, what
   TalkBack reads on Public screens, the layout on a 360 dp phone and a large one, text sizes. A defect within the docs is
   fixed with a test; a change the docs do not allow becomes a question for the owner.
@@ -16639,6 +16688,15 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   the pane title and content description); before the fix it would find no pane title. The live regions and headings
   have no device check. Locally: the strict Gradle build of the five APKs, the androidTest APKs compiling the walk's
   check, and :screens 163 in 23 classes, none failed.
+  Proof (M5 commit U3g2, Stage U-2's review fix, partial: local; CI's capture walks at the next push): the pane title
+  function is paneTitleOf (a name of its own beside the paneTitle property it sets), and the BIP39 entry's "Keys, page
+  N of 3", fixed text that changes in place, is a polite live region too. What no test checks, said here as the
+  reviews asked: the gate's and the overlays' pane titles have no on-screen check (the walk shows each screen past its
+  gate with no overlay), and the headings and live regions none at all; and Compose UI 1.12.1 exposes a live region on
+  the node and announces it when its text changes (dice_count, scan_line, keys_page), but sends no event when a
+  live-region node first appears, so the lines that appear (a refusal, a failure, the dice's minimum and cap, the
+  notice bar) may go unannounced, and a second identical code refusal changes nothing to announce. Both are for the
+  TalkBack check of U3h and Q79-Q80 (M5-74 (d)).
 - [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists them.
   Proof: CI at each stage's head; local runs reported as local.
 - **Stage U's commit plan** (M5-72 (h); each commit's test fails before its fix, U4):

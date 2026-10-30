@@ -138,7 +138,7 @@ class BackupScreensTest {
         val question = challenge.questions[0]
         val word = passphrase[question.position - 1]
         // Done below three letters does nothing, and the letters stay.
-        for (letter in word.take(2)) rig.model.backupLetters.type(letter)
+        rig.press(word.take(2))
         rig.model.confirmTyped()
         assertEquals(2, rig.model.backupLetters.length)
         assertEquals(0, rig.model.state.value.page)
@@ -178,7 +178,7 @@ class BackupScreensTest {
         // with such a choice; the first is answered right to reach the second).
         val at = challenge.questions.indexOfFirst { longerChoice(it) != null }
         if (at == 1) rig.answer(passphrase[challenge.questions[0].position - 1])
-        for (letter in checkNotNull(longerChoice(challenge.questions[at])).take(3)) rig.model.backupLetters.type(letter)
+        rig.press(checkNotNull(longerChoice(challenge.questions[at])).take(3))
         rig.model.confirmTyped()
         assertEquals(Screen.BackupPassphrase, rig.screen, "three letters of a longer word are no choice")
         assertTrue(rig.model.state.value.wrongConfirm)
@@ -314,7 +314,7 @@ class BackupScreensTest {
         again.model.appReturned()
         val passphrase = again.toConfirm()
         val challenge = assertNotNull(again.model.state.value.challenge)
-        for (letter in passphrase[challenge.questions[0].position - 1].take(2)) again.model.backupLetters.type(letter)
+        again.press(passphrase[challenge.questions[0].position - 1].take(2))
         again.model.appLeft()
         assertEquals(Screen.GoOffline, again.screen)
         assertEquals(Notice.Left, again.model.state.value.notice)
@@ -372,7 +372,7 @@ class BackupScreensTest {
         val again = atSummary()
         val passphrase = again.toConfirm()
         val challenge = assertNotNull(again.model.state.value.challenge)
-        for (letter in passphrase[challenge.questions[0].position - 1].take(2)) again.model.backupLetters.type(letter)
+        again.press(passphrase[challenge.questions[0].position - 1].take(2))
         again.model.wipeAll()
         assertTrue(challenge.questions.all { q -> q.choices.all { c -> (0 until c.size).all { c[it] == 0.toByte() } } }, "wipeAll wiped the choices")
         assertEquals(0, again.model.backupLetters.length, "wipeAll wiped the letters typed")

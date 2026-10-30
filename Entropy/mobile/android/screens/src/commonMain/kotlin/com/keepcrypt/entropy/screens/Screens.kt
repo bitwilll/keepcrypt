@@ -35,7 +35,7 @@ import com.keepcrypt.entropy.ffi.Mode
  * which the save screen's Save and Home's Check a backup and Load registry snapshot hand to the model); onShown reports each screen once it is composed
  * (the capture harness's drawn-screen proof); onClose is the stop screen's "Close app", which ends the
  * process (the platform's). The system Back is the platform's too, and goes to the model's back. The
- * screen's column carries its pane title (paneTitle), and each overlay its own, so TalkBack says which
+ * screen's column carries its pane title (paneTitleOf), and each overlay its own, so TalkBack says which
  * screen came, by fixed names alone (U3g).
  */
 @Composable
@@ -67,7 +67,7 @@ fun Screens(
             },
     ) {
         // The system bars' insets are taken here, once, so a screen's own safeDrawingPadding adds none.
-        Column(Modifier.fillMaxSize().safeDrawingPadding().semantics { paneTitle = paneTitle(state) }) {
+        Column(Modifier.fillMaxSize().safeDrawingPadding().semantics { paneTitle = paneTitleOf(state) }) {
             val notice = state.notice
             if (notice != null && !isWorking(state.screen) && state.screen != Screen.Stop) {
                 NoticeLine(notice)
@@ -92,7 +92,7 @@ fun Screens(
                     state,
                     model.dicePick,
                     registry,
-                    onKey = model::padKey,
+                    onKey = { key -> model.padKey(Screen.Dice, state.page, key) },
                     onConfirm = model::confirmRoll,
                     onUndo = model::undoRoll,
                     onDone = model::diceDone,
@@ -121,8 +121,8 @@ fun Screens(
                     state,
                     model.goAheadCode,
                     registry,
-                    onKey = model::padKey,
-                    onDelete = model::padDelete,
+                    onKey = { key -> model.padKey(Screen.CodeEntry, state.page, key) },
+                    onDelete = { model.padDelete(Screen.CodeEntry, state.page) },
                     onDone = model::codeDone,
                     onBack = model::back,
                 )
@@ -161,8 +161,8 @@ fun Screens(
                     model.readbackLetters,
                     registry,
                     passGate = model::passGate,
-                    onKey = model::padKey,
-                    onDelete = model::padDelete,
+                    onKey = { key -> model.padKey(Screen.ReadbackEntry, state.page, key) },
+                    onDelete = { model.padDelete(Screen.ReadbackEntry, state.page) },
                     onDone = model::readbackTyped,
                     onNext = model::readbackNext,
                 )
@@ -189,8 +189,8 @@ fun Screens(
                     model.backupLetters,
                     registry,
                     passGate = model::passGate,
-                    onKey = model::padKey,
-                    onDelete = model::padDelete,
+                    onKey = { key -> model.padKey(Screen.BackupConfirm, state.page, key) },
+                    onDelete = { model.padDelete(Screen.BackupConfirm, state.page) },
                     onDone = model::confirmTyped,
                 )
                 Screen.BackupSave -> BackupSave(state, registry, onSave = { model.saveBackup(documents) }, onSkip = model::skipBackup)
@@ -202,10 +202,10 @@ fun Screens(
                     model.bip39Letters,
                     registry,
                     passGate = model::passGate,
-                    onKey = model::padKey,
+                    onKey = { key -> model.padKey(Screen.Bip39Entry, state.page, key) },
                     onPreviousKeys = model::previousPage,
                     onNextKeys = model::nextPage,
-                    onDelete = model::padDelete,
+                    onDelete = { model.padDelete(Screen.Bip39Entry, state.page) },
                     onDone = model::bip39Typed,
                     onBack = model::back,
                 )
@@ -228,8 +228,8 @@ fun Screens(
                     model.backupLetters,
                     registry,
                     passGate = model::passGate,
-                    onKey = model::padKey,
-                    onDelete = model::padDelete,
+                    onKey = { key -> model.padKey(Screen.BackupCheckEntry, state.page, key) },
+                    onDelete = { model.padDelete(Screen.BackupCheckEntry, state.page) },
                     onDone = model::entryTyped,
                     onBack = model::back,
                 )
@@ -335,7 +335,7 @@ const val IDLE_WARNING_TITLE = "Idle warning"
  * The pane title of what the state shows (U3g): the privacy gate's while one stands before a Protected
  * screen, else the screen's (screenTitle); fixed text either way, never a value the screen shows.
  */
-fun paneTitle(state: UiState): String = if (state.gate) PRIVACY_GATE_TITLE else screenTitle(state.screen)
+fun paneTitleOf(state: UiState): String = if (state.gate) PRIVACY_GATE_TITLE else screenTitle(state.screen)
 
 /**
  * The privacy gate before a Protected screen (docs/mobile-apps.md, "Session lifetime" and step 10;

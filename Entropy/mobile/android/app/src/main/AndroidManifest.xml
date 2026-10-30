@@ -9,7 +9,11 @@
      uncaught-exception handler is the crash path (group 14). One exported activity, the launcher, and
      one instance of it (launchMode singleTask, Stage U's commit U2a): a second start, from the launcher,
      am start or another app's intent with FLAG_ACTIVITY_MULTIPLE_TASK, reaches the running activity and
-     its one ceremony model, never a second model over the process's one slot.
+     its one ceremony model. Only FLAG_ACTIVITY_CLEAR_TASK replaces it: the running one is finished, its
+     model's end wipes the slot (fail closed), and a new one starts at First launch (lead decision M5-74).
+     As singleTask clears what lies above it in its task, a start while a document picker, the camera
+     prompt or the airplane-mode settings is up closes that activity: a picker answers nothing picked, the
+     prompt nothing granted, and the settings return to Go offline.
      The one removal is the androidx.startup provider, which would run library initializers at
      start; profileinstaller, the one that writes files, is excluded from every configuration
      (build.gradle.kts). -->
