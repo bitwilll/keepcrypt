@@ -11076,7 +11076,10 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
 - **The Android workflow:** `.github/workflows/entropy-android.yml`, one non-required job `android (build, emulators)`
   (Q55). Amended 2026-10-29 (M5-70 (b), M5-71 (a), commit L9): one non-required workflow of three jobs, `build`
   ("android build (APKs, checks, uploads, hand-off)") and the two leg jobs "android emulators (API 31, then 16 KB
-  pages)" and "android emulators (API 36)".
+  pages)" and "android emulators (API 36)". Amended 2026-10-30 (M5-73 (b), commits U1a and U1a2): seven jobs, `build`
+  and six leg jobs, each API's leg as three parts (`android-emulator.sh --part`): "android emulators (API 31, capture,
+  then 16 KB pages)", "(API 31, journeys)", "(API 31, test registry and edges)", "(API 36, capture)", "(API 36,
+  journeys)" and "(API 36, test registry and edges)".
 - **Protected / Public:** PF:122's list, adopted for the phone (Q57).
 - **Gate seeds:** kcr.json's public dice-only seeds and fixtures. No other seed is named in a test, a capture or a report.
 - **P0-P5:** the owner's phone checklists below.
@@ -11177,10 +11180,13 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   checks, scans and signs the APKs once and hands those files to two leg jobs side by side through the approved
   actions/cache, keyed on the run and its attempt; each leg checks every file against the build job's SHA256SUMS (its
   job output, which never passes through the cache) before it installs anything, so the emulators still test the
-  bytes P0's SHA-256 names, with no fourth action. No M5 PR merges without its green run at the final head (Q38 (b)'s rule).
+  bytes P0's SHA-256 names, with no fourth action. Amended 2026-10-30 (M5-73 (b), commits U1a and U1a2): six leg jobs,
+  each API's capture, journeys, and test registry and edges, each checking the same SHA256SUMS. No M5 PR merges without its green run at the final head (Q38 (b)'s rule).
 - **Budgets:** `gates` within the approved 12 minutes (Q31 (f); M4b measured 10 min 08 s), `test` within 6 minutes. The
   Android job's budget is set at commit 8 from its measured time plus 25%, with `timeout-minutes` at that budget and a
-  90-minute ceiling (since L9, each of the three jobs' own budget by the same rule, M5-70 (b)); system images, the
+  90-minute ceiling (since L9, each of the three jobs' own budget by the same rule, M5-70 (b); from U1a each of the
+  seven, M5-73 (b), set 2026-10-30 from run 40903211202: build 13 minutes, the leg jobs 12, 20, 10, 11, 20 and 11);
+  system images, the
   emulator package and the Gradle distribution are cached with actions/cache keyed
   on their revisions. An emulator boot failure may be re-run once, and the re-run is logged under Review; a test
   failure is never re-run. Past any budget, the lead stops and re-plans.
@@ -11984,6 +11990,15 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   both clippy runs, `cargo test --workspace --locked` (499 passed, 3 ignored), the test-sources run (269 passed, 1
   ignored) and `-p keepcrypt-ffi -p keepcrypt-jni`, plain and with the test registry (50 passed each). Only CI shows
   each job's time.
+  Proof (CI, the lead's, 2026-10-30): Entropy Android 40903211202 at ab6773f, the six leg jobs' measuring run, each
+  green under its name: "android emulators (API 31, capture, then 16 KB pages)" 535 s (ControlTest 3, CaptureTest 7 in
+  each APK, PhoneMotionTest 1, the frame checks, then the 16 KB leg's NativeTest in each APK), "(API 31, journeys)"
+  919 s (FlowTest 7, CheckTest 2, BackupTest 1 with its age -d hand-off), "(API 31, test registry and edges)" 448 s
+  (SnapshotDrillTest 3, LifecycleTest 7, CrashTest killed as it must be), and API 36's capture 503 s, journeys 952 s
+  and test registry and edges 497 s with the same classes but the 16 KB leg; each job "every check passed", each part
+  ending with the nothing-persisted listing (no file in either app's data directories, its planted control the
+  listing's one new hit); the build job 618 s. The budgets from it (M5-30): build 13 minutes, the leg jobs 12, 20, 10,
+  11, 20 and 11 (the workflow's matrix, 2026-10-30).
   Proof (M5 commit U1a2, review fix, partial: local; CI's six leg jobs at the next push): Stage U's commit plan gives
   each API three jobs, "capture, shipping journeys, and test registry and edges", and U1a put the edges, LifecycleTest
   and CrashTest, in capture, with the third part SnapshotDrillTest alone (the U-1 review). They now run in the
@@ -11999,6 +12014,9 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   (`--part capture` four runs then NativeTest, `--part registry` three, "run 3 of 3" the killed CrashTest).
   `--workflows ../.github/workflows` clean (3 workflows) under sh and dash; Ruby's YAML parser reads the six names
   (build 29 steps, emulators 12).
+  Proof (CI, the lead's, 2026-10-30): Entropy Android 40903211202 at ab6773f: LifecycleTest and CrashTest ran in each
+  API's third job after SnapshotDrillTest, and capture ended with PhoneMotionTest, as above; the build job's
+  android-emulator.sh --selftest passed with the workflow's matrix.
   Proof (M5 commit U1a3, review fix, partial: local; CI's build job at the next push): nothing read the emulators
   matrix, so a row dropped or renamed left every gate and selftest green while that part ran on that API level
   nowhere (the U-1 review). android-emulator.sh's selftest, which the build job runs before any leg job, now reads
@@ -12074,6 +12092,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   `cargo test --workspace --locked` 499 passed (3 ignored), the test-sources run 269 (1 ignored). Only CI's API 31
   image can confirm that its read there was the read-back entry's cached tree, and that its tree shows each screen
   within the 10 s.
+  Proof (CI, the lead's, 2026-10-30): Entropy Android 40903211202 at ab6773f, every job green: in API 31's capture job
+  (CaptureTest 7 in each APK) the test-registry walk passed readback_done ("drawn, then screencap and takeScreenshot
+  black over the app's window; SECURE on all 1 of its windows; no content capture"), as the shipping walk did, where
+  e3c6c12's run failed on "a secret's node on the Public screen readback_done"; API 36's capture job passed both walks
+  too.
 - [ ] **Positive controls (each missing control fails the job):** (a) the capture-control APK draws `dice-99-words12`'s
   first words page and a Public screen with the same composables and no FLAG_SECURE; the same screencap,
   `takeScreenshot()` and raw-frame calls must find its known pixels, on API 31 and 36. (b) The drawn-screen proof above,
@@ -12312,6 +12335,10 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   library's exports as before (JNI_OnLoad, Java_com_keepcrypt_entropy_ffi_Native_call and secp256k1-sys's four).
   fmt, both clippy runs, `cargo test --workspace --locked` 503 passed (3 ignored), the test-sources run 269 (1
   ignored); the gate clean (385 files), its selftest 1631 passed; canaries.sh PASS, all 94 checks ran.
+  Proof (CI, the lead's, 2026-10-30): Entropy Android 40903211202 at ab6773f: the stop screen in both capture walks of
+  API 31 and of API 36 "its one reason line names the walk's halt, a health test's" (U3a4's in-process read), drawn
+  black and SECURE; the build job's JVM tests (U3a3's HaltStatusLengthTest among them) passed; Entropy CI 40903211222
+  at ab6773f green, its test job's ffi runs (U3a2's halt-reason test) among them.
   Proof (M5 commit U3a2, review fix, partial: local; CI's test job at the next push): no test sent a long call's
   halt through `Slot::long` with any reason but internal, so turning every long call's halt into internal (its
   work's, or the one that came while the work ran) passed every FFI test (the U-1 review's mutants R8 and R16).
@@ -12756,6 +12783,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   the Camera2 check's four camera-client checks, its decode not met, as allowed). fmt, both clippy runs, `cargo test
   --workspace --locked` 503 passed (3 ignored), the test-sources run 269 (1 ignored); the gate clean (385 files), its
   selftest 1631 passed.
+  Proof (CI, the lead's, 2026-10-30): Entropy Android 40903211202 at ab6773f: the build job's JVM test report (42
+  classes, none failed) has CheckBackupScreensTest's 19 tests passed, its idle-warning, online and Back tests among
+  them; both capture walks on API 31 and 36 drew backup_check_entry and backup_check_result black and SECURE, the
+  entry's one secret text drawn only by its secret node (data sensitive on API 36); LifecycleTest 7 passed in each
+  API's test registry and edges job.
   Proof (M5 commit U3m, Stage U-1, M5-72 (b), partial: local, kc37, Q76; CI's legs at the next push): nothing kept the
   screen on, so a screen timeout stopped the activity, which is leaving the app, and a words page was discarded while
   its insert was punched (PF:125, "slow punching or scanning is never cut short"; MA:34). CeremonyModel gains `held`,
@@ -12791,6 +12823,10 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   to CeremonyModel came after the capture and journeys parts' builds, before the registry part's and the final build.
   fmt, both clippy runs, `cargo test --workspace --locked` 503 passed (3 ignored), the test-sources run 269 (1
   ignored); the gate clean (386 files), its selftest 1631 passed.
+  Proof (CI, the lead's, 2026-10-30): Entropy Android 40903211202 at ab6773f: in each API's test registry and edges
+  job "a words page outlasted the screen timeout (10000 ms, stay-on off) by its window's FLAG_KEEP_SCREEN_ON, the
+  session held; after Finish the window has no flag" (API 31 and 36); the build job's JVM test report (42 classes,
+  none failed) has the held-state tests' classes passed.
   Proof (M5 commit U3m2, review fix, partial: local, kc37, Q76; CI's legs at the next push): MainActivity's comment
   and U3m's Proof said the gate refuses any call that takes a window flag off, yet U3m's own `keepScreenOn = false`
   takes FLAG_KEEP_SCREEN_ON off and passes it: KtWindow refuses only what could turn FLAG_SECURE off (clearFlags,
@@ -16443,7 +16479,7 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   -corrupt-head-above-the-scanned-tree among them under Ubuntu's git 2.55, and --selftest-apk with
   apk-error-cleanup-fails; the lint job's fault check "582 runs (3 ways): 582 passed, 0 failed, in 147 s"; the
   supply-chain job's canaries.sh "all 94 checks ran" (587 s). The Pi image run 40749608381 at d99e80b green.
-- [ ] L10. --workflows refuses a mapping key it cannot read as written (M5-71 (f), commit L10): in entropy-*.yml,
+- [x] L10. --workflows refuses a mapping key it cannot read as written (M5-71 (f), commit L10): in entropy-*.yml,
   outside a block scalar's text, a quoted key holding a backslash or a quote left open at its line's end is a hit,
   whatever key it spells, so no escape sequence or folded line can spell uses. Proof: selftest cases for "u\x73es",
   a double-quoted "us\ ending its line and continued with es", and a key with an escaped quote, each a hit; a run: block whose shell text holds
@@ -16500,6 +16536,11 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   --shard 1/2` and `2/2` "820 of 1639" and "819 of 1639", 0 failed, under sh and under /bin/dash; the fault check 588
   runs, 588 passed (--workflows' places 17 to 18, the new grep), in 233 s; the gate clean (386 files) under sh and
   dash; canaries.sh PASS, all 94 checks ran (459 s).
+  Proof (CI, the lead's, 2026-10-30): Entropy CI 40903211222 at ab6773f (L10 and L10b in) green, all 14 required checks
+  under their names: the gates job's --workflows step clean on the three workflows, its self-test "the shards split one
+  list: 820 and 819 of its 1639 cases", 0 failed, L10's ten and L10b's eight fixtures among them; the lint job's fault
+  check "588 runs (3 ways): 588 passed, 0 failed, in 111 s"; the supply-chain job's canaries.sh "all 94 checks ran".
+  Entropy CI 41135172483 at babe829 green as well. So L10 is ticked.
 
 **Stages E3 and E4** run commits 19, 20 and 21 as planned, each built and tested locally before it is committed.
 
@@ -16549,7 +16590,8 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   - U-6, after the owner's answers: U2m (Q77), U3i (Q78, Q85), U3j (Q79, Q80), U3k (Q81, Q82, Q83), U3n (Q84).
 - Budget: the Android job's 44 minutes (M5-57) cannot hold U1-U2's emulator tests on two API legs. Stage U measures them and the
   lead re-plans by M5-30's rule or splits the legs into jobs (the Android workflow has no required check names). (L9 split
-  them, M5-70 (b): each leg job's budget is its measured time plus 25%, re-measured when Stage U adds journeys.)
+  them, M5-70 (b): each leg job's budget is its measured time plus 25%, re-measured when Stage U adds journeys. U1a
+  made them six, M5-73 (b); their budgets from run 40903211202 are in the Budgets entry.)
 
 ## Review
 _Added after completion, with pasted proof for every ticked item._

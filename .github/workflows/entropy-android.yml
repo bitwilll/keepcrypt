@@ -148,13 +148,14 @@ jobs:
   build:
     name: android build (APKs, checks, uploads, hand-off)
     runs-on: ubuntu-24.04
-    # Budget (tasks/todo.md, M5 "Budgets"; M5-30, M5-70 (b), M5-72): the split's first run (run
-    # 40813152800 at e3c6c12) built in 558 s, so 12 minutes with 25%. Before the split one job built
+    # Budget (tasks/todo.md, M5 "Budgets"; M5-30, M5-70 (b), M5-72, M5-73): the six leg jobs'
+    # measuring run (run 40903211202 at ab6773f) built in 618 s, so 13 minutes with 25% (the split's
+    # first run, 40813152800 at e3c6c12, 558 s and 12 minutes). Before the split one job built
     # and ran every leg (M5-44, M5-52, M5-57, M5-69): 35.2 min at efc0575 (run 39783747240), past 44
     # with commit 19's tests (run 40624645994), 53.4 min at e5109bc (run 40681107802) and 58 min at
     # d99e80b (run 40749608448). A slower run stops here and the lead re-plans; a commit that adds
     # steps or tests re-measures it.
-    timeout-minutes: 12
+    timeout-minutes: 13
     env:
       # The SDK pieces the build uses (mobile/android/gradle/libs.versions.toml), checked below.
       KC_BUILD_TOOLS: 36.0.0
@@ -634,13 +635,15 @@ jobs:
     name: android emulators (${{ matrix.legs }})
     needs: build
     runs-on: ubuntu-24.04
-    # Budget (tasks/todo.md, M5 "Budgets"; M5-30, M5-70 (b), M5-72 (g) and (h)): this is the six
-    # leg jobs' measuring run (commit U1a), so each has the 90-minute ceiling, and the lead then sets
-    # each job's budget to its measured time plus 25% (M5-30). Before U1a two leg jobs ran the whole
-    # legs: the split's first run (run 40813152800 at e3c6c12) took 1469 s for API 31 then the 16 KB
-    # leg and 1416 s for API 36 (32 and 30 minutes). A slower run stops here and the lead re-plans; a
-    # commit that adds legs or tests re-measures it.
-    timeout-minutes: 90
+    # Budget (tasks/todo.md, M5 "Budgets"; M5-30, M5-70 (b), M5-72 (g) and (h), M5-73), a matrix
+    # value: the six leg jobs' measuring run (run 40903211202 at ab6773f, commit U1a's jobs under the
+    # 90-minute ceiling) took, job start to end, API 31 capture then 16 KB 535 s, journeys 919 s and
+    # registry 448 s, API 36 capture 503 s, journeys 952 s and registry 497 s, so each job's measured
+    # time plus 25%, rounded up: 12, 20, 10, 11, 20 and 11 minutes. Before U1a two leg jobs ran the
+    # whole legs: the split's first run (run 40813152800 at e3c6c12) took 1469 s for API 31 then the
+    # 16 KB leg and 1416 s for API 36 (32 and 30 minutes). A slower run stops here and the lead
+    # re-plans; a commit that adds legs or tests re-measures it (Stage U's journeys and edges will).
+    timeout-minutes: ${{ matrix.timeout }}
     strategy:
       # Every leg job runs to its end: a red leg never cancels another job or hides its evidence.
       fail-fast: false
@@ -651,21 +654,27 @@ jobs:
           - api: '31'
             part: capture
             legs: API 31, capture, then 16 KB pages
+            timeout: 12
           - api: '31'
             part: journeys
             legs: API 31, journeys
+            timeout: 20
           - api: '31'
             part: registry
             legs: API 31, test registry and edges
+            timeout: 10
           - api: '36'
             part: capture
             legs: API 36, capture
+            timeout: 11
           - api: '36'
             part: journeys
             legs: API 36, journeys
+            timeout: 20
           - api: '36'
             part: registry
             legs: API 36, test registry and edges
+            timeout: 11
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
