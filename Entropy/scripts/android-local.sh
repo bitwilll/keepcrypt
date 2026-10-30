@@ -78,10 +78,10 @@
 #      last run, leaves its crash in the crash buffer that every later judge reads whole. Then the
 #      Camera2 check (M5-59; CI's AVDs have no camera). The shipping app, CAMERA granted from the
 #      shell (pm grant) and the phone offline, is driven through the UI from the shell (uiautomator
-#      dump for each screen's test tags, input tap) to a dice-only 12-word seed of 50 rolls, Check now
-#      and Scan go-ahead QR. Its camera client must be listed among dumpsys media.camera's active
+#      dump for each screen's test tags, input tap) to a dice-only 12-word seed of 50 rolls, Check now,
+#      Show check QR and Scan go-ahead QR. Its camera client must be listed among dumpsys media.camera's active
 #      clients while the scan screen shows, be gone within 10 s of Home, be listed again once the app
-#      is back and its cover tapped, and be gone within 10 s of Back, which returns to the seal card.
+#      is back and its cover tapped, and be gone within 10 s of Back, which returns to the check QR.
 #      Then goahead-collision-dice-50.png on the virtual scene's wall (the console's
 #      virtualscene-image) and the SDK's Walk_to_image_room macro, which turns the camera to it: the
 #      test-registry app, driven the same way to dice-50-words12's seed (123456 repeated, so the
@@ -201,7 +201,7 @@ EOF
 # requests CAMERA; a debuggable build (KC_DEBUGGABLE=1) gives a root shell, whose listing of an app's
 # data directories holds a file planted there and nothing else.
 s=$KC_STUB
-tags='first_launch_continue start dice_only_seed words_12 key_1 key_2 key_3 key_4 key_5 key_6 confirm dice_done check_now scan_qr cover'
+tags='first_launch_continue start dice_only_seed words_12 key_1 key_2 key_3 key_4 key_5 key_6 confirm dice_done check_now show_check_qr scan_qr cover'
 case "$*" in
   start-server) exit 0 ;;
   devices)
@@ -300,7 +300,8 @@ case "$*" in
         printf '<node text="%s / 50 rolls, 129.2 bits" resource-id="dice_count" bounds="[0,800][720,820]" />' "$(cat "$s/rolls")"
         ;;
       check_prompt) node check_now 'Check now (recommended)' ;;
-      seal_card) node scan_qr 'Scan go-ahead QR' ;;
+      seal_card) node show_check_qr 'Show check QR' ;;
+      check_qr) node scan_qr 'Scan go-ahead QR' ;;
       scan)
         printf '<node text="Looking for the go-ahead QR..." resource-id="scan_line" bounds="[0,800][720,820]" />'
         if [ -f "$s/decode" ]; then
@@ -329,11 +330,12 @@ case "$*" in
       words_12) echo dice > "$s/ui"; echo 0 > "$s/rolls" ;;
       dice_done) [ "$(cat "$s/rolls")" -ge 50 ] && echo check_prompt > "$s/ui" ;;
       check_now) echo seal_card > "$s/ui" ;;
+      show_check_qr) echo check_qr > "$s/ui" ;;
       scan_qr | cover) scanning ;;
     esac
     ;;
   'shell input keyevent KEYCODE_HOME') echo launcher > "$s/ui"; camera_off ;;
-  'shell input keyevent KEYCODE_BACK') [ "$(screen)" = scan ] && echo seal_card > "$s/ui"; camera_off ;;
+  'shell input keyevent KEYCODE_BACK') [ "$(screen)" = scan ] && echo check_qr > "$s/ui"; camera_off ;;
   'shell dumpsys media.camera')
     printf '== Service global info: ==\n\nNumber of camera devices: 1\nActive Camera Clients:\n'
     if [ "$(cat "$s/camera" 2>/dev/null)" = on ]; then
@@ -567,7 +569,7 @@ CONFIG
     "pass: local native library: NativeTest on kc37's arm64-v8a, natively" \
     "$camera_passes" "pass: local camera: gone from dumpsys media.camera within 10 s of Home" \
     "pass: local camera: listed again with the app back and its cover tapped" \
-    "pass: local camera: gone within 10 s of Back, on the seal card" \
+    "pass: local camera: gone within 10 s of Back, on the check QR" \
     "pass: local camera: the scanner decoded goahead-collision-dice-50.png from the virtual scene's wall: the collision result" \
     "local: every check made on kc37 passed"
   avd pass
@@ -1039,7 +1041,8 @@ to_scan() {
     '50 / 50 rolls, '*) ;;
     *) say "camera: the dice show '$(text dice_count)' after 50 rolls"; return 1 ;;
   esac
-  tap dice_done && await check_prompt 60 && tap check_now && await seal_card 30 && tap scan_qr && await scan 10 || return 1
+  tap dice_done && await check_prompt 60 && tap check_now && await seal_card 30 && tap show_check_qr && await check_qr 10 &&
+    tap scan_qr && await scan 10 || return 1
 }
 # listed PACKAGE: PACKAGE's camera client is among dumpsys media.camera's active clients.
 listed() {
@@ -1091,10 +1094,10 @@ else
     else
       echo "pass: local camera: listed again with the app back and its cover tapped"
       dev shell input keyevent KEYCODE_BACK
-      if ! { await seal_card 10 && client "$p" no 10; }; then
-        fail_later "camera: $p's camera client is still listed 10 s after Back, or no seal card"
+      if ! { await check_qr 10 && client "$p" no 10; }; then
+        fail_later "camera: $p's camera client is still listed 10 s after Back, or no check QR"
       else
-        echo "pass: local camera: gone within 10 s of Back, on the seal card"
+        echo "pass: local camera: gone within 10 s of Back, on the check QR"
       fi
     fi
   fi

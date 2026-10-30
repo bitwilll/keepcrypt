@@ -93,7 +93,8 @@ fun Screens(
                 )
                 Screen.CheckPrompt -> CheckPrompt(registry, onCheckNow = model::checkNow, onSkip = model::skip)
                 Screen.SkipConfirm -> SkipConfirm(registry, onSkip = model::skipConfirmed, onBack = model::back)
-                Screen.SealCard -> SealCardScreen(
+                Screen.SealCard -> SealCardScreen(state, registry, onShowCheckQr = model::showCheckQr)
+                Screen.CheckQr -> CheckQrScreen(
                     state,
                     registry,
                     onScan = model::scanQr,

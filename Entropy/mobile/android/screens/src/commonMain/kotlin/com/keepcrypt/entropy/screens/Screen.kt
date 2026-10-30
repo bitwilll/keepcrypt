@@ -7,9 +7,10 @@ package com.keepcrypt.entropy.screens
  * the one walk CaptureTest takes through them in one activity: First launch, the first screen of
  * every start, the self-test its Continue runs (lead decision M5-50), Go offline, Home, Length, Device
  * entropy (Mixed only), Commitment (Mixed only) and Dice (commit 16); the collision check (commit 17):
- * the check prompt, Skip's confirm, the seal card, the scan screen (commit 18), the code entry, Match
- * found's and Cannot check's confirms, the collision result, the collision-report QR and, after the
- * restart it leads to, the result before the words; the words to the end of the ceremony (commit 19):
+ * the check prompt, Skip's confirm, the seal card, its check QR (Stage U's U3d), the scan screen (commit
+ * 18), the code entry, Match found's and Cannot check's confirms, the collision result, the
+ * collision-report QR and, after the restart it leads to, the result before the words; the words to
+ * the end of the ceremony (commit 19):
  * the words in insert view, their overview, the device swap a 24-word seed's pages pass, the read-back
  * entry and its mismatch, the read-back's end, the wallet summary, the encrypted backup (commit 20:
  * its offer, the passphrase, its confirm, the save and "Backup verified"), the watch-only export
@@ -32,6 +33,7 @@ enum class Screen {
     CheckPrompt,
     SkipConfirm,
     SealCard,
+    CheckQr,
     Scan,
     CodeEntry,
     MatchFoundConfirm,
@@ -84,6 +86,7 @@ fun screenId(screen: Screen): String = when (screen) {
     Screen.CheckPrompt -> "check_prompt"
     Screen.SkipConfirm -> "skip_confirm"
     Screen.SealCard -> "seal_card"
+    Screen.CheckQr -> "check_qr"
     Screen.Scan -> "scan"
     Screen.CodeEntry -> "code_entry"
     Screen.MatchFoundConfirm -> "match_found_confirm"
@@ -131,8 +134,8 @@ fun screenId(screen: Screen): String = when (screen) {
  * overview, the read-back entry and mismatch screens (commit 19), the backup passphrase, its
  * confirm and Check a backup's passphrase entry (commit 20), and the BIP39 passphrase's entry, the
  * account and descriptor QRs (each carries the xpub), the registration QR (the seal code) and D (commit
- * 21; the Pi's list); every other screen is Public, the dice screen, C and the seal card's check QR (T
- * and a nonce) included, and the device swap, the read-back's end, the wallet summary, the backup's
+ * 21; the Pi's list); every other screen is Public, the dice screen, C, the seal card and its check QR
+ * (T and a nonce) included, and the device swap, the read-back's end, the wallet summary, the backup's
  * offer, save and "Backup verified", the watch-only offer, the BIP39 question and the watch-only
  * summary (Q29), the registration's and D's offers, the checklist, Check a backup's result and its
  * re-check QR (T alone; the Pi's list), the scan screen, which draws nothing the camera sees, Load
@@ -143,7 +146,7 @@ fun isProtected(screen: Screen): Boolean = when (screen) {
     Screen.BackupPassphrase, Screen.BackupConfirm, Screen.Bip39Entry, Screen.WatchAccountQr, Screen.WatchDescriptorQr,
     Screen.RegisterQr, Screen.RevealD, Screen.BackupCheckEntry -> true
     Screen.FirstLaunch, Screen.SelfTest, Screen.GoOffline, Screen.Home, Screen.Length, Screen.DeviceEntropy,
-    Screen.Commitment, Screen.Dice, Screen.CheckPrompt, Screen.SkipConfirm, Screen.SealCard, Screen.Scan,
+    Screen.Commitment, Screen.Dice, Screen.CheckPrompt, Screen.SkipConfirm, Screen.SealCard, Screen.CheckQr, Screen.Scan,
     Screen.CodeEntry, Screen.MatchFoundConfirm, Screen.CannotCheckConfirm, Screen.Collision, Screen.CheckResult,
     Screen.DeviceSwap, Screen.ReadbackDone, Screen.Wallet, Screen.BackupOffer, Screen.BackupSave, Screen.BackupVerified,
     Screen.WatchOffer, Screen.Bip39Ask, Screen.WatchSummary, Screen.RegisterOffer, Screen.RevealDOffer, Screen.Checklist,

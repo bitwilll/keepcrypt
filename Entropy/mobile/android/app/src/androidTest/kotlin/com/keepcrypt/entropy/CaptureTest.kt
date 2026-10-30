@@ -173,6 +173,7 @@ class CaptureTest {
                 model.back()
                 model.checkNow()
             }
+            Screen.CheckQr -> onMain { model.showCheckQr() }
             Screen.Scan -> askedOnTheScanScreen(activity)
             Screen.CodeEntry -> onMain { model.typeCode() }
             Screen.MatchFoundConfirm -> onMain {
@@ -441,7 +442,7 @@ class CaptureTest {
     }
 
     /**
-     * From the seal card, the scan screen and its camera prompt (M5 group 16): CAMERA requested and not
+     * From the check QR, the scan screen and its camera prompt (M5 group 16): CAMERA requested and not
      * granted before it (dumpsys package) and no prompt up; once it opens, the system's prompt, whose
      * "Don't allow" the walk presses once (Capture.denyPrompt, which waits for the prompt to go), then
      * the refusal reaching the scan screen, and CAMERA still not granted.

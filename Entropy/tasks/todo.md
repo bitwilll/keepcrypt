@@ -13167,6 +13167,22 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   The words after a passed check are group 17's (commit 19).
   Proof (M5 commit 19a, partial: local, Q76): the check result's Show words leads on to them, through the privacy
   gate (group 17's commit-19 line).
+  Proof (M5 commit U3d, Stage U-2, partial: local, kc37, Q76; CI's legs at the next push): the seal card drew the seal,
+  its Seal ID and braille, the check QR and the four actions on one scrolling screen, so the check QR was never wholly
+  on screen at CI's window, where the Pi splits them into pages (PF:93). The seal card now shows the seal, Seal ID and
+  braille with "Show check QR"; its next page, the new screen check_qr (screenId's table, ScreenIdsTest), draws the
+  check QR above its four actions, two to a row, the instructions under it. Back on it returns to the seal card with
+  the same check request and nonce; the scan screen, the code entry and the two confirms' Back now return to the check
+  QR. CheckScreensTest (13 tests): the seal card offers none of the checker's answers, Show check QR opens the page
+  with the seal card's own check QR, Back and each action's Back keep that same matrix with no core call; the other
+  check tests start from the page. Locally: the strict Gradle build of the five APKs with every JVM test task
+  (:screens 157, none failed); android-local.sh on kc37 at its own window and at `wm size 720x1184`: --part journeys
+  (FlowTest 7, CheckTest 2: "its check QR page with the QR wholly in view (window 720x1184, font scale 1.0)", read
+  in-process from the window's semantics, and 720x1280 at kc37's own size; BackupTest 1), --part registry
+  (SnapshotDrillTest 3 through the new page, LifecycleTest 7, CrashTest killed as it must be), --part capture
+  (CaptureTest 6 in each APK, its walk drawing check_qr black and SECURE; the camera check's Back now "on the check
+  QR"), each exit 0 but capture at 720x1184, whose first-frame step cannot run under the shell's size (the 360x640
+  recording "does not have the display's aspect ratio 720x1184"), every class there passing.
 - [ ] The scanner (Camera2 + ZXing, commit 18): CAMERA asked on this screen only; `ImageReader` YUV_420_888 frames
   reduced to luminance on a background thread and never stored; text over 4,296 characters dropped (swb:144); the first
   decoded text goes to the same `onGoAheadText` the tests call; proof results show their date and any warning before
@@ -13453,6 +13469,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   21e, every class passed in android-emulator.sh's order, NativeTest too): FlowTest 7 passed, its read-back typing the
   misread letters and the right ones through the touches, the pad read in-process. No logcat search covers FlowTest's
   run (CaptureTest's covers its own walk), so that nothing logs the touches rests on the code read, not a log searched.
+  Proof (M5 commit U3d, partial: local, Q76; no test measures it): the braille faces' dot numbers were 12 sp on fixed
+  20 dp lines beside a 40 x 60 dp cell, so they grew with the font scale and at 1.15 dots 4-6's clipped (Stage U's
+  map). Drawing.kt now sizes them from the cell, as the dots are: each a third of its height, centred on its dot's row,
+  in type a fifth of it (12 dp), whatever the font scale. Built and run locally in FlowTest's and CaptureTest's walks
+  (kc37, font scale 1.0).
 - [ ] Backup: the 8-word passphrase (Protected), its 2-of-4 confirm, Save (`CreateDocument`, core's suggested name,
   one `"rwt"` write, MA:156's cloud-folder line), read back with `openInputStream` and `verify_backup` before "Backup
   verified"; a failure names the step. Check a backup: `OpenDocument`, name `.age` and size within core's limit before

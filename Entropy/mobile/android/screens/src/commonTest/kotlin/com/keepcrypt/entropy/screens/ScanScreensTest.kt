@@ -22,7 +22,7 @@ import kotlin.test.fail
  * commit 18; lead decisions M5-54 and M5-55), over the real slot through Core and the host library, long
  * calls held on the test's worker. The scanner is the platform's (camera/GoAheadScanner.kt, whose frame
  * code :app's GoAheadFrameTest runs on canned frames), so its reports come here as the scan screen hands
- * them on: its text to onGoAheadText, a stop to scanStopped. The seal card's "Scan go-ahead QR" opens the
+ * them on: its text to onGoAheadText, a stop to scanStopped. The check QR's "Scan go-ahead QR" opens the
  * scan screen with the seal and the same check QR, and Back and "Type go-ahead code" leave it with no
  * core call; a stop is said on the scan screen alone. vectors/kcr.json's two go-ahead QR texts (their ur
  * fields, upper case as the P4 PNGs carry them, lead decision M5-42): clear-empty-bucket's passes
@@ -52,8 +52,8 @@ class ScanScreensTest {
     /** Whether matrix was wiped: no dark module left. */
     private fun blank(matrix: QrMatrix): Boolean = (0 until matrix.side).all { y -> (0 until matrix.side).none { x -> matrix.isDark(x, y) } }
 
-    /** From Home: a dice-only seed of 12 words with rolls (each a face 1-6), its Done and Check now: the seal card. */
-    private fun atSealCard(rig: Rig, rolls: String): Rig {
+    /** From Home: a dice-only seed of 12 words with rolls (each a face 1-6), its Done, Check now and Show check QR: the check QR. */
+    private fun atCheckQr(rig: Rig, rolls: String): Rig {
         rig.begin(Mode.DiceOnly, Words.Twelve)
         for (face in rolls) {
             assertTrue(rig.model.dicePick.replace(face))
@@ -64,10 +64,12 @@ class ScanScreensTest {
         assertEquals(Screen.CheckPrompt, rig.screen)
         rig.model.checkNow()
         assertEquals(Screen.SealCard, rig.screen)
+        rig.model.showCheckQr()
+        assertEquals(Screen.CheckQr, rig.screen)
         return rig
     }
 
-    /** From the seal card: the scan screen, its scanner reporting nothing yet. */
+    /** From the check QR: the scan screen, its scanner reporting nothing yet. */
     private fun toScan(rig: Rig): Rig {
         rig.model.scanQr()
         assertEquals(Screen.Scan, rig.screen)
@@ -76,7 +78,7 @@ class ScanScreensTest {
 
     @Test
     fun scanGoAheadQrOpensTheScanScreenWithTheCheckKeptAndBackAndTypeCodeLeaveIt() {
-        val rig = atSealCard(Rig().toHome(), DICE_50_ROLLS)
+        val rig = atCheckQr(Rig().toHome(), DICE_50_ROLLS)
         val request = assertNotNull(rig.model.state.value.checkRequest)
         toScan(rig)
         val scan = rig.model.state.value
@@ -87,7 +89,7 @@ class ScanScreensTest {
         assertEquals(SCANNING, scanLine(scan))
         assertEquals(0, rig.worker.waiting, "opening the scan screen calls no core")
         rig.model.back()
-        assertEquals(Screen.SealCard, rig.screen, "Back on the scan screen (its button or the system's)")
+        assertEquals(Screen.CheckQr, rig.screen, "Back on the scan screen (its button or the system's)")
         assertSame(request, rig.model.state.value.checkRequest)
         assertFalse(blank(request), "the check QR is whole")
         toScan(rig)
@@ -95,7 +97,7 @@ class ScanScreensTest {
         assertEquals(Screen.CodeEntry, rig.screen, "the scan screen's Type go-ahead code")
         assertSame(request, rig.model.state.value.checkRequest)
         rig.model.back()
-        assertEquals(Screen.SealCard, rig.screen, "the code entry's Back goes to the seal card")
+        assertEquals(Screen.CheckQr, rig.screen, "the code entry's Back goes to the check QR")
         val core = done(Core.checkRequest(), "the check, still open")
         assertTrue(sameModules(request, core), "no core call: the same check and nonce")
         core.wipe()
@@ -103,9 +105,9 @@ class ScanScreensTest {
 
     @Test
     fun theScannersStopIsSaidOnTheScanScreenOnly() {
-        val rig = atSealCard(Rig().toHome(), DICE_50_ROLLS)
+        val rig = atCheckQr(Rig().toHome(), DICE_50_ROLLS)
         rig.model.scanStopped(ScanStop.Refused)
-        assertEquals(Screen.SealCard, rig.screen)
+        assertEquals(Screen.CheckQr, rig.screen)
         assertNull(rig.model.state.value.scanStop, "a stop off the scan screen says nothing")
         toScan(rig)
         rig.model.scanStopped(ScanStop.Missing)
@@ -125,7 +127,7 @@ class ScanScreensTest {
 
     @Test
     fun theScannedClearEmptyBucketQrPassesTheCheckWithItsDateItsBucketsEntriesAndTheStaleWarning() {
-        val rig = toScan(atSealCard(Rig().toHome(), DICE_99_ROLLS))
+        val rig = toScan(atCheckQr(Rig().toHome(), DICE_99_ROLLS))
         assertEquals(DICE_99_SEAL_ID, rig.model.state.value.seal?.sealId)
         val request = assertNotNull(rig.model.state.value.checkRequest)
         rig.date.day = M5_DAY
@@ -154,7 +156,7 @@ class ScanScreensTest {
 
     @Test
     fun theScannedCollisionDice50QrDestroysTheSeedUnseenAndTheRestartNeeds99Rolls() {
-        val rig = toScan(atSealCard(Rig().toHome(), DICE_50_ROLLS))
+        val rig = toScan(atCheckQr(Rig().toHome(), DICE_50_ROLLS))
         rig.model.onGoAheadText(kcrProofUr("collision-dice-50").uppercase())
         assertEquals(Screen.Working, rig.screen)
         rig.worker.run()
@@ -181,10 +183,10 @@ class ScanScreensTest {
 
     @Test
     fun aTextCoreRefusesReturnsToTheScanScreenWithTheSameCheckAndATextOffItDoesNothing() {
-        val rig = atSealCard(Rig().toHome(), DICE_50_ROLLS)
+        val rig = atCheckQr(Rig().toHome(), DICE_50_ROLLS)
         val request = assertNotNull(rig.model.state.value.checkRequest)
         rig.model.onGoAheadText(kcrProofUr("collision-dice-50").uppercase())
-        assertEquals(Screen.SealCard, rig.screen, "a text off the scan screen does nothing")
+        assertEquals(Screen.CheckQr, rig.screen, "a text off the scan screen does nothing")
         assertEquals(0, rig.worker.waiting, "and calls no core")
         toScan(rig)
         rig.model.onGoAheadText("not a ur")

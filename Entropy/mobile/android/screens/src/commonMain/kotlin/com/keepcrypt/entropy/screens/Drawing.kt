@@ -2,6 +2,7 @@ package com.keepcrypt.entropy.screens
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,6 +18,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -61,8 +63,8 @@ class QrLayout(val side: Int, sizePx: Int) {
 
 /** A QR code, dark modules on a light square of size, from the matrix core drew (its screen wipes it). */
 @Composable
-fun QrCode(matrix: QrMatrix, size: Dp) {
-    Canvas(Modifier.size(size)) {
+fun QrCode(matrix: QrMatrix, size: Dp, modifier: Modifier = Modifier) {
+    Canvas(modifier.size(size)) {
         val layout = QrLayout(matrix.side, this.size.width.toInt())
         drawRect(Color.White)
         val module = Size(layout.modulePx.toFloat(), layout.modulePx.toFloat())
@@ -203,7 +205,7 @@ fun BrailleFace(face: Face, modifier: Modifier = Modifier) {
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
             DotNumbers(1, colour)
-            Canvas(Modifier.size(40.dp, 60.dp)) {
+            Canvas(Modifier.size(FACE_CELL_WIDTH, FACE_CELL_HEIGHT)) {
                 cell(face.dots, Offset.Zero, this.size, colour)
             }
             DotNumbers(4, colour)
@@ -212,12 +214,24 @@ fun BrailleFace(face: Face, modifier: Modifier = Modifier) {
     }
 }
 
-/** The numbers of the three dots of a column, first to first + 2, beside it. */
+/** A face's cell of six dots, beside its numbers. */
+private val FACE_CELL_WIDTH = 40.dp
+private val FACE_CELL_HEIGHT = 60.dp
+
+/**
+ * The numbers of the three dots of a column, first to first + 2, beside it: each centred on its dot's
+ * row, a third of the face's cell, in type sized from that cell (a fifth of its height, 12 dp), as the
+ * dots are, not by the system's font scale. Numbers in 12 sp on fixed 20 dp lines grew with the font
+ * scale while the cell did not, and at 1.15 dots 4-6's clipped (Stage U's map, Q78).
+ */
 @Composable
 private fun DotNumbers(first: Int, colour: Color) {
-    Column {
+    val size = with(LocalDensity.current) { (FACE_CELL_HEIGHT / 5).toSp() }
+    Column(Modifier.height(FACE_CELL_HEIGHT)) {
         for (dot in first until first + 3) {
-            BasicText(dot.toString(), Modifier.height(20.dp), style = TextStyle(color = colour, fontSize = 12.sp))
+            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                BasicText(dot.toString(), style = TextStyle(color = colour, fontSize = size))
+            }
         }
     }
 }

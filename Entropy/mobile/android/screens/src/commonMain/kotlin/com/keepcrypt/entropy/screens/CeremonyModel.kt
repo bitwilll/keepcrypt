@@ -101,7 +101,8 @@ data class UiState(
     val seal: SealCard? = null,
     /**
      * The seal card's check QR (T and the check's nonce, public), from Check now until the check ends:
-     * the code entry and the confirm screens keep it too, so their Back finds the same check and nonce.
+     * the seal card holds it for its next page, the check QR, and the code entry and the confirm screens
+     * keep it too, so their Back finds the same check and nonce.
      */
     val checkRequest: QrMatrix? = null,
     /** The collision-report QR (Protected: the destroyed seed's seal code), wiped when its screen leaves. */
@@ -224,7 +225,7 @@ data class UiState(
  *   step 9; docs/seal-watchonly-braille.md, "Checking the seal"): the prompt, which shows no seal
  *   (the Seal ID shows from Check now on, lead decision M5-55) and whose Skip is confirmed on its own
  *   screen; Check now, which with a loaded snapshot runs the check against it at once (a short call
- *   on the main thread, lead decision M5-54), and otherwise shows the seal card with its check QR and
+ *   on the main thread, lead decision M5-54), and otherwise shows the seal card, then its check QR with
  *   the checker's answers, the scanned go-ahead QR (the scan screen, commit 18: its text is checked on
  *   the worker behind "Working..."), the typed go-ahead code, Match found and Cannot check (each one-way
  *   choice confirmed on its own screen). A wrong code, or a scanned QR core does not accept, is
@@ -569,8 +570,9 @@ class CeremonyModel(
      * The system Back (the platform's), and the Back button of the scan screen, the code entry and each
      * one-way choice's confirm screen: back to the screen before only where nothing is lost, as the Pi's
      * KEY1 and KEY2 (Length to Home, Home to Go offline, Go offline to First launch; Skip's confirm to
-     * the check prompt; the scan screen, Match found's and Cannot check's confirms and the code entry to
-     * the seal card, with the same check and nonce and no core call, the typed code wiped; on the words,
+     * the check prompt; the check QR to the seal card, and the scan screen, Match found's and Cannot
+     * check's confirms and the code entry to the check QR, each with the same check and nonce and no core
+     * call, the typed code wiped; on the words,
      * their overview and the backup passphrase the page before, as their Previous, and on the descriptor
      * QR the account QR; the BIP39 passphrase's entry to its question, the passphrase typed wiped, as
      * the Pi's KEY2 there; Check a backup's entry to Home, the file read and the letters typed wiped, as
@@ -677,7 +679,8 @@ class CeremonyModel(
      * today's UTC date (the result warns of a Stale or Future snapshot), as a short call on the main
      * thread, since the FFI runs it under its lock as one (it only looks the seal up in the loaded
      * snapshot): no busy screen comes before its result, and no discard can land between a look at a
-     * discard flag and the call (lead decision M5-54). Otherwise the seal card shows, with the check QR.
+     * discard flag and the call (lead decision M5-54). Otherwise the seal card shows, holding the check QR
+     * its next page draws.
      */
     fun checkNow() {
         if (!pressOn(Screen.CheckPrompt) || !short { Core.startCheck() }) return
@@ -705,17 +708,26 @@ class CeremonyModel(
     }
 
     /**
-     * The seal card's "Scan go-ahead QR": the scan screen, with the same check and nonce. Its scanner
+     * The seal card's "Show check QR": its next page, the check QR with the checker's answers, the same
+     * check and nonce (the Pi's seal card pages: the seal, then the check QR, then its actions; Back
+     * returns to the seal).
+     */
+    fun showCheckQr() {
+        if (pressOn(Screen.SealCard)) showInCheck(Screen.CheckQr)
+    }
+
+    /**
+     * The check QR's "Scan go-ahead QR": the scan screen, with the same check and nonce. Its scanner
      * (the platform's) asks for the camera as the screen opens and hands its first text to
      * onGoAheadText; a stop without a code comes to scanStopped.
      */
     fun scanQr() {
-        if (pressOn(Screen.SealCard)) showInCheck(Screen.Scan)
+        if (pressOn(Screen.CheckQr)) showInCheck(Screen.Scan)
     }
 
-    /** The seal card's or the scan screen's "Type go-ahead code": the code entry, its pad empty. */
+    /** The check QR's or the scan screen's "Type go-ahead code": the code entry, its pad empty. */
     fun typeCode() {
-        if (pressOn(Screen.SealCard) || pressOn(Screen.Scan)) showInCheck(Screen.CodeEntry)
+        if (pressOn(Screen.CheckQr) || pressOn(Screen.Scan)) showInCheck(Screen.CodeEntry)
     }
 
     /**
@@ -747,20 +759,20 @@ class CeremonyModel(
         mutable.value = current.copy(scanStop = why)
     }
 
-    /** The seal card's "Match found": its confirm screen. */
+    /** The check QR's "Match found": its confirm screen. */
     fun matchFound() {
-        if (pressOn(Screen.SealCard)) showInCheck(Screen.MatchFoundConfirm)
+        if (pressOn(Screen.CheckQr)) showInCheck(Screen.MatchFoundConfirm)
     }
 
-    /** The seal card's "Cannot check": its confirm screen. */
+    /** The check QR's "Cannot check": its confirm screen. */
     fun cannotCheck() {
-        if (pressOn(Screen.SealCard)) showInCheck(Screen.CannotCheckConfirm)
+        if (pressOn(Screen.CheckQr)) showInCheck(Screen.CannotCheckConfirm)
     }
 
     /**
      * The code entry's Done, with all 8 symbols typed: core verifies the code against this check's T
      * and nonce. A verified one reveals the words; one that does not verify is refused, and the code
-     * entry says so with the check, its nonce and the seal card's actions kept (its Back), the typed
+     * entry says so with the check, its nonce and the check QR's actions kept (its Back), the typed
      * code wiped. The code is handed over as a Secret and wiped once core has it (PadEntry.handOver).
      */
     fun codeDone() {
@@ -1781,7 +1793,7 @@ class CeremonyModel(
         show(if (mode == Mode.Mixed) Screen.RevealDOffer else Screen.Checklist)
     }
 
-    /** One of the check's screens after the seal card, with the seal card and its check QR (the same check and nonce). */
+    /** One of the check's screens after the seal card, with the seal and its check QR (the same check and nonce). */
     private fun showInCheck(screen: Screen, codeRefused: Boolean = false, scanRefusal: Refusal? = null) {
         val current = mutable.value
         show(
@@ -2002,18 +2014,20 @@ class CeremonyModel(
     }
 
     /**
-     * Where Back goes from screen: only where nothing is lost, before any session, in the check from a
-     * confirm screen or the code entry to the screen that offered it, from the BIP39 passphrase's entry to
-     * its question, in Check a backup from its entry Home and from its re-check QR to its result, and from
-     * Load registry snapshot's result and About Home; null elsewhere (the words', the overview's, the
-     * backup passphrase's and the descriptor QR's page before is back's own).
+     * Where Back goes from screen: only where nothing is lost, before any session, in the check from the
+     * check QR to the seal card and from a confirm screen or the code entry to the screen that offered it,
+     * from the BIP39 passphrase's entry to its question, in Check a backup from its entry Home and from its
+     * re-check QR to its result, and from Load registry snapshot's result and About Home; null elsewhere
+     * (the words', the overview's, the backup passphrase's and the descriptor QR's page before is back's
+     * own).
      */
     private fun backTo(screen: Screen): Screen? = when (screen) {
         Screen.GoOffline -> Screen.FirstLaunch
         Screen.Home -> Screen.GoOffline
         Screen.Length -> Screen.Home
         Screen.SkipConfirm -> Screen.CheckPrompt
-        Screen.Scan, Screen.CodeEntry, Screen.MatchFoundConfirm, Screen.CannotCheckConfirm -> Screen.SealCard
+        Screen.CheckQr -> Screen.SealCard
+        Screen.Scan, Screen.CodeEntry, Screen.MatchFoundConfirm, Screen.CannotCheckConfirm -> Screen.CheckQr
         Screen.Bip39Entry -> Screen.Bip39Ask
         Screen.BackupCheckEntry, Screen.Snapshot, Screen.About -> Screen.Home
         Screen.BackupRecheck -> Screen.BackupCheckResult
@@ -2030,7 +2044,7 @@ class CeremonyModel(
     private fun needsOffline(screen: Screen): Boolean = when (screen) {
         Screen.SelfTest, Screen.FirstLaunch, Screen.GoOffline, Screen.Working, Screen.Stop -> false
         Screen.Home, Screen.Length, Screen.DeviceEntropy, Screen.Commitment, Screen.Dice, Screen.CheckPrompt,
-        Screen.SkipConfirm, Screen.SealCard, Screen.Scan, Screen.CodeEntry, Screen.MatchFoundConfirm,
+        Screen.SkipConfirm, Screen.SealCard, Screen.CheckQr, Screen.Scan, Screen.CodeEntry, Screen.MatchFoundConfirm,
         Screen.CannotCheckConfirm, Screen.Collision, Screen.CollisionReport, Screen.CheckResult, Screen.Words,
         Screen.WordsOverview, Screen.DeviceSwap, Screen.ReadbackEntry, Screen.ReadbackMismatch, Screen.ReadbackDone,
         Screen.Wallet, Screen.BackupOffer, Screen.BackupPassphrase, Screen.BackupConfirm, Screen.BackupSave,

@@ -1,5 +1,11 @@
 package com.keepcrypt.entropy
 
+import android.view.View
+import android.view.ViewGroup
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.platform.ViewRootForTest
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Until
@@ -27,8 +33,10 @@ import com.keepcrypt.entropy.screens.CHECK_PROMPT
 import com.keepcrypt.entropy.screens.CHECK_QUESTION
 import com.keepcrypt.entropy.screens.CODE_REFUSED
 import com.keepcrypt.entropy.screens.CROCKFORD_KEYS
+import com.keepcrypt.entropy.screens.QR_SIDE_DP
 import com.keepcrypt.entropy.screens.SNAPSHOT_NO_REGISTRY_KEY
 import com.keepcrypt.entropy.screens.Screen
+import com.keepcrypt.entropy.screens.screenId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -41,8 +49,10 @@ import org.junit.runner.RunWith
  * scripts/android-instrument.sh on the shipping app in the API 31 and 36 legs, through UI Automator as
  * FlowTest is (Ui): a dice-only seed of vectors/kcr.json's public gate seed dice-50-words12, the
  * dice's Done at the minimum, the check prompt all on screen with no Seal ID (lead decision M5-55),
- * Skip confirmed on its own screen and Back there, Check now's seal card with the Seal ID drawn and its
- * four actions, "Scan go-ahead QR" among them (drawn, not pressed: the shipping app's camera prompt is
+ * Skip confirmed on its own screen and Back there, Check now's seal card with the Seal ID drawn, its next
+ * page the check QR, wholly inside its text column's viewport as it opens (read in-process, Stage U's
+ * U3d), Back between the two keeping the same check QR, and the check QR's four actions, "Scan go-ahead
+ * QR" among them (drawn, not pressed: the shipping app's camera prompt is
  * CaptureTest's, and a scanned go-ahead QR SnapshotDrillTest's, since only the test-registry app trusts
  * the test key), Match found's and Cannot check's confirms and Back, then the go-ahead code: the check
  * QR the screen drew is read in-process (Checker; captures of the app are black), a code through every
@@ -57,10 +67,42 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class CheckTest {
-    /** The check QR on the seal card now, read in-process: its text. */
+    /** The check QR the seal card holds now, read in-process: its text. */
     private fun drawnRequest(activity: MainActivity): String {
         val matrix = onMain { activity.model.state.value.checkRequest } ?: throw AssertionError("the seal card has no check QR")
         return Checker.read(matrix)
+    }
+
+    /** The node tagged tag under node (itself included), or null: a walk of the window's semantics, in-process. */
+    private fun tagged(node: SemanticsNode, tag: String): SemanticsNode? {
+        if (SemanticsProperties.TestTag in node.config && node.config[SemanticsProperties.TestTag] == tag) return node
+        for (child in node.children) tagged(child, tag)?.let { return it }
+        return null
+    }
+
+    /** The Compose root under view, or null. */
+    private fun composeRoot(view: View): ViewRootForTest? {
+        if (view is ViewRootForTest) return view
+        if (view is ViewGroup) for (index in 0 until view.childCount) composeRoot(view.getChildAt(index))?.let { return it }
+        return null
+    }
+
+    /**
+     * The check QR's drawn square and the viewport of the text column it scrolls in, both in the root's
+     * pixels, read in-process from the window's semantics (no UI Automator selector, and nothing of the
+     * QR's text): the square unclipped (its position and size), the viewport the scrolling column's own
+     * bounds.
+     */
+    private fun qrInColumn(activity: MainActivity): Pair<Rect, Rect> = onMain {
+        val root = composeRoot(activity.window.decorView) ?: throw AssertionError("no Compose root in the window")
+        val screen = tagged(root.semanticsOwner.unmergedRootSemanticsNode, screenId(Screen.CheckQr))
+            ?: throw AssertionError("the check QR page is not drawn")
+        val qr = tagged(screen, QR_TAG) ?: throw AssertionError("the check QR page draws no check QR")
+        var column = qr.parent
+        while (column != null && SemanticsProperties.VerticalScrollAxisRange !in column.config) column = column.parent
+        if (column == null) throw AssertionError("the check QR is in no scrolling column")
+        val at = qr.positionInRoot
+        Rect(at.x, at.y, at.x + qr.size.width, at.y + qr.size.height) to column.boundsInRoot
     }
 
     /** Types code on the code entry's Crockford pad, key by key, and waits for it shown in two groups. */
@@ -116,15 +158,35 @@ class CheckTest {
             assertEquals("the check QR's T is not dice-50-words12's seal tag", DICE_50_TAG, tag)
             device.pressBack()
             stays(activity, Screen.SealCard, "Back on the seal card (the check binds)")
+            // The seal card's next page: the check QR, wholly in its column's viewport as it opens (the Pi's
+            // check QR page), with the four actions under it; Back between the two keeps the same check QR.
+            tap("show_check_qr")
+            on(activity, Screen.CheckQr)
+            val (square, viewport) = qrInColumn(activity)
+            val window = onMain { "${activity.window.decorView.width}x${activity.window.decorView.height}" }
+            val scale = onMain { activity.resources.configuration.fontScale }
+            val inside = square.left >= viewport.left && square.top >= viewport.top && square.right <= viewport.right &&
+                square.bottom <= viewport.bottom
+            assertTrue("the check QR $square is not wholly inside its column's viewport $viewport (window $window, font scale $scale)", inside)
+            val side = QR_SIDE_DP * onMain { activity.resources.displayMetrics.density }
+            assertEquals("the check QR is not drawn at its $QR_SIDE_DP dp side", side, square.width, 1f)
+            for (action in listOf("scan_qr", "type_code", "match_found", "cannot_check")) find(action)
+            assertEquals("the check QR page changed the check request", first, drawnRequest(activity))
+            device.pressBack()
+            on(activity, Screen.SealCard)
+            assertEquals("Back to the seal card changed the check request", first, drawnRequest(activity))
+            tap("show_check_qr")
+            on(activity, Screen.CheckQr)
+            assertEquals("the check QR changed between the pages", first, drawnRequest(activity))
             // Match found and Cannot check, each confirmed on its own screen; Back keeps the check.
             tap("match_found")
             on(activity, Screen.MatchFoundConfirm)
             tap("back")
-            on(activity, Screen.SealCard)
+            on(activity, Screen.CheckQr)
             tap("cannot_check")
             on(activity, Screen.CannotCheckConfirm)
             device.pressBack()
-            on(activity, Screen.SealCard)
+            on(activity, Screen.CheckQr)
             // A wrong code: refused; Back finds the same check QR (the same T and nonce) and its actions.
             val code = Checker.goAhead(tag, nonce)
             val wrong = Checker.wrong(code)
@@ -152,7 +214,7 @@ class CheckTest {
             awaitText("code", "____-____")
             assertEquals(Screen.CodeEntry, onMain { activity.shownScreen })
             tap("back")
-            on(activity, Screen.SealCard)
+            on(activity, Screen.CheckQr)
             assertEquals("the check request changed after the wrong code", first, drawnRequest(activity))
             for (action in listOf("scan_qr", "type_code", "match_found", "cannot_check")) find(action)
             // The code the checker builds from the drawn QR, typed on the pad.
@@ -176,8 +238,9 @@ class CheckTest {
             assertTrue("the words do not start at insert 1 of 12", atFirst == true)
             pass(
                 "the check without a snapshot: Done at 50 rolls, the prompt with no Seal ID, Skip, the seal card's Seal ID " +
-                    "$DICE_50_SEAL_ID and its four actions (Scan go-ahead QR drawn), Match found and Cannot check confirmed on " +
-                    "their own screens and Back there, a wrong code " +
+                    "$DICE_50_SEAL_ID, its check QR page with the QR wholly in view (window $window, font scale $scale) and " +
+                    "its four actions (Scan go-ahead QR drawn), Back between them with the same check QR, Match found and " +
+                    "Cannot check confirmed on their own screens and Back there, a wrong code " +
                     "refused with the same check QR, the code from the drawn check QR's T and nonce typed on the pad: the check " +
                     "passed; the pad's 32 keys labelled (M5-46); Show words through the gate to insert 1 of 12",
             )
@@ -218,6 +281,9 @@ class CheckTest {
         const val DICE_50_ROLLS = "123456"
         const val DICE_50_SEAL_ID = "YVM9CPP3"
         const val DICE_50_TAG = "f6e8965ac3e420f9061e7c1a7e9d829d9c7e8c17e433f4eed4094a5da599a256"
+
+        /** The check QR's test tag on its page (CheckScreens.kt's CheckQrScreen). */
+        const val QR_TAG = "check_request"
 
         /** The check prompt's heading (CheckScreens.kt's CheckPrompt). */
         const val CHECK_HEADING = "Check for collisions"

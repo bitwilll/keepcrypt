@@ -21,7 +21,8 @@ import kotlin.test.fail
  * M5-48, M5-54 and M5-55), over the real slot through Core and the host library, long calls held on the
  * test's worker: the dice's Done at the minimum (finish behind "Working...", then the prompt, whose
  * state holds no seal); Skip, Match found and Cannot check each confirmed on its own screen, and Back
- * there keeping the check; Check now's seal card with its seal and check QR; a wrong typed code refused
+ * there keeping the check; Check now's seal card with its seal, its next page the check QR with the
+ * checker's answers and Back between them keeping the same check QR; a wrong typed code refused
  * with the check, its nonce and the actions kept; Match found to the collision result with the
  * destroyed seed's seal (Back doing nothing there), the report QR behind the privacy gate and "Add
  * fresh entropy" at 99 rolls; Cannot check to "Start again" at the normal minimum, and at 99 when the
@@ -97,7 +98,15 @@ class CheckScreensTest {
         return rig
     }
 
-    /** From the seal card: Match found, confirmed, then the report past its gate. */
+    /** A new model through Done, Check now and the seal card's Show check QR: the check QR and its actions. */
+    private fun atCheckQr(): Rig {
+        val rig = atSealCard()
+        rig.model.showCheckQr()
+        assertEquals(Screen.CheckQr, rig.screen)
+        return rig
+    }
+
+    /** From the check QR: Match found, confirmed, then the report past its gate. */
     private fun toReport(rig: Rig) {
         rig.model.matchFound()
         rig.model.matchFoundConfirmed()
@@ -176,8 +185,55 @@ class CheckScreensTest {
     }
 
     @Test
-    fun aWrongTypedCodeIsRefusedAndTheCheckItsNonceAndActionsStay() {
+    fun theCheckQrIsTheSealCardsNextPageWhoseBackKeepsTheSameCheckQr() {
         val rig = atSealCard()
+        val request = assertNotNull(rig.model.state.value.checkRequest, "the seal card holds the check QR")
+        // The checker's answers are the check QR's, not the seal card's: each does nothing here.
+        rig.model.scanQr()
+        rig.model.typeCode()
+        rig.model.matchFound()
+        rig.model.cannotCheck()
+        assertEquals(Screen.SealCard, rig.screen, "the seal card offers none of the checker's answers")
+        rig.model.showCheckQr()
+        val page = rig.model.state.value
+        assertEquals(Screen.CheckQr, page.screen, "Show check QR: the seal card's next page")
+        assertSame(request, page.checkRequest, "the check QR page draws the seal card's check QR")
+        assertEquals(DICE_50_SEAL_ID, page.seal?.sealId, "and keeps the seal for the page before")
+        rig.model.showCheckQr()
+        assertEquals(Screen.CheckQr, rig.screen, "Show check QR off the seal card does nothing")
+        rig.model.back()
+        val back = rig.model.state.value
+        assertEquals(Screen.SealCard, back.screen, "Back on the check QR: the seal card")
+        assertSame(request, back.checkRequest, "the same check QR")
+        assertEquals(DICE_50_SEAL_ID, back.seal?.sealId)
+        assertFalse(blank(request), "and whole")
+        rig.model.showCheckQr()
+        assertSame(request, rig.model.state.value.checkRequest, "the same check QR again")
+        // Each of its actions opens its screen, whose Back returns to the check QR with the same check QR.
+        val actions = listOf(
+            Triple("Scan go-ahead QR", rig.model::scanQr, Screen.Scan),
+            Triple("Type go-ahead code", rig.model::typeCode, Screen.CodeEntry),
+            Triple("Match found", rig.model::matchFound, Screen.MatchFoundConfirm),
+            Triple("Cannot check", rig.model::cannotCheck, Screen.CannotCheckConfirm),
+        )
+        for ((name, press, screen) in actions) {
+            press()
+            assertEquals(screen, rig.screen, name)
+            assertSame(request, rig.model.state.value.checkRequest, name + " keeps the check QR")
+            rig.model.back()
+            assertEquals(Screen.CheckQr, rig.screen, "Back from " + name + "'s screen")
+            assertSame(request, rig.model.state.value.checkRequest, "the same check QR after " + name)
+        }
+        assertFalse(blank(request), "the check QR is whole after every page")
+        val core = done(Core.checkRequest(), "the check, still open")
+        assertTrue(sameModules(request, core), "no page made a core call: the same check and nonce")
+        core.wipe()
+        assertEquals(0, rig.worker.waiting, "and no long call")
+    }
+
+    @Test
+    fun aWrongTypedCodeIsRefusedAndTheCheckItsNonceAndActionsStay() {
+        val rig = atCheckQr()
         val request = assertNotNull(rig.model.state.value.checkRequest)
         rig.model.typeCode()
         assertEquals(Screen.CodeEntry, rig.screen)
@@ -199,30 +255,30 @@ class CheckScreensTest {
         core.wipe()
         rig.model.back()
         val back = rig.model.state.value
-        assertEquals(Screen.SealCard, back.screen)
+        assertEquals(Screen.CheckQr, back.screen)
         assertFalse(back.codeRefused)
         assertSame(request, back.checkRequest, "the same check QR")
         assertFalse(blank(request), "and whole")
         rig.model.matchFound()
-        assertEquals(Screen.MatchFoundConfirm, rig.screen, "the seal card's actions stay")
+        assertEquals(Screen.MatchFoundConfirm, rig.screen, "the check QR's actions stay")
     }
 
     @Test
     fun backOnEachConfirmScreenAndTheCodeEntryKeepsTheCheck() {
-        val rig = atSealCard()
+        val rig = atCheckQr()
         val request = assertNotNull(rig.model.state.value.checkRequest)
         rig.model.matchFound()
         assertEquals(Screen.MatchFoundConfirm, rig.screen)
         rig.model.back()
-        assertEquals(Screen.SealCard, rig.screen, "Back on Match found's confirm")
+        assertEquals(Screen.CheckQr, rig.screen, "Back on Match found's confirm")
         rig.model.cannotCheck()
         assertEquals(Screen.CannotCheckConfirm, rig.screen)
         rig.model.back()
-        assertEquals(Screen.SealCard, rig.screen, "Back on Cannot check's confirm")
+        assertEquals(Screen.CheckQr, rig.screen, "Back on Cannot check's confirm")
         rig.model.typeCode()
         for (key in "ABC") rig.model.goAheadCode.type(key)
         rig.model.back()
-        assertEquals(Screen.SealCard, rig.screen, "Back on the code entry")
+        assertEquals(Screen.CheckQr, rig.screen, "Back on the code entry")
         assertEquals(0, rig.model.goAheadCode.length, "the typed code is wiped")
         assertTrue(rig.model.goAheadCode.zeroPastLength())
         assertSame(request, rig.model.state.value.checkRequest)
@@ -234,7 +290,7 @@ class CheckScreensTest {
 
     @Test
     fun matchFoundWipesTheSeedUnseenThenTheReportBehindTheGateThenAddFreshEntropyNeeds99Rolls() {
-        val rig = atSealCard()
+        val rig = atCheckQr()
         val request = assertNotNull(rig.model.state.value.checkRequest)
         rig.model.matchFound()
         rig.model.matchFoundConfirmed()
@@ -271,7 +327,7 @@ class CheckScreensTest {
 
     @Test
     fun cannotCheckStartsAgainAtTheNormalMinimumOrAt99WhenItWasTheRestartAfterACollision() {
-        val rig = atSealCard()
+        val rig = atCheckQr()
         rig.model.cannotCheck()
         rig.model.cannotCheckConfirmed()
         assertEquals(Screen.Working, rig.screen, "the seed wiped, core's start from the kept Wiped")
@@ -281,6 +337,7 @@ class CheckScreensTest {
         // Now a collision, its restart, and Cannot check on that restart: 99 rolls again.
         finishDice(rig, DICE_50_ROLLS)
         rig.model.checkNow()
+        rig.model.showCheckQr()
         toReport(rig)
         rig.model.passGate()
         rig.model.addFreshEntropy()
@@ -290,6 +347,7 @@ class CheckScreensTest {
         rig.model.diceDone()
         rig.worker.run()
         rig.model.checkNow()
+        rig.model.showCheckQr()
         rig.model.cannotCheck()
         rig.model.cannotCheckConfirmed()
         rig.worker.run()
@@ -299,7 +357,7 @@ class CheckScreensTest {
 
     @Test
     fun leavingTheAppOnTheReportDiscardsAtOnceAndTheNextSeedStillNeeds99Rolls() {
-        val rig = atSealCard()
+        val rig = atCheckQr()
         toReport(rig)
         val report = assertNotNull(rig.model.state.value.report)
         rig.model.appLeft()
@@ -319,7 +377,7 @@ class CheckScreensTest {
     @Test
     fun wipeAllWipesTheTypedCodeAndTheQrCodesOnShow() {
         // The holder's end on the code entry, with symbols typed: the typed code and the check QR it holds.
-        val rig = atSealCard()
+        val rig = atCheckQr()
         val request = assertNotNull(rig.model.state.value.checkRequest)
         rig.model.typeCode()
         for (key in "PBJ") assertTrue(rig.model.goAheadCode.type(key))
@@ -329,7 +387,7 @@ class CheckScreensTest {
         assertTrue(blank(request), "wipeAll wipes the check QR on show")
         assertNoSession("wipeAll emptied the slot")
         // And past the report's gate: the collision-report QR, which carries the destroyed seed's seal code.
-        val second = atSealCard()
+        val second = atCheckQr()
         toReport(second)
         second.model.passGate()
         val report = assertNotNull(second.model.state.value.report)

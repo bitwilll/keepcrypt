@@ -36,11 +36,11 @@ import org.junit.runner.RunWith
  * The scanned go-ahead QRs (P4's first and third steps; commit 18): vectors/kcr.json's two go-ahead QR
  * texts, clear-empty-bucket's and collision-dice-50's (their ur fields, upper case as the P4 PNGs carry
  * them, lead decision M5-42), each on a dice-only seed of the gate seed it was made for (dice-99-words12
- * and dice-50-words12): Check now's seal card with its Seal ID, "Scan go-ahead QR" with CAMERA granted
- * from the shell (CaptureTest, which runs first, refused the prompt), where the scan screen says the
- * emulator has no camera (its AVD has none), then the text handed to the model's onGoAheadText, where
- * the scanner's first text goes. The check runs behind "Working...": clear-empty-bucket passes it, the
- * result naming the Seal ID with the proof's date, the entries in the seal's bucket (0) and the Stale
+ * and dice-50-words12): Check now's seal card with its Seal ID, its check QR's "Scan go-ahead QR" with
+ * CAMERA granted from the shell (CaptureTest, which runs first, refused the prompt), where the scan screen
+ * says the emulator has no camera (its AVD has none), then the text handed to the model's onGoAheadText,
+ * where the scanner's first text goes. The check runs behind "Working...": clear-empty-bucket passes it,
+ * the result naming the Seal ID with the proof's date, the entries in the seal's bucket (0) and the Stale
  * warning (the proof's snapshot is dated 2026-03-01), with the words made available; collision-dice-50
  * gives the collision result, with the proof's line (1 entry) and the Stale warning and the destroyed
  * seed's Seal ID drawn, before any words, then the report behind the privacy gate and 99 rolls.
@@ -192,8 +192,8 @@ class SnapshotDrillTest {
 
     /**
      * From Home: a dice-only seed of 12 words with count rolls of pattern, the dice's Done, Check now's
-     * seal card with sealId drawn, then its "Scan go-ahead QR": the scan screen, whose scanner, with
-     * CAMERA held, finds no camera on the emulator and says so.
+     * seal card with sealId drawn, its check QR, then its "Scan go-ahead QR": the scan screen, whose
+     * scanner, with CAMERA held, finds no camera on the emulator and says so.
      */
     private fun toScan(activity: MainActivity, count: Int, pattern: String, diceLine: String, sealId: String) {
         tap("dice_only_seed")
@@ -207,6 +207,8 @@ class SnapshotDrillTest {
         tap("check_now")
         on(activity, Screen.SealCard)
         assertTrue("the seal card does not draw the seed's Seal ID", shown(Screen.SealCard, sealId))
+        tap("show_check_qr")
+        on(activity, Screen.CheckQr)
         tap("scan_qr")
         on(activity, Screen.Scan)
         awaitText("scan_line", SCAN_MISSING)

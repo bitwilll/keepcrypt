@@ -255,6 +255,7 @@ class WordsScreensTest {
         scanned.model.diceDone()
         scanned.worker.run()
         scanned.model.checkNow()
+        scanned.model.showCheckQr()
         scanned.model.scanQr()
         scanned.model.onGoAheadText(kcrProofUr("clear-empty-bucket").uppercase())
         scanned.worker.run()

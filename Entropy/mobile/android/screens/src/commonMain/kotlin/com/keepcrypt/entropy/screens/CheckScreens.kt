@@ -24,7 +24,7 @@ import com.keepcrypt.entropy.ffi.RegistryHeader
 // The collision check (tasks/todo.md, M5 group 16; docs/mobile-apps.md, step 9;
 // docs/seal-watchonly-braille.md, "Checking the seal", whose prompt and results these use word for
 // word; the Pi's wording, pi/app's screens.rs, wherever those say nothing else): the prompt, Skip's
-// confirm, the seal card with its check QR and the checker's answers, the scan screen (commit 18), the
+// confirm, the seal card, its check QR with the checker's answers, the scan screen (commit 18), the
 // code entry on the Crockford pad, Match found's and Cannot check's confirms, the collision result and
 // its report QR (the first Protected screen), and the result before the words, whose "Show words" leads
 // on to them (WordsScreens.kt, commit 19). Each hands its presses to the ceremony model, which ignores a
@@ -45,11 +45,11 @@ const val SKIP_CONFIRM = "The words will be shown without a collision check. Ski
 /** The result after Skip (swb's "Results": the words come with this note). */
 const val SKIPPED = "You skipped the check: the seal can be checked later from the words."
 
-/** The seal card's answers (the Pi's, with the phone's scan): which of its actions each of the checker's answers takes. */
+/** The check QR's answers (the Pi's, with the phone's scan): which of its actions each of the checker's answers takes. */
 const val CHECK_ACTIONS = "Go ahead: scan its QR or type its code. Stop: Match found. A network or snapshot error: " +
     "Cannot check."
 
-/** A refused go-ahead code: the check stays open, with the same seal card and nonce (the code entry's Back). */
+/** A refused go-ahead code: the check stays open, with the same check QR and nonce (the code entry's Back). */
 const val CODE_REFUSED = "Code not accepted. Check the code on your checker and type it again: the check stays open."
 
 /** The collision result (swb's "Results", Stop). */
@@ -190,14 +190,34 @@ fun SkipConfirm(testRegistry: Boolean, onSkip: () -> Unit, onBack: () -> Unit) {
 }
 
 /**
- * The seal card (swb's "The seal card"; the Pi's three pages and actions page on one screen): the seal
- * at 240 dp with its Seal ID and braille, the check QR (T and this check's nonce) for the registry
- * website or the offline checker app, and the checker's answers: "Scan go-ahead QR" (the scan screen,
- * commit 18), "Type go-ahead code", "Match found" and "Cannot check", each of the last two confirmed on
- * its own screen.
+ * The seal card (swb's "The seal card"; the Pi's seal pages, PF:93): the seal at 240 dp with its Seal
+ * ID and braille, and "Show check QR", its next page. The check has started, so Back does nothing here.
  */
 @Composable
-fun SealCardScreen(
+fun SealCardScreen(state: UiState, testRegistry: Boolean, onShowCheckQr: () -> Unit) {
+    KitScreen(
+        screenId(Screen.SealCard),
+        testRegistry,
+        actions = { KitButton("Show check QR", "show_check_qr", onClick = onShowCheckQr) },
+    ) {
+        Heading("Seal card")
+        KitText("Your checker draws this seal from the check QR on the next page: compare the two.", KitType.small)
+        val seal = state.seal
+        if (seal != null) {
+            Centred { SealCardImage(seal) }
+        }
+    }
+}
+
+/**
+ * The seal card's check QR (the Pi's check QR page and actions page, PF:93): the check QR (T and this
+ * check's nonce) for the registry website or the offline checker app, wholly on screen above the
+ * checker's answers, two to a row: "Scan go-ahead QR" (the scan screen, commit 18), "Type go-ahead
+ * code", "Match found" and "Cannot check", each of the last two confirmed on its own screen. Back
+ * returns to the seal card, with the same check and nonce.
+ */
+@Composable
+fun CheckQrScreen(
     state: UiState,
     testRegistry: Boolean,
     onScan: () -> Unit,
@@ -206,31 +226,30 @@ fun SealCardScreen(
     onCannotCheck: () -> Unit,
 ) {
     KitScreen(
-        screenId(Screen.SealCard),
+        screenId(Screen.CheckQr),
         testRegistry,
         actions = {
-            KitButton("Scan go-ahead QR", "scan_qr", onClick = onScan)
-            KitButton("Type go-ahead code", "type_code", onClick = onTypeCode)
-            KitButton("Match found", "match_found", onClick = onMatchFound)
-            KitButton("Cannot check", "cannot_check", onClick = onCannotCheck)
+            Row {
+                KitButton("Scan go-ahead QR", "scan_qr", modifier = Modifier.weight(1f).padding(end = 6.dp), onClick = onScan)
+                KitButton("Type go-ahead code", "type_code", modifier = Modifier.weight(1f).padding(start = 6.dp), onClick = onTypeCode)
+            }
+            Row {
+                KitButton("Match found", "match_found", modifier = Modifier.weight(1f).padding(end = 6.dp), onClick = onMatchFound)
+                KitButton("Cannot check", "cannot_check", modifier = Modifier.weight(1f).padding(start = 6.dp), onClick = onCannotCheck)
+            }
         },
     ) {
-        Heading("Seal card")
-        KitText(
-            "Scan the check QR with the registry website or the offline checker app, and compare the seal it draws " +
-                "with this one.",
-            KitType.small,
-        )
-        val seal = state.seal
-        if (seal != null) {
-            Centred { SealCardImage(seal) }
-        }
-        Gap(16)
+        Heading("Check QR")
         val request = state.checkRequest
         if (request != null) {
-            Centred { QrCode(request, QR_SIDE_DP.dp) }
+            Centred { QrCode(request, QR_SIDE_DP.dp, Modifier.testTag("check_request")) }
         }
         Gap(8)
+        KitText(
+            "Scan the check QR with the registry website or the offline checker app, and compare the seal it draws " +
+                "with the seal card (Back).",
+            KitType.small,
+        )
         KitText(CHECK_ACTIONS, KitType.small)
     }
 }
@@ -244,7 +263,7 @@ fun SealCardScreen(
  * the idle warning and starts again when that goes, and stops when the screen leaves. Its first text
  * goes to onText (the model's onGoAheadText, which checks it behind "Working..."), and a stop without a
  * code to onStopped. A refused, missing or failed camera, or a text core refused, is said here, and the
- * scanner stays stopped; "Type go-ahead code" and Back (to the seal card, the same check and nonce) stay.
+ * scanner stays stopped; "Type go-ahead code" and Back (to the check QR, the same check and nonce) stay.
  */
 @Composable
 fun ScanScreen(
@@ -281,7 +300,7 @@ fun ScanScreen(
 
 /**
  * The go-ahead code (the Pi's code entry, on the Crockford pad): the code as typed, in the checker's
- * two groups, Delete, Done once all 8 symbols are typed, and Back to the seal card with the same check
+ * two groups, Delete, Done once all 8 symbols are typed, and Back to the check QR with the same check
  * and nonce, the typed code wiped. A refused code says so here and is wiped; the check stays. The code
  * lives in the model's PadEntry, not in Compose state: version redraws it when the pad, Delete or Done
  * change it.
