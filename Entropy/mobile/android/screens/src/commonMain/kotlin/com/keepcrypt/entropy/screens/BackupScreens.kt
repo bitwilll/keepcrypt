@@ -6,11 +6,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
@@ -240,7 +235,8 @@ fun BackupPassphrase(
  * REGISTRY strip: one a row, the fourth lay below the text column's end there, out of view and so out
  * of the accessibility tree (Entropy Android run 40681107802, API 36; kc37 at 720x1184, local). The
  * letters live in the model's PadEntry: a letter's press goes to onKey and Delete to onDelete (the
- * model's padKey and padDelete), and version redraws them when the pad, Delete or Done change them.
+ * model's padKey and padDelete), and only what reads the letters (Pads.kt: their length is Compose
+ * state) redraws when they change.
  */
 @Composable
 fun BackupConfirm(
@@ -256,14 +252,11 @@ fun BackupConfirm(
         val questions = state.challenge?.questions.orEmpty()
         if (state.page in questions.indices) {
             val question = questions[state.page]
-            var version by remember { mutableIntStateOf(0) }
             KitScreen(
                 screenId(Screen.BackupConfirm),
                 testRegistry,
                 actions = {
-                    key(version) {
-                        LetterEntry(letters, done = "confirm_done", onKey = onKey, onDelete = onDelete, onDone = onDone) { version += 1 }
-                    }
+                    LetterEntry(letters, done = "confirm_done", onKey = onKey, onDelete = onDelete, onDone = onDone)
                 },
             ) {
                 KitText("Check your copy: question " + (state.page + 1) + " of 2", KitType.small, tag = "confirm_question")
@@ -285,7 +278,7 @@ fun BackupConfirm(
  * The letters typed and the letter pad, Delete and Done (at three or four letters), as the read-back
  * entry has them (WordsScreens.kt): the confirm's and Check a backup's entry. A letter's press goes to
  * onKey and Delete to onDelete, the model's padKey and padDelete (on Check a backup's entry it also
- * reopens the word before), Delete enabled while canDelete. changed redraws them.
+ * reopens the word before), Delete enabled while canDelete.
  */
 @Composable
 private fun LetterEntry(
@@ -295,22 +288,18 @@ private fun LetterEntry(
     onDelete: () -> Unit,
     onDone: () -> Unit,
     canDelete: Boolean = letters.length > 0,
-    changed: () -> Unit,
 ) {
     BasicText(typedFaces(letters), Modifier.padding(vertical = 6.dp).secret(), style = KitType.large.copy(fontFamily = FontFamily.Monospace))
-    LetterPad { letter ->
-        onKey(letter)
-        changed()
-    }
+    LetterPad(onKey)
     Row {
-        KitButton("Delete", "letters_delete", enabled = canDelete, modifier = Modifier.weight(1f).padding(end = 6.dp)) {
-            onDelete()
-            changed()
-        }
-        KitButton("Done", done, enabled = letters.length >= READBACK_MIN_LETTERS, modifier = Modifier.weight(1f).padding(start = 6.dp)) {
-            onDone()
-            changed()
-        }
+        KitButton("Delete", "letters_delete", enabled = canDelete, modifier = Modifier.weight(1f).padding(end = 6.dp), onClick = onDelete)
+        KitButton(
+            "Done",
+            done,
+            enabled = letters.length >= READBACK_MIN_LETTERS,
+            modifier = Modifier.weight(1f).padding(start = 6.dp),
+            onClick = onDone,
+        )
     }
 }
 
@@ -377,21 +366,18 @@ fun BackupCheckEntry(
     onBack: () -> Unit,
 ) {
     Protected(state, testRegistry, passGate) {
-        var version by remember { mutableIntStateOf(0) }
         KitScreen(
             screenId(Screen.BackupCheckEntry),
             testRegistry,
             actions = {
-                key(version) {
-                    LetterEntry(
-                        letters,
-                        done = "entry_done",
-                        onKey = onKey,
-                        onDelete = onDelete,
-                        onDone = onDone,
-                        canDelete = letters.length > 0 || state.page > 0,
-                    ) { version += 1 }
-                }
+                LetterEntry(
+                    letters,
+                    done = "entry_done",
+                    onKey = onKey,
+                    onDelete = onDelete,
+                    onDone = onDone,
+                    canDelete = letters.length > 0 || state.page > 0,
+                )
                 KitButton("Back", "back", onClick = onBack)
             },
         ) {

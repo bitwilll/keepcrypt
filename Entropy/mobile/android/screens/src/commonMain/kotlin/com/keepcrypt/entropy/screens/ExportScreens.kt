@@ -6,11 +6,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -140,7 +135,8 @@ fun Bip39Ask(testRegistry: Boolean, onNone: () -> Unit, onPassphrase: () -> Unit
  * model's (the state's page: Previous keys and Next keys are its previousPage and nextPage); Delete, and
  * Done once a character is typed; Back returns to the question, the passphrase wiped (the Pi's KEY2). The
  * passphrase lives in the model's PadEntry: a character's press goes to onKey and Delete to onDelete (the
- * model's padKey and padDelete), and version redraws it when the pad, Delete or Done change it.
+ * model's padKey and padDelete), and only what reads the passphrase (Pads.kt: its length is Compose state)
+ * redraws when it changes.
  */
 @Composable
 fun Bip39Entry(
@@ -156,44 +152,44 @@ fun Bip39Entry(
     onBack: () -> Unit,
 ) {
     Protected(state, testRegistry, passGate) {
-        var version by remember { mutableIntStateOf(0) }
         val keys = state.page
         KitScreen(
             screenId(Screen.Bip39Entry),
             testRegistry,
             actions = {
-                key(version, keys) {
-                    BasicText(bip39Shown(letters), Modifier.padding(vertical = 6.dp).secret(), style = KitType.hex)
-                    AsciiPad(keys) { character ->
-                        onKey(character)
-                        version += 1
-                    }
-                    Row {
-                        KitButton(
-                            "Previous keys",
-                            "keys_previous",
-                            enabled = keys > 0,
-                            modifier = Modifier.weight(1f).padding(end = 6.dp),
-                            onClick = onPreviousKeys,
-                        )
-                        KitButton(
-                            "Next keys",
-                            "keys_next",
-                            enabled = keys < ASCII_PAGES - 1,
-                            modifier = Modifier.weight(1f).padding(start = 6.dp),
-                            onClick = onNextKeys,
-                        )
-                    }
-                    Row {
-                        KitButton("Delete", "bip39_delete", enabled = letters.length > 0, modifier = Modifier.weight(1f).padding(end = 6.dp)) {
-                            onDelete()
-                            version += 1
-                        }
-                        KitButton("Done", "bip39_done", enabled = letters.length > 0, modifier = Modifier.weight(1f).padding(start = 6.dp)) {
-                            onDone()
-                            version += 1
-                        }
-                    }
+                BasicText(bip39Shown(letters), Modifier.padding(vertical = 6.dp).secret(), style = KitType.hex)
+                AsciiPad(keys, onKey = onKey)
+                Row {
+                    KitButton(
+                        "Previous keys",
+                        "keys_previous",
+                        enabled = keys > 0,
+                        modifier = Modifier.weight(1f).padding(end = 6.dp),
+                        onClick = onPreviousKeys,
+                    )
+                    KitButton(
+                        "Next keys",
+                        "keys_next",
+                        enabled = keys < ASCII_PAGES - 1,
+                        modifier = Modifier.weight(1f).padding(start = 6.dp),
+                        onClick = onNextKeys,
+                    )
+                }
+                Row {
+                    KitButton(
+                        "Delete",
+                        "bip39_delete",
+                        enabled = letters.length > 0,
+                        modifier = Modifier.weight(1f).padding(end = 6.dp),
+                        onClick = onDelete,
+                    )
+                    KitButton(
+                        "Done",
+                        "bip39_done",
+                        enabled = letters.length > 0,
+                        modifier = Modifier.weight(1f).padding(start = 6.dp),
+                        onClick = onDone,
+                    )
                 }
                 KitButton("Back", "back", onClick = onBack)
             },

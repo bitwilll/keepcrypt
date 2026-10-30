@@ -1,5 +1,6 @@
 package com.keepcrypt.entropy.screens
 
+import androidx.compose.runtime.snapshots.Snapshot
 import com.keepcrypt.entropy.ffi.Secret
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -11,7 +12,8 @@ import kotlin.test.assertTrue
 /**
  * The pads (tasks/todo.md, M5 group 14): each one's keys in their fixed order, its capacity, and its
  * entry, which holds only its own keys, zeroes what it drops (read through its internal check) and
- * hands over a Secret of exactly what was typed, wiped once the call it was handed to returns or throws.
+ * hands over a Secret of exactly what was typed, wiped once the call it was handed to returns or throws;
+ * and what the screens read of an entry (its length and keys) is snapshot state each change notifies (U3f).
  */
 class PadsTest {
     /** The entry's bytes as text, through its Secret (and the Secret wiped after). */
@@ -153,5 +155,48 @@ class PadsTest {
         assertTrue((0 until secret.size).all { secret[it] == 0.toByte() }, "the handed Secret is wiped though the call threw")
         assertEquals(0, code.length)
         assertTrue(code.zeroPastLength(), "and the entry is zeroed")
+    }
+
+    /**
+     * The screens no longer redraw an entry by a counter of their own (U3f): what reads it, its length
+     * and keyAt, reads snapshot state, and every change an entry takes (a key, a dice face replacing
+     * another, Delete, a take, a wipe) is applied as a change to that state, so Compose redraws its
+     * readers and nothing else.
+     */
+    @Test
+    fun whatReadsAnEntryIsSnapshotStateThatEachChangeNotifies() {
+        val pick = dicePadEntry()
+        assertTrue(pick.type('3'))
+        val read = HashSet<Any>()
+        Snapshot.observe(readObserver = { read.add(it) }) {
+            pick.length
+            pick.keyAt(0)
+        }
+        assertTrue(read.isNotEmpty(), "reading the entry reads no snapshot state")
+        Snapshot.sendApplyNotifications()
+        val applied = ArrayList<Set<Any>>()
+        val observer = Snapshot.registerApplyObserver { changed, _ -> applied.add(changed) }
+        try {
+            val steps = listOf<Pair<String, () -> Unit>>(
+                "a face replacing another" to { assertTrue(pick.replace('5')) },
+                "Delete" to { pick.delete() },
+                "a key" to { assertTrue(pick.type('2')) },
+                "a take" to { pick.take().wipe() },
+                "a key, then a wipe" to {
+                    assertTrue(pick.type('6'))
+                    Snapshot.sendApplyNotifications()
+                    applied.clear()
+                    pick.wipe()
+                },
+            )
+            for ((what, step) in steps) {
+                applied.clear()
+                step()
+                Snapshot.sendApplyNotifications()
+                assertTrue(applied.any { changed -> read.any { it in changed } }, what + " notified no reader of the entry")
+            }
+        } finally {
+            observer.dispose()
+        }
     }
 }

@@ -7,11 +7,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -302,8 +297,8 @@ fun ScanScreen(
  * The go-ahead code (the Pi's code entry, on the Crockford pad): the code as typed, in the checker's
  * two groups, Delete, Done once all 8 symbols are typed, and Back to the check QR with the same check
  * and nonce, the typed code wiped. A refused code says so here and is wiped; the check stays. The code
- * lives in the model's PadEntry, not in Compose state: a symbol's press goes to onKey and Delete to
- * onDelete (the model's padKey and padDelete), and version redraws it when the pad, Delete or Done change it.
+ * lives in the model's PadEntry, whose length is Compose state (Pads.kt): a symbol's press goes to onKey and
+ * Delete to onDelete (the model's padKey and padDelete), and only what reads the code redraws when it changes.
  */
 @Composable
 fun CodeEntry(
@@ -315,7 +310,6 @@ fun CodeEntry(
     onDone: () -> Unit,
     onBack: () -> Unit,
 ) {
-    var version by remember { mutableIntStateOf(0) }
     KitScreen(
         screenId(Screen.CodeEntry),
         testRegistry,
@@ -323,26 +317,15 @@ fun CodeEntry(
             if (state.codeRefused) {
                 KitText(CODE_REFUSED, KitType.body.copy(color = KitColors.warning), tag = "code_refused")
             }
-            key(version) {
-                BasicText(
-                    codeShown(code),
-                    Modifier.padding(vertical = 6.dp).testTag("code"),
-                    style = KitType.large.copy(fontFamily = FontFamily.Monospace),
-                )
-                CrockfordPad { symbol ->
-                    onKey(symbol)
-                    version += 1
-                }
-                Row {
-                    KitButton("Delete", "code_delete", enabled = code.length > 0, modifier = Modifier.weight(1f).padding(end = 6.dp)) {
-                        onDelete()
-                        version += 1
-                    }
-                    KitButton("Done", "code_done", enabled = code.isFull, modifier = Modifier.weight(1f).padding(start = 6.dp)) {
-                        onDone()
-                        version += 1
-                    }
-                }
+            BasicText(
+                codeShown(code),
+                Modifier.padding(vertical = 6.dp).testTag("code"),
+                style = KitType.large.copy(fontFamily = FontFamily.Monospace),
+            )
+            CrockfordPad(onKey)
+            Row {
+                KitButton("Delete", "code_delete", enabled = code.length > 0, modifier = Modifier.weight(1f).padding(end = 6.dp), onClick = onDelete)
+                KitButton("Done", "code_done", enabled = code.isFull, modifier = Modifier.weight(1f).padding(start = 6.dp), onClick = onDone)
             }
             KitButton("Back", "back", onClick = onBack)
         },

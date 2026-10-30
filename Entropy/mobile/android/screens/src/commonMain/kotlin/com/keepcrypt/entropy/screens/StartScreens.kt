@@ -4,11 +4,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -202,8 +197,8 @@ fun Commitment(state: UiState, testRegistry: Boolean, onContinue: () -> Unit) {
  * (disabled with no face picked and at 256 rolls, where the pad is disabled too), Undo takes the last
  * roll back; the screen shows the count and the bits, never the roll history, and says when the
  * minimum is reached, from when Done (disabled below it) makes the seed and opens the collision check.
- * The pick lives in the model's PadEntry, not in Compose state: a face's press goes to onKey (the model's
- * padKey), and version only redraws the pick when the pad changes it.
+ * The pick lives in the model's PadEntry, whose length is Compose state (Pads.kt): a face's press goes to
+ * onKey (the model's padKey), and only what reads the pick redraws when it changes, never the pad.
  */
 @Composable
 fun Dice(
@@ -216,35 +211,29 @@ fun Dice(
     onDone: () -> Unit,
 ) {
     val dice = state.dice ?: return
-    var version by remember { mutableIntStateOf(0) }
     val open = dice.rolls < MAX_ROLLS
     KitScreen(
         screenId(Screen.Dice),
         testRegistry,
         actions = {
-            key(version) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    KitText("Picked")
-                    BasicText(
-                        if (pick.length == 1) keyLabel(pick.keyAt(0)) else "-",
-                        Modifier.padding(horizontal = 16.dp).testTag("dice_pick"),
-                        style = KitType.large,
-                    )
-                }
-                DicePad(enabled = open) { face ->
-                    onKey(face)
-                    version += 1
-                }
-                Row {
-                    KitButton("Undo", "undo", enabled = dice.rolls > 0, modifier = Modifier.weight(1f).padding(end = 6.dp), onClick = onUndo)
-                    KitButton(
-                        "Confirm",
-                        "confirm",
-                        enabled = open && pick.length == 1,
-                        modifier = Modifier.weight(1f).padding(start = 6.dp),
-                        onClick = onConfirm,
-                    )
-                }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                KitText("Picked")
+                BasicText(
+                    if (pick.length == 1) keyLabel(pick.keyAt(0)) else "-",
+                    Modifier.padding(horizontal = 16.dp).testTag("dice_pick"),
+                    style = KitType.large,
+                )
+            }
+            DicePad(enabled = open, onKey = onKey)
+            Row {
+                KitButton("Undo", "undo", enabled = dice.rolls > 0, modifier = Modifier.weight(1f).padding(end = 6.dp), onClick = onUndo)
+                KitButton(
+                    "Confirm",
+                    "confirm",
+                    enabled = open && pick.length == 1,
+                    modifier = Modifier.weight(1f).padding(start = 6.dp),
+                    onClick = onConfirm,
+                )
             }
             KitButton("Done", "dice_done", enabled = dice.rolls >= dice.minimum, onClick = onDone)
         },

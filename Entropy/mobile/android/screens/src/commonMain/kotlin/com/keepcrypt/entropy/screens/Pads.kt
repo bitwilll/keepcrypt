@@ -9,10 +9,14 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -67,12 +71,18 @@ fun asciiPage(page: Int): String {
  * What a pad has typed (rule 5): up to capacity of the pad's keys, as ASCII bytes in a buffer this
  * object owns and zeroes (a key deleted, the entry taken or wiped), never a String. take hands the
  * entry over as a Secret of exactly its length, for Core, and leaves this empty. No toString shows it.
+ * Its length is Compose snapshot state (U3f), so a screen redraws only what reads the entry (the keys
+ * typed, an enabled Delete or Done) when a key, Delete, take or wipe changes it, never the pad's keys.
  */
 class PadEntry(val keys: String, val capacity: Int) {
     private val bytes = ByteArray(capacity)
 
-    /** How many keys are typed. */
-    var length: Int = 0
+    /**
+     * How many keys are typed: snapshot state, which keyAt reads too, so every change redraws what reads
+     * the entry; a dice face that replaces another writes it twice (the wipe's 0, then 1), so that change
+     * redraws it as well. Only the count is state; the keys stay in the buffer.
+     */
+    var length: Int by mutableIntStateOf(0)
         private set
 
     val isFull: Boolean get() = length == capacity
@@ -153,11 +163,12 @@ fun asciiPadEntry(): PadEntry = PadEntry(ASCII_KEYS, ASCII_CAPACITY)
 
 /**
  * The dice pad (a Public screen): a face's press goes to onKey, the model's padKey, which replaces the
- * pick. Disabled at 256 rolls by its screen.
+ * pick. Disabled at 256 rolls by its screen. Its six keys fill their share of the row (lead decision
+ * M5-72 (e)): a third each, KEY_DP high, not 40 dp squares at the row's start.
  */
 @Composable
 fun DicePad(enabled: Boolean, onKey: (Char) -> Unit) {
-    KeyGrid(DICE_KEYS, columns = 3, enabled = enabled, sensitive = false, press = onKey)
+    KeyGrid(DICE_KEYS, columns = 3, enabled = enabled, sensitive = false, fill = true, press = onKey)
 }
 
 /** The letter pad (Protected screens): a letter's press goes to onKey, the model's padKey. */
@@ -186,19 +197,20 @@ fun AsciiPad(page: Int, onKey: (Char) -> Unit) {
  * at most KEY_DP: at full size a row of eight (the go-ahead code's) is 368 dp and a row of seven (the
  * letter pad's) 322 dp, wider than the 312 dp a 360 dp phone leaves inside the kit's 24 dp margins, so
  * every column takes an equal share of the row and a key shrinks to its share where that is smaller; a
- * short last row keeps the columns of the rows above it.
+ * short last row keeps the columns of the rows above it. With fill (the dice pad's three columns) each key
+ * is its whole share wide and KEY_DP high instead.
  */
 @Composable
-private fun KeyGrid(keys: String, columns: Int, enabled: Boolean, sensitive: Boolean, press: (Char) -> Unit) {
+private fun KeyGrid(keys: String, columns: Int, enabled: Boolean, sensitive: Boolean, fill: Boolean = false, press: (Char) -> Unit) {
     Column {
         for (start in keys.indices step columns) {
             Row(Modifier.fillMaxWidth()) {
                 for (index in start until start + columns) {
                     if (index < keys.length) {
                         val key = keys[index]
-                        Key(keyLabel(key), enabled, sensitive) { press(key) }
+                        Key(keyLabel(key), enabled, sensitive, fill) { press(key) }
                     } else {
-                        Spacer(Modifier.weight(1f, fill = false))
+                        Spacer(Modifier.weight(1f, fill = fill))
                     }
                 }
             }
@@ -206,20 +218,20 @@ private fun KeyGrid(keys: String, columns: Int, enabled: Boolean, sensitive: Boo
     }
 }
 
-/** A key's side at most: its side wherever its row has room for it. */
+/** A key's side at most: its side wherever its row has room for it, and a filling key's height. */
 private const val KEY_DP = 40
 
 /** A key's label: the space key says so. */
 fun keyLabel(key: Char): String = if (key == ' ') "space" else key.toString()
 
 @Composable
-private fun RowScope.Key(label: String, enabled: Boolean, sensitive: Boolean, press: () -> Unit) {
-    val framed = Modifier
-        .weight(1f, fill = false)
-        .padding(3.dp)
-        .widthIn(max = KEY_DP.dp)
-        .aspectRatio(1f)
-        .border(1.dp, if (enabled) Color.White else Color.Gray)
+private fun RowScope.Key(label: String, enabled: Boolean, sensitive: Boolean, fill: Boolean, press: () -> Unit) {
+    val sized = if (fill) {
+        Modifier.weight(1f).padding(3.dp).height(KEY_DP.dp)
+    } else {
+        Modifier.weight(1f, fill = false).padding(3.dp).widthIn(max = KEY_DP.dp).aspectRatio(1f)
+    }
+    val framed = sized.border(1.dp, if (enabled) Color.White else Color.Gray)
     // Sensitive: the key's semantics are its role alone, so its press says nothing about the key. A
     // Public key (the dice and the go-ahead code) has its label as its TalkBack label, the button role
     // and a test tag, key_ and its label, for UI Automator (group 15's flow tests).

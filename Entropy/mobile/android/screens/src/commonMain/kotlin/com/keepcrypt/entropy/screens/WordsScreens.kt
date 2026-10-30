@@ -5,11 +5,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -320,9 +315,9 @@ fun DeviceSwap(testRegistry: Boolean, onContinue: () -> Unit) {
  * Pi's readback-entry), a Protected screen: the insert to read back, its position and device, and the
  * faces typed so far on the letter pad (Pads.kt's LetterPad, whose keys say only their role), with no
  * suggestion; Delete, and Done at three or four letters. After a match the whole word shows, and Next
- * goes on. The letters live in the model's PadEntry, not in Compose state: a letter's press goes to onKey
- * and Delete to onDelete (the model's padKey and padDelete), and version redraws them when the pad,
- * Delete or Done change them.
+ * goes on. The letters live in the model's PadEntry, whose length is Compose state (Pads.kt): a letter's
+ * press goes to onKey and Delete to onDelete (the model's padKey and padDelete), and only what reads the
+ * letters redraws when they change.
  */
 @Composable
 fun ReadbackEntry(
@@ -338,7 +333,6 @@ fun ReadbackEntry(
     Protected(state, testRegistry, passGate) {
         val insert = state.insert
         if (insert != null) {
-            var version by remember { mutableIntStateOf(0) }
             KitScreen(
                 screenId(Screen.ReadbackEntry),
                 testRegistry,
@@ -346,36 +340,27 @@ fun ReadbackEntry(
                     if (state.matched) {
                         KitButton("Next", "readback_next", onClick = onNext)
                     } else {
-                        key(version) {
-                            BasicText(
-                                typedFaces(letters),
-                                Modifier.padding(vertical = 6.dp).secret(),
-                                style = KitType.large.copy(fontFamily = FontFamily.Monospace),
+                        BasicText(
+                            typedFaces(letters),
+                            Modifier.padding(vertical = 6.dp).secret(),
+                            style = KitType.large.copy(fontFamily = FontFamily.Monospace),
+                        )
+                        LetterPad(onKey)
+                        Row {
+                            KitButton(
+                                "Delete",
+                                "letters_delete",
+                                enabled = letters.length > 0,
+                                modifier = Modifier.weight(1f).padding(end = 6.dp),
+                                onClick = onDelete,
                             )
-                            LetterPad { letter ->
-                                onKey(letter)
-                                version += 1
-                            }
-                            Row {
-                                KitButton(
-                                    "Delete",
-                                    "letters_delete",
-                                    enabled = letters.length > 0,
-                                    modifier = Modifier.weight(1f).padding(end = 6.dp),
-                                ) {
-                                    onDelete()
-                                    version += 1
-                                }
-                                KitButton(
-                                    "Done",
-                                    "letters_done",
-                                    enabled = letters.length >= READBACK_MIN_LETTERS,
-                                    modifier = Modifier.weight(1f).padding(start = 6.dp),
-                                ) {
-                                    onDone()
-                                    version += 1
-                                }
-                            }
+                            KitButton(
+                                "Done",
+                                "letters_done",
+                                enabled = letters.length >= READBACK_MIN_LETTERS,
+                                modifier = Modifier.weight(1f).padding(start = 6.dp),
+                                onClick = onDone,
+                            )
                         }
                     }
                 },

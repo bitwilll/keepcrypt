@@ -665,7 +665,8 @@ class FlowTest {
                 letters.length
             }
             assertEquals(PASSPHRASE.length + 1, typed)
-            // Typed in-process, so the entry has not redrawn: a page of keys on and back redraws it, as a key's press would.
+            // Typed in-process: the entry's length is snapshot state (U3f), so it redraws at the next frame; a page of keys
+            // on and back (each tap waits for the UI) lets that frame come before Delete's state is read.
             tap("keys_next")
             tap("keys_previous")
             assertTrue("Delete is not enabled with the passphrase typed", enabled("bip39_delete"))

@@ -13006,6 +13006,19 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   are the device proof): android-rust.sh for both flavours, then the strict Gradle build of the five APKs with every
   JVM test task: :screens 160 in 22 classes (PadPressTest 3, CheckBackupScreensTest 21), :core-ffi 34 in 12, :app 11
   for each flavour, :secure-ui 3, none failed; the gate clean under sh and dash.
+  Proof (M5 commit U3f, Stage U-2, M5-72 (e), partial: local, Q76's JVM run on a Linux host; CI's legs at the next
+  push): each pad screen redrew its whole actions block, the pad's keys among them, by a version counter of its own
+  bumped after every key, Delete and Done (key(version)), since PadEntry was no Compose state; and the dice pad's six
+  keys were 40 dp squares at the start of a row a third of which each could fill. PadEntry's length is now snapshot
+  state (mutableIntStateOf), which keyAt reads too, so Compose redraws only what reads an entry (the keys typed, an
+  enabled Delete or Done) and the pads, which hold no entry since U3e, are skipped; the counters, key(version) and
+  LetterEntry's changed are gone. The dice pad's keys fill their third of the row, KEY_DP (40 dp) high. PadsTest's
+  whatReadsAnEntryIsSnapshotStateThatEachChangeNotifies: reading length and keyAt reads snapshot state, and a face
+  replacing another, Delete, a key, a take and a wipe each notify a reader; with length a plain Int it fails ("reading
+  the entry reads no snapshot state"); mutableIntStateOf passes as neverEqualPolicy does, since a face that replaces
+  another writes the length twice (0, then 1), so the simpler one stays. FlowTest's comment on the BIP39 entry's
+  in-process typing says so. The dice keys' layout has no JVM check: CI's captures draw the dice screen. Locally: the
+  strict Gradle build of the five APKs and :screens 161 in 22 classes, none failed.
 
 **15. Screens: start to dice** (MA:166-174; PF:83-89)
 - [ ] First launch (MA:13's limits, the development-build line, "use the Pi for life savings"; every start), Self-test
