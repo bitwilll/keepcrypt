@@ -37,6 +37,7 @@ N: android=http://schemas.android.com/apk/res/android (line=12)
           E: activity (line=43)
             A: http://schemas.android.com/apk/res/android:name(0x01010003)="com.keepcrypt.entropy.MainActivity" (Raw: "com.keepcrypt.entropy.MainActivity")
             A: http://schemas.android.com/apk/res/android:exported(0x01010010)=true
+            A: http://schemas.android.com/apk/res/android:launchMode(0x0101001d)=2
               E: intent-filter (line=46)
                   E: action (line=47)
                     A: http://schemas.android.com/apk/res/android:name(0x01010003)="android.intent.action.MAIN" (Raw: "android.intent.action.MAIN")

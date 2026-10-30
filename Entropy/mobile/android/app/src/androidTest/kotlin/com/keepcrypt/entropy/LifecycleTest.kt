@@ -38,7 +38,7 @@ import org.junit.runner.RunWith
  * left on a words page (a Protected screen: discarded at once), and on the dice (a Public screen: 50 s
  * away keeps the session and 70 s wipes it, through the real 60 s rule on the phone's clock); and a words
  * page outlasts the system's shortest screen timeout, its window keeping the screen on until Finish
- * (lead decision M5-72 (b)). In each
+ * (lead decision M5-72 (b)); and a second start reaches the running activity (U2a). In each
  * the main thread never waits (the script's judge finds no not-responding window) and a discarded
  * session is gone: afterwards the slot is at home, where only an empty slot takes the self-test (a
  * session there would make that call halt), and the screen is the start screen, Go offline once the
@@ -431,6 +431,50 @@ class LifecycleTest {
         }
     }
 
+    /**
+     * One activity (Stage U's commit U2a): a second start of MainActivity, as another app's intent with
+     * FLAG_ACTIVITY_NEW_TASK and FLAG_ACTIVITY_MULTIPLE_TASK (am start -W, which returns once the launch
+     * is done), reaches the running activity, since the manifest's launchMode is singleTask: no second
+     * MainActivity is created in any stage, the first one is resumed, and its model still holds the
+     * session on the dice with its rolls, uncovered and with no notice. With the standard launch mode
+     * that intent made a new task with a second activity and a second ceremony model over the process's
+     * one slot, and the first activity's stop covered its dice.
+     */
+    @Test
+    fun aSecondStartReachesTheRunningActivityAndItsSession() {
+        Capture.whileOffline {
+            val component = Capture.instrumentation.targetContext.packageName + "/com.keepcrypt.entropy.MainActivity"
+            val activity = launch()
+            selfTested(activity)
+            await("the app reads airplane mode on and Wi-Fi off", 30) { onMain { activity.model.state.value.offline } }
+            toDice(activity)
+            onMain {
+                for (roll in DICE_50_ROLLS.take(ROLLS_AWAY)) {
+                    activity.model.padKey(roll)
+                    activity.model.confirmRoll()
+                }
+            }
+            val started = shellText("am start -W -n $component -f $NEW_TASK_MULTIPLE_TASK")
+            probe("second start: am start -W printed " + started.lines().map { it.trim() }.filter { it.isNotEmpty() }.joinToString(" | ").take(400))
+            await("the activity resumed", 30) { stage(activity) == Stage.RESUMED }
+            val others = onMain {
+                val registry = ActivityLifecycleMonitorRegistry.getInstance()
+                Stage.values().filter { it != Stage.DESTROYED }
+                    .flatMap { registry.getActivitiesInStage(it) }
+                    .filter { it is MainActivity && it !== activity }
+            }
+            assertEquals("a second MainActivity was created", 0, others.size)
+            val held = onMain { activity.model.state.value }
+            assertEquals("the second start left the dice", Screen.Dice, held.screen)
+            assertEquals(null, held.overlay)
+            assertEquals(null, held.notice)
+            assertTrue("the session is no longer held", onMain { activity.model.held.value })
+            assertEquals("the rolls", ROLLS_AWAY, done(Core.diceProgress()).rolls)
+            pass("a second start (NEW_TASK and MULTIPLE_TASK) reached the running activity: one MainActivity, its session on the dice")
+            finish(activity)
+        }
+    }
+
     /** From Go offline, offline: Start, Dice-only seed, 12 words (the start's long call), through the model as the buttons call it, to the dice. */
     private fun toDice(activity: MainActivity) {
         onMain {
@@ -580,6 +624,9 @@ class LifecycleTest {
 
         /** The rolls on the dice before the app is left there. */
         const val ROLLS_AWAY = 10
+
+        /** am start's -f for FLAG_ACTIVITY_NEW_TASK (0x10000000) with FLAG_ACTIVITY_MULTIPLE_TASK (0x08000000). */
+        const val NEW_TASK_MULTIPLE_TASK = "0x18000000"
 
         /** The 60 s rule (Timers.BACKGROUND_MILLIS), 50 s away that keep the session and 70 s that wipe it. */
         const val BACKGROUND_MS = 60_000L

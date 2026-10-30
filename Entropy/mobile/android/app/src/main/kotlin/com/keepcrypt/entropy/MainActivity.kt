@@ -41,6 +41,8 @@ import kotlinx.coroutines.launch
  * FLAG_KEEP_SCREEN_ON follows, set and cleared as that state changes, never by a timer (KtWindow refuses a call that
  * clears window flags, one that replaces them but SecureActivity's own and a new layout, so keepScreenOn is the way to
  * clear it here). Compose test tags are exposed as resource ids, so UI Automator finds Public screens by id (group 6).
+ * There is one instance (the manifest's launchMode singleTask, Stage U's commit U2a): a second start reaches this
+ * activity, whose launcher intent needs nothing done, so no second ceremony model ever runs over the process's slot.
  */
 class MainActivity : SecureActivity() {
     /**

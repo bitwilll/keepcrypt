@@ -18,6 +18,7 @@ application name=com.keepcrypt.entropy.KeepCryptApp
 application theme=set
 application usesCleartextTraffic=false
 activity com.keepcrypt.entropy.MainActivity exported=true
+activity com.keepcrypt.entropy.MainActivity launchMode=2
 activity com.keepcrypt.entropy.MainActivity intent-filter action:android.intent.action.MAIN category:android.intent.category.LAUNCHER
 uses-library androidx.window.extensions required=false
 uses-library androidx.window.sidecar required=false

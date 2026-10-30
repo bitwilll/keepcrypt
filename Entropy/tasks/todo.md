@@ -16593,6 +16593,21 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   insert); a wrong backup passphrase, a damaged .age file and a file that is not one; a stale, future, wrong-key or
   damaged snapshot; a go-ahead QR too long, of another type, in mixed case or from another check; the 99-roll minimum
   through every restart path.
+  Proof (M5 commit U2a, Stage U-2, partial: local, Q76; CI's test registry and edges jobs at the next push):
+  MainActivity had the standard launch mode, so a start with FLAG_ACTIVITY_NEW_TASK and FLAG_ACTIVITY_MULTIPLE_TASK
+  (another app's intent, or am start's -f) made a new task with a second MainActivity, whose CeremonyHolder made a
+  second CeremonyModel over the process's one slot, while the first activity's stop counted as leaving. The manifest
+  now gives it launchMode singleTask (the system reuses its task for that intent and delivers it to the running
+  instance; the launcher intent needs nothing done, so MainActivity adds no onNewIntent); its comment and
+  MainActivity's say so. --apk's manifest summary gains "activity com.keepcrypt.entropy.MainActivity launchMode=2"
+  (aapt2's enum value for singleTask), pinned in expected/manifest-shipping.txt and -withTestRegistry.txt and in
+  --selftest-apk's stub xmltree (scripts/testdata/apk/xmltree.txt), whose control compares it with the committed
+  summary. LifecycleTest's aSecondStartReachesTheRunningActivityAndItsSession: on the dice with 10 rolls, `am start -W
+  -n MainActivity -f 0x18000000`; no second MainActivity in any stage, the first resumed, the dice, its rolls, held,
+  no cover and no notice. With the standard launch mode it would find a second activity. Locally (no emulator here, so
+  the device proof is CI's): the strict build of the APKs and test APKs; both release APKs, signed with a local
+  throwaway key, pass --apk against the new expected summaries; --selftest-apk 89 passed; android-emulator.sh
+  --selftest 50 and android-instrument.sh --selftest 43 passed.
 - [ ] U3. A UX audit of every screen against the docs and the Pi: wording, order, what each button and Back do, what
   TalkBack reads on Public screens, the layout on a 360 dp phone and a large one, text sizes. A defect within the docs is
   fixed with a test; a change the docs do not allow becomes a question for the owner.

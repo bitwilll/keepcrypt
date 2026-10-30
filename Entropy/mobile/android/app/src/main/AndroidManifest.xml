@@ -6,7 +6,10 @@
      scan screen alone, with the camera feature not required, so a phone with none types the code.
      Nothing is backed up (allowBackup, fullBackupContent and the data extraction rules) and no
      cleartext traffic is allowed. The Application class is the app's own, KeepCryptApp, whose
-     uncaught-exception handler is the crash path (group 14). One exported activity, the launcher.
+     uncaught-exception handler is the crash path (group 14). One exported activity, the launcher, and
+     one instance of it (launchMode singleTask, Stage U's commit U2a): a second start, from the launcher,
+     am start or another app's intent with FLAG_ACTIVITY_MULTIPLE_TASK, reaches the running activity and
+     its one ceremony model, never a second model over the process's one slot.
      The one removal is the androidx.startup provider, which would run library initializers at
      start; profileinstaller, the one that writes files, is excluded from every configuration
      (build.gradle.kts). -->
@@ -28,7 +31,8 @@
         android:theme="@style/Theme.KeepCrypt">
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
