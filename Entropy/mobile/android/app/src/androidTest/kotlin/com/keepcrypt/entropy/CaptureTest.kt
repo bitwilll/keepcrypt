@@ -50,6 +50,7 @@ import com.keepcrypt.entropy.screens.INSERTS_PER_DEVICE
 import com.keepcrypt.entropy.screens.Overlay
 import com.keepcrypt.entropy.screens.PASSPHRASE_WORDS
 import com.keepcrypt.entropy.screens.PickedFile
+import com.keepcrypt.entropy.screens.QrKind
 import com.keepcrypt.entropy.screens.SECRET_TAG
 import com.keepcrypt.entropy.screens.ScanStop
 import com.keepcrypt.entropy.screens.Screen
@@ -61,6 +62,7 @@ import com.keepcrypt.entropy.screens.overviewLine
 import com.keepcrypt.entropy.screens.passphraseLines
 import com.keepcrypt.entropy.screens.passphraseText
 import com.keepcrypt.entropy.screens.screenId
+import com.keepcrypt.entropy.screens.screenTitle
 import com.keepcrypt.entropy.screens.seedbookText
 import com.keepcrypt.entropy.screens.typedFaces
 import com.keepcrypt.entropy.screens.verdictLine
@@ -668,6 +670,7 @@ class CaptureTest {
      */
     private fun assertSecretsMarked(screen: Screen, model: CeremonyModel, name: String, lines: MutableSet<String>) {
         val nodes = Capture.nodesOf(pkg, screen)
+        assertNamed(screen, nodes, name)
         val secrets = nodes.filter { it.resourceName == SECRET_TAG }
         if (!isProtected(screen)) {
             assertTrue("a secret's node on the Public screen " + name, secrets.isEmpty())
@@ -686,6 +689,20 @@ class CaptureTest {
         val unmarked = secrets.count { !it.dataSensitive }
         assertEquals("secret nodes not marked data sensitive on " + name, 0, unmarked)
         pass("$name: all ${secrets.size} of its secret nodes ($away off screen) are data sensitive (API ${Build.VERSION.SDK_INT})")
+    }
+
+    /**
+     * The screen's names for TalkBack (Stage U's commit U3g), from the same read of its nodes: its pane
+     * title is screenTitle's (the walk shows each screen past its gate, with no overlay), and a screen that
+     * draws a QR code names it by its kind (QrKind) on the code's node, so no QR code is nameless; every
+     * name is a constant, compared in-process.
+     */
+    private fun assertNamed(screen: Screen, nodes: List<Capture.NodeFacts>, name: String) {
+        assertEquals("the pane titles on $name", listOf(screenTitle(screen)), nodes.mapNotNull { it.paneTitle }.distinct())
+        val kind = QR_KINDS[screen]
+        val qrs = nodes.mapNotNull { it.contentDescription }.filter { "QR code" in it }
+        assertEquals("the QR codes' names on $name", listOfNotNull(kind?.spoken), qrs)
+        pass("$name: its pane title is its own" + if (kind == null) "" else ", its QR code named by its kind")
     }
 
     /**
@@ -1098,6 +1115,16 @@ class CaptureTest {
     }
 
     private companion object {
+        /** The screens that draw a QR code, and its kind (U3g). */
+        val QR_KINDS: Map<Screen, QrKind> = mapOf(
+            Screen.CheckQr to QrKind.CheckRequest,
+            Screen.CollisionReport to QrKind.CollisionReport,
+            Screen.WatchAccountQr to QrKind.Account,
+            Screen.WatchDescriptorQr to QrKind.Descriptor,
+            Screen.RegisterQr to QrKind.Registration,
+            Screen.BackupRecheck to QrKind.Recheck,
+        )
+
         /** The start-up self-test's time limit (a translated library is slower; NativeTest's). */
         const val START_SECONDS = 120
 

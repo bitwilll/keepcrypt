@@ -27,7 +27,7 @@ fun FirstLaunch(testRegistry: Boolean, onContinue: (() -> Unit)? = null) {
 /** The first screen's text; its yellow line is the capture tests' known colour. */
 @Composable
 private fun FirstLaunchText() {
-    KitText("KeepCrypt", KitType.title)
+    Title("KeepCrypt")
     Gap(16)
     KitText(DEVELOPMENT_BUILD, KitType.body.copy(color = KitColors.warning))
     KitText(

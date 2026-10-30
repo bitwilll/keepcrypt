@@ -120,7 +120,7 @@ fun About(testRegistry: Boolean, onBack: () -> Unit) {
         actions = { KitButton("Back", "back", onClick = onBack) },
     ) {
         Heading("About")
-        KitText("KeepCrypt-Entropy", KitType.title)
+        Title("KeepCrypt-Entropy")
         Gap(8)
         KitText("Version " + APP_VERSION, tag = "about_version")
         KitText(DEVELOPMENT_BUILD, KitType.body.copy(color = KitColors.warning))

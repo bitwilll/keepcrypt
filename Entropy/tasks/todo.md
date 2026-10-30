@@ -16596,6 +16596,27 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
 - [ ] U3. A UX audit of every screen against the docs and the Pi: wording, order, what each button and Back do, what
   TalkBack reads on Public screens, the layout on a 360 dp phone and a large one, text sizes. A defect within the docs is
   fixed with a test; a change the docs do not allow becomes a question for the owner.
+  Proof (M5 commit U3g, Stage U-2, partial: local, Q76's JVM run on a Linux host; CI's capture walks at the next
+  push): TalkBack had no pane title on any screen, so a screen change was not announced as one; the app's name in
+  title type (First launch, Self-test, Home, About and the stop screen) and "Working..." were not headings; a line
+  that appears or changes while its screen stays (the dice's count, minimum and cap, the scan's line, the refused
+  code, Home's file refusal, the save's failure, Check a backup's refusal, the wrong confirm, the notice bar) was read
+  only if found; and every QR code was a nameless canvas. Screen.kt's screenTitle gives each screen a fixed title (its
+  fixed heading where it has one); Screens.kt's column carries paneTitle(state), the privacy gate's while one stands,
+  and each overlay its own ("Screen covered", "Idle warning"). Kit.kt's Title marks those title lines as headings, as
+  Heading does, and Working's line is one; KitText's live marks the lines above, and NoticeBar, as polite live
+  regions, each fixed or public text, never a secret's node (the dice pick, the letters typed and the words stay
+  unmarked). Drawing.kt's QrKind names each QR code by its kind alone (check, collision report, account for Sparrow,
+  descriptor for Bitcoin Core, registration, re-check), an image's content description, never its data.
+  ScreenTitlesTest (2): each screen's title is non-blank and its own, none the gate's, the cover's or the warning's;
+  paneTitle is the gate's behind a gate and the screen's otherwise, for every screen; each QR kind's name is its own
+  and says it is a QR code. Before the fix it does not compile (screenTitle, paneTitle and QrKind are new).
+  CaptureTest's walk now reads, from the same read of each screen's nodes, that its pane title is screenTitle's alone
+  and that the screens with a QR code (check_qr, collision_report, the account and descriptor QRs, register_qr,
+  backup_recheck) name exactly that code by its kind, "<screen>: its pane title is its own" (Capture.NodeFacts gains
+  the pane title and content description); before the fix it would find no pane title. The live regions and headings
+  have no device check. Locally: the strict Gradle build of the five APKs, the androidTest APKs compiling the walk's
+  check, and :screens 163 in 23 classes, none failed.
 - [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists them.
   Proof: CI at each stage's head; local runs reported as local.
 - **Stage U's commit plan** (M5-72 (h); each commit's test fails before its fix, U4):

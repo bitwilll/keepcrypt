@@ -214,7 +214,7 @@ fun BackupPassphrase(
             ) {
                 Heading("Backup passphrase")
                 if (state.wrongConfirm) {
-                    KitText(WRONG_CONFIRM, KitType.body.copy(color = KitColors.warning), tag = "wrong_confirm")
+                    KitText(WRONG_CONFIRM, KitType.body.copy(color = KitColors.warning), tag = "wrong_confirm", live = true)
                 }
                 KitText(PASSPHRASE_NOTE, KitType.small)
                 val first = state.page * PASSPHRASE_PAGE_WORDS + 1
@@ -323,7 +323,7 @@ fun BackupSave(state: UiState, testRegistry: Boolean, onSave: () -> Unit, onSkip
     ) {
         Heading("Save the backup")
         if (failure != null) {
-            KitText(saveFailureText(failure), KitType.body.copy(color = KitColors.warning), tag = "save_failure")
+            KitText(saveFailureText(failure), KitType.body.copy(color = KitColors.warning), tag = "save_failure", live = true)
             KitText(SAVE_AGAIN, KitType.small)
         }
         KitText("The file", KitType.small)
@@ -385,7 +385,7 @@ fun BackupCheckEntry(
             KitText("Backup passphrase, word " + (state.page + 1) + " of " + PASSPHRASE_WORDS, KitType.small, tag = "entry_word")
             val refusal = state.entryRefusal
             if (refusal != null) {
-                KitText(backupRefusalText(refusal).orEmpty(), KitType.body.copy(color = KitColors.warning), tag = "entry_refusal")
+                KitText(backupRefusalText(refusal).orEmpty(), KitType.body.copy(color = KitColors.warning), tag = "entry_refusal", live = true)
             }
             KitText(FIRST_FOURS, KitType.small)
         }
@@ -430,7 +430,7 @@ fun BackupRecheck(state: UiState, testRegistry: Boolean, onBack: () -> Unit) {
     ) {
         Heading("Re-check QR")
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            QrCode(opened.recheck, QR_SIDE_DP.dp)
+            QrCode(opened.recheck, QrKind.Recheck, QR_SIDE_DP.dp)
         }
         Gap(8)
         KitText(RECHECK_NOTE, KitType.small)

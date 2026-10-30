@@ -237,7 +237,7 @@ fun CheckQrScreen(
         Heading("Check QR")
         val request = state.checkRequest
         if (request != null) {
-            Centred { QrCode(request, QR_SIDE_DP.dp, Modifier.testTag("check_request")) }
+            Centred { QrCode(request, QrKind.CheckRequest, QR_SIDE_DP.dp, Modifier.testTag("check_request")) }
         }
         Gap(8)
         KitText(
@@ -289,7 +289,7 @@ fun ScanScreen(
         KitText(SCAN_GUIDE)
         val line = scanLine(state)
         val style = if (line == SCANNING) KitType.small else KitType.body.copy(color = KitColors.warning)
-        KitText(line, style, tag = "scan_line")
+        KitText(line, style, tag = "scan_line", live = true)
     }
 }
 
@@ -315,7 +315,7 @@ fun CodeEntry(
         testRegistry,
         actions = {
             if (state.codeRefused) {
-                KitText(CODE_REFUSED, KitType.body.copy(color = KitColors.warning), tag = "code_refused")
+                KitText(CODE_REFUSED, KitType.body.copy(color = KitColors.warning), tag = "code_refused", live = true)
             }
             BasicText(
                 codeShown(code),
@@ -409,7 +409,7 @@ fun CollisionReport(state: UiState, testRegistry: Boolean, passGate: () -> Unit,
             Heading("Report collision")
             val report = state.report
             if (report != null) {
-                Centred { QrCode(report, QR_SIDE_DP.dp) }
+                Centred { QrCode(report, QrKind.CollisionReport, QR_SIDE_DP.dp) }
             }
             Gap(8)
             KitText(REPORT_NOTE, KitType.small)

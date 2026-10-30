@@ -18,6 +18,9 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.keepcrypt.entropy.ffi.HaltReason
 import com.keepcrypt.entropy.ffi.Mode
@@ -31,7 +34,9 @@ import com.keepcrypt.entropy.ffi.Mode
  * the backup's, Check a backup's and Load registry snapshot's document pickers (the platform's seams,
  * which the save screen's Save and Home's Check a backup and Load registry snapshot hand to the model); onShown reports each screen once it is composed
  * (the capture harness's drawn-screen proof); onClose is the stop screen's "Close app", which ends the
- * process (the platform's). The system Back is the platform's too, and goes to the model's back.
+ * process (the platform's). The system Back is the platform's too, and goes to the model's back. The
+ * screen's column carries its pane title (paneTitle), and each overlay its own, so TalkBack says which
+ * screen came, by fixed names alone (U3g).
  */
 @Composable
 fun Screens(
@@ -62,7 +67,7 @@ fun Screens(
             },
     ) {
         // The system bars' insets are taken here, once, so a screen's own safeDrawingPadding adds none.
-        Column(Modifier.fillMaxSize().safeDrawingPadding()) {
+        Column(Modifier.fillMaxSize().safeDrawingPadding().semantics { paneTitle = paneTitle(state) }) {
             val notice = state.notice
             if (notice != null && !isWorking(state.screen) && state.screen != Screen.Stop) {
                 NoticeLine(notice)
@@ -275,7 +280,7 @@ fun Working(testRegistry: Boolean) {
             TestRegistryStrip()
         }
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            BasicText("Working...", style = KitType.heading)
+            BasicText("Working...", Modifier.semantics { heading() }, style = KitType.heading)
         }
     }
 }
@@ -293,7 +298,7 @@ fun Stop(state: UiState, testRegistry: Boolean, onClose: () -> Unit) {
         background = KitColors.stop,
         actions = { KitButton("Close app", "close_app", onClick = onClose) },
     ) {
-        KitText("KeepCrypt stopped", KitType.title)
+        Title("KeepCrypt stopped")
         Gap(16)
         KitText(stopLine(state.halt), tag = "halt_reason")
         KitText(
@@ -316,6 +321,21 @@ internal fun stopLine(reason: HaltReason?): String = when (reason) {
     HaltReason.Panic -> "The app's core stopped unexpectedly."
     HaltReason.Internal, null -> "An internal check failed."
 }
+
+/** The privacy gate's pane title (U3g). */
+const val PRIVACY_GATE_TITLE = "Privacy gate"
+
+/** The privacy cover's pane title (U3g). */
+const val COVER_TITLE = "Screen covered"
+
+/** The idle warning's pane title (U3g). */
+const val IDLE_WARNING_TITLE = "Idle warning"
+
+/**
+ * The pane title of what the state shows (U3g): the privacy gate's while one stands before a Protected
+ * screen, else the screen's (screenTitle); fixed text either way, never a value the screen shows.
+ */
+fun paneTitle(state: UiState): String = if (state.gate) PRIVACY_GATE_TITLE else screenTitle(state.screen)
 
 /**
  * The privacy gate before a Protected screen (docs/mobile-apps.md, "Session lifetime" and step 10;
@@ -359,7 +379,7 @@ private fun Redacted(testRegistry: Boolean) {
  * its text centred inside the system bars' insets under the TEST REGISTRY strip in that build, as every
  * screen has it (Q60, lead decision M5-51). Both come from this one call, so the strip and the insets
  * are the same code for each and CaptureTest's check of the cover's strip holds for the warning's; only
- * the text is the overlay's own.
+ * the text and the pane title (U3g) are the overlay's own.
  */
 @Composable
 private fun OverlayScreen(overlay: Overlay, testRegistry: Boolean, dismiss: () -> Unit) {
@@ -367,7 +387,19 @@ private fun OverlayScreen(overlay: Overlay, testRegistry: Boolean, dismiss: () -
         Overlay.Cover -> "cover"
         Overlay.Warning -> "idle_warning"
     }
-    Column(Modifier.fillMaxSize().background(KitColors.background).clickable(onClick = dismiss).testTag(tag).safeDrawingPadding()) {
+    val title = when (overlay) {
+        Overlay.Cover -> COVER_TITLE
+        Overlay.Warning -> IDLE_WARNING_TITLE
+    }
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(KitColors.background)
+            .clickable(onClick = dismiss)
+            .semantics { paneTitle = title }
+            .testTag(tag)
+            .safeDrawingPadding(),
+    ) {
         if (testRegistry) {
             TestRegistryStrip()
         }

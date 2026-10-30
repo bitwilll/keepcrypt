@@ -127,6 +127,63 @@ fun screenId(screen: Screen): String = when (screen) {
 }
 
 /**
+ * The screen's title, TalkBack's pane title for it (Stage U's commit U3g): fixed text, the screen's own
+ * heading where it has one fixed heading, never built from data, so announcing it says which screen
+ * came and nothing it shows. The privacy gate, the cover and the idle warning have their own (Screens.kt).
+ */
+fun screenTitle(screen: Screen): String = when (screen) {
+    Screen.FirstLaunch -> "First launch"
+    Screen.SelfTest -> "Self-test"
+    Screen.GoOffline -> "Go offline"
+    Screen.Home -> "Home"
+    Screen.Length -> "How many words?"
+    Screen.DeviceEntropy -> "Device entropy"
+    Screen.Commitment -> "Commitment C"
+    Screen.Dice -> "Dice"
+    Screen.CheckPrompt -> "Check for collisions"
+    Screen.SkipConfirm -> "Skip the check?"
+    Screen.SealCard -> "Seal card"
+    Screen.CheckQr -> "Check QR"
+    Screen.Scan -> "Scan go-ahead QR"
+    Screen.CodeEntry -> "Go-ahead code"
+    Screen.MatchFoundConfirm -> "Match found?"
+    Screen.CannotCheckConfirm -> "Cannot check?"
+    Screen.Collision -> "Collision"
+    Screen.CollisionReport -> "Report collision"
+    Screen.CheckResult -> "Check result"
+    Screen.Words -> "Seed words"
+    Screen.WordsOverview -> "Seed words: overview"
+    Screen.DeviceSwap -> "Device swap"
+    Screen.ReadbackEntry -> "Read-back"
+    Screen.ReadbackMismatch -> "Read-back mismatch"
+    Screen.ReadbackDone -> "Read-back complete"
+    Screen.Wallet -> "Wallet summary"
+    Screen.BackupOffer -> "Encrypted backup"
+    Screen.BackupPassphrase -> "Backup passphrase"
+    Screen.BackupConfirm -> "Check your copy"
+    Screen.BackupSave -> "Save the backup"
+    Screen.BackupVerified -> "Backup verified"
+    Screen.WatchOffer -> "Watch-only export"
+    Screen.Bip39Ask -> "BIP39 passphrase?"
+    Screen.Bip39Entry -> "BIP39 passphrase"
+    Screen.WatchSummary -> "Watch-only wallet"
+    Screen.WatchAccountQr -> "Account QR for Sparrow"
+    Screen.WatchDescriptorQr -> "Descriptor QR for Bitcoin Core"
+    Screen.RegisterOffer -> "Register seal"
+    Screen.RegisterQr -> "Registration QR"
+    Screen.RevealDOffer -> "Reveal D"
+    Screen.RevealD -> "Device leg D"
+    Screen.Checklist -> "Before you walk away"
+    Screen.BackupCheckEntry -> "Check a backup"
+    Screen.BackupCheckResult -> "Backup check result"
+    Screen.BackupRecheck -> "Re-check QR"
+    Screen.Snapshot -> "Registry snapshot"
+    Screen.About -> "About"
+    Screen.Working -> "Working"
+    Screen.Stop -> "KeepCrypt stopped"
+}
+
+/**
  * Whether screen is Protected (docs/pi-firmware.md, "Protected screens and idle", adopted for the phone
  * by Q57): it shows a secret, so it is entered through the privacy gate from a Public one, covered
  * after 30 s without input, and leaving the app on it discards the session at once. They are the

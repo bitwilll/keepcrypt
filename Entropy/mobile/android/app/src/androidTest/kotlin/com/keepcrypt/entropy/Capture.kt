@@ -348,10 +348,18 @@ internal object Capture {
     /**
      * A node of the app's windows as UiAutomation reads it: its text, its resource name (a Compose test
      * tag), whether it is marked accessibility-data sensitive (Android 14+; false before), whether it
-     * lies on screen and its bounds there, in the display's pixels. No data class: its text is never
-     * part of a printed value.
+     * lies on screen and its bounds there, in the display's pixels, and its pane title and content
+     * description (U3g; fixed names). No data class: its text is never part of a printed value.
      */
-    class NodeFacts(val text: String?, val resourceName: String?, val dataSensitive: Boolean, val visible: Boolean, val bounds: Rect)
+    class NodeFacts(
+        val text: String?,
+        val resourceName: String?,
+        val dataSensitive: Boolean,
+        val visible: Boolean,
+        val bounds: Rect,
+        val paneTitle: String?,
+        val contentDescription: String?,
+    )
 
     /**
      * Every node of pkg's windows, read down from each window's root (UiDevice.getWindowRoots) child by
@@ -368,7 +376,17 @@ internal object Capture {
             val sensitive = marked && node.isAccessibilityDataSensitive
             val bounds = Rect()
             node.getBoundsInScreen(bounds)
-            found.add(NodeFacts(node.text?.toString(), node.viewIdResourceName, sensitive, node.isVisibleToUser, bounds))
+            found.add(
+                NodeFacts(
+                    node.text?.toString(),
+                    node.viewIdResourceName,
+                    sensitive,
+                    node.isVisibleToUser,
+                    bounds,
+                    node.paneTitle?.toString(),
+                    node.contentDescription?.toString(),
+                ),
+            )
             for (index in 0 until node.childCount) {
                 read(node.getChild(index) ?: throw AssertionError("a node's child could not be read, so the walk would miss it"))
             }

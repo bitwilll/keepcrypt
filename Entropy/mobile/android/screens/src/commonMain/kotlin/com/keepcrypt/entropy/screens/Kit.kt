@@ -19,9 +19,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.isSensitiveData
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -114,11 +116,22 @@ fun Heading(text: String) {
     Gap(16)
 }
 
-/** Running text (body), or a note (small). */
+/** The app's name in title type on its first screens and the stop screen, marked as a heading as Heading is (U3g). */
 @Composable
-fun KitText(text: String, style: TextStyle = KitType.body, tag: String? = null) {
-    val modifier = Modifier.padding(vertical = 6.dp)
-    BasicText(text, if (tag == null) modifier else modifier.testTag(tag), style = style)
+fun Title(text: String) {
+    BasicText(text, Modifier.padding(vertical = 6.dp).semantics { heading() }, style = KitType.title)
+}
+
+/**
+ * Running text (body), or a note (small). live marks a line that appears or changes while its screen
+ * stays (a refusal, a failure, the dice's counts, the scan's state) as a polite live region, so TalkBack
+ * reads it when it changes (U3g); only for fixed or public text, never a secret's node.
+ */
+@Composable
+fun KitText(text: String, style: TextStyle = KitType.body, tag: String? = null, live: Boolean = false) {
+    val padded = Modifier.padding(vertical = 6.dp)
+    val spoken = if (live) padded.semantics { liveRegion = LiveRegionMode.Polite } else padded
+    BasicText(text, if (tag == null) spoken else spoken.testTag(tag), style = style)
 }
 
 /** The test tag (UI Automator's resource id) of every node that shows a secret: the capture harness reads each one's mark. */
@@ -159,12 +172,17 @@ fun KitButton(text: String, tag: String, enabled: Boolean = true, modifier: Modi
     )
 }
 
-/** The notice line above a screen: why the last session was wiped, black on the warning yellow. */
+/** The notice line above a screen: why the last session was wiped, black on the warning yellow, a polite live region (U3g). */
 @Composable
 fun NoticeBar(text: String) {
     BasicText(
         text,
-        Modifier.fillMaxWidth().background(KitColors.warning).padding(horizontal = 24.dp, vertical = 8.dp).testTag("notice"),
+        Modifier
+            .fillMaxWidth()
+            .background(KitColors.warning)
+            .padding(horizontal = 24.dp, vertical = 8.dp)
+            .semantics { liveRegion = LiveRegionMode.Polite }
+            .testTag("notice"),
         style = TextStyle(color = Color.Black, fontSize = 16.sp),
     )
 }

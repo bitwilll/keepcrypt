@@ -19,6 +19,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -61,10 +65,31 @@ class QrLayout(val side: Int, sizePx: Int) {
     }
 }
 
-/** A QR code, dark modules on a light square of size, from the matrix core drew (its screen wipes it). */
+/**
+ * What a QR code is, as TalkBack names it (U3g): its kind alone, a fixed name, never its data (the
+ * collision report's, the exports' and the registration's carry secrets).
+ */
+enum class QrKind(val spoken: String) {
+    CheckRequest("Check QR code"),
+    CollisionReport("Collision report QR code"),
+    Account("Account QR code for Sparrow"),
+    Descriptor("Descriptor QR code for Bitcoin Core"),
+    Registration("Registration QR code"),
+    Recheck("Re-check QR code"),
+}
+
+/**
+ * A QR code, dark modules on a light square of size, from the matrix core drew (its screen wipes it):
+ * an image named by its kind (QrKind), never by what it holds.
+ */
 @Composable
-fun QrCode(matrix: QrMatrix, size: Dp, modifier: Modifier = Modifier) {
-    Canvas(modifier.size(size)) {
+fun QrCode(matrix: QrMatrix, kind: QrKind, size: Dp, modifier: Modifier = Modifier) {
+    Canvas(
+        modifier.size(size).semantics {
+            contentDescription = kind.spoken
+            role = Role.Image
+        },
+    ) {
         val layout = QrLayout(matrix.side, this.size.width.toInt())
         drawRect(Color.White)
         val module = Size(layout.modulePx.toFloat(), layout.modulePx.toFloat())

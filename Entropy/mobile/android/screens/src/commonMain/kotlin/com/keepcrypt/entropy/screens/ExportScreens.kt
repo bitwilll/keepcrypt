@@ -241,7 +241,7 @@ fun WatchAccountQr(state: UiState, testRegistry: Boolean, passGate: () -> Unit, 
                 actions = { KitButton("Next: the descriptor QR", "watch_next", onClick = onNext) },
             ) {
                 Heading("Account QR for Sparrow")
-                ExportQr(watch.account)
+                ExportQr(watch.account, QrKind.Account)
                 KitText(SPARROW_HOW, KitType.small)
             }
         }
@@ -269,7 +269,7 @@ fun WatchDescriptorQr(state: UiState, testRegistry: Boolean, passGate: () -> Uni
                 },
             ) {
                 Heading("Descriptor QR for Bitcoin Core")
-                ExportQr(watch.descriptors)
+                ExportQr(watch.descriptors, QrKind.Descriptor)
                 KitText(CORE_HOW, KitType.small)
             }
         }
@@ -312,7 +312,7 @@ fun RegisterQr(state: UiState, testRegistry: Boolean, passGate: () -> Unit, onNe
                 actions = { KitButton("Next", "registration_done", onClick = onNext) },
             ) {
                 Heading("Register once, never from a restore")
-                ExportQr(registration)
+                ExportQr(registration, QrKind.Registration)
                 KitText(REGISTER_HOW, KitType.small)
                 KitText(REGISTER_ONCE, KitType.small)
             }
@@ -363,11 +363,11 @@ fun RevealD(state: UiState, testRegistry: Boolean, passGate: () -> Unit, onNext:
     }
 }
 
-/** An export's QR code, centred across the text column at the QR side every screen draws. */
+/** An export's QR code, named by its kind, centred across the text column at the QR side every screen draws. */
 @Composable
-private fun ExportQr(matrix: QrMatrix) {
+private fun ExportQr(matrix: QrMatrix, kind: QrKind) {
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        QrCode(matrix, QR_SIDE_DP.dp)
+        QrCode(matrix, kind, QR_SIDE_DP.dp)
     }
     Gap(8)
 }

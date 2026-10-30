@@ -65,7 +65,7 @@ fun diceText(rolls: Int, minimum: Int, millibits: Long): String {
 @Composable
 fun SelfTest(testRegistry: Boolean) {
     KitScreen(screenId(Screen.SelfTest), testRegistry) {
-        KitText("KeepCrypt", KitType.title)
+        Title("KeepCrypt")
         Gap(16)
         Heading("Self-test")
         KitText("The known-answer tests are running.")
@@ -127,10 +127,10 @@ fun Home(
             KitButton("About", "show_about", onClick = onAbout)
         },
     ) {
-        KitText("KeepCrypt", KitType.title)
+        Title("KeepCrypt")
         val refusal = state.fileRefusal
         if (refusal != null) {
-            KitText(fileRefusalText(refusal), KitType.body.copy(color = KitColors.warning), tag = "file_refusal")
+            KitText(fileRefusalText(refusal), KitType.body.copy(color = KitColors.warning), tag = "file_refusal", live = true)
         }
         Gap(16)
         KitText("New seed mixes your dice with this phone's own randomness. Dice-only seed uses your rolls alone, as a Coldcard does.", KitType.small)
@@ -241,12 +241,12 @@ fun Dice(
         Heading("Dice")
         // The counts and their limits first, the notes under them: Done made the actions taller, and
         // what is scrolled out of view is not on screen to read.
-        KitText(diceText(dice.rolls, dice.minimum, dice.millibits), tag = "dice_count")
+        KitText(diceText(dice.rolls, dice.minimum, dice.millibits), tag = "dice_count", live = true)
         if (dice.rolls >= dice.minimum) {
-            KitText("Minimum reached: Done makes the seed, or roll more, up to 256.", tag = "dice_minimum")
+            KitText("Minimum reached: Done makes the seed, or roll more, up to 256.", tag = "dice_minimum", live = true)
         }
         if (!open) {
-            KitText("256 rolls: the most a seed takes.", tag = "dice_cap")
+            KitText("256 rolls: the most a seed takes.", tag = "dice_cap", live = true)
         }
         KitText("Roll a die, tap its face, then Confirm. Earlier rolls are never shown.", KitType.small)
         if (state.diceOnly) {
