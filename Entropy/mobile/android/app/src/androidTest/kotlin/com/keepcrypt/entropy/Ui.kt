@@ -303,6 +303,22 @@ internal object Ui {
         inject(MotionEvent.ACTION_UP, down, SystemClock.uptimeMillis(), bounds.exactCenterX(), bounds.exactCenterY())
     }
 
+    /**
+     * A touch (touch: injected, no point logged) on the middle of the app's node tag as its window shows it:
+     * a text that takes no press, so the touch is only an input, which starts the idle time again (the
+     * screens' pointer handler) and does nothing else. DeviceChangeTest makes one before each change, since a
+     * Protected screen's cover comes after 30 s with no input and would change the state the change must keep.
+     */
+    fun touchOn(tag: String) {
+        val bounds = poll("$tag on the screen") {
+            val node = appNode(tag)?.takeIf { it.isVisibleToUser } ?: return@poll null
+            val shown = Rect().also(node::getBoundsInScreen)
+            val window = node.window?.let { Rect().also(it::getBoundsInScreen) } ?: return@poll null
+            shown.takeIf { it.intersect(window) && !it.isEmpty }
+        }
+        touch(bounds)
+    }
+
     /** One touch-screen event at (x, y), injected through UiAutomation and handled before this returns. */
     private fun inject(action: Int, downTime: Long, eventTime: Long, x: Float, y: Float) {
         val event = MotionEvent.obtain(downTime, eventTime, action, x, y, 0)

@@ -15965,6 +15965,12 @@ dialog stuck, U1a8 is redesigned from those lines. The M5 gate report names it u
   MixedJourneyTest, in the journeys part (FlowTest, CheckTest and BackupTest, 851-902 s) rather than in JourneyTest's
   ui part (1241-1290 s, already the run's longest job): the run's wall time stays where it is and BackupTest's age -d
   hand-off stays the journeys part's last run. Its stretches are Journeys', shared with JourneyTest.
+  (b) U2h's DeviceChangeTest runs in the registry part, after LifecycleTest and before the killed CrashTest (which
+  stays last): the registry jobs (18-19 minutes) are the shortest emulator jobs after capture, and its changes are
+  settings of the whole device (rotation, font scale, night mode), each put back in a finally, so they come after the
+  journeys of every other part's boot. Each change is preceded by a touch on a text that takes no press (Ui.touchOn),
+  an input, since a Protected screen's 30 s cover would change the state the change must keep; the state is compared
+  in-process and never printed (M5-68 (e)). The registry jobs are re-measured at its first green run (M5-30).
 
 **Open item (2026-10-31): the age -d hand-off's logcat check found two of the passphrase screen's lines.** Entropy
 Android 41203734694 at 62f9c8c, API 36's journeys job: BackupTest passed, and android-age-check.py failed it: "logcat -d
@@ -16994,6 +17000,18 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   android-local.sh's whole run holds the thirteen runs and its journeys part four (--selftest 47 passed). The journeys
   jobs are measured at 30 minutes (M5-76 (f)). Locally: both test APKs built by the strict Gradle run, no warning; banned-api-check.sh
   clean, 403 files; --workflows clean.
+  Proof (M5 commit U2h, Stage U-5, partial: local, no emulator; CI's registry jobs at the next push): DeviceChangeTest's
+  rotationFontScaleAndNightModeRecreateTheActivityAndKeepTheDiceTheCodeEntryTheGateAndAWordsPage takes dice-50-words12
+  through the UI and on four screens (the dice with 3 rolls and a 4th face picked, the code entry with 4 symbols, the
+  words' privacy gate, the words page of insert 2) makes six changes each (landscape and back, font scale 1.3 and back,
+  night mode switched and back): each must bring a new resumed MainActivity, the old one destroyed, over the same
+  model, with the state, what is held and every pad's entry unchanged and FLAG_SECURE on the new window; then the
+  ceremony goes on from what was kept (the picked face confirmed and 50 rolls, the rest of the code typed and the
+  check passed, the page's word the vector's). Ui.touchOn is the touch before each change. android-emulator.sh runs it
+  in the registry part after LifecycleTest (the pinned orders, a device-change-test-fails case; --selftest 59
+  passed); android-local.sh's whole run holds fourteen runs and its registry part four (--selftest 47 passed).
+  The registry jobs are measured at 30 minutes (M5-77 (b)). Locally: both test APKs built by the strict Gradle run, no
+  warning; banned-api-check.sh clean, 404 files; --workflows clean.
 - [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
   every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
   every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,
@@ -17370,9 +17388,45 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       MixedJourneyTest, its own class in the journeys part (M5-77 (a)); Journeys gains the mixed journeys' shared
       stretches (newSeedToDice, checkByTheDrawnCode, revealDCommittingTo), which JourneyTest's mixed 12-word
       journey now uses too.
-    - [ ] U2h-U2l and U3h, planned item by item once U1h is green: recreation on the device, double taps, the process
-      killed at a stage, leaving with the screen off and the activity destroyed, the camera denied twice and one idle
-      run on the real clock, and the layout check at CI's window and a 412 dp phone.
+    - [ ] U2h: a real configuration change on the device (DeviceChangeTest, the registry part's shipping-app edges):
+      a rotation (UiDevice.setOrientationLeft, then natural), a font scale (settings put system font_scale 1.3, put
+      back in a finally) and a night-mode switch (cmd uimode night yes, then no) on four screens: the dice with rolls
+      tapped, a words page past its gate, a privacy gate itself, and the code entry with four symbols typed.
+      MainActivity declares no configChanges (its manifest, read 2026-10-31), so each change recreates the activity:
+      the test asserts a new MainActivity instance after each change and names it in the pass line, so it pins what
+      was built. Each change must keep the screen, its page, its gate, the pad's entry and the session (the model's
+      own, read in-process), make no new core call, and leave FLAG_SECURE on the new window (its LayoutParams flags
+      read in-process). U2d's JVM tests hold the model's side.
+    - [ ] U2i: double taps (DoubleTapTest, ui part): two touches 60 ms apart at one point, injected (no UI Automator
+      click), on each privacy gate's button the journeys reach (the words', the registration QR's, D's, the BIP39
+      entry's), on each one-way confirm (Skip, Match found, Cannot check) and on Show words: the state after is
+      exactly one step on, never two (the model's screen and page read in-process). If a double tap passes a gate or
+      a confirm unseen, the fix is M5-72 (f)'s: a new screen's controls ignore presses for 300 ms after its first
+      frame, in pressOn, with a JVM test and this one as its failing tests.
+    - [ ] U2j: the process killed at a stage, then the app started again: first a probe run (the registry part) that
+      prints, for a kill of the backgrounded app (am kill) and for a kill in the foreground (kill -9 of its pid, from
+      the shell, between two instrumented runs), what the next start restores (the launching intent,
+      savedInstanceState null or not, the task in recents), since the restore path cannot be seen without a device;
+      then KillTest pins, for the dice, a words page and Check a backup's entry: the next start shows First launch (or
+      Go offline after the self-test), the slot empty, nothing restored, and step 7's listing finds nothing persisted.
+      android-emulator.sh gains the kill between the runs (a part's step, with its own selftest cases).
+    - [ ] U2k: leaving by the screen turning off (input keyevent KEYCODE_SLEEP, then WAKEUP and the keyguard
+      dismissed) on a Protected screen (discarded at once) and on a Public one (covered, kept under 60 s); the
+      activity destroyed while away (settings put global always_finish_activities 1, put back in a finally): on
+      return a new activity shows the held session's screen under the cover, or Go offline with the notice where the
+      session was discarded; the back gesture (a swipe from the left edge on gesture navigation, KEYCODE_BACK
+      otherwise; API 36's predictive back) doing what Back does on the dice, a words page and a gate (BackTest's
+      table).
+    - [ ] U2l: the camera denied twice (pm revoke between, the second denial with "don't ask again"): the scan
+      screen shows SCAN_REFUSED (CheckScreens' line: type the go-ahead code instead) and Type code still reaches the
+      code entry, the check open; and one idle run on the real clock on API 36 (its registry job): the cover at 30 s
+      and, while something is held, the warning at 9 minutes and the wipe at 10 (the job's budget re-measured for
+      those 10 minutes, M5-76 (f)).
+    - [ ] U3h: the layout check: CaptureTest's walk reads every node's bounds in-process at CI's window (720x1280,
+      density 320) and on a 412 dp phone (wm size 1080x2424 and wm density 420, put back in a finally): no text node
+      outside its screen's window or cut by its parent, each control's touch target at least 48 dp, the docs' texts
+      pinned (their constants compared with docs/mobile-apps.md's quoted lines), and KitColors' text and background
+      pairs at WCAG's 4.5:1 (a JVM test of the palette).
     - Verification: as U-4's (the instrumented sources built, the gate, every script selftest that reads a changed
       script, three reviews at the stage's head, CI read once per push).
   - U-5, U2 on the device and U3's layout check: U2h (recreation), U2i (double taps), U2j (the process killed at a

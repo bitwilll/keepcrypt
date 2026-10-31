@@ -74,7 +74,8 @@
 #      rolls.
 #   4b. LifecycleTest on the shipping app (M5 group 14): the app left during a backup's scrypt and
 #      during its start-up self-test, and Wi-Fi turned on during a start, each discarding the session
-#      with no ANR.
+#      with no ANR; then DeviceChangeTest (Stage U's U2h): a rotation, a font scale and a night-mode switch
+#      on four screens, each recreating the activity and keeping the session.
 #   4c. CrashTest on the shipping app (group 14), as killed:com.keepcrypt.entropy.CrashTest: an
 #      exception thrown on the main thread must end the process through the app's own handler, judged
 #      from the shell. It is the last instrumented run of the leg, since the crash buffer and DropBox
@@ -113,7 +114,7 @@
 #             screen's Close app (its gone: form), on the shipping app (Stage U's U1e split it from
 #             journeys, lead decision M5-76 (g));
 #   registry  SnapshotDrillTest, the test-registry app's, then the edges on the shipping app,
-#             LifecycleTest and CrashTest, the part's last instrumented run.
+#             LifecycleTest, DeviceChangeTest (U2h) and CrashTest, the part's last instrumented run.
 # Each installs the five APKs and ends with step 7, so every part's runs are followed by its listing.
 # With no --part the leg runs every part, as the steps above list them (step 7 once, at the end).
 # On the 16 KB-page image (API 16k; M5 group 6, the ARM and 16 KB leg, from commit 14) steps 2-7 are
@@ -143,7 +144,7 @@
 # ControlTest to the killed CrashTest, last (a case of its own, the order pinned), and kept the
 # control's two screencaps (a case of its own). Each part alone passes too, its runs pinned in that
 # order (a case each): capture's ControlTest, CaptureTest on both apps and PhoneMotionTest; journeys'
-# FlowTest, CheckTest, MixedJourneyTest and the age: BackupTest; ui's JourneyTest and the gone: StopJourneyTest; registry's SnapshotDrillTest, LifecycleTest and the
+# FlowTest, CheckTest, MixedJourneyTest and the age: BackupTest; ui's JourneyTest and the gone: StopJourneyTest; registry's SnapshotDrillTest, LifecycleTest, DeviceChangeTest and the
 # killed CrashTest, last; and the four parts' runs are together the whole leg's, each once, so a part that
 # drops or adds a class fails. The workflow's emulators matrix (.github/workflows/entropy-android.yml,
 # read from this checkout) is each part on API 31 and 36, one a job, and no other row, with the steps
@@ -151,7 +152,7 @@
 # conditions (a case of its own: a row dropped would run its part on that level nowhere). Every part ends with step 7's checks; journeys, ui and registry print no
 # line of steps 1, 2, 5 and 6 and keep no capture; a failing class in each part exits 1 at the part's
 # end, after its later runs and step 7. A failing ControlTest, CaptureTest, PhoneMotionTest, FlowTest,
-# CheckTest, MixedJourneyTest, BackupTest, JourneyTest, SnapshotDrillTest, LifecycleTest and CrashTest each exit 1 at the
+# CheckTest, MixedJourneyTest, BackupTest, JourneyTest, SnapshotDrillTest, LifecycleTest, DeviceChangeTest and CrashTest each exit 1 at the
 # leg's end, after the later checks ran, and so does an empty screencap of the control's screens; capture-control
 # still in recents after pm clear, a recording that ends before it is stopped, raw frames that never
 # show the control's words page, the app's window lit in the first-frame stream, and the same with that
@@ -412,6 +413,7 @@ EOF
   leg backup-test-fails KC_FAILCLASS=BackupTest
   leg snapshot-drill-fails KC_FAILCLASS=SnapshotDrillTest
   leg lifecycle-test-fails KC_FAILCLASS=LifecycleTest
+  leg device-change-test-fails KC_FAILCLASS=DeviceChangeTest
   leg crash-test-fails KC_FAILCLASS=CrashTest
   leg control-in-recents KC_RECENTS=1
   leg recording-ends-early KC_REC_END=1
@@ -448,6 +450,7 @@ EOF
     "instrument stub: com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest" \
     "instrument stub: com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest" \
+    "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.DeviceChangeTest" \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
     "pass: api=31 dumpsys package com.keepcrypt.entropy: no INTERNET" \
     "pass: api=31 dumpsys package com.keepcrypt.entropy.testregistry: no INTERNET" \
@@ -478,17 +481,17 @@ EOF
   registry=com.keepcrypt.entropy.testregistry
   # The steps' order, steps 3-4c (each part's runs in it: capture's, journeys', ui's, then registry's, whose
   # edges end it), the killed CrashTest last, so no run comes after it.
-  order pass "ControlTest, CaptureTest on both apps, PhoneMotionTest, FlowTest, CheckTest, MixedJourneyTest, the age: BackupTest, JourneyTest, the gone: StopJourneyTest, SnapshotDrillTest (test registry), LifecycleTest, then the killed CrashTest, last" \
+  order pass "ControlTest, CaptureTest on both apps, PhoneMotionTest, FlowTest, CheckTest, MixedJourneyTest, the age: BackupTest, JourneyTest, the gone: StopJourneyTest, SnapshotDrillTest (test registry), LifecycleTest, DeviceChangeTest, then the killed CrashTest, last" \
     "$app $app.ControlTest" "$app $app.CaptureTest" "$registry $app.CaptureTest" "$app $app.PhoneMotionTest" \
     "$app $app.FlowTest" "$app $app.CheckTest" "$app $app.MixedJourneyTest" "$app age:$app.BackupTest" "$app $app.JourneyTest" "$app gone:$app.StopJourneyTest" "$registry $app.SnapshotDrillTest" \
-    "$app $app.LifecycleTest" "$app killed:$app.CrashTest"
+    "$app $app.LifecycleTest" "$app $app.DeviceChangeTest" "$app killed:$app.CrashTest"
   order capture "capture alone: ControlTest, CaptureTest on both apps, then PhoneMotionTest" \
     "$app $app.ControlTest" "$app $app.CaptureTest" "$registry $app.CaptureTest" "$app $app.PhoneMotionTest"
   order journeys "journeys alone: FlowTest, CheckTest, MixedJourneyTest, then the age: BackupTest" \
     "$app $app.FlowTest" "$app $app.CheckTest" "$app $app.MixedJourneyTest" "$app age:$app.BackupTest"
   order ui "ui alone: JourneyTest, then the gone: StopJourneyTest" "$app $app.JourneyTest" "$app gone:$app.StopJourneyTest"
-  order registry "registry alone: SnapshotDrillTest (test registry), LifecycleTest, then the killed CrashTest, last" \
-    "$registry $app.SnapshotDrillTest" "$app $app.LifecycleTest" "$app killed:$app.CrashTest"
+  order registry "registry alone: SnapshotDrillTest (test registry), LifecycleTest, DeviceChangeTest, then the killed CrashTest, last" \
+    "$registry $app.SnapshotDrillTest" "$app $app.LifecycleTest" "$app $app.DeviceChangeTest" "$app killed:$app.CrashTest"
   # The parts split the leg: their runs together are the whole leg's, each once, whatever either list
   # above says (a class in no part's block runs in no part; one outside the blocks runs in each).
   if [ "$(for p in capture journeys ui registry; do runs "$p"; done | sort)" = "$(runs pass | sort)" ]; then
@@ -652,9 +655,14 @@ EOF
     "pass: api=31 first frame (registry, its first screen up)" \
     "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy.testregistry (com.keepcrypt.entropy.SnapshotDrillTest) (each reported above)"
   expect lifecycle-test-fails 1 \
+    "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.DeviceChangeTest" \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
     "pass: api=31 first frame (registry, its first screen up)" \
     "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.LifecycleTest) (each reported above)"
+  expect device-change-test-fails 1 \
+    "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
+    "pass: api=31 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.DeviceChangeTest) (each reported above)"
   expect crash-test-fails 1 \
     "pass: api=31 first frame (registry, its first screen up)" \
     "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (killed:com.keepcrypt.entropy.CrashTest) (each reported above)"
@@ -717,7 +725,7 @@ EOF
   order booted-pass "the steps' order, both CaptureTest runs without control (c), the killed CrashTest last" \
     "$app $app.ControlTest" "$app $left" "$registry $left" "$app $app.PhoneMotionTest" \
     "$app $app.FlowTest" "$app $app.CheckTest" "$app $app.MixedJourneyTest" "$app age:$app.BackupTest" "$app $app.JourneyTest" "$app gone:$app.StopJourneyTest" "$registry $app.SnapshotDrillTest" \
-    "$app $app.LifecycleTest" "$app killed:$app.CrashTest"
+    "$app $app.LifecycleTest" "$app $app.DeviceChangeTest" "$app killed:$app.CrashTest"
   if [ ! -e "$st/booted-pass/work/avd" ] && [ ! -e "$st/booted-pass/emulator.pid" ]; then
     passed=$((passed + 1))
     echo "PASS booted-pass: no AVD written, no emulator started"
@@ -1207,6 +1215,8 @@ if in_part registry; then
   # 4b. Discards during "Working...": the app left during a backup's scrypt and its start-up
   # self-test, Wi-Fi turned on during a start.
   instrument com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest
+  # A real configuration change on four screens (U2h): each recreates the activity, the session kept.
+  instrument com.keepcrypt.entropy com.keepcrypt.entropy.DeviceChangeTest
   # 4c. The crash path, the last instrumented run: the crash test's process ends during the test, by
   # the app's own handler, and the judge reads the device's whole crash buffer and DropBox.
   instrument com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest
