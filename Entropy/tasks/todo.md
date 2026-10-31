@@ -16732,6 +16732,26 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   has been delivered to currently running top-most instance." and "Status: ok"; the build job's --apk passed both APKs
   with launchMode=2 in their summaries. The jobs took 418 s (API 31) and 411 s (API 36), inside their 10- and
   11-minute budgets with U2a's test in.
+  Proof (M5 commit U2b, Stage U-3, partial: local, Q76's JVM run on a Linux host, no emulator; CI's build job at the
+  next push): :screens' tests had no one way to any screen, and each class named a discard's landing on its own (35
+  places, Q81's open landing among them). Walk.kt (commonTest) brings a fresh Rig over the real slot to any of the 48
+  screens but Stop (a halt latches the process's slot, so the stop screen stays the halt classes'), by CaptureTest's
+  path on a Mixed seed of 24 words with the shorter branch where nothing else is lost, each screen checked on arrival
+  and its privacy gate with it (shown on exactly the eight gated screens the walk enters from a Public one), each
+  picker's answer followed by the activity's resume as on the device; SavedBackup (TestSupport.kt) is the backup
+  Check a backup's tests and the walk open, saved once per JVM (CheckBackupScreensTest's own copy moved there).
+  BackTest (3): Back once and twice from every screen lands where its own table from PF's buttons table and entry
+  grids line and MA:34 says (15 screens leave, every other stays), with what is held unchanged but on Check a
+  backup's entry, no notice or overlay, a typed code, BIP39 passphrase or entry wiped by the Back that leaves it, the
+  page kept where Back stays, and the check, its nonce and the seal card the same objects on the check QR and seal
+  card; the words, the overview and the backup passphrase page back by Back; and Back on each gated screen's gate,
+  under the cover on every screen but the two long calls' (Protected by 30 s idle, Public by a leave and return)
+  and under the warning on every screen that holds something does nothing. Rig.assertDiscarded(notice) names the
+  landing (Go offline, Q81 open) once, and all 35 discard landings call it. It pins what was built: two mutations
+  of the model, each run and reverted, fail it ("dice: Back once expected:<Dice> but was:<Commitment>" for a Back
+  from the dice; "bip39_entry: Back on its privacy gate expected:<Bip39Entry> but was:<Bip39Ask>" for a Back
+  that skips pressOn). Locally: :screens 168 in 24 classes, none failed (BackTest about 20 s for its three walks);
+  the gate clean, 387 files.
 - [ ] U3. A UX audit of every screen against the docs and the Pi: wording, order, what each button and Back do, what
   TalkBack reads on Public screens, the layout on a 360 dp phone and a large one, text sizes. A defect within the docs is
   fixed with a test; a change the docs do not allow becomes a question for the owner.
@@ -16789,6 +16809,29 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
     landing screen once), U2c (one press opens one picker), U2d (configuration change and going online), U2e (leaving,
     and M5-54's halting residuals), U2f (idle rules, and the 99-roll minimum through every restart), U2g (every refusal
     table, every mirror pair, a wrong insert).
+  - U-3's plan (the lead's, 2026-10-31; M5-72 (h) runs U-1 to U-5 without a check-in; each commit's test fails
+    before its fix, or says it pins what was built):
+    - [ ] U2b: Walk.kt (commonTest) brings a fresh Rig to any of the 48 screens but Stop (a halt latches the
+      process's slot, so the stop screen stays the halt classes'), on its privacy gate or past it, by CaptureTest's
+      path, each step checked. BackTest walks to each and presses Back once and twice: where it lands is a table of
+      its own from PF's buttons table and entry grids line and MA:34 (not backTo's), the session, check, nonce and
+      page held where it stays, and Back under the gate, the cover and the warning does nothing. Rig.assertDiscarded
+      names a discard's landing (Go offline, Q81 open) once, and every test's discard landing calls it.
+    - [ ] U2c: one press opens one picker: a second press on Save, Check a backup or Load registry snapshot while its
+      picker is open opens none, and the picker's answer (or the next resume with none) frees the button.
+    - [ ] U2d: on every screen of the walk, a configuration change is no leaving (the screen, gate, page, overlay
+      and session as they were), and going online discards with Notice.Offline where a session or file is held and
+      shows Go offline where not.
+    - [ ] U2e: on every screen of the walk, leaving: Public 59 s kept and 61 s wiped (and a return within 60 s
+      under the cover), Protected and Working discarded at once; M5-54's halting residuals pinned by name.
+    - [ ] U2f: on every screen of the walk, the idle rules (the 30 s cover on Protected screens alone, the 9-minute
+      warning and 10-minute wipe while something is held, nothing where nothing is); the 99-roll minimum through
+      every restart path (Add fresh entropy, Start again, a discard and a new start).
+    - [ ] U2g: every refusal table (the code, the read-back, the confirm, Check a backup's entry, the BIP39
+      passphrase, the files and snapshots) against core's texts, every mirror pair and a wrong insert on the read-back.
+    - Verification: :screens' JVM tests and the strict Gradle build locally (no emulator here), the gate before
+      every commit that adds Kotlin (M5-74 (a)), three independent reviews at the stage's head, their fixes, the
+      suite, and CI at the stage's head read once.
   - U-4, U1's journeys to Finish through the UI only: U1b (Ui's tapped rolls, pads and codes; Match found to Add fresh
     entropy, which calibrates the cost; the lead re-plans U1c-U1f from its run by M5-30), U1c (dice-only 12 and 24),
     U1d (mixed 12 by a typed code; the shipping app's scanned go-ahead QR refused), U1e (Cannot check to Start again;

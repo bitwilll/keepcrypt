@@ -150,8 +150,7 @@ class HomeScreensTest {
             assertEquals(1, file.reads, notice.name)
             assertTrue(zeroed(file.given), notice.name + ": what the read gave was zeroed")
             assertEquals(ran + 1, away.worker.ran, notice.name + ": the read alone ran, so nothing reached core")
-            assertEquals(Screen.GoOffline, away.screen, notice.name)
-            assertEquals(notice, away.model.state.value.notice)
+            away.assertDiscarded(notice, notice.name)
             assertNull(away.model.state.value.loaded, notice.name + ": nothing was loaded")
         }
     }
@@ -257,14 +256,13 @@ class HomeScreensTest {
         assertEquals(1, rig.worker.waiting, "the read done, core's load waits")
         rig.model.appLeft()
         rig.worker.run()
-        assertEquals(Screen.GoOffline, rig.screen)
-        assertEquals(Notice.Left, rig.model.state.value.notice)
+        rig.assertDiscarded(Notice.Left)
         assertNull(rig.model.state.value.loaded, "a load discarded is not the model's")
         assertTrue(zeroed(file.given), "the bytes read were zeroed, though the discard came before core's load was made")
         rig.model.appReturned()
         val late = kcrFile(WITH_DICE_50)
         rig.model.snapshotPicked(late)
-        assertEquals(Screen.GoOffline, rig.screen, "a file after Home has gone does nothing")
+        rig.assertDiscarded(Notice.Left, "a file after Home has gone does nothing")
         assertEquals(0, late.reads)
     }
 

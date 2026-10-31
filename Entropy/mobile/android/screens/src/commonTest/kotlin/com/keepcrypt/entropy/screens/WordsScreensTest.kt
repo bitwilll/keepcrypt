@@ -311,8 +311,7 @@ class WordsScreensTest {
         val shown = insert(rig)
         rig.model.appLeft()
         val away = rig.model.state.value
-        assertEquals(Screen.GoOffline, away.screen, "leaving a Protected screen discards at once (Q57 (b))")
-        assertEquals(Notice.Left, away.notice)
+        rig.assertDiscarded(Notice.Left, "leaving a Protected screen discards at once (Q57 (b))")
         assertNull(away.insert)
         assertTrue(wiped(shown), "the page on show is wiped")
         assertNoSession("the discard took the slot home")
@@ -323,7 +322,7 @@ class WordsScreensTest {
         rig.model.toOverview()
         val inserts = assertNotNull(rig.model.state.value.overview)
         rig.model.appLeft()
-        assertEquals(Screen.GoOffline, rig.screen)
+        rig.assertDiscarded(Notice.Left, "leaving the overview")
         assertTrue(inserts.all { wiped(it) }, "the overview's pages are wiped")
         assertNoSession("the discard took the slot home")
     }
@@ -333,8 +332,7 @@ class WordsScreensTest {
         val rig = Rig().toHome().toSkippedResult(DICE_50).toWords()
         val shown = insert(rig)
         rig.offline.set(false)
-        assertEquals(Screen.GoOffline, rig.screen)
-        assertEquals(Notice.Offline, rig.model.state.value.notice)
+        rig.assertDiscarded(Notice.Offline)
         assertTrue(wiped(shown))
         assertNoSession("going online discarded the session")
         rig.offline.set(true)

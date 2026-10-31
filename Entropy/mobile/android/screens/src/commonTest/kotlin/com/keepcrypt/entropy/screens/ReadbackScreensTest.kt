@@ -354,8 +354,7 @@ class ReadbackScreensTest {
         val shown = insert(rig)
         type(rig, words[0].take(3))
         rig.model.appLeft()
-        assertEquals(Screen.GoOffline, rig.screen, "leaving the Protected entry discards at once")
-        assertEquals(Notice.Left, rig.model.state.value.notice)
+        rig.assertDiscarded(Notice.Left, "leaving the Protected entry discards at once")
         assertEquals(0, rig.model.readbackLetters.length, "the letters typed are wiped")
         assertTrue(rig.model.readbackLetters.zeroPastLength())
         assertTrue(wiped(shown))
@@ -372,7 +371,7 @@ class ReadbackScreensTest {
         val mismatch = assertNotNull(rig.model.state.value.mismatch)
         assertEquals(Screen.ReadbackMismatch, rig.screen)
         rig.model.appLeft()
-        assertEquals(Screen.GoOffline, rig.screen, "leaving the Protected mismatch discards at once")
+        rig.assertDiscarded(Notice.Left, "leaving the Protected mismatch discards at once")
         assertTrue(wiped(page))
         assertTrue((1..4).all { mismatch.face(it).verdict == Verdict.Ok && mismatch.face(it).missingDots == 0 }, "the verdicts are wiped")
         assertNoSession("the discard took the slot home")
@@ -406,8 +405,7 @@ class ReadbackScreensTest {
         rig.model.appLeft()
         rig.clock.now += Timers.BACKGROUND_MILLIS
         rig.model.tick()
-        assertEquals(Screen.GoOffline, rig.screen, "60 s away from the checklist wipes")
-        assertEquals(Notice.Background, rig.model.state.value.notice)
+        rig.assertDiscarded(Notice.Background, "60 s away from the checklist wipes")
         assertNoSession("the background wipe took the slot home")
     }
 

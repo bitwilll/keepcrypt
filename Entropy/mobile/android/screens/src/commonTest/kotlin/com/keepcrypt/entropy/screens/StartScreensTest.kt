@@ -286,8 +286,7 @@ class StartScreensTest {
         rig.model.dicePick.replace('5')
         rig.offline.set(airplaneMode = true, wifiOff = false)
         val state = rig.model.state.value
-        assertEquals(Screen.GoOffline, state.screen)
-        assertEquals(Notice.Offline, state.notice)
+        rig.assertDiscarded(Notice.Offline)
         assertNull(state.dice)
         assertEquals(0, rig.model.dicePick.length, "the pick was wiped with its screen")
         assertTrue(rig.model.dicePick.zeroPastLength())

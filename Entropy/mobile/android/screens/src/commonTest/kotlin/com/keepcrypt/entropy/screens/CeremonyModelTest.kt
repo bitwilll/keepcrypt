@@ -111,8 +111,7 @@ class CeremonyModelTest {
         rig.worker.run()
         // The commit was never made (at home it would have halted the slot); the start screen says why.
         val state = rig.model.state.value
-        assertEquals(Screen.GoOffline, state.screen)
-        assertEquals(Notice.Left, state.notice)
+        rig.assertDiscarded(Notice.Left)
         assertEquals(Overlay.Cover, state.overlay, "away from the app the cover stays up")
         assertNoSession("no call halted the slot")
     }
@@ -127,8 +126,7 @@ class CeremonyModelTest {
         }) { fail("a discarded call gives no value") }
         rig.worker.run()
         val state = rig.model.state.value
-        assertEquals(Screen.GoOffline, state.screen)
-        assertEquals(Notice.Offline, state.notice)
+        rig.assertDiscarded(Notice.Offline)
         assertFalse(state.offline)
         assertNull(state.overlay)
         assertNoSession("going online discarded the session")
@@ -140,8 +138,7 @@ class CeremonyModelTest {
         // Discarded with no discard of the model's: the start screen, with no reason to give.
         rig.model.work<Unit>({ Reply.Discarded }) { fail("a discarded call gives no value") }
         rig.worker.run()
-        assertEquals(Screen.GoOffline, rig.screen)
-        assertNull(rig.model.state.value.notice)
+        rig.assertDiscarded(null, "core's own discarded reply")
     }
 
     @Test
@@ -156,8 +153,7 @@ class CeremonyModelTest {
         }) { made = true }
         rig.worker.run()
         assertFalse(made, "a start after the discard is no ceremony")
-        assertEquals(Screen.GoOffline, rig.screen)
-        assertEquals(Notice.Left, rig.model.state.value.notice)
+        rig.assertDiscarded(Notice.Left)
         assertNoSession("the late start's session was discarded again")
     }
 
@@ -187,8 +183,7 @@ class CeremonyModelTest {
         rig.offline.set(false)
         assertEquals(Screen.Working, rig.screen)
         rig.worker.run()
-        assertEquals(Screen.GoOffline, rig.screen)
-        assertEquals(Notice.Offline, rig.model.state.value.notice)
+        rig.assertDiscarded(Notice.Offline)
         assertNoSession("the start was never made")
         // With no session the timers have nothing to wipe.
         rig.clock.now = Timers.WIPE_MILLIS
@@ -221,8 +216,7 @@ class CeremonyModelTest {
         val rig = withSession()
         rig.offline.set(false)
         val state = rig.model.state.value
-        assertEquals(Screen.GoOffline, state.screen)
-        assertEquals(Notice.Offline, state.notice)
+        rig.assertDiscarded(Notice.Offline)
         assertNull(state.overlay)
         assertNoSession("going online discarded the session")
         // The model holds nothing now: 9 minutes on, no warning comes.
@@ -239,8 +233,7 @@ class CeremonyModelTest {
         assertSessionHeld("leaving a Public screen keeps the session")
         rig.offline.set(false)
         val state = rig.model.state.value
-        assertEquals(Screen.GoOffline, state.screen)
-        assertEquals(Notice.Offline, state.notice)
+        rig.assertDiscarded(Notice.Offline)
         assertEquals(Overlay.Cover, state.overlay, "away from the app the cover stays up")
         assertNoSession("going online away from the app discarded the session")
     }
@@ -254,8 +247,7 @@ class CeremonyModelTest {
         rig.clock.now = 30_000
         rig.model.appReturned()
         val state = rig.model.state.value
-        assertEquals(Screen.GoOffline, state.screen)
-        assertEquals(Notice.Offline, state.notice)
+        rig.assertDiscarded(Notice.Offline)
         assertFalse(state.offline)
         assertNoSession("the return read the phone online and discarded the session")
     }
@@ -375,8 +367,7 @@ class CeremonyModelTest {
         rig.model.appLeft()
         assertNoSession("the next stop was leaving: the discard came at once")
         rig.worker.run()
-        assertEquals(Screen.GoOffline, rig.screen)
-        assertEquals(Notice.Left, rig.model.state.value.notice)
+        rig.assertDiscarded(Notice.Left)
     }
 
     @Test

@@ -54,10 +54,7 @@ class CheckBackupScreensTest {
         assertTrue(Core.selfTest() is Reply.Done, message)
     }
 
-    /** A backup saved by a ceremony of its own: the file's bytes, the passphrase's words and the wallet's fingerprint. */
-    private class Saved(val file: ByteArray, val passphrase: List<String>, val fingerprint: ByteArray)
-
-    private val saved: Saved get() = shared
+    private val saved: SavedBackup get() = SavedBackup.shared
 
     /**
      * A new model at Home, Check a backup's picker opened, and the saved backup picked under its name (its
@@ -88,13 +85,11 @@ class CheckBackupScreensTest {
     private fun firstFours(words: List<String>): List<String> = words.map { it.take(4) }
 
     /**
-     * The entry's file and entries wiped by a discard: the start screen, saying why (Go offline, as built;
-     * where a wipe lands while the phone is still offline is the owner's open Q81, and only this line names
-     * it), the file read and every entry zeroed, none held, the letters typed wiped and nothing in core.
+     * The entry's file and entries wiped by a discard: the start screen, saying why (Rig.assertDiscarded),
+     * the file read and every entry zeroed, none held, the letters typed wiped and nothing in core.
      */
     private fun assertEntryWiped(rig: Rig, file: FakeFile, entries: List<Secret>, notice: Notice, what: String) {
-        assertEquals(Screen.GoOffline, rig.screen, what)
-        assertEquals(notice, rig.model.state.value.notice, what)
+        rig.assertDiscarded(notice, what)
         assertTrue(zeroed(file.given), what + ": the file read was zeroed")
         assertTrue(entries.all { entry -> (0 until entry.size).all { entry[it] == 0.toByte() } }, what + ": the entries were wiped")
         assertTrue(rig.model.entriesHeld.isEmpty(), what + ": the entries were dropped")
@@ -191,14 +186,14 @@ class CheckBackupScreensTest {
         val bytes = saved.file
         val rig = Rig().toHome()
         var during: Screen? = null
-        val slow = FakeFile(NAME, bytes.size.toLong(), bytes) { during = rig.screen }
+        val slow = FakeFile(SavedBackup.NAME, bytes.size.toLong(), bytes) { during = rig.screen }
         rig.model.checkBackup(FakePickers())
         rig.model.backupPicked(slow)
         assertEquals(Screen.Working, rig.screen, "the file is read behind Working...")
         assertEquals(0, slow.reads, "the main thread returned before any byte was read")
         assertEquals(1, rig.worker.waiting, "the read waits on the worker")
         rig.model.chooseMode(Mode.Mixed)
-        val second = FakeFile(NAME, bytes.size.toLong(), bytes)
+        val second = FakeFile(SavedBackup.NAME, bytes.size.toLong(), bytes)
         rig.model.backupPicked(second)
         assertEquals(Screen.Working, rig.screen, "Home's choices do nothing while the read runs")
         assertEquals(0, second.reads, "a second file picked while the read runs is never read")
@@ -215,7 +210,7 @@ class CheckBackupScreensTest {
         )
         for ((notice, discard) in discards) {
             val away = Rig().toHome()
-            val file = FakeFile(NAME, bytes.size.toLong(), bytes) { discard(away) }
+            val file = FakeFile(SavedBackup.NAME, bytes.size.toLong(), bytes) { discard(away) }
             away.model.checkBackup(FakePickers())
             away.model.appLeft()
             away.model.appReturned()
@@ -223,8 +218,7 @@ class CheckBackupScreensTest {
             away.worker.run()
             assertEquals(1, file.reads, notice.name)
             assertTrue(zeroed(file.given), notice.name + ": what the read gave was zeroed")
-            assertEquals(Screen.GoOffline, away.screen, notice.name + ": no entry, the start screen")
-            assertEquals(notice, away.model.state.value.notice)
+            away.assertDiscarded(notice, notice.name + ": no entry, the start screen")
             assertNoSession(notice.name + ": a discard during the read left something in core")
         }
     }
@@ -265,14 +259,13 @@ class CheckBackupScreensTest {
         )
         for ((notice, discard) in discards) {
             val main = HeldMain()
-            val file = FakeFile(NAME, bytes.size.toLong(), bytes)
+            val file = FakeFile(SavedBackup.NAME, bytes.size.toLong(), bytes)
             val rig = readReplyWaiting(main, CoroutineScope(Job() + main), file)
             discard(rig)
             assertEquals(Screen.Working, rig.screen, notice.name + ": the reply is still to come")
             main.run()
             assertTrue(zeroed(file.given), notice.name + ": what the read gave was zeroed")
-            assertEquals(Screen.GoOffline, rig.screen, notice.name + ": no entry, the start screen")
-            assertEquals(notice, rig.model.state.value.notice)
+            rig.assertDiscarded(notice, notice.name + ": no entry, the start screen")
             assertNoSession(notice.name + ": a discard after the read left something in core")
         }
     }
@@ -287,7 +280,7 @@ class CheckBackupScreensTest {
         val bytes = saved.file
         val main = HeldMain()
         val scope = CoroutineScope(Job() + main)
-        val file = FakeFile(NAME, bytes.size.toLong(), bytes)
+        val file = FakeFile(SavedBackup.NAME, bytes.size.toLong(), bytes)
         val rig = readReplyWaiting(main, scope, file)
         scope.cancel()
         rig.model.wipeAll()
@@ -507,8 +500,7 @@ class CheckBackupScreensTest {
         rig.model.appReturned()
         rig.model.passGate()
         rig.model.appLeft()
-        assertEquals(Screen.GoOffline, rig.screen)
-        assertEquals(Notice.Left, rig.model.state.value.notice)
+        rig.assertDiscarded(Notice.Left)
         assertTrue(zeroed(file.given), "the file read was zeroed")
 
         val away = atResult()
@@ -518,15 +510,13 @@ class CheckBackupScreensTest {
         assertEquals(Overlay.Cover, away.model.state.value.overlay)
         away.clock.now += Timers.BACKGROUND_MILLIS
         away.model.tick()
-        assertEquals(Screen.GoOffline, away.screen)
-        assertEquals(Notice.Background, away.model.state.value.notice)
+        away.assertDiscarded(Notice.Background)
         assertNoSession("60 s away left the checked backup in core")
 
         val online = atResult()
         online.model.appReturned()
         online.offline.set(false)
-        assertEquals(Screen.GoOffline, online.screen)
-        assertEquals(Notice.Offline, online.model.state.value.notice)
+        online.assertDiscarded(Notice.Offline)
         assertNoSession("going online left the checked backup in core")
     }
 
@@ -654,7 +644,7 @@ class CheckBackupScreensTest {
         away.model.appLeft()
         away.clock.now += Timers.BACKGROUND_MILLIS
         away.model.tick()
-        assertEquals(Screen.GoOffline, away.screen)
+        away.assertDiscarded(Notice.Background)
         away.model.appReturned()
         away.model.dismissOverlay()
         assertTheNextCeremonysWordsAreTheirOwn(away, "60 s away")
@@ -662,7 +652,7 @@ class CheckBackupScreensTest {
         val online = atResult()
         online.model.appReturned()
         online.offline.set(false)
-        assertEquals(Screen.GoOffline, online.screen)
+        online.assertDiscarded(Notice.Offline)
         online.offline.set(true)
         assertTheNextCeremonysWordsAreTheirOwn(online, "going online")
 
@@ -672,8 +662,7 @@ class CheckBackupScreensTest {
         left.model.passGate()
         assertNotNull(left.model.state.value.opened)
         left.model.appLeft()
-        assertEquals(Screen.GoOffline, left.screen)
-        assertEquals(Notice.Left, left.model.state.value.notice)
+        left.assertDiscarded(Notice.Left)
         left.model.appReturned()
         left.model.dismissOverlay()
         assertTheNextCeremonysWordsAreTheirOwn(left, "leaving the backup's words")
@@ -737,30 +726,7 @@ class CheckBackupScreensTest {
     private companion object {
         const val DICE_50 = "dice-50-words12"
 
-        /** A backup's name as core suggests them. */
-        const val NAME = "keepcrypt-backup-0123abcd.age"
-
         /** kcr.json's dice-50-words12's Seal ID (a public gate-seed vector). */
         const val DICE_50_SEAL_ID = "YVM9CPP3"
-
-        /**
-         * The backup the class's tests open, saved once in this JVM (the class's one process) by a ceremony
-         * of the first test that asks, which then ends it (Finish), so the slot is at home again.
-         */
-        val shared: Saved by lazy {
-            val rig = Rig().toHome().toSummary(DICE_50)
-            val fingerprint = assertNotNull(rig.model.state.value.summary).fingerprint.copyOf()
-            val passphrase = rig.toConfirm()
-            rig.confirm(passphrase)
-            val place = FakePlace()
-            rig.model.saveBackup(FakePickers())
-            rig.model.backupPlaced(place)
-            rig.worker.run()
-            assertEquals(Screen.BackupVerified, rig.screen)
-            rig.model.backupVerifiedDone()
-            rig.skipExports()
-            rig.model.finishCeremony()
-            Saved(assertNotNull(place.saved), passphrase, fingerprint)
-        }
     }
 }

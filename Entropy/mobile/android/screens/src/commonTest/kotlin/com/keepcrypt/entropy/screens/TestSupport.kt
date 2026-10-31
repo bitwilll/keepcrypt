@@ -4,6 +4,9 @@ import com.keepcrypt.entropy.ffi.Mode
 import com.keepcrypt.entropy.ffi.WordPage
 import com.keepcrypt.entropy.ffi.Words
 import kotlin.coroutines.CoroutineContext
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -192,6 +195,19 @@ internal class Rig(scope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined
         return this
     }
 
+    /**
+     * A discard's landing (leaving the app, going online or a timer's wipe, Q57, once the start-up
+     * self-test has passed; core's own discarded reply, with no notice): the start screen, saying why,
+     * with nothing held. The start screen is Go
+     * offline, as built (group 15, M5-50); where a wipe lands while the phone is still offline is the
+     * owner's open Q81, and only this line names it (Stage U's U2b).
+     */
+    fun assertDiscarded(notice: Notice?, what: String = "the discard") {
+        assertEquals(Screen.GoOffline, screen, what + ": the start screen")
+        assertEquals(notice, model.state.value.notice, what + ": the notice")
+        assertFalse(model.held.value, what + ": something is still held")
+    }
+
     /** A key pressed on the showing screen's pad, on its page, as its screens make the press (the model's padKey). */
     fun press(key: Char) {
         model.padKey(screen, model.state.value.page, key)
@@ -363,6 +379,36 @@ internal class Rig(scope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined
         model.showSummary()
         check(screen == Screen.Wallet) { "the mixed seed did not reach its wallet summary" }
         return commitment
+    }
+}
+
+/** A backup a ceremony of its own saved: the file's bytes, the passphrase's words and the wallet's fingerprint. */
+internal class SavedBackup(val file: ByteArray, val passphrase: List<String>, val fingerprint: ByteArray) {
+    companion object {
+        /** A backup's name as core suggests them. */
+        const val NAME = "keepcrypt-backup-0123abcd.age"
+
+        /**
+         * vectors/kcr.json's dice-50-words12 backed up, saved once in this JVM (a test class's one process)
+         * by a ceremony of the first test that asks (its passphrase read in-process, compared and never
+         * printed), which then ends it (Finish), so the slot is at home again: Check a backup's tests and
+         * the walk open it.
+         */
+        val shared: SavedBackup by lazy {
+            val rig = Rig().toHome().toSummary("dice-50-words12")
+            val fingerprint = assertNotNull(rig.model.state.value.summary).fingerprint.copyOf()
+            val passphrase = rig.toConfirm()
+            rig.confirm(passphrase)
+            val place = FakePlace()
+            rig.model.saveBackup(FakePickers())
+            rig.model.backupPlaced(place)
+            rig.worker.run()
+            assertEquals(Screen.BackupVerified, rig.screen)
+            rig.model.backupVerifiedDone()
+            rig.skipExports()
+            rig.model.finishCeremony()
+            SavedBackup(assertNotNull(place.saved), passphrase, fingerprint)
+        }
     }
 }
 

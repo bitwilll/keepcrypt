@@ -364,8 +364,7 @@ class CheckScreensTest {
         val report = assertNotNull(rig.model.state.value.report)
         rig.model.appLeft()
         val away = rig.model.state.value
-        assertEquals(Screen.GoOffline, away.screen, "leaving a Protected screen discards at once (Q57 (b))")
-        assertEquals(Notice.Left, away.notice)
+        rig.assertDiscarded(Notice.Left, "leaving a Protected screen discards at once (Q57 (b))")
         assertEquals(Overlay.Cover, away.overlay)
         assertTrue(blank(report), "the report QR is wiped")
         assertNoSession("the discard took the slot home")
