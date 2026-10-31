@@ -11190,7 +11190,7 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   from 2026-10-31, M5-76 (a) and (e), from U1b2's run 41197141108's 1153 s and 1097 s; from U1e, M5-76 (g), eight leg
   jobs: the journeys jobs 20 minutes again without JourneyTest, the two ui jobs measured at 30; from run 41203734694,
   M5-76 (h): registry 18 and 19, journeys 20 and 19, ui 30 until a run measures it whole; API 36's ui 27 from run
-  41207540199's 1284 s);
+  41207540199's 1284 s, API 31's ui 26 from run 41211393696's 1241 s);
   system images, the emulator package and the Gradle distribution are cached with actions/cache keyed on their
   revisions. An emulator boot failure may be re-run once, and the re-run is logged under Review; a test
   failure is never re-run. Past any budget, the lead stops and re-plans.
@@ -16960,6 +16960,23 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   for idle (it read the field twice, around them), and finds and clicks Save in one. Ui's own rule, that no helper
   reads a node it found before a wait, now holds in Picker too. Locally: both test APKs built by the strict Gradle
   run, no warning; banned-api-check.sh clean, 402 files.
+  Proof (CI, the lead's, 2026-10-31): Entropy Android 41211393696 at 4a1cc07 (U4r2), every job green: the build in 12 min
+  28 s; both capture jobs; the journeys jobs (902 s and 851 s: FlowTest 7, CheckTest 2, BackupTest with "age-check:
+  pass", its logcat check passing on both levels, the open item of 2026-10-31 not repeated); the ui jobs (1241 s and
+  1290 s: "PASS com.keepcrypt.entropy.JourneyTest (4 tests; ...)" and StopJourneyTest's "gone during the test, as it
+  must be" on both, the journeys 248.0, 266.7, 294.0 and 304.0 s on API 31 and 247.9, 269.2, 294.1 and 307.8 s on
+  API 36); the registry jobs (891 s and 902 s, SnapshotDrillTest 4 with its two journeys to Finish). So U1b to U1g
+  hold on both levels in one run, with U-4's review fixes in; API 31's ui job is 26 minutes (M5-30).
+  Stage U-4's close (the lead's, 2026-10-31): U1's journeys through the UI alone, against U1's list: mixed and
+  dice-only seeds of 12 words, a dice-only seed of 24 (two devices); the check by a typed code, a scanned proof, a
+  loaded snapshot and Skip; Match found and a scanned collision to Add fresh entropy at 99; Cannot check to Start
+  again; the words, read-back and summary; the backup saved and checked; watch-only; register; reveal D; About
+  (FlowTest's, by taps); stop; each pass line naming its path. One combination is not yet a journey: a mixed seed of
+  24 words (the mixed path's 24-word swap and its D are each covered, the mixed 12-word and dice-only 24-word
+  journeys, but not together), so U1 stays open for U1h, which U-5 takes first. Three reviews ran at U-4's head (the
+  journeys' correctness, secret handling, the scripts) and their verified findings are fixed (U4r, U4r2). Open items
+  U-4 leaves: the age -d hand-off's logcat check (2026-10-31; not repeated in two runs since, its failure now naming
+  each match's facts) and U1c's read-back cost (76 s for 12 inserts, the read-back entry's UI Automator steps).
 - [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
   every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
   every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,
@@ -17329,6 +17346,8 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       before every commit that adds Kotlin (M5-74 (a)), android-emulator.sh --selftest with JourneyTest in the journeys
       part's pinned order, three independent reviews at the stage's head, their fixes, the suite, and CI's journeys jobs
       at the stage's head read once (every device claim is CI's: no emulator here, M5-74 (f)).
+  - U-5 begins with U1h, U1's last journey: a mixed seed of 24 words to Finish (Device entropy, C, 99 tapped rolls,
+    the drawn code tapped, 24 words on two devices read back by touches, D committing to C), in the ui part.
   - U-5, U2 on the device and U3's layout check: U2h (recreation), U2i (double taps), U2j (the process killed at a
     stage), U2k (leaving, screen off, the activity destroyed while away, the back gesture), U2l (the camera denied twice;
     one idle run on the real clock, API 36), U3h (the layout check in the walk at CI's window and a 412 dp phone; the

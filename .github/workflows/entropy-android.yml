@@ -658,7 +658,8 @@ jobs:
     # jobs and 924 s and 867 s for the journeys jobs, so 18 and 19, and 20 and 19 minutes; its ui jobs
     # (1207 s and 1171 s) ran with the mixed journey failing before its end, so they stay at 30 until a
     # run measures them whole (M5-76 (h)). Run 41207540199 at be2878d measured API 36's ui job whole,
-    # 1284 s, so 27 minutes; API 31's stopped part-way (a picker flake, U4r2), so it stays at 30.
+    # 1284 s, so 27 minutes; API 31's stopped part-way (a picker flake, U4r2). Run 41211393696 at
+    # 4a1cc07 measured API 31's ui job whole, 1241 s, so 26 minutes.
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       # Every leg job runs to its end: a red leg never cancels another job or hides its evidence.
@@ -678,7 +679,7 @@ jobs:
           - api: '31'
             part: ui
             legs: API 31, journeys through the UI alone
-            timeout: 30
+            timeout: 26
           - api: '31'
             part: registry
             legs: API 31, test registry and edges
