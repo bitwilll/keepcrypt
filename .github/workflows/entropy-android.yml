@@ -148,14 +148,15 @@ jobs:
   build:
     name: android build (APKs, checks, uploads, hand-off)
     runs-on: ubuntu-24.04
-    # Budget (tasks/todo.md, M5 "Budgets"; M5-30, M5-70 (b), M5-72, M5-73): the six leg jobs'
-    # measuring run (run 40903211202 at ab6773f) built in 618 s, so 13 minutes with 25% (the split's
-    # first run, 40813152800 at e3c6c12, 558 s and 12 minutes). Before the split one job built
+    # Budget (tasks/todo.md, M5 "Budgets"; M5-30, M5-70 (b), M5-72, M5-73, M5-75 (g)): Stage U-3's
+    # JVM tests ran the build to 779 s (run 41181656557 at f9ede2c, every step green, then stopped at
+    # the 13 minutes the six leg jobs' measuring run gave: 618 s in run 40903211202 at ab6773f), so
+    # 17 minutes with 25% (the split's first run, 40813152800 at e3c6c12, 558 s and 12 minutes). Before the split one job built
     # and ran every leg (M5-44, M5-52, M5-57, M5-69): 35.2 min at efc0575 (run 39783747240), past 44
     # with commit 19's tests (run 40624645994), 53.4 min at e5109bc (run 40681107802) and 58 min at
     # d99e80b (run 40749608448). A slower run stops here and the lead re-plans; a commit that adds
     # steps or tests re-measures it.
-    timeout-minutes: 13
+    timeout-minutes: 17
     env:
       # The SDK pieces the build uses (mobile/android/gradle/libs.versions.toml), checked below.
       KC_BUILD_TOOLS: 36.0.0

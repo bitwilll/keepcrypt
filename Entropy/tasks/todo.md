@@ -11185,7 +11185,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
 - **Budgets:** `gates` within the approved 12 minutes (Q31 (f); M4b measured 10 min 08 s), `test` within 6 minutes. The
   Android job's budget is set at commit 8 from its measured time plus 25%, with `timeout-minutes` at that budget and a
   90-minute ceiling (since L9, each of the three jobs' own budget by the same rule, M5-70 (b); from U1a each of the
-  seven, M5-73 (b), set 2026-10-30 from run 40903211202: build 13 minutes, the leg jobs 12, 20, 10, 11, 20 and 11);
+  seven, M5-73 (b), set 2026-10-30 from run 40903211202: build 13 minutes, the leg jobs 12, 20, 10, 11, 20 and 11;
+  build 17 minutes from 2026-10-31, M5-75 (g), from run 41181656557's 779 s);
   system images, the emulator package and the Gradle distribution are cached with actions/cache keyed on their
   revisions. An emulator boot failure may be re-run once, and the re-run is logged under Review; a test
   failure is never re-run. Past any budget, the lead stops and re-plans.
@@ -15875,7 +15876,11 @@ they differ. Nothing in the Android plan is weakened.
   Left or Offline on Go offline. (e) j read as h and w read as r are core's alone (no vector seed's word holds j or w in
   its first four letters): no vector is added for a screen path that is the same code as e, i, d, f, h and r's. (f) The
   U2g commit message's "core's code and text" means core's refusal code, with each code's text pinned to error.rs by
-  BackupScreensTest and HomeScreensTest; the pushed message stays.
+  BackupScreensTest and HomeScreensTest; the pushed message stays. (g) Entropy Android 41181656557 at f9ede2c: every
+  step of the build job passed, its last at 13 min 0 s, and the job was stopped at its 13-minute budget, so the six leg
+  jobs were skipped. U-3's JVM tests lengthened the build step to 5 min 11 s; the build job is re-measured by M5-70
+  (b), 779 s plus 25%, 17 minutes; the leg jobs' budgets stand, their tests unchanged. Entropy CI 41181656557's sibling
+  run 41181657191 passed at the same head.
 
 **Open item (2026-10-31): UI Automator does not see first_launch in API 36's journeys.** Entropy Android 41148288082
 at a15dc4f failed all 10 tests of API 36's journeys job (FlowTest 7, CheckTest 2, BackupTest 1, the shipping APK),
