@@ -13076,6 +13076,10 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   (both walks, U3e's pads and U3f's redraws through the read-back, the confirm and the BIP39 entry); API 36's journeys
   job failed all 10 of its tests at their first screen (the open item below), so U3e and U3f on API 36's journeys
   remain unproved.
+  Proof (CI, the lead's, 2026-10-31): Entropy Android 41155373986 at 75349ee, every job green, Entropy CI 41155373995
+  at the same head green (all 14 required checks): API 36's journeys job passed FlowTest 7, CheckTest 2 and BackupTest
+  1 with its age -d hand-off in 868 s (budget 20 minutes), so U3e's pad wiring and U3f's redraws now pass on both
+  APIs' journeys, captures and test registry and edges jobs. U3e, U3e2, U3f and U3f2 are proved on CI.
 
 **15. Screens: start to dice** (MA:166-174; PF:83-89)
 - [ ] First launch (MA:13's limits, the development-build line, "use the Pi for life savings"; every start), Self-test
@@ -15874,7 +15878,12 @@ leave the window listed. The device's /data read 6082144 KB with 5602688 free, s
 U1a5's 2G, so whether the emulator applies the AVD's partition size is itself not shown, and U1a5's boot on a low-disk
 runner stays owed. U1a7 prints, before the same failure, the activity's lifecycle stage, every window UiAutomation
 reports (type, title, package, active, focused), the window manager's focus, the resumed activities and the keyguard's
-lines, to tell a window over the app, a task behind another and a window left unreported apart.
+lines, to tell a window over the app, a task behind another and a window left unreported apart. Entropy Android
+41155373986 at 75349ee did not repeat it: API 36's journeys passed, no U1a6 or U1a7 line was printed, and every other
+job passed. So it failed in two runs in a row (a15dc4f, 7ab9c95) and passed in the next with no app change between
+(U1a6 and U1a7 change only the tests' failure output): intermittent, its cause still unknown, not fixed, and not rerun
+to green. U1a6's and U1a7's lines stay in Ui.on, so a repeat names the windows; the item stays open and the M5 gate
+report names it.
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the
