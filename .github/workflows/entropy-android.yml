@@ -648,7 +648,8 @@ jobs:
     # journeys part, measured under the 90-minute ceiling (M5-76 (a)): run 41193839334 at 87951b3
     # took 1708 s for API 31's journeys job and 1600 s for API 36's. U1b2's rolls by the app's own
     # accessibility nodes cut them: run 41197141108 at 360a67f took 1153 s and 1097 s, so 25 and 23
-    # minutes.
+    # minutes; U1c's 24-word journey is measured at 30 minutes each, the journeys part's split line
+    # (M5-76 (f)), and each job is then budgeted at its measured time plus 25%.
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       # Every leg job runs to its end: a red leg never cancels another job or hides its evidence.
@@ -664,7 +665,7 @@ jobs:
           - api: '31'
             part: journeys
             legs: API 31, journeys
-            timeout: 25
+            timeout: 30
           - api: '31'
             part: registry
             legs: API 31, test registry and edges
@@ -676,7 +677,7 @@ jobs:
           - api: '36'
             part: journeys
             legs: API 36, journeys
-            timeout: 23
+            timeout: 30
           - api: '36'
             part: registry
             legs: API 36, test registry and edges

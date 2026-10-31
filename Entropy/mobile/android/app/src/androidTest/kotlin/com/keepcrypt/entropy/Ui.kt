@@ -1,5 +1,6 @@
 package com.keepcrypt.entropy
 
+import android.graphics.Rect
 import android.os.SystemClock
 import android.view.InputDevice
 import android.view.MotionEvent
@@ -270,25 +271,26 @@ internal object Ui {
         awaitText("code", Checker.grouped(code))
     }
 
+    /** A single lower-case letter, as a node naming a letter pad's key would show it. */
+    private val A_LETTER = Regex("[a-z]")
+
     /** The dice pad's keys' resource ids, key_ and a face, and a face as the pick shows it: patterns that name no face. */
     private val DICE_KEY: Pattern = Pattern.compile("key_[1-6]")
     private val A_FACE: Pattern = Pattern.compile("[1-6]")
 
     /**
-     * Taps the key that key finds, a Protected pad's key, as a finger does: a touch down and up at the
-     * middle of its visible bounds, injected through UiAutomation, never UiObject2.click, which logs the
-     * point it taps at debug level ("Clicking on (x, y).") with no isLoggable guard, and on the pad's fixed
-     * grid a point names its key: a letter typed goes into no log (lead decision M5-68 (e)). A Protected
-     * key's semantics are its role alone (Pads.kt's clearAndSetSemantics drops the clickable's click action
-     * too), so a touch is its press, as pressFace's accessibility click is a Public key's; nothing here
-     * logs the point. The key is found again when a recomposition replaced it before its bounds were read (fresh).
+     * Touches the middle of bounds (a Protected pad's key's, in screen pixels) as a finger does: a touch
+     * down and up injected through UiAutomation, never UiObject2.click, which logs the point it taps at
+     * debug level ("Clicking on (x, y).") with no isLoggable guard, and on the pad's fixed grid a point names
+     * its key: a letter typed goes into no log (lead decision M5-68 (e)). A Protected key's semantics are its
+     * role alone (Pads.kt's clearAndSetSemantics drops the clickable's click action too), so a touch is its
+     * press, as an accessibility click is a Public key's; nothing here logs the point. The caller checks the
+     * press landed (typeLetters reads the pad's entry), so no idle wait follows.
      */
-    fun touch(key: () -> UiObject2) {
-        val bounds = fresh("a key of the pad") { key().visibleBounds }
+    fun touch(bounds: Rect) {
         val down = SystemClock.uptimeMillis()
         inject(MotionEvent.ACTION_DOWN, down, down, bounds.exactCenterX(), bounds.exactCenterY())
         inject(MotionEvent.ACTION_UP, down, SystemClock.uptimeMillis(), bounds.exactCenterX(), bounds.exactCenterY())
-        device.waitForIdle()
     }
 
     /** One touch-screen event at (x, y), injected through UiAutomation and handled before this returns. */
@@ -304,41 +306,56 @@ internal object Ui {
 
     /**
      * The letter pad's keys on screen (the read-back entry, the backup's confirm or Check a backup's
-     * entry, lead decision M5-46): the screen's nodes with the button role and no text, description or
-     * resource id, which must be its 26, in the pad's order; and no node there has a single letter or a
-     * Public key's id (key_ and a letter), so nothing names a key. Found afresh for each key, since a key
-     * typed may recompose the actions around the pad (a tap resolves its selector at the click for the
-     * same reason), and again when a redraw replaced a node read (fresh).
+     * entry, lead decision M5-46), in the pad's order: the nodes under the screen's root with the button
+     * role and no text, description or resource id, which must be its 26; and no node there has a single
+     * letter as its text or a Public key's id (key_ and a letter), so nothing names a key. Read through
+     * UiAutomation's own nodes (appNode's walk, in tree order, as UI Automator's search returns them), with
+     * no idle wait and no selector logged (Stage U's U1c; U1b2 found a search costs 500 ms of quiet), and
+     * read again until the pad's 26 are there, for up to 10 s.
      */
-    fun letterKeys(screen: Screen): List<UiObject2> = fresh("the letter pad's keys") {
-        device.waitForIdle()
-        val root = find(screenId(screen))
-        val keys = root.findObjects(By.clazz(BUTTON)).filter {
-            it.text.isNullOrEmpty() && it.contentDescription.isNullOrEmpty() && it.resourceName.isNullOrEmpty()
+    fun letterKeys(screen: Screen): List<AccessibilityNodeInfo> = poll("the letter pad's 26 keys on " + screenId(screen)) {
+        val root = appNode(screenId(screen)) ?: return@poll null
+        val nodes = ArrayList<AccessibilityNodeInfo>()
+        fun walk(node: AccessibilityNodeInfo) {
+            nodes.add(node)
+            for (index in 0 until node.childCount) node.getChild(index)?.let(::walk)
         }
-        assertEquals("the letter pad's keys, each with its button role alone", LETTER_KEYS.length, keys.size)
-        assertFalse("a node on " + screenId(screen) + " names a letter", root.hasObject(By.text(Pattern.compile("[a-z]"))))
-        assertFalse("a key on " + screenId(screen) + " has a Public key's id", root.hasObject(By.res(Pattern.compile("key_.*"))))
+        walk(root)
+        val keys = nodes.filter {
+            it.className?.toString() == BUTTON && it.text.isNullOrEmpty() && it.contentDescription.isNullOrEmpty() &&
+                it.viewIdResourceName.isNullOrEmpty()
+        }
+        if (keys.size != LETTER_KEYS.length) return@poll null
+        assertFalse("a node on " + screenId(screen) + " names a letter", nodes.any { it.text?.toString()?.matches(A_LETTER) == true })
+        assertFalse("a key on " + screenId(screen) + " has a Public key's id", nodes.any { it.viewIdResourceName?.startsWith("key_") == true })
         keys
     }
 
     /**
-     * Types letters on screen's letter pad, a touch on each key (touch, which logs no point: a click's
-     * logged point would name the letter on the pad's fixed grid, and which finds the keys again if a
-     * redraw replaced the one to touch), and checks in-process that entry, the model's pad entry of
-     * screen, holds them after any it held before (compared, never printed).
+     * Types letters on screen's letter pad, a touch at each key's bounds (touch, which logs no point: a
+     * click's logged point would name the letter on the pad's fixed grid), the key read afresh from the app
+     * before each (letterKeys, then the node refreshed), and after each touch waits until entry, the model's
+     * pad entry of screen, holds one letter more (in-process, for up to 10 s), so the next touch is on the
+     * pad as that letter left it; at the end checks entry holds letters after any it held before (compared,
+     * never printed).
      */
     fun typeLetters(activity: MainActivity, screen: Screen, letters: String, entry: (CeremonyModel) -> PadEntry) {
         val before = onMain { entry(activity.model).length }
-        for (letter in letters) {
-            touch { letterKeys(screen)[LETTER_KEYS.indexOf(letter)] }
+        for ((at, letter) in letters.withIndex()) {
+            val bounds = poll("the letter pad's key, visible") {
+                val key = letterKeys(screen)[LETTER_KEYS.indexOf(letter)]
+                if (key.refresh() && key.isVisibleToUser) Rect().also(key::getBoundsInScreen).takeIf { !it.isEmpty } else null
+            }
+            touch(bounds)
+            poll("the letter pad's touch typed (letter " + (at + 1) + ")") {
+                onMain { entry(activity.model).length == before + at + 1 }.takeIf { it }
+            }
         }
-        device.waitForIdle()
         val held = onMain {
             val pad = entry(activity.model)
             pad.length == before + letters.length && letters.indices.all { pad.keyAt(before + it) == letters[it] }
         }
-        assertTrue("the letter pad's taps did not type the letters tapped", held)
+        assertTrue("the letter pad's touches did not type the letters touched", held)
     }
 
     /** Whether insert's word is word, byte by byte, its copy wiped (the words are public vectors, never printed). */

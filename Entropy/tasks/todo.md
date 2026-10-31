@@ -15898,7 +15898,9 @@ they differ. Nothing in the Android plan is weakened.
   (e) U1b2's run (Entropy Android 41197141108) measured a tapped roll at 0.05-0.06 s and cut the journeys jobs to 1153 s
   and 1097 s, so their budgets are 25 and 23 minutes (M5-30); U1c-U1g are re-planned under U-4's plan from its costs,
   U1c first finding the letter pad's keys through UiAutomation's nodes as U1b2 found the dice pad's, and the journeys
-  part splits into two jobs before any journeys job would pass 30 minutes.
+  part splits into two jobs before any journeys job would pass 30 minutes. (f) A journeys job stopped by its budget
+  leaves no measure and no evidence, so a commit that adds a journey runs the journeys jobs at 30 minutes, the split
+  line, and the lead then budgets each at its measured time plus 25% (M5-30) or splits the part.
 
 **Open item (2026-10-31): UI Automator does not see first_launch in API 36's journeys.** Entropy Android 41148288082
 at a15dc4f failed all 10 tests of API 36's journeys job (FlowTest 7, CheckTest 2, BackupTest 1, the shipping APK),
@@ -16798,6 +16800,20 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   The rolls are the vectors' still: each seed's Seal ID on its seal card, the 12 inserts equal to dice-99-words12's
   words and the check by the drawn QR's code all passed. So U1b2 holds; the journeys jobs' budgets are 30 minutes
   less in all: 25 and 23 minutes (M5-30, M5-76 (e)).
+  Proof (M5 commit U1c, Stage U-4, partial: local, no emulator; CI's journeys jobs at the next push): Ui.letterKeys
+  reads the letter pad through UiAutomation's own nodes (the walk under the screen's root, in tree order), with the
+  same checks (the 26 keys with the button role alone, no node with a single letter as its text, no key_ id), read
+  again until the 26 are there; typeLetters refreshes each key from the app, touches the middle of its screen bounds
+  (Ui.touch, injected, no point logged, M5-68 (e)) and waits in-process until the pad's entry holds one letter more
+  before the next, so no UI Automator search or idle wait is left in a letter. JourneyTest's tail from Show words to
+  Finish is one helper, wordsToFinish, which the Match found journey now calls; its new journey,
+  aDiceOnlyTwentyFourWordSeedSkipsItsCheckAndReachesFinishOnTwoDevicesThroughTheUiAlone, taps dice-99-words24's 99
+  rolls (Done disabled at 98), confirms Skip, pages the 24 inserts by Next across the device swap ("Words 13-24 go on
+  device 2 of 2.") and its second gate, each the vector's word and device, reads all 24 back by touches with each
+  header naming its device, and goes through the summary and the registration QR (dice-99-words24's register text)
+  to the checklist naming two devices and Finish: Home with the slot empty. The journeys jobs are measured at 30
+  minutes (M5-76 (f)). Locally: both test APKs built by the strict Gradle run, no warning; banned-api-check.sh clean,
+  397 files.
 - [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
   every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
   every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,

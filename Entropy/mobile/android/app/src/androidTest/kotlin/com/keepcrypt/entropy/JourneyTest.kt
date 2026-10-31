@@ -26,7 +26,10 @@ import com.keepcrypt.entropy.Ui.typeLetters
 import com.keepcrypt.entropy.ffi.Core
 import com.keepcrypt.entropy.ffi.Reply
 import com.keepcrypt.entropy.screens.COLLISION_FOUND
+import com.keepcrypt.entropy.screens.INSERTS_PER_DEVICE
+import com.keepcrypt.entropy.screens.SKIPPED
 import com.keepcrypt.entropy.screens.Screen
+import com.keepcrypt.entropy.screens.TWO_DEVICES
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -129,66 +132,137 @@ class JourneyTest {
             tap("code_done")
             on(activity, Screen.CheckResult, START_SECONDS)
             awaitText("check_result_text", "No collision for seal $DICE_99_SEAL_ID, as of the date your checker showed.")
-            tap("show_words")
-            find("privacy_gate")
-            assertTrue("the words showed before the privacy gate", onMain { activity.model.state.value.gate })
-            tap("pass_gate")
-            await("past the words' gate", 10) { !onMain { activity.model.state.value.gate } }
-            val words = DICE_99_WORDS
-            for (index in words.indices) {
-                assertInsert(activity, words, index, 1, 1)
-                if (index + 1 < words.size) tap("next")
-            }
-            tap("start_readback")
-            on(activity, Screen.ReadbackEntry)
-            val readback = SystemClock.elapsedRealtime()
-            for (index in words.indices) {
-                awaitText("readback_header", "Read back insert " + two(index + 1) + DOT + "device 1 of 1")
-                typeLetters(activity, Screen.ReadbackEntry, words[index].take(4)) { it.readbackLetters }
-                tap("letters_done")
-                await("insert " + (index + 1) + " matched", 10) { onMain { activity.model.state.value.matched } }
-                assertTrue(
-                    "the match does not show insert " + (index + 1) + "'s word",
-                    onMain { sameWord(checkNotNull(activity.model.state.value.insert), words[index]) },
-                )
-                tap("readback_next")
-            }
-            val readbackTime = since(readback)
-            on(activity, Screen.ReadbackDone)
-            tap("show_summary")
-            on(activity, Screen.Wallet)
-            val summary = onMain { checkNotNull(activity.model.state.value.summary) }
-            val core = Core.summary()
-            assertTrue("the summary is not core's", core is Reply.Done && core.value.firstAddress == summary.firstAddress)
-            tap("summary_next")
-            on(activity, Screen.BackupOffer)
-            tap("skip_backup")
-            on(activity, Screen.WatchOffer)
-            tap("skip_watch_only")
-            on(activity, Screen.RegisterOffer)
-            tap("show_registration")
-            find("privacy_gate")
-            tap("pass_gate")
-            await("past the registration QR's gate", 10) { onMain { activity.model.state.value.let { it.screen == Screen.RegisterQr && !it.gate } } }
-            val registration = onMain { activity.model.state.value.registration } ?: throw AssertionError("no registration QR")
-            assertTrue(
-                "the registration QR is not dice-99-words12's register text (neither is printed)",
-                Checker.read(registration) == Checker.ORIGIN + "/register#c=" + DICE_99_SEAL_CODE,
-            )
-            tap("registration_done")
-            on(activity, Screen.Checklist)
-            assertFalse("a 12-word seed's checklist names two devices", device.hasObject(By.res("two_devices")))
-            tap("finish")
-            on(activity, Screen.Home)
-            assertTrue("the slot is not at home: Finish did not end the session", Core.selfTest() is Reply.Done)
+            val (readback, _) = wordsToFinish(activity, DICE_99_WORDS, DICE_99_SEAL_CODE)
             pass(
                 "the Match found journey through the UI alone: dice-50-words12's 50 rolls tapped ($firstRolls), its seal card " +
                     "($DICE_50_SEAL_ID), Match found confirmed, the collision with its Seal ID, the report QR behind the gate " +
                     "(its register text), Add fresh entropy at 0 / 99, Done disabled at 98; dice-99-words12's 99 rolls tapped " +
                     "($secondRolls), its seal card ($DICE_99_SEAL_ID), the drawn check QR's code tapped: the check passed; the " +
                     "gate, 12 inserts by Next equal to the vector's words, 12 read back by touches on the letter pad " +
-                    "($readbackTime), the summary, the registration QR (its register text), the checklist, Finish: Home with " +
+                    "($readback), the summary, the registration QR (its register text), the checklist, Finish: Home with " +
                     "the slot empty; the journey " + since(journey),
+            )
+            finish(activity)
+        }
+    }
+
+    /**
+     * From a check's result with the words available (passed or skipped): Show words through the privacy
+     * gate, each insert by Next (each the vector's word with its position and device, in-process), across
+     * the device swap and its second gate on a 24-word seed, the read-back of every insert's first four
+     * letters touched on the letter pad (each a match, the header naming its device), the summary (core's),
+     * the backup's and watch-only's Skip, the registration QR behind its gate (sealCode's register text),
+     * the checklist (naming two devices for 24 words, none for 12) and Finish: Home with the slot empty.
+     * Returns the read-back's time and the whole stretch's.
+     */
+    private fun wordsToFinish(activity: MainActivity, words: List<String>, sealCode: String): Pair<String, String> {
+        val start = SystemClock.elapsedRealtime()
+        val devices = words.size / INSERTS_PER_DEVICE
+        fun device(index: Int) = index / INSERTS_PER_DEVICE + 1
+        tap("show_words")
+        find("privacy_gate")
+        assertTrue("the words showed before the privacy gate", onMain { activity.model.state.value.gate })
+        tap("pass_gate")
+        await("past the words' gate", 10) { !onMain { activity.model.state.value.gate } }
+        for (index in words.indices) {
+            assertInsert(activity, words, index, device(index), devices)
+            if (index + 1 == words.size) break
+            tap("next")
+            if ((index + 1) % INSERTS_PER_DEVICE == 0) {
+                on(activity, Screen.DeviceSwap)
+                awaitText("device_swap_text", "Words 13-24 go on device 2 of 2.")
+                tap("continue")
+                find("privacy_gate")
+                assertTrue("device 2's words showed before the privacy gate", onMain { activity.model.state.value.gate })
+                tap("pass_gate")
+            }
+        }
+        tap("start_readback")
+        on(activity, Screen.ReadbackEntry)
+        val readback = SystemClock.elapsedRealtime()
+        for (index in words.indices) {
+            awaitText("readback_header", "Read back insert " + two(index + 1) + DOT + "device " + device(index) + " of " + devices)
+            typeLetters(activity, Screen.ReadbackEntry, words[index].take(4)) { it.readbackLetters }
+            tap("letters_done")
+            await("insert " + (index + 1) + " matched", 10) { onMain { activity.model.state.value.matched } }
+            assertTrue(
+                "the match does not show insert " + (index + 1) + "'s word",
+                onMain { sameWord(checkNotNull(activity.model.state.value.insert), words[index]) },
+            )
+            tap("readback_next")
+        }
+        val readbackTime = since(readback)
+        on(activity, Screen.ReadbackDone)
+        tap("show_summary")
+        on(activity, Screen.Wallet)
+        val summary = onMain { checkNotNull(activity.model.state.value.summary) }
+        val core = Core.summary()
+        assertTrue("the summary is not core's", core is Reply.Done && core.value.firstAddress == summary.firstAddress)
+        tap("summary_next")
+        on(activity, Screen.BackupOffer)
+        tap("skip_backup")
+        on(activity, Screen.WatchOffer)
+        tap("skip_watch_only")
+        on(activity, Screen.RegisterOffer)
+        tap("show_registration")
+        find("privacy_gate")
+        tap("pass_gate")
+        await("past the registration QR's gate", 10) { onMain { activity.model.state.value.let { it.screen == Screen.RegisterQr && !it.gate } } }
+        val registration = onMain { activity.model.state.value.registration } ?: throw AssertionError("no registration QR")
+        assertTrue(
+            "the registration QR is not the seed's register text (neither is printed)",
+            Checker.read(registration) == Checker.ORIGIN + "/register#c=" + sealCode,
+        )
+        tap("registration_done")
+        on(activity, Screen.Checklist)
+        if (devices == 2) {
+            assertTrue("the checklist does not say which device holds words 1-12", shown(Screen.Checklist, TWO_DEVICES))
+        } else {
+            assertFalse("a 12-word seed's checklist names two devices", device.hasObject(By.res("two_devices")))
+        }
+        tap("finish")
+        on(activity, Screen.Home)
+        assertTrue("the slot is not at home: Finish did not end the session", Core.selfTest() is Reply.Done)
+        return readbackTime to since(start)
+    }
+
+    /**
+     * A dice-only seed of 24 words to Finish with its check skipped (Stage U's U1c; swb's "24-word seeds"):
+     * dice-99-words24's 99 rolls tapped (Done disabled at 98), Skip and its confirm, the result saying the
+     * check was skipped, then the 24 words on two devices with the swap and its second gate between them,
+     * all 24 read back by touches with each insert's device named, the summary, the registration QR
+     * (dice-99-words24's register text), the checklist saying which device holds words 1-12, and Finish.
+     */
+    @Test
+    fun aDiceOnlyTwentyFourWordSeedSkipsItsCheckAndReachesFinishOnTwoDevicesThroughTheUiAlone() {
+        Capture.whileOffline {
+            val journey = SystemClock.elapsedRealtime()
+            val activity = toHome()
+            tap("dice_only_seed")
+            on(activity, Screen.Length)
+            tap("words_24")
+            on(activity, Screen.Dice, START_SECONDS)
+            awaitText("dice_count", "0 / 99 rolls, 0.0 bits")
+            val rolls = SystemClock.elapsedRealtime()
+            tapRolls(activity, 98, DICE_99_ROLLS)
+            assertFalse("Done one roll below a 24-word seed's 99", enabled("dice_done"))
+            tapRolls(activity, 1, DICE_99_ROLLS[98 % DICE_99_ROLLS.length].toString())
+            val rollTime = since(rolls)
+            awaitText("dice_count", "99 / 99 rolls, 255.9 bits")
+            tap("dice_done")
+            on(activity, Screen.CheckPrompt, START_SECONDS)
+            tap("skip")
+            on(activity, Screen.SkipConfirm)
+            tap("confirm_action")
+            on(activity, Screen.CheckResult)
+            awaitText("check_result_text", SKIPPED)
+            val (readback, rest) = wordsToFinish(activity, DICE_99_24_WORDS, DICE_99_24_SEAL_CODE)
+            pass(
+                "the dice-only 24-word journey through the UI alone: dice-99-words24's 99 rolls tapped ($rollTime), Done " +
+                    "disabled at 98, Skip confirmed; the gate, 24 inserts by Next equal to the vector's words with the device " +
+                    "swap and its gate after insert 12, 24 read back by touches with each insert's device ($readback), the " +
+                    "summary, the registration QR (its register text), the checklist naming two devices, Finish: Home with " +
+                    "the slot empty ($rest from Show words); the journey " + since(journey),
             )
             finish(activity)
         }
@@ -209,6 +283,14 @@ class JourneyTest {
         /** vectors/kcr.json's dice-99-words12's words (its mnemonic field), compared in-process with each page and never printed. */
         val DICE_99_WORDS = listOf(
             "various", "tape", "mercy", "east", "hair", "tragic", "arrest", "together", "day", "tag", "afford", "occur",
+        )
+
+        /** vectors/kcr.json's dice-99-words24 (the same 99 rolls): its seal code as registered and its words, compared in-process and never printed. */
+        const val DICE_99_24_SEAL_CODE = "C3ER95M4JV2N4TCPBRRG41J74W"
+        val DICE_99_24_WORDS = listOf(
+            "various", "tape", "mercy", "east", "hair", "tragic", "arrest", "together", "day", "tag", "afford",
+            "obvious", "devote", "violin", "coil", "conduct", "salmon", "kidney", "anchor", "monkey", "cruel", "truth",
+            "dash", "smart",
         )
     }
 }
