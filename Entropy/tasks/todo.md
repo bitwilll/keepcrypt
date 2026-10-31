@@ -16869,6 +16869,16 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   ConfigurationAndOnlineTest types a key on every pad screen (the dice, the code, the read-back, the confirm, the
   BIP39 passphrase, Check a backup's entry) before its recreation. U2b's proof counted 35 assertDiscarded call sites;
   there are 36, corrected above.
+  Proof (M5 commit U2c2, Stage U-3's review fix, partial: local, no emulator; CI's build job at the next push): the
+  reviews found no lifecycle order that sticks the buttons or opens two pickers (the answer comes at the activity's
+  start, the resume after it), and three gaps: no test pinned that a late answer frees the buttons, the resume test
+  read only the screen (a stop taken for leaving stays on Home, under the cover), and Documents.kt's KDoc said an
+  answer that comes to a recreated activity still reaches the model, though SecureActivity clears its saved state.
+  PickerPressTest's aLateAnswerFreesThePickersButtons (going online while Check a backup's picker is up, its answer
+  after Home has gone, with no resume, frees the button) and its resume test's no-cover check; Documents.kt's KDoc
+  says the answer is lost and the resume frees the buttons (M5-75 (c)); appResumed's KDoc names pickerUp. With
+  picked()'s pickerUp moved below its early return (run and reverted) the new test fails: "the late answer, with no
+  resume, freed Check a backup expected:<2> but was:<1>".
 - [ ] U3. A UX audit of every screen against the docs and the Pi: wording, order, what each button and Back do, what
   TalkBack reads on Public screens, the layout on a 360 dp phone and a large one, text sizes. A defect within the docs is
   fixed with a test; a change the docs do not allow becomes a question for the owner.

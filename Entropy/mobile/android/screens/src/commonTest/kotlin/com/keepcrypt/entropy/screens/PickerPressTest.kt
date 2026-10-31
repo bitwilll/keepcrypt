@@ -5,6 +5,7 @@ import com.keepcrypt.entropy.ffi.Reply
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -12,8 +13,9 @@ import kotlin.test.assertTrue
  * open over the app as activities of their own, one for each launch, so a double tap on Save, Check a
  * backup or Load registry snapshot, or one on each of Home's two, made before the first picker covers
  * the app, opened two, and the second's answer came after the first's. While a picker the app opened is
- * up, a press that would open one opens none; its answer (a place, a file or none) or the activity's
- * next resume (an answer lost) frees the buttons again. Each test leaves the slot at home.
+ * up, a press that would open one opens none; its answer (a place, a file or none, a late one after
+ * Home has gone too) or the activity's next resume (an answer lost) frees the buttons again, and the
+ * picker's stop is no leaving. Each test leaves the slot at home.
  */
 class PickerPressTest {
     @AfterTest
@@ -62,7 +64,23 @@ class PickerPressTest {
         rig.model.appReturned()
         rig.model.appResumed()
         assertEquals(Screen.Home, rig.screen, "the picker's stop was no leaving")
+        assertNull(rig.model.state.value.overlay, "the picker's stop brought no cover")
         rig.model.checkBackup(pickers)
         assertEquals(2, pickers.opens, "a resume with the answer lost freed Check a backup")
+    }
+
+    @Test
+    fun aLateAnswerFreesThePickersButtons() {
+        val rig = Walk.to(Screen.Home)
+        val pickers = FakePickers()
+        rig.model.checkBackup(pickers)
+        rig.offline.set(false)
+        assertEquals(Screen.GoOffline, rig.screen, "going online while the picker is up: Home needs the phone offline")
+        rig.model.backupPicked(null)
+        rig.offline.set(true)
+        rig.model.startOffline()
+        assertEquals(Screen.Home, rig.screen)
+        rig.model.checkBackup(pickers)
+        assertEquals(2, pickers.opens, "the late answer, with no resume, freed Check a backup")
     }
 }
