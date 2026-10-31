@@ -15867,6 +15867,14 @@ data partition; neither explains why the test-registry APK's search passed. U1a6
 failure, each window root of the app and the chain down to each node with the screen's id (class, resource id,
 visible, pane title), and the leg print the device's /data room. Until the cause is found and fixed, a repeat is a
 defect to diagnose from those lines, never a rerun to green, and the M5 gate report names this item (M5-74 (g)).
+Entropy Android 41152244123 at 7ab9c95 repeated it (all 10 tests again; the other five leg jobs passed), and U1a6's
+lines narrow it: "UI Automator's tree for first_launch: 0 window root(s) of com.keepcrypt.entropy", so no window of
+the app is among those UiAutomation reports while the app has composed first_launch: not U3g's pane title, which would
+leave the window listed. The device's /data read 6082144 KB with 5602688 free, so not storage either; that size is not
+U1a5's 2G, so whether the emulator applies the AVD's partition size is itself not shown, and U1a5's boot on a low-disk
+runner stays owed. U1a7 prints, before the same failure, the activity's lifecycle stage, every window UiAutomation
+reports (type, title, package, active, focused), the window manager's focus, the resumed activities and the keyguard's
+lines, to tell a window over the app, a task behind another and a window left unreported apart.
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the

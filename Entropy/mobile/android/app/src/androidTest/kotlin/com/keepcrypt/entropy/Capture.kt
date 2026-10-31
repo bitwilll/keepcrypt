@@ -420,6 +420,25 @@ internal object Capture {
             "; nodes with the id " + id + ": " + (chains.joinToString(" | ").ifEmpty { "none" })
     }
 
+    /**
+     * The system's view of the windows, for a failure's probe line beside treeFacts: every window
+     * UiAutomation reports (type, title, its root's package, active, focused), the window manager's focus
+     * lines, the activity manager's resumed activities and the keyguard's lines. System facts only.
+     */
+    fun windowFacts(): String {
+        val windows = instrumentation.uiAutomation.windows.joinToString("; ") {
+            "type " + it.type + " '" + it.title + "' " + (it.root?.packageName ?: "-") +
+                (if (it.isActive) " active" else "") + (if (it.isFocused) " focused" else "")
+        }
+        val resumed = shellText("dumpsys activity activities").lines().map { it.trim() }
+            .filter { it.startsWith("topResumedActivity") || it.startsWith("ResumedActivity") || it.startsWith("mResumedActivity") }
+            .distinct().joinToString("; ")
+        val keyguard = shellText("dumpsys window").lines().map { it.trim() }
+            .filter { "KeyguardShowing" in it || "mShowingDream" in it || "isKeyguardLocked" in it }
+            .distinct().joinToString("; ").take(300)
+        return "windows: " + windows.ifEmpty { "none" } + "; focus: " + focus() + "; resumed: " + resumed + "; keyguard: " + keyguard
+    }
+
     /** Every screen's root, by its id (its screen id, as its test tag), and the privacy gate's, which a Protected screen shows first. */
     private val ROOTS: Set<String> = Screen.entries.map { screenId(it) }.toSet() + Ui.PRIVACY_GATE
 

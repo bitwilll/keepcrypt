@@ -91,7 +91,11 @@ internal object Ui {
         await("the app shows " + screenId(screen), seconds) { onMain { activity.shownScreen } == screen }
         val root = if (onMain { activity.model.state.value.gate }) PRIVACY_GATE else screenId(screen)
         val seen = device.wait(Until.hasObject(By.res(root)), FIND_MS)
-        if (seen != true) Capture.probe("UI Automator's tree for " + root + ": " + Capture.treeFacts(activity.packageName, root))
+        if (seen != true) {
+            Capture.probe("UI Automator's tree for " + root + ": " + Capture.treeFacts(activity.packageName, root))
+            val stage = onMain { ActivityLifecycleMonitorRegistry.getInstance().getLifecycleStageOf(activity) }
+            Capture.probe("the activity's stage " + stage + "; " + Capture.windowFacts())
+        }
         assertTrue("UI Automator does not see " + root + ", though the app shows " + screenId(screen), seen == true)
         device.waitForIdle()
     }
