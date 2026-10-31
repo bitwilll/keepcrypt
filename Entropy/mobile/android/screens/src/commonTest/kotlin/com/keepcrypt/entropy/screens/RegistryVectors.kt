@@ -29,11 +29,8 @@ private fun kcrField(pattern: String, what: String): String {
 internal fun kcrToday(): Int = kcrField("\"today\": (\\d{8}),", "today").toInt()
 
 /** The bytes of kcr.json's snapshot named name (its kcr_hex). */
-internal fun kcrSnapshot(name: String): ByteArray {
-    val hex = kcrField("\"name\": \"" + Regex.escape(name) + "\",\\s*\"kcr_hex\": \"([0-9a-f]*)\"", "the snapshot " + name)
-    assertEquals(0, hex.length % 2, "an even number of hex digits")
-    return ByteArray(hex.length / 2) { i -> hex.substring(2 * i, 2 * i + 2).toInt(16).toByte() }
-}
+internal fun kcrSnapshot(name: String): ByteArray =
+    hexBytes(kcrField("\"name\": \"" + Regex.escape(name) + "\",\\s*\"kcr_hex\": \"([0-9a-f]*)\"", "the snapshot " + name))
 
 /** The go-ahead QR text of kcr.json's proof named name (its ur field, lower case; lead decision M5-42). */
 internal fun kcrProofUr(name: String): String = kcrField(
@@ -58,4 +55,55 @@ internal fun kcrWords(name: String): List<String> {
     val words = kcrSeed(name, 3).split(" ")
     assertEquals(kcrSeed(name, 2).toInt(), words.size, "the seed " + name + "'s word count")
     return words
+}
+
+/**
+ * A vector of kcr.json as core judges it (Stage U's U2g): its name, its input (a snapshot's bytes as
+ * hex, or a proof's go-ahead QR text) and its refusal, the name of core's error (a UR error's inner
+ * name: "Ur(TooLong)" is TooLong), or null where core accepts it.
+ */
+internal class KcrVector(val name: String, val input: String, val refusal: String?, private val block: String) {
+    /** For a proof core accepts: what it says of seed's check, "clear", "collision" or "wrong_bucket". */
+    fun lookup(seed: String): String {
+        val found = Regex("\"seed\": \"" + Regex.escape(seed) + "\",\\s*\"result\": \"([a-z_]+)\"").findAll(block).toList()
+        assertEquals(1, found.size, name + "'s lookup for " + seed)
+        return found[0].groupValues[1]
+    }
+
+    /** For a vector core accepts: its expect block's number field named key (number, date, count), before its lookups. */
+    fun field(key: String): String {
+        val found = Regex("\"" + Regex.escape(key) + "\": (\\d+)").findAll(block.substringBefore("\"lookups\"")).toList()
+        assertEquals(1, found.size, name + "'s " + key)
+        return found[0].groupValues[1]
+    }
+}
+
+/** Every vector of kcr.json that matches head (its name, then its input in group 2), with its expect block. */
+private fun kcrVectors(head: String, inputs: String): List<KcrVector> {
+    val pattern = Regex(head + ",\\s*\"expect\": \\{\\s*\"ok\": (true|false)(?:,\\s*\"error\": \"(?:Ur\\()?([A-Za-z]+)\\)?\")?")
+    val found = pattern.findAll(kcrJson).map { match ->
+        val end = kcrJson.indexOf("\"name\":", match.range.last).let { if (it < 0) kcrJson.length else it }
+        val (name, input, ok, error) = match.destructured
+        assertEquals(ok == "true", error.isEmpty(), name + ": an error exactly when not ok")
+        KcrVector(name, input, error.ifEmpty { null }, kcrJson.substring(match.range.first, end))
+    }.toList()
+    assertEquals(Regex(inputs).findAll(kcrJson).count(), found.size, "every vector with " + inputs + " read")
+    return found
+}
+
+/** Every snapshot of kcr.json, its kcr_hex as input. */
+internal fun kcrSnapshotVectors(): List<KcrVector> =
+    kcrVectors("\"name\": \"([^\"]+)\",\\s*\"kcr_hex\": \"([0-9a-f]*)\"", "\"kcr_hex\":")
+
+/**
+ * Every proof of kcr.json that carries a go-ahead QR text (its ur, as written: any case), its ur as
+ * input: the two P4 proofs after their kcp1_hex, the UR vectors with their ur alone.
+ */
+internal fun kcrProofUrVectors(): List<KcrVector> =
+    kcrVectors("\"name\": \"([^\"]+)\",(?:\\s*\"kcp1_hex\": \"[0-9a-f]*\",)?\\s*\"ur\": \"([^\"]*)\"", "\"ur\":")
+
+/** hex's bytes, two digits each. */
+internal fun hexBytes(hex: String): ByteArray {
+    assertEquals(0, hex.length % 2, "an even number of hex digits")
+    return ByteArray(hex.length / 2) { i -> hex.substring(2 * i, 2 * i + 2).toInt(16).toByte() }
 }

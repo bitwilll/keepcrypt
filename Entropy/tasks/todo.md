@@ -16816,6 +16816,26 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   collision, then a new seed expected:<99> but was:<50>" and "the next check ran against the snapshot core kept
   expected:<Collision> but was:<Stop>"; the snapshot check was added after a first version read only the model's
   header and passed that mutation). Locally: :screens 182 in 32 classes, none failed; the gate clean.
+  Proof (M5 commit U2g, Stage U-3, partial: local, Q76's JVM run on a Linux host, no emulator; CI's build job at the
+  next push): RefusalTablesTest (3), over the real slot and vectors/kcr.json, read whole: RegistryVectors.kt's
+  kcrProofUrVectors and kcrSnapshotVectors take every vector with a ur or a kcr_hex (each count checked against the
+  file) with core's verdict from its expect block. Every go-ahead QR text (12: too long, a bad checksum, multi-part,
+  mixed case, another type, a non-shortest head, a trailing byte, and five core accepts) scanned on the check of
+  dice-50-words12: each refusal back on the scan screen with core's code, SCAN_NOT_ACCEPTED, the same check QR
+  object and the session held; each accepted text as kcr.json's lookup for that seed says (another seal's bucket
+  refused as WrongBucket, a clear one to the proof's result, a collision). Every snapshot (41) through Home's Load
+  registry snapshot: each refusal (34) on the result with core's code and the "registry snapshot or proof rejected: "
+  text, each accepted one (7) loaded with kcr.json's number, date and count. The read-back on dice-99-words12: every
+  letter of a mirror pair in a word's first four letters read as its partner, a mirror misread on that face alone
+  with the others Ok (e, i, d and f both ways, h as j and r as w; no vector word holds j or w in its first four
+  letters, so j as h and w as r are core's every_mirror_flip_is_one_mirror_misread_and_names_the_279 alone), and each
+  insert read with the next insert's word, a mismatch whose Read it again then matches, to the read-back's end. The
+  code entry's, the confirm's, Check a backup's entry's and the BIP39 passphrase's refusals stay their classes'
+  (the pad cannot type a malformed code, and an empty BIP39 passphrase's Done does nothing). The 54 kcp1-only
+  proofs are core's (the phone scans UR text alone), and NoRegistryKey needs a build with no key (the shipping
+  APK's capture walk). It pins what was built: two mutations, each run and reverted, fail it ("unsorted-within-bucket
+  expected:<Snapshot> but was:<Stop>" for a snapshot refusal outside the table; "clear-empty-bucket: the same check
+  and nonce" for a scan refusal that drops the check). Locally: :screens 185 in 33 classes, none failed; the gate clean.
 - [ ] U3. A UX audit of every screen against the docs and the Pi: wording, order, what each button and Back do, what
   TalkBack reads on Public screens, the layout on a 360 dp phone and a large one, text sizes. A defect within the docs is
   fixed with a test; a change the docs do not allow becomes a question for the owner.
