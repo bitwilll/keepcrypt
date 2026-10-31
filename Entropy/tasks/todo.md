@@ -15908,8 +15908,8 @@ job passed. So it failed in two runs in a row (a15dc4f, 7ab9c95) and passed in t
 (U1a6 and U1a7 change only the tests' failure output): intermittent, its cause still unknown, not fixed, and not rerun
 to green. U1a6's and U1a7's lines stay in Ui.on, so a repeat names the windows; the item stays open and the M5 gate
 report names it. Entropy Android 41184964281 at ea14821 repeated it in API 36's test registry and edges job, in the
-test-registry APK's SnapshotDrillTest (all 3 tests at First launch, the class the part runs first, 16 s after the
-installs), and U1a7's lines name the cause: "windows: type 3 'Navigation bar' com.android.launcher3; type 3 'null'
+test-registry APK's SnapshotDrillTest (all 3 tests at First launch; the part's first class, started as the installs
+ended, 34 s in all), and U1a7's lines name the cause: "windows: type 3 'Navigation bar' com.android.launcher3; type 3 'null'
 com.android.systemui; type 3 'Quickstep isn't responding' android active focused; focus:
 mCurrentFocus=Window{a196b32 u0 Application Not Responding: com.android.launcher3}", the app's activity RESUMED: the
 launcher hung after the fresh boot and the system's not-responding dialog for it held the focus over the app, so
