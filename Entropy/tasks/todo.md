@@ -12031,6 +12031,12 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   the AVD lives. The partition is now 2G (2.4 GB wanted), which the five APKs, their compiled code and the tests' data
   fit many times over, and each leg prints that free space before its boot. android-emulator.sh --selftest 50 passed
   under sh and dash; the gate clean.
+  Proof (CI, the lead's, 2026-10-31, partial): Entropy Android 41148288082 at a15dc4f: API 31's capture job printed
+  "free space where the AVD lives: 75892 MB" (75349 MB for the 16 KB leg), booted at the first attempt with the 2G
+  partition and passed ControlTest 3, CaptureTest 7 in each APK, PhoneMotionTest 1 and the 16 KB leg's NativeTest;
+  every leg booted at its first attempt. No runner this time had the 3.3 GB of 41144532589, so the boot on such a
+  runner is shown by the arithmetic (2.4 GB wanted), not yet by a run. API 36's journeys job failed its tests (the
+  open item below), not its boot. U1a6 prints the device's own /data room after each boot.
   Proof (M5 commit U1a3, review fix, partial: local; CI's build job at the next push): nothing read the emulators
   matrix, so a row dropped or renamed left every gate and selftest green while that part ran on that API level
   nowhere (the U-1 review). android-emulator.sh's selftest, which the build job runs before any leg job, now reads
@@ -13066,6 +13072,10 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   U3f's redraws, and both test registry and edges jobs and API 36's capture job passed their classes. API 31's capture
   job and API 36's journeys job never booted (the runner's disk, U1a5), so U3e and U3f on API 36's journeys and API
   31's captures are not yet proved.
+  Proof (CI, the lead's, 2026-10-31, partial): Entropy Android 41148288082 at a15dc4f: API 31's capture job passed
+  (both walks, U3e's pads and U3f's redraws through the read-back, the confirm and the BIP39 entry); API 36's journeys
+  job failed all 10 of its tests at their first screen (the open item below), so U3e and U3f on API 36's journeys
+  remain unproved.
 
 **15. Screens: start to dice** (MA:166-174; PF:83-89)
 - [ ] First launch (MA:13's limits, the development-build line, "use the Pi for life savings"; every start), Self-test
@@ -15840,7 +15850,23 @@ they differ. Nothing in the Android plan is weakened.
   neverEqualPolicy changed no test's result (a replaced face writes the length twice). (f) Local proof in this session
   ran on a Linux x86_64 cloud host (JDK 21, the Android SDK's platform 37, build-tools 36.0.0 and NDK r30, Gradle's
   downloads through Q76's paths, with Maven Central rate-limiting and retried), with no emulator: the JVM tests, the
-  strict builds, --apk on throwaway-signed APKs and the selftests are local; every device claim is CI's.
+  strict builds, --apk on throwaway-signed APKs and the selftests are local; every device claim is CI's. (g) API 36's
+  journeys failed at a15dc4f (the open item of 2026-10-31): the lead does not guess a fix it cannot run; U1a6 adds the
+  failure's own diagnostics, the next run's lines decide the fix, and no failed run is rerun to green.
+
+**Open item (2026-10-31): UI Automator does not see first_launch in API 36's journeys.** Entropy Android 41148288082
+at a15dc4f failed all 10 tests of API 36's journeys job (FlowTest 7, CheckTest 2, BackupTest 1, the shipping APK),
+each at Ui.on's first screen: "UI Automator does not see first_launch, though the app shows first_launch" (By.res
+within 10 s). The same job last passed at ab6773f (run 40903211202), before Stage U-2; at dd2d617 it never booted
+(U1a5). In the same run API 36's test registry job passed SnapshotDrillTest, which reaches first_launch through the
+same Ui.toHome and By.res in the test-registry APK, and API 36's capture walk found the shipping APK's first_launch
+root by reading the tree in-process (Capture.nodesOf), with no lag probe. So the root is in the tree, and By.res did
+not match it, in the shipping APK's journeys alone. The cause is not known: Stage U-2's candidates are U3g's pane
+title on the screens' column (UI Automator passes over the subtree of a node it reads as not visible) and U1a5's 2G
+data partition; neither explains why the test-registry APK's search passed. U1a6 makes Ui.on print, before that
+failure, each window root of the app and the chain down to each node with the screen's id (class, resource id,
+visible, pane title), and the leg print the device's /data room. Until the cause is found and fixed, a repeat is a
+defect to diagnose from those lines, never a rerun to green, and the M5 gate report names this item (M5-74 (g)).
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the
@@ -16726,6 +16752,9 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   each APK, its walk reading "<screen>: its pane title is its own" on every screen of both walks (50 lines), and "its
   QR code named by its kind" on check_qr, collision_report, watch_account_qr, watch_descriptor_qr, register_qr and
   backup_recheck; ScreenTitlesTest passed in the build job. API 31's walk did not run (U1a5).
+  Proof (CI, the lead's, 2026-10-31): Entropy Android 41148288082 at a15dc4f, API 31: CaptureTest 7 passed in each
+  APK, its walk reading every screen's own pane title in both walks and the six QR codes named by kind, so U3g's
+  device check holds on API 31 and 36.
 - [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists them.
   Proof: CI at each stage's head; local runs reported as local.
 - **Stage U's commit plan** (M5-72 (h); each commit's test fails before its fix, U4):

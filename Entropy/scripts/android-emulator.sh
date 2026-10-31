@@ -924,6 +924,8 @@ sleep 10
 wake=$(value dumpsys power | grep -o 'mWakefulness=[A-Za-z]*' | head -n 1)
 shown=$(value dumpsys display | grep -o 'mScreenState=[A-Z_]*' | head -n 1)
 probe "display: $wake; $shown"
+# The data partition's room as the device sees it (U1a5 made the AVD's userdata 2G), a probe line.
+probe "data partition: $(value df -k /data | tail -n 1 | tr -s ' ')"
 # shell_screencap WHAT: the shell's own screencap while WHAT is on screen, as a probe line of its
 # exit, its byte count and its stderr. The PNG goes straight into wc and is never written anywhere.
 shell_screencap() {

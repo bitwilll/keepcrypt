@@ -84,12 +84,14 @@ internal object Ui {
      * bring up to date only after that: until then a search can match a node of the screen before, gone
      * from the window. On kc37 at 720x1184 (local) a tap on Home's About just after Back from About so
      * matched the About screen's root, which had the id of Home's About then, and clicked at that root's
-     * centre, between two of Home's buttons: run 40681107802's About failure (API 31).
+     * centre, between two of Home's buttons: run 40681107802's About failure (API 31). When UI Automator does
+     * not see the root in time, a probe line says what it does read there (Capture.treeFacts) before the failure.
      */
     fun on(activity: MainActivity, screen: Screen, seconds: Int = 10) {
         await("the app shows " + screenId(screen), seconds) { onMain { activity.shownScreen } == screen }
         val root = if (onMain { activity.model.state.value.gate }) PRIVACY_GATE else screenId(screen)
         val seen = device.wait(Until.hasObject(By.res(root)), FIND_MS)
+        if (seen != true) Capture.probe("UI Automator's tree for " + root + ": " + Capture.treeFacts(activity.packageName, root))
         assertTrue("UI Automator does not see " + root + ", though the app shows " + screenId(screen), seen == true)
         device.waitForIdle()
     }

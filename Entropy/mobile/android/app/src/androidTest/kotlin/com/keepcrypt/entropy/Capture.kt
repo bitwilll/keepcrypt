@@ -397,6 +397,29 @@ internal object Capture {
         return found
     }
 
+    /**
+     * What UI Automator reads of pkg's windows around the node whose resource name is id, for a failure's
+     * probe line: each window root of the package, then the chain from that root down to each node with
+     * that id, every node as its class's simple name, its resource name, whether it is visible to the user
+     * and its pane title (UI Automator's searches pass over the subtree of a node that is not visible). Ids,
+     * class names, flags and pane titles only: fixed names, never a node's text. Read in-process.
+     */
+    fun treeFacts(pkg: String, id: String): String {
+        fun facts(node: AccessibilityNodeInfo): String =
+            node.className?.toString()?.substringAfterLast('.') + "(" + (node.viewIdResourceName ?: "-") +
+                ", visible " + node.isVisibleToUser + (node.paneTitle?.let { ", pane " + it } ?: "") + ")"
+        val roots = UiDevice.getInstance(instrumentation).windowRoots.filter { it.packageName?.toString() == pkg }
+        val chains = ArrayList<String>()
+        fun walk(node: AccessibilityNodeInfo, path: List<String>) {
+            val here = path + facts(node)
+            if (node.viewIdResourceName == id) chains.add(here.joinToString(" > "))
+            for (index in 0 until node.childCount) node.getChild(index)?.let { walk(it, here) }
+        }
+        for (root in roots) walk(root, emptyList())
+        return roots.size.toString() + " window root(s) of " + pkg + ": " + roots.joinToString("; ") { facts(it) } +
+            "; nodes with the id " + id + ": " + (chains.joinToString(" | ").ifEmpty { "none" })
+    }
+
     /** Every screen's root, by its id (its screen id, as its test tag), and the privacy gate's, which a Protected screen shows first. */
     private val ROOTS: Set<String> = Screen.entries.map { screenId(it) }.toSet() + Ui.PRIVACY_GATE
 
