@@ -16780,6 +16780,25 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   return that clears the overlay; "backup_check_entry: going online: the notice expected:<Offline> but was:<null>"
   for an offline rule that forgets Check a backup's file). Its failure messages print UiState, whose secrets print
   only their type names (Secret, WordPage, QrMatrix). Locally: :screens 173 in 26 classes, none failed; the gate clean.
+  Proof (M5 commit U2e, Stage U-3, partial: local, Q76's JVM run on a Linux host, no emulator; CI's build job at the
+  next push; leaving on the device is U2k's): LeavingTest (2) over the walk, from MA:34, Q57 and Q75. Leaving each
+  Protected screen (13) discards at once with the Left notice (assertDiscarded), nothing secret on show
+  (Rig.assertNothingSecretShown, now TestSupport's, shared with U2d) and the slot at home; "Working..." the same once
+  its call's reply comes; the self-test back to First launch with no notice; each Public screen covered with what is
+  held kept. On each Public screen (33), 59 s away keeps what is held and its page, and the return keeps the cover
+  until the tap, which only uncovers; 61 s away wipes what is held with the Background notice both when the timers
+  ticked while away and when the process was frozen and the wipe comes at the return, and a screen holding nothing
+  keeps its place. M5-54's fail-closed residual is pinned by name, a class (and a JVM) each, since each halts the
+  slot: ResidualFinishHaltTest, ResidualRevealProofHaltTest, ResidualEncryptBackupHaltTest and
+  ResidualVerifyBackupHaltTest run the call as the model runs it (work) from the stage the model makes it in
+  (encryptBackup from the save screen, where core offers it again once the confirm is right), going online inside
+  the call after the worker's first look, and require the stop screen with the internal halt, core's own (the
+  call's refusal is kept, not halted on, and no value comes back). A control run of each with the discard taken out
+  failed it (finish and encryptBackup gave values, revealProof and verifyBackup were refused: NotUr, Header), so the
+  halt is the window's. LeavingTest pins what was built: two mutations, each run and reverted, fail it
+  ("device_entropy: 61 s away, frozen: the start screen expected:<GoOffline> but was:<DeviceEntropy>" for a return
+  that clears the background time before its tick; "reveal_d: leaving a Protected screen: the start screen" for D
+  left as a Public screen). Locally: :screens 179 in 31 classes, none failed; the gate clean, 394 files.
 - [ ] U3. A UX audit of every screen against the docs and the Pi: wording, order, what each button and Back do, what
   TalkBack reads on Public screens, the layout on a 360 dp phone and a large one, text sizes. A defect within the docs is
   fixed with a test; a change the docs do not allow becomes a question for the owner.

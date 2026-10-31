@@ -33,11 +33,6 @@ class ConfigurationAndOnlineTest {
     /** The screens before Go offline needs anything: before the self-test passes, and Go offline itself. */
     private val beforeOffline = setOf(Screen.FirstLaunch, Screen.SelfTest, Screen.GoOffline)
 
-    /** Every pad's entry, as its length: the dice's pick, the code, the read-back's, the backup's and Check a backup's letters, the BIP39 passphrase. */
-    private fun padLengths(rig: Rig): List<Int> = with(rig.model) {
-        listOf(dicePick, goAheadCode, readbackLetters, backupLetters, bip39Letters).map { it.length }
-    }
-
     /** A configuration change: the recreated activity's start and resume, with no leaving before them. */
     private fun recreate(rig: Rig) {
         rig.model.appReturned()
@@ -48,13 +43,13 @@ class ConfigurationAndOnlineTest {
     private fun assertRecreationChangesNothing(rig: Rig, what: String) {
         val before = rig.model.state.value
         val held = rig.model.held.value
-        val pads = padLengths(rig)
+        val pads = rig.padLengths()
         val waiting = rig.worker.waiting
         val starts = rig.offline.starts
         recreate(rig)
         assertEquals(before, rig.model.state.value, "$what: the state changed")
         assertEquals(held, rig.model.held.value, "$what: what is held changed")
-        assertEquals(pads, padLengths(rig), "$what: a pad's entry changed")
+        assertEquals(pads, rig.padLengths(), "$what: a pad's entry changed")
         assertEquals(waiting, rig.worker.waiting, "$what: a call was made")
         assertEquals(starts, rig.offline.starts, "$what: the offline monitor started again")
     }
@@ -111,7 +106,7 @@ class ConfigurationAndOnlineTest {
                         rig.worker.run()
                     }
                     rig.assertDiscarded(Notice.Offline, "$name: going online")
-                    assertNothingSecretShown(rig, name)
+                    rig.assertNothingSecretShown(name)
                     assertTrue(Core.selfTest() is Reply.Done, "$name: going online left something in core")
                 }
             }
@@ -122,16 +117,5 @@ class ConfigurationAndOnlineTest {
             }
             assertTrue(Core.wipeAll() is Reply.Done)
         }
-    }
-
-    /** After a discard: no secret or check value on show and every pad's entry wiped. */
-    private fun assertNothingSecretShown(rig: Rig, what: String) {
-        val state = rig.model.state.value
-        val shown = listOf(
-            state.seal, state.checkRequest, state.report, state.insert, state.overview, state.mismatch, state.summary,
-            state.passphrase, state.challenge, state.opened, state.watch, state.registration, state.deviceLeg,
-        )
-        assertTrue(shown.all { it == null }, "$what: something of the session is still on show")
-        assertEquals(listOf(0, 0, 0, 0, 0), padLengths(rig), "$what: a pad's entry outlived the discard")
     }
 }

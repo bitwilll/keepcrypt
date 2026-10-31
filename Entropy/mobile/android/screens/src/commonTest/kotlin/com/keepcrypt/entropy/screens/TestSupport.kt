@@ -1,12 +1,20 @@
 package com.keepcrypt.entropy.screens
 
+import com.keepcrypt.entropy.ffi.Core
+import com.keepcrypt.entropy.ffi.HaltReason
+import com.keepcrypt.entropy.ffi.KcHalt
 import com.keepcrypt.entropy.ffi.Mode
+import com.keepcrypt.entropy.ffi.Refusal
+import com.keepcrypt.entropy.ffi.Reply
 import com.keepcrypt.entropy.ffi.WordPage
 import com.keepcrypt.entropy.ffi.Words
 import kotlin.coroutines.CoroutineContext
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -208,6 +216,22 @@ internal class Rig(scope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined
         assertFalse(model.held.value, what + ": something is still held")
     }
 
+    /** Every pad's entry, as its length: the dice's pick, the code, the read-back's, the backup's and Check a backup's letters, the BIP39 passphrase. */
+    fun padLengths(): List<Int> = with(model) {
+        listOf(dicePick, goAheadCode, readbackLetters, backupLetters, bip39Letters).map { it.length }
+    }
+
+    /** After a discard: no seal, check, report, word page, overview, verdict, summary, passphrase, challenge, opened backup, export or D on show, and every pad's entry wiped. */
+    fun assertNothingSecretShown(what: String) {
+        val state = model.state.value
+        val shown = listOf(
+            state.seal, state.checkRequest, state.report, state.insert, state.overview, state.mismatch, state.summary,
+            state.passphrase, state.challenge, state.opened, state.watch, state.registration, state.deviceLeg,
+        )
+        assertTrue(shown.all { it == null }, "$what: something of the session is still on show")
+        assertEquals(listOf(0, 0, 0, 0, 0), padLengths(), "$what: a pad's entry outlived the discard")
+    }
+
     /** A key pressed on the showing screen's pad, on its page, as its screens make the press (the model's padKey). */
     fun press(key: Char) {
         model.padKey(screen, model.state.value.page, key)
@@ -380,6 +404,33 @@ internal class Rig(scope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined
         check(screen == Screen.Wallet) { "the mixed seed did not reach its wallet summary" }
         return commitment
     }
+}
+
+/**
+ * M5-54's fail-closed residual for call, a long call core does not offer at home (finish, revealProof,
+ * encryptBackup, verifyBackup), from rig's screen, the stage where the model makes it: run as its own long
+ * call (work), the worker's first look finds no discard, and a discard (going online) lands before core's
+ * call, so the call meets the slot at home, which halts: the stop screen with the slot's halt, internal,
+ * not the start screen a call core offers at home would end on (its result discarded again on the
+ * worker). The call's refusal is kept, not halted on as the model's calls do, so only core's own halt
+ * reaches the stop screen here. The halt latches the process's slot, so each call's pin is a class, and
+ * a JVM, of its own.
+ */
+internal fun assertTheResidualHalts(rig: Rig, call: () -> Reply<*>) {
+    val screen = rig.screen
+    var refused: Refusal? = null
+    var gave = false
+    rig.model.work({
+        rig.offline.set(false)
+        call()
+    }, refused = { refused = it }) { gave = true }
+    assertEquals(Screen.Working, rig.screen, screenId(screen) + ": the call's screen")
+    rig.worker.run()
+    assertNull(refused, screenId(screen) + ": core refused the call, so the stop screen below is not its halt")
+    assertFalse(gave, screenId(screen) + ": the call gave a value")
+    assertEquals(Screen.Stop, rig.screen, screenId(screen) + ": a discard in the window halts (M5-54)")
+    assertEquals(HaltReason.Internal, rig.model.state.value.halt, screenId(screen) + ": the stage rule's halt")
+    assertEquals(HaltReason.Internal, assertFailsWith<KcHalt>("the slot halted") { Core.selfTest() }.reason)
 }
 
 /** A backup a ceremony of its own saved: the file's bytes, the passphrase's words and the wallet's fingerprint. */
