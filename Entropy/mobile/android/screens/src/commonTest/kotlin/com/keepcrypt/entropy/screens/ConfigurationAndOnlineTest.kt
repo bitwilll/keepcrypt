@@ -1,0 +1,137 @@
+package com.keepcrypt.entropy.screens
+
+import com.keepcrypt.entropy.ffi.Core
+import com.keepcrypt.entropy.ffi.Reply
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+/**
+ * A configuration change and going online on every screen of the walk (tasks/todo.md, Stage U's U2d),
+ * over the real slot. A configuration change (a rotation, a font scale, a dark-mode switch) recreates the
+ * activity: SecureActivity reports no leaving for its stop, and the new activity's start and resume reach
+ * the model as a return and a resume while it is already in the foreground, so the screen, its page, its
+ * privacy gate, the cover or warning over it, what is held and what a pad holds stay as they were, with
+ * no call made. Going online (docs/mobile-apps.md:125 and :34, Q57): before the start-up self-test passes
+ * and on Go offline nothing goes; on Home, Length, Load registry snapshot's result and About, which hold
+ * nothing, Go offline comes back with nothing to say; on every other screen the session, restart or
+ * Check a backup's file or checked backup is discarded at once, with the Offline notice, every secret on
+ * show and every pad's entry wiped and the slot at home ("Working..." once its call's reply comes). Each
+ * screen's walk leaves the slot at home (wipeAll after it).
+ */
+class ConfigurationAndOnlineTest {
+    @AfterTest
+    fun emptyTheSlot() {
+        assertTrue(Core.wipeAll() is Reply.Done)
+    }
+
+    /** The screens that hold nothing once the start-up self-test has passed: Go offline comes back when the phone goes online on these. */
+    private val holdingNothing = setOf(Screen.Home, Screen.Length, Screen.Snapshot, Screen.About)
+
+    /** The screens before Go offline needs anything: before the self-test passes, and Go offline itself. */
+    private val beforeOffline = setOf(Screen.FirstLaunch, Screen.SelfTest, Screen.GoOffline)
+
+    /** Every pad's entry, as its length: the dice's pick, the code, the read-back's, the backup's and Check a backup's letters, the BIP39 passphrase. */
+    private fun padLengths(rig: Rig): List<Int> = with(rig.model) {
+        listOf(dicePick, goAheadCode, readbackLetters, backupLetters, bip39Letters).map { it.length }
+    }
+
+    /** A configuration change: the recreated activity's start and resume, with no leaving before them. */
+    private fun recreate(rig: Rig) {
+        rig.model.appReturned()
+        rig.model.appResumed()
+    }
+
+    /** A configuration change leaves rig's state, what it holds, its pads and its calls as they were. */
+    private fun assertRecreationChangesNothing(rig: Rig, what: String) {
+        val before = rig.model.state.value
+        val held = rig.model.held.value
+        val pads = padLengths(rig)
+        val waiting = rig.worker.waiting
+        val starts = rig.offline.starts
+        recreate(rig)
+        assertEquals(before, rig.model.state.value, "$what: the state changed")
+        assertEquals(held, rig.model.held.value, "$what: what is held changed")
+        assertEquals(pads, padLengths(rig), "$what: a pad's entry changed")
+        assertEquals(waiting, rig.worker.waiting, "$what: a call was made")
+        assertEquals(starts, rig.offline.starts, "$what: the offline monitor started again")
+    }
+
+    @Test
+    fun aConfigurationChangeOnEveryScreenChangesNothing() {
+        for (screen in Walk.gated) {
+            assertRecreationChangesNothing(Walk.to(screen, gate = true), screenId(screen) + " on its privacy gate")
+            assertTrue(Core.wipeAll() is Reply.Done)
+        }
+        for (screen in Walk.screens) {
+            val name = screenId(screen)
+            val rig = Walk.to(screen)
+            if (screen == Screen.CodeEntry) rig.press("C")
+            assertRecreationChangesNothing(rig, name)
+            assertTrue(Core.wipeAll() is Reply.Done)
+            if (isWorking(screen)) continue
+            val covered = Walk.to(screen)
+            if (isProtected(screen)) {
+                covered.clock.now += Timers.COVER_MILLIS
+                covered.model.tick()
+                assertEquals(Overlay.Cover, covered.model.state.value.overlay, name)
+                assertRecreationChangesNothing(covered, "$name under the cover")
+            } else if (covered.model.held.value) {
+                covered.clock.now += Timers.WARN_MILLIS
+                covered.model.tick()
+                assertEquals(Overlay.Warning, covered.model.state.value.overlay, name)
+                assertRecreationChangesNothing(covered, "$name under the warning")
+            }
+            assertTrue(Core.wipeAll() is Reply.Done)
+        }
+    }
+
+    @Test
+    fun goingOnlineOnEveryScreenDiscardsWhatIsHeld() {
+        for (screen in Walk.screens) {
+            val name = screenId(screen)
+            val rig = Walk.to(screen)
+            val holds = screen !in holdingNothing && screen !in beforeOffline && !isWorking(screen)
+            assertEquals(holds, rig.model.held.value, "$name: what is held before going online")
+            rig.offline.set(false)
+            when {
+                screen in beforeOffline -> {
+                    assertEquals(screen, rig.screen, "$name: going online before Go offline is needed")
+                    assertNull(rig.model.state.value.notice, name)
+                }
+                screen in holdingNothing -> {
+                    assertEquals(Screen.GoOffline, rig.screen, "$name: going online, nothing held")
+                    assertNull(rig.model.state.value.notice, "$name: nothing was held, so nothing was wiped")
+                }
+                else -> {
+                    if (screen == Screen.Working) {
+                        assertEquals(Screen.Working, rig.screen, "$name: until the call's reply")
+                        rig.worker.run()
+                    }
+                    rig.assertDiscarded(Notice.Offline, "$name: going online")
+                    assertNothingSecretShown(rig, name)
+                    assertTrue(Core.selfTest() is Reply.Done, "$name: going online left something in core")
+                }
+            }
+            rig.offline.set(true)
+            if (rig.screen == Screen.GoOffline) {
+                rig.model.startOffline()
+                assertEquals(Screen.Home, rig.screen, "$name: offline again, Start reaches Home")
+            }
+            assertTrue(Core.wipeAll() is Reply.Done)
+        }
+    }
+
+    /** After a discard: no secret or check value on show and every pad's entry wiped. */
+    private fun assertNothingSecretShown(rig: Rig, what: String) {
+        val state = rig.model.state.value
+        val shown = listOf(
+            state.seal, state.checkRequest, state.report, state.insert, state.overview, state.mismatch, state.summary,
+            state.passphrase, state.challenge, state.opened, state.watch, state.registration, state.deviceLeg,
+        )
+        assertTrue(shown.all { it == null }, "$what: something of the session is still on show")
+        assertEquals(listOf(0, 0, 0, 0, 0), padLengths(rig), "$what: a pad's entry outlived the discard")
+    }
+}

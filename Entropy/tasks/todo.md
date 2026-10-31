@@ -16765,6 +16765,21 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   was:<2>", "a double tap on Check a backup opened one picker expected:<1> but was:<2>"). The instrumented tests'
   in-process openings each answer before the next (CaptureTest), and their real pickers resume the activity.
   Locally: :screens 171 in 25 classes, none failed; the gate clean.
+  Proof (M5 commit U2d, Stage U-3, partial: local, Q76's JVM run on a Linux host, no emulator; CI's build job at the
+  next push; the recreation on the device is U2h's): ConfigurationAndOnlineTest (2) over the walk. A configuration
+  change (SecureActivity reports no leaving; the new activity's start and resume reach the model in the foreground)
+  on every screen, on each gated screen's gate, and under the cover (Protected, 30 s idle) or the warning (Public
+  holding something) leaves the state equal, what is held, every pad's entry (a code typed included), the calls and
+  the offline monitor's starts as they were. Going online, from a table of the test's own (MA:125 and :34, Q57):
+  First launch, the self-test and Go offline stay with no notice; Home, Length, the snapshot's result and About,
+  holding nothing, go to Go offline with none; the other 41 (Working among them, once its call's reply comes) are
+  discarded with the Offline notice (assertDiscarded), no seal, check, report, word page, overview, verdict, summary,
+  passphrase, challenge, opened backup, export, registration or D on show, every pad's entry empty and the slot at
+  home; what is held before matches the table on every screen; offline again, Start reaches Home. It pins what was
+  built: two mutations, each run and reverted, fail it ("device_entropy under the warning: the state changed" for a
+  return that clears the overlay; "backup_check_entry: going online: the notice expected:<Offline> but was:<null>"
+  for an offline rule that forgets Check a backup's file). Its failure messages print UiState, whose secrets print
+  only their type names (Secret, WordPage, QrMatrix). Locally: :screens 173 in 26 classes, none failed; the gate clean.
 - [ ] U3. A UX audit of every screen against the docs and the Pi: wording, order, what each button and Back do, what
   TalkBack reads on Public screens, the layout on a 360 dp phone and a large one, text sizes. A defect within the docs is
   fixed with a test; a change the docs do not allow becomes a question for the owner.
