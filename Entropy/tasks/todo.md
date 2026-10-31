@@ -16879,6 +16879,20 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   says the answer is lost and the resume frees the buttons (M5-75 (c)); appResumed's KDoc names pickerUp. With
   picked()'s pickerUp moved below its early return (run and reverted) the new test fails: "the late answer, with no
   resume, freed Check a backup expected:<2> but was:<1>".
+  Proof (M5 commit U2e2, Stage U-3's review fix, partial: local, no emulator; CI's build job at the next push): the
+  reviews found "Working..." reached through Length's start alone, so a leave or going online during the other long
+  calls was the classes' own tests at best, leaving on a privacy gate unpinned (Q82), the Protected expectation read
+  from isProtected, LeavingTest's KDoc claiming "however long" for a test of 61 s, and the revealProof residual
+  started from the check QR, not the scan screen. LeavingTest (5): theProtectedScreensAreTheDocsList (isProtected
+  against Walk.protected); leaving each of Walk.states discards at once with the Left notice (both gates as built,
+  M5-75 (d)); aLeaveOrGoingOnlineDuringEveryLongCallDiscardsIt over the start, the self-test, the dice's Done, a
+  scanned go-ahead QR's check, the backup's encryption and its check, a snapshot's read and load, a backup's read
+  and its opening, each held on the worker behind its screen, then left or gone online: the screen kept until the
+  reply, then assertDiscarded with Left or Offline, nothing secret on show, nothing loaded and the slot at home (the
+  self-test, holding no session, back to First launch after a leave and on to Go offline after going online, with
+  no notice); its KDoc says 61 s; ResidualRevealProofHaltTest starts from the scan screen. With the discard's notice
+  dropped for a long call (run and reverted): "the start, leaving: the notice expected:<Left> but was:<null>".
+  TestSupport's assertNothingSecretShown KDoc names the registration, which it checks.
 - [ ] U3. A UX audit of every screen against the docs and the Pi: wording, order, what each button and Back do, what
   TalkBack reads on Public screens, the layout on a 360 dp phone and a large one, text sizes. A defect within the docs is
   fixed with a test; a change the docs do not allow becomes a question for the owner.

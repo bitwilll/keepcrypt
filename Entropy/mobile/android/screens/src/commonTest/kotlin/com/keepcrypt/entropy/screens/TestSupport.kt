@@ -221,7 +221,7 @@ internal class Rig(scope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined
         listOf(dicePick, goAheadCode, readbackLetters, backupLetters, bip39Letters).map { it.length }
     }
 
-    /** After a discard: no seal, check, report, word page, overview, verdict, summary, passphrase, challenge, opened backup, export or D on show, and every pad's entry wiped. */
+    /** After a discard: no seal, check, report, word page, overview, verdict, summary, passphrase, challenge, opened backup, export, registration or D on show, and every pad's entry wiped. */
     fun assertNothingSecretShown(what: String) {
         val state = model.state.value
         val shown = listOf(
