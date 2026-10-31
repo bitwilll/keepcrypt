@@ -12021,6 +12021,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   timeout-minutes empty unseen. It now counts the rows and the rows' whole-minute timeout: lines, which must both be
   6. With one timeout: line removed from a copy of the workflow it fails ("rows and budgets 6 5"); android-emulator.sh
   --selftest 50 passed on the real workflow.
+  Proof (CI, the lead's, 2026-10-31): Entropy Android 41144532589 at dd2d617's build job's android-emulator.sh
+  --selftest step passed, its workflow case requiring the six rows' budgets.
   Proof (M5 commit U1a5, CI fix, partial: local; CI's leg jobs at the next push): Entropy Android 41144532589 at
   dd2d617 failed two leg jobs before any test: API 31's capture job (its 16 KB leg too) and API 36's journeys job,
   each emulator exiting at both boot attempts with "Not enough space to create userdata partition. Available: 3336.95
@@ -13038,6 +13040,9 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   makes each change in Snapshot.withMutableSnapshot, whose apply hands its changed states to the apply observers; the
   steps are the same, and with length a plain Int it fails ("reading the entry reads no snapshot state",
   PadsTest.kt:176). The gate clean under sh and dash; PadsTest 8 passed.
+  Proof (CI, the lead's, 2026-10-31): Entropy CI 41144532638 at dd2d617 green, all 14 required checks, the gates job
+  clean with U3f2 in (Entropy CI 41142081299 at cd8440b had failed it on PadsTest's three KtWindow hits); Entropy
+  Android 41144532589 at dd2d617's build job ran every JVM test task, PadsTest among them, none failed.
   Proof (M5 commit U3e2, Stage U-2's review fix, partial: local; CI's legs at the next push): the reviews found that
   padKey and padDelete passed pressOn the showing screen, so its screen check always held, and a press left over from
   a page of the same screen typed into the next one: a letter queued as the confirm's Done moved to question 2, as
@@ -13055,6 +13060,12 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   :173). FlowTest's and Ui.kt's comments on redraws read as U3f made them. The instrumented journeys still type
   in-process in places; through the UI only is U1b's (M5-74 (c)). Locally: the strict Gradle build of the five APKs
   and test APKs, :screens 165 in 23 classes, :core-ffi 34, :app 11 for each flavour, none failed; the gate clean.
+  Proof (CI, the lead's, 2026-10-31, partial: Entropy Android 41144532589 at dd2d617, four of six leg jobs; the other
+  two at the next push, U1a5): the build job's JVM tests passed (PadPressTest 5, the Rig.press callers); API 31's
+  journeys job passed FlowTest 7, CheckTest 2 and BackupTest 1 with its age -d hand-off through U3e's pad wiring and
+  U3f's redraws, and both test registry and edges jobs and API 36's capture job passed their classes. API 31's capture
+  job and API 36's journeys job never booted (the runner's disk, U1a5), so U3e and U3f on API 36's journeys and API
+  31's captures are not yet proved.
 
 **15. Screens: start to dice** (MA:166-174; PF:83-89)
 - [ ] First launch (MA:13's limits, the development-build line, "use the Pi for life savings"; every start), Self-test
@@ -16672,6 +16683,12 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   activity, whose model's end wipes the slot, and starts a new one (fail closed, M5-74 (b)); and that a start while a
   picker, the camera prompt or the airplane-mode settings is up closes it (nothing picked, nothing granted, back to Go
   offline). Locally: the strict build of the APKs and test APKs.
+  Proof (CI, the lead's, 2026-10-31): Entropy Android 41144532589 at dd2d617: LifecycleTest 8 passed in both test
+  registry and edges jobs, "a second start (NEW_TASK and MULTIPLE_TASK) reached the running activity: one
+  MainActivity, its session on the dice" on API 31 and 36, am start -W printing "Warning: Activity not started, intent
+  has been delivered to currently running top-most instance." and "Status: ok"; the build job's --apk passed both APKs
+  with launchMode=2 in their summaries. The jobs took 418 s (API 31) and 411 s (API 36), inside their 10- and
+  11-minute budgets with U2a's test in.
 - [ ] U3. A UX audit of every screen against the docs and the Pi: wording, order, what each button and Back do, what
   TalkBack reads on Public screens, the layout on a 360 dp phone and a large one, text sizes. A defect within the docs is
   fixed with a test; a change the docs do not allow becomes a question for the owner.
@@ -16705,6 +16722,10 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   live-region node first appears, so the lines that appear (a refusal, a failure, the dice's minimum and cap, the
   notice bar) may go unannounced, and a second identical code refusal changes nothing to announce. Both are for the
   TalkBack check of U3h and Q79-Q80 (M5-74 (d)).
+  Proof (CI, the lead's, 2026-10-31, partial: Entropy Android 41144532589 at dd2d617, API 36): CaptureTest 7 passed in
+  each APK, its walk reading "<screen>: its pane title is its own" on every screen of both walks (50 lines), and "its
+  QR code named by its kind" on check_qr, collision_report, watch_account_qr, watch_descriptor_qr, register_qr and
+  backup_recheck; ScreenTitlesTest passed in the build job. API 31's walk did not run (U1a5).
 - [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists them.
   Proof: CI at each stage's head; local runs reported as local.
 - **Stage U's commit plan** (M5-72 (h); each commit's test fails before its fix, U4):
