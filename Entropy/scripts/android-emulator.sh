@@ -275,8 +275,15 @@ LaunchState: COLD
     echo 'ACTIVITY MANAGER RECENT TASKS (dumpsys activity recents)'
     [ -z "${KC_RECENTS:-}" ] || echo '  * Recent #0: Task{a1 #12 type=standard A=10123:com.keepcrypt.entropy.capturecontrol}'
     ;;
-  'shell dumpsys window') printf '  mCurrentFocus=Window{b2 u0 %s/com.keepcrypt.entropy.MainActivity}
-' "$(cat "$s/front")" ;;
+  'shell dumpsys window')
+    if [ -n "${KC_ANR:-}" ] && [ ! -e "$s/anr-closed" ]; then
+      echo '  mCurrentFocus=Window{a1 u0 Application Not Responding: com.android.launcher3}'
+    else
+      printf '  mCurrentFocus=Window{b2 u0 %s/com.keepcrypt.entropy.MainActivity}
+' "$(cat "$s/front" 2> /dev/null)"
+    fi
+    ;;
+  'shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS') [ "${KC_ANR:-}" = stuck ] || : > "$s/anr-closed" ;;
   'shell input '* | 'shell wm '* | 'shell settings '* | 'shell svc '* | 'shell getprop '* | 'shell getconf '* | \
     'shell logcat -b crash -d' | 'shell dumpsys dropbox' | 'shell dumpsys content_capture' | \
     'shell pm list instrumentation' | 'shell am force-stop '*) ;;
@@ -410,6 +417,8 @@ EOF
   leg planted-not-listed KC_PLANT_LOST=1
   leg listing-cut-short KC_LIST_SHORT=1
   leg no-root KC_DEBUGGABLE=0
+  leg registry-anr-closed --part registry KC_ANR=1
+  leg registry-anr-stuck --part registry KC_ANR=stuck
   leg 16k-pass KC_PAGE_SIZE=16384 KC_ABILIST=x86_64,arm64-v8a
   leg 16k-page-4096 KC_ABILIST=x86_64,arm64-v8a
   leg 16k-native-test-fails KC_PAGE_SIZE=16384 KC_FAILCLASS=NativeTest
@@ -563,6 +572,13 @@ EOF
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
     "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
     "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy.testregistry (com.keepcrypt.entropy.SnapshotDrillTest) (each reported above)"
+  expect registry-anr-closed 0 \
+    "probe: api=31 before com.keepcrypt.entropy.SnapshotDrillTest the focus is another app's not-responding dialog: mCurrentFocus=Window{a1 u0 Application Not Responding: com.android.launcher3}" \
+    "probe: api=31 the dialog closed by am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS; the focus now: mCurrentFocus=Window{b2 u0" \
+    "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:"
+  expect registry-anr-stuck 1 \
+    "probe: api=31 before com.keepcrypt.entropy.SnapshotDrillTest the focus is another app's not-responding dialog:" \
+    "FAIL: emulator: api=31: another app's not-responding dialog holds the focus before com.keepcrypt.entropy.SnapshotDrillTest: mCurrentFocus=Window{a1 u0 Application Not Responding: com.android.launcher3}"
   # Step 2: the control's two screencaps kept for the upload, and nothing else in captures/.
   kept=$(cd "$st/pass/work/captures" 2> /dev/null && ls | tr '\n' ' ')
   if [ "$kept" = "control-api31-first-launch.png control-api31-words.png " ] &&
@@ -949,11 +965,45 @@ fail_later() {
   failed="$failed; $1"
 }
 
+# clear_foreign_anr WHAT: before WHAT runs, a system "isn't responding" dialog of another app that holds
+# the focus is closed, each step a probe line (run 41184964281: the launcher's, "Quickstep isn't
+# responding", stood over the test-registry app after the fresh boot, so UiAutomation listed no window
+# of the app and SnapshotDrillTest failed at First launch; the open item of 2026-10-31). First the
+# system's CLOSE_SYSTEM_DIALOGS broadcast, then Back (the dialog's Wait); one that stays fails the leg.
+# One of our own apps is left alone: the run's crash and ANR checks are its.
+clear_foreign_anr() {
+  focus=$(value dumpsys window | grep -o 'mCurrentFocus=Window{[^}]*}' | head -n 1)
+  case $focus in
+    *"Application Not Responding: com.keepcrypt."*) return 0 ;;
+    *"Application Not Responding: "*) ;;
+    *) return 0 ;;
+  esac
+  probe "before $1 the focus is another app's not-responding dialog: $focus"
+  for way in "am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS" "input keyevent KEYCODE_BACK"; do
+    # $way unquoted: its words are the shell command's arguments.
+    dev shell $way > /dev/null 2>&1
+    for _ in 1 2 3 4 5; do
+      sleep 1
+      focus=$(value dumpsys window | grep -o 'mCurrentFocus=Window{[^}]*}' | head -n 1)
+      case $focus in
+        *"Application Not Responding: "*) ;;
+        *)
+          probe "the dialog closed by $way; the focus now: $focus"
+          return 0
+          ;;
+      esac
+    done
+  done
+  fail_later "another app's not-responding dialog holds the focus before $1: $focus"
+}
+
 # instrument TARGET CLASS...: android-instrument.sh on TARGET's test APK, its output kept in
-# $work/instrument.log for the kc: lines; a class --booted named runs without the tests it named.
+# $work/instrument.log for the kc: lines; a class --booted named runs without the tests it named; a
+# system dialog of another app holding the focus is closed first (clear_foreign_anr).
 instrument() {
   target=$1
   shift
+  clear_foreign_anr "$*"
   tests=
   for t; do
     for w in $without; do

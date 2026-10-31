@@ -15907,7 +15907,16 @@ lines, to tell a window over the app, a task behind another and a window left un
 job passed. So it failed in two runs in a row (a15dc4f, 7ab9c95) and passed in the next with no app change between
 (U1a6 and U1a7 change only the tests' failure output): intermittent, its cause still unknown, not fixed, and not rerun
 to green. U1a6's and U1a7's lines stay in Ui.on, so a repeat names the windows; the item stays open and the M5 gate
-report names it.
+report names it. Entropy Android 41184964281 at ea14821 repeated it in API 36's test registry and edges job, in the
+test-registry APK's SnapshotDrillTest (all 3 tests at First launch, the class the part runs first, 16 s after the
+installs), and U1a7's lines name the cause: "windows: type 3 'Navigation bar' com.android.launcher3; type 3 'null'
+com.android.systemui; type 3 'Quickstep isn't responding' android active focused; focus:
+mCurrentFocus=Window{a196b32 u0 Application Not Responding: com.android.launcher3}", the app's activity RESUMED: the
+launcher hung after the fresh boot and the system's not-responding dialog for it held the focus over the app, so
+UiAutomation listed no window of the app. The same part's LifecycleTest and CrashTest, run after it, passed. It is the
+emulator's, not the app's (the dialog is the launcher's, and the app was resumed and drawn); a fresh boot's launcher
+hangs on some runs and not others, which is why it came and went. U1a8 closes such a dialog before each instrumented
+class. The item stays open until a CI run passes with U1a8 in, or shows its lines.
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the
@@ -16923,6 +16932,23 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   out of isBackupRefusal (run and reverted): "armor-lowercase-label: a refusal returns to the entry
   expected:<BackupCheckEntry> but was:<Stop>". Locally, at this commit: :screens 193 in 33 classes, none failed;
   both release APKs built; the gate clean, 396 files.
+  Proof (CI, the lead's, 2026-10-31): Entropy CI 41184964058 at ea14821, every job green; Entropy Android 41184964281 at
+  ea14821: the build job green in 9 min 52 s (its 17-minute budget, M5-75 (g)), its strict build running every JVM
+  test task and its report step finding every test class's report with no failure, U-3's BackTest, PickerPressTest,
+  ConfigurationAndOnlineTest, LeavingTest, IdleTest, RefusalTablesTest and the four Residual*HaltTest classes among
+  them (each in its own JVM); --apk passed both APKs; API 31's capture (then 16 KB pages), journeys and test registry
+  and edges jobs and API 36's capture and journeys jobs green (API 36's journeys in 12 min 28 s); API 36's test
+  registry and edges job failed in SnapshotDrillTest on the open item of 2026-10-31, whose cause its lines name (U1a8).
+  Proof (M5 commit U1a8, CI fix, partial: local, no emulator; CI's API 36 test registry and edges job at the next push):
+  android-emulator.sh's clear_foreign_anr runs before each instrumented class: when the window manager's focus is an
+  "Application Not Responding" dialog of an app that is not ours, it prints that focus as a probe line, sends the
+  system's CLOSE_SYSTEM_DIALOGS broadcast and then Back (the dialog's Wait), each followed by up to 5 s of checks,
+  prints the step that closed it, and fails the leg naming the dialog if none did; one of our own apps is left for the
+  run's crash and ANR checks (android-instrument.sh's "a not-responding window"). Error dialogs are not hidden
+  globally, which would empty CrashTest's "no crash window" check. --selftest's stand-in adb gains the launcher's dialog
+  (KC_ANR): registry-anr-closed (the broadcast closes it: the two probe lines, the leg passes) and registry-anr-stuck
+  (it stays: "another app's not-responding dialog holds the focus before com.keepcrypt.entropy.SnapshotDrillTest", the
+  leg fails). Which step closes the real dialog is CI's to show. Locally: android-emulator.sh --selftest 52 passed.
 - [ ] U3. A UX audit of every screen against the docs and the Pi: wording, order, what each button and Back do, what
   TalkBack reads on Public screens, the layout on a 360 dp phone and a large one, text sizes. A defect within the docs is
   fixed with a test; a change the docs do not allow becomes a question for the owner.
@@ -16982,23 +17008,23 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
     table, every mirror pair, a wrong insert).
   - U-3's plan (the lead's, 2026-10-31; M5-72 (h) runs U-1 to U-5 without a check-in; each commit's test fails
     before its fix, or says it pins what was built):
-    - [ ] U2b: Walk.kt (commonTest) brings a fresh Rig to any of the 48 screens but Stop (a halt latches the
+    - [x] U2b: Walk.kt (commonTest) brings a fresh Rig to any of the 48 screens but Stop (a halt latches the
       process's slot, so the stop screen stays the halt classes'), on its privacy gate or past it, by CaptureTest's
       path, each step checked. BackTest walks to each and presses Back once and twice: where it lands is a table of
       its own from PF's buttons table and entry grids line and MA:34 (not backTo's), the session, check, nonce and
       page held where it stays, and Back under the gate, the cover and the warning does nothing. Rig.assertDiscarded
       names a discard's landing (Go offline, Q81 open) once, and every test's discard landing calls it.
-    - [ ] U2c: one press opens one picker: a second press on Save, Check a backup or Load registry snapshot while its
+    - [x] U2c: one press opens one picker: a second press on Save, Check a backup or Load registry snapshot while its
       picker is open opens none, and the picker's answer (or the next resume with none) frees the button.
-    - [ ] U2d: on every screen of the walk, a configuration change is no leaving (the screen, gate, page, overlay
+    - [x] U2d: on every screen of the walk, a configuration change is no leaving (the screen, gate, page, overlay
       and session as they were), and going online discards with Notice.Offline where a session or file is held and
       shows Go offline where not.
-    - [ ] U2e: on every screen of the walk, leaving: Public 59 s kept and 61 s wiped (and a return within 60 s
+    - [x] U2e: on every screen of the walk, leaving: Public 59 s kept and 61 s wiped (and a return within 60 s
       under the cover), Protected and Working discarded at once; M5-54's halting residuals pinned by name.
-    - [ ] U2f: on every screen of the walk, the idle rules (the 30 s cover on Protected screens alone, the 9-minute
+    - [x] U2f: on every screen of the walk, the idle rules (the 30 s cover on Protected screens alone, the 9-minute
       warning and 10-minute wipe while something is held, nothing where nothing is); the 99-roll minimum through
       every restart path (Add fresh entropy, Start again, a discard and a new start).
-    - [ ] U2g: every refusal table (the code, the read-back, the confirm, Check a backup's entry, the BIP39
+    - [x] U2g: every refusal table (the code, the read-back, the confirm, Check a backup's entry, the BIP39
       passphrase, the files and snapshots) against core's texts, every mirror pair and a wrong insert on the read-back.
     - Verification: :screens' JVM tests and the strict Gradle build locally (no emulator here), the gate before
       every commit that adds Kotlin (M5-74 (a)), three independent reviews at the stage's head, their fixes, the
