@@ -56,6 +56,7 @@ import com.keepcrypt.entropy.screens.SKIPPED
 import com.keepcrypt.entropy.screens.Screen
 import com.keepcrypt.entropy.screens.fingerprintHex
 import com.keepcrypt.entropy.screens.hexGroups
+import java.nio.CharBuffer
 import java.security.MessageDigest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -66,7 +67,7 @@ import org.junit.runner.RunWith
 /**
  * U1's journeys from First launch to Finish through the UI alone (tasks/todo.md, Stage U's U1 and its
  * commit plan's U-4; lead decision M5-72 (a)), run by scripts/android-instrument.sh on the shipping app in
- * the API 31 and 36 journeys jobs. Every input is the user's, made on the screen: UI Automator taps the
+ * the API 31 and 36 ui jobs (android-emulator.sh's ui part, M5-76 (g)). Every input is the user's, made on the screen: UI Automator taps the
  * Public controls by their resource ids, the dice faces are pressed on the Public pad by their
  * accessibility click and confirmed by tap (Ui.tapRolls), the go-ahead code is tapped on the Crockford pad
  * (Ui.tapCode) and the read-back's letters are touched on the Protected letter pad (Ui.typeLetters), so
@@ -355,8 +356,18 @@ class JourneyTest {
         return words
     }
 
-    /** word's first four letters (a three-letter word's three), as the letter pad takes them (never printed). */
-    private fun firstLetters(word: ByteArray): String = String(CharArray(minOf(4, word.size)) { Char(word[it].toInt()) })
+    /**
+     * word's first four letters (a three-letter word's three) touched on screen's letter pad into the
+     * backup's entry, through an array zeroed once typed (never a String, never printed).
+     */
+    private fun typeFirstLetters(activity: MainActivity, screen: Screen, word: ByteArray) {
+        val letters = CharArray(minOf(4, word.size)) { Char(word[it].toInt()) }
+        try {
+            typeLetters(activity, screen, CharBuffer.wrap(letters)) { it.backupLetters }
+        } finally {
+            letters.fill('\u0000')
+        }
+    }
 
     /**
      * Cannot check to Start again, then the seed's encrypted backup made and checked through the UI alone
@@ -419,27 +430,35 @@ class JourneyTest {
             find("privacy_gate")
             tap("pass_gate")
             await("past the passphrase's gate", 10) { onMain { activity.model.state.value.let { it.screen == Screen.BackupPassphrase && !it.gate } } }
-            val passphrase = ArrayList(onMain { passphrasePage(activity) })
-            tap("next")
-            await("the passphrase's second page", 10) { onMain { activity.model.state.value.page } == 1 }
-            passphrase.addAll(onMain { passphrasePage(activity) })
-            assertEquals("eight passphrase words", PASSPHRASE_WORDS, passphrase.size)
-            tap("passphrase_written")
-            on(activity, Screen.BackupConfirm)
-            repeat(2) { question ->
-                val position = onMain { activity.model.state.value.let { checkNotNull(it.challenge).questions[it.page].position } }
-                typeLetters(activity, Screen.BackupConfirm, firstLetters(passphrase[position - 1])) { it.backupLetters }
-                tap("confirm_done")
-                if (question == 0) await("the confirm's second word", 10) { onMain { activity.model.state.value.page } == 1 }
-            }
-            on(activity, Screen.BackupSave, START_SECONDS)
-            val name = text("backup_name")
-            // A file of that name left by a test before (BackupTest's, when one boot runs every part) would
-            // be the one Check a backup picks: Downloads holds none of it before this save.
-            Picker.removeFromDownloads(name)
-            tap("save_backup")
-            val creator = Picker.save(name)
+            // The passphrase's words, read in-process (never printed), zeroed on every way out of the journey,
+            // and the saved file removed the same way.
+            val passphrase = ArrayList<ByteArray>()
+            var name: String? = null
+            var creator = ""
             try {
+                passphrase.addAll(onMain { passphrasePage(activity) })
+                tap("next")
+                await("the passphrase's second page", 10) { onMain { activity.model.state.value.page } == 1 }
+                passphrase.addAll(onMain { passphrasePage(activity) })
+                assertEquals("eight passphrase words", PASSPHRASE_WORDS, passphrase.size)
+                tap("passphrase_written")
+                on(activity, Screen.BackupConfirm)
+                for (question in 1..2) {
+                    // The pad's keys carry the page they were drawn for, so each question is typed once the screen
+                    // shows it, not only once the model holds it.
+                    awaitText("confirm_question", "Check your copy: question $question of 2")
+                    val position = onMain { activity.model.state.value.let { checkNotNull(it.challenge).questions[it.page].position } }
+                    typeFirstLetters(activity, Screen.BackupConfirm, passphrase[position - 1])
+                    tap("confirm_done")
+                }
+                on(activity, Screen.BackupSave, START_SECONDS)
+                val saved = text("backup_name")
+                // A file of that name left by a test before (BackupTest's, when one boot runs every part) would
+                // be the one Check a backup picks: Downloads holds none of it before this save.
+                Picker.removeFromDownloads(saved)
+                name = saved
+                tap("save_backup")
+                creator = Picker.save(saved)
                 on(activity, Screen.BackupVerified, START_SECONDS)
                 tap("backup_next")
                 on(activity, Screen.WatchOffer)
@@ -448,17 +467,16 @@ class JourneyTest {
                 tap("skip_registration")
                 checklistToFinish(activity, 1)
                 tap("check_backup")
-                Picker.pick(name)
+                Picker.pick(saved)
                 on(activity, Screen.BackupCheckEntry, START_SECONDS)
                 find("privacy_gate")
                 tap("pass_gate")
                 await("past the entry's gate", 10) { onMain { !activity.model.state.value.gate } }
                 for ((index, word) in passphrase.withIndex()) {
                     awaitText("entry_word", "Backup passphrase, word " + (index + 1) + " of " + PASSPHRASE_WORDS)
-                    typeLetters(activity, Screen.BackupCheckEntry, firstLetters(word)) { it.backupLetters }
+                    typeFirstLetters(activity, Screen.BackupCheckEntry, word)
                     tap("entry_done")
                 }
-                for (word in passphrase) word.fill(0)
                 on(activity, Screen.BackupCheckResult, START_SECONDS)
                 awaitText("backup_fingerprint", fingerprint)
                 awaitText("backup_seal_id", DICE_50_SEAL_ID)
@@ -475,7 +493,7 @@ class JourneyTest {
                 assertTrue("the slot is not at home: Done did not end the check", Core.selfTest() is Reply.Done)
             } finally {
                 for (word in passphrase) word.fill(0)
-                Picker.removeFromDownloads(name)
+                name?.let(Picker::removeFromDownloads)
             }
             pass(
                 "the Cannot check and backup journey through the UI alone: 50 rolls tapped, Cannot check's confirm and its " +

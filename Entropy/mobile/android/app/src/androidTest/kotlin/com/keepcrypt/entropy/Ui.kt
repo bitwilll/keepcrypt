@@ -26,6 +26,7 @@ import com.keepcrypt.entropy.screens.CeremonyModel
 import com.keepcrypt.entropy.screens.INSERTS_PER_DEVICE
 import com.keepcrypt.entropy.screens.LETTER_KEYS
 import com.keepcrypt.entropy.screens.PadEntry
+import com.keepcrypt.entropy.screens.SECRET_TAG
 import com.keepcrypt.entropy.screens.Screen
 import com.keepcrypt.entropy.screens.asciiPage
 import com.keepcrypt.entropy.screens.screenId
@@ -315,11 +316,15 @@ internal object Ui {
 
     /**
      * The keys of the Protected pad on screen, in its order: the nodes under the screen's root with the
-     * button role and no text, description or resource id, which must be count; and no node there has a
-     * text that names (a key's label) or a Public key's id (key_ and a key), so nothing names a key (lead
-     * decision M5-46). Read through UiAutomation's own nodes (appNode's walk, in tree order, as UI
-     * Automator's search returns them), with no idle wait and no selector logged (Stage U's U1c; U1b2 found
-     * a search costs 500 ms of quiet), and read again until the count is there, for up to 10 s.
+     * button role and no text, description or resource id, which must be count; and no node there but the
+     * entry's own secret one has a text that names (a key's label) or a Public key's id (key_ and a key), so
+     * nothing names a key (lead decision M5-46). The entry's secret node (SECRET_TAG, the typed text the
+     * screen shows, under FLAG_SECURE) is left out of the label check: the BIP39 entry shows a passphrase as
+     * typed, so after one character it is one character long, which is no key's label (the review of U-4
+     * found the check failing there, Entropy Android 41203734694). Read through UiAutomation's own nodes
+     * (appNode's walk, in tree order, as UI Automator's search returns them), with no idle wait and no
+     * selector logged (Stage U's U1c; U1b2 found a search costs 500 ms of quiet), and read again until the
+     * count is there, for up to 10 s.
      */
     private fun padKeys(screen: Screen, count: Int, names: Regex): List<AccessibilityNodeInfo> =
         poll("the pad's $count keys on " + screenId(screen)) {
@@ -335,7 +340,8 @@ internal object Ui {
                     it.viewIdResourceName.isNullOrEmpty()
             }
             if (keys.size != count) return@poll null
-            assertFalse("a node on " + screenId(screen) + " names a key", nodes.any { it.text?.toString()?.matches(names) == true })
+            val labels = nodes.filter { it.viewIdResourceName != SECRET_TAG }
+            assertFalse("a node on " + screenId(screen) + " names a key", labels.any { it.text?.toString()?.matches(names) == true })
             assertFalse("a key on " + screenId(screen) + " has a Public key's id", nodes.any { it.viewIdResourceName?.startsWith("key_") == true })
             keys
         }
@@ -348,31 +354,46 @@ internal object Ui {
 
     /**
      * Touches the key keys() gives at index (read afresh from the app before the touch, its node
-     * refreshed and visible) at the middle of its screen bounds (touch, which logs no point: a click's
-     * logged point would name the key on the pad's fixed grid), then waits in-process, for up to 10 s,
-     * until entry, the model's pad entry, holds length keys, so the next touch is on the pad as this one
-     * left it.
+     * refreshed and visible) at the middle of the part of it its window shows (its screen bounds cut to
+     * the window's, so a key the window clips is touched where it is drawn; touch, which logs no point: a
+     * click's logged point would name the key on the pad's fixed grid), then waits in-process, for up to
+     * 10 s, until entry, the model's pad entry, holds length keys, so the next touch is on the pad as this
+     * one left it.
      */
     private fun touchKey(activity: MainActivity, keys: () -> List<AccessibilityNodeInfo>, index: Int, entry: (CeremonyModel) -> PadEntry, length: Int) {
         val bounds = poll("the pad's key, visible") {
             val key = keys()[index]
-            if (key.refresh() && key.isVisibleToUser) Rect().also(key::getBoundsInScreen).takeIf { !it.isEmpty } else null
+            if (!key.refresh() || !key.isVisibleToUser) return@poll null
+            val shown = Rect().also(key::getBoundsInScreen)
+            val window = key.window?.let { Rect().also(it::getBoundsInScreen) } ?: return@poll null
+            shown.takeIf { it.intersect(window) && !it.isEmpty }
         }
         touch(bounds)
         poll("the pad's touch typed (key " + length + ")") { onMain { entry(activity.model).length == length }.takeIf { it } }
     }
 
     /** Whether entry holds typed after its first from keys (in-process, compared, never printed). */
-    private fun holds(activity: MainActivity, entry: (CeremonyModel) -> PadEntry, from: Int, typed: String): Boolean = onMain {
+    private fun holds(activity: MainActivity, entry: (CeremonyModel) -> PadEntry, from: Int, typed: CharSequence): Boolean = onMain {
         val pad = entry(activity.model)
         pad.length == from + typed.length && typed.indices.all { pad.keyAt(from + it) == typed[it] }
     }
 
     /**
-     * Types letters on screen's letter pad, a touch on each key (touchKey), and checks entry, the model's
-     * pad entry of screen, holds them after any it held before (compared, never printed).
+     * The Public control tag pressed by its accessibility click (as TalkBack presses it) once it is
+     * enabled, through UiAutomation's own nodes: no UI Automator selector, so what is pressed, and how
+     * often, goes into no log (typeAscii's page turns, which follow a passphrase's characters).
      */
-    fun typeLetters(activity: MainActivity, screen: Screen, letters: String, entry: (CeremonyModel) -> PadEntry) {
+    private fun press(tag: String) {
+        val node = poll("$tag enabled") { appNode(tag)?.takeIf { it.isEnabled } }
+        assertTrue("$tag did not take the press", node.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+    }
+
+    /**
+     * Types letters on screen's letter pad, a touch on each key (touchKey), and checks entry, the model's
+     * pad entry of screen, holds them after any it held before (compared, never printed). letters may be a
+     * CharBuffer over an array the caller zeroes after (a secret's letters, JourneyTest).
+     */
+    fun typeLetters(activity: MainActivity, screen: Screen, letters: CharSequence, entry: (CeremonyModel) -> PadEntry) {
         val before = onMain { entry(activity.model).length }
         for ((at, letter) in letters.withIndex()) {
             touchKey(activity, { letterKeys(screen) }, LETTER_KEYS.indexOf(letter), entry, before + at + 1)
@@ -382,12 +403,13 @@ internal object Ui {
 
     /**
      * Types text (printable ASCII) on the BIP39 passphrase's ASCII pad, a touch on each key (touchKey), its
-     * page of keys first turned by Next keys or Previous keys (Public buttons, tapped) to the one that holds
-     * the key, the page's line waited for; then checks the model's entry holds text after any it held
-     * before (compared, never printed). The page is read in-process (to observe), and no key goes into a
-     * selector: the paging buttons' ids name no key.
+     * page of keys first turned by Next keys or Previous keys (Public buttons, pressed by their accessibility
+     * click, press) to the one that holds the key, the page's line read from the app until it names it;
+     * then checks the model's entry holds text after any it held before (compared, never printed). Nothing
+     * here goes through a UI Automator selector, so the pages a passphrase's characters fall on (which
+     * would tell its kinds of character) go into no log (the review of U-4); the page is read in-process.
      */
-    fun typeAscii(activity: MainActivity, text: String) {
+    fun typeAscii(activity: MainActivity, text: CharSequence) {
         val before = onMain { activity.model.bip39Letters.length }
         for ((at, key) in text.withIndex()) {
             val index = ASCII_KEYS.indexOf(key)
@@ -396,10 +418,11 @@ internal object Ui {
             while (true) {
                 val shown = onMain { activity.model.state.value.page }
                 if (shown == page) break
-                tap(if (shown < page) "keys_next" else "keys_previous")
+                press(if (shown < page) "keys_next" else "keys_previous")
                 await("the ASCII pad's page turned", 10) { onMain { activity.model.state.value.page } != shown }
             }
-            awaitText("keys_page", "Keys, page " + (page + 1) + " of " + ASCII_PAGES)
+            val line = "Keys, page " + (page + 1) + " of " + ASCII_PAGES
+            poll("the ASCII pad's page line") { appNode("keys_page")?.takeIf { it.text?.toString() == line } }
             touchKey(activity, { asciiKeys(page) }, index % ASCII_PAGE_KEYS, { it.bip39Letters }, before + at + 1)
         }
         assertTrue("the ASCII pad's touches did not type the passphrase touched", holds(activity, { it.bip39Letters }, before, text))

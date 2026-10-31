@@ -18,6 +18,8 @@ internal object GateSeeds {
 
     /** dice-99-words12's and dice-99-words24's rolls: 654321 repeated (99). */
     const val DICE_99_ROLLS = "654321"
+
+    /** dice-99-words12's Seal ID, seal tag T and seal code (dice-99-words24's are below), and its words. */
     const val DICE_99_SEAL_ID = "9FHYMCQA"
     const val DICE_99_TAG = "4be3ea32eaee361d4ba6ce2135459510ccd0b7fd869121425c068b4538657f14"
     const val DICE_99_SEAL_CODE = "15ZHX4W7AVW8VRSNJVXZEHQ2SV"

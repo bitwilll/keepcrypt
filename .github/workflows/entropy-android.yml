@@ -44,7 +44,7 @@
 # level's leg in four parts, one a job (scripts/android-emulator.sh --part; commits U1a, U1a2 and U1e):
 # capture (the capture harness, its positive controls and first frames, and PhoneMotionTest), the
 # shipping journeys (FlowTest, CheckTest and BackupTest), ui (JourneyTest, U1's journeys through the UI
-# alone) and registry, the test registry and the
+# alone, then StopJourneyTest, the stop screen's Close app) and registry, the test registry and the
 # edges (SnapshotDrillTest, the test-registry app's, then LifecycleTest and CrashTest); and, from
 # commit 14, the 16 KB-page
 # system-images;android-36;google_apis_ps16k;x86_64 (the ARM and 16 KB leg) after API 31's capture
@@ -654,7 +654,10 @@ jobs:
     # jobs go back to 20 minutes (FlowTest, CheckTest and BackupTest, measured 919 s and 952 s in run
     # 40903211202 before JourneyTest), and the ui jobs are measured at 30, then each budgeted at its
     # measured time plus 25%. U1f adds two journeys to SnapshotDrillTest, so the registry jobs are
-    # measured at 30 too (M5-76 (f)).
+    # measured at 30 too (M5-76 (f)). Run 41203734694 at 62f9c8c took 862 s and 896 s for the registry
+    # jobs and 924 s and 867 s for the journeys jobs, so 18 and 19, and 20 and 19 minutes; its ui jobs
+    # (1207 s and 1171 s) ran with the mixed journey failing before its end, so they stay at 30 until a
+    # run measures them whole (M5-76 (h)).
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       # Every leg job runs to its end: a red leg never cancels another job or hides its evidence.
@@ -678,7 +681,7 @@ jobs:
           - api: '31'
             part: registry
             legs: API 31, test registry and edges
-            timeout: 30
+            timeout: 18
           - api: '36'
             part: capture
             legs: API 36, capture
@@ -686,7 +689,7 @@ jobs:
           - api: '36'
             part: journeys
             legs: API 36, journeys
-            timeout: 20
+            timeout: 19
           - api: '36'
             part: ui
             legs: API 36, journeys through the UI alone
@@ -694,7 +697,7 @@ jobs:
           - api: '36'
             part: registry
             legs: API 36, test registry and edges
-            timeout: 30
+            timeout: 19
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -747,7 +750,7 @@ jobs:
       # The emulator and the two system images come from sdkmanager, into their own SDK root. The
       # revisions it offers now make the cache key, so a new revision is a fresh download, and the
       # install below must end with exactly these revisions. Every leg job installs all four packages
-      # under the one key, as the one job did, so all six share one cache entry.
+      # under the one key, as the one job did, so all eight share one cache entry.
       - name: Emulator and system image revisions (sdkmanager --list)
         run: |
           fail() { echo "FAIL: emulator revisions: $1" >&2; exit 1; }

@@ -1,19 +1,18 @@
 package com.keepcrypt.entropy
 
 import android.os.SystemClock
-import androidx.test.uiautomator.By
 import com.keepcrypt.entropy.Capture.onMain
 import com.keepcrypt.entropy.Ui.DOT
 import com.keepcrypt.entropy.Ui.assertInsert
 import com.keepcrypt.entropy.Ui.assertInsertAt
 import com.keepcrypt.entropy.Ui.await
 import com.keepcrypt.entropy.Ui.awaitText
-import com.keepcrypt.entropy.Ui.device
 import com.keepcrypt.entropy.Ui.find
 import com.keepcrypt.entropy.Ui.on
 import com.keepcrypt.entropy.Ui.sameWord
 import com.keepcrypt.entropy.Ui.shown
 import com.keepcrypt.entropy.Ui.tap
+import com.keepcrypt.entropy.Ui.text
 import com.keepcrypt.entropy.Ui.two
 import com.keepcrypt.entropy.Ui.typeLetters
 import com.keepcrypt.entropy.ffi.Core
@@ -23,6 +22,8 @@ import com.keepcrypt.entropy.screens.INSERTS_PER_DEVICE
 import com.keepcrypt.entropy.screens.Screen
 import com.keepcrypt.entropy.screens.TWO_DEVICES
 import com.keepcrypt.entropy.screens.fingerprintHex
+import java.nio.CharBuffer
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 
@@ -73,13 +74,23 @@ internal object Journeys {
         val readback = SystemClock.elapsedRealtime()
         for (index in 0 until count) {
             awaitText("readback_header", "Read back insert " + two(index + 1) + DOT + "device " + device(index) + " of " + devices)
-            val letters = words?.get(index)?.take(4) ?: onMain {
-                val word = checkNotNull(activity.model.state.value.insert).word()
-                val first = String(CharArray(minOf(4, word.size)) { Char(word[it].toInt()) })
-                word.wipe()
-                first
+            if (words != null) {
+                typeLetters(activity, Screen.ReadbackEntry, words[index].take(4)) { it.readbackLetters }
+            } else {
+                // A seed that is no vector's: its insert's first letters read in-process into an array that is
+                // zeroed once typed (never a String, never printed).
+                val letters = onMain {
+                    val word = checkNotNull(activity.model.state.value.insert).word()
+                    val first = CharArray(minOf(4, word.size)) { Char(word[it].toInt()) }
+                    word.wipe()
+                    first
+                }
+                try {
+                    typeLetters(activity, Screen.ReadbackEntry, CharBuffer.wrap(letters)) { it.readbackLetters }
+                } finally {
+                    letters.fill('\u0000')
+                }
             }
-            typeLetters(activity, Screen.ReadbackEntry, letters) { it.readbackLetters }
             tap("letters_done")
             await("insert " + (index + 1) + " matched", 10) { onMain { activity.model.state.value.matched } }
             if (words != null) {
@@ -102,7 +113,8 @@ internal object Journeys {
         val summary = onMain { checkNotNull(activity.model.state.value.summary) }
         val core = Core.summary()
         assertTrue("the summary is not core's", core is Reply.Done && core.value.firstAddress == summary.firstAddress)
-        awaitText("fingerprint", fingerprintHex(summary.fingerprint))
+        // Compared in-process: a seed that is no vector's has a fingerprint no selector should carry.
+        assertEquals("the summary's fingerprint on the screen", fingerprintHex(summary.fingerprint), text("fingerprint"))
         tap("summary_next")
         on(activity, Screen.BackupOffer)
         return summary
@@ -148,7 +160,8 @@ internal object Journeys {
         if (devices == 2) {
             assertTrue("the checklist does not say which device holds words 1-12", shown(Screen.Checklist, TWO_DEVICES))
         } else {
-            assertFalse("a 12-word seed's checklist names two devices", device.hasObject(By.res("two_devices")))
+            // shown scans the checklist's text column to its end, so the line below its items cannot be missed.
+            assertFalse("a 12-word seed's checklist names two devices", shown(Screen.Checklist, TWO_DEVICES))
         }
         tap("finish")
         on(activity, Screen.Home)

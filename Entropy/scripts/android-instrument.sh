@@ -23,8 +23,9 @@
 # failure, error, ignored test or assumption failure, the runner's final INSTRUMENTATION_CODE: -1 and
 # no INSTRUMENTATION_FAILED, INSTRUMENTATION_ABORTED or shortMsg (a crashed process). A killed: run
 # passes only when the process ended during it instead: a test started, none passed, and the activity
-# manager's shortMsg says the process went; a gone: run passes only the same way. Then every run is
-# judged from the shell, the crash test's
+# manager's shortMsg says the process went; a gone: run passes only the same way, with that shortMsg its
+# only bad line and the test's own kc_pass line before it (the process went where the test ends it). Then
+# every run is judged from the shell, the crash test's
 # too: TARGET_PACKAGE's process is gone, no crash or not-responding window exists, `logcat -b crash`
 # holds no line naming com.keepcrypt.entropy (any of our packages: only counts are printed, never the
 # lines) and `dumpsys dropbox` shows no new data_app_crash entry. An age: run's raw output goes
@@ -64,8 +65,10 @@
 # and one that ends without a shortMsg fail, and so do, after it, a crash window, no crash of ours, two,
 # one with another exception, one with no exception line, one with a Caused by, a line naming our
 # packages outside the crash, and a new data_app_crash entry. For a gone: test: a run whose process ends
-# during its one test with nothing in the crash buffer passes; one that passes, and one with a crash of
-# ours in the crash buffer, fail. For an age: test: a run whose checker
+# during its one test, after the test's pass line, with nothing in the crash buffer passes; one that
+# passes, one with no pass line before the process went, one whose test the runner reports failed first,
+# one with no shortMsg, one with a crash of ours in the crash buffer and one with a new data_app_crash
+# entry fail. For an age: test: a run whose checker
 # passes passes, its line printed; one whose checker fails fails; and one whose test fails fails with
 # the raw output printed, without the stand-in key's value.
 # Exit 0 when every case behaves, 1 otherwise. It takes about 25 s (the 20 s wait).
@@ -147,6 +150,15 @@ killed_raw() {
       ;;
   esac
   printf 'INSTRUMENTATION_RESULT: shortMsg=Process crashed.\nINSTRUMENTATION_CODE: 0\n'
+}
+
+# gone_raw TAIL: killed_raw TAIL's output with the test's pass line after its probe, as StopJourneyTest
+# reports it just before Close app ends its process.
+gone_raw() {
+  killed_raw "$1" | awk '{ print } /kc_probe=crash test: a session started/ {
+    print "INSTRUMENTATION_STATUS: kc_pass=stop: the stop screen names its reason; Close app next"
+    print "INSTRUMENTATION_STATUS_CODE: 2"
+  }'
 }
 
 # selftest: the cases listed in the header, each on a fresh case directory the stand-in adb reads.
@@ -381,16 +393,31 @@ EOF
   # A test whose app ends its own process with no crash (gone:).
   test=gone:com.keepcrypt.entropy.StopJourneyTest
   fresh
-  killed_raw crashed > "$st/c/raw"
-  expect "a gone test whose process ends during it with no crash" 0 \
+  gone_raw crashed > "$st/c/raw"
+  expect "a gone test whose process ends during it, after its pass line, with no crash" 0 \
+    "pass: api=31 stop: the stop screen names its reason; Close app next" \
     "instrument: api=31 PASS com.keepcrypt.entropy.StopJourneyTest (gone during the test, as it must be: the app ended its own process;"
   fresh
-  killed_raw passed > "$st/c/raw"
+  gone_raw passed > "$st/c/raw"
   expect "a gone test that passes" 1 "1 started, 1 passed: the process did not end during the test"
   fresh
   killed_raw crashed > "$st/c/raw"
+  expect "a gone test whose process went before its pass line" 1 "no pass line before the process went"
+  fresh
+  gone_raw reported > "$st/c/raw"
+  expect "a gone test the runner reports failed before its process went" 1 \
+    "1 started, 2 failed, errored, ignored, aborted or gone: a gone: run has its one test and the shortMsg alone"
+  fresh
+  gone_raw noshort > "$st/c/raw"
+  expect "a gone test with no shortMsg" 1 "1 started, 0 passed: the process did not end during the test"
+  fresh
+  gone_raw crashed > "$st/c/raw"
   trigger_crash
   expect "a gone test with a crash of ours in the crash buffer" 1 "logcat -b crash holds"
+  fresh
+  gone_raw crashed > "$st/c/raw"
+  { cat "$st/c/dropbox"; echo '2026-10-19 10:01:00 data_app_crash (text, 950 bytes)'; } > "$st/c/dropbox-after"
+  expect "a gone test with a new data_app_crash entry" 1 "dumpsys dropbox gained 1 data_app_crash entries"
   # An age: test, on a copy of this script beside a stand-in checker: it takes the stand-in key's line
   # out of the run, writes the rest to --raw, prints its one line and passes unless $KC_STUB/age-fails.
   mkdir "$st/scripts" || exit 2
@@ -587,6 +614,18 @@ for t in "$@"; do
     if [ "$started" -lt 1 ] || [ "$passed" -ne 0 ] || ! grep -q -e '^INSTRUMENTATION_RESULT: shortMsg=' "$tmp/out"; then
       cat "$tmp/out"
       fail "$t: $started started, $passed passed: the process did not end during the test (adb exit $rc)"
+    fi
+    # A gone: run's process ends with no crash, so nothing else may go wrong: its one test started, the
+    # shortMsg its only bad line (no failure or error reported first), and the test's own kc_pass line,
+    # which it reports just before the action that ends the process, so the process went there and not
+    # before (the U-4 reviews).
+    if [ -n "$gone" ] && { [ "$started" -ne 1 ] || [ "$bad" -ne 1 ]; }; then
+      cat "$tmp/out"
+      fail "$t: $started started, $bad failed, errored, ignored, aborted or gone: a gone: run has its one test and the shortMsg alone"
+    fi
+    if [ -n "$gone" ] && ! grep -q -e '^INSTRUMENTATION_STATUS: kc_pass=' "$tmp/out"; then
+      cat "$tmp/out"
+      fail "$t: no pass line before the process went: it did not end where the test ends it"
     fi
   elif [ "$started" -lt 1 ] || [ "$passed" -ne "$started" ] || [ "$bad" -ne 0 ] || [ "$finished" -ne 1 ]; then
     cat "$tmp/out"

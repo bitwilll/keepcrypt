@@ -56,7 +56,8 @@
 #      region, which the frame checker reads.
 #      A test class that fails is reported at once and fails the leg at its end: every class runs,
 #      so one run gives both the control's result and the app's.
-#   4a. PhoneMotionTest, FlowTest, CheckTest, BackupTest and JourneyTest on the shipping app, then SnapshotDrillTest
+#   4a. PhoneMotionTest, FlowTest, CheckTest, BackupTest, JourneyTest and StopJourneyTest (gone:, the stop
+#      screen's Close app ending the app's own process) on the shipping app, then SnapshotDrillTest
 #      on the test-registry app (M5 groups 15, 16 and 18): PhoneMotion on the emulator's own sensors (lead decision
 #      M5-51: an accelerometer sample within 5 s, and a gyroscope one where the image lists a gyroscope,
 #      in its layout, and none after stop); then the screens from the start to the dice driven through
@@ -103,8 +104,8 @@
 #      the listing is printed as not made there, CI's API 31 and 36 legs making it; on the CI images a
 #      root shell that does not come fails the leg.
 # The parts (--part; M5 commit U1a, lead decision M5-72 (h)), each on its own boot, so that the
-# workflow runs them side by side, one a job: capture, the shipping journeys, and the test registry
-# and the edges (Stage U's commit plan; commit U1a2):
+# workflow runs them side by side, one a job: capture, the shipping journeys, the journeys through the
+# UI alone (ui, from U1e) and the test registry and the edges (Stage U's commit plan; commits U1a2 and U1e):
 #   capture   steps 1-3, step 4's CaptureTest on both APKs, PhoneMotionTest, and steps 5 and 6: the
 #             positive controls, the capture harness and the first frames;
 #   journeys  FlowTest, CheckTest and BackupTest with its age -d hand-off, on the shipping app;
@@ -150,7 +151,7 @@
 # conditions (a case of its own: a row dropped would run its part on that level nowhere). Every part ends with step 7's checks; journeys, ui and registry print no
 # line of steps 1, 2, 5 and 6 and keep no capture; a failing class in each part exits 1 at the part's
 # end, after its later runs and step 7. A failing ControlTest, CaptureTest, PhoneMotionTest, FlowTest,
-# CheckTest, JourneyTest, BackupTest, SnapshotDrillTest, LifecycleTest and CrashTest each exit 1 at the
+# CheckTest, BackupTest, JourneyTest, SnapshotDrillTest, LifecycleTest and CrashTest each exit 1 at the
 # leg's end, after the later checks ran, and so does an empty screencap of the control's screens; capture-control
 # still in recents after pm clear, a recording that ends before it is stopped, raw frames that never
 # show the control's words page, the app's window lit in the first-frame stream, and the same with that
@@ -399,6 +400,7 @@ EOF
   leg registry --part registry
   leg capture-capture-test-fails --part capture KC_FAILCLASS=CaptureTest
   leg journeys-flow-test-fails --part journeys KC_FAILCLASS=FlowTest
+  leg ui-journey-test-fails --part ui KC_FAILCLASS=JourneyTest
   leg registry-snapshot-drill-fails --part registry KC_FAILCLASS=SnapshotDrillTest
   leg control-test-fails KC_FAILCLASS=ControlTest
   leg capture-test-fails KC_FAILCLASS=CaptureTest
@@ -472,7 +474,7 @@ EOF
   }
   app=com.keepcrypt.entropy
   registry=com.keepcrypt.entropy.testregistry
-  # The steps' order, steps 3-4c (each part's runs in it: capture's, journeys', then registry's, whose
+  # The steps' order, steps 3-4c (each part's runs in it: capture's, journeys', ui's, then registry's, whose
   # edges end it), the killed CrashTest last, so no run comes after it.
   order pass "ControlTest, CaptureTest on both apps, PhoneMotionTest, FlowTest, CheckTest, the age: BackupTest, JourneyTest, the gone: StopJourneyTest, SnapshotDrillTest (test registry), LifecycleTest, then the killed CrashTest, last" \
     "$app $app.ControlTest" "$app $app.CaptureTest" "$registry $app.CaptureTest" "$app $app.PhoneMotionTest" \
@@ -576,6 +578,10 @@ EOF
     "instrument stub: com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest" \
     "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
     "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.FlowTest) (each reported above)"
+  expect ui-journey-test-fails 1 \
+    "instrument stub: com.keepcrypt.entropy gone:com.keepcrypt.entropy.StopJourneyTest" \
+    "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
+    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.JourneyTest) (each reported above)"
   expect registry-snapshot-drill-fails 1 \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
     "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
@@ -611,6 +617,7 @@ EOF
     "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.FlowTest) (each reported above)"
   expect check-test-fails 1 \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.JourneyTest" \
+    "instrument stub: com.keepcrypt.entropy gone:com.keepcrypt.entropy.StopJourneyTest" \
     "instrument stub: com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest" \
     "instrument stub: com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest" \
@@ -618,7 +625,7 @@ EOF
     "pass: api=31 first frame (registry, its first screen up)" \
     "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.CheckTest) (each reported above)"
   expect journey-test-fails 1 \
-    "instrument stub: com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest" \
+    "instrument stub: com.keepcrypt.entropy gone:com.keepcrypt.entropy.StopJourneyTest" \
     "instrument stub: com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest" \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \

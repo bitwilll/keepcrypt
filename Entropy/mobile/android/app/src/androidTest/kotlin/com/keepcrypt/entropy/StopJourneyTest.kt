@@ -14,7 +14,7 @@ import com.keepcrypt.entropy.Ui.tap
 import com.keepcrypt.entropy.ffi.HaltReason
 import com.keepcrypt.entropy.ffi.KcHalt
 import com.keepcrypt.entropy.screens.Screen
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -39,13 +39,16 @@ class StopJourneyTest {
         on(activity, Screen.FirstLaunch)
         tap("first_launch_continue")
         on(activity, Screen.GoOffline, START_SECONDS)
+        // Nothing is held on Go offline (no session has started), so this journey pins the stop screen and
+        // Close app, not a session's wipe at the halt: the model's own tests prove that (U2e's Residual*).
+        assertFalse("something is held on Go offline before the halt", onMain { activity.model.held.value })
         onMain { activity.model.work<Unit>({ throw KcHalt(HaltReason.HealthTest) }) {} }
         on(activity, Screen.Stop)
         awaitText("halt_reason", STOP_LINE)
-        assertTrue("the stop screen holds something", onMain { !activity.model.held.value })
+        assertFalse("the stop screen holds something", onMain { activity.model.held.value })
         device.pressBack()
         stays(activity, Screen.Stop, "Back on the stop screen")
-        pass("stop: the halt's stop screen names its reason (a health test's), holds nothing, and Back does nothing; Close app next")
+        pass("stop: the halt's stop screen names its reason (a health test's), Back does nothing there; Close app next")
         tap("close_app")
         SystemClock.sleep(WAIT_MS)
         fail("the process still runs 30 s after Close app")

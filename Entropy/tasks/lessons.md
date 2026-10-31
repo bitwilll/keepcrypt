@@ -67,3 +67,14 @@ intermittent failure is green most of the time whatever the code does.
 **Rule:** For an intermittent failure, the closing evidence is the fix's own path running on the real target (its
 probe lines printed and the job passing), never a green run alone. A fix that cannot show itself acting gets a probe
 line first, and the item names that line as its closing bar.
+
+## A script that reads another's structure runs its selftest when that structure changes (2026-10-31)
+**Mistake:** U1b added JourneyTest to android-emulator.sh's journeys part and U1e split it into a ui part with a new
+gone: form, and each commit ran android-emulator.sh's and android-instrument.sh's selftests but not
+android-local.sh's, which reads android-emulator.sh's part blocks and judges their runs. The kc37 local runner was
+broken from U1b on (its selftest 4 failed); a U-4 review found it, not the lead.
+**Root Cause:** The suite the lead ran per commit was the scripts the diff touched; android-local.sh was not in the
+diff, and no CI job runs its selftest, so nothing failed.
+**Rule:** A change to android-emulator.sh's parts, its classes or android-instrument.sh's run forms runs
+android-local.sh --selftest too, and the commit's proof names its count. More generally: before a commit, list the
+scripts that read the changed one (grep for its name and its markers) and run their selftests.

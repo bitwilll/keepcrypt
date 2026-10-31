@@ -11188,7 +11188,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   seven, M5-73 (b), set 2026-10-30 from run 40903211202: build 13 minutes, the leg jobs 12, 20, 10, 11, 20 and 11;
   build 17 minutes from 2026-10-31, M5-75 (g), from run 41181656557's 779 s; the two journeys jobs 25 and 23 minutes
   from 2026-10-31, M5-76 (a) and (e), from U1b2's run 41197141108's 1153 s and 1097 s; from U1e, M5-76 (g), eight leg
-  jobs: the journeys jobs 20 minutes again without JourneyTest, the two ui jobs measured at 30);
+  jobs: the journeys jobs 20 minutes again without JourneyTest, the two ui jobs measured at 30; from run 41203734694,
+  M5-76 (h): registry 18 and 19, journeys 20 and 19, ui 30 until a run measures it whole);
   system images, the emulator package and the Gradle distribution are cached with actions/cache keyed on their
   revisions. An emulator boot failure may be re-run once, and the re-run is logged under Review; a test
   failure is never re-run. Past any budget, the lead stops and re-plans.
@@ -15911,7 +15912,9 @@ they differ. Nothing in the Android plan is weakened.
   (5641b98's) was cancelled by the next push while its build job ran, before any emulator job, and so were c8794c1's
   and 143f5fa's (the commits pushed on the stop hook's instruction while a run was going): the run at U1g's head
   proves U1c to U1g together, and the ui and registry jobs are measured there. JourneyTest clears core's backup name from Downloads before its save, so
-  with every part on one boot it never picks BackupTest's file.
+  with every part on one boot it never picks BackupTest's file. (h) Run 41203734694's ui jobs ran with the mixed journey
+  failing part-way, so they are not measured whole: they stay at 30 minutes until a run is, while the registry and
+  journeys jobs take their measured time plus 25% (18 and 19, 20 and 19 minutes).
 
 **Open item (2026-10-31): UI Automator does not see first_launch in API 36's journeys.** Entropy Android 41148288082
 at a15dc4f failed all 10 tests of API 36's journeys job (FlowTest 7, CheckTest 2, BackupTest 1, the shipping APK),
@@ -15956,6 +15959,17 @@ dialog or fails the leg naming it), but which step closes the real dialog is sti
 narrowed to that: it closes on the first CI run whose lines show "the dialog closed by", or, if a run shows the
 dialog stuck, U1a8 is redesigned from those lines. The M5 gate report names it until then (tasks/lessons.md,
 2026-10-31).
+
+**Open item (2026-10-31): the age -d hand-off's logcat check found two of the passphrase screen's lines.** Entropy
+Android 41203734694 at 62f9c8c, API 36's journeys job: BackupTest passed, and android-age-check.py failed it: "logcat -d
+holds 2 of the 8 lines the passphrase screen draws". The check looks for "N word" (a line as the screen draws it)
+anywhere in every logcat buffer, inside longer tokens too, and the checker prints counts alone, so the run cannot
+tell a leak from chance (a number and a short common word inside a longer token, which the check's own text expects
+of one line alone). API 31's job, on the same commit and classes, passed it; no app code changed since its last pass
+(run 41197141108's journeys jobs, both green). The check is not relaxed. U4r makes a failure name each matched line's
+position, whether it stands as a whole token or only inside a longer one, and its logcat tag (never the word): a
+repeat is diagnosed from those lines, never rerun to green, and the M5 gate report names this item until it is
+closed by a run whose facts show its cause.
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the
@@ -16885,6 +16899,49 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   in the ui part (the pinned orders and the whole leg's runs with it; --selftest 56 passed). About from Home and back
   is FlowTest's homesAboutShowsTheVersionTheFlavourAndTheSourceAsPlainTextAndBackReturnsHome, by taps already.
   Locally: both test APKs built by the strict Gradle run, no warning; banned-api-check.sh clean, 400 files.
+  Proof (CI, the lead's, 2026-10-31, partial): Entropy Android 41203734694 at 62f9c8c (U1c to U1g together; the runs at
+  5641b98, c8794c1 and 143f5fa were cancelled by the pushes after them): the build job green in 12 min 53 s; both
+  capture jobs green; the registry jobs green in 862 s and 896 s, "PASS com.keepcrypt.entropy.SnapshotDrillTest (4
+  tests; ...)" on both levels, its two new journeys among them (the scanned collision's restart to Finish: its
+  read-back 75.9 s and 76.4 s; the 24-word seed against the loaded snapshot: clear, 24 read back in 152.1 s and 151.8
+  s, the journey 295.1 s and 297.7 s), LifecycleTest 8 and the killed CrashTest passing; the ui jobs red in 1207 s and
+  1171 s: JourneyTest "4 started, 3 passed, 1 failed" on both levels, the mixed journey failing with "a node on
+  bip39_entry names a key" (the BIP39 entry shows the passphrase as typed, one character after the first touch,
+  which padKeys' label check took for a key's label; the U-4 review had found it from the code), the Match found
+  journey (233.3 s and 229.5 s), the 24-word journey (293.3 s and 292.5 s, its 99 rolls 4.9 s and 5.4 s) and the
+  Cannot check and backup journey (291.9 s and 290.6 s) passing on both, and StopJourneyTest "PASS ... (gone during the
+  test, as it must be: the app ended its own process; no crash window, crash buffer and dropbox clean)" on both; the
+  journeys jobs: API 31 green in 924 s, API 36 red in 867 s, FlowTest 7 and CheckTest 2 passing and BackupTest's
+  test passing but its age -d hand-off failing: "age-check: fail: logcat -d holds 2 of the 8 lines the passphrase
+  screen draws" (the open item of 2026-10-31 below). So U1b, U1c, U1e, U1f and U1g hold on both levels; U1d is fixed
+  by the review fixes below and owed a run; the read-back is not faster than U1b's (76 s for 12 inserts, 152 s for
+  24: U1c's letter pad through UiAutomation's nodes left its cost where it was, so the per-insert cost is the read-back
+  entry's other UI Automator steps, its header's wait and the taps of Done and Next; corrected here, U1c's speed claim
+  withdrawn, its correctness kept).
+  Proof (M5 commit U4r, Stage U-4's review fixes, partial: local, no emulator; CI at the next push): the three reviews
+  (journeys' correctness, secret handling, the scripts) found, each checked against the code: (1) padKeys' label check
+  failing on the BIP39 entry's typed text: the entry's own secret node (SECRET_TAG) is left out of the label check;
+  (2) gone: passing any crash-free death: it now needs the shortMsg as its one bad line and the test's own kc_pass
+  line before it (four new --selftest cases: no pass line, a failure reported first, no shortMsg, a new data_app_crash
+  entry; 50 passed); (3) android-local.sh (the kc37 runner) broken by the ui part and the gone: form since U1b: it
+  strips gone:, knows the ui part (its usage, its part case, its end after the leg, a part-ui case), and its whole-run
+  case holds the twelve runs (its --selftest was 4 failed before; see the lessons); (4) typeAscii's page turns and page
+  line went through UI Automator selectors, which log which page each passphrase character is on: the page buttons
+  are pressed by their accessibility click and the page line read through UiAutomation's nodes; (5) touchKey touched
+  a key's whole bounds: now the part its window shows; (6) the backup confirm's second question typed once the model
+  held it: now once the screen shows "question 2 of 2"; (7) the 12-word checklist's "no second device" could pass
+  with the line out of view: shown scans to the end; (8) StopJourneyTest's "holds nothing" could not fail: it pins
+  nothing held before and after the halt and its pass line claims no wipe; (9) the mixed seed's fingerprint went into
+  a selector: compared in-process; (10) passphrase and letter copies: zeroed on every way out, the letters typed from
+  arrays (CharBuffer) zeroed after, never Strings; (11) the texts: android-emulator.sh's parts, step 4a and its
+  failing-class list's order, the workflow's eight jobs and the ui part's StopJourneyTest, GateSeeds' T, JourneyTest's
+  part; and coverage: a failing JourneyTest in the ui part (ui-journey-test-fails) and the gone: StopJourneyTest
+  after a failing CheckTest or JourneyTest. android-age-check.py, for the open item: a failure on the screen's lines
+  now names each line's position, whether it stands as a whole token or only inside a longer one, and its logcat
+  line's tag, never its word (its two-lines case pins both kinds; --selftest 18 passed). Locally: both test APKs built
+  by the strict Gradle run, no warning; android-emulator.sh --selftest 57 passed; android-instrument.sh --selftest 50;
+  android-local.sh --selftest 47 (was 4 failed); android-age-check.py --selftest 18; banned-api-check.sh clean, 402
+  files; --workflows clean.
 - [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
   every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
   every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,
@@ -17224,7 +17281,7 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       6.4-6.6 s (its letters' keys found by UI Automator's searches, about 2 s a letter), and each other screen step
       about 2.5 s (UI Automator's taps and waits), so a 12-word journey to Finish is about 4 minutes and its read-back a
       third of that.
-    - [ ] U1c: the Protected letter pad's keys found through UiAutomation's own nodes (appNode's walk, the same checks:
+    - [x] U1c: the Protected letter pad's keys found through UiAutomation's own nodes (appNode's walk, the same checks:
       26 keys with the button role alone, no node naming a letter, no Public key's id), each still pressed by an injected
       touch at its bounds (M5-68 (e)); then JourneyTest's dice-only 24-word journey: 99 tapped rolls of dice-99-words24,
       Skip confirmed, the 24 inserts by Next across the device swap and its second gate (each the vector's word and
@@ -17235,15 +17292,15 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       passphrase typed on the ASCII pad by touches (watchonly.json's), the registration QR, Reveal D (D the phone's,
       checked against C by core), the checklist, Finish; and the shipping app's scanned go-ahead QR refused (the scan
       fed to onGoAheadText, M5-72 (a); the shipping app trusts no registry key).
-    - [ ] U1e: JourneyTest's Cannot check to Start again (a new ceremony at 50 rolls, Back doing nothing on its dice;
+    - [x] U1e: JourneyTest's Cannot check to Start again (a new ceremony at 50 rolls, Back doing nothing on its dice;
       corrected 2026-10-31: the confirm restarts at once, CeremonyModel.cannotCheckConfirmed, so there is no result
       screen to press Back on), and the backup made and checked through the UI: its passphrase's two words confirmed on the
       letter pad, the file placed through the system's picker, Check a backup picking it and its 8 words typed on the
       letter pad, the checked backup's words equal to the seed's (BackupTest keeps its age -d hand-off).
-    - [ ] U1f: the test registry's journeys (the registry part): the snapshot loaded through the picker, a 24-word
+    - [x] U1f: the test registry's journeys (the registry part): the snapshot loaded through the picker, a 24-word
       dice-only seed whose check runs on its own against it (clear) to Finish; and a scanned collision's restart at 99
       to Finish (SnapshotDrillTest's rolls by tapRolls).
-    - [ ] U1g: the stop journey to Close app (a halt's stop screen, android-instrument.sh's gone: form), About from
+    - [x] U1g: the stop journey to Close app (a halt's stop screen, android-instrument.sh's gone: form), About from
       Home and back.
     - Each commit re-measures the journeys jobs and re-budgets them by M5-30; if a journeys job would pass 30
       minutes, the journeys part splits into a second part and job (android-emulator.sh --part, the workflow's matrix)

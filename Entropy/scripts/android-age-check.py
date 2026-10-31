@@ -30,7 +30,10 @@ key only under mobile/android/app/src/androidTest/ and in this file.
       every line of it, the test's own included) must hold neither the passphrase whole, nor either page
       of four words as core gives them, nor two or more of
       the eight lines the passphrase screen draws ("3 word", a page's four in one node, which a log
-      would show together; one alone a log can hold by chance, a number and a common word); and the
+      would show together; one alone a log can hold by chance, a number and a common word; a failure
+      names each such line's position on the screen, whether it stands as a whole token or only inside
+      a longer one, and its logcat line's tag, never its word, so a chance match tells itself from a
+      leak); and the
       run's output (the job log's share of this run) must hold none of its words as a word, outside the
       status keys, the test's kc_probe and kc_pass lines, whose prose is the test's own fixed text
       with public values, the name's and the fingerprint's values when well formed (public; their hex
@@ -170,8 +173,31 @@ def shown(text, words, where):
         return "%s holds the passphrase or a page of it %d time(s)" % (where, whole)
     lines = sum(1 for line in drawn_lines(words) if line in text)
     if lines >= 2:
-        return "%s holds %d of the 8 lines the passphrase screen draws" % (where, lines)
+        return "%s holds %d of the 8 lines the passphrase screen draws (%s)" % (where, lines, line_facts(text, words))
     return None
+
+
+# A logcat line's tag in its threadtime form (date, time, pid, tid, level, then the tag and a colon); a
+# tag is code's own name, so it carries none of a passphrase's words.
+LOG_TAG = re.compile(r"\S+ +\S+ +\d+ +\d+ +[VDIWEFAS] +([A-Za-z0-9_.$/-]{1,64}) *:")
+
+
+def line_facts(text, words):
+    """For each of the screen's lines text holds: its position on the screen (1-8), whether it stands there
+    as a whole token (no letter or digit before its number, no letter after its word) or only inside a longer
+    one, and the logcat tag of the first line holding it ("-" for none). Never the word: a failure says where
+    to look, and whether it is chance (a number and a short word inside a longer token) or a leak."""
+    facts = []
+    for position, line in enumerate(drawn_lines(words), 1):
+        at = text.find(line)
+        if at < 0:
+            continue
+        whole = re.search(r"(?<![A-Za-z0-9])" + re.escape(line) + r"(?![A-Za-z])", text) is not None
+        start = text.rfind("\n", 0, at) + 1
+        tag = LOG_TAG.match(text, start)
+        facts.append("line %d %s, tag %s" % (position, "as a whole token" if whole else "only inside a longer token",
+                                                tag.group(1) if tag else "-"))
+    return "; ".join(facts)
 
 
 def output_leak(stripped, values):
@@ -418,8 +444,11 @@ def selftest(args):
         case("no-file", 1, ["adb exec-out exited 1"], self_run("nofile", fingerprint=good), file=None)
         case("passphrase-in-logcat", 1, ["logcat -d holds the passphrase or a page"], self_run("log", fingerprint=good),
              log="I ActivityManager: status kc=%s\n" % " ".join(SELF_WORDS))
-        case("two-lines-in-logcat", 1, ["logcat -d holds 2 of the 8 lines"], self_run("lines", fingerprint=good),
-             log="D UiAutomator: Skipping invisible child: text: 1 %s\nD UiAutomator: 2 %s\n" % (SELF_WORDS[0], SELF_WORDS[1]))
+        case("two-lines-in-logcat", 1, ["logcat -d holds 2 of the 8 lines",
+                                        "(line 1 as a whole token, tag UiAutomator; line 2 only inside a longer token, tag Settings)"],
+             self_run("lines", fingerprint=good),
+             log="10-31 13:29:01.123  1234  1250 D UiAutomator: Skipping invisible child: text: 1 %s\n"
+                 "10-31 13:29:01.124  1234  1250 I Settings: x2 %sy\n" % (SELF_WORDS[0], SELF_WORDS[1]))
         case("one-line-in-logcat", 0, ["age-check: pass ("], self_run("line", fingerprint=good),
              log="I Something: retry 3 %s later\n" % SELF_WORDS[2])
         case("page-in-the-run", 1, ["the run's output holds the passphrase or a page"],
