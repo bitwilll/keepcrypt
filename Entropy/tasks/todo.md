@@ -16799,6 +16799,23 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   ("device_entropy: 61 s away, frozen: the start screen expected:<GoOffline> but was:<DeviceEntropy>" for a return
   that clears the background time before its tick; "reveal_d: leaving a Protected screen: the start screen" for D
   left as a Public screen). Locally: :screens 179 in 31 classes, none failed; the gate clean, 394 files.
+  Proof (M5 commit U2f, Stage U-3, partial: local, Q76's JVM run on a Linux host, no emulator; CI's build job at the
+  next push; one idle run on the real clock is U2l's): IdleTest (3), from PF's "Protected screens and idle" (MA:34).
+  On every screen of the walk: 29.999 s brings nothing; 30 s covers each Protected screen alone, and the tap only
+  uncovers; 9 minutes bring the warning wherever something is held (and nothing elsewhere), and the tap keeps
+  everything; 10 minutes wipe what is held with the Idle notice (assertDiscarded), nothing secret on show and the slot
+  at home, and leave a screen holding nothing as it was; on "Working..." and the self-test the timers wait. A loaded
+  snapshot survives the idle wipe in the model and in core: the next seed's Check now finds kcr.json's dice-50 seal
+  in it on its own (Collision, by the snapshot). The 99-roll minimum after a collision: 12 words start at 50 with no
+  collision before (the control); Add fresh entropy needs 99; leaving the report, going online, 60 s away from the
+  collision result and the idle wipe there each lead, by Go offline and Home, to a new 12-word seed that needs 99;
+  and so does a discard of the restarted ceremony itself (Cannot check on a restart and leaving the report were
+  CheckScreensTest's already). It pins what was built: two mutations, each run and reverted, fail it
+  ("device_entropy: 9 minutes, something held expected:<Warning> but was:<null>" for a warning on Protected screens
+  alone; for a discard that empties the slot (wipeAll) instead of core's discard, "leaving the report after the
+  collision, then a new seed expected:<99> but was:<50>" and "the next check ran against the snapshot core kept
+  expected:<Collision> but was:<Stop>"; the snapshot check was added after a first version read only the model's
+  header and passed that mutation). Locally: :screens 182 in 32 classes, none failed; the gate clean.
 - [ ] U3. A UX audit of every screen against the docs and the Pi: wording, order, what each button and Back do, what
   TalkBack reads on Public screens, the layout on a 360 dp phone and a large one, text sizes. A defect within the docs is
   fixed with a test; a change the docs do not allow becomes a question for the owner.
