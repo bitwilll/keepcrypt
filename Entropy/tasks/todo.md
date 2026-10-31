@@ -11186,7 +11186,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   Android job's budget is set at commit 8 from its measured time plus 25%, with `timeout-minutes` at that budget and a
   90-minute ceiling (since L9, each of the three jobs' own budget by the same rule, M5-70 (b); from U1a each of the
   seven, M5-73 (b), set 2026-10-30 from run 40903211202: build 13 minutes, the leg jobs 12, 20, 10, 11, 20 and 11;
-  build 17 minutes from 2026-10-31, M5-75 (g), from run 41181656557's 779 s);
+  build 17 minutes from 2026-10-31, M5-75 (g), from run 41181656557's 779 s; the two journeys jobs at the 90-minute
+  ceiling for U1b's measuring run, M5-76 (a), then their measured time plus 25%);
   system images, the emulator package and the Gradle distribution are cached with actions/cache keyed on their
   revisions. An emulator boot failure may be re-run once, and the re-run is logged under Review; a test
   failure is never re-run. Past any budget, the lead stops and re-plans.
@@ -15882,6 +15883,16 @@ they differ. Nothing in the Android plan is weakened.
   (b), 779 s plus 25%, 17 minutes; the leg jobs' budgets stand, their tests unchanged. Entropy CI 41181656557's sibling
   run 41181657191 passed at the same head.
 
+- M5-76 (2026-10-31), Stage U-4 (U1b): (a) JourneyTest's first journey (149 rolls and 12 read-backs by taps) is
+  added to the journeys part, whose jobs ran 14 to 15 minutes against their 20 (run 41187953910): both take the
+  90-minute ceiling for U1b's measuring run, as U1a's new jobs did (M5-72 (g)), and the lead then sets each to its
+  measured time plus 25% (M5-30) and re-plans U1c-U1g from the journey's times, splitting the journeys into more jobs
+  if one would pass the ceiling's use. (b) Ui.roll stays as the edge tests' in-process setup (LifecycleTest,
+  SnapshotDrillTest, FlowTest's pages and limits, CaptureTest), named so in its KDoc: M5-72 (a)'s "through the UI
+  only" binds U1's journeys, which use Ui.tapRolls, tapCode and typeLetters; which existing tests move to taps is
+  U1c-U1g's re-plan. (c) JourneyTest is one class in the journeys part, after CheckTest and before BackupTest, so
+  BackupTest's age -d hand-off stays the part's last run.
+
 **Open item (2026-10-31): UI Automator does not see first_launch in API 36's journeys.** Entropy Android 41148288082
 at a15dc4f failed all 10 tests of API 36's journeys job (FlowTest 7, CheckTest 2, BackupTest 1, the shipping APK),
 each at Ui.on's first screen: "UI Automator does not see first_launch, though the app shows first_launch" (By.res
@@ -16733,6 +16744,28 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   locally), a loaded snapshot, and Skip; Match found and a scanned collision to Add fresh entropy at 99; Cannot check to
   Start again; the words, read-back and summary; the backup saved and checked; watch-only; register; reveal D; About;
   stop. Each journey's pass line names its path.
+  Proof (M5 commit U1b, Stage U-4, partial: local, no emulator; CI's journeys jobs at the next push): Ui gains the
+  journeys' inputs through the UI alone (M5-72 (a)): tapRolls presses each face on the Public dice pad by its
+  accessibility click (pressFace, no face in a selector or log, M5-68 (e)), taps Confirm once UI Automator shows it
+  enabled and waits for the count to show one roll more (a press lost leaves Confirm disabled and fails there; a face
+  pressed wrong shows in the seed's Seal ID and words, which the journey checks); tapCode is CheckTest's code entry,
+  moved; letterKeys and typeLetters are FlowTest's letter pad, moved, the screen and the model's pad entry parameters
+  (the read-back entry, the backup's confirm, Check a backup's entry), typed by injected touches; assertInsert,
+  sameWord, DOT and two moved with them, so FlowTest and CheckTest call Ui's. Ui.roll stays, named the edge tests'
+  in-process setup (M5-76 (b)). JourneyTest (the shipping app; android-emulator.sh's journeys part runs it after
+  CheckTest, before the age: BackupTest) pins what was built: dice-50-words12's 50 rolls tapped, its seal card's Seal
+  ID YVM9CPP3, the check QR's Match found and its confirm, the collision result with that Seal ID, the report behind
+  its gate (its QR dice-50-words12's register text), Add fresh entropy at "0 / 99 rolls", Done disabled at 98,
+  dice-99-words12's 99 rolls tapped ("99 / 99 rolls, 255.9 bits"), its seal card's Seal ID 9FHYMCQA and check QR's T
+  (kcr.json's seal_tag_hex), the code a checker builds from that QR tapped on the pad, the check passed, the words'
+  gate, the 12 inserts by Next (each the vector's word, in-process), all 12 read back by touches, each a match, the
+  summary (core's), the backup's and watch-only's Skip, the registration QR (dice-99-words12's register text), the
+  checklist with no second device and Finish: Home with the slot empty; its pass line gives the two dice phases', the
+  read-back's and the journey's times. The journeys jobs take the 90-minute ceiling for this measuring run (M5-76
+  (a)). Locally: both test APKs built by the strict Gradle run (:app:assembleShippingReleaseAndroidTest and
+  :app:assembleWithTestRegistryReleaseAndroidTest, no warning); android-emulator.sh --selftest 53 passed (the new
+  journey-test-fails case among them, and the parts' pinned orders with JourneyTest); banned-api-check.sh clean, 397
+  files; --workflows clean.
 - [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
   every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
   every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,
@@ -17049,6 +17082,26 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
     U1d (mixed 12 by a typed code; the shipping app's scanned go-ahead QR refused), U1e (Cannot check to Start again;
     the backup made and checked by taps), U1f (the test registry: a loaded snapshot's automatic check at 24 words, a
     scanned collision's restart to Finish), U1g (android-instrument.sh's gone: form; the stop journey to Close app).
+  - U-4's plan (the lead's, 2026-10-31; M5-72 (h) runs U-1 to U-5 without a check-in; a journey pins what was built,
+    so each says so, and a defect it finds is fixed at its root with the journey as its failing test):
+    - [ ] U1b: Ui gains the journeys' inputs through the UI alone (M5-72 (a)): tapped rolls (each roll the face's
+      accessibility press on the Public dice pad, Confirm tapped once it is enabled, the count waited for; no face in a
+      selector or a log, M5-68 (e)), the Protected letter pad by injected touches on any of its three screens (FlowTest's
+      letterKeys and typeOnPad moved, the screen a parameter) and the go-ahead code tapped on the Crockford pad
+      (CheckTest's type moved); FlowTest's assertInsert and sameWord move with them. Ui.roll stays as the edge tests'
+      in-process setup, named so. JourneyTest (the shipping app, the journeys part): a dice-only seed of
+      dice-50-words12 by 50 tapped rolls, Check now, the check QR's Match found and its confirm, the collision, the
+      report behind its gate (its register text dice-50-words12's seal code), Add fresh entropy at 0 / 99, 99 tapped
+      rolls of dice-99-words12, Check now, the drawn check QR's code tapped, the result, the gate, 12 inserts by Next
+      (each the vector's word, in-process), the read-back of all 12 by touches, the summary, the backup's and
+      watch-only's Skip, the registration QR (dice-99-words12's seal code), the checklist and Finish: Home with the slot
+      empty; its pass line gives each phase's time. The journeys jobs take the 90-minute ceiling for this measuring run
+      (M5-76 (a)); from its times the lead budgets them by M5-30 and re-plans U1c-U1g.
+    - [ ] U1c-U1g: re-planned from U1b's run.
+    - Verification: the instrumented sources compiled locally (the strict build assembles both test APKs), the gate
+      before every commit that adds Kotlin (M5-74 (a)), android-emulator.sh --selftest with JourneyTest in the journeys
+      part's pinned order, three independent reviews at the stage's head, their fixes, the suite, and CI's journeys jobs
+      at the stage's head read once (every device claim is CI's: no emulator here, M5-74 (f)).
   - U-5, U2 on the device and U3's layout check: U2h (recreation), U2i (double taps), U2j (the process killed at a
     stage), U2k (leaving, screen off, the activity destroyed while away, the back gesture), U2l (the camera denied twice;
     one idle run on the real clock, API 36), U3h (the layout check in the walk at CI's window and a 412 dp phone; the

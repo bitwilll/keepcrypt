@@ -26,6 +26,7 @@ import com.keepcrypt.entropy.Ui.roll
 import com.keepcrypt.entropy.Ui.shown
 import com.keepcrypt.entropy.Ui.stays
 import com.keepcrypt.entropy.Ui.tap
+import com.keepcrypt.entropy.Ui.tapCode
 import com.keepcrypt.entropy.Ui.text
 import com.keepcrypt.entropy.Ui.toHome
 import com.keepcrypt.entropy.ffi.Refusal
@@ -103,12 +104,6 @@ class CheckTest {
         if (column == null) throw AssertionError("the check QR is in no scrolling column")
         val at = qr.positionInRoot
         Rect(at.x, at.y, at.x + qr.size.width, at.y + qr.size.height) to column.boundsInRoot
-    }
-
-    /** Types code on the code entry's Crockford pad, key by key, and waits for it shown in two groups. */
-    private fun type(code: String) {
-        for (symbol in code) tap("key_" + symbol)
-        awaitText("code", Checker.grouped(code))
     }
 
     @Test
@@ -204,11 +199,11 @@ class CheckTest {
             val rows = CROCKFORD_KEYS.length / CODE_SYMBOLS
             val diagonal = (0 until CODE_SYMBOLS).map { column -> CROCKFORD_KEYS[(column % rows) * CODE_SYMBOLS + column] }
                 .joinToString("")
-            type(diagonal)
+            tapCode(diagonal)
             repeat(CODE_SYMBOLS) { tap("code_delete") }
             awaitText("code", "____-____")
             assertFalse("Delete with no symbol left", enabled("code_delete"))
-            type(wrong)
+            tapCode(wrong)
             tap("code_done")
             awaitText("code_refused", CODE_REFUSED)
             awaitText("code", "____-____")
@@ -221,7 +216,7 @@ class CheckTest {
             tap("type_code")
             on(activity, Screen.CodeEntry)
             assertFalse("the refusal outlived the code entry", device.hasObject(By.res("code_refused")))
-            type(code)
+            tapCode(code)
             tap("code_done")
             on(activity, Screen.CheckResult)
             assertEquals(

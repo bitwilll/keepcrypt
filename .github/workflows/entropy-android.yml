@@ -644,6 +644,9 @@ jobs:
     # whole legs: the split's first run (run 40813152800 at e3c6c12) took 1469 s for API 31 then the
     # 16 KB leg and 1416 s for API 36 (32 and 30 minutes). A slower run stops here and the lead
     # re-plans; a commit that adds legs or tests re-measures it (Stage U's journeys and edges will).
+    # Stage U's U1b adds JourneyTest's first journey, 149 rolls and 12 read-backs by taps, to the
+    # journeys part: its two jobs take the 90-minute ceiling for that measuring run (M5-76 (a)), and
+    # the lead then sets each to its measured time plus 25%.
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       # Every leg job runs to its end: a red leg never cancels another job or hides its evidence.
@@ -659,7 +662,7 @@ jobs:
           - api: '31'
             part: journeys
             legs: API 31, journeys
-            timeout: 20
+            timeout: 90
           - api: '31'
             part: registry
             legs: API 31, test registry and edges
@@ -671,7 +674,7 @@ jobs:
           - api: '36'
             part: journeys
             legs: API 36, journeys
-            timeout: 20
+            timeout: 90
           - api: '36'
             part: registry
             legs: API 36, test registry and edges

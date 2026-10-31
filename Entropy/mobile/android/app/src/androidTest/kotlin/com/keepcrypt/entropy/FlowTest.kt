@@ -4,7 +4,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.runner.lifecycle.Stage
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.UiObject2
 import com.keepcrypt.entropy.Capture.finish
 import com.keepcrypt.entropy.Capture.launch
 import com.keepcrypt.entropy.Capture.onMain
@@ -12,7 +11,9 @@ import com.keepcrypt.entropy.Capture.pass
 import com.keepcrypt.entropy.Capture.probe
 import com.keepcrypt.entropy.Capture.shellText
 import com.keepcrypt.entropy.Ui.BUTTON
+import com.keepcrypt.entropy.Ui.DOT
 import com.keepcrypt.entropy.Ui.START_SECONDS
+import com.keepcrypt.entropy.Ui.assertInsert
 import com.keepcrypt.entropy.Ui.assertPublicPadLabelled
 import com.keepcrypt.entropy.Ui.await
 import com.keepcrypt.entropy.Ui.awaitPick
@@ -20,23 +21,25 @@ import com.keepcrypt.entropy.Ui.awaitText
 import com.keepcrypt.entropy.Ui.enabled
 import com.keepcrypt.entropy.Ui.find
 import com.keepcrypt.entropy.Ui.fresh
+import com.keepcrypt.entropy.Ui.letterKeys
 import com.keepcrypt.entropy.Ui.on
 import com.keepcrypt.entropy.Ui.pressFace
 import com.keepcrypt.entropy.Ui.read
 import com.keepcrypt.entropy.Ui.roll
+import com.keepcrypt.entropy.Ui.sameWord
 import com.keepcrypt.entropy.Ui.shown
 import com.keepcrypt.entropy.Ui.stage
 import com.keepcrypt.entropy.Ui.stays
 import com.keepcrypt.entropy.Ui.tap
 import com.keepcrypt.entropy.Ui.text
 import com.keepcrypt.entropy.Ui.toHome
-import com.keepcrypt.entropy.Ui.touch
+import com.keepcrypt.entropy.Ui.two
+import com.keepcrypt.entropy.Ui.typeLetters
 import com.keepcrypt.entropy.ffi.Core
 import com.keepcrypt.entropy.ffi.QrMatrix
 import com.keepcrypt.entropy.ffi.Reply
 import com.keepcrypt.entropy.ffi.Secret
 import com.keepcrypt.entropy.ffi.Verdict
-import com.keepcrypt.entropy.ffi.WordPage
 import com.keepcrypt.entropy.screens.APP_VERSION
 import com.keepcrypt.entropy.screens.ASCII_PAGES
 import com.keepcrypt.entropy.screens.CHECKLIST
@@ -44,7 +47,6 @@ import com.keepcrypt.entropy.screens.DICE_KEYS
 import com.keepcrypt.entropy.screens.DICE_ONLY
 import com.keepcrypt.entropy.screens.HEADPHONES_WARNING
 import com.keepcrypt.entropy.screens.INSERTS_PER_DEVICE
-import com.keepcrypt.entropy.screens.LETTER_KEYS
 import com.keepcrypt.entropy.screens.MAX_ROLLS
 import com.keepcrypt.entropy.screens.Notice
 import com.keepcrypt.entropy.screens.OVERVIEW_WORDS
@@ -264,21 +266,6 @@ class FlowTest {
     }
 
 
-    /** The words page shows insert index + 1 of words on device of devices, read in-process (the word compared, never printed) and its header from the screen. */
-    private fun assertInsert(activity: MainActivity, words: List<String>, index: Int, device: Int, devices: Int) {
-        val what = "insert " + (index + 1)
-        await(what + " on the words page", 10) {
-            onMain { activity.model.state.value.let { it.screen == Screen.Words && it.page == index && !it.gate } }
-        }
-        val same = onMain {
-            val insert = checkNotNull(activity.model.state.value.insert)
-            insert.position == index + 1 && insert.count == words.size && insert.device == device &&
-                insert.devices == devices && insert.sequence == index % INSERTS_PER_DEVICE + 1 && sameWord(insert, words[index])
-        }
-        assertTrue(what + ": its page is not the vector's word with its position and device", same)
-        awaitText("insert_header", "Insert " + two(index + 1) + DOT + "device " + device + " of " + devices)
-    }
-
     /** The overview's page shows words 4 x page + 1 to 4 x page + 4, read in-process, with its header from the screen. */
     private fun assertOverview(activity: MainActivity, words: List<String>, page: Int, device: Int, devices: Int) {
         await("overview page " + (page + 1), 10) {
@@ -302,52 +289,6 @@ class FlowTest {
      */
     private fun drawsSecret(text: String): Boolean =
         Capture.nodes(Capture.instrumentation.targetContext.packageName).any { it.resourceName == SECRET_TAG && it.text == text }
-
-    /** Whether insert's word is word, byte by byte, its copy wiped (the words are public vectors, never printed). */
-    private fun sameWord(insert: WordPage, word: String): Boolean {
-        val bytes = insert.word()
-        val same = bytes.size == word.length && word.indices.all { bytes[it] == word[it].code.toByte() }
-        bytes.wipe()
-        return same
-    }
-
-    /**
-     * The letter pad's keys on the read-back entry (lead decision M5-46): the screen's nodes with the
-     * button role and no text, description or resource id, which must be its 26, in the pad's order; and
-     * no node there has a single letter or a Public key's id (key_ and a letter), so nothing names a key.
-     * Found afresh for each key, since a key typed may recompose the actions around the pad (CheckTest's
-     * taps resolve their selector at the click for the same reason), and again when a redraw replaced a
-     * node read (fresh).
-     */
-    private fun letterKeys(): List<UiObject2> = fresh("the letter pad's keys") {
-        device.waitForIdle()
-        val root = find(screenId(Screen.ReadbackEntry))
-        val keys = root.findObjects(By.clazz(BUTTON)).filter {
-            it.text.isNullOrEmpty() && it.contentDescription.isNullOrEmpty() && it.resourceName.isNullOrEmpty()
-        }
-        assertEquals("the letter pad's keys, each with its button role alone", LETTER_KEYS.length, keys.size)
-        assertFalse("a node on the read-back entry names a letter", root.hasObject(By.text(Pattern.compile("[a-z]"))))
-        assertFalse("a key on the read-back entry has a Public key's id", root.hasObject(By.res(Pattern.compile("key_.*"))))
-        keys
-    }
-
-    /**
-     * Types letters on the read-back entry's letter pad, a touch on each key (Ui.touch, which logs no point:
-     * a click's logged point would name the letter on the pad's fixed grid, and which finds the keys
-     * again if a redraw replaced the one to touch), and checks in-process that the pad holds them
-     * (compared, never printed).
-     */
-    private fun typeOnPad(activity: MainActivity, letters: String) {
-        for (letter in letters) {
-            touch { letterKeys()[LETTER_KEYS.indexOf(letter)] }
-        }
-        device.waitForIdle()
-        val held = onMain {
-            val entry = activity.model.readbackLetters
-            entry.length == letters.length && letters.indices.all { entry.keyAt(it) == letters[it] }
-        }
-        assertTrue("the letter pad's taps did not type the letters tapped", held)
-    }
 
     /** The read-back of insert index + 1 through the model's letter pad and Done, as the pad calls them, then Next. */
     private fun readBack(activity: MainActivity, words: List<String>, index: Int) {
@@ -440,14 +381,14 @@ class FlowTest {
             on(activity, Screen.ReadbackEntry)
             assertFalse("a gate between the Protected words and the Protected read-back", onMain { activity.model.state.value.gate })
             awaitText("readback_header", "Read back insert 01" + DOT + "device 1 of 1")
-            letterKeys()
+            letterKeys(Screen.ReadbackEntry)
             val misread = words.indexOfFirst { word -> word.take(4).any { it == 'e' || it == 'i' } }
             assertTrue("the gate seed has an e or an i among a word's first four letters", misread >= 0)
             for (index in 0 until misread) readBack(activity, words, index)
             val face = words[misread].take(4).indexOfFirst { it == 'e' || it == 'i' } + 1
             val wrong = words[misread].take(4).let { it.substring(0, face - 1) + (if (it[face - 1] == 'e') 'i' else 'e') + it.substring(face) }
             awaitText("readback_header", "Read back insert " + two(misread + 1) + DOT + "device 1 of 1")
-            typeOnPad(activity, wrong)
+            typeLetters(activity, Screen.ReadbackEntry, wrong) { it.readbackLetters }
             tap("letters_done")
             on(activity, Screen.ReadbackMismatch)
             awaitText("mismatch_header", "Insert " + two(misread + 1) + " does not match" + DOT + "device 1 of 1")
@@ -464,7 +405,7 @@ class FlowTest {
             assertTrue("the reviewed insert is not the misread one", onMain { sameWord(checkNotNull(activity.model.state.value.insert), words[misread]) })
             tap("back_to_readback")
             on(activity, Screen.ReadbackEntry)
-            typeOnPad(activity, words[misread].take(4))
+            typeLetters(activity, Screen.ReadbackEntry, words[misread].take(4)) { it.readbackLetters }
             tap("letters_done")
             await("the match", 10) { onMain { activity.model.state.value.matched } }
             assertTrue("the match does not show the insert's word", onMain { sameWord(checkNotNull(activity.model.state.value.insert), words[misread]) })
@@ -845,12 +786,6 @@ class FlowTest {
             "obvious", "devote", "violin", "coil", "conduct", "salmon", "kidney", "anchor", "monkey", "cruel", "truth",
             "dash", "smart",
         )
-
-        /** Between a header's parts, as WordsScreens.kt (and the Pi) write it: a middle dot. */
-        const val DOT = " \u00B7 "
-
-        /** number as two digits, zero first (a position on the words' headers). */
-        fun two(number: Int): String = number.toString().padStart(2, '0')
 
         /** C as the commitment screen shows it: four rows of four groups of four lower-case hex digits. */
         val HEX_GROUPS = Regex("^[0-9a-f]{4}( [0-9a-f]{4}){3}(\n[0-9a-f]{4}( [0-9a-f]{4}){3}){3}$")

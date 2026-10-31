@@ -15,20 +15,29 @@ import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.Until
 import com.keepcrypt.entropy.Capture.launch
 import com.keepcrypt.entropy.Capture.onMain
+import com.keepcrypt.entropy.ffi.WordPage
+import com.keepcrypt.entropy.screens.CeremonyModel
+import com.keepcrypt.entropy.screens.INSERTS_PER_DEVICE
+import com.keepcrypt.entropy.screens.LETTER_KEYS
+import com.keepcrypt.entropy.screens.PadEntry
 import com.keepcrypt.entropy.screens.Screen
 import com.keepcrypt.entropy.screens.screenId
 import java.util.regex.Pattern
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 
 /**
- * The flow tests' way through the Public screens (tasks/todo.md, M5 groups 15 and 16), shared by
- * FlowTest, CheckTest and SnapshotDrillTest: UI Automator taps controls by their resource ids (Compose
- * test tags, group 6) as a user would and reads what they show from the accessibility tree; the many
- * rolls a minimum takes go through the model's dice pick and confirmRoll, the entry points the pad and
- * Confirm call (group 6, "Driving"). No helper reads a node it found before a wait: each read finds its
- * node afresh (fresh), since a redraw in between replaces it.
+ * The flow tests' way through the screens (tasks/todo.md, M5 groups 15 and 16, and Stage U's U1b), shared
+ * by FlowTest, CheckTest, JourneyTest and SnapshotDrillTest: UI Automator taps controls by their resource
+ * ids (Compose test tags, group 6) as a user would and reads what they show from the accessibility tree.
+ * A journey's every input goes through the UI (M5-72 (a)): its rolls pressed and confirmed on the dice pad
+ * (tapRolls), its code tapped on the Crockford pad (tapCode) and its letters touched on the Protected
+ * letter pad (typeLetters); the edge tests may still make the many rolls a minimum takes through the
+ * model's dice pick and confirmRoll, the entry points the pad and Confirm call (roll; group 6,
+ * "Driving"). No helper reads a node it found before a wait: each read finds its node afresh (fresh),
+ * since a redraw in between replaces it.
  */
 internal object Ui {
     /** The start-up self-test's and a start's time limit (a translated library is slower; NativeTest's). */
@@ -66,7 +75,11 @@ internal object Ui {
         return activity
     }
 
-    /** count rolls through the model's dice pick and confirmRoll, as the pad and Confirm call them, faces in pattern's order. */
+    /**
+     * count rolls through the model's dice pick and confirmRoll, as the pad and Confirm call them, faces in
+     * pattern's order: the edge tests' setup, in-process. A journey (JourneyTest; M5-72 (a)) makes its
+     * rolls through the UI alone, by tapRolls.
+     */
     fun roll(activity: MainActivity, count: Int, pattern: String) {
         onMain {
             for (index in 0 until count) {
@@ -189,6 +202,33 @@ internal object Ui {
         assertTrue("the dice screen's pick is not the face pressed (neither is printed)", same)
     }
 
+    /**
+     * count rolls through the UI alone, faces in pattern's order (Stage U's U1b, M5-72 (a)): for each, the
+     * face's key pressed on the Public dice pad (pressFace, which names no face to UI Automator), Confirm
+     * tapped once it is enabled (a face is picked), and the count waited for until it shows one roll more.
+     * The count is public and the faces are compared nowhere here: a roll pressed wrong shows in the seed
+     * the journey then checks (its Seal ID and words, vectors), and a press lost leaves Confirm disabled,
+     * which fails here. The count before each roll is read in-process (to observe), the one after from the
+     * screen.
+     */
+    fun tapRolls(activity: MainActivity, count: Int, pattern: String) {
+        for (index in 0 until count) {
+            val before = onMain { activity.model.state.value.dice?.rolls } ?: throw AssertionError("not on the dice screen")
+            pressFace(pattern[index % pattern.length])
+            val picked = device.wait(Until.hasObject(By.res("confirm").enabled(true)), FIND_MS)
+            assertTrue("Confirm is not enabled after a face's press (roll " + (before + 1) + ")", picked == true)
+            tap("confirm")
+            val counted = device.wait(Until.hasObject(By.res("dice_count").textStartsWith((before + 1).toString() + " / ")), FIND_MS)
+            assertTrue("the dice count does not show " + (before + 1) + " rolls after Confirm", counted == true)
+        }
+    }
+
+    /** Taps code on the code entry's Crockford pad, key by key, and waits for it shown in two groups (a go-ahead code is public). */
+    fun tapCode(code: String) {
+        for (symbol in code) tap("key_" + symbol)
+        awaitText("code", Checker.grouped(code))
+    }
+
     /** The dice pad's keys' resource ids, key_ and a face, and a face as the pick shows it: patterns that name no face. */
     private val DICE_KEY: Pattern = Pattern.compile("key_[1-6]")
     private val A_FACE: Pattern = Pattern.compile("[1-6]")
@@ -220,6 +260,74 @@ internal object Ui {
             event.recycle()
         }
     }
+
+    /**
+     * The letter pad's keys on screen (the read-back entry, the backup's confirm or Check a backup's
+     * entry, lead decision M5-46): the screen's nodes with the button role and no text, description or
+     * resource id, which must be its 26, in the pad's order; and no node there has a single letter or a
+     * Public key's id (key_ and a letter), so nothing names a key. Found afresh for each key, since a key
+     * typed may recompose the actions around the pad (a tap resolves its selector at the click for the
+     * same reason), and again when a redraw replaced a node read (fresh).
+     */
+    fun letterKeys(screen: Screen): List<UiObject2> = fresh("the letter pad's keys") {
+        device.waitForIdle()
+        val root = find(screenId(screen))
+        val keys = root.findObjects(By.clazz(BUTTON)).filter {
+            it.text.isNullOrEmpty() && it.contentDescription.isNullOrEmpty() && it.resourceName.isNullOrEmpty()
+        }
+        assertEquals("the letter pad's keys, each with its button role alone", LETTER_KEYS.length, keys.size)
+        assertFalse("a node on " + screenId(screen) + " names a letter", root.hasObject(By.text(Pattern.compile("[a-z]"))))
+        assertFalse("a key on " + screenId(screen) + " has a Public key's id", root.hasObject(By.res(Pattern.compile("key_.*"))))
+        keys
+    }
+
+    /**
+     * Types letters on screen's letter pad, a touch on each key (touch, which logs no point: a click's
+     * logged point would name the letter on the pad's fixed grid, and which finds the keys again if a
+     * redraw replaced the one to touch), and checks in-process that entry, the model's pad entry of
+     * screen, holds them after any it held before (compared, never printed).
+     */
+    fun typeLetters(activity: MainActivity, screen: Screen, letters: String, entry: (CeremonyModel) -> PadEntry) {
+        val before = onMain { entry(activity.model).length }
+        for (letter in letters) {
+            touch { letterKeys(screen)[LETTER_KEYS.indexOf(letter)] }
+        }
+        device.waitForIdle()
+        val held = onMain {
+            val pad = entry(activity.model)
+            pad.length == before + letters.length && letters.indices.all { pad.keyAt(before + it) == letters[it] }
+        }
+        assertTrue("the letter pad's taps did not type the letters tapped", held)
+    }
+
+    /** Whether insert's word is word, byte by byte, its copy wiped (the words are public vectors, never printed). */
+    fun sameWord(insert: WordPage, word: String): Boolean {
+        val bytes = insert.word()
+        val same = bytes.size == word.length && word.indices.all { bytes[it] == word[it].code.toByte() }
+        bytes.wipe()
+        return same
+    }
+
+    /** The words page shows insert index + 1 of words on device of devices, read in-process (the word compared, never printed) and its header from the screen. */
+    fun assertInsert(activity: MainActivity, words: List<String>, index: Int, device: Int, devices: Int) {
+        val what = "insert " + (index + 1)
+        await(what + " on the words page", 10) {
+            onMain { activity.model.state.value.let { it.screen == Screen.Words && it.page == index && !it.gate } }
+        }
+        val same = onMain {
+            val insert = checkNotNull(activity.model.state.value.insert)
+            insert.position == index + 1 && insert.count == words.size && insert.device == device &&
+                insert.devices == devices && insert.sequence == index % INSERTS_PER_DEVICE + 1 && sameWord(insert, words[index])
+        }
+        assertTrue(what + ": its page is not the vector's word with its position and device", same)
+        awaitText("insert_header", "Insert " + two(index + 1) + DOT + "device " + device + " of " + devices)
+    }
+
+    /** Between a header's parts, as WordsScreens.kt (and the Pi) write it: a middle dot. */
+    const val DOT = " \u00B7 "
+
+    /** number as two digits, zero first (a position on the words' headers). */
+    fun two(number: Int): String = number.toString().padStart(2, '0')
 
     /** Waits up to 10 s for the node tag to show text. */
     fun awaitText(tag: String, text: String) {
