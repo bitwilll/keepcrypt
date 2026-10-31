@@ -37,11 +37,19 @@ internal object Picker {
 
     private val device: UiDevice get() = UiDevice.getInstance(Capture.instrumentation)
 
-    /** The system's file picker's package, once its window is up (DocumentsUI: AOSP's on the default images, Google's on Play images). */
+    /**
+     * The system's file picker's package, once its window is up and idle (DocumentsUI: AOSP's on the
+     * default images, Google's on Play images). The node is found again after the idle wait and read at
+     * once, and again if a redraw replaced it first (Ui.fresh): Entropy Android 41207540199 (API 31) read
+     * a node found before the wait, which DocumentsUI had redrawn meanwhile (StaleObjectException).
+     */
     fun opened(): String {
-        val shown = device.wait(Until.findObject(By.pkg(PACKAGE)), 20_000) ?: throw AssertionError("the system's file picker did not open")
+        val up = device.wait(Until.hasObject(By.pkg(PACKAGE)), 20_000)
+        if (up != true) throw AssertionError("the system's file picker did not open")
         device.waitForIdle()
-        return shown.applicationPackage
+        return Ui.fresh("the system's file picker") {
+            (device.findObject(By.pkg(PACKAGE)) ?: throw AssertionError("the system's file picker closed")).applicationPackage
+        }
     }
 
     /**
@@ -84,15 +92,22 @@ internal object Picker {
      */
     fun save(name: String): String {
         val creator = opened()
-        val title = device.wait(Until.findObject(By.pkg(PACKAGE).res("android:id/title")), 10_000)
-            ?: throw AssertionError("the picker shows no name field (its facts are the probe line before this)").also { probe(facts("create")) }
-        probe("the create-document picker: package $creator, its name field ${title.text}; " + facts("create"))
-        assertEquals("the picker's name is not core's suggested one", name, title.text)
+        // The name field's text read once, from a node found and read together (and again if a redraw
+        // replaced it first), before facts' own searches wait for idle.
+        val title = Ui.fresh("the picker's name field") {
+            val field = device.wait(Until.findObject(By.pkg(PACKAGE).res("android:id/title")), 10_000)
+                ?: throw AssertionError("the picker shows no name field (its facts are the probe line before this)").also { probe(facts("create")) }
+            field.text
+        }
+        probe("the create-document picker: package $creator, its name field $title; " + facts("create"))
+        assertEquals("the picker's name is not core's suggested one", name, title)
         toDownloads("create")
-        val save = device.findObject(By.pkg(PACKAGE).res("android:id/button1"))
-            ?: device.findObject(By.pkg(PACKAGE).clickable(true).text(Pattern.compile("(?i)save")))
-            ?: throw AssertionError("the picker has no Save (its facts are the probe line before this)").also { probe(facts("create")) }
-        save.click()
+        Ui.fresh("the picker's Save") {
+            val save = device.findObject(By.pkg(PACKAGE).res("android:id/button1"))
+                ?: device.findObject(By.pkg(PACKAGE).clickable(true).text(Pattern.compile("(?i)save")))
+                ?: throw AssertionError("the picker has no Save (its facts are the probe line before this)").also { probe(facts("create")) }
+            save.click()
+        }
         return creator
     }
 

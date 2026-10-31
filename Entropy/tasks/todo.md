@@ -11189,7 +11189,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   build 17 minutes from 2026-10-31, M5-75 (g), from run 41181656557's 779 s; the two journeys jobs 25 and 23 minutes
   from 2026-10-31, M5-76 (a) and (e), from U1b2's run 41197141108's 1153 s and 1097 s; from U1e, M5-76 (g), eight leg
   jobs: the journeys jobs 20 minutes again without JourneyTest, the two ui jobs measured at 30; from run 41203734694,
-  M5-76 (h): registry 18 and 19, journeys 20 and 19, ui 30 until a run measures it whole);
+  M5-76 (h): registry 18 and 19, journeys 20 and 19, ui 30 until a run measures it whole; API 36's ui 27 from run
+  41207540199's 1284 s);
   system images, the emulator package and the Gradle distribution are cached with actions/cache keyed on their
   revisions. An emulator boot failure may be re-run once, and the re-run is logged under Review; a test
   failure is never re-run. Past any budget, the lead stops and re-plans.
@@ -16942,6 +16943,23 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   by the strict Gradle run, no warning; android-emulator.sh --selftest 57 passed; android-instrument.sh --selftest 50;
   android-local.sh --selftest 47 (was 4 failed); android-age-check.py --selftest 18; banned-api-check.sh clean, 402
   files; --workflows clean.
+  Proof (CI, the lead's, 2026-10-31, partial): Entropy Android 41207540199 at be2878d (U4r): seven of the eight leg jobs
+  green. API 36's ui job green in 1284 s: JourneyTest 4 of 4 (the mixed journey 269.6 s, its BIP39 passphrase
+  touched on the ASCII pad past the label check U4r fixed; the 24-word 307.3 s; Match found 247.8 s; Cannot check and
+  backup 294.4 s) and StopJourneyTest passing the stricter gone: form ("gone during the test, as it must be"); API 36's
+  journeys job green in 873 s, BackupTest's age -d hand-off passing its logcat check this run; both registry jobs green
+  (879 s and 893 s), both capture jobs green, API 31's journeys job green (900 s). API 31's ui job red: the mixed
+  journey passed there too (so U1d holds on both levels), as did the 24-word and Match found journeys and
+  StopJourneyTest's gone: run, and the Cannot check and backup journey failed in Picker.save: StaleObjectException in
+  UiObject2.getApplicationPackage from Picker.opened, which read a node found before its waitForIdle, DocumentsUI
+  having redrawn meanwhile. A test-harness race (the journey passed on both levels at 62f9c8c), fixed at its root in
+  U4r2, not rerun.
+  Proof (M5 commit U4r2, CI fix, partial: local; CI's ui jobs at the next push): Picker.opened waits for the picker
+  (Until.hasObject), waits for idle, then finds its node and reads its package in one Ui.fresh block, found again if a
+  redraw replaced it; Picker.save reads its name field's text once, in a Ui.fresh block, before facts' searches wait
+  for idle (it read the field twice, around them), and finds and clicks Save in one. Ui's own rule, that no helper
+  reads a node it found before a wait, now holds in Picker too. Locally: both test APKs built by the strict Gradle
+  run, no warning; banned-api-check.sh clean, 402 files.
 - [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
   every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
   every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,
@@ -17287,7 +17305,7 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       Skip confirmed, the 24 inserts by Next across the device swap and its second gate (each the vector's word and
       device), the 24 read-backs by touches with each insert's device, the summary, the skips, the registration QR
       (dice-99-words24's register text), the checklist naming two devices, Finish.
-    - [ ] U1d: JourneyTest's mixed 12-word journey: the commitment's C, the device entropy screen's touches, 50 tapped
+    - [x] U1d: JourneyTest's mixed 12-word journey: the commitment's C, the device entropy screen's touches, 50 tapped
       rolls, the drawn check QR's code tapped, the words and read-back, the summary, the watch-only export with a BIP39
       passphrase typed on the ASCII pad by touches (watchonly.json's), the registration QR, Reveal D (D the phone's,
       checked against C by core), the checklist, Finish; and the shipping app's scanned go-ahead QR refused (the scan
