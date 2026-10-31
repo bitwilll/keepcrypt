@@ -653,7 +653,8 @@ jobs:
     # splits JourneyTest into a part of its own, ui, one job on each level (M5-76 (g)): the journeys
     # jobs go back to 20 minutes (FlowTest, CheckTest and BackupTest, measured 919 s and 952 s in run
     # 40903211202 before JourneyTest), and the ui jobs are measured at 30, then each budgeted at its
-    # measured time plus 25%.
+    # measured time plus 25%. U1f adds two journeys to SnapshotDrillTest, so the registry jobs are
+    # measured at 30 too (M5-76 (f)).
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       # Every leg job runs to its end: a red leg never cancels another job or hides its evidence.
@@ -677,7 +678,7 @@ jobs:
           - api: '31'
             part: registry
             legs: API 31, test registry and edges
-            timeout: 10
+            timeout: 30
           - api: '36'
             part: capture
             legs: API 36, capture
@@ -693,7 +694,7 @@ jobs:
           - api: '36'
             part: registry
             legs: API 36, test registry and edges
-            timeout: 11
+            timeout: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

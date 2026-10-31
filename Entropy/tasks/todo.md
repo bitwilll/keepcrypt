@@ -15908,8 +15908,9 @@ they differ. Nothing in the Android plan is weakened.
   its own, ui (android-emulator.sh --part ui, one job on each level, eight leg jobs in all), before U1e lands; the
   journeys part keeps FlowTest, CheckTest and BackupTest with its age -d hand-off last, back at 20 minutes (its
   measured 919 s and 952 s, run 40903211202, before JourneyTest), and the ui jobs are measured at 30. U1c's own run
-  (5641b98's) was cancelled by the next push while its build job ran, before any emulator job: the run at U1e's
-  head proves U1c, U1d and U1e together. JourneyTest clears core's backup name from Downloads before its save, so
+  (5641b98's) was cancelled by the next push while its build job ran, before any emulator job, and so were c8794c1's
+  and 143f5fa's (the commits pushed on the stop hook's instruction while a run was going): the run at U1g's head
+  proves U1c to U1g together, and the ui and registry jobs are measured there. JourneyTest clears core's backup name from Downloads before its save, so
   with every part on one boot it never picks BackupTest's file.
 
 **Open item (2026-10-31): UI Automator does not see first_launch in API 36's journeys.** Entropy Android 41148288082
@@ -16857,6 +16858,33 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   JourneyTest), the parts' union and the workflow's eight rows with their budgets. Locally: both test APKs built by
   the strict Gradle run, no warning; android-emulator.sh --selftest 56 passed; banned-api-check.sh clean, 397 files;
   --workflows clean.
+  Proof (M5 commit U1f, Stage U-4, partial: local, no emulator; CI's registry jobs at the next push): JourneyTest's
+  stretches from a check's result to Finish move to Journeys (wordsAndReadBack, summaryToBackupOffer,
+  summaryToWatchOffer, registration, checklistToFinish, wordsToFinish, since) and kcr.json's gate seeds to GateSeeds,
+  shared by JourneyTest and SnapshotDrillTest. SnapshotDrillTest's rolls are tapped (Ui.tapRolls, every one of its
+  journeys through the UI alone); theScannedCollisionDice50QrDestroysTheSeedBeforeAnyWordsAndItsRestartAt99RollsReachesFinish
+  goes on from Add fresh entropy's "0 / 99 rolls": dice-99-words12's 99 rolls tapped, its seal card's Seal ID
+  9FHYMCQA, the scanned clear-empty-bucket QR (made for that seed): "No collision for seal 9FHYMCQA as of
+  2026-03-01.", the 12 words read back by touches, the summary, the registration QR (its register text) and Finish;
+  the new aTwentyFourWordSeedCheckedOnItsOwnAgainstALoadedSnapshotIsClearAndReachesFinish loads with-dice-50 through
+  the picker, taps dice-99-words24's 99 rolls, and its check runs on its own: "No collision for seal RXDANDFR as of
+  2026-03-01." with the snapshot's line and Stale warning (kcr.json's lookups give dice-99-words24 no entry), then the
+  24 words on two devices read back by touches to Finish with the checklist naming two devices. The registry jobs are
+  measured at 30 minutes (M5-76 (f)). Locally: both test APKs built by the strict Gradle run, no warning.
+  Proof (M5 commit U1g, Stage U-4, partial: local, no emulator; CI's ui jobs at the next push): android-instrument.sh
+  gains the gone: form, for a test whose app ends its own process with no crash: the run must have its test started,
+  none passed and the activity manager's shortMsg (as a killed: run), and then the crash buffer and DropBox clean as
+  any run's (no trigger's crash allowed, unlike killed:); its PASS line says "gone during the test, as it must be: the
+  app ended its own process". --selftest's three new cases: a gone run whose process ends during its test with
+  nothing in the crash buffer passes; one that passes, and one with a crash of ours in the crash buffer, fail (46
+  passed). StopJourneyTest (the shipping app, the ui part after JourneyTest, as gone:) taps First launch's Continue to
+  Go offline, raises a halt in-process as core raises one (KcHalt with a health test's reason, through the model's
+  call path, as CaptureTest's walk does: no input on the screen halts the app), and pins the stop screen naming that
+  reason ("An entropy health test failed."), holding nothing, Back doing nothing, and Close app ending the process;
+  it stays off Home, so no phone setting needs putting back once the process has gone. android-emulator.sh runs it
+  in the ui part (the pinned orders and the whole leg's runs with it; --selftest 56 passed). About from Home and back
+  is FlowTest's homesAboutShowsTheVersionTheFlavourAndTheSourceAsPlainTextAndBackReturnsHome, by taps already.
+  Locally: both test APKs built by the strict Gradle run, no warning; banned-api-check.sh clean, 400 files.
 - [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
   every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
   every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,

@@ -1,16 +1,29 @@
 package com.keepcrypt.entropy
 
+import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.keepcrypt.entropy.Capture.finish
 import com.keepcrypt.entropy.Capture.onMain
 import com.keepcrypt.entropy.Capture.pass
+import com.keepcrypt.entropy.GateSeeds.DICE_50_ROLLS
+import com.keepcrypt.entropy.GateSeeds.DICE_50_SEAL_CODE
+import com.keepcrypt.entropy.GateSeeds.DICE_50_SEAL_ID
+import com.keepcrypt.entropy.GateSeeds.DICE_99_24_SEAL_CODE
+import com.keepcrypt.entropy.GateSeeds.DICE_99_24_SEAL_ID
+import com.keepcrypt.entropy.GateSeeds.DICE_99_24_WORDS
+import com.keepcrypt.entropy.GateSeeds.DICE_99_ROLLS
+import com.keepcrypt.entropy.GateSeeds.DICE_99_SEAL_CODE
+import com.keepcrypt.entropy.GateSeeds.DICE_99_SEAL_ID
+import com.keepcrypt.entropy.GateSeeds.DICE_99_WORDS
+import com.keepcrypt.entropy.Journeys.since
+import com.keepcrypt.entropy.Journeys.wordsToFinish
 import com.keepcrypt.entropy.Ui.START_SECONDS
 import com.keepcrypt.entropy.Ui.await
 import com.keepcrypt.entropy.Ui.awaitText
 import com.keepcrypt.entropy.Ui.find
 import com.keepcrypt.entropy.Ui.grantCamera
 import com.keepcrypt.entropy.Ui.on
-import com.keepcrypt.entropy.Ui.roll
+import com.keepcrypt.entropy.Ui.tapRolls
 import com.keepcrypt.entropy.Ui.shown
 import com.keepcrypt.entropy.Ui.tap
 import com.keepcrypt.entropy.Ui.toHome
@@ -81,7 +94,7 @@ class SnapshotDrillTest {
     }
 
     @Test
-    fun theScannedCollisionDice50QrDestroysTheSeedBeforeAnyWordsAndFreshEntropyNeeds99Rolls() {
+    fun theScannedCollisionDice50QrDestroysTheSeedBeforeAnyWordsAndItsRestartAt99RollsReachesFinish() {
         Capture.whileOffline {
             grantCamera()
             val activity = toHome()
@@ -101,9 +114,31 @@ class SnapshotDrillTest {
             tap("add_fresh_entropy")
             on(activity, Screen.Dice, START_SECONDS)
             awaitText("dice_count", "0 / 99 rolls, 0.0 bits")
+            // The restart to Finish (Stage U's U1f): dice-99-words12's 99 rolls tapped, its check passed by the
+            // scanned clear-empty-bucket QR made for it, its words read back by touches, and Finish.
+            tapRolls(activity, 99, DICE_99_ROLLS)
+            awaitText("dice_count", "99 / 99 rolls, 255.9 bits")
+            tap("dice_done")
+            on(activity, Screen.CheckPrompt, START_SECONDS)
+            tap("check_now")
+            on(activity, Screen.SealCard)
+            assertTrue("the restart's seal card does not draw dice-99-words12's Seal ID", shown(Screen.SealCard, DICE_99_SEAL_ID))
+            tap("show_check_qr")
+            on(activity, Screen.CheckQr)
+            tap("scan_qr")
+            on(activity, Screen.Scan)
+            awaitText("scan_line", SCAN_MISSING)
+            onMain { activity.model.onGoAheadText(Checker.CLEAR_EMPTY_BUCKET_UR.uppercase()) }
+            on(activity, Screen.CheckResult, START_SECONDS)
+            awaitText("check_result_text", "No collision for seal $DICE_99_SEAL_ID as of 2026-03-01.")
+            val (readback, rest) = wordsToFinish(activity, DICE_99_WORDS, DICE_99_SEAL_CODE)
             pass(
                 "the scanned collision-dice-50 QR: the collision before any words, 1 entry in this seal's bucket, the " +
-                    "Stale warning and its Seal ID $DICE_50_SEAL_ID; the report behind the gate; Add fresh entropy: 0 / 99",
+                    "Stale warning and its Seal ID $DICE_50_SEAL_ID; the report behind the gate; Add fresh entropy: 0 / 99; " +
+                    "the restart to Finish through the UI alone: dice-99-words12's 99 rolls tapped, its seal card " +
+                    "($DICE_99_SEAL_ID), the scanned clear-empty-bucket QR: the check passed as of 2026-03-01; 12 inserts " +
+                    "equal to the vector's words, 12 read back by touches ($readback), the summary, the registration QR " +
+                    "(its register text), the checklist, Finish: Home with the slot empty ($rest from Show words)",
             )
             finish(activity)
         }
@@ -115,6 +150,57 @@ class SnapshotDrillTest {
             Picker.putInDownloads(Checker.WITH_DICE_50_FILE, Checker.bytes(Checker.WITH_DICE_50_KCR))
             try {
                 drillWithTheSnapshotPicked()
+            } finally {
+                Picker.removeFromDownloads(Checker.WITH_DICE_50_FILE)
+            }
+        }
+    }
+
+    /**
+     * A 24-word seed checked on its own against a loaded snapshot, to Finish through the UI alone (Stage
+     * U's U1f): with-dice-50 picked from Downloads and loaded, then a dice-only seed of dice-99-words24 by
+     * its 99 rolls tapped, Check now, and the check runs on its own (M5-54): clear, as of the snapshot's
+     * date, with its line and Stale warning, since the snapshot holds no entry in that seal's bucket
+     * (kcr.json's lookups: none for dice-99-words24); the 24 words on two devices read back by touches, the
+     * summary, the registration QR, the checklist naming two devices, Finish.
+     */
+    @Test
+    fun aTwentyFourWordSeedCheckedOnItsOwnAgainstALoadedSnapshotIsClearAndReachesFinish() {
+        Capture.whileOffline {
+            Picker.putInDownloads(Checker.WITH_DICE_50_FILE, Checker.bytes(Checker.WITH_DICE_50_KCR))
+            try {
+                val journey = SystemClock.elapsedRealtime()
+                val activity = toHome()
+                tap("load_snapshot")
+                Picker.pick(Checker.WITH_DICE_50_FILE)
+                on(activity, Screen.Snapshot, START_SECONDS)
+                awaitText("snapshot_line", "Snapshot No. 4, dated 2026-03-01, 7 entries.")
+                tap("snapshot_done")
+                on(activity, Screen.Home)
+                tap("dice_only_seed")
+                on(activity, Screen.Length)
+                tap("words_24")
+                on(activity, Screen.Dice, START_SECONDS)
+                tapRolls(activity, 99, DICE_99_ROLLS)
+                awaitText("dice_count", "99 / 99 rolls, 255.9 bits")
+                tap("dice_done")
+                on(activity, Screen.CheckPrompt, START_SECONDS)
+                tap("check_now")
+                on(activity, Screen.CheckResult, START_SECONDS)
+                awaitText("check_result_text", "No collision for seal $DICE_99_24_SEAL_ID as of 2026-03-01.")
+                awaitText("snapshot_line", "Snapshot No. 4, dated 2026-03-01, 7 entries.")
+                awaitText("snapshot_warning", STALE_WARNING)
+                assertTrue("the result's header is not the loaded snapshot's", onMain { activity.model.state.value.registry?.number } == 4UL)
+                val (readback, rest) = wordsToFinish(activity, DICE_99_24_WORDS, DICE_99_24_SEAL_CODE)
+                pass(
+                    "a 24-word seed against the loaded snapshot through the UI alone: with-dice-50 picked and loaded; " +
+                        "dice-99-words24's 99 rolls tapped; its check on its own: clear for seal $DICE_99_24_SEAL_ID as of " +
+                        "2026-03-01, the snapshot's line and Stale warning; 24 inserts on two devices equal to the vector's " +
+                        "words, 24 read back by touches ($readback), the summary, the registration QR (its register text), " +
+                        "the checklist naming two devices, Finish: Home with the slot empty ($rest from Show words); the " +
+                        "journey " + since(journey),
+                )
+                finish(activity)
             } finally {
                 Picker.removeFromDownloads(Checker.WITH_DICE_50_FILE)
             }
@@ -143,7 +229,7 @@ class SnapshotDrillTest {
         on(activity, Screen.Length)
         tap("words_12")
         on(activity, Screen.Dice, START_SECONDS)
-        roll(activity, 50, DICE_50_ROLLS)
+        tapRolls(activity, 50, DICE_50_ROLLS)
         awaitText("dice_count", "50 / 50 rolls, 129.2 bits")
         tap("dice_done")
         on(activity, Screen.CheckPrompt, START_SECONDS)
@@ -187,7 +273,7 @@ class SnapshotDrillTest {
         on(activity, Screen.Length)
         tap("words_12")
         on(activity, Screen.Dice, START_SECONDS)
-        roll(activity, count, pattern)
+        tapRolls(activity, count, pattern)
         awaitText("dice_count", diceLine)
         tap("dice_done")
         on(activity, Screen.CheckPrompt, START_SECONDS)
@@ -206,16 +292,5 @@ class SnapshotDrillTest {
     private fun <T> done(reply: Reply<T>, what: String): T = when (reply) {
         is Reply.Done -> reply.value
         is Reply.Refused, Reply.Discarded -> throw AssertionError("not done: " + what)
-    }
-
-    private companion object {
-        /** vectors/kcr.json's dice-50-words12: 123456 repeated, its Seal ID and its seal code as registered. */
-        const val DICE_50_ROLLS = "123456"
-        const val DICE_50_SEAL_ID = "YVM9CPP3"
-        const val DICE_50_SEAL_CODE = "B98KT954NNYSS6APNPZWCYY0VA"
-
-        /** vectors/kcr.json's dice-99-words12: 654321 repeated, and its Seal ID. */
-        const val DICE_99_ROLLS = "654321"
-        const val DICE_99_SEAL_ID = "9FHYMCQA"
     }
 }

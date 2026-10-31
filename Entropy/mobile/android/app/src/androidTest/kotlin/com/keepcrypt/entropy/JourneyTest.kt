@@ -2,14 +2,29 @@ package com.keepcrypt.entropy
 
 import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.uiautomator.By
 import com.keepcrypt.entropy.Capture.finish
 import com.keepcrypt.entropy.Capture.onMain
 import com.keepcrypt.entropy.Capture.pass
-import com.keepcrypt.entropy.Ui.DOT
+import com.keepcrypt.entropy.GateSeeds.DICE_50_ROLLS
+import com.keepcrypt.entropy.GateSeeds.DICE_50_SEAL_CODE
+import com.keepcrypt.entropy.GateSeeds.DICE_50_SEAL_ID
+import com.keepcrypt.entropy.GateSeeds.DICE_50_WORDS
+import com.keepcrypt.entropy.GateSeeds.DICE_99_24_SEAL_CODE
+import com.keepcrypt.entropy.GateSeeds.DICE_99_24_WORDS
+import com.keepcrypt.entropy.GateSeeds.DICE_99_ROLLS
+import com.keepcrypt.entropy.GateSeeds.DICE_99_SEAL_CODE
+import com.keepcrypt.entropy.GateSeeds.DICE_99_SEAL_ID
+import com.keepcrypt.entropy.GateSeeds.DICE_99_TAG
+import com.keepcrypt.entropy.GateSeeds.DICE_99_WORDS
+import com.keepcrypt.entropy.Journeys.checklistToFinish
+import com.keepcrypt.entropy.Journeys.registration
+import com.keepcrypt.entropy.Journeys.since
+import com.keepcrypt.entropy.Journeys.summaryToBackupOffer
+import com.keepcrypt.entropy.Journeys.summaryToWatchOffer
+import com.keepcrypt.entropy.Journeys.wordsAndReadBack
+import com.keepcrypt.entropy.Journeys.wordsToFinish
 import com.keepcrypt.entropy.Ui.START_SECONDS
 import com.keepcrypt.entropy.Ui.assertInsert
-import com.keepcrypt.entropy.Ui.assertInsertAt
 import com.keepcrypt.entropy.Ui.await
 import com.keepcrypt.entropy.Ui.awaitText
 import com.keepcrypt.entropy.Ui.device
@@ -17,7 +32,6 @@ import com.keepcrypt.entropy.Ui.enabled
 import com.keepcrypt.entropy.Ui.find
 import com.keepcrypt.entropy.Ui.grantCamera
 import com.keepcrypt.entropy.Ui.on
-import com.keepcrypt.entropy.Ui.sameWord
 import com.keepcrypt.entropy.Ui.shown
 import com.keepcrypt.entropy.Ui.stays
 import com.keepcrypt.entropy.Ui.tap
@@ -25,16 +39,13 @@ import com.keepcrypt.entropy.Ui.tapCode
 import com.keepcrypt.entropy.Ui.tapRolls
 import com.keepcrypt.entropy.Ui.text
 import com.keepcrypt.entropy.Ui.toHome
-import com.keepcrypt.entropy.Ui.two
 import com.keepcrypt.entropy.Ui.typeAscii
 import com.keepcrypt.entropy.Ui.typeLetters
 import com.keepcrypt.entropy.ffi.Core
 import com.keepcrypt.entropy.ffi.Refusal
 import com.keepcrypt.entropy.ffi.Reply
 import com.keepcrypt.entropy.ffi.Secret
-import com.keepcrypt.entropy.ffi.Summary
 import com.keepcrypt.entropy.screens.COLLISION_FOUND
-import com.keepcrypt.entropy.screens.INSERTS_PER_DEVICE
 import com.keepcrypt.entropy.screens.PASSPHRASE_WORDS
 import com.keepcrypt.entropy.screens.PASSPHRASE_WALLET
 import com.keepcrypt.entropy.screens.REVEAL_D
@@ -43,7 +54,6 @@ import com.keepcrypt.entropy.screens.SCAN_MISSING
 import com.keepcrypt.entropy.screens.SCAN_NO_REGISTRY_KEY
 import com.keepcrypt.entropy.screens.SKIPPED
 import com.keepcrypt.entropy.screens.Screen
-import com.keepcrypt.entropy.screens.TWO_DEVICES
 import com.keepcrypt.entropy.screens.fingerprintHex
 import com.keepcrypt.entropy.screens.hexGroups
 import java.security.MessageDigest
@@ -68,12 +78,6 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class JourneyTest {
-    /** Elapsed seconds since start (SystemClock's elapsed real time, in ms), one decimal. */
-    private fun since(start: Long): String {
-        val tenths = (SystemClock.elapsedRealtime() - start) / 100
-        return (tenths / 10).toString() + "." + (tenths % 10) + " s"
-    }
-
     /**
      * Match found to Add fresh entropy, then the new seed to Finish (Stage U's U1b; the Pi's step 7,
      * docs/pi-firmware.md:93, and swb's Stop): a dice-only seed of dice-50-words12 by its 50 rolls tapped,
@@ -161,138 +165,6 @@ class JourneyTest {
             )
             finish(activity)
         }
-    }
-
-    /**
-     * From a check's result with the words available (passed or skipped): Show words through the privacy
-     * gate, each of the count inserts by Next (its position and device, and for a vector seed, words not
-     * null, its word, in-process), across the device swap and its second gate on a 24-word seed, then the
-     * read-back of every insert's first four letters touched on the letter pad (each a match, the header
-     * naming its device; for a seed that is no vector's, the letters read in-process from the insert the
-     * read-back holds, never printed), to its end. Returns the read-back's time.
-     */
-    private fun wordsAndReadBack(activity: MainActivity, words: List<String>?, count: Int): String {
-        val devices = count / INSERTS_PER_DEVICE
-        fun device(index: Int) = index / INSERTS_PER_DEVICE + 1
-        tap("show_words")
-        find("privacy_gate")
-        assertTrue("the words showed before the privacy gate", onMain { activity.model.state.value.gate })
-        tap("pass_gate")
-        await("past the words' gate", 10) { !onMain { activity.model.state.value.gate } }
-        for (index in 0 until count) {
-            if (words != null) assertInsert(activity, words, index, device(index), devices) else assertInsertAt(activity, index, count, device(index), devices)
-            if (index + 1 == count) break
-            tap("next")
-            if ((index + 1) % INSERTS_PER_DEVICE == 0) {
-                on(activity, Screen.DeviceSwap)
-                awaitText("device_swap_text", "Words 13-24 go on device 2 of 2.")
-                tap("continue")
-                find("privacy_gate")
-                assertTrue("device 2's words showed before the privacy gate", onMain { activity.model.state.value.gate })
-                tap("pass_gate")
-            }
-        }
-        tap("start_readback")
-        on(activity, Screen.ReadbackEntry)
-        val readback = SystemClock.elapsedRealtime()
-        for (index in 0 until count) {
-            awaitText("readback_header", "Read back insert " + two(index + 1) + DOT + "device " + device(index) + " of " + devices)
-            val letters = words?.get(index)?.take(4) ?: onMain {
-                val word = checkNotNull(activity.model.state.value.insert).word()
-                val first = String(CharArray(minOf(4, word.size)) { Char(word[it].toInt()) })
-                word.wipe()
-                first
-            }
-            typeLetters(activity, Screen.ReadbackEntry, letters) { it.readbackLetters }
-            tap("letters_done")
-            await("insert " + (index + 1) + " matched", 10) { onMain { activity.model.state.value.matched } }
-            if (words != null) {
-                assertTrue(
-                    "the match does not show insert " + (index + 1) + "'s word",
-                    onMain { sameWord(checkNotNull(activity.model.state.value.insert), words[index]) },
-                )
-            }
-            tap("readback_next")
-        }
-        val time = since(readback)
-        on(activity, Screen.ReadbackDone)
-        return time
-    }
-
-    /** From the read-back's end: Show summary, the wallet summary (core's, its fingerprint on the screen) and its Next, to the backup's offer. Returns the summary. */
-    private fun summaryToBackupOffer(activity: MainActivity): Summary {
-        tap("show_summary")
-        on(activity, Screen.Wallet)
-        val summary = onMain { checkNotNull(activity.model.state.value.summary) }
-        val core = Core.summary()
-        assertTrue("the summary is not core's", core is Reply.Done && core.value.firstAddress == summary.firstAddress)
-        awaitText("fingerprint", fingerprintHex(summary.fingerprint))
-        tap("summary_next")
-        on(activity, Screen.BackupOffer)
-        return summary
-    }
-
-    /** From the read-back's end: summaryToBackupOffer, then the backup's offer skipped, to the watch-only offer. Returns the summary. */
-    private fun summaryToWatchOffer(activity: MainActivity): Summary {
-        val summary = summaryToBackupOffer(activity)
-        tap("skip_backup")
-        on(activity, Screen.WatchOffer)
-        return summary
-    }
-
-    /**
-     * From the registration's offer: the registration QR behind its gate, read in-process (sealCode's
-     * register text for a vector seed; core's own registration QR otherwise, a register text with a seal
-     * code; neither printed), and its Next.
-     */
-    private fun registration(activity: MainActivity, sealCode: String?) {
-        tap("show_registration")
-        find("privacy_gate")
-        tap("pass_gate")
-        await("past the registration QR's gate", 10) { onMain { activity.model.state.value.let { it.screen == Screen.RegisterQr && !it.gate } } }
-        val registration = onMain { activity.model.state.value.registration } ?: throw AssertionError("no registration QR")
-        val text = Checker.read(registration)
-        if (sealCode != null) {
-            assertTrue("the registration QR is not the seed's register text (neither is printed)", text == Checker.ORIGIN + "/register#c=" + sealCode)
-        } else {
-            val ours = when (val made = Core.registration()) {
-                is Reply.Done -> made.value
-                is Reply.Refused, Reply.Discarded -> throw AssertionError("core made no registration QR")
-            }
-            assertTrue("the registration QR drawn is not core's (neither is printed)", text == Checker.read(ours))
-            ours.wipe()
-            assertTrue("the registration QR is not a register text with a seal code (it is not printed)", REGISTER.matches(text))
-        }
-        tap("registration_done")
-    }
-
-    /** On the checklist: it names two devices for a 24-word seed and none for 12; Finish: Home, with the slot empty. */
-    private fun checklistToFinish(activity: MainActivity, devices: Int) {
-        on(activity, Screen.Checklist)
-        if (devices == 2) {
-            assertTrue("the checklist does not say which device holds words 1-12", shown(Screen.Checklist, TWO_DEVICES))
-        } else {
-            assertFalse("a 12-word seed's checklist names two devices", device.hasObject(By.res("two_devices")))
-        }
-        tap("finish")
-        on(activity, Screen.Home)
-        assertTrue("the slot is not at home: Finish did not end the session", Core.selfTest() is Reply.Done)
-    }
-
-    /**
-     * A dice-only vector seed's words to Finish (wordsAndReadBack, summaryToWatchOffer, the watch-only
-     * offer skipped, registration with sealCode, checklistToFinish). Returns the read-back's time and the
-     * whole stretch's.
-     */
-    private fun wordsToFinish(activity: MainActivity, words: List<String>, sealCode: String): Pair<String, String> {
-        val start = SystemClock.elapsedRealtime()
-        val readback = wordsAndReadBack(activity, words, words.size)
-        summaryToWatchOffer(activity)
-        tap("skip_watch_only")
-        on(activity, Screen.RegisterOffer)
-        registration(activity, sealCode)
-        checklistToFinish(activity, words.size / INSERTS_PER_DEVICE)
-        return readback to since(start)
     }
 
     /**
@@ -619,38 +491,7 @@ class JourneyTest {
     }
 
     private companion object {
-        /** vectors/kcr.json's dice-50-words12: 123456 repeated, its Seal ID, its seal code as registered and its words (public gate-seed vectors, compared in-process and never printed). */
-        val DICE_50_WORDS = listOf(
-            "unveil", "nice", "picture", "region", "tragic", "fault", "cream", "strike", "tourist", "control",
-            "recipe", "tourist",
-        )
-        const val DICE_50_ROLLS = "123456"
-        const val DICE_50_SEAL_ID = "YVM9CPP3"
-        const val DICE_50_SEAL_CODE = "B98KT954NNYSS6APNPZWCYY0VA"
-
         /** A BIP39 passphrase of watchonly.json's (abandon-trezor's), touched on the ASCII pad and never printed. */
         const val PASSPHRASE = "TREZOR"
-
-        /** The registration QR's text: the registry's register page and 26 Crockford symbols, the seal code. */
-        val REGISTER = Regex("^" + Regex.escape(Checker.ORIGIN) + "/register#c=[0-9A-HJKMNP-TV-Z]{26}$")
-
-        /** vectors/kcr.json's dice-99-words12: 654321 repeated, its Seal ID, seal tag T and seal code as registered. */
-        const val DICE_99_ROLLS = "654321"
-        const val DICE_99_SEAL_ID = "9FHYMCQA"
-        const val DICE_99_TAG = "4be3ea32eaee361d4ba6ce2135459510ccd0b7fd869121425c068b4538657f14"
-        const val DICE_99_SEAL_CODE = "15ZHX4W7AVW8VRSNJVXZEHQ2SV"
-
-        /** vectors/kcr.json's dice-99-words12's words (its mnemonic field), compared in-process with each page and never printed. */
-        val DICE_99_WORDS = listOf(
-            "various", "tape", "mercy", "east", "hair", "tragic", "arrest", "together", "day", "tag", "afford", "occur",
-        )
-
-        /** vectors/kcr.json's dice-99-words24 (the same 99 rolls): its seal code as registered and its words, compared in-process and never printed. */
-        const val DICE_99_24_SEAL_CODE = "C3ER95M4JV2N4TCPBRRG41J74W"
-        val DICE_99_24_WORDS = listOf(
-            "various", "tape", "mercy", "east", "hair", "tragic", "arrest", "together", "day", "tag", "afford",
-            "obvious", "devote", "violin", "coil", "conduct", "salmon", "kidney", "anchor", "monkey", "cruel", "truth",
-            "dash", "smart",
-        )
     }
 }

@@ -9,7 +9,9 @@
 #   ADB the job's own adb; SERIAL the emulator (emulator-5554); API its API level, for the printed
 #   lines; TEST_PACKAGE the instrumented-test APK's package (TARGET_PACKAGE.test); TARGET_PACKAGE the
 #   app it instruments; each TEST a class, or CLASS#METHOD, or either with the prefix killed: for a
-#   test that ends its own process (the crash test, M5 group 14), or with the prefix age: for the
+#   test that ends its own process by a crash (the crash test, M5 group 14), or with the prefix gone: for
+#   a test whose app ends its own process with no crash (the stop screen's Close app, Stage U's U1g), or
+#   with the prefix age: for the
 #   backup's test, whose run goes to the CI age -d hand-off (below; M5 group 18); or
 #   CLASS-METHOD[-METHOD...], the class without those tests (am instrument's notClass), for a check
 #   the device cannot make, which the caller names (scripts/android-local.sh on a user build; CI's
@@ -21,7 +23,8 @@
 # failure, error, ignored test or assumption failure, the runner's final INSTRUMENTATION_CODE: -1 and
 # no INSTRUMENTATION_FAILED, INSTRUMENTATION_ABORTED or shortMsg (a crashed process). A killed: run
 # passes only when the process ended during it instead: a test started, none passed, and the activity
-# manager's shortMsg says the process went. Then every run is judged from the shell, the crash test's
+# manager's shortMsg says the process went; a gone: run passes only the same way. Then every run is
+# judged from the shell, the crash test's
 # too: TARGET_PACKAGE's process is gone, no crash or not-responding window exists, `logcat -b crash`
 # holds no line naming com.keepcrypt.entropy (any of our packages: only counts are printed, never the
 # lines) and `dumpsys dropbox` shows no new data_app_crash entry. An age: run's raw output goes
@@ -42,7 +45,8 @@
 # VALUE" (the platform probe's facts), kc_pass as "pass: api=API VALUE" and every other kc_ key as
 # "kc: KEY=VALUE" (the window region the frame checker needs). The whole raw output is printed when a
 # run fails (the tests use gate seeds only; an age: run's without the passphrase's value). Prints "instrument: api=API PASS TEST (N tests)" per run
-# ("PASS TEST (killed during the test ...)" for a killed: one).
+# ("PASS TEST (killed during the test ...)" for a killed: one, "PASS TEST (gone during the test ...)" for
+# a gone: one, whose crash buffer and dropbox must be clean as any run's).
 # Exit: 0 every run passed; 1 a run failed; 2 bad usage or an adb that cannot reach the emulator.
 #
 # scripts/android-instrument.sh --selftest runs this script on a stand-in adb (written to a temporary
@@ -59,7 +63,9 @@
 # test failed; a run that passes, one whose test passes before the shortMsg, one with no test started
 # and one that ends without a shortMsg fail, and so do, after it, a crash window, no crash of ours, two,
 # one with another exception, one with no exception line, one with a Caused by, a line naming our
-# packages outside the crash, and a new data_app_crash entry. For an age: test: a run whose checker
+# packages outside the crash, and a new data_app_crash entry. For a gone: test: a run whose process ends
+# during its one test with nothing in the crash buffer passes; one that passes, and one with a crash of
+# ours in the crash buffer, fail. For an age: test: a run whose checker
 # passes passes, its line printed; one whose checker fails fails; and one whose test fails fails with
 # the raw output printed, without the stand-in key's value.
 # Exit 0 when every case behaves, 1 otherwise. It takes about 25 s (the 20 s wait).
@@ -165,6 +171,7 @@ case "$*" in
     ;;
   'am instrument -w -r -e class com.keepcrypt.entropy.CaptureTest com.keepcrypt.entropy.test/androidx.test.runner.AndroidJUnitRunner' | \
     'am instrument -w -r -e class com.keepcrypt.entropy.CrashTest com.keepcrypt.entropy.test/androidx.test.runner.AndroidJUnitRunner' | \
+    'am instrument -w -r -e class com.keepcrypt.entropy.StopJourneyTest com.keepcrypt.entropy.test/androidx.test.runner.AndroidJUnitRunner' | \
     'am instrument -w -r -e class com.keepcrypt.entropy.BackupTest com.keepcrypt.entropy.test/androidx.test.runner.AndroidJUnitRunner')
     cat "$KC_STUB/raw" ;;
   'am instrument -w -r -e class com.keepcrypt.entropy.CaptureTest -e notClass '*' com.keepcrypt.entropy.test/androidx.test.runner.AndroidJUnitRunner')
@@ -371,6 +378,19 @@ EOF
   trigger_crash
   { cat "$st/c/dropbox"; echo '2026-10-19 10:01:00 data_app_crash (text, 950 bytes)'; } > "$st/c/dropbox-after"
   expect "a killed test with a new data_app_crash entry" 1 "dumpsys dropbox gained 1 data_app_crash entries"
+  # A test whose app ends its own process with no crash (gone:).
+  test=gone:com.keepcrypt.entropy.StopJourneyTest
+  fresh
+  killed_raw crashed > "$st/c/raw"
+  expect "a gone test whose process ends during it with no crash" 0 \
+    "instrument: api=31 PASS com.keepcrypt.entropy.StopJourneyTest (gone during the test, as it must be: the app ended its own process;"
+  fresh
+  killed_raw passed > "$st/c/raw"
+  expect "a gone test that passes" 1 "1 started, 1 passed: the process did not end during the test"
+  fresh
+  killed_raw crashed > "$st/c/raw"
+  trigger_crash
+  expect "a gone test with a crash of ours in the crash buffer" 1 "logcat -b crash holds"
   # An age: test, on a copy of this script beside a stand-in checker: it takes the stand-in key's line
   # out of the run, writes the rest to --raw, prints its one line and passes unless $KC_STUB/age-fails.
   mkdir "$st/scripts" || exit 2
@@ -496,14 +516,20 @@ app_crashes() {
 }
 
 for t in "$@"; do
-  # killed:TEST, a test that ends its own process (the crash test); age:TEST, the backup's test, whose
-  # run goes to the CI age -d hand-off.
+  # killed:TEST, a test that ends its own process by a crash (the crash test); gone:TEST, one whose app
+  # ends its own process with no crash (Close app); age:TEST, the backup's test, whose run goes to the CI
+  # age -d hand-off.
   killed=
+  gone=
   age=
   case $t in
     killed:*)
       killed=yes
       t=${t#killed:}
+      ;;
+    gone:*)
+      gone=yes
+      t=${t#gone:}
       ;;
     age:*)
       age=yes
@@ -556,7 +582,7 @@ for t in "$@"; do
   rest=${rest#* }
   bad=${rest%% *}
   finished=${rest#* }
-  if [ -n "$killed" ]; then
+  if [ -n "$killed" ] || [ -n "$gone" ]; then
     # The process went during the test: a start, no pass, and the activity manager's shortMsg.
     if [ "$started" -lt 1 ] || [ "$passed" -ne 0 ] || ! grep -q -e '^INSTRUMENTATION_RESULT: shortMsg=' "$tmp/out"; then
       cat "$tmp/out"
@@ -605,6 +631,8 @@ EOF
   [ "$after" -eq "$before" ] || fail "$t: dumpsys dropbox gained $((after - before)) data_app_crash entries"
   if [ -n "$killed" ]; then
     echo "instrument: api=$api PASS $t (killed during the test, as it must be$left; process gone, no crash window, the crash buffer holds only the trigger's crash (Q75), dropbox clean)"
+  elif [ -n "$gone" ]; then
+    echo "instrument: api=$api PASS $t (gone during the test, as it must be: the app ended its own process$left; no crash window, crash buffer and dropbox clean)"
   else
     echo "instrument: api=$api PASS $t ($passed tests$left$handoff; process gone, no crash window, crash buffer and dropbox clean)"
   fi
