@@ -15858,6 +15858,25 @@ they differ. Nothing in the Android plan is weakened.
   journeys failed at a15dc4f (the open item of 2026-10-31): the lead does not guess a fix it cannot run; U1a6 adds the
   failure's own diagnostics, the next run's lines decide the fix, and no failed run is rerun to green.
 
+- M5-75 (2026-10-31), Stage U-3 (U2b to U2g and their review fixes U2b2, U2c2, U2e2, U2f2 and U2g2): (a) Back on the
+  phone's own screens stays as built, recorded here since no earlier entry names it: Go offline back to First launch
+  and Home back to Go offline (group 15, nothing held), and Load registry snapshot's result Home, where the Pi's
+  result takes Press alone (PF:110 allows back on info pages only on About, the re-check QR and the wait for a
+  stick): the phone's Back does what its Done does, losing nothing. (b) The save screen keeps no Back, where the
+  Pi's wait for a stick goes back to the backup offer keeping the passphrase (PF:110): the phone's save screen offers
+  Skip itself, its offer's Make would generate a new passphrase over the one written down, and nothing else on the
+  Pi's path is lost by staying; a deviation from PF's buttons table the owner may overrule (the M5 report names it).
+  (c) A picker's answer after a recreation is lost (SecureActivity saves no instance state, so the activity-result
+  registry forgets the request): the model's next resume frees the picker's buttons (U2c2), Save keeps Save again,
+  and Q77's recommended in-place configuration changes would end it; Documents.kt's KDoc, which said such an answer
+  still reached the model, is corrected. (d) Behaviour the owner's open questions decide is pinned as built and named:
+  leaving and the 30-second cover on a privacy gate (Q82), every wipe landing on Go offline (Q81, in assertDiscarded
+  alone), and a leave or going online during a long call that holds nothing (a snapshot's read and load) still says
+  Left or Offline on Go offline. (e) j read as h and w read as r are core's alone (no vector seed's word holds j or w in
+  its first four letters): no vector is added for a screen path that is the same code as e, i, d, f, h and r's. (f) The
+  U2g commit message's "core's code and text" means core's refusal code, with each code's text pinned to error.rs by
+  BackupScreensTest and HomeScreensTest; the pushed message stays.
+
 **Open item (2026-10-31): UI Automator does not see first_launch in API 36's journeys.** Entropy Android 41148288082
 at a15dc4f failed all 10 tests of API 36's journeys job (FlowTest 7, CheckTest 2, BackupTest 1, the shipping APK),
 each at Ui.on's first screen: "UI Automator does not see first_launch, though the app shows first_launch" (By.res
@@ -16733,21 +16752,23 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   with launchMode=2 in their summaries. The jobs took 418 s (API 31) and 411 s (API 36), inside their 10- and
   11-minute budgets with U2a's test in.
   Proof (M5 commit U2b, Stage U-3, partial: local, Q76's JVM run on a Linux host, no emulator; CI's build job at the
-  next push): :screens' tests had no one way to any screen, and each class named a discard's landing on its own (35
-  places, Q81's open landing among them). Walk.kt (commonTest) brings a fresh Rig over the real slot to any of the 48
+  next push): :screens' tests had no one way to any screen, and each class named a discard's landing on its own (36
+  places, Q81's open landing among them; U2b2 corrected the count). Walk.kt (commonTest) brings a fresh Rig over the real slot to any of the 48
   screens but Stop (a halt latches the process's slot, so the stop screen stays the halt classes'), by CaptureTest's
   path on a Mixed seed of 24 words with the shorter branch where nothing else is lost, each screen checked on arrival
   and its privacy gate with it (shown on exactly the eight gated screens the walk enters from a Public one), each
   picker's answer followed by the activity's resume as on the device; SavedBackup (TestSupport.kt) is the backup
   Check a backup's tests and the walk open, saved once per JVM (CheckBackupScreensTest's own copy moved there).
-  BackTest (3): Back once and twice from every screen lands where its own table from PF's buttons table and entry
-  grids line and MA:34 says (15 screens leave, every other stays), with what is held unchanged but on Check a
+  BackTest (3): Back once and twice from every screen lands where its own table says (15 screens leave, every other
+  stays; its rows are PF's buttons table and entry grids line where the Pi has the screen, and M5-75's for the
+  phone's own, U2b2), with what is held unchanged but on Check a
   backup's entry, no notice or overlay, a typed code, BIP39 passphrase or entry wiped by the Back that leaves it, the
   page kept where Back stays, and the check, its nonce and the seal card the same objects on the check QR and seal
   card; the words, the overview and the backup passphrase page back by Back; and Back on each gated screen's gate,
   under the cover on every screen but the two long calls' (Protected by 30 s idle, Public by a leave and return)
   and under the warning on every screen that holds something does nothing. Rig.assertDiscarded(notice) names the
-  landing (Go offline, Q81 open) once, and all 35 discard landings call it. It pins what was built: two mutations
+  landing (Go offline, Q81 open) once, and all 36 call it (35 in the tests, one in CheckBackupScreensTest's
+  assertEntryWiped). It pins what was built: two mutations
   of the model, each run and reverted, fail it ("dice: Back once expected:<Dice> but was:<Commitment>" for a Back
   from the dice; "bip39_entry: Back on its privacy gate expected:<Bip39Entry> but was:<Bip39Ask>" for a Back
   that skips pressOn). Locally: :screens 168 in 24 classes, none failed (BackTest about 20 s for its three walks);
@@ -16836,6 +16857,18 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   APK's capture walk). It pins what was built: two mutations, each run and reverted, fail it ("unsorted-within-bucket
   expected:<Snapshot> but was:<Stop>" for a snapshot refusal outside the table; "clear-empty-bucket: the same check
   and nonce" for a scan refusal that drops the check). Locally: :screens 185 in 33 classes, none failed; the gate clean.
+  Proof (M5 commit U2b2, Stage U-3's review fix, partial: local, no emulator; CI's build job at the next push): the
+  reviews found BackTest's table equal to the model's backTo row for row while its KDoc said it came from the docs
+  alone (three rows, Go offline's, Home's and the snapshot result's, are the phone's own, and the save screen differs
+  from the Pi's wait for a stick), the every-screen tests taking Protected from the model's isProtected, and states
+  the walk never reached. BackTest's KDoc now names each row's source, the phone's rows M5-75 (a) and (b); Walk.kt's
+  protected is docs/mobile-apps.md:34's list of 13, which BackTest, ConfigurationAndOnlineTest, LeavingTest and
+  IdleTest take what they expect from, and LeavingTest checks isProtected against it; Walk.states adds the device
+  swap's second gate, Check a backup's words on their gate and past it, and an insert reviewed from a mismatch, in
+  which Back does nothing (BackTest) and a configuration change changes nothing (ConfigurationAndOnlineTest);
+  ConfigurationAndOnlineTest types a key on every pad screen (the dice, the code, the read-back, the confirm, the
+  BIP39 passphrase, Check a backup's entry) before its recreation. U2b's proof counted 35 assertDiscarded call sites;
+  there are 36, corrected above.
 - [ ] U3. A UX audit of every screen against the docs and the Pi: wording, order, what each button and Back do, what
   TalkBack reads on Public screens, the layout on a 360 dp phone and a large one, text sizes. A defect within the docs is
   fixed with a test; a change the docs do not allow becomes a question for the owner.

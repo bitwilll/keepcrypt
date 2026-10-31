@@ -13,14 +13,22 @@ import kotlin.test.assertTrue
 /**
  * Back on every screen of the walk (tasks/todo.md, Stage U's U2b), over the real slot: the system Back
  * once and twice from each of the 48 screens but the stop screen, landing only where nothing is lost.
- * Where it lands is this class's own table, from the docs, not the model's backTo: docs/pi-firmware.md's
- * buttons table ("back, only where nothing is lost" on menus and offers; on the go-ahead code, Check a
- * backup's and the BIP39 passphrase's entry; on About, the re-check QR; the words' and the QR pages'
- * previous page) and its entry grids line, and docs/mobile-apps.md:34 (Back never ends a session). The
- * session, the check and its nonce are held where Back stays in the ceremony, a typed code or passphrase
- * is wiped by the Back that leaves its entry, and Check a backup's file goes with its entry; the paged
- * screens' Back is their previous page. Under a privacy gate, the privacy cover and the idle warning, Back
- * does nothing. Each screen's walk leaves the slot at home (wipeAll after it).
+ * Where it lands is this class's own table, not read from the model's backTo (they agree row for row).
+ * Its rows come from docs/pi-firmware.md's buttons table and entry grids line where the Pi has the
+ * screen: KEY2 on the go-ahead code to the actions page (here the check QR, with the same check and
+ * nonce), on the BIP39 passphrase's entry to its question, on Check a backup's entry Home; back on About
+ * and the re-check QR; the QR pages' previous page (the check QR's to the seal card, the descriptor QR's
+ * to the account QR, the words', overview's and passphrase's pages); back on menus only where nothing is
+ * lost (Length, and each one-way choice's confirm and the scan screen back to what offered it). The phone's
+ * own screens are lead decision M5-75's: Go offline back to First launch and Home back to Go offline
+ * (group 15, nothing held), Load registry snapshot's result Home (the Pi's takes Press alone; the phone's
+ * Back does what its Done does), and the save screen staying (the Pi's wait for a stick goes back to the
+ * offer; the phone's save screen offers Skip itself, and its offer would make a new passphrase). Back never
+ * ends a session (docs/mobile-apps.md:34). The session, the check and its nonce are held where Back stays
+ * in the ceremony, a typed code or passphrase is wiped by the Back that leaves its entry, and Check a
+ * backup's file goes with its entry. Under a privacy gate (the device swap's second one and Check a
+ * backup's words' too), the privacy cover and the idle warning, and on an insert reviewed from a mismatch,
+ * Back does nothing. Each screen's walk leaves the slot at home (wipeAll after it).
  */
 class BackTest {
     @AfterTest
@@ -29,12 +37,8 @@ class BackTest {
     }
 
     /**
-     * Where Back lands from each screen it leaves; every screen not named stays where it is. Go offline,
-     * Home and Length, before any session; Skip's confirm, before the check starts; the check QR to the
-     * seal card, and the scan screen, the code entry and the one-way choices' confirms to the check QR,
-     * the check and its nonce kept (PF: KEY2 on the code entry goes back to the actions page); the BIP39
-     * passphrase's entry to its question, the descriptor QR to the account QR; Check a backup's entry
-     * Home, its re-check QR to its result; Load registry snapshot's result and About Home.
+     * Where Back lands from each screen it leaves (the class's KDoc gives each row's source); every screen
+     * not named stays where it is.
      */
     private val landing: Map<Screen, Screen> = mapOf(
         Screen.GoOffline to Screen.FirstLaunch,
@@ -127,7 +131,7 @@ class BackTest {
         for (screen in Walk.screens.filterNot(::isWorking)) {
             val name = screenId(screen)
             val covered = Walk.to(screen)
-            if (isProtected(screen)) {
+            if (screen in Walk.protected) {
                 covered.clock.now += Timers.COVER_MILLIS
                 covered.model.tick()
             } else {
@@ -145,6 +149,25 @@ class BackTest {
             warned.clock.now += Timers.WARN_MILLIS
             warned.model.tick()
             assertBackDoesNothing(warned, Overlay.Warning, "$name under the warning")
+            assertTrue(Core.wipeAll() is Reply.Done)
+        }
+    }
+
+    @Test
+    fun backDoesNothingInTheWordsStatesTheWalksScreensDoNotName() {
+        for ((what, reach) in Walk.states) {
+            val rig = reach()
+            val before = rig.model.state.value
+            val held = rig.model.held.value
+            rig.model.back()
+            rig.model.back()
+            val after = rig.model.state.value
+            assertEquals(before.screen, after.screen, "$what: Back moved")
+            assertEquals(before.page, after.page, "$what: Back moved the page")
+            assertEquals(before.gate, after.gate, "$what: Back passed the gate")
+            assertEquals(before.reviewing, after.reviewing, "$what: Back left the review")
+            assertEquals(held, rig.model.held.value, "$what: Back changed what is held")
+            assertNull(after.notice, what)
             assertTrue(Core.wipeAll() is Reply.Done)
         }
     }

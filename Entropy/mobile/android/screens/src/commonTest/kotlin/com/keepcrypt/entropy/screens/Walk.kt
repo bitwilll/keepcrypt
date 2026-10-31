@@ -23,6 +23,19 @@ internal object Walk {
     val screens: List<Screen> = Screen.entries.filter { it != Screen.Stop }
 
     /**
+     * The Protected screens, as docs/mobile-apps.md:34 lists them (the Pi's list): the words in insert view
+     * and overview, the read-back entry and mismatch, the backup passphrase and its confirm, the BIP39
+     * passphrase's and Check a backup's passphrase entry, D, the registration QR, the collision-report QR,
+     * and the account and descriptor QRs. The every-screen tests take what they expect from this list, not
+     * from the model's isProtected, which LeavingTest checks against it.
+     */
+    val protected: Set<Screen> = setOf(
+        Screen.Words, Screen.WordsOverview, Screen.ReadbackEntry, Screen.ReadbackMismatch, Screen.BackupPassphrase,
+        Screen.BackupConfirm, Screen.Bip39Entry, Screen.BackupCheckEntry, Screen.RevealD, Screen.RegisterQr,
+        Screen.CollisionReport, Screen.WatchAccountQr, Screen.WatchDescriptorQr,
+    )
+
+    /**
      * The screens the walk enters through a privacy gate: each Protected screen entered from a Public one
      * (the device swap's second gate is passed on the way to the read-back). The Protected screens entered
      * from a Protected one (the overview, the read-back entry and mismatch, the backup's confirm and the
@@ -136,6 +149,39 @@ internal object Walk {
         },
         Screen.About to Step(Screen.Home) { it.model.about() },
     )
+
+    /**
+     * States of the words' screens the walk's screens do not name, each a fresh Rig in that state (Stage
+     * U's U2b2): the second privacy gate a 24-word seed's device swap leads to (device 2's overview);
+     * Check a backup's words on their gate and past it; and an insert reviewed from a read-back mismatch
+     * (Words, its one way on back to its read-back). All are Protected screens.
+     */
+    val states: List<Pair<String, () -> Rig>> = listOf(
+        "the device swap's second gate" to {
+            val rig = to(Screen.DeviceSwap)
+            rig.model.swapDone()
+            check(rig.screen == Screen.WordsOverview && rig.model.state.value.gate) { "the second gate did not show" }
+            rig
+        },
+        "Check a backup's words on their gate" to { checkedWords(gate = true) },
+        "Check a backup's words" to { checkedWords(gate = false) },
+        "an insert reviewed from a mismatch" to {
+            val rig = to(Screen.ReadbackMismatch)
+            rig.model.reviewInsert()
+            check(rig.screen == Screen.Words && rig.model.state.value.reviewing) { "the insert was not reviewed" }
+            rig
+        },
+    )
+
+    /** Check a backup's words, insert 1, on their privacy gate or past it. */
+    private fun checkedWords(gate: Boolean): Rig {
+        val rig = to(Screen.BackupCheckResult)
+        rig.model.showBackupWords()
+        val state = rig.model.state.value
+        check(state.screen == Screen.Words && state.opened != null && state.gate) { "Check a backup's words did not show their gate" }
+        if (!gate) rig.model.passGate()
+        return rig
+    }
 
     /** kcr.json's snapshot Load registry snapshot's result shows, loaded. */
     private const val SNAPSHOT = "with-dice-50"

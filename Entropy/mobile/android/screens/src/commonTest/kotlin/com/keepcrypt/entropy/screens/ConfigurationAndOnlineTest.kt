@@ -13,8 +13,9 @@ import kotlin.test.assertTrue
  * over the real slot. A configuration change (a rotation, a font scale, a dark-mode switch) recreates the
  * activity: SecureActivity reports no leaving for its stop, and the new activity's start and resume reach
  * the model as a return and a resume while it is already in the foreground, so the screen, its page, its
- * privacy gate, the cover or warning over it, what is held and what a pad holds stay as they were, with
- * no call made. Going online (docs/mobile-apps.md:125 and :34, Q57): before the start-up self-test passes
+ * privacy gate, the cover or warning over it, what is held and what a pad holds (a key typed on each
+ * pad first) stay as they were, with no call made; in the words' states the walk's screens do not name
+ * (Walk.states) too. Going online (docs/mobile-apps.md:125 and :34, Q57): before the start-up self-test passes
  * and on Go offline nothing goes; on Home, Length, Load registry snapshot's result and About, which hold
  * nothing, Go offline comes back with nothing to say; on every other screen the session, restart or
  * Check a backup's file or checked backup is discarded at once, with the Offline notice, every secret on
@@ -63,12 +64,16 @@ class ConfigurationAndOnlineTest {
         for (screen in Walk.screens) {
             val name = screenId(screen)
             val rig = Walk.to(screen)
-            if (screen == Screen.CodeEntry) rig.press("C")
+            val key = PAD_KEYS[screen]
+            if (key != null) {
+                rig.press(key)
+                assertTrue(rig.padLengths().sum() > 0, "$name: the key typed")
+            }
             assertRecreationChangesNothing(rig, name)
             assertTrue(Core.wipeAll() is Reply.Done)
             if (isWorking(screen)) continue
             val covered = Walk.to(screen)
-            if (isProtected(screen)) {
+            if (screen in Walk.protected) {
                 covered.clock.now += Timers.COVER_MILLIS
                 covered.model.tick()
                 assertEquals(Overlay.Cover, covered.model.state.value.overlay, name)
@@ -79,6 +84,14 @@ class ConfigurationAndOnlineTest {
                 assertEquals(Overlay.Warning, covered.model.state.value.overlay, name)
                 assertRecreationChangesNothing(covered, "$name under the warning")
             }
+            assertTrue(Core.wipeAll() is Reply.Done)
+        }
+    }
+
+    @Test
+    fun aConfigurationChangeInTheWordsStatesTheWalksScreensDoNotNameChangesNothing() {
+        for ((what, reach) in Walk.states) {
+            assertRecreationChangesNothing(reach(), what)
             assertTrue(Core.wipeAll() is Reply.Done)
         }
     }
@@ -117,5 +130,13 @@ class ConfigurationAndOnlineTest {
             }
             assertTrue(Core.wipeAll() is Reply.Done)
         }
+    }
+
+    private companion object {
+        /** A key each pad screen of the walk shows (the ASCII pad's first page on the BIP39 entry), typed before its recreation. */
+        val PAD_KEYS = mapOf(
+            Screen.Dice to "3", Screen.CodeEntry to "C", Screen.ReadbackEntry to "a", Screen.BackupConfirm to "a",
+            Screen.Bip39Entry to "1", Screen.BackupCheckEntry to "a",
+        )
     }
 }
