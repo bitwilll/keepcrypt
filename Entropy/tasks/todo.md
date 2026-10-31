@@ -15916,7 +15916,15 @@ launcher hung after the fresh boot and the system's not-responding dialog for it
 UiAutomation listed no window of the app. The same part's LifecycleTest and CrashTest, run after it, passed. It is the
 emulator's, not the app's (the dialog is the launcher's, and the app was resumed and drawn); a fresh boot's launcher
 hangs on some runs and not others, which is why it came and went. U1a8 closes such a dialog before each instrumented
-class. The item stays open until a CI run passes with U1a8 in, or shows its lines.
+class. The item stays open until a CI run passes with U1a8 in, or shows its lines. Corrected (the lead's, 2026-10-31):
+that bar was too low, since a run in which the dialog does not come up passes with or without U1a8 (75349ee passed
+before it). Entropy Android 41187953910 at 29af0bc, the first run with U1a8 in, passed every job, and its API 36 test
+registry and edges job printed none of U1a8's lines: the launcher did not hang there, so U1a8's close was not
+exercised on an emulator. The cause is known and a repeat can no longer pass as a test failure (U1a8 closes the
+dialog or fails the leg naming it), but which step closes the real dialog is still unproven. The item stays open,
+narrowed to that: it closes on the first CI run whose lines show "the dialog closed by", or, if a run shows the
+dialog stuck, U1a8 is redesigned from those lines. The M5 gate report names it until then (tasks/lessons.md,
+2026-10-31).
 
 **Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
 attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the
@@ -16949,6 +16957,13 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   (KC_ANR): registry-anr-closed (the broadcast closes it: the two probe lines, the leg passes) and registry-anr-stuck
   (it stays: "another app's not-responding dialog holds the focus before com.keepcrypt.entropy.SnapshotDrillTest", the
   leg fails). Which step closes the real dialog is CI's to show. Locally: android-emulator.sh --selftest 52 passed.
+  Proof (CI, the lead's, 2026-10-31, partial: the close path not exercised on an emulator): Entropy CI 41187953873 at
+  29af0bc green; Entropy Android 41187953910 at 29af0bc, every job green: the build job in 12 min 50 s (its 17-minute
+  budget) with its emulator leg selftest passing (U1a8's registry-anr-closed and registry-anr-stuck among them);
+  API 36's test registry and edges job "PASS com.keepcrypt.entropy.SnapshotDrillTest (3 tests; ...)", LifecycleTest 8
+  and CrashTest passing, "emulator: api=36: every check passed", and no line of clear_foreign_anr's (no foreign
+  not-responding dialog held the focus before any class this run); API 31's three jobs and API 36's capture and
+  journeys green. The open item of 2026-10-31 stays open, narrowed to the device proof of the close.
 - [ ] U3. A UX audit of every screen against the docs and the Pi: wording, order, what each button and Back do, what
   TalkBack reads on Public screens, the layout on a 360 dp phone and a large one, text sizes. A defect within the docs is
   fixed with a test; a change the docs do not allow becomes a question for the owner.
