@@ -18,10 +18,13 @@ import kotlin.test.assertTrue
  * screen alone, and a tap only uncovers it; 9 minutes bring the warning on any screen while something is
  * held, and a tap keeps everything; 10 minutes wipe what is held, with the Idle notice, and a loaded
  * snapshot survives; where nothing is held nothing comes, and during a long call the timers wait. After a
- * collision the next ceremony needs 99 rolls however the slot gets back to a start: Add fresh entropy,
- * and every discard (leaving the report, going online, 60 s away from the collision result, the idle
- * wipe) followed by a new 12-word seed from Home, whose minimum is otherwise 50; the restarted ceremony's
- * own discard keeps it too. Each walk leaves the slot at home (wipeAll after it).
+ * collision the next ceremony needs 99 rolls however the slot gets back to a start: every discard
+ * (leaving the report, going online, 60 s away from the collision result, the idle wipe) followed by a
+ * new 12-word seed from Home, whose minimum is otherwise 50; the restarted ceremony's own discard keeps it
+ * too (Add fresh entropy and Cannot check on a restart are CheckScreensTest's, on 12 words: the walk's
+ * seed is 24 words, whose minimum is 99 anyway). On each privacy gate the walk enters and in the words'
+ * states its screens do not name (Walk.states), all Protected as built (Q82 open for the gates), the
+ * cover comes at 30 s and the wipe at 10 minutes. Each walk leaves the slot at home (wipeAll after it).
  */
 class IdleTest {
     @AfterTest
@@ -51,16 +54,19 @@ class IdleTest {
             idle(rig, Timers.COVER_MILLIS - 1)
             assertNull(rig.model.state.value.overlay, "$name: 29.999 s")
             idle(rig, 1)
-            if (isProtected(screen)) {
+            if (screen in Walk.protected) {
                 assertEquals(Overlay.Cover, rig.model.state.value.overlay, "$name: 30 s on a Protected screen")
                 rig.model.dismissOverlay()
                 assertNull(rig.model.state.value.overlay, "$name: the tap uncovered")
             } else {
                 assertNull(rig.model.state.value.overlay, "$name: 30 s on a Public screen")
+                rig.model.input()
             }
             assertEquals(screen, rig.screen, name)
             assertEquals(held, rig.model.held.value, "$name: the cover kept what is held")
-            idle(rig, Timers.WARN_MILLIS)
+            idle(rig, Timers.WARN_MILLIS - 1)
+            assertTrue(rig.model.state.value.overlay != Overlay.Warning, "$name: 8 minutes 59.999 s warned")
+            idle(rig, 1)
             if (held) {
                 assertEquals(Overlay.Warning, rig.model.state.value.overlay, "$name: 9 minutes, something held")
                 rig.model.dismissOverlay()
@@ -79,6 +85,23 @@ class IdleTest {
                 assertEquals(screen, rig.screen, "$name: 10 minutes, nothing held, nothing wiped")
                 assertNull(rig.model.state.value.notice, name)
             }
+            assertTrue(Core.wipeAll() is Reply.Done)
+        }
+    }
+
+    @Test
+    fun theCoverAndTheWipeOnEachGateAndInTheWordsStates() {
+        val reached = Walk.gated.map { screen -> screenId(screen) + " on its gate" to { Walk.to(screen, gate = true) } } + Walk.states
+        for ((what, reach) in reached) {
+            val rig = reach()
+            val before = rig.model.state.value
+            idle(rig, Timers.COVER_MILLIS)
+            assertEquals(Overlay.Cover, rig.model.state.value.overlay, "$what: 30 s")
+            assertEquals(before.gate, rig.model.state.value.gate, what)
+            idle(rig, Timers.WIPE_MILLIS - Timers.COVER_MILLIS)
+            rig.assertDiscarded(Notice.Idle, "$what: 10 minutes")
+            rig.assertNothingSecretShown(what)
+            assertTrue(Core.selfTest() is Reply.Done, "$what: the idle wipe left something in core")
             assertTrue(Core.wipeAll() is Reply.Done)
         }
     }
@@ -125,33 +148,24 @@ class IdleTest {
         assertEquals(50, assertNotNull(control.model.state.value.dice).minimum, "12 words with no collision before")
         assertTrue(Core.wipeAll() is Reply.Done)
 
-        val fresh = Walk.to(Screen.CollisionReport)
-        fresh.model.addFreshEntropy()
-        fresh.worker.run()
-        assertEquals(Screen.DeviceEntropy, fresh.screen, "Add fresh entropy: the same mode, Mixed")
-        fresh.model.deviceEntropyDone()
-        fresh.model.commitmentDone()
-        assertEquals(99, assertNotNull(fresh.model.state.value.dice).minimum, "Add fresh entropy")
-        assertTrue(Core.wipeAll() is Reply.Done)
-
-        val discards: List<Pair<String, (Rig) -> Unit>> = listOf(
-            "leaving the report" to { rig ->
+        val discards: List<Triple<String, Notice, (Rig) -> Unit>> = listOf(
+            Triple("leaving the report", Notice.Left) { rig ->
                 rig.model.showReport()
                 rig.model.passGate()
                 rig.model.appLeft()
             },
-            "going online" to { rig -> rig.offline.set(false) },
-            "60 s away" to { rig ->
+            Triple("going online", Notice.Offline) { rig -> rig.offline.set(false) },
+            Triple("60 s away", Notice.Background) { rig ->
                 rig.model.appLeft()
                 rig.clock.now += Timers.BACKGROUND_MILLIS
                 rig.model.tick()
             },
-            "the idle wipe" to { rig -> idle(rig, Timers.WIPE_MILLIS) },
+            Triple("the idle wipe", Notice.Idle) { rig -> idle(rig, Timers.WIPE_MILLIS) },
         )
-        for ((what, discard) in discards) {
+        for ((what, notice, discard) in discards) {
             val rig = Walk.to(Screen.Collision)
             discard(rig)
-            assertEquals(Screen.GoOffline, rig.screen, "$what after the collision")
+            rig.assertDiscarded(notice, "$what after the collision")
             assertEquals(99, nextMinimum(rig, what), "$what after the collision, then a new seed")
             assertTrue(Core.wipeAll() is Reply.Done)
         }

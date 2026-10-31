@@ -16828,7 +16828,7 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   at home, and leave a screen holding nothing as it was; on "Working..." and the self-test the timers wait. A loaded
   snapshot survives the idle wipe in the model and in core: the next seed's Check now finds kcr.json's dice-50 seal
   in it on its own (Collision, by the snapshot). The 99-roll minimum after a collision: 12 words start at 50 with no
-  collision before (the control); Add fresh entropy needs 99; leaving the report, going online, 60 s away from the
+  collision before (the control); leaving the report, going online, 60 s away from the
   collision result and the idle wipe there each lead, by Go offline and Home, to a new 12-word seed that needs 99;
   and so does a discard of the restarted ceremony itself (Cannot check on a restart and leaving the report were
   CheckScreensTest's already). It pins what was built: two mutations, each run and reverted, fail it
@@ -16893,6 +16893,16 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   no notice); its KDoc says 61 s; ResidualRevealProofHaltTest starts from the scan screen. With the discard's notice
   dropped for a long call (run and reverted): "the start, leaving: the notice expected:<Left> but was:<null>".
   TestSupport's assertNothingSecretShown KDoc names the registration, which it checks.
+  Proof (M5 commit U2f2, Stage U-3's review fix, partial: local, no emulator; CI's build job at the next push): the
+  reviews found IdleTest's "Add fresh entropy needs 99" unable to fail (the walk's seed is 24 words, whose minimum is
+  99 anyway; CheckScreensTest checks it on 12 words, so it is dropped, and U2f's proof above no longer claims it),
+  the warning checked at 9 minutes 30 s on Public screens (no input at 30 s there), the restart paths' landing
+  hard-coded past assertDiscarded, and no idle check on a privacy gate (Q82) or in the words' unnamed states.
+  IdleTest (4): a tap at 30 s on every screen, then no warning at 8 minutes 59.999 s and the warning at 9 minutes
+  where something is held; each restart path's discard through assertDiscarded with its own notice (Left, Offline,
+  Background, Idle); on each gated screen's gate and in Walk.states, the cover at 30 s with the gate kept and the
+  wipe at 10 minutes (M5-75 (d)). With the warning 20 s late (run and reverted): "device_entropy: 9 minutes,
+  something held expected:<Warning> but was:<null>"; the test before this fix passed that mutation.
 - [ ] U3. A UX audit of every screen against the docs and the Pi: wording, order, what each button and Back do, what
   TalkBack reads on Public screens, the layout on a 360 dp phone and a large one, text sizes. A defect within the docs is
   fixed with a test; a change the docs do not allow becomes a question for the owner.
