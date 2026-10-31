@@ -43,7 +43,7 @@
 # system-images;android-31;default;x86_64 and system-images;android-36;default;x86_64, each API
 # level's leg in four parts, one a job (scripts/android-emulator.sh --part; commits U1a, U1a2 and U1e):
 # capture (the capture harness, its positive controls and first frames, and PhoneMotionTest), the
-# shipping journeys (FlowTest, CheckTest and BackupTest), ui (JourneyTest, U1's journeys through the UI
+# shipping journeys (FlowTest, CheckTest, MixedJourneyTest and BackupTest), ui (JourneyTest, U1's journeys through the UI
 # alone, then StopJourneyTest, the stop screen's Close app) and registry, the test registry and the
 # edges (SnapshotDrillTest, the test-registry app's, then LifecycleTest and CrashTest); and, from
 # commit 14, the 16 KB-page
@@ -659,7 +659,8 @@ jobs:
     # (1207 s and 1171 s) ran with the mixed journey failing before its end, so they stay at 30 until a
     # run measures them whole (M5-76 (h)). Run 41207540199 at be2878d measured API 36's ui job whole,
     # 1284 s, so 27 minutes; API 31's stopped part-way (a picker flake, U4r2). Run 41211393696 at
-    # 4a1cc07 measured API 31's ui job whole, 1241 s, so 26 minutes.
+    # 4a1cc07 measured API 31's ui job whole, 1241 s, so 26 minutes. U1h adds MixedJourneyTest, the
+    # mixed 24-word journey, to the journeys part (M5-77 (a)): its jobs are measured at 30 (M5-76 (f)).
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       # Every leg job runs to its end: a red leg never cancels another job or hides its evidence.
@@ -675,7 +676,7 @@ jobs:
           - api: '31'
             part: journeys
             legs: API 31, journeys
-            timeout: 20
+            timeout: 30
           - api: '31'
             part: ui
             legs: API 31, journeys through the UI alone
@@ -691,7 +692,7 @@ jobs:
           - api: '36'
             part: journeys
             legs: API 36, journeys
-            timeout: 19
+            timeout: 30
           - api: '36'
             part: ui
             legs: API 36, journeys through the UI alone

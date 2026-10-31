@@ -56,7 +56,7 @@
 #      region, which the frame checker reads.
 #      A test class that fails is reported at once and fails the leg at its end: every class runs,
 #      so one run gives both the control's result and the app's.
-#   4a. PhoneMotionTest, FlowTest, CheckTest, BackupTest, JourneyTest and StopJourneyTest (gone:, the stop
+#   4a. PhoneMotionTest, FlowTest, CheckTest, MixedJourneyTest, BackupTest, JourneyTest and StopJourneyTest (gone:, the stop
 #      screen's Close app ending the app's own process) on the shipping app, then SnapshotDrillTest
 #      on the test-registry app (M5 groups 15, 16 and 18): PhoneMotion on the emulator's own sensors (lead decision
 #      M5-51: an accelerometer sample within 5 s, and a gyroscope one where the image lists a gyroscope,
@@ -108,7 +108,7 @@
 # UI alone (ui, from U1e) and the test registry and the edges (Stage U's commit plan; commits U1a2 and U1e):
 #   capture   steps 1-3, step 4's CaptureTest on both APKs, PhoneMotionTest, and steps 5 and 6: the
 #             positive controls, the capture harness and the first frames;
-#   journeys  FlowTest, CheckTest and BackupTest with its age -d hand-off, on the shipping app;
+#   journeys  FlowTest, CheckTest, MixedJourneyTest (U1h) and BackupTest with its age -d hand-off, on the shipping app;
 #   ui        JourneyTest, U1's journeys to Finish through the UI alone, then StopJourneyTest, the stop
 #             screen's Close app (its gone: form), on the shipping app (Stage U's U1e split it from
 #             journeys, lead decision M5-76 (g));
@@ -143,7 +143,7 @@
 # ControlTest to the killed CrashTest, last (a case of its own, the order pinned), and kept the
 # control's two screencaps (a case of its own). Each part alone passes too, its runs pinned in that
 # order (a case each): capture's ControlTest, CaptureTest on both apps and PhoneMotionTest; journeys'
-# FlowTest, CheckTest and the age: BackupTest; ui's JourneyTest and the gone: StopJourneyTest; registry's SnapshotDrillTest, LifecycleTest and the
+# FlowTest, CheckTest, MixedJourneyTest and the age: BackupTest; ui's JourneyTest and the gone: StopJourneyTest; registry's SnapshotDrillTest, LifecycleTest and the
 # killed CrashTest, last; and the four parts' runs are together the whole leg's, each once, so a part that
 # drops or adds a class fails. The workflow's emulators matrix (.github/workflows/entropy-android.yml,
 # read from this checkout) is each part on API 31 and 36, one a job, and no other row, with the steps
@@ -151,7 +151,7 @@
 # conditions (a case of its own: a row dropped would run its part on that level nowhere). Every part ends with step 7's checks; journeys, ui and registry print no
 # line of steps 1, 2, 5 and 6 and keep no capture; a failing class in each part exits 1 at the part's
 # end, after its later runs and step 7. A failing ControlTest, CaptureTest, PhoneMotionTest, FlowTest,
-# CheckTest, BackupTest, JourneyTest, SnapshotDrillTest, LifecycleTest and CrashTest each exit 1 at the
+# CheckTest, MixedJourneyTest, BackupTest, JourneyTest, SnapshotDrillTest, LifecycleTest and CrashTest each exit 1 at the
 # leg's end, after the later checks ran, and so does an empty screencap of the control's screens; capture-control
 # still in recents after pm clear, a recording that ends before it is stopped, raw frames that never
 # show the control's words page, the app's window lit in the first-frame stream, and the same with that
@@ -407,6 +407,7 @@ EOF
   leg motion-test-fails KC_FAILCLASS=PhoneMotionTest
   leg flow-test-fails KC_FAILCLASS=FlowTest
   leg check-test-fails KC_FAILCLASS=CheckTest
+  leg mixed-journey-test-fails KC_FAILCLASS=MixedJourneyTest
   leg journey-test-fails KC_FAILCLASS=JourneyTest
   leg backup-test-fails KC_FAILCLASS=BackupTest
   leg snapshot-drill-fails KC_FAILCLASS=SnapshotDrillTest
@@ -441,6 +442,7 @@ EOF
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.PhoneMotionTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.CheckTest" \
+    "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.MixedJourneyTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.JourneyTest" \
     "instrument stub: com.keepcrypt.entropy gone:com.keepcrypt.entropy.StopJourneyTest" \
     "instrument stub: com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest" \
@@ -476,14 +478,14 @@ EOF
   registry=com.keepcrypt.entropy.testregistry
   # The steps' order, steps 3-4c (each part's runs in it: capture's, journeys', ui's, then registry's, whose
   # edges end it), the killed CrashTest last, so no run comes after it.
-  order pass "ControlTest, CaptureTest on both apps, PhoneMotionTest, FlowTest, CheckTest, the age: BackupTest, JourneyTest, the gone: StopJourneyTest, SnapshotDrillTest (test registry), LifecycleTest, then the killed CrashTest, last" \
+  order pass "ControlTest, CaptureTest on both apps, PhoneMotionTest, FlowTest, CheckTest, MixedJourneyTest, the age: BackupTest, JourneyTest, the gone: StopJourneyTest, SnapshotDrillTest (test registry), LifecycleTest, then the killed CrashTest, last" \
     "$app $app.ControlTest" "$app $app.CaptureTest" "$registry $app.CaptureTest" "$app $app.PhoneMotionTest" \
-    "$app $app.FlowTest" "$app $app.CheckTest" "$app age:$app.BackupTest" "$app $app.JourneyTest" "$app gone:$app.StopJourneyTest" "$registry $app.SnapshotDrillTest" \
+    "$app $app.FlowTest" "$app $app.CheckTest" "$app $app.MixedJourneyTest" "$app age:$app.BackupTest" "$app $app.JourneyTest" "$app gone:$app.StopJourneyTest" "$registry $app.SnapshotDrillTest" \
     "$app $app.LifecycleTest" "$app killed:$app.CrashTest"
   order capture "capture alone: ControlTest, CaptureTest on both apps, then PhoneMotionTest" \
     "$app $app.ControlTest" "$app $app.CaptureTest" "$registry $app.CaptureTest" "$app $app.PhoneMotionTest"
-  order journeys "journeys alone: FlowTest, CheckTest, then the age: BackupTest" \
-    "$app $app.FlowTest" "$app $app.CheckTest" "$app age:$app.BackupTest"
+  order journeys "journeys alone: FlowTest, CheckTest, MixedJourneyTest, then the age: BackupTest" \
+    "$app $app.FlowTest" "$app $app.CheckTest" "$app $app.MixedJourneyTest" "$app age:$app.BackupTest"
   order ui "ui alone: JourneyTest, then the gone: StopJourneyTest" "$app $app.JourneyTest" "$app gone:$app.StopJourneyTest"
   order registry "registry alone: SnapshotDrillTest (test registry), LifecycleTest, then the killed CrashTest, last" \
     "$registry $app.SnapshotDrillTest" "$app $app.LifecycleTest" "$app killed:$app.CrashTest"
@@ -616,6 +618,7 @@ EOF
     "pass: api=31 first frame (registry, its first screen up)" \
     "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.FlowTest) (each reported above)"
   expect check-test-fails 1 \
+    "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.MixedJourneyTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.JourneyTest" \
     "instrument stub: com.keepcrypt.entropy gone:com.keepcrypt.entropy.StopJourneyTest" \
     "instrument stub: com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest" \
@@ -624,6 +627,12 @@ EOF
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
     "pass: api=31 first frame (registry, its first screen up)" \
     "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.CheckTest) (each reported above)"
+  expect mixed-journey-test-fails 1 \
+    "instrument stub: com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest" \
+    "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.JourneyTest" \
+    "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
+    "pass: api=31 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.MixedJourneyTest) (each reported above)"
   expect journey-test-fails 1 \
     "instrument stub: com.keepcrypt.entropy gone:com.keepcrypt.entropy.StopJourneyTest" \
     "instrument stub: com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest" \
@@ -707,7 +716,7 @@ EOF
     "emulator: api=37: every check passed"
   order booted-pass "the steps' order, both CaptureTest runs without control (c), the killed CrashTest last" \
     "$app $app.ControlTest" "$app $left" "$registry $left" "$app $app.PhoneMotionTest" \
-    "$app $app.FlowTest" "$app $app.CheckTest" "$app age:$app.BackupTest" "$app $app.JourneyTest" "$app gone:$app.StopJourneyTest" "$registry $app.SnapshotDrillTest" \
+    "$app $app.FlowTest" "$app $app.CheckTest" "$app $app.MixedJourneyTest" "$app age:$app.BackupTest" "$app $app.JourneyTest" "$app gone:$app.StopJourneyTest" "$registry $app.SnapshotDrillTest" \
     "$app $app.LifecycleTest" "$app killed:$app.CrashTest"
   if [ ! -e "$st/booted-pass/work/avd" ] && [ ! -e "$st/booted-pass/emulator.pid" ]; then
     passed=$((passed + 1))
@@ -1180,6 +1189,8 @@ fi
 if in_part journeys; then
   instrument com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest
   instrument com.keepcrypt.entropy com.keepcrypt.entropy.CheckTest
+  # U1's mixed 24-word journey (U1h), its own class here so the ui part's job does not grow (M5-77 (a)).
+  instrument com.keepcrypt.entropy com.keepcrypt.entropy.MixedJourneyTest
   instrument com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest
 fi
 # 4a, the ui part: U1's journeys from First launch to Finish through the UI alone (Stage U's U1b on),

@@ -17,7 +17,9 @@ import com.keepcrypt.entropy.GateSeeds.DICE_99_SEAL_ID
 import com.keepcrypt.entropy.GateSeeds.DICE_99_TAG
 import com.keepcrypt.entropy.GateSeeds.DICE_99_WORDS
 import com.keepcrypt.entropy.Journeys.checklistToFinish
+import com.keepcrypt.entropy.Journeys.newSeedToDice
 import com.keepcrypt.entropy.Journeys.registration
+import com.keepcrypt.entropy.Journeys.revealDCommittingTo
 import com.keepcrypt.entropy.Journeys.since
 import com.keepcrypt.entropy.Journeys.summaryToBackupOffer
 import com.keepcrypt.entropy.Journeys.summaryToWatchOffer
@@ -48,16 +50,12 @@ import com.keepcrypt.entropy.ffi.Secret
 import com.keepcrypt.entropy.screens.COLLISION_FOUND
 import com.keepcrypt.entropy.screens.PASSPHRASE_WORDS
 import com.keepcrypt.entropy.screens.PASSPHRASE_WALLET
-import com.keepcrypt.entropy.screens.REVEAL_D
-import com.keepcrypt.entropy.screens.SAFE_IF_EITHER
 import com.keepcrypt.entropy.screens.SCAN_MISSING
 import com.keepcrypt.entropy.screens.SCAN_NO_REGISTRY_KEY
 import com.keepcrypt.entropy.screens.SKIPPED
 import com.keepcrypt.entropy.screens.Screen
 import com.keepcrypt.entropy.screens.fingerprintHex
-import com.keepcrypt.entropy.screens.hexGroups
 import java.nio.CharBuffer
-import java.security.MessageDigest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -230,18 +228,7 @@ class JourneyTest {
             grantCamera()
             val journey = SystemClock.elapsedRealtime()
             val activity = toHome()
-            tap("new_seed")
-            on(activity, Screen.Length)
-            tap("words_12")
-            on(activity, Screen.DeviceEntropy, START_SECONDS)
-            assertEquals(SAFE_IF_EITHER, text("device_entropy_sentence"))
-            repeat(3) { tap("device_entropy_sentence") }
-            tap("continue")
-            on(activity, Screen.Commitment)
-            val c = text("commitment_hex")
-            tap("continue")
-            on(activity, Screen.Dice)
-            awaitText("dice_count", "0 / 50 rolls, 0.0 bits")
+            val c = newSeedToDice(activity, "words_12", 50)
             val rolls = SystemClock.elapsedRealtime()
             tapRolls(activity, 50, DICE_50_ROLLS)
             val rollTime = since(rolls)
@@ -308,23 +295,7 @@ class JourneyTest {
             tap("watch_done")
             on(activity, Screen.RegisterOffer)
             registration(activity, null)
-            on(activity, Screen.RevealDOffer)
-            awaitText("reveal_d_warning", REVEAL_D)
-            tap("show_d")
-            find("privacy_gate")
-            tap("pass_gate")
-            await("past D's gate", 10) { onMain { activity.model.state.value.let { it.screen == Screen.RevealD && !it.gate } } }
-            val commits = onMain {
-                val leg = checkNotNull(activity.model.state.value.deviceLeg)
-                val digest = MessageDigest.getInstance("SHA-256")
-                digest.update("KCE/v1/commit".toByteArray(Charsets.US_ASCII))
-                val d = ByteArray(leg.size) { leg[it] }
-                digest.update(d)
-                d.fill(0)
-                hexGroups(digest.digest()) == c
-            }
-            assertTrue("SHA-256(\"KCE/v1/commit\" || D) is not the C the commitment screen showed (neither is printed)", commits)
-            tap("d_done")
+            revealDCommittingTo(activity, c)
             checklistToFinish(activity, 1)
             pass(
                 "the mixed 12-word journey through the UI alone: Device entropy's sentence and touches, C from the screen, " +

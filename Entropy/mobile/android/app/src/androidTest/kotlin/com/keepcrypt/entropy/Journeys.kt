@@ -19,9 +19,13 @@ import com.keepcrypt.entropy.ffi.Core
 import com.keepcrypt.entropy.ffi.Reply
 import com.keepcrypt.entropy.ffi.Summary
 import com.keepcrypt.entropy.screens.INSERTS_PER_DEVICE
+import com.keepcrypt.entropy.screens.REVEAL_D
+import com.keepcrypt.entropy.screens.SAFE_IF_EITHER
 import com.keepcrypt.entropy.screens.Screen
 import com.keepcrypt.entropy.screens.TWO_DEVICES
 import com.keepcrypt.entropy.screens.fingerprintHex
+import com.keepcrypt.entropy.screens.hexGroups
+import java.security.MessageDigest
 import java.nio.CharBuffer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -182,6 +186,67 @@ internal object Journeys {
         registration(activity, sealCode)
         checklistToFinish(activity, words.size / INSERTS_PER_DEVICE)
         return readback to since(start)
+    }
+
+    /**
+     * From Home: a new seed of words ("words_12" or "words_24"), mixed with the phone's D: Device entropy's
+     * sentence and three touches on it (touches for the pool), Continue, the commitment screen's C (public,
+     * read from the screen), Continue, to the dice at 0 rolls of the minimum. Returns C as the screen shows it.
+     */
+    fun newSeedToDice(activity: MainActivity, words: String, minimum: Int): String {
+        tap("new_seed")
+        on(activity, Screen.Length)
+        tap(words)
+        on(activity, Screen.DeviceEntropy, Ui.START_SECONDS)
+        assertEquals(SAFE_IF_EITHER, text("device_entropy_sentence"))
+        repeat(3) { tap("device_entropy_sentence") }
+        tap("continue")
+        on(activity, Screen.Commitment)
+        val c = text("commitment_hex")
+        tap("continue")
+        on(activity, Screen.Dice)
+        awaitText("dice_count", "0 / $minimum rolls, 0.0 bits")
+        return c
+    }
+
+    /**
+     * From the check QR page: Enter go-ahead code, the code a checker builds from the check QR drawn (its T and
+     * nonce, read in-process) tapped on the Crockford pad, Done: the check passed, the words available.
+     */
+    fun checkByTheDrawnCode(activity: MainActivity) {
+        val drawn = Checker.read(onMain { activity.model.state.value.checkRequest } ?: throw AssertionError("no check QR"))
+        val (tag, nonce) = Checker.request(drawn)
+        tap("type_code")
+        on(activity, Screen.CodeEntry)
+        Ui.tapCode(Checker.goAhead(tag, nonce))
+        tap("code_done")
+        on(activity, Screen.CheckResult, Ui.START_SECONDS)
+        assertTrue("the check did not pass", text("check_result_text").startsWith("No collision for seal "))
+    }
+
+    /**
+     * From Reveal D's offer: its warning, Show D through its gate, and D (read in-process, its copy zeroed)
+     * committing to the C the commitment screen showed: SHA-256 under KCE/v1/commit (neither printed); Next,
+     * to the checklist.
+     */
+    fun revealDCommittingTo(activity: MainActivity, c: String) {
+        on(activity, Screen.RevealDOffer)
+        awaitText("reveal_d_warning", REVEAL_D)
+        tap("show_d")
+        find("privacy_gate")
+        tap("pass_gate")
+        await("past D's gate", 10) { onMain { activity.model.state.value.let { it.screen == Screen.RevealD && !it.gate } } }
+        val commits = onMain {
+            val leg = checkNotNull(activity.model.state.value.deviceLeg)
+            val digest = MessageDigest.getInstance("SHA-256")
+            digest.update("KCE/v1/commit".toByteArray(Charsets.US_ASCII))
+            val d = ByteArray(leg.size) { leg[it] }
+            digest.update(d)
+            d.fill(0)
+            hexGroups(digest.digest()) == c
+        }
+        assertTrue("SHA-256(\"KCE/v1/commit\" || D) is not the C the commitment screen showed (neither is printed)", commits)
+        tap("d_done")
     }
 
     /** The registration QR's text: the registry's register page and 26 Crockford symbols, the seal code. */

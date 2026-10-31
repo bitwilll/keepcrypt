@@ -15961,6 +15961,11 @@ narrowed to that: it closes on the first CI run whose lines show "the dialog clo
 dialog stuck, U1a8 is redesigned from those lines. The M5 gate report names it until then (tasks/lessons.md,
 2026-10-31).
 
+- M5-77 (2026-10-31), Stage U-5: (a) U1h's mixed 24-word journey (about 5 minutes) is its own class,
+  MixedJourneyTest, in the journeys part (FlowTest, CheckTest and BackupTest, 851-902 s) rather than in JourneyTest's
+  ui part (1241-1290 s, already the run's longest job): the run's wall time stays where it is and BackupTest's age -d
+  hand-off stays the journeys part's last run. Its stretches are Journeys', shared with JourneyTest.
+
 **Open item (2026-10-31): the age -d hand-off's logcat check found two of the passphrase screen's lines.** Entropy
 Android 41203734694 at 62f9c8c, API 36's journeys job: BackupTest passed, and android-age-check.py failed it: "logcat -d
 holds 2 of the 8 lines the passphrase screen draws". The check looks for "N word" (a line as the screen draws it)
@@ -16977,6 +16982,18 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   journeys' correctness, secret handling, the scripts) and their verified findings are fixed (U4r, U4r2). Open items
   U-4 leaves: the age -d hand-off's logcat check (2026-10-31; not repeated in two runs since, its failure now naming
   each match's facts) and U1c's read-back cost (76 s for 12 inserts, the read-back entry's UI Automator steps).
+  Proof (M5 commit U1h, Stage U-5, partial: local, no emulator; CI's journeys jobs at the next push): MixedJourneyTest's
+  aMixedTwentyFourWordSeedIsCheckedByItsCodeAndReachesFinishOnTwoDevicesWithDThroughTheUiAlone pins a new seed of 24
+  words mixed with the phone's D: Device entropy's sentence and three touches, C from the screen, "0 / 99 rolls", 99
+  rolls tapped with Done disabled at 98, Check now's check QR and the code built from it tapped (the check passed),
+  the 24 inserts by Next across the device swap and its gate (their position and device; the words no vector's) and
+  all 24 read back by touches (their letters read in-process into zeroed arrays), the summary (core's), the backup's
+  and watch-only's Skip, the registration QR (core's), D behind its gate committing to C, and the checklist naming
+  two devices before Finish: Home with the slot empty. android-emulator.sh runs it in the journeys part after
+  CheckTest, before the age: BackupTest (the pinned orders, a mixed-journey-test-fails case; --selftest 58 passed);
+  android-local.sh's whole run holds the thirteen runs and its journeys part four (--selftest 47 passed). The journeys
+  jobs are measured at 30 minutes (M5-76 (f)). Locally: both test APKs built by the strict Gradle run, no warning; banned-api-check.sh
+  clean, 403 files; --workflows clean.
 - [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
   every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
   every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,
@@ -17346,8 +17363,18 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       before every commit that adds Kotlin (M5-74 (a)), android-emulator.sh --selftest with JourneyTest in the journeys
       part's pinned order, three independent reviews at the stage's head, their fixes, the suite, and CI's journeys jobs
       at the stage's head read once (every device claim is CI's: no emulator here, M5-74 (f)).
-  - U-5 begins with U1h, U1's last journey: a mixed seed of 24 words to Finish (Device entropy, C, 99 tapped rolls,
-    the drawn code tapped, 24 words on two devices read back by touches, D committing to C), in the ui part.
+  - U-5's plan (the lead's, 2026-10-31; M5-72 (h) runs U-1 to U-5 without a check-in):
+    - [ ] U1h: U1's last journey, a mixed seed of 24 words to Finish through the UI alone: Device entropy and C, 99
+      tapped rolls (Done disabled at 98), the drawn check QR's code tapped, 24 words on two devices read back by
+      touches, the summary, the registration QR (core's), D committing to C, the checklist naming two devices.
+      MixedJourneyTest, its own class in the journeys part (M5-77 (a)); Journeys gains the mixed journeys' shared
+      stretches (newSeedToDice, checkByTheDrawnCode, revealDCommittingTo), which JourneyTest's mixed 12-word
+      journey now uses too.
+    - [ ] U2h-U2l and U3h, planned item by item once U1h is green: recreation on the device, double taps, the process
+      killed at a stage, leaving with the screen off and the activity destroyed, the camera denied twice and one idle
+      run on the real clock, and the layout check at CI's window and a 412 dp phone.
+    - Verification: as U-4's (the instrumented sources built, the gate, every script selftest that reads a changed
+      script, three reviews at the stage's head, CI read once per push).
   - U-5, U2 on the device and U3's layout check: U2h (recreation), U2i (double taps), U2j (the process killed at a
     stage), U2k (leaving, screen off, the activity destroyed while away, the back gesture), U2l (the camera denied twice;
     one idle run on the real clock, API 36), U3h (the layout check in the walk at CI's window and a 412 dp phone; the
