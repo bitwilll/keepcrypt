@@ -12021,6 +12021,14 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   timeout-minutes empty unseen. It now counts the rows and the rows' whole-minute timeout: lines, which must both be
   6. With one timeout: line removed from a copy of the workflow it fails ("rows and budgets 6 5"); android-emulator.sh
   --selftest 50 passed on the real workflow.
+  Proof (M5 commit U1a5, CI fix, partial: local; CI's leg jobs at the next push): Entropy Android 41144532589 at
+  dd2d617 failed two leg jobs before any test: API 31's capture job (its 16 KB leg too) and API 36's journeys job,
+  each emulator exiting at both boot attempts with "Not enough space to create userdata partition. Available: 3336.95
+  MB [3327.17 MB] ..., need 7372.80 MB"; the other four leg jobs and the build passed on runners with more room. The
+  hand-written AVD asked for disk.dataPartition.size=6G since commit 8, and the emulator wants 1.2 times it free where
+  the AVD lives. The partition is now 2G (2.4 GB wanted), which the five APKs, their compiled code and the tests' data
+  fit many times over, and each leg prints that free space before its boot. android-emulator.sh --selftest 50 passed
+  under sh and dash; the gate clean.
   Proof (M5 commit U1a3, review fix, partial: local; CI's build job at the next push): nothing read the emulators
   matrix, so a row dropped or renamed left every gate and selftest green while that part ran on that API level
   nowhere (the U-1 review). android-emulator.sh's selftest, which the build job runs before any leg job, now reads

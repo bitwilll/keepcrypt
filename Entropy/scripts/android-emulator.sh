@@ -853,7 +853,11 @@ if [ -z "$booted" ]; then
   mkdir -p "$sdk/platforms" || exit 2
   [ -e "$sdk/platform-tools" ] || ln -s "$(dirname "$adb")" "$sdk/platform-tools" || exit 2
 
-  # The AVD, written by hand (no avdmanager): image.sysdir.1 is relative to SDK_ROOT.
+  # The AVD, written by hand (no avdmanager): image.sysdir.1 is relative to SDK_ROOT. Its userdata
+  # partition is 2G: the five APKs, their compiled code and the tests' data fit it many times over,
+  # and the emulator needs 1.2 times the partition free where the AVD lives before it boots, so 6G
+  # (commit 8's) asked for 7.4 GB, more than some runners have there (Entropy Android 41144532589:
+  # 3.3 GB free on two of its leg jobs, which never booted). The free space there is printed first.
   cat > "$work/avd/$avd.ini" <<EOF || exit 2
 avd.ini.encoding=UTF-8
 path=$work/avd/$avd.avd
@@ -879,7 +883,7 @@ hw.camera.back=none
 hw.camera.front=none
 hw.audioInput=no
 hw.audioOutput=no
-disk.dataPartition.size=6G
+disk.dataPartition.size=2G
 fastboot.forceColdBoot=yes
 showDeviceFrame=no
 EOF
@@ -890,6 +894,7 @@ EOF
     options="$options -no-metrics"
   fi
 
+  echo "== free space where the AVD lives: $(df -Pk "$work/avd" | awk 'NR == 2 { print int($4 / 1024) " MB" }')"
   echo "== $image: $(sed -n 's/^Pkg[.]Revision=//p' "$sdk/$sysdir/source.properties")"
   echo "== emulator: $("$sdk/emulator/emulator" -version 2>&1 | head -n 1)"
   if ! boot 1; then
