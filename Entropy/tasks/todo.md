@@ -11186,8 +11186,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   Android job's budget is set at commit 8 from its measured time plus 25%, with `timeout-minutes` at that budget and a
   90-minute ceiling (since L9, each of the three jobs' own budget by the same rule, M5-70 (b); from U1a each of the
   seven, M5-73 (b), set 2026-10-30 from run 40903211202: build 13 minutes, the leg jobs 12, 20, 10, 11, 20 and 11;
-  build 17 minutes from 2026-10-31, M5-75 (g), from run 41181656557's 779 s; the two journeys jobs at the 90-minute
-  ceiling for U1b's measuring run, M5-76 (a), then their measured time plus 25%);
+  build 17 minutes from 2026-10-31, M5-75 (g), from run 41181656557's 779 s; the two journeys jobs 36 and 34 minutes
+  from 2026-10-31, M5-76 (a), from U1b's measuring run 41193839334's 1708 s and 1600 s);
   system images, the emulator package and the Gradle distribution are cached with actions/cache keyed on their
   revisions. An emulator boot failure may be re-run once, and the re-run is logged under Review; a test
   failure is never re-run. Past any budget, the lead stops and re-plans.
@@ -15891,7 +15891,10 @@ they differ. Nothing in the Android plan is weakened.
   SnapshotDrillTest, FlowTest's pages and limits, CaptureTest), named so in its KDoc: M5-72 (a)'s "through the UI
   only" binds U1's journeys, which use Ui.tapRolls, tapCode and typeLetters; which existing tests move to taps is
   U1c-U1g's re-plan. (c) JourneyTest is one class in the journeys part, after CheckTest and before BackupTest, so
-  BackupTest's age -d hand-off stays the part's last run.
+  BackupTest's age -d hand-off stays the part's last run. (d) U1b's run measured 3.2 to 4.9 s a tapped roll, the cost of
+  UI Automator's searches waiting for 500 ms of accessibility quiet each: U1b2 presses the dice pad's keys and Confirm
+  by their accessibility click on the app's own nodes through UiAutomation, still a user's input on the screen
+  (M5-72 (a)'s Public pads by the accessibility click), and U1c-U1g are re-planned from its run, not from U1b's.
 
 **Open item (2026-10-31): UI Automator does not see first_launch in API 36's journeys.** Entropy Android 41148288082
 at a15dc4f failed all 10 tests of API 36's journeys job (FlowTest 7, CheckTest 2, BackupTest 1, the shipping APK),
@@ -16766,6 +16769,23 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   :app:assembleWithTestRegistryReleaseAndroidTest, no warning); android-emulator.sh --selftest 53 passed (the new
   journey-test-fails case among them, and the parts' pinned orders with JourneyTest); banned-api-check.sh clean, 397
   files; --workflows clean.
+  Proof (CI, the lead's, 2026-10-31): Entropy CI 41193839363 at 87951b3 green; Entropy Android 41193839334 at
+  87951b3, every job green: the build job in 12 min 43 s; API 31's journeys job in 1708 s ("PASS
+  com.keepcrypt.entropy.JourneyTest (1 tests; ...)", FlowTest 7, CheckTest 2 and BackupTest with its age -d hand-off
+  passing, "emulator: api=31: every check passed") and API 36's in 1600 s, the same classes passing. JourneyTest's pass
+  lines: API 31, dice-50-words12's 50 rolls tapped in 245.0 s, dice-99-words12's 99 in 343.6 s, the 12 read-backs by
+  touches in 75.9 s, the journey 813.9 s; API 36, 165.7 s, 313.4 s, 79.3 s and 704.3 s. The other four leg jobs green.
+  So U1b holds on both levels; its rolls cost 3.2 to 4.9 s each, which U1b2 takes at its root, and the journeys
+  jobs' budgets are 36 and 34 minutes (M5-30, M5-76 (a)).
+  Proof (M5 commit U1b2, Stage U-4, partial: local, no emulator; CI's journeys jobs at the next push): a roll by
+  pressFace and tap made about seven UI Automator calls, and in UI Automator 2.4.0 (its classes read from the pinned
+  runtime jar with javap) each search starts with UiDevice.getWindowRoots' waitForIdle, UiAutomation.waitForIdle with
+  a 500 ms quiet window, and UiObject.click waits up to Configurator's 3000 ms action acknowledgment for an event
+  after the click: so each roll waited seconds for quiet, not for the app. tapRolls now presses the face's key and
+  Confirm by ACTION_CLICK on the app's own accessibility nodes, found in the windows UiAutomation reports and refreshed
+  from the app before their state is read (Confirm enabled, the count's text), each polled every 20 ms for up to 10 s:
+  no idle wait, and no selector or point goes into a log (M5-68 (e)). Locally: both test APKs built by the strict
+  Gradle run, no warning; banned-api-check.sh clean, 397 files.
 - [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
   every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
   every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,
@@ -17084,7 +17104,7 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
     scanned collision's restart to Finish), U1g (android-instrument.sh's gone: form; the stop journey to Close app).
   - U-4's plan (the lead's, 2026-10-31; M5-72 (h) runs U-1 to U-5 without a check-in; a journey pins what was built,
     so each says so, and a defect it finds is fixed at its root with the journey as its failing test):
-    - [ ] U1b: Ui gains the journeys' inputs through the UI alone (M5-72 (a)): tapped rolls (each roll the face's
+    - [x] U1b: Ui gains the journeys' inputs through the UI alone (M5-72 (a)): tapped rolls (each roll the face's
       accessibility press on the Public dice pad, Confirm tapped once it is enabled, the count waited for; no face in a
       selector or a log, M5-68 (e)), the Protected letter pad by injected touches on any of its three screens (FlowTest's
       letterKeys and typeOnPad moved, the screen a parameter) and the go-ahead code tapped on the Crockford pad
@@ -17097,7 +17117,12 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       watch-only's Skip, the registration QR (dice-99-words12's seal code), the checklist and Finish: Home with the slot
       empty; its pass line gives each phase's time. The journeys jobs take the 90-minute ceiling for this measuring run
       (M5-76 (a)); from its times the lead budgets them by M5-30 and re-plans U1c-U1g.
-    - [ ] U1c-U1g: re-planned from U1b's run.
+    - [ ] U1b2: the tapped rolls without UI Automator's idle waits (U1b's run: 3.2 to 4.9 s a roll, so U1c-U1f's
+      rolls would not fit a job): each roll's face and Confirm pressed by their accessibility click and the count read
+      through UiAutomation's own nodes, refreshed from the app, polled every 20 ms; JourneyTest's next run gives the
+      cost a roll, from which U1c-U1g are re-planned.
+    - [ ] U1c-U1g: re-planned from U1b2's run (the costs a roll and a read-back, and the 36 and 34 minutes the
+      journeys jobs now have; more jobs if the journeys outgrow them).
     - Verification: the instrumented sources compiled locally (the strict build assembles both test APKs), the gate
       before every commit that adds Kotlin (M5-74 (a)), android-emulator.sh --selftest with JourneyTest in the journeys
       part's pinned order, three independent reviews at the stage's head, their fixes, the suite, and CI's journeys jobs

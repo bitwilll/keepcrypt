@@ -204,24 +204,65 @@ internal object Ui {
 
     /**
      * count rolls through the UI alone, faces in pattern's order (Stage U's U1b, M5-72 (a)): for each, the
-     * face's key pressed on the Public dice pad (pressFace, which names no face to UI Automator), Confirm
-     * tapped once it is enabled (a face is picked), and the count waited for until it shows one roll more.
-     * The count is public and the faces are compared nowhere here: a roll pressed wrong shows in the seed
-     * the journey then checks (its Seal ID and words, vectors), and a press lost leaves Confirm disabled,
-     * which fails here. The count before each roll is read in-process (to observe), the one after from the
-     * screen.
+     * face's key on the Public dice pad and then Confirm, once it is enabled, pressed by their accessibility
+     * click (as TalkBack presses them), and the count waited for until it shows one roll more. A press lost
+     * leaves Confirm disabled or the count unchanged, which fails here; a face pressed wrong shows in the
+     * seed the journey then checks (its Seal ID and words, vectors). The nodes are read and pressed through
+     * UiAutomation directly (appNode), not UI Automator's searches: each of those first waits for the
+     * accessibility events to be quiet for 500 ms (UiDevice.getWindowRoots' waitForIdle, UI Automator
+     * 2.4.0), and a tap's UiObject.click waits up to 3 s for an event after it, so a roll by pressFace and
+     * tap took 3.2 to 4.9 s (U1b's run, Entropy Android 41193839334); and nothing here goes into a log, so
+     * no face does (M5-68 (e)). The count before each roll is read in-process (to observe), the one after
+     * from the screen.
      */
     fun tapRolls(activity: MainActivity, count: Int, pattern: String) {
         for (index in 0 until count) {
             val before = onMain { activity.model.state.value.dice?.rolls } ?: throw AssertionError("not on the dice screen")
-            pressFace(pattern[index % pattern.length])
-            val picked = device.wait(Until.hasObject(By.res("confirm").enabled(true)), FIND_MS)
-            assertTrue("Confirm is not enabled after a face's press (roll " + (before + 1) + ")", picked == true)
-            tap("confirm")
-            val counted = device.wait(Until.hasObject(By.res("dice_count").textStartsWith((before + 1).toString() + " / ")), FIND_MS)
-            assertTrue("the dice count does not show " + (before + 1) + " rolls after Confirm", counted == true)
+            val roll = (before + 1).toString()
+            val key = poll("the dice pad's key for roll $roll") { appNode("key_" + pattern[index % pattern.length])?.takeIf { it.isEnabled } }
+            assertTrue("the dice pad's key did not take the press (roll $roll)", key.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+            val confirm = poll("Confirm enabled after a face's press (roll $roll)") { appNode("confirm")?.takeIf { it.isEnabled } }
+            assertTrue("Confirm did not take the press (roll $roll)", confirm.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+            poll("the dice count showing $roll rolls after Confirm") {
+                appNode("dice_count")?.takeIf { it.text?.toString()?.startsWith("$roll / ") == true }
+            }
         }
     }
+
+    /**
+     * The app's node with resource id tag, as it is now, or null: found in the app's window roots that
+     * UiAutomation reports (a walk of its accessibility nodes, in-process, no idle wait and no log), then
+     * refreshed from the app, so its state (enabled, text) is the app's and not the accessibility cache's.
+     * Null while no such node is in the tree or the one found has gone.
+     */
+    private fun appNode(tag: String): AccessibilityNodeInfo? {
+        val pkg = Capture.instrumentation.targetContext.packageName
+        fun walk(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+            if (node.viewIdResourceName == tag) return node
+            for (index in 0 until node.childCount) node.getChild(index)?.let { child -> walk(child)?.let { return it } }
+            return null
+        }
+        for (window in Capture.instrumentation.uiAutomation.windows) {
+            val root = window.root ?: continue
+            if (root.packageName?.toString() != pkg) continue
+            val node = walk(root) ?: continue
+            return if (node.refresh()) node else null
+        }
+        return null
+    }
+
+    /** read's value once it is not null, read every 20 ms for up to 10 s; past that the test fails, naming what. */
+    private fun <T : Any> poll(what: String, read: () -> T?): T {
+        val end = SystemClock.elapsedRealtime() + FIND_MS
+        while (true) {
+            read()?.let { return it }
+            if (SystemClock.elapsedRealtime() > end) throw AssertionError("timed out after 10 s: " + what)
+            SystemClock.sleep(POLL_MS)
+        }
+    }
+
+    /** poll's interval. */
+    private const val POLL_MS = 20L
 
     /** Taps code on the code entry's Crockford pad, key by key, and waits for it shown in two groups (a go-ahead code is public). */
     fun tapCode(code: String) {
