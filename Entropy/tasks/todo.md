@@ -15971,6 +15971,12 @@ dialog stuck, U1a8 is redesigned from those lines. The M5 gate report names it u
   journeys of every other part's boot. Each change is preceded by a touch on a text that takes no press (Ui.touchOn),
   an input, since a Protected screen's 30 s cover would change the state the change must keep; the state is compared
   in-process and never printed (M5-68 (e)). The registry jobs are re-measured at its first green run (M5-30).
+- M5-78 (2026-10-31), Stage U-5: (a) U2i's DoubleTapTest (four short journeys, about 6 minutes) runs in the capture
+  part, after PhoneMotionTest, not the ui part the plan named: the capture jobs (503-535 s) are the run's shortest and
+  the ui jobs (1241-1284 s) its longest, so the run's wall time stays where it is; the capture jobs are measured at 30
+  minutes (M5-76 (f)). The BIP39 entry's gate, which only the watch-only export reaches after the read-back, gives way
+  to the collision report's, reached in a minute; JourneyTest's mixed journey still passes the BIP39 gate by a single
+  tap. (b) DoubleTapTest goes to CI before any fix: M5-72 (f) makes the 300 ms press guard conditional on it failing.
 
 **Open item (2026-10-31): the age -d hand-off's logcat check found two of the passphrase screen's lines.** Entropy
 Android 41203734694 at 62f9c8c, API 36's journeys job: BackupTest passed, and android-age-check.py failed it: "logcat -d
@@ -17012,6 +17018,16 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   passed); android-local.sh's whole run holds fourteen runs and its registry part four (--selftest 47 passed).
   The registry jobs are measured at 30 minutes (M5-77 (b)). Locally: both test APKs built by the strict Gradle run, no
   warning; banned-api-check.sh clean, 404 files; --workflows clean.
+  Proof (M5 commit U2i, Stage U-5, partial: local, no emulator; CI's capture jobs at the next push): DoubleTapTest's
+  four tests double tap (Ui.doubleTap: two injected touches 60 ms apart at one point) Skip, its confirm, Show words
+  and the words' gate; Match found, its confirm, Show the collision report and its gate; Cannot check and its confirm
+  (the new dice at 0 rolls, no face picked); and, on a mixed seed of 12 words skipped and read back, Show
+  registration QR, its gate, Show D and its gate, then Finish: each must end exactly one step on. Ui.touchOn,
+  doubleTap and touchKey share shownBounds. android-emulator.sh runs it in the capture part after PhoneMotionTest
+  (the pinned orders, a double-tap-test-fails case; --selftest 60 passed); android-local.sh's whole run holds fifteen
+  runs and its capture part five (--selftest 47 passed). The capture jobs are measured at 30 minutes (M5-78 (a)).
+  Locally: both test APKs built by the strict Gradle run, no warning; banned-api-check.sh clean, 405 files;
+  --workflows clean.
 - [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
   every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
   every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,
@@ -17397,10 +17413,11 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       was built. Each change must keep the screen, its page, its gate, the pad's entry and the session (the model's
       own, read in-process), make no new core call, and leave FLAG_SECURE on the new window (its LayoutParams flags
       read in-process). U2d's JVM tests hold the model's side.
-    - [ ] U2i: double taps (DoubleTapTest, ui part): two touches 60 ms apart at one point, injected (no UI Automator
-      click), on each privacy gate's button the journeys reach (the words', the registration QR's, D's, the BIP39
-      entry's), on each one-way confirm (Skip, Match found, Cannot check) and on Show words: the state after is
-      exactly one step on, never two (the model's screen and page read in-process). If a double tap passes a gate or
+    - [ ] U2i: double taps (DoubleTapTest, capture part, M5-78 (a)): two touches 60 ms apart at one point, injected
+      (Ui.doubleTap, no UI Automator click), on four privacy gates' buttons (the words', the collision report's, the
+      registration QR's, D's), on each one-way choice and its confirm (Skip, Match found, Cannot check) and on Show
+      words: the state after is exactly one step on, never two (the model's screen and gate read in-process; the
+      words' first page; no face picked on the dice Cannot check's confirm starts again). If a double tap passes a gate or
       a confirm unseen, the fix is M5-72 (f)'s: a new screen's controls ignore presses for 300 ms after its first
       frame, in pressOn, with a JVM test and this one as its failing tests.
     - [ ] U2j: the process killed at a stage, then the app started again: first a probe run (the registry part) that

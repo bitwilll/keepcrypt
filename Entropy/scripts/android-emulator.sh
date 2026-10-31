@@ -56,7 +56,7 @@
 #      region, which the frame checker reads.
 #      A test class that fails is reported at once and fails the leg at its end: every class runs,
 #      so one run gives both the control's result and the app's.
-#   4a. PhoneMotionTest, FlowTest, CheckTest, MixedJourneyTest, BackupTest, JourneyTest and StopJourneyTest (gone:, the stop
+#   4a. PhoneMotionTest, DoubleTapTest (U2i: a double tap takes one step), FlowTest, CheckTest, MixedJourneyTest, BackupTest, JourneyTest and StopJourneyTest (gone:, the stop
 #      screen's Close app ending the app's own process) on the shipping app, then SnapshotDrillTest
 #      on the test-registry app (M5 groups 15, 16 and 18): PhoneMotion on the emulator's own sensors (lead decision
 #      M5-51: an accelerometer sample within 5 s, and a gyroscope one where the image lists a gyroscope,
@@ -107,8 +107,8 @@
 # The parts (--part; M5 commit U1a, lead decision M5-72 (h)), each on its own boot, so that the
 # workflow runs them side by side, one a job: capture, the shipping journeys, the journeys through the
 # UI alone (ui, from U1e) and the test registry and the edges (Stage U's commit plan; commits U1a2 and U1e):
-#   capture   steps 1-3, step 4's CaptureTest on both APKs, PhoneMotionTest, and steps 5 and 6: the
-#             positive controls, the capture harness and the first frames;
+#   capture   steps 1-3, step 4's CaptureTest on both APKs, PhoneMotionTest, DoubleTapTest (U2i, M5-78 (a)), and
+#             steps 5 and 6: the positive controls, the capture harness and the first frames;
 #   journeys  FlowTest, CheckTest, MixedJourneyTest (U1h) and BackupTest with its age -d hand-off, on the shipping app;
 #   ui        JourneyTest, U1's journeys to Finish through the UI alone, then StopJourneyTest, the stop
 #             screen's Close app (its gone: form), on the shipping app (Stage U's U1e split it from
@@ -143,7 +143,7 @@
 # leg where everything passes exits 0, having made every instrumented run in the steps' order, from
 # ControlTest to the killed CrashTest, last (a case of its own, the order pinned), and kept the
 # control's two screencaps (a case of its own). Each part alone passes too, its runs pinned in that
-# order (a case each): capture's ControlTest, CaptureTest on both apps and PhoneMotionTest; journeys'
+# order (a case each): capture's ControlTest, CaptureTest on both apps, PhoneMotionTest and DoubleTapTest; journeys'
 # FlowTest, CheckTest, MixedJourneyTest and the age: BackupTest; ui's JourneyTest and the gone: StopJourneyTest; registry's SnapshotDrillTest, LifecycleTest, DeviceChangeTest and the
 # killed CrashTest, last; and the four parts' runs are together the whole leg's, each once, so a part that
 # drops or adds a class fails. The workflow's emulators matrix (.github/workflows/entropy-android.yml,
@@ -151,7 +151,7 @@
 # that follow the part (its own, the age, the 16 KB leg, the captures' upload) under their names and
 # conditions (a case of its own: a row dropped would run its part on that level nowhere). Every part ends with step 7's checks; journeys, ui and registry print no
 # line of steps 1, 2, 5 and 6 and keep no capture; a failing class in each part exits 1 at the part's
-# end, after its later runs and step 7. A failing ControlTest, CaptureTest, PhoneMotionTest, FlowTest,
+# end, after its later runs and step 7. A failing ControlTest, CaptureTest, PhoneMotionTest, DoubleTapTest, FlowTest,
 # CheckTest, MixedJourneyTest, BackupTest, JourneyTest, SnapshotDrillTest, LifecycleTest, DeviceChangeTest and CrashTest each exit 1 at the
 # leg's end, after the later checks ran, and so does an empty screencap of the control's screens; capture-control
 # still in recents after pm clear, a recording that ends before it is stopped, raw frames that never
@@ -406,6 +406,7 @@ EOF
   leg control-test-fails KC_FAILCLASS=ControlTest
   leg capture-test-fails KC_FAILCLASS=CaptureTest
   leg motion-test-fails KC_FAILCLASS=PhoneMotionTest
+  leg double-tap-test-fails KC_FAILCLASS=DoubleTapTest
   leg flow-test-fails KC_FAILCLASS=FlowTest
   leg check-test-fails KC_FAILCLASS=CheckTest
   leg mixed-journey-test-fails KC_FAILCLASS=MixedJourneyTest
@@ -442,6 +443,7 @@ EOF
     "pass: api=31 first frame (shipping): every frame black" \
     "pass: api=31 first frame (shipping, its first screen up)" "pass: api=31 first frame (registry, its first screen up)" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.PhoneMotionTest" \
+    "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.DoubleTapTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.CheckTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.MixedJourneyTest" \
@@ -481,12 +483,12 @@ EOF
   registry=com.keepcrypt.entropy.testregistry
   # The steps' order, steps 3-4c (each part's runs in it: capture's, journeys', ui's, then registry's, whose
   # edges end it), the killed CrashTest last, so no run comes after it.
-  order pass "ControlTest, CaptureTest on both apps, PhoneMotionTest, FlowTest, CheckTest, MixedJourneyTest, the age: BackupTest, JourneyTest, the gone: StopJourneyTest, SnapshotDrillTest (test registry), LifecycleTest, DeviceChangeTest, then the killed CrashTest, last" \
-    "$app $app.ControlTest" "$app $app.CaptureTest" "$registry $app.CaptureTest" "$app $app.PhoneMotionTest" \
+  order pass "ControlTest, CaptureTest on both apps, PhoneMotionTest, DoubleTapTest, FlowTest, CheckTest, MixedJourneyTest, the age: BackupTest, JourneyTest, the gone: StopJourneyTest, SnapshotDrillTest (test registry), LifecycleTest, DeviceChangeTest, then the killed CrashTest, last" \
+    "$app $app.ControlTest" "$app $app.CaptureTest" "$registry $app.CaptureTest" "$app $app.PhoneMotionTest" "$app $app.DoubleTapTest" \
     "$app $app.FlowTest" "$app $app.CheckTest" "$app $app.MixedJourneyTest" "$app age:$app.BackupTest" "$app $app.JourneyTest" "$app gone:$app.StopJourneyTest" "$registry $app.SnapshotDrillTest" \
     "$app $app.LifecycleTest" "$app $app.DeviceChangeTest" "$app killed:$app.CrashTest"
-  order capture "capture alone: ControlTest, CaptureTest on both apps, then PhoneMotionTest" \
-    "$app $app.ControlTest" "$app $app.CaptureTest" "$registry $app.CaptureTest" "$app $app.PhoneMotionTest"
+  order capture "capture alone: ControlTest, CaptureTest on both apps, PhoneMotionTest, then DoubleTapTest" \
+    "$app $app.ControlTest" "$app $app.CaptureTest" "$registry $app.CaptureTest" "$app $app.PhoneMotionTest" "$app $app.DoubleTapTest"
   order journeys "journeys alone: FlowTest, CheckTest, MixedJourneyTest, then the age: BackupTest" \
     "$app $app.FlowTest" "$app $app.CheckTest" "$app $app.MixedJourneyTest" "$app age:$app.BackupTest"
   order ui "ui alone: JourneyTest, then the gone: StopJourneyTest" "$app $app.JourneyTest" "$app gone:$app.StopJourneyTest"
@@ -614,6 +616,12 @@ EOF
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
     "pass: api=31 first frame (registry, its first screen up)" \
     "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.PhoneMotionTest) (each reported above)"
+  expect double-tap-test-fails 1 \
+    "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest" \
+    "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.DeviceChangeTest" \
+    "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
+    "pass: api=31 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.DoubleTapTest) (each reported above)"
   expect flow-test-fails 1 \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.CheckTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest" \
@@ -723,7 +731,7 @@ EOF
     "emulator: api=37: not made here (ro.debuggable=0, a user build: adb root refused): the nothing-persisted listing of the apps' data directories, which CI's API 31 and 36 legs make" \
     "emulator: api=37: every check passed"
   order booted-pass "the steps' order, both CaptureTest runs without control (c), the killed CrashTest last" \
-    "$app $app.ControlTest" "$app $left" "$registry $left" "$app $app.PhoneMotionTest" \
+    "$app $app.ControlTest" "$app $left" "$registry $left" "$app $app.PhoneMotionTest" "$app $app.DoubleTapTest" \
     "$app $app.FlowTest" "$app $app.CheckTest" "$app $app.MixedJourneyTest" "$app age:$app.BackupTest" "$app $app.JourneyTest" "$app gone:$app.StopJourneyTest" "$registry $app.SnapshotDrillTest" \
     "$app $app.LifecycleTest" "$app $app.DeviceChangeTest" "$app killed:$app.CrashTest"
   if [ ! -e "$st/booted-pass/work/avd" ] && [ ! -e "$st/booted-pass/emulator.pid" ]; then
@@ -1152,7 +1160,7 @@ keep_capture() {
   [ "$rc" -eq 0 ] && [ "$bytes" -gt 0 ] || fail_later "the shell's screencap of $1 failed or is empty"
 }
 
-# The capture part's steps 2-4 and PhoneMotionTest. Each instrumented run below stands in its part's
+# The capture part's steps 2-4, PhoneMotionTest and DoubleTapTest. Each instrumented run below stands in its part's
 # block, on a line of its own, as scripts/android-local.sh reads them.
 if in_part capture; then
   # 2. The shell's own screencap with each app in front, capture-control's two screens kept. Run
@@ -1189,6 +1197,9 @@ if in_part capture; then
 
   # 4a. PhoneMotion on the emulator's own sensors (M5-51).
   instrument com.keepcrypt.entropy com.keepcrypt.entropy.PhoneMotionTest
+  # U2i: a double tap on each one-way choice, its confirm, Show words and four privacy gates takes one step
+  # (in this part, the shortest jobs, so the run's wall time does not grow: M5-78 (a)).
+  instrument com.keepcrypt.entropy com.keepcrypt.entropy.DoubleTapTest
 fi
 # 4a, the journeys part: the screens from the start to the dice, driven through UI Automator (group
 # 15), then the collision check (group 16) without a snapshot on the shipping app, then the encrypted

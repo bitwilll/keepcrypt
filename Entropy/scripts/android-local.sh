@@ -57,7 +57,7 @@
 #   1. kc37 booted with no camera (-camera-back none: the CI legs' no-camera facts, M5-59, which
 #      SnapshotDrillTest's scan screen expects), then android-emulator.sh --booted on it: a CI leg's
 #      steps 1-7 (the probes, the shell's screencaps, ControlTest with the capture control, CaptureTest
-#      in both APKs, PhoneMotionTest, FlowTest, CheckTest, MixedJourneyTest, BackupTest (its age -d hand-off with the Mac's
+#      in both APKs, PhoneMotionTest, DoubleTapTest, FlowTest, CheckTest, MixedJourneyTest, BackupTest (its age -d hand-off with the Mac's
 #      age on PATH, Homebrew's), SnapshotDrillTest, LifecycleTest, DeviceChangeTest and CrashTest
 #      last, each through android-instrument.sh's judge, then the raw-frame control, the first
 #      frames and step 7: each app's dumpsys package with no INTERNET, and the nothing-persisted
@@ -108,7 +108,7 @@
 # given no route out, with its HOME and ANDROID_AVD_HOME set, seeded the update check's line for the
 # emulator's version and the SDK's bundled flags in that HOME with the run's time before each boot,
 # named CaptureTest's control (c) and the leg's nothing-persisted listing as not made on the user build
-# and left the control out of both CaptureTest runs, run the fourteen instrumented runs in android-emulator.sh's order and listed their results, run
+# and left the control out of both CaptureTest runs, run the fifteen instrumented runs in android-emulator.sh's order and listed their results, run
 # NativeTest on the second boot with the app's primaryCpuAbi arm64-v8a, passed the camera client's
 # four checks and decoded the PNG. Each of these is its own case: no decode (the decode named as not
 # met, exit 0); no PNG (named as not made, exit 0); a debuggable build (no test left out, and the
@@ -122,7 +122,7 @@
 # (exit 1 each); an emulator that changes its seeded update check, and one that changes its seeded
 # feature flags, as each fetch would (exit 1 each, named after each boot, the camera check still
 # run); an emulator of another version (that version in the update check's seed, exit 0), and one
-# whose -version names none (exit 2, nothing booted). With --part: capture runs its four runs in
+# whose -version names none (exit 2, nothing booted). With --part: capture runs its five runs in
 # android-emulator.sh's order, naming and leaving out CaptureTest's control (c) as the whole run does,
 # then the second boot's NativeTest and camera checks (exit 0); journeys runs FlowTest, CheckTest, MixedJourneyTest and
 # the age: BackupTest, and registry SnapshotDrillTest, LifecycleTest, DeviceChangeTest and the killed CrashTest, each
@@ -500,7 +500,8 @@ CONFIG
   runs() {
     got=$(sed -n 's/^instrument stub: //p' "$st/$1/out" | tr '\n' ' ')
     want="com.keepcrypt.entropy com.keepcrypt.entropy.ControlTest com.keepcrypt.entropy $2 com.keepcrypt.entropy.testregistry $2"
-    want="$want com.keepcrypt.entropy com.keepcrypt.entropy.PhoneMotionTest com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest"
+    want="$want com.keepcrypt.entropy com.keepcrypt.entropy.PhoneMotionTest com.keepcrypt.entropy com.keepcrypt.entropy.DoubleTapTest"
+    want="$want com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest"
     want="$want com.keepcrypt.entropy com.keepcrypt.entropy.CheckTest com.keepcrypt.entropy com.keepcrypt.entropy.MixedJourneyTest"
     want="$want com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest"
     want="$want com.keepcrypt.entropy com.keepcrypt.entropy.JourneyTest com.keepcrypt.entropy gone:com.keepcrypt.entropy.StopJourneyTest"
@@ -510,7 +511,7 @@ CONFIG
     want="${want}com.keepcrypt.entropy com.keepcrypt.entropy.NativeTest "
     ok=yes
     [ "$got" = "$want" ] || { ok=no; echo "  got: $got"; }
-    check "$1" "$ok" "the fourteen instrumented runs in android-emulator.sh's order, then NativeTest"
+    check "$1" "$ok" "the fifteen instrumented runs in android-emulator.sh's order, then NativeTest"
   }
   # boots NAME: case NAME booted twice on port 5580 with no snapshot, first with no camera and then
   # the virtual scene, with no crash reports and the guest's two networks given no route out, with its
@@ -568,8 +569,8 @@ CONFIG
     "instrument stub: com.keepcrypt.entropy $left" "emulator: api=37: every check passed" \
     "pass: api=37 dumpsys package com.keepcrypt.entropy.testregistry: no INTERNET" \
     "emulator: api=37: not made here (ro.debuggable=0, a user build: adb root refused): the nothing-persisted listing" \
-    "local: run 14 of 14, com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest: instrument: api=37 PASS com.keepcrypt.entropy.CrashTest" \
-    "local: run 8 of 14, com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest: instrument: api=37 PASS com.keepcrypt.entropy.BackupTest" \
+    "local: run 15 of 15, com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest: instrument: api=37 PASS com.keepcrypt.entropy.CrashTest" \
+    "local: run 9 of 15, com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest: instrument: api=37 PASS com.keepcrypt.entropy.BackupTest" \
     "local: NativeTest: com.keepcrypt.entropy installed with primaryCpuAbi=arm64-v8a" \
     "pass: local native library: NativeTest on kc37's arm64-v8a, natively" \
     "$camera_passes" "pass: local camera: gone from dumpsys media.camera within 10 s of Home" \
@@ -597,7 +598,7 @@ CONFIG
   fi
   expect avd-kept 0 "local: the AVD kc37 is this script's" "local: every check made on kc37 passed"
   avd avd-kept
-  expect flow-test-fails 1 "local: run 5 of 14, com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest: FAIL: instrument: api=37: com.keepcrypt.entropy.FlowTest" \
+  expect flow-test-fails 1 "local: run 6 of 15, com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest: FAIL: instrument: api=37: com.keepcrypt.entropy.FlowTest" \
     "$camera_passes" "FAIL: local: the leg on kc37 failed (each failure reported above)"
   stopped flow-test-fails
   expect native-test-fails 1 "FAIL: instrument: api=37: com.keepcrypt.entropy.NativeTest: stand-in failure" \
@@ -643,19 +644,21 @@ CONFIG
   else
     check no-version no "nothing booted"
   fi
-  # --part: capture's four runs, CaptureTest's control (c) named and left out as in the whole run, then
+  # --part: capture's five runs, CaptureTest's control (c) named and left out as in the whole run, then
   # the second boot; journeys' three runs and registry's three, each on one boot, with no check of
   # another part's class named.
   expect part-capture 0 "local: not made on kc37 (ro.debuggable=0): com.keepcrypt.entropy.CaptureTest#disableSecureWindowsShowsTheScreenOnlyWhileSet" \
     "emulator: api=37: part capture alone (--part capture)" \
-    "local: run 4 of 4, com.keepcrypt.entropy com.keepcrypt.entropy.PhoneMotionTest: instrument: api=37 PASS com.keepcrypt.entropy.PhoneMotionTest" \
+    "local: run 4 of 5, com.keepcrypt.entropy com.keepcrypt.entropy.PhoneMotionTest: instrument: api=37 PASS com.keepcrypt.entropy.PhoneMotionTest" \
+    "local: run 5 of 5, com.keepcrypt.entropy com.keepcrypt.entropy.DoubleTapTest: instrument: api=37 PASS com.keepcrypt.entropy.DoubleTapTest" \
     "pass: local native library: NativeTest on kc37's arm64-v8a, natively" "$camera_passes" \
     "local: every check made on kc37 passed (each check not made or not met is named above)"
   got=$(sed -n 's/^instrument stub: //p' "$st/part-capture/out" | tr '\n' ' ')
   want="com.keepcrypt.entropy com.keepcrypt.entropy.ControlTest com.keepcrypt.entropy $left com.keepcrypt.entropy.testregistry $left"
-  want="$want com.keepcrypt.entropy com.keepcrypt.entropy.PhoneMotionTest com.keepcrypt.entropy com.keepcrypt.entropy.NativeTest "
+  want="$want com.keepcrypt.entropy com.keepcrypt.entropy.PhoneMotionTest com.keepcrypt.entropy com.keepcrypt.entropy.DoubleTapTest"
+  want="$want com.keepcrypt.entropy com.keepcrypt.entropy.NativeTest "
   if [ "$got" = "$want" ]; then ok=yes; else ok=no; echo "  got: $got"; fi
-  check part-capture "$ok" "capture's four runs in android-emulator.sh's order, then NativeTest"
+  check part-capture "$ok" "capture's five runs in android-emulator.sh's order, then NativeTest"
   boots part-capture
   expect part-journeys 0 "emulator: api=37: part journeys alone (--part journeys)" \
     "local: run 1 of 4, com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest: instrument: api=37 PASS com.keepcrypt.entropy.FlowTest" \

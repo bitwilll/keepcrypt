@@ -310,13 +310,33 @@ internal object Ui {
      * Protected screen's cover comes after 30 s with no input and would change the state the change must keep.
      */
     fun touchOn(tag: String) {
-        val bounds = poll("$tag on the screen") {
-            val node = appNode(tag)?.takeIf { it.isVisibleToUser } ?: return@poll null
-            val shown = Rect().also(node::getBoundsInScreen)
-            val window = node.window?.let { Rect().also(it::getBoundsInScreen) } ?: return@poll null
-            shown.takeIf { it.intersect(window) && !it.isEmpty }
-        }
+        touch(poll("$tag on the screen") { appNode(tag)?.let(::shownBounds) })
+    }
+
+    /**
+     * A double tap on the Public control tag, once it is enabled, as a finger makes one: two touches at the
+     * middle of the part of it its window shows, injected (touch's events, no point logged), the second's
+     * down DOUBLE_TAP_MS after the first's, with no wait for the app between them, so the second lands on
+     * whatever the first one's press put there (Stage U's U2i, DoubleTapTest). The caller reads where it
+     * ended.
+     */
+    fun doubleTap(tag: String) {
+        val bounds = poll("$tag enabled on the screen") { appNode(tag)?.takeIf { it.isEnabled }?.let(::shownBounds) }
+        val first = SystemClock.uptimeMillis()
         touch(bounds)
+        SystemClock.sleep(maxOf(0L, first + DOUBLE_TAP_MS - SystemClock.uptimeMillis()))
+        touch(bounds)
+    }
+
+    /** doubleTap's interval, from the first touch's down to the second's: a quick finger's double tap. */
+    const val DOUBLE_TAP_MS = 60L
+
+    /** node's screen bounds cut to its window's, while it is visible and that part is not empty; null otherwise. */
+    private fun shownBounds(node: AccessibilityNodeInfo): Rect? {
+        if (!node.isVisibleToUser) return null
+        val shown = Rect().also(node::getBoundsInScreen)
+        val window = node.window?.let { Rect().also(it::getBoundsInScreen) } ?: return null
+        return shown.takeIf { it.intersect(window) && !it.isEmpty }
     }
 
     /** One touch-screen event at (x, y), injected through UiAutomation and handled before this returns. */
@@ -377,13 +397,7 @@ internal object Ui {
      * one left it.
      */
     private fun touchKey(activity: MainActivity, keys: () -> List<AccessibilityNodeInfo>, index: Int, entry: (CeremonyModel) -> PadEntry, length: Int) {
-        val bounds = poll("the pad's key, visible") {
-            val key = keys()[index]
-            if (!key.refresh() || !key.isVisibleToUser) return@poll null
-            val shown = Rect().also(key::getBoundsInScreen)
-            val window = key.window?.let { Rect().also(it::getBoundsInScreen) } ?: return@poll null
-            shown.takeIf { it.intersect(window) && !it.isEmpty }
-        }
+        val bounds = poll("the pad's key, visible") { keys()[index].takeIf { it.refresh() }?.let(::shownBounds) }
         touch(bounds)
         poll("the pad's touch typed (key " + length + ")") { onMain { entry(activity.model).length == length }.takeIf { it } }
     }
