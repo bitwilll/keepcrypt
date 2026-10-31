@@ -646,7 +646,9 @@ jobs:
     # re-plans; a commit that adds legs or tests re-measures it (Stage U's journeys and edges will).
     # Stage U's U1b added JourneyTest's first journey, 149 rolls and 12 read-backs by taps, to the
     # journeys part, measured under the 90-minute ceiling (M5-76 (a)): run 41193839334 at 87951b3
-    # took 1708 s for API 31's journeys job and 1600 s for API 36's, so 36 and 34 minutes.
+    # took 1708 s for API 31's journeys job and 1600 s for API 36's. U1b2's rolls by the app's own
+    # accessibility nodes cut them: run 41197141108 at 360a67f took 1153 s and 1097 s, so 25 and 23
+    # minutes.
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       # Every leg job runs to its end: a red leg never cancels another job or hides its evidence.
@@ -662,7 +664,7 @@ jobs:
           - api: '31'
             part: journeys
             legs: API 31, journeys
-            timeout: 36
+            timeout: 25
           - api: '31'
             part: registry
             legs: API 31, test registry and edges
@@ -674,7 +676,7 @@ jobs:
           - api: '36'
             part: journeys
             legs: API 36, journeys
-            timeout: 34
+            timeout: 23
           - api: '36'
             part: registry
             legs: API 36, test registry and edges
