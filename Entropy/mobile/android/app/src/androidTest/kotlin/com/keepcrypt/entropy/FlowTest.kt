@@ -10,17 +10,16 @@ import com.keepcrypt.entropy.Capture.onMain
 import com.keepcrypt.entropy.Capture.pass
 import com.keepcrypt.entropy.Capture.probe
 import com.keepcrypt.entropy.Capture.shellText
-import com.keepcrypt.entropy.Ui.BUTTON
 import com.keepcrypt.entropy.Ui.DOT
 import com.keepcrypt.entropy.Ui.START_SECONDS
 import com.keepcrypt.entropy.Ui.assertInsert
+import com.keepcrypt.entropy.Ui.asciiKeys
 import com.keepcrypt.entropy.Ui.assertPublicPadLabelled
 import com.keepcrypt.entropy.Ui.await
 import com.keepcrypt.entropy.Ui.awaitPick
 import com.keepcrypt.entropy.Ui.awaitText
 import com.keepcrypt.entropy.Ui.enabled
 import com.keepcrypt.entropy.Ui.find
-import com.keepcrypt.entropy.Ui.fresh
 import com.keepcrypt.entropy.Ui.letterKeys
 import com.keepcrypt.entropy.Ui.on
 import com.keepcrypt.entropy.Ui.pressFace
@@ -59,14 +58,12 @@ import com.keepcrypt.entropy.screens.SKIPPED
 import com.keepcrypt.entropy.screens.SOURCE_ADDRESS
 import com.keepcrypt.entropy.screens.Screen
 import com.keepcrypt.entropy.screens.TWO_DEVICES
-import com.keepcrypt.entropy.screens.asciiPage
 import com.keepcrypt.entropy.screens.deviceLegText
 import com.keepcrypt.entropy.screens.fingerprintHex
 import com.keepcrypt.entropy.screens.flavourText
 import com.keepcrypt.entropy.screens.hexGroups
 import com.keepcrypt.entropy.screens.screenId
 import java.security.MessageDigest
-import java.util.regex.Pattern
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -594,7 +591,7 @@ class FlowTest {
             on(activity, Screen.Bip39Entry)
             for (page in 0 until ASCII_PAGES) {
                 awaitText("keys_page", "Keys, page " + (page + 1) + " of " + ASCII_PAGES)
-                asciiKeys(asciiPage(page).length)
+                asciiKeys(page)
                 if (page + 1 < ASCII_PAGES) tap("keys_next")
             }
             assertFalse("Next keys on the last page", enabled("keys_next"))
@@ -735,23 +732,6 @@ class FlowTest {
             pass("About: version $version, the shipping app's flavour, the source address as plain text; Back and the system Back: Home")
             finish(activity)
         }
-    }
-
-    /**
-     * The ASCII pad's keys on the BIP39 passphrase's entry (lead decision M5-46: a Protected pad): the
-     * screen's nodes with the button role and no text, description or resource id, which must be count, the
-     * page's keys; and no node there has a text of one character or a Public key's id (key_ and a key), so
-     * nothing names a key. Read again when a redraw replaced a node read (fresh).
-     */
-    private fun asciiKeys(count: Int) = fresh("the ASCII pad's keys") {
-        device.waitForIdle()
-        val root = find(screenId(Screen.Bip39Entry))
-        val keys = root.findObjects(By.clazz(BUTTON)).filter {
-            it.text.isNullOrEmpty() && it.contentDescription.isNullOrEmpty() && it.resourceName.isNullOrEmpty()
-        }
-        assertEquals("the ASCII pad's keys on its page, each with its button role alone", count, keys.size)
-        assertFalse("a node on the BIP39 entry names a key", root.hasObject(By.text(Pattern.compile("."))))
-        assertFalse("a key on the BIP39 entry has a Public key's id", root.hasObject(By.res(Pattern.compile("key_.*"))))
     }
 
     /** Whether a QR code's matrix was wiped: no dark module left. */

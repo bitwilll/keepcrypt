@@ -4,12 +4,11 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.keepcrypt.entropy.Capture.finish
 import com.keepcrypt.entropy.Capture.onMain
 import com.keepcrypt.entropy.Capture.pass
-import com.keepcrypt.entropy.Capture.probe
-import com.keepcrypt.entropy.Capture.shellText
 import com.keepcrypt.entropy.Ui.START_SECONDS
 import com.keepcrypt.entropy.Ui.await
 import com.keepcrypt.entropy.Ui.awaitText
 import com.keepcrypt.entropy.Ui.find
+import com.keepcrypt.entropy.Ui.grantCamera
 import com.keepcrypt.entropy.Ui.on
 import com.keepcrypt.entropy.Ui.roll
 import com.keepcrypt.entropy.Ui.shown
@@ -66,7 +65,7 @@ class SnapshotDrillTest {
             grantCamera()
             val activity = toHome()
             toScan(activity, 99, DICE_99_ROLLS, "99 / 50 rolls, 255.9 bits", DICE_99_SEAL_ID)
-            onMain { activity.model.onGoAheadText(CLEAR_EMPTY_BUCKET_UR.uppercase()) }
+            onMain { activity.model.onGoAheadText(Checker.CLEAR_EMPTY_BUCKET_UR.uppercase()) }
             on(activity, Screen.CheckResult, START_SECONDS)
             awaitText("check_result_text", "No collision for seal $DICE_99_SEAL_ID as of 2026-03-01.")
             awaitText("proof_line", "Proof from snapshot No. 2, dated 2026-03-01: 0 entries in this seal's bucket.")
@@ -87,7 +86,7 @@ class SnapshotDrillTest {
             grantCamera()
             val activity = toHome()
             toScan(activity, 50, DICE_50_ROLLS, "50 / 50 rolls, 129.2 bits", DICE_50_SEAL_ID)
-            onMain { activity.model.onGoAheadText(COLLISION_DICE_50_UR.uppercase()) }
+            onMain { activity.model.onGoAheadText(Checker.COLLISION_DICE_50_UR.uppercase()) }
             on(activity, Screen.Collision, START_SECONDS)
             awaitText("collision_text", COLLISION_FOUND)
             awaitText("proof_line", "Proof from snapshot No. 4, dated 2026-03-01: 1 entry in this seal's bucket.")
@@ -179,18 +178,6 @@ class SnapshotDrillTest {
     }
 
     /**
-     * CAMERA granted from the shell (pm grant; dumpsys package reads it back), so the scan screen opens
-     * with no prompt and reaches the camera's absence on these emulators.
-     */
-    private fun grantCamera() {
-        val pkg = Capture.instrumentation.targetContext.packageName
-        val out = shellText("pm grant " + pkg + " " + CAMERA)
-        val facts = Capture.permission(pkg, CAMERA)
-        probe("pm grant $pkg $CAMERA: '$out'; dumpsys package: ${facts.state}")
-        assertTrue("CAMERA is not granted after pm grant", facts.granted)
-    }
-
-    /**
      * From Home: a dice-only seed of 12 words with count rolls of pattern, the dice's Done, Check now's
      * seal card with sealId drawn, its check QR, then its "Scan go-ahead QR": the scan screen, whose
      * scanner, with CAMERA held, finds no camera on the emulator and says so.
@@ -230,56 +217,5 @@ class SnapshotDrillTest {
         /** vectors/kcr.json's dice-99-words12: 654321 repeated, and its Seal ID. */
         const val DICE_99_ROLLS = "654321"
         const val DICE_99_SEAL_ID = "9FHYMCQA"
-
-        /** The permission the scan screen asks for. */
-        const val CAMERA = "android.permission.CAMERA"
-
-        /**
-         * vectors/kcr.json's proof clear-empty-bucket's go-ahead QR text (its ur field, lead decision M5-42):
-         * snapshot No. 2, dated 2026-03-01, and dice-99-words12's bucket with 0 entries, signed by the test
-         * registry key. The JVM tests read it from that file (RegistryTest, ScanScreensTest), and
-         * GoAheadPngTest draws it upper case as the P4 drill's goahead-clear-empty-bucket.png.
-         */
-        const val CLEAR_EMPTY_BUCKET_UR =
-            "ur:keepcrypt-proof/hkaxaxgrfxgdehgrfxgmehaeadaeaeaeaeaeaeaeaoadecdasnaeaeaeaeaeaeaeamtitdaoledeprkts" +
-                "avyahoyotdihhmordvykodroxehchkodwwniejobkksaovtwelbseletsesndgsyntbisbwtbjpvtaxwmingrbkpmfthfuylogab" +
-                "sptrnmsgastdslaoekkasinykbtfgcevelytbbwaadposlyvehlsftdyttdsamymtinjetntsjoaaaarnfmaeaeolttmwrejkgdh" +
-                "lsehersrncyynbajzgeaocetbtyamsnwfehssiaeenthhglcslulrmnaduysoadvyknjeaetpmhlfoygtssbtflchbwjpzejowyc" +
-                "kcsdkpkcysguycffzryvadybkhsutynesmtesetdmssfzlpsnrhoswdsgbaimcapaiebdiojzhdihrflkjpselpjnjlbzsagddkn" +
-                "nbygrhnatkobbrfahsetkyklgtpcfylrkmwiaenrfbnbblgcwuesogwhpglsokgylheahmydibzyljzgdbtmkntnblbgamsjnclw" +
-                "efevadaadbymhsndngwsrfhveldhsatcfbtcwjofndwnlbachfmpyotchonlebbmwhddatiswlngdkklprphnlndtltwmhhadskp" +
-                "fnbrlgtmnltdrcfjlpewtlaplfmemiewztlaebthkckfpguwpdwlehgbsoyfhbydigsrpfxldamjtswutlannurfpltsfwdutgag" +
-                "yylwypawytpimaylpwdsputynpdvstydkbslufwketivopdtkzcfmfgvaolhhlfadsomsgeylmdtswmgscfrkdwqdmniylpwyehm" +
-                "hfzytutktfhaxspidwnswleioknuolkmdoxoeecgmlfhkdpdpylgdlgotcwtaiefgdiaybkwepttknnhnssttkimeehlpmnqziss" +
-                "behlyfsuoqdsaahlevavlnthktlgradcheewmnsutdatpteaxnnesyllonydrdlmtbbmtnnrpdrkklgtthdrtswkggmbazekptta" +
-                "hloehdrjtosgmuyptjsntltptjplktpyainbkhkdattjyhlkshyntimnnisflihiogoiyvybwwsamhlsrpmtodymtbtcxaakiksg" +
-                "hseqdmktycffnmwgwlndahdimswhkkkskesdlpfmwchmsztrfsabyfyesspfpmowpqddtvwuypytdtnuolgryvdnlhnldlegtrsr" +
-                "dsthlndktclpkjkcetakggmqdcnnefntnmsfdbybwdkkbftchvosfwzsalahkihmeesjnbsfrchonfxjnhgzsweurhskkykrsjel" +
-                "tntwflfbahsseaahtnddpmthpvtjtnevomychclsgetrfwmksjlnsgeftlbjolnatadrkmdmktetlgebtvdnbskjzbgialfweosp" +
-                "rincyievedwgslayacxlrpssossdscpwlnscfcfwkehiswldsykgajoledshdamzmpejpdyreby"
-
-        /**
-         * vectors/kcr.json's proof collision-dice-50's go-ahead QR text (its ur field): snapshot No. 4,
-         * dated 2026-03-01, and dice-50-words12's bucket with 1 entry, its own tag, signed by the test
-         * registry key; GoAheadPngTest draws it as goahead-collision-dice-50.png.
-         */
-        const val COLLISION_DICE_50_UR =
-            "ur:keepcrypt-proof/hkaxbzgrfxgdehgrfxgmehaeadaeaeaeaeaeaeaeaaadecdasnaeaeaeaeaeaeaeatfntdonzctakijyg" +
-                "orppldwluetylknclhtnsoeascnlbgafdhpbgwtatcsfmchlpfzotbkpawegdisahheiouootwthegorkrnbtiocadnrtbgkekkr" +
-                "skbdksrjysedaiypepmssjplrdlstaylomnmdjshydrsegthhotdncseyfmsbrdrfuocmsevertadbsjtldaeadynvsmthtsrvec" +
-                "xytamckkecykbntlfntaeademrdyasepkdsmtbzpkplisjlztmemhatmduthepfvoytdtjyfwclmwvwbabbrndnsrfzcwvaahnsi" +
-                "dmwhhtyursanedrjnfpjersdpwkiasprlwfchaylngmvefxdlmtmnrednjsonwyftfhiepfhstsskwfpsvwtsldfyurtaemmdjsd" +
-                "afddeswnngdaxfpfnkisgwdldwehhwlesbsbkrofyqzldbdldlaeyfrecgtoyioltktchflzsbtgtgypkstrovomwcmqzotiylpk" +
-                "nldrnstvlesvehghpfxdnwzmtlddpgudepljtbdfpdwglhnrttdknuytycwrdsbsehnnnjyfdclytrdfpgwgsloktndzmgywpwpf" +
-                "ppfgtsbneimkbutttrfhtueentnbabzbdtihscxckcnhfmoskrhnsteemdwmkdpgwfwpedpeotalkuttdbahsnedidizcttwteep" +
-                "sylesrnwnzsrymhahwfbyosgoahnnnbbdrnamteuybbfhiovyietahnjywnoenlksuomkglbbldrdiarnlacnzeihswrevasratr" +
-                "turnlbtjovdrkfzaxvehhldenvwfrpkcalskeonoxgyvlhnrdvwpmqdhgftpyzcfzgasfwmenjsiywziobshtoemhtnisfwhhhhs" +
-                "wjspsrfrldpaodpimjoolbzdpmhbyluhlaacwmoisghtehnlflpbekbloenyklrpkltpyfzfgqzwzmobyrdjnckfhvoiywegstpf" +
-                "xadlsntlkvockgtlkdtbgpeylzobsdwvsfdrefdwpfszomsnywztslgnnryspihetbnrfpkfgkppepfmotazclkttmnlbtnytztt" +
-                "nfessttehqzdiwmahtndetbihtageieiyylurchspjoluntchbzmkjszeutqzhynbfdiaytcektielbmycyglsfztwnoehetsaod" +
-                "yinecbwseptpfbdsofxhlwnrenngyjtgaplkgwlzemshefwhkcwftaewzswrktifhpkzmjsvsrfclyngynlfscpgrbdguztpmtnc" +
-                "tonloahwfdihghgwfpmeetbdtprksfwdwimosespmtlwprdldykcpaynyrpcwkbaaftjzkpaoplgaaetapfsrctidlecwfgprbne" +
-                "oetaapkzspyrkfdiyrpambafrcxisbkmsnsmwtylfvtvlbzlkdlfrlgasgwmdmkadimoevywnjnjzhdmhltjnvdknhtfslajzatf" +
-                "xzclovdoxoy"
     }
 }

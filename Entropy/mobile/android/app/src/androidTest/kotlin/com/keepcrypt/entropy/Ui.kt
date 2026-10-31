@@ -16,12 +16,18 @@ import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.Until
 import com.keepcrypt.entropy.Capture.launch
 import com.keepcrypt.entropy.Capture.onMain
+import com.keepcrypt.entropy.Capture.probe
+import com.keepcrypt.entropy.Capture.shellText
 import com.keepcrypt.entropy.ffi.WordPage
+import com.keepcrypt.entropy.screens.ASCII_KEYS
+import com.keepcrypt.entropy.screens.ASCII_PAGES
+import com.keepcrypt.entropy.screens.ASCII_PAGE_KEYS
 import com.keepcrypt.entropy.screens.CeremonyModel
 import com.keepcrypt.entropy.screens.INSERTS_PER_DEVICE
 import com.keepcrypt.entropy.screens.LETTER_KEYS
 import com.keepcrypt.entropy.screens.PadEntry
 import com.keepcrypt.entropy.screens.Screen
+import com.keepcrypt.entropy.screens.asciiPage
 import com.keepcrypt.entropy.screens.screenId
 import java.util.regex.Pattern
 import org.junit.Assert.assertEquals
@@ -274,6 +280,9 @@ internal object Ui {
     /** A single lower-case letter, as a node naming a letter pad's key would show it. */
     private val A_LETTER = Regex("[a-z]")
 
+    /** Any one character, as a node naming an ASCII pad's key would show it. */
+    private val ANY_CHARACTER = Regex(".", RegexOption.DOT_MATCHES_ALL)
+
     /** The dice pad's keys' resource ids, key_ and a face, and a face as the pick shows it: patterns that name no face. */
     private val DICE_KEY: Pattern = Pattern.compile("key_[1-6]")
     private val A_FACE: Pattern = Pattern.compile("[1-6]")
@@ -305,57 +314,95 @@ internal object Ui {
     }
 
     /**
-     * The letter pad's keys on screen (the read-back entry, the backup's confirm or Check a backup's
-     * entry, lead decision M5-46), in the pad's order: the nodes under the screen's root with the button
-     * role and no text, description or resource id, which must be its 26; and no node there has a single
-     * letter as its text or a Public key's id (key_ and a letter), so nothing names a key. Read through
-     * UiAutomation's own nodes (appNode's walk, in tree order, as UI Automator's search returns them), with
-     * no idle wait and no selector logged (Stage U's U1c; U1b2 found a search costs 500 ms of quiet), and
-     * read again until the pad's 26 are there, for up to 10 s.
+     * The keys of the Protected pad on screen, in its order: the nodes under the screen's root with the
+     * button role and no text, description or resource id, which must be count; and no node there has a
+     * text that names (a key's label) or a Public key's id (key_ and a key), so nothing names a key (lead
+     * decision M5-46). Read through UiAutomation's own nodes (appNode's walk, in tree order, as UI
+     * Automator's search returns them), with no idle wait and no selector logged (Stage U's U1c; U1b2 found
+     * a search costs 500 ms of quiet), and read again until the count is there, for up to 10 s.
      */
-    fun letterKeys(screen: Screen): List<AccessibilityNodeInfo> = poll("the letter pad's 26 keys on " + screenId(screen)) {
-        val root = appNode(screenId(screen)) ?: return@poll null
-        val nodes = ArrayList<AccessibilityNodeInfo>()
-        fun walk(node: AccessibilityNodeInfo) {
-            nodes.add(node)
-            for (index in 0 until node.childCount) node.getChild(index)?.let(::walk)
+    private fun padKeys(screen: Screen, count: Int, names: Regex): List<AccessibilityNodeInfo> =
+        poll("the pad's $count keys on " + screenId(screen)) {
+            val root = appNode(screenId(screen)) ?: return@poll null
+            val nodes = ArrayList<AccessibilityNodeInfo>()
+            fun walk(node: AccessibilityNodeInfo) {
+                nodes.add(node)
+                for (index in 0 until node.childCount) node.getChild(index)?.let(::walk)
+            }
+            walk(root)
+            val keys = nodes.filter {
+                it.className?.toString() == BUTTON && it.text.isNullOrEmpty() && it.contentDescription.isNullOrEmpty() &&
+                    it.viewIdResourceName.isNullOrEmpty()
+            }
+            if (keys.size != count) return@poll null
+            assertFalse("a node on " + screenId(screen) + " names a key", nodes.any { it.text?.toString()?.matches(names) == true })
+            assertFalse("a key on " + screenId(screen) + " has a Public key's id", nodes.any { it.viewIdResourceName?.startsWith("key_") == true })
+            keys
         }
-        walk(root)
-        val keys = nodes.filter {
-            it.className?.toString() == BUTTON && it.text.isNullOrEmpty() && it.contentDescription.isNullOrEmpty() &&
-                it.viewIdResourceName.isNullOrEmpty()
+
+    /** The letter pad's 26 keys on screen (the read-back entry, the backup's confirm or Check a backup's entry), as padKeys reads them. */
+    fun letterKeys(screen: Screen): List<AccessibilityNodeInfo> = padKeys(screen, LETTER_KEYS.length, A_LETTER)
+
+    /** The ASCII pad's keys on its page page (the BIP39 passphrase's entry), as padKeys reads them: no node there shows any one character. */
+    fun asciiKeys(page: Int): List<AccessibilityNodeInfo> = padKeys(Screen.Bip39Entry, asciiPage(page).length, ANY_CHARACTER)
+
+    /**
+     * Touches the key keys() gives at index (read afresh from the app before the touch, its node
+     * refreshed and visible) at the middle of its screen bounds (touch, which logs no point: a click's
+     * logged point would name the key on the pad's fixed grid), then waits in-process, for up to 10 s,
+     * until entry, the model's pad entry, holds length keys, so the next touch is on the pad as this one
+     * left it.
+     */
+    private fun touchKey(activity: MainActivity, keys: () -> List<AccessibilityNodeInfo>, index: Int, entry: (CeremonyModel) -> PadEntry, length: Int) {
+        val bounds = poll("the pad's key, visible") {
+            val key = keys()[index]
+            if (key.refresh() && key.isVisibleToUser) Rect().also(key::getBoundsInScreen).takeIf { !it.isEmpty } else null
         }
-        if (keys.size != LETTER_KEYS.length) return@poll null
-        assertFalse("a node on " + screenId(screen) + " names a letter", nodes.any { it.text?.toString()?.matches(A_LETTER) == true })
-        assertFalse("a key on " + screenId(screen) + " has a Public key's id", nodes.any { it.viewIdResourceName?.startsWith("key_") == true })
-        keys
+        touch(bounds)
+        poll("the pad's touch typed (key " + length + ")") { onMain { entry(activity.model).length == length }.takeIf { it } }
+    }
+
+    /** Whether entry holds typed after its first from keys (in-process, compared, never printed). */
+    private fun holds(activity: MainActivity, entry: (CeremonyModel) -> PadEntry, from: Int, typed: String): Boolean = onMain {
+        val pad = entry(activity.model)
+        pad.length == from + typed.length && typed.indices.all { pad.keyAt(from + it) == typed[it] }
     }
 
     /**
-     * Types letters on screen's letter pad, a touch at each key's bounds (touch, which logs no point: a
-     * click's logged point would name the letter on the pad's fixed grid), the key read afresh from the app
-     * before each (letterKeys, then the node refreshed), and after each touch waits until entry, the model's
-     * pad entry of screen, holds one letter more (in-process, for up to 10 s), so the next touch is on the
-     * pad as that letter left it; at the end checks entry holds letters after any it held before (compared,
-     * never printed).
+     * Types letters on screen's letter pad, a touch on each key (touchKey), and checks entry, the model's
+     * pad entry of screen, holds them after any it held before (compared, never printed).
      */
     fun typeLetters(activity: MainActivity, screen: Screen, letters: String, entry: (CeremonyModel) -> PadEntry) {
         val before = onMain { entry(activity.model).length }
         for ((at, letter) in letters.withIndex()) {
-            val bounds = poll("the letter pad's key, visible") {
-                val key = letterKeys(screen)[LETTER_KEYS.indexOf(letter)]
-                if (key.refresh() && key.isVisibleToUser) Rect().also(key::getBoundsInScreen).takeIf { !it.isEmpty } else null
-            }
-            touch(bounds)
-            poll("the letter pad's touch typed (letter " + (at + 1) + ")") {
-                onMain { entry(activity.model).length == before + at + 1 }.takeIf { it }
-            }
+            touchKey(activity, { letterKeys(screen) }, LETTER_KEYS.indexOf(letter), entry, before + at + 1)
         }
-        val held = onMain {
-            val pad = entry(activity.model)
-            pad.length == before + letters.length && letters.indices.all { pad.keyAt(before + it) == letters[it] }
+        assertTrue("the letter pad's touches did not type the letters touched", holds(activity, entry, before, letters))
+    }
+
+    /**
+     * Types text (printable ASCII) on the BIP39 passphrase's ASCII pad, a touch on each key (touchKey), its
+     * page of keys first turned by Next keys or Previous keys (Public buttons, tapped) to the one that holds
+     * the key, the page's line waited for; then checks the model's entry holds text after any it held
+     * before (compared, never printed). The page is read in-process (to observe), and no key goes into a
+     * selector: the paging buttons' ids name no key.
+     */
+    fun typeAscii(activity: MainActivity, text: String) {
+        val before = onMain { activity.model.bip39Letters.length }
+        for ((at, key) in text.withIndex()) {
+            val index = ASCII_KEYS.indexOf(key)
+            assertTrue("a passphrase character is not on the ASCII pad (it is not printed)", index >= 0)
+            val page = index / ASCII_PAGE_KEYS
+            while (true) {
+                val shown = onMain { activity.model.state.value.page }
+                if (shown == page) break
+                tap(if (shown < page) "keys_next" else "keys_previous")
+                await("the ASCII pad's page turned", 10) { onMain { activity.model.state.value.page } != shown }
+            }
+            awaitText("keys_page", "Keys, page " + (page + 1) + " of " + ASCII_PAGES)
+            touchKey(activity, { asciiKeys(page) }, index % ASCII_PAGE_KEYS, { it.bip39Letters }, before + at + 1)
         }
-        assertTrue("the letter pad's touches did not type the letters touched", held)
+        assertTrue("the ASCII pad's touches did not type the passphrase touched", holds(activity, { it.bip39Letters }, before, text))
     }
 
     /** Whether insert's word is word, byte by byte, its copy wiped (the words are public vectors, never printed). */
@@ -368,16 +415,26 @@ internal object Ui {
 
     /** The words page shows insert index + 1 of words on device of devices, read in-process (the word compared, never printed) and its header from the screen. */
     fun assertInsert(activity: MainActivity, words: List<String>, index: Int, device: Int, devices: Int) {
+        assertInsertAt(activity, index, words.size, device, devices)
+        val same = onMain { sameWord(checkNotNull(activity.model.state.value.insert), words[index]) }
+        assertTrue("insert " + (index + 1) + ": its page is not the vector's word", same)
+    }
+
+    /**
+     * The words page shows insert index + 1 of count on device of devices, read in-process (its position,
+     * count, device and sequence; not its word, for a seed that is no vector's) and its header from the screen.
+     */
+    fun assertInsertAt(activity: MainActivity, index: Int, count: Int, device: Int, devices: Int) {
         val what = "insert " + (index + 1)
         await(what + " on the words page", 10) {
             onMain { activity.model.state.value.let { it.screen == Screen.Words && it.page == index && !it.gate } }
         }
-        val same = onMain {
+        val at = onMain {
             val insert = checkNotNull(activity.model.state.value.insert)
-            insert.position == index + 1 && insert.count == words.size && insert.device == device &&
-                insert.devices == devices && insert.sequence == index % INSERTS_PER_DEVICE + 1 && sameWord(insert, words[index])
+            insert.position == index + 1 && insert.count == count && insert.device == device && insert.devices == devices &&
+                insert.sequence == index % INSERTS_PER_DEVICE + 1
         }
-        assertTrue(what + ": its page is not the vector's word with its position and device", same)
+        assertTrue(what + ": its page is not that position and device", at)
         awaitText("insert_header", "Insert " + two(index + 1) + DOT + "device " + device + " of " + devices)
     }
 
@@ -386,6 +443,21 @@ internal object Ui {
 
     /** number as two digits, zero first (a position on the words' headers). */
     fun two(number: Int): String = number.toString().padStart(2, '0')
+
+    /**
+     * CAMERA granted from the shell (pm grant; dumpsys package reads it back), so the scan screen opens
+     * with no prompt and reaches the camera's absence on these emulators (SnapshotDrillTest, JourneyTest).
+     */
+    fun grantCamera() {
+        val pkg = Capture.instrumentation.targetContext.packageName
+        val out = shellText("pm grant " + pkg + " " + CAMERA_PERMISSION)
+        val facts = Capture.permission(pkg, CAMERA_PERMISSION)
+        probe("pm grant $pkg $CAMERA_PERMISSION: '$out'; dumpsys package: ${facts.state}")
+        assertTrue("CAMERA is not granted after pm grant", facts.granted)
+    }
+
+    /** The permission the scan screen asks for. */
+    private const val CAMERA_PERMISSION = "android.permission.CAMERA"
 
     /** Waits up to 10 s for the node tag to show text. */
     fun awaitText(tag: String, text: String) {

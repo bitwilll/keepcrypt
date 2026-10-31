@@ -102,4 +102,52 @@ internal object Checker {
         assertEquals("an even number of hex digits", 0, hex.length % 2)
         return ByteArray(hex.length / 2) { i -> hex.substring(2 * i, 2 * i + 2).toInt(16).toByte() }
     }
+
+    /**
+     * vectors/kcr.json's proof clear-empty-bucket's go-ahead QR text (its ur field, lead decision M5-42):
+     * snapshot No. 2, dated 2026-03-01, and dice-99-words12's bucket with 0 entries, signed by the test
+     * registry key. The JVM tests read it from that file (RegistryTest, ScanScreensTest), and
+     * GoAheadPngTest draws it upper case as the P4 drill's goahead-clear-empty-bucket.png.
+     */
+    const val CLEAR_EMPTY_BUCKET_UR =
+        "ur:keepcrypt-proof/hkaxaxgrfxgdehgrfxgmehaeadaeaeaeaeaeaeaeaoadecdasnaeaeaeaeaeaeaeamtitdaoledeprkts" +
+            "avyahoyotdihhmordvykodroxehchkodwwniejobkksaovtwelbseletsesndgsyntbisbwtbjpvtaxwmingrbkpmfthfuylogab" +
+            "sptrnmsgastdslaoekkasinykbtfgcevelytbbwaadposlyvehlsftdyttdsamymtinjetntsjoaaaarnfmaeaeolttmwrejkgdh" +
+            "lsehersrncyynbajzgeaocetbtyamsnwfehssiaeenthhglcslulrmnaduysoadvyknjeaetpmhlfoygtssbtflchbwjpzejowyc" +
+            "kcsdkpkcysguycffzryvadybkhsutynesmtesetdmssfzlpsnrhoswdsgbaimcapaiebdiojzhdihrflkjpselpjnjlbzsagddkn" +
+            "nbygrhnatkobbrfahsetkyklgtpcfylrkmwiaenrfbnbblgcwuesogwhpglsokgylheahmydibzyljzgdbtmkntnblbgamsjnclw" +
+            "efevadaadbymhsndngwsrfhveldhsatcfbtcwjofndwnlbachfmpyotchonlebbmwhddatiswlngdkklprphnlndtltwmhhadskp" +
+            "fnbrlgtmnltdrcfjlpewtlaplfmemiewztlaebthkckfpguwpdwlehgbsoyfhbydigsrpfxldamjtswutlannurfpltsfwdutgag" +
+            "yylwypawytpimaylpwdsputynpdvstydkbslufwketivopdtkzcfmfgvaolhhlfadsomsgeylmdtswmgscfrkdwqdmniylpwyehm" +
+            "hfzytutktfhaxspidwnswleioknuolkmdoxoeecgmlfhkdpdpylgdlgotcwtaiefgdiaybkwepttknnhnssttkimeehlpmnqziss" +
+            "behlyfsuoqdsaahlevavlnthktlgradcheewmnsutdatpteaxnnesyllonydrdlmtbbmtnnrpdrkklgtthdrtswkggmbazekptta" +
+            "hloehdrjtosgmuyptjsntltptjplktpyainbkhkdattjyhlkshyntimnnisflihiogoiyvybwwsamhlsrpmtodymtbtcxaakiksg" +
+            "hseqdmktycffnmwgwlndahdimswhkkkskesdlpfmwchmsztrfsabyfyesspfpmowpqddtvwuypytdtnuolgryvdnlhnldlegtrsr" +
+            "dsthlndktclpkjkcetakggmqdcnnefntnmsfdbybwdkkbftchvosfwzsalahkihmeesjnbsfrchonfxjnhgzsweurhskkykrsjel" +
+            "tntwflfbahsseaahtnddpmthpvtjtnevomychclsgetrfwmksjlnsgeftlbjolnatadrkmdmktetlgebtvdnbskjzbgialfweosp" +
+            "rincyievedwgslayacxlrpssossdscpwlnscfcfwkehiswldsykgajoledshdamzmpejpdyreby"
+
+    /**
+     * vectors/kcr.json's proof collision-dice-50's go-ahead QR text (its ur field): snapshot No. 4,
+     * dated 2026-03-01, and dice-50-words12's bucket with 1 entry, its own tag, signed by the test
+     * registry key; GoAheadPngTest draws it as goahead-collision-dice-50.png.
+     */
+    const val COLLISION_DICE_50_UR =
+        "ur:keepcrypt-proof/hkaxbzgrfxgdehgrfxgmehaeadaeaeaeaeaeaeaeaaadecdasnaeaeaeaeaeaeaeatfntdonzctakijyg" +
+            "orppldwluetylknclhtnsoeascnlbgafdhpbgwtatcsfmchlpfzotbkpawegdisahheiouootwthegorkrnbtiocadnrtbgkekkr" +
+            "skbdksrjysedaiypepmssjplrdlstaylomnmdjshydrsegthhotdncseyfmsbrdrfuocmsevertadbsjtldaeadynvsmthtsrvec" +
+            "xytamckkecykbntlfntaeademrdyasepkdsmtbzpkplisjlztmemhatmduthepfvoytdtjyfwclmwvwbabbrndnsrfzcwvaahnsi" +
+            "dmwhhtyursanedrjnfpjersdpwkiasprlwfchaylngmvefxdlmtmnrednjsonwyftfhiepfhstsskwfpsvwtsldfyurtaemmdjsd" +
+            "afddeswnngdaxfpfnkisgwdldwehhwlesbsbkrofyqzldbdldlaeyfrecgtoyioltktchflzsbtgtgypkstrovomwcmqzotiylpk" +
+            "nldrnstvlesvehghpfxdnwzmtlddpgudepljtbdfpdwglhnrttdknuytycwrdsbsehnnnjyfdclytrdfpgwgsloktndzmgywpwpf" +
+            "ppfgtsbneimkbutttrfhtueentnbabzbdtihscxckcnhfmoskrhnsteemdwmkdpgwfwpedpeotalkuttdbahsnedidizcttwteep" +
+            "sylesrnwnzsrymhahwfbyosgoahnnnbbdrnamteuybbfhiovyietahnjywnoenlksuomkglbbldrdiarnlacnzeihswrevasratr" +
+            "turnlbtjovdrkfzaxvehhldenvwfrpkcalskeonoxgyvlhnrdvwpmqdhgftpyzcfzgasfwmenjsiywziobshtoemhtnisfwhhhhs" +
+            "wjspsrfrldpaodpimjoolbzdpmhbyluhlaacwmoisghtehnlflpbekbloenyklrpkltpyfzfgqzwzmobyrdjnckfhvoiywegstpf" +
+            "xadlsntlkvockgtlkdtbgpeylzobsdwvsfdrefdwpfszomsnywztslgnnryspihetbnrfpkfgkppepfmotazclkttmnlbtnytztt" +
+            "nfessttehqzdiwmahtndetbihtageieiyylurchspjoluntchbzmkjszeutqzhynbfdiaytcektielbmycyglsfztwnoehetsaod" +
+            "yinecbwseptpfbdsofxhlwnrenngyjtgaplkgwlzemshefwhkcwftaewzswrktifhpkzmjsvsrfclyngynlfscpgrbdguztpmtnc" +
+            "tonloahwfdihghgwfpmeetbdtprksfwdwimosespmtlwprdldykcpaynyrpcwkbaaftjzkpaoplgaaetapfsrctidlecwfgprbne" +
+            "oetaapkzspyrkfdiyrpambafrcxisbkmsnsmwtylfvtvlbzlkdlfrlgasgwmdmkadimoevywnjnjzhdmhltjnvdknhtfslajzatf" +
+            "xzclovdoxoy"
 }

@@ -16814,6 +16814,23 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   to the checklist naming two devices and Finish: Home with the slot empty. The journeys jobs are measured at 30
   minutes (M5-76 (f)). Locally: both test APKs built by the strict Gradle run, no warning; banned-api-check.sh clean,
   397 files.
+  Proof (M5 commit U1d, Stage U-4, partial: local, no emulator; CI's journeys jobs at the next push): Ui's Protected
+  pads share one reader, padKeys (the screen's nodes with the button role alone, their count, no node with a key's
+  label as its text, no key_ id), and one touch, touchKey (the key refreshed from the app, touched at its bounds, the
+  model's entry waited for); letterKeys and typeLetters use them, and so do the ASCII pad's asciiKeys (FlowTest's own,
+  moved) and typeAscii, which turns the pad's page by Next keys or Previous keys to the key's own before each touch.
+  Ui.assertInsertAt checks an insert's position and device alone, for a seed that is no vector's. JourneyTest's tail
+  is helpers (wordsAndReadBack, summaryToWatchOffer, registration, checklistToFinish), and its new journey,
+  aMixedTwelveWordSeedIsCheckedByItsCodeAndTakenThroughEveryExportToFinishThroughTheUiAlone, pins: Device entropy's
+  sentence and three touches on it, C read from the screen, 50 tapped rolls, Check now's seal card and check QR, Scan
+  go-ahead QR with CAMERA granted (Ui.grantCamera, SnapshotDrillTest's, moved) showing the camera's absence, kcr.json's
+  clear-empty-bucket fed to onGoAheadText and refused with NoRegistryKey's line, the check QR unchanged, Back, the
+  drawn check QR's code tapped and the check passed, the 12 inserts by Next and all 12 read back by touches (their
+  letters read in-process from the insert the read-back holds, never printed), the summary, the watch-only export with
+  watchonly.json's TREZOR touched on the ASCII pad (another fingerprint than the seed's, its account and descriptor
+  QRs equal to core's), the registration QR (core's), D behind its gate committing to the C the screen showed, the
+  checklist and Finish. The two go-ahead QR texts move to Checker. Locally: both test APKs built by the strict Gradle
+  run, no warning; banned-api-check.sh clean.
 - [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
   every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
   every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,
