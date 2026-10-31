@@ -11187,7 +11187,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   90-minute ceiling (since L9, each of the three jobs' own budget by the same rule, M5-70 (b); from U1a each of the
   seven, M5-73 (b), set 2026-10-30 from run 40903211202: build 13 minutes, the leg jobs 12, 20, 10, 11, 20 and 11;
   build 17 minutes from 2026-10-31, M5-75 (g), from run 41181656557's 779 s; the two journeys jobs 25 and 23 minutes
-  from 2026-10-31, M5-76 (a) and (e), from U1b2's run 41197141108's 1153 s and 1097 s);
+  from 2026-10-31, M5-76 (a) and (e), from U1b2's run 41197141108's 1153 s and 1097 s; from U1e, M5-76 (g), eight leg
+  jobs: the journeys jobs 20 minutes again without JourneyTest, the two ui jobs measured at 30);
   system images, the emulator package and the Gradle distribution are cached with actions/cache keyed on their
   revisions. An emulator boot failure may be re-run once, and the re-run is logged under Review; a test
   failure is never re-run. Past any budget, the lead stops and re-plans.
@@ -15900,7 +15901,16 @@ they differ. Nothing in the Android plan is weakened.
   U1c first finding the letter pad's keys through UiAutomation's nodes as U1b2 found the dice pad's, and the journeys
   part splits into two jobs before any journeys job would pass 30 minutes. (f) A journeys job stopped by its budget
   leaves no measure and no evidence, so a commit that adds a journey runs the journeys jobs at 30 minutes, the split
-  line, and the lead then budgets each at its measured time plus 25% (M5-30) or splits the part.
+  line, and the lead then budgets each at its measured time plus 25% (M5-30) or splits the part. (g) U1e is the
+  journey that would pass that line: from the measured costs (the journeys jobs 1153 s with one journey of 236 s;
+  the 24-word journey about 3 minutes, the mixed one about 4, U1e's with two scrypt calls and two picker trips about
+  5, the read-back's saving about 1), the journeys jobs would take about 1810 s. So JourneyTest moves to a part of
+  its own, ui (android-emulator.sh --part ui, one job on each level, eight leg jobs in all), before U1e lands; the
+  journeys part keeps FlowTest, CheckTest and BackupTest with its age -d hand-off last, back at 20 minutes (its
+  measured 919 s and 952 s, run 40903211202, before JourneyTest), and the ui jobs are measured at 30. U1c's own run
+  (5641b98's) was cancelled by the next push while its build job ran, before any emulator job: the run at U1e's
+  head proves U1c, U1d and U1e together. JourneyTest clears core's backup name from Downloads before its save, so
+  with every part on one boot it never picks BackupTest's file.
 
 **Open item (2026-10-31): UI Automator does not see first_launch in API 36's journeys.** Entropy Android 41148288082
 at a15dc4f failed all 10 tests of API 36's journeys job (FlowTest 7, CheckTest 2, BackupTest 1, the shipping APK),
@@ -16831,6 +16841,22 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   QRs equal to core's), the registration QR (core's), D behind its gate committing to the C the screen showed, the
   checklist and Finish. The two go-ahead QR texts move to Checker. Locally: both test APKs built by the strict Gradle
   run, no warning; banned-api-check.sh clean.
+  Proof (M5 commit U1e, Stage U-4, partial: local, no emulator; CI's journeys jobs at the next push): JourneyTest's
+  cannotCheckStartsAgainAndTheNewSeedsBackupIsMadeAndCheckedThroughTheUiAlone pins: dice-50-words12's 50 rolls tapped,
+  its seal card's Seal ID, Cannot check's confirm and its Back, then its confirm: a new ceremony at once, "0 / 50
+  rolls" (no collision, so not 99) and Back doing nothing on its dice; the same 50 rolls tapped, Skip confirmed, the 12
+  inserts (the vector's) and their read-back by touches, the summary with its fingerprint; Make an encrypted backup
+  through its gate, the passphrase's two pages read in-process (each word its own array, zeroed at the end, never
+  printed) and I wrote it down, the confirm's two words' first letters touched on the letter pad, saved through the
+  picker (Picker.save, BackupTest's create-document steps, moved) to Downloads under core's name and verified; the
+  rest skipped to Finish; Check a backup picking that file, the 8 words touched on the letter pad behind the entry's
+  gate, Backup OK with the summary's fingerprint and Seal ID YVM9CPP3, the backup's 12 words by Next (the vector's) and
+  its Done, Done: Home with the slot empty; the file removed from Downloads in a finally, so BackupTest saves under
+  the same name into an empty folder, and clears that name from Downloads before its save. JourneyTest is now
+  android-emulator.sh's ui part, its own job on each level (M5-76 (g)): the parts' cases, the pinned orders (ui alone:
+  JourneyTest), the parts' union and the workflow's eight rows with their budgets. Locally: both test APKs built by
+  the strict Gradle run, no warning; android-emulator.sh --selftest 56 passed; banned-api-check.sh clean, 397 files;
+  --workflows clean.
 - [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
   every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
   every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,
@@ -17181,8 +17207,9 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       passphrase typed on the ASCII pad by touches (watchonly.json's), the registration QR, Reveal D (D the phone's,
       checked against C by core), the checklist, Finish; and the shipping app's scanned go-ahead QR refused (the scan
       fed to onGoAheadText, M5-72 (a); the shipping app trusts no registry key).
-    - [ ] U1e: JourneyTest's Cannot check to Start again (a new ceremony at 50 rolls, Back doing nothing on its
-      confirm's result), and the backup made and checked through the UI: its passphrase's two words confirmed on the
+    - [ ] U1e: JourneyTest's Cannot check to Start again (a new ceremony at 50 rolls, Back doing nothing on its dice;
+      corrected 2026-10-31: the confirm restarts at once, CeremonyModel.cannotCheckConfirmed, so there is no result
+      screen to press Back on), and the backup made and checked through the UI: its passphrase's two words confirmed on the
       letter pad, the file placed through the system's picker, Check a backup picking it and its 8 words typed on the
       letter pad, the checked backup's words equal to the seed's (BackupTest keeps its age -d hand-off).
     - [ ] U1f: the test registry's journeys (the registry part): the snapshot loaded through the picker, a 24-word
@@ -17193,6 +17220,8 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
     - Each commit re-measures the journeys jobs and re-budgets them by M5-30; if a journeys job would pass 30
       minutes, the journeys part splits into a second part and job (android-emulator.sh --part, the workflow's matrix)
       before the journey that would pass it lands.
+      Done at U1e (M5-76 (g)): JourneyTest is the ui part, its own job on each level; U1f's journeys are the
+      registry part's and U1g's the ui part's, each re-measured.
     - Verification: the instrumented sources compiled locally (the strict build assembles both test APKs), the gate
       before every commit that adds Kotlin (M5-74 (a)), android-emulator.sh --selftest with JourneyTest in the journeys
       part's pinned order, three independent reviews at the stage's head, their fixes, the suite, and CI's journeys jobs

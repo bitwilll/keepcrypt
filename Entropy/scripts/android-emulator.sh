@@ -3,12 +3,12 @@
 # (--part, below): boots a headless x86_64 emulator of one API level, installs the APKs the build job
 # already built, signed and checked, runs the capture harness and the app's instrumented tests on
 # them (or, on the 16 KB-page image, the native-library leg below), prints the platform probe's facts
-# and shuts the emulator down. The workflow runs each API level's leg as its three parts, one a job
+# and shuts the emulator down. The workflow runs each API level's leg as its four parts, one a job
 # (M5 commit U1a, lead decision M5-72 (h)), and the 16 KB-page image after API 31's capture part in
 # that part's job, all on the same signed bytes.
 #
 # Usage: scripts/android-emulator.sh [--part PART] API SDK_ROOT ADB APK_DIR WORK_DIR
-#   PART     capture, journeys or registry: that part of the leg alone (below); with no --part,
+#   PART     capture, journeys, ui or registry: that part of the leg alone (below); with no --part,
 #            every part, in the steps' order. Not with 16k, which has no parts.
 #   API      31 or 36: system-images;android-API;default;x86_64; or 16k:
 #            system-images;android-36;google_apis_ps16k;x86_64, the 16 KB-page image (group 6)
@@ -56,7 +56,7 @@
 #      region, which the frame checker reads.
 #      A test class that fails is reported at once and fails the leg at its end: every class runs,
 #      so one run gives both the control's result and the app's.
-#   4a. PhoneMotionTest, FlowTest, CheckTest, JourneyTest and BackupTest on the shipping app, then SnapshotDrillTest
+#   4a. PhoneMotionTest, FlowTest, CheckTest, BackupTest and JourneyTest on the shipping app, then SnapshotDrillTest
 #      on the test-registry app (M5 groups 15, 16 and 18): PhoneMotion on the emulator's own sensors (lead decision
 #      M5-51: an accelerometer sample within 5 s, and a gyroscope one where the image lists a gyroscope,
 #      in its layout, and none after stop); then the screens from the start to the dice driven through
@@ -107,7 +107,9 @@
 # and the edges (Stage U's commit plan; commit U1a2):
 #   capture   steps 1-3, step 4's CaptureTest on both APKs, PhoneMotionTest, and steps 5 and 6: the
 #             positive controls, the capture harness and the first frames;
-#   journeys  FlowTest, CheckTest, JourneyTest and BackupTest with its age -d hand-off, on the shipping app;
+#   journeys  FlowTest, CheckTest and BackupTest with its age -d hand-off, on the shipping app;
+#   ui        JourneyTest, U1's journeys to Finish through the UI alone, on the shipping app (Stage U's
+#             U1e split it from journeys, lead decision M5-76 (g));
 #   registry  SnapshotDrillTest, the test-registry app's, then the edges on the shipping app,
 #             LifecycleTest and CrashTest, the part's last instrumented run.
 # Each installs the five APKs and ends with step 7, so every part's runs are followed by its listing.
@@ -139,12 +141,12 @@
 # ControlTest to the killed CrashTest, last (a case of its own, the order pinned), and kept the
 # control's two screencaps (a case of its own). Each part alone passes too, its runs pinned in that
 # order (a case each): capture's ControlTest, CaptureTest on both apps and PhoneMotionTest; journeys'
-# FlowTest, CheckTest, JourneyTest and the age: BackupTest; registry's SnapshotDrillTest, LifecycleTest and the
-# killed CrashTest, last; and the three parts' runs are together the whole leg's, each once, so a part that
+# FlowTest, CheckTest and the age: BackupTest; ui's JourneyTest; registry's SnapshotDrillTest, LifecycleTest and the
+# killed CrashTest, last; and the four parts' runs are together the whole leg's, each once, so a part that
 # drops or adds a class fails. The workflow's emulators matrix (.github/workflows/entropy-android.yml,
 # read from this checkout) is each part on API 31 and 36, one a job, and no other row, with the steps
 # that follow the part (its own, the age, the 16 KB leg, the captures' upload) under their names and
-# conditions (a case of its own: a row dropped would run its part on that level nowhere). Every part ends with step 7's checks; journeys and registry print no
+# conditions (a case of its own: a row dropped would run its part on that level nowhere). Every part ends with step 7's checks; journeys, ui and registry print no
 # line of steps 1, 2, 5 and 6 and keep no capture; a failing class in each part exits 1 at the part's
 # end, after its later runs and step 7. A failing ControlTest, CaptureTest, PhoneMotionTest, FlowTest,
 # CheckTest, JourneyTest, BackupTest, SnapshotDrillTest, LifecycleTest and CrashTest each exit 1 at the
@@ -392,6 +394,7 @@ EOF
   leg pass
   leg capture --part capture
   leg journeys --part journeys
+  leg ui --part ui
   leg registry --part registry
   leg capture-capture-test-fails --part capture KC_FAILCLASS=CaptureTest
   leg journeys-flow-test-fails --part journeys KC_FAILCLASS=FlowTest
@@ -447,7 +450,7 @@ EOF
     "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry): no file in its data directories" \
     "pass: api=31 nothing persisted (com.keepcrypt.entropy), positive control: a file planted as root in its data directory is the listing's one new hit" \
     "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
-    "emulator: api=31: every part (capture, journeys and registry), in the steps' order" \
+    "emulator: api=31: every part (capture, journeys, ui and registry), in the steps' order" \
     "emulator: api=31: every check passed"
   # runs NAME: the leg NAME's instrumented runs, in order, "PACKAGE RUN" a line.
   runs() { sed -n 's/^instrument stub: \([^ ]*\) \([^ ]*\) .*/\1 \2/p' "$st/$1/out"; }
@@ -469,24 +472,25 @@ EOF
   registry=com.keepcrypt.entropy.testregistry
   # The steps' order, steps 3-4c (each part's runs in it: capture's, journeys', then registry's, whose
   # edges end it), the killed CrashTest last, so no run comes after it.
-  order pass "ControlTest, CaptureTest on both apps, PhoneMotionTest, FlowTest, CheckTest, JourneyTest, the age: BackupTest, SnapshotDrillTest (test registry), LifecycleTest, then the killed CrashTest, last" \
+  order pass "ControlTest, CaptureTest on both apps, PhoneMotionTest, FlowTest, CheckTest, the age: BackupTest, JourneyTest, SnapshotDrillTest (test registry), LifecycleTest, then the killed CrashTest, last" \
     "$app $app.ControlTest" "$app $app.CaptureTest" "$registry $app.CaptureTest" "$app $app.PhoneMotionTest" \
-    "$app $app.FlowTest" "$app $app.CheckTest" "$app $app.JourneyTest" "$app age:$app.BackupTest" "$registry $app.SnapshotDrillTest" \
+    "$app $app.FlowTest" "$app $app.CheckTest" "$app age:$app.BackupTest" "$app $app.JourneyTest" "$registry $app.SnapshotDrillTest" \
     "$app $app.LifecycleTest" "$app killed:$app.CrashTest"
   order capture "capture alone: ControlTest, CaptureTest on both apps, then PhoneMotionTest" \
     "$app $app.ControlTest" "$app $app.CaptureTest" "$registry $app.CaptureTest" "$app $app.PhoneMotionTest"
-  order journeys "journeys alone: FlowTest, CheckTest, JourneyTest, then the age: BackupTest" \
-    "$app $app.FlowTest" "$app $app.CheckTest" "$app $app.JourneyTest" "$app age:$app.BackupTest"
+  order journeys "journeys alone: FlowTest, CheckTest, then the age: BackupTest" \
+    "$app $app.FlowTest" "$app $app.CheckTest" "$app age:$app.BackupTest"
+  order ui "ui alone: JourneyTest" "$app $app.JourneyTest"
   order registry "registry alone: SnapshotDrillTest (test registry), LifecycleTest, then the killed CrashTest, last" \
     "$registry $app.SnapshotDrillTest" "$app $app.LifecycleTest" "$app killed:$app.CrashTest"
   # The parts split the leg: their runs together are the whole leg's, each once, whatever either list
   # above says (a class in no part's block runs in no part; one outside the blocks runs in each).
-  if [ "$(for p in capture journeys registry; do runs "$p"; done | sort)" = "$(runs pass | sort)" ]; then
+  if [ "$(for p in capture journeys ui registry; do runs "$p"; done | sort)" = "$(runs pass | sort)" ]; then
     passed=$((passed + 1))
-    echo "PASS capture, journeys and registry: together the whole leg's instrumented runs, each once"
+    echo "PASS capture, journeys, ui and registry: together the whole leg's instrumented runs, each once"
   else
     failed=$((failed + 1))
-    echo "FAIL capture, journeys and registry: their runs are $(for p in capture journeys registry; do runs "$p"; done | tr '\n' ' '), the leg's $(runs pass | tr '\n' ' ')"
+    echo "FAIL capture, journeys, ui and registry: their runs are $(for p in capture journeys ui registry; do runs "$p"; done | tr '\n' ' '), the leg's $(runs pass | tr '\n' ' ')"
   fi
   # The workflow runs the parts (M5 commit U1a3): entropy-android.yml's emulators matrix is each part
   # on API 31 and on API 36, one a job, each once and no other row, so a row dropped, renamed or
@@ -501,7 +505,7 @@ EOF
     /^  [^ #]/ { job = $0 }
     job == "  emulators:" && /^          - api: / { api = $3; gsub(/'\''/, "", api) }
     job == "  emulators:" && /^            part: / { print api, $2 }' "$wfa" | sort)
-  want=$(for a in 31 36; do for p in capture journeys registry; do echo "$a $p"; done; done)
+  want=$(for a in 31 36; do for p in capture journeys ui registry; do echo "$a $p"; done; done | sort)
   budgets=$(awk '
     /^  [^ #]/ { job = $0 }
     job == "  emulators:" && /^          - api: / { rows++ }
@@ -517,7 +521,7 @@ EOF
     END { flush() }' "$wfa")
   ok=yes
   [ -n "$rows" ] && [ "$rows" = "$want" ] || ok=no
-  [ "$budgets" = "6 6" ] || ok=no
+  [ "$budgets" = "8 8" ] || ok=no
   while IFS= read -r line; do
     [ "$(printf '%s\n' "$conds" | grep -c -x -F -e "$line")" = 1 ] || ok=no
   done <<'EOF'
@@ -533,7 +537,7 @@ EOF
     failed=$((failed + 1))
     echo "FAIL the workflow: its emulators matrix rows are $(printf '%s\n' "$rows" | tr '\n' ','), rows and budgets $budgets, and its steps $(printf '%s\n' "$conds" | tr '\n' ' ')"
   fi
-  # Every part: step 7 at its end; journeys and registry run none of steps 1, 2, 5 and 6, the capture
+  # Every part: step 7 at its end; journeys, ui and registry run none of steps 1, 2, 5 and 6, the capture
   # part's, and keep no capture.
   expect capture 0 "emulator: api=31: part capture alone (--part capture)" \
     "probe: api=31 settings secure disable_secure_windows=" \
@@ -543,7 +547,7 @@ EOF
     "pass: api=31 nothing persisted (com.keepcrypt.entropy): no file in its data directories" \
     "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
     "emulator: api=31: every check passed"
-  for p in journeys registry; do
+  for p in journeys ui registry; do
     expect "$p" 0 "emulator: api=31: part $p alone (--part $p)" \
       "pass: api=31 dumpsys package com.keepcrypt.entropy: no INTERNET" \
       "pass: api=31 dumpsys package com.keepcrypt.entropy.testregistry: no INTERNET" \
@@ -694,7 +698,7 @@ EOF
     "emulator: api=37: every check passed"
   order booted-pass "the steps' order, both CaptureTest runs without control (c), the killed CrashTest last" \
     "$app $app.ControlTest" "$app $left" "$registry $left" "$app $app.PhoneMotionTest" \
-    "$app $app.FlowTest" "$app $app.CheckTest" "$app $app.JourneyTest" "$app age:$app.BackupTest" "$registry $app.SnapshotDrillTest" \
+    "$app $app.FlowTest" "$app $app.CheckTest" "$app age:$app.BackupTest" "$app $app.JourneyTest" "$registry $app.SnapshotDrillTest" \
     "$app $app.LifecycleTest" "$app killed:$app.CrashTest"
   if [ ! -e "$st/booted-pass/work/avd" ] && [ ! -e "$st/booted-pass/emulator.pid" ]; then
     passed=$((passed + 1))
@@ -725,7 +729,7 @@ EOF
     --booted 16k emulator-5554 "$st/adb" "$st/pass/apks" "$st/out-booted"
   refused "--booted with a class and no test" 'android-emulator: not a CLASS-TEST' \
     --booted 37 emulator-5554 "$st/adb" "$st/pass/apks" "$st/out-booted" com.keepcrypt.entropy.CaptureTest
-  refused "an unknown part" 'android-emulator: --part must be capture, journeys or registry' \
+  refused "an unknown part" 'android-emulator: --part must be capture, journeys, ui or registry' \
     --part edges 31 "$st/pass/sdk" "$st/adb" "$st/pass/apks" "$st/out-part"
   refused "--part on 16k" 'android-emulator: --part names a part of the default images' \
     --part capture 16k "$st/pass/sdk" "$st/adb" "$st/pass/apks" "$st/out-part"
@@ -743,8 +747,8 @@ if [ $# -ge 2 ] && [ "$1" = --part ]; then
   part=$2
   shift 2
   case $part in
-    capture | journeys | registry) ;;
-    *) echo "android-emulator: --part must be capture, journeys or registry" >&2; exit 2 ;;
+    capture | journeys | ui | registry) ;;
+    *) echo "android-emulator: --part must be capture, journeys, ui or registry" >&2; exit 2 ;;
   esac
 fi
 booted=
@@ -823,7 +827,7 @@ done
 mkdir -p "$work" || exit 2
 case $api:$part in
   16k:) ;;
-  *:) say "every part (capture, journeys and registry), in the steps' order" ;;
+  *:) say "every part (capture, journeys, ui and registry), in the steps' order" ;;
   *) say "part $part alone (--part $part)" ;;
 esac
 
@@ -1161,15 +1165,18 @@ if in_part capture; then
   instrument com.keepcrypt.entropy com.keepcrypt.entropy.PhoneMotionTest
 fi
 # 4a, the journeys part: the screens from the start to the dice, driven through UI Automator (group
-# 15), then the collision check (group 16) without a snapshot on the shipping app, then U1's journeys
-# to Finish through the UI alone (Stage U's U1b on), then the encrypted backup and Check a backup
-# through the system's picker (group 18), whose run's output goes straight to the CI age -d hand-off
-# (android-instrument.sh's age: form).
+# 15), then the collision check (group 16) without a snapshot on the shipping app, then the encrypted
+# backup and Check a backup through the system's picker (group 18), whose run's output goes straight
+# to the CI age -d hand-off (android-instrument.sh's age: form).
 if in_part journeys; then
   instrument com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest
   instrument com.keepcrypt.entropy com.keepcrypt.entropy.CheckTest
-  instrument com.keepcrypt.entropy com.keepcrypt.entropy.JourneyTest
   instrument com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest
+fi
+# 4a, the ui part: U1's journeys from First launch to Finish through the UI alone (Stage U's U1b on),
+# on the shipping app; its own boot and job since U1e (M5-76 (g)).
+if in_part ui; then
+  instrument com.keepcrypt.entropy com.keepcrypt.entropy.JourneyTest
 fi
 # 4a, the registry part: the check with a snapshot, loaded through core, on the test-registry app (the
 # only one that trusts the test registry key); then the edges, 4b and 4c, on the shipping app.

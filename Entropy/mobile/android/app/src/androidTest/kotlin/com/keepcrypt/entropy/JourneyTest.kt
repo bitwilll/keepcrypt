@@ -19,6 +19,7 @@ import com.keepcrypt.entropy.Ui.grantCamera
 import com.keepcrypt.entropy.Ui.on
 import com.keepcrypt.entropy.Ui.sameWord
 import com.keepcrypt.entropy.Ui.shown
+import com.keepcrypt.entropy.Ui.stays
 import com.keepcrypt.entropy.Ui.tap
 import com.keepcrypt.entropy.Ui.tapCode
 import com.keepcrypt.entropy.Ui.tapRolls
@@ -34,6 +35,7 @@ import com.keepcrypt.entropy.ffi.Secret
 import com.keepcrypt.entropy.ffi.Summary
 import com.keepcrypt.entropy.screens.COLLISION_FOUND
 import com.keepcrypt.entropy.screens.INSERTS_PER_DEVICE
+import com.keepcrypt.entropy.screens.PASSPHRASE_WORDS
 import com.keepcrypt.entropy.screens.PASSPHRASE_WALLET
 import com.keepcrypt.entropy.screens.REVEAL_D
 import com.keepcrypt.entropy.screens.SAFE_IF_EITHER
@@ -42,6 +44,7 @@ import com.keepcrypt.entropy.screens.SCAN_NO_REGISTRY_KEY
 import com.keepcrypt.entropy.screens.SKIPPED
 import com.keepcrypt.entropy.screens.Screen
 import com.keepcrypt.entropy.screens.TWO_DEVICES
+import com.keepcrypt.entropy.screens.fingerprintHex
 import com.keepcrypt.entropy.screens.hexGroups
 import java.security.MessageDigest
 import org.junit.Assert.assertEquals
@@ -216,15 +219,22 @@ class JourneyTest {
         return time
     }
 
-    /** From the read-back's end: Show summary, the wallet summary (core's), its Next and the backup's offer skipped, to the watch-only offer. Returns the summary. */
-    private fun summaryToWatchOffer(activity: MainActivity): Summary {
+    /** From the read-back's end: Show summary, the wallet summary (core's, its fingerprint on the screen) and its Next, to the backup's offer. Returns the summary. */
+    private fun summaryToBackupOffer(activity: MainActivity): Summary {
         tap("show_summary")
         on(activity, Screen.Wallet)
         val summary = onMain { checkNotNull(activity.model.state.value.summary) }
         val core = Core.summary()
         assertTrue("the summary is not core's", core is Reply.Done && core.value.firstAddress == summary.firstAddress)
+        awaitText("fingerprint", fingerprintHex(summary.fingerprint))
         tap("summary_next")
         on(activity, Screen.BackupOffer)
+        return summary
+    }
+
+    /** From the read-back's end: summaryToBackupOffer, then the backup's offer skipped, to the watch-only offer. Returns the summary. */
+    private fun summaryToWatchOffer(activity: MainActivity): Summary {
+        val summary = summaryToBackupOffer(activity)
         tap("skip_backup")
         on(activity, Screen.WatchOffer)
         return summary
@@ -456,8 +466,164 @@ class JourneyTest {
         }
     }
 
+    /**
+     * The backup passphrase's page now on screen, read in-process from the state's Secret (Protected
+     * screen; observed, never printed): its words, each its own array. Main thread only.
+     */
+    private fun passphrasePage(activity: MainActivity): List<ByteArray> {
+        val text = checkNotNull(activity.model.state.value.passphrase)
+        val words = ArrayList<ByteArray>()
+        var start = 0
+        for (at in 0..text.size) {
+            if (at == text.size || text[at] == ' '.code.toByte()) {
+                words.add(ByteArray(at - start) { text[start + it] })
+                start = at + 1
+            }
+        }
+        return words
+    }
+
+    /** word's first four letters (a three-letter word's three), as the letter pad takes them (never printed). */
+    private fun firstLetters(word: ByteArray): String = String(CharArray(minOf(4, word.size)) { Char(word[it].toInt()) })
+
+    /**
+     * Cannot check to Start again, then the seed's encrypted backup made and checked through the UI alone
+     * (Stage U's U1e; the Pi's step 7, docs/pi-firmware.md:93; docs/mobile-apps.md, steps 13 and 17): a
+     * dice-only seed of dice-50-words12 by its 50 rolls tapped, Check now's check QR, Cannot check and its confirm's
+     * Back, then its confirm: the seed wiped unseen and a new ceremony at once, its dice at 0 / 50 (no
+     * collision, so not 99) with Back doing nothing there; dice-50-words12's 50 rolls tapped, Skip
+     * confirmed, the 12 words (the vector's) and their read-back by touches, the summary; Make an
+     * encrypted backup through its gate, the passphrase's two pages (read in-process, never printed) and
+     * I wrote it down, the confirm's two words' first letters touched on the letter pad, the file saved
+     * through the system's picker to Downloads under core's name, read back and verified; the rest skipped
+     * to Finish; then Home's Check a backup picking that file, the passphrase's 8 words touched on the
+     * letter pad behind the entry's gate, Backup OK with the summary's fingerprint and dice-50-words12's
+     * Seal ID, the backup's 12 words through its gate by Next (the vector's), its Done and Done: Home with
+     * the slot empty. The saved file is removed from Downloads at the end, so BackupTest saves under the
+     * same name into an empty folder.
+     */
+    @Test
+    fun cannotCheckStartsAgainAndTheNewSeedsBackupIsMadeAndCheckedThroughTheUiAlone() {
+        Capture.whileOffline {
+            val journey = SystemClock.elapsedRealtime()
+            val activity = toHome()
+            tap("dice_only_seed")
+            on(activity, Screen.Length)
+            tap("words_12")
+            on(activity, Screen.Dice, START_SECONDS)
+            tapRolls(activity, 50, DICE_50_ROLLS)
+            awaitText("dice_count", "50 / 50 rolls, 129.2 bits")
+            tap("dice_done")
+            on(activity, Screen.CheckPrompt, START_SECONDS)
+            tap("check_now")
+            on(activity, Screen.SealCard)
+            assertTrue("the seal card does not draw dice-50-words12's Seal ID", shown(Screen.SealCard, DICE_50_SEAL_ID))
+            tap("show_check_qr")
+            on(activity, Screen.CheckQr)
+            tap("cannot_check")
+            on(activity, Screen.CannotCheckConfirm)
+            tap("back")
+            on(activity, Screen.CheckQr)
+            tap("cannot_check")
+            on(activity, Screen.CannotCheckConfirm)
+            tap("confirm_action")
+            on(activity, Screen.Dice, START_SECONDS)
+            awaitText("dice_count", "0 / 50 rolls, 0.0 bits")
+            device.pressBack()
+            stays(activity, Screen.Dice, "Back on the new ceremony's dice")
+            tapRolls(activity, 50, DICE_50_ROLLS)
+            awaitText("dice_count", "50 / 50 rolls, 129.2 bits")
+            tap("dice_done")
+            on(activity, Screen.CheckPrompt, START_SECONDS)
+            tap("skip")
+            on(activity, Screen.SkipConfirm)
+            tap("confirm_action")
+            on(activity, Screen.CheckResult)
+            awaitText("check_result_text", SKIPPED)
+            val readback = wordsAndReadBack(activity, DICE_50_WORDS, DICE_50_WORDS.size)
+            val summary = summaryToBackupOffer(activity)
+            val fingerprint = fingerprintHex(summary.fingerprint)
+            tap("make_backup")
+            find("privacy_gate")
+            tap("pass_gate")
+            await("past the passphrase's gate", 10) { onMain { activity.model.state.value.let { it.screen == Screen.BackupPassphrase && !it.gate } } }
+            val passphrase = ArrayList(onMain { passphrasePage(activity) })
+            tap("next")
+            await("the passphrase's second page", 10) { onMain { activity.model.state.value.page } == 1 }
+            passphrase.addAll(onMain { passphrasePage(activity) })
+            assertEquals("eight passphrase words", PASSPHRASE_WORDS, passphrase.size)
+            tap("passphrase_written")
+            on(activity, Screen.BackupConfirm)
+            repeat(2) { question ->
+                val position = onMain { activity.model.state.value.let { checkNotNull(it.challenge).questions[it.page].position } }
+                typeLetters(activity, Screen.BackupConfirm, firstLetters(passphrase[position - 1])) { it.backupLetters }
+                tap("confirm_done")
+                if (question == 0) await("the confirm's second word", 10) { onMain { activity.model.state.value.page } == 1 }
+            }
+            on(activity, Screen.BackupSave, START_SECONDS)
+            val name = text("backup_name")
+            // A file of that name left by a test before (BackupTest's, when one boot runs every part) would
+            // be the one Check a backup picks: Downloads holds none of it before this save.
+            Picker.removeFromDownloads(name)
+            tap("save_backup")
+            val creator = Picker.save(name)
+            try {
+                on(activity, Screen.BackupVerified, START_SECONDS)
+                tap("backup_next")
+                on(activity, Screen.WatchOffer)
+                tap("skip_watch_only")
+                on(activity, Screen.RegisterOffer)
+                tap("skip_registration")
+                checklistToFinish(activity, 1)
+                tap("check_backup")
+                Picker.pick(name)
+                on(activity, Screen.BackupCheckEntry, START_SECONDS)
+                find("privacy_gate")
+                tap("pass_gate")
+                await("past the entry's gate", 10) { onMain { !activity.model.state.value.gate } }
+                for ((index, word) in passphrase.withIndex()) {
+                    awaitText("entry_word", "Backup passphrase, word " + (index + 1) + " of " + PASSPHRASE_WORDS)
+                    typeLetters(activity, Screen.BackupCheckEntry, firstLetters(word)) { it.backupLetters }
+                    tap("entry_done")
+                }
+                for (word in passphrase) word.fill(0)
+                on(activity, Screen.BackupCheckResult, START_SECONDS)
+                awaitText("backup_fingerprint", fingerprint)
+                awaitText("backup_seal_id", DICE_50_SEAL_ID)
+                tap("show_backup_words")
+                find("privacy_gate")
+                tap("pass_gate")
+                for (index in DICE_50_WORDS.indices) {
+                    assertInsert(activity, DICE_50_WORDS, index, 1, 1)
+                    tap(if (index + 1 < DICE_50_WORDS.size) "next" else "backup_words_done")
+                }
+                on(activity, Screen.BackupCheckResult)
+                tap("backup_done")
+                on(activity, Screen.Home)
+                assertTrue("the slot is not at home: Done did not end the check", Core.selfTest() is Reply.Done)
+            } finally {
+                for (word in passphrase) word.fill(0)
+                Picker.removeFromDownloads(name)
+            }
+            pass(
+                "the Cannot check and backup journey through the UI alone: 50 rolls tapped, Cannot check's confirm and its " +
+                    "Back, then Start again: a new ceremony at 0 / 50 with Back doing nothing; dice-50-words12's 50 rolls " +
+                    "tapped, Skip, 12 inserts equal to the vector's words, 12 read back by touches ($readback); the backup's " +
+                    "passphrase behind its gate, its confirm's two words touched on the letter pad, saved through the " +
+                    "picker ($creator) to Downloads under core's name and verified; Finish; Check a backup picking it, its 8 " +
+                    "words touched on the letter pad: Backup OK with the summary's fingerprint and Seal ID $DICE_50_SEAL_ID, " +
+                    "its 12 words the vector's, Done: Home with the slot empty; the file removed; the journey " + since(journey),
+            )
+            finish(activity)
+        }
+    }
+
     private companion object {
-        /** vectors/kcr.json's dice-50-words12: 123456 repeated, its Seal ID and its seal code as registered (public gate-seed vectors). */
+        /** vectors/kcr.json's dice-50-words12: 123456 repeated, its Seal ID, its seal code as registered and its words (public gate-seed vectors, compared in-process and never printed). */
+        val DICE_50_WORDS = listOf(
+            "unveil", "nice", "picture", "region", "tragic", "fault", "cream", "strike", "tourist", "control",
+            "recipe", "tourist",
+        )
         const val DICE_50_ROLLS = "123456"
         const val DICE_50_SEAL_ID = "YVM9CPP3"
         const val DICE_50_SEAL_CODE = "B98KT954NNYSS6APNPZWCYY0VA"

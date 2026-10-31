@@ -1,9 +1,6 @@
 package com.keepcrypt.entropy
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.uiautomator.By
-import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.Until
 import com.keepcrypt.entropy.Capture.finish
 import com.keepcrypt.entropy.Capture.onMain
 import com.keepcrypt.entropy.Capture.pass
@@ -62,8 +59,6 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class BackupTest {
-    private val device: UiDevice get() = UiDevice.getInstance(Capture.instrumentation)
-
     @Test
     fun aBackupSavedToDownloadsVerifiesAndCheckABackupOpensItAndRefusesWhatItMust() {
         Capture.whileOffline {
@@ -88,16 +83,7 @@ class BackupTest {
             assertTrue("the save screen does not show core's suggested name", NAME.matcher(name).matches())
             assertEquals(CLOUD_FOLDER, text("cloud_folder"))
             tap("save_backup")
-            val creator = Picker.opened()
-            val title = device.wait(Until.findObject(By.pkg(Picker.PACKAGE).res("android:id/title")), 10_000)
-                ?: throw AssertionError("the picker shows no name field (its facts are the probe line before this)").also { probe(Picker.facts("create")) }
-            probe("the create-document picker: package $creator, its name field ${title.text}; " + Picker.facts("create"))
-            assertEquals("the picker's name is not core's suggested one", name, title.text)
-            Picker.toDownloads("create")
-            val save = device.findObject(By.pkg(Picker.PACKAGE).res("android:id/button1"))
-                ?: device.findObject(By.pkg(Picker.PACKAGE).clickable(true).text(Pattern.compile("(?i)save")))
-                ?: throw AssertionError("the picker has no Save (its facts are the probe line before this)").also { probe(Picker.facts("create")) }
-            save.click()
+            val creator = Picker.save(name)
             on(activity, Screen.BackupVerified, START_SECONDS)
             val listed = shellText("ls -l " + DOWNLOADS + name)
             probe("the saved file: $listed")

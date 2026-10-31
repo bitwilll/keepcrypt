@@ -1,6 +1,6 @@
 # KeepCrypt-Entropy Android (Entropy/tasks/todo.md, M5 groups 4-6; Q54, Q55): the Android app,
-# Entropy/mobile/android, built once by one job and tested on emulators by six leg jobs that run
-# side by side after it (commit L9, lead decision M5-70 (b); commit U1a, M5-72 (h)). The build job
+# Entropy/mobile/android, built once by one job and tested on emulators by eight leg jobs that run
+# side by side after it (commit L9, lead decision M5-70 (b); commit U1a, M5-72 (h); commit U1e, M5-76 (g)). The build job
 # builds the Rust libraries, checks and scans the APKs, signs them with a throwaway key and uploads
 # them, then hands the signed APKs to the leg jobs through actions/cache, under a key that names this
 # run and its attempt. Before it installs anything, each leg job checks every file it was handed
@@ -39,11 +39,12 @@
 # and the owner's P4 files (the two go-ahead PNGs, two .kcr snapshots and the two Seal IDs) with
 # their SHA-256, kept 14 days.
 #
-# Then the emulators (M5 group 6, commit 8), on those signed bytes, in the six leg jobs at once:
+# Then the emulators (M5 group 6, commit 8), on those signed bytes, in the eight leg jobs at once:
 # system-images;android-31;default;x86_64 and system-images;android-36;default;x86_64, each API
-# level's leg in three parts, one a job (scripts/android-emulator.sh --part; commits U1a and U1a2):
+# level's leg in four parts, one a job (scripts/android-emulator.sh --part; commits U1a, U1a2 and U1e):
 # capture (the capture harness, its positive controls and first frames, and PhoneMotionTest), the
-# shipping journeys (FlowTest, CheckTest and BackupTest) and registry, the test registry and the
+# shipping journeys (FlowTest, CheckTest and BackupTest), ui (JourneyTest, U1's journeys through the UI
+# alone) and registry, the test registry and the
 # edges (SnapshotDrillTest, the test-registry app's, then LifecycleTest and CrashTest); and, from
 # commit 14, the 16 KB-page
 # system-images;android-36;google_apis_ps16k;x86_64 (the ARM and 16 KB leg) after API 31's capture
@@ -585,7 +586,7 @@ jobs:
         run: sh scripts/android-instrument.sh --selftest
       # The emulator leg's own cases (no emulator): whole legs of android-emulator.sh, with the real
       # frame checker, on a stand-in adb, emulator, screenrecord and instrument runner: a passing leg,
-      # each of its three parts passing alone with its own classes in its pinned order (the three
+      # each of its four parts passing alone with its own classes in its pinned order (the four
       # together the leg's runs, each once), and each way a leg or a part must fail (a failing
       # class, at its end; the control still in recents after pm clear; a recording that ends before
       # its stop; the app's window lit in the first-frame stream, and lit with no frame after the
@@ -648,14 +649,17 @@ jobs:
     # journeys part, measured under the 90-minute ceiling (M5-76 (a)): run 41193839334 at 87951b3
     # took 1708 s for API 31's journeys job and 1600 s for API 36's. U1b2's rolls by the app's own
     # accessibility nodes cut them: run 41197141108 at 360a67f took 1153 s and 1097 s, so 25 and 23
-    # minutes; U1c's 24-word journey is measured at 30 minutes each, the journeys part's split line
-    # (M5-76 (f)), and each job is then budgeted at its measured time plus 25%.
+    # minutes. U1c-U1e's journeys would take the journeys jobs past 30 minutes (M5-76 (f)), so U1e
+    # splits JourneyTest into a part of its own, ui, one job on each level (M5-76 (g)): the journeys
+    # jobs go back to 20 minutes (FlowTest, CheckTest and BackupTest, measured 919 s and 952 s in run
+    # 40903211202 before JourneyTest), and the ui jobs are measured at 30, then each budgeted at its
+    # measured time plus 25%.
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       # Every leg job runs to its end: a red leg never cancels another job or hides its evidence.
       fail-fast: false
       matrix:
-        # Each API level's leg as its three parts, one a job (scripts/android-emulator.sh --part,
+        # Each API level's leg as its four parts, one a job (scripts/android-emulator.sh --part,
         # whose header lists what each runs), and the 16 KB leg in API 31's capture job.
         include:
           - api: '31'
@@ -665,6 +669,10 @@ jobs:
           - api: '31'
             part: journeys
             legs: API 31, journeys
+            timeout: 20
+          - api: '31'
+            part: ui
+            legs: API 31, journeys through the UI alone
             timeout: 30
           - api: '31'
             part: registry
@@ -677,6 +685,10 @@ jobs:
           - api: '36'
             part: journeys
             legs: API 36, journeys
+            timeout: 20
+          - api: '36'
+            part: ui
+            legs: API 36, journeys through the UI alone
             timeout: 30
           - api: '36'
             part: registry

@@ -13,8 +13,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 
 /**
- * The system's file picker on the phone (tasks/todo.md, M5 group 18), shared by BackupTest (the backup
- * saved and Check a backup's file), CheckTest and SnapshotDrillTest (Load registry snapshot's file):
+ * The system's file picker on the phone (tasks/todo.md, M5 group 18), shared by BackupTest and JourneyTest
+ * (the backup saved and Check a backup's file), CheckTest and SnapshotDrillTest (Load registry snapshot's file):
  * DocumentsUI driven by UI Automator, its controls found by their own resource ids and labels, and the
  * files it lists put in Downloads by the shell. Every name here is a public one (core's suggested backup
  * name, a vector's snapshot), never a secret.
@@ -74,6 +74,26 @@ internal object Picker {
             ?: throw AssertionError("the picker's roots list no Downloads (its facts are the probe line before this)").also { probe(facts(mode)) }
         clicked(UiSelector().packageNameMatches(PACKAGE.pattern()).textMatches(DOWNLOADS_ROOT.pattern()))
         probe("the picker ($mode) went to Downloads through its roots drawer")
+    }
+
+    /**
+     * In the create-document picker the save screen's Save opened: its name field must hold name (core's
+     * suggested backup name, public), the picker goes to Downloads, and its Save is clicked. Returns the
+     * picker's package. Its facts are a probe line before any failure, and one probe line names the
+     * picker and its name field (BackupTest, JourneyTest).
+     */
+    fun save(name: String): String {
+        val creator = opened()
+        val title = device.wait(Until.findObject(By.pkg(PACKAGE).res("android:id/title")), 10_000)
+            ?: throw AssertionError("the picker shows no name field (its facts are the probe line before this)").also { probe(facts("create")) }
+        probe("the create-document picker: package $creator, its name field ${title.text}; " + facts("create"))
+        assertEquals("the picker's name is not core's suggested one", name, title.text)
+        toDownloads("create")
+        val save = device.findObject(By.pkg(PACKAGE).res("android:id/button1"))
+            ?: device.findObject(By.pkg(PACKAGE).clickable(true).text(Pattern.compile("(?i)save")))
+            ?: throw AssertionError("the picker has no Save (its facts are the probe line before this)").also { probe(facts("create")) }
+        save.click()
+        return creator
     }
 
     /** In the open-document picker, the file named fileName in Downloads (or where it opened, if it lists it there), picked. */
