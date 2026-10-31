@@ -407,6 +407,13 @@ class CeremonyModel(
     private var foreground = false
 
     /**
+     * A picker the app opened is up (Stage U's U2c): from the press that opened it until its answer, or
+     * the activity's next resume (an answer lost, say to a recreation), so a second press that would open
+     * one, made before the first covers the app, opens none (openPicker).
+     */
+    private var pickerUp = false
+
+    /**
      * The slot holds a session, or waits at its restart after a check that ended without the words
      * (Match found, Cannot check or a collision, with the kept Wiped and, after a collision, its report),
      * or holds Check a backup's checked backup: from a start (or the backup's opening) until a discard, a
@@ -531,6 +538,7 @@ class CeremonyModel(
      * pickerOpened that no stop followed never makes a later leaving look like a picker.
      */
     fun appResumed() {
+        pickerUp = false
         timers.resumed()
     }
 
@@ -1123,14 +1131,11 @@ class CeremonyModel(
 
     /**
      * The save screen's Save (or Save again): the system's create-document picker, its suggested name
-     * core's, opened over the app after the picker rule's exemption (pickerOpened); the place it gives
-     * comes to backupPlaced.
+     * core's (openPicker); the place it gives comes to backupPlaced.
      */
     fun saveBackup(pickers: DocumentPickers) {
         val file = backupFile ?: return
-        if (!pressOn(Screen.BackupSave)) return
-        pickerOpened()
-        pickers.create(file.name)
+        openPicker(Screen.BackupSave) { pickers.create(file.name) }
     }
 
     /**
@@ -1140,9 +1145,11 @@ class CeremonyModel(
      * against this session (verifyBackup, a long call behind "Working...": scrypt) before "Backup
      * verified". A write or a read-back that fails, or a verify that refuses (core's text), returns to
      * the save screen naming that step; the session stays, and so does the encrypted file, for Save
-     * again. The bytes read back are zeroed once core has them.
+     * again. The bytes read back are zeroed once core has them. Any answer, a late one too, frees the
+     * picker's buttons (pickerUp).
      */
     fun backupPlaced(place: DocumentPlace?) {
+        pickerUp = false
         val file = backupFile ?: return
         if (busy() || mutable.value.screen != Screen.BackupSave) return
         timers.input()
@@ -1287,13 +1294,11 @@ class CeremonyModel(
     }
 
     /**
-     * Home's Check a backup (lead decision M5-48): the system's open-document picker, opened over the app
-     * after the picker rule's exemption (pickerOpened); the file it gives comes to backupPicked.
+     * Home's Check a backup (lead decision M5-48): the system's open-document picker (openPicker); the
+     * file it gives comes to backupPicked.
      */
     fun checkBackup(pickers: DocumentPickers) {
-        if (!pressOn(Screen.Home)) return
-        pickerOpened()
-        pickers.open()
+        openPicker(Screen.Home) { pickers.open() }
     }
 
     /**
@@ -1384,13 +1389,10 @@ class CeremonyModel(
 
     /**
      * Home's Load registry snapshot (lead decision M5-48; docs/mobile-apps.md, "Reading a snapshot"): the
-     * system's open-document picker, opened over the app after the picker rule's exemption (pickerOpened);
-     * the file it gives comes to snapshotPicked.
+     * system's open-document picker (openPicker); the file it gives comes to snapshotPicked.
      */
     fun loadSnapshot(pickers: DocumentPickers) {
-        if (!pressOn(Screen.Home)) return
-        pickerOpened()
-        pickers.openSnapshot()
+        openPicker(Screen.Home) { pickers.openSnapshot() }
     }
 
     /**
@@ -1806,9 +1808,11 @@ class CeremonyModel(
      * refused too, tooLarge, as is a read that fails). A refused file is never read, or its bytes are
      * zeroed, and Home says why. A discard during the read (a leave or going online: the timers wait
      * while it runs) zeroes what it read, and the start screen follows, as after any long call. The bytes
-     * of a file that passes go to passed, on the main thread, for it to zero.
+     * of a file that passes go to passed, on the main thread, for it to zero. Any answer, a late one too,
+     * frees the picker's buttons (pickerUp).
      */
     private fun picked(file: PickedFile?, suffix: String, limit: Int, notNamed: FileRefusal, tooLarge: FileRefusal, passed: (ByteArray) -> Unit) {
+        pickerUp = false
         if (busy() || mutable.value.screen != Screen.Home) return
         timers.input()
         if (file == null) return
@@ -1831,6 +1835,20 @@ class CeremonyModel(
                 passed(bytes)
             }
         }
+    }
+
+    /**
+     * A press on screen's button that opens a system picker over the app (Save, Check a backup, Load
+     * registry snapshot): through pressOn, and only while no picker the app opened is up (pickerUp: each
+     * launch opens a picker of its own, so a double tap before the first covers the app opened two, and
+     * the second's answer followed the first's); then the picker rule's exemption (pickerOpened) and the
+     * picker. Its answer, or the next resume, frees the buttons (Stage U's U2c).
+     */
+    private fun openPicker(screen: Screen, open: () -> Unit) {
+        if (pickerUp || !pressOn(screen)) return
+        pickerUp = true
+        pickerOpened()
+        open()
     }
 
     /**

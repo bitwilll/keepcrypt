@@ -16752,6 +16752,19 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   from the dice; "bip39_entry: Back on its privacy gate expected:<Bip39Entry> but was:<Bip39Ask>" for a Back
   that skips pressOn). Locally: :screens 168 in 24 classes, none failed (BackTest about 20 s for its three walks);
   the gate clean, 387 files.
+  Proof (M5 commit U2c, Stage U-3, partial: local, Q76's JVM run on a Linux host, no emulator; CI's build job at the
+  next push): each launch of an activity-result launcher opens a picker of its own, so a double tap on Save, Check a
+  backup or Load registry snapshot (or one on each of Home's two) made before the first picker covered the app opened
+  two, the second over the first, and its answer came after the first's. CeremonyModel's openPicker opens a picker
+  through pressOn only while none it opened is up (pickerUp), then the picker rule's exemption and the picker; any
+  answer (backupPlaced, and picked for both of Home's, a late one too) or the activity's next resume (an answer lost)
+  frees the buttons. Go offline's airplane-mode settings are no picker and stay as they were (a second press opens
+  the same settings again, holding nothing). PickerPressTest (3): a second Save opens none until the first answers,
+  none at all, and then one; Home's two open one at a time, each freed by its own answer; a resume with no answer
+  frees Check a backup. Before the fix the first two failed ("a double tap on Save opened one picker expected:<1> but
+  was:<2>", "a double tap on Check a backup opened one picker expected:<1> but was:<2>"). The instrumented tests'
+  in-process openings each answer before the next (CaptureTest), and their real pickers resume the activity.
+  Locally: :screens 171 in 25 classes, none failed; the gate clean.
 - [ ] U3. A UX audit of every screen against the docs and the Pi: wording, order, what each button and Back do, what
   TalkBack reads on Public screens, the layout on a 360 dp phone and a large one, text sizes. A defect within the docs is
   fixed with a test; a change the docs do not allow becomes a question for the owner.
