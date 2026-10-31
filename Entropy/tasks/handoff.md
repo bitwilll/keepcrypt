@@ -1,4 +1,4 @@
-# Handoff: M5 (Android), Stage U-5, 2026-10-31 22:05 UTC
+# Handoff: M5 (Android), Stage U-5, 2026-10-31 22:25 UTC
 
 A new session starts here. CLAUDE.md's workflow still comes first: read `tasks/lessons.md`, then M5 in
 `tasks/todo.md` (Stage U's plans are under "Stage U", the proofs under M5's Review). This file only says where
@@ -7,35 +7,40 @@ things stand and what comes next.
 ## Where things stand
 
 - Branch `m5-android`, draft PR https://github.com/bitwilll/keepcrypt/pull/9. Never push to `main`.
-- Latest commit: the one that adds this file, on top of `97ce674` (U2h, DeviceChangeTest) and `e7dbf6a` (U1h,
-  MixedJourneyTest). Every CI run of the PR is "Entropy Android" (`.github/workflows/entropy-android.yml`).
+- Latest commit: the one that updates this file, on top of `f50a88b` (U2i, DoubleTapTest), `97ce674` (U2h,
+  DeviceChangeTest) and `e7dbf6a` (U1h, MixedJourneyTest). Every CI run of the PR is "Entropy Android" (`.github/workflows/entropy-android.yml`).
 - Stage U-4 is closed: CI at `4a1cc07` (run 41211393696) was green in every job, U1b-U1g proven on API 31 and 36.
 - Stage U-5 is under way, without a check-in (M5-72 (h): U-1 to U-5 run without one; U-6 waits for the owner's
   answers to Q77-Q85). Its plan, item by item, is in todo.md's "U-5's plan":
   - U1h (MixedJourneyTest, a mixed 24-word seed to Finish through the UI alone; journeys part): written and pushed,
-    **not yet proven on an emulator**. Its first run (41244825682 at e7dbf6a) was cancelled by the push of this
-    commit, by design: this commit's run holds it too.
+    **not yet proven on an emulator**. Its runs at e7dbf6a (41244825682) and 2064456 (41246509305) were cancelled
+    by later pushes, by design: the head's run holds it too.
   - U2h (DeviceChangeTest: rotation, font scale and night mode, each and back, on the dice, the code entry, the
     words' gate and a words page; registry part, after LifecycleTest, before the killed CrashTest): written,
     committed in `97ce674`, **not yet proven on an emulator**.
-  - U2i, U2j, U2k, U2l and U3h: planned, not started.
-- The registry and journeys jobs' timeouts are 30 minutes, their measuring run (M5-76 (f), M5-77 (a) and (b)).
+  - U2i (DoubleTapTest: a double tap on Skip, Match found, Cannot check, their confirms, Show words and four
+    privacy gates must take one step; capture part, M5-78): written, committed in `f50a88b`, **not yet proven**.
+    If it fails, M5-72 (f)'s fix follows: a new screen's controls ignore presses for 300 ms after its first frame,
+    in the model's pressOn, with a JVM test; never relax the test.
+  - U2j, U2k, U2l and U3h: planned, not started.
+- The capture, registry and journeys jobs' timeouts are 30 minutes, their measuring run (M5-76 (f), M5-77, M5-78).
 
 ## Next steps, in order
 
 1. Read CI at this commit once its run ends (about 35 minutes after the push). For each of the eight emulator
    jobs record its result and time (job start to end) in todo.md's Review under the U1h and U2h proofs, with
-   the pass lines of MixedJourneyTest (journeys jobs) and DeviceChangeTest (registry jobs, and its six probe
-   lines "...: six changes, each a new activity with everything kept, in N s").
+   the pass lines of MixedJourneyTest (journeys jobs), DeviceChangeTest (registry jobs, and its probe lines
+   "...: six changes, each a new activity with everything kept, in N s") and DoubleTapTest (capture jobs).
    - Both journeys jobs green: tick U1h, then U1 (its last combination). Both registry jobs green: tick U2h.
-   - Budget the journeys and registry jobs by M5-30 (measured time + 25%, rounded up) in the workflow's matrix
+     Both capture jobs green: tick U2i (no fix needed).
+   - Budget the capture, journeys and registry jobs by M5-30 (measured time + 25%, rounded up) in the workflow's matrix
      and its Budget comment, as the earlier entries there do.
    - A red job: diagnose it from its lines (`mcp__github__get_job_logs`, or download the log and read it); never
      rerun to green; fix at the root, then a new push. DeviceChangeTest's most likely device surprises: a
      rotation that does not recreate on API 36 (the test then fails "a new MainActivity resumed"), or a change
      that alters the state (a screen's first composition calling the model). Either one is a finding about
      the app, not the test; record it and fix the app or re-plan, never relax the check.
-2. U2i (DoubleTapTest, ui part), U2j (probe run, then KillTest), U2k, U2l, U3h, as their items say. Each adds
+2. U2j (probe run, then KillTest), U2k, U2l, U3h, as their items say. Each adds
    its class to `scripts/android-emulator.sh` (the part's run, the pinned orders in `--selftest`, a
    `*-test-fails` case) and to `scripts/android-local.sh`'s run counts, then runs both selftests (lessons.md,
    2026-10-31).
@@ -61,10 +66,10 @@ things stand and what comes next.
 
 ```bash
 cd /home/user/keepcrypt/Entropy
-sh scripts/android-emulator.sh --selftest            # 59 passed at 97ce674
+sh scripts/android-emulator.sh --selftest            # 60 passed at f50a88b
 sh scripts/android-local.sh --selftest               # 47 passed
 sh scripts/android-instrument.sh --selftest          # 50 passed
-sh scripts/banned-api-check.sh                       # clean, 404 files
+sh scripts/banned-api-check.sh                       # clean, 405 files
 ANDROID_HOME=/root/android-sdk sh scripts/android-rust.sh shipping
 ANDROID_HOME=/root/android-sdk sh scripts/android-rust.sh withTestRegistry
 ANDROID_HOME=/root/android-sdk sh scripts/android-gradle.sh --dependency-verification strict :app:assembleShippingRelease :app:assembleWithTestRegistryRelease :app:assembleShippingReleaseAndroidTest :app:assembleWithTestRegistryReleaseAndroidTest
@@ -94,4 +99,4 @@ as a release. CI's build job uploads its own signed pair as an artifact on every
   prints each line's facts. Watch it in every journeys job.
 - U1a8's close proof needs a run whose lines show "the dialog closed by"; U1a5's low-disk boot proof is owed.
 - M5-54's residual halts; the j/h and w/r mirror flips are proven only in core's test.
-- A scheduled reminder (`trig_01AhfF11hMmC7ez15VXRZyVM`, 22:19 UTC) fires into the old session only; ignore it.
+- A scheduled reminder (`trig_01UVAWJAPqHd8Jdw4yhs48AH`, 22:52 UTC) fires into the old session only; ignore it.
