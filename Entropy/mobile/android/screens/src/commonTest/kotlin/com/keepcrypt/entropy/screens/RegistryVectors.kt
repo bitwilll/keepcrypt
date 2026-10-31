@@ -107,3 +107,54 @@ internal fun hexBytes(hex: String): ByteArray {
     assertEquals(0, hex.length % 2, "an even number of hex digits")
     return ByteArray(hex.length / 2) { i -> hex.substring(2 * i, 2 * i + 2).toInt(16).toByte() }
 }
+
+private val backupJson: String by lazy { entropyFile("vectors/backup.json") }
+
+/**
+ * A damaged or wrongly opened backup of vectors/backup.json's age_refused (Stage U's U2g2): its name, the
+ * passphrase's words, core's error (a backup error's inner name: "Backup(Armor)" is Armor) and the file's
+ * bytes (its "file" text, JSON-unescaped and UTF-8 encoded as vectorgen.py writes it, or its file_hex).
+ */
+internal class AgeRefused(val name: String, val passphrase: List<String>, val refusal: String, val bytes: ByteArray)
+
+/**
+ * Every age_refused entry of backup.json, each count checked against the file. A JSON string is matched
+ * as runs of plain characters between escapes, possessively, so the JVM's matcher recurses once an
+ * escape, not once a character (a file's text runs to 8 KiB).
+ */
+internal fun backupRefusedVectors(): List<AgeRefused> {
+    val pattern = Regex(
+        "\"name\": \"([^\"]+)\",\\s*\"change\": \"[^\"\\\\]*+(?:\\\\.[^\"\\\\]*+)*+\",\\s*\"passphrase\": \"([a-z ]+)\",\\s*" +
+            "\"error\": \"(?:Backup\\()?([A-Za-z]+)\\)?\",\\s*\"scrypt\": (?:true|false),\\s*\"(file|file_hex)\": \"([^\"\\\\]*+(?:\\\\.[^\"\\\\]*+)*+)\"",
+    )
+    val found = pattern.findAll(backupJson).map { match ->
+        val (name, words, error, kind, value) = match.destructured
+        val bytes = if (kind == "file_hex") hexBytes(value) else jsonText(value).encodeToByteArray()
+        AgeRefused(name, words.split(" "), error, bytes)
+    }.toList()
+    assertEquals(Regex("\"scrypt\": (true|false)").findAll(backupJson).count(), found.size, "every age_refused entry read")
+    return found
+}
+
+/** A JSON string's text with its escapes undone (\n, \r, \t, \", \\, \/ and \uXXXX). */
+private fun jsonText(escaped: String): String = buildString {
+    var at = 0
+    while (at < escaped.length) {
+        val c = escaped[at++]
+        if (c != '\\') {
+            append(c)
+            continue
+        }
+        when (val e = escaped[at++]) {
+            'n' -> append('\n')
+            'r' -> append('\r')
+            't' -> append('\t')
+            'u' -> {
+                append(escaped.substring(at, at + 4).toInt(16).toChar())
+                at += 4
+            }
+            '"', '\\', '/' -> append(e)
+            else -> error("an escape JSON does not have")
+        }
+    }
+}

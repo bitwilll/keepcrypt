@@ -38,10 +38,10 @@ class RefusalTablesTest {
         assertTrue(Core.wipeAll() is Reply.Done)
     }
 
-    /** A fresh Rig on the scan screen of the check of kcr.json's dice-50-words12 (its rolls on the pad), no snapshot loaded. */
-    private fun scanning(): Rig {
+    /** A fresh Rig on the scan screen of the check of kcr.json's dice seed of 12 words named seed (its rolls on the pad), no snapshot loaded. */
+    private fun scanning(seed: String): Rig {
         val rig = Rig().toHome().begin(Mode.DiceOnly, Words.Twelve)
-        for (face in kcrRolls(DICE_50)) {
+        for (face in kcrRolls(seed)) {
             rig.press(face)
             rig.model.confirmRoll()
         }
@@ -58,15 +58,17 @@ class RefusalTablesTest {
     fun everyGoAheadQrVectorOnTheScanScreen() {
         val vectors = kcrProofUrVectors()
         assertTrue(vectors.count { it.refusal != null } >= 7 && vectors.count { it.refusal == null } >= 5, "kcr.json's go-ahead QR texts")
-        for (vector in vectors) {
-            val what = vector.name
-            val rig = scanning()
+        val verdicts = mutableSetOf<String>()
+        for (vector in vectors) for (seed in listOf(DICE_50, DICE_99)) {
+            val what = vector.name + " on " + seed
+            val rig = scanning(seed)
             val request = assertNotNull(rig.model.state.value.checkRequest)
             rig.model.onGoAheadText(vector.input)
             assertEquals(Screen.Working, rig.screen, "$what: core's check of the text, a long call")
             rig.worker.run()
             val state = rig.model.state.value
-            val verdict = vector.refusal ?: vector.lookup(DICE_50)
+            val verdict = vector.refusal ?: vector.lookup(seed)
+            verdicts.add(verdict)
             when (verdict) {
                 "clear" -> {
                     assertEquals(Screen.CheckResult, state.screen, what)
@@ -84,6 +86,51 @@ class RefusalTablesTest {
             }
             assertTrue(Core.wipeAll() is Reply.Done)
         }
+        assertTrue(verdicts.containsAll(listOf("clear", "collision", "wrong_bucket")), "every verdict core gives an accepted text: $verdicts")
+    }
+
+    @Test
+    fun everyDamagedOrWronglyOpenedBackupThroughCheckABackup() {
+        val vectors = backupRefusedVectors()
+        val rig = Rig().toHome()
+        val refused = mutableSetOf<Refusal>()
+        for (vector in vectors) {
+            val what = vector.name
+            val file = FakeFile(SavedBackup.NAME, vector.bytes.size.toLong(), vector.bytes)
+            rig.model.checkBackup(FakePickers())
+            rig.model.backupPicked(file)
+            rig.model.appResumed()
+            if (vector.bytes.size > Core.BACKUP_MAX_BYTES) {
+                // Core's TooLarge, met first by the model's own refusal by size, before any byte is read.
+                assertEquals(Refusal.TooLarge, Refusal.valueOf(vector.refusal), what)
+                assertEquals(Screen.Home, rig.screen, what)
+                assertEquals(FileRefusal.TooLarge, rig.model.state.value.fileRefusal, what)
+                assertEquals(0, file.reads, "$what: never read")
+                refused.add(Refusal.TooLarge)
+                continue
+            }
+            rig.worker.run()
+            assertEquals(Screen.BackupCheckEntry, rig.screen, "$what: the entry")
+            rig.model.passGate()
+            for (word in vector.passphrase) {
+                rig.press(word.take(4))
+                rig.model.entryTyped()
+            }
+            rig.worker.run()
+            val state = rig.model.state.value
+            val refusal = Refusal.valueOf(vector.refusal)
+            assertEquals(Screen.BackupCheckEntry, state.screen, "$what: a refusal returns to the entry")
+            assertEquals(refusal, state.entryRefusal, what)
+            assertNotNull(backupRefusalText(refusal), "$what: a line of core's own for it (BackupScreensTest pins each to error.rs)")
+            assertTrue(rig.model.entriesHeld.isEmpty(), "$what: the entry emptied")
+            refused.add(refusal)
+            rig.model.back()
+            assertEquals(Screen.Home, rig.screen, "$what: Back drops the file")
+            assertTrue(zeroed(file.given), "$what: the file read was zeroed")
+        }
+        val expected = vectors.map { Refusal.valueOf(it.refusal) }.toSet()
+        assertEquals(expected, refused, "every refusal of backup.json's age_refused")
+        assertTrue(Refusal.WrongPassphrase in expected && Refusal.Header in expected && Refusal.Armor in expected, "$expected")
     }
 
     @Test

@@ -16844,7 +16844,7 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   mixed case, another type, a non-shortest head, a trailing byte, and five core accepts) scanned on the check of
   dice-50-words12: each refusal back on the scan screen with core's code, SCAN_NOT_ACCEPTED, the same check QR
   object and the session held; each accepted text as kcr.json's lookup for that seed says (another seal's bucket
-  refused as WrongBucket, a clear one to the proof's result, a collision). Every snapshot (41) through Home's Load
+  refused as WrongBucket, or a collision; no accepted text is clear on that seed, so U2g2 adds dice-99-words12). Every snapshot (41) through Home's Load
   registry snapshot: each refusal (34) on the result with core's code and the "registry snapshot or proof rejected: "
   text, each accepted one (7) loaded with kcr.json's number, date and count. The read-back on dice-99-words12: every
   letter of a mirror pair in a word's first four letters read as its partner, a mirror misread on that face alone
@@ -16903,6 +16903,21 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   Background, Idle); on each gated screen's gate and in Walk.states, the cover at 30 s with the gate kept and the
   wipe at 10 minutes (M5-75 (d)). With the warning 20 s late (run and reverted): "device_entropy: 9 minutes,
   something held expected:<Warning> but was:<null>"; the test before this fix passed that mutation.
+  Proof (M5 commit U2g2, Stage U-3's review fix, partial: local, no emulator; CI's build job at the next push): the
+  reviews found U2g's "clear" branch never run (every accepted text is another bucket's or a collision on
+  dice-50-words12), and the files table missing: no damaged .age file but one hand-made header went through Check a
+  backup. RefusalTablesTest (4): every go-ahead QR text now scanned on the checks of dice-50-words12 and
+  dice-99-words12 (24 checks), the verdicts reached required to include clear, collision and wrong_bucket;
+  everyDamagedOrWronglyOpenedBackupThroughCheckABackup runs all 44 of vectors/backup.json's age_refused through Home's
+  Check a backup (RegistryVectors.kt's backupRefusedVectors, counted against the file, a "file" text JSON-unescaped
+  and UTF-8 encoded as vectorgen.py writes it, its matcher possessive so the JVM's regex does not overflow on 8 KiB
+  of text): each passphrase's first fours typed, each refusal (Armor 17, Header 14, Payload 7, WorkFactor 2,
+  WrongPassphrase 2, HeaderMac 1) back on the entry with core's code, a line of its own and the entries emptied,
+  then Back Home with the file zeroed; too-large (8193 bytes) is refused by the model's size check before any byte
+  is read (FileRefusal.TooLarge), core's TooLarge met first; the refusals reached equal the file's. With Armor left
+  out of isBackupRefusal (run and reverted): "armor-lowercase-label: a refusal returns to the entry
+  expected:<BackupCheckEntry> but was:<Stop>". Locally, at this commit: :screens 193 in 33 classes, none failed;
+  both release APKs built; the gate clean, 396 files.
 - [ ] U3. A UX audit of every screen against the docs and the Pi: wording, order, what each button and Back do, what
   TalkBack reads on Public screens, the layout on a 360 dp phone and a large one, text sizes. A defect within the docs is
   fixed with a test; a change the docs do not allow becomes a question for the owner.
