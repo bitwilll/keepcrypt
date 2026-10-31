@@ -1,0 +1,10 @@
+permissions:
+  contents: read
+jobs:
+  a:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: |
+          sh scripts/android-gradle.sh --dependency-verification strict --offline -Pkc.canary=true :app:assembleShippingRelease
+      - run: |
+          sh scripts/android-gradle.sh --dependency-verification strict --offline -Pkc.canary=true :app:assembleShippingRelease

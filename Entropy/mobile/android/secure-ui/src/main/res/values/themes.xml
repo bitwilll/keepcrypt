@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The theme of both apps (tasks/todo.md, M5 "Built into this plan", SecureActivity): the
+     starting window Android draws before the app's first frame is plain black with no icon
+     (Android 12's splash screen keeps the black background and a transparent icon), and so is
+     every window background after it. -->
+<resources>
+    <style name="Theme.KeepCrypt" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:colorBackground">@android:color/black</item>
+        <item name="android:statusBarColor">@android:color/black</item>
+        <item name="android:navigationBarColor">@android:color/black</item>
+        <item name="android:windowSplashScreenBackground">@android:color/black</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@android:color/black</item>
+    </style>
+</resources>

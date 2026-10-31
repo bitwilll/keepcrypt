@@ -235,9 +235,9 @@ dependencies = [
 
 [[package]]
 name = "ctutils"
-version = "0.4.2"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d5515a3834141de9eafb9717ad39eea8247b5674e6066c404e8c4b365d2a29e"
+checksum = "12218662ccac37d9714f2191252553d67585b97df8c839cbe49e0bde278dc865"
 dependencies = [
  "cmov",
 ]
@@ -452,6 +452,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
+name = "jni-sys"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8eaf4bc02d17cbdd7ff4c7438cafcdf7fb9a4613313ad11b4f8fefe7d3fa0130"
+
+[[package]]
 name = "keepcrypt-core"
 version = "0.0.0"
 dependencies = [
@@ -480,6 +486,24 @@ name = "keepcrypt-ffi"
 version = "0.0.0"
 dependencies = [
  "keepcrypt-core",
+ "qrcodegen-no-heap",
+ "sha2",
+ "zeroize",
+]
+
+[[package]]
+name = "keepcrypt-guard"
+version = "0.0.0"
+dependencies = [
+ "keepcrypt-ffi",
+]
+
+[[package]]
+name = "keepcrypt-jni"
+version = "0.0.0"
+dependencies = [
+ "jni-sys",
+ "keepcrypt-guard",
 ]
 
 [[package]]

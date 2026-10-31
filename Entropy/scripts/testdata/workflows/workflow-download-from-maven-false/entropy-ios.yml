@@ -1,0 +1,7 @@
+permissions:
+  contents: read
+jobs:
+  a:
+    runs-on: macos-26
+    steps:
+      - run: sh scripts/android-gradle.sh --dependency-verification strict -Pkotlin.native.distribution.downloadFromMaven=false help

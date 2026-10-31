@@ -1,0 +1,2 @@
+1
+classpath: com.google.guava:guava-parent:26.0-android is in the lockfile's shippingReleaseRuntimeClasspath but not in

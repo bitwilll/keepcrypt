@@ -1,0 +1,9 @@
+permissions:
+  contents: read
+jobs:
+  a:
+    runs-on: ubuntu-24.04
+    env:
+      TOKEN: '${{ github[''token''] }}'
+    steps:
+      - run: echo one

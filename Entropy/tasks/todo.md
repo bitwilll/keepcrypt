@@ -1,4 +1,4 @@
-# Task: KeepCrypt milestones M0 to M4
+# Task: KeepCrypt milestones M0 to M5
 
 Spec: `docs/build-plan.md` (milestones, core API, CI rules) and `docs/seal-watchonly-braille.md`.
 Claude Code: refine this plan, then **check in with the owner before writing code**.
@@ -1416,6 +1416,484 @@ automatically"); commit 13b applies it.
     https://github.com/RustCrypto/password-hashes/issues/938;
   - Poly1305's r and s are now wiped on drop (b4871b9), except the backends' stack temporaries: the soft backend's in
     `State::new` and `finalize`, and, on x86_64-linux-android, the AVX2 backend's.
+
+### Needed before M5 code (Q53-Q63, asked 2026-10-17)
+
+Answered 2026-10-17: "approve all as recommended". Every recommendation of Q53-Q63 stands and no "Otherwise" is taken. That
+includes, explicitly: the hand-written JNI bridge over jni-sys 0.3.0 with the one `catch_unwind` exception in `keepcrypt-jni` (Q53);
+the Gradle and Maven artifacts listed in Q54, the Android SDK licence accepted by CI when it installs the emulator and images (Q54),
+CODEOWNERS `/Entropy/mobile/` (Q54); the non-required Android job and the BP:318 and MA:74 rewording (Q55); nothing installed on
+this Mac and the x86-emulator limit accepted (Q56); the six doc frictions settled the Pi's way (Q57); the residuals (Q58); the rule 8
+and rule 1 sentences (Q59); the CI-only test-registry APK (Q60); M5b with the games and Tetris on both (Q61); the app ids and
+version 0.0.0 (Q62); the branch already cut from 95c4359 (Q63). Still open from Q56: the phone's model and Android version, which
+the owner names before P0b (commit 18's run); no commit before that needs it.
+
+Please answer these before any M5 code is written. Each starts with what I recommend; "as recommended" is a full answer.
+Everything else in the plan follows your standing instruction of 2026-10-15 and is recorded as a lead decision you can
+override. Almost every M5 commit touches paths you own in CODEOWNERS, so the whole PR needs your review.
+
+53. **How the app talks to the Rust core** (BP:33, :35, :47, :72-74; MA:17, :23; deny.toml:43, :66, :83;
+    canaries.sh:384, :485-494, :866-875; ffi/clippy.toml:27)
+    Recommended:
+    - We write a small bridge ourselves over one new crate, jni-sys 0.3.0 (no dependencies, no build script,
+      MIT/Apache-2.0). No UniFFI, no JNA, no code generator. Every current UniFFI fails checks that pass today (a banned
+      random-number crate, a second user of the OS random source, the MPL-2.0 licence, a logging crate in its
+      generator), and the `jni` crate needs a logging crate.
+    - Two crates: `keepcrypt-ffi` holds every rule, contains no unsafe code and keeps the same lint list as core;
+      a new, small `keepcrypt-jni` (in `ffi/jni/`) is the only place with unsafe code. The workspace's pinned member list
+      grows from four crates to five.
+    - One reviewed exception to the "never catch a panic" rule, only in `keepcrypt-jni`. Without it a Rust panic kills
+      the app before the seed is wiped. The catch wipes everything and shows the stop screen; nothing carries on.
+    - `libkeepcrypt.so` is built with plain cargo and the NDK's compiler, as CI's Android jobs already do; no cargo-ndk.
+    - The docs change to match: BP:35, :47, :72, :74 and MA:17 and MA:23's Android column name the bridge and cargo.
+      BP:73 and MA:23's iPhone column say "Swift binding: chosen in M6". A line under the architecture picture says
+      the same (the picture has no editable source in the repo).
+    Otherwise: (b) UniFFI 0.29.1, pinned forever: MPL-2.0, about 13 crates, a separate generator, JNA's prebuilt library
+    in the app, and secrets in buffers UniFFI does not wipe; it would give M6 its Swift bindings. (c) A current UniFFI
+    with exceptions to the random-crate ban: not recommended, because it weakens rule 1's machine check.
+
+54. **Android build tools, libraries and supply chain** (rule 11; MA:126)
+    Recommended:
+    - Build: Gradle 9.7.1, the Android Gradle plugin 9.3.3, the Compose compiler plugin 2.4.20, JDK 17, NDK r30;
+      compileSdk 37, targetSdk 36 (Play's minimum), minSdk 31.
+    - In the app: activity-compose 1.13.0, Compose foundation 1.12.1 (no Material) and ZXing core 3.5.4, about 60
+      Apache-2.0 modules in all. profileinstaller is excluded because it writes files. Compose brings one small
+      prebuilt native library (graphics-path), which is allow-listed by hash and scanned.
+    - Tests only: androidx.test 1.7.0, ext-junit 1.3.0, UI Automator 2.4.0, JUnit 4.13.2 (EPL-1.0).
+    - The same controls as for crates. The 14-day wait applies to Maven too. Gradle checks every file's checksum
+      against a committed list, which a script reviews: Google's SHA-256 files, and for Maven Central (which publishes
+      no SHA-256 for several of these) SHA-1 plus the publisher's PGP signature. Lockfiles, and a committed list of
+      the shipped libraries that CI compares. Only Google's Maven and Maven Central. Gradle itself is fetched with a
+      pinned SHA-256, with no wrapper jar in git. No local jar or aar files and no remote build scripts.
+    - CODEOWNERS gains `/Entropy/mobile/`. CI accepts the Android SDK licence when it installs the emulator and its
+      system images (about 3.4 GB per run, cached); that acceptance is yours to give.
+    Otherwise: name any library to drop or swap. Material 3 or CameraX would replace hand-written parts, at the cost of
+    more modules and, for Material, popups to secure.
+
+55. **CI for the app** (the 14 required names; banned-api-check.sh:1675-1677; Q38 (b); BP:318; MA:74)
+    Recommended:
+    - The 14 required checks keep their names. The Android cross jobs also build and scan `libkeepcrypt.so` (shipping
+      and test registry), move from the unpinned NDK r27 to NDK r30 (installed if the image ever drops it) and check
+      16 KB pages. `test` runs the bridge's test-registry tests. `gates` runs the new Kotlin, Android and bridge rules,
+      which you own in `scripts/`.
+    - One new non-required job, `entropy-android.yml`, filtered by path like the Pi image workflow. It builds and checks
+      the APKs once, then runs emulators for Android 12 and 16 and one 16 KB-page image on those same files, so the
+      hashes you install are the ones tested. No new actions, no secrets.
+    - No PR touching those paths merges without its green run at the final head; making it required waits for M7.
+    - BP:318 reads "Every app build on CI emulators; one real phone at each app milestone's gate; a Pixel and a Samsung
+      before every release". MA:74's test line says the same, with CI's shell screenshot and recording in place of adb.
+    Otherwise: require the new job now (a ruleset change, and the path filters go); or keep MA:74 as written, which
+    needs a Pixel and a Samsung, developer options and adb at the M5 gate.
+
+56. **Your phone, this Mac, and what CI cannot run** (MA:74)
+    Recommended:
+    - Tell me which Android phone or phones you can use (model, Android 12 or later; 15 or later also tests the
+      recording cover). One phone counts for the gate together with the CI emulators. A second brand is P5 now, or M7.
+    - You install CI-built APKs by hand: no adb, no developer options. Sparrow, Bitcoin Core and the C920 as in M4. One
+      short early session (P0b, about 10 minutes) once the camera scanner exists, then P1-P4 at the end.
+    - Nothing is installed on this Mac; Kotlin builds and tests run in CI.
+    - Accept this limit: CI's emulators are Intel-type. The phone versions of the library are tested there only through
+      the emulator's ARM translation, if the image offers it, plus static checks. If an image offers no translation
+      for a version, that version's first real run is on your phone, and the plan says so in the gate report rather
+      than calling it proven.
+    Otherwise: install JDK 17, Android's command-line tools, NDK r30 and an ARM emulator here (about 8 GB). That makes
+    work faster and allows true ARM runs before your session. With no Android phone, the camera scan, real-device
+    capture and Sparrow items keep the gate open until one is available.
+
+57. **Doc frictions to settle in the docs commit** (MA:29, :34, :73, :123, :160; BP:201-202, :270; PF:120-136; swb:286)
+    Recommended, each as the Pi already does it:
+    - (a) Typing: a letter pad for the first four letters of each word, which core completes, so no word list leaves
+      core; pads for the go-ahead code and the BIP39 passphrase; never the system keyboard. MA's "word picker" becomes
+      "letter pad".
+    - (b) Protected screens: the Pi's list, its privacy gate, 30-second cover, 9-minute warning and 10-minute wipe.
+      Leaving the app on any Protected screen discards the seed (MA:34 names only the words and the backup passphrase).
+    - (c) Failures: the Pi's halt rule; the stop screen's only way out ends the app; a crash wipes and closes silently.
+      A new MA paragraph.
+    - (d) Offline: airplane mode on and Wi-Fi off (Wi-Fi can come back on inside airplane mode); going online wipes the
+      session. Bluetooth may stay on for braille displays. MA:123 changes.
+    - (e) swb:286: "speech only with headphones" becomes "with a warning to use headphones"; no app can tell where
+      TalkBack speaks.
+    - (f) BP:270: "Clippy `disallowed-methods` and a grep gate reject ... in app code" becomes "the grep gate and the
+      APK's compiled-code scan"; Clippy does not read Kotlin.
+    Otherwise: name any item to keep as written.
+
+58. **Secrets the app cannot fully wipe** (rules 5 and 8; MA:17; DS:62-64, :123)
+    Recommended: accept these as residuals for the M7 audit, with limits, and MA:17 gains one sentence naming them.
+    - Java memory: secrets cross only as byte arrays, one page at a time; the Rust copies are wiped; Kotlin zeroes its
+      arrays when a page leaves; a Java string exists only for the text on screen, which Compose and TalkBack need.
+      Java's moving garbage collector and text caches can still hold copies nothing can wipe.
+    - Crash dumps: if native code aborts (rare: a panic while cleaning up, or running out of memory), Android writes a
+      crash report that can include memory near the crash, so a secret could reach the phone's storage. Ordinary
+      errors and Rust panics wipe first and leave no report.
+    - Swap: some phones (for example Samsung's RAM Plus) swap memory to flash, and nothing in the app can prevent it.
+    Otherwise: draw each word letter by letter from native buffers (more code, weaker TalkBack), or render words to
+    images in Rust (no TalkBack). The crash-report and swap items have no fix in M5 either way.
+
+59. **How two rules read for an Android app** (CLAUDE.md rules 8 and 1; Q51)
+    Recommended:
+    - (a) Rule 8 gains one sentence: files the operating system keeps about an app (compiled code, runtime profiles,
+      package records) are not files the app writes. The app's own storage stays empty, which an emulator test proves
+      after every full ceremony.
+    - (b) Rule 1 gains one sentence: the bans bind KeepCrypt's own code, checked in our sources by the grep gate and in
+      the built app by a scan of our compiled classes. Library classes our code never reaches (for example Kotlin's own
+      `Random`, which ships inside its standard library) are allowed.
+    Otherwise: (a) rule 8 unchanged and read strictly (the emulator test still runs). (b) No banned class anywhere in the
+    app, which needs R8 shrinking and a whole-app scan now instead of in M7, and may not be achievable with Kotlin's
+    standard library.
+
+60. **The gate's test registry** (BP:295; todo.md:94-96, :3069-3070; swb:200)
+    Recommended: a second APK, built only in CI and never released. It has its own app id, the label "KeepCrypt TEST
+    REGISTRY", a strip on every screen, and core's `test-registry` feature switched on from the command line, never
+    test stubs. The gate uses kcr.json's signed fixtures as they are, so the phone first shows its Stale warning (they
+    are dated 2026-03-01), which the run also proves. No checker tool; the live test registry stays M9's. The shipping
+    APK refuses snapshots and go-ahead QRs until M9, and the typed code works.
+    Otherwise: regenerate fresh-dated fixtures (they go stale again in 30 days), or build a small test checker in
+    `tools/` (overlaps M9).
+
+61. **What M5 leaves for later, and Tetris with the phones** (MA:142, :171, :186; swb:292; todo.md:1185-1186, :4266-4267)
+    Recommended:
+    - (a) An M5b right after the M5 gate, on its own branch as M4b: "Verify another device's ceremony" (it needs a new
+      core function replaying agreement.json) and the waiting-screen games through `game_random`, with the gate change
+      that allows it in the bridge and the Kotlin games. Home shows neither until then. The camera entropy extra stays
+      M8.
+    - (b) Tetris: you approved Pi Tetris "after M4, with or after the phones" (Q43 (a)). Recommended: Snake and braille
+      Tetris on the phones and Tetris on the Pi together in M5b, one design for both.
+    Otherwise: all of it inside M5 (a longer milestone with a core change in the middle); or Snake only on the phones and
+    Tetris later on both.
+
+62. **App identity** (permanent once published)
+    Recommended: app ids `com.keepcrypt.entropy` and `com.keepcrypt.entropy.testregistry`; name "KeepCrypt"; version
+    0.0.0 until M7, so backups read `created-by: keepcrypt-android 0.0.0`; CI signs with a throwaway key made on the
+    runner (installing a newer run's APK means uninstalling first).
+    Otherwise: another id or name.
+
+63. **Where M5's branch starts** (M4b)
+    Recommended: cut `m5-android` from main after M4b merges. If H6 is still pending when you approve this plan, cut
+    from 95c4359 and merge main in when M4b lands; the shared files (CLAUDE.md Commands, canaries.sh's count,
+    banned-api-check.sh, this file) are merged by hand.
+    Otherwise: wait for M4b before any M5 commit.
+
+### Raised by the owner during M5 stage B (Q64, decided 2026-10-20; re-plan pending)
+64. **How the phone apps are built** (BP:72-74; MA:17, :23-24; M6)
+    The owner asked whether one framework could serve both phones, and was given four options with all seed logic staying
+    in the shared Rust core either way: native Kotlin/Compose plus Swift/SwiftUI (the plan, recommended), Compose
+    Multiplatform, Flutter, or a comparison first.
+    - Answered 2026-10-20: "Compose Multiplatform". The Android Kotlin/Compose work continues, and the same Kotlin screens
+      are to run on iPhone too, with a C bridge to the Rust core and a small Swift layer for iPhone capture handling.
+    - Also from the owner, 2026-10-20: "do not wait for my phone model, I use iphone and android both". Q56's phone
+      question is answered: both an Android phone and an iPhone are available for the phone sessions; the models are
+      recorded with the session reports.
+    - What follows (CLAUDE.md Workflow 8): M5 stops before Stage C (the Rust bridge, commits 9-13) and before any screen
+      code. Stage B's Android build, gates and emulator harness continue, since they hold either way. The lead re-plans M5
+      and M6 for Compose Multiplatform in this file (the new dependencies and toolchain, the iPhone bridge and capture
+      layer, CI for the iPhone target, the doc edits) and brings the decisions that are the owner's (rule 11 approvals,
+      doc edits, milestone scope) as Q65 onward before any of that code is written.
+
+### Needed before M5 Stage C (Q65-Q72, asked 2026-10-20)
+
+Answered 2026-10-20: "Approve all as recommended" for Q65-Q72; for Q67's licences "Accept all six" (HarfBuzz
+MIT-Modern-Variant, ICU's legacy licence, libpng-2.0, libjpeg-turbo's IJG and Zlib, zlib's Zlib, Adobe's DNG SDK licence, for
+the iPhone target only; any further library or licence the linked binary shows comes back to the owner); for Q68 "Approve,
+pinned and signed" (scripts/konan-deps.sh fetches exactly the three named archives, pinned by SHA-256 from signature-verified
+files and checked against the Kotlin Release key, with download.jetbrains.com blocked during the build). Every other
+recommendation stands and no "Otherwise" is taken. Q70's rule wording still comes back after the first iPhone build (its
+second step), and Q65's braille-display risk stays the first item of M6.
+
+You chose Compose Multiplatform (Q64): one set of Kotlin screens for both phones, with all seed logic still in the shared Rust core. These questions cover only what CLAUDE.md keeps for you: new tools and libraries (rule 11), doc and rule edits, scope moved between milestones, CI runners, and places where the docs and the gates disagree. Each question starts with what I recommend, and "as recommended" is a full answer. The full plan is "Re-plan for Compose Multiplatform (Q64, 2026-10-20)" under M5. How builds get onto your iPhone, and which iOS versions are tested, will be asked when M6 starts; nothing in M5 depends on them.
+
+Two things you should know first. While researching, my agents ran two Xcode commands on your Mac:
+- `xcrun simctl list runtimes`, which looked read-only but made Xcode install its simulator components (CoreSimulator 1174.9.2);
+- `xcodebuild -version`, which only reads the version; I saw no change from it.
+
+Nothing else on your Mac or in the repo changed. From now on, no simulator, `xcodebuild` or device command, and no Xcode app, runs on your Mac without your yes.
+
+65. **When the iPhone app arrives: how M5 and M6 are split** (BP:298, :299; MA:17, :31; todo M6 items)
+    Recommended: (a).
+    - M5 builds the shared screens and ships the Android app, as planned.
+    - In M5 the iPhone version already compiles in CI and the shared tests run on an iPhone simulator, so problems show up early.
+    - Moving into M5: the iPhone compile, the iOS static library and its scan, the macOS workflow, and an early check that Compose exposes each word on a words page to VoiceOver as its own readable item.
+    - M6 adds the Swift capture layer, the iPhone file and camera parts, the iPhone release checks and your iPhone sessions (I0-I5). Nothing that M5's current plan delivers moves to M6.
+    - BP:298 and BP:299 change as written in the re-plan. The M5 gate gains "the shared tests pass on the iOS simulator"; the M6 gate is unchanged.
+    - **Biggest risk:** the docs promise braille-display support on iPhone (MA:31), and nobody has documented whether Compose on iPhone reaches a braille display. M5's VoiceOver check reduces that risk but cannot settle it. Your braille-display check on the iPhone is the first thing M6 does. If it fails, the iPhone words pages would have to be drawn natively in Swift (Q71 (b)), which undoes part of Q64. If the M5 check already fails, I stop and come back to you before writing more screens.
+
+    Otherwise:
+    - (b) M5 covers both phones and both gates. BP:299 is folded into BP:298, and CLAUDE.md:14, BP:300's Needs and every "M6" reference change. That makes one milestone, the largest yet. It would let the braille check happen inside the same milestone, but iPhone capture protection with Compose (Q71) stays unknown until late in it.
+    - (c) M5 declares only the Android target and M6 adds iPhone. M5 then needs no Mac toolchain. The costs: a second dependency regeneration in M6, the C bridge runs for the first time in M6, the braille risk is found even later, and a gate rule must stop Android-only code from creeping into the shared screens.
+
+66. **The iPhone bridge and the one panic catch** (Q53; BP:37, :49-50, :77; ffi/clippy.toml; canaries.sh:380-390, :485-494)
+    Recommended: (a).
+    - A new, very small Rust crate, `keepcrypt-capi`, gives iPhone a two-function C interface (`kc_max_out`, `kc_call`), built as `libkeepcrypt_capi.a`. Kotlin declares the interface, and each linked program names that one library explicitly. There is no XCFramework, and Swift never calls Rust.
+    - Q53's single panic catch moves out of `keepcrypt-jni` into a new crate, `keepcrypt-guard`, that has no unsafe code. Both boundaries call it, so there is still exactly one catch. `keepcrypt-jni` and `keepcrypt-capi` then keep core's lint list byte for byte.
+    - The workspace grows from four members to seven (Q53 planned five).
+    - No new crate from crates.io. The C header is hand-written (no cbindgen, which would be a new tool).
+
+    Otherwise:
+    - (b) One boundary crate (renamed, for example `keepcrypt-bridge`) holding both the JNI and C surfaces and the catch. That is five members, but each platform's library then carries the other's exports or needs per-target switches.
+    - (c) A second copy of the catch in `keepcrypt-capi`: two catch sites to review, against Q53's "one catch, one place, one crate".
+
+67. **New build tools and libraries for the shared screens** (rule 11; Q54; MA:126)
+    Recommended: approve the following at these exact versions, all past the 14-day wait.
+    - Gradle plugins:
+      - `org.jetbrains.kotlin.multiplatform` 2.4.20 (the same Kotlin as now);
+      - `com.android.kotlin.multiplatform.library` 9.3.3 (the same Android plugin release as now).
+    - Libraries: Compose Multiplatform 1.12.1 (`org.jetbrains.compose.runtime`, `.foundation`, `.ui`) and what they bring.
+      - On Android: thin wrappers over the Compose already approved, **plus one real upgrade**: the androidx savedstate libraries go from 1.3.2 to 1.4.0 (published 2025-11-05) inside the app. Any other version change the lockfile shows comes back to you by name before it is committed.
+      - On iPhone: iOS builds of the same androidx libraries, kotlinx coroutines, atomicfu 0.28.0, kotlinx-serialization-core 1.7.3, and **skiko 0.150.1**.
+      - **skiko puts a JetBrains-built copy of Skia (the graphics library Chrome and Android use) into the iPhone app. It is a prebuilt binary we cannot rebuild ourselves, about 58 MB per target before linking.** Its POM says Apache-2.0. Skia itself is BSD-3-Clause, which our licence list already allows. Skia also bundles other open-source code, which the review records library by library with its licence: read from JetBrains/skia at skiko 0.150.1's pin (m150-1f14f1166a; every `skia_use_system_*` off, so all of it is compiled in):
+        - on our licence list: Skia and its modules (BSD-3-Clause), expat (MIT), libwebp (BSD-3-Clause plus a patent grant),
+          piex (Apache-2.0), and the Unicode-3.0 part of ICU;
+        - **not on our licence list, so you approve each by name here:** HarfBuzz (MIT-Modern-Variant, an older MIT
+          wording), ICU's legacy licence (SPDX `ICU`, for code from ICU 1.8.1-57.1), libpng (libpng-2.0), libjpeg-turbo
+          (IJG and Zlib), zlib (Zlib) and Adobe's DNG SDK (Adobe's own "DNG SDK License Agreement", no SPDX id). All are
+          permissive; the DNG SDK one is a custom licence, and skiko links it for raw-photo decoding the app never uses;
+        - not confirmed without inspecting the binary: wuffs (Apache-2.0, built by default, possibly not linked for iOS) and
+          PartitionAlloc (probably test tools only). Commit 8q lists every archive member of the linked binary and any
+          library or licence not named here comes back to you.
+        These licences are added to the review script's list for the iPhone target only; the Rust allow list in deny.toml
+        does not change..
+    - Test and build helpers:
+      - `org.jetbrains.kotlin:kotlin-test` 2.4.20, tests only (the only test library that runs on iPhone), and `kotlin-test-junit` 2.4.20, which it uses on the JVM;
+      - `org.jetbrains.kotlin:kotlin-klib-commonizer-embeddable` 2.4.20, a build tool that lets the two iPhone targets share code.
+    - The Kotlin/Native compiler, `kotlin-native-prebuilt` 2.4.20: 290 MB for the Mac, and 220 MB for Linux if the probe shows the Linux job needs it. It goes through Gradle's checksum and signature checks like every other artifact, and it carries Kotlin's iPhone standard library.
+    - Not added:
+      - the `org.jetbrains.compose` Gradle plugin (it brings a hot-reload plugin we do not need);
+      - Material 3 (alpha);
+      - Compose 1.12.2 and Kotlin 2.4.21 (inside the 14-day wait; 1.12.2's iPhone fix is for text fields and dialogs, which the app does not have).
+    - Regenerating the lockfiles and checksum lists for these needs the one reviewed, temporary exception to the gate's bootstrap rule that M5-13 reserved. It runs on Linux and on macOS, the results are merged by a committed script and reviewed as one, and strict mode is back on in the next commit.
+
+    Otherwise: name anything to drop. Dropping skiko or Compose Multiplatform itself means the iPhone screens cannot be shared, which undoes Q64; the alternative is native SwiftUI screens in M6 (Q64's first option).
+
+68. **Three Kotlin/Native toolchain files from a third download site, one of them a compiler** (rule 11; Q54's "only Google's Maven and Maven Central")
+    Recommended: approve a script, `scripts/konan-deps.sh`, that fetches exactly three files from download.jetbrains.com.
+    - The files:
+      - `llvm-21-aarch64-macos-essentials-97.tar.gz` (151 MB). **This is the LLVM compiler back end. It turns Kotlin into machine code, so every instruction of the iPhone app's Kotlin code comes out of it. We have to trust it the way we trust the Rust compiler.**
+      - `lldb-4-macos.tar.gz` (64 MB), a debugger.
+      - `libffi-3.3-1-macos-arm64.tar.gz` (17 KB), a small helper library.
+    - The script refuses any file whose SHA-256 differs from the value pinned in it, or whose JetBrains signature does not verify against a pinned key. Without the script, the Kotlin compiler downloads these files itself and checks nothing.
+    - The signatures are checked against JetBrains' "Kotlin Release" key, whose fingerprint kotlinlang.org publishes
+      (`2FBA 29D0 8D2E 25EE 84C1 32C3 0729 A0AF F899 9A87`); the three archives and `kotlin-native-prebuilt` 2.4.20 are all
+      signed by its subkey `6F53 8074 CCEB F35F 28AF 9B06 6A09 75F8 B112 7B83` (valid to 2027-04-11). So these pins are
+      anchored to a published fingerprint, not only trusted on first use.
+    - One warning sign already: JetBrains' published `.sha256` for libffi lists the same digest as lldb's, so at least one
+      published hash file is wrong. The script pins hashes taken from signature-verified files, never from `.sha256` files.
+    - In CI, JetBrains' download site is blocked before the build starts, and the build begins from an empty toolchain folder. The compiler can therefore never fetch anything itself, and a CI test proves that a missing file makes the build fail.
+    - The exact names are read from the verified compiler at the first macOS run. Any addition (for example Linux files, if the Linux job needs them) comes back to you by name.
+
+    Otherwise:
+    - (b) Refuse the third site. The iPhone target then cannot be built, which means Q65 (c), and Q64 reopens.
+    - (c) Let the compiler download them unchecked. Not recommended: it is the kind of unverified fetch that rule 11 and the Coldcard lesson exist to stop.
+
+69. **CI for the iPhone target, and which Xcode** (Q55; runner choice. Kotlin 2.4.20 is tested only with Xcode 26.4; your Mac has 27.1.)
+    Recommended:
+    - A new non-required workflow, `entropy-ios.yml`, with one job on GitHub's macos-26 runner (free, since the repository is public).
+    - It is pinned to Xcode 26.4.1, which that image has, and fails if it is missing. Kotlin was tested with 26.4's first build (17E192); the image has only the 26.4.1 bug-fix build (17E202). I record that difference and never silence a warning about it.
+    - It uses JDK 17 from the image (the image's default is 21).
+    - It builds the iOS Rust library and scans it, runs the shared tests on the iPhone simulator, and checks that the library it scanned is byte for byte the one it linked. It scans the linked programs, with the same hardening as the Android job (pinned actions, read-only, no secrets).
+    - The two required iOS cross-compile checks keep their names and add the iOS library's build and scan.
+    - Builds on your Mac with Xcode 27.1 are best effort, and only matter from M6.
+
+    Otherwise:
+    - (b) Make the iPhone job required. Merges would then be blocked by any macOS runner trouble and by Apple's image changes.
+    - (c) Use Xcode 27 untested, with the warning silenced.
+
+70. **How rules 1, 5 and 9 read for library code inside the iPhone app** (CLAUDE.md:43-52 and rules 5, 9; BP:274; MA:127; Q59 (b))
+    On Android we scan only our own compiled classes, and library code our app never calls is allowed (Q59 (b)). The iPhone app is one binary that holds Kotlin's runtime, Compose, Skia, Swift and our Rust. Some of that library code touches things our rules ban:
+    - Skia's small internal random generator for graphics (`SkRandom`) and Kotlin's own `Random`;
+    - Compose's clipboard code (`UIPasteboard`), which our app never uses: it has no text fields and no selectable text;
+    - the basic file and print functions every runtime uses.
+
+    Recommended: approve this method now, and approve the exact rule wording after the first build shows the real symbols (commit 8q).
+    - Our Rust library is scanned exactly as strictly as today's builds.
+    - The linked iPhone programs are checked against a committed, reviewed list of every imported system function and framework, on every build.
+    - Our own Kotlin code is checked by a call scan: no direct call from our code into Kotlin's random generator, `Uuid.random`, the C random functions, the clipboard, storage or network. This is the iPhone version of Android's compiled-class scan.
+    - Hard failures anywhere in the binary:
+      - network functions and classes;
+      - OS random sources other than `CCRandomGenerateBytes`;
+      - high-level storage (`NSUserDefaults`, `NSFileManager`, Keychain, CoreData, iCloud);
+      - Compose's clipboard code, if our code can reach it.
+    - Allowed by name, only in library code our code never calls: Skia's `SkRandom`, Kotlin's `Random`, Compose's clipboard code, and the runtimes' basic file and print functions. Rule 8 itself is checked by behaviour (Q71), not by symbol.
+    - If the first build shows any banned import, I stop and bring you the exact symbols and where they come from. Then you approve the sentence added to rules 1, 5 and 9 (commit 8r).
+
+    Otherwise:
+    - (a) Write the rule sentence now, before any symbols are seen.
+    - (c) Treat any random, clipboard or file code in any library as a failure. No Compose iPhone build can pass that.
+
+71. **iPhone residual risks and the iOS-only rules** (MA:17, :34, :36, :86; rule 8; Q58; Q59 (a))
+    Recommended:
+    - Accept these for the M7 audit, as Q58 did for Android:
+      - Kotlin strings and Kotlin's iPhone memory cannot be wiped.
+      - Skia keeps a copy of up to 128 recently drawn texts in a cache Compose gives no switch for (Compose itself only clears it when a new font is registered; M6 tests whether we can use that).
+      - **Any unexpected Kotlin error on iPhone ends the app with a system crash report that includes the error's details.** This covers every unexpected error, not only native crashes. M6 wipes the session first; whether the report can be avoided is an M6 test.
+      - Screenshots cannot be blocked on iPhone (MA:84 already says so).
+    - To shrink the Skia copy on iPhone, Protected screens there draw secret text one letter per text element, so the cache holds single letters rather than words. This is iPhone-only, so your Q58 answer for Android is untouched. VoiceOver still receives each whole word, and only while it is on. Applying the same on Android would reopen Q58, so it is not proposed. MA:17 gains one sentence for the iPhone residuals.
+    - Rule 8 on iPhone: iOS itself writes files into every app's folder (a settings file, the app-switcher snapshot, the graphics shader cache). Our code writes none of them. Recommended reading: such system files are allowed only if they hold no secret. M6 proves it on the simulator by comparing the app's folder before and after a ceremony; any file holding seed material fails. The app-switcher snapshot must show the cover.
+    - The secure-text-field trick (MA:86) is tested first thing in M6, on the simulator and on your iPhone. It stays only if screenshots and recordings come out blank, touches work, the keyboard never opens and VoiceOver still reads the words. If it fails, MA:86's row is replaced by a sentence saying so. The gate never relied on it, and MA:86 says it is "never the only layer".
+    - iPhone can honour two Android rules only in another form, and MA:34 and MA:36 change to say so (in M6):
+      - the stop screen holds no secret and has no button, because Apple rejects apps that quit themselves; the next launch reruns the self-test;
+      - "wipe after 60 seconds in the background" becomes "wipe when iOS ends the background grace period or after 60 seconds, whichever comes first, checked on return", because iOS suspends a backgrounded app.
+    - No Protected content ever appears in a Compose dialog or popup. This is already true: the app has none, and the gate bans them.
+
+    Otherwise:
+    - (b) Draw the Protected screens natively in Swift on iPhone. There is no Skia copy, but those screens are no longer shared, which undoes much of Q64.
+    - (c) Name a residual you do not accept, and I re-plan around it.
+
+72. **The doc edits** (BP:35, :37, :49-50, :55-57, :75-77, :298, :299; MA:17, :21, :23, :24, :34, :36, :84-87, :89-110, :114, :116, :124, :127, :156)
+    Recommended: approve the list under "Doc edits" in the re-plan.
+    - The architecture, bridge and stack edits land now, alone in one docs-only commit (8l).
+    - The iPhone behaviour edits land in M6 after its first tests, with the wording in the list. If a test result fits neither the drafted wording nor its stated alternative, that edit comes back to you.
+    - design.md, pi-firmware.md, seal-watchonly-braille.md and CLAUDE.md rule 9 do not change. Rules 1, 5 and 9 change only through Q70's second step.
+
+    Otherwise: name any edit to change or hold. Held edits leave the docs saying "SwiftUI" and "Swift binding: chosen in M6" while the code says otherwise, and CLAUDE.md asks me to stop when docs and code disagree.
+
+### Raised by CI during M5 Stage B2 (Q73, decided 2026-10-20)
+73. **Two of the iPhone toolchain archives fail their signature check** (Q65, Q68; BP:298-299)
+    The first `Entropy iOS` run (39380758809, at eb28924) fetched the three Kotlin/Native archives Q68 approved and checked
+    each `.asc` against the Kotlin Release key (2FBA29D0..., signing subkey 6F538074...). `llvm-21-aarch64-macos-essentials-97`
+    passed: a good signature made 2026-04-20, SHA-256 62fd78f0...408a, equal to its published `.sha256`.
+    `lldb-4-macos` and `libffi-3.3-1-macos-arm64` failed: gpg reports `BADSIG` for both (signatures made 2024-07-03, by the
+    same subkey). Their published `.sha256` files hold one and the same value, 6c97f0a4...3d45, for two different archives,
+    so JetBrains' published hashes and signatures for those two do not describe the archives served. `konan-deps.sh` refused
+    all three and placed nothing, as designed.
+    Options put to the owner: pin the two by SHA-256 with cross-checks (recommended), pause the iPhone target until
+    JetBrains publishes correct signatures, or drop the iPhone target from M5.
+    - Answered 2026-10-20: "Drop iPhone from M5". M5 ships the Android app only. The screens stay in the Compose
+      Multiplatform modules, built for Android only, and the iPhone question (shared screens over a C bridge, or native
+      screens) reopens when M6 starts. Q65's iPhone compile and simulator tests, Q66's `keepcrypt-capi`, Q68's fetch,
+      Q69's iPhone CI job and Q70's rule sentence move to M6; Q67's iPhone-only artifacts are not used in M5. The re-cut is
+      "Re-cut after Q73 (2026-10-20)" under M5.
+
+### Raised during M5 commit 8x (Q74, decided 2026-10-20)
+74. **Version changes in the Android lockfiles beyond savedstate** (Q67: "Any other version change the lockfile shows comes
+    back to you by name before it is committed"; critique item H6)
+    8x committed the lockfiles of the Android bootstrap run 39404714671 (at 1ae0df6) on the branch, not pushed. Beside
+    the approved savedstate 1.3.2 -> 1.4.0 and the Compose Multiplatform wrapper modules, every other version change sits
+    only in the shared `:screens` module; the app resolves its own pinned versions, so none reaches an APK:
+    - `:screens`' own Android test build (androidRuntimeClasspath, androidHostTestRuntimeClasspath and its lint
+      classpaths): androidx.core and core-ktx 1.16.0 and androidx.activity and activity-ktx 1.7.0, older than the app's
+      1.18.0 and 1.13.0;
+    - compile-time metadata for the shared code only (metadataCompileClasspath and the *DependenciesMetadata
+      configurations): androidx.lifecycle 2.11.0 (lifecycle-common, -runtime, -runtime-compose, -viewmodel,
+      -viewmodel-compose, -viewmodel-savedstate), androidx.navigationevent and navigationevent-compose 1.1.1,
+      org.jetbrains.androidx.navigationevent:navigationevent-compose 1.1.0, org.jetbrains.kotlinx:atomicfu 0.28.0,
+      org.jetbrains.kotlinx:kotlinx-browser 0.5.0, org.jetbrains.compose.ui:ui-backhandler 1.12.1, and skiko 0.150.1 and
+      ui-uikit 1.12.1 as `.module` plus `-metadata.jar`;
+    - Kotlin build tooling in `:core-ffi` and `:screens`: kotlin-scripting-common, -compiler-embeddable,
+      -compiler-impl-embeddable and -jvm 2.4.20 (with kotlin-test, kotlin-test-junit and the klib commonizer 2.4.20,
+      which Q67 named).
+    Options put to the owner: approve as listed and run the dependency review as commit 6 did (recommended), pin
+    `:screens`' test build onto the app's versions with one more bootstrap round, or stop and discuss.
+    - Answered 2026-10-20: "Approve as listed". The review then runs as commit 6's did: the artifacts' published
+      `.sha256`, `.sha1` and `.asc` files and Central artifacts' bytes from Google's Maven and Maven Central, and the
+      new signers' keys from keyserver.ubuntu.com or keys.openpgp.org, fetched into a mirror outside the repo; each new
+      signer is trusted on first use (M5-12) and goes on the M7 audit list, and the 61 committed keys stay unchanged.
+
+### Raised by CI during M5 commit 15 (Q75, decided 2026-10-21)
+75. **Two things Android does that the docs say do not happen** (MA:36, MA's "Session lifetime"; Q57 (b), (c); Q58)
+    - (a) The crash log. Android's own start-up code installs an uncaught-exception logger that apps cannot replace.
+      It runs before KeepCrypt's handler and writes "FATAL EXCEPTION", the process name and the exception's type,
+      message and stack (KeepCrypt's class and method names) to the phone's crash log. CI run 39582638947 at 78f5720
+      shows it on API 31: CrashTest found 3 crash-log lines naming the app. Our handler still runs next: the wipe,
+      then the process ends, with no crash dialog and no saved crash report (DropBox), as the same run shows. The crash
+      log is a ring buffer in memory, read over USB debugging, by the system or in a bug report the user makes. App
+      code builds no message from runtime values, and secrets are never Java strings except the text on screen.
+      Recommended: accept it as a residual beside Q58. MA:36 says the process ends "with no dialog and no crash report;
+      Android's own crash log in memory still records the exception's type and stack (Q75)"; the plan's halts
+      paragraph, group 14's proof and the critique line follow; CrashTest's judge for that run becomes: process gone,
+      no crash window, no new data_app_crash, and every crash-log line naming the app belongs to the trigger's
+      exception (its fixed message present, no other exception).
+      Otherwise: a catch around the main thread's message loop that wipes and ends the process (never continues).
+      It keeps main-thread exceptions out of the log, but it runs the message loop inside itself, which Android does
+      not document, and it needs a one-site exception to the gate's fail-open rule.
+    - (b) Background apps can be frozen. Android 14 and later freeze apps sitting in the background, for example
+      after the user opens other apps. A frozen app's 60-second timer cannot run, so after leaving on a Public screen
+      the session stays in the app's memory past 60 seconds, until the user comes back or Android ends the process.
+      On the return the 60-second check runs before anything is drawn (the cover is already up), and going online
+      while frozen is caught on the return the same way. No emulator test can show it: the test runner keeps its
+      app unfrozen.
+      Recommended: accept it as a residual; MA's "Session lifetime" says the app "wipes after 60 seconds in the
+      background or, if Android froze it, when it is next opened, before anything shows".
+      Otherwise: leaving the app on any screen while a session is held discards at once, with no 60-second grace.
+      That is simpler and stronger, but a glance at a notification or a call during the dice loses the rolls.
+    - Answered 2026-10-21: (a) "Accept as residual"; (b) "Accept as residual". Commit 15m makes the two MA edits as
+      recommended (MA:36 and "Session lifetime"; MA:17's list, which is about secrets leaving memory, is unchanged),
+      amends the plan's halts paragraph, its timers line, group 14's crash proof and the critique line, and gives
+      CrashTest's run the recommended judge in scripts/android-instrument.sh. Both residuals go on the M7 audit list
+      beside Q58's.
+
+### Raised by the owner during M5 (Q76, decided 2026-10-22)
+76. **The Android SDK on the owner's Mac** (Q56: nothing was installed here; tasks/lessons.md, 2026-10-20)
+    The owner installed Android Studio and the Android SDK on the Mac and asked (2026-10-22) to "use it to refine and
+    make the app functions and experience better and all the functionality available with end to end unit and edge
+    case test with userflow working without bugs". Asked: which downloads may the local build make, each checked
+    against what the repo pins? (a) gradle-9.7.1-bin.zip from services.gradle.org, through scripts/android-gradle.sh
+    (its pinned SHA-256); (b) the build's Maven dependencies, each checked by the committed verification metadata;
+    (c) NDK 30.0.16248370 for macOS (android-ndk-r30-darwin.zip, 974,984,488 bytes, SHA-1
+    c060be96767eefbb8e0a27796d6f43115fc1a0c4, from dl.google.com's repository2-3.xml, the source Android's SDK manager
+    reads), so the Android Rust libraries build on the Mac too, which needs a macOS path in scripts/android-rust.sh.
+    - Answered 2026-10-22: "Also NDK r30 (~1 GB)": (a), (b) and (c). The owner's "use it" is the lessons rule's yes for
+      the Android SDK's tools on the Mac (Gradle, adb, the emulator); Xcode's tools still need their own yes. Q56 stands
+      for the gate: every Proof still cites a CI run, and a local run is reported as local. Tests run on the project's
+      own AVD, never on the owner's Medium_Phone.
+
+### Raised by Stage U's map (Q77-Q85, 2026-10-29)
+Stage U's read-only map (M5-72) audited every screen against the docs and the Pi. These nine need the owner: each
+changes a doc, overrides a lead decision or accepts a residual. Stages U-1 to U-5 go on meanwhile; U-6 waits for these.
+77. **Screen orientation** (Kit.kt:99-106; SecureActivity.kt:45, :80-83; the manifest sets neither)
+    Recommended: lock phones to portrait (android:screenOrientation="portrait"; Android 16 ignores it at sw600dp, where
+    the height suffices) and handle configuration changes in place (android:configChanges for orientation, screen size
+    and layout, density, font scale, ui mode, keyboard and navigation), so Compose redraws without a recreation and no
+    picker's or camera prompt's answer is lost. In landscape today the bottom actions squash the text column to 0 dp, so
+    the read-back loses which insert to read; and a recreation drops a pending picker answer, since nothing is saved.
+    Otherwise: landscape stays allowed; the actions move into the scrolling column once they pass a share of the window,
+    and the pickers' request codes survive a recreation; both with emulator tests.
+78. **Which system font scales every screen supports** (Drawing.kt:198-223; MA:31 and swb:286 name blind and
+    low-vision users; CI runs at 1.0)
+    Recommended: the full system range, 1.3 on API 31-33 and 2.0 on API 34+. At 1.15 the braille faces' dot numbers
+    4-6 clip; at 1.3 the test-registry backup confirm loses choices 3-4 from view and the seal card's check QR is never
+    wholly on screen; at 2.0 Home, the BIP39 entry and the code entry lose controls. Parts that grow move into the
+    scrolling column, and the capture walk runs at 1.3 on API 31 and 2.0 on API 36.
+    Otherwise: support up to 1.15 only, fixing the dot numbers and the confirm there, with a line in mobile-apps.md.
+79. **TalkBack on the Protected pads** (read-back, backup confirm, Check a backup's passphrase, the BIP39 passphrase;
+    Pads.kt:228-233; M5-46; swb:278)
+    Recommended: each Protected key carries its letter as text marked isSensitiveData (as the secret nodes are), keeping
+    its click action. Today each key carries only its role, which also strips its click and focus, so a TalkBack user
+    cannot do the mandatory read-back and cannot finish a ceremony. The letters typed are already read back in a
+    sensitive node after each press, so the keys expose no more; on API 31-33, which has no sensitive mark, this joins
+    the residual MA:74 accepts for the words.
+    Otherwise: keep role-only keys, and swb:286 says a phone ceremony cannot be finished with TalkBack.
+80. **Under the 30-second cover and the idle warning** (Screens.kt:50-61, :218-241)
+    Recommended: (a) the screen beneath is unreadable to accessibility services (its semantics cleared) while the cover
+    or the warning is up; today the words, D and the passphrases stay in the accessibility tree under a cover drawn on
+    top. (b) Accessibility reading counts as input (accessibility-focus events reset the idle clock); today only touches
+    do, so a braille-display reader who reads without touching is covered at 30 s and wiped at 10 minutes mid-reading.
+    Otherwise: the cover stays visual only and only touches count, said in mobile-apps.md's TalkBack line.
+81. **Where a wipe lands when the phone is still offline** (PF:127 "returns Home"; MA:34 adopts the Pi's rules;
+    group 15 and M5-50 land every discard on Go offline: CeremonyModel.kt:1529-1535)
+    Recommended: Home with the notice when the phone is still offline (idle, 60 s away, leaving a Protected screen), and
+    Go offline only when it went online, as PF:127 says.
+    Otherwise: Go offline after every discard, as built, and mobile-apps.md:34 says so.
+82. **Is the privacy gate a Public screen, as on the Pi?** (pi/app/src/screen.rs:289; CeremonyModel.kt:442-443, :1794)
+    Recommended: Public. Today the gate is a flag on the Protected screen behind it, so leaving the app on the gate
+    discards at once and the gate is covered after 30 s, though it shows no secret: a phone call on a 24-word seed's
+    second gate destroys the session. As Public, leaving keeps the session 60 s and there is no 30-second cover.
+    Otherwise: the gate stays part of the Protected screen, said in MA:34.
+83. **The headphones warning on every privacy gate** (Screens.kt:237, :288-291; swb:286 names only the words)
+    Recommended: on every gate. TalkBack also speaks the backup passphrase, D, the BIP39 passphrase and every letter
+    typed on a Protected pad, behind gates that carry no warning today. swb:286 gains the wider wording.
+    Otherwise: the words' gate only, as swb:286 reads.
+84. **API 31-33's accessibility residual and the shipping APK's resource ids** (SecureActivity.kt:50-52;
+    MainActivity.kt:70; MA:74)
+    Recommended: accept both as part of the API 31-33 residual MA:74 already accepts for the words, and say so in MA:74:
+    before Android 14 there is no data-sensitive mark, so an enabled accessibility service receives each dice key's
+    click and the pick's text (in dice-only mode, the seed), and the shipping APK turns test tags into resource ids that
+    name which nodes hold secrets (the capture tests read them).
+    Otherwise: minSdk 34, or the app refuses to start a ceremony while a non-tool accessibility service is enabled; and
+    shipping builds drop testTagsAsResourceId, the tests reading tags in-process.
+85. **A cue when a screen's text scrolls** (Kit.kt:103; 21h's off-screen confirm choice)
+    Recommended: a "More below" line, which TalkBack reads too, whenever the text column can scroll further. At 1.0 in
+    CI's window the seal card's check QR starts about 490 dp down, and the checklist, the collision result and the words
+    page run below the fold with no sign.
+    Otherwise: a rule naming what must be above the fold (the check QR, the confirm's choices), the rest allowed below.
 
 ## M0: Repo bootstrap
 
@@ -10262,6 +10740,6623 @@ Every finding of the plan's spec, security and feasibility review was accepted; 
   - the prices quoted in Q49.
 
 ---
+
+## M5: Android app (`mobile/android`, the FFI)
+
+Status (2026-10-20): Stages A and B (commits 1-8) are on the branch; the owner then chose Compose Multiplatform for
+both phones (Q64); the re-plan and its questions Q65-Q72 were answered "approve all as recommended" the same day, so
+work resumes from the re-plan's commit order. Earlier: the owner answered Q53-Q63 "approve all as
+recommended" (commit 1b), so Stage A started. The plan was
+drafted the same day as research only, with no M5 code written before the answers to Q53-Q63
+("Needed before M5 code (Q53-Q63, asked 2026-10-17)" under "## Open questions for the owner", above). The owner asked
+for execution to start at once ("do it asap and make sure you start execution next step", 2026-10-17), so Stage A's
+commit 1 is this plan on `m5-android`, cut from 95c4359 (M5 lead decision 1). Code then follows "Commit order on
+`m5-android`" stage by stage and stops at the gate.
+
+How choices are made: on 2026-10-15 the owner said "dont ask me further, go ahead automatically". So wherever this plan
+leaves a choice, the lead takes the option under "Built into this plan" and records it as a dated lead decision. Q53-Q63
+are only what CLAUDE.md keeps for the owner: new dependencies (rule 11), doc and rule edits, readings of a rule, places
+where the docs and the gates disagree ("stop and ask"), the owner's own phone and computer, and scope moved between
+milestones.
+
+**M5 lead decisions** (dated; the owner can override any of them)
+- M5-1 (2026-10-17): `m5-android` is cut from 95c4359 while M4b waits on H6 (Q63's fallback), because the owner asked
+  for execution to start at once. When M4b merges, main is merged into `m5-android` and the shared files (CLAUDE.md
+  Commands, canaries.sh's `want_checks`, banned-api-check.sh, this file) are merged by hand.
+- M5-2 (2026-10-17): M5's commit 1 does not tick M4's after-merge item (todo.md:9300-9302 at 95c4359). M4b's commit 1
+  (c923063 on `m4b-screens`, PR #8) already records main's push run with the same hash, and two branches ticking the
+  same lines would only conflict at the merge. The run IDs are carried in "Starting point" below.
+- M5-3 (2026-10-17): MA:13 and MA:172 (the first-screen sentence and the Go offline step) are reworded to the Q57 (d)
+  rule, airplane mode on and Wi-Fi off, in commit 2c. Q57 (d) named only MA:123, but the rule is the owner's; leaving two
+  sentences with the old wording would make the document state two offline conditions (Stage A review finding 4).
+- M5-4 (2026-10-17): the gate's Build rule refuses any submodule (gitlink) under `mobile/`, not only one at a `build/` or
+  `.gradle/` path, because `git ls-files` cannot list a submodule's files, so the rule could not clear build output
+  committed through one (commit 3b; Coldcard's theft came through a submodule, BP:81). MA:25's "including dialogs" stays:
+  the plan builds no dialogs, and MA:70's rule is kept as the guard the gate enforces.
+- M5-5 (2026-10-17): a plan entry whose Proof constrains the diff (docs only; only the rules' lines) lands as two commits,
+  the change and then its tick in tasks/todo.md (2 = 73466b6 + f80c87f, 2b = 424b008 + 234edec), as M3 and M4 did.
+- M5-6 (2026-10-18): the test-registry flavour is named `withTestRegistry` (source set `src/withTestRegistry/`), because AGP
+  refuses flavour names that start with "test". Its app id stays `com.keepcrypt.entropy.testregistry` (Q62); the plan's
+  "testRegistry flavour" means this one.
+- M5-7 (2026-10-18): the root build keeps `org.jetbrains.kotlin.android` 2.4.20 with `apply false`. AGP 9.3.3 compiles
+  Kotlin itself and asks for kotlin-gradle-plugin 2.2.10; the marker resolves it to 2.4.20, the Kotlin Q54 approved and the
+  version the Compose compiler plugin 2.4.20 needs (run 39062895784). It is a build-time pin, never applied to a module,
+  so the modules still apply only AGP and the Compose compiler plugin.
+- M5-8 (2026-10-18): the gate's ban on the identifiers `thread` and `JoinHandle` covers the shipped FFI sources
+  (`ffi/src/`, `ffi/jni/src/`), not integration tests under `ffi/tests/` or `ffi/jni/tests/`, because group 8's
+  `ffi_discard_during_call` needs a second thread (`std::thread::scope`). A test thread cannot turn a shipped panic into
+  a value; the shipped crates stay banned. Changed in Stage C before commit 10.
+- M5-9 (2026-10-18): `scripts/android-rust.sh` (commit 14) writes `libkeepcrypt.so` to `app/src/<flavour>/jniLibs/<abi>/`,
+  Gradle's default native-library source set, instead of `app/build/rust/`. No `srcDir` line is needed, so the KtSdk
+  rule stays as it is; `.gitignore` already ignores `mobile/android/**/jniLibs/` and KtBinary refuses a tracked `.so`.
+- M5-10 (2026-10-18): the APKs carry exactly MA:23's three ABIs (arm64-v8a, armeabi-v7a, x86_64): `abiFilters` in commit
+  6, so graphics-path's x86 copy leaves the APK.
+- M5-11 (2026-10-18): the 14 files that publish neither a `.sha256` (Google's Maven) nor an `.asc` (Maven Central) are
+  accepted by name only, each with the reason "SHA-1 only: no .sha256 or .asc published; published SHA-1 matches and
+  the bytes match the pinned SHA-256": androidx.arch.core:core-common:2.1.0 (pom); androidx.autofill:autofill:1.0.0
+  (aar, pom); androidx.concurrent:concurrent-futures:1.0.0 (jar, pom); androidx.interpolator:interpolator:1.0.0 (aar,
+  pom); androidx.versionedparcelable:versionedparcelable:1.1.1 (aar, pom); javax.inject:javax.inject:1 (jar, pom);
+  net.sf.kxml:kxml2:2.3.0 (jar, pom); org.sonatype.oss:oss-parent:7 (pom). `scripts/android-deps-review.py` holds
+  them as an exact list (group, name, version, file name), not a general third outcome: any other artifact without a
+  `.sha256` or `.asc` still fails, and a listed file whose published SHA-1 or pinned SHA-256 differs still fails
+  (selftest: a listed file passes in the base case; an unlisted SHA-1-only file fails; a listed file with a changed
+  SHA-1, Google's and Central's, or a changed pinned SHA-256 fails). Four of these modules ship (autofill,
+  concurrent-futures, interpolator, versionedparcelable): the owner is told.
+- M5-12 (2026-10-18): the 61 signer keys are trust on first use: `write-keys` pinned whatever key signed each `.asc` at
+  commit time, and from then on a changed signer fails. An independent check of each fingerprint against the
+  publisher's own records goes on the M7 audit list.
+- M5-13 (2026-10-18): every M5 dependency was declared in commit 5, so M5 expects no later dependency change. The plan's
+  "any dependency added after commit 6 follows the same two-commit pattern" is replaced: a later dependency change stops
+  the work and the lead re-plans (a regeneration needs a reviewed, temporary exception to the gate's bootstrap rule).
+  The plan's group 4 bootstrap bullet, the comment in `mobile/android/gradle/libs.versions.toml` and the gate's
+  `kt_bootstrap` comment say so.
+- M5-14 (2026-10-18): the gate goes beyond group 3's lists for commit 6, failing closed: KtLog skips only
+  `mobile/android/gradle/verification-metadata.xml` (it lists the Android Gradle plugin's build-time slf4j and holds no
+  code); the bootstrap rule refuses Gradle's lock and verification switches, including `-M` and `-F` (only `-F strict`
+  and mkfs.vfat's `-F <digit>` pass), the startParameter and lock-off APIs; `mobile/android/build.gradle.kts` must hold
+  `lockAllConfigurations()` and `lockMode.set(LockMode.STRICT)` as whole lines; `scripts/android-deps-review.sh`
+  fetches with curl, because the gate refuses network modules in Python outside `registry/`. The workflow keeps the
+  dependency review and the classpath compare before its first Gradle call.
+- M5-15 (2026-10-19): the canary library (`scripts/testdata/android-canary-lib/`) carries the one accepted lock-off,
+  `dependencyLocking { unlockAllConfigurations() }` in its own build file, because it is not part of any locked build. It
+  joins the build only under `-Pkc.canary=true`, in the workflow's one canary Gradle line, offline and with strict
+  verification; the gate refuses the property anywhere else and refuses any include, projectDir or includeBuild that
+  would place a project from outside `mobile/android` in a real build (commit 7b, 5626368). Its `com.keepcrypt` class
+  calls `java.util.Random` so the canary step also proves the dex reference scan on the real dexdump (fa90eee).
+- M5-16 (2026-10-19): the Android job installs Ubuntu's `libpulse0` from the runner image's apt archive before the
+  emulator's first start, because the emulator 37.2.12 qemu links it and ubuntu-24.04 20261012 lacks it (run 39282207714:
+  "libpulse.so.0: cannot open shared object file"). It follows entropy-ci.yml's apt installs of age and dosfstools, prints
+  its version, and the step then fails if `ldd` finds any other library missing. CI only; nothing reaches an APK.
+- M5-17 (2026-10-19): every recording is one continuous raw-frame stream. In raw-frames mode screenrecord never checks
+  `--time-limit`: its loop is `while (!gStopRequested) { err = frameOutput->copyFrame(rawFp, 250000, rawFrames); ... }`
+  (frameworks/av cmds/screenrecord/screenrecord.cpp, android12-release lines 845-860; the same in main around line
+  1059), only the H.264 path's runEncoder checks endWhenNsec, and gStopRequested is set by its SIGINT/SIGTERM handler
+  (line 138). Run 39290401362 at 8f showed it: `screenrecord --output-format=raw-frames --size 360x640 --time-limit 1`
+  had not returned after 30 s. So `scripts/android-frames.py` starts the stream and stops it itself with SIGINT on the
+  device (`adb -s SERIAL shell pkill -INT -x screenrecord`) when the caller says the scenario is done (SIGTERM to the
+  checker) or at its `--duration` cap, which fails the recording (the scenario outlasted it); it then waits for the
+  stream to end and the local adb to exit, and a recorder that has not within 5 s of the SIGINT fails. No segments, no
+  `--time-limit` on raw frames, no 180 s logic. The checker still counts frames, requires the first frame within
+  `--max-gap` seconds of the start, requires every frame black over the app's window (with `--expect black`) or some
+  frame with at least `--min-known` of the control's known pixels (with `--expect visible`), fails on a partial trailing
+  frame and keeps no frame. Finding 7, group 0's probe bullet, group 6's recording and first-frame bullets and the
+  Verification gate line say so (commit 8g); the critique log keeps what the plan said before. The first-frame check
+  also records a second, short stream once the app's first screen is up and in focus: the first stream's first frame
+  is the curtain's and screenrecord writes a frame only when the display changes, so a stream that carried nothing
+  after the curtain would pass alone, while a fresh stream's first frame is composed at once (review of 8g; 8h).
+- M5-18 (2026-10-20): on Android 12 (API 31 emulator image SE1A.220826.006.A1) the shell's screencap of a screen
+  showing a secure window gives no image at all (0 bytes, empty stderr) instead of an image with the window black (run
+  39309562117 at 9058398: `adb exec-out screencap -p` 0 bytes over the shipping app, 78,608 over capture-control, 313,484
+  over the launcher; the instrumentation's own screencap 0 bytes). That is finding 3's protection in a stronger form, so the
+  capture tests count a refusal as blank only when it is exactly that (no bytes on stdout and none on stderr, or a null
+  takeScreenshot), and only beside a passing positive control in the same leg: ControlTest runs first and must get images
+  of capture-control's screen through the same calls, and the raw-frame recordings, which still work, must be black. Where
+  `disable_secure_windows` is read (API 36), the captures with it set to 1 must be images showing the screen.
+- M5-30 (2026-10-20): the Android job's budget is 15 minutes (`timeout-minutes: 15`, commit 8l-e): run 39337431167 at 8l-d
+  took 12 minutes with cold emulator and Gradle caches, plus 25%. Commits that add a leg or tests (14's 16 KB image,
+  the screens) re-measure it; a slower run stops the job and the lead re-plans (Built into this plan, Budgets).
+  Commit 8l-e's message also names this file's changes, which a failed script left out; 8l-f carries them.
+
+Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). Once M4b merges, build-plan.md lines from
+293 on move down one (the M5 row becomes BP:296).
+
+### Inputs from M4 and earlier (folded into the plan below)
+
+**Starting point**
+- main is 95c4359, the merge of M4 (PR #7, 2026-10-16). Main's push runs: Entropy CI 38914588096 (14 of 14 green) and
+  Entropy Pi image 38914587720. M4b's commit 1 (c923063, on `m4b-screens`) records that run and ticks M4's after-merge
+  item (todo.md:9300-9302). M5's commit 1 leaves that tick to M4b (lead decision M5-2).
+- M4b is open on `m4b-screens`, waiting only on the owner's H6. It differs from main in pi/, docs/pi-firmware.md, BP's
+  M4b row, CLAUDE.md Commands, scripts (`want_checks` 73 -> 81; `panels-differ.sh --selftest` in gates) and this file.
+  M5 touches no pi/ file and not pi-firmware.md; it shares CLAUDE.md Commands, canaries.sh's `want_checks`,
+  banned-api-check.sh and this file (Q63).
+- Rules are cited from the clone's `Entropy/CLAUDE.md`. The copy in the `Entropy-Keep Crypt/` folder is stale (its rule 1
+  lacks `game_random`, its rule 10 lacks the registry and simulator markers).
+- Q52 is the last question used (todo.md:1369, "Raised by stage C's CI (Q52 ...)"), so M5's questions are Q53-Q63.
+- **The gate (BP:295):** "Screenshot and recording tests come back blank; merged manifest has no INTERNET permission;
+  backup round trip passes; snapshot import and Sparrow watch-only import work; a go-ahead QR from the test registry
+  reveals the words and a Stop wipes them". Deliverables: "Compose UI over the FFI, capture protection, backup via file
+  picker". Needs M1, M2.
+- **Matrix rows that name Android (BP:316-327)** and where each lands:
+
+  | Row | Ref | Home |
+  | --- | --- | --- |
+  | Symbol and stub-marker scan (every release build) | :316 | M5: both `libkeepcrypt.so` builds and both APKs |
+  | Screen-capture tests ("Every app build on real devices") | :318 | M5: CI emulators every build, real phone at the gate (Q55, Q56) |
+  | No-network checks | :319 | M5 |
+  | Reproducible build | :320 | M7 (pins laid in M5) |
+  | Full ceremony with offline verification | :321 | M5 |
+  | Duplicate-seed drill | :325 | M5 for the Android part; end to end in M9 |
+  | Watch-only import into Sparrow and Bitcoin Core | :326 | M5 (P3), as swb:235 asks of M4-M6 |
+  | Metal read-back drill | :327 | M5 |
+
+**What exists**
+- **ffi/:** `keepcrypt-ffi` is one doc line (ffi/src/lib.rs:1, "UniFFI bindings over `keepcrypt-core` for Kotlin and
+  Swift (M5)"), depends on core only (ffi/Cargo.toml:10-11), has no `[lib]` (an rlib). `[lints.rust]` holds only
+  `unused_must_use = "forbid"`; the shared clippy block has `disallowed_methods`, `let_underscore_must_use`,
+  `print_stdout`, `print_stderr`, `dbg_macro` at forbid and `allow_attributes(_without_reason)` at deny
+  (ffi/Cargo.toml:13-32), pinned by canaries.sh:496-547. ffi/clippy.toml must equal core's byte for byte
+  (canaries.sh:485-494) and bans `std::panic::catch_unwind` (ffi/clippy.toml:27); canaries.sh:97-105 requires every
+  clippy.toml entry to fire in the clippy-fallback canary. The gate's hash ban (banned-api-check.sh:1138) and FailOpen
+  rule (:1150) cover ffi. CI only lints ffi (entropy-ci.yml:596-603); :492 says "The app libraries for the phones are M5
+  and M6". Only keepcrypt-core has `overflow-checks = true` in release (Cargo.toml:23-25, pinned at canaries.sh:653).
+- **Core API** (core/src/lib.rs:28-63): `Session::new(len, mode, platform)` (session.rs:173), `add_extra`,
+  `credited_bits`/`required_bits`, `commit`, `commitment`, `start_dice`, `push_roll`/`undo_roll`/`rolls`/`millibits`/
+  `minimum_rolls`, `finish`, `seal`, `skip_check`, `start_check`, `check_request`, `reveal(GoAhead)`, `discard`,
+  `Wiped::restart(&self, len, mode)` (session/wiped.rs:129), `Wiped::collision_report`, the Ready accessors and gated
+  exports, and the free functions `self_test` (kat.rs:80), `decrypt_backup` (backup.rs:217), `verify_snapshot`
+  (seal/snapshot.rs:221), `verify_bucket_proof_qr` (seal/proof.rs:152), `registry_key_is_test` (seal/registry_key.rs:74),
+  `render_text`, `game_random` (source.rs:182), `RegistryDate::from_yyyymmdd` (seal/date.rs:49),
+  `TypedBackupPassphrase::{from_words, from_first_four}` (secret.rs:310, :332). `Platform::Phone` (session.rs:92) and
+  `BackupApp::Android` (backup.rs:51) exist. **No "Verify another device" API exists** (todo.md:4266-4267).
+- **Auto traits** (core/tests/auto_traits.rs): `Send` for the six session states, `Wiped`, `VerifiedSnapshot`,
+  `CheckedBackup`, `BackupFile`, `CoreError`; `Sync` for the six session states. A `static Mutex<Held>` needs only `Send`
+  contents, so no new assertion is needed.
+- **pi/app patterns the FFI copies:** `enum Stage` (app.rs:79), `struct Held` with `kept: Option<Wiped>` (app.rs:178-184),
+  `refused` (app.rs:235: which errors return to their screen and which halt), the one session constructor that restarts
+  from a kept `Wiped` (app.rs:387-399), the silent panic hook (device/linux.rs:59). `panic = "unwind"` is set at
+  Cargo.toml:18-21 so an unwinding panic drops and zeroizes the session. pi/sim takes `keepcrypt-core` as a direct,
+  featureless dependency so `--features keepcrypt-core/test-registry` resolves (pi/sim/Cargo.toml:12-15).
+- **Threads:** core/tests/panic_wipe.rs:18 observes a panic through `thread::spawn(..).join()`, so a workspace-wide
+  clippy ban on thread spawning would break core's own test (the identical clippy.toml files cannot differ).
+- **Vectors for the gate** (vectors/kcr.json): the test key; public dice-only seeds `dice-50-words12` (rolls "123456..."),
+  `dice-99-words12` and `dice-99-words24` (rolls "654321..."), each with `seal_code`, `seal_id`, `seal_tag_hex` and
+  `bucket`; snapshots `with-dice-50` (catches `dice-50-words12`), `stale-day-31`, `future-day-1`; proofs
+  `clear-empty-bucket` (bucket 310846, `dice-99-words12`'s) and `collision-dice-50`, with their UR text. All are dated
+  20260301, so a 2026-10 phone reads them as Stale (a warning, never a refusal). Also braille.json, watchonly.json,
+  backup.json, seal.json, agreement.json (Phone cases).
+- **CI:** 14 required checks (ruleset 24833307; names must not change): `changes (Entropy/ or this workflow)`, `lint (fmt,
+  clippy)`, `test`, `supply-chain (deny, audit, vet)`, `gates (banned APIs, verifier, canaries)`, `verifier (python
+  3.9)`, `coverage (core, 95% of lines)`, `age-interop (age 1.1.1)`, `cross (<target>)` x 6. The three Android cross
+  legs link with NDK clang at API 31 from the image's unpinned default NDK (`$ANDROID_NDK_HOME`, entropy-ci.yml:567-580),
+  set the getrandom cfg per target (:584-588), lint core and ffi, and build and scan only core's rlib and
+  `release_probe`. Steps, not jobs, are skipped by the changes job, so new steps carry its `if:`. `age-interop` drives
+  age through a pty, because age reads a passphrase only from a terminal (entropy-ci.yml:440-441, scripts/age-interop.py).
+- **Gates:** Kotlin RNG (banned-api-check.sh:501-539), network (:577-604) and clipboard/share (:654-669, :733-766) rules
+  exist with fixtures. No Kotlin rule exists for logging, windows, text fields, storage, intents, SDKs, build-script
+  file dependencies or the manifest. Binary extensions (jar, aar, apk, so, dex, class) are skipped (:482). `list()`
+  prunes fixed top-level paths only (:1080-1083). Workflows may use only checkout, cache and upload-artifact at pinned
+  SHAs (:1675-1677), and the words `secrets` and `github.token` are refused, so no job can download another job's
+  artifact (entropy-pi-image.yml passes only hashes between jobs, through `needs.*.outputs`). `game_random` outside
+  core's allowed files and `pi/app/src/games/` is a Shell hit (:1142-1145), pinned by the fixtures
+  `shell-game-random-in-ffi` and `shell-game-random-in-kotlin`; the pattern (:793-795) misses Kotlin's `gameRandom`.
+- **canaries.sh** pins the members `core, ffi, pi/app, pi/sim` (:384, with scripts/check-path-deps.sh), the lint tables,
+  deny's lists, the release profile (:653), that no manifest feature turns on a test feature (an ffi `[features]` probe
+  must fail, :798-809), and getrandom's only dependent, keepcrypt-core (:866-875). `want_checks` is 73 on main (:1251).
+- **CODEOWNERS** owns `/Entropy/ffi/` and `/Entropy/mobile/**/AndroidManifest.xml` (CODEOWNERS:21, :28), no Gradle file.
+  BP:278's two approvals for ffi remain unmet with one maintainer.
+
+**Carried into M5 (recorded in earlier plans)**
+- todo.md:1397-1398: "M5 must make any core panic wipe the session." (groups 8, 10)
+- todo.md:1404-1406, :3064-3067: after a Stop or a Cannot check, only `Wiped::restart`; ceremony tests assert "99 after
+  Stop" and "99 after a Cannot check" in the restart after a collision. (group 8)
+- todo.md:6289-6290: `game_random`, `from_first_four` and the borrowing restart through the FFI; the phones keep their
+  `Wiped` and decide their own runtime-error rule. (groups 8, 14; games to M5b, Q61)
+- todo.md:3069-3070, :94-96: test-registry builds turn on `keepcrypt-core/test-registry` from the command line with
+  `-p`, never in a manifest and never `test-sources`, and their scan shows the registry marker and no stub marker;
+  release builds pin no key until M9 (`NoRegistryKey`), and only the typed go-ahead code works there. (groups 11, 12, 5)
+- todo.md:136, :3071-3072: phones warn on Stale and Future; a ceremony test asserts each. (groups 8, 16)
+- todo.md:3090-3093: owned copies for `GoAhead`, the braille views and `CheckedBackup`'s reveals; the take-and-put-back
+  slot (also :2691); the getrandom cfg in the Android build ("in cargo-ndk"; plain cargo carries it the same way, Q53).
+- todo.md:4262-4267: C and D as 16 groups of 4 hex; a ceremony test types C, D and the rolls into `verify.py mixed` and
+  exits 0 (group 11); the "Verify another device" core API (M5b, Q61).
+- todo.md:4548, :1747-1753: M3-M6 add their artifacts to the release scan (groups 12, 5).
+- todo.md:1185-1186: Tetris on the Pi was approved "after M4, with or after the phones" (Q43 (a)); still unscheduled
+  (todo.md:6295). Q61.
+
+**Findings that shape the plan (read 2026-10-17; sources at the end)**
+1. **UniFFI fails today's gates.** Every release from 0.29.2 to 0.32.2 (2026-09-23) makes `uniffi` depend on
+   `uniffi_pipeline` -> `tempfile` -> `fastrand` (banned, deny.toml:66) and, through tempfile's default feature, on
+   `getrandom` (a second dependent, which canaries.sh:872-875 refuses) [S1-S3]. All UniFFI crates are MPL-2.0, not on
+   deny.toml:43's list. 0.29.1 avoids the tempfile chain but adds about 13 crates, a 45-crate bindgen tool with `log`
+   (banned, deny.toml:83), generated Kotlin and JNA's prebuilt `libjnidispatch.so` in the APK [S4]. The `jni` crate
+   0.22.4 depends on `log` [S5]. **jni-sys 0.3.0** (2017-07-21, MIT/Apache-2.0) has no dependency, build script or
+   feature. jni-sys 0.4.0 (2023-09-25) and later depend on the proc-macro crate jni-sys-macros (0.4.0 also has a
+   trybuild dev-dependency), and 0.3.1 (2026-03-22) re-exports 0.4 [S6].
+2. **A panic at a JNI boundary aborts before any destructor runs** (Rust >= 1.81; in 1.98.1 the personality returns
+   `_URC_FATAL_PHASE1_ERROR` for the terminate action, std gcc.rs:224-229, then `rtabort!`, panicking.rs:886-889) [S7].
+   The session would not be zeroized and Android writes a tombstone. So the wipe needs one catch at the boundary, which
+   ffi/clippy.toml bans and `disallowed_methods = "forbid"` keeps out of any `#[expect]` (Q53).
+3. **FLAG_SECURE:** SurfaceFlinger leaves secure layers out of any capture whose caller lacks `CAPTURE_BLACKOUT_CONTENT`,
+   and the shell lacks it, so `screencap`, `screenrecord` and `UiAutomation.takeScreenshot()` show those layers black
+   [S8]. `settings put secure disable_secure_windows 1` turns FLAG_SECURE off on a debuggable build (WMS.java:1029-1048)
+   [S9], but the setting is recent: its AOSP change ("Add secure setting disable_secure_windows", bug 309153458) dates
+   from about late 2023, so it is an Android 15-era addition and absent on API 31 [S30]. A black capture on its own
+   proves nothing (the app may not have drawn, or the emulator may not be producing frames), so every capture test
+   needs a positive control that works on API 31. Toasts (target >= 30) and platform `PopupWindow`, `Spinner`,
+   `ListPopupWindow` never carry the flag; Compose dialogs and popups default to `SecureFlagPolicy.Inherit` [S10, S11].
+4. **Merged manifest:** androidx.core adds `${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`; androidx.startup
+   adds an `InitializationProvider` with emoji2, lifecycle-process and profileinstaller initializers; profileinstaller
+   adds an exported receiver and **writes files** in filesDir (ProfileInstaller.java:64-65, :391-392) [S12].
+5. **Compose ui-graphics 1.12.1 depends on `androidx.graphics:graphics-path:1.0.1`**, which ships a prebuilt native
+   library, so the APK holds one third-party `.so` whatever the FFI [S13]; its name, hash and LOAD alignment are read
+   from the first APK. AGP strips packaged native libraries with the NDK it is told to use; AGP 9.3's default NDK
+   (28.2.13676358 per its release notes) is not on the runner, so `ndkVersion` is pinned (group 4).
+6. **Runner** (ubuntu-24.04 image 20261012): JDK 17 default (21, 25 too), Gradle 9.8.1, build-tools and platforms to 37,
+   NDK 27.3 (default), 29.0 and 30.0.16248370 (r30, the latest LTS [S16]), **no emulator and no system images**; KVM
+   works after a udev rule [S17, S18]. SDK `sys-img2-5` lists AOSP `default;x86_64` images for API 31 (657 MB), 35 and
+   36 (844 MB), none for 37; `google_apis;x86_64` for 31 (1.47 GB), 35 and 36 (1.90 GB); and 16 KB-page
+   `google_apis_ps16k;x86_64` for 35, 36 (1.85 GB) and 37.x. Google APIs images from Android 11 on are documented to
+   carry ARM binary translation; whether the ps16k image does is a probe fact (group 6).
+7. **Capture tools:** `screenrecord --output-format=raw-frames` writes raw frames to stdout (screenrecord.cpp:1363-1364),
+   so a recording is checked without a video decoder [S21]. screenrecord stops at 180 s by default
+   (`kMaxTimeLimitSec = 180`, screenrecord.cpp:102), and only newer releases accept `--time-limit 0` for no limit
+   (:1330), but that limit binds only the H.264 path: raw-frames mode ignores it and records until SIGINT or SIGTERM
+   (its loop is `while (!gStopRequested)` around `copyFrame(rawFp, 250000, rawFrames)`, android12-release
+   screenrecord.cpp:845-860, the same in main around :1059; only runEncoder checks endWhenNsec; the signal handler sets
+   gStopRequested, :138), so a raw-frame recording is one continuous stream stopped with SIGINT (lead decision M5-17,
+   run 39290401362). The Android 15 recording callback is driven only by MediaProjection
+   (ScreenRecordingCallbackController.java:71-94), so adb's screenrecord never fires it [S22].
+8. **Versions:** Compose 1.12.x needs compileSdk 37 and AGP 9 [S25]; Kotlin 2.4.20's tested range ends at AGP 9.3.1 and
+   Gradle 9.7.0 [S24]; Play requires targetSdk 36 since 2026-08-31 [S20]; from 2027-02-01 updates need 16 KB pages on
+   every 64-bit native library, the default for NDK r28+ [S19].
+9. **Offline state without permissions:** `Settings.Global` `AIRPLANE_MODE_ON` and `WIFI_ON` are readable [S26]; Wi-Fi
+   can be switched back on inside airplane mode.
+10. **Content capture:** the app side gates content capture only on `ContentCaptureOptions` and the manager
+    (ViewRootImpl.java:5509-5539); FLAG_SECURE's effect (`FLAG_DISABLED_BY_FLAG_SECURE`, ContentCaptureContext.java) is
+    applied by the service. The root view therefore opts out itself (group 14).
+11. **Maven checksums:** Google Maven publishes `.sha256` files (activity-compose 1.13.0's: 200); Maven Central publishes
+    only `.sha1` and `.asc` for several chosen artifacts (kotlin-stdlib 2.4.20, junit 4.13.2, zxing core 3.5.4 `.sha256`:
+    404), so the review of Gradle's verification file is per repository (group 4).
+12. **Doc frictions** (Q53, Q55, Q57): MA:29, :73, :160's "word picker" against BP:201-202's "no word list leaves core";
+    MA:23's `cargo-ndk` and BP:35, :47, :73, :74 and MA:17, :23's UniFFI against finding 1 (docs/img/architecture.png
+    also says UniFFI and has no source in the repo); MA:34's discard rule, narrower than the Pi's Protected list
+    (PF:122); MA:123's airplane-only rule against finding 9; BP:318's "on real devices" for every build and MA:74's
+    "`adb exec-out screencap -p` ... on at least one Pixel and one Samsung device"; BP:270's "Clippy
+    `disallowed-methods` ... in app code" (Clippy does not read Kotlin); swb:286's headphones-only speech, which no app
+    can enforce.
+
+**Local constraints**
+- This Mac has no Java runtime, Android SDK, Gradle, NDK or adb; installing any is the owner's call (Q56). The two FFI
+  crates and their host tests build and run on the Mac (jni-sys is declarations only). Android targets, Gradle, Kotlin
+  and every emulator test run in CI until Q56 says otherwise.
+- The emulators are x86_64. The arm64-v8a and armeabi-v7a `libkeepcrypt.so` run in CI only through an image's ARM
+  translation (group 6, probe); a translated run proves loading, symbol binding, `JNI_OnLoad` and the self-test, not
+  native ARM execution. If no image translates, the gap is named in Q56, not handed silently to the owner's phone.
+
+**How each lessons.md entry applies**
+1. Computed numbers come from committed scripts that CI re-runs: the manifest summary, the runtime classpath list, the
+   native-library list, the Maven checksum review, Gradle's verification file, the Seal IDs printed for P4 and the APK
+   hashes the owner installs all come from CI runs of committed scripts, with expected files under
+   `mobile/android/expected/` (as `pi/os/expected/` in M4).
+2. Exact bytes of every hash input: the tests' go-ahead code is SHA-256 over `"KCE/v1/go"` (9 ASCII bytes) || T (32
+   bytes) || n (8 bytes), first 40 bits in Crockford base32, with T and n read from the drawn check request; the APK tie
+   compares the SHA-256 of the exact `lib/<abi>/libkeepcrypt.so` entry with the scanned cargo output.
+3. Time rules per target: phones read the UTC date for freshness (`RegistryDate` from the shell, snapshot dates are UTC)
+   and warn on Stale and Future, each asserted with a fixed date; every timer uses `SystemClock.elapsedRealtime()`,
+   never the wall clock.
+4. Boot-path changes ship proven: the phone's boot path is `System.loadLibrary`, `JNI_OnLoad`, `SecureActivity.onCreate`
+   (FLAG_SECURE before any content) and the self-test before Home. CI proves each on x86_64 at API 31 and 36, the
+   16 KB-page load on a ps16k image, and the ARM libraries through translation if an image offers it (group 6). The
+   platform facts the design rests on are probed in Stage B, before any Rust or screen code. Whatever CI cannot run
+   (native ARM execution; armeabi-v7a if no image translates it) is stated to the owner in Q56 with the static checks
+   that cover it, never presented as proven.
+
+### Plan
+
+**References and terms**
+- BP = build-plan.md, MA = mobile-apps.md, PF = pi-firmware.md, swb = seal-watchonly-braille.md, DS = design.md, all in
+  `docs/`. `todo.md:N` is main's line N at 95c4359.
+- **The FFI** is two crates (Q53):
+  - `keepcrypt-ffi` (`ffi/`, rlib): the safe layer (`ceremony.rs`, `wire.rs`, `qr.rs`) holds every rule;
+    `#![forbid(unsafe_code)]`; its clippy.toml stays byte-identical to core's, so it cannot call `catch_unwind`.
+  - `keepcrypt-jni` (`ffi/jni/`, new workspace member, cdylib `libkeepcrypt.so`, MA:23's name): the JNI boundary, the
+    only unsafe code and the only `catch_unwind`. Depends on keepcrypt-ffi, jni-sys and, featureless, keepcrypt-core (so
+    `--features keepcrypt-core/test-registry` resolves, as pi/sim's edge does). Its clippy.toml is core's minus the one
+    `catch_unwind` line. M6 adds a sibling crate for Swift over the same safe layer.
+- **The slot:** one `static FFI: Mutex<Held>` in keepcrypt-ffi, `Held { stage, generation: u64, kept: Option<Wiped>,
+  snapshot: Option<VerifiedSnapshot>, backup: Option<CheckedBackup> }`, `Stage` as pi/app's (Idle, Collecting,
+  Committed, Rolling, Sealed, Checking, Ready, Halted) plus `Busy` while a long call runs. Tests build their own `Held`.
+- **Halt / refusal:** PF:129-136 and app.rs:235. A halt wipes everything and latches `Halted`; a refusal returns to its
+  screen with fixed text.
+- **Shipping APK / test-registry APK:** the `shipping` and `testRegistry` flavours of `:app`, both release build type,
+  neither debuggable (Q60). **Capture-control APK:** `:capture-control`, a CI-only app (never uploaded, never released)
+  that draws the same composables without FLAG_SECURE, the capture tests' positive control. **Canary APK:** a build that
+  must be refused.
+- **The Android workflow:** `.github/workflows/entropy-android.yml`, one non-required job `android (build, emulators)`
+  (Q55). Amended 2026-10-29 (M5-70 (b), M5-71 (a), commit L9): one non-required workflow of three jobs, `build`
+  ("android build (APKs, checks, uploads, hand-off)") and the two leg jobs "android emulators (API 31, then 16 KB
+  pages)" and "android emulators (API 36)". Amended 2026-10-30 (M5-73 (b), commits U1a and U1a2): seven jobs, `build`
+  and six leg jobs, each API's leg as three parts (`android-emulator.sh --part`): "android emulators (API 31, capture,
+  then 16 KB pages)", "(API 31, journeys)", "(API 31, test registry and edges)", "(API 36, capture)", "(API 36,
+  journeys)" and "(API 36, test registry and edges)".
+- **Protected / Public:** PF:122's list, adopted for the phone (Q57).
+- **Gate seeds:** kcr.json's public dice-only seeds and fixtures. No other seed is named in a test, a capture or a report.
+- **P0-P5:** the owner's phone checklists below.
+
+**Built into this plan (override any of them)**
+- **Scope is the gate plus the carried items.** Out: "Verify another device" and the games (M5b, Q61); the camera
+  entropy extra (M8); reproducible APKs, signing and stores (M7); snapshots in shipping builds (M9). Touch timing and
+  motion sensors at zero credit (MA:139-140) are in.
+- **The FFI is hand-written JNI over jni-sys =0.3.0** (Q53): no UniFFI, JNA or generator. No handle crosses: Kotlin
+  calls free functions and the one ceremony lives in the slot. Every export returns a byte array whose first byte is a
+  status (ok, refused + code, discarded, halted) and whose rest has a fixed layout defined once in `wire.rs` and decoded
+  once in `Wire.kt`. Native code never throws; `Core.kt` raises `KcHalt` (a Kotlin `Error`) on the halt status, with
+  fixed text. Secrets cross only as byte arrays, one word page or screen at a time, and Kotlin zeroes them when the page
+  leaves (Q58).
+- **One catch, one place, one crate** (Q53): `guarded()` in keepcrypt-jni locks, moves the stage out, runs the safe call
+  under `catch_unwind`; on a panic the unwind has already dropped (and zeroized) the moved-out session, `Held` is
+  replaced by `Halted` (snapshot and kept `Wiped` dropped too) and the halt status returns. The payload is dropped
+  unread. A silent panic hook is set in `JNI_OnLoad`. keepcrypt-ffi keeps core's clippy.toml, so the safe layer cannot
+  catch through any path or re-export (clippy resolves paths, and keepcrypt-ffi does not depend on keepcrypt-jni). The
+  other way to turn a panic into a value, a joined thread, cannot be banned in the shared clippy.toml (core's
+  panic_wipe test uses it), so the gate refuses the identifiers `thread` and `JoinHandle` anywhere under `ffi/`
+  (both crates). A canary proves keepcrypt-jni's clippy.toml differs from core's by exactly that one line.
+- **Unsafe only in keepcrypt-jni:** `#![forbid(unsafe_code)]` in keepcrypt-ffi; in keepcrypt-jni,
+  `clippy::undocumented_unsafe_blocks` and `multiple_unsafe_ops_per_block` at deny (added to the shared clippy block;
+  no effect on crates that forbid unsafe). Every unsafe block holds one operation and a `SAFETY:` line.
+- **Overflow panics in both FFI crates:** `[profile.release.package.keepcrypt-ffi]` and `...keepcrypt-jni` set
+  `overflow-checks = true`, as core does, so a wrong length panics (and wipes) instead of wrapping.
+- **One `Session::new`**, in ceremony.rs, with `Platform::Phone`, used only when no `Wiped` is kept; otherwise
+  `kept.restart(len, mode)` (app.rs:387-399's rule). `kept` clears only on Skip or a passed reveal.
+- **A discard never waits for a long call:** long calls (`start` and `restart` with their KATs, `finish`, backup
+  encrypt and verify with scrypt at log2 N = 18, snapshot and proof verification) take the stage out under the lock,
+  leave `Busy` and the current `generation`, release the lock, run, then relock. A discard, wipe or halt during the run
+  locks briefly, drops everything held, sets the stage to Idle (or Halted) and increments `generation` (checked add; an
+  overflow halts). The finishing call sees a changed generation, drops its result (zeroizing it) and returns
+  "discarded". Any other call while `Busy` is a shell bug and halts. The main thread never blocks on a long call.
+- **Rust is built by script, not by Gradle:** `scripts/android-rust.sh <flavour>` builds `libkeepcrypt.so` with plain
+  cargo, NDK r30 clang at API 31 and the getrandom cfg, exactly as the cross legs do, for arm64-v8a, armeabi-v7a and
+  x86_64, plus the host library for JVM tests. Gradle only packages it (`keepDebugSymbols` on libkeepcrypt, so the
+  scanned bytes are the shipped bytes; `ndkVersion = "30.0.16248370"` so any strip of other libraries is
+  deterministic). No cargo-ndk.
+- **Three Gradle modules** (MA:24): `:core-ffi` (Native, Wire, Core, JVM tests against the host library), `:secure-ui`
+  (SecureActivity, monitors, Protected wrapper, timers, pads, QR/seal/braille drawing), `:app` (screens,
+  `CeremonyViewModel`, the pickers, the scanner); plus the CI-only `:capture-control`, which `:app` never depends on
+  (checked from the dependency report). Two Gradle plugins only.
+- **Compose foundation, no Material, no navigation library:** the screen is a `when` over the ViewModel's state, so no
+  back stack reaches a saved-state Bundle. **No dialogs, popups, menus, sheets, toasts, notifications or text fields at
+  all**: every prompt is a full screen, as on the Pi, so the app has one window and the system keyboard never opens.
+  MA:70's `SecureOn` rule holds with nothing to apply it to; the gate bans those APIs, and requires `SecureOn` if a
+  `DialogProperties`/`PopupProperties` ever appears.
+- **SecureActivity** (MA:41-65, plus): FLAG_SECURE before `super.onCreate`; `setHideOverlayWindows(true)`;
+  `setRecentsScreenshotEnabled(false)` on 33+; the recording callback on 35+ redacts Protected screens while recording
+  is reported; `filterTouchesWhenObscured` and autofill off on the root; `importantForContentCapture =
+  IMPORTANT_FOR_CONTENT_CAPTURE_NO_EXCLUDE_DESCENDANTS` on the root (finding 10); the root marked accessibility-data
+  sensitive on 34+ and word nodes `isSensitiveData`, so TalkBack braille keeps working; no saved instance state; the
+  starting window black with no icon; a configuration change is not "leaving the app".
+- **Nothing persisted** (rule 8): no preferences, files, databases, cache or saved state; the limits screen shows on
+  every start. The only write is the backup through `CreateDocument` (one `openOutputStream(uri, "rwt")`); the only
+  reads are `.age` and `.kcr` files through `OpenDocument`, checked by name and size before any byte is read; never
+  `takePersistableUriPermission`. profileinstaller is excluded and the startup provider removed.
+- **No network permission is ever stripped:** the only `tools:node="remove"` is on `InitializationProvider` (and
+  androidx.core's dynamic-receiver permission pair if the probe finds no library registers a receiver). A library that
+  asks for INTERNET turns CI red and is rejected.
+- **Offline** (Q57): airplane mode on and Wi-Fi off on every screen after "Go offline", Check a backup and Load registry
+  snapshot included; leaving that state wipes the session and returns to Go offline. Bluetooth may stay on (braille
+  displays).
+- **Protected screens, gate, cover, timers** (Q57): the Pi's list and timers (PF:120-127); "I'm alone, show words"
+  before the words (MA:177); leaving the app on a Protected screen discards at once; elsewhere a cover and a wipe after
+  60 s in the background (or, if Android froze the app, at its next start, before anything shows: Q75's residual); a
+  picker or permission prompt the app opened counts as foreground time under the 10-minute rule. A loaded snapshot
+  and a kept `Wiped` survive these wipes and end with the process.
+- **Halts and crashes** (Q57): the Pi's rule. The stop screen holds nothing, and its only action ends the process. An
+  unexpected Kotlin exception goes to the app's own uncaught-exception handler, which replaces the platform default:
+  it calls `Native.wipeAll()` then `Process.killProcess`, logs nothing itself and shows nothing. The platform's crash
+  report and dialog (DropBox and the activity manager) never happen; Android's own pre-handler, which apps cannot
+  replace, still writes the exception's type, message and stack to the in-memory crash buffer first (Q75, an accepted
+  residual). The proof is no DropBox entry for the package and a crash buffer holding only the trigger's exception. No message in app code is built from runtime values. A native abort (a panic
+  inside a destructor, allocation failure, stack overflow) still writes a tombstone: an accepted residual (Q58).
+- **Snapshots:** as MA:176 and swb:121 say, the check runs automatically with a loaded snapshot. Loading shows the
+  snapshot's number, date, entry count and freshness, with a Stale or Future warning (swb:120's 30-day rule); the result
+  screen repeats any warning before the privacy gate. The shipping APK keeps the Home entry and refuses with "This
+  build trusts no registry key yet", as the Pi's release image does.
+- **Camera:** Camera2 plus ZXing core, for the go-ahead QR only; CAMERA asked on the scan screen; a refusal leaves the
+  typed code. QR codes the app shows are encoded in Rust with qrcodegen-no-heap into buffers wiped after the copy out.
+- **Watch-only proof uses Sparrow and Bitcoin Core** (swb:235 already asks it of M4-M6).
+- **Reproducibility groundwork, no check:** NDK, JDK, Gradle, AGP and the toolchain pinned; `dependenciesInfo` and
+  `vcsInfo` off; no baseline profiles; R8 off; PNG crunching off. Two-build comparison is M7.
+- **Rule 1 in compiled code** (Q59 (b)): the grep gate covers our sources; with R8 off the APK also carries library
+  classes such as `kotlin.random.Random`, so the APK check runs `dexdump` and refuses any reference to a banned class or
+  method from a `com.keepcrypt` class. Library classes no KeepCrypt code reaches are allowed.
+- **Every M5 APK is a development build:** First launch and About say "0.0.0 development build: do not use for real
+  funds"; CI signs with a throwaway key made on the runner; release signing is M7.
+- **CI** (Q55): the 14 required names unchanged. Required per PR: the Android cross legs build and scan both
+  `libkeepcrypt.so` configurations with NDK r30 (installed by `sdkmanager` at that exact revision if an image update
+  drops it) and check 16 KB alignment; `test` runs the FFI's test-registry tests; `gates` runs the new rules. The
+  non-required Android workflow is one job: it builds, checks, scans and signs the APKs once, then boots the emulators
+  one after another on those same bytes, so the SHA-256 printed for P0 is the one the emulators tested (no artifact
+  passes between jobs, so no fourth action). Amended 2026-10-29 (M5-70 (b), M5-71 (a), commit L9): the build job builds,
+  checks, scans and signs the APKs once and hands those files to two leg jobs side by side through the approved
+  actions/cache, keyed on the run and its attempt; each leg checks every file against the build job's SHA256SUMS (its
+  job output, which never passes through the cache) before it installs anything, so the emulators still test the
+  bytes P0's SHA-256 names, with no fourth action. Amended 2026-10-30 (M5-73 (b), commits U1a and U1a2): six leg jobs,
+  each API's capture, journeys, and test registry and edges, each checking the same SHA256SUMS. No M5 PR merges without its green run at the final head (Q38 (b)'s rule).
+- **Budgets:** `gates` within the approved 12 minutes (Q31 (f); M4b measured 10 min 08 s), `test` within 6 minutes. The
+  Android job's budget is set at commit 8 from its measured time plus 25%, with `timeout-minutes` at that budget and a
+  90-minute ceiling (since L9, each of the three jobs' own budget by the same rule, M5-70 (b); from U1a each of the
+  seven, M5-73 (b), set 2026-10-30 from run 40903211202: build 13 minutes, the leg jobs 12, 20, 10, 11, 20 and 11;
+  build 17 minutes from 2026-10-31, M5-75 (g), from run 41181656557's 779 s; the two journeys jobs 25 and 23 minutes
+  from 2026-10-31, M5-76 (a) and (e), from U1b2's run 41197141108's 1153 s and 1097 s; from U1e, M5-76 (g), eight leg
+  jobs: the journeys jobs 20 minutes again without JourneyTest, the two ui jobs measured at 30; from run 41203734694,
+  M5-76 (h): registry 18 and 19, journeys 20 and 19, ui 30 until a run measures it whole; API 36's ui 27 from run
+  41207540199's 1284 s, API 31's ui 26 from run 41211393696's 1241 s);
+  system images, the emulator package and the Gradle distribution are cached with actions/cache keyed on their
+  revisions. An emulator boot failure may be re-run once, and the re-run is logged under Review; a test
+  failure is never re-run. Past any budget, the lead stops and re-plans.
+- **Evidence:** CI emulator runs for every gate item; the owner's P1-P4 on a phone; Review records only pass or fail,
+  "matched", versions, times, run IDs, hashes and Public values of gate seeds or of the throwaway seed.
+
+**0. Before code**
+- [x] Record the owner's answers to Q53-Q63, quoted with the date, under "Needed before M5 code".
+  Proof (M5 commit 1b): "approve all as recommended", 2026-10-17, recorded under that heading; the phone model (Q56) is the one
+  open detail, needed by P0b only.
+- [ ] Baseline at the branch base, pasted under "M5: local proof": `cargo test --workspace --locked` counts and time;
+  the gate's file count and `--selftest` count; canaries N/N with wall time; `vectorgen.py --selftest`; `verify.py
+  selftest`; the last main run's `test`, `gates` and three Android `cross` job times.
+  Proof: pasted under Review.
+- [ ] The PR opens as a draft after commit 1, so every push runs both workflows (the new workflow cannot be dispatched
+  by hand before it reaches main).
+  Proof: `gh pr view <n> --json isDraft,createdAt`.
+- [ ] **Platform probe (Stage B, before any Rust or screen code).** On the first Android build (commit 5): the runner's
+  NDK list and r30 path, JDK 17, `aapt2`/`zipalign`/`apksigner`/`llvm-readelf`/`dexdump` versions, the system images
+  `sdkmanager --list` offers, free disk; the merged manifest; the resolved runtime classpath; the APK's file list with
+  every `.so` and its LOAD alignment; `buildEnvironment`'s Kotlin plugin version; whether any library registers a
+  broadcast receiver; that dependency verification also checks cached artifacts. On the first emulator run (commit 8),
+  per image: screencap, `UiAutomation.takeScreenshot()` and `screenrecord --output-format=raw-frames` (the sizes it
+  accepts, its first frame's latency, the bytes a frame per format, and that SIGINT ends the stream; M5-17); that the
+  capture-control APK's pixels come back; whether `disable_secure_windows` exists (expected on 36, absent on 31);
+  `WIFI_ON`'s values; the black starting window; that
+  the empty saved-state Bundle crashes nothing; whether UiAutomation sees and clicks data-sensitive nodes on 36; whether
+  `dumpsys content_capture` shows a service; that `logcat -b crash` and `dumpsys dropbox` are readable; and, for the
+  third image, `getconf PAGE_SIZE` = 16384 and whether `ro.product.cpu.abilist` lists arm64-v8a and armeabi-v7a
+  (translation). From commit 14: whether AGP strips `libkeepcrypt.so` without `keepDebugSymbols`.
+  Proof: each fact with its run ID under Review; any fact that differs from this plan stops the stage for a re-plan
+  before Stage C.
+  Proof (M5 commit 4c, partial: the build facts; the emulator facts come with commit 8): Entropy Android 39062895784 at
+  bee6877 (bootstrap mode), image ubuntu24 20261012.334.1, 86 GB free. JDK Temurin 17.0.20.1; Gradle 9.7.1; platforms
+  android-34 .. android-37.2 (compileSdk 37 resolves); build-tools 34.0.0 .. 37.0.0 (36.0.0 used: aapt2 2.20-13193326,
+  apksigner 0.9, zipalign, dexdump); NDK 27.3.13750724 (`$ANDROID_NDK_HOME`, the default), 29.0.14206865 and
+  30.0.16248370 (r30, `source.properties` checked), llvm-readelf from LLVM 21.0.0. `buildEnvironment`: AGP 9.3.3 asks for
+  kotlin-gradle-plugin 2.2.10, resolved to 2.4.20 by the root's pin (lead decision M5-7). BUILD SUCCESSFUL in 2 min 42
+  s: both flavours' release APKs (unsigned), both androidTest APKs, capture-control. Shipping APK (18,649,012 bytes,
+  `com.keepcrypt.entropy`, versionName 0.0.0, min 31, target 36, compile 37): permissions exactly HIDE_OVERLAY_WINDOWS,
+  DETECT_SCREEN_RECORDING and androidx.core's `com.keepcrypt.entropy.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` (declared
+  and used); no INTERNET; allowBackup, fullBackupContent and usesCleartextTraffic false, dataExtractionRules set,
+  extractNativeLibs false; one activity (MainActivity, exported launcher); no provider, receiver or service. Native
+  libraries: only graphics-path, `lib/{arm64-v8a,armeabi-v7a,x86,x86_64}/libandroidx.graphics.path.so` (SHA-256 41e9a793...,
+  41399eba..., eb0570b4..., 4e56c996...), every LOAD segment 0x4000-aligned; the x86 copy is outside MA:23's three ABIs
+  (lead decision M5-10). The shipping runtime classpath (the lockfile's `shippingReleaseRuntimeClasspath`) is 91
+  modules, not Q54's "about 60": AndroidX (activity, annotation, arch.core, autofill, collection, compose animation,
+  foundation, runtime and ui, concurrent, core, customview, emoji2, graphics, interpolator, lifecycle, navigationevent,
+  savedstate, startup, tracing, versionedparcelable, window), Guava's listenablefuture, ZXing core, Kotlin stdlib,
+  kotlinx-coroutines and serialization, JetBrains annotations and JSpecify; no profileinstaller, Material or navigation
+  library; every licence is checked by commit 6's review script. Bootstrap files kept at the session's
+  `plans/android-bootstrap-39062895784/` (artifact `android-bootstrap`, 454 components in verification-metadata.xml).
+  Proof (M5 commit 8l-f, partial: the emulator facts; the 16 KB image and the strip fact come with commit 14): Entropy
+  Android 39337431167 at 8l-d, emulator 37.2.12 (-no-window, swiftshader_indirect), images android-31 default x86_64 rev 5
+  (SE1A.220826.006.A1, userdebug) and android-36 default x86_64 rev 2. Boot 30 s and 50 s. Both: page size 4096, ABI list
+  x86_64 only, wifi_on=1 and airplane_mode_on=0 at boot, `logcat -b crash` and `dumpsys dropbox` readable (exit 0),
+  the black starting window (raw frames from under the curtain through each cold launch all black), the empty
+  saved-state Bundle crashes nothing. API 31: no content_capture service; `disable_secure_windows` unset and not read;
+  a shell screencap of a screen with a secure window gives no image at all (M5-18), takeScreenshot likewise; data-
+  sensitive nodes do not exist before API 34. API 36: `disable_secure_windows` unset, and read (set to 1, the app's
+  captures show its screen); screencap and takeScreenshot give images, black over the app's window; UiAutomation sees a
+  data-sensitive node and its click reaches it. screenrecord raw frames: 360x640 and 720x1280 accepted, rgb888 (691,200
+  bytes a frame at 360x640), first frame after 0.2 s, SIGINT ends a stream within 0.1 s, --time-limit ignored (M5-17).
+  The emulator needed Ubuntu's libpulse0 (M5-16) and a woken display (8e).
+
+**1. Doc and rule edits, alone (only those approved)**
+- [x] One commit changes only `docs/`: BP:35, :47, :72, :73, :74, MA:17 and both columns of MA:23, plus a line under
+  BP:33's architecture.png naming the two FFI crates and "Swift binding: M6" (Q53); MA:29, :73, :160, MA:34, a "When
+  something fails (Android)" paragraph, MA:123, BP:270 and swb:286 (Q57); MA:17's residual sentence (Q58); BP:318's
+  Runs cell and MA:74's test line (Q55).
+  Proof: `git diff --name-only` lists only docs/; `vectorgen.py --selftest` (it pins doc sentences) and `verify.py
+  selftest` (3.12, 3.9) pass; the gate is clean.
+  Proof (M5 commit 2, 73466b6): `git diff --name-only HEAD~1 HEAD` lists docs/build-plan.md, docs/mobile-apps.md and
+  docs/seal-watchonly-braille.md only; `vectorgen.py --selftest` 13/13 and `verify.py selftest` 8/8 on Python 3.12 and
+  3.9; `banned-api-check.sh` clean (241 files) and `--selftest` 698 passed, 0 failed; fmt, both clippy commands,
+  `cargo test --workspace --locked` (21 suites, 445 passed, 3 ignored) and the test-sources run (17 suites, 269 passed,
+  1 ignored) unchanged. The citations above stay main's at 95c4359; against it, BP lines from :35 now sit 2 lower and
+  from :48 3 lower, MA lines from :35 2 lower, swb unchanged.
+- [x] CLAUDE.md rule 8 gains Q59 (a)'s sentence and rule 1 Q59 (b)'s, if approved, in their own commit.
+  Proof: the diff touches only those rules' lines.
+  Proof (M5 commit 2b, 424b008): `git diff --name-only HEAD~1 HEAD` lists CLAUDE.md only, and `git diff -U0` shows two
+  hunks, rule 1's :49 (+3 lines) and rule 8's :71 (+2 lines), the new lines 88-96 columns wide; nothing in scripts/ or
+  tools/ pins CLAUDE.md's text (grep: comments only, plus the gate's skip of `./CLAUDE.md` and its selftest fixture);
+  `banned-api-check.sh` clean (241 files) and `--selftest` 698 passed, 0 failed; fmt, both clippy commands, `cargo test
+  --workspace --locked` (445 passed, 3 ignored) and the test-sources run (269 passed, 1 ignored) unchanged.
+
+**2. Repo hygiene**
+- [x] `.github/CODEOWNERS` gains `/Entropy/mobile/` (Q54). `.gitignore` gains `mobile/android/**/build/`, `.gradle/`,
+  `local.properties`, `*.apk`, `*.aab`, `*.jks`, `*.keystore` and the jniLibs output directory.
+  Proof: `gh api repos/bitwilll/keepcrypt/codeowners/errors` lists 0 errors; `git check-ignore` on one path of each.
+  Proof (M5 commit 3d): `gh api 'repos/bitwilll/keepcrypt/codeowners/errors?ref=m5-android'` on the pushed branch at
+  beb8ab6 returns `{"errors":[]}`.
+  Proof (M5 commit 3, partial): `git check-ignore -v` resolves `mobile/android/app/build/x.kt` and
+  `mobile/android/build/x` to `mobile/android/**/build/`, `.../src/main/jniLibs/arm64-v8a/libkeepcrypt.so` to
+  `mobile/android/**/jniLibs/` (the guard: the plan's android-rust.sh, commit 14, will write to `app/build/rust/`,
+  already under `build/`),
+  `mobile/android/.gradle/x` to `.gradle/`, `mobile/android/local.properties`, `a.apk`, `a.aab`, and `a.jks` and
+  `a.keystore` to the `*.jks` and `*.keystore` lines Entropy/.gitignore already had (lines 34-35); `app/build.gradle.kts`
+  and `buildSrc/x.kt` are not ignored. `gh api repos/bitwilll/keepcrypt/codeowners/errors` gives `{"errors":[]}`, but
+  the API reads main's file: the new `/Entropy/mobile/` line (the same shape as `/Entropy/core/`) is checked by the
+  lead after the push with `?ref=m5-android`, which closes this item.
+- [x] The gate's `list()` is unchanged (no `build/` skip: CI's `gates` runs on a fresh checkout, so a skip could only
+  hide committed files). A new rule refuses any tracked file under `mobile/**/build/` or `mobile/**/.gradle/`, read from
+  `git ls-files`.
+  Proof: `--selftest` cases: a tracked `mobile/android/app/build/x.kt` is a hit; an untracked one in a scratch repo is
+  not listed by the rule.
+  Proof (M5 commit 3): the Build category, after the per-file loop, `git ls-files -- mobile` filtered by
+  `^mobile/(.*/)?(build|[.]gradle)/`; `list()` untouched (`git diff` shows no hunk in it). `--selftest` 703 passed,
+  0 failed (698 + 5): the five scratch-repository cases pass, `build-tracked-app-build`, `build-tracked-dot-gradle`
+  and `build-tracked-mobile-build` each one `Build:` hit on their file (`git add -f`), `clean-build-untracked` (the
+  same file, not added) and `clean-build-gradle-files-tracked` (`app/build.gradle.kts` and `buildSrc/build.gradle.kts`
+  tracked) clean. By hand under /bin/dash: a tracked `mobile/android/prebuild/y.kt` is not a hit; a tree that is no
+  repository is silent; a PATH without git is exit 2 with "git is not on PATH". The gate on the tree: clean, 241 files.
+  Proof (M5 commit 3b, review fix): the rule now reads `git ls-files -s -z -- mobile` through a temp file (ls-files'
+  own exit status kept), so a name that plain ls-files prints quoted (a non-ASCII byte, a double quote) is matched
+  whole, and a gitlink (mode 160000, a submodule) anywhere under mobile/ is its own hit, since ls-files cannot list a
+  submodule's files. `--selftest` 707 passed, 0 failed (698 + 9): new `build-tracked-non-ascii-name` (é.kt, written
+  in octal), `build-tracked-double-quote-name` (a"b.kt), `build-tracked-submodule-at-build` and
+  `build-tracked-submodule-elsewhere` (`update-index --cacheinfo 160000`) each one `Build:` hit;
+  `clean-build-gradle-files-tracked` also tracks `gradle/libs.versions.toml` and
+  `gradle/wrapper/gradle-wrapper.properties`; the fixture-presence guard lists Build and the cases record it. Mutants,
+  fixtures linked: plain ls-files (no `-z`) fails both quoted-name cases, the gitlink alternative dropped fails both
+  submodule cases, `[.]?gradle` fails the gradle/ clean case, the Build block deleted gives "FAIL no Build fixture".
+  The same 707/0 under /bin/dash; the gate on the tree clean, 241 files, under both shells; no `banned-api-index.*`
+  left in TMPDIR.
+  Amended by M5-62 (a) (commits L3 and L3b): in a git work tree the gate's scan leaves out the ignored output a local
+  Gradle build leaves, mobile/android/.gradle/, mobile/android/build/ and each module's build/ (app, capture-control,
+  core-ffi, screens and secure-ui), where Q76's local builds left 1,874 hits. The Build rule above still refuses every
+  tracked file there (git ls-files), so the skip hides nothing tracked; a file or a link of one of those names, and
+  any other build/, is read, and so is every file of a tree that is no work tree (an export, a copy). L3 made the skip
+  a prune in list(); L3b moved it to scan(), so list() is again as this item left it.
+
+**3. Kotlin and Android gate rules (Q55; before any Kotlin lands)**
+- [x] New categories, each with hit and clean fixtures under `scripts/testdata/banned-api/`, covering `mobile/android/**`
+  (`.kt`, `.kts`, `.xml`, lockfiles, `libs.versions.toml`). Shipping sources (`src/main`) get every rule; `src/test` and
+  `src/androidTest` get KtLog, RNG, network, clipboard, KtSdk and KtWindow, and are exempt only from KtIntent, KtStorage,
+  KtDevice, KtFailOpen's catch list and KtInput's Activity rule; `:capture-control` is exempt only from the FLAG_SECURE
+  and Activity rules. Each scope has its own fixtures.
+  - **KtLog:** `android.util.Log`, `Log.[vdiwe](`, `Log.wtf(`, `println(`, `print(`, `System.out`, `System.err`,
+    `printStackTrace`, Timber, `java.util.logging`, slf4j; a `$` template inside an exception, `error(`, `check(` or
+    `require(` message.
+  - **KtFailOpen:** `runCatching`, `getOrNull`, `getOrElse`, `getOrDefault`, `onFailure`, a catch of `Throwable`,
+    `Exception`, `RuntimeException` or `Error`; any `catch` in `:core-ffi`. `KcHalt` is caught only in
+    `CeremonyViewModel.call`; Documents.kt may catch `IOException` and the scanner `CameraAccessException`, each mapped
+    to a refusal on its screen. The scanner may also catch `ReaderException`, ZXing's "no code in this frame", which
+    drops the frame and reads the next (M5-53). Outside the test source sets, the catch-alls no `catch` shows hit too:
+    an uncaught-exception handler (`setUncaughtExceptionHandler`, `setDefaultUncaughtExceptionHandler`,
+    `UncaughtExceptionHandler`, `uncaughtExceptionHandler`, `ThreadGroup`, `getUncaughtExceptionHandler`,
+    `uncaughtException`), but KeepCryptApp.kt's one call that installs CrashHandler and CrashHandler.kt's one-line
+    class header with its override, each exact and once (M5-58); a task whose failure waits where nobody need read it
+    (`ExecutorService`, `Executors`, `CompletableFuture`, `FutureTask`, `ForkJoinPool`, `async`, `Deferred`, and
+    `Executor` but in the scanner, with its import line), and a `return`, `break` or `continue` inside a `finally`
+    block, which drops the exception in flight, read fail closed without a parser (a string, a character, a backtick
+    name or a comment in the block hits too) (M5-60). There too, `java.util.concurrent` and `kotlinx.coroutines` are
+    allowed only by the import lines the shipping code has today, each a whole line, exactly: the ten `import
+    kotlinx.coroutines.X` lines M5-60 (b) lists, in any file, and `import java.util.concurrent.Executor` in the
+    scanner alone; any other mention of either package (another import, a star import, an alias, a qualified name,
+    a package line, a comment or a string) hits (M5-60 (b), commit 18o).
+  - **KtWindow:** Toast, Snackbar, Notification, `Dialog(`, `AlertDialog`, `DialogFragment`, `Popup(`, `PopupWindow`,
+    `ListPopupWindow`, `PopupMenu`, `DropdownMenu`, `ModalBottomSheet`, Spinner, `AutoCompleteTextView`, tooltips,
+    `WindowManager.addView`, `TYPE_APPLICATION_OVERLAY`; any `DialogProperties(`/`PopupProperties(` without
+    `securePolicy = SecureFlagPolicy.SecureOn`, parsed fail closed like `textselection()`.
+  - **KtInput:** `TextField`, `BasicTextField`, `OutlinedTextField`, `SecureTextField`, `EditText`,
+    `InputMethodManager`, `SoftwareKeyboardController`; an Activity subclass outside SecureActivity.kt.
+  - **KtStorage:** SharedPreferences, DataStore, `openFileOutput`/`openFileInput`, `FileOutputStream`/`FileInputStream`,
+    `File(`, `filesDir`, `cacheDir`, `getExternal`, MediaStore, Room, SQLite, `createTempFile`, `rememberSaveable`,
+    `SavedStateHandle`, `takePersistableUriPermission`; `openOutputStream`, `openInputStream` and `openFileDescriptor`
+    outside `app/.../files/Documents.kt`.
+  - **KtIntent:** `Intent(`, `startActivity`, `PendingIntent`, `sendBroadcast`, `registerReceiver`, `ShareCompat`,
+    `createChooser`, `ACTION_VIEW`, `LocalUriHandler`, `openUri`, `LinkAnnotation`, outside Documents.kt and the Go
+    offline screen (airplane-mode settings only).
+  - **Network additions:** `android.webkit`, WebView, `javax.net`, `Socket(`, `DatagramSocket`, `java.net.http`,
+    ConnectivityManager, Cronet, DownloadManager. **RNG addition:** `UUID.randomUUID`.
+  - **KtDevice:** camera classes only in `camera/GoAheadScanner.kt`; `SensorManager` only on the device-entropy screen;
+    `Settings.Global` only in `OfflineMonitor.kt`.
+  - **KtSdk (build files and lockfiles):** firebase, crashlytics, `com.google.android.gms`, play-services, mlkit,
+    sentry, bugsnag, acra, appcenter, datadog, newrelic, segment, mixpanel, amplitude, flurry, admob, facebook,
+    instabug, onesignal; any repository but `google()` and `mavenCentral()`; `gradlePluginPortal`, `jcenter`,
+    `mavenLocal`, `flatDir`, `includeBuild`; a `repositories {}` block outside settings.gradle.kts; local and remote
+    build inputs: `files(`, `fileTree(`, `apply(from`, `apply from:`, `buildscript {`, `classpath(`, and `srcDir(` or
+    `srcDirs(` naming a `build` path.
+  - **KtBinary:** any tracked file under `mobile/` with a binary extension (jar, aar, so, dex, class, apk, aab, jks,
+    keystore), read from `git ls-files`, not through the extension skip at :482.
+  - **KtManifest (source manifests):** `android.permission.INTERNET`, `ACCESS_NETWORK_STATE`, `ACCESS_WIFI_STATE`,
+    `allowBackup="true"`, `usesCleartextTraffic="true"`, `debuggable`, `<provider`, `<receiver`, `<service` (other than
+    `tools:node="remove"` lines); and, fail closed, an `<application` lacking `allowBackup="false"`,
+    `fullBackupContent="false"` or `dataExtractionRules`.
+  - **KtTestChannel:** the instrumentation status key `kc_ci_throwaway_passphrase` (group 18) appears only under
+    `mobile/android/app/src/androidTest/` and in `scripts/android-age-check.py`.
+  - **FFI:** exactly one `catch_unwind` call site in Rust source (comments and clippy.toml entries are not call sites),
+    in `ffi/jni/src/lib.rs`; exactly one `Session::new` under `ffi/`, in `ffi/src/ceremony.rs`; the identifiers
+    `thread` and `JoinHandle` nowhere under `ffi/`.
+  Proof: `--selftest` counts per category and scope; the gate clean on the tree; `gates` time.
+  Proof (M5 commit 4, partial; `gates` time in CI is the lead's, after the push): every scanned file under
+  mobile/android gets the code rules (Kotlin, Java, XML, Gradle files alike), by scope: `src/test` and
+  `src/androidTest` of any module (exactly those; `src/testRegistry/` ships), `mobile/android/capture-control/`, the rest.
+  The named files are the app's `files/Documents.kt`, `CeremonyViewModel.kt`, `camera/GoAheadScanner.kt`,
+  `GoOfflineScreen.kt` and `DeviceEntropyScreen.kt`, and secure-ui's `SecureActivity.kt` and `OfflineMonitor.kt`.
+  KtFailOpen's catch list is an allow-list (only those three catches, each in its file); the catch_unwind site is
+  required once ffi/jni/src/lib.rs exports a function (`extern "system"` or `no_mangle`), so commit 9's empty lib
+  passes; the one Session::new is required once ffi/src/ceremony.rs exists. `--selftest` 984 passed, 0 failed
+  (707 + 277), the same under /bin/dash. New hit cases per category and scope (main = every other mobile/android
+  file; test = `src/test` and `src/androidTest`): KtLog main 18, test 2, capture-control 1; KtFailOpen 21, 2, 1
+  (catch list 17 of them); KtWindow 27, 3, 1; KtInput 15, 2, 1 (Activity rule 8); KtStorage 25, -, 1; KtIntent 14, -,
+  1; KtDevice 10, -, 1; KtSdk 42 (build files and lockfiles), capture-control 1; KtManifest 19, 1, 1; KtTestChannel
+  main 1, test 2, capture-control 1, scripts 1; KtBinary 12 (scratch repositories); FFI 17; Network additions 9 plus
+  1 in androidTest; RNG randomUUID 1 plus 1 in test. Clean: clean-kt-shipping-allowed (the named files' exceptions
+  and near misses), clean-kt-test-scope, clean-kt-capture-control, clean-kt-build-files, clean-kt-manifest, clean-ffi,
+  clean-ktbinary-untracked-image-outside-mobile, and the scope copies: every hit fixture whose rule a scope skips is
+  copied there and scanned in one tree per scope, clean (src/test 75 fixtures, src/androidTest 75, capture-control
+  17). Three existing fixtures moved off a line the new KtIntent rule also hits (clipboard-action-send,
+  network-kotlin-uri-parse-literal; clean-near-misses' `Intent(ACTION_CREATE_DOCUMENT)` moved into its Documents.kt).
+  The gate on the tree: clean, 241 files (no prose hit under ffi/). canaries.sh 74/74 (new: kotlin-ffi-rules, five
+  planted hits on the real tree copy). Wall times on this Mac (load 3-5): gate 15.9 s (base 15.0 s), `--selftest`
+  4:39 (base 2:53), canaries 4:42 (base 4:19).
+  Proof (M5 commit 4c, the lead, from CI): review fixes 4b (7f878f7 .. bee6877) took `--selftest` to 1065 passed, 0 failed
+  (sh and dash), the gate to 263 files, canaries 74/74. Entropy CI 39062895694 at bee6877: 14 of 14 green, `gates (banned
+  APIs, verifier, canaries)` 10 min 41 s, within the approved 12 minutes (M4b measured 10 min 08 s).
+  Proof (M5 commit 17f, review fix): the catch list allowed its three types by bare name only, so `import kotlin.Throwable
+  as KcHalt` in CeremonyModel.kt left its catch a catch-all with the gate clean (reproduced on a copy of 5eb5688).
+  Outside the test source sets, a file with an allowed catch must now hold its type's own import line exactly (`import
+  com.keepcrypt.entropy.ffi.KcHalt`, `import java.io.IOException`, `import
+  android.hardware.camera2.CameraAccessException`), or its first allowed catch hits ("missing import ..."); and
+  kt_alias hits an alias or cast to one of the three names (backticks too), a typealias of one or one whose name is on
+  the next line, and an import that ends in "as". Eight new hit fixtures, each also copied into the test scopes and
+  clean there: the missing import in CeremonyModel.kt, Documents.kt and GoAheadScanner.kt, the import alias, "as" on
+  the next line, an import ending in "as", the typealias and a typealias name on the next line;
+  clean-kt-shipping-allowed and ktfailopen-catch-kmp-ceremony-model-second-catch gain their import lines. `--selftest`
+  1439 passed, 0 failed (1431 before), the same under /bin/dash; the gate clean on the tree (356 files) under sh and
+  dash; canaries.sh PASS, all 93 checks ran.
+  Proof (M5 commit 18a, M5-53): the catch list gains `catch (<name>: ReaderException)`, by its bare name, in the app's
+  camera/GoAheadScanner.kt only, beside CameraAccessException, under 17f's rules: the file must hold `import
+  com.google.zxing.ReaderException` exactly, or its first ReaderException catch hits ("missing import ..."), and
+  kt_alias counts ReaderException among the allowed names. kt_catch_allowing now takes the file, then a type and import
+  pair per allowed catch, so the scanner's two catches pass together and each needs its own import. Five new hit
+  fixtures, one hit each, each also copied into the test scopes and clean there (src/test and src/androidTest 117
+  copies each, commonTest and androidHostTest 132, from 112 and 127): the catch with its import in Documents.kt; in the
+  scanner, `catch (e: NotFoundException)` beside both import lines, `catch (e: Exception)` beside ReaderException's,
+  the catch under `import com.google.zxing.*` (not its own line) and `import kotlin.Throwable as ReaderException`;
+  clean-kt-shipping-allowed's scanner gains the import and a one-line catch. By hand, on the selftest's base tree, five
+  mutants of the gate each fail one of these fixtures: the scanner's ReaderException pair dropped (the clean fixture
+  hits), ReaderException dropped from kt_alias, the import check kept for the first pair only, ReaderException also
+  allowed in Documents.kt, and any `*Exception` allowed in the scanner. `--selftest` 1444 passed, 0 failed (1439
+  before), the same under /bin/dash; the gate clean on the tree (356 files) under sh and dash; canaries.sh PASS, all
+  93 checks ran.
+  Proof (M5 commit 17i, review fix): the import check matched its line anywhere in the file, a line inside `/*` `*/`
+  included, and kt_alias's typealias pattern missed a comment before the name, so with the scanner's `import
+  com.google.zxing.ReaderException` wrapped in a block comment and `internal typealias /* the frame */ ReaderException
+  = Throwable` in its package, its catch caught Throwable and the gate was clean (reproduced on a copy of f018fc2; the
+  same for KcHalt in CeremonyModel.kt). The import line now counts only in the file's import header (kt_header: its
+  leading lines that are blank, a `//` comment, the package line or a plain import line, on none of which a block
+  comment or string can open), and kt_alias also hits a typealias with anything but a plain name after it (a comment
+  or a line break), an `as` followed by a comment, and a backticked name with no space after `as` or typealias. Seven
+  new hit fixtures, one hit each, each also copied into the test scopes and clean there (src/test and src/androidTest
+  121 copies each, commonTest and androidHostTest 139, from 117 and 132): the import inside a block comment in the
+  scanner and in CeremonyModel.kt, inside a raw string in Documents.kt, `internal typealias /* the frame */
+  ReaderException = Throwable`, `typealias /* a halt */ KcHalt = Throwable`, `import kotlin.Throwable as /* frame */
+  ReaderException` and an alias written ``as`KcHalt` `` with no space. By hand, three mutants of the gate each fail
+  only their own fixtures: the import looked for in the whole file (the three import fixtures), 17f's typealias
+  pattern (the two typealias fixtures) and 17f's `as` pattern (the two alias fixtures). `--selftest` 1451 passed, 0
+  failed (1444 before), the same under /bin/dash; the gate clean on the tree (359 files) under sh and dash, and two
+  hits on the reproduction's copy; canaries.sh PASS, all 93 checks ran.
+  Proof (M5 commit 18a-b, review fix): each named file was matched as mobile/android/<module>/src/<set>/*/NAME, whose
+  `*` also matches `/`, so a ReaderException catch in app/.../entropy/words/camera/GoAheadScanner.kt and the camera in
+  app/.../entropy/x/src/test/camera/GoAheadScanner.kt passed (reproduced on a copy of f018fc2), against M5-53's "in
+  camera/GoAheadScanner.kt only". Each named file is now one path: the app's
+  `mobile/android/app/src/main/kotlin/com/keepcrypt/entropy/` (camera/GoAheadScanner.kt, files/Documents.kt,
+  AirplaneSettingsIntent.kt, SensorMotionSource.kt), secure-ui's `.../secure-ui/src/main/kotlin/com/keepcrypt/entropy/
+  secure/` (SecureActivity.kt, OfflineMonitor.kt) and :screens' `.../screens/src/commonMain/kotlin/com/keepcrypt/
+  entropy/screens/CeremonyModel.kt`, the packages the real files have (Documents.kt's is commit 20's). The fixtures
+  that stand for a named file moved to its path (35 files, from com/keepcrypt/app, secureui and screens, and
+  clean-near-misses' kotlin/app). Ten new hit fixtures, one per named-file rule, one hit each, each also copied into
+  the test scopes and clean there (src/test and src/androidTest 130 copies each, commonTest and androidHostTest 149,
+  capture-control 25): a KcHalt catch in screens/old/CeremonyModel.kt, an IOException catch, a document stream and an
+  Intent( in backup/files/Documents.kt, a ReaderException catch in words/camera/GoAheadScanner.kt, the camera in
+  x/src/test/camera/GoAheadScanner.kt, the airplane-settings call in settings/AirplaneSettingsIntent.kt, a sensor in
+  motion/SensorMotionSource.kt, Settings.Global in secure/net/OfflineMonitor.kt and an Activity subclass in
+  secure/old/SecureActivity.kt. By hand, ten mutants of the gate, each one rule's old `*` pattern, each fail only
+  that rule's fixture. `--selftest` 1461 passed, 0 failed (1451 before), the same under /bin/dash; the gate clean on
+  the tree (359 files) under sh and dash, and three hits on the reproduction's copy; canaries.sh PASS, all 93 checks
+  ran.
+  Proof (M5 commit 18b, review fix): KtIntent allowed the CAMERA launcher but hit every line naming
+  ActivityResultContracts, its import line too, so the launcher could not be written with a normal import and commit
+  18's MainActivity imported the package with `.*` (reproduced: the explicit import line is a KtIntent hit at
+  f018fc2). KtIntent (ktintent and kt_intent_airplane) now also allows exactly the line `import
+  androidx.activity.result.contract.ActivityResultContracts`; an alias or a nested class's import still names the
+  class and hits, and every other contract still has to be named where it is used. clean-kt-shipping-allowed's
+  Screens.kt and AirplaneSettingsIntent.kt gain the line; two new hit fixtures, one hit each and clean in the test
+  scopes: the import `as Contracts` and the import of `ActivityResultContracts.GetContent`. By hand, three mutants of
+  the gate each fail a fixture: the line not allowed in ktintent (Screens.kt hits), nor in kt_intent_airplane
+  (AirplaneSettingsIntent.kt hits), and the line matched without its end (both new fixtures pass). MainActivity
+  imports the class by that line again (its compile is CI's). `--selftest` 1463 passed, 0 failed (1461 before), the
+  same under /bin/dash; the gate clean on the tree (359 files) under sh and dash; canaries.sh PASS, all 93 checks
+  ran.
+  Proof (M5 commit 18e, M5-58): an uncaught-exception handler is a catch-all no `catch` shows, and KtFailOpen did not
+  see one: `started.setUncaughtExceptionHandler { _, _ -> }` on the scanner's HandlerThread and a second
+  `Thread.setDefaultUncaughtExceptionHandler { _, _ -> }` in MainActivity.kt left the gate clean (reproduced on a copy
+  of 1a63e0f). Outside the test source sets the catch list now also hits `setUncaughtExceptionHandler`,
+  `setDefaultUncaughtExceptionHandler` and `UncaughtExceptionHandler` as words, with or without `Thread.` (a call, a
+  method reference, an import, an alias or a typealias), and `uncaughtExceptionHandler`, Kotlin's property for a
+  thread's getter and setter (its assignment is the setter's call), but for two mentions, once each, each at its
+  exact path: `Thread.setDefaultUncaughtExceptionHandler(` in the app's KeepCryptApp.kt and
+  `Thread.UncaughtExceptionHandler` as the only supertype of CrashHandler's one-line class header in the app's
+  CrashHandler.kt; any other mention in either file hits. An alias or typealias names the word, so it hits by the
+  word, and kt_alias is unchanged. Nine new hit fixtures, one hit each, each also copied into the test scopes and
+  clean there (src/test and src/androidTest 141 copies each, commonTest and androidHostTest 160, from 132 and 151):
+  `thread.setUncaughtExceptionHandler { _, _ -> }` and `thread.uncaughtExceptionHandler = quiet` in the scanner, a
+  second `Thread.setDefaultUncaughtExceptionHandler(` in MainActivity.kt, a handler class (`:
+  Thread.UncaughtExceptionHandler`) in CeremonyHolder.kt, a second call of the allowed form in KeepCryptApp.kt,
+  `Thread::setDefaultUncaughtExceptionHandler` in KeepCryptApp.kt, an import alias of the name in CrashHandler.kt, and
+  KeepCryptApp.kt's call and CrashHandler.kt's header each in a file of the same name in another package;
+  clean-kt-shipping-allowed gains KeepCryptApp.kt's call and CrashHandler.kt's header in their real forms. By hand,
+  seven mutants of the gate each fail only their own fixtures: the rule dropped (all nine), the allowance applied to
+  every line (the second call), the two files matched by name at any path (the two other-package fixtures),
+  CrashHandler.kt exempt whole (the alias), the property name dropped (the property), the call matched by `.` or
+  `::` without its `(` (the method reference) and the instance setter dropped (the scanner's handler). `--selftest`
+  1472 passed, 0 failed (1463 before), the same under /bin/dash; the gate clean on the tree (359 files) under sh and
+  dash, and two hits on the reproduction's copy; canaries.sh PASS, all 93 checks ran (no canary added: the
+  kmp-ios-rules canary's catch already plants KtFailOpen's catch list on the real tree).
+  Proof (M5 commit 18f, review fix): 18e allowed KeepCryptApp.kt's `Thread.setDefaultUncaughtExceptionHandler(`
+  wherever it stood on its line and whatever its argument, and CrashHandler.kt's header by a pattern whose `.*` could
+  take in a whole other class, so `Thread.setDefaultUncaughtExceptionHandler(null)` or a CrashHandler whose wipe does
+  nothing in KeepCryptApp.kt, `internal fun install(handler: CrashHandler) =
+  Thread.setDefaultUncaughtExceptionHandler(handler)` there called from MainActivity.kt with a wipe that does nothing,
+  and a CrashHandler.kt line declaring CrashHandler and then a second handler class each left the gate clean
+  (reproduced on a copy of bce1b48); no fixture tested the allowances' shape (a gate mutant that dropped the allowed
+  line whole, and four that loosened the header's pattern, passed every fixture). Each allowed line is now exact, its
+  indentation aside, and allowed once, as ffi_guard_pub pins guarded's line: KeepCryptApp.kt's
+  `Thread.setDefaultUncaughtExceptionHandler(` alone on its line, with the line after it pinned to `CrashHandler(wipe
+  = { Core.wipeAll() }, end = { Process.killProcess(Process.myPid()) }),` (any other line there is a hit, and a file
+  that ends first is one, "missing ..."), and CrashHandler.kt's one-line class header. Five new hit fixtures, one hit
+  each, each also copied into the test scopes and clean there (src/test and src/androidTest 146 copies each,
+  commonTest and androidHostTest 165, from 141 and 160): a CrashHandler whose wipe does nothing, the call after
+  another call on its line, the call as the file's last line, the header twice and the header with a body on its
+  line. By hand, five mutants of the gate each fail only their own fixtures: the argument line not pinned (the
+  argument and the last line), a line allowed by containing the text (the two with more on the line), every exact
+  line allowed (the header twice), no check at the file's end (the last line) and the indentation kept
+  (clean-kt-shipping-allowed and 18e's second call); 18e's gate passes the argument and last-line fixtures.
+  `--selftest` 1477 passed, 0 failed (1472 before), the same under /bin/dash; the gate clean on the tree (359 files)
+  under sh and dash, and one hit on the reproduction's copy; canaries.sh PASS, all 93 checks ran.
+  Proof (M5 commit 18g, review fix): a thread's failure had two more ways to stop short of CrashHandler that named
+  none of M5-58's three words. A thread with no handler of its own hands its failures to its ThreadGroup, itself a
+  handler, so `object : ThreadGroup("go-ahead scanner") { override fun uncaughtException(t: Thread, e: Throwable) {} }`
+  with the scanner's HandlerThread made in it, and a Thread subclass's `override fun getUncaughtExceptionHandler()`
+  (the getter the JVM asks) in MainActivity.kt, left the gate clean (reproduced on a copy of bce1b48). `ThreadGroup`,
+  `getUncaughtExceptionHandler` and `uncaughtException` (the method every handler implements, so an override of it
+  hits whatever its class's supertype is called) now hit as words with the others, outside the test source sets, and
+  CrashHandler.kt's one override, `override fun uncaughtException(thread: Thread, exception: Throwable) {`, is pinned
+  on the line after its header as 18f pins KeepCryptApp.kt's argument; the tree names none of the three elsewhere
+  outside its test source sets. Four new hit fixtures, one hit each, each also copied into the test scopes and clean
+  there (src/test and src/androidTest 150 copies each, commonTest and androidHostTest 169, from 146 and 165): a
+  ThreadGroup subclass in the scanner, the getter's override in MainActivity.kt, an override of `uncaughtException` in
+  CeremonyHolder.kt, and CrashHandler.kt's header followed by an override that drops every failure;
+  clean-kt-shipping-allowed's CrashHandler.kt, the alias fixture and the header-twice fixture gain the pinned override
+  after the header. By hand, four mutants of the gate each fail only their own fixtures: each of the three words
+  dropped (its fixture) and the override line not pinned (clean-kt-shipping-allowed, the alias and the header twice);
+  18f's gate leaves all four new fixtures clean. `--selftest` 1481 passed, 0 failed (1477 before), the same under
+  /bin/dash; the gate clean on the tree (359 files) under sh and dash, and three hits on the reproduction's copy;
+  canaries.sh PASS, all 93 checks ran.
+  Proof (M5 commit 18h, review fix, M5-60): the findings of 18e's review that 18f and 18g left open, and M5-60. 18g's
+  pinned override is itself a hit wherever no allowed header comes before it, so under a gate that takes a refused
+  CrashHandler.kt header the header-with-body and header-twice fixtures still gave one hit ("missing ..." at the
+  header), which expect() accepts: at c4eef81 a gate that allows every exact line (the once-only limit dropped) failed
+  no fixture, and one that allows a line starting with, ending with or containing the allowed text failed only
+  two-on-the-line (rerun here on c4eef81's KtFailOpen and clean fixtures). CrashHandler.kt's header cases are now
+  built in the selftest, each a refused header with its override on the next line, two hits: the header's the one
+  counted (atline), the override's the extra line (also); a gate that takes the header gives none. Seven cases, each
+  also put in the test scopes' trees and clean there: the class named otherwise, a second supertype, the header over
+  two lines, the header with a body after its `{` (a second mention on the allowed line), a second class after `;` on
+  its line (which 18e's pattern took), a second class before it on its line with no `;`, and the header again after
+  the allowed one. 18f's exact line already refuses each, so no gate change was needed for them, and the gate
+  comment's and 18e's "the only supertype of CrashHandler's one-line header" and "any other mention in either file
+  hits" hold. Three new hit fixtures: KeepCryptApp.kt's call on `QuietThread.` (the `Thread.` boundary), its argument
+  line `Thread.getDefaultUncaughtExceptionHandler() ?: CrashHandler(...),` (a second mention on a pinned line;
+  `getDefaultUncaughtExceptionHandler` is no word of the rule, and the pin catches it) and a default handler in
+  :capture-control's src/main (the rule's reach there, written anew). M5-60: outside the test source sets KtFailOpen
+  hits `ExecutorService`, `Executors`, `CompletableFuture`, `FutureTask`, `ForkJoinPool`, `async` and `Deferred` as
+  words, and `Executor` but in the app's camera/GoAheadScanner.kt, whose import header must hold `import
+  java.util.concurrent.Executor` exactly ("missing ..."; M5-60 allows Executor there only, so it hits elsewhere); and
+  a `return`, `break` or `continue` inside a `finally` block, read without a parser and fail closed: the block's `{`
+  found past blanks (a form feed among them, which Kotlin's lexer skips) and line breaks, its braces counted, a quote,
+  a backtick or a comment in the block, or a comment between `finally` and its `{` (where a brace could be text), a
+  hit at its line, and a file that ends inside a block a hit at its `finally`. So the gate finds every such word in a
+  block, and nothing is left to a residual; the cost is that a shipping `finally` block may hold no string,
+  character, backtick name or comment, and a `break` or `continue` of a loop inside the block (or a lambda's return
+  there) hits too. The tree's three shipping `finally` blocks (CrashHandler.kt's and the scanner's two) pass. 22 new
+  hit fixtures for M5-60, one hit each, each clean under c4eef81's gate: one per word (FutureTask in
+  :capture-control, ForkJoinPool in the scanner beside Executor's import line), Executor in MainActivity.kt and in a
+  file of the scanner's name in another package, the scanner's Executor without its import line and with it in a
+  block comment; a return after a nested block in the scanner, a break in :capture-control, a continue whose `{` is
+  on the next line, a form feed between `finally` and its `{`, a string, a character, a backtick name, a line comment
+  and a block comment in the block, a comment before the `{` and a file that ends inside a block. Each new case is
+  also in the test scopes and clean there (src/test and src/androidTest 175 copies each, commonTest and androidHostTest
+  201, from 150 and 169). ktfailopen-main-supervisor-scope's line takes `launch` for `async`, now a hit of its own;
+  clean-kt-shipping-allowed's scanner gains the import line and its Executor. By hand, 38 mutants of the gate, each
+  run through the selftest's fixture loop, CrashHandler cases and scope trees on the KtFailOpen and clean fixtures,
+  each fail only their own cases: for the handlers, CrashHandler.kt's header read with any class name, with a
+  trailing supertype, as its supertype line alone, by its start, by 18e's pattern and by its end, the once-only limit
+  dropped, letters before KeepCryptApp.kt's `Thread.` ignored, a pinned line matched by its end and the rule skipped
+  in :capture-control (one case each), and an allowed line matched by its start in both files (two-on-the-line and
+  the body case); for the tasks, each word dropped (its fixture; Executor's, both Executor fixtures outside the
+  scanner), every word allowed in the scanner (ForkJoinPool's), the scanner matched by name (the other package's),
+  the import check dropped (both import fixtures), the import looked for in the whole file (the block comment's) and
+  the words skipped in :capture-control (FutureTask's); for `finally`, each word dropped (return's also fails the form
+  feed's, whose block holds a return), the block ended at its first `}` (the return's), the `{` looked for on the line
+  of `finally` only (the continue's), each of the quote, character, backtick, line-comment and block-comment checks
+  dropped, a comment before the `{` read as no block, the end-of-file check dropped, the form feed read as no blank
+  and the rule skipped in :capture-control (one fixture each). `--selftest` 1513 passed, 0 failed (1481 before), the
+  same under /bin/dash; the gate clean on the tree (359 files) under sh and dash; canaries.sh PASS, all 93 checks
+  ran. Local wall time of `--selftest` under sh on the owner's Mac, each tree's run alone: 552 s and 553 s here, 527 s
+  for c4eef81's gate and fixtures (1481 cases) run right after the first, and 514 s for 1a63e0f's (1463 cases, the
+  last gates job's) before the second. So 18h's 32 cases, their scope copies and the two rules' cost per scanned file
+  add about 5% (25 s), and 18e-18h together about 7.5% (39 s); the gate on the tree took 29-30 s against 27 s for
+  c4eef81's on its export (355 files: the tree less four local __pycache__ files). The gates job took 659 s of its 720 (Q31 (f)) at 1463 cases (run 39744137380, at 1a63e0f); if its
+  self-test grows as it does here, the next run may come near 690-710 s; CI measures it.
+  Proof (M5 commit 18k, review fix): three arms of 18h's `finally` rule had no fixture, so a gate without any one of
+  them still passed every case and gave no hit on its planted file: a tab or a carriage return as the blank between
+  `finally` and its `{`, and a `//` comment there (18h's comment-before-brace fixture has `/*`). Three new hit
+  fixtures, one hit each, each clean under c4eef81's gate: a tab before the `{` (:secure-ui), a file with CRLF line
+  ends whose `{` is on the line after `finally` (:screens; the repo has no .gitattributes, so git keeps its bytes)
+  and `finally // the frame` with its `{` on the next line (the hit at the finally's line). Each is also in the test
+  scopes and clean there (src/test and src/androidTest 177 copies each, commonTest and androidHostTest 204, from 175
+  and 201). By hand, three mutants of the block reader (the tab, the carriage return and the `//` comment each
+  dropped from what may stand between `finally` and its `{`), each run through the selftest's fixture loop,
+  CrashHandler cases and scope trees on the KtFailOpen and clean fixtures, each fail only their own fixture, and
+  each passes every case without the new fixtures. `--selftest` 1516 passed, 0 failed, the same under /bin/dash; the
+  gate clean on the tree (356 files) under sh and dash.
+  Proof (M5 commit 18l, review fix): the scanner's Executor needs `import java.util.concurrent.Executor` as a whole
+  line of its import header (grep -x), but no fixture told that line from a header line that only holds its text:
+  with -x dropped the gate still passed every case. A new hit fixture, clean under c4eef81's gate: the scanner's
+  header with `// import java.util.concurrent.Executor` (a line comment, which the header takes) and its Executor,
+  one hit ("missing ..." at the comment's Executor). Also in the test scopes and clean there (178 and 205 copies).
+  By hand, that substring mutant, run through the selftest's fixture loop, CrashHandler cases and scope trees on the
+  KtFailOpen and clean fixtures, fails only the new fixture, and passes every case without it. `--selftest` 1517
+  passed, 0 failed, the same under /bin/dash; the gate clean on the tree (356 files) under sh and dash.
+  Proof (M5 commit 18o, M5-60 as amended 2026-10-23, (b) and (c)): (b) outside the test source sets KtFailOpen's task
+  rule (kt_tasks, and kt_tasks_scanner in the app's camera/GoAheadScanner.kt) also hits every mention of
+  java.util.concurrent or kotlinx.coroutines (kt_packages) but the import lines the shipping code has today, each a
+  whole line, exactly: `import kotlinx.coroutines.X` for X each of CoroutineDispatcher, CoroutineScope, Dispatchers,
+  Job, cancel, delay, flow.MutableStateFlow, flow.StateFlow, launch and withContext in any file, and `import
+  java.util.concurrent.Executor` in the scanner alone. git ls-files of */src/main/*.kt, */src/commonMain/*.kt and
+  */src/androidMain/*.kt names either package on exactly those lines: CeremonyHolder.kt's five, CeremonyModel.kt's
+  seven and the scanner's Executor (kotlin.concurrent.Volatile there and in CeremonyModel.kt is the standard library's
+  package, another name); no other tracked file under mobile/android outside the test sets names either (the
+  lockfiles' and the verification metadata's kotlinx-coroutines artifacts are hyphenated). The word list is unchanged.
+  A mention is read as Kotlin reads a qualified name, fail closed: from the word java or kotlinx past blanks (a space,
+  a tab, a form feed, a carriage return), backticks and line breaks, each dot and then each part, a hit at the line of
+  its first word, and a // or /* comment after a part or a dot of a name not yet complete is a hit there; so a
+  qualified name spaced out, in backticks or split over lines, and a package line, hit. Comments and strings follow
+  the other word rules' handling of Kotlin text (ktfailopen's and kt_tasks' words): they are read as text, so a
+  mention in either hits. A line that both the words and the packages find (the Executor import outside the scanner)
+  is reported once. (c) any .java file under mobile/android, in any letter case and in every scope (the test sets,
+  :capture-control and paths outside src/ included), is a KtSourceSet hit, a whole-file one ("a Java source (...)").
+  KtSourceSet, not a rule of its own: it is the gate's path rule for what may hold sources under mobile/android,
+  reported without a line, and the selftest already pairs a refused path's KtSourceSet line with another rule's hit
+  (its also line), so the eleven Java fixtures of RNG, Network, Clipboard, KtFailOpen and KtInput keep testing those
+  rules' Java forms, each now with that line too; a rule of its own would need a new category in the hit format, the
+  selftest's prefix map and its seen list, and that pairing again. The two of those eleven that the scopes copied
+  (ktfailopen-catch-main-java, ktinput-activity-main-java-extends) are no longer copied, as Java is a hit in every
+  scope; their rules' exemptions keep their Kotlin copies. clean-near-misses' src/test Backup.java is Backup.kt (the
+  same two near misses in Kotlin), and rng-threadlocalrandom's line is a call of ThreadLocalRandom.current() instead
+  of its import, which is now a KtFailOpen hit too. 30 new cases, each clean under 994894f's gate: 25 KtFailOpen hit
+  fixtures, one hit each, each also copied into the test scopes and clean there (src/test and src/androidTest 190
+  copies each, commonTest and androidHostTest 228, from 178 and 205; :capture-control's 24, from 25): an unlisted
+  import from each package (TimeUnit, runBlocking), a star import of each, an alias of an allowed name, two imports on
+  one line ending in an allowed one, a qualified call into each (CountDownLatch, GlobalScope.launch),
+  ThreadPoolExecutor, ScheduledThreadPoolExecutor in the scanner beside its Executor line, ScheduledExecutorService,
+  ForkJoinTask's fork, kotlinx.coroutines.future's future, Flow's retry and retryWhen, a package line, a mention in a
+  KDoc comment, and a qualified name with spaces around its dots, a tab, a form feed, a carriage return or a line
+  break before a dot, in backticks, and with a block or a line comment among its parts;
+  clean-kt-shipping-package-imports, the scanner with all eleven lines and CeremonyModel.kt with the ten (beside
+  kotlin.concurrent.Volatile and a Manager::class.java); and four KtSourceSet hit fixtures, one hit each: a .java
+  whose Math's random and catch of Throwable are backslash-u escapes (no text rule sees them), one in plain letters in
+  :app's src/test, one outside src/ (app/libs/) and one named .JAVA. By hand, 23 mutants of the gate, each run through
+  the selftest's fixture loop, CrashHandler cases and scope trees on the KtFailOpen, KtSourceSet and clean fixtures,
+  the eleven Java fixtures and the KtWindow and KtInput ones the scopes copy (227 fixtures, 240 cases, all passed by
+  the unmutated gate; no other fixture names either package in a shipping set or is a .java file), each fail only
+  their own cases: java dropped (its 11 fixtures), kotlinx dropped (its 14), the package arm dropped (all 25); the
+  space, the tab, the form feed, the carriage return and the backtick each not skipped, a line break ending a name,
+  and /* and // each no hit (one fixture each); an allowed line taken by its start (the alias), by its end (the two
+  imports) and by its text (both); the ten lines allowed in the scanner only (clean-kt-shipping-package-imports); the
+  scanner's lines without Executor's (the two clean fixtures that hold it, fork-join-pool-in-scanner and
+  ScheduledThreadPoolExecutor's); a line reported twice (executor-in-other-scanner and 18l's line-comment fixture);
+  and for Java, the rule dropped (its four, and the eleven others' also lines), lower case only (.JAVA), the test
+  scopes skipped (src/test's) and src/ only (libs/). Two mutants pass every case, as no file can tell them from the
+  gate: Executor's line allowed outside the scanner too (the word Executor still hits there), and 18l's header check
+  by its text (the comment line is now a mention that hits, so 18l's fixture still gives one hit). `--selftest` 1547
+  passed, 0 failed (1517 before), the same under /bin/dash; the gate clean on a fresh export of the tree (356 files)
+  under sh and dash; canaries.sh PASS, all 93 checks ran, on a fresh clone. Local wall time of `--selftest` under sh
+  on the owner's Mac, each run alone: 618 s and 665 s at 1547 cases, and 559 s for 994894f's gate and fixtures (1517
+  cases) on a fresh export of it between them (M5-63 had 575 s for those). The 30 cases are 2% more, and a gate run on
+  one fixture's tree took 354 ms against 352 ms for 994894f's (20 runs each), so the rest of the 10 to 19% is not that
+  cost and these runs do not settle it (the Mac's Spotlight indexing and Finder were busy after the second). The gates
+  job took 649 to 659 s of its 720 at 1463 to 1481 cases (M5-63), so at this commit it may exceed 12 minutes until
+  L4's shards land; CI measures it.
+  Proof (M5 commit 18p, review fix, partial: local, Q76; CI's mawk runs the new cases at the next push): the Mac's
+  awk (BWK, version 20200816) ends a line at a NUL byte, so a NUL in a comment or a string hid the rest of its line
+  from the two rules that read lines with awk: 18o's package arm (a qualified name of kotlinx.coroutines after `/*
+  NUL */` on one line of the app's CeremonyHolder.kt) and 18h's finally rule (a return in a finally block after a
+  string holding a NUL on its line), each tree clean under c0cb3d6's gate under sh and dash on the Mac (by hand).
+  Both now read the file through kt_text, `tr -d '\0'`, so every awk reads each line whole and the line is the one
+  every other rule's hit prints (sh and dash drop a NUL from a command's output). Two built cases (a fixture in git
+  would hold the byte where no diff shows it), ktfailopen-catch-package-after-a-nul and
+  ktfailopen-catch-finally-after-a-nul, one hit each at line 2 (atline), each also in the test scopes and clean
+  there (src/test and src/androidTest 192 copies each, commonTest and androidHostTest 230, from 190 and 228).
+  `--selftest --shard K/4` for K 1 to 4, side by side: 393, 393, 393 and 392 of 1571 cases, 0 failed, under sh and
+  under /bin/dash (1569 before); the gate clean on a fresh export (356 files) under sh and dash; canaries.sh PASS,
+  all 93 checks ran, on the export.
+  Proof (M5 commit 18q, review fix, partial: local, Q76): two things 18o's comment states had no case, as expect()
+  takes a hit at any line whose text it shows: a package mention is a hit at the line of its first word, and the
+  task words' hits and the packages' on other lines of one file are both reported. A gate reporting a split name
+  where it completes (`out(NR)` for `out(sl)`) and one dropping every package line of a file with a task-word hit
+  each passed every case. Both are now built cases: ktfailopen-catch-package-line-break-before-dot (the fixture of
+  that name, removed) is a hit at line 2, where kotlinx stands (atline), and ktfailopen-catch-package-beside-a-task-
+  word, the app's CeremonyHolder.kt with an ExecutorService at line 2 and a qualified name of kotlinx.coroutines at
+  line 3, is both hits (the word's as also, the package's at line 3), each also in the test scopes and clean there
+  (src/test and src/androidTest 193 copies each, commonTest and androidHostTest 231). By hand, each of those two
+  mutants of the gate, run on each case alone (`--selftest --shard 1165/9999` and `1166/9999`, the two cases'
+  places in the list), fails only its own case, and the unmutated gate passes both. `--selftest --shard K/4` for K 1
+  to 4, side by side: 393 of 1572 cases each, 0 failed, under sh and under /bin/dash (1571 before: one fixture
+  less, two built cases more); the gate clean on a fresh export (356 files) under sh and dash.
+- [x] The Shell rule for `game_random` is unchanged in M5 (its ffi and Kotlin fixtures stay hits until M5b).
+  Proof: those fixtures still trip.
+  Proof (M5 commit 4): `game_random_use` and its path list untouched (only the release probe's comment stripping moved
+  into the shared `rust_code_match`); `--selftest` (sh and dash): `PASS shell-game-random-in-ffi -> Shell:
+  ffi/src/lib.rs:1` and `PASS shell-game-random-in-kotlin -> Shell: mobile/android/app/src/main/kotlin/app/Snake.kt:1`.
+
+**4. Gradle project and supply chain (Q54)**
+- [ ] `mobile/android/`: `settings.gradle.kts` (`FAIL_ON_PROJECT_REPOS`; `google()` content-filtered to `androidx.*`,
+  `com.android.*`, `com.google.*`; `mavenCentral()`; no plugin portal), `build.gradle.kts`, `gradle.properties`
+  (`org.gradle.java.installations.auto-download=false`, SDK auto-download off, no build scans),
+  `gradle/libs.versions.toml` with exact versions; compileSdk 37, targetSdk 36, minSdk 31, build-tools 36.0.0,
+  `ndkVersion` 30.0.16248370, JDK 17; profileinstaller excluded from every configuration; the reproducibility settings
+  in "Built into this plan". **Every** Gradle dependency and plugin of M5 (app, JVM test, androidTest, capture-control)
+  is declared in this commit, so lockfiles and verification metadata are written once.
+  Proof: the first run's `buildEnvironment` and `dependencies` output under Review.
+- [ ] Bootstrap, two commits. Commit 5 carries a `-Pkc.bootstrap=true` switch in the workflow: that run alone writes
+  locks and verification metadata (`--write-locks --write-verification-metadata sha256`) with strict locking and
+  verification off, and uploads them as an artifact. Commit 6 commits the reviewed files, turns on strict lock mode and
+  strict verification, and removes the switch; a gate rule fails if `kc.bootstrap` appears at the final head. Every M5
+  dependency is declared in commit 5, so M5 expects no later dependency change: one stops the work and the lead
+  re-plans, because a regeneration needs a reviewed, temporary exception to the gate's bootstrap rule (lead decision
+  M5-13).
+  Proof: commit 5's run ID and artifact; commit 6's green run in strict mode; the gate rule's fixture.
+  Proof (M5 commit 6, partial; the strict CI run is the lead's): the switch is gone from build.gradle.kts and the
+  workflow (strict lock mode, `--dependency-verification strict` on every Gradle call, the upload step removed). The
+  gate rule (KtSdk `kt_bootstrap` and the strict-locking lines; Workflow mode, lead decision M5-14): `--selftest`
+  1102 passed, 0 failed under sh and /bin/dash, including `ktsdk-root-bootstrap-property`,
+  `ktsdk-gradle-properties-bootstrap-mixed-case`, `ktsdk-android-gradle-sh-bootstrap`, `workflow-kc-bootstrap`,
+  `workflow-kc-bootstrap-in-comment`, `ktsdk-root-build-file-absent` and the clean `clean-android-strict`; the gate
+  clean on the tree (273 files), `--workflows` clean (3 workflows).
+- [ ] `scripts/android-gradle.sh` fetches `gradle-9.7.1-bin.zip` from services.gradle.org, checks its SHA-256 (pinned
+  in the script from the published `.sha256`, read at commit time) and runs it with `--no-daemon`; no wrapper jar in
+  git.
+  Proof: a run with a one-byte-wrong pin fails before Gradle starts (recorded once).
+- [ ] `gradle/verification-metadata.xml` (SHA-256 of every artifact, plugin and POM; no trusted-artifact wildcards) and
+  the lockfiles are reviewed by a committed script, `scripts/android-deps-review.py`, run in CI: for Google Maven
+  artifacts it compares Gradle's SHA-256 with the published `.sha256`; for Maven Central artifacts it compares the
+  published `.sha1` with the downloaded file's SHA-1 and verifies the `.asc` signature against a signer key pinned by
+  fingerprint in the metadata (`<trusted-key>` entries, scoped to their group). Any artifact that passes neither is
+  listed and blocks commit 6. `mobile/android/expected/shipping-runtime-classpath.txt` is the committed dependency
+  allow-list (MA:126).
+  Proof: the script's report under Review; a run with one changed checksum fails; an extra classpath line fails.
+  Proof (M5 commit 6, partial; no gpg on this Mac, so the signature checks and the strict CI run are the lead's):
+  `python3 -I scripts/android-deps-review.py --selftest --skip-pgp` 42 passed, 0 failed, 2 skipped (the two gpg-only
+  cases), the same on /usr/bin/python3 3.9.6; among them `fail-changed-checksum-google`,
+  `fail-changed-checksum-central`, `fail-classpath-extra-line` and M5-11's `fail-google-sha1-only` (unlisted),
+  `fail-sha1-only-listed-sha1-changed` (and `-central`) and `fail-sha1-only-listed-sha256-changed`, the base passing
+  with one listed Google and one listed Central file. `sh scripts/android-deps-review.sh <fresh mirror> -- --skip-pgp`
+  (3 rounds, 2092 files): 768 artifacts: 300 Google's Maven (SHA-256 matched), 454 Maven Central (SHA-1 matched, PGP
+  not checked), 14 accepted by name (M5-11), 0 failed; 61 trusted keys, 78 group scopes; shipping runtime classpath
+  91 modules, equal to the expected list; licences Apache-2.0 91; exit 3 (incomplete without PGP).
+- [x] `scripts/android-rust.sh <flavour>` (from commit 14) builds the three ABIs with group 12's flags into
+  `app/build/rust/<flavour>/<abi>/` and the host library (x86_64-unknown-linux-gnu) for JVM tests; Gradle fails if a
+  flavour's library is missing.
+  Proof: the APK listing (group 5).
+  Proof (M5 commit 14, partial: the build runs in the Android job only, where the NDK is; nothing NDK runs on this Mac):
+  as M5-9 has it, `scripts/android-rust.sh shipping | withTestRegistry` runs the cross legs' two cargo commands with
+  NDK r30's API 31 clang, llvm-ar and the getrandom cfg per target, scans each library with `--artifact` (shipping
+  clean; test registry exactly its marker and the test key, 2 hits), checks every undefined dynamic symbol against NDK
+  r30's API 31 libc.so, libm.so and libdl.so stubs, prints size, SHA-256, LOAD segments and NEEDED, and copies each into
+  `app/src/<flavour>/jniLibs/<abi>/` (emptied first, the copy's SHA-256 checked); withTestRegistry also builds and scans
+  the x86_64-unknown-linux-gnu host library the JVM tests load. `app/build.gradle.kts` fails a flavour's
+  `merge...ReleaseNativeLibs` when any of its three libraries is missing, and keeps libkeepcrypt's symbols. On stub
+  NDK, cargo and gate trees in the session scratchpad, under sh and /bin/dash: both flavours pass and set exactly
+  CC_, AR_, the linker and the RUSTFLAGS cfg for each target alone; an undefined symbol the stubs lack, a test-registry
+  scan that comes back clean, a bad flavour, no argument and no SDK each fail (exit 1, 1, 2, 2, 2).
+  Proof (CI, run 39554267960 at 89cf334, 1178 s): `android-rust.sh` built both flavours' arm64-v8a, armeabi-v7a and x86_64 libkeepcrypt.so and the host
+  library; each shipping .so's artifact scan is clean, each test-registry .so shows exactly its marker and the test
+  key, and every undefined dynamic symbol (49, 44 and 48) is defined in NDK r30's API 31 stubs; the copies sit in
+  app/src/<flavour>/jniLibs/<abi>/ (M5-9) and both APKs carry them (`--apk` clean, each stored library byte-equal to
+  its scanned copy). Shipping SHA-256: arm64-v8a cebe1571..., armeabi-v7a 257b59d1..., x86_64 df5dfe7c....
+
+**5. The manifest, the APK check and the APK scan (gate item 2; matrix "Symbol and stub-marker scan")**
+- [x] `app/src/main/AndroidManifest.xml`: `HIDE_OVERLAY_WINDOWS`, `DETECT_SCREEN_RECORDING`, and from commit 18 `CAMERA`
+  (with `uses-feature camera required="false"`); `allowBackup="false"`, `fullBackupContent="false"`,
+  `dataExtractionRules` excluding everything, `usesCleartextTraffic="false"`; one exported launcher activity; the
+  removals named in "Built into this plan".
+  Proof: the expected summaries below.
+  Proof (M5 commit 7, partial; CAMERA comes with commit 18): `mobile/android/expected/manifest-shipping.txt` and
+  `manifest-withTestRegistry.txt`, reduced by `--apk`'s own code from run 39062895784's aapt2 dumps: exactly
+  HIDE_OVERLAY_WINDOWS, DETECT_SCREEN_RECORDING and androidx.core's DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION (declared
+  and used), backup, cleartext traffic and debugging off, extractNativeLibs false, one exported launcher activity,
+  the two androidx.window uses-library entries and the startup provider's removal (whose merger-report form is a
+  stand-in until the first run with the report: that run did not print it).
+  Proof (M5 commit 18, partial: both APKs' `--apk` runs are CI's): the manifest gains exactly `<uses-permission
+  android:name="android.permission.CAMERA" />` and `<uses-feature android:name="android.hardware.camera"
+  android:required="false" />`, after DETECT_SCREEN_RECORDING; both expected summaries gain `uses-permission
+  android.permission.CAMERA` (sorted before DETECT_SCREEN_RECORDING) and `uses-feature android.hardware.camera
+  required=false` (after the uses-library lines, as the summary format sorts the manifest's other elements); no
+  INTERNET or other permission (rule 9). `--selftest-apk`'s fixtures (scripts/testdata/apk/: CAMERA in all three
+  dumps, the feature in xmltree, each where the merged manifest puts it, the later xmltree line numbers moved on by
+  four; added by hand, not from a run) reduce to the committed manifest-shipping.txt again: 88 passed, 0 failed under
+  sh and /bin/dash (with the old xmltree the control fails, and 55 cases with it).
+  Proof (CI, run 39744137391 at 1a63e0f): both APKs' `--apk` checks are clean against the expected summaries with
+  CAMERA and the camera feature (not required) in them, and no INTERNET or other permission; the canary APK is refused.
+- [ ] `banned-api-check.sh --apk VARIANT APK EXPECTED_DIR` (the image scan's shape): `aapt2 dump permissions`, `dump
+  badging` and `dump xmltree AndroidManifest.xml` reduced to one summary (package, SDKs, every permission, every
+  component with exported flag, application flags, `<queries>`, `uses-library`), compared exactly with
+  `mobile/android/expected/manifest-<variant>.txt`; the manifest-merger report grepped for INTERNET and every removal.
+  Proof: `--selftest-apk` built-in cases (INTERNET, a provider, `allowBackup` true, debuggable, an extra exported
+  activity, a `<queries>` element each fail; the clean summary passes), run in `gates` without an SDK; in the Android
+  job a canary build (`-Pkc.canary=true`, adding `scripts/testdata/android-canary-lib/`, a library whose manifest asks
+  for INTERNET and declares a provider) must be refused, and a pass fails the job.
+  Proof (M5 commit 7, partial; the Android job's `--apk` and canary runs are the lead's, after the push):
+  `sh scripts/banned-api-check.sh --selftest-apk` 34 passed, 0 failed in 7 s, under sh and /bin/dash and with python3
+  3.12 and /usr/bin/python3 3.9.6, with no Android SDK (stub aapt2, dexdump, zipalign, apksigner and llvm-nm): the
+  control passes (the shipping APK's dumps, `scripts/testdata/apk/`, reduce to the committed `manifest-shipping.txt`);
+  INTERNET, a provider, `allowBackup` true, debuggable, an extra exported activity and a `<queries>` element (each
+  against its own summary, so only the hard rule fires), a differing summary and INTERNET in the merger report each
+  give exactly one Manifest hit; 10 refusals exit 2. The summary format is defined once in the script's header ("APK
+  mode"). `--apk` takes the merger report and the run's certificate SHA-256 as two more arguments
+  (`VARIANT APK EXPECTED_DIR MERGER_REPORT CERT_SHA256`). The canary library is included by
+  `mobile/android/settings.gradle.kts` and depended on by `:app` only under `-Pkc.canary=true`, and built `--offline`
+  with strict verification; its own configurations are unlocked, since it has no lockfile.
+- [ ] The same `--apk` run unpacks the APK with Python's zipfile: from commit 14, `lib/<abi>/libkeepcrypt.so` for
+  exactly the three ABIs, each byte-equal to the scanned cargo output and through the `--artifact` rules for its target
+  (shipping clean; test-registry exactly the registry marker and the test key); before commit 14, no libkeepcrypt at
+  all. Every other `.so` listed by name, ABI and SHA-256 in `mobile/android/expected/native-libs.txt` (graphics-path's)
+  and passing the image scan's `elf_check`; every 64-bit `.so` (arm64-v8a, x86_64), graphics-path's included, has
+  `0x4000` alignment on every LOAD segment; every dex and resource byte-scanned for the three markers and the test key;
+  `dexdump` finds no reference from a `com.keepcrypt` class to `java.util.Random`, `kotlin.random.Random`,
+  `Math.random`, `UUID.randomUUID` or `java.security.SecureRandom`; no other ELF; `zipalign -c -P 16 -v 4`;
+  `apksigner verify --print-certs` shows the run's throwaway key. The capture-control APK must not equal either
+  shipped APK's package id.
+  Proof: both APKs' output; selftest cases with built stub zips (an unlisted `.so`, a 4 KB-aligned 64-bit `.so`, a
+  marker in a dex, a stripped libkeepcrypt, a banned reference in a `com.keepcrypt` class) each give exactly one hit.
+  Proof (M5 commit 7, partial; both APKs' output is the lead's, from CI; the stripped-libkeepcrypt case comes with
+  commit 14): `mobile/android/expected/native-libs.txt` lists graphics-path's three ABIs with run 39062895784's SHA-256s
+  (no x86, M5-10). `--selftest-apk`'s stub-zip cases each give exactly one hit: an unlisted `.so`, a 4 KB-aligned
+  64-bit `.so`, another SHA-256, a listed `.so` missing, libkeepcrypt.so before commit 14, an x86 `.so`, a `.so` for
+  another machine, an ELF outside `lib/`, a `.so` importing `rand` (elf_check), a marker in a dex, the test key in
+  `resources.arsc`, a marker in the zip comment, a banned reference in a `com.keepcrypt` class, zipalign failing and
+  another signer; a dex with no `com.keepcrypt` class exits 2. The workflow signs the five APKs with a keytool key made
+  in `$RUNNER_TEMP` each run and checks that capture-control's package id is neither shipped one.
+  Proof (M5 commit 14, partial: both APKs' output is the lead's, from CI): `--apk` takes a sixth argument,
+  JNILIBS_DIR (the flavour's `app/src/<variant>/jniLibs`), and `expected/native-libs.txt` lists libkeepcrypt.so for each
+  ABI as `<abi> libkeepcrypt.so android-rust.sh` (a list without one, or with a SHA-256 for it, is exit 2): each such
+  entry must be stored and hold exactly the bytes of android-rust.sh's scanned copy, 16 KB aligned on 64-bit, pass the
+  whole release-artifact scan for its ABI's target (`artifact_file`: .symtab, no RNG symbol, the getrandom import), export
+  exactly `JNI_OnLoad` and `Java_com_keepcrypt_entropy_ffi_Native_call` beside secp256k1-sys's four (M5-40) and need
+  libc.so with at most libm.so and libdl.so (`llvm-readobj --needed-libs`); the test-registry APK's must hold its
+  registry marker and the test key and nothing else may (its stored bytes are blanked in the APK's own byte search),
+  the shipping APK's neither. `--selftest-apk` 88 passed, 0 failed under sh and /bin/dash (65 before: the base case
+  now carries a libkeepcrypt per ABI and its jnilibs copy; +14 libkeepcrypt cases, +6 test-registry cases with their
+  clean control, +4 refusals; the before-commit-14 case dropped). On gate copies, the blanking off fails 8 cases, the
+  scanned-copy compare off 1, the registry filter off 6, the exports check off 3, the DT_NEEDED rule off 1 and kc_lib
+  never called 13.
+
+**6. The Android workflow and the emulator harness (Q55)**
+- [ ] `entropy-android.yml`: on PRs and pushes to main touching `Entropy/mobile/**`, `Entropy/ffi/**`, `Entropy/core/**`,
+  `Entropy/Cargo.lock`, `Entropy/rust-toolchain.toml`, `Entropy/vectors/**`, the gate and android scripts and the
+  workflow, plus weekly and dispatch; `contents: read`; only the three approved actions; no secrets; expressions only
+  through `env:`; `timeout-minutes` per the budget, for each job. A build job, in order: Rust libraries, all APKs
+  (shipping, test-registry, the test APK, capture-control), JVM tests, the throwaway signing (the `--apk` checks verify
+  the run's certificate), the `--apk` checks, the canary build, the uploads (both APKs with SHA-256, the P4 files; the
+  test-registry APK named `NOT-FOR-RELEASE`), then the hand-off: the signed APKs to the leg jobs through actions/cache
+  under a key that names the run and its attempt, their SHA256SUMS as the build job's output. Then six leg jobs side by
+  side, each after the build job, on those bytes: `default;x86_64` API 31 and API 36, each API's leg in three parts, one
+  a job (`android-emulator.sh --part`; M5-72 (h), commits U1a and U1a2): capture (steps 1-3 and the positive controls,
+  CaptureTest on both APKs, PhoneMotionTest, steps 5-6), the shipping journeys (FlowTest, CheckTest, BackupTest with
+  its age hand-off) and registry, the test registry and the edges (SnapshotDrillTest, LifecycleTest, CrashTest last),
+  each part ending with step 7's nothing-persisted listing;
+  and, from commit 14, one 16 KB-page image (`google_apis_ps16k;x86_64` API 36, or the probe's choice) in API 31's
+  capture job. Each restores the run's entry (a miss fails) and checks every file against the build job's SHA256SUMS
+  before it installs anything, and each capture job uploads its positive-control captures under its own name (M5-70
+  (b), commit L9; U1a). KVM udev rule; `sdkmanager
+  --install` with the SDK licence accepted (Q54); headless AVDs; images cached by revision. `--workflows` passes on it.
+  (As built, M5-70 (e): the positive-control captures upload in their own last step, after the legs that make them,
+  since commit 19h; from L9 in each leg job.)
+  Proof: the green run with each step's time; emulator and image revisions printed.
+  Proof (M5 commit 8, partial; the run and its times are the lead's, from CI): the job's last steps are the frame
+  checker's selftest, the KVM udev rule, the revisions `sdkmanager --list` offers (the cache key), actions/cache of
+  `~/kc-sdk/emulator` and `~/kc-sdk/system-images`, `sdkmanager --install` into `$HOME/kc-sdk` with `--licenses`, the
+  installed revisions checked against the key, and one step per image running `scripts/android-emulator.sh`
+  (hand-written headless AVD, one logged boot re-run, `timeout-minutes: 90`). `banned-api-check.sh --workflows
+  ../.github/workflows` clean (3 workflows); the file parses as YAML (21 steps). No Android tool on this Mac.
+  Proof (M5 commit 8l-f, partial: the 16 KB-page image joins at commit 14): run 39337431167 at 8l-d green in 12 min with
+  cold caches (the selftests 1 min 22 s, emulator install 53 s, API 31 leg 2 min 26 s, API 36 leg 2 min 57 s);
+  revisions printed (emulator 37.2.12, android-31 rev 5, android-36 rev 2); `timeout-minutes: 15` (8l-e), the measured
+  budget (M5-30).
+  Proof (M5 commit L9, lead decision M5-70 (b), partial: local; CI's first run of the split and each job's time are the
+  lead's, at the next push): the one job is now `build`, "android build (APKs, checks, uploads, hand-off)", every step
+  the one job ran before the emulators, unchanged and in order, then the hand-off (28 steps); and `emulators`, a
+  matrix of two jobs with fail-fast off, each `needs: build`: "android emulators (API 31, then 16 KB pages)" and
+  "android emulators (API 36)" (12 steps; the 16 KB step runs in the API 31 job alone). The hand-off: the build job's
+  last two steps take every file of `$RUNNER_TEMP/apks` as the signing step leaves it (the five signed APKs and the
+  `.idsig` v4 file apksigner writes beside each, as build-tools 36.0.0's did locally), check that the shipped two have
+  the SHA-256 the uploaded SHA256SUMS gives them, and give every file's SHA-256 as the job output `sha256sums`; then
+  actions/cache at its pinned SHA, `lookup-only`, saves the directory in its post step, only when every step passed,
+  under `<os>-<arch>-android-apks-<run id>-<run attempt>` (about 85 MB by the local APKs' sizes). Each leg job
+  restores that key with `fail-on-cache-miss` and, before any install, requires the output (through `env:`) to be
+  lines of a SHA-256, two spaces and a plain file name, the restored files to be exactly those it lists, and
+  `sha256sum --check --strict` to pass; then KVM, the emulator images (one cache key for both jobs, all four
+  packages), the install, the age hand-off and android-emulator.sh on `$RUNNER_TEMP/apks`, as before, and its captures
+  go up as android-control-captures-api31 or -api36. Each job has `timeout-minutes: 90`, its comment naming M5-30's
+  rule. A leg job re-run alone is a new attempt and fails on the miss. The `--workflows` rules are unchanged: none
+  assumes one job (each reads the file line by line, and the canary line, once per file, stays in the build job).
+  Two fixtures pin what the split must not use, workflow-uses-cache-sub-action (actions/cache/restore at the approved
+  commit) and workflow-uses-download-artifact (upload-artifact's SHA under download-artifact's name): one hit each,
+  and each clean under a gate copy whose approved list admits them. Locally: `--workflows ../.github/workflows` clean
+  (3 workflows) under sh and dash; Ruby's YAML parser reads the file (2 jobs); copies with the output or a matrix
+  value as `${{ }}` in a run step, or with a cache sub-action, give one hit each; the two hand-off scripts, taken
+  from the YAML and run under bash -eo pipefail with a find shim for GNU's -printf, 18 cases passed (an upload that
+  differs and a missing APK fail the build's; an extra, hidden, missing or changed file, a directory, a duplicate,
+  malformed or empty line, no output, no entry and another run's files fail the leg's); the self-test shards 807 +
+  806 of 1613 cases (1611 and the two fixtures), 0 failed, under sh and /bin/dash; the gate clean (382 files) under
+  sh and dash; canaries.sh PASS, all 94 checks ran (443 s), its checks on the real workflow and on copies of it among them; fmt, both
+  clippy runs, `cargo test --workspace --locked` (499 passed, 3 ignored), `-p
+  keepcrypt-core --features test-sources` (269 passed, 1 ignored) and `-p keepcrypt-ffi -p keepcrypt-jni`, plain and
+  with `--features keepcrypt-core/test-registry` (50 passed each). Only CI shows the entry crossing jobs, the
+  output's form, the job names and the times.
+  Proof (CI, the lead's, 2026-10-29): Entropy Android 40813152800 at e3c6c12, the split's first run: `build` 558 s,
+  its android-handoff.sh --selftest passing every case and the entry saved; both leg jobs restored the run's entry and
+  passed `android-handoff.sh --check` (10 files, the five APKs and their .idsig) before installing anything. "android
+  emulators (API 36)" green in 1416 s; "android emulators (API 31, then 16 KB pages)" 1469 s, every leg run to its end,
+  red only on the test-registry CaptureTest walk at readback_done (commit 21j). Budgets by M5-30 (M5-72 (g)): 12
+  minutes for `build`, 32 and 30 for the leg jobs (a matrix value).
+  Proof (M5 commit L9b, review fix, partial: local; CI's gates job at the next push): `--workflows`' rule that only
+  the three approved actions at their SHAs appear read a step's action only on lines matching `^[[:space:]]*(- )?uses:`,
+  so a `uses` key spelled any other way YAML allows passed an unapproved action as clean (the E5 review, older than
+  L9, whose Proof said the rules hold: they did for the spellings the workflows use). The rule now finds `uses` as a
+  key in any spelling (the word, quoted or not, then any spaces and a colon, anywhere on a line, or after `? `) and
+  compares the action in one spelling only, `uses:` and an approved action at its SHA, at the line's start or after
+  `- `, with nothing after it but a comment; uses so found in any other spelling is a hit whatever it names. Seven
+  fixtures, each a step `uses`-ing actions/download-artifact under upload-artifact's approved SHA, which Ruby's YAML
+  parser reads as that step's action: workflow-uses-wide-dash (`-   uses:`), -quoted-key (`"uses":`),
+  -single-quoted-key, -space-before-colon (`uses :`), -flow-mapping (`{name: fetch, uses: ...}`), -explicit-key
+  (`? uses`, its value on the next line) and -value-on-next-line; under L9's gate the first six were clean (the last
+  already hit), and each gives exactly one hit now. Locally: `--selftest` 1620 passed, 0 failed (1613 and the
+  seven); `--workflows ../.github/workflows` clean (3 workflows); the gate clean; canaries.sh PASS, all 94 checks
+  ran.
+  Proof (M5 commit L9c, review fix, partial: local; CI's build and leg jobs at the next push): L9's two hand-off
+  scripts lived only in the workflow's run steps, and nothing in the repo ran their fail paths (the E5 review: CI
+  runs only the pass path). They are now scripts/android-handoff.sh, `--sums APKS UPLOADED OUT` (the build job's
+  handoff step, which still writes OUT to `$GITHUB_OUTPUT` itself) and `--check APKS` (each leg job's check, on
+  `KC_SHA256SUMS` through `env:` as before), with the same checks and lines; the build side also refuses an entry
+  that is no plain file by name (before, sha256sum's failure on a directory failed the step). Its `--selftest` (20
+  cases) runs both sides on stand-in APKs with their .idsig files: the build side passes with ten lines, and fails
+  with an APK missing, a directory, an upload whose SHA256SUMS gives a shipped APK another SHA-256 or does not list
+  it; the leg side passes, with one newline more too, and fails with a file more, a hidden file, a directory, a file
+  missing, a changed byte, a line twice, a name with a path, upper-case hex, an empty line, no output and no
+  directory; a call with too few arguments exits 2. The build job runs it beside the other selftests, before the
+  hand-off's two steps, which stay its last. Locally: 20 passed, 0 failed under sh, /bin/dash and bash (macOS's own
+  sha256sum; CI's is GNU's); copies without the file-set comparison (5 cases fail), the line-format check (3), the
+  uploaded SHA-256's compare (2) or the trailing newline's strip (1) each fail it (`--strict` stays: the format check
+  refuses every line it would). `--workflows ../.github/workflows` clean (3 workflows); Ruby's YAML parser reads the
+  file (build 29 steps, emulators 12).
+  Proof (M5 commit U1a, M5-72 (h), partial: local, kc37, Q76; CI's six leg jobs, their names and times at the next
+  push): `android-emulator.sh --part capture|journeys|registry` (before `--booted` too) runs one part of a leg on its
+  own boot: capture is steps 1-3 (ControlTest), CaptureTest on both APKs, PhoneMotionTest, LifecycleTest, CrashTest,
+  its last instrumented run, and steps 5-6; journeys FlowTest, CheckTest and the age: BackupTest; registry
+  SnapshotDrillTest. Every part installs the five APKs and ends with step 7. Each part's steps stand in `if in_part
+  PART` blocks in today's places, so with no `--part` the leg runs today's sequence, step 7 once, and
+  android-local.sh's default run is unchanged; an unknown part and `--part` on 16k exit 2. entropy-android.yml's
+  emulators matrix is six jobs, "android emulators (API 31, capture, then 16 KB pages)", "(API 31, journeys)", "(API
+  31, registry)" and API 36's three, each restoring the run's entry and passing `android-handoff.sh --check` before
+  any install as before, `timeout-minutes: 90` for this measuring run (its comment: the lead sets each job's budget to
+  its measured time plus 25%, M5-30), fail-fast off; the 16 KB step runs in API 31's capture job alone, the captures
+  go up from the two capture jobs alone (android-control-captures-api31 and -api36; the other parts keep none), and
+  Ubuntu's age is installed in the journeys jobs alone. `android-local.sh --part PART` runs that part on kc37's first
+  boot (its runs read from that part's blocks; a user-build refusal named only when the part runs its class), capture
+  with the second boot too (NativeTest, the 16 KB leg's class in CI, and the Camera2 check). Selftests:
+  android-emulator.sh 49 passed, 0 failed under sh and dash (35 before: the "last five runs" case is now the whole
+  leg's pinned order, and each part's order is pinned, CrashTest last in capture; the three parts' runs are together
+  the leg's, each once; each part ends with step 7's lines, journeys and registry with no line of steps 1, 2, 5 and 6
+  and no capture; a failing class in each part fails it at its end; an unknown part and `--part` on 16k), and eight
+  mutants each fail it (FlowTest outside the blocks, journeys' block misnamed, CrashTest before LifecycleTest,
+  SnapshotDrillTest in journeys too, step 7 in capture alone, step 5 in every part, `in_part` always true, a part
+  ending at its failing class); android-local.sh 44 passed (34 before: the three parts, an unknown part) under sh and
+  dash, and four mutants each fail it (every part's runs read, the second boot for every part, the refusals
+  unfiltered, `--part` not passed on); android-handoff.sh 20 passed under sh and dash. `--workflows
+  ../.github/workflows` clean (3 workflows) under sh and dash; Ruby's YAML parser reads the file (build 29 steps;
+  emulators 12, its matrix six entries). On kc37 (local, the strict build up to date): android-local.sh exit 0 in 1451
+  s, every class passed in the steps' order (ControlTest with step 2 25 s, CaptureTest 86 and 86, PhoneMotionTest 3,
+  FlowTest 422, CheckTest 194, BackupTest 69 with its age -d hand-off, SnapshotDrillTest 107, LifecycleTest 126,
+  CrashTest killed, steps 5-6 30 s, NativeTest and the Camera2 check's four camera-client checks, its decode not met
+  and named, as before); `--part capture` exit 0 in 659 s (its leg 392 s, then the second boot), `--part journeys`
+  exit 0 in 737 s and `--part registry` exit 0 in 158 s, each listing its own runs alone. The gate clean (385 files)
+  and its selftest (816 + 815 of 1631, 0 failed) under sh and dash; canaries.sh PASS, all 94 checks ran (441 s); fmt,
+  both clippy runs, `cargo test --workspace --locked` (499 passed, 3 ignored), the test-sources run (269 passed, 1
+  ignored) and `-p keepcrypt-ffi -p keepcrypt-jni`, plain and with the test registry (50 passed each). Only CI shows
+  each job's time.
+  Proof (CI, the lead's, 2026-10-30): Entropy Android 40903211202 at ab6773f, the six leg jobs' measuring run, each
+  green under its name: "android emulators (API 31, capture, then 16 KB pages)" 535 s (ControlTest 3, CaptureTest 7 in
+  each APK, PhoneMotionTest 1, the frame checks, then the 16 KB leg's NativeTest on the shipping APK for x86_64 and
+  each ARM ABI the image lists), "(API 31, journeys)" 919 s (FlowTest 7, CheckTest 2, BackupTest 1 with its age -d
+  hand-off), "(API 31, test registry and edges)" 448 s (SnapshotDrillTest 3, LifecycleTest 7, CrashTest killed as it
+  must be), and API 36's capture 503 s, journeys 952 s and test registry and edges 497 s with the same classes but the
+  16 KB leg; each job "every check passed", each part ending with the nothing-persisted listing (no file in either
+  app's data directories, its planted control the listing's one new hit); the build job 618 s. The budgets from it
+  (M5-30): build 13 minutes, the leg jobs 12, 20, 10, 11, 20 and 11 (the workflow's matrix, 2026-10-30).
+  Proof (M5 commit U1a2, review fix, partial: local; CI's six leg jobs at the next push): Stage U's commit plan gives
+  each API three jobs, "capture, shipping journeys, and test registry and edges", and U1a put the edges, LifecycleTest
+  and CrashTest, in capture, with the third part SnapshotDrillTest alone (the U-1 review). They now run in the
+  registry part after SnapshotDrillTest, CrashTest still its last instrumented run, so the whole leg's order is
+  unchanged (capture's runs, then journeys', then registry's) and capture ends with PhoneMotionTest and steps 5-6;
+  the two registry jobs are "android emulators (API 31, test registry and edges)" and "(API 36, test registry and
+  edges)", the part's name `registry` as before (journeys stands for the shipping journeys likewise). By U1a's kc37
+  run, LifecycleTest's 126 s and CrashTest's run move from capture's 392 s leg to registry's 158 s one. Selftests: android-emulator.sh 49 passed, 0 failed under sh and dash (capture's order pinned as ControlTest,
+  CaptureTest on both apps, PhoneMotionTest; registry's as SnapshotDrillTest, LifecycleTest, the killed CrashTest;
+  capture's failing-class case now a failing CaptureTest, PhoneMotionTest still run after it, and registry's
+  failing SnapshotDrillTest followed by the killed CrashTest), and two mutants each fail it (the edges back in
+  capture: 3 failed; CrashTest before LifecycleTest: 3 failed); android-local.sh 44 passed under sh and dash
+  (`--part capture` four runs then NativeTest, `--part registry` three, "run 3 of 3" the killed CrashTest).
+  `--workflows ../.github/workflows` clean (3 workflows) under sh and dash; Ruby's YAML parser reads the six names
+  (build 29 steps, emulators 12).
+  Proof (CI, the lead's, 2026-10-30): Entropy Android 40903211202 at ab6773f: LifecycleTest and CrashTest ran in each
+  API's third job after SnapshotDrillTest, and capture ended with PhoneMotionTest, as above; the build job's
+  android-emulator.sh --selftest passed with the workflow's matrix (U1a3's check).
+  Proof (M5 commit U1a4, Stage U-2's review fix, partial: local; CI's build job at the next push): the selftest read
+  each emulators row's api and part but not its budget, so a row without timeout: would leave its job's
+  timeout-minutes empty unseen. It now counts the rows and the rows' whole-minute timeout: lines, which must both be
+  6. With one timeout: line removed from a copy of the workflow it fails ("rows and budgets 6 5"); android-emulator.sh
+  --selftest 50 passed on the real workflow.
+  Proof (CI, the lead's, 2026-10-31): Entropy Android 41144532589 at dd2d617's build job's android-emulator.sh
+  --selftest step passed, its workflow case requiring the six rows' budgets.
+  Proof (M5 commit U1a5, CI fix, partial: local; CI's leg jobs at the next push): Entropy Android 41144532589 at
+  dd2d617 failed two leg jobs before any test: API 31's capture job (its 16 KB leg too) and API 36's journeys job,
+  each emulator exiting at both boot attempts with "Not enough space to create userdata partition. Available: 3336.95
+  MB [3327.17 MB] ..., need 7372.80 MB"; the other four leg jobs and the build passed on runners with more room. The
+  hand-written AVD asked for disk.dataPartition.size=6G since commit 8, and the emulator wants 1.2 times it free where
+  the AVD lives. The partition is now 2G (2.4 GB wanted), which the five APKs, their compiled code and the tests' data
+  fit many times over, and each leg prints that free space before its boot. android-emulator.sh --selftest 50 passed
+  under sh and dash; the gate clean.
+  Proof (CI, the lead's, 2026-10-31, partial): Entropy Android 41148288082 at a15dc4f: API 31's capture job printed
+  "free space where the AVD lives: 75892 MB" (75349 MB for the 16 KB leg), booted at the first attempt with the 2G
+  partition and passed ControlTest 3, CaptureTest 7 in each APK, PhoneMotionTest 1 and the 16 KB leg's NativeTest;
+  every leg booted at its first attempt. No runner this time had the 3.3 GB of 41144532589, so the boot on such a
+  runner is shown by the arithmetic (2.4 GB wanted), not yet by a run. API 36's journeys job failed its tests (the
+  open item below), not its boot. U1a6 prints the device's own /data room after each boot.
+  Proof (M5 commit U1a3, review fix, partial: local; CI's build job at the next push): nothing read the emulators
+  matrix, so a row dropped or renamed left every gate and selftest green while that part ran on that API level
+  nowhere (the U-1 review). android-emulator.sh's selftest, which the build job runs before any leg job, now reads
+  this checkout's entropy-android.yml: its emulators matrix rows must be exactly API 31 and 36 by capture, journeys
+  and registry, each once, and the emulators job's steps that follow the part must stand under their names with
+  their conditions, once each: the part's own step with none, Ubuntu's age on `matrix.part == 'journeys'`, the 16 KB
+  leg on API 31's capture and the captures' upload on capture (the last two also after a red leg, as written). 50
+  passed, 0 failed under sh and dash (49 and this case); seven mutants of the workflow each fail exactly this case:
+  API 36's registry row dropped, API 31's journeys part renamed, a row doubled, the 16 KB leg on API 36, the upload
+  unconditional, the age in the capture jobs, and a condition on the part's own step.
+- [x] **Instrumentation:** `scripts/android-instrument.sh` runs `am instrument -w -r -e class ...` once per test class,
+  and once per test that halts or kills the process, so a latched `Halted` slot or a dead process never fails the next
+  test. The crash test is judged from the shell: the process is gone, no crash dialog window exists, `logcat -b crash`
+  holds no line naming the package, and `dumpsys dropbox` shows no new `data_app_crash` entry. No Test Orchestrator.
+  Proof: the per-class lines in the log.
+  Proof (M5 commit 8, partial): `scripts/android-instrument.sh` against a stub adb with recorded `am instrument -r`
+  output: a passing class prints its probe, pass and `kc:` lines and "instrument: api=31 PASS ..."; a failed test and a
+  crashed process (shortMsg) each fail. The emulator run is the lead's.
+  Proof (M5 commit 8l-f): run 39337431167: ControlTest and CaptureTest run as separate `am instrument` calls per app and
+  API, each judged from the shell after it (process gone, no crash or not-responding window, `logcat -b crash` names
+  no package, no new dropbox `data_app_crash`), and a failing class no longer stops the leg (8g); `--selftest` 20/0.
+  The crash test itself comes with group 14.
+- [ ] **Driving:** the instrumentation shares the app's process, so flows call the same `CeremonyViewModel` entry points
+  the pads call (dice, letters, choices); UiAutomator clicks Public screens by resource id (Compose test tags with
+  `testTagsAsResourceId`), DocumentsUI, the camera permission prompt and Home. A UiAutomator smoke test on one
+  Protected pad runs on API 36 only if the probe shows UiAutomation sees data-sensitive nodes.
+  Proof: the flow tests pass on both APIs.
+- [ ] **Capture harness** (shell-uid captures through `UiAutomation.executeShellCommandRwe` (screencap, with its stderr)
+  and `adb exec-out`, no root): for every screen id (an exhaustive `when` maps each screen to an id, so a new screen
+  without one fails to compile), the test first proves the screen is drawn: the ViewModel reports that screen id and an
+  `OnDrawListener` has seen a frame after it. Then raw `screencap` and `UiAutomation.takeScreenshot()` are black over
+  the app's window, `dumpsys window windows` shows `SECURE` on every window of the package, and the recents thumbnail is
+  the placeholder. Recording: a full ceremony is recorded as one continuous raw-frame stream at a small `--size` the
+  probe confirms, with no `--time-limit` (raw frames ignore it; finding 7, M5-17), through `scripts/android-frames.py`,
+  which starts it and stops it with SIGINT on the device when the scenario is done or at its `--duration` cap (reaching
+  the cap fails), requires the first frame within `--max-gap` seconds of the start and the stream's end within a few
+  seconds of the SIGINT, counts frames, checks the app window's pixels are all black, fails on a partial trailing frame
+  and keeps no frame.
+  Proof: per-screen pass lines and per-recording frame counts on both APIs.
+  Proof (M5 commit 8, partial): `Screen` and `screenId` (exhaustive `when`) in `:app`, `MainActivity.shownScreen` for
+  the drawn-screen proof; `CaptureTest` and `Capture` under `app/src/androidTest/`; `python3 -I
+  scripts/android-frames.py --selftest` 26 passed, 0 failed on 3.12 and /usr/bin/python3 3.9.6. Kotlin compiles and
+  the emulator runs only in CI.
+  Proof (M5 commit 8l-f, partial: the full-ceremony recording comes with the screens): run 39337431167, on API 31 and 36,
+  both APKs: "first_launch: drawn, then screencap and takeScreenshot black over the app's window; SECURE on all 1 of
+  its windows" (on API 31 both captures are refused outright, M5-18), "recents: the thumbnail shows none of the app's
+  content", and the raw-frame recordings black (13-18 frames each).
+  Proof (M5 commit 21j, lead decision M5-72 (i), CI fix, partial: local, kc37, Q76; CI's API 31 leg at the next push):
+  Entropy Android 40813152800 at e3c6c12 failed the test-registry walk on API 31 with "a secret's node on the Public
+  screen readback_done" (CaptureTest.kt:654), the same walk passing on API 36 in both APKs and in API 31's shipping APK.
+  ReadbackDone draws its heading, one line and Next from no state (WordsScreens.kt), so it can draw no secret; the walk
+  judged whatever tree UI Automator held, which it reads through the platform's accessibility cache. On kc37 at
+  `wm size 720x1184` (local, the test-registry APK, a diagnostic since removed that printed only root ids and counts):
+  the cache read alone, with no read of the app, still showed the screen before 5 s (about 200 reads) after the app
+  reported each new screen, at readback_done the matched read-back entry's root with its one secret node (2 walks; the
+  first screen has none before it, the scan screen was read through UI Automator to answer its prompt, and the failed
+  write keeps the save screen's root); the walk's own read, after the drawn proof and the captures, showed the screen
+  before once in 10 walks (cannot_check_confirm read as match_found_confirm, 1 of 510 checks), and readback_done's own
+  root alone, none of its 13 nodes secret, in all 13 walks. Handed to the walk's one read as readback_done's (a scratch
+  hook), that cached entry failed the walk with CI's line. The walk now reads a screen's nodes through Capture.nodesOf:
+  a read whose roots (the 48 screen ids and the privacy gate's) are not the screen's own alone is read again every 100
+  ms for up to 10 s, then fails naming them; the roots are all it looks at, and the read that shows the screen is
+  judged once, as strictly as before (a probe line names the roots a first read showed when it showed others). With
+  the same hook it judged readback_done's own tree at its second read, 104 ms on, and passed; a ReadbackDone drawing one
+  node through secret() still fails it with that line. On the final tree at 720x1184: 5 test-registry walks and 2
+  shipping walks passed; android-local.sh exit 0 in 1459 s, every class passed in android-emulator.sh's order
+  (ControlTest 3, CaptureTest 6 and 6 without control (c), PhoneMotionTest 1, FlowTest 7, CheckTest 2, BackupTest 1
+  with its age -d hand-off, SnapshotDrillTest 3, LifecycleTest 6, CrashTest killed as it must be, NativeTest 1, and the
+  Camera2 check's four camera-client checks, its decode of the virtual scene's PNG not met and named, as
+  android-local.sh allows); the strict Gradle build of the five APKs with every JVM test task rerun (:core-ffi 31 in
+  11 classes, :screens 147 in 21, :app 11 in 4 for each flavour, :secure-ui 3 in 1, none failed; JBR 25, CI's JDK
+  17); the gate clean (385 files), its selftest 1620 passed. No Rust changed: fmt and both clippy runs clean,
+  `cargo test --workspace --locked` 499 passed (3 ignored), the test-sources run 269 (1 ignored). Only CI's API 31
+  image can confirm that its read there was the read-back entry's cached tree, and that its tree shows each screen
+  within the 10 s.
+  Proof (CI, the lead's, 2026-10-30): Entropy Android 40903211202 at ab6773f, every job green: in API 31's capture job
+  (CaptureTest 7 in each APK) the test-registry walk passed readback_done ("drawn, then screencap and takeScreenshot
+  black over the app's window; SECURE on all 1 of its windows; no content capture"), as the shipping walk did, where
+  e3c6c12's run failed on "a secret's node on the Public screen readback_done"; API 36's capture job passed both walks
+  too.
+- [ ] **Positive controls (each missing control fails the job):** (a) the capture-control APK draws `dice-99-words12`'s
+  first words page and a Public screen with the same composables and no FLAG_SECURE; the same screencap,
+  `takeScreenshot()` and raw-frame calls must find its known pixels, on API 31 and 36. (b) The drawn-screen proof above,
+  before every app capture. (c) API 36 only, where the setting exists: `disable_secure_windows` is asserted unset or 0
+  first; set to 1, the app's own captures show the words page; back to 0, black again. The control captures (gate seeds
+  only; Reveal D never captured) are uploaded as the owner's screen review.
+  Proof: each control's result logged per API.
+  Proof (M5 commit 8, partial): (a) `ControlTest` (screencap, takeScreenshot, dumpsys window, recents) and the
+  raw-frame control in `scripts/android-emulator.sh` (`android-frames.py --expect visible`); (b) `Capture.proveDrawn`
+  before every capture of the app; (c) `CaptureTest.disableSecureWindowsShowsTheScreenOnlyWhileSet`, asserted from API
+  36, a probe on 31. Results are the lead's, from CI. The control captures are not uploaded at this commit: the
+  words page they are for comes with commit 19.
+  Proof (M5 commit 8l-f, partial: the words page comes with commit 19): run 39337431167: (a) on API 31 and 36 the control's
+  screen in screencap (4,555 and 4,597 known-colour pixels), takeScreenshot (the same), recents (1,572 and 1,391) and raw
+  frames (815 and 817 in one frame), its window without SECURE; (b) every app capture follows the drawn-screen proof;
+  (c) API 36: unset, then 1 shows the app's screen in both captures (4,597 known-colour pixels), then black again.
+  Proof (M5 commit 19h, lead decision M5-68 (f), partial: local, Q76; CI's API 31 and 36 legs and the upload at the
+  next push): (a) on the words page. capture-control's new WordsActivity draws dice-99-words12's first words page with
+  the app's own WordsInsert (past its gate, test tags as resource ids as MainActivity has them) and no FLAG_SECURE,
+  under the TEST REGISTRY strip as the test-registry APK draws it, since the strip's yellow is the known colour
+  android-frames.py's --expect visible counts (unchanged). The control has no native library, so it makes the page as
+  a WordPage (its constructor now public, for the control) in wire.rs's layout from vectors/braille.json's entry for the
+  seed's first word (its SeedBook number, the cells of faces 1-5, face 5 lighter, faces 3 and 4 mirror letters).
+  ControlTest's new theSameCapturesShowTheControlsWordsPage makes core's own first page for the seed's 99 rolls through
+  Core (dice-only, its check skipped, the slot wiped after) and requires the control's secret nodes, read in-process with no
+  selector (Capture.nodes, now with each node's bounds), to draw exactly that page's secret texts (Capture's
+  wordsPageSecrets, which CaptureTest's walk now shares), and its header and face 6 line to be core's; none is printed.
+  The same screencap and takeScreenshot must then show the known colour and lit pixels inside every node that draws one
+  of those texts, and its window no SECURE. Capture.startControl clears the control's task first
+  (--activity-clear-task), so the screen named is the one shown. android-emulator.sh records the words page's raw
+  frames over the curtain after the first screen's, and its step 2 keeps the shell's screencap of both control screens
+  as WORK_DIR/captures/control-apiAPI-first-launch.png and -words.png (gate seeds only, never Reveal D, never the app;
+  an empty one fails the leg), which the workflow's new last step uploads with the approved upload-artifact action at
+  its pinned SHA (android-control-captures, 14 days, after a failed leg too); the APK upload stays before the legs. On
+  kc37 (API 37), android-local.sh on this tree: "capture control's words page: 49877 known-colour pixels in screencap,
+  49877 in takeScreenshot; 9 nodes draw its secret texts, 0 and 0 of them unlit; 1 window(s), 0 with SECURE",
+  ControlTest 3 tests passed (the first screen's 4,597 known-colour pixels as before); the raw frames "control (a) raw
+  frames, words page: 8 frames; the most known-colour pixels in one frame 12356" (the first screen's 818 in 7); the kept
+  PNGs 103,964 and 74,175 bytes, the words page as the app draws it (viewed: the word with its letters past the fourth
+  lighter, its SeedBook number, the five faces' cells and the two mirror labels); exit 0 in 1163 s, every class passed
+  in android-emulator.sh's order. android-emulator.sh --selftest 28 passed, 0 failed under sh and dash (25 before: the
+  two kept screencaps, raw frames that never show the words page, an empty screencap), and three mutants each fail it
+  (no words raw-frame check, an empty capture passed, the words page not kept); android-local.sh --selftest 34 passed
+  on the new leg; `--workflows` clean.
+  Proof (M5 commit 19j, lead decision M5-70 (g), partial: local, kc37, Q76; CI's API 36 leg at the next push): (c) on
+  the words page. CaptureTest.disableSecureWindowsShowsTheScreenOnlyWhileSet ran on First launch since commit 8; it
+  now asserts disable_secure_windows unset or 0 first (API 36), then, with the phone offline, takes a new activity to
+  vectors/kcr.json's dice-99-words12, control (a)'s page, through the model's entry points along FlowTest's route
+  (Dice-only seed, 12 words, the vector's 99 rolls, Done, Skip and its confirm, Show words, the privacy gate), its first
+  page checked in-process to be the vector's first of 12 (a dice-only seed has no D: Reveal D is never on show). With
+  the setting at 1 the words must still be on show past their gate with no cover or placeholder, the app's secret
+  nodes (read in-process with no selector) must draw exactly the page's secret texts, each on screen, and both
+  captures must be images that show the page as ControlTest judges control (a)'s: lit pixels over the app's window,
+  lit pixels inside every node of the words, and, in the test-registry APK, the known colour, the TEST REGISTRY
+  strip's yellow (the only place the words page draws it: the shipping APK's page draws none, so there the words' own
+  pixels carry the judge); back as it was, black over the app's window in both captures. API 31 keeps the probe: the
+  same steps, only the black-again check asserted. No word, letter or SeedBook number goes into a selector, a message
+  or a line. The captures stay in memory; the owner's screen review is control (a)'s kept screencaps (19h), so
+  android-emulator.sh is unchanged. kc37 is a user build, where Android reads the setting only on a debuggable build,
+  so the control is CI's: android-local.sh names it and leaves it out of both CaptureTest runs, as before. On kc37
+  (local, android-local.sh on this tree, exit 0 in 1456 s): the strict Gradle build of the five APKs, both flavours'
+  androidTest Kotlin compiled with no warning; every class passed in android-emulator.sh's order (ControlTest 3,
+  CaptureTest 6 and 6 without control (c), PhoneMotionTest 1, FlowTest 7, CheckTest 2, BackupTest 1 with its age -d
+  hand-off, SnapshotDrillTest 3, LifecycleTest 6, CrashTest killed as it must be, NativeTest 1, and the Camera2
+  check's four camera-client checks, its decode of the virtual scene's PNG not met and named, as android-local.sh allows);
+  every JVM test task rerun (`--rerun`): :core-ffi 31 in 11 classes, :screens 142 in 19, :app 11 in 4 for each flavour,
+  :secure-ui 3 in 1, none failed.
+  Proof (CI, the lead's, 2026-10-29): control (c)'s first run, on API 36 in Entropy Android 40813152800 at e3c6c12:
+  the leg job green; in both APKs disable_secure_windows was unset, then 1 lit all 9 nodes of dice-99-words12's first
+  words page in screencap and takeScreenshot (the test-registry APK's with 49877 known-colour pixels under its strip),
+  then black again. API 31's probe ran.
+  Proof (M5 commit 19k, review fix, partial: local, kc37, Q76): 19j's Proof says both flavours' androidTest Kotlin
+  compiled with no warning, true only of an incremental compile: a clean one warned once per flavour,
+  Capture.kt:319:38 "Unnecessary non-null assertion (!!) on a non-null receiver of type 'String'" (`title!!` after `if
+  (title == null) continue`, from 19h; the E5 review), reproduced here with both androidTest compile tasks rerun on
+  19j's Capture.kt. The `!!` is gone: those two compiles rerun log no warning, and the clean strict build of the five
+  APKs with every JVM test task (`--rerun-tasks`, 270 tasks run) logs only :core-ffi's two expect/actual Beta notes
+  (Native.kt, Native.android.kt), with :core-ffi 31 in 11 classes, :screens 147 in 21, :app 11 in 4 for each flavour
+  and :secure-ui 3 in 1, none failed. On kc37 (local, android-local.sh on this tree, exit 0 in 1444 s): every class
+  passed in android-emulator.sh's order (ControlTest 3, CaptureTest 6 and 6 without control (c), PhoneMotionTest 1,
+  FlowTest 7, CheckTest 2, BackupTest 1 with its age -d hand-off, SnapshotDrillTest 3, LifecycleTest 6, CrashTest
+  killed as it must be, NativeTest 1, and the Camera2 check's four camera-client checks, its decode of the virtual
+  scene's PNG not met and named, as android-local.sh allows).
+- [x] **First frame** (lessons 4): raw frames, one continuous stream from under the curtain before a cold launch,
+  through the launch to Home and a few seconds more, then stopped, and a second stream started with that screen up (its
+  first frame is composed at once, so a frame is recorded with the app's screen up; M5-17), show nothing but black in
+  the app's window, with control (a)'s pipeline proven in the same run.
+  Proof: frame count and result on both APIs.
+  Proof (M5 commit 8, partial): capture-control's `CurtainActivity` (black, no FLAG_SECURE) under each cold launch
+  (`am start -W`, which must report COLD), recorded by `android-frames.py --expect black` from before the launch;
+  the control's recording comes first in the same leg. Results are the lead's, from CI.
+  Proof (M5 commit 8l-f): run 39337431167: API 31 shipping 14 + 1 frames, registry 13 + 1; API 36 shipping 16 + 1, registry
+  18 + 1; every frame black over the app's window, each launch COLD, with control (a)'s raw frames passing first in
+  the same leg.
+- [x] **ARM and 16 KB leg** (from commit 14): on the 16 KB-page image, `getconf PAGE_SIZE` is 16384, the x86_64 APK
+  installs, launches to Home and passes the self-test. If the image lists arm64-v8a (and armeabi-v7a) in its ABI list,
+  the APK is installed again with `--abi arm64-v8a` (then `armeabi-v7a`) and a small instrumented class runs
+  `JNI_OnLoad`, `self_test` and the `dice-50-words12` vector through `Native`. Statically, for every ABI: the `.so`
+  exports only `JNI_OnLoad` and `Java_com_keepcrypt_entropy_ffi_Native_*` among our symbols, its `DT_NEEDED` list is
+  libc, libm, libdl only, and every undefined symbol is defined in that ABI's API 31 stub libraries.
+  Proof: run ID; which ABIs ran translated, under Review; any ABI that did not run is named in the gate report and Q56.
+  Proof (M5 commit 14, partial: the run is the lead's, from CI; the static checks are android-rust.sh's and `--apk`'s
+  above): `scripts/android-emulator.sh 16k` boots `system-images;android-36;google_apis_ps16k;x86_64` (the image group 6
+  names; the workflow installs, caches and checks its revision with the others), requires `getconf PAGE_SIZE` 16384,
+  installs the shipping APK (primaryCpuAbi must be x86_64) and runs NativeTest (the app's own start: loadLibrary,
+  JNI_OnLoad and the self-test before its first screen; self_test again; dice-50-words12's Seal ID), then for
+  arm64-v8a and armeabi-v7a, each only if `ro.product.cpu.abilist` lists it, `adb install --abi` (primaryCpuAbi must
+  follow) and NativeTest again; an unlisted ABI is a probe line for the gate report and Q56. Its `--selftest` 12
+  passed, 0 failed under sh and /bin/dash (8 before: +4 16 KB legs: arm64 listed passes, page size 4096, NativeTest
+  failing, primaryCpuAbi not following `--abi`).
+  Proof (CI, run 39554267960 at 89cf334, 1178 s): system-images;android-36;google_apis_ps16k;x86_64 (revision 7): `getconf PAGE_SIZE` 16384,
+  `ro.product.cpu.abilist` x86_64,arm64-v8a. NativeTest passed installed as x86_64 (primaryCpuAbi x86_64) and again
+  with `--abi arm64-v8a` (primaryCpuAbi arm64-v8a, run translated): JNI_OnLoad, the start-up self-test, self_test
+  again and dice-50-words12's Seal ID YVM9CPP3 through the bridge; process gone, no crash window, crash buffer and
+  DropBox clean. armeabi-v7a is not in the image's ABI list, so it did not run here: the gate report and Q56 name it.
+  Statically, `--apk` holds every ABI's exports to ours plus secp256k1-sys's four (M5-40) and DT_NEEDED to libc,
+  libm and libdl.
+
+**7. Rust dependency and lint changes (Q53; rule 11)**
+- [x] New member `ffi/jni` (`keepcrypt-jni`): `[lib] name = "keepcrypt"`, `crate-type = ["cdylib"]`; dependencies
+  `keepcrypt-ffi`, `keepcrypt-core` (featureless, commented as pi/sim's is), `jni-sys = { version = "=0.3.0",
+  default-features = false }`, `zeroize`. `keepcrypt-ffi`: `#![forbid(unsafe_code)]`, `zeroize` and
+  `qrcodegen-no-heap` (new edges to locked crates, core's and pi/app's specs), dev-dependency `sha2` (locked; the tests'
+  go-ahead code); its description says "safe layer". Both get `overflow-checks = true` in release profiles. The shared
+  clippy block in core, ffi, ffi/jni and pi/app gains `undocumented_unsafe_blocks` and `multiple_unsafe_ops_per_block`
+  at deny. scripts/check-path-deps.sh and canaries.sh's members pin become `core, ffi, ffi/jni, pi/app, pi/sim`.
+  Proof: `git diff Cargo.lock` adds exactly jni-sys 0.3.0 (checksum equal to crates.io's), keepcrypt-jni and the new
+  edges; `cargo tree -p keepcrypt-jni -e normal,build --target aarch64-linux-android` holds no rand, log or network crate
+  and no getrandom edge but core's; `cargo build -p keepcrypt-jni` writes `libkeepcrypt.dylib` on the Mac.
+  Proof (M5 commit 9, as the re-plan (Q66 (a)), M5-32 and M5-35 amend it: the new members are ffi/guard and ffi/jni, and
+  keepcrypt-jni depends on keepcrypt-guard and jni-sys alone): `git diff Cargo.lock` adds exactly jni-sys 0.3.0
+  (checksum 8eaf4bc02d17cbdd7ff4c7438cafcdf7fb9a4613313ad11b4f8fefe7d3fa0130, the crates.io index record's `cksum` and
+  the downloaded `.crate`'s SHA-256), keepcrypt-guard (-> keepcrypt-ffi), keepcrypt-jni (-> jni-sys, keepcrypt-guard)
+  and keepcrypt-ffi's edges to qrcodegen-no-heap, sha2 (dev) and zeroize: 24 lines added, none removed. `cargo tree
+  --locked -p keepcrypt-jni -e normal,build --target T` for aarch64-linux-android, armv7-linux-androideabi and
+  x86_64-linux-android (68, 67 and 69 packages): no rand, log or network crate, and `-i getrandom` gives keepcrypt-core
+  alone, through keepcrypt-ffi and keepcrypt-guard. `cargo check` for those targets cannot run on this Mac
+  (secp256k1-sys's build script needs the NDK's clang; Q56), so CI's cross legs check them once commit 13 lists the FFI
+  crates there. `cargo build -p keepcrypt-jni --locked` writes target/debug/libkeepcrypt.dylib, and the release dylib's
+  `llvm-nm -g --defined-only` lists no symbol. The shared clippy block (now in five crates) and the release profiles
+  (core and the three FFI crates) are pinned by the canaries, the six members by check-path-deps.
+- [x] ffi/jni/clippy.toml = core's minus the `catch_unwind` entry, with a comment naming Q53. deny.toml gains an exact
+  `[[bans.features]]` entry for jni-sys (none). supply-chain: a safe-to-deploy exemption for jni-sys 0.3.0 with a review
+  note (read from the downloaded `.crate`, SHA-256 equal to Cargo.lock's: declarations only, no code that runs, no
+  print, no build script), downloaded only after Q53's yes.
+  Proof: `cargo deny --locked check`, `cargo audit`, `cargo vet --locked` pass; the review note under "New dependencies".
+  Proof (M5 commit 9; per the re-plan the one-line difference is ffi/guard/clippy.toml's, and ffi/jni/clippy.toml is
+  core's byte for byte): ffi/guard/clippy.toml is core/clippy.toml without its catch_unwind line, and the shared header
+  all five copies carry names Q53 and Q66 for it; deny.toml's `[[bans.features]]` gains jni-sys (exact, none);
+  supply-chain/config.toml gains the safe-to-deploy exemption for jni-sys 0.3.0, its note summing up the review note
+  under "New dependencies". `cargo deny --locked check`: advisories, bans, licenses, sources ok (exit 0); `cargo audit`:
+  exit 0, 110 crates scanned; `cargo vet --locked`: Vetting Succeeded (18 fully audited, 86 exempted).
+- [ ] canaries.sh: core, ffi and pi/app clippy.toml stay identical; ffi/jni's differs from core's by exactly the
+  `catch_unwind` line (a canary that removes another line from it fails); the lint-table pins add the two clippy lints
+  and keepcrypt-ffi's forbid; the profile pin adds both FFI crates; the deny pins add the jni-sys entry; a canary
+  plants an `unsafe` block in keepcrypt-ffi and expects the forbid error (from commit 10, once ceremony.rs exists; at
+  commit 9 it plants it in lib.rs); a canary plants `std::panic::catch_unwind` in keepcrypt-ffi and expects clippy's
+  error; the getrandom graph pin is unchanged; the `[features]` probe covers both crates. `want_checks` and CLAUDE.md's
+  count move together (group 19).
+  Proof: canaries N/N locally and in `gates` (in supply-chain since L7, M5-67), each new canary named in its output.
+  Proof (M5 commit 9, partial: the `gates` run at the pushed head is the lead's; as the re-plan, M5-32 and M5-35 amend
+  it): `scripts/canaries.sh` PASS, all 88 checks ran (want_checks 79 -> 88; 334 s on this Mac, 327 s at
+  8x-d). New: core/clippy.toml and ffi/jni/clippy.toml identical; ffi/guard/clippy.toml core's without its
+  catch_unwind line (static), and `guard-clippy-another-line` (the stdout line removed too) fails that check;
+  `real-keepcrypt-ffi-unsafe-code` and `real-keepcrypt-guard-unsafe-code` (an unsafe block with its SAFETY: line in
+  lib.rs gives "usage of an `unsafe` block" at the crate's `#![forbid(unsafe_code)]`; with that line gone the note
+  reads "-F unsafe-code" and the canary fails); `real-keepcrypt-ffi-catch-unwind` (clippy's disallowed method, -F);
+  `path-member-capi` (ffi/capi listed as a member: check-path-deps names keepcrypt-capi); keepcrypt-jni's direct
+  dependencies exactly keepcrypt-guard and jni-sys (static, from `cargo metadata --no-deps`), and `jni-safe-layer-edge`
+  (a keepcrypt-ffi edge) fails it. Grown in place: the lint-table pins (the two clippy lints in all five crates,
+  unsafe_code forbid in ffi and ffi/guard), the deny pins (jni-sys), the profile pin and `release-profile`
+  (keepcrypt-jni's table dropped), the `[features]` probe in all three FFI crates, `path-member` and
+  `path-member-listed` with six members (their fixtures and source-replacement's gain guard and jni stand-ins); the
+  getrandom graph pin unchanged. CLAUDE.md's count (73, main's) moves at commit 22 (group 19).
+  Proof (M5 commit 10, partial: the `gates` run is the lead's): the safe layer's unsafe canary plants its block in
+  ffi/src/ceremony.rs, where the sessions live, and needs clippy's error there and the note at lib.rs's
+  `#![forbid(unsafe_code)]` (`--> ffi/src/ceremony.rs:`, `--> ffi/src/lib.rs:`); the guard's stays in its lib.rs.
+  `scripts/canaries.sh` PASS: all 88 checks ran (5 min 37 s on this Mac), `real-keepcrypt-ffi-unsafe-code` and
+  `real-keepcrypt-guard-unsafe-code` among them.
+
+**8. The FFI's safe layer (`ffi/src/ceremony.rs`)**
+- [x] The slot as in References. Every call locks, takes the stage with `mem::replace(.., Stage::Idle)`, calls the
+  consuming core method and puts back what `Ok` gives; an `Err` has already wiped the session (session.rs:10-17). Long
+  calls follow "A discard never waits for a long call". A `PoisonError` is matched (never `unwrap_or_else`) and halts.
+  A call in a stage that does not offer it halts (a shell bug, fail closed).
+  Proof: unit tests for each stage's allowed and refused calls (group 11).
+  Proof (M5 commit 10, partial: a poisoned lock needs a panic under the lock, which keepcrypt-guard's tests plant at
+  commit 12): ffi/src/ceremony.rs holds `static FFI: Slot`, a `Mutex<Held>` with the stage (app.rs's, plus `Busy`
+  and `Halted`), the generation, the kept `Wiped`, a loaded snapshot and a checked backup; every call goes through
+  `call` (under the lock) or `long`, and `lock` matches a `PoisonError` and halts. `ffi_a_call_in_a_stage_that_does_
+  not_offer_it_halts`: each of the 37 calls in each of the 7 driven stages that does not offer it halts and empties
+  the slot (223 cases, each on a fresh slot); `ffi_queries_keep_their_stage` and the flows of group 11 call the
+  offered ones. `cargo test -p keepcrypt-ffi --locked`, plain and with `--features keepcrypt-core/test-registry`:
+  22 passed each (3 unit, 19 in ffi/tests/ceremony.rs).
+  Proof (M5 commit 10c): `ffi_a_poisoned_lock_halts` poisons the lock from ffi/tests/ (keepcrypt-guard's tests have
+  no thread and no catch, so they could not): a long call that a discard overtook drops its result under the lock,
+  and that result's `Drop` panics on the call's scoped thread; the next lock matches the `PoisonError` and halts, the
+  kept `Wiped` goes and `Halted` latches (a discard and a start return it). With `lock` handing out the poisoned
+  guard without the halt (a copy), it fails. Both builds: 38 passed each (11 unit, 27 in ffi/tests/ceremony.rs).
+- [x] The halt rule mirrors app.rs:235: refusals are a wrong typed go-ahead code (`Rejected::Retry`, the Checking
+  session goes back), a read-back mismatch, a wrong or empty passphrase, `NoRegistryKey`, a bad snapshot, proof or
+  backup file; every other error halts, as does every `Err` from a call that took the session.
+  Proof: a table test over every `CoreError` variant, compared with app.rs's `refused`.
+  Proof (M5 commit 10): `ceremony::tests::the_core_error_table_is_app_rs_refused` sorts every `CoreError` value core's
+  generated lists reach (nested ones included) with the safe layer's `refused` and reads the two arms of app.rs's
+  `refused` from pi/app's source: each value is a refusal exactly when app.rs makes its variant one, and the two
+  arms name every variant once. Moving `EmptyPassphrase` to the halt arm on a copy fails it; dropping it fails to
+  compile (the exhaustive match).
+  Proof (M5 commit U3a, Stage U-1, partial: local, kc37, Q76; CI's legs at the next push): MA:36 and PF:132 say a
+  halt ends on a stop screen that names the failure in fixed text; the phone's named none. The slot's `Halted` now
+  latches the first halt's `HaltReason` (known-answer test, entropy source, health test, internal, export self-check,
+  panic): a core error's by its kind alone (`From<CoreError>`, an exhaustive match), the shell's bug (a call in a stage
+  that does not offer it, a call while `Busy`, an input or reply not its layout, an op the table does not hold,
+  keepcrypt-jni's halts) internal, keepcrypt-guard's caught panic and a lock a panic poisoned a panic; a later halt
+  never replaces it. The halt status is `HALTED` then its code (wire.rs's `halt_code`, 1-6, pinned as PINNED_HALTS);
+  Core.kt's KcHalt carries the reason (a code the app does not know internal; a halt status of another length halts
+  through Core.halt, whose reason is the slot's: internal unless it had halted before); CeremonyModel keeps the first
+  it meets in its Stop state, and the stop screen draws stopLine's one fixed line per reason under its title, built
+  from no data. keepcrypt-ffi's `a_halting_error_names_its_kind`, `a_halt_latches`, `the_shells_bug_halts_as_internal`,
+  `the_halt_code_table_is_pinned`, `the_halt_status_names_the_first_halts_reason`, `ffi_a_poisoned_lock_halts` (a
+  panic) and the halts list (internal); keepcrypt-guard's Ready scenario gives the panic's code to every later call,
+  its first-call scenario the internal halt its page call made first; keepcrypt-jni's cases the internal code. Plain
+  and with `--features keepcrypt-core/test-registry`: keepcrypt-ffi 15 unit and 28 integration, keepcrypt-guard 4,
+  keepcrypt-jni 11, all passed; four mutants (the last reason wins, a poisoned lock internal, the guard's halt
+  internal, `Source` internal) each fail them. JVM (local, JBR 25; CI's JDK 17): WireTest decodes every code and 0, 7
+  and 255 as internal, WireTablesTest pins HaltReason against PINNED_HALTS, WireMalformedTest (a halt status with no
+  code or a byte after it), NegativeOpHaltTest, OversizeInputHaltTest and WrongStageHaltTest see the internal code;
+  CeremonyModelTest's stop screen keeps each reason a long call's KcHalt carries and draws its line, one per reason
+  and none twice, and CeremonyModelHaltTest's shell halt is internal in the model and the slot; two mutants (decode
+  ignoring the code, the model keeping none) fail them. The strict Gradle build of the five APKs with every JVM test
+  task rerun: :core-ffi 33 in 11 classes, :screens 148 in 21, :app 11 in 4 for each flavour, :secure-ui 3 in 1, none
+  failed. kc37: `android-local.sh --part capture` exit 0 in 711 s (ControlTest 3, CaptureTest 6 and 6 without control
+  (c), its walk through the stop screen; PhoneMotionTest 1, LifecycleTest 6, CrashTest killed as it must be, its judge
+  unchanged; NativeTest 1; the Camera2 check's four camera-client checks, its decode not met, as allowed).
+  android-rust.sh, both flavours: the shipping scans clean, the test-registry scans their marker and key alone; every
+  library's exports as before (JNI_OnLoad, Java_com_keepcrypt_entropy_ffi_Native_call and secp256k1-sys's four).
+  fmt, both clippy runs, `cargo test --workspace --locked` 503 passed (3 ignored), the test-sources run 269 (1
+  ignored); the gate clean (385 files), its selftest 1631 passed; canaries.sh PASS, all 94 checks ran.
+  Proof (CI, the lead's, 2026-10-30): Entropy Android 40903211202 at ab6773f: the stop screen in both capture walks of
+  API 31 and of API 36 "its one reason line names the walk's halt, a health test's" (U3a4's in-process read), drawn
+  black and SECURE; the build job's JVM tests (U3a3's HaltStatusLengthTest among them) passed; Entropy CI 40903211222
+  at ab6773f green, its test job's ffi runs (U3a2's halt-reason test) among them.
+  Proof (M5 commit U3a2, review fix, partial: local; CI's test job at the next push): no test sent a long call's
+  halt through `Slot::long` with any reason but internal, so turning every long call's halt into internal (its
+  work's, or the one that came while the work ran) passed every FFI test (the U-1 review's mutants R8 and R16).
+  ceremony.rs's `a_long_calls_halt_names_its_reason` drives `Slot::long`'s work to `Err(reason)` for each of
+  `HaltReason::ALL`: the reply is `Halted(reason)`, a later dispatch's status `[HALTED, code]` with PINNED_HALTS's
+  code, and a discard `Halted(reason)`; and a halt that came while the work ran (`slot.halt(reason)` from inside it)
+  keeps its reason whether the work then gives its result or halts as internal. R8 (`Err(_) => ... Halt(Internal)`)
+  and R16 (`Stage::Halted(_) => Reply::Halted(Internal)`) each fail it. The call sites' `map_err(HaltReason::from)`
+  (the self-test, a start, Finish, the exports) stay unpinned: their non-internal errors, a known-answer test, the
+  entropy source, a health test and the export's self-check, come only from core's test-sources faults, which no
+  FFI call reaches, and push_roll's errors are internal either way. Locally: keepcrypt-ffi and keepcrypt-jni, plain
+  and with `--features keepcrypt-core/test-registry`, 55 passed each; fmt, both clippy runs, `cargo test
+  --workspace --locked` 504 passed (3 ignored), the test-sources run 269 (1 ignored); the gate clean (386 files)
+  under sh and dash.
+  Proof (M5 commit U3a3, review fix, partial: local, JBR 25, CI's JDK 17 at the next push): U3a's "a halt status of
+  another length halts through Core.halt" had no test that told it apart: WireMalformedTest decodes `[3]` and
+  `[3, 6, 0]` only after its earlier cases halted the slot, so a decode that threw KcHalt without halting it passed
+  (the U-1 review's K5). HaltStatusLengthTest, a class of its own (forkEvery), decodes `[3]` on a live slot (its
+  self-test Done first): KcHalt, internal, and then the self-test halts, internal, and WIPE_ALL's status is the
+  internal halt's. With the size check gone from Core.decode's HALTED branch it fails ("the slot halted"), the other
+  33 passing. The other half of that claim, Core.halt's reason the slot's own when it "had halted before", stays
+  untested (K6): only a known-answer, entropy-source or health failure or a panic halts the slot with another
+  reason, and none can be raised through the host library. The strict Gradle build of the five APKs with every task
+  rerun (`--rerun-tasks`, 270 executed), after android-rust.sh for both flavours: :core-ffi 34 in 12 classes,
+  :screens 154 in 21, :app 11 in 4 for each flavour, :secure-ui 3 in 1, none failed.
+  Proof (M5 commit U3a4, review fix, partial: local, kc37, Q76; CI's capture jobs at the next push): no test read
+  the stop screen's drawn reason line, U3a's user-visible step (MA:36): CeremonyModelTest calls the pure stopLine,
+  and no emulator class read the node tagged halt_reason, so drawing stopLine(null), or no line, passed every test
+  (the U-1 review's K1 and K2); U3a's "draws its line" said more than its test showed. CaptureTest's walk now plants
+  a health test's KcHalt at the stop screen (it planted internal's, the line a halt with no reason draws too) and,
+  after the screen's checks, reads the screen's own nodes in-process (Capture.nodesOf; the line is fixed text): one
+  node tagged halt_reason, drawing "An entropy health test failed.". With K1 built in (Stop drawing stopLine(null)),
+  the shipping walk on kc37 failed: "the stop screen's reason line expected:<[An entropy health test failed.]> but
+  was:<[An internal check failed.]>" (K2, the line gone, fails the same assertion with no node; not run). Local (JBR
+  25; CI's JDK 17): the strict Gradle build of the five APKs with every task rerun (270 executed), no warning in the
+  androidTest Kotlin: :core-ffi 34 in 12 classes, :screens 154 in 21, :app 11 in 4 for each flavour, :secure-ui 3 in
+  1, none failed; kc37: `android-local.sh --part capture` exit 0 in 512 s (ControlTest 3, CaptureTest 6 and 6
+  without control (c), each walk's "stop: its one reason line names the walk's halt, a health test's", PhoneMotionTest
+  1; NativeTest 1; the Camera2 check's four camera-client checks, its decode not met, as allowed) and, the first
+  local run of U1a2's split, `--part registry` exit 0 in 286 s (SnapshotDrillTest 3, LifecycleTest 7, CrashTest
+  killed as it must be).
+- [x] `start(len, mode)` per "One `Session::new`". `match_found()` = `discard(Collision)`, `cannot_check()` likewise,
+  each keeping the `Wiped`; after them only `start` is offered. `discard()` (background, idle, offline, leaving a
+  Protected screen) drops the stage and checked backup, keeps `kept` and `snapshot`; `end()` (Finish) drops the stage;
+  `wipe_all()` (crash path) drops everything. `add_hw_samples` is not exported; `add_extra` (InputTiming, Motion)
+  works only while Collecting. Skip is unreachable once Checking (rule 6).
+  Proof: tests "99 after Stop", "99 after Cannot check in the restart after a collision", "99 after an idle wipe
+  following a Stop", "50 after Skip", "every session is Platform::Phone".
+  Proof (M5 commit 10): `ffi_99_after_stop`, `ffi_99_after_cannot_check_in_the_restart_after_a_collision`,
+  `ffi_99_after_an_idle_wipe_following_a_stop`, `ffi_50_after_skip` and `ffi_every_session_is_platform_phone` (a
+  phone's 256/256 credited bits in Mixed mode, fresh and in a restart; the unit test `every_session_is_on_a_phone`
+  reads `Platform::Phone` itself) pass in both builds. `new_session` holds the one Session::new under ffi/ (the gate
+  is clean on the tree, 296 files); `add_extra` halts outside `Collecting` and no hwrng call exists; Skip
+  (`skip_check`) takes `Sealed` only. On copies, Skip keeping the `Wiped` fails `ffi_50_after_skip`, and a discard
+  dropping it fails `ffi_99_after_an_idle_wipe_following_a_stop` (and three others). Read as: after Match found and
+  Cannot check the session is gone and the next one is `start`'s; home's other calls (a snapshot, a backup check)
+  stay offered, as the Pi's Home is after its idle wipe.
+  Proof (M5 commit 10d; the review's finding: the reading above left home's other calls offered after Match found and
+  Cannot check, which the item does not): the stage `Restart` follows Match found, Cannot check and a collision a
+  go-ahead finds, as the Pi goes from Collision through its QR to the restart and from Cannot check straight to it
+  (app.rs:864-873, :961-975). There only `start` and, with a report, `collision_report` are offered (a discard and a
+  wipe as everywhere); a discard leaves home with the `Wiped` kept, where home's calls are offered again and the
+  report is not. `ffi_a_call_in_a_stage_that_does_not_offer_it_halts` drives `Restart` too (258 cases; self_test,
+  hold, load_snapshot and open_backup halt there); `ffi_every_exit_path_empties_the_slot`, `ffi_drill_12` and
+  `ffi_proof_paths` see `Restart` after each of the three. On copies, Match found and Cannot check leaving `Idle`
+  fail four tests, and a collision leaving `Idle` three (test-registry build). Both builds: 38 passed each.
+  Proof (M5 commit 10e; the review's finding: no test had a halt or `wipe_all` drop a checked backup or a snapshot):
+  `ffi_every_exit_path_empties_the_slot` opens backup.json's abandon-12-binary and, in the test-registry build, loads
+  with-dice-50, then halts by an op the table does not hold, halts by insert 13 of 12, or wipes: `Halted` or home,
+  holding nothing, each time. On copies, `Held::halt` or `wipe_all` keeping the backup fails it in both builds, and
+  keeping the snapshot fails it in the test-registry build. Both builds: 38 passed each.
+  Proof (M5 commit 10g): `ffi_home_restart_and_input_rules`: with "Check a backup" open, self_test, start, hold,
+  load_snapshot and open_backup each halt (home holds no checked backup); `collision_report` halts once the
+  restart's Collecting stage has begun; in the test-registry build a collision after a fresh Cannot check (whose
+  restart keeps 50 rolls, so dice-50-words12 meets collision-dice-50) replaces the kept `Wiped`, report and all; and
+  D halts in a dice-only seed after the read-back. On copies, `at_home` without its backup test, the report offered
+  in any stage and D as 32 zero bytes each fail it in both builds, and the collision keeping the older `Wiped` in the
+  test-registry build. Both builds: 39 passed each (11 unit, 28 in ffi/tests/ceremony.rs).
+- [x] Discard during a long call: a test holds a long call at a barrier, discards from another thread, releases it: the
+  result is dropped (a drop-observing value proves it), the call returns "discarded", the slot is Idle and the next
+  `start` works; the same with `wipe_all`; a non-discard call while `Busy` halts.
+  Proof: `ffi_discard_during_call`.
+  Proof (M5 commit 10): `ffi_discard_during_call` holds `Slot::hold` (the long-call path every long call takes, with
+  a test's work in place of core's) at a `Barrier` on a scoped second caller (M5-8, commit 9b): `Busy` meanwhile; a
+  discard returns at once and leaves `Idle`, the call returns `Discarded` and its `Drop`-observing result is
+  dropped, the kept `Wiped` stays (the next start needs 99 rolls); a wipe the same, the `Wiped` gone (50); a
+  `device_progress` while `Busy` halts, and the call returns `Halted`; an undisturbed call gives its result. Without
+  the generation check (a copy), it fails.
+  Proof (M5 commit 10b; the review found the line above did not hold: after a discard the slot is `Idle`, which the
+  `Busy` match alone turns into `Discarded`): `ffi_discard_during_call` also holds a second long call after the
+  discard, and after a wipe, and releases the first while the second runs: the first returns `Discarded` with its
+  result dropped, the second `Done`. On copies, the generation compare in `long`, `discard`'s new generation and
+  `wipe_all`'s each dropped fail it. `cargo test -p keepcrypt-ffi --locked`, plain and with `--features
+  keepcrypt-core/test-registry`: 37 passed each (11 unit, 26 in ffi/tests/ceremony.rs).
+- [x] Owned copies: `reveal` builds `GoAhead` inside the call from the held snapshot, a proof verified in the same call
+  (`verify_bucket_proof_qr`) or the typed code; word pages, braille faces, the backup passphrase, D and `CheckedBackup`'s
+  reveals are copied per page through `Zeroizing` buffers.
+  Proof: tests per `GoAhead` kind; no borrowed core type appears in a public ffi signature.
+  Proof (M5 commit 10): the snapshot kind in `ffi_drill_12`, the proof kind (verified inside `reveal_proof`, judged
+  under the lock) in `ffi_proof_paths` and `ffi_freshness`, the typed code in `ffi_dice_vectors` and
+  `ffi_proof_paths`. Word pages and their faces (`WordPage`, wiped on drop), the passphrase's pages
+  (`Zeroizing<String>`) and confirm (`Challenge`), D (`Zeroizing<[u8; 32]>`) and a checked backup's words (the same
+  `word_page`) leave as owned copies, one page at a time; the public signatures take `&str` and `&[u8]` inputs and
+  name owned types only (`ReadbackMismatch`, `WatchOnlyExport`, `SealRegistration`, `BackupFile`, `SealPublic` are
+  core's owned ones), no `Insert`, `Face`, `BrailleInserts` or `GoAhead`.
+- [x] Freshness: `today` comes from the shell as `yyyymmdd` (`RegistryDate::from_yyyymmdd`); results carry the
+  snapshot's or proof's number, date, count and freshness.
+  Proof: Current, Stale (`stale-day-31`) and Future (`future-day-1`) cases.
+  Proof (M5 commit 10): `ffi_freshness` (test-registry build) loads current-day-30, stale-day-31 and future-day-1 and
+  reveals with their proofs, at kcr.json's 2026-03-01: Current, Stale and Future each way; `Registry` carries the
+  number, date, count (a snapshot's seals, a proof's entries in its bucket) and freshness, and `ffi_drill_12` and
+  `ffi_proof_paths` pin whole headers. A `today` no calendar has is the shell's bug and halts.
+  Proof (M5 commit 10g): a `today` of 20261332 (`load_snapshot`) or 20260230 (`reveal_proof`) halts in both builds
+  (`ffi_home_restart_and_input_rules`); a copy whose `registry_date` falls back to kcr.json's day fails it.
+
+**9. Wire format and QR matrices (`ffi/src/wire.rs`, `ffi/src/qr.rs`)**
+- [ ] Fixed layouts, each documented once: status byte and code; progress (credited and required bits, or rolls,
+  minimum and millibits); C or D (32 bytes); the seal card (8x8 grid bits, colour index, Seal ID ASCII, Seal ID braille
+  as UTF-8); a word page (position, SeedBook number u16 BE, word ASCII, five faces with dots and blank, mirror-pair and
+  lighter-face flags, "device 1 of 2 / 2 of 2" for 24 words); a read-back result; the summary (fingerprint, first
+  address); a QR matrix (size, then bits row-major); a snapshot or proof result. Lengths are built with `TryFrom` and
+  checked arithmetic. The status code table is pinned by a Rust test and Kotlin's copy by a JVM test.
+  Proof: byte-exact tests against braille.json, seal.json, watchonly.json and kcr.json values.
+  Proof (M5 commit 10, partial: the layouts and the refusal codes are commit 11's): wire.rs holds the status byte
+  (OK, REFUSED, DISCARDED, HALTED), `dispatch(op, input)` (M5-21) and `halt`, and the op table of the 16 calls whose
+  reply is the status alone; any other op, or an input that is not its exact layout, halts. `ffi_dispatch_status_ops`
+  runs a dice-only ceremony to a Stop and its restart through it, and nine malformed calls each halt.
+  Proof (M5 commit 11, partial: Kotlin's copy of the tables is pinned in Stage D, commit 14): wire.rs documents each
+  layout once (the status, the fields, the seal card, the word page, the QR matrix, the registry header, the summary
+  and the go-ahead result in its module comment; each op's input and reply at its number) and holds the op table,
+  1-38, one op per safe call but `hold`; every reply is measured, then written into a buffer of exactly that size, and
+  text lengths (`u8::try_from`), a registry count (`u32::try_from`), a QR side and every sum are checked, so a reply
+  that does not fit halts. `the_status_and_refusal_code_tables_are_pinned` pins the status bytes and the 42 refusal
+  codes by name (1-3, 16-19, 32-45, 48-59, 64-72), `a_halting_error_has_no_code` gives every halting error none, and
+  `the_op_table_is_pinned` pins 1-38. Byte for byte through `dispatch`: `ffi_wire_dice_ceremony` (the seal card from
+  kcr.json's T and Seal ID with braille.json's braille, braille.json's word pages for 12 and 24 words, device 1 of 2
+  and 2 of 2, the progress, read-back and summary, codes 1, 2 and 18), `ffi_wire_check_a_backup` (backup.json's
+  abandon-12 and zoo-24 at work factor 10: watchonly.json's fingerprints 73c5da0a and 244c267a, seal.json's vector 1
+  card field for field, the word pages, codes 72 and 16), `ffi_wire_registry` (kcr.json's headers: with-dice-50 Stale,
+  its collision, clear-empty-bucket Current; code 19 in the release build, 32, 50 and 3 with the test registry),
+  `ffi_wire_readback_and_backup` (the four verdicts with braille.json's dots, the passphrase pages, the confirm, the
+  file and its verification), `ffi_wire_mixed_commitment_and_device_leg` (C and D, and C = SHA-256("KCE/v1/commit"
+  || D)) and `ffi_wire_malformed_inputs_halt` (36 malformed inputs or unknown ops, each in a stage that offers the
+  op). On copies, a changed refusal code, face field order, grid row order, freshness byte, verdict code or
+  fingerprint each fail a test. `cargo test -p keepcrypt-ffi --locked`, plain and with `--features
+  keepcrypt-core/test-registry`: 37 passed each (11 unit, 26 in ffi/tests/ceremony.rs), 2.4 s and 4.4 s.
+- [ ] QR codes (check request, account, descriptor, registration, collision report, re-check without n) encoded with
+  qrcodegen-no-heap at pi/app's settings (pi/app/src/ui/qr.rs), working buffers wiped.
+  Proof: the JVM test decodes every matrix with ZXing and gets core's QR text (group 13).
+  Amended by M5-37 (2026-10-21): the matrices carry no text; commit 14 compares them as M5-37 says.
+  Proof (M5 commit 11, partial: the ZXing decode is commit 14's): qr.rs encodes the six codes (the descriptors on two
+  lines) with qrcodegen-no-heap at pi/app's settings (versions 1-11, low error correction boosted, the encoder's mode
+  and mask) and copies the modules out row by row into a matrix wiped on drop; both working buffers are wiped after
+  every code, on success and on error (`both_buffers_are_zero_after_a_code_and_after_an_error`). Every matrix an op
+  returns equals qrcodegen-no-heap's own output for the same text, at the versions and levels pi/app's tests measured:
+  the check request 6 L, the registration and collision report 4 M, the re-check 5 L, the account 8 L, the descriptors
+  11 L (`ffi_wire_dice_ceremony`, `ffi_wire_registry`, `ffi_wire_check_a_backup`). On copies, the bit order, medium
+  error correction, no boost, a version cap of 10 and a missing wipe each fail a test.
+
+**10. The JNI boundary (`ffi/jni/src/lib.rs`, the only unsafe code)**
+- [ ] About 35 `#[unsafe(no_mangle)] pub extern "system" fn Java_com_keepcrypt_entropy_ffi_Native_<name>` exports
+  (package per Q62) and `JNI_OnLoad` (silent panic hook, JNI 1.6). Helpers read a `jbyteArray` into a
+  `Zeroizing<Vec<u8>>` under a size cap (lengths via `TryFrom`, no `as` on lengths) and return a new array; every JNI
+  call that can raise is followed by `ExceptionCheck`, and a pending exception halts. Nothing calls `Throw`.
+  Proof: clippy clean on the host and the five phone targets; a review note lists every unsafe block.
+  Proof (M5 commit 12, partial: clippy for the three Android targets cannot run on this Mac, where secp256k1-sys's build
+  script finds no NDK clang (Q56), so CI's cross legs run it once commit 13 lists the FFI crates; the iPhone targets
+  are M6's): as M5-21, M5-32 and M5-35 amend it, ffi/jni/src/lib.rs exports `JNI_OnLoad` (the crate root's
+  `#[unsafe(no_mangle)]` fn, no export_name, returning JNI_VERSION_1_6, nothing else) and
+  `Java_com_keepcrypt_entropy_ffi_Native_call` alone, whose body calls `keepcrypt_guard::guarded` once. It reads the
+  input array under a cap of 75,497,598 bytes (Load registry snapshot's date and a snapshot of 2^22 entries) into a
+  Vec of exactly its length, which guarded takes and wraps before any copy, and copies the reply, guarded's wiping
+  buffer, once into a new byte[] (NewByteArray, SetByteArrayRegion). Every JNI call is followed by ExceptionCheck; a
+  negative op, a null or oversize array, a function missing from the table or a pending exception halts the slot
+  through guarded with op 0, which the table does not hold, and a reply that cannot reach Java gives null; nothing
+  calls Throw. The op and lengths cross by TryFrom (`op_of`, `input_len`, `java_len`, tested on the host by
+  `the_input_cap_is_a_full_snapshot_and_its_date`, `a_negative_op_fails` and `a_length_past_a_java_array_fails`).
+  The commit body lists the eight unsafe blocks, one operation and a SAFETY: comment each. Both clippy commands are
+  clean on the host, and the canaries `real-keepcrypt-jni-undocumented-unsafe-block` and
+  `real-keepcrypt-jni-two-unsafe-ops` show both lints firing in keepcrypt-jni. The release dylib's `llvm-nm -g
+  --defined-only` lists `_JNI_OnLoad`, `_Java_com_keepcrypt_entropy_ffi_Native_call` and secp256k1-sys's own four
+  `rustsecp256k1_v0_10_0_*` exports (context_create, context_destroy and the two default callbacks).
+- [x] `guarded(f)` is the one `catch_unwind`, a safe generic function tested on the host with a panicking closure.
+  Proof: a test panics inside a Ready call: a drop-observing value moved out with the session is dropped, `Held` is
+  `Halted`, every later call halts, and nothing reaches stdout or stderr.
+  Proof (M5 commit 12, by M5-38's route; as the re-plan and M5-35 amend it, `guarded(op, input: Vec<u8>)` runs
+  keepcrypt_ffi::dispatch, not a closure): keepcrypt-guard's guarded wraps the input in `Zeroizing`, sets a silent
+  panic hook once (`std::sync::Once`), runs dispatch under the one `std::panic::catch_unwind` and on a panic returns
+  `keepcrypt_ffi::halt()`'s status, the payload dropped unread. Under `cfg(test)` alone it calls a private test
+  dispatcher that forwards every op to keepcrypt_ffi::dispatch but a planted one, a Ready call (the first word page)
+  whose reply a drop observer holds in its frame when it panics. `scenario_a_panic_inside_a_ready_call` drives the
+  real slot to Ready through guarded on dice-50-words12's rolls (12 words, dice only, Skip); the planted call gives
+  the halt status, the observer has dropped a word page, the slot holds nothing at `Halted`, and ops 0-39 and a start
+  each give the halt status. It runs in a child process that
+  `a_panic_inside_a_ready_call_halts_drops_what_it_held_and_prints_nothing` starts with stdout and stderr captured:
+  it passes, stderr is empty and stdout holds only the harness's lines. On copies, no hook (the panic's message
+  reaches stderr), no catch, the observer forgotten before the panic, and a catch that returns the halt status without
+  halting each fail it. `cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni --locked`, plain and with
+  `--features keepcrypt-core/test-registry`: 11 + 28 + 2 + 3 passed each.
+  Proof (M5 commit 12d, review fix: the hook before the first catch): `a_panic_in_the_first_call_prints_nothing` runs
+  `scenario_a_panic_in_the_first_call` in a child process, where the process's first guarded call, on a fresh slot, is
+  the planted panic: the halt status, the slot Halted, no page observed, stderr empty. On a copy that sets the hook
+  after the catch only this test fails. keepcrypt-guard 4 passed, plain and with `--features
+  keepcrypt-core/test-registry`.
+
+**11. FFI tests (host; `cargo test -p keepcrypt-ffi -p keepcrypt-jni`, plain and with `--features keepcrypt-core/test-registry`)**
+- [x] Every exit path empties the slot: Finish, discard (each Public and Protected stage), Match found, Cannot check,
+  halt by error, halt by panic, poisoned lock, discard during a long call. Core's own WipeProbe tests prove a dropped
+  session is zeroized; these prove the FFI drops it (MA:127). Neither crate declares a `[features]` table
+  (canaries.sh:798-809 covers both).
+  Proof: test names and counts under Review.
+  Proof (M5 commit 10, partial: a halt by panic and a poisoned lock are keepcrypt-guard's tests, commit 12):
+  `ffi_every_exit_path_empties_the_slot` (Finish; a discard in each of the six session stages; Match found and Cannot
+  check, which keep only a `Wiped`; halts by a face of 7, by too few rolls, by insert 13 of 12 and by an export before
+  the read-back, the first after a Stop, so the kept `Wiped` goes too), `ffi_discard_during_call`, and
+  `ffi_backup_round_trip` for a checked backup (Done and a discard).
+  Proof (M5 commit 10c, ada7ef3, partial: a halt by panic is commit 12's, M5-38): `ffi_a_poisoned_lock_halts` holds a
+  long call whose result panics on drop, discards, then releases it; the lock is poisoned, the next call halts, the kept
+  `Wiped` is dropped and the halt latches. A copy whose lock skips the halt fails the test.
+  Proof (M5 commit 12, the last exit path): a halt by panic is keepcrypt-guard's
+  `a_panic_inside_a_ready_call_halts_drops_what_it_held_and_prints_nothing` (group 10's second item), so with 10's and
+  10c's tests every exit path listed is tested; no FFI crate declares `[features]` (the canaries' probe). Plain and
+  with `--features keepcrypt-core/test-registry`: keepcrypt-ffi 11 unit and 28 integration tests, keepcrypt-guard 2,
+  keepcrypt-jni 3, all passed.
+- [x] Vectors: each gate seed through `start`, dice and `finish` gives kcr.json's seal code, Seal ID and T, and after a
+  typed go-ahead code computed from the check request (lessons 2) the mnemonic and braille.
+  Proof: `ffi_dice_vectors`.
+  Proof (M5 commit 10): `ffi_dice_vectors`, both builds: dice-50-words12, dice-99-words12 and dice-99-words24 give
+  kcr.json's Seal ID and T; the go-ahead code the test computes from the drawn request (SHA-256 over the 9 bytes
+  "KCE/v1/go", T and n, first 40 bits in Crockford base32; checked first on kcr.json's four seeds' codes by
+  `ffi_test_helpers_match_their_vectors`) reveals the mnemonic, each page matching braille.json (SeedBook number,
+  faces with dots, blanks, the lighter face and mirror partners, device, devices and sequence); after the read-back the
+  registration QR carries kcr.json's seal code.
+- [ ] Mixed mode on the OS source: C, the rolls and the revealed D piped into `python3 -I tools/verify/verify.py mixed`
+  give the words and Seal ID the FFI showed, compared in memory and never printed (pi/sim's `verify_py_tie` pattern).
+  Proof: `ffi_verify_py_tie` exits 0 locally and in CI.
+  Proof (M5 commit 10, partial: the CI run is the lead's): `ffi_verify_py_tie` passes on this Mac (python3 3.12),
+  plain and test-registry: a Mixed 12-word ceremony on the OS source, C and D typed as 16 groups of 4 hex digits with
+  dice-50-words12's rolls; verify.py's insert words and Seal ID equal the FFI's, compared in memory under a fixed
+  message.
+- [x] Test-registry configuration (tests branch on `registry_key_is_test()`, as pi/sim's do): `with-dice-50` loaded
+  catches the `dice-50-words12` rolls before any word page, and the restart needs 99; `clear-empty-bucket`'s UR reveals
+  `dice-99-words12`'s words, Stale at 2026-10-17 and Current at 2026-03-01; `collision-dice-50` gives a collision; a
+  wrong typed code gives Retry, then the right one reveals. In the plain build every snapshot and proof gives
+  `NoRegistryKey`.
+  Proof: `ffi_drill_12`, `ffi_proof_paths`, `ffi_no_registry_key`.
+  Proof (M5 commit 10): the three pass in both builds, each branching on `registry_key_is_test()` (a probe that panics
+  in the registry branch fails only the test-registry run). Test registry: with-dice-50 (number 4, count 7, Stale at
+  2026-10-17) gives Collision with no words page, the destroyed seed's report and a 99-roll restart, whose
+  dice-99-words12 seed it clears; clear-empty-bucket's UR reveals dice-99-words12's words, Stale at 2026-10-17 and
+  Current at 2026-03-01; it is WrongBucket for dice-50-words12, whose check stays; collision-dice-50 gives Collision;
+  text that is no UR is `Snapshot(Ur(NotUr))`; a wrong typed code is WrongCode, then the right one reveals. Plain:
+  all 41 snapshots and 66 proofs of kcr.json give `NoRegistryKey`, nothing loads and the check stays. kcr.json holds
+  the gate's proofs as KCP1 bytes only, so the tests build each go-ahead QR's text from them as vectorgen.py's
+  kcp1_ur does, with an encoder checked first on watchonly.json's CRC-32, CBOR and UR vectors.
+- [ ] Backup: `encrypt_backup` -> `verify_backup` -> `decrypt_backup` with `from_first_four` entries gives the same
+  fingerprint and words; a wrong entry is refused before scrypt; the header says `keepcrypt-android 0.0.0`
+  (`CreatedBy::new(BackupApp::Android, 0, 0, 0)`). Read-back drill: a mirror-pair misread and a missed blank face are
+  named, and no export opens before a full read-back (BP:327).
+  Proof: `ffi_backup_round_trip`, `ffi_readback_drill`, within `test`'s budget.
+  Proof (M5 commit 10, partial: `test`'s time in CI is the lead's): both pass in both builds. The backup: the
+  passphrase page by page, a wrong confirm pick keeps the copy, the right ones drop it, `encrypt_backup` before the
+  confirm and a second generation halt; `verify_backup` passes the saved bytes and refuses one changed byte with the
+  words kept; verify.py's own age reader (loaded by path, the passphrase on stdin) reads `android 0.0.0` and the
+  summary's fingerprint; "Check a backup" refuses an entry that names no word as `Backup(PassphraseWords)`, before
+  scrypt, and swapped entries as `WrongPassphrase`, then gives the fingerprint, Seal ID and words, until Done or a
+  discard. The drill: r read as w is `MirrorMisread` on face 3, a letter on day's blank face 4 `ShouldBeBlank`, "var"
+  for various `ShouldHaveLetter`; a mismatch clears its insert; each export halts with one insert unread and works
+  after the last. Local times: the 19 integration tests take 2.6 s plain and 4.5 s with the test registry.
+
+**12. Rust CI (required checks, no new names)**
+- [ ] The three Android cross legs: the NDK is `$ANDROID_SDK_ROOT/ndk/30.0.16248370`; if absent, `sdkmanager --install
+  "ndk;30.0.16248370"` installs it; its `source.properties` is printed and checked (no fallback to another NDK);
+  `cargo build --release --locked -p keepcrypt-jni --lib` per target, and again with `-p keepcrypt-jni -p keepcrypt-core
+  --features keepcrypt-core/test-registry --target-dir target/ffi-test-registry`; the shipping `libkeepcrypt.so` joins
+  the release scan (getrandom imported, no marker, no test key, no RNG symbol, symbol table kept); the test-registry one
+  shows exactly its registry marker and the test key; `llvm-readelf -lW` shows `0x4000` on every LOAD segment for arm64
+  and x86_64 (armeabi-v7a stays 4 KB, which Play allows); `llvm-nm -D` lists only `JNI_OnLoad` and
+  `Java_com_keepcrypt_entropy_ffi_Native_*` among our defined symbols. The image's NDK list is printed for Review.
+  Proof: a green run with both scans, the alignment and symbol lines; a planted 4 KB link flag turns the check red
+  (recorded once under Review).
+  Corrected at commit 13 (commit 9's finding under M5-35): the test-registry build named `--features
+  keepcrypt-core/test-registry` with `-p keepcrypt-jni` alone, which cargo refuses ("the package 'keepcrypt-jni' does
+  not contain this feature"), because keepcrypt-jni has no keepcrypt-core edge; `-p keepcrypt-core` beside it names the
+  feature.
+  Proof (M5 commit 13, partial: the green run, both scans, the alignment and symbol lines and the image's NDK list
+  come from CI, which the lead pushes and reads; nothing NDK runs on this Mac): entropy-ci.yml's three Android legs
+  list keepcrypt-core, keepcrypt-ffi, keepcrypt-guard and keepcrypt-jni (so the target clippy covers the FFI crates);
+  their compiler step lists `$ANDROID_SDK_ROOT/ndk`, installs `ndk;30.0.16248370` with sdkmanager only when that
+  directory is absent, prints its source.properties, fails unless `Pkg.Revision = 30.0.16248370`, needs the API 31
+  clang, llvm-ar, llvm-nm and llvm-readelf there, and never reads ANDROID_NDK_HOME but to print it. Then the two
+  builds above; the release scan takes the shipping `libkeepcrypt.so` beside core's rlib and probe, printing its
+  getrandom import first; the test-registry one must give exit 1 with exactly its registry marker and the test key (2
+  hits); and both pass NDK r30's `llvm-readelf -lW` (every LOAD segment's alignment exactly 0x4000 on arm64 and
+  x86_64; armeabi-v7a's printed, not judged) and `llvm-nm -D --defined-only`, read as M5-21 narrows it: the defined
+  symbols other than secp256k1-sys 0.10.1's own four `#[no_mangle]` exports (`rustsecp256k1_v0_10_0_context_create`,
+  `_context_destroy`, `_default_error_callback_fn`, `_default_illegal_callback_fn`) must be exactly `JNI_OnLoad` and
+  `Java_com_keepcrypt_entropy_ffi_Native_call`. Checked here: `--workflows` clean on the three workflows (sh and dash),
+  and the workflow loads with `ruby -ryaml` (cross: 16 steps). `cargo tree -e normal,build --target T` for the three
+  Android targets: the test-registry build's packages and features equal the shipping build's but keepcrypt-core's
+  `test-registry`. The steps' scripts, taken from the loaded YAML and run under `bash -eo pipefail`: the NDK step on
+  stub SDK trees passes with r30 present, with r30 or the whole ndk/ directory absent and sdkmanager installing it,
+  and fails with sdkmanager installing nothing, a wrong Pkg.Revision, no source.properties, no llvm-readelf and no
+  ANDROID_SDK_ROOT; the alignment and exports step on canned tool output passes arm64 and x86_64 at 0x4000, armeabi-v7a
+  at 0x1000, a versioned name and no secp256k1-sys export, and fails one 0x1000 segment, 0x10000 segments, no LOAD
+  segment, an extra export, a missing JNI_OnLoad, a second Native_ export, an unknown rustsecp256k1_ export, an empty
+  list and a target with no rule. Host stand-ins (aarch64-apple-darwin, the same two cargo commands): the scan step
+  passes on core's rlib, the probe and the shipping dylib (`_getentropy` imported by all 2 linked files) and the
+  test-registry step on the test-registry dylib (Marker KC_TEST_REGISTRY_DO_NOT_SHIP and TestKey, "2 hit(s) in 1
+  file(s)"); with the two dylibs swapped each step fails; both dylibs export exactly `_JNI_OnLoad`,
+  `_Java_com_keepcrypt_entropy_ffi_Native_call` and secp256k1-sys's four.
+- [ ] `test` adds `cargo test -p keepcrypt-ffi -p keepcrypt-jni --locked --features keepcrypt-core/test-registry`.
+  Proof: `test`'s time against main's.
+  Proof (M5 commit 13, partial: `test`'s time in CI against main's is the lead's): with `-p keepcrypt-guard` (the
+  re-plan's commit 13), the job runs `cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni --locked` and the
+  same with `--features keepcrypt-core/test-registry`, after the pi-sim run. keepcrypt-ffi's core edge lets cargo take
+  the feature with these three selected (with keepcrypt-guard and keepcrypt-jni alone: "none of the selected packages
+  contains this feature"), so no `-p keepcrypt-core` is added, which would bring core's dev-dependencies and tests in.
+  Each gives keepcrypt-ffi 11 unit and 28 integration tests, keepcrypt-guard 2 and keepcrypt-jni 3, all passed. On
+  this Mac, in a fresh target dir after the job's earlier test builds (workspace, test-sources, pi-sim registry): the
+  plain run 2 s (nothing compiled), the registry run 7 s (3 crates compiled); with `-p keepcrypt-core` it would take 43
+  s more (24 crates compiled, core's tests run).
+
+**13. `:core-ffi` and the Rust libraries in the APK (commit 14)**
+- [x] `Native.kt` (`internal object Native`, `System.loadLibrary("keepcrypt")`, the `external fun`s), `Wire.kt`
+  (decoders), `Secret` (a byte-array holder with `wipe()` and no content `toString`), `Core.kt` (typed calls, sealed
+  results, `KcHalt` on the halt status, no `catch`). The skeleton's static first screen becomes the real self-test.
+  Proof: the JVM tests below; the ARM and 16 KB leg (group 6).
+  Proof (M5 commit 14, partial: the Kotlin compiles and runs only in CI): as M5-21, M5-37 and M5-41 amend it, `:core-ffi`
+  commonMain holds `internal expect object Native { fun call(op: Int, input: ByteArray): ByteArray }`, androidMain its
+  actual, the JNI method itself after `System.loadLibrary("keepcrypt")`; `Wire.kt` copies wire.rs's status bytes, op
+  table and refusal codes (`Refusal`, by core's names and groups) and decodes every layout wire.rs defines, halting on a
+  reply that is not its layout; `Core.kt` makes one typed call per op, returns `Reply.Done`, `Refused` or `Discarded`,
+  throws `KcHalt` (an Error, fixed text) on the halt status, halts the slot on an argument out of range, zeroes each
+  input copy and reply, and catches nothing; `Secret` holds a byte array with `wipe()` and a fixed `toString`, and
+  every word page, passphrase page, confirm choice, D and QR matrix is held in one. MainActivity runs the self-test
+  through `Core` once per process on `Dispatchers.Default` before its first screen; any reply but Done halts.
+  The gate is clean on the tree (316 files).
+  Proof (CI, run 39554267960 at 89cf334, 1178 s): :core-ffi compiles with Native (the JNI method itself, M5-41), Wire, Core and Secret, and the APKs
+  start with the real self-test (NativeTest on the 16 KB leg; the emulator legs on API 31 and 36 green).
+- [x] JVM tests against the host library: group 11's vectors again through Kotlin; every QR matrix decoded with ZXing
+  equals core's QR text; a call in the wrong stage halts and every later call does too (forked JVM per class). An `:app`
+  JVM test renders `clear-empty-bucket`'s and `collision-dice-50`'s UR text as PNGs (ZXing's writer, tests only) and
+  reads them back with the scanner's own decode function; a Python standard-library step writes `with-dice-50.kcr` and
+  `stale-day-31.kcr` from kcr.json's hex, and `p4-seal-ids.txt` with the Seal IDs of `dice-50-words12` and
+  `dice-99-words12` from kcr.json. These public test files are the P4 artifact.
+  Amended by M5-37 (2026-10-21): "every QR matrix decoded with ZXing equals core's QR text" reads as M5-37 says.
+  Proof: test counts per class in the Android job's log.
+  Proof (M5 commit 14, partial: the counts per class come from CI's "JVM test results" step, which needs every test
+  class's JUnit report with at least one test and none failed, errored or skipped): `:core-ffi`'s commonTest runs on
+  the JVM as androidHostTest, one class per JVM (`forkEvery = 1`), against the test-registry host library: WireTablesTest
+  (Wire.kt's status bytes, 38 ops and 42 refusal codes against wire.rs's own source, PINNED included), WireTest (every
+  layout's decoder on bodies built from wire.rs and seal.json, braille.json and watchonly.json), WireMalformedTest,
+  DiceVectorsTest (the three gate seeds' seal cards, words, pages and read-back), RegistryTest (with-dice-50's drill,
+  M5-42's two UR texts, the typed-code refusals), WrongStageHaltTest (commit at home, then all 38 calls halt) and
+  M5-41's NegativeOpHaltTest and OversizeInputHaltTest (the largest input refused, one byte more halted);
+  androidHostTest's QrRoundTripTest decodes every matrix with ZXing as M5-37 says (the check request by T and n and a
+  go-ahead built from them, the registration, collision-report and re-check texts against kcr.json and seal.json, the
+  account UR by its CBOR and the descriptors by their shape, fingerprints and xpub against the summary). `:app`'s
+  GoAheadPngTest renders M5-42's two texts as PNGs with ZXing's writer and reads them back through the scanner's own
+  decode step (`camera/GoAheadScanner.kt`), and the Android job's staging step writes with-dice-50.kcr, stale-day-31.kcr
+  and p4-seal-ids.txt (dice-50-words12 YVM9CPP3, dice-99-words12 9FHYMCQA) from kcr.json with Python's standard library,
+  uploaded with the PNGs and SHA256SUMS (the step's Python run here on 3.12 and 3.9: the two files 248 and 230 bytes,
+  starting KCR1).
+  Proof (CI, run 39554267960 at 89cf334, 1178 s): a JUnit report for every class, all passing: testAndroidHostTest DiceVectorsTest 2, NegativeOpHaltTest
+  1, OversizeInputHaltTest 1, RegistryTest 4, WireMalformedTest 1, WireTablesTest 3, WireTest 9, WrongStageHaltTest 1,
+  QrRoundTripTest 5 (27, forked per class; QrRoundTripTest reads as a pure barcode since 14m); GoAheadPngTest 2 in
+  each flavour. The P4 artifact (android-apks, kept to 2026-11-04): both APKs, goahead-clear-empty-bucket.png,
+  goahead-collision-dice-50.png (upper case, M5-42 as amended), with-dice-50.kcr, stale-day-31.kcr, p4-seal-ids.txt
+  (dice-50-words12 YVM9CPP3, dice-99-words12 9FHYMCQA) and SHA256SUMS.
+
+**14. `:secure-ui` and `CeremonyViewModel`**
+- [x] SecureActivity (from commit 5) as in "Built into this plan", `onStop` reporting "app left" only when not
+  `isChangingConfigurations`.
+  Proof: the emulator capture and lifecycle tests (group 6); the content-capture flag read back in-process, and
+  `dumpsys content_capture` shows no view events for the package where the probe found a service.
+  Proof (M5 commit 15, partial: the Kotlin compiles and the emulator runs only in CI): SecureActivity calls
+  onAppReturned on every start, onAppResumed on every resume (which ends the picker rule's exemption, 15c) and
+  onAppLeft on every stop but a configuration change's (`isChangingConfigurations`), registers the recording callback on
+  35+ (onRecordingChanged, from addScreenRecordingCallback's state and each report) and marks the root
+  accessibility-data sensitive on 34+; MainActivity hands the four to the ceremony model. CaptureTest's every-screen
+  pass (now First launch, "Working..." and the stop screen) reads the root's
+  IMPORTANT_FOR_CONTENT_CAPTURE_NO_EXCLUDE_DESCENDANTS back in-process, and contentCaptureHasNothingOfTheApp requires
+  that no line of `dumpsys content_capture` names the package (with the matching lines as a probe line) and says
+  whether the content_capture service answers the dump: it prints a pass line only where one does, and on an image
+  without one (API 31's probe found none) a probe line that it proved nothing there (15h). Its recreate() case is the
+  configuration change: the recreated activity must have the same ceremony model with no cover up and no notice, so a
+  stop taken for leaving the app fails it (15h).
+  Proof (CI, run 39582638947 at 78f5720; API 31 only): CaptureTest 6 tests passed in both flavours: First launch, "Working..." and the
+  stop screen drawn, then screencap and takeScreenshot black over the app's window, SECURE on its one window, the
+  content-capture flag read back; the recreate() case kept the same model with no leaving taken; `dumpsys
+  content_capture`: the service is absent on API 31, so not proven there (M5-47). The API 36 leg did not run (the job
+  stopped at the red API 31 leg; 15l lets each leg run).
+  Proof (CI, run 39587437349 at 1d49e0a, 1098 s; and run 39585551227 at c078566): CaptureTest 6 tests passed in both flavours on API 31 and
+  API 36, the recents thumbnail clean on both; `dumpsys content_capture` answers "Can't find service" on both images,
+  so the end-to-end content-capture check is proven on neither (M5-47); the in-process flag is read back on both.
+- [x] `OfflineMonitor` (a `ContentObserver` on `AIRPLANE_MODE_ON` and `WIFI_ON`, read again on every start; no receiver,
+  no permission); `Timers` (30 s cover, 9-minute warning, 10-minute idle wipe, 60 s background, the picker rule) on an
+  injected monotonic clock; the `Protected` wrapper (privacy gate, cover, recording redaction).
+  Proof: JVM tests of `Timers` with a fake clock for every rule and boundary (59 s keeps, 60 s wipes).
+  Proof (M5 commit 15, partial: the JVM tests run only in CI): secure-ui's OfflineMonitor.kt holds SystemOffline (a
+  ContentObserver on the two settings' URIs, on the main looper; start registers it and reports the state read afresh,
+  stop unregisters it; no receiver, no permission) and the rule isOffline (airplane mode 1 and WIFI_ON 0 or 3; any
+  other value or a missing setting is online), with OfflineRuleTest (2 tests); :app's CeremonyHolder passes it to the
+  model as the common OfflineMonitor seam (M5-20), which the model starts on every return (the state read afresh)
+  and stops only at its end, wipeAll, so it reports while the app is away too (15d).
+  `Timers` in :screens' commonMain on the MonotonicClock seam (SystemClock.elapsedRealtime() on the phone), with
+  TimersTest (8 tests: the cover at 30 s on Protected screens only, the warning at 9 minutes and the idle wipe at 10
+  with a session, the idle wipe on a Protected screen with none, input restarting the idle time, 59.999 s away keeping
+  and 60 s wiping, a return within 60 s, and the picker rule: no background time, its time counted under the idle
+  rule, and its exemption ended by the activity's next resume when no stop followed, so a permission prompt, which
+  only pauses the activity, leaves no exemption behind, 15c). The `Protected` wrapper (Screens.kt) shows the privacy
+  gate before a Protected screen entered from a Public one and a placeholder while a recording is reported; the cover
+  and the warning are Screens' overlays over every screen, each removed by the tap on it, which reaches nothing under
+  it. Every screen is Public until commit 19.
+  Proof (CI, run 39582638947 at 78f5720): TimersTest 8 tests and OfflineRuleTest 2 tests, 0 failures; on API 31 LifecycleTest's Wi-Fi case
+  saw the monitor's report (airplane_mode_on=1 with wifi_on=2 is online) and the start was discarded at once. The
+  wrapper's gate is drawn over the first Protected screens in commit 19, whose emulator tests show it.
+  Amended 2026-10-22 (the lead, from commit 17's review): commit 17 brings the first Protected screen, the
+  collision-report QR, with its privacy gate drawn and passed on the emulators (SnapshotDrillTest and CaptureTest's
+  walk); commit 19 brings the words and the other Protected screens.
+  Proof (M5 commit U3b, Stage U-1, partial: local, kc37, Q76; CI's legs at the next push): PF:126-127 give the
+  warning at 9 minutes and the wipe at 10 "while a session or a checked backup is held", and the Pi's
+  `Stage::BackupCheck` holds Check a backup's file and entries before the backup opens (app.rs:97-102, under
+  `holds_secrets`, :523-527). The phone held neither: on the entry 9 minutes showed only the cover, and going online
+  showed Go offline with no notice and no core discard (its 10-minute wipe came only from the rule for a Protected
+  screen with nothing held). CeremonyModel's `holds()` (a session, or `checkFile`, which backupPicked's accepted read
+  sets and `enter` drops once neither the entry nor a long call shows) now feeds the timers' step and offlineChanged:
+  on the entry the 9-minute warning, the 10-minute wipe with the Idle notice, and going online's discard with the
+  Offline notice; nothing is held after Back to Home, a discard, a halt, wipeAll or the opening, whose checked backup
+  `session` holds as before. CheckBackupScreensTest's
+  theEntrysFileAndEntriesAreHeldUnderTheIdleWarningAndWipe (30 s the cover, 9 minutes the warning, a tap keeping the
+  file and entries, 10 minutes more the wipe with the file and both entries zeroed, nothing held after it),
+  goingOnlineOnTheEntryWipesItsFileAndEntriesWithTheOfflineNotice and backFromTheEntryAndTheResultsDoneLeaveNothingHeld;
+  before the fix the first two failed ("expected:<Warning> but was:<Cover>", "expected:<Offline> but was:<null>"). The
+  landing screen after a wipe (Go offline, as built; Q81 open) is named once, in the class's assertEntryWiped. Local
+  (JBR 25; CI's JDK 17): the strict Gradle build of the five APKs with every JVM test task, :core-ffi 33 in 11 classes,
+  :screens 151 in 21, :app 11 in 4 for each flavour, :secure-ui 3 in 1, none failed; kc37: `android-local.sh --part
+  journeys` exit 0 in 753 s (FlowTest 7, CheckTest 2, BackupTest 1 with its age -d hand-off), and `--part capture`
+  exit 0 in 663 s (ControlTest 3, CaptureTest 6 and 6 without control (c), its walk through backup_check_entry and
+  backup_check_result in both APKs; PhoneMotionTest 1, LifecycleTest 6, CrashTest killed as it must be; NativeTest 1;
+  the Camera2 check's four camera-client checks, its decode not met, as allowed). fmt, both clippy runs, `cargo test
+  --workspace --locked` 503 passed (3 ignored), the test-sources run 269 (1 ignored); the gate clean (385 files), its
+  selftest 1631 passed.
+  Proof (CI, the lead's, 2026-10-30): Entropy Android 40903211202 at ab6773f: the build job's JVM test report (42
+  classes, none failed) has CheckBackupScreensTest's 19 tests passed, its idle-warning, online and Back tests among
+  them; both capture walks on API 31 and 36 drew backup_check_entry and backup_check_result black and SECURE, the
+  entry's one secret text drawn only by its secret node (data sensitive on API 36); LifecycleTest 7 passed in each
+  API's test registry and edges job.
+  Proof (M5 commit U3m, Stage U-1, M5-72 (b), partial: local, kc37, Q76; CI's legs at the next push): nothing kept the
+  screen on, so a screen timeout stopped the activity, which is leaving the app, and a words page was discarded while
+  its insert was punched (PF:125, "slow punching or scanning is never cut short"; MA:34). CeremonyModel gains `held`,
+  a StateFlow of holds() that the setters of `session` and `checkFile` keep, so it changes only with what is held,
+  never by a timer; MainActivity collects it in its lifecycle scope into the decor view's keepScreenOn, which the
+  window's FLAG_KEEP_SCREEN_ON follows (KtWindow refuses clearFlags, every setFlags but SecureActivity's and a new
+  layout, any of which could turn FLAG_SECURE off, so keepScreenOn is the way here to clear the flag; wording
+  corrected by U3m2). The 30 s cover and
+  the 10-minute wipe are unchanged. JVM: CeremonyModelTest's theHeldStateFollowsASessionFromItsStartToFinishsEnd
+  (nothing held on First launch, the self-test, Go offline or Home; held from the start's reply through the dice, the
+  seed's long call, Skip's result, the words, the read-back and the exports to the checklist; nothing after Finish)
+  and eachDiscardWipeAllAndAHaltEndTheHeldState (not before the start's reply; going online, also during a long call
+  before its reply, the idle wipe after its warning kept it, 60 s away from the dice, leaving a words page, wipeAll
+  and a halt each end it), and CheckBackupScreensTest's theHeldStateFollowsTheEntrysFileAndTheCheckedBackup (not on
+  Home, the picker or the file's read; held from the read's acceptance through the opening to the result and its
+  words; nothing after Done, Back, going online or leaving the words). Before the fix they do not compile (`held` is
+  new); with the fix in, a mutant of either setter that leaves `held` alone fails one of them (`checkFile`'s the Check
+  a backup test, `session`'s at "going online during a long call, before its reply"). Emulator: LifecycleTest's
+  aWordsPageOutlastsTheScreenTimeoutAndFinishClearsTheKeepScreenOnFlag turns `svc power stayon` off and sets
+  screen_off_timeout to 10000 (config_minimumScreenOffTimeout), both put back in its finally, then waits 20 s on
+  insert 2's page; after Finish, Home, nothing held and no KEEP_SCREEN_ON in the window's fl=. Without the fix (a
+  scratch MainActivity, never committed) it failed on kc37: "the screen timeout discarded the session expected:<Words>
+  but was:<GoOffline>", its probe "the screen go_offline, the activity STOPPED, the display off; mWakefulness=Asleep;
+  mStayOn=false; mMinimumScreenOffTimeoutConfig=10000; mScreenOffTimeoutSetting=10000", every later run of the part
+  passing; with it, "the screen words, the activity RESUMED, the display on; mWakefulness=Awake; mStayOn=false;
+  SCREEN_BRIGHT_WAKE_LOCK 'WindowManager/displayId:0' ON_AFTER_RELEASE". The test prints this probe line on CI's API
+  31 and 36 legs too (their values at the next push; wording corrected by U3m2). Local (JBR 25; CI's JDK 17): the strict Gradle build of the five APKs with every JVM test task rerun,
+  :core-ffi 33 in 11 classes, :screens 154 in 21, :app 11 in 4 for each flavour, :secure-ui 3 in 1, none failed; kc37:
+  `android-local.sh --part capture` exit 0 in 691 s (ControlTest 3, CaptureTest 6 and 6 without control (c),
+  PhoneMotionTest 1, LifecycleTest 7, CrashTest killed as it must be; NativeTest 1; the Camera2 check's four
+  camera-client checks, its decode not met, as allowed), `--part journeys` exit 0 in 740 s (FlowTest 7, CheckTest 2,
+  BackupTest 1 with its age -d hand-off) and `--part registry` exit 0 in 187 s (SnapshotDrillTest 3); a KDoc-only edit
+  to CeremonyModel came after the capture and journeys parts' builds, before the registry part's and the final build.
+  fmt, both clippy runs, `cargo test --workspace --locked` 503 passed (3 ignored), the test-sources run 269 (1
+  ignored); the gate clean (386 files), its selftest 1631 passed.
+  Proof (CI, the lead's, 2026-10-30): Entropy Android 40903211202 at ab6773f: in each API's test registry and edges
+  job "a words page outlasted the screen timeout (10000 ms, stay-on off) by its window's FLAG_KEEP_SCREEN_ON, the
+  session held; after Finish the window has no flag" (API 31 and 36); the build job's JVM test report (42 classes,
+  none failed) has the held-state tests' classes passed.
+  Proof (M5 commit U3m2, review fix, partial: local, kc37, Q76; CI's legs at the next push): MainActivity's comment
+  and U3m's Proof said the gate refuses any call that takes a window flag off, yet U3m's own `keepScreenOn = false`
+  takes FLAG_KEEP_SCREEN_ON off and passes it: KtWindow refuses only what could turn FLAG_SECURE off (clearFlags,
+  every setFlags but SecureActivity's, a new layout), and addFlags passes (the U-1 review). Both now say so, the
+  comment without naming those calls (the rule reads comments too), on as many lines as before; and U3m's Proof no
+  longer states the probe line of CI legs that have not run. Comment only, so the build's code is the same but for
+  the Compose compiler's source offsets: javap of MainActivity.class before and after differs only in its two
+  sourceInformation strings and four offsets (two integer constants, a startOffset and an endOffset), each shifted by
+  the comment's 97 more bytes, the strings' line numbers the same.
+  Local (JBR 25; CI's JDK 17): the strict Gradle build of the five APKs with every task rerun (270 executed): :core-ffi
+  34 in 12 classes, :screens 154 in 21, :app 11 in 4 for each flavour, :secure-ui 3 in 1, none failed; kc37:
+  `android-local.sh --part registry` exit 0 in 288 s (SnapshotDrillTest 3, LifecycleTest 7 with its screen-timeout
+  probe "the screen words, the activity RESUMED, the display on", CrashTest killed as it must be); the gate clean
+  (387 files) under sh and dash.
+- [ ] `CeremonyViewModel` owns the slot's use: UI state holds screen ids, page indices and `Secret` references only;
+  long calls run on `Dispatchers.Default` behind a "Working..." screen that ignores input; a lifecycle or offline
+  discard during "Working..." calls `discard()` at once and the call's "discarded" status returns the UI to its start
+  screen; `onCleared` calls `wipeAll()`.
+  Amended 2026-10-22 (M5-54): a long call core does not offer at home (Done's `finish`, a scanned go-ahead QR's
+  `revealProof` from commit 18, and the backup's encryption, which LifecycleTest drives and commit 20 brings) halts the
+  slot when a discard reaches core in the moment between the worker's check and the call (the stop screen, fail
+  closed) instead of returning to the start screen. The snapshot check is a short call on the main thread.
+  Proof: JVM tests for every transition, including a press during "Working..."; emulator tests that leave the app during
+  a backup's scrypt and during the start-up self-test, and turn Wi-Fi on during `start`: no ANR, the session is gone.
+  Proof (M5 commit 15, partial: the JVM and emulator tests run only in CI): as the re-plan amends it, this is
+  :screens' `CeremonyModel` (commonMain), held by :app's CeremonyHolder (an AndroidViewModel: Dispatchers.Default for
+  long calls, the main thread's scope, the clock, the offline seam and the flavour's testRegistry flag, M5-20; its
+  onCleared cancels the scope and calls wipeAll). UiState holds the screen id, the page index and flags (gate,
+  overlay, recording, offline, the wipe's notice). Every core call goes through CeremonyModel.call, the only catch of
+  KcHalt; a long call (`work`) runs on the worker behind "Working...", where input, ticks and the overlay taps go
+  nowhere; a discard (leaving the app on a Protected screen or during "Working...", going online after the start-up,
+  a timer's wipe) calls Core.discard at once, and the call's reply, discarded (or a call skipped because it had not
+  reached core, or one that reached core after the discard, whose session is discarded again on the worker, so the
+  holder's cancelled scope cannot skip it, 15e) returns the UI to the start screen, saying why; the start-up self-test
+  is the first long call, run again on the next return after a discard. CeremonyModelTest (23 tests, over the real slot
+  through the host library, long calls held on the test's worker: the start-up, a press during "Working...", leaving
+  during a long call, a discarded reply, core's own discarded reply (15f), a call reaching core after the discard and
+  one reaching it after wipeAll with its scope cancelled (15e), going online during a long call and before the self-test
+  passes (one self-test run, 15f), going online with a session held, away from the app and a return while online (15d),
+  leaving during the self-test, leaving a Public screen and the 60 s wipe, a return within 60 s, the warning and the
+  idle wipe, the picker, a picker opened that no stop followed (15c), a refusal, the halt status (the recording flag
+  kept on the stop screen, 15f), the recording flag, wipeAll and a configuration change), CeremonyModelHaltTest (a
+  second long call halts the real slot; nothing leaves the stop screen; wipeAll on the halted slot ends quietly) and
+  CeremonyModelRefusalTest (a refusal from a long call with no refused handler halts the real slot, 15f). LifecycleTest
+  on the emulator (scripts/android-emulator.sh step 4b, shipping app): Home during a backup's scrypt (dice-50-words12
+  driven through Core to the encryption; the times printed), Home at the start-up (started from the shell
+  and left at once; the leave may come during the self-test or after it passed, and the pass line says which: only
+  "during" is the emulator's half of the during-self-test proof, whose discard is then followed by a second self-test
+  on the return, while the JVM test holds that path on every run, 15i), and Wi-Fi on during a start held on the worker
+  (airplane mode on and Wi-Fi off first, put back after): each ends with no ANR (the script's judge) and the slot at
+  home (Core.selfTest() Done). And finishing the activity after a start through Core leaves the slot at home: the
+  ViewModel's onCleared ran wipeAll (15i).
+  Proof (CI, run 39582638947 at 78f5720; API 31 only): CeremonyModelTest 23, CeremonyModelHaltTest 1 and CeremonyModelRefusalTest 1, 0
+  failures. LifecycleTest 4 tests passed on API 31 with no ANR: Home during the backup's scrypt (left after 786 ms,
+  the reply back after 1097 ms, discarded), Wi-Fi on during a held start (discarded at once, the late start discarded
+  again), the activity finished (onCleared emptied the slot), and the start-up leave came after the self-test passed
+  (886 ms), so not the emulator half on this leg (M5-47). The API 36 leg did not run.
+  Proof (CI, run 39587437349 at 1d49e0a; and run 39585551227): LifecycleTest 4 tests passed on API 31 and API 36 with no ANR (the scrypt
+  leave, the held start under Wi-Fi, onCleared's wipe). The start-up leave came after the self-test passed on every
+  run so far (API 31: 886 and 972 ms; API 36: 293 and 858 ms), so the emulator half of "leave during the start-up
+  self-test" is not met (M5-47); the item stays open, and the gate report names it if it stays so. UiState's public
+  values from commit 16 on are M5-49.
+  Run 39642302623 at 345de33 (16o): API 36's scrypt case failed on its race, "the app was left after 1140 ms; the reply
+  came back after 1140 ms" (over four runs the leave reached onStop after 0.64 to 1.14 s and the scrypt's reply came
+  after 0.87 to 1.54 s). 16p gives the case up to three attempts on a fresh activity and session: an attempt whose
+  reply came first is a probe line and proves nothing; an attempt that left during the scrypt is judged in full; three
+  misses fail it. API 36's start-up leave in that run came after the self-test again (1545 ms after Continue).
+  Run 39646201443 at 484c482 (16p): the scrypt case left during the scrypt on its first attempt on both APIs (API 31:
+  left after 689 ms, reply after 1102 ms; API 36: 720 and 923 ms), LifecycleTest 4 green on both. FlowTest's new seed
+  failed once on API 31 with UI Automator's StaleObjectException (New seed tapped right after Back returned to Home,
+  the node replaced by Compose's redraw between the find and the click); every other class green on both APIs and the
+  16 KB leg. 16q: FlowTest's tap clicks through a selector resolved at the click.
+  Run 39649809912 at 65f9e4e (16q): every FlowTest case failed on its first tap, since 16q also asserted
+  UiObject.click()'s boolean, which is false on Compose taps that move the screen on; 16r (d7c108b) drops it, and the
+  screen check after each tap is the proof.
+  Proof (CI, run 39653116940 at d7c108b, 1262 s): LifecycleTest 4 passed on API 31 and API 36 with no ANR; the
+  scrypt case left during the scrypt on its first attempt on both (API 31: left after 665 ms, reply after 1068 ms;
+  API 36: 666 and 1268 ms); the start-up case (16j and 16k: Continue, the Self-test screen, then Home) came after the
+  self-test on both (592 and 586 ms after Continue), so the emulator half is still unmet (M5-47).
+  Proof (M5 commit 16j, partial: not yet run in CI): with M5-50's order, LifecycleTest's start-up case presses First
+  launch's Continue through the model and Home at once; once the self-test's reply is in, the screen left behind names
+  the case (First launch: the leave discarded the self-test, "during"; Go offline: "after"), and back in the app the
+  cover is taken away and, after a discard, Continue runs the self-test again: Go offline, the slot empty, no ANR. The
+  JVM proof is now leavingDuringTheStartUpSelfTestReturnsToFirstLaunchWhoseContinueRunsItAgain (renamed from
+  leavingDuringTheStartUpSelfTestRunsItAgainOnTheNextReturn, M5-47's name).
+  Proof (M5 commit 16k, review fix, partial: not yet run in CI): the start-up case presses Continue and reads the
+  model's screen in one main-thread step and requires the Self-test screen there (the self-test's reply comes back
+  through the model's scope only after that step), so a press that did not take fails at once instead of leaving
+  First launch to read as "during"; First launch after the reply is then a discard's only.
+  Proof (M5 commit 20a, partial: local, kc37, Q76; CI's legs at the next push): LifecycleTest's scrypt case now leaves
+  the app during the real backup screen's encryption: dice-50-words12 through the model's entry points to the confirm's
+  second answer, whose Done (confirmTyped) has core check both answers and starts encryptBackup behind "Working...",
+  the task sent to the back in the same main-thread step. On kc37 the leave came 107 ms after the press and the reply,
+  discarded, 512 ms after it, on the first attempt: Go offline with Notice.Left, the slot at home, no ANR.
+- [x] The crash path: an `Application` subclass sets its handler (replacing the platform's) to `Native.wipeAll()` then
+  `Process.killProcess`; the stop screen's "Close app" calls `finishAndRemoveTask()` and ends the process.
+  Proof: a JVM test of the handler's order with a fake; on the emulator an androidTest-only trigger throws on the main
+  thread, judged from the shell as in group 6 (process gone, no dialog, empty crash buffer, no DropBox entry).
+  Amended by Q75 (2026-10-21): after the trigger the crash buffer holds exactly its crash and nothing else of ours
+  (Android's pre-handler logs it before the app's handler runs).
+  Proof (M5 commit 15, partial: the JVM and emulator tests run only in CI): KeepCryptApp (the manifest's Application,
+  so both expected manifest summaries gain `application name=com.keepcrypt.entropy.KeepCryptApp`, as does --apk's
+  selftest dump: --selftest-apk 88 passed, 0 failed) sets CrashHandler as the default handler: Core.wipeAll(), then
+  Process.killProcess in a finally; the handler itself logs and shows nothing, but the process still logs (below);
+  CrashHandlerTest (2 tests: the order, and the end when the wipe throws KcHalt). The stop screen's "Close app" is
+  MainActivity's finishAndRemoveTask() then Process.killProcess. CrashTest (the androidTest-only trigger: a session
+  started, then a throw on the main thread) runs last in the API 31 and API 36 legs (the 16 KB-page leg runs NativeTest
+  alone) as `killed:com.keepcrypt.entropy.CrashTest`, a new android-instrument.sh form: the run must end with the
+  process gone during the test (a start, no pass, the activity manager's shortMsg), then the usual judge (process gone,
+  no crash or not-responding window, no crash-buffer line naming our packages, no new data_app_crash);
+  `android-instrument.sh --selftest` 29 passed, 0 failed (20 before; 15b added a killed case whose test passes before
+  the shortMsg) and `android-emulator.sh --selftest` 15 passed, 0 failed (12 before; 15b checks that LifecycleTest and
+  then the killed CrashTest are the leg's last two runs), under sh and /bin/dash. Expected to fail on the emulator, an
+  open question for the owner (review of commit 15): Android's RuntimeInit installs an uncaught-exception pre-handler
+  (LoggingHandler) that apps cannot replace; Thread.dispatchUncaughtException calls it before the default handler, and
+  it writes "FATAL EXCEPTION: main", "Process: com.keepcrypt.entropy, PID: n" and the stack trace to the crash buffer
+  (AOSP as recalled; no fetch here, the CI run will show it). So the judge's "no crash-buffer line naming our packages",
+  the plan's "empty crash buffer" and MA:36's "nothing logged" cannot hold as written for an exception that ends a
+  thread, as CrashTest's throw on the main looper does; the judge stays as planned until the owner answers.
+  Proof (CI, run 39582638947 at 78f5720): CrashHandlerTest 2 tests in each flavour, 0 failures. On API 31 CrashTest failed as the review
+  predicted: "logcat -b crash holds 3 line(s) naming com.keepcrypt.entropy" (the process gone, no crash window, no new
+  data_app_crash). Raised as Q75; the judge stays as planned until the owner answers.
+  Proof (M5 commit 15m, after Q75's answer; the emulator run is CI's): android-instrument.sh judges a killed: run's
+  crash buffer by its AndroidRuntime blocks: exactly one crash of our packages, its exception line the trigger's
+  (`java.lang.IllegalStateException: KeepCrypt crash test`), no "Caused by:" or "Suppressed:" in it, and no line naming
+  our packages outside it; every other run keeps the empty-buffer rule. Only counts are printed. `--selftest` 34 passed,
+  0 failed under sh and /bin/dash (5 new killed cases: no crash of ours, two, another exception, a Caused by, a line
+  outside the crash; the old FATAL-and-Process case now fails as "not the trigger's exception"); six mutants of the
+  new judge (one block allowed as at least one, the Caused-by, stray, exception-text and missing-exception checks
+  dropped, the killed branch skipped) each fail it.
+  Proof (CI, run 39587437349 at 1d49e0a): `instrument: api=31 PASS com.keepcrypt.entropy.CrashTest (killed during the test, as it must be;
+  process gone, no crash window, the crash buffer holds only the trigger's crash (Q75), dropbox clean)`, and the same
+  line for api=36; CrashHandlerTest 2 in each flavour.
+- [x] The pads: `DicePad`, `LetterPad` (a-z), `CrockfordPad` (32 symbols), `AsciiPad` (0x20-0x7E, up to 100 characters),
+  each writing into a `Secret`, keys in a fixed order, nothing about a key press in semantics on Protected screens.
+  Drawing: `QrMatrix`, `SealCard` (the 8x8 Okabe-Ito grid at 240 dp with Seal ID and braille, swb:84-90), braille faces.
+  Proof: JVM tests per pad and drawing helper.
+  Proof (M5 commit 15, partial: the JVM tests run only in CI): :screens' Pads.kt: DICE_KEYS, LETTER_KEYS,
+  CROCKFORD_KEYS and ASCII_KEYS (three pages of 32, 32 and 31) in their fixed order; PadEntry keeps what a pad typed
+  as ASCII bytes it zeroes (delete, take, wipe; PadsTest reads every byte past the typed ones through PadEntry's
+  internal zeroPastLength, 15g), never a String, and hands it over as a Secret of exactly its length (the pick of the
+  dice pad 1, the letter pad 4, the go-ahead code 8, the BIP39 passphrase 100); on the Protected pads (letters, ASCII)
+  Key sets a key's semantics to its role alone (clearAndSetSemantics), drawn UI that no JVM test reads: not proven
+  here, it is left to the emulator with the Protected screens (commit 19). Drawing.kt: QrLayout (whole-pixel modules
+  inside the 4-module quiet zone) under QrCode, the seal card (OKABE_ITO, the #F7F7F7 tile and #333333 outline of the
+  Pi, 240 dp, the Seal ID and its braille) and braille cells and faces (dot d at bit d - 1, raised filled and flat as
+  rings, the dot numbers, "leave blank" and "mirror", face 5 lighter). PadsTest (5 tests) and DrawingTest (5 tests).
+  Proof (CI, run 39582638947 at 78f5720): PadsTest 5 tests and DrawingTest 5 tests, 0 failures, each class on its own JVM over the host
+  library. The Protected pads' semantics are commit 19's emulator proof (M5-46).
+  Proof (M5 commit 19b, M5-46, partial: local, kc37, Q76; CI's API 31 and 36 legs prove it at the next push): FlowTest's
+  read-back entry (the letter pad, the one Protected pad commit 19 draws; the ASCII pad's screen is commit 21's) holds
+  exactly 26 nodes with the button role (android.widget.Button) and no text, content description or resource id, and no
+  node there with a single letter as its text or a key_ resource id; tapping them by their place types the letters
+  tapped (the pad's entry read in-process, compared and never printed), so they are its keys in its order. The Public
+  pads keep their labels: each of the dice pad's six keys (FlowTest) and the go-ahead code's 32 (CheckTest) is found by
+  its resource id key_ and the key, clickable, with the key as the text of the label drawn inside it. Unlike a Protected
+  key, a Public key reports the class android.view.View on kc37, not the button's: its label is a node under it.
+  Proof (M5 commit U3e, Stage U-2, partial: local, Q76's JVM run on a Linux host; CI's legs at the next push): each
+  pad's keys typed straight into their PadEntry from the composable, and Delete and the ASCII pad's page of keys were
+  the screen's own, so none went through pressOn: a key, Delete or Next keys left under the cover, the idle warning or
+  a privacy gate acted (an accessibility service's click reaches a node the overlay only draws over), a press from an
+  accessibility service was never input for the idle timer or the 30 s cover (the pointer handler sees touches alone),
+  and a leftover press could type into an entry its screen no longer showed. CeremonyModel gains padKey and padDelete,
+  which act on the showing screen's pad (padEntry: the dice pick below 256 rolls, the code, the read-back's letters
+  before a match, backupLetters on the confirm and Check a backup's entry, the BIP39 passphrase) only through pressOn;
+  the dice pad's face replaces the pick and it has no Delete; padDelete on Check a backup's entry is U3c's
+  entryDelete, folded in. The ASCII pad's page is the state's page on the BIP39 entry, moved by nextPage and
+  previousPage through pressOn, and a key off the page on show types nothing; it opens on page 1 each time. The pads
+  (Pads.kt) report a key to onKey and hold no entry. Rig's roll, toSkippedResult and toSummary now type through
+  padKey. PadPressTest (3 tests): on the dice, a face under the cover and under the warning picks nothing, a face
+  picked starts the idle time again and one under the warning is not input; on the BIP39 entry, a key and Next keys
+  behind the gate do nothing, a key from another page types nothing, Next keys stops at the last page, a key or Delete
+  or Previous keys under the cover does nothing, and a key starts the 30 s again; a letter on the words page or after
+  the read-back's match types nothing, and insert 2's entry types and deletes. A mutant of padKey without pressOn
+  fails two of them (PadPressTest.kt:41, a face under the cover picked; :69, a key behind the gate typed). Locally
+  (Linux x86_64, JDK 21, the Android SDK's platform 37, build-tools 36.0.0 and NDK r30; no emulator here, so CI's legs
+  are the device proof): android-rust.sh for both flavours, then the strict Gradle build of the five APKs with every
+  JVM test task: :screens 160 in 22 classes (PadPressTest 3, CheckBackupScreensTest 21), :core-ffi 34 in 12, :app 11
+  for each flavour, :secure-ui 3, none failed; the gate clean under sh and dash.
+  Proof (M5 commit U3f, Stage U-2, M5-72 (e), partial: local, Q76's JVM run on a Linux host; CI's legs at the next
+  push): each pad screen redrew its whole actions block, the pad's keys among them, by a version counter of its own
+  bumped after every key, Delete and Done (key(version)), since PadEntry was no Compose state; and the dice pad's six
+  keys were 40 dp squares at the start of a row a third of which each could fill. PadEntry's length is now snapshot
+  state (mutableIntStateOf), which keyAt reads too, so Compose redraws only what reads an entry (the keys typed, an
+  enabled Delete or Done) and the pads, which hold no entry since U3e, are skipped; the counters, key(version) and
+  LetterEntry's changed are gone. The dice pad's keys fill their third of the row, KEY_DP (40 dp) high. PadsTest's
+  whatReadsAnEntryIsSnapshotStateThatEachChangeNotifies: reading length and keyAt reads snapshot state, and a face
+  replacing another, Delete, a key, a take and a wipe each notify a reader; with length a plain Int it fails ("reading
+  the entry reads no snapshot state"); mutableIntStateOf passes as neverEqualPolicy does, since a face that replaces
+  another writes the length twice (0, then 1), so the simpler one stays. FlowTest's comment on the BIP39 entry's
+  in-process typing says so. The dice keys' layout has no JVM check: CI's captures draw the dice screen. Locally: the
+  strict Gradle build of the five APKs and :screens 161 in 22 classes, none failed.
+  Proof (M5 commit U3f2, CI fix, partial: local; CI's gates job at the next push): U3f's PadsTest called Compose's
+  Snapshot.sendApplyNotifications, and the gate's KtWindow rule refuses the word Notification in any Kotlin source
+  (Q57: no notifications), so scripts/banned-api-check.sh had three hits at b41fd45, pushed with cd8440b, whose gates
+  job fails on them; the lead's suite ran the gate after the push, not before each commit (M5-74 (a)). The test now
+  makes each change in Snapshot.withMutableSnapshot, whose apply hands its changed states to the apply observers; the
+  steps are the same, and with length a plain Int it fails ("reading the entry reads no snapshot state",
+  PadsTest.kt:176). The gate clean under sh and dash; PadsTest 8 passed.
+  Proof (CI, the lead's, 2026-10-31): Entropy CI 41144532638 at dd2d617 green, all 14 required checks, the gates job
+  clean with U3f2 in (Entropy CI 41142081299 at cd8440b had failed it on PadsTest's three KtWindow hits); Entropy
+  Android 41144532589 at dd2d617's build job ran every JVM test task, PadsTest among them, none failed.
+  Proof (M5 commit U3e2, Stage U-2's review fix, partial: local; CI's legs at the next push): the reviews found that
+  padKey and padDelete passed pressOn the showing screen, so its screen check always held, and a press left over from
+  a page of the same screen typed into the next one: a letter queued as the confirm's Done moved to question 2, as
+  Check a backup's Done moved to word N + 1, or as the read-back's Next moved to the next insert (the same entry each
+  time); U3e's "left over from a screen that has gone" held only where the next screen had no pad. A key and a Delete
+  now name the screen and page they were made on (padKey(screen, page, key), padDelete(screen, page)): the page must
+  be the state's, and pressOn checks the screen; Screens.kt's lambdas pass the screen and the state's page. The JVM
+  tests press through Rig.press and Rig.pressDelete, the showing screen and page, as the screens do: the dice, the
+  read-back, the confirm's answers (Rig.answer), Check a backup's entries, the code and BackupScreensTest's partial
+  answers, so every pad is driven through padKey (a mutant mapping the confirm's pad to none now fails them).
+  PadPressTest (5): the after-match check asserts straight after the key, before any Delete; a key and a Delete made
+  on insert 1's entry do nothing on insert 2's, nor a key made on another screen; the code entry types and deletes and
+  does neither under the cover; the dice at 256 rolls pick nothing; Previous keys stops at page 1; a key and a Delete
+  made on the confirm's question 1 do nothing on question 2. Without the page check two fail (PadPressTest.kt:128 and
+  :173). FlowTest's and Ui.kt's comments on redraws read as U3f made them. The instrumented journeys still type
+  in-process in places; through the UI only is U1b's (M5-74 (c)). Locally: the strict Gradle build of the five APKs
+  and test APKs, :screens 165 in 23 classes, :core-ffi 34, :app 11 for each flavour, none failed; the gate clean.
+  Proof (CI, the lead's, 2026-10-31, partial: Entropy Android 41144532589 at dd2d617, four of six leg jobs; the other
+  two at the next push, U1a5): the build job's JVM tests passed (PadPressTest 5, the Rig.press callers); API 31's
+  journeys job passed FlowTest 7, CheckTest 2 and BackupTest 1 with its age -d hand-off through U3e's pad wiring and
+  U3f's redraws, and both test registry and edges jobs and API 36's capture job passed their classes. API 31's capture
+  job and API 36's journeys job never booted (the runner's disk, U1a5), so U3e and U3f on API 36's journeys and API
+  31's captures are not yet proved.
+  Proof (CI, the lead's, 2026-10-31, partial): Entropy Android 41148288082 at a15dc4f: API 31's capture job passed
+  (both walks, U3e's pads and U3f's redraws through the read-back, the confirm and the BIP39 entry); API 36's journeys
+  job failed all 10 of its tests at their first screen (the open item below), so U3e and U3f on API 36's journeys
+  remain unproved.
+  Proof (CI, the lead's, 2026-10-31): Entropy Android 41155373986 at 75349ee, every job green, Entropy CI 41155373995
+  at the same head green (all 14 required checks): API 36's journeys job passed FlowTest 7, CheckTest 2 and BackupTest
+  1 with its age -d hand-off in 868 s (budget 20 minutes), so U3e's pad wiring and U3f's redraws now pass on both
+  APIs' journeys, captures and test registry and edges jobs. U3e, U3e2, U3f and U3f2 are proved on CI.
+
+**15. Screens: start to dice** (MA:166-174; PF:83-89)
+- [ ] First launch (MA:13's limits, the development-build line, "use the Pi for life savings"; every start), Self-test
+  (`self_test()`, failure halts), Go offline (status; Start disabled until offline; a button opens airplane-mode
+  settings), Home (New seed, Dice-only seed, Check a backup, Load registry snapshot, About), Length (12 default, 24),
+  Device entropy (Mixed only: touch timestamps and accelerometer/gyroscope samples into `add_extra` until commit, zero
+  credit; MA:144's sentence), Commitment (C as 16x4 hex), Dice (pad, undo, count and bits, never the history; Done once
+  the minimum is met; confirm disabled at 256). Dice-only skips Device entropy and Commitment. System Back goes back
+  only where nothing is lost.
+  Proof: emulator flow tests on both APIs; Start disabled online; Wi-Fi on during dice wipes and returns to Go offline.
+  Proof (M5 commit 16, partial: the Kotlin compiles and the JVM and emulator tests run only in CI): :screens' commonMain
+  holds the UI kit (Kit.kt: colours, type scale, KitScreen, whose text scrolls above actions that never scroll away,
+  headings, text, buttons whose text is their TalkBack label with the button role and the disabled state, the notice
+  line and the TEST REGISTRY strip; the one-way confirm screen comes with its screens in commit 17, 16d), which First
+  launch (now with Continue), "Working...", the stop screen and the privacy gate use too, and StartScreens.kt: Self-test
+  (commit 15's start-up self-test, the first long call on every start, now behind its own screen; First launch follows
+  it), Go offline (the airplane-mode and Wi-Fi states apart, the offline seam now reporting both; Start enabled only
+  offline; "Open airplane-mode settings" through the new AirplaneSettings seam, :app's AirplaneSettingsIntent.kt), Home
+  (New seed, Dice-only seed; Check a backup, Load registry snapshot and About come with commits 20 and 21), Length (12
+  words, the default, or 24), Device entropy (Mixed only: MA's sentence; each touch's uptime and the clock's
+  nanoseconds, and the new MotionSource seam's samples, :app's SensorMotionSource.kt on the accelerometer and gyroscope
+  at SENSOR_DELAY_GAME with no permission, go to add_extra while it shows, zeroed after each call), Commitment (C as the
+  Pi's hex_groups, four rows of four groups) and Dice (the pad's pick in the model's PadEntry, Confirm and Undo, the
+  Pi's count-and-bits line, the minimum and 256 lines, the Pi's dice-only line; Done comes with commit 17).
+  CeremonyModel: a discard's start screen is Go offline; a dice-only start commits and opens the dice itself; going
+  online on a screen from Home on discards any session or long call and returns to Go offline (with no notice when
+  nothing was held); the system Back (MainActivity's callback, always enabled) goes Length to Home, Home to Go offline
+  and Go offline to First launch, and does nothing anywhere else. StartScreensTest (12 tests) covers each transition
+  (Back where nothing is lost and nowhere else, Dice-only skipping two screens, the offline gate, the pad, the 256 cap,
+  no extra reaching core off Device entropy) and the pad's faces reaching core as picked (dice-50-words12's rolls
+  through the pad and Confirm, finished, give its Seal ID, 16e); CeremonyModelTest (24) follows the new start screen and
+  has wipeAll wipe the dice pad's pick and stop the motion source (16f), CeremonyModelBusyScreenTest (1, its own JVM: a
+  long call behind a screen that takes input halts the real slot, 16f), TouchReachesCoreTest and MotionReachesCoreTest
+  (1 each, their own JVMs: on Device entropy a touch and a motion sample reach core's add_extra, seen as its halt on a
+  slot committed behind the model, and the sample is zeroed, 16g), OfflineRuleTest gains the two states (3). :app's
+  PhoneMotion (SensorMotionSource.kt: the two sensors' registration, unregistration and sample layout) had no test
+  here; PhoneMotionTest covers it from 16j (16m adds the unregistration where dumpsys lists connections by name), and
+  every model test uses a fake motion source. Confirm reads the face from the pick with no copy of its bytes (16f).
+  FlowTest (3 tests: New seed of 12 words to 50 rolls with Back and Wi-Fi on during the dice, which has no dice-only
+  line, and then Go offline showing airplane mode on and Wi-Fi on with Start disabled (16h); Dice-only of 24 words to 99
+  and 256; Start disabled online, the settings button, Wi-Fi on at Home) runs on the shipping app in the API 31 and 36
+  legs before LifecycleTest (scripts/android-emulator.sh step 4a; `--selftest` 16 passed, 0 failed under sh and
+  /bin/dash, 15 before: the flow-test-fails case, and the pass leg's last three runs are FlowTest, LifecycleTest and the
+  killed CrashTest). CaptureTest's every-screen pass walks one activity through all ten screens with the phone offline.
+  The gate is clean on the tree (343 files), `--selftest` 1431 passed, 0 failed, and `canaries.sh` PASS, all 93 checks
+  ran.
+  Proof (CI, run 39611275051 at e38a095, 1331 s; every class compiled and passed on the first CI run): StartScreensTest
+  12, CeremonyModelTest 24, CeremonyModelBusyScreenTest 1, TouchReachesCoreTest 1, MotionReachesCoreTest 1 (with
+  TimersTest 8, PadsTest 5, DrawingTest 5, the halt and refusal classes) and OfflineRuleTest 3; FlowTest 3 tests passed
+  on API 31 and API 36 ("new seed, 12 words: Back from Length, Device entropy, C in 16 groups, the dice's pick, confirm,
+  undo and minimum (50 / 50 rolls, 129.2 bits); Wi-Fi on during the dice wiped it, back to Go offline"; "dice-only
+  seed, 24 words: straight to the dice, the dice-only line, the minimum (99), and no 257th roll"; Start disabled
+  online); CaptureTest's every-screen pass, LifecycleTest and CrashTest green on both; the 16 KB leg green. The item
+  stays open until Done (17) and Home's other entries (20, 21) land (M5-48), and 16j reorders the start (M5-50).
+  Proof (M5 commit 16j, partial: the Kotlin compiles and the JVM and emulator tests run only in CI): the start follows
+  MA:170-172 (M5-50). First launch is the model's first state and the first screen of every start, with no core call
+  before its Continue (a return no longer runs the self-test); Continue runs the start-up self-test as a long call
+  behind the Self-test screen, then Go offline (any reply but Done halts, as before), and once it has passed Continue
+  goes to Go offline at once (First launch again by Back). A discard that hits the self-test returns to First launch
+  (no notice; under the cover while away), whose Continue runs it again; after it, a discard's start screen is Go
+  offline, as in commit 16. Screen's order is First launch, Self-test, Go offline and on, and CaptureTest's
+  every-screen walk follows it (the held self-test screen from First launch, then Continue's real self-test to Go
+  offline). JVM: the Rig's startUp ends on First launch and toGoOffline runs Continue's self-test; CeremonyModelTest
+  (24: firstLaunchComesFirstAndItsContinueRunsTheSelfTestBeforeGoOffline; going online on First launch and during the
+  self-test discards nothing; leaving during it returns to First launch, covered, where a return runs nothing and
+  Continue runs it again; core's own discarded reply and a call reaching core after the discard now start from Home),
+  StartScreensTest (12: the start through the Self-test screen, Back doing nothing there, Continue after Back with no
+  second self-test) and NoCoreCallBeforeContinueTest (1, its own JVM: the slot halted first; the start, a tick, Back, a
+  leave and a return, going online and offline and ten idle minutes leave First launch with nothing on the worker,
+  and only Continue's self-test meets the halt). Emulator: NativeTest presses Continue through the model and gives Go
+  offline 120 s (the library loads, JNI_OnLoad and the self-test through the bridge; the stop screen fails it at
+  once); FlowTest taps Continue and gives Go offline the self-test's 120 s; LifecycleTest's scrypt and Wi-Fi cases pass
+  the start-up first, its start-up case is Continue, then Home at once (the pass line says "during" or "after",
+  M5-47), and its onCleared case and CrashTest wait for First launch drawn only; ControlTest is unchanged (it waits for
+  First launch drawn). MA:13's sentence and the capture control's First launch are unchanged. M5-51: the cover and the
+  idle warning draw the TEST REGISTRY strip in that build, and CaptureTest checks the cover in both APKs;
+  PhoneMotionTest runs PhoneMotion on the emulator's sensors (M5-51's 16j line). Gate clean on the tree (348 files),
+  `--selftest` 1431 passed, 0 failed, and `canaries.sh` PASS, all 93 checks ran; android-emulator.sh --selftest 17
+  passed, 0 failed under sh and /bin/dash (16 before: motion-test-fails); Rust untouched (fmt, both clippy commands,
+  the workspace tests, the test-sources run and the FFI tests plain and with test-registry all pass).
+  Proof (CI, run 39653116940 at d7c108b, 1262 s of 28 minutes): every JVM class passed; on API 31 and API 36 every
+  emulator class passed under M5-50's order (NativeTest, ControlTest, CaptureTest in both APKs with the cover's
+  strip check, PhoneMotionTest, FlowTest 3, LifecycleTest 4 and the killed CrashTest), and the 16 KB leg's NativeTest.
+  The item stays open until Done (17) and Home's other entries (20, 21) land (M5-48).
+  Proof (M5 commit 17, partial: Home's other entries are commits 20 and 21, M5-48): the dice screen's Done, disabled
+  below the minimum, makes the seed (finish behind "Working...") and opens the check prompt (group 16's commit-17
+  line); the counts and their limit lines now come above the dice's notes, so FlowTest's minimum and cap lines stay in
+  view under the taller actions.
+  Proof (M5 commit 20a, M5-48, partial: local, kc37, Q76): Home now offers Check a backup (group 18's screens) under New
+  seed and Dice-only seed, and says on Home why a file it was given was not opened; Load registry snapshot and About
+  come with commit 21.
+  Proof (M5 commit 21a, M5-48, partial: local, kc37, Q76): Home now offers every entry the plan names, each with its
+  screens (New seed, Dice-only seed, Check a backup, Load registry snapshot and About; "Verify another device's
+  ceremony" is M5b's, Q61), and names the snapshot loaded or that none is. CaptureTest walks Home and the two new
+  screens in both APKs, FlowTest taps About, and CheckTest and SnapshotDrillTest Load registry snapshot through
+  DocumentsUI (group 18's 21a line). CI's legs at the next push close the item.
+
+**16. Screens: the collision check** (MA:175-176; swb:112-152)
+- [x] The prompt ("Check now (recommended)" / "Skip", Skip confirmed on its own screen). With a loaded snapshot the check
+  runs automatically on the FFI thread and its result screen shows the snapshot's number, date and any warning.
+  Amended 2026-10-22 (M5-54): the check against a loaded snapshot is a short call on the main thread (17h); M5-55
+  takes the seal card off the prompt and shows the Seal ID from Check now on.
+  Otherwise the seal card (seal at 240 dp, Seal ID with braille, the check QR) and "Scan go-ahead QR", "Type go-ahead
+  code", "Match found", "Cannot check" (each one-way choice confirmed). A wrong typed code is refused and the check,
+  nonce and actions stay. Match found: wiped unseen, the collision-report QR (Protected), "Add fresh entropy" restarts
+  at 99. Cannot check: wiped, "Start again" likewise. Results use swb:150-152's wording.
+  Proof: emulator tests in the shipping APK (typed code computed from the drawn check request; a wrong code keeps the
+  check) and the test-registry APK (snapshot drill: Match found before any words page, then "0 / 99").
+  Proof (M5 commit 17, partial: the Kotlin compiles and the JVM and emulator tests run only in CI; "Scan go-ahead QR"
+  is commit 18's, so it is not drawn yet, M5-48): :screens' CheckScreens.kt draws the prompt in swb's words with this
+  seed's seal card under them (the Seal ID that P0b and P4 compare before Check now), Skip's, Match found's ("Destroy
+  this seed") and Cannot check's ("Start again") confirms on Kit.kt's OneWayConfirm (back from 16d), the seal card
+  (the seal at 240 dp with its Seal ID and braille, the check QR at 240 dp, "Type go-ahead code", "Match found",
+  "Cannot check"), the code entry on Pads.kt's CrockfordPad (the code in two groups, Delete, Done at 8 symbols, Back),
+  the collision result and the result before the words in swb:150-152's wording (the typed code's "as of the date
+  your checker showed"; a loaded snapshot's number, date, count and its Stale or Future warning on both), and the
+  collision-report QR, the first Protected screen (isProtected; the privacy gate, its button MA:34's "I'm alone, show
+  words" for every Protected screen, 17e; leaving the app on it discards, Q57 (b)). The result before the words has no
+  action until commit 19 brings them. Pads.kt's keys now share their row's width (at most 40 dp), since a row of eight
+  is 368 dp, wider than the 312 dp a 360 dp phone leaves inside the kit's margins (17d), which hid the go-ahead pad's
+  last column.
+  CeremonyModel: the dice's Done (M5-48); Check now starts the check and, with a loaded snapshot, runs core's check
+  against it on the worker behind "Working..." on the new UtcDate seam's date (:app's UtcToday, java.time's date in
+  UTC), else shows the seal card; a refused typed code returns to the
+  code entry with the check, its nonce and (by Back) the actions kept, the code wiped; Match found to the collision
+  result, its report and "Add fresh entropy", Cannot check to "Start again", each core's start from the kept Wiped with
+  the session's length and mode; Back on each confirm screen and the code entry (the confirm's button and the system
+  Back are the model's back); the slot's restart is held like a session (timers, going online), so a discard takes it
+  home with the Wiped kept; snapshotLoaded is a snapshot's way into the model, which only the tests use, after their
+  own Core.loadSnapshot, until commit 21's Home entry (M5-48); the check QR and the report are wiped once no screen
+  holds them. CheckScreensTest (12 tests, its own JVM; kcr.json's date and snapshots through a new androidHostTest
+  entropyFile, M5-43's pattern): Done at the minimum and not below it, then the prompt with dice-50-words12's Seal ID;
+  Skip confirmed, Back on its confirm; the seal card's check QR equal to core's; a wrong code refused with the same
+  check QR in core and on screen and the actions kept; Back on each confirm screen and the code entry, no core call;
+  Match found to the collision result (Back doing nothing there, 17c), the report behind its gate (Add fresh entropy
+  reaching nothing there) and Add fresh entropy at 0 / 99, the report then wiped; Cannot check to Start again at
+  0 / 50, and at 0 / 99 when it was the restart after a collision; leaving on the report discarding at once, the next
+  seed still at 99; wipeAll on the code entry wiping the typed code and the check QR, and past the report's gate the
+  report (17b); with with-dice-50 loaded the check on the worker finds the collision, no words made available;
+  current-day-30, stale-day-31 and future-day-1 give Current, Stale and Future and their warnings on kcr.json's date;
+  the result texts and the code as
+  shown. Emulator (scripts/android-emulator.sh step 4a, after FlowTest, API 31 and 36): CheckTest (shipping APK: Done
+  at 50, Skip, Match found and Cannot check confirmed and Back there, the drawn check QR read in-process with ZXing,
+  every key of the pad whole on screen and Delete taking a typed symbol back (17d), a wrong code typed on the pad
+  refused with the same check QR and actions, then the code computed from that QR's T and nonce, SHA-256 over
+  "KCE/v1/go" || T || n, first 40 bits in Crockford base32, typed on the pad: "No collision for seal YVM9CPP3, as of
+  the date your checker showed.") and SnapshotDrillTest (test-registry APK: with-dice-50 loaded
+  through Core and handed to the model; Check now runs on its own: the collision, its snapshot line and Stale warning,
+  before any words; the privacy gate, the report QR read back as dice-50-words12's registration text, Add fresh
+  entropy: "0 / 99 rolls, 0.0 bits"). CaptureTest's every-screen pass walks the nine new screens in both APKs (the
+  report past its gate; the walk's second ceremony, Add fresh entropy's, skips to the result). FlowTest's helpers moved
+  to Ui.kt, shared with the two new classes (the tap as 16q and 16r left it: a selector resolved at the click, its
+  boolean not read, each tap followed by a check of the screen it leads to; CheckTest's code by the shown code).
+  android-emulator.sh --selftest 19 passed, 0 failed under sh and /bin/dash (17 before: check-test-fails,
+  snapshot-drill-fails; the pass leg's last five runs are FlowTest, CheckTest, SnapshotDrillTest, LifecycleTest and
+  the killed CrashTest). Estimated cost (not yet measured): about 2 minutes a leg (CaptureTest's nine more screens in
+  both APKs, CheckTest's taps, SnapshotDrillTest), so about 4 on run 39611275051's 22.2 plus 16j's estimated minute,
+  near M5-52's 28. Gate clean on the tree (356 files), `--selftest` 1431 passed, 0 failed, and `canaries.sh` PASS, all
+  93 checks ran; Rust untouched (fmt, both clippy commands, the workspace tests, the test-sources run and the FFI
+  tests plain and with test-registry all pass).
+  Run 39673248591 at 9955e2a (commit 17's first CI run): the Kotlin compiled and every JVM class passed (26 reports,
+  110 tests: CheckScreensTest 12, CeremonyModelTest 24, StartScreensTest 12 and the rest); on API 31 and API 36
+  CaptureTest (both APKs, the nine new screens black and SECURE), SnapshotDrillTest ("with-dice-50 loaded,
+  dice-50-words12's check ran on its own: the collision, its snapshot line and Stale warning, before any words; the
+  report QR behind the gate; Add fresh entropy: 0 / 99"), FlowTest, PhoneMotionTest, LifecycleTest and the killed
+  CrashTest passed, and the 16 KB leg's NativeTest. CheckTest failed on both APIs at 17d's check, "key 7 is not whole on
+  screen: Rect(585, 673 - 681, 751)": UI Automator gives a Compose key its touch target (at least 48 dp, cut by the
+  targets drawn after it), not the drawn square, so the rightmost column (no neighbour to its right) is 96 x 78 px
+  while the others are cut to the 39 dp column pitch; the keys were drawn as designed. The job reached 28.1 minutes
+  and M5-52's 28 cancelled it just after its last leg (M5-57).
+  Proof (M5 commit 17g-c, the lead's, partial: the emulator test runs only in CI): CheckTest types one key from each
+  column, the rows in turn ("09JV-4DPZ"), and Delete takes all eight back; a column with no width would send its tap
+  to the key drawn over it, and the code shown would differ. The drawn key size itself stays unproven by the emulator
+  tests (M5-46's limit: no UI test library).
+  Proof (CI, run 39678040247 at 32dc6a8, 1739 s): CheckTest passed on API 31 and API 36 ("Done at 50 rolls, the
+  prompt's Seal ID YVM9CPP3, Skip, Match found and Cannot check confirmed on their own screens and Back there, a wrong
+  code refused with the same check QR, the code from the drawn check QR's T and nonce typed on the pad: the check
+  passed"), with every other class on both APIs and the 16 KB leg; Entropy CI 39678040331 and the Pi image
+  39678040302 green. The item stays open for "Scan go-ahead QR" (commit 18) and M5-54/M5-55's changes (17h).
+  Proof (M5 commit 17h, partial: the Kotlin compiles and the JVM and emulator tests run only in CI; M5-54 and M5-55),
+  what changed from commit 17's lines. The prompt's seal card is removed: the prompt draws swb's question and text,
+  "Check now (recommended)" and "Skip" only, as the Pi's CheckPrompt (pi/app/src/screens.rs), and its UiState holds no
+  seal (nor do Skip's confirm and Skip's result, whose text names none); Check now takes the seal from core (offered
+  while checking), so the Seal ID shows from Check now on: on the seal card (unchanged), on the check result, whose
+  text names it, and on the collision result, whose seal is added: Drawing.kt's SealCardImage (grid, Seal ID, braille)
+  under its text and snapshot lines, after a loaded snapshot's check or Match found (the seal kept from its confirm).
+  The snapshot check is a short call: with a loaded snapshot, Check now calls Core.revealSnapshot on the main thread
+  (the FFI runs it under its lock, never as a long call), not through `work`, so no busy screen comes before its
+  result and no discard can land between the worker's look at its flag and the call. CeremonyModel's KDoc (the
+  class's, work's and onWorker's) names the long calls whose discard always ends on the start screen, start and the
+  self-test (core offers them at home), and the two that halt the slot when a discard reaches core between that look
+  and the call, finish and encryptBackup (fail closed: the stop screen; M5-54's residual); Core.kt's KDoc no longer
+  counts the snapshot check among the long calls. CheckScreensTest (12 tests; two renamed,
+  doneFinishesAtTheMinimumBehindWorkingThenThePromptHoldsNoSeal and
+  aLoadedSnapshotsCheckIsAShortCallThatFindsTheCollisionAtOnceBeforeAnyWords): the prompt's state, Skip's confirm's
+  and Skip's result's hold no seal; the seal card's, the collision result's (by Match found and by the snapshot) and
+  the check result's hold dice-50-words12's; the automatic-check cases (the collision and each freshness warning)
+  leave nothing on the held worker and show their result at once after Check now. Emulator: Ui.kt's new shown finds a
+  screen's text, scrolling KitScreen's text column (its one scrollable node) in slow half-column swipes where the text
+  lies out of view; CheckTest requires the prompt fully drawn (its heading, question and text, Check now and Skip on
+  screen) with no text equal to the seed's Seal ID, its text column scanned to its end, and the Seal ID drawn on the
+  seal card, scrolled into view; SnapshotDrillTest requires the collision result at once after Check now and
+  dice-50-words12's Seal ID drawn on it; CaptureTest's walk follows with no change in its code (the prompt and the
+  collision result through the same entry points, the latter now drawing its seal). Estimated cost (not yet measured):
+  a few seconds a leg for the scrolls. Gate clean on the tree (356 files), `--selftest` 1439 passed, 0 failed; Rust
+  untouched (fmt, both clippy commands, the workspace tests, the test-sources run and the FFI tests plain and with
+  test-registry all pass).
+  Proof (M5 commit 18, partial: CI's): the seal card draws "Scan go-ahead QR" first among its actions, the scan screen
+  behind it (the scanner item's lines).
+  Proof (CI, run 39744137391 at 1a63e0f, 17h and 18 in): CheckScreensTest 12 tests passed; on API 31 and API 36
+  CheckTest passed ("Done at 50 rolls, the prompt with no Seal ID, Skip, the seal card's Seal ID YVM9CPP3 and its four
+  actions (Scan go-ahead QR drawn), Match found and Cannot check confirmed on their own screens and Back there, a wrong
+  code refused with the same check QR, the code from the drawn check QR's T and nonce typed on the pad: the check
+  passed"), SnapshotDrillTest's drill passed ("with-dice-50 loaded, dice-50-words12's check ran on its own: the
+  collision, its snapshot line and Stale warning and its Seal ID YVM9CPP3, before any words; the report QR behind the
+  gate; Add fresh entropy: 0 / 99"), and CaptureTest's walk drew every check screen black and SECURE in both APKs.
+  The words after a passed check are group 17's (commit 19).
+  Proof (M5 commit 19a, partial: local, Q76): the check result's Show words leads on to them, through the privacy
+  gate (group 17's commit-19 line).
+  Proof (M5 commit U3d, Stage U-2, partial: local, kc37, Q76; CI's legs at the next push): the seal card drew the seal,
+  its Seal ID and braille, the check QR and the four actions on one scrolling screen, so the check QR was never wholly
+  on screen at CI's window, where the Pi splits them into pages (PF:93). The seal card now shows the seal, Seal ID and
+  braille with "Show check QR"; its next page, the new screen check_qr (screenId's table, ScreenIdsTest), draws the
+  check QR above its four actions, two to a row, the instructions under it. Back on it returns to the seal card with
+  the same check request and nonce; the scan screen, the code entry and the two confirms' Back now return to the check
+  QR. CheckScreensTest (13 tests): the seal card offers none of the checker's answers, Show check QR opens the page
+  with the seal card's own check QR, Back and each action's Back keep that same matrix with no core call; the other
+  check tests start from the page. Locally: the strict Gradle build of the five APKs with every JVM test task
+  (:screens 157, none failed); android-local.sh on kc37 at its own window and at `wm size 720x1184`: --part journeys
+  (FlowTest 7, CheckTest 2: "its check QR page with the QR wholly in view (window 720x1184, font scale 1.0)", read
+  in-process from the window's semantics, and 720x1280 at kc37's own size; BackupTest 1), --part registry
+  (SnapshotDrillTest 3 through the new page, LifecycleTest 7, CrashTest killed as it must be), --part capture
+  (CaptureTest 6 in each APK, its walk drawing check_qr black and SECURE; the camera check's Back now "on the check
+  QR"), each exit 0 but capture at 720x1184, whose first-frame step cannot run under the shell's size (the 360x640
+  recording "does not have the display's aspect ratio 720x1184"), every class there passing.
+- [ ] The scanner (Camera2 + ZXing, commit 18): CAMERA asked on this screen only; `ImageReader` YUV_420_888 frames
+  reduced to luminance on a background thread and never stored; text over 4,296 characters dropped (swb:144); the first
+  decoded text goes to the same `onGoAheadText` the tests call; proof results show their date and any warning before
+  the words.
+  Proof: a JVM test runs the scanner's real frame-to-luminance and decode code on canned YUV_420_888 buffers built from
+  both UR PNGs, with row and pixel strides that differ from the width and each rotation; emulator tests feed both UR
+  texts to `onGoAheadText`; CAMERA not granted before the scan screen (`dumpsys package`); the owner's P0b right after
+  commit 18, and P4.
+  Proof (M5 commit 18, partial: the Kotlin compiles and the JVM and emulator tests run only in CI; P0b and P4 are the
+  owner's): the seam is `:screens`' commonMain QrScanner (Seams.kt: start(found, stopped), stop; ScanStop Refused,
+  Missing or Failed), M5-20's "QR scanner", a screens' seam MainActivity passes to Screens. The scan screen
+  (CheckScreens.kt's ScanScreen; Screen.Scan, id `scan`, Public, needs offline, Back to the seal card) opens from the
+  seal card's new first action, "Scan go-ahead QR" (`scan_qr`); it draws no preview, so nothing the camera sees is
+  drawn and FLAG_SECURE is unchanged, and its text says how to aim (about 20-40 cm, the whole code in view). Its
+  scanner runs while it shows uncovered and has not stopped (a DisposableEffect: started as the screen opens,
+  stopped under the cover or the idle warning and when the screen leaves, and by MainActivity's onAppLeft at once,
+  since Compose recomposes nothing while the activity is stopped); "Type go-ahead code" and Back stay, and its line
+  says why a scan stopped: the camera refused (the typed code stays), missing, failed, a text core refused, or no
+  registry key in this build (the shipping APK: "This build trusts no registry key yet"). :app's
+  camera/GoAheadScanner.kt is the Android end: CAMERA asked through MainActivity's prompt each time the scan screen
+  starts a scan, a phone without a camera included (the launcher registered in onCreate, whole on one line, its
+  contract imported with its package: an import line naming the contracts' class is a KtIntent hit); then, on the
+  scanner's HandlerThread, the back camera or else the first with YUV_420_888 frames (none, or no camera feature:
+  Missing) at its largest YUV_420_888 size up to 1920x1080 by area, with continuous autofocus where offered, into an
+  ImageReader of two images, whose latest frame (acquireLatestImage) is reduced to luminance by its row and pixel
+  strides (reduceLuminance, any pixel stride), handed back at once and decoded (goAheadText: POSSIBLE_FORMATS
+  QR_CODE and TRY_HARDER, no PURE_BARCODE; ZXing's ReaderException, the file's one catch of it, drops a frame whose
+  luminance decodeGoAhead has already zeroed, M5-53, and a text over 4,296 characters is dropped, swb:144); the first
+  text ends the scan and goes once to the model's onGoAheadText. Every Camera2 call runs on that thread behind the
+  scan's own stop flag, with its release queued there after any call, so none reaches a closed device, session or
+  reader; CameraAccessException, the file's one catch of it, ends the scan as Failed; a device or session that arrives
+  after the end is closed at once; no frame, luminance or text is logged or kept (the luminance zeroed after each
+  frame and at the end). CeremonyModel: scanQr; typeCode from the scan screen too; onGoAheadText (Core.revealProof
+  on today's UTC date, a long call behind "Working..." as the FFI runs it; a refusal returns to the scan screen with
+  the refusal, the seal and the same check QR); scanStopped (said on the scan screen alone, the first stop). UiState's
+  proof flag tells a proof's header from a loaded snapshot's (M5-55): both result screens draw proofLine, "Proof from
+  snapshot No. N, dated D: K entries in this seal's bucket." ("1 entry" when K is 1), never the snapshot's total of
+  seals, then the freshness warning, before the words; a snapshot's result keeps its snapshot line. revealProof
+  joins finish and encryptBackup in M5-54's residual (core does not offer it at home, so a discard that lands
+  between the worker's look at its flag and the call halts the slot: the stop screen), named in CeremonyModel's
+  KDoc. JVM: :app's GoAheadFrameTest (3 tests) runs reduceLuminance and goAheadText on canned YUV_420_888 Y planes of
+  both P4 PNGs (P4Png, which GoAheadPngTest now shares, renders and reads them as before) set in a wider white
+  frame, at each of the four rotations, with pixel stride 1 (64 bytes of padding a row) and 2 (7), the buffer exactly
+  as long as the strides need and every byte that is no pixel filled: the luminance back byte for byte, the UR
+  text decoded, the luminance zeroed; a frame with no code gives none; a 4,297-digit numeric QR, which ZXing reads,
+  is dropped, and a 4,296-digit one kept. :screens' ScanScreensTest (7 tests): the scan screen keeps the seal and the
+  same check QR, and Back and its Type go-ahead code leave it with no core call; a stop is said there alone, the first
+  one, and a new scan screen scans again; clear-empty-bucket's text (upper case) passes dice-99-words12's check behind
+  Working, its header the proof's (No. 2, 2026-03-01, 0 entries; Stale with its warning on a day in M5), the words
+  available; collision-dice-50's gives the collision result (1 entry, the seal), the report and 0 / 99; "not a ur" and
+  clear-empty-bucket for dice-50-words12 are refused (NotUr, WrongBucket) back on the scan screen with the same check,
+  which collision-dice-50's text then answers; a text off the scan screen does nothing; a loaded snapshot's result
+  is no proof; each of the scan screen's lines. Emulator: CaptureTest's walk (both APKs, API 31 and 36) adds the scan
+  screen after the seal card: dumpsys package shows CAMERA requested and not granted, no permission-controller window
+  is up there or on any screen of the walk, the scan screen opens and the system's prompt shows
+  (permission_deny_button within 10 s, a pass line), "Don't allow" is pressed, the refusal reaches the scan screen,
+  CAMERA is still not granted, and the screen is captured black. CheckTest requires the seal card's four actions,
+  Scan go-ahead QR among them. SnapshotDrillTest (test-registry APK) gains two tests: CAMERA granted by `pm grant`
+  (dumpsys package reads it back), the scan screen reaches its no-camera line (the AVD has none), then the text goes
+  to onGoAheadText: clear-empty-bucket's, "No collision for seal 9FHYMCQA as of 2026-03-01.", "Proof from snapshot
+  No. 2, dated 2026-03-01: 0 entries in this seal's bucket." and the Stale warning, the words available; and
+  collision-dice-50's, the collision text, "Proof from snapshot No. 4, dated 2026-03-01: 1 entry in this seal's
+  bucket.", the Stale warning and YVM9CPP3 drawn, the report behind the gate and 0 / 99 (P4's first and third
+  steps). Estimated cost (not yet measured): about a minute a leg (two more ceremonies in SnapshotDrillTest, one
+  more screen and its prompt in each CaptureTest walk), so about 2 minutes on run 39678040247's 29.0, within M5-57's
+  37. Gate clean on the tree (359 files) under sh and dash, `--selftest` 1444 passed, 0 failed (unchanged; sh and
+  /bin/dash), `--selftest-apk` 88 passed, 0 failed, and `canaries.sh` PASS, all 93 checks ran; Rust untouched (fmt,
+  both clippy commands, the workspace tests, the test-sources run and the FFI tests plain and with test-registry all
+  pass).
+  Proof (M5 commit 18b, review fix, partial: the Kotlin compiles only in CI): MainActivity imports the launcher's
+  contracts by `import androidx.activity.result.contract.ActivityResultContracts`, which KtIntent now allows (group
+  3's 18b line), in place of commit 18's import of their package.
+  Proof (CI, run 39744137391 at 1a63e0f, 1850 s): GoAheadFrameTest 3 tests and GoAheadPngTest 2 in both flavours'
+  unit tests and ScanScreensTest 7 passed; on API 31 and API 36 "the camera prompt showed as the scan screen opened
+  and on no screen before it; CAMERA requested and not granted before it (dumpsys package)", the scan screen black
+  and SECURE, "the scanned clear-empty-bucket QR: dice-99-words12's check passed (9FHYMCQA, as of 2026-03-01), 0
+  entries in this seal's bucket, the Stale warning, the words available" and "the scanned collision-dice-50 QR: the
+  collision before any words, 1 entry in this seal's bucket, the Stale warning and its Seal ID YVM9CPP3; the report
+  behind the gate; Add fresh entropy: 0 / 99". The real Camera2 path is the owner's P0b (issued 2026-10-22 from this
+  run) and P4; the item stays open for them.
+  Proof (M5 commit 18j, partial: CI's API 36 leg proves the fix at the next push; every result here is local, kc37,
+  Q76): run 39783747240 at efc0575 (18i changed no code) failed on API 36 in the shipping APK's walk, after its pass
+  line "the camera prompt showed as the scan screen opened ...", with "timed out: the prompt's refusal on the scan
+  screen" (CaptureTest.kt:182) and no logcat kept. The half that failed was most likely the press, not the app: the
+  touch on "Don't allow" did not reach the prompt. That is inferred, not reproduced (efc0575's click failed in none of
+  the loop's 65 rounds below, at kc37's speed), and an app-side loss of the refusal after the prompt answered (the
+  activity recreated while the prompt is up, say) is not ruled out: only CI's API 36 leg can tell, and the new
+  messages name the half (wording corrected in 18m, review fix). kc37's permission controller
+  (com.google.android.permissioncontroller aml_370546220, the API 37 Play Store image's Mainline build, read from its
+  dex with build-tools' dexdump) sets its
+  content GONE in GrantPermissionsActivity.onCreate and VISIBLE only in showNextRequest, after updateUi, so its window
+  comes up empty and then grows to the request (the deny button's first bounds, seen by a poll with no idle wait, were
+  Rect(98, 1297 - 622, 1393), 401 px below their place Rect(98, 896 - 622, 992) and off the 1280 px screen); and its
+  dispatchTouchEvent drops every touch until onEnterAnimationComplete (only a restored activity starts with it set),
+  which neither dumpsys activity (activities, top) nor dumpsys window shows. UI Automator finds the button after 500 ms
+  with no accessibility event (UiDevice.getWindowRoots waits for idle), then touches the centre it reads, so on a
+  slower emulator a touch can come while the prompt still drops it or before it has moved: the prompt stays up with no
+  answer and no refusal comes, which would give CI's failure. CI's API 36 default image runs AOSP's
+  com.android.permissioncontroller, built from the same module's source a release earlier, without Google's overlay
+  (the same activity and button ids, which PROMPT_DENY matches in both packages); whether that build has the touch
+  guard is not checked here (no API 36 image locally), and its software-rendered x86_64 emulator is far slower than
+  kc37's native arm64. A loop of the scan step (a temporary instrumented test, not committed: one walk to the seal
+  card, then each round CAMERA reset by `pm revoke` and `pm clear-permission-flags PKG android.permission.CAMERA
+  user-set user-fixed`, both allowed on the user build and silent, USER_SET gone each time, and for a cold prompt
+  `am force-stop` of the controller, also allowed; nothing was refused): efc0575's click failed in 0 of 65 rounds (20
+  warm, 20 cold, 20 cold with 8 busy loops in the guest, 5 traced with the bounds unchanged for 3 s after the find),
+  since on kc37 logcat's Finish Transition for the prompt always came before UI Automator found it; touches at the
+  button's first appearance left the prompt up in 3 of 50 rounds (1 of 10 warm, 2 of 20 warm with 12 busy loops, 0 of
+  20 cold with 12), each at the off-screen first bounds. In each of the 223 rounds whose prompt answered at once, the
+  refusal reached the scan screen. Fix (androidTest only, no app change): Capture.denyPrompt presses "Don't allow" once
+  by the button's accessibility click (ACTION_CLICK, as TalkBack presses it), which reaches its click handler with no
+  touch guard and needs no bounds, fails at once if the button does not take it ("the prompt's Don't allow did not
+  take the press"), then waits up to 10 s for the prompt to go ("the prompt stayed up after Don't allow"); only then
+  does CaptureTest wait its 10 s for the refusal ("the prompt went but no refusal reached the scan screen"). No second
+  press and no longer timeout. The earliest press (at the button's first appearance, 12 busy loops) was refused in 20
+  of 20 rounds, one at the off-screen bounds; with the fix the loop passed 90 of 90 (30 warm, 30 cold, 30 cold with 12
+  busy loops). No other instrumented test answers a system prompt: SnapshotDrillTest grants CAMERA by `pm grant`, so
+  none shows, and FlowTest leaves the airplane-mode settings with Back. Cost: about 0.5 s more a walk (the prompt's
+  gone wait is UI Automator's idle wait), so about 1 s an API leg and none on the 16 KB leg; efc0575's job was 262 s
+  slower than 1a63e0f's, 192 s of it in steps no test touches (Rust libraries +106 s, Gradle build +57 s, 16 KB +29 s),
+  so the runner, and API 31 +27 s and API 36 +32 s with the same tests. At this commit: android-local.sh exit 0 in
+  814 s (L1's aapt2 override; the nine runs passed in android-emulator.sh's order, CaptureTest 6 and 6 with control
+  (c) named and left out, the Camera2 client checks passed and the PNG decode not made, as at L2); the JVM tests rerun
+  (:core-ffi 27 in 9 classes, :screens 79 in 13, :app 7 in 3 for each flavour, :secure-ui 3 in 1, none failed); gate
+  clean on the tree (356 files) under sh and dash, `--selftest` 1513 passed, 0 failed; Rust untouched (fmt, both
+  clippy commands, the workspace tests 499 passed, the test-sources run 269 and the FFI tests plain and with
+  test-registry 54 each).
+  Proof (M5 commit 18m, review fix, partial: local, Q76; wording only, no code changed): 18j's Proof above and
+  Capture.denyPrompt's KDoc stated the press as CI's failure, which was inferred; both now say most likely, and name
+  what is unverified. At this commit: android-local.sh exit 0 in 816 s (L1's aapt2 override; the nine runs passed in
+  android-emulator.sh's order, CaptureTest 6 and 6 with control (c) named and left out); every JVM test task rerun
+  with --rerun (:core-ffi 27 in 9 classes, :screens 79 in 13, :app 7 in 3 for each flavour, :secure-ui 3 in 1, none
+  failed).
+
+**17. Screens: words to finish** (MA:177-184; PF:90-99; swb:276-290)
+- [ ] The privacy gate, then Words (one insert per page: position, word, SeedBook number, five faces with blanks,
+  mirror pairs and lighter faces flagged; a four-word overview; 24 words marked device 1 of 2 and 2 of 2), Read-back
+  (letter pad, first four letters of every insert; a mismatch names the insert), Wallet summary (fingerprint, first
+  address), Finish (the SeedBook checklist and safety copy, then `end()` and Home).
+  Proof: emulator flow tests; in-process, the words shown equal the gate seed's mnemonic; an e/i misread is named;
+  leaving the app on a words page discards at once; 70 s in the background on dice wipes and 50 s does not.
+  Proof (M5 commit 19, 19a and 19b, partial: the emulator results here are local, kc37, Q76; CI's API 31 and 36 legs
+  prove them at the next push): :screens' WordsScreens.kt draws the screens on the UI kit in the Pi's wording
+  (pi/app's screens/ready.rs and app/ready.rs) and CeremonyModel moves between them. The check result's Show words
+  (after a typed code, a scanned proof or a loaded snapshot, and after Skip; M5-48's dead end ends) leads through the
+  privacy gate, MA:34's "I'm alone, show words", which before the words also gives swb:290's SeedBook safety rules (the
+  Pi's gate), to the words: one insert a page ("Insert 01 · device 1 of 1", the word large with its letters past the
+  fourth lighter, "SeedBook 0001", Drawing.kt's five braille faces, each now a fifth of the row through BrailleFace's new
+  modifier, blank faces "leave blank", mirror letters "mirror", face 5 lighter, and face 6's engraved number), each page
+  core's word page; Previous, Next and Overview (four words a page, Insert view back), the system Back as Previous; a
+  24-word seed's pages, core's device 1 of 2 and 2 of 2, pass the Public device swap (the Pi's) before word 13 in either
+  view, so the gate comes again, and none paging back. The last insert starts the read-back: each insert's first four
+  letters on Pads.kt's LetterPad (it has no blank key, so Done after three letters is a blank fourth face, as the Pi's
+  entry_done allows), compared by core (checkReadback); a match shows the whole word and Next, a mismatch names the
+  insert ("Insert 01 does not match · device 1 of 1") and each of faces 1-4 in the Pi's lines ("Face 2: mirror
+  misread" for an e/i, d/f, h/j or r/w read as its partner, "should be blank", "should have a letter", "wrong letter:
+  missing 1 4, extra 2"), with "Read it again" and "Show the insert" (its page, whose one way on is back to its
+  read-back). Once core says every insert matched: the read-back's end, the wallet summary (fingerprint and first
+  receive address, Public as the Pi's, Q29), the checklist (swb:288's six lines, the 24-word line, the safety rules) and
+  Finish: core's end(), then Home with no session. Protected (Screen.kt's isProtected): the words, the overview, the
+  read-back entry and its mismatch, each drawn inside Screens.kt's Protected wrapper (the gate, the recording
+  placeholder); the 30 s cover and the discard on leaving the app are the timers' and appLeft's, as for every Protected
+  screen. UI state holds the pages and verdicts by their Secret-backed objects only (M5-49): Readback.Mismatch now keeps
+  its 12 verdict bytes in a Secret read on demand, as WordPage does, since with the letters read they give the word's
+  own; the model wipes every page and verdict a state held when the next does not hold it, the typed letters when the
+  entry goes, and all of them in wipeAll. Every node that shows a secret (the word, its SeedBook number, the faces, the
+  overview lines, the letters typed, the verdicts) is marked sensitive and tagged "secret" (Kit.kt's secret()), which
+  Compose gives Android 14+ as accessibility-data sensitive (MA:74; group 4's word nodes). No new seam: the screens are
+  commonMain, and :app's MainActivity and :secure-ui are unchanged.
+  JVM (19a): WordsScreensTest (9 tests) and ReadbackScreensTest (8) over the real slot, each page and overview line equal
+  to vectors/kcr.json's gate seed's word and to braille.json's insert of it (SeedBook number, each face's letter, dots,
+  lighter flag and mirror partner), compared and never printed: the gate (no press behind it takes) from Skip's result,
+  a scanned proof's and a loaded snapshot's; each page, the page left wiped; Back on each new screen (the page before
+  on the words and the overview, nothing elsewhere); the swap both ways and none paging back; the read-back's match on
+  every insert, Done below three letters doing nothing, the e/i mirror misread named on its face, a wrong letter's
+  missing and extra dots, a missed fourth letter, the insert reviewed and read again; the summary equal to core's;
+  Finish to Home with the slot empty and the next seed at 50 rolls; the 30 s cover, the recording flag, leaving and going
+  online on each Protected screen discarding at once with its page, letters or verdicts wiped, the 60 s rule on the
+  Public screens after the read-back, and wipeAll. WireTest and WireMalformedTest for the Secret-backed Mismatch (a
+  verdict past 4 and a short mismatch halt; one read before a bad end is zeroed). Seven mutants (no page wipe, no verdict
+  wipe, no letters wipe, the words Public, no swap, Done below three letters, no verdict check) each fail a test.
+  Emulator (local, kc37): CaptureTest's walk (19a) runs a 24-word ceremony and draws the eight new screens in both APKs,
+  each drawn, then black in screencap and takeScreenshot, SECURE and opted out of content capture, and on API 34+ every
+  node tagged secret on screen data sensitive as UiAutomation reads it ("words: all 8 of its secret nodes on screen are
+  data sensitive (API 37)"; a Public screen has none; before Android 14 a probe line). FlowTest (19b, 5 tests) gains the
+  words flows: dice-50-words12 by Skip, through the gate (its SeedBook rules shown, Back doing nothing there), the 12
+  insert pages paged by Next and Back, each equal in-process to the vector's word, the overview's three pages, then the
+  read-back with an e/i misread typed on the letter pad, named a mirror misread on its face, the insert reviewed, read
+  again on the pad, the rest read back, the summary (core's), the checklist and Finish to Home with the slot empty;
+  and dice-99-words24 by Skip, words 1-12 on device 1 of 2 and 13-24 on device 2 of 2, the device swap and the gate
+  before word 13, none paging back, the overview's swap, the read-back naming each insert's device and the checklist's
+  24-word line. LifecycleTest (19b, 6 tests): Home on insert 2's page discards at once (the stop seen 264 ms after the
+  press, Go offline with the Left notice, the page wiped, the slot at home); on the dice, 50 s away keeps the session
+  (back after 50131 ms, under the cover, the same ten rolls in core) and 70 s away wipes it (back after 70124 ms: Go
+  offline with the Background notice, the slot at home; the timers had wiped it while away), through the real 60 s
+  rule on the phone's clock. CheckTest (19b): the go-ahead code's 32 keys labelled, and the typed code's result leads
+  through the gate to insert 1 of 12. android-local.sh exit 0 in 1142 s (839 s at 19a, 816 s at 18m), every class
+  passed in android-emulator.sh's order, CaptureTest 6 and 6 with control (c) named and left out; every JVM test task
+  rerun (:core-ffi 27 in 9 classes, :screens 96 in 15, :app 7 in 3 for each flavour, :secure-ui 3 in 1, none failed).
+  Cost (estimated, not yet measured in CI): on kc37 one leg's classes grew 23 s with 19a (CaptureTest's eight screens
+  in each APK and its 24-word ceremony) and 303 s with 19b (FlowTest's two flows, LifecycleTest's two cases with their
+  50 s and 70 s waits, CheckTest's gate), so about 5.5 minutes a leg; CI's software-rendered x86_64 legs run slower,
+  so the two API legs likely add 11 minutes or more to run 40488587222's 2084 s (34.7 minutes), past M5-57's 44: the
+  job's budget needs M5-30's re-measure at the next push.
+  Proof (M5 commit 19c, review fix, partial: local, Q76): ReadbackScreensTest (9 tests) writes one wrong letter's line
+  out, the gate seed's u (dots 1 3 6) read as q (1 2 3 4 5): "Face 1: wrong letter: missing 6, extra 2 4 5"; a fourth
+  letter typed on dice-99-words24's first three-letter word gives "Face 4: should be blank", faces 1-3 ok; and each
+  insert's typed faces equal its letters in order, then a dash for each face to come. Four mutants that passed 19a's
+  96 tests now each fail one of these (the missing and extra dots swapped, the dots numbered backwards, should be blank
+  drawn as should have a letter, the typed letters shown in reverse). Locally: the strict Gradle build of both APKs and
+  every JVM test task, :screens 97 in 15 (the other tasks up to date), none failed.
+  Proof (M5 commit 19d, review fix, partial: local, Q76): PadEntry.handOver hands the keys typed to a call as take's
+  Secret and wipes it once the call returns, and the read-back's Done hands its letters to Core.checkReadback through
+  it. PadsTest's new test sees the handed Secret's four bytes zero after the call and the pad empty and zeroed; with
+  handOver's wipe deleted it fails, where the same wipe deleted from readbackTyped passed every test at 19b (take()
+  had already emptied the pad, and no test saw the copy). Locally: the strict Gradle build of both APKs and every JVM
+  test task, :screens 98 in 15, :app 7 in 3 for each flavour (the other tasks up to date), none failed; on kc37,
+  android-local.sh on the tree of 19d to 19f, exit 0 in 1142 s, every class passed in android-emulator.sh's order.
+  Proof (M5 commit 19e, review fix, partial: local, Q76; CI's API 31 and 36 legs at the next push): on each screen that
+  draws secrets, CaptureTest's walk reads them from the model in-process (the word, its SeedBook number and each
+  face's letter and label; the overview's lines; the faces typed; the four verdicts), and every node UiAutomation
+  finds with one of those exact texts must carry the secret tag, which secret() gives with the data-sensitive mark,
+  with some such node found; the texts are never printed. So a secret drawn without secret() fails, however many
+  other nodes carry it. On kc37 (API 37), in each APK: "words: each of its 6 secret texts is drawn only by secret
+  nodes (7 on screen)" (7 and 7 in the other run, the ceremony's random first word), the overview 4 (4), the entry
+  1 (1), the mismatch 4 (4); CaptureTest 6 and 6 passed. Not run: a mutant with one node's secret() dropped (another
+  emulator run); the lines above show each text found on screen, so such a node is found without the tag.
+  Proof (M5 commit 19g, lead decision M5-68 (e), partial: local, Q76; CI's API 31 and 36 legs at the next push): 19e
+  handed each secret text to By.text, and UI Automator 2.4.0 logs every selector at debug level (UiDevice.findObjects'
+  "Retrieving nodes with selector: %s", BySelector's TEXT='...'), so the walk's secrets reached logcat. Now no
+  selector on a secret screen holds one: Capture.nodes reads every node of the app's windows down from
+  UiDevice.getWindowRoots in-process (off-screen ones too, which UI Automator's searches skip), and the walk compares
+  their texts with the screen's secret texts there. Every node drawing one must carry the secret tag, every secret
+  text must be drawn (19e checked only a total above 0), the data-sensitive check reads the same nodes, and the walk
+  also checks the read-back entry once it matched, where InsertWord draws the whole word. As the words come the walk
+  writes a line of its own to the log (the shell's log); right after the walk it reads `logcat -d` into memory
+  through UiAutomation.executeShellCommand, which must still hold that line (the main buffer dropped nothing since)
+  and none of the walk's secret lines, matched whole: the words page's "SeedBook NNNN", the overview's four lines
+  and the mismatch's four verdicts, 9 in all. A word, a letter or a face label alone is not searched for, since
+  system lines hold common English words. Neither side is printed, only counts. On kc37 (API 37), android-local.sh on
+  this tree (but a doc comment's wrap): exit 0 in 1151 s, every class passed in android-emulator.sh's order,
+  CaptureTest 6 and 6; in the shipping and test-registry APKs "words: each of its 7 (8) secret texts is drawn, and
+  only by secret nodes (8 (9) nodes)", the overview 4 (4), the entry 1 (1), the mismatch 4 (4), the matched entry
+  1 (1), no secret node off screen; "the log after the walk ... holds none of its 9 secret lines", with 113,330
+  (60,049) characters of logcat -d from the walk's line on (logcat -g: main 2 MiB). A mutant build on this tree,
+  each mutant in one APK: the words page's SeedBook number drawn without secret() in the test-registry APK failed
+  "a node on words shows a secret without the secret tag"; that SeedBook line passed to By.text in the shipping
+  APK's walk failed "the log holds 1 of the walk's 9 secret lines". No run's output holds a "SeedBook NNNN" string.
+  The search of every test source: FlowTest named the e/i face's verdict line to By.text (Ui.shown), now found
+  among the secret nodes in-process (drawsSecret); FlowTest and CheckTest pressed dice faces by their key ids
+  (tap("key_3")) and awaited the pick by its text (awaitText), so rolls went into selectors and, on a failure, the
+  messages: now Ui.pressFace (the pad's keys found by a pattern naming none, the face's picked in-process and pressed
+  by its accessibility click, since UI Automator also logs a click's point, which names a key on the fixed grid) and
+  Ui.awaitPick (the pick waited for by a face pattern, then compared in-process), and the pick's two assertEquals are
+  assertTrue; FlowTest's pass line no longer names the misread insert and face; StartScreensTest compared a Mixed
+  ceremony's C with assertEquals, which prints both on a failure, now assertTrue. Locally also: the strict Gradle
+  build of both APKs and every JVM test task (:core-ffi 27 in 9, :screens 98 in 15, :app 7 in 3 for each flavour,
+  :secure-ui 3 in 1, none failed).
+  Proof (M5 commit 19f, review fix, partial: local, Q76; CI's API 31 and 36 legs at the next push): swb:286 (Q57 (e))
+  puts an on-screen warning to use headphones beside speech output, and TalkBack reads the words (secret() keeps them
+  readable to accessibility tools). The privacy gate before the words, the first time and after the device swap,
+  now shows it under the SeedBook rules (tag headphones_warning): "If a screen reader speaks the words, use
+  headphones: no app can tell where it speaks." FlowTest reads it there (awaitText) and passed, 5 tests, on kc37.
+  Proof (M5 commit 19h, lead decision M5-68 (f), partial: local, Q76): PadEntry.handOver wipes the handed Secret in a
+  finally, so a throw from the call other than KcHalt (which the model's call catches inside it) still wipes it and
+  goes on unchanged; PadsTest's new aHandedOverEntryIsWipedWhenTheCallThrows (a go-ahead code's pad, a call that
+  throws) sees the Secret's 8 bytes zero, the same throw caught and the pad empty and zeroed, and with the finally
+  undone it fails ("the handed Secret is wiped though the call threw"). codeDone (commit 18's go-ahead code entry) now
+  hands its code to Core.revealCode through handOver, as the read-back's Done does (19d); no test can see the copy it
+  hands to core, so CheckScreensTest's refused-code assertion says it checks the pad emptied, the copy's wipe being
+  PadsTest's. Locally: the strict Gradle build of both APKs, their test APKs and capture-control's, and every JVM test
+  task rerun (:core-ffi 27 in 9 classes, :screens 99 in 15, :app 7 in 3 for each flavour, :secure-ui 3 in 1, none
+  failed).
+
+**18. Screens: backup, Check a backup, watch-only, register, reveal D, snapshots, About, stop** (MA:146-162)
+  Proof (M5 commit 19i, review fix, lead decision M5-68 (e), partial: local, Q76; CI's API 31 and 36 legs at the next
+  push): FlowTest typed the read-back's letters with UiObject2.click, which in UI Automator 2.4.0 logs "Clicking on
+  (x, y)." at debug level with no isLoggable guard (its bytecode, read with JBR's javap), and on the letter pad's fixed
+  grid of seven columns a point names its letter: eight letters a run reached logcat, a dice-50-words12 word's first
+  four with an e/i swapped and then as they are. A Protected key has no click action to press instead (Pads.kt's
+  clearAndSetSemantics drops the clickable's: Compose 1.12.1's LayoutNode starts the configuration afresh at a
+  clearing node), so Ui.touch now taps a key as a finger does, a touch down and up at its middle injected through
+  UiAutomation, which logs no point. On kc37 (local; android-local.sh exit 0 in 1450 s on the tree of 19i, 21d and
+  21e, every class passed in android-emulator.sh's order, NativeTest too): FlowTest 7 passed, its read-back typing the
+  misread letters and the right ones through the touches, the pad read in-process. No logcat search covers FlowTest's
+  run (CaptureTest's covers its own walk), so that nothing logs the touches rests on the code read, not a log searched.
+  Proof (M5 commit U3d, partial: local, Q76; no test measures it): the braille faces' dot numbers were 12 sp on fixed
+  20 dp lines beside a 40 x 60 dp cell, so they grew with the font scale and at 1.15 dots 4-6's clipped (Stage U's
+  map). Drawing.kt now sizes them from the cell, as the dots are: each a third of its height, centred on its dot's row,
+  in type a fifth of it (12 dp), whatever the font scale. Built and run locally in FlowTest's and CaptureTest's walks
+  (kc37, font scale 1.0).
+- [ ] Backup: the 8-word passphrase (Protected), its 2-of-4 confirm, Save (`CreateDocument`, core's suggested name,
+  one `"rwt"` write, MA:156's cloud-folder line), read back with `openInputStream` and `verify_backup` before "Backup
+  verified"; a failure names the step. Check a backup: `OpenDocument`, name `.age` and size within core's limit before
+  reading, first-four entries, fingerprint, Seal ID and "Backup OK"; words only through the privacy gate; the re-check
+  QR. Watch-only: the BIP39 question, the ASCII pad, the account and descriptor QRs (Protected), the summary. Register
+  (once): the registration QR. Reveal D (Mixed only): warning, then 16x4 hex. Load registry snapshot: `.kcr` by name
+  and size, verified on the FFI thread, shown with number, date, count and any warning. About: version, flavour, source
+  address as plain text. Stop: red, fixed text, "Close app".
+  Proof (M5 commit 20a, the backup and Check a backup, partial: local, kc37, Q76; CI's API 31 and 36 legs prove them at
+  the next push; the system's pickers through DocumentsUI and the hand-off are 20b's; watch-only, register, reveal D,
+  snapshots, About and stop are commit 21's): :screens' BackupScreens.kt draws the screens on the UI kit in the Pi's
+  wording (pi/app's screens/ready.rs and screens/usb.rs) and CeremonyModel moves between them. The summary's Next offers
+  the backup before the checklist, as the Pi's step 11 does ("Encrypted backup"; the paper words stay the primary
+  backup, MA:151), and its Skip goes to the checklist. "Make an encrypted backup" generates core's 8-word passphrase
+  once and shows it behind the privacy gate (Protected), two pages of four ("1 ostrich", the Pi's), each page core's
+  Secret, wiped when it goes; the second page's "I wrote it down" asks core's two questions of four choices
+  (Protected), each answered with the word's first four letters on the letter pad (a three-letter word's three), so no
+  choice is a button that names its word: the letters, handed over and wiped, are matched in-process to the choice
+  they begin, and the two picks go to core (confirmBackup); an answer that is no choice, or a wrong one, shows the
+  passphrase again from its first page with the Pi's "Not that word" line, the questions the same. Both right: core
+  encrypts in memory (encryptBackup behind "Working...") and the save screen (Public) shows core's suggested name,
+  MA:156's cloud-folder line and Save, which opens the system's create-document picker under the picker rule
+  (ActivityResultContracts.CreateDocument, core's name as its title; files/Documents.kt, the gate's one file for the
+  document streams, the document contracts and the IOException catch, its two launchers registered from
+  MainActivity's onCreate, as the CAMERA prompt is): the place it gives takes one openOutputStream(uri, "rwt") write of
+  core's bytes, is read back with openInputStream (at most one byte past core's 8 KiB, Core.BACKUP_MAX_BYTES, pinned
+  against core/src/backup/age.rs) and is verified by core (verifyBackup behind "Working...") before "Backup verified";
+  a write, a read-back or a verify that fails names its step ("Backup not saved: writing the file failed.", "...:
+  reading the file back failed.", "...: the file read back does not verify (core's text)."), with Save again and Skip,
+  the session kept. The file's bytes are ciphertext, kept out of the UI state and zeroed once the save screen and its
+  calls are over (rule 8: no plaintext reaches a file). Home gains Check a backup (M5-48): the open-document picker
+  (OpenDocument, any type); a file is refused before any byte is read unless its name ends in .age (any letter case, as
+  the Pi lists them; Core.BACKUP_SUFFIX, pinned against core/src/backup.rs) and its provider sizes it within core's
+  limit, and after the read when the read fails or runs past the limit (its bytes zeroed), Home saying why; then the
+  passphrase's entry (Protected, through the gate): the 8 words' first fours on the letter pad, each taken as a Secret,
+  and core opens the file with them (openBackup behind "Working..."); a wrong passphrase, an entry that names no word
+  or a file that does not read returns to word 1, emptied, with core's text (verbatim, from core/src/error.rs's
+  #[error] attributes, which BackupScreensTest pins) and the file kept, as the Pi's; Back goes Home, the file zeroed.
+  Its result (Public): "Backup OK", the fingerprint and the Seal ID; "Show the words" through the privacy gate on the
+  words' own screens (insert view and overview), whose last insert's Done returns to the result (no read-back, the
+  Pi's); "Re-check QR" (T alone, Public) and Back; Done ends it in core (end) and returns Home. The checked backup is
+  held under the timers and the offline rule as a session is (leaving its entry discards at once; 60 s away from its
+  result, or going online, wipes it). CeremonyModel's KDoc names verifyBackup beside encryptBackup in M5-54's residual.
+  JVM tests (local): BackupScreensTest 12 and CheckBackupScreensTest 9, over the real slot and the host library (each
+  transition above, the picker rule, a late place or file doing nothing, the file and the bytes read back zeroed, no
+  word of the seed or the passphrase in the saved file, a discard during the encryption, wipeAll), BackupFileTest 2 in
+  :core-ffi, ReadbackScreensTest 9 (the summary's Next now the offer, which the 60 s rule covers too); :core-ffi 29 in
+  10 classes, :screens 120 in 17, :app 7 in 3 for each flavour, :secure-ui 3 in 1, none failed; a mutant that lets a
+  file one byte past the limit through fails CheckBackupScreensTest. On kc37 (local, android-local.sh exit 0 in
+  1197 s, every class passed): CaptureTest's walk, in both APKs, drew each new screen and found it black in every
+  capture with SECURE on every window: the offer, the passphrase (its 4 secret lines, each drawn only by secret nodes,
+  data sensitive on API 37), the confirm (5: its choices and the letters typed), the save screen and the same with a
+  failed write, "Backup verified", Check a backup's entry (1), its result and its re-check QR, and a checked backup's
+  words (7), the saved file handed to the model in memory as a picker would; the log after the walk held none of its
+  13 secret lines. FlowTest 5 (the offer and its Skip on the way to the checklist) and LifecycleTest 6 passed.
+  Proof (M5 commit 21a, watch-only, register, reveal D, snapshots, About and stop, partial: local, kc37, Q76; CI's API
+  31 and 36 legs prove them at the next push; the nothing-persisted listing and dumpsys package are 21b's): :screens'
+  ExportScreens.kt draws the exports after the backup on the UI kit in the Pi's wording (pi/app's screens/ready.rs and
+  app/ready.rs) and HomeScreens.kt Load registry snapshot's result and About (screens.rs, screens/usb.rs), and
+  CeremonyModel moves between them. "Backup verified"'s Next and the backup's Skip now lead to the watch-only offer
+  (the Pi's step 12; Public), whose Skip goes to the registration's offer. "Show watch-only QRs" asks the BIP39
+  question first (swb); "No BIP39 passphrase" makes core's export (watchOnly, a short call); "I use a passphrase"
+  opens its entry (Protected, through the privacy gate) on Pads.kt's AsciiPad: three pages of printable ASCII (Next
+  keys, Previous keys), up to 100 characters, the passphrase drawn as typed with a middle dot for a space in one
+  secret node (the Pi's), Delete, Done once one is typed, and Back (the system Back too) to the question with the
+  passphrase wiped (the Pi's KEY2); Done hands it to core as a Secret through PadEntry.handOver, wiped once core has
+  it. The watch-only summary (Public, Q29): the exported wallet's fingerprint and first receive address, the xpub's
+  warning and, for a passphrase's wallet, the Pi's line to compare that address in Sparrow or Core, not the wallet
+  summary's; then the account QR for Sparrow and the descriptor QR for Bitcoin Core (Protected: each carries the
+  xpub), Next, Previous and the system Back between them, Done wiping both. The registration's offer (Public: register
+  once, never from a restored seed) and its QR (Protected: the seal code), once a ceremony; then in Mixed mode alone
+  D's offer, whose text is its warning (the Pi's: D plus the rolls recreates the seed), and D (Protected) laid out as
+  C's 16 groups of 4 hex (deviceLegText over its Secret, a String only for the text on screen, Q58), wiped as the
+  checklist comes; a dice-only seed goes from the registration straight to the checklist (core halts a D call
+  there). Home now offers Load registry snapshot and About and names the snapshot loaded (the Pi's Home line). Load
+  registry snapshot: the open-document picker (Documents.kt's third launcher, answering the model's snapshotPicked); a
+  file is refused before any byte is read unless its name ends in .kcr (any letter case; Core.SNAPSHOT_SUFFIX, pinned
+  against pi/app's hal.rs) and its provider sizes it within core's limit (Core.SNAPSHOT_MAX_BYTES, 122 + 18 x 2^22 =
+  75,497,594, pinned against keepcrypt-jni's MAX_INPUT less the date's 4 bytes, so no file let through halts the slot
+  by its size), and after a read that fails or runs past it, Home saying why (Check a backup's checks, now the model's
+  one picked(), unchanged for backups); core verifies it on the worker behind "Working..." (loadSnapshot), its bytes
+  zeroed once core has them; its result (Public) shows "Snapshot loaded" with its number, date and count and any Stale
+  or Future warning, or "Snapshot not loaded" with core's text (core/src/error.rs's, pinned) or, in a build with no
+  registry key, "This build trusts no registry key yet, so it cannot load a registry snapshot."; Done and Back return
+  Home. A verified header is the model's (snapshotLoaded, now private, so the tests load through the picker's path
+  too) and Check now runs the check against it on its own; a refused load keeps the one loaded before, in the slot
+  and the model. About (Public): the version (APP_VERSION, 0.0.0, pinned against app/build.gradle.kts's versionName),
+  First launch's development-build line (now one constant), the flavour and its registry key, the source address
+  https://github.com/bitwilll/keepcrypt as plain text, the licence and the security address; Back returns Home. Stop:
+  unchanged (Screens.kt's red stop screen, fixed text and "Close app", since commit 16), which CaptureTest walks. JVM
+  tests (local): ExportScreensTest 7 and HomeScreensTest 8 over the real slot and the host library (each new
+  transition, the gate before each Protected export, Back where it goes and where it does nothing, the QRs core's own,
+  D's SHA-256 under "KCE/v1/commit" equal to the C the commitment screen showed (a test-only sha256 whose JVM actual is
+  java.security's, as entropyFile is M5-43's), the name and the size refused before any byte is read, a provider that
+  sized it wrongly, the bytes zeroed, the Stale warning on a later date, a changed signature refused with core's text
+  and the snapshot before kept (the check then finds the collision with it), a discard during the load, About's
+  version, going online on About, every refusal text core's) and SnapshotFileTest 2 in :core-ffi; BackupScreensTest,
+  CheckBackupScreensTest, ReadbackScreensTest, CheckScreensTest, ScanScreensTest and WordsScreensTest follow the new
+  order (the exports skipped to the checklist; their snapshots loaded through the picker's path); :core-ffi 31 in 11
+  classes, :screens 135 in 19, :app 7 in 3 for each flavour, :secure-ui 3 in 1, none failed; a mutant that lets a
+  .kcr sized one byte past the limit through fails HomeScreensTest, and one that offers D to a dice-only seed fails
+  ExportScreensTest. On kc37 (local, android-local.sh exit 0 in 1469 s, 212 s more than at 20b, with 21b's step 7 in
+  the tree): every class passed. CaptureTest's walk, in both APKs, drew each of the twelve new screens and found it
+  black in every capture with SECURE on every window: the watch-only offer, the BIP39 question, its entry (its
+  passphrase one secret node, data sensitive on API 37), the watch-only summary, the account and descriptor QRs, the
+  registration's offer and QR, D's offer and D (one secret node), Load registry snapshot's result (with-dice-50 handed
+  to the model as the picker would: loaded in the test-registry APK, refused in the shipping APK) and About; the log
+  after the walk held none of its 15 secret lines. FlowTest 7: a new seed's exports (the BIP39 entry behind the gate,
+  the ASCII pad's three pages of keys each with its button role alone and no node naming a key, the passphrase typed
+  in-process and Delete and Done tapped; its wallet's summary with another fingerprint; the account QR, a
+  crypto-account UR, and the descriptor QR, two descriptors under that fingerprint, each read in-process equal to
+  core's own export of that passphrase's wallet, then wiped; the registration QR equal to core's; D behind the gate,
+  drawn by a secret node, its SHA-256 under KCE/v1/commit the C the commitment screen showed); About (version 0.0.0,
+  the package's versionName; the shipping flavour; the source address, not clickable; Back and the system Back:
+  Home); and the dice-only finish now through the watch-only offer to the registration QR (dice-50-words12's
+  registration text, its seal code kcr.json's) and straight to the checklist, no D offer. CheckTest 2: with-dice-50
+  put in Downloads by the shell (tee) and picked through DocumentsUI in the shipping app is refused, "This build trusts
+  no registry key yet, so it cannot load a registry snapshot.", nothing loaded, Back: Home naming none.
+  SnapshotDrillTest 3: the drill's snapshot now loads through Home's Load registry snapshot and DocumentsUI in the
+  test-registry app (No. 4, dated 2026-03-01, 7 entries, the Stale warning; Home names it), then dice-50-words12's
+  check finds the collision before any words. BackupTest 1 (through the export offers) and LifecycleTest 6 passed. The
+  shared Picker (moved out of BackupTest) now clicks through selectors resolved at the click: the first local run
+  failed CheckTest's and SnapshotDrillTest's picker tests on a StaleObjectException from the roots drawer's node, found
+  just before DocumentsUI redrew its Recent view. Estimated CI cost: the local leg grew by 212 s (CaptureTest's
+  twelve screens in both APKs, FlowTest's two tests, CheckTest's one, the drill's picker, step 7), on top of 20a's
+  34 s and 20b's 60 s since 19h's 1163 s. The estimate first written here, 5 to 7 minutes on run 40572516408's 1896 s
+  (about 37 to 39 of M5-57's 44), started from a run without commit 19's tests and is withdrawn (21f): by M5-69, run
+  40624645994 at f06a5ab, with them, already reached M5-57's 44 minutes (API 31 967 s, API 36 958 s), and commits 20
+  and 21 add to that. The run at stage E4's head measures the job under M5-69's 90-minute ceiling.
+  Proof (M5 commit 20e, review fix, partial: local, Q76): no test saw a checked backup outlive its discard. A mutant
+  without discard's dropChecked, and one whose last-insert Done goes to the result without asking for a checked backup,
+  each passed all 135 :screens tests, and either left the next ceremony's last insert offering the backup's Done instead
+  of its read-back (the mandatory metal read-back skipped). CheckBackupScreensTest's new test discards a checked backup
+  three ways (60 s away from its result, going online there, leaving its words) and each time takes a new ceremony from
+  Go offline to its words: none marked as a checked backup's, the backup's Done doing nothing on the last insert, and
+  the read-back starting there; both mutants now fail it. :screens 136 in 19 classes, :core-ffi 31 in 11, :app 7 in 3
+  for each flavour, :secure-ui 3 in 1, none failed, with the strict build of the five APKs.
+  Proof (M5 commit 20f, review fix, partial: local, Q76): 20a's Proof counts wipeAll among BackupScreensTest's and
+  CheckBackupScreensTest's cases, but only the save screen's file was tested: a mutant without any one of wipeAll's
+  wipes of the passphrase's page, the confirm's choices, the letter pad, Check a backup's entries, its file or its
+  opened backup passed all of :screens' tests. BackupScreensTest's new wipeAll test (the passphrase's page; the confirm
+  with two letters typed: its choices and the pad) and CheckBackupScreensTest's (the entry after three words and a
+  letter: the entries, read through the model's internal entriesHeld, a copy of the list as PadEntry's
+  zeroPastLength is the tests' look at the pad, the file and the pad; the result: the re-check QR) now fail each of
+  those six mutants. :screens 138 in 19 classes, :core-ffi 31 in 11, :app 7 in 3 for each flavour, :secure-ui 3 in 1,
+  none failed, with the strict build of the five APKs.
+  Proof (M5 commit 20g, review fix, partial: local, Q76): no test pinned the confirm's match rule (a word's first four
+  letters, a three-letter word's three): a mutant that took any first three or more letters as a choice passed every
+  test. BackupScreensTest's wrong-answer test now first types three letters of a choice of four or more letters (no
+  three-letter choice spelled so, on the first question that has one), which must show the passphrase again with its
+  wrong-answer note; the mutant fails it. :screens 138 in 19 classes, :core-ffi 31 in 11, :app 7 in 3 for each
+  flavour, :secure-ui 3 in 1, none failed, with the strict build of the five APKs.
+  Proof (M5 commit 21c, review fix, partial: local, Q76): a mutant without wipeAll's wipe of the ASCII pad (the BIP39
+  passphrase typed, 21a) passed every test. ExportScreensTest's wipeAll test now calls it on the BIP39 entry with
+  watchonly.json's passphrase typed and finds the pad empty and zeroed; the mutant fails it. :screens 138 in 19
+  classes, :core-ffi 31 in 11, :app 7 in 3 for each flavour, :secure-ui 3 in 1, none failed, with the strict build of
+  the five APKs.
+  Proof (M5 commit 21d, review fix, partial: local, Q76): a picked file was read into a buffer of core's limit and one
+  byte whatever its provider reported, so every Load registry snapshot allocated about 72 MiB on the main thread for a
+  .kcr of 250 bytes, and a full one held two such arrays at once: on a phone with a small heap an OutOfMemoryError,
+  which the crash handler turns into a wipe and the process's end. Documents.kt's readUpTo now starts from a buffer
+  one byte past the size the provider reports (the saved backup's read-back, which has none, keeps core's 8 KiB and
+  one) and doubles it, up to the limit and its one byte, only when the file runs past that size; every buffer it
+  leaves is zeroed, and what the model accepts is unchanged. ReadUpToTest (4, in both flavours' :app tests) reads
+  through a stream that records each buffer: a 250-byte file so sized takes one buffer of 251 bytes; one longer than
+  reported grows from there and is read whole; one shorter, or of no size, is read whole; the read stops one byte past
+  the limit whatever the size says (none, -1, 0, 100, the limit, past it), with no larger buffer; every buffer is zero
+  afterwards. With the old allocation three of the four fail. :app 11 in 4 classes for each flavour, :screens 138 in
+  19, :core-ffi 31 in 11, :secure-ui 3 in 1, none failed, with the strict build of the five APKs; on kc37 (local, the
+  run of 19i's line) BackupTest (Check a backup's read, the saved file's read-back), CheckTest (the shipping app's
+  refusal after the read) and SnapshotDrillTest (the drill's snapshot through the picker) passed. The read still runs
+  on the main thread, where picked() reads before the worker's call; moving it is not taken here (20h moves it to the
+  worker, M5-70 (g)).
+  Proof (M5 commit 21e, review fix, partial: local, Q76): FlowTest's dice-only registration QR and SnapshotDrillTest's
+  collision-report QR, Protected for the seal code they carry, were compared with assertEquals, which prints both sides
+  when they differ, where 21a's mixed-seed test compares the same QR in-process with a message that prints neither.
+  Both now compare so (assertTrue, the message naming the vector, never its text). On kc37 (local, the run of 19i's
+  line) FlowTest 7 and SnapshotDrillTest 3 passed.
+  Proof (M5 commit 21h, lead decision M5-70 (h), partial: local, kc37, Q76; CI's API 31 and 36 legs at the next push):
+  Entropy Android run 40681107802 at e5109bc failed three tests that pass on kc37, each read at this head. kc37's own
+  window has no navigation bar, so its app window (0,48 to 720,1280) is 48 dp taller than one above a 48 dp bar (0,48
+  to 720,1184, the region android-instrument.sh's selftest gives its API 31 leg; CI's own kc_region lines are the
+  lead's to read); `wm size 720x1184` gives kc37 that window, and two of the three failed there. (a) The watch-only
+  flow, API 31: StaleObjectException at UiObject2.isEnabled <- Ui.enabled. The BIP39 entry draws its passphrase, keys
+  and buttons in one block keyed on the page of keys, so each page replaces Delete, and UI Automator reads a node it
+  found only after an idle wait, asking the app for it again. On kc37 Delete found before Next keys and read after it
+  threw the same exception at UiObject2.getAccessibilityNodeInfo <- isEnabled; four runs of the test passed at
+  720x1184, so CI's timing alone made the search meet the old Delete. Ui.fresh now runs a read again while a node it
+  found has been replaced, finding it afresh at each try, and fails after 10 s (a stale node never passes): Ui.text,
+  Ui.enabled and the new Ui.read, pressFace, awaitPick, touch (given the way to find its key), shown (now a Boolean,
+  so no node leaves it; CheckTest and SnapshotDrillTest assert on it so) and assertPublicPadLabelled, and FlowTest's
+  letterKeys, asciiKeys and About's source address. (b) About, API 31: "timed out: the app shows about" after the
+  second tap on Home's About, which followed Back from About. Home's About had the tag about, the About screen's id,
+  which its root carries, and Ui.on waited only for the app's report of the screen (set as it is composed), while UI
+  Automator reads the app through the accessibility cache, which the app's events bring up to date later. At 720x1184
+  the test failed so in 6 of 13 runs (10 of them with a diagnostic, since removed, making the second tap's find and
+  click itself): UI Automator's log shows the selector matched a View of bounds (0, 48 - 720, 1184), the About root,
+  gone from the window, and clicked at (360, 616), between Home's New seed and Dice-only seed, so the model stayed on
+  Home; passing runs matched the Button at (48, 1045 - 672, 1156) and clicked at (360, 1100). Home's About now has the
+  tag show_about (no other tag in :screens is one of the 48 screen ids), and Ui.on also waits up to 10 s for UI
+  Automator to see the screen's root by its id, or the privacy gate while the model holds it up (BackupTest's Check a
+  backup entry): 14 of 14 runs passed at 720x1184, every About and Back click at (360, 1100). (c) CaptureTest, API 36,
+  test-registry APK: "only 4 of the 5 secret texts of backup_confirm are drawn". At 720x1184 the test-registry walk
+  failed with the same line: the confirm's text column ended at 521 px under the TEST REGISTRY strip, the third choice
+  cut there and the fourth below it, and Compose leaves a node scrolled out of view out of the accessibility tree (a
+  diagnostic since removed, which printed no text, found choices 1-3 and the letters typed drawn and choice 4 not). On
+  a phone of that size the user saw three of the four choices with nothing to say the text scrolls, so the screen was
+  wrong, not the check: the four choices now go two a row, each still its own secret node. At 720x1184 both APKs'
+  walks pass ("backup_confirm: each of its 5 secret texts is drawn, and only by secret nodes (5 nodes)"), the
+  test-registry walk at font scale 1.15 too; FlowTest 7, CheckTest 2 and SnapshotDrillTest 3 passed there. Only CI's
+  API 31 and 36 images can confirm their own timing and fonts, and that API 36's default image lays the confirm out as
+  kc37 does at 720x1184. At kc37's own 720x1280 (local, android-local.sh exit 0 in 1464 s, on this tree but for two
+  comment rewordings made after its build): every class passed in android-emulator.sh's order, NativeTest too, both
+  APKs' walks with backup_confirm's 5 secret texts drawn and BackupTest's age -d hand-off; then on the final tree the
+  strict Gradle build of the five APKs and every JVM test task (:core-ffi 31 in 11 classes, :screens 138 in 19, :app
+  11 in 4 for each flavour, :secure-ui 3 in 1, none failed).
+  Proof (CI, the lead's, 2026-10-29): Entropy Android 40813152800 at e3c6c12: on API 31, FlowTest (the watch-only flow
+  and About) passed; on API 36, both CaptureTest walks drew backup_confirm's five secret texts and passed.
+  Proof (M5 commit 20h, lead decision M5-70 (g), partial: local, kc37, Q76; CI's API 31 and 36 legs at the next push):
+  the model's picked(), which Check a backup and Load registry snapshot share, read the file in the activity's result
+  callback on the main thread (21d's residual), so a slow provider or a full-size snapshot (about 72 MiB) held it. The
+  name and size checks still come first, on the main thread, before any byte is read; the read is then a long call
+  through work(): "Working..." shows and takes no input, the worker calls PickedFile.read (Documents.kt's readUpTo,
+  4944c84's buffer one byte past the reported size, unchanged, and Documents.kt still the one file with the
+  IOException catch, M5-53), and its reply on the main thread refuses a failed read or one past the limit (its bytes
+  zeroed, Home saying why) or hands the bytes on. Check a backup's go to the entry in a Secret (Core.openBackup now
+  takes the file as one, as it takes the entries), wiped when the entry and its call are over as before; Load registry
+  snapshot's go to core's load, a second long call that the read's reply starts, "Working..." staying (work lets a done
+  start the next call, whose busy screen stands for the same screen). A discard during the read (a leave or going
+  online; the timers wait while a long call runs, so none fires then) is found by the worker's second look: what the
+  read gave is zeroed (work's new dropped, called with a Done value a discard or a halt drops, by the worker's second
+  look or on the main thread), nothing goes to core (the snapshot's load never starts) and the start screen follows
+  with its notice, where M5-54 ends the other long calls. Documents.kt and Seams.kt say the read runs on the worker.
+  JVM tests (local): HomeScreensTest 10 (8 before) and CheckBackupScreensTest 13 (11 before), each with a test of the
+  read on the worker (a slow read: Working shows while it reads, the main thread returned before any byte was read,
+  Home's choices and a second file do nothing; a leave and going online during it: its bytes zeroed, the start screen
+  with Left or Offline, nothing loaded and the read alone run, or no entry and nothing in the slot) and one of a file
+  longer (10 reported) or shorter (1000 bytes more reported) than its provider reports, read whole and loaded or
+  opened; the existing tests step the worker (HeldWorker.runNext: the read, then the load, its bytes not zeroed until
+  core has them, and a discard during the load). :screens 142 in 19 classes, :core-ffi 31 in 11, :app 11 in 4 for each
+  flavour, :secure-ui 3 in 1, none failed. Four mutants each fail the new tests: the read made on the main thread again
+  (3 tests), no zeroing on a discard (2), the worker's second look not zeroing (2), and work showing Home again while
+  the load runs (its done-started-a-call guard removed: 3). Not tested: a discard after the worker's second look and before the main thread's
+  reply (the tests' unconfined scope answers at once; 20j tests it on a main dispatcher the test holds). On kc37 (local, android-local.sh exit 0 in 1475 s, which built
+  the five APKs with the strict Gradle build and ran every JVM test task above): every class passed in
+  android-emulator.sh's order, NativeTest too, among them CaptureTest's walk in both APKs (Check a backup's entry and
+  Load registry snapshot's result, each file handed to the model as a picker would), CheckTest 2 (the shipping app's
+  refusal of with-dice-50 picked through DocumentsUI), BackupTest 1 (Check a backup through DocumentsUI, its age -d
+  hand-off passed) and SnapshotDrillTest 3 (the drill's snapshot loaded through the picker); the gate clean (382
+  files). No Rust changed: cargo fmt --all --check and both clippy commands clean, cargo test --workspace --locked 499
+  passed in 25 suites (3 ignored) and the test-sources run 269 in 17 (1 ignored), none failed. The implementing agent
+  died with the Claude app's restart at 03:42 during the gate's selftest; the lead reviewed its tree, reran
+  banned-api-check.sh --selftest (1611 passed, 0 failed) and committed it (M5-68 (b)).
+  Proof (M5 commit 20i, review fix, partial: local, kc37, Q76): Load registry snapshot's bytes were zeroed only in the
+  finally of core's load, a lambda the worker never runs when a discard, a halt or wipeAll comes between the read's
+  reply and the worker's first look at the load (work makes no call then), so they were left as read (the E5 review:
+  HomeScreensTest's discard during the load, asserting them zeroed, failed). The bytes are a public .kcr, so this is
+  hygiene. The model now holds them while the load lasts (snapshotFile, as checkFile holds Check a backup's file) and
+  zeroes them when the next screen is no busy screen (the result, a refusal, the start screen after a discard, the
+  stop screen) and in wipeAll, whether or not core's call was made; the lambda's finally is gone. HomeScreensTest 11
+  (10 before): the discard during the load also asserts the bytes zeroed, and wipeAllDuringTheLoadZeroesTheBytesRead
+  calls wipeAll while the load waits on the worker; both fail against 20h's model and pass now. Locally, on this
+  commit's tree: the strict Gradle build of the five APKs and the JVM tests, :screens 143 in 19 classes, :app 11 in 4
+  for each flavour, none failed (:core-ffi 31 in 11 and :secure-ui 3 in 1 up to date, their inputs unchanged); the
+  gate clean. On kc37 (local, android-local.sh exit 0 in 1444 s on 19k's tree, the stage's last, which holds this
+  change): every class passed in android-emulator.sh's order (ControlTest 3, CaptureTest 6 and 6 without control (c),
+  PhoneMotionTest 1, FlowTest 7, CheckTest 2, BackupTest 1 with its age -d hand-off, SnapshotDrillTest 3,
+  LifecycleTest 6, CrashTest killed as it must be, NativeTest 1, and the Camera2 check's four camera-client checks,
+  its decode of the virtual scene's PNG not met and named, as android-local.sh allows).
+  Proof (M5 commit 20j, review fix, partial: local, kc37, Q76): (a) The holder's end (CeremonyHolder.onCleared: the
+  scope cancelled, then wipeAll) after the worker's second look at a picked file's read and before the main thread
+  took its reply left the read's bytes (an .age ciphertext, or a .kcr) unzeroed: withContext gives a cancelled scope
+  no result, so work's main-thread drop never ran, though work's KDoc said a dropped value goes to dropped on
+  whichever thread drops it (the E5 review, two reviewers; a held-main test failed at 20h). work now keeps the
+  worker's reply in a local until the main thread takes it, and a finally around the worker's call drops a Done value
+  still kept there, which only a cancellation leaves; it is a finally because KtFailOpen allows no catch there (rule
+  3: the gate refused a catch of CancellationException that rethrew). CeremonyHolder is unchanged. (b) That
+  main-thread drop, for a discard or a halt after the second look, was tested by nothing (20h's Proof: the tests'
+  unconfined scope answers at once). TestSupport's HeldMain is a main dispatcher a test can hold, so a test acts
+  between the worker's reply and the main thread's part: CheckBackupScreensTest's
+  aDiscardAfterTheWorkersSecondLookIsFoundOnTheMainThreadAndZeroesWhatItRead (a leave and going online: the bytes
+  zeroed, the start screen with its notice, nothing in core) and
+  theHoldersEndAfterTheWorkersSecondLookZeroesWhatItRead, and CheckBackupHaltTest, its own class since it halts (a
+  second long call after the second look: the bytes zeroed, the stop screen stays). Without the finally's drop the
+  holder's-end test fails; without the main-thread drop the discard and halt tests fail. The review's other surviving
+  mutant, work's `from` taken whatever screen shows, is equivalent for the one call a done starts (Load registry
+  snapshot's load, whose result and refusals each show a screen of their own), so nothing tests it. Locally, on this
+  commit's tree: the strict Gradle build of the five APKs and the JVM tests, :screens 146 in 20 classes, :app 11 in 4
+  for each flavour, none failed (:core-ffi and :secure-ui up to date); the gate clean. On kc37 (local,
+  android-local.sh exit 0 in 1444 s on 19k's tree, the stage's last, which holds this change): every class passed in
+  android-emulator.sh's order (ControlTest 3, CaptureTest 6 and 6 without control (c), PhoneMotionTest 1, FlowTest 7,
+  CheckTest 2, BackupTest 1 with its age -d hand-off, SnapshotDrillTest 3, LifecycleTest 6, CrashTest killed as it
+  must be, NativeTest 1, and the Camera2 check's four camera-client checks, its decode of the virtual scene's PNG not
+  met and named, as android-local.sh allows).
+  Proof (M5 commit 21i, review fix, partial: local): no JVM test caught a revert of 21h's two app changes (the E5
+  review: Home's About tagged about again, and the backup confirm one choice a line, :screens 142 passed), and nothing
+  held the rule Ui.tap and Home rely on, that no control's tag is a screen's id. ScreenIdsTest (androidHostTest, since
+  it lists the source tree under kc.entropy) requires each of the 48 screen ids to be written once in :screens'
+  commonMain sources, as its own entry of screenId's table in Screen.kt, so no tag, test tag or other literal there is
+  one (a tag built at run time, the pads' key_ tags, is not read, and none starts as a screen's id does). With About's
+  tag about again it fails, naming both lines. The confirm's two-a-row layout has no JVM check: its proof stays CI's
+  API 36 leg, CaptureTest in the test-registry APK ("each of its 5 secret texts is drawn"). Locally: :screens 147 in
+  21 classes, none failed (with 19k's tree, which differs only in an androidTest file).
+  Proof (M5 commit U3c, Stage U-2, partial: local, kc37, Q76; CI's legs at the next push): on Check a backup's entry
+  Delete on word N > 1's empty pad did nothing (its button was disabled with no letter typed), where the Pi's KEY1 pops
+  its one entry buffer back into the word before (app.rs, typing, :1110-1112; usb.rs offers KEY1 while anything is
+  typed). CeremonyModel's `entryDelete` takes the pad's last letter, or on an empty pad past word 1 takes entry N-1
+  back off the list, types its letters but its last into the pad and wipes its Secret in a finally; on word 1's empty
+  pad it does nothing. The entry's Delete goes through it, enabled while letters are typed or a word is taken (the
+  confirm keeps the pad's own delete). CheckBackupScreensTest: word 1's Done then Delete shows word 1 again with one
+  letter fewer, in order (compared in-process), the taken Secret zeroed and none held; Delete on word 1's empty pad
+  leaves the state the same; word 4 mistyped, reopened from word 5's empty pad, emptied and typed again, opens the
+  backup. With the reopening removed both fail (word 1 again expected; word 4 again expected). Locally: the strict
+  Gradle build of the five APKs with every JVM test task (:screens 156 in 22 classes, :app 11 for each flavour, none
+  failed); android-local.sh --part journeys (FlowTest 7, CheckTest 2, BackupTest 1 with its age -d hand-off) and
+  --part capture (ControlTest 3, CaptureTest 6 in each APK, its walk through the entry, PhoneMotionTest 1,
+  NativeTest 1; the Camera2 check's decode not met, as android-local.sh allows) on kc37, exit 0 each.
+- [ ] The CI `age -d` hand-off: for the CI throwaway seed only, the androidTest reads the backup passphrase from the
+  in-process `Secret` and sends it as the instrumentation status value `kc_ci_throwaway_passphrase`. The workflow pipes
+  `am instrument -r`'s output straight into `scripts/android-age-check.py`, which takes the value, feeds it to age 1.1.1
+  through age-interop.py's pty driver to decrypt the pulled backup, compares the fingerprint, and prints only pass or
+  fail. The value never reaches logcat, a file or the job log.
+  Proof: emulator tests: a backup saved to Downloads through DocumentsUI verifies, is decrypted by `age -d` in the job,
+  and Check a backup opens it; a wrong passphrase and a `.txt` file are refused (the latter before any byte is read);
+  the snapshot loads in the test-registry APK and is refused in the shipping APK; a root listing of the app's data
+  directories after the suite holds no file the app wrote, with a planted-file positive control (Q59 (a)); `dumpsys
+  package` shows no INTERNET; a grep of the job log for the passphrase's first word returns nothing.
+  Proof (M5 commit 20b, partial: local, kc37, Q76, with Homebrew's age v1.3.2 where CI has Ubuntu's 1.1.1; CI's API 31
+  and 36 legs prove it at the next push; the snapshot, the root listing and dumpsys package are commit 21's):
+  BackupTest (the shipping app, android-emulator.sh's step 4a after CheckTest) takes dice-50-words12, the CI throwaway
+  seed, through the model's entry points to its summary, taps the offer, "Make an encrypted backup", the privacy gate,
+  the save screen and the results through UI Automator by their resource ids, and goes through the Protected screens
+  by the model's entry points, so no secret enters a selector, a click's point or a message (M5-68 (e)); the
+  passphrase is read in-process from the screen's Secrets. The system's create-document picker (DocumentsUI: on kc37
+  com.google.android.documentsui, which opened in Downloads) showed core's suggested name in its name field
+  (android:id/title) and saved through android:id/button1, then "Backup verified", the file in /sdcard/Download/ (946
+  bytes). The test then reports kc_ci_throwaway_passphrase from the in-process Secret, with the file's name and the
+  summary's fingerprint (public). A .txt copy of the backup (the shell's cp) picked in the open-document picker is
+  refused by its name on Home ("That file was not opened: a KeepCrypt backup's name ends in .age."), so before any byte
+  is read (CheckBackupScreensTest proves that order on the JVM); Check a backup through the picker: a wrong passphrase
+  is refused with core's text, then "Backup OK" with the summary's fingerprint and Seal ID YVM9CPP3, the 12 words
+  through the gate equal to the vector's (in-process), the re-check QR and its Back, Done: Home with the slot empty.
+  The hand-off: android-instrument.sh's new age: form pipes am instrument -r's output straight into
+  scripts/android-age-check.py, which takes the value out of the stream (keeping it in its memory alone), writes the
+  rest for the usual judge (so a failing run's printed output holds no value), reads the file through adb exec-out,
+  and has age -d decrypt it through age-interop.py's pty driver: a KeepCrypt backup v1 of 12 words by
+  keepcrypt-android 0.0.0 with the reported fingerprint (tools/verify's reader recomputes it from the words), and a
+  fresh wrong passphrase refused by age. logcat -d of every buffer (about 14 MB) and the run's output hold neither the
+  passphrase nor a page of it (core's four words) nor two of its screen's eight lines, and the run's output, the job
+  log's share of this run, none of its words as a word outside the test's own fixed prose (kc_probe and kc_pass; 20c
+  also leaves out the public name and fingerprint and am instrument's result lines): the plan's grep of the job log,
+  narrowed to the one part of it that can hold this passphrase (no other class, process or step knows it) and made by
+  the one process that knows it, a word alone searched for outside those lines only (the E4 review asks the lead to
+  judge whether that meets the Proof); "age-check: pass
+  (v1.3.2)". CaptureTest's search of the log after its walk now reads only what was written from its own mark on
+  (nothing earlier can hold the walk's secrets) and, since one "3 word" line can sit in a log by chance (a number and a
+  common word: 20b's first local run failed so, on a passphrase line found in logcat), fails on two or more lines of a
+  passphrase page; the passphrase screen draws each page as one secret node of four lines, as the Pi draws one
+  Protected text, so a logged page shows them together. Selftests: android-age-check.py 16 (python3 3.12 with
+  Homebrew's age; /usr/bin/python3 3.9's hashlib has no scrypt, which only the selftest's writer needs, and it exits
+  2 there, as age-interop.py does), android-instrument.sh 43 (the age: form's three cases on a stand-in checker),
+  android-emulator.sh 29 and android-local.sh 34, each under sh and dash; mutants that drop the checker's exit from the
+  judge, or bypass the checker, fail android-instrument.sh's, and one that keeps the passphrase's line fails the
+  checker's. The workflow installs Ubuntu's age (1.1.1-1ubuntu0.24.04.3, asserted as entropy-ci.yml asserts it) and runs
+  the hand-off's selftest before the legs; its paths add scripts/age-interop.py and tools/verify/**, which the hand-off
+  loads. On kc37 (local, android-local.sh exit 0 in 1257 s, 60 s more than at 20a): every class passed, BackupTest 1
+  test with the hand-off; the strict build of the five APKs and every JVM test task rerun (:core-ffi 29 in 10 classes,
+  :screens 120 in 17, :app 7 in 3 for each flavour, :secure-ui 3 in 1, none failed).
+  Proof (M5 commit 21b, the nothing-persisted listing and dumpsys package, partial: local, Q76; the root listing runs
+  only in CI's API 31 and 36 legs, whose default images are userdebug builds, at the next push; the snapshot through
+  the picker in both APKs is 21a's, under the first item): android-emulator.sh's new step 7, after the suite and the
+  first frames. Each app APK's own block of dumpsys package (its "Package [PKG]" line to the next package or section,
+  as CaptureTest's Capture.permission reads it) must name the CAMERA it requests, so its permissions are read, and no
+  INTERNET. Then adb root (a root shell, id -u 0, waited for up to 20 s while adbd restarts; one that does not come
+  fails a CI leg) and, for each app, a listing as root of every entry that is not a directory under /data/user/0/PKG,
+  /data/user_de/0/PKG and PKG's data, media and obb under /data/media/0/Android, ending with a line of its own, so a
+  listing cut short fails: each entry is a file the app wrote, and none may be there but two shader caches the
+  platform's renderer writes into the app's code cache from the app's own process
+  (code_cache/com.android.skia.shaders_cache, HWUI's, and code_cache/com.android.opengl.shaders_cache, EGL's), allowed
+  by their file names before any listing was seen. They lie in the app's own storage, so whether they are among rule
+  8's files the operating system keeps about an app (Q59 (a)) is not settled: no lead decision or owner answer names
+  them (21f, from the E4 review); 21g removes both allowances (M5-70 (d)). The runtime profiles, compiled code and
+  package records live outside these directories. The listing is
+  printed as a probe line (paths only). The positive control (Q59 (a)): a file planted as root in /data/user/0/PKG
+  must be the same listing's one new hit, and is then removed. On a user build (--booted on kc37, ro.debuggable=0) the
+  listing is printed as not made, CI's legs making it; android-local.sh's header and its adb-root line say so.
+  Selftests: android-emulator.sh 34 passed, 0 failed (29 before: INTERNET in a package block, a file the app wrote, a
+  planted file the listing misses, a listing cut short and a CI image with no root shell each exit 1; the passing leg
+  finds a stand-in shader cache and nothing else (until 21g, which fails that case), and the --booted leg names the listing as not made) and
+  android-local.sh 34 (its debuggable case now makes the listing as root on its stand-in), each under sh and dash;
+  mutants that never match INTERNET, skip the listing's end line or take the planted file for the listing each fail
+  android-emulator.sh's. On kc37 (local, android-local.sh exit 0 in 1469 s, the run of 21a's line): "dumpsys package
+  com.keepcrypt.entropy: no INTERNET (its block names the CAMERA it requests, so its permissions are read)", the same
+  for com.keepcrypt.entropy.testregistry, and "not made here (ro.debuggable=0, a user build: adb root refused): the
+  nothing-persisted listing of the apps' data directories, which CI's API 31 and 36 legs make". The two shader caches
+  are allowed by HWUI's and EGL's own file names, not from a listing seen: CI's first run shows what the default
+  images keep there, and any other entry fails its leg.
+  The gate is clean on the working tree (381 files) and --workflows on the three workflows, its --selftest 1611
+  passed, 0 failed (703 s), and canaries.sh PASS, all 94 checks ran (472 s).
+  Proof (M5 commit 20c, review fix, partial: local, Q76): the hand-off's word search failed a clean run by chance on a
+  passphrase holding age (the name's .age), test (am instrument's "OK (1 test)") or a list word the name's or the
+  fingerprint's hex digits spell (add, dad, face, fee): 404 of 50,000 random runs of the selftest's frame (0.81%), each
+  API leg a draw. It now leaves out the name's and the fingerprint's values when they match their patterns (public, and
+  checked by them) and am instrument's "Time:" and "OK (N tests)" lines: 0 of 200,000. The selftest's new frame-words
+  case (a passphrase of age, test and face, a name whose hex spells face) passes, and fails on the old search;
+  android-age-check.py --selftest 17 passed, 0 failed (python3 3.12, Homebrew's age v1.3.2).
+  Proof (M5 commit 20d, review fix, partial: local, Q76): the checker wrote RAW, the run without its passphrase line,
+  before any search, so a run whose output also showed the passphrase (a page in a failing assertion's stack, say)
+  failed but left that text in RAW, which android-instrument.sh prints whole when a run fails. The run's output is now
+  searched first, every line of it (the whole passphrase, a page or two of its screen's lines; a word alone outside the
+  lines 20c names), and when it shows a value the test reported, RAW holds one line saying the run was withheld, and the
+  check fails once the values' form is checked, with no adb call. The selftest checks every RAW for the passphrase, its
+  pages, two of its lines and its words, and the page, word and new lines-in-the-run cases (two of the screen's lines in
+  the test's probe and pass lines) for the withheld line alone; a mutant that writes the run regardless fails those
+  three. android-age-check.py --selftest 18 passed, 0 failed; android-instrument.sh --selftest 43 passed under sh and
+  dash (its header says so).
+  Proof (M5 commit 21g, lead decision M5-70 (d), partial: local, Q76; the root listing runs only in CI's API 31 and 36
+  legs, at the next push): step 7's nothing-persisted listing no longer allows the two shader caches 21b allowed by
+  their file names (code_cache/com.android.skia.shaders_cache and code_cache/com.android.opengl.shaders_cache), which
+  no listing has shown and no owner answer names. Rule 8 keeps the app's own storage empty, so every entry the listing
+  finds in the app's data directories is a file the app wrote and fails the leg, its paths printed in the leg's FAIL
+  line and the listing's probe line (paths only: no contents, no sizes); the pass line no longer says "but the
+  system's compiled shaders". If CI ever shows those files, an allowance needs an owner answer first: the lead brings
+  their paths and sizes to the owner as a rule 8 question (M5-70 (d)). Selftests: android-emulator.sh 35 passed, 0
+  failed, under sh and dash (34 before): its stand-in adb lists both shader caches only in the new shader-cache case,
+  which exits 1 naming both paths for each app (its positive control passing in both), the passing leg finds nothing,
+  and every other case keeps its result; mutants that keep the skia allowance, the opengl allowance or both (21b's
+  listing) each fail that case alone (34 passed, 1 failed). android-local.sh --selftest 34 passed, 0 failed, under sh
+  and dash (its stand-in lists no shader cache, so its debuggable case's listing as root passes as before). kc37's
+  user build names the listing as not made, so no local emulator run exercises the change. The gate is clean on the
+  working tree (382 files) and --workflows on the three workflows, its --selftest 1611 passed, 0 failed (595 s), and
+  canaries.sh PASS, all 94 checks ran (428 s).
+  Proof (CI, the lead's, 2026-10-29): the strict listing's first CI run (Entropy Android 40813152800 at e3c6c12): on
+  API 31 and API 36, for both apps, "no file in its data directories", each positive control's planted file the
+  listing's one new hit. Neither shader cache appeared, so M5-70 (d)'s rule 8 question does not arise.
+
+**19. Gate evidence and Commands**
+- [ ] CLAUDE.md Commands gains the ffi test-registry line, `--apk` and `--selftest-apk`, the android scripts (CI-only
+  ones marked so) and the new canaries count.
+  Proof: the diff touches only the Commands block; the count equals `want_checks`.
+- [ ] The owner's P0-P5 are issued with the run ID, commit and both APKs' SHA-256 of the final head's Android run, and
+  the Seal IDs from `p4-seal-ids.txt`.
+  Proof: the checklist block filled in.
+
+**20. Review**
+- [ ] "M5: local proof", the CI runs, the probe facts, "M5: device records", the gate status, numbered lead decisions,
+  "Ticked in this commit" and "Still unticked", as in M4.
+  Proof: the Review section.
+
+**Deferred, with their milestone**
+- **M5b** (after the M5 gate, its own branch, as M4b; Q61): "Verify another device's ceremony" (a core API replaying
+  agreement.json; its screen and hex and dice pads; Coldcard runs over 256 rolls cannot be checked); Snake and braille
+  Tetris on the phones' waiting screen through a `game_random` export in keepcrypt-jni, with the Shell rule's change
+  (pattern `game_?[Rr]andom`; allowed in that export and the Kotlin games folder; the two hit fixtures become
+  near-misses) and a Kotlin `games_names` analogue (no ceremony object, `addExtra` or clock); and the Pi's Tetris with
+  them, if Q61 (b).
+- **M6:** the iPhone app; Swift's binding as a sibling crate over keepcrypt-ffi (a C ABI or the owner's pick);
+  `staticlib`; the iOS capture layers (MA:78-114) and symbol list (todo.md:1395-1396); BP:73 and MA:23's iOS cell then
+  name it.
+- **M7:** two builds giving one APK hash and a third-party rebuild; release signing and SBOM; F-Droid, GitHub releases,
+  Play and the Data safety label; target 37; Android lint and R8 (the dex reference scan then runs on the shrunk APK);
+  an API 35 leg with MediaProjection automation for the recording callback; emulator and image pinning; making the
+  Android workflow required; Pixel and Samsung capture checks before release (MA:74 after Q55); graphics-path's native
+  library (review, rebuild or removal); the audit list: keepcrypt-jni and jni-sys, `:secure-ui`, Documents.kt, the
+  scanner, the JVM residuals (Q58: strings, Minikin and glyph caches, TalkBack's copy, the moving GC), tombstone memory
+  dumps and whether a non-dumpable flag suppresses them, zram and vendor disk swap, locking secret pages.
+- **M8:** the camera and microphone extras on phones; the Pi camera go-ahead QR.
+- **M9:** the real registry key (shipping APKs then load snapshots and go-ahead QRs), the live test registry and checker,
+  registration end to end, the duplicate-seed drill end to end.
+
+### Verification
+- [ ] **Gate: screenshot and recording tests come back blank.** Group 6's harness green on API 31 and 36 for both APKs
+  (every screen id with its drawn-screen proof; screencap, `UiAutomation`, continuous raw-frame recording, `SECURE` on
+  every window; control (a) on both APIs and control (c) on 36; the first frame), and the owner's P1 on a phone.
+  Proof: the run ID at the final head; P1's report.
+- [ ] **Gate: the merged manifest has no INTERNET permission.** `--apk` on both APKs equals the expected summaries
+  (exactly `HIDE_OVERLAY_WINDOWS`, `DETECT_SCREEN_RECORDING`, `CAMERA`, plus androidx.core's signature permission if
+  the probe kept it; no provider, receiver or service; backup off; not debuggable); the merger-report grep; the canary
+  APK refused; `--selftest-apk`'s INTERNET case fails; `dumpsys package` on the emulator.
+  Proof: both summaries and the run ID.
+- [ ] **Gate: the backup round trip passes.** `ffi_backup_round_trip`; the emulator's DocumentsUI save, "Backup
+  verified", `age -d` through the pty hand-off and Check a backup; P2 on the phone.
+  Proof: test names, run ID, P2.
+- [ ] **Gate: snapshot import works.** The test-registry APK loads `with-dice-50` through the picker with its Stale
+  warning and it stops `dice-50-words12` (emulator and P4); the shipping APK refuses it.
+  Proof: run ID, P4.
+- [ ] **Gate: Sparrow watch-only import works.** P3: Sparrow 2.5.5 imports the account QR from the phone and its first
+  receive address matches the wallet summary; Bitcoin Core 31.1 imports the descriptor with the same address (swb:235).
+  CI: the drawn matrices decode to core's QR text.
+  Proof: P3's report; the JVM test.
+- [ ] **Gate: a go-ahead QR from the test registry reveals the words.** P4's camera scan of `clear-empty-bucket` reveals
+  `dice-99-words12`'s words after the Stale warning, with the Seal ID checked first; CI feeds the same UR through the
+  decoder (canned YUV frames) and `onGoAheadText`.
+  Proof: P0b and P4, run ID.
+- [ ] **Gate: a Stop wipes them.** `collision-dice-50`'s QR and the `with-dice-50` snapshot each end in the collision
+  result ("Collision found. This seed is not unique and has been destroyed.", M5-55) with no words page, the
+  collision-report QR and a restart at 99 (`ffi_drill_12`, emulator, P4).
+  Proof: test names, run ID, P4.
+- [ ] **Boot path and native libraries:** the ARM and 16 KB leg green; which ABIs ran (natively or translated) recorded;
+  any ABI CI could not run named in the gate report.
+  Proof: run ID; the Review line.
+- [ ] **Matrix "Symbol and stub-marker scan"** (Android): both `libkeepcrypt.so` builds per ABI in the cross legs; both
+  APKs in the Android job, with the dex reference scan.
+  Proof: run IDs.
+- [ ] **Matrix "Screen-capture tests"**: every build on CI emulators; a real phone at the gate (P1), as BP:318 and MA:74
+  read after Q55.
+  Proof: the Android job's runs on every pushed head; P1.
+- [ ] **Matrix "No-network checks"**: the manifest summaries, the KtSdk, KtBinary and network rules, the classpath list.
+  Proof: run IDs; selftest counts.
+- [ ] **Matrix "Full ceremony with offline verification"** (Android): `ffi_verify_py_tie`; P2 with verify.py on the
+  offline computer (exit 0, same words, same Seal ID).
+  Proof: test output; P2.
+- [ ] **Matrix "Duplicate-seed drill"** (Android part): `ffi_drill_12` and the emulator drill; end to end in M9.
+  Proof: test output; run ID.
+- [ ] **Matrix "Watch-only import"**: P3.
+- [ ] **Matrix "Metal read-back drill"**: `ffi_readback_drill`; P2's deliberate misread.
+  Proof: test names; P2.
+- [ ] **Matrix "Reproducible build"** (APK): M7 (Deferred).
+- [ ] **CI:** the 14 required checks green at the final head with names unchanged; the Android job green at the final
+  head within its budget; `gates` <= 12 min and `test` <= 6 min; any emulator re-run logged.
+  Proof: run IDs and times.
+- [ ] **Definition of done:** tests alongside every commit; vectors wherever the docs define them; clippy, fmt, deny,
+  audit, vet and the banned-API gate clean; proof under Review; each stage's security review recorded.
+
+### New dependencies
+
+**How this was checked (2026-10-17)**
+- crates.io API reads (versions, dates, licences, dependencies); Google Maven and Maven Central `maven-metadata.xml`, POMs
+  and `Last-Modified` headers (HEAD requests); the SDK repository XML; the runner image README. Nothing was downloaded.
+- Cool-off cutoff today: 2026-10-03, re-checked at commit time; applied to Gradle and Maven artifacts too (Q54).
+
+**Rust**
+
+| Crate | Version | Published | Licence | Why | rand/log/network | Vet |
+| --- | --- | --- | --- | --- | --- | --- |
+| jni-sys | =0.3.0 | 2017-07-21 | MIT/Apache-2.0 | `jni.h`'s types and function table for keepcrypt-jni; no dependency, build script or feature | none | exemption with a review note |
+
+- **New workspace member:** keepcrypt-jni (ours). **New edges to locked crates:** keepcrypt-ffi -> zeroize,
+  qrcodegen-no-heap 1.8.1 (pi/app's, already exempted); keepcrypt-jni -> zeroize, keepcrypt-core; dev: sha2.
+  Amended at commit 9 (M5-32, M5-35): the new members are keepcrypt-guard and keepcrypt-jni; the new edges are
+  keepcrypt-ffi -> zeroize and qrcodegen-no-heap (dev: sha2), keepcrypt-guard -> keepcrypt-ffi, and keepcrypt-jni ->
+  keepcrypt-guard and jni-sys only.
+- **Review note, jni-sys 0.3.0 (M5 commit 9, read from the downloaded `.crate` in the session scratchpad):** the
+  `.crate`'s SHA-256, 8eaf4bc02d17cbdd7ff4c7438cafcdf7fb9a4613313ad11b4f8fefe7d3fa0130, equals Cargo.lock's checksum and
+  the crates.io index record's `cksum` (which lists no dependency, no feature and no `links`). The archive holds
+  Cargo.toml (no `build` key, an empty `[dependencies]`, licence "MIT/Apache-2.0"), Cargo.toml.orig, README.md, the two
+  licences, CI files and one source file, src/lib.rs (1,515 lines); no build.rs. src/lib.rs is declarations only:
+  `#![allow(non_snake_case, non_camel_case_types)]`, `use std::os::raw::{c_void, c_char}`, type aliases (`jint`,
+  `jbyteArray`, `JNIEnv`, `JavaVM` and the rest), consts (`JNI_OK`, `JNI_VERSION_1_6` and the rest), the enum
+  `jobjectRefType`, the union `jvalue`, and `#[repr(C)]` structs, chiefly `JNINativeInterface_` and
+  `JNIInvokeInterface_`, whose fields are `Option<unsafe extern "system" fn ..>` pointers (31 of them `extern "C"`, each
+  a C-variadic `Call*`/`NewObject` entry). The only function bodies are eight `Clone` impls that return `*self` (plus
+  derived `Copy`, and `Clone` derived on the enum). One `extern "system"` block declares `JNI_GetDefaultJavaVMInitArgs`,
+  `JNI_CreateJavaVM` and `JNI_GetCreatedJavaVMs` with no `#[link]` attribute, so nothing links unless a caller names
+  them, and keepcrypt-jni never does. No code runs, nothing prints, no static, macro or `unsafe` block, and nothing
+  reads the OS random source. Exempted safe-to-deploy in supply-chain/config.toml with this note's summary (no audit on
+  record).
+- **Not added:** UniFFI (0.32.2: fastrand, a second getrandom dependent, MPL-2.0; 0.29.1: about 13 crates, MPL-2.0, a
+  45-crate bindgen with `log`, JNA); jni 0.22.4 (`log`); jni-sys 0.4.0 / 0.4.1 / 0.3.1 (jni-sys-macros, a proc macro,
+  for the same declarations); cargo-ndk 4.1.2 (a linker wrapper we do not need); rqrr 0.11.0 (a crate tree in the
+  shipped `.so`).
+
+**Gradle and Maven** (none in the Rust graph; runtime ones end up in the APK)
+
+| Artifact | Version | Published | Licence | Why |
+| --- | --- | --- | --- | --- |
+| Gradle (distribution, fetched by script, SHA-256 pinned) | 9.7.1 | 2026-08-19 | Apache-2.0 | build tool; 9.8.x is inside the cool-off [S15] |
+| com.android.application / library (AGP) | 9.3.3 | 2026-09-17 | Apache-2.0 | Android build; about 107 build-time modules, never shipped [S13] |
+| org.jetbrains.kotlin.plugin.compose | 2.4.20 | 2026-09-07 | Apache-2.0 | Compose compiler; Kotlin's tested range ends at AGP 9.3.1 / Gradle 9.7.0 [S14, S24] |
+| androidx.activity:activity-compose | 1.13.0 | 2026-03-11 | Apache-2.0 | `ComponentActivity`, `setContent`, result contracts, ViewModel [S13] |
+| androidx.compose.foundation:foundation (BOM 2026.09.00) | 1.12.1 | 2026-09-09 | Apache-2.0 | layout, text, input, Canvas; brings ui, runtime, graphics (graphics-path, a native library) [S13] |
+| com.google.zxing:core | 3.5.4 | 2025-11-11 | Apache-2.0 | go-ahead QR decoding; no dependencies [S14] |
+| androidx.test runner, core / ext-junit (tests only) | 1.7.0 / 1.3.0 | 2025-07-30 | Apache-2.0 | instrumentation [S13] |
+| androidx.test.uiautomator (tests only) | 2.4.0 | 2026-07-01 | Apache-2.0 | DocumentsUI, Home, the camera prompt, Public screens [S13] |
+| junit (+ hamcrest-core 1.3, tests only) | 4.13.2 | 2021-02-13 | EPL-1.0 (BSD-3-Clause) | JVM and instrumented tests [S14] |
+
+- About 60 transitive runtime modules (AndroidX, Kotlin stdlib 2.4.20, kotlinx-coroutines, annotations), all
+  Apache-2.0; the committed lockfiles and classpath list are the exact set. Checksums are reviewed per repository
+  (Google: SHA-256; Central: SHA-1 plus PGP signature, finding 11). **Excluded:** androidx.profileinstaller. **Not
+  added:** Material 3, navigation-compose, CameraX, ML Kit and Play services, JNA, a Compose UI-test library, Android
+  Test Orchestrator, actions/download-artifact or any other workflow action.
+- **SDK inputs** (preinstalled unless noted): NDK 30.0.16248370, platform 37, build-tools 36.0.0 (with `dexdump`),
+  JDK 17; installed by `sdkmanager` in CI: the emulator, `system-images;android-{31,36};default;x86_64` and one 16 KB
+  image (`system-images;android-36;google_apis_ps16k;x86_64`, about 1.85 GB, or the probe's pick).
+
+### Commit order on `m5-android`
+Each commit's proof runs at that commit. Each stage is reviewed (plan, security, recompute) before the next starts. The
+PR is a draft from commit 1. Review fixes are listed as N.b entries under the commit they amend.
+
+**Stage A: decisions, docs, hygiene**
+1. tasks/todo.md: the M5 plan and the owner's questions; the title becomes "milestones M0 to M5". 1b: the owner's
+   answers to Q53-Q63, quoted with the date, when they arrive.
+2. docs: the approved edits (group 1), alone. 2b: CLAUDE.md rules 8 and 1, if approved.
+3. .github/CODEOWNERS, .gitignore, scripts (the tracked-build-file rule) (group 2).
+
+**Stage B: gates and the platform probe (no Rust, no screens)**
+4. scripts: every Kotlin and Android rule with fixtures and canaries, before any Kotlin exists (group 3).
+5. mobile/android, scripts, .github: the Gradle project with every M5 dependency declared, three modules plus
+   `:capture-control`, SecureActivity and a static development-build screen (no native library yet), android-gradle.sh,
+   the workflow's build steps in bootstrap mode (group 4; the probe's build facts recorded).
+6. mobile/android, scripts: lockfiles, verification metadata and the classpath list from commit 5's run, reviewed by
+   android-deps-review.py; strict mode on; bootstrap switch removed (group 4).
+7. scripts, mobile/android/expected: `--apk`, `--selftest-apk`, the dex reference scan, the canary library, expected
+   manifests and native-lib list (group 5).
+8. .github, scripts, mobile/android: the emulator steps, instrumentation runner, capture harness, frame checker,
+   positive controls and first-frame test on the minimal app; the Android job's measured budget (group 6; the probe's
+   emulator facts recorded). Stage B's review compares every probe fact with this plan; a difference re-plans here.
+
+**Stage C: the FFI in Rust, tested on the Mac**
+9. ffi, ffi/jni (empty lib), Cargo.toml, Cargo.lock, deny.toml, supply-chain, scripts (canaries, check-path-deps), core
+   and pi/app lint blocks (group 7).
+10. ffi: the slot, stages, halts and refusals, the long-call rule, owned copies, with tests (groups 8, 11); the unsafe
+    canary moves to ceremony.rs.
+11. ffi: wire.rs and qr.rs, with byte-exact tests (group 9).
+12. ffi/jni: the exports, `guarded`, `JNI_OnLoad` (group 10).
+13. .github/workflows/entropy-ci.yml: NDK r30 (sdkmanager fallback), both `.so` builds and scans, the 16 KB and symbol
+    checks; `test`'s registry run (group 12).
+
+**Stage D: the Rust libraries in the app, protection**
+14. scripts, mobile/android, .github: android-rust.sh, `:core-ffi` with its JVM tests, libkeepcrypt in the APK and the
+    expected native-lib list, the real self-test, the ARM and 16 KB leg (groups 4, 13, 6; the strip fact recorded).
+15. mobile/android: `:secure-ui`, `CeremonyViewModel` skeleton, the crash path, `Timers` tests, discard during
+    "Working..." (group 14).
+
+**Stage E: the ceremony** (each commit adds its screens' emulator tests)
+16. Start screens to dice, the UI kit (group 15).
+17. The collision check without the camera (group 16).
+18. The camera scanner and its canned-frame test; CAMERA in the manifest and expected summaries (group 16). The owner's
+    P0b is issued from this commit's run.
+19. Privacy gate, words, read-back, summary, finish (group 17). As built (M5-68 (b)): 19a, the screens, the model and
+    their JVM tests; 19b, the emulator flows; review fixes 19c-19f.
+19g. CaptureTest's secret-mark check with no secret in a selector, so none reaches a log (M5-68 (e)).
+L8. The gate's fail-closed corners from E3's last review (M5-68 (d)).
+19h. Group 6's positive control (a) on the words page; PadEntry.handOver's finally and codeDone through it (M5-68 (f)).
+20. Backup, Check a backup, the `age -d` hand-off (group 18).
+21. Watch-only, register, reveal D, snapshots, About, stop; the nothing-persisted listing (group 18).
+
+**Stage F: evidence**
+22. CLAUDE.md: Commands and the canaries count (group 19).
+23. tasks/todo.md: CI proof at the final head; P0-P5 issued.
+24. tasks/todo.md: the owner's reports, Review, the gate status MET, waiting for approval; the PR description lists the
+    gate evidence.
+
+### Owner phone checklists (gate evidence)
+Send back only: pass or fail, "matched", phone model and Android version, app and wallet versions, stopwatch times.
+Never send or photograph C, D, the rolls, the words or the backup passphrase of the throwaway seed, a Protected screen
+or the backup file; those stay on paper and the paper is destroyed after P2-P3. The gate seeds' rolls, words and Seal
+IDs are public vectors. The one exception, as in H4: Sparrow and Bitcoin Core read the account and descriptor QRs of the
+never-funded throwaway seed.
+
+**P0. Setup**
+- [ ] An Android 12+ phone (Q56), charged. The M4 computer with Sparrow 2.5.5, Bitcoin Core 31.1 and the C920, and an
+  offline computer with Python 3.9+ and verify.py from the final head's commit (the lead gives its SHA-256). Paper and
+  pen.
+- [ ] From the Android run the lead names: download both APKs and the P4 files; each `shasum -a 256` equals the run's
+  log; copy `with-dice-50.kcr` to the phone's Downloads; install the shipping APK (allow "Install unknown apps" for your
+  file manager only while installing).
+
+**P0b. Scanner smoke test (early, from commit 18's run; about 10 minutes)**
+Issued 2026-10-22 from run 39744137391 at 1a63e0f: artifact android-apks (kept until 2026-11-05), the test-registry APK
+SHA-256 8983977bd0fb4fb6ac125cfc3bc99112ea9451b4f47f715386113471dea5a328, goahead-collision-dice-50.png
+3dc26b8f577ed7d2890418fea68b44de34c8d3874b399362428a1b22213a4777, dice-50-words12's Seal ID YVM9CPP3.
+- [ ] Install that run's test-registry APK (its strip reads TEST REGISTRY); airplane mode on, Wi-Fi off. Dice-only, 12
+  words, the 50 rolls `123456` repeated; Check now; the Seal ID on the seal card equals `dice-50-words12`'s from the
+  lead (if not, a typing slip: Cannot check, then Start again). Scan go-ahead QR and allow the camera when asked.
+- [ ] The camera indicator (Android 12 and later: a green dot or camera icon at the top right) is on while the scan
+  screen shows (M5-59). Press Home: it goes off within a few seconds. Open the app again within a minute: the cover is
+  up and the indicator off; tap the cover: the indicator comes back. Press Back to the seal card: it goes off. If the
+  phone shows no indicator, skip this item and say so.
+- [ ] Scan go-ahead QR again; scan `goahead-collision-dice-50.png` on the computer screen: "Collision found. This seed
+  is not unique and has been destroyed.", no words, and the indicator goes off. Send pass or fail only (on a fail,
+  which item). Uninstall the APK.
+
+**P1. Capture (shipping APK)**
+- [ ] On the dice screen, a words page and the backup passphrase: a hardware screenshot is blocked or black; a Quick
+  Settings screen recording is black on those screens; the recents card shows no content. On Android 15+, with a
+  recording running, a words page shows its "hidden while recording" cover.
+
+**P2. A throwaway ceremony (shipping APK)**
+- [ ] Airplane mode on, Wi-Fi off. New seed, 12 words.
+- [ ] At the Commitment screen, write C on paper.
+- [ ] Roll 50 real dice; write each roll on paper before tapping it.
+- [ ] At the check prompt, Skip (and confirm).
+- [ ] "I'm alone, show words"; copy the words. Read back from paper with one deliberate e/i misread first (it must be
+  named), then correctly.
+- [ ] Backup: write the 8-word passphrase on paper; confirm it; save to Downloads ("Backup verified").
+- [ ] Show the watch-only QRs, answering No to the BIP39 passphrase question: Sparrow scans the account QR, and its
+  first receive address equals the wallet summary's; Bitcoin Core imports the descriptor (H4's steps) with the same
+  first address. (The app offers these once, after the backup and before D: M5-70 (e).)
+- [ ] Skip the registration, or show its QR once.
+- [ ] Reveal D; write it on paper.
+- [ ] Finish.
+
+**P3. After the ceremony (same throwaway seed)**
+- [ ] From Home, Check a backup with the saved file and the passphrase: "Backup OK", the same fingerprint and Seal ID.
+- [ ] On the offline computer, `python3 -I tools/verify/verify.py mixed --words 12` with C, D and the rolls from paper
+  exits 0 with the same words and Seal ID.
+- [ ] Delete the backup file and destroy the paper.
+- [ ] In a later throwaway session, turning Wi-Fi on wipes it; leaving the app on a words page wipes it.
+
+**P4. The test registry** (a loaded snapshot or a pending 99-roll minimum lasts until the app's process ends). At every
+check, compare the Seal ID with the lead's value from `p4-seal-ids.txt`: on the seal card before a scan, or on the
+result screen when a loaded snapshot answers; if it differs, it was a typing slip: start again.
+- [ ] Uninstall the shipping APK; install the test-registry APK; airplane mode on, Wi-Fi off. Dice-only, 12 words, the 99
+  rolls `654321` repeated; Check now; Seal ID check; Scan go-ahead QR; scan `goahead-clear-empty-bucket.png` on the
+  computer screen: Stale warning, then the words, which match kcr.json's `dice-99-words12`. Leave the app from that
+  words page; on return the session is gone.
+- [ ] Load `with-dice-50.kcr` (number, date, count and the Stale warning shown). Dice-only, 12 words, 50 rolls `123456`
+  repeated; Check now: the check runs on its own, "Collision found. This seed is not unique and has been destroyed."
+  with no words; Seal ID check on that screen; the collision-report QR, "Add fresh entropy" shows 0 / 99.
+- [ ] Force-stop the app and open it again. The same 50 rolls; Check now; Seal ID check; Scan go-ahead QR; scan
+  `goahead-collision-dice-50.png`: "Collision found. This seed is not unique and has been destroyed.", no words;
+  after the report, "Add fresh entropy" shows 0 / 99.
+- [ ] Uninstall the test-registry APK.
+
+**P5. Second device (optional for the gate)**
+- [ ] P1 on a phone of the other brand, if you have one.
+
+### Critique log (2026-10-17)
+Each finding of the critique round and where it is resolved; none is rejected outright.
+- API 31 capture tests had no positive control (spec-security high; feasibility high, same issue): accepted. Control
+  (a), the capture-control APK on both APIs, plus (b), the drawn-screen proof before every capture; `disable_secure_windows`
+  is now an extra control on API 36 only; a missing control fails the job (group 6, finding 3).
+- Removing `catch_unwind` from ffi/clippy.toml lifted the ban for the whole safe layer: accepted. The boundary moves to
+  its own crate, keepcrypt-jni, and keepcrypt-ffi keeps core's clippy.toml and forbids unsafe. Part of the fix is changed:
+  `std::thread::spawn` cannot join the shared clippy list because core/tests/panic_wipe.rs:18 uses it and the files
+  must be identical. The gate therefore refuses `thread`/`JoinHandle` under `ffi/` instead (Built into this plan; groups
+  3, 7).
+- Local binary and remote build-script dependencies bypassed the supply-chain controls: accepted. KtSdk bans `files(`,
+  `fileTree(`, `apply(from`, `buildscript {`, `classpath(` and `srcDir` into build/; KtBinary refuses tracked binaries
+  under mobile/ (group 3).
+- The `build/` skip was a CI-only blind spot: accepted. The skip is dropped and tracked files under build/ and .gradle/
+  are refused (group 2).
+- MA:74's Pixel-and-Samsung adb test was not in any question: accepted. MA:74 joins Q55's doc edit; Pixel and Samsung go
+  to M7 before release (Q55, Q56).
+- The boot path was called proven while ARM and 16 KB loading first ran on the owner's phone: accepted. An ARM and 16 KB
+  leg runs on a ps16k image with translation if the probe finds it, plus static ELF checks. Lessons item 4 now names
+  what CI cannot run, and Q56 asks about it.
+- Rule 1 and library classes in an unshrunk APK: accepted. Q59 (b) asks for the reading, and the dex reference scan of
+  `com.keepcrypt` classes lands in M5 (group 5).
+- Doc edits and departures with no question: accepted. BP:270 joins Q57. The phone snapshot confirm is dropped to match
+  MA:176 and swb:121 (automatic, warning shown). Q53's edit list adds BP:73, MA:23's iOS cell and a line under
+  architecture.png, which has no source to redraw.
+- A discard during a long FFI call was undefined: accepted. Generation counter with the lock released during the call,
+  plus FFI and emulator tests (Built into this plan; groups 8, 14).
+- The `age -d` passphrase channel was undefined (raised twice): accepted. An androidTest-only status key piped into the
+  pty driver, never logged, with a gate rule pinning where it appears (groups 3, 18).
+- Tombstones, vendor swap and the contradictory crash-path text: accepted. One crash design (replaced handler, nothing
+  logged, crash buffer and DropBox checked); tombstones and swap are in Q58 as residuals. (Q75, 2026-10-21: Android's
+  pre-handler still logs the exception to the crash buffer, an accepted residual; the check now requires only the
+  trigger's crash there.)
+- Content capture was not addressed: accepted. A root opt-out flag and an emulator check (finding 10; group 14).
+- The 16 KB check missed graphics-path: accepted. Every 64-bit `.so` in the APK is checked (group 5).
+- No overflow checks in ffi: accepted, for both FFI crates, with the canary profile pin (group 7).
+- Wrong jni-sys history: corrected (0.4.0, 2023-09-25, already needs jni-sys-macros; finding 1, New dependencies).
+- Emulator jobs could not receive the build job's APKs: accepted, option (a). One job builds once and runs the emulators
+  in turn on the same bytes; no fourth action (Built into this plan; group 6).
+- screenrecord's 180 s cap and raw-frame volume: accepted. Segments of 170 s or less at a small size, streamed through a
+  checker that keeps nothing; the limits are probe facts (finding 7; group 6).
+- Process-global slot vs one instrumentation run; no driving mechanism stated: accepted. `am instrument` per class and
+  per halting test, the crash test judged from the shell, in-process ViewModel driving plus UiAutomator on Public
+  screens; data-sensitive visibility is a probe fact (group 6).
+- Strict locking could not be green at commit 10: accepted. All dependencies are declared up front, with a two-commit
+  bootstrap and a gate rule against a leftover switch (group 4).
+- No `.sha256` on Maven Central: accepted. Review per repository (SHA-1 plus PGP for Central) by a committed script
+  (finding 11; group 4).
+- Platform facts arrived after dependent work: accepted. Stage B is now the gates plus a minimal app and emulator probe
+  before any Rust or screen code; it is a stage on the milestone branch, because CLAUDE.md allows one branch per
+  milestone, so there is no throwaway PR.
+- The Camera2 scanner was first tested at the very end: accepted. Canned YUV-frame JVM tests and the owner's P0b right
+  after commit 18 (group 16).
+- P2 and P3 could not be completed as written: accepted. Rewritten in order, with C, the rolls, the passphrase and D on
+  paper.
+- P4 typing slips were ambiguous: accepted. A Seal ID check against `p4-seal-ids.txt` before every check.
+- Commits that could not pass their own proof: resolved by the new order. The unsafe canary is placed at commit 9 in
+  lib.rs and moved at 10; `nm -D` is at commit 13 in the cross legs; the static first screen comes before the real
+  self-test at 14.
+- Test-source scope and the passphrase hand-off: accepted. Scoped rule lists with fixtures (group 3); hand-off as above.
+- NDK rotation and AGP's default NDK: accepted. `ndkVersion` is pinned and the cross legs install r30 with sdkmanager
+  if it is missing (groups 4, 12).
+- No Android job budget, timeout or flake rule: accepted. Measured budget, `timeout-minutes`, image and Gradle caches,
+  and a one-re-run rule for boot failures only (Built into this plan).
+
+### Sources (outside facts above; read 2026-10-17, nothing downloaded)
+- [S1] https://crates.io/api/v1/crates/uniffi/0.32.2/dependencies
+- [S2] https://crates.io/api/v1/crates/uniffi_pipeline/0.32.2/dependencies
+- [S3] https://crates.io/api/v1/crates/tempfile/3.27.0/dependencies, https://docs.rs/crate/tempfile/3.27.0/features
+- [S4] https://crates.io/api/v1/crates/uniffi/0.29.1/dependencies, https://raw.githubusercontent.com/mozilla/uniffi-rs/main/CHANGELOG.md,
+  https://mozilla.github.io/uniffi-rs/latest/kotlin/gradle.html, https://repo1.maven.org/maven2/net/java/dev/jna/jna/maven-metadata.xml
+- [S5] https://crates.io/api/v1/crates/jni/0.22.4/dependencies
+- [S6] https://crates.io/api/v1/crates/jni-sys (0.3.0 2017-07-21; 0.4.0 2023-09-25 and 0.4.1 2026-01-09 -> jni-sys-macros;
+  0.3.1 2026-03-22 re-exports 0.4), https://crates.io/api/v1/crates/jni-sys/0.4.0/dependencies
+- [S7] https://blog.rust-lang.org/2024/09/05/Rust-1.81.0/; Rust 1.98.1 library/std/src/sys/personality/gcc.rs:224-229,
+  library/std/src/panicking.rs:886-889
+- [S8] AOSP SurfaceFlinger.cpp:7110-7111, :7250-7251; packages/Shell/AndroidManifest.xml:199-200;
+  UiAutomationConnection.java:229-249
+- [S9] AOSP WindowManagerService.java:1029-1048; WindowState.java:1940-1946; Settings.java `DISABLE_SECURE_WINDOWS`
+- [S10] AOSP PopupWindow.java:1654-1695; https://developer.android.com/about/versions/11/behavior-changes-11
+- [S11] https://developer.android.com/reference/kotlin/androidx/compose/ui/window/DialogProperties (default `Inherit`)
+- [S12] androidx ProfileInstaller.java:64-65, :391-392; androidx.core and androidx.startup manifests
+- [S13] https://dl.google.com/dl/android/maven2/ metadata and POMs: compose foundation and ui 1.12.1, activity-compose
+  1.13.0, AGP 9.3.3, ui-graphics-android 1.12.1 -> graphics-path 1.0.1, androidx.test runner 1.7.0, uiautomator 2.4.0
+- [S14] https://repo1.maven.org/maven2/ metadata and POMs: zxing core 3.5.4, Kotlin Compose plugin 2.4.20, junit 4.13.2
+- [S15] https://gradle.org/releases/ (9.7.1, 2026-08-19)
+- [S16] https://developer.android.com/ndk/downloads ("Latest LTS Version (r30)", 30.0.16248370)
+- [S17] https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md (image 20261012)
+- [S18] https://github.blog/changelog/2024-04-02-github-actions-hardware-accelerated-android-virtualization-now-available/
+- [S19] https://developer.android.com/guide/practices/page-sizes
+- [S20] https://developer.android.com/google/play/requirements/target-sdk
+- [S21] AOSP frameworks/av cmds/screenrecord/screenrecord.cpp:102, :1330, :1363-1364; android12-release :138,
+  :845-860; main ~:1059
+- [S22] AOSP ScreenRecordingCallbackController.java:71-94
+- [S24] https://kotlinlang.org/docs/gradle-configure-project.html (Kotlin Gradle plugin compatibility)
+- [S25] https://developer.android.com/develop/ui/compose/compiler (Compose 1.12 needs compileSdk 37 and AGP 9)
+- [S26] AOSP Settings.java (`AIRPLANE_MODE_ON`, `WIFI_ON` readable)
+- [S27] https://docs.gradle.org/current/userguide/dependency_verification.html (checksums and trusted PGP keys)
+- [S28] https://f-droid.org/docs/Reproducible_Builds/
+- [S29] https://github.com/sparrowwallet/sparrow/releases (Sparrow 2.5.5, 2026-09-17)
+- [S30] AOSP change "Add secure setting disable_secure_windows", bug 309153458
+  (https://gerrit.omnirom.org/plugins/gitiles/android_frameworks_base/+/95082e1306f24fa60b80a78ad033036efbc2f5e5%5E2)
+- [S31] https://dl.google.com/android/repository/sys-img/ `sys-img2-5` (default, google_apis, google_apis_ps16k image lists
+  and sizes); AOSP ViewRootImpl.java:5509-5539, ContentCaptureContext.java (`FLAG_DISABLED_BY_FLAG_SECURE`)
+- [S32] HEAD requests on repo1.maven.org for `.sha256`, `.sha1`, `.asc` (kotlin-stdlib 2.4.20, junit 4.13.2, zxing core
+  3.5.4) and dl.google.com (activity-compose 1.13.0)
+
+### Re-plan for Compose Multiplatform (Q64, 2026-10-20)
+
+Amended by Q73 (2026-10-20): M5 ships the Android app only; "Re-cut after Q73 (2026-10-20)", before Review, wins
+wherever the two differ.
+
+Numbering note (2026-10-20, corrected at commit 8o-b): commits 8k and 8l went to emulator fixes (the app-window owner
+line) before this re-plan landed, so the re-plan's planned 8k and 8k-b were written as 8m and 8n. Commits 8l-b to 8l-f
+then went to further emulator fixes, so the re-plan's planned 8l, 8n, 8o, 8p, 8q and 8r are written as 8o, 8p, 8q, 8r,
+8s and 8t, each with its -b where planned (8l-b is 8o-b); 8m stays removed. The plan text below keeps its own numbers.
+
+
+Written on 2026-10-20 at `m5-android` 057130d, as research only. No code was written and nothing outside this file was edited. Revision 2 settles every finding from the critique; the Critique log at the end says how. Stages A and B (commits 1-8j) stand. From Stage C on, this subsection replaces "Commit order on `m5-android`" (stages C-F) and amends the plan groups listed under "Plan text this replaces". Nothing below is written until the owner answers Q65-Q72 (CLAUDE.md Workflow 2 and 8). Where a choice is the lead's, it is a dated lead decision (M5-19 onward) that the owner can override. Q65-Q72 hold only what CLAUDE.md keeps for the owner. The install route and the tested iOS versions are M6 questions and are not asked now.
+
+Line numbers are `m5-android`'s at 057130d, after commit 2's doc edits. Main's BP:295/296 are BP:298/299 here, and main's BP:33-35, :47 and :72-74 are BP:35-37, :49-57 and :75-77 here. `todo.md:N` means line N on this branch.
+
+**What changes, in short**
+- **One set of screens.** The screens are written once in Kotlin (`commonMain`) and compiled twice: for Android, as now, and for iPhone through Kotlin/Native.
+  - On Android, Compose Multiplatform 1.12.1 wraps the Jetpack Compose 1.12.1 already pinned. The Android UI code does not change.
+  - The Android classpath still changes. About 15-25 wrapper modules are added, and the savedstate family rises from 1.3.2 to 1.4.0 [C3]. The exact delta comes from the lockfile and is named in Q67.
+- **Seed logic stays in core and `keepcrypt-ffi`.**
+  - Android reaches it through JNI (`libkeepcrypt.so`), as now.
+  - iPhone reaches it through a two-function C interface in a static library, `libkeepcrypt_capi.a`. Kotlin/Native declares that interface by cinterop.
+  - The Rust library is never packed into a Kotlin klib or framework. Each linked binary names its one Rust library explicitly. In M5 those binaries are the iOS test executables; in M6 it is the app.
+  - There is no XCFramework and no Swift binding. Swift never calls Rust.
+- **iPhone capture handling** (redaction while captured, discard on screenshot, app-switcher cover) lives in a small Swift host around the Compose view. The host tells the shared model what happened. This is M6.
+- **New for the owner to approve:**
+  - two Gradle plugins;
+  - the Compose Multiplatform libraries and their iOS builds (Skia among them);
+  - the Kotlin/Native compiler and the Kotlin klib commonizer;
+  - three Kotlin/Native toolchain archives from a third download host, one of which is the LLVM code generator;
+  - a macOS workflow.
+
+**Outside facts** (2026-10-20, from Maven metadata, `.module` files and POMs, `Last-Modified` from HEAD requests, release notes and docs; nothing downloaded; the cool-off cutoff is 2026-10-06)
+
+| Item | Fact | Source |
+| --- | --- | --- |
+| Compose Multiplatform `org.jetbrains.compose.*` | 1.12.0 (2026-08-25), **1.12.1 (2026-09-22, clears the cutoff)**, 1.12.2 (2026-10-15, clears 2026-10-29). 1.12.2's only iOS-specific fix is a crash when a `TextField` loses focus because a `Dialog` appears; it also has a multi-platform `graphicsLayer` shadow fix | [C1] |
+| What 1.12.1 holds | runtime, ui and foundation 1.12.1 on Jetpack 1.12.1. Material3 exists only as 1.12.0-alpha03. Lifecycle 2.11.0, savedstate 1.4.0, navigationevent wrapper 1.1.0 (it maps to androidx navigationevent 1.1.1), skiko 0.150.1 (Skia m150) | [C2], [C4] |
+| 1.12.1 on Android | `foundation-android` 1.12.1 is a 6 KB stub that depends on `androidx.compose.foundation:foundation:1.12.1`, the pinned version. `ui-android` 1.12.1 also requires `androidx.savedstate:savedstate-compose` 1.4.0 (Google's Maven, 2025-11-05), while `expected/shipping-runtime-classpath.txt` has the savedstate family at 1.3.2, so the APK's savedstate rises to 1.4.0. It also declares `savedstate-ktx` 1.3.1, `window` 1.5.0, `activity-ktx` 1.7.0 and `profileinstaller` 1.4.0, which may already be present at higher versions or excluded; unchecked until the lockfile. About 15-25 `org.jetbrains.compose.*` / `org.jetbrains.androidx.*` wrapper modules are added (Apache-2.0) | [C3] |
+| 1.12.1 on iOS, per target (`iosArm64`, `iosSimulatorArm64`) | About 47 coordinates before Gradle resolves redirects: Compose ui, ui-uikit (cinterop klib), graphics, text, foundation, animation and runtime; the iOS builds of androidx runtime 1.12.1, lifecycle 2.11.0, savedstate 1.4.0, navigationevent 1.1.1, collection 1.5.0 and annotation 1.9.1; atomicfu 0.28.0; kotlinx-coroutines-core (≥ 1.9.0, Gradle settles the version); kotlinx-serialization-core 1.7.3; **skiko-iosarm64 0.150.1, 57,722,494 B, a prebuilt Skia static library** (2026-07-02). All from Google's Maven and Maven Central, inside the existing content filters | [C4] |
+| Build-time Kotlin artifacts | The KMP plugin also resolves `org.jetbrains.kotlin:kotlin-klib-commonizer-embeddable:2.4.20` for the shared `iosMain`. `kotlin-test` resolves `kotlin-test-junit:2.4.20` on the JVM. Both are on Central, dated 2026-09-07 | [C9] |
+| Checksums and signatures | `.sha256`, `.sha512` and `.asc` exist for ui-iosarm64, skiko-iosarm64 (klib and cinterop klib), androidx runtime-iosarm64 and collection-iosarm64. `kotlin-native-prebuilt` 2.4.20 has `.asc` and `.sha1` but no `.sha256` (404), so it takes M5-11's PGP path | [C4] |
+| Kotlin | 2.4.20 (2026-09-07), unchanged. 2.4.21 (2026-10-08) is inside the cool-off and has no Native, Xcode or security fix relevant here. 2.5.0 is planned for December 2026 | [C5] |
+| Tested range of Kotlin 2.4.20-2.4.21 | Gradle ≤ 9.7.0, AGP ≤ 9.3.1, **Xcode 26.4**. Our Gradle 9.7.1 and AGP 9.3.3 are already outside it on Android (finding 8). KGP 2.4.20 warns only when AGP is too low | [C6] |
+| AGP 9 and KMP | A KMP module needs `org.jetbrains.kotlin.multiplatform` plus `com.android.kotlin.multiplatform.library` (9.3.3, Google's Maven, 2026-09-17). Combining KMP with `com.android.application` or `com.android.library` in one module is deprecated in AGP 9 (opt-in only) and removed in AGP 10. The KMP library plugin has one variant, no `externalNativeBuild` and no BuildConfig. Its current DSL is `kotlin { android { ... } }`; host and device tests are off unless `withHostTestBuilder {}` / `withDeviceTestBuilder {}` are declared | [C7] |
+| The `org.jetbrains.compose` Gradle plugin | Its `compose.*` aliases are deprecated since 1.10.0-beta01. Its POM brings `hot-reload-gradle-plugin` 1.2.0. It is not needed when the libraries are declared by direct coordinates beside the pinned `org.jetbrains.kotlin.plugin.compose` 2.4.20 | [C8] |
+| Kotlin/Native compiler | `kotlin.native.distribution.downloadFromMaven` defaults to true in 2.4.20. `kotlin-native-prebuilt:2.4.20:<host>@tar.gz` resolves through a Gradle configuration, so it falls under locking and `verification-metadata.xml`. macos-aarch64 is 290,167,116 B; linux-x86_64 is 219,971,249 B. The Kotlin/Native stdlib and platform libraries ship inside this bundle; they are not separate Maven artifacts | [C9] |
+| Kotlin/Native toolchain archives | KGP's `KotlinNativeBundleBuildService.downloadNativeDependencies` loads the bundle's `konan.properties` with no overrides (`airplaneMode = false` as shipped). konan's `DependencyProcessor` fetches anything missing from `dependenciesUrl = https://download.jetbrains.com/kotlin/native` (302 to download-cdn.jetbrains.com). It checks **no hash and no signature**, outside Gradle verification. It **skips** any dependency listed in `dependencies/.extracted` whose directory is non-empty, without looking at it. It **extracts without downloading** any archive already present in its cache directory, then deletes the archive. macOS arm64 needs `llvm-21-aarch64-macos-essentials-97.tar.gz` (151,150,049 B, 2026-04-20, at `.../kotlin/native/resources/llvm/21-aarch64-macos/`), `lldb-4-macos.tar.gz` (64,230,999 B) and `libffi-3.3-1-macos-arm64.tar.gz` (17,037 B). All three publish `.sha256` and `.asc`, which the fetcher never reads. The LLVM bundle is Kotlin/Native's code generator: it emits every machine instruction of the shipped Kotlin code. iOS sysroots come from the local Xcode | [C10] |
+| Xcode | Kotlin 2.4.20's `konan.properties` has `sdkVersion.ios = 26.4`, toolchain id `xcode_26.4_17E192`. This Mac has only Xcode 27.1 (27A9275) with iOS 26.5 and 27.0 simulators, and Kotlin warns "Xcode Version Too High". GitHub's `macos-26-arm64` image 20261013 has Xcode 26.0.1-26.6 and defaults to 26.6. `Xcode_26.4.app` is a symlink to 26.4.1 (17E202), so 17E192 is not present. It has iOS 26.2, 26.4 and 26.5 simulators. JDK 21 is the default; JDK 17 is at `$JAVA_HOME_17_arm64` | [C11] |
+| Compose on iOS | "Stable and production-ready" since 1.8.0 (May 2025). The accessibility tree is built lazily, on request. Support for VoiceOver braille displays is not documented either way. Text goes through Skia's paragraph layout. Compose's `FontCache` keeps Skia's `ParagraphCache` on (`PlatformFont.skiko.kt:294-329`, v1.12.1); the cache keeps a copy of each paragraph's text for up to 128 entries (Skia m150 `ParagraphCache.cpp`). There is no public switch, but Compose calls `fonts.paragraphCache.reset()` when a new typeface is registered (`:329`). Dialog and Popup layers attach under the window, outside the Compose host view (`ComposeLayersViewController.ios.kt:177-196`) | [C12] |
+| Minimum iOS | Kotlin/Native's `minVersion.ios = 15.0`. Compose 1.12 supports 14+. BP:76 says 17+. The required macos-26 legs set `IPHONEOS_DEPLOYMENT_TARGET=17.0` | [C13] |
+| The repo | `bitwilll/keepcrypt` is public, so GitHub's standard macOS runners cost nothing | `gh repo view` |
+
+**What the research did outside the clone.** Two Xcode commands ran on the owner's Mac.
+- `xcrun simctl list runtimes` triggered CoreSimulator's first-launch component install ("Install Started ... Install Succeeded"; framework 1174.9.2 replacing service 1171.7). That changed the Xcode simulator components on this Mac.
+- `xcodebuild -version` was run to read the Xcode version. No change from it was observed.
+
+Nothing else changed on the Mac, and nothing in the clone was edited, committed or pushed.
+
+From now on, `xcrun simctl`, `xcodebuild`, `xcrun devicectl`, Instruments and the Xcode app do not run on the owner's Mac without the owner's yes (Q56, "nothing installed on this Mac"). Symbols are read with `llvm-nm` / `llvm-objdump` from rustup's `llvm-tools-preview`, as the gate already does. The compiler and linker shims that `cargo` has used since M1 are unchanged. Commit 8k adds a lessons.md entry: Mistake, an Xcode command assumed read-only; Root cause, first-launch installs; Rule, the list above.
+
+**M5 lead decisions, re-plan** (2026-10-20. Each holds under Q65 (a) and is withdrawn or reworded if the owner picks otherwise.)
+- M5-19: the Gradle root stays `mobile/android`.
+  - 377 gate fixtures sit under `scripts/testdata/banned-api/**/mobile/android/`.
+  - About 130 path references name it: banned-api-check.sh 87, android-deps-review.py 12, entropy-android.yml 17, canaries.sh 7, android-gradle.sh 2, plus `.gitignore`, the canary library and two deps-review fixtures.
+  - The KMP template layout would rewrite all of them for no security gain. BP:55-57's tree says what the directories hold (Q72).
+- M5-20: the platform seams are Kotlin interfaces in `commonMain`, implemented in each platform's code and passed in at its entry point.
+  - The seams: documents, QR scanner, offline monitor, motion source, airplane-settings opener, monotonic clock, and the build's `testRegistry` flag (a KMP library has no flavours, so `:app` passes it in from `BuildConfig`). M5-56 adds the UTC date.
+  - The only `expect`/`actual` is `Native`, so the iPhone target compiles in M5 with no iOS seam code and no stub that pretends to work.
+- M5-21: one dispatch call per boundary.
+  - `keepcrypt-ffi` gains `dispatch(op: u32, input: &[u8]) -> Zeroizing<Vec<u8>>` over the safe calls. Op numbers and every layout are defined once in `wire.rs`, and Kotlin has one `Native.call(op, input)`.
+  - Android exports `Java_com_keepcrypt_entropy_ffi_Native_call` and `JNI_OnLoad` only, so group 12's symbol check narrows from `Java_com_keepcrypt_entropy_ffi_Native_*` to exactly those two (amended by M5-40: and secp256k1-sys 0.10.1's four C functions, by exact name).
+  - Q53's design (free functions, no handle, a status byte first, decoded once in `Wire.kt`) is unchanged. Only the number of exports drops.
+- M5-22: the `org.jetbrains.compose` Gradle plugin is not applied. The libraries are declared by direct coordinates. There is no material3 (alpha only), no resources library and no navigation library.
+- M5-23: Kotlin targets `iosArm64` and `iosSimulatorArm64` only, declared on every host and never conditionally, so a lockfile does not depend on the host that wrote it.
+  - There is no `iosX64`; the runners and this Mac are arm64.
+  - The Rust targets are `aarch64-apple-ios` and `aarch64-apple-ios-sim`, already in rust-toolchain.toml:11-12.
+  - The minimum is iOS 17.0 everywhere. `ios-rust.sh` sets `IPHONEOS_DEPLOYMENT_TARGET=17.0`, and Kotlin/Native gets `osVersionMin` 17.0 for both targets. The exact switch is a probe fact; it is one allow-listed line.
+- M5-24: Compose Multiplatform stays at 1.12.1 for M5.
+  - 1.12.2's iOS fix concerns a `TextField` losing focus to a `Dialog`, and the app has neither (todo.md:10812-10813, "No dialogs, popups ... or text fields at all"). Its shadow fix is cosmetic.
+  - M5 plans no later bump, and these fixes do not trigger M5-13's stop.
+- M5-25: `mobile/ios/` stays empty in M5. The gate refuses any tracked file under it until M6's first gate commit adds the Swift and Xcode rules.
+- M5-26: the Rust static libraries for iOS are built by `scripts/ios-rust.sh`, never by Gradle or Xcode (M5-9's rule for Android).
+  - It runs plain cargo for both targets: default features into `target/ios/`, and the feature set of group 13's JVM host library into `target/ios-test/`.
+  - It runs the release scan on each output and prints each SHA-256.
+- M5-27: the iOS expected lists live in `mobile/android/expected/` beside Android's (`ios-framework-classpath.txt`, `ios-test-imports.txt`), so CI compares every list from one place.
+- M5-28 (only if Q68 is approved): Kotlin/Native's data directory is project-local, `mobile/android/.konan/`, set by `konan.data.dir` in `gradle.properties`.
+  - It is git-ignored, refused by the Build rule if tracked, emptied at the start of every CI run and never cached by `actions/cache`.
+  - Nothing reads from or writes to `~/.konan`.
+- M5-29: the iOS tests run one test class per process, as the JVM tests do (group 13's forked JVM per class), because a halt latches the process-wide slot for good.
+  - CI takes the class list from the JVM run's results and runs the simulator test task once per class with a `--tests` filter. Each run is a fresh simulator process.
+  - There is no reset call in the FFI.
+
+**Module layout** (M5-19. MA:24's "three modules" becomes four Gradle modules, plus the iOS host in M6.)
+
+| Module | Plugins | Holds |
+| --- | --- | --- |
+| `:core-ffi`, becomes KMP | `org.jetbrains.kotlin.multiplatform`, `com.android.kotlin.multiplatform.library` | `commonMain`: `Wire`, `Core`, `Secret`, `KcHalt`, `expect object Native`. `androidMain`: the `actual` over JNI (`System.loadLibrary("keepcrypt")`). `iosMain`: the `actual` over cinterop (`src/nativeInterop/cinterop/keepcrypt.def`). Tests: `commonTest`, run as `androidHostTest` (JVM, host library, `forkEvery = 1`) and as `iosSimulatorArm64Test` (one class per run, M5-29). The ZXing round trips stay in `androidHostTest` (group 13) |
+| `:screens`, new, KMP | the same two plus `org.jetbrains.kotlin.plugin.compose` | `commonMain`: every screen, `Screen` and `screenId`, `CeremonyModel` (the plan's `CeremonyViewModel`, now platform-free), `Timers`, the pads, `QrMatrix`, `SealCard`, braille faces, `FirstLaunch.kt` (77 lines, moved from `:secure-ui`), and the seam interfaces (M5-20). `iosMain` (M6): `MainViewController()` and `IosEvents` |
+| `:secure-ui` | `com.android.library` | Android only: `SecureActivity`, `OfflineMonitor` (`Settings.Global`), the capture monitors |
+| `:app` | `com.android.application` | `MainActivity`; the `shipping` and `withTestRegistry` flavours, which pass `testRegistry` into `:screens` (M5-20); a ViewModel holder for `CeremonyModel` whose `onCleared` calls `wipeAll()`; the Android seam ends (`files/Documents.kt`, `camera/GoAheadScanner.kt` with ZXing, the airplane-settings intent, the `SensorManager` source); `androidTest`, unchanged (`testBuildType = "release"`, and flavours exist only here) |
+| `:capture-control` | `com.android.application` | as now, depending on `:screens`, where the composables move |
+| `mobile/ios/` (M6) | Xcode project, no packages | a SwiftUI/UIKit host around `ComposeUIViewController`, the Swift capture layer, XCTest UI tests |
+
+**The shared Kotlin API over the bridge**
+
+```kotlin
+// :core-ffi commonMain
+internal expect object Native { fun call(op: Int, input: ByteArray): ByteArray }
+// androidMain: the actual is the JNI method itself, `actual external fun call(...)` after System.loadLibrary (M5-41)
+// iosMain:     actual over kc_call: input and a kc_max_out()-sized output pinned (usePinned/addressOf),
+//              the returned length copied out, the output buffer filled with 0 before return;
+//              a negative return raises KcHalt
+```
+
+- [x] `Wire.kt`, `Core.kt` (`KcHalt`, no `catch`), `Secret` (a byte-array holder with `wipe()` and no content `toString`) and `Native`'s `expect` go in `:core-ffi` `commonMain`. The two `actual`s are the only platform code in `:core-ffi`. Today's placeholder `Native.kt` (8 lines) and `Screen.kt` (14 lines) move first, in commit 8o.
+  - Proof: `commonTest` passes as `:core-ffi:androidHostTest` and as the per-class `:core-ffi:iosSimulatorArm64Test` runs, with the same class list and the same count in every class (both logs). The gate's `usePinned`/`addressOf` rule fires on a fixture outside `Native.ios.kt`.
+  - Proof (M5 commit 8q, partial: the moves; the expect object, its actuals, Wire, Core and Secret come with commits
+    10-14): the placeholder Native.kt is in core-ffi/src/commonMain (its comment names the two actuals to come);
+    Screen.kt and FirstLaunch.kt, from :app and :secure-ui, are in screens/src/commonMain, package
+    com.keepcrypt.entropy.screens, which MainActivity, ControlActivity and the three androidTest files import. The gate
+    is clean on the tree; the Kotlin compiles only in CI (no JDK or Gradle on this Mac).
+  - Moved to M6 by Q73 (8w): the iPhone `actual` and the per-class simulator runs; the Android `actual` and the JVM
+    run stay (M5-31), and the `usePinned`/`addressOf` rule now fires in `Native.ios.kt` too.
+  - Proof (M5 commit 14, partial: the JVM run is CI's): the expect object, its Android actual, Wire, Core and Secret
+    are in `:core-ffi` as group 13's commit-14 proof says, and `commonTest` runs as androidHostTest, one class per JVM.
+  Proof (CI, run 39554267960 at 89cf334, 1178 s): as group 13's first item; the Android `actual` is the only platform code in :core-ffi.
+- [x] Group 11's vectors, group 13's wrong-stage halt and the wire decoders run in `commonTest`. The same Kotlin tests then pass over JNI on the JVM and over the C ABI on the simulator, each class in its own process. The ZXing round trips stay JVM-only in `:core-ffi` `androidHostTest`, and the canned-frame scanner test stays in `:app`.
+  - Proof: the per-class counts in both jobs' logs. A planted wrong status byte fails both. A class that halts on purpose does not change the next class's result.
+  - Moved to M6 by Q73 (8w): the runs over the C ABI on the simulator; the JVM runs over JNI stay.
+  - Proof (M5 commit 14, partial: the per-class counts are CI's): group 11's vectors (DiceVectorsTest, RegistryTest),
+    the wrong-stage halt (WrongStageHaltTest) and the wire decoders (WireTest, WireMalformedTest, WireTablesTest) are in
+    `commonTest`; the ZXing round trips (QrRoundTripTest) in `androidHostTest`. The vector files are read through a
+    test-only `expect fun entropyFile`, whose JVM actual reads under kc.entropy.
+  Proof (CI, run 39554267960 at 89cf334, 1178 s): the JVM half, as group 13's JVM item (per-class counts above); the simulator half moved to M6.
+- [x] `CeremonyModel` and `Timers` in `:screens` `commonMain` own the slot's use exactly as group 14 says of `CeremonyViewModel`:
+  - they hold screen ids, page indices and `Secret` references only;
+  - long calls run on `Dispatchers.Default` behind "Working...";
+  - a discard during "Working..." calls `discard()` at once;
+  - the only `KcHalt` catch is `CeremonyModel.call`;
+  - the Android ViewModel in `:app` only holds the model.
+
+  Proof: group 14's tests, now in `commonTest`, pass on the JVM and on the simulator, including "59 s keeps, 60 s wipes" on the fake clock.
+  Moved to M6 by Q73 (8w): the simulator run; the JVM run stays.
+  Proof (M5 commit 15, partial: the JVM run is CI's): as group 14's items; :screens' commonTest (TimersTest,
+  CeremonyModelTest, CeremonyModelHaltTest, CeremonyModelRefusalTest (15f), PadsTest, DrawingTest) runs as
+  `:screens:testAndroidHostTest`, one class per JVM against the host library (screens/build.gradle.kts), and the Android
+  job builds it and requires each class's report, :secure-ui's too.
+  Proof (CI, run 39582638947 at 78f5720): all six classes reported and passed (TimersTest 8, CeremonyModelTest 23,
+  CeremonyModelHaltTest 1, CeremonyModelRefusalTest 1, PadsTest 5, DrawingTest 5), with :secure-ui's OfflineRuleTest 2;
+  the holder's one extra call, runTimers, is M5-45.
+  Proof (CI, run 39587437349 at 1d49e0a): the same classes green again at 15m; "screen ids, page indices and Secret references only" is read
+  as M5-49 says.
+
+**The iOS C-ABI bridge** (Q66 (a))
+
+Crates (the workspace grows from 4 members to 7: core, ffi, ffi/guard, ffi/jni, ffi/capi, pi/app, pi/sim):
+- `keepcrypt-ffi` (`ffi/`, rlib): unchanged role and rules. It keeps `#![forbid(unsafe_code)]` and core's clippy.toml byte for byte, and gains `dispatch` (M5-21).
+- `keepcrypt-guard` (`ffi/guard/`, rlib, new): `guarded(op, input)` locks, takes the stage out and runs `dispatch` under `catch_unwind`. On a panic it latches `Halted` and returns the halt status (Q53's text, moved).
+  - On its first call it installs the silent panic hook once (`std::sync::Once`), so neither boundary needs `JNI_OnLoad` for that.
+  - It has `#![forbid(unsafe_code)]`. Its clippy.toml is core's minus the one `catch_unwind` line.
+  - It holds the only `catch_unwind` in the workspace, in a crate with no unsafe code.
+- `keepcrypt-jni` (`ffi/jni/`, cdylib `libkeepcrypt.so`): JNI glue only (`Native_call`, `JNI_OnLoad`), over keepcrypt-guard and jni-sys =0.3.0. It now keeps core's clippy.toml byte for byte.
+- `keepcrypt-capi` (`ffi/capi/`, new): C glue only, over keepcrypt-guard.
+  - `crate-type = ["staticlib", "rlib"]` and `[lib] name = "keepcrypt_capi"`, giving `libkeepcrypt_capi.a`. The name differs from jni's `keepcrypt`, so no output names collide. The rlib lets its own integration tests link it.
+  - No new crates.io crate. Core's clippy.toml byte for byte.
+- `[profile.release.package.keepcrypt-capi]` and `...keepcrypt-guard` set `overflow-checks = true`. Release keeps `panic = "unwind"`.
+
+```c
+/* ffi/capi/include/keepcrypt.h, hand-written (no cbindgen, which would be a new tool under rule 11) */
+size_t  kc_max_out(void);
+int32_t kc_call(uint32_t op, const uint8_t *in, size_t in_len, uint8_t *out, size_t out_cap);
+/* returns the output length; a negative value is a shell bug, which halts. */
+```
+
+- [ ] keepcrypt-capi's `kc_call`:
+  - builds a slice only when `in_len > 0` (`in` may be null then), calls `guarded`, and copies the result into `out`; the result is zeroized on drop;
+  - never hands Rust memory across the boundary, so there is no free function;
+  - returns negative and latches `Halted` on an output larger than `out_cap` or a null pointer with a non-zero length;
+  - makes no callbacks into Kotlin (`staticCFunction` is banned);
+  - holds one operation and a `SAFETY:` line in every unsafe block (the existing deny lints).
+
+  Proof: integration tests in `ffi/capi/tests/` call `keepcrypt_capi::kc_call` / `kc_max_out` by Rust path, so they need no `extern "C"` declarations of their own. They cover group 8's stage and halt cases, a short `out_cap`, null pointers with zero and non-zero lengths, and a panic planted under `test-sources` that returns the halt status and leaves `Halted`. `cargo test -p keepcrypt-capi --locked` is green on the Mac (cargo, as since M1).
+  Moved to M6 by Q73 (8w).
+- [ ] The header agrees with the library. A test parses `keepcrypt.h`'s two prototypes and compares them with `llvm-nm -g --defined-only` of `_kc_*` in the built `.a`: exactly `_kc_call` and `_kc_max_out`.
+  - Proof: the test is green, and a planted extra `#[no_mangle]` export fails it.
+  - Moved to M6 by Q73 (8w).
+- [ ] One catch. The gate's FFI rule allows `catch_unwind` only in `ffi/guard/src/lib.rs`, and `#[no_mangle]`/`extern "C"`/JNI exports only in `ffi/jni/src/lib.rs` and `ffi/capi/src/lib.rs`. Unsafe code is allowed only in the `keepcrypt-jni` and `keepcrypt-capi` crates, `ffi/capi/tests/` included. M5-8's `thread`/`JoinHandle` ban covers `ffi/src/`, `ffi/guard/src/`, `ffi/jni/src/` and `ffi/capi/src/`.
+  - Proof: fixtures for each placement. In the canaries, core's, ffi's, jni's and capi's clippy.toml are identical and guard's differs by exactly the one line (canaries.sh:485-494 grows). check-path-deps pins seven members (canaries.sh:380-390).
+  - Proof (M5 commit 8p, partial: the gate's rule; the clippy.toml and member pins come with the crates at commit 9, and
+    M5-8 narrows the thread ban to the crates' src/ in Stage C, before commit 10): catch_unwind only in
+    ffi/guard/src/lib.rs, once (`ffi-catch-unwind-in-jni-lib`, `-in-capi-lib`, `-in-guard-other-file`, the
+    `-second-in-guard-lib` pair, `-use-line`); exports only in ffi/jni/src/lib.rs and ffi/capi/src/lib.rs
+    (`ffi-export-in-guard-lib`, `-in-capi-other-file`); JNI names only under ffi/jni/ (`ffi-jni-names-in-capi`,
+    `-onload-in-guard`, `-function-name-in-safe-layer`) and only the "system" ABI in its lib.rs (two cases beside a
+    guard); a boundary export needs guard's one catch, reported at the boundary file (`ffi-capi-export-*`,
+    `ffi-jni-*-without-catch-unwind`); thread, Rule1's hashing and FailOpen cover the new crates; `clean-ffi` holds a
+    guard, a jni and a capi lib.
+  - Moved to M6 by Q73 (8w): keepcrypt-capi, so the workspace has six members (M5-32); guard's one catch and jni's
+    exports stay. Amended by 8p-d and 8p-e (review): ffi/capi/src/lib.rs is no export site in M5, and the shapes
+    commit 12 meets are these. Exports only in ffi/jni/src/lib.rs, which holds no macro_rules, and each export's own
+    body calls `keepcrypt_guard::guarded(` by that path; only the crate root's `#[unsafe(no_mangle)]` JNI_OnLoad, with
+    no export_name, is exempt. The one catch is the path call `std::panic::catch_unwind(` in the body of the crate
+    root's `fn guarded` in ffi/guard/src/lib.rs (not a fn in a mod, an impl or another fn, nor a macro_rules body).
+  - Proof (M5 commit 8p-d, review; the B2r findings that the split no longer tied an export to the catch and that an
+    alias of the one catch could cross crates): the gate's FFI rule is the guard/jni split alone (M5-32): an export
+    is allowed only in ffi/jni/src/lib.rs (ffi/capi/src/lib.rs is no boundary in M5), and there each export's own
+    body calls `keepcrypt_guard::guarded(` (ffi_export_scan; JNI_OnLoad exempt, as it runs before any session
+    exists; an export with no body is a hit); in ffi/guard/src/lib.rs every catch_unwind but the path call
+    `std::panic::catch_unwind(` in the body of fn guarded, once, is a hit (ffi_guard_scan: a use line naming it,
+    pub or not, a rename, a re-export, a shorter path, the function as a value, a wrapper fn, a macro, a second call),
+    and that call is what a jni export requires. The review's trees, clean before: an export calling
+    keepcrypt_ffi::dispatch beside a guard holding the catch gives one hit at its fn line; `pub use
+    std::panic::catch_unwind as recover;` a hit at that line (with the export and the missing catch, as that tree
+    has no other); a wrapper fn holding the catch a hit at that call (with the missing catch, as guarded holds
+    none). Built cases: eight `ffi-jni-*-beside-the-guard`
+    (the safe layer called directly, the second of two exports, guarded through a use line or a helper, guarded only
+    in a comment and a string, an export_name fn, a RegisterNatives extern "system" fn, a no_mangle static), each
+    pinned to its line by expect's new `atline`; `clean-ffi-jni-exports-each-calling-guarded`;
+    `ffi-catch-unwind-reexport-beside-a-jni-export`. Fixtures: `ffi-catch-unwind-use-rename`, `-pub-use-reexport`,
+    `-use-group-line`, `-in-guard-wrapper-fn`, `-in-guard-macro`, `-short-path-in-guard`, `-as-value-in-guard`,
+    `-second-in-guarded`; the three capi export fixtures are `ffi-export-*-in-capi-lib`, the capi built case is
+    `ffi-jni-export-beside-a-guard-without-catch-unwind`, and clean-ffi holds no capi. On gate copies, the path
+    form off (any catch_unwind in guarded counts) fails `-as-value-in-guard` and `-short-path-in-guard`, and the fn
+    guarded condition off fails `-in-guard-wrapper-fn` and `-in-guard-macro`. `--selftest` 1371 passed, 0 failed under
+    sh and /bin/dash (1344 before: +8 guard fixtures, +2 Kt fixtures, +7 KtBinary magic cases, +8 tie cases, the clean
+    case and the re-export case; the capi fixtures renamed, none dropped). On one gate copy with HEAD's guard rule, the
+    export scan off, the KcHalt exemption on any module's commonMain, a lower-case .def check, four Mach-O magics and
+    the ELF, ar and zip magics dropped, exactly 23 cases fail: `-use-rename`, `-short-path-in-guard`,
+    `-as-value-in-guard`, `-in-guard-wrapper-fn`, `-in-guard-macro`, the re-export case, the eight tie cases, the two
+    Kt fixtures and the seven magic cases. `canaries.sh` PASS: all 76 checks ran; the gate on the tree clean (285
+    files); fmt, both clippy commands, `cargo test --workspace --locked` (21 suites, 445 passed, 3 ignored) and the
+    test-sources run (17 suites, 269 passed, 1 ignored) unchanged.
+  - Proof (M5 commit 8p-e, review; the B2q findings): the site took any fn named guarded, so a catch-and-return
+    `guarded` in a mod (`keepcrypt_guard::raw::guarded`), an impl (`Recover::guarded`) or nested in a public wrapper
+    left keepcrypt-guard, and one in a mod satisfied the required site while the crate root's guarded held no catch.
+    The site is now the crate root's fn guarded only (its body opens at brace depth 0), outside any macro_rules
+    definition. The tie exempted any fn named JNI_OnLoad, so one in a mod or exported as the Java_ symbol could call
+    the safe layer while the .so still exported just Native_call and JNI_OnLoad; now only the crate root's no_mangle
+    JNI_OnLoad without export_name is exempt. A macro_rules export in ffi/jni/src/lib.rs left later exports unchecked;
+    macro_rules is now a hit there. The review's trees (tA, tA2, tB, tB2, P1-P6), clean before, each give their hits.
+    Fixtures: `ffi-catch-unwind-in-guard-submodule-guarded`, `-impl-method-guarded`, `-nested-fn-guarded`,
+    `-macro-inside-guarded`, `-paren-macro-inside-guarded`. Built cases: `ffi-jni-export-beside-a-guard-whose-catch-
+    is-in-a-mod` (its catch's hit and the missing site), and nine `ffi-jni-*-beside-the-guard` pinned by atline
+    (`-guarded-of-a-local-mod` and `-no-mangle-static-before-an-export`, for the two untested 8p-d branches; six
+    `-onload-*` shapes; `-macro-written-exports`). `ffi-jni-extern-system-without-catch-unwind` held a JNI_OnLoad
+    without no_mangle, now a tie hit too, so it holds an extern "system" fn that calls guarded and still gives only
+    the missing site. Mutants, one per gate copy, each failing exactly the cases named: the old site rule 4, site
+    depth unchecked 3, macro_rules unchecked 2, a macro's ( and [ unread 1; the old exemption 6, and with no_mangle,
+    export_name or depth unchecked 1 each; no macro_rules hit 1; the `p4 != "::"` and `;` branches 1 each (22 in
+    all). `--selftest` 1388 passed, 0 failed under sh and /bin/dash (1373 before: +5 fixtures, +10 built cases).
+    `canaries.sh` PASS: all 76 checks ran; the gate on the tree clean (285 files).
+  - Proof (M5 commit 9, partial: M5-8's narrowing of the thread ban to the crates' src/ comes before commit 10): with
+    the crates in, the canaries hold core's, ffi's and jni's clippy.toml identical and guard's core's minus the one
+    line, and check-path-deps pins six members (a member at ffi/capi fails, `path-member-capi`). Q73's export rule
+    already had no ffi/capi allowance after 8p-d; new fixtures pin the shapes it lacked:
+    `ffi-export-extern-c-in-capi-lib` (no no_mangle), `-no-mangle-static-in-capi-lib`, `-no-mangle-in-safe-layer-lib`
+    (a Rust-ABI fn) and `-in-capi-tests`. M5-35's macro rule: `ffi-macro-rules-in-safe-layer`, `-in-guard-lib`,
+    `ffi-macro-export-in-safe-layer-lib` (the attribute alone), `-in-guard-other-file` (in a cfg_attr) and
+    `clean-ffi-macros-outside-shipped-src` (macros in ffi/tests and ffi/guard/tests, the words in a comment and a
+    string); the three guard-macro fixtures are built cases now, each with its macro_rules line as the second hit (on a
+    gate copy whose site rule ignores macro_rules, the two inside guarded lose their catch's hit, as before). On gate
+    copies, macro_export dropped from the rule clears both macro_export fixtures, and ffi/guard/src dropped from its
+    paths clears both guard ones. `--selftest` 1405 passed, 0 failed under sh and /bin/dash (1396 before: -3 fixtures,
+    +3 built cases, +9 fixtures); the gate on the tree clean (292 files).
+  - Proof (M5 commit 9b, M5-8, before commit 10): the `thread`/`JoinHandle` ban skips keepcrypt-ffi's integration
+    tests, `ffi/tests/`, alone, and covers every other file under ffi/ as before (the other crates' tests/, a build
+    script, examples and a tests/ directory under src/ among them): the lead's "ffi/tests/ only" for commit 10's
+    barrier test, stricter than this item's src/ list. `ffi-thread-in-ffi-tests` became
+    `clean-ffi-thread-in-ffi-tests` (a scoped thread, its ScopedJoinHandle and a joined spawn in ffi/tests/slot.rs);
+    new hits `ffi-thread-in-guard-tests`, `-in-jni-tests`, `-in-src-tests-dir` and `-in-build-script`. On gate copies,
+    exempting every crate's tests/ (`ffi/*/tests/*`) clears the guard, jni and src/tests fixtures, and no exemption
+    hits the clean one. `--selftest` 1409 passed, 0 failed under sh and /bin/dash (1405 + 4 hit fixtures); the gate on
+    the tree clean (292 files).
+  - Proof (M5 commit 12, partial: the clippy.toml and member pins are commit 9's, and the `gates` run is the lead's):
+    the real exports meet the rule, the gate clean on the tree (297 files). The pinned guarded line is now `pub fn
+    guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {` (the boundary hands the input over, M5-35; it names no
+    dispatcher, so M5-38 changes nothing else in the rule), in the rule, its header and every fixture and built case
+    that holds it, whose guard bodies pass `&input` and whose exports pass a Vec. The canary `jni-export-tie` replaces
+    the real export's `keepcrypt_guard::guarded(op, input)` with `keepcrypt_ffi::dispatch(op, &input)` in a copy of the
+    tree and needs exactly one hit, at the export's fn line. The C1 residual is closed: ffi_jni_abi read lines, so
+    `pub extern "C"` on one line and `fn Java_...` on the next, a bare `pub extern` split the same way, and
+    `pub extern /* ... */ "C" fn` each passed it (a gate copy with HEAD's ffi_jni_abi gives those trees no hit); it reads
+    the file as rust_tokens' tokens over lines now, rust_lex keeping each string's text, and an extern followed by fn,
+    or by one string and fn, is a hit at the extern's line unless the text is exactly system. Built cases
+    `ffi-jni-extern-c-split-over-lines-beside-the-guard`, `ffi-jni-extern-no-abi-split-over-lines-beside-the-guard`
+    and `ffi-jni-extern-c-after-a-comment-beside-the-guard`, each at line 2, and
+    `clean-ffi-jni-extern-system-split-over-lines` ("system" over three lines, after a comment, and extern "C" fn in a
+    comment and a string). `--selftest` 1426 passed, 0 failed under sh and /bin/dash (1422 before: +4 built cases);
+    `canaries.sh` PASS, all 93 checks ran (want_checks 90 -> 93: `real-keepcrypt-jni-undocumented-unsafe-block`,
+    `real-keepcrypt-jni-two-unsafe-ops`, `jni-export-tie`).
+- [ ] cinterop: `keepcrypt.def` holds exactly `headers = keepcrypt.h`, `headerFilter = keepcrypt.h` and `package = com.keepcrypt.native`.
+  - It has no `staticLibraries`, `libraryPaths` or `linkerOpts`, so no Rust code is packed into a klib or the framework.
+  - `compilerOpts -I` comes from the Gradle cinterop block and points only at `ffi/capi/include/`.
+  - The iOS **test** executables (both targets) link `target/ios-test/<triple>/release/libkeepcrypt_capi.a` through one `linkerOpts` line per target.
+  - The release framework links no Rust in M5. In M6 the app link adds the plain `target/ios/...` library, and `--ios-app` scans the result.
+
+  Proof: the gate's `.def` rule refuses a fixture with a `---` section, a second header, `staticLibraries`, `libraryPaths`, `linkerOpts`, or an include path outside that directory. The Gradle rule allows exactly the two test `linkerOpts` lines naming `target/ios-test/`.
+  Proof (M5 commit 8p, partial: the gate's side; the .def and the Gradle block are 8q's and 14's): the `ktcinterop-def-*`
+  fixtures and `ktsdk-kmp-linker-opts-plain-library`, `-in-framework`, `-compiler-opts-elsewhere`, `-include-dirs`,
+  `-definition-file` fail; `clean-kt-kmp-build-files` passes the two test lines and the one -I.
+  Moved to M6 by Q73 (8w): in M5 the .def, its nativeInterop directory and every cinterop, include and linker line
+  are hits (KtCinterop, KtSourceSet and KtSdk).
+
+**The iOS capture layer** (M6 under Q65 (a); recorded now so the shared code leaves room for it)
+
+The app is a Swift scene-based app (`UIApplicationSupportsMultipleScenes = false`, `UIDeviceFamily = [1]`) with one `UIWindow`.
+- The window's root is a Swift `SecureHostViewController`. That controller holds the Kotlin `MainViewController()` as a child and a Swift `PrivacyCoverView` above it.
+- State flows one way, from Swift to Kotlin. An exported Kotlin `IosEvents` object (`captureChanged(Boolean)`, `screenshotTaken()`, `willResignActive()`, `didEnterBackground()`, `didBecomeActive()`, `offlineChanged(Boolean)`, main thread only) feeds the same `CeremonyModel` entry points that Android's `SecureActivity` feeds, so the wipe rules are written once.
+- Swift's covers never wait for Kotlin, so they fail closed.
+
+| MA rule | How | Where |
+| --- | --- | --- |
+| Capture redaction (MA:84) | `UITraitSceneCaptureState` via `registerForTraitChanges` (iOS 17), re-read at launch and in `sceneDidBecomeActive`. While captured, the Swift cover hides the whole window, and Kotlin also swaps the words for a placeholder | Swift watches, Kotlin redacts second |
+| Screenshot response (MA:85) | `userDidTakeScreenshotNotification` calls `IosEvents.screenshotTaken()`; `CeremonyModel` discards and explains | Swift forwards |
+| Secure-layer rendering (MA:86) | Only if M6's first probe passes (Q71): the Compose view inside a `UITextField` with `isSecureTextEntry`, `canBecomeFirstResponder = false`, not an accessibility element | Swift |
+| App-switcher cover (MA:87) | The cover is shown synchronously in `sceneWillResignActive` and removed in `sceneDidBecomeActive`. No `NSUserActivity`; `stateRestorationActivity` is nil | Swift |
+| Leaving the app (MA:34) | Going to the background on a Protected screen discards. On a Public screen, the wipe happens at the earlier of the background-task expiry and 60 s on a clock that counts while suspended, checked on return (Q71). `isIdleTimerDisabled` is set during a ceremony | Kotlin rules, Swift signals |
+| Offline (MA:125) | `NWPathMonitor` in one file; "satisfied" blocks or wipes | Swift or one `iosMain` file |
+| No clipboard (MA:127) | No text fields and no `SelectionContainer`; the gate bans `UIPasteboard` in our code. Compose's own clipboard code is read under Q70 | none |
+| Backup export (MA:156) | `UIDocumentPickerViewController` exports in-memory bytes, in one reviewed file. `.age`/`.kcr` import uses `UIDocumentPickerViewController(forOpeningContentTypes:)` | one file |
+| Go-ahead QR | `AVCaptureMetadataOutput` (ZXing is JVM only); the payload is checked in core | `iosMain` |
+| Stop screen (MA:36) | iOS: no secret and no action, because Apple rejects apps that quit themselves. The next launch reruns the self-test (Q71) | Kotlin |
+| Unhandled Kotlin exception | Kotlin/Native aborts the process on any unhandled exception and the system writes a crash report with the stack. The M6 hook (`setUnhandledExceptionHook`) wipes first; whether it can end the process without a report is an M6 probe (Q71) | Kotlin |
+| Files the system writes (rule 8) | M6 diffs the app container after a simulator ceremony: no file holds secret material, and the app-switcher snapshot shows the cover (Q71) | M6 check |
+
+**Gate changes (commit 8n, before any Kotlin moves; like commit 4)**
+- [x] Source-set allow list. In the KMP modules (`core-ffi`, `screens`) the only source-set directories allowed under `src/` are `commonMain`, `commonTest`, `androidMain`, `androidHostTest`, `iosMain`, `iosTest` and `nativeInterop`. Any other directory under `src/` in those modules is refused, including `appleMain`, `nativeMain`, `iosArm64Main`, `iosSimulatorArm64Main` and `androidDeviceTest`. KMP source-set names under `src/` of any Android-only module are refused too, so no Kotlin escapes the iOS rules by its directory name.
+  - Proof: one failing fixture per refused name, and passing fixtures for the allowed ones.
+  - Proof (M5 commit 8p, the re-plan's 8n): new category KtSourceSet, a path rule (`kt_kmp_modules` core-ffi and
+    screens, `kt_kmp_sets`). `--selftest` passes its 20 hit fixtures: in a KMP module appleMain, appleTest,
+    nativeMain, iosArm64Main, iosSimulatorArm64Main, androidDeviceTest, jvmMain, :screens' main and test, :core-ffi's
+    androidTest and test, and a file right under src/; in an Android-only module commonMain, commonTest, androidMain,
+    androidHostTest, iosMain, iosTest, appleMain and nativeInterop. `clean-kt-kmp-source-sets` passes the seven sets in
+    both modules, a nested src/iosMain inside commonMain, and the app's main, test, androidTest and flavour sets.
+    :core-ffi keeps src/main for today's placeholder Native.kt (the gate is clean on the tree); commit 8q, which makes
+    :core-ffi KMP, deletes that one case (`core-ffi:main` in `kt_source_set_refused`).
+  - Proof (M5 commit 8q): :core-ffi is KMP with Native.kt in commonMain, so the `core-ffi:main` case and its two comment
+    mentions are gone; the new `ktsourceset-kmp-main-in-core-ffi` (core-ffi/src/main) fails as :screens' main does.
+  - Proof (M5 commit 8p-b, review): a module one level deeper (`include(":ui:words")`, mobile/android/ui/words/) had
+    no source-set or iOS check, since the module is the first path segment; KtSourceSet now refuses any src/ below
+    mobile/android/ that is not a module's own, and the root project's src/. `ktsourceset-nested-module-ios-main`,
+    `-apple-main`, `-in-kmp-module` (screens/words/src/commonMain) and `ktsourceset-root-project-src` fail; the
+    review's tree (NSUserDefaults and NSLog in ui/words/src/iosMain, clean before) gives two KtSourceSet hits.
+    `--selftest` 1302 passed, 0 failed under sh and /bin/dash; the gate on the tree clean.
+  - Moved to M6 by Q73 (8w): `iosMain`, `iosTest` and `nativeInterop` leave the allow list, so each is a KtSourceSet
+    hit in M5.
+  - Amended by M5-60 (c) (commit 18o): KtSourceSet also refuses any `.java` file under mobile/android, in any letter
+    case and every scope (the test source sets, :capture-control and paths outside src/ included), as Java reads
+    backslash-u escapes as the characters they name, so a Java source could hide every text rule's word.
+- [x] Scopes (banned-api-check.sh:2043-2051). `commonTest`, `androidHostTest` and `iosTest` join `test`, by the same literal module-segment match. Every other allowed source set stays `main`. The fixture scope-copy logic (around :2358-2390) moves with them.
+  - Proof: fixtures. A `runCatching` in `screens/src/commonTest/` passes; the same code under `screens/src/commonMain/`, or in a nested `.../commonMain/kotlin/x/src/commonTest/` path, fails.
+  - Proof (M5 commit 8p): the test scope is src/test, src/androidTest, src/commonTest, src/androidHostTest and src/iosTest
+    right under a module. A `runCatching` cannot pass in any scope (KtFailOpen refuses it everywhere,
+    `ktfailopen-test-run-catching`), so the proof uses a catch: `clean-kt-kmp-test-scopes` passes catches, a File( and
+    a document stream in the three KMP test sets of both modules; `ktfailopen-catch-kmp-common-main` and
+    `ktfailopen-catch-kmp-nested-common-test` fail. The scope copies now fill six trees, all clean: src/test and
+    src/androidTest 107 fixtures each, commonTest and androidHostTest 118, iosTest 115 (three whose text the iOS names
+    refuse stay out), capture-control 24.
+  - Proof (M5 commit 8p-c, review): no build file points a source set at a test set's directory, so no test-scoped
+    file compiles into a shipping set: srcDir or srcDirs naming src/test, src/androidTest, src/commonTest,
+    src/androidHostTest or src/iosTest is a KtSdk hit (`ktsdk-kmp-src-dir-common-test`, `ktsdk-app-src-dir-test`);
+    the review's tree (commonMain { kotlin.srcDir("src/commonTest/kotlin") } and a swallowed catch round
+    rememberSaveable there, clean before) gives that one hit.
+  - Moved to M6 by Q73 (8w): `iosTest` leaves the test scope and the srcDir rule's test sets.
+- [x] Named files (:2065-2095, header :504-513):
+  - `CeremonyViewModel.kt` becomes `screens/src/commonMain/**/CeremonyModel.kt`, the only `KcHalt` catch;
+  - the airplane-settings `Intent` and the `SensorManager` exceptions move to their `:app` files;
+  - `Documents.kt`, `GoAheadScanner.kt`, `SecureActivity.kt` and `OfflineMonitor.kt` are unchanged;
+  - KtFailOpen's "any catch in `:core-ffi`" now covers `androidMain` and `iosMain` too.
+
+  Proof: each moved exception has a passing fixture at the new path and a failing one at the old.
+  Proof (M5 commit 8p): the KcHalt catch is allowed only in mobile/android/screens/src/commonMain/**/CeremonyModel.kt,
+  the airplane-settings intent only in the app's AirplaneSettingsIntent.kt and the sensors only in the app's
+  SensorMotionSource.kt (file names chosen here for M5-20's two seam ends; commits 15-16 use them).
+  `clean-kt-shipping-allowed` passes at the new paths; the old paths fail
+  (`ktfailopen-catch-main-kchalt-in-old-ceremony-view-model`, `ktintent-main-airplane-in-old-go-offline-screen`,
+  `ktdevice-main-sensor-in-old-device-entropy-screen`), and so do the wrong modules and sets
+  (`ktfailopen-catch-kmp-ceremony-model-in-android-main`, `ktfailopen-catch-main-ceremony-model-in-app`,
+  `ktintent-kmp-airplane-settings-in-screens`, `ktdevice-kmp-sensor-source-in-screens`). The go-offline and view-model
+  fixtures moved to the new files (`ktintent-main-airplane-settings-*`, `ktfailopen-catch-kmp-ceremony-model-*`), the
+  :core-ffi ones to commonMain and androidMain; `ktfailopen-catch-core-ffi-android-main` and `-ios-main` fail.
+  Proof (M5 commit 8p-d, review): `ktfailopen-catch-kmp-ceremony-model-in-core-ffi` (a KcHalt catch in :core-ffi's
+  commonMain CeremonyModel.kt) fails, so a KcHalt exemption widened from :screens to any module's commonMain, which
+  passed `--selftest` before, now fails it (the runs are under the One catch item's 8p-d proof).
+- [x] `iosMain`/`iosTest` Kotlin gets these iOS names on top of every Kt rule:
+  - storage: `NSUserDefaults`, `NSFileManager`, `NSFileHandle`, `writeToFile`, `NSKeyedArchiver`, `SecItemAdd`, CoreData, `NSUbiquitousKeyValueStore`, CloudKit;
+  - posix file and log calls: `fopen`, `fwrite`, `open(`, `printf`, `syslog`;
+  - intents: `openURL`, `UIActivityViewController`, `UIDocumentInteractionController`;
+  - windows: `UIAlertController`, `UIWindow(`, `UNUserNotificationCenter`, `UIMenu`;
+  - input: `UITextField`, `UITextView`, `becomeFirstResponder`;
+  - logging: `NSLog`, `os_log`, `AccessibilityDebugLogger`;
+  - randomness and identifiers: `platform.posix.rand`, `random`, `srand`, `drand48`, `NSUUID`;
+  - network C names: `nw_connection`, `nw_listener`, `nw_browser`, `nw_endpoint`, `nw_parameters`, `CFStream`, `CFSocket`, `getaddrinfo`, `socket(`;
+  - boundary rules: `staticCFunction` banned anywhere; `usePinned`/`addressOf` only in `core-ffi/src/iosMain/**/Native.ios.kt`; `setUnhandledExceptionHook` refused in M5.
+
+  The existing unanchored `URLSession`, `NWConnection`, `CFNetwork`, `UIPasteboard`, `arc4random` and `SecRandomCopyBytes` patterns already apply.
+
+  New for every Kotlin source, Android included: `kotlin.uuid` / `Uuid.random` (it reaches the OS random source outside the pool).
+
+  Proof: one failing fixture per name. `nw_path_*` is refused everywhere in M5 (the offline file is M6's). The gate passes on today's tree with the `kotlin.uuid` ban in place.
+  Proof (M5 commit 8p): new category KtIos, 47 hit fixtures in :core-ffi's and :screens' iosMain and one in iosTest,
+  one per name (`fprintf` for the printf family; a `::random` reference for the word random, since an `import
+  platform.posix.random` is already RNG's Python-import shape). UIActivityViewController, UNUserNotificationCenter,
+  UITextField and drand48 were already Clipboard, KtWindow, KtInput and RNG hits everywhere, so a second rule would
+  double the hit: one iosMain fixture each shows the existing category. The boundary rules apply to every file under
+  mobile/android: staticCFunction (iosMain and commonMain), usePinned outside Native.ios.kt (iosMain, and a commonMain
+  file of that name), addressOf in :screens, setUnhandledExceptionHook, nw_path_* (iosMain and the app).
+  `clean-kt-ios` passes (Native.ios.kt's pinning, near misses, the word random in commonMain). RNG:
+  `rng-kotlin-uuid-import`, `rng-kotlin-uuid-random-reference`. The gate on today's tree: clean, 284 files.
+  Moved to M6 by Q73 (8w): the `usePinned`/`addressOf` exemption for `Native.ios.kt`, so pinned memory is a hit
+  everywhere in M5. The iOS names stay as refusals.
+  Proof (M5 commit 8p-d, review): the B2r finding that the Native.ios.kt exemption could widen to any module
+  untested no longer holds: 8w removed the exemption, kt_pinned runs on every file under mobile/android, and
+  `ktios-use-pinned-in-native-ios` fails, so no exemption is left to widen.
+- [x] Kotlin outside the root: any `.kt`/`.kts` under `mobile/` outside `mobile/android/` is refused. Any tracked file under `mobile/ios/` is refused in M5 (M5-25).
+  - Proof: fixtures `mobile/shared/x.kt` and `mobile/ios/x.swift` fail under those rule names.
+  - Proof (M5 commit 8p): new category KtRoot. `ktroot-kotlin-in-mobile-shared` (mobile/shared/src/commonMain/kotlin/X.kt),
+    `ktroot-kts-in-mobile` and `ktroot-kotlin-in-mobile-ios` fail; tracked files under mobile/ios/, read from git's
+    index in scratch repositories, fail (`ktroot-tracked-ios-swift`, `-ios-plist`, `-ios-xcode-project`) and an
+    untracked one passes. The four KtBinary cases that used mobile/ios/ moved to mobile/shared/, and
+    `build-tracked-mobile-build` names x.txt, so each still gives its one hit.
+- [ ] New file types and build lines:
+  - the `.def` rule (bridge section above);
+  - KtSdk allow-lists exactly the KMP DSL lines the build needs: `kotlin {`, `android {` inside `kotlin {}`, `withHostTestBuilder {`, `iosArm64`, `iosSimulatorArm64`, `cinterops`, `binaries.framework`, `isStatic = true`, the two test `linkerOpts` lines, the `osVersionMin` line, the simulator `device` line, `konan.data.dir`, and named `kotlin.native.*`/`kotlin.mpp.*`/`kotlin.apple.*` properties. A fixture checks that `android {` inside `kotlin {}` does not collide with the existing Android-block rules;
+  - KtSdk refuses `cocoapods {`, `swiftPMDependencies`, `kotlin.native.home`, `downloadFromMaven=false`, `xcodeCompatibility.nowarn` and `withDeviceTestBuilder`;
+  - KtBinary also refuses Mach-O files by magic number, and `*.framework/`, `*.xcframework/`, `*.klib` and `*.a` paths.
+
+  Proof: a fixture per item; the canary library still builds only under `kc.canary`.
+  Proof (M5 commit 8p, partial: the canary library's CI build is the lead's; the osVersionMin line and any named
+  kotlin.native./kotlin.mpp./kotlin.apple. property are probe facts that 8q adds to `kt_kmp_lines` [superseded: 8q
+  added none, as its proof below says, and 8w refuses them all], one each, so until then each is a hit): new
+  category KtCinterop, 10 fixtures (a --- section, a second header, staticLibraries,
+  libraryPaths, linkerOpts, compilerOpts, a blank line, a line twice, a missing line, another .def). KtSdk's `kt_kmp`,
+  28 fixtures (the six refusals, KONAN_DATA_DIR, an unnamed kotlin.mpp property, konan.data.dir elsewhere, iosX64,
+  macosArm64, jvm(), androidTarget(), a per-target source set, both targets on one line, `kotlin {` on one line,
+  definitionFile, includeDirs, compilerOpts elsewhere, extraOpts, headers(, linkerOpts on the plain library and in the
+  framework, freeCompilerArgs, sharedLib, export(, another device shape, XCFramework), two in android-gradle.sh and
+  three workflows (`kt_kmp_refused`). `clean-kt-kmp-build-files` passes a whole :core-ffi and :screens KMP build
+  (`android {` inside `kotlin {` with `withHostTestBuilder`, both targets, the cinterop block with its -I, the two test
+  linkerOpts lines, the device line, `binaries.framework` with `isStatic = true`), gradle.properties'
+  `konan.data.dir=.konan` and a lockfile. KtBinary: klib, an upper-case KLIB, a *.framework/ and a *.xcframework/
+  path, and four Mach-O magics (no extension, named .txt, outside mobile/android, named .png) fail in scratch
+  repositories; a real PNG passes. Build refuses a tracked mobile/**/.konan/ (`build-tracked-dot-konan`). The kt_canary
+  rules and the canary library are untouched.
+  Proof (M5 commit 8q, partial): the real :core-ffi and :screens build files use only `kt_kmp_lines`' shapes (`kotlin {`,
+  `android {` with `withHostTestBuilder {}`, `iosArm64()`, `iosArm64 {` with `binaries.framework {` and `isStatic =
+  true`, `iosSimulatorArm64()`) and gradle.properties holds `konan.data.dir=.konan`; the gate is clean on them. No line
+  joins the list here: the osVersionMin switch, any named kotlin.native./kotlin.mpp./kotlin.apple. property and a
+  different data-directory form are probe facts of this commit's own CI runs, so each lands in the commit after them;
+  the cinterop block, its -I and the test linkerOpts lines come with commit 14, the device line with the first
+  simulator test run.
+  Moved to M6 by Q73 (8w): the iPhone lines `kt_kmp` allowed (both targets and their blocks, the iosMain and iosTest
+  blocks, the cinterop block and its -I, the framework and isStatic, the two test linkerOpts lines, the device line
+  and konan.data.dir); M5's list is `kotlin {` and `withHostTestBuilder` alone, and no line joins it.
+  Proof (M5 commit 8p-d, review): `ktcinterop-def-upper-case` (core-ffi's nativeInterop/cinterop/keepcrypt.DEF) fails
+  as KtCinterop beside KtSourceSet's hit, so a .def check narrowed to lower case is caught. KtBinary's magic check
+  also refuses ELF (7f454c46), ar (!<arch>) and zip (PK\003\004) files under mobile/ whatever their names, so a
+  renamed .so, static library, rlib, jar, aar, apk or klib is a hit, as the header now says (it claimed that for an
+  iPhone library, which the Mach-O check alone did not cover for a static library or a klib); the built cases plant
+  all eight Mach-O magics and those three (`ktbinary-tracked-macho-32-big-endian`, `-macho-fat-reversed`,
+  `-macho-fat-64`, `-macho-fat-64-reversed`, `-elf-as-png`, `-ar-as-png`, `-zip-as-png`). The simulator device line,
+  whose charset the review widened, left the allow list at 8w, and any device line is a hit
+  (`ktsdk-kmp-8q-line-simulator-device`), so nothing is left to widen. The runs are under the One catch item's 8p-d
+  proof.
+  Proof (M5 commit 8w-c, review): 8w's kotlin.apple. refusal had no case of its own (both kotlin.apple. fixtures also
+  hold xcodeCompatibility.nowarn), so a gate copy without `apple` in `kotlin[.](native|apple)[.]` passed `--selftest`.
+  `ktsdk-kmp-kotlin-apple-property` (gradle.properties) and `workflow-kotlin-apple-property` (a -P option) hold a
+  kotlin.apple. name with neither word, and each scans clean on that copy. `ktsdk-kmp-konan-property-upper-case`'s
+  value is upper case too (`KONAN.DATA.DIR=.KONAN`), so it alone scans clean on a copy whose build-file refusal is
+  case-sensitive. `--selftest` 1373 passed, 0 failed under sh and /bin/dash (1371 before: +2 fixtures).
+  Proof (M5 commit 8p-f, review): KtBinary's magic check knew Mach-O, ELF, ar and zip only, so the review's scratch
+  repository with a dex file (Android bytecode, which src/main/assets or res/raw packs into the APK unchanged), a JKS
+  keystore and a gzip archive tracked under res/drawable as .png files scanned clean, though the extension rule refuses
+  .dex, .jks, .keystore and .gz. The check now also refuses dex (dex\n), JKS (feedfeed), JCEKS (cececece), gzip
+  (1f8b08), xz (fd377a58), zstd (28b52ffd) and bzip2 (BZh1-9), each format of the extension list that opens with a
+  fixed magic; a tar archive (ustar at byte 257) and a PKCS#12 keystore (a plain DER sequence) have none and stay
+  refused by extension only. That tree gives its three hits; built cases `ktbinary-tracked-dex-as-png`,
+  `-jks-as-png`, `-jceks-as-png`, `-gz-as-png`, `-xz-as-png`, `-zstd-as-png`, `-bzip2-as-png`, and a gate copy without
+  the seven patterns fails exactly those seven. `--selftest` 1395 passed, 0 failed under sh and /bin/dash (1388
+  before: +7 built cases); `canaries.sh` PASS, all 76 checks ran; the gate on the tree clean (285 files).
+- [x] Canaries cover the new scopes, the source-set allow list, the iOS rules, the `.def` rule and the refusals; `want_checks` is updated.
+  - Proof: `scripts/canaries.sh` green with the new count. Each new canary fails when its rule line is removed (shown once, under Review).
+  - Proof (M5 commit 8p): `want_checks` 74 -> 76. `kmp-ios-rules`: nine planted hits on the real tree's copy (appleMain
+    in :screens, NSUserDefaults in :core-ffi's iosMain, a catch in :screens' commonMain with the same file passing in
+    commonTest, a .def with linkerOpts, a cocoapods block in the app's build file, Kotlin's uuid package, Kotlin in
+    mobile/shared, a catch_unwind in ffi/capi, an export in ffi/guard), each planted file removed afterwards.
+    `workflow-bootstrap`: a lock-writing Gradle line planted in entropy-android.yml, one hit whatever the exception list
+    holds. `kotlin-ffi-rules` keeps its five hits. `canaries.sh`: PASS: all 76 checks ran (323 s on this Mac at load 4-5, base 298 s). With one rule line of the gate
+    removed or changed at a time, on a scratch copy, `kmp-ios-rules` fails for each of nine (the KtSourceSet check
+    off, the iOS names off, commonMain taken as a test set, the .def check off, `kt_kmp` off, the uuid pattern dropped,
+    KtRoot's Kotlin rule off, catch_unwind allowed in ffi/capi, exports allowed in ffi/guard) and `workflow-bootstrap`
+    for the tenth (the bootstrap hits dropped in Workflow mode), while the other M5 canaries stay green.
+    `--selftest` 1297 passed, 0 failed under sh and /bin/dash (1116 before; two fixtures that a C-ABI export in jni
+    would now double, `ffi-jni-extern-c-` and `-no-abi-without-catch-unwind`, gave way to capi fixtures and two cases
+    beside a guard). Wall times on this Mac, load 4-5, before and after: gate 21 s and 21 s, `--selftest` 351 s and
+    443 s, canaries 298 s and 323 s.
+  Amended by Q73 (8w): `kmp-ios-rules` also needs KtSourceSet's hits for its iosMain file and its .def, and an
+  `iosArm64()` line in :core-ffi's build file, 8q's own line (12 hits).
+
+**Build checks**
+- [ ] `--apk`, `--selftest-apk`, the dex reference scan and the expected manifests keep their code. `expected/shipping-runtime-classpath.txt` gains the wrapper modules and the version changes Q67 names (savedstate 1.4.0 and any others the lockfile shows). The dex scan's `Lcom/keepcrypt/` prefix now covers `:screens` and `:core-ffi` classes automatically.
+  - Proof: the Android job green at 8p with the new list, and every non-wrapper version change named under Review. The manifest summaries are unchanged, or the change is named.
+  - Proof (M5 commit 8q, partial: the regeneration): in bootstrap mode the Android job leaves out the classpath compare
+    and the pin review before Gradle, writes the list from the new lockfile (`android-deps-review.py classpath
+    --write`), prints its diff against the committed one as probe: lines and uploads it; `--apk` still judges the APKs
+    against the unchanged expected manifests and native-library list.
+  - Proof (M5 commit 8x, partial; the green Android job is the lead's): the list from run 39404714671's lockfile, 120
+    modules: the 29 wrapper modules added, and androidx.savedstate's five modules 1.3.2 -> 1.4.0, the one non-wrapper
+    version change on the shipping classpath (named under 8x's line in "Re-cut after Q73"); `classpath` compares it
+    before Gradle again. Corrected at 8x-e: this said "the one non-wrapper version change" without that scope. The
+    lockfiles show other version changes off the shipping classpath, which neither the plan nor 8x named and which Q67
+    sends to the owner by name before they are committed: on :screens' own runtime, host-test runtime and lint
+    classpaths, activity and activity-ktx 1.7.0 and core and core-ktx 1.16.0 (the app resolves 1.13.0 and 1.18.0, as
+    before); on its metadata configurations, androidx lifecycle 2.11.0 (2.9.4 elsewhere), navigationevent 1.1.1 (1.0.0)
+    and atomicfu 0.28.0 (0.22.0), with new modules there (lifecycle-viewmodel-compose 2.11.0, kotlinx-browser 0.5.0,
+    ui-backhandler 1.12.1, Compose's annotation-internal and collection-internal 1.10.0, the JetBrains
+    lifecycle-viewmodel and -viewmodel-savedstate 2.9.6 and navigationevent-compose 1.1.0); and Kotlin's scripting
+    compiler plugin (kotlin-scripting-common, -jvm, -compiler-embeddable and -compiler-impl-embeddable 2.4.20) on
+    :core-ffi's and :screens' kotlinCompilerPluginClasspath configurations (the 8x review; the owner's answer is the
+    lead's to record).
+- [ ] iOS link facts in M5 (commit 8q, again at 14):
+  - `linkReleaseFrameworkIosArm64` builds a static framework from `:screens`. It holds Kotlin, Compose and skiko but no Rust. CI records its size and its archive-level `llvm-nm -u` list. That list over-reports, because nothing is dead-stripped, and is used only as the superset for the stop rule below.
+  - The compared list comes from linked binaries: the `iosSimulatorArm64` and `iosArm64` test executables, which link the `target/ios-test/` library from 14 on. CI records their `llvm-nm -u -m` imports and linked libraries, and compares the `iosArm64` imports with `expected/ios-test-imports.txt` (M5-27).
+  - Direct-call scan: `llvm-objdump -d --macho` of the unstripped `iosArm64` test executable lists every direct call from a `kfun:com.keepcrypt.*` symbol. Any call into `kfun:kotlin.random.*`, `kfun:kotlin.uuid.*`, the posix random functions, or Q70's deny list fails the build. The limit is stated under Review: indirect calls are not followed, and the source gate covers them.
+  - Marker and key scan: the framework and both test executables are scanned for `KC_TEST_SOURCE_DO_NOT_SHIP`, the registry marker and the test key. The framework must hold none of them. The test executables must hold exactly what their feature set embeds.
+  - The `minos` of the test executables (`LC_BUILD_VERSION`) is 17.0.
+  - Stop rule: any banned RNG, network, clipboard or storage import in the superset list stops the work and goes to the owner with the exact symbols and their sources (Q70). Banned means `_arc4random*`, `_SecRandomCopyBytes`, `_rand`, `_random`, `_drand48`, a network class or socket, `UIPasteboard`, or Q70's storage names.
+
+  Proof: the lists under Review with the run ID. A planted `arc4random_uniform` call in an `iosMain` canary shows up in the diff and in the direct-call scan, and fails both.
+  Moved to M6 by Q73 (8w).
+- [ ] `expected/ios-framework-classpath.txt` lists every Maven module linked into the framework (Compose, skiko, the iOS androidx builds and so on), taken from the `iosArm64` link configuration in the lockfiles. It also names the Kotlin/Native stdlib and platform libraries as coming from the verified `kotlin-native-prebuilt` 2.4.20 bundle, not from Maven. `android-deps-review.py review` compares the list and checks licences.
+  - Proof: the review's output at 8p; a planted extra module fails it.
+  - Moved to M6 by Q73 (8w).
+- [ ] The `--ios-app` check and `--selftest-ios-app` are M6's, together with the Swift and Xcode gate rules. The check covers an unsigned Release device `.app` built in CI that links the plain library:
+  - Info.plist key allow-list, no entitlements, bundle contents;
+  - an `otool -L` framework allow-list;
+  - `nm -u -m` imports with `_CCRandomGenerateBytes` present;
+  - the direct-call scan, markers, arm64 only, minos 17.0.
+
+  Proof: M6's plan.
+
+**Dependency bootstrap** (commits 8o-8p; the reviewed temporary exception M5-13 requires, under Q67)
+- [x] 8o declares the two plugins, the three Compose Multiplatform libraries and `kotlin-test` (tests only), with `apply false` at the root (M5-7's pattern).
+  - It switches both workflows to bootstrap mode once, with a dated note in `libs.versions.toml`'s header and in `kt_bootstrap`'s comment naming Q67 and this re-plan. No other switch, file or workflow changes the bootstrap rule.
+  - Proof: the diff; the gate refuses the bootstrap switch outside the two named workflow lines (fixture).
+  - Proof (M5 commit 8p, partial: the mechanism, empty; 8q fills it): `kt_bootstrap_exception` in
+    banned-api-check.sh, Workflow mode only; each line names entropy-android.yml or entropy-ios.yml (each once) and
+    one exact workflow line, which passes the first time; any other shape is exit 2. `--selftest`, on copies of the
+    script with a stand-in list: the line passes in the named workflow (and in both); it fails in entropy-ci.yml, a
+    second time, with more on it, as another lock line, in android-gradle.sh, and with the empty list; four malformed
+    lists exit 2.
+  - Proof (M5 commit 8q, the re-plan's 8o): the root build file gains the `kotlin-multiplatform` and
+    `android-kotlin-multiplatform-library` markers with `apply false`; libs.versions.toml gains them and `cmp-runtime`,
+    `cmp-foundation`, `cmp-ui` (org.jetbrains.compose.*:1.12.1, used only by :screens) and `kotlin-test` 2.4.20 (only
+    in the two modules' commonTest); every one was published by 2026-09-22 (Maven `Last-Modified`), before the cutoff
+    of 2026-10-06. The catalog's header and `kt_bootstrap_exception`'s comment carry the dated note naming Q67 and this
+    re-plan. The list holds exactly the two workflows' bootstrap lines (`if ! sh scripts/android-gradle.sh
+    --write-locks --write-verification-metadata sha256 \`): `--workflows` is clean on the four workflows, and on a copy
+    of the gate with the list emptied those two lines are the only hits (entropy-android.yml:275,
+    entropy-ios.yml:200); 8p's fixtures still fail the line in another workflow, a second time, with more on it and in
+    android-gradle.sh (the selftest's copy now replaces a filled, multi-line list too), and the `workflow-bootstrap`
+    canary's planted line is its one hit. `--selftest` 1298 passed, 0 failed under sh and /bin/dash (1297 + the
+    core-ffi main fixture; 456 s and 444 s on this Mac); `canaries.sh` PASS: all 76 checks ran (325 s); the gate on the
+    tree clean, 286 files.
+- [ ] Two hosts write the locks:
+  - the Linux Android job writes locks and metadata for the Android and common configurations;
+  - the macOS job writes them for the iOS ones, `kotlin-native-prebuilt-2.4.20-macos-aarch64` and `kotlin-klib-commonizer-embeddable`;
+  - a committed `scripts/gradle-locks-merge.py` (standard library only, with `--selftest`) merges the two sets;
+  - strict mode then runs on both hosts against the merged files.
+
+  Proof: both jobs green in strict mode at 8p on the same merged files. The selftest covers a conflict (same coordinate, different hash) failing.
+  Proof (M5 commit 8q, partial: the two bootstrap runs; the merge script, the merged files and the strict runs are
+  8r's): entropy-android.yml's bootstrap line (buildEnvironment, every module's dependencies report, the five APKs,
+  the JVM tests) and entropy-ios.yml's (buildEnvironment, the shared modules' dependencies reports, their common and
+  iPhone metadata compilations, both targets' test executables and the device target's release framework) each write
+  their host's lock state and metadata, and upload them as `android-bootstrap` and `ios-bootstrap`.
+  Moved to M6 by Q73 (8w): the macOS host and the merge script; 8w's Android run writes every lockfile and the
+  metadata alone, and 8x reviews and commits them.
+  Proof (M5 commit 8x, partial; the strict run is the lead's): run 39404714671's five lockfiles and metadata are
+  committed unchanged, and the Android job is set to build strictly on them. Corrected at 8x-e: this said the job
+  builds strictly on them, but no strict run has happened: the job stops at its dependency review, before any Gradle
+  call, until the review's fetch pins the new signers (8x's proof under "Re-cut after Q73").
+- [ ] `android-deps-review.py` is extended:
+  - it reads `.klib` files and the Kotlin/Native `.tar.gz` (Central, `.asc`);
+  - new signers (JetBrains Compose, skiko, Kotlin/Native) are trusted on first use as under M5-12 and added to the M7 audit list;
+  - any growth of M5-11's SHA-1-only list is named again;
+  - skiko's POM says Apache-2.0, but it ships Skia (BSD-3-Clause, on deny.toml's allow list) and the third-party code Skia bundles. A named licence note, checked by coordinate, lists each bundled library with its licence, taken from skiko's published notices before Q67 is answered.
+
+  Proof: the review's output at 8p. Selftest cases fail for a klib without `.asc` and for the skiko note applied to another coordinate.
+  Moved to M6 by Q73 (8w): reading klibs and the Kotlin/Native archive, the skiko and Kotlin/Native signers and the
+  skiko licence note; the Compose Multiplatform signer and M5-11's list stay.
+  Amended at 8x-f (the 8x review): skiko's signer stays in M5 after all, as the metadata pins skiko's `.module` and
+  `-metadata.jar` and the review checks every pinned file ("Moves to M6" in "Re-cut after Q73"); its licence note stays
+  M6's.
+  Proof (M5 commit 8x, partial; the review's fetch is the lead's): IPHONE_ONLY and its five selftest cases (under 8x's
+  line in "Re-cut after Q73"). M5-11's list is unchanged here (14 files) and no signer is added: whether the list
+  grows, and which keys sign the eleven new Maven Central groups, only the review's fetch shows. skiko's signer is
+  needed in M5 after all, since the metadata pins skiko's `.module` and `-metadata.jar` and the review checks every
+  pinned file; its licence note stays M6's, as skiko is on no shipping classpath.
+- [x] Strict mode goes back on and the switch is removed in 8p; from then on M5-13's stop applies again.
+  - Proof: the gate's bootstrap canary green at 8p.
+  - Proof (M5 commit 8x, the re-plan's 8p; settles the B2r review's three findings on this proof): the bootstrap line
+    and its flags are gone from entropy-android.yml, whose Gradle calls all pass `--dependency-verification strict`
+    again (build.gradle.kts kept `lockMode.set(LockMode.STRICT)` throughout), and `kt_bootstrap_exception=''`. 8p's
+    `workflow-bootstrap` canary passed whether the list was filled or empty, so it now also plants the second
+    bootstrap's own command (`if ! sh scripts/android-gradle.sh --write-locks --write-verification-metadata sha256 \`,
+    the line the list named) and needs both hits; and the new static check `workflow-bootstrap-exception-empty`
+    requires the gate's one assignment of the list, at any indentation, to be exactly `kt_bootstrap_exception=''`. On
+    a gate copy with 8w's list back, the planted copy gives 1 hit, not 2, and the static check fails; a second,
+    indented assignment or none fails it too. `canaries.sh` PASS: all 77 checks ran (want_checks 76 -> 77; 350 s on
+    this Mac); `--selftest` 1395 passed, 0 failed under sh and /bin/dash (unchanged); the gate on the tree clean (286
+    files: :screens' lockfile joins); fmt, both clippy commands, `cargo test --workspace --locked` (21 suites, 445
+    passed, 3 ignored) and the test-sources run (17 suites, 269 passed, 1 ignored) unchanged.
+  - Proof (M5 commit 8x-c, the 8x review): 8x's static check read the list's spelling only, so on gate copies a list
+    filled again by `: "${kt_bootstrap_exception:=...}"`, by `true; kt_bootstrap_exception=...` or by an `&&` or `if`
+    form passed it and the `workflow-bootstrap` canary, and a lock-writing line it named scanned clean. `--workflows`'
+    clean line now states the list as the run holds it ("no bootstrap switch and no bootstrap exception", or the
+    reviewed exception's line, named), and `workflow-bootstrap-exception-empty` also runs the gate on the real
+    workflows and needs the former: on those four copies it fails ("does not say \"no bootstrap exception\""), and on a
+    second plain assignment it fails as before. `--selftest` checks both forms of the clean line (wexpect's optional
+    TEXT): `clean-bootstrap-exception-line` needs the stand-in list named, and the new `clean-bootstrap-exception-empty`
+    (a copy with the list '') needs "no bootstrap exception"; on a copy whose line always says "no bootstrap
+    exception", the first no longer holds. `--selftest` 1396 passed, 0 failed under sh and /bin/dash (1395 + 1);
+    `canaries.sh` PASS: all 77 checks ran; `--workflows` clean on the three workflows ("no bootstrap exception"); the
+    gate on the tree clean (286 files).
+- [ ] Kotlin/Native toolchain archives (Q68), in the order below:
+  1. `scripts/konan-deps.sh` (in `android-gradle.sh`'s pattern) fetches exactly the three archives from their full URLs (LLVM under `resources/llvm/21-aarch64-macos/`). It checks each against a SHA-256 pinned in the script and checks its `.asc` with `gpg --verify` against a keyring holding only a pinned JetBrains key fingerprint. It places the archives in `mobile/android/.konan/cache/`, where the fetcher extracts them without downloading.
+  2. `.konan/dependencies/` is empty at the start of every run, so no restored or planted extracted tree is trusted. `.konan/` is never restored from a cache.
+  3. Before any Gradle call, CI maps `download.jetbrains.com` and `download-cdn.jetbrains.com` to an unroutable address in the runner's `/etc/hosts`. Any download the fetcher attempts then fails the build; it cannot happen silently. Gradle's own hosts are not affected.
+  4. After the build, `.konan/dependencies/.extracted` lists exactly the pinned names and `dependencies/` holds exactly those directories.
+  5. Kotlin/Native's `airplaneMode` is not relied on: KGP's download path ignores overrides. It is added as a second layer only if the probe shows a documented switch that this path honours.
+
+  The pins come from the 8o bootstrap run (M9): it reads the archive names from the verified bundle's `konan.properties`, `konan-deps.sh --bootstrap` checks each `.asc` against the pinned fingerprint and records each SHA-256, and the pins land with the reviewed lockfiles at 8p. The SHA-256 and the key come from the same host, so they are trust on first use, added to the M7 audit list as M5-12 does.
+
+  Proof: a canary removes one pre-seeded archive and the iOS build fails on the blocked host. The `.extracted` listing after a build equals the pinned list. A tampered archive fails `konan-deps.sh` (selftest).
+  Proof (M5 commit 8q, partial: steps 1-3 in bootstrap mode, step 4 printed, not judged; the pins, the hard checks, the
+  selftest and the canary are 8r's): `scripts/konan-deps.sh --bootstrap` fetches the three archives and their .asc
+  from the full URLs (read on 2026-10-20: 151,150,049, 64,230,999 and 17,037 bytes; each .asc a binary-document
+  signature by the subkey 6F538074CCEBF35F28AF9B066A0975F8B1127B83, RSA, SHA-512), verifies each with gpg in a fresh
+  home holding only the Kotlin Release key (the 2FBA29D0... block of the committed verification keyring, three
+  subkeys with their bindings), prints each SHA-256 only after that, and places the archives in .konan/cache only when
+  all three pass; it refuses a non-empty .konan/dependencies or cache, and its plain mode refuses while a pin is "-".
+  On stand-in gpg and curl in the session scratchpad (no gpg on this Mac; nothing downloaded): all good, exit 0 and
+  three archives placed; a bad signature, another subkey's, an expired key's, a class-01 signature and a failed gpg,
+  exit 1 and nothing placed; a second public key or no subkey 6F53... after the import, a planted dependencies tree,
+  a full cache, a failed fetch, no key, bad usage and an unpinned plain run, exit 2; matching pins exit 0, one
+  mismatched pin exit 1, nothing placed; the same under /bin/dash. Both workflows remove .konan before the build and
+  map download.jetbrains.com and download-cdn.jetbrains.com to 0.0.0.0 and :: in /etc/hosts, then require curl to
+  fail on both; the iOS job prints the bundle's konan.properties lines, .extracted, the dependencies and cache
+  listings and ~/.konan after its build. gradle.properties sets `konan.data.dir=.konan`, and android-gradle.sh now
+  starts Gradle in mobile/android, so the relative path is the project's whichever way the plugin reads it.
+  Moved to M6 by Q73 (8w): 8w deletes `konan-deps.sh`, `konan.data.dir`, the `.konan` handling and the host block;
+  Q73's signature facts come back with M6's plan.
+
+**CI for the iPhone target** (Q69)
+- [ ] `.github/workflows/entropy-ios.yml` has one non-required job, `ios (build, simulator)`, like `entropy-android.yml` under Q55.
+  - Hardening: only the three pinned actions, `contents: read`, no secrets, no `actions/cache` on `.konan/`, and path filters (`Entropy/mobile/**`, `Entropy/ffi/**`, `Entropy/core/**`, the scripts it runs).
+  - Toolchain:
+    - `runs-on: macos-26`;
+    - `DEVELOPER_DIR=/Applications/Xcode_26.4.1.app`, with `xcodebuild -version` printed and checked against 26.4.1 (17E202), and no fallback. Kotlin expects 17E192; the difference is recorded, and if KGP warns it is not silenced;
+    - rustup's pinned 1.98.1, not the image's;
+    - `JAVA_HOME=$JAVA_HOME_17_arm64`, with the version checked (the image's default is 21);
+    - Gradle through `android-gradle.sh`; `konan-deps.sh` and the host block;
+    - an Android SDK only if the KMP library's Android target needs one even for iOS tasks (probe);
+    - the simulator `device` pinned to one iPhone present on the image's iOS 26.5 runtime (probe fact, recorded).
+  - Steps: `ios-rust.sh` (from 14), which builds, scans and hashes both libraries; the per-class `:core-ffi:iosSimulatorArm64Test` and `:screens:iosSimulatorArm64Test` runs, with the class list and counts compared to the JVM run's; the release framework link and the linked-binary scans above; strict locking and verification as on Android.
+  - The SHA-256 of the `.a` each test executable links is checked against the hash `ios-rust.sh` printed after its scan, immediately before and after the link. So the library CI scanned is the library CI linked (lessons 2).
+
+  Proof: a green run with its time and the measured budget under Review. A missing pinned Xcode fails the job.
+  Proof (M5 commit 8q, partial: the skeleton in bootstrap mode; Rust, the simulator runs, the link scans and the hash
+  check come with 8s and 14): one job `ios (build, simulator)` on macos-26, DEVELOPER_DIR
+  /Applications/Xcode_26.4.1.app/Contents/Developer (a missing one fails; `xcodebuild -version` must print Xcode 26.4.1
+  and build 17E202), JAVA_HOME from $JAVA_HOME_17_arm64 checked as a JDK 17, Gradle through android-gradle.sh,
+  konan-deps.sh and the host block; the three pinned actions only, `contents: read`, no secret, the Gradle zip the one
+  cached path, path filters on Entropy/mobile, ffi and core, the two scripts it runs and itself, and the 90-minute
+  ceiling until a run is measured. Its probe lines: gpg and an Android SDK on the image, the Xcode SDKs, the archives'
+  signatures and SHA-256, the bundle's archive names, download switches and minimum versions, .extracted, Xcode in the
+  Gradle log, the image's simulators, the linked files' size and minos, and one strict, offline Gradle run with the
+  image's Android SDK hidden. `--workflows` is clean on it.
+  Moved to M6 by Q73 (8w): 8w deletes `entropy-ios.yml`.
+- [ ] Required checks keep their names. The two existing `macos-26` cross legs (entropy-ci.yml:524-528):
+  - add `keepcrypt-guard keepcrypt-capi` to their clippy and build lists;
+  - build `libkeepcrypt_capi.a` plain and with `--features keepcrypt-core/test-registry --target-dir target/ffi-test-registry`;
+  - scan it as an archive with the same scan script `ios-rust.sh` uses: no marker and no test key in the plain build; exactly its registry marker and the test key in the other; no RNG symbol; `_kc_call` and `_kc_max_out` the only defined `_kc_*`.
+
+  These legs keep the image's default Xcode, as today. They prove the scan across compilers; the library that is linked is scanned again in `entropy-ios.yml`, as above.
+  - Proof: green legs with both scans. A planted marker in the plain build turns the leg red (shown once, under Review).
+  - Moved to M6 by Q73 (8w): keepcrypt-capi; the macos-26 legs keep scanning core alone, as they do now.
+- [ ] The Linux Android job may now resolve `kotlin-native-prebuilt-2.4.20-linux-x86_64` (220 MB) or need Linux toolchain archives. Which, if either, is a probe fact at 8o. The download hosts are blocked there too, so an unexpected download fails the build instead of happening silently. If anything is needed, its name and pins come back to the owner under Q67/Q68 before 8p.
+  - Proof: the probe line at 8o.
+  - Proof (M5 commit 8q, partial: the probe's step; its lines come from this commit's run): the Android job blocks the
+    download hosts before its bootstrap build and prints as probe: lines what the regenerated lockfiles and metadata
+    hold of kotlin-native-prebuilt and the klib commonizer, mobile/android/.konan and ~/.konan after the build, and
+    Kotlin/Native's lines in the Gradle log.
+  - Moved to M6 by Q73 (8w): with no iPhone target in M5 the question goes, and 8w removes the probe's lines and the
+    host block.
+
+**Accessibility probe in M5** (Q65; braille displays decide whether shared screens can work on iPhone)
+- [ ] At 16, the first words-page commit, an `iosTest` renders the words page over vector words (rule 12) and reads the accessibility elements Compose exposes. Each word must be one element whose label is the word, in page order.
+  - How this runs without a UIApplication (a hosted `ComposeUIViewController` in a test window, or Compose's semantics test API) is a probe fact.
+  - If it needs `org.jetbrains.compose.ui:ui-test`, that library comes back to the owner first (rule 11).
+  - If the probe fails, work stops and the owner hears before more screens are written.
+  - Moved to M6 by Q73 (8w).
+- [ ] The owner's braille-display check on the iPhone is the first item of M6, beside the secure-layer probe. This is the earliest a build can be installed.
+
+  Proof: the probe's output under Review at 16.
+
+**Milestone re-cut** (Q65 (a); proposed BP rows)
+- BP:298, M5 | Android app.
+  - Deliverables: "Compose Multiplatform screens shared with M6, over the FFI (JNI on Android); capture protection; backup via file picker; the iPhone target compiles and the shared tests pass on the iOS simulator in CI".
+  - Gate: unchanged, plus "the shared tests pass on the iOS simulator".
+  - Needs: M1, M2.
+- BP:299, M6 | iPhone app.
+  - Deliverables: "The shared Compose Multiplatform screens on iPhone over the C bridge (`keepcrypt-capi` through Kotlin/Native cinterop), a Swift host for capture handling, backup via document picker".
+  - Gate: unchanged.
+  - Needs: M1, M2, M5.
+- Stays in M6 (always iPhone work; nothing that M5's current plan delivers moves out of M5):
+  - the Swift host and capture layer;
+  - the iOS seam ends (document picker, AVFoundation QR, `NWPathMonitor`, motion);
+  - the Kotlin/Native unhandled-exception hook;
+  - the `--ios-app` check, the hooks build and XCTest;
+  - the container check (rule 8);
+  - the owner's braille-display and secure-layer probes;
+  - the install route and tested iOS versions (an M6 question; see below);
+  - the iPhone checklists I0-I5.
+
+  M5b's games stay in M5b and land in `commonMain`, so they reach both phones.
+
+**Commit order from Stage C on** (replaces stages C-F of "Commit order on `m5-android`". Each commit's proof runs at that commit, and each stage is reviewed before the next.)
+
+*Stage B2: re-plan, docs, gate, second bootstrap (no Rust, no screens)*
+- 8k. tasks/todo.md: this re-plan and Q65-Q72; the lessons.md entry on Xcode commands. 8k-b: the owner's answers, quoted with the date.
+- 8l. docs: Q72's "now" edits, alone. 8l-b: its tick.
+- 8m. (removed: the rule 1/5/9 sentence waits for Q70's wording after 8q, at 8r.)
+- 8n. scripts: the gate changes above, with fixtures and canaries.
+- 8o. mobile/android, scripts, .github:
+  - `:core-ffi` becomes KMP and `:screens` is added. `FirstLaunch`, `Screen` and the placeholder `Native` move, and `:capture-control` depends on `:screens`;
+  - plugins and libraries declared;
+  - `konan-deps.sh` in `--bootstrap` mode, the host block, and `konan.data.dir` (if Q68);
+  - the `entropy-ios.yml` skeleton;
+  - both workflows in bootstrap mode (the reviewed exception);
+  - the probe facts below recorded.
+- 8p. mobile/android, scripts:
+  - merged lockfiles and metadata, `gradle-locks-merge.py`, the extended review, the iOS classpath list, the archive pins;
+  - strict mode on and the switch removed;
+  - the Android expected classpath updated, with every non-wrapper version change named;
+  - the Android job, emulators included, green again.
+- 8q. .github, scripts, mobile/android/expected, tasks/todo.md:
+  - the release framework link with its size and superset import list;
+  - the test executables' linked imports and direct-call scan (no Rust yet), and `expected/ios-test-imports.txt`.
+
+  Stage B2's review compares every probe fact with this re-plan. A difference re-plans here, and a banned import goes to the owner (Q70).
+- 8r. CLAUDE.md: the rule 1/5/9 sentence in the wording the owner approves after seeing 8q's symbols (Q70).
+
+*Stage C: the FFI in Rust, tested on the Mac*
+- 9. ffi, ffi/guard, ffi/jni, ffi/capi (empty libs), Cargo.toml (seven members), Cargo.lock, deny.toml, supply-chain, scripts (check-path-deps, canaries), and core's and pi/app's lint blocks (group 7, amended).
+- 10. ffi: the slot, stages, halts, refusals, the long-call rule, owned copies and `dispatch` (groups 8, 11).
+- 11. ffi: `wire.rs` (with the op table) and `qr.rs`, with byte-exact tests (group 9).
+- 12. ffi/guard: `guarded` and the panic hook. ffi/jni: `Native_call` and `JNI_OnLoad` (group 10, amended).
+- 12b. ffi/capi: `kc_max_out`, `kc_call`, `include/keepcrypt.h`, the header/export test and the C-ABI integration tests.
+- 13. .github/workflows/entropy-ci.yml:
+  - the Android `.so` builds and scans as planned, with the symbol list per M5-21;
+  - the iOS `.a` builds and scans in the existing macos-26 legs;
+  - `test` adds `-p keepcrypt-guard -p keepcrypt-capi`.
+
+*Stage D: the Rust libraries in the apps, protection*
+- 14. scripts, mobile/android, .github:
+  - `android-rust.sh` and `ios-rust.sh`;
+  - `Native`'s two `actual`s, `keepcrypt.def` and the test `linkerOpts`;
+  - `commonTest` on the JVM (forked per class) and on the simulator (per class, M5-29);
+  - libkeepcrypt in the APK, the real self-test, the ARM and 16 KB leg;
+  - `entropy-ios.yml` links the test executables with Rust in, checks the linked library's hash, and reruns the marker, import and direct-call scans.
+- 15. mobile/android: `:secure-ui`; `CeremonyModel` and `Timers` in `:screens`, tested on both; the `:app` ViewModel holder and the `testRegistry` seam; the Android crash path; discard during "Working...".
+
+*Stage E: the ceremony* (16-21 as planned):
+- Screens go in `:screens` `commonMain`, and the Android seam ends go in `:app` and `:secure-ui`.
+- Commit 16 carries the accessibility probe above.
+- Each commit's emulator tests run as planned, and every commit keeps the per-class `iosSimulatorArm64Test` runs green.
+- No iOS seam end is written in M5.
+- The owner's P0b is still issued from commit 18's run.
+
+*Stage F: evidence* (22-24 as planned):
+- CLAUDE.md Commands gains `scripts/ios-rust.sh`, `scripts/konan-deps.sh --selftest` (if Q68) and `scripts/gradle-locks-merge.py --selftest`.
+- The iOS CI facts go under Review.
+- The gate report names what M5 proves on iOS: it compiles, the shared tests pass on the simulator, the scanned `.a` is the linked `.a`, and the framework holds no marker. It also names what M5 does not prove: any iPhone screen, capture handling, braille display or phone session.
+
+**iPhone phone checklists (M6 gate evidence; issued in M6, listed now so the owner sees the cost)**
+
+Send back only: pass or fail, "matched", the iPhone model and iOS version, and the app and wallet versions. The rules of P0-P5's preamble apply unchanged: nothing of the throwaway seed is sent or photographed.
+- **I0. Setup:** the iPhone, charged; the app installed by the route the M6 question picks; Developer Mode on; App Privacy Report turned on in Settings before the session; the M4 computer with Sparrow 2.5.5 and Bitcoin Core 31.1.
+- **I1. Capture:** on the dice screen, a words page and the backup passphrase:
+  - a Control Center screen recording shows the cover or a blank area;
+  - AirPlay mirroring to the Mac shows the cover;
+  - iPhone Mirroring from the Mac shows the cover;
+  - a hardware screenshot ends the session with the explanation;
+  - the app switcher shows the cover.
+- **I2. A throwaway ceremony:** as P2, with airplane mode on and Wi-Fi off, and the backup saved through the document picker ("Backup verified").
+- **I3. Watch-only:** as P3. Sparrow and Bitcoin Core show the same first address; Check a backup; `verify.py mixed`.
+- **I4. The test registry:** as P4, with the iOS test-registry build.
+- **I5. App Privacy Report and braille:** after I2-I4, the report lists no network activity for the app. If the owner has a braille display, VoiceOver reads a words page on it (MA:31).
+
+**Doc edits** (Q72; the exact current text on this branch, shortened with "...")
+
+Now (commit 8l):
+- BP:35 "... `keepcrypt-ffi` (the safe layer) and `keepcrypt-jni` (the Android boundary, `libkeepcrypt.so`); Swift binding: M6." -> add `keepcrypt-guard` (the one panic catch) and `keepcrypt-capi` (the iPhone C boundary, `libkeepcrypt_capi.a`, declared to Kotlin/Native by cinterop and linked into the app).
+- BP:37 "... one boundary crate per platform sits under it (`keepcrypt-jni` for Android; the Swift binding is chosen in M6)." -> "`keepcrypt-jni` for Android, `keepcrypt-capi` for iPhone, both over `keepcrypt-guard`".
+- BP:49-50 tree -> add `ffi/guard/` and `ffi/capi/` lines.
+- BP:55-57 tree "android/ Kotlin + Jetpack Compose", "ios/ Swift + SwiftUI" -> "android/ Gradle project: shared Compose Multiplatform screens and the Android app"; "ios/ Xcode host and Swift capture layer (M6)".
+- BP:75 "Kotlin, Jetpack Compose, ..." -> "Kotlin, Compose Multiplatform (Jetpack Compose on Android), ...".
+- BP:76 "Swift, SwiftUI, XCFramework from `cargo` (Swift binding: chosen in M6), iOS 17+" -> "Compose Multiplatform screens (Kotlin/Native) in a Swift host for capture handling; `libkeepcrypt_capi.a` (C ABI) through cinterop; iOS 17+".
+- BP:77 "... `keepcrypt-jni` (the JNI boundary over `jni-sys`, the only unsafe code and the one reviewed `catch_unwind`, ...); Swift binding: chosen in M6" -> the guard, jni and capi split.
+- BP:298, BP:299: Q65's rows.
+- MA:17 "... (`keepcrypt-jni` for Android; the Swift binding is chosen in M6) ..." -> the shared screens and the C bridge, plus Q71's iPhone residual sentence.
+- MA:21 "| UI | Kotlin, Jetpack Compose | Swift, SwiftUI |" -> "Compose Multiplatform, shared | Same, in a Swift host".
+- MA:23 iPhone cell "`KeepCryptCore.xcframework`; Swift binding: chosen in M6" -> "`libkeepcrypt_capi.a` (`keepcrypt-capi` over `keepcrypt-ffi`) through Kotlin/Native cinterop".
+- MA:24 "| Modules | `:app`, `:secure-ui` ..., `:core-ffi` | App target, `SecureUI` Swift package, core XCFramework |" -> "`:app`, `:secure-ui`, `:core-ffi`, `:screens` (shared) | App target with the Swift capture layer; no packages".
+- MA:34 "One `CeremonyViewModel` (Android) or `CeremonyModel` (iOS) owns the FFI session." -> "One shared `CeremonyModel` owns the FFI session."
+- MA:36 "A Rust panic is caught once, at the JNI boundary, ..." -> "at the bridge (`keepcrypt-guard`)".
+
+Proof (M5 commit 8o, 80bc278; the planned 8l): `git diff --name-only HEAD~1 HEAD` lists docs/build-plan.md and
+docs/mobile-apps.md only; `vectorgen.py --selftest` 13/13 and `verify.py selftest` 8/8 on Python 3.12 and 3.9;
+`banned-api-check.sh` clean (284 files) and `--selftest` 1116 passed, 0 failed; fmt, both clippy commands, `cargo test
+--workspace --locked` (21 suites, 445 passed, 3 ignored) and the test-sources run (17 suites, 269 passed, 1 ignored)
+unchanged. Every edit above landed and nothing else in docs/; the M6 list below did not. MA:24 keeps `:secure-ui`'s
+"(secure activity base, capture monitors)", which the quoted text shortens with "...". The citations here stay
+057130d's; against it, BP:50 now sits 1 lower and BP lines from :51 2 lower (BP:298/299 are now :300/301), MA unchanged.
+
+In M6, after its first probe. These are approved with Q72 as drafts. If a probe result fits neither the drafted text nor its stated alternative, the wording comes back to the owner.
+- MA:34's background rule, and MA:36's heading and stop-screen action, for iOS (Q71).
+- MA:86's row, kept or replaced (Q71).
+- MA:89-110's Swift sample, rewritten as the Swift host that observes capture state and the screenshot notification and tells the shared model.
+- MA:114 "Apply the same view wrapper ..." -> the Swift host's cover applies to every Protected screen.
+- MA:116's version list (the M6 question).
+- MA:124's iOS CI cell adds "and their Kotlin/Native names", the `--ios-app` import scan and the direct-call scan.
+- MA:127's iPhone cell "`.textSelection(.disabled)`" -> "no selectable text (no `SelectionContainer` in the app)".
+- MA:156 "`.fileExporter`" -> `UIDocumentPickerViewController`.
+
+No edits: design.md, pi-firmware.md, seal-watchonly-braille.md. CLAUDE.md rule 9 is framework-neutral and stays. Rules 1, 5 and 9 gain a sentence only at 8r (Q70).
+
+**Plan text this replaces or amends** (this branch's lines)
+- todo.md:10755 "M6 adds a sibling crate for Swift over the same safe layer" -> the bridge section above.
+- todo.md:10781-10788 "One catch, one place, one crate" -> the catch moves to keepcrypt-guard (Q66).
+- todo.md:10789 "Unsafe only in keepcrypt-jni" -> unsafe only in keepcrypt-jni and keepcrypt-capi.
+- todo.md:10792 "Overflow panics in both FFI crates" -> in all four FFI crates.
+- todo.md:10807-10810 "Three Gradle modules (MA:24)" -> the module layout above.
+- Plan groups:
+  - group 3's named files (todo.md:10988-11007) and group 4 (11057-11105);
+  - group 10 (exports) and group 12 (symbol list);
+  - group 13 (11348-11359): `:core-ffi` becomes KMP; `commonTest` runs on the JVM forked per class and on the simulator per class; ZXing stays in `androidHostTest`;
+  - group 14 (11370-11375): `CeremonyModel` in `commonMain`, held by `:app`; `testRegistry` passed in;
+  - groups 15-18: screens in `commonMain`, seams per M5-20; the accessibility probe at 16.
+- "New dependencies" (todo.md:11528-11569) gains the Q67 and Q68 tables.
+- "Commit order" (11571-11623): stages C-F as above.
+- P0's "An Android 12+ phone (Q56)" reads "the owner's Android phone (Q64)".
+- The "Deferred to M6" bullet (11461-11463) lists the "Stays in M6" items.
+
+**What is unchanged**
+- Stage A (commits 1-3d) and its doc edits (MA:29, 34, 36, 73-76, 125, 160; BP:273, :321; swb:286).
+- CLAUDE.md rules 1 and 8 as approved, until 8r. CODEOWNERS `/Entropy/mobile/` (it already covers `mobile/ios`). The Build rule and its gitlink ban.
+- Every existing Kt rule's patterns, plus one addition: the `kotlin.uuid` ban for all Kotlin. Kotlin in any allowed `mobile/android/<module>/src/` source set already gets every rule.
+- `--apk`, `--selftest-apk`, the dex scan, the canary library (M5-15), signing and the expected manifests (contents change as named). The emulator harness and M5-16/17/18. `androidTest` in `:app`. The `withTestRegistry` flavour (M5-6), Android-only.
+- The FFI's safe layer, slot, generation counter, halt rule, owned copies and status-first wire format (groups 8, 9, 11). This format is why the move is cheap: `Wire.kt` and `Core.kt` move into `commonMain` unchanged.
+- The 14 required check names. NDK r30, the 16 KB check and the symbol checks.
+- Kotlin 2.4.20, AGP 9.3.3, Gradle 9.7.1, compileSdk 37 / targetSdk 36 / minSdk 31, Jetpack Compose foundation 1.12.1, activity-compose 1.13.0, ZXing 3.5.4, jni-sys =0.3.0.
+- Lead decisions:
+  - M5-1..M5-6, M5-9..M5-12 and M5-14..M5-18 stand;
+  - M5-8 stands, and its path list grows (see the bridge section);
+  - M5-7 gains the two new plugin markers with `apply false`;
+  - M5-13 holds again after 8p.
+
+**Verification (additions to "Verification")**
+- [ ] **M5: the iPhone target compiles and the shared tests pass on the simulator.** `entropy-ios.yml` is green at the final head. The per-class `:core-ffi` and `:screens` simulator runs have the same class list and counts as the JVM runs. The release framework links and holds no marker or test key. The test executables' imports equal `expected/ios-test-imports.txt`, and the direct-call scan is clean.
+  - Proof: run ID and counts.
+  - Moved to M6 by Q73 (8w).
+- [ ] **The iOS static library passes the release scan, and the scanned library is the linked one.** Both macos-26 legs are green with the plain and test-registry `.a` scans. The header/export test is green. `entropy-ios.yml`'s linked-library hash equals `ios-rust.sh`'s scanned hash.
+  - Proof: run IDs; the scan and hash lines.
+  - Moved to M6 by Q73 (8w).
+- [ ] **One catch.** The gate's FFI rule and the clippy.toml canaries are green with seven members.
+  - Proof: canaries output.
+  - Moved to M6 by Q73 (8w): keepcrypt-capi; the check holds with six members (M5-32).
+- [ ] **No unverified download.** Every run starts with an empty `.konan/dependencies/` and the download hosts blocked. The three archives pass `konan-deps.sh` (SHA-256 and `.asc`). `.extracted` equals the pinned list. The removed-archive canary turns red as expected. Every Gradle artifact in the merged verification metadata is reviewed.
+  - Proof: the review output, the listing and the canary.
+  - Moved to M6 by Q73 (8w): no `konan-deps.sh` fetch in M5; every Gradle artifact is still reviewed, at 8x.
+- [ ] **Accessibility on iOS, first look.** The commit 16 probe shows one element per word with the word as its label.
+  - Proof: the probe output.
+  - Moved to M6 by Q73 (8w).
+
+**Unverified until the probe (8o-8q, 14, 16) or M6; none is presented as proven**
+- Probe 8o-8q:
+  - whether strict lock mode accepts one merged lockfile set on both hosts;
+  - whether the Linux job resolves the Linux Kotlin/Native bundle or toolchain archives;
+  - whether any documented `airplaneMode` switch reaches KGP's download path (not relied on either way);
+  - the exact archive names in the verified bundle's `konan.properties`;
+  - which key signs the three archives, and whether `gpg` is on the macos-26 image;
+  - the `osVersionMin` switch, and that the `minos` of the linked binaries is 17.0;
+  - the simulator device name on the image;
+  - whether KGP warns on Xcode 26.4.1 (17E202) where it expects 17E192;
+  - whether the macos-26 image needs an Android SDK for the KMP library's Android target during iOS tasks;
+  - the exact Android classpath delta: savedstate 1.4.0 is known; the others listed in [C3] are unchecked; whether the merged manifest changes;
+  - the RNG, network, clipboard and storage imports of the linked iOS binaries (Kotlin/Native runtime, Skia's `SkRandom`, Compose's text and clipboard code), and the framework size;
+  - the direct-call scan's coverage on Kotlin/Native symbol names.
+- Probe 14:
+  - that the Kotlin/Native test task honours `--tests` per class and that each run is a fresh simulator process;
+  - that a cinterop klib without `staticLibraries` plus per-binary `linkerOpts` links on both targets.
+- Probe 16: how the accessibility probe runs without a UIApplication, and whether it needs `ui-test`.
+- Anytime: that Kotlin/Native's collector does not copy a `ByteArray` before `fill(0)`. Its docs describe a non-moving mark-and-sweep collector; this has not been checked.
+- M6:
+  - whether `sceneCaptureState` can be driven in a simulator test;
+  - whether `simctl io` captures leave a secure layer out;
+  - whether the app-switcher snapshot is readable from the simulator's container;
+  - what the system writes into the container (preferences plist, snapshots, Metal shader cache);
+  - whether the exception hook can end the process without a crash report;
+  - whether Compose's iOS accessibility reaches a VoiceOver braille display;
+  - whether a public path reaches `paragraphCache.reset()`;
+  - whether the secure-`UITextField` trick still hides a Metal view on iOS 26 and 27. Reports conflict: Bluesky's package still uses it (Daring Fireball 2026-08-20); one developer reports it failing on iOS 26 (B4X forum 2026-05-03); Apple says iOS has no anti-screenshot API (forums 838583).
+
+**Sources** (read 2026-10-20, nothing downloaded)
+- [C1] github.com/JetBrains/compose-multiplatform/releases (v1.12.0, v1.12.1, v1.12.2); Maven Central `Last-Modified` of ui-iosarm64 1.12.1 (2026-09-22 08:14 GMT) and 1.12.2 (2026-10-15).
+- [C2] kotlinlang.org/docs/multiplatform/whats-new-compose-112.html; kotlinlang.org/docs/multiplatform/compose-compatibility-and-versioning.html (2026-10-15).
+- [C3] Maven Central `foundation-android` and `ui-android` 1.12.1 `.module` and POMs; Google's Maven `savedstate-compose` 1.4.0 (2025-11-05); `expected/shipping-runtime-classpath.txt` at 057130d.
+- [C4] Gradle module metadata of Compose foundation, ui and runtime 1.12.1; HEAD requests on the checksum and `.asc` files named above; Google's Maven `maven-metadata.xml` for the androidx iOS klibs.
+- [C5] kotlinlang.org/docs/releases.html; github.com/JetBrains/kotlin/releases/tag/v2.4.21.
+- [C6] kotlinlang.org/docs/multiplatform/multiplatform-compatibility-guide.html; kotlinlang.org/docs/whatsnew2420.html; KGP 2.4.20 `KotlinToolingDiagnostics.kt`.
+- [C7] developer.android.com/build/migrate-to-built-in-kotlin (2026-09-15); developer.android.com/build/releases/agp-9-0-0-release-notes; developer.android.com/kotlin/multiplatform/plugin (2026-10-16).
+- [C8] kotlinlang.org/docs/multiplatform/whats-new-compose-110.html; the `org.jetbrains.compose` plugin POM.
+- [C9] KGP 2.4.20 `NativeProperties.kt` and `KotlinNativeBundleBuildService.kt`; HEAD on `kotlin-native-prebuilt` 2.4.20, `kotlin-klib-commonizer-embeddable` 2.4.20 and `kotlin-test-junit` 2.4.20.
+- [C10] Kotlin/Native 2.4.20 `konan.properties` and `DependencyProcessor.kt` (`downloadDependency`: the `.extracted` skip, the cache-archive extraction, no hash check); HEAD on the three archives and their `.sha256`/`.asc` at their real URLs.
+- [C11] github.com/actions/runner-images `images/macos/macos-26-arm64-Readme.md` (20261013); `xcodebuild -version` on this Mac (disclosed above).
+- [C12] blog.jetbrains.com (Compose Multiplatform 1.8.0 for iOS stable, 2025-05); kotlinlang.org/docs/multiplatform/compose-ios-accessibility.html; Compose 1.12.1 sources named above (`PlatformFont.skiko.kt:294-329`); Skia m150 `modules/skparagraph/src/ParagraphCache.cpp`.
+- [C13] kotlinlang.org/docs/multiplatform/multiplatform-ios-integration-overview.html (2026-07-21); Kotlin/Native 2.4.20 `konan.properties` (`minVersion.ios`).
+- Apple: developer.apple.com/forums/thread/762744, /760859, /838583; the `sceneCaptureState` and "Protecting sensitive content when screen sharing" pages.
+- Research scratch notes (not committed) are in the session scratchpad's `m5-cmp/` directory: `ios_arm64_tree.txt`, `ios_simarm64_tree.txt`, `repo-impact-facts.txt`, `ios-bridge-notes.txt`, `critique-evidence.txt` and the Kotlin source extracts.
+
+---
+
+### Critique log (revision 2, 2026-10-20)
+
+- **H1 accepted.** The guarantee is now network-level: the download hosts are blocked in `/etc/hosts`, every run starts with an empty `.konan/dependencies/`, `.konan/` is never cached, and `.extracted` must equal the pinned list after the build. Airplane mode is no longer relied on. The old proof "cache listing equals pinned list" was also wrong for a second reason: the fetcher deletes archives after extracting them. Q68 is reworded.
+- **H2 accepted.** The LLVM URL is corrected. `konan-deps.sh` checks `.asc` against a pinned fingerprint as well as SHA-256. The pins are named as trust on first use and added to the M7 list. Q68 presents LLVM as a compiler the owner must trust.
+- **H3 accepted.** M5-29 runs one class per simulator process, filtered from the JVM run's class list, with per-class proofs. The reset-call alternative is rejected because it adds FFI surface, even behind `test-sources`.
+- **H4 accepted, with a different design from the one suggested.** The `.def` has no `staticLibraries`, so Rust never enters a klib or the framework. The test executables link the test library by `linkerOpts`, and the M6 app link adds the plain library. The framework and the test binaries are scanned for both markers and the test key at 8q and at 14.
+- **H5 accepted.** An explicit source-set allow list in the KMP modules refuses `appleMain`, `nativeMain`, the per-target sets and the rest, with a fixture per name.
+- **H6 accepted.** The savedstate 1.3.2→1.4.0 change is named in Q67 and [C3], and the other declared modules are marked unchecked. Any further real-module change comes back by name.
+- **M1 accepted.** A direct-call scan from `kfun:com.keepcrypt.*` is added, with its limit stated. Q70 now recommends deciding the wording after 8q, so commit 8m is removed and 8r added.
+- **M2 accepted.** Q70 is widened to rules 1, 5 and 9, with an explicit deny list and allow list. libc file functions are allowed by name, and rule 8 is checked by behaviour.
+- **M3 accepted.** The rule 8 reading on iOS is added to Q71, with an M6 container-diff proof.
+- **M4 accepted.** Q71 and the capture table now say that any unhandled Kotlin exception aborts with a report.
+- **M5 accepted.** `ios-rust.sh` scans and hashes the exact `.a` it builds, and `entropy-ios.yml` checks that hash around the link.
+- **M6 accepted.** `kotlin-klib-commonizer-embeddable` and `kotlin-test-junit` are added to Q67. The stdlib is sourced from the bundle.
+- **M7 accepted.** The braille risk is in Q65, with an accessibility probe at commit 16 and the owner's braille check as M6's first item.
+- **M8 accepted in part.** The DSL now uses `kotlin { android { } }` and `withHostTestBuilder {}`, and a collision fixture is added. `withDeviceTestBuilder` is rejected and refused, because there are no device tests in KMP modules; `androidTest` stays in `:app`.
+- **M9 accepted.** Names and signatures are checked in the 8o bootstrap run, and the pins land at 8p.
+- **M10 accepted for M6.** CI builds the unsigned `.app` and the Mac only re-signs it. This is recorded for the M6 install question, which is deferred under L10.
+- **L1 accepted.** The minimum is 17.0 in `ios-rust.sh` and in Kotlin/Native `osVersionMin`, with a `minos` check in M5.
+- **L2 accepted.** capi's library is renamed `keepcrypt_capi`.
+- **L3 accepted.** capi uses `["staticlib", "rlib"]`, and its tests call by Rust path, so the gate's `extern "C"` placement rule still holds.
+- **L4 and L13 accepted.** `xcodebuild -version` is disclosed, the promise is limited to named Xcode tools, `llvm-nm`/`llvm-objdump` are used, and a lessons.md entry is planned at 8k.
+- **L5 accepted.** The navigationevent mapping, the "Stays in M6" wording, [C7]'s deprecation wording and the 17E192/17E202 difference are corrected.
+- **L6 accepted.** `testRegistry` is passed in as a seam, and ZXing stays in `:core-ffi` `androidHostTest`.
+- **L7 accepted.** The bundled licences are listed from skiko's notices before Q67; the lead must fill that in.
+- **L8 accepted.** The reset path is an M6 probe. The letter-per-element measure is now iPhone-only so Q58 is not reopened, and Q71 says applying it on Android would reopen Q58.
+- **L9 accepted.** The compared imports come from linked test executables. The framework's archive list is only a superset, used for the stop rule.
+- **L10 accepted.** M6 wording comes back if a probe fits neither draft. The install-route question is deferred to M6, so the questions are now Q65-Q72.
+- **L11 accepted.** The simulator device is pinned and recorded as a probe fact.
+- **L12 accepted.** All the names are added, and `kotlin.uuid` is banned for all Kotlin, Android included.
+- **Also corrected (found while revising):** the runner's default JDK is 21, so JDK 17 comes from `$JAVA_HOME_17_arm64`.
+
+### Re-cut after Q73 (2026-10-20)
+
+The owner dropped the iPhone target from M5 (Q73). This section amends "Re-plan for Compose Multiplatform" and wins wherever
+they differ. Nothing in the Android plan is weakened.
+
+**M5 lead decisions, after Q73**
+- M5-31 (2026-10-20): `:core-ffi` and `:screens` stay Kotlin Multiplatform modules with the Android target only. The
+  screens stay in `commonMain` and the platform seams stay `commonMain` interfaces (M5-20), so M6 can reuse them or not;
+  no Kotlin moves back. Declaring no Apple target drops Kotlin/Native from the build.
+- M5-32 (2026-10-20): `keepcrypt-guard` stays (Q66 (a)): it keeps the one `catch_unwind` out of the crate with the unsafe
+  code, and the gate (8p) and docs (8o) already hold that split. The workspace has six members: core, ffi, ffi/guard,
+  ffi/jni, pi/app, pi/sim.
+- M5-33 (2026-10-20): M5-23 and M5-25 to M5-29 are withdrawn for M5 and come back with the M6 plan if M6 builds the shared
+  screens for iPhone. `mobile/ios/` stays empty and the gate keeps refusing files under it (M5-25's rule stays).
+- M5-34 (2026-10-20): M4b's fix for the kernel's rustc probe (74b80be, M4b-7) is cherry-picked onto `m5-android` as
+  8y (79c75de), because the Pi image run 39404714666 at 1ae0df6 failed leg a's scan the same way (CONFIG_RUSTC_VERSION
+  109900 vs 109901; image 4b13c095 in both legs). M5-1's merge of main after M4b lands takes the same change from both
+  sides.
+- M5-35 (2026-10-20): the structural tie, from the B2q fix's concern under M5-32. keepcrypt-jni's `[dependencies]` are
+  exactly keepcrypt-guard and jni-sys =0.3.0, with no keepcrypt-ffi or keepcrypt-core edge (group 7 listed both, and
+  zeroize), so the JNI crate can reach the safe layer only through `keepcrypt_guard::guarded`; keepcrypt-guard depends
+  on keepcrypt-ffi. A canaries static check pins keepcrypt-jni's direct dependencies, of every kind and target, as
+  cargo metadata reads them, and a canary that adds a keepcrypt-ffi edge to it fails. The gate refuses `macro_rules`
+  and `#[macro_export]` in ffi/src/ and ffi/guard/src/ too (8p-e already refuses `macro_rules` in ffi/jni/src/lib.rs),
+  so no export can be written by a macro from another ffi crate. What this changes for later commits: with no direct
+  core edge, `-p keepcrypt-jni --features keepcrypt-core/test-registry` is refused ("does not contain this feature"),
+  so group 12's test-registry build names core beside it (`-p keepcrypt-jni -p keepcrypt-core --features
+  keepcrypt-core/test-registry`, which resolves core with the feature; checked with cargo tree at commit 9); and
+  keepcrypt-jni's wiping buffers come through keepcrypt-guard's API, which re-exports nothing of keepcrypt-ffi.
+- M5-36 (2026-10-21): keepcrypt-ffi's `pub static FFI`, `Slot::new` (with `Default`) and the barrier seam `Slot::hold`
+  ship in the library, as commits 10 and 10c made them. They are accepted because nothing in the app can reach them:
+  keepcrypt-jni depends on keepcrypt-guard and jni-sys alone (M5-35), keepcrypt-guard's surface is `fn guarded` alone
+  (9d's gate rule), and `dispatch` has no op for `hold`. keepcrypt-ffi stays without `[features]`, so a feature to
+  hide them is not used.
+- M5-37 (2026-10-21): the QR replies carry the matrix only, never the text, so the seal codes in the registration and
+  collision-report texts and the xpub in the account and descriptor texts are not held twice in Java memory (commit 11).
+  Group 9's QR proof and group 13's ZXing bullet read accordingly: commit 14's JVM test decodes every matrix with
+  ZXing and compares the registration, collision-report and re-check texts with kcr.json's and seal.json's; it proves
+  the check request by decoding T and n and revealing with a go-ahead code built from them; and it checks the account
+  and descriptor matrices by structure and by the fingerprint inside the UR against the summary's (the gate seeds'
+  watch-only exports have no vector).
+- M5-38 (2026-10-21): the halt-by-panic test (group 10's second item, group 11's exit-path item) runs in
+  keepcrypt-guard's own unit tests: under `cfg(test)` only, `guarded` calls a private test dispatcher, which drives the
+  real slot to Ready through keepcrypt-ffi's own `dispatch`, moves a drop-observing value into its frame and panics; the
+  shipping build always calls `keepcrypt_ffi::dispatch`. The test shows the observer dropped, the slot Halted, every
+  later call halting, and no output (a child test process with stdout and stderr captured). If the gate's pinned
+  `guarded` line names the dispatcher, commit 12 changes the pin and its rule together.
+- M5-39 (2026-10-21): the `Restart` stage of commit 10d is confirmed as the Pi has it (pi/app/src/app.rs:864-873 and
+  :961-975): Match found, Cannot check and a collision found by a go-ahead all lead to it; only start, and
+  collision_report when a report is kept, are offered there; collision_report is offered nowhere else.
+- M5-40 (2026-10-21): libkeepcrypt.so exports, besides our two (`JNI_OnLoad`, `Java_com_keepcrypt_entropy_ffi_Native_call`),
+  the four `#[no_mangle]` C functions secp256k1-sys 0.10.1 defines (`rustsecp256k1_v0_10_0_context_create`,
+  `_context_destroy`, `_default_error_callback_fn`, `_default_illegal_callback_fn`, its src/lib.rs:880, 919, 956 and
+  984). They hold no secret and no app code calls them through the table, so they are allowed by exact name rather than
+  hidden by a linker version script (a build-flag change the plan does not need). Commit 13's CI step allows exactly
+  those four beside our two, so any other export, ours or a dependency's, or a secp256k1-sys version change fails it;
+  M5-21's sentence, group 6's static check and group 12's symbol line read accordingly.
+- M5-41 (2026-10-21): the Android `actual` is the JNI method itself: `internal actual object Native { init {
+  System.loadLibrary("keepcrypt") } actual external fun call(op: Int, input: ByteArray): ByteArray }` (the VM passes
+  the object as the second argument, which the Rust export takes as its unused `_class`). Commit 14's JVM tests also
+  send a negative op and an oversize array through `Native.call` and expect the halt, so the fail-closed branches of
+  `Native_call` that the host tests reach only through 12g's private trait seam run once over a real VM.
+- M5-42 (2026-10-21): `tools/verify/vectorgen.py` writes a `ur` field, `kcp1_ur` of the same bytes, into kcr.json's
+  `clear-empty-bucket` and `collision-dice-50` proof cases, beside their `kcp1_hex` (regenerated with
+  `--write-kcr-vectors`, never by hand; the spec's `proof_qr` line says so), so the Android app's JVM tests take the P4
+  drill's go-ahead QR text from the vectors instead of keeping a UR encoder of their own: the `:app` test renders those
+  two texts as the PNGs P4 scans, and `:core-ffi`'s tests reveal with them. vectorgen's kcr.json check pins these two as
+  the only cases with both fields and each `ur` as its bytes' UR, and the FFI tests' own encoder (`ffi/tests/common`) is
+  checked against both. Every reader of kcr.json's proofs that prefers `ur` (core's `kcr` and `kcr_release` tests and
+  `seal::proof`'s, the FFI's no-key test, vectorgen's check) now verifies these two through their QR text, with the
+  same pinned outcome.
+  Amended 2026-10-21 (after the D1 review): the P4 PNGs carry each `ur` text upper case, so ZXing writes an
+  alphanumeric QR, smaller than the lower-case byte-mode one and easier for a phone to read from a computer screen; core
+  accepts either case (kcr.json's `ur-uppercase` case), and RegistryTest's
+  `theUpperCaseGoAheadQrTextsRevealAndCatchAlike` reveals and catches with the upper-case texts too.
+- M5-43 (2026-10-21): M5-20's rule (platform seams are `commonMain` interfaces passed in at the entry point) covers
+  shipping code. Common Kotlin has no file I/O, so the JVM tests read `vectors/` through a test-only `expect fun
+  entropyFile` in `commonTest` with its `actual` in `androidHostTest` (commit 14); if M6 adds an Apple target to
+  `commonTest`, it adds that target's `actual`.
+- M5-44 (2026-10-21): commit 14 adds the Rust builds (three ABIs, two flavours and the host library), the forked JVM
+  tests and the 16 KB-page leg to the Android job, which M5-30's 15 minutes cannot hold. The job has 60 minutes for its
+  first full run at commit 14; the lead then sets its budget to that run's time plus 25% (M5-30's rule) in the next
+  bookkeeping commit. Group 6's path list gains `Entropy/Cargo.toml` (14c).
+  Measured: run 39554267960 at 89cf334 took the job 1178 s (19.6 min) with cold emulator caches; plus 25% is
+  24.5, so the budget is 25 minutes (`timeout-minutes: 25`, commit 14n).
+- M5-45 (2026-10-21): the `:app` holder (CeremonyHolder) starts `model.runTimers()` in its own scope as well as
+  holding the model; the re-plan's "only holds the model" is read as "owns no ceremony logic". Moving the loop into the
+  model would make the JVM tests' Unconfined scope tick from another thread, and a test dispatcher needs
+  kotlinx-coroutines-test, a dependency M5 does not add. M6's holder makes the same one call (commit 15 review).
+- M5-46 (2026-10-21): the Protected pads' accessibility semantics (each key gives only its role) are proven by commit
+  19's emulator tests with the Protected screens, not by group 14's JVM tests: no JVM test can read a drawn Compose
+  tree without a UI test library M5 does not add. PadEntry's zeroing is proven on the JVM (15g).
+- M5-47 (2026-10-21): LifecycleTest's start-up case passes whether Home lands during the self-test or after it (its
+  pass line says which). The emulator half of group 14's "leave during the start-up self-test" counts only if at least
+  one API leg's pass line says "during"; the JVM test `leavingDuringTheStartUpSelfTestRunsItAgainOnTheNextReturn` is
+  the deterministic proof. If both legs say "after", the gate report names it. The content-capture check proves
+  something only on an image whose content_capture service answers (group 14 already says "where the probe found a
+  service"); on others its probe line says so and the Review counts it as not proven there.
+  Amended 2026-10-21 (16j): under M5-50 that JVM test is renamed
+  `leavingDuringTheStartUpSelfTestReturnsToFirstLaunchWhoseContinueRunsItAgain` (a leave during the self-test returns
+  to First launch, whose Continue runs it again), and LifecycleTest's start-up case is Continue then Home at once,
+  "during" requiring the Self-test screen right after the press (16k).
+- M5-48 (2026-10-21): group 15 lands across commits: commit 16 has the screens from the start to the dice; Dice's Done
+  (finish behind "Working...", then the check prompt) comes with commit 17's check screens; Home gains Check a backup
+  in commit 20 and Load registry snapshot and About in commit 21, so no button exists before its screen. MA:173's
+  "Verify another device's ceremony" is M5b's (Q61). Group 15's item stays open until those commits land (E1 review).
+- M5-49 (2026-10-21): "UI state holds screen ids, page indices and `Secret` references only" (group 14 and the
+  re-plan) is read as: no secret except through a `Secret` reference; public values the screen shows (C as hex
+  groups, the dice count and bits) and flags (dice-only, overlay, notice) may sit in UiState. C is public by design
+  (it is the commitment the user writes down). Commit 16's UiState is within this reading (E1 review).
+- M5-50 (2026-10-21): the start order follows MA:170-172 and group 15: First launch on every start, its Continue runs
+  the self-test behind the Self-test screen, then Go offline. Commit 16 ran the self-test first (the Pi's order,
+  PF:87), which put a screen before MA:13's "first screen"; 16j reorders it. The plan's boot rule ("the self-test
+  before Home") holds either way, and a discard that hits the self-test returns to First launch, whose Continue runs
+  it again.
+  Proof (M5 commit 16j, partial: the Kotlin compiles and the JVM and emulator tests run only in CI): CeremonyModel
+  starts on First launch and a return no longer runs the self-test; Continue (firstLaunchDone) runs it behind the
+  Self-test screen, then Go offline, and once it has passed goes to Go offline at once (Back from Go offline); a
+  discard during it returns to First launch (no notice, under the cover while away), whose Continue runs it again;
+  after it, a discard's start screen is Go offline. NoCoreCallBeforeContinueTest proves no core call before Continue
+  (the slot halted first); CeremonyModelTest and StartScreensTest follow the order; every emulator test waits for what
+  it means (group 15's 16j line). The Pi's boot order (PF:87) is unchanged.
+  Proof (CI, run 39653116940 at d7c108b): the JVM tests named and every emulator test passed on API 31 and API 36
+  under this order (group 15's CI line); the start-up leave came after the self-test on both (M5-47).
+- M5-51 (2026-10-21): Q60's "a strip on every screen" covers the privacy cover and the idle-warning overlay too: in the
+  test-registry build both draw the TEST REGISTRY strip (16j). PhoneMotion (the sensor seam's Android end) gets an
+  emulator check in 16j: started on the emulator it delivers at least one accelerometer sample within 5 s, and none
+  after stop (a gyroscope sample too where the image lists one; a probe line says which). E1 review.
+  Proof (M5 commit 16j, partial: the Kotlin compiles and the emulator tests run only in CI): the cover and the idle
+  warning are one overlay composable (Screens.kt's OverlayScreen, the whole window taking the tap) that draws the
+  strip inside the system bars' insets when the build's testRegistry flag is set. CaptureTest's
+  theCoverCarriesTheStripOnlyInTheTestRegistryApk (both APKs, API 31 and 36) leaves the app from First launch (Home)
+  and returns (am start), then requires the strip inside the cover in the test-registry APK and no strip on screen in
+  the shipping APK; no test reaches the idle warning (nine minutes without input while a session is held), which
+  draws its strip through the same composable. PhoneMotionTest (scripts/android-emulator.sh step 4a, before FlowTest,
+  shipping app, API 31 and 36): a probe line names the image's motion sensors and every sensor it lists; with the
+  app in front and the test's own listener on the same sensors, PhoneMotion reports an accelerometer sample within
+  5 s, and a gyroscope one where listed; every sample is 24 bytes (type 4, timestamp 8, three values' bits 4 each,
+  big-endian) of a listed type, and for each sensor at least one sample is, field by field, an event the own listener
+  received; none comes in the second after stop while the own listener still receives events. Estimated cost (not yet
+  measured): about 15 s a leg for PhoneMotionTest and about 5 s an APK for the cover check, so about a minute on
+  run 39611275051's 22.2 (M5-52's re-measure comes from the first CI run).
+  Proof (M5 commit 16l, review fix, partial: the Kotlin compiles and the emulator tests run only in CI): the cover
+  and the idle warning are one call (Screens.kt's OverlayScreen(overlay, testRegistry, dismiss)), so the strip's
+  flag and the insets padding are one code path for both, and CaptureTest's cover check (the strip in the
+  test-registry APK, none in the shipping APK) holds for the warning's strip too; only the warning's text is its
+  own, and no test reaches it. No test proves that the strip lies inside the system bars' insets (OverlayScreen's
+  safeDrawingPadding, which matters on API 36, whose window is edge to edge): UI Automator gives only visible
+  bounds, cut to the window as accessibility reports it, and reading the drawn tree's positions needs a UI test
+  library M5 does not add (M5-46).
+  Proof (M5 commit 16m, review fix, partial: the emulator test runs only in CI): "none after stop" did not show
+  that PhoneMotion unregisters, since stop drops its receiver first (a stop without unregisterListener passed).
+  PhoneMotionTest now reads dumpsys sensorservice while PhoneMotion runs and again after the second after stop,
+  with the test's own listener still on: Android names a sensor connection after its listener's class (the
+  enclosing class for an anonymous one), and the dump starts each connection's line with that name and " | ".
+  Where both connections are listed while it runs, after stop the test's own must be listed and PhoneMotion's
+  not, and the pass line adds "unregistered"; on an image whose dump lists them otherwise, a probe line says the
+  unregistration is not proven there.
+  Proof (CI, run 39653116940 at d7c108b): PhoneMotionTest passed on API 31 and API 36 with "unregistered" on both
+  (both dumps listed the two connections by name), and CaptureTest's cover check passed in both APKs on both.
+- M5-52 (2026-10-21): commit 16 adds FlowTest and a ten-screen CaptureTest walk per leg; run 39611275051 at e38a095
+  took the Android job 1331 s (22.2 min: Rust libraries 245 s, Gradle build 185 s, API 31 219 s, API 36 245 s, 16 KB
+  113 s), 89% of M5-44's 25. By M5-30's rule (the measured run plus 25%) the budget is 28 minutes (16i-b). Each later
+  commit that adds emulator tests re-measures it the same way.
+  Re-measured with 16j's emulator tests in: run 39653116940 at d7c108b took 1262 s (21.0 minutes), within 28.
+- M5-53 (2026-10-22): ZXing core reports "no QR code in this frame" by throwing: every QR decode call declares
+  NotFoundException, ChecksumException and FormatException, all ReaderException (read from core-3.5.4.jar's class
+  files). Almost every camera frame holds no code, so group 3's catch list could not admit any ZXing scanner, which
+  the plan missed. The list gains exactly `catch (<name>: ReaderException)` by its bare name, in
+  camera/GoAheadScanner.kt only, with its own import line (`import com.google.zxing.ReaderException`) as 17f
+  requires of every allowed catch, and an alias, cast or typealias of the name a hit (17f's kt_alias). The catch
+  drops a frame whose buffer is already zeroed and reads the next. Rule 3 holds: the catch is around no entropy,
+  health test or known-answer test, and a frame without a code is not a failure. Hit fixtures: the catch in any
+  other file, `NotFoundException` or `Exception` in the scanner's file, and the catch without its import line; a
+  clean fixture for the allowed form (commit 18a).
+- M5-54 (2026-10-22): commit 17 adds two calls core does not offer at home, Done's `finish` and the snapshot check
+  (`revealSnapshot`). The worker checks the discard flag and then calls core, so a discard (a leave, Wi-Fi on, a
+  timer) that lands between the two reaches core with the slot Idle, and the call halts it: the stop screen instead
+  of the start screen (review of commit 17). It fails closed and the window is microseconds. The snapshot check
+  becomes a short call on the main thread, as the FFI already runs it (it only looks up the loaded snapshot), so
+  group 16's "on the FFI thread" is replaced. `finish` keeps its window as a fail-closed residual, as does the
+  backup's encryption (`encryptBackup`, the same kind of call: LifecycleTest drives it, and commit 20 brings it):
+  CeremonyModel's KDoc names both (commit 17h), and group 14's item is amended (17g).
+  Amended 2026-10-22 (18d, from commit 18's review): a scanned go-ahead QR's check (`revealProof`, commit 18) is a
+  long call of the same kind (ffi's reveal_proof takes only a Checking slot), so its window is the same fail-closed
+  residual; CeremonyModel's KDoc names all three. Making the FFI answer Discarded for a long call that meets an Idle
+  slot after a discard would close all three, and is not taken in M5: it changes the FFI's stage rule
+  (`ffi_a_call_in_a_stage_that_does_not_offer_it_halts`) for a window of microseconds that fails closed.
+  Amended 2026-10-28 (M5-70 (c), from E4's review): commit 20a's backup check (`verifyBackup`, run as a model long
+  call after the save) is a fourth call of the same kind, with the same fail-closed residual; CeremonyModel's KDoc
+  names all four (finish, revealProof, encryptBackup, verifyBackup).
+- M5-55 (2026-10-22): the check prompt shows no seal card. Commit 17 drew it there, Seal ID included, beside Skip;
+  the Seal ID's first four characters are the 20-bit bucket the registry lookup takes, so a user could read a Stop
+  and then Skip past it, which swb:130 rules out ("Skip is offered only before the check starts, so nobody can read
+  a Stop on the website and then skip past it"), and the Pi's prompt draws no seal (MA:178, "the same prompt and
+  seal card as the Pi"). The Seal ID shows from Check now on: on the seal card, and on both result screens (the
+  collision result and the check result). P0b and P4 compare it there, and quote the collision screen's text,
+  "Collision found. This seed is not unique and has been destroyed." ("Match found" is only the typed path's
+  button). A scanned proof's result line says "K entries in this seal's bucket", never the loaded snapshot's total
+  (commits 17h and 18).
+- M5-56 (2026-10-22): commit 17 adds a platform seam M5-20 does not list: `UtcDate` (Seams.kt), whose Android end is
+  :app's UtcToday (today's date in UTC). Only snapshot and proof freshness read it (Stale, Future), never a timer,
+  which stays on MonotonicClock.
+- M5-57 (2026-10-22): commit 17's first CI run (39673248591 at 9955e2a) reached 28.1 minutes: Rust libraries 236 s,
+  Gradle build 209 s, API 31 413 s, API 36 449 s, 16 KB 109 s (d7c108b's run: 157, 138, 292, 309 and 81; the unchanged
+  Rust and 16 KB steps ran 79 s and 28 s slower, so part of the rise is the runner). M5-52's 28 cancelled the job
+  just after its last leg. By M5-30's rule (the measured run plus 25%) the budget is 36 minutes (17g-c); the next
+  green run re-measures it, and commit 18's scanner tests re-measure it again.
+  Re-measured: run 39678040247 at 32dc6a8, the first whole run with commit 17's tests, took 1739 s (29.0 minutes:
+  Rust libraries 171 s, Gradle build 157 s, API 31 508 s, API 36 531 s, 16 KB 83 s); plus 25% is 37 minutes (17g-d).
+  The gates job of that commit's Entropy CI run (39678040331) took 639 s of its 720.
+  Re-measured with commit 18's tests: run 39744137391 at 1a63e0f took 1850 s (30.8 minutes: Rust libraries 161 s,
+  Gradle build 143 s, API 31 581 s, API 36 604 s, 16 KB 80 s); plus 25% is 39 minutes (18i). The gates job of that
+  commit's Entropy CI run (39744137380) took 659 s of its 720, with 1463 selftest cases.
+  Re-measured: run 39783747240 at efc0575 (18i: todo.md and the timeout only; it failed on API 36, 18j, with every
+  leg run to its end) took 2112 s (35.2 minutes: Rust libraries 267 s, Gradle build 200 s, API 31 608 s, API 36 636
+  s, 16 KB 109 s) with no new test, so the rise from 1850 s is the runner's; plus 25% is 44 minutes (18n). The gates
+  job of that commit's Entropy CI run (39783747232) took 649 s of its 720, with 1481 selftest cases.
+- M5-58 (2026-10-22): an uncaught-exception handler is a catch-all no `catch` shows, and KtFailOpen did not see one:
+  `Thread.setUncaughtExceptionHandler` on the scanner's own HandlerThread, or a second
+  `Thread.setDefaultUncaughtExceptionHandler`, left the gate clean (commit 18's review, reproduced). Commit 18 adds
+  the app's first thread of its own, whose failures fail closed only because they reach CrashHandler (wipe, then end
+  the process). KtFailOpen gains a hit for `setUncaughtExceptionHandler`, `setDefaultUncaughtExceptionHandler` and
+  `UncaughtExceptionHandler` outside the test source sets, except KeepCryptApp.kt's one
+  `Thread.setDefaultUncaughtExceptionHandler(` call and CrashHandler.kt's class header, each at its exact path
+  (18a-b's named files), with hit fixtures for a handler on another thread, a second default handler, a handler
+  class elsewhere and an alias of the name (commit 18e).
+- M5-59 (2026-10-22): no automated test stops a running scan: the CI emulators have no camera (hw.camera.back=none),
+  so the scan screen there reaches its no-camera line, and a test hook into MainActivity's scanner would be shipping
+  code. The scan stops when the app is left (MainActivity.onAppLeft and the cover, which ends ScanScreen's
+  `scanning`), when the scan screen goes (its DisposableEffect) and when the activity ends (shutDown). P0b gains the
+  owner's check with Android's camera indicator (Android 12 and later) on a real camera, and the M5 gate report names
+  the gap. Emulated-camera AVDs are not taken in M5: they change the legs' no-camera facts and SnapshotDrillTest's
+  expectation, and add time to M5-57's budget. (Q76 adds a local-only check of the real Camera2 path on the project's
+  own AVD, Stage L's L2; CI is unchanged.)
+- M5-60 (2026-10-22): 18e's review found more catch-alls that show no `catch` and that KtFailOpen did not see: an
+  ExecutorService or CompletableFuture task whose failure waits in a future nobody reads, coroutines' `async` whose
+  Deferred is never awaited (KtFailOpen already bans SupervisorJob and supervisorScope for the same reason), and a
+  `return` inside `finally`, which drops the exception in flight. The shipping code uses none of them. KtFailOpen
+  hits `ExecutorService`, `Executors`, `CompletableFuture`, `FutureTask`, `ForkJoinPool`, `async` and `Deferred` as
+  words outside the test source sets; java.util.concurrent.Executor, which GoAheadScanner.kt hands to Camera2 and
+  which posts to the scanner's own HandlerThread (so a failure reaches CrashHandler), stays allowed there by its exact
+  import line. A `return`, `break` or `continue` inside `finally` hits where the gate finds it reliably; what it cannot
+  find without a parser is recorded as a residual (commit 18h). M5-58's rule itself is completed by 18f (exact allowed
+  lines, each once), 18g (ThreadGroup, getUncaughtExceptionHandler, uncaughtException) and 18h (the allowances' fixtures).
+  Amended 2026-10-23 (Stage L's review of 18h): (a) 18h reads the finally rule fail closed instead of leaving a
+  residual: a shipping `finally` block may hold no string, character, backtick name or comment, and a loop's `break`
+  or `continue` or a lambda's `return` inside one hits too. The shipping code's three finally blocks pass, and this
+  replaces "recorded as a residual" above. (b) A word list cannot be complete: ThreadPoolExecutor,
+  ScheduledThreadPoolExecutor, ScheduledExecutorService, ForkJoinTask's `fork()`, kotlinx.coroutines.future's
+  `future { }` and Flow's `retry` and `retryWhen` all passed it (reproduced on HEAD). So outside the test source sets
+  KtFailOpen also allows `java.util.concurrent` and `kotlinx.coroutines` only by the import lines the shipping code
+  has today, each exactly: `import java.util.concurrent.Executor` in GoAheadScanner.kt only (as above), and
+  kotlinx.coroutines' CoroutineDispatcher, CoroutineScope, Dispatchers, Job, cancel, delay, flow.MutableStateFlow,
+  flow.StateFlow, launch and withContext. Any other mention of either package hits: another import, a star import,
+  an alias, a qualified name. The word list stays. A new name from either package needs a lead decision that says why
+  it cannot hold a failure. (c) Java turns `\uXXXX` escapes into characters before it reads the code, so a `.java`
+  file can hide every text rule's word from the gate (reproduced). The app has no Java source, and any `.java` file
+  under mobile/android hits (commit 18o).
+- M5-61 (2026-10-23): AGP fetches aapt2, its resource compiler, for the build machine's OS. The verification metadata
+  pinned only the Linux jar, so Q76's strict local build stopped on `aapt2-9.3.3-15703166-osx.jar` (L1). It is the
+  Mac's build of a component the metadata already pins (com.android.tools.build:aapt2:9.3.3-15703166), with no new
+  component, version or lockfile line, so it is not the dependency change M5-13 stops for. Q76 (b) covers its
+  download: Gradle fetched it and refused it, and none of its code ran. The metadata gains its SHA-256,
+  1e35bc2ce18c3aae840be2a29659ce50d6043e907a44d98ee1cf375d044fa29c (4,463,202 bytes; Gradle's cache names it by its
+  SHA-1, d279d1b68498cf41b88ca6cccc7c5f642cddb290). The Android workflow's dependency review checks that against
+  Google's published .sha256 at the next run, and the Mac builds with it only after that run passes. CI never
+  resolves it, and no APK holds it (18n).
+- M5-62 (2026-10-23): Stage L's review found four defects in the local loop itself, each fixed or decided here
+  (commit L3). (a) The gate's file list and canaries.sh's tree copies read the ignored Gradle outputs that a local
+  build leaves (mobile/android/.gradle, mobile/android/build and each module's build/). Those held 1,874 hits in
+  generated reports, so both fail in a working tree that has built; CI's fresh checkout has none. Both leave out
+  exactly those directories. The Build rule still refuses any tracked file there (git ls-files), so the skip hides
+  nothing tracked. (b) Each android-local.sh run's first boot lets the emulator fetch its update list and feature
+  flags from dl.google.com (L2d). While a leg turns Wi-Fi on, the Play image's services can also reach Google. None of
+  these is among Q76's downloads. The run's emulator HOME is seeded so the emulator skips both fetches, and the guest
+  gets no route to the internet while the legs run. The app's offline rule reads Settings.Global (airplane mode, Wi-Fi
+  on), not a reached server (OfflineMonitor.kt), so every offline test still means what it says. Whatever cannot be
+  cut is named in the script's header and the Proof. (c) LifecycleTest's leave during a backup's scrypt races a scrypt
+  that takes about 0.5 s on kc37's native arm64 (about 1 s on CI's emulators), and in one local run it lost all three
+  attempts. The leave is made certain to fall inside the scrypt, for example by sending the activity to the
+  background at once instead of through Home's slower path. The judge stays the same (M5-47), with no more attempts
+  and no longer waits. (d) The Camera2 decode of goahead-collision-dice-50.png, a version-24 code at about 3 px a
+  module on kc37's virtual scene, stays unmet. No new test asset is added for it; the decode stays P0b's and P4's, on a
+  real camera.
+  Amended 2026-10-27 (commit L3b, Lc's review): (a)'s claim that the skip hides nothing tracked holds only where git's
+  index says what is tracked. So the gate leaves those directories out only inside a git work tree, and an export or a
+  tarball is read whole. The leave-out names mobile/android/.gradle, mobile/android/build and the build/ of the five
+  modules settings.gradle.kts includes, and nothing else. A sixth module's build output is read until it is named, so
+  it fails the gate loudly and never hides anything.
+- M5-63 (2026-10-23): the gates job's self-test is its long pole, and it grows with every rule: locally 514 s at 1463
+  cases (1a63e0f) and 575 s at 1517 (Stage L's head). The job took 649 to 659 s of Q31 (f)'s 12 minutes at 1463 to
+  1481 cases, so commits 19-21's fixtures would push it past 12 minutes. Before that happens, the self-test runs in
+  two shards beside the canaries (the runner has four cores). `--selftest` gains a shard option that runs the cases in
+  its shard and prints its own count and the whole list's count. The step fails unless both shards report the same
+  whole-list count, their counts add up to it, and every case passes. The rules and cases are unchanged. Locally, the
+  shards' counts add up to the unsharded count (commit L4).
+  As built (L4, 2026-10-23): shard K of N judges case c of the one list, in its fixed order, when (c - 1) mod N is
+  K - 1, so neighbouring cases go to different shards and every kind of case falls into both (the fixtures, the
+  scope trees' scans, the built cases and the other modes'). A case is skipped only at its judged run, so what comes
+  before it is made in both shards (each case's scratch tree, the scope trees' copies, the artifact objects, the image
+  stub): 36 s of each shard's walk on the Mac. The cases are unchanged but for the option's own 13 refusals (1569 at
+  L4). Locally (sh, 1569 cases): the whole self-test 541 s alone; the shards 349 s and 347 s beside canaries.sh's
+  462 s, so on the Mac the step's long pole is now canaries.sh.
+- M5-64 (2026-10-27): RUSTSEC-2026-0385 (published about 2026-10-23) reports that ctutils before 0.4.4 could compile
+  its `Choice` mask generation, and its `u128` comparisons on 32-bit targets, to branches on secret values: a timing
+  side channel. ctutils is RustCrypto's constant-time helper under digest (so sha2, hmac, hkdf, pbkdf2 and scrypt) and
+  curve25519-dalek. Entropy CI's supply-chain job failed on it at 994894f (run 39953907423), while every other job
+  passed. The owner chose (2026-10-27) "Update to 0.4.4 now", waiving the 14-day wait for this one security fix:
+  ctutils 0.4.2 to 0.4.4 in Cargo.lock only (`cargo update -p ctutils --precise 0.4.4`, which fetched the index and
+  the crate from crates.io; 0.4.4's release date was not looked up). Its dependencies are unchanged (cmov, the same
+  version), and its cargo vet exemption moves to 0.4.4. Had it brought a new crate or another version change, the work
+  would have stopped for the owner. Locally, both clippy runs, cargo test --workspace (499 passed), core with
+  test-sources (269 passed), cargo vet --locked, and the offline cargo deny and cargo audit pass. CI's online deny and
+  audit prove the advisory cleared. The Pi image and the Android libraries rebuild from the new lock in CI; no hash is
+  pinned for either.
+- M5-65 (2026-10-27): M5-60 (b)'s reason, that a word list cannot be complete, holds as well for the standard
+  library's kotlin.coroutines, which is always on the compile classpath. Its startCoroutine and createCoroutine take a
+  completion Continuation whose resumeWith can ignore the failure it is handed, a catch-all with no catch, and a
+  shipping file doing that passed the gate clean (Lc's review, three findings). The shipping code uses nothing from
+  kotlin.coroutines, and commonTest's TestSupport.kt is in a test set. So KtFailOpen's package arm takes
+  kotlin.coroutines and its subpackages, with no allowed import line. A name from it needs a lead decision that says
+  why it cannot hold a failure, as in (b). kotlinx.coroutines keeps (b)'s ten lines (commit 18s).
+- M5-66 (2026-10-27): with two mutant self-tests side by side (16 or more shards), Lc's fix agent saw one case report a
+  Shell hit with no line number (`MainActivity.kt:: `). The case passed alone. That failure was closed, but it shows
+  that a rule's helper can fail and the scan still go on. Rule 3 holds for the gate itself: a tool the gate runs that
+  cannot start, exits with an error or is killed must stop the gate with exit 2, naming what failed. It must never
+  give "clean", and never a hit with no line. Commit 18t finds that empty line number's cause and fixes it. It adds a
+  fault check: a PATH shim makes each external tool the gate runs fail, in each of those three ways, at every place in
+  the script that runs it, on a small tree that reaches every rule. No such run may print "clean". The check runs in CI
+  in a job with time to spare, since the gates job took 701 s of its 720 at 4940ede (run 40442191525, before L4's
+  shards). It takes at most 5 minutes there, and the 14 required check names are unchanged.
+- M5-67 (2026-10-27): L4's shards did not buy the gates job its headroom. At 6a6a34f (run 40455117393) the job took
+  688 s of its 720 and its side-by-side step 597 s, against 701 s unsharded at 4940ede (run 40442191525). On the
+  runner's four cores the two shards and canaries.sh's cargo builds contend for the same CPUs, and canaries.sh alone is
+  now the step's long pole (locally 462 s, beside shards of 349 s). Commits 18s, 18t and 19 add cases, so the job would
+  pass 12 minutes soon. canaries.sh moves out of the gates job into one existing required job with time to spare: lint
+  (28 to 74 s) or supply-chain (32 to 41 s), not the job 18t's fault check uses. That job gets whatever setup the
+  canaries need, copied from the gates job (the pinned toolchain, its targets and components, the caches, cargo-deny),
+  so the canaries stay a required check under the same 14 names. The gates job keeps the gate's runs and the two
+  shards side by side with their count check. Both jobs' times are measured at the next push, and each stays under 12
+  minutes (commit L7).
+- M5-68 (2026-10-28): (a) Three agents for commit 18t each died before committing (a session restart, a dropped API
+  connection, the Mac's reboot), losing hours each time. The lead finished 18t from the tree they left, re-ran its
+  checks and committed it; CI's first run then failed the fault check on bash 5's numbering of an EXIT trap's text,
+  which the lead's 18u fixed. (b) A long commit is committed in steps, each a coherent piece with every check it can
+  affect green and its body naming the steps to come; its review fixes take the letters after its last step. Commit
+  19 so landed as 19a and 19b, its review fixes as 19c-19f. (c) M5-66 covers every mode CI runs, not the scan alone,
+  so every mode but the selftests runs its tools fail closed (18v-18x). The fault check faults the scan, --workflows,
+  --artifact and --os-config. --image-lists, --image and --apk need a built Pi image or an APK, which the lint job
+  lacks, so their selftests' stub images and APKs and CI's real runs cover them. llvm-nm and llvm-readobj run by the
+  toolchain's path, out of a shim's reach, and the gate reads their statuses itself. (d) Commit L8 closes what E3's
+  last review (of the fix commits) found in the gate; item L8 lists it. (e) Commit 19g: CaptureTest's check of the
+  secret marks (399e3c8) put each secret text in a UI Automator selector, which UI Automator logs at debug level, so
+  the walk's words, SeedBook numbers and overview lines reached the emulator's logcat (rule 5). That log was never kept:
+  CI reads only the crash buffer and uploads only the APKs and the P4 files, and both emulators run with no snapshot
+  and wiped data. Still no secret may reach a log: the check collects nodes with a selector that holds no secret and
+  compares their text in-process, each secret text must be found at least once, and the walk also visits the
+  read-back entry after a word matches, where the word is drawn. (f) Commit 19h: group 6's positive control (a) on the
+  words page, which commit 8 deferred to commit 19 and 19 did not bring: the capture-control APK draws dice-99-words12's
+  first words page with the same composables and no FLAG_SECURE, the same captures find its known pixels on API 31
+  and 36, and the control captures are uploaded as the owner's screen review; and PadEntry.handOver wipes in a
+  finally, with codeDone handing its letters to core through it as the read-back does (19d).
+- M5-69 (2026-10-28): M5-57's 44 minutes cancelled run 40624645994 (f06a5ab, commit 19's tests in) 17 s after its
+  last leg had passed: API 31 967 s and API 36 958 s, against 608 s and 636 s at efc0575 (16 KB 93 s), so commit 19
+  added about six minutes a leg and should have re-measured. The job runs with the 90-minute ceiling for the run at
+  stage E4's head, and the lead then sets its budget to that run plus 25% (M5-30). Stage U adds journeys and edge
+  cases to these legs, so before Stage U the lead weighs running the legs as parallel jobs against the longer budget,
+  from that measurement.
+- M5-70 (2026-10-28), after stage E4: (a) L8's dangling-.git-file case failed in CI (Entropy CI 40681107808 at
+  e5109bc): Ubuntu's git 2.55 says "gitfile does not point to a valid repository" where macOS's says "not a git
+  repository", so the gate stopped with git's failure but not the case's line. Commit L8b names the .git entry for any
+  exit 128 that finds one, the same under every git. (b) M5-69's measuring run (Entropy Android 40681107802, at
+  e5109bc) took 53.4 minutes with every leg run to its end (API 31 1230 s, API 36 1226 s, 16 KB 81 s; two legs failed
+  on tests, (h)). By M5-30 one job would need 67 minutes, and Stage U adds journeys. The Android workflow is not among
+  the 14 required checks, so commit L9 runs the legs as parallel jobs: one build job builds, signs and uploads once,
+  and hands the APKs to the leg jobs (API 31 with the 16 KB leg, and API 36) through actions/cache keyed by the run
+  (download-artifact is not an approved action), each leg checking the bytes against the build's SHA256SUMS before it
+  installs them, so every leg still tests the bytes the run uploads. Each job's budget is its measured time plus 25%
+  (M5-30), measured at L9's first push under the 90-minute ceiling. (c) M5-54 names verifyBackup (amended there). (d)
+  Rule 8 says the app's own storage stays empty. 21b's nothing-persisted listing allows two shader caches the platform's
+  renderer writes into the app's code_cache, which no listing has shown and no owner answer names, so commit 21g allows
+  nothing there; if CI's listing shows them, the lead brings the paths and sizes to the owner as a rule 8 question
+  before any allowance. (e) P2 and P3 follow the app's order (the watch-only export after the backup and before D,
+  offered once), and group 6's upload order is as built (19h). (f) The age hand-off's search (20b-20d: the run's whole
+  output for the passphrase, either page and two of its screen's lines; single words outside fixed prose lines, the
+  public name and fingerprint and am instrument's result lines) stands for the plan's grep of the job log for the
+  passphrase's first word. (g) Commit 19j moves CaptureTest's control (c) to the words page, as group 6's (c) says (API
+  36; the local user build cannot make it), and commit 20h reads a picked file on the worker, not in the activity's
+  result callback, so a slow provider or a full-size snapshot cannot hold the main thread. (h) The measuring run's
+  failures (FlowTest on API 31: a stale node in Ui.enabled in the watch-only flow, and About not shown in time;
+  CaptureTest on API 36, test-registry APK: "only 4 of the 5 secret texts of backup_confirm are drawn") came before
+  E4's fix commits; whatever CI at the next head still shows is fixed at its root in stage E5.
+- M5-71 (2026-10-29), after stage E5: (a) Q55's approved answer is "one new non-required job" that builds and checks
+  the APKs once and runs the emulators "on those same files", with no new actions and no secrets. L9 makes it one
+  non-required workflow of three jobs and keeps every guarantee Q55 names: one build, every leg checking the same bytes
+  by SHA-256 before it installs them, only the approved actions, no secrets, nothing required. The lead reads Q55's
+  "job" as that workflow and says so in the M5 report; if the owner answers otherwise, going back is L9's revert and a
+  single job with a 67-minute budget. (b) Scope accepted: 20h's Core.openBackup(entries, file: Secret), with Check a
+  backup's file held in a Secret and wiped as the entries are, and L9's two gate selftest fixtures
+  (workflow-uses-cache-sub-action, workflow-uses-download-artifact). (c) Control (c)'s captures are the app's own
+  captures of a Protected screen: judged in-process, never written to a file or uploaded (rule 5); the owner's screen
+  review stays control (a)'s two kept screencaps (19h). (d) A leg job re-run on its own is a new attempt, misses the
+  run's cache entry and fails: the whole run is re-run, as no failed test is re-run alone; a save that fails in the
+  build job fails the legs on the miss (closed). (e) Proof lines are historical: each says what its commit proved then.
+  A later commit that changes the behaviour says so in its own Proof, and an earlier Proof that names the changed
+  behaviour in the present tense gets a one-clause pointer (21b's, 21d's and 20h's, given 2026-10-29). (f) L9b's
+  grep-based --workflows rule cannot see a key only a YAML parser decodes (an escape sequence in a quoted key, or a
+  quoted key continued over a line). A parser would be a new dependency (rule 11), so commit L10 refuses those
+  spellings instead.
+- M5-72 (2026-10-29), Stage U's map (a read-only workflow over U1-U3 at e3c6c12, its critic checking 16 of the maps'
+  coverage claims against the tests): (a) "Through the UI only" (U1) means every input a user makes goes through the
+  UI: Public pads by the accessibility click, Protected pads by injected touches (Ui.kt), never a model call; state is
+  read in-process only to observe it (C, the check QR, the words, the passphrase for the age hand-off), and a scanned
+  proof is fed to onGoAheadText, the camera's decode staying P0b's and P4's (M5-70). (b) Nothing keeps the screen on,
+  so a screen timeout stops the activity, which is leaving the app, and a words page is discarded while the user is
+  still punching metal: a defect against PF:125 ("slow punching or scanning is never cut short") and MA:34. Commit U3m
+  keeps the screen on (FLAG_KEEP_SCREEN_ON) while a session or a checked backup is held; the 30-second cover and the
+  10-minute wipe still apply. (c) Check a backup's registration count from a loaded snapshot is M9's, with snapshots in
+  shipping builds and re-checks (Q22); U3a's finding goes on M9's list. (d) The backup confirm stays a typed answer
+  (the first four letters on the letter pad, MA:154's "2 words are confirmed"), not the Pi's pick from four (PF:155),
+  so no choice's button names a word to an accessibility service (rule 5). (e) The pads keep the Pi's 8-column grids
+  (PF:112): their keys stay 33-39 dp on a 360 dp phone (WCAG 2.5.8's 24 dp met), and the dice keys fill their share of
+  the row (U3f). (f) If DoubleTapTest (U2i) shows a double tap passing a privacy gate or a one-way confirm unseen, the
+  fix is the phone's reading of PF:105 and PF:115: a new screen's controls ignore presses for 300 ms after its first
+  frame, in pressOn, with the test that failed. (g) Budgets by M5-30 from the split's first run (Entropy Android
+  40813152800): `build` 12 minutes, the leg jobs 32 (API 31 then 16 KB) and 30 (API 36); U1a's new jobs take the
+  90-minute ceiling for their measuring run. (h) Stage U runs as the commit plan under its items: stages U-1 to U-5 now,
+  U-6 after the owner answers Q77-Q85, each a stage of the M5 workflow (implement, three reviews, fixes, suite), CI at
+  each stage's head. (i) The test-registry capture walk's failure on API 31 at e3c6c12 ("a secret's node on the Public
+  screen readback_done", passing on API 36 and in the shipping APK) is fixed at its root first, as commit 21j.
+- M5-73 (2026-10-29), after stage U-1: (a) L10 refuses a quoted key or value holding a backslash, a doubled single
+  quote or a quote left open at its line's end, and L10b any byte in entropy-*.yml outside tab and printable ASCII
+  (a carriage return included, so CRLF workflows fail, as the canary-property rule already made them): both wider than
+  L10's item and M5-71 (f) said, both fail closed, accepted; the gate's line model is now "printable ASCII and tab,
+  split on LF". (b) U1a and U1a2 run each API's leg as three jobs, capture (with the 16 KB leg on API 31), journeys
+  and "test registry and edges" (part ids capture, journeys, registry); the Terms, CI and Budgets entries' L9 wording
+  reads as six leg jobs from U1a on, each budgeted by M5-30 after its measuring run. (c) The FFI's halted status
+  carries a reason code since U3a (the fixed codes pinned in wire.rs); the plan's FFI line reads so.
+- M5-74 (2026-10-30), Stage U-2 (U3e, U3f, U3g, U2a, their review fixes U3e2, U3f2, U3g2, U2a2 and U1a4, and the
+  bookkeeping of run 40903211202): (a) the lead pushed cd8440b before the local suite had run the gate, and U3f's
+  PadsTest named a word KtWindow refuses, so that head's gates job fails; U3f2 fixes it, and from here the gate runs
+  before every commit that adds Kotlin. (b) U2a's launchMode singleTask (chosen over singleInstance, whose pickers
+  would answer at once, and over a process-wide model, a larger change) stops a second activity for every start but
+  one with FLAG_ACTIVITY_CLEAR_TASK, which finishes the running activity first: its model's end wipes the slot, and a
+  self-test or session the new activity starts meanwhile is halted or wiped, so it fails closed; a guard that halts a
+  second CeremonyHolder is left out as a residual the M5 report names. (c) The reviews found the instrumented journeys
+  still typing into the model's pads in-process in places (FlowTest, CaptureTest, BackupTest, LifecycleTest, Ui.kt's
+  helpers); through the UI only is U1b's (Ui's tapped rolls, pads and codes, M5-72 (a)), so U-2 leaves them, and the
+  JVM tests press through padKey. (d) U3g's device check covers the screens' pane titles and the QR codes' names; the
+  gate's and overlays' titles, the headings and the live regions, and Compose's silence for a live region that first
+  appears, go to U3h's layout and TalkBack pass and to Q79-Q80, not decided here. (e) U3f keeps mutableIntStateOf:
+  neverEqualPolicy changed no test's result (a replaced face writes the length twice). (f) Local proof in this session
+  ran on a Linux x86_64 cloud host (JDK 21, the Android SDK's platform 37, build-tools 36.0.0 and NDK r30, Gradle's
+  downloads through Q76's paths, with Maven Central rate-limiting and retried), with no emulator: the JVM tests, the
+  strict builds, --apk on throwaway-signed APKs and the selftests are local; every device claim is CI's. (g) API 36's
+  journeys failed at a15dc4f (the open item of 2026-10-31): the lead does not guess a fix it cannot run; U1a6 adds the
+  failure's own diagnostics, the next run's lines decide the fix, and no failed run is rerun to green.
+
+- M5-75 (2026-10-31), Stage U-3 (U2b to U2g and their review fixes U2b2, U2c2, U2e2, U2f2 and U2g2): (a) Back on the
+  phone's own screens stays as built, recorded here since no earlier entry names it: Go offline back to First launch
+  and Home back to Go offline (group 15, nothing held), and Load registry snapshot's result Home, where the Pi's
+  result takes Press alone (PF:110 allows back on info pages only on About, the re-check QR and the wait for a
+  stick): the phone's Back does what its Done does, losing nothing. (b) The save screen keeps no Back, where the
+  Pi's wait for a stick goes back to the backup offer keeping the passphrase (PF:110): the phone's save screen offers
+  Skip itself, its offer's Make would generate a new passphrase over the one written down, and nothing else on the
+  Pi's path is lost by staying; a deviation from PF's buttons table the owner may overrule (the M5 report names it).
+  (c) A picker's answer after a recreation is lost (SecureActivity saves no instance state, so the activity-result
+  registry forgets the request): the model's next resume frees the picker's buttons (U2c2), Save keeps Save again,
+  and Q77's recommended in-place configuration changes would end it; Documents.kt's KDoc, which said such an answer
+  still reached the model, is corrected. (d) Behaviour the owner's open questions decide is pinned as built and named:
+  leaving and the 30-second cover on a privacy gate (Q82), every wipe landing on Go offline (Q81, in assertDiscarded
+  alone), and a leave or going online during a long call that holds nothing (a snapshot's read and load) still says
+  Left or Offline on Go offline. (e) j read as h and w read as r are core's alone (no vector seed's word holds j or w in
+  its first four letters): no vector is added for a screen path that is the same code as e, i, d, f, h and r's. (f) The
+  U2g commit message's "core's code and text" means core's refusal code, with each code's text pinned to error.rs by
+  BackupScreensTest and HomeScreensTest; the pushed message stays. (g) Entropy Android 41181656557 at f9ede2c: every
+  step of the build job passed, its last at 13 min 0 s, and the job was stopped at its 13-minute budget, so the six leg
+  jobs were skipped. U-3's JVM tests lengthened the build step to 5 min 11 s; the build job is re-measured by M5-70
+  (b), 779 s plus 25%, 17 minutes; the leg jobs' budgets stand, their tests unchanged. Entropy CI 41181656557's sibling
+  run 41181657191 passed at the same head.
+
+- M5-76 (2026-10-31), Stage U-4 (U1b): (a) JourneyTest's first journey (149 rolls and 12 read-backs by taps) is
+  added to the journeys part, whose jobs ran 14 to 15 minutes against their 20 (run 41187953910): both take the
+  90-minute ceiling for U1b's measuring run, as U1a's new jobs did (M5-72 (g)), and the lead then sets each to its
+  measured time plus 25% (M5-30) and re-plans U1c-U1g from the journey's times, splitting the journeys into more jobs
+  if one would pass the ceiling's use. (b) Ui.roll stays as the edge tests' in-process setup (LifecycleTest,
+  SnapshotDrillTest, FlowTest's pages and limits, CaptureTest), named so in its KDoc: M5-72 (a)'s "through the UI
+  only" binds U1's journeys, which use Ui.tapRolls, tapCode and typeLetters; which existing tests move to taps is
+  U1c-U1g's re-plan. (c) JourneyTest is one class in the journeys part, after CheckTest and before BackupTest, so
+  BackupTest's age -d hand-off stays the part's last run. (d) U1b's run measured 3.2 to 4.9 s a tapped roll, the cost of
+  UI Automator's searches waiting for 500 ms of accessibility quiet each: U1b2 presses the dice pad's keys and Confirm
+  by their accessibility click on the app's own nodes through UiAutomation, still a user's input on the screen
+  (M5-72 (a)'s Public pads by the accessibility click), and U1c-U1g are re-planned from its run, not from U1b's.
+  (e) U1b2's run (Entropy Android 41197141108) measured a tapped roll at 0.05-0.06 s and cut the journeys jobs to 1153 s
+  and 1097 s, so their budgets are 25 and 23 minutes (M5-30); U1c-U1g are re-planned under U-4's plan from its costs,
+  U1c first finding the letter pad's keys through UiAutomation's nodes as U1b2 found the dice pad's, and the journeys
+  part splits into two jobs before any journeys job would pass 30 minutes. (f) A journeys job stopped by its budget
+  leaves no measure and no evidence, so a commit that adds a journey runs the journeys jobs at 30 minutes, the split
+  line, and the lead then budgets each at its measured time plus 25% (M5-30) or splits the part. (g) U1e is the
+  journey that would pass that line: from the measured costs (the journeys jobs 1153 s with one journey of 236 s;
+  the 24-word journey about 3 minutes, the mixed one about 4, U1e's with two scrypt calls and two picker trips about
+  5, the read-back's saving about 1), the journeys jobs would take about 1810 s. So JourneyTest moves to a part of
+  its own, ui (android-emulator.sh --part ui, one job on each level, eight leg jobs in all), before U1e lands; the
+  journeys part keeps FlowTest, CheckTest and BackupTest with its age -d hand-off last, back at 20 minutes (its
+  measured 919 s and 952 s, run 40903211202, before JourneyTest), and the ui jobs are measured at 30. U1c's own run
+  (5641b98's) was cancelled by the next push while its build job ran, before any emulator job, and so were c8794c1's
+  and 143f5fa's (the commits pushed on the stop hook's instruction while a run was going): the run at U1g's head
+  proves U1c to U1g together, and the ui and registry jobs are measured there. JourneyTest clears core's backup name from Downloads before its save, so
+  with every part on one boot it never picks BackupTest's file. (h) Run 41203734694's ui jobs ran with the mixed journey
+  failing part-way, so they are not measured whole: they stay at 30 minutes until a run is, while the registry and
+  journeys jobs take their measured time plus 25% (18 and 19, 20 and 19 minutes).
+
+**Open item (2026-10-31): UI Automator does not see first_launch in API 36's journeys.** Entropy Android 41148288082
+at a15dc4f failed all 10 tests of API 36's journeys job (FlowTest 7, CheckTest 2, BackupTest 1, the shipping APK),
+each at Ui.on's first screen: "UI Automator does not see first_launch, though the app shows first_launch" (By.res
+within 10 s). The same job last passed at ab6773f (run 40903211202), before Stage U-2; at dd2d617 it never booted
+(U1a5). In the same run API 36's test registry job passed SnapshotDrillTest, which reaches first_launch through the
+same Ui.toHome and By.res in the test-registry APK, and API 36's capture walk found the shipping APK's first_launch
+root by reading the tree in-process (Capture.nodesOf), with no lag probe. So the root is in the tree, and By.res did
+not match it, in the shipping APK's journeys alone. The cause is not known: Stage U-2's candidates are U3g's pane
+title on the screens' column (UI Automator passes over the subtree of a node it reads as not visible) and U1a5's 2G
+data partition; neither explains why the test-registry APK's search passed. U1a6 makes Ui.on print, before that
+failure, each window root of the app and the chain down to each node with the screen's id (class, resource id,
+visible, pane title), and the leg print the device's /data room. Until the cause is found and fixed, a repeat is a
+defect to diagnose from those lines, never a rerun to green, and the M5 gate report names this item (M5-74 (g)).
+Entropy Android 41152244123 at 7ab9c95 repeated it (all 10 tests again; the other five leg jobs passed), and U1a6's
+lines narrow it: "UI Automator's tree for first_launch: 0 window root(s) of com.keepcrypt.entropy", so no window of
+the app is among those UiAutomation reports while the app has composed first_launch: not U3g's pane title, which would
+leave the window listed. The device's /data read 6082144 KB with 5602688 free, so not storage either; that size is not
+U1a5's 2G, so whether the emulator applies the AVD's partition size is itself not shown, and U1a5's boot on a low-disk
+runner stays owed. U1a7 prints, before the same failure, the activity's lifecycle stage, every window UiAutomation
+reports (type, title, package, active, focused), the window manager's focus, the resumed activities and the keyguard's
+lines, to tell a window over the app, a task behind another and a window left unreported apart. Entropy Android
+41155373986 at 75349ee did not repeat it: API 36's journeys passed, no U1a6 or U1a7 line was printed, and every other
+job passed. So it failed in two runs in a row (a15dc4f, 7ab9c95) and passed in the next with no app change between
+(U1a6 and U1a7 change only the tests' failure output): intermittent, its cause still unknown, not fixed, and not rerun
+to green. U1a6's and U1a7's lines stay in Ui.on, so a repeat names the windows; the item stays open and the M5 gate
+report names it. Entropy Android 41184964281 at ea14821 repeated it in API 36's test registry and edges job, in the
+test-registry APK's SnapshotDrillTest (all 3 tests at First launch; the part's first class, started as the installs
+ended, 34 s in all), and U1a7's lines name the cause: "windows: type 3 'Navigation bar' com.android.launcher3; type 3 'null'
+com.android.systemui; type 3 'Quickstep isn't responding' android active focused; focus:
+mCurrentFocus=Window{a196b32 u0 Application Not Responding: com.android.launcher3}", the app's activity RESUMED: the
+launcher hung after the fresh boot and the system's not-responding dialog for it held the focus over the app, so
+UiAutomation listed no window of the app. The same part's LifecycleTest and CrashTest, run after it, passed. It is the
+emulator's, not the app's (the dialog is the launcher's, and the app was resumed and drawn); a fresh boot's launcher
+hangs on some runs and not others, which is why it came and went. U1a8 closes such a dialog before each instrumented
+class. The item stays open until a CI run passes with U1a8 in, or shows its lines. Corrected (the lead's, 2026-10-31):
+that bar was too low, since a run in which the dialog does not come up passes with or without U1a8 (75349ee passed
+before it). Entropy Android 41187953910 at 29af0bc, the first run with U1a8 in, passed every job, and its API 36 test
+registry and edges job printed none of U1a8's lines: the launcher did not hang there, so U1a8's close was not
+exercised on an emulator. The cause is known and a repeat can no longer pass as a test failure (U1a8 closes the
+dialog or fails the leg naming it), but which step closes the real dialog is still unproven. The item stays open,
+narrowed to that: it closes on the first CI run whose lines show "the dialog closed by", or, if a run shows the
+dialog stuck, U1a8 is redesigned from those lines. The M5 gate report names it until then (tasks/lessons.md,
+2026-10-31).
+
+**Open item (2026-10-31): the age -d hand-off's logcat check found two of the passphrase screen's lines.** Entropy
+Android 41203734694 at 62f9c8c, API 36's journeys job: BackupTest passed, and android-age-check.py failed it: "logcat -d
+holds 2 of the 8 lines the passphrase screen draws". The check looks for "N word" (a line as the screen draws it)
+anywhere in every logcat buffer, inside longer tokens too, and the checker prints counts alone, so the run cannot
+tell a leak from chance (a number and a short common word inside a longer token, which the check's own text expects
+of one line alone). API 31's job, on the same commit and classes, passed it; no app code changed since its last pass
+(run 41197141108's journeys jobs, both green). The check is not relaxed. U4r makes a failure name each matched line's
+position, whether it stands as a whole token or only inside a longer one, and its logcat tag (never the word): a
+repeat is diagnosed from those lines, never rerun to green, and the M5 gate report names this item until it is
+closed by a run whose facts show its cause.
+
+**Open item (2026-10-21): an intermittent lit raw frame.** The Android run 39490491879 (at 4a5a0e2) failed its first
+attempt on API 36: in the shipping app's cold-launch recording, 1 of 17 raw frames showed at least one lit pixel in the
+app's window; every screencap, takeScreenshot, recents and saved-state check in the same leg was black, and the second
+attempt passed with no Android change. The cause is not known. 13b (9491fdd) makes the checker print each lit frame's
+pixel count, box and brightest colour. Until the cause is found and fixed, a repeat is a defect to diagnose from those
+lines, never a rerun to green, and the M5 gate report names this item.
+
+**Open item (2026-10-21): intermittent recents failures on API 36.** The Android run 39556542012 (at 8c9eca8, which
+changed only the workflow's timeout and todo.md) failed on API 36 while the same tests passed at 89cf334: ControlTest's
+`theRecentsThumbnailShowsTheControlsScreen` (the leg's first recents key after boot: no overview_panel within 10 s,
+focus still on the capture control), and CaptureTest's `theRecentsThumbnailIsThePlaceholder` in both flavours (recents
+opened and the thumbnail was clean, then `finish(activity)` after Home did not destroy the activity within 10 s). The
+API 31 leg passed. The cause is not known. As with the lit frame, a repeat is diagnosed, not rerun to green, and the M5
+gate report names this item.
+
+**Out-of-plan download (commit 8q), recorded.** While writing 8q, the implementing agent fetched six small files from
+download.jetbrains.com onto this Mac (into the session scratchpad, not the repo): the `.asc` and `.sha256` of each of the three
+archives, 659 or fewer bytes each. No archive, no code; nothing was run. No plan step named that fetch, so it broke the
+"no downloads except what the plan names" rule; the B2r review found it. Those files are where Q73's equal `.sha256` values
+were first seen; CI's run 39380758809 reproduced the signature results on its own fetch. From Stage C on, the implementers'
+instructions forbid any fetch for research, HEAD requests included.
+
+**Moves to M6** (as planned in the re-plan, to be re-planned with the M6 question)
+- the `iosArm64`/`iosSimulatorArm64` targets, `kotlin-native-prebuilt`, skiko, the klib commonizer and the other
+  iPhone-only Q67 artifacts, as the iPhone build's inputs;
+  Amended at 8x-f (the 8x review; for the owner at the M5 gate, since Q73's answer record says Q67's iPhone-only
+  artifacts "are not used in M5"): 8w removed the Apple targets, but the Android build still resolves some of what
+  Q67 lists for iPhone, at build time and on no runtime classpath of any lockfile (8x-b's check): skiko 0.150.1's and
+  ui-uikit 1.12.1's `.module` and `-metadata.jar`, with the common metadata of atomicfu 0.28.0, lifecycle 2.11.0 and
+  navigationevent 1.1.1 (the versions Q67 and [C4] list for iPhone), for :screens' metadata compilation; and
+  kotlin-klib-commonizer-embeddable 2.4.20 (Q67) on kotlinKlibCommonizerClasspath (:core-ffi, :screens).
+  kotlin-klib-commonizer-api and kotlin-native-utils are Kotlin Gradle plugin tooling pinned since commit 6, not
+  Q67's. So the review checks skiko's two pinned files and needs its signer in M5; skiko's licence note stays M6's,
+  as skiko is on no classpath that ships;
+- `scripts/konan-deps.sh`, `konan.data.dir`, the `.konan/` handling and the download-host block (Q68), with Q73's
+  signature facts above;
+- `entropy-ios.yml` (Q69);
+- `keepcrypt-capi`, `include/keepcrypt.h`, the cinterop `.def` and `scripts/ios-rust.sh` (Q66, commit 12b);
+- the framework link and import scan (planned 8s) and the rule 1/5/9 sentence after the first iPhone build (Q70, planned
+  8t);
+- the per-class `iosSimulatorArm64Test` runs (M5-29) and the iOS accessibility probe at commit 16 (Q65); the Android accessibility
+  work (TalkBack, `isSensitiveData`) stays as the M5 plan has it.
+
+**Kept in M5's gate.** The 8p rules that refuse iPhone sources (KtIos, KtCinterop, the Mach-O and klib refusals, the
+source-set allow list) stay as refusals. The KMP allow list loses the iPhone-only shapes (the Apple target blocks, the
+cinterop block, the test-executable linker line, the simulator device line), so a build file that declares an Apple target
+is refused in M5.
+
+**Doc edits (Q73; the owner's answer decides their content, and they only record it)**
+- BP:35: the bindings are the three hand-written crates `keepcrypt-ffi`, `keepcrypt-guard` and `keepcrypt-jni`; the
+  iPhone boundary and screens are chosen when M6 starts; the picture's "UniFFI" and "SwiftUI" labels predate M5.
+- BP:37: one boundary crate per platform: `keepcrypt-jni` for Android, over `keepcrypt-guard`; the iPhone boundary is
+  chosen in M6.
+- BP:49-50 and BP:55-57: the tree loses `ffi/capi/`; `mobile/ios/` holds the iPhone app (M6).
+- BP:76-77: the iOS row says its screens and binding are chosen in M6 (iOS 17+ stays); the Bindings row loses
+  `keepcrypt-capi`.
+- BP:298-299: M5 is "Compose Multiplatform screens (the Android target), over the FFI (JNI), capture protection, backup via
+  file picker" with its original gate; M6 is "the iPhone app: screens and binding chosen when M6 starts (Q73), capture
+  handling, backup via document picker", needing M1 and M2, and M5 if it reuses the shared screens.
+- MA:17: the screens are written with Compose Multiplatform in shared modules, built for Android in M5; M6 decides whether
+  the iPhone reuses them. Q71's iPhone-residual sentence applies if it does.
+- MA:21, :23, :24: the iOS cells say "chosen in M6 (Q73)".
+
+Proof (M5 commit 8v, 10922d6): `git diff --name-only HEAD~1 HEAD` lists docs/build-plan.md and docs/mobile-apps.md
+only, and `grep -c capi docs/*.md` is 0 for every file; `vectorgen.py --selftest` 13/13 and `verify.py selftest` 8/8 on
+Python 3.12 and 3.9; `banned-api-check.sh` clean (286 files) and `--selftest` 1304 passed, 0 failed; fmt, both clippy
+commands, `cargo test --workspace --locked` (21 suites, 445 passed, 3 ignored) and the test-sources run (17 suites, 269
+passed, 1 ignored) unchanged. Every edit above landed, on lines 80bc278 changed, and nothing else in docs/. Read as: M6's
+deliverables cell starts "Screens and binding ..." (the row's Milestone cell already says "iPhone app"); ffi/guard/'s
+tree line says "under the JNI boundary" (it said "under both boundaries"); the Bindings row says "the boundary over it";
+MA:17's residual sentence opens "If the iPhone reuses the shared screens". The citations here stay 057130d's; against
+it, BP lines from :50 now sit 1 lower (BP:50, jni/, is now :51; BP:298/299 are now :299/300), MA unchanged. Corrected
+at 8v-c: this line and 10922d6's body said "from :51", but the guard/ line enters at :50.
+
+**Commit order, Stage B2 from here** (replaces 8r-8t)
+- 8u. tasks/todo.md: Q73 and this re-cut; the six signature and hash files read on this Mac for 8q recorded as an
+  out-of-plan download (no code, nothing run; the signature facts were later reproduced by CI's run).
+- 8v. docs: the Q73 edits above, alone.
+- 8w. mobile/android, scripts, .github: the Apple targets and the iPhone-only artifacts removed from the build;
+  `entropy-ios.yml`, `konan-deps.sh`, `konan.data.dir` and the `.konan` and host-block steps removed; the KMP allow list
+  without the iPhone shapes, with fixtures; the Android workflow still in bootstrap mode, so the lockfiles are written again.
+  Proof (M5 commit 8w): :core-ffi and :screens declare the Android target alone (no iPhone target or framework);
+  gradle.properties, .gitignore and android-gradle.sh are pre-8q's files again; `konan-deps.sh` and `entropy-ios.yml`
+  are deleted; entropy-android.yml keeps its bootstrap line, without the `.konan`, host-block and Kotlin/Native probe
+  lines. The gate: `kt_kmp_lines` is `kotlin {` and `withHostTestBuilder` ({} and {), no kotlin.mpp. entry (the
+  Android build sets none); `kt_kmp_sets` is commonMain, commonTest, androidMain and androidHostTest; iosTest is no
+  test scope; usePinned and addressOf hit everywhere; downloadFromMaven with any value, kotlin.native., kotlin.apple.
+  and any konan name are refused in any letter case, and kotlin.mpp. too in android-gradle.sh and the workflows; the
+  exception names entropy-android.yml alone. `--selftest` 1344 passed, 0 failed under sh and /bin/dash (1304
+  before: +15 cases for 8q's iPhone lines and an osVersionMin switch, +17 banned-api and +8 workflow fixtures, +2
+  exception errors, -1 both-workflows case, -1 iosTest scope tree; 60 fixtures in iPhone sets pass with their own
+  hit and KtSourceSet's). The B2r reviewer's workflow (FALSE, -Pkonan.data.dir, baseDownloadUrl, the env form) gives
+  2 hits, and each android-gradle.sh form 1. On gate copies with `iosArm64()` back in the list, iosMain back in the
+  sets, the refusal case-sensitive or Native.ios.kt exempt again, the matching case scans clean where it must hit.
+  `canaries.sh` PASS: all 76 checks ran (`kmp-ios-rules` 12 hits). The gate on the tree clean (285 files);
+  `--workflows` clean on the three workflows; fmt, both clippy commands, `cargo test --workspace --locked` (21
+  suites, 445 passed, 3 ignored) and the test-sources run (17 suites, 269 passed, 1 ignored) unchanged. Not run
+  here: every Gradle build and Kotlin compile. The Android job's next bootstrap run proves the build resolves with
+  the Android target alone; 8x reviews its lockfiles and metadata.
+  Amended at 8x-f (the 8x review): 8w removed the Apple targets, and with them the iPhone builds of Q67's iPhone-only
+  artifacts, but the Android build still resolves some of their metadata and the klib commonizer at build time, on no
+  runtime classpath ("Moves to M6", amended at 8x-f).
+- 8x. mobile/android, scripts: the lockfiles and verification metadata from 8w's Android bootstrap run, reviewed by
+  `android-deps-review`; strict mode on and the bootstrap switch removed (the gate's bootstrap canary proves it); the
+  expected classpath updated with every version change named; the Android job, emulators included, green again.
+  Proof (M5 commit 8x, partial: the review against the repositories, the new signers and the strict CI run need a fetch
+  this commit was not allowed to make, and are the lead's): the five lockfiles (:screens' is new) and the verification
+  metadata are the Android bootstrap run 39404714671's at 1ae0df6 (green), copied unchanged from its android-bootstrap
+  artifact, and `android-deps-review.py classpath --write` on the copied app lockfile writes the run's classpath list
+  byte for byte. The metadata grows from 454 components (768 artifacts) to 536 (923): 82 components added, and 9
+  artifacts added to kept ones (the common `-metadata` jars of annotation, collection, Compose's runtime,
+  runtime-annotation, runtime-retain and runtime-saveable, coroutines and serialization, and kotlin-stdlib's `-all`
+  jar); none removed or changed, and the configuration and trusted keys are unchanged. The review's offline checks pass:
+  no metadata problem (one SHA-256 per artifact), the keyring's 61 keys equal the 61 trusted keys (78 group scopes),
+  every module of the five lockfiles (app 331, capture-control 317, core-ffi 204, screens 228, secure-ui 282) has its
+  component, and each of the 74 artifacts named apart from name-version has its component's `.module` pinned. The
+  shipping runtime classpath goes from 91 to 120 modules by exactly the 29 JetBrains wrapper modules
+  (org.jetbrains.compose.{animation,foundation,runtime,ui}:*:1.12.1, 24; org.jetbrains.androidx.lifecycle:*:2.9.6, 3;
+  org.jetbrains.androidx.savedstate:*:1.3.6, 2) and androidx.savedstate's five modules 1.3.2 -> 1.4.0 (Q67, [C3]), the
+  one non-wrapper version change on it; nothing else on it (corrected at 8x-e: the lockfiles' version changes off the
+  shipping classpath are listed under the classpath item's 8x proof). Q67's iPhone-only artifacts reach no APK:
+  org.jetbrains.skiko:skiko:0.150.1 and org.jetbrains.compose.ui:ui-uikit:1.12.1 are pinned only as `.module` and
+  `-metadata.jar`, on :screens' metadataCompileClasspath and its *ResolvableDependenciesMetadata and
+  all(Test)SourceSetsCompileDependenciesMetadata configurations, for the shared code's metadata compilation (and
+  atomicfu 0.28.0's, which Q67 also lists for iPhone: added at 8x-f);
+  kotlin-klib-commonizer-embeddable only on kotlinKlibCommonizerClasspath (:core-ffi, :screens), and
+  kotlin-klib-commonizer-api and kotlin-native-utils (pinned since commit 6) only on the build classpath
+  (buildEnvironment), all as Kotlin Gradle plugin tooling; none is on the shipping or test-registry runtime classpath,
+  and kotlin-native-prebuilt is not resolved at all. `android-deps-review.py classpath` (and review) now refuses skiko,
+  ui-uikit, kotlin-native-prebuilt and the klib commonizer on either runtime classpath (IPHONE_ONLY: the skiko group;
+  ui-uikit, kotlin-native-prebuilt or klib-commonizer in a name; corrected at 8x-b: this said "any of them", but
+  IPHONE_ONLY does not name kotlin-native-utils, which is in no lockfile) and a lockfile without
+  withTestRegistryReleaseRuntimeClasspath: `--selftest --skip-pgp` 51 passed, 0 failed, 2
+  skipped on Python 3.12 and 3.9.6 (46 before: `fail-iphone-only-on-shipping-classpath` (ui-uikit),
+  `fail-iphone-only-skiko-`, `-klib-commonizer-` and `-native-prebuilt-on-test-registry-classpath`,
+  `fail-lockfile-no-test-registry-configuration`; the base lockfile and four cases' own lockfiles gain the test-registry
+  configuration, so each case still fails for its own reason alone). On copies of the script with the check removed,
+  either configuration dropped from its loop, the missing-configuration check removed or one name dropped from
+  IPHONE_ONLY, exactly the matching cases fail. entropy-android.yml is pre-8q's again (the classpath compare and the
+  review before the first Gradle call, the strict build, no bootstrap line, probe step or upload step), with one comment
+  line for the new check, and `kt_bootstrap_exception=''`: `--workflows` clean on the three workflows (sh and dash), and
+  on 8w's bootstrap-mode workflow (as at 78297b7) the gate gives exactly one hit, line 249, the former exception line.
+  The strict-mode item under "Dependency bootstrap" carries the canary proof. Not settled here, because only a fetch can
+  settle it: the review against Google's Maven and Maven Central (`urls` on an empty mirror lists 1809 files for its
+  first round, 498 from dl.google.com and 1311 from repo.maven.apache.org), so whether M5-11's list grows; and the
+  signers of the Maven Central groups that have no trusted key yet: org.jetbrains.androidx.lifecycle,
+  org.jetbrains.androidx.navigationevent, org.jetbrains.androidx.savedstate, org.jetbrains.compose.animation,
+  org.jetbrains.compose.annotation-internal, org.jetbrains.compose.collection-internal,
+  org.jetbrains.compose.foundation, org.jetbrains.compose.runtime, org.jetbrains.compose.ui,
+  org.jetbrains.kotlin.multiplatform and org.jetbrains.skiko (the new artifacts of org.jetbrains.kotlin and
+  org.jetbrains.kotlinx may have new signers too). The keyring is not extended here, so the Android job's dependency
+  review fails closed on those artifacts until a write-keys run pins their signers (each a new trust-on-first-use signer
+  under M5-12, for the M7 audit list).
+  Proof (M5 commit 8x-b, the 8x review): IPHONE_ONLY applies to every runtime classpath (a configuration whose name ends
+  RuntimeClasspath) of every module's lockfile, so the two androidTest APKs' and capture-control's classpaths are
+  covered too: on copies of the tree, skiko on the app's shippingReleaseAndroidTestRuntimeClasspath or
+  withTestRegistryReleaseAndroidTestRuntimeClasspath, or ui-uikit on capture-control's releaseRuntimeClasspath, passed
+  8x's `classpath` and now fails it. Each refusal names its lockfile. `--selftest --skip-pgp` 53 passed, 0 failed, 2
+  skipped on Python 3.12 and 3.9.6 (51 before: `fail-iphone-only-on-android-test-classpath` (skiko) and
+  `fail-iphone-only-on-capture-control-classpath` (ui-uikit); the four earlier IPHONE_ONLY cases' expect.txt name
+  app/gradle.lockfile); `classpath` on the tree passes (120 modules) on both. On a copy that checks every configuration
+  the tree fails, on :screens' metadata configurations and kotlinKlibCommonizerClasspath; on a copy that checks the
+  app's lockfile alone, exactly the capture-control case fails.
+  Proof (M5 commit 8x-d, the 8x review): nothing pinned the two pin checks 8x put back before Gradle (8q and 8w had
+  dropped them with every gate green; without them `--workflows` stays clean). canaries.sh's new static check needs
+  entropy-android.yml's `run: python3 -I scripts/android-deps-review.py classpath` and `run: sh
+  scripts/android-deps-review.sh "$RUNNER_TEMP/deps-mirror"` lines before its first non-comment line that names
+  Gradle in any letter case (today line 218, the distribution cache key step; the two run lines are 204 and 213), and
+  the `workflow-review-before-gradle` canary's copy, without the compare and with the review moved after the build,
+  fails it with both reasons. On copies, dropping either step, commenting out the compare or putting a Gradle call
+  before them each fails the check. `canaries.sh` PASS: all 79 checks ran (want_checks 77 -> 79; 327 s); the gate on
+  the tree clean (286 files). Tried with macOS's awk only; CI's gates job runs it with Ubuntu's.
+  Proof (M5 commit 8x-g, the lead's, after Q74's answer): `sh scripts/android-deps-review.sh --write-keys MIRROR` on a
+  copy of the tree at 2d21174 (the mirror a fresh folder in the session scratchpad, outside the repo; 4 rounds: 1809,
+  402, 353 and 20 files from dl.google.com, repo.maven.apache.org and the two key servers) wrote 62 keys and 62 trusted
+  keys (89 group scopes). Against the committed files: the 61 keys are byte for byte unchanged (the keyring's diff only
+  adds 25 lines); one new signer, 20723A6399BC060154283B37CFAE163B64AC9189 "JetBrains Compose Team
+  <compose@jetbrains.com>" (subkey D4C90186D3F8B03981FE715B57CE36BB68F1BC57), trusted for org.jetbrains.androidx.lifecycle,
+  .navigationevent and .savedstate, org.jetbrains.compose.animation, .annotation-internal, .collection-internal,
+  .foundation, .runtime and .ui, and org.jetbrains.skiko; the Kotlin Release key 2FBA29D0... (already trusted for
+  org.jetbrains.kotlin and .android) also signs org.jetbrains.kotlin.multiplatform. The new signer is trust on first use
+  (M5-12) and joins the M7 audit list. The two files are committed as written. Then `sh scripts/android-deps-review.sh
+  MIRROR -- --skip-pgp` on that copy: 923 artifacts: 358 Google's Maven (SHA-256 matched), 551 Maven Central (SHA-1
+  matched, PGP not checked here: no gpg on this Mac), 14 accepted by name (M5-11's list, unchanged), 0 failed; 62
+  trusted keys, 89 group scopes; shipping runtime classpath 120 modules, licences Apache-2.0 120; exit 3 (incomplete
+  without PGP). The signature checks and the strict build run in CI.
+  Proof (M5 commit 8x, CI at 8x-g a40685b): Entropy Android 39444746648 green in strict mode (699 s against its
+  15-minute budget). android-deps-review in CI with gpg: 923 artifacts: 358 Google's Maven (SHA-256 matched), 551 Maven
+  Central (SHA-1 and PGP matched; 18 by a key since expired), 14 accepted by name (M5-11), 0 failed; 62 trusted keys,
+  89 group scopes; shipping runtime classpath 120 modules, Apache-2.0 120. Every Gradle call passes
+  `--dependency-verification strict`; both APKs' `--apk` checks are clean (manifest summaries equal, 3 native libraries
+  16 KB aligned, no marker or test key, 20 com.keepcrypt classes with no banned RNG reference, zipalign, the throwaway
+  key alone); the canary APK is refused with 5 hits; every emulator check on API 31 and 36 passed. Entropy CI
+  39444749499: 14 of 14; Entropy Pi image 39444752976: unchanged (4b13c095).
+
+**Stages C-F** run as "Commit order from Stage C on" plans them, without the iPhone work: commit 9 creates ffi, ffi/guard
+and ffi/jni (six members); 12b is not built; 13 builds and scans the Android `.so` only (the existing macos-26 release scan
+of core is unchanged); 14 has `android-rust.sh` and the Android `actual` only, with `commonTest` on the JVM; Stage E runs no
+simulator tests; Stage F's CLAUDE.md Commands gain no iPhone script, and the gate report says M5 proves nothing on iPhone.
+
+### Local toolchain and the end-to-end pass (Q76, 2026-10-22)
+The owner's request (Q76) adds local builds and a local emulator to the loop, finishes the app's functions (commits 19-21
+as planned) and adds an end-to-end pass. CI stays the gate. Scope stays M5's and the docs': "better" here means every
+screen the docs describe working end to end without bugs, every path and edge case tested, and UX defects within the
+docs fixed; a change the docs do not allow becomes a question for the owner and lands only after the answer.
+
+**Stage L: the local loop** (before commit 19)
+- [x] L1. scripts/android-rust.sh also builds on a macOS arm64 host, with the NDK's darwin prebuilt, for local
+  development only: the CI legs, scans and checks are unchanged, and a library built on the Mac never ships (CI's APKs
+  are the artifacts). Its selftest covers both hosts. The JVM tests' host library is the build host's own
+  (x86_64-unknown-linux-gnu in CI, aarch64-apple-darwin on the Mac).
+  Proof: android-rust.sh's two flavours on the Mac; scripts/android-gradle.sh's build of both APKs and every JVM test
+  task locally, with the same test counts as CI at that commit; --apk clean on the local APKs; CI unchanged at the commit.
+  Proof (M5 commit L1, partial: local, Q76; CI proves the Linux path at this commit): android-rust.sh takes the host
+  from uname: Linux x86_64 keeps the linux-x86_64 prebuilt, sha256sum and x86_64-unknown-linux-gnu's libkeepcrypt.so
+  with the getrandom cfg; macOS arm64 takes NDK r30's darwin-x86_64 prebuilt (universal binaries), `shasum -a 256` and
+  aarch64-apple-darwin's libkeepcrypt.dylib without the cfg (getrandom has no fallback on macOS, where linux_getrandom
+  does not build; the scan requires _getentropy); any other host exits 2. :core-ffi's and :screens' test tasks point
+  java.library.path at `target/ffi-test-registry/<the host's triple>/release`, chosen from os.name and os.arch, and fail
+  with a message on any other host (both failed so with `-Dos.arch=x86_64`). On the Mac: `shipping` built the three
+  ABIs, each scan clean and every undefined symbol in the API 31 stubs (49, 44 and 48, as in CI); `withTestRegistry`
+  the three and the host dylib, each scan exactly the registry marker and the test key (so the dylib imports
+  _getentropy). `--selftest` 27 passed, 0 failed (18 before; the macOS host's cases beside Linux's, and macOS x86_64 and
+  Linux aarch64 refused), under sh and dash. The strict Gradle build stops on the Mac: AGP fetches aapt2 for the build
+  host's OS, and gradle/verification-metadata.xml pins only aapt2-9.3.3-15703166-linux.jar, so
+  aapt2-9.3.3-15703166-osx.jar (4,463,202 bytes, SHA-256 1e35bc2ce18c3aae840be2a29659ce50d6043e907a44d98ee1cf375d044fa29c,
+  not yet checked against Google's Maven) fails strict verification, :core-ffi's host tests included; the local build
+  of the APKs and the JVM tests waits for the lead's decision on that entry. A local diagnostic only (strict
+  verification still on, the SDK's build-tools 36.0.0 aapt2 named by `-Pandroid.aapt2FromMavenOverride`, so not CI's
+  build): both APKs and the other three built; every JVM test class ran, each with its count of @Test methods at
+  1a63e0f (mobile/'s sources are unchanged since) and no failure (:core-ffi 27 in 9 classes, :screens 79 in 13, :app 7
+  in 3 for each flavour, :secure-ui 3 in 1); and `--apk` was clean on both APKs, signed with a throwaway key (keytool,
+  apksigner), with the build-tools and NDK r30's darwin LLVM on PATH (16 KB pages and exports judged there).
+  Proof (CI, the lead's, 2026-10-27): the Linux path is green at 994894f (Entropy Android run 39953907557) and at
+  6a6a34f (run 40455117323, its android job 2125 s), every leg. On the Mac, Lc's suite built both flavours at 0fab64d
+  (local).
+- [x] L2. scripts/android-local.sh: on the project's own AVD kc37 (API 37, the installed google_apis_playstore arm64-v8a
+  image; the owner's Medium_Phone is never touched), boot it, install both APKs and their test APKs, and run every
+  instrumented class through android-instrument.sh's judge in android-emulator.sh's order; it names each check a user
+  build cannot make (no adb root) and skips none silently. kc37's virtual-scene back camera lets the real Camera2 path
+  run locally (CI's AVDs have none, M5-59): a local check scans a go-ahead QR placed in the virtual scene and reads
+  `dumpsys media.camera` for the app's camera client while the scan screen shows and after Home and Back. Local only.
+  Proof: each class's local result on kc37, and the local scan check's (or why it cannot run).
+  Proof (M5 commit L2, partial: local, Q76; CI runs android-emulator.sh's and android-instrument.sh's selftests at
+  this commit): android-local.sh made kc37 (~/.android/avd/kc37.ini and kc37.avd/config.ini as avdmanager writes
+  them: the installed android-37.0 google_apis_playstore arm64-v8a image, CI's 720x1280 at 320 dpi, 4 cores, 4 GB,
+  hw.camera.back=virtualscene), then kept it as its own on the next run, and booted it twice a run on console port
+  5580 with -no-snapshot -wipe-data (12 to 14 s each): first with -camera-back none, the CI legs' no-camera facts
+  (with the virtual scene, SnapshotDrillTest's two scanned proofs fail on a scan screen that finds a camera), for a
+  CI leg's steps 1-6 through android-emulator.sh's new --booted mode, then with the virtual scene for the Camera2
+  check. kc37 is a user build (ro.build.type=user, ro.debuggable=0; adb root says "adbd cannot run as root in
+  production builds", which no check needs), and one check is named on every run and left out of both CaptureTest
+  runs through android-instrument.sh's new CLASS-TEST form (`-e notClass`): control (c),
+  disableSecureWindowsShowsTheScreenOnlyWhileSet (with disable_secure_windows=1 the app's captures stayed black, "the
+  setting is read: false"; CI's API 36 leg makes it). settings, screenrecord's raw frames, dumpsys (dropbox,
+  content_capture, media.camera), logcat -b crash, pm clear and pm grant all worked on the user build. The whole run
+  at this commit (13 min 28 s, exit 0), each class in android-emulator.sh's order: ControlTest 2 tests, CaptureTest
+  6 and 6 (shipping, test registry), PhoneMotionTest 1, FlowTest 3, CheckTest 1, SnapshotDrillTest 3, LifecycleTest
+  4, CrashTest killed during its test as it must be; control (a) in raw frames and the four first-frame recordings
+  passed. LifecycleTest's leavingDuringABackupsScryptDiscardsTheSession races the scrypt as its KDoc says, and the
+  native arm64 scrypt is faster than CI's: it won at its third attempt here (left after 472 ms), lost all three in
+  the run before (each reply 9 to 12 ms after the leave, which came at 410 to 566 ms) and won at the first in three
+  runs of it alone (left after 643 to 825 ms). Camera2 (M5-59): the shipping app's camera client is listed among dumpsys
+  media.camera's active clients while the scan screen shows, gone within 10 s of Home, listed again once the app is
+  back and its cover tapped, and gone within 10 s of Back, on the seal card (the camera service's log: CONNECT and
+  DISCONNECT twice). The virtual scene holds goahead-collision-dice-50.png on its wall, and the SDK's
+  Walk_to_image_room macro turns the camera to it (the system camera's preview shows it about 380 of 720 px wide, a
+  chair back over its lower edge), but the scanner decoded nothing in 60 s (90 s in an exploratory run), so the
+  run names that check as not made; `-camera-back imagefile:` gave the app no camera at all. The emulator wrote
+  only under kc37.avd and the run's temporary directory (its HOME, with adb's key pair copied in), nothing under
+  ~/.android but kc37's files. The APKs came from the script's own build with L1's diagnostic
+  (ORG_GRADLE_PROJECT_android.aapt2FromMavenOverride naming build-tools 36.0.0's aapt2, strict verification on),
+  as the strict build still stops on aapt2's osx jar. --selftest: android-local.sh 22 passed (and three mutants
+  each failed it), android-emulator.sh 25 (19 before), android-instrument.sh 39 (34 before), 0 failed under sh and
+  dash.
+  Proof (M5 commit L2b, review fix, partial: local, Q76): NativeTest, which android-emulator.sh runs on CI's 16 KB
+  leg only and --booted never, was neither run nor named. It now runs at the start of the second boot, before the
+  Camera2 check (on the first, CrashTest's crash stays in the crash buffer that every later judge reads whole): the
+  shipping APK and its test APK installed, primaryCpuAbi read back and required to be arm64-v8a (kc37's own ABI, so
+  the library runs natively, where CI's 16 KB leg runs it translated), then android-instrument.sh's judge. On kc37
+  (one run with L2c's change too, exit 0 in 816 s): "primaryCpuAbi=arm64-v8a", the library in .../lib/arm64,
+  "instrument: api=37 PASS com.keepcrypt.entropy.NativeTest (1 tests; process gone, no crash window, crash buffer and
+  dropbox clean)" with dice-50-words12's Seal ID YVM9CPP3, after the nine runs passed as before. --selftest:
+  android-local.sh 25 passed (22 before: NativeTest failing, and the app installed for another ABI with no NativeTest
+  run, exit 1 each with the camera check still run), and three mutants (NativeTest not run, the ABI check dropped,
+  its failure not failing the run) each fail it; 0 failed under sh and dash.
+  Proof (M5 commit L2c, review fix, partial: local, Q76): the scan check printed "not made" and exited 0 whenever
+  no collision result came in 60 s, so the app leaving the scan screen (a crash, say, which phase 2 reads no crash
+  buffer for) passed as "the scanner decoded nothing". Now the scan waits while the scan screen shows its scanning
+  line, for up to 60 s: the collision result passes; the scan screen gone without it (10 s more for the result),
+  another line on it, or no camera client listed while it still scans, fails; and a scan screen still scanning
+  after 60 s with its client listed is printed as not met, naming what the script cannot see, and does not fail the
+  run. So L2's decode is unmet, not "not made": on kc37 (exit 0 in 816 s, with L2b) "not met on kc37: the decode of
+  goahead-collision-dice-50.png: the scanner scanned for 60 s with its camera client listed and decoded nothing from
+  the virtual scene's wall", as at L2. The suspected cause is the scene: the PNG is a version-24 code (113 modules
+  of 8 px, a 4-module quiet zone, 968 px), which the system camera's preview shows about 380 of 720 px wide, so
+  about 3 px a module there, with a chair back over its lower edge. The item stays open on the decode, for P4 or a
+  scene the script can check. --selftest: android-local.sh 27 passed (25 before: the scan screen gone after a
+  decode, and the test-registry app's scan screen still scanning with no camera client, exit 1 each), and two
+  mutants (the scan screen's going not failed, the client check dropped) each fail only their own case; 0 failed
+  under sh and dash.
+  Proof (M5 commit L2d, review fix, partial: local, Q76): the header said nothing of ours reaches the network, but
+  the emulator itself does as it starts. In this review's run, watched only from outside (its HOME's files, and lsof
+  with no name lookups, once a second at the first boot and every 0.1 s at the second, which caught no connection
+  beyond localhost before the guest was up, so the requests themselves were not seen): within 3 s of the first
+  boot's start the emulator wrote emu-last-feature-flags.protobuf (5,010 bytes, not the SDK's bundled 23,491-byte
+  emu-original-feature-flags.protobuf), userid (a new 36-character id) and emu-update-last-check.ini (that boot's
+  time). Its binary names https://dl.google.com/android/repository/repository2-3.xml with
+  ?tool=emulator&uid=...&os=... and https://dl.google.com/dl/android/studio/metadata/emulator-feature-flags.protobuf,
+  and no option in its help names either (-no-metrics, already set, covers usage statistics). The second boot, in
+  the same HOME, rewrote neither file, so a run does this once, not at each boot. Q76 approved downloads (a)-(c),
+  not these; whether they may stay is the lead's and the owner's question, and nothing changed here but the header.
+
+  Proof (the lead's, 2026-10-27): a local runner, so its proof is local. Lc's suite ran android-local.sh on kc37 at
+  0fab64d, exit 0 in 802 s, and its --selftest passed 34 cases under sh and dash (local). CI runs android-emulator.sh's
+  and android-instrument.sh's self-tests (25 and 39 passed at 6a6a34f, run 40455117323). android-local.sh's own
+  self-test runs only on the Mac. The decode that L2c's Proof leaves open is M5-62 (d)'s: it stays P0b's and P4's, on
+  a real camera, and L2's own Proof asks for the local scan check's result, which is that "not met".
+- [x] L3. The local loop's own defects (M5-62): the gate and canaries.sh leave out only the ignored Gradle outputs; the
+  emulator's own fetches and the guest's route to the internet are cut where they can be, and anything left is named;
+  LifecycleTest's leave falls inside the scrypt on a fast host every time.
+  Proof: the gate and canaries.sh clean in a working tree that has built; a local run with each connection to Google cut
+  or named; LifecycleTest's scrypt case 20 times on kc37 with no failure, and CI's legs green.
+  Proof (M5 commit L3, partial: local, Q76; CI runs the legs, the gate and the canaries at the next push): (a) the
+  gate's list() and canaries.sh's four tree copies (one copy_tree now) leave out the directories mobile/android/.gradle,
+  mobile/android/build and every build/ one level under mobile/android (each module's, with no list to keep beside
+  settings.gradle.kts), and nothing else: a build/ deeper down is read, and a file or link of those names too. In this
+  working tree after the run's local Gradle build, the gate was clean in 34 s, 360 files scanned (before, 1,891 hits in
+  3,775 files in 6 min 13 s, every one in those directories), and canaries.sh passed all 93 checks (rc 0, 7 min 13 s).
+  --selftest 1556 passed, 0 failed under sh and dash (1547 before): a file KtLog would hit, under .gradle/, the root
+  build/ and capture-control's build/, is the Build hit alone when tracked and clean when untracked; under a deeper
+  build/ and a module's .gradle/ it is the KtLog hit; a link named build to a directory is exit 2. Three gate mutants
+  each fail only their own cases: no skip (the six tracked and untracked cases), a skip at any depth (the deeper
+  build/), and links skipped too (the link). (b) A watched run with a new emulator HOME (lsof -n -P on the emulator's
+  and netsim's processes every 0.05 s) showed what the emulator writes: emu-update-last-check.ini, the one line
+  `_version.3D37.2.12.0.26coreVersion.3Dqemu2.25202.12.0 = <time>`, and emu-last-feature-flags.protobuf, the fetched
+  EmulatorFeaturePatterns, whose field 1, last_download_time, is the fetch's own record (the descriptor in
+  libandroid-emu-protos.dylib); qemu-system-aarch64 connected to 172.217.26.14:443 twice within 3 s of the start.
+  Seeded with that line and the SDK's bundled text-format flags alone, the update check stopped (no userid made) but
+  the flags were fetched again (the file replaced by 5,010 fetched bytes); with a last_download_time line before the
+  bundled flags, neither (both files unchanged, no socket beyond the loopback). The guest's Wi-Fi goes through netsim ("Successfully initialized netsim WiFi"), which
+  -wifi-user-mode-options does not reach: with it set, netsimd made 117 connections past the loopback within seven
+  minutes of boot, to 29 of Google's addresses (443, 5228, 80) and to 10.0.2.3-6 and fec0::3 on 853. With -network-user-mode-options restrict=on and netsim's access point given a WPA
+  passphrase the guest does not hold: `cmd wifi status` "Wifi is enabled", "Wifi is not connected", wifi_on 0 and 1
+  under cmd wifi, the mobile network up on eth0 (10.0.2.15) with nothing routed beyond the emulator. The whole
+  android-local.sh run (its own strict build, no aapt2 override: BUILD SUCCESSFUL; then both boots; exit 0 in 809 s):
+  every class passed as at L2c (FlowTest 3 and LifecycleTest 4, their Wi-Fi cases among them), NativeTest natively,
+  the camera client's four checks, the decode not met as before, and both seeds as written after each boot; its watch's
+  7,231 samples through both boots (about ten a second) held 136,897 socket lines, all on the loopback (adb, the
+  console, netsim's gRPC), none beyond it. Nothing found that cannot be cut, and the header says so. --selftest:
+  android-local.sh 29 passed (27 before: the seeds checked at each boot, and an emulator that changes its seeded update
+  check, exit 1, named after each boot), three mutants (no seed, no check after the boots, no restrict=on) each fail
+  it; 0 failed under sh and dash; android-emulator.sh 25 passed. (c) LifecycleTest's scrypt case leaves by
+  moveTaskToBack in the main-thread step that starts the call, instead of Home (UI Automator's press waits for the UI to
+  go idle first); the judge, the three attempts and the timeouts are unchanged. On kc37, in the whole run: left after
+  106 ms, the reply after 510 ms, at the first attempt. 20 runs of the case alone (each its own am instrument through
+  android-instrument.sh's judge, on one boot made as android-local.sh makes it, nothing beyond the loopback in its
+  watch): 20 passed, each at its first attempt, left after 102 to 122 ms and the reply back after 505 to 718 ms (L2's
+  Home: left after 410 to 825 ms, and the scrypt won all three attempts in one run). JVM tests, rerun on the Mac:
+  :core-ffi 27 in 9 classes, :screens 79 in 13, :app 7 in 3 for each flavour, :secure-ui 3 in 1, no failure.
+  Proof (M5 commit L3b, review fix, partial: local, Q76; CI's checkout holds none of these directories): the skip is
+  now M5-62 (a)'s as worded, and only where its premise holds. L3's prune reached every build/ one level under
+  mobile/android, gradle/'s and expected/'s too (a KtLog line in each, untracked in a git work tree, went unread), and
+  applied in every tree, so in a git archive export a source committed under app/build/ went unread
+  (`java.util.Random()` in app/build/generated/source/x/Gen.kt: clean under 70efc1e's gate, the RNG hit here). list()
+  is again as it was before L3; scan() drops the paths gradle_out matches, mobile/android/.gradle/,
+  mobile/android/build/ and the build/ of app, capture-control, core-ffi, screens and secure-ui (the five modules
+  settings.gradle.kts includes), only when git rev-parse finds a work tree, the test the Build rule now shares
+  ($work_tree); elsewhere every file is read. canaries.sh's copy_tree names the same five. Nine selftest cases more
+  (1572 to 1581): the other four modules' untracked build/ files unread, gradle/'s and expected/'s build/ read, and
+  outside a work tree a file under .gradle/, the root build/ and capture-control's build/ read. Four gate mutants,
+  each run on the whole selftest in eight shards, fail only their own cases: L3's pattern (the gradle/ and expected/
+  cases), the skip outside a work tree too (the three outside cases), capture-control's build/ alone (the other four
+  modules') and no skip (the ten unread cases); the second, run beside the first, also failed
+  clean-kt-commonTest-scope-copies once (a Shell hit with no line), which passed alone on that mutant and on this
+  commit. `--selftest --shard K/8` side by side: 1581 cases, 0 failed, under sh (144 s) and /bin/dash (141 s), their
+  PASS lines equal; the gate clean on the built working tree, 360 files (31 s under sh, 28 s under dash), and on a
+  fresh export, 356 files; canaries.sh in the built working tree with CARGO_NET_OFFLINE=true passed every check but
+  deny-git-source, which offline mode stops from checking out its file:// repository (92 of 93 ran), and on a fresh
+  export, run as CI runs it, PASS, all 93 checks ran.
+  Proof (M5 commit L3c, review fix, partial: local, Q76): a regular file named like one of the skipped directories
+  had no case (L3's covered a file under each and a link named build), so a skip that also took such a file, L3's
+  prune without its -type d, passed every case and hid a tracked file from every rule (the Build rule refuses only a
+  file under such a directory). Three built cases, a tracked regular file mobile/android/app/build,
+  mobile/android/build and mobile/android/.gradle holding a KtLog line, each that KtLog hit. Two gate mutants, each
+  run on the whole selftest in eight shards: one that also drops a regular file of those names from the scan fails
+  these three cases alone, and gradle_out ending in `(/|$)` for `/` fails them and the link case. `--selftest --shard
+  K/8` side by side: 1584 cases, 0 failed, under sh (146 s) and /bin/dash (149 s); the gate clean on the built working
+  tree (360 files) and on a fresh export (356 files) under sh and dash.
+  Proof (M5 commit L3d, review fix, partial: local, Q76; CI runs it at the next push): what copy_tree leaves out had
+  no check, as CI's checkout holds no Gradle output, and at L3 the gate's own prune hid any output a copy held from
+  the gate canaries run on it: the loop L3 replaced, which copies everything, or one that leaves out all of mobile/,
+  passed all 93. Since L3b the gate reads a copy (no work tree) whole, so that output would fail them in a built tree.
+  A static check runs copy_tree on two trees it makes in $work: one with a file in each directory it leaves out
+  (target/ and .git/ too) and in each near miss it copies (gradle/'s and expected/'s build/, a build/ deeper down, a
+  module's .gradle/, mobile/'s own build/), one with files named like three of those directories and a link named
+  like a fourth; each copy must hold exactly the files and links listed. Run alone (its two functions, under sh and
+  /bin/dash) it passes, and four copy_tree mutants each fail it: the old loop, L3's mobile/android/*/build, a
+  leave-out that also takes files of those names, and one that leaves out mobile/. canaries.sh PASS, all 94 checks
+  ran, in the built working tree (448 s) and on a fresh export (469 s, the two side by side); the gate clean on the
+  built working tree (360 files) and on the export (356) under sh and dash.
+  Proof (M5 commit L3e, review fix, partial: local, Q76): seeds_kept's check of the seeded
+  emu-last-feature-flags.protobuf had no case, as the stand-in's one fetch (KC_FETCH) changed only the update check's
+  record: a seeds_kept reading that record alone passed all 29. Under KC_FETCH_FLAGS the stand-in emulator now
+  replaces the flags' record, as the flags' fetch does (L3's watched run: the file replaced by 5,010 fetched bytes),
+  and the case fetched-flags expects exit 1, the camera check still run, and the change named after the leg's boot and
+  after the Camera2 check's. That mutant fails it alone (29 passed, 1 failed). android-local.sh --selftest: 30
+  passed, 0 failed under sh and /bin/dash (131 s each); the gate clean on the built working tree (360 files).
+  Proof (M5 commit L3f, review fix, partial: local, Q76): the update check's seed read from emulator -version, and the
+  refusal of an emulator that names none, had no case, as the stand-in named 37.2.12.0, kc37's own version. The
+  stand-in now names KC_VERSION's version, or none under KC_NO_VERSION: the case version (37.2.99.0) expects exit 0,
+  the run's seed line naming that version and that version's line in both boots' seeds, and no-version expects exit 2
+  with "emulator -version names no version" and nothing booted. A version written in (`version=37.2.12.0`) fails four
+  checks, version's two and no-version's two, and the refusal dropped fails no-version's two. android-local.sh
+  --selftest: 34 passed, 0 failed under sh and /bin/dash (131 s each); the gate clean on the built working tree (360
+  files).
+  Proof (CI, the lead's, 2026-10-27): at 6a6a34f every leg passed. Entropy Android run 40455117323 (API 31, API 36 and
+  the 16 KB leg, LifecycleTest's scrypt case among them; 2125 s) and Entropy CI run 40455117393 (the gate, both
+  self-test shards, and canaries.sh's "PASS: all 94 checks ran" on CI's fresh checkout).
+- [x] L4. The gates job's self-test in two shards beside the canaries (M5-63).
+  Proof: the shards' counts add up to the whole list's, locally and in CI; the gates job's time in that run, under 12
+  minutes.
+  Proof (M5 commit L4, partial: local, Q76; CI runs the gates job at the next push, which proves the counts there and
+  the job's time): `scripts/banned-api-check.sh --selftest --shard K/N` (K and N from 1 to 9999, no leading zero, K at
+  most N) judges case c only when (c - 1) mod N is K - 1: each case helper (expect, wexpect, aexpect, ixexpect, oexpect,
+  sicase) and each case judged inline asks `mine` first. Before its summary a sharded run prints `selftest: shard K/N:
+  OWN of WHOLE cases`, OWN its passed and failed cases. Without the option the log is f798695's line for line, temporary
+  and export paths aside, but for the option's 13 new cases after the built ones (1556 to 1569). On a fresh export of
+  the tree, under sh: the whole self-test alone, "selftest: 1569 passed, 0 failed" in 541 s (f798695: 1556 in 545 s);
+  the gates step's three side by side, as it runs them: "selftest: shard 1/2: 785 of 1569 cases" in 349 s and "selftest:
+  shard 2/2: 784 of 1569 cases" in 347 s, 0 failed each, and canaries.sh "PASS: all 93 checks ran" in 462 s, so the
+  three in 462 s. Under dash: the whole alone, 1569 passed in 542 s (its log equal to sh's), and the two shards side by
+  side 785 and 784 in 323 s and 321 s (their logs equal to sh's). 785 + 784 = 1569 each time, and shard 1's cases are
+  the whole log's odd cases and shard 2's its even ones, each in order. One case alone (`--shard 1312/9999`, the
+  past-the-last refusal) takes 36 s, the walk's setup every shard makes. The option's 13 cases: a shard past the last
+  (3/2, 2/1), a malformed value (2, 0/2, 1/02, a/2, 1/2/2, /, 1/10000), no value, a further argument, the option before
+  --selftest and `--shard=1/2` each exit 2 with its refusal, each run with TMPDIR a file, so a gate that took one stops
+  at mktemp instead of running a selftest of its own. Two mutants: the range check dropped fails case 1312, run alone
+  ("got exit 2" from mktemp, without the refusal); the artifact test-key case judged outside `mine` passes both shards
+  (785 and 785 of 1568) and the step's count check refuses them. The step's count check (its awk, run on macOS awk; CI's
+  is mawk) passes the two sh logs, and refuses them swapped, two whole counts that differ, counts that do not add up, a
+  count line missing or twice, a count line with more after it, and an empty log; the step itself, on stub shards and
+  canaries, fails when any of the three fails or the counts do not add up. The gate's `--workflows ../.github/workflows`
+  clean under sh and dash (3 workflows), and the gate clean on the export (356 files, L4b: a fresh export of c0cb3d6
+  scans 356; the 357 first given most likely counted the ignored tools/verify/__pycache__/verify.cpython-312.pyc that
+  canaries.sh's run leaves in its tree) under sh and dash. The 14 required check names and the steps before the gate's
+  first run are unchanged.
+  Proof (CI, the lead's, 2026-10-27): Entropy CI run 40455117393 at 6a6a34f printed "the shards split one list: 792
+  and 792 of its 1584 cases". Its side-by-side step took 597 s and its gates job 688 s of the 720. That is under Q31
+  (f)'s 12 minutes, but only 13 s under the unsharded job at 4940ede (701 s, run 40442191525): see M5-67 and L7.
+- [x] L5. KtFailOpen's package arm takes the standard library's kotlin.coroutines and its subpackages, with no allowed
+  import line (M5-65, commit 18s): hit fixtures for an import, a star import, a qualified call (startCoroutine with a
+  completion that drops its Result) and an intrinsics name, each clean in the test scopes; a near-miss fixture
+  showing that kotlinx.coroutines' allowed lines and words such as `kotlinx` and `coroutines` alone do not hit as
+  kotlin.coroutines.
+  Proof (M5 commit 18s, M5-65, partial: local, Q76; CI runs the new cases at the next push): outside the test source
+  sets KtFailOpen's package arm (kt_packages, as 18o-18q left it) also hits every mention of the standard library's
+  kotlin.coroutines, with no allowed line: from the word kotlin, read as 18o reads java.util.concurrent and
+  kotlinx.coroutines (blanks, backticks, line breaks and comments around each dot, a hit at the line of its first
+  word), so kotlin.coroutines.intrinsics, kotlin.coroutines.cancellation and any other subpackage is a mention of it.
+  kotlinx.coroutines keeps M5-60 (b)'s ten lines and the scanner its Executor line; no other rule, scope or allowance
+  changes. git ls-files of mobile/android/*/src/main/*, */src/commonMain/* and */src/androidMain/* (32 files) names
+  kotlin.coroutines nowhere: the word kotlin stands only in GoAheadScanner.kt's and CeremonyModel.kt's `import
+  kotlin.concurrent.Volatile`, and coroutines only on the ten allowed import lines (twelve in all); nor does any
+  tracked file under mobile/android outside the test sets (55 files), and commonTest's TestSupport.kt, which imports
+  kotlin.coroutines.CoroutineContext, is in a test set. Six new fixtures, each clean under 6a6a34f's gate on
+  the selftest's skeleton under sh and dash (by hand): five KtFailOpen hit fixtures, one hit each, each also copied
+  into the test scopes and clean there (src/test and src/androidTest 195 copies each, commonTest and androidHostTest
+  236, from 193 and 231): an import (Continuation, in the app's CeremonyHolder.kt), a star import (:screens'
+  Screens.kt), a qualified call (startCoroutine with the completion `kotlin.coroutines.Continuation(
+  kotlin.coroutines.EmptyCoroutineContext) {}`, which ignores the Result it is handed, in the app's MainActivity.kt),
+  an intrinsics name (`import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn`, :screens'
+  Timers.kt) and kotlin.coroutines.cancellation.CancellationException (thrown, :core-ffi's commonMain Core.kt); and
+  clean-kt-kotlin-coroutines-near-misses, :screens' Seams.kt with the ten allowed kotlinx.coroutines lines, the words
+  kotlinx, coroutines and kotlin alone (in a comment and a string), the identifier kotlinCoroutinesNote,
+  kotlin.collections (an import and a qualified call) and `import kotlin.concurrent.Volatile`. By hand, four mutants
+  of the gate, each through the whole self-test (`--shard K/4` for K 1 to 4, side by side, under sh): the word kotlin
+  dropped from the arm's awk fails exactly the five hit fixtures (1585 passed, 5 failed), and so does kotlin dropped
+  from kt_packages' first grep, which no other fixture can tell (none of the five names java or kotlinx); the arm on
+  import lines only fails exactly the qualified call and CancellationException (1588 passed, 2 failed); and the arm
+  taking any name under kotlin (kotlin.X) fails the near-miss and 20 others (clean-kt-shipping-package-imports'
+  Volatile, the clean build files' and the KtSdk fixtures' kotlin.X lines, and the fixtures that name kotlin.Throwable,
+  kotlin.io, kotlin.random and kotlin.uuid). On a fresh export of the tree: `--selftest` 1590 passed, 0 failed (1584
+  at 6a6a34f) under sh in 684 s; `--selftest --shard 1/2` and `2/2`, side by side with it and with dash's two: "shard
+  1/2: 795 of 1590 cases" and "shard 2/2: 795 of 1590 cases", 0 failed each, under sh and under /bin/dash, 795 + 795 =
+  1590, the dash logs equal to sh's and shard 1's cases the whole log's odd ones, shard 2's its even ones; the gate
+  clean on the export (356 files) and on the built working tree (360) under sh and dash; `--workflows
+  ../.github/workflows` clean (3 workflows) under sh and dash; canaries.sh PASS, all 94 checks ran, on the export
+  (448 s).
+  Proof (CI, the lead's, 2026-10-28): Entropy CI 40488587210 at 30c53f3 (18s in): the gates job's self-test, "the
+  shards split one list: 795 and 795 of its 1590 cases", 0 failed each; and 40622104962 at 44d4469, 798 and 798 of
+  1596, 0 failed each.
+- [x] L6. The gate fails closed when a tool it runs fails (M5-66, commit 18t): the empty-line-number Shell hit's
+  cause found and fixed, and the fault check (each external tool failing to start, exiting with an error and killed,
+  at every place the script runs it, on a small tree that reaches every rule) in CI in at most 5 minutes, with no run
+  printing "clean". The 14 required check names are unchanged.
+  Proof (M5 commit 18t, M5-66, partial: local, Q76; CI runs the fault check at the next push, and judges its 5
+  minutes): the cause. No tool failed; the shell misread one. macOS's /bin/sh, bash 3.2.57, keeps the finished job of
+  a command its own shell ran until that shell runs another, and a command substitution's shell starts with a copy of
+  it. scan() ran `git rev-parse` once as a command of its own and then only command substitutions, so a tool in one
+  that got git's pid again (under load the pid space wraps in seconds) was taken for git's old job, not waited for,
+  and read as exit 0: a check whose grep matched nothing gave report() exit 0 and no line, printed as a hit with no
+  line number. Reproduced on this Mac by 18t's agents (2026-10-27; from their transcripts, their logs lost with the
+  reboot's /private/tmp): a bash 3.2 probe that runs one command and then only command substitutions read exit 0 for
+  a tool that exits 1 once that tool reused the command's pid (about 49,400 loops), and read 1 with that first command
+  in a command substitution; and 32 scans side by side for 300 s of the 241-file commonTest copy tree: at 30c53f3, 6 of
+  224 runs printed a hit with no line (KtWindow, KtLog, RNG, Network, KtFailOpen, "...CeremonyHolder.kt:: "), exit 1;
+  with report()'s new refusal alone the same 6 of 224 stopped with exit 2 naming the check and file ("clipboard
+  exited 0 and no hit on ...Backup.kt"); with the fix, 0 of 192 while the pids wrapped 18 times in 299 s. The fix:
+  `git rev-parse` runs in a command substitution (128: not a work tree; any other status is git's failure); the
+  scan's shell and the top level start no tool as a command of their own (found() runs a check in a command
+  substitution), which the fault check reads from the gate's text; and report() refuses a check's exit 0 with no hit,
+  its exit 1 with output, and a hit whose line has no number. Fail closed: in the scan each of awk, find, git, grep,
+  mktemp, od, rm, sed, sort and tr is a function (fail_closed) that passes the tool's status through tool_status,
+  which names the tool, how it failed (could not start for 126 and 127, killed by signal N for 129 to 192, failed)
+  and what the gate was reading, and exits 2; grep's and the gate's awk programs' 1 stays "no line"; dirname and
+  basename are checked where the top level runs them. sh has no pipefail, so no pipeline in the scan holds two tools:
+  each tool's output is a command substitution's, read there and fed on with printf (kt_catch_allowing,
+  kt_tasks_scanner and kt_bootstrap so rewritten, and the header's import lines matched with case). The fault check,
+  scripts/banned-api-faults.sh, is a script of its own, so the gate carries no test hook and the check runs apart from
+  the self-test: its tree is the gate's skeleton and 29 fixture files (33 files, the fewest that still reach every
+  place; one new fixture, ktfailopen-catch-task-fork-join-pool-qualified-in-scanner, a task and a package mention on
+  one line, so kt_tasks_scanner reaches kt_tasks_and_packages' awk); the gate runs with only the shims on PATH, so a
+  tool they do not wrap fails the baseline; a bash -x trace whose PS4 exports LINENO and BASH_LINENO[0] maps each call
+  to its place (tool, line and caller), its calls equal a plain run's under sh, and its places equal those read from
+  the gate's text, each helper reached from every caller: 142 places at 113 lines, of 12 tools (awk 23, basename 1,
+  dirname 1, find 2, git 3, grep 84, mktemp 2, od 1, rm 1, sed 18, sort 2, tr 4). Each place fails in each of three
+  ways (126 or 127, exit 2 with nothing, SIGKILL after half its output): 426 runs, 426 passed (each exit 2, its fault
+  fired, a line naming the tool, the way and what was read, no "clean", no hit with no line), in 182 s under sh and
+  171 s under /bin/dash on this Mac (4 runs at once, beside Spotlight's indexing after a reboot). Mutants (the
+  lead's sample, each one status check removed from a copy, the fault check run at its lines): sort's `|| exit 2` in
+  the scan's file list (2 of its 3 runs fail), tr's in the index read (3 of 3), od's in the blob read (3 of 3),
+  kt_tasks_scanner's `[ $? -le 1 ] || return 2` after its Executor grep (3 of 3), and the find function's tool_status
+  (6 of 6, at both callers of list()): the check exits 1 each time. The self-test: `--selftest --shard 1/2` and `2/2`
+  side by side under sh and under /bin/dash, "shard 1/2: 796 of 1591 cases" and "shard 2/2: 795 of 1591 cases", 0
+  failed each, 796 + 795 = 1591 distinct cases (1590 at 2536ff7, and the new fixture), dash's logs equal to sh's with
+  the temporary folders' names masked; against 30c53f3's self-test, every case's output is the same but the four test
+  scopes' copies (one more fixture each) and error-unreadable-file, which now ends "banned-api-check: grep failed
+  (exit 2) on dangling.kt" and "banned-api-check: rng exited 2 on dangling.kt" where it said "cannot read
+  dangling.kt" (still exit 2: report() names the check and its status, the tool's line before it); the gate clean on
+  the working tree (361 files) under sh and dash; `--workflows ../.github/workflows` clean (3 workflows) under sh and
+  dash; canaries.sh PASS, all 94 checks ran (1278 s, beside the indexing). CI: Entropy CI's lint job runs `sh
+  scripts/banned-api-faults.sh` as its first step after checkout (the gates job took 688 s of its 720 at 6a6a34f);
+  L7 puts canaries.sh in supply-chain. The 14 required check names are unchanged. CI's first run (Entropy CI
+  40567427675, at d8598e9) stopped the check before any fault run, as it should: "scan rm: the gate holds 1 (lines
+  3606), the tree reached 0" and "rm: reached at lines 1". Ubuntu's bash 5 numbers an EXIT trap's text from line 1,
+  where macOS's bash 3.2 keeps the script's line, so the Build rule's trap now calls build_rule_cleanup, whose rm
+  is at its line under both (M5 commit 18u; locally the same 142 places, 426 runs passed, 185 s under sh and 175 s
+  under /bin/dash).
+  Proof (M5 commit 18v, review fix, M5-66, partial: local, Q76; CI runs the fault check at the next push): the review
+  of 6a6a34f..1d21ec8 found that 18t made only the scan fail closed, while CI's gates job also runs --workflows: with
+  write permissions, an unpinned action and a secret in a run step added to a copy of the workflows, a sed failing
+  at workflow_check's '/^$/d' made the mode print clean with exit 0 (reproduced, sh and dash). --workflows now calls
+  fail_closed; workflow_check reads the uses: lines and then drops the approved actions in two command
+  substitutions, joins the rules' hits in the shell and runs one sort; kt_bootstrap_allowed runs both its awks
+  whatever the exception holds; the exception check's own refusal (its awk's 1) is told from a tool's failure; the
+  clean line reads the exception with case. banned-api-faults.sh runs the gate in modes, MODE:ROOT:WANT: the scan of
+  its tree, and --workflows on workflow-dependency-verification-lenient's file, whose kt_bootstrap hit kept_hits
+  also reads (16 places: awk 5, basename 1, dirname 1, grep 6, sed 1, sort 2). A traced call's function is the
+  traced run's FUNCNAME, numbered by each function's first line through the PS4 (KF_NAME, env), not the function
+  whose lines hold LINENO: bash 3.2 gave workflow_check's awk, inside a command substitution that spans 43 lines,
+  LINENO 5098, a line of workflows(). Locally: the fault check 474 runs (the scan's 142 places and the workflows'
+  16, three ways each), 474 passed, in 188 s under sh and 175 s under /bin/dash; two mutants fail it (no fail_closed
+  in workflows(): 42 of the workflows' 48 runs fail; the uses: lines' two-grep pipeline back: 6 fail); the
+  reproduction gives its 4 hits again; the selftest's shards "796 of 1591" and "795 of 1591", 0 failed; the gate
+  clean on the working tree (365 files) and --workflows ../.github/workflows clean (3 workflows) under sh and dash;
+  canaries.sh PASS, all 94 checks ran (445 s).
+  Proof (M5 commit 18w, review fix, M5-66, partial: local, Q76; CI runs the fault check at the next push): --artifact,
+  rule 10's scan in CI's cross and test jobs, read a failing tool as no hit: with od killed while it dumped an object
+  holding KC_TEST_SOURCE_DO_NOT_SHIP, the mode printed "clean, ... no marker" and exit 0 (reproduced, sh and dash).
+  --artifact now calls fail_closed, which wraps rustc too; byte_scan writes od's output, then tr's, each status read;
+  bytes_found reads grep's status itself, so the byte search fails closed in --image and --apk as well; hexbytes, the
+  test key's bytes and the crates' alternation are built in the shell; symbols runs sed, then sort; the magic bytes
+  and rustc -vV's host line are read in the shell; the passengers' hits are read where awk wrote them (no mv); an
+  error path prints its tool's output with a shell loop (indented); the temporary directory goes in
+  artifact_cleanup, as the Build rule's does; llvm-readobj's failure names it. banned-api-faults.sh's artifact mode:
+  the artifact selftest's std-passengers object built for arm-unknown-linux-gnueabihf (an ELF reaching every place,
+  the passengers' awk among them) and marker-source.txt after it as the run's hit (23 places: awk 1, basename 1,
+  dirname 1, grep 9, mktemp 1, od 2, rm 1, rustc 2, sed 2, sort 2, tr 1); the toolchain's llvm-nm and llvm-readobj
+  run by their paths, out of a shim's reach, their statuses read by the gate. Entropy CI's lint job runs the check
+  after its toolchain install. Locally: 543 runs, 543 passed, in 211 s under sh and 191 s under /bin/dash; three
+  mutants fail it (od piped into tr again: 3 runs; no fail_closed in artifact(): 54; sed piped into sort again: 6);
+  the reproduction stops with exit 2, "od was killed by signal 9 (exit 137) on .../m.o"; --artifact's output on the
+  aarch64-apple-darwin rlibs and probe, the aarch64-linux-android libkeepcrypt.so and the reproduction's object equal
+  0d3c903's under sh and dash; the selftest's shards "796 of 1591" and "795 of 1591", 0 failed, under sh and under
+  /bin/dash; the gate clean on the working tree (365 files) and --workflows clean (3 workflows) under sh and dash;
+  canaries.sh PASS, all 94 checks ran (434 s).
+  Proof (M5 commit 18x, review fix, M5-66, partial: local, Q76; CI runs the fault check at the next push, and the Pi
+  image workflow the image modes): --os-config, --image-lists, --image and --apk call fail_closed too (cmp joins its
+  tools, its 1 "they differ"), so every mode but the selftests now does. --os-config: the inittab check reads cmp's
+  status (a failure was an Inittab hit, now exit 2), BusyBox's allowed list is joined in the shell, each check sets
+  what it reads ($on), the temporary directory goes in os_config_cleanup. --image: its two file lists ran find into
+  sort, so a find that failed partway left the image's files after it unread, and now run find, then sort; an ELF's
+  magic is joined in the shell; the simulator's symbol is grep's own output, with its status read, and its byte
+  string goes through bytes_found. --apk: kc_lib's export and DT_NEEDED lists run awk, then sort, joined in the shell
+  (joined) instead of through paste; the signers' sed has its status read. banned-api-faults.sh's os-config mode: the
+  clean fixture with osconfig-fstab-proc-read-write's file over it, one Fstab hit (13 places: awk 6, basename 1, cmp
+  3, dirname 1, mktemp 1, rm 1). Not in the fault check: --image-lists, --image and --apk, whose inputs need a built
+  Pi image with Buildroot's host tools, or the build tools and an APK, which the lint job lacks. Locally: 582 runs,
+  582 passed, in 189 s under sh and 191 s under /bin/dash; two mutants fail it (no fail_closed in os_config(): 33
+  runs; cmp's status not read again: 3); the selftest's shards "796 of 1591" and "795 of 1591", 0 failed, under sh
+  and /bin/dash (their stub image scans and image lists among them); --selftest-apk 88 passed under sh and dash (88
+  at 18w); --apk on the shipping APK built at 19f and signed with a throwaway key (build-tools 36.0.0, NDK r30's
+  LLVM) clean, its output equal to 18v's gate's under sh and dash; the gate clean on the working tree (365 files),
+  --workflows (3 workflows) and --os-config pi/os clean under sh and dash; canaries.sh PASS, all 94 checks ran
+  (441 s).
+  Proof (M5 commit 18y, review fix, partial: local, Q76): git rev-parse --is-inside-work-tree exits 128 for any fatal
+  error, and the scan read every 128 as no work tree, so in a repository whose repositoryformatversion git does not
+  know the Build rule was skipped and the gate said "clean, 6 files scanned" over a tracked
+  mobile/android/app/build/out/classes.txt (reproduced). The scan now takes 128 for no work tree only with git's "not a
+  git repository" (LC_ALL=C), and stops on any other failure, git's words first: "banned-api-check: git failed (exit
+  128) on the scanned tree" there, under sh and dash; a copy of the tree with no .git is scanned whole (6 files). New
+  selftest case error-build-work-tree-git-cannot-read (exit 2). Locally: the shards "796 of 1592" and "796 of 1592",
+  0 failed, under sh and /bin/dash; the fault check 582 runs, 582 passed (the git place's three ways among them),
+  under sh and /bin/dash; the gate clean on the working tree (365 files) under sh and dash; canaries.sh PASS, all 94
+  checks ran (436 s).
+  Proof (M5 commit 18z, review fix, M5-66, partial: local, Q76): report()'s refusals (a check's exit 0 with no hit, its
+  exit 1 with output, a hit line without its number) had no test: the fault check's three ways all stop the gate in
+  tool_status first, and with exit 0 and no output accepted and the number check gone the fault check passed 426 of
+  426 and the selftest 1591 of 1591. Four built cases run copies of the gate whose rng check is redefined just
+  before the dispatcher: error-report-exit-0-no-hit, error-report-exit-1-output, error-report-line-without-number
+  and error-report-line-with-empty-number, each wanting exit 2 and report()'s message, "rng exited 0 and no hit on
+  core/examples/release_probe.rs" and so on. Run alone (--shard 1192/9999 to 1195/9999), the first, third and
+  fourth fail with that mutant, and the second with exit 1's output accepted. Locally: the shards "798 of 1596" and
+  "798 of 1596", 0 failed, under sh and /bin/dash; the fault check 582 runs, 582 passed, under sh and /bin/dash; the
+  gate clean on the working tree (365 files) under sh and dash; canaries.sh PASS, all 94 checks ran (436 s).
+  Proof (CI, the lead's, 2026-10-28, partial until L8): Entropy CI 40572516372 at 83361f0 green, the lint job 151 s
+  with the scan's fault check; and 40622104962 at 44d4469 (18v-18z in): the lint job's fault check step, "582 runs (3
+  ways): 582 passed, 0 failed, in 110 s", over the scan's 142 places (12 tools), --workflows' 16, --artifact's 23 and
+  --os-config's 13; the lint job 146 s with the toolchain installed first; the 14 required check names unchanged. The
+  Pi image run 40622104933 at 44d4469 ran --image-lists, --selftest-image and --image fail closed for the first time,
+  green. L6 stays open until L8 closes the corners E3's last review found (M5-68 (d)).
+  Proof (CI, the lead's, 2026-10-29): L8 closed at d99e80b (Entropy CI 40749608383 green; L8's last Proof line), so
+  every mode the fault check faults fails closed in CI as locally.
+- [x] L7. canaries.sh moves out of the gates job into one existing required job with time to spare (M5-67, commit
+  L7). The gates job keeps the gate's runs and the two self-test shards with their count check. Proof: both jobs' times
+  in CI, each under 12 minutes, with the 14 required check names unchanged.
+  Proof (M5 commit L7, M5-67, partial: local, Q76; CI measures both jobs' times at the next push): canaries.sh moves
+  to supply-chain (deny, audit, vet), since lint runs 18t's fault check (`sh scripts/banned-api-faults.sh`, its first
+  step after checkout, about 3 minutes on this Mac). supply-chain already set up all that canaries.sh reads, so it
+  gains the step alone: gates' own toolchain step (`rustup toolchain install`, rust-toolchain.toml's components and
+  targets; the canaries use clippy and llvm-tools-preview's llvm-nm), cargo-deny 0.20.2 on PATH from its tools cache
+  (with cargo-audit and cargo-vet), and the registry cache of gates' two paths under its own key; python3 3.12, git
+  and a C compiler are the runner's. `- run: scripts/canaries.sh` is its last step, after vet; its output is the
+  step's log, which ends with its count line. The gates job's self-test step keeps the two shards side by side and
+  their count check, with canaries.sh's run, group, tail line and exit test removed, its comment giving M5-67's reason
+  and numbers; cargo-deny's tools cache, install and PATH line and the registry cache leave the gates job, since only
+  canaries.sh used them (the self-test uses rustc, its targets and llvm-tools-preview). The gate's first run and every
+  step before it, the job ids and the 14 required check names are unchanged; the only actions are checkout and cache at
+  their pinned SHAs (cache 10 uses to 8). Locally: `--workflows ../.github/workflows` clean (3 workflows) under sh and
+  dash. The step's script, cut from the workflow and run under `bash --noprofile --norc -eo pipefail` (macOS's bash
+  3.2; CI's is bash 5) on stub shards, 15 cases: it passes when both shards pass with counts that add up ("the shards
+  split one list: 796 and 795 of its 1591 cases"), and fails when shard 1 or 2 exits 1, shard 1 exits 2, shard 2 is
+  killed (137) or both fail, and when the counts fall short or over, the whole counts differ, the shards are swapped, a
+  count line is missing, twice or has more after it, the logs are empty or it is 0 of 0; no case runs the tree's stub
+  canaries.sh. Mutants of the step: shard 1's exit test dropped passes 2 cases, shard 2's 2 and the count test 9, and
+  83361f0's step fails all 15 (it runs canaries.sh). On a fresh export: the step on the real shards, 377 s alone on
+  this Mac, "796 of 1591" and "795 of 1591", 0 failed each; then supply-chain's order: check-path-deps.sh clean, `cargo
+  audit --no-fetch` and `cargo vet --locked` clean, none of them changing the tree, and canaries.sh PASS, all 94 checks
+  ran (462 s); `cargo deny --locked --offline check` clean after it (a first try with a wrong flag ran nothing). fmt,
+  both clippy runs, `cargo test --workspace --locked` (499 passed, 3 ignored) and `-p keepcrypt-core --features
+  test-sources` (269 passed, 1 ignored), and the gate clean on the working tree (361 files) under sh and dash.
+  Proof (CI, the lead's, 2026-10-28): Entropy CI 40622104962 at 44d4469: gates 250 s (688 s at 6a6a34f), its
+  self-test step 160 s ("the shards split one list: 798 and 798 of its 1596 cases"); supply-chain 419 s, canaries.sh
+  384 s of it ("PASS: all 94 checks ran"); lint 146 s; each under 12 minutes, the 14 required check names unchanged.
+- [x] L8. The gate's fail-closed corners that E3's last review found (M5-68 (d), commit L8): every mode prints its
+  summary only after its cleanup, so a cleanup that fails never follows "clean"; git's "not a git repository" means
+  no work tree only when no .git entry exists in the scanned root or above it, so a corrupt or missing HEAD stops the
+  gate; --image-lists reads its lists' statuses; the header names the four modes the fault check faults and how
+  image_unpack's two pipelines fail closed (by content); artifact_rules' loop variable stops reusing apk_lines' c; the
+  canary library's build output under scripts/testdata/android-canary-lib/build/ is ignored. Proof: selftest cases (a
+  corrupt and a missing HEAD; a failing cleanup with no hit in each mode that cleans up), the fault check, locally and
+  in CI; then L6 is ticked.
+  Proof (M5 commit L8, M5-68 (d), partial: local, Q76; CI runs the fault check, the shards and --selftest-apk at
+  the next push, and the Pi image workflow --image-lists and --image): (1) every mode that makes temporary files
+  clears its EXIT trap and removes them before its summary line, the trap kept for the error paths: the scan (the
+  Build rule's build_rule_cleanup, in a command substitution, as the scan's shell starts no tool), --artifact and
+  --os-config, and --image-lists, --image and --apk too, whose trap's rm -rf followed "clean" (or "listed") the same
+  way (image_cleanup; apk_scan's own rm). Each cleanup sets $on to what it removes: with a failing rm on PATH, 44d4469's
+  scan of a work tree printed "clean, 5 files scanned", then "rm failed (exit 1) on git's index of mobile/", exit 2
+  (reproduced); now that rm line alone. New cases (cleanup_case: a stand-in rm first on PATH that exits 1, a TMPDIR of
+  their own; exit 2, "banned-api-check: rm failed (exit 1) on <what the cleanup removes>" last, no summary line):
+  error-cleanup-fails-scan, artifact-aarch64-linux-android-cleanup-fails, artifact-aarch64-apple-ios-cleanup-fails,
+  osconfig-error-cleanup-fails, image-lists-stub-tools-cleanup-fails, image-stub-cleanup-fails and, in
+  --selftest-apk, apk-error-cleanup-fails. Each fails with its mutant (that mode's own cleanup removed, the trap's
+  left: the clean or listed line, then the rm line, exit 2), run alone with --shard N/9999 on a scratch export
+  (--selftest-apk whole: 88 passed, 1 failed). banned-api-faults.sh no longer counts a trap's commands as a caller
+  (they run only on an error path), so each cleanup function's one caller is its mode's line; with the scan's,
+  --artifact's or --os-config's own cleanup removed the check stops before its runs ("build_rule_cleanup: called from
+  0 places in the text, reached from 1", and so on), and with trap strings read as callers again it stops on the
+  final gate ("called from 2 places in the text, reached from 1"). (2) git's "not a git repository" is no work tree
+  only when no .git entry (a file, a directory or a link, dangling or not) is in the scanned root or any directory
+  above it (git_entry, the shell's tests on the physical path); otherwise git's words, "banned-api-check: <dir>/.git
+  exists, so the scanned tree is in a repository git cannot read" and "git failed (exit 128) on the scanned tree",
+  exit 2. Reproduced: a tracked mobile/android/app/build/out/classes.txt with HEAD overwritten with garbage, and with
+  HEAD deleted: 44d4469's gate (a829000's rule) "clean, 6 files scanned", exit 0, under sh and dash; this gate exit 2
+  under both. New cases error-build-work-tree-corrupt-head, -missing-head, -dangling-git-file (a .git file whose
+  gitdir is gone) and -corrupt-head-above-the-scanned-tree, each failing with a829000's rule back (clean, exit 0).
+  clean-git-target-claude-md's tree held a .git/ that was no repository, which now stops the scan, so its .git/ is a
+  repository's (git init): still clean, .git/ still never read. (3) --image-lists prints each list with cat's status
+  read (image_listed: "banned-api-check: cat failed (exit 1) on <list>", exit 2; the kernel config's `|| exit 2` gave
+  cat's words alone). Five cases, image-lists-stub-tools-cat-fails-on-boot.list, -mdir, -root.list, -imports.list and
+  -linux.config (a stand-in cat first on PATH failing on that file alone): exit 2, that line last, no "listed" line;
+  with the statuses unread all five exit 0 with the whole listing. (4) The header names the four modes the fault check
+  faults, says --image-lists, --image and --apk are covered by their selftests and CI's real runs (M5-68 (c)), and
+  names the four two-tool pipelines left: image_unpack's dd | od | awk and dd | od | tr, which fail closed by their
+  content (the MBR must read 512 bytes, partition 2 must start with the SquashFS magic), and show_diff's diff | sed and
+  --apk's grep | sed of zipalign's lines, which print a counted hit's detail; and that each mode removes its temporary
+  files before its summary line. The header's Build and scan()'s comment say what "not a git repository" covers. (5)
+  artifact_rules' loop variable is rname (kc_lib runs artifact_rules inside apk_lines' read loop, whose c holds a
+  hit's detail). (6) Entropy/.gitignore ignores scripts/testdata/android-canary-lib/build/ (git check-ignore names the
+  line for a file there; the library's three tracked files stay unignored). Locally: the shards "806 of 1611" and "805
+  of 1611", 0 failed, under sh and /bin/dash (1596 cases and the 15 new ones); against 44d4469's shards on a fresh
+  export every other case's output is the same but clean-git-target-claude-md's setup (above) and
+  workflow-error-no-entropy-yml's scratch directory number, 1344 for 1339 (five more scratch trees before it); dash's
+  output equal to sh's with the temporary names masked; --selftest-apk 89 passed (88 and the new one) under sh and
+  dash; the fault check 582 runs, 582 passed, in 192 s under sh and 191 s under /bin/dash, its places unchanged (the
+  scan's 142, --workflows' 16, --artifact's 23, --os-config's 13); the gate clean on the working tree (365 files) and
+  --workflows ../.github/workflows clean (3 workflows) under sh and dash; canaries.sh PASS, all 94 checks
+  ran (444 s); fmt, both clippy runs, `cargo test --workspace --locked` (499 passed, 3 ignored) and `-p keepcrypt-core
+  --features test-sources` (269 passed, 1 ignored).
+  Proof (M5 commit L8b, the lead's, M5-70 (a), partial: local; CI at the next push): Entropy CI 40681107808 at e5109bc
+  failed error-build-work-tree-dangling-git-file: Ubuntu's git 2.55 says "fatal: gitfile does not point to a valid
+  repository" for a .git file whose gitdir is gone, so the gate stopped with "git failed (exit 128)" and not the
+  case's line naming the .git entry. Now any exit 128 that finds a .git entry here or above names it, and only "not a
+  git repository" with no .git entry is no work tree. Locally, with a git shim on PATH that gives git 2.55's words for
+  that case: the self-test at 3442f7f fails exactly that case (804 + 806 of 1611 passed, 1 failed), and with L8b
+  passes 806 + 805 = 1611. In the clone at L8b: `--selftest --shard K/8` for K 1-8, 202, 202, 202, 201, 201, 201, 201
+  and 201 of 1611 cases, 0 failed; the gate clean (382 files) under sh and dash; `--workflows` clean; the fault check
+  582 runs, 582 passed, in 190 s; canaries.sh PASS, all 94 checks ran (1276 s).
+  Proof (CI, the lead's, 2026-10-29): Entropy CI 40749608383 at d99e80b (L8 and L8b in) green, all 14 required
+  checks under their names: the gates job (228 s) ran the two self-test shards, 806 + 805 of 1611 cases, 0 failed,
+  error-build-work-tree-dangling-git-file, -corrupt-head, -missing-head and
+  -corrupt-head-above-the-scanned-tree among them under Ubuntu's git 2.55, and --selftest-apk with
+  apk-error-cleanup-fails; the lint job's fault check "582 runs (3 ways): 582 passed, 0 failed, in 147 s"; the
+  supply-chain job's canaries.sh "all 94 checks ran" (587 s). The Pi image run 40749608381 at d99e80b green.
+- [x] L10. --workflows refuses a mapping key it cannot read as written (M5-71 (f), commit L10): in entropy-*.yml,
+  outside a block scalar's text, a quoted key holding a backslash or a quote left open at its line's end is a hit,
+  whatever key it spells, so no escape sequence or folded line can spell uses. Proof: selftest cases for "u\x73es",
+  a double-quoted "us\ ending its line and continued with es", and a key with an escaped quote, each a hit; a run: block whose shell text holds
+  backslashes and quotes stays clean; the three workflows clean under sh and dash; the fault check.
+  Proof (M5 commit L10, M5-71 (f), partial: local; CI's gates, lint and supply-chain jobs at the next push):
+  `--workflows`' greps read each key and value as written, so a quoted scalar that a YAML parser decodes (an escape,
+  or a line break inside its quotes) passed an unapproved action, a secret or an expression in a run step as clean.
+  workflow_check's second awk pass reads the quoted scalars a token at a time: outside a block scalar's text (the
+  lines after a `|` or `>` header that are blank or indented past the key it follows) and comments, a quoted scalar
+  that holds a backslash or a doubled single quote, or whose quote is still open at its line's end, is a hit. The
+  pass reads keys and values alike, wider than this item's "quoted key": telling a key from a value needs a parser,
+  and a value's escape spells secrets, github['token'] or `${{` in a run step past the other rules. Ten fixtures, each
+  clean under 6258879's gate, each read by Ruby's YAML parser (Psych) as the text it hides, give exactly one hit
+  each: workflow-uses-escape-in-quoted-key (`"u\x73es":`), workflow-uses-quoted-key-continued-over-a-line (`? "us\`,
+  then `es"`), workflow-uses-key-with-an-escaped-quote (`"uses\"":`, its following lines clean),
+  workflow-single-quoted-key-left-open (`? 'us`, then `es'`, which Ruby reads as "us es"),
+  workflow-uses-escape-in-quoted-key-after-an-empty-block (`- name: |`, then the key at name's column),
+  -in-a-flow-mapping and workflow-uses-escape-in-tagged-quoted-key (`!!str`), and three values:
+  workflow-expression-escaped-in-quoted-run-line (`run: "echo \x24{{ github.head_ref }}"`),
+  workflow-secrets-escaped-in-quoted-value and workflow-github-token-escaped-quote-in-value (`'${{ github[''token'']
+  }}'`). clean-run-block-shell-text stays clean: a run block and a path block holding backslashes, quotes of both
+  kinds left open, lines that start with a quote and a line that ends in a backslash, and a comment's and a plain
+  value's quotes. Twelve mutants of the pass (no block text, the block's key column taken from its dash, no comments,
+  a quote opened inside a plain scalar, no escape skipped, no '', no open-quote hit, no backslash hit, no flow
+  collections, no properties, no indicators, no colons) each fail at least one of these. Locally:
+  `--workflows ../.github/workflows` clean (3 workflows) under sh and dash; `--selftest --shard 1/2` and `2/2` side by
+  side "816 of 1631" and "815 of 1631", 0 failed (1620 and the eleven), and the whole self-test under /bin/dash 1631
+  passed; the fault check 585 runs, 585 passed (--workflows' places 16 to 17, the new awk), in 179 s under sh and
+  under dash; the gate clean (385 files) under sh and dash; canaries.sh PASS, all 94 checks ran (421 s); fmt, both
+  clippy runs, `cargo test --workspace --locked` (499 passed, 3 ignored) and `-p keepcrypt-core --features
+  test-sources` (269 passed, 1 ignored).
+  Proof (M5 commit L10b, review fix, partial: local; CI's gates, lint and supply-chain jobs at the next push): every
+  `--workflows` rule read the lines that end at a newline, but a YAML parser also ends one at a carriage return, and
+  libyaml (GitHub's parser is a port of it) at a NEL, a line separator and a paragraph separator (U+0085, U+2028,
+  U+2029). So a key after one of them was a key to GitHub on a line the rules read as one: L10's quoted-scalar pass
+  read `- name: x`, a lone carriage return, then `"u\x73es": ...` as one plain scalar, and the first pass never saw a
+  `run:` or `permissions:` that did not start an awk line (the U-1 review; the run and permissions cases predate L10,
+  in L9b's first pass). workflow_check now makes a hit of each line that holds any byte but a tab or 0x20-0x7E
+  (grep under LC_ALL=C), a carriage return anywhere among them, before the passes read it; the three workflows hold
+  none, and a CRLF copy of them already failed the canary property's whole-line rule (one hit, at its line), so no
+  workflow with carriage returns passed before. Eight fixtures, each clean under 1d8d769's gate and, but the last,
+  each read by Ruby's YAML parser (Psych, libyaml) as the key it hides, give exactly one hit each:
+  workflow-uses-escape-after-a-carriage-return (`- name: fetch`, CR, `"u\x73es": actions/download-artifact@...`),
+  -after-a-carriage-return-in-a-comment (`- name: fetch # a comment`, CR, `- "u\x73es": ...`), -after-a-next-line,
+  -after-a-line-separator and -after-a-paragraph-separator (the same key after U+0085, U+2028 and U+2029),
+  workflow-expression-in-run-line-after-a-carriage-return (`run: echo "${{ github.head_ref }}"`),
+  workflow-permissions-write-all-after-a-carriage-return (`permissions: write-all` after `runs-on:`'s line) and
+  workflow-carriage-return-at-a-line-end (one CRLF line in a clean file). The reviewers' probes (a lone CR in a
+  comment before an escaped uses, a run expression, an escaped secrets and permissions: write-all; NEL and LS in their
+  place) give one hit each. canaries.sh's workflow-hardening copy also plants a run key after a carriage return and
+  needs it among eight hits. Four mutants of the rule each fail fixtures: it left out of the hits (8 of 8), a carriage
+  return allowed (5), only a carriage return refused (3), only the C0 controls and DEL refused (3). Locally:
+  `--workflows ../.github/workflows` clean (3 workflows, "printable ASCII alone") under sh and dash; `--selftest
+  --shard 1/2` and `2/2` "820 of 1639" and "819 of 1639", 0 failed, under sh and under /bin/dash; the fault check 588
+  runs, 588 passed (--workflows' places 17 to 18, the new grep), in 233 s; the gate clean (386 files) under sh and
+  dash; canaries.sh PASS, all 94 checks ran (459 s).
+  Proof (CI, the lead's, 2026-10-30): Entropy CI 40903211222 at ab6773f (L10 and L10b in) green, all 14 required checks
+  under their names: the gates job's --workflows step clean on the three workflows, its self-test "the shards split one
+  list: 820 and 819 of its 1639 cases", 0 failed, L10's ten and L10b's eight fixtures among them; the lint job's fault
+  check "588 runs (3 ways): 588 passed, 0 failed, in 111 s"; the supply-chain job's canaries.sh "all 94 checks ran".
+  Entropy CI 41135172483 at babe829 green as well. So L10 is ticked.
+
+**Stages E3 and E4** run commits 19, 20 and 21 as planned, each built and tested locally before it is committed.
+
+**Stage U: the end-to-end pass** (after commit 21, before Stage F)
+- [ ] U1. User journeys: one emulator test per journey from First launch to Finish, through the UI only: mixed and
+  dice-only, 12 and 24 words; the check by a typed code, a scanned proof (fed to onGoAheadText in CI, the real camera
+  locally), a loaded snapshot, and Skip; Match found and a scanned collision to Add fresh entropy at 99; Cannot check to
+  Start again; the words, read-back and summary; the backup saved and checked; watch-only; register; reveal D; About;
+  stop. Each journey's pass line names its path.
+  Proof (M5 commit U1b, Stage U-4, partial: local, no emulator; CI's journeys jobs at the next push): Ui gains the
+  journeys' inputs through the UI alone (M5-72 (a)): tapRolls presses each face on the Public dice pad by its
+  accessibility click (pressFace, no face in a selector or log, M5-68 (e)), taps Confirm once UI Automator shows it
+  enabled and waits for the count to show one roll more (a press lost leaves Confirm disabled and fails there; a face
+  pressed wrong shows in the seed's Seal ID and words, which the journey checks); tapCode is CheckTest's code entry,
+  moved; letterKeys and typeLetters are FlowTest's letter pad, moved, the screen and the model's pad entry parameters
+  (the read-back entry, the backup's confirm, Check a backup's entry), typed by injected touches; assertInsert,
+  sameWord, DOT and two moved with them, so FlowTest and CheckTest call Ui's. Ui.roll stays, named the edge tests'
+  in-process setup (M5-76 (b)). JourneyTest (the shipping app; android-emulator.sh's journeys part runs it after
+  CheckTest, before the age: BackupTest) pins what was built: dice-50-words12's 50 rolls tapped, its seal card's Seal
+  ID YVM9CPP3, the check QR's Match found and its confirm, the collision result with that Seal ID, the report behind
+  its gate (its QR dice-50-words12's register text), Add fresh entropy at "0 / 99 rolls", Done disabled at 98,
+  dice-99-words12's 99 rolls tapped ("99 / 99 rolls, 255.9 bits"), its seal card's Seal ID 9FHYMCQA and check QR's T
+  (kcr.json's seal_tag_hex), the code a checker builds from that QR tapped on the pad, the check passed, the words'
+  gate, the 12 inserts by Next (each the vector's word, in-process), all 12 read back by touches, each a match, the
+  summary (core's), the backup's and watch-only's Skip, the registration QR (dice-99-words12's register text), the
+  checklist with no second device and Finish: Home with the slot empty; its pass line gives the two dice phases', the
+  read-back's and the journey's times. The journeys jobs take the 90-minute ceiling for this measuring run (M5-76
+  (a)). Locally: both test APKs built by the strict Gradle run (:app:assembleShippingReleaseAndroidTest and
+  :app:assembleWithTestRegistryReleaseAndroidTest, no warning); android-emulator.sh --selftest 53 passed (the new
+  journey-test-fails case among them, and the parts' pinned orders with JourneyTest); banned-api-check.sh clean, 397
+  files; --workflows clean.
+  Proof (CI, the lead's, 2026-10-31): Entropy CI 41193839363 at 87951b3 green; Entropy Android 41193839334 at
+  87951b3, every job green: the build job in 12 min 43 s; API 31's journeys job in 1708 s ("PASS
+  com.keepcrypt.entropy.JourneyTest (1 tests; ...)", FlowTest 7, CheckTest 2 and BackupTest with its age -d hand-off
+  passing, "emulator: api=31: every check passed") and API 36's in 1600 s, the same classes passing. JourneyTest's pass
+  lines: API 31, dice-50-words12's 50 rolls tapped in 245.0 s, dice-99-words12's 99 in 343.6 s, the 12 read-backs by
+  touches in 75.9 s, the journey 813.9 s; API 36, 165.7 s, 313.4 s, 79.3 s and 704.3 s. The other four leg jobs green.
+  So U1b holds on both levels; its rolls cost 3.2 to 4.9 s each, which U1b2 takes at its root, and the journeys
+  jobs' budgets are 36 and 34 minutes (M5-30, M5-76 (a)).
+  Proof (M5 commit U1b2, Stage U-4, partial: local, no emulator; CI's journeys jobs at the next push): a roll by
+  pressFace and tap made about seven UI Automator calls, and in UI Automator 2.4.0 (its classes read from the pinned
+  runtime jar with javap) each search starts with UiDevice.getWindowRoots' waitForIdle, UiAutomation.waitForIdle with
+  a 500 ms quiet window, and UiObject.click waits up to Configurator's 3000 ms action acknowledgment for an event
+  after the click: so each roll waited seconds for quiet, not for the app. tapRolls now presses the face's key and
+  Confirm by ACTION_CLICK on the app's own accessibility nodes, found in the windows UiAutomation reports and refreshed
+  from the app before their state is read (Confirm enabled, the count's text), each polled every 20 ms for up to 10 s:
+  no idle wait, and no selector or point goes into a log (M5-68 (e)). Locally: both test APKs built by the strict
+  Gradle run, no warning; banned-api-check.sh clean, 397 files.
+  Proof (CI, the lead's, 2026-10-31): Entropy CI 41197141228 at 360a67f green; Entropy Android 41197141108 at
+  360a67f, every job green: the build job in 12 min 54 s; API 31's journeys job in 1153 s (was 1708 s) and API 36's in
+  1097 s (was 1600 s), FlowTest 7, CheckTest 2, JourneyTest 1 and BackupTest with its age -d hand-off passing in each.
+  JourneyTest's pass lines: API 31, the 50 rolls tapped in 2.6 s (was 245.0 s), the 99 in 4.8 s (was 343.6 s), the
+  12 read-backs in 76.9 s, the journey 236.2 s (was 813.9 s); API 36, 3.0 s, 5.9 s, 79.2 s and 238.0 s (was 704.3 s).
+  The rolls are the vectors' still: each seed's Seal ID on its seal card, the 12 inserts equal to dice-99-words12's
+  words and the check by the drawn QR's code all passed. So U1b2 holds; the journeys jobs' budgets are 30 minutes
+  less in all: 25 and 23 minutes (M5-30, M5-76 (e)).
+  Proof (M5 commit U1c, Stage U-4, partial: local, no emulator; CI's journeys jobs at the next push): Ui.letterKeys
+  reads the letter pad through UiAutomation's own nodes (the walk under the screen's root, in tree order), with the
+  same checks (the 26 keys with the button role alone, no node with a single letter as its text, no key_ id), read
+  again until the 26 are there; typeLetters refreshes each key from the app, touches the middle of its screen bounds
+  (Ui.touch, injected, no point logged, M5-68 (e)) and waits in-process until the pad's entry holds one letter more
+  before the next, so no UI Automator search or idle wait is left in a letter. JourneyTest's tail from Show words to
+  Finish is one helper, wordsToFinish, which the Match found journey now calls; its new journey,
+  aDiceOnlyTwentyFourWordSeedSkipsItsCheckAndReachesFinishOnTwoDevicesThroughTheUiAlone, taps dice-99-words24's 99
+  rolls (Done disabled at 98), confirms Skip, pages the 24 inserts by Next across the device swap ("Words 13-24 go on
+  device 2 of 2.") and its second gate, each the vector's word and device, reads all 24 back by touches with each
+  header naming its device, and goes through the summary and the registration QR (dice-99-words24's register text)
+  to the checklist naming two devices and Finish: Home with the slot empty. The journeys jobs are measured at 30
+  minutes (M5-76 (f)). Locally: both test APKs built by the strict Gradle run, no warning; banned-api-check.sh clean,
+  397 files.
+  Proof (M5 commit U1d, Stage U-4, partial: local, no emulator; CI's journeys jobs at the next push): Ui's Protected
+  pads share one reader, padKeys (the screen's nodes with the button role alone, their count, no node with a key's
+  label as its text, no key_ id), and one touch, touchKey (the key refreshed from the app, touched at its bounds, the
+  model's entry waited for); letterKeys and typeLetters use them, and so do the ASCII pad's asciiKeys (FlowTest's own,
+  moved) and typeAscii, which turns the pad's page by Next keys or Previous keys to the key's own before each touch.
+  Ui.assertInsertAt checks an insert's position and device alone, for a seed that is no vector's. JourneyTest's tail
+  is helpers (wordsAndReadBack, summaryToWatchOffer, registration, checklistToFinish), and its new journey,
+  aMixedTwelveWordSeedIsCheckedByItsCodeAndTakenThroughEveryExportToFinishThroughTheUiAlone, pins: Device entropy's
+  sentence and three touches on it, C read from the screen, 50 tapped rolls, Check now's seal card and check QR, Scan
+  go-ahead QR with CAMERA granted (Ui.grantCamera, SnapshotDrillTest's, moved) showing the camera's absence, kcr.json's
+  clear-empty-bucket fed to onGoAheadText and refused with NoRegistryKey's line, the check QR unchanged, Back, the
+  drawn check QR's code tapped and the check passed, the 12 inserts by Next and all 12 read back by touches (their
+  letters read in-process from the insert the read-back holds, never printed), the summary, the watch-only export with
+  watchonly.json's TREZOR touched on the ASCII pad (another fingerprint than the seed's, its account and descriptor
+  QRs equal to core's), the registration QR (core's), D behind its gate committing to the C the screen showed, the
+  checklist and Finish. The two go-ahead QR texts move to Checker. Locally: both test APKs built by the strict Gradle
+  run, no warning; banned-api-check.sh clean.
+  Proof (M5 commit U1e, Stage U-4, partial: local, no emulator; CI's journeys jobs at the next push): JourneyTest's
+  cannotCheckStartsAgainAndTheNewSeedsBackupIsMadeAndCheckedThroughTheUiAlone pins: dice-50-words12's 50 rolls tapped,
+  its seal card's Seal ID, Cannot check's confirm and its Back, then its confirm: a new ceremony at once, "0 / 50
+  rolls" (no collision, so not 99) and Back doing nothing on its dice; the same 50 rolls tapped, Skip confirmed, the 12
+  inserts (the vector's) and their read-back by touches, the summary with its fingerprint; Make an encrypted backup
+  through its gate, the passphrase's two pages read in-process (each word its own array, zeroed at the end, never
+  printed) and I wrote it down, the confirm's two words' first letters touched on the letter pad, saved through the
+  picker (Picker.save, BackupTest's create-document steps, moved) to Downloads under core's name and verified; the
+  rest skipped to Finish; Check a backup picking that file, the 8 words touched on the letter pad behind the entry's
+  gate, Backup OK with the summary's fingerprint and Seal ID YVM9CPP3, the backup's 12 words by Next (the vector's) and
+  its Done, Done: Home with the slot empty; the file removed from Downloads in a finally, so BackupTest saves under
+  the same name into an empty folder, and clears that name from Downloads before its save. JourneyTest is now
+  android-emulator.sh's ui part, its own job on each level (M5-76 (g)): the parts' cases, the pinned orders (ui alone:
+  JourneyTest), the parts' union and the workflow's eight rows with their budgets. Locally: both test APKs built by
+  the strict Gradle run, no warning; android-emulator.sh --selftest 56 passed; banned-api-check.sh clean, 397 files;
+  --workflows clean.
+  Proof (M5 commit U1f, Stage U-4, partial: local, no emulator; CI's registry jobs at the next push): JourneyTest's
+  stretches from a check's result to Finish move to Journeys (wordsAndReadBack, summaryToBackupOffer,
+  summaryToWatchOffer, registration, checklistToFinish, wordsToFinish, since) and kcr.json's gate seeds to GateSeeds,
+  shared by JourneyTest and SnapshotDrillTest. SnapshotDrillTest's rolls are tapped (Ui.tapRolls, every one of its
+  journeys through the UI alone); theScannedCollisionDice50QrDestroysTheSeedBeforeAnyWordsAndItsRestartAt99RollsReachesFinish
+  goes on from Add fresh entropy's "0 / 99 rolls": dice-99-words12's 99 rolls tapped, its seal card's Seal ID
+  9FHYMCQA, the scanned clear-empty-bucket QR (made for that seed): "No collision for seal 9FHYMCQA as of
+  2026-03-01.", the 12 words read back by touches, the summary, the registration QR (its register text) and Finish;
+  the new aTwentyFourWordSeedCheckedOnItsOwnAgainstALoadedSnapshotIsClearAndReachesFinish loads with-dice-50 through
+  the picker, taps dice-99-words24's 99 rolls, and its check runs on its own: "No collision for seal RXDANDFR as of
+  2026-03-01." with the snapshot's line and Stale warning (kcr.json's lookups give dice-99-words24 no entry), then the
+  24 words on two devices read back by touches to Finish with the checklist naming two devices. The registry jobs are
+  measured at 30 minutes (M5-76 (f)). Locally: both test APKs built by the strict Gradle run, no warning.
+  Proof (M5 commit U1g, Stage U-4, partial: local, no emulator; CI's ui jobs at the next push): android-instrument.sh
+  gains the gone: form, for a test whose app ends its own process with no crash: the run must have its test started,
+  none passed and the activity manager's shortMsg (as a killed: run), and then the crash buffer and DropBox clean as
+  any run's (no trigger's crash allowed, unlike killed:); its PASS line says "gone during the test, as it must be: the
+  app ended its own process". --selftest's three new cases: a gone run whose process ends during its test with
+  nothing in the crash buffer passes; one that passes, and one with a crash of ours in the crash buffer, fail (46
+  passed). StopJourneyTest (the shipping app, the ui part after JourneyTest, as gone:) taps First launch's Continue to
+  Go offline, raises a halt in-process as core raises one (KcHalt with a health test's reason, through the model's
+  call path, as CaptureTest's walk does: no input on the screen halts the app), and pins the stop screen naming that
+  reason ("An entropy health test failed."), holding nothing, Back doing nothing, and Close app ending the process;
+  it stays off Home, so no phone setting needs putting back once the process has gone. android-emulator.sh runs it
+  in the ui part (the pinned orders and the whole leg's runs with it; --selftest 56 passed). About from Home and back
+  is FlowTest's homesAboutShowsTheVersionTheFlavourAndTheSourceAsPlainTextAndBackReturnsHome, by taps already.
+  Locally: both test APKs built by the strict Gradle run, no warning; banned-api-check.sh clean, 400 files.
+  Proof (CI, the lead's, 2026-10-31, partial): Entropy Android 41203734694 at 62f9c8c (U1c to U1g together; the runs at
+  5641b98, c8794c1 and 143f5fa were cancelled by the pushes after them): the build job green in 12 min 53 s; both
+  capture jobs green; the registry jobs green in 862 s and 896 s, "PASS com.keepcrypt.entropy.SnapshotDrillTest (4
+  tests; ...)" on both levels, its two new journeys among them (the scanned collision's restart to Finish: its
+  read-back 75.9 s and 76.4 s; the 24-word seed against the loaded snapshot: clear, 24 read back in 152.1 s and 151.8
+  s, the journey 295.1 s and 297.7 s), LifecycleTest 8 and the killed CrashTest passing; the ui jobs red in 1207 s and
+  1171 s: JourneyTest "4 started, 3 passed, 1 failed" on both levels, the mixed journey failing with "a node on
+  bip39_entry names a key" (the BIP39 entry shows the passphrase as typed, one character after the first touch,
+  which padKeys' label check took for a key's label; the U-4 review had found it from the code), the Match found
+  journey (233.3 s and 229.5 s), the 24-word journey (293.3 s and 292.5 s, its 99 rolls 4.9 s and 5.4 s) and the
+  Cannot check and backup journey (291.9 s and 290.6 s) passing on both, and StopJourneyTest "PASS ... (gone during the
+  test, as it must be: the app ended its own process; no crash window, crash buffer and dropbox clean)" on both; the
+  journeys jobs: API 31 green in 924 s, API 36 red in 867 s, FlowTest 7 and CheckTest 2 passing and BackupTest's
+  test passing but its age -d hand-off failing: "age-check: fail: logcat -d holds 2 of the 8 lines the passphrase
+  screen draws" (the open item of 2026-10-31 below). So U1b, U1c, U1e, U1f and U1g hold on both levels; U1d is fixed
+  by the review fixes below and owed a run; the read-back is not faster than U1b's (76 s for 12 inserts, 152 s for
+  24: U1c's letter pad through UiAutomation's nodes left its cost where it was, so the per-insert cost is the read-back
+  entry's other UI Automator steps, its header's wait and the taps of Done and Next; corrected here, U1c's speed claim
+  withdrawn, its correctness kept).
+  Proof (M5 commit U4r, Stage U-4's review fixes, partial: local, no emulator; CI at the next push): the three reviews
+  (journeys' correctness, secret handling, the scripts) found, each checked against the code: (1) padKeys' label check
+  failing on the BIP39 entry's typed text: the entry's own secret node (SECRET_TAG) is left out of the label check;
+  (2) gone: passing any crash-free death: it now needs the shortMsg as its one bad line and the test's own kc_pass
+  line before it (four new --selftest cases: no pass line, a failure reported first, no shortMsg, a new data_app_crash
+  entry; 50 passed); (3) android-local.sh (the kc37 runner) broken by the ui part and the gone: form since U1b: it
+  strips gone:, knows the ui part (its usage, its part case, its end after the leg, a part-ui case), and its whole-run
+  case holds the twelve runs (its --selftest was 4 failed before; see the lessons); (4) typeAscii's page turns and page
+  line went through UI Automator selectors, which log which page each passphrase character is on: the page buttons
+  are pressed by their accessibility click and the page line read through UiAutomation's nodes; (5) touchKey touched
+  a key's whole bounds: now the part its window shows; (6) the backup confirm's second question typed once the model
+  held it: now once the screen shows "question 2 of 2"; (7) the 12-word checklist's "no second device" could pass
+  with the line out of view: shown scans to the end; (8) StopJourneyTest's "holds nothing" could not fail: it pins
+  nothing held before and after the halt and its pass line claims no wipe; (9) the mixed seed's fingerprint went into
+  a selector: compared in-process; (10) passphrase and letter copies: zeroed on every way out, the letters typed from
+  arrays (CharBuffer) zeroed after, never Strings; (11) the texts: android-emulator.sh's parts, step 4a and its
+  failing-class list's order, the workflow's eight jobs and the ui part's StopJourneyTest, GateSeeds' T, JourneyTest's
+  part; and coverage: a failing JourneyTest in the ui part (ui-journey-test-fails) and the gone: StopJourneyTest
+  after a failing CheckTest or JourneyTest. android-age-check.py, for the open item: a failure on the screen's lines
+  now names each line's position, whether it stands as a whole token or only inside a longer one, and its logcat
+  line's tag, never its word (its two-lines case pins both kinds; --selftest 18 passed). Locally: both test APKs built
+  by the strict Gradle run, no warning; android-emulator.sh --selftest 57 passed; android-instrument.sh --selftest 50;
+  android-local.sh --selftest 47 (was 4 failed); android-age-check.py --selftest 18; banned-api-check.sh clean, 402
+  files; --workflows clean.
+  Proof (CI, the lead's, 2026-10-31, partial): Entropy Android 41207540199 at be2878d (U4r): seven of the eight leg jobs
+  green. API 36's ui job green in 1284 s: JourneyTest 4 of 4 (the mixed journey 269.6 s, its BIP39 passphrase
+  touched on the ASCII pad past the label check U4r fixed; the 24-word 307.3 s; Match found 247.8 s; Cannot check and
+  backup 294.4 s) and StopJourneyTest passing the stricter gone: form ("gone during the test, as it must be"); API 36's
+  journeys job green in 873 s, BackupTest's age -d hand-off passing its logcat check this run; both registry jobs green
+  (879 s and 893 s), both capture jobs green, API 31's journeys job green (900 s). API 31's ui job red: the mixed
+  journey passed there too (so U1d holds on both levels), as did the 24-word and Match found journeys and
+  StopJourneyTest's gone: run, and the Cannot check and backup journey failed in Picker.save: StaleObjectException in
+  UiObject2.getApplicationPackage from Picker.opened, which read a node found before its waitForIdle, DocumentsUI
+  having redrawn meanwhile. A test-harness race (the journey passed on both levels at 62f9c8c), fixed at its root in
+  U4r2, not rerun.
+  Proof (M5 commit U4r2, CI fix, partial: local; CI's ui jobs at the next push): Picker.opened waits for the picker
+  (Until.hasObject), waits for idle, then finds its node and reads its package in one Ui.fresh block, found again if a
+  redraw replaced it; Picker.save reads its name field's text once, in a Ui.fresh block, before facts' searches wait
+  for idle (it read the field twice, around them), and finds and clicks Save in one. Ui's own rule, that no helper
+  reads a node it found before a wait, now holds in Picker too. Locally: both test APKs built by the strict Gradle
+  run, no warning; banned-api-check.sh clean, 402 files.
+  Proof (CI, the lead's, 2026-10-31): Entropy Android 41211393696 at 4a1cc07 (U4r2), every job green: the build in 12 min
+  28 s; both capture jobs; the journeys jobs (902 s and 851 s: FlowTest 7, CheckTest 2, BackupTest with "age-check:
+  pass", its logcat check passing on both levels, the open item of 2026-10-31 not repeated); the ui jobs (1241 s and
+  1290 s: "PASS com.keepcrypt.entropy.JourneyTest (4 tests; ...)" and StopJourneyTest's "gone during the test, as it
+  must be" on both, the journeys 248.0, 266.7, 294.0 and 304.0 s on API 31 and 247.9, 269.2, 294.1 and 307.8 s on
+  API 36); the registry jobs (891 s and 902 s, SnapshotDrillTest 4 with its two journeys to Finish). So U1b to U1g
+  hold on both levels in one run, with U-4's review fixes in; API 31's ui job is 26 minutes (M5-30).
+  Stage U-4's close (the lead's, 2026-10-31): U1's journeys through the UI alone, against U1's list: mixed and
+  dice-only seeds of 12 words, a dice-only seed of 24 (two devices); the check by a typed code, a scanned proof, a
+  loaded snapshot and Skip; Match found and a scanned collision to Add fresh entropy at 99; Cannot check to Start
+  again; the words, read-back and summary; the backup saved and checked; watch-only; register; reveal D; About
+  (FlowTest's, by taps); stop; each pass line naming its path. One combination is not yet a journey: a mixed seed of
+  24 words (the mixed path's 24-word swap and its D are each covered, the mixed 12-word and dice-only 24-word
+  journeys, but not together), so U1 stays open for U1h, which U-5 takes first. Three reviews ran at U-4's head (the
+  journeys' correctness, secret handling, the scripts) and their verified findings are fixed (U4r, U4r2). Open items
+  U-4 leaves: the age -d hand-off's logcat check (2026-10-31; not repeated in two runs since, its failure now naming
+  each match's facts) and U1c's read-back cost (76 s for 12 inserts, the read-back entry's UI Automator steps).
+- [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
+  every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
+  every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,
+  leaving the slot empty and the app at First launch; the idle warning and wipe (a fake clock on the JVM, one emulator
+  run); the camera refused, revoked while scanning and absent; every read-back misread (each mirror pair, a wrong
+  insert); a wrong backup passphrase, a damaged .age file and a file that is not one; a stale, future, wrong-key or
+  damaged snapshot; a go-ahead QR too long, of another type, in mixed case or from another check; the 99-roll minimum
+  through every restart path.
+  Proof (M5 commit U2a, Stage U-2, partial: local, Q76; CI's test registry and edges jobs at the next push):
+  MainActivity had the standard launch mode, so a start with FLAG_ACTIVITY_NEW_TASK and FLAG_ACTIVITY_MULTIPLE_TASK
+  (another app's intent, or am start's -f) made a new task with a second MainActivity, whose CeremonyHolder made a
+  second CeremonyModel over the process's one slot, while the first activity's stop counted as leaving. The manifest
+  now gives it launchMode singleTask (the system reuses its task for that intent and delivers it to the running
+  instance; the launcher intent needs nothing done, so MainActivity adds no onNewIntent); its comment and
+  MainActivity's say so. --apk's manifest summary gains "activity com.keepcrypt.entropy.MainActivity launchMode=2"
+  (aapt2's enum value for singleTask), pinned in expected/manifest-shipping.txt and -withTestRegistry.txt and in
+  --selftest-apk's stub xmltree (scripts/testdata/apk/xmltree.txt), whose control compares it with the committed
+  summary. LifecycleTest's aSecondStartReachesTheRunningActivityAndItsSession: on the dice with 10 rolls, `am start -W
+  -n MainActivity -f 0x18000000`; no second MainActivity in any stage, the first resumed, the dice, its rolls, held,
+  no cover and no notice. With the standard launch mode it would find a second activity. Locally (no emulator here, so
+  the device proof is CI's): the strict build of the APKs and test APKs; both release APKs, signed with a local
+  throwaway key, pass --apk against the new expected summaries; --selftest-apk 89 passed; android-emulator.sh
+  --selftest 50 and android-instrument.sh --selftest 43 passed.
+  Proof (M5 commit U2a2, Stage U-2's review fix, partial: local, no emulator; CI's test registry and edges jobs at the
+  next push): the reviews found that the test printed am start's output and checked none of it, so a start that failed
+  or was never delivered passed, and that under the standard launch mode it would have failed on its wait for the
+  resumed stage, not on the second activity. It now requires no Error line and am's START_DELIVERED_TO_TOP line
+  ("Warning: Activity not started, intent has been delivered to currently running top-most instance."), then reads the
+  activities in every stage before anything waits, so the standard mode fails on "a second MainActivity was created";
+  the null checks name what they mean. That failure is reasoned, not run (no emulator here). The manifest's and
+  MainActivity's comments now say what singleTask does not stop: FLAG_ACTIVITY_CLEAR_TASK finishes the running
+  activity, whose model's end wipes the slot, and starts a new one (fail closed, M5-74 (b)); and that a start while a
+  picker, the camera prompt or the airplane-mode settings is up closes it (nothing picked, nothing granted, back to Go
+  offline). Locally: the strict build of the APKs and test APKs.
+  Proof (CI, the lead's, 2026-10-31): Entropy Android 41144532589 at dd2d617: LifecycleTest 8 passed in both test
+  registry and edges jobs, "a second start (NEW_TASK and MULTIPLE_TASK) reached the running activity: one
+  MainActivity, its session on the dice" on API 31 and 36, am start -W printing "Warning: Activity not started, intent
+  has been delivered to currently running top-most instance." and "Status: ok"; the build job's --apk passed both APKs
+  with launchMode=2 in their summaries. The jobs took 418 s (API 31) and 411 s (API 36), inside their 10- and
+  11-minute budgets with U2a's test in.
+  Proof (M5 commit U2b, Stage U-3, partial: local, Q76's JVM run on a Linux host, no emulator; CI's build job at the
+  next push): :screens' tests had no one way to any screen, and each class named a discard's landing on its own (36
+  places, Q81's open landing among them; U2b2 corrected the count). Walk.kt (commonTest) brings a fresh Rig over the real slot to any of the 48
+  screens but Stop (a halt latches the process's slot, so the stop screen stays the halt classes'), by CaptureTest's
+  path on a Mixed seed of 24 words with the shorter branch where nothing else is lost, each screen checked on arrival
+  and its privacy gate with it (shown on exactly the eight gated screens the walk enters from a Public one), each
+  picker's answer followed by the activity's resume as on the device; SavedBackup (TestSupport.kt) is the backup
+  Check a backup's tests and the walk open, saved once per JVM (CheckBackupScreensTest's own copy moved there).
+  BackTest (3): Back once and twice from every screen lands where its own table says (15 screens leave, every other
+  stays; its rows are PF's buttons table and entry grids line where the Pi has the screen, and M5-75's for the
+  phone's own, U2b2), with what is held unchanged but on Check a
+  backup's entry, no notice or overlay, a typed code, BIP39 passphrase or entry wiped by the Back that leaves it, the
+  page kept where Back stays, and the check, its nonce and the seal card the same objects on the check QR and seal
+  card; the words, the overview and the backup passphrase page back by Back; and Back on each gated screen's gate,
+  under the cover on every screen but the two long calls' (Protected by 30 s idle, Public by a leave and return)
+  and under the warning on every screen that holds something does nothing. Rig.assertDiscarded(notice) names the
+  landing (Go offline, Q81 open) once, and all 36 call it (35 in the tests, one in CheckBackupScreensTest's
+  assertEntryWiped). It pins what was built: two mutations
+  of the model, each run and reverted, fail it ("dice: Back once expected:<Dice> but was:<Commitment>" for a Back
+  from the dice; "bip39_entry: Back on its privacy gate expected:<Bip39Entry> but was:<Bip39Ask>" for a Back
+  that skips pressOn). Locally: :screens 168 in 24 classes, none failed (BackTest about 20 s for its three walks);
+  the gate clean, 387 files.
+  Proof (M5 commit U2c, Stage U-3, partial: local, Q76's JVM run on a Linux host, no emulator; CI's build job at the
+  next push): each launch of an activity-result launcher opens a picker of its own, so a double tap on Save, Check a
+  backup or Load registry snapshot (or one on each of Home's two) made before the first picker covered the app opened
+  two, the second over the first, and its answer came after the first's. CeremonyModel's openPicker opens a picker
+  through pressOn only while none it opened is up (pickerUp), then the picker rule's exemption and the picker; any
+  answer (backupPlaced, and picked for both of Home's, a late one too) or the activity's next resume (an answer lost)
+  frees the buttons. Go offline's airplane-mode settings are no picker and stay as they were (a second press opens
+  the same settings again, holding nothing). PickerPressTest (3): a second Save opens none until the first answers,
+  none at all, and then one; Home's two open one at a time, each freed by its own answer; a resume with no answer
+  frees Check a backup. Before the fix the first two failed ("a double tap on Save opened one picker expected:<1> but
+  was:<2>", "a double tap on Check a backup opened one picker expected:<1> but was:<2>"). The instrumented tests'
+  in-process openings each answer before the next (CaptureTest), and their real pickers resume the activity.
+  Locally: :screens 171 in 25 classes, none failed; the gate clean.
+  Proof (M5 commit U2d, Stage U-3, partial: local, Q76's JVM run on a Linux host, no emulator; CI's build job at the
+  next push; the recreation on the device is U2h's): ConfigurationAndOnlineTest (2) over the walk. A configuration
+  change (SecureActivity reports no leaving; the new activity's start and resume reach the model in the foreground)
+  on every screen, on each gated screen's gate, and under the cover (Protected, 30 s idle) or the warning (Public
+  holding something) leaves the state equal, what is held, every pad's entry (a code typed included), the calls and
+  the offline monitor's starts as they were. Going online, from a table of the test's own (MA:125 and :34, Q57):
+  First launch, the self-test and Go offline stay with no notice; Home, Length, the snapshot's result and About,
+  holding nothing, go to Go offline with none; the other 41 (Working among them, once its call's reply comes) are
+  discarded with the Offline notice (assertDiscarded), no seal, check, report, word page, overview, verdict, summary,
+  passphrase, challenge, opened backup, export, registration or D on show, every pad's entry empty and the slot at
+  home; what is held before matches the table on every screen; offline again, Start reaches Home. It pins what was
+  built: two mutations, each run and reverted, fail it ("device_entropy under the warning: the state changed" for a
+  return that clears the overlay; "backup_check_entry: going online: the notice expected:<Offline> but was:<null>"
+  for an offline rule that forgets Check a backup's file). Its failure messages print UiState, whose secrets print
+  only their type names (Secret, WordPage, QrMatrix). Locally: :screens 173 in 26 classes, none failed; the gate clean.
+  Proof (M5 commit U2e, Stage U-3, partial: local, Q76's JVM run on a Linux host, no emulator; CI's build job at the
+  next push; leaving on the device is U2k's): LeavingTest (2) over the walk, from MA:34, Q57 and Q75. Leaving each
+  Protected screen (13) discards at once with the Left notice (assertDiscarded), nothing secret on show
+  (Rig.assertNothingSecretShown, now TestSupport's, shared with U2d) and the slot at home; "Working..." the same once
+  its call's reply comes; the self-test back to First launch with no notice; each Public screen covered with what is
+  held kept. On each Public screen (33), 59 s away keeps what is held and its page, and the return keeps the cover
+  until the tap, which only uncovers; 61 s away wipes what is held with the Background notice both when the timers
+  ticked while away and when the process was frozen and the wipe comes at the return, and a screen holding nothing
+  keeps its place. M5-54's fail-closed residual is pinned by name, a class (and a JVM) each, since each halts the
+  slot: ResidualFinishHaltTest, ResidualRevealProofHaltTest, ResidualEncryptBackupHaltTest and
+  ResidualVerifyBackupHaltTest run the call as the model runs it (work) from the stage the model makes it in
+  (encryptBackup from the save screen, where core offers it again once the confirm is right), going online inside
+  the call after the worker's first look, and require the stop screen with the internal halt, core's own (the
+  call's refusal is kept, not halted on, and no value comes back). A control run of each with the discard taken out
+  failed it (finish and encryptBackup gave values, revealProof and verifyBackup were refused: NotUr, Header), so the
+  halt is the window's. LeavingTest pins what was built: two mutations, each run and reverted, fail it
+  ("device_entropy: 61 s away, frozen: the start screen expected:<GoOffline> but was:<DeviceEntropy>" for a return
+  that clears the background time before its tick; "reveal_d: leaving a Protected screen: the start screen" for D
+  left as a Public screen). Locally: :screens 179 in 31 classes, none failed; the gate clean, 394 files.
+  Proof (M5 commit U2f, Stage U-3, partial: local, Q76's JVM run on a Linux host, no emulator; CI's build job at the
+  next push; one idle run on the real clock is U2l's): IdleTest (3), from PF's "Protected screens and idle" (MA:34).
+  On every screen of the walk: 29.999 s brings nothing; 30 s covers each Protected screen alone, and the tap only
+  uncovers; 9 minutes bring the warning wherever something is held (and nothing elsewhere), and the tap keeps
+  everything; 10 minutes wipe what is held with the Idle notice (assertDiscarded), nothing secret on show and the slot
+  at home, and leave a screen holding nothing as it was; on "Working..." and the self-test the timers wait. A loaded
+  snapshot survives the idle wipe in the model and in core: the next seed's Check now finds kcr.json's dice-50 seal
+  in it on its own (Collision, by the snapshot). The 99-roll minimum after a collision: 12 words start at 50 with no
+  collision before (the control); leaving the report, going online, 60 s away from the
+  collision result and the idle wipe there each lead, by Go offline and Home, to a new 12-word seed that needs 99;
+  and so does a discard of the restarted ceremony itself (Cannot check on a restart and leaving the report were
+  CheckScreensTest's already). It pins what was built: two mutations, each run and reverted, fail it
+  ("device_entropy: 9 minutes, something held expected:<Warning> but was:<null>" for a warning on Protected screens
+  alone; for a discard that empties the slot (wipeAll) instead of core's discard, "leaving the report after the
+  collision, then a new seed expected:<99> but was:<50>" and "the next check ran against the snapshot core kept
+  expected:<Collision> but was:<Stop>"; the snapshot check was added after a first version read only the model's
+  header and passed that mutation). Locally: :screens 182 in 32 classes, none failed; the gate clean.
+  Proof (M5 commit U2g, Stage U-3, partial: local, Q76's JVM run on a Linux host, no emulator; CI's build job at the
+  next push): RefusalTablesTest (3), over the real slot and vectors/kcr.json, read whole: RegistryVectors.kt's
+  kcrProofUrVectors and kcrSnapshotVectors take every vector with a ur or a kcr_hex (each count checked against the
+  file) with core's verdict from its expect block. Every go-ahead QR text (12: too long, a bad checksum, multi-part,
+  mixed case, another type, a non-shortest head, a trailing byte, and five core accepts) scanned on the check of
+  dice-50-words12: each refusal back on the scan screen with core's code, SCAN_NOT_ACCEPTED, the same check QR
+  object and the session held; each accepted text as kcr.json's lookup for that seed says (another seal's bucket
+  refused as WrongBucket, or a collision; no accepted text is clear on that seed, so U2g2 adds dice-99-words12). Every snapshot (41) through Home's Load
+  registry snapshot: each refusal (34) on the result with core's code and the "registry snapshot or proof rejected: "
+  text, each accepted one (7) loaded with kcr.json's number, date and count. The read-back on dice-99-words12: every
+  letter of a mirror pair in a word's first four letters read as its partner, a mirror misread on that face alone
+  with the others Ok (e, i, d and f both ways, h as j and r as w; no vector word holds j or w in its first four
+  letters, so j as h and w as r are core's every_mirror_flip_is_one_mirror_misread_and_names_the_279 alone), and each
+  insert read with the next insert's word, a mismatch whose Read it again then matches, to the read-back's end. The
+  code entry's, the confirm's, Check a backup's entry's and the BIP39 passphrase's refusals stay their classes'
+  (the pad cannot type a malformed code, and an empty BIP39 passphrase's Done does nothing). The 54 kcp1-only
+  proofs are core's (the phone scans UR text alone), and NoRegistryKey needs a build with no key (the shipping
+  APK's capture walk). It pins what was built: two mutations, each run and reverted, fail it ("unsorted-within-bucket
+  expected:<Snapshot> but was:<Stop>" for a snapshot refusal outside the table; "clear-empty-bucket: the same check
+  and nonce" for a scan refusal that drops the check). Locally: :screens 185 in 33 classes, none failed; the gate clean.
+  Proof (M5 commit U2b2, Stage U-3's review fix, partial: local, no emulator; CI's build job at the next push): the
+  reviews found BackTest's table equal to the model's backTo row for row while its KDoc said it came from the docs
+  alone (three rows, Go offline's, Home's and the snapshot result's, are the phone's own, and the save screen differs
+  from the Pi's wait for a stick), the every-screen tests taking Protected from the model's isProtected, and states
+  the walk never reached. BackTest's KDoc now names each row's source, the phone's rows M5-75 (a) and (b); Walk.kt's
+  protected is docs/mobile-apps.md:34's list of 13, which BackTest, ConfigurationAndOnlineTest, LeavingTest and
+  IdleTest take what they expect from, and LeavingTest checks isProtected against it; Walk.states adds the device
+  swap's second gate, Check a backup's words on their gate and past it, and an insert reviewed from a mismatch, in
+  which Back does nothing (BackTest) and a configuration change changes nothing (ConfigurationAndOnlineTest);
+  ConfigurationAndOnlineTest types a key on every pad screen (the dice, the code, the read-back, the confirm, the
+  BIP39 passphrase, Check a backup's entry) before its recreation. U2b's proof counted 35 assertDiscarded call sites;
+  there are 36, corrected above.
+  Proof (M5 commit U2c2, Stage U-3's review fix, partial: local, no emulator; CI's build job at the next push): the
+  reviews found no lifecycle order that sticks the buttons or opens two pickers (the answer comes at the activity's
+  start, the resume after it), and three gaps: no test pinned that a late answer frees the buttons, the resume test
+  read only the screen (a stop taken for leaving stays on Home, under the cover), and Documents.kt's KDoc said an
+  answer that comes to a recreated activity still reaches the model, though SecureActivity clears its saved state.
+  PickerPressTest's aLateAnswerFreesThePickersButtons (going online while Check a backup's picker is up, its answer
+  after Home has gone, with no resume, frees the button) and its resume test's no-cover check; Documents.kt's KDoc
+  says the answer is lost and the resume frees the buttons (M5-75 (c)); appResumed's KDoc names pickerUp. With
+  picked()'s pickerUp moved below its early return (run and reverted) the new test fails: "the late answer, with no
+  resume, freed Check a backup expected:<2> but was:<1>".
+  Proof (M5 commit U2e2, Stage U-3's review fix, partial: local, no emulator; CI's build job at the next push): the
+  reviews found "Working..." reached through Length's start alone, so a leave or going online during the other long
+  calls was the classes' own tests at best, leaving on a privacy gate unpinned (Q82), the Protected expectation read
+  from isProtected, LeavingTest's KDoc claiming "however long" for a test of 61 s, and the revealProof residual
+  started from the check QR, not the scan screen. LeavingTest (5): theProtectedScreensAreTheDocsList (isProtected
+  against Walk.protected); leaving each of Walk.states discards at once with the Left notice (both gates as built,
+  M5-75 (d)); aLeaveOrGoingOnlineDuringEveryLongCallDiscardsIt over the start, the self-test, the dice's Done, a
+  scanned go-ahead QR's check, the backup's encryption and its check, a snapshot's read and load, a backup's read
+  and its opening, each held on the worker behind its screen, then left or gone online: the screen kept until the
+  reply, then assertDiscarded with Left or Offline, nothing secret on show, nothing loaded and the slot at home (the
+  self-test, holding no session, back to First launch after a leave and on to Go offline after going online, with
+  no notice); its KDoc says 61 s; ResidualRevealProofHaltTest starts from the scan screen. With the discard's notice
+  dropped for a long call (run and reverted): "the start, leaving: the notice expected:<Left> but was:<null>".
+  TestSupport's assertNothingSecretShown KDoc names the registration, which it checks.
+  Proof (M5 commit U2f2, Stage U-3's review fix, partial: local, no emulator; CI's build job at the next push): the
+  reviews found IdleTest's "Add fresh entropy needs 99" unable to fail (the walk's seed is 24 words, whose minimum is
+  99 anyway; CheckScreensTest checks it on 12 words, so it is dropped, and U2f's proof above no longer claims it),
+  the warning checked at 9 minutes 30 s on Public screens (no input at 30 s there), the restart paths' landing
+  hard-coded past assertDiscarded, and no idle check on a privacy gate (Q82) or in the words' unnamed states.
+  IdleTest (4): a tap at 30 s on every screen, then no warning at 8 minutes 59.999 s and the warning at 9 minutes
+  where something is held; each restart path's discard through assertDiscarded with its own notice (Left, Offline,
+  Background, Idle); on each gated screen's gate and in Walk.states, the cover at 30 s with the gate kept and the
+  wipe at 10 minutes (M5-75 (d)). With the warning 20 s late (run and reverted): "device_entropy: 9 minutes,
+  something held expected:<Warning> but was:<null>"; the test before this fix passed that mutation.
+  Proof (M5 commit U2g2, Stage U-3's review fix, partial: local, no emulator; CI's build job at the next push): the
+  reviews found U2g's "clear" branch never run (every accepted text is another bucket's or a collision on
+  dice-50-words12), and the files table missing: no damaged .age file but one hand-made header went through Check a
+  backup. RefusalTablesTest (4): every go-ahead QR text now scanned on the checks of dice-50-words12 and
+  dice-99-words12 (24 checks), the verdicts reached required to include clear, collision and wrong_bucket;
+  everyDamagedOrWronglyOpenedBackupThroughCheckABackup runs all 44 of vectors/backup.json's age_refused through Home's
+  Check a backup (RegistryVectors.kt's backupRefusedVectors, counted against the file, a "file" text JSON-unescaped
+  and UTF-8 encoded as vectorgen.py writes it, its matcher possessive so the JVM's regex does not overflow on 8 KiB
+  of text): each passphrase's first fours typed, each refusal (Armor 17, Header 14, Payload 7, WorkFactor 2,
+  WrongPassphrase 2, HeaderMac 1) back on the entry with core's code, a line of its own and the entries emptied,
+  then Back Home with the file zeroed; too-large (8193 bytes) is refused by the model's size check before any byte
+  is read (FileRefusal.TooLarge), core's TooLarge met first; the refusals reached equal the file's. With Armor left
+  out of isBackupRefusal (run and reverted): "armor-lowercase-label: a refusal returns to the entry
+  expected:<BackupCheckEntry> but was:<Stop>". Locally, at this commit: :screens 193 in 33 classes, none failed;
+  both release APKs built; the gate clean, 396 files.
+  Proof (CI, the lead's, 2026-10-31): Entropy CI 41184964058 at ea14821, every job green; Entropy Android 41184964281 at
+  ea14821: the build job green in 9 min 52 s (its 17-minute budget, M5-75 (g)), its strict build running every JVM
+  test task and its report step finding every test class's report with no failure, U-3's BackTest, PickerPressTest,
+  ConfigurationAndOnlineTest, LeavingTest, IdleTest, RefusalTablesTest and the four Residual*HaltTest classes among
+  them (each in its own JVM); --apk passed both APKs; API 31's capture (then 16 KB pages), journeys and test registry
+  and edges jobs and API 36's capture and journeys jobs green (API 36's journeys in 12 min 28 s); API 36's test
+  registry and edges job failed in SnapshotDrillTest on the open item of 2026-10-31, whose cause its lines name (U1a8).
+  Proof (M5 commit U1a8, CI fix, partial: local, no emulator; CI's API 36 test registry and edges job at the next push):
+  android-emulator.sh's clear_foreign_anr runs before each instrumented class: when the window manager's focus is an
+  "Application Not Responding" dialog of an app that is not ours, it prints that focus as a probe line, sends the
+  system's CLOSE_SYSTEM_DIALOGS broadcast and then Back (the dialog's Wait), each followed by up to 5 s of checks,
+  prints the step that closed it, and fails the leg naming the dialog if none did; one of our own apps is left for the
+  run's crash and ANR checks (android-instrument.sh's "a not-responding window"). Error dialogs are not hidden
+  globally, which would empty CrashTest's "no crash window" check. --selftest's stand-in adb gains the launcher's dialog
+  (KC_ANR): registry-anr-closed (the broadcast closes it: the two probe lines, the leg passes) and registry-anr-stuck
+  (it stays: "another app's not-responding dialog holds the focus before com.keepcrypt.entropy.SnapshotDrillTest", the
+  leg fails). Which step closes the real dialog is CI's to show. Locally: android-emulator.sh --selftest 52 passed.
+  Proof (CI, the lead's, 2026-10-31, partial: the close path not exercised on an emulator): Entropy CI 41187953873 at
+  29af0bc green; Entropy Android 41187953910 at 29af0bc, every job green: the build job in 12 min 50 s (its 17-minute
+  budget) with its emulator leg selftest passing (U1a8's registry-anr-closed and registry-anr-stuck among them);
+  API 36's test registry and edges job "PASS com.keepcrypt.entropy.SnapshotDrillTest (3 tests; ...)", LifecycleTest 8
+  and CrashTest passing, "emulator: api=36: every check passed", and no line of clear_foreign_anr's (no foreign
+  not-responding dialog held the focus before any class this run); API 31's three jobs and API 36's capture and
+  journeys green. The open item of 2026-10-31 stays open, narrowed to the device proof of the close.
+- [ ] U3. A UX audit of every screen against the docs and the Pi: wording, order, what each button and Back do, what
+  TalkBack reads on Public screens, the layout on a 360 dp phone and a large one, text sizes. A defect within the docs is
+  fixed with a test; a change the docs do not allow becomes a question for the owner.
+  Proof (M5 commit U3g, Stage U-2, partial: local, Q76's JVM run on a Linux host; CI's capture walks at the next
+  push): TalkBack had no pane title on any screen, so a screen change was not announced as one; the app's name in
+  title type (First launch, Self-test, Home, About and the stop screen) and "Working..." were not headings; a line
+  that appears or changes while its screen stays (the dice's count, minimum and cap, the scan's line, the refused
+  code, Home's file refusal, the save's failure, Check a backup's refusal, the wrong confirm, the notice bar) was read
+  only if found; and every QR code was a nameless canvas. Screen.kt's screenTitle gives each screen a fixed title (its
+  fixed heading where it has one); Screens.kt's column carries paneTitle(state), the privacy gate's while one stands,
+  and each overlay its own ("Screen covered", "Idle warning"). Kit.kt's Title marks those title lines as headings, as
+  Heading does, and Working's line is one; KitText's live marks the lines above, and NoticeBar, as polite live
+  regions, each fixed or public text, never a secret's node (the dice pick, the letters typed and the words stay
+  unmarked). Drawing.kt's QrKind names each QR code by its kind alone (check, collision report, account for Sparrow,
+  descriptor for Bitcoin Core, registration, re-check), an image's content description, never its data.
+  ScreenTitlesTest (2): each screen's title is non-blank and its own, none the gate's, the cover's or the warning's;
+  paneTitle is the gate's behind a gate and the screen's otherwise, for every screen; each QR kind's name is its own
+  and says it is a QR code. Before the fix it does not compile (screenTitle, paneTitle and QrKind are new).
+  CaptureTest's walk now reads, from the same read of each screen's nodes, that its pane title is screenTitle's alone
+  and that the screens with a QR code (check_qr, collision_report, the account and descriptor QRs, register_qr,
+  backup_recheck) name exactly that code by its kind, "<screen>: its pane title is its own" (Capture.NodeFacts gains
+  the pane title and content description); before the fix it would find no pane title. The live regions and headings
+  have no device check. Locally: the strict Gradle build of the five APKs, the androidTest APKs compiling the walk's
+  check, and :screens 163 in 23 classes, none failed.
+  Proof (M5 commit U3g2, Stage U-2's review fix, partial: local; CI's capture walks at the next push): the pane title
+  function is paneTitleOf (a name of its own beside the paneTitle property it sets), and the BIP39 entry's "Keys, page
+  N of 3", fixed text that changes in place, is a polite live region too. What no test checks, said here as the
+  reviews asked: the gate's and the overlays' pane titles have no on-screen check (the walk shows each screen past its
+  gate with no overlay), and the headings and live regions none at all; and Compose UI 1.12.1 exposes a live region on
+  the node and announces it when its text changes (dice_count, scan_line, keys_page), but sends no event when a
+  live-region node first appears, so the lines that appear (a refusal, a failure, the dice's minimum and cap, the
+  notice bar) may go unannounced, and a second identical code refusal changes nothing to announce. Both are for the
+  TalkBack check of U3h and Q79-Q80 (M5-74 (d)).
+  Proof (CI, the lead's, 2026-10-31, partial: Entropy Android 41144532589 at dd2d617, API 36): CaptureTest 7 passed in
+  each APK, its walk reading "<screen>: its pane title is its own" on every screen of both walks (50 lines), and "its
+  QR code named by its kind" on check_qr, collision_report, watch_account_qr, watch_descriptor_qr, register_qr and
+  backup_recheck; ScreenTitlesTest passed in the build job. API 31's walk did not run (U1a5).
+  Proof (CI, the lead's, 2026-10-31): Entropy Android 41148288082 at a15dc4f, API 31: CaptureTest 7 passed in each
+  APK, its walk reading every screen's own pane title in both walks and the six QR codes named by kind, so U3g's
+  device check holds on API 31 and 36.
+- [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists them.
+  Proof: CI at each stage's head; local runs reported as local.
+- **Stage U's commit plan** (M5-72 (h); each commit's test fails before its fix, U4):
+  - U-1, the base: 21j (the capture walk reads a screen's nodes only once UI Automator shows that screen, and a secret
+    node on a Public screen still fails; CI fix), L10, U1a (each API gets three leg jobs, capture, shipping journeys,
+    and test registry and edges, by `android-emulator.sh --part`), U3a (the stop screen names the halt's fixed reason
+    code), U3b (Check a backup's file and entries are held: the 9-minute warning and the online notice), U3m (the
+    screen kept on while a session or a checked backup is held, M5-72 (b)).
+  - U-2, flow and pad fixes before the journeys pin them: U3c (Delete on an empty pad reopens the word before, as the
+    Pi), U3d (the seal card's check QR on its own page, the braille dot numbers sized to their face), U3e (pad, Delete
+    and key-page presses through the model, so nothing acts under an overlay and every press is input), U3f (pads
+    redraw only what changed; the dice keys fill their share), U3g (live regions, pane titles, headings, QRs named by
+    kind and never by data), U2a (one activity: a second start reaches the running one).
+  - U-3, U2 on the JVM over one shared walk to all 48 screens: U2b (Back once and twice; assertDiscarded names the
+    landing screen once), U2c (one press opens one picker), U2d (configuration change and going online), U2e (leaving,
+    and M5-54's halting residuals), U2f (idle rules, and the 99-roll minimum through every restart), U2g (every refusal
+    table, every mirror pair, a wrong insert).
+  - U-3's plan (the lead's, 2026-10-31; M5-72 (h) runs U-1 to U-5 without a check-in; each commit's test fails
+    before its fix, or says it pins what was built):
+    - [x] U2b: Walk.kt (commonTest) brings a fresh Rig to any of the 48 screens but Stop (a halt latches the
+      process's slot, so the stop screen stays the halt classes'), on its privacy gate or past it, by CaptureTest's
+      path, each step checked. BackTest walks to each and presses Back once and twice: where it lands is a table of
+      its own from PF's buttons table and entry grids line and MA:34 (not backTo's), the session, check, nonce and
+      page held where it stays, and Back under the gate, the cover and the warning does nothing. Rig.assertDiscarded
+      names a discard's landing (Go offline, Q81 open) once, and every test's discard landing calls it.
+    - [x] U2c: one press opens one picker: a second press on Save, Check a backup or Load registry snapshot while its
+      picker is open opens none, and the picker's answer (or the next resume with none) frees the button.
+    - [x] U2d: on every screen of the walk, a configuration change is no leaving (the screen, gate, page, overlay
+      and session as they were), and going online discards with Notice.Offline where a session or file is held and
+      shows Go offline where not.
+    - [x] U2e: on every screen of the walk, leaving: Public 59 s kept and 61 s wiped (and a return within 60 s
+      under the cover), Protected and Working discarded at once; M5-54's halting residuals pinned by name.
+    - [x] U2f: on every screen of the walk, the idle rules (the 30 s cover on Protected screens alone, the 9-minute
+      warning and 10-minute wipe while something is held, nothing where nothing is); the 99-roll minimum through
+      every restart path (Add fresh entropy, Start again, a discard and a new start).
+    - [x] U2g: every refusal table (the code, the read-back, the confirm, Check a backup's entry, the BIP39
+      passphrase, the files and snapshots) against core's texts, every mirror pair and a wrong insert on the read-back.
+    - Verification: :screens' JVM tests and the strict Gradle build locally (no emulator here), the gate before
+      every commit that adds Kotlin (M5-74 (a)), three independent reviews at the stage's head, their fixes, the
+      suite, and CI at the stage's head read once.
+  - U-4, U1's journeys to Finish through the UI only: U1b (Ui's tapped rolls, pads and codes; Match found to Add fresh
+    entropy, which calibrates the cost; the lead re-plans U1c-U1f from its run by M5-30), U1c (dice-only 12 and 24),
+    U1d (mixed 12 by a typed code; the shipping app's scanned go-ahead QR refused), U1e (Cannot check to Start again;
+    the backup made and checked by taps), U1f (the test registry: a loaded snapshot's automatic check at 24 words, a
+    scanned collision's restart to Finish), U1g (android-instrument.sh's gone: form; the stop journey to Close app).
+  - U-4's plan (the lead's, 2026-10-31; M5-72 (h) runs U-1 to U-5 without a check-in; a journey pins what was built,
+    so each says so, and a defect it finds is fixed at its root with the journey as its failing test):
+    - [x] U1b: Ui gains the journeys' inputs through the UI alone (M5-72 (a)): tapped rolls (each roll the face's
+      accessibility press on the Public dice pad, Confirm tapped once it is enabled, the count waited for; no face in a
+      selector or a log, M5-68 (e)), the Protected letter pad by injected touches on any of its three screens (FlowTest's
+      letterKeys and typeOnPad moved, the screen a parameter) and the go-ahead code tapped on the Crockford pad
+      (CheckTest's type moved); FlowTest's assertInsert and sameWord move with them. Ui.roll stays as the edge tests'
+      in-process setup, named so. JourneyTest (the shipping app, the journeys part): a dice-only seed of
+      dice-50-words12 by 50 tapped rolls, Check now, the check QR's Match found and its confirm, the collision, the
+      report behind its gate (its register text dice-50-words12's seal code), Add fresh entropy at 0 / 99, 99 tapped
+      rolls of dice-99-words12, Check now, the drawn check QR's code tapped, the result, the gate, 12 inserts by Next
+      (each the vector's word, in-process), the read-back of all 12 by touches, the summary, the backup's and
+      watch-only's Skip, the registration QR (dice-99-words12's seal code), the checklist and Finish: Home with the slot
+      empty; its pass line gives each phase's time. The journeys jobs take the 90-minute ceiling for this measuring run
+      (M5-76 (a)); from its times the lead budgets them by M5-30 and re-plans U1c-U1g.
+    - [x] U1b2: the tapped rolls without UI Automator's idle waits (U1b's run: 3.2 to 4.9 s a roll, so U1c-U1f's
+      rolls would not fit a job): each roll's face and Confirm pressed by their accessibility click and the count read
+      through UiAutomation's own nodes, refreshed from the app, polled every 20 ms; JourneyTest's next run gives the
+      cost a roll, from which U1c-U1g are re-planned.
+    - U1c-U1g, re-planned from U1b2's run (M5-76 (e)): a tapped roll costs 0.05-0.06 s, a read-back of an insert
+      6.4-6.6 s (its letters' keys found by UI Automator's searches, about 2 s a letter), and each other screen step
+      about 2.5 s (UI Automator's taps and waits), so a 12-word journey to Finish is about 4 minutes and its read-back a
+      third of that.
+    - [x] U1c: the Protected letter pad's keys found through UiAutomation's own nodes (appNode's walk, the same checks:
+      26 keys with the button role alone, no node naming a letter, no Public key's id), each still pressed by an injected
+      touch at its bounds (M5-68 (e)); then JourneyTest's dice-only 24-word journey: 99 tapped rolls of dice-99-words24,
+      Skip confirmed, the 24 inserts by Next across the device swap and its second gate (each the vector's word and
+      device), the 24 read-backs by touches with each insert's device, the summary, the skips, the registration QR
+      (dice-99-words24's register text), the checklist naming two devices, Finish.
+    - [x] U1d: JourneyTest's mixed 12-word journey: the commitment's C, the device entropy screen's touches, 50 tapped
+      rolls, the drawn check QR's code tapped, the words and read-back, the summary, the watch-only export with a BIP39
+      passphrase typed on the ASCII pad by touches (watchonly.json's), the registration QR, Reveal D (D the phone's,
+      checked against C by core), the checklist, Finish; and the shipping app's scanned go-ahead QR refused (the scan
+      fed to onGoAheadText, M5-72 (a); the shipping app trusts no registry key).
+    - [x] U1e: JourneyTest's Cannot check to Start again (a new ceremony at 50 rolls, Back doing nothing on its dice;
+      corrected 2026-10-31: the confirm restarts at once, CeremonyModel.cannotCheckConfirmed, so there is no result
+      screen to press Back on), and the backup made and checked through the UI: its passphrase's two words confirmed on the
+      letter pad, the file placed through the system's picker, Check a backup picking it and its 8 words typed on the
+      letter pad, the checked backup's words equal to the seed's (BackupTest keeps its age -d hand-off).
+    - [x] U1f: the test registry's journeys (the registry part): the snapshot loaded through the picker, a 24-word
+      dice-only seed whose check runs on its own against it (clear) to Finish; and a scanned collision's restart at 99
+      to Finish (SnapshotDrillTest's rolls by tapRolls).
+    - [x] U1g: the stop journey to Close app (a halt's stop screen, android-instrument.sh's gone: form), About from
+      Home and back.
+    - Each commit re-measures the journeys jobs and re-budgets them by M5-30; if a journeys job would pass 30
+      minutes, the journeys part splits into a second part and job (android-emulator.sh --part, the workflow's matrix)
+      before the journey that would pass it lands.
+      Done at U1e (M5-76 (g)): JourneyTest is the ui part, its own job on each level; U1f's journeys are the
+      registry part's and U1g's the ui part's, each re-measured.
+    - Verification: the instrumented sources compiled locally (the strict build assembles both test APKs), the gate
+      before every commit that adds Kotlin (M5-74 (a)), android-emulator.sh --selftest with JourneyTest in the journeys
+      part's pinned order, three independent reviews at the stage's head, their fixes, the suite, and CI's journeys jobs
+      at the stage's head read once (every device claim is CI's: no emulator here, M5-74 (f)).
+  - U-5 begins with U1h, U1's last journey: a mixed seed of 24 words to Finish (Device entropy, C, 99 tapped rolls,
+    the drawn code tapped, 24 words on two devices read back by touches, D committing to C), in the ui part.
+  - U-5, U2 on the device and U3's layout check: U2h (recreation), U2i (double taps), U2j (the process killed at a
+    stage), U2k (leaving, screen off, the activity destroyed while away, the back gesture), U2l (the camera denied twice;
+    one idle run on the real clock, API 36), U3h (the layout check in the walk at CI's window and a 412 dp phone; the
+    docs' texts pinned; KitColors).
+  - U-6, after the owner's answers: U2m (Q77), U3i (Q78, Q85), U3j (Q79, Q80), U3k (Q81, Q82, Q83), U3n (Q84).
+- Budget: the Android job's 44 minutes (M5-57) cannot hold U1-U2's emulator tests on two API legs. Stage U measures them and the
+  lead re-plans by M5-30's rule or splits the legs into jobs (the Android workflow has no required check names). (L9 split
+  them, M5-70 (b): each leg job's budget is its measured time plus 25%, re-measured when Stage U adds journeys. U1a
+  made them six, M5-73 (b); their budgets from run 40903211202 are in the Budgets entry.)
 
 ## Review
 _Added after completion, with pasted proof for every ticked item._

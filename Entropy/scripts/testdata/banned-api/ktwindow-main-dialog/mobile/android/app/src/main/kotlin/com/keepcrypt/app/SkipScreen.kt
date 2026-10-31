@@ -1,0 +1,1 @@
+Dialog(onDismissRequest = { }) { Text(prompt) }

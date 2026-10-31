@@ -1,0 +1,1 @@
+        window.attributes = WindowManager.LayoutParams()

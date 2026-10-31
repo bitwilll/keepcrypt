@@ -1,0 +1,58 @@
+package com.keepcrypt.entropy.ffi
+
+import kotlin.test.Test
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
+
+/**
+ * A reply that is not its layout halts (tasks/todo.md, M5 group 13; rule 3): read past its end, a
+ * flag that is neither 0 nor 1, a byte left unread, a QR side no version has, a freshness byte past
+ * 2, a read-back verdict past 4 or a mismatch too short for its four faces, a refusal code the table
+ * does not hold; and Core.decode's own status checks: no status byte, a refusal with no code or a
+ * byte after it, a discard with a byte after it, a halt status with no code or a byte after it, a
+ * status wire.rs does not define. Each halts the slot (an op the table does not hold) and throws KcHalt,
+ * and the halt latches, as internal (M5 commit U3a): every later call halts too, with that reason. What a decode copied out before the reply proved malformed is zeroed with it (rule 5): a word
+ * page and a mismatch's verdicts read whole before a byte left unread, a confirm choice before a read
+ * past the end. Its own process (forkEvery), since the slot stays halted.
+ */
+class WireMalformedTest {
+    @Test
+    fun aBodyThatIsNotItsLayoutHaltsAndTheHaltLatches() {
+        assertFailsWith<KcHalt> { Body().u64(4).u32(20260301).reader().registry() }
+        assertFailsWith<KcHalt> { Body().byte(0).byte(2).reader().readback() }
+        assertFailsWith<KcHalt> { Body().byte(0).byte(1).byte(0).reader().also { it.readback() }.end() }
+        assertFailsWith<KcHalt> { Body().byte(22).raw(ByteArray(61)).reader().qrMatrix() }
+        assertFailsWith<KcHalt> { Body().byte(21).raw(ByteArray(55) + byteArrayOf(1)).reader().qrMatrix() }
+        assertFailsWith<KcHalt> { Body().u64(1).u32(1).u32(1).byte(3).reader().registry() }
+        assertFailsWith<KcHalt> { Body().raw(ByteArray(31)).reader().commitment() }
+        assertFailsWith<KcHalt> { Refusal.of(4) }
+        for (reply in listOf(byteArrayOf(), byteArrayOf(1), byteArrayOf(1, 2, 0), byteArrayOf(2, 0), byteArrayOf(3), byteArrayOf(3, 6, 0), byteArrayOf(7))) {
+            val halt = assertFailsWith<KcHalt>(reply.contentToString()) { Core.decode(reply) { } }
+            assertEquals(HaltReason.Internal, halt.reason, reply.contentToString())
+        }
+        val pageReader = Body().byte(1).byte(12).byte(1).byte(1).byte(1).u16(1).text("abandon").raw(ByteArray(20)).byte(0).reader()
+        val page = pageReader.wordPage()
+        assertEquals(listOf(1, 12, 1, 7), listOf(page.position, page.count, page.seedbook, page.word().size))
+        assertFailsWith<KcHalt> { pageReader.end() }
+        assertEquals(listOf(0, 0, 0, 0), listOf(page.position, page.count, page.seedbook, page.word().size), "the page zeroed")
+        // A mismatch's verdicts: a code past 4 on any face, or too few bytes, halts before the copy; one
+        // read whole before a byte left unread is zeroed with the reply.
+        assertFailsWith<KcHalt> { Body().byte(1).raw(ByteArray(9)).byte(5).byte(0).byte(0).reader().readback() }
+        assertFailsWith<KcHalt> { Body().byte(1).raw(ByteArray(11)).reader().readback() }
+        val mismatchReader = Body().byte(1).byte(4).byte(1).byte(2).raw(ByteArray(9)).byte(0).reader()
+        val mismatch = mismatchReader.readback() as Readback.Mismatch
+        assertEquals(listOf(Verdict.WrongLetter, Verdict.Ok), listOf(mismatch.face(1).verdict, mismatch.face(2).verdict))
+        assertFailsWith<KcHalt> { mismatchReader.end() }
+        assertEquals(listOf(Verdict.Ok, 0, 0), mismatch.face(1).let { listOf(it.verdict, it.missingDots, it.extraDots) }, "the verdicts zeroed")
+        val choiceReader = Body().text("fly").byte(4).reader()
+        val choice = choiceReader.secretText()
+        assertEquals("fly", asciiOf(choice))
+        assertFailsWith<KcHalt> { choiceReader.text() }
+        assertTrue((0 until choice.size).all { choice[it] == 0.toByte() }, "the choice zeroed")
+        assertEquals(HaltReason.Internal, assertFailsWith<KcHalt> { Core.selfTest() }.reason)
+        assertFailsWith<KcHalt> { Core.wipeAll() }
+        assertContentEquals(byteArrayOf(Wire.HALTED.toByte(), HaltReason.Internal.code.toByte()), Native.call(Wire.WIPE_ALL, ByteArray(0)))
+    }
+}

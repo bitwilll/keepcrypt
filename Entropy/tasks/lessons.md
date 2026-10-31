@@ -46,3 +46,35 @@ accepted for a question the pinned sources answer.
 with every failure mode it introduces resolved first: read the pinned source of each component that sees the
 change, or take the conservative option, and put the proof in the commit and todo.md. A known unproven risk is never
 handed to the owner's hardware session.
+
+## Read-only means read-only on the owner's machine (2026-10-20)
+**Mistake:** While researching Compose Multiplatform, a research agent ran `xcrun simctl list runtimes` on the owner's
+Mac to read the simulator runtimes. It made Xcode install its simulator components (CoreSimulator 1174.9.2), a change to
+the owner's machine nobody approved. The agent also ran `xcodebuild -version`, which changed nothing.
+**Root Cause:** The research brief forbade edits to the repo but not tool invocations on the host, and Xcode's command-line
+tools can install components as a side effect of a query.
+**Rule:** Facts about a toolchain come from its published documentation, runner-image readmes or CI runs, never from
+running its tools on the owner's Mac. No `xcrun`, `simctl`, `xcodebuild`, simulator, emulator, SDK manager or device
+command runs on the owner's machine without the owner's yes, and every research brief says so.
+
+## An intermittent failure's closing bar must need the fix (2026-10-31)
+**Mistake:** The open item for UI Automator not seeing first_launch on API 36 was set to close "when a CI run passes
+with U1a8 in". The fix only acts when the launcher's not-responding dialog comes up, and the failure comes and goes,
+so a run without the dialog would have met that bar without exercising the fix at all (75349ee had passed with no
+fix). The lead caught it when reading run 41187953910 at 29af0bc, which passed without printing a line of U1a8's.
+**Root Cause:** The bar was written as "the job is green" rather than "the fix's own path ran and worked", and an
+intermittent failure is green most of the time whatever the code does.
+**Rule:** For an intermittent failure, the closing evidence is the fix's own path running on the real target (its
+probe lines printed and the job passing), never a green run alone. A fix that cannot show itself acting gets a probe
+line first, and the item names that line as its closing bar.
+
+## A script that reads another's structure runs its selftest when that structure changes (2026-10-31)
+**Mistake:** U1b added JourneyTest to android-emulator.sh's journeys part and U1e split it into a ui part with a new
+gone: form, and each commit ran android-emulator.sh's and android-instrument.sh's selftests but not
+android-local.sh's, which reads android-emulator.sh's part blocks and judges their runs. The kc37 local runner was
+broken from U1b on (its selftest 4 failed); a U-4 review found it, not the lead.
+**Root Cause:** The suite the lead ran per commit was the scripts the diff touched; android-local.sh was not in the
+diff, and no CI job runs its selftest, so nothing failed.
+**Rule:** A change to android-emulator.sh's parts, its classes or android-instrument.sh's run forms runs
+android-local.sh --selftest too, and the commit's proof names its count. More generally: before a commit, list the
+scripts that read the changed one (grep for its name and its markers) and run their selftests.
