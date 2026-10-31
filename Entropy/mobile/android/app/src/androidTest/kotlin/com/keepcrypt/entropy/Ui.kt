@@ -304,13 +304,22 @@ internal object Ui {
     }
 
     /**
-     * A touch (touch: injected, no point logged) on the middle of the app's node tag as its window shows it:
-     * a text that takes no press, so the touch is only an input, which starts the idle time again (the
-     * screens' pointer handler) and does nothing else. DeviceChangeTest makes one before each change, since a
-     * Protected screen's cover comes after 30 s with no input and would change the state the change must keep.
+     * A touch (touch: injected, no point logged) inside the showing screen's own padding: 12 dp right of and
+     * 8 dp below the top left of its root (the privacy gate's while one stands; KitScreen's content column is
+     * padded 24 dp across and 16 dp down inside it), where no control or text ever is, in any orientation or
+     * font scale. It is only an input, which starts the idle time again (the screens' pointer handler feeds
+     * it to the model before the press guard), and does nothing else. DeviceChangeTest makes one before each
+     * change, since a Protected screen's cover comes after 30 s with no input and would change the state the
+     * change must keep (run 41247649576: a text named instead, the dice count, was scrolled out of the
+     * landscape window).
      */
-    fun touchOn(tag: String) {
-        touch(poll("$tag on the screen") { appNode(tag)?.let(::shownBounds) })
+    fun touchMargin(activity: MainActivity) {
+        val root = onMain { activity.model.state.value.let { if (it.gate) PRIVACY_GATE else screenId(it.screen) } }
+        val bounds = poll("$root on the screen") { appNode(root)?.let(::shownBounds) }
+        val density = Capture.instrumentation.targetContext.resources.displayMetrics.density
+        val x = bounds.left + (12 * density).toInt()
+        val y = bounds.top + (8 * density).toInt()
+        touch(Rect(x, y, x + 1, y + 1))
     }
 
     /**

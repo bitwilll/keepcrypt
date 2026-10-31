@@ -1,4 +1,4 @@
-# Handoff: M5 (Android), Stage U-5, 2026-10-31 22:25 UTC
+# Handoff: M5 (Android), Stage U-5, 2026-10-31 23:45 UTC
 
 A new session starts here. CLAUDE.md's workflow still comes first: read `tasks/lessons.md`, then M5 in
 `tasks/todo.md` (Stage U's plans are under "Stage U", the proofs under M5's Review). This file only says where
@@ -7,39 +7,39 @@ things stand and what comes next.
 ## Where things stand
 
 - Branch `m5-android`, draft PR https://github.com/bitwilll/keepcrypt/pull/9. Never push to `main`.
-- Latest commit: the one that updates this file, on top of `f50a88b` (U2i, DoubleTapTest), `97ce674` (U2h,
-  DeviceChangeTest) and `e7dbf6a` (U1h, MixedJourneyTest). Every CI run of the PR is "Entropy Android" (`.github/workflows/entropy-android.yml`).
+- Latest commit: U2i2 (the press guard, the two test fixes, run 41247649576 recorded). Every CI run of the PR is
+  "Entropy Android" (`.github/workflows/entropy-android.yml`).
 - Stage U-4 is closed: CI at `4a1cc07` (run 41211393696) was green in every job, U1b-U1g proven on API 31 and 36.
 - Stage U-5 is under way, without a check-in (M5-72 (h): U-1 to U-5 run without one; U-6 waits for the owner's
   answers to Q77-Q85). Its plan, item by item, is in todo.md's "U-5's plan":
-  - U1h (MixedJourneyTest, a mixed 24-word seed to Finish through the UI alone; journeys part): written and pushed,
-    **not yet proven on an emulator**. Its runs at e7dbf6a (41244825682) and 2064456 (41246509305) were cancelled
-    by later pushes, by design: the head's run holds it too.
-  - U2h (DeviceChangeTest: rotation, font scale and night mode, each and back, on the dice, the code entry, the
-    words' gate and a words page; registry part, after LifecycleTest, before the killed CrashTest): written,
-    committed in `97ce674`, **not yet proven on an emulator**.
-  - U2i (DoubleTapTest: a double tap on Skip, Match found, Cannot check, their confirms, Show words and four
-    privacy gates must take one step; capture part, M5-78): written, committed in `f50a88b`, **not yet proven**.
-    If it fails, M5-72 (f)'s fix follows: a new screen's controls ignore presses for 300 ms after its first frame,
-    in the model's pressOn, with a JVM test; never relax the test.
+  - **U1h done, and U1 with it**: MixedJourneyTest green on both journeys jobs of run 41247649576 at 4fe6231. The
+    journeys jobs are budgeted 27 (API 31) and 26 (API 36) minutes.
+  - **U2h (DeviceChangeTest, registry part): not yet green.** In run 41247649576 the first change (the dice rotated
+    to landscape) passed whole on both levels; the second failed in the test's own input (a touch on the dice count,
+    scrolled out of the landscape window). Fixed: the touch now lands in the screen root's padding
+    (`Ui.touchMargin`, M5-79 (c)). Proof owed at the head.
+  - **U2i (DoubleTapTest, capture part) failed as M5-72 (f) foresaw** on API 36: Skip, Match found and Cannot check
+    each took two steps (the confirm opened, its Back pressed by the second touch). The fix is U2i2, the press guard
+    (`screens/.../PressGuard.kt`, wired in `Screens.kt`'s root pointer handler, M5-79 (a)): a new view (screen,
+    gate, overlay) takes no touch until 300 ms after its first frame. PressGuardTest (7) passes locally; the
+    device proof is DoubleTapTest at the head. Its registration test's precondition was the test's bug (M5-79 (b)).
   - U2j, U2k, U2l and U3h: planned, not started.
-- The capture, registry and journeys jobs' timeouts are 30 minutes, their measuring run (M5-76 (f), M5-77, M5-78).
+- The capture and registry jobs' timeouts stay 30 minutes until a green run measures them (M5-76 (f), M5-77, M5-78).
 
 ## Next steps, in order
 
-1. Read CI at this commit once its run ends (about 35 minutes after the push). For each of the eight emulator
-   jobs record its result and time (job start to end) in todo.md's Review under the U1h and U2h proofs, with
-   the pass lines of MixedJourneyTest (journeys jobs), DeviceChangeTest (registry jobs, and its probe lines
-   "...: six changes, each a new activity with everything kept, in N s") and DoubleTapTest (capture jobs).
-   - Both journeys jobs green: tick U1h, then U1 (its last combination). Both registry jobs green: tick U2h.
-     Both capture jobs green: tick U2i (no fix needed).
-   - Budget the capture, journeys and registry jobs by M5-30 (measured time + 25%, rounded up) in the workflow's matrix
-     and its Budget comment, as the earlier entries there do.
+1. Read CI at the head once its run ends (about 35 minutes after the push). Record each emulator job's result and
+   time in todo.md's Review under the U2h, U2i and U2i2 proofs, with DeviceChangeTest's pass and probe lines
+   ("...: six changes, each a new activity with everything kept, in N s") and DoubleTapTest's four pass lines.
+   - Both registry jobs green: tick U2h. Both capture jobs green: tick U2i (the guard proven with it).
+   - Budget the capture and registry jobs by M5-30 (measured time + 25%, rounded up) in the workflow's matrix and
+     its Budget comment.
+   - Every journey must still pass with the guard: a journey test that pressed a control within 300 ms of its
+     screen's first frame would now see its press refused (the journeys wait for UI Automator's idle first, so
+     none should). A refusal there is a finding about that test's timing, fixed in the test; never weaken the guard.
    - A red job: diagnose it from its lines (`mcp__github__get_job_logs`, or download the log and read it); never
-     rerun to green; fix at the root, then a new push. DeviceChangeTest's most likely device surprises: a
-     rotation that does not recreate on API 36 (the test then fails "a new MainActivity resumed"), or a change
-     that alters the state (a screen's first composition calling the model). Either one is a finding about
-     the app, not the test; record it and fix the app or re-plan, never relax the check.
+     rerun to green; fix at the root, then a new push.
+   - Watch API 31's capture job: in run 41247649576 its emulator went offline during ControlTest (an open item).
 2. U2j (probe run, then KillTest), U2k, U2l, U3h, as their items say. Each adds
    its class to `scripts/android-emulator.sh` (the part's run, the pinned orders in `--selftest`, a
    `*-test-fails` case) and to `scripts/android-local.sh`'s run counts, then runs both selftests (lessons.md,
@@ -69,7 +69,7 @@ cd /home/user/keepcrypt/Entropy
 sh scripts/android-emulator.sh --selftest            # 60 passed at f50a88b
 sh scripts/android-local.sh --selftest               # 47 passed
 sh scripts/android-instrument.sh --selftest          # 50 passed
-sh scripts/banned-api-check.sh                       # clean, 405 files
+sh scripts/banned-api-check.sh                       # clean, 407 files
 ANDROID_HOME=/root/android-sdk sh scripts/android-rust.sh shipping
 ANDROID_HOME=/root/android-sdk sh scripts/android-rust.sh withTestRegistry
 ANDROID_HOME=/root/android-sdk sh scripts/android-gradle.sh --dependency-verification strict :app:assembleShippingRelease :app:assembleWithTestRegistryRelease :app:assembleShippingReleaseAndroidTest :app:assembleWithTestRegistryReleaseAndroidTest
@@ -78,7 +78,7 @@ ANDROID_HOME=/root/android-sdk sh scripts/android-gradle.sh --dependency-verific
 Reading CI: load `mcp__github__actions_list`, `mcp__github__actions_get` and `mcp__github__get_job_logs`
 through ToolSearch, list the runs of `entropy-android.yml` on branch `m5-android`, then the run's jobs.
 
-## APKs at 97ce674
+## APKs at 97ce674 (before the press guard: U2i2 changes the app, so the head's APKs differ)
 
 Built locally from `97ce674` (the app's own sources and native libraries are unchanged since 07:37, so Gradle
 found the release APKs up to date) and signed with a throwaway key made for this purpose and then deleted
@@ -99,4 +99,5 @@ as a release. CI's build job uploads its own signed pair as an artifact on every
   prints each line's facts. Watch it in every journeys job.
 - U1a8's close proof needs a run whose lines show "the dialog closed by"; U1a5's low-disk boot proof is owed.
 - M5-54's residual halts; the j/h and w/r mirror flips are proven only in core's test.
-- A scheduled reminder (`trig_01UVAWJAPqHd8Jdw4yhs48AH`, 22:52 UTC) fires into the old session only; ignore it.
+- API 31's emulator went offline during ControlTest in run 41247649576, before any change of that run ran.
+- Scheduled reminders of the old session fire into it only; ignore them.

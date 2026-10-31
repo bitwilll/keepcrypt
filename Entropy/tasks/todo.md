@@ -15977,6 +15977,21 @@ dialog stuck, U1a8 is redesigned from those lines. The M5 gate report names it u
   minutes (M5-76 (f)). The BIP39 entry's gate, which only the watch-only export reaches after the read-back, gives way
   to the collision report's, reached in a minute; JourneyTest's mixed journey still passes the BIP39 gate by a single
   tap. (b) DoubleTapTest goes to CI before any fix: M5-72 (f) makes the 300 ms press guard conditional on it failing.
+- M5-79 (2026-10-31), Stage U-5, after run 41247649576: (a) DoubleTapTest failed as M5-72 (f) foresaw (Skip, Match
+  found and Cannot check each opened their confirm and the second touch pressed its Back), so the press guard is
+  built: a new view (the screen, its privacy gate, the overlay over it) takes no touch until 300 ms after its first
+  frame. It is in Screens' root pointer handler, not in the model's pressOn as M5-72 (f) wrote: every touch on every
+  control passes that handler first (Compose's Initial pass), where a refused down and its pointer's later events are
+  consumed, so no control sees them; pressOn has no frames, and a guard on the model's fake clock would have blocked
+  every press of every JVM test unless the rig faked frames and moved time, shifting the timers' exact boundaries.
+  The rule is PressGuard, a pure class with its JVM test (PressGuardTest); its wiring is proven by DoubleTapTest on the
+  phone. The handler still feeds input and touched before the guard (docs/pi-firmware.md, "Buttons": such a press
+  still feeds its timing). Another page of the same screen, a roll, a pad key keep the view and every press: the
+  words' Next pressed twice moves two pages, and the mandatory read-back of every insert catches one skipped. An
+  accessibility click (TalkBack's double tap is one activation) is no touch and is not guarded. (b) DoubleTapTest's
+  precondition reads the gate a press starts from: a gate's own button (pass_gate) is pressed behind the gate.
+  (c) DeviceChangeTest's input before each change is a touch in the screen root's own padding (Ui.touchMargin), not on
+  a text, which a landscape window can scroll out of view.
 
 **Open item (2026-10-31): the age -d hand-off's logcat check found two of the passphrase screen's lines.** Entropy
 Android 41203734694 at 62f9c8c, API 36's journeys job: BackupTest passed, and android-age-check.py failed it: "logcat -d
@@ -16791,7 +16806,7 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
 **Stages E3 and E4** run commits 19, 20 and 21 as planned, each built and tested locally before it is committed.
 
 **Stage U: the end-to-end pass** (after commit 21, before Stage F)
-- [ ] U1. User journeys: one emulator test per journey from First launch to Finish, through the UI only: mixed and
+- [x] U1. User journeys: one emulator test per journey from First launch to Finish, through the UI only: mixed and
   dice-only, 12 and 24 words; the check by a typed code, a scanned proof (fed to onGoAheadText in CI, the real camera
   locally), a loaded snapshot, and Skip; Match found and a scanned collision to Add fresh entropy at 99; Cannot check to
   Start again; the words, read-back and summary; the backup saved and checked; watch-only; register; reveal D; About;
@@ -17006,6 +17021,13 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   android-local.sh's whole run holds the thirteen runs and its journeys part four (--selftest 47 passed). The journeys
   jobs are measured at 30 minutes (M5-76 (f)). Locally: both test APKs built by the strict Gradle run, no warning; banned-api-check.sh
   clean, 403 files; --workflows clean.
+  CI (Entropy Android 41247649576 at 4fe6231, which holds e7dbf6a; its runs at e7dbf6a and 2064456 were cancelled by
+  later pushes): both journeys jobs green. MixedJourneyTest passed on API 31 ("99 rolls tapped (5.5 s) ... 24 read back
+  by touches (152.1 s) ... the journey 352.5 s") and on API 36 ("(5.9 s) ... (151.7 s) ... the journey 351.3 s"), with
+  FlowTest (7), CheckTest (2) and BackupTest, whose age -d hand-off and logcat check passed on both levels ("neither
+  logcat -d (8767952 characters) nor the run's output (40 lines) holds the passphrase", API 31; 10983034 characters,
+  API 36). Job times 1278 s (API 31) and 1245 s (API 36): 27 and 26 minutes by M5-30. U1h is proven, and with it U1:
+  every combination of its item has a journey green on both levels (U1b-U1g at 4a1cc07, U1h here).
   Proof (M5 commit U2h, Stage U-5, partial: local, no emulator; CI's registry jobs at the next push): DeviceChangeTest's
   rotationFontScaleAndNightModeRecreateTheActivityAndKeepTheDiceTheCodeEntryTheGateAndAWordsPage takes dice-50-words12
   through the UI and on four screens (the dice with 3 rolls and a 4th face picked, the code entry with 4 symbols, the
@@ -17028,6 +17050,28 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   runs and its capture part five (--selftest 47 passed). The capture jobs are measured at 30 minutes (M5-78 (a)).
   Locally: both test APKs built by the strict Gradle run, no warning; banned-api-check.sh clean, 405 files;
   --workflows clean.
+  CI (run 41247649576 at 4fe6231), red on both registry and both capture jobs:
+  - DeviceChangeTest, both levels: the first change (the dice rotated to landscape) passed whole, a new MainActivity
+    over the same model with everything kept and FLAG_SECURE on; the second failed in the test's own input before it,
+    "timed out after 10 s: dice_count on the screen": in landscape the dice screen's text column scrolls and the count
+    was out of the window. The test's touch now lands in the screen root's own padding (Ui.touchMargin, M5-79 (c)),
+    visible in any orientation. The registry jobs ran 912 s and 938 s with it failing early: they stay at 30.
+  - DoubleTapTest, API 36: Skip, Match found and Cannot check each ended on the screen that offered them, "took more
+    than one step or none": the first touch opened the confirm, the second pressed its Back. M5-72 (f)'s condition met:
+    the press guard (U2i2, M5-79) is the fix. The registration test failed in the test's own precondition (a press on
+    a gate's button must start behind the gate; fixed). The capture job ran 689 s with three tests failing early.
+  - API 31's capture job: the emulator went offline during ControlTest ("dumpsys window windows failed", then "pm
+    clear ...: adb: device offline"), before DoubleTapTest or anything else of this run's changes; the part stopped
+    there (689 s for API 36's whole part, 309 s for this one). An open item, watched in the next run.
+  - The ui jobs, unchanged, ran 1260 s and 1276 s inside their 26 and 27 minutes.
+  Proof (M5 commit U2i2, Stage U-5, partial: local, no emulator; CI at the next push): PressGuard (screens'
+  commonMain) and its wiring in Screens' root pointer handler (M5-79 (a)); PressGuardTest, 7 tests: no touch before a
+  new view's first frame, none in the 300 ms after it (1 299 ms refused, 1 300 ms admitted), a double tap's second
+  touch 60 ms after the first refused on the confirm, a view the guard has not seen refused, a frame reported for a
+  view no longer shown opening nothing, the gate passed, the cover and its removal each a new view, and a view that
+  stays keeping its first frame. DoubleTapTest's precondition fixed (M5-79 (b)), DeviceChangeTest's input moved to
+  the root's padding (M5-79 (c)). Locally: the strict Gradle run of CI's build job (both APKs, both test APKs,
+  capture-control, every JVM test: screens 200 tests in 34 classes, PressGuardTest's 7 among them), no warning.
 - [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
   every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
   every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,
@@ -17398,7 +17442,7 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       part's pinned order, three independent reviews at the stage's head, their fixes, the suite, and CI's journeys jobs
       at the stage's head read once (every device claim is CI's: no emulator here, M5-74 (f)).
   - U-5's plan (the lead's, 2026-10-31; M5-72 (h) runs U-1 to U-5 without a check-in):
-    - [ ] U1h: U1's last journey, a mixed seed of 24 words to Finish through the UI alone: Device entropy and C, 99
+    - [x] U1h: U1's last journey, a mixed seed of 24 words to Finish through the UI alone: Device entropy and C, 99
       tapped rolls (Done disabled at 98), the drawn check QR's code tapped, 24 words on two devices read back by
       touches, the summary, the registration QR (core's), D committing to C, the checklist naming two devices.
       MixedJourneyTest, its own class in the journeys part (M5-77 (a)); Journeys gains the mixed journeys' shared

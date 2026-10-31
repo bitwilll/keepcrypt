@@ -34,9 +34,11 @@ import org.junit.runner.RunWith
  * and its confirm (Skip, Match found, Cannot check), on Show words and on four privacy gates' buttons (the
  * words', the collision report's, the registration QR's and D's). The second touch lands on whatever the
  * first one's press put under it, so a double tap must take exactly one step: the screen it leads to,
- * with its gate still up where it has one, its first page, no pad typed into. Where it took two, a gate
- * or a confirm was passed unseen, and lead decision M5-72 (f)'s fix follows (a new screen's controls
- * ignore presses for 300 ms after its first frame, in pressOn) with this test as its failing test. The
+ * with its gate still up where it has one, its first page, no pad typed into. Its first run (Entropy
+ * Android 41247649576, API 36) found Skip, Match found and Cannot check each taking two steps, their
+ * confirm opened and its Back pressed by the second touch: the press guard (PressGuard in Screens' root
+ * pointer handler, lead decisions M5-72 (f) and M5-79) is the fix, a new view taking no touch until 300 ms
+ * after its first frame, and this its failing test on the phone. The
  * seeds are vectors/kcr.json's dice-50-words12 rolls, dice-only, and a mixed seed of 12 words; state is
  * read in-process only to observe it, and only screen ids, gates and counts are printed.
  */
@@ -147,13 +149,18 @@ class DoubleTapTest {
     }
 
     /**
-     * On from (its gate down), a double tap on control tag (Ui.doubleTap); once any long call it started
-     * is over and a moment has passed for a late press to land, the app must show to, with its privacy gate
-     * up where gate says so: one step, never two. Only screen ids and the gate are printed.
+     * On from (behind its privacy gate when tag is the gate's own button, pass_gate, the one control a gate
+     * has; past it otherwise), a double tap on control tag (Ui.doubleTap); once any long call it started is
+     * over and a moment has passed for a late press to land, the app must show to, with its privacy gate up
+     * where gate says so: one step, never two. Only screen ids and the gate are printed.
      */
     private fun twice(activity: MainActivity, tag: String, from: Screen, to: Screen, gate: Boolean) {
         val what = "a double tap on $tag on " + screenId(from)
-        assertTrue("$what: not on " + screenId(from) + " past its gate", onMain { activity.model.state.value.let { it.screen == from && !it.gate } })
+        val onGate = tag == "pass_gate"
+        assertTrue(
+            "$what: not on " + screenId(from) + if (onGate) " behind its gate" else " past its gate",
+            onMain { activity.model.state.value.let { it.screen == from && it.gate == onGate } },
+        )
         doubleTap(tag)
         await("$what: no long call running", START_SECONDS) { onMain { !isWorking(activity.model.state.value.screen) } }
         device.waitForIdle()

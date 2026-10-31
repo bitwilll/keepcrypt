@@ -661,6 +661,8 @@ jobs:
     # 1284 s, so 27 minutes; API 31's stopped part-way (a picker flake, U4r2). Run 41211393696 at
     # 4a1cc07 measured API 31's ui job whole, 1241 s, so 26 minutes. U1h adds MixedJourneyTest, the
     # mixed 24-word journey, to the journeys part (M5-77 (a)): its jobs are measured at 30 (M5-76 (f)).
+    # Run 41247649576 at 4fe6231 measured the journeys jobs with MixedJourneyTest whole, 1278 s and 1245 s, so
+    # 27 and 26 minutes.
     # U2h adds DeviceChangeTest to the registry part (M5-77 (b)): its jobs are measured at 30 too.
     # U2i adds DoubleTapTest to the capture part (M5-78 (a)): its jobs are measured at 30 too.
     timeout-minutes: ${{ matrix.timeout }}
@@ -678,7 +680,7 @@ jobs:
           - api: '31'
             part: journeys
             legs: API 31, journeys
-            timeout: 30
+            timeout: 27
           - api: '31'
             part: ui
             legs: API 31, journeys through the UI alone
@@ -694,7 +696,7 @@ jobs:
           - api: '36'
             part: journeys
             legs: API 36, journeys
-            timeout: 30
+            timeout: 26
           - api: '36'
             part: ui
             legs: API 36, journeys through the UI alone
