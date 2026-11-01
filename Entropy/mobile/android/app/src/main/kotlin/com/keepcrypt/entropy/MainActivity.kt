@@ -56,6 +56,14 @@ class MainActivity : SecureActivity() {
         private set
 
     /**
+     * What this activity's onCreate was given, for the instrumentation's probe of a start after a kill (Stage U's
+     * U2j-a): whether a saved-state Bundle came (SecureActivity never reads one), the launching intent's action
+     * and flags. Fixed facts, nothing of a session. Main thread only.
+     */
+    var createdWith: String = ""
+        private set
+
+    /**
      * The screens' press guard (Stage U's U2i, M5-79), the activity's so the instrumentation can read when it
      * admits a touch (Ui.on waits for it). Main thread only.
      */
@@ -70,6 +78,8 @@ class MainActivity : SecureActivity() {
 
     @OptIn(ExperimentalComposeUiApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
+        createdWith = (if (savedInstanceState != null) "a saved-state Bundle" else "no Bundle") +
+            ", action " + intent.action + ", flags 0x" + Integer.toHexString(intent.flags)
         super.onCreate(savedInstanceState)
         model = ViewModelProvider(this)[CeremonyHolder::class.java].model
         onBackPressedDispatcher.addCallback(

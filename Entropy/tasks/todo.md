@@ -17123,6 +17123,18 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   CI (Entropy Android 41262453126 at 70dc2e8, the bookkeeping commit): every job green again on both levels, the
   budgets (capture 17/16, journeys 27/26, ui 26/27, registry 22/22) holding: the press guard and Ui.on's wait for it
   pass a second run.
+  Proof (M5 commit U2j-a, Stage U-5, partial: local, no emulator; CI's registry jobs at the next push): MainActivity
+  records createdWith (a saved-state Bundle or none, the launching intent's action and flags), read-only to the
+  instrumentation. KillTest's four tests, each its own run in the registry part after DeviceChangeTest:
+  afterTheBackgroundKill and afterTheForegroundKill follow android-emulator.sh's kill_app (the app started outside any
+  instrumentation, then Home and am kill, or kill -9 of its pid as root, named as not made where su is refused, pidof
+  before and after printed); leavesTheAppOpen leaves the activity on First launch for its run's own end, and
+  afterTheRunsOwnEnd follows it. Each after-test starts MainActivity as a person returning does and prints the app's
+  tasks in recents before the start, what the start was given, the screen and the slot; it asserts First launch and
+  the slot empty. The script's selftest pins the runs and the kills (a kill-test-fails case; 61 passed);
+  android-local.sh's whole run holds nineteen runs and its registry part eight (47 passed). The registry jobs are
+  measured at 30 minutes again. Locally: the strict Gradle run with every JVM test, no warning; banned-api-check.sh
+  clean, 408 files; --workflows clean.
 - [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
   every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
   every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,

@@ -58,7 +58,7 @@
 #      SnapshotDrillTest's scan screen expects), then android-emulator.sh --booted on it: a CI leg's
 #      steps 1-7 (the probes, the shell's screencaps, ControlTest with the capture control, CaptureTest
 #      in both APKs, PhoneMotionTest, DoubleTapTest, FlowTest, CheckTest, MixedJourneyTest, BackupTest (its age -d hand-off with the Mac's
-#      age on PATH, Homebrew's), SnapshotDrillTest, LifecycleTest, DeviceChangeTest and CrashTest
+#      age on PATH, Homebrew's), SnapshotDrillTest, LifecycleTest, DeviceChangeTest, KillTest's four runs and CrashTest
 #      last, each through android-instrument.sh's judge, then the raw-frame control, the first
 #      frames and step 7: each app's dumpsys package with no INTERNET, and the nothing-persisted
 #      listing of the apps' data directories, which needs adb root, so android-emulator.sh names it as
@@ -108,7 +108,7 @@
 # given no route out, with its HOME and ANDROID_AVD_HOME set, seeded the update check's line for the
 # emulator's version and the SDK's bundled flags in that HOME with the run's time before each boot,
 # named CaptureTest's control (c) and the leg's nothing-persisted listing as not made on the user build
-# and left the control out of both CaptureTest runs, run the fifteen instrumented runs in android-emulator.sh's order and listed their results, run
+# and left the control out of both CaptureTest runs, run the nineteen instrumented runs in android-emulator.sh's order and listed their results, run
 # NativeTest on the second boot with the app's primaryCpuAbi arm64-v8a, passed the camera client's
 # four checks and decoded the PNG. Each of these is its own case: no decode (the decode named as not
 # met, exit 0); no PNG (named as not made, exit 0); a debuggable build (no test left out, and the
@@ -125,7 +125,7 @@
 # whose -version names none (exit 2, nothing booted). With --part: capture runs its five runs in
 # android-emulator.sh's order, naming and leaving out CaptureTest's control (c) as the whole run does,
 # then the second boot's NativeTest and camera checks (exit 0); journeys runs FlowTest, CheckTest, MixedJourneyTest and
-# the age: BackupTest, and registry SnapshotDrillTest, LifecycleTest, DeviceChangeTest and the killed CrashTest, each
+# the age: BackupTest, and registry SnapshotDrillTest, LifecycleTest, DeviceChangeTest, KillTest's four runs and the killed CrashTest, each
 # listing its runs' results, on one boot, naming no check of another part's class (exit 0 each). Too
 # many arguments and an unknown part exit 2.
 # Exit 0 when every case behaves, 1 otherwise. The cases run at once; it takes about two minutes.
@@ -507,11 +507,12 @@ CONFIG
     want="$want com.keepcrypt.entropy com.keepcrypt.entropy.JourneyTest com.keepcrypt.entropy gone:com.keepcrypt.entropy.StopJourneyTest"
     want="$want com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest"
     want="$want com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest com.keepcrypt.entropy com.keepcrypt.entropy.DeviceChangeTest"
+    want="$want com.keepcrypt.entropy com.keepcrypt.entropy.KillTest#afterTheBackgroundKill com.keepcrypt.entropy com.keepcrypt.entropy.KillTest#afterTheForegroundKill com.keepcrypt.entropy com.keepcrypt.entropy.KillTest#leavesTheAppOpen com.keepcrypt.entropy com.keepcrypt.entropy.KillTest#afterTheRunsOwnEnd"
     want="$want com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest "
     want="${want}com.keepcrypt.entropy com.keepcrypt.entropy.NativeTest "
     ok=yes
     [ "$got" = "$want" ] || { ok=no; echo "  got: $got"; }
-    check "$1" "$ok" "the fifteen instrumented runs in android-emulator.sh's order, then NativeTest"
+    check "$1" "$ok" "the nineteen instrumented runs in android-emulator.sh's order, then NativeTest"
   }
   # boots NAME: case NAME booted twice on port 5580 with no snapshot, first with no camera and then
   # the virtual scene, with no crash reports and the guest's two networks given no route out, with its
@@ -569,8 +570,8 @@ CONFIG
     "instrument stub: com.keepcrypt.entropy $left" "emulator: api=37: every check passed" \
     "pass: api=37 dumpsys package com.keepcrypt.entropy.testregistry: no INTERNET" \
     "emulator: api=37: not made here (ro.debuggable=0, a user build: adb root refused): the nothing-persisted listing" \
-    "local: run 15 of 15, com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest: instrument: api=37 PASS com.keepcrypt.entropy.CrashTest" \
-    "local: run 9 of 15, com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest: instrument: api=37 PASS com.keepcrypt.entropy.BackupTest" \
+    "local: run 19 of 19, com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest: instrument: api=37 PASS com.keepcrypt.entropy.CrashTest" \
+    "local: run 9 of 19, com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest: instrument: api=37 PASS com.keepcrypt.entropy.BackupTest" \
     "local: NativeTest: com.keepcrypt.entropy installed with primaryCpuAbi=arm64-v8a" \
     "pass: local native library: NativeTest on kc37's arm64-v8a, natively" \
     "$camera_passes" "pass: local camera: gone from dumpsys media.camera within 10 s of Home" \
@@ -598,7 +599,7 @@ CONFIG
   fi
   expect avd-kept 0 "local: the AVD kc37 is this script's" "local: every check made on kc37 passed"
   avd avd-kept
-  expect flow-test-fails 1 "local: run 6 of 15, com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest: FAIL: instrument: api=37: com.keepcrypt.entropy.FlowTest" \
+  expect flow-test-fails 1 "local: run 6 of 19, com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest: FAIL: instrument: api=37: com.keepcrypt.entropy.FlowTest" \
     "$camera_passes" "FAIL: local: the leg on kc37 failed (each failure reported above)"
   stopped flow-test-fails
   expect native-test-fails 1 "FAIL: instrument: api=37: com.keepcrypt.entropy.NativeTest: stand-in failure" \
@@ -669,14 +670,14 @@ CONFIG
     "local: run 2 of 2, com.keepcrypt.entropy gone:com.keepcrypt.entropy.StopJourneyTest: instrument: api=37 PASS com.keepcrypt.entropy.StopJourneyTest" \
     "emulator: api=37: every check passed" "local: every check made on kc37 passed (part ui alone"
   expect part-registry 0 "emulator: api=37: part registry alone (--part registry)" \
-    "local: run 1 of 4, com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest: instrument: api=37 PASS com.keepcrypt.entropy.SnapshotDrillTest" \
-    "local: run 4 of 4, com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest: instrument: api=37 PASS com.keepcrypt.entropy.CrashTest" \
+    "local: run 1 of 8, com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest: instrument: api=37 PASS com.keepcrypt.entropy.SnapshotDrillTest" \
+    "local: run 8 of 8, com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest: instrument: api=37 PASS com.keepcrypt.entropy.CrashTest" \
     "emulator: api=37: every check passed" "local: every check made on kc37 passed (part registry alone"
   for p in journeys ui registry; do
     case $p in
       journeys) want="com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest com.keepcrypt.entropy com.keepcrypt.entropy.CheckTest com.keepcrypt.entropy com.keepcrypt.entropy.MixedJourneyTest com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest " ;;
       ui) want="com.keepcrypt.entropy com.keepcrypt.entropy.JourneyTest com.keepcrypt.entropy gone:com.keepcrypt.entropy.StopJourneyTest " ;;
-      registry) want="com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest com.keepcrypt.entropy com.keepcrypt.entropy.DeviceChangeTest com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest " ;;
+      registry) want="com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest com.keepcrypt.entropy com.keepcrypt.entropy.DeviceChangeTest com.keepcrypt.entropy com.keepcrypt.entropy.KillTest#afterTheBackgroundKill com.keepcrypt.entropy com.keepcrypt.entropy.KillTest#afterTheForegroundKill com.keepcrypt.entropy com.keepcrypt.entropy.KillTest#leavesTheAppOpen com.keepcrypt.entropy com.keepcrypt.entropy.KillTest#afterTheRunsOwnEnd com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest " ;;
     esac
     got=$(sed -n 's/^instrument stub: //p' "$st/part-$p/out" | tr '\n' ' ')
     ok=yes

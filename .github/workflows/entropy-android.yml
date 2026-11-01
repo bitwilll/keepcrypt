@@ -45,7 +45,7 @@
 # capture (the capture harness, its positive controls and first frames, PhoneMotionTest and DoubleTapTest), the
 # shipping journeys (FlowTest, CheckTest, MixedJourneyTest and BackupTest), ui (JourneyTest, U1's journeys through the UI
 # alone, then StopJourneyTest, the stop screen's Close app) and registry, the test registry and the
-# edges (SnapshotDrillTest, the test-registry app's, then LifecycleTest, DeviceChangeTest and CrashTest); and, from
+# edges (SnapshotDrillTest, the test-registry app's, then LifecycleTest, DeviceChangeTest, KillTest's runs around the kills and CrashTest); and, from
 # commit 14, the 16 KB-page
 # system-images;android-36;google_apis_ps16k;x86_64 (the ARM and 16 KB leg) after API 31's capture
 # part, in its job. Each leg job installs the emulator and the three images with sdkmanager into
@@ -668,7 +668,8 @@ jobs:
     # Run 41252883580 at 72cd4fa measured the capture jobs with DoubleTapTest whole, 797 s (API 31, with the
     # 16 KB leg) and 754 s (API 36), so 17 and 16 minutes.
     # Run 41259598598 at b184be2 measured the registry jobs with DeviceChangeTest whole, 1017 s and 1016 s, so 22
-    # minutes each.
+    # minutes each. U2j-a adds KillTest's four runs and the kills between them to the registry part: its jobs are
+    # measured at 30 again (M5-76 (f)).
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       # Every leg job runs to its end: a red leg never cancels another job or hides its evidence.
@@ -692,7 +693,7 @@ jobs:
           - api: '31'
             part: registry
             legs: API 31, test registry and edges
-            timeout: 22
+            timeout: 30
           - api: '36'
             part: capture
             legs: API 36, capture
@@ -708,7 +709,7 @@ jobs:
           - api: '36'
             part: registry
             legs: API 36, test registry and edges
-            timeout: 22
+            timeout: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
