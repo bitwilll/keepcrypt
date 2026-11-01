@@ -148,7 +148,22 @@ class AwayTest {
             onMain { activity.model.showCheckQr() }
             await("the check QR", 10) { onMain { activity.shownScreen } == Screen.CheckQr }
             val how = back(gesture)
-            await("Back from the check QR to the seal card by " + how, 10) { onMain { activity.model.state.value.screen } == Screen.SealCard }
+            val sealCard = { onMain { activity.model.state.value.screen } == Screen.SealCard }
+            if (!gesture) {
+                await("Back from the check QR to the seal card by " + how, 10, sealCard)
+            } else if (!within(BACK_SECONDS, sealCard)) {
+                // Runs 41275381593 and 41279169126: the shell's swipe brought no Back on either level, the settle
+                // and pace notwithstanding. SystemUI's own record of the gesture is gathered (lessons.md,
+                // 2026-11-01), then a swipe through UiAutomation's injected touches, so the next change rests on both.
+                probe("no Back from the check QR by " + how + "; SystemUI's back gesture handler: " + edgeBackFacts())
+                val y = device.displayHeight / 2
+                device.swipe(2, y, device.displayWidth / 3, y, SWIPE_STEPS)
+                val other = within(BACK_SECONDS, sealCard)
+                throw AssertionError(
+                    "timed out: Back from the check QR to the seal card by " + how + "; then a swipe through UiAutomation (" +
+                        SWIPE_STEPS + " steps) " + (if (other) "brought it" else "brought none either") + " (SystemUI's facts in the probe line)",
+                )
+            }
             back(gesture)
             settle()
             assertEquals("Back on the seal card left it", Screen.SealCard, onMain { activity.model.state.value.screen })
@@ -217,6 +232,30 @@ class AwayTest {
         return "a swipe from (1, $y) to ($x, $y) over $SWIPE_MS ms, navigation_mode " + shellText("settings get secure navigation_mode")
     }
 
+    /** Whether condition holds within seconds, polled; no failure of its own. */
+    private fun within(seconds: Long, condition: () -> Boolean): Boolean {
+        val end = SystemClock.elapsedRealtime() + seconds * 1_000
+        while (!condition()) {
+            if (SystemClock.elapsedRealtime() > end) return false
+            SystemClock.sleep(200)
+        }
+        return true
+    }
+
+    /**
+     * The facts SystemUI's dump gives about its back gesture handler (EdgeBackGestureHandler, on both levels): whether it
+     * is enabled and attached, its edge widths and insets, the regions excluded and its log of recent gestures with
+     * why each was or was not taken. System state only: nothing of the app's.
+     */
+    private fun edgeBackFacts(): String {
+        val dump = shellText("dumpsys activity service com.android.systemui").lines()
+        val start = dump.indexOfFirst { "EdgeBackGestureHandler" in it }
+        if (start < 0) return "no EdgeBackGestureHandler in SystemUI's dump (" + dump.size + " lines)"
+        return dump.drop(start).take(EDGE_DUMP_LINES).map { it.trim() }
+            .filter { line -> EDGE_FACTS.any { it in line } }
+            .joinToString("; ")
+    }
+
     /** A moment for a Back that must do nothing to land. */
     private fun settle() {
         device.waitForIdle()
@@ -232,8 +271,20 @@ class AwayTest {
         /** How long SystemUI is given to take up gesture navigation once the setting reads it. */
         const val SETTLE_GESTURE_MS = 3_000L
 
-        /** The back swipe's length in time. */
+        /** The back swipe's length in time, and the same through UiAutomation (5 ms a step). */
         const val SWIPE_MS = 300
+        const val SWIPE_STEPS = 60
+
+        /** How long a back gesture's Back is waited for before SystemUI's facts are gathered. */
+        const val BACK_SECONDS = 5L
+
+        /** How much of SystemUI's dump after the handler's heading is read, and the fields kept from it. */
+        const val EDGE_DUMP_LINES = 80
+        val EDGE_FACTS = listOf(
+            "mIsEnabled", "mIsAttached", "mIsGesturalModeEnabled", "mIsBackGestureAllowed", "mAllowGesture", "mDisabledForQuickstep",
+            "mIsNavBarShownTransiently", "mEdgeWidth", "mLeftInset", "mRightInset", "mExcludeRegion", "mUnrestrictedExcludeRegion",
+            "mInRejectedExclusion", "mIsInPip", "mPredictiveBack", "mUseMLModel", "Gesture [", "mGestureLog",
+        )
 
         /** navigation_mode's gesture navigation, and the system's overlays that switch it. */
         const val GESTURE = "2"

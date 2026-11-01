@@ -33,6 +33,7 @@ import com.keepcrypt.entropy.ffi.Refusal
 import com.keepcrypt.entropy.screens.CHECK_PROMPT
 import com.keepcrypt.entropy.screens.CHECK_QUESTION
 import com.keepcrypt.entropy.screens.CODE_REFUSED
+import com.keepcrypt.entropy.screens.CROCKFORD_COLUMNS
 import com.keepcrypt.entropy.screens.CROCKFORD_KEYS
 import com.keepcrypt.entropy.screens.QR_SIDE_DP
 import com.keepcrypt.entropy.screens.SNAPSHOT_NO_REGISTRY_KEY
@@ -190,15 +191,15 @@ class CheckTest {
             assertFalse("Done with no symbol", enabled("code_done"))
             assertFalse("Delete with no symbol", enabled("code_delete"))
             assertPublicPadLabelled("the go-ahead code's pad", CROCKFORD_KEYS)
-            // Every column and every row of the pad types: one key from each column, the rows in turn (0, 9,
-            // J, V, 4, D, P, Z). Before commit 17 a row of eight 46 dp keys was wider than the 312 dp the
-            // screen's margins leave, which left the last columns no width, so a tap there reached the key
-            // drawn over it. A key's bounds cannot show this: UI Automator gives a Compose key its touch
-            // target, at least 48 dp and cut by the targets drawn after it (run 39673248591: key 7, the one
-            // with no neighbour to its right, 96 x 78 px), never the drawn square. Delete takes it all back.
-            val rows = CROCKFORD_KEYS.length / CODE_SYMBOLS
-            val diagonal = (0 until CODE_SYMBOLS).map { column -> CROCKFORD_KEYS[(column % rows) * CODE_SYMBOLS + column] }
-                .joinToString("")
+            // Every column and every row of the pad types: down the diagonal of the full rows, one key from
+            // each column (0, 7, E, N, W, 5), then the short last row's two (Y, Z). Before commit 17 a row of
+            // eight 46 dp keys was wider than the 312 dp the screen's margins leave, which left the last
+            // columns no width, so a tap there reached the key drawn over it; since M5-83 a row holds six keys,
+            // each its whole cell's touch target, 48 dp or more. Delete takes it all back.
+            val full = CROCKFORD_KEYS.length / CROCKFORD_COLUMNS
+            val diagonal = ((0 until CROCKFORD_COLUMNS).map { column -> CROCKFORD_KEYS[(column % full) * CROCKFORD_COLUMNS + column] } +
+                CROCKFORD_KEYS.substring(full * CROCKFORD_COLUMNS).toList()).joinToString("")
+            assertEquals("the diagonal and the last row make a code", CODE_SYMBOLS, diagonal.length)
             tapCode(diagonal)
             repeat(CODE_SYMBOLS) { tap("code_delete") }
             awaitText("code", "____-____")
@@ -283,7 +284,7 @@ class CheckTest {
         /** The check prompt's heading (CheckScreens.kt's CheckPrompt). */
         const val CHECK_HEADING = "Check for collisions"
 
-        /** The go-ahead code's symbols, as many as the Crockford pad has columns (crockfordPadEntry, CrockfordPad). */
+        /** The go-ahead code's symbols (crockfordPadEntry's capacity). */
         const val CODE_SYMBOLS = 8
     }
 }

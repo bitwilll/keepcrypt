@@ -26,6 +26,21 @@ class PadsTest {
         return text
     }
 
+    /**
+     * Every pad's key is KEY_DP (48 dp, the accessibility minimum) wide or more on the narrowest row a pad is
+     * given, a 360 dp phone's (M5-83): the columns times KEY_DP fit in NARROWEST_ROW_DP. CaptureTest's
+     * assertLaidOut measures the keys on the device; this holds the arithmetic each pad's columns rest on.
+     */
+    @Test
+    fun everyPadsKeysAre48DpWideOnTheNarrowestPhone() {
+        assertEquals(48, KEY_DP)
+        assertEquals(312, NARROWEST_ROW_DP)
+        val pads = mapOf("dice" to DICE_COLUMNS, "letter" to LETTER_COLUMNS, "go-ahead code" to CROCKFORD_COLUMNS, "ASCII" to ASCII_COLUMNS)
+        for ((pad, columns) in pads) {
+            assertTrue(columns * KEY_DP <= NARROWEST_ROW_DP, "the $pad pad's $columns columns leave a key under $KEY_DP dp in $NARROWEST_ROW_DP dp")
+        }
+    }
+
     @Test
     fun eachPadHasItsKeysInTheirFixedOrder() {
         assertEquals("123456", DICE_KEYS)

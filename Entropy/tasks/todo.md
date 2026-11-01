@@ -16007,6 +16007,22 @@ dialog stuck, U1a8 is redesigned from those lines. The M5 gate report names it u
   (d) After run 41275381593: a second CAMERA prompt names its "Don't allow" permission_deny_and_dont_ask_again_button,
   which Capture.PROMPT_DENY did not match (ScanRefusedTest's "scan 2: the system's CAMERA prompt did not show" on both
   levels); PROMPT_DENY now matches both ids.
+- M5-83 (2026-11-01), Stage U-5, U3h-b, after run 41279169126 (both capture jobs: "dice: 9 of its 15 controls are under
+  48 dp: key_1 196x92 px, a key 196x80 px ..." at density 2, the same at 2.625 on the 412 dp phone): (a) a pad key is its
+  whole cell, an equal share of the row wide and at least KEY_DP = 48 dp high, the cell its touch target and its
+  semantics node, its frame drawn 3 dp inside it. Before, the 3 dp gap sat outside a 40 dp key: rows 46 dp apart, so
+  Compose's 48 dp touch targets overlapped and the later row's cut the earlier one's to 46 dp and 40 dp. (b) Every pad
+  has at most 312 / 48 = 6 columns, so a key is 48 dp wide on a 360 dp phone: the dice keep 3, the letter, go-ahead
+  code and ASCII pads go from 7, 8 and 8 to 6 (letters a-f, g-l, ... y z; the code's 32 symbols in five rows of six and
+  Y, Z). The walk stopped at the dice, the first screen it failed, so the rows of seven and eight (39 and 44.6 dp on
+  312 dp) were the next findings; they are fixed in the same change, not left for another run. PadsTest holds the
+  columns' arithmetic; CheckTest types down the diagonal of the code pad's full rows and its last row's two keys.
+  (c) 48 dp is never relaxed: a key grows taller under a large font (heightIn), never smaller.
+  (d) AwayTest's back gesture, no Back from the shell's swipe on either level in runs 41275381593 and 41279169126:
+  when no Back comes within 5 s, the test prints SystemUI's own record of its back gesture handler (enabled,
+  attached, edge widths and insets, excluded regions, its log of recent gestures), then tries a swipe through
+  UiAutomation's injected touches and fails naming whether that one brought Back. The next change rests on those facts
+  (lessons.md, 2026-11-01), not on a third guess at pace or settle time.
 - M5-78 (2026-10-31), Stage U-5: (a) U2i's DoubleTapTest (four short journeys, about 6 minutes) runs in the capture
   part, after PhoneMotionTest, not the ui part the plan named: the capture jobs (503-535 s) are the run's shortest and
   the ui jobs (1241-1284 s) its longest, so the run's wall time stays where it is; the capture jobs are measured at 30
@@ -17230,6 +17246,22 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   412 dp phone in a second walk (everyScreenIsLaidOutOnA412DpPhone: wm size 1080x2424, wm density 420, reset in a
   finally). Capture.NodeFacts gains the node's class name and clickable. The capture jobs are measured at 30 minutes.
   Locally: both test APKs built by the strict Gradle run, no warning; banned-api-check.sh clean; --workflows clean.
+  CI at d09eb7a (run 41279169126): the build job, both journeys and both ui jobs green. Both capture jobs failed on the
+  layout check's first finding, the dice keys ("dice: 9 of its 15 controls are under 48 dp: key_1 196x92 px, a key
+  196x80 px ..."; "dice (412 dp): ... key_1 302x121 px, a key 302x105 px ..."), a finding about the app (M5-83). API
+  36's registry job: ScanRefusedTest green ("scan 2: the prompt denied; CAMERA ... flags=[ USER_SET|USER_FIXED|...]",
+  a third Scan refused with no prompt), IdleClockTest green ("covered at 30254 ms, warned at 540366 ms, wiped at
+  600474 ms (Go offline, Idle), the slot at home"), DeviceChangeTest, LifecycleTest, SnapshotDrillTest, KillTest's four
+  and CrashTest green; AwayTest's two screen-off tests green, its back gesture failed as on API 31 ("timed out: Back
+  from the check QR to the seal card by a swipe from (1, 640) to (240, 640) over 300 ms, navigation_mode 2"). API 31's
+  registry job: the same back gesture failure alone; ScanRefusedTest green. U2l's tests are proven on both levels;
+  U2l waits only on its part's job going green.
+  Proof (M5 commit U3h-c, Stage U-5, M5-83, partial: local; CI at the next push): every pad key is its whole cell, 48 dp
+  high or more, the frame drawn inside; six columns at most. PadsTest's everyPadsKeysAre48DpWideOnTheNarrowestPhone
+  (columns x 48 <= 312 for all four pads). CheckTest types the code pad's diagonal and last row (0 7 E N W 5 Y Z).
+  AwayTest gathers SystemUI's back gesture facts and tries a UiAutomation swipe before it fails. Locally: the screens'
+  JVM tests green (PadsTest 9 of 9), both APKs and both test APKs built by the strict Gradle run, no warning;
+  banned-api-check.sh clean, 413 files.
 - [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
   every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
   every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,

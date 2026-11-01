@@ -7,11 +7,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -164,23 +162,23 @@ fun asciiPadEntry(): PadEntry = PadEntry(ASCII_KEYS, ASCII_CAPACITY)
 /**
  * The dice pad (a Public screen): a face's press goes to onKey, the model's padKey, which replaces the
  * pick. Disabled at 256 rolls by its screen. Its six keys fill their share of the row (lead decision
- * M5-72 (e)): a third each, KEY_DP high, not 40 dp squares at the row's start.
+ * M5-72 (e)), a third each.
  */
 @Composable
 fun DicePad(enabled: Boolean, onKey: (Char) -> Unit) {
-    KeyGrid(DICE_KEYS, columns = 3, enabled = enabled, sensitive = false, fill = true, press = onKey)
+    KeyGrid(DICE_KEYS, DICE_COLUMNS, enabled = enabled, sensitive = false, press = onKey)
 }
 
 /** The letter pad (Protected screens): a letter's press goes to onKey, the model's padKey. */
 @Composable
 fun LetterPad(onKey: (Char) -> Unit) {
-    KeyGrid(LETTER_KEYS, columns = 7, enabled = true, sensitive = true, press = onKey)
+    KeyGrid(LETTER_KEYS, LETTER_COLUMNS, enabled = true, sensitive = true, press = onKey)
 }
 
 /** The go-ahead code's pad (a Public screen: the code is no secret): a symbol's press goes to onKey, the model's padKey. */
 @Composable
 fun CrockfordPad(onKey: (Char) -> Unit) {
-    KeyGrid(CROCKFORD_KEYS, columns = 8, enabled = true, sensitive = false, press = onKey)
+    KeyGrid(CROCKFORD_KEYS, CROCKFORD_COLUMNS, enabled = true, sensitive = false, press = onKey)
 }
 
 /**
@@ -189,28 +187,46 @@ fun CrockfordPad(onKey: (Char) -> Unit) {
  */
 @Composable
 fun AsciiPad(page: Int, onKey: (Char) -> Unit) {
-    KeyGrid(asciiPage(page), columns = 8, enabled = true, sensitive = true, press = onKey)
+    KeyGrid(asciiPage(page), ASCII_COLUMNS, enabled = true, sensitive = true, press = onKey)
 }
 
+/** Each pad's columns: at most NARROWEST_ROW_DP / KEY_DP, so a key is KEY_DP wide or more on any phone (M5-83). */
+const val DICE_COLUMNS = 3
+const val LETTER_COLUMNS = 6
+const val CROCKFORD_COLUMNS = 6
+const val ASCII_COLUMNS = 6
+
+/** The narrowest row a pad is given: a 360 dp phone inside the kit's 24 dp margins. */
+const val NARROWEST_ROW_DP = 312
+
 /**
- * keys in rows of columns, in their order. Each row is the width it is given and each key a square of
- * at most KEY_DP: at full size a row of eight (the go-ahead code's) is 368 dp and a row of seven (the
- * letter pad's) 322 dp, wider than the 312 dp a 360 dp phone leaves inside the kit's 24 dp margins, so
- * every column takes an equal share of the row and a key shrinks to its share where that is smaller; a
- * short last row keeps the columns of the rows above it. With fill (the dice pad's three columns) each key
- * is its whole share wide and KEY_DP high instead.
+ * A key's least touch target each way: Android's and Material's accessibility minimum (CaptureTest's
+ * assertLaidOut checks it on the device), and a key's height.
+ */
+const val KEY_DP = 48
+
+/** The gap drawn between keys' frames: inside each key's touch target, so targets meet and none is cut. */
+private const val KEY_GAP_DP = 3
+
+/**
+ * keys in rows of columns, in their order, each key an equal share of the row wide and at least KEY_DP high
+ * (taller if its label needs it, under a large font). A short last row keeps the columns of the rows above it.
+ * The key's whole cell is its touch target and its semantics node; its frame is drawn KEY_GAP_DP inside the
+ * cell, so the gaps between frames are still keys. Before M5-83 the gap sat outside a 40 dp key: rows 46 dp
+ * apart, Compose's 48 dp touch targets overlapping and cut to 46 and 40 dp (run 41279169126), and rows of
+ * seven and eight keys narrower than 48 dp on a 360 dp phone.
  */
 @Composable
-private fun KeyGrid(keys: String, columns: Int, enabled: Boolean, sensitive: Boolean, fill: Boolean = false, press: (Char) -> Unit) {
+private fun KeyGrid(keys: String, columns: Int, enabled: Boolean, sensitive: Boolean, press: (Char) -> Unit) {
     Column {
         for (start in keys.indices step columns) {
             Row(Modifier.fillMaxWidth()) {
                 for (index in start until start + columns) {
                     if (index < keys.length) {
                         val key = keys[index]
-                        Key(keyLabel(key), enabled, sensitive, fill) { press(key) }
+                        Key(keyLabel(key), enabled, sensitive) { press(key) }
                     } else {
-                        Spacer(Modifier.weight(1f, fill = fill))
+                        Spacer(Modifier.weight(1f))
                     }
                 }
             }
@@ -218,29 +234,25 @@ private fun KeyGrid(keys: String, columns: Int, enabled: Boolean, sensitive: Boo
     }
 }
 
-/** A key's side at most: its side wherever its row has room for it, and a filling key's height. */
-private const val KEY_DP = 40
-
 /** A key's label: the space key says so. */
 fun keyLabel(key: Char): String = if (key == ' ') "space" else key.toString()
 
 @Composable
-private fun RowScope.Key(label: String, enabled: Boolean, sensitive: Boolean, fill: Boolean, press: () -> Unit) {
-    val sized = if (fill) {
-        Modifier.weight(1f).padding(3.dp).height(KEY_DP.dp)
-    } else {
-        Modifier.weight(1f, fill = false).padding(3.dp).widthIn(max = KEY_DP.dp).aspectRatio(1f)
-    }
-    val framed = sized.border(1.dp, if (enabled) Color.White else Color.Gray)
+private fun RowScope.Key(label: String, enabled: Boolean, sensitive: Boolean, press: () -> Unit) {
+    val cell = Modifier.weight(1f).heightIn(min = KEY_DP.dp)
     // Sensitive: the key's semantics are its role alone, so its press says nothing about the key. A
     // Public key (the dice and the go-ahead code) has its label as its TalkBack label, the button role
     // and a test tag, key_ and its label, for UI Automator (group 15's flow tests).
     val described = if (sensitive) {
-        framed.clearAndSetSemantics { role = Role.Button }
+        cell.clearAndSetSemantics { role = Role.Button }
     } else {
-        framed.semantics { role = Role.Button }.testTag("key_$label")
+        cell.semantics { role = Role.Button }.testTag("key_$label")
     }
-    Box(described.clickable(enabled = enabled, onClick = press), contentAlignment = Alignment.Center) {
+    val framed = described
+        .clickable(enabled = enabled, onClick = press)
+        .padding(KEY_GAP_DP.dp)
+        .border(1.dp, if (enabled) Color.White else Color.Gray)
+    Box(framed, contentAlignment = Alignment.Center) {
         BasicText(label, style = TextStyle(color = if (enabled) Color.White else Color.Gray, fontSize = 18.sp))
     }
 }
