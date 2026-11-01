@@ -667,7 +667,8 @@ jobs:
     # U2h adds DeviceChangeTest to the registry part (M5-77 (b)): its jobs are measured at 30 too.
     # U2i adds DoubleTapTest to the capture part (M5-78 (a)): its jobs are measured at 30 too.
     # Run 41252883580 at 72cd4fa measured the capture jobs with DoubleTapTest whole, 797 s (API 31, with the
-    # 16 KB leg) and 754 s (API 36), so 17 and 16 minutes.
+    # 16 KB leg) and 754 s (API 36), so 17 and 16 minutes. U3h-b adds CaptureTest's second walk on a 412 dp phone
+    # (on both APKs): the capture jobs are measured at 30 again.
     # Run 41259598598 at b184be2 measured the registry jobs with DeviceChangeTest whole, 1017 s and 1016 s, so 22
     # minutes each. U2j-a adds KillTest's four runs and the kills between them to the registry part: its jobs are
     # measured at 30 again (M5-76 (f)).
@@ -686,7 +687,7 @@ jobs:
           - api: '31'
             part: capture
             legs: API 31, capture, then 16 KB pages
-            timeout: 17
+            timeout: 30
           - api: '31'
             part: journeys
             legs: API 31, journeys
@@ -702,7 +703,7 @@ jobs:
           - api: '36'
             part: capture
             legs: API 36, capture
-            timeout: 16
+            timeout: 30
           - api: '36'
             part: journeys
             legs: API 36, journeys

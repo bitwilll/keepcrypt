@@ -578,6 +578,35 @@ class CaptureTest {
         Capture.whileOffline { walkEveryScreen() }
     }
 
+    /**
+     * The layout on a 412 dp phone (Stage U's U3h-b): the window manager set to 1080x2424 px at density 420 (put back
+     * with wm size reset and wm density reset in a finally), the same walk through every screen in a new activity,
+     * each screen drawn and laid out (assertLaidOut: every control 48 dp or more, every text inside the window
+     * across); no capture is judged here, everyScreenIsDrawnAndThenBlackInEveryCapture does that at CI's window.
+     */
+    @Test
+    fun everyScreenIsLaidOutOnA412DpPhone() {
+        try {
+            shell("wm size $PHONE_SIZE")
+            shell("wm density $PHONE_DENSITY")
+            probe("the window manager: " + Capture.shellText("wm size").replace('\n', ' ') + "; " + Capture.shellText("wm density").replace('\n', ' '))
+            Capture.whileOffline {
+                for (screen in Screen.entries) {
+                    val activity = show(screen)
+                    proveDrawn(activity, screen)
+                    assertLaidOut(activity, screen, screenId(screen) + " (412 dp)")
+                }
+                finish(checkNotNull(walk))
+                for (word in passphrase) word.fill(0)
+                savedBackup?.fill(0)
+            }
+            pass("every screen laid out on a 412 dp phone ($PHONE_SIZE at density $PHONE_DENSITY): controls of 48 dp or more, texts inside the window")
+        } finally {
+            shell("wm density reset")
+            shell("wm size reset")
+        }
+    }
+
     private fun walkEveryScreen() {
         val lines = HashSet<String>()
         var mark = ""
@@ -639,10 +668,36 @@ class CaptureTest {
         probe("windows of the app: " + found.joinToString("; ") { "${it.title} (by owner ${it.byOwner}, SECURE ${it.secure})" })
         for (w in found) assertTrue("a window without SECURE: " + w.title, w.secure)
         assertSecretsMarked(screen, activity.model, name, lines)
+        assertLaidOut(activity, screen, name)
         pass(
             "$name: drawn, then screencap and takeScreenshot black over the app's window; " +
                 "SECURE on all ${found.size} of its windows; no content capture",
         )
+    }
+
+    /**
+     * The screen's layout (Stage U's U3h-b): every control the screen shows (a node that takes a click, or a
+     * button by its role: a Protected pad's keys keep the role alone) has a touch target at least 48 dp each way,
+     * and every text it shows lies across inside the app's window, none cut at its left or right edge (a screen's
+     * column scrolls, so a node scrolled out of view is not read as shown). Read in-process from the screen's own
+     * nodes (Capture.nodesOf); only screen ids, counts and sizes are printed.
+     */
+    private fun assertLaidOut(activity: MainActivity, screen: Screen, name: String) {
+        val nodes = Capture.nodesOf(pkg, screen).filter { it.visible && !it.bounds.isEmpty }
+        val density = onMain { activity.resources.displayMetrics.density }
+        val window = region(activity)
+        val target = (MIN_TARGET_DP * density).toInt()
+        val controls = nodes.filter { it.clickable || it.className == Ui.BUTTON }
+        val small = controls.filter { it.bounds.width() < target || it.bounds.height() < target }
+        assertTrue(
+            "$name: " + small.size + " of its " + controls.size + " controls are under 48 dp: " +
+                small.joinToString { (it.resourceName ?: "a key") + " " + it.bounds.width() + "x" + it.bounds.height() + " px" },
+            small.isEmpty(),
+        )
+        val texts = nodes.filter { !it.text.isNullOrEmpty() }
+        val cut = texts.filter { it.bounds.left < window.left || it.bounds.right > window.right }
+        assertTrue("$name: " + cut.size + " of its " + texts.size + " texts are cut at the window's edge: " + cut.joinToString { it.resourceName ?: "a text" }, cut.isEmpty())
+        probe("$name: " + controls.size + " controls of 48 dp or more (" + target + " px at density " + density + "), " + texts.size + " texts inside the window")
     }
 
     /**
@@ -1115,6 +1170,13 @@ class CaptureTest {
     }
 
     private companion object {
+        /** The smallest touch target a control may have, each way (Material's and Android's accessibility minimum). */
+        const val MIN_TARGET_DP = 48
+
+        /** A 412 dp phone, as wm sets it: 1080 px across at density 420 (Stage U's U3h-b). */
+        const val PHONE_SIZE = "1080x2424"
+        const val PHONE_DENSITY = "420"
+
         /** The screens that draw a QR code, and its kind (U3g). */
         val QR_KINDS: Map<Screen, QrKind> = mapOf(
             Screen.CheckQr to QrKind.CheckRequest,

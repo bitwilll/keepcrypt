@@ -359,6 +359,10 @@ internal object Capture {
         val bounds: Rect,
         val paneTitle: String?,
         val contentDescription: String?,
+        /** The node's class name (a Compose button reports android.widget.Button by its role). */
+        val className: String?,
+        /** Whether the node takes a click (a Protected pad's key keeps its role alone, no click action). */
+        val clickable: Boolean,
     )
 
     /**
@@ -385,6 +389,8 @@ internal object Capture {
                     bounds,
                     node.paneTitle?.toString(),
                     node.contentDescription?.toString(),
+                    node.className?.toString(),
+                    node.isClickable,
                 ),
             )
             for (index in 0 until node.childCount) {

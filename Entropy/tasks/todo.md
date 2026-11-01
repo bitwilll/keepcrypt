@@ -17224,6 +17224,12 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   Proof (M5 commit U2l2, Stage U-5, partial: local): PROMPT_DENY matches both deny ids; AwayTest's back test settles
   3 s after the switch and swipes through input swipe over 300 ms. Locally: both test APKs built by the strict Gradle
   run, no warning; banned-api-check.sh clean.
+  Proof (M5 commit U3h-b, Stage U-5, partial: local; CI's capture jobs at the next push): CaptureTest's walk checks
+  every screen's layout (assertLaidOut: every control, a node that takes a click or a button by its role, at least
+  48 dp each way; every visible text inside the app's window across), at CI's window in its existing walk and on a
+  412 dp phone in a second walk (everyScreenIsLaidOutOnA412DpPhone: wm size 1080x2424, wm density 420, reset in a
+  finally). Capture.NodeFacts gains the node's class name and clickable. The capture jobs are measured at 30 minutes.
+  Locally: both test APKs built by the strict Gradle run, no warning; banned-api-check.sh clean; --workflows clean.
 - [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
   every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
   every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,
