@@ -15995,11 +15995,18 @@ dialog stuck, U1a8 is redesigned from those lines. The M5 gate report names it u
   deaths; AwayTest drops that case, and (b) above describes what the ViewModel's end does. (e) Both emulator images run
   three-button navigation, so the back test switches gesture navigation on for itself (cmd overlay enable-exclusive
   of the gestural navigation bar) and puts three-button navigation back in a finally, so the gesture itself is tested.
+  (f) After run 41275381593: gesture navigation came on (navigation_mode 2) on both levels, but a fast UiDevice swipe
+  made at once brought no Back from the check QR. The test now gives SystemUI 3 s to take up the gestural bar, swipes
+  through the shell's input swipe over 300 ms from the left edge to a third of the width, and names the swipe and
+  navigation_mode in its failure.
 - M5-82 (2026-11-01), Stage U-5, U2l: (a) IdleClockTest makes its ten-minute run on API 36 alone, as the plan said
   ("one idle run on the real clock on API 36"); on API 31 it passes at once with a line naming why, so the script's
   runs stay the same on both levels. (b) API 36's registry job is measured at 40 minutes for that run, API 31's at 30
   (M5-76 (f)). (c) ScanRefusedTest's setup to the check QR goes through the model (an edge test); its scans and the
   system's prompts are pressed on the screen.
+  (d) After run 41275381593: a second CAMERA prompt names its "Don't allow" permission_deny_and_dont_ask_again_button,
+  which Capture.PROMPT_DENY did not match (ScanRefusedTest's "scan 2: the system's CAMERA prompt did not show" on both
+  levels); PROMPT_DENY now matches both ids.
 - M5-78 (2026-10-31), Stage U-5: (a) U2i's DoubleTapTest (four short journeys, about 6 minutes) runs in the capture
   part, after PhoneMotionTest, not the ui part the plan named: the capture jobs (503-535 s) are the run's shortest and
   the ui jobs (1241-1284 s) its longest, so the run's wall time stays where it is; the capture jobs are measured at 30
@@ -17204,6 +17211,19 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   about 14.9:1; white on black exactly 21:1 and a colour on itself 1:1), DocsTextsTest 2 tests, both passing in the
   screens module's JVM run; the stop red alone would be 2.9:1 on black and is drawn only as the stop screen's
   background, under white. banned-api-check.sh clean, 413 files.
+  CI (Entropy Android 41275381593 at 2747960, which holds U2k2 and U2l): the build job green, KitColorsTest and
+  DocsTextsTest among its JVM tests (U3h-a done). IdleClockTest passed on API 36: "covered at 31057 ms, warned at
+  540169 ms, wiped at 600096 ms (Go offline, Idle), the slot at home". AwayTest's screen-off tests passed on both levels
+  (the stop after 567 and 610 ms; back on after 5581 and 5599 ms with the 10 rolls); its back test failed on both,
+  "timed out: Back from the check QR to the seal card" with gesture navigation on (M5-81 (f)). ScanRefusedTest's first
+  denial passed on both ("CAMERA ... granted=false, flags=[ USER_SET|...]"); its second prompt was not found (M5-82
+  (d)). DeviceChangeTest, KillTest, SnapshotDrillTest and LifecycleTest green on both registry jobs. Two runner faults
+  came back: API 36's journeys runner had 3327 MB free ("Not enough space to create userdata partition", the second
+  such runner), and API 31's capture emulator went offline in ControlTest ("adb: device offline", the second time);
+  both stay open items, nothing of this run's changes involved.
+  Proof (M5 commit U2l2, Stage U-5, partial: local): PROMPT_DENY matches both deny ids; AwayTest's back test settles
+  3 s after the switch and swipes through input swipe over 300 ms. Locally: both test APKs built by the strict Gradle
+  run, no warning; banned-api-check.sh clean.
 - [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
   every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
   every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,
@@ -17645,7 +17665,7 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       at 30 s, the warning at 9 minutes and the wipe at 10 from the last input, each within 2.5 s on the model's
       clock, the wipe on Go offline with the Idle notice, the slot at home.
     - [ ] U3h: the layout check, in two parts:
-      - [ ] U3h-a (JVM): KitColorsTest holds every pair the screens draw at WCAG's 4.5:1 (white, muted and warning on
+      - [x] U3h-a (JVM): KitColorsTest holds every pair the screens draw at WCAG's 4.5:1 (white, muted and warning on
         black; white on the stop red; the strip's black on the warning yellow), with the ratio checked on known
         colours; DocsTextsTest pins the two texts docs/mobile-apps.md quotes from the Android app, SAFE_IF_EITHER and
         the gate's action (GATE_ACTION, now a constant), word for word in quotes.

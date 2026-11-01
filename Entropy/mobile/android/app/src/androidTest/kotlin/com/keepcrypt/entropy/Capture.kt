@@ -576,8 +576,12 @@ internal object Capture {
     /** The system's permission prompt: the permission controller's window (AOSP's on these images, Google's elsewhere). */
     val PERMISSION_PROMPT: BySelector = By.pkg(Pattern.compile("com[.](google[.])?android[.]permissioncontroller"))
 
-    /** The permission prompt's "Don't allow". */
-    val PROMPT_DENY: BySelector = By.res(Pattern.compile("com[.](google[.])?android[.]permissioncontroller:id/permission_deny_button"))
+    /**
+     * The permission prompt's "Don't allow": the first prompt's permission_deny_button, or a later prompt's, which
+     * Android names permission_deny_and_dont_ask_again_button (ScanRefusedTest's second denial, run 41275381593).
+     */
+    val PROMPT_DENY: BySelector =
+        By.res(Pattern.compile("com[.](google[.])?android[.]permissioncontroller:id/permission_deny(_and_dont_ask_again)?_button"))
 
     /**
      * Presses the permission prompt's "Don't allow" (deny, found by PROMPT_DENY) once, then waits up to

@@ -112,6 +112,9 @@ class AwayTest {
         if (before != GESTURE) shellText("cmd overlay enable-exclusive --category $GESTURAL")
         val gesture = waitFor(GESTURE)
         if (!gesture) probe("gesture navigation did not come on (navigation_mode " + shellText("settings get secure navigation_mode") + "): the Back key is tested")
+        // SystemUI takes up the gestural navigation bar after the setting reads it (run 41275381593: a swipe made at
+        // once brought no Back on either level).
+        if (gesture && before != GESTURE) SystemClock.sleep(SETTLE_GESTURE_MS)
         try {
             backGesture(gesture)
         } finally {
@@ -144,8 +147,8 @@ class AwayTest {
             await("the seal card", 10) { onMain { activity.model.state.value.screen } == Screen.SealCard }
             onMain { activity.model.showCheckQr() }
             await("the check QR", 10) { onMain { activity.shownScreen } == Screen.CheckQr }
-            back(gesture)
-            await("Back from the check QR to the seal card", 10) { onMain { activity.model.state.value.screen } == Screen.SealCard }
+            val how = back(gesture)
+            await("Back from the check QR to the seal card by " + how, 10) { onMain { activity.model.state.value.screen } == Screen.SealCard }
             back(gesture)
             settle()
             assertEquals("Back on the seal card left it", Screen.SealCard, onMain { activity.model.state.value.screen })
@@ -198,14 +201,20 @@ class AwayTest {
         await("back in the app with the screen on", 30) { stage(activity) == Stage.RESUMED }
     }
 
-    /** The system Back: a swipe in from the left edge under gesture navigation, the Back key otherwise. */
-    private fun back(gesture: Boolean) {
-        if (gesture) {
-            val y = device.displayHeight / 2
-            device.swipe(1, y, device.displayWidth / 2, y, 20)
-        } else {
+    /**
+     * The system Back: under gesture navigation a swipe in from the left edge at mid-height to a third of the width,
+     * over SWIPE_MS through the shell's input (a deliberate thumb's pace), the Back key otherwise. Returns what was
+     * done, for a failure's message.
+     */
+    private fun back(gesture: Boolean): String {
+        if (!gesture) {
             device.pressBack()
+            return "the Back key"
         }
+        val y = device.displayHeight / 2
+        val x = device.displayWidth / 3
+        shellText("input swipe 1 $y $x $y $SWIPE_MS")
+        return "a swipe from (1, $y) to ($x, $y) over $SWIPE_MS ms, navigation_mode " + shellText("settings get secure navigation_mode")
     }
 
     /** A moment for a Back that must do nothing to land. */
@@ -220,6 +229,12 @@ class AwayTest {
     private fun <T> done(reply: Reply<T>): T = (reply as? Reply.Done)?.value ?: throw AssertionError("core refused the call (its reply is not printed)")
 
     private companion object {
+        /** How long SystemUI is given to take up gesture navigation once the setting reads it. */
+        const val SETTLE_GESTURE_MS = 3_000L
+
+        /** The back swipe's length in time. */
+        const val SWIPE_MS = 300
+
         /** navigation_mode's gesture navigation, and the system's overlays that switch it. */
         const val GESTURE = "2"
         const val GESTURAL = "com.android.internal.systemui.navbar.gestural"
