@@ -17120,6 +17120,9 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   (1311 s and 1285 s); SnapshotDrillTest 4, LifecycleTest 8, DeviceChangeTest and CrashTest on both registry jobs (1017 s
   and 1016 s: 22 minutes each by M5-30). No "the press guard did not open" and no wait over 300 ms printed (M5-79 (f)).
   U2i is proven with its fix, the press guard.
+  CI (Entropy Android 41262453126 at 70dc2e8, the bookkeeping commit): every job green again on both levels, the
+  budgets (capture 17/16, journeys 27/26, ui 26/27, registry 22/22) holding: the press guard and Ui.on's wait for it
+  pass a second run.
 - [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
   every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
   every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,
@@ -17519,6 +17522,28 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       then KillTest pins, for the dice, a words page and Check a backup's entry: the next start shows First launch (or
       Go offline after the self-test), the slot empty, nothing restored, and step 7's listing finds nothing persisted.
       android-emulator.sh gains the kill between the runs (a part's step, with its own selftest cases).
+      Planned in detail 2026-11-01 (the lead's, after run 41262453126): the instrumentation runs in the app's own
+      process, so no test can kill the app and watch it return, and every instrumented run already ends with the
+      process gone (android-instrument.sh's judge checks it). So:
+      - [ ] U2j-a, the probe (registry part, after DeviceChangeTest, before the killed CrashTest): MainActivity
+        records what its onCreate was given (whether a saved-state Bundle came, the launching intent's action and
+        flags), read-only to the instrumentation as shownScreen is; no behaviour changes. KillTest#theStartAfterAKill,
+        run by the script after each kill below, starts MainActivity as a person returning does (the launcher's
+        intent from the shell, no CLEAR_TASK, so a task left in recents comes forward), waits for it through the
+        lifecycle monitor and prints one probe line: a Bundle or none, the intent's flags, the screen shown, the slot
+        at home or not (Core.selfTest), and the app's line in dumpsys activity recents. It asserts only what holds
+        on any restore path: First launch shown, the slot empty. The script's three kills, each before a run of it:
+        the backgrounded app killed as the system reclaims it (am start of the launcher activity outside any
+        instrumentation, Home, then am kill); the app killed in the foreground (am start, then kill -9 of its pid as
+        root, named as not made where adb root is refused, as step 7 does); and a run that ends on the dice with
+        rolls held (KillTest#leavesTheDiceHeld), whose instrumentation's own end is the kill (its logcat line, force
+        stop or kill, printed). Each kill's pidof after it printed.
+      - [ ] U2j-b, KillTest proper, written from the probe's lines: for the dice, a words page and Check a backup's
+        entry, a run leaves the session there, the kill the probe shows faithful to the system's is made, and the next
+        run's start shows First launch (Go offline after its self-test), the slot empty, nothing of the session
+        restored whatever Bundle came; the part's step 7 then finds nothing persisted.
+      - Verification: the script's selftest cases for the kills and the new runs (android-emulator.sh, and
+        android-local.sh's run counts), both selftests, the gate, the strict build, and CI's registry jobs.
     - [ ] U2k: leaving by the screen turning off (input keyevent KEYCODE_SLEEP, then WAKEUP and the keyguard
       dismissed) on a Protected screen (discarded at once) and on a Public one (covered, kept under 60 s); the
       activity destroyed while away (settings put global always_finish_activities 1, put back in a finally): on
