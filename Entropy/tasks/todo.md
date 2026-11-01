@@ -15981,6 +15981,13 @@ dialog stuck, U1a8 is redesigned from those lines. The M5 gate report names it u
   which needs a backup made first; the Bundle is SecureActivity's, the same on every screen); and each start after a
   kill is given none. Calling onSaveInstanceState by hand was rejected: ComponentActivity moves its lifecycle to
   CREATED there, pausing the screens.
+- M5-81 (2026-11-01), Stage U-5, U2k: (a) AwayTest's setup goes through the model's entry points, as LifecycleTest's
+  does (an edge test; the journeys are the UI's alone). (b) The activity destroyed while away (Android's "Don't keep
+  activities") ends its ViewModel, whose onCleared wipes the slot: the return is a new model on First launch with no
+  notice (a new model knows nothing of the old). The plan's "Go offline with the notice" assumed the model outlived its
+  activity; what is pinned is what is built, and it fails closed. Where a wipe should land and what it should say is
+  the owner's Q81, U-6's. (c) The back gesture is checked where Back goes somewhere and where it must do nothing, on
+  the dice, the check QR and the seal card; the words page and every other screen are BackTest's (JVM).
 - M5-78 (2026-10-31), Stage U-5: (a) U2i's DoubleTapTest (four short journeys, about 6 minutes) runs in the capture
   part, after PhoneMotionTest, not the ui part the plan named: the capture jobs (503-535 s) are the run's shortest and
   the ui jobs (1241-1284 s) its longest, so the run's wall time stays where it is; the capture jobs are measured at 30
@@ -17158,6 +17165,12 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   kill is given no saved state; DeviceChangeTest asserts each of its 24 recreations is given no Bundle or an empty one,
   its probe line naming what the last one was given. Locally: the strict Gradle run with every JVM test, no warning;
   banned-api-check.sh clean.
+  Proof (M5 commit U2k, Stage U-5, partial: local; CI's registry jobs at the next push): AwayTest's four tests (the
+  screen off on a words page and on the dice, the activity destroyed while away, the back gesture), in the registry
+  part after DeviceChangeTest (the pinned orders, an away-test-fails case; android-emulator.sh --selftest 62 passed;
+  android-local.sh's whole run twenty runs, its registry part nine, --selftest 47 passed); the registry jobs measured
+  at 30 minutes. The gate refused a Reply printed in a message (KtLog), fixed before the commit. Locally: both test
+  APKs built by the strict Gradle run, no warning; banned-api-check.sh clean, 409 files; --workflows clean.
 - [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
   every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
   every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,
@@ -17583,13 +17596,15 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
         createdWith names any keys it holds, never a value). The part's step 7 still finds nothing persisted.
       - Verification: the script's selftest cases for the kills and the new runs (android-emulator.sh, and
         android-local.sh's run counts), both selftests, the gate, the strict build, and CI's registry jobs.
-    - [ ] U2k: leaving by the screen turning off (input keyevent KEYCODE_SLEEP, then WAKEUP and the keyguard
-      dismissed) on a Protected screen (discarded at once) and on a Public one (covered, kept under 60 s); the
-      activity destroyed while away (settings put global always_finish_activities 1, put back in a finally): on
-      return a new activity shows the held session's screen under the cover, or Go offline with the notice where the
-      session was discarded; the back gesture (a swipe from the left edge on gesture navigation, KEYCODE_BACK
-      otherwise; API 36's predictive back) doing what Back does on the dice, a words page and a gate (BackTest's
-      table).
+    - [ ] U2k: leaving by other ways than Home (AwayTest, registry part after DeviceChangeTest, M5-81): the screen
+      turning off (KEYCODE_SLEEP; then KEYCODE_WAKEUP and wm dismiss-keyguard) on a words page, a Protected screen,
+      discarded at once (Go offline, the Left notice, the page wiped, the slot at home), and on the dice, a Public
+      screen, covered and kept (5 s off, back under the cover with its 10 rolls); the activity destroyed while away
+      (always_finish_activities 1, put back in a finally): the ViewModel ends with its activity, so its wipeAll empties
+      the slot, and the return is a new activity over a new model on First launch; the back gesture (a swipe in from
+      the left edge under gesture navigation, the Back key under three buttons) doing what the model's back does:
+      nothing on the dice (its rolls kept) and the seal card, the check QR back to the seal card (BackTest's JVM table
+      holds every screen).
     - [ ] U2l: the camera denied twice (pm revoke between, the second denial with "don't ask again"): the scan
       screen shows SCAN_REFUSED (CheckScreens' line: type the go-ahead code instead) and Type code still reaches the
       code entry, the check open; and one idle run on the real clock on API 36 (its registry job): the cover at 30 s
