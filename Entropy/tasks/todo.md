@@ -17199,6 +17199,11 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   passed); API 36's registry job measured at 40 minutes. The gate refused a template in an AssertionError's message
   (KtLog), made a concatenation before the commit. Locally: both test APKs built by the strict Gradle run, no warning;
   banned-api-check.sh clean, 411 files; --workflows clean.
+  Proof (M5 commit U3h-a, Stage U-5, local): KitColorsTest 2 tests (every pair at 4.5:1 or more: white on black 21:1,
+  muted 9E9E9E about 7.8:1, warning FFD54F about 14.9:1, white on the stop red B00020 about 7.3:1, black on the warning
+  about 14.9:1; white on black exactly 21:1 and a colour on itself 1:1), DocsTextsTest 2 tests, both passing in the
+  screens module's JVM run; the stop red alone would be 2.9:1 on black and is drawn only as the stop screen's
+  background, under white. banned-api-check.sh clean, 413 files.
 - [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
   every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
   every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,
@@ -17639,11 +17644,14 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       IdleClockTest, on API 36 alone (it passes at once elsewhere, saying so): a words page left untouched, the cover
       at 30 s, the warning at 9 minutes and the wipe at 10 from the last input, each within 2.5 s on the model's
       clock, the wipe on Go offline with the Idle notice, the slot at home.
-    - [ ] U3h: the layout check: CaptureTest's walk reads every node's bounds in-process at CI's window (720x1280,
-      density 320) and on a 412 dp phone (wm size 1080x2424 and wm density 420, put back in a finally): no text node
-      outside its screen's window or cut by its parent, each control's touch target at least 48 dp, the docs' texts
-      pinned (their constants compared with docs/mobile-apps.md's quoted lines), and KitColors' text and background
-      pairs at WCAG's 4.5:1 (a JVM test of the palette).
+    - [ ] U3h: the layout check, in two parts:
+      - [ ] U3h-a (JVM): KitColorsTest holds every pair the screens draw at WCAG's 4.5:1 (white, muted and warning on
+        black; white on the stop red; the strip's black on the warning yellow), with the ratio checked on known
+        colours; DocsTextsTest pins the two texts docs/mobile-apps.md quotes from the Android app, SAFE_IF_EITHER and
+        the gate's action (GATE_ACTION, now a constant), word for word in quotes.
+      - [ ] U3h-b (device): CaptureTest's walk reads every node's bounds in-process at CI's window (720x1280, density
+        320) and on a 412 dp phone (wm size 1080x2424 and wm density 420, put back in a finally): no text node outside
+        its screen's window or cut by its parent, each control's touch target at least 48 dp.
     - Verification: as U-4's (the instrumented sources built, the gate, every script selftest that reads a changed
       script, three reviews at the stage's head, CI read once per push).
   - U-5, U2 on the device and U3's layout check: U2h (recreation), U2i (double taps), U2j (the process killed at a

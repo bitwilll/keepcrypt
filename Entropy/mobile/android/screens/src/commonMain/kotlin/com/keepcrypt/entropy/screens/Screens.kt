@@ -348,6 +348,9 @@ const val PRIVACY_GATE_TITLE = "Privacy gate"
 /** The privacy cover's pane title (U3g). */
 const val COVER_TITLE = "Screen covered"
 
+/** The privacy gate's one action, as docs/mobile-apps.md quotes it (DocsTextsTest pins it there, U3h). */
+const val GATE_ACTION = "I'm alone, show words"
+
 /** The idle warning's pane title (U3g). */
 const val IDLE_WARNING_TITLE = "Idle warning"
 
@@ -366,7 +369,7 @@ fun paneTitleOf(state: UiState): String = if (state.gate) PRIVACY_GATE_TITLE els
  */
 @Composable
 fun PrivacyGate(testRegistry: Boolean, pass: () -> Unit, words: Boolean = false) {
-    KitScreen("privacy_gate", testRegistry, actions = { KitButton("I'm alone, show words", "pass_gate", onClick = pass) }) {
+    KitScreen("privacy_gate", testRegistry, actions = { KitButton(GATE_ACTION, "pass_gate", onClick = pass) }) {
         KitText("The next screen shows a secret. No person or camera may see it.")
         if (words) {
             KitText(SEEDBOOK_RULES, KitType.small, tag = "seedbook_rules")
