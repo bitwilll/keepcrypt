@@ -30,15 +30,16 @@ import org.junit.runner.RunWith
  * Leaving the app by other ways than Home (tasks/todo.md, Stage U's U2k), on the shipping app in
  * android-emulator.sh's registry part: the screen turning off (KEYCODE_SLEEP, then KEYCODE_WAKEUP and the
  * keyguard dismissed) on a words page, a Protected screen, which is discarded at once, and on the dice, a
- * Public screen, which is covered and kept (under the 60 s rule); the activity destroyed while away (Android's
- * "Don't keep activities", always_finish_activities, put back in a finally); and the back gesture (a swipe from
- * the left edge under gesture navigation, KEYCODE_BACK otherwise) doing what the model's back does. Setup goes
+ * Public screen, which is covered and kept (under the 60 s rule); and the back gesture (gesture navigation switched
+ * on through the system's gestural overlay for the test and three-button navigation put back after; a swipe in
+ * from the left edge, or KEYCODE_BACK where the switch does not take, named so) doing what the model's back does.
+ * The activity destroyed while away is LifecycleTest's finish and KillTest's process deaths (lead decision M5-81
+ * (d): the shell's always_finish_activities is not applied by the activity manager). Setup goes
  * through the model's entry points, as LifecycleTest's does (an edge test; the journeys are the UI's alone), with
  * vectors/kcr.json's dice-50-words12 rolls; only screen ids, notices, counts and times are printed.
  */
 @RunWith(AndroidJUnit4::class)
 class AwayTest {
-    private val component get() = Capture.instrumentation.targetContext.packageName + "/com.keepcrypt.entropy.MainActivity"
 
     @Test
     fun theScreenTurningOffOnAWordsPageDiscardsTheSessionAtOnce() {
@@ -106,49 +107,23 @@ class AwayTest {
     }
 
     @Test
-    fun theActivityDestroyedWhileAwayLeavesNoSession() {
-        val before = shellText("settings get global always_finish_activities")
+    fun theBackGestureDoesWhatBackDoes() {
+        val before = shellText("settings get secure navigation_mode")
+        if (before != GESTURE) shellText("cmd overlay enable-exclusive --category $GESTURAL")
+        val gesture = waitFor(GESTURE)
+        if (!gesture) probe("gesture navigation did not come on (navigation_mode " + shellText("settings get secure navigation_mode") + "): the Back key is tested")
         try {
-            shellText("settings put global always_finish_activities 1")
-            Capture.whileOffline {
-                val activity = toDice()
-                roll(activity, ROLLS)
-                val model = activity.model
-                device.pressHome()
-                await("the activity destroyed while away", 30) { onMain { activity.isDestroyed } }
-                val heldAway = onMain { model.held.value }
-                shellText("am start -n $component")
-                var next: MainActivity? = null
-                await("a new MainActivity resumed", 30) {
-                    next = onMain {
-                        ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)
-                            .filterIsInstance<MainActivity>().firstOrNull { it !== activity }
-                    }
-                    next != null
-                }
-                val back = checkNotNull(next)
-                await("the new activity's first screen", 10) { onMain { back.shownScreen } != null }
-                val shown = onMain { back.shownScreen }
-                val home = Core.selfTest() is Reply.Done
-                probe(
-                    "the activity destroyed while away: the old model held " + (if (heldAway) "a session" else "nothing") +
-                        " once destroyed; the new activity has " + (if (onMain { back.model } === model) "the same model" else "a new model") +
-                        ", shows " + (shown?.let(::screenId) ?: "nothing") + ", the slot " + (if (home) "at home" else "not at home"),
-                )
-                assertTrue("the old activity's model still holds the session after its activity was destroyed", !heldAway)
-                assertTrue("the slot is not at home: the session outlived its activity", home)
-                assertEquals("the return does not show the first screen", Screen.FirstLaunch, shown)
-                pass("the activity destroyed while away: its model's end emptied the slot; back, a new activity on First launch")
-                finish(back)
-            }
+            backGesture(gesture)
         } finally {
-            shellText("settings put global always_finish_activities " + if (before == "1") "1" else "0")
+            if (before != GESTURE) {
+                shellText("cmd overlay enable-exclusive --category $THREE_BUTTON")
+                waitFor(before)
+            }
         }
     }
 
-    @Test
-    fun theBackGestureDoesWhatBackDoes() {
-        val gesture = shellText("settings get secure navigation_mode") == "2"
+    /** The back test proper: Back by the gesture where gesture navigation is on, by the key otherwise. */
+    private fun backGesture(gesture: Boolean) {
         Capture.whileOffline {
             val activity = toDice()
             roll(activity, ROLLS)
@@ -178,6 +153,16 @@ class AwayTest {
                 ": nothing on the dice and the seal card, the check QR back to the seal card")
             finish(activity)
         }
+    }
+
+    /** Whether navigation_mode reads mode within 10 s. */
+    private fun waitFor(mode: String): Boolean {
+        val end = SystemClock.elapsedRealtime() + 10_000
+        while (shellText("settings get secure navigation_mode") != mode) {
+            if (SystemClock.elapsedRealtime() > end) return false
+            SystemClock.sleep(200)
+        }
+        return true
     }
 
     /** A new MainActivity through First launch's Continue (the self-test) and Go offline's Start, to the dice of a dice-only 12-word seed. */
@@ -235,6 +220,11 @@ class AwayTest {
     private fun <T> done(reply: Reply<T>): T = (reply as? Reply.Done)?.value ?: throw AssertionError("core refused the call (its reply is not printed)")
 
     private companion object {
+        /** navigation_mode's gesture navigation, and the system's overlays that switch it. */
+        const val GESTURE = "2"
+        const val GESTURAL = "com.android.internal.systemui.navbar.gestural"
+        const val THREE_BUTTON = "com.android.internal.systemui.navbar.threebutton"
+
         /** dice-50-words12's 50 rolls: its pattern repeated. */
         val ROLLS_50 = DICE_50_ROLLS.repeat(9).take(50)
 

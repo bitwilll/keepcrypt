@@ -16,13 +16,12 @@ things stand and what comes next.
     press guard (`screens/.../PressGuard.kt`, wired in `Screens.kt`, owned by `MainActivity.pressGuard`; M5-79), at
     b184be2, where every job is green. A new view (screen, gate, overlay) takes no touch until 300 ms after the frame
     that composed it; `Ui.on` waits for the guard as a person sees a screen before pressing (M5-79 (f)).
-  - **U2j-a (the kill probe) done** at c5189da: every start after a kill (am kill in the background, kill -9 in the
-    foreground, a run's own end) is given no Bundle; 0 of the app's tasks stay in recents on API 31, 1 on API 36.
-  - **U2j-b at the head, its CI owed** (M5-80): KillTest asserts no saved state after each kill, and DeviceChangeTest
-    that each of its 24 recreations is given no Bundle or an empty one (the Bundle a process death keeps). If that
-    assertion fails, Android keeps keys SecureActivity did not clear: a finding about the app, fixed there.
-  - U2k, U2l and U3h: planned, not started.
-- Budgets (M5-30, measured + 25%): capture 17/16, journeys 27/26, ui 26/27, registry 21/22 minutes.
+  - **U2j done** (U2j-a's probe and U2j-b's assertions green at a50d6de, M5-80).
+  - **U2k (AwayTest) at the head, its CI owed**: the screen off on a words page and on the dice, and the back gesture
+    with gesture navigation switched on for the test (M5-81). Its destroyed-while-away case was dropped (M5-81 (d)).
+  - U2l and U3h: planned, not started.
+- Budgets (M5-30, measured + 25%): capture 17/16, journeys 27/26, ui 26/27 minutes; registry at 30 until AwayTest's
+  first green run measures it.
 
 ## Next steps, in order
 
