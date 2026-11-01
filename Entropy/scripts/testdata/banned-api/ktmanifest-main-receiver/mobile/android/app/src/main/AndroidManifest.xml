@@ -1,0 +1,3 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <receiver android:name=".Boot" android:exported="false" />
+</manifest>

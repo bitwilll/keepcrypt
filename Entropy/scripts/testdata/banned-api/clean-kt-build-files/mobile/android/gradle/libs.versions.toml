@@ -1,0 +1,6 @@
+[versions]
+agp = "9.3.3"
+kotlin = "2.4.20"
+
+[libraries]
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version = "1.13.0" }

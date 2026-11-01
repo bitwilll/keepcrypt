@@ -1,0 +1,1 @@
+configurations.all { resolutionStrategy { disableDependencyVerification() } }

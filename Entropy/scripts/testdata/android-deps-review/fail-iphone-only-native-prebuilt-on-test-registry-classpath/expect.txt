@@ -1,0 +1,2 @@
+1
+classpath: org.jetbrains.kotlin:kotlin-native-prebuilt:2.4.20 is an iPhone-only artifact (Q67) on mobile/android/app/gradle.lockfile's withTestRegistryReleaseRuntimeClasspath

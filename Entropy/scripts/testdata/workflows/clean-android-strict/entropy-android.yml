@@ -1,0 +1,11 @@
+permissions:
+  contents: read
+jobs:
+  a:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: sh scripts/android-gradle.sh --dependency-verification strict test
+      - run: sh scripts/android-gradle.sh -F strict test
+      - run: mkfs.vfat -F 32 "$img"
+      - run: |
+          sh scripts/android-gradle.sh --dependency-verification strict --offline -Pkc.canary=true :app:assembleShippingRelease

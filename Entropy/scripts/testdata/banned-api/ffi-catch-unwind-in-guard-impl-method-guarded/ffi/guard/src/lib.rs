@@ -1,0 +1,14 @@
+// A method named guarded is not the crate root's fn guarded: Recover::guarded returns the panic.
+struct Recover;
+impl Recover {
+    fn guarded<R>(f: impl FnOnce() -> R + UnwindSafe) -> Result<R, Box<dyn Any + Send>> {
+        std::panic::catch_unwind(f)
+    }
+}
+pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {
+    let input = Zeroizing::new(input);
+    match Recover::guarded(|| keepcrypt_ffi::dispatch(op, &input)) {
+        Ok(out) => out,
+        Err(payload) => halt(payload),
+    }
+}

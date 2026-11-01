@@ -1,0 +1,1 @@
+val scope = CoroutineScope(SupervisorJob())

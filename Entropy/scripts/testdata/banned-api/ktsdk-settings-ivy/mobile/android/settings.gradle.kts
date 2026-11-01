@@ -1,0 +1,1 @@
+ivy { name = "vendor" }

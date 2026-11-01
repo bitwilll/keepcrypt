@@ -1,0 +1,14 @@
+-- Merging decision tree log ---
+manifest
+ADDED from /stub/app/src/main/AndroidManifest.xml:10:1-35:12
+	package
+		INJECTED from /stub/app/src/main/AndroidManifest.xml
+uses-permission#android.permission.HIDE_OVERLAY_WINDOWS
+ADDED from /stub/app/src/main/AndroidManifest.xml:13:5-82
+	android:name
+		ADDED from /stub/app/src/main/AndroidManifest.xml:13:22-79
+provider#androidx.startup.InitializationProvider
+ADDED from [androidx.startup:startup-runtime:1.1.1] /stub/startup/AndroidManifest.xml:24:9-28:34
+REJECTED from /stub/app/src/main/AndroidManifest.xml:33:9-170
+	android:authorities
+		ADDED from [androidx.startup:startup-runtime:1.1.1] /stub/startup/AndroidManifest.xml:26:13-68

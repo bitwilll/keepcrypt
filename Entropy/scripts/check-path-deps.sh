@@ -7,8 +7,10 @@
 # - A vendored crate under the workspace root becomes a workspace member, which every gate
 #   skips: silently as a plain path dependency, or openly when listed in [workspace] members.
 #   So the members are pinned below, whatever the root Cargo.toml lists: exactly core, ffi,
-#   pi/app and pi/sim, by manifest path. A missing one fails too (`cargo clippy --workspace`
-#   would no longer lint it). Changing the set is a reviewed change to this script.
+#   ffi/guard, ffi/jni, pi/app and pi/sim, by manifest path (tasks/todo.md, M5 group 7 and lead
+#   decision M5-32). A missing one fails too (`cargo clippy --workspace` would no longer lint it),
+#   and so does keepcrypt-capi at ffi/capi, the iPhone boundary, which is M6's (Q73). Changing the
+#   set is a reviewed change to this script.
 # - Cargo config can replace the crates.io source with a vendored directory, which keeps the
 #   crates.io source in cargo metadata while swapping the code, and can add [patch], paths
 #   overrides and rustflags. The project has no cargo config, so any .cargo/config or
@@ -46,7 +48,7 @@ def error(msg):
 CRATES_IO = "registry+https://github.com/rust-lang/crates.io-index"
 # The workspace members, pinned here rather than read from the root Cargo.toml, the file a
 # vendored crate would be listed in.
-PINNED = ("core", "ffi", "pi/app", "pi/sim")
+PINNED = ("core", "ffi", "ffi/guard", "ffi/jni", "pi/app", "pi/sim")
 try:
     meta = json.load(sys.stdin)
     member_ids = set(meta["workspace_members"])

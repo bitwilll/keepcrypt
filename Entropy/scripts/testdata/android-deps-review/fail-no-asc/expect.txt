@@ -1,0 +1,2 @@
+1
+Maven Central publishes no .asc signature

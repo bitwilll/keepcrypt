@@ -1,0 +1,2 @@
+1
+com.google.guava:listenablefuture:1.0: a parent POM that is not group, name and version

@@ -1,0 +1,9 @@
+permissions:
+  contents: read
+jobs:
+  a:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: sh scripts/android-gradle.sh --dependency-verification strict test
+        env:
+          ORG_GRADLE_PROJECT_kc.canary: "true"

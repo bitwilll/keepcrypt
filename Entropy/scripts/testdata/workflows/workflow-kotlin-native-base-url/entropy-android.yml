@@ -1,0 +1,7 @@
+permissions:
+  contents: read
+jobs:
+  a:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: sh scripts/android-gradle.sh --dependency-verification strict -Pkotlin.native.distribution.baseDownloadUrl=https://example.invalid help

@@ -1,0 +1,2 @@
+1
+licence: androidx.annotation:annotation:1.9.1: no licence in its POM or any parent POM

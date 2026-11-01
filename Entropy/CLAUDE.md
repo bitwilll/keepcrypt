@@ -46,7 +46,10 @@ pass. If one seems to block you, ask the owner.
    Python `random`, `mt19937`, `rand()`/`srand()`, and any hand-written PRNG.
    Games get their bytes from core's separate `game_random` call, which makes its own
    `getrandom` call and never touches the pool. `game_random` is never used for dice, D,
-   nonces, passphrases or any pool input.
+   nonces, passphrases or any pool input. The bans bind KeepCrypt's own code, checked in our
+   sources by the grep gate and in the built app by a scan of our compiled classes; library
+   classes our code never reaches (for example Kotlin's own `Random` inside its standard
+   library) are allowed.
 2. **Never narrow the pipe:** nothing between the pool and the seed is narrower than 256 bits.
    No truncation to `u32`/`u64`, no integer casts of secret material, no "reseed with 4 bytes".
 3. **Fail closed:** no fallback source, no default value, no `unwrap_or*` and no
@@ -68,7 +71,9 @@ pass. If one seems to block you, ask the owner.
    firmware also reads `/dev/hwrng`, its root partition (for the boot hash) and fixed entries and
    patterns under `/proc` and `/sys` (the board and USB sticks), drives its GPIO and SPI device
    nodes, and mounts only the USB stick, at `/mnt/usb`. pi-firmware.md's Process rules list every
-   path, and a grep gate holds the firmware to that list.
+   path, and a grep gate holds the firmware to that list. Files the operating system keeps about
+   an app (compiled code, runtime profiles, package records) are not files the app writes; the
+   app's own storage stays empty, which an emulator test proves after every full ceremony.
 9. **Apps:** Android has no `INTERNET` permission and sets `FLAG_SECURE` on every window,
    including dialogs and popups. iOS has no networking code and uses capture-state redaction,
    discard-on-screenshot and an app-switcher cover. No analytics, crash or ad SDKs.

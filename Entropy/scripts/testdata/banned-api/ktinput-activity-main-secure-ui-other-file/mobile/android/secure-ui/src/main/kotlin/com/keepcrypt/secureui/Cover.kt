@@ -1,0 +1,1 @@
+class CoverActivity : ComponentActivity()

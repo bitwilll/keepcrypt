@@ -1,0 +1,1 @@
+val cloud = NSUbiquitousKeyValueStore.defaultStore

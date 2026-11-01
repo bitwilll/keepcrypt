@@ -1,5 +1,5 @@
 # Stand-in for the real workspace's pi/app/ member: scripts/check-path-deps.sh pins the members to
-# core, ffi, pi/app and pi/sim. No code.
+# core, ffi, ffi/guard, ffi/jni, pi/app and pi/sim. No code.
 [package]
 name = "canary-pi"
 version = "0.0.0"

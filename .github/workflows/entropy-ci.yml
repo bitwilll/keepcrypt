@@ -101,7 +101,14 @@ jobs:
     # fallback and discard methods (rule 3); their shared [lints] forbid switching that off and
     # deny print and dbg (rule 5). Clippy runs twice: with default features, the release
     # configuration, and with all features, so the test-sources stubs and the test-registry code
-    # (rule 10) meet the same lints.
+    # (rule 10) meet the same lints. Before them, the grep gate's fault check (tasks/todo.md, lead
+    # decision M5-66): each tool the gate runs, in each mode the check runs it in, fails at every
+    # place that runs it, unable to start, exiting 2 with nothing, and killed partway, and every
+    # such run must stop the gate with exit 2, naming the tool, how it failed and what it read. It
+    # needs sh, bash, git, the gate's own tools and, for --artifact's object, the pinned toolchain
+    # (so it runs after the toolchain's install), and runs here because the gates job has no time
+    # to spare (688 s of its 720 at 6a6a34f, run 40455117393). The canaries left that job for
+    # supply-chain, not this one (M5-67).
     name: lint (fmt, clippy)
     needs: changes
     if: needs.changes.outputs.entropy == 'true'
@@ -123,6 +130,7 @@ jobs:
           rustup toolchain install
           rustc --version
           cargo --version
+      - run: sh scripts/banned-api-faults.sh
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
@@ -175,6 +183,14 @@ jobs:
       - run: cargo test --workspace --locked
       - run: cargo test -p keepcrypt-core --locked --features test-sources
       - run: cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry
+      # M5 (tasks/todo.md, group 12): the FFI's three crates alone, their features unified among
+      # themselves as in the phone library's build, not across the workspace; then with
+      # test-registry, so the tests that branch on registry_key_is_test() run their registry half.
+      # keepcrypt-ffi depends on keepcrypt-core, so cargo takes the feature with these three
+      # selected (on keepcrypt-jni alone it refuses it, lead decision M5-35), and no -p
+      # keepcrypt-core is needed, which would add core's dev-dependencies and tests.
+      - run: cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni --locked
+      - run: cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni --locked --features keepcrypt-core/test-registry
       # --target keeps the cfg off build scripts: cargo applies a target's rustflags to host
       # artifacts only when no --target is given.
       - name: Build the test-registry simulator for release (x86_64 Linux, its own target dir)
@@ -252,7 +268,13 @@ jobs:
     # crates.io only and a fixed licence list, and fails on advisories; cargo audit prints
     # unmaintained crates as warnings; cargo vet needs an audit or exemption for every crate.
     # check-path-deps.sh fails any non-workspace crate not from crates.io, such as a [patch],
-    # [replace] or .cargo path override, which deny's source check and vet let through.
+    # [replace] or .cargo path override, which deny's source check and vet let through. Then the
+    # canaries (tasks/todo.md, lead decision M5-67): crates that must fail cargo-deny and clippy,
+    # mutated copies of the real crates, a path override, the dependency graph pins, a changed byte
+    # in each vectors file vectorgen.py writes or reads back, a changed agreement.json value core's
+    # agreement test must refuse, copies of verify.py that check 12 must fail, and the artifact
+    # scan's positive controls on host release probes built with test-registry and test-sources
+    # (rule 10), each of which must fail on every run, so a gate that stops firing turns CI red.
     name: supply-chain (deny, audit, vet)
     needs: changes
     if: needs.changes.outputs.entropy == 'true'
@@ -286,6 +308,15 @@ jobs:
       - run: cargo deny --locked check
       - run: cargo audit
       - run: cargo vet --locked
+      # The canaries moved here from the gates job (M5-67; the numbers are at that job's self-test
+      # step): beside the gate's self-test shards they were the step's long pole, and the job had
+      # no time to spare. This job had time (32 to 44 s), and lint runs the gate's fault check
+      # (M5-66). What canaries.sh needs, the steps above already set up: the toolchain from
+      # rust-toolchain.toml (clippy, and llvm-tools-preview's llvm-nm for the artifact scan),
+      # cargo-deny on PATH and the registry caches; python3 3.11 or later, git and a C compiler come
+      # with the runner. Its output is the step's log, which ends with its count line. Last, so
+      # deny, audit and vet report first.
+      - run: scripts/canaries.sh
 
   gates:
     # Rule 1 and the network and clipboard bans as a grep gate, plus its self-test (with the
@@ -296,7 +327,14 @@ jobs:
     # run step; the image's text-only configuration check (M4 group 11, --os-config): pi/os's
     # inittab, fstab, cmdline.txt and config.txt, expected/linux.config against the fragment's
     # required and forbidden lists with one hwrng driver, and BusyBox's config with init and mount
-    # alone; the verifier self-test (13 checks: every vectors/ file regenerated or recomputed,
+    # alone; the APK check's self-test (M5 group 5, --selftest-apk; no Android SDK: stub tools and
+    # stub APKs): its refusals, and the manifest, native-library, marker, dex-reference, alignment
+    # and signer rules each firing exactly once on its case; the Android Rust library script's
+    # self-test (M5 group 4, scripts/android-rust.sh --selftest; no NDK: stand-in tools, cargo and
+    # scan): both flavours' builds and copies, and each of its checks failing on its case (an import
+    # the API 31 stubs lack, a scan outcome, a copy with other bytes, a failing sha256sum); the
+    # verifier self-test (13 checks:
+    # every vectors/ file regenerated or recomputed,
     # Coldcard's hash-pinned scripts re-run behind rolls.json and on agreement.json's dice-only
     # subset, and lone copies of the shipped verify.py under an audit hook, piped and in a
     # pseudo-terminal); the
@@ -304,13 +342,9 @@ jobs:
     # that pi/app's device/rootfs test pins, recomputed by the script that gives each image's, and
     # each of its refusals; the kernel allow-list script's self-test (M4 group 13): kconfig.sh on
     # a stub kernel tree, refusing a forbidden option selected back on, a required one dropped and
-    # a module left; and
-    # the canaries: crates that must fail cargo-deny and clippy, mutated copies of the real crates,
-    # a path override, the dependency graph pins, a changed byte in each vectors file vectorgen.py
-    # writes or reads back, a changed agreement.json value core's agreement test must refuse,
-    # copies of verify.py that check 12 must fail, and the artifact scan's positive controls on
-    # host release probes built with test-registry and test-sources (rule 10), each of which must
-    # fail on every run, so a gate that stops firing turns CI red.
+    # a module left. The canaries ran here until lead decision M5-67 moved them to supply-chain,
+    # with cargo-deny's install and the registry cache, which only they used; the job keeps its
+    # name, one of the 14 required checks.
     name: gates (banned APIs, verifier, canaries)
     needs: changes
     if: needs.changes.outputs.entropy == 'true'
@@ -325,6 +359,8 @@ jobs:
       - run: scripts/banned-api-check.sh
       - run: scripts/banned-api-check.sh --workflows ../.github/workflows
       - run: scripts/banned-api-check.sh --os-config pi/os
+      - run: scripts/banned-api-check.sh --selftest-apk
+      - run: sh scripts/android-rust.sh --selftest
       - run: python3 -I tools/verify/vectorgen.py --selftest
       - run: python3 -I pi/os/rootfs-prefix.py --selftest
       - run: sh pi/os/kconfig.sh --selftest
@@ -333,26 +369,52 @@ jobs:
           rustup toolchain install
           rustc --version
           cargo --version
-      # After the toolchain: the artifact fixtures need rustc, the aarch64-linux-android,
-      # aarch64-apple-ios and arm-unknown-linux-gnueabihf targets, and llvm-nm and llvm-ar from
-      # llvm-tools-preview.
-      - run: scripts/banned-api-check.sh --selftest
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        id: tools
-        with:
-          path: ~/.cargo-tools
-          key: ${{ runner.os }}-${{ runner.arch }}-tools-${{ env.CARGO_DENY }}
-      - name: Install cargo-deny
-        if: steps.tools.outputs.cache-hit != 'true'
-        run: cargo install --locked --root "$HOME/.cargo-tools" "$CARGO_DENY"
-      - run: echo "$HOME/.cargo-tools/bin" >> "$GITHUB_PATH"
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-          key: ${{ runner.os }}-${{ runner.arch }}-gates-${{ hashFiles('Entropy/rust-toolchain.toml', 'Entropy/Cargo.lock') }}
-      - run: scripts/canaries.sh
+      # After the toolchain, the gate's self-test runs as two shards side by side, each into its own
+      # log, which the step then prints. The self-test grows with every rule (M5-63); each shard
+      # runs every other case of the one list (banned-api-check.sh, "Selftest shards"). The
+      # canaries ran beside the shards until lead decision M5-67 moved them to supply-chain: at
+      # 6a6a34f (run 40455117393) this step took 597 s and the job 688 s of its 12 minutes (Q31
+      # (f)), only 13 s under the unsharded job at 4940ede (701 s, run 40442191525), since on the
+      # runner's four cores the shards and canaries.sh's cargo builds contend for the same CPUs, and
+      # canaries.sh alone was the step's long pole (on the owner's Mac at 1569 cases, 462 s beside
+      # shards of 349 s and 347 s; the whole self-test alone 541 s). With the cases still to come
+      # the job would soon have passed 12 minutes. The step fails if either shard fails, and unless
+      # each prints one count line, both for the same whole list, and their own counts add up to it,
+      # so no case runs twice or is left out. The self-test's artifact fixtures need rustc, the
+      # aarch64-linux-android, aarch64-apple-ios and arm-unknown-linux-gnueabihf targets, and
+      # llvm-nm and llvm-ar from llvm-tools-preview.
+      - name: The gate's self-test, two shards side by side
+        run: |
+          scripts/banned-api-check.sh --selftest --shard 1/2 > "$RUNNER_TEMP/selftest-1.log" 2>&1 &
+          shard1_pid=$!
+          scripts/banned-api-check.sh --selftest --shard 2/2 > "$RUNNER_TEMP/selftest-2.log" 2>&1 &
+          shard2_pid=$!
+          shard1=0
+          wait "$shard1_pid" || shard1=$?
+          shard2=0
+          wait "$shard2_pid" || shard2=$?
+          echo "::group::scripts/banned-api-check.sh --selftest --shard 1/2 (exit $shard1)"
+          cat "$RUNNER_TEMP/selftest-1.log"
+          echo "::endgroup::"
+          echo "::group::scripts/banned-api-check.sh --selftest --shard 2/2 (exit $shard2)"
+          cat "$RUNNER_TEMP/selftest-2.log"
+          echo "::endgroup::"
+          tail -n 2 "$RUNNER_TEMP/selftest-1.log"
+          tail -n 2 "$RUNNER_TEMP/selftest-2.log"
+          # Shard K's one "selftest: shard K/2: OWN of WHOLE cases" line, in its own log.
+          counts=0
+          awk '
+            FNR == 1 { f++ }
+            $0 ~ "^selftest: shard " f "/2: [0-9]+ of [0-9]+ cases$" { n[f]++; own[f] = $4 + 0; whole[f] = $6 + 0 }
+            END {
+              if (f == 2 && n[1] == 1 && n[2] == 1 && whole[1] > 0 && whole[1] == whole[2] && own[1] + own[2] == whole[1]) {
+                printf "the shards split one list: %d and %d of its %d cases\n", own[1], own[2], whole[1]
+              } else {
+                print "the shards do not split one list: each needs one count line, both for the same whole list, and their own counts must add up to it"
+                exit 1
+              }
+            }' "$RUNNER_TEMP/selftest-1.log" "$RUNNER_TEMP/selftest-2.log" || counts=$?
+          [ "$shard1" -eq 0 ] && [ "$shard2" -eq 0 ] && [ "$counts" -eq 0 ]
 
   verifier-py39:
     # verify.py promises Python 3.9+, the stock /usr/bin/python3 an offline Mac user has; the
@@ -489,7 +551,14 @@ jobs:
     # keepcrypt-pi binary with the stand-in gcc below and scans it with the rest: it must import
     # getrandom, keep its symbol table, and hold no marker, test key, std random-key path or other
     # RNG symbol. The shipped binary comes from the image workflow's Buildroot toolchain; this one
-    # is scanned, never run. The app libraries for the phones are M5 and M6. Every step checks the
+    # is scanned, never run. M5 (tasks/todo.md, group 12; Q55): the three Android legs link with
+    # NDK r30 (30.0.16248370, the NDK the app's build pins), never the image's default, and build
+    # the phone library, keepcrypt-jni's libkeepcrypt.so, twice: the shipping one (default
+    # features) joins the scan above, and must import getrandom and keep its symbol table; the
+    # test-registry one, in its own target dir, must show exactly its registry marker and the
+    # test key. Both must have 16 KB pages on arm64 and x86_64 and export exactly our two
+    # symbols, JNI_OnLoad and Java_com_keepcrypt_entropy_ffi_Native_call (lead decision M5-21),
+    # beside secp256k1-sys's own four. The iPhone's library is M6 (Q73). Every step checks the
     # changes job (see the header).
     name: cross (${{ matrix.target }})
     needs: changes
@@ -503,19 +572,20 @@ jobs:
           - target: arm-unknown-linux-gnueabihf
             os: ubuntu-24.04
             crates: keepcrypt-core keepcrypt-pi
-          # Android, minSdk 31 (docs/mobile-apps.md), with the image's default NDK.
+          # Android, minSdk 31 (docs/mobile-apps.md), with NDK r30; the FFI's three crates, so
+          # keepcrypt-jni's library is built and checked below.
           - target: aarch64-linux-android
             os: ubuntu-24.04
             ndk_clang: aarch64-linux-android31-clang
-            crates: keepcrypt-core keepcrypt-ffi
+            crates: keepcrypt-core keepcrypt-ffi keepcrypt-guard keepcrypt-jni
           - target: armv7-linux-androideabi
             os: ubuntu-24.04
             ndk_clang: armv7a-linux-androideabi31-clang
-            crates: keepcrypt-core keepcrypt-ffi
+            crates: keepcrypt-core keepcrypt-ffi keepcrypt-guard keepcrypt-jni
           - target: x86_64-linux-android
             os: ubuntu-24.04
             ndk_clang: x86_64-linux-android31-clang
-            crates: keepcrypt-core keepcrypt-ffi
+            crates: keepcrypt-core keepcrypt-ffi keepcrypt-guard keepcrypt-jni
           # iPhone and its simulator, with the image's default Xcode.
           - target: aarch64-apple-ios
             os: macos-26
@@ -564,19 +634,46 @@ jobs:
             echo "CFLAGS_arm_unknown_linux_gnueabihf=-march=armv6zk -mfpu=vfp -mfloat-abi=hard -marm"
             echo "CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER=arm-linux-gnueabihf-gcc"
           } >> "$GITHUB_ENV"
-      - name: C compiler and linker for Android (NDK clang, API 31)
+      # M5 (tasks/todo.md, group 12; Q55): NDK r30 at its exact revision under the SDK root, the
+      # NDK mobile/android's build pins (ndkVersion). The image's NDKs are listed for Review. If an
+      # image update has dropped r30, sdkmanager installs that revision (the image's SDK licences
+      # are accepted, Q54; a licence prompt gets no answer, so nothing is installed and the check
+      # that follows fails). Its source.properties is printed and must name that revision: no
+      # other NDK is ever used, the image's default (ANDROID_NDK_HOME) included. Its llvm-readelf
+      # and llvm-nm check the phone library below.
+      - name: C compiler and linker for Android (NDK r30 clang, API 31)
         if: needs.changes.outputs.entropy == 'true' && matrix.ndk_clang != ''
         env:
           NDK_CLANG: ${{ matrix.ndk_clang }}
+          KC_NDK: 30.0.16248370
         run: |
-          # ANDROID_NDK_HOME is the image's default NDK.
-          bin="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          fail() { echo "FAIL: NDK $KC_NDK: $1" >&2; exit 1; }
+          sdk=${ANDROID_SDK_ROOT:-}
+          [ -n "$sdk" ] && [ -d "$sdk" ] || fail "no Android SDK (ANDROID_SDK_ROOT)"
+          echo "ANDROID_SDK_ROOT: $sdk"
+          echo "== the image's NDKs ($sdk/ndk)"
+          if [ -d "$sdk/ndk" ]; then ls "$sdk/ndk"; else echo "none: no $sdk/ndk"; fi
+          echo "ANDROID_NDK_HOME (the image's default NDK, not used): ${ANDROID_NDK_HOME:-}"
+          ndk=$sdk/ndk/$KC_NDK
+          if [ ! -e "$ndk" ]; then
+            echo "NDK $KC_NDK is not on the image: sdkmanager --install \"ndk;$KC_NDK\""
+            "$sdk/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$KC_NDK" < /dev/null
+          fi
+          props=$ndk/source.properties
+          [ -f "$props" ] || fail "no $props"
+          cat "$props"
+          grep -q "^Pkg[.]Revision = $KC_NDK\$" "$props" || fail "$props is not NDK $KC_NDK"
+          bin=$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin
+          for tool in "$NDK_CLANG" llvm-ar llvm-nm llvm-readelf; do
+            [ -x "$bin/$tool" ] || fail "no $tool in $bin"
+          done
           "$bin/$NDK_CLANG" --version
           t=${TARGET//-/_}
           {
             echo "CC_$t=$bin/$NDK_CLANG"
             echo "AR_$t=$bin/llvm-ar"
             echo "CARGO_TARGET_${t^^}_LINKER=$bin/$NDK_CLANG"
+            echo "KC_NDK_BIN=$bin"
           } >> "$GITHUB_ENV"
       # Q8: getrandom's default Linux and Android backend looks getrandom up with dlsym and falls
       # back to /dev/urandom; linux_getrandom calls libc's getrandom and nothing else, so the scan
@@ -612,6 +709,20 @@ jobs:
       - name: Build pi/app's release binary (default features)
         if: needs.changes.outputs.entropy == 'true' && contains(format(' {0} ', matrix.crates), ' keepcrypt-pi ')
         run: cargo build --release --locked -p keepcrypt-pi --bin keepcrypt-pi --target "$TARGET"
+      # M5 (tasks/todo.md, group 12): the phone library, keepcrypt-jni's cdylib libkeepcrypt.so, as
+      # the shipping APK carries it (default features); the scan step scans it on the same
+      # condition (keepcrypt-jni among the crates).
+      - name: Build libkeepcrypt.so (release, default features)
+        if: needs.changes.outputs.entropy == 'true' && contains(format(' {0} ', matrix.crates), ' keepcrypt-jni ')
+        run: cargo build --release --locked -p keepcrypt-jni --lib --target "$TARGET"
+      # The test-registry APK's library: test-registry switched on from the command line with -p,
+      # never in a manifest. keepcrypt-jni has no keepcrypt-core edge (lead decision M5-35), so
+      # cargo refuses the feature on -p keepcrypt-jni alone; -p keepcrypt-core names it, and the
+      # build's one keepcrypt-core, which keepcrypt-jni reaches through keepcrypt-guard and
+      # keepcrypt-ffi, has it. Its own target dir, so no shipping build file is reused.
+      - name: Build the test-registry libkeepcrypt.so (its own target dir)
+        if: needs.changes.outputs.entropy == 'true' && contains(format(' {0} ', matrix.crates), ' keepcrypt-jni ')
+        run: cargo build --release --locked -p keepcrypt-jni -p keepcrypt-core --lib --features keepcrypt-core/test-registry --target "$TARGET" --target-dir target/ffi-test-registry
       - name: Scan the release artifacts (markers, test key, RNG symbols, the OS import)
         if: needs.changes.outputs.entropy == 'true'
         env:
@@ -620,17 +731,90 @@ jobs:
           rlib="target/$TARGET/release/libkeepcrypt_core.rlib"
           probe="target/$TARGET/release/examples/release_probe"
           pi="target/$TARGET/release/keepcrypt-pi"
+          so="target/$TARGET/release/libkeepcrypt.so"
           files=("$rlib" "$probe")
           case " $CRATES " in
             *" keepcrypt-pi "*) files+=("target/$TARGET/release/libkeepcrypt_pi.rlib" "$pi") ;;
+          esac
+          case " $CRATES " in
+            *" keepcrypt-jni "*) files+=("$so") ;;
           esac
           for f in "${files[@]}"; do
             size=$(wc -c < "$f")
             echo "$f: $((size)) bytes"
           done
-          # The binary's OS import as llvm-nm prints it, for Review (tasks/todo.md, M4 group 12);
-          # the scan requires it (OSImport) and refuses a stripped file (Format).
+          # The binary's OS import as llvm-nm prints it, for Review (tasks/todo.md, M4 group 12),
+          # and the phone library's (M5 group 12); the scan requires it (OSImport) and refuses a
+          # stripped file (Format).
           case " $CRATES " in
             *" keepcrypt-pi "*) "$(rustc --print target-libdir)/../bin/llvm-nm" -u "$pi" | grep -E '(^| )getrandom(@|$)' ;;
           esac
+          case " $CRATES " in
+            *" keepcrypt-jni "*) "$(rustc --print target-libdir)/../bin/llvm-nm" -u "$so" | grep -E '(^| )getrandom(@|$)' ;;
+          esac
           scripts/banned-api-check.sh --artifact "$TARGET" "${files[@]}"
+      # The test-registry library (M5 group 12; rule 10), as the test job scans the test-registry
+      # simulator: the scan must exit 1 with exactly two hits, its registry marker and the test
+      # key, so no stub marker, no RNG symbol, no stripped file and the OS import there.
+      - name: Scan the test-registry libkeepcrypt.so (exactly its registry marker and the test key)
+        if: needs.changes.outputs.entropy == 'true' && contains(format(' {0} ', matrix.crates), ' keepcrypt-jni ')
+        run: |
+          so="target/ffi-test-registry/$TARGET/release/libkeepcrypt.so"
+          size=$(wc -c < "$so")
+          echo "$so: $((size)) bytes"
+          rc=0
+          out=$(scripts/banned-api-check.sh --artifact "$TARGET" "$so" 2>&1) || rc=$?
+          printf '%s\n' "$out"
+          fail() { echo "FAIL: the test-registry libkeepcrypt.so's scan: $1" >&2; exit 1; }
+          [ "$rc" -eq 1 ] || fail "exit $rc, not 1"
+          # Each hit is one line, so two distinct hit lines and the count of 2 are all of them.
+          for want in "Marker: $so: KC_TEST_REGISTRY_DO_NOT_SHIP" \
+            "TestKey: $so: the test registry public key " \
+            "banned-api-check --artifact $TARGET: 2 hit(s) in 1 file(s)"; do
+            case $out in *"$want"*) ;; *) fail "no line holds \"$want\"" ;; esac
+          done
+          case $out in *KC_TEST_SOURCE_DO_NOT_SHIP*) fail "the stub marker" ;; esac
+      # Both libraries, read with NDK r30's tools (M5 group 12). 16 KB pages, which Play requires of
+      # every 64-bit library from 2027-02-01 (NDK r28 on links them so): llvm-readelf -lW must show
+      # an alignment of 0x4000 on every LOAD segment on arm64 and x86_64. armeabi-v7a keeps 4 KB
+      # pages, which Play allows, so its segments are printed, not judged. The exports (lead
+      # decision M5-21): llvm-nm -D's defined symbols are printed, and ours among them must be
+      # exactly JNI_OnLoad and Java_com_keepcrypt_entropy_ffi_Native_call. The only others allowed
+      # are secp256k1-sys's own #[no_mangle] functions (0.10.1: its context allocator pair and its
+      # two default callbacks), which a cdylib exports with ours; any other defined symbol fails.
+      - name: libkeepcrypt.so's LOAD alignment and exports (both builds)
+        if: needs.changes.outputs.entropy == 'true' && contains(format(' {0} ', matrix.crates), ' keepcrypt-jni ')
+        run: |
+          fail() { echo "FAIL: $1" >&2; exit 1; }
+          case $TARGET in
+            aarch64-linux-android | x86_64-linux-android) page=0x4000 ;;
+            armv7-linux-androideabi) page= ;;
+            *) fail "no page-size rule for $TARGET" ;;
+          esac
+          ours='JNI_OnLoad Java_com_keepcrypt_entropy_ffi_Native_call'
+          secp='rustsecp256k1_v0_10_0_context_create rustsecp256k1_v0_10_0_context_destroy'
+          secp="$secp rustsecp256k1_v0_10_0_default_error_callback_fn rustsecp256k1_v0_10_0_default_illegal_callback_fn"
+          want=$(printf '%s\n' $ours | LC_ALL=C sort)
+          for so in "target/$TARGET/release/libkeepcrypt.so" "target/ffi-test-registry/$TARGET/release/libkeepcrypt.so"; do
+            echo "== $so: llvm-readelf -lW, the LOAD segments"
+            loads=$("$KC_NDK_BIN/llvm-readelf" -lW "$so" | awk '$1 == "LOAD"')
+            [ -n "$loads" ] || fail "$so: no LOAD segment"
+            printf '%s\n' "$loads"
+            if [ -n "$page" ]; then
+              # The alignment is a LOAD line's last field (the flags before it may hold spaces).
+              bad=$(printf '%s\n' "$loads" | awk -v page="$page" '$NF != page')
+              [ -z "$bad" ] || fail "$so: a LOAD segment is not aligned to $page (16 KB pages)"
+              echo "every LOAD segment aligned to $page"
+            else
+              echo "armeabi-v7a: 4 KB pages, printed, not judged"
+            fi
+            echo "== $so: llvm-nm -D --defined-only"
+            "$KC_NDK_BIN/llvm-nm" -D --defined-only "$so" > "$RUNNER_TEMP/exports"
+            cat "$RUNNER_TEMP/exports"
+            # The name is each line's last field, without a version suffix.
+            got=$(awk -v secp="$secp" '
+              BEGIN { n = split(secp, s, " "); for (i = 1; i <= n; i++) theirs[s[i]] = 1 }
+              { name = $NF; sub(/@.*/, "", name); if (!(name in theirs)) print name }' "$RUNNER_TEMP/exports" | LC_ALL=C sort -u)
+            [ "$got" = "$want" ] || fail "$so: our defined symbols are not exactly JNI_OnLoad and Java_com_keepcrypt_entropy_ffi_Native_call: $(printf '%s ' $got)"
+            echo "our exports: exactly $(printf '%s ' $want)(secp256k1-sys's: $(grep -c -E ' rustsecp256k1_v0_10_0_' "$RUNNER_TEMP/exports" || :) of its four)"
+          done

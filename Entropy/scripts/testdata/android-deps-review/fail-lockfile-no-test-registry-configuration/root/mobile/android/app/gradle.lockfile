@@ -1,0 +1,6 @@
+# This is a Gradle generated file for dependency locking.
+# Manual edits can break the build and are not advised.
+# This file is expected to be part of source control.
+androidx.annotation:annotation:1.9.1=shippingReleaseCompileClasspath,shippingReleaseRuntimeClasspath
+com.google.guava:listenablefuture:1.0=shippingReleaseRuntimeClasspath
+empty=shippingReleaseAnnotationProcessorClasspath

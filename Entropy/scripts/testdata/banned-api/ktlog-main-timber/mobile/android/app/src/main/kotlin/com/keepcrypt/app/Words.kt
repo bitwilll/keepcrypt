@@ -1,0 +1,1 @@
+Timber.i("words shown")

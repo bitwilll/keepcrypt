@@ -1,0 +1,2 @@
+1
+androidx.annotation:annotation:1.9.1 annotation-1.9.1.pom (Google's Maven): Google's Maven publishes no .sha256 for it, only .sha1 and .md5

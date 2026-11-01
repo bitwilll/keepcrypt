@@ -1,0 +1,4 @@
+headers = keepcrypt.h
+headerFilter = keepcrypt.h
+package = com.keepcrypt.native
+---

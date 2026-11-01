@@ -1,0 +1,1 @@
+val early = context.createDeviceProtectedStorageContext()

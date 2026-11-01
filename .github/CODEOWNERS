@@ -24,6 +24,9 @@
 /Entropy/pi/app/        msaval02@nyit.edu
 # The Pi simulator: its tests are the M3 gate's evidence (tasks/todo.md, M3 Q31 (i)).
 /Entropy/pi/sim/        msaval02@nyit.edu
+# The apps (Android in M5, iPhone in M6): the screens, capture protection, the Gradle project
+# with its lockfiles and verification metadata, and the expected lists CI compares (M5 Q54).
+/Entropy/mobile/        msaval02@nyit.edu
 # Rule 9: no INTERNET permission (the Android app arrives in M5).
 /Entropy/mobile/**/AndroidManifest.xml  msaval02@nyit.edu
 

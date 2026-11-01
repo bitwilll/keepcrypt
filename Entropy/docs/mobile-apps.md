@@ -10,28 +10,30 @@ The phone apps run the same core and the same ceremony as the Pi, but a phone is
 | Checking a Pi or Coldcard ceremony with the built-in verifier | Anything where an OS-level compromise is in your threat model |
 | Checking that an encrypted backup restores | Users who cannot keep the phone offline during the ceremony |
 
-**What no app can stop:** malware with OS-level control, a second camera pointed at the screen, or a rooted or jailbroken device. The app says this on its first screen in plain words and requires airplane mode during a ceremony.
+**What no app can stop:** malware with OS-level control, a second camera pointed at the screen, or a rooted or jailbroken device. The app says this on its first screen in plain words and requires airplane mode on and Wi-Fi off during a ceremony.
 
 ## Architecture
 
-Both apps are thin native shells over `keepcrypt-core` through UniFFI; no seed logic is written twice, and no seed ever leaves memory unencrypted.
+Both apps are thin shells over `keepcrypt-core`. The screens are written with Compose Multiplatform in shared modules and built for Android in M5; M6 decides whether the iPhone reuses them. The screens reach the core through a small hand-written bridge: `keepcrypt-ffi`, the safe layer that holds every rule and no unsafe code, with one boundary crate per platform under it (`keepcrypt-jni` for Android, over `keepcrypt-guard`, the one panic catch; the iPhone boundary is chosen in M6); no seed logic is written twice, and no seed ever leaves memory unencrypted. On Android three residuals, accepted for the M7 audit, limit that promise: Java's moving garbage collector and text caches can keep copies of the text on screen that nothing can wipe; a native abort (a panic inside a destructor, an allocation failure, a stack overflow) writes a crash dump that can include memory near the crash; and a vendor's swap to flash (for example Samsung's RAM Plus) is outside the app's control. If the iPhone reuses the shared screens, four residuals, also accepted for the M7 audit, limit it there: Kotlin strings and the Kotlin/Native runtime's memory cannot be wiped; Skia, which draws the shared screens, keeps a copy of up to 128 recently drawn texts in a cache Compose offers no switch for; any unexpected Kotlin exception ends the app with a system crash report that includes the exception's details; and a screenshot cannot be blocked, only answered by a discard.
 
 | Concern | Android | iPhone |
 | --- | --- | --- |
-| UI | Kotlin, Jetpack Compose | Swift, SwiftUI |
+| UI | Compose Multiplatform, shared | Chosen in M6 (Q73) |
 | Minimum OS | Android 12 (API 31) | iOS 17 |
-| Core | `libkeepcrypt.so` built with `cargo-ndk` (arm64-v8a, armeabi-v7a, x86\_64); Kotlin bindings from UniFFI | `KeepCryptCore.xcframework`; Swift bindings from UniFFI |
-| Modules | `:app`, `:secure-ui` (secure activity base, capture monitors), `:core-ffi` | App target, `SecureUI` Swift package, core XCFramework |
+| Core | `libkeepcrypt.so` (`keepcrypt-jni` over `keepcrypt-ffi`) built with plain `cargo` and the NDK's clang (arm64-v8a, armeabi-v7a, x86\_64); hand-written JNI over `jni-sys`, no generated bindings | Chosen in M6 (Q73) |
+| Modules | `:app`, `:secure-ui` (secure activity base, capture monitors), `:core-ffi`, `:screens` (shared) | Chosen in M6 (Q73) |
 | Capture protection | `FLAG_SECURE` on every window, including dialogs | Capture-state redaction, screenshot discards the session, secure-layer rendering |
 | Network | No `INTERNET` permission in the manifest | No networking code or SDKs; offline check before a ceremony |
 | Storage | Nothing persisted; `allowBackup="false"` | Nothing persisted |
 | Backup export | Storage Access Framework "create document" | Document picker export |
-| Text entry | In-app dice pad and word picker; no system keyboard | Same |
+| Text entry | In-app pads only, never the system keyboard: a dice pad; a letter pad for the first four letters of a word, which core completes, so no word list leaves core; pads for the go-ahead code and the BIP39 passphrase | Same |
 | Collision check | Signed snapshot opened with the file picker (works in airplane mode), or a check QR for a second device, with the go-ahead QR scanned back by the camera or its code typed | Same |
 | Braille | Insert view with five braille faces per word, metal read-back; TalkBack braille displays | Same; VoiceOver braille displays |
 | Watch-only export | Account and descriptor QR codes on a protected screen; never a file | Same |
 
-**Session lifetime.** One `CeremonyViewModel` (Android) or `CeremonyModel` (iOS) owns the FFI session. Leaving the app while words or the backup passphrase are on screen discards the seed; earlier steps show a privacy cover and wipe after 60 seconds in the background.
+**Session lifetime.** One shared `CeremonyModel` owns the FFI session. Every screen is Protected or Public, with the Pi's list (pi-firmware.md, "Protected screens and idle"): Protected screens are the words in insert view and overview (in the ceremony and in "Check a backup"), the read-back entry and mismatch screens, the backup passphrase with its confirm and wrong-pick screens, BIP39-passphrase and backup-passphrase entry, D, the registration QR, the collision-report QR, and the account and descriptor QRs; everything else is Public, the dice screen and the check QR included. A Protected screen is entered through the privacy gate ("I'm alone, show words"), is covered after 30 seconds without input (one tap uncovers it and the session stays), and the Pi's idle rule applies on every screen: a warning at 9 minutes without input and a wipe at 10. Leaving the app on any Protected screen discards the seed; on a Public screen the app shows a privacy cover and wipes after 60 seconds in the background or, if Android froze it, when it is next opened, before anything shows (Q75).
+
+**When something fails (Android).** The Pi's rule (pi-firmware.md, "Finish and halts"). Every error that ended a session, and every known-answer-test, entropy-source, health-test, internal or export-self-check error from any core call, wipes everything the app holds and ends on a stop screen that names the failure in fixed text and holds no secret; its only action closes the app, and the next start reruns the self-test before any ceremony. A Rust panic is caught once, at the bridge (`keepcrypt-guard`), and halts the same way. Only refusals of what the user or a file supplied return to their own screen, naming the refusal in fixed text: a wrong go-ahead code, a read-back mismatch, a wrong backup passphrase or unrecognised entry, an empty BIP39 passphrase, a refused backup file or snapshot. An unexpected Kotlin exception wipes everything and ends the process at once, with no dialog and no crash report, since a crash message could hold secrets; Android's own crash log in memory still records the exception's type and stack (Q75), and a native abort is the residual named above.
 
 ## Screen capture protection: Android
 
@@ -70,8 +72,8 @@ abstract class SecureActivity : ComponentActivity() {
 - Compose dialogs and popups create their own windows: pass `securePolicy = SecureFlagPolicy.SecureOn` in every `DialogProperties` and `PopupProperties`.
 - When the recording callback reports visible (Android 15+), replace words with a redacted placeholder as a second layer.
 - On Android 14+, mark the word views `accessibilityDataSensitive` so only genuine accessibility tools can read them.
-- No system keyboard on sensitive screens: dice use a 1 to 6 pad, word entry uses an in-app picker. Android's own docs warn keyboard taps can leak on older versions, one reason minSdk is 31.
-- **Test:** on each sensitive screen, `adb exec-out screencap -p` must return a blank window, and a screen recording must show it blank, on at least one Pixel and one Samsung device.
+- Never the system keyboard: dice use a 1 to 6 pad, words a letter pad for their first four letters (core completes them), and the go-ahead code and the BIP39 passphrase their own pads. Android's own docs warn keyboard taps can leak on older versions, one reason minSdk is 31.
+- **Test:** on each Protected screen, CI's shell screenshot (`screencap`) must return a blank window and its shell screen recording must show it blank, on every app build on CI's emulators; one real phone at each app milestone's gate; a Pixel and a Samsung before every release.
 
 ## Screen capture protection: iPhone
 
@@ -120,7 +122,7 @@ The seed exists only in the app's memory during the ceremony; the only thing tha
 | Guard | Android | iPhone | CI check |
 | --- | --- | --- | --- |
 | No network | `INTERNET` permission absent, so the OS refuses sockets | No networking code or third-party SDKs | Android: merged-manifest permission dump; iOS: grep gate rejects `URLSession`, `NWConnection`, `CFNetwork` |
-| Offline during ceremony | Require airplane mode (`Settings.Global.AIRPLANE_MODE_ON`) | `NWPathMonitor` must report no usable path | UI test with network on must block the ceremony |
+| Offline during ceremony | Require airplane mode on and Wi-Fi off (`Settings.Global` `AIRPLANE_MODE_ON` and `WIFI_ON`; Wi-Fi can come back on inside airplane mode); going online wipes the session; Bluetooth may stay on for braille displays | `NWPathMonitor` must report no usable path | UI test with network on must block the ceremony; Android: turning Wi-Fi on during a ceremony must wipe it |
 | No OS backup | `allowBackup="false"`, `fullBackupContent="false"`, `dataExtractionRules` excluding everything | Nothing persisted, so nothing for iCloud to copy | Lint rule on manifest |
 | No clipboard | Never call `setPrimaryClip`; text selection disabled | Never write `UIPasteboard`; `.textSelection(.disabled)` | Grep gate on clipboard APIs |
 | No analytics or crash SDKs | None in dependencies | None; App Privacy label "Data Not Collected" | Dependency allow-list |
@@ -157,7 +159,7 @@ The apps can save exactly one thing: the age-encrypted backup file defined in th
 
 **Never offered:** share sheet, copy, a QR code of the words (SeedQR), image, Photos, email, plaintext text file, or any export of the words themselves.
 
-**Checking a backup.** Open a `.age` file from the picker, enter the passphrase with the in-app word picker, and the app shows the fingerprint and "Backup OK." Words appear only if the user asks, on the same protected screen.
+**Checking a backup.** Open a `.age` file from the picker, enter the passphrase on the in-app letter pad (the first four letters of each word, as on the Pi), and the app shows the fingerprint and "Backup OK." Words appear only if the user asks, on the same protected screen.
 
 **Reading a snapshot.** The file picker also opens `.kcr` registry snapshots. The app checks the Ed25519 signature against the pinned key and keeps the snapshot in memory only; it is the only file type the app reads besides `.age` backups.
 
@@ -167,7 +169,7 @@ The phone ceremony mirrors the Pi screen for screen, so one user guide and one v
 
 1. **First launch.** What the app does, what no phone app can protect against, and a pointer to the Pi build for life savings.
 2. **Self-test.** Core known-answer tests; a failure blocks every ceremony.
-3. **Go offline.** Shows airplane-mode status; the Start button stays disabled until the phone is offline.
+3. **Go offline.** Shows the airplane-mode and Wi-Fi state; the Start button stays disabled until both say offline.
 4. **Home.** New seed, Dice-only seed, Check a backup, Load registry snapshot, Verify another device's ceremony, About.
 5. **Length.** 12 words (default; fills one KeepCrypt Hinge or Screw) or 24.
 6. **Device entropy.** Motion and touch extras are mixed in, with optional Snake or Tetris; the OS CSPRNG is read at the commitment.

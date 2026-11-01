@@ -1,7 +1,9 @@
 # Fail closed (CLAUDE.md rule 3): no default value, fallback, catch-and-continue or discarded
 # error (a single statement such as `r.err();` or `mem::forget(r)` that drops it unseen).
 # Secrets stay secret (rule 5): core, the FFI and the Pi app never write to stdout or stderr.
-# Keep core/, ffi/ and pi/app/clippy.toml identical; scripts/canaries.sh checks with cmp and
+# Keep core/, ffi/, ffi/jni/ and pi/app/clippy.toml identical, and ffi/guard/clippy.toml this file
+# without its catch_unwind line and with nothing else changed: keepcrypt-guard's guarded() holds
+# the FFI's one catch (tasks/todo.md, M5; Q53, Q66). scripts/canaries.sh checks both with cmp and
 # proves every path below fires (a typo'd path only warns and bans nothing).
 # No exceptions in code: each crate's Cargo.toml sets disallowed_methods = "forbid", so
 # #[allow], #[expect] and #![allow(clippy::all)] fail with E0453. An exception needs a

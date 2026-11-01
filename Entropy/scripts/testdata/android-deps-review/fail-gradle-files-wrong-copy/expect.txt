@@ -1,0 +1,2 @@
+2
+NOT FETCHED repo.maven.apache.org/maven2/com/google/guava/listenablefuture/1.0/listenablefuture-1.0.pom

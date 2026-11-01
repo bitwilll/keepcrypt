@@ -1,23 +1,39 @@
 [package]
 name = "keepcrypt-ffi"
-description = "UniFFI bindings over keepcrypt-core for the Android and iPhone apps"
+description = "The phone FFI's safe layer over keepcrypt-core: every rule, and no unsafe code"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
+# Only the crates named in docs/build-plan.md. Adding one needs owner approval and a cargo-vet entry.
 [dependencies]
 keepcrypt-core.workspace = true
+# Wipes what the safe layer copies out a page at a time (words, braille faces, the backup
+# passphrase, D, QR buffers) once it has crossed (rule 5; tasks/todo.md, M5 group 8); core's spec.
+zeroize = { version = "1.9.0", features = ["derive"] }
+# The QR codes the phones show, encoded into buffers the safe layer owns and wipes, at pi/app's
+# settings (tasks/todo.md, M5 group 9); pi/app's spec.
+qrcodegen-no-heap = "1.8.1"
+
+# Test-only: sha2 recomputes the go-ahead code from the drawn check request (tasks/todo.md, M5
+# group 11); core's version and pi/sim's spec.
+[dev-dependencies]
+sha2 = "0.11.0"
 
 [lints.rust]
 # scripts/canaries.sh pins this table and [lints.clippy] below exactly, per crate.
+# Also covers the safe layer's tests; the `#![forbid(unsafe_code)]` in lib.rs is what the plan
+# requires (tasks/todo.md, M5 group 7: unsafe code only in keepcrypt-jni).
+unsafe_code = "forbid"
 # A bare `fallible();` statement drops the error (rule 3). rustc only warns about it, and any
 # #[allow] or #[expect] would switch that off; forbid makes both fail with E0453.
 unused_must_use = "forbid"
 
 [lints.clippy]
-# Keep this block identical in core, ffi and pi/app (pi/sim is a desktop dev tool).
+# Keep this block identical in core, ffi, ffi/guard, ffi/jni and pi/app (pi/sim is a desktop dev
+# tool).
 # Fail closed (rule 3): the clippy.toml ban cannot be switched off in code; #[allow], #[expect]
 # and #![allow(clippy::all)] fail with E0453. An exception is a reviewed change to this line.
 disallowed_methods = "forbid"
@@ -30,3 +46,7 @@ allow_attributes_without_reason = "deny"
 print_stdout = "forbid"
 print_stderr = "forbid"
 dbg_macro = "forbid"
+# keepcrypt-jni holds the workspace's only unsafe code (tasks/todo.md, M5 group 7): every unsafe
+# block holds one operation and a SAFETY: comment. Nothing to check where unsafe_code is forbidden.
+undocumented_unsafe_blocks = "deny"
+multiple_unsafe_ops_per_block = "deny"

@@ -1,0 +1,19 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "androidx.example",
+    "module": "demo-android",
+    "version": "1.0"
+  },
+  "variants": [
+    {
+      "name": "releaseRuntimePublication",
+      "files": [
+        {
+          "name": "demo.aar",
+          "url": "demo-android-1.0-other.aar"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+1
+javax.inject-1.pom (Maven Central): the published .sha1 0000000000000000000000000000000000000000 is not the file's
