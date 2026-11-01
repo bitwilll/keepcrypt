@@ -43,7 +43,8 @@ import org.junit.runner.RunWith
  * same ceremony model (CeremonyHolder, the ViewModel), with the screen, its page, its gate, what is held
  * and every pad's entry as they were (the model's state, read in-process, compared and never printed:
  * the state of a words page holds its insert), so the change took no step and made no call (U2d's JVM
- * test, ConfigurationAndOnlineTest, counts the worker's calls); and its window keeps FLAG_SECURE. Before
+ * test, ConfigurationAndOnlineTest, counts the worker's calls); and its window keeps FLAG_SECURE, and the Bundle
+ * it was given holds nothing (the one a process death would keep: KillTest, U2j-b, M5-80). Before
  * each change a touch in the screen's own margin is an input (Ui.touchMargin), since a Protected screen's
  * cover after 30 s without one would change the state. After the changes the ceremony goes on from what
  * they kept: the picked face confirmed and the 50 rolls finished, the rest of the code typed and the check
@@ -133,7 +134,7 @@ class DeviceChangeTest {
         val other = if (night) "no" else "yes"
         activity = change(activity, "$what, night mode $other") { shellText("cmd uimode night $other") }
         activity = change(activity, "$what, night mode back") { shellText("cmd uimode night " + if (night) "yes" else "no") }
-        probe("$what: six changes, each a new activity with everything kept, in " + since(begun))
+        probe("$what: six changes, each a new activity with everything kept, in " + since(begun) + "; the last given " + onMain { activity.createdWith })
         return activity
     }
 
@@ -168,6 +169,10 @@ class DeviceChangeTest {
         assertTrue("$what: a pad's entry changed (neither is printed)", onMain { pads(activity) } == pads)
         val secure = onMain { activity.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0 }
         assertTrue("$what: the new window is not FLAG_SECURE", secure)
+        // The Bundle the new activity was given is the one onSaveInstanceState left at the stop, which a process
+        // death would keep: it must hold nothing (SecureActivity clears it), so no restore can bring back a screen.
+        val given = onMain { activity.createdWith }
+        assertTrue("$what: the recreated activity was given saved state: $given", !given.contains("holding"))
         return activity
     }
 

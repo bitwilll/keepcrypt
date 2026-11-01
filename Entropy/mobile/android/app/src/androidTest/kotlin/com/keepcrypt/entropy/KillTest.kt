@@ -19,7 +19,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * The process killed, then the app started again (tasks/todo.md, Stage U's U2j-a, the probe): the
+ * The process killed, then the app started again (tasks/todo.md, Stage U's U2j; its probe, U2j-a, and its
+ * assertions, U2j-b): the
  * instrumentation runs in the app's own process, so no test can kill the app and watch it return. So
  * android-emulator.sh's registry part kills the shipping app between runs of this class's tests, one test a
  * run: the backgrounded app killed as the system reclaims it (am kill), the app killed in the foreground
@@ -28,9 +29,12 @@ import org.junit.runner.RunWith
  * does (the launcher's intent from the shell, no CLEAR_TASK, so a task left in recents comes forward) and
  * prints what the start was given: a saved-state Bundle or none and the intent's flags (MainActivity's
  * createdWith), the app's tasks in recents before the start, the screen shown and the slot. What must hold on
- * any restore path is asserted: First launch, the slot empty (in a new process it can be nothing else; a
- * restore of a session would need the app to keep one, which nothing here does). KillTest proper (U2j-b) is
- * written from these lines.
+ * any restore path is asserted: First launch, the slot empty, and no saved state given. The probe's run
+ * (Entropy Android 41266466403) found every start after a kill given no Bundle, with 0 of the app's tasks left
+ * in recents on API 31 and 1 on API 36: am instrument force-stops the app as each run starts, so a start the
+ * system restores from saved state cannot be reached here. That state is the Bundle onSaveInstanceState left at
+ * the last stop, the one each recreation is given: DeviceChangeTest asserts it empty on four screens holding a
+ * session (lead decision M5-80).
  */
 @RunWith(AndroidJUnit4::class)
 class KillTest {
@@ -64,6 +68,8 @@ class KillTest {
                 "; the slot " + (if (home) "at home" else "not at home"),
         )
         assertTrue("after $kill the slot is not at home: something of a session came back", home)
+        val given = onMain { activity.createdWith }
+        assertTrue("after $kill the start was given saved state: $given", !given.contains("holding"))
         pass("after $kill: First launch, the slot empty, nothing restored")
         finish(activity)
     }

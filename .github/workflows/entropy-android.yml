@@ -670,6 +670,7 @@ jobs:
     # Run 41259598598 at b184be2 measured the registry jobs with DeviceChangeTest whole, 1017 s and 1016 s, so 22
     # minutes each. U2j-a adds KillTest's four runs and the kills between them to the registry part: its jobs are
     # measured at 30 again (M5-76 (f)).
+    # Run 41266466403 at c5189da measured them with KillTest whole, 1008 s and 1018 s, so 21 and 22 minutes.
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       # Every leg job runs to its end: a red leg never cancels another job or hides its evidence.
@@ -693,7 +694,7 @@ jobs:
           - api: '31'
             part: registry
             legs: API 31, test registry and edges
-            timeout: 30
+            timeout: 21
           - api: '36'
             part: capture
             legs: API 36, capture
@@ -709,7 +710,7 @@ jobs:
           - api: '36'
             part: registry
             legs: API 36, test registry and edges
-            timeout: 30
+            timeout: 22
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

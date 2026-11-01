@@ -57,8 +57,9 @@ class MainActivity : SecureActivity() {
 
     /**
      * What this activity's onCreate was given, for the instrumentation's probe of a start after a kill (Stage U's
-     * U2j-a): whether a saved-state Bundle came (SecureActivity never reads one), the launching intent's action
-     * and flags. Fixed facts, nothing of a session. Main thread only.
+     * U2j): whether a saved-state Bundle came (SecureActivity never reads one) and, if it holds any, its keys (the
+     * framework's names, never a value), the launching intent's action and flags. Fixed facts, nothing of a
+     * session. Main thread only.
      */
     var createdWith: String = ""
         private set
@@ -78,8 +79,7 @@ class MainActivity : SecureActivity() {
 
     @OptIn(ExperimentalComposeUiApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
-        createdWith = (if (savedInstanceState != null) "a saved-state Bundle" else "no Bundle") +
-            ", action " + intent.action + ", flags 0x" + Integer.toHexString(intent.flags)
+        createdWith = bundled(savedInstanceState) + ", action " + intent.action + ", flags 0x" + Integer.toHexString(intent.flags)
         super.onCreate(savedInstanceState)
         model = ViewModelProvider(this)[CeremonyHolder::class.java].model
         onBackPressedDispatcher.addCallback(
@@ -109,6 +109,13 @@ class MainActivity : SecureActivity() {
                 )
             }
         }
+    }
+
+    /** How createdWith names state: none, empty, or the keys it holds (the framework's names, never a value). */
+    private fun bundled(state: Bundle?): String = when {
+        state == null -> "no Bundle"
+        state.isEmpty -> "an empty saved-state Bundle"
+        else -> "a saved-state Bundle holding " + state.keySet().sorted().joinToString(",")
     }
 
     override fun onDestroy() {

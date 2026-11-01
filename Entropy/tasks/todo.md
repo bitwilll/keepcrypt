@@ -15971,6 +15971,16 @@ dialog stuck, U1a8 is redesigned from those lines. The M5 gate report names it u
   journeys of every other part's boot. Each change is preceded by a touch on a text that takes no press (Ui.touchOn),
   an input, since a Protected screen's 30 s cover would change the state the change must keep; the state is compared
   in-process and never printed (M5-68 (e)). The registry jobs are re-measured at its first green run (M5-30).
+- M5-80 (2026-11-01), Stage U-5, after run 41266466403 (U2j-a's probe): every start after each kill (am kill of the
+  backgrounded app, kill -9 in the foreground, a run's own end) was given no Bundle and a plain launcher intent, with
+  0 of the app's tasks in recents on API 31 and 1 on API 36. am instrument force-stops the app as each run starts,
+  so the system's restore from saved state cannot be reached through instrumentation, and no run can end holding a
+  session (whileOffline's finally puts the network back, which discards it). U2j-b therefore pins what decides any
+  restore: the Bundle onSaveInstanceState leaves at a stop, the one a process death keeps and each recreation is
+  given, must hold nothing, on the four session screens DeviceChangeTest walks (in place of Check a backup's entry,
+  which needs a backup made first; the Bundle is SecureActivity's, the same on every screen); and each start after a
+  kill is given none. Calling onSaveInstanceState by hand was rejected: ComponentActivity moves its lifecycle to
+  CREATED there, pausing the screens.
 - M5-78 (2026-10-31), Stage U-5: (a) U2i's DoubleTapTest (four short journeys, about 6 minutes) runs in the capture
   part, after PhoneMotionTest, not the ui part the plan named: the capture jobs (503-535 s) are the run's shortest and
   the ui jobs (1241-1284 s) its longest, so the run's wall time stays where it is; the capture jobs are measured at 30
@@ -17135,6 +17145,19 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   android-local.sh's whole run holds nineteen runs and its registry part eight (47 passed). The registry jobs are
   measured at 30 minutes again. Locally: the strict Gradle run with every JVM test, no warning; banned-api-check.sh
   clean, 408 files; --workflows clean.
+  CI (Entropy Android 41266466403 at c5189da): seven of eight emulator jobs green. KillTest's four runs passed on both
+  registry jobs, each start after a kill "given no Bundle, action android.intent.action.MAIN, flags 0x10000000; it
+  shows first_launch; the slot at home", with "0 of the app's tasks in recents" before it on API 31 and 1 on API 36;
+  pidof empty after every kill (API 31: 4600 and 4744 killed; API 36: 4997 and 5127). Registry jobs 1008 s and 1018 s:
+  21 and 22 minutes by M5-30. API 36's capture job never booted: its runner had 3335 MB free where the AVD lives
+  (other runs about 75 GB) and the emulator refused its 7372.80 MB data partition twice ("Not enough space to create
+  userdata partition"), which the script named with its free-space line before the boot (a runner's fault, open
+  item; nothing of this run's changes had run).
+  Proof (M5 commit U2j-b, Stage U-5, partial: local; CI's registry jobs at the next push): MainActivity's
+  createdWith names a Bundle's keys (none, empty, or the framework's key names); KillTest asserts each start after a
+  kill is given no saved state; DeviceChangeTest asserts each of its 24 recreations is given no Bundle or an empty one,
+  its probe line naming what the last one was given. Locally: the strict Gradle run with every JVM test, no warning;
+  banned-api-check.sh clean.
 - [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
   every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
   every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,
@@ -17537,7 +17560,7 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       Planned in detail 2026-11-01 (the lead's, after run 41262453126): the instrumentation runs in the app's own
       process, so no test can kill the app and watch it return, and every instrumented run already ends with the
       process gone (android-instrument.sh's judge checks it). So:
-      - [ ] U2j-a, the probe (registry part, after DeviceChangeTest, before the killed CrashTest): MainActivity
+      - [x] U2j-a, the probe (registry part, after DeviceChangeTest, before the killed CrashTest): MainActivity
         records what its onCreate was given (whether a saved-state Bundle came, the launching intent's action and
         flags), read-only to the instrumentation as shownScreen is; no behaviour changes. KillTest#theStartAfterAKill,
         run by the script after each kill below, starts MainActivity as a person returning does (the launcher's
@@ -17550,10 +17573,14 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
         root, named as not made where adb root is refused, as step 7 does); and a run that ends on the dice with
         rolls held (KillTest#leavesTheDiceHeld), whose instrumentation's own end is the kill (its logcat line, force
         stop or kill, printed). Each kill's pidof after it printed.
-      - [ ] U2j-b, KillTest proper, written from the probe's lines: for the dice, a words page and Check a backup's
-        entry, a run leaves the session there, the kill the probe shows faithful to the system's is made, and the next
-        run's start shows First launch (Go offline after its self-test), the slot empty, nothing of the session
-        restored whatever Bundle came; the part's step 7 then finds nothing persisted.
+      - [ ] U2j-b, written from the probe's lines (M5-80): every start after a kill was given no Bundle, so a start
+        the system restores from saved state cannot be reached through instrumentation (am instrument force-stops the
+        app as each run starts), and no run can end with a session held (whileOffline puts the network back first,
+        which discards it, as it must). So KillTest asserts that each start after a kill is given no saved state, and
+        DeviceChangeTest that each of its 24 recreations, on four screens holding a session (the dice with a face
+        picked, the code entry with symbols typed, the words' gate, a words page), is given no Bundle or an empty
+        one: the Bundle onSaveInstanceState leaves at a stop, which is what a process death keeps (MainActivity's
+        createdWith names any keys it holds, never a value). The part's step 7 still finds nothing persisted.
       - Verification: the script's selftest cases for the kills and the new runs (android-emulator.sh, and
         android-local.sh's run counts), both selftests, the gate, the strict build, and CI's registry jobs.
     - [ ] U2k: leaving by the screen turning off (input keyevent KEYCODE_SLEEP, then WAKEUP and the keyguard

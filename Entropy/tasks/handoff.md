@@ -16,18 +16,19 @@ things stand and what comes next.
     press guard (`screens/.../PressGuard.kt`, wired in `Screens.kt`, owned by `MainActivity.pressGuard`; M5-79), at
     b184be2, where every job is green. A new view (screen, gate, overlay) takes no touch until 300 ms after the frame
     that composed it; `Ui.on` waits for the guard as a person sees a screen before pressing (M5-79 (f)).
-  - **U2j-a (the kill probe) is at the head, its CI owed**: KillTest's four runs and android-emulator.sh's
-    kill_app in the registry part print, after each kill (the backgrounded app by am kill, the foreground app by
-    kill -9 as root, a run's own end), what the next start is given. Read its "after ..." probe lines, then write
-    U2j-b (KillTest proper) from them, as todo.md's U2j plan says.
+  - **U2j-a (the kill probe) done** at c5189da: every start after a kill (am kill in the background, kill -9 in the
+    foreground, a run's own end) is given no Bundle; 0 of the app's tasks stay in recents on API 31, 1 on API 36.
+  - **U2j-b at the head, its CI owed** (M5-80): KillTest asserts no saved state after each kill, and DeviceChangeTest
+    that each of its 24 recreations is given no Bundle or an empty one (the Bundle a process death keeps). If that
+    assertion fails, Android keeps keys SecureActivity did not clear: a finding about the app, fixed there.
   - U2k, U2l and U3h: planned, not started.
-- Budgets (M5-30, measured + 25%): capture 17/16, journeys 27/26, ui 26/27 minutes; registry at 30 for its
-  measuring run with KillTest (it was 22/22 before).
+- Budgets (M5-30, measured + 25%): capture 17/16, journeys 27/26, ui 26/27, registry 21/22 minutes.
 
 ## Next steps, in order
 
-1. Read CI at the head once its run ends: the registry jobs' KillTest probe lines ("kill (...)" and "after ..."), their
-   times (budget them by M5-30), and every other job still green. Record it in todo.md under U2j-a's proof.
+1. Read CI at the head once its run ends: both registry jobs green (DeviceChangeTest's "the last given ..." lines
+   and KillTest's), then tick U2j-b and U2j; every other job still green. Record it under U2j-b's proof. A capture job
+   that cannot boot for disk space ("Not enough space to create userdata partition") is the runner's (open item).
 2. U2j (probe run, then KillTest), U2k, U2l, U3h, as their items say. Each adds
    its class to `scripts/android-emulator.sh` (the part's run, the pinned orders in `--selftest`, a
    `*-test-fails` case) and to `scripts/android-local.sh`'s run counts, then runs both selftests (lessons.md,
