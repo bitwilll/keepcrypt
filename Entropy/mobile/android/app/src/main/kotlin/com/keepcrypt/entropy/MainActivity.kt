@@ -16,6 +16,7 @@ import androidx.lifecycle.lifecycleScope
 import com.keepcrypt.entropy.camera.GoAheadScanner
 import com.keepcrypt.entropy.files.Documents
 import com.keepcrypt.entropy.screens.CeremonyModel
+import com.keepcrypt.entropy.screens.PressGuard
 import com.keepcrypt.entropy.screens.Screen
 import com.keepcrypt.entropy.screens.Screens
 import com.keepcrypt.entropy.secure.SecureActivity
@@ -54,6 +55,12 @@ class MainActivity : SecureActivity() {
     var shownScreen: Screen? = null
         private set
 
+    /**
+     * The screens' press guard (Stage U's U2i, M5-79), the activity's so the instrumentation can read when it
+     * admits a touch (Ui.on waits for it). Main thread only.
+     */
+    val pressGuard = PressGuard()
+
     /** The ceremony model; the instrumentation drives it as the screens do (group 6). Main thread only. */
     lateinit var model: CeremonyModel
         private set
@@ -87,6 +94,7 @@ class MainActivity : SecureActivity() {
                     documents,
                     onClose = this@MainActivity::closeApp,
                     onShown = { shownScreen = it },
+                    guard = pressGuard,
                     uptimeMillis = SystemClock::uptimeMillis,
                 )
             }

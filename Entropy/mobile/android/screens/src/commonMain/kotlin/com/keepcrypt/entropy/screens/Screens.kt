@@ -12,7 +12,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -33,7 +32,8 @@ import com.keepcrypt.entropy.ffi.Mode
  * the model (input, the idle timer; touched, which Device entropy mixes in), and then reaches the screen's
  * controls only if the press guard admits it (PressGuard: a new screen, gate or overlay takes no touch
  * until 300 ms after the frame that composed it, on uptimeMillis, the phone's uptime clock that touches
- * carry, so a double tap's second touch cannot press what the first one put under it; M5-79); the cover and the warning lie over the screen and take the tap that removes them,
+ * carry, so a double tap's second touch cannot press what the first one put under it; M5-79; guard is the
+ * activity's, so the instrumentation can read it); the cover and the warning lie over the screen and take the tap that removes them,
  * so it reaches nothing under them.
  * airplaneSettings is Go offline's button, scanner the scan screen's go-ahead QR scanner and documents
  * the backup's, Check a backup's and Load registry snapshot's document pickers (the platform's seams,
@@ -51,11 +51,11 @@ fun Screens(
     documents: DocumentPickers,
     onClose: () -> Unit,
     onShown: (Screen) -> Unit,
+    guard: PressGuard,
     uptimeMillis: () -> Long,
 ) {
     val state by model.state.collectAsState()
     val registry = model.testRegistry
-    val guard = remember { PressGuard() }
     val view = shownView(state)
     SideEffect { guard.composed(view, uptimeMillis()) }
     Box(

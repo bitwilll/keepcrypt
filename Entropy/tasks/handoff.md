@@ -7,19 +7,20 @@ things stand and what comes next.
 ## Where things stand
 
 - Branch `m5-android`, draft PR https://github.com/bitwilll/keepcrypt/pull/9. Never push to `main`.
-- Latest commit: U2i3 (the press guard timed from composition; run 41252883580 recorded). Every CI run of the PR
+- Latest commit: U2i4 (the press guard's facts and Ui.on's wait for it; run 41256308347 recorded). Every CI run of the PR
   is "Entropy Android" (`.github/workflows/entropy-android.yml`).
 - Stage U-4 is closed: CI at `4a1cc07` (run 41211393696) was green in every job, U1b-U1g proven on API 31 and 36.
 - Stage U-5 is under way, without a check-in (M5-72 (h): U-1 to U-5 run without one; U-6 waits for the owner's
   answers to Q77-Q85). Its plan, item by item, is in todo.md's "U-5's plan":
   - **Done:** U1h (and U1) at 4fe6231; U2h (DeviceChangeTest, 24 changes on four screens, both levels) at 72cd4fa.
   - **U2i (DoubleTapTest) and its fix, the press guard:** DoubleTapTest found Skip, Match found and Cannot check
-    taking two steps (run 41247649576). The guard (`screens/.../PressGuard.kt`, wired in `Screens.kt`, M5-79) made
-    DoubleTapTest green on both capture jobs at 72cd4fa, but its first timing (from the frame after the first)
-    opened too late on CI's slow emulators and refused deliberate presses in FlowTest, BackupTest,
-    SnapshotDrillTest and one JourneyTest journey. U2i3 times it from the view's composition (SideEffect) on the
-    uptime clock touches carry (M5-79 (d)). **The head's run must show every journey green again and DoubleTapTest
-    still green**; then tick U2i.
+    taking two steps (run 41247649576). The guard (`screens/.../PressGuard.kt`, wired in `Screens.kt`, owned by
+    `MainActivity.pressGuard`, M5-79) makes DoubleTapTest green, but it refuses the first tap on a screen reached
+    with no touch (an in-process model call or the file picker's return): FlowTest, BackupTest, SnapshotDrillTest and
+    one JourneyTest journey fail at the same lines on both levels in runs 41252883580 and 41256308347. Two timing
+    fixes did not touch it (M5-79 (d), (e)). The head (U2i4) gathers the cause: `Ui.on` waits up to 2 s for the guard
+    and, if it never opens, prints `PressGuard.facts` (the view it holds, its age, the model's view) as a probe line.
+    **Read those lines first**, fix the cause in the guard or its wiring, and never weaken the 300 ms rule.
   - U2j, U2k, U2l and U3h: planned, not started.
 - Budgets: capture 17/16 (run 41252883580), journeys 27/26, ui 26/27; registry stays 30 until a run measures it green.
 

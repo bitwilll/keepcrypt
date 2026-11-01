@@ -40,6 +40,17 @@ class PressGuard {
     /** Whether a touch going down at uptimeMillis on view (the model's) reaches its controls. */
     fun admits(view: ShownView, uptimeMillis: Long): Boolean = view == this.view && uptimeMillis - composedAt >= GUARD_MILLIS
 
+    /**
+     * What the guard holds against modelView at uptimeMillis, for a test's probe line: the view it holds (screen
+     * id, gate, overlay) and how long ago it was composed, and the model's view. Fixed names and times alone.
+     */
+    fun facts(modelView: ShownView, uptimeMillis: Long): String {
+        fun named(view: ShownView?) = view?.let { screenId(it.screen) + (if (it.gate) " behind its gate" else "") + (it.overlay?.let { o -> " under " + o.name } ?: "") } ?: "none"
+        val held = view
+        val age = if (held == null) "" else ", composed " + (uptimeMillis - composedAt) + " ms ago"
+        return "the press guard holds " + named(held) + age + "; the model shows " + named(modelView)
+    }
+
     companion object {
         /** How long a new view's controls ignore touches after the frame that composed it (M5-72 (f)). */
         const val GUARD_MILLIS = 300L

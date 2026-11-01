@@ -26,10 +26,12 @@ import com.keepcrypt.entropy.screens.CeremonyModel
 import com.keepcrypt.entropy.screens.INSERTS_PER_DEVICE
 import com.keepcrypt.entropy.screens.LETTER_KEYS
 import com.keepcrypt.entropy.screens.PadEntry
+import com.keepcrypt.entropy.screens.PressGuard
 import com.keepcrypt.entropy.screens.SECRET_TAG
 import com.keepcrypt.entropy.screens.Screen
 import com.keepcrypt.entropy.screens.asciiPage
 import com.keepcrypt.entropy.screens.screenId
+import com.keepcrypt.entropy.screens.shownView
 import java.util.regex.Pattern
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -119,7 +121,31 @@ internal object Ui {
         }
         assertTrue("UI Automator does not see " + root + ", though the app shows " + screenId(screen), seen == true)
         device.waitForIdle()
+        guardOpen(activity, screenId(screen))
     }
+
+    /**
+     * Waits up to GUARD_SECONDS for the press guard (M5-79) to admit a touch made now on what the app shows, so a
+     * test's next press lands as a person's does once the screen has been seen; past that the test fails, the
+     * guard's facts (the view it holds, how long ago it was composed, the model's view) the probe line before it.
+     * A wait longer than the guard's own 300 ms is a probe line too.
+     */
+    fun guardOpen(activity: MainActivity, what: String) {
+        val begun = SystemClock.uptimeMillis()
+        fun open() = onMain { activity.pressGuard.admits(shownView(activity.model.state.value), SystemClock.uptimeMillis()) }
+        while (!open()) {
+            if (SystemClock.uptimeMillis() - begun > GUARD_SECONDS * 1_000L) {
+                Capture.probe(onMain { activity.pressGuard.facts(shownView(activity.model.state.value), SystemClock.uptimeMillis()) })
+                fail("the press guard did not open on $what within $GUARD_SECONDS s (its facts are the probe line before this)")
+            }
+            SystemClock.sleep(POLL_MS)
+        }
+        val waited = SystemClock.uptimeMillis() - begun
+        if (waited > PressGuard.GUARD_MILLIS) Capture.probe("the press guard opened on $what $waited ms after the screen was seen")
+    }
+
+    /** How long Ui.on waits for the press guard to open on a screen it has seen. */
+    private const val GUARD_SECONDS = 2
 
     /** After a press that must do nothing: a moment for it to land, then the same screen. */
     fun stays(activity: MainActivity, screen: Screen, what: String) {

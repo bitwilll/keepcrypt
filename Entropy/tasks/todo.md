@@ -16035,6 +16035,14 @@ instructions forbid any fetch for research, HEAD requests included.
   phone's uptime clock that touches carry (Screens' uptimeMillis, SystemClock.uptimeMillis from MainActivity), and
   judges a touch by its own down time, so a double tap's second touch stays refused however late a slow frame lets
   it be handled.
+  (e) Run 41256308347 at ef5f4c1 failed at the same lines on both levels as 41252883580: deterministic, so (d)'s
+  timing diagnosis was wrong or incomplete. Every refused press is the first tap on a screen reached with no touch:
+  by an in-process model call (FlowTest's read-back and summary, BackupTest's answers, SnapshotDrillTest's fed QR) or
+  on return from the file picker; the same taps after a touch's transition pass. The cause is not yet seen, so the
+  next run gathers it: the activity owns the guard (MainActivity.pressGuard, read-only to the instrumentation, as
+  shownScreen is) and PressGuard.facts names the view it holds, how long ago that was composed and the model's view
+  (fixed names and times alone); Ui.on waits up to 2 s for the guard to admit a touch on what it has seen, a wait
+  over 300 ms a probe line, and fails with the facts when it does not open. The guard is not weakened.
 - the `iosArm64`/`iosSimulatorArm64` targets, `kotlin-native-prebuilt`, skiko, the klib commonizer and the other
   iPhone-only Q67 artifacts, as the iPhone build's inputs;
   Amended at 8x-f (the 8x review; for the owner at the M5 gate, since Q73's answer record says Q67's iPhone-only
@@ -17093,6 +17101,12 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   SystemClock.uptimeMillis; PressGuardTest's 7 cases restated for it, a touch judged by its own down time among them.
   Locally: CI's build job's strict Gradle run (both APKs, both test APKs, capture-control, every JVM test: screens 200
   tests in 34 classes), no warning.
+  CI (Entropy Android 41256308347 at ef5f4c1): capture, ui (API 31) green; the same five jobs red at the same lines
+  as run 41252883580 (FlowTest 3 of 7 and BackupTest on both journeys jobs, SnapshotDrillTest on both registry jobs,
+  JourneyTest's Cannot check journey on API 36): M5-79 (e).
+  Proof (M5 commit U2i4, Stage U-5, partial: local; the evidence is CI's next run): MainActivity.pressGuard passed to
+  Screens; PressGuard.facts; Ui.guardOpen in Ui.on. Locally: CI's build job's strict Gradle run with every JVM test,
+  no warning.
 - [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
   every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
   every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,
