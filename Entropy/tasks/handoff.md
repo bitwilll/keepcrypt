@@ -1,4 +1,4 @@
-# Handoff: M5 (Android), Stage U-5, 2026-11-01 07:40 UTC
+# Handoff: M5 (Android), Stage U-5, 2026-11-01 06:50 UTC
 
 A new session starts here. CLAUDE.md's workflow still comes first: read `tasks/lessons.md`, then M5 in
 `tasks/todo.md` (Stage U's plans are under "Stage U", the proofs under M5's Review). This file only says where
