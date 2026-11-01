@@ -9,12 +9,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -34,8 +32,8 @@ import com.keepcrypt.entropy.ffi.Mode
  * when over the model's state, so no back stack reaches a saved-state Bundle. Every tap first reaches
  * the model (input, the idle timer; touched, which Device entropy mixes in), and then reaches the screen's
  * controls only if the press guard admits it (PressGuard: a new screen, gate or overlay takes no touch
- * until 300 ms after its first frame, so a double tap's second touch cannot press what the first one put
- * under it; M5-79); the cover and the warning lie over the screen and take the tap that removes them,
+ * until 300 ms after the frame that composed it, on uptimeMillis, the phone's uptime clock that touches
+ * carry, so a double tap's second touch cannot press what the first one put under it; M5-79); the cover and the warning lie over the screen and take the tap that removes them,
  * so it reaches nothing under them.
  * airplaneSettings is Go offline's button, scanner the scan screen's go-ahead QR scanner and documents
  * the backup's, Check a backup's and Load registry snapshot's document pickers (the platform's seams,
@@ -53,16 +51,13 @@ fun Screens(
     documents: DocumentPickers,
     onClose: () -> Unit,
     onShown: (Screen) -> Unit,
+    uptimeMillis: () -> Long,
 ) {
     val state by model.state.collectAsState()
     val registry = model.testRegistry
     val guard = remember { PressGuard() }
     val view = shownView(state)
-    LaunchedEffect(view) {
-        guard.showing(view)
-        val frame = withFrameMillis { it }
-        guard.drawn(view, frame)
-    }
+    SideEffect { guard.composed(view, uptimeMillis()) }
     Box(
         Modifier
             .fillMaxSize()

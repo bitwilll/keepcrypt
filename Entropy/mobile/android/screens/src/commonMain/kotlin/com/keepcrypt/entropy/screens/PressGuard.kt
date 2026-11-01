@@ -17,35 +17,31 @@ fun shownView(state: UiState): ShownView = ShownView(state.screen, state.gate, s
  * skip a screen, a privacy gate included, before it was seen. On the phone a quick double tap is that
  * press: its second touch lands on whatever the first one's press put under the finger (DoubleTapTest
  * found Skip, Match found and Cannot check each opening their confirm and the second touch pressing its
- * Back, Entropy Android 41247649576, API 36). So a view admits a touch only from GUARD_MILLIS after its
- * first frame, and nothing before that frame. Times are the frame clock's and the touch's uptime, which
- * are one monotonic clock on the phone. Main thread only (Screens' composition and pointer handler).
+ * Back, Entropy Android 41247649576, API 36). So a view admits a touch only from GUARD_MILLIS after the
+ * frame that composed it (Screens' SideEffect, in that frame, before it is laid out and drawn), and none
+ * while the view the model holds is not yet composed. Times are the phone's uptime clock, which a touch's
+ * own time is on (the touch's time is when the finger went down, however late it is handled), so a double
+ * tap's second touch is refused even when a slow frame delays its handling. Run 41252883580 timed the
+ * opening from the frame after the first (a LaunchedEffect's withFrameMillis), which CI's software-rendered
+ * emulators deliver hundreds of milliseconds later, and refused the journeys' deliberate presses. Main
+ * thread only (Screens' composition and pointer handler).
  */
 class PressGuard {
     private var view: ShownView? = null
-    private var firstFrame: Long? = null
+    private var composedAt = 0L
 
-    /** view's first frame was produced at frameMillis; a report for a view that is no longer shown is ignored. */
-    fun drawn(view: ShownView, frameMillis: Long) {
-        if (view != this.view) return
-        if (firstFrame == null) firstFrame = frameMillis
-    }
-
-    /** The shown view is now view: a new one starts closed, until its first frame and GUARD_MILLIS after it. */
-    fun showing(view: ShownView) {
+    /** view was composed at uptimeMillis; a view that stays keeps the time it was first composed. */
+    fun composed(view: ShownView, uptimeMillis: Long) {
         if (view == this.view) return
         this.view = view
-        firstFrame = null
+        composedAt = uptimeMillis
     }
 
-    /** Whether a touch going down at uptimeMillis on view reaches its controls. */
-    fun admits(view: ShownView, uptimeMillis: Long): Boolean {
-        val frame = firstFrame ?: return false
-        return view == this.view && uptimeMillis - frame >= GUARD_MILLIS
-    }
+    /** Whether a touch going down at uptimeMillis on view (the model's) reaches its controls. */
+    fun admits(view: ShownView, uptimeMillis: Long): Boolean = view == this.view && uptimeMillis - composedAt >= GUARD_MILLIS
 
     companion object {
-        /** How long a new view's controls ignore touches after its first frame (M5-72 (f)). */
+        /** How long a new view's controls ignore touches after the frame that composed it (M5-72 (f)). */
         const val GUARD_MILLIS = 300L
     }
 }

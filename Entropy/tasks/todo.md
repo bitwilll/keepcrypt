@@ -16027,6 +16027,14 @@ were first seen; CI's run 39380758809 reproduced the signature results on its ow
 instructions forbid any fetch for research, HEAD requests included.
 
 **Moves to M6** (as planned in the re-plan, to be re-planned with the M6 question)
+  (d) Run 41252883580 refused the journeys' deliberate presses on screens reached after a long call or a heavy
+  redraw (Show summary, Skip backup, Show words, Snapshot's Done; the presses came about 500 ms after UI Automator
+  saw the screen): the guard timed the 300 ms from a LaunchedEffect's withFrameMillis, the frame after the first,
+  which CI's software-rendered emulators deliver hundreds of milliseconds late. The guard now times them from the
+  frame that composes the view (Screens' SideEffect, the moment the tests' Ui.on already reads as shown), on the
+  phone's uptime clock that touches carry (Screens' uptimeMillis, SystemClock.uptimeMillis from MainActivity), and
+  judges a touch by its own down time, so a double tap's second touch stays refused however late a slow frame lets
+  it be handled.
 - the `iosArm64`/`iosSimulatorArm64` targets, `kotlin-native-prebuilt`, skiko, the klib commonizer and the other
   iPhone-only Q67 artifacts, as the iPhone build's inputs;
   Amended at 8x-f (the 8x review; for the owner at the M5 gate, since Q73's answer record says Q67's iPhone-only
@@ -17072,6 +17080,19 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   stays keeping its first frame. DoubleTapTest's precondition fixed (M5-79 (b)), DeviceChangeTest's input moved to
   the root's padding (M5-79 (c)). Locally: the strict Gradle run of CI's build job (both APKs, both test APKs,
   capture-control, every JVM test: screens 200 tests in 34 classes, PressGuardTest's 7 among them), no warning.
+  CI (Entropy Android 41252883580 at 72cd4fa): both capture jobs green, DoubleTapTest's four tests passing on both
+  levels, every double tap one step (the guard of that commit); API 31's emulator stayed up through ControlTest this
+  time. Capture jobs 797 s (API 31, with the 16 KB leg) and 754 s (API 36): 17 and 16 minutes by M5-30. Both registry
+  jobs ran DeviceChangeTest green: "six changes, each a new activity with everything kept" on each of the four
+  screens in 7.6 to 8.8 s, the test 103.7 s (API 31) and 106.0 s (API 36), with LifecycleTest (8) and the killed
+  CrashTest: U2h is proven. Red: FlowTest (3 of 7) and BackupTest on both journeys jobs, SnapshotDrillTest (1 of 4 on
+  API 31, 3 of 4 on API 36) and JourneyTest's Cannot check journey on API 36, each a deliberate press refused by
+  the guard's late opening (M5-79 (d)); MixedJourneyTest, CheckTest, LifecycleTest and StopJourneyTest passed.
+  Proof (M5 commit U2i3, Stage U-5, partial: local, no emulator; CI at the next push): PressGuard times a view from
+  its composition (composed(view, at), Screens' SideEffect) on Screens' uptimeMillis, MainActivity's
+  SystemClock.uptimeMillis; PressGuardTest's 7 cases restated for it, a touch judged by its own down time among them.
+  Locally: CI's build job's strict Gradle run (both APKs, both test APKs, capture-control, every JVM test: screens 200
+  tests in 34 classes), no warning.
 - [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
   every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
   every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,
@@ -17448,7 +17469,7 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       MixedJourneyTest, its own class in the journeys part (M5-77 (a)); Journeys gains the mixed journeys' shared
       stretches (newSeedToDice, checkByTheDrawnCode, revealDCommittingTo), which JourneyTest's mixed 12-word
       journey now uses too.
-    - [ ] U2h: a real configuration change on the device (DeviceChangeTest, the registry part's shipping-app edges):
+    - [x] U2h: a real configuration change on the device (DeviceChangeTest, the registry part's shipping-app edges):
       a rotation (UiDevice.setOrientationLeft, then natural), a font scale (settings put system font_scale 1.3, put
       back in a finally) and a night-mode switch (cmd uimode night yes, then no) on four screens: the dice with rolls
       tapped, a words page past its gate, a privacy gate itself, and the code entry with four symbols typed.

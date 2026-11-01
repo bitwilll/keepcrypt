@@ -1,4 +1,4 @@
-# Handoff: M5 (Android), Stage U-5, 2026-10-31 23:45 UTC
+# Handoff: M5 (Android), Stage U-5, 2026-11-01 00:30 UTC
 
 A new session starts here. CLAUDE.md's workflow still comes first: read `tasks/lessons.md`, then M5 in
 `tasks/todo.md` (Stage U's plans are under "Stage U", the proofs under M5's Review). This file only says where
@@ -7,39 +7,34 @@ things stand and what comes next.
 ## Where things stand
 
 - Branch `m5-android`, draft PR https://github.com/bitwilll/keepcrypt/pull/9. Never push to `main`.
-- Latest commit: U2i2 (the press guard, the two test fixes, run 41247649576 recorded). Every CI run of the PR is
-  "Entropy Android" (`.github/workflows/entropy-android.yml`).
+- Latest commit: U2i3 (the press guard timed from composition; run 41252883580 recorded). Every CI run of the PR
+  is "Entropy Android" (`.github/workflows/entropy-android.yml`).
 - Stage U-4 is closed: CI at `4a1cc07` (run 41211393696) was green in every job, U1b-U1g proven on API 31 and 36.
 - Stage U-5 is under way, without a check-in (M5-72 (h): U-1 to U-5 run without one; U-6 waits for the owner's
   answers to Q77-Q85). Its plan, item by item, is in todo.md's "U-5's plan":
-  - **U1h done, and U1 with it**: MixedJourneyTest green on both journeys jobs of run 41247649576 at 4fe6231. The
-    journeys jobs are budgeted 27 (API 31) and 26 (API 36) minutes.
-  - **U2h (DeviceChangeTest, registry part): not yet green.** In run 41247649576 the first change (the dice rotated
-    to landscape) passed whole on both levels; the second failed in the test's own input (a touch on the dice count,
-    scrolled out of the landscape window). Fixed: the touch now lands in the screen root's padding
-    (`Ui.touchMargin`, M5-79 (c)). Proof owed at the head.
-  - **U2i (DoubleTapTest, capture part) failed as M5-72 (f) foresaw** on API 36: Skip, Match found and Cannot check
-    each took two steps (the confirm opened, its Back pressed by the second touch). The fix is U2i2, the press guard
-    (`screens/.../PressGuard.kt`, wired in `Screens.kt`'s root pointer handler, M5-79 (a)): a new view (screen,
-    gate, overlay) takes no touch until 300 ms after its first frame. PressGuardTest (7) passes locally; the
-    device proof is DoubleTapTest at the head. Its registration test's precondition was the test's bug (M5-79 (b)).
+  - **Done:** U1h (and U1) at 4fe6231; U2h (DeviceChangeTest, 24 changes on four screens, both levels) at 72cd4fa.
+  - **U2i (DoubleTapTest) and its fix, the press guard:** DoubleTapTest found Skip, Match found and Cannot check
+    taking two steps (run 41247649576). The guard (`screens/.../PressGuard.kt`, wired in `Screens.kt`, M5-79) made
+    DoubleTapTest green on both capture jobs at 72cd4fa, but its first timing (from the frame after the first)
+    opened too late on CI's slow emulators and refused deliberate presses in FlowTest, BackupTest,
+    SnapshotDrillTest and one JourneyTest journey. U2i3 times it from the view's composition (SideEffect) on the
+    uptime clock touches carry (M5-79 (d)). **The head's run must show every journey green again and DoubleTapTest
+    still green**; then tick U2i.
   - U2j, U2k, U2l and U3h: planned, not started.
-- The capture and registry jobs' timeouts stay 30 minutes until a green run measures them (M5-76 (f), M5-77, M5-78).
+- Budgets: capture 17/16 (run 41252883580), journeys 27/26, ui 26/27; registry stays 30 until a run measures it green.
 
 ## Next steps, in order
 
 1. Read CI at the head once its run ends (about 35 minutes after the push). Record each emulator job's result and
-   time in todo.md's Review under the U2h, U2i and U2i2 proofs, with DeviceChangeTest's pass and probe lines
-   ("...: six changes, each a new activity with everything kept, in N s") and DoubleTapTest's four pass lines.
-   - Both registry jobs green: tick U2h. Both capture jobs green: tick U2i (the guard proven with it).
-   - Budget the capture and registry jobs by M5-30 (measured time + 25%, rounded up) in the workflow's matrix and
-     its Budget comment.
-   - Every journey must still pass with the guard: a journey test that pressed a control within 300 ms of its
-     screen's first frame would now see its press refused (the journeys wait for UI Automator's idle first, so
-     none should). A refusal there is a finding about that test's timing, fixed in the test; never weaken the guard.
+   time in todo.md's Review under U2i3's proof.
+   - Every job green: tick U2i; budget the registry jobs by M5-30 (measured time + 25%, rounded up).
+   - A journey press still refused (a test failing with "timed out: the app shows <screen>" after a tap): check the
+     time between the screen's composition and the tap; the guard must not be weakened below 300 ms. If CI's
+     emulators need it, a test may wait for the guard (a documented wait in Ui.on), never skip it.
    - A red job: diagnose it from its lines (`mcp__github__get_job_logs`, or download the log and read it); never
      rerun to green; fix at the root, then a new push.
-   - Watch API 31's capture job: in run 41247649576 its emulator went offline during ControlTest (an open item).
+   - Watch API 31's capture job: in run 41247649576 its emulator went offline during ControlTest; at 72cd4fa it
+     stayed up (an open item until it recurs or a few runs pass).
 2. U2j (probe run, then KillTest), U2k, U2l, U3h, as their items say. Each adds
    its class to `scripts/android-emulator.sh` (the part's run, the pinned orders in `--selftest`, a
    `*-test-fails` case) and to `scripts/android-local.sh`'s run counts, then runs both selftests (lessons.md,

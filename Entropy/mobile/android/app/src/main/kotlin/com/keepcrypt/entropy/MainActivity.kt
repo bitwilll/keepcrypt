@@ -2,6 +2,7 @@ package com.keepcrypt.entropy
 
 import android.os.Bundle
 import android.os.Process
+import android.os.SystemClock
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -79,7 +80,15 @@ class MainActivity : SecureActivity() {
         lifecycleScope.launch { model.held.collect { window.decorView.keepScreenOn = it } }
         setContent {
             Box(Modifier.semantics { testTagsAsResourceId = true }) {
-                Screens(model, airplaneSettings, scanner, documents, onClose = this@MainActivity::closeApp, onShown = { shownScreen = it })
+                Screens(
+                    model,
+                    airplaneSettings,
+                    scanner,
+                    documents,
+                    onClose = this@MainActivity::closeApp,
+                    onShown = { shownScreen = it },
+                    uptimeMillis = SystemClock::uptimeMillis,
+                )
             }
         }
     }
